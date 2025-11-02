@@ -78,16 +78,23 @@
                     上下文长度: ≥ {{ formatContextLength(filters.minContextLength) }}
                   </label>
                   <input
-                    v-model.number="filters.minContextLength"
+                    :value="contextSliderPosition"
+                    @input="onContextSliderChange"
                     type="range"
                     min="0"
-                    :max="maxContextLength"
-                    :step="contextLengthStep"
+                    max="100"
+                    step="0.1"
                     class="range-slider"
                   />
-                  <div class="range-labels">
-                    <span>0</span>
-                    <span>{{ formatContextLength(maxContextLength) }}</span>
+                  <div class="range-ticks">
+                    <span
+                      v-for="point in contextKeyPoints"
+                      :key="point.value"
+                      :style="{ left: point.value + '%' }"
+                      class="tick-label"
+                    >
+                      {{ point.label }}
+                    </span>
                   </div>
                 </div>
 
@@ -97,16 +104,23 @@
                     最高价格: ${{ filters.maxPromptPrice.toFixed(2)}} / 1M tokens
                   </label>
                   <input
-                    v-model.number="filters.maxPromptPrice"
+                    :value="priceSliderPosition"
+                    @input="onPriceSliderChange"
                     type="range"
                     min="0"
-                    :max="maxPrice"
-                    step="0.5"
+                    max="100"
+                    step="0.1"
                     class="range-slider"
                   />
-                  <div class="range-labels">
-                    <span>免费</span>
-                    <span>${{ maxPrice }}</span>
+                  <div class="range-ticks">
+                    <span
+                      v-for="point in priceKeyPoints"
+                      :key="point.value"
+                      :style="{ left: point.value + '%' }"
+                      class="tick-label"
+                    >
+                      {{ point.label }}
+                    </span>
                   </div>
                 </div>
 
@@ -260,6 +274,117 @@ const sortBy = ref('name')
 // 从 store 获取所有模型
 const allModelsData = computed(() => chatStore.allModels)
 
+// ========== 自适应分位数刻度算法 ==========
+
+/**
+ * 构建分位数映射表
+ * @param {number[]} values - 所有数值数组
+ * @param {number} steps - 滑块刻度数（默认100）
+ * @returns {Array} 分位数映射表
+ */
+const buildQuantileMap = (values, steps = 100) => {
+  if (!values || values.length === 0) {
+    return []
+  }
+  
+  // 过滤并排序
+  const sorted = [...values]
+    .filter(v => v !== null && v !== undefined && !isNaN(v))
+    .sort((a, b) => a - b)
+  
+  if (sorted.length === 0) {
+    return []
+  }
+  
+  const map = []
+  
+  for (let i = 0; i <= steps; i++) {
+    const percentile = i / steps
+    const index = Math.floor(percentile * (sorted.length - 1))
+    map.push({
+      sliderPos: i,
+      value: sorted[index]
+    })
+  }
+  
+  return map
+}
+
+/**
+ * 滑块位置 → 实际值
+ * @param {number} sliderPos - 滑块位置 (0-100)
+ * @param {Array} quantileMap - 分位数映射表
+ * @returns {number} 实际值
+ */
+const quantileToValue = (sliderPos, quantileMap) => {
+  if (!quantileMap || quantileMap.length === 0) {
+    return 0
+  }
+  
+  const index = Math.floor(sliderPos)
+  
+  if (index >= quantileMap.length - 1) {
+    return quantileMap[quantileMap.length - 1].value
+  }
+  
+  // 线性插值
+  const ratio = sliderPos - index
+  const val1 = quantileMap[index].value
+  const val2 = quantileMap[index + 1].value
+  return val1 + ratio * (val2 - val1)
+}
+
+/**
+ * 实际值 → 滑块位置
+ * @param {number} value - 实际值
+ * @param {Array} quantileMap - 分位数映射表
+ * @returns {number} 滑块位置 (0-100)
+ */
+const valueToQuantile = (value, quantileMap) => {
+  if (!quantileMap || quantileMap.length === 0) {
+    return 0
+  }
+  
+  // 边界情况
+  if (value <= quantileMap[0].value) return 0
+  if (value >= quantileMap[quantileMap.length - 1].value) return quantileMap.length - 1
+  
+  // 二分查找所在区间
+  for (let i = 0; i < quantileMap.length - 1; i++) {
+    const curr = quantileMap[i].value
+    const next = quantileMap[i + 1].value
+    
+    if (value >= curr && value <= next) {
+      if (next === curr) return i
+      const ratio = (value - curr) / (next - curr)
+      return i + ratio
+    }
+  }
+  
+  return quantileMap.length - 1
+}
+
+// 上下文长度分位数映射表
+const contextQuantileMap = computed(() => {
+  const allContexts = allModelsData.value
+    .map(m => m.context_length)
+    .filter(c => c > 0)
+  return buildQuantileMap(allContexts, 100)
+})
+
+// 价格分位数映射表
+const priceQuantileMap = computed(() => {
+  const allPrices = allModelsData.value
+    .map(m => m.pricing?.prompt || 0)
+  return buildQuantileMap(allPrices, 100)
+})
+
+// 上下文长度滑块内部值 (0-100)
+const contextSliderPosition = ref(0)
+
+// 价格滑块内部值 (0-100)
+const priceSliderPosition = ref(100)
+
 // 动态提取所有可用的模型系列
 const availableSeries = computed(() => {
   const seriesSet = new Set()
@@ -271,7 +396,7 @@ const availableSeries = computed(() => {
   return Array.from(seriesSet).sort()
 })
 
-// 计算最大上下文长度
+// 计算最大上下文长度（用于显示）
 const maxContextLength = computed(() => {
   let max = 128000 // 默认值
   allModelsData.value.forEach(model => {
@@ -282,15 +407,7 @@ const maxContextLength = computed(() => {
   return max
 })
 
-// 上下文长度滑块步进值
-const contextLengthStep = computed(() => {
-  const max = maxContextLength.value
-  if (max > 1000000) return 50000
-  if (max > 100000) return 10000
-  return 1000
-})
-
-// 计算最大价格（动态）
+// 计算最大价格（用于显示）
 const maxPrice = computed(() => {
   let max = 10 // 默认最小值
   allModelsData.value.forEach(model => {
@@ -298,8 +415,52 @@ const maxPrice = computed(() => {
       max = model.pricing.prompt
     }
   })
-  // 向上取整到 5 的倍数，便于滑块操作
+  // 向上取整到 5 的倍数，便于显示
   return Math.ceil(max / 5) * 5
+})
+
+// 上下文长度滑块值变化处理
+const onContextSliderChange = (event) => {
+  const sliderPos = parseFloat(event.target.value)
+  contextSliderPosition.value = sliderPos
+  filters.value.minContextLength = Math.round(
+    quantileToValue(sliderPos, contextQuantileMap.value)
+  )
+}
+
+// 价格滑块值变化处理
+const onPriceSliderChange = (event) => {
+  const sliderPos = parseFloat(event.target.value)
+  priceSliderPosition.value = sliderPos
+  filters.value.maxPromptPrice = quantileToValue(sliderPos, priceQuantileMap.value)
+}
+
+// 计算上下文长度的关键刻度点（用于显示）
+const contextKeyPoints = computed(() => {
+  if (contextQuantileMap.value.length === 0) return []
+  
+  const map = contextQuantileMap.value
+  return [
+    { label: '0', value: 0 },
+    { label: formatContextLength(map[Math.floor(map.length * 0.25)]?.value || 0), value: 25 },
+    { label: formatContextLength(map[Math.floor(map.length * 0.5)]?.value || 0), value: 50 },
+    { label: formatContextLength(map[Math.floor(map.length * 0.75)]?.value || 0), value: 75 },
+    { label: formatContextLength(map[map.length - 1]?.value || 0), value: 100 }
+  ]
+})
+
+// 计算价格的关键刻度点（用于显示）
+const priceKeyPoints = computed(() => {
+  if (priceQuantileMap.value.length === 0) return []
+  
+  const map = priceQuantileMap.value
+  return [
+    { label: '$0', value: 0 },
+    { label: `$${(map[Math.floor(map.length * 0.25)]?.value || 0).toFixed(1)}`, value: 25 },
+    { label: `$${(map[Math.floor(map.length * 0.5)]?.value || 0).toFixed(1)}`, value: 50 },
+    { label: `$${(map[Math.floor(map.length * 0.75)]?.value || 0).toFixed(1)}`, value: 75 },
+    { label: `$${(map[map.length - 1]?.value || 0).toFixed(0)}`, value: 100 }
+  ]
 })
 
 // 获取某个系列的模型数量
@@ -322,9 +483,13 @@ const clearFilters = () => {
     series: new Set(),
     modalities: new Set(),
     minContextLength: 0,
-    maxPromptPrice: 100
+    maxPromptPrice: maxPrice.value
   }
   searchQuery.value = ''
+  
+  // 重置滑块位置
+  contextSliderPosition.value = 0
+  priceSliderPosition.value = 100
 }
 
 // 过滤后的模型列表
@@ -455,21 +620,39 @@ const getModalityIcon = (modality) => {
   return icons[modality] || '❓'
 }
 
-// 监听打开状态，初始化筛选器
+// 监听打开状态，初始化筛选器和滑块
 watch(() => props.isOpen, (newVal) => {
-  if (newVal) {
-    // 当模态框打开时，将价格筛选器重置为最大值
+  if (newVal && allModelsData.value.length > 0) {
+    // 初始化价格筛选为最大值
     filters.value.maxPromptPrice = maxPrice.value
+    priceSliderPosition.value = 100
+    
+    // 初始化上下文筛选为最小值
+    filters.value.minContextLength = 0
+    contextSliderPosition.value = 0
   }
 })
 
-// 监听模型数据变化，更新价格筛选器
-watch(() => allModelsData.value.length, (newLength) => {
-  if (newLength > 0) {
-    // 确保价格筛选器不超过实际最大价格
-    if (filters.value.maxPromptPrice > maxPrice.value) {
-      filters.value.maxPromptPrice = maxPrice.value
-    }
+// 监听模型数据变化，更新分位数映射和滑块位置
+watch(() => allModelsData.value.length, (newLength, oldLength) => {
+  if (newLength > 0 && newLength !== oldLength) {
+    // 数据初次加载或变化时，初始化滑块
+    console.log('📊 分位数映射已更新:', {
+      contextPoints: contextQuantileMap.value.length,
+      pricePoints: priceQuantileMap.value.length,
+      contextRange: contextQuantileMap.value.length > 0 
+        ? `${contextQuantileMap.value[0].value} - ${contextQuantileMap.value[contextQuantileMap.value.length - 1].value}`
+        : 'N/A',
+      priceRange: priceQuantileMap.value.length > 0
+        ? `${priceQuantileMap.value[0].value.toFixed(2)} - ${priceQuantileMap.value[priceQuantileMap.value.length - 1].value.toFixed(2)}`
+        : 'N/A'
+    })
+    
+    // 重置滑块到默认位置
+    contextSliderPosition.value = 0
+    priceSliderPosition.value = 100
+    filters.value.minContextLength = 0
+    filters.value.maxPromptPrice = maxPrice.value
   }
 })
 </script>
@@ -693,12 +876,29 @@ watch(() => allModelsData.value.length, (newLength) => {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-.range-labels {
+.range-ticks {
+  position: relative;
   display: flex;
   justify-content: space-between;
   margin-top: 0.5rem;
-  font-size: 0.75rem;
+  height: 1rem;
+}
+
+.tick-label {
+  position: absolute;
+  font-size: 0.7rem;
   color: #6b7280;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tick-label:first-child {
+  transform: translateX(0);
+}
+
+.tick-label:last-child {
+  transform: translateX(-100%);
 }
 
 .clear-filters-btn {
