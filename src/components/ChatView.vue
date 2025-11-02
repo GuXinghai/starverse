@@ -3,9 +3,10 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 
 // @ts-ignore - chatStore.js is a JavaScript file
 import { useChatStore } from '../stores/chatStore'
+import { useAppStore } from '../stores'
 
-// @ts-ignore - geminiService.js is a JavaScript file
-import { streamChatWithGemini } from '../services/geminiService'
+// @ts-ignore - aiChatService.js is a JavaScript file
+import { aiChatService } from '../services/aiChatService'
 
 import ModelSelector from './ModelSelector.vue'
 
@@ -15,6 +16,7 @@ const props = defineProps<{
 }>()
 
 const chatStore = useChatStore()
+const appStore = useAppStore()
 const draftInput = ref('')
 const chatContainer = ref<HTMLElement>()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -195,18 +197,32 @@ const performSendMessage = async (userMessage?: string, customHistory?: any[]) =
     return
   }
 
-  const apiKey = chatStore.apiKey
+  // 检查当前 Provider 的 API Key 是否已配置
+  const currentProvider = appStore.activeProvider
+  let apiKey = ''
+  
+  if (currentProvider === 'Gemini') {
+    apiKey = appStore.geminiApiKey
+  } else if (currentProvider === 'OpenRouter') {
+    apiKey = appStore.openRouterApiKey
+  }
   
   if (!apiKey) {
-    console.error('API Key 检查失败 - apiKey 为空')
+    console.error(`API Key 检查失败 - ${currentProvider} API Key 未配置`)
     chatStore.addMessageToConversation(targetConversationId, {
       role: 'model',
-      text: '错误：未设置 API Key,请先在设置页面配置您的 Gemini API Key。'
+      text: `错误：未设置 ${currentProvider} API Key，请先在设置页面配置。`
     })
     return
   }
 
   // ========== 创建新的中止控制器 ==========
+  // 先清理旧的 controller，避免内存泄漏
+  if (abortController.value) {
+    console.log('⚠️ 检测到旧的 AbortController，先中止并清理')
+    abortController.value.abort()
+  }
+  
   abortController.value = new AbortController()
   console.log('✓ 已创建新的 AbortController')
 
@@ -249,8 +265,9 @@ const performSendMessage = async (userMessage?: string, customHistory?: any[]) =
     scrollToBottom()
 
     // 发起流式请求（传入中止信号）
-    const stream = await streamChatWithGemini(
-      apiKey,
+    // 使用新的 aiChatService 进行流式请求
+    const stream = aiChatService.streamChatResponse(
+      appStore,
       historyForStream,
       conversationModel,
       userMessageText,
@@ -272,7 +289,7 @@ const performSendMessage = async (userMessage?: string, customHistory?: any[]) =
         isFirstChunk = false
       }
 
-      const chunkText = typeof chunk?.text === 'function' ? chunk.text() : ''
+      const chunkText = chunk || ''
       if (chunkText) {
         // 使用固化的 targetConversationId 确保更新正确的对话
         chatStore.appendTokenToMessage(targetConversationId, chunkText)

@@ -692,6 +692,13 @@ export const useChatStore = defineStore('chat', () => {
     
     availableModels.value = models
     console.log('✓ 可用模型列表已更新，共', models.length, '个模型')
+    
+    // 智能选择默认模型：如果当前选择的模型不在新列表中，自动切换到第一个模型
+    if (models.length > 0 && !models.includes(selectedModel.value)) {
+      const newDefaultModel = models[0]
+      console.log(`⚠️ 当前模型 "${selectedModel.value}" 不在新列表中，自动切换到 "${newDefaultModel}"`)
+      selectedModel.value = newDefaultModel
+    }
   }
 
   /**

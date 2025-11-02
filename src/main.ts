@@ -11,8 +11,8 @@ import App from './App.vue'
 import { useAppStore } from './stores'
 // @ts-ignore - chatStore.js is a JavaScript file
 import { useChatStore } from './stores/chatStore'
-// @ts-ignore - geminiService.js is a JavaScript file
-import { listAvailableModels } from './services/geminiService'
+// @ts-ignore - aiChatService.js is a JavaScript file
+import { aiChatService } from './services/aiChatService'
 
 console.log('✓ 依赖导入成功')
 console.log('  - createApp:', typeof createApp)
@@ -44,12 +44,18 @@ console.log('✓ Pinia 注册成功')
   await chatStore.loadConversations()
   console.log('✓ chatStore 初始化完成')
 
-  // 如果已有 API Key，自动加载模型列表
-  if (appStore.apiKey) {
-    console.log('检测到已保存的 API Key，正在加载模型列表...')
+  // 自动加载模型列表（使用多提供商服务）
+  // 检查当前 Provider 的 API Key 是否已配置
+  const currentProvider = appStore.activeProvider
+  const hasApiKey = currentProvider === 'Gemini' 
+    ? appStore.geminiApiKey 
+    : appStore.openRouterApiKey
+  
+  if (hasApiKey) {
+    console.log(`检测到已保存的 ${currentProvider} API Key，正在加载模型列表...`)
     try {
       // @ts-ignore
-      const models = await listAvailableModels(appStore.apiKey)
+      const models = await aiChatService.listAvailableModels(appStore)
       console.log('✓ 模型列表加载成功:', models.length, '个模型')
       chatStore.setAvailableModels(models)
     } catch (error) {
@@ -57,7 +63,7 @@ console.log('✓ Pinia 注册成功')
       console.warn('用户可以在设置页面重新保存 API Key 来加载模型')
     }
   } else {
-    console.log('未检测到 API Key，跳过模型列表加载')
+    console.log(`未检测到 ${currentProvider} API Key，跳过模型列表加载`)
   }
 
   console.log('正在挂载应用到 #app...')
