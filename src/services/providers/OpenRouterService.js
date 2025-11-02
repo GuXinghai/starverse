@@ -67,6 +67,15 @@ export const OpenRouterService = {
               // 提取模型系列（从 ID 中推断）
               const series = this._extractModelSeries(modelId)
               
+              // 解析价格：OpenRouter 返回的是每个 token 的价格（字符串），需要转换为每百万 tokens 的价格
+              const parsePricePerMillion = (priceStr) => {
+                if (!priceStr) return 0
+                const pricePerToken = parseFloat(priceStr)
+                if (isNaN(pricePerToken)) return 0
+                // 转换为每百万 tokens 的价格
+                return pricePerToken * 1000000
+              }
+              
               // 构建标准化的模型对象
               const modelObject = {
                 id: model.id,
@@ -74,10 +83,10 @@ export const OpenRouterService = {
                 description: model.description || '',
                 context_length: model.context_length || 0,
                 pricing: {
-                  prompt: parseFloat(model.pricing?.prompt) || 0,
-                  completion: parseFloat(model.pricing?.completion) || 0,
-                  image: parseFloat(model.pricing?.image) || 0,
-                  request: parseFloat(model.pricing?.request) || 0
+                  prompt: parsePricePerMillion(model.pricing?.prompt),
+                  completion: parsePricePerMillion(model.pricing?.completion),
+                  image: parsePricePerMillion(model.pricing?.image),
+                  request: parsePricePerMillion(model.pricing?.request)
                 },
                 top_provider: model.top_provider || {},
                 architecture: model.architecture || {},
@@ -99,7 +108,8 @@ export const OpenRouterService = {
           id: m.id,
           name: m.name,
           context_length: m.context_length,
-          series: m.series
+          series: m.series,
+          pricing: m.pricing
         })))
       } else {
         console.warn('6. ⚠️ 响应中没有 data 数组')
