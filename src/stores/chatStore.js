@@ -92,10 +92,23 @@ export const useChatStore = defineStore('chat', () => {
   const activeTabId = ref(null)
 
   /**
-   * 可用模型列表
-   * 从 API 获取的模型名称列表
+   * 可用模型列表（仅 ID，向后兼容）
+   * @deprecated 使用 availableModelsMap 替代
    */
   const availableModels = ref([])
+
+  /**
+   * 可用模型完整数据 Map
+   * Map<modelId, modelObject>
+   * modelObject 包含: { id, name, description, context_length, pricing, input_modalities, series, etc. }
+   */
+  const availableModelsMap = ref(new Map())
+
+  /**
+   * 用户收藏的模型 ID 列表
+   * Set<string>
+   */
+  const favoriteModelIds = ref(new Set())
 
   /**
    * 选中的模型
@@ -124,6 +137,29 @@ export const useChatStore = defineStore('chat', () => {
     return conversations.value.some(conv => conv.generationStatus !== 'idle')
   })
 
+  /**
+   * 获取收藏的模型列表（完整对象）
+   * @returns {Array<Object>} 收藏的模型对象数组
+   */
+  const favoriteModels = computed(() => {
+    const favorites = []
+    for (const modelId of favoriteModelIds.value) {
+      const model = availableModelsMap.value.get(modelId)
+      if (model) {
+        favorites.push(model)
+      }
+    }
+    return favorites
+  })
+
+  /**
+   * 获取所有可用模型的数组（从 Map 转换）
+   * @returns {Array<Object>} 所有模型对象数组
+   */
+  const allModels = computed(() => {
+    return Array.from(availableModelsMap.value.values())
+  })
+
   // ========== Actions (操作) ==========
   
   /**
@@ -136,6 +172,13 @@ export const useChatStore = defineStore('chat', () => {
       const savedConversations = await window.electronStore.get('conversations')
       const savedOpenIds = await window.electronStore.get('openConversationIds')
       const savedActiveTabId = await window.electronStore.get('activeTabId')
+      
+      // 加载收藏的模型列表
+      const savedFavoriteModelIds = await window.electronStore.get('favoriteModelIds')
+      if (savedFavoriteModelIds && Array.isArray(savedFavoriteModelIds)) {
+        favoriteModelIds.value = new Set(savedFavoriteModelIds)
+        console.log('✓ 成功加载收藏模型列表，共', savedFavoriteModelIds.length, '个')
+      }
       
       if (savedConversations && Array.isArray(savedConversations) && savedConversations.length > 0) {
         // 确保每个对话都有必要的属性，并为旧数据的消息添加 ID 和时间戳
@@ -210,6 +253,19 @@ export const useChatStore = defineStore('chat', () => {
         openIdsCount: openConversationIds.value?.length,
         activeTabId: activeTabId.value
       })
+    }
+  }
+
+  /**
+   * 保存收藏的模型列表到 electron-store
+   */
+  const saveFavoriteModels = async () => {
+    try {
+      const favoriteArray = Array.from(favoriteModelIds.value)
+      await window.electronStore.set('favoriteModelIds', favoriteArray)
+      console.log('✓ 收藏模型列表已保存，共', favoriteArray.length, '个')
+    } catch (error) {
+      console.error('❌ 保存收藏模型列表失败:', error)
     }
   }
 
@@ -681,8 +737,8 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
-   * 设置可用模型列表
-   * @param {Array} models - 模型名称数组
+   * 设置可用模型列表（新版本 - 支持完整元数据）
+   * @param {Array<Object>} models - 模型对象数组，每个对象包含 id, name, pricing 等元数据
    */
   const setAvailableModels = (models) => {
     if (!Array.isArray(models)) {
@@ -690,15 +746,79 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
     
-    availableModels.value = models
-    console.log('✓ 可用模型列表已更新，共', models.length, '个模型')
+    // 兼容处理：支持字符串数组（旧格式）和对象数组（新格式）
+    if (models.length > 0 && typeof models[0] === 'string') {
+      // 旧格式：字符串数组
+      availableModels.value = models
+      console.log('✓ 可用模型列表已更新（旧格式），共', models.length, '个模型')
+    } else {
+      // 新格式：对象数组
+      availableModels.value = models.map(m => m.id) // 向后兼容
+      
+      // 构建 Map 存储完整元数据
+      const newMap = new Map()
+      for (const model of models) {
+        if (model.id) {
+          newMap.set(model.id, model)
+        }
+      }
+      availableModelsMap.value = newMap
+      
+      console.log('✓ 可用模型列表已更新（新格式），共', models.length, '个模型')
+      console.log('  - 模型系列分布:', getModelSeriesDistribution())
+    }
     
     // 智能选择默认模型：如果当前选择的模型不在新列表中，自动切换到第一个模型
-    if (models.length > 0 && !models.includes(selectedModel.value)) {
-      const newDefaultModel = models[0]
+    const modelIds = availableModels.value
+    if (modelIds.length > 0 && !modelIds.includes(selectedModel.value)) {
+      const newDefaultModel = modelIds[0]
       console.log(`⚠️ 当前模型 "${selectedModel.value}" 不在新列表中，自动切换到 "${newDefaultModel}"`)
       selectedModel.value = newDefaultModel
     }
+  }
+
+  /**
+   * 获取模型系列分布统计（调试用）
+   * @private
+   */
+  const getModelSeriesDistribution = () => {
+    const distribution = {}
+    for (const model of availableModelsMap.value.values()) {
+      const series = model.series || 'Unknown'
+      distribution[series] = (distribution[series] || 0) + 1
+    }
+    return distribution
+  }
+
+  /**
+   * 切换模型收藏状态
+   * @param {string} modelId - 模型 ID
+   */
+  const toggleFavoriteModel = async (modelId) => {
+    if (!modelId) {
+      console.error('❌ toggleFavoriteModel: modelId 不能为空')
+      return
+    }
+    
+    if (favoriteModelIds.value.has(modelId)) {
+      favoriteModelIds.value.delete(modelId)
+      console.log('✓ 已取消收藏模型:', modelId)
+    } else {
+      favoriteModelIds.value.add(modelId)
+      console.log('✓ 已收藏模型:', modelId)
+    }
+    
+    // 持久化保存
+    await saveFavoriteModels()
+  }
+
+  /**
+   * 检查模型是否已收藏
+   * @param {string} modelId - 模型 ID
+   * @returns {boolean}
+   */
+  const isModelFavorited = (modelId) => {
+    return favoriteModelIds.value.has(modelId)
   }
 
   /**
@@ -871,15 +991,20 @@ export const useChatStore = defineStore('chat', () => {
     openConversationIds,
     activeTabId,
     availableModels,
+    availableModelsMap,
+    favoriteModelIds,
     selectedModel,
     
     // Getters
     activeConversation,
     isAnyConversationLoading,
+    favoriteModels,
+    allModels,
     
     // Actions
     loadConversations,
     saveConversations,
+    saveFavoriteModels,
     createNewConversation,
     openConversationInTab,
     closeConversationTab,
@@ -907,5 +1032,8 @@ export const useChatStore = defineStore('chat', () => {
     setConversationLoadingState, // @deprecated 向后兼容
     setAvailableModels,
     setSelectedModel,
+    // 模型收藏管理
+    toggleFavoriteModel,
+    isModelFavorited,
   }
 })

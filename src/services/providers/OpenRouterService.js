@@ -8,10 +8,10 @@ const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 
 export const OpenRouterService = {
   /**
-   * 获取可用的 OpenRouter 模型列表
+   * 获取可用的 OpenRouter 模型列表（完整元数据）
    * @param {string} apiKey - OpenRouter API Key
    * @param {string} baseUrl - OpenRouter Base URL (可选)
-   * @returns {Promise<string[]>} - 返回模型 ID 数组
+   * @returns {Promise<Array<Object>>} - 返回模型对象数组，包含完整元数据
    */
   async listAvailableModels(apiKey, baseUrl = OPENROUTER_BASE_URL) {
     console.log('=== OpenRouterService: 开始获取模型列表 ===')
@@ -49,15 +49,58 @@ export const OpenRouterService = {
       if (data.data && Array.isArray(data.data)) {
         console.log('6. 模型总数:', data.data.length)
         
-        // 提取所有模型 ID
+        // 提取完整模型元数据，并过滤掉不适合聊天的模型
         for (const model of data.data) {
           if (model.id) {
-            models.push(model.id)
+            const modelId = model.id
+            // 过滤掉嵌入模型、图像生成模型等
+            const shouldExclude = 
+              modelId.includes('embedding') || 
+              modelId.includes('diff') ||
+              modelId.includes('stable-diffusion') ||
+              modelId.includes('dall-e') ||
+              modelId.includes('midjourney') ||
+              modelId.includes('whisper') ||
+              modelId.includes('tts')
+            
+            if (!shouldExclude) {
+              // 提取模型系列（从 ID 中推断）
+              const series = this._extractModelSeries(modelId)
+              
+              // 构建标准化的模型对象
+              const modelObject = {
+                id: model.id,
+                name: model.name || model.id,
+                description: model.description || '',
+                context_length: model.context_length || 0,
+                pricing: {
+                  prompt: parseFloat(model.pricing?.prompt) || 0,
+                  completion: parseFloat(model.pricing?.completion) || 0,
+                  image: parseFloat(model.pricing?.image) || 0,
+                  request: parseFloat(model.pricing?.request) || 0
+                },
+                top_provider: model.top_provider || {},
+                architecture: model.architecture || {},
+                // 输入模态性（文本、图像、音频等）
+                input_modalities: this._extractInputModalities(model),
+                // 模型系列
+                series: series,
+                // 原始数据保留，便于未来扩展
+                _raw: model
+              }
+              
+              models.push(modelObject)
+            }
           }
         }
         
-        console.log('7. ✓ 提取到的模型数量:', models.length)
-        console.log('7. 前 10 个模型:', models.slice(0, 10))
+        console.log('7. ✓ 过滤后的模型数量:', models.length)
+        console.log('7. 前 3 个模型示例:', models.slice(0, 3).map(m => ({
+          id: m.id,
+          name: m.name,
+          context_length: m.context_length,
+          series: m.series
+        })))
       } else {
         console.warn('6. ⚠️ 响应中没有 data 数组')
       }
@@ -68,6 +111,50 @@ export const OpenRouterService = {
       console.error('❌ OpenRouterService: 获取模型列表失败！', error)
       throw error
     }
+  },
+
+  /**
+   * 从模型 ID 中提取模型系列
+   * @private
+   */
+  _extractModelSeries(modelId) {
+    const id = modelId.toLowerCase()
+    if (id.includes('gpt')) return 'GPT'
+    if (id.includes('claude')) return 'Claude'
+    if (id.includes('gemini')) return 'Gemini'
+    if (id.includes('llama')) return 'Llama'
+    if (id.includes('mistral')) return 'Mistral'
+    if (id.includes('qwen')) return 'Qwen'
+    if (id.includes('deepseek')) return 'DeepSeek'
+    if (id.includes('command')) return 'Command'
+    if (id.includes('phi')) return 'Phi'
+    if (id.includes('mixtral')) return 'Mixtral'
+    return 'Other'
+  },
+
+  /**
+   * 提取输入模态性
+   * @private
+   */
+  _extractInputModalities(model) {
+    const modalities = ['text'] // 默认支持文本
+    
+    // 检查描述或名称中是否包含多模态关键词
+    const description = (model.description || '').toLowerCase()
+    const name = (model.name || '').toLowerCase()
+    const id = (model.id || '').toLowerCase()
+    
+    const combinedText = `${description} ${name} ${id}`
+    
+    if (combinedText.includes('vision') || combinedText.includes('image') || combinedText.includes('multimodal')) {
+      modalities.push('image')
+    }
+    
+    if (combinedText.includes('audio')) {
+      modalities.push('audio')
+    }
+    
+    return modalities
   },
 
   /**
