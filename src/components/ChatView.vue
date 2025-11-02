@@ -11,6 +11,7 @@ import { aiChatService } from '../services/aiChatService'
 import FavoriteModelSelector from './FavoriteModelSelector.vue'
 import QuickModelSearch from './QuickModelSearch.vue'
 import AdvancedModelPickerModal from './AdvancedModelPickerModal.vue'
+import ContentRenderer from './ContentRenderer.vue'
 
 // Props
 const props = defineProps<{
@@ -68,6 +69,21 @@ const displayModelName = computed(() => {
   //       "gpt-4-turbo" -> "gpt-4-turbo" (无冒号，保持不变)
   return nameWithoutProvider.replace(/^[^:：]+[:：]\s*/, '')
 })
+
+// 判断消息是否正在流式接收中
+// 用于优化渲染性能：流式中显示纯文本，完成后才进行 Markdown/LaTeX 渲染
+const isMessageStreaming = (messageIndex: number) => {
+  if (!currentConversation.value) return false
+  
+  const messages = currentConversation.value.messages
+  const generationStatus = currentConversation.value.generationStatus
+  
+  // 只有最后一条消息且状态为 receiving 时才是流式中
+  const isLastMessage = messageIndex === messages.length - 1
+  const isReceiving = generationStatus === 'receiving' || generationStatus === 'sending'
+  
+  return isLastMessage && isReceiving
+}
 
 // ========== 焦点管理函数 ==========
 // 暴露给父组件调用的聚焦方法
@@ -636,7 +652,25 @@ const handleSaveEdit = async (messageId: string) => {
                   class="rounded-lg px-4 py-2 shadow-sm relative"
                   :class="message.role === 'user' ? 'bg-blue-500 text-white' : 'bg-white text-gray-800 border border-gray-200'"
                 >
-                  <p class="text-sm whitespace-pre-wrap">{{ message.text }}</p>
+                  <!-- 流式传输中：显示纯文本（性能优化） -->
+                  <p 
+                    v-if="isMessageStreaming(index)" 
+                    class="text-sm whitespace-pre-wrap"
+                  >
+                    {{ message.text }}
+                  </p>
+                  
+                  <!-- 流式完成或用户消息：使用 ContentRenderer 渲染 Markdown/LaTeX -->
+                  <ContentRenderer 
+                    v-else-if="!isMessageStreaming(index) && message.role === 'model'"
+                    :content="message.text"
+                    class="text-sm"
+                  />
+                  
+                  <!-- 用户消息：纯文本显示 -->
+                  <p v-else-if="!isMessageStreaming(index)" class="text-sm whitespace-pre-wrap">
+                    {{ message.text }}
+                  </p>
                   
                   <!-- 操作按钮（正常模式 - 悬停显示） -->
                   <div 

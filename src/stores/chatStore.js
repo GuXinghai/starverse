@@ -4,6 +4,25 @@ import { v4 as uuidv4 } from 'uuid'
 import { useAppStore } from './index'
 
 /**
+ * ========== 块级增量渲染系统 ==========
+ * 
+ * ContentBlock 类型定义：
+ * @typedef {Object} ContentBlock
+ * @property {string} id - 唯一标识符 (UUID)
+ * @property {'text'|'code'|'latex'} type - 块类型
+ * @property {string} content - 块的纯文本内容
+ * @property {Object} [meta] - 元数据，如 { language: 'javascript' }
+ * 
+ * Message 类型定义（新版）：
+ * @typedef {Object} Message
+ * @property {string} id - 消息唯一标识符
+ * @property {'user'|'model'} role - 消息角色
+ * @property {ContentBlock[]} contentBlocks - 内容块数组
+ * @property {number} timestamp - 时间戳
+ * @property {string} [text] - (兼容性保留) 完整文本内容
+ */
+
+/**
  * 聊天 Store
  * 用于管理 Gemini AI 多会话聊天相关的状态和操作
  * 
@@ -383,6 +402,236 @@ export const useChatStore = defineStore('chat', () => {
     // 草稿会在其他操作（如发送消息、切换标签）时自动保存
   }
 
+  // ========== 块级增量渲染核心：流式 Token 状态机 ==========
+
+  /**
+   * 处理流式 token 并解析为内容块（基于缓冲区 + 正则表达式的健壮状态机）
+   * 
+   * 🎯 核心功能：
+   * - 使用缓冲区机制处理跨 token 边界的分隔符
+   * - 使用正则表达式精确匹配代码块和 LaTeX 公式边界
+   * - 实时将 token 流解析为结构化的 contentBlocks
+   * - 增量更新，避免重复渲染整个消息
+   * 
+   * @param {string} conversationId - 对话 ID
+   * @param {string} token - 单个文本片段
+   */
+  const processStreamToken = (conversationId, token) => {
+    if (typeof token !== 'string' || token.length === 0) {
+      return
+    }
+
+    const conversation = conversations.value.find(conv => conv.id === conversationId)
+    if (!conversation || conversation.messages.length === 0) {
+      return
+    }
+
+    const lastMessage = conversation.messages[conversation.messages.length - 1]
+    if (!lastMessage) {
+      return
+    }
+
+    // 确保 contentBlocks 数组存在
+    if (!Array.isArray(lastMessage.contentBlocks)) {
+      lastMessage.contentBlocks = []
+    }
+
+    // 初始化解析缓冲区（存储在消息对象上，持久化）
+    if (!lastMessage.parsingBuffer) {
+      lastMessage.parsingBuffer = ''
+    }
+
+    // 获取或创建最后一个块
+    let lastBlock = lastMessage.contentBlocks[lastMessage.contentBlocks.length - 1]
+    
+    // 如果没有块，创建初始的 text 块
+    if (!lastBlock) {
+      lastBlock = {
+        id: uuidv4(),
+        type: 'text',
+        content: '',
+        meta: {}
+      }
+      lastMessage.contentBlocks.push(lastBlock)
+    }
+
+    // 将缓冲区和新 token 拼接，用于模式匹配
+    const combinedText = lastMessage.parsingBuffer + token
+
+    // ========== 强化状态机：基于正则表达式的精确匹配 ==========
+    
+    if (lastBlock.type === 'text') {
+      // ---------- TEXT 模式：检测代码块或 LaTeX 块的开始 ----------
+      
+      // 正则：代码块开始 - 匹配 \n```语言\n 或开头的 ```语言\n
+      const codeBlockStartRegex = /(?:^|\n)(```+)(\w*)\n/
+      const codeMatch = combinedText.match(codeBlockStartRegex)
+      
+      // 正则：LaTeX 块开始 - 匹配 \n$$\n 或 $$（独立）
+      const latexBlockStartRegex = /(?:^|\n)\$\$/
+      const latexMatch = combinedText.match(latexBlockStartRegex)
+      
+      // 确定哪个分隔符先出现
+      let matchToUse = null
+      let matchType = null
+      
+      if (codeMatch && latexMatch) {
+        // 两者都匹配，使用先出现的
+        matchToUse = codeMatch.index < latexMatch.index ? codeMatch : latexMatch
+        matchType = codeMatch.index < latexMatch.index ? 'code' : 'latex'
+      } else if (codeMatch) {
+        matchToUse = codeMatch
+        matchType = 'code'
+      } else if (latexMatch) {
+        matchToUse = latexMatch
+        matchType = 'latex'
+      }
+      
+      if (matchToUse) {
+        // 找到分隔符
+        const matchIndex = matchToUse.index
+        const beforeMarker = combinedText.substring(0, matchIndex)
+        const afterMarker = combinedText.substring(matchIndex + matchToUse[0].length)
+        
+        // 将分隔符之前的内容追加到当前文本块
+        lastBlock.content += beforeMarker
+        
+        // 创建新块
+        if (matchType === 'code') {
+          const marker = matchToUse[1] // ```
+          const language = matchToUse[2] || '' // 语言标识符
+          
+          const newCodeBlock = {
+            id: uuidv4(),
+            type: 'code',
+            content: afterMarker,
+            meta: { language, marker }
+          }
+          lastMessage.contentBlocks.push(newCodeBlock)
+        } else if (matchType === 'latex') {
+          const newLatexBlock = {
+            id: uuidv4(),
+            type: 'latex',
+            content: afterMarker,
+            meta: {}
+          }
+          lastMessage.contentBlocks.push(newLatexBlock)
+        }
+        
+        // 清空缓冲区（已处理完）
+        lastMessage.parsingBuffer = ''
+        
+      } else {
+        // 没有找到分隔符，将内容追加到当前块
+        lastBlock.content += token
+        
+        // 更新缓冲区：保留最后 10 个字符，以便跨 token 检测分隔符
+        lastMessage.parsingBuffer = combinedText.slice(-10)
+      }
+      
+    } else if (lastBlock.type === 'code') {
+      // ---------- CODE 模式：检测代码块结束 ----------
+      
+      const marker = lastBlock.meta?.marker || '```'
+      // 正则：代码块结束 - 匹配 \n``` 或 \n```\n
+      const codeBlockEndRegex = new RegExp(`\\n${marker}(?:\\n|$)`)
+      const endMatch = combinedText.match(codeBlockEndRegex)
+      
+      if (endMatch) {
+        // 找到结束标记
+        const matchIndex = endMatch.index
+        const beforeMarker = combinedText.substring(0, matchIndex)
+        const afterMarker = combinedText.substring(matchIndex + endMatch[0].length)
+        
+        // 将标记前的内容追加到当前代码块
+        lastBlock.content += beforeMarker
+        
+        // 创建新的文本块
+        const newTextBlock = {
+          id: uuidv4(),
+          type: 'text',
+          content: afterMarker,
+          meta: {}
+        }
+        lastMessage.contentBlocks.push(newTextBlock)
+        
+        // 清空缓冲区
+        lastMessage.parsingBuffer = ''
+        
+      } else {
+        // 没有找到结束标记，继续追加
+        lastBlock.content += token
+        
+        // 更新缓冲区
+        lastMessage.parsingBuffer = combinedText.slice(-10)
+      }
+      
+    } else if (lastBlock.type === 'latex') {
+      // ---------- LATEX 模式：检测 LaTeX 块结束 ----------
+      
+      // 正则：LaTeX 块结束 - 匹配 $$
+      const latexBlockEndRegex = /\$\$/
+      const endMatch = combinedText.match(latexBlockEndRegex)
+      
+      if (endMatch) {
+        // 找到结束标记
+        const matchIndex = endMatch.index
+        const beforeMarker = combinedText.substring(0, matchIndex)
+        const afterMarker = combinedText.substring(matchIndex + 2) // $$ 长度为 2
+        
+        // 将标记前的内容追加到当前 LaTeX 块
+        lastBlock.content += beforeMarker
+        
+        // 创建新的文本块
+        const newTextBlock = {
+          id: uuidv4(),
+          type: 'text',
+          content: afterMarker,
+          meta: {}
+        }
+        lastMessage.contentBlocks.push(newTextBlock)
+        
+        // 清空缓冲区
+        lastMessage.parsingBuffer = ''
+        
+      } else {
+        // 没有找到结束标记，继续追加
+        lastBlock.content += token
+        
+        // 更新缓冲区
+        lastMessage.parsingBuffer = combinedText.slice(-10)
+      }
+    }
+
+    // 同步更新兼容性 text 字段（用于后备渲染）
+    updateMessageTextFromBlocks(lastMessage)
+  }
+
+  /**
+   * 从 contentBlocks 重新构建完整的 text 字段（向后兼容）
+   * @param {Message} message - 消息对象
+   */
+  const updateMessageTextFromBlocks = (message) => {
+    if (!Array.isArray(message.contentBlocks) || message.contentBlocks.length === 0) {
+      message.text = ''
+      return
+    }
+
+    let fullText = ''
+    for (const block of message.contentBlocks) {
+      if (block.type === 'text') {
+        fullText += block.content
+      } else if (block.type === 'code') {
+        const marker = block.meta?.marker || '```'
+        const lang = block.meta?.language || ''
+        fullText += `${marker}${lang}\n${block.content}${marker}\n`
+      } else if (block.type === 'latex') {
+        fullText += `$$${block.content}$$`
+      }
+    }
+    message.text = fullText
+  }
+
   /**
    * 设置激活的对话（已废弃，使用 openConversationInTab 替代）
    * @deprecated
@@ -406,7 +655,7 @@ export const useChatStore = defineStore('chat', () => {
    * @param {Object} message - 消息对象 { role: 'user' | 'model', text: '消息内容' }
    */
   const addMessageToConversation = (conversationId, message) => {
-    if (!message || !message.role || typeof message.text !== 'string') {
+    if (!message || !message.role) {
       console.error('❌ 无效的消息格式:', message)
       return
     }
@@ -418,12 +667,23 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
-    // 为消息添加唯一 ID 和时间戳（如果没有的话）
+    // 为消息添加唯一 ID、时间戳和 contentBlocks
     const messageWithId = {
       id: message.id || uuidv4(),
       role: message.role,
-      text: message.text,
-      timestamp: message.timestamp || Date.now()
+      timestamp: message.timestamp || Date.now(),
+      contentBlocks: message.contentBlocks || [],
+      text: message.text || '' // 兼容性字段
+    }
+
+    // 如果提供了 text 但没有 contentBlocks，创建初始文本块
+    if (message.text && messageWithId.contentBlocks.length === 0) {
+      messageWithId.contentBlocks = [{
+        id: uuidv4(),
+        type: 'text',
+        content: message.text,
+        meta: {}
+      }]
     }
 
     conversation.messages.push(messageWithId)
@@ -431,9 +691,9 @@ export const useChatStore = defineStore('chat', () => {
     // 如果是第一条用户消息且标题还是"新对话"，自动生成标题
     if (conversation.messages.length === 1 && conversation.title === '新对话' && message.role === 'user') {
       // 使用用户第一条消息的前30个字符作为标题
-      const firstUserMessage = message.text.trim()
-      if (firstUserMessage) {
-        conversation.title = firstUserMessage.substring(0, 30) + (firstUserMessage.length > 30 ? '...' : '')
+      const firstUserMessage = message.text || messageWithId.contentBlocks[0]?.content || ''
+      if (firstUserMessage.trim()) {
+        conversation.title = firstUserMessage.trim().substring(0, 30) + (firstUserMessage.trim().length > 30 ? '...' : '')
         console.log('✓ 自动生成对话标题:', conversation.title)
       }
     }
@@ -1013,6 +1273,7 @@ export const useChatStore = defineStore('chat', () => {
     // 新的基于 conversationId 的函数
     addMessageToConversation,
     appendTokenToMessage,
+    processStreamToken, // ⭐ 新增：块级增量渲染核心
     clearConversationMessages,
     updateConversationModel,
     // 消息管理原子操作

@@ -277,8 +277,29 @@ export const OpenRouterService = {
               const delta = chunk.choices?.[0]?.delta
               const content = delta?.content
               
+              // 调试：记录 content 的类型
               if (content) {
+                console.log('OpenRouterService: content 类型:', typeof content, Array.isArray(content) ? '(数组)' : '')
+              }
+              
+              // 处理结构化内容（如 Claude 的 content blocks）
+              if (Array.isArray(content)) {
+                // 如果 content 是数组（如 Claude API），提取 text 类型的 block
+                for (const block of content) {
+                  if (block.type === 'text' && block.text) {
+                    yield block.text
+                  } else {
+                    console.warn('OpenRouterService: 跳过非文本 block:', block.type)
+                  }
+                }
+              } else if (typeof content === 'string' && content) {
+                // 如果 content 是字符串（标准格式）
                 yield content
+              } else if (content && typeof content === 'object' && content.text) {
+                // 如果 content 是对象且包含 text 字段
+                yield content.text
+              } else if (content) {
+                console.warn('OpenRouterService: 未知的 content 格式:', content)
               }
             } catch (parseError) {
               console.warn('OpenRouterService: JSON 解析失败:', parseError.message)
