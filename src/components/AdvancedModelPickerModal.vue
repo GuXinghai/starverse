@@ -42,7 +42,7 @@
                 <!-- 模型系列筛选 -->
                 <div class="filter-group">
                   <label class="filter-label">模型系列</label>
-                  <div class="filter-tags">
+                  <div class="filter-tags scrollable">
                     <button
                       v-for="series in availableSeries"
                       :key="series"
@@ -60,14 +60,33 @@
                   <label class="filter-label">输入模态</label>
                   <div class="filter-tags">
                     <button
-                      v-for="modality in ['text', 'image', 'audio']"
+                      v-for="modality in ['text', 'image', 'audio', 'video']"
                       :key="modality"
-                      @click="toggleFilter('modalities', modality)"
-                      :class="['filter-tag', { active: filters.modalities.has(modality) }]"
+                      @click="toggleFilter('inputModalities', modality)"
+                      :class="['filter-tag', { active: filters.inputModalities.has(modality) }]"
                     >
                       <span v-if="modality === 'text'">📝 文本</span>
                       <span v-else-if="modality === 'image'">🖼️ 图像</span>
                       <span v-else-if="modality === 'audio'">🎵 音频</span>
+                      <span v-else-if="modality === 'video'">🎬 视频</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 输出模态性筛选 -->
+                <div class="filter-group">
+                  <label class="filter-label">输出模态</label>
+                  <div class="filter-tags">
+                    <button
+                      v-for="modality in ['text', 'image', 'audio', 'video']"
+                      :key="modality"
+                      @click="toggleFilter('outputModalities', modality)"
+                      :class="['filter-tag', { active: filters.outputModalities.has(modality) }]"
+                    >
+                      <span v-if="modality === 'text'">📝 文本</span>
+                      <span v-else-if="modality === 'image'">🖼️ 图像</span>
+                      <span v-else-if="modality === 'audio'">🎵 音频</span>
+                      <span v-else-if="modality === 'video'">🎬 视频</span>
                     </button>
                   </div>
                 </div>
@@ -101,7 +120,7 @@
                 <!-- 价格筛选 -->
                 <div class="filter-group">
                   <label class="filter-label">
-                    最高价格: ${{ filters.maxPromptPrice.toFixed(2)}} / 1M tokens
+                    最高价格: ${{ formatPrice(filters.maxPromptPrice) }} / 1M tokens
                   </label>
                   <input
                     :value="priceSliderPosition"
@@ -188,9 +207,39 @@
                       </button>
                     </div>
                     <p class="model-id">{{ model.id }}</p>
-                    <p v-if="model.description" class="model-description">
-                      {{ model.description }}
-                    </p>
+                    <div v-if="model.description" class="model-description-container">
+                      <div 
+                        :ref="el => { if (el) descriptionRefs[model.id] = el }"
+                        :class="['model-description-wrapper', { 
+                          'collapsed': !isDescriptionExpanded(model.id) && shouldShowExpandBtn(model.id)
+                        }]"
+                      >
+                        <p class="model-description">
+                          {{ model.description }}
+                        </p>
+                        <!-- 渐隐遮罩 -->
+                        <div 
+                          v-if="!isDescriptionExpanded(model.id) && shouldShowExpandBtn(model.id)"
+                          class="description-fade"
+                        ></div>
+                      </div>
+                      <!-- 展开/收起按钮 -->
+                      <button
+                        v-if="shouldShowExpandBtn(model.id)"
+                        @click.stop="toggleDescription(model.id)"
+                        class="expand-btn"
+                      >
+                        {{ isDescriptionExpanded(model.id) ? '收起' : '展开' }}
+                        <svg 
+                          :class="['expand-icon', { 'rotate-180': isDescriptionExpanded(model.id) }]"
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
 
                   <div class="model-metadata">
@@ -206,7 +255,7 @@
                     </div>
                     <div class="metadata-row">
                       <span class="metadata-item">
-                        <span class="metadata-label">输入模态:</span>
+                        <span class="metadata-label">输入:</span>
                         <span class="modalities">
                           <span v-for="mod in model.input_modalities" :key="mod" class="modality-icon">
                             {{ getModalityIcon(mod) }}
@@ -214,9 +263,19 @@
                         </span>
                       </span>
                       <span class="metadata-item">
+                        <span class="metadata-label">输出:</span>
+                        <span class="modalities">
+                          <span v-for="mod in model.output_modalities" :key="mod" class="modality-icon">
+                            {{ getModalityIcon(mod) }}
+                          </span>
+                        </span>
+                      </span>
+                    </div>
+                    <div class="metadata-row">
+                      <span class="metadata-item">
                         <span class="metadata-label">价格:</span>
                         <span class="metadata-value price">
-                          ${{ model.pricing.prompt.toFixed(2) }} / ${{ model.pricing.completion.toFixed(2) }}
+                          ${{ formatPrice(model.pricing.prompt) }} / ${{ formatPrice(model.pricing.completion) }}
                         </span>
                       </span>
                     </div>
@@ -243,7 +302,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useChatStore } from '../stores/chatStore'
 
 const props = defineProps({
@@ -260,10 +319,20 @@ const chatStore = useChatStore()
 // 搜索查询
 const searchQuery = ref('')
 
+// 描述 DOM 引用（用于高度检测）
+const descriptionRefs = ref({})
+
+// 需要展开按钮的模型 ID 集合
+const modelsNeedingExpansion = ref(new Set())
+
+// 模型描述展开状态（使用 Set 存储已展开的模型 ID）
+const expandedDescriptions = ref(new Set())
+
 // 筛选条件
 const filters = ref({
   series: new Set(),
-  modalities: new Set(),
+  inputModalities: new Set(),
+  outputModalities: new Set(),
   minContextLength: 0,
   maxPromptPrice: 100
 })
@@ -432,7 +501,8 @@ const onContextSliderChange = (event) => {
 const onPriceSliderChange = (event) => {
   const sliderPos = parseFloat(event.target.value)
   priceSliderPosition.value = sliderPos
-  filters.value.maxPromptPrice = quantileToValue(sliderPos, priceQuantileMap.value)
+  // 确保价格不低于 0
+  filters.value.maxPromptPrice = Math.max(0, quantileToValue(sliderPos, priceQuantileMap.value))
 }
 
 // 计算上下文长度的关键刻度点（用于显示）
@@ -454,12 +524,13 @@ const priceKeyPoints = computed(() => {
   if (priceQuantileMap.value.length === 0) return []
   
   const map = priceQuantileMap.value
+  
   return [
     { label: '$0', value: 0 },
-    { label: `$${(map[Math.floor(map.length * 0.25)]?.value || 0).toFixed(1)}`, value: 25 },
-    { label: `$${(map[Math.floor(map.length * 0.5)]?.value || 0).toFixed(1)}`, value: 50 },
-    { label: `$${(map[Math.floor(map.length * 0.75)]?.value || 0).toFixed(1)}`, value: 75 },
-    { label: `$${(map[map.length - 1]?.value || 0).toFixed(0)}`, value: 100 }
+    { label: `$${formatPrice(map[Math.floor(map.length * 0.25)]?.value || 0)}`, value: 25 },
+    { label: `$${formatPrice(map[Math.floor(map.length * 0.5)]?.value || 0)}`, value: 50 },
+    { label: `$${formatPrice(map[Math.floor(map.length * 0.75)]?.value || 0)}`, value: 75 },
+    { label: `$${formatPrice(map[map.length - 1]?.value || 0)}`, value: 100 }
   ]
 })
 
@@ -481,7 +552,8 @@ const toggleFilter = (filterType, value) => {
 const clearFilters = () => {
   filters.value = {
     series: new Set(),
-    modalities: new Set(),
+    inputModalities: new Set(),
+    outputModalities: new Set(),
     minContextLength: 0,
     maxPromptPrice: maxPrice.value
   }
@@ -496,13 +568,12 @@ const clearFilters = () => {
 const filteredModels = computed(() => {
   let models = allModelsData.value
 
-  // 搜索过滤
+  // 搜索过滤（仅匹配 ID 和名称的连续字段）
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     models = models.filter(model => 
       model.id.toLowerCase().includes(query) ||
-      model.name.toLowerCase().includes(query) ||
-      (model.description && model.description.toLowerCase().includes(query))
+      model.name.toLowerCase().includes(query)
     )
   }
 
@@ -513,11 +584,24 @@ const filteredModels = computed(() => {
     )
   }
 
-  // 模态性过滤（AND 逻辑 - 必须包含所有选中的模态）
-  if (filters.value.modalities.size > 0) {
+  // 输入模态性过滤（AND 逻辑 - 必须包含所有选中的模态）
+  if (filters.value.inputModalities.size > 0) {
     models = models.filter(model => {
       const modelModalities = new Set(model.input_modalities || [])
-      for (const requiredModality of filters.value.modalities) {
+      for (const requiredModality of filters.value.inputModalities) {
+        if (!modelModalities.has(requiredModality)) {
+          return false
+        }
+      }
+      return true
+    })
+  }
+
+  // 输出模态性过滤（AND 逻辑 - 必须包含所有选中的模态）
+  if (filters.value.outputModalities.size > 0) {
+    models = models.filter(model => {
+      const modelModalities = new Set(model.output_modalities || [])
+      for (const requiredModality of filters.value.outputModalities) {
         if (!modelModalities.has(requiredModality)) {
           return false
         }
@@ -580,6 +664,41 @@ const toggleFavorite = (modelId) => {
   chatStore.toggleFavoriteModel(modelId)
 }
 
+// 检查描述是否展开
+const isDescriptionExpanded = (modelId) => {
+  return expandedDescriptions.value.has(modelId)
+}
+
+// 切换描述展开状态
+const toggleDescription = (modelId) => {
+  if (expandedDescriptions.value.has(modelId)) {
+    expandedDescriptions.value.delete(modelId)
+  } else {
+    expandedDescriptions.value.add(modelId)
+  }
+}
+
+// 检查是否应该显示展开按钮（基于真实 DOM 高度）
+const shouldShowExpandBtn = (modelId) => {
+  return modelsNeedingExpansion.value.has(modelId)
+}
+
+// 检测哪些描述需要展开按钮
+const detectOverflowingDescriptions = async () => {
+  await nextTick()
+  modelsNeedingExpansion.value.clear()
+  
+  // 4 行的最大高度（line-height: 1.5, font-size: 0.875rem ≈ 14px）
+  // 4 行 ≈ 14px * 1.5 * 4 = 84px
+  const maxHeight = 84
+  
+  for (const [modelId, el] of Object.entries(descriptionRefs.value)) {
+    if (el && el.scrollHeight > maxHeight) {
+      modelsNeedingExpansion.value.add(modelId)
+    }
+  }
+}
+
 // 选择模型
 const selectModel = (modelId) => {
   const activeConv = chatStore.activeConversation
@@ -609,6 +728,13 @@ const formatContextLength = (length) => {
   return length.toString()
 }
 
+// 格式化价格：智能显示小数位
+const formatPrice = (value) => {
+  if (value < 0.1) return value.toFixed(2)  // 小于 0.1 显示 2 位小数（如 $0.05）
+  if (value < 10) return value.toFixed(1)   // 小于 10 显示 1 位小数（如 $5.5）
+  return value.toFixed(0)                   // 其他显示整数（如 $60）
+}
+
 // 获取模态性图标
 const getModalityIcon = (modality) => {
   const icons = {
@@ -630,7 +756,15 @@ watch(() => props.isOpen, (newVal) => {
     // 初始化上下文筛选为最小值
     filters.value.minContextLength = 0
     contextSliderPosition.value = 0
+    
+    // 检测溢出的描述
+    detectOverflowingDescriptions()
   }
+})
+
+// 监听筛选后的模型变化，重新检测溢出
+watch(filteredModels, () => {
+  detectOverflowingDescriptions()
 })
 
 // 监听模型数据变化，更新分位数映射和滑块位置
@@ -817,6 +951,30 @@ watch(() => allModelsData.value.length, (newLength, oldLength) => {
   gap: 0.5rem;
 }
 
+.filter-tags.scrollable {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.filter-tags.scrollable::-webkit-scrollbar {
+  height: 6px;
+}
+
+.filter-tags.scrollable::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 3px;
+}
+
+.filter-tags.scrollable::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.filter-tags.scrollable::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
 .filter-tag {
   padding: 0.5rem 0.75rem;
   background: white;
@@ -828,6 +986,8 @@ watch(() => allModelsData.value.length, (newLength, oldLength) => {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .filter-tag:hover {
@@ -1046,10 +1206,65 @@ watch(() => allModelsData.value.length, (newLength, oldLength) => {
   margin-bottom: 0.5rem;
 }
 
+.model-description-container {
+  position: relative;
+  margin-bottom: 0.75rem;
+}
+
+.model-description-wrapper {
+  position: relative;
+}
+
+.model-description-wrapper.collapsed {
+  max-height: 84px; /* 4 行：14px * 1.5 * 4 */
+  overflow: hidden;
+}
+
 .model-description {
   font-size: 0.875rem;
   color: #4b5563;
   line-height: 1.5;
+  margin: 0;
+}
+
+.description-fade {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2rem;
+  background: linear-gradient(to bottom, transparent, white);
+  pointer-events: none;
+}
+
+.expand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  color: #3b82f6;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 0.25rem;
+}
+
+.expand-btn:hover {
+  color: #2563eb;
+  background: #eff6ff;
+  border-radius: 0.25rem;
+}
+
+.expand-icon {
+  width: 1rem;
+  height: 1rem;
+  transition: transform 0.2s;
+}
+
+.expand-icon.rotate-180 {
+  transform: rotate(180deg);
 }
 
 .model-metadata {
