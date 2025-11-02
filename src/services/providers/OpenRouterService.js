@@ -90,8 +90,9 @@ export const OpenRouterService = {
                 },
                 top_provider: model.top_provider || {},
                 architecture: model.architecture || {},
-                // 输入模态性（文本、图像、音频等）
-                input_modalities: this._extractInputModalities(model),
+                // 直接使用 API 返回的模态数据
+                input_modalities: model.architecture?.input_modalities || ['text'],
+                output_modalities: model.architecture?.output_modalities || ['text'],
                 // 模型系列
                 series: series,
                 // 原始数据保留，便于未来扩展
@@ -129,42 +130,20 @@ export const OpenRouterService = {
    */
   _extractModelSeries(modelId) {
     const id = modelId.toLowerCase()
-    if (id.includes('gpt')) return 'GPT'
-    if (id.includes('claude')) return 'Claude'
-    if (id.includes('gemini')) return 'Gemini'
-    if (id.includes('llama')) return 'Llama'
-    if (id.includes('mistral')) return 'Mistral'
+    
+    // 检查提供商前缀
+    if (id.includes('openai/') || id.includes('gpt')) return 'GPT'
+    if (id.includes('anthropic/') || id.includes('claude')) return 'Claude'
+    if (id.includes('google/') || id.includes('gemini')) return 'Gemini'
+    if (id.includes('meta-llama/') || id.includes('llama')) return 'Llama'
+    if (id.includes('mistralai/') || id.includes('mistral')) return 'Mistral'
     if (id.includes('qwen')) return 'Qwen'
     if (id.includes('deepseek')) return 'DeepSeek'
-    if (id.includes('command')) return 'Command'
-    if (id.includes('phi')) return 'Phi'
+    if (id.includes('cohere/') || id.includes('command')) return 'Command'
+    if (id.includes('microsoft/') || id.includes('phi')) return 'Phi'
     if (id.includes('mixtral')) return 'Mixtral'
+    
     return 'Other'
-  },
-
-  /**
-   * 提取输入模态性
-   * @private
-   */
-  _extractInputModalities(model) {
-    const modalities = ['text'] // 默认支持文本
-    
-    // 检查描述或名称中是否包含多模态关键词
-    const description = (model.description || '').toLowerCase()
-    const name = (model.name || '').toLowerCase()
-    const id = (model.id || '').toLowerCase()
-    
-    const combinedText = `${description} ${name} ${id}`
-    
-    if (combinedText.includes('vision') || combinedText.includes('image') || combinedText.includes('multimodal')) {
-      modalities.push('image')
-    }
-    
-    if (combinedText.includes('audio')) {
-      modalities.push('audio')
-    }
-    
-    return modalities
   },
 
   /**

@@ -4,3 +4,9 @@
 #app {
   min-height: 100vh;
 }
+
+/* 全局禁用拼写检查 */
+input,
+textarea {
+  spellcheck: false;
+}

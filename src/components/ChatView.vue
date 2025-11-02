@@ -9,6 +9,7 @@ import { useAppStore } from '../stores'
 import { aiChatService } from '../services/aiChatService'
 
 import FavoriteModelSelector from './FavoriteModelSelector.vue'
+import QuickModelSearch from './QuickModelSearch.vue'
 import AdvancedModelPickerModal from './AdvancedModelPickerModal.vue'
 
 // Props
@@ -52,6 +53,20 @@ const editingText = ref('')
 // 根据 conversationId 获取当前对话
 const currentConversation = computed(() => {
   return chatStore.conversations.find((conv: any) => conv.id === props.conversationId) || null
+})
+
+// 格式化显示的模型名称（移除提供商前缀）
+const displayModelName = computed(() => {
+  const modelId = currentConversation.value?.model
+  if (!modelId) return '选择模型'
+  
+  // 移除提供商前缀（如 openai/, anthropic/, google/ 等）
+  const nameWithoutProvider = modelId.replace(/^[^/]+\//, '')
+  
+  // 移除英文冒号(:)或中文冒号(：)及之前的所有文字
+  // 例如："OpenAI: GPT-4" -> "GPT-4"
+  //       "gpt-4-turbo" -> "gpt-4-turbo" (无冒号，保持不变)
+  return nameWithoutProvider.replace(/^[^:：]+[:：]\s*/, '')
 })
 
 // ========== 焦点管理函数 ==========
@@ -514,29 +529,35 @@ const handleSaveEdit = async (messageId: string) => {
 </script>
 
 <template>
-  <div class="flex h-full bg-gray-50">
-    <div class="flex-1 flex flex-col">
-      <!-- 顶部工具栏 - 新的模型选择器布局 -->
-      <div class="bg-white border-b border-gray-200 px-6 py-3">
-        <div class="max-w-4xl mx-auto flex items-center justify-between gap-4">
+  <!-- ChatView 根元素：直接作为 flex 列布局，因为父组件已经用 absolute 定位 -->
+  <div class="flex flex-col h-full w-full bg-gray-50" data-test-id="chat-view">
+    <!-- 顶部工具栏 - 新的模型选择器布局 -->
+    <div class="bg-white border-b border-gray-200 px-4 py-2 flex-shrink-0 w-full">
+        <div class="flex items-center gap-4">
           <!-- 左侧：快速收藏模型选择器 -->
-          <div class="flex-1">
+          <div class="flex-1 min-w-0 overflow-x-auto whitespace-nowrap">
             <FavoriteModelSelector @open-advanced-picker="openAdvancedModelPicker" />
           </div>
 
-          <!-- 右侧：高级模型选择器入口 -->
-          <button
-            @click="openAdvancedModelPicker"
-            class="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md"
-            title="打开高级模型选择器"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-            </svg>
-            <span class="font-medium">
-              {{ currentConversation?.model || '选择模型' }}
-            </span>
-          </button>
+          <!-- 右侧：快速搜索 + 高级模型选择器入口 -->
+          <div class="flex items-center gap-2 flex-none shrink-0">
+            <!-- 快速搜索按钮 -->
+            <QuickModelSearch />
+            
+            <!-- 高级模型选择器入口 -->
+            <button
+              @click="openAdvancedModelPicker"
+              class="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md whitespace-nowrap"
+              title="打开高级模型选择器"
+            >
+              <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+              <span class="font-medium">
+                {{ displayModelName }}
+              </span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -547,28 +568,30 @@ const handleSaveEdit = async (messageId: string) => {
         @select="closeAdvancedModelPicker"
       />
 
-      <div ref="chatContainer" class="flex-1 overflow-y-auto p-6 space-y-4">
-        <div class="max-w-4xl mx-auto">
+      <!-- 消息滚动区：外层控制滚动，内层限制最大宽度 -->
+      <div ref="chatContainer" class="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4 w-full">
+        <div class="space-y-4 max-w-5xl mx-auto">
+          <!-- 空态提示 -->
           <div
             v-if="!currentConversation || currentConversation.messages.length === 0"
             class="text-center py-12"
           >
-            <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-              <svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
-              </svg>
-            </div>
-            <h3 class="text-lg font-semibold text-gray-800 mb-2">开始与 AI 对话</h3>
-            <p class="text-gray-600">发送消息开始聊天</p>
+          <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
+            <svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+            </svg>
           </div>
+          <h3 class="text-lg font-semibold text-gray-800 mb-2">开始与 AI 对话</h3>
+          <p class="text-gray-600">发送消息开始聊天</p>
+        </div>
 
-          <div
-            v-for="(message, index) in (currentConversation?.messages || [])"
-            :key="message.id || index"
-            class="flex group"
-            :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
-          >
-            <div class="flex items-end space-x-2 max-w-xs lg:max-w-md xl:max-w-2xl relative">
+        <div
+          v-for="(message, index) in (currentConversation?.messages || [])"
+          :key="message.id || index"
+          class="flex group"
+          :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
+        >
+            <div class="flex items-end space-x-2 w-full max-w-md lg:max-w-2xl xl:max-w-4xl relative">
               <div
                 v-if="message.role === 'model'"
                 class="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center mb-1"
@@ -690,39 +713,42 @@ const handleSaveEdit = async (messageId: string) => {
                 v-if="message.role === 'user'"
                 class="flex-shrink-0 w-8 h-8 bg-gray-500 rounded-full flex items-center justify-center mb-1"
               >
-                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                </svg>
-              </div>
+              <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+              </svg>
             </div>
           </div>
+        </div>
 
-          <div v-if="currentConversation?.generationStatus === 'sending'" class="flex justify-start">
-            <div class="flex items-end space-x-2">
-              <div class="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-                </svg>
+        <!-- 加载状态提示 -->
+        <div v-if="currentConversation?.generationStatus === 'sending'" class="flex justify-start">
+          <div class="flex items-end space-x-2 w-full max-w-md lg:max-w-2xl xl:max-w-4xl">
+            <div class="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+              <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+              </svg>
+          </div>
+          <div class="bg-white border border-gray-200 rounded-lg px-4 py-3 shadow-sm">
+            <div class="flex items-center space-x-2">
+              <div class="flex space-x-1">
+                <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.1s;"></div>
+                <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.2s;"></div>
               </div>
-              <div class="bg-white border border-gray-200 rounded-lg px-4 py-3 shadow-sm">
-                <div class="flex items-center space-x-2">
-                  <div class="flex space-x-1">
-                    <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                    <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.1s;"></div>
-                    <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.2s;"></div>
-                  </div>
-                  <span class="text-sm text-gray-600">正在发送...</span>
-                </div>
-              </div>
+              <span class="text-sm text-gray-600">正在发送...</span>
             </div>
           </div>
         </div>
       </div>
 
+        </div>
+      </div>
+
+      <!-- 输入区 -->
       <div class="bg-white border-t border-gray-200 p-4">
-        <div class="max-w-4xl mx-auto">
-          <div class="flex items-end space-x-3">
-            <div class="flex-1">
+        <div class="w-full max-w-none">
+          <div class="flex items-end gap-3">
+            <div class="flex-1 min-w-0">
               <textarea
                 ref="textareaRef"
                 v-model="draftInput"
@@ -740,7 +766,7 @@ const handleSaveEdit = async (messageId: string) => {
               v-if="currentConversation?.generationStatus === 'idle'"
               @click="sendMessage"
               :disabled="!currentConversation || !draftInput.trim()"
-              class="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg transition-colors flex items-center justify-center"
+              class="flex-none shrink-0 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg transition-colors flex items-center justify-center"
               title="发送消息"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -752,7 +778,7 @@ const handleSaveEdit = async (messageId: string) => {
             <button
               v-else-if="currentConversation?.generationStatus === 'sending'"
               disabled
-              class="bg-gray-400 cursor-not-allowed text-white px-6 py-3 rounded-lg flex items-center justify-center"
+              class="flex-none shrink-0 bg-gray-400 cursor-not-allowed text-white px-6 py-3 rounded-lg flex items-center justify-center"
               title="正在发送..."
             >
               <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
@@ -765,7 +791,7 @@ const handleSaveEdit = async (messageId: string) => {
             <button
               v-else
               @click="stopGeneration"
-              class="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg transition-colors flex items-center justify-center"
+              class="flex-none shrink-0 bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg transition-colors flex items-center justify-center"
               title="停止生成"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -784,6 +810,5 @@ const handleSaveEdit = async (messageId: string) => {
           </div>
         </div>
       </div>
-    </div>
   </div>
 </template>
