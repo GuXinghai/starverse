@@ -290,8 +290,17 @@ const contextLengthStep = computed(() => {
   return 1000
 })
 
-// 最大价格
-const maxPrice = ref(100)
+// 计算最大价格（动态）
+const maxPrice = computed(() => {
+  let max = 10 // 默认最小值
+  allModelsData.value.forEach(model => {
+    if (model.pricing && model.pricing.prompt > max) {
+      max = model.pricing.prompt
+    }
+  })
+  // 向上取整到 5 的倍数，便于滑块操作
+  return Math.ceil(max / 5) * 5
+})
 
 // 获取某个系列的模型数量
 const getSeriesCount = (series) => {
@@ -446,10 +455,21 @@ const getModalityIcon = (modality) => {
   return icons[modality] || '❓'
 }
 
-// 监听打开状态，重置筛选
+// 监听打开状态，初始化筛选器
 watch(() => props.isOpen, (newVal) => {
   if (newVal) {
-    // 可以在这里添加打开时的初始化逻辑
+    // 当模态框打开时，将价格筛选器重置为最大值
+    filters.value.maxPromptPrice = maxPrice.value
+  }
+})
+
+// 监听模型数据变化，更新价格筛选器
+watch(() => allModelsData.value.length, (newLength) => {
+  if (newLength > 0) {
+    // 确保价格筛选器不超过实际最大价格
+    if (filters.value.maxPromptPrice > maxPrice.value) {
+      filters.value.maxPromptPrice = maxPrice.value
+    }
   }
 })
 </script>
