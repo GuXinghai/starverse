@@ -46,7 +46,25 @@
 - **流式响应**: 实时流式输出 AI 回复，提供流畅的对话体验
 - **上下文管理**: 完整的对话历史管理，支持多轮对话
 
-### 💬 会话管理
+### � 富文本渲染
+- **Markdown 支持**: 完整支持 GitHub Flavored Markdown (GFM)
+  - 标题、列表、表格、引用块
+  - 加粗、斜体、删除线
+  - 链接和图片
+- **代码高亮**: 基于 highlight.js 的语法高亮
+  - 支持 200+ 编程语言
+  - GitHub 浅色主题
+  - 自动语言检测
+- **LaTeX 数学公式**: 基于 KaTeX 的公式渲染
+  - 行内公式：`$E = mc^2$`
+  - 块级公式：`$$\int_0^1 x^2 dx$$`
+  - 支持复杂数学符号和公式
+- **智能渲染**: 
+  - 流式传输时显示纯文本，完成后渲染 Markdown
+  - 无语言代码块自动作为 Markdown 渲染
+  - 优化的性能和用户体验
+
+### �💬 会话管理
 - **多会话**: 创建和管理无限数量的对话会话
 - **标签页模式**: 类似浏览器的标签页界面，支持多会话并行
 - **会话持久化**: 使用 electron-store 自动保存对话历史
@@ -83,6 +101,9 @@
 | **Pinia** | 3.0.3 | Vue 3 官方状态管理库 |
 | **electron-store** | 11.0.2 | Electron 数据持久化 |
 | **@google/generative-ai** | 0.24.1 | Google Gemini AI SDK |
+| **marked** | Latest | Markdown 解析和渲染 |
+| **KaTeX** | Latest | LaTeX 数学公式渲染 |
+| **highlight.js** | Latest | 代码语法高亮 |
 | **uuid** | 13.0.0 | 唯一标识符生成 |
 
 ### 开发工具
@@ -627,6 +648,90 @@ const savedConversations = await window.electronStore.get('conversations')
 const models = await geminiService.listAvailableModels(apiKey)
 // 返回: ['models/gemini-pro', 'models/gemini-1.5-flash', ...]
 ```
+
+### 4. 富文本渲染系统
+
+#### ContentRenderer 组件
+智能渲染 AI 回复中的 Markdown、LaTeX 和代码：
+
+```vue
+<template>
+  <ContentRenderer :content="message.text" />
+</template>
+```
+
+#### 渲染流程
+```javascript
+// 1. 提取 LaTeX 公式（避免被 Markdown 处理）
+text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
+  const rendered = katex.renderToString(formula, { displayMode: true })
+  return placeholder // 使用占位符
+})
+
+// 2. Markdown 转 HTML
+let html = marked(text, { renderer, breaks: true, gfm: true })
+
+// 3. 替换占位符为渲染后的公式
+html = html.replace(placeholder, renderedFormula)
+```
+
+#### 智能代码块渲染
+```javascript
+renderer.code = function({ text, lang }) {
+  // 无语言或 text/markdown/md → 作为 Markdown 渲染
+  if (!lang || ['text', 'markdown', 'md'].includes(lang)) {
+    return `<div class="nested-markdown">${marked(text)}</div>`
+  }
+  
+  // 其他语言 → 语法高亮
+  const highlighted = hljs.highlight(text, { language: lang }).value
+  return `<pre><code class="hljs">${highlighted}</code></pre>`
+}
+```
+
+#### 性能优化
+```javascript
+// 流式传输中：显示纯文本
+<p v-if="isMessageStreaming(index)">{{ message.text }}</p>
+
+// 流式完成后：完整渲染
+<ContentRenderer v-else :content="message.text" />
+```
+
+#### 支持的格式
+
+**Markdown 基础语法**
+```markdown
+# 标题 1-6 级
+**加粗** *斜体* ~~删除线~~
+- 无序列表
+1. 有序列表
+> 引用块
+[链接](url)
+![图片](url)
+```
+
+**LaTeX 数学公式**
+```markdown
+行内公式：$E = mc^2$
+块级公式：
+$$
+\int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}
+$$
+```
+
+**代码块**
+````markdown
+```python
+def hello():
+    print("Hello, World!")
+```
+
+```
+无语言代码块会被当作 Markdown 渲染
+### 这个标题会正常显示
+```
+````
 
 ---
 
