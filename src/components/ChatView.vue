@@ -8,7 +8,8 @@ import { useAppStore } from '../stores'
 // @ts-ignore - aiChatService.js is a JavaScript file
 import { aiChatService } from '../services/aiChatService'
 
-import ModelSelector from './ModelSelector.vue'
+import FavoriteModelSelector from './FavoriteModelSelector.vue'
+import AdvancedModelPickerModal from './AdvancedModelPickerModal.vue'
 
 // Props
 const props = defineProps<{
@@ -20,6 +21,17 @@ const appStore = useAppStore()
 const draftInput = ref('')
 const chatContainer = ref<HTMLElement>()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+
+// ========== 高级模型选择器状态 ==========
+const showAdvancedModelPicker = ref(false)
+
+const openAdvancedModelPicker = () => {
+  showAdvancedModelPicker.value = true
+}
+
+const closeAdvancedModelPicker = () => {
+  showAdvancedModelPicker.value = false
+}
 
 // ========== 删除确认状态 ==========
 const deletingMessageId = ref<string | null>(null)
@@ -504,11 +516,36 @@ const handleSaveEdit = async (messageId: string) => {
 <template>
   <div class="flex h-full bg-gray-50">
     <div class="flex-1 flex flex-col">
+      <!-- 顶部工具栏 - 新的模型选择器布局 -->
       <div class="bg-white border-b border-gray-200 px-6 py-3">
-        <div class="max-w-4xl mx-auto">
-          <ModelSelector :conversation-id="props.conversationId" />
+        <div class="max-w-4xl mx-auto flex items-center justify-between gap-4">
+          <!-- 左侧：快速收藏模型选择器 -->
+          <div class="flex-1">
+            <FavoriteModelSelector @open-advanced-picker="openAdvancedModelPicker" />
+          </div>
+
+          <!-- 右侧：高级模型选择器入口 -->
+          <button
+            @click="openAdvancedModelPicker"
+            class="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md"
+            title="打开高级模型选择器"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+            </svg>
+            <span class="font-medium">
+              {{ currentConversation?.model || '选择模型' }}
+            </span>
+          </button>
         </div>
       </div>
+
+      <!-- 高级模型选择器模态框 -->
+      <AdvancedModelPickerModal
+        :is-open="showAdvancedModelPicker"
+        @close="closeAdvancedModelPicker"
+        @select="closeAdvancedModelPicker"
+      />
 
       <div ref="chatContainer" class="flex-1 overflow-y-auto p-6 space-y-4">
         <div class="max-w-4xl mx-auto">
