@@ -6,20 +6,81 @@ export interface ChatMessage {
   content: string
 }
 
+export type AIProvider = 'Gemini' | 'OpenRouter'
+
 export const useAppStore = defineStore('app', () => {
-  // 状态
+  // ========== 多提供商配置状态 ==========
+  
+  // 当前激活的 API 提供商
+  const activeProvider = ref<AIProvider>('Gemini')
+  
+  // Gemini API Key
+  const geminiApiKey = ref<string>('')
+  
+  // OpenRouter API Key
+  const openRouterApiKey = ref<string>('')
+  
+  // OpenRouter Base URL (可选，默认为官方地址)
+  const openRouterBaseUrl = ref<string>('https://openrouter.ai/api/v1')
+  
+  // 向后兼容：保留原有的 apiKey 引用（指向 geminiApiKey）
   const apiKey = ref<string>('')
+  
   const chatMessages = ref<ChatMessage[]>([])
   const isAppReady = ref<boolean>(false) // 应用初始化完成状态
 
-  // 初始化 - 从 electron-store 加载 API Key
+  // ========== 初始化方法 ==========
+  
+  // 初始化 - 从 electron-store 加载所有配置
   const initializeStore = async () => {
     try {
-      const savedApiKey = await window.electronStore.get('apiKey')
-      console.log('appStore.initializeStore - 从存储加载的 API Key:', savedApiKey)
-      if (savedApiKey) {
-        apiKey.value = savedApiKey
-        console.log('appStore.initializeStore - apiKey.value 已设置为:', apiKey.value)
+      // 并行加载所有配置，提升启动速度
+      const [
+        savedProvider,
+        savedGeminiKey,
+        savedOpenRouterKey,
+        savedOpenRouterBaseUrl,
+        legacyApiKey
+      ] = await Promise.all([
+        window.electronStore.get('activeProvider'),
+        window.electronStore.get('geminiApiKey'),
+        window.electronStore.get('openRouterApiKey'),
+        window.electronStore.get('openRouterBaseUrl'),
+        window.electronStore.get('apiKey')
+      ])
+      
+      // 加载 API 提供商选择
+      if (savedProvider && (savedProvider === 'Gemini' || savedProvider === 'OpenRouter')) {
+        activeProvider.value = savedProvider
+      }
+      console.log('appStore.initializeStore - 加载的提供商:', activeProvider.value)
+      
+      // 加载 Gemini API Key
+      if (savedGeminiKey) {
+        geminiApiKey.value = savedGeminiKey
+        apiKey.value = savedGeminiKey // 向后兼容
+        console.log('appStore.initializeStore - Gemini API Key 已加载')
+      }
+      
+      // 加载 OpenRouter API Key
+      if (savedOpenRouterKey) {
+        openRouterApiKey.value = savedOpenRouterKey
+        console.log('appStore.initializeStore - OpenRouter API Key 已加载')
+      }
+      
+      // 加载 OpenRouter Base URL
+      if (savedOpenRouterBaseUrl) {
+        openRouterBaseUrl.value = savedOpenRouterBaseUrl
+        console.log('appStore.initializeStore - OpenRouter Base URL 已加载:', savedOpenRouterBaseUrl)
+      }
+      
+      // 向后兼容：如果没有新配置，尝试加载旧的 apiKey
+      if (!savedGeminiKey && legacyApiKey) {
+        geminiApiKey.value = legacyApiKey
+        apiKey.value = legacyApiKey
+        // 迁移到新格式
+        await window.electronStore.set('geminiApiKey', legacyApiKey)
+        console.log('appStore.initializeStore - 已迁移旧的 API Key 到 geminiApiKey')
       }
     } catch (error) {
       console.error('初始化 store 失败:', error)
@@ -30,16 +91,65 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  // 保存 API Key
-  const saveApiKey = async (key: string) => {
+  // ========== 配置保存方法 ==========
+  
+  // 保存 API 提供商选择
+  const saveActiveProvider = async (provider: AIProvider) => {
     try {
-      await window.electronStore.set('apiKey', key)
-      apiKey.value = key
+      await window.electronStore.set('activeProvider', provider)
+      activeProvider.value = provider
+      console.log('✓ 已保存 API 提供商:', provider)
       return true
     } catch (error) {
-      console.error('保存 API Key 失败:', error)
+      console.error('保存 API 提供商失败:', error)
       return false
     }
+  }
+  
+  // 保存 Gemini API Key
+  const saveGeminiApiKey = async (key: string) => {
+    try {
+      await window.electronStore.set('geminiApiKey', key)
+      geminiApiKey.value = key
+      apiKey.value = key // 向后兼容
+      await window.electronStore.set('apiKey', key) // 向后兼容
+      console.log('✓ 已保存 Gemini API Key')
+      return true
+    } catch (error) {
+      console.error('保存 Gemini API Key 失败:', error)
+      return false
+    }
+  }
+  
+  // 保存 OpenRouter API Key
+  const saveOpenRouterApiKey = async (key: string) => {
+    try {
+      await window.electronStore.set('openRouterApiKey', key)
+      openRouterApiKey.value = key
+      console.log('✓ 已保存 OpenRouter API Key')
+      return true
+    } catch (error) {
+      console.error('保存 OpenRouter API Key 失败:', error)
+      return false
+    }
+  }
+  
+  // 保存 OpenRouter Base URL
+  const saveOpenRouterBaseUrl = async (url: string) => {
+    try {
+      await window.electronStore.set('openRouterBaseUrl', url)
+      openRouterBaseUrl.value = url
+      console.log('✓ 已保存 OpenRouter Base URL:', url)
+      return true
+    } catch (error) {
+      console.error('保存 OpenRouter Base URL 失败:', error)
+      return false
+    }
+  }
+  
+  // 向后兼容：保留原有的 saveApiKey 方法（实际保存到 geminiApiKey）
+  const saveApiKey = async (key: string) => {
+    return await saveGeminiApiKey(key)
   }
 
   // 添加聊天消息
@@ -60,13 +170,27 @@ export const useAppStore = defineStore('app', () => {
   }
 
   return {
-    // 状态
+    // ========== 状态 ==========
+    // 多提供商配置
+    activeProvider,
+    geminiApiKey,
+    openRouterApiKey,
+    openRouterBaseUrl,
+    // 向后兼容
     apiKey,
     chatMessages,
     isAppReady,
-    // 方法
+    
+    // ========== 方法 ==========
+    // 初始化
     initializeStore,
-    saveApiKey,
+    // 配置保存
+    saveActiveProvider,
+    saveGeminiApiKey,
+    saveOpenRouterApiKey,
+    saveOpenRouterBaseUrl,
+    saveApiKey, // 向后兼容
+    // 消息管理
     addMessage,
     clearMessages,
     removeMessage,
