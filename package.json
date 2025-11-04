@@ -14,7 +14,14 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@types/dompurify": "^3.0.5",
+    "@types/marked": "^5.0.2",
+    "@types/uuid": "^10.0.0",
+    "dompurify": "^3.3.0",
     "electron-store": "^11.0.2",
+    "highlight.js": "^11.11.1",
+    "katex": "^0.16.25",
+    "marked": "^16.4.1",
     "pinia": "^3.0.3",
     "uuid": "^13.0.0",
     "vue": "^3.4.21"
