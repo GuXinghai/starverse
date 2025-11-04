@@ -181,7 +181,7 @@ onUnmounted(() => {
                 
                 <!-- 空闲且成功：绿色勾（仅当有消息时显示） -->
                 <svg
-                  v-else-if="conversation.generationStatus === 'idle' && conversation.messages.length > 0 && !conversation.hasError"
+                  v-else-if="conversation.generationStatus === 'idle' && conversation.tree?.currentPath?.length > 0 && !conversation.hasError"
                   class="w-4 h-4 flex-shrink-0"
                   :class="[
                     chatStore.activeTabId === conversation.id
@@ -205,7 +205,7 @@ onUnmounted(() => {
                     : 'text-gray-500'
                 ]"
               >
-                <span>{{ conversation.messages.length }} 条消息</span>
+                <span>{{ conversation.tree?.currentPath?.length || 0 }} 条消息</span>
                 <span>•</span>
                 <span class="truncate max-w-[120px]" :title="conversation.model">
                   {{ formatModelName(conversation.model) }}
