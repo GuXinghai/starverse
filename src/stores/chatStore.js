@@ -2,25 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import { useAppStore } from './index'
-
-/**
- * ========== 块级增量渲染系统 ==========
- * 
- * ContentBlock 类型定义：
- * @typedef {Object} ContentBlock
- * @property {string} id - 唯一标识符 (UUID)
- * @property {'text'|'code'|'latex'} type - 块类型
- * @property {string} content - 块的纯文本内容
- * @property {Object} [meta] - 元数据，如 { language: 'javascript' }
- * 
- * Message 类型定义（新版）：
- * @typedef {Object} Message
- * @property {string} id - 消息唯一标识符
- * @property {'user'|'model'} role - 消息角色
- * @property {ContentBlock[]} contentBlocks - 内容块数组
- * @property {number} timestamp - 时间戳
- * @property {string} [text] - (兼容性保留) 完整文本内容
- */
+import { createTextMessage, extractTextFromMessage } from '../types/chat'
+import { electronStore as persistenceStore, isUsingElectronStoreFallback } from '../utils/electronBridge'
 
 /**
  * 聊天 Store
@@ -91,11 +74,16 @@ export const useChatStore = defineStore('chat', () => {
    * 每个对话对象格式: { 
    *   id: string,        // 唯一标识符
    *   title: string,     // 对话标题
-   *   messages: [],      // 消息数组 [{ role: 'user' | 'model', text: '内容' }]
+   *   messages: Message[], // 消息数组，每条消息包含 parts[]
    *   model: string,     // 使用的模型名称
    *   isLoading: boolean,// 该对话是否正在加载中
    *   draft: string      // 草稿内容
    * }
+   * 
+   * 🔄 多模态消息结构：
+   * - 每条消息不再是简单的 { role, text }
+   * - 而是 { id, role, parts: [{ type: 'text', text: '...' }, { type: 'image_url', image_url: {...} }] }
+   * - 支持文本、图片等多种内容类型混合
    */
   const conversations = ref([])
   
@@ -185,35 +173,85 @@ export const useChatStore = defineStore('chat', () => {
    * 从 electron-store 加载所有对话
    * 如果没有对话，则创建一个新对话并在标签页中打开
    */
+  if (isUsingElectronStoreFallback) {
+    console.warn('chatStore: electronStore bridge unavailable; using in-memory persistence. Data resets on reload.')
+  }
+
   const loadConversations = async () => {
     try {
       console.log('正在加载对话列表...')
-      const savedConversations = await window.electronStore.get('conversations')
-      const savedOpenIds = await window.electronStore.get('openConversationIds')
-      const savedActiveTabId = await window.electronStore.get('activeTabId')
+      const savedConversations = await persistenceStore.get('conversations')
+      const savedOpenIds = await persistenceStore.get('openConversationIds')
+      const savedActiveTabId = await persistenceStore.get('activeTabId')
       
       // 加载收藏的模型列表
-      const savedFavoriteModelIds = await window.electronStore.get('favoriteModelIds')
+      const savedFavoriteModelIds = await persistenceStore.get('favoriteModelIds')
       if (savedFavoriteModelIds && Array.isArray(savedFavoriteModelIds)) {
         favoriteModelIds.value = new Set(savedFavoriteModelIds)
         console.log('✓ 成功加载收藏模型列表，共', savedFavoriteModelIds.length, '个')
       }
       
       if (savedConversations && Array.isArray(savedConversations) && savedConversations.length > 0) {
-        // 确保每个对话都有必要的属性，并为旧数据的消息添加 ID 和时间戳
+        // 确保每个对话都有必要的属性，并迁移旧数据格式到新的 parts 结构
         conversations.value = savedConversations.map(conv => ({
           ...conv,
           // 兼容旧数据：将 isLoading 转换为 generationStatus
-          generationStatus: conv.generationStatus || (conv.isLoading ? 'receiving' : 'idle'),
+          // 🔧 修复：重置所有非空闲状态为 'idle'，防止程序异常退出后遗留发送状态
+          generationStatus: 'idle',
+          // 🔧 修复：清除错误标记，避免遗留错误状态
+          hasError: false,
           draft: conv.draft || '',
-          // 为每条消息确保有 id 和 timestamp（兼容旧数据）
-          messages: (conv.messages || []).map(msg => ({
-            id: msg.id || uuidv4(),
-            role: msg.role,
-            text: msg.text,
-            timestamp: msg.timestamp || Date.now()
-          }))
+          // 迁移消息格式：旧格式 { role, text } → 新格式 { id, role, parts: [{ type: 'text', text }] }
+          messages: (conv.messages || []).map(msg => {
+            // 如果消息已经是新格式（有 parts 数组），直接使用
+            if (msg.parts && Array.isArray(msg.parts)) {
+              return {
+                id: msg.id || uuidv4(),
+                role: msg.role,
+                parts: msg.parts,
+                timestamp: msg.timestamp || Date.now()
+              }
+            }
+            
+            // 旧格式消息：将 text 转换为 parts 数组
+            return {
+              id: msg.id || uuidv4(),
+              role: msg.role,
+              parts: [{ type: 'text', text: msg.text || '' }],
+              timestamp: msg.timestamp || Date.now()
+            }
+          })
         }))
+        
+        // 🔧 修复：清理异常退出时可能遗留的空白 AI 消息
+        let cleanedCount = 0
+        conversations.value.forEach(conv => {
+          const messages = conv.messages
+          if (messages.length > 0) {
+            const lastMessage = messages[messages.length - 1]
+            // 检查最后一条消息是否为空白的 AI 消息（异常退出时的遗留）
+            if (lastMessage.role === 'model') {
+              const textContent = lastMessage.parts
+                ?.filter(p => p.type === 'text')
+                .map(p => p.text)
+                .join('')
+                .trim()
+              
+              if (!textContent || textContent === '') {
+                // 删除空白的 AI 消息
+                messages.pop()
+                cleanedCount++
+                console.log(`🧹 已清理对话 "${conv.title}" 中的空白 AI 消息`)
+              }
+            }
+          }
+        })
+        
+        if (cleanedCount > 0) {
+          console.log(`✓ 清理了 ${cleanedCount} 条异常退出时遗留的空白消息`)
+          // 保存清理后的状态
+          saveConversations()
+        }
         
         // 恢复打开的标签页列表
         if (savedOpenIds && Array.isArray(savedOpenIds) && savedOpenIds.length > 0) {
@@ -260,9 +298,9 @@ export const useChatStore = defineStore('chat', () => {
       const plainOpenIds = [...openConversationIds.value] // 数组浅拷贝
       const plainActiveTabId = activeTabId.value
       
-      await window.electronStore.set('conversations', plainConversations)
-      await window.electronStore.set('openConversationIds', plainOpenIds)
-      await window.electronStore.set('activeTabId', plainActiveTabId)
+  await persistenceStore.set('conversations', plainConversations)
+  await persistenceStore.set('openConversationIds', plainOpenIds)
+  await persistenceStore.set('activeTabId', plainActiveTabId)
       
       console.log('✓ 对话已保存')
     } catch (error) {
@@ -281,7 +319,7 @@ export const useChatStore = defineStore('chat', () => {
   const saveFavoriteModels = async () => {
     try {
       const favoriteArray = Array.from(favoriteModelIds.value)
-      await window.electronStore.set('favoriteModelIds', favoriteArray)
+  await persistenceStore.set('favoriteModelIds', favoriteArray)
       console.log('✓ 收藏模型列表已保存，共', favoriteArray.length, '个')
     } catch (error) {
       console.error('❌ 保存收藏模型列表失败:', error)
@@ -294,11 +332,15 @@ export const useChatStore = defineStore('chat', () => {
    * @returns {string} 新对话的 ID
    */
   const createNewConversation = (title = '新对话') => {
+    // 使用 appStore 的默认模型，如果未设置则使用 selectedModel
+    const appStore = useAppStore()
+    const modelToUse = appStore.defaultModel || selectedModel.value
+    
     const newConversation = {
       id: uuidv4(),
       title: title,
       messages: [],
-      model: selectedModel.value,
+      model: modelToUse,
       generationStatus: 'idle', // 'idle' | 'sending' | 'receiving'
       hasError: false, // 标记最后一次生成是否有错误
       draft: ''
@@ -310,7 +352,7 @@ export const useChatStore = defineStore('chat', () => {
     // 保存到本地（不自动打开标签页，由调用方决定）
     saveConversations()
     
-    console.log('✓ 创建新对话:', newConversation.id, newConversation.title)
+    console.log('✓ 创建新对话:', newConversation.id, newConversation.title, '使用模型:', modelToUse)
     return newConversation.id
   }
 
@@ -402,236 +444,6 @@ export const useChatStore = defineStore('chat', () => {
     // 草稿会在其他操作（如发送消息、切换标签）时自动保存
   }
 
-  // ========== 块级增量渲染核心：流式 Token 状态机 ==========
-
-  /**
-   * 处理流式 token 并解析为内容块（基于缓冲区 + 正则表达式的健壮状态机）
-   * 
-   * 🎯 核心功能：
-   * - 使用缓冲区机制处理跨 token 边界的分隔符
-   * - 使用正则表达式精确匹配代码块和 LaTeX 公式边界
-   * - 实时将 token 流解析为结构化的 contentBlocks
-   * - 增量更新，避免重复渲染整个消息
-   * 
-   * @param {string} conversationId - 对话 ID
-   * @param {string} token - 单个文本片段
-   */
-  const processStreamToken = (conversationId, token) => {
-    if (typeof token !== 'string' || token.length === 0) {
-      return
-    }
-
-    const conversation = conversations.value.find(conv => conv.id === conversationId)
-    if (!conversation || conversation.messages.length === 0) {
-      return
-    }
-
-    const lastMessage = conversation.messages[conversation.messages.length - 1]
-    if (!lastMessage) {
-      return
-    }
-
-    // 确保 contentBlocks 数组存在
-    if (!Array.isArray(lastMessage.contentBlocks)) {
-      lastMessage.contentBlocks = []
-    }
-
-    // 初始化解析缓冲区（存储在消息对象上，持久化）
-    if (!lastMessage.parsingBuffer) {
-      lastMessage.parsingBuffer = ''
-    }
-
-    // 获取或创建最后一个块
-    let lastBlock = lastMessage.contentBlocks[lastMessage.contentBlocks.length - 1]
-    
-    // 如果没有块，创建初始的 text 块
-    if (!lastBlock) {
-      lastBlock = {
-        id: uuidv4(),
-        type: 'text',
-        content: '',
-        meta: {}
-      }
-      lastMessage.contentBlocks.push(lastBlock)
-    }
-
-    // 将缓冲区和新 token 拼接，用于模式匹配
-    const combinedText = lastMessage.parsingBuffer + token
-
-    // ========== 强化状态机：基于正则表达式的精确匹配 ==========
-    
-    if (lastBlock.type === 'text') {
-      // ---------- TEXT 模式：检测代码块或 LaTeX 块的开始 ----------
-      
-      // 正则：代码块开始 - 匹配 \n```语言\n 或开头的 ```语言\n
-      const codeBlockStartRegex = /(?:^|\n)(```+)(\w*)\n/
-      const codeMatch = combinedText.match(codeBlockStartRegex)
-      
-      // 正则：LaTeX 块开始 - 匹配 \n$$\n 或 $$（独立）
-      const latexBlockStartRegex = /(?:^|\n)\$\$/
-      const latexMatch = combinedText.match(latexBlockStartRegex)
-      
-      // 确定哪个分隔符先出现
-      let matchToUse = null
-      let matchType = null
-      
-      if (codeMatch && latexMatch) {
-        // 两者都匹配，使用先出现的
-        matchToUse = codeMatch.index < latexMatch.index ? codeMatch : latexMatch
-        matchType = codeMatch.index < latexMatch.index ? 'code' : 'latex'
-      } else if (codeMatch) {
-        matchToUse = codeMatch
-        matchType = 'code'
-      } else if (latexMatch) {
-        matchToUse = latexMatch
-        matchType = 'latex'
-      }
-      
-      if (matchToUse) {
-        // 找到分隔符
-        const matchIndex = matchToUse.index
-        const beforeMarker = combinedText.substring(0, matchIndex)
-        const afterMarker = combinedText.substring(matchIndex + matchToUse[0].length)
-        
-        // 将分隔符之前的内容追加到当前文本块
-        lastBlock.content += beforeMarker
-        
-        // 创建新块
-        if (matchType === 'code') {
-          const marker = matchToUse[1] // ```
-          const language = matchToUse[2] || '' // 语言标识符
-          
-          const newCodeBlock = {
-            id: uuidv4(),
-            type: 'code',
-            content: afterMarker,
-            meta: { language, marker }
-          }
-          lastMessage.contentBlocks.push(newCodeBlock)
-        } else if (matchType === 'latex') {
-          const newLatexBlock = {
-            id: uuidv4(),
-            type: 'latex',
-            content: afterMarker,
-            meta: {}
-          }
-          lastMessage.contentBlocks.push(newLatexBlock)
-        }
-        
-        // 清空缓冲区（已处理完）
-        lastMessage.parsingBuffer = ''
-        
-      } else {
-        // 没有找到分隔符，将内容追加到当前块
-        lastBlock.content += token
-        
-        // 更新缓冲区：保留最后 10 个字符，以便跨 token 检测分隔符
-        lastMessage.parsingBuffer = combinedText.slice(-10)
-      }
-      
-    } else if (lastBlock.type === 'code') {
-      // ---------- CODE 模式：检测代码块结束 ----------
-      
-      const marker = lastBlock.meta?.marker || '```'
-      // 正则：代码块结束 - 匹配 \n``` 或 \n```\n
-      const codeBlockEndRegex = new RegExp(`\\n${marker}(?:\\n|$)`)
-      const endMatch = combinedText.match(codeBlockEndRegex)
-      
-      if (endMatch) {
-        // 找到结束标记
-        const matchIndex = endMatch.index
-        const beforeMarker = combinedText.substring(0, matchIndex)
-        const afterMarker = combinedText.substring(matchIndex + endMatch[0].length)
-        
-        // 将标记前的内容追加到当前代码块
-        lastBlock.content += beforeMarker
-        
-        // 创建新的文本块
-        const newTextBlock = {
-          id: uuidv4(),
-          type: 'text',
-          content: afterMarker,
-          meta: {}
-        }
-        lastMessage.contentBlocks.push(newTextBlock)
-        
-        // 清空缓冲区
-        lastMessage.parsingBuffer = ''
-        
-      } else {
-        // 没有找到结束标记，继续追加
-        lastBlock.content += token
-        
-        // 更新缓冲区
-        lastMessage.parsingBuffer = combinedText.slice(-10)
-      }
-      
-    } else if (lastBlock.type === 'latex') {
-      // ---------- LATEX 模式：检测 LaTeX 块结束 ----------
-      
-      // 正则：LaTeX 块结束 - 匹配 $$
-      const latexBlockEndRegex = /\$\$/
-      const endMatch = combinedText.match(latexBlockEndRegex)
-      
-      if (endMatch) {
-        // 找到结束标记
-        const matchIndex = endMatch.index
-        const beforeMarker = combinedText.substring(0, matchIndex)
-        const afterMarker = combinedText.substring(matchIndex + 2) // $$ 长度为 2
-        
-        // 将标记前的内容追加到当前 LaTeX 块
-        lastBlock.content += beforeMarker
-        
-        // 创建新的文本块
-        const newTextBlock = {
-          id: uuidv4(),
-          type: 'text',
-          content: afterMarker,
-          meta: {}
-        }
-        lastMessage.contentBlocks.push(newTextBlock)
-        
-        // 清空缓冲区
-        lastMessage.parsingBuffer = ''
-        
-      } else {
-        // 没有找到结束标记，继续追加
-        lastBlock.content += token
-        
-        // 更新缓冲区
-        lastMessage.parsingBuffer = combinedText.slice(-10)
-      }
-    }
-
-    // 同步更新兼容性 text 字段（用于后备渲染）
-    updateMessageTextFromBlocks(lastMessage)
-  }
-
-  /**
-   * 从 contentBlocks 重新构建完整的 text 字段（向后兼容）
-   * @param {Message} message - 消息对象
-   */
-  const updateMessageTextFromBlocks = (message) => {
-    if (!Array.isArray(message.contentBlocks) || message.contentBlocks.length === 0) {
-      message.text = ''
-      return
-    }
-
-    let fullText = ''
-    for (const block of message.contentBlocks) {
-      if (block.type === 'text') {
-        fullText += block.content
-      } else if (block.type === 'code') {
-        const marker = block.meta?.marker || '```'
-        const lang = block.meta?.language || ''
-        fullText += `${marker}${lang}\n${block.content}${marker}\n`
-      } else if (block.type === 'latex') {
-        fullText += `$$${block.content}$$`
-      }
-    }
-    message.text = fullText
-  }
-
   /**
    * 设置激活的对话（已废弃，使用 openConversationInTab 替代）
    * @deprecated
@@ -651,14 +463,26 @@ export const useChatStore = defineStore('chat', () => {
    * - 适用于任何需要添加消息的场景（用户消息、AI 响应、错误消息）
    * - 线程安全：可在异步流程中并发调用
    * 
+   * 🔄 多模态支持：
+   * - 新格式：message = { role, parts: [{ type: 'text', text: '...' }] }
+   * - 向后兼容：message = { role, text: '...' } 自动转换为 parts 格式
+   * 
    * @param {string} conversationId - 对话 ID（必需）
-   * @param {Object} message - 消息对象 { role: 'user' | 'model', text: '消息内容' }
+   * @param {Object} message - 消息对象，支持两种格式：
+   *   1. 新格式: { role: 'user' | 'model', parts: MessagePart[] }
+   *   2. 旧格式: { role: 'user' | 'model', text: string } (自动转换)
    */
   const addMessageToConversation = (conversationId, message) => {
     if (!message || !message.role) {
       console.error('❌ 无效的消息格式:', message)
       return
     }
+    
+    // 🔍 调试：打印接收到的消息
+    console.log('🔍 [DEBUG] chatStore.addMessageToConversation 接收到:', {
+      conversationId,
+      message: JSON.stringify(message, null, 2)
+    })
 
     const conversation = conversations.value.find(conv => conv.id === conversationId)
     
@@ -667,33 +491,42 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
-    // 为消息添加唯一 ID、时间戳和 contentBlocks
+    // 规范化消息格式
+    let messageParts
+    
+    if (message.parts && Array.isArray(message.parts)) {
+      // 新格式：已经有 parts 数组
+      // 深拷贝以避免循环引用
+      messageParts = JSON.parse(JSON.stringify(message.parts))
+      console.log('🔍 [DEBUG] 使用 parts 格式，parts 数量:', messageParts.length)
+    } else if (typeof message.text === 'string') {
+      // 旧格式：将 text 转换为 parts 数组（向后兼容）
+      messageParts = [{ type: 'text', text: message.text }]
+      console.log('🔍 [DEBUG] 将 text 转换为 parts 格式')
+    } else {
+      console.error('❌ 消息必须包含 parts 数组或 text 字符串:', message)
+      return
+    }
+
+    // 为消息添加唯一 ID 和时间戳（如果没有的话）
     const messageWithId = {
       id: message.id || uuidv4(),
       role: message.role,
-      timestamp: message.timestamp || Date.now(),
-      contentBlocks: message.contentBlocks || [],
-      text: message.text || '' // 兼容性字段
+      parts: messageParts,
+      timestamp: message.timestamp || Date.now()
     }
-
-    // 如果提供了 text 但没有 contentBlocks，创建初始文本块
-    if (message.text && messageWithId.contentBlocks.length === 0) {
-      messageWithId.contentBlocks = [{
-        id: uuidv4(),
-        type: 'text',
-        content: message.text,
-        meta: {}
-      }]
-    }
+    
+    // 🔍 调试：打印最终存储的消息
+    console.log('🔍 [DEBUG] 最终存储的消息:', JSON.stringify(messageWithId, null, 2))
 
     conversation.messages.push(messageWithId)
     
     // 如果是第一条用户消息且标题还是"新对话"，自动生成标题
     if (conversation.messages.length === 1 && conversation.title === '新对话' && message.role === 'user') {
-      // 使用用户第一条消息的前30个字符作为标题
-      const firstUserMessage = message.text || messageWithId.contentBlocks[0]?.content || ''
-      if (firstUserMessage.trim()) {
-        conversation.title = firstUserMessage.trim().substring(0, 30) + (firstUserMessage.trim().length > 30 ? '...' : '')
+      // 使用用户第一条消息的文本部分作为标题
+      const textContent = extractTextFromMessage(messageWithId)
+      if (textContent) {
+        conversation.title = textContent.substring(0, 30) + (textContent.length > 30 ? '...' : '')
         console.log('✓ 自动生成对话标题:', conversation.title)
       }
     }
@@ -724,6 +557,11 @@ export const useChatStore = defineStore('chat', () => {
    * - 适用于流式生成场景，每次接收 token 时调用
    * - 线程安全：可在异步流程中并发调用
    * 
+   * 🔄 多模态行为：
+   * - 将文本追加到最后一条消息的最后一个文本 part
+   * - 如果最后一个 part 不是文本类型，会自动创建一个新的文本 part
+   * - 如果消息没有任何 parts，会创建一个初始文本 part
+   * 
    * @param {string} conversationId - 对话 ID（必需）
    * @param {string} token - 文本片段
    */
@@ -744,11 +582,62 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
-    if (typeof lastMessage.text !== 'string') {
-      lastMessage.text = ''
+    // 确保消息有 parts 数组
+    if (!lastMessage.parts || !Array.isArray(lastMessage.parts)) {
+      lastMessage.parts = []
     }
 
-    lastMessage.text += token
+    // 获取最后一个 part
+    const lastPart = lastMessage.parts[lastMessage.parts.length - 1]
+
+    // 如果最后一个 part 是文本类型，直接追加
+    if (lastPart && lastPart.type === 'text') {
+      lastPart.text += token
+    } else {
+      // 否则，创建一个新的文本 part
+      lastMessage.parts.push({
+        type: 'text',
+        text: token
+      })
+    }
+  }
+
+  /**
+   * 向指定对话的最后一条消息追加图片
+   * @param {string} conversationId - 对话 ID
+   * @param {string} imageUrl - 图片 URL（可以是 http(s):// 或 data: URI）
+   */
+  const appendImageToMessage = (conversationId, imageUrl) => {
+    if (typeof imageUrl !== 'string' || imageUrl.length === 0) {
+      return
+    }
+
+    const conversation = conversations.value.find(conv => conv.id === conversationId)
+
+    if (!conversation || conversation.messages.length === 0) {
+      return
+    }
+
+    const lastMessage = conversation.messages[conversation.messages.length - 1]
+
+    if (!lastMessage) {
+      return
+    }
+
+    // 确保消息有 parts 数组
+    if (!lastMessage.parts || !Array.isArray(lastMessage.parts)) {
+      lastMessage.parts = []
+    }
+
+    // 添加图片 part
+    lastMessage.parts.push({
+      type: 'image_url',
+      image_url: {
+        url: imageUrl
+      }
+    })
+
+    console.log('✓ 已添加图片到消息:', imageUrl.substring(0, 50) + '...')
   }
 
   /**
@@ -1175,15 +1064,19 @@ export const useChatStore = defineStore('chat', () => {
    * 更新指定对话中的指定消息内容（原子操作 - 异步安全）
    * 
    * 🔒 合同约定：
-   * - 必须传入 conversationId、messageId 和 newText 参数
+   * - 必须传入 conversationId、messageId 和 newContent 参数
    * - 更新后会自动保存到本地存储
    * - 线程安全：可在异步流程中并发调用
    * 
+   * 🔄 多模态支持：
+   * - 如果 newContent 是字符串，替换为单个文本 part
+   * - 如果 newContent 是 parts 数组，直接替换整个 parts
+   * 
    * @param {string} conversationId - 对话 ID（必需）
    * @param {string} messageId - 消息 ID（必需）
-   * @param {string} newText - 新的消息内容
+   * @param {string|MessagePart[]} newContent - 新的消息内容（文本或 parts 数组）
    */
-  const updateMessage = (conversationId, messageId, newText) => {
+  const updateMessage = (conversationId, messageId, newContent) => {
     const conversation = conversations.value.find(conv => conv.id === conversationId)
     
     if (!conversation) {
@@ -1198,12 +1091,38 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
-    message.text = newText
+    // 根据 newContent 类型更新消息
+    if (typeof newContent === 'string') {
+      // 字符串：替换为单个文本 part（向后兼容）
+      message.parts = [{ type: 'text', text: newContent }]
+    } else if (Array.isArray(newContent)) {
+      // parts 数组：直接替换
+      message.parts = newContent
+    } else {
+      console.error('❌ newContent 必须是字符串或 MessagePart 数组:', newContent)
+      return
+    }
     
     // 保存到本地
     saveConversations()
     
     console.log('✓ 已更新消息:', messageId)
+  }
+
+  /**
+   * 更新消息的 parts（多模态内容）
+   * @param {string} conversationId - 对话 ID
+   * @param {string} messageId - 消息 ID
+   * @param {Array} parts - 新的 parts 数组
+   */
+  const updateMessageParts = (conversationId, messageId, parts) => {
+    if (!Array.isArray(parts)) {
+      console.error('❌ parts 必须是数组')
+      return
+    }
+    
+    // 直接调用 updateMessage，它已经支持 parts 数组
+    updateMessage(conversationId, messageId, parts)
   }
 
   /**
@@ -1273,12 +1192,13 @@ export const useChatStore = defineStore('chat', () => {
     // 新的基于 conversationId 的函数
     addMessageToConversation,
     appendTokenToMessage,
-    processStreamToken, // ⭐ 新增：块级增量渲染核心
+    appendImageToMessage,
     clearConversationMessages,
     updateConversationModel,
     // 消息管理原子操作
     deleteMessage,
     updateMessage,
+    updateMessageParts,
     truncateMessagesFrom,
     // 兼容旧代码的函数
     addMessageToActiveConversation,

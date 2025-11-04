@@ -8,6 +8,8 @@
 
 import { GeminiService } from './providers/GeminiService'
 import { OpenRouterService } from './providers/OpenRouterService'
+// 引入 chatStore 用于读取可用模型的元数据（input_modalities）
+import { useChatStore } from '../stores/chatStore'
 
 /**
  * AI Chat Service 路由器
@@ -82,10 +84,17 @@ export const aiChatService = {
    * @returns {AsyncIterable} - 流式响应的异步迭代器
    */
   async* streamChatResponse(appStore, history, modelName, userMessage, signal = null) {
+    // 规范化入参，避免上层传入 undefined 导致崩溃
+    const safeHistory = Array.isArray(history) ? history : []
+    const safeUserMessage = typeof userMessage === 'string' ? userMessage : ''
+
     console.log('aiChatService: 开始流式对话...')
     console.log('  - 模型:', modelName)
-    console.log('  - 历史消息数:', history.length)
-    console.log('  - 用户消息长度:', userMessage.length)
+    console.log('  - 历史消息数:', safeHistory.length)
+    console.log('  - 用户消息长度:', safeUserMessage.length)
+    
+    // 🔍 调试：打印历史消息详情
+    console.log('🔍 [DEBUG] aiChatService 接收到的 history:', JSON.stringify(safeHistory, null, 2))
     
     try {
       const { service, apiKey, baseUrl } = this.getProviderContext(appStore)
@@ -98,10 +107,11 @@ export const aiChatService = {
       // 不同的服务可能需要不同的参数
       if (service === GeminiService) {
         // Gemini: (apiKey, history, modelName, userMessage, signal)
-        yield* service.streamChatResponse(apiKey, history, modelName, userMessage, signal)
+        yield* service.streamChatResponse(apiKey, safeHistory, modelName, safeUserMessage, signal)
       } else if (service === OpenRouterService) {
         // OpenRouter: (apiKey, history, modelName, userMessage, baseUrl, signal)
-        yield* service.streamChatResponse(apiKey, history, modelName, userMessage, baseUrl, signal)
+        console.log('🔍 [DEBUG] 调用 OpenRouterService.streamChatResponse')
+        yield* service.streamChatResponse(apiKey, safeHistory, modelName, safeUserMessage, baseUrl, signal)
       } else {
         throw new Error('未知的服务类型')
       }
@@ -121,5 +131,45 @@ export const aiChatService = {
   getCurrentApiKey(appStore) {
     const { apiKey } = this.getProviderContext(appStore)
     return apiKey || ''
+  },
+
+  /**
+   * 检查指定模型是否支持视觉/图像输入
+   * @param {Object} appStore - Pinia appStore 实例
+   * @param {string} modelId - 模型 ID
+   * @returns {boolean} - 是否支持视觉
+   */
+  supportsVision(appStore, modelId) {
+    try {
+      if (!modelId) return false
+
+      // 优先使用本地已加载的模型元数据判断（如果可用）
+      try {
+        const chatStore = useChatStore()
+        const map = chatStore.availableModelsMap
+        if (map && typeof map.get === 'function') {
+          const modelData = map.get(modelId) || map.get(String(modelId).toLowerCase())
+          if (modelData && Array.isArray(modelData.input_modalities)) {
+            const modalities = modelData.input_modalities.map(m => String(m).toLowerCase())
+            const hasImage = modalities.includes('image') || modalities.includes('vision') || modalities.includes('multimodal')
+            if (hasImage) return true
+          }
+        }
+      } catch (err) {
+        // 如果读取 store 失败，继续回退到 provider 的判断
+        console.warn('aiChatService.supportsVision: 无法读取 chatStore，回退到 provider 判断', err)
+      }
+
+      // 回退：调用 provider 的 supportsVision（如果实现）
+      const { service } = this.getProviderContext(appStore)
+      if (service && service.supportsVision && typeof service.supportsVision === 'function') {
+        return service.supportsVision(modelId)
+      }
+
+      return false
+    } catch (error) {
+      console.error('aiChatService: 检查视觉支持失败', error)
+      return false
+    }
   }
 }

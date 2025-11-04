@@ -1,11 +1,29 @@
 /**
  * Gemini AI Provider
  * 实现统一的 AI 服务接口
+ * 
+ * 🔄 多模态支持：
+ * - Gemini 模型天然支持多模态
+ * - 自动转换图像 data URI 为 Google SDK 的 inlineData 格式
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { extractTextFromMessage } from '../../types/chat'
 
 export const GeminiService = {
+  /**
+   * 检查模型是否支持视觉/图像输入
+   * Gemini 的大多数模型都支持视觉
+   * @param {string} modelId - 模型 ID
+   * @returns {boolean} 是否支持视觉
+   */
+  supportsVision(modelId) {
+    if (!modelId) return false
+    // Gemini 1.5+ 和 2.0+ 系列都支持视觉
+    // 仅 gemini-pro (1.0) 不支持图像
+    return !modelId.match(/^gemini-pro$|^models\/gemini-pro$/i)
+  },
+
   /**
    * 获取可用的 Gemini 模型列表
    * @param {string} apiKey - Google AI Studio API Key
@@ -57,10 +75,16 @@ export const GeminiService = {
 
   /**
    * 流式发送消息并获取回复
+   * 
+   * 🔄 多模态支持：
+   * - 接受包含 parts 数组的消息历史
+   * - 自动转换图像 data URI 为 Google SDK 格式
+   * - 支持文本和图像混合内容
+   * 
    * @param {string} apiKey - Gemini API Key
-   * @param {Array} history - 聊天历史 [{ role: 'user' | 'model', text: '内容' }]
+   * @param {Array} history - 聊天历史（多模态 Message[]）
    * @param {string} modelName - 模型名称
-   * @param {string} userMessage - 用户消息
+   * @param {string} userMessage - 用户消息文本
    * @param {AbortSignal} [signal] - 可选的中止信号
    * @returns {AsyncIterable} - 流式响应的异步迭代器
    */
@@ -71,19 +95,66 @@ export const GeminiService = {
       const genAI = new GoogleGenerativeAI(apiKey)
       const model = genAI.getGenerativeModel({ model: modelName })
 
-      const formattedHistory = (history || []).map((msg) => ({
-        role: msg.role,
-        parts: [{ text: msg.text }]
-      }))
+      // 转换历史消息：Message[] → Google SDK 格式
+      const formattedHistory = (history || []).map((msg) => {
+        let parts = []
+        
+        // 如果消息有 parts 数组，转换每个 part
+        if (msg.parts && Array.isArray(msg.parts) && msg.parts.length > 0) {
+          parts = msg.parts.map(part => {
+            if (part.type === 'text') {
+              // 文本 part
+              return { text: part.text }
+            } else if (part.type === 'image_url') {
+              // 图像 part：转换 data URI 为 Google SDK 格式
+              // data:image/jpeg;base64,XXXXX → { inlineData: { mimeType: 'image/jpeg', data: 'XXXXX' } }
+              const dataUri = part.image_url.url
+              const matches = dataUri.match(/^data:(image\/[a-z]+);base64,(.+)$/i)
+              
+              if (matches) {
+                return {
+                  inlineData: {
+                    mimeType: matches[1],  // 'image/jpeg', 'image/png', etc.
+                    data: matches[2]        // base64 字符串（不含前缀）
+                  }
+                }
+              } else {
+                console.warn('⚠️ 无效的图像 data URI 格式:', dataUri.substring(0, 50))
+                return null
+              }
+            }
+            return null
+          }).filter(Boolean)
+        } else {
+          // 回退：纯文本消息
+          parts = [{ text: extractTextFromMessage(msg) }]
+        }
+        
+        return {
+          role: msg.role,
+          parts
+        }
+      })
 
       // 构建请求内容
-      const contents = [
-        ...formattedHistory,
-        {
-          role: 'user',
-          parts: [{ text: userMessage }]
-        }
-      ]
+      // 🔧 修复：只有当 userMessage 有实际内容时才添加新的用户消息
+      // 重新生成回复时，userMessage 为空字符串，不应添加
+      let contents
+      if (userMessage && userMessage.trim()) {
+        contents = [
+          ...formattedHistory,
+          {
+            role: 'user',
+            parts: [{ text: userMessage }]
+          }
+        ]
+        console.log('GeminiService: 添加新用户消息:', userMessage.substring(0, 50))
+      } else {
+        contents = formattedHistory
+        console.log('GeminiService: 未添加新用户消息（使用历史记录）')
+      }
+
+      console.log('GeminiService: 最终请求包含', contents.length, '条消息')
 
       // 根据是否有 signal 来调用不同的方法
       let result

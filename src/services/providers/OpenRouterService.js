@@ -2,11 +2,91 @@
  * OpenRouter AI Provider
  * 实现统一的 AI 服务接口
  * OpenRouter 使用 OpenAI 兼容的 API 格式
+ * 
+ * 🔄 多模态支持：
+ * - 支持发送包含图像的消息
+ * - 自动检测模型是否支持视觉功能
  */
+
+import { extractTextFromMessage } from '../../types/chat'
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 
+/**
+ * 已知支持视觉/图像输入的模型 ID 模式
+ * 这些模型可以处理包含图像的多模态请求
+ */
+const VISION_MODEL_PATTERNS = [
+  // OpenAI
+  /gpt-4.*vision/i,
+  /gpt-4o/i,
+  /gpt-4-turbo/i,
+  /gpt-5/i,  // GPT-5 系列都支持多模态
+  /gpt.*image/i,  // 包含 "image" 关键字的 GPT 模型
+  
+  // Google
+  /gemini.*pro.*vision/i,
+  /gemini-1\.5-pro/i,
+  /gemini-1\.5-flash/i,
+  /gemini-2\.0-flash/i,
+  /gemini.*exp.*1206/i,
+  
+  // Anthropic
+  /claude-3/i,
+  
+  // Others
+  /llava/i,
+  /vision/i,
+  /image/i  // 通用的图像处理模型
+]
+
+/**
+ * 检查模型是否支持视觉/图像输入
+ * @param {string} modelId - 模型 ID
+ * @returns {boolean} 是否支持视觉
+ */
+function supportsVision(modelId) {
+  if (!modelId) return false
+  return VISION_MODEL_PATTERNS.some(pattern => pattern.test(modelId))
+}
+
+// ---------- 模块级辅助函数 ----------
+function validateOpenRouterRequestBody(body) {
+  if (!body || typeof body !== 'object') throw new Error('请求体为空或格式不正确')
+  if (!Array.isArray(body.messages)) throw new Error('请求体缺少 messages 数组')
+
+  for (const [i, msg] of body.messages.entries()) {
+    if (!msg || typeof msg !== 'object') throw new Error(`messages[${i}] 必须是对象`)
+
+    if (!Array.isArray(msg.content) || msg.content.length === 0) {
+      throw new Error(`messages[${i}].content 必须为非空数组`)
+    }
+
+    for (const [j, part] of msg.content.entries()) {
+      if (!part || typeof part !== 'object') throw new Error(`messages[${i}].content[${j}] 必须是对象`)
+      if (!part.type || typeof part.type !== 'string') throw new Error(`messages[${i}].content[${j}].type 缺失或无效`)
+
+      if (part.type === 'image_url') {
+        const url = part.image_url && part.image_url.url
+        if (!url || typeof url !== 'string') throw new Error(`messages[${i}].content[${j}].image_url.url 缺失或无效`)
+        const lower = url.toLowerCase()
+        if (!(lower.startsWith('data:image/') || lower.startsWith('http://') || lower.startsWith('https://'))) {
+          throw new Error(`messages[${i}].content[${j}].image_url.url 必须是 data:image/ 或 http(s):// 开头`)
+        }
+      }
+    }
+  }
+}
+
+
 export const OpenRouterService = {
+  /**
+   * 检查模型是否支持视觉/图像输入
+   * @param {string} modelId - 模型 ID
+   * @returns {boolean} 是否支持视觉
+   */
+  supportsVision,
+
   /**
    * 获取可用的 OpenRouter 模型列表（完整元数据）
    * @param {string} apiKey - OpenRouter API Key
@@ -125,6 +205,14 @@ export const OpenRouterService = {
   },
 
   /**
+   * 验证将要发送给 OpenRouter 的 requestBody 格式
+   * - 每条 message 必须有 content 且为非空数组
+   * - 每个 content 项必须有 type
+   * - 如果 type === 'image_url'，必须有 image_url.url，且为 data: 或 http(s) URL
+   */
+  _validateRequestBody: null, // 占位，下面会定义独立函数并在 module 中使用
+
+  /**
    * 从模型 ID 中提取模型系列
    * @private
    */
@@ -148,10 +236,16 @@ export const OpenRouterService = {
 
   /**
    * 流式发送消息并获取回复
+   * 
+   * 🔄 多模态支持：
+   * - 接受包含 parts 数组的消息历史
+   * - 自动检测并转换图像内容
+   * - 仅在支持视觉的模型上发送图像
+   * 
    * @param {string} apiKey - OpenRouter API Key
-   * @param {Array} history - 聊天历史 [{ role: 'user' | 'model', text: '内容' }]
+   * @param {Array} history - 聊天历史（多模态 Message[]）
    * @param {string} modelName - 模型 ID (如 'openai/gpt-4o')
-   * @param {string} userMessage - 用户消息
+   * @param {string} userMessage - 用户消息文本
    * @param {string} baseUrl - OpenRouter Base URL
    * @param {AbortSignal} [signal] - 可选的中止信号
    * @returns {AsyncIterable} - 流式响应的异步迭代器
@@ -160,29 +254,166 @@ export const OpenRouterService = {
     console.log('OpenRouterService: 开始流式聊天，使用模型:', modelName)
     console.log('OpenRouterService: Base URL:', baseUrl)
     
+    // 🔍 调试：打印接收到的参数
+    console.log('🔍 [DEBUG] OpenRouterService.streamChatResponse 接收到的参数:', {
+      historyLength: history ? history.length : 0,
+      userMessage,
+      history: JSON.stringify(history, null, 2)
+    })
+    
     try {
-      // 转换消息格式：role 从 'model' 转为 'assistant'
-      const messages = (history || []).map(msg => ({
-        role: msg.role === 'model' ? 'assistant' : msg.role,
-        content: msg.text
-      }))
-      
-      // 添加用户的新消息
-      messages.push({
-        role: 'user',
-        content: userMessage
+      // 转换消息格式：Message[] → OpenRouter 格式
+      // 注意：不再检查模型是否支持视觉，因为前端在上传图片时已经做了检查
+      // 如果消息中有图片，说明用户已经确认当前模型支持多模态
+      const messages = (history || []).map(msg => {
+        const role = msg.role === 'model' ? 'assistant' : msg.role
+        
+        // 🔍 调试：打印每条消息的转换过程
+        console.log('🔍 [DEBUG] 转换消息:', {
+          originalRole: msg.role,
+          newRole: role,
+          hasParts: !!(msg.parts && Array.isArray(msg.parts)),
+          partsLength: msg.parts ? msg.parts.length : 0
+        })
+        
+        // 如果消息有 parts 数组，构建多模态内容
+        if (msg.parts && Array.isArray(msg.parts) && msg.parts.length > 0) {
+          // OpenRouter 使用 OpenAI 兼容格式
+          const content = msg.parts.map(part => {
+            console.log('🔍 [DEBUG] 处理 part:', { type: part.type })
+            
+            if (part.type === 'text') {
+              return {
+                type: 'text',
+                text: part.text || ''  // 确保 text 不为 undefined
+              }
+            } else if (part.type === 'image_url') {
+              const imageUrl = part.image_url.url
+              console.log('🔍 [DEBUG] 图片 URL 前缀:', imageUrl.substring(0, 50))
+              return {
+                type: 'image_url',
+                image_url: {
+                  url: imageUrl,
+                  detail: 'auto'  // 可选: 'auto', 'low', 'high'
+                }
+              }
+            }
+            return null
+          }).filter(Boolean)
+          
+          console.log('🔍 [DEBUG] 转换后的 content 数量:', content.length)
+          
+          // 🔧 修复：如果 content 为空（所有 parts 都被过滤掉），回退到空文本
+          if (content.length === 0) {
+            return {
+              role,
+              content: [
+                {
+                  type: 'text',
+                  text: ''
+                }
+              ]
+            }
+          }
+          
+          return { role, content }
+        } else {
+          // 纯文本消息（旧格式兼容）
+          // OpenRouter 要求每条消息的 content 为数组形式，包含类型信息
+          const textContent = extractTextFromMessage(msg) || ''  // 确保不为 undefined
+          return {
+            role,
+            content: [
+              {
+                type: 'text',
+                text: textContent
+              }
+            ]
+          }
+        }
       })
       
-      console.log('OpenRouterService: 消息历史长度:', messages.length)
+      // 🔧 修复：过滤掉内容为空的消息（除了最后一条 assistant 消消息
+      // Anthropic 要求所有消息都必须有非空内容，除了可选的最后一条 assistant 消息
+      const filteredMessages = messages.filter((msg, index) => {
+        // 检查是否为最后一条消息
+        const isLastMessage = index === messages.length - 1
+        
+        // 如果是最后一条 assistant 消息，可以为空
+        if (isLastMessage && msg.role === 'assistant') {
+          return true
+        }
+        
+        // 其他消息必须有非空内容
+        if (!msg.content || !Array.isArray(msg.content) || msg.content.length === 0) {
+          console.warn('OpenRouterService: 过滤掉空消息', { role: msg.role, index })
+          return false
+        }
+        
+        // 检查是否所有 content 都是空文本
+        const hasNonEmptyContent = msg.content.some(c => {
+          if (c.type === 'text') {
+            return c.text && c.text.trim().length > 0
+          }
+          // 图片等非文本内容视为非空
+          return true
+        })
+        
+        if (!hasNonEmptyContent) {
+          console.warn('OpenRouterService: 过滤掉仅包含空文本的消息', { role: msg.role, index })
+          return false
+        }
+        
+        return true
+      })
+      
+      console.log(`OpenRouterService: 原始消息 ${messages.length} 条，过滤后 ${filteredMessages.length} 条`)
+      
+      // 🔧 修复：只有当 userMessage 有实际内容时才添加新的用户消息
+      // 重新生成回复时，userMessage 可能为空字符串，此时不应添加
+      if (Array.isArray(userMessage)) {
+        // 如果上层传入了 content 数组（兼容性），直接使用
+        filteredMessages.push({ role: 'user', content: userMessage })
+        console.log('OpenRouterService: 添加新用户消息（content 数组）')
+      } else if (userMessage && userMessage.trim()) {
+        // 只有当 userMessage 不为空时才添加
+        filteredMessages.push({ role: 'user', content: [{ type: 'text', text: userMessage }] })
+        console.log('OpenRouterService: 添加新用户消息（文本）:', userMessage.substring(0, 50))
+      } else {
+        console.log('OpenRouterService: 未添加新用户消息（userMessage 为空或仅空格）')
+      }
+      
+      console.log('OpenRouterService: 最终消息历史长度:', filteredMessages.length)
       
       const url = `${baseUrl}/chat/completions`
       const requestBody = {
         model: modelName,
-        messages: messages,
+        messages: filteredMessages,
+        modalities: ["image", "text"],  // 支持图片生成和文本响应
         stream: true
       }
       
+      // 🔍 调试：打印完整的请求体（包含图片数据）
+      console.log('🔍 [DEBUG] 最终请求体 (完整):', JSON.stringify(requestBody, null, 2))
+      
+      // 调试：在发送前验证 requestBody 格式并打印被截断的请求体（便于快速排查）
+      try {
+        validateOpenRouterRequestBody(requestBody)
+        console.log('✓ 请求体验证通过')
+      } catch (validationError) {
+        console.error('OpenRouterService: 请求体验证失败:', validationError)
+        throw validationError
+      }
+
       console.log('OpenRouterService: 正在发送请求到:', url)
+      // 打印 requestBody 的前 4KB，避免控制台被大量 base64 污染
+      try {
+        const jsonStr = JSON.stringify(requestBody)
+        const preview = jsonStr.length > 4096 ? jsonStr.slice(0, 4096) + '...<truncated>' : jsonStr
+        console.debug('OpenRouterService: 请求体预览:', preview)
+      } catch (e) {
+        console.debug('OpenRouterService: 无法序列化请求体用于预览', e)
+      }
       
       const fetchOptions = {
         method: 'POST',
@@ -229,7 +460,21 @@ export const OpenRouterService = {
       const reader = response.body.getReader()
       const decoder = new TextDecoder('utf-8')
       let buffer = ''
-      const MAX_BUFFER_SIZE = 10 * 1024 // 10KB 缓冲区限制
+      
+      // 缓冲区限制：防御性编程，避免恶意数据或协议错误导致内存溢出
+      // 
+      // 为什么需要限制：
+      // 1. 防止恶意服务器发送无限数据导致浏览器崩溃
+      // 2. 防止网络错误或 SSE 协议错误导致的内存泄漏
+      // 3. 保护低端设备的内存资源
+      //
+      // 限制大小说明：
+      // - 16MB 提供了充足的安全边际，避免正常使用时出现溢出
+      // - 支持多张高清图片的 Base64 编码数据（约 4-6 张）
+      // - 正常的 AI 文本响应通常 < 100KB
+      // - 包含图片的响应通常在 1-8MB 范围内
+      // - 如果单行数据 > 16MB，很可能是异常情况
+      const MAX_BUFFER_SIZE = 16 * 1024 * 1024 // 16MB
       
       while (true) {
         const { done, value } = await reader.read()
@@ -240,17 +485,22 @@ export const OpenRouterService = {
         }
         
         // 解码数据块
-        buffer += decoder.decode(value, { stream: true })
+        const chunk = decoder.decode(value, { stream: true })
+        buffer += chunk
         
-        // 防止恶意超长数据导致内存溢出
-        if (buffer.length > MAX_BUFFER_SIZE) {
-          console.error('OpenRouterService: 缓冲区超过限制，可能是恶意数据或网络异常')
-          throw new Error('SSE 缓冲区溢出，数据异常')
-        }
-        
-        // 按行分割
+        // 按行分割（SSE 格式：每行一个事件）
         const lines = buffer.split('\n')
-        buffer = lines.pop() || '' // 保留不完整的行
+        buffer = lines.pop() || '' // 保留不完整的行（可能跨越多个数据块）
+        
+        // 安全检查：防止单行数据过大
+        // 注意：这里检查的是"不完整的行"的大小，而不是总数据量
+        if (buffer.length > MAX_BUFFER_SIZE) {
+          console.error('OpenRouterService: 检测到异常大的单行数据')
+          console.error('  - 单行大小:', Math.round(buffer.length / 1024 / 1024), 'MB')
+          console.error('  - 这可能是恶意数据、网络错误或协议异常')
+          console.error('  - 前 200 字符:', buffer.substring(0, 200))
+          throw new Error(`SSE 单行数据过大 (>${Math.round(MAX_BUFFER_SIZE / 1024 / 1024)}MB)，可能存在安全风险`)
+        }
         
         for (const line of lines) {
           const trimmedLine = line.trim()
@@ -273,31 +523,84 @@ export const OpenRouterService = {
             try {
               const chunk = JSON.parse(jsonStr)
               
-              // 提取 content delta
-              const delta = chunk.choices?.[0]?.delta
-              const content = delta?.content
+              // 🔍 调试：打印完整的 chunk 结构（用于诊断图片接收问题）
+              console.log('🔍 [DEBUG] 完整 chunk 结构:', JSON.stringify(chunk, null, 2))
               
-              // 调试：记录 content 的类型
-              if (content) {
-                console.log('OpenRouterService: content 类型:', typeof content, Array.isArray(content) ? '(数组)' : '')
+              // 提取 delta
+              const delta = chunk.choices?.[0]?.delta
+              if (!delta) {
+                console.log('🔍 [DEBUG] delta 为空，跳过此 chunk')
+                continue
               }
               
-              // 处理结构化内容（如 Claude 的 content blocks）
+              // 🔍 处理图片数据（OpenRouter 图片生成响应）
+              // 根据官方文档：图片在 delta.images 数组中
+              if (delta.images && Array.isArray(delta.images)) {
+                console.log('🎨 [IMAGE] 检测到图片数据，数量:', delta.images.length)
+                for (const imageObj of delta.images) {
+                  if (imageObj.type === 'image_url' && imageObj.image_url?.url) {
+                    const imageUrl = imageObj.image_url.url
+                    console.log('✓ 接收到生成的图片 URL，前缀:', imageUrl.substring(0, 50))
+                    yield { type: 'image', content: imageUrl }
+                  }
+                }
+              }
+              
+              // 🔍 处理文本内容
+              const content = delta.content
+              
+              // 🔍 调试：详细记录 content 的类型和实际内容
+              if (content) {
+                const contentSize = JSON.stringify(content).length
+                console.log('🔍 [DEBUG] content 详情:', {
+                  类型: typeof content,
+                  是否数组: Array.isArray(content),
+                  大小: contentSize,
+                  内容预览: contentSize > 200 ? JSON.stringify(content).substring(0, 200) + '...' : content
+                })
+                
+                if (contentSize > 100000) {
+                  // 大型数据（可能包含图片）
+                  console.log('OpenRouterService: 接收到大型 content (', Math.round(contentSize / 1024), 'KB)', typeof content)
+                } else {
+                  console.log('OpenRouterService: content 类型:', typeof content, Array.isArray(content) ? '(数组)' : '')
+                }
+              } else {
+                console.log('🔍 [DEBUG] content 为空或 undefined')
+              }
+              
+              // 处理结构化内容（如 Claude 的 content blocks 或包含图片的响应）
               if (Array.isArray(content)) {
-                // 如果 content 是数组（如 Claude API），提取 text 类型的 block
+                console.log('🔍 [DEBUG] content 是数组，长度:', content.length)
+                // 如果 content 是数组，可能包含文本和图片
                 for (const block of content) {
+                  console.log('🔍 [DEBUG] 处理 block:', { type: block.type, keys: Object.keys(block) })
+                  
                   if (block.type === 'text' && block.text) {
-                    yield block.text
+                    yield { type: 'text', content: block.text }
+                  } else if (block.type === 'image_url' && block.image_url) {
+                    // 图片 block
+                    console.log('✓ 接收到图片 URL')
+                    yield { type: 'image', content: block.image_url.url }
                   } else {
-                    console.warn('OpenRouterService: 跳过非文本 block:', block.type)
+                    console.warn('OpenRouterService: 跳过未知 block 类型:', block.type)
                   }
                 }
               } else if (typeof content === 'string' && content) {
                 // 如果 content 是字符串（标准格式）
-                yield content
-              } else if (content && typeof content === 'object' && content.text) {
-                // 如果 content 是对象且包含 text 字段
-                yield content.text
+                console.log('🔍 [DEBUG] content 是字符串，yielding text')
+                yield { type: 'text', content }
+              } else if (content && typeof content === 'object') {
+                console.log('🔍 [DEBUG] content 是对象:', Object.keys(content))
+                // 如果 content 是对象
+                if (content.text) {
+                  yield { type: 'text', content: content.text }
+                } else if (content.image_url) {
+                  console.log('✓ 接收到图片 URL')
+                  yield { type: 'image', content: content.image_url.url || content.image_url }
+                } else {
+                  console.warn('OpenRouterService: 未知的 content 格式:', content)
+                }
               } else if (content) {
                 console.warn('OpenRouterService: 未知的 content 格式:', content)
               }

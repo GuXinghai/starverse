@@ -13,6 +13,7 @@ import { useAppStore } from './stores'
 import { useChatStore } from './stores/chatStore'
 // @ts-ignore - aiChatService.js is a JavaScript file
 import { aiChatService } from './services/aiChatService'
+import { ipcRendererBridge } from './utils/electronBridge'
 
 console.log('✓ 依赖导入成功')
 console.log('  - createApp:', typeof createApp)
@@ -70,12 +71,16 @@ console.log('✓ Pinia 注册成功')
   app.mount('#app').$nextTick(async () => {
     console.log('✓✓✓ 应用挂载成功！✓✓✓')
   
-    // Use contextBridge
-    window.ipcRenderer.on('main-process-message', (_event, message) => {
-      console.log('收到主进程消息:', message)
-    })
+    // Use contextBridge (guarded for non-Electron environments)
+    if (ipcRendererBridge?.on) {
+      ipcRendererBridge.on('main-process-message', (_event: unknown, message: unknown) => {
+        console.log('收到主进程消息:', message)
+      })
+      console.log('✓ IPC 监听器设置完成')
+    } else {
+      console.log('ℹ️ IPC bridge 未检测到，跳过主进程消息监听（可能运行在纯浏览器环境）。')
+    }
   
-    console.log('✓ IPC 监听器设置完成')
     console.log('================================================')
     console.log('🎉 应用启动完成！准备就绪！')
     console.log('================================================')

@@ -8,10 +8,15 @@ import { useAppStore } from '../stores'
 // @ts-ignore - aiChatService.js is a JavaScript file
 import { aiChatService } from '../services/aiChatService'
 
+// 多模态工具函数
+import { extractTextFromMessage } from '../types/chat'
+import { electronApiBridge, isUsingElectronApiFallback } from '../utils/electronBridge'
+
 import FavoriteModelSelector from './FavoriteModelSelector.vue'
 import QuickModelSearch from './QuickModelSearch.vue'
 import AdvancedModelPickerModal from './AdvancedModelPickerModal.vue'
 import ContentRenderer from './ContentRenderer.vue'
+import AttachmentPreview from './AttachmentPreview.vue'
 
 // Props
 const props = defineProps<{
@@ -23,6 +28,59 @@ const appStore = useAppStore()
 const draftInput = ref('')
 const chatContainer = ref<HTMLElement>()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+
+// ========== 多模态附件管理 ==========
+const pendingAttachments = ref<string[]>([])
+const MAX_IMAGE_SIZE_MB = 10  // 最大图片大小（MB）
+const MAX_IMAGES_PER_MESSAGE = 5  // 单条消息最大图片数量
+
+// 选择图片
+const handleSelectImage = async () => {
+  try {
+    // 检查是否已达到最大数量
+    if (pendingAttachments.value.length >= MAX_IMAGES_PER_MESSAGE) {
+      alert(`每条消息最多只能添加 ${MAX_IMAGES_PER_MESSAGE} 张图片`)
+      return
+    }
+
+    if (!electronApiBridge?.selectImage || isUsingElectronApiFallback) {
+      alert('当前环境不支持选择图片，请在桌面应用中使用此功能。')
+      console.warn('handleSelectImage: electronAPI bridge 不可用，已提示用户。')
+      return
+    }
+    
+    const dataUri = await electronApiBridge.selectImage()
+    
+    // 用户取消选择
+    if (!dataUri) {
+      console.log('ℹ️ 用户取消了图片选择')
+      return
+    }
+    
+    // 估算图片大小（base64 编码后的大小）
+    const base64Part = dataUri.split(',')[1]
+    const sizeInBytes = (base64Part.length * 3) / 4
+    const sizeInMB = sizeInBytes / (1024 * 1024)
+    
+    // 检查文件大小
+    if (sizeInMB > MAX_IMAGE_SIZE_MB) {
+      alert(`图片文件过大（${sizeInMB.toFixed(2)} MB），请选择小于 ${MAX_IMAGE_SIZE_MB} MB 的图片`)
+      return
+    }
+    
+    pendingAttachments.value.push(dataUri)
+    console.log('✓ 图片已添加到待发送列表，当前数量:', pendingAttachments.value.length, '大小:', sizeInMB.toFixed(2), 'MB')
+  } catch (error) {
+    console.error('❌ 选择图片失败:', error)
+    alert('选择图片失败，请重试')
+  }
+}
+
+// 移除附件
+const removeAttachment = (index: number) => {
+  pendingAttachments.value.splice(index, 1)
+  console.log('✓ 已移除附件，剩余数量:', pendingAttachments.value.length)
+}
 
 // ========== 高级模型选择器状态 ==========
 const showAdvancedModelPicker = ref(false)
@@ -50,6 +108,7 @@ const isComponentActive = computed(() => {
 // 编辑状态管理
 const editingMessageId = ref<string | null>(null)
 const editingText = ref('')
+const editingImages = ref<string[]>([])  // 编辑时的图片列表（Base64 Data URIs）
 
 // 根据 conversationId 获取当前对话
 const currentConversation = computed(() => {
@@ -68,6 +127,27 @@ const displayModelName = computed(() => {
   // 例如："OpenAI: GPT-4" -> "GPT-4"
   //       "gpt-4-turbo" -> "gpt-4-turbo" (无冒号，保持不变)
   return nameWithoutProvider.replace(/^[^:：]+[:：]\s*/, '')
+})
+
+// 🔍 智能模型筛选：有图片时提示用户选择支持视觉的模型
+const needsVisionModel = computed(() => {
+  return pendingAttachments.value.length > 0
+})
+
+// 检查当前模型是否支持视觉
+const currentModelSupportsVision = computed(() => {
+  const modelId = currentConversation.value?.model
+  if (!modelId || !needsVisionModel.value) return true  // 无图片时不需要检查
+  
+  return aiChatService.supportsVision(appStore, modelId)
+})
+
+// 视觉模型警告提示
+const visionModelWarning = computed(() => {
+  if (!needsVisionModel.value) return ''
+  if (currentModelSupportsVision.value) return ''
+  
+  return '⚠️ 当前模型不支持图像，请选择支持视觉的模型（如 GPT-4o、Gemini 1.5+、Claude 3）'
 })
 
 // 判断消息是否正在流式接收中
@@ -127,6 +207,79 @@ const focusTextarea = () => {
 defineExpose({
   focusInput
 })
+
+// ========== 图像处理 ==========
+
+/**
+ * 处理图片点击：使用系统默认应用打开
+ */
+const handleImageClick = async (imageUrl: string) => {
+  // 优先使用 Electron API（桌面应用）
+  if (electronApiBridge.openImage) {
+    try {
+      const result = await electronApiBridge.openImage(imageUrl)
+      if (!result.success) {
+        console.error('❌ 使用系统应用打开图片失败:', result.error)
+        // 失败时降级到浏览器打开
+        window.open(imageUrl, '_blank')
+      }
+    } catch (error) {
+      console.error('❌ 调用 Electron API 失败:', error)
+      // 出错时降级到浏览器打开
+      window.open(imageUrl, '_blank')
+    }
+  } else {
+    // 如果不在 Electron 环境（如网页版），使用浏览器打开
+    window.open(imageUrl, '_blank')
+  }
+}
+
+/**
+ * 下载图片
+ */
+const handleDownloadImage = async (imageUrl: string, filename: string) => {
+  try {
+    // 如果是 data URI，直接下载
+    if (imageUrl.startsWith('data:')) {
+      const link = document.createElement('a')
+      link.href = imageUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      console.log('✓ 图片已下载（Data URI）:', filename)
+    } else {
+      // 如果是 HTTP(S) URL，需要先 fetch 然后下载
+      const response = await fetch(imageUrl)
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      // 释放 blob URL
+      window.URL.revokeObjectURL(url)
+      console.log('✓ 图片已下载（HTTP URL）:', filename)
+    }
+  } catch (error) {
+    console.error('❌ 下载图片失败:', error)
+    alert('下载图片失败，请尝试右键点击图片另存为')
+  }
+}
+
+/**
+ * 处理图片加载错误
+ */
+const handleImageLoadError = (event: Event) => {
+  const img = event.target as HTMLImageElement
+  console.error('❌ 图片加载失败:', img.src.substring(0, 100))
+  // 可以设置一个默认的错误图片
+  // img.src = '/path/to/error-image.png'
+}
 
 // ========== 生命周期管理 ==========
 
@@ -221,7 +374,12 @@ watch(draftInput, (newValue) => {
 })
 
 // 公共的发送消息逻辑（可被普通发送、重新生成、编辑后重发复用）
-const performSendMessage = async (userMessage?: string, customHistory?: any[]) => {
+/**
+ * 执行发送消息的核心逻辑
+ * @param userMessage - 用户消息文本（可选）
+ * @param messageParts - 用户消息的 parts 数组（可选，用于多模态消息）
+ */
+const performSendMessage = async (userMessage?: string, messageParts?: any[]) => {
   // ========== 🔒 固化上下文：在异步任务启动时捕获 conversationId ==========
   // 关键：必须在函数开始时立即捕获 props.conversationId
   // 防止在异步执行过程中（如标签切换）导致 props.conversationId 变化
@@ -272,33 +430,56 @@ const performSendMessage = async (userMessage?: string, customHistory?: any[]) =
   // ========== 设置状态为 'sending' 并开始流式请求 ==========
   chatStore.setConversationGenerationStatus(targetConversationId, 'sending')
 
+  // ========== 超时控制变量（在 try 外部声明以便在 catch/finally 中访问） ==========
+  let timeoutId: number | null = null
+  let hasReceivedData = false
+
   try {
     const conversationModel = currentConversation.value.model || chatStore.selectedModel
 
-    // 添加用户消息（如果提供）
-    if (userMessage) {
-      chatStore.addMessageToConversation(targetConversationId, {
-        role: 'user',
-        text: userMessage
+    // ========== 处理用户消息 ==========
+    // 如果提供了新的用户消息或消息 parts，添加到对话中
+    if (userMessage || messageParts) {
+      // 🔍 调试：打印接收到的参数
+      console.log('🔍 [DEBUG] performSendMessage 接收到的参数:', {
+        userMessage,
+        messageParts: messageParts ? JSON.stringify(messageParts, null, 2) : null
       })
+      
+      if (messageParts && messageParts.length > 0) {
+        chatStore.addMessageToConversation(targetConversationId, {
+          role: 'user',
+          parts: messageParts
+        })
+      } else if (userMessage) {
+        chatStore.addMessageToConversation(targetConversationId, {
+          role: 'user',
+          text: userMessage
+        })
+      }
       await nextTick()
       scrollToBottom()
     }
 
-    // 使用自定义历史记录或当前对话历史（去掉最后一条，因为还没有 AI 回复）
-    const historyForStream = customHistory || currentConversation.value.messages.slice(0, -1)
-
-    // 获取用户消息文本（用于传递给 API）
-    // 如果提供了 userMessage，使用它；否则从历史记录中获取最后一条用户消息
-    let userMessageText = userMessage
-    if (!userMessageText && historyForStream.length > 0) {
-      const lastMessage = historyForStream[historyForStream.length - 1]
-      if (lastMessage.role === 'user') {
-        userMessageText = lastMessage.text
-      }
+    // ========== 验证对话状态 ==========
+    // 确保对话历史中最后一条消息是用户消息
+    const currentMessages = currentConversation.value.messages
+    if (currentMessages.length === 0 || currentMessages[currentMessages.length - 1].role !== 'user') {
+      console.error('❌ 无法发送：对话历史中最后一条消息不是用户消息')
+      throw new Error('对话状态异常：最后一条消息不是用户消息')
     }
 
-    // 添加空的 AI 回复消息（用于流式填充）
+    // 获取最后一条用户消息
+    const lastUserMessage = currentMessages[currentMessages.length - 1]
+    const userMessageText = extractTextFromMessage(lastUserMessage)
+
+    console.log('📤 准备发送消息:', {
+      conversationId: targetConversationId,
+      messageCount: currentMessages.length,
+      userMessageText: userMessageText.substring(0, 50) + '...'
+    })
+
+    // ========== 添加 AI 占位消息 ==========
     chatStore.addMessageToConversation(targetConversationId, {
       role: 'model',
       text: ''
@@ -307,13 +488,39 @@ const performSendMessage = async (userMessage?: string, customHistory?: any[]) =
     await nextTick()
     scrollToBottom()
 
+    // ========== 构建请求历史 ==========
+    // 获取完整消息历史，去掉最后一条 AI 占位消息
+    const historyForStream = currentConversation.value.messages.slice(0, -1)
+
+    console.log('📜 构建请求历史:', {
+      totalMessages: currentConversation.value.messages.length,
+      historyLength: historyForStream.length,
+      lastHistoryRole: historyForStream[historyForStream.length - 1]?.role
+    })
+
+    // ========== 🔧 关键修复：确定是否需要将用户消息作为独立参数传递 ==========
+    // 场景1：发送新消息（userMessage 或 messageParts 有值）
+    //   - historyForStream 已包含新添加的用户消息
+    //   - 但某些 API 需要单独的 userMessage 参数
+    //   - 传递 userMessageText
+    // 场景2：重新生成回复（userMessage 和 messageParts 都为空）
+    //   - historyForStream 已包含现有的用户消息
+    //   - 不应该再次添加用户消息
+    //   - 传递空字符串，让服务从历史中获取
+    const userMessageForApi = (userMessage || messageParts) ? userMessageText : ''
+
+    console.log('📝 用户消息参数:', {
+      hasNewMessage: !!(userMessage || messageParts),
+      userMessageForApi: userMessageForApi ? userMessageForApi.substring(0, 50) + '...' : '(空 - 从历史获取)'
+    })
+
     // 发起流式请求（传入中止信号）
     // 使用新的 aiChatService 进行流式请求
     const stream = aiChatService.streamChatResponse(
       appStore,
       historyForStream,
       conversationModel,
-      userMessageText,
+      userMessageForApi,  // 🔧 使用计算后的值，而非直接的 userMessageText
       abortController.value.signal // 传递中止信号
     )
 
@@ -321,46 +528,120 @@ const performSendMessage = async (userMessage?: string, customHistory?: any[]) =
       throw new Error('流式响应不可用')
     }
 
+    // ========== 设置20秒超时机制 ==========
+    const TIMEOUT_MS = 20000 // 20秒超时
+    
+    const setupTimeout = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+      timeoutId = window.setTimeout(() => {
+        if (!hasReceivedData) {
+          console.warn('⏱️ 请求超时（20秒未收到响应），中止请求')
+          abortController.value?.abort()
+        }
+      }, TIMEOUT_MS)
+    }
+    
+    setupTimeout()
+
     // ========== 流式读取响应（使用固化的 conversationId） ==========
     let isFirstChunk = true
     for await (const chunk of stream) {
       // 【关键】第一次接收到数据时，切换到 'receiving' 状态
       // 使用固化的 targetConversationId 而非 props.conversationId
       if (isFirstChunk) {
+        hasReceivedData = true // 标记已接收到数据
+        if (timeoutId) {
+          clearTimeout(timeoutId) // 清除超时定时器
+          timeoutId = null
+        }
         chatStore.setConversationGenerationStatus(targetConversationId, 'receiving')
         console.log('✓ 开始接收流式响应，状态切换为 receiving')
         isFirstChunk = false
       }
 
-      const chunkText = chunk || ''
-      if (chunkText) {
-        // 使用固化的 targetConversationId 确保更新正确的对话
-        chatStore.appendTokenToMessage(targetConversationId, chunkText)
-        await nextTick()
-        scrollToBottom()
+      // 处理不同类型的 chunk（文本或图片）
+      if (typeof chunk === 'string') {
+        // 旧格式：纯文本字符串（向后兼容）
+        if (chunk) {
+          chatStore.appendTokenToMessage(targetConversationId, chunk)
+          await nextTick()
+          scrollToBottom()
+        }
+      } else if (chunk && typeof chunk === 'object') {
+        // 新格式：带类型的对象 { type: 'text' | 'image', content: '...' }
+        if (chunk.type === 'text' && chunk.content) {
+          chatStore.appendTokenToMessage(targetConversationId, chunk.content)
+          await nextTick()
+          scrollToBottom()
+        } else if (chunk.type === 'image' && chunk.content) {
+          // 接收到图片，添加到消息的 parts 中
+          chatStore.appendImageToMessage(targetConversationId, chunk.content)
+          await nextTick()
+          scrollToBottom()
+        }
       }
     }
 
     console.log('✓ 流式响应完成')
+    
+    // 清理超时定时器
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+      timeoutId = null
+    }
   } catch (error: any) {
+    // 清理超时定时器
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+      timeoutId = null
+    }
+    
     // ========== 错误处理：区分中止错误和其他错误 ==========
     // 检测中止错误的多种形式：
     // 1. 标准 AbortError
     // 2. Google AI SDK 的流中断错误
+    // 3. 超时引起的中止
     const isAbortError = 
       error.name === 'AbortError' || 
       (error.message && error.message.includes('Error reading from the stream')) ||
       (error.message && error.message.includes('aborted'))
     
-    if (isAbortError) {
+    const isTimeout = !hasReceivedData && isAbortError
+    
+    if (isTimeout) {
+      console.warn('⏱️ 请求超时：20秒内未收到服务器响应')
+      // 🚨 标记对话有错误
+      chatStore.setConversationError(targetConversationId, true)
+      
+      const conversation = currentConversation.value
+      if (conversation && conversation.messages.length > 0) {
+        const lastMessage = conversation.messages[conversation.messages.length - 1]
+        if (lastMessage && lastMessage.role === 'model') {
+          chatStore.updateMessage(targetConversationId, lastMessage.id, '⏱️ 请求超时：服务器在20秒内未响应，请检查网络连接或稍后重试。')
+        } else {
+          chatStore.addMessageToConversation(targetConversationId, {
+            role: 'model',
+            text: '⏱️ 请求超时：服务器在20秒内未响应，请检查网络连接或稍后重试。'
+          })
+        }
+      } else {
+        chatStore.addMessageToConversation(targetConversationId, {
+          role: 'model',
+          text: '⏱️ 请求超时：服务器在20秒内未响应，请检查网络连接或稍后重试。'
+        })
+      }
+    } else if (isAbortError) {
       console.log('ℹ️ 生成已中止（用户手动停止）')
       // 静默处理中止错误，不显示错误消息
       const conversation = currentConversation.value
       if (conversation && conversation.messages.length > 0) {
         const lastMessage = conversation.messages[conversation.messages.length - 1]
-        if (lastMessage && lastMessage.role === 'model' && !lastMessage.text) {
-          // 如果最后一条消息是空的 AI 消息，添加提示
-          lastMessage.text = '[已停止生成]'
+        const lastMessageText = extractTextFromMessage(lastMessage)
+        if (lastMessage && lastMessage.role === 'model' && !lastMessageText) {
+          // 如果最后一条消息是空的 AI 消息，使用 updateMessage 更新为提示
+          chatStore.updateMessage(targetConversationId, lastMessage.id, '[已停止生成]')
         }
       }
       // 中止不算错误，清除错误标记
@@ -378,7 +659,7 @@ const performSendMessage = async (userMessage?: string, customHistory?: any[]) =
       if (conversation && conversation.messages.length > 0) {
         const lastMessage = conversation.messages[conversation.messages.length - 1]
         if (lastMessage && lastMessage.role === 'model') {
-          lastMessage.text = `抱歉，发生了错误：${errorMessage}`
+          chatStore.updateMessage(targetConversationId, lastMessage.id, `抱歉，发生了错误：${errorMessage}`)
         } else {
           chatStore.addMessageToConversation(targetConversationId, {
             role: 'model',
@@ -416,15 +697,49 @@ const performSendMessage = async (userMessage?: string, customHistory?: any[]) =
 // 发送消息（从输入框）
 const sendMessage = async () => {
   const trimmedMessage = draftInput.value.trim()
+  const hasAttachments = pendingAttachments.value.length > 0
 
-  if (!trimmedMessage) {
+  // 必须有文本或附件
+  if (!trimmedMessage && !hasAttachments) {
     return
   }
 
-  await performSendMessage(trimmedMessage)
+  // 构建多模态消息的 parts 数组
+  const messageParts: any[] = []
   
-  // 清空输入框
+  // 先添加文本部分（如果有）
+  if (trimmedMessage) {
+    messageParts.push({
+      type: 'text',
+      text: trimmedMessage
+    })
+  }
+  
+  // 再添加图片部分（如果有）
+  for (const dataUri of pendingAttachments.value) {
+    messageParts.push({
+      type: 'image_url',
+      image_url: {
+        url: dataUri
+      }
+    })
+  }
+
+  console.log('📤 发送多模态消息:', {
+    textLength: trimmedMessage.length,
+    imageCount: pendingAttachments.value.length,
+    totalParts: messageParts.length
+  })
+  
+  // 🔍 调试：打印完整的 messageParts 结构
+  console.log('🔍 [DEBUG] messageParts 详情:', JSON.stringify(messageParts, null, 2))
+  
+  // 调用发送逻辑（传入 parts 而非纯文本）
+  await performSendMessage(trimmedMessage, messageParts)
+  
+  // 清空输入框和附件
   draftInput.value = ''
+  pendingAttachments.value = []
 }
 
 // ========== 停止生成 ==========
@@ -484,21 +799,58 @@ const handleRetryMessage = async (messageId: string) => {
     return
   }
   
-  // 注意：不传递 userMessage，因为用户消息已经存在
-  // 传递完整的历史记录（包括最后的用户消息）
-  await performSendMessage(undefined, messages)
+  // 🔧 修复：不需要传递 customHistory，performSendMessage 会自动使用当前对话的消息
+  await performSendMessage()
 }
 
 // 进入编辑模式
-const handleEditMessage = (messageId: string, currentText: string) => {
+const handleEditMessage = (messageId: string, message: any) => {
   editingMessageId.value = messageId
-  editingText.value = currentText
+  
+  // 提取文本和图片
+  if (message.parts && Array.isArray(message.parts)) {
+    // 新格式：从 parts 数组中提取
+    const textParts = message.parts.filter((p: any) => p.type === 'text')
+    const imageParts = message.parts.filter((p: any) => p.type === 'image_url')
+    
+    editingText.value = textParts.map((p: any) => p.text).join('\n')
+    editingImages.value = imageParts.map((p: any) => p.image_url.url)
+  } else {
+    // 旧格式兼容
+    editingText.value = extractTextFromMessage(message)
+    editingImages.value = []
+  }
 }
 
 // 取消编辑
 const handleCancelEdit = () => {
   editingMessageId.value = null
   editingText.value = ''
+  editingImages.value = []
+}
+
+// 移除编辑中的图片
+const handleRemoveEditingImage = (index: number) => {
+  editingImages.value.splice(index, 1)
+}
+
+// 添加图片到编辑中
+const handleAddImageToEdit = async () => {
+  if (!electronApiBridge?.selectImage || isUsingElectronApiFallback) {
+    alert('图片选择功能在当前环境下不可用（需要 Electron 环境）')
+    console.warn('handleAddImageToEdit: electronAPI bridge 不可用')
+    return
+  }
+  
+  try {
+    const imageDataUri = await electronApiBridge.selectImage()
+    if (imageDataUri) {
+      editingImages.value.push(imageDataUri)
+      console.log('✓ 已添加图片到编辑，当前数量:', editingImages.value.length)
+    }
+  } catch (error) {
+    console.error('选择图片失败:', error)
+  }
 }
 
 // 保存编辑并重新提交
@@ -506,7 +858,11 @@ const handleSaveEdit = async (messageId: string) => {
   // ========== 🔒 固化上下文 ==========
   const targetConversationId = props.conversationId
   
-  if (!editingText.value.trim()) {
+  const hasText = editingText.value.trim()
+  const hasImages = editingImages.value.length > 0
+  
+  // 必须有文本或图片
+  if (!hasText && !hasImages) {
     handleCancelEdit()
     return
   }
@@ -520,8 +876,29 @@ const handleSaveEdit = async (messageId: string) => {
     return
   }
 
-  // 更新消息内容（使用固化的 conversationId）
-  chatStore.updateMessage(targetConversationId, messageId, editingText.value.trim())
+  // 构建新的 parts 数组
+  const newParts: any[] = []
+  
+  // 添加文本部分
+  if (hasText) {
+    newParts.push({
+      type: 'text',
+      text: editingText.value.trim()
+    })
+  }
+  
+  // 添加图片部分
+  for (const imageDataUri of editingImages.value) {
+    newParts.push({
+      type: 'image_url',
+      image_url: {
+        url: imageDataUri
+      }
+    })
+  }
+
+  // 更新消息内容为新的 parts 格式
+  chatStore.updateMessageParts(targetConversationId, messageId, newParts)
   
   // 截断该消息之后的所有消息
   const nextMessageId = messages[messageIndex + 1]?.id
@@ -535,11 +912,8 @@ const handleSaveEdit = async (messageId: string) => {
   // 等待 DOM 更新
   await nextTick()
 
-  // 重新发送（使用更新后的历史记录）
-  // 注意：消息已经更新，所以传递完整的历史记录（包括更新后的用户消息）
-  // 不传递 userMessage 参数，避免重复添加
-  const updatedMessages = currentConversation.value?.messages || []
-  await performSendMessage(undefined, updatedMessages)
+  // 🔧 修复：重新发送时不需要传递参数，performSendMessage 会自动使用当前对话的消息
+  await performSendMessage()
 }
 
 </script>
@@ -623,13 +997,67 @@ const handleSaveEdit = async (messageId: string) => {
                   v-if="editingMessageId === message.id"
                   class="w-full"
                 >
+                  <!-- 编辑中的图片预览 -->
+                  <div v-if="editingImages.length > 0" class="flex flex-wrap gap-2 mb-3">
+                    <div
+                      v-for="(imageUrl, imgIndex) in editingImages"
+                      :key="imgIndex"
+                      class="relative group"
+                    >
+                      <img
+                        :src="imageUrl"
+                        alt="编辑中的图片"
+                        class="w-24 h-24 object-cover rounded border border-gray-300"
+                      />
+                      <!-- 删除按钮 -->
+                      <button
+                        @click="handleRemoveEditingImage(imgIndex)"
+                        class="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="移除图片"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                      </button>
+                    </div>
+                    
+                    <!-- 添加图片按钮 -->
+                    <button
+                      @click="handleAddImageToEdit"
+                      class="w-24 h-24 border-2 border-dashed border-gray-300 hover:border-blue-500 rounded flex items-center justify-center transition-colors"
+                      title="添加图片"
+                    >
+                      <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  <!-- 如果没有图片，显示添加图片按钮 -->
+                  <div v-else class="mb-2">
+                    <button
+                      @click="handleAddImageToEdit"
+                      class="px-3 py-1.5 text-sm border border-gray-300 hover:bg-gray-50 rounded flex items-center gap-2 transition-colors"
+                      title="添加图片"
+                    >
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                      </svg>
+                      添加图片
+                    </button>
+                  </div>
+                  
+                  <!-- 文本编辑框 -->
                   <textarea
                     v-model="editingText"
                     class="w-full px-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                     rows="3"
+                    placeholder="编辑消息文本..."
                     @keydown.enter.ctrl="handleSaveEdit(message.id)"
                     @keydown.esc="handleCancelEdit"
                   ></textarea>
+                  
+                  <!-- 操作按钮 -->
                   <div class="flex gap-2 mt-2">
                     <button
                       @click="handleSaveEdit(message.id)"
@@ -649,28 +1077,99 @@ const handleSaveEdit = async (messageId: string) => {
                 <!-- 正常显示模式 -->
                 <div
                   v-else
-                  class="rounded-lg px-4 py-2 shadow-sm relative"
+                  class="rounded-lg px-4 py-2 shadow-sm relative group"
                   :class="message.role === 'user' ? 'bg-blue-500 text-white' : 'bg-white text-gray-800 border border-gray-200'"
                 >
-                  <!-- 流式传输中：显示纯文本（性能优化） -->
-                  <p 
-                    v-if="isMessageStreaming(index)" 
-                    class="text-sm whitespace-pre-wrap"
+                  <!-- 🔄 多模态内容渲染：循环 message.parts 数组 -->
+                  <div 
+                    v-if="message.parts && message.parts.length > 0"
+                    class="space-y-2"
                   >
-                    {{ message.text }}
-                  </p>
+                    <template v-for="(part, partIndex) in message.parts" :key="partIndex">
+                      <!-- 文本 part：流式传输中显示纯文本，完成后渲染 Markdown -->
+                      <div v-if="part.type === 'text'">
+                        <!-- 流式传输中：纯文本 -->
+                        <p 
+                          v-if="isMessageStreaming(index) && partIndex === message.parts.length - 1"
+                          class="text-sm whitespace-pre-wrap"
+                        >
+                          {{ part.text }}
+                        </p>
+                        
+                        <!-- AI 消息完成后：ContentRenderer 渲染 Markdown/LaTeX -->
+                        <ContentRenderer 
+                          v-else-if="message.role === 'model'"
+                          :content="part.text"
+                          class="text-sm"
+                        />
+                        
+                        <!-- 用户消息：纯文本 -->
+                        <p v-else class="text-sm whitespace-pre-wrap">
+                          {{ part.text }}
+                        </p>
+                      </div>
+                      
+                      <!-- 图像 part：显示图片 -->
+                      <div 
+                        v-else-if="part.type === 'image_url'"
+                        class="my-2 relative inline-block group"
+                      >
+                        <img 
+                          :src="part.image_url.url"
+                          :alt="message.role === 'user' ? '用户上传的图片' : 'AI 生成的图片'"
+                          class="max-w-full max-h-96 rounded-lg shadow-md cursor-pointer hover:opacity-90 transition-opacity"
+                          @click="handleImageClick(part.image_url.url)"
+                          @error="handleImageLoadError"
+                        />
+                        <!-- 图片操作按钮（悬停显示，浮在图片右上角） -->
+                        <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                          <!-- 在新窗口打开 -->
+                          <button
+                            @click.stop="handleImageClick(part.image_url.url)"
+                            class="p-2 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-sm transition-colors"
+                            title="在新窗口打开"
+                          >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                            </svg>
+                          </button>
+                          <!-- 下载图片 -->
+                          <button
+                            @click.stop="handleDownloadImage(part.image_url.url, `image-${partIndex}.jpg`)"
+                            class="p-2 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-sm transition-colors"
+                            title="下载图片"
+                          >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
                   
-                  <!-- 流式完成或用户消息：使用 ContentRenderer 渲染 Markdown/LaTeX -->
-                  <ContentRenderer 
-                    v-else-if="!isMessageStreaming(index) && message.role === 'model'"
-                    :content="message.text"
-                    class="text-sm"
-                  />
-                  
-                  <!-- 用户消息：纯文本显示 -->
-                  <p v-else-if="!isMessageStreaming(index)" class="text-sm whitespace-pre-wrap">
-                    {{ message.text }}
-                  </p>
+                  <!-- 向后兼容：如果没有 parts，使用旧的渲染逻辑 -->
+                  <div v-else>
+                    <!-- 流式传输中：显示纯文本（性能优化） -->
+                    <p 
+                      v-if="isMessageStreaming(index)" 
+                      class="text-sm whitespace-pre-wrap"
+                    >
+                      {{ extractTextFromMessage(message) }}
+                    </p>
+                    
+                    <!-- 流式完成或用户消息：使用 ContentRenderer 渲染 Markdown/LaTeX -->
+                    <ContentRenderer 
+                      v-else-if="!isMessageStreaming(index) && message.role === 'model'"
+                      :content="extractTextFromMessage(message)"
+                      class="text-sm"
+                    />
+                    
+                    <!-- 用户消息：纯文本显示 -->
+                    <p v-else-if="!isMessageStreaming(index)" class="text-sm whitespace-pre-wrap">
+                      {{ extractTextFromMessage(message) }}
+                    </p>
+                  </div>
                   
                   <!-- 操作按钮（正常模式 - 悬停显示） -->
                   <div 
@@ -680,7 +1179,7 @@ const handleSaveEdit = async (messageId: string) => {
                     <!-- 用户消息：编辑 -->
                     <button
                       v-if="message.role === 'user'"
-                      @click="handleEditMessage(message.id, message.text)"
+                      @click="handleEditMessage(message.id, message)"
                       class="p-1.5 hover:bg-gray-100 rounded transition-colors"
                       title="编辑"
                     >
@@ -781,7 +1280,44 @@ const handleSaveEdit = async (messageId: string) => {
       <!-- 输入区 -->
       <div class="bg-white border-t border-gray-200 p-4">
         <div class="w-full max-w-none">
+          <!-- 视觉模型警告 -->
+          <div 
+            v-if="visionModelWarning"
+            class="mb-3 p-3 bg-yellow-50 border border-yellow-300 rounded-lg flex items-start gap-2"
+          >
+            <svg class="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+            <p class="text-sm text-yellow-800">{{ visionModelWarning }}</p>
+          </div>
+          
+          <!-- 附件预览区域 -->
+          <div 
+            v-if="pendingAttachments.length > 0"
+            class="mb-3 flex flex-wrap gap-2"
+          >
+            <AttachmentPreview
+              v-for="(dataUri, index) in pendingAttachments"
+              :key="index"
+              :image-data-uri="dataUri"
+              :alt-text="`附件 ${index + 1}`"
+              @remove="removeAttachment(index)"
+            />
+          </div>
+          
           <div class="flex items-end gap-3">
+            <!-- 图片选择按钮 -->
+            <button
+              @click="handleSelectImage"
+              :disabled="currentConversation?.generationStatus !== 'idle'"
+              class="flex-none shrink-0 p-3 text-gray-600 hover:text-blue-500 hover:bg-blue-50 disabled:text-gray-300 disabled:cursor-not-allowed rounded-lg transition-colors"
+              title="添加图片"
+            >
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+              </svg>
+            </button>
+            
             <div class="flex-1 min-w-0">
               <textarea
                 ref="textareaRef"
@@ -799,9 +1335,9 @@ const handleSaveEdit = async (messageId: string) => {
             <button
               v-if="currentConversation?.generationStatus === 'idle'"
               @click="sendMessage"
-              :disabled="!currentConversation || !draftInput.trim()"
+              :disabled="!currentConversation || (!draftInput.trim() && pendingAttachments.length === 0) || (needsVisionModel && !currentModelSupportsVision)"
               class="flex-none shrink-0 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg transition-colors flex items-center justify-center"
-              title="发送消息"
+              :title="visionModelWarning || '发送消息'"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>

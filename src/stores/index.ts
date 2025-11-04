@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { electronStore as persistenceStore, isUsingElectronStoreFallback } from '../utils/electronBridge'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -23,6 +24,9 @@ export const useAppStore = defineStore('app', () => {
   // OpenRouter Base URL (可选，默认为官方地址)
   const openRouterBaseUrl = ref<string>('https://openrouter.ai/api/v1')
   
+  // 默认模型 (用于新对话)
+  const defaultModel = ref<string>('openrouter/auto')
+  
   // 向后兼容：保留原有的 apiKey 引用（指向 geminiApiKey）
   const apiKey = ref<string>('')
   
@@ -34,19 +38,24 @@ export const useAppStore = defineStore('app', () => {
   // 初始化 - 从 electron-store 加载所有配置
   const initializeStore = async () => {
     try {
+      if (isUsingElectronStoreFallback) {
+        console.warn('appStore: electronStore bridge unavailable; using in-memory persistence. Settings reset on reload.')
+      }
       // 并行加载所有配置，提升启动速度
       const [
         savedProvider,
         savedGeminiKey,
         savedOpenRouterKey,
         savedOpenRouterBaseUrl,
+        savedDefaultModel,
         legacyApiKey
       ] = await Promise.all([
-        window.electronStore.get('activeProvider'),
-        window.electronStore.get('geminiApiKey'),
-        window.electronStore.get('openRouterApiKey'),
-        window.electronStore.get('openRouterBaseUrl'),
-        window.electronStore.get('apiKey')
+        persistenceStore.get('activeProvider'),
+        persistenceStore.get('geminiApiKey'),
+        persistenceStore.get('openRouterApiKey'),
+        persistenceStore.get('openRouterBaseUrl'),
+        persistenceStore.get('defaultModel'),
+        persistenceStore.get('apiKey')
       ])
       
       // 加载 API 提供商选择
@@ -74,12 +83,18 @@ export const useAppStore = defineStore('app', () => {
         console.log('appStore.initializeStore - OpenRouter Base URL 已加载:', savedOpenRouterBaseUrl)
       }
       
+      // 加载默认模型
+      if (savedDefaultModel) {
+        defaultModel.value = savedDefaultModel
+        console.log('appStore.initializeStore - 默认模型已加载:', savedDefaultModel)
+      }
+      
       // 向后兼容：如果没有新配置，尝试加载旧的 apiKey
       if (!savedGeminiKey && legacyApiKey) {
         geminiApiKey.value = legacyApiKey
         apiKey.value = legacyApiKey
         // 迁移到新格式
-        await window.electronStore.set('geminiApiKey', legacyApiKey)
+        await persistenceStore.set('geminiApiKey', legacyApiKey)
         console.log('appStore.initializeStore - 已迁移旧的 API Key 到 geminiApiKey')
       }
     } catch (error) {
@@ -96,7 +111,7 @@ export const useAppStore = defineStore('app', () => {
   // 保存 API 提供商选择
   const saveActiveProvider = async (provider: AIProvider) => {
     try {
-      await window.electronStore.set('activeProvider', provider)
+      await persistenceStore.set('activeProvider', provider)
       activeProvider.value = provider
       console.log('✓ 已保存 API 提供商:', provider)
       return true
@@ -109,10 +124,10 @@ export const useAppStore = defineStore('app', () => {
   // 保存 Gemini API Key
   const saveGeminiApiKey = async (key: string) => {
     try {
-      await window.electronStore.set('geminiApiKey', key)
+      await persistenceStore.set('geminiApiKey', key)
       geminiApiKey.value = key
       apiKey.value = key // 向后兼容
-      await window.electronStore.set('apiKey', key) // 向后兼容
+      await persistenceStore.set('apiKey', key) // 向后兼容
       console.log('✓ 已保存 Gemini API Key')
       return true
     } catch (error) {
@@ -124,7 +139,7 @@ export const useAppStore = defineStore('app', () => {
   // 保存 OpenRouter API Key
   const saveOpenRouterApiKey = async (key: string) => {
     try {
-      await window.electronStore.set('openRouterApiKey', key)
+      await persistenceStore.set('openRouterApiKey', key)
       openRouterApiKey.value = key
       console.log('✓ 已保存 OpenRouter API Key')
       return true
@@ -137,12 +152,25 @@ export const useAppStore = defineStore('app', () => {
   // 保存 OpenRouter Base URL
   const saveOpenRouterBaseUrl = async (url: string) => {
     try {
-      await window.electronStore.set('openRouterBaseUrl', url)
+      await persistenceStore.set('openRouterBaseUrl', url)
       openRouterBaseUrl.value = url
       console.log('✓ 已保存 OpenRouter Base URL:', url)
       return true
     } catch (error) {
       console.error('保存 OpenRouter Base URL 失败:', error)
+      return false
+    }
+  }
+  
+  // 保存默认模型
+  const saveDefaultModel = async (model: string) => {
+    try {
+      await persistenceStore.set('defaultModel', model)
+      defaultModel.value = model
+      console.log('✓ 已保存默认模型:', model)
+      return true
+    } catch (error) {
+      console.error('保存默认模型失败:', error)
       return false
     }
   }
@@ -176,6 +204,7 @@ export const useAppStore = defineStore('app', () => {
     geminiApiKey,
     openRouterApiKey,
     openRouterBaseUrl,
+    defaultModel,
     // 向后兼容
     apiKey,
     chatMessages,
@@ -189,6 +218,7 @@ export const useAppStore = defineStore('app', () => {
     saveGeminiApiKey,
     saveOpenRouterApiKey,
     saveOpenRouterBaseUrl,
+    saveDefaultModel,
     saveApiKey, // 向后兼容
     // 消息管理
     addMessage,
