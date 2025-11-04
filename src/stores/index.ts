@@ -8,6 +8,7 @@ export interface ChatMessage {
 }
 
 export type AIProvider = 'Gemini' | 'OpenRouter'
+export type WebSearchEngine = 'native' | 'exa' | 'undefined'
 
 export const useAppStore = defineStore('app', () => {
   // ========== 多提供商配置状态 ==========
@@ -26,6 +27,9 @@ export const useAppStore = defineStore('app', () => {
   
   // 默认模型 (用于新对话)
   const defaultModel = ref<string>('openrouter/auto')
+  
+  // Web 搜索引擎配置
+  const webSearchEngine = ref<WebSearchEngine>('undefined')
   
   // 向后兼容：保留原有的 apiKey 引用（指向 geminiApiKey）
   const apiKey = ref<string>('')
@@ -48,6 +52,7 @@ export const useAppStore = defineStore('app', () => {
         savedOpenRouterKey,
         savedOpenRouterBaseUrl,
         savedDefaultModel,
+        savedWebSearchEngine,
         legacyApiKey
       ] = await Promise.all([
         persistenceStore.get('activeProvider'),
@@ -55,6 +60,7 @@ export const useAppStore = defineStore('app', () => {
         persistenceStore.get('openRouterApiKey'),
         persistenceStore.get('openRouterBaseUrl'),
         persistenceStore.get('defaultModel'),
+        persistenceStore.get('webSearchEngine'),
         persistenceStore.get('apiKey')
       ])
       
@@ -87,6 +93,12 @@ export const useAppStore = defineStore('app', () => {
       if (savedDefaultModel) {
         defaultModel.value = savedDefaultModel
         console.log('appStore.initializeStore - 默认模型已加载:', savedDefaultModel)
+      }
+
+      // 加载 Web 搜索引擎配置
+      if (savedWebSearchEngine && (savedWebSearchEngine === 'native' || savedWebSearchEngine === 'exa' || savedWebSearchEngine === 'undefined')) {
+        webSearchEngine.value = savedWebSearchEngine
+        console.log('appStore.initializeStore - Web 搜索引擎已加载:', savedWebSearchEngine)
       }
       
       // 向后兼容：如果没有新配置，尝试加载旧的 apiKey
@@ -174,6 +186,18 @@ export const useAppStore = defineStore('app', () => {
       return false
     }
   }
+
+  const saveWebSearchEngine = async (engine: WebSearchEngine) => {
+    try {
+      await persistenceStore.set('webSearchEngine', engine)
+      webSearchEngine.value = engine
+      console.log('✓ 已保存 Web 搜索引擎:', engine)
+      return true
+    } catch (error) {
+      console.error('保存 Web 搜索引擎失败:', error)
+      return false
+    }
+  }
   
   // 向后兼容：保留原有的 saveApiKey 方法（实际保存到 geminiApiKey）
   const saveApiKey = async (key: string) => {
@@ -205,6 +229,7 @@ export const useAppStore = defineStore('app', () => {
     openRouterApiKey,
     openRouterBaseUrl,
     defaultModel,
+  webSearchEngine,
     // 向后兼容
     apiKey,
     chatMessages,
@@ -219,6 +244,7 @@ export const useAppStore = defineStore('app', () => {
     saveOpenRouterApiKey,
     saveOpenRouterBaseUrl,
     saveDefaultModel,
+  saveWebSearchEngine,
     saveApiKey, // 向后兼容
     // 消息管理
     addMessage,

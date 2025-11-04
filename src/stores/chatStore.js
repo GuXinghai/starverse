@@ -12,6 +12,7 @@ import {
   addVersionToBranch,
   switchVersion,
   deleteBranch,
+  removeBranchVersion as removeBranchVersionFromTree,
   getCurrentPathMessages,
   appendTokenToBranch,
   appendImageToBranch,
@@ -185,7 +186,9 @@ export const useChatStore = defineStore('chat', () => {
               ...conv,
               generationStatus: 'idle', // 重置状态
               draft: conv.draft || '',
-              tree: restoreTree(conv.tree) // 使用 restoreTree 确保 Map 响应式
+              tree: restoreTree(conv.tree), // 使用 restoreTree 确保 Map 响应式
+              webSearchEnabled: conv.webSearchEnabled ?? false,
+              webSearchLevel: conv.webSearchLevel || 'normal'
             }
           }
           
@@ -214,7 +217,9 @@ export const useChatStore = defineStore('chat', () => {
             generationStatus: 'idle',
             draft: conv.draft || '',
             createdAt: conv.createdAt || Date.now(),
-            updatedAt: conv.updatedAt || Date.now()
+            updatedAt: conv.updatedAt || Date.now(),
+            webSearchEnabled: false,
+            webSearchLevel: 'normal'
           }
         })
         
@@ -326,7 +331,9 @@ export const useChatStore = defineStore('chat', () => {
       generationStatus: 'idle',
       draft: '',
       createdAt: Date.now(),
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      webSearchEnabled: false,
+      webSearchLevel: 'normal'
     }
     
     // 添加到数组开头
@@ -419,6 +426,42 @@ export const useChatStore = defineStore('chat', () => {
     conversation.draft = draftText
     // 注意：这里不调用 saveConversations，避免频繁写入
     // 草稿会在其他操作（如发送消息、切换标签）时自动保存
+  }
+
+  const setConversationWebSearchEnabled = (conversationId, enabled) => {
+    const conversation = conversations.value.find(conv => conv.id === conversationId)
+
+    if (!conversation) {
+      console.error('❌ 找不到对话:', conversationId)
+      return
+    }
+
+    conversation.webSearchEnabled = Boolean(enabled)
+    if (!conversation.webSearchLevel) {
+      conversation.webSearchLevel = 'normal'
+    }
+    conversation.updatedAt = Date.now()
+    saveConversations()
+  }
+
+  const setConversationWebSearchLevel = (conversationId, level) => {
+    const allowedLevels = ['quick', 'normal', 'deep']
+
+    if (!allowedLevels.includes(level)) {
+      console.warn('⚠️ 无效的 Web 搜索挡位:', level)
+      return
+    }
+
+    const conversation = conversations.value.find(conv => conv.id === conversationId)
+
+    if (!conversation) {
+      console.error('❌ 找不到对话:', conversationId)
+      return
+    }
+
+    conversation.webSearchLevel = level
+    conversation.updatedAt = Date.now()
+    saveConversations()
   }
 
   /**
@@ -733,7 +776,7 @@ export const useChatStore = defineStore('chat', () => {
    * @param {Array} parts - 新版本内容
    * @param {boolean} inheritChildren - 是否继承子分支（编辑时为 true，重新生成时为 false）
    */
-  const addBranchVersion = (conversationId, branchId, parts, inheritChildren = false) => {
+  const addBranchVersion = (conversationId, branchId, parts, inheritChildren = false, metadata = undefined) => {
     const conversation = conversations.value.find(c => c.id === conversationId)
     if (!conversation) {
       console.error('❌ 找不到对话:', conversationId)
@@ -741,7 +784,7 @@ export const useChatStore = defineStore('chat', () => {
     }
     
     try {
-      const versionId = addVersionToBranch(conversation.tree, branchId, parts, inheritChildren)
+      const versionId = addVersionToBranch(conversation.tree, branchId, parts, inheritChildren, metadata)
       if (versionId) {
         saveConversations()
       }
@@ -812,11 +855,25 @@ export const useChatStore = defineStore('chat', () => {
   /**
    * 更新分支内容
    */
-  const updateBranchParts = (conversationId, branchId, parts) => {
+  const updateBranchParts = (conversationId, branchId, parts, options = {}) => {
     const conversation = conversations.value.find(c => c.id === conversationId)
     if (!conversation) return false
     
-    const success = updateBranchContent(conversation.tree, branchId, parts)
+    const success = updateBranchContent(conversation.tree, branchId, parts, options)
+    if (success) {
+      saveConversations()
+    }
+    return success
+  }
+
+  /**
+   * 移除分支上的指定版本
+   */
+  const removeBranchVersion = (conversationId, branchId, versionId) => {
+    const conversation = conversations.value.find(c => c.id === conversationId)
+    if (!conversation) return false
+
+    const success = removeBranchVersionFromTree(conversation.tree, branchId, versionId)
     if (success) {
       saveConversations()
     }
@@ -860,6 +917,8 @@ export const useChatStore = defineStore('chat', () => {
     openConversationInTab,
     closeConversationTab,
     updateConversationDraft,
+  setConversationWebSearchEnabled,
+  setConversationWebSearchLevel,
     deleteConversation,
     renameConversation,
     
@@ -871,6 +930,7 @@ export const useChatStore = defineStore('chat', () => {
     appendTokenToBranchVersion,
     appendImageToBranchVersion,
     updateBranchParts,
+  removeBranchVersion,
     getConversationMessages,
     
     // Actions - 状态管理

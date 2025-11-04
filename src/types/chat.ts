@@ -31,6 +31,25 @@ export type ImagePart = {
 export type MessagePart = TextPart | ImagePart;
 
 /**
+ * 网络搜索挡位
+ */
+export type WebSearchLevel = 'quick' | 'normal' | 'deep';
+
+/**
+ * 消息版本的附加元数据
+ * 用于记录错误状态、错误类型等信息，帮助 UI 在重新生成时做出针对性的处理。
+ */
+export interface MessageVersionMetadata {
+  isError?: boolean;
+  errorCode?: string;
+  errorType?: string;
+  errorMessage?: string;
+  errorParam?: string;
+  errorStatus?: number;
+  retryable?: boolean;
+}
+
+/**
  * 消息接口（保留用于向后兼容）
  * 每条消息由一个或多个 parts 组成
  */
@@ -55,6 +74,7 @@ export interface MessageVersion {
   parts: MessagePart[];          // 消息内容（支持多模态）
   timestamp: number;             // 创建时间
   childBranchIds: string[];      // 子分支ID列表（版本级后继关系）
+  metadata?: MessageVersionMetadata; // 附加的版本元数据（错误信息等）
 }
 
 /**
@@ -104,6 +124,8 @@ export interface Conversation {
   draft: string;                 // 草稿内容
   createdAt?: number;
   updatedAt?: number;
+  webSearchEnabled?: boolean;
+  webSearchLevel?: WebSearchLevel;
 }
 
 /**

@@ -10,6 +10,7 @@ import { aiChatService } from '../services/aiChatService'
 
 // 多模态工具函数
 import { extractTextFromMessage } from '../types/chat'
+import type { MessageVersionMetadata, WebSearchLevel } from '../types/chat'
 import { getCurrentVersion, getPathToBranch } from '../stores/branchTreeHelpers'
 import { electronApiBridge, isUsingElectronApiFallback } from '../utils/electronBridge'
 
@@ -31,6 +32,8 @@ const appStore = useAppStore()
 const draftInput = ref('')
 const chatContainer = ref<HTMLElement>()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const webSearchControlRef = ref<HTMLElement | null>(null)
+const webSearchMenuVisible = ref(false)
 
 // ========== 多模态附件管理 ==========
 const pendingAttachments = ref<string[]>([])
@@ -228,6 +231,96 @@ const visionModelWarning = computed(() => {
   return '⚠️ 当前模型不支持图像，请选择支持视觉的模型（如 GPT-4o、Gemini 1.5+、Claude 3）'
 })
 
+const WEB_SEARCH_LEVELS: WebSearchLevel[] = ['quick', 'normal', 'deep']
+const WEB_SEARCH_LEVEL_TEXT: Record<WebSearchLevel, string> = {
+  quick: '快速',
+  normal: '普通',
+  deep: '深入'
+}
+const WEB_SEARCH_LEVEL_PRESETS: Record<WebSearchLevel, { searchContextSize: 'low' | 'medium' | 'high'; maxResults: number }> = {
+  quick: { searchContextSize: 'low', maxResults: 3 },
+  normal: { searchContextSize: 'medium', maxResults: 5 },
+  deep: { searchContextSize: 'high', maxResults: 8 }
+}
+const webSearchLevelOptions: Array<{ value: WebSearchLevel; label: string }> = WEB_SEARCH_LEVELS.map((level) => ({
+  value: level,
+  label: WEB_SEARCH_LEVEL_TEXT[level]
+}))
+
+const isWebSearchAvailable = computed(() => appStore.activeProvider === 'OpenRouter')
+const webSearchEnabled = computed(() => currentConversation.value?.webSearchEnabled ?? false)
+const webSearchLevel = computed<WebSearchLevel>(() => currentConversation.value?.webSearchLevel || 'normal')
+const webSearchLevelLabel = computed(() => WEB_SEARCH_LEVEL_TEXT[webSearchLevel.value])
+const webSearchButtonTitle = computed(() => {
+  if (!isWebSearchAvailable.value) {
+    return '仅在 OpenRouter 模式下可用网络搜索'
+  }
+  return webSearchEnabled.value
+    ? `已启用网络搜索（${webSearchLevelLabel.value}）`
+    : '启用网络搜索'
+})
+
+const buildWebSearchRequestOptions = () => {
+  if (!isWebSearchAvailable.value || !webSearchEnabled.value) {
+    return null
+  }
+
+  const level = webSearchLevel.value
+  const preset = WEB_SEARCH_LEVEL_PRESETS[level] || WEB_SEARCH_LEVEL_PRESETS.normal
+
+  return {
+    enabled: true,
+    engine: appStore.webSearchEngine,
+    maxResults: preset.maxResults,
+    searchContextSize: preset.searchContextSize
+  }
+}
+
+const toggleWebSearch = () => {
+  if (!currentConversation.value) {
+    return
+  }
+  if (!isWebSearchAvailable.value) {
+    return
+  }
+  chatStore.setConversationWebSearchEnabled(props.conversationId, !webSearchEnabled.value)
+}
+
+const toggleWebSearchMenu = (event: MouseEvent) => {
+  event.stopPropagation()
+  if (!isWebSearchAvailable.value) {
+    return
+  }
+  if (!currentConversation.value) {
+    return
+  }
+  webSearchMenuVisible.value = !webSearchMenuVisible.value
+}
+
+const selectWebSearchLevel = (level: WebSearchLevel) => {
+  if (!currentConversation.value) {
+    return
+  }
+  if (!WEB_SEARCH_LEVELS.includes(level)) {
+    return
+  }
+  chatStore.setConversationWebSearchLevel(props.conversationId, level)
+  webSearchMenuVisible.value = false
+}
+
+const handleGlobalClick = (event: MouseEvent) => {
+  if (!webSearchMenuVisible.value) {
+    return
+  }
+  const root = webSearchControlRef.value
+  if (root && event.target instanceof Node) {
+    if (root.contains(event.target)) {
+      return
+    }
+  }
+  webSearchMenuVisible.value = false
+}
+
 // ========== 流式生成状态判断 ==========
 /**
  * 判断消息是否正在流式接收中
@@ -389,6 +482,8 @@ onMounted(() => {
       })
     })
   }
+
+  document.addEventListener('click', handleGlobalClick)
 })
 
 // 组件卸载（对话被删除）
@@ -396,6 +491,8 @@ onUnmounted(() => {
   // ========== 🔒 固化上下文 ==========
   const targetConversationId = props.conversationId
   console.log('�️ ChatView 卸载:', targetConversationId)
+
+  document.removeEventListener('click', handleGlobalClick)
   
   // 清理 AbortController
   if (abortController.value) {
@@ -456,6 +553,83 @@ watch(draftInput, (newValue) => {
     draftText: newValue
   })
 })
+
+watch(() => props.conversationId, () => {
+  webSearchMenuVisible.value = false
+})
+
+watch(isWebSearchAvailable, (available) => {
+  if (!available) {
+    webSearchMenuVisible.value = false
+  }
+})
+
+const buildErrorMetadata = (
+  error: any,
+  fallbackMessage: string,
+  overrides: Partial<MessageVersionMetadata> = {}
+): MessageVersionMetadata => {
+  const metadata: MessageVersionMetadata = {
+    isError: true,
+    ...overrides
+  }
+
+  const attachFrom = (source: any) => {
+    if (!source || typeof source !== 'object') return
+    if (metadata.errorCode === undefined && source.code) {
+      metadata.errorCode = String(source.code)
+    }
+    if (metadata.errorType === undefined && source.type) {
+      metadata.errorType = String(source.type)
+    }
+    if (metadata.errorParam === undefined && source.param) {
+      metadata.errorParam = String(source.param)
+    }
+    if (metadata.errorStatus === undefined && typeof source.status === 'number') {
+      metadata.errorStatus = Number(source.status)
+    }
+    if (metadata.retryable === undefined && typeof source.retryable === 'boolean') {
+      metadata.retryable = source.retryable
+    }
+    if (!metadata.errorMessage && source.message) {
+      metadata.errorMessage = String(source.message)
+    }
+  }
+
+  attachFrom(error)
+  attachFrom(error?.openRouterError)
+  attachFrom(error?.error)
+  attachFrom(error?.cause)
+
+  if (!metadata.errorMessage) {
+    if (fallbackMessage) {
+      metadata.errorMessage = fallbackMessage
+    } else if (typeof error?.message === 'string') {
+      metadata.errorMessage = error.message
+    }
+  }
+
+  return metadata
+}
+
+const versionIndicatesError = (version: any): boolean => {
+  if (!version) return false
+  if (version.metadata?.isError) return true
+  if (!Array.isArray(version.parts)) return false
+
+  return version.parts.some((part: any) => {
+    if (!part || part.type !== 'text' || typeof part.text !== 'string') {
+      return false
+    }
+    const text = part.text.trim()
+    if (!text) {
+      return false
+    }
+    return text.startsWith('抱歉，发生了错误') ||
+      text.startsWith('⏱️ 请求超时') ||
+      text.toLowerCase().includes('error')
+  })
+}
 
 // 公共的发送消息逻辑（可被普通发送、重新生成、编辑后重发复用）
 /**
@@ -575,12 +749,16 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
     }
 
     // ========== 发起流式请求 ==========
+    const webSearchOptions = buildWebSearchRequestOptions()
     const stream = aiChatService.streamChatResponse(
       appStore,
       historyWithoutLastAI,
       conversationModel,
       userMessageForApi,
-      abortController.value.signal
+      {
+        signal: abortController.value.signal,
+        webSearch: webSearchOptions
+      }
     )
 
     if (!stream || typeof stream[Symbol.asyncIterator] !== 'function') {
@@ -670,8 +848,16 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
       
       // 更新 AI 分支为超时错误消息
       if (aiBranchId) {
-        const timeoutMessage = [{ type: 'text', text: '⏱️ 请求超时：服务器在20秒内未响应，请检查网络连接或稍后重试。' }]
-        chatStore.updateBranchParts(targetConversationId, aiBranchId, timeoutMessage)
+        const timeoutText = '⏱️ 请求超时：服务器在20秒内未响应，请检查网络连接或稍后重试。'
+        const timeoutMessage = [{ type: 'text', text: timeoutText }]
+        chatStore.updateBranchParts(targetConversationId, aiBranchId, timeoutMessage, {
+          metadata: buildErrorMetadata(null, timeoutText, {
+            errorType: 'timeout',
+            errorStatus: 408,
+            errorMessage: timeoutText,
+            retryable: true
+          })
+        })
       }
     } else if (isAbortError) {
       console.log('ℹ️ 生成已中止（用户手动停止）')
@@ -685,7 +871,9 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
         if (!currentText.trim()) {
           // 如果没有生成任何内容，标记为已停止
           const stoppedMessage = [{ type: 'text', text: '[已停止生成]' }]
-          chatStore.updateBranchParts(targetConversationId, aiBranchId, stoppedMessage)
+          chatStore.updateBranchParts(targetConversationId, aiBranchId, stoppedMessage, {
+            metadata: null
+          })
         }
       }
       
@@ -698,15 +886,23 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
       chatStore.setConversationError(targetConversationId, true)
       
       const errorMessage = error instanceof Error ? error.message : '无法连接到 AI 服务，请检查您的 API Key 是否正确。'
+      const errorMetadata = buildErrorMetadata(error, errorMessage)
       
       // 更新 AI 分支为错误消息
       if (aiBranchId) {
         const errorParts = [{ type: 'text', text: `抱歉，发生了错误：${errorMessage}` }]
-        chatStore.updateBranchParts(targetConversationId, aiBranchId, errorParts)
+        chatStore.updateBranchParts(targetConversationId, aiBranchId, errorParts, {
+          metadata: errorMetadata
+        })
       } else if (userBranchId) {
         // 如果还没创建 AI 分支，创建一个错误分支
         const errorParts = [{ type: 'text', text: `抱歉，发生了错误：${errorMessage}` }]
-        chatStore.addMessageBranch(targetConversationId, 'model', errorParts)
+        const newBranchId = chatStore.addMessageBranch(targetConversationId, 'model', errorParts)
+        if (newBranchId) {
+          chatStore.updateBranchParts(targetConversationId, newBranchId, errorParts, {
+            metadata: errorMetadata
+          })
+        }
       }
     }
   } finally {
@@ -820,6 +1016,10 @@ const handleRetryMessage = async (branchId: string) => {
     return
   }
 
+  const currentVersion = getCurrentVersion(branch)
+  const shouldRemoveErrorVersion = versionIndicatesError(currentVersion)
+  const errorVersionId = shouldRemoveErrorVersion && currentVersion ? currentVersion.id : null
+
   // 创建新版本（空内容）
   console.log('🔄 准备创建新版本，分支ID:', branchId)
   const newVersionId = chatStore.addBranchVersion(targetConversationId, branchId, [{ type: 'text', text: '' }])
@@ -830,6 +1030,13 @@ const handleRetryMessage = async (branchId: string) => {
   }
   
   console.log('✓ 成功创建新版本:', newVersionId)
+
+  if (shouldRemoveErrorVersion && errorVersionId) {
+    const removed = chatStore.removeBranchVersion(targetConversationId, branchId, errorVersionId)
+    if (!removed) {
+      console.warn('⚠️ 自动移除错误版本失败', { branchId, errorVersionId })
+    }
+  }
 
   await nextTick()
   scrollToBottom()
@@ -869,12 +1076,16 @@ const handleRetryMessage = async (branchId: string) => {
     const conversationModel = currentConversation.value.model || chatStore.selectedModel
 
     // 发起流式请求
+    const webSearchOptions = buildWebSearchRequestOptions()
     const stream = aiChatService.streamChatResponse(
       appStore,
       historyForStream,
       conversationModel,
       '', // 不传用户消息，从历史获取
-      abortController.value.signal
+      {
+        signal: abortController.value.signal,
+        webSearch: webSearchOptions
+      }
     )
 
     if (!stream || typeof stream[Symbol.asyncIterator] !== 'function') {
@@ -948,7 +1159,7 @@ const handleRetryMessage = async (branchId: string) => {
       console.log('✓ 流式请求已中止')
     } else {
       console.error('❌ 重新生成失败:', error)
-      chatStore.setConversationError(targetConversationId, error.message || '生成失败')
+      chatStore.setConversationError(targetConversationId, true)
     }
   } finally {
     chatStore.setConversationGenerationStatus(targetConversationId, 'idle')
@@ -1555,6 +1766,94 @@ const handleDeleteAllVersions = () => {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
               </svg>
             </button>
+
+            <div
+              class="relative flex items-center"
+              ref="webSearchControlRef"
+            >
+              <button
+                @click="toggleWebSearchMenu"
+                :disabled="!currentConversation || !isWebSearchAvailable"
+                :title="webSearchButtonTitle"
+                class="flex items-center justify-center p-3 rounded-lg border transition-colors"
+                :class="[
+                  webSearchEnabled
+                    ? 'bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-600'
+                    : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200',
+                  (!currentConversation || !isWebSearchAvailable)
+                    ? 'opacity-60 cursor-not-allowed hover:bg-gray-100'
+                    : ''
+                ]"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3c4.97 0 9 4.03 9 9s-4.03 9-9 9-9-4.03-9-9 4.03-9 9-9zm0 0c2.485 0 4.5 4.03 4.5 9s-2.015 9-4.5 9m0-18c-2.485 0-4.5 4.03-4.5 9s2.015 9 4.5 9m-7.794-5.25h15.588M4.206 8.25h15.588"></path>
+                </svg>
+                <svg
+                  class="w-3 h-3 ml-1"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 9l6 6 6-6"></path>
+                </svg>
+              </button>
+
+              <div
+                v-if="webSearchMenuVisible"
+                class="absolute bottom-full mb-2 left-0 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-30"
+                @click.stop
+              >
+                <button
+                  @click="toggleWebSearch"
+                  class="flex items-center justify-between w-full px-3 py-2 text-sm hover:bg-gray-100 text-gray-700 transition-colors"
+                >
+                  <span>启用网络搜索</span>
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      v-if="webSearchEnabled"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M5 13l4 4L19 7"
+                    ></path>
+                    <path
+                      v-else
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 6v12m6-6H6"
+                    ></path>
+                  </svg>
+                </button>
+                <div class="my-1 border-t border-gray-100"></div>
+                <div class="px-3 pb-1 text-xs text-gray-500">
+                  搜索挡位
+                </div>
+                <button
+                  v-for="option in webSearchLevelOptions"
+                  :key="option.value"
+                  @click="selectWebSearchLevel(option.value)"
+                  class="flex items-center justify-between w-full px-3 py-2 text-sm transition-colors"
+                  :class="webSearchLevel === option.value ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-100 text-gray-700'"
+                >
+                  <span>{{ option.label }}</span>
+                  <svg
+                    v-if="webSearchLevel === option.value"
+                    class="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
             
             <div class="flex-1 min-w-0">
               <textarea
