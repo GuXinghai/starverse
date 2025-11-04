@@ -1,4 +1,4 @@
-/**
+﻿/**
  * OpenRouter AI Provider
  * 实现统一的 AI 服务接口
  * OpenRouter 使用 OpenAI 兼容的 API 格式
@@ -254,13 +254,6 @@ export const OpenRouterService = {
     console.log('OpenRouterService: 开始流式聊天，使用模型:', modelName)
     console.log('OpenRouterService: Base URL:', baseUrl)
     
-    // 🔍 调试：打印接收到的参数
-    console.log('🔍 [DEBUG] OpenRouterService.streamChatResponse 接收到的参数:', {
-      historyLength: history ? history.length : 0,
-      userMessage,
-      history: JSON.stringify(history, null, 2)
-    })
-    
     try {
       // 转换消息格式：Message[] → OpenRouter 格式
       // 注意：不再检查模型是否支持视觉，因为前端在上传图片时已经做了检查
@@ -268,20 +261,10 @@ export const OpenRouterService = {
       const messages = (history || []).map(msg => {
         const role = msg.role === 'model' ? 'assistant' : msg.role
         
-        // 🔍 调试：打印每条消息的转换过程
-        console.log('🔍 [DEBUG] 转换消息:', {
-          originalRole: msg.role,
-          newRole: role,
-          hasParts: !!(msg.parts && Array.isArray(msg.parts)),
-          partsLength: msg.parts ? msg.parts.length : 0
-        })
-        
         // 如果消息有 parts 数组，构建多模态内容
         if (msg.parts && Array.isArray(msg.parts) && msg.parts.length > 0) {
           // OpenRouter 使用 OpenAI 兼容格式
           const content = msg.parts.map(part => {
-            console.log('🔍 [DEBUG] 处理 part:', { type: part.type })
-            
             if (part.type === 'text') {
               return {
                 type: 'text',
@@ -289,7 +272,6 @@ export const OpenRouterService = {
               }
             } else if (part.type === 'image_url') {
               const imageUrl = part.image_url.url
-              console.log('🔍 [DEBUG] 图片 URL 前缀:', imageUrl.substring(0, 50))
               return {
                 type: 'image_url',
                 image_url: {
@@ -300,8 +282,6 @@ export const OpenRouterService = {
             }
             return null
           }).filter(Boolean)
-          
-          console.log('🔍 [DEBUG] 转换后的 content 数量:', content.length)
           
           // 🔧 修复：如果 content 为空（所有 parts 都被过滤掉），回退到空文本
           if (content.length === 0) {
@@ -386,15 +366,22 @@ export const OpenRouterService = {
       console.log('OpenRouterService: 最终消息历史长度:', filteredMessages.length)
       
       const url = `${baseUrl}/chat/completions`
+      const hasImageContent = filteredMessages.some(msg =>
+        Array.isArray(msg.content) && msg.content.some(part => part?.type === 'image_url')
+      )
+
       const requestBody = {
         model: modelName,
         messages: filteredMessages,
-        modalities: ["image", "text"],  // 支持图片生成和文本响应
         stream: true
       }
-      
-      // 🔍 调试：打印完整的请求体（包含图片数据）
-      console.log('🔍 [DEBUG] 最终请求体 (完整):', JSON.stringify(requestBody, null, 2))
+
+      if (hasImageContent) {
+        if (!supportsVision(modelName)) {
+          throw new Error(`当前模型 ${modelName} 不支持图像输入，请切换到具备视觉能力的模型后重试。`)
+        }
+        requestBody.modalities = ['image', 'text']
+      }
       
       // 调试：在发送前验证 requestBody 格式并打印被截断的请求体（便于快速排查）
       try {
@@ -523,19 +510,15 @@ export const OpenRouterService = {
             try {
               const chunk = JSON.parse(jsonStr)
               
-              // 🔍 调试：打印完整的 chunk 结构（用于诊断图片接收问题）
-              console.log('🔍 [DEBUG] 完整 chunk 结构:', JSON.stringify(chunk, null, 2))
-              
               // 提取 delta
               const delta = chunk.choices?.[0]?.delta
               if (!delta) {
-                console.log('🔍 [DEBUG] delta 为空，跳过此 chunk')
                 continue
               }
               
-              // 🔍 处理图片数据（OpenRouter 图片生成响应）
-              // 根据官方文档：图片在 delta.images 数组中
-              if (delta.images && Array.isArray(delta.images)) {
+              // 🎨 处理图片数据（优先处理，与文本完全独立）
+              // OpenRouter 图片在 delta.images 数组中
+              if (delta.images && Array.isArray(delta.images) && delta.images.length > 0) {
                 console.log('🎨 [IMAGE] 检测到图片数据，数量:', delta.images.length)
                 for (const imageObj of delta.images) {
                   if (imageObj.type === 'image_url' && imageObj.image_url?.url) {
@@ -546,36 +529,13 @@ export const OpenRouterService = {
                 }
               }
               
-              // 🔍 处理文本内容
+              // � 处理文本内容（独立处理，不依赖图片）
               const content = delta.content
-              
-              // 🔍 调试：详细记录 content 的类型和实际内容
-              if (content) {
-                const contentSize = JSON.stringify(content).length
-                console.log('🔍 [DEBUG] content 详情:', {
-                  类型: typeof content,
-                  是否数组: Array.isArray(content),
-                  大小: contentSize,
-                  内容预览: contentSize > 200 ? JSON.stringify(content).substring(0, 200) + '...' : content
-                })
-                
-                if (contentSize > 100000) {
-                  // 大型数据（可能包含图片）
-                  console.log('OpenRouterService: 接收到大型 content (', Math.round(contentSize / 1024), 'KB)', typeof content)
-                } else {
-                  console.log('OpenRouterService: content 类型:', typeof content, Array.isArray(content) ? '(数组)' : '')
-                }
-              } else {
-                console.log('🔍 [DEBUG] content 为空或 undefined')
-              }
-              
+
               // 处理结构化内容（如 Claude 的 content blocks 或包含图片的响应）
               if (Array.isArray(content)) {
-                console.log('🔍 [DEBUG] content 是数组，长度:', content.length)
                 // 如果 content 是数组，可能包含文本和图片
                 for (const block of content) {
-                  console.log('🔍 [DEBUG] 处理 block:', { type: block.type, keys: Object.keys(block) })
-                  
                   if (block.type === 'text' && block.text) {
                     yield { type: 'text', content: block.text }
                   } else if (block.type === 'image_url' && block.image_url) {
@@ -588,10 +548,8 @@ export const OpenRouterService = {
                 }
               } else if (typeof content === 'string' && content) {
                 // 如果 content 是字符串（标准格式）
-                console.log('🔍 [DEBUG] content 是字符串，yielding text')
                 yield { type: 'text', content }
               } else if (content && typeof content === 'object') {
-                console.log('🔍 [DEBUG] content 是对象:', Object.keys(content))
                 // 如果 content 是对象
                 if (content.text) {
                   yield { type: 'text', content: content.text }
@@ -601,9 +559,8 @@ export const OpenRouterService = {
                 } else {
                   console.warn('OpenRouterService: 未知的 content 格式:', content)
                 }
-              } else if (content) {
-                console.warn('OpenRouterService: 未知的 content 格式:', content)
               }
+              // 注意：如果 content 为空，不输出任何警告，因为可能只有图片数据
             } catch (parseError) {
               console.warn('OpenRouterService: JSON 解析失败:', parseError.message)
               console.warn('OpenRouterService: 原始数据:', jsonStr)

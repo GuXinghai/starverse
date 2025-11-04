@@ -4,22 +4,42 @@ import { v4 as uuidv4 } from 'uuid'
 import { useAppStore } from './index'
 import { createTextMessage, extractTextFromMessage } from '../types/chat'
 import { electronStore as persistenceStore, isUsingElectronStoreFallback } from '../utils/electronBridge'
+import {
+  createEmptyTree,
+  getCurrentVersion,
+  extractTextFromBranch,
+  addBranch,
+  addVersionToBranch,
+  switchVersion,
+  deleteBranch,
+  getCurrentPathMessages,
+  appendTokenToBranch,
+  appendImageToBranch,
+  updateBranchContent,
+  migrateMessagesToTree,
+  getPathToBranch,
+  restoreTree,
+  serializeTree
+} from './branchTreeHelpers'
 
 /**
  * 聊天 Store
- * 用于管理 Gemini AI 多会话聊天相关的状态和操作
+ * 用于管理 AI 多会话聊天相关的状态和操作
  * 
- * ========== API 设计原则 ==========
+ * ========== 核心设计原则 ==========
+ * 
+ * 🌳 分支树架构：
+ * 所有对话消息使用树形结构管理，支持：
+ * - 多分支对话（编辑后可保留旧版本）
+ * - 版本控制（每个分支可有多个版本）
+ * - 路径追踪（当前激活的对话路径）
  * 
  * 🔒 异步安全 Actions（带 conversationId 参数）：
- * 这些 actions 被设计为"原子操作"，可在异步流程中安全并发调用：
- * - addMessageToConversation(conversationId, message)
- * - appendTokenToMessage(conversationId, token)
+ * 所有核心操作都是"原子操作"，可在异步流程中安全并发调用：
+ * - addMessageBranch(conversationId, role, parts, parentBranchId?)
+ * - appendTokenToBranchVersion(conversationId, branchId, token)
+ * - updateBranchParts(conversationId, branchId, parts)
  * - setConversationGenerationStatus(conversationId, status)
- * - clearConversationMessages(conversationId)
- * - updateConversationModel(conversationId, modelName)
- * - updateMessage(conversationId, messageId, newText)
- * - deleteMessage(conversationId, messageId)
  * - renameConversation(conversationId, newTitle)
  * 
  * 合同要求：
@@ -27,63 +47,35 @@ import { electronStore as persistenceStore, isUsingElectronStoreFallback } from 
  * ✅ 禁止依赖 activeTabId、activeConversation 等全局状态
  * ✅ 线程安全，不受标签切换影响
  * ✅ 适用于流式生成、异步回调等场景
- * 
- * ⚠️ 已弃用 Actions（依赖全局状态）：
- * 这些方法仅为向后兼容保留，不应在新代码中使用：
- * - addMessageToActiveConversation(message)
- * - appendTokenToLastMessage(token)
- * - clearActiveConversationMessages()
- * - updateActiveConversationModel(modelName)
- * 
- * 问题：
- * ❌ 依赖 activeTabId 全局状态
- * ❌ 在异步流程中可能定位错误的对话
- * ❌ 受标签切换影响，不可靠
  */
 export const useChatStore = defineStore('chat', () => {
   // ========== State (状态) ==========
   
   /**
    * 从 appStore 获取 API Key
-   * 不再在此处维护独立的 apiKey,而是引用 appStore 的 apiKey
    */
   const appStore = useAppStore()
-  console.log('chatStore 初始化 - appStore:', appStore)
-  console.log('chatStore 初始化 - appStore.apiKey:', appStore.apiKey)
-  console.log('chatStore 初始化 - appStore.apiKey 类型:', typeof appStore.apiKey)
-  console.log('chatStore 初始化 - appStore.apiKey 是否为对象:', typeof appStore.apiKey === 'object')
-  
-  // 尝试两种方式
-  console.log('尝试 appStore.apiKey (直接访问):', appStore.apiKey)
-  console.log('尝试 appStore.apiKey.value (带 .value):', appStore.apiKey?.value)
-  
-  const apiKey = computed(() => {
-    // 检查 appStore.apiKey 的实际类型
-    const directAccess = appStore.apiKey
-    console.log('computed 内 - appStore.apiKey 直接访问:', directAccess, '类型:', typeof directAccess)
-    
-    // Pinia 的 auto-unwrap: 从 store 访问 ref 时会自动解包
-    // 所以 appStore.apiKey 应该已经是字符串，不需要 .value
-    const key = directAccess
-    console.log('chatStore.apiKey computed 被调用, 返回值 =', key)
-    return key
-  })
+  const apiKey = computed(() => appStore.apiKey)
   
   /**
    * 所有对话会话数组
    * 每个对话对象格式: { 
-   *   id: string,        // 唯一标识符
-   *   title: string,     // 对话标题
-   *   messages: Message[], // 消息数组，每条消息包含 parts[]
-   *   model: string,     // 使用的模型名称
-   *   isLoading: boolean,// 该对话是否正在加载中
-   *   draft: string      // 草稿内容
+   *   id: string,              // 唯一标识符
+   *   title: string,           // 对话标题
+   *   tree: ConversationTree,  // 分支树结构（核心数据）
+   *   model: string,           // 使用的模型名称
+   *   generationStatus: 'idle' | 'sending' | 'receiving', // 生成状态
+   *   draft: string,           // 草稿内容
+   *   createdAt: number,       // 创建时间戳
+   *   updatedAt: number        // 更新时间戳
    * }
    * 
-   * 🔄 多模态消息结构：
-   * - 每条消息不再是简单的 { role, text }
-   * - 而是 { id, role, parts: [{ type: 'text', text: '...' }, { type: 'image_url', image_url: {...} }] }
-   * - 支持文本、图片等多种内容类型混合
+   * 🌳 分支树结构（ConversationTree）：
+   * {
+   *   branches: Map<branchId, MessageBranch>,
+   *   rootBranchIds: string[],
+   *   currentPath: string[]  // 当前激活的分支路径
+   * }
    */
   const conversations = ref([])
   
@@ -100,7 +92,6 @@ export const useChatStore = defineStore('chat', () => {
 
   /**
    * 可用模型列表（仅 ID，向后兼容）
-   * @deprecated 使用 availableModelsMap 替代
    */
   const availableModels = ref([])
 
@@ -173,13 +164,8 @@ export const useChatStore = defineStore('chat', () => {
    * 从 electron-store 加载所有对话
    * 如果没有对话，则创建一个新对话并在标签页中打开
    */
-  if (isUsingElectronStoreFallback) {
-    console.warn('chatStore: electronStore bridge unavailable; using in-memory persistence. Data resets on reload.')
-  }
-
   const loadConversations = async () => {
     try {
-      console.log('正在加载对话列表...')
       const savedConversations = await persistenceStore.get('conversations')
       const savedOpenIds = await persistenceStore.get('openConversationIds')
       const savedActiveTabId = await persistenceStore.get('activeTabId')
@@ -188,32 +174,27 @@ export const useChatStore = defineStore('chat', () => {
       const savedFavoriteModelIds = await persistenceStore.get('favoriteModelIds')
       if (savedFavoriteModelIds && Array.isArray(savedFavoriteModelIds)) {
         favoriteModelIds.value = new Set(savedFavoriteModelIds)
-        console.log('✓ 成功加载收藏模型列表，共', savedFavoriteModelIds.length, '个')
       }
       
       if (savedConversations && Array.isArray(savedConversations) && savedConversations.length > 0) {
-        // 确保每个对话都有必要的属性，并迁移旧数据格式到新的 parts 结构
-        conversations.value = savedConversations.map(conv => ({
-          ...conv,
-          // 兼容旧数据：将 isLoading 转换为 generationStatus
-          // 🔧 修复：重置所有非空闲状态为 'idle'，防止程序异常退出后遗留发送状态
-          generationStatus: 'idle',
-          // 🔧 修复：清除错误标记，避免遗留错误状态
-          hasError: false,
-          draft: conv.draft || '',
-          // 迁移消息格式：旧格式 { role, text } → 新格式 { id, role, parts: [{ type: 'text', text }] }
-          messages: (conv.messages || []).map(msg => {
-            // 如果消息已经是新格式（有 parts 数组），直接使用
-            if (msg.parts && Array.isArray(msg.parts)) {
-              return {
-                id: msg.id || uuidv4(),
-                role: msg.role,
-                parts: msg.parts,
-                timestamp: msg.timestamp || Date.now()
-              }
+        // 迁移或恢复对话数据
+        conversations.value = savedConversations.map(conv => {
+          // 如果已经是新格式（有 tree 字段），使用 restoreTree 恢复
+          if (conv.tree && conv.tree.branches) {
+            return {
+              ...conv,
+              generationStatus: 'idle', // 重置状态
+              draft: conv.draft || '',
+              tree: restoreTree(conv.tree) // 使用 restoreTree 确保 Map 响应式
             }
-            
-            // 旧格式消息：将 text 转换为 parts 数组
+          }
+          
+          // 旧格式：迁移消息数组到树形结构
+          // 先处理旧格式的消息（如果有 text 字段但没有 parts）
+          const messages = (conv.messages || []).map(msg => {
+            if (msg.parts && Array.isArray(msg.parts)) {
+              return msg
+            }
             return {
               id: msg.id || uuidv4(),
               role: msg.role,
@@ -221,37 +202,21 @@ export const useChatStore = defineStore('chat', () => {
               timestamp: msg.timestamp || Date.now()
             }
           })
-        }))
-        
-        // 🔧 修复：清理异常退出时可能遗留的空白 AI 消息
-        let cleanedCount = 0
-        conversations.value.forEach(conv => {
-          const messages = conv.messages
-          if (messages.length > 0) {
-            const lastMessage = messages[messages.length - 1]
-            // 检查最后一条消息是否为空白的 AI 消息（异常退出时的遗留）
-            if (lastMessage.role === 'model') {
-              const textContent = lastMessage.parts
-                ?.filter(p => p.type === 'text')
-                .map(p => p.text)
-                .join('')
-                .trim()
-              
-              if (!textContent || textContent === '') {
-                // 删除空白的 AI 消息
-                messages.pop()
-                cleanedCount++
-                console.log(`🧹 已清理对话 "${conv.title}" 中的空白 AI 消息`)
-              }
-            }
+          
+          // 转换为树形结构
+          const tree = migrateMessagesToTree(messages)
+          
+          return {
+            id: conv.id,
+            title: conv.title,
+            tree,
+            model: conv.model || conv.modelName || 'gemini-2.0-flash-exp',
+            generationStatus: 'idle',
+            draft: conv.draft || '',
+            createdAt: conv.createdAt || Date.now(),
+            updatedAt: conv.updatedAt || Date.now()
           }
         })
-        
-        if (cleanedCount > 0) {
-          console.log(`✓ 清理了 ${cleanedCount} 条异常退出时遗留的空白消息`)
-          // 保存清理后的状态
-          saveConversations()
-        }
         
         // 恢复打开的标签页列表
         if (savedOpenIds && Array.isArray(savedOpenIds) && savedOpenIds.length > 0) {
@@ -272,11 +237,7 @@ export const useChatStore = defineStore('chat', () => {
         if (openConversationIds.value.length === 0 && conversations.value.length > 0) {
           openConversationInTab(conversations.value[0].id)
         }
-        
-        console.log(`✓ 成功加载 ${savedConversations.length} 个对话`)
       } else {
-        // 没有保存的对话，创建一个新的
-        console.log('没有找到已保存的对话，创建新对话...')
         const newId = createNewConversation()
         openConversationInTab(newId)
       }
@@ -293,24 +254,46 @@ export const useChatStore = defineStore('chat', () => {
    */
   const saveConversations = async () => {
     try {
-      // 使用 JSON 序列化确保所有数据都是可克隆的
-      const plainConversations = JSON.parse(JSON.stringify(conversations.value))
-      const plainOpenIds = [...openConversationIds.value] // 数组浅拷贝
+      // 序列化对话，使用 serializeTree 处理 Map
+      const serializableConversations = conversations.value.map(conv => {
+        if (!conv.tree || !conv.tree.branches) {
+          return conv
+        }
+        
+        return {
+          ...conv,
+          tree: serializeTree(conv.tree) // 使用 serializeTree 将 Map 转为数组
+        }
+      })
+      
+      // ✅ 关键修复：通过 JSON.parse(JSON.stringify()) 完全移除响应式包装
+      // electron-store 使用 structuredClone，无法处理 Vue reactive 对象
+      const fullyPlainConversations = JSON.parse(JSON.stringify(serializableConversations))
+      
+      const plainOpenIds = [...openConversationIds.value]
       const plainActiveTabId = activeTabId.value
       
-  await persistenceStore.set('conversations', plainConversations)
-  await persistenceStore.set('openConversationIds', plainOpenIds)
-  await persistenceStore.set('activeTabId', plainActiveTabId)
-      
-      console.log('✓ 对话已保存')
+      await persistenceStore.set('conversations', fullyPlainConversations)
+      await persistenceStore.set('openConversationIds', plainOpenIds)
+      await persistenceStore.set('activeTabId', plainActiveTabId)
     } catch (error) {
       console.error('❌ 保存对话失败:', error)
-      console.error('详细信息:', {
-        conversationsCount: conversations.value?.length,
-        openIdsCount: openConversationIds.value?.length,
-        activeTabId: activeTabId.value
-      })
     }
+  }
+
+  /**
+   * Debounced 版本的保存函数
+   * 用于频繁操作（如流式更新）时避免过度写入
+   */
+  let saveTimeout = null
+  const debouncedSaveConversations = () => {
+    if (saveTimeout) {
+      clearTimeout(saveTimeout)
+    }
+    saveTimeout = setTimeout(() => {
+      saveConversations()
+      saveTimeout = null
+    }, 500) // 500ms 防抖
   }
 
   /**
@@ -319,8 +302,7 @@ export const useChatStore = defineStore('chat', () => {
   const saveFavoriteModels = async () => {
     try {
       const favoriteArray = Array.from(favoriteModelIds.value)
-  await persistenceStore.set('favoriteModelIds', favoriteArray)
-      console.log('✓ 收藏模型列表已保存，共', favoriteArray.length, '个')
+      await persistenceStore.set('favoriteModelIds', favoriteArray)
     } catch (error) {
       console.error('❌ 保存收藏模型列表失败:', error)
     }
@@ -339,20 +321,20 @@ export const useChatStore = defineStore('chat', () => {
     const newConversation = {
       id: uuidv4(),
       title: title,
-      messages: [],
+      tree: createEmptyTree(), // 使用树形结构替代 messages 数组
       model: modelToUse,
-      generationStatus: 'idle', // 'idle' | 'sending' | 'receiving'
-      hasError: false, // 标记最后一次生成是否有错误
-      draft: ''
+      generationStatus: 'idle',
+      draft: '',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     }
     
     // 添加到数组开头
     conversations.value.unshift(newConversation)
     
-    // 保存到本地（不自动打开标签页，由调用方决定）
+    // 保存到本地
     saveConversations()
     
-    console.log('✓ 创建新对话:', newConversation.id, newConversation.title, '使用模型:', modelToUse)
     return newConversation.id
   }
 
@@ -376,12 +358,10 @@ export const useChatStore = defineStore('chat', () => {
     // 如果已经打开，直接激活
     if (openConversationIds.value.includes(conversationId)) {
       activeTabId.value = conversationId
-      console.log('✓ 切换到已打开的标签页:', conversationId)
     } else {
       // 添加到打开列表
       openConversationIds.value.push(conversationId)
       activeTabId.value = conversationId
-      console.log('✓ 在新标签页中打开对话:', conversationId, conversation.title)
     }
 
     saveConversations()
@@ -410,16 +390,13 @@ export const useChatStore = defineStore('chat', () => {
         // 优先激活前一个标签页；如果关闭的是第一个，则激活新的第一个
         const newIndex = index > 0 ? index - 1 : 0
         activeTabId.value = openConversationIds.value[newIndex]
-        console.log('✓ 已切换到标签页:', activeTabId.value)
       } else {
         // 没有打开的标签页了
         activeTabId.value = null
-        console.log('✓ 所有标签页已关闭')
       }
     }
     
     saveConversations()
-    console.log('✓ 已关闭标签页:', conversationId)
   }
 
   /**
@@ -445,222 +422,11 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
-   * 设置激活的对话（已废弃，使用 openConversationInTab 替代）
-   * @deprecated
-```
-   * @param {string} conversationId - 对话 ID
-   */
-  const setActiveConversation = (conversationId) => {
-    // 兼容旧代码，直接调用新方法
-    openConversationInTab(conversationId)
-  }
-
-  /**
-   * 向指定对话添加消息（原子操作 - 异步安全）
-   * 
-   * 🔒 合同约定：
-   * - 必须传入 conversationId 参数，禁止依赖 activeTabId 等全局状态
-   * - 适用于任何需要添加消息的场景（用户消息、AI 响应、错误消息）
-   * - 线程安全：可在异步流程中并发调用
-   * 
-   * 🔄 多模态支持：
-   * - 新格式：message = { role, parts: [{ type: 'text', text: '...' }] }
-   * - 向后兼容：message = { role, text: '...' } 自动转换为 parts 格式
-   * 
-   * @param {string} conversationId - 对话 ID（必需）
-   * @param {Object} message - 消息对象，支持两种格式：
-   *   1. 新格式: { role: 'user' | 'model', parts: MessagePart[] }
-   *   2. 旧格式: { role: 'user' | 'model', text: string } (自动转换)
-   */
-  const addMessageToConversation = (conversationId, message) => {
-    if (!message || !message.role) {
-      console.error('❌ 无效的消息格式:', message)
-      return
-    }
-    
-    // 🔍 调试：打印接收到的消息
-    console.log('🔍 [DEBUG] chatStore.addMessageToConversation 接收到:', {
-      conversationId,
-      message: JSON.stringify(message, null, 2)
-    })
-
-    const conversation = conversations.value.find(conv => conv.id === conversationId)
-    
-    if (!conversation) {
-      console.error('❌ 找不到对话:', conversationId)
-      return
-    }
-
-    // 规范化消息格式
-    let messageParts
-    
-    if (message.parts && Array.isArray(message.parts)) {
-      // 新格式：已经有 parts 数组
-      // 深拷贝以避免循环引用
-      messageParts = JSON.parse(JSON.stringify(message.parts))
-      console.log('🔍 [DEBUG] 使用 parts 格式，parts 数量:', messageParts.length)
-    } else if (typeof message.text === 'string') {
-      // 旧格式：将 text 转换为 parts 数组（向后兼容）
-      messageParts = [{ type: 'text', text: message.text }]
-      console.log('🔍 [DEBUG] 将 text 转换为 parts 格式')
-    } else {
-      console.error('❌ 消息必须包含 parts 数组或 text 字符串:', message)
-      return
-    }
-
-    // 为消息添加唯一 ID 和时间戳（如果没有的话）
-    const messageWithId = {
-      id: message.id || uuidv4(),
-      role: message.role,
-      parts: messageParts,
-      timestamp: message.timestamp || Date.now()
-    }
-    
-    // 🔍 调试：打印最终存储的消息
-    console.log('🔍 [DEBUG] 最终存储的消息:', JSON.stringify(messageWithId, null, 2))
-
-    conversation.messages.push(messageWithId)
-    
-    // 如果是第一条用户消息且标题还是"新对话"，自动生成标题
-    if (conversation.messages.length === 1 && conversation.title === '新对话' && message.role === 'user') {
-      // 使用用户第一条消息的文本部分作为标题
-      const textContent = extractTextFromMessage(messageWithId)
-      if (textContent) {
-        conversation.title = textContent.substring(0, 30) + (textContent.length > 30 ? '...' : '')
-        console.log('✓ 自动生成对话标题:', conversation.title)
-      }
-    }
-    
-    // 保存到本地
-    saveConversations()
-  }
-
-  /**
-   * 添加消息到当前激活的对话（兼容旧代码）
-   * @deprecated 请使用 addMessageToConversation(conversationId, message)
-   * ⚠️ 依赖全局状态 activeTabId，不适用于异步流程
-   * @param {Object} message - 消息对象 { role: 'user' | 'model', text: '消息内容' }
-   */
-  const addMessageToActiveConversation = (message) => {
-    if (!activeTabId.value) {
-      console.error('❌ 没有激活的对话')
-      return
-    }
-    addMessageToConversation(activeTabId.value, message)
-  }
-
-  /**
-   * 向指定对话的最后一条消息追加文本（原子操作 - 异步安全）
-   * 
-   * 🔒 合同约定：
-   * - 必须传入 conversationId 参数，禁止依赖 activeTabId 等全局状态
-   * - 适用于流式生成场景，每次接收 token 时调用
-   * - 线程安全：可在异步流程中并发调用
-   * 
-   * 🔄 多模态行为：
-   * - 将文本追加到最后一条消息的最后一个文本 part
-   * - 如果最后一个 part 不是文本类型，会自动创建一个新的文本 part
-   * - 如果消息没有任何 parts，会创建一个初始文本 part
-   * 
-   * @param {string} conversationId - 对话 ID（必需）
-   * @param {string} token - 文本片段
-   */
-  const appendTokenToMessage = (conversationId, token) => {
-    if (typeof token !== 'string' || token.length === 0) {
-      return
-    }
-
-    const conversation = conversations.value.find(conv => conv.id === conversationId)
-
-    if (!conversation || conversation.messages.length === 0) {
-      return
-    }
-
-    const lastMessage = conversation.messages[conversation.messages.length - 1]
-
-    if (!lastMessage) {
-      return
-    }
-
-    // 确保消息有 parts 数组
-    if (!lastMessage.parts || !Array.isArray(lastMessage.parts)) {
-      lastMessage.parts = []
-    }
-
-    // 获取最后一个 part
-    const lastPart = lastMessage.parts[lastMessage.parts.length - 1]
-
-    // 如果最后一个 part 是文本类型，直接追加
-    if (lastPart && lastPart.type === 'text') {
-      lastPart.text += token
-    } else {
-      // 否则，创建一个新的文本 part
-      lastMessage.parts.push({
-        type: 'text',
-        text: token
-      })
-    }
-  }
-
-  /**
-   * 向指定对话的最后一条消息追加图片
-   * @param {string} conversationId - 对话 ID
-   * @param {string} imageUrl - 图片 URL（可以是 http(s):// 或 data: URI）
-   */
-  const appendImageToMessage = (conversationId, imageUrl) => {
-    if (typeof imageUrl !== 'string' || imageUrl.length === 0) {
-      return
-    }
-
-    const conversation = conversations.value.find(conv => conv.id === conversationId)
-
-    if (!conversation || conversation.messages.length === 0) {
-      return
-    }
-
-    const lastMessage = conversation.messages[conversation.messages.length - 1]
-
-    if (!lastMessage) {
-      return
-    }
-
-    // 确保消息有 parts 数组
-    if (!lastMessage.parts || !Array.isArray(lastMessage.parts)) {
-      lastMessage.parts = []
-    }
-
-    // 添加图片 part
-    lastMessage.parts.push({
-      type: 'image_url',
-      image_url: {
-        url: imageUrl
-      }
-    })
-
-    console.log('✓ 已添加图片到消息:', imageUrl.substring(0, 50) + '...')
-  }
-
-  /**
-   * 向当前激活对话的最后一条消息追加文本（兼容旧代码）
-   * @deprecated 请使用 appendTokenToMessage(conversationId, token)
-   * ⚠️ 依赖全局状态 activeTabId，不适用于异步流程
-   * @param {string} token - 文本片段
-   */
-  const appendTokenToLastMessage = (token) => {
-    if (!activeTabId.value) {
-      return
-    }
-    appendTokenToMessage(activeTabId.value, token)
-  }
-
-  /**
    * 删除对话（简化版本 - 适配新的多实例管理策略）
    * @param {string} conversationId - 要删除的对话 ID
    * @returns {boolean} 是否成功删除
    */
   const deleteConversation = (conversationId) => {
-    console.log('🗑️ 开始删除对话:', conversationId)
-    
     const index = conversations.value.findIndex(conv => conv.id === conversationId)
     
     if (index === -1) {
@@ -681,14 +447,6 @@ export const useChatStore = defineStore('chat', () => {
     const isTabOpen = tabIndex !== -1
     const isActiveTab = activeTabId.value === conversationId
 
-    console.log('📊 删除前状态:', {
-      isTabOpen,
-      isActiveTab,
-      tabIndex,
-      openTabsCount: openConversationIds.value.length,
-      totalConversations: conversations.value.length
-    })
-
     // ========== 步骤 1：如果删除的是当前激活标签，需要先切换 ==========
     let needToCreateNew = false
     
@@ -698,7 +456,6 @@ export const useChatStore = defineStore('chat', () => {
         const newIndex = tabIndex > 0 ? tabIndex - 1 : 0
         const newActiveId = openConversationIds.value[newIndex]
         activeTabId.value = newActiveId
-        console.log('✓ 已切换到标签页:', newActiveId)
       } else {
         // 这是唯一打开的标签页，需要先关闭它再决定下一步
         activeTabId.value = null
@@ -712,15 +469,12 @@ export const useChatStore = defineStore('chat', () => {
             // 否则 v-for 不会渲染对应的组件
             if (!openConversationIds.value.includes(firstOtherConv.id)) {
               openConversationIds.value.push(firstOtherConv.id)
-              console.log('✓ 已将其他对话添加到打开列表:', firstOtherConv.id)
             }
             activeTabId.value = firstOtherConv.id
-            console.log('✓ 已切换到其他对话:', firstOtherConv.id)
           }
         } else {
           // 这是最后一个对话，删除后需要创建新的
           needToCreateNew = true
-          console.log('⚠️ 即将删除最后一个对话')
         }
       }
     }
@@ -728,16 +482,13 @@ export const useChatStore = defineStore('chat', () => {
     // ========== 步骤 2：从打开列表移除 ==========
     if (isTabOpen) {
       openConversationIds.value.splice(tabIndex, 1)
-      console.log('🧹 已从打开列表移除')
     }
 
     // ========== 步骤 3：从对话列表删除 ==========
     conversations.value.splice(index, 1)
-    console.log('✓ 已从对话列表删除:', conversationId)
 
     // ========== 步骤 4：处理后续操作 ==========
     if (needToCreateNew) {
-      console.log('✓ 对话列表为空，自动创建新对话')
       const newId = createNewConversation()
       openConversationInTab(newId)
     } else {
@@ -745,7 +496,6 @@ export const useChatStore = defineStore('chat', () => {
       saveConversations()
     }
     
-    console.log('✓ 删除操作完成')
     return true
   }
 
@@ -777,49 +527,8 @@ export const useChatStore = defineStore('chat', () => {
     
     // 保存到本地
     saveConversations()
-    
-    console.log('✓ 对话已重命名:', conversationId, '→', newTitle)
   }
 
-  /**
-   * 清空指定对话的所有消息（原子操作 - 异步安全）
-   * 
-   * 🔒 合同约定：
-   * - 必须传入 conversationId 参数，禁止依赖 activeTabId 等全局状态
-   * - 清空后会自动保存到本地存储
-   * - 线程安全：可在异步流程中并发调用
-   * 
-   * @param {string} conversationId - 对话 ID（必需）
-   */
-  const clearConversationMessages = (conversationId) => {
-    const conversation = conversations.value.find(conv => conv.id === conversationId)
-    
-    if (!conversation) {
-      console.error('❌ 找不到对话:', conversationId)
-      return
-    }
-
-    conversation.messages = []
-    
-    // 保存到本地
-    saveConversations()
-    
-    console.log('✓ 已清空对话消息:', conversation.id)
-  }
-
-  /**
-   * 清空当前激活对话的所有消息（兼容旧代码）
-   * @deprecated 请使用 clearConversationMessages(conversationId)
-   * ⚠️ 依赖全局状态 activeTabId，不适用于异步流程
-   */
-  const clearActiveConversationMessages = () => {
-    if (!activeTabId.value) {
-      console.error('❌ 没有激活的对话')
-      return
-    }
-    clearConversationMessages(activeTabId.value)
-  }
-  
   /**
    * 设置指定对话的生成状态（原子操作 - 异步安全）
    * 
@@ -851,8 +560,6 @@ export const useChatStore = defineStore('chat', () => {
     if (status === 'sending') {
       conversation.hasError = false
     }
-    
-    console.log('✓ 对话生成状态已更新:', conversationId, '→', status)
   }
 
   /**
@@ -874,15 +581,6 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     conversation.hasError = hasError
-    console.log('✓ 对话错误状态已更新:', conversationId, '→', hasError)
-  }
-
-  /**
-   * @deprecated 使用 setConversationGenerationStatus 代替
-   * 向后兼容的方法
-   */
-  const setConversationLoadingState = (conversationId, loading) => {
-    setConversationGenerationStatus(conversationId, loading ? 'receiving' : 'idle')
   }
 
   /**
@@ -899,7 +597,6 @@ export const useChatStore = defineStore('chat', () => {
     if (models.length > 0 && typeof models[0] === 'string') {
       // 旧格式：字符串数组
       availableModels.value = models
-      console.log('✓ 可用模型列表已更新（旧格式），共', models.length, '个模型')
     } else {
       // 新格式：对象数组
       availableModels.value = models.map(m => m.id) // 向后兼容
@@ -912,31 +609,14 @@ export const useChatStore = defineStore('chat', () => {
         }
       }
       availableModelsMap.value = newMap
-      
-      console.log('✓ 可用模型列表已更新（新格式），共', models.length, '个模型')
-      console.log('  - 模型系列分布:', getModelSeriesDistribution())
     }
     
     // 智能选择默认模型：如果当前选择的模型不在新列表中，自动切换到第一个模型
     const modelIds = availableModels.value
     if (modelIds.length > 0 && !modelIds.includes(selectedModel.value)) {
       const newDefaultModel = modelIds[0]
-      console.log(`⚠️ 当前模型 "${selectedModel.value}" 不在新列表中，自动切换到 "${newDefaultModel}"`)
       selectedModel.value = newDefaultModel
     }
-  }
-
-  /**
-   * 获取模型系列分布统计（调试用）
-   * @private
-   */
-  const getModelSeriesDistribution = () => {
-    const distribution = {}
-    for (const model of availableModelsMap.value.values()) {
-      const series = model.series || 'Unknown'
-      distribution[series] = (distribution[series] || 0) + 1
-    }
-    return distribution
   }
 
   /**
@@ -951,10 +631,8 @@ export const useChatStore = defineStore('chat', () => {
     
     if (favoriteModelIds.value.has(modelId)) {
       favoriteModelIds.value.delete(modelId)
-      console.log('✓ 已取消收藏模型:', modelId)
     } else {
       favoriteModelIds.value.add(modelId)
-      console.log('✓ 已收藏模型:', modelId)
     }
     
     // 持久化保存
@@ -1010,156 +688,149 @@ export const useChatStore = defineStore('chat', () => {
     console.log('✓ 对话模型已更新:', conversation.id, '→', modelName)
   }
 
-  /**
-   * 更新当前对话使用的模型（兼容旧代码）
-   * @deprecated 请使用 updateConversationModel(conversationId, modelName)
-   * ⚠️ 依赖全局状态 activeTabId，不适用于异步流程
-   * @param {string} modelName - 模型名称
-   */
-  const updateActiveConversationModel = (modelName) => {
-    if (!activeTabId.value) {
-      console.error('❌ 没有激活的对话')
-      return
-    }
-    updateConversationModel(activeTabId.value, modelName)
-  }
-
-  // ========== 消息管理原子操作 ==========
+  // ========== 分支树操作方法 ==========
 
   /**
-   * 删除指定对话中的指定消息（原子操作 - 异步安全）
-   * 
-   * 🔒 合同约定：
-   * - 必须传入 conversationId 和 messageId 参数
-   * - 删除后会自动保存到本地存储
-   * - 线程安全：可在异步流程中并发调用
-   * 
-   * @param {string} conversationId - 对话 ID（必需）
-   * @param {string} messageId - 消息 ID（必需）
+   * 添加消息分支到对话
    */
-  const deleteMessage = (conversationId, messageId) => {
-    const conversation = conversations.value.find(conv => conv.id === conversationId)
-    
+  const addMessageBranch = (conversationId, role, parts, parentBranchId = null) => {
+    const conversation = conversations.value.find(c => c.id === conversationId)
     if (!conversation) {
       console.error('❌ 找不到对话:', conversationId)
-      return
+      return null
     }
-
-    const messageIndex = conversation.messages.findIndex(msg => msg.id === messageId)
     
-    if (messageIndex === -1) {
-      console.error('❌ 找不到消息:', messageId)
-      return
+    const actualParentId = parentBranchId !== null 
+      ? parentBranchId 
+      : (conversation.tree.currentPath.length > 0 
+          ? conversation.tree.currentPath[conversation.tree.currentPath.length - 1] 
+          : null)
+    
+    const branchId = addBranch(conversation.tree, role, parts, actualParentId)
+    
+    // ✅ 重要：将新分支添加到 currentPath
+    conversation.tree.currentPath = [...conversation.tree.currentPath, branchId]
+    
+    // 自动生成标题（第一条用户消息）
+    if (conversation.tree.currentPath.length === 1 && conversation.title === '新对话' && role === 'user') {
+      const textContent = parts
+        .filter(p => p.type === 'text')
+        .map(p => p.text)
+        .join('')
+      if (textContent) {
+        conversation.title = textContent.substring(0, 30) + (textContent.length > 30 ? '...' : '')
+      }
     }
-
-    conversation.messages.splice(messageIndex, 1)
     
-    // 保存到本地
     saveConversations()
-    
-    console.log('✓ 已删除消息:', messageId)
+    return branchId
   }
 
   /**
-   * 更新指定对话中的指定消息内容（原子操作 - 异步安全）
-   * 
-   * 🔒 合同约定：
-   * - 必须传入 conversationId、messageId 和 newContent 参数
-   * - 更新后会自动保存到本地存储
-   * - 线程安全：可在异步流程中并发调用
-   * 
-   * 🔄 多模态支持：
-   * - 如果 newContent 是字符串，替换为单个文本 part
-   * - 如果 newContent 是 parts 数组，直接替换整个 parts
-   * 
-   * @param {string} conversationId - 对话 ID（必需）
-   * @param {string} messageId - 消息 ID（必需）
-   * @param {string|MessagePart[]} newContent - 新的消息内容（文本或 parts 数组）
+   * 为分支添加新版本（重新生成）
+   * @param {string} conversationId - 对话ID
+   * @param {string} branchId - 分支ID
+   * @param {Array} parts - 新版本内容
+   * @param {boolean} inheritChildren - 是否继承子分支（编辑时为 true，重新生成时为 false）
    */
-  const updateMessage = (conversationId, messageId, newContent) => {
-    const conversation = conversations.value.find(conv => conv.id === conversationId)
-    
+  const addBranchVersion = (conversationId, branchId, parts, inheritChildren = false) => {
+    const conversation = conversations.value.find(c => c.id === conversationId)
     if (!conversation) {
       console.error('❌ 找不到对话:', conversationId)
-      return
-    }
-
-    const message = conversation.messages.find(msg => msg.id === messageId)
-    
-    if (!message) {
-      console.error('❌ 找不到消息:', messageId)
-      return
-    }
-
-    // 根据 newContent 类型更新消息
-    if (typeof newContent === 'string') {
-      // 字符串：替换为单个文本 part（向后兼容）
-      message.parts = [{ type: 'text', text: newContent }]
-    } else if (Array.isArray(newContent)) {
-      // parts 数组：直接替换
-      message.parts = newContent
-    } else {
-      console.error('❌ newContent 必须是字符串或 MessagePart 数组:', newContent)
-      return
+      return null
     }
     
-    // 保存到本地
-    saveConversations()
-    
-    console.log('✓ 已更新消息:', messageId)
+    try {
+      const versionId = addVersionToBranch(conversation.tree, branchId, parts, inheritChildren)
+      if (versionId) {
+        saveConversations()
+      }
+      return versionId
+    } catch (error) {
+      console.error('❌ 添加分支版本失败:', error)
+      return null
+    }
   }
 
   /**
-   * 更新消息的 parts（多模态内容）
-   * @param {string} conversationId - 对话 ID
-   * @param {string} messageId - 消息 ID
-   * @param {Array} parts - 新的 parts 数组
+   * 切换分支版本
    */
-  const updateMessageParts = (conversationId, messageId, parts) => {
-    if (!Array.isArray(parts)) {
-      console.error('❌ parts 必须是数组')
-      return
-    }
+  const switchBranchVersion = (conversationId, branchId, direction) => {
+    const conversation = conversations.value.find(c => c.id === conversationId)
+    if (!conversation) return false
     
-    // 直接调用 updateMessage，它已经支持 parts 数组
-    updateMessage(conversationId, messageId, parts)
+    const success = switchVersion(conversation.tree, branchId, direction)
+    if (success) {
+      saveConversations()
+    }
+    return success
   }
 
   /**
-   * 从指定消息开始截断（删除该消息及其之后的所有消息）（原子操作 - 异步安全）
-   * 
-   * 🔒 合同约定：
-   * - 必须传入 conversationId 和 messageId 参数
-   * - 截断后会自动保存到本地存储
-   * - 线程安全：可在异步流程中并发调用
-   * - 用于重新生成或编辑消息时清理后续内容
-   * 
-   * @param {string} conversationId - 对话 ID（必需）
-   * @param {string} messageId - 起始消息 ID（必需）
+   * 删除分支
    */
-  const truncateMessagesFrom = (conversationId, messageId) => {
-    const conversation = conversations.value.find(conv => conv.id === conversationId)
+  const deleteMessageBranch = (conversationId, branchId, deleteAllVersions) => {
+    const conversation = conversations.value.find(c => c.id === conversationId)
+    if (!conversation) return false
     
-    if (!conversation) {
-      console.error('❌ 找不到对话:', conversationId)
-      return
+    const success = deleteBranch(conversation.tree, branchId, deleteAllVersions)
+    if (success) {
+      saveConversations()
     }
+    return success
+  }
 
-    const messageIndex = conversation.messages.findIndex(msg => msg.id === messageId)
+  /**
+   * 追加文本到分支当前版本（流式生成）
+   * 使用 debounced save 避免频繁写入
+   */
+  const appendTokenToBranchVersion = (conversationId, branchId, token) => {
+    const conversation = conversations.value.find(c => c.id === conversationId)
+    if (!conversation) return false
     
-    if (messageIndex === -1) {
-      console.error('❌ 找不到消息:', messageId)
-      return
+    const success = appendTokenToBranch(conversation.tree, branchId, token)
+    if (success) {
+      debouncedSaveConversations() // 使用防抖保存
     }
+    return success
+  }
 
-    // 删除从该消息开始的所有消息
-    const removedCount = conversation.messages.length - messageIndex
-    conversation.messages.splice(messageIndex)
+  /**
+   * 追加图片到分支当前版本
+   */
+  const appendImageToBranchVersion = (conversationId, branchId, imageUrl) => {
+    const conversation = conversations.value.find(c => c.id === conversationId)
+    if (!conversation) return false
     
-    // 保存到本地
-    saveConversations()
+    const success = appendImageToBranch(conversation.tree, branchId, imageUrl)
+    if (success) {
+      debouncedSaveConversations() // 使用防抖保存
+    }
+    return success
+  }
+
+  /**
+   * 更新分支内容
+   */
+  const updateBranchParts = (conversationId, branchId, parts) => {
+    const conversation = conversations.value.find(c => c.id === conversationId)
+    if (!conversation) return false
     
-    console.log(`✓ 已截断消息，删除了 ${removedCount} 条消息`)
+    const success = updateBranchContent(conversation.tree, branchId, parts)
+    if (success) {
+      saveConversations()
+    }
+    return success
+  }
+
+  /**
+   * 获取当前对话路径的消息（用于API调用）
+   */
+  const getConversationMessages = (conversationId) => {
+    const conversation = conversations.value.find(c => c.id === conversationId)
+    if (!conversation) return []
+    
+    return getCurrentPathMessages(conversation.tree)
   }
 
   // 返回状态、计算属性和方法
@@ -1180,40 +851,36 @@ export const useChatStore = defineStore('chat', () => {
     favoriteModels,
     allModels,
     
-    // Actions
+    // Actions - 对话管理
     loadConversations,
     saveConversations,
+    debouncedSaveConversations,
     saveFavoriteModels,
     createNewConversation,
     openConversationInTab,
     closeConversationTab,
     updateConversationDraft,
-    setActiveConversation,
-    // 新的基于 conversationId 的函数
-    addMessageToConversation,
-    appendTokenToMessage,
-    appendImageToMessage,
-    clearConversationMessages,
-    updateConversationModel,
-    // 消息管理原子操作
-    deleteMessage,
-    updateMessage,
-    updateMessageParts,
-    truncateMessagesFrom,
-    // 兼容旧代码的函数
-    addMessageToActiveConversation,
-    appendTokenToLastMessage,
-    clearActiveConversationMessages,
-    updateActiveConversationModel,
-    // 其他函数
     deleteConversation,
     renameConversation,
+    
+    // Actions - 分支树操作（核心 API）
+    addMessageBranch,
+    addBranchVersion,
+    switchBranchVersion,
+    deleteMessageBranch,
+    appendTokenToBranchVersion,
+    appendImageToBranchVersion,
+    updateBranchParts,
+    getConversationMessages,
+    
+    // Actions - 状态管理
     setConversationGenerationStatus,
     setConversationError,
-    setConversationLoadingState, // @deprecated 向后兼容
+    updateConversationModel,
+    
+    // Actions - 模型管理
     setAvailableModels,
     setSelectedModel,
-    // 模型收藏管理
     toggleFavoriteModel,
     isModelFavorited,
   }

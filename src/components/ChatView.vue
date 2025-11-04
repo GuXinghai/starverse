@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 
 // @ts-ignore - chatStore.js is a JavaScript file
@@ -10,6 +10,7 @@ import { aiChatService } from '../services/aiChatService'
 
 // 多模态工具函数
 import { extractTextFromMessage } from '../types/chat'
+import { getCurrentVersion } from '../stores/branchTreeHelpers'
 import { electronApiBridge, isUsingElectronApiFallback } from '../utils/electronBridge'
 
 import FavoriteModelSelector from './FavoriteModelSelector.vue'
@@ -17,6 +18,8 @@ import QuickModelSearch from './QuickModelSearch.vue'
 import AdvancedModelPickerModal from './AdvancedModelPickerModal.vue'
 import ContentRenderer from './ContentRenderer.vue'
 import AttachmentPreview from './AttachmentPreview.vue'
+import MessageBranchController from './MessageBranchController.vue'
+import DeleteConfirmDialog from './DeleteConfirmDialog.vue'
 
 // Props
 const props = defineProps<{
@@ -93,9 +96,6 @@ const closeAdvancedModelPicker = () => {
   showAdvancedModelPicker.value = false
 }
 
-// ========== 删除确认状态 ==========
-const deletingMessageId = ref<string | null>(null)
-
 // ========== AbortController 管理 ==========
 const abortController = ref<AbortController | null>(null)
 
@@ -105,14 +105,92 @@ const isComponentActive = computed(() => {
   return chatStore.activeTabId === props.conversationId
 })
 
-// 编辑状态管理
-const editingMessageId = ref<string | null>(null)
+// ========== 编辑状态管理 ==========
+const editingBranchId = ref<string | null>(null)
 const editingText = ref('')
 const editingImages = ref<string[]>([])  // 编辑时的图片列表（Base64 Data URIs）
+
+// 比较消息 parts 是否发生实际变化（用于避免生成冗余版本）
+const areMessagePartsEqual = (partsA: any[] = [], partsB: any[] = []) => {
+  if (!Array.isArray(partsA) || !Array.isArray(partsB)) {
+    return false
+  }
+  if (partsA.length !== partsB.length) {
+    return false
+  }
+  for (let i = 0; i < partsA.length; i += 1) {
+    const a = partsA[i]
+    const b = partsB[i]
+
+    if (!a || !b || a.type !== b.type) {
+      return false
+    }
+
+    if (a.type === 'text') {
+      if ((a.text ?? '') !== (b.text ?? '')) {
+        return false
+      }
+      continue
+    }
+
+    if (a.type === 'image_url') {
+      const urlA = a.image_url?.url ?? ''
+      const urlB = b.image_url?.url ?? ''
+      if (urlA !== urlB) {
+        return false
+      }
+      continue
+    }
+
+    // 回退到结构化比较，保证其它类型也能被侦测到变化
+    if (JSON.stringify(a) !== JSON.stringify(b)) {
+      return false
+    }
+  }
+
+  return true
+}
+
+// ========== 分支树相关状态 ==========
+const deleteDialogShow = ref(false)          // 删除确认对话框显示状态
+const deletingBranchId = ref<string | null>(null)  // 正在删除的分支ID
 
 // 根据 conversationId 获取当前对话
 const currentConversation = computed(() => {
   return chatStore.conversations.find((conv: any) => conv.id === props.conversationId) || null
+})
+
+// ========== 分支树消息显示 ==========
+/**
+ * 将树形结构转换为可渲染的消息列表
+ * 遍历 currentPath，提取每个分支的当前版本
+ */
+const displayMessages = computed(() => {
+  if (!currentConversation.value || !currentConversation.value.tree) {
+    return []
+  }
+  
+  const tree = currentConversation.value.tree
+  
+  return tree.currentPath.map((branchId: string) => {
+    const branch = tree.branches.get(branchId)
+    if (!branch) return null
+    
+    const version = getCurrentVersion(branch)
+    if (!version) return null
+    
+    return {
+      id: version.id,               // 版本ID（用于key）
+      branchId: branchId,          // 分支ID（用于操作）
+      role: branch.role,           // user | model
+      parts: version.parts,        // 消息内容
+      timestamp: version.timestamp,
+      // 版本控制信息
+      currentVersionIndex: branch.currentVersionIndex,
+      totalVersions: branch.versions.length,
+      hasMultipleVersions: branch.versions.length > 1
+    }
+  }).filter((msg: any) => msg !== null)
 })
 
 // 格式化显示的模型名称（移除提供商前缀）
@@ -150,19 +228,25 @@ const visionModelWarning = computed(() => {
   return '⚠️ 当前模型不支持图像，请选择支持视觉的模型（如 GPT-4o、Gemini 1.5+、Claude 3）'
 })
 
-// 判断消息是否正在流式接收中
-// 用于优化渲染性能：流式中显示纯文本，完成后才进行 Markdown/LaTeX 渲染
-const isMessageStreaming = (messageIndex: number) => {
+// ========== 流式生成状态判断 ==========
+/**
+ * 判断消息是否正在流式接收中
+ * 用于优化渲染性能：流式中显示纯文本，完成后才进行 Markdown/LaTeX 渲染
+ * 
+ * @param branchId - 分支ID
+ * @returns 是否正在流式生成
+ */
+const isMessageStreaming = (branchId: string) => {
   if (!currentConversation.value) return false
   
-  const messages = currentConversation.value.messages
+  const tree = currentConversation.value.tree
   const generationStatus = currentConversation.value.generationStatus
   
-  // 只有最后一条消息且状态为 receiving 时才是流式中
-  const isLastMessage = messageIndex === messages.length - 1
-  const isReceiving = generationStatus === 'receiving' || generationStatus === 'sending'
+  // 只有当前路径的最后一个分支且状态为 sending 或 receiving 时才是流式中
+  const isLastBranch = tree.currentPath[tree.currentPath.length - 1] === branchId
+  const isGenerating = generationStatus === 'sending' || generationStatus === 'receiving'
   
-  return isLastMessage && isReceiving
+  return isLastBranch && isGenerating
 }
 
 // ========== 焦点管理函数 ==========
@@ -375,30 +459,28 @@ watch(draftInput, (newValue) => {
 
 // 公共的发送消息逻辑（可被普通发送、重新生成、编辑后重发复用）
 /**
- * 执行发送消息的核心逻辑
+ * 执行发送消息的核心逻辑（使用分支树结构）
  * @param userMessage - 用户消息文本（可选）
  * @param messageParts - 用户消息的 parts 数组（可选，用于多模态消息）
  */
 const performSendMessage = async (userMessage?: string, messageParts?: any[]) => {
   // ========== 🔒 固化上下文：在异步任务启动时捕获 conversationId ==========
-  // 关键：必须在函数开始时立即捕获 props.conversationId
-  // 防止在异步执行过程中（如标签切换）导致 props.conversationId 变化
   const targetConversationId = props.conversationId
   console.log('🔒 固化上下文 - conversationId:', targetConversationId)
   
-  // ========== 前置检查（不设置状态） ==========
+  // ========== 前置检查 ==========
   if (!currentConversation.value) {
     console.error('找不到对话:', targetConversationId)
     return
   }
 
-  // 【关键】禁止并发：检查生成状态，只有 idle 时才能发送
+  // 禁止并发：只有 idle 时才能发送
   if (currentConversation.value.generationStatus !== 'idle') {
     console.warn('⚠️ 对话正在生成中，请等待完成或停止后再试')
     return
   }
 
-  // 检查当前 Provider 的 API Key 是否已配置
+  // 检查 API Key
   const currentProvider = appStore.activeProvider
   let apiKey = ''
   
@@ -410,15 +492,13 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
   
   if (!apiKey) {
     console.error(`API Key 检查失败 - ${currentProvider} API Key 未配置`)
-    chatStore.addMessageToConversation(targetConversationId, {
-      role: 'model',
-      text: `错误：未设置 ${currentProvider} API Key，请先在设置页面配置。`
-    })
+    // 使用新 API 添加错误消息
+    const parts = [{ type: 'text', text: `错误：未设置 ${currentProvider} API Key，请先在设置页面配置。` }]
+    chatStore.addMessageBranch(targetConversationId, 'model', parts)
     return
   }
 
   // ========== 创建新的中止控制器 ==========
-  // 先清理旧的 controller，避免内存泄漏
   if (abortController.value) {
     console.log('⚠️ 检测到旧的 AbortController，先中止并清理')
     abortController.value.abort()
@@ -427,101 +507,80 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
   abortController.value = new AbortController()
   console.log('✓ 已创建新的 AbortController')
 
-  // ========== 设置状态为 'sending' 并开始流式请求 ==========
+  // ========== 设置状态为 'sending' ==========
   chatStore.setConversationGenerationStatus(targetConversationId, 'sending')
 
-  // ========== 超时控制变量（在 try 外部声明以便在 catch/finally 中访问） ==========
   let timeoutId: number | null = null
   let hasReceivedData = false
+  let userBranchId: string | null = null
+  let aiBranchId: string | null = null
 
   try {
     const conversationModel = currentConversation.value.model || chatStore.selectedModel
 
-    // ========== 处理用户消息 ==========
-    // 如果提供了新的用户消息或消息 parts，添加到对话中
+    // ========== 处理用户消息：添加用户分支 ==========
     if (userMessage || messageParts) {
-      // 🔍 调试：打印接收到的参数
-      console.log('🔍 [DEBUG] performSendMessage 接收到的参数:', {
-        userMessage,
-        messageParts: messageParts ? JSON.stringify(messageParts, null, 2) : null
-      })
+      console.log('🔍 添加用户消息分支:', { userMessage, messageParts })
       
+      let parts: any[] = []
       if (messageParts && messageParts.length > 0) {
-        chatStore.addMessageToConversation(targetConversationId, {
-          role: 'user',
-          parts: messageParts
-        })
+        parts = messageParts
       } else if (userMessage) {
-        chatStore.addMessageToConversation(targetConversationId, {
-          role: 'user',
-          text: userMessage
-        })
+        parts = [{ type: 'text', text: userMessage }]
       }
+      
+      // 添加用户消息分支
+      userBranchId = chatStore.addMessageBranch(targetConversationId, 'user', parts)
+      
+      if (!userBranchId) {
+        throw new Error('创建用户消息分支失败')
+      }
+      
       await nextTick()
       scrollToBottom()
     }
 
-    // ========== 验证对话状态 ==========
-    // 确保对话历史中最后一条消息是用户消息
-    const currentMessages = currentConversation.value.messages
-    if (currentMessages.length === 0 || currentMessages[currentMessages.length - 1].role !== 'user') {
-      console.error('❌ 无法发送：对话历史中最后一条消息不是用户消息')
-      throw new Error('对话状态异常：最后一条消息不是用户消息')
+    // ========== 添加 AI 回复分支（空内容） ==========
+    const emptyParts = [{ type: 'text', text: '' }]
+    aiBranchId = chatStore.addMessageBranch(targetConversationId, 'model', emptyParts)
+    
+    if (!aiBranchId) {
+      throw new Error('创建 AI 回复分支失败')
     }
-
-    // 获取最后一条用户消息
-    const lastUserMessage = currentMessages[currentMessages.length - 1]
-    const userMessageText = extractTextFromMessage(lastUserMessage)
-
-    console.log('📤 准备发送消息:', {
-      conversationId: targetConversationId,
-      messageCount: currentMessages.length,
-      userMessageText: userMessageText.substring(0, 50) + '...'
-    })
-
-    // ========== 添加 AI 占位消息 ==========
-    chatStore.addMessageToConversation(targetConversationId, {
-      role: 'model',
-      text: ''
-    })
 
     await nextTick()
     scrollToBottom()
 
-    // ========== 构建请求历史 ==========
-    // 获取完整消息历史，去掉最后一条 AI 占位消息
-    const historyForStream = currentConversation.value.messages.slice(0, -1)
+    // ========== 构建请求历史：使用当前路径的消息 ==========
+    const historyForStream = chatStore.getConversationMessages(targetConversationId)
+    
+    // 移除最后一条空的 AI 消息
+    const historyWithoutLastAI = historyForStream.slice(0, -1)
 
     console.log('📜 构建请求历史:', {
-      totalMessages: currentConversation.value.messages.length,
-      historyLength: historyForStream.length,
-      lastHistoryRole: historyForStream[historyForStream.length - 1]?.role
+      totalMessages: historyForStream.length,
+      historyLength: historyWithoutLastAI.length
     })
 
-    // ========== 🔧 关键修复：确定是否需要将用户消息作为独立参数传递 ==========
-    // 场景1：发送新消息（userMessage 或 messageParts 有值）
-    //   - historyForStream 已包含新添加的用户消息
-    //   - 但某些 API 需要单独的 userMessage 参数
-    //   - 传递 userMessageText
-    // 场景2：重新生成回复（userMessage 和 messageParts 都为空）
-    //   - historyForStream 已包含现有的用户消息
-    //   - 不应该再次添加用户消息
-    //   - 传递空字符串，让服务从历史中获取
-    const userMessageForApi = (userMessage || messageParts) ? userMessageText : ''
+    // 提取用户消息文本（用于某些 API）
+    let userMessageForApi = ''
+    if (userMessage || messageParts) {
+      const lastMsg = historyWithoutLastAI[historyWithoutLastAI.length - 1]
+      if (lastMsg && lastMsg.parts) {
+        userMessageForApi = lastMsg.parts
+          .filter((p: any) => p.type === 'text')
+          .map((p: any) => p.text)
+          .join('')
+      }
+    }
 
-    console.log('📝 用户消息参数:', {
-      hasNewMessage: !!(userMessage || messageParts),
-      userMessageForApi: userMessageForApi ? userMessageForApi.substring(0, 50) + '...' : '(空 - 从历史获取)'
-    })
-
-    // 发起流式请求（传入中止信号）
-    // 使用新的 aiChatService 进行流式请求
+    // ========== 发起流式请求 ==========
     const stream = aiChatService.streamChatResponse(
       appStore,
-      historyForStream,
+      historyWithoutLastAI,
       conversationModel,
-      userMessageForApi,  // 🔧 使用计算后的值，而非直接的 userMessageText
-      abortController.value.signal // 传递中止信号
+      userMessageForApi,
+      abortController.value.signal
     )
 
     if (!stream || typeof stream[Symbol.asyncIterator] !== 'function') {
@@ -529,12 +588,10 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
     }
 
     // ========== 设置20秒超时机制 ==========
-    const TIMEOUT_MS = 20000 // 20秒超时
+    const TIMEOUT_MS = 20000
     
     const setupTimeout = () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-      }
+      if (timeoutId) clearTimeout(timeoutId)
       timeoutId = window.setTimeout(() => {
         if (!hasReceivedData) {
           console.warn('⏱️ 请求超时（20秒未收到响应），中止请求')
@@ -545,39 +602,36 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
     
     setupTimeout()
 
-    // ========== 流式读取响应（使用固化的 conversationId） ==========
+    // ========== 流式读取响应：追加到 AI 分支 ==========
     let isFirstChunk = true
     for await (const chunk of stream) {
-      // 【关键】第一次接收到数据时，切换到 'receiving' 状态
-      // 使用固化的 targetConversationId 而非 props.conversationId
       if (isFirstChunk) {
-        hasReceivedData = true // 标记已接收到数据
+        hasReceivedData = true
         if (timeoutId) {
-          clearTimeout(timeoutId) // 清除超时定时器
+          clearTimeout(timeoutId)
           timeoutId = null
         }
+        // 切换到 'receiving' 状态
         chatStore.setConversationGenerationStatus(targetConversationId, 'receiving')
-        console.log('✓ 开始接收流式响应，状态切换为 receiving')
+        console.log('✓ 开始接收流式响应')
         isFirstChunk = false
       }
 
-      // 处理不同类型的 chunk（文本或图片）
-      if (typeof chunk === 'string') {
-        // 旧格式：纯文本字符串（向后兼容）
-        if (chunk) {
-          chatStore.appendTokenToMessage(targetConversationId, chunk)
-          await nextTick()
-          scrollToBottom()
-        }
+      // 处理 chunk 并追加到 AI 分支
+      if (typeof chunk === 'string' && chunk) {
+        chatStore.appendTokenToBranchVersion(targetConversationId, aiBranchId!, chunk)
+        await nextTick()
+        scrollToBottom()
       } else if (chunk && typeof chunk === 'object') {
-        // 新格式：带类型的对象 { type: 'text' | 'image', content: '...' }
         if (chunk.type === 'text' && chunk.content) {
-          chatStore.appendTokenToMessage(targetConversationId, chunk.content)
+          chatStore.appendTokenToBranchVersion(targetConversationId, aiBranchId!, chunk.content)
           await nextTick()
           scrollToBottom()
         } else if (chunk.type === 'image' && chunk.content) {
-          // 接收到图片，添加到消息的 parts 中
-          chatStore.appendImageToMessage(targetConversationId, chunk.content)
+          // 处理图片 chunk
+          console.log('🎨 ChatView: 收到图片chunk，准备添加到分支:', aiBranchId, '图片URL长度:', chunk.content.length)
+          const success = chatStore.appendImageToBranchVersion(targetConversationId, aiBranchId!, chunk.content)
+          console.log('🎨 ChatView: 图片添加结果:', success)
           await nextTick()
           scrollToBottom()
         }
@@ -586,7 +640,6 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
 
     console.log('✓ 流式响应完成')
     
-    // 清理超时定时器
     if (timeoutId) {
       clearTimeout(timeoutId)
       timeoutId = null
@@ -615,35 +668,27 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
       // 🚨 标记对话有错误
       chatStore.setConversationError(targetConversationId, true)
       
-      const conversation = currentConversation.value
-      if (conversation && conversation.messages.length > 0) {
-        const lastMessage = conversation.messages[conversation.messages.length - 1]
-        if (lastMessage && lastMessage.role === 'model') {
-          chatStore.updateMessage(targetConversationId, lastMessage.id, '⏱️ 请求超时：服务器在20秒内未响应，请检查网络连接或稍后重试。')
-        } else {
-          chatStore.addMessageToConversation(targetConversationId, {
-            role: 'model',
-            text: '⏱️ 请求超时：服务器在20秒内未响应，请检查网络连接或稍后重试。'
-          })
-        }
-      } else {
-        chatStore.addMessageToConversation(targetConversationId, {
-          role: 'model',
-          text: '⏱️ 请求超时：服务器在20秒内未响应，请检查网络连接或稍后重试。'
-        })
+      // 更新 AI 分支为超时错误消息
+      if (aiBranchId) {
+        const timeoutMessage = [{ type: 'text', text: '⏱️ 请求超时：服务器在20秒内未响应，请检查网络连接或稍后重试。' }]
+        chatStore.updateBranchParts(targetConversationId, aiBranchId, timeoutMessage)
       }
     } else if (isAbortError) {
       console.log('ℹ️ 生成已中止（用户手动停止）')
-      // 静默处理中止错误，不显示错误消息
-      const conversation = currentConversation.value
-      if (conversation && conversation.messages.length > 0) {
-        const lastMessage = conversation.messages[conversation.messages.length - 1]
-        const lastMessageText = extractTextFromMessage(lastMessage)
-        if (lastMessage && lastMessage.role === 'model' && !lastMessageText) {
-          // 如果最后一条消息是空的 AI 消息，使用 updateMessage 更新为提示
-          chatStore.updateMessage(targetConversationId, lastMessage.id, '[已停止生成]')
+      
+      // 更新 AI 分支为已停止标记
+      if (aiBranchId) {
+        const currentBranch = currentConversation.value?.tree.branches.get(aiBranchId)
+        const currentVersion = currentBranch?.versions[currentBranch.currentVersionIndex]
+        const currentText = currentVersion?.parts.find((p: any) => p.type === 'text')?.text || ''
+        
+        if (!currentText.trim()) {
+          // 如果没有生成任何内容，标记为已停止
+          const stoppedMessage = [{ type: 'text', text: '[已停止生成]' }]
+          chatStore.updateBranchParts(targetConversationId, aiBranchId, stoppedMessage)
         }
       }
+      
       // 中止不算错误，清除错误标记
       chatStore.setConversationError(targetConversationId, false)
     } else {
@@ -653,24 +698,15 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
       chatStore.setConversationError(targetConversationId, true)
       
       const errorMessage = error instanceof Error ? error.message : '无法连接到 AI 服务，请检查您的 API Key 是否正确。'
-      const conversation = currentConversation.value
-
-      // 尝试更新最后一条消息为错误信息（使用固化的 conversationId）
-      if (conversation && conversation.messages.length > 0) {
-        const lastMessage = conversation.messages[conversation.messages.length - 1]
-        if (lastMessage && lastMessage.role === 'model') {
-          chatStore.updateMessage(targetConversationId, lastMessage.id, `抱歉，发生了错误：${errorMessage}`)
-        } else {
-          chatStore.addMessageToConversation(targetConversationId, {
-            role: 'model',
-            text: `抱歉，发生了错误：${errorMessage}`
-          })
-        }
-      } else {
-        chatStore.addMessageToConversation(targetConversationId, {
-          role: 'model',
-          text: `抱歉，发生了错误：${errorMessage}`
-        })
+      
+      // 更新 AI 分支为错误消息
+      if (aiBranchId) {
+        const errorParts = [{ type: 'text', text: `抱歉，发生了错误：${errorMessage}` }]
+        chatStore.updateBranchParts(targetConversationId, aiBranchId, errorParts)
+      } else if (userBranchId) {
+        // 如果还没创建 AI 分支，创建一个错误分支
+        const errorParts = [{ type: 'text', text: `抱歉，发生了错误：${errorMessage}` }]
+        chatStore.addMessageBranch(targetConversationId, 'model', errorParts)
       }
     }
   } finally {
@@ -731,9 +767,6 @@ const sendMessage = async () => {
     totalParts: messageParts.length
   })
   
-  // 🔍 调试：打印完整的 messageParts 结构
-  console.log('🔍 [DEBUG] messageParts 详情:', JSON.stringify(messageParts, null, 2))
-  
   // 调用发送逻辑（传入 parts 而非纯文本）
   await performSendMessage(trimmedMessage, messageParts)
   
@@ -765,47 +798,169 @@ const handleKeyPress = (event: KeyboardEvent) => {
 
 // ========== 消息操作函数 ==========
 
-// 开始删除消息确认
-const startDeleteMessage = (messageId: string) => {
-  deletingMessageId.value = messageId
-}
-
-// 确认删除消息
-const confirmDeleteMessage = (messageId: string) => {
-  const targetConversationId = props.conversationId
-  chatStore.deleteMessage(targetConversationId, messageId)
-  deletingMessageId.value = null
-}
-
-// 取消删除消息
-const cancelDeleteMessage = () => {
-  deletingMessageId.value = null
-}
-
-// 重新生成 AI 回复
-const handleRetryMessage = async (messageId: string) => {
-  // ========== 🔒 固化上下文 ==========
+/**
+ * 重新生成 AI 回复（创建新版本）
+ * @param branchId - AI 回复分支ID
+ */
+const handleRetryMessage = async (branchId: string) => {
   const targetConversationId = props.conversationId
   
   if (!currentConversation.value) return
 
-  // 截断从该消息开始的所有消息
-  chatStore.truncateMessagesFrom(targetConversationId, messageId)
+  // 禁止并发
+  if (currentConversation.value.generationStatus !== 'idle') {
+    console.warn('⚠️ 对话正在生成中，请等待完成')
+    return
+  }
+
+  // 检查分支是否存在且为 model 角色
+  const branch = currentConversation.value.tree.branches.get(branchId)
+  if (!branch || branch.role !== 'model') {
+    console.error('无效的分支ID或非 AI 消息')
+    return
+  }
+
+  // 创建新版本（空内容）
+  console.log('🔄 准备创建新版本，分支ID:', branchId)
+  const newVersionId = chatStore.addBranchVersion(targetConversationId, branchId, [{ type: 'text', text: '' }])
   
-  // 获取截断后的历史记录（最后一条应该是用户消息）
-  const messages = currentConversation.value.messages
-  if (messages.length === 0 || messages[messages.length - 1].role !== 'user') {
-    console.error('无法重新生成：最后一条消息不是用户消息')
+  if (!newVersionId) {
+    console.error('❌ 创建新版本失败，branchId:', branchId)
     return
   }
   
-  // 🔧 修复：不需要传递 customHistory，performSendMessage 会自动使用当前对话的消息
-  await performSendMessage()
+  console.log('✓ 成功创建新版本:', newVersionId)
+
+  await nextTick()
+  scrollToBottom()
+
+  // ========== 构建请求历史：获取该分支之前的消息 ==========
+  const allMessages = chatStore.getConversationMessages(targetConversationId)
+  
+  // 找到当前分支在路径中的位置
+  const branchIndex = currentConversation.value.tree.currentPath.indexOf(branchId)
+  if (branchIndex === -1) {
+    console.error('分支不在当前路径中')
+    return
+  }
+  
+  // 获取该分支之前的历史（不包括当前 AI 分支）
+  const historyForStream = allMessages.slice(0, branchIndex)
+
+  console.log('🔄 重新生成:', {
+    branchId,
+    branchIndex,
+    historyLength: historyForStream.length
+  })
+
+  // ========== 创建新的中止控制器 ==========
+  if (abortController.value) {
+    abortController.value.abort()
+  }
+  abortController.value = new AbortController()
+
+  // ========== 设置生成状态为 'sending' ==========
+  chatStore.setConversationGenerationStatus(targetConversationId, 'sending')
+
+  let timeoutId: number | null = null
+  let hasReceivedData = false
+
+  try {
+    const conversationModel = currentConversation.value.model || chatStore.selectedModel
+
+    // 发起流式请求
+    const stream = aiChatService.streamChatResponse(
+      appStore,
+      historyForStream,
+      conversationModel,
+      '', // 不传用户消息，从历史获取
+      abortController.value.signal
+    )
+
+    if (!stream || typeof stream[Symbol.asyncIterator] !== 'function') {
+      throw new Error('流式响应不可用')
+    }
+
+    // 设置超时
+    const TIMEOUT_MS = 20000
+    const setupTimeout = () => {
+      if (timeoutId) clearTimeout(timeoutId)
+      timeoutId = window.setTimeout(() => {
+        if (!hasReceivedData) {
+          console.warn('⏱️ 请求超时，中止请求')
+          abortController.value?.abort()
+        }
+      }, TIMEOUT_MS)
+    }
+    setupTimeout()
+
+    // 流式读取并追加到新版本
+    let isFirstChunk = true
+    for await (const chunk of stream) {
+      if (isFirstChunk) {
+        hasReceivedData = true
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+          timeoutId = null
+        }
+        // 切换到 'receiving' 状态
+        chatStore.setConversationGenerationStatus(targetConversationId, 'receiving')
+        isFirstChunk = false
+      }
+
+      if (typeof chunk === 'string' && chunk) {
+        chatStore.appendTokenToBranchVersion(targetConversationId, branchId, chunk)
+        await nextTick()
+        scrollToBottom()
+      } else if (chunk && typeof chunk === 'object') {
+        if (chunk.type === 'text' && chunk.content) {
+          chatStore.appendTokenToBranchVersion(targetConversationId, branchId, chunk.content)
+          await nextTick()
+          scrollToBottom()
+        } else if (chunk.type === 'image' && chunk.content) {
+          // 🎨 处理图片 chunk（重新生成时也需要支持）
+          console.log('🎨 ChatView: 收到图片chunk，准备添加到分支:', branchId, '图片URL长度:', chunk.content.length)
+          const success = chatStore.appendImageToBranchVersion(targetConversationId, branchId, chunk.content)
+          console.log('🎨 ChatView: 图片添加结果:', success)
+          await nextTick()
+          scrollToBottom()
+        }
+      }
+    }
+
+    console.log('✓ 重新生成完成')
+    
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+      timeoutId = null
+    }
+  } catch (error: any) {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+      timeoutId = null
+    }
+    
+    const isAborted = error.name === 'AbortError' || 
+                      error.message?.includes('中止') ||
+                      error.message?.includes('abort')
+    
+    if (isAborted) {
+      console.log('✓ 流式请求已中止')
+    } else {
+      console.error('❌ 重新生成失败:', error)
+      chatStore.setConversationError(targetConversationId, error.message || '生成失败')
+    }
+  } finally {
+    chatStore.setConversationGenerationStatus(targetConversationId, 'idle')
+    abortController.value = null
+  }
 }
 
+// ========== 消息编辑功能 ==========
+
 // 进入编辑模式
-const handleEditMessage = (messageId: string, message: any) => {
-  editingMessageId.value = messageId
+const handleEditMessage = (branchId: string, message: any) => {
+  editingBranchId.value = branchId
   
   // 提取文本和图片
   if (message.parts && Array.isArray(message.parts)) {
@@ -824,7 +979,7 @@ const handleEditMessage = (messageId: string, message: any) => {
 
 // 取消编辑
 const handleCancelEdit = () => {
-  editingMessageId.value = null
+  editingBranchId.value = null
   editingText.value = ''
   editingImages.value = []
 }
@@ -854,7 +1009,7 @@ const handleAddImageToEdit = async () => {
 }
 
 // 保存编辑并重新提交
-const handleSaveEdit = async (messageId: string) => {
+const handleSaveEdit = async (branchId: string) => {
   // ========== 🔒 固化上下文 ==========
   const targetConversationId = props.conversationId
   
@@ -864,15 +1019,6 @@ const handleSaveEdit = async (messageId: string) => {
   // 必须有文本或图片
   if (!hasText && !hasImages) {
     handleCancelEdit()
-    return
-  }
-
-  // 找到该消息的索引
-  const messages = currentConversation.value?.messages || []
-  const messageIndex = messages.findIndex((msg: any) => msg.id === messageId)
-  
-  if (messageIndex === -1) {
-    console.error('找不到要编辑的消息')
     return
   }
 
@@ -897,23 +1043,80 @@ const handleSaveEdit = async (messageId: string) => {
     })
   }
 
-  // 更新消息内容为新的 parts 格式
-  chatStore.updateMessageParts(targetConversationId, messageId, newParts)
-  
-  // 截断该消息之后的所有消息
-  const nextMessageId = messages[messageIndex + 1]?.id
-  if (nextMessageId) {
-    chatStore.truncateMessagesFrom(targetConversationId, nextMessageId)
+  // 获取对话的分支树
+  const conversation = chatStore.conversations.find((c: any) => c.id === targetConversationId)
+  if (!conversation?.tree) {
+    console.error('对话或分支树不存在')
+    return
   }
 
-  // 先退出编辑模式，让 UI 立即显示更新后的消息
+  const branch = conversation.tree.branches.get(branchId)
+  if (!branch) {
+    console.error(`找不到分支: ${branchId}`)
+    return
+  }
+
+  const currentVersionSnapshot = getCurrentVersion(branch)
+  if (currentVersionSnapshot && areMessagePartsEqual(currentVersionSnapshot.parts, newParts)) {
+    // 无实际改动，直接退出编辑
+    handleCancelEdit()
+    return
+  }
+
+  const isUserBranch = branch.role === 'user'
+
+  // 创建新版本（用户编辑的消息）
+  // ✅ 用户消息重写时不继承旧回复，AI/其它消息保持现有策略
+  chatStore.addBranchVersion(targetConversationId, branchId, newParts, !isUserBranch)
+
+  // 先退出编辑模式
   handleCancelEdit()
   
   // 等待 DOM 更新
   await nextTick()
 
-  // 🔧 修复：重新发送时不需要传递参数，performSendMessage 会自动使用当前对话的消息
-  await performSendMessage()
+  // 如果编辑的是用户消息，需要重新生成 AI 回复
+  if (isUserBranch) {
+    await performSendMessage()
+  }
+}
+
+// ========== 分支版本控制 ==========
+
+/**
+ * 切换消息分支版本
+ */
+const handleSwitchVersion = (branchId: string, direction: number) => {
+  if (!currentConversation.value) return
+  chatStore.switchBranchVersion(currentConversation.value.id, branchId, direction)
+}
+
+/**
+ * 打开删除确认对话框
+ */
+const handleDeleteClick = (branchId: string) => {
+  deletingBranchId.value = branchId
+  deleteDialogShow.value = true
+}
+
+/**
+ * 删除当前版本
+ */
+const handleDeleteCurrentVersion = () => {
+  if (!deletingBranchId.value || !currentConversation.value) return
+  chatStore.deleteMessageBranch(currentConversation.value.id, deletingBranchId.value, false)
+  deletingBranchId.value = null
+  deleteDialogShow.value = false
+}
+
+/**
+ * 删除所有版本
+ */
+const handleDeleteAllVersions = () => {
+  if (!deletingBranchId.value || !currentConversation.value) return
+  chatStore.deleteMessageBranch(currentConversation.value.id, deletingBranchId.value, true)
+  deletingBranchId.value = null
+  deleteDialogShow.value = false
 }
 
 </script>
@@ -963,7 +1166,7 @@ const handleSaveEdit = async (messageId: string) => {
         <div class="space-y-4 max-w-5xl mx-auto">
           <!-- 空态提示 -->
           <div
-            v-if="!currentConversation || currentConversation.messages.length === 0"
+            v-if="displayMessages.length === 0"
             class="text-center py-12"
           >
           <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
@@ -975,9 +1178,10 @@ const handleSaveEdit = async (messageId: string) => {
           <p class="text-gray-600">发送消息开始聊天</p>
         </div>
 
+        <!-- 消息列表 -->
         <div
-          v-for="(message, index) in (currentConversation?.messages || [])"
-          :key="message.id || index"
+          v-for="message in displayMessages"
+          :key="message.id"
           class="flex group"
           :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
         >
@@ -994,7 +1198,7 @@ const handleSaveEdit = async (messageId: string) => {
               <div class="flex flex-col gap-2 flex-1">
                 <!-- 消息内容或编辑框 -->
                 <div
-                  v-if="editingMessageId === message.id"
+                  v-if="editingBranchId === message.branchId"
                   class="w-full"
                 >
                   <!-- 编辑中的图片预览 -->
@@ -1053,14 +1257,14 @@ const handleSaveEdit = async (messageId: string) => {
                     class="w-full px-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                     rows="3"
                     placeholder="编辑消息文本..."
-                    @keydown.enter.ctrl="handleSaveEdit(message.id)"
+                    @keydown.enter.ctrl="handleSaveEdit(message.branchId)"
                     @keydown.esc="handleCancelEdit"
                   ></textarea>
                   
                   <!-- 操作按钮 -->
                   <div class="flex gap-2 mt-2">
                     <button
-                      @click="handleSaveEdit(message.id)"
+                      @click="handleSaveEdit(message.branchId)"
                       class="px-3 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
                     >
                       保存并重新生成
@@ -1090,7 +1294,7 @@ const handleSaveEdit = async (messageId: string) => {
                       <div v-if="part.type === 'text'">
                         <!-- 流式传输中：纯文本 -->
                         <p 
-                          v-if="isMessageStreaming(index) && partIndex === message.parts.length - 1"
+                          v-if="isMessageStreaming(message.branchId) && partIndex === message.parts.length - 1"
                           class="text-sm whitespace-pre-wrap"
                         >
                           {{ part.text }}
@@ -1152,7 +1356,7 @@ const handleSaveEdit = async (messageId: string) => {
                   <div v-else>
                     <!-- 流式传输中：显示纯文本（性能优化） -->
                     <p 
-                      v-if="isMessageStreaming(index)" 
+                      v-if="isMessageStreaming(message.branchId)" 
                       class="text-sm whitespace-pre-wrap"
                     >
                       {{ extractTextFromMessage(message) }}
@@ -1160,26 +1364,26 @@ const handleSaveEdit = async (messageId: string) => {
                     
                     <!-- 流式完成或用户消息：使用 ContentRenderer 渲染 Markdown/LaTeX -->
                     <ContentRenderer 
-                      v-else-if="!isMessageStreaming(index) && message.role === 'model'"
+                      v-else-if="!isMessageStreaming(message.branchId) && message.role === 'model'"
                       :content="extractTextFromMessage(message)"
                       class="text-sm"
                     />
                     
                     <!-- 用户消息：纯文本显示 -->
-                    <p v-else-if="!isMessageStreaming(index)" class="text-sm whitespace-pre-wrap">
+                    <p v-else-if="!isMessageStreaming(message.branchId)" class="text-sm whitespace-pre-wrap">
                       {{ extractTextFromMessage(message) }}
                     </p>
                   </div>
                   
                   <!-- 操作按钮（正常模式 - 悬停显示） -->
                   <div 
-                    v-if="currentConversation?.generationStatus === 'idle' && deletingMessageId !== message.id"
+                    v-if="currentConversation?.generationStatus === 'idle' && editingBranchId !== message.branchId"
                     class="absolute -top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 bg-white rounded-lg shadow-md border border-gray-200 p-1"
                   >
                     <!-- 用户消息：编辑 -->
                     <button
                       v-if="message.role === 'user'"
-                      @click="handleEditMessage(message.id, message)"
+                      @click="handleEditMessage(message.branchId, message)"
                       class="p-1.5 hover:bg-gray-100 rounded transition-colors"
                       title="编辑"
                     >
@@ -1191,7 +1395,7 @@ const handleSaveEdit = async (messageId: string) => {
                     <!-- AI 消息：重新生成 -->
                     <button
                       v-if="message.role === 'model'"
-                      @click="handleRetryMessage(message.id)"
+                      @click="handleRetryMessage(message.branchId)"
                       class="p-1.5 hover:bg-gray-100 rounded transition-colors"
                       title="重新生成"
                     >
@@ -1202,7 +1406,7 @@ const handleSaveEdit = async (messageId: string) => {
                     
                     <!-- 删除按钮（所有消息都有） -->
                     <button
-                      @click="startDeleteMessage(message.id)"
+                      @click="handleDeleteClick(message.branchId)"
                       class="p-1.5 hover:bg-red-100 rounded transition-colors"
                       title="删除"
                     >
@@ -1211,35 +1415,16 @@ const handleSaveEdit = async (messageId: string) => {
                       </svg>
                     </button>
                   </div>
-
-                  <!-- 删除确认模式（始终显示） -->
-                  <div 
-                    v-if="deletingMessageId === message.id"
-                    class="absolute -top-2 right-2 flex gap-1 bg-white rounded-lg shadow-md border border-gray-200 p-1"
-                  >
-                    <span class="px-2 py-1 text-xs text-gray-700 flex items-center">删除?</span>
-                    <!-- 确认删除 -->
-                    <button
-                      @click="confirmDeleteMessage(message.id)"
-                      class="p-1.5 hover:bg-green-100 rounded transition-colors"
-                      title="确认删除"
-                    >
-                      <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
-                      </svg>
-                    </button>
-                    <!-- 取消删除 -->
-                    <button
-                      @click="cancelDeleteMessage"
-                      class="p-1.5 hover:bg-red-100 rounded transition-colors"
-                      title="取消"
-                    >
-                      <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
-                      </svg>
-                    </button>
-                  </div>
                 </div>
+                
+                <!-- 版本控制器（当有多个版本时显示） -->
+                <MessageBranchController
+                  v-if="message.hasMultipleVersions"
+                  :current-index="message.currentVersionIndex"
+                  :total-versions="message.totalVersions"
+                  @switch="(direction: number) => handleSwitchVersion(message.branchId, direction)"
+                  class="mt-2 ml-10"
+                />
               </div>
 
               <div
@@ -1380,5 +1565,13 @@ const handleSaveEdit = async (messageId: string) => {
           </div>
         </div>
       </div>
+      
+      <!-- 删除确认对话框 -->
+      <DeleteConfirmDialog
+        :show="deleteDialogShow"
+        @close="deleteDialogShow = false"
+        @delete-current-version="handleDeleteCurrentVersion"
+        @delete-all-versions="handleDeleteAllVersions"
+      />
   </div>
 </template>
