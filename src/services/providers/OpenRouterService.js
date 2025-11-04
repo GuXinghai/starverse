@@ -444,9 +444,80 @@ export const OpenRouterService = {
       console.log('OpenRouterService: ✓ 收到响应，开始处理流式数据')
       
       // 处理流式响应 (Server-Sent Events)
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder('utf-8')
-      let buffer = ''
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+  const emittedImages = new Set()
+
+      const normalizeImagePayload = (payload, defaultMime = 'image/png') => {
+        if (!payload) {
+          return null
+        }
+
+        const normalizeString = (value) => {
+          if (!value) return null
+          const trimmed = value.trim()
+          if (!trimmed) return null
+          if (/^data:image\//i.test(trimmed) || /^https?:\/\//i.test(trimmed)) {
+            return trimmed
+          }
+          return `data:${defaultMime};base64,${trimmed}`
+        }
+
+        if (typeof payload === 'string') {
+          return normalizeString(payload)
+        }
+
+        if (Array.isArray(payload)) {
+          for (const item of payload) {
+            const normalized = normalizeImagePayload(item, defaultMime)
+            if (normalized) {
+              return normalized
+            }
+          }
+          return null
+        }
+
+        if (typeof payload === 'object') {
+          if (typeof payload.url === 'string') {
+            return normalizeString(payload.url)
+          }
+          if (typeof payload.image_url === 'string') {
+            return normalizeString(payload.image_url)
+          }
+          if (payload.image_url && typeof payload.image_url.url === 'string') {
+            return normalizeString(payload.image_url.url)
+          }
+          if (typeof payload.asset_pointer === 'string') {
+            return null
+          }
+          if (typeof payload.b64_json === 'string') {
+            const mime = payload.mime_type || defaultMime
+            return `data:${mime};base64,${payload.b64_json}`
+          }
+          if (typeof payload.base64 === 'string') {
+            const mime = payload.mime_type || defaultMime
+            return `data:${mime};base64,${payload.base64}`
+          }
+          if (typeof payload.data === 'string') {
+            const mime = payload.mime_type || defaultMime
+            return `data:${mime};base64,${payload.data}`
+          }
+          if (payload.inline_data && typeof payload.inline_data.data === 'string') {
+            const mime = payload.inline_data.mime_type || defaultMime
+            return `data:${mime};base64,${payload.inline_data.data}`
+          }
+          if (payload.image && typeof payload.image.url === 'string') {
+            return normalizeString(payload.image.url)
+          }
+          if (payload.image && typeof payload.image.b64_json === 'string') {
+            const mime = payload.image.mime_type || defaultMime
+            return `data:${mime};base64,${payload.image.b64_json}`
+          }
+        }
+
+        return null
+      }
       
       // 缓冲区限制：防御性编程，避免恶意数据或协议错误导致内存溢出
       // 
@@ -521,11 +592,26 @@ export const OpenRouterService = {
               if (delta.images && Array.isArray(delta.images) && delta.images.length > 0) {
                 console.log('🎨 [IMAGE] 检测到图片数据，数量:', delta.images.length)
                 for (const imageObj of delta.images) {
-                  if (imageObj.type === 'image_url' && imageObj.image_url?.url) {
-                    const imageUrl = imageObj.image_url.url
-                    console.log('✓ 接收到生成的图片 URL，前缀:', imageUrl.substring(0, 50))
-                    yield { type: 'image', content: imageUrl }
+                  const normalized = normalizeImagePayload(imageObj)
+                  if (normalized) {
+                    if (emittedImages.has(normalized)) {
+                      continue
+                    }
+                    emittedImages.add(normalized)
+                    console.log('✓ 接收到生成的图片，前缀:', normalized.substring(0, 50))
+                    yield { type: 'image', content: normalized }
+                  } else {
+                    console.warn('OpenRouterService: 无法解析 delta.images 中的图片数据', imageObj)
                   }
+                }
+              }
+
+              if (delta.image) {
+                const normalizedSingleImage = normalizeImagePayload(delta.image)
+                if (normalizedSingleImage && !emittedImages.has(normalizedSingleImage)) {
+                  emittedImages.add(normalizedSingleImage)
+                  console.log('✓ 接收到 delta.image 图片，前缀:', normalizedSingleImage.substring(0, 50))
+                  yield { type: 'image', content: normalizedSingleImage }
                 }
               }
               
@@ -536,14 +622,30 @@ export const OpenRouterService = {
               if (Array.isArray(content)) {
                 // 如果 content 是数组，可能包含文本和图片
                 for (const block of content) {
-                  if (block.type === 'text' && block.text) {
+                  if ((block?.type === 'text' || block?.type === 'output_text') && block.text) {
                     yield { type: 'text', content: block.text }
-                  } else if (block.type === 'image_url' && block.image_url) {
-                    // 图片 block
-                    console.log('✓ 接收到图片 URL')
-                    yield { type: 'image', content: block.image_url.url }
+                    continue
+                  }
+
+                  const normalizedBlockImage = normalizeImagePayload(
+                    block?.image_url ??
+                    block?.image ??
+                    block?.image_base64 ??
+                    block?.b64_json ??
+                    block?.data ??
+                    block?.inline_data ??
+                    block
+                  )
+
+                  if (normalizedBlockImage) {
+                    if (emittedImages.has(normalizedBlockImage)) {
+                      continue
+                    }
+                    emittedImages.add(normalizedBlockImage)
+                    console.log('✓ 接收到图片内容 block，前缀:', normalizedBlockImage.substring(0, 50))
+                    yield { type: 'image', content: normalizedBlockImage }
                   } else {
-                    console.warn('OpenRouterService: 跳过未知 block 类型:', block.type)
+                    console.warn('OpenRouterService: 跳过未知 block 类型:', block?.type)
                   }
                 }
               } else if (typeof content === 'string' && content) {
@@ -553,13 +655,63 @@ export const OpenRouterService = {
                 // 如果 content 是对象
                 if (content.text) {
                   yield { type: 'text', content: content.text }
-                } else if (content.image_url) {
-                  console.log('✓ 接收到图片 URL')
-                  yield { type: 'image', content: content.image_url.url || content.image_url }
                 } else {
-                  console.warn('OpenRouterService: 未知的 content 格式:', content)
+                  const normalizedContentImage = normalizeImagePayload(
+                    content.image_url ??
+                    content.image ??
+                    content.inline_data ??
+                    content.image_base64 ??
+                    content.b64_json ??
+                    content.data ??
+                    content
+                  )
+                  if (normalizedContentImage) {
+                    if (!emittedImages.has(normalizedContentImage)) {
+                      emittedImages.add(normalizedContentImage)
+                      console.log('✓ 接收到图片内容对象，前缀:', normalizedContentImage.substring(0, 50))
+                      yield { type: 'image', content: normalizedContentImage }
+                    }
+                  } else {
+                    console.warn('OpenRouterService: 未知的 content 格式:', content)
+                  }
                 }
               }
+              // 附加：如果 message.content 中也包含图片或文本，统一处理
+              const messageContent = chunk.choices?.[0]?.message?.content
+              if (Array.isArray(messageContent)) {
+                for (const item of messageContent) {
+                  if ((item?.type === 'text' || item?.type === 'output_text') && item.text) {
+                    yield { type: 'text', content: item.text }
+                    continue
+                  }
+                  const normalizedMessageImage = normalizeImagePayload(item)
+                  if (normalizedMessageImage && !emittedImages.has(normalizedMessageImage)) {
+                    emittedImages.add(normalizedMessageImage)
+                    console.log('✓ 接收到 message.content 图片，前缀:', normalizedMessageImage.substring(0, 50))
+                    yield { type: 'image', content: normalizedMessageImage }
+                  }
+                }
+              } else if (messageContent) {
+                const normalizedMessagePayload = normalizeImagePayload(messageContent)
+                if (normalizedMessagePayload && !emittedImages.has(normalizedMessagePayload)) {
+                  emittedImages.add(normalizedMessagePayload)
+                  console.log('✓ 接收到 message.content 图片（对象），前缀:', normalizedMessagePayload.substring(0, 50))
+                  yield { type: 'image', content: normalizedMessagePayload }
+                }
+              }
+
+              const attachments = chunk.choices?.[0]?.attachments
+              if (Array.isArray(attachments)) {
+                for (const attachment of attachments) {
+                  const normalizedAttachmentImage = normalizeImagePayload(attachment)
+                  if (normalizedAttachmentImage && !emittedImages.has(normalizedAttachmentImage)) {
+                    emittedImages.add(normalizedAttachmentImage)
+                    console.log('✓ 接收到附件图片，前缀:', normalizedAttachmentImage.substring(0, 50))
+                    yield { type: 'image', content: normalizedAttachmentImage }
+                  }
+                }
+              }
+
               // 注意：如果 content 为空，不输出任何警告，因为可能只有图片数据
             } catch (parseError) {
               console.warn('OpenRouterService: JSON 解析失败:', parseError.message)
