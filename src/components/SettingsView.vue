@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useAppStore } from '../stores'
-import type { AIProvider } from '../stores'
+import type { AIProvider, WebSearchEngine } from '../stores'
 // @ts-ignore - chatStore.js is a JavaScript file
 import { useChatStore } from '../stores/chatStore'
 // @ts-ignore - aiChatService.js is a JavaScript file
@@ -43,6 +43,13 @@ const openRouterBaseUrl = computed({
   get: () => store.openRouterBaseUrl,
   set: (value: string) => {
     store.openRouterBaseUrl = value
+  }
+})
+
+const webSearchEngine = computed({
+  get: () => store.webSearchEngine,
+  set: (value: WebSearchEngine) => {
+    store.webSearchEngine = value
   }
 })
 
@@ -138,6 +145,7 @@ const saveSettings = async () => {
       
       await store.saveOpenRouterApiKey(openRouterApiKey.value)
       await store.saveOpenRouterBaseUrl(openRouterBaseUrl.value)
+      await store.saveWebSearchEngine(webSearchEngine.value as WebSearchEngine)
     }
     
     saveMessage.value = '设置保存成功！正在加载模型列表...'
@@ -384,6 +392,25 @@ const saveDefaultModel = async () => {
             />
             <p class="mt-2 text-sm text-gray-500">
               通常使用默认值即可
+            </p>
+          </div>
+
+          <div>
+            <label for="webSearchEngine" class="block text-sm font-medium text-gray-700 mb-2">
+              Web 搜索引擎
+            </label>
+            <select
+              id="webSearchEngine"
+              v-model="webSearchEngine"
+              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
+              :disabled="isLoading"
+            >
+              <option value="undefined">自动（优先原生，回退 Exa）</option>
+              <option value="native">native</option>
+              <option value="exa">exa</option>
+            </select>
+            <p class="mt-2 text-sm text-gray-500">
+              选择搜索引擎来源，默认根据模型支持情况自动切换。
             </p>
           </div>
 

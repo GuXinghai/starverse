@@ -17,7 +17,8 @@ import type {
   MessageVersion, 
   MessagePart,
   ImagePart,
-  TextPart
+  TextPart,
+  MessageVersionMetadata
 } from '../types/chat'
 
 /**
@@ -104,6 +105,7 @@ export function addBranch(
     parts: parts ?? [],
     timestamp: Date.now(),
     childBranchIds: [], // 版本级的后继列表
+    metadata: undefined
   }
 
   // 创建新分支
@@ -166,7 +168,8 @@ export function addVersionToBranch(
   tree: ConversationTree,
   branchId: string,
   parts: MessagePart[],
-  inheritChildren: boolean = false
+  inheritChildren: boolean = false,
+  metadata?: MessageVersionMetadata
 ): string {
   const branch = tree.branches.get(branchId)
   if (!branch) throw new Error(`Branch ${branchId} not found`)
@@ -182,6 +185,7 @@ export function addVersionToBranch(
     childBranchIds: inheritChildren && currentVersion 
       ? [...currentVersion.childBranchIds]  // 继承旧版本的子分支
       : [], // 新生成的版本没有后继
+    metadata: metadata ? { ...metadata } : undefined
   }
 
   // 不可变更新
@@ -434,6 +438,60 @@ export function deleteBranch(
     setBranch(tree, newBranch)
     normalizeCurrentPath(tree, branch.branchId)
   }
+
+  return true
+}
+
+/**
+ * 移除分支上的指定版本（通常用于清理出错的版本）
+ * 
+ * @param tree - 对话树
+ * @param branchId - 分支ID
+ * @param versionId - 要移除的版本ID
+ * @returns 是否成功移除
+ */
+export function removeBranchVersion(
+  tree: ConversationTree,
+  branchId: string,
+  versionId: string
+): boolean {
+  const branch = tree.branches.get(branchId)
+  if (!branch) return false
+
+  const targetIndex = branch.versions.findIndex((version: MessageVersion) => version.id === versionId)
+  if (targetIndex === -1) return false
+
+  const targetVersion = branch.versions[targetIndex]
+
+  if (targetVersion.childBranchIds && targetVersion.childBranchIds.length > 0) {
+    for (const childId of targetVersion.childBranchIds) {
+      deleteBranchRecursively(tree, childId)
+    }
+  }
+
+  const newVersions = branch.versions.filter((_: MessageVersion, idx: number) => idx !== targetIndex)
+
+  if (newVersions.length === 0) {
+    deleteBranchRecursively(tree, branchId)
+    normalizeCurrentPath(tree)
+    return true
+  }
+
+  let newCurrentIndex = branch.currentVersionIndex
+
+  if (branch.currentVersionIndex === targetIndex) {
+    newCurrentIndex = Math.min(targetIndex, newVersions.length - 1)
+  } else if (branch.currentVersionIndex > targetIndex) {
+    newCurrentIndex = branch.currentVersionIndex - 1
+  }
+
+  const newBranch: MessageBranch = {
+    ...branch,
+    versions: newVersions,
+    currentVersionIndex: newCurrentIndex
+  }
+
+  setBranch(tree, newBranch)
 
   return true
 }
@@ -789,10 +847,15 @@ export function appendImageToBranch(
  * @param parts - 新内容
  * @returns 是否成功
  */
+export interface UpdateBranchContentOptions {
+  metadata?: MessageVersionMetadata | null;
+}
+
 export function updateBranchContent(
   tree: ConversationTree,
   branchId: string,
-  parts: MessagePart[]
+  parts: MessagePart[],
+  options: UpdateBranchContentOptions = {}
 ): boolean {
   const branch = tree.branches.get(branchId)
   if (!branch) return false
@@ -800,10 +863,16 @@ export function updateBranchContent(
   const version = getCurrentVersion(branch)
   if (!version) return false
   
+  let newMetadata = version.metadata
+  if (options.metadata !== undefined) {
+    newMetadata = options.metadata === null ? undefined : { ...options.metadata }
+  }
+
   // 不可变更新
   const newVersion: MessageVersion = {
     ...version,
-    parts: [...parts]
+    parts: [...parts],
+    metadata: newMetadata
   }
   
   const newVersions = branch.versions.slice()

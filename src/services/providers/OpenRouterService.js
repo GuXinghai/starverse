@@ -250,9 +250,22 @@ export const OpenRouterService = {
    * @param {AbortSignal} [signal] - 可选的中止信号
    * @returns {AsyncIterable} - 流式响应的异步迭代器
    */
-  async* streamChatResponse(apiKey, history, modelName, userMessage, baseUrl = OPENROUTER_BASE_URL, signal = null) {
+  async* streamChatResponse(apiKey, history, modelName, userMessage, baseUrl = OPENROUTER_BASE_URL, options = {}) {
     console.log('OpenRouterService: 开始流式聊天，使用模型:', modelName)
     console.log('OpenRouterService: Base URL:', baseUrl)
+    let signal = null
+    let webSearch = null
+
+    if (options && typeof options === 'object') {
+      if ('signal' in options) {
+        signal = options.signal ?? null
+      }
+      if ('webSearch' in options) {
+        webSearch = options.webSearch
+      }
+    } else if (options) {
+      signal = options
+    }
     
     try {
       // 转换消息格式：Message[] → OpenRouter 格式
@@ -365,6 +378,46 @@ export const OpenRouterService = {
       
       console.log('OpenRouterService: 最终消息历史长度:', filteredMessages.length)
       
+      const buildOpenRouterError = (info = null, status, fallbackMessage = 'OpenRouter 请求失败', name = 'OpenRouterApiError') => {
+        const detail = (info && typeof info === 'object') ? info : null
+        let message = fallbackMessage
+
+        if (detail?.message && typeof detail.message === 'string') {
+          message = detail.message
+        } else if (typeof info === 'string' && info.trim()) {
+          message = info.trim()
+        }
+
+        const errorInstance = new Error(message)
+        errorInstance.name = name
+
+        if (typeof status === 'number') {
+          errorInstance.status = status
+        }
+
+        if (detail) {
+          errorInstance.openRouterError = detail
+          if (detail.code) {
+            errorInstance.code = detail.code
+          }
+          if (detail.type) {
+            errorInstance.type = detail.type
+          }
+          if (detail.param) {
+            errorInstance.param = detail.param
+          }
+          if (typeof detail.retryable === 'boolean') {
+            errorInstance.retryable = detail.retryable
+          }
+        }
+
+        if (name === 'OpenRouterStreamError') {
+          errorInstance.isStreamError = true
+        }
+
+        return errorInstance
+      }
+
       const url = `${baseUrl}/chat/completions`
       const hasImageContent = filteredMessages.some(msg =>
         Array.isArray(msg.content) && msg.content.some(part => part?.type === 'image_url')
@@ -374,6 +427,36 @@ export const OpenRouterService = {
         model: modelName,
         messages: filteredMessages,
         stream: true
+      }
+
+      if (webSearch && webSearch.enabled) {
+        const pluginConfig = { id: 'web' }
+
+        if (webSearch.engine && webSearch.engine !== 'undefined') {
+          pluginConfig.engine = webSearch.engine
+        }
+
+        if (typeof webSearch.maxResults === 'number') {
+          pluginConfig.max_results = webSearch.maxResults
+        }
+
+        if (webSearch.searchPrompt && typeof webSearch.searchPrompt === 'string') {
+          pluginConfig.search_prompt = webSearch.searchPrompt
+        }
+
+        requestBody.plugins = [pluginConfig]
+
+        if (webSearch.searchContextSize) {
+          requestBody.web_search_options = {
+            search_context_size: webSearch.searchContextSize
+          }
+        }
+
+        console.log('OpenRouterService: 已启用 Web 搜索插件', {
+          engine: pluginConfig.engine || 'default',
+          maxResults: pluginConfig.max_results,
+          searchContextSize: webSearch.searchContextSize
+        })
       }
 
       if (hasImageContent) {
@@ -425,20 +508,55 @@ export const OpenRouterService = {
         const errorText = await response.text()
         console.error('OpenRouterService: API 请求失败，状态:', response.status)
         console.error('OpenRouterService: 错误响应:', errorText)
-        
-        // 特殊处理速率限制 (429 Too Many Requests)
+
+        let parsedError = null
+        try {
+          parsedError = JSON.parse(errorText)
+        } catch (parseErr) {
+          console.warn('OpenRouterService: 错误响应非 JSON，已跳过解析', parseErr?.message)
+        }
+
+        let apiErrorInfo = null
+        if (parsedError && typeof parsedError === 'object') {
+          if (parsedError.error) {
+            apiErrorInfo = parsedError.error
+          } else if (Array.isArray(parsedError.errors) && parsedError.errors.length > 0) {
+            apiErrorInfo = parsedError.errors[0]
+          } else {
+            apiErrorInfo = parsedError
+          }
+        }
+
         if (response.status === 429) {
           const retryAfter = response.headers.get('Retry-After')
           const waitTime = retryAfter ? `${retryAfter} 秒` : '一段时间'
-          throw new Error(`OpenRouter 速率限制：请求过于频繁，请等待 ${waitTime} 后重试`)
+          const rateLimitError = buildOpenRouterError(apiErrorInfo, response.status, `OpenRouter 速率限制：请求过于频繁，请等待 ${waitTime} 后重试`)
+          rateLimitError.message = `OpenRouter 速率限制：请求过于频繁，请等待 ${waitTime} 后重试`
+          rateLimitError.retryable = true
+          if (retryAfter) {
+            rateLimitError.retryAfter = retryAfter
+          }
+          rateLimitError.responseText = errorText
+          throw rateLimitError
         }
-        
-        // 特殊处理认证错误 (401/403)
+
         if (response.status === 401 || response.status === 403) {
-          throw new Error('OpenRouter 认证失败：API Key 无效或已过期，请检查设置')
+          const authError = buildOpenRouterError(apiErrorInfo, response.status, 'OpenRouter 认证失败：API Key 无效或已过期，请检查设置')
+          authError.message = 'OpenRouter 认证失败：API Key 无效或已过期，请检查设置'
+          authError.retryable = false
+          authError.responseText = errorText
+          throw authError
         }
-        
-        throw new Error(`OpenRouter API 请求失败: ${response.status} - ${errorText}`)
+
+        const genericError = buildOpenRouterError(apiErrorInfo, response.status, `OpenRouter API 请求失败: ${response.status}`)
+        if (!genericError.message || genericError.message === `OpenRouter API 请求失败: ${response.status}`) {
+          genericError.message = `OpenRouter API 请求失败: ${response.status} - ${errorText}`
+        }
+        if (genericError.retryable === undefined) {
+          genericError.retryable = response.status >= 500
+        }
+        genericError.responseText = errorText
+        throw genericError
       }
       
       console.log('OpenRouterService: ✓ 收到响应，开始处理流式数据')
@@ -581,8 +699,33 @@ export const OpenRouterService = {
             try {
               const chunk = JSON.parse(jsonStr)
               
-              // 提取 delta
-              const delta = chunk.choices?.[0]?.delta
+              if (chunk.error) {
+                const streamError = buildOpenRouterError(chunk.error, response.status, chunk.error?.message || 'OpenRouter 流式响应错误', 'OpenRouterStreamError')
+                streamError.responseText = jsonStr
+                throw streamError
+              }
+
+              const primaryChoice = chunk.choices?.[0]
+
+              if (primaryChoice?.error) {
+                const streamError = buildOpenRouterError(primaryChoice.error, response.status, primaryChoice.error?.message || 'OpenRouter 流式响应错误', 'OpenRouterStreamError')
+                streamError.responseText = jsonStr
+                throw streamError
+              }
+
+              if (primaryChoice?.delta?.error) {
+                const streamError = buildOpenRouterError(primaryChoice.delta.error, response.status, primaryChoice.delta.error?.message || 'OpenRouter 流式响应错误', 'OpenRouterStreamError')
+                streamError.responseText = jsonStr
+                throw streamError
+              }
+
+              if (primaryChoice?.finish_reason === 'error') {
+                const streamError = buildOpenRouterError(primaryChoice?.error ?? primaryChoice?.delta?.error ?? primaryChoice, response.status, 'OpenRouter 流式响应错误', 'OpenRouterStreamError')
+                streamError.responseText = jsonStr
+                throw streamError
+              }
+
+              const delta = primaryChoice?.delta
               if (!delta) {
                 continue
               }

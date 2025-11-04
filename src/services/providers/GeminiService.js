@@ -88,8 +88,9 @@ export const GeminiService = {
    * @param {AbortSignal} [signal] - 可选的中止信号
    * @returns {AsyncIterable} - 流式响应的异步迭代器
    */
-  async* streamChatResponse(apiKey, history, modelName, userMessage, signal = null) {
+  async* streamChatResponse(apiKey, history, modelName, userMessage, options = {}) {
     console.log('GeminiService: 开始流式聊天，使用模型:', modelName)
+    const signal = options?.signal ?? null
     
     try {
       const genAI = new GoogleGenerativeAI(apiKey)

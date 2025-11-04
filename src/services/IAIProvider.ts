@@ -9,6 +9,19 @@
 
 import type { Message } from '../types/chat'
 
+export interface WebSearchRequestOptions {
+  enabled?: boolean
+  engine?: 'native' | 'exa' | 'undefined'
+  maxResults?: number
+  searchContextSize?: 'low' | 'medium' | 'high'
+  searchPrompt?: string
+}
+
+export interface StreamRequestOptions {
+  signal?: AbortSignal | null
+  webSearch?: WebSearchRequestOptions
+}
+
 /**
  * 模型信息接口
  */
@@ -57,9 +70,9 @@ export interface IAIProvider {
     history: Message[],
     modelName: string,
     userMessage: string,
-    baseUrl?: string,
-    signal?: AbortSignal | null
-  ): AsyncGenerator<string, void, unknown>
+    baseUrlOrOptions?: string | StreamRequestOptions,
+    maybeOptions?: StreamRequestOptions
+  ): AsyncGenerator<string | { type: string; content: string }, void, unknown>
 
   /**
    * 检查模型是否支持视觉/图像输入（可选）

@@ -83,10 +83,11 @@ export const aiChatService = {
    * @param {AbortSignal} [signal] - 可选的中止信号
    * @returns {AsyncIterable} - 流式响应的异步迭代器
    */
-  async* streamChatResponse(appStore, history, modelName, userMessage, signal = null) {
+  async* streamChatResponse(appStore, history, modelName, userMessage, options = {}) {
     // 规范化入参，避免上层传入 undefined 导致崩溃
     const safeHistory = Array.isArray(history) ? history : []
     const safeUserMessage = typeof userMessage === 'string' ? userMessage : ''
+    const { signal = null, webSearch = null } = options || {}
 
     console.log('aiChatService: 开始流式对话...')
     console.log('  - 模型:', modelName)
@@ -103,11 +104,11 @@ export const aiChatService = {
       // 确保所有服务都实现了 streamChatResponse 方法
       // 不同的服务可能需要不同的参数
       if (service === GeminiService) {
-        // Gemini: (apiKey, history, modelName, userMessage, signal)
-        yield* service.streamChatResponse(apiKey, safeHistory, modelName, safeUserMessage, signal)
+        // Gemini: (apiKey, history, modelName, userMessage, options)
+        yield* service.streamChatResponse(apiKey, safeHistory, modelName, safeUserMessage, { signal, webSearch })
       } else if (service === OpenRouterService) {
-        // OpenRouter: (apiKey, history, modelName, userMessage, baseUrl, signal)
-        yield* service.streamChatResponse(apiKey, safeHistory, modelName, safeUserMessage, baseUrl, signal)
+        // OpenRouter: (apiKey, history, modelName, userMessage, baseUrl, options)
+        yield* service.streamChatResponse(apiKey, safeHistory, modelName, safeUserMessage, baseUrl, { signal, webSearch })
       } else {
         throw new Error('未知的服务类型')
       }
