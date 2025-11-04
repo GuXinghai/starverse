@@ -10,7 +10,7 @@ import { aiChatService } from '../services/aiChatService'
 
 // 多模态工具函数
 import { extractTextFromMessage } from '../types/chat'
-import { getCurrentVersion } from '../stores/branchTreeHelpers'
+import { getCurrentVersion, getPathToBranch } from '../stores/branchTreeHelpers'
 import { electronApiBridge, isUsingElectronApiFallback } from '../utils/electronBridge'
 
 import FavoriteModelSelector from './FavoriteModelSelector.vue'
@@ -1057,17 +1057,70 @@ const handleSaveEdit = async (branchId: string) => {
   }
 
   const currentVersionSnapshot = getCurrentVersion(branch)
-  if (currentVersionSnapshot && areMessagePartsEqual(currentVersionSnapshot.parts, newParts)) {
-    // 无实际改动，直接退出编辑
+  const isUserBranch = branch.role === 'user'
+  const childBranchIds: string[] = currentVersionSnapshot?.childBranchIds ?? []
+  const emptyChildBranchIds: string[] = []
+  let hasMeaningfulReply = false
+
+  if (childBranchIds.length > 0 && conversation.tree) {
+    for (const childId of childBranchIds) {
+      const childBranch = conversation.tree.branches.get(childId)
+      if (!childBranch || childBranch.role !== 'model') {
+        continue
+      }
+
+      const childVersion = getCurrentVersion(childBranch)
+      if (!childVersion) {
+        continue
+      }
+
+      const hasContent = childVersion.parts.some((part: any) => {
+        if (part.type === 'text') {
+          return (part.text ?? '').trim().length > 0
+        }
+        if (part.type === 'image_url') {
+          return Boolean(part.image_url?.url)
+        }
+        // 其它类型默认视为有效内容
+        return true
+      })
+
+      if (hasContent) {
+        hasMeaningfulReply = true
+      } else {
+        emptyChildBranchIds.push(childId)
+      }
+    }
+  }
+
+  const hasActualChanges = !currentVersionSnapshot || !areMessagePartsEqual(currentVersionSnapshot.parts, newParts)
+  const shouldTriggerReplyOnly = !hasActualChanges && isUserBranch && !hasMeaningfulReply
+
+  if (!hasActualChanges && !shouldTriggerReplyOnly) {
+    // 无实际改动且已有有效回复，直接退出编辑
     handleCancelEdit()
     return
   }
 
-  const isUserBranch = branch.role === 'user'
+  if (shouldTriggerReplyOnly) {
+    // 清理空的占位回复并回归当前路径到用户分支
+    for (const emptyBranchId of emptyChildBranchIds) {
+      chatStore.deleteMessageBranch(targetConversationId, emptyBranchId, true)
+    }
 
-  // 创建新版本（用户编辑的消息）
-  // ✅ 用户消息重写时不继承旧回复，AI/其它消息保持现有策略
-  chatStore.addBranchVersion(targetConversationId, branchId, newParts, !isUserBranch)
+    if (conversation.tree) {
+      const normalizedPath = getPathToBranch(conversation.tree, branchId)
+      if (normalizedPath.length > 0) {
+        conversation.tree.currentPath = normalizedPath
+      }
+    }
+  }
+
+  if (hasActualChanges) {
+    // 创建新版本（用户编辑的消息）
+    // ✅ 用户消息重写时不继承旧回复，AI/其它消息保持现有策略
+    chatStore.addBranchVersion(targetConversationId, branchId, newParts, !isUserBranch)
+  }
 
   // 先退出编辑模式
   handleCancelEdit()
@@ -1076,7 +1129,7 @@ const handleSaveEdit = async (branchId: string) => {
   await nextTick()
 
   // 如果编辑的是用户消息，需要重新生成 AI 回复
-  if (isUserBranch) {
+  if (isUserBranch && (hasActualChanges || shouldTriggerReplyOnly)) {
     await performSendMessage()
   }
 }

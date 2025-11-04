@@ -402,10 +402,12 @@ export function deleteBranch(
 ): boolean {
   const branch = tree.branches.get(branchId)
   if (!branch) return false
-  
+
   if (deleteAllVersions || branch.versions.length === 1) {
     // 删除整个分支及其所有后续分支
+    const nextFocusBranchId = findNextFocusBranchId(tree, branch)
     deleteBranchRecursively(tree, branchId)
+    normalizeCurrentPath(tree, nextFocusBranchId)
   } else {
     // 仅删除当前版本（需要从父版本的 childBranchIds 中移除所有该版本的子分支）
     const currentVersion = getCurrentVersion(branch)
@@ -415,24 +417,187 @@ export function deleteBranch(
         deleteBranchRecursively(tree, childId)
       }
     }
-    
+
     // 移除当前版本
     const newVersions = branch.versions.slice()
     newVersions.splice(branch.currentVersionIndex, 1)
-    
+
     // 调整索引
     const newIndex = Math.min(branch.currentVersionIndex, newVersions.length - 1)
-    
+
     const newBranch: MessageBranch = {
       ...branch,
       versions: newVersions,
       currentVersionIndex: newIndex
     }
-    
+
     setBranch(tree, newBranch)
+    normalizeCurrentPath(tree, branch.branchId)
   }
-  
+
   return true
+}
+
+function findNextFocusBranchId(tree: ConversationTree, branch: MessageBranch): string | null {
+  if (branch.parentBranchId && branch.parentVersionId) {
+    const parentBranch = tree.branches.get(branch.parentBranchId)
+    if (!parentBranch) {
+      return null
+    }
+
+    const parentVersion = parentBranch.versions.find(
+      (version: MessageVersion) => version.id === branch.parentVersionId
+    )
+
+    if (!parentVersion) {
+      return null
+    }
+
+    if (!Array.isArray(parentVersion.childBranchIds)) {
+      return null
+    }
+
+    if (parentVersion.childBranchIds.length <= 1) {
+      // 删除后将没有兄弟分支
+      return null
+    }
+
+    const originalOrder = parentVersion.childBranchIds
+    const removedIndex = originalOrder.indexOf(branch.branchId)
+    const afterCandidates = originalOrder
+      .slice(removedIndex + 1)
+      .filter((id: string) => id !== branch.branchId)
+    if (afterCandidates.length > 0) {
+      return afterCandidates[0]
+    }
+
+    const beforeCandidates = originalOrder
+      .slice(0, removedIndex)
+      .filter((id: string) => id !== branch.branchId)
+    if (beforeCandidates.length > 0) {
+      return beforeCandidates[beforeCandidates.length - 1]
+    }
+
+    const fallbackSibling = parentVersion.childBranchIds.find(
+      (id: string) => id !== branch.branchId
+    )
+    return fallbackSibling ?? null
+  }
+
+  // 根分支，选择其它根分支作为焦点
+  const rootIndex = tree.rootBranchIds.indexOf(branch.branchId)
+  const afterRootCandidates = tree.rootBranchIds
+    .slice(rootIndex + 1)
+    .filter((id: string) => id !== branch.branchId && tree.branches.has(id))
+  if (afterRootCandidates.length > 0) {
+    return afterRootCandidates[0]
+  }
+
+  const beforeRootCandidates = tree.rootBranchIds
+    .slice(0, rootIndex)
+    .filter((id: string) => id !== branch.branchId && tree.branches.has(id))
+  if (beforeRootCandidates.length > 0) {
+    return beforeRootCandidates[beforeRootCandidates.length - 1]
+  }
+
+  const fallbackRoot = tree.rootBranchIds.find(
+    (id: string) => id !== branch.branchId && tree.branches.has(id)
+  )
+  return fallbackRoot ?? null
+}
+
+function normalizeCurrentPath(tree: ConversationTree, preferredBranchId?: string | null): void {
+  let normalizedPath: string[] = []
+
+  if (preferredBranchId) {
+    const preferredPath = getPathToBranch(tree, preferredBranchId)
+    if (preferredPath.length > 0) {
+      normalizedPath = preferredPath
+    }
+  }
+
+  if (normalizedPath.length === 0) {
+    const reconstructedPath: string[] = []
+    let prevBranchId: string | null = null
+    let prevVersionId: string | null = null
+
+    for (const branchId of tree.currentPath) {
+      const currentBranch = tree.branches.get(branchId)
+      if (!currentBranch) {
+        break
+      }
+
+      if (
+        prevBranchId !== null &&
+        (currentBranch.parentBranchId !== prevBranchId || currentBranch.parentVersionId !== prevVersionId)
+      ) {
+        break
+      }
+
+      reconstructedPath.push(branchId)
+      const currentVersion = getCurrentVersion(currentBranch)
+      if (!currentVersion) {
+        prevBranchId = null
+        prevVersionId = null
+        break
+      }
+
+      prevBranchId = currentBranch.branchId
+      prevVersionId = currentVersion.id
+    }
+
+    normalizedPath = reconstructedPath
+  }
+
+  if (normalizedPath.length === 0) {
+    const firstRootId = tree.rootBranchIds.find((id: string) => tree.branches.has(id))
+    if (!firstRootId) {
+      tree.currentPath = []
+      return
+    }
+
+    normalizedPath = [firstRootId]
+  }
+
+  let lastBranchId = normalizedPath[normalizedPath.length - 1]
+  const visited = new Set<string>(normalizedPath)
+
+  while (lastBranchId) {
+    const lastBranch = tree.branches.get(lastBranchId)
+    if (!lastBranch) {
+      break
+    }
+
+    const lastVersion = getCurrentVersion(lastBranch)
+    if (!lastVersion || !Array.isArray(lastVersion.childBranchIds) || lastVersion.childBranchIds.length === 0) {
+      break
+    }
+
+    const validChildren = lastVersion.childBranchIds.filter((childId: string) => {
+      if (visited.has(childId)) {
+        return false
+      }
+      const childBranch = tree.branches.get(childId)
+      if (!childBranch) {
+        return false
+      }
+      return (
+        childBranch.parentBranchId === lastBranchId &&
+        childBranch.parentVersionId === lastVersion.id
+      )
+    })
+
+    if (validChildren.length === 0) {
+      break
+    }
+
+    const nextChildId = validChildren[0]
+    normalizedPath = [...normalizedPath, nextChildId]
+    visited.add(nextChildId)
+    lastBranchId = nextChildId
+  }
+
+  tree.currentPath = normalizedPath
 }
 
 /**
