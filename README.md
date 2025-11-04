@@ -70,17 +70,43 @@
   - 无语言代码块自动作为 Markdown 渲染
   - 优化的性能和用户体验
 
-### �💬 会话管理
+### 💬 会话管理
 - **多会话**: 创建和管理无限数量的对话会话
 - **标签页模式**: 类似浏览器的标签页界面，支持多会话并行
 - **会话持久化**: 使用 electron-store 自动保存对话历史
 - **会话操作**: 重命名、删除、清空消息等完整的会话管理功能
+
+### 🌳 分支化对话系统 ⭐ 新增
+- **树形对话历史**: 支持在任意消息处创建新的对话分支
+- **多版本回复**: 同一位置的多个 AI 回复版本可自由切换
+- **路径导航**: 清晰展示当前对话路径和分支结构
+- **分支管理**: 支持删除单个版本或整个分支树
+- **多模态分支**: 分支系统完全支持文本和图像混合消息
+
+### 🎯 高级模型选择器 ⭐ 新增
+- **收藏模型**: 快速访问常用的 AI 模型
+- **智能筛选**: 
+  - 模型系列筛选（GPT、Claude、Gemini、Llama 等）
+  - 多模态能力筛选（文本、图像、音频）
+  - 上下文长度筛选（自适应分位数滑块）
+  - 价格区间筛选
+- **实时搜索**: 模糊搜索模型名称、ID 和描述
+- **多维排序**: 按名称、上下文长度或价格排序
+- **详细信息**: 显示模型描述、定价、上下文长度等元数据
+
+### ✏️ 消息编辑 ⭐ 新增
+- **编辑用户消息**: 双击或点击编辑按钮修改已发送的消息
+- **重新生成**: 编辑后自动触发 AI 重新生成回复
+- **图片管理**: 编辑时可添加或移除图片附件
+- **历史保留**: 编辑操作会创建新分支，保留原有对话路径
 
 ### 🎨 用户体验
 - **现代化 UI**: 基于 Tailwind CSS 的精美界面设计
 - **响应式布局**: 自适应不同窗口大小
 - **加载动画**: 优雅的应用初始化和消息加载动画
 - **草稿保存**: 自动保存输入框的草稿内容
+- **鼠标悬停预览**: 消息悬停显示编辑和分支控制按钮
+- **滚动优化**: 支持拖动滚动条时暂停自动滚动
 
 ### ⚙️ 配置管理
 - **多提供商配置**: 可视化选择 Gemini 或 OpenRouter
@@ -138,11 +164,19 @@ Starverse/
 │   │   ├── TabbedChatView.vue  # 多标签聊天容器
 │   │   ├── ConversationList.vue # 对话列表侧边栏
 │   │   ├── ModelSelector.vue   # 模型选择器
+│   │   ├── FavoriteModelSelector.vue ⭐ # 收藏模型快速选择
+│   │   ├── QuickModelSearch.vue # 快速模型搜索
+│   │   ├── AdvancedModelPickerModal.vue ⭐ # 高级模型选择器
+│   │   ├── MessageBranchController.vue ⭐ # 消息分支控制器
+│   │   ├── ContentRenderer.vue  # Markdown/代码渲染器
+│   │   ├── AttachmentPreview.vue # 图片附件预览
+│   │   ├── DeleteConfirmDialog.vue # 删除确认对话框
 │   │   └── SettingsView.vue    # 设置页面
 │   │
 │   ├── stores/                 # Pinia 状态管理
 │   │   ├── index.ts            # appStore（全局状态）
 │   │   ├── chatStore.js        # chatStore（对话管理）
+│   │   ├── branchTreeHelpers.ts ⭐ # 分支树辅助函数
 │   │   ├── CHAT_STORE_GUIDE.md # Store API 使用指南
 │   │   └── README.md           # 状态管理文档
 │   │
@@ -186,31 +220,31 @@ Starverse/
 ```
 ┌─────────────────────────────────────────────┐
 │           Electron 主进程 (main.ts)          │
-│  - 窗口管理                                   │
-│  - IPC 通信处理                               │
-│  - electron-store 数据持久化                  │
+│  - 窗口管理                                  │
+│  - IPC 通信处理                              │
+│  - electron-store 数据持久化                 │
 └──────────────────┬──────────────────────────┘
                    │ IPC Bridge
                    │ (preload.ts)
 ┌──────────────────┴──────────────────────────┐
-│         Vue 渲染进程 (src/)                   │
+│         Vue 渲染进程 (src/)                  │
 │  ┌─────────────────────────────────────┐    │
 │  │  UI 层 (Components)                 │    │
 │  │  - ChatTabs                         │    │
 │  │  - ChatView                         │    │
 │  │  - ConversationList                 │    │
-│  │  - SettingsView (多提供商配置)      │    │
+│  │  - SettingsView (多提供商配置)       │    │
 │  └──────────────┬──────────────────────┘    │
-│                 │                            │
+│                 │                           │
 │  ┌──────────────┴──────────────────────┐    │
-│  │  状态管理层 (Pinia Stores)          │    │
+│  │  状态管理层 (Pinia Stores)           │    │
 │  │  - appStore: 多提供商配置管理        │    │
-│  │  - chatStore: 对话和消息管理        │    │
+│  │  - chatStore: 对话和消息管理         │    │
 │  └──────────────┬──────────────────────┘    │
-│                 │                            │
+│                 │                           │
 │  ┌──────────────┴──────────────────────┐    │
 │  │  服务层 (Services)                   │    │
-│  │  - aiChatService: 统一 AI 路由器    │    │
+│  │  - aiChatService: 统一 AI 路由器     │    │
 │  │    ├─ GeminiService                 │    │
 │  │    └─ OpenRouterService             │    │
 │  └─────────────────────────────────────┘    │
@@ -820,20 +854,38 @@ contextBridge.exposeInMainWorld('electronStore', {
 
 ## 📚 更多文档
 
+### 核心功能文档 ⭐
+- [分支化聊天管理系统完整实现](./docs/BRANCH_CHAT_SYSTEM_COMPLETE.md) 🌳 **新增**
+- [高级模型选择器实现总结](./docs/ADVANCED_MODEL_PICKER_IMPLEMENTATION.md) 🎯 **新增**
+- [分支树架构重构完成](./docs/BRANCH_TREE_REFACTOR_COMPLETE.md) 🔧
 - [OpenRouter 接入重构总结](./docs/OPENROUTER_INTEGRATION_SUMMARY.md) ⭐ 
-- [系统默认应用打开图片](./docs/SYSTEM_IMAGE_OPENER.md) ⭐ **新增**
-- [全部修复完成总结](./docs/ALL_FIXES_COMPLETE.md) 
-- [优先级修复总结](./docs/PRIORITY_FIXES_SUMMARY.md) 
+- [系统默认应用打开图片](./docs/SYSTEM_IMAGE_OPENER.md) ⭐
+
+### 优化与测试指南
+- [自适应分位数滑块测试指南](./docs/QUANTILE_SLIDER_TEST_GUIDE.md) 🧪 **新增**
+- [分支树重构测试指南](./docs/REFACTOR_TEST_GUIDE.md)
+- [ChatView 优化总结](./docs/CHATVIEW_OPTIMIZATION_SUMMARY.md)
+- [DOM 清理验证](./docs/DOM_CLEANUP_VERIFICATION.md)
+
+### API 与开发文档
 - [Chat Store API 使用指南](./src/stores/CHAT_STORE_GUIDE.md)
 - [ChatView 更新说明](./docs/CHATVIEW_UPDATE_SUMMARY.md)
 - [模型列表调试文档](./docs/DEBUG_MODEL_LIST.md)
+
+### 问题修复记录
+- [全部修复完成总结](./docs/ALL_FIXES_COMPLETE.md) 
+- [优先级修复总结](./docs/PRIORITY_FIXES_SUMMARY.md)
 - [焦点问题报告](./docs/FOCUS_ISSUE_REPORT.md)
 
 ---
 
 ## 🚧 已知问题和路线图
 
-### 已修复问题 ✅
+### 已完成功能 ✅
+- ✅ **分支化对话系统**: 支持树形对话历史和多版本回复切换
+- ✅ **高级模型选择器**: 收藏、筛选、搜索、排序功能
+- ✅ **消息编辑功能**: 双击编辑用户消息并重新生成 AI 回复
+- ✅ **多模态支持**: 完整的图片上传、预览、编辑功能
 - ✅ **P0**: ChatView 多提供商逻辑适配
 - ✅ **P0**: OpenRouter BaseURL 持久化
 - ✅ **P0**: main.ts 迁移到多提供商架构
@@ -843,15 +895,18 @@ contextBridge.exposeInMainWorld('electronStore', {
 - ✅ **P3**: AbortController 内存泄漏
 - ✅ **P3**: API Key 格式校验
 - ✅ **P3**: 智能默认模型选择
+- ✅ **自适应分位数滑块**: 优化上下文长度和价格筛选体验
 
 ### 未来计划 🚀
 - [ ] 支持更多 AI 提供商（Claude API, Azure OpenAI）
 - [ ] 添加高级参数配置（Temperature, Top-P, Max Tokens）
-- [ ] 实现对话导出/导入功能
-- [ ] 代码高亮和复制功能
+- [ ] 实现对话导出/导入功能（JSON, Markdown, PDF）
+- [ ] 代码块复制功能增强
 - [ ] 主题切换（暗色模式）
-- [ ] 多语言支持
+- [ ] 多语言支持（i18n）
 - [ ] 成本统计和使用量追踪
+- [ ] 语音输入/输出支持
+- [ ] 插件系统架构
 
 ---
 

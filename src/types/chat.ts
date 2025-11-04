@@ -31,7 +31,7 @@ export type ImagePart = {
 export type MessagePart = TextPart | ImagePart;
 
 /**
- * 消息接口
+ * 消息接口（保留用于向后兼容）
  * 每条消息由一个或多个 parts 组成
  */
 export interface Message {
@@ -42,13 +42,66 @@ export interface Message {
 }
 
 /**
- * 对话接口
+ * ========== 消息分支树结构 ==========
+ * 支持消息版本管理和分支对话
+ */
+
+/**
+ * 消息版本 - 同一分支的不同版本
+ * 例如：重新生成的不同回复，或编辑后的不同提问
+ */
+export interface MessageVersion {
+  id: string;                    // 版本唯一ID
+  parts: MessagePart[];          // 消息内容（支持多模态）
+  timestamp: number;             // 创建时间
+  childBranchIds: string[];      // 子分支ID列表（版本级后继关系）
+}
+
+/**
+ * 消息分支 - 对话树中的一个节点
+ * 
+ * 树状结构示例：
+ * 
+ *   [用户提问A] (branchId: b1, 1个版本)
+ *        ↓
+ *   [AI回复B] (branchId: b2, 3个版本: B1, B2, B3)
+ *        ↓
+ *   [用户提问C] (branchId: b3, 2个版本: C1, C2)
+ *        ↓
+ *   [AI回复D] (branchId: b4, 1个版本)
+ * 
+ * currentPath = [b1, b2, b3, b4]
+ * 当前显示路径：A → B2 → C1 → D
+ */
+export interface MessageBranch {
+  branchId: string;              // 分支唯一ID
+  role: 'user' | 'model';        // 消息角色
+  parentBranchId: string | null; // 父分支ID（null表示根节点）
+  parentVersionId: string | null;// 源自父分支的哪个版本ID
+  versions: MessageVersion[];    // 该分支的所有版本
+  currentVersionIndex: number;   // 当前显示的版本索引 (0-based)
+}
+
+/**
+ * 对话树结构
+ * 管理整个对话的分支和版本
+ */
+export interface ConversationTree {
+  branches: Map<string, MessageBranch>;  // 所有分支的Map集合
+  rootBranchIds: string[];               // 根分支ID列表（对话开始的消息）
+  currentPath: string[];                 // 当前显示路径的分支ID数组
+}
+
+/**
+ * 对话接口（更新版）
  */
 export interface Conversation {
   id: string;
   title: string;
-  messages: Message[];
-  modelName?: string;
+  tree: ConversationTree;        // 树形消息结构
+  model: string;                 // 使用的模型
+  generationStatus: 'idle' | 'sending' | 'receiving'; // 生成状态：idle=空闲, sending=发送中, receiving=接收中
+  draft: string;                 // 草稿内容
   createdAt?: number;
   updatedAt?: number;
 }
@@ -91,3 +144,9 @@ export function getImageUrls(message: Message): string[] {
     .filter((part): part is ImagePart => part.type === 'image_url')
     .map(part => part.image_url.url);
 }
+
+/**
+ * ========== 注意 ==========
+ * 树操作工具函数位于 stores/branchTreeHelpers.ts
+ * 包括: createEmptyTree, getCurrentVersion, addBranch, switchVersion 等
+ */

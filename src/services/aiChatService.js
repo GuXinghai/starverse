@@ -93,9 +93,6 @@ export const aiChatService = {
     console.log('  - 历史消息数:', safeHistory.length)
     console.log('  - 用户消息长度:', safeUserMessage.length)
     
-    // 🔍 调试：打印历史消息详情
-    console.log('🔍 [DEBUG] aiChatService 接收到的 history:', JSON.stringify(safeHistory, null, 2))
-    
     try {
       const { service, apiKey, baseUrl } = this.getProviderContext(appStore)
       
@@ -110,7 +107,6 @@ export const aiChatService = {
         yield* service.streamChatResponse(apiKey, safeHistory, modelName, safeUserMessage, signal)
       } else if (service === OpenRouterService) {
         // OpenRouter: (apiKey, history, modelName, userMessage, baseUrl, signal)
-        console.log('🔍 [DEBUG] 调用 OpenRouterService.streamChatResponse')
         yield* service.streamChatResponse(apiKey, safeHistory, modelName, safeUserMessage, baseUrl, signal)
       } else {
         throw new Error('未知的服务类型')
