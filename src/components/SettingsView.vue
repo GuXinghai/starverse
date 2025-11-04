@@ -46,6 +46,19 @@ const openRouterBaseUrl = computed({
   }
 })
 
+// 默认模型
+const defaultModel = computed({
+  get: () => store.defaultModel,
+  set: (value: string) => {
+    store.defaultModel = value
+  }
+})
+
+// 获取可用模型列表（用于默认模型选择器）
+const availableModelsForDefault = computed(() => {
+  return chatStore.availableModelsMap
+})
+
 // 监听 Provider 切换，自动刷新模型列表
 watch(activeProvider, async (newProvider, oldProvider) => {
   if (newProvider !== oldProvider) {
@@ -158,6 +171,18 @@ const clearApiKey = (provider: 'gemini' | 'openrouter') => {
   }
   saveMessage.value = ''
 }
+
+// 保存默认模型
+const saveDefaultModel = async () => {
+  try {
+    await store.saveDefaultModel(defaultModel.value)
+    saveMessage.value = '默认模型已保存！'
+  } catch (error) {
+    console.error('保存默认模型失败:', error)
+    saveMessage.value = '保存默认模型失败'
+  }
+}
+
 </script>
 
 <template>
@@ -398,6 +423,42 @@ const clearApiKey = (provider: 'gemini' | 'openrouter') => {
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
             {{ saveMessage }}
+          </div>
+        </div>
+      </div>
+
+      <!-- 默认模型设置卡片 -->
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+          <svg class="w-5 h-5 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path>
+          </svg>
+          默认模型
+        </h2>
+        
+        <div class="space-y-4">
+          <div>
+            <label for="defaultModel" class="block text-sm font-medium text-gray-700 mb-2">
+              新对话默认使用的模型
+            </label>
+            <select
+              id="defaultModel"
+              v-model="defaultModel"
+              @change="saveDefaultModel"
+              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors"
+            >
+              <option value="openrouter/auto">OpenRouter Auto (智能路由)</option>
+              <option 
+                v-for="[modelId, modelData] of availableModelsForDefault" 
+                :key="modelId" 
+                :value="modelId"
+              >
+                {{ modelData.name }} ({{ modelId }})
+              </option>
+            </select>
+            <p class="mt-2 text-sm text-gray-500">
+              创建新对话时将默认使用此模型。推荐使用 OpenRouter Auto 进行智能路由。
+            </p>
           </div>
         </div>
       </div>

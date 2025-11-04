@@ -43,6 +43,12 @@
 - **多模型支持**: 
   - Gemini: gemini-pro, gemini-1.5-flash, gemini-2.0-flash-exp 等
   - OpenRouter: 支持 GPT-4, Claude, Gemini 等上百种模型
+- **多模态支持**: 
+  - 上传图片到 AI 模型进行分析
+  - 接收 AI 生成的图片
+  - 支持消息编辑时添加/移除图片
+  - 图片点击使用系统默认应用打开
+  - 一键下载 AI 生成的图片
 - **流式响应**: 实时流式输出 AI 回复，提供流畅的对话体验
 - **上下文管理**: 完整的对话历史管理，支持多轮对话
 
@@ -814,9 +820,10 @@ contextBridge.exposeInMainWorld('electronStore', {
 
 ## 📚 更多文档
 
-- [OpenRouter 接入重构总结](./docs/OPENROUTER_INTEGRATION_SUMMARY.md) ⭐ **新增**
-- [全部修复完成总结](./docs/ALL_FIXES_COMPLETE.md) ⭐ **新增**
-- [优先级修复总结](./docs/PRIORITY_FIXES_SUMMARY.md) ⭐ **新增**
+- [OpenRouter 接入重构总结](./docs/OPENROUTER_INTEGRATION_SUMMARY.md) ⭐ 
+- [系统默认应用打开图片](./docs/SYSTEM_IMAGE_OPENER.md) ⭐ **新增**
+- [全部修复完成总结](./docs/ALL_FIXES_COMPLETE.md) 
+- [优先级修复总结](./docs/PRIORITY_FIXES_SUMMARY.md) 
 - [Chat Store API 使用指南](./src/stores/CHAT_STORE_GUIDE.md)
 - [ChatView 更新说明](./docs/CHATVIEW_UPDATE_SUMMARY.md)
 - [模型列表调试文档](./docs/DEBUG_MODEL_LIST.md)
@@ -841,7 +848,6 @@ contextBridge.exposeInMainWorld('electronStore', {
 - [ ] 支持更多 AI 提供商（Claude API, Azure OpenAI）
 - [ ] 添加高级参数配置（Temperature, Top-P, Max Tokens）
 - [ ] 实现对话导出/导入功能
-- [ ] 添加 Markdown 渲染支持
 - [ ] 代码高亮和复制功能
 - [ ] 主题切换（暗色模式）
 - [ ] 多语言支持
