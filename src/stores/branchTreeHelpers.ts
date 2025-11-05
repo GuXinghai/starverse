@@ -810,8 +810,9 @@ export function appendImageToBranch(
     return false
   }
   
-  // 创建图片 part
+  // 创建图片 part，附加唯一 id 以便 Vue 能稳定追踪（避免 v-for 使用索引带来的渲染问题）
   const imagePart: ImagePart = {
+    id: uuidv4(),
     type: 'image_url',
     image_url: {
       url: imageUrl

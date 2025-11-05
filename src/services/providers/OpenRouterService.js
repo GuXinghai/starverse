@@ -255,6 +255,7 @@ export const OpenRouterService = {
     console.log('OpenRouterService: Base URL:', baseUrl)
     let signal = null
     let webSearch = null
+    let requestedModalities = null
 
     if (options && typeof options === 'object') {
       if ('signal' in options) {
@@ -262,6 +263,24 @@ export const OpenRouterService = {
       }
       if ('webSearch' in options) {
         webSearch = options.webSearch
+      }
+      if ('requestedModalities' in options) {
+        const rawModalities = options.requestedModalities
+        if (Array.isArray(rawModalities)) {
+          const cleaned = rawModalities
+            .map(mod => (typeof mod === 'string' ? mod.trim().toLowerCase() : ''))
+            .filter(Boolean)
+
+          if (cleaned.length > 0) {
+            const normalized = cleaned.map(mod => {
+              if (mod === 'vision' || mod === 'multimodal') {
+                return 'image'
+              }
+              return mod
+            })
+            requestedModalities = Array.from(new Set(normalized))
+          }
+        }
       }
     } else if (options) {
       signal = options
@@ -459,11 +478,34 @@ export const OpenRouterService = {
         })
       }
 
+      const finalModalities = []
+
       if (hasImageContent) {
         if (!supportsVision(modelName)) {
           throw new Error(`当前模型 ${modelName} 不支持图像输入，请切换到具备视觉能力的模型后重试。`)
         }
-        requestBody.modalities = ['image', 'text']
+        finalModalities.push('image', 'text')
+      }
+
+      if (Array.isArray(requestedModalities) && requestedModalities.length > 0) {
+        finalModalities.push(...requestedModalities)
+      }
+
+      if (finalModalities.length > 0) {
+        const normalizedModalities = Array.from(new Set(
+          finalModalities
+            .map(mod => (typeof mod === 'string' ? mod.trim().toLowerCase() : ''))
+            .filter(Boolean)
+            .map(mod => (mod === 'vision' || mod === 'multimodal' ? 'image' : mod))
+        ))
+
+        if (normalizedModalities.length > 0) {
+          if (!normalizedModalities.includes('text')) {
+            normalizedModalities.push('text')
+          }
+          requestBody.modalities = normalizedModalities
+          console.log('OpenRouterService: 请求 modalities =', normalizedModalities)
+        }
       }
       
       // 调试：在发送前验证 requestBody 格式并打印被截断的请求体（便于快速排查）

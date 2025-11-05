@@ -11,14 +11,6 @@ export default defineConfig({
       main: {
         // Shortcut of `build.lib.entry`.
         entry: 'electron/main.ts',
-        vite: {
-          build: {
-            minify: false,
-            rollupOptions: {
-              external: ['electron', 'electron-store']
-            }
-          }
-        }
       },
       preload: {
         // Shortcut of `build.rollupOptions.input`.
@@ -34,5 +26,4 @@ export default defineConfig({
         : {},
     }),
   ],
-  clearScreen: false, // 防止清屏导致输出混乱
 })

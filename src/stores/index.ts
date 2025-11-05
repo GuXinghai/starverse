@@ -36,6 +36,8 @@ export const useAppStore = defineStore('app', () => {
   
   const chatMessages = ref<ChatMessage[]>([])
   const isAppReady = ref<boolean>(false) // 应用初始化完成状态
+  const isSplashVisible = ref<boolean>(true)
+  const splashStatus = ref<string>('正在启动 Starverse...')
 
   // ========== 初始化方法 ==========
   
@@ -115,6 +117,23 @@ export const useAppStore = defineStore('app', () => {
       // 无论成功或失败，都标记应用为已就绪
       isAppReady.value = true
       console.log('✓ 应用初始化完成，isAppReady = true')
+    }
+  }
+
+  const showSplashScreen = (message?: string) => {
+    if (message && message.trim()) {
+      splashStatus.value = message
+    }
+    isSplashVisible.value = true
+  }
+
+  const hideSplashScreen = () => {
+    isSplashVisible.value = false
+  }
+
+  const setSplashStatus = (message: string) => {
+    if (message && message.trim()) {
+      splashStatus.value = message
     }
   }
 
@@ -234,10 +253,15 @@ export const useAppStore = defineStore('app', () => {
     apiKey,
     chatMessages,
     isAppReady,
+  isSplashVisible,
+  splashStatus,
     
     // ========== 方法 ==========
     // 初始化
     initializeStore,
+  showSplashScreen,
+  hideSplashScreen,
+  setSplashStatus,
     // 配置保存
     saveActiveProvider,
     saveGeminiApiKey,
