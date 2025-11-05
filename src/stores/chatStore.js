@@ -319,6 +319,31 @@ export const useChatStore = defineStore('chat', () => {
    * @returns {string} 新对话的 ID
    */
   const createNewConversation = (title = '新对话') => {
+    // Reuse an existing unused conversation instead of spawning duplicates.
+    // 只有当空白聊天的名称为默认名称时才复用
+    const emptyConversationIndex = conversations.value.findIndex((conversation) => {
+      const tree = conversation?.tree
+      if (!tree) return false
+
+      const hasBranches = tree.branches && tree.branches.size > 0
+      const hasPath = Array.isArray(tree.currentPath) && tree.currentPath.length > 0
+      const hasDraft = Boolean(conversation.draft)
+      const isDefaultTitle = conversation.title === '新对话'
+      
+      // 必须同时满足：空白聊天 且 是默认名称
+      return !hasBranches && !hasPath && !hasDraft && isDefaultTitle
+    })
+
+    if (emptyConversationIndex !== -1) {
+      const [emptyConversation] = conversations.value.splice(emptyConversationIndex, 1)
+      if (emptyConversation) {
+        emptyConversation.updatedAt = Date.now()
+        conversations.value.unshift(emptyConversation)
+        saveConversations()
+        return emptyConversation.id
+      }
+    }
+
     // 使用 appStore 的默认模型，如果未设置则使用 selectedModel
     const appStore = useAppStore()
     const modelToUse = appStore.defaultModel || selectedModel.value
