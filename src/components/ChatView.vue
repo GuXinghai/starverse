@@ -882,6 +882,10 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
   let timeoutId: number | null = null
   let hasReceivedData = false
   let timedOut = false
+  const INITIAL_TIMEOUT_MS = 20000
+  const STREAM_TIMEOUT_MS = 5 * 60 * 1000
+  let timeoutReason: 'initial' | 'stream' | null = null
+  let timeoutMessage = ''
   let userBranchId: string | null = null
   let aiBranchId: string | null = null
 
@@ -970,21 +974,31 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
       throw new Error('流式响应不可用')
     }
 
-    // ========== 设置20秒超时机制 ==========
-    const TIMEOUT_MS = 20000
-    
-    const setupTimeout = () => {
-      if (timeoutId) clearTimeout(timeoutId)
+    // ========== 超时机制：首包 20 秒，流式 5 分钟 ==========
+    const scheduleTimeout = (duration: number, reason: 'initial' | 'stream') => {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+
+      timeoutReason = reason
+      timeoutMessage = reason === 'initial'
+        ? '⏱️ 请求超时（20秒未收到响应），中止请求'
+        : '⏱️ 请求超时：模型在5分钟内未继续传输数据，已停止本次回复。'
+
       timeoutId = window.setTimeout(() => {
-        if (!hasReceivedData) {
-          console.warn('⏱️ 请求超时（20秒未收到响应），中止请求')
+        if (reason === 'initial' && !hasReceivedData) {
+          console.warn(timeoutMessage)
+          timedOut = true
+          abortController.value?.abort()
+        } else if (reason === 'stream') {
+          console.warn(timeoutMessage)
           timedOut = true
           abortController.value?.abort()
         }
-      }, TIMEOUT_MS)
+      }, duration)
     }
-    
-    setupTimeout()
+
+    scheduleTimeout(INITIAL_TIMEOUT_MS, 'initial')
 
     // ========== 流式读取响应：追加到 AI 分支 ==========
     let isFirstChunk = true
@@ -999,6 +1013,9 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
         chatStore.setConversationGenerationStatus(targetConversationId, 'receiving')
         console.log('✓ 开始接收流式响应')
         isFirstChunk = false
+        scheduleTimeout(STREAM_TIMEOUT_MS, 'stream')
+      } else {
+        scheduleTimeout(STREAM_TIMEOUT_MS, 'stream')
       }
 
       // 处理 chunk 并追加到 AI 分支
@@ -1051,13 +1068,15 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
     const isTimeout = timedOut
     
     if (isTimeout) {
-      console.warn('⏱️ 请求超时：20秒内未收到服务器响应')
+      const timeoutText = timeoutReason === 'stream'
+        ? '⏱️ 请求超时：模型在5分钟内未继续传输数据，请稍后重试或尝试切换模型。'
+        : '⏱️ 请求超时：服务器在20秒内未响应，请检查网络连接或稍后重试。'
+      console.warn(timeoutText)
       // 🚨 标记对话有错误
       chatStore.setConversationError(targetConversationId, true)
       
       // 更新 AI 分支为超时错误消息
       if (aiBranchId) {
-        const timeoutText = '⏱️ 请求超时：服务器在20秒内未响应，请检查网络连接或稍后重试。'
         const timeoutMessage = [{ type: 'text', text: timeoutText }]
         chatStore.updateBranchParts(targetConversationId, aiBranchId, timeoutMessage, {
           metadata: buildErrorMetadata(null, timeoutText, {
@@ -1157,6 +1176,9 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
     if (currentGenerationToken === generationToken) {
       currentGenerationToken = null
     }
+
+    timeoutReason = null
+    timeoutMessage = ''
 
     // ========== 强制清理：使用固化的 conversationId 确保清理正确的对话 ==========
     console.log('🧹 清理：设置 generationStatus = idle for', targetConversationId)
