@@ -32,45 +32,21 @@ console.log('正在注册 Pinia...')
 app.use(pinia)
 console.log('✓ Pinia 注册成功')
 
-// ========== 关键修复：在挂载前初始化 stores ==========
-;(async () => {
-  console.log('正在初始化 appStore...')
-  const appStore = useAppStore()
-  await appStore.initializeStore()
-  console.log('✓ appStore 初始化完成, apiKey:', appStore.apiKey)
+// 提前创建 store 实例，便于在多个初始化阶段共享
+const appStore = useAppStore()
+// @ts-ignore - chatStore.js 是一个 JavaScript 文件
+const chatStore = useChatStore()
+const SPLASH_MIN_DURATION_MS = 1200
 
-  console.log('正在初始化 chatStore...')
-  // @ts-ignore
-  const chatStore = useChatStore()
-  await chatStore.loadConversations()
-  console.log('✓ chatStore 初始化完成')
+appStore.showSplashScreen('正在初始化 Starverse...')
 
-  // 自动加载模型列表（使用多提供商服务）
-  // 检查当前 Provider 的 API Key 是否已配置
-  const currentProvider = appStore.activeProvider
-  const hasApiKey = currentProvider === 'Gemini' 
-    ? appStore.geminiApiKey 
-    : appStore.openRouterApiKey
-  
-  if (hasApiKey) {
-    console.log(`检测到已保存的 ${currentProvider} API Key，正在加载模型列表...`)
-    try {
-      // @ts-ignore
-      const models = await aiChatService.listAvailableModels(appStore)
-      console.log('✓ 模型列表加载成功:', models.length, '个模型')
-      chatStore.setAvailableModels(models)
-    } catch (error) {
-      console.warn('⚠️ 自动加载模型列表失败:', error)
-      console.warn('用户可以在设置页面重新保存 API Key 来加载模型')
-    }
-  } else {
-    console.log(`未检测到 ${currentProvider} API Key，跳过模型列表加载`)
-  }
-
+const mountApplication = () => {
+  appStore.setSplashStatus('正在渲染主界面...')
   console.log('正在挂载应用到 #app...')
-  app.mount('#app').$nextTick(async () => {
+  const rootInstance = app.mount('#app')
+  rootInstance.$nextTick(async () => {
     console.log('✓✓✓ 应用挂载成功！✓✓✓')
-  
+
     // Use contextBridge (guarded for non-Electron environments)
     if (ipcRendererBridge?.on) {
       ipcRendererBridge.on('main-process-message', (_event: unknown, message: unknown) => {
@@ -80,9 +56,72 @@ console.log('✓ Pinia 注册成功')
     } else {
       console.log('ℹ️ IPC bridge 未检测到，跳过主进程消息监听（可能运行在纯浏览器环境）。')
     }
-  
+
     console.log('================================================')
     console.log('🎉 应用启动完成！准备就绪！')
     console.log('================================================')
   })
+}
+
+const bootstrapChatData = async () => {
+  const splashStart = Date.now()
+  console.log('🌠 正在后台加载 chatStore 数据...')
+  try {
+    appStore.setSplashStatus('正在加载对话历史...')
+    await chatStore.loadConversations()
+    console.log('✓ chatStore 会话数据加载完成')
+    appStore.setSplashStatus('正在准备模型资源...')
+  } catch (error) {
+    console.error('⚠️ chatStore 加载对话失败:', error)
+    appStore.setSplashStatus('对话加载失败，继续尝试启动...')
+  }
+
+  const currentProvider = appStore.activeProvider
+  const hasApiKey = currentProvider === 'Gemini'
+    ? appStore.geminiApiKey
+    : appStore.openRouterApiKey
+
+  if (!hasApiKey) {
+    console.log(`未检测到 ${currentProvider} API Key，后台模型加载跳过`)
+    appStore.setSplashStatus('未配置 API Key，可在设置中添加以加载模型')
+  } else {
+    console.log(`🌌 后台加载 ${currentProvider} 模型列表...`)
+    appStore.setSplashStatus(`正在加载 ${currentProvider} 模型列表...`)
+    try {
+      const models = await aiChatService.listAvailableModels(appStore)
+      console.log('✓ 模型列表加载成功:', models.length, '个模型')
+      chatStore.setAvailableModels(models)
+      appStore.setSplashStatus('模型列表加载完成')
+    } catch (error) {
+      console.warn('⚠️ 后台加载模型列表失败:', error)
+      console.warn('用户可以在设置页面重新保存 API Key 来加载模型')
+      appStore.setSplashStatus('模型加载失败，可稍后在设置中重试')
+    }
+  }
+
+  appStore.setSplashStatus('准备进入 Starverse...')
+  const elapsed = Date.now() - splashStart
+  if (elapsed < SPLASH_MIN_DURATION_MS) {
+    await new Promise<void>((resolve) => setTimeout(resolve, SPLASH_MIN_DURATION_MS - elapsed))
+  }
+  appStore.hideSplashScreen()
+}
+
+// ========== 启动流程：先准备配置，再挂载 UI，最后后台加载数据 ==========
+;(async () => {
+  console.log('正在初始化 appStore...')
+  try {
+    appStore.setSplashStatus('正在加载本地配置...')
+    await appStore.initializeStore()
+    console.log('✓ appStore 初始化完成, apiKey:', appStore.apiKey)
+    appStore.setSplashStatus('配置加载完成')
+  } catch (error) {
+    console.error('⚠️ appStore 初始化失败:', error)
+    appStore.setSplashStatus('配置加载失败，尝试继续启动')
+  }
+
+  mountApplication()
+
+  // 后台加载聊天数据和模型列表，不阻塞界面渲染
+  void bootstrapChatData()
 })()

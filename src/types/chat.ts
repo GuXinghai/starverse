@@ -10,6 +10,7 @@
  */
 export type TextPart = {
   type: 'text';
+  id?: string;
   text: string;
 };
 
@@ -18,6 +19,7 @@ export type TextPart = {
  * 图像使用 base64 data URI 格式存储
  */
 export type ImagePart = {
+  id?: string;
   type: 'image_url';
   image_url: {
     url: string; // base64 data URI: "data:image/jpeg;base64,..."

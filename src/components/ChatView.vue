@@ -1,5 +1,6 @@
 ﻿<script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { v4 as uuidv4 } from 'uuid'
 
 // @ts-ignore - chatStore.js is a JavaScript file
 import { useChatStore } from '../stores/chatStore'
@@ -10,7 +11,7 @@ import { aiChatService } from '../services/aiChatService'
 
 // 多模态工具函数
 import { extractTextFromMessage } from '../types/chat'
-import type { MessageVersionMetadata, WebSearchLevel } from '../types/chat'
+import type { MessagePart, MessageVersionMetadata, TextPart, WebSearchLevel } from '../types/chat'
 import { getCurrentVersion, getPathToBranch } from '../stores/branchTreeHelpers'
 import { electronApiBridge, isUsingElectronApiFallback } from '../utils/electronBridge'
 
@@ -102,6 +103,11 @@ const closeAdvancedModelPicker = () => {
 // ========== AbortController 管理 ==========
 const abortController = ref<AbortController | null>(null)
 
+// 使用 generation token 追踪当前生成请求，区分用户手动中断与其他中断场景
+let generationTokenCounter = 0
+let currentGenerationToken: number | null = null
+const manualAbortTokens = new Set<number>()
+
 // ========== 组件激活状态管理 ==========
 // 由于不再使用 KeepAlive，我们通过 computed 判断当前组件是否处于激活状态
 const isComponentActive = computed(() => {
@@ -168,33 +174,194 @@ const currentConversation = computed(() => {
  * 将树形结构转换为可渲染的消息列表
  * 遍历 currentPath，提取每个分支的当前版本
  */
-const displayMessages = computed(() => {
-  if (!currentConversation.value || !currentConversation.value.tree) {
+type DisplayMessage = {
+  id: string
+  branchId: string
+  role: 'user' | 'model'
+  parts: MessagePart[]
+  timestamp: number
+  currentVersionIndex: number
+  totalVersions: number
+  hasMultipleVersions: boolean
+}
+
+const displayMessageCache = new Map<string, DisplayMessage>()
+
+type SendRequestOverrides = {
+  requestedModalities?: string[]
+}
+
+const IMAGE_RESPONSE_MODALITIES = ['image', 'text'] as const
+const branchGenerationPreferences: Map<string, SendRequestOverrides> = new Map()
+const imageGenerationEnabled = ref(false)
+
+const displayMessages = computed<DisplayMessage[]>(() => {
+  const conversation = currentConversation.value
+  if (!conversation?.tree) {
+    if (displayMessageCache.size > 0) {
+      displayMessageCache.clear()
+    }
     return []
   }
-  
-  const tree = currentConversation.value.tree
-  
-  return tree.currentPath.map((branchId: string) => {
+
+  const tree = conversation.tree
+  const nextCache = new Map<string, DisplayMessage>()
+  const messages: DisplayMessage[] = []
+
+  for (const branchId of tree.currentPath) {
     const branch = tree.branches.get(branchId)
-    if (!branch) return null
-    
+    if (!branch) continue
+
     const version = getCurrentVersion(branch)
-    if (!version) return null
-    
-    return {
-      id: version.id,               // 版本ID（用于key）
-      branchId: branchId,          // 分支ID（用于操作）
-      role: branch.role,           // user | model
-      parts: version.parts,        // 消息内容
-      timestamp: version.timestamp,
-      // 版本控制信息
-      currentVersionIndex: branch.currentVersionIndex,
-      totalVersions: branch.versions.length,
-      hasMultipleVersions: branch.versions.length > 1
-    }
-  }).filter((msg: any) => msg !== null)
+    if (!version) continue
+
+    const cacheKey = version.id
+    const cached = displayMessageCache.get(cacheKey)
+    const partsRef = version.parts as MessagePart[]
+    const totalVersions = branch.versions.length
+    const currentVersionIndex = branch.currentVersionIndex
+
+    const shouldReuse = Boolean(
+      cached &&
+      cached.branchId === branchId &&
+      cached.role === branch.role &&
+      cached.parts === partsRef &&
+      cached.timestamp === version.timestamp &&
+      cached.totalVersions === totalVersions &&
+      cached.currentVersionIndex === currentVersionIndex
+    )
+
+    const message: DisplayMessage = shouldReuse && cached
+      ? cached
+      : {
+          id: version.id,
+          branchId,
+          role: branch.role,
+          parts: partsRef,
+          timestamp: version.timestamp,
+          currentVersionIndex,
+          totalVersions,
+          hasMultipleVersions: totalVersions > 1
+        }
+
+    nextCache.set(cacheKey, message)
+    messages.push(message)
+  }
+
+  displayMessageCache.clear()
+  nextCache.forEach((value, key) => {
+    displayMessageCache.set(key, value)
+  })
+
+  return messages
 })
+
+const currentModelMetadata = computed(() => {
+  const modelId = currentConversation.value?.model
+  if (!modelId) {
+    return null
+  }
+
+  const modelsMap = chatStore.availableModelsMap as Map<string, any> | undefined
+  if (modelsMap && typeof modelsMap.get === 'function') {
+    const directMatch = modelsMap.get(modelId)
+    if (directMatch) {
+      return directMatch
+    }
+
+    const normalizedMatch = modelsMap.get(modelId.toLowerCase())
+    if (normalizedMatch) {
+      return normalizedMatch
+    }
+  }
+
+  return null
+})
+
+const currentModelSupportsImageOutput = computed(() => {
+  const metadata = currentModelMetadata.value
+  if (!metadata || !Array.isArray(metadata.output_modalities)) {
+    return false
+  }
+
+  const normalized = metadata.output_modalities
+    .map((mod: any) => (typeof mod === 'string' ? mod.toLowerCase() : ''))
+    .filter(Boolean)
+
+  if (normalized.length === 0) {
+    return false
+  }
+
+  return normalized.includes('image') || normalized.includes('vision') || normalized.includes('multimodal')
+})
+
+const canShowImageGenerationButton = computed(() => currentModelSupportsImageOutput.value)
+
+const activeRequestedModalities = computed<string[] | null>(() => {
+  if (!imageGenerationEnabled.value) {
+    return null
+  }
+  return [...IMAGE_RESPONSE_MODALITIES]
+})
+
+const imageGenerationTooltip = computed(() => {
+  if (!canShowImageGenerationButton.value) {
+    return '当前模型不支持图像生成输出'
+  }
+
+  return imageGenerationEnabled.value
+    ? '图像生成已启用，发送消息将请求图像输出'
+    : '启用图像生成后，发送消息将请求模型返回图像'
+})
+
+watch(() => props.conversationId, () => {
+  branchGenerationPreferences.clear()
+  imageGenerationEnabled.value = false
+  console.log('🖼️ 图像生成调试: 切换对话，已重置图像生成开关')
+})
+
+watch(currentModelSupportsImageOutput, (supports) => {
+  if (!supports && imageGenerationEnabled.value) {
+    imageGenerationEnabled.value = false
+    console.log('🖼️ 图像生成调试: 当前模型不支持图像输出，已自动关闭图像生成')
+  }
+})
+
+watch(
+  () => currentConversation.value?.model,
+  () => {
+    if (!currentModelSupportsImageOutput.value && imageGenerationEnabled.value) {
+      imageGenerationEnabled.value = false
+      console.log('🖼️ 图像生成调试: 模型变更后不再支持图像输出，已自动关闭图像生成')
+    }
+  }
+)
+
+const toggleImageGeneration = () => {
+  if (!canShowImageGenerationButton.value) {
+    console.log('🖼️ 图像生成调试: 当前模型不支持图像输出，忽略切换请求')
+    return
+  }
+  if (!currentConversation.value) {
+    console.log('🖼️ 图像生成调试: 找不到当前对话，忽略切换请求')
+    return
+  }
+  if (currentConversation.value.generationStatus !== 'idle') {
+    console.log('🖼️ 图像生成调试: 仍在生成中，无法切换图像输出')
+    return
+  }
+
+  imageGenerationEnabled.value = !imageGenerationEnabled.value
+  console.log(
+    '🖼️ 图像生成调试:',
+    imageGenerationEnabled.value ? '已启用图像生成' : '已禁用图像生成',
+    {
+      conversationId: currentConversation.value.id,
+      model: currentConversation.value.model,
+      requestedModalities: imageGenerationEnabled.value ? IMAGE_RESPONSE_MODALITIES : []
+    }
+  )
+}
 
 // 格式化显示的模型名称（移除提供商前缀）
 const displayModelName = computed(() => {
@@ -412,19 +579,39 @@ const handleImageClick = async (imageUrl: string) => {
 }
 
 /**
+ * 生成图片文件名
+ * 格式：YY/MM/DD-HH/MM-2位随机数.jpg
+ * 例如：25/11/06-14/30-42.jpg
+ */
+const generateImageFilename = () => {
+  const now = new Date()
+  const yy = String(now.getFullYear()).slice(-2)
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const dd = String(now.getDate()).padStart(2, '0')
+  const hh = String(now.getHours()).padStart(2, '0')
+  const min = String(now.getMinutes()).padStart(2, '0')
+  const random = String(Math.floor(Math.random() * 100)).padStart(2, '0')
+  
+  return `${yy}-${mm}-${dd}_${hh}-${min}-${random}.jpg`
+}
+
+/**
  * 下载图片
  */
-const handleDownloadImage = async (imageUrl: string, filename: string) => {
+const handleDownloadImage = async (imageUrl: string, filename?: string) => {
   try {
+    // 使用新的命名格式
+    const downloadFilename = filename || generateImageFilename()
+    
     // 如果是 data URI，直接下载
     if (imageUrl.startsWith('data:')) {
       const link = document.createElement('a')
       link.href = imageUrl
-      link.download = filename
+      link.download = downloadFilename
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      console.log('✓ 图片已下载（Data URI）:', filename)
+      console.log('✓ 图片已下载（Data URI）:', downloadFilename)
     } else {
       // 如果是 HTTP(S) URL，需要先 fetch 然后下载
       const response = await fetch(imageUrl)
@@ -433,14 +620,14 @@ const handleDownloadImage = async (imageUrl: string, filename: string) => {
       
       const link = document.createElement('a')
       link.href = url
-      link.download = filename
+      link.download = downloadFilename
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
       
       // 释放 blob URL
       window.URL.revokeObjectURL(url)
-      console.log('✓ 图片已下载（HTTP URL）:', filename)
+      console.log('✓ 图片已下载（HTTP URL）:', downloadFilename)
     }
   } catch (error) {
     console.error('❌ 下载图片失败:', error)
@@ -637,10 +824,16 @@ const versionIndicatesError = (version: any): boolean => {
  * @param userMessage - 用户消息文本（可选）
  * @param messageParts - 用户消息的 parts 数组（可选，用于多模态消息）
  */
-const performSendMessage = async (userMessage?: string, messageParts?: any[]) => {
+const performSendMessage = async (userMessage?: string, messageParts?: any[], requestOverrides: SendRequestOverrides = {}) => {
+  const generationToken = ++generationTokenCounter
   // ========== 🔒 固化上下文：在异步任务启动时捕获 conversationId ==========
   const targetConversationId = props.conversationId
   console.log('🔒 固化上下文 - conversationId:', targetConversationId)
+  const requestedModalities = requestOverrides.requestedModalities && requestOverrides.requestedModalities.length > 0
+    ? [...requestOverrides.requestedModalities]
+    : activeRequestedModalities.value
+      ? [...activeRequestedModalities.value]
+      : undefined
   
   // ========== 前置检查 ==========
   if (!currentConversation.value) {
@@ -679,6 +872,8 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
   }
   
   abortController.value = new AbortController()
+  currentGenerationToken = generationToken
+  manualAbortTokens.delete(generationToken)
   console.log('✓ 已创建新的 AbortController')
 
   // ========== 设置状态为 'sending' ==========
@@ -686,6 +881,7 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
 
   let timeoutId: number | null = null
   let hasReceivedData = false
+  let timedOut = false
   let userBranchId: string | null = null
   let aiBranchId: string | null = null
 
@@ -720,6 +916,14 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
     
     if (!aiBranchId) {
       throw new Error('创建 AI 回复分支失败')
+    }
+
+    if (aiBranchId) {
+      if (requestedModalities && requestedModalities.length > 0) {
+        branchGenerationPreferences.set(aiBranchId, { requestedModalities: [...requestedModalities] })
+      } else {
+        branchGenerationPreferences.delete(aiBranchId)
+      }
     }
 
     await nextTick()
@@ -757,7 +961,8 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
       userMessageForApi,
       {
         signal: abortController.value.signal,
-        webSearch: webSearchOptions
+        webSearch: webSearchOptions,
+        requestedModalities
       }
     )
 
@@ -773,6 +978,7 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
       timeoutId = window.setTimeout(() => {
         if (!hasReceivedData) {
           console.warn('⏱️ 请求超时（20秒未收到响应），中止请求')
+          timedOut = true
           abortController.value?.abort()
         }
       }, TIMEOUT_MS)
@@ -836,10 +1042,13 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
     // 3. 超时引起的中止
     const isAbortError = 
       error.name === 'AbortError' || 
+      error.name === 'CanceledError' ||
+      error?.code === 'ERR_CANCELED' ||
       (error.message && error.message.includes('Error reading from the stream')) ||
       (error.message && error.message.includes('aborted'))
     
-    const isTimeout = !hasReceivedData && isAbortError
+    const wasManualAbort = manualAbortTokens.has(generationToken)
+    const isTimeout = timedOut
     
     if (isTimeout) {
       console.warn('⏱️ 请求超时：20秒内未收到服务器响应')
@@ -860,23 +1069,61 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
         })
       }
     } else if (isAbortError) {
-      console.log('ℹ️ 生成已中止（用户手动停止）')
-      
-      // 更新 AI 分支为已停止标记
-      if (aiBranchId) {
-        const currentBranch = currentConversation.value?.tree.branches.get(aiBranchId)
-        const currentVersion = currentBranch?.versions[currentBranch.currentVersionIndex]
-        const currentText = currentVersion?.parts.find((p: any) => p.type === 'text')?.text || ''
-        
-        if (!currentText.trim()) {
-          // 如果没有生成任何内容，标记为已停止
-          const stoppedMessage = [{ type: 'text', text: '[已停止生成]' }]
-          chatStore.updateBranchParts(targetConversationId, aiBranchId, stoppedMessage, {
-            metadata: null
+      const manualStopText = '⏹️ 用户已手动中断回复。'
+      if (wasManualAbort) {
+        console.log('ℹ️ 生成已中止（用户手动停止）')
+
+        if (aiBranchId) {
+          const conversation = chatStore.conversations.find((c: any) => c.id === targetConversationId)
+          const branch = conversation?.tree?.branches?.get(aiBranchId)
+          const currentVersion = branch ? getCurrentVersion(branch) : null
+          const existingParts: MessagePart[] = Array.isArray(currentVersion?.parts)
+            ? [...(currentVersion?.parts ?? [])]
+            : []
+
+          const hasContent = existingParts.some((part) => {
+            if (part.type === 'text') {
+              return Boolean(part.text.trim())
+            }
+            return true
           })
+
+          const alreadyAnnotated = existingParts.some((part) => part.type === 'text' && part.text.includes(manualStopText))
+
+          if (!hasContent) {
+            const stoppedMessage: MessagePart[] = [{ type: 'text', text: manualStopText }]
+            chatStore.updateBranchParts(targetConversationId, aiBranchId, stoppedMessage, {
+              metadata: null
+            })
+          } else if (!alreadyAnnotated) {
+            const appendedParts: MessagePart[] = [...existingParts, { type: 'text', text: `\n\n${manualStopText}` }]
+            chatStore.updateBranchParts(targetConversationId, aiBranchId, appendedParts, {
+              metadata: null
+            })
+          }
+        }
+      } else {
+        console.log('ℹ️ 生成已中止（非用户触发）')
+
+        // 更新 AI 分支为已停止标记
+        if (aiBranchId) {
+          const conversation = chatStore.conversations.find((c: any) => c.id === targetConversationId)
+          const branch = conversation?.tree?.branches?.get(aiBranchId)
+          const currentVersion = branch ? getCurrentVersion(branch) : null
+          const textPart = currentVersion && Array.isArray(currentVersion.parts)
+            ? currentVersion.parts.find((part): part is TextPart => part.type === 'text')
+            : undefined
+          const currentText = textPart?.text || ''
+
+          if (!currentText.trim()) {
+            const stoppedMessage = [{ type: 'text', text: '[已停止生成]' }]
+            chatStore.updateBranchParts(targetConversationId, aiBranchId, stoppedMessage, {
+              metadata: null
+            })
+          }
         }
       }
-      
+
       // 中止不算错误，清除错误标记
       chatStore.setConversationError(targetConversationId, false)
     } else {
@@ -906,6 +1153,11 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[]) =>
       }
     }
   } finally {
+    manualAbortTokens.delete(generationToken)
+    if (currentGenerationToken === generationToken) {
+      currentGenerationToken = null
+    }
+
     // ========== 强制清理：使用固化的 conversationId 确保清理正确的对话 ==========
     console.log('🧹 清理：设置 generationStatus = idle for', targetConversationId)
     chatStore.setConversationGenerationStatus(targetConversationId, 'idle')
@@ -950,6 +1202,7 @@ const sendMessage = async () => {
   // 再添加图片部分（如果有）
   for (const dataUri of pendingAttachments.value) {
     messageParts.push({
+      id: uuidv4(),
       type: 'image_url',
       image_url: {
         url: dataUri
@@ -964,7 +1217,13 @@ const sendMessage = async () => {
   })
   
   // 调用发送逻辑（传入 parts 而非纯文本）
-  await performSendMessage(trimmedMessage, messageParts)
+  await performSendMessage(
+    trimmedMessage,
+    messageParts,
+    activeRequestedModalities.value
+      ? { requestedModalities: [...activeRequestedModalities.value] }
+      : {}
+  )
   
   // 清空输入框和附件
   draftInput.value = ''
@@ -974,16 +1233,46 @@ const sendMessage = async () => {
 // ========== 停止生成 ==========
 const stopGeneration = () => {
   if (abortController.value) {
+    if (currentGenerationToken !== null) {
+      manualAbortTokens.add(currentGenerationToken)
+    }
     console.log('🛑 用户请求停止生成')
     abortController.value.abort()
   }
 }
 
-const scrollToBottom = () => {
-  if (chatContainer.value) {
-    chatContainer.value.scrollTop = chatContainer.value.scrollHeight
+const scrollToBottom = (() => {
+  let rafId: number | null = null
+
+  return (immediate = false) => {
+    const container = chatContainer.value
+    if (!container) {
+      return
+    }
+
+    if (immediate) {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId)
+        rafId = null
+      }
+      container.scrollTop = container.scrollHeight
+      return
+    }
+
+    if (rafId !== null) {
+      return
+    }
+
+    rafId = requestAnimationFrame(() => {
+      rafId = null
+      const target = chatContainer.value
+      if (!target) {
+        return
+      }
+      target.scrollTop = target.scrollHeight
+    })
   }
-}
+})()
 
 const handleKeyPress = (event: KeyboardEvent) => {
   if (event.key === 'Enter' && !event.shiftKey) {
@@ -1019,6 +1308,24 @@ const handleRetryMessage = async (branchId: string) => {
   const currentVersion = getCurrentVersion(branch)
   const shouldRemoveErrorVersion = versionIndicatesError(currentVersion)
   const errorVersionId = shouldRemoveErrorVersion && currentVersion ? currentVersion.id : null
+  const currentParts = currentVersion?.parts
+  const branchHasImageParts = Array.isArray(currentParts)
+    ? currentParts.some((part: any) => part?.type === 'image_url')
+    : false
+
+  const toggleModalities = activeRequestedModalities.value
+    ? [...activeRequestedModalities.value]
+    : undefined
+  const storedPreference = branchGenerationPreferences.get(branchId)
+
+  let requestedModalities = toggleModalities
+  const canUseStoredPreference = !canShowImageGenerationButton.value
+  if (!requestedModalities && canUseStoredPreference && storedPreference?.requestedModalities?.length) {
+    requestedModalities = [...storedPreference.requestedModalities]
+  }
+  if (!requestedModalities && branchHasImageParts) {
+    requestedModalities = [...IMAGE_RESPONSE_MODALITIES]
+  }
 
   // 创建新版本（空内容）
   console.log('🔄 准备创建新版本，分支ID:', branchId)
@@ -1030,6 +1337,12 @@ const handleRetryMessage = async (branchId: string) => {
   }
   
   console.log('✓ 成功创建新版本:', newVersionId)
+
+  if (requestedModalities && requestedModalities.length > 0) {
+    branchGenerationPreferences.set(branchId, { requestedModalities: [...requestedModalities] })
+  } else {
+    branchGenerationPreferences.delete(branchId)
+  }
 
   if (shouldRemoveErrorVersion && errorVersionId) {
     const removed = chatStore.removeBranchVersion(targetConversationId, branchId, errorVersionId)
@@ -1084,7 +1397,8 @@ const handleRetryMessage = async (branchId: string) => {
       '', // 不传用户消息，从历史获取
       {
         signal: abortController.value.signal,
-        webSearch: webSearchOptions
+        webSearch: webSearchOptions,
+        requestedModalities
       }
     )
 
@@ -1247,6 +1561,7 @@ const handleSaveEdit = async (branchId: string) => {
   // 添加图片部分
   for (const imageDataUri of editingImages.value) {
     newParts.push({
+      id: uuidv4(),
       type: 'image_url',
       image_url: {
         url: imageDataUri
@@ -1553,7 +1868,7 @@ const handleDeleteAllVersions = () => {
                     v-if="message.parts && message.parts.length > 0"
                     class="space-y-2"
                   >
-                    <template v-for="(part, partIndex) in message.parts" :key="partIndex">
+                    <template v-for="(part, partIndex) in message.parts" :key="part.id ?? partIndex">
                       <!-- 文本 part：流式传输中显示纯文本，完成后渲染 Markdown -->
                       <div v-if="part.type === 'text'">
                         <!-- 流式传输中：纯文本 -->
@@ -1603,7 +1918,7 @@ const handleDeleteAllVersions = () => {
                           </button>
                           <!-- 下载图片 -->
                           <button
-                            @click.stop="handleDownloadImage(part.image_url.url, `image-${partIndex}.jpg`)"
+                            @click.stop="handleDownloadImage(part.image_url.url)"
                             class="p-2 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-sm transition-colors"
                             title="下载图片"
                           >
@@ -1764,6 +2079,31 @@ const handleDeleteAllVersions = () => {
             >
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+              </svg>
+            </button>
+
+            <button
+              v-if="canShowImageGenerationButton"
+              @click="toggleImageGeneration"
+              :disabled="!currentConversation || currentConversation.generationStatus !== 'idle'"
+              class="flex-none shrink-0 p-3 rounded-lg border transition-colors flex items-center justify-center"
+              :class="[
+                imageGenerationEnabled
+                  ? 'bg-purple-500 border-purple-500 text-white hover:bg-purple-600'
+                  : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200',
+                (!currentConversation || currentConversation.generationStatus !== 'idle')
+                  ? 'opacity-60 cursor-not-allowed hover:bg-gray-100'
+                  : ''
+              ]"
+              :title="imageGenerationTooltip"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 3c-4.97 0-9 3.806-9 8.5C3 15.538 5.462 18 8.5 18h1.25A1.25 1.25 0 0111 19.25c0 .69.56 1.25 1.25 1.25 4.142 0 7.5-3.358 7.5-7.5S16.142 3 12 3zM7 8a1 1 0 110-2 1 1 0 010 2zm2 3a1 1 0 110-2 1 1 0 010 2zm3-3a1 1 0 110-2 1 1 0 010 2zm2 3a1 1 0 110-2 1 1 0 010 2z"
+                ></path>
               </svg>
             </button>
 
