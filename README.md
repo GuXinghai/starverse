@@ -58,6 +58,11 @@
   - ✅ 自动根据挡位调整搜索参数（结果数量、上下文大小）
 - **流式响应**: 实时流式输出 AI 回复，提供流畅的对话体验
 - **上下文管理**: 完整的对话历史管理，支持多轮对话
+- **📊 用量可视化** ⭐ 最新:
+  - ✅ OpenRouter 对话流中实时解析 usage chunk
+  - ✅ 在回复卡片中展示 Prompt / Completion / Total Token 统计
+  - ✅ 显示 Credits 费用与缓存/推理 Token（若提供）
+  - ✅ Usage 数据持久化到分支元数据，便于后续分析
 
 ### � 富文本渲染
 - **Markdown 支持**: 完整支持 GitHub Flavored Markdown (GFM)

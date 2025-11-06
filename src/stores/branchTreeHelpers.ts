@@ -840,6 +840,40 @@ export function appendImageToBranch(
   return true
 }
 
+export function patchBranchMetadata(
+  tree: ConversationTree,
+  branchId: string,
+  updater: (metadata: MessageVersionMetadata | undefined) => MessageVersionMetadata | undefined
+): boolean {
+  const branch = tree.branches.get(branchId)
+  if (!branch) return false
+
+  const currentIndex = branch.currentVersionIndex
+  const currentVersion = branch.versions[currentIndex]
+  if (!currentVersion) return false
+
+  const existing = currentVersion.metadata
+  const nextCandidate = updater(existing ? { ...existing } : undefined)
+  const normalizedMetadata = nextCandidate ? { ...nextCandidate } : undefined
+
+  const newVersion: MessageVersion = {
+    ...currentVersion,
+    metadata: normalizedMetadata
+  }
+
+  const newVersions = branch.versions.slice()
+  newVersions.splice(currentIndex, 1, newVersion)
+
+  const newBranch: MessageBranch = {
+    ...branch,
+    versions: newVersions
+  }
+
+  setBranch(tree, newBranch)
+
+  return true
+}
+
 /**
  * 更新分支当前版本的内容
  * 

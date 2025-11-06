@@ -49,6 +49,18 @@ export interface MessageVersionMetadata {
   errorParam?: string;
   errorStatus?: number;
   retryable?: boolean;
+  usage?: UsageMetrics;
+}
+
+export interface UsageMetrics {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  cachedTokens?: number;
+  reasoningTokens?: number;
+  cost?: number;
+  costDetails?: Record<string, number>;
+  raw?: Record<string, any>;
 }
 
 /**

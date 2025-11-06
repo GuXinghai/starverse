@@ -72,7 +72,13 @@ export interface IAIProvider {
     userMessage: string,
     baseUrlOrOptions?: string | StreamRequestOptions,
     maybeOptions?: StreamRequestOptions
-  ): AsyncGenerator<string | { type: string; content: string }, void, unknown>
+  ): AsyncGenerator<
+    | string
+    | { type: 'text' | 'image'; content: string }
+    | { type: 'usage'; usage: Record<string, any> },
+    void,
+    unknown
+  >
 
   /**
    * 检查模型是否支持视觉/图像输入（可选）

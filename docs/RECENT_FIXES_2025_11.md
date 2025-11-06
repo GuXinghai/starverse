@@ -1,6 +1,6 @@
 # 最近问题修复汇总（2025年11月）
 
-本文档记录了近期对 Starverse 应用的三个重要问题修复。
+本文档记录了近期对 Starverse 应用的三个重要问题修复与一项功能增强。
 
 ---
 
@@ -189,3 +189,33 @@ if (normalizedSingleImage && !emittedImages.has(normalizedSingleImage)) {
 
 - 如果模型返回 `asset_pointer` 类型的图片引用，当前版本无法处理（需要额外的下载逻辑）
 - 极大的 base64 图片（>16MB 单条数据）会触发安全保护机制并中止请求
+
+---
+
+## 功能增强: OpenRouter Usage 用量可视化
+
+### 背景
+用户希望在聊天界面看到每次调用的 Token 消耗与 Credits 费用。OpenRouter 在流式响应中通过 `usage` 字段提供实时用量统计，但此前前端未解析，也未在 UI 中呈现。
+
+### 实现方案
+**核心文件**:
+- `src/services/providers/OpenRouterService.js`
+- `src/components/ChatView.vue`
+- `src/stores/chatStore.js`
+- `src/stores/branchTreeHelpers.ts`
+- `src/services/IAIProvider.ts`
+- `src/types/chat.ts`
+
+**关键改动**:
+1. **请求端启用 usage**: OpenRouter 请求体新增 `usage: { include: true }`，并在 SSE 流里识别单次 `usage` 片段（去重后仅触发一次）。
+2. **类型扩展**: `IAIProvider.streamChatResponse` 支持 `{ type: 'usage' }` 片段；`MessageVersionMetadata` 新增 `usage?: UsageMetrics`，结构化保存 prompt / completion / total / cached / reasoning Tokens 与 Credits。
+3. **元数据补丁**: 在 `branchTreeHelpers.patchBranchMetadata` 中集中更新版本 metadata，`chatStore.patchCurrentBranchMetadata` 暴露给组件使用，持久化保存 usage 数据。
+4. **UI 展示**: `ChatView.vue` 在处理流式片段时捕获 usage，归一化数值后渲染到模型回复底部，使用格式化函数显示 Tokens 和 Credits，并在适用时追加缓存/推理 Token。
+5. **健壮性**: 使用 `normalizeUsagePayload` 容错多种字段命名（`prompt_tokens`, `promptTokens` 等），忽略无效负载；保持 20 秒首包与 5 分钟流式超时逻辑。
+
+### 用户收益
+- 直观了解每条回复的 Token 与费用开销，便于成本管控。
+- Usage 数据记录在分支元数据中，为未来的统计与导出提供数据基础。
+
+### 其他调整
+- 清理 `FavoriteModelSelector.vue` 的冗余调试日志，避免控制台噪声，专注关键告警。

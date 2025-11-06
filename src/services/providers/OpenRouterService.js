@@ -445,7 +445,10 @@ export const OpenRouterService = {
       const requestBody = {
         model: modelName,
         messages: filteredMessages,
-        stream: true
+        stream: true,
+        usage: {
+          include: true
+        }
       }
 
       if (webSearch && webSearch.enabled) {
@@ -608,6 +611,7 @@ export const OpenRouterService = {
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
   const emittedImages = new Set()
+  let usageEmitted = false
 
       const normalizeImagePayload = (payload, defaultMime = 'image/png') => {
         if (!payload) {
@@ -765,6 +769,12 @@ export const OpenRouterService = {
                 const streamError = buildOpenRouterError(primaryChoice?.error ?? primaryChoice?.delta?.error ?? primaryChoice, response.status, 'OpenRouter 流式响应错误', 'OpenRouterStreamError')
                 streamError.responseText = jsonStr
                 throw streamError
+              }
+
+              const possibleUsage = chunk.usage || primaryChoice?.usage
+              if (!usageEmitted && possibleUsage && typeof possibleUsage === 'object') {
+                usageEmitted = true
+                yield { type: 'usage', usage: possibleUsage }
               }
 
               const delta = primaryChoice?.delta

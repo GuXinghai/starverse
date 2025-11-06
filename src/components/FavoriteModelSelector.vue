@@ -192,8 +192,6 @@ const detectOverflow = async () => {
   // 等待 Vue 完成 DOM 更新
   await nextTick()
   
-  console.log('🔍 detectOverflow 开始，nameRefs:', Object.keys(nameRefs.value))
-  
   // 存储新的滚动模型配置
   const newScrollingModels = {}
   
@@ -390,7 +388,6 @@ const detectOverflow = async () => {
   //   - 应用什么动画参数（animName, T 等）
   scrollingModels.value = newScrollingModels
   
-  console.log('📦 scrollingModels 更新:', Object.keys(newScrollingModels))
 }
 
 /**
@@ -626,8 +623,6 @@ onUnmounted(() => {
  *   - ref 回调已经填充了新的 DOM 引用
  */
 watch(favoriteModels, () => {
-  console.log('🔄 favoriteModels 变化，清理并重新检测')
-  
   // 清空旧的 DOM 引用和滚动状态
   // 防止使用已失效的 DOM 引用
   nameRefs.value = {}
@@ -635,7 +630,6 @@ watch(favoriteModels, () => {
   
   // 延迟 300ms 让 DOM 完全更新并重新注册 refs 后再测量
   setTimeout(() => {
-    console.log('⏰ 延迟后开始检测，nameRefs 数量:', Object.keys(nameRefs.value).length)
     detectOverflow()
   }, 300)
 }, { deep: true })
@@ -664,8 +658,6 @@ watch(favoriteModels, () => {
  * 通过重新检测可以修复这个问题
  */
 watch(() => chatStore.conversations, () => {
-  console.log('💬 会话列表变化，重新检测滚动')
-  
   // 延迟让布局稳定后再检测
   setTimeout(() => {
     detectOverflow()
@@ -694,8 +686,6 @@ watch(() => chatStore.conversations, () => {
  * 在会话切换时重新检测一次是最保险的做法
  */
 watch(() => chatStore.activeConversation?.id, () => {
-  console.log('🎯 活动会话变化，重新检测滚动')
-  
   // 延迟让布局稳定后再检测
   setTimeout(() => {
     detectOverflow()

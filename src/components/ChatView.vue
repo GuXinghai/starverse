@@ -11,7 +11,7 @@ import { aiChatService } from '../services/aiChatService'
 
 // 多模态工具函数
 import { extractTextFromMessage } from '../types/chat'
-import type { MessagePart, MessageVersionMetadata, TextPart, WebSearchLevel } from '../types/chat'
+import type { MessagePart, MessageVersionMetadata, TextPart, UsageMetrics, WebSearchLevel } from '../types/chat'
 import { getCurrentVersion, getPathToBranch } from '../stores/branchTreeHelpers'
 import { electronApiBridge, isUsingElectronApiFallback } from '../utils/electronBridge'
 
@@ -183,6 +183,7 @@ type DisplayMessage = {
   currentVersionIndex: number
   totalVersions: number
   hasMultipleVersions: boolean
+  metadata?: MessageVersionMetadata | undefined
 }
 
 const displayMessageCache = new Map<string, DisplayMessage>()
@@ -194,67 +195,6 @@ type SendRequestOverrides = {
 const IMAGE_RESPONSE_MODALITIES = ['image', 'text'] as const
 const branchGenerationPreferences: Map<string, SendRequestOverrides> = new Map()
 const imageGenerationEnabled = ref(false)
-
-const displayMessages = computed<DisplayMessage[]>(() => {
-  const conversation = currentConversation.value
-  if (!conversation?.tree) {
-    if (displayMessageCache.size > 0) {
-      displayMessageCache.clear()
-    }
-    return []
-  }
-
-  const tree = conversation.tree
-  const nextCache = new Map<string, DisplayMessage>()
-  const messages: DisplayMessage[] = []
-
-  for (const branchId of tree.currentPath) {
-    const branch = tree.branches.get(branchId)
-    if (!branch) continue
-
-    const version = getCurrentVersion(branch)
-    if (!version) continue
-
-    const cacheKey = version.id
-    const cached = displayMessageCache.get(cacheKey)
-    const partsRef = version.parts as MessagePart[]
-    const totalVersions = branch.versions.length
-    const currentVersionIndex = branch.currentVersionIndex
-
-    const shouldReuse = Boolean(
-      cached &&
-      cached.branchId === branchId &&
-      cached.role === branch.role &&
-      cached.parts === partsRef &&
-      cached.timestamp === version.timestamp &&
-      cached.totalVersions === totalVersions &&
-      cached.currentVersionIndex === currentVersionIndex
-    )
-
-    const message: DisplayMessage = shouldReuse && cached
-      ? cached
-      : {
-          id: version.id,
-          branchId,
-          role: branch.role,
-          parts: partsRef,
-          timestamp: version.timestamp,
-          currentVersionIndex,
-          totalVersions,
-          hasMultipleVersions: totalVersions > 1
-        }
-
-    nextCache.set(cacheKey, message)
-    messages.push(message)
-  }
-
-  displayMessageCache.clear()
-  nextCache.forEach((value, key) => {
-    displayMessageCache.set(key, value)
-  })
-
-  return messages
-})
 
 const currentModelMetadata = computed(() => {
   const modelId = currentConversation.value?.model
@@ -302,6 +242,70 @@ const activeRequestedModalities = computed<string[] | null>(() => {
     return null
   }
   return [...IMAGE_RESPONSE_MODALITIES]
+})
+
+const displayMessages = computed<DisplayMessage[]>(() => {
+  const conversation = currentConversation.value
+  if (!conversation?.tree) {
+    if (displayMessageCache.size > 0) {
+      displayMessageCache.clear()
+    }
+    return []
+  }
+
+  const tree = conversation.tree
+  const nextCache = new Map<string, DisplayMessage>()
+  const messages: DisplayMessage[] = []
+
+  for (const branchId of tree.currentPath) {
+    const branch = tree.branches.get(branchId)
+    if (!branch) continue
+
+    const version = getCurrentVersion(branch)
+    if (!version) continue
+
+    const cacheKey = version.id
+    const cached = displayMessageCache.get(cacheKey)
+    const partsRef = version.parts as MessagePart[]
+    const metadataRef = version.metadata as MessageVersionMetadata | undefined
+    const totalVersions = branch.versions.length
+    const currentVersionIndex = branch.currentVersionIndex
+
+    const shouldReuse = Boolean(
+      cached &&
+      cached.branchId === branchId &&
+      cached.role === branch.role &&
+      cached.parts === partsRef &&
+      cached.timestamp === version.timestamp &&
+      cached.totalVersions === totalVersions &&
+      cached.currentVersionIndex === currentVersionIndex &&
+      cached.metadata === metadataRef
+    )
+
+    const message: DisplayMessage = shouldReuse && cached
+      ? cached
+      : {
+          id: version.id,
+          branchId,
+          role: branch.role,
+          parts: partsRef,
+          timestamp: version.timestamp,
+          currentVersionIndex,
+          totalVersions,
+          hasMultipleVersions: totalVersions > 1,
+          metadata: metadataRef
+        }
+
+    nextCache.set(cacheKey, message)
+    messages.push(message)
+  }
+
+  displayMessageCache.clear()
+  nextCache.forEach((value, key) => {
+    displayMessageCache.set(key, value)
+  })
+
+  return messages
 })
 
 const imageGenerationTooltip = computed(() => {
@@ -818,6 +822,122 @@ const versionIndicatesError = (version: any): boolean => {
   })
 }
 
+const normalizeUsagePayload = (payload: any): UsageMetrics | null => {
+  if (!payload || typeof payload !== 'object') {
+    return null
+  }
+
+  const coerceNumber = (value: any): number | undefined => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value
+    }
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value)
+      if (Number.isFinite(parsed)) {
+        return parsed
+      }
+    }
+    return undefined
+  }
+
+  const usage: UsageMetrics = {
+    promptTokens: coerceNumber(payload.prompt_tokens ?? payload.promptTokens),
+    completionTokens: coerceNumber(payload.completion_tokens ?? payload.completionTokens),
+    totalTokens: coerceNumber(payload.total_tokens ?? payload.totalTokens),
+    cachedTokens: coerceNumber(
+      payload.cached_tokens ??
+      payload.cachedTokens ??
+      payload.prompt_tokens_details?.cached_tokens ??
+      payload.promptTokensDetails?.cachedTokens
+    ),
+    reasoningTokens: coerceNumber(
+      payload.reasoning_tokens ??
+      payload.reasoningTokens ??
+      payload.completion_tokens_details?.reasoning_tokens ??
+      payload.completionTokensDetails?.reasoningTokens
+    ),
+    cost: coerceNumber(payload.cost ?? payload.cost_credits ?? payload.total_cost ?? payload.totalCost),
+    raw: payload
+  }
+
+  if (payload.cost_details && typeof payload.cost_details === 'object' && !Array.isArray(payload.cost_details)) {
+    const details: Record<string, number> = {}
+    for (const [key, value] of Object.entries(payload.cost_details)) {
+      const parsed = coerceNumber(value)
+      if (parsed !== undefined) {
+        details[key] = parsed
+      }
+    }
+    if (Object.keys(details).length > 0) {
+      usage.costDetails = details
+    }
+  }
+
+  const hasPrimaryMetric = Boolean(
+    usage.promptTokens !== undefined ||
+    usage.completionTokens !== undefined ||
+    usage.totalTokens !== undefined ||
+    usage.cost !== undefined
+  )
+
+  const hasSecondaryMetric = Boolean(
+    usage.cachedTokens !== undefined ||
+    usage.reasoningTokens !== undefined ||
+    (usage.costDetails && Object.keys(usage.costDetails).length > 0)
+  )
+
+  if (!hasPrimaryMetric && !hasSecondaryMetric) {
+    return null
+  }
+
+  return usage
+}
+
+const captureUsageForBranch = (conversationId: string, branchId: string, usagePayload: any): boolean => {
+  const normalized = normalizeUsagePayload(usagePayload)
+  if (!normalized) {
+    return false
+  }
+
+  console.log('📊 ChatView: 捕获用量统计', {
+    conversationId,
+    branchId,
+    usage: normalized
+  })
+
+  chatStore.patchCurrentBranchMetadata(conversationId, branchId, (existing: MessageVersionMetadata | undefined) => ({
+    ...(existing ?? {}),
+    usage: normalized
+  }))
+
+  return true
+}
+
+const formatTokens = (value?: number | null) => {
+  if (value === undefined || value === null || Number.isNaN(value) || !Number.isFinite(value)) {
+    return '—'
+  }
+  const nearestInt = Math.round(value)
+  if (Math.abs(value - nearestInt) < 1e-6) {
+    return nearestInt.toLocaleString()
+  }
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 })
+}
+
+const formatCredits = (value?: number | null) => {
+  if (value === undefined || value === null || Number.isNaN(value) || !Number.isFinite(value)) {
+    return '—'
+  }
+  const abs = Math.abs(value)
+  if (abs >= 1) {
+    return value.toFixed(2)
+  }
+  if (abs >= 0.1) {
+    return value.toFixed(3)
+  }
+  return value.toPrecision(2)
+}
+
 // 公共的发送消息逻辑（可被普通发送、重新生成、编辑后重发复用）
 /**
  * 执行发送消息的核心逻辑（使用分支树结构）
@@ -881,6 +1001,7 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
 
   let timeoutId: number | null = null
   let hasReceivedData = false
+  let usageCaptured = false
   let timedOut = false
   const INITIAL_TIMEOUT_MS = 20000
   const STREAM_TIMEOUT_MS = 5 * 60 * 1000
@@ -974,7 +1095,6 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
       throw new Error('流式响应不可用')
     }
 
-    // ========== 超时机制：首包 20 秒，流式 5 分钟 ==========
     const scheduleTimeout = (duration: number, reason: 'initial' | 'stream') => {
       if (timeoutId) {
         clearTimeout(timeoutId)
@@ -983,7 +1103,7 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
       timeoutReason = reason
       timeoutMessage = reason === 'initial'
         ? '⏱️ 请求超时（20秒未收到响应），中止请求'
-        : '⏱️ 请求超时：模型在5分钟内未继续传输数据，已停止本次回复。'
+        : '⏱️ 请求超时：模型在5分钟内未继续传输数据，请稍后重试或尝试切换模型。'
 
       timeoutId = window.setTimeout(() => {
         if (reason === 'initial' && !hasReceivedData) {
@@ -1001,35 +1121,48 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
     scheduleTimeout(INITIAL_TIMEOUT_MS, 'initial')
 
     // ========== 流式读取响应：追加到 AI 分支 ==========
-    let isFirstChunk = true
-    for await (const chunk of stream) {
-      if (isFirstChunk) {
-        hasReceivedData = true
-        if (timeoutId) {
-          clearTimeout(timeoutId)
-          timeoutId = null
+    
+    // 🔧 关键修复：开始迭代流时立即标记已收到数据并清除超时
+    // 这样可以避免在处理流数据时触发超时
+    const iterator = stream[Symbol.asyncIterator]()
+    const firstResult = await iterator.next()
+    
+    // 成功进入流迭代，说明连接已建立
+    hasReceivedData = true
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+      timeoutId = null
+    }
+    console.log('✓ 服务器已响应，开始接收流式数据')
+    
+    const processChunk = async (chunk: any) => {
+      scheduleTimeout(STREAM_TIMEOUT_MS, 'stream')
+      if (chunk && typeof chunk === 'object') {
+        const usagePayload = 'usage' in chunk ? chunk.usage : undefined
+        if (!usageCaptured && usagePayload) {
+          usageCaptured = captureUsageForBranch(targetConversationId, aiBranchId!, usagePayload) || usageCaptured
+        } else if (usagePayload) {
+          captureUsageForBranch(targetConversationId, aiBranchId!, usagePayload)
         }
-        // 切换到 'receiving' 状态
-        chatStore.setConversationGenerationStatus(targetConversationId, 'receiving')
-        console.log('✓ 开始接收流式响应')
-        isFirstChunk = false
-        scheduleTimeout(STREAM_TIMEOUT_MS, 'stream')
-      } else {
-        scheduleTimeout(STREAM_TIMEOUT_MS, 'stream')
+
+        if (chunk.type === 'usage') {
+          return
+        }
       }
 
-      // 处理 chunk 并追加到 AI 分支
       if (typeof chunk === 'string' && chunk) {
         chatStore.appendTokenToBranchVersion(targetConversationId, aiBranchId!, chunk)
         await nextTick()
         scrollToBottom()
-      } else if (chunk && typeof chunk === 'object') {
+        return
+      }
+
+      if (chunk && typeof chunk === 'object') {
         if (chunk.type === 'text' && chunk.content) {
           chatStore.appendTokenToBranchVersion(targetConversationId, aiBranchId!, chunk.content)
           await nextTick()
           scrollToBottom()
         } else if (chunk.type === 'image' && chunk.content) {
-          // 处理图片 chunk
           console.log('🎨 ChatView: 收到图片chunk，准备添加到分支:', aiBranchId, '图片URL长度:', chunk.content.length)
           const success = chatStore.appendImageToBranchVersion(targetConversationId, aiBranchId!, chunk.content)
           console.log('🎨 ChatView: 图片添加结果:', success)
@@ -1037,6 +1170,15 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
           scrollToBottom()
         }
       }
+    }
+
+    if (!firstResult.done) {
+      chatStore.setConversationGenerationStatus(targetConversationId, 'receiving')
+      await processChunk(firstResult.value)
+    }
+
+    for await (const chunk of iterator) {
+      await processChunk(chunk)
     }
 
     console.log('✓ 流式响应完成')
@@ -1068,21 +1210,22 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
     const isTimeout = timedOut
     
     if (isTimeout) {
-      const timeoutText = timeoutReason === 'stream'
-        ? '⏱️ 请求超时：模型在5分钟内未继续传输数据，请稍后重试或尝试切换模型。'
-        : '⏱️ 请求超时：服务器在20秒内未响应，请检查网络连接或稍后重试。'
-      console.warn(timeoutText)
+      console.warn(timeoutMessage || '⏱️ 请求超时：模型在5分钟内未继续传输数据，请稍后重试或尝试切换模型。')
       // 🚨 标记对话有错误
       chatStore.setConversationError(targetConversationId, true)
       
       // 更新 AI 分支为超时错误消息
       if (aiBranchId) {
-        const timeoutMessage = [{ type: 'text', text: timeoutText }]
-        chatStore.updateBranchParts(targetConversationId, aiBranchId, timeoutMessage, {
-          metadata: buildErrorMetadata(null, timeoutText, {
+        const fallbackTimeout = timeoutReason === 'initial'
+          ? '⏱️ 请求超时（20秒未收到响应），中止请求。'
+          : '⏱️ 请求超时：模型在5分钟内未继续传输数据，请稍后重试或尝试切换模型。'
+        const resolvedTimeoutText = timeoutMessage || fallbackTimeout
+        const timeoutParts = [{ type: 'text', text: resolvedTimeoutText }]
+        chatStore.updateBranchParts(targetConversationId, aiBranchId, timeoutParts, {
+          metadata: buildErrorMetadata(null, resolvedTimeoutText, {
             errorType: 'timeout',
             errorStatus: 408,
-            errorMessage: timeoutText,
+            errorMessage: resolvedTimeoutText,
             retryable: true
           })
         })
@@ -1406,6 +1549,7 @@ const handleRetryMessage = async (branchId: string) => {
 
   let timeoutId: number | null = null
   let hasReceivedData = false
+  let usageCaptured = false
 
   try {
     const conversationModel = currentConversation.value.model || chatStore.selectedModel
@@ -1428,8 +1572,8 @@ const handleRetryMessage = async (branchId: string) => {
       throw new Error('流式响应不可用')
     }
 
-    // 设置超时
-    const TIMEOUT_MS = 20000
+  // 设置超时（首次 20 秒）
+  const TIMEOUT_MS = 20000
     const setupTimeout = () => {
       if (timeoutId) clearTimeout(timeoutId)
       timeoutId = window.setTimeout(() => {
@@ -1442,30 +1586,45 @@ const handleRetryMessage = async (branchId: string) => {
     setupTimeout()
 
     // 流式读取并追加到新版本
-    let isFirstChunk = true
-    for await (const chunk of stream) {
-      if (isFirstChunk) {
-        hasReceivedData = true
-        if (timeoutId) {
-          clearTimeout(timeoutId)
-          timeoutId = null
+    // 🔧 关键修复：开始迭代流时立即标记已收到数据并清除超时
+    const iterator = stream[Symbol.asyncIterator]()
+    const firstResult = await iterator.next()
+    
+    // 成功进入流迭代，说明连接已建立
+    hasReceivedData = true
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+      timeoutId = null
+    }
+    console.log('✓ 服务器已响应，开始接收流式数据')
+    
+    const processChunk = async (chunk: any) => {
+      if (chunk && typeof chunk === 'object') {
+        const usagePayload = 'usage' in chunk ? chunk.usage : undefined
+        if (!usageCaptured && usagePayload) {
+          usageCaptured = captureUsageForBranch(targetConversationId, branchId, usagePayload) || usageCaptured
+        } else if (usagePayload) {
+          captureUsageForBranch(targetConversationId, branchId, usagePayload)
         }
-        // 切换到 'receiving' 状态
-        chatStore.setConversationGenerationStatus(targetConversationId, 'receiving')
-        isFirstChunk = false
+
+        if (chunk.type === 'usage') {
+          return
+        }
       }
 
       if (typeof chunk === 'string' && chunk) {
         chatStore.appendTokenToBranchVersion(targetConversationId, branchId, chunk)
         await nextTick()
         scrollToBottom()
-      } else if (chunk && typeof chunk === 'object') {
+        return
+      }
+
+      if (chunk && typeof chunk === 'object') {
         if (chunk.type === 'text' && chunk.content) {
           chatStore.appendTokenToBranchVersion(targetConversationId, branchId, chunk.content)
           await nextTick()
           scrollToBottom()
         } else if (chunk.type === 'image' && chunk.content) {
-          // 🎨 处理图片 chunk（重新生成时也需要支持）
           console.log('🎨 ChatView: 收到图片chunk，准备添加到分支:', branchId, '图片URL长度:', chunk.content.length)
           const success = chatStore.appendImageToBranchVersion(targetConversationId, branchId, chunk.content)
           console.log('🎨 ChatView: 图片添加结果:', success)
@@ -1473,6 +1632,15 @@ const handleRetryMessage = async (branchId: string) => {
           scrollToBottom()
         }
       }
+    }
+
+    if (!firstResult.done) {
+      chatStore.setConversationGenerationStatus(targetConversationId, 'receiving')
+      await processChunk(firstResult.value)
+    }
+
+    for await (const chunk of iterator) {
+      await processChunk(chunk)
     }
 
     console.log('✓ 重新生成完成')
@@ -2018,6 +2186,53 @@ const handleDeleteAllVersions = () => {
                   </div>
                 </div>
                 
+                <div
+                  v-if="message.role === 'model' && message.metadata?.usage"
+                  class="text-xs text-gray-500 flex flex-wrap items-center gap-x-3 gap-y-1 ml-1"
+                >
+                  <div class="flex items-center gap-1">
+                    <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7h16M4 12h16M4 17h10" />
+                    </svg>
+                    <span>Prompt {{ formatTokens(message.metadata.usage.promptTokens) }}</span>
+                    <span class="text-gray-300">|</span>
+                    <span>Completion {{ formatTokens(message.metadata.usage.completionTokens) }}</span>
+                    <span class="text-gray-300">|</span>
+                    <span>Total {{ formatTokens(message.metadata.usage.totalTokens) }}</span>
+                  </div>
+                  <div
+                    v-if="message.metadata.usage.cost !== undefined"
+                    class="flex items-center gap-1"
+                  >
+                    <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 1.343-3 3 0 1.306.835 2.418 2 2.83V17h2v-3.17A3.001 3.001 0 0015 11c0-1.657-1.343-3-3-3z" />
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 3v3m0 12v3" />
+                    </svg>
+                    <span>Credits {{ formatCredits(message.metadata.usage.cost) }}</span>
+                  </div>
+                  <div
+                    v-if="message.metadata.usage.cachedTokens !== undefined && message.metadata.usage.cachedTokens > 0"
+                    class="flex items-center gap-1"
+                  >
+                    <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6v6l4 2" />
+                      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5" />
+                    </svg>
+                    <span>Cached {{ formatTokens(message.metadata.usage.cachedTokens) }}</span>
+                  </div>
+                  <div
+                    v-if="message.metadata.usage.reasoningTokens !== undefined && message.metadata.usage.reasoningTokens > 0"
+                    class="flex items-center gap-1"
+                  >
+                    <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.5a5.5 5.5 0 015.5 5.5v.25c0 .414.336.75.75.75H20" />
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 20h8M9 16h6" />
+                      <circle cx="12" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.5" />
+                    </svg>
+                    <span>Reasoning {{ formatTokens(message.metadata.usage.reasoningTokens) }}</span>
+                  </div>
+                </div>
+
                 <!-- 版本控制器（当有多个版本时显示） -->
                 <MessageBranchController
                   v-if="message.hasMultipleVersions"
