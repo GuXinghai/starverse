@@ -17,6 +17,7 @@ import {
   appendTokenToBranch,
   appendImageToBranch,
   updateBranchContent,
+  patchBranchMetadata,
   migrateMessagesToTree,
   getPathToBranch,
   restoreTree,
@@ -891,6 +892,17 @@ export const useChatStore = defineStore('chat', () => {
     return success
   }
 
+  const patchCurrentBranchMetadata = (conversationId, branchId, updater) => {
+    const conversation = conversations.value.find(c => c.id === conversationId)
+    if (!conversation) return false
+
+    const success = patchBranchMetadata(conversation.tree, branchId, updater)
+    if (success) {
+      saveConversations()
+    }
+    return success
+  }
+
   /**
    * 移除分支上的指定版本
    */
@@ -942,8 +954,8 @@ export const useChatStore = defineStore('chat', () => {
     openConversationInTab,
     closeConversationTab,
     updateConversationDraft,
-  setConversationWebSearchEnabled,
-  setConversationWebSearchLevel,
+    setConversationWebSearchEnabled,
+    setConversationWebSearchLevel,
     deleteConversation,
     renameConversation,
     
@@ -955,7 +967,8 @@ export const useChatStore = defineStore('chat', () => {
     appendTokenToBranchVersion,
     appendImageToBranchVersion,
     updateBranchParts,
-  removeBranchVersion,
+    patchCurrentBranchMetadata,
+    removeBranchVersion,
     getConversationMessages,
     
     // Actions - 状态管理
