@@ -669,7 +669,7 @@ export const useChatStore = defineStore('chat', () => {
   /**
    * 创建新项目
    * @param {string} name - 项目名称
-   * @returns {string|null} 新项目 ID
+   * @returns {string|null} 新项目 ID 或已存在的项目 ID
    */
   const createProject = (name) => {
     const trimmed = typeof name === 'string' ? name.trim() : ''
@@ -678,11 +678,11 @@ export const useChatStore = defineStore('chat', () => {
       return null
     }
 
-    // ✅ 检查项目名称是否已存在
-    const isDuplicate = projects.value.some(p => p.name === trimmed)
-    if (isDuplicate) {
-      console.warn('⚠️ createProject: 项目名称已存在', trimmed)
-      return null
+    // ✅ 检查项目名称是否已存在，如果存在则返回已有项目的 ID
+    const existingProject = projects.value.find(p => p.name === trimmed)
+    if (existingProject) {
+      console.info('ℹ️ createProject: 项目名称已存在，跳转到已有项目', trimmed)
+      return existingProject.id
     }
 
     const now = Date.now()
@@ -702,6 +702,7 @@ export const useChatStore = defineStore('chat', () => {
    * 重命名项目
    * @param {string} projectId
    * @param {string} newName
+   * @returns {boolean|string} 成功返回 true，名称重复返回已存在项目的 ID，失败返回 false
    */
   const renameProject = (projectId, newName) => {
     const project = projects.value.find(p => p.id === projectId)
@@ -720,11 +721,11 @@ export const useChatStore = defineStore('chat', () => {
       return true
     }
 
-    // ✅ 检查新名称是否与其他项目重复
-    const isDuplicate = projects.value.some(p => p.id !== projectId && p.name === trimmed)
-    if (isDuplicate) {
-      console.warn('⚠️ renameProject: 项目名称已存在', trimmed)
-      return false
+    // ✅ 检查新名称是否与其他项目重复，如果重复则返回已存在项目的 ID
+    const existingProject = projects.value.find(p => p.id !== projectId && p.name === trimmed)
+    if (existingProject) {
+      console.info('ℹ️ renameProject: 项目名称已存在，将跳转到已有项目', trimmed)
+      return existingProject.id
     }
 
     project.name = trimmed

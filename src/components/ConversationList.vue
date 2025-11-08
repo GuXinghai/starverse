@@ -672,15 +672,11 @@ watch(filteredConversations, (list) => {
 const handleCreateProject = () => {
   const createdId = chatStore.createProject(newProjectName.value)
   if (createdId) {
+    // ✅ 无论是新建还是跳转到已存在项目，都切换筛选器
     projectFilter.value = createdId
     newProjectName.value = ''
     isCreatingProject.value = false
     newProjectInputRef.value = null
-  } else {
-    // ✅ 创建失败时给出提示（可能是名称重复或为空）
-    if (newProjectName.value.trim()) {
-      alert('项目名称已存在，请使用其他名称')
-    }
   }
 }
 
@@ -747,16 +743,18 @@ const confirmProjectRename = (projectId: string) => {
   if (projectId === 'unassigned') {
     return
   }
-  const success = chatStore.renameProject(projectId, projectEditingName.value)
-  if (success) {
+  const result = chatStore.renameProject(projectId, projectEditingName.value)
+  if (result === true) {
+    // ✅ 重命名成功
     projectEditingId.value = null
     projectEditingName.value = ''
-  } else {
-    // ✅ 重命名失败时给出提示（可能是名称重复或为空）
-    if (projectEditingName.value.trim()) {
-      alert('项目名称已存在，请使用其他名称')
-    }
+  } else if (typeof result === 'string') {
+    // ✅ 名称重复，跳转到已存在的项目
+    projectFilter.value = result
+    projectEditingId.value = null
+    projectEditingName.value = ''
   }
+  // result === false 时，名称为空或项目不存在，不做处理
 }
 
 const requestProjectDelete = (projectId: string) => {
