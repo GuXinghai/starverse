@@ -907,6 +907,16 @@ const webSearchButtonTitle = computed(() => {
     : '启用网络搜索'
 })
 
+/**
+ * 根据搜索级别构建 Web 搜索请求选项
+ * 
+ * 三个预设级别：
+ * - quick（快速）：3个结果，low 上下文
+ * - normal（普通）：5个结果，medium 上下文
+ * - deep（深入）：8个结果，high 上下文
+ * 
+ * @returns Web 搜索配置对象，或 null（如果未启用）
+ */
 const buildWebSearchRequestOptions = () => {
   if (!isWebSearchAvailable.value || !webSearchEnabled.value) {
     return null
@@ -923,6 +933,13 @@ const buildWebSearchRequestOptions = () => {
   }
 }
 
+/**
+ * 切换 Web 搜索开关
+ * 
+ * 前置条件：
+ * - 必须有当前对话
+ * - 必须在 OpenRouter 模式下
+ */
 const toggleWebSearch = () => {
   if (!currentConversation.value) {
     return
@@ -933,6 +950,11 @@ const toggleWebSearch = () => {
   chatStore.setConversationWebSearchEnabled(props.conversationId, !webSearchEnabled.value)
 }
 
+/**
+ * 切换 Web 搜索级别菜单显示/隐藏
+ * 
+ * @param event - 鼠标事件（用于阻止冒泡）
+ */
 const toggleWebSearchMenu = (event: MouseEvent) => {
   event.stopPropagation()
   if (!isWebSearchAvailable.value) {
@@ -944,6 +966,11 @@ const toggleWebSearchMenu = (event: MouseEvent) => {
   webSearchMenuVisible.value = !webSearchMenuVisible.value
 }
 
+/**
+ * 选择 Web 搜索级别
+ * 
+ * @param level - 搜索级别（quick/normal/deep）
+ */
 const selectWebSearchLevel = (level: WebSearchLevel) => {
   if (!currentConversation.value) {
     return
@@ -955,6 +982,13 @@ const selectWebSearchLevel = (level: WebSearchLevel) => {
   webSearchMenuVisible.value = false
 }
 
+/**
+ * 处理全局点击事件（用于关闭 Web 搜索菜单）
+ * 
+ * 点击菜单外部时关闭菜单
+ * 
+ * @param event - 鼠标事件
+ */
 const handleGlobalClick = (event: MouseEvent) => {
   if (!webSearchMenuVisible.value) {
     return
@@ -1217,6 +1251,24 @@ watch(isWebSearchAvailable, (available) => {
   }
 })
 
+/**
+ * 构建错误元数据
+ * 
+ * 从错误对象中提取并规范化错误信息，支持多层嵌套错误结构
+ * 
+ * 支持的错误字段：
+ * - errorCode: 错误代码
+ * - errorType: 错误类型
+ * - errorParam: 错误参数
+ * - errorStatus: HTTP 状态码
+ * - retryable: 是否可重试
+ * - errorMessage: 错误消息
+ * 
+ * @param error - 原始错误对象
+ * @param fallbackMessage - 回退错误消息（当无法提取时使用）
+ * @param overrides - 手动覆盖的元数据字段
+ * @returns 规范化的错误元数据
+ */
 const buildErrorMetadata = (
   error: any,
   fallbackMessage: string,
@@ -1265,6 +1317,19 @@ const buildErrorMetadata = (
   return metadata
 }
 
+/**
+ * 判断消息版本是否表示错误
+ * 
+ * 检查条件（满足任一即为错误）：
+ * 1. metadata.isError 为 true
+ * 2. 消息内容包含错误关键词：
+ *    - "抱歉，发生了错误"
+ *    - "⏱️ 请求超时"
+ *    - "error"（不区分大小写）
+ * 
+ * @param version - 消息版本对象
+ * @returns true 表示是错误消息
+ */
 const versionIndicatesError = (version: any): boolean => {
   if (!version) return false
   if (version.metadata?.isError) return true
@@ -1284,6 +1349,22 @@ const versionIndicatesError = (version: any): boolean => {
   })
 }
 
+/**
+ * 规范化 usage 数据负载
+ * 
+ * 将不同来源的 usage 数据转换为统一的 UsageMetrics 格式
+ * 
+ * 支持的字段：
+ * - prompt_tokens / input_tokens / cache_read_tokens
+ * - completion_tokens / output_tokens
+ * - total_tokens
+ * - total_cost
+ * - cache_creation_input_tokens
+ * - cache_read_input_tokens
+ * 
+ * @param payload - 原始 usage 数据
+ * @returns 规范化后的 UsageMetrics 对象，或 null（如果无效）
+ */
 const normalizeUsagePayload = (payload: any): UsageMetrics | null => {
   if (!payload || typeof payload !== 'object') {
     return null
@@ -1369,6 +1450,22 @@ const captureUsageForBranch = (conversationId: string, branchId: string, usagePa
   return true
 }
 
+/**
+ * 格式化 Token 数量显示
+ * 
+ * 格式化规则：
+ * - 无效值（undefined/null/NaN/Infinite）→ "—"
+ * - 接近整数（误差 < 1e-6）→ 整数显示，带千位分隔符
+ * - 小数 → 最多保留2位小数，带千位分隔符
+ * 
+ * 示例：
+ * - 1234 → "1,234"
+ * - 1234.56 → "1,234.56"
+ * - null → "—"
+ * 
+ * @param value - Token 数量
+ * @returns 格式化后的字符串
+ */
 const formatTokens = (value?: number | null) => {
   if (value === undefined || value === null || Number.isNaN(value) || !Number.isFinite(value)) {
     return '—'
@@ -1380,6 +1477,24 @@ const formatTokens = (value?: number | null) => {
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 })
 }
 
+/**
+ * 格式化 Credits（费用）显示
+ * 
+ * 格式化规则：
+ * - 无效值（undefined/null/NaN/Infinite）→ "—"
+ * - 绝对值 >= 1 → 保留2位小数（如 1.23）
+ * - 绝对值 >= 0.1 → 保留3位小数（如 0.123）
+ * - 绝对值 < 0.1 → 使用科学计数法2位有效数字（如 0.0012）
+ * 
+ * 示例：
+ * - 1.2345 → "1.23"
+ * - 0.123 → "0.123"
+ * - 0.00123 → "0.0012"
+ * - null → "—"
+ * 
+ * @param value - Credits 金额
+ * @returns 格式化后的字符串
+ */
 const formatCredits = (value?: number | null) => {
   if (value === undefined || value === null || Number.isNaN(value) || !Number.isFinite(value)) {
     return '—'
