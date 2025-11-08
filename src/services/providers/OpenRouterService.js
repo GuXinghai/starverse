@@ -40,6 +40,19 @@ const VISION_MODEL_PATTERNS = [
   /image/i  // 通用的图像处理模型
 ]
 
+const SUPPORTED_IMAGE_ASPECT_RATIOS = new Set([
+  '1:1',
+  '2:3',
+  '3:2',
+  '3:4',
+  '4:3',
+  '4:5',
+  '5:4',
+  '9:16',
+  '16:9',
+  '21:9'
+])
+
 /**
  * 检查模型是否支持视觉/图像输入
  * @param {string} modelId - 模型 ID
@@ -74,6 +87,16 @@ function validateOpenRouterRequestBody(body) {
           throw new Error(`messages[${i}].content[${j}].image_url.url 必须是 data:image/ 或 http(s):// 开头`)
         }
       }
+    }
+  }
+
+  if (body.image_config !== undefined) {
+    if (!body.image_config || typeof body.image_config !== 'object') {
+      throw new Error('image_config 必须是对象')
+    }
+    const aspectRatio = body.image_config.aspect_ratio
+    if (aspectRatio !== undefined && typeof aspectRatio !== 'string') {
+      throw new Error('image_config.aspect_ratio 必须是字符串')
     }
   }
 }
@@ -256,6 +279,7 @@ export const OpenRouterService = {
     let signal = null
     let webSearch = null
     let requestedModalities = null
+    let imageConfig = null
 
     if (options && typeof options === 'object') {
       if ('signal' in options) {
@@ -279,6 +303,20 @@ export const OpenRouterService = {
               return mod
             })
             requestedModalities = Array.from(new Set(normalized))
+          }
+        }
+      }
+      if ('imageConfig' in options) {
+        const rawConfig = options.imageConfig
+        if (rawConfig && typeof rawConfig === 'object') {
+          const aspectRaw = typeof rawConfig.aspect_ratio === 'string' ? rawConfig.aspect_ratio.trim() : ''
+          if (aspectRaw) {
+              const normalizedAspect = aspectRaw.replace(/\s+/g, '') // Normalize aspect ratio by removing whitespace
+            if (SUPPORTED_IMAGE_ASPECT_RATIOS.has(normalizedAspect)) {
+              imageConfig = { aspect_ratio: normalizedAspect }
+            } else {
+              console.warn('OpenRouterService: 忽略不受支持的 aspect_ratio 值', aspectRaw)
+            }
           }
         }
       }
@@ -509,6 +547,11 @@ export const OpenRouterService = {
           requestBody.modalities = normalizedModalities
           console.log('OpenRouterService: 请求 modalities =', normalizedModalities)
         }
+      }
+
+      if (imageConfig) {
+        requestBody.image_config = { ...imageConfig }
+        console.log('OpenRouterService: 请求 image_config =', requestBody.image_config)
       }
       
       // 调试：在发送前验证 requestBody 格式并打印被截断的请求体（便于快速排查）

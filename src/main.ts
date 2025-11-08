@@ -36,12 +36,8 @@ console.log('✓ Pinia 注册成功')
 const appStore = useAppStore()
 // @ts-ignore - chatStore.js 是一个 JavaScript 文件
 const chatStore = useChatStore()
-const SPLASH_MIN_DURATION_MS = 1200
-
-appStore.showSplashScreen('正在初始化 Starverse...')
 
 const mountApplication = () => {
-  appStore.setSplashStatus('正在渲染主界面...')
   console.log('正在挂载应用到 #app...')
   const rootInstance = app.mount('#app')
   rootInstance.$nextTick(async () => {
@@ -64,16 +60,12 @@ const mountApplication = () => {
 }
 
 const bootstrapChatData = async () => {
-  const splashStart = Date.now()
   console.log('🌠 正在后台加载 chatStore 数据...')
   try {
-    appStore.setSplashStatus('正在加载对话历史...')
     await chatStore.loadConversations()
     console.log('✓ chatStore 会话数据加载完成')
-    appStore.setSplashStatus('正在准备模型资源...')
   } catch (error) {
     console.error('⚠️ chatStore 加载对话失败:', error)
-    appStore.setSplashStatus('对话加载失败，继续尝试启动...')
   }
 
   const currentProvider = appStore.activeProvider
@@ -83,41 +75,28 @@ const bootstrapChatData = async () => {
 
   if (!hasApiKey) {
     console.log(`未检测到 ${currentProvider} API Key，后台模型加载跳过`)
-    appStore.setSplashStatus('未配置 API Key，可在设置中添加以加载模型')
-  } else {
-    console.log(`🌌 后台加载 ${currentProvider} 模型列表...`)
-    appStore.setSplashStatus(`正在加载 ${currentProvider} 模型列表...`)
-    try {
-      const models = await aiChatService.listAvailableModels(appStore)
-      console.log('✓ 模型列表加载成功:', models.length, '个模型')
-      chatStore.setAvailableModels(models)
-      appStore.setSplashStatus('模型列表加载完成')
-    } catch (error) {
-      console.warn('⚠️ 后台加载模型列表失败:', error)
-      console.warn('用户可以在设置页面重新保存 API Key 来加载模型')
-      appStore.setSplashStatus('模型加载失败，可稍后在设置中重试')
-    }
+    return
   }
 
-  appStore.setSplashStatus('准备进入 Starverse...')
-  const elapsed = Date.now() - splashStart
-  if (elapsed < SPLASH_MIN_DURATION_MS) {
-    await new Promise<void>((resolve) => setTimeout(resolve, SPLASH_MIN_DURATION_MS - elapsed))
+  console.log(`🌌 后台加载 ${currentProvider} 模型列表...`)
+  try {
+    const models = await aiChatService.listAvailableModels(appStore)
+    console.log('✓ 模型列表加载成功:', models.length, '个模型')
+    chatStore.setAvailableModels(models)
+  } catch (error) {
+    console.warn('⚠️ 后台加载模型列表失败:', error)
+    console.warn('用户可以在设置页面重新保存 API Key 来加载模型')
   }
-  appStore.hideSplashScreen()
 }
 
 // ========== 启动流程：先准备配置，再挂载 UI，最后后台加载数据 ==========
 ;(async () => {
   console.log('正在初始化 appStore...')
   try {
-    appStore.setSplashStatus('正在加载本地配置...')
     await appStore.initializeStore()
     console.log('✓ appStore 初始化完成, apiKey:', appStore.apiKey)
-    appStore.setSplashStatus('配置加载完成')
   } catch (error) {
     console.error('⚠️ appStore 初始化失败:', error)
-    appStore.setSplashStatus('配置加载失败，尝试继续启动')
   }
 
   mountApplication()
