@@ -1,7 +1,29 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 // @ts-ignore
 import { useChatStore } from '../stores/chatStore'
+
+type ConversationRecord = {
+  id: string
+  title: string
+  projectId?: string | null
+  model: string
+  generationStatus: 'idle' | 'sending' | 'receiving'
+  hasError?: boolean
+  tree?: {
+    branches?: Map<string, any> | Record<string, any>
+    currentPath?: string[]
+  }
+}
+
+type ProjectRecord = {
+  id: string
+  name: string
+  createdAt: number
+  updatedAt: number
+  isSystem?: boolean
+}
 
 const chatStore = useChatStore()
 
@@ -12,20 +34,333 @@ const editingTitle = ref('')
 // 删除确认状态
 const deletingId = ref<string | null>(null)
 
+// 搜索与过滤
+const searchQuery = ref('')
+const searchInTitle = ref(true)
+const searchInContent = ref(false)
+
+// 项目管理
+const projectFilter = ref<string>('all')
+const isCreatingProject = ref(false)
+const newProjectName = ref('')
+const projectEditingId = ref<string | null>(null)
+const projectEditingName = ref('')
+const projectDeletingId = ref<string | null>(null)
+const hoverMenuId = ref<string | null>(null)
+const hoverOpenTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const hoverCloseTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const hoverProjectMenuId = ref<string | null>(null)
+const hoverProjectOpenTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const hoverProjectCloseTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const newProjectInputRef = ref<HTMLInputElement | null>(null)
+
+type Placement =
+  | 'right-start' | 'right-end'
+  | 'left-start' | 'left-end'
+  | 'bottom-start' | 'bottom-end'
+  | 'top-start' | 'top-end'
+
+// ========== 菜单状态管理 ==========
+// ⚠️ 重要：主菜单和子菜单都必须 Teleport 到 body 并使用 fixed 定位
+// 原因：避免被父容器的 overflow 裁剪，确保始终浮在最上层
+// 参考文档：docs/SUBMENU_TELEPORT_FIX.md
+
+// 主菜单状态
+const contextMenuRef = ref<HTMLElement | null>(null)
+const activeAnchorEl = ref<HTMLElement | null>(null)
+const lastKnownAnchorRect = ref<DOMRect | null>(null)
+const transformOrigin = ref('top left')
+const contextMenuCoords = ref({ x: 0, y: 0, maxW: 320, maxH: 360 })
+let dprMediaQuery: MediaQueryList | null = null
+let dprMediaQueryListener: ((event: MediaQueryListEvent) => void) | null = null
+let menuResizeObserver: ResizeObserver | null = null
+
+const contextMenuStyle = computed(() => ({
+  top: `${contextMenuCoords.value.y}px`,
+  left: `${contextMenuCoords.value.x}px`,
+  maxHeight: `${contextMenuCoords.value.maxH}px`,
+  maxWidth: `${contextMenuCoords.value.maxW}px`,
+  transformOrigin: transformOrigin.value
+}))
+
+// 子菜单（项目列表）状态
+// ⚠️ 关键：子菜单必须独立 Teleport，不能嵌套在主菜单的 DOM 树内
+// 否则会被主菜单的 overflow-auto 裁剪，且 z-index 受层叠上下文限制
+const projectMenuRef = ref<HTMLElement | null>(null)
+const projectMenuAnchorEl = ref<HTMLElement | null>(null)  // 追踪"移动到项目"按钮位置
+const projectMenuTransformOrigin = ref('top left')
+const projectMenuCoords = ref({ x: 0, y: 0, maxW: 176, maxH: 400 })
+let projectMenuResizeObserver: ResizeObserver | null = null
+
+const projectMenuStyle = computed(() => ({
+  top: `${projectMenuCoords.value.y}px`,
+  left: `${projectMenuCoords.value.x}px`,
+  maxHeight: `${projectMenuCoords.value.maxH}px`,
+  maxWidth: `${projectMenuCoords.value.maxW}px`,
+  transformOrigin: projectMenuTransformOrigin.value
+}))
+
+const resolveHTMLElement = (value: Element | ComponentPublicInstance | null): HTMLElement | null => {
+  if (!value) {
+    return null
+  }
+  if (value instanceof HTMLElement) {
+    return value
+  }
+  if ('$el' in (value as ComponentPublicInstance)) {
+    const element = (value as ComponentPublicInstance).$el
+    return element instanceof HTMLElement ? element : null
+  }
+  return null
+}
+
+const setContextMenuRef = (el: Element | ComponentPublicInstance | null) => {
+  if (menuResizeObserver) {
+    menuResizeObserver.disconnect()
+    menuResizeObserver = null
+  }
+
+  const element = resolveHTMLElement(el)
+  contextMenuRef.value = element
+
+  if (element && typeof ResizeObserver !== 'undefined') {
+    menuResizeObserver = new ResizeObserver(() => {
+      updateContextMenuPosition()
+    })
+    menuResizeObserver.observe(element)
+  }
+}
+
+// ⚠️ 子菜单 ref 设置：监听尺寸变化以动态调整位置
+const setProjectMenuRef = (el: Element | ComponentPublicInstance | null) => {
+  if (projectMenuResizeObserver) {
+    projectMenuResizeObserver.disconnect()
+    projectMenuResizeObserver = null
+  }
+
+  const element = resolveHTMLElement(el)
+  projectMenuRef.value = element
+
+  if (element && typeof ResizeObserver !== 'undefined') {
+    projectMenuResizeObserver = new ResizeObserver(() => {
+      updateProjectMenuPosition()
+    })
+    projectMenuResizeObserver.observe(element)
+  }
+}
+
+// ⚠️ 锚点追踪：记录"移动到项目"按钮位置，用于计算子菜单坐标
+const setProjectMenuAnchor = (el: HTMLElement | null) => {
+  projectMenuAnchorEl.value = el
+}
+
+const detachDprMediaQuery = () => {
+  if (!dprMediaQuery) {
+    return
+  }
+  if (dprMediaQueryListener) {
+    if (typeof dprMediaQuery.removeEventListener === 'function') {
+      dprMediaQuery.removeEventListener('change', dprMediaQueryListener)
+    } else if (typeof dprMediaQuery.removeListener === 'function') {
+      dprMediaQuery.removeListener(dprMediaQueryListener)
+    }
+  }
+  dprMediaQuery = null
+  dprMediaQueryListener = null
+}
+
+const registerDprMediaQuery = () => {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return
+  }
+
+  detachDprMediaQuery()
+
+  const mediaQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+  const handler = () => {
+    recomputeContextMenuPosition()
+    registerDprMediaQuery()
+  }
+
+  dprMediaQuery = mediaQuery
+  dprMediaQueryListener = handler
+
+  if (typeof mediaQuery.addEventListener === 'function') {
+    mediaQuery.addEventListener('change', handler)
+  } else if (typeof mediaQuery.addListener === 'function') {
+    mediaQuery.addListener(handler)
+  }
+}
+
 // 格式化模型名称显示
 const formatModelName = (modelName: string) => {
-  // 从 "models/gemini-2.0-flash-exp" 提取 "gemini-2.0-flash"
   const match = modelName.match(/gemini-[\d.]+-[\w]+/)
   if (match) {
     return match[0]
   }
-  // 如果是完整路径，取最后一部分
   const parts = modelName.split('/')
   return parts[parts.length - 1]
 }
 
+const defaultPlacements: Placement[] = ['right-start', 'right-end', 'left-start', 'bottom-start', 'top-start']
+
+const computeMenuPosition = (anchorRect: DOMRect, menuW: number, menuH: number, prefer: Placement[] = defaultPlacements) => {
+  const PADDING = 8
+  const viewportWidth = window.innerWidth
+  const viewportHeight = window.innerHeight
+
+  const placements: Record<Placement, () => { x: number; y: number; origin: string }> = {
+    'right-start': () => ({ x: anchorRect.right + PADDING, y: anchorRect.top, origin: 'top left' }),
+    'right-end': () => ({ x: anchorRect.right + PADDING, y: anchorRect.bottom - menuH, origin: 'bottom left' }),
+    'left-start': () => ({ x: anchorRect.left - PADDING - menuW, y: anchorRect.top, origin: 'top right' }),
+    'left-end': () => ({ x: anchorRect.left - PADDING - menuW, y: anchorRect.bottom - menuH, origin: 'bottom right' }),
+    'bottom-start': () => ({ x: anchorRect.left, y: anchorRect.bottom + PADDING, origin: 'top left' }),
+    'bottom-end': () => ({ x: anchorRect.right - menuW, y: anchorRect.bottom + PADDING, origin: 'top right' }),
+    'top-start': () => ({ x: anchorRect.left, y: anchorRect.top - PADDING - menuH, origin: 'bottom left' }),
+    'top-end': () => ({ x: anchorRect.right - menuW, y: anchorRect.top - PADDING - menuH, origin: 'bottom right' })
+  }
+
+  const maxWidth = Math.max(160, viewportWidth - PADDING * 2)
+  const maxHeight = Math.max(120, viewportHeight - PADDING * 2)
+
+  for (const placement of prefer) {
+    const resolver = placements[placement]
+    if (!resolver) {
+      continue
+    }
+    let { x, y, origin } = resolver()
+
+    const maxX = Math.max(PADDING, viewportWidth - PADDING - menuW)
+    const maxY = Math.max(PADDING, viewportHeight - PADDING - menuH)
+
+    x = Math.min(Math.max(PADDING, x), maxX)
+    y = Math.min(Math.max(PADDING, y), maxY)
+
+    const overflow =
+      x + menuW > viewportWidth - PADDING ||
+      x < PADDING ||
+      y + menuH > viewportHeight - PADDING ||
+      y < PADDING
+
+    if (!overflow) {
+      return { x, y, origin, maxW: maxWidth, maxH: maxHeight }
+    }
+  }
+
+  return {
+    x: PADDING,
+    y: PADDING,
+    origin: 'top left',
+    maxW: maxWidth,
+    maxH: maxHeight
+  }
+}
+
+const updateContextMenuPosition = (anchorRect?: DOMRect | null) => {
+  if (!hoverMenuId.value) {
+    return
+  }
+  const menuEl = contextMenuRef.value
+  if (!menuEl) {
+    return
+  }
+  const rect = anchorRect ?? activeAnchorEl.value?.getBoundingClientRect() ?? lastKnownAnchorRect.value
+  if (!rect) {
+    return
+  }
+
+  const { width: menuWidth, height: menuHeight } = menuEl.getBoundingClientRect()
+  const { x, y, origin, maxW, maxH } = computeMenuPosition(rect, menuWidth, menuHeight)
+  contextMenuCoords.value = { x, y, maxW, maxH }
+  transformOrigin.value = origin
+  lastKnownAnchorRect.value = rect
+}
+
+// ⚠️ 子菜单位置计算：独立 Teleport 到 body 后使用固定定位
+// 复用主菜单定位算法，优先级: 右侧 > 下方/上方 > 左侧（避免右侧溢出时触发水平滚动条）
+const updateProjectMenuPosition = () => {
+  if (!hoverProjectMenuId.value) {
+    return
+  }
+  const menuEl = projectMenuRef.value
+  const anchorEl = projectMenuAnchorEl.value
+  if (!menuEl || !anchorEl) {
+    return
+  }
+
+  const anchorRect = anchorEl.getBoundingClientRect()
+  const { width: menuWidth, height: menuHeight } = menuEl.getBoundingClientRect()
+  
+  // 子菜单优先向右展开,其次向下/上,最后向左
+  const { x, y, origin, maxW, maxH } = computeMenuPosition(
+    anchorRect, 
+    menuWidth, 
+    menuHeight, 
+    ['right-start', 'right-end', 'bottom-start', 'top-start', 'left-start']
+  )
+  
+  projectMenuCoords.value = { x, y, maxW, maxH }
+  projectMenuTransformOrigin.value = origin
+}
+
+const openContextMenu = (conversationId: string, anchor: HTMLElement) => {
+  activeAnchorEl.value = anchor
+  lastKnownAnchorRect.value = anchor.getBoundingClientRect()
+  hoverMenuId.value = conversationId
+  nextTick(() => {
+    updateContextMenuPosition(lastKnownAnchorRect.value)
+  })
+}
+
+// ⚠️ 关闭菜单时必须同步关闭子菜单，并清理所有锚点引用
+const closeContextMenu = () => {
+  if (!hoverMenuId.value) {
+    hoverProjectMenuId.value = null
+    return
+  }
+  hoverMenuId.value = null
+  hoverProjectMenuId.value = null
+  activeAnchorEl.value = null
+  lastKnownAnchorRect.value = null
+  projectMenuAnchorEl.value = null
+}
+
+// ⚠️ 全局点击检测：必须同时检查主菜单和子菜单的 DOM 引用
+// 因为子菜单独立 Teleport 到 body，不在主菜单的 DOM 树内
+const handleGlobalPointerDown = (event: PointerEvent) => {
+  if (!hoverMenuId.value) {
+    return
+  }
+  const target = event.target as Node | null
+  if (contextMenuRef.value && target && contextMenuRef.value.contains(target)) {
+    return
+  }
+  if (projectMenuRef.value && target && projectMenuRef.value.contains(target)) {
+    return
+  }
+  if (activeAnchorEl.value && target && activeAnchorEl.value.contains(target as Node)) {
+    return
+  }
+  if (projectMenuAnchorEl.value && target && projectMenuAnchorEl.value.contains(target as Node)) {
+    return
+  }
+  closeContextMenu()
+}
+
+const recomputeContextMenuPosition = () => {
+  if (!hoverMenuId.value) {
+    return
+  }
+  requestAnimationFrame(() => {
+    updateContextMenuPosition()
+    if (hoverProjectMenuId.value) {
+      updateProjectMenuPosition()
+    }
+  })
+}
+
 // 开始编辑
-const startEdit = (conversation: any) => {
+const startEdit = (conversation: ConversationRecord) => {
   editingId.value = conversation.id
   editingTitle.value = conversation.title
 }
@@ -54,9 +389,7 @@ const startDelete = (conversationId: string) => {
 const confirmDelete = (conversationId: string) => {
   const success = chatStore.deleteConversation(conversationId)
   if (!success) {
-    // 使用 console.error 替代 alert，避免焦点干扰
     console.error('删除失败：该对话可能正在使用中')
-    // 可选：添加视觉反馈（例如红色边框闪烁）
   }
   deletingId.value = null
 }
@@ -66,34 +399,511 @@ const cancelDelete = () => {
   deletingId.value = null
 }
 
-// 键盘快捷键处理
-const handleKeydown = (e: KeyboardEvent) => {
-  // Ctrl+N 或 Cmd+N 创建新对话
-  if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
-    e.preventDefault()
-    const newId = chatStore.createNewConversation()
-    chatStore.openConversationInTab(newId)
+const createConversation = () => {
+  const newId = chatStore.createNewConversation()
+  if (projectFilter.value !== 'all') {
+    if (projectFilter.value !== 'unassigned') {
+      const success = chatStore.assignConversationToProject(newId, projectFilter.value)
+      if (!success) {
+        projectFilter.value = 'all'
+      }
+    }
+  }
+  chatStore.openConversationInTab(newId)
+}
+
+const handleRename = (conversation: ConversationRecord) => {
+  startEdit(conversation)
+  closeContextMenu()
+}
+
+const handleDelete = (conversation: ConversationRecord) => {
+  startDelete(conversation.id)
+  closeContextMenu()
+}
+
+const clearTimers = () => {
+  if (hoverOpenTimer.value !== null) {
+    clearTimeout(hoverOpenTimer.value)
+    hoverOpenTimer.value = null
+  }
+  if (hoverCloseTimer.value !== null) {
+    clearTimeout(hoverCloseTimer.value)
+    hoverCloseTimer.value = null
+  }
+  if (hoverProjectOpenTimer.value !== null) {
+    clearTimeout(hoverProjectOpenTimer.value)
+    hoverProjectOpenTimer.value = null
+  }
+  if (hoverProjectCloseTimer.value !== null) {
+    clearTimeout(hoverProjectCloseTimer.value)
+    hoverProjectCloseTimer.value = null
+  }
+  closeContextMenu()
+}
+
+const scheduleOpenMenu = (conversationId: string, event: MouseEvent) => {
+  const anchor = event.currentTarget as HTMLElement | null
+  if (!anchor) {
+    return
+  }
+
+  if (hoverMenuId.value === conversationId) {
+    if (hoverCloseTimer.value !== null) {
+      clearTimeout(hoverCloseTimer.value)
+      hoverCloseTimer.value = null
+    }
+    activeAnchorEl.value = anchor
+    updateContextMenuPosition(anchor.getBoundingClientRect())
+    return
+  }
+
+  if (hoverCloseTimer.value !== null) {
+    clearTimeout(hoverCloseTimer.value)
+    hoverCloseTimer.value = null
+  }
+
+  if (hoverOpenTimer.value !== null) {
+    clearTimeout(hoverOpenTimer.value)
+    hoverOpenTimer.value = null
+  }
+
+  hoverOpenTimer.value = setTimeout(() => {
+    openContextMenu(conversationId, anchor)
+    hoverProjectMenuId.value = null
+    hoverOpenTimer.value = null
+  }, 150)
+}
+
+const scheduleCloseMenu = () => {
+  if (hoverOpenTimer.value !== null) {
+    clearTimeout(hoverOpenTimer.value)
+    hoverOpenTimer.value = null
+  }
+
+  if (hoverCloseTimer.value !== null) {
+    clearTimeout(hoverCloseTimer.value)
+  }
+
+  hoverCloseTimer.value = setTimeout(() => {
+    closeContextMenu()
+    hoverCloseTimer.value = null
+  }, 200)
+}
+
+const cancelPendingMenuClose = () => {
+  if (hoverCloseTimer.value !== null) {
+    clearTimeout(hoverCloseTimer.value)
+    hoverCloseTimer.value = null
   }
 }
 
-onMounted(() => {
-  window.addEventListener('keydown', handleKeydown)
+watch(hoverMenuId, async (next) => {
+  if (next) {
+    await nextTick()
+    updateContextMenuPosition()
+    document.addEventListener('pointerdown', handleGlobalPointerDown, true)
+  } else {
+    document.removeEventListener('pointerdown', handleGlobalPointerDown, true)
+  }
 })
 
+// ⚠️ 监听子菜单打开：等待 DOM 渲染后重新计算位置
+watch(hoverProjectMenuId, async (next) => {
+  if (next) {
+    await nextTick()
+    updateProjectMenuPosition()
+  }
+})
+
+
+const normalizedQuery = computed(() => searchQuery.value.trim().toLowerCase())
+
+const orderedProjects = computed<ProjectRecord[]>(() => {
+  if (!Array.isArray(chatStore.projects)) {
+    return []
+  }
+  return [...(chatStore.projects as ProjectRecord[])].sort((a, b) => {
+    const aTime = a.updatedAt || a.createdAt || 0
+    const bTime = b.updatedAt || b.createdAt || 0
+    return bTime - aTime
+  })
+})
+
+const projectManagerEntries = computed<ProjectRecord[]>(() => {
+  const allEntry: ProjectRecord = {
+    id: 'all',
+    name: '全部对话',
+    createdAt: 0,
+    updatedAt: 0,
+    isSystem: true
+  }
+  const unassignedEntry: ProjectRecord = {
+    id: 'unassigned',
+    name: '未分配',
+    createdAt: 0,
+    updatedAt: 0,
+    isSystem: true
+  }
+  return [allEntry, unassignedEntry, ...orderedProjects.value.map(project => ({ ...project }))]
+})
+
+const projectConversationCounts = computed<Record<string, number>>(() => {
+  const counts: Record<string, number> = { unassigned: 0 }
+  for (const conversation of chatStore.conversations as ConversationRecord[]) {
+    const projectId = conversation.projectId
+    if (projectId) {
+      counts[projectId] = (counts[projectId] || 0) + 1
+    } else {
+      counts.unassigned += 1
+    }
+  }
+  return counts
+})
+
+const totalConversationCount = computed(() => (chatStore.conversations as ConversationRecord[]).length)
+
+const getProjectCount = (projectId: string) => {
+  if (projectId === 'all') {
+    return totalConversationCount.value
+  }
+  return projectConversationCounts.value[projectId] ?? 0
+}
+
+const getProjectLabel = (projectId: string | null | undefined) => {
+  if (!projectId) {
+    return '未分配'
+  }
+  const project = chatStore.getProjectById(projectId)
+  return project?.name ?? '未分配'
+}
+
+const conversationMatchesContent = (conversation: ConversationRecord, query: string) => {
+  if (!query) {
+    return true
+  }
+  const tree = conversation.tree
+  if (!tree?.currentPath || !Array.isArray(tree.currentPath) || tree.currentPath.length === 0) {
+    return false
+  }
+  const branchesSource = tree.branches as Map<string, any> | Record<string, any> | undefined
+  if (!branchesSource) {
+    return false
+  }
+
+  const getBranch = (branchId: string) => {
+    if (branchesSource && typeof (branchesSource as Map<string, any>).get === 'function') {
+      return (branchesSource as Map<string, any>).get(branchId)
+    }
+    return (branchesSource as Record<string, any>)[branchId]
+  }
+
+  for (const branchId of tree.currentPath) {
+    const branch = getBranch(branchId)
+    if (!branch) continue
+    const versions = Array.isArray(branch.versions) ? branch.versions : []
+    const versionIndex = typeof branch.currentVersionIndex === 'number' ? branch.currentVersionIndex : 0
+    const currentVersion = versions[versionIndex] || versions[0]
+    if (!currentVersion || !Array.isArray(currentVersion.parts)) continue
+    for (const part of currentVersion.parts) {
+      if (part?.type === 'text' && typeof part.text === 'string' && part.text.toLowerCase().includes(query)) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+const buildSearchScopes = () => {
+  const scopes = {
+    title: searchInTitle.value,
+    content: searchInContent.value
+  }
+  if (!scopes.title && !scopes.content) {
+    scopes.title = true
+  }
+  return scopes
+}
+
+const filteredConversations = computed<ConversationRecord[]>(() => {
+  const conversations = chatStore.conversations as ConversationRecord[]
+  const query = normalizedQuery.value
+  const scopes = buildSearchScopes()
+
+  return conversations.filter(conversation => {
+    if (projectFilter.value === 'unassigned' && conversation.projectId) {
+      return false
+    }
+    if (projectFilter.value !== 'all' && projectFilter.value !== 'unassigned' && conversation.projectId !== projectFilter.value) {
+      return false
+    }
+
+    if (!query) {
+      return true
+    }
+
+    if (scopes.title && (conversation.title || '').toLowerCase().includes(query)) {
+      return true
+    }
+
+    if (scopes.content && conversationMatchesContent(conversation, query)) {
+      return true
+    }
+
+    return false
+  })
+})
+
+watch(filteredConversations, (list) => {
+  if (!hoverMenuId.value) {
+    return
+  }
+  if (!list.some(conversation => conversation.id === hoverMenuId.value)) {
+    closeContextMenu()
+  }
+})
+
+const handleCreateProject = () => {
+  const createdId = chatStore.createProject(newProjectName.value)
+  if (createdId) {
+    projectFilter.value = createdId
+  }
+  newProjectName.value = ''
+  isCreatingProject.value = false
+  newProjectInputRef.value = null
+}
+
+const isProjectSelected = (projectId: string) => projectFilter.value === projectId
+
+const selectProject = (projectId: string) => {
+  projectFilter.value = projectId
+}
+
+const toggleProjectCreation = () => {
+  if (isCreatingProject.value) {
+    newProjectName.value = ''
+    nextTick(() => {
+      newProjectInputRef.value = null
+    })
+  }
+  isCreatingProject.value = !isCreatingProject.value
+  if (isCreatingProject.value) {
+    nextTick(() => {
+      newProjectInputRef.value?.focus()
+    })
+  }
+}
+
+const startProjectEdit = (project: ProjectRecord) => {
+  if (project.isSystem) {
+    return
+  }
+  projectEditingId.value = project.id
+  projectEditingName.value = project.name
+}
+
+let projectSyncReady = false
+
+watch(
+  () => chatStore.activeProjectId,
+  (next) => {
+    projectSyncReady = true
+    const target = next ?? 'all'
+    if (projectFilter.value !== target) {
+      projectFilter.value = target
+    }
+  },
+  { immediate: true }
+)
+
+watch(projectFilter, (next) => {
+  if (!projectSyncReady) {
+    return
+  }
+  if (next === 'all') {
+    chatStore.setActiveProject(null)
+    return
+  }
+  chatStore.setActiveProject(next)
+})
+
+const cancelProjectEdit = () => {
+  projectEditingId.value = null
+  projectEditingName.value = ''
+}
+
+const confirmProjectRename = (projectId: string) => {
+  if (projectId === 'unassigned') {
+    return
+  }
+  const success = chatStore.renameProject(projectId, projectEditingName.value)
+  if (success) {
+    projectEditingId.value = null
+    projectEditingName.value = ''
+  }
+}
+
+const requestProjectDelete = (projectId: string) => {
+  if (projectId === 'unassigned') {
+    return
+  }
+  projectDeletingId.value = projectId
+}
+
+const cancelProjectDelete = () => {
+  projectDeletingId.value = null
+}
+
+const confirmProjectDelete = (projectId: string) => {
+  if (projectId === 'unassigned') {
+    return
+  }
+  const success = chatStore.deleteProject(projectId)
+  if (success && projectFilter.value === projectId) {
+    projectFilter.value = 'unassigned'
+  }
+  projectDeletingId.value = null
+}
+
+const openProjectMenu = (conversationId: string) => {
+  // 如果已经是当前对话的项目菜单，取消关闭定时器
+  if (hoverProjectMenuId.value === conversationId) {
+    if (hoverProjectCloseTimer.value !== null) {
+      clearTimeout(hoverProjectCloseTimer.value)
+      hoverProjectCloseTimer.value = null
+    }
+    return
+  }
+
+  // 清除之前的关闭定时器
+  if (hoverProjectCloseTimer.value !== null) {
+    clearTimeout(hoverProjectCloseTimer.value)
+    hoverProjectCloseTimer.value = null
+  }
+
+  // 清除之前的打开定时器
+  if (hoverProjectOpenTimer.value !== null) {
+    clearTimeout(hoverProjectOpenTimer.value)
+    hoverProjectOpenTimer.value = null
+  }
+
+  // 延迟150ms打开
+  hoverProjectOpenTimer.value = setTimeout(() => {
+    hoverProjectMenuId.value = conversationId
+    hoverProjectOpenTimer.value = null
+  }, 150)
+}
+
+const closeProjectMenu = () => {
+  // 清除打开定时器
+  if (hoverProjectOpenTimer.value !== null) {
+    clearTimeout(hoverProjectOpenTimer.value)
+    hoverProjectOpenTimer.value = null
+  }
+
+  // 清除之前的关闭定时器
+  if (hoverProjectCloseTimer.value !== null) {
+    clearTimeout(hoverProjectCloseTimer.value)
+  }
+
+  // 延迟200ms关闭
+  hoverProjectCloseTimer.value = setTimeout(() => {
+    hoverProjectMenuId.value = null
+    hoverProjectCloseTimer.value = null
+  }, 200)
+}
+
+const cancelPendingProjectMenuClose = () => {
+  if (hoverProjectCloseTimer.value !== null) {
+    clearTimeout(hoverProjectCloseTimer.value)
+    hoverProjectCloseTimer.value = null
+  }
+}
+
+const changeConversationProject = (conversationId: string, projectId: string | null) => {
+  const conversations = chatStore.conversations as ConversationRecord[]
+  const conversation = conversations.find(item => item.id === conversationId)
+  if (!conversation) {
+    return
+  }
+
+  const normalizedId = projectId ?? null
+  if ((conversation.projectId ?? null) === normalizedId) {
+    hoverProjectMenuId.value = null
+    closeContextMenu()
+    return
+  }
+
+  if (!projectId) {
+    chatStore.removeConversationFromProject(conversationId)
+  } else {
+    const success = chatStore.assignConversationToProject(conversationId, projectId)
+    if (!success) {
+      return
+    }
+  }
+
+  hoverProjectMenuId.value = null
+  closeContextMenu()
+}
+
+// 键盘快捷键处理
+const handleKeydown = (e: KeyboardEvent) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+    e.preventDefault()
+    createConversation()
+  }
+}
+
+watch(
+  () => {
+    const list = Array.isArray(chatStore.projects) ? (chatStore.projects as ProjectRecord[]) : []
+    return list.map(project => project.id)
+  },
+  (projectIds) => {
+    if (projectFilter.value !== 'all' && projectFilter.value !== 'unassigned' && !projectIds.includes(projectFilter.value)) {
+      projectFilter.value = 'all'
+    }
+  }
+)
+
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown)
+  window.addEventListener('resize', recomputeContextMenuPosition)
+  window.addEventListener('scroll', recomputeContextMenuPosition, true)
+
+  registerDprMediaQuery()
+})
+
+// ⚠️ 组件卸载时必须清理所有 ResizeObserver，避免内存泄漏
 onUnmounted(() => {
+  clearTimers()
   window.removeEventListener('keydown', handleKeydown)
+  window.removeEventListener('resize', recomputeContextMenuPosition)
+  window.removeEventListener('scroll', recomputeContextMenuPosition, true)
+  document.removeEventListener('pointerdown', handleGlobalPointerDown, true)
+
+  detachDprMediaQuery()
+
+  if (menuResizeObserver) {
+    menuResizeObserver.disconnect()
+    menuResizeObserver = null
+  }
+  
+  if (projectMenuResizeObserver) {
+    projectMenuResizeObserver.disconnect()
+    projectMenuResizeObserver = null
+  }
 })
 </script>
 
 <template>
   <div class="flex flex-col h-full bg-gray-100 border-r border-gray-200">
     <!-- 侧边栏头部 -->
-    <div class="p-4 border-b border-gray-200 bg-white">
+    <div class="p-4 border-b border-gray-200 bg-white space-y-3">
       <button
-        @click="() => {
-          const newId = chatStore.createNewConversation()
-          chatStore.openConversationInTab(newId)
-        }"
+        @click="createConversation"
         class="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
         title="Ctrl+N"
       >
@@ -102,13 +912,134 @@ onUnmounted(() => {
         </svg>
         新建对话
       </button>
-      <p class="text-xs text-gray-500 text-center mt-2">快捷键: Ctrl+N</p>
+      <p class="text-xs text-gray-500 text-center">快捷键: Ctrl+N</p>
+
+      <div class="flex items-center gap-2">
+        <div class="relative flex-1">
+          <input
+            v-model="searchQuery"
+            class="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+          />
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none">
+            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </div>
+      </div>
+      <div class="flex items-center justify-between text-xs text-gray-600">
+        <label class="flex items-center gap-1">
+          <input v-model="searchInTitle" type="checkbox" class="rounded border-gray-300" />
+          标题
+        </label>
+        <label class="flex items-center gap-1">
+          <input v-model="searchInContent" type="checkbox" class="rounded border-gray-300" />
+          内容
+        </label>
+        <select v-model="projectFilter" class="text-xs border-gray-300 rounded px-2 py-1">
+          <option value="all">全部对话</option>
+          <option value="unassigned">未分配（{{ getProjectCount('unassigned') }}）</option>
+          <option v-for="project in orderedProjects" :key="project.id" :value="project.id">
+            {{ project.name }}（{{ getProjectCount(project.id) }}）
+          </option>
+        </select>
+      </div>
+
+      <div class="border-t border-gray-200 pt-3 space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-gray-700">项目管理</span>
+          <button
+            class="text-xs text-blue-500 hover:text-blue-600"
+            @click="toggleProjectCreation"
+          >
+            {{ isCreatingProject ? '取消' : '新建项目' }}
+          </button>
+        </div>
+
+        <div v-if="isCreatingProject" class="flex gap-2">
+          <input
+            v-model="newProjectName"
+            type="text"
+            placeholder="输入项目名称"
+            class="flex-1 px-3 py-1 text-sm border border-gray-300 rounded"
+            ref="newProjectInputRef"
+          />
+          <button
+            class="px-3 py-1 text-sm text-white bg-blue-500 rounded hover:bg-blue-600"
+            @click="handleCreateProject"
+            :disabled="!newProjectName.trim()"
+          >
+            创建
+          </button>
+        </div>
+
+        <div v-if="orderedProjects.length === 0 && !isCreatingProject" class="text-xs text-gray-500">
+          暂无项目。可点击“新建项目”开始分类管理。
+        </div>
+
+        <div
+          v-for="project in projectManagerEntries"
+          :key="project.id"
+          class="flex items-center gap-2 text-sm rounded-lg px-2 py-1 transition-colors"
+          :class="[
+            isProjectSelected(project.id) ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100 text-gray-700',
+            projectEditingId === project.id ? 'cursor-default' : 'cursor-pointer'
+          ]"
+          @click="projectEditingId !== project.id && selectProject(project.id)"
+        >
+          <div class="flex-1">
+            <div v-if="project.isSystem || projectEditingId !== project.id" class="flex items-center justify-between">
+              <span class="font-medium text-gray-700">{{ project.name }}</span>
+              <span class="text-xs text-gray-500">
+                包含 {{ getProjectCount(project.id) }} 个对话
+              </span>
+            </div>
+            <div v-else class="flex gap-2">
+              <input
+                v-model="projectEditingName"
+                type="text"
+                class="flex-1 px-2 py-1 border border-gray-300 rounded"
+              />
+              <button class="px-2 py-1 text-xs text-green-600" @click.stop="confirmProjectRename(project.id)">
+                保存
+              </button>
+              <button class="px-2 py-1 text-xs text-gray-500" @click.stop="cancelProjectEdit">
+                取消
+              </button>
+            </div>
+          </div>
+          <div class="flex items-center gap-1">
+            <button
+              v-if="!project.isSystem"
+              class="text-xs text-blue-500 hover:text-blue-600"
+              @click.stop="startProjectEdit(project)"
+            >
+              重命名
+            </button>
+            <button
+              v-if="!project.isSystem"
+              class="text-xs text-red-500 hover:text-red-600"
+              @click.stop="requestProjectDelete(project.id)"
+            >
+              删除
+            </button>
+          </div>
+        </div>
+
+        <div v-if="projectDeletingId" class="text-xs text-red-600 bg-red-50 border border-red-100 rounded p-2">
+          <div class="flex items-center justify-between">
+            <span>确认删除该项目？该项目下的对话将标记为未分配。</span>
+            <div class="flex gap-2">
+              <button class="text-blue-500" @click="cancelProjectDelete">取消</button>
+              <button class="text-red-600" @click="projectDeletingId && confirmProjectDelete(projectDeletingId)">确认</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 对话列表 -->
     <div class="flex-1 overflow-y-auto p-2">
       <div
-        v-for="conversation in chatStore.conversations"
+        v-for="conversation in filteredConversations"
         :key="conversation.id"
         class="mb-2 group"
       >
@@ -127,7 +1058,16 @@ onUnmounted(() => {
               class="flex-1 min-w-0"
             >
               <div class="font-medium flex items-center gap-2">
-                <span class="truncate flex-1 min-w-0">{{ conversation.title }}</span>
+                <div class="flex flex-col flex-1 min-w-0">
+                  <span class="truncate">{{ conversation.title }}</span>
+                  <span class="text-[11px] text-blue-100" v-if="conversation.projectId">
+                    {{ getProjectLabel(conversation.projectId) }}
+                  </span>
+                  <span class="text-[11px] text-gray-400" v-else>
+                    未分配
+                  </span>
+                </div>
+
                 
                 <!-- 生成状态指示器 -->
                 <!-- 发送中：蓝色旋转图标 -->
@@ -181,7 +1121,7 @@ onUnmounted(() => {
                 
                 <!-- 空闲且成功：绿色勾（仅当有消息时显示） -->
                 <svg
-                  v-else-if="conversation.generationStatus === 'idle' && conversation.tree?.currentPath?.length > 0 && !conversation.hasError"
+                  v-else-if="conversation.generationStatus === 'idle' && (conversation.tree?.currentPath?.length ?? 0) > 0 && !conversation.hasError"
                   class="w-4 h-4 flex-shrink-0"
                   :class="[
                     chatStore.activeTabId === conversation.id
@@ -214,36 +1154,131 @@ onUnmounted(() => {
             </div>
 
             <!-- 操作按钮 -->
-            <div class="flex items-center gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button
-                @click.stop="startEdit(conversation)"
-                :class="[
-                  'p-1.5 rounded hover:bg-opacity-20 hover:bg-gray-500 transition-colors',
-                  chatStore.activeTabId === conversation.id ? 'text-white' : 'text-gray-600'
-                ]"
-                title="重命名"
+            <div class="ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div
+                class="relative"
+                @mouseenter="(event) => scheduleOpenMenu(conversation.id, event)"
+                @mouseleave="scheduleCloseMenu()"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                </svg>
-              </button>
-              <button
-                @click.stop="startDelete(conversation.id)"
-                :disabled="conversation.generationStatus !== 'idle'"
-                :class="[
-                  'p-1.5 rounded hover:bg-opacity-20 transition-colors',
-                  conversation.generationStatus !== 'idle'
-                    ? 'opacity-50 cursor-not-allowed' 
-                    : chatStore.activeTabId === conversation.id 
-                      ? 'text-white hover:bg-red-500' 
-                      : 'text-red-500 hover:bg-red-500'
-                ]"
-                :title="conversation.generationStatus !== 'idle' ? '对话生成中，无法删除' : '删除'"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                </svg>
-              </button>
+                <button
+                  @click.stop
+                  :class="[
+                    'p-1.5 rounded hover:bg-opacity-20 transition-colors flex items-center justify-center',
+                    chatStore.activeTabId === conversation.id ? 'text-white hover:bg-white/10' : 'text-gray-600 hover:bg-gray-200'
+                  ]"
+                  title="更多操作"
+                >
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zm6 0a2 2 0 11-4 0 2 2 0 014 0zm6 0a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </button>
+                <Teleport to="body">
+                  <div
+                    v-if="hoverMenuId === conversation.id"
+                    :ref="setContextMenuRef"
+                    class="fixed z-[1300] min-w-48 max-w-sm rounded-lg border border-gray-200 bg-white shadow-xl text-sm text-gray-700 overflow-auto"
+                    :style="contextMenuStyle"
+                    @mouseenter="cancelPendingMenuClose"
+                    @mouseleave="scheduleCloseMenu()"
+                    @click.stop
+                  >
+                    <button
+                      class="w-full text-left px-4 py-2 hover:bg-gray-100"
+                      @click="handleRename(conversation)"
+                    >
+                      重命名
+                    </button>
+                    <button
+                      class="w-full text-left px-4 py-2 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                      :disabled="conversation.generationStatus !== 'idle'"
+                      @click="conversation.generationStatus === 'idle' && handleDelete(conversation)"
+                    >
+                      删除
+                    </button>
+                    <div class="border-t border-gray-100 my-1"></div>
+                    <div class="px-2 pb-2">
+                      <button
+                        :ref="el => setProjectMenuAnchor(el as HTMLElement)"
+                        class="w-full flex items-center justify-between px-3 py-1.5 text-left rounded-md hover:bg-gray-100"
+                        type="button"
+                        @mouseenter="openProjectMenu(conversation.id)"
+                        @mouseleave="closeProjectMenu"
+                      >
+                        <span class="text-sm text-gray-700">移动到项目</span>
+                        <svg class="w-3.5 h-3.5 text-gray-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                          <path d="M5.5 3.5L10.5 8L5.5 12.5" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </Teleport>
+                
+                <!-- ⚠️ 项目子菜单：必须独立 Teleport 到 body，不能嵌套在主菜单内 -->
+                <!-- 原因：避免被主菜单的 overflow-auto 和 stacking context 影响 -->
+                <Teleport to="body">
+                  <div
+                    v-if="hoverProjectMenuId === conversation.id"
+                    :ref="setProjectMenuRef"
+                    class="fixed z-[1310] w-44 bg-white border border-gray-200 rounded-lg shadow-xl py-1 text-sm text-gray-700 overflow-y-auto overflow-x-hidden"
+                    :style="projectMenuStyle"
+                    @mouseenter="cancelPendingProjectMenuClose"
+                    @mouseleave="closeProjectMenu"
+                    @click.stop
+                  >
+                    <button
+                      class="w-full flex items-center justify-between px-3 py-1.5 text-left hover:bg-gray-100"
+                      :class="(conversation.projectId ?? null) === null ? 'text-blue-600 font-medium' : 'text-gray-700'"
+                      type="button"
+                      @click.stop="changeConversationProject(conversation.id, null)"
+                    >
+                      <span>未分配</span>
+                      <svg
+                        v-if="(conversation.projectId ?? null) === null"
+                        class="w-4 h-4 flex-shrink-0"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </button>
+
+                    <div
+                      v-if="orderedProjects.length > 0"
+                      class="border-t border-gray-100 my-1"
+                    ></div>
+
+                    <div
+                      v-if="orderedProjects.length === 0"
+                      class="px-3 py-2 text-xs text-gray-400"
+                    >
+                      暂无项目，可在侧栏创建。
+                    </div>
+
+                    <button
+                      v-for="project in orderedProjects"
+                      :key="project.id"
+                      class="w-full flex items-center justify-between px-3 py-1.5 text-left hover:bg-gray-100"
+                      :class="conversation.projectId === project.id ? 'text-blue-600 font-medium' : 'text-gray-700'"
+                      type="button"
+                      @click.stop="changeConversationProject(conversation.id, project.id)"
+                    >
+                      <span class="truncate">{{ project.name }}</span>
+                      <svg
+                        v-if="conversation.projectId === project.id"
+                        class="w-4 h-4 flex-shrink-0"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </button>
+                  </div>
+                </Teleport>
+              </div>
             </div>
           </div>
 

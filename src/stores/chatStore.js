@@ -116,6 +116,23 @@ export const useChatStore = defineStore('chat', () => {
    */
   const selectedModel = ref('gemini-2.5-pro')
 
+  /**
+   * 当前激活的项目 ID（用于项目主页视图）
+   */
+  const activeProjectId = ref(null)
+
+  /**
+   * 待自动发送的项目消息队列
+   * Map<conversationId, { text: string }>
+   */
+  const pendingProjectMessages = ref(new Map())
+
+  /**
+   * 项目列表
+   * [{ id, name, createdAt, updatedAt }]
+   */
+  const projects = ref([])
+
   // ========== Getters (计算属性) ==========
   
   /**
@@ -168,14 +185,29 @@ export const useChatStore = defineStore('chat', () => {
    */
   const loadConversations = async () => {
     try {
-      const savedConversations = await persistenceStore.get('conversations')
-      const savedOpenIds = await persistenceStore.get('openConversationIds')
-      const savedActiveTabId = await persistenceStore.get('activeTabId')
+  const savedConversations = await persistenceStore.get('conversations')
+  const savedOpenIds = await persistenceStore.get('openConversationIds')
+  const savedActiveTabId = await persistenceStore.get('activeTabId')
+  const savedActiveProjectId = await persistenceStore.get('activeProjectId')
+  const savedProjects = await persistenceStore.get('projects')
       
       // 加载收藏的模型列表
       const savedFavoriteModelIds = await persistenceStore.get('favoriteModelIds')
       if (savedFavoriteModelIds && Array.isArray(savedFavoriteModelIds)) {
         favoriteModelIds.value = new Set(savedFavoriteModelIds)
+      }
+
+      if (savedProjects && Array.isArray(savedProjects)) {
+        projects.value = savedProjects
+          .filter(project => project && typeof project.name === 'string')
+          .map(project => ({
+            id: project.id || uuidv4(),
+            name: project.name.trim() || '未命名项目',
+            createdAt: project.createdAt || Date.now(),
+            updatedAt: project.updatedAt || project.createdAt || Date.now()
+          }))
+      } else {
+        projects.value = []
       }
       
       if (savedConversations && Array.isArray(savedConversations) && savedConversations.length > 0) {
@@ -185,6 +217,7 @@ export const useChatStore = defineStore('chat', () => {
           if (conv.tree && conv.tree.branches) {
             return {
               ...conv,
+              projectId: conv.projectId ?? null,
               generationStatus: 'idle', // 重置状态
               draft: conv.draft || '',
               tree: restoreTree(conv.tree), // 使用 restoreTree 确保 Map 响应式
@@ -220,7 +253,8 @@ export const useChatStore = defineStore('chat', () => {
             createdAt: conv.createdAt || Date.now(),
             updatedAt: conv.updatedAt || Date.now(),
             webSearchEnabled: false,
-            webSearchLevel: 'normal'
+            webSearchLevel: 'normal',
+            projectId: conv.projectId ?? null
           }
         })
         
@@ -237,6 +271,17 @@ export const useChatStore = defineStore('chat', () => {
           activeTabId.value = savedActiveTabId
         } else if (openConversationIds.value.length > 0) {
           activeTabId.value = openConversationIds.value[0]
+        }
+
+        if (savedActiveProjectId) {
+          const isUnassigned = savedActiveProjectId === 'unassigned'
+          const projectExists = projects.value.some(project => project.id === savedActiveProjectId)
+          if (isUnassigned || projectExists) {
+            activeProjectId.value = savedActiveProjectId
+            if (activeProjectId.value) {
+              activeTabId.value = null
+            }
+          }
         }
         
         // 如果没有打开的标签页，打开第一个对话
@@ -278,10 +323,13 @@ export const useChatStore = defineStore('chat', () => {
       
       const plainOpenIds = [...openConversationIds.value]
       const plainActiveTabId = activeTabId.value
+  const fullyPlainProjects = JSON.parse(JSON.stringify(projects.value))
       
       await persistenceStore.set('conversations', fullyPlainConversations)
       await persistenceStore.set('openConversationIds', plainOpenIds)
-      await persistenceStore.set('activeTabId', plainActiveTabId)
+  await persistenceStore.set('activeTabId', plainActiveTabId)
+  await persistenceStore.set('activeProjectId', activeProjectId.value)
+  await persistenceStore.set('projects', fullyPlainProjects)
     } catch (error) {
       console.error('❌ 保存对话失败:', error)
     }
@@ -359,7 +407,8 @@ export const useChatStore = defineStore('chat', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       webSearchEnabled: false,
-      webSearchLevel: 'normal'
+      webSearchLevel: 'normal',
+      projectId: null
     }
     
     // 添加到数组开头
@@ -596,6 +645,202 @@ export const useChatStore = defineStore('chat', () => {
     
     // 保存到本地
     saveConversations()
+  }
+
+  // ========== 项目管理 ==========
+
+  /**
+   * 创建新项目
+   * @param {string} name - 项目名称
+   * @returns {string|null} 新项目 ID
+   */
+  const createProject = (name) => {
+    const trimmed = typeof name === 'string' ? name.trim() : ''
+    if (!trimmed) {
+      console.warn('⚠️ createProject: 项目名称不能为空')
+      return null
+    }
+
+    const now = Date.now()
+    const newProject = {
+      id: uuidv4(),
+      name: trimmed,
+      createdAt: now,
+      updatedAt: now
+    }
+
+    projects.value = [...projects.value, newProject]
+    saveConversations()
+    return newProject.id
+  }
+
+  /**
+   * 重命名项目
+   * @param {string} projectId
+   * @param {string} newName
+   */
+  const renameProject = (projectId, newName) => {
+    const project = projects.value.find(p => p.id === projectId)
+    if (!project) {
+      console.error('❌ renameProject: 找不到项目', projectId)
+      return false
+    }
+
+    const trimmed = typeof newName === 'string' ? newName.trim() : ''
+    if (!trimmed) {
+      console.warn('⚠️ renameProject: 新名称不能为空')
+      return false
+    }
+
+    if (project.name === trimmed) {
+      return true
+    }
+
+    project.name = trimmed
+    project.updatedAt = Date.now()
+    saveConversations()
+    return true
+  }
+
+  /**
+   * 删除项目并移除对话关联
+   * @param {string} projectId
+   */
+  const deleteProject = (projectId) => {
+    const index = projects.value.findIndex(p => p.id === projectId)
+    if (index === -1) {
+      console.error('❌ deleteProject: 找不到项目', projectId)
+      return false
+    }
+
+    projects.value.splice(index, 1)
+
+    for (const conversation of conversations.value) {
+      if (conversation.projectId === projectId) {
+        conversation.projectId = null
+      }
+    }
+
+     if (activeProjectId.value === projectId) {
+       activeProjectId.value = 'unassigned'
+     }
+
+    saveConversations()
+    return true
+  }
+
+  /**
+   * 将对话移动到指定项目
+   * @param {string} conversationId
+   * @param {string|null} projectId
+   */
+  const assignConversationToProject = (conversationId, projectId) => {
+    if (!projectId) {
+      return removeConversationFromProject(conversationId)
+    }
+
+    const projectExists = projects.value.some(p => p.id === projectId)
+    if (!projectExists) {
+      console.error('❌ assignConversationToProject: 项目不存在', projectId)
+      return false
+    }
+
+    const conversation = conversations.value.find(conv => conv.id === conversationId)
+    if (!conversation) {
+      console.error('❌ assignConversationToProject: 找不到对话', conversationId)
+      return false
+    }
+
+    if (conversation.projectId === projectId) {
+      return true
+    }
+
+    conversation.projectId = projectId
+    conversation.updatedAt = Date.now()
+    saveConversations()
+    return true
+  }
+
+  /**
+   * 将对话移出项目
+   * @param {string} conversationId
+   */
+  const removeConversationFromProject = (conversationId) => {
+    const conversation = conversations.value.find(conv => conv.id === conversationId)
+    if (!conversation) {
+      console.error('❌ removeConversationFromProject: 找不到对话', conversationId)
+      return false
+    }
+
+    if (!conversation.projectId) {
+      return true
+    }
+
+    conversation.projectId = null
+    conversation.updatedAt = Date.now()
+    saveConversations()
+    return true
+  }
+
+  /**
+   * 根据 ID 获取项目信息
+   * @param {string} projectId
+   */
+  const getProjectById = (projectId) => {
+    if (!projectId) {
+      return null
+    }
+    return projects.value.find(p => p.id === projectId) || null
+  }
+
+  const setActiveProject = (projectId) => {
+    if (!projectId) {
+      activeProjectId.value = null
+      saveConversations()
+      return
+    }
+
+    if (projectId === 'unassigned') {
+      activeProjectId.value = 'unassigned'
+      activeTabId.value = null
+      saveConversations()
+      return
+    }
+
+    const exists = projects.value.some(project => project.id === projectId)
+    if (!exists) {
+      console.warn('⚠️ setActiveProject: 项目不存在', projectId)
+      activeProjectId.value = null
+      saveConversations()
+      return
+    }
+
+    activeProjectId.value = projectId
+    activeTabId.value = null
+    saveConversations()
+  }
+
+  const queueProjectMessage = (conversationId, payload) => {
+    if (!conversationId || !payload) {
+      return
+    }
+
+    const nextMap = new Map(pendingProjectMessages.value)
+    nextMap.set(conversationId, payload)
+    pendingProjectMessages.value = nextMap
+  }
+
+  const consumeProjectMessage = (conversationId) => {
+    const currentMap = pendingProjectMessages.value
+    if (!conversationId || !currentMap.has(conversationId)) {
+      return null
+    }
+
+    const payload = currentMap.get(conversationId)
+    const nextMap = new Map(currentMap)
+    nextMap.delete(conversationId)
+    pendingProjectMessages.value = nextMap
+    return payload
   }
 
   /**
@@ -934,10 +1179,12 @@ export const useChatStore = defineStore('chat', () => {
     conversations,
     openConversationIds,
     activeTabId,
+  activeProjectId,
     availableModels,
     availableModelsMap,
     favoriteModelIds,
-    selectedModel,
+  selectedModel,
+  projects,
     
     // Getters
     activeConversation,
@@ -958,6 +1205,15 @@ export const useChatStore = defineStore('chat', () => {
     setConversationWebSearchLevel,
     deleteConversation,
     renameConversation,
+  createProject,
+  renameProject,
+  deleteProject,
+  assignConversationToProject,
+  removeConversationFromProject,
+  getProjectById,
+  setActiveProject,
+  queueProjectMessage,
+  consumeProjectMessage,
     
     // Actions - 分支树操作（核心 API）
     addMessageBranch,

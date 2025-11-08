@@ -520,7 +520,7 @@ const focusInput = () => {
   
   // 检查文档是否有焦点（窗口是否激活）
   if (!document.hasFocus()) {
-    console.warn('⚠️ 窗口未激活，跳过聚焦')
+    console.info('ℹ️ 窗口未激活，跳过聚焦')
     return
   }
   
@@ -2099,7 +2099,7 @@ const handleDeleteAllVersions = () => {
                           <!-- 在新窗口打开 -->
                           <button
                             @click.stop="handleImageClick(part.image_url.url)"
-                            class="p-2 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-sm transition-colors"
+                            class="p-2 bg-black/60 hover:bg-black/80 text-white rounded-lg transition-colors"
                             title="在新窗口打开"
                           >
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2109,7 +2109,7 @@ const handleDeleteAllVersions = () => {
                           <!-- 下载图片 -->
                           <button
                             @click.stop="handleDownloadImage(part.image_url.url)"
-                            class="p-2 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-sm transition-colors"
+                            class="p-2 bg-black/60 hover:bg-black/80 text-white rounded-lg transition-colors"
                             title="下载图片"
                           >
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
