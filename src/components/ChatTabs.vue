@@ -8,7 +8,7 @@ const chatStore = useChatStore()
 // 获取打开的标签页信息
 const openTabs = computed(() => {
   return chatStore.openConversationIds.map((id: string) => {
-    const conversation = chatStore.conversations.find((conv: any) => conv.id === id)
+    const conversation = chatStore.conversationsMap.get(id)
     return {
       id,
       title: conversation?.title || '未知对话',

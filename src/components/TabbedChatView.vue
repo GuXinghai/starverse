@@ -34,8 +34,6 @@ const setChildRef = (id: string, el: any) => {
 watch(() => chatStore.activeTabId, async (newId) => {
   if (!newId) return
   
-  console.log('🔄 activeTabId 变化，切换到:', newId)
-  
   // 等待 Vue 完成响应式更新和 DOM 打补丁
   await nextTick()
   // 再等一次，确保 v-show 的 display 样式已生效
@@ -46,21 +44,11 @@ watch(() => chatStore.activeTabId, async (newId) => {
     requestAnimationFrame(() => {
       const child = childRefs.get(newId)
       if (child?.focusInput) {
-        console.log('📍 调用子组件 focusInput:', newId)
         child.focusInput()
-      } else {
-        console.warn('⚠️ 找不到子组件或 focusInput 方法:', newId, '可用的 refs:', Array.from(childRefs.keys()))
       }
     })
   })
 }, { flush: 'post' }) // 关键：flush: 'post' 确保在 DOM 更新后触发
-
-// 监听对话数量变化，用于调试
-watch(() => chatStore.conversations.length, (newLen, oldLen) => {
-  if (newLen < oldLen) {
-    console.log('🧹 对话数量减少，对应组件将被销毁')
-  }
-}, { flush: 'post' })
 </script>
 
 <template>
