@@ -401,14 +401,16 @@ const cancelDelete = () => {
 
 const createConversation = () => {
   const newId = chatStore.createNewConversation()
-  if (projectFilter.value !== 'all') {
-    if (projectFilter.value !== 'unassigned') {
-      const success = chatStore.assignConversationToProject(newId, projectFilter.value)
-      if (!success) {
-        projectFilter.value = 'all'
-      }
+  // ✅ 改进：根据当前筛选视图智能分配项目
+  if (projectFilter.value !== 'all' && projectFilter.value !== 'unassigned') {
+    // 在指定项目视图中创建时，自动分配到该项目
+    const success = chatStore.assignConversationToProject(newId, projectFilter.value)
+    if (!success) {
+      console.warn('⚠️ 自动分配项目失败，项目可能已被删除')
+      projectFilter.value = 'all'
     }
   }
+  // 在 "未分配" 或 "全部" 视图中创建时，保持 projectId 为 null
   chatStore.openConversationInTab(newId)
 }
 
@@ -526,6 +528,10 @@ const orderedProjects = computed<ProjectRecord[]>(() => {
   return [...(chatStore.projects as ProjectRecord[])].sort((a, b) => {
     const aTime = a.updatedAt || a.createdAt || 0
     const bTime = b.updatedAt || b.createdAt || 0
+    // ✅ 时间相同时，按 ID 排序确保稳定性
+    if (bTime === aTime) {
+      return a.id.localeCompare(b.id)
+    }
     return bTime - aTime
   })
 })
@@ -667,10 +673,15 @@ const handleCreateProject = () => {
   const createdId = chatStore.createProject(newProjectName.value)
   if (createdId) {
     projectFilter.value = createdId
+    newProjectName.value = ''
+    isCreatingProject.value = false
+    newProjectInputRef.value = null
+  } else {
+    // ✅ 创建失败时给出提示（可能是名称重复或为空）
+    if (newProjectName.value.trim()) {
+      alert('项目名称已存在，请使用其他名称')
+    }
   }
-  newProjectName.value = ''
-  isCreatingProject.value = false
-  newProjectInputRef.value = null
 }
 
 const isProjectSelected = (projectId: string) => projectFilter.value === projectId
@@ -740,6 +751,11 @@ const confirmProjectRename = (projectId: string) => {
   if (success) {
     projectEditingId.value = null
     projectEditingName.value = ''
+  } else {
+    // ✅ 重命名失败时给出提示（可能是名称重复或为空）
+    if (projectEditingName.value.trim()) {
+      alert('项目名称已存在，请使用其他名称')
+    }
   }
 }
 
@@ -759,8 +775,9 @@ const confirmProjectDelete = (projectId: string) => {
     return
   }
   const success = chatStore.deleteProject(projectId)
+  // ✅ 删除项目后，切换到 "all" 而非 "unassigned"
   if (success && projectFilter.value === projectId) {
-    projectFilter.value = 'unassigned'
+    projectFilter.value = 'all'
   }
   projectDeletingId.value = null
 }
