@@ -199,9 +199,16 @@ export const useChatStore = defineStore('chat', () => {
 
       if (savedProjects && Array.isArray(savedProjects)) {
         projects.value = savedProjects
-          .filter(project => project && typeof project.name === 'string')
+          .filter(project => {
+            // ✅ 完整性验证：必须有 id 和 name
+            if (!project || typeof project.id !== 'string' || typeof project.name !== 'string') {
+              console.warn('⚠️ 跳过无效项目数据:', project)
+              return false
+            }
+            return true
+          })
           .map(project => ({
-            id: project.id || uuidv4(),
+            id: project.id,
             name: project.name.trim() || '未命名项目',
             createdAt: project.createdAt || Date.now(),
             updatedAt: project.updatedAt || project.createdAt || Date.now()
@@ -212,12 +219,22 @@ export const useChatStore = defineStore('chat', () => {
       
       if (savedConversations && Array.isArray(savedConversations) && savedConversations.length > 0) {
         // 迁移或恢复对话数据
+        // ✅ 构建有效项目 ID 集合，用于清理无效的 projectId
+        const validProjectIds = new Set(projects.value.map(p => p.id))
+        
         conversations.value = savedConversations.map(conv => {
+          // ✅ 清理指向已删除项目的 projectId
+          let projectId = conv.projectId ?? null
+          if (projectId && !validProjectIds.has(projectId)) {
+            console.warn('⚠️ 对话关联的项目已删除，清理 projectId:', conv.id, projectId)
+            projectId = null
+          }
+          
           // 如果已经是新格式（有 tree 字段），使用 restoreTree 恢复
           if (conv.tree && conv.tree.branches) {
             return {
               ...conv,
-              projectId: conv.projectId ?? null,
+              projectId,
               generationStatus: 'idle', // 重置状态
               draft: conv.draft || '',
               tree: restoreTree(conv.tree), // 使用 restoreTree 确保 Map 响应式
@@ -254,7 +271,7 @@ export const useChatStore = defineStore('chat', () => {
             updatedAt: conv.updatedAt || Date.now(),
             webSearchEnabled: false,
             webSearchLevel: 'normal',
-            projectId: conv.projectId ?? null
+            projectId  // ✅ 使用清理后的 projectId
           }
         })
         
@@ -661,6 +678,13 @@ export const useChatStore = defineStore('chat', () => {
       return null
     }
 
+    // ✅ 检查项目名称是否已存在
+    const isDuplicate = projects.value.some(p => p.name === trimmed)
+    if (isDuplicate) {
+      console.warn('⚠️ createProject: 项目名称已存在', trimmed)
+      return null
+    }
+
     const now = Date.now()
     const newProject = {
       id: uuidv4(),
@@ -696,6 +720,13 @@ export const useChatStore = defineStore('chat', () => {
       return true
     }
 
+    // ✅ 检查新名称是否与其他项目重复
+    const isDuplicate = projects.value.some(p => p.id !== projectId && p.name === trimmed)
+    if (isDuplicate) {
+      console.warn('⚠️ renameProject: 项目名称已存在', trimmed)
+      return false
+    }
+
     project.name = trimmed
     project.updatedAt = Date.now()
     saveConversations()
@@ -715,15 +746,19 @@ export const useChatStore = defineStore('chat', () => {
 
     projects.value.splice(index, 1)
 
+    // ✅ 清除关联对话的 projectId，并更新 updatedAt
+    const now = Date.now()
     for (const conversation of conversations.value) {
       if (conversation.projectId === projectId) {
         conversation.projectId = null
+        conversation.updatedAt = now
       }
     }
 
-     if (activeProjectId.value === projectId) {
-       activeProjectId.value = 'unassigned'
-     }
+    // ✅ 如果删除的是当前激活项目，切换到 "all" 而非 "unassigned"
+    if (activeProjectId.value === projectId) {
+      activeProjectId.value = null
+    }
 
     saveConversations()
     return true
