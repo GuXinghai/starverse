@@ -21,5 +21,6 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "electron"],
+  "exclude": ["node_modules", "dist", "dist-electron", "release", "archived-components"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
