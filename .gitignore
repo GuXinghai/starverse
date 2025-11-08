@@ -95,3 +95,6 @@ temp/
 *.deb
 *.rpm
 *.pacman
+
+# Archived/deprecated components
+archived-components/
