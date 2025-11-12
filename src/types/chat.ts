@@ -38,6 +38,95 @@ export type MessagePart = TextPart | ImagePart;
 export type WebSearchLevel = 'quick' | 'normal' | 'deep';
 
 /**
+ * 推理挡位（Reasoning Effort）
+ */
+export type ReasoningEffort = 'low' | 'medium' | 'high';
+
+/**
+ * 推理可见性选项
+ * visible: 请求并返回推理轨迹
+ * hidden: 请求推理但不返回（exclude=true）
+ * off: 不启用推理参数
+ */
+export type ReasoningVisibility = 'visible' | 'hidden' | 'off';
+
+/**
+ * 推理请求负载，映射 OpenRouter reasoning 参数
+ */
+export interface ReasoningRequestPayload {
+  enabled?: boolean;
+  effort?: ReasoningEffort;
+  max_tokens?: number;
+  exclude?: boolean;
+}
+
+/**
+ * 会话级推理偏好配置
+ */
+export interface ReasoningPreference {
+  visibility: ReasoningVisibility;
+  effort: ReasoningEffort;
+  maxTokens?: number | null;
+}
+
+/**
+ * 单条推理详情（reasoning_details 项）
+ */
+export interface ReasoningDetail {
+  id?: string | null;
+  type: string;
+  format?: string;
+  index?: number;
+  text?: string;
+  summary?: string;
+  data?: string;
+  signature?: string | null;
+  [key: string]: any;
+}
+
+/**
+ * 消息推理元数据（用于展示与再利用）
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 字段说明：
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 
+ * streamText?: 实时展示文本（来自 delta.reasoning）
+ *   - 用途：UI 展示层，流式过程中实时显示思考过程
+ *   - 来源：OpenRouter 的 delta.reasoning 字段
+ *   - 保存：不保存到磁盘，仅用于当前会话的临时显示
+ * 
+ * text?: 完整推理文本（来自 reasoning_summary）
+ *   - 用途：最终完整文本，流结束后显示
+ *   - 来源：OpenRouter 流结束时的 reasoning_summary.text
+ *   - 保存：保存到磁盘，用于历史记录查看
+ * 
+ * details?: 结构化推理块数组（来自 reasoning_details）
+ *   - 用途：回传给模型，保持思考连续性（工具调用/多轮对话必需）
+ *   - 来源：OpenRouter 的 reasoning_details 数组
+ *   - 保存：保存到磁盘，下次请求时原样回传给模型
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ */
+export interface MessageReasoningMetadata {
+  streamText?: string;  // 🎨 流式展示文本（临时，不保存）
+  text?: string;        // 📝 完整文本（最终，保存）
+  summary?: string;
+  details?: ReasoningDetail[];        // 🔄 结构化块（回传模型，保存）
+  rawDetails?: Array<Record<string, any>>;
+  excluded?: boolean;
+  request?: {
+    visibility: ReasoningVisibility;
+    effort: ReasoningEffort;
+    maxTokens?: number | null;
+    payload: ReasoningRequestPayload;
+  };
+  provider?: string;
+  model?: string;
+  lastUpdatedAt?: number;
+}
+
+/**
  * 消息版本的附加元数据
  * 用于记录错误状态、错误类型等信息，帮助 UI 在重新生成时做出针对性的处理。
  */
@@ -50,6 +139,7 @@ export interface MessageVersionMetadata {
   errorStatus?: number;
   retryable?: boolean;
   usage?: UsageMetrics;
+  reasoning?: MessageReasoningMetadata;
 }
 
 export interface UsageMetrics {
@@ -140,6 +230,7 @@ export interface Conversation {
   updatedAt?: number;
   webSearchEnabled?: boolean;
   webSearchLevel?: WebSearchLevel;
+  reasoningPreference?: ReasoningPreference;
 }
 
 /**

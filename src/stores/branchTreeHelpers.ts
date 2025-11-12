@@ -20,6 +20,7 @@ import type {
   TextPart,
   MessageVersionMetadata
 } from '../types/chat'
+import { sanitizeMessageMetadata } from '../utils/ipcSanitizer.js'
 
 /**
  * 工具函数：使用 delete + set 强制触发 Vue 响应式更新
@@ -185,7 +186,7 @@ export function addVersionToBranch(
     childBranchIds: inheritChildren && currentVersion 
       ? [...currentVersion.childBranchIds]  // 继承旧版本的子分支
       : [], // 新生成的版本没有后继
-    metadata: metadata ? { ...metadata } : undefined
+    metadata: metadata ? sanitizeMessageMetadata(metadata) : undefined
   }
 
   // 不可变更新
@@ -386,7 +387,11 @@ export function getCurrentPathMessages(tree: ConversationTree) {
     
     return {
       role: branch.role,
-      parts: version.parts
+      parts: version.parts,
+      metadata: version.metadata,
+      branchId: branch.branchId,
+      versionId: version.id,
+      timestamp: version.timestamp
     }
   }).filter((msg: any) => msg !== null)
 }
@@ -854,7 +859,7 @@ export function patchBranchMetadata(
 
   const existing = currentVersion.metadata
   const nextCandidate = updater(existing ? { ...existing } : undefined)
-  const normalizedMetadata = nextCandidate ? { ...nextCandidate } : undefined
+  const normalizedMetadata = nextCandidate ? sanitizeMessageMetadata(nextCandidate) : undefined
 
   const newVersion: MessageVersion = {
     ...currentVersion,
@@ -872,6 +877,84 @@ export function patchBranchMetadata(
   setBranch(tree, newBranch)
 
   return true
+}
+
+/**
+ * 追加推理细节到分支当前版本的 metadata（流式推理）
+ * 
+ * 用于流式推理输出场景：
+ * - 逐条接收推理细节块
+ * - 增量添加到 metadata.reasoning.details 数组
+ * - 保持不可变更新模式
+ * 
+ * @param tree - 对话树
+ * @param branchId - 分支ID
+ * @param detail - 推理细节对象
+ * @returns 是否成功
+ */
+export function appendReasoningDetailToBranch(
+  tree: ConversationTree,
+  branchId: string,
+  detail: any
+): boolean {
+  return patchBranchMetadata(tree, branchId, (existing) => {
+    const reasoning = existing?.reasoning ?? {}
+    const currentDetails = Array.isArray(reasoning.details) ? reasoning.details : []
+    
+    return {
+      ...(existing ?? {}),
+      reasoning: {
+        ...reasoning,
+        details: [...currentDetails, detail],
+        lastUpdatedAt: Date.now()
+      }
+    }
+  })
+}
+
+/**
+ * 设置推理摘要到分支当前版本（流式推理结束时调用）
+ * 
+ * @param tree - 对话树
+ * @param branchId - 分支ID
+ * @param summaryData - 摘要数据（包含 summary、text、request 等）
+ * @returns 是否成功
+ */
+export function setReasoningSummaryForBranch(
+  tree: ConversationTree,
+  branchId: string,
+  summaryData: {
+    summary?: string
+    text?: string
+    request?: any
+    provider?: string
+    model?: string
+    excluded?: boolean
+    detailCount?: number
+  }
+): boolean {
+  return patchBranchMetadata(tree, branchId, (existing) => {
+    const reasoning = existing?.reasoning ?? {}
+    
+    return {
+      ...(existing ?? {}),
+      reasoning: {
+        ...reasoning,
+        summary: summaryData.summary,
+        text: summaryData.text,
+        request: summaryData.request ? { ...summaryData.request } : reasoning.request,
+        provider: summaryData.provider ?? reasoning.provider,
+        model: summaryData.model ?? reasoning.model,
+        excluded: summaryData.excluded ?? reasoning.excluded,
+        lastUpdatedAt: Date.now(),
+        // ⚡ 清理 details 数组，避免保存大量中间状态数据
+        // reasoning.text 已包含完整推理内容，details 仅用于流式显示
+        // 保留 detailCount 以记录推理细节数量（用于统计）
+        details: undefined,
+        rawDetails: undefined
+      }
+    }
+  })
 }
 
 /**
@@ -900,7 +983,7 @@ export function updateBranchContent(
   
   let newMetadata = version.metadata
   if (options.metadata !== undefined) {
-    newMetadata = options.metadata === null ? undefined : { ...options.metadata }
+    newMetadata = options.metadata === null ? undefined : sanitizeMessageMetadata(options.metadata)
   }
 
   // 不可变更新
@@ -1016,19 +1099,69 @@ export function getPathToBranch(tree: ConversationTree, targetBranchId: string):
 export function restoreTree(raw: any): ConversationTree {
   let branchesMap: Map<string, MessageBranch>
   
+  console.log('🔍 [restoreTree] 开始恢复树', {
+    hasBranches: !!raw?.branches,
+    branchesType: raw?.branches ? typeof raw.branches : 'undefined',
+    isArray: Array.isArray(raw?.branches),
+    isMap: raw?.branches instanceof Map,
+    branchesLength: raw?.branches?.length,
+    branchesSize: raw?.branches?.size,
+    firstItem: Array.isArray(raw?.branches) && raw.branches.length > 0 ? raw.branches[0] : undefined
+  })
+  
   if (!raw?.branches) {
     // 没有 branches，返回空树
+    console.log('⚠️ [restoreTree] 没有 branches，返回空树')
     return createEmptyTree()
   }
   
   if (raw.branches instanceof Map) {
     // 已经是 Map，直接使用
+    console.log('✅ [restoreTree] branches 已经是 Map')
     branchesMap = raw.branches
   } else if (Array.isArray(raw.branches)) {
     // 从数组恢复 Map（JSON 序列化后的格式）
+    console.log('🔄 [restoreTree] 从数组恢复 Map')
+    console.log('  📋 Array length:', raw.branches.length)
+    console.log('  📋 First 3 items:', raw.branches.slice(0, 3))
+    
+    // 验证数组格式：应该是 [[key, value], ...] 的格式
+    if (raw.branches.length > 0) {
+      const firstItem = raw.branches[0]
+      const isValidMapArray = Array.isArray(firstItem) && firstItem.length === 2
+      console.log('  ✅ Valid Map array format:', isValidMapArray)
+      
+      // 详细检查第一个条目
+      console.log('  🔍 First item details:')
+      console.log('    - Type:', typeof firstItem)
+      console.log('    - Is Array:', Array.isArray(firstItem))
+      console.log('    - Length:', firstItem?.length)
+      console.log('    - [0] (key):', firstItem?.[0], '(type:', typeof firstItem?.[0], ')')
+      console.log('    - [1] (value):', firstItem?.[1])
+      
+      if (!isValidMapArray) {
+        console.error('❌ [restoreTree] Invalid branches array format!')
+        console.error('  Expected: [[key, value], ...]')
+        console.error('  Got:', raw.branches)
+        return createEmptyTree()
+      }
+    }
+    
     branchesMap = new Map(raw.branches)
+    console.log('  ✅ Map created with', branchesMap.size, 'entries')
+    console.log('  📋 Keys:', Array.from(branchesMap.keys()))
+    
+    // 🔍 详细检查 Map 的第一个条目
+    if (branchesMap.size > 0) {
+      const firstEntry = Array.from(branchesMap.entries())[0]
+      console.log('  🔍 First Map entry:')
+      console.log('    - Key:', firstEntry[0], '(type:', typeof firstEntry[0], ')')
+      console.log('    - Value type:', typeof firstEntry[1])
+      console.log('    - Value:', firstEntry[1])
+    }
   } else if (typeof raw.branches === 'object') {
     // 从对象恢复 Map（Object.entries 兼容）
+    console.log('🔄 [restoreTree] 从对象恢复 Map')
     branchesMap = new Map(Object.entries(raw.branches))
   } else {
     // 无法识别的格式，返回空树
@@ -1036,10 +1169,34 @@ export function restoreTree(raw: any): ConversationTree {
     return createEmptyTree()
   }
   
+  // ========== 🛡️ 数据完整性验证和修复 ==========
+  let currentPath = raw.currentPath ?? []
+  
+  // 验证 currentPath 中的所有分支是否存在
+  if (currentPath.length > 0) {
+    const invalidBranches = currentPath.filter((branchId: string) => !branchesMap.has(branchId))
+    
+    if (invalidBranches.length > 0) {
+      console.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.warn('⚠️ [restoreTree] 检测到 currentPath 中有无效分支')
+      console.warn('  📋 Original currentPath:', currentPath)
+      console.warn('  ❌ Invalid Branch IDs:', invalidBranches)
+      console.warn('  🔢 Total Branches:', branchesMap.size)
+      console.warn('  📋 Valid Branch IDs:', Array.from(branchesMap.keys()))
+      
+      // 自动修复：过滤掉无效的分支
+      const cleanedPath = currentPath.filter((branchId: string) => branchesMap.has(branchId))
+      console.warn('  🔧 [AUTO-FIX] Cleaned currentPath:', cleanedPath)
+      console.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      
+      currentPath = cleanedPath
+    }
+  }
+  
   return {
     branches: reactive(branchesMap), // 关键：用 reactive 包装 Map
     rootBranchIds: raw.rootBranchIds ?? [],
-    currentPath: raw.currentPath ?? []
+    currentPath
   }
 }
 
@@ -1048,31 +1205,62 @@ export function restoreTree(raw: any): ConversationTree {
  * 
  * 将 Map 转换为数组格式，以便 JSON 序列化
  * 
+ * ⚠️ 注意：此函数返回的数据可能包含 Vue Proxy
+ * Proxy 的去除统一在 chatPersistence.saveConversation() 的边界防御层处理
+ * 
+ * 为什么不在这里处理 Proxy？
+ * - 统一在 IPC 边界处理更清晰、更可维护
+ * - 避免重复处理和性能浪费
+ * - 新增字段自动被边界防御覆盖
+ * 
  * @param tree - 对话树
- * @returns 可序列化的对话树数据
+ * @returns 序列化的对话树数据（branches 为数组格式）
  */
 export function serializeTree(tree: ConversationTree): any {
+  console.log('🔍 [serializeTree] 开始序列化树')
+  
   // 处理 reactive 包装的 Map
   let branchesArray: any[]
   const branches: any = tree.branches
   
+  console.log('  🌲 Branches type:', typeof branches)
+  console.log('  🌲 Is Map:', branches instanceof Map)
+  console.log('  🌲 Has entries:', typeof branches?.entries)
+  console.log('  🌲 Is Array:', Array.isArray(branches))
+  
   if (branches instanceof Map) {
+    console.log('  ✅ Using Map.entries()')
     branchesArray = Array.from(branches.entries())
+    console.log('  📋 Entries count:', branchesArray.length)
+    console.log('  📋 First entry:', branchesArray[0])
   } else if (branches && typeof branches.entries === 'function') {
     // reactive 包装后的 Map 仍有 entries 方法
+    console.log('  ✅ Using reactive Map entries()')
     branchesArray = Array.from(branches.entries())
+    console.log('  📋 Entries count:', branchesArray.length)
+    console.log('  📋 First entry:', branchesArray[0])
   } else if (Array.isArray(branches)) {
     // 已经是数组
+    console.log('  ⚠️ Already an array')
     branchesArray = branches
   } else {
     console.warn('⚠️ serializeTree: 无法识别的 branches 类型', typeof branches)
     branchesArray = []
   }
   
-  return {
+  const result = {
     branches: branchesArray,
-    rootBranchIds: tree.rootBranchIds,
-    currentPath: tree.currentPath
+    rootBranchIds: tree.rootBranchIds || [],
+    currentPath: tree.currentPath || []
   }
+  
+  console.log('✅ [serializeTree] 序列化完成:', {
+    branchesCount: branchesArray.length,
+    rootBranchIdsCount: result.rootBranchIds.length,
+    currentPathLength: result.currentPath.length,
+    currentPath: result.currentPath
+  })
+  
+  return result
 }
 

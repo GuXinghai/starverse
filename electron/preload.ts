@@ -46,3 +46,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   openImage: (imageUrl: string) => ipcRenderer.invoke('shell:open-image', imageUrl),
 })
+
+// Expose DB bridge for renderer storage access
+contextBridge.exposeInMainWorld('dbBridge', {
+  invoke: (method: string, params?: unknown) => ipcRenderer.invoke('db:invoke', { method, params }),
+})
