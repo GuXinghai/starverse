@@ -53,6 +53,19 @@ const SUPPORTED_IMAGE_ASPECT_RATIOS = new Set([
   '21:9'
 ])
 
+const OPENROUTER_SAMPLING_KEYS = [
+  'temperature',
+  'top_p',
+  'top_k',
+  'frequency_penalty',
+  'presence_penalty',
+  'repetition_penalty',
+  'min_p',
+  'top_a',
+  'max_tokens',
+  'seed'
+]
+
 function clonePlain(value) {
   try {
     if (typeof structuredClone === 'function') {
@@ -460,6 +473,7 @@ export const OpenRouterService = {
   let requestedModalities = null
   let imageConfig = null
   let reasoningConfig = null
+  let samplingParameters = null
 
     if (options && typeof options === 'object') {
       if ('signal' in options) {
@@ -511,6 +525,21 @@ export const OpenRouterService = {
             payload: payloadClone,
             preference: preferenceClone,
             modelId: rawReasoning.modelId || modelName
+          }
+        }
+      }
+      if ('parameters' in options) {
+        const rawParameters = options.parameters
+        if (rawParameters && typeof rawParameters === 'object') {
+          const cleaned = {}
+          for (const key of OPENROUTER_SAMPLING_KEYS) {
+            const value = rawParameters[key]
+            if (typeof value === 'number' && Number.isFinite(value)) {
+              cleaned[key] = value
+            }
+          }
+          if (Object.keys(cleaned).length > 0) {
+            samplingParameters = cleaned
           }
         }
       }
@@ -762,6 +791,11 @@ export const OpenRouterService = {
       if (imageConfig) {
         requestBody.image_config = { ...imageConfig }
         console.log('OpenRouterService: 请求 image_config =', requestBody.image_config)
+      }
+
+      if (samplingParameters) {
+        Object.assign(requestBody, samplingParameters)
+        console.log('OpenRouterService: 已附加采样参数', samplingParameters)
       }
       
       // 调试：在发送前验证 requestBody 格式并打印被截断的请求体（便于快速排查）

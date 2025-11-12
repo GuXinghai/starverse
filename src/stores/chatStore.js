@@ -1,8 +1,8 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import { useAppStore } from './index'
-import { createTextMessage, extractTextFromMessage } from '../types/chat'
+import { createTextMessage, extractTextFromMessage, DEFAULT_SAMPLING_PARAMETERS } from '../types/chat'
 import { electronStore as persistenceStore, isUsingElectronStoreFallback, isUsingDbBridgeFallback } from '../utils/electronBridge'
 import { sqliteChatPersistence } from '../services/chatPersistence'
 import { sqliteProjectPersistence } from '../services/projectPersistence'
@@ -61,6 +61,92 @@ const normalizeReasoningPreference = (input) => {
     effort,
     maxTokens
   }
+}
+
+const normalizeSamplingParameters = (input) => {
+  const source = input && typeof input === 'object' ? input : {}
+  const normalized = { ...DEFAULT_SAMPLING_PARAMETERS }
+
+  normalized.enabled = Boolean(source.enabled)
+
+  const assignFloat = (key, min, max) => {
+    const raw = source[key]
+    if (raw === undefined || raw === null || raw === '') {
+      normalized[key] = DEFAULT_SAMPLING_PARAMETERS[key]
+      return
+    }
+    const num = Number(raw)
+    if (!Number.isFinite(num)) {
+      normalized[key] = DEFAULT_SAMPLING_PARAMETERS[key]
+      return
+    }
+    let clamped = num
+    if (typeof min === 'number') {
+      clamped = Math.max(min, clamped)
+    }
+    if (typeof max === 'number') {
+      clamped = Math.min(max, clamped)
+    }
+    normalized[key] = parseFloat(clamped.toFixed(4))
+  }
+
+  const assignNonNegativeInt = (key) => {
+    const raw = source[key]
+    if (raw === undefined || raw === null || raw === '') {
+      normalized[key] = DEFAULT_SAMPLING_PARAMETERS[key]
+      return
+    }
+    const num = Number(raw)
+    if (!Number.isFinite(num)) {
+      normalized[key] = DEFAULT_SAMPLING_PARAMETERS[key]
+      return
+    }
+    normalized[key] = Math.max(0, Math.round(num))
+  }
+
+  const assignPositiveIntOrNull = (key) => {
+    const raw = source[key]
+    if (raw === undefined || raw === null || raw === '') {
+      normalized[key] = null
+      return
+    }
+    const num = Number(raw)
+    if (!Number.isFinite(num)) {
+      normalized[key] = null
+      return
+    }
+    const rounded = Math.round(num)
+    normalized[key] = rounded > 0 ? rounded : null
+  }
+
+  assignFloat('temperature', 0, 2)
+  assignFloat('top_p', 0, 1)
+  assignNonNegativeInt('top_k')
+  assignFloat('frequency_penalty', -2, 2)
+  assignFloat('presence_penalty', -2, 2)
+  assignFloat('repetition_penalty', 0, 2)
+  assignFloat('min_p', 0, 1)
+  assignFloat('top_a', 0, 1)
+  assignPositiveIntOrNull('max_tokens')
+
+  const seedRaw = source.seed
+  if (seedRaw === undefined || seedRaw === null || seedRaw === '') {
+    normalized.seed = null
+  } else {
+    const parsed = Number(seedRaw)
+    if (Number.isFinite(parsed)) {
+      const rounded = Math.round(parsed)
+      const clamped = Math.max(
+        Number.MIN_SAFE_INTEGER,
+        Math.min(Number.MAX_SAFE_INTEGER, rounded)
+      )
+      normalized.seed = clamped
+    } else {
+      normalized.seed = null
+    }
+  }
+
+  return normalized
 }
 
 /**
@@ -333,7 +419,8 @@ export const useChatStore = defineStore('chat', () => {
       updatedAt: conversation.updatedAt || Date.now(),
       webSearchEnabled: conversation.webSearchEnabled ?? false,
       webSearchLevel: conversation.webSearchLevel || 'normal',
-      reasoningPreference: normalizeReasoningPreference(conversation.reasoningPreference)
+      reasoningPreference: normalizeReasoningPreference(conversation.reasoningPreference),
+      samplingParameters: normalizeSamplingParameters(conversation.samplingParameters)
     }
   }
 
@@ -347,13 +434,15 @@ export const useChatStore = defineStore('chat', () => {
       // 从数据库加载的 snapshot.tree 已经是序列化格式（数组），直接恢复即可
       tree: restoreTree(snapshot.tree),
       model: snapshot.model || DEFAULT_MODEL,
+      customInstructions: snapshot.customInstructions || '',
       generationStatus: 'idle',
       draft: snapshot.draft || '',
       createdAt: snapshot.createdAt || Date.now(),
       updatedAt: snapshot.updatedAt || Date.now(),
       webSearchEnabled: snapshot.webSearchEnabled ?? false,
       webSearchLevel: snapshot.webSearchLevel || 'normal',
-      reasoningPreference: normalizeReasoningPreference(snapshot.reasoningPreference)
+      reasoningPreference: normalizeReasoningPreference(snapshot.reasoningPreference),
+      samplingParameters: normalizeSamplingParameters(snapshot.samplingParameters)
     }
   }
 
@@ -655,6 +744,7 @@ export const useChatStore = defineStore('chat', () => {
       const [emptyConversation] = conversations.value.splice(emptyConversationIndex, 1)
       if (emptyConversation) {
         emptyConversation.reasoningPreference = normalizeReasoningPreference(emptyConversation.reasoningPreference)
+        emptyConversation.samplingParameters = normalizeSamplingParameters(emptyConversation.samplingParameters)
         emptyConversation.updatedAt = Date.now()
         conversations.value.unshift(emptyConversation)
         // ✅ 优化：新建对话通常会紧跟 openConversationInTab，使用快速防抖避免重复保存
@@ -679,6 +769,7 @@ export const useChatStore = defineStore('chat', () => {
       webSearchEnabled: false,
       webSearchLevel: 'normal',
       reasoningPreference: { ...DEFAULT_REASONING_PREFERENCE },
+      samplingParameters: { ...DEFAULT_SAMPLING_PARAMETERS },
       projectId: null
     }
     
@@ -837,6 +928,29 @@ export const useChatStore = defineStore('chat', () => {
     conversation.updatedAt = Date.now()
     markConversationDirty(conversationId) // 🏷️ 标记为脏数据
     saveConversationsSync()
+    return true
+  }
+
+  const setConversationSamplingParameters = (conversationId, updates = {}) => {
+    const conversation = conversations.value.find(conv => conv.id === conversationId)
+
+    if (!conversation) {
+      console.error('鉂?鎵句笉鍒板璇?', conversationId)
+      return false
+    }
+
+    const current = normalizeSamplingParameters(conversation.samplingParameters)
+    const merged = { ...current, ...updates }
+    const normalized = normalizeSamplingParameters(merged)
+
+    if (JSON.stringify(current) === JSON.stringify(normalized)) {
+      return false
+    }
+
+    conversation.samplingParameters = normalized
+    conversation.updatedAt = Date.now()
+    markConversationDirty(conversationId)
+    debouncedSaveConversations(800)
     return true
   }
 
@@ -1710,10 +1824,11 @@ export const useChatStore = defineStore('chat', () => {
     updateConversationDraft,
     setConversationWebSearchEnabled,
     setConversationWebSearchLevel,
-  setConversationReasoningPreference,
+    setConversationReasoningPreference,
+    setConversationSamplingParameters,
     deleteConversation,
     renameConversation,
-  createProject,
+    createProject,
   renameProject,
   deleteProject,
   assignConversationToProject,
