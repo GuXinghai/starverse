@@ -7,7 +7,18 @@
  * - 支持文本、图像等多种内容类型
  */
 
-import type { Message } from '../types/chat'
+import type {
+  Message,
+  MessageReasoningMetadata,
+  ReasoningPreference,
+  ReasoningRequestPayload
+} from '../types/chat'
+
+export interface ReasoningRequestOptions {
+  payload: ReasoningRequestPayload
+  preference: ReasoningPreference
+  modelId?: string
+}
 
 export interface WebSearchRequestOptions {
   enabled?: boolean
@@ -20,6 +31,7 @@ export interface WebSearchRequestOptions {
 export interface StreamRequestOptions {
   signal?: AbortSignal | null
   webSearch?: WebSearchRequestOptions
+  reasoning?: ReasoningRequestOptions | null
 }
 
 /**
@@ -75,7 +87,10 @@ export interface IAIProvider {
   ): AsyncGenerator<
     | string
     | { type: 'text' | 'image'; content: string }
-    | { type: 'usage'; usage: Record<string, any> },
+    | { type: 'usage'; usage: Record<string, any> }
+    | { type: 'reasoning'; reasoning: MessageReasoningMetadata }
+    | { type: 'reasoning_detail'; detail: any }
+    | { type: 'reasoning_summary'; summary: string; request?: any },
     void,
     unknown
   >

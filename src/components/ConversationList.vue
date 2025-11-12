@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 // @ts-ignore
 import { useChatStore } from '../stores/chatStore'
+import { runFulltextSearch, SearchDslError } from '../services/searchService'
 
 type ConversationRecord = {
   id: string
@@ -36,8 +37,26 @@ const deletingId = ref<string | null>(null)
 
 // 搜索与过滤
 const searchQuery = ref('')
+const rawSearchQuery = computed(() => searchQuery.value.trim())
+const normalizedQuery = computed(() => rawSearchQuery.value.toLowerCase())
 const searchInTitle = ref(true)
 const searchInContent = ref(false)
+const contentSearchHits = ref<Set<string>>(new Set())
+const contentSearchLoading = ref(false)
+const contentSearchMessage = ref('')
+type SearchMessageTone = 'info' | 'warning' | 'error'
+const contentSearchMessageType = ref<SearchMessageTone>('info')
+const contentSearchActive = computed(() => searchInContent.value && rawSearchQuery.value.length > 0)
+const contentSearchMessageClass = computed(() => {
+  switch (contentSearchMessageType.value) {
+    case 'warning':
+      return 'text-yellow-600'
+    case 'error':
+      return 'text-red-600'
+    default:
+      return 'text-gray-500'
+  }
+})
 
 // 项目管理
 const projectFilter = ref<string>('all')
@@ -519,7 +538,6 @@ watch(hoverProjectMenuId, async (next) => {
 })
 
 
-const normalizedQuery = computed(() => searchQuery.value.trim().toLowerCase())
 
 const orderedProjects = computed<ProjectRecord[]>(() => {
   if (!Array.isArray(chatStore.projects)) {
@@ -585,6 +603,10 @@ const getProjectLabel = (projectId: string | null | undefined) => {
 }
 
 const conversationMatchesContent = (conversation: ConversationRecord, query: string) => {
+  // 使用全文搜索结果
+  if (contentSearchActive.value) {
+    return contentSearchHits.value.has(conversation.id)
+  }
   if (!query) {
     return true
   }
@@ -630,6 +652,57 @@ const buildSearchScopes = () => {
   }
   return scopes
 }
+
+let contentSearchRequestId = 0
+const resetContentSearch = () => {
+  contentSearchHits.value = new Set()
+  contentSearchMessage.value = ''
+  contentSearchMessageType.value = 'info'
+  contentSearchLoading.value = false
+}
+
+watch(
+  [() => rawSearchQuery.value, searchInContent],
+  async ([query, searchContent]) => {
+    if (!searchContent || !query) {
+      resetContentSearch()
+      return
+    }
+
+    const requestId = ++contentSearchRequestId
+    contentSearchLoading.value = true
+    contentSearchMessage.value = ''
+    contentSearchMessageType.value = 'info'
+
+    try {
+      const results = await runFulltextSearch(query, { limit: 100, highlight: false })
+      if (requestId !== contentSearchRequestId) {
+        return
+      }
+      contentSearchHits.value = new Set(results.map(result => result.convoId))
+      contentSearchMessageType.value = 'info'
+      contentSearchMessage.value = results.length === 0 ? '未找到匹配内容' : `命中 ${results.length} 条内容`
+    } catch (error) {
+      if (requestId !== contentSearchRequestId) {
+        return
+      }
+      contentSearchHits.value = new Set()
+      if (error instanceof SearchDslError) {
+        contentSearchMessageType.value = 'warning'
+        contentSearchMessage.value = error.message
+      } else {
+        contentSearchMessageType.value = 'error'
+        contentSearchMessage.value = '全文搜索失败，请稍后重试'
+        console.error('全文搜索失败:', error)
+      }
+    } finally {
+      if (requestId === contentSearchRequestId) {
+        contentSearchLoading.value = false
+      }
+    }
+  },
+  { immediate: true }
+)
 
 const filteredConversations = computed<ConversationRecord[]>(() => {
   const conversations = chatStore.conversations as ConversationRecord[]
@@ -956,6 +1029,22 @@ onUnmounted(() => {
             {{ project.name }}（{{ getProjectCount(project.id) }}）
           </option>
         </select>
+      </div>
+      <div
+        v-if="contentSearchActive"
+        class="flex items-center gap-2 text-xs"
+        :class="contentSearchMessageClass"
+      >
+        <svg
+          v-if="contentSearchLoading"
+          class="w-3 h-3 animate-spin"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8z"></path>
+        </svg>
+        <span>{{ contentSearchMessage || '正在全文搜索…' }}</span>
       </div>
 
       <div class="border-t border-gray-200 pt-3 space-y-2">

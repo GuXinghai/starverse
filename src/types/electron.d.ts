@@ -21,10 +21,15 @@ export interface ElectronIpcRenderer {
   invoke: (...args: any[]) => Promise<any>
 }
 
+export interface DbInvokeBridge {
+  invoke<T = unknown>(method: string, params?: unknown): Promise<T>
+}
+
 declare global {
   interface Window {
     electronStore?: ElectronStore
     electronAPI?: ElectronAPI
     ipcRenderer?: ElectronIpcRenderer
+    dbBridge?: DbInvokeBridge
   }
 }

@@ -26,29 +26,30 @@
               
               动画从位置 0 滚动到 -(C+G)，然后跳回 0
               由于文本重复，跳跃是视觉无缝的
+              
+              注意：只在 scrollingModels[model.id] 存在时显示（即判断需要滚动）
             -->
             <span 
-              :ref="el => setNameRef(model.id, el)"
+              v-if="scrollingModels[model.id]"
               class="model-name-belt"
-              :style="scrollingModels[model.id] ? {
+              :style="{
                 animationName: scrollingModels[model.id].animName,      // 动态生成的 @keyframes 名称
                 animationDuration: `${scrollingModels[model.id].T}ms`,  // 动画周期（ms）
                 animationTimingFunction: 'linear',                       // 线性时间函数（关键帧内部控制速度）
                 animationIterationCount: 'infinite'                      // 无限循环
-              } : {}"
+              }"
             >
               <!-- 第一份文本：总是显示 -->
               <span class="belt-text">{{ formatModelName(model.name) }}</span>
               
               <!-- 空白区：只在需要滚动时显示，宽度动态计算 -->
               <span 
-                v-if="scrollingModels[model.id]" 
                 class="belt-gap"
                 :style="{ width: `${scrollingModels[model.id].G}px` }"
               ></span>
               
               <!-- 第二份文本：只在需要滚动时显示，用于无缝循环 -->
-              <span v-if="scrollingModels[model.id]" class="belt-text">{{ formatModelName(model.name) }}</span>
+              <span class="belt-text">{{ formatModelName(model.name) }}</span>
             </span>
             
             <!-- 
@@ -56,8 +57,17 @@
               ==================
               当文本不需要滚动时（文本宽度 <= 容器宽度），
               使用普通的 text-overflow: ellipsis 截断
+              
+              注意：ref 绑定用于测量文本宽度，即使在静态模式下也需要
             -->
-            <span v-if="!scrollingModels[model.id]" class="model-name-static">
+            <span 
+              v-if="!scrollingModels[model.id]" 
+              :ref="el => setNameRef(model.id, el)"
+              class="model-name-static"
+            >
+              <!-- 添加隐藏的 .belt-text 用于宽度测量 -->
+              <span class="belt-text" style="position: absolute; visibility: hidden; white-space: nowrap;">{{ formatModelName(model.name) }}</span>
+              <!-- 实际显示的文本 -->
               {{ formatModelName(model.name) }}
             </span>
           </div>
@@ -213,16 +223,16 @@ const detectOverflow = async () => {
     try {
       // ==================== 步骤1：测量容器和文本宽度 ====================
       
-      // 获取 .model-info 容器（文本的父容器）
-      // 布局结构：.favorite-model-btn > .model-info + .model-meta
-      // .model-info 通过 flex: 1 自动占据剩余宽度
-      const container = el.closest('.model-info')
+      // 获取 .model-name-container 容器（文本的直接父容器）
+      // 这是文本滚动的"观察窗口"，应该测量这个容器的宽度
+      // 布局结构：.model-info > .model-name-container > .model-name-belt/.model-name-static
+      const container = el.closest('.model-name-container')
       if (!container) continue
       
       // 计算文本可用宽度
-      // .model-info 的 offsetWidth 就是分配给文本区域的总宽度
-      // 减去 16px 留给内边距和可能的边距
-      const W = container.offsetWidth - 16  // W = Window width (窗口/容器可用宽度)
+      // .model-name-container 的 offsetWidth 就是文本滚动区域的实际宽度
+      // 这个宽度已经包含了所有需要考虑的因素（padding、border 等）
+      const W = container.offsetWidth  // W = Window width (窗口/容器可用宽度)
       
       // 边界检查：可用宽度必须足够大才有意义
       // 小于 30px 的空间无法有效显示文本，跳过该元素

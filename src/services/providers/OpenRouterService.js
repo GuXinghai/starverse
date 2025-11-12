@@ -53,6 +53,185 @@ const SUPPORTED_IMAGE_ASPECT_RATIOS = new Set([
   '21:9'
 ])
 
+function clonePlain(value) {
+  try {
+    if (typeof structuredClone === 'function') {
+      return structuredClone(value)
+    }
+  } catch (error) {
+    // ignore structuredClone errors and fallback
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(value))
+  } catch (parseError) {
+    if (value && typeof value === 'object') {
+      return { ...value }
+    }
+    return value
+  }
+}
+
+/**
+ * 【已弃用】创建推理数据聚合器
+ * 现已改为流式推理输出，此函数保留用于参考
+ * @deprecated 使用流式 reasoning_detail 和 reasoning_summary 块代替
+ */
+/*
+function createReasoningAggregator() {
+  const rawDetails = []
+  let textBuilder = ''
+  let summaryText = null
+
+  const addText = (value) => {
+    if (typeof value === 'string' && value.length > 0) {
+      textBuilder += value
+    }
+  }
+
+  const addDetail = (detail) => {
+    if (!detail || typeof detail !== 'object') {
+      return
+    }
+    const cloned = clonePlain(detail)
+    rawDetails.push(cloned)
+
+    if (typeof cloned.text === 'string' && cloned.type === 'reasoning.text') {
+      addText(cloned.text)
+    }
+    if (typeof cloned.summary === 'string' && cloned.type === 'reasoning.summary' && !summaryText) {
+      summaryText = cloned.summary
+    }
+  }
+
+  const ingestReasoningValue = (value) => {
+    if (!value) return
+    if (typeof value === 'string') {
+      addText(value)
+      return
+    }
+    if (Array.isArray(value)) {
+      value.forEach(addDetail)
+      return
+    }
+    if (typeof value === 'object') {
+      if (Array.isArray(value.reasoning_details)) {
+        value.reasoning_details.forEach(addDetail)
+      }
+      if (typeof value.text === 'string') {
+        addText(value.text)
+      }
+      if (typeof value.summary === 'string' && !summaryText) {
+        summaryText = value.summary
+      }
+    }
+  }
+
+  const ingestChoice = (choice) => {
+    if (!choice || typeof choice !== 'object') {
+      return
+    }
+    if (choice.delta) {
+      if (Array.isArray(choice.delta.reasoning_details)) {
+        choice.delta.reasoning_details.forEach(addDetail)
+      }
+      if (choice.delta.reasoning !== undefined) {
+        ingestReasoningValue(choice.delta.reasoning)
+      }
+    }
+    if (choice.message) {
+      if (Array.isArray(choice.message.reasoning_details)) {
+        choice.message.reasoning_details.forEach(addDetail)
+      }
+      if (choice.message.reasoning !== undefined) {
+        ingestReasoningValue(choice.message.reasoning)
+      }
+    }
+  }
+
+  const ingestChunk = (chunk) => {
+    if (!chunk || typeof chunk !== 'object') {
+      return
+    }
+    const choices = Array.isArray(chunk.choices) ? chunk.choices : []
+    const choiceContainsReasoning = choices.some(choice => {
+      if (!choice || typeof choice !== 'object') {
+        return false
+      }
+      const delta = choice.delta
+      const message = choice.message
+      return Boolean(
+        (delta && (delta.reasoning !== undefined || Array.isArray(delta.reasoning_details))) ||
+        (message && (message.reasoning !== undefined || Array.isArray(message.reasoning_details)))
+      )
+    })
+
+    if (Array.isArray(chunk.reasoning_details) && !choiceContainsReasoning) {
+      chunk.reasoning_details.forEach(addDetail)
+    }
+    if (chunk.reasoning !== undefined && !choiceContainsReasoning) {
+      ingestReasoningValue(chunk.reasoning)
+    }
+    if (choices.length > 0) {
+      choices.forEach(ingestChoice)
+    }
+  }
+
+  const hasData = () => rawDetails.length > 0 || textBuilder.length > 0 || summaryText !== null
+
+  const buildSanitizedDetails = () => rawDetails.map(detail => {
+    const sanitized = {
+      type: detail.type
+    }
+    if ('text' in detail && typeof detail.text === 'string') {
+      sanitized.text = detail.text
+    }
+    if ('summary' in detail && typeof detail.summary === 'string') {
+      sanitized.summary = detail.summary
+    }
+    if ('data' in detail && typeof detail.data === 'string') {
+      sanitized.data = detail.data
+    }
+    if ('format' in detail && typeof detail.format === 'string') {
+      sanitized.format = detail.format
+    }
+    if (Object.prototype.hasOwnProperty.call(detail, 'id')) {
+      sanitized.id = detail.id ?? null
+    }
+    if (typeof detail.index === 'number') {
+      sanitized.index = detail.index
+    }
+    if (detail.signature !== undefined) {
+      sanitized.signature = detail.signature
+    }
+    return sanitized
+  })
+
+  const finalize = () => {
+    if (!hasData()) {
+      return null
+    }
+
+    const text = textBuilder.length > 0
+      ? textBuilder.trim()
+      : undefined
+
+    return {
+      text,
+      summary: summaryText || undefined,
+      details: buildSanitizedDetails(),
+      rawDetails: rawDetails
+    }
+  }
+
+  return {
+    ingestChunk,
+    finalize,
+    hasData
+  }
+}
+*/
+
 /**
  * 检查模型是否支持视觉/图像输入
  * @param {string} modelId - 模型 ID
@@ -276,10 +455,11 @@ export const OpenRouterService = {
   async* streamChatResponse(apiKey, history, modelName, userMessage, baseUrl = OPENROUTER_BASE_URL, options = {}) {
     console.log('OpenRouterService: 开始流式聊天，使用模型:', modelName)
     console.log('OpenRouterService: Base URL:', baseUrl)
-    let signal = null
-    let webSearch = null
-    let requestedModalities = null
-    let imageConfig = null
+  let signal = null
+  let webSearch = null
+  let requestedModalities = null
+  let imageConfig = null
+  let reasoningConfig = null
 
     if (options && typeof options === 'object') {
       if ('signal' in options) {
@@ -320,6 +500,20 @@ export const OpenRouterService = {
           }
         }
       }
+      if ('reasoning' in options) {
+        const rawReasoning = options.reasoning
+        if (rawReasoning && typeof rawReasoning === 'object' && rawReasoning.payload && typeof rawReasoning.payload === 'object') {
+          const payloadClone = { ...rawReasoning.payload }
+          const preferenceClone = rawReasoning.preference && typeof rawReasoning.preference === 'object'
+            ? { ...rawReasoning.preference }
+            : null
+          reasoningConfig = {
+            payload: payloadClone,
+            preference: preferenceClone,
+            modelId: rawReasoning.modelId || modelName
+          }
+        }
+      }
     } else if (options) {
       signal = options
     }
@@ -330,57 +524,68 @@ export const OpenRouterService = {
       // 如果消息中有图片，说明用户已经确认当前模型支持多模态
       const messages = (history || []).map(msg => {
         const role = msg.role === 'model' ? 'assistant' : msg.role
-        
-        // 如果消息有 parts 数组，构建多模态内容
+
+        let contentBlocks = []
         if (msg.parts && Array.isArray(msg.parts) && msg.parts.length > 0) {
-          // OpenRouter 使用 OpenAI 兼容格式
-          const content = msg.parts.map(part => {
-            if (part.type === 'text') {
-              return {
-                type: 'text',
-                text: part.text || ''  // 确保 text 不为 undefined
-              }
-            } else if (part.type === 'image_url') {
-              const imageUrl = part.image_url.url
-              return {
-                type: 'image_url',
-                image_url: {
-                  url: imageUrl,
-                  detail: 'auto'  // 可选: 'auto', 'low', 'high'
-                }
-              }
-            }
-            return null
-          }).filter(Boolean)
-          
-          // 🔧 修复：如果 content 为空（所有 parts 都被过滤掉），回退到空文本
-          if (content.length === 0) {
-            return {
-              role,
-              content: [
-                {
+          contentBlocks = msg.parts
+            .map(part => {
+              if (part.type === 'text') {
+                return {
                   type: 'text',
-                  text: ''
+                  text: part.text || ''
                 }
-              ]
-            }
-          }
-          
-          return { role, content }
-        } else {
-          // 纯文本消息（旧格式兼容）
-          // OpenRouter 要求每条消息的 content 为数组形式，包含类型信息
-          const textContent = extractTextFromMessage(msg) || ''  // 确保不为 undefined
-          return {
-            role,
-            content: [
-              {
-                type: 'text',
-                text: textContent
               }
-            ]
+              if (part.type === 'image_url') {
+                const imageUrl = part.image_url.url
+                return {
+                  type: 'image_url',
+                  image_url: {
+                    url: imageUrl,
+                    detail: 'auto'
+                  }
+                }
+              }
+              return null
+            })
+            .filter(Boolean)
+        } else {
+          const textContent = extractTextFromMessage(msg) || ''
+          contentBlocks = [
+            {
+              type: 'text',
+              text: textContent
+            }
+          ]
+        }
+
+        if (contentBlocks.length === 0) {
+          contentBlocks = [
+            {
+              type: 'text',
+              text: ''
+            }
+          ]
+        }
+
+        const baseMessage = {
+          role,
+          content: contentBlocks
+        }
+
+        const metadata = msg.metadata
+        if (metadata && metadata.reasoning) {
+          const rawDetails = Array.isArray(metadata.reasoning.rawDetails)
+            ? metadata.reasoning.rawDetails.map(clonePlain)
+            : null
+          if (rawDetails && rawDetails.length > 0) {
+            baseMessage.reasoning_details = rawDetails
+          }
+          if (!baseMessage.reasoning_details && typeof metadata.reasoning.text === 'string' && metadata.reasoning.text.trim()) {
+            baseMessage.reasoning = metadata.reasoning.text
           }
         }
+
+        return baseMessage
       })
       
       // 🔧 修复：过滤掉内容为空的消息（除了最后一条 assistant 消消息
@@ -489,6 +694,11 @@ export const OpenRouterService = {
         }
       }
 
+      if (reasoningConfig && reasoningConfig.payload && Object.keys(reasoningConfig.payload).length > 0) {
+        requestBody.reasoning = { ...reasoningConfig.payload }
+        console.log('OpenRouterService: 已附加 reasoning 参数', requestBody.reasoning)
+      }
+
       if (webSearch && webSearch.enabled) {
         const pluginConfig = { id: 'web' }
 
@@ -563,7 +773,15 @@ export const OpenRouterService = {
         throw validationError
       }
 
-      console.log('OpenRouterService: 正在发送请求到:', url)
+  const reasoningPreference = reasoningConfig?.preference ? { ...reasoningConfig.preference } : null
+  const reasoningPayload = reasoningConfig?.payload ? { ...reasoningConfig.payload } : null
+  
+  // 流式推理状态追踪
+  let reasoningSummary = null
+  let reasoningText = '' // 从 delta.reasoning 累积，用于实时展示
+  const emittedDetailIds = new Set() // reasoning_details 用于回传模型，不用于文本累积
+
+  console.log('OpenRouterService: 正在发送请求到:', url)
       // 打印 requestBody 的前 4KB，避免控制台被大量 base64 污染
       try {
         const jsonStr = JSON.stringify(requestBody)
@@ -655,6 +873,7 @@ export const OpenRouterService = {
   let buffer = ''
   const emittedImages = new Set()
   let usageEmitted = false
+  let receivedDone = false
 
       const normalizeImagePayload = (payload, defaultMime = 'image/png') => {
         if (!payload) {
@@ -745,7 +964,6 @@ export const OpenRouterService = {
         const { done, value } = await reader.read()
         
         if (done) {
-          console.log('OpenRouterService: 流式响应完成')
           break
         }
         
@@ -782,11 +1000,73 @@ export const OpenRouterService = {
             // OpenRouter 发送 "[DONE]" 标记流结束
             if (jsonStr === '[DONE]') {
               console.log('OpenRouterService: 收到 [DONE] 标记')
-              return
+              receivedDone = true
+              break
             }
             
             try {
               const chunk = JSON.parse(jsonStr)
+
+              // 🧠 流式推理处理
+              const primaryChoice = chunk.choices?.[0]
+              
+              // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              // 1️⃣ 处理 reasoning_details 数组（结构化数据，用于回传模型）
+              // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              // 作用：保存到消息历史，下次请求时原样回传给模型，保持思考连续性
+              // 特别重要：工具调用/多轮对话场景必须回传，否则思考链会断裂
+              // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              if (primaryChoice?.delta?.reasoning_details && Array.isArray(primaryChoice.delta.reasoning_details)) {
+                for (const detail of primaryChoice.delta.reasoning_details) {
+                  if (detail && typeof detail === 'object') {
+                    // 去重：使用 id 或内容指纹
+                    const detailId = detail.id || JSON.stringify([detail.type, detail.text, detail.summary])
+                    if (!emittedDetailIds.has(detailId)) {
+                      emittedDetailIds.add(detailId)
+                      
+                      // 发送结构化块给前端保存（不用于显示）
+                      yield {
+                        type: 'reasoning_detail',
+                        detail: {
+                          id: detail.id ?? null,
+                          type: detail.type || 'unknown',
+                          text: detail.text || '',
+                          summary: detail.summary || '',
+                          data: detail.data || '',
+                          format: detail.format || '',
+                          index: typeof detail.index === 'number' ? detail.index : undefined
+                        }
+                      }
+                      
+                      console.log('[REASONING_DETAILS] 收集结构化块用于回传，类型:', detail.type, '长度:', detail.text?.length || 0)
+                    }
+                  }
+                }
+              }
+              
+              // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              // 2️⃣ 处理 delta.reasoning（纯文本流，用于实时展示）
+              // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              // 作用：实时显示思考过程给用户看（包含标点、连接词等完整文本）
+              // 注意：这是展示层数据，与 reasoning_details 内容重复但用途不同
+              // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              if (primaryChoice?.delta?.reasoning) {
+                const reasoningValue = primaryChoice.delta.reasoning
+                if (typeof reasoningValue === 'string') {
+                  console.log('[DELTA.REASONING] 实时文本流，长度:', reasoningValue.length, '前50字符:', reasoningValue.substring(0, 50))
+                  
+                  // 累积完整文本用于最终摘要
+                  reasoningText += reasoningValue
+                  
+                  // 🎨 实时发送给前端显示（仅用于 UI 展示）
+                  yield {
+                    type: 'reasoning_stream_text',  // 区别于 reasoning_detail
+                    text: reasoningValue
+                  }
+                } else if (typeof reasoningValue === 'object' && reasoningValue.summary) {
+                  reasoningSummary = reasoningValue.summary
+                }
+              }
               
               if (chunk.error) {
                 const streamError = buildOpenRouterError(chunk.error, response.status, chunk.error?.message || 'OpenRouter 流式响应错误', 'OpenRouterStreamError')
@@ -794,7 +1074,7 @@ export const OpenRouterService = {
                 throw streamError
               }
 
-              const primaryChoice = chunk.choices?.[0]
+              // primaryChoice 已在上面声明，这里直接使用
 
               if (primaryChoice?.error) {
                 const streamError = buildOpenRouterError(primaryChoice.error, response.status, primaryChoice.error?.message || 'OpenRouter 流式响应错误', 'OpenRouterStreamError')
@@ -957,8 +1237,57 @@ export const OpenRouterService = {
             }
           }
         }
+
+        if (receivedDone) {
+          break
+        }
       }
-      
+
+      if (!receivedDone) {
+        console.log('OpenRouterService: 流式响应完成 (reader.done)')
+      }
+
+      // 流结束：发送推理摘要块
+      const hasReasoningPayload = reasoningPayload && Object.keys(reasoningPayload).length > 0
+      let resolvedVisibility = reasoningPreference?.visibility
+        ?? (reasoningPayload?.exclude === true
+          ? 'hidden'
+          : (hasReasoningPayload ? 'visible' : 'off'))
+      const resolvedEffort = reasoningPreference?.effort ?? reasoningPayload?.effort ?? 'medium'
+      const resolvedMaxTokens = reasoningPreference?.maxTokens ?? (
+        typeof reasoningPayload?.max_tokens === 'number' ? reasoningPayload.max_tokens : null
+      )
+
+      // 如果收集到了推理数据，调整可见性
+      if ((reasoningText || reasoningSummary || emittedDetailIds.size > 0) && resolvedVisibility === 'off') {
+        resolvedVisibility = 'visible'
+      }
+
+      // 发送推理摘要（包含请求配置和汇总信息）
+      const shouldEmitReasoningSummary = (reasoningText || reasoningSummary || emittedDetailIds.size > 0) || (
+        reasoningConfig && resolvedVisibility !== 'off'
+      )
+
+      if (shouldEmitReasoningSummary) {
+        const summaryBlock = {
+          type: 'reasoning_summary',
+          summary: reasoningSummary || '',
+          text: reasoningText ? reasoningText.trim() : '',
+          detailCount: emittedDetailIds.size,
+          request: {
+            visibility: resolvedVisibility,
+            effort: resolvedEffort,
+            maxTokens: resolvedMaxTokens,
+            payload: hasReasoningPayload ? { ...reasoningPayload } : {}
+          },
+          provider: 'openrouter',
+          model: reasoningConfig?.modelId || modelName,
+          excluded: reasoningPayload?.exclude === true
+        }
+        
+        yield summaryBlock
+      }
+
       console.log('OpenRouterService: 流式输出完成')
     } catch (error) {
       // 检查是否是中止错误

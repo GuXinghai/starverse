@@ -7,7 +7,16 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: 'electron/main.ts'
+        input: {
+          main: resolve('electron/main.ts'),
+          dbWorker: resolve('electron/db/worker.ts')
+        },
+        output: {
+          entryFileNames: (chunkInfo) => {
+            if (chunkInfo.name === 'dbWorker') return 'db/worker.js'
+            return '[name].js'
+          }
+        }
       }
     }
   },

@@ -500,7 +500,17 @@ const saveDefaultModel = async () => {
           应用信息
         </h2>
         
-        <div class="space-y-4 text-sm text-gray-600">
+        <div class="border-t border-gray-200 pt-4 mt-2">
+          <p class="text-sm text-gray-500 mb-4">
+            使用 SQLite + WAL 持久化存储，获得更高的稳定性与全文搜索能力。
+          </p>
+        </div>
+
+        <div class="space-y-4 text-sm text-gray-600 mt-6">
+          <div class="flex items-center justify-between py-2">
+            <span>持久化存储</span>
+            <span class="font-semibold text-gray-800">SQLite (始终启用)</span>
+          </div>
           <div class="flex items-center justify-between py-2">
             <span>当前提供商</span>
             <span class="font-semibold text-gray-800">{{ activeProvider }}</span>

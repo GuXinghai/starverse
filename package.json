@@ -5,12 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "chcp 65001 >nul 2>&1 & cross-env FORCE_COLOR=1 vite --host",
-    "build": "vue-tsc && vite build && electron-builder",
+    "build": "npm run build:worker && vue-tsc && vite build && electron-builder",
     "preview": "vite preview",
-    "electron:dev": "chcp 65001 >nul 2>&1 & cross-env FORCE_COLOR=1 concurrently --kill-others \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:dev": "chcp 65001 >nul 2>&1 & cross-env FORCE_COLOR=1 concurrently --kill-others \"npm run watch:worker\" \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build",
     "dev:clean": "chcp 65001 >nul 2>&1 & taskkill /F /IM electron.exe 2>nul & npm run dev",
-    "dev:quiet": "chcp 65001 >nul 2>&1 & cross-env FORCE_COLOR=1 NODE_ENV=development vite --host --logLevel silent"
+    "dev:quiet": "chcp 65001 >nul 2>&1 & cross-env FORCE_COLOR=1 NODE_ENV=development vite --host --logLevel silent",
+    "rebuild": "npx electron-rebuild -f -w better-sqlite3",
+    "build:worker": "node ./scripts/build-db-worker.cjs",
+    "watch:worker": "node ./scripts/build-db-worker.cjs --watch"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -18,6 +21,7 @@
     "@types/marked": "^5.0.2",
     "@types/uuid": "^10.0.0",
     "@vueuse/core": "^14.0.0",
+    "better-sqlite3": "^12.4.1",
     "dompurify": "^3.3.0",
     "electron-store": "^11.0.2",
     "highlight.js": "^11.11.1",
@@ -25,17 +29,21 @@
     "marked": "^16.4.1",
     "pinia": "^3.0.3",
     "uuid": "^13.0.0",
-    "vue": "^3.4.21"
+    "vue": "^3.4.21",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.1",
     "@tailwindcss/postcss": "^4.1.16",
+    "@types/better-sqlite3": "^7.6.13",
     "@vitejs/plugin-vue": "^5.0.4",
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
-    "electron": "^30.0.1",
+    "electron": "^38.6.0",
     "electron-builder": "^24.13.3",
     "electron-vite": "^4.0.1",
+    "esbuild": "^0.23.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.16",
     "typescript": "^5.2.2",

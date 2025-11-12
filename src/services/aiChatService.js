@@ -87,7 +87,13 @@ export const aiChatService = {
     // 规范化入参，避免上层传入 undefined 导致崩溃
     const safeHistory = Array.isArray(history) ? history : []
     const safeUserMessage = typeof userMessage === 'string' ? userMessage : ''
-  const { signal = null, webSearch = null, requestedModalities = null, imageConfig = null } = options || {}
+  const {
+    signal = null,
+    webSearch = null,
+    requestedModalities = null,
+    imageConfig = null,
+    reasoning = null
+  } = options || {}
 
     console.log('aiChatService: 开始流式对话...')
     console.log('  - 模型:', modelName)
@@ -105,10 +111,10 @@ export const aiChatService = {
       // 不同的服务可能需要不同的参数
       if (service === GeminiService) {
         // Gemini: (apiKey, history, modelName, userMessage, options)
-        yield* service.streamChatResponse(apiKey, safeHistory, modelName, safeUserMessage, { signal, webSearch, requestedModalities, imageConfig })
+        yield* service.streamChatResponse(apiKey, safeHistory, modelName, safeUserMessage, { signal, webSearch, requestedModalities, imageConfig, reasoning })
       } else if (service === OpenRouterService) {
         // OpenRouter: (apiKey, history, modelName, userMessage, baseUrl, options)
-        yield* service.streamChatResponse(apiKey, safeHistory, modelName, safeUserMessage, baseUrl, { signal, webSearch, requestedModalities, imageConfig })
+        yield* service.streamChatResponse(apiKey, safeHistory, modelName, safeUserMessage, baseUrl, { signal, webSearch, requestedModalities, imageConfig, reasoning })
       } else {
         throw new Error('未知的服务类型')
       }

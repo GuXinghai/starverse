@@ -21,6 +21,10 @@ type ElectronApiBridge = {
   }>
 }
 
+type DbInvokeBridge = {
+  invoke: <T = unknown>(method: string, params?: unknown) => Promise<T>
+}
+
 const createMemoryStore = (): ElectronStoreBridge => {
   const memory = new Map<string, any>()
 
@@ -83,10 +87,32 @@ const resolveElectronApi = (): { api: ElectronApiBridge; isFallback: boolean } =
 
 const { api: electronApiBridge, isFallback: isUsingElectronApiFallback } = resolveElectronApi()
 
+const createDbFallback = (): DbInvokeBridge => ({
+  async invoke() {
+    throw new Error('[electronBridge] dbBridge is unavailable. Ensure Electron preload exposed dbBridge.')
+  }
+})
+
+const resolveDbBridge = (): { bridge: DbInvokeBridge; isFallback: boolean } => {
+  if (typeof window !== 'undefined' && window.dbBridge) {
+    return { bridge: window.dbBridge, isFallback: false }
+  }
+
+  if (typeof window !== 'undefined') {
+    console.warn('[electronBridge] dbBridge missing; DB access disabled in this environment.')
+  }
+
+  return { bridge: createDbFallback(), isFallback: true }
+}
+
+const { bridge: dbBridge, isFallback: isUsingDbBridgeFallback } = resolveDbBridge()
+
 export {
   electronStore,
   electronApiBridge,
   ipcRendererBridge,
+  dbBridge,
   isUsingElectronApiFallback,
-  isUsingElectronStoreFallback
+  isUsingElectronStoreFallback,
+  isUsingDbBridgeFallback
 }

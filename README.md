@@ -126,7 +126,30 @@
 - **图片管理**: 编辑时可添加或移除图片附件
 - **历史保留**: 编辑操作会创建新分支，保留原有对话路径
 - **智能去重**: 编辑未改动内容时不生成冗余版本
-- **边界处理**: 无回复的提问也可触发首次生成
+- **边界处理** ⭐ 最新: 无回复的提问也可触发首次生成
+
+### 💾 数据持久化 ⭐ 最新
+- **SQLite 存储增强**:
+  - ✅ 项目管理独立存储（完整 CRUD 操作）
+  - ✅ 对话归档功能（archive/restore）
+  - ✅ 双存储模式支持（SQLite + electron-store）
+  - ✅ 外键约束确保数据一致性
+  - ✅ 完整快照保证可恢复性
+- **边界防御机制** ⭐ 最新:
+  - ✅ IPC 边界统一去代理化
+  - ✅ 消除 Vue Proxy structuredClone 错误
+  - ✅ 代码清理 ~85 行冗余处理逻辑
+  - ✅ 架构更清晰、维护更简单
+
+### 🐛 问题修复 ⭐ 最新
+- **分支系统修复**:
+  - ✅ 修复编辑无回复提问时的边界处理
+  - ✅ 修复删除提问分支时路径错乱问题
+  - ✅ 智能路径重建算法（优先兄弟分支→根分支）
+- **多模态修复**:
+  - ✅ 修复重新生成时图片不显示问题
+  - ✅ 统一多种图片格式解析（OpenRouter/Gemini）
+  - ✅ 支持 delta.images、content.image_url、b64_json 等格式
 
 ### 🎨 用户体验
 - **现代化 UI**: 基于 Tailwind CSS 的精美界面设计
@@ -161,10 +184,23 @@
   - ✅ 架构说明、算法解释、性能考量文档化
   - ✅ 无误导性注释，代码与文档一致
 - **🧹 代码质量保障**:
-  - ✅ 移除非关键调试日志，保留错误追踪
+  - ✅ 移除非关键调试日志，保留错误追踪 ⭐ 最新
   - ✅ 清理未使用组件（已归档 3 个组件）
   - ✅ TypeScript 严格模式，无编译错误
   - ✅ 模块化架构，职责清晰
+  - ✅ 边界防御实施完成（IPC 层）⭐ 最新
+
+### 🔧 技术特性 ⭐ 最新
+- **持久化架构**:
+  - SQLite 数据库（对话、消息、项目）
+  - better-sqlite3 + Web Worker（主线程不阻塞）
+  - FTS5 全文搜索（支持中英文分词）
+  - 增量序列化（分块保存大型对话）
+- **安全性保障**:
+  - Electron 上下文隔离
+  - 预加载脚本安全桥接
+  - API Key 加密存储
+  - structuredClone 边界防御
 
 ---
 
@@ -183,7 +219,8 @@
 |------|------|------|
 | **Tailwind CSS** | 4.1.16 | 原子化 CSS 框架 |
 | **Pinia** | 3.0.3 | Vue 3 官方状态管理库 |
-| **electron-store** | 11.0.2 | Electron 数据持久化 |
+| **electron-store** | 11.0.2 | Electron 数据持久化（兼容模式） |
+| **better-sqlite3** | 11.7.0 | 高性能 SQLite 数据库 ⭐ |
 | **@google/generative-ai** | 0.24.1 | Google Gemini AI SDK |
 | **marked** | Latest | Markdown 解析和渲染 |
 | **KaTeX** | Latest | LaTeX 数学公式渲染 |
@@ -207,7 +244,17 @@ Starverse/
 ├── electron/                    # Electron 主进程
 │   ├── main.ts                 # 主进程入口（窗口管理、IPC 通信）
 │   ├── preload.ts              # 预加载脚本（安全桥接）
-│   └── electron-env.d.ts       # Electron 类型定义
+│   ├── electron-env.d.ts       # Electron 类型定义
+│   ├── db/                     # SQLite 数据库 ⭐ 新增
+│   │   ├── worker.ts          # 数据库 Web Worker（异步操作）
+│   │   ├── types.ts           # 数据库类型定义
+│   │   ├── validation.ts      # 数据验证 Schema
+│   │   ├── repos/             # 数据访问层
+│   │   │   ├── ConvoRepo.ts  # 对话仓储
+│   │   │   └── ProjectRepo.ts # 项目仓储
+│   │   └── migrations/        # 数据库迁移
+│   └── ipc/                    # IPC 处理器 ⭐ 新增
+│       └── dbHandlers.ts      # 数据库 IPC 处理
 │
 ├── src/                        # Vue 渲染进程
 │   ├── components/             # Vue 组件
@@ -235,24 +282,46 @@ Starverse/
 │   ├── services/               # 业务逻辑服务
 │   │   ├── aiChatService.js    # AI 服务路由器（多提供商支持）
 │   │   ├── geminiService.js    # Gemini API 封装（向后兼容）
+│   │   ├── chatPersistence.ts  # 对话持久化服务 ⭐
+│   │   ├── projectPersistence.ts # 项目持久化服务 ⭐
+│   │   ├── searchService.ts    # 搜索服务（FTS5）⭐
+│   │   ├── db/                 # 数据库服务 ⭐ 新增
+│   │   │   └── index.ts       # 数据库 IPC 封装
 │   │   └── providers/          # AI 提供商实现
 │   │       ├── GeminiService.js     # Gemini 服务
 │   │       └── OpenRouterService.js # OpenRouter 服务
 │   │
 │   ├── types/                  # TypeScript 类型定义
-│   │   └── electron.d.ts       # Window 接口扩展
+│   │   ├── electron.d.ts       # Window 接口扩展
+│   │   └── chat.ts             # 聊天类型定义 ⭐
+│   │
+│   ├── utils/                  # 工具函数 ⭐ 新增
+│   │   ├── electronBridge.ts  # Electron API 桥接
+│   │   └── ipcSanitizer.js    # IPC 数据清理
 │   │
 │   ├── App.vue                 # 根组件
 │   ├── main.ts                 # Vue 应用入口
 │   └── style.css               # 全局样式
 │
 ├── public/                     # 静态资源
+│   └── serializeWorker.js     # 序列化 Web Worker ⭐
+│
+├── infra/                      # 基础设施 ⭐ 新增
+│   └── db/                    # 数据库模块（TypeScript）
+│       ├── repos/            # 数据仓储层
+│       ├── types.ts          # 类型定义
+│       └── validation.ts     # 数据验证
 ├── docs/                       # 项目文档
 │   ├── CHAT_STORE_API.md       # ChatStore API 文档
 │   ├── CHATVIEW_UPDATE_SUMMARY.md
 │   ├── CHATVIEW_OPTIMIZATION_SUMMARY.md ⭐ # ChatView 优化总结
 │   ├── PERFORMANCE_OPTIMIZATION_COMPLETE.md ⭐ # 性能优化文档
 │   ├── ARCHIVED_COMPONENTS.md ⭐ # 组件归档说明
+│   ├── CLEANUP_SUMMARY.md ⭐ # 代码清理总结（最新）
+│   ├── CODE_CLEANUP_REPORT.md ⭐ # Proxy 处理清理报告
+│   ├── BOUNDARY_DEFENSE_IMPLEMENTATION.md ⭐ # 边界防御实施
+│   ├── SQLITE_ENHANCEMENT_IMPLEMENTATION.md ⭐ # SQLite 增强
+│   ├── RECENT_FIXES_2025_11.md ⭐ # 11月问题修复汇总
 │   ├── DEBUG_MODEL_LIST.md
 │   ├── FOCUS_ISSUE_REPORT.md
 │   └── OPENROUTER_INTEGRATION_SUMMARY.md  # OpenRouter 接入重构总结
@@ -593,6 +662,73 @@ npm run build
 # Linux
 npm run build
 ```
+
+---
+
+## 🧹 数据清理
+
+### 完全清理聊天记录
+
+如果遇到数据损坏或需要重置应用，可以使用以下工具完全清理所有聊天记录和项目数据：
+
+#### 方法 1：一键清理（推荐）
+
+**Windows 批处理脚本** - 双击运行：
+```bash
+clear-all-data.bat
+```
+
+**PowerShell 脚本** - 右键使用 PowerShell 运行：
+```bash
+.\clear-all-data.ps1
+```
+
+#### 方法 2：使用 Node.js 脚本
+
+**独立清理脚本**（推荐，无需 Electron 运行时）：
+```bash
+node scripts/clear-all-data-standalone.cjs
+```
+
+**Electron 内清理脚本**：
+```bash
+node scripts/clear-all-data.js
+```
+
+### 清理内容
+
+清理工具会删除以下数据：
+
+✅ **SQLite 数据库文件**
+- `chat.db` - 主数据库
+- `chat.db-wal` - 预写日志
+- `chat.db-shm` - 共享内存
+
+✅ **对话和项目数据**
+- 所有聊天记录
+- 所有项目和分类
+- 打开的标签页记录
+- 收藏的模型列表
+
+🛡️ **保留的数据**
+- API 密钥配置
+- 模型选择偏好
+- 提供商设置
+- 其他应用设置
+
+### 注意事项
+
+⚠️ **使用前请确保**：
+1. 已完全关闭 Starverse 应用
+2. 已备份重要的聊天记录（如需保留）
+3. 理解此操作不可逆
+
+💡 **清理后首次启动**：
+- 应用会自动创建新的数据库
+- 创建一个新的空对话
+- 所有项目列表为空
+
+📖 **详细说明**：参见 [数据清理指南](docs/DATA_CLEANUP_GUIDE.md)
 
 ---
 
