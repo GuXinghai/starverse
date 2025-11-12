@@ -48,7 +48,7 @@ import { useAppStore } from '../stores'
 import { aiChatService } from '../services/aiChatService'  // AI 聊天服务，处理 API 请求
 
 // ========== 类型定义和工具函数 ==========
-import { extractTextFromMessage } from '../types/chat'  // 从消息 parts 中提取纯文本
+import { extractTextFromMessage, DEFAULT_SAMPLING_PARAMETERS } from '../types/chat'  // 从消息 parts 中提取纯文本
 import type {
   MessagePart,
   MessageReasoningMetadata,
@@ -58,7 +58,8 @@ import type {
   ReasoningVisibility,
   TextPart,
   UsageMetrics,
-  WebSearchLevel
+  WebSearchLevel,
+  SamplingParameterSettings
 } from '../types/chat'
 import { getCurrentVersion, getPathToBranch } from '../stores/branchTreeHelpers'  // 分支树操作辅助函数
 import { electronApiBridge, isUsingElectronApiFallback } from '../utils/electronBridge'  // Electron 桥接
@@ -96,6 +97,8 @@ const webSearchControlRef = ref<HTMLElement | null>(null)  // Web 搜索控制�
 const webSearchMenuVisible = ref(false)  // Web 搜索菜单的显示状态
 const reasoningControlRef = ref<HTMLElement | null>(null)  // 推理控制按钮 DOM 引用
 const reasoningMenuVisible = ref(false)  // 推理控制菜单显示状态
+const parameterControlRef = ref<HTMLElement | null>(null)  // 采样参数控制按钮 DOM 引用
+const parameterMenuVisible = ref(false)  // 采样参数菜单显示状态
 
 // ========== 多模态附件管理 ==========
 /**
@@ -356,6 +359,7 @@ const deletingBranchId = ref<string | null>(null)  // 待删除的分支 ID
 const currentConversation = computed(() => {
   return chatStore.conversationsMap.get(props.conversationId) || null
 })
+
 
 // ========== 分支树消息显示 ==========
 /**
@@ -769,13 +773,18 @@ const displayMessages = computed<DisplayMessage[]>(() => {
       const cached = updatedMessages[i]
       if (!cached) continue
 
-      // 检查 parts 引用是否变化（流式响应会创建新数组）
-      if (cached.parts !== version.parts) {
+      const partsRef = version.parts as MessagePart[]
+      const metadataRef = version.metadata as MessageVersionMetadata | undefined
+      const partsChanged = cached.parts !== partsRef
+      const metadataChanged = cached.metadata !== metadataRef
+
+      // 检查 parts / metadata 引用是否变化（流式响应会创建新数组或新 metadata）
+      if (partsChanged || metadataChanged) {
         // 部分字段变化，创建新对象
         updatedMessages[i] = {
           ...cached,
-          parts: version.parts as MessagePart[],
-          metadata: version.metadata as MessageVersionMetadata | undefined
+          parts: partsRef,
+          metadata: metadataRef
         }
         // 同时更新 displayMessageCache
         displayMessageCache.set(version.id, updatedMessages[i])
@@ -1001,6 +1010,47 @@ const REASONING_VISIBILITY_LABEL_MAP: Record<ReasoningVisibility, string> = {
   off: '关闭推理'
 }
 
+type SamplingSliderKey =
+  | 'temperature'
+  | 'top_p'
+  | 'frequency_penalty'
+  | 'presence_penalty'
+  | 'repetition_penalty'
+  | 'min_p'
+  | 'top_a'
+
+type SamplingIntegerKey = 'top_k' | 'max_tokens' | 'seed'
+type SamplingParameterKey = SamplingSliderKey | SamplingIntegerKey
+
+const SAMPLING_SLIDER_CONTROLS: Array<{
+  key: SamplingSliderKey
+  label: string
+  min: number
+  max: number
+  step: number
+  description: string
+}> = [
+  { key: 'temperature', label: 'Temperature', min: 0, max: 2, step: 0.05, description: '控制创意程度，越低越保守' },
+  { key: 'top_p', label: 'Top P', min: 0, max: 1, step: 0.05, description: '限制概率累积阈值，配合 temperature 使用' },
+  { key: 'frequency_penalty', label: 'Frequency Penalty', min: -2, max: 2, step: 0.05, description: '按出现频率抑制重复' },
+  { key: 'presence_penalty', label: 'Presence Penalty', min: -2, max: 2, step: 0.05, description: '只要出现过就惩罚，鼓励新内容' },
+  { key: 'repetition_penalty', label: 'Repetition Penalty', min: 0, max: 2, step: 0.05, description: '进一步降低重复 token 的概率' },
+  { key: 'min_p', label: 'Min P', min: 0, max: 1, step: 0.05, description: '过滤掉低于阈值的 token，相对 top_p 更动态' },
+  { key: 'top_a', label: 'Top A', min: 0, max: 1, step: 0.05, description: '以最可能 token 为基准的动态筛选' }
+]
+
+const SAMPLING_INTEGER_CONTROLS: Array<{
+  key: SamplingIntegerKey
+  label: string
+  min: number
+  placeholder: string
+  description: string
+}> = [
+  { key: 'top_k', label: 'Top K', min: 0, placeholder: '0 表示关闭', description: '限制候选集合大小，0 为不限' },
+  { key: 'max_tokens', label: 'Max Tokens', min: 1, placeholder: '留空使用模型默认', description: '回复的最大 token 数' },
+  { key: 'seed', label: 'Seed', min: Number.MIN_SAFE_INTEGER, placeholder: '留空为随机', description: '固定采样种子以复现输出' }
+]
+
 const getModelRecord = (modelId: string | null | undefined): any => {
   if (!modelId) {
     return null
@@ -1108,6 +1158,23 @@ const reasoningButtonTitle = computed(() => {
     : '点击启用推理控制'
 })
 
+const isSamplingControlAvailable = computed(() => appStore.activeProvider === 'OpenRouter')
+const samplingParameters = computed<SamplingParameterSettings>(() => {
+  const base = { ...DEFAULT_SAMPLING_PARAMETERS }
+  const overrides = currentConversation.value?.samplingParameters
+  if (overrides && typeof overrides === 'object') {
+    return { ...base, ...overrides }
+  }
+  return base
+})
+const isSamplingEnabled = computed(() => samplingParameters.value.enabled)
+const samplingButtonTitle = computed(() => {
+  if (!isSamplingControlAvailable.value) {
+    return '仅在 OpenRouter 模式下支持参数调节'
+  }
+  return isSamplingEnabled.value ? '点击关闭自定义参数' : '点击启用自定义参数'
+})
+
 const WEB_SEARCH_LEVELS: WebSearchLevel[] = ['quick', 'normal', 'deep']
 const WEB_SEARCH_LEVEL_TEXT: Record<WebSearchLevel, string> = {
   quick: '快速',
@@ -1190,6 +1257,58 @@ const buildReasoningRequestOptions = () => {
     },
     modelId: currentConversation.value?.model
   }
+}
+
+const buildSamplingParameterOverrides = () => {
+  if (!isSamplingControlAvailable.value || !isSamplingEnabled.value) {
+    return null
+  }
+
+  const params = samplingParameters.value
+  const overrides: Record<string, number> = {}
+
+  const pushFloat = (key: SamplingSliderKey) => {
+    const value = params[key]
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      overrides[key] = parseFloat(value.toFixed(4))
+    }
+  }
+
+  const pushNonNegativeInt = (key: 'top_k') => {
+    const value = params[key]
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      overrides[key] = Math.max(0, Math.round(value))
+    }
+  }
+
+  const pushPositiveInt = (key: 'max_tokens') => {
+    const value = params[key]
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      overrides[key] = Math.max(1, Math.round(value))
+    }
+  }
+
+  const pushSeed = () => {
+    const value = params.seed
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      overrides.seed = Math.round(
+        Math.max(Number.MIN_SAFE_INTEGER, Math.min(Number.MAX_SAFE_INTEGER, value))
+      )
+    }
+  }
+
+  pushFloat('temperature')
+  pushFloat('top_p')
+  pushFloat('frequency_penalty')
+  pushFloat('presence_penalty')
+  pushFloat('repetition_penalty')
+  pushFloat('min_p')
+  pushFloat('top_a')
+  pushNonNegativeInt('top_k')
+  pushPositiveInt('max_tokens')
+  pushSeed()
+
+  return Object.keys(overrides).length > 0 ? overrides : null
 }
 
 /**
@@ -1309,6 +1428,127 @@ const selectReasoningVisibility = (visibility: ReasoningVisibility) => {
   updateReasoningPreference({ visibility })
 }
 
+const updateSamplingParameters = (updates: Partial<SamplingParameterSettings>) => {
+  if (!currentConversation.value) {
+    return
+  }
+  chatStore.setConversationSamplingParameters(props.conversationId, updates)
+}
+
+const toggleSamplingParametersEnabled = () => {
+  if (!currentConversation.value) {
+    return
+  }
+  const nextState = !isSamplingEnabled.value
+  updateSamplingParameters({ enabled: nextState })
+  if (!nextState) {
+    parameterMenuVisible.value = false
+  }
+}
+
+const toggleSamplingMenu = (event: MouseEvent) => {
+  event.stopPropagation()
+  if (!isSamplingControlAvailable.value || !currentConversation.value) {
+    parameterMenuVisible.value = false
+    return
+  }
+  const nextState = !parameterMenuVisible.value
+  parameterMenuVisible.value = nextState
+  if (nextState) {
+    webSearchMenuVisible.value = false
+    reasoningMenuVisible.value = false
+  }
+}
+
+const resetSamplingParameters = () => {
+  if (!currentConversation.value) {
+    return
+  }
+  const base: SamplingParameterSettings = {
+    ...DEFAULT_SAMPLING_PARAMETERS,
+    enabled: samplingParameters.value.enabled
+  }
+  chatStore.setConversationSamplingParameters(props.conversationId, base)
+}
+
+const commitSamplingValue = (key: SamplingParameterKey, value: number | null) => {
+  if (!currentConversation.value) {
+    return
+  }
+  updateSamplingParameters({ [key]: value } as Partial<SamplingParameterSettings>)
+}
+
+const handleSamplingSliderInput = (key: SamplingSliderKey, event: Event) => {
+  const target = event.target as HTMLInputElement | null
+  if (!target) {
+    return
+  }
+  const parsed = Number(target.value)
+  if (Number.isNaN(parsed)) {
+    return
+  }
+  commitSamplingValue(key, parsed)
+}
+
+const handleSamplingIntegerInput = (key: SamplingIntegerKey, event: Event) => {
+  const target = event.target as HTMLInputElement | null
+  if (!target) {
+    return
+  }
+  const raw = target.value.trim()
+  if (!raw) {
+    if (key === 'top_k') {
+      commitSamplingValue(key, DEFAULT_SAMPLING_PARAMETERS.top_k ?? 0)
+    } else {
+      commitSamplingValue(key, null)
+    }
+    return
+  }
+  const parsed = Number(raw)
+  if (Number.isNaN(parsed)) {
+    return
+  }
+  if (key === 'top_k') {
+    commitSamplingValue(key, Math.max(0, Math.round(parsed)))
+    return
+  }
+  if (key === 'max_tokens') {
+    commitSamplingValue(key, Math.max(1, Math.round(parsed)))
+    return
+  }
+  if (key === 'seed') {
+    const rounded = Math.round(parsed)
+    const clamped = Math.max(Number.MIN_SAFE_INTEGER, Math.min(Number.MAX_SAFE_INTEGER, rounded))
+    commitSamplingValue(key, clamped)
+    return
+  }
+  commitSamplingValue(key, Math.round(parsed))
+}
+
+const formatSamplingValue = (key: SamplingParameterKey) => {
+  const value = samplingParameters.value[key]
+  if (value === null || value === undefined) {
+    if (key === 'max_tokens') {
+      return '默认'
+    }
+    if (key === 'seed') {
+      return '随机'
+    }
+    const fallback = DEFAULT_SAMPLING_PARAMETERS[key as keyof SamplingParameterSettings]
+    if (typeof fallback === 'number') {
+      return `默认 ${fallback}`
+    }
+    return '默认'
+  }
+  if (typeof value === 'number') {
+    if (key === 'top_k' || key === 'max_tokens' || key === 'seed') {
+      return `${value}`
+    }
+    return value.toFixed(2)
+  }
+  return '—'
+}
+
 /**
  * 处理全局点击事件（用于关闭 Web 搜索菜单）
  * 
@@ -1330,6 +1570,13 @@ const handleGlobalClick = (event: MouseEvent) => {
     const reasoningRoot = reasoningControlRef.value
     if (!reasoningRoot || !targetNode || !reasoningRoot.contains(targetNode)) {
       reasoningMenuVisible.value = false
+    }
+  }
+
+  if (parameterMenuVisible.value) {
+    const parameterRoot = parameterControlRef.value
+    if (!parameterRoot || !targetNode || !parameterRoot.contains(targetNode)) {
+      parameterMenuVisible.value = false
     }
   }
 }
@@ -1662,7 +1909,6 @@ onMounted(() => {
   if (currentConversation.value?.draft) {
     draftInput.value = currentConversation.value.draft
   }
-  
   // 如果组件挂载时就是激活状态，执行初始化
   if (isComponentActive.value) {
     // 使用双重 nextTick 确保 DOM 完全就绪
@@ -1733,6 +1979,7 @@ onUnmounted(() => {
       draftText: draftInput.value
     })
   }
+
 })
 
 /**
@@ -1797,6 +2044,7 @@ watch(isComponentActive, (newVal, oldVal) => {
         draftText: draftInput.value
       })
     }
+
   }
 }, { immediate: false }) // 不立即执行，避免与 onMounted 重复
 
@@ -1846,9 +2094,11 @@ watchDebounced(
   { debounce: 500 } // 500ms 防抖，减少频繁更新导致的性能问题
 )
 
+
 watch(() => props.conversationId, () => {
   webSearchMenuVisible.value = false
   reasoningMenuVisible.value = false
+  parameterMenuVisible.value = false
 })
 
 watch(isWebSearchAvailable, (available) => {
@@ -1866,6 +2116,18 @@ watch(isReasoningControlAvailable, (available) => {
 watch(isReasoningEnabled, (enabled) => {
   if (!enabled) {
     reasoningMenuVisible.value = false
+  }
+})
+
+watch(isSamplingControlAvailable, (available) => {
+  if (!available) {
+    parameterMenuVisible.value = false
+  }
+})
+
+watch(isSamplingEnabled, (enabled) => {
+  if (!enabled) {
+    parameterMenuVisible.value = false
   }
 })
 
@@ -2518,6 +2780,7 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
   try {
     // 获取当前对话使用的模型（优先使用对话专属模型，否则使用全局选中的模型）
     const conversationModel = currentConversation.value.model || chatStore.selectedModel
+    const systemInstruction = (currentConversation.value.customInstructions || '').trim()
 
     // ========== 步骤 1：处理用户消息，添加用户分支 ==========
     // 只有当用户提供了消息内容或附件时才添加用户分支
@@ -2601,6 +2864,7 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
     // 构建 Web 搜索配置（如果用户启用了 Web 搜索功能）
     const webSearchOptions = buildWebSearchRequestOptions()
     const reasoningOptions = buildReasoningRequestOptions()
+    const parameterOverrides = buildSamplingParameterOverrides()
     
     // 调用 aiChatService 发起流式请求
     // stream 是一个异步可迭代对象（AsyncIterable），可以用 for await...of 遍历
@@ -2614,7 +2878,9 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
         webSearch: webSearchOptions,
         requestedModalities, // 请求的输出模态（如 ['text', 'image']）
         imageConfig, // 图像生成配置（如宽高比）
-        reasoning: reasoningOptions
+        reasoning: reasoningOptions,
+        parameters: parameterOverrides,
+        systemInstruction: systemInstruction || null
       }
     )
 
@@ -3292,10 +3558,12 @@ const handleRetryMessage = async (branchId: string) => {
 
   try {
     const conversationModel = currentConversation.value.model || chatStore.selectedModel
+    const systemInstruction = (currentConversation.value.customInstructions || '').trim()
 
     // 发起流式请求
     const webSearchOptions = buildWebSearchRequestOptions()
     const reasoningOptions = buildReasoningRequestOptions()
+    const parameterOverrides = buildSamplingParameterOverrides()
     const stream = aiChatService.streamChatResponse(
       appStore,
       historyForStream,
@@ -3306,7 +3574,9 @@ const handleRetryMessage = async (branchId: string) => {
         webSearch: webSearchOptions,
         requestedModalities,
         imageConfig,
-        reasoning: reasoningOptions
+        reasoning: reasoningOptions,
+        parameters: parameterOverrides,
+        systemInstruction: systemInstruction || null
       }
     )
 
@@ -4299,6 +4569,7 @@ const handleDeleteAllVersions = () => {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
               </svg>
             </div>
+
           </div>
         </div>
 
@@ -4328,7 +4599,8 @@ const handleDeleteAllVersions = () => {
 
       <!-- 输入区 -->
       <div class="bg-white border-t border-gray-200 p-4">
-        <div class="w-full max-w-none">
+        <div class="flex flex-col xl:flex-row gap-4">
+          <div class="flex-1 w-full max-w-none">
           <!-- 视觉模型警告 -->
           <div 
             v-if="visionModelWarning"
@@ -4611,7 +4883,127 @@ const handleDeleteAllVersions = () => {
                 </button>
               </div>
             </div>
-            
+
+            <div
+              v-if="isSamplingControlAvailable"
+              class="relative flex items-center"
+              ref="parameterControlRef"
+            >
+              <div
+                class="flex items-center rounded-lg border overflow-hidden"
+                :class="[
+                  isSamplingEnabled
+                    ? 'bg-blue-500 border-blue-500'
+                    : 'border-gray-200',
+                  (!currentConversation || !isSamplingControlAvailable)
+                    ? 'opacity-60'
+                    : ''
+                ]"
+              >
+                <button
+                  @click="toggleSamplingParametersEnabled"
+                  :disabled="!currentConversation || !isSamplingControlAvailable"
+                  :title="samplingButtonTitle"
+                  class="flex items-center justify-center p-3 transition-colors border-r"
+                  :class="[
+                    isSamplingEnabled
+                      ? 'text-white hover:bg-blue-600 border-blue-400'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200',
+                    (!currentConversation || !isSamplingControlAvailable)
+                      ? 'cursor-not-allowed'
+                      : ''
+                  ]"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M4 17h16M10 7v10m4-10v10"></path>
+                  </svg>
+                  <span
+                    v-if="isSamplingEnabled"
+                    class="ml-1 text-xs font-semibold tracking-wide"
+                  >
+                    自定义
+                  </span>
+                </button>
+                <button
+                  @click="toggleSamplingMenu"
+                  :disabled="!currentConversation || !isSamplingControlAvailable"
+                  title="调节采样参数"
+                  class="flex items-center justify-center px-2 py-3 transition-colors"
+                  :class="[
+                    isSamplingEnabled
+                      ? 'text-white hover:bg-blue-600'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+                    (!currentConversation || !isSamplingControlAvailable)
+                      ? 'cursor-not-allowed'
+                      : ''
+                  ]"
+                >
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 9l6 6 6-6"></path>
+                  </svg>
+                </button>
+              </div>
+
+              <div
+                v-if="parameterMenuVisible"
+                class="absolute bottom-full mb-2 right-0 w-64 bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-30 max-h-[28rem] overflow-y-auto"
+                @click.stop
+              >
+                <div class="flex items-center justify-between px-3 pb-2 text-xs text-gray-500">
+                  <span>采样参数</span>
+                  <button
+                    class="text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+                    :disabled="!isSamplingEnabled"
+                    @click="resetSamplingParameters"
+                  >
+                    重置
+                  </button>
+                </div>
+                <div class="px-3 pb-2 space-y-4">
+                  <div
+                    v-for="control in SAMPLING_SLIDER_CONTROLS"
+                    :key="control.key"
+                    class="flex flex-col gap-1"
+                  >
+                    <div class="flex items-center justify-between text-xs text-gray-500">
+                      <span>{{ control.label }}</span>
+                      <span class="text-gray-700 font-medium">{{ formatSamplingValue(control.key) }}</span>
+                    </div>
+                    <input
+                      type="range"
+                      :min="control.min"
+                      :max="control.max"
+                      :step="control.step"
+                      :value="samplingParameters[control.key] ?? control.min"
+                      @input="handleSamplingSliderInput(control.key, $event)"
+                      :disabled="!isSamplingEnabled"
+                      class="w-full accent-blue-500"
+                    />
+                    <p class="text-[11px] text-gray-400">{{ control.description }}</p>
+                  </div>
+                  <div class="grid grid-cols-3 gap-3">
+                    <label
+                      v-for="control in SAMPLING_INTEGER_CONTROLS"
+                      :key="control.key"
+                      class="flex flex-col gap-1 text-xs text-gray-500"
+                    >
+                      <span>{{ control.label }}</span>
+                      <input
+                        type="number"
+                        class="w-full border rounded-md px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        :placeholder="control.placeholder"
+                        :value="samplingParameters[control.key] ?? ''"
+                        @change="handleSamplingIntegerInput(control.key, $event)"
+                        :disabled="!isSamplingEnabled"
+                        :min="control.key === 'top_k' ? 0 : (control.key === 'max_tokens' ? 1 : undefined)"
+                      />
+                      <p class="text-[11px] text-gray-400">{{ control.description }}</p>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div class="flex-1 min-w-0">
               <textarea
                 ref="textareaRef"
@@ -4674,6 +5066,7 @@ const handleDeleteAllVersions = () => {
           </div>
         </div>
       </div>
+    </div>
       
       <!-- 删除确认对话框 -->
       <DeleteConfirmDialog

@@ -906,6 +906,8 @@ const cancelPendingProjectMenuClose = () => {
     clearTimeout(hoverProjectCloseTimer.value)
     hoverProjectCloseTimer.value = null
   }
+  // Prevent the parent context menu from closing while the pointer is inside the teleported submenu
+  cancelPendingMenuClose()
 }
 
 const changeConversationProject = (conversationId: string, projectId: string | null) => {

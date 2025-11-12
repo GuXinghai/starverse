@@ -70,6 +70,37 @@ export interface ReasoningPreference {
 }
 
 /**
+ * 璇锋眰閲忔嘲鍙傛暟閰嶇疆锛岀敤浜庢嫤鎴劧鏂簨鐗岀瓥鐣ヨ缃�
+ */
+export interface SamplingParameterSettings {
+  enabled: boolean;
+  temperature?: number | null;
+  top_p?: number | null;
+  top_k?: number | null;
+  frequency_penalty?: number | null;
+  presence_penalty?: number | null;
+  repetition_penalty?: number | null;
+  min_p?: number | null;
+  top_a?: number | null;
+  max_tokens?: number | null;
+  seed?: number | null;
+}
+
+export const DEFAULT_SAMPLING_PARAMETERS: Readonly<SamplingParameterSettings> = Object.freeze({
+  enabled: false,
+  temperature: 1,
+  top_p: 1,
+  top_k: 0,
+  frequency_penalty: 0,
+  presence_penalty: 0,
+  repetition_penalty: 1,
+  min_p: 0,
+  top_a: 0,
+  max_tokens: null,
+  seed: null
+})
+
+/**
  * 单条推理详情（reasoning_details 项）
  */
 export interface ReasoningDetail {
@@ -231,6 +262,7 @@ export interface Conversation {
   webSearchEnabled?: boolean;
   webSearchLevel?: WebSearchLevel;
   reasoningPreference?: ReasoningPreference;
+  samplingParameters?: SamplingParameterSettings;
 }
 
 /**
