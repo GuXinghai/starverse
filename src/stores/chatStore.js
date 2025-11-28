@@ -3,6 +3,11 @@ import { ref, computed } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import { useAppStore } from './index'
 import { createTextMessage, extractTextFromMessage, DEFAULT_SAMPLING_PARAMETERS } from '../types/chat'
+import {
+  DEFAULT_CONVERSATION_STATUS,
+  normalizeConversationStatus,
+  normalizeConversationTags
+} from '../types/conversation'
 import { electronStore as persistenceStore, isUsingElectronStoreFallback, isUsingDbBridgeFallback } from '../utils/electronBridge'
 import { sqliteChatPersistence } from '../services/chatPersistence'
 import { sqliteProjectPersistence } from '../services/projectPersistence'
@@ -377,6 +382,21 @@ export const useChatStore = defineStore('chat', () => {
     dirtyConversationIds.value.add(conversationId)
   }
 
+  /**
+   * 确保 tree 对象的有效性
+   * 
+   * 处理场景：
+   * - tree 为 null/undefined
+   * - tree.branches 不存在
+   * - tree 结构损坏
+   * 
+   * @param {Object} tree - 分支树对象
+   * @returns {ConversationTree} 有效的分支树对象
+   * 
+   * 🛡️ 容错处理：
+   * - 如果 tree 无效，返回空树（createEmptyTree）
+   * - 防止崩溃，保障程序正常运行
+   */
   const ensureTree = (tree) => {
     if (tree && tree.branches) {
       return tree
@@ -384,6 +404,24 @@ export const useChatStore = defineStore('chat', () => {
     return createEmptyTree()
   }
 
+  /**
+   * 深复制分支树
+   * 
+   * 实现原理：
+   * 1. 序列化树 (serializeTree): Map → Array
+   * 2. 恢复树 (restoreTree): Array → 新的 Map
+   * 
+   * 使用场景：
+   * - 创建对话副本
+   * - 隔离修改（避免影响原对象）
+   * 
+   * @param {ConversationTree} tree - 原始分支树
+   * @returns {ConversationTree} 新的分支树实例
+   * 
+   * ⚠️ 注意：
+   * - 性能开销较大，避免频繁调用
+   * - 只在必要时使用（如创建副本）
+   */
   const cloneTree = (tree) => {
     const normalized = ensureTree(tree)
     return restoreTree(serializeTree(normalized))
@@ -420,7 +458,9 @@ export const useChatStore = defineStore('chat', () => {
       webSearchEnabled: conversation.webSearchEnabled ?? false,
       webSearchLevel: conversation.webSearchLevel || 'normal',
       reasoningPreference: normalizeReasoningPreference(conversation.reasoningPreference),
-      samplingParameters: normalizeSamplingParameters(conversation.samplingParameters)
+      samplingParameters: normalizeSamplingParameters(conversation.samplingParameters),
+      status: normalizeConversationStatus(conversation.status),
+      tags: normalizeConversationTags(conversation.tags)
     }
   }
 
@@ -442,7 +482,9 @@ export const useChatStore = defineStore('chat', () => {
       webSearchEnabled: snapshot.webSearchEnabled ?? false,
       webSearchLevel: snapshot.webSearchLevel || 'normal',
       reasoningPreference: normalizeReasoningPreference(snapshot.reasoningPreference),
-      samplingParameters: normalizeSamplingParameters(snapshot.samplingParameters)
+      samplingParameters: normalizeSamplingParameters(snapshot.samplingParameters),
+      status: normalizeConversationStatus(snapshot.status),
+      tags: normalizeConversationTags(snapshot.tags)
     }
   }
 
@@ -770,7 +812,9 @@ export const useChatStore = defineStore('chat', () => {
       webSearchLevel: 'normal',
       reasoningPreference: { ...DEFAULT_REASONING_PREFERENCE },
       samplingParameters: { ...DEFAULT_SAMPLING_PARAMETERS },
-      projectId: null
+      projectId: null,
+      status: DEFAULT_CONVERSATION_STATUS,
+      tags: []
     }
     
     // 添加到数组开头
@@ -1243,6 +1287,86 @@ export const useChatStore = defineStore('chat', () => {
     markConversationDirty(conversationId)
     saveConversationsSync()
     return true
+  }
+
+  const setConversationStatus = (conversationId, status) => {
+    const conversation = conversations.value.find(conv => conv.id === conversationId)
+    if (!conversation) {
+      console.error('❌ setConversationStatus: 找不到对话', conversationId)
+      return false
+    }
+
+    const normalized = normalizeConversationStatus(status)
+    if (conversation.status === normalized) {
+      return true
+    }
+
+    conversation.status = normalized
+    conversation.updatedAt = Date.now()
+    markConversationDirty(conversationId)
+    saveConversationsSync()
+    return true
+  }
+
+  const setConversationTags = (conversationId, tags) => {
+    const conversation = conversations.value.find(conv => conv.id === conversationId)
+    if (!conversation) {
+      console.error('❌ setConversationTags: 找不到对话', conversationId)
+      return false
+    }
+
+    const normalized = normalizeConversationTags(tags)
+    const current = Array.isArray(conversation.tags) ? conversation.tags : []
+    const isSame =
+      current.length === normalized.length &&
+      current.every((tag, index) => tag === normalized[index])
+
+    if (isSame) {
+      return true
+    }
+
+    conversation.tags = normalized
+    conversation.updatedAt = Date.now()
+    markConversationDirty(conversationId)
+    saveConversationsSync()
+    return true
+  }
+
+  const addConversationTag = (conversationId, tag) => {
+    const trimmed = typeof tag === 'string' ? tag.trim() : ''
+    if (!trimmed) {
+      return false
+    }
+
+    const conversation = conversations.value.find(conv => conv.id === conversationId)
+    if (!conversation) {
+      console.error('❌ addConversationTag: 找不到对话', conversationId)
+      return false
+    }
+
+    const base = Array.isArray(conversation.tags) ? conversation.tags : []
+    if (base.includes(trimmed)) {
+      return true
+    }
+
+    const next = normalizeConversationTags([...base, trimmed])
+    return setConversationTags(conversationId, next)
+  }
+
+  const removeConversationTag = (conversationId, tag) => {
+    const conversation = conversations.value.find(conv => conv.id === conversationId)
+    if (!conversation) {
+      console.error('❌ removeConversationTag: 找不到对话', conversationId)
+      return false
+    }
+
+    const base = Array.isArray(conversation.tags) ? conversation.tags : []
+    if (!base.includes(tag)) {
+      return true
+    }
+
+    const next = base.filter(item => item !== tag)
+    return setConversationTags(conversationId, next)
   }
 
   /**
@@ -1829,12 +1953,16 @@ export const useChatStore = defineStore('chat', () => {
     deleteConversation,
     renameConversation,
     createProject,
-  renameProject,
-  deleteProject,
-  assignConversationToProject,
-  removeConversationFromProject,
-  getProjectById,
-  setActiveProject,
+    renameProject,
+    deleteProject,
+    assignConversationToProject,
+    removeConversationFromProject,
+    setConversationStatus,
+    setConversationTags,
+    addConversationTag,
+    removeConversationTag,
+    getProjectById,
+    setActiveProject,
   queueProjectMessage,
   consumeProjectMessage,
     

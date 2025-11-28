@@ -4,6 +4,18 @@ type ElectronStoreBridge = {
   delete: (key: string) => Promise<boolean>
 }
 
+type FilePickerOptions = {
+  filters?: Array<{ name: string; extensions: string[] }>
+  defaultMimeType?: string
+}
+
+type SelectedFileResult = {
+  dataUrl: string
+  filename: string
+  size: number
+  mimeType?: string
+}
+
 type IpcRendererBridge = {
   on: (...args: any[]) => void
   off: (...args: any[]) => void
@@ -13,12 +25,14 @@ type IpcRendererBridge = {
 
 type ElectronApiBridge = {
   selectImage: () => Promise<string | null>
+  selectFile?: (options?: FilePickerOptions) => Promise<SelectedFileResult | null>
   openImage?: (imageUrl: string) => Promise<{
     success: boolean
     path?: string
     url?: string
     error?: string
   }>
+  openExternal?: (url: string) => Promise<{ success: boolean; error?: string }>
 }
 
 type DbInvokeBridge = {
@@ -71,7 +85,7 @@ const resolveElectronApi = (): { api: ElectronApiBridge; isFallback: boolean } =
   }
 
   if (typeof window !== 'undefined') {
-    console.warn('[electronBridge] electronAPI bridge missing; image selection disabled in this environment.')
+    console.warn('[electronBridge] electronAPI bridge missing; file and image selection disabled in this environment.')
   }
 
   return {
@@ -79,6 +93,15 @@ const resolveElectronApi = (): { api: ElectronApiBridge; isFallback: boolean } =
       async selectImage() {
         console.warn('[electronBridge] selectImage called without electron bridge; returning null.')
         return null
+      },
+      async selectFile() {
+        console.warn('[electronBridge] selectFile called without electron bridge; returning null.')
+        return null
+      },
+      async openExternal(url: string) {
+        console.warn('[electronBridge] openExternal called without electron bridge; using window.open fallback.')
+        window.open?.(url, '_blank', 'noopener')
+        return { success: false, error: 'electron bridge unavailable' }
       }
     },
     isFallback: true
