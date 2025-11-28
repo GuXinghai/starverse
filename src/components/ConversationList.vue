@@ -77,9 +77,9 @@ import { useConversationStore } from '../stores/conversation'
 import { useProjectStore } from '../stores/project'
 import { useModelStore } from '../stores/model'
 import { runFulltextSearch, SearchDslError } from '../services/searchService'
-import { CONVERSATION_STATUS_LABELS, DEFAULT_CONVERSATION_STATUS, type ConversationStatus } from '../types/conversation'
+import type { ConversationStatus } from '../types/conversation'
 import { useFormatters } from '../composables/useFormatters'
-import { useMenuPositioning, type Placement } from '../composables/useMenuPositioning'
+import { useMenuPositioning } from '../composables/useMenuPositioning'
 
 type ConversationRecord = {
   id: string
