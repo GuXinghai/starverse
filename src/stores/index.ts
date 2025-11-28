@@ -252,3 +252,10 @@ export const useAppStore = defineStore('app', () => {
     removeMessage,
   }
 })
+
+// ========== 模块化 Store 统一导出 ==========
+export { useConversationStore } from './conversation'
+export { useModelStore } from './model'
+export { useBranchStore } from './branch'
+export { usePersistenceStore } from './persistence'
+export { useProjectStore } from './project'

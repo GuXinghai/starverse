@@ -5,6 +5,7 @@ import type {
   ConvoRecord,
   CreateConvoPayload,
   SaveConvoPayload,
+  SaveConvoWithMessagesPayload,
   DeleteConvoPayload,
   ArchivedConvoRecord,
   ListArchivedParams,
@@ -17,10 +18,19 @@ import type {
   FulltextSearchParams,
   FulltextSearchResult,
   HealthPingResult,
+  HealthStatsResult,
   MessageListParams,
   MessageRecord,
-  ReplaceMessagesPayload
+  ReplaceMessagesPayload,
+  AppendMessageDeltaPayload
 } from './types'
+
+const DEBUG_DB = typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEBUG_DB === 'true'
+const debugLog = (...args: any[]) => {
+  if (DEBUG_DB) {
+    console.log(...args)
+  }
+}
 
 const assertBridge = () => {
   if (isUsingDbBridgeFallback) {
@@ -30,12 +40,12 @@ const assertBridge = () => {
 }
 
 const invoke = async <T = unknown>(method: DbMethod, params?: unknown) => {
-  console.log(`🔍 [dbService.invoke] 调用方法: ${method}`)
-  console.log(`🔍 [dbService.invoke] 参数类型: ${typeof params}`)
+  debugLog(`🔍 [dbService.invoke] 调用方法: ${method}`)
+  debugLog(`🔍 [dbService.invoke] 参数类型: ${typeof params}`)
   
-  if (method === 'message.replace' && params) {
+  if (DEBUG_DB && method === 'message.replace' && params) {
     const payload = params as ReplaceMessagesPayload
-    console.log(`🔍 [dbService.invoke] message.replace 详情:`, {
+    debugLog(`🔍 [dbService.invoke] message.replace 详情:`, {
       convoId: payload.convoId,
       messageCount: payload.messages?.length || 0
     })
@@ -44,7 +54,7 @@ const invoke = async <T = unknown>(method: DbMethod, params?: unknown) => {
     if (payload.messages && Array.isArray(payload.messages)) {
       for (let i = 0; i < payload.messages.length; i++) {
         const msg = payload.messages[i]
-        console.log(`🔍 [dbService.invoke] 消息 ${i + 1}:`, {
+        debugLog(`🔍 [dbService.invoke] 消息 ${i + 1}:`, {
           role: msg.role,
           bodyLength: msg.body?.length || 0,
           hasMeta: !!msg.meta,
@@ -54,7 +64,7 @@ const invoke = async <T = unknown>(method: DbMethod, params?: unknown) => {
         // 尝试序列化检查
         try {
           const serialized = JSON.stringify(msg)
-          console.log(`  ✅ 消息 ${i + 1} 可序列化，大小: ${serialized.length}`)
+          debugLog(`  ✅ 消息 ${i + 1} 可序列化，大小: ${serialized.length}`)
         } catch (e) {
           console.error(`  ❌ 消息 ${i + 1} 无法序列化:`, e)
           console.error(`  ❌ 问题消息:`, msg)
@@ -62,7 +72,7 @@ const invoke = async <T = unknown>(method: DbMethod, params?: unknown) => {
         
         // 检查 meta.metadata
         if (msg.meta?.metadata) {
-          console.log(`🔍 [dbService.invoke] 消息 ${i + 1} metadata:`, {
+          debugLog(`🔍 [dbService.invoke] 消息 ${i + 1} metadata:`, {
             type: typeof msg.meta.metadata,
             keys: Object.keys(msg.meta.metadata),
             isProxy: msg.meta.metadata.constructor?.name === 'Proxy'
@@ -70,7 +80,7 @@ const invoke = async <T = unknown>(method: DbMethod, params?: unknown) => {
           
           try {
             const metaStr = JSON.stringify(msg.meta.metadata)
-            console.log(`  ✅ metadata 可序列化，大小: ${metaStr.length}`)
+            debugLog(`  ✅ metadata 可序列化，大小: ${metaStr.length}`)
           } catch (e) {
             console.error(`  ❌ metadata 无法序列化:`, e)
             console.error(`  ❌ metadata 内容:`, msg.meta.metadata)
@@ -83,9 +93,9 @@ const invoke = async <T = unknown>(method: DbMethod, params?: unknown) => {
   const bridge = assertBridge()
   
   try {
-    console.log(`🔍 [dbService.invoke] 准备调用 bridge.invoke...`)
+    debugLog(`🔍 [dbService.invoke] 准备调用 bridge.invoke...`)
     const result = await bridge.invoke<T>(method, params)
-    console.log(`✅ [dbService.invoke] ${method} 调用成功`)
+    debugLog(`✅ [dbService.invoke] ${method} 调用成功`)
     return result
   } catch (error) {
     console.error(`❌ [dbService.invoke] ${method} 调用失败:`, error)
@@ -99,6 +109,7 @@ const invoke = async <T = unknown>(method: DbMethod, params?: unknown) => {
 export const dbService = {
   // ========== Health ==========
   ping: () => invoke<HealthPingResult>('health.ping'),
+  stats: () => invoke<HealthStatsResult>('health.stats'),
   
   // ========== Project APIs ==========
   createProject: (payload: CreateProjectPayload) => invoke<ProjectRecord>('project.create', payload),
@@ -112,6 +123,8 @@ export const dbService = {
   // ========== Conversation APIs ==========
   createConvo: (payload: CreateConvoPayload) => invoke<ConvoRecord>('convo.create', payload),
   saveConvo: (payload: SaveConvoPayload) => invoke<{ ok: boolean }>('convo.save', payload),
+  saveConvoWithMessages: (payload: SaveConvoWithMessagesPayload) =>
+    invoke<{ ok: boolean }>('convo.saveWithMessages', payload),
   listConvos: (params?: ConvoListParams) => invoke<ConvoRecord[]>('convo.list', params ?? {}),
   deleteConvo: (payload: DeleteConvoPayload) => invoke<{ ok: boolean }>('convo.delete', payload),
   deleteConvos: (ids: string[]) => invoke<{ deleted: number }>('convo.deleteMany', { ids }),
@@ -122,6 +135,7 @@ export const dbService = {
   
   // ========== Message APIs ==========
   appendMessage: (payload: AppendMessagePayload) => invoke<MessageRecord>('message.append', payload),
+  appendMessageDelta: (payload: AppendMessageDeltaPayload) => invoke<{ ok: boolean }>('message.appendDelta', payload),
   listMessages: (params: MessageListParams) => invoke<MessageRecord[]>('message.list', params),
   replaceMessages: (payload: ReplaceMessagesPayload) =>
     invoke<{ ok: boolean }>('message.replace', payload),
@@ -134,4 +148,4 @@ export const dbService = {
   optimizeFts: () => invoke<{ ok: boolean }>('maintenance.optimize')
 }
 
-export type { ProjectRecord, ConvoRecord, MessageRecord, FulltextSearchResult, ArchivedConvoRecord }
+export type { ProjectRecord, ConvoRecord, MessageRecord, FulltextSearchResult, ArchivedConvoRecord, HealthStatsResult }

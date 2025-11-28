@@ -98,3 +98,6 @@ temp/
 
 # Archived/deprecated components
 archived-components/
+
+*storybook.log
+storybook-static

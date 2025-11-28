@@ -79,6 +79,7 @@ import { useModelStore } from '../stores/model'
 import { runFulltextSearch, SearchDslError } from '../services/searchService'
 import { CONVERSATION_STATUS_LABELS, DEFAULT_CONVERSATION_STATUS, type ConversationStatus } from '../types/conversation'
 import { useFormatters } from '../composables/useFormatters'
+import { useMenuPositioning, type Placement } from '../composables/useMenuPositioning'
 
 type ConversationRecord = {
   id: string
@@ -110,6 +111,9 @@ const modelStore = useModelStore()
 
 // ✅ TODO 1 已完成: 使用 useFormatters composable
 const { getStatusLabel, getStatusBadgeClass, getStatusBadgeClassActive, formatModelName } = useFormatters()
+
+// ✅ TODO 1.2 已完成: 使用 useMenuPositioning composable
+const { computeMenuPosition } = useMenuPositioning()
 
 // 检查对话是否正在生成中
 const isConversationGenerating = (conversation: ConversationRecord): boolean => {
@@ -191,12 +195,6 @@ const hoverCloseTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const hoverProjectMenuId = ref<string | null>(null)
 const hoverProjectOpenTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const hoverProjectCloseTimer = ref<ReturnType<typeof setTimeout> | null>(null)
-
-type Placement =
-  | 'right-start' | 'right-end'
-  | 'left-start' | 'left-end'
-  | 'bottom-start' | 'bottom-end'
-  | 'top-start' | 'top-end'
 
 /**
  * ========================================
@@ -341,91 +339,7 @@ const registerDprMediaQuery = () => {
   }
 }
 
-/**
- * ========================================
- * TODO 3: 提取到 composables/useMenuPositioning.ts
- * ========================================
- * 
- * 菜单定位算法 - 通用的浮动菜单定位逻辑，可在多个组件间复用
- * 
- * 核心功能:
- *   1. 根据锚点元素位置计算菜单最佳位置
- *   2. 支持 8 个方向的自动布局 (right/left/top/bottom + start/end)
- *   3. 边界碰撞检测，自动选择备选位置
- *   4. 计算 transform-origin 用于动画效果
- * 
- * 重构策略:
- *   1. 创建 composables/useMenuPositioning.ts
- *   2. 导出函数:
- *      - computeMenuPosition(anchorRect, menuSize, placements)
- *      - useMenuPosition() // 包含响应式状态管理
- *   3. 考虑使用 @floating-ui/vue 替代手动实现
- * 
- * 技术改进:
- *   - 添加 TypeScript 严格类型定义
- *   - 支持自定义边距 (PADDING)
- *   - 添加动画过渡配置
- *   - 考虑 RTL 布局支持
- * 
- * 使用场景:
- *   - 对话右键菜单 (contextMenu)
- *   - 项目分配子菜单 (projectMenu)
- *   - 未来的 Tooltip、Popover 组件
- * ========================================
- */
-const defaultPlacements: Placement[] = ['right-start', 'right-end', 'left-start', 'bottom-start', 'top-start']
-
-const computeMenuPosition = (anchorRect: DOMRect, menuW: number, menuH: number, prefer: Placement[] = defaultPlacements) => {
-  const PADDING = 8
-  const viewportWidth = window.innerWidth
-  const viewportHeight = window.innerHeight
-
-  const placements: Record<Placement, () => { x: number; y: number; origin: string }> = {
-    'right-start': () => ({ x: anchorRect.right + PADDING, y: anchorRect.top, origin: 'top left' }),
-    'right-end': () => ({ x: anchorRect.right + PADDING, y: anchorRect.bottom - menuH, origin: 'bottom left' }),
-    'left-start': () => ({ x: anchorRect.left - PADDING - menuW, y: anchorRect.top, origin: 'top right' }),
-    'left-end': () => ({ x: anchorRect.left - PADDING - menuW, y: anchorRect.bottom - menuH, origin: 'bottom right' }),
-    'bottom-start': () => ({ x: anchorRect.left, y: anchorRect.bottom + PADDING, origin: 'top left' }),
-    'bottom-end': () => ({ x: anchorRect.right - menuW, y: anchorRect.bottom + PADDING, origin: 'top right' }),
-    'top-start': () => ({ x: anchorRect.left, y: anchorRect.top - PADDING - menuH, origin: 'bottom left' }),
-    'top-end': () => ({ x: anchorRect.right - menuW, y: anchorRect.top - PADDING - menuH, origin: 'bottom right' })
-  }
-
-  const maxWidth = Math.max(160, viewportWidth - PADDING * 2)
-  const maxHeight = Math.max(120, viewportHeight - PADDING * 2)
-
-  for (const placement of prefer) {
-    const resolver = placements[placement]
-    if (!resolver) {
-      continue
-    }
-    let { x, y, origin } = resolver()
-
-    const maxX = Math.max(PADDING, viewportWidth - PADDING - menuW)
-    const maxY = Math.max(PADDING, viewportHeight - PADDING - menuH)
-
-    x = Math.min(Math.max(PADDING, x), maxX)
-    y = Math.min(Math.max(PADDING, y), maxY)
-
-    const overflow =
-      x + menuW > viewportWidth - PADDING ||
-      x < PADDING ||
-      y + menuH > viewportHeight - PADDING ||
-      y < PADDING
-
-    if (!overflow) {
-      return { x, y, origin, maxW: maxWidth, maxH: maxHeight }
-    }
-  }
-
-  return {
-    x: PADDING,
-    y: PADDING,
-    origin: 'top left',
-    maxW: maxWidth,
-    maxH: maxHeight
-  }
-}
+// ✅ TODO 1.2 已完成: computeMenuPosition 已移至 useMenuPositioning composable
 
 const updateContextMenuPosition = (anchorRect?: DOMRect | null) => {
   if (!hoverMenuId.value) {

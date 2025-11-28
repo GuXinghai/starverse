@@ -21,6 +21,12 @@ export interface ElectronAPI {
   }>
   openExternal: (url: string) => Promise<{
     success: boolean
+    windowId?: number
+    error?: string
+  }>
+  openInAppLink: (url: string, windowId?: number) => Promise<{
+    tabId?: string
+    windowId?: number
     error?: string
   }>
   selectFile: (options?: {
@@ -93,6 +99,33 @@ export interface OpenRouterBridge {
   abort: (requestId: string) => Promise<boolean>
 }
 
+export interface InAppBridge {
+  openLink: (url: string, windowId?: number) => Promise<{ tabId: string; windowId: number }>
+  goBack: (tabId: string) => Promise<boolean>
+  goForward: (tabId: string) => Promise<boolean>
+  reload: (tabId: string) => Promise<boolean>
+  openExternal: (tabId: string) => Promise<boolean>
+  copyLink: (tabId: string) => Promise<boolean>
+  closeTab: (tabId: string) => Promise<boolean>
+  detachTab: (tabId: string) => Promise<{ tabId?: string; windowId?: number } | null>
+  focusTab: (tabId: string) => Promise<boolean>
+  newWindow: () => Promise<{ windowId: number }>
+  getWindowState: (windowId: number) => Promise<{
+    windowId: number
+    activeTabId: string | null
+    tabs: Array<{
+      id: string
+      url: string
+      title: string
+      windowId: number
+      canGoBack: boolean
+      canGoForward: boolean
+      isLoading: boolean
+    }>
+  } | null>
+  onWindowState: (callback: (payload: any) => void) => () => void
+}
+
 declare global {
   interface Window {
     electronStore?: ElectronStore
@@ -100,5 +133,6 @@ declare global {
     ipcRenderer?: ElectronIpcRenderer
     dbBridge?: DbInvokeBridge
     openRouterBridge?: OpenRouterBridge
+    inapp?: InAppBridge
   }
 }

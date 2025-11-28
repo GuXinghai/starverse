@@ -22,8 +22,10 @@ import {
   FindProjectByNameSchema,
   CountConversationsSchema,
   AppendMessageSchema,
+  AppendMessageDeltaSchema,
   CreateConvoSchema,
   SaveConvoSchema,
+  SaveConvoWithMessagesSchema,
   DeleteConvoSchema,
   ArchiveConvoSchema,
   RestoreConvoSchema,
@@ -60,8 +62,8 @@ export class DbWorkerRuntime {
     this.applyPragmas()
     this.db.exec(readFileSync(schemaPath, 'utf8'))
 
-    if (config.logSlowQueryMs) {
-      configureLogging({ slowQueryMs: config.logSlowQueryMs })
+    if (config.logSlowQueryMs || config.logDirectory) {
+      configureLogging({ slowQueryMs: config.logSlowQueryMs, directory: config.logDirectory })
     }
 
     this.db.pragma('busy_timeout = 5000')
@@ -139,6 +141,26 @@ export class DbWorkerRuntime {
       return { ok: true }
     })
 
+    this.handlers.set('convo.saveWithMessages', (raw) => {
+      const input = SaveConvoWithMessagesSchema.parse(raw)
+      const messages = input.messages.map((message, index) => ({
+        convoId: input.convo.id,
+        role: message.role,
+        body: message.body,
+        createdAt: message.createdAt,
+        seq: message.seq ?? index + 1,
+        meta: message.meta
+      }))
+
+      const saveTxn = this.db.transaction(() => {
+        this.convoRepo.save(input.convo)
+        this.messageRepo.replaceForConvo(input.convo.id, messages)
+      })
+
+      saveTxn()
+      return { ok: true }
+    })
+
     this.handlers.set('convo.list', (raw) => {
       const input = ListConvoSchema.parse(raw ?? {})
       return this.convoRepo.list(input)
@@ -183,6 +205,11 @@ export class DbWorkerRuntime {
     this.handlers.set('message.append', (raw) => {
       const input = AppendMessageSchema.parse(raw)
       return this.messageRepo.append(input)
+    })
+
+    this.handlers.set('message.appendDelta', (raw) => {
+      const input = AppendMessageDeltaSchema.parse(raw)
+      return this.messageRepo.appendDelta(input)
     })
 
     this.handlers.set('message.list', (raw) => {

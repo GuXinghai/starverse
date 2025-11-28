@@ -1,18 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAppStore } from '../stores'
 import type { AIProvider, WebSearchEngine } from '../stores'
-// @ts-ignore - chatStore.js is a JavaScript file
-import { useChatStore } from '../stores/chatStore'
+import { useModelStore } from '../stores/model'
 // @ts-ignore - aiChatService.js is a JavaScript file
 import { aiChatService } from '../services/aiChatService'
 
 const store = useAppStore()
-const chatStore = useChatStore()
+const modelStore = useModelStore()
 const isLoading = ref(false)
 const saveMessage = ref('')
 const showGeminiPassword = ref(false)
 const showOpenRouterPassword = ref(false)
+
+// 滚动容器引用
+const settingsContainer = ref<HTMLElement | null>(null)
+let scrollTimer: number | null = null
 
 // 当前激活的 Provider
 const activeProvider = computed({
@@ -63,7 +66,7 @@ const defaultModel = computed({
 
 // 获取可用模型列表（用于默认模型选择器）
 const availableModelsForDefault = computed(() => {
-  return chatStore.availableModelsMap
+  return modelStore.modelDataMap
 })
 
 // 监听 Provider 切换，自动刷新模型列表
@@ -82,7 +85,7 @@ watch(activeProvider, async (newProvider, oldProvider) => {
         saveMessage.value = '正在加载模型列表...'
         // @ts-ignore
         const models = await aiChatService.listAvailableModels(store)
-        chatStore.setAvailableModels(models)
+        modelStore.setAvailableModels(models)
         saveMessage.value = `已切换到 ${newProvider}，加载了 ${models.length} 个模型`
         console.log(`✓ 已为 ${newProvider} 加载 ${models.length} 个模型`)
       } catch (error) {
@@ -157,7 +160,7 @@ const saveSettings = async () => {
       // @ts-ignore
       const models = await aiChatService.listAvailableModels(store)
       console.log('模型列表加载成功:', models)
-      chatStore.setAvailableModels(models)
+      modelStore.setAvailableModels(models)
       saveMessage.value = `设置保存成功！已加载 ${models.length} 个可用模型`
     } catch (modelError) {
       console.error('加载模型列表失败:', modelError)
@@ -191,10 +194,39 @@ const saveDefaultModel = async () => {
   }
 }
 
+// 滚动条自动隐藏处理
+const handleScroll = () => {
+  if (!settingsContainer.value) return
+  
+  settingsContainer.value.classList.add('scrolling')
+  
+  if (scrollTimer !== null) {
+    clearTimeout(scrollTimer)
+  }
+  
+  scrollTimer = window.setTimeout(() => {
+    settingsContainer.value?.classList.remove('scrolling')
+  }, 1000)
+}
+
+onMounted(() => {
+  if (settingsContainer.value) {
+    settingsContainer.value.addEventListener('scroll', handleScroll)
+  }
+})
+
+onUnmounted(() => {
+  if (settingsContainer.value) {
+    settingsContainer.value.removeEventListener('scroll', handleScroll)
+  }
+  if (scrollTimer !== null) {
+    clearTimeout(scrollTimer)
+  }
+})
 </script>
 
 <template>
-  <div class="h-full bg-gray-50 overflow-y-auto">
+  <div ref="settingsContainer" class="h-full bg-gray-50 overflow-y-auto scrollbar-auto-hide">
     <div class="max-w-2xl mx-auto p-6">
       <!-- 标题 -->
       <div class="mb-8">

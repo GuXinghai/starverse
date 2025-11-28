@@ -35,12 +35,40 @@
 <script setup lang="ts">
 // ========== Vue 核心 API ==========
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import { watchDebounced, useThrottleFn } from '@vueuse/core'  // 防抖和节流工具
+import { watchDebounced } from '@vueuse/core'  // 防抖工具
 import { v4 as uuidv4 } from 'uuid'  // UUID 生成器，用于创建唯一 ID
 
+// ========== Composables ==========
+import { useAttachmentManager } from '../composables/useAttachmentManager'
+import { useMessageEditing } from '../composables/useMessageEditing'
+import { 
+  useImageGeneration, 
+  IMAGE_ASPECT_RATIO_OPTIONS,
+  type ImageGenerationConfig 
+} from '../composables/useImageGeneration'
+import {
+  useReasoningControl,
+  REASONING_EFFORT_LABEL_MAP,
+  REASONING_VISIBILITY_LABEL_MAP,
+  REASONING_EFFORT_OPTIONS,
+  REASONING_VISIBILITY_OPTIONS
+} from '../composables/useReasoningControl'
+import {
+  useSamplingParameters
+} from '../composables/useSamplingParameters'
+import {
+  useWebSearch
+} from '../composables/useWebSearch'
+
 // ========== Store ==========
-// @ts-ignore - chatStore.js 是 JavaScript 文件，暂无类型定义
-import { useChatStore } from '../stores/chatStore'
+// 新的模块化 Stores
+import { useConversationStore } from '../stores/conversation'
+import { useBranchStore } from '../stores/branch'
+import { useModelStore } from '../stores/model'
+import { usePersistenceStore } from '../stores/persistence'
+
+// 旧的 chatStore（已完全迁移到新的模块化 Stores）
+// import { useChatStore } from '../stores/chatStore'
 import { useAppStore } from '../stores'
 import { useProjectWorkspaceStore } from '../stores/projectWorkspaceStore'
 
@@ -49,15 +77,13 @@ import { useProjectWorkspaceStore } from '../stores/projectWorkspaceStore'
 import { aiChatService } from '../services/aiChatService'  // AI 聊天服务，处理 API 请求
 
 // ========== 类型定义和工具函数 ==========
-import { extractTextFromMessage, DEFAULT_SAMPLING_PARAMETERS } from '../types/chat'  // 从消息 parts 中提取纯文本
+import { extractTextFromMessage } from '../types/chat'  // 从消息 parts 中提取纯文本
 import type { ProjectPromptTemplate } from '../services/projectPersistence'
 import type {
   MessagePart,
   MessageReasoningMetadata,
   MessageVersionMetadata,
-  ReasoningEffort,
   ReasoningPreference,
-  ReasoningVisibility,
   TextPart,
   UsageMetrics,
   WebSearchLevel,
@@ -73,13 +99,11 @@ import {
 import type { ConversationStatus } from '../types/conversation'
 
 // ========== 子组件 ==========
-import FavoriteModelSelector from './FavoriteModelSelector.vue'  // 收藏模型快速选择器
-import QuickModelSearch from './QuickModelSearch.vue'  // 模型快速搜索
-import AdvancedModelPickerModal from './AdvancedModelPickerModal.vue'  // 高级模型选择对话框
 import ContentRenderer from './ContentRenderer.vue'  // 消息内容渲染器（Markdown/LaTeX）
 import AttachmentPreview from './AttachmentPreview.vue'  // 附件预览组件
 import MessageBranchController from './MessageBranchController.vue'  // 消息分支控制器
 import DeleteConfirmDialog from './DeleteConfirmDialog.vue'  // 删除确认对话框
+import ChatScrollContainer from './chat/ChatScrollContainer.vue'  // Stick-to-Bottom 滚动容器
 
 // ========== Props 定义 ==========
 /**
@@ -94,84 +118,163 @@ const props = defineProps<{
 }>()
 
 // ========== Store 实例 ==========
-const chatStore = useChatStore()  // 聊天 store，管理对话、消息、模型等数据
+// 新的模块化 Stores
+const conversationStore = useConversationStore()
+const branchStore = useBranchStore()
+const modelStore = useModelStore()
+const persistenceStore = usePersistenceStore()
+
+// 其他 Stores
 const appStore = useAppStore()  // 应用 store，管理全局配置（API Key、Provider 等）
 const projectWorkspaceStore = useProjectWorkspaceStore()
 
 // ========== DOM 引用 ==========
 const draftInput = ref('')  // 草稿输入框的文本内容（双向绑定到 textarea）
-const chatContainer = ref<HTMLElement>()  // 消息列表容器的 DOM 引用，用于滚动控制
+const chatScrollRef = ref<InstanceType<typeof ChatScrollContainer> | null>(null)  // 滚动容器组件引用（Stick-to-Bottom 状态机）
 const textareaRef = ref<HTMLTextAreaElement | null>(null)  // 输入框的 DOM 引用，用于聚焦控制
 const webSearchControlRef = ref<HTMLElement | null>(null)  // Web 搜索控制按钮的 DOM 引用，用于点击外部关闭菜单
-const webSearchMenuVisible = ref(false)  // Web 搜索菜单的显示状态
 const reasoningControlRef = ref<HTMLElement | null>(null)  // 推理控制按钮 DOM 引用
-const reasoningMenuVisible = ref(false)  // 推理控制菜单显示状态
 const parameterControlRef = ref<HTMLElement | null>(null)  // 采样参数控制按钮 DOM 引用
-const parameterMenuVisible = ref(false)  // 采样参数菜单显示状态
 
-// ========== 多模态附件管理 ==========
-/**
- * 待发送的图片附件列表
- * - 存储 Base64 Data URI 格式的图片数据
- * - 用户选择图片后临时存放在此数组
- * - 发送消息时会将这些图片转换为 MessagePart
- * - 发送成功后清空
- */
-const pendingAttachments = ref<string[]>([])
-const MAX_IMAGE_SIZE_MB = 10  // 单张图片最大大小限制（MB）
-const MAX_IMAGES_PER_MESSAGE = 5  // 单条消息最多可附加的图片数量
+// ========== Composable 集成：滚动控制 ==========
+// DEPRECATED: 旧的 useScrollControl 已被 ChatScrollContainer 替代
+// 现在通过 chatScrollRef.value?.onNewContent() 等方法调用
 
-type PendingFileAttachment = {
-  id: string
-  name: string
-  dataUrl: string
-  size: number
-  mimeType?: string
+// ========== Composables 初始化 ==========
+// 附件管理
+const attachmentManager = useAttachmentManager({
+  maxImageSizeMB: 10,
+  maxFileSizeMB: 20,
+  maxImagesPerMessage: Infinity,
+  maxFilesPerMessage: Infinity
+})
+
+// 消息编辑管理
+const messageEditingManager = useMessageEditing({
+  conversationId: props.conversationId
+})
+
+const {
+  editingBranchId,
+  editingText,
+  editingImages,
+  editingFiles,
+  startEditing,
+  cancelEditing,
+  addImageToEdit,
+  removeImageFromEdit,
+  addFileToEdit,
+  removeFileFromEdit
+} = messageEditingManager
+
+// 滚动控制
+// const scrollControl = useScrollControl(chatContainer, {
+//   autoScroll: true
+// })
+
+// 为了兼容现有代码，创建别名
+const pendingAttachments = attachmentManager.images
+const pendingFiles = attachmentManager.files
+
+// ========== 统一菜单状态管理 ==========
+type ActiveMenu = 'pdf' | 'websearch' | 'reasoning' | 'sampling' | null
+const activeMenu = ref<ActiveMenu>(null)
+
+// ========== 附件提示横幅 ==========
+type AttachmentAlert = {
+  type: 'error' | 'warning' | 'info'
+  message: string
+}
+const attachmentAlert = ref<AttachmentAlert | null>(null)
+
+const showAttachmentAlert = (type: AttachmentAlert['type'], message: string, duration = 3000) => {
+  attachmentAlert.value = { type, message }
+  if (duration > 0) {
+    setTimeout(() => {
+      attachmentAlert.value = null
+    }, duration)
+  }
 }
 
-const pendingFiles = ref<PendingFileAttachment[]>([])
-const MAX_FILE_SIZE_MB = 20
-const MAX_FILES_PER_MESSAGE = 3
+const clearAttachmentAlert = () => {
+  attachmentAlert.value = null
+}
+
+// PendingFileAttachment 类型已移至 useAttachmentManager.ts 中的 AttachmentFile
+
 const PDF_ENGINE_OPTIONS = [
   { value: 'pdf-text', label: 'PDF Text（免费，文本为主）' },
   { value: 'mistral-ocr', label: 'Mistral OCR（扫描件/图片，$2/千页）' },
   { value: 'native', label: 'Native（模型原生文件输入，按 tokens 计费）' }
 ] as const
 const selectedPdfEngine = ref<'pdf-text' | 'mistral-ocr' | 'native'>('pdf-text')
-const pdfEngineMenuVisible = ref(false)
 const pdfEngineMenuRef = ref<HTMLElement | null>(null)
 const selectedPdfEngineLabel = computed(() => {
   return PDF_ENGINE_OPTIONS.find(opt => opt.value === selectedPdfEngine.value)?.label || 'PDF Text'
 })
 
-const getDataUriSizeInBytes = (dataUri: string) => {
-  const base64Part = dataUri.split(',')[1]
-  if (!base64Part) return 0
-  return (base64Part.length * 3) / 4
+/**
+ * 计算 Data URI 的 SHA-256 哈希值
+ */
+const calculateDataUriHash = async (dataUri: string): Promise<string> => {
+  try {
+    // 提取 base64 数据部分
+    const base64Data = dataUri.split(',')[1]
+    if (!base64Data) return ''
+    
+    // 将 base64 转换为 Uint8Array
+    const binaryString = atob(base64Data)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+    
+    // 计算 SHA-256 哈希
+    const hashBuffer = await crypto.subtle.digest('SHA-256', bytes)
+    const hashArray = Array.from(new Uint8Array(hashBuffer))
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+    
+    return hashHex
+  } catch (error) {
+    console.error('计算哈希失败:', error)
+    return ''
+  }
 }
 
 /**
- * 选择图片附件
- * 
- * 流程：
- * 1. 检查数量限制
- * 2. 调用 Electron API 打开文件选择对话框
- * 3. 验证图片大小
- * 4. 将 Base64 Data URI 添加到 pendingAttachments
- * 
- * 注意：仅在 Electron 桌面应用中可用，Web 环境会提示用户
+ * 检查图片是否已存在（去重）
+ */
+const isImageDuplicate = async (dataUri: string): Promise<boolean> => {
+  // 方法 1: 快速检查 - 直接比较 Data URI 字符串
+  if (pendingAttachments.value.includes(dataUri)) {
+    return true
+  }
+  
+  // 方法 2: 精确检查 - 计算哈希值比较
+  const newHash = await calculateDataUriHash(dataUri)
+  if (!newHash) return false
+  
+  for (const existingDataUri of pendingAttachments.value) {
+    const existingHash = await calculateDataUriHash(existingDataUri)
+    if (existingHash === newHash) {
+      return true
+    }
+  }
+  
+  return false
+}
+
+/**
+ * 选择图片附件（使用 Electron API）
+ * 通过 Electron 桥接调用系统文件选择器
  */
 const handleSelectImage = async () => {
   try {
-    // 检查是否已达到最大数量
-    if (pendingAttachments.value.length >= MAX_IMAGES_PER_MESSAGE) {
-      alert(`每条消息最多只能添加 ${MAX_IMAGES_PER_MESSAGE} 张图片`)
-      return
-    }
-
+    clearAttachmentAlert()
+    
     // 检查 Electron API 可用性
     if (!electronApiBridge?.selectImage || isUsingElectronApiFallback) {
-      alert('当前环境不支持选择图片，请在桌面应用中使用此功能。')
+      showAttachmentAlert('warning', '当前环境不支持选择图片，请在桌面应用中使用此功能')
       console.warn('handleSelectImage: electronAPI bridge 不可用，已提示用户。')
       return
     }
@@ -184,46 +287,71 @@ const handleSelectImage = async () => {
       return
     }
     
-    // 估算图片大小（Base64 编码会比原始文件大约 33%）
-    // Data URI 格式：data:image/png;base64,iVBORw0KGgoAAAANS...
-    const base64Part = dataUri.split(',')[1]
-    const sizeInBytes = (base64Part.length * 3) / 4  // Base64 解码后的实际大小
-    const sizeInMB = sizeInBytes / (1024 * 1024)
-    
-    // 检查文件大小
-    if (sizeInMB > MAX_IMAGE_SIZE_MB) {
-      alert(`图片文件过大（${sizeInMB.toFixed(2)} MB），请选择小于 ${MAX_IMAGE_SIZE_MB} MB 的图片`)
+    // 检查是否重复
+    const isDuplicate = await isImageDuplicate(dataUri)
+    if (isDuplicate) {
+      showAttachmentAlert('warning', '该图片已添加，请勿重复上传')
       return
     }
     
-    // 添加到待发送列表
+    // 验证图片大小
+    const sizeInBytes = attachmentManager.getDataUriSizeInBytes(dataUri)
+    const sizeInMB = sizeInBytes / (1024 * 1024)
+    
+    if (sizeInMB > 10) { // maxImageSizeMB
+      showAttachmentAlert('error', `图片文件过大（${sizeInMB.toFixed(2)} MB），请选择小于 10 MB 的图片`)
+      return
+    }
+    
+    // 直接添加到图片数组（Electron API 已返回 Data URI）
     pendingAttachments.value.push(dataUri)
+    clearAttachmentAlert()
   } catch (error) {
     console.error('❌ 选择图片失败:', error)
-    alert('选择图片失败，请重试')
+    showAttachmentAlert('error', '选择图片失败，请重试')
   }
 }
 
 /**
- * 移除指定索引的附件
- * @param index - 要移除的附件在数组中的索引
+ * 检查文件是否已存在（去重）
  */
-const removeAttachment = (index: number) => {
-  pendingAttachments.value.splice(index, 1)
+const isFileDuplicate = async (fileData: { dataUrl: string; name: string; size: number }): Promise<boolean> => {
+  // 方法 1: 快速检查 - 比较文件名和大小
+  const quickMatch = pendingFiles.value.find(
+    f => f.name === fileData.name && f.size === fileData.size
+  )
+  if (quickMatch) {
+    // 进一步验证内容是否相同
+    const quickHash = await calculateDataUriHash(quickMatch.dataUrl)
+    const newHash = await calculateDataUriHash(fileData.dataUrl)
+    if (quickHash === newHash) {
+      return true
+    }
+  }
+  
+  // 方法 2: 精确检查 - 计算所有文件的哈希值
+  const newHash = await calculateDataUriHash(fileData.dataUrl)
+  if (!newHash) return false
+  
+  for (const existingFile of pendingFiles.value) {
+    const existingHash = await calculateDataUriHash(existingFile.dataUrl)
+    if (existingHash === newHash) {
+      return true
+    }
+  }
+  
+  return false
 }
 
 /**
- * 选择要上传的文件（当前支持 PDF）
+ * 选择要上传的文件（通过 Electron API）
  */
 const handleSelectFile = async () => {
   try {
-    if (pendingFiles.value.length >= MAX_FILES_PER_MESSAGE) {
-      alert(`每条消息最多只能添加 ${MAX_FILES_PER_MESSAGE} 个文件`)
-      return
-    }
-
+    clearAttachmentAlert()
+    
     if (!electronApiBridge?.selectFile || isUsingElectronApiFallback) {
-      alert('当前环境不支持文件上传，请在桌面应用中使用此功能。')
+      showAttachmentAlert('warning', '当前环境不支持文件上传，请在桌面应用中使用此功能')
       console.warn('handleSelectFile: electronAPI bridge 不可用，已提示用户。')
       return
     }
@@ -237,57 +365,72 @@ const handleSelectFile = async () => {
       return
     }
 
-    const fileSizeBytes = typeof result.size === 'number' ? result.size : getDataUriSizeInBytes(result.dataUrl)
-    const sizeInMB = fileSizeBytes / (1024 * 1024)
-    if (sizeInMB > MAX_FILE_SIZE_MB) {
-      alert(`文件过大（${sizeInMB.toFixed(2)} MB），请选择小于 ${MAX_FILE_SIZE_MB} MB 的文件`)
-      return
-    }
-
-    pendingFiles.value.push({
+    // 构建文件对象
+    const fileToAdd = {
       id: uuidv4(),
       name: result.filename || 'document.pdf',
       dataUrl: result.dataUrl,
-      size: fileSizeBytes,
-      mimeType: result.mimeType
-    })
+      size: result.size || attachmentManager.getDataUriSizeInBytes(result.dataUrl),
+      mimeType: result.mimeType || 'application/pdf'
+    }
+
+    // 检查是否重复
+    const isDuplicate = await isFileDuplicate(fileToAdd)
+    if (isDuplicate) {
+      showAttachmentAlert('warning', '该文件已添加，请勿重复上传')
+      return
+    }
+
+    // 验证文件大小
+    const sizeMB = fileToAdd.size / (1024 * 1024)
+    if (sizeMB > 20) { // MAX_FILE_SIZE_MB
+      showAttachmentAlert('error', `文件过大（${sizeMB.toFixed(2)} MB），请选择小于 20 MB 的文件`)
+      return
+    }
+
+    pendingFiles.value.push(fileToAdd)
+    clearAttachmentAlert()
   } catch (error) {
     console.error('选择文件失败:', error)
-    alert('选择文件失败，请重试')
+    showAttachmentAlert('error', '选择文件失败，请重试')
   }
 }
 
-const removeFileAttachment = (fileId: string) => {
-  pendingFiles.value = pendingFiles.value.filter(file => file.id !== fileId)
-}
-
 const togglePdfEngineMenu = () => {
-  pdfEngineMenuVisible.value = !pdfEngineMenuVisible.value
+  activeMenu.value = activeMenu.value === 'pdf' ? null : 'pdf'
 }
 
 const selectPdfEngineOption = (value: 'pdf-text' | 'mistral-ocr' | 'native') => {
   selectedPdfEngine.value = value
-  pdfEngineMenuVisible.value = false
+  activeMenu.value = null
 }
+
+// ========== Textarea 自动增长 ==========
+const adjustTextareaHeight = () => {
+  if (!textareaRef.value) return
+  
+  // 重置高度以获取准确的scrollHeight
+  textareaRef.value.style.height = 'auto'
+  
+  // 设置最大高度为200px
+  const maxHeight = 200
+  const scrollHeight = textareaRef.value.scrollHeight
+  
+  if (scrollHeight > maxHeight) {
+    textareaRef.value.style.height = `${maxHeight}px`
+    textareaRef.value.style.overflowY = 'auto'
+  } else {
+    textareaRef.value.style.height = `${scrollHeight}px`
+    textareaRef.value.style.overflowY = 'hidden'
+  }
+}
+
+// 监听输入内容变化，自动调整高度
+watch(draftInput, () => {
+  nextTick(() => adjustTextareaHeight())
+})
 
 // ========== 高级模型选择器状态 ==========
-const showAdvancedModelPicker = ref(false)  // 高级模型选择对话框的显示状态
-
-/**
- * 打开高级模型选择器
- * - 由 FavoriteModelSelector 的事件触发
- * - 显示模态对话框，提供完整的模型浏览和搜索功能
- */
-const openAdvancedModelPicker = () => {
-  showAdvancedModelPicker.value = true
-}
-
-/**
- * 关闭高级模型选择器
- */
-const closeAdvancedModelPicker = () => {
-  showAdvancedModelPicker.value = false
-}
 
 // ========== 请求中断控制 ==========
 /**
@@ -343,7 +486,7 @@ const manualAbortTokens = new Set<number>()  // 存储用户主动停止的 toke
  * 注意：不使用 KeepAlive，因为需要让后台实例的流式生成继续运行
  */
 const isComponentActive = computed(() => {
-  return chatStore.activeTabId === props.conversationId
+  return conversationStore.activeTabId === props.conversationId
 })
 
 // ========== 消息编辑状态管理 ==========
@@ -360,11 +503,9 @@ const isComponentActive = computed(() => {
  * - 只能编辑用户消息（role === 'user'）
  * - 编辑后会创建新版本（保留编辑历史）
  * - 如果内容没有实际变化，不创建新版本（避免冗余）
+ * 
+ * 🔧 重构说明：编辑状态已集成至 useMessageEditing composable
  */
-const editingBranchId = ref<string | null>(null)  // 正在编辑的分支 ID（null 表示未在编辑）
-const editingText = ref('')  // 编辑器中的文本内容
-const editingImages = ref<string[]>([])  // 编辑器中的图片列表（Base64 Data URIs）
-const editingFiles = ref<PendingFileAttachment[]>([])  // 编辑器中的文件列表
 
 /**
  * 比较两个消息的 parts 数组是否完全相同
@@ -472,15 +613,15 @@ const deletingBranchId = ref<string | null>(null)  // 待删除的分支 ID
  * 注意：在异步操作中不要直接使用此 computed，应该使用固化的 conversationId
  */
 const currentConversation = computed(() => {
-  return chatStore.conversationsMap.get(props.conversationId) || null
+  // 使用新的 conversationStore
+  return conversationStore.conversations.find(c => c.id === props.conversationId) || null
 })
 
 const conversationStatusOptions = CONVERSATION_STATUS_OPTIONS
 const conversationStatusLabels = CONVERSATION_STATUS_LABELS
 const conversationTagInput = ref('')
-const conversationStatus = computed<ConversationStatus>(() => {
-  return currentConversation.value?.status ?? DEFAULT_CONVERSATION_STATUS
-})
+// 直接使用简化的 computed，避免不必要的函数包装
+const conversationStatus = computed<ConversationStatus>(() => currentConversation.value?.status ?? DEFAULT_CONVERSATION_STATUS)
 const conversationTags = computed(() => currentConversation.value?.tags ?? [])
 const canSaveConversationTemplate = computed(() => !!currentConversation.value?.projectId)
 const saveTemplateInProgress = ref(false)
@@ -500,7 +641,7 @@ const handleConversationStatusChange = (event: Event) => {
   if (!target) {
     return
   }
-  chatStore.setConversationStatus(props.conversationId, target.value)
+  conversationStore.setConversationStatus(props.conversationId, target.value as ConversationStatus)
 }
 
 const handleConversationTagAdd = () => {
@@ -511,7 +652,7 @@ const handleConversationTagAdd = () => {
   if (!value) {
     return
   }
-  chatStore.addConversationTag(props.conversationId, value)
+  conversationStore.addTag(props.conversationId, value)
   conversationTagInput.value = ''
 }
 
@@ -527,15 +668,19 @@ const handleConversationTagRemove = (tag: string) => {
   if (!currentConversation.value) {
     return
   }
-  chatStore.removeConversationTag(props.conversationId, tag)
+  conversationStore.removeTag(props.conversationId, tag)
 }
 
 const getLastUserMessageText = () => {
-  const messages = chatStore.getConversationMessages(props.conversationId)
+  const messages = branchStore.getDisplayMessages(props.conversationId)
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]
     if (message?.role === 'user') {
-      const text = extractTextFromMessage(message)
+      // 从 DisplayMessage 提取文本
+      const text = message.parts
+        .filter(part => part.type === 'text')
+        .map(part => (part as any).text)
+        .join('')
       if (text && text.trim()) {
         return text.trim()
       }
@@ -661,21 +806,7 @@ const displayMessageCache = new Map<string, DisplayMessage>()
 const lastComputedPath = ref<string[] | null>(null)
 const lastComputedMessages = ref<DisplayMessage[]>([])
 
-// ========== 图像生成配置类型 ==========
-/**
- * 图像生成的配置参数
- * 
- * 目前支持：
- * - aspect_ratio: 画面比例（如 '1:1', '16:9' 等）
- * 
- * 使用场景：
- * - Gemini 2.0 Flash 等支持图像输出的模型
- * - 通过 OpenRouter API 发送时作为 image_config 参数
- */
-type ImageGenerationConfig = {
-  aspect_ratio: string
-}
-
+// ========== 发送请求覆盖参数类型 ==========
 /**
  * 发送请求时的覆盖参数
  * 
@@ -683,7 +814,7 @@ type ImageGenerationConfig = {
  * 
  * 字段：
  * - requestedModalities: 请求的输出模态（如 ['image', 'text']）
- * - imageConfig: 图像生成配置（如画面比例）
+ * - imageConfig: 图像生成配置（如画面比例）- 从 useImageGeneration 导入
  * 
  * 示例：
  *   performSendMessage('Hello', undefined, {
@@ -695,51 +826,6 @@ type SendRequestOverrides = {
   requestedModalities?: string[]
   imageConfig?: ImageGenerationConfig
 }
-
-// ========== 图像生成功能配置 ==========
-/**
- * 图像生成支持的输出模态常量
- * 
- * 当启用图像生成时，会请求模型同时返回图像和文本
- * - 'image': 图像输出
- * - 'text': 文本输出
- * 
- * 支持的模型示例：
- * - google/gemini-2.0-flash-exp
- * - google/gemini-exp-1206
- */
-const IMAGE_RESPONSE_MODALITIES = ['image', 'text'] as const
-
-/**
- * 图像画面比例选项
- * 
- * 每个选项包含：
- * - value: API 参数值（如 '1:1'）
- * - label: UI 显示标签（如 '1:1'）
- * - resolution: 对应的分辨率（如 '1024x1024'）
- * 
- * 注意：分辨率仅用于 UI 提示，实际分辨率由模型决定
- */
-const IMAGE_ASPECT_RATIO_OPTIONS: ReadonlyArray<{ value: string; label: string; resolution: string }> = [
-  { value: '9:16', label: '9:16', resolution: '768x1344' },   // 竖屏
-  { value: '2:3', label: '2:3', resolution: '832x1248' },
-  { value: '3:4', label: '3:4', resolution: '864x1184' },
-  { value: '4:5', label: '4:5', resolution: '896x1152' },
-  { value: '1:1', label: '1:1', resolution: '1024x1024' },    // 正方形（默认）
-  { value: '5:4', label: '5:4', resolution: '1152x896' },
-  { value: '4:3', label: '4:3', resolution: '1184x864' },
-  { value: '3:2', label: '3:2', resolution: '1248x832' },
-  { value: '16:9', label: '16:9', resolution: '1344x768' },   // 横屏
-  { value: '21:9', label: '21:9', resolution: '1536x672' }    // 超宽屏
-]
-
-/**
- * 默认画面比例索引
- * 
- * 查找 '1:1' 选项的索引，如果找不到则使用索引 0
- * Math.max(0, ...) 确保即使 findIndex 返回 -1，也能得到有效索引
- */
-const DEFAULT_ASPECT_RATIO_INDEX = Math.max(0, IMAGE_ASPECT_RATIO_OPTIONS.findIndex(option => option.value === '1:1'))
 
 /**
  * 分支级别的生成偏好设置
@@ -756,102 +842,7 @@ const DEFAULT_ASPECT_RATIO_INDEX = Math.max(0, IMAGE_ASPECT_RATIO_OPTIONS.findIn
  */
 const branchGenerationPreferences: Map<string, SendRequestOverrides> = new Map()
 
-/**
- * 对话级别的画面比例偏好
- * 
- * 用途：记录每个对话（conversation）的画面比例偏好
- * - Key: conversationId（对话的唯一 ID）
- * - Value: 画面比例索引（IMAGE_ASPECT_RATIO_OPTIONS 的下标）
- * 
- * 使用场景：
- * - 用户在对话 A 中选择了 16:9，切换到对话 B 再回到 A，应该恢复 16:9
- * - 避免每次切换对话都重置为默认比例
- * 
- * 注意：这是全局 Map，不会因标签切换而清空
- */
-const aspectRatioPreferenceByConversation = new Map<string, number>()
-
-/**
- * 当前选择的画面比例索引（响应式）
- * 
- * 值：IMAGE_ASPECT_RATIO_OPTIONS 数组的索引（0 到 9）
- * 默认值：DEFAULT_ASPECT_RATIO_INDEX（通常是 4，对应 '1:1'）
- * 
- * 用途：
- * - 绑定到 UI 的 range 滑块
- * - 用户拖动滑块时更新此值
- * - 发送消息时根据此值获取画面比例配置
- */
-const imageAspectRatioIndex = ref<number>(DEFAULT_ASPECT_RATIO_INDEX)
-
-/**
- * 图像生成开关（响应式）
- * 
- * 状态：
- * - true: 启用图像生成，发送消息时请求图像输出
- * - false: 禁用图像生成，只请求文本输出
- * 
- * 注意：
- * - 切换对话时会重置为 false
- * - 如果模型不支持图像输出，会自动重置为 false
- * - 对话生成中时无法切换
- */
-const imageGenerationEnabled = ref(false)
-
-/**
- * 克隆图像配置对象
- * 
- * 用途：创建配置的深拷贝，避免意外修改原对象
- * 
- * 验证：
- * - 检查 config 是否存在
- * - 检查 aspect_ratio 是否为非空字符串
- * - 去除首尾空格
- * 
- * @param config - 原始配置对象（可能为 null 或 undefined）
- * @returns 新的配置对象，或 undefined（如果验证失败）
- */
-const cloneImageConfig = (config?: ImageGenerationConfig | null): ImageGenerationConfig | undefined => {
-  if (!config || typeof config.aspect_ratio !== 'string') {
-    return undefined
-  }
-  const aspect = config.aspect_ratio.trim()
-  if (!aspect) {
-    return undefined
-  }
-  return { aspect_ratio: aspect }
-}
-
-/**
- * 限制画面比例索引在有效范围内
- * 
- * 处理边界情况：
- * - undefined/null/NaN → DEFAULT_ASPECT_RATIO_INDEX
- * - 负数 → 0
- * - 超出最大值 → maxIndex
- * - 非整数 → 四舍五入到最近的整数
- * 
- * @param index - 输入的索引（可能无效）
- * @returns 限制后的有效索引（0 到 maxIndex）
- */
-const clampAspectRatioIndex = (index: number | undefined | null) => {
-  if (index === undefined || index === null || Number.isNaN(index)) {
-    return DEFAULT_ASPECT_RATIO_INDEX
-  }
-  const rounded = Math.round(index)
-  if (!Number.isFinite(rounded)) {
-    return DEFAULT_ASPECT_RATIO_INDEX
-  }
-  const maxIndex = IMAGE_ASPECT_RATIO_OPTIONS.length - 1
-  if (rounded < 0) {
-    return 0
-  }
-  if (rounded > maxIndex) {
-    return maxIndex
-  }
-  return rounded
-}
-
+// ========== 当前模型元数据 ==========
 const currentModelMetadata = computed(() => {
   // 性能优化：非激活状态下跳过模型元数据查找
   if (!isComponentActive.value) {
@@ -863,7 +854,7 @@ const currentModelMetadata = computed(() => {
     return null
   }
 
-  const modelsMap = chatStore.availableModelsMap as Map<string, any> | undefined
+  const modelsMap = modelStore.modelDataMap
   if (modelsMap && typeof modelsMap.get === 'function') {
     const directMatch = modelsMap.get(modelId)
     if (directMatch) {
@@ -896,73 +887,27 @@ const currentModelSupportsImageOutput = computed(() => {
   return normalized.includes('image') || normalized.includes('vision') || normalized.includes('multimodal')
 })
 
-const canShowImageGenerationButton = computed(() => currentModelSupportsImageOutput.value)
-
-const currentAspectRatioOption = computed(() => {
-  const maxIndex = IMAGE_ASPECT_RATIO_OPTIONS.length - 1
-  const normalizedIndex = Math.min(Math.max(imageAspectRatioIndex.value, 0), maxIndex)
-  return IMAGE_ASPECT_RATIO_OPTIONS[normalizedIndex] ?? IMAGE_ASPECT_RATIO_OPTIONS[0]
-})
-
-const supportsImageAspectRatioConfig = computed(() => {
-  // 性能优化：非激活状态下跳过图像配置检查
-  if (!isComponentActive.value) {
-    return false
-  }
-
-  if (appStore.activeProvider !== 'OpenRouter') {
-    return false
-  }
-  if (!currentModelSupportsImageOutput.value) {
-    return false
-  }
-  const modelId = currentConversation.value?.model
-  if (!modelId || typeof modelId !== 'string') {
-    return false
-  }
-  const normalized = modelId.toLowerCase()
-  if (!normalized) {
-    return false
-  }
-  if (normalized.includes('gemini')) {
-    return true
-  }
-  if (normalized.startsWith('google/')) {
-    return true
-  }
-  return false
-})
-
-const canConfigureImageAspectRatio = computed(() => supportsImageAspectRatioConfig.value)
-
-const activeImageConfig = computed<ImageGenerationConfig | null>(() => {
-  if (!imageGenerationEnabled.value || !supportsImageAspectRatioConfig.value) {
-    return null
-  }
-  const option = currentAspectRatioOption.value
-  if (!option) {
-    return null
-  }
-  return {
-    aspect_ratio: option.value
-  }
-})
-
-const currentAspectRatioLabel = computed(() => {
-  const option = currentAspectRatioOption.value
-  return option ? option.label : ''
-})
-
-const currentAspectRatioResolution = computed(() => {
-  const option = currentAspectRatioOption.value
-  return option ? option.resolution : ''
-})
-
-const activeRequestedModalities = computed<string[] | null>(() => {
-  if (!imageGenerationEnabled.value) {
-    return null
-  }
-  return [...IMAGE_RESPONSE_MODALITIES]
+// ========== 图像生成 Composable 初始化 ==========
+const {
+  imageGenerationEnabled,
+  imageAspectRatioIndex,
+  canShowImageGenerationButton,
+  supportsImageAspectRatioConfig,
+  canConfigureImageAspectRatio,
+  activeImageConfig,
+  currentAspectRatioLabel,
+  currentAspectRatioResolution,
+  activeRequestedModalities,
+  imageGenerationTooltip,
+  toggleImageGeneration,
+  cloneImageConfig
+} = useImageGeneration({
+  conversationId: computed(() => currentConversation.value?.id ?? null),
+  isActive: isComponentActive,
+  modelSupportsImageOutput: currentModelSupportsImageOutput,
+  activeProvider: computed(() => appStore.activeProvider),
+  currentModelId: computed(() => currentConversation.value?.model ?? null),
+  generationStatus: computed(() => currentConversation.value?.generationStatus ?? 'idle')
 })
 
 const displayMessages = computed<DisplayMessage[]>(() => {
@@ -1093,95 +1038,8 @@ const displayMessages = computed<DisplayMessage[]>(() => {
   return messages
 })
 
-const imageGenerationTooltip = computed(() => {
-  if (!canShowImageGenerationButton.value) {
-    return '当前模型不支持图像生成输出'
-  }
+// ========== 工具箱配置 ==========
 
-  return imageGenerationEnabled.value
-    ? '图像生成已启用，发送消息将请求图像输出'
-    : '启用图像生成后，发送消息将请求模型返回图像'
-})
-
-watch(
-  () => props.conversationId,
-  (newConversationId) => {
-    branchGenerationPreferences.clear()
-    imageGenerationEnabled.value = false
-    const restoredIndex = typeof newConversationId === 'string'
-      ? aspectRatioPreferenceByConversation.get(newConversationId)
-      : undefined
-    const targetIndex = restoredIndex ?? DEFAULT_ASPECT_RATIO_INDEX
-    const clampedIndex = clampAspectRatioIndex(targetIndex)
-    imageAspectRatioIndex.value = clampedIndex
-  }
-)
-
-/**
- * 监听宽高比索引变化并保存偏好设置
- * 
- * 使用 200ms 防抖避免用户拖动滑块时频繁触发 Map 写入
- * 用户通常会拖动到目标位置再松手，中间状态无需保存
- */
-watchDebounced(
-  imageAspectRatioIndex,
-  (newIndex) => {
-    const conversationId = props.conversationId
-    if (!conversationId) {
-      return
-    }
-    const clamped = clampAspectRatioIndex(newIndex)
-    if (clamped !== newIndex) {
-      imageAspectRatioIndex.value = clamped
-      return
-    }
-    aspectRatioPreferenceByConversation.set(conversationId, clamped)
-  },
-  { debounce: 200 }
-)
-
-watch(currentModelSupportsImageOutput, (supports) => {
-  if (!supports && imageGenerationEnabled.value) {
-    imageGenerationEnabled.value = false
-  }
-})
-
-watch(
-  () => currentConversation.value?.model,
-  () => {
-    if (!currentModelSupportsImageOutput.value && imageGenerationEnabled.value) {
-      imageGenerationEnabled.value = false
-    }
-  }
-)
-
-const toggleImageGeneration = () => {
-  if (!canShowImageGenerationButton.value) {
-    return
-  }
-  if (!currentConversation.value) {
-    return
-  }
-  if (currentConversation.value.generationStatus !== 'idle') {
-    return
-  }
-
-  imageGenerationEnabled.value = !imageGenerationEnabled.value
-}
-
-// 格式化显示的模型名称（移除提供商前缀）
-const displayModelName = computed(() => {
-  const modelId = currentConversation.value?.model
-  if (!modelId) return '选择模型'
-  
-  // 移除提供商前缀（如 openai/, anthropic/, google/ 等）
-  const nameWithoutProvider = modelId.replace(/^[^/]+\//, '')
-  
-  // 移除英文冒号(:)或中文冒号(：)及之前的所有文字
-  // 例如："OpenAI: GPT-4" -> "GPT-4"
-  //       "gpt-4-turbo" -> "gpt-4-turbo" (无冒号，保持不变)
-  return nameWithoutProvider.replace(/^[^:：]+[:：]\s*/, '')
-})
 
 // 🔍 智能模型筛选：有图片时提示用户选择支持视觉的模型
 const needsVisionModel = computed(() => {
@@ -1204,361 +1062,96 @@ const visionModelWarning = computed(() => {
   return '⚠️ 当前模型不支持图像，请选择支持视觉的模型（如 GPT-4o、Gemini 1.5+、Claude 3）'
 })
 
-const DEFAULT_REASONING_PREFERENCE: ReasoningPreference = Object.freeze({
-  visibility: 'visible',
-  effort: 'medium',
-  maxTokens: null
-})
-
-const REASONING_KEYWORDS = [
-  'o1',
-  'o3',
-  'o4',
-  'reasoning',
-  'r1',
-  'qwq',
-  'think',
-  'deepseek',
-  'sonnet-thinking',
-  'brainstorm',
-  'logic'
-]
-
-const REASONING_EFFORT_LABEL_MAP: Record<ReasoningEffort, string> = {
-  low: '低挡',
-  medium: '中挡',
-  high: '高挡'
-}
-
-const REASONING_EFFORT_SHORT_LABEL_MAP: Record<ReasoningEffort, string> = {
-  low: '低',
-  medium: '中',
-  high: '高'
-}
-
-const REASONING_VISIBILITY_LABEL_MAP: Record<ReasoningVisibility, string> = {
-  visible: '返回推理细节',
-  hidden: '仅推理，不返回细节',
-  off: '关闭推理'
-}
-
-type SamplingSliderKey =
-  | 'temperature'
-  | 'top_p'
-  | 'frequency_penalty'
-  | 'presence_penalty'
-  | 'repetition_penalty'
-  | 'min_p'
-  | 'top_a'
-
-type SamplingIntegerKey = 'top_k' | 'max_tokens' | 'seed'
-type SamplingParameterKey = SamplingSliderKey | SamplingIntegerKey
-
-const SAMPLING_SLIDER_CONTROLS: Array<{
-  key: SamplingSliderKey
-  label: string
-  min: number
-  max: number
-  step: number
-  description: string
-}> = [
-  { key: 'temperature', label: 'Temperature', min: 0, max: 2, step: 0.05, description: '控制创意程度，越低越保守' },
-  { key: 'top_p', label: 'Top P', min: 0, max: 1, step: 0.05, description: '限制概率累积阈值，配合 temperature 使用' },
-  { key: 'frequency_penalty', label: 'Frequency Penalty', min: -2, max: 2, step: 0.05, description: '按出现频率抑制重复' },
-  { key: 'presence_penalty', label: 'Presence Penalty', min: -2, max: 2, step: 0.05, description: '只要出现过就惩罚，鼓励新内容' },
-  { key: 'repetition_penalty', label: 'Repetition Penalty', min: 0, max: 2, step: 0.05, description: '进一步降低重复 token 的概率' },
-  { key: 'min_p', label: 'Min P', min: 0, max: 1, step: 0.05, description: '过滤掉低于阈值的 token，相对 top_p 更动态' },
-  { key: 'top_a', label: 'Top A', min: 0, max: 1, step: 0.05, description: '以最可能 token 为基准的动态筛选' }
-]
-
-const SAMPLING_INTEGER_CONTROLS: Array<{
-  key: SamplingIntegerKey
-  label: string
-  min: number
-  placeholder: string
-  description: string
-}> = [
-  { key: 'top_k', label: 'Top K', min: 0, placeholder: '0 表示关闭', description: '限制候选集合大小，0 为不限' },
-  { key: 'max_tokens', label: 'Max Tokens', min: 1, placeholder: '留空使用模型默认', description: '回复的最大 token 数' },
-  { key: 'seed', label: 'Seed', min: Number.MIN_SAFE_INTEGER, placeholder: '留空为随机', description: '固定采样种子以复现输出' }
-]
-
-const getModelRecord = (modelId: string | null | undefined): any => {
-  if (!modelId) {
-    return null
-  }
-
-  const modelMap = chatStore.availableModelsMap as unknown as Map<string, any> | null
-  if (!modelMap || typeof modelMap.get !== 'function') {
-    return null
-  }
-
-  return modelMap.get(modelId) ?? modelMap.get(modelId.toLowerCase()) ?? null
-}
-
-const detectReasoningSupport = (modelId: string | null | undefined): boolean => {
-  if (!modelId) {
-    return false
-  }
-
-  const lowerId = modelId.toLowerCase()
-  const record = getModelRecord(modelId)
-  const raw = record?._raw ?? null
-
-  if (raw) {
-    if (raw.reasoning === true) {
-      return true
+// ========== 推理控制 Composable 初始化 ==========
+const {
+  reasoningPreference,
+  isReasoningEnabled,
+  isReasoningControlAvailable,
+  reasoningEffortShortLabel,
+  reasoningVisibility,
+  reasoningButtonTitle,
+  toggleReasoningEnabled,
+  selectReasoningEffort,
+  selectReasoningVisibility,
+  buildReasoningRequestOptions
+} = useReasoningControl({
+  reasoningPreference: computed(() => currentConversation.value?.reasoningPreference),
+  isActive: isComponentActive,
+  activeProvider: computed(() => appStore.activeProvider),
+  currentModelId: computed(() => currentConversation.value?.model),
+  modelDataMap: computed(() => modelStore.modelDataMap),
+  onUpdatePreference: (updates: Partial<ReasoningPreference>) => {
+    if (!currentConversation.value) {
+      return
     }
-    const rawCapabilities = raw.capabilities
-    if (rawCapabilities && typeof rawCapabilities === 'object') {
-      if (rawCapabilities.reasoning === true || rawCapabilities.reasoning_supported === true) {
-        return true
-      }
-      if (Array.isArray(rawCapabilities) && rawCapabilities.some((item: any) => typeof item === 'string' && item.toLowerCase().includes('reasoning'))) {
-        return true
-      }
-    }
-    const rawTags = raw.tags || raw.keywords || raw.categories
-    if (Array.isArray(rawTags) && rawTags.some((tag: any) => typeof tag === 'string' && tag.toLowerCase().includes('reasoning'))) {
-      return true
-    }
-    if (raw.metadata && typeof raw.metadata === 'object') {
-      const metadataTags = raw.metadata.tags || raw.metadata.capabilities
-      if (Array.isArray(metadataTags) && metadataTags.some((tag: any) => typeof tag === 'string' && tag.toLowerCase().includes('reasoning'))) {
-        return true
-      }
-      if (raw.metadata.reasoning === true) {
-        return true
-      }
-    }
-  }
-
-  const description: string = typeof record?.description === 'string' ? record.description.toLowerCase() : ''
-  if (description.includes('reasoning') || description.includes('推理')) {
-    return true
-  }
-
-  return REASONING_KEYWORDS.some((keyword) => keyword && lowerId.includes(keyword))
-}
-
-const reasoningPreference = computed<ReasoningPreference>(() => {
-  const pref = currentConversation.value?.reasoningPreference
-  return {
-    visibility: pref?.visibility ?? DEFAULT_REASONING_PREFERENCE.visibility,
-    effort: pref?.effort ?? DEFAULT_REASONING_PREFERENCE.effort,
-    maxTokens: pref?.maxTokens ?? DEFAULT_REASONING_PREFERENCE.maxTokens
+    conversationStore.setReasoningPreference(props.conversationId, updates)
   }
 })
 
-const isReasoningEnabled = computed(() => reasoningPreference.value.visibility !== 'off')
-
-const isReasoningControlAvailable = computed(() => {
-  if (appStore.activeProvider !== 'OpenRouter') {
-    return false
-  }
-  const modelId = currentConversation.value?.model
-  if (!modelId) {
-    return false
-  }
-  return detectReasoningSupport(modelId)
-})
-
-const reasoningEffortOptions: Array<{ value: ReasoningEffort; label: string }> = (
-  ['low', 'medium', 'high'] as ReasoningEffort[]
-).map((effort) => ({
-  value: effort,
-  label: REASONING_EFFORT_LABEL_MAP[effort]
-}))
-
-const reasoningVisibilityOptions: Array<{ value: ReasoningVisibility; label: string }> = (
-  ['visible', 'hidden'] as ReasoningVisibility[]
-).map((visibility) => ({
-  value: visibility,
-  label: REASONING_VISIBILITY_LABEL_MAP[visibility]
-}))
-
-const reasoningEffortLabel = computed(() => REASONING_EFFORT_LABEL_MAP[reasoningPreference.value.effort])
-const reasoningEffortShortLabel = computed(() => REASONING_EFFORT_SHORT_LABEL_MAP[reasoningPreference.value.effort])
-const reasoningVisibility = computed(() => reasoningPreference.value.visibility)
-
-const reasoningButtonTitle = computed(() => {
-  if (!isReasoningControlAvailable.value) {
-    return '当前模型不支持推理控制（需使用具有推理能力的模型）'
-  }
-  return isReasoningEnabled.value
-    ? `点击关闭推理（当前：${reasoningEffortLabel.value}）`
-    : '点击启用推理控制'
-})
-
-const isSamplingControlAvailable = computed(() => appStore.activeProvider === 'OpenRouter')
-const samplingParameters = computed<SamplingParameterSettings>(() => {
-  const base = { ...DEFAULT_SAMPLING_PARAMETERS }
-  const overrides = currentConversation.value?.samplingParameters
-  if (overrides && typeof overrides === 'object') {
-    return { ...base, ...overrides }
-  }
-  return base
-})
-const isSamplingEnabled = computed(() => samplingParameters.value.enabled)
-const samplingButtonTitle = computed(() => {
-  if (!isSamplingControlAvailable.value) {
-    return '仅在 OpenRouter 模式下支持参数调节'
-  }
-  return isSamplingEnabled.value ? '点击关闭自定义参数' : '点击启用自定义参数'
-})
-
-const WEB_SEARCH_LEVELS: WebSearchLevel[] = ['quick', 'normal', 'deep']
-const WEB_SEARCH_LEVEL_TEXT: Record<WebSearchLevel, string> = {
-  quick: '快速',
-  normal: '普通',
-  deep: '深入'
-}
-const WEB_SEARCH_LEVEL_PRESETS: Record<WebSearchLevel, { searchContextSize: 'low' | 'medium' | 'high'; maxResults: number }> = {
-  quick: { searchContextSize: 'low', maxResults: 3 },
-  normal: { searchContextSize: 'medium', maxResults: 5 },
-  deep: { searchContextSize: 'high', maxResults: 8 }
-}
-const webSearchLevelOptions: Array<{ value: WebSearchLevel; label: string }> = WEB_SEARCH_LEVELS.map((level) => ({
-  value: level,
-  label: WEB_SEARCH_LEVEL_TEXT[level]
-}))
-
-const isWebSearchAvailable = computed(() => appStore.activeProvider === 'OpenRouter')
-const webSearchEnabled = computed(() => currentConversation.value?.webSearchEnabled ?? false)
-const webSearchLevel = computed<WebSearchLevel>(() => currentConversation.value?.webSearchLevel || 'normal')
-const webSearchLevelLabel = computed(() => WEB_SEARCH_LEVEL_TEXT[webSearchLevel.value])
-const webSearchButtonTitle = computed(() => {
-  if (!isWebSearchAvailable.value) {
-    return '仅在 OpenRouter 模式下可用网络搜索'
-  }
-  return webSearchEnabled.value
-    ? `点击关闭网络搜索（当前：${webSearchLevelLabel.value}）`
-    : '点击启用网络搜索'
-})
-
-/**
- * 根据搜索级别构建 Web 搜索请求选项
- * 
- * 三个预设级别：
- * - quick（快速）：3个结果，low 上下文
- * - normal（普通）：5个结果，medium 上下文
- * - deep（深入）：8个结果，high 上下文
- * 
- * @returns Web 搜索配置对象，或 null（如果未启用）
- */
-const buildWebSearchRequestOptions = () => {
-  if (!isWebSearchAvailable.value || !webSearchEnabled.value) {
-    return null
-  }
-
-  const level = webSearchLevel.value
-  const preset = WEB_SEARCH_LEVEL_PRESETS[level] || WEB_SEARCH_LEVEL_PRESETS.normal
-
-  return {
-    enabled: true,
-    engine: appStore.webSearchEngine,
-    maxResults: preset.maxResults,
-    searchContextSize: preset.searchContextSize
-  }
-}
-
-const buildReasoningRequestOptions = () => {
-  if (!isReasoningControlAvailable.value || !isReasoningEnabled.value) {
-    return null
-  }
-
-  const pref = reasoningPreference.value
-  const payload: Record<string, any> = {
-    enabled: true,
-    effort: pref.effort
-  }
-
-  if (typeof pref.maxTokens === 'number' && Number.isFinite(pref.maxTokens) && pref.maxTokens > 0) {
-    payload.max_tokens = Math.round(pref.maxTokens)
-  }
-  if (pref.visibility === 'hidden') {
-    payload.exclude = true
-  }
-
-  return {
-    payload,
-    preference: {
-      visibility: pref.visibility,
-      effort: pref.effort,
-      maxTokens: pref.maxTokens ?? null
-    },
-    modelId: currentConversation.value?.model
-  }
-}
-
-const buildSamplingParameterOverrides = () => {
-  if (!isSamplingControlAvailable.value || !isSamplingEnabled.value) {
-    return null
-  }
-
-  const params = samplingParameters.value
-  const overrides: Record<string, number> = {}
-
-  const pushFloat = (key: SamplingSliderKey) => {
-    const value = params[key]
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      overrides[key] = parseFloat(value.toFixed(4))
+// ========== 采样参数 Composable 初始化 ==========
+const {
+  SAMPLING_SLIDER_CONTROLS,
+  SAMPLING_INTEGER_CONTROLS,
+  isSamplingEnabled,
+  isSamplingControlAvailable,
+  samplingButtonTitle,
+  getParameterMode,
+  getManualValue,
+  toggleParameterMode,
+  fillDefaultValue,
+  getSliderValue,
+  handleSamplingSliderInput,
+  handleManualInput,
+  formatSamplingValue,
+  validateParameter,
+  validateAllParameters,
+  hasParameterError,
+  toggleSamplingParametersEnabled,
+  resetSamplingParameters,
+  buildSamplingParameterOverrides
+} = useSamplingParameters({
+  samplingParameters: computed(() => currentConversation.value?.samplingParameters),
+  isActive: isComponentActive,
+  activeProvider: computed(() => appStore.activeProvider),
+  onUpdateParameters: (updates: Partial<SamplingParameterSettings>) => {
+    if (!currentConversation.value) {
+      return
     }
+    conversationStore.setSamplingParameters(props.conversationId, updates)
   }
+})
 
-  const pushNonNegativeInt = (key: 'top_k') => {
-    const value = params[key]
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      overrides[key] = Math.max(0, Math.round(value))
+// ========== Web 搜索 Composable 初始化 ==========
+const {
+  WEB_SEARCH_LEVEL_OPTIONS,
+  isWebSearchAvailable,
+  webSearchEnabled,
+  webSearchLevel,
+  webSearchButtonTitle,
+  toggleWebSearch,
+  selectWebSearchLevel,
+  buildWebSearchRequestOptions
+} = useWebSearch({
+  webSearchConfig: computed(() => currentConversation.value?.webSearch),
+  isActive: isComponentActive,
+  activeProvider: computed(() => appStore.activeProvider),
+  webSearchEngine: computed(() => appStore.webSearchEngine),
+  onUpdateEnabled: (enabled: boolean) => {
+    if (!currentConversation.value) {
+      return
     }
-  }
-
-  const pushPositiveInt = (key: 'max_tokens') => {
-    const value = params[key]
-    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-      overrides[key] = Math.max(1, Math.round(value))
+    conversationStore.setWebSearchEnabled(props.conversationId, enabled)
+  },
+  onUpdateLevel: (level: WebSearchLevel) => {
+    if (!currentConversation.value) {
+      return
     }
+    conversationStore.setWebSearchLevel(props.conversationId, level)
   }
+})
 
-  const pushSeed = () => {
-    const value = params.seed
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      overrides.seed = Math.round(
-        Math.max(Number.MIN_SAFE_INTEGER, Math.min(Number.MAX_SAFE_INTEGER, value))
-      )
-    }
-  }
-
-  pushFloat('temperature')
-  pushFloat('top_p')
-  pushFloat('frequency_penalty')
-  pushFloat('presence_penalty')
-  pushFloat('repetition_penalty')
-  pushFloat('min_p')
-  pushFloat('top_a')
-  pushNonNegativeInt('top_k')
-  pushPositiveInt('max_tokens')
-  pushSeed()
-
-  return Object.keys(overrides).length > 0 ? overrides : null
-}
-
-/**
- * 切换 Web 搜索开关
- * 
- * 前置条件：
- * - 必须有当前对话
- * - 必须在 OpenRouter 模式下
- */
-const toggleWebSearch = () => {
-  if (!currentConversation.value) {
-    return
-  }
-  if (!isWebSearchAvailable.value) {
-    return
-  }
-  chatStore.setConversationWebSearchEnabled(props.conversationId, !webSearchEnabled.value)
-}
+// Web 搜索级别选项列表（从 composable 导出）
+const webSearchLevelOptions = WEB_SEARCH_LEVEL_OPTIONS
 
 /**
  * 切换 Web 搜索级别菜单显示/隐藏
@@ -1573,250 +1166,88 @@ const toggleWebSearchMenu = (event: MouseEvent) => {
   if (!currentConversation.value) {
     return
   }
-  const nextState = !webSearchMenuVisible.value
-  webSearchMenuVisible.value = nextState
-  if (nextState) {
-    reasoningMenuVisible.value = false
-  }
-}
-
-/**
- * 选择 Web 搜索级别
- * 
- * @param level - 搜索级别（quick/normal/deep）
- */
-const selectWebSearchLevel = (level: WebSearchLevel) => {
-  if (!currentConversation.value) {
-    return
-  }
-  if (!WEB_SEARCH_LEVELS.includes(level)) {
-    return
-  }
-  // 选择挡位时自动启用网络搜索
-  if (!webSearchEnabled.value) {
-    chatStore.setConversationWebSearchEnabled(props.conversationId, true)
-  }
-  chatStore.setConversationWebSearchLevel(props.conversationId, level)
-  webSearchMenuVisible.value = false
-}
-
-const updateReasoningPreference = (updates: Partial<ReasoningPreference>) => {
-  if (!currentConversation.value) {
-    return
-  }
-  chatStore.setConversationReasoningPreference(props.conversationId, updates)
+  activeMenu.value = activeMenu.value === 'websearch' ? null : 'websearch'
 }
 
 const toggleReasoningMenu = (event: MouseEvent) => {
   event.stopPropagation()
   if (!isReasoningControlAvailable.value || !currentConversation.value) {
-    reasoningMenuVisible.value = false
+    activeMenu.value = null
     return
   }
-  const nextState = !reasoningMenuVisible.value
-  reasoningMenuVisible.value = nextState
-  if (nextState) {
-    webSearchMenuVisible.value = false
-  }
+  activeMenu.value = activeMenu.value === 'reasoning' ? null : 'reasoning'
 }
 
-const toggleReasoningEnabled = () => {
-  if (!currentConversation.value) {
-    return
-  }
-  const nextVisibility: ReasoningVisibility = isReasoningEnabled.value ? 'off' : 'visible'
-  updateReasoningPreference({ visibility: nextVisibility })
-  if (nextVisibility === 'off') {
-    reasoningMenuVisible.value = false
-  }
-}
+// 推理 Effort 和 Visibility 选项列表（从 composable 导出）
+const reasoningEffortOptions = REASONING_EFFORT_OPTIONS
+const reasoningVisibilityOptions = REASONING_VISIBILITY_OPTIONS
 
-const selectReasoningEffort = (effort: ReasoningEffort) => {
-  if (!currentConversation.value) {
-    return
-  }
-  if (reasoningPreference.value.effort === effort) {
-    return
-  }
-  // 选择挡位时自动启用推理（如果当前是关闭状态）
-  if (!isReasoningEnabled.value) {
-    updateReasoningPreference({ visibility: 'visible', effort })
-  } else {
-    updateReasoningPreference({ effort })
-  }
-}
-
-const selectReasoningVisibility = (visibility: ReasoningVisibility) => {
-  if (!currentConversation.value) {
-    return
-  }
-  if (visibility === 'off') {
-    toggleReasoningEnabled()
-    return
-  }
-  if (reasoningPreference.value.visibility === visibility) {
-    return
-  }
-  updateReasoningPreference({ visibility })
-}
-
-const updateSamplingParameters = (updates: Partial<SamplingParameterSettings>) => {
-  if (!currentConversation.value) {
-    return
-  }
-  chatStore.setConversationSamplingParameters(props.conversationId, updates)
-}
-
-const toggleSamplingParametersEnabled = () => {
-  if (!currentConversation.value) {
-    return
-  }
-  const nextState = !isSamplingEnabled.value
-  updateSamplingParameters({ enabled: nextState })
-  if (!nextState) {
-    parameterMenuVisible.value = false
-  }
-}
+// ========== 采样参数菜单控制 ==========
 
 const toggleSamplingMenu = (event: MouseEvent) => {
   event.stopPropagation()
   if (!isSamplingControlAvailable.value || !currentConversation.value) {
-    parameterMenuVisible.value = false
+    activeMenu.value = null
     return
   }
-  const nextState = !parameterMenuVisible.value
-  parameterMenuVisible.value = nextState
-  if (nextState) {
-    webSearchMenuVisible.value = false
-    reasoningMenuVisible.value = false
-  }
-}
-
-const resetSamplingParameters = () => {
-  if (!currentConversation.value) {
-    return
-  }
-  const base: SamplingParameterSettings = {
-    ...DEFAULT_SAMPLING_PARAMETERS,
-    enabled: samplingParameters.value.enabled
-  }
-  chatStore.setConversationSamplingParameters(props.conversationId, base)
-}
-
-const commitSamplingValue = (key: SamplingParameterKey, value: number | null) => {
-  if (!currentConversation.value) {
-    return
-  }
-  updateSamplingParameters({ [key]: value } as Partial<SamplingParameterSettings>)
-}
-
-const handleSamplingSliderInput = (key: SamplingSliderKey, event: Event) => {
-  const target = event.target as HTMLInputElement | null
-  if (!target) {
-    return
-  }
-  const parsed = Number(target.value)
-  if (Number.isNaN(parsed)) {
-    return
-  }
-  commitSamplingValue(key, parsed)
-}
-
-const handleSamplingIntegerInput = (key: SamplingIntegerKey, event: Event) => {
-  const target = event.target as HTMLInputElement | null
-  if (!target) {
-    return
-  }
-  const raw = target.value.trim()
-  if (!raw) {
-    if (key === 'top_k') {
-      commitSamplingValue(key, DEFAULT_SAMPLING_PARAMETERS.top_k ?? 0)
-    } else {
-      commitSamplingValue(key, null)
+  
+  // 如果是关闭菜单，先校验参数
+  if (activeMenu.value === 'sampling') {
+    if (isSamplingEnabled.value) {
+      const errors = validateAllParameters()
+      if (errors.length > 0) {
+        console.warn('参数校验失败，无法关闭面板:', errors)
+        // 阻止关闭，保持面板打开
+        return
+      }
     }
-    return
+    activeMenu.value = null
+  } else {
+    activeMenu.value = 'sampling'
   }
-  const parsed = Number(raw)
-  if (Number.isNaN(parsed)) {
-    return
-  }
-  if (key === 'top_k') {
-    commitSamplingValue(key, Math.max(0, Math.round(parsed)))
-    return
-  }
-  if (key === 'max_tokens') {
-    commitSamplingValue(key, Math.max(1, Math.round(parsed)))
-    return
-  }
-  if (key === 'seed') {
-    const rounded = Math.round(parsed)
-    const clamped = Math.max(Number.MIN_SAFE_INTEGER, Math.min(Number.MAX_SAFE_INTEGER, rounded))
-    commitSamplingValue(key, clamped)
-    return
-  }
-  commitSamplingValue(key, Math.round(parsed))
-}
-
-const formatSamplingValue = (key: SamplingParameterKey) => {
-  const value = samplingParameters.value[key]
-  if (value === null || value === undefined) {
-    if (key === 'max_tokens') {
-      return '默认'
-    }
-    if (key === 'seed') {
-      return '随机'
-    }
-    const fallback = DEFAULT_SAMPLING_PARAMETERS[key as keyof SamplingParameterSettings]
-    if (typeof fallback === 'number') {
-      return `默认 ${fallback}`
-    }
-    return '默认'
-  }
-  if (typeof value === 'number') {
-    if (key === 'top_k' || key === 'max_tokens' || key === 'seed') {
-      return `${value}`
-    }
-    return value.toFixed(2)
-  }
-  return '—'
 }
 
 /**
- * 处理全局点击事件（用于关闭 Web 搜索菜单）
+ * 处理全局点击事件（用于关闭菜单）
  * 
  * 点击菜单外部时关闭菜单
  * 
  * @param event - 鼠标事件
  */
 const handleGlobalClick = (event: MouseEvent) => {
+  if (activeMenu.value === null) return
+  
   const targetNode = event.target instanceof Node ? event.target : null
-
-  if (webSearchMenuVisible.value) {
-    const webSearchRoot = webSearchControlRef.value
-    if (!webSearchRoot || !targetNode || !webSearchRoot.contains(targetNode)) {
-      webSearchMenuVisible.value = false
-    }
+  if (!targetNode) {
+    activeMenu.value = null
+    return
   }
 
-  if (reasoningMenuVisible.value) {
-    const reasoningRoot = reasoningControlRef.value
-    if (!reasoningRoot || !targetNode || !reasoningRoot.contains(targetNode)) {
-      reasoningMenuVisible.value = false
+  // 根据activeMenu检查对应的ref
+  let shouldClose = false
+  
+  if (activeMenu.value === 'websearch' && webSearchControlRef.value) {
+    shouldClose = !webSearchControlRef.value.contains(targetNode)
+  } else if (activeMenu.value === 'reasoning' && reasoningControlRef.value) {
+    shouldClose = !reasoningControlRef.value.contains(targetNode)
+  } else if (activeMenu.value === 'sampling' && parameterControlRef.value) {
+    shouldClose = !parameterControlRef.value.contains(targetNode)
+    
+    // 如果要关闭采样参数面板，先校验
+    if (shouldClose && isSamplingEnabled.value && isSamplingControlAvailable.value) {
+      const errors = validateAllParameters()
+      if (errors.length > 0) {
+        console.warn('参数校验失败，阻止关闭面板:', errors)
+        // 阻止关闭
+        return
+      }
     }
+  } else if (activeMenu.value === 'pdf' && pdfEngineMenuRef.value) {
+    shouldClose = !pdfEngineMenuRef.value.contains(targetNode)
   }
-
-  if (parameterMenuVisible.value) {
-    const parameterRoot = parameterControlRef.value
-    if (!parameterRoot || !targetNode || !parameterRoot.contains(targetNode)) {
-      parameterMenuVisible.value = false
-    }
-  }
-
-  if (pdfEngineMenuVisible.value) {
-    const pdfMenuRoot = pdfEngineMenuRef.value
-    if (!pdfMenuRoot || !targetNode || !pdfMenuRoot.contains(targetNode)) {
-      pdfEngineMenuVisible.value = false
-    }
+  
+  if (shouldClose) {
+    activeMenu.value = null
   }
 }
 
@@ -2148,22 +1579,25 @@ onMounted(() => {
   if (currentConversation.value?.draft) {
     draftInput.value = currentConversation.value.draft
   }
+  
+  // 初始化Textarea高度
+  nextTick(() => adjustTextareaHeight())
+  
   // 如果组件挂载时就是激活状态，执行初始化
   if (isComponentActive.value) {
-    // 使用双重 nextTick 确保 DOM 完全就绪
+    // ✅ 新方案：通过滚动容器组件滚到底部
     nextTick(() => {
-      nextTick(() => {
-        scrollToBottom()
-        // 再增加一个延迟，确保所有布局计算完成
-        setTimeout(() => {
-          focusTextarea()
-        }, 100)
-      })
+      chatScrollRef.value?.scrollToBottom({ instant: true })
+      // 聚焦输入框
+      setTimeout(() => {
+        focusTextarea()
+      }, 100)
     })
   }
 
-  // 注册全局点击事件监听器（用于关闭菜单）
+  // 注册全局事件监听器
   document.addEventListener('click', handleGlobalClick)
+  document.addEventListener('keydown', handleGlobalKeyDown)
 })
 
 /**
@@ -2204,6 +1638,7 @@ onUnmounted(() => {
 
   // 移除全局事件监听器
   document.removeEventListener('click', handleGlobalClick)
+  document.removeEventListener('keydown', handleGlobalKeyDown)
   
   // 清理 AbortController
   if (abortController.value) {
@@ -2213,10 +1648,10 @@ onUnmounted(() => {
   
   // 最后一次保存草稿（如果对话还存在）
   if (currentConversation.value && draftInput.value) {
-    chatStore.updateConversationDraft({
-      conversationId: targetConversationId,
-      draftText: draftInput.value
-    })
+    conversationStore.updateConversationDraft(
+      targetConversationId,
+      draftInput.value
+    )
   }
 
 })
@@ -2267,21 +1702,31 @@ watch(isComponentActive, (newVal, oldVal) => {
   
   if (newVal && !oldVal) {
     // ========== 激活：相当于 onActivated ==========
-    // 恢复时重新滚动（不主动聚焦，由父组件控制）
+    // ✅ 新方案：使用 ChatScrollContainer 的 setScrollTop/scrollToBottom
     nextTick(() => {
-      scrollToBottom()
+      if (currentConversation.value?.scrollPosition !== undefined) {
+        chatScrollRef.value?.setScrollTop(currentConversation.value.scrollPosition)
+      } else {
+        // 如果没有保存的位置，滚动到底部
+        chatScrollRef.value?.scrollToBottom()
+      }
     })
   } else if (!newVal && oldVal) {
     // ========== 停用：相当于 onDeactivated ==========
+    // ✅ 保存当前滚动位置
+    if (currentConversation.value) {
+      currentConversation.value.scrollPosition = chatScrollRef.value?.getScrollTop() ?? 0
+    }
+    
     // 关键：停用时不再中止请求，让流在后台继续
     // 这样用户可以切换标签查看其他对话，而不影响正在生成的内容
     
     // 保存草稿（双重保险，虽然 watch draftInput 已经在保存）
     if (draftInput.value !== currentConversation.value?.draft) {
-      chatStore.updateConversationDraft({
-        conversationId: targetConversationId,
-        draftText: draftInput.value
-      })
+      conversationStore.updateConversationDraft(
+        targetConversationId,
+        draftInput.value
+      )
     }
 
   }
@@ -2325,116 +1770,33 @@ watchDebounced(
     // 🔒 固化上下文：watch 回调执行时 props 可能已经变化
     const targetConversationId = props.conversationId
     
-    chatStore.updateConversationDraft({
-      conversationId: targetConversationId,
-      draftText: newValue
-    })
+    conversationStore.updateConversationDraft(
+      targetConversationId,
+      newValue
+    )
   },
   { debounce: 500 } // 500ms 防抖，减少频繁更新导致的性能问题
 )
 
 
-watch(() => props.conversationId, () => {
-  webSearchMenuVisible.value = false
-  reasoningMenuVisible.value = false
-  parameterMenuVisible.value = false
-})
-
-watch(isWebSearchAvailable, (available) => {
-  if (!available) {
-    webSearchMenuVisible.value = false
-  }
-})
-
-watch(isReasoningControlAvailable, (available) => {
-  if (!available) {
-    reasoningMenuVisible.value = false
-  }
-})
-
-watch(isReasoningEnabled, (enabled) => {
-  if (!enabled) {
-    reasoningMenuVisible.value = false
-  }
-})
-
-watch(isSamplingControlAvailable, (available) => {
-  if (!available) {
-    parameterMenuVisible.value = false
-  }
-})
-
-watch(isSamplingEnabled, (enabled) => {
-  if (!enabled) {
-    parameterMenuVisible.value = false
-  }
-})
-
-/**
- * 构建错误元数据
- * 
- * 从错误对象中提取并规范化错误信息，支持多层嵌套错误结构
- * 
- * 支持的错误字段：
- * - errorCode: 错误代码
- * - errorType: 错误类型
- * - errorParam: 错误参数
- * - errorStatus: HTTP 状态码
- * - retryable: 是否可重试
- * - errorMessage: 错误消息
- * 
- * @param error - 原始错误对象
- * @param fallbackMessage - 回退错误消息（当无法提取时使用）
- * @param overrides - 手动覆盖的元数据字段
- * @returns 规范化的错误元数据
- */
-const buildErrorMetadata = (
-  error: any,
-  fallbackMessage: string,
-  overrides: Partial<MessageVersionMetadata> = {}
-): MessageVersionMetadata => {
-  const metadata: MessageVersionMetadata = {
-    isError: true,
-    ...overrides
-  }
-
-  const attachFrom = (source: any) => {
-    if (!source || typeof source !== 'object') return
-    if (metadata.errorCode === undefined && source.code) {
-      metadata.errorCode = String(source.code)
+// 统一的菜单状态管理：当对话切换或相关功能不可用时自动关闭菜单
+watch(
+  [() => props.conversationId, isWebSearchAvailable, isReasoningControlAvailable, isReasoningEnabled, isSamplingControlAvailable, isSamplingEnabled],
+  ([conversationId, webSearchAvail, reasoningAvail, reasoningEnabled, samplingAvail, samplingEnabled], [prevConversationId]) => {
+    // 对话切换时关闭所有菜单
+    if (conversationId !== prevConversationId) {
+      activeMenu.value = null
+      return
     }
-    if (metadata.errorType === undefined && source.type) {
-      metadata.errorType = String(source.type)
-    }
-    if (metadata.errorParam === undefined && source.param) {
-      metadata.errorParam = String(source.param)
-    }
-    if (metadata.errorStatus === undefined && typeof source.status === 'number') {
-      metadata.errorStatus = Number(source.status)
-    }
-    if (metadata.retryable === undefined && typeof source.retryable === 'boolean') {
-      metadata.retryable = source.retryable
-    }
-    if (!metadata.errorMessage && source.message) {
-      metadata.errorMessage = String(source.message)
-    }
+    
+    // 根据功能可用性自动关闭对应菜单
+    if (!webSearchAvail && activeMenu.value === 'websearch') activeMenu.value = null
+    if ((!reasoningAvail || !reasoningEnabled) && activeMenu.value === 'reasoning') activeMenu.value = null
+    if ((!samplingAvail || !samplingEnabled) && activeMenu.value === 'sampling') activeMenu.value = null
   }
+)
 
-  attachFrom(error)
-  attachFrom(error?.openRouterError)
-  attachFrom(error?.error)
-  attachFrom(error?.cause)
 
-  if (!metadata.errorMessage) {
-    if (fallbackMessage) {
-      metadata.errorMessage = fallbackMessage
-    } else if (typeof error?.message === 'string') {
-      metadata.errorMessage = error.message
-    }
-  }
-
-  return metadata
-}
 
 /**
  * 判断消息版本是否表示错误
@@ -2612,7 +1974,7 @@ const captureUsageForBranch = (conversationId: string, branchId: string, usagePa
     return false
   }
 
-  chatStore.patchCurrentBranchMetadata(conversationId, branchId, (existing: MessageVersionMetadata | undefined) => ({
+  branchStore.patchMetadata(conversationId, branchId, (existing: MessageVersionMetadata | undefined) => ({
     ...(existing ?? {}),
     usage: normalized
   }))
@@ -2642,7 +2004,7 @@ const captureReasoningForBranch = (
     }
   }
 
-  chatStore.patchCurrentBranchMetadata(conversationId, branchId, (existing: MessageVersionMetadata | undefined) => ({
+  branchStore.patchMetadata(conversationId, branchId, (existing: MessageVersionMetadata | undefined) => ({
     ...(existing ?? {}),
     reasoning: sanitized
   }))
@@ -2945,6 +2307,690 @@ const formatFileSize = (bytes?: number | null) => {
   return `${bytes} B`
 }
 
+// ========== 消息发送相关函数 ==========
+
+/**
+ * 准备发送消息的上下文环境
+ * 
+ * 执行所有前置检查和初始化操作，包括：
+ * - 固化 conversationId 和生成 token
+ * - 克隆请求配置（防止外部修改）
+ * - 对话存在性检查
+ * - 并发生成检查
+ * - 文件上传 Provider 限制检查
+ * - API Key 验证
+ * - AbortController 初始化
+ * - 设置生成状态
+ * 
+ * @param conversationId - 当前对话 ID
+ * @param requestOverrides - 请求覆盖配置
+ * @param userMessage - 用户消息（用于某些检查）
+ * @param messageParts - 消息部分（用于文件检查）
+ * @returns 发送上下文对象，如果验证失败则返回 null
+ */
+interface SendContext {
+  targetConversationId: string
+  generationToken: number
+  requestedModalities: string[] | undefined
+  imageConfig: ImageGenerationConfig | undefined
+  conversationModel: string
+  systemInstruction: string
+}
+
+const prepareSendContext = (
+  conversationId: string,
+  requestOverrides: SendRequestOverrides,
+  _userMessage?: string,
+  messageParts?: any[]
+): SendContext | null => {
+  // ========== 🔒 固化上下文和生成 Token ==========
+  // 立即捕获 conversationId，防止异步过程中标签页切换导致 props.conversationId 变化
+  const generationToken = ++generationTokenCounter
+  const targetConversationId = conversationId
+  
+  // 克隆请求配置，避免外部修改影响当前请求
+  const requestedModalities = requestOverrides.requestedModalities && requestOverrides.requestedModalities.length > 0
+    ? [...requestOverrides.requestedModalities]
+    : activeRequestedModalities.value
+      ? [...activeRequestedModalities.value]
+      : undefined
+  const imageConfig = requestOverrides.imageConfig
+    ? cloneImageConfig(requestOverrides.imageConfig)
+    : cloneImageConfig(activeImageConfig.value)
+  
+  // ========== 前置检查：对话存在性 ==========
+  if (!currentConversation.value) {
+    console.error('找不到对话:', targetConversationId)
+    return null
+  }
+
+  // ========== 前置检查：防止并发生成 ==========
+  // 只有对话处于 idle 状态时才能发起新的生成请求
+  // 这防止了多次点击发送按钮导致的并发问题
+  if (currentConversation.value.generationStatus !== 'idle') {
+    console.warn('⚠️ 对话正在生成中，请等待完成或停止后再试')
+    return null
+  }
+
+  // ========== 前置检查：文件上传 Provider 限制 ==========
+  const containsFilePart = Array.isArray(messageParts) && messageParts.some(part => part?.type === 'file')
+  const historyHasFile =
+    currentConversation.value?.tree?.currentPath?.some((branchId: string) => {
+      const branch = currentConversation.value?.tree?.branches.get(branchId)
+      const version = branch ? getCurrentVersion(branch) : null
+      return version?.parts?.some((part: any) => part?.type === 'file')
+    }) ?? false
+
+  if ((containsFilePart || historyHasFile) && appStore.activeProvider !== 'OpenRouter') {
+    alert('文件上传目前仅支持 OpenRouter 提供商，请切换后重试。')
+    return null
+  }
+
+  // ========== 前置检查：API Key 验证 ==========
+  // 根据当前激活的 Provider 检查对应的 API Key 是否配置
+  const currentProvider = appStore.activeProvider
+  let apiKey = ''
+  
+  if (currentProvider === 'Gemini') {
+    apiKey = appStore.geminiApiKey
+  } else if (currentProvider === 'OpenRouter') {
+    apiKey = appStore.openRouterApiKey
+  }
+  
+  if (!apiKey) {
+    console.error(`API Key 检查失败 - ${currentProvider} API Key 未配置`)
+    // 直接添加错误消息分支，提示用户配置 API Key
+    const parts = [{ type: 'text' as const, text: `错误：未设置 ${currentProvider} API Key，请先在设置页面配置。` }]
+    branchStore.addMessageBranch(targetConversationId, 'model', parts)
+    return null
+  }
+
+  // ========== 创建新的中止控制器 ==========
+  // AbortController 用于取消正在进行的 HTTP 流式请求
+  // 如果存在旧的 controller（理论上不应该，因为已检查 generationStatus），先清理
+  if (abortController.value) {
+    abortController.value.abort()
+  }
+  
+  abortController.value = new AbortController()
+  currentGenerationToken = generationToken
+  manualAbortTokens.delete(generationToken) // 初始时不在手动中止集合中
+
+  // ========== 设置状态为 'sending' ==========
+  // 更新对话的生成状态，触发 UI 变化（如显示加载动画、禁用发送按钮）
+  conversationStore.setGenerationStatus(targetConversationId, true)
+
+  // 获取当前对话使用的模型（优先使用对话专属模型，否则使用全局选中的模型）
+  const conversationModel = currentConversation.value.model || modelStore.selectedModelId
+  const systemInstruction = (currentConversation.value.customInstructions || '').trim()
+
+  return {
+    targetConversationId,
+    generationToken,
+    requestedModalities,
+    imageConfig,
+    conversationModel,
+    systemInstruction
+  }
+}
+
+/**
+ * 创建消息分支（用户分支和 AI 空分支）
+ * 
+ * 执行消息发送时的分支创建操作，包括：
+ * - 创建用户消息分支（如果有用户消息）
+ * - 创建空的 AI 回复分支（用于流式响应追加）
+ * - 查找父分支 ID（新建或从 currentPath 查找）
+ * - 保存生成偏好设置
+ * - 触发滚动到底部
+ * 
+ * @param targetConversationId - 目标对话 ID
+ * @param userMessage - 用户消息文本
+ * @param messageParts - 消息部分数组
+ * @param requestedModalities - 请求的模态
+ * @param imageConfig - 图像配置
+ * @returns 创建的分支 ID
+ */
+interface CreatedBranches {
+  userBranchId: string | null
+  aiBranchId: string
+  parentUserBranchId: string | null
+}
+
+const createMessageBranches = (
+  targetConversationId: string,
+  userMessage: string | undefined,
+  messageParts: any[] | undefined,
+  requestedModalities: string[] | undefined,
+  imageConfig: ImageGenerationConfig | undefined
+): CreatedBranches => {
+  let userBranchId: string | null = null
+  let aiBranchId: string | null = null
+
+  // ========== 步骤 1：处理用户消息，添加用户分支 ==========
+  // 只有当用户提供了消息内容或附件时才添加用户分支
+  if (userMessage || messageParts) {
+    let parts: any[] = []
+    // 优先使用 messageParts（多模态内容），否则包装纯文本消息
+    if (messageParts && messageParts.length > 0) {
+      parts = messageParts
+    } else if (userMessage) {
+      parts = [{ type: 'text', text: userMessage }]
+    }
+    
+    // 使用 branchStore API 添加用户消息分支到对话树
+    userBranchId = branchStore.addMessageBranch(targetConversationId, 'user', parts)
+    console.log('🔍 [createMessageBranches] 创建用户分支:', userBranchId, '对话ID:', targetConversationId)
+    
+    if (!userBranchId) {
+      throw new Error('创建用户消息分支失败')
+    }
+  }
+
+  // ========== 步骤 2：添加空的 AI 回复分支 ==========
+  // 提前创建一个空的 AI 分支，后续流式响应会不断追加内容到这个分支
+  
+  // 🔧 修复：确定父分支 ID（用户消息分支）
+  // 如果刚刚创建了新的用户分支，使用它；否则从 currentPath 中找最后一个用户分支
+  let parentUserBranchId: string | null = userBranchId
+  
+  if (!parentUserBranchId) {
+    // 编辑后重新生成的情况：需要找到 currentPath 中最后一个 user 分支
+    const conversation = conversationStore.getConversationById(targetConversationId)
+    if (conversation?.tree?.currentPath) {
+      const currentPath = conversation.tree.currentPath
+      // 从后往前找第一个 user 分支
+      for (let i = currentPath.length - 1; i >= 0; i--) {
+        const branchId = currentPath[i]
+        const branch = conversation.tree.branches.get(branchId)
+        if (branch?.role === 'user') {
+          parentUserBranchId = branchId
+          console.log('🔍 [createMessageBranches] 从 currentPath 找到父分支:', parentUserBranchId)
+          break
+        }
+      }
+    }
+  }
+  
+  console.log('🔍 [createMessageBranches] AI 分支的父分支 ID:', parentUserBranchId)
+  
+  const emptyParts = [{ type: 'text' as const, text: '' }]
+  aiBranchId = branchStore.addMessageBranch(
+    targetConversationId, 
+    'model', 
+    emptyParts, 
+    parentUserBranchId  // 🔧 传递父分支 ID
+  )
+  console.log('🔍 [createMessageBranches] 创建AI分支:', aiBranchId, '对话ID:', targetConversationId)
+  
+  if (!aiBranchId) {
+    throw new Error('创建 AI 回复分支失败')
+  }
+
+  // 保存当前分支的生成偏好设置（如图像生成配置）
+  // 这允许用户在编辑消息时恢复之前的请求配置
+  const hasModalities = Array.isArray(requestedModalities) && requestedModalities.length > 0
+  const hasImageConfig = Boolean(imageConfig)
+  if (hasModalities || hasImageConfig) {
+    const preference: SendRequestOverrides = {}
+    if (hasModalities && requestedModalities) {
+      preference.requestedModalities = [...requestedModalities]
+    }
+    if (imageConfig) {
+      preference.imageConfig = imageConfig
+    }
+    branchGenerationPreferences.set(aiBranchId, preference)
+  } else {
+    branchGenerationPreferences.delete(aiBranchId)
+  }
+
+  // ========== 批量 DOM 更新优化 ==========
+  // ✅ 通知滚动容器有新内容
+  if (isComponentActive.value) {
+    chatScrollRef.value?.scrollToBottom()
+  }
+
+  return {
+    userBranchId,
+    aiBranchId,
+    parentUserBranchId
+  }
+}
+
+/**
+ * 构建流式 API 请求参数
+ * 
+ * 从对话树中提取历史消息，构建用户消息文本，配置所有请求选项，
+ * 并调用 AI 服务发起流式请求。
+ * 
+ * @param targetConversationId - 目标对话 ID
+ * @param conversationModel - 使用的模型 ID
+ * @param systemInstruction - 系统指令
+ * @param userMessage - 用户消息文本
+ * @param messageParts - 消息部分数组
+ * @param userBranchId - 用户分支 ID（用于判断是否需要构建 userMessageForApi）
+ * @param requestedModalities - 请求的模态
+ * @param imageConfig - 图像配置
+ * @returns 流式响应迭代器
+ */
+const buildStreamRequest = (
+  targetConversationId: string,
+  conversationModel: string,
+  systemInstruction: string,
+  userMessage: string | undefined,
+  messageParts: any[] | undefined,
+  userBranchId: string | null,
+  requestedModalities: string[] | undefined,
+  imageConfig: ImageGenerationConfig | undefined
+): AsyncIterable<any> => {
+  // ========== 步骤 1：构建请求历史 ==========
+  // 从对话树中提取当前路径的所有消息，作为 API 请求的历史上下文
+  const historyForStream = branchStore.getDisplayMessages(targetConversationId)
+  console.log('🔍 [buildStreamRequest] historyForStream 长度:', historyForStream.length)
+  console.log('🔍 [buildStreamRequest] historyForStream:', historyForStream.map(m => ({ role: m.role, text: m.parts.find(p => p.type === 'text')?.text?.substring(0, 50) })))
+  
+  // 移除最后一条空的 AI 消息（刚才添加的占位分支）
+  // AI 服务不需要接收这个空消息，它会根据历史生成新的回复
+  const historyWithoutLastAI = historyForStream.length > 0
+    ? historyForStream.slice(0, historyForStream.length - 1)
+    : []
+  
+  console.log('🔍 [buildStreamRequest] historyWithoutLastAI 长度:', historyWithoutLastAI.length)
+
+  // ========== 步骤 2：提取用户消息文本（用于某些 API） ==========
+  // 当本次调用确实创建了新的用户分支时，历史里已经包含了该消息，避免重复发送
+  const appendedUserMessageThisTurn = Boolean(userBranchId)
+  let userMessageForApi = ''
+  const shouldBuildUserMessageForApi = (userMessage || messageParts) && !appendedUserMessageThisTurn
+  if (shouldBuildUserMessageForApi) {
+    if (messageParts && messageParts.length > 0) {
+      userMessageForApi = messageParts
+        .filter((p: any) => p.type === 'text')
+        .map((p: any) => p.text)
+        .join('')
+    } else if (typeof userMessage === 'string') {
+      userMessageForApi = userMessage
+    }
+  }
+
+  // ========== 步骤 3：构建请求选项 ==========
+  // 构建 Web 搜索配置（如果用户启用了 Web 搜索功能）
+  const webSearchOptions = buildWebSearchRequestOptions()
+  const reasoningOptions = buildReasoningRequestOptions()
+  const parameterOverrides = buildSamplingParameterOverrides()
+  
+  // ========== 步骤 4：调用 AI 服务发起流式请求 ==========
+  // stream 是一个异步可迭代对象（AsyncIterable），可以用 for await...of 遍历
+  const stream = aiChatService.streamChatResponse(
+    appStore,
+    historyWithoutLastAI,
+    conversationModel,
+    userMessageForApi,
+    {
+      signal: abortController.value!.signal, // 传递 AbortController 用于取消请求（prepareSendContext 中已初始化）
+      webSearch: webSearchOptions,
+      requestedModalities, // 请求的输出模态（如 ['text', 'image']）
+      imageConfig, // 图像生成配置（如宽高比）
+      reasoning: reasoningOptions,
+      parameters: parameterOverrides,
+      pdfEngine: selectedPdfEngine.value,
+      systemInstruction: systemInstruction || null
+    }
+  )
+
+  // 验证流对象是否有效
+  if (!stream || typeof stream[Symbol.asyncIterator] !== 'function') {
+    throw new Error('流式响应不可用')
+  }
+
+  return stream
+}
+
+/**
+ * 处理流式响应
+ * 
+ * 处理 AI 服务返回的流式响应，包括：
+ * - Usage 信息捕获（计费统计）
+ * - 推理内容处理（reasoning_detail、reasoning_stream_text、reasoning_summary）
+ * - 文本 token 追加
+ * - 图片追加
+ * - 滚动通知
+ * 
+ * @param stream - 流式响应对象
+ * @param targetConversationId - 目标对话 ID
+ * @param aiBranchId - AI 分支 ID
+ * @param usageCaptured - Usage 捕获状态（Ref）
+ * @returns Promise<void>
+ */
+const processStreamResponse = async (
+  stream: AsyncIterable<any>,
+  targetConversationId: string,
+  aiBranchId: string,
+  usageCaptured: { value: boolean }
+): Promise<void> => {
+  const iterator = stream[Symbol.asyncIterator]()
+  // 等待第一个 chunk（确认服务器已响应）
+  const firstResult = await iterator.next()
+  
+  /**
+   * 处理单个流式数据块（chunk）
+   * 
+   * Chunk 类型可能包括：
+   * - 字符串：纯文本 token（旧版 API）
+   * - { type: 'text', content: string }：文本内容
+   * - { type: 'image', content: string }：Base64 编码的图片
+   * - { type: 'usage', usage: {...} }：使用量信息（token 数、费用等）
+   * - { type: 'reasoning_detail', detail: {...} }：推理详情（保存用于回传模型）
+   * - { type: 'reasoning_stream_text', text: string }：推理流式文本（UI 展示）
+   * - { type: 'reasoning_summary', ... }：推理摘要
+   */
+  const processChunk = async (chunk: any) => {
+    // 首先尝试提取 usage 信息（用于计费和统计）
+    if (chunk && typeof chunk === 'object') {
+      const usagePayload = 'usage' in chunk ? chunk.usage : undefined
+      if (!usageCaptured.value && usagePayload) {
+        // 第一次捕获 usage 时标记已捕获，避免重复计费
+        usageCaptured.value = captureUsageForBranch(targetConversationId, aiBranchId, usagePayload) || usageCaptured.value
+      } else if (usagePayload) {
+        // 后续的 usage 信息也需要捕获（某些 API 会多次发送）
+        captureUsageForBranch(targetConversationId, aiBranchId, usagePayload)
+      }
+
+      // 如果 chunk 只是 usage 信息（没有内容），跳过后续处理
+      if (chunk.type === 'usage') {
+        return
+      }
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 🧠 流式推理处理
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      
+      // 1️⃣ reasoning_detail：结构化块（保存用于回传模型，不用于显示）
+      // 作用：保存到消息历史，下次请求时原样回传给模型，保持思考连续性
+      if (chunk.type === 'reasoning_detail' && chunk.detail) {
+        branchStore.appendReasoningDetail(
+          targetConversationId,
+          aiBranchId,
+          chunk.detail
+        )
+        // 不触发滚动，因为这是数据层操作，无 UI 变化
+        return
+      }
+
+      // 2️⃣ reasoning_stream_text：实时文本流（用于 UI 展示）
+      // 作用：实时显示思考过程给用户看
+      if (chunk.type === 'reasoning_stream_text' && typeof chunk.text === 'string') {
+        // 将文本追加到当前分支的临时显示缓冲区
+        // 这里需要调用一个新的 store 方法来处理流式文本展示
+        branchStore.appendReasoningStreamingText(
+          targetConversationId,
+          aiBranchId,
+          chunk.text
+        )
+        // ✅ 新方案：通知 Stick-to-Bottom 状态机，由其决策是否滚动
+        if (isComponentActive.value) {
+          chatScrollRef.value?.onNewContent()
+        }
+        return
+      }
+
+      // 3️⃣ reasoning_summary：推理摘要（流结束时）
+      if (chunk.type === 'reasoning_summary') {
+        branchStore.setReasoningSummary(
+          targetConversationId,
+          aiBranchId,
+          {
+            summary: chunk.summary,
+            text: chunk.text,
+            request: chunk.request,
+            provider: chunk.provider,
+            model: chunk.model,
+            excluded: chunk.excluded
+          }
+        )
+        // ✅ 通知滚动容器
+        if (isComponentActive.value) {
+          chatScrollRef.value?.onNewContent()
+        }
+        return
+      }
+
+      // 【向后兼容】保留对旧版 reasoning 块的支持
+      if (chunk.type === 'reasoning' && chunk.reasoning) {
+        captureReasoningForBranch(
+          targetConversationId,
+          aiBranchId,
+          chunk.reasoning as MessageReasoningMetadata
+        )
+        return
+      }
+    }
+
+    // 处理纯字符串 chunk（旧版 API 格式）
+    if (typeof chunk === 'string' && chunk) {
+      branchStore.appendToken(targetConversationId, aiBranchId, chunk)
+      // ✅ 通知滚动容器（RAF 批处理）
+      if (isComponentActive.value) {
+        chatScrollRef.value?.onNewContent()
+      }
+      return
+    }
+
+    // 处理结构化 chunk（新版 API 格式）
+    if (chunk && typeof chunk === 'object') {
+      if (chunk.type === 'text' && chunk.content) {
+        // 文本内容：追加到当前 AI 分支的版本
+        branchStore.appendToken(targetConversationId, aiBranchId, chunk.content)
+        // ✅ 通知滚动容器
+        if (isComponentActive.value) {
+          chatScrollRef.value?.onNewContent()
+        }
+      } else if (chunk.type === 'image' && chunk.content) {
+        // 图像内容：添加为独立的图片部分
+        branchStore.appendImage(targetConversationId, aiBranchId, chunk.content)
+        // ✅ 通知滚动容器
+        if (isComponentActive.value) {
+          chatScrollRef.value?.onNewContent()
+        }
+      }
+    }
+  }
+
+  // 处理第一个 chunk（如果存在）
+  if (!firstResult.done) {
+    // 更新状态为 'receiving'，表示正在接收流式数据
+    conversationStore.setGenerationStatus(targetConversationId, true)
+    await processChunk(firstResult.value)
+  }
+
+  // 遍历剩余的所有 chunk
+  let result = await iterator.next()
+  while (!result.done) {
+    await processChunk(result.value)
+    result = await iterator.next()
+  }
+}
+
+/**
+ * 处理发送消息时的错误
+ * 
+ * 区分中止错误和真实错误，分别处理：
+ * - 中止错误：用户手动停止或标签页切换，添加停止标记
+ * - 真实错误：网络错误、API 错误等，显示错误消息
+ * 
+ * @param error - 捕获的错误对象
+ * @param generationToken - 当前生成的 token
+ * @param targetConversationId - 目标对话 ID
+ * @param aiBranchId - AI 分支 ID
+ * @param userBranchId - 用户分支 ID
+ */
+const handleSendError = (
+  error: any,
+  generationToken: number,
+  targetConversationId: string,
+  aiBranchId: string | null,
+  userBranchId: string | null
+): void => {
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  console.log('❌ [handleSendError] 捕获异常')
+  console.log('  🆔 Generation Token:', generationToken)
+  console.log('  ❌ Error Name:', error?.name)
+  console.log('  ❌ Error Code:', error?.code)
+  console.log('  ❌ Error Message:', error?.message)
+  console.log('  ❌ Full Error:', error)
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  
+  /**
+   * 中止错误的多种形式（不同 AI Provider 可能抛出不同的错误）：
+   * 1. 标准 AbortError（fetch API）
+   * 2. CanceledError（axios 等库）
+   * 3. ERR_CANCELED（某些网络库）
+   * 4. 错误消息包含 "stream" 或 "aborted"（Google AI SDK）
+   */
+  const isAbortError = 
+    error.name === 'AbortError' || 
+    error.name === 'CanceledError' ||
+    error?.code === 'ERR_CANCELED' ||
+    (error.message && error.message.includes('Error reading from the stream')) ||
+    (error.message && error.message.includes('aborted'))
+  
+  // 检查是否为用户手动点击"停止"按钮触发的中止
+  const wasManualAbort = manualAbortTokens.has(generationToken)
+  
+  console.log('🔍 [handleSendError] 错误分析:', {
+    isAbortError,
+    wasManualAbort,
+    shouldTreatAsAbort: isAbortError
+  })
+  
+  if (isAbortError) {
+    // ========== 场景 1：中止错误（用户停止或标签页切换） ==========
+    const manualStopText = '⏹️ 用户已手动中断回复。'
+    
+    if (wasManualAbort) {
+      // ========== 场景 1a：用户手动点击停止按钮 ==========
+
+      if (aiBranchId) {
+        // 获取当前 AI 分支的内容，判断是否需要添加停止标记
+        const conversation = conversationStore.getConversationById(targetConversationId)
+        const branch = conversation?.tree?.branches?.get(aiBranchId)
+        const currentVersion = branch ? getCurrentVersion(branch) : null
+        const existingParts: MessagePart[] = Array.isArray(currentVersion?.parts)
+          ? [...(currentVersion?.parts ?? [])]
+          : []
+
+        // 检查是否有实质内容（非空文本或图片）
+        const hasContent = existingParts.some((part) => {
+          if (part.type === 'text') {
+            return Boolean(part.text.trim())
+          }
+          return true // 图片、文件等非文本部分视为有内容
+        })
+
+        // 检查是否已经添加过停止标记（避免重复）
+        const alreadyAnnotated = existingParts.some((part) => part.type === 'text' && part.text.includes(manualStopText))
+
+        if (!hasContent) {
+          // 如果没有内容，用停止标记替换整个消息
+          const stoppedMessage: MessagePart[] = [{ type: 'text', text: manualStopText }]
+          branchStore.updateBranchParts(targetConversationId, aiBranchId, stoppedMessage)
+        } else if (!alreadyAnnotated) {
+          // 如果有内容且未标注，追加停止标记
+          const appendedParts: MessagePart[] = [...existingParts, { type: 'text', text: `\n\n${manualStopText}` }]
+          branchStore.updateBranchParts(targetConversationId, aiBranchId, appendedParts)
+        }
+      }
+    } else {
+      // ========== 场景 1b：非用户触发的中止（如标签页切换、组件卸载） ==========
+
+      // 更新 AI 分支为简单的停止标记（不是用户主动停止，不需要详细说明）
+      if (aiBranchId) {
+        const conversation = conversationStore.getConversationById(targetConversationId)
+        const branch = conversation?.tree?.branches?.get(aiBranchId)
+        const currentVersion = branch ? getCurrentVersion(branch) : null
+        const textPart = currentVersion && Array.isArray(currentVersion.parts)
+          ? currentVersion.parts.find((part): part is TextPart => part.type === 'text')
+          : undefined
+        const currentText = textPart?.text || ''
+
+        // 只有当前内容为空时才添加停止标记
+        if (!currentText.trim()) {
+          const stoppedMessage = [{ type: 'text' as const, text: '[已停止生成]' }]
+          branchStore.updateBranchParts(targetConversationId, aiBranchId, stoppedMessage)
+        }
+      }
+    }
+
+    // 中止不算真正的错误，清除错误标记
+    conversationStore.setGenerationError(targetConversationId, null)
+    
+  } else {
+    // ========== 场景 2：真实错误（网络错误、API 错误等） ==========
+    console.error('❌ 发送消息时出错:', error)
+    
+    // 标记对话有错误（用于 UI 显示错误状态）
+    conversationStore.setGenerationError(targetConversationId, { message: error?.message || '发送失败' })
+    
+    // 提取错误消息（如果没有有意义的错误信息，使用默认提示）
+    const errorMessage = error instanceof Error ? error.message : '无法连接到 AI 服务，请检查您的 API Key 是否正确。'
+    
+    // 更新 AI 分支为错误消息
+    if (aiBranchId) {
+      const errorParts = [{ type: 'text' as const, text: `抱歉，发生了错误：${errorMessage}` }]
+      branchStore.updateBranchParts(targetConversationId, aiBranchId, errorParts)
+    } else if (userBranchId) {
+      // 如果还没创建 AI 分支（错误发生在早期阶段），创建一个新的错误分支
+      const errorParts = [{ type: 'text' as const, text: `抱歉，发生了错误：${errorMessage}` }]
+      const newBranchId = branchStore.addMessageBranch(targetConversationId, 'model', errorParts)
+      if (newBranchId) {
+        branchStore.updateBranchParts(targetConversationId, newBranchId, errorParts)
+      }
+    }
+  }
+}
+
+/**
+ * 清理发送消息后的状态
+ * 
+ * 无论成功、失败还是中止，都需要执行的清理操作：
+ * - 清理 generation token
+ * - 重置生成状态
+ * - 清理 AbortController
+ * - 触发滚动
+ * - 保存对话
+ * 
+ * @param generationToken - 当前生成的 token
+ * @param targetConversationId - 目标对话 ID
+ */
+const cleanupAfterSend = (
+  generationToken: number,
+  targetConversationId: string
+): void => {
+  // 清理 generation token（从手动中止集合中移除）
+  manualAbortTokens.delete(generationToken)
+  if (currentGenerationToken === generationToken) {
+    currentGenerationToken = null
+  }
+
+  // 🔒 使用固化的 conversationId 确保清理正确的对话
+  // 这防止了标签页快速切换时清理错误对话的状态
+  conversationStore.setGenerationStatus(targetConversationId, false)
+  
+  // 清理 AbortController（释放内存）
+  abortController.value = null
+  
+  // ✅ 新方案：通知滚动容器（会由 RAF 批处理）
+  if (isComponentActive.value) {
+    chatScrollRef.value?.scrollToBottom()
+  }
+  
+  // ========== 保存对话到本地存储 ==========
+  // ⚡ 使用长防抖保存，确保数据最终持久化
+  // 流式过程中不保存 token，只在流结束后统一保存
+  // 使用 3 秒防抖，配合 requestIdleCallback 在空闲时执行
+  persistenceStore.saveAllDirtyConversations()
+}
+
 // 公共的发送消息逻辑（可被普通发送、重新生成、编辑后重发复用）
 /**
  * 执行发送消息的核心逻辑（使用分支树结构）
@@ -2994,491 +3040,54 @@ const formatFileSize = (bytes?: number | null) => {
  * })
  */
 const performSendMessage = async (userMessage?: string, messageParts?: any[], requestOverrides: SendRequestOverrides = {}) => {
-  // ========== 🔒 固化上下文和生成 Token ==========
-  // 立即捕获 conversationId，防止异步过程中标签页切换导致 props.conversationId 变化
-  const generationToken = ++generationTokenCounter
-  const targetConversationId = props.conversationId
-  
-  // 克隆请求配置，避免外部修改影响当前请求
-  const requestedModalities = requestOverrides.requestedModalities && requestOverrides.requestedModalities.length > 0
-    ? [...requestOverrides.requestedModalities]
-    : activeRequestedModalities.value
-      ? [...activeRequestedModalities.value]
-      : undefined
-  const imageConfig = requestOverrides.imageConfig
-    ? cloneImageConfig(requestOverrides.imageConfig)
-    : cloneImageConfig(activeImageConfig.value)
-  
-  // ========== 前置检查：对话存在性 ==========
-  if (!currentConversation.value) {
-    console.error('找不到对话:', targetConversationId)
+  // ========== Phase 3.1: 准备发送上下文 ==========
+  const context = prepareSendContext(props.conversationId, requestOverrides, userMessage, messageParts)
+  if (!context) {
+    // 前置检查失败，prepareSendContext 已处理错误提示
     return
   }
 
-  // ========== 前置检查：防止并发生成 ==========
-  // 只有对话处于 idle 状态时才能发起新的生成请求
-  // 这防止了多次点击发送按钮导致的并发问题
-  if (currentConversation.value.generationStatus !== 'idle') {
-    console.warn('⚠️ 对话正在生成中，请等待完成或停止后再试')
-    return
-  }
-
-  const containsFilePart = Array.isArray(messageParts) && messageParts.some(part => part?.type === 'file')
-  const historyHasFile =
-    currentConversation.value?.tree?.currentPath?.some(branchId => {
-      const branch = currentConversation.value?.tree?.branches.get(branchId)
-      const version = branch ? getCurrentVersion(branch) : null
-      return version?.parts?.some((part: any) => part?.type === 'file')
-    }) ?? false
-
-  if ((containsFilePart || historyHasFile) && appStore.activeProvider !== 'OpenRouter') {
-    alert('文件上传目前仅支持 OpenRouter 提供商，请切换后重试。')
-    return
-  }
-
-  // ========== 前置检查：API Key 验证 ==========
-  // 根据当前激活的 Provider 检查对应的 API Key 是否配置
-  const currentProvider = appStore.activeProvider
-  let apiKey = ''
-  
-  if (currentProvider === 'Gemini') {
-    apiKey = appStore.geminiApiKey
-  } else if (currentProvider === 'OpenRouter') {
-    apiKey = appStore.openRouterApiKey
-  }
-  
-  if (!apiKey) {
-    console.error(`API Key 检查失败 - ${currentProvider} API Key 未配置`)
-    // 直接添加错误消息分支，提示用户配置 API Key
-    const parts = [{ type: 'text', text: `错误：未设置 ${currentProvider} API Key，请先在设置页面配置。` }]
-    chatStore.addMessageBranch(targetConversationId, 'model', parts)
-    return
-  }
-
-  // ========== 创建新的中止控制器 ==========
-  // AbortController 用于取消正在进行的 HTTP 流式请求
-  // 如果存在旧的 controller（理论上不应该，因为已检查 generationStatus），先清理
-  if (abortController.value) {
-    abortController.value.abort()
-  }
-  
-  abortController.value = new AbortController()
-  currentGenerationToken = generationToken
-  manualAbortTokens.delete(generationToken) // 初始时不在手动中止集合中
-
-  // ========== 设置状态为 'sending' ==========
-  // 更新对话的生成状态，触发 UI 变化（如显示加载动画、禁用发送按钮）
-  chatStore.setConversationGenerationStatus(targetConversationId, 'sending')
+  const { targetConversationId, generationToken, requestedModalities, imageConfig, conversationModel, systemInstruction } = context
 
   // 用于追踪是否已经捕获过 usage 信息（避免重复计费）
-  let usageCaptured = false
+  const usageCaptured = { value: false }
   // 记录创建的用户消息和 AI 回复的 branchId，用于错误恢复
   let userBranchId: string | null = null
   let aiBranchId: string | null = null
 
   try {
-    // 获取当前对话使用的模型（优先使用对话专属模型，否则使用全局选中的模型）
-    const conversationModel = currentConversation.value.model || chatStore.selectedModel
-    const systemInstruction = (currentConversation.value.customInstructions || '').trim()
+    // ========== Phase 3.2: 创建消息分支 ==========
+    const branches = createMessageBranches(
+      targetConversationId,
+      userMessage,
+      messageParts,
+      requestedModalities,
+      imageConfig
+    )
+    userBranchId = branches.userBranchId
+    aiBranchId = branches.aiBranchId
 
-    // ========== 步骤 1：处理用户消息，添加用户分支 ==========
-    // 只有当用户提供了消息内容或附件时才添加用户分支
-    if (userMessage || messageParts) {
-      let parts: any[] = []
-      // 优先使用 messageParts（多模态内容），否则包装纯文本消息
-      if (messageParts && messageParts.length > 0) {
-        parts = messageParts
-      } else if (userMessage) {
-        parts = [{ type: 'text', text: userMessage }]
-      }
-      
-      // 使用 chatStore API 添加用户消息分支到对话树
-      userBranchId = chatStore.addMessageBranch(targetConversationId, 'user', parts)
-      
-      if (!userBranchId) {
-        throw new Error('创建用户消息分支失败')
-      }
-    }
-
-    // ========== 步骤 2：添加空的 AI 回复分支 ==========
-    // 提前创建一个空的 AI 分支，后续流式响应会不断追加内容到这个分支
-    const emptyParts = [{ type: 'text', text: '' }]
-    aiBranchId = chatStore.addMessageBranch(targetConversationId, 'model', emptyParts)
-    
-    if (!aiBranchId) {
-      throw new Error('创建 AI 回复分支失败')
-    }
-
-    // 保存当前分支的生成偏好设置（如图像生成配置）
-    // 这允许用户在编辑消息时恢复之前的请求配置
-    if (aiBranchId) {
-      const hasModalities = Array.isArray(requestedModalities) && requestedModalities.length > 0
-      const hasImageConfig = Boolean(imageConfig)
-      if (hasModalities || hasImageConfig) {
-        const preference: SendRequestOverrides = {}
-        if (hasModalities && requestedModalities) {
-          preference.requestedModalities = [...requestedModalities]
-        }
-        if (imageConfig) {
-          preference.imageConfig = imageConfig
-        }
-        branchGenerationPreferences.set(aiBranchId, preference)
-      } else {
-        branchGenerationPreferences.delete(aiBranchId)
-      }
-    }
-
-    // ========== 批量 DOM 更新优化 ==========
-    // 等待 Vue 更新 DOM 后统一滚动（避免多次 nextTick + 滚动）
-    await nextTick()
-    scrollToBottom()
-
-    // ========== 步骤 3：构建请求历史 ==========
-    // 从对话树中提取当前路径的所有消息，作为 API 请求的历史上下文
-    const historyForStream = chatStore.getConversationMessages(targetConversationId)
-    
-    // 移除最后一条空的 AI 消息（刚才添加的占位分支）
-    // AI 服务不需要接收这个空消息，它会根据历史生成新的回复
-    const historyWithoutLastAI = historyForStream.length > 0
-      ? historyForStream.slice(0, historyForStream.length - 1)
-      : []
-
-    // ========== 步骤 4：提取用户消息文本（用于某些 API） ==========
-    // 当本次调用确实创建了新的用户分支时，历史里已经包含了该消息，避免重复发送
-    const appendedUserMessageThisTurn = Boolean(userBranchId)
-    let userMessageForApi = ''
-    const shouldBuildUserMessageForApi = (userMessage || messageParts) && !appendedUserMessageThisTurn
-    if (shouldBuildUserMessageForApi) {
-      if (messageParts && messageParts.length > 0) {
-        userMessageForApi = messageParts
-          .filter((p: any) => p.type === 'text')
-          .map((p: any) => p.text)
-          .join('')
-      } else if (typeof userMessage === 'string') {
-        userMessageForApi = userMessage
-      }
-    }
-
-    // ========== 步骤 5：发起流式 API 请求 ==========
-    // 构建 Web 搜索配置（如果用户启用了 Web 搜索功能）
-    const webSearchOptions = buildWebSearchRequestOptions()
-    const reasoningOptions = buildReasoningRequestOptions()
-    const parameterOverrides = buildSamplingParameterOverrides()
-    
-    // 调用 aiChatService 发起流式请求
-    // stream 是一个异步可迭代对象（AsyncIterable），可以用 for await...of 遍历
-    const stream = aiChatService.streamChatResponse(
-      appStore,
-      historyWithoutLastAI,
+    // ========== Phase 3.3: 构建流式 API 请求 ==========
+    const stream = buildStreamRequest(
+      targetConversationId,
       conversationModel,
-      userMessageForApi,
-      {
-        signal: abortController.value.signal, // 传递 AbortController 用于取消请求
-        webSearch: webSearchOptions,
-        requestedModalities, // 请求的输出模态（如 ['text', 'image']）
-        imageConfig, // 图像生成配置（如宽高比）
-        reasoning: reasoningOptions,
-        parameters: parameterOverrides,
-        pdfEngine: selectedPdfEngine.value,
-        systemInstruction: systemInstruction || null
-      }
+      systemInstruction,
+      userMessage,
+      messageParts,
+      userBranchId,
+      requestedModalities,
+      imageConfig
     )
 
-    // 验证流对象是否有效
-    if (!stream || typeof stream[Symbol.asyncIterator] !== 'function') {
-      throw new Error('流式响应不可用')
-    }
-
-    // ========== 步骤 6：流式读取响应并实时更新 UI ==========
-    
-    const iterator = stream[Symbol.asyncIterator]()
-    // 等待第一个 chunk（确认服务器已响应）
-    const firstResult = await iterator.next()
-    
-    /**
-     * 处理单个流式数据块（chunk）
-     * 
-     * Chunk 类型可能包括：
-     * - 字符串：纯文本 token（旧版 API）
-     * - { type: 'text', content: string }：文本内容
-     * - { type: 'image', content: string }：Base64 编码的图片
-     * - { type: 'usage', usage: {...} }：使用量信息（token 数、费用等）
-     */
-    const processChunk = async (chunk: any) => {
-      // 首先尝试提取 usage 信息（用于计费和统计）
-      if (chunk && typeof chunk === 'object') {
-        const usagePayload = 'usage' in chunk ? chunk.usage : undefined
-        if (!usageCaptured && usagePayload) {
-          // 第一次捕获 usage 时标记已捕获，避免重复计费
-          usageCaptured = captureUsageForBranch(targetConversationId, aiBranchId!, usagePayload) || usageCaptured
-        } else if (usagePayload) {
-          // 后续的 usage 信息也需要捕获（某些 API 会多次发送）
-          captureUsageForBranch(targetConversationId, aiBranchId!, usagePayload)
-        }
-
-        // 如果 chunk 只是 usage 信息（没有内容），跳过后续处理
-        if (chunk.type === 'usage') {
-          return
-        }
-
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // 🧠 流式推理处理
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        
-        // 1️⃣ reasoning_detail：结构化块（保存用于回传模型，不用于显示）
-        // 作用：保存到消息历史，下次请求时原样回传给模型，保持思考连续性
-        if (chunk.type === 'reasoning_detail' && chunk.detail) {
-          chatStore.appendReasoningDetail(
-            targetConversationId,
-            aiBranchId!,
-            chunk.detail
-          )
-          // 不触发滚动，因为这是数据层操作，无 UI 变化
-          return
-        }
-
-        // 2️⃣ reasoning_stream_text：实时文本流（用于 UI 展示）
-        // 作用：实时显示思考过程给用户看
-        if (chunk.type === 'reasoning_stream_text' && typeof chunk.text === 'string') {
-          // 将文本追加到当前分支的临时显示缓冲区
-          // 这里需要调用一个新的 store 方法来处理流式文本展示
-          chatStore.appendReasoningStreamText(
-            targetConversationId,
-            aiBranchId!,
-            chunk.text
-          )
-          // ⚡ 文本可能非常频繁，使用节流滚动
-          throttledScrollToBottom()
-          return
-        }
-
-        // 3️⃣ reasoning_summary：推理摘要（流结束时）
-        if (chunk.type === 'reasoning_summary') {
-          chatStore.setReasoningSummary(
-            targetConversationId,
-            aiBranchId!,
-            {
-              summary: chunk.summary,
-              text: chunk.text,
-              request: chunk.request,
-              provider: chunk.provider,
-              model: chunk.model,
-              excluded: chunk.excluded
-            }
-          )
-          // ✅ 添加 DOM 更新和滚动
-          await nextTick()
-          throttledScrollToBottom()
-          return
-        }
-
-        // 【向后兼容】保留对旧版 reasoning 块的支持
-        if (chunk.type === 'reasoning' && chunk.reasoning) {
-          captureReasoningForBranch(
-            targetConversationId,
-            aiBranchId!,
-            chunk.reasoning as MessageReasoningMetadata
-          )
-          return
-        }
-      }
-
-      // 处理纯字符串 chunk（旧版 API 格式）
-      if (typeof chunk === 'string' && chunk) {
-        chatStore.appendTokenToBranchVersion(targetConversationId, aiBranchId!, chunk)
-        await nextTick()
-        throttledScrollToBottom() // ✅ 使用节流滚动
-        return
-      }
-
-      // 处理结构化 chunk（新版 API 格式）
-      if (chunk && typeof chunk === 'object') {
-        if (chunk.type === 'text' && chunk.content) {
-          // 文本内容：追加到当前 AI 分支的版本
-          chatStore.appendTokenToBranchVersion(targetConversationId, aiBranchId!, chunk.content)
-          await nextTick()
-          throttledScrollToBottom() // ✅ 使用节流滚动
-        } else if (chunk.type === 'image' && chunk.content) {
-          // 图像内容：添加为独立的图片部分
-          chatStore.appendImageToBranchVersion(targetConversationId, aiBranchId!, chunk.content)
-          await nextTick()
-          throttledScrollToBottom() // ✅ 使用节流滚动
-        }
-      }
-    }
-
-    // 处理第一个 chunk（如果存在）
-    if (!firstResult.done) {
-      // 更新状态为 'receiving'，表示正在接收流式数据
-      chatStore.setConversationGenerationStatus(targetConversationId, 'receiving')
-      await processChunk(firstResult.value)
-    }
-
-    // 遍历剩余的所有 chunk
-    for await (const chunk of iterator) {
-      await processChunk(chunk)
-    }
+    // ========== Phase 3.4: 处理流式响应 ==========
+    await processStreamResponse(stream, targetConversationId, aiBranchId, usageCaptured)
     
   } catch (error: any) {
-    // ========== 错误处理：区分中止错误和真实错误 ==========
-    
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('❌ [performSendMessage] 捕获异常')
-    console.log('  🆔 Generation Token:', generationToken)
-    console.log('  ❌ Error Name:', error?.name)
-    console.log('  ❌ Error Code:', error?.code)
-    console.log('  ❌ Error Message:', error?.message)
-    console.log('  ❌ Full Error:', error)
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    
-    /**
-     * 中止错误的多种形式（不同 AI Provider 可能抛出不同的错误）：
-     * 1. 标准 AbortError（fetch API）
-     * 2. CanceledError（axios 等库）
-     * 3. ERR_CANCELED（某些网络库）
-     * 4. 错误消息包含 "stream" 或 "aborted"（Google AI SDK）
-     */
-    const isAbortError = 
-      error.name === 'AbortError' || 
-      error.name === 'CanceledError' ||
-      error?.code === 'ERR_CANCELED' ||
-      (error.message && error.message.includes('Error reading from the stream')) ||
-      (error.message && error.message.includes('aborted'))
-    
-    // 检查是否为用户手动点击"停止"按钮触发的中止
-    const wasManualAbort = manualAbortTokens.has(generationToken)
-    
-    console.log('🔍 [performSendMessage] 错误分析:', {
-      isAbortError,
-      wasManualAbort,
-      shouldTreatAsAbort: isAbortError
-    })
-    
-    if (isAbortError) {
-      // ========== 场景 1：中止错误（用户停止或标签页切换） ==========
-      const manualStopText = '⏹️ 用户已手动中断回复。'
-      
-      if (wasManualAbort) {
-        // ========== 场景 1a：用户手动点击停止按钮 ==========
-
-        if (aiBranchId) {
-          // 获取当前 AI 分支的内容，判断是否需要添加停止标记
-          const conversation = chatStore.conversationsMap.get(targetConversationId)
-          const branch = conversation?.tree?.branches?.get(aiBranchId)
-          const currentVersion = branch ? getCurrentVersion(branch) : null
-          const existingParts: MessagePart[] = Array.isArray(currentVersion?.parts)
-            ? [...(currentVersion?.parts ?? [])]
-            : []
-
-          // 检查是否有实质内容（非空文本或图片）
-          const hasContent = existingParts.some((part) => {
-            if (part.type === 'text') {
-              return Boolean(part.text.trim())
-            }
-            return true // 图片、文件等非文本部分视为有内容
-          })
-
-          // 检查是否已经添加过停止标记（避免重复）
-          const alreadyAnnotated = existingParts.some((part) => part.type === 'text' && part.text.includes(manualStopText))
-
-          if (!hasContent) {
-            // 如果没有内容，用停止标记替换整个消息
-            const stoppedMessage: MessagePart[] = [{ type: 'text', text: manualStopText }]
-            chatStore.updateBranchParts(targetConversationId, aiBranchId, stoppedMessage, {
-              metadata: null
-            })
-          } else if (!alreadyAnnotated) {
-            // 如果有内容且未标注，追加停止标记
-            const appendedParts: MessagePart[] = [...existingParts, { type: 'text', text: `\n\n${manualStopText}` }]
-            chatStore.updateBranchParts(targetConversationId, aiBranchId, appendedParts, {
-              metadata: null
-            })
-          }
-        }
-      } else {
-        // ========== 场景 1b：非用户触发的中止（如标签页切换、组件卸载） ==========
-
-        // 更新 AI 分支为简单的停止标记（不是用户主动停止，不需要详细说明）
-        if (aiBranchId) {
-          const conversation = chatStore.conversationsMap.get(targetConversationId)
-          const branch = conversation?.tree?.branches?.get(aiBranchId)
-          const currentVersion = branch ? getCurrentVersion(branch) : null
-          const textPart = currentVersion && Array.isArray(currentVersion.parts)
-            ? currentVersion.parts.find((part): part is TextPart => part.type === 'text')
-            : undefined
-          const currentText = textPart?.text || ''
-
-          // 只有当前内容为空时才添加停止标记
-          if (!currentText.trim()) {
-            const stoppedMessage = [{ type: 'text', text: '[已停止生成]' }]
-            chatStore.updateBranchParts(targetConversationId, aiBranchId, stoppedMessage, {
-              metadata: null
-            })
-          }
-        }
-      }
-
-      // 中止不算真正的错误，清除错误标记
-      chatStore.setConversationError(targetConversationId, false)
-      
-    } else {
-      // ========== 场景 2：真实错误（网络错误、API 错误等） ==========
-      console.error('❌ 发送消息时出错:', error)
-      
-      // 标记对话有错误（用于 UI 显示错误状态）
-      chatStore.setConversationError(targetConversationId, true)
-      
-      // 提取错误消息（如果没有有意义的错误信息，使用默认提示）
-      const errorMessage = error instanceof Error ? error.message : '无法连接到 AI 服务，请检查您的 API Key 是否正确。'
-      
-      // 构建结构化的错误元数据（包含错误码、类型、状态码等）
-      const errorMetadata = buildErrorMetadata(error, errorMessage)
-      
-      // 更新 AI 分支为错误消息
-      if (aiBranchId) {
-        const errorParts = [{ type: 'text', text: `抱歉，发生了错误：${errorMessage}` }]
-        chatStore.updateBranchParts(targetConversationId, aiBranchId, errorParts, {
-          metadata: errorMetadata
-        })
-      } else if (userBranchId) {
-        // 如果还没创建 AI 分支（错误发生在早期阶段），创建一个新的错误分支
-        const errorParts = [{ type: 'text', text: `抱歉，发生了错误：${errorMessage}` }]
-        const newBranchId = chatStore.addMessageBranch(targetConversationId, 'model', errorParts)
-        if (newBranchId) {
-          chatStore.updateBranchParts(targetConversationId, newBranchId, errorParts, {
-            metadata: errorMetadata
-          })
-        }
-      }
-    }
+    // ========== Phase 3.5: 错误处理 ==========
+    handleSendError(error, generationToken, targetConversationId, aiBranchId, userBranchId)
   } finally {
-    // ========== 清理：无论成功、失败还是中止，都需要执行的清理操作 ==========
-    
-    // 清理 generation token（从手动中止集合中移除）
-    manualAbortTokens.delete(generationToken)
-    if (currentGenerationToken === generationToken) {
-      currentGenerationToken = null
-    }
-
-    // 🔒 使用固化的 conversationId 确保清理正确的对话
-    // 这防止了标签页快速切换时清理错误对话的状态
-    chatStore.setConversationGenerationStatus(targetConversationId, 'idle')
-    
-    // 清理 AbortController（释放内存）
-    abortController.value = null
-    
-    // ⚡ 性能优化：移除 await nextTick()，避免阻塞
-    // DOM 更新会在下一帧自然发生，不需要等待
-    // 使用 requestIdleCallback 或 setTimeout 0 延迟非关键操作
-    setTimeout(() => {
-      scrollToBottom()
-    }, 0)
-    
-    // ========== 保存对话到本地存储 ==========
-    // ⚡ 使用长防抖保存，确保数据最终持久化
-    // 流式过程中不保存 token，只在流结束后统一保存
-    // 使用 3 秒防抖，配合 requestIdleCallback 在空闲时执行
-    chatStore.debouncedSaveConversations(3000)
+    // ========== Phase 3.5: 清理操作 ==========
+    cleanupAfterSend(generationToken, targetConversationId)
   }
 }
 
@@ -3508,6 +3117,24 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
  * - 这些场景直接调用 performSendMessage，传入不同的参数
  */
 const sendMessage = async () => {
+  // ========== 采样参数校验 ==========
+  if (isSamplingEnabled.value && isSamplingControlAvailable.value) {
+    const errors = validateAllParameters()
+    if (errors.length > 0) {
+      // 阻断发送，滚动到第一个错误参数
+      console.warn('参数校验失败:', errors)
+      
+      // 打开采样参数面板（如果未打开）
+      if (activeMenu.value !== 'sampling') {
+        activeMenu.value = 'sampling'
+      }
+      
+      // TODO: 实现平滑滚动到错误参数位置
+      // 暂时通过动画提示用户
+      return
+    }
+  }
+  
   const trimmedMessage = draftInput.value.trim()
   const hasImages = pendingAttachments.value.length > 0
   const hasFiles = pendingFiles.value.length > 0
@@ -3569,6 +3196,11 @@ const sendMessage = async () => {
   draftInput.value = ''
   pendingAttachments.value = []
   pendingFiles.value = []
+  
+  // ✅ 新方案：发送消息后强制滚到底部（用户期望看到最新内容）
+  if (isComponentActive.value) {
+    chatScrollRef.value?.scrollToBottom()
+  }
 }
 
 /**
@@ -3608,98 +3240,12 @@ const stopGeneration = () => {
 }
 
 /**
- * 滚动到底部函数（优化版）
+ * 滚动控制已集成至 useScrollControl composable
+ * - scrollToBottom(): 滚动到底部（使用 RAF 优化）
+ * - smartScrollToBottom(): 智能滚动（在空闲时执行，避免阻塞 UI）
  * 
- * 功能：将聊天容器滚动到最底部，确保用户始终看到最新消息
- * 
- * 优化策略：
- * - 使用 requestAnimationFrame (RAF) 优化滚动时机
- * - RAF 会在浏览器下一次重绘前执行，避免多次重排/重绘
- * - 使用闭包缓存 RAF ID，防止重复调度
- * 
- * 参数：
- * @param immediate - 是否立即滚动（跳过 RAF 优化）
- *   - true: 取消待处理的 RAF，立即执行滚动（用于紧急场景）
- *   - false (默认): 使用 RAF 优化，在下一帧执行
- * 
- * 实现细节：
- * - 使用 IIFE（立即执行函数表达式）创建闭包
- * - rafId 被闭包捕获，形成私有状态
- * - 多次快速调用时，只保留一个待执行的 RAF
- * - 通过 scrollHeight 自动计算容器的滚动高度
- * 
- * 使用场景：
- * - 新消息添加时滚动到底部
- * - 流式响应时实时滚动（配合 throttledScrollToBottom）
- * - 切换对话时恢复滚动位置
- * 
- * 技术术语解释：
- * - RAF (RequestAnimationFrame): 浏览器 API，在下一次重绘前调用回调
- * - IIFE (Immediately Invoked Function Expression): 立即执行的匿名函数
- * - 闭包 (Closure): 函数及其词法环境的组合，可以访问外部变量
+ * 注意：流式响应期间使用 smartScrollToBottom() 替代原来的 throttledScrollToBottom()
  */
-const scrollToBottom = (() => {
-  let rafId: number | null = null // RAF ID，用于取消待处理的滚动
-
-  return (immediate = false) => {
-    const container = chatContainer.value
-    if (!container) {
-      return
-    }
-
-    if (immediate) {
-      // 立即模式：取消待处理的 RAF，直接执行
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId)
-        rafId = null
-      }
-      container.scrollTop = container.scrollHeight
-      return
-    }
-
-    // 优化模式：如果已有待处理的 RAF，直接返回（避免重复调度）
-    if (rafId !== null) {
-      return
-    }
-
-    // 调度在下一帧执行滚动
-    rafId = requestAnimationFrame(() => {
-      rafId = null
-      const target = chatContainer.value
-      if (!target) {
-        return
-      }
-      target.scrollTop = target.scrollHeight
-    })
-  }
-})()
-
-/**
- * 节流滚动函数：减少流式响应时的滚动调用频率
- * 
- * 使用场景：
- * - AI 流式响应时，每收到一个 token（文本片段）都会触发滚动
- * - 长消息可能每秒触发数十次滚动，造成性能问题
- * 
- * 节流策略：
- * - 使用 @vueuse/core 的 useThrottleFn 实现节流
- * - 设置 100ms 节流间隔，即每 100ms 最多执行一次滚动
- * - 多余的调用会被自动忽略，不会排队累积
- * 
- * 性能收益（实测数据）：
- * - CPU 占用降低 60-80%（长消息场景）
- * - 帧率提升 30-50%（从 30fps → 45fps）
- * - 用户体验几乎无感（100ms 延迟人眼难以察觉）
- * 
- * 技术细节：
- * - throttle（节流）vs debounce（防抖）：
- *   - throttle：固定时间间隔执行，适合持续触发的场景（如滚动）
- *   - debounce：等待停止触发后执行，适合输入框等场景
- * - 此处必须用 throttle，确保流式过程中定期滚动到底部
- */
-const throttledScrollToBottom = useThrottleFn(() => {
-  scrollToBottom()
-}, 100) // 100ms 节流间隔
 
 /**
  * 键盘事件处理器：Enter 键发送消息
@@ -3723,6 +3269,58 @@ const handleKeyPress = (event: KeyboardEvent) => {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault() // 阻止默认换行
     sendMessage()
+    return
+  }
+  
+  // Escape关闭所有菜单（handleGlobalKeyDown 也会处理，但这里提供输入框内的即时响应）
+  if (event.key === 'Escape' && activeMenu.value !== null) {
+    event.preventDefault()
+    activeMenu.value = null
+  }
+}
+
+/**
+ * 全局键盘快捷键处理器
+ * 
+ * 支持的快捷键：
+ * - Ctrl+K: 聚焦输入框
+ * - Ctrl+Shift+I: 添加图片
+ * - Ctrl+Shift+F: 添加文件
+ * - Escape: 关闭所有菜单
+ */
+const handleGlobalKeyDown = (event: KeyboardEvent) => {
+  // 只在当前组件激活时响应全局快捷键
+  if (!isComponentActive.value) return
+  
+  // Ctrl+K: 聚焦输入框
+  if (event.ctrlKey && event.key === 'k') {
+    event.preventDefault()
+    focusInput()
+    return
+  }
+  
+  // Ctrl+Shift+I: 添加图片
+  if (event.ctrlKey && event.shiftKey && event.key === 'I') {
+    event.preventDefault()
+    if (currentConversation.value?.generationStatus === 'idle') {
+      handleSelectImage()
+    }
+    return
+  }
+  
+  // Ctrl+Shift+F: 添加文件
+  if (event.ctrlKey && event.shiftKey && event.key === 'F') {
+    event.preventDefault()
+    if (currentConversation.value?.generationStatus === 'idle') {
+      handleSelectFile()
+    }
+    return
+  }
+  
+  // Escape: 关闭所有菜单（全局）
+  if (event.key === 'Escape' && activeMenu.value !== null) {
+    event.preventDefault()
+    activeMenu.value = null
   }
 }
 
@@ -3807,7 +3405,7 @@ const handleRetryMessage = async (branchId: string) => {
     requestedModalities = [...storedPreference.requestedModalities]
   }
   if (!requestedModalities && branchHasImageParts) {
-    requestedModalities = [...IMAGE_RESPONSE_MODALITIES]
+    requestedModalities = ['image', 'text']
   }
 
   let imageConfig = toggleImageConfig
@@ -3816,7 +3414,7 @@ const handleRetryMessage = async (branchId: string) => {
   }
 
   // 创建新版本（空内容）
-  const newVersionId = chatStore.addBranchVersion(targetConversationId, branchId, [{ type: 'text', text: '' }])
+  const newVersionId = branchStore.addBranchVersion(targetConversationId, branchId, [{ type: 'text' as const, text: '' }])
   
   if (!newVersionId) {
     console.error('❌ 创建新版本失败，branchId:', branchId)
@@ -3838,17 +3436,16 @@ const handleRetryMessage = async (branchId: string) => {
   }
 
   if (shouldRemoveErrorVersion && errorVersionId) {
-    const removed = chatStore.removeBranchVersion(targetConversationId, branchId, errorVersionId)
-    if (!removed) {
-      console.warn('⚠️ 自动移除错误版本失败', { branchId, errorVersionId })
-    }
+    branchStore.removeBranchVersionById(targetConversationId, branchId, errorVersionId)
   }
 
-  await nextTick()
-  scrollToBottom()
+  // ✅ 通知滚动容器
+  if (isComponentActive.value) {
+    chatScrollRef.value?.scrollToBottom()
+  }
 
   // ========== 构建请求历史：获取该分支之前的消息 ==========
-  const allMessages = chatStore.getConversationMessages(targetConversationId)
+  const allMessages = branchStore.getDisplayMessages(targetConversationId)
   
   // 找到当前分支在路径中的位置
   const branchIndex = currentConversation.value.tree.currentPath.indexOf(branchId)
@@ -3867,12 +3464,12 @@ const handleRetryMessage = async (branchId: string) => {
   abortController.value = new AbortController()
 
   // ========== 设置生成状态为 'sending' ==========
-  chatStore.setConversationGenerationStatus(targetConversationId, 'sending')
+  conversationStore.setGenerationStatus(targetConversationId, true)
 
   let usageCaptured = false
 
   try {
-    const conversationModel = currentConversation.value.model || chatStore.selectedModel
+    const conversationModel = currentConversation.value.model || modelStore.selectedModelId
     const systemInstruction = (currentConversation.value.customInstructions || '').trim()
 
     // 发起流式请求
@@ -3923,7 +3520,7 @@ const handleRetryMessage = async (branchId: string) => {
         
         // 1️⃣ reasoning_detail：结构化块（保存用于回传模型，不用于显示）
         if (chunk.type === 'reasoning_detail' && chunk.detail) {
-          chatStore.appendReasoningDetail(
+          branchStore.appendReasoningDetail(
             targetConversationId,
             branchId,
             chunk.detail
@@ -3933,18 +3530,21 @@ const handleRetryMessage = async (branchId: string) => {
 
         // 2️⃣ reasoning_stream_text：实时文本流（用于 UI 展示）
         if (chunk.type === 'reasoning_stream_text' && typeof chunk.text === 'string') {
-          chatStore.appendReasoningStreamText(
+          branchStore.appendReasoningStreamingText(
             targetConversationId,
             branchId,
             chunk.text
           )
-          scrollToBottom()
+          // ✅ 通知滚动容器
+          if (isComponentActive.value) {
+            chatScrollRef.value?.onNewContent()
+          }
           return
         }
 
         // 3️⃣ reasoning_summary：推理摘要（流结束时）
         if (chunk.type === 'reasoning_summary') {
-          chatStore.setReasoningSummary(
+          branchStore.setReasoningSummary(
             targetConversationId,
             branchId,
             {
@@ -3956,8 +3556,10 @@ const handleRetryMessage = async (branchId: string) => {
               excluded: chunk.excluded
             }
           )
-          await nextTick()
-          scrollToBottom()
+          // ✅ 通知滚动容器
+          if (isComponentActive.value) {
+            chatScrollRef.value?.onNewContent()
+          }
           return
         }
 
@@ -3973,27 +3575,33 @@ const handleRetryMessage = async (branchId: string) => {
       }
 
       if (typeof chunk === 'string' && chunk) {
-        chatStore.appendTokenToBranchVersion(targetConversationId, branchId, chunk)
-        await nextTick()
-        scrollToBottom()
+        branchStore.appendToken(targetConversationId, branchId, chunk)
+        // ✅ 通知滚动容器
+        if (isComponentActive.value) {
+          chatScrollRef.value?.onNewContent()
+        }
         return
       }
 
       if (chunk && typeof chunk === 'object') {
         if (chunk.type === 'text' && chunk.content) {
-          chatStore.appendTokenToBranchVersion(targetConversationId, branchId, chunk.content)
-          await nextTick()
-          scrollToBottom()
+          branchStore.appendToken(targetConversationId, branchId, chunk.content)
+          // ✅ 通知滚动容器
+          if (isComponentActive.value) {
+            chatScrollRef.value?.onNewContent()
+          }
         } else if (chunk.type === 'image' && chunk.content) {
-          chatStore.appendImageToBranchVersion(targetConversationId, branchId, chunk.content)
-          await nextTick()
-          scrollToBottom()
+          branchStore.appendImage(targetConversationId, branchId, chunk.content)
+          // ✅ 通知滚动容器
+          if (isComponentActive.value) {
+            chatScrollRef.value?.onNewContent()
+          }
         }
       }
     }
 
     if (!firstResult.done) {
-      chatStore.setConversationGenerationStatus(targetConversationId, 'receiving')
+      conversationStore.setGenerationStatus(targetConversationId, true)
       await processChunk(firstResult.value)
     }
 
@@ -4008,20 +3616,20 @@ const handleRetryMessage = async (branchId: string) => {
     
     if (!isAborted) {
       console.error('❌ 重新生成失败:', error)
-      chatStore.setConversationError(targetConversationId, true)
+      conversationStore.setGenerationError(targetConversationId, { message: error?.message || '重新生成失败' })
     }
   } finally {
     // ========== 清理：设置状态为 idle ==========
-    chatStore.setConversationGenerationStatus(targetConversationId, 'idle')
+    conversationStore.setGenerationStatus(targetConversationId, false)
     abortController.value = null
     
-    // ⚡ 性能优化：异步滚动，不阻塞 finally 块
-    setTimeout(() => {
-      scrollToBottom()
-    }, 0)
+    // ✅ 通知滚动容器
+    if (isComponentActive.value) {
+      chatScrollRef.value?.scrollToBottom()
+    }
     
     // 保存对话（使用长防抖 + requestIdleCallback）
-    chatStore.debouncedSaveConversations(3000)
+    persistenceStore.saveAllDirtyConversations()
   }
 }
 
@@ -4066,31 +3674,9 @@ const handleRetryMessage = async (branchId: string) => {
  * })
  * // => editingBranchId='branch-uuid-456', editingText='Hello', editingImages=['data:...']
  */
-const handleEditMessage = (branchId: string, message: any) => {
-  editingBranchId.value = branchId
-  
-  // 提取文本和图片
-  if (message.parts && Array.isArray(message.parts)) {
-    // 新格式：从 parts 数组中提取
-    const textParts = message.parts.filter((p: any) => p.type === 'text')
-    const imageParts = message.parts.filter((p: any) => p.type === 'image_url')
-    const fileParts = message.parts.filter((p: any) => p.type === 'file' && p.file?.file_data)
-    
-    editingText.value = textParts.map((p: any) => p.text).join('\n')
-    editingImages.value = imageParts.map((p: any) => p.image_url.url)
-    editingFiles.value = fileParts.map((p: any) => ({
-      id: p.id || uuidv4(),
-      name: p.file?.filename || '附件',
-      dataUrl: p.file?.file_data,
-      size: typeof p.file?.size_bytes === 'number' ? p.file.size_bytes : getDataUriSizeInBytes(p.file?.file_data || ''),
-      mimeType: p.file?.mime_type
-    }))
-  } else {
-    // 旧格式兼容
-    editingText.value = extractTextFromMessage(message)
-    editingImages.value = []
-    editingFiles.value = []
-  }
+const handleEditMessage = (branchId: string, _message: any) => {
+  // 直接使用 composable 的 startEditing 方法
+  startEditing(branchId)
 }
 
 /**
@@ -4108,10 +3694,8 @@ const handleEditMessage = (branchId: string, message: any) => {
  * - 如需保存，应使用 handleSaveEdit
  */
 const handleCancelEdit = () => {
-  editingBranchId.value = null
-  editingText.value = ''
-  editingImages.value = []
-  editingFiles.value = []
+  // 直接使用 composable 的 cancelEditing 方法
+  cancelEditing()
 }
 
 /**
@@ -4130,11 +3714,11 @@ const handleCancelEdit = () => {
  * @param index - 要移除的图片在 editingImages 数组中的索引
  */
 const handleRemoveEditingImage = (index: number) => {
-  editingImages.value.splice(index, 1)
+  removeImageFromEdit(index)
 }
 
 const handleRemoveEditingFile = (fileId: string) => {
-  editingFiles.value = editingFiles.value.filter(file => file.id !== fileId)
+  removeFileFromEdit(fileId)
 }
 
 /**
@@ -4158,7 +3742,7 @@ const handleRemoveEditingFile = (fileId: string) => {
  */
 const handleAddImageToEdit = async () => {
   if (!electronApiBridge?.selectImage || isUsingElectronApiFallback) {
-    alert('图片选择功能在当前环境下不可用（需要 Electron 环境）')
+    showAttachmentAlert('warning', '图片选择功能在当前环境下不可用（需要 Electron 环境）')
     console.warn('handleAddImageToEdit: electronAPI bridge 不可用')
     return
   }
@@ -4166,7 +3750,7 @@ const handleAddImageToEdit = async () => {
   try {
     const imageDataUri = await electronApiBridge.selectImage()
     if (imageDataUri) {
-      editingImages.value.push(imageDataUri)
+      addImageToEdit(imageDataUri)
     }
   } catch (error) {
     console.error('选择图片失败:', error)
@@ -4175,13 +3759,8 @@ const handleAddImageToEdit = async () => {
 
 const handleAddFileToEdit = async () => {
   if (!electronApiBridge?.selectFile || isUsingElectronApiFallback) {
-    alert('文件选择功能在当前环境下不可用（需要 Electron 环境）')
+    showAttachmentAlert('warning', '文件选择功能在当前环境下不可用（需要 Electron 环境）')
     console.warn('handleAddFileToEdit: electronAPI bridge 不可用')
-    return
-  }
-
-  if (editingFiles.value.length >= MAX_FILES_PER_MESSAGE) {
-    alert(`每条消息最多只能添加 ${MAX_FILES_PER_MESSAGE} 个文件`)
     return
   }
 
@@ -4191,14 +3770,14 @@ const handleAddFileToEdit = async () => {
       defaultMimeType: 'application/pdf'
     })
     if (result?.dataUrl) {
-      const fileSizeBytes = typeof result.size === 'number' ? result.size : getDataUriSizeInBytes(result.dataUrl)
+      const fileSizeBytes = typeof result.size === 'number' ? result.size : attachmentManager.getDataUriSizeInBytes(result.dataUrl)
       const sizeInMB = fileSizeBytes / (1024 * 1024)
-      if (sizeInMB > MAX_FILE_SIZE_MB) {
-        alert(`文件过大（${sizeInMB.toFixed(2)} MB），请选择小于 ${MAX_FILE_SIZE_MB} MB 的文件`)
+      if (sizeInMB > 20) { // MAX_FILE_SIZE_MB
+        showAttachmentAlert('error', `文件过大（${sizeInMB.toFixed(2)} MB），请选择小于 20 MB 的文件`)
         return
       }
 
-      editingFiles.value.push({
+      addFileToEdit({
         id: uuidv4(),
         name: result.filename || '附件',
         dataUrl: result.dataUrl,
@@ -4262,7 +3841,7 @@ const handleSaveEdit = async (branchId: string) => {
   }
 
   // 获取对话的分支树
-  const conversation = chatStore.conversationsMap.get(targetConversationId)
+  const conversation = conversationStore.getConversationById(targetConversationId)
   if (!conversation?.tree) {
     console.error('对话或分支树不存在')
     return
@@ -4326,7 +3905,7 @@ const handleSaveEdit = async (branchId: string) => {
   if (shouldTriggerReplyOnly) {
     // 清理空的占位回复并回归当前路径到用户分支
     for (const emptyBranchId of emptyChildBranchIds) {
-      chatStore.deleteMessageBranch(targetConversationId, emptyBranchId, true)
+      branchStore.removeBranch(targetConversationId, emptyBranchId, true)
     }
 
     if (conversation.tree) {
@@ -4339,8 +3918,26 @@ const handleSaveEdit = async (branchId: string) => {
 
   if (hasActualChanges) {
     // 创建新版本（用户编辑的消息）
-    // ✅ 用户消息重写时不继承旧回复，AI/其它消息保持现有策略
-    chatStore.addBranchVersion(targetConversationId, branchId, newParts, !isUserBranch)
+    // 🔧 修复：编辑消息不继承子分支，避免旧回复和新回复同时出现
+    // 设计逻辑：编辑消息 = 重新开始对话，旧回复保留在旧版本中可通过版本切换查看
+    console.log('🔍 [handleSaveEdit] 编辑前子分支:', {
+      branchId,
+      childBranchIds: currentVersionSnapshot?.childBranchIds || [],
+      childCount: currentVersionSnapshot?.childBranchIds?.length || 0,
+      willInherit: false
+    })
+    
+    branchStore.addBranchVersion(targetConversationId, branchId, newParts, false)  // 🔧 改为 false
+    
+    // 验证新版本的子分支状态
+    const updatedBranch = branchStore.getBranch(targetConversationId, branchId)
+    const newVersion = updatedBranch?.versions[updatedBranch.currentVersionIndex]
+    console.log('✅ [handleSaveEdit] 编辑后子分支:', {
+      branchId,
+      childBranchIds: newVersion?.childBranchIds || [],
+      childCount: newVersion?.childBranchIds?.length || 0,
+      inheritChildren: false
+    })
   }
 
   // 先退出编辑模式
@@ -4391,7 +3988,7 @@ const handleSaveEdit = async (branchId: string) => {
  */
 const handleSwitchVersion = (branchId: string, direction: number) => {
   if (!currentConversation.value) return
-  chatStore.switchBranchVersion(currentConversation.value.id, branchId, direction)
+  branchStore.switchBranchVersion(currentConversation.value.id, branchId, direction as 1 | -1)
 }
 
 /**
@@ -4446,7 +4043,7 @@ const handleDeleteClick = (branchId: string) => {
  */
 const handleDeleteCurrentVersion = () => {
   if (!deletingBranchId.value || !currentConversation.value) return
-  chatStore.deleteMessageBranch(currentConversation.value.id, deletingBranchId.value, false)
+  branchStore.removeBranch(currentConversation.value.id, deletingBranchId.value, false)
   deletingBranchId.value = null
   deleteDialogShow.value = false
 }
@@ -4484,7 +4081,7 @@ const handleDeleteCurrentVersion = () => {
  */
 const handleDeleteAllVersions = () => {
   if (!deletingBranchId.value || !currentConversation.value) return
-  chatStore.deleteMessageBranch(currentConversation.value.id, deletingBranchId.value, true)
+  branchStore.removeBranch(currentConversation.value.id, deletingBranchId.value, true)
   deletingBranchId.value = null
   deleteDialogShow.value = false
 }
@@ -4494,46 +4091,10 @@ const handleDeleteAllVersions = () => {
 <template>
   <!-- ChatView 根元素：直接作为 flex 列布局，因为父组件已经用 absolute 定位 -->
   <div class="flex flex-col h-full w-full bg-gray-50" data-test-id="chat-view">
-    <!-- 顶部工具栏 - 新的模型选择器布局 -->
-    <div class="bg-white border-b border-gray-200 px-4 py-2 flex-shrink-0 w-full">
-        <div class="flex items-center gap-4">
-          <!-- 左侧：快速收藏模型选择器 -->
-          <div class="flex-1 min-w-0 overflow-x-auto whitespace-nowrap">
-            <FavoriteModelSelector @open-advanced-picker="openAdvancedModelPicker" />
-          </div>
-
-          <!-- 右侧：快速搜索 + 高级模型选择器入口 -->
-          <div class="flex items-center gap-2 flex-none shrink-0">
-            <!-- 快速搜索按钮 -->
-            <QuickModelSearch />
-            
-            <!-- 高级模型选择器入口 -->
-            <button
-              @click="openAdvancedModelPicker"
-              class="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all shadow-sm hover:shadow-md whitespace-nowrap"
-              title="打开高级模型选择器"
-            >
-              <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-              </svg>
-              <span class="font-medium">
-                {{ displayModelName }}
-              </span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 高级模型选择器模态框 -->
-      <AdvancedModelPickerModal
-        :is-open="showAdvancedModelPicker"
-        @close="closeAdvancedModelPicker"
-        @select="closeAdvancedModelPicker"
-      />
-
-      <!-- 消息滚动区：外层控制滚动，内层限制最大宽度 -->
-      <div ref="chatContainer" class="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4 w-full">
-        <div class="space-y-4 max-w-5xl mx-auto">
+      <!-- ✅ 新滚动容器：使用 ChatScrollContainer 组件 -->
+      <ChatScrollContainer ref="chatScrollRef" class="flex-1 min-h-0">
+        <div class="px-4 sm:px-6 py-4 w-full">
+          <div class="space-y-4 max-w-5xl mx-auto">
           <div
             v-if="currentConversation"
             class="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 space-y-4"
@@ -5146,6 +4707,7 @@ const handleDeleteAllVersions = () => {
 
         </div>
       </div>
+    </ChatScrollContainer>
 
       <!-- 输入区 -->
       <div class="bg-white border-t border-gray-200 p-4">
@@ -5162,132 +4724,221 @@ const handleDeleteAllVersions = () => {
             <p class="text-sm text-yellow-800">{{ visionModelWarning }}</p>
           </div>
           
+          <!-- 附件提示横幅 -->
+          <div
+            v-if="attachmentAlert"
+            class="mb-3 flex items-start gap-2 px-3 py-2 rounded-lg border transition-all"
+            :class="{
+              'bg-red-50 border-red-200': attachmentAlert.type === 'error',
+              'bg-yellow-50 border-yellow-200': attachmentAlert.type === 'warning',
+              'bg-blue-50 border-blue-200': attachmentAlert.type === 'info'
+            }"
+          >
+            <svg 
+              v-if="attachmentAlert.type === 'error'"
+              class="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <svg 
+              v-else-if="attachmentAlert.type === 'warning'"
+              class="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <svg 
+              v-else
+              class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p 
+              class="text-sm flex-1"
+              :class="{
+                'text-red-800': attachmentAlert.type === 'error',
+                'text-yellow-800': attachmentAlert.type === 'warning',
+                'text-blue-800': attachmentAlert.type === 'info'
+              }"
+            >
+              {{ attachmentAlert.message }}
+            </p>
+            <button
+              @click="clearAttachmentAlert"
+              class="p-1 rounded hover:bg-white/50 transition-colors flex-shrink-0"
+              :class="{
+                'text-red-600 hover:text-red-700': attachmentAlert.type === 'error',
+                'text-yellow-600 hover:text-yellow-700': attachmentAlert.type === 'warning',
+                'text-blue-600 hover:text-blue-700': attachmentAlert.type === 'info'
+              }"
+              title="关闭提示"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
           <!-- 文件预览区域 -->
           <div
             v-if="pendingFiles.length > 0"
-            class="mb-3 flex flex-wrap gap-2"
+            class="mb-3"
           >
-            <div
-              v-for="file in pendingFiles"
-              :key="file.id"
-              class="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg"
-            >
-              <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12l5.5-5.5a3 3 0 114.24 4.24L10.5 18a4 4 0 11-5.66-5.66L13 4.17" />
-              </svg>
-              <div class="flex flex-col">
-                <span class="text-sm font-medium text-gray-800">{{ file.name }}</span>
-                <span class="text-xs text-gray-500">{{ formatFileSize(file.size) }}</span>
-              </div>
-              <button
-                @click="removeFileAttachment(file.id)"
-                class="ml-2 text-xs text-red-600 hover:text-red-700"
-                title="移除文件"
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-medium text-gray-600">
+                已选择 {{ pendingFiles.length }} 个文件
+              </span>
+            </div>
+            <div class="flex gap-2 overflow-x-auto pb-2">
+              <div
+                v-for="file in pendingFiles"
+                :key="file.id"
+                class="flex-shrink-0 flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
               >
-                移除
-              </button>
+                <svg class="w-5 h-5 text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12l5.5-5.5a3 3 0 114.24 4.24L10.5 18a4 4 0 11-5.66-5.66L13 4.17" />
+                </svg>
+                <div class="flex flex-col min-w-0">
+                  <span class="text-sm font-medium text-gray-800 truncate max-w-[200px]">{{ file.name }}</span>
+                  <span class="text-xs text-gray-500">{{ formatFileSize(file.size) }}</span>
+                </div>
+                <button
+                  @click="attachmentManager.removeFile(file.id)"
+                  class="ml-2 p-1 text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors flex-shrink-0"
+                  title="移除文件"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
           <!-- 附件预览区域 -->
           <div 
             v-if="pendingAttachments.length > 0"
-            class="mb-3 flex flex-wrap gap-2"
+            class="mb-3"
           >
-            <AttachmentPreview
-              v-for="(dataUri, index) in pendingAttachments"
-              :key="index"
-              :image-data-uri="dataUri"
-              :alt-text="`附件 ${index + 1}`"
-              @remove="removeAttachment(index)"
-            />
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-medium text-gray-600">
+                已选择 {{ pendingAttachments.length }} 张图片
+              </span>
+            </div>
+            <div class="flex gap-2 overflow-x-auto pb-2">
+              <AttachmentPreview
+                v-for="(dataUri, index) in pendingAttachments"
+                :key="index"
+                :image-data-uri="dataUri"
+                :alt-text="`附件 ${index + 1}`"
+                @remove="attachmentManager.removeImage(index)"
+                class="flex-shrink-0"
+              />
+            </div>
           </div>
           
-          <div class="flex items-end gap-3">
-            <!-- 文件选择按钮 -->
-            <button
-              @click="handleSelectFile"
-              :disabled="currentConversation?.generationStatus !== 'idle'"
-              class="flex-none shrink-0 p-3 text-gray-600 hover:text-blue-500 hover:bg-blue-50 disabled:text-gray-300 disabled:cursor-not-allowed rounded-lg transition-colors"
-              title="添加文件"
-            >
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12l5.5-5.5a3 3 0 114.24 4.24L10.5 18a4 4 0 11-5.66-5.66L13 4.17" />
-              </svg>
-            </button>
-
-            <!-- PDF 引擎上拉菜单，紧挨文件按钮 -->
-            <div class="relative" ref="pdfEngineMenuRef">
+          <div class="flex items-end gap-2 flex-wrap">
+            <!-- ========== 附件工具组 ========== -->
+            <div class="flex items-end gap-2">
+              <!-- 文件选择按钮 -->
               <button
-                type="button"
-                @click="togglePdfEngineMenu"
-                class="border border-gray-300 rounded px-3 py-2 text-sm flex items-center gap-2 hover:border-blue-400"
+                @click="handleSelectFile"
+                :disabled="currentConversation?.generationStatus !== 'idle'"
+                class="flex-none shrink-0 p-3 text-gray-600 hover:text-blue-500 hover:bg-blue-50 disabled:text-gray-300 disabled:cursor-not-allowed rounded-lg transition-colors"
+                title="添加文件 (Ctrl+Shift+F)"
               >
-                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a4 4 0 116 3.464V15a2 2 0 11-4 0v-1.05" />
-                </svg>
-                <span>{{ selectedPdfEngineLabel }}</span>
-                <svg class="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 9l6 6 6-6" />
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12l5.5-5.5a3 3 0 114.24 4.24L10.5 18a4 4 0 11-5.66-5.66L13 4.17" />
                 </svg>
               </button>
-              <div
-                v-if="pdfEngineMenuVisible"
-                class="absolute bottom-full mb-2 left-0 w-56 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-30"
-              >
+
+              <!-- PDF 引擎选择器 -->
+              <div class="relative" ref="pdfEngineMenuRef">
                 <button
-                  v-for="opt in PDF_ENGINE_OPTIONS"
-                  :key="opt.value"
-                  class="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 flex items-center justify-between"
-                  @click="selectPdfEngineOption(opt.value)"
+                  type="button"
+                  @click="togglePdfEngineMenu"
+                  :disabled="currentConversation?.generationStatus !== 'idle'"
+                  class="h-[44px] border border-gray-300 rounded-lg px-3 py-2 text-sm flex items-center gap-2 text-gray-600 hover:border-blue-400 hover:bg-blue-50 disabled:border-gray-200 disabled:text-gray-300 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+                  title="选择PDF解析引擎"
                 >
-                  <span>{{ opt.label }}</span>
-                  <span v-if="opt.value === selectedPdfEngine" class="text-blue-500 text-xs">✓</span>
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a4 4 0 116 3.464V15a2 2 0 11-4 0v-1.05" />
+                  </svg>
+                  <span class="font-medium">{{ selectedPdfEngineLabel }}</span>
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 9l6 6 6-6" />
+                  </svg>
                 </button>
+                <div
+                  v-if="activeMenu === 'pdf'"
+                  class="absolute bottom-full mb-2 left-0 w-56 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-30"
+                >
+                  <button
+                    v-for="opt in PDF_ENGINE_OPTIONS"
+                    :key="opt.value"
+                    class="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 flex items-center justify-between"
+                    @click="selectPdfEngineOption(opt.value)"
+                  >
+                    <span>{{ opt.label }}</span>
+                    <span v-if="opt.value === selectedPdfEngine" class="text-blue-500 text-xs">✓</span>
+                  </button>
+                </div>
               </div>
+
+              <!-- 图片选择按钮 -->
+              <button
+                @click="handleSelectImage"
+                :disabled="currentConversation?.generationStatus !== 'idle'"
+                class="flex-none shrink-0 p-3 text-gray-600 hover:text-blue-500 hover:bg-blue-50 disabled:text-gray-300 disabled:cursor-not-allowed rounded-lg transition-colors"
+                title="添加图片 (Ctrl+Shift+I)"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+              </button>
             </div>
 
-            <!-- 图片选择按钮 -->
-            <button
-              @click="handleSelectImage"
-              :disabled="currentConversation?.generationStatus !== 'idle'"
-              class="flex-none shrink-0 p-3 text-gray-600 hover:text-blue-500 hover:bg-blue-50 disabled:text-gray-300 disabled:cursor-not-allowed rounded-lg transition-colors"
-              title="添加图片"
-            >
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-              </svg>
-            </button>
+            <!-- 分隔线 -->
+            <div class="h-10 w-px bg-gray-200"></div>
+            
+            <!-- ========== 高级功能组 ========== -->
+            <div class="flex items-end gap-2">
+              <!-- 图像生成按钮 -->
+              <button
+                v-if="canShowImageGenerationButton"
+                @click="toggleImageGeneration"
+                :disabled="!currentConversation || currentConversation.generationStatus !== 'idle'"
+                class="flex-none shrink-0 p-3 rounded-lg border transition-colors flex items-center justify-center"
+                :class="[
+                  imageGenerationEnabled
+                    ? 'bg-purple-500 border-purple-500 text-white hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-purple-500'
+                    : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gray-100'
+                ]"
+                :title="imageGenerationTooltip"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 3c-4.97 0-9 3.806-9 8.5C3 15.538 5.462 18 8.5 18h1.25A1.25 1.25 0 0111 19.25c0 .69.56 1.25 1.25 1.25 4.142 0 7.5-3.358 7.5-7.5S16.142 3 12 3zM7 8a1 1 0 110-2 1 1 0 010 2zm2 3a1 1 0 110-2 1 1 0 010 2zm3-3a1 1 0 110-2 1 1 0 010 2zm2 3a1 1 0 110-2 1 1 0 010 2z"
+                  ></path>
+                </svg>
+              </button>
 
-            <button
-              v-if="canShowImageGenerationButton"
-              @click="toggleImageGeneration"
-              :disabled="!currentConversation || currentConversation.generationStatus !== 'idle'"
-              class="flex-none shrink-0 p-3 rounded-lg border transition-colors flex items-center justify-center"
-              :class="[
-                imageGenerationEnabled
-                  ? 'bg-purple-500 border-purple-500 text-white hover:bg-purple-600'
-                  : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200',
-                (!currentConversation || currentConversation.generationStatus !== 'idle')
-                  ? 'opacity-60 cursor-not-allowed hover:bg-gray-100'
-                  : ''
-              ]"
-              :title="imageGenerationTooltip"
-            >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 3c-4.97 0-9 3.806-9 8.5C3 15.538 5.462 18 8.5 18h1.25A1.25 1.25 0 0111 19.25c0 .69.56 1.25 1.25 1.25 4.142 0 7.5-3.358 7.5-7.5S16.142 3 12 3zM7 8a1 1 0 110-2 1 1 0 010 2zm2 3a1 1 0 110-2 1 1 0 010 2zm3-3a1 1 0 110-2 1 1 0 010 2zm2 3a1 1 0 110-2 1 1 0 010 2z"
-                ></path>
-              </svg>
-            </button>
-
-            <div
-              v-if="imageGenerationEnabled && canConfigureImageAspectRatio"
-              class="flex flex-col gap-1 flex-1 min-w-[12rem] max-w-sm"
-            >
+              <!-- 图像比例滑块 -->
+              <div
+                v-if="imageGenerationEnabled && canConfigureImageAspectRatio"
+                class="flex flex-col gap-1 flex-1 min-w-[12rem] max-w-sm"
+              >
               <div class="flex items-center justify-between text-xs text-gray-500">
                 <span>画面比例</span>
                 <span class="text-gray-700 font-medium">{{ currentAspectRatioLabel }}</span>
@@ -5313,24 +4964,18 @@ const handleDeleteAllVersions = () => {
                 :class="[
                   webSearchEnabled
                     ? 'bg-emerald-500 border-emerald-500'
-                    : 'border-gray-200',
-                  (!currentConversation || !isWebSearchAvailable)
-                    ? 'opacity-60'
-                    : ''
+                    : 'bg-gray-100 border-gray-200'
                 ]"
               >
                 <button
                   @click="toggleWebSearch"
                   :disabled="!currentConversation || !isWebSearchAvailable"
                   :title="webSearchButtonTitle"
-                  class="flex items-center justify-center p-3 transition-colors border-r"
+                  class="flex items-center justify-center p-3 transition-colors border-r disabled:opacity-50 disabled:cursor-not-allowed"
                   :class="[
                     webSearchEnabled
-                      ? 'text-white hover:bg-emerald-600 border-emerald-400'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200',
-                    (!currentConversation || !isWebSearchAvailable)
-                      ? 'cursor-not-allowed'
-                      : ''
+                      ? 'text-white hover:bg-emerald-600 border-emerald-400 disabled:hover:bg-emerald-500'
+                      : 'text-gray-600 hover:bg-gray-200 border-gray-200 disabled:hover:bg-gray-100'
                   ]"
                 >
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5340,15 +4985,12 @@ const handleDeleteAllVersions = () => {
                 <button
                   @click="toggleWebSearchMenu"
                   :disabled="!currentConversation || !isWebSearchAvailable"
-                  title="调节搜索强度"
-                  class="flex items-center justify-center px-2 py-3 transition-colors"
+                  title="调节搜索强度（选择挡位会自动启用网络搜索）"
+                  class="flex items-center justify-center px-2 py-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   :class="[
                     webSearchEnabled
-                      ? 'text-white hover:bg-emerald-600'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
-                    (!currentConversation || !isWebSearchAvailable)
-                      ? 'cursor-not-allowed'
-                      : ''
+                      ? 'text-white hover:bg-emerald-600 disabled:hover:bg-emerald-500'
+                      : 'text-gray-600 hover:bg-gray-200 disabled:hover:bg-gray-100'
                   ]"
                 >
                   <svg
@@ -5363,7 +5005,7 @@ const handleDeleteAllVersions = () => {
               </div>
 
               <div
-                v-if="webSearchMenuVisible"
+                v-if="activeMenu === 'websearch'"
                 class="absolute bottom-full mb-2 left-0 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-30"
                 @click.stop
               >
@@ -5400,24 +5042,18 @@ const handleDeleteAllVersions = () => {
                 :class="[
                   isReasoningEnabled
                     ? 'bg-indigo-500 border-indigo-500'
-                    : 'border-gray-200',
-                  (!currentConversation || !isReasoningControlAvailable)
-                    ? 'opacity-60'
-                    : ''
+                    : 'bg-gray-100 border-gray-200'
                 ]"
               >
                 <button
                   @click="toggleReasoningEnabled"
                   :disabled="!currentConversation || !isReasoningControlAvailable"
                   :title="reasoningButtonTitle"
-                  class="flex items-center justify-center p-3 transition-colors border-r"
+                  class="flex items-center justify-center p-3 transition-colors border-r disabled:opacity-50 disabled:cursor-not-allowed"
                   :class="[
                     isReasoningEnabled
-                      ? 'text-white hover:bg-indigo-600 border-indigo-400'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200',
-                    (!currentConversation || !isReasoningControlAvailable)
-                      ? 'cursor-not-allowed'
-                      : ''
+                      ? 'text-white hover:bg-indigo-600 border-indigo-400 disabled:hover:bg-indigo-500'
+                      : 'text-gray-600 hover:bg-gray-200 border-gray-200 disabled:hover:bg-gray-100'
                   ]"
                 >
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5439,14 +5075,11 @@ const handleDeleteAllVersions = () => {
                   @click="toggleReasoningMenu"
                   :disabled="!currentConversation || !isReasoningControlAvailable"
                   title="调节推理强度"
-                  class="flex items-center justify-center px-2 py-3 transition-colors"
+                  class="flex items-center justify-center px-2 py-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   :class="[
                     isReasoningEnabled
-                      ? 'text-white hover:bg-indigo-600'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
-                    (!currentConversation || !isReasoningControlAvailable)
-                      ? 'cursor-not-allowed'
-                      : ''
+                      ? 'text-white hover:bg-indigo-600 disabled:hover:bg-indigo-500'
+                      : 'text-gray-600 hover:bg-gray-200 disabled:hover:bg-gray-100'
                   ]"
                 >
                   <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5456,7 +5089,7 @@ const handleDeleteAllVersions = () => {
               </div>
 
               <div
-                v-if="reasoningMenuVisible"
+                v-if="activeMenu === 'reasoning'"
                 class="absolute bottom-full mb-2 right-0 w-56 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-30"
                 @click.stop
               >
@@ -5514,24 +5147,18 @@ const handleDeleteAllVersions = () => {
                 :class="[
                   isSamplingEnabled
                     ? 'bg-blue-500 border-blue-500'
-                    : 'border-gray-200',
-                  (!currentConversation || !isSamplingControlAvailable)
-                    ? 'opacity-60'
-                    : ''
+                    : 'bg-gray-100 border-gray-200'
                 ]"
               >
                 <button
                   @click="toggleSamplingParametersEnabled"
                   :disabled="!currentConversation || !isSamplingControlAvailable"
                   :title="samplingButtonTitle"
-                  class="flex items-center justify-center p-3 transition-colors border-r"
+                  class="flex items-center justify-center p-3 transition-colors border-r disabled:opacity-50 disabled:cursor-not-allowed"
                   :class="[
                     isSamplingEnabled
-                      ? 'text-white hover:bg-blue-600 border-blue-400'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-gray-200',
-                    (!currentConversation || !isSamplingControlAvailable)
-                      ? 'cursor-not-allowed'
-                      : ''
+                      ? 'text-white hover:bg-blue-600 border-blue-400 disabled:hover:bg-blue-500'
+                      : 'text-gray-600 hover:bg-gray-200 border-gray-200 disabled:hover:bg-gray-100'
                   ]"
                 >
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5548,14 +5175,11 @@ const handleDeleteAllVersions = () => {
                   @click="toggleSamplingMenu"
                   :disabled="!currentConversation || !isSamplingControlAvailable"
                   title="调节采样参数"
-                  class="flex items-center justify-center px-2 py-3 transition-colors"
+                  class="flex items-center justify-center px-2 py-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   :class="[
                     isSamplingEnabled
-                      ? 'text-white hover:bg-blue-600'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
-                    (!currentConversation || !isSamplingControlAvailable)
-                      ? 'cursor-not-allowed'
-                      : ''
+                      ? 'text-white hover:bg-blue-600 disabled:hover:bg-blue-500'
+                      : 'text-gray-600 hover:bg-gray-200 disabled:hover:bg-gray-100'
                   ]"
                 >
                   <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5565,73 +5189,168 @@ const handleDeleteAllVersions = () => {
               </div>
 
               <div
-                v-if="parameterMenuVisible"
-                class="absolute bottom-full mb-2 right-0 w-64 bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-30 max-h-[28rem] overflow-y-auto"
+                v-if="activeMenu === 'sampling'"
+                class="absolute bottom-full mb-2 right-0 w-80 bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-30 max-h-[32rem] overflow-y-auto"
                 @click.stop
               >
-                <div class="flex items-center justify-between px-3 pb-2 text-xs text-gray-500">
-                  <span>采样参数</span>
+                <div class="flex items-center justify-between px-3 pb-2 text-xs text-gray-500 border-b border-gray-100">
+                  <span class="font-medium">采样参数</span>
                   <button
-                    class="text-blue-600 hover:text-blue-700 disabled:text-gray-400"
+                    class="text-blue-600 hover:text-blue-700 disabled:text-gray-400 transition-colors"
                     :disabled="!isSamplingEnabled"
                     @click="resetSamplingParameters"
+                    title="仅重置滑块模式的参数"
                   >
-                    重置
+                    重置滑块
                   </button>
                 </div>
-                <div class="px-3 pb-2 space-y-4">
+                <div class="px-3 pt-2 pb-2 space-y-3">
+                  <!-- 滑块参数 -->
                   <div
                     v-for="control in SAMPLING_SLIDER_CONTROLS"
                     :key="control.key"
-                    class="flex flex-col gap-1"
+                    class="flex flex-col gap-1.5"
                   >
-                    <div class="flex items-center justify-between text-xs text-gray-500">
-                      <span>{{ control.label }}</span>
-                      <span class="text-gray-700 font-medium">{{ formatSamplingValue(control.key) }}</span>
+                    <div class="flex items-center justify-between text-xs">
+                      <span class="text-gray-600 font-medium">{{ control.label }}</span>
+                      <div class="flex items-center gap-1.5">
+                        <!-- 模式切换按钮 -->
+                        <button
+                          @click="toggleParameterMode(control.key)"
+                          :disabled="!isSamplingEnabled"
+                          class="text-[10px] px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40"
+                          :class="getParameterMode(control.key) === 'SLIDER' 
+                            ? 'bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100' 
+                            : 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100'"
+                          :title="getParameterMode(control.key) === 'SLIDER' ? '切换到输入模式' : '切换到滑块模式'"
+                        >
+                          {{ getParameterMode(control.key) === 'SLIDER' ? '滑块' : '输入' }}
+                        </button>
+                        
+                        <!-- 显示值 -->
+                        <span class="text-gray-800 font-mono text-xs min-w-[3rem] text-right">
+                          {{ formatSamplingValue(control.key) }}
+                        </span>
+                      </div>
                     </div>
-                    <input
-                      type="range"
-                      :min="control.min"
-                      :max="control.max"
-                      :step="control.step"
-                      :value="samplingParameters[control.key] ?? control.min"
-                      @input="handleSamplingSliderInput(control.key, $event)"
-                      :disabled="!isSamplingEnabled"
-                      class="w-full accent-blue-500"
-                    />
-                    <p class="text-[11px] text-gray-400">{{ control.description }}</p>
-                  </div>
-                  <div class="grid grid-cols-3 gap-3">
-                    <label
-                      v-for="control in SAMPLING_INTEGER_CONTROLS"
-                      :key="control.key"
-                      class="flex flex-col gap-1 text-xs text-gray-500"
+                    
+                    <!-- SLIDER 模式 -->
+                    <div 
+                      v-if="getParameterMode(control.key) === 'SLIDER'" 
+                      class="space-y-1"
+                      @mousedown.stop
+                      @touchstart.stop
                     >
-                      <span>{{ control.label }}</span>
+                      <input
+                        type="range"
+                        :min="control.min"
+                        :max="control.max"
+                        :step="control.step"
+                        :value="getSliderValue(control.key)"
+                        @input="handleSamplingSliderInput(control.key, $event)"
+                        :disabled="!isSamplingEnabled"
+                        class="w-full accent-blue-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      />
+                    </div>
+                    
+                    <!-- INPUT 模式 -->
+                    <div v-else class="flex gap-1.5">
                       <input
                         type="number"
-                        class="w-full border rounded-md px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        :placeholder="control.placeholder"
-                        :value="samplingParameters[control.key] ?? ''"
-                        @change="handleSamplingIntegerInput(control.key, $event)"
+                        step="0.01"
+                        :value="getManualValue(control.key) ?? ''"
+                        @input="handleManualInput(control.key, $event)"
+                        @blur="validateParameter(control.key)"
                         :disabled="!isSamplingEnabled"
-                        :min="control.key === 'top_k' ? 0 : (control.key === 'max_tokens' ? 1 : undefined)"
+                        :placeholder="`默认: ${control.defaultValue}`"
+                        class="flex-1 border rounded px-2 py-1 text-xs font-mono focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all disabled:opacity-40"
+                        :class="hasParameterError(control.key) ? 'border-red-400 animate-pulse' : 'border-gray-300'"
                       />
-                      <p class="text-[11px] text-gray-400">{{ control.description }}</p>
-                    </label>
+                      <button
+                        @click="fillDefaultValue(control.key)"
+                        :disabled="!isSamplingEnabled"
+                        class="px-2 py-1 text-[10px] bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded transition-colors disabled:opacity-40"
+                        title="填入默认值"
+                      >
+                        默认
+                      </button>
+                    </div>
+                    
+                    <p class="text-[10px] text-gray-400 leading-tight">{{ control.description }}</p>
+                  </div>
+                  
+                  <!-- 分隔线 -->
+                  <div class="border-t border-gray-100 pt-2"></div>
+                  
+                  <!-- 整数参数 -->
+                  <div class="grid grid-cols-1 gap-3">
+                    <div
+                      v-for="control in SAMPLING_INTEGER_CONTROLS"
+                      :key="control.key"
+                      class="flex flex-col gap-1.5"
+                    >
+                      <div class="flex items-center justify-between text-xs">
+                        <span class="text-gray-600 font-medium">{{ control.label }}</span>
+                        <button
+                          @click="toggleParameterMode(control.key)"
+                          :disabled="!isSamplingEnabled"
+                          class="text-[10px] px-1.5 py-0.5 rounded border transition-colors disabled:opacity-40"
+                          :class="getParameterMode(control.key) === 'SLIDER' 
+                            ? 'bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100' 
+                            : 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100'"
+                        >
+                          {{ getParameterMode(control.key) === 'SLIDER' ? '默认' : '自定义' }}
+                        </button>
+                      </div>
+                      
+                      <div v-if="getParameterMode(control.key) === 'INPUT'" class="flex gap-1.5">
+                        <input
+                          type="number"
+                          :step="control.key === 'seed' ? '1' : '1'"
+                          :value="getManualValue(control.key) ?? ''"
+                          @input="handleManualInput(control.key, $event)"
+                          @blur="validateParameter(control.key)"
+                          :disabled="!isSamplingEnabled"
+                          :placeholder="control.placeholder"
+                          :min="control.min"
+                          class="flex-1 border rounded px-2 py-1 text-xs font-mono focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all disabled:opacity-40"
+                          :class="hasParameterError(control.key) ? 'border-red-400 animate-pulse' : 'border-gray-300'"
+                        />
+                        <button
+                          v-if="control.defaultValue !== null"
+                          @click="fillDefaultValue(control.key)"
+                          :disabled="!isSamplingEnabled"
+                          class="px-2 py-1 text-[10px] bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded transition-colors disabled:opacity-40"
+                          title="填入默认值"
+                        >
+                          默认
+                        </button>
+                      </div>
+                      <div v-else class="text-xs text-gray-500 italic">
+                        使用模型默认值
+                      </div>
+                      
+                      <p class="text-[10px] text-gray-400 leading-tight">{{ control.description }}</p>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
+            </div>
 
+            <!-- 分隔线 -->
+            <div class="h-10 w-px bg-gray-200 hidden lg:block"></div>
+
+            <!-- ========== 输入框 ========== -->
             <div class="flex-1 min-w-0">
               <textarea
                 ref="textareaRef"
                 v-model="draftInput"
                 @keydown="handleKeyPress"
-                placeholder="输入您的消息... (按 Enter 发送，Shift + Enter 换行)"
-                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none transition-colors"
+                placeholder="输入您的消息... (Ctrl+K 聚焦，Enter 发送，Shift+Enter 换行)"
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none transition-colors overflow-hidden"
                 rows="1"
+                style="min-height: 48px;"
               ></textarea>
             </div>
 
@@ -5677,11 +5396,15 @@ const handleDeleteAllVersions = () => {
           </div>
 
           <div class="mt-2 text-xs text-gray-500 text-center">
-            <span v-if="!chatStore.apiKey" class="text-orange-500 font-medium">
+            <span v-if="!appStore.apiKey" class="text-orange-500 font-medium">
               ⚠️ 请先在设置中配置 API Key
             </span>
             <span v-else>
-              按 Enter 发送消息,Shift + Enter 换行
+              <span class="hidden sm:inline">快捷键: </span>
+              <kbd class="px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs font-mono">Ctrl+K</kbd> 聚焦 · 
+              <kbd class="px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs font-mono">Enter</kbd> 发送 · 
+              <kbd class="px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs font-mono hidden md:inline">Shift+Enter</kbd>
+              <span class="hidden md:inline"> 换行</span>
             </span>
           </div>
         </div>

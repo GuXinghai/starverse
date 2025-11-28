@@ -22,6 +22,18 @@ import type {
 } from '../types/chat'
 import { sanitizeMessageMetadata } from '../utils/ipcSanitizer.js'
 
+const DEBUG_TREE_SERIALIZE = typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEBUG_TREE === 'true'
+const debugTreeLog = (...args: any[]) => {
+  if (DEBUG_TREE_SERIALIZE) {
+    console.log(...args)
+  }
+}
+const debugTreeWarn = (...args: any[]) => {
+  if (DEBUG_TREE_SERIALIZE) {
+    console.warn(...args)
+  }
+}
+
 /**
  * 工具函数：使用 delete + set 强制触发 Vue 响应式更新
  * Map 的直接修改可能不触发响应式，展开拷贝确保更新
@@ -148,6 +160,12 @@ export function addBranch(
   // 如果没有父分支，加入根分支列表
   if (!parentBranchId) {
     tree.rootBranchIds = [...tree.rootBranchIds, branch.branchId]
+  }
+
+  // 🔧 修复：自动更新 currentPath，确保新分支出现在当前路径中
+  // 如果是根分支或接在当前路径末尾的分支，自动扩展路径
+  if (!parentBranchId || tree.currentPath[tree.currentPath.length - 1] === parentBranchId) {
+    tree.currentPath = [...tree.currentPath, branch.branchId]
   }
 
   return branch.branchId
@@ -1099,45 +1117,21 @@ export function getPathToBranch(tree: ConversationTree, targetBranchId: string):
 export function restoreTree(raw: any): ConversationTree {
   let branchesMap: Map<string, MessageBranch>
   
-  console.log('🔍 [restoreTree] 开始恢复树', {
-    hasBranches: !!raw?.branches,
-    branchesType: raw?.branches ? typeof raw.branches : 'undefined',
-    isArray: Array.isArray(raw?.branches),
-    isMap: raw?.branches instanceof Map,
-    branchesLength: raw?.branches?.length,
-    branchesSize: raw?.branches?.size,
-    firstItem: Array.isArray(raw?.branches) && raw.branches.length > 0 ? raw.branches[0] : undefined
-  })
-  
   if (!raw?.branches) {
     // 没有 branches，返回空树
-    console.log('⚠️ [restoreTree] 没有 branches，返回空树')
     return createEmptyTree()
   }
   
   if (raw.branches instanceof Map) {
     // 已经是 Map，直接使用
-    console.log('✅ [restoreTree] branches 已经是 Map')
     branchesMap = raw.branches
   } else if (Array.isArray(raw.branches)) {
     // 从数组恢复 Map（JSON 序列化后的格式）
-    console.log('🔄 [restoreTree] 从数组恢复 Map')
-    console.log('  📋 Array length:', raw.branches.length)
-    console.log('  📋 First 3 items:', raw.branches.slice(0, 3))
     
     // 验证数组格式：应该是 [[key, value], ...] 的格式
     if (raw.branches.length > 0) {
       const firstItem = raw.branches[0]
       const isValidMapArray = Array.isArray(firstItem) && firstItem.length === 2
-      console.log('  ✅ Valid Map array format:', isValidMapArray)
-      
-      // 详细检查第一个条目
-      console.log('  🔍 First item details:')
-      console.log('    - Type:', typeof firstItem)
-      console.log('    - Is Array:', Array.isArray(firstItem))
-      console.log('    - Length:', firstItem?.length)
-      console.log('    - [0] (key):', firstItem?.[0], '(type:', typeof firstItem?.[0], ')')
-      console.log('    - [1] (value):', firstItem?.[1])
       
       if (!isValidMapArray) {
         console.error('❌ [restoreTree] Invalid branches array format!')
@@ -1148,20 +1142,8 @@ export function restoreTree(raw: any): ConversationTree {
     }
     
     branchesMap = new Map(raw.branches)
-    console.log('  ✅ Map created with', branchesMap.size, 'entries')
-    console.log('  📋 Keys:', Array.from(branchesMap.keys()))
-    
-    // 🔍 详细检查 Map 的第一个条目
-    if (branchesMap.size > 0) {
-      const firstEntry = Array.from(branchesMap.entries())[0]
-      console.log('  🔍 First Map entry:')
-      console.log('    - Key:', firstEntry[0], '(type:', typeof firstEntry[0], ')')
-      console.log('    - Value type:', typeof firstEntry[1])
-      console.log('    - Value:', firstEntry[1])
-    }
   } else if (typeof raw.branches === 'object') {
     // 从对象恢复 Map（Object.entries 兼容）
-    console.log('🔄 [restoreTree] 从对象恢复 Map')
     branchesMap = new Map(Object.entries(raw.branches))
   } else {
     // 无法识别的格式，返回空树
@@ -1217,34 +1199,34 @@ export function restoreTree(raw: any): ConversationTree {
  * @returns 序列化的对话树数据（branches 为数组格式）
  */
 export function serializeTree(tree: ConversationTree): any {
-  console.log('🔍 [serializeTree] 开始序列化树')
+  debugTreeLog('🔍 [serializeTree] 开始序列化树')
   
   // 处理 reactive 包装的 Map
   let branchesArray: any[]
   const branches: any = tree.branches
   
-  console.log('  🌲 Branches type:', typeof branches)
-  console.log('  🌲 Is Map:', branches instanceof Map)
-  console.log('  🌲 Has entries:', typeof branches?.entries)
-  console.log('  🌲 Is Array:', Array.isArray(branches))
+  debugTreeLog('  🌲 Branches type:', typeof branches)
+  debugTreeLog('  🌲 Is Map:', branches instanceof Map)
+  debugTreeLog('  🌲 Has entries:', typeof branches?.entries)
+  debugTreeLog('  🌲 Is Array:', Array.isArray(branches))
   
   if (branches instanceof Map) {
-    console.log('  ✅ Using Map.entries()')
+    debugTreeLog('  ✅ Using Map.entries()')
     branchesArray = Array.from(branches.entries())
-    console.log('  📋 Entries count:', branchesArray.length)
-    console.log('  📋 First entry:', branchesArray[0])
+    debugTreeLog('  📋 Entries count:', branchesArray.length)
+    debugTreeLog('  📋 First entry:', branchesArray[0])
   } else if (branches && typeof branches.entries === 'function') {
     // reactive 包装后的 Map 仍有 entries 方法
-    console.log('  ✅ Using reactive Map entries()')
+    debugTreeLog('  ✅ Using reactive Map entries()')
     branchesArray = Array.from(branches.entries())
-    console.log('  📋 Entries count:', branchesArray.length)
-    console.log('  📋 First entry:', branchesArray[0])
+    debugTreeLog('  📋 Entries count:', branchesArray.length)
+    debugTreeLog('  📋 First entry:', branchesArray[0])
   } else if (Array.isArray(branches)) {
     // 已经是数组
-    console.log('  ⚠️ Already an array')
+    debugTreeLog('  ⚠️ Already an array')
     branchesArray = branches
   } else {
-    console.warn('⚠️ serializeTree: 无法识别的 branches 类型', typeof branches)
+    debugTreeWarn('⚠️ serializeTree: 无法识别的 branches 类型', typeof branches)
     branchesArray = []
   }
   
@@ -1254,7 +1236,7 @@ export function serializeTree(tree: ConversationTree): any {
     currentPath: tree.currentPath || []
   }
   
-  console.log('✅ [serializeTree] 序列化完成:', {
+  debugTreeLog('✅ [serializeTree] 序列化完成:', {
     branchesCount: branchesArray.length,
     rootBranchIdsCount: result.rootBranchIds.length,
     currentPathLength: result.currentPath.length,

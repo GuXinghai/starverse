@@ -1,11 +1,23 @@
 ﻿/**
- * OpenRouter AI Provider
- * 实现统一的 AI 服务接口
- * OpenRouter 使用 OpenAI 兼容的 API 格式
+ * OpenRouter AI Provider Service
+ * 
+ * 功能概述：
+ * - 实现统一的 AI 服务接口，遵循 OpenAI 兼容的 API 格式
+ * - 支持流式聊天响应（SSE - Server-Sent Events）
+ * - 支持多模态输入（文本 + 图像）
+ * - 支持推理过程可视化（reasoning）
+ * - 支持 Web 搜索增强
+ * - 完整的错误处理和重试机制
  * 
  * 🔄 多模态支持：
- * - 支持发送包含图像的消息
+ * - 支持发送包含图像的消息（Base64 或 URL）
  * - 自动检测模型是否支持视觉功能
+ * - 支持自定义图像宽高比配置
+ * 
+ * 🧠 推理过程支持：
+ * - 实时流式推理文本展示（delta.reasoning）
+ * - 结构化推理数据保存（reasoning_details）
+ * - 推理摘要生成（reasoning_summary）
  */
 
 import { extractTextFromMessage } from '../../types/chat'
@@ -53,6 +65,22 @@ const SUPPORTED_IMAGE_ASPECT_RATIOS = new Set([
   '21:9'
 ])
 
+/**
+ * OpenRouter 支持的采样参数键名列表
+ * 这些参数用于控制模型生成的随机性和多样性
+ * 
+ * @constant {string[]}
+ * - temperature: 控制输出的随机性 (0-2，越高越随机)
+ * - top_p: 核采样，累积概率阈值 (0-1)
+ * - top_k: 限制候选词数量
+ * - frequency_penalty: 降低重复词频率 (-2 到 2)
+ * - presence_penalty: 鼓励谈论新话题 (-2 到 2)
+ * - repetition_penalty: 重复惩罚 (>=0)
+ * - min_p: 最小概率阈值 (0-1)
+ * - top_a: 顶部替代采样参数
+ * - max_tokens: 最大生成令牌数
+ * - seed: 随机种子，用于可复现的输出
+ */
 const OPENROUTER_SAMPLING_KEYS = [
   'temperature',
   'top_p',
@@ -66,18 +94,30 @@ const OPENROUTER_SAMPLING_KEYS = [
   'seed'
 ]
 
+/**
+ * 深拷贝对象（优先使用原生 structuredClone）
+ * 
+ * 拷贝策略（按优先级）：
+ * 1. structuredClone - 原生深拷贝，性能最佳，支持循环引用
+ * 2. JSON 序列化 - 兼容性回退，但无法处理函数、undefined、循环引用
+ * 3. 浅拷贝 - 最后的保护措施，避免抛出错误
+ * 
+ * @param {*} value - 要拷贝的值
+ * @returns {*} 拷贝后的值
+ */
 function clonePlain(value) {
   try {
     if (typeof structuredClone === 'function') {
       return structuredClone(value)
     }
   } catch (error) {
-    // ignore structuredClone errors and fallback
+    // structuredClone 可能因数据类型不支持而失败，降级到 JSON 序列化
   }
 
   try {
     return JSON.parse(JSON.stringify(value))
   } catch (parseError) {
+    // JSON 序列化失败时（如循环引用），使用浅拷贝避免错误
     if (value && typeof value === 'object') {
       return { ...value }
     }
@@ -255,7 +295,19 @@ function supportsVision(modelId) {
   return VISION_MODEL_PATTERNS.some(pattern => pattern.test(modelId))
 }
 
-// ---------- 模块级辅助函数 ----------
+/**
+ * 验证 OpenRouter 请求体格式
+ * 
+ * 确保请求符合 OpenRouter API 规范：
+ * - messages 必须是非空数组
+ * - 每条消息的 content 必须是非空数组
+ * - content 项必须有 type 字段
+ * - image_url 类型必须包含有效的 URL
+ * - image_config 格式必须正确
+ * 
+ * @param {Object} body - 请求体对象
+ * @throws {Error} 当格式不符合规范时抛出详细错误
+ */
 function validateOpenRouterRequestBody(body) {
   if (!body || typeof body !== 'object') throw new Error('请求体为空或格式不正确')
   if (!Array.isArray(body.messages)) throw new Error('请求体缺少 messages 数组')
@@ -407,6 +459,19 @@ export const OpenRouterService = {
           series: m.series,
           pricing: m.pricing
         })))
+        
+        // 打印所有 DeepSeek 模型信息
+        const deepseekModels = models.filter(m => m.id.toLowerCase().includes('deepseek'))
+        console.log('📊 DeepSeek 模型信息 (共 ' + deepseekModels.length + ' 个):')
+        deepseekModels.forEach(m => {
+          console.log('---')
+          console.log('ID:', m.id)
+          console.log('名称:', m.name)
+          console.log('输入模态:', m.input_modalities)
+          console.log('输出模态:', m.output_modalities)
+          console.log('原始 architecture.input_modalities:', m._raw?.architecture?.input_modalities)
+          console.log('原始 architecture.modality:', m._raw?.architecture?.modality)
+        })
       } else {
         console.warn('6. ⚠️ 响应中没有 data 数组')
       }
@@ -415,6 +480,71 @@ export const OpenRouterService = {
       return models
     } catch (error) {
       console.error('❌ OpenRouterService: 获取模型列表失败！', error)
+      throw error
+    }
+  },
+
+  /**
+   * 获取模型支持的参数列表
+   * 
+   * @param {string} apiKey - OpenRouter API Key
+   * @param {string} modelId - 完整的模型 ID (如 'openai/gpt-4o')
+   * @param {string} baseUrl - OpenRouter Base URL (可选)
+   * @param {string} provider - 可选的 provider 参数
+   * @returns {Promise<Object>} - 返回包含 supported_parameters 数组的对象
+   * 
+   * @example
+   * const info = await getModelParameters(apiKey, 'openai/gpt-4o')
+   * // 返回: { model: 'openai/gpt-4o', supported_parameters: ['temperature', 'top_p', ...] }
+   */
+  async getModelParameters(apiKey, modelId, baseUrl = OPENROUTER_BASE_URL, provider = null) {
+    if (!modelId || typeof modelId !== 'string') {
+      throw new Error('modelId 必须是有效的字符串')
+    }
+
+    // 拆分模型 ID 为 author 和 slug
+    // 例如: 'openai/gpt-4o' -> author='openai', slug='gpt-4o'
+    const parts = modelId.split('/')
+    if (parts.length !== 2) {
+      throw new Error(`无效的模型 ID 格式: ${modelId}，期望格式为 'author/slug'`)
+    }
+
+    const [author, slug] = parts
+
+    try {
+      // 构建 URL
+      let url = `${baseUrl}/parameters/${encodeURIComponent(author)}/${encodeURIComponent(slug)}`
+      if (provider) {
+        url += `?provider=${encodeURIComponent(provider)}`
+      }
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer': 'https://github.com/GuXinghai/starverse',
+          'X-Title': 'Starverse'
+        }
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error(`OpenRouterService: 获取模型参数失败，状态: ${response.status}`)
+        console.error('OpenRouterService: 错误响应:', errorText)
+        throw new Error(`获取模型参数失败: ${response.status} - ${errorText}`)
+      }
+
+      const data = await response.json()
+
+      // 返回格式: { data: { model: 'openai/gpt-4o', supported_parameters: [...] } }
+      if (data.data) {
+        return data.data
+      }
+
+      // 向后兼容：如果直接返回了参数列表
+      return data
+    } catch (error) {
+      console.error('OpenRouterService: 获取模型参数时出错', error)
       throw error
     }
   },
@@ -474,6 +604,7 @@ export const OpenRouterService = {
   let imageConfig = null
   let reasoningConfig = null
   let samplingParameters = null
+  let pdfEngine = null
 
     if (options && typeof options === 'object') {
       if ('signal' in options) {
@@ -543,14 +674,23 @@ export const OpenRouterService = {
           }
         }
       }
+      if ('pdfEngine' in options) {
+        const rawEngine = options.pdfEngine
+        if (typeof rawEngine === 'string' && rawEngine.trim()) {
+          pdfEngine = rawEngine.trim()
+        }
+      }
     } else if (options) {
       signal = options
     }
     
     try {
-      // 转换消息格式：Message[] → OpenRouter 格式
-      // 注意：不再检查模型是否支持视觉，因为前端在上传图片时已经做了检查
-      // 如果消息中有图片，说明用户已经确认当前模型支持多模态
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 📝 转换消息格式：内部格式 → OpenRouter API 格式
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 注意：此处不检查模型视觉能力，因为前端在上传图片时已验证
+      // 如果消息中包含图片，说明用户已确认当前模型支持多模态输入
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       const messages = (history || []).map(msg => {
         const role = msg.role === 'model' ? 'assistant' : msg.role
 
@@ -571,6 +711,16 @@ export const OpenRouterService = {
                   image_url: {
                     url: imageUrl,
                     detail: 'auto'
+                  }
+                }
+              }
+              if (part.type === 'file') {
+                // 处理文件类型（如 PDF）
+                return {
+                  type: 'file',
+                  file: {
+                    filename: part.file.filename || 'document.pdf',
+                    file_data: part.file.file_data || part.file.fileData
                   }
                 }
               }
@@ -617,8 +767,11 @@ export const OpenRouterService = {
         return baseMessage
       })
       
-      // 🔧 修复：过滤掉内容为空的消息（除了最后一条 assistant 消消息
-      // Anthropic 要求所有消息都必须有非空内容，除了可选的最后一条 assistant 消息
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 🔧 消息过滤：移除空消息以符合 API 规范
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 某些提供商（如 Anthropic）要求所有消息必须有非空内容
+      // 例外：最后一条 assistant 消息可以为空（用于继续生成）
       const filteredMessages = messages.filter((msg, index) => {
         // 检查是否为最后一条消息
         const isLastMessage = index === messages.length - 1
@@ -653,8 +806,11 @@ export const OpenRouterService = {
       
       console.log(`OpenRouterService: 原始消息 ${messages.length} 条，过滤后 ${filteredMessages.length} 条`)
       
-      // 🔧 修复：只有当 userMessage 有实际内容时才添加新的用户消息
-      // 重新生成回复时，userMessage 可能为空字符串，此时不应添加
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 📨 添加新用户消息（仅在有实际内容时）
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 场景：重新生成回复时，userMessage 为空，不应重复添加用户消息
+      // 兼容：支持传入 content 数组或纯文本字符串
       if (Array.isArray(userMessage)) {
         // 如果上层传入了 content 数组（兼容性），直接使用
         filteredMessages.push({ role: 'user', content: userMessage })
@@ -669,6 +825,65 @@ export const OpenRouterService = {
       
       console.log('OpenRouterService: 最终消息历史长度:', filteredMessages.length)
       
+      /**
+       * OpenRouter 错误码对照表
+       * 包含状态码名称、官方含义和典型触发原因
+       */
+      const OPENROUTER_ERROR_MAP = {
+        400: {
+          name: 'Bad Request',
+          officialMeaning: 'Bad Request (invalid or missing params, CORS)',
+          typicalCauses: '请求体 JSON 非法；缺少必填字段（如 model）；参数类型错误（例如本应是数组却传了字符串）；使用了该模型不支持的参数；前端浏览器直接请求 OpenRouter 触发 CORS。'
+        },
+        401: {
+          name: 'Invalid credentials',
+          officialMeaning: 'Invalid credentials (OAuth session expired, disabled/invalid API key)',
+          typicalCauses: 'Authorization 头缺失或格式错误；API Key 写错、被禁用或过期；使用了错误的 Key（例如复制了 Dashboard 上的其它 Token）。'
+        },
+        402: {
+          name: 'Payment Required',
+          officialMeaning: 'Your account or API key has insufficient credits. Add more credits and retry the request.',
+          typicalCauses: '账户或当前 API Key 可用 credits 不足（包括免费额已用完）；即便是 :free 结尾的免费的模型，当账户整体为负余额时也可能返回 402。'
+        },
+        403: {
+          name: 'Forbidden',
+          officialMeaning: 'Your chosen model requires moderation and your input was flagged',
+          typicalCauses: '所选模型启用了内容审核，当前输入被判定违规；常见于 Anthropic / OpenAI 等安全策略比较严格的模型；error.metadata 中会包含 reasons、flagged_input 等信息。'
+        },
+        408: {
+          name: 'Request Timeout',
+          officialMeaning: 'Your request timed out',
+          typicalCauses: '请求在规定时间内未完成；上游模型响应过慢、上下文过大导致推理超时、网络不稳定等都会触发。'
+        },
+        429: {
+          name: 'Too Many Requests',
+          officialMeaning: 'You are being rate limited',
+          typicalCauses: '命中 OpenRouter 的请求频率限制或 DDoS 防护；免费 :free 模型有分钟 / 日调用上限；也可能是 credits 很少但短时间内请求过于密集。'
+        },
+        502: {
+          name: 'Bad Gateway',
+          officialMeaning: 'Your chosen model is down or we received an invalid response from it',
+          typicalCauses: '上游模型提供方（如 OpenAI、Anthropic、DeepSeek 等）暂时不可用、返回了非预期格式或网关错误；OpenRouter 无法解析对方响应。'
+        },
+        503: {
+          name: 'Service Unavailable',
+          officialMeaning: 'There is no available model provider that meets your routing requirements',
+          typicalCauses: '按当前路由策略，没有任何可用 Provider 可以提供该模型（全部宕机、被限流、地区 / 价格 / 配置不匹配等）；通常是容量或路由层问题。'
+        }
+      }
+
+      /**
+       * 构建标准化的 OpenRouter 错误对象
+       * 
+       * 将 API 返回的错误信息转换为结构化的 Error 对象，
+       * 包含状态码、错误类型、重试标志等元数据，并附加 OpenRouter 标准错误信息
+       * 
+       * @param {Object|string|null} info - API 返回的错误信息
+       * @param {number} status - HTTP 状态码
+       * @param {string} fallbackMessage - 默认错误消息
+       * @param {string} name - 错误类型名称
+       * @returns {Error} 标准化的错误对象
+       */
       const buildOpenRouterError = (info = null, status, fallbackMessage = 'OpenRouter 请求失败', name = 'OpenRouterApiError') => {
         const detail = (info && typeof info === 'object') ? info : null
         let message = fallbackMessage
@@ -684,6 +899,14 @@ export const OpenRouterService = {
 
         if (typeof status === 'number') {
           errorInstance.status = status
+          
+          // 附加 OpenRouter 标准错误信息
+          const errorInfo = OPENROUTER_ERROR_MAP[status]
+          if (errorInfo) {
+            errorInstance.statusName = errorInfo.name
+            errorInstance.officialMeaning = errorInfo.officialMeaning
+            errorInstance.typicalCauses = errorInfo.typicalCauses
+          }
         }
 
         if (detail) {
@@ -700,6 +923,10 @@ export const OpenRouterService = {
           if (typeof detail.retryable === 'boolean') {
             errorInstance.retryable = detail.retryable
           }
+          // 保存完整的 metadata 用于详细信息展示
+          if (detail.metadata && typeof detail.metadata === 'object') {
+            errorInstance.metadata = detail.metadata
+          }
         }
 
         if (name === 'OpenRouterStreamError') {
@@ -712,6 +939,9 @@ export const OpenRouterService = {
       const url = `${baseUrl}/chat/completions`
       const hasImageContent = filteredMessages.some(msg =>
         Array.isArray(msg.content) && msg.content.some(part => part?.type === 'image_url')
+      )
+      const hasFileContent = filteredMessages.some(msg =>
+        Array.isArray(msg.content) && msg.content.some(part => part?.type === 'file')
       )
 
       const requestBody = {
@@ -728,22 +958,26 @@ export const OpenRouterService = {
         console.log('OpenRouterService: 已附加 reasoning 参数', requestBody.reasoning)
       }
 
+      // 配置 plugins（支持多个插件）
+      const plugins = []
+
+      // Web 搜索插件
       if (webSearch && webSearch.enabled) {
-        const pluginConfig = { id: 'web' }
+        const webPluginConfig = { id: 'web' }
 
         if (webSearch.engine && webSearch.engine !== 'undefined') {
-          pluginConfig.engine = webSearch.engine
+          webPluginConfig.engine = webSearch.engine
         }
 
         if (typeof webSearch.maxResults === 'number') {
-          pluginConfig.max_results = webSearch.maxResults
+          webPluginConfig.max_results = webSearch.maxResults
         }
 
         if (webSearch.searchPrompt && typeof webSearch.searchPrompt === 'string') {
-          pluginConfig.search_prompt = webSearch.searchPrompt
+          webPluginConfig.search_prompt = webSearch.searchPrompt
         }
 
-        requestBody.plugins = [pluginConfig]
+        plugins.push(webPluginConfig)
 
         if (webSearch.searchContextSize) {
           requestBody.web_search_options = {
@@ -752,10 +986,29 @@ export const OpenRouterService = {
         }
 
         console.log('OpenRouterService: 已启用 Web 搜索插件', {
-          engine: pluginConfig.engine || 'default',
-          maxResults: pluginConfig.max_results,
+          engine: webPluginConfig.engine || 'default',
+          maxResults: webPluginConfig.max_results,
           searchContextSize: webSearch.searchContextSize
         })
+      }
+
+      // 文件解析插件（PDF 支持）
+      if (hasFileContent && pdfEngine) {
+        const fileParserConfig = {
+          id: 'file-parser',
+          pdf: {
+            engine: pdfEngine
+          }
+        }
+        plugins.push(fileParserConfig)
+        console.log('OpenRouterService: 已启用文件解析插件', {
+          pdfEngine
+        })
+      }
+
+      // 将插件配置添加到请求体
+      if (plugins.length > 0) {
+        requestBody.plugins = plugins
       }
 
       const finalModalities = []
@@ -798,7 +1051,11 @@ export const OpenRouterService = {
         console.log('OpenRouterService: 已附加采样参数', samplingParameters)
       }
       
-      // 调试：在发送前验证 requestBody 格式并打印被截断的请求体（便于快速排查）
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 🔍 请求体验证与调试日志
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 1. 验证请求体格式，提前发现问题
+      // 2. 打印前 4KB 内容用于调试，避免 Base64 图片数据污染日志
       try {
         validateOpenRouterRequestBody(requestBody)
         console.log('✓ 请求体验证通过')
@@ -810,10 +1067,15 @@ export const OpenRouterService = {
   const reasoningPreference = reasoningConfig?.preference ? { ...reasoningConfig.preference } : null
   const reasoningPayload = reasoningConfig?.payload ? { ...reasoningConfig.payload } : null
   
-  // 流式推理状态追踪
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 🧠 流式推理状态追踪
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // reasoningSummary: 推理摘要文本（来自模型的最终总结）
+  // reasoningText: 累积的实时推理文本（来自 delta.reasoning，用于 UI 展示）
+  // emittedDetailIds: 已发送的结构化块 ID（用于去重，这些块需回传给模型）
   let reasoningSummary = null
-  let reasoningText = '' // 从 delta.reasoning 累积，用于实时展示
-  const emittedDetailIds = new Set() // reasoning_details 用于回传模型，不用于文本累积
+  let reasoningText = ''
+  const emittedDetailIds = new Set()
 
   console.log('OpenRouterService: 正在发送请求到:', url)
       // 打印 requestBody 的前 4KB，避免控制台被大量 base64 污染
@@ -901,14 +1163,29 @@ export const OpenRouterService = {
       
       console.log('OpenRouterService: ✓ 收到响应，开始处理流式数据')
       
-      // 处理流式响应 (Server-Sent Events)
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 📡 处理流式响应（Server-Sent Events 格式）
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const reader = response.body.getReader()
   const decoder = new TextDecoder('utf-8')
-  let buffer = ''
-  const emittedImages = new Set()
-  let usageEmitted = false
-  let receivedDone = false
+  let buffer = ''                    // SSE 行缓冲区
+  const emittedImages = new Set()    // 已发送图片去重集合
+  let usageEmitted = false           // token 用量是否已发送
+  let receivedDone = false           // 是否收到 [DONE] 标记
 
+      /**
+       * 标准化图片数据为 Data URL 格式
+       * 
+       * 支持多种输入格式：
+       * - Data URL (data:image/...)
+       * - HTTP(S) URL
+       * - Base64 字符串（自动添加 MIME 类型前缀）
+       * - 对象格式（url, image_url, b64_json, inline_data 等）
+       * 
+       * @param {string|Object|Array} payload - 图片数据
+       * @param {string} defaultMime - 默认 MIME 类型
+       * @returns {string|null} 标准化的 Data URL 或 null
+       */
       const normalizeImagePayload = (payload, defaultMime = 'image/png') => {
         if (!payload) {
           return null
@@ -1009,8 +1286,12 @@ export const OpenRouterService = {
         const lines = buffer.split('\n')
         buffer = lines.pop() || '' // 保留不完整的行（可能跨越多个数据块）
         
-        // 安全检查：防止单行数据过大
-        // 注意：这里检查的是"不完整的行"的大小，而不是总数据量
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 🛡️ 安全检查：防止单行数据过大导致内存溢出
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 注意：buffer 存储的是「不完整的 SSE 行」，而非累积总量
+        // 正常情况下，单行 SSE 数据不会超过几 MB（即使包含图片）
+        // 如果单行 > 16MB，很可能是攻击或协议错误
         if (buffer.length > MAX_BUFFER_SIZE) {
           console.error('OpenRouterService: 检测到异常大的单行数据')
           console.error('  - 单行大小:', Math.round(buffer.length / 1024 / 1024), 'MB')
@@ -1022,7 +1303,7 @@ export const OpenRouterService = {
         for (const line of lines) {
           const trimmedLine = line.trim()
           
-          // 跳过空行和注释
+          // SSE 格式处理：跳过空行和服务器注释（以 : 开头）
           if (!trimmedLine || trimmedLine.startsWith(':')) {
             continue
           }
@@ -1139,8 +1420,11 @@ export const OpenRouterService = {
                 continue
               }
               
-              // 🎨 处理图片数据（优先处理，与文本完全独立）
-              // OpenRouter 图片在 delta.images 数组中
+              // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              // 🎨 处理图片数据（与文本内容并行处理）
+              // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              // 图片来源：delta.images 数组（OpenRouter 标准格式）
+              // 注意：图片和文本是独立的流，可以同时返回
               if (delta.images && Array.isArray(delta.images) && delta.images.length > 0) {
                 console.log('🎨 [IMAGE] 检测到图片数据，数量:', delta.images.length)
                 for (const imageObj of delta.images) {
@@ -1167,10 +1451,13 @@ export const OpenRouterService = {
                 }
               }
               
-              // � 处理文本内容（独立处理，不依赖图片）
+              // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              // 📝 处理文本内容（与图片数据并行处理）
+              // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
               const content = delta.content
 
-              // 处理结构化内容（如 Claude 的 content blocks 或包含图片的响应）
+              // 处理结构化内容数组（如 Claude 的 content blocks）
+              // 可能包含文本块、图片块等多种类型
               if (Array.isArray(content)) {
                 // 如果 content 是数组，可能包含文本和图片
                 for (const block of content) {

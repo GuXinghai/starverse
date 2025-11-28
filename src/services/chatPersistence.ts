@@ -81,6 +81,67 @@ const debugLog = (...args: any[]) => {
 }
 
 /**
+ * 计算消息快照的稳定摘要，避免重复写入完全相同的数据
+ */
+const computeMessageDigest = (messages: MessageSnapshotPayload[]): string => {
+  const fnvPrime = 16777619
+  let hash = 2166136261
+
+  const update = (value: string) => {
+    for (let i = 0; i < value.length; i++) {
+      hash ^= value.charCodeAt(i)
+      hash = (hash * fnvPrime) >>> 0
+    }
+  }
+
+  for (const msg of messages) {
+    update(msg.role ?? '')
+    update(String(msg.seq ?? ''))
+    update(String(msg.createdAt ?? ''))
+    update(msg.body ?? '')
+    try {
+      update(msg.meta ? JSON.stringify(msg.meta) : '')
+    } catch {
+      // ignore metadata that can't be serialized; digest remains usable
+    }
+  }
+
+  return hash.toString(16)
+}
+
+/**
+ * 计算消息结构摘要：忽略最后一条消息的正文内容，用于检测“仅最后一条消息正文变化”的情况
+ */
+const computeStructureDigest = (messages: MessageSnapshotPayload[]): string => {
+  const fnvPrime = 16777619
+  let hash = 2166136261
+
+  const update = (value: string) => {
+    for (let i = 0; i < value.length; i++) {
+      hash ^= value.charCodeAt(i)
+      hash = (hash * fnvPrime) >>> 0
+    }
+  }
+
+  const lastIndex = messages.length - 1
+  messages.forEach((msg, idx) => {
+    update(msg.role ?? '')
+    update(String(msg.seq ?? ''))
+    update(String(msg.createdAt ?? ''))
+    // 忽略最后一条的正文，其他消息仍然纳入正文
+    const bodyForDigest = idx === lastIndex ? '' : (msg.body ?? '')
+    update(bodyForDigest)
+    try {
+      update(msg.meta ? JSON.stringify(msg.meta) : '')
+    } catch {
+      // ignore
+    }
+  })
+
+  return hash.toString(16)
+}
+
+/**
  * 对话快照数据结构
  * 
  * 这是 chatStore 与 SQLite 之间的数据交换格式。
@@ -112,8 +173,11 @@ export type ConversationSnapshot = {
   webSearchEnabled: boolean
   webSearchLevel: WebSearchLevel
   reasoningPreference: ReasoningPreference
+  samplingParameters?: any  // 采样参数（包含所有模式和手动值字段）
   status: ConversationStatus
   tags: string[]
+  // 最近一次成功持久化的消息摘要（用于跳过重复 message.replace）
+  messageDigest?: string
 }
 
 /**
@@ -134,15 +198,17 @@ type ConversationMetaPayload = {
   webSearchEnabled?: boolean
   webSearchLevel?: WebSearchLevel
   reasoningPreference?: ReasoningPreference
+  samplingParameters?: any  // 采样参数（包含所有模式和手动值字段）
   status?: ConversationStatus
   tags?: string[]
+  messageDigest?: string
 }
 
 /**
  * 默认模型 ID
  * 当数据库中未存储模型信息时使用
  */
-const DEFAULT_MODEL = 'gemini-2.0-flash-exp'
+const DEFAULT_MODEL = 'auto'
 
 /**
  * 规范化元数据对象
@@ -222,9 +288,11 @@ const mapRecordToSnapshot = (record: ConvoRecord): ConversationSnapshot => {
       effort: 'medium',
       maxTokens: null
     },
+    samplingParameters: meta.samplingParameters,  // 恢复采样参数（包含所有模式和手动值）
     status,
-    tags
-  }
+    tags,
+    messageDigest: meta.messageDigest
+  } as ConversationSnapshot
 }
 
 /**
@@ -405,6 +473,11 @@ const toMessageSnapshots = (snapshot: ConversationSnapshot): MessageSnapshotPayl
  * - 保证数据可通过 IPC structuredClone 传递
  */
 export class SqliteChatPersistence {
+  // 运行期缓存：会话 -> 最近成功写入的消息摘要，避免重复 message.replace
+  private messageDigestCache = new Map<string, string>()
+  // 运行期缓存：会话 -> 上一次持久化的消息结构与最后一条正文
+  private messageStateCache = new Map<string, { count: number; lastSeq: number; lastBody: string; structureDigest: string }>()
+
   /**
    * 加载所有对话列表
    * 
@@ -484,86 +557,117 @@ export class SqliteChatPersistence {
       model: cleanSnapshot.model
     })
     
-    debugLog('🔍 [saveConversation] 准备构建 meta...')
-    debugLog('🔍 [saveConversation] 准备构建 meta...')
+    debugLog('🔍 [saveConversation] 准备生成消息快照...')
+    const messageSnapshots = toMessageSnapshots(cleanSnapshot)
+    debugLog('✅ [saveConversation] 消息快照生成完成，数量:', messageSnapshots.length)
+    const newMessageDigest = computeMessageDigest(messageSnapshots)
+    const prevDigest = cleanSnapshot.messageDigest || this.messageDigestCache.get(cleanSnapshot.id)
+    const structureDigest = computeStructureDigest(messageSnapshots)
+    const prevState = this.messageStateCache.get(cleanSnapshot.id)
     
-    const meta: ConversationMetaPayload = {
+    const now = Date.now()
+    debugLog('🔍 [saveConversation] 准备构建 meta...')
+    const baseMeta: ConversationMetaPayload = {
       tree: cleanSnapshot.tree, // 已经是序列化且去除 Proxy 的格式
       model: cleanSnapshot.model,
       draft: cleanSnapshot.draft,
       webSearchEnabled: cleanSnapshot.webSearchEnabled,
       webSearchLevel: cleanSnapshot.webSearchLevel,
       reasoningPreference: cleanSnapshot.reasoningPreference,
+      samplingParameters: (cleanSnapshot as any).samplingParameters,  // 保存采样参数（包含所有模式和手动值）
       status: cleanSnapshot.status ?? DEFAULT_CONVERSATION_STATUS,
-      tags: cleanSnapshot.tags ?? []
+      tags: cleanSnapshot.tags ?? [],
+      // 使用旧摘要占位，防止消息写入失败时 meta 过早指向新摘要
+      messageDigest: prevDigest
     }
-
-    debugLog('🔍 [saveConversation] 准备保存 convo 到数据库...')
-    await dbService.saveConvo({
+    const baseConvoPayload = {
       id: cleanSnapshot.id,
       title: cleanSnapshot.title,
       projectId: cleanSnapshot.projectId ?? null,
       createdAt: cleanSnapshot.createdAt,
-      updatedAt: Date.now(),
-      meta
-    })
-    debugLog('✅ [saveConversation] convo 保存成功')
-
-    debugLog('🔍 [saveConversation] 准备生成消息快照...')
-    const messageSnapshots = toMessageSnapshots(cleanSnapshot)
-    debugLog('✅ [saveConversation] 消息快照生成完成，数量:', messageSnapshots.length)
-    
-    if (messageSnapshots.length > 0) {
-      debugLog('🔍 [saveConversation] 准备替换消息到数据库...')
-      debugLog('🔍 [saveConversation] 消息快照详情:', {
-        count: messageSnapshots.length,
-        firstMessage: messageSnapshots[0] ? {
-          role: messageSnapshots[0].role,
-          bodyLength: messageSnapshots[0].body?.length || 0,
-          hasMeta: !!messageSnapshots[0].meta,
-          metaKeys: messageSnapshots[0].meta ? Object.keys(messageSnapshots[0].meta) : []
-        } : null
-      })
-      
-      // 检查每条消息是否可序列化
-      for (let i = 0; i < messageSnapshots.length; i++) {
-        const msg = messageSnapshots[i]
-        debugLog(`🔍 [saveConversation] 检查消息 ${i + 1} 序列化:`)
-        try {
-          const serialized = JSON.stringify(msg)
-          debugLog(`  ✅ 消息 ${i + 1} 可以 JSON 序列化，大小: ${serialized.length} 字节`)
-        } catch (e) {
-          console.error(`  ❌ 消息 ${i + 1} 无法 JSON 序列化:`, e)
-          console.error(`  ❌ 问题消息内容:`, msg)
-        }
-      }
-      
-      debugLog('🔍 [saveConversation] 调用 dbService.replaceMessages...')
-      try {
-        await dbService.replaceMessages({
-          convoId: cleanSnapshot.id,
-          messages: messageSnapshots
-        })
-        debugLog('✅ [saveConversation] 消息替换成功')
-      } catch (error) {
-        console.error('❌ [saveConversation] 消息替换失败:', error)
-        console.error('❌ [saveConversation] 失败时的消息数据:', {
-          convoId: cleanSnapshot.id,
-          messageCount: messageSnapshots.length,
-          messages: messageSnapshots
-        })
-        throw error
-      }
-    } else {
-      debugLog('🔍 [saveConversation] 没有消息，清空数据库中的消息...')
-      // 即使没有消息，也要清空 SQLite 中的冗余残留
-      await dbService.replaceMessages({
-        convoId: cleanSnapshot.id,
-        messages: []
-      })
-      debugLog('✅ [saveConversation] 消息清空完成')
+      updatedAt: now,
+      meta: baseMeta
     }
-    
+
+    const lastSnapshot = messageSnapshots.at(-1)
+    const canUseDelta =
+      messageSnapshots.length > 0 &&
+      newMessageDigest !== prevDigest &&
+      prevState &&
+      prevState.count === messageSnapshots.length &&
+      prevState.lastSeq === (lastSnapshot?.seq ?? messageSnapshots.length) &&
+      prevState.structureDigest === structureDigest &&
+      lastSnapshot?.body &&
+      typeof lastSnapshot.body === 'string' &&
+      lastSnapshot.body.startsWith(prevState.lastBody ?? '') &&
+      lastSnapshot.body.length > (prevState.lastBody ?? '').length
+
+    if (canUseDelta) {
+      // 确保行存在
+      await dbService.saveConvo(baseConvoPayload)
+
+      const delta = lastSnapshot.body.slice(prevState!.lastBody.length)
+      debugLog('🔍 [saveConversation] 检测到末尾追加，仅追加差量:', {
+        seq: lastSnapshot.seq ?? messageSnapshots.length,
+        deltaLength: delta.length
+      })
+      await dbService.appendMessageDelta({
+        convoId: cleanSnapshot.id,
+        seq: lastSnapshot.seq ?? messageSnapshots.length,
+        appendBody: delta
+      })
+      this.messageDigestCache.set(cleanSnapshot.id, newMessageDigest)
+      this.messageStateCache.set(cleanSnapshot.id, {
+        count: messageSnapshots.length,
+        lastSeq: lastSnapshot.seq ?? messageSnapshots.length,
+        lastBody: lastSnapshot.body,
+        structureDigest
+      })
+      debugLog('✅ [saveConversation] 差量追加完成')
+      const finalMeta = { ...baseMeta, messageDigest: newMessageDigest }
+      if (finalMeta.messageDigest !== baseMeta.messageDigest) {
+        await dbService.saveConvo({
+          ...baseConvoPayload,
+          updatedAt: Date.now(),
+          meta: finalMeta
+        })
+      }
+      debugLog('✅ [saveConversation] 对话保存完成(差量追加):', cleanSnapshot.id)
+      return
+    }
+
+    if (newMessageDigest !== prevDigest) {
+      const metaWithFinalDigest = { ...baseMeta, messageDigest: newMessageDigest }
+      debugLog('🔍 [saveConversation] 使用单事务保存对话与消息...', {
+        messageCount: messageSnapshots.length
+      })
+      await dbService.saveConvoWithMessages({
+        convo: {
+          ...baseConvoPayload,
+          meta: metaWithFinalDigest
+        },
+        messages: messageSnapshots
+      })
+      this.messageDigestCache.set(cleanSnapshot.id, newMessageDigest)
+      if (lastSnapshot?.body) {
+        this.messageStateCache.set(cleanSnapshot.id, {
+          count: messageSnapshots.length,
+          lastSeq: lastSnapshot.seq ?? messageSnapshots.length,
+          lastBody: lastSnapshot.body,
+          structureDigest
+        })
+      } else {
+        this.messageStateCache.delete(cleanSnapshot.id)
+      }
+      debugLog('✅ [saveConversation] 对话与消息保存完成(单事务):', cleanSnapshot.id)
+      return
+    }
+
+    debugLog('🔍 [saveConversation] 消息未变化，仅保存元数据/树...')
+    await dbService.saveConvo(baseConvoPayload)
+    if (prevDigest) {
+      this.messageDigestCache.set(cleanSnapshot.id, prevDigest)
+    }
     debugLog('✅ [saveConversation] 对话保存完成:', cleanSnapshot.id)
   }
 

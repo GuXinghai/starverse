@@ -5,6 +5,11 @@ import vue from '@vitejs/plugin-vue'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src')
+    }
+  },
   plugins: [
     vue(),
     electron({
@@ -26,4 +31,19 @@ export default defineConfig({
         : {},
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('highlight.js')) return 'highlight'
+            if (id.includes('katex')) return 'katex'
+            if (id.includes('marked') || id.includes('dompurify')) return 'markdown'
+            if (id.includes('vue') || id.includes('pinia')) return 'vue'
+            return 'vendor'
+          }
+        },
+      },
+    },
+  },
 })

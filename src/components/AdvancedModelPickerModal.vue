@@ -38,19 +38,26 @@
               </div>
 
               <!-- 筛选器区域 -->
-              <div class="filters-section">
-                <!-- 模型系列筛选 -->
+              <div ref="filtersContainer" class="filters-section scrollbar-auto-hide">
+                <!-- 模型厂商筛选 -->
                 <div class="filter-group">
-                  <label class="filter-label">模型系列</label>
-                  <div class="filter-tags scrollable">
+                  <div class="filter-header">
+                    <label class="filter-label">模型厂商</label>
+                    <button @click="showProviderEditor = true" class="edit-btn" title="编辑显示的厂商">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="filter-tags">
                     <button
-                      v-for="series in availableSeries"
-                      :key="series"
-                      @click="toggleFilter('series', series)"
-                      :class="['filter-tag', { active: filters.series.has(series) }]"
+                      v-for="provider in displayedProviders"
+                      :key="provider"
+                      @click="toggleFilter('providers', provider)"
+                      :class="['filter-tag', { active: filters.providers.has(provider) }]"
                     >
-                      {{ series }}
-                      <span class="tag-count">({{ getSeriesCount(series) }})</span>
+                      {{ provider }}
+                      <span class="tag-count">({{ getProviderCount(provider) }})</span>
                     </button>
                   </div>
                 </div>
@@ -60,15 +67,29 @@
                   <label class="filter-label">输入模态</label>
                   <div class="filter-tags">
                     <button
-                      v-for="modality in ['text', 'image', 'audio', 'video']"
+                      v-for="modality in ['text', 'image', 'file', 'audio', 'video']"
                       :key="modality"
                       @click="toggleFilter('inputModalities', modality)"
                       :class="['filter-tag', { active: filters.inputModalities.has(modality) }]"
                     >
-                      <span v-if="modality === 'text'">📝 文本</span>
-                      <span v-else-if="modality === 'image'">🖼️ 图像</span>
-                      <span v-else-if="modality === 'audio'">🎵 音频</span>
-                      <span v-else-if="modality === 'video'">🎬 视频</span>
+                      <span class="flex items-center gap-1.5">
+                        <svg v-if="modality === 'text'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <svg v-else-if="modality === 'image'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <svg v-else-if="modality === 'file'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        <svg v-else-if="modality === 'audio'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                        </svg>
+                        <svg v-else-if="modality === 'video'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        <span>{{ modality.charAt(0).toUpperCase() + modality.slice(1) }}</span>
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -78,68 +99,24 @@
                   <label class="filter-label">输出模态</label>
                   <div class="filter-tags">
                     <button
-                      v-for="modality in ['text', 'image', 'audio', 'video']"
+                      v-for="modality in ['text', 'image', 'embeddings']"
                       :key="modality"
                       @click="toggleFilter('outputModalities', modality)"
                       :class="['filter-tag', { active: filters.outputModalities.has(modality) }]"
                     >
-                      <span v-if="modality === 'text'">📝 文本</span>
-                      <span v-else-if="modality === 'image'">🖼️ 图像</span>
-                      <span v-else-if="modality === 'audio'">🎵 音频</span>
-                      <span v-else-if="modality === 'video'">🎬 视频</span>
+                      <span class="flex items-center gap-1.5">
+                        <svg v-if="modality === 'text'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <svg v-else-if="modality === 'image'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <svg v-else-if="modality === 'embeddings'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                        <span>{{ modality.charAt(0).toUpperCase() + modality.slice(1) }}</span>
+                      </span>
                     </button>
-                  </div>
-                </div>
-
-                <!-- 上下文长度筛选 -->
-                <div class="filter-group">
-                  <label class="filter-label">
-                    上下文长度: ≥ {{ formatContextLength(filters.minContextLength) }}
-                  </label>
-                  <input
-                    :value="contextSliderPosition"
-                    @input="onContextSliderChange"
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    class="range-slider"
-                  />
-                  <div class="range-ticks">
-                    <span
-                      v-for="point in contextKeyPoints"
-                      :key="point.value"
-                      :style="{ left: point.value + '%' }"
-                      class="tick-label"
-                    >
-                      {{ point.label }}
-                    </span>
-                  </div>
-                </div>
-
-                <!-- 价格筛选 -->
-                <div class="filter-group">
-                  <label class="filter-label">
-                    最高价格: ${{ formatPrice(filters.maxPromptPrice) }} / 1M tokens
-                  </label>
-                  <input
-                    :value="priceSliderPosition"
-                    @input="onPriceSliderChange"
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    class="range-slider"
-                  />
-                  <div class="range-ticks">
-                    <span
-                      v-for="point in priceKeyPoints"
-                      :key="point.value"
-                      :style="{ left: point.value + '%' }"
-                      class="tick-label"
-                    >
-                      {{ point.label }}
-                    </span>
                   </div>
                 </div>
 
@@ -186,7 +163,7 @@
               </div>
 
               <!-- 模型列表 -->
-              <div class="models-list">
+              <div ref="modelsListContainer" class="models-list scrollbar-auto-hide">
                 <div
                   v-for="model in sortedModels"
                   :key="model.id"
@@ -257,16 +234,50 @@
                       <span class="metadata-item">
                         <span class="metadata-label">输入:</span>
                         <span class="modalities">
-                          <span v-for="mod in model.input_modalities" :key="mod" class="modality-icon">
-                            {{ getModalityIcon(mod) }}
+                          <span v-for="mod in model.input_modalities" :key="mod" class="modality-icon" :title="mod">
+                            <svg v-if="mod === 'text'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <svg v-else-if="mod === 'image'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <svg v-else-if="mod === 'file'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                            </svg>
+                            <svg v-else-if="mod === 'audio'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                            </svg>
+                            <svg v-else-if="mod === 'video'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                            <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
                           </span>
                         </span>
                       </span>
                       <span class="metadata-item">
                         <span class="metadata-label">输出:</span>
                         <span class="modalities">
-                          <span v-for="mod in model.output_modalities" :key="mod" class="modality-icon">
-                            {{ getModalityIcon(mod) }}
+                          <span v-for="mod in model.output_modalities" :key="mod" class="modality-icon" :title="mod">
+                            <svg v-if="mod === 'text'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <svg v-else-if="mod === 'image'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <svg v-else-if="mod === 'embeddings'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                            </svg>
+                            <svg v-else-if="mod === 'audio'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                            </svg>
+                            <svg v-else-if="mod === 'video'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                            <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
                           </span>
                         </span>
                       </span>
@@ -296,14 +307,58 @@
             </div>
           </div>
         </div>
+
+        <!-- 厂商编辑器 -->
+        <Transition name="editor-modal">
+          <div v-if="showProviderEditor" class="provider-editor-overlay" @click.self="showProviderEditor = false">
+            <div class="provider-editor-container">
+              <div class="editor-header">
+                <h3 class="editor-title">编辑显示的厂商</h3>
+                <button @click="showProviderEditor = false" class="close-btn" title="关闭">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div class="editor-content">
+                <p class="editor-description">选择要在筛选器中显示的厂商（按数量排序）</p>
+                <div class="provider-list">
+                  <label
+                    v-for="provider in allProviders"
+                    :key="provider"
+                    class="provider-checkbox-item"
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="visibleProviders.has(provider)"
+                      @change="toggleProviderVisibility(provider)"
+                      class="provider-checkbox"
+                    />
+                    <span class="provider-name">{{ provider }}</span>
+                    <span class="provider-count-badge">{{ getProviderCount(provider) }}</span>
+                  </label>
+                </div>
+              </div>
+              <div class="editor-footer">
+                <button @click="resetProviderVisibility" class="reset-btn">
+                  重置为默认
+                </button>
+                <button @click="showProviderEditor = false" class="confirm-btn">
+                  确定
+                </button>
+              </div>
+            </div>
+          </div>
+        </Transition>
       </div>
     </Transition>
   </Teleport>
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue'
-import { useChatStore } from '../stores/chatStore'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { useConversationStore } from '../stores/conversation'
+import { useModelStore } from '../stores/model'
 
 const props = defineProps({
   isOpen: {
@@ -314,7 +369,70 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'select'])
 
-const chatStore = useChatStore()
+const conversationStore = useConversationStore()
+const modelStore = useModelStore()
+
+// 滚动容器引用
+const filtersContainer = ref(null)
+const modelsListContainer = ref(null)
+let filtersScrollTimer = null
+let modelsScrollTimer = null
+
+// 滚动事件处理
+const handleFiltersScroll = () => {
+  if (!filtersContainer.value) return
+  filtersContainer.value.classList.add('scrolling')
+  if (filtersScrollTimer !== null) clearTimeout(filtersScrollTimer)
+  filtersScrollTimer = setTimeout(() => {
+    filtersContainer.value?.classList.remove('scrolling')
+  }, 1000)
+}
+
+const handleModelsScroll = () => {
+  if (!modelsListContainer.value) return
+  modelsListContainer.value.classList.add('scrolling')
+  if (modelsScrollTimer !== null) clearTimeout(modelsScrollTimer)
+  modelsScrollTimer = setTimeout(() => {
+    modelsListContainer.value?.classList.remove('scrolling')
+  }, 1000)
+}
+
+// 添加/移除滚动监听器
+const attachScrollListeners = () => {
+  nextTick(() => {
+    if (filtersContainer.value) {
+      filtersContainer.value.addEventListener('scroll', handleFiltersScroll)
+    }
+    if (modelsListContainer.value) {
+      modelsListContainer.value.addEventListener('scroll', handleModelsScroll)
+    }
+  })
+}
+
+const removeScrollListeners = () => {
+  if (filtersContainer.value) {
+    filtersContainer.value.removeEventListener('scroll', handleFiltersScroll)
+  }
+  if (modelsListContainer.value) {
+    modelsListContainer.value.removeEventListener('scroll', handleModelsScroll)
+  }
+  if (filtersScrollTimer !== null) clearTimeout(filtersScrollTimer)
+  if (modelsScrollTimer !== null) clearTimeout(modelsScrollTimer)
+}
+
+// 监听模态框打开/关闭
+watch(() => props.isOpen, (newVal) => {
+  if (newVal) {
+    attachScrollListeners()
+  } else {
+    removeScrollListeners()
+  }
+})
+
+// 组件卸载时清理
+onUnmounted(() => {
+  removeScrollListeners()
+})
 
 // 搜索查询
 const searchQuery = ref('')
@@ -328,216 +446,153 @@ const modelsNeedingExpansion = ref(new Set())
 // 模型描述展开状态（使用 Set 存储已展开的模型 ID）
 const expandedDescriptions = ref(new Set())
 
+// 厂商编辑器显示状态
+const showProviderEditor = ref(false)
+
+// 可见的厂商集合（从 localStorage 加载）
+const visibleProviders = ref(new Set())
+
+// 监听编辑器打开，确保 visibleProviders 与 displayedProviders 同步
+watch(showProviderEditor, (isOpen) => {
+  if (isOpen && visibleProviders.value.size === 0) {
+    // 如果用户从未自定义过，初始化为当前显示的厂商
+    displayedProviders.value.forEach(provider => {
+      visibleProviders.value.add(provider)
+    })
+  }
+})
+
 // 筛选条件
 const filters = ref({
-  series: new Set(),
+  providers: new Set(),
   inputModalities: new Set(),
-  outputModalities: new Set(),
-  minContextLength: 0,
-  maxPromptPrice: 100
+  outputModalities: new Set()
 })
 
 // 排序方式
 const sortBy = ref('name')
 
 // 从 store 获取所有模型
-const allModelsData = computed(() => chatStore.allModels)
+const allModelsData = computed(() => modelStore.availableModels)
 
-// ========== 自适应分位数刻度算法 ==========
+// ========== 厂商提取和管理 ==========
 
 /**
- * 构建分位数映射表
- * @param {number[]} values - 所有数值数组
- * @param {number} steps - 滑块刻度数（默认100）
- * @returns {Array} 分位数映射表
+ * 从模型 ID 提取厂商名称
+ * @param {string} modelId - 模型 ID，例如 "google/gemini-2.5-pro-preview"
+ * @returns {string} 厂商名称，例如 "google"
  */
-const buildQuantileMap = (values, steps = 100) => {
-  if (!values || values.length === 0) {
-    return []
-  }
+const extractProvider = (modelId) => {
+  if (!modelId || typeof modelId !== 'string') return 'unknown'
+  const slashIndex = modelId.indexOf('/')
+  if (slashIndex === -1) return 'unknown'
+  return modelId.substring(0, slashIndex).toLowerCase()
+}
+
+/**
+ * 获取所有厂商及其模型数量（按数量降序，数量相同按首字母排序）
+ * @returns {Array<string>} 排序后的厂商名称数组
+ */
+const allProviders = computed(() => {
+  const providerCounts = new Map()
   
-  // 过滤并排序
-  const sorted = [...values]
-    .filter(v => v !== null && v !== undefined && !isNaN(v))
-    .sort((a, b) => a - b)
+  // 统计每个厂商的模型数量
+  allModelsData.value.forEach(model => {
+    const provider = extractProvider(model.id)
+    providerCounts.set(provider, (providerCounts.get(provider) || 0) + 1)
+  })
   
-  if (sorted.length === 0) {
-    return []
-  }
-  
-  const map = []
-  
-  for (let i = 0; i <= steps; i++) {
-    const percentile = i / steps
-    const index = Math.floor(percentile * (sorted.length - 1))
-    map.push({
-      sliderPos: i,
-      value: sorted[index]
+  // 转换为数组并排序
+  return Array.from(providerCounts.entries())
+    .sort((a, b) => {
+      // 首先按数量降序
+      if (b[1] !== a[1]) {
+        return b[1] - a[1]
+      }
+      // 数量相同，按首字母升序
+      return a[0].localeCompare(b[0])
     })
+    .map(([provider]) => provider)
+})
+
+/**
+ * 显示的厂商列表（根据用户设置）
+ */
+const displayedProviders = computed(() => {
+  if (visibleProviders.value.size === 0) {
+    // 如果没有设置，返回前8个
+    return allProviders.value.slice(0, 8)
   }
-  
-  return map
+  // 返回用户选择的厂商，但按照 allProviders 的顺序
+  return allProviders.value.filter(p => visibleProviders.value.has(p))
+})
+
+/**
+ * 获取指定厂商的模型数量
+ */
+const getProviderCount = (provider) => {
+  return allModelsData.value.filter(m => extractProvider(m.id) === provider).length
 }
 
 /**
- * 滑块位置 → 实际值
- * @param {number} sliderPos - 滑块位置 (0-100)
- * @param {Array} quantileMap - 分位数映射表
- * @returns {number} 实际值
+ * 切换厂商的可见性
  */
-const quantileToValue = (sliderPos, quantileMap) => {
-  if (!quantileMap || quantileMap.length === 0) {
-    return 0
+const toggleProviderVisibility = (provider) => {
+  if (visibleProviders.value.has(provider)) {
+    visibleProviders.value.delete(provider)
+  } else {
+    visibleProviders.value.add(provider)
   }
-  
-  const index = Math.floor(sliderPos)
-  
-  if (index >= quantileMap.length - 1) {
-    return quantileMap[quantileMap.length - 1].value
-  }
-  
-  // 线性插值
-  const ratio = sliderPos - index
-  const val1 = quantileMap[index].value
-  const val2 = quantileMap[index + 1].value
-  return val1 + ratio * (val2 - val1)
+  saveProviderVisibility()
 }
 
 /**
- * 实际值 → 滑块位置
- * @param {number} value - 实际值
- * @param {Array} quantileMap - 分位数映射表
- * @returns {number} 滑块位置 (0-100)
+ * 重置厂商可见性为默认（前8个）
  */
-const valueToQuantile = (value, quantileMap) => {
-  if (!quantileMap || quantileMap.length === 0) {
-    return 0
+const resetProviderVisibility = () => {
+  visibleProviders.value.clear()
+  saveProviderVisibility()
+}
+
+/**
+ * 保存厂商可见性设置到 localStorage
+ */
+const saveProviderVisibility = () => {
+  try {
+    const data = Array.from(visibleProviders.value)
+    localStorage.setItem('advancedModelPicker_visibleProviders', JSON.stringify(data))
+  } catch (error) {
+    console.error('保存厂商可见性设置失败:', error)
   }
-  
-  // 边界情况
-  if (value <= quantileMap[0].value) return 0
-  if (value >= quantileMap[quantileMap.length - 1].value) return quantileMap.length - 1
-  
-  // 二分查找所在区间
-  for (let i = 0; i < quantileMap.length - 1; i++) {
-    const curr = quantileMap[i].value
-    const next = quantileMap[i + 1].value
-    
-    if (value >= curr && value <= next) {
-      if (next === curr) return i
-      const ratio = (value - curr) / (next - curr)
-      return i + ratio
+}
+
+/**
+ * 从 localStorage 加载厂商可见性设置
+ */
+const loadProviderVisibility = () => {
+  try {
+    const data = localStorage.getItem('advancedModelPicker_visibleProviders')
+    if (data) {
+      const parsed = JSON.parse(data)
+      visibleProviders.value = new Set(parsed)
     }
+  } catch (error) {
+    console.error('加载厂商可见性设置失败:', error)
   }
-  
-  return quantileMap.length - 1
 }
 
-// 上下文长度分位数映射表
-const contextQuantileMap = computed(() => {
-  const allContexts = allModelsData.value
-    .map(m => m.context_length)
-    .filter(c => c > 0)
-  return buildQuantileMap(allContexts, 100)
+// 组件挂载时加载设置
+onMounted(() => {
+  loadProviderVisibility()
 })
 
-// 价格分位数映射表
-const priceQuantileMap = computed(() => {
-  const allPrices = allModelsData.value
-    .map(m => m.pricing?.prompt || 0)
-  return buildQuantileMap(allPrices, 100)
-})
+// ========== 原有的分位数刻度算法（已移除，保留注释供参考） ==========
 
-// 上下文长度滑块内部值 (0-100)
-const contextSliderPosition = ref(0)
+// 动态提取所有可用的模型系列（已废弃，改为厂商）
+// const availableSeries = computed(() => { ... })
 
-// 价格滑块内部值 (0-100)
-const priceSliderPosition = ref(100)
-
-// 动态提取所有可用的模型系列
-const availableSeries = computed(() => {
-  const seriesSet = new Set()
-  allModelsData.value.forEach(model => {
-    if (model.series) {
-      seriesSet.add(model.series)
-    }
-  })
-  return Array.from(seriesSet).sort()
-})
-
-// 计算最大上下文长度（用于显示）
-const maxContextLength = computed(() => {
-  let max = 128000 // 默认值
-  allModelsData.value.forEach(model => {
-    if (model.context_length > max) {
-      max = model.context_length
-    }
-  })
-  return max
-})
-
-// 计算最大价格（用于显示）
-const maxPrice = computed(() => {
-  let max = 10 // 默认最小值
-  allModelsData.value.forEach(model => {
-    if (model.pricing && model.pricing.prompt > max) {
-      max = model.pricing.prompt
-    }
-  })
-  // 向上取整到 5 的倍数，便于显示
-  return Math.ceil(max / 5) * 5
-})
-
-// 上下文长度滑块值变化处理
-const onContextSliderChange = (event) => {
-  const sliderPos = parseFloat(event.target.value)
-  contextSliderPosition.value = sliderPos
-  filters.value.minContextLength = Math.round(
-    quantileToValue(sliderPos, contextQuantileMap.value)
-  )
-}
-
-// 价格滑块值变化处理
-const onPriceSliderChange = (event) => {
-  const sliderPos = parseFloat(event.target.value)
-  priceSliderPosition.value = sliderPos
-  // 确保价格不低于 0
-  filters.value.maxPromptPrice = Math.max(0, quantileToValue(sliderPos, priceQuantileMap.value))
-}
-
-// 计算上下文长度的关键刻度点（用于显示）
-const contextKeyPoints = computed(() => {
-  if (contextQuantileMap.value.length === 0) return []
-  
-  const map = contextQuantileMap.value
-  return [
-    { label: '0', value: 0 },
-    { label: formatContextLength(map[Math.floor(map.length * 0.25)]?.value || 0), value: 25 },
-    { label: formatContextLength(map[Math.floor(map.length * 0.5)]?.value || 0), value: 50 },
-    { label: formatContextLength(map[Math.floor(map.length * 0.75)]?.value || 0), value: 75 },
-    { label: formatContextLength(map[map.length - 1]?.value || 0), value: 100 }
-  ]
-})
-
-// 计算价格的关键刻度点（用于显示）
-const priceKeyPoints = computed(() => {
-  if (priceQuantileMap.value.length === 0) return []
-  
-  const map = priceQuantileMap.value
-  
-  return [
-    { label: '$0', value: 0 },
-    { label: `$${formatPrice(map[Math.floor(map.length * 0.25)]?.value || 0)}`, value: 25 },
-    { label: `$${formatPrice(map[Math.floor(map.length * 0.5)]?.value || 0)}`, value: 50 },
-    { label: `$${formatPrice(map[Math.floor(map.length * 0.75)]?.value || 0)}`, value: 75 },
-    { label: `$${formatPrice(map[map.length - 1]?.value || 0)}`, value: 100 }
-  ]
-})
-
-// 获取某个系列的模型数量
-const getSeriesCount = (series) => {
-  return allModelsData.value.filter(m => m.series === series).length
-}
+// 计算最大上下文长度（已废弃）
+// const maxContextLength = computed(() => { ... })
 
 // 切换筛选条件
 const toggleFilter = (filterType, value) => {
@@ -551,17 +606,11 @@ const toggleFilter = (filterType, value) => {
 // 清除所有筛选
 const clearFilters = () => {
   filters.value = {
-    series: new Set(),
+    providers: new Set(),
     inputModalities: new Set(),
-    outputModalities: new Set(),
-    minContextLength: 0,
-    maxPromptPrice: maxPrice.value
+    outputModalities: new Set()
   }
   searchQuery.value = ''
-  
-  // 重置滑块位置
-  contextSliderPosition.value = 0
-  priceSliderPosition.value = 100
 }
 
 // 过滤后的模型列表
@@ -577,10 +626,10 @@ const filteredModels = computed(() => {
     )
   }
 
-  // 系列过滤
-  if (filters.value.series.size > 0) {
+  // 厂商过滤
+  if (filters.value.providers.size > 0) {
     models = models.filter(model => 
-      filters.value.series.has(model.series)
+      filters.value.providers.has(extractProvider(model.id))
     )
   }
 
@@ -610,20 +659,6 @@ const filteredModels = computed(() => {
     })
   }
 
-  // 上下文长度过滤
-  if (filters.value.minContextLength > 0) {
-    models = models.filter(model => 
-      model.context_length >= filters.value.minContextLength
-    )
-  }
-
-  // 价格过滤
-  if (filters.value.maxPromptPrice < 100) {
-    models = models.filter(model => 
-      model.pricing.prompt <= filters.value.maxPromptPrice
-    )
-  }
-
   return models
 })
 
@@ -645,8 +680,8 @@ const sortedModels = computed(() => {
 
 // 获取当前选中的模型
 const currentModel = computed(() => {
-  const activeConv = chatStore.activeConversation
-  return activeConv?.model || chatStore.selectedModel
+  const activeConv = conversationStore.activeConversation
+  return activeConv?.model || modelStore.selectedModelId
 })
 
 // 检查是否选中
@@ -656,12 +691,12 @@ const isSelected = (modelId) => {
 
 // 检查是否收藏
 const isFavorited = (modelId) => {
-  return chatStore.isModelFavorited(modelId)
+  return modelStore.isFavorite(modelId)
 }
 
 // 切换收藏
 const toggleFavorite = (modelId) => {
-  chatStore.toggleFavoriteModel(modelId)
+  modelStore.toggleFavorite(modelId)
 }
 
 // 检查描述是否展开
@@ -701,11 +736,11 @@ const detectOverflowingDescriptions = async () => {
 
 // 选择模型
 const selectModel = (modelId) => {
-  const activeConv = chatStore.activeConversation
+  const activeConv = conversationStore.activeConversation
   if (activeConv) {
-    chatStore.updateConversationModel(activeConv.id, modelId)
+    conversationStore.updateConversationModel(activeConv.id, modelId)
   } else {
-    chatStore.setSelectedModel(modelId)
+    modelStore.selectedModelId = modelId
   }
   emit('select', modelId)
   closeModal()
@@ -735,28 +770,15 @@ const formatPrice = (value) => {
   return value.toFixed(0)                   // 其他显示整数（如 $60）
 }
 
-// 获取模态性图标
+// 获取模态性图标（返回 SVG 路径）
 const getModalityIcon = (modality) => {
-  const icons = {
-    text: '📝',
-    image: '🖼️',
-    audio: '🎵',
-    video: '🎬'
-  }
-  return icons[modality] || '❓'
+  // 返回简短的标识符，用于在模板中渲染对应的 SVG
+  return modality
 }
 
-// 监听打开状态，初始化筛选器和滑块
+// 监听打开状态，初始化筛选器
 watch(() => props.isOpen, (newVal) => {
   if (newVal && allModelsData.value.length > 0) {
-    // 初始化价格筛选为最大值
-    filters.value.maxPromptPrice = maxPrice.value
-    priceSliderPosition.value = 100
-    
-    // 初始化上下文筛选为最小值
-    filters.value.minContextLength = 0
-    contextSliderPosition.value = 0
-    
     // 检测溢出的描述
     detectOverflowingDescriptions()
   }
@@ -765,29 +787,6 @@ watch(() => props.isOpen, (newVal) => {
 // 监听筛选后的模型变化，重新检测溢出
 watch(filteredModels, () => {
   detectOverflowingDescriptions()
-})
-
-// 监听模型数据变化，更新分位数映射和滑块位置
-watch(() => allModelsData.value.length, (newLength, oldLength) => {
-  if (newLength > 0 && newLength !== oldLength) {
-    // 数据初次加载或变化时，初始化滑块
-    console.log('📊 分位数映射已更新:', {
-      contextPoints: contextQuantileMap.value.length,
-      pricePoints: priceQuantileMap.value.length,
-      contextRange: contextQuantileMap.value.length > 0 
-        ? `${contextQuantileMap.value[0].value} - ${contextQuantileMap.value[contextQuantileMap.value.length - 1].value}`
-        : 'N/A',
-      priceRange: priceQuantileMap.value.length > 0
-        ? `${priceQuantileMap.value[0].value.toFixed(2)} - ${priceQuantileMap.value[priceQuantileMap.value.length - 1].value.toFixed(2)}`
-        : 'N/A'
-    })
-    
-    // 重置滑块到默认位置
-    contextSliderPosition.value = 0
-    priceSliderPosition.value = 100
-    filters.value.minContextLength = 0
-    filters.value.maxPromptPrice = maxPrice.value
-  }
 })
 </script>
 
@@ -937,42 +936,42 @@ watch(() => allModelsData.value.length, (newLength, oldLength) => {
   margin-bottom: 1rem;
 }
 
+.filter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
 .filter-label {
-  display: block;
   font-size: 0.875rem;
   font-weight: 600;
   color: #374151;
-  margin-bottom: 0.75rem;
+}
+
+.edit-btn {
+  padding: 0.375rem;
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.edit-btn:hover {
+  background: #f3f4f6;
+  border-color: #667eea;
+  color: #667eea;
 }
 
 .filter-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-}
-
-.filter-tags.scrollable {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  padding-bottom: 0.5rem;
-}
-
-.filter-tags.scrollable::-webkit-scrollbar {
-  height: 6px;
-}
-
-.filter-tags.scrollable::-webkit-scrollbar-track {
-  background: #f3f4f6;
-  border-radius: 3px;
-}
-
-.filter-tags.scrollable::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
-}
-
-.filter-tags.scrollable::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
 }
 
 .filter-tag {
@@ -1004,61 +1003,6 @@ watch(() => allModelsData.value.length, (newLength, oldLength) => {
 .tag-count {
   font-size: 0.75rem;
   opacity: 0.7;
-}
-
-.range-slider {
-  width: 100%;
-  height: 0.5rem;
-  border-radius: 0.25rem;
-  background: #e5e7eb;
-  outline: none;
-  -webkit-appearance: none;
-}
-
-.range-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.range-slider::-moz-range-thumb {
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  cursor: pointer;
-  border: none;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.range-ticks {
-  position: relative;
-  display: flex;
-  justify-content: space-between;
-  margin-top: 0.5rem;
-  height: 1rem;
-}
-
-.tick-label {
-  position: absolute;
-  font-size: 0.7rem;
-  color: #6b7280;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  user-select: none;
-}
-
-.tick-label:first-child {
-  transform: translateX(0);
-}
-
-.tick-label:last-child {
-  transform: translateX(-100%);
 }
 
 .clear-filters-btn {
@@ -1374,6 +1318,178 @@ watch(() => allModelsData.value.length, (newLength, oldLength) => {
 
 .modal-enter-from .modal-container,
 .modal-leave-to .modal-container {
+  transform: scale(0.95);
+}
+
+/* 厂商编辑器模态框 */
+.provider-editor-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 2rem;
+}
+
+.provider-editor-container {
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  max-width: 600px;
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.editor-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.editor-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+.editor-description {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-bottom: 1rem;
+}
+
+.provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.provider-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.provider-checkbox-item:hover {
+  background: #f9fafb;
+  border-color: #667eea;
+}
+
+.provider-checkbox {
+  width: 1.125rem;
+  height: 1.125rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.provider-name {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #374151;
+  text-transform: capitalize;
+}
+
+.provider-count-badge {
+  padding: 0.25rem 0.625rem;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+  color: #667eea;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.reset-btn {
+  padding: 0.625rem 1.25rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  color: #6b7280;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.reset-btn:hover {
+  background: #f3f4f6;
+  border-color: #667eea;
+  color: #667eea;
+}
+
+.confirm-btn {
+  padding: 0.625rem 1.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.confirm-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+/* 编辑器模态框动画 */
+.editor-modal-enter-active,
+.editor-modal-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.editor-modal-enter-from,
+.editor-modal-leave-to {
+  opacity: 0;
+}
+
+.editor-modal-enter-active .provider-editor-container,
+.editor-modal-leave-active .provider-editor-container {
+  transition: transform 0.25s ease;
+}
+
+.editor-modal-enter-from .provider-editor-container,
+.editor-modal-leave-to .provider-editor-container {
   transform: scale(0.95);
 }
 

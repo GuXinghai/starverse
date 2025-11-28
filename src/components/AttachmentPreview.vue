@@ -1,7 +1,7 @@
 <template>
   <div class="relative inline-block group">
     <!-- 图片预览 -->
-    <div class="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-gray-300 bg-gray-100">
+    <div class="relative w-32 h-32 rounded-lg overflow-hidden border-2 border-gray-300 bg-gray-100 hover:border-blue-400 transition-colors">
       <img 
         :src="imageDataUri" 
         :alt="altText"
