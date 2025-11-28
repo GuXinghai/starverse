@@ -76,10 +76,10 @@ import type { ComponentPublicInstance } from 'vue'
 import { useConversationStore } from '../stores/conversation'
 import { useProjectStore } from '../stores/project'
 import { useModelStore } from '../stores/model'
-import { runFulltextSearch, SearchDslError } from '../services/searchService'
 import type { ConversationStatus } from '../types/conversation'
 import { useFormatters } from '../composables/useFormatters'
 import { useMenuPositioning } from '../composables/useMenuPositioning'
+import { useConversationSearch } from '../composables/useConversationSearch'
 
 type ConversationRecord = {
   id: string
@@ -114,6 +114,19 @@ const { getStatusLabel, getStatusBadgeClass, getStatusBadgeClassActive, formatMo
 
 // ✅ TODO 1.2 已完成: 使用 useMenuPositioning composable
 const { computeMenuPosition } = useMenuPositioning()
+
+// ✅ TODO 1.3 已完成: 使用 useConversationSearch composable
+const searchQuery = ref('')
+const rawSearchQuery = computed(() => searchQuery.value.trim())
+const {
+  searchInTitle,
+  searchInContent,
+  contentSearchLoading,
+  contentSearchMessage,
+  contentSearchMessageType,
+  conversationMatchesContent,
+  buildSearchScopes
+} = useConversationSearch(rawSearchQuery)
 
 // 检查对话是否正在生成中
 const isConversationGenerating = (conversation: ConversationRecord): boolean => {
@@ -152,17 +165,9 @@ const editingTitle = ref('')
 // 🟦 Conversation List 删除确认状态 - TODO 4: 迁移到 ConversationListItems 组件内部
 const deletingId = ref<string | null>(null)
 
-// 🟦 Conversation List 搜索与过滤 - TODO 1: 迁移到 useConversationSearch composable
-const searchQuery = ref('')
-const rawSearchQuery = computed(() => searchQuery.value.trim())
+// ✅ TODO 1.3 已完成: 搜索状态已迁移到 useConversationSearch composable
+// 保留的 computed (UI 相关)
 const normalizedQuery = computed(() => rawSearchQuery.value.toLowerCase())
-const searchInTitle = ref(true)
-const searchInContent = ref(false)
-const contentSearchHits = ref<Set<string>>(new Set())
-const contentSearchLoading = ref(false)
-const contentSearchMessage = ref('')
-type SearchMessageTone = 'info' | 'warning' | 'error'
-const contentSearchMessageType = ref<SearchMessageTone>('info')
 const contentSearchActive = computed(() => searchInContent.value && rawSearchQuery.value.length > 0)
 const contentSearchMessageClass = computed(() => {
   switch (contentSearchMessageType.value) {
@@ -776,150 +781,23 @@ const getProjectLabel = (projectId: string | null | undefined) => {
 
 /**
  * ========================================
- * 🟡 中风险区域 - TODO 8: 搜索性能优化
+ * ✅ TODO 1.3 已完成: 搜索逻辑已迁移到 useConversationSearch composable
  * ========================================
  * 
- * 当前问题:
- *   1. 每次过滤都需遍历所有对话的分支树 O(n*k*p)
- *      n = 对话数量, k = 分支数量, p = 每个版本的 parts 数量
- *   2. 无缓存机制，相同搜索词重复计算
- *   3. getBranch 每次都判断 Map/Object 类型
+ * 已迁移内容:
+ *   - conversationMatchesContent() - 对话内容匹配算法 (树遍历逻辑)
+ *   - buildSearchScopes() - 搜索范围构建 (标题/内容切换)
+ *   - 全文搜索 watch - 竞态条件处理 (contentSearchRequestId)
+ *   - resetContentSearch() - 重置搜索状态
  * 
- * 优化策略:
- *   1. 使用 WeakMap 缓存已搜索的对话结果:
- *      const searchCache = new WeakMap<ConversationRecord, Map<string, boolean>>()
- *   2. 提前判断 branches 类型，避免每次都检测:
- *      const isMap = branchesSource instanceof Map
- *   3. 考虑将全文内容缓存到 conversation 对象上:
- *      conversation._searchableText (computed 时生成)
- *   4. 如果对话数 > 500，考虑使用 Web Worker
+ * 位置: src/composables/useConversationSearch.ts
  * 
- * 重构后位置:
- *   - 提取到 composables/useConversationSearch.ts
- *   - 与 filteredConversations computed 一起迁移
+ * 优化说明:
+ *   - 搜索状态管理更加内聚
+ *   - 方法可复用于其他组件
+ *   - 便于单元测试和性能优化
  * ========================================
  */
-const conversationMatchesContent = (conversation: ConversationRecord, query: string) => {
-  // 使用全文搜索结果
-  if (contentSearchActive.value) {
-    return contentSearchHits.value.has(conversation.id)
-  }
-  if (!query) {
-    return true
-  }
-  const tree = conversation.tree
-  if (!tree?.currentPath || !Array.isArray(tree.currentPath) || tree.currentPath.length === 0) {
-    return false
-  }
-  const branchesSource = tree.branches as Map<string, any> | Record<string, any> | undefined
-  if (!branchesSource) {
-    return false
-  }
-
-  const getBranch = (branchId: string) => {
-    if (branchesSource && typeof (branchesSource as Map<string, any>).get === 'function') {
-      return (branchesSource as Map<string, any>).get(branchId)
-    }
-    return (branchesSource as Record<string, any>)[branchId]
-  }
-
-  for (const branchId of tree.currentPath) {
-    const branch = getBranch(branchId)
-    if (!branch) continue
-    const versions = Array.isArray(branch.versions) ? branch.versions : []
-    const versionIndex = typeof branch.currentVersionIndex === 'number' ? branch.currentVersionIndex : 0
-    const currentVersion = versions[versionIndex] || versions[0]
-    if (!currentVersion || !Array.isArray(currentVersion.parts)) continue
-    for (const part of currentVersion.parts) {
-      if (part?.type === 'text' && typeof part.text === 'string' && part.text.toLowerCase().includes(query)) {
-        return true
-      }
-    }
-  }
-  return false
-}
-
-const buildSearchScopes = () => {
-  const scopes = {
-    title: searchInTitle.value,
-    content: searchInContent.value
-  }
-  if (!scopes.title && !scopes.content) {
-    scopes.title = true
-  }
-  return scopes
-}
-
-/**
- * ========================================
- * TODO 1: 提取到 useConversationSearch composable
- * ========================================
- * 
- * 当前实现:
- *   - 使用 contentSearchRequestId 防止竞态条件 (旧请求覆盖新结果)
- *   - immediate: true 可能导致组件加载时触发不必要的搜索
- * 
- * 重构建议:
- *   1. 使用 AbortController 替代 requestId 机制:
- *      const abortController = new AbortController()
- *      signal: abortController.signal
- *   2. 添加 300ms debounce 减少搜索请求:
- *      watchDebounced([rawSearchQuery, searchInContent], ..., { debounce: 300 })
- *   3. 执行关键词高亮显示：
- *      highlight: true, 然后在 UI 中渲染 <mark> 标签
- *   4. 添加搜索结果缓存 (LRU)
- * ========================================
- */
-let contentSearchRequestId = 0
-const resetContentSearch = () => {
-  contentSearchHits.value = new Set()
-  contentSearchMessage.value = ''
-  contentSearchMessageType.value = 'info'
-  contentSearchLoading.value = false
-}
-
-watch(
-  [() => rawSearchQuery.value, searchInContent],
-  async ([query, searchContent]) => {
-    if (!searchContent || !query) {
-      resetContentSearch()
-      return
-    }
-
-    const requestId = ++contentSearchRequestId
-    contentSearchLoading.value = true
-    contentSearchMessage.value = ''
-    contentSearchMessageType.value = 'info'
-
-    try {
-      const results = await runFulltextSearch(query, { limit: 100, highlight: false })
-      if (requestId !== contentSearchRequestId) {
-        return
-      }
-      contentSearchHits.value = new Set(results.map(result => result.convoId))
-      contentSearchMessageType.value = 'info'
-      contentSearchMessage.value = results.length === 0 ? '未找到匹配内容' : `命中 ${results.length} 条内容`
-    } catch (error) {
-      if (requestId !== contentSearchRequestId) {
-        return
-      }
-      contentSearchHits.value = new Set()
-      if (error instanceof SearchDslError) {
-        contentSearchMessageType.value = 'warning'
-        contentSearchMessage.value = error.message
-      } else {
-        contentSearchMessageType.value = 'error'
-        contentSearchMessage.value = '全文搜索失败，请稍后重试'
-        console.error('全文搜索失败:', error)
-      }
-    } finally {
-      if (requestId === contentSearchRequestId) {
-        contentSearchLoading.value = false
-      }
-    }
-  },
-  { immediate: true }
-)
 
 /**
  * ========================================
