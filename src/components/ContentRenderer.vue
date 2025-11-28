@@ -3,11 +3,29 @@ import { computed } from 'vue'
 import { marked } from 'marked'
 import type { Tokens } from 'marked'
 import katex from 'katex'
-import hljs from 'highlight.js'
+import hljs from 'highlight.js/lib/core'
+import javascript from 'highlight.js/lib/languages/javascript'
+import typescript from 'highlight.js/lib/languages/typescript'
+import json from 'highlight.js/lib/languages/json'
+import python from 'highlight.js/lib/languages/python'
+import bash from 'highlight.js/lib/languages/bash'
+import xml from 'highlight.js/lib/languages/xml'
+import css from 'highlight.js/lib/languages/css'
+import markdown from 'highlight.js/lib/languages/markdown'
 import 'katex/dist/katex.min.css'
 import 'highlight.js/styles/github.css' // 浣跨敤 GitHub 娴呰壊涓婚
 
-import { electronApiBridge } from '../utils/electronBridge'
+// 鍙嶉鍗曚釜 highlight.js 瀵艰埅锛屽氨鍐嶈繍鐢紝闄嶅皠 bundle 浣撻獙
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('typescript', typescript)
+hljs.registerLanguage('json', json)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('shell', bash)
+hljs.registerLanguage('html', xml)
+hljs.registerLanguage('xml', xml)
+hljs.registerLanguage('css', css)
+hljs.registerLanguage('markdown', markdown)
 
 // Props 瀹氫箟
 const props = defineProps<{
@@ -54,12 +72,6 @@ renderer.code = function({ text, lang }: Tokens.Code): string {
     // 濡傛灉楂樹寒澶辫触锛岃繑鍥炵函鏂囨湰浠ｇ爜
     return `<pre><code>${code}</code></pre>`
   }
-}
-
-renderer.link = function(href: string | null, title: string | null, text: string): string {
-  const safeHref = href ?? ''
-  const titleAttr = title ? ` title="${title}"` : ''
-  return `<a href="${safeHref}" target="_blank" rel="noreferrer noopener"${titleAttr}>${text}</a>`
 }
 
 // 娓叉煋 HTML 鐨勮绠楀睘鎬?
@@ -125,36 +137,10 @@ const renderedHtml = computed(() => {
   return html
 })
 
-const handleLinkClick = (event: MouseEvent) => {
-  const target = event.target
-  if (!(target instanceof Element)) {
-    return
-  }
-
-  const anchor = target.closest('a') as HTMLAnchorElement | null
-  if (!anchor?.href) {
-    return
-  }
-
-  const href = anchor.href
-  if (!href.startsWith('http://') && !href.startsWith('https://')) {
-    return
-  }
-
-  event.preventDefault()
-  if (electronApiBridge?.openExternal) {
-    electronApiBridge.openExternal(href).catch(error => {
-      console.error('[ContentRenderer] openExternal failed, fallback to window.open:', error)
-      window.open(href, '_blank', 'noopener')
-    })
-  } else {
-    window.open(href, '_blank', 'noopener')
-  }
-}
 </script>
 
 <template>
-  <div v-html="renderedHtml" class="content-renderer" @click="handleLinkClick"></div>
+  <div v-html="renderedHtml" class="content-renderer"></div>
 </template>
 
 <style scoped>

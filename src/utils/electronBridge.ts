@@ -33,6 +33,7 @@ type ElectronApiBridge = {
     error?: string
   }>
   openExternal?: (url: string) => Promise<{ success: boolean; error?: string }>
+  openInAppLink?: (url: string, windowId?: number) => Promise<{ tabId?: string; windowId?: number; error?: string }>
 }
 
 type DbInvokeBridge = {
@@ -102,6 +103,11 @@ const resolveElectronApi = (): { api: ElectronApiBridge; isFallback: boolean } =
         console.warn('[electronBridge] openExternal called without electron bridge; using window.open fallback.')
         window.open?.(url, '_blank', 'noopener')
         return { success: false, error: 'electron bridge unavailable' }
+      },
+      async openInAppLink(url: string) {
+        console.warn('[electronBridge] openInAppLink called without electron bridge; using window.open fallback.')
+        window.open?.(url, '_blank', 'noopener')
+        return { tabId: undefined, windowId: undefined, error: 'electron bridge unavailable' }
       }
     },
     isFallback: true

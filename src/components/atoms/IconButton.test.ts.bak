@@ -1,0 +1,265 @@
+import { describe, it, expect } from 'vitest'
+import { render, screen } from '@testing-library/vue'
+import userEvent from '@testing-library/user-event'
+import IconButton from './IconButton.vue'
+
+describe('IconButton', () => {
+  describe('Rendering', () => {
+    it('renders with icon and text', () => {
+      render(IconButton, {
+        props: {
+          icon: '🚀'
+        },
+        slots: {
+          default: 'Launch'
+        }
+      })
+      
+      const button = screen.getByRole('button', { name: /Launch/i })
+      expect(button).toBeInTheDocument()
+      expect(button).toHaveTextContent('🚀')
+    })
+
+    it('renders with icon slot', () => {
+      const { container } = render(IconButton, {
+        slots: {
+          default: 'Custom Button'
+        }
+      })
+      
+      // 验证按钮渲染
+      const button = screen.getByRole('button')
+      expect(button).toBeInTheDocument()
+      expect(button).toHaveTextContent('Custom Button')
+    })
+
+    it('renders without text when no default slot', () => {
+      render(IconButton, {
+        props: {
+          icon: '⚙️'
+        }
+      })
+      
+      const button = screen.getByRole('button')
+      expect(button).toBeInTheDocument()
+      expect(button).toHaveTextContent('⚙️')
+    })
+  })
+
+  describe('Icon Position', () => {
+    it('renders icon on left by default', () => {
+      const { container } = render(IconButton, {
+        props: {
+          icon: '👈'
+        },
+        slots: {
+          default: 'Text'
+        }
+      })
+      
+      const iconWrapper = container.querySelector('.icon-wrapper')
+      const button = screen.getByRole('button')
+      expect(iconWrapper).toHaveTextContent('👈')
+      expect(button).toHaveTextContent('Text')
+    })
+
+    it('renders icon on right when specified', () => {
+      const { container } = render(IconButton, {
+        props: {
+          icon: '👉',
+          iconPosition: 'right'
+        },
+        slots: {
+          default: 'Text'
+        }
+      })
+      
+      const iconWrapper = container.querySelector('.icon-wrapper')
+      const button = screen.getByRole('button')
+      expect(iconWrapper).toHaveTextContent('👉')
+      expect(button).toHaveTextContent('Text')
+    })
+  })
+
+  describe('Icon Only Mode', () => {
+    it('hides text visually but keeps for accessibility', () => {
+      render(IconButton, {
+        props: {
+          icon: '✓',
+          iconOnly: true
+        },
+        slots: {
+          default: 'Confirm'
+        }
+      })
+      
+      const button = screen.getByRole('button')
+      expect(button).toBeInTheDocument()
+      expect(button).toHaveTextContent('Confirm')
+      
+      const textSpan = button.querySelector('.sr-only')
+      expect(textSpan).toBeInTheDocument()
+      expect(textSpan).toHaveTextContent('Confirm')
+    })
+
+    it('applies icon-only-btn class in icon only mode', () => {
+      render(IconButton, {
+        props: {
+          icon: '✓',
+          iconOnly: true
+        },
+        slots: {
+          default: 'Confirm'
+        }
+      })
+      
+      const button = screen.getByRole('button')
+      expect(button).toHaveClass('icon-only-btn')
+    })
+  })
+
+  describe('Inherited Props', () => {
+    it('inherits variant prop from BaseButton', () => {
+      render(IconButton, {
+        props: {
+          icon: '🎨',
+          variant: 'secondary'
+        },
+        slots: {
+          default: 'Style'
+        }
+      })
+      
+      const button = screen.getByRole('button')
+      expect(button).toHaveClass('bg-secondary-600')
+    })
+
+    it('inherits size prop from BaseButton', () => {
+      render(IconButton, {
+        props: {
+          icon: '📏',
+          size: 'lg'
+        },
+        slots: {
+          default: 'Large'
+        }
+      })
+      
+      const button = screen.getByRole('button')
+      expect(button).toHaveClass('px-6', 'py-3', 'text-lg')
+    })
+
+    it('inherits disabled prop from BaseButton', () => {
+      render(IconButton, {
+        props: {
+          icon: '🚫',
+          disabled: true
+        },
+        slots: {
+          default: 'Disabled'
+        }
+      })
+      
+      const button = screen.getByRole('button')
+      expect(button).toBeDisabled()
+    })
+
+    it('inherits loading prop from BaseButton', () => {
+      render(IconButton, {
+        props: {
+          icon: '⏳',
+          loading: true
+        },
+        slots: {
+          default: 'Loading'
+        }
+      })
+      
+      const button = screen.getByRole('button')
+      expect(button).toHaveAttribute('aria-busy', 'true')
+    })
+  })
+
+  describe('Events', () => {
+    it('emits click event when clicked', async () => {
+      const user = userEvent.setup()
+      let clickCount = 0
+      
+      render(IconButton, {
+        props: {
+          icon: '👆',
+          onClick: () => clickCount++
+        },
+        slots: {
+          default: 'Click'
+        }
+      })
+      
+      const button = screen.getByRole('button')
+      await user.click(button)
+      
+      expect(clickCount).toBe(1)
+    })
+  })
+
+  describe('Icon Sizes', () => {
+    it('applies correct icon size for xs', () => {
+      const { container } = render(IconButton, {
+        props: {
+          icon: '🔍',
+          size: 'xs'
+        }
+      })
+      
+      const iconWrapper = container.querySelector('.icon-wrapper')
+      expect(iconWrapper).toHaveClass('text-xs')
+    })
+
+    it('applies correct icon size for sm', () => {
+      const { container } = render(IconButton, {
+        props: {
+          icon: '🔍',
+          size: 'sm'
+        }
+      })
+      
+      const iconWrapper = container.querySelector('.icon-wrapper')
+      expect(iconWrapper).toHaveClass('text-sm')
+    })
+
+    it('applies correct icon size for md (default)', () => {
+      const { container } = render(IconButton, {
+        props: {
+          icon: '🔍'
+        }
+      })
+      
+      const iconWrapper = container.querySelector('.icon-wrapper')
+      expect(iconWrapper).toHaveClass('text-base')
+    })
+
+    it('applies correct icon size for lg', () => {
+      const { container } = render(IconButton, {
+        props: {
+          icon: '🔍',
+          size: 'lg'
+        }
+      })
+      
+      const iconWrapper = container.querySelector('.icon-wrapper')
+      expect(iconWrapper).toHaveClass('text-lg')
+    })
+
+    it('applies correct icon size for xl', () => {
+      const { container } = render(IconButton, {
+        props: {
+          icon: '🔍',
+          size: 'xl'
+        }
+      })
+      
+      const iconWrapper = container.querySelector('.icon-wrapper')
+      expect(iconWrapper).toHaveClass('text-xl')
+    })
+  })
+})

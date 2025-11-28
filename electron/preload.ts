@@ -49,9 +49,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openImage: (imageUrl: string) => ipcRenderer.invoke('shell:open-image', imageUrl),
 
   /**
-   * 使用系统默认浏览器打开外部链接
+   * 在新的 BrowserWindow 中打开外部链接（类似微信/QQ 内的外链弹窗）
    */
   openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
+
+  /**
+   * 打开应用内链（In-App WebView，默认复用同一窗口）
+   */
+  openInAppLink: (url: string, windowId?: number) => ipcRenderer.invoke('inapp:open-link', { url, windowId }),
 })
 
 // Expose DB bridge for renderer storage access

@@ -76,6 +76,11 @@ export type DeleteConvoPayload = {
   id: string
 }
 
+export type SaveConvoWithMessagesPayload = {
+  convo: SaveConvoPayload
+  messages: MessageSnapshotPayload[]
+}
+
 export type ConvoListParams = {
   projectId?: string | null
   limit?: number
@@ -117,6 +122,12 @@ export type ReplaceMessagesPayload = {
   messages: MessageSnapshotPayload[]
 }
 
+export type AppendMessageDeltaPayload = {
+  convoId: string
+  seq: number
+  appendBody: string
+}
+
 export type MessageListParams = {
   convoId: string
   fromSeq?: number
@@ -144,6 +155,14 @@ export type FulltextSearchResult = {
   createdAt: number
 }
 
+export type HealthStatsResult = {
+  pending: number
+  oldestPendingMs: number | null
+  restartAttempts: number
+  isOnline: boolean
+  workerThreadId?: number
+}
+
 export type DbMethod =
   | 'health.ping'
   | 'project.create'
@@ -155,6 +174,7 @@ export type DbMethod =
   | 'project.countConversations'
   | 'convo.create'
   | 'convo.save'
+  | 'convo.saveWithMessages'
   | 'convo.list'
   | 'convo.delete'
   | 'convo.deleteMany'
@@ -163,10 +183,12 @@ export type DbMethod =
   | 'convo.restore'
   | 'convo.listArchived'
   | 'message.append'
+  | 'message.appendDelta'
   | 'message.list'
   | 'message.replace'
   | 'search.fulltext'
   | 'maintenance.optimize'
+  | 'health.stats'
 
 export type HealthPingResult = {
   ok: boolean

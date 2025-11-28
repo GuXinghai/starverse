@@ -76,6 +76,11 @@ export type DeleteConvoInput = {
   id: string
 }
 
+export type SaveConvoWithMessagesInput = {
+  convo: SaveConvoInput
+  messages: MessageSnapshot[]
+}
+
 export type ListConvoParams = {
   projectId?: string | null
   limit?: number
@@ -110,6 +115,12 @@ export type AppendMessageInput = {
   meta?: JsonObject | null
   createdAt?: number
   seq?: number
+}
+
+export type AppendMessageDeltaInput = {
+  convoId: string
+  seq: number
+  appendBody: string
 }
 
 export type MessageSnapshot = {
@@ -167,11 +178,19 @@ export type BatchDeleteInput = {
 
 // ========== Response Types ==========
 
+export type HealthStatsResult = {
+  pending: number
+  oldestPendingMs: number | null
+  restartAttempts: number
+  isOnline: boolean
+  workerThreadId?: number
+}
 
 export type WorkerInitConfig = {
   dbPath: string
   schemaPath?: string
   logSlowQueryMs?: number
+  logDirectory?: string
 }
 
 export type DbMethod =
@@ -185,6 +204,7 @@ export type DbMethod =
   | 'project.countConversations'
   | 'convo.create'
   | 'convo.save'
+  | 'convo.saveWithMessages'
   | 'convo.list'
   | 'convo.delete'
   | 'convo.deleteMany'
@@ -193,10 +213,12 @@ export type DbMethod =
   | 'convo.restore'
   | 'convo.listArchived'
   | 'message.append'
+  | 'message.appendDelta'
   | 'message.list'
   | 'message.replace'
   | 'search.fulltext'
   | 'maintenance.optimize'
+  | 'health.stats'
 
 export type WorkerRequestMessage = {
   id: string

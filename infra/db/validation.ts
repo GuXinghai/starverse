@@ -1,8 +1,10 @@
 import { z, type ZodType } from 'zod'
 import type {
   AppendMessageInput,
+  AppendMessageDeltaInput,
   CreateConvoInput,
   SaveConvoInput,
+  SaveConvoWithMessagesInput,
   DeleteConvoInput,
   CreateProjectInput,
   SaveProjectInput,
@@ -86,6 +88,12 @@ export const AppendMessageSchema: ZodType<AppendMessageInput> = z.object({
   meta: jsonSchema.optional().nullable()
 })
 
+export const AppendMessageDeltaSchema: ZodType<AppendMessageDeltaInput> = z.object({
+  convoId: z.string().min(1),
+  seq: z.number().int().positive(),
+  appendBody: z.string().min(1)
+})
+
 export const SaveConvoSchema: ZodType<SaveConvoInput> = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1).optional().nullable(),
@@ -97,6 +105,19 @@ export const SaveConvoSchema: ZodType<SaveConvoInput> = z.object({
 
 export const DeleteConvoSchema: ZodType<DeleteConvoInput> = z.object({
   id: z.string().min(1)
+})
+
+const MessageSnapshotSchema: ZodType<MessageSnapshot> = z.object({
+  role: z.enum(['user', 'assistant', 'system', 'tool']),
+  body: z.string(),
+  createdAt: z.number().int().optional(),
+  seq: z.number().int().positive().optional(),
+  meta: jsonSchema.optional().nullable()
+})
+
+export const SaveConvoWithMessagesSchema: ZodType<SaveConvoWithMessagesInput> = z.object({
+  convo: SaveConvoSchema,
+  messages: z.array(MessageSnapshotSchema)
 })
 
 export const ArchiveConvoSchema = z.object({
@@ -121,14 +142,6 @@ export const ListMessageSchema: ZodType<ListMessageParams> = z.object({
   fromSeq: z.number().int().nonnegative().optional(),
   limit: z.number().int().positive().max(500).optional(),
   direction: z.enum(['asc', 'desc']).optional()
-})
-
-const MessageSnapshotSchema: ZodType<MessageSnapshot> = z.object({
-  role: z.enum(['user', 'assistant', 'system', 'tool']),
-  body: z.string(),
-  createdAt: z.number().int().optional(),
-  seq: z.number().int().positive().optional(),
-  meta: jsonSchema.optional().nullable()
 })
 
 export const ReplaceMessagesSchema: ZodType<ReplaceMessagesInput> = z.object({

@@ -29,6 +29,7 @@ import Store from 'electron-store'
 import { DbWorkerManager } from './db/workerManager'
 import { registerDbBridge } from './ipc/dbBridge'
 import { registerOpenRouterBridge, cleanupActiveStreams } from './ipc/openRouterBridge'
+import { createInAppBrowserManager } from './services/inappBrowser'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DB_LOG_DIR = path.join(app.getPath('userData'), 'logs')
@@ -72,6 +73,10 @@ const DB_WORKER_SCRIPT = path.join(MAIN_DIST, 'db', 'worker.cjs')
 const DB_SCHEMA_PATH = path.join(process.env.APP_ROOT, 'infra', 'db', 'schema.sql')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
+
+// ========== In-App Browser Manager ==========
+const inAppBrowserManager = createInAppBrowserManager()
+void inAppBrowserManager
 
 let win: BrowserWindow | null
 
@@ -216,26 +221,51 @@ app.on('activate', () => {
  * 优雅退出处理
  * 
  * 清理步骤:
- * 1. 移除窗口的所有事件监听器（防止内存泄漏）
- * 2. 停止数据库 Worker 线程
+ * 1. 通知渲染进程保存所有脏数据
+ * 2. 移除窗口的所有事件监听器（防止内存泄漏）
+ * 3. 停止数据库 Worker 线程
  *    - 等待所有待处理的数据库操作完成
  *    - 关闭 SQLite 连接
  *    - 终止 Worker 线程
- * 3. 清理临时文件（如有）
+ * 4. 清理临时文件（如有）
  * 
  * ⚠️ 注意: 如果 Worker 停止失败，只记录错误不阻止退出
  */
-app.on('before-quit', () => {
-  if (win) {
+app.on('before-quit', async (event) => {
+  // 阻止立即退出，等待保存完成
+  event.preventDefault()
+  
+  // 通知渲染进程保存所有脏数据
+  if (win && !win.isDestroyed()) {
+    console.log('[main] 通知渲染进程保存数据...')
+    try {
+      await win.webContents.executeJavaScript(`
+        (async () => {
+          if (window.__STORES__ && window.__STORES__.persistenceStore) {
+            console.log('[main->renderer] 执行退出前保存...')
+            await window.__STORES__.persistenceStore.saveAllDirtyConversations()
+            console.log('[main->renderer] 保存完成')
+          }
+        })()
+      `)
+      console.log('[main] 渲染进程保存完成')
+    } catch (error) {
+      console.error('[main] 渲染进程保存失败:', error)
+    }
+    
     win.removeAllListeners()
   }
   
   // 清理活动的 OpenRouter 流式请求
   cleanupActiveStreams()
   
-  dbWorkerManager.stop().catch((error) => {
+  // 停止数据库 Worker
+  await dbWorkerManager.stop().catch((error) => {
     console.error('[main] failed to stop DB worker', error)
   })
+  
+  // 真正退出
+  app.exit(0)
 })
 
 /**

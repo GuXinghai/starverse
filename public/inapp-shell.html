@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>In-App Browser</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --border: #1f2937;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+    }
+    body {
+      margin: 0;
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-user-select: none;
+    }
+    .shell {
+      padding: 12px 12px 8px 12px;
+      background: linear-gradient(135deg, #0b1220, #0d1930);
+      border-bottom: 1px solid var(--border);
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .row:last-child { margin-bottom: 0; }
+    button {
+      background: #1f2937;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-size: 12px;
+    }
+    button:hover { border-color: var(--accent); color: #fff; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; border-color: var(--border); }
+    .address {
+      flex: 1;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #0b1220;
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+    }
+    .address:focus { border-color: var(--accent); }
+    .tabs {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 4px 0;
+    }
+    .tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 10px;
+      background: #1b2433;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      white-space: nowrap;
+      max-width: 240px;
+    }
+    .tab.active {
+      border-color: var(--accent);
+      background: #10213a;
+      color: #fff;
+    }
+    .tab .title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 170px;
+    }
+    .badge {
+      font-size: 11px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="row">
+      <button id="backBtn" title="Back">&#8592;</button>
+      <button id="forwardBtn" title="Forward">&#8594;</button>
+      <button id="reloadBtn" title="Reload">&#10227;</button>
+      <input id="addressInput" class="address" placeholder="Enter URL and press Enter" />
+      <button id="goBtn" title="Open URL">Go</button>
+      <button id="newTabBtn" title="New Tab">New Tab</button>
+      <button id="detachBtn" title="Detach Tab">Detach</button>
+      <button id="openExternalBtn" title="Open in default browser">Open External</button>
+      <button id="copyBtn" title="Copy current link">Copy</button>
+    </div>
+    <div class="row tabs" id="tabs"></div>
+    <div class="row" style="font-size:12px;color:var(--muted);">
+      The web content is rendered below this toolbar via BrowserView. Resize or drag to split windows as needed.
+    </div>
+  </div>
+
+  <script>
+    const inapp = window.inapp
+    const state = {
+      windowId: null,
+      tabs: [],
+      activeTabId: null
+    }
+
+    const tabsEl = document.getElementById('tabs')
+    const addressInput = document.getElementById('addressInput')
+    const backBtn = document.getElementById('backBtn')
+    const forwardBtn = document.getElementById('forwardBtn')
+    const reloadBtn = document.getElementById('reloadBtn')
+    const goBtn = document.getElementById('goBtn')
+    const newTabBtn = document.getElementById('newTabBtn')
+    const detachBtn = document.getElementById('detachBtn')
+    const openExternalBtn = document.getElementById('openExternalBtn')
+    const copyBtn = document.getElementById('copyBtn')
+
+    function getActiveTab() {
+      return state.tabs.find((t) => t.id === state.activeTabId) || null
+    }
+
+    function renderTabs() {
+      tabsEl.innerHTML = ''
+      state.tabs.forEach((tab) => {
+        const el = document.createElement('div')
+        el.className = 'tab' + (tab.id === state.activeTabId ? ' active' : '')
+        el.title = tab.url
+        el.onclick = () => inapp?.focusTab(tab.id)
+        el.onmousedown = (event) => startDrag(event, tab.id)
+
+        const title = document.createElement('span')
+        title.className = 'title'
+        title.textContent = tab.title || tab.url || 'New Tab'
+
+        const badge = document.createElement('span')
+        badge.className = 'badge'
+        badge.textContent = tab.isLoading ? 'Loading' : ''
+
+        el.appendChild(title)
+        el.appendChild(badge)
+        tabsEl.appendChild(el)
+      })
+
+      const active = getActiveTab()
+      if (active) {
+        addressInput.value = active.url
+      }
+      backBtn.disabled = !active?.canGoBack
+      forwardBtn.disabled = !active?.canGoForward
+      reloadBtn.disabled = !active
+      detachBtn.disabled = !active
+      openExternalBtn.disabled = !active
+      copyBtn.disabled = !active
+    }
+
+    const dragState = { tabId: null, startX: 0, startY: 0, listening: false }
+    function startDrag(event, tabId) {
+      dragState.tabId = tabId
+      dragState.startX = event.clientX
+      dragState.startY = event.clientY
+      if (dragState.listening) return
+      dragState.listening = true
+      const stopDrag = () => {
+        dragState.tabId = null
+        dragState.listening = false
+        document.removeEventListener('mousemove', onMove)
+        document.removeEventListener('mouseup', stopDrag)
+      }
+      const onMove = (e) => {
+        const dx = Math.abs(e.clientX - dragState.startX)
+        const dy = Math.abs(e.clientY - dragState.startY)
+        if (dx > 120 || dy > 120) {
+          if (dragState.tabId) {
+            inapp?.detachTab(dragState.tabId)
+          }
+          stopDrag()
+        }
+      }
+      document.addEventListener('mousemove', onMove)
+      document.addEventListener('mouseup', stopDrag)
+    }
+
+    function handleOpen(url) {
+      const targetUrl = url && url.trim()
+      if (!targetUrl) return
+      inapp?.openLink(targetUrl, state.windowId)
+    }
+
+    goBtn.onclick = () => handleOpen(addressInput.value)
+    addressInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        handleOpen(addressInput.value)
+      }
+    })
+
+    newTabBtn.onclick = () => handleOpen(addressInput.value || 'https://example.com')
+    backBtn.onclick = () => {
+      const active = getActiveTab()
+      if (active) inapp?.goBack(active.id)
+    }
+    forwardBtn.onclick = () => {
+      const active = getActiveTab()
+      if (active) inapp?.goForward(active.id)
+    }
+    reloadBtn.onclick = () => {
+      const active = getActiveTab()
+      if (active) inapp?.reload(active.id)
+    }
+    detachBtn.onclick = () => {
+      const active = getActiveTab()
+      if (active) inapp?.detachTab(active.id)
+    }
+    openExternalBtn.onclick = () => {
+      const active = getActiveTab()
+      if (active) inapp?.openExternal(active.id)
+    }
+    copyBtn.onclick = () => {
+      const active = getActiveTab()
+      if (active) inapp?.copyLink(active.id)
+    }
+
+    if (inapp?.onWindowState) {
+      inapp.onWindowState((payload) => {
+        state.windowId = payload.windowId
+        state.activeTabId = payload.activeTabId
+        state.tabs = payload.tabs || []
+        renderTabs()
+      })
+    }
+  </script>
+</body>
+</html>

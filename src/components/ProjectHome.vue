@@ -1,8 +1,44 @@
+/**
+ * 项目主页组件
+ * 
+ * ========== 核心功能 ==========
+ * 1. 显示和编辑项目概述（目标、状态、标签）
+ * 2. 管理提示词模板（创建、编辑、删除）
+ * 3. 配置快速启动区（Quick Start）
+ * 4. 支持参数化模板和一键启动
+ * 
+ * ========== 提示词模板系统 ==========
+ * 模板层级：
+ * - base: 基础层模板（可被其他模板引用）
+ * - mode: 模式层模板（直接使用）
+ * 
+ * 参数替换：
+ * - 模板内容中使用 {paramKey} 语法
+ * - 启动时弹出参数表单
+ * - 支持默认值
+ * 
+ * 模板组合：
+ * - mode 模板可引用多个 base 模板
+ * - 最终内容 = base 模板 + mode 模板
+ * 
+ * ========== 数据流 ==========
+ * workspace (Store)
+ *   ↓ watch
+ * Local Drafts (goalDraft, statusDraft, tagsDraft, promptTemplates)
+ *   ↓ 用户编辑
+ * persistXxx 函数
+ *   ↓ API 调用
+ * projectWorkspaceService
+ *   ↓ SQLite
+ * 数据库
+ * 
+ * @module components/ProjectHome
+ */
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, useAttrs, onMounted, onUnmounted } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import { useProjectWorkspaceStore } from '../stores/projectWorkspaceStore'
-import { useChatStore } from '../stores/chatStore'
+import { useConversationStore } from '../stores/conversation'
 import {
   PROJECT_STATUS_OPTIONS,
   type ProjectStatus,
@@ -10,12 +46,22 @@ import {
   type PromptTemplateLayer
 } from '../services/projectPersistence'
 
+/**
+ * 模板参数表单
+ * 
+ * 用于模板编辑器中的参数配置。
+ */
 type TemplateParameterForm = {
-  key: string
-  label: string
-  defaultValue: string
+  key: string           // 参数键名（在模板中使用 {key}）
+  label: string         // 显示标签
+  defaultValue: string  // 默认值
 }
 
+/**
+ * 模板编辑表单
+ * 
+ * 用于模板创建/编辑对话框的数据结构。
+ */
 type TemplateForm = {
   id: string
   name: string
@@ -26,36 +72,147 @@ type TemplateForm = {
 }
 
 const workspaceStore = useProjectWorkspaceStore()
-const chatStore = useChatStore()
+const conversationStore = useConversationStore()
+const rootAttrs = useAttrs()
 
+// ========== 计算属性（数据源） ==========
+
+/**
+ * 当前项目的工作区数据
+ * 
+ * 包含项目概述、提示词模板、主页配置等。
+ */
 const workspace = computed(() => workspaceStore.currentWorkspace)
+
+/**
+ * 项目数据是否正在加载
+ */
 const isLoading = computed(() => workspaceStore.isCurrentProjectLoading)
+
+/**
+ * 当前激活的项目 ID
+ */
 const activeProjectId = computed(() => workspaceStore.activeProjectId)
+
+/**
+ * 加载错误信息
+ */
 const errorMessage = computed(() => {
   const id = activeProjectId.value
   return id ? workspaceStore.getError(id) : null
 })
 
+// ========== 本地状态（草稿/编辑中） ==========
+
+/**
+ * 项目目标草稿
+ * 
+ * 用户编辑后，失焦时自动保存。
+ */
 const goalDraft = ref('')
+
+/**
+ * 项目状态草稿
+ * 
+ * 用户修改后立即保存。
+ */
 const statusDraft = ref<ProjectStatus>('exploring')
+
+/**
+ * 项目标签草稿
+ * 
+ * 用户添加/删除标签后立即保存。
+ */
 const tagsDraft = ref<string[]>([])
+
+/**
+ * 新标签输入框的值
+ */
 const newTag = ref('')
 
+// ========== UI 状态 ==========
+
+/**
+ * 保存成功提示消息
+ * 
+ * 显示 2 秒后自动消失。
+ */
 const saveMessage = ref('')
+
+/**
+ * 待处理的保存操作数量
+ * 
+ * 用于显示加载状态（isSaving）。
+ */
 const pendingSaveOps = ref(0)
+
+/**
+ * 是否正在保存
+ */
 const isSaving = computed(() => pendingSaveOps.value > 0)
 
+// ========== 提示词模板状态 ==========
+
+/**
+ * 项目的所有提示词模板
+ * 
+ * 本地副本，同步自 workspace.promptTemplates。
+ */
 const promptTemplates = ref<ProjectPromptTemplate[]>([])
+
+/**
+ * 快速启动区的模板 ID 数组
+ * 
+ * 本地副本，同步自 workspace.homepage.quickStartPromptIds。
+ */
 const quickStartIds = ref<string[]>([])
+
+/**
+ * 选中的待添加到 Quick Start 的模板 ID
+ */
 const selectedQuickStartToAdd = ref('')
 
+// ========== 模板编辑器状态 ==========
+
+/**
+ * 模板编辑对话框是否可见
+ */
 const templateEditorVisible = ref(false)
+
+/**
+ * 模板编辑器的错误信息
+ */
 const templateEditorError = ref('')
+
+/**
+ * 正在编辑的模板 ID
+ * 
+ * null 表示创建新模板，非 null 表示编辑现有模板。
+ */
 const editingTemplateId = ref<string | null>(null)
+
+/**
+ * 模板编辑表单数据
+ */
 const templateDraft = ref<TemplateForm>(createEmptyTemplateDraft())
 
+// ========== 参数化启动状态 ==========
+
+/**
+ * 参数输入对话框是否可见
+ */
 const parameterLaunchVisible = ref(false)
+
+/**
+ * 当前待启动的模板（带参数）
+ */
 const launchParameterTemplate = ref<ProjectPromptTemplate | null>(null)
+
+/**
+ * 用户输入的参数值
+ * 
+ * Record<paramKey, value>
+ */
 const launchParameterValues = ref<Record<string, string>>({})
 
 const statusLabelMap: Record<ProjectStatus, string> = {
@@ -70,6 +227,15 @@ const statusOptions = PROJECT_STATUS_OPTIONS.map(value => ({
   label: statusLabelMap[value]
 }))
 
+// ========== 辅助函数 ==========
+
+/**
+ * 在保存状态下执行任务
+ * 
+ * 自动管理 pendingSaveOps 计数器，用于显示加载状态。
+ * 
+ * @param task - 异步任务
+ */
 const runWithSaving = async (task: () => Promise<void>) => {
   pendingSaveOps.value += 1
   try {
@@ -79,6 +245,13 @@ const runWithSaving = async (task: () => Promise<void>) => {
   }
 }
 
+/**
+ * 显示临时提示消息
+ * 
+ * 2 秒后自动消失。
+ * 
+ * @param text - 提示文本
+ */
 const showTemporaryMessage = (text: string) => {
   saveMessage.value = text
   setTimeout(() => {
@@ -88,6 +261,13 @@ const showTemporaryMessage = (text: string) => {
   }, 2000)
 }
 
+/**
+ * 创建空的模板编辑表单
+ * 
+ * 用于创建新模板时初始化表单。
+ * 
+ * @returns TemplateForm
+ */
 function createEmptyTemplateDraft(): TemplateForm {
   return {
     id: uuidv4(),
@@ -150,12 +330,43 @@ const quickStartTemplates = computed(() =>
     .filter((template): template is ProjectPromptTemplate => Boolean(template))
 )
 
+/**
+ * 可以添加到 Quick Start 的模板
+ * 
+ * 过滤掉已经在 Quick Start 中的模板。
+ */
 const availableTemplatesForQuickStart = computed(() =>
   promptTemplates.value.filter(template => !quickStartIds.value.includes(template.id))
 )
 
+/**
+ * 转义正则表达式特殊字符
+ * 
+ * 用于安全地构造正则表达式。
+ * 
+ * @param value - 原始字符串
+ * @returns 转义后的字符串
+ */
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
+/**
+ * 构建模板内容（替换参数）
+ * 
+ * 参数替换规则：
+ * - 模板中使用 {paramKey} 语法
+ * - 优先使用用户输入值 (values[key])
+ * - 其次使用默认值 (param.defaultValue)
+ * - 最后使用空字符串
+ * 
+ * @param template - 模板对象
+ * @param values - 用户输入的参数值
+ * @returns 替换后的内容
+ * 
+ * @example
+ * // 模板: "分析 {topic} 的优缺点"
+ * // 参数: { topic: "Vue.js" }
+ * // 结果: "分析 Vue.js 的优缺点"
+ */
 const buildTemplateContent = (template: ProjectPromptTemplate, values: Record<string, string>) => {
   let content = template.content
   if (template.parameters && template.parameters.length > 0) {
@@ -169,6 +380,16 @@ const buildTemplateContent = (template: ProjectPromptTemplate, values: Record<st
   return content
 }
 
+/**
+ * 格式化模板使用统计
+ * 
+ * @param template - 模板对象
+ * @returns 格式化后的统计文本
+ * 
+ * @example
+ * // 未使用: "尚未使用"
+ * // 已使用: "已使用 3 次 · 上次 2 分钟前"
+ */
 const formatTemplateUsage = (template: ProjectPromptTemplate) => {
   const count = template.useCount ?? 0
   if (count === 0) {
@@ -178,6 +399,20 @@ const formatTemplateUsage = (template: ProjectPromptTemplate) => {
   return `已使用 ${count} 次 · 上次 ${lastUsed}`
 }
 
+// ========== 数据持久化函数 ==========
+
+/**
+ * 持久化项目概述
+ * 
+ * 支持部分更新，只传递变更的字段。
+ * 
+ * @param patch - 部分更新的字段
+ * 
+ * 💾 保存机制：
+ * - 自动显示保存状态 (isSaving = true)
+ * - 保存成功后显示提示消息
+ * - 错误会自动传播到组件
+ */
 const persistOverview = async (patch: Partial<{ goal: string; status: ProjectStatus; tags: string[] }>) => {
   const projectId = activeProjectId.value
   if (!projectId) {
@@ -190,6 +425,19 @@ const persistOverview = async (patch: Partial<{ goal: string; status: ProjectSta
   })
 }
 
+/**
+ * 持久化提示词模板
+ * 
+ * 全量替换模式，不是合并更新。
+ * 
+ * @param templates - 完整的模板数组
+ * @param options - 选项
+ * @param options.silent - 是否静默保存（不显示提示）
+ * 
+ * ⚠️ 注意：
+ * - 会同时更新本地 promptTemplates.value
+ * - 不在数组中的模板将被删除
+ */
 const persistPromptTemplates = async (
   templates: ProjectPromptTemplate[],
   options: { silent?: boolean } = {}
@@ -404,20 +652,17 @@ const moveQuickStartTemplate = async (index: number, direction: -1 | 1) => {
 }
 
 const startQuickStartConversation = (template: ProjectPromptTemplate, params: Record<string, string> = {}) => {
-  const conversationId = chatStore.createNewConversation(template.name || '快速开局')
+  const newConv = conversationStore.createConversation({
+    title: template.name || '快速开局',
+    projectId: (activeProjectId.value && activeProjectId.value !== 'unassigned') ? activeProjectId.value : null
+  })
+  
   if (template.content) {
     const resolvedContent = buildTemplateContent(template, params)
-    chatStore.updateConversationDraft({
-      conversationId,
-      draftText: resolvedContent
-    })
+    conversationStore.updateDraft(newConv.id, resolvedContent)
   }
 
-  if (activeProjectId.value && activeProjectId.value !== 'unassigned') {
-    chatStore.assignConversationToProject(conversationId, activeProjectId.value)
-  }
-
-  chatStore.openConversationInTab(conversationId)
+  conversationStore.openTab(newConv.id)
 
   recordTemplateUsage(template.id)
 }
@@ -481,11 +726,46 @@ const formatTimestamp = (value: number) => {
     return new Date(value).toLocaleString()
   }
 }
+
+// 滚动容器引用
+const projectContainer = ref<HTMLElement | null>(null)
+let scrollTimer: number | null = null
+
+// 滚动条自动隐藏处理
+const handleScroll = () => {
+  if (!projectContainer.value) return
+  
+  projectContainer.value.classList.add('scrolling')
+  
+  if (scrollTimer !== null) {
+    clearTimeout(scrollTimer)
+  }
+  
+  scrollTimer = window.setTimeout(() => {
+    projectContainer.value?.classList.remove('scrolling')
+  }, 1000)
+}
+
+onMounted(() => {
+  if (projectContainer.value) {
+    projectContainer.value.addEventListener('scroll', handleScroll)
+  }
+})
+
+onUnmounted(() => {
+  if (projectContainer.value) {
+    projectContainer.value.removeEventListener('scroll', handleScroll)
+  }
+  if (scrollTimer !== null) {
+    clearTimeout(scrollTimer)
+  }
+})
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto bg-[radial-gradient(circle_at_top,_#eef2ff,_#f9fafb)]">
-    <div class="max-w-6xl mx-auto px-6 py-8 space-y-6">
+  <div v-bind="rootAttrs" class="relative h-full">
+    <div ref="projectContainer" class="h-full overflow-y-auto scrollbar-auto-hide bg-[radial-gradient(circle_at_top,_#eef2ff,_#f9fafb)]">
+      <div class="max-w-6xl mx-auto px-6 py-8 space-y-6">
       <div class="flex items-start justify-between gap-6">
         <div>
           <p class="text-xs font-medium uppercase tracking-wide text-indigo-500">项目工作台</p>
@@ -827,13 +1107,13 @@ const formatTimestamp = (value: number) => {
               <div v-else class="space-y-3">
                 <div
                   v-for="(param, index) in templateDraft.parameters"
-                  :key="index"
+                  :key="param.key || index"
                   class="grid gap-2 md:grid-cols-3 items-start"
                 >
                   <div>
                     <label class="text-xs font-medium text-gray-600 mb-1 block">参数 key</label>
                     <input
-                      v-model="templateDraft.parameters[index].key"
+                      v-model="param.key"
                       type="text"
                       class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                       placeholder="例如 objective"
@@ -842,7 +1122,7 @@ const formatTimestamp = (value: number) => {
                   <div>
                     <label class="text-xs font-medium text-gray-600 mb-1 block">显示标签</label>
                     <input
-                      v-model="templateDraft.parameters[index].label"
+                      v-model="param.label"
                       type="text"
                       class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                       placeholder="例如 项目目标"
@@ -852,7 +1132,7 @@ const formatTimestamp = (value: number) => {
                     <div class="flex-1">
                       <label class="text-xs font-medium text-gray-600 mb-1 block">默认值（可选）</label>
                       <input
-                        v-model="templateDraft.parameters[index].defaultValue"
+                        v-model="param.defaultValue"
                         type="text"
                         class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                         placeholder="默认填充值"
@@ -941,15 +1221,15 @@ const formatTimestamp = (value: number) => {
           </div>
         </section>
       </div>
+      </div>
     </div>
-  </div>
 
-  <div
-    v-if="parameterLaunchVisible && launchParameterTemplate"
-    class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 px-4"
-    @click.self="cancelQuickStartParameters"
-  >
-    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4">
+    <div
+      v-if="parameterLaunchVisible && launchParameterTemplate"
+      class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 px-4"
+      @click.self="cancelQuickStartParameters"
+    >
+      <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4">
       <div class="flex items-start justify-between">
         <div>
           <h3 class="text-lg font-semibold text-gray-900">填写参数</h3>
@@ -967,7 +1247,7 @@ const formatTimestamp = (value: number) => {
         </button>
       </div>
 
-      <div class="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+      <div class="space-y-4 max-h-[60vh] overflow-y-auto scrollbar-auto-hide pr-1">
         <div
           v-for="param in launchParameterTemplate.parameters"
           :key="param.key"
@@ -1000,6 +1280,7 @@ const formatTimestamp = (value: number) => {
         >
           开始对话
         </button>
+      </div>
       </div>
     </div>
   </div>
