@@ -42,6 +42,7 @@ import { v4 as uuidv4 } from 'uuid'  // UUID 生成器，用于创建唯一 ID
 // @ts-ignore - chatStore.js 是 JavaScript 文件，暂无类型定义
 import { useChatStore } from '../stores/chatStore'
 import { useAppStore } from '../stores'
+import { useProjectWorkspaceStore } from '../stores/projectWorkspaceStore'
 
 // ========== 服务层 ==========
 // @ts-ignore - aiChatService.js 是 JavaScript 文件
@@ -49,6 +50,7 @@ import { aiChatService } from '../services/aiChatService'  // AI 聊天服务，
 
 // ========== 类型定义和工具函数 ==========
 import { extractTextFromMessage, DEFAULT_SAMPLING_PARAMETERS } from '../types/chat'  // 从消息 parts 中提取纯文本
+import type { ProjectPromptTemplate } from '../services/projectPersistence'
 import type {
   MessagePart,
   MessageReasoningMetadata,
@@ -63,6 +65,12 @@ import type {
 } from '../types/chat'
 import { getCurrentVersion, getPathToBranch } from '../stores/branchTreeHelpers'  // 分支树操作辅助函数
 import { electronApiBridge, isUsingElectronApiFallback } from '../utils/electronBridge'  // Electron 桥接
+import {
+  CONVERSATION_STATUS_OPTIONS,
+  CONVERSATION_STATUS_LABELS,
+  DEFAULT_CONVERSATION_STATUS
+} from '../types/conversation'
+import type { ConversationStatus } from '../types/conversation'
 
 // ========== 子组件 ==========
 import FavoriteModelSelector from './FavoriteModelSelector.vue'  // 收藏模型快速选择器
@@ -88,6 +96,7 @@ const props = defineProps<{
 // ========== Store 实例 ==========
 const chatStore = useChatStore()  // 聊天 store，管理对话、消息、模型等数据
 const appStore = useAppStore()  // 应用 store，管理全局配置（API Key、Provider 等）
+const projectWorkspaceStore = useProjectWorkspaceStore()
 
 // ========== DOM 引用 ==========
 const draftInput = ref('')  // 草稿输入框的文本内容（双向绑定到 textarea）
@@ -111,6 +120,35 @@ const parameterMenuVisible = ref(false)  // 采样参数菜单显示状态
 const pendingAttachments = ref<string[]>([])
 const MAX_IMAGE_SIZE_MB = 10  // 单张图片最大大小限制（MB）
 const MAX_IMAGES_PER_MESSAGE = 5  // 单条消息最多可附加的图片数量
+
+type PendingFileAttachment = {
+  id: string
+  name: string
+  dataUrl: string
+  size: number
+  mimeType?: string
+}
+
+const pendingFiles = ref<PendingFileAttachment[]>([])
+const MAX_FILE_SIZE_MB = 20
+const MAX_FILES_PER_MESSAGE = 3
+const PDF_ENGINE_OPTIONS = [
+  { value: 'pdf-text', label: 'PDF Text（免费，文本为主）' },
+  { value: 'mistral-ocr', label: 'Mistral OCR（扫描件/图片，$2/千页）' },
+  { value: 'native', label: 'Native（模型原生文件输入，按 tokens 计费）' }
+] as const
+const selectedPdfEngine = ref<'pdf-text' | 'mistral-ocr' | 'native'>('pdf-text')
+const pdfEngineMenuVisible = ref(false)
+const pdfEngineMenuRef = ref<HTMLElement | null>(null)
+const selectedPdfEngineLabel = computed(() => {
+  return PDF_ENGINE_OPTIONS.find(opt => opt.value === selectedPdfEngine.value)?.label || 'PDF Text'
+})
+
+const getDataUriSizeInBytes = (dataUri: string) => {
+  const base64Part = dataUri.split(',')[1]
+  if (!base64Part) return 0
+  return (base64Part.length * 3) / 4
+}
 
 /**
  * 选择图片附件
@@ -172,6 +210,64 @@ const handleSelectImage = async () => {
  */
 const removeAttachment = (index: number) => {
   pendingAttachments.value.splice(index, 1)
+}
+
+/**
+ * 选择要上传的文件（当前支持 PDF）
+ */
+const handleSelectFile = async () => {
+  try {
+    if (pendingFiles.value.length >= MAX_FILES_PER_MESSAGE) {
+      alert(`每条消息最多只能添加 ${MAX_FILES_PER_MESSAGE} 个文件`)
+      return
+    }
+
+    if (!electronApiBridge?.selectFile || isUsingElectronApiFallback) {
+      alert('当前环境不支持文件上传，请在桌面应用中使用此功能。')
+      console.warn('handleSelectFile: electronAPI bridge 不可用，已提示用户。')
+      return
+    }
+
+    const result = await electronApiBridge.selectFile({
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      defaultMimeType: 'application/pdf'
+    })
+
+    if (!result || !result.dataUrl) {
+      return
+    }
+
+    const fileSizeBytes = typeof result.size === 'number' ? result.size : getDataUriSizeInBytes(result.dataUrl)
+    const sizeInMB = fileSizeBytes / (1024 * 1024)
+    if (sizeInMB > MAX_FILE_SIZE_MB) {
+      alert(`文件过大（${sizeInMB.toFixed(2)} MB），请选择小于 ${MAX_FILE_SIZE_MB} MB 的文件`)
+      return
+    }
+
+    pendingFiles.value.push({
+      id: uuidv4(),
+      name: result.filename || 'document.pdf',
+      dataUrl: result.dataUrl,
+      size: fileSizeBytes,
+      mimeType: result.mimeType
+    })
+  } catch (error) {
+    console.error('选择文件失败:', error)
+    alert('选择文件失败，请重试')
+  }
+}
+
+const removeFileAttachment = (fileId: string) => {
+  pendingFiles.value = pendingFiles.value.filter(file => file.id !== fileId)
+}
+
+const togglePdfEngineMenu = () => {
+  pdfEngineMenuVisible.value = !pdfEngineMenuVisible.value
+}
+
+const selectPdfEngineOption = (value: 'pdf-text' | 'mistral-ocr' | 'native') => {
+  selectedPdfEngine.value = value
+  pdfEngineMenuVisible.value = false
 }
 
 // ========== 高级模型选择器状态 ==========
@@ -268,6 +364,7 @@ const isComponentActive = computed(() => {
 const editingBranchId = ref<string | null>(null)  // 正在编辑的分支 ID（null 表示未在编辑）
 const editingText = ref('')  // 编辑器中的文本内容
 const editingImages = ref<string[]>([])  // 编辑器中的图片列表（Base64 Data URIs）
+const editingFiles = ref<PendingFileAttachment[]>([])  // 编辑器中的文件列表
 
 /**
  * 比较两个消息的 parts 数组是否完全相同
@@ -311,6 +408,24 @@ const areMessagePartsEqual = (partsA: any[] = [], partsB: any[] = []) => {
       const urlA = a.image_url?.url ?? ''
       const urlB = b.image_url?.url ?? ''
       if (urlA !== urlB) {
+        return false
+      }
+      continue
+    }
+
+    if (a.type === 'file') {
+      const fileA = (a as any).file || {}
+      const fileB = (b as any).file || {}
+      if ((fileA.filename ?? '') !== (fileB.filename ?? '')) {
+        return false
+      }
+      if ((fileA.file_data ?? '') !== (fileB.file_data ?? '')) {
+        return false
+      }
+      if ((fileA.mime_type ?? '') !== (fileB.mime_type ?? '')) {
+        return false
+      }
+      if ((fileA.size_bytes ?? null) !== (fileB.size_bytes ?? null)) {
         return false
       }
       continue
@@ -360,6 +475,123 @@ const currentConversation = computed(() => {
   return chatStore.conversationsMap.get(props.conversationId) || null
 })
 
+const conversationStatusOptions = CONVERSATION_STATUS_OPTIONS
+const conversationStatusLabels = CONVERSATION_STATUS_LABELS
+const conversationTagInput = ref('')
+const conversationStatus = computed<ConversationStatus>(() => {
+  return currentConversation.value?.status ?? DEFAULT_CONVERSATION_STATUS
+})
+const conversationTags = computed(() => currentConversation.value?.tags ?? [])
+const canSaveConversationTemplate = computed(() => !!currentConversation.value?.projectId)
+const saveTemplateInProgress = ref(false)
+
+watch(
+  () => currentConversation.value?.id,
+  () => {
+    conversationTagInput.value = ''
+  }
+)
+
+const handleConversationStatusChange = (event: Event) => {
+  if (!currentConversation.value) {
+    return
+  }
+  const target = event.target as HTMLSelectElement | null
+  if (!target) {
+    return
+  }
+  chatStore.setConversationStatus(props.conversationId, target.value)
+}
+
+const handleConversationTagAdd = () => {
+  if (!currentConversation.value) {
+    return
+  }
+  const value = conversationTagInput.value.trim()
+  if (!value) {
+    return
+  }
+  chatStore.addConversationTag(props.conversationId, value)
+  conversationTagInput.value = ''
+}
+
+const handleConversationTagKeydown = (event: KeyboardEvent) => {
+  if (event.key !== 'Enter') {
+    return
+  }
+  event.preventDefault()
+  handleConversationTagAdd()
+}
+
+const handleConversationTagRemove = (tag: string) => {
+  if (!currentConversation.value) {
+    return
+  }
+  chatStore.removeConversationTag(props.conversationId, tag)
+}
+
+const getLastUserMessageText = () => {
+  const messages = chatStore.getConversationMessages(props.conversationId)
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (message?.role === 'user') {
+      const text = extractTextFromMessage(message)
+      if (text && text.trim()) {
+        return text.trim()
+      }
+    }
+  }
+  return ''
+}
+
+const handleSaveConversationAsTemplate = async () => {
+  const conversation = currentConversation.value
+  if (!conversation) {
+    return
+  }
+  if (!conversation.projectId) {
+    window.alert('请先将对话分配到某个项目后再保存模板。')
+    return
+  }
+
+  const draftContent = draftInput.value?.trim()
+  const lastUserContent = draftContent || getLastUserMessageText()
+  if (!lastUserContent) {
+    window.alert('当前没有可保存的内容。请先输入或选择一段文本。')
+    return
+  }
+
+  const suggestedName = conversation.title?.trim() || '新模板'
+  const name = window.prompt('请输入模板名称', suggestedName)
+  if (!name || !name.trim()) {
+    return
+  }
+
+  saveTemplateInProgress.value = true
+  try {
+    const projectId = conversation.projectId
+    await projectWorkspaceStore.loadWorkspace(projectId)
+    const workspace = projectWorkspaceStore.getWorkspace(projectId)
+    const existingTemplates = workspace?.promptTemplates ?? []
+    const newTemplate: ProjectPromptTemplate = {
+      id: uuidv4(),
+      name: name.trim(),
+      layer: 'mode',
+      description: `来自对话「${conversation.title}」`,
+      content: lastUserContent,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      useCount: 0
+    }
+    await projectWorkspaceStore.savePromptTemplates(projectId, [...existingTemplates, newTemplate])
+    window.alert('已保存为项目模板，前往项目主页即可在 Quick Start 中使用。')
+  } catch (error) {
+    console.error('Failed to save conversation as template', error)
+    window.alert('保存模板失败，请稍后再试。')
+  } finally {
+    saveTemplateInProgress.value = false
+  }
+}
 
 // ========== 分支树消息显示 ==========
 /**
@@ -1579,6 +1811,13 @@ const handleGlobalClick = (event: MouseEvent) => {
       parameterMenuVisible.value = false
     }
   }
+
+  if (pdfEngineMenuVisible.value) {
+    const pdfMenuRoot = pdfEngineMenuRef.value
+    if (!pdfMenuRoot || !targetNode || !pdfMenuRoot.contains(targetNode)) {
+      pdfEngineMenuVisible.value = false
+    }
+  }
 }
 
 // ========== 流式生成状态判断 ==========
@@ -2419,6 +2658,38 @@ const getReasoningPrimaryText = (reasoning?: MessageReasoningMetadata | null): s
   return normalized
 }
 
+const normalizeReasoningDetailType = (type?: string | null): string => {
+  if (typeof type !== 'string') {
+    return ''
+  }
+  return type
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+const isReasoningTextDetailType = (type?: string | null): boolean => {
+  const normalized = normalizeReasoningDetailType(type)
+  if (!normalized) {
+    return false
+  }
+
+  if (normalized.startsWith('reasoning_text')) {
+    return true
+  }
+
+  if (normalized.includes('reasoning_summary')) {
+    return true
+  }
+
+  if (normalized.includes('reasoning_stream')) {
+    return true
+  }
+
+  return false
+}
+
 /**
  * 获取推理文本（支持流式显示）
  * 
@@ -2465,12 +2736,17 @@ const getReasoningStreamText = (reasoning?: MessageReasoningMetadata | null): st
     if (!detail || typeof detail !== 'object') {
       continue
     }
-    
-    const isReasoningTextType = typeof detail.type === 'string' && 
-                                 detail.type.toLowerCase().startsWith('reasoning.text')
-    
-    if (isReasoningTextType && typeof detail.text === 'string' && detail.text) {
-      textParts.push(detail.text)
+
+    if (!isReasoningTextDetailType(detail.type)) {
+      continue
+    }
+
+    const detailText = typeof detail.text === 'string' ? detail.text : ''
+    const fallbackSummary = !detailText && typeof detail.summary === 'string' ? detail.summary : ''
+    const content = detailText || fallbackSummary
+
+    if (content) {
+      textParts.push(content)
     }
   }
 
@@ -2519,11 +2795,8 @@ const getReasoningDetailsForDisplay = (reasoning?: MessageReasoningMetadata | nu
         return null
       }
 
-      // ✅ 过滤掉 reasoning.text 类型，统一在累积文本区域显示
-      const isReasoningTextType = typeof detail.type === 'string' && 
-                                   detail.type.toLowerCase().startsWith('reasoning.text')
-      
-      if (isReasoningTextType) {
+      // ✅ 过滤掉用于流式展示的类型，统一在累积文本区域显示
+      if (isReasoningTextDetailType(detail.type)) {
         return null
       }
       
@@ -2659,6 +2932,19 @@ const formatCredits = (value?: number | null) => {
   return value.toPrecision(2)
 }
 
+const formatFileSize = (bytes?: number | null) => {
+  if (bytes === undefined || bytes === null || Number.isNaN(bytes) || !Number.isFinite(bytes)) {
+    return ''
+  }
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+  }
+  if (bytes >= 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`
+  }
+  return `${bytes} B`
+}
+
 // 公共的发送消息逻辑（可被普通发送、重新生成、编辑后重发复用）
 /**
  * 执行发送消息的核心逻辑（使用分支树结构）
@@ -2734,6 +3020,19 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
   // 这防止了多次点击发送按钮导致的并发问题
   if (currentConversation.value.generationStatus !== 'idle') {
     console.warn('⚠️ 对话正在生成中，请等待完成或停止后再试')
+    return
+  }
+
+  const containsFilePart = Array.isArray(messageParts) && messageParts.some(part => part?.type === 'file')
+  const historyHasFile =
+    currentConversation.value?.tree?.currentPath?.some(branchId => {
+      const branch = currentConversation.value?.tree?.branches.get(branchId)
+      const version = branch ? getCurrentVersion(branch) : null
+      return version?.parts?.some((part: any) => part?.type === 'file')
+    }) ?? false
+
+  if ((containsFilePart || historyHasFile) && appStore.activeProvider !== 'OpenRouter') {
+    alert('文件上传目前仅支持 OpenRouter 提供商，请切换后重试。')
     return
   }
 
@@ -2880,6 +3179,7 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
         imageConfig, // 图像生成配置（如宽高比）
         reasoning: reasoningOptions,
         parameters: parameterOverrides,
+        pdfEngine: selectedPdfEngine.value,
         systemInstruction: systemInstruction || null
       }
     )
@@ -3188,14 +3488,14 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
  * 这是用户点击"发送"按钮或按下 Enter 键时调用的入口函数
  * 
  * 功能：
- * 1. 验证输入（必须有文本或图片附件）
+ * 1. 验证输入（必须有文本或附件）
  * 2. 构建多模态消息的 parts 数组
  * 3. 调用核心发送函数 performSendMessage
  * 4. 清空输入框和附件
  * 
  * 多模态消息结构：
  * - 文本部分在前（如果有）
- * - 图片部分在后（保持用户选择的顺序）
+ * - 文件/图片部分在后（保持用户选择的顺序）
  * - 每个图片 part 包含唯一 ID（用于 Vue 列表渲染的 key）
  * 
  * 图像生成配置传递：
@@ -3209,10 +3509,11 @@ const performSendMessage = async (userMessage?: string, messageParts?: any[], re
  */
 const sendMessage = async () => {
   const trimmedMessage = draftInput.value.trim()
-  const hasAttachments = pendingAttachments.value.length > 0
+  const hasImages = pendingAttachments.value.length > 0
+  const hasFiles = pendingFiles.value.length > 0
 
   // 必须有文本或附件
-  if (!trimmedMessage && !hasAttachments) {
+  if (!trimmedMessage && !hasImages && !hasFiles) {
     return
   }
 
@@ -3224,6 +3525,19 @@ const sendMessage = async () => {
     messageParts.push({
       type: 'text',
       text: trimmedMessage
+    })
+  }
+
+  for (const file of pendingFiles.value) {
+    messageParts.push({
+      id: file.id,
+      type: 'file',
+      file: {
+        filename: file.name,
+        file_data: file.dataUrl,
+        mime_type: file.mimeType,
+        size_bytes: file.size
+      }
     })
   }
   
@@ -3247,13 +3561,14 @@ const sendMessage = async () => {
   if (activeConfig) {
     overrides.imageConfig = activeConfig
   }
-
+  
   // 调用核心发送逻辑
   await performSendMessage(trimmedMessage, messageParts, overrides)
   
   // 清空输入框和附件（发送成功后重置 UI）
   draftInput.value = ''
   pendingAttachments.value = []
+  pendingFiles.value = []
 }
 
 /**
@@ -3576,6 +3891,7 @@ const handleRetryMessage = async (branchId: string) => {
         imageConfig,
         reasoning: reasoningOptions,
         parameters: parameterOverrides,
+        pdfEngine: selectedPdfEngine.value,
         systemInstruction: systemInstruction || null
       }
     )
@@ -3758,13 +4074,22 @@ const handleEditMessage = (branchId: string, message: any) => {
     // 新格式：从 parts 数组中提取
     const textParts = message.parts.filter((p: any) => p.type === 'text')
     const imageParts = message.parts.filter((p: any) => p.type === 'image_url')
+    const fileParts = message.parts.filter((p: any) => p.type === 'file' && p.file?.file_data)
     
     editingText.value = textParts.map((p: any) => p.text).join('\n')
     editingImages.value = imageParts.map((p: any) => p.image_url.url)
+    editingFiles.value = fileParts.map((p: any) => ({
+      id: p.id || uuidv4(),
+      name: p.file?.filename || '附件',
+      dataUrl: p.file?.file_data,
+      size: typeof p.file?.size_bytes === 'number' ? p.file.size_bytes : getDataUriSizeInBytes(p.file?.file_data || ''),
+      mimeType: p.file?.mime_type
+    }))
   } else {
     // 旧格式兼容
     editingText.value = extractTextFromMessage(message)
     editingImages.value = []
+    editingFiles.value = []
   }
 }
 
@@ -3786,6 +4111,7 @@ const handleCancelEdit = () => {
   editingBranchId.value = null
   editingText.value = ''
   editingImages.value = []
+  editingFiles.value = []
 }
 
 /**
@@ -3805,6 +4131,10 @@ const handleCancelEdit = () => {
  */
 const handleRemoveEditingImage = (index: number) => {
   editingImages.value.splice(index, 1)
+}
+
+const handleRemoveEditingFile = (fileId: string) => {
+  editingFiles.value = editingFiles.value.filter(file => file.id !== fileId)
 }
 
 /**
@@ -3843,6 +4173,44 @@ const handleAddImageToEdit = async () => {
   }
 }
 
+const handleAddFileToEdit = async () => {
+  if (!electronApiBridge?.selectFile || isUsingElectronApiFallback) {
+    alert('文件选择功能在当前环境下不可用（需要 Electron 环境）')
+    console.warn('handleAddFileToEdit: electronAPI bridge 不可用')
+    return
+  }
+
+  if (editingFiles.value.length >= MAX_FILES_PER_MESSAGE) {
+    alert(`每条消息最多只能添加 ${MAX_FILES_PER_MESSAGE} 个文件`)
+    return
+  }
+
+  try {
+    const result = await electronApiBridge.selectFile({
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      defaultMimeType: 'application/pdf'
+    })
+    if (result?.dataUrl) {
+      const fileSizeBytes = typeof result.size === 'number' ? result.size : getDataUriSizeInBytes(result.dataUrl)
+      const sizeInMB = fileSizeBytes / (1024 * 1024)
+      if (sizeInMB > MAX_FILE_SIZE_MB) {
+        alert(`文件过大（${sizeInMB.toFixed(2)} MB），请选择小于 ${MAX_FILE_SIZE_MB} MB 的文件`)
+        return
+      }
+
+      editingFiles.value.push({
+        id: uuidv4(),
+        name: result.filename || '附件',
+        dataUrl: result.dataUrl,
+        size: fileSizeBytes,
+        mimeType: result.mimeType
+      })
+    }
+  } catch (error) {
+    console.error('选择文件失败:', error)
+  }
+}
+
 // 保存编辑并重新提交
 const handleSaveEdit = async (branchId: string) => {
   // ========== 🔒 固化上下文 ==========
@@ -3850,9 +4218,10 @@ const handleSaveEdit = async (branchId: string) => {
   
   const hasText = editingText.value.trim()
   const hasImages = editingImages.value.length > 0
+  const hasFiles = editingFiles.value.length > 0
   
   // 必须有文本或图片
-  if (!hasText && !hasImages) {
+  if (!hasText && !hasImages && !hasFiles) {
     handleCancelEdit()
     return
   }
@@ -3865,6 +4234,19 @@ const handleSaveEdit = async (branchId: string) => {
     newParts.push({
       type: 'text',
       text: editingText.value.trim()
+    })
+  }
+
+  for (const file of editingFiles.value) {
+    newParts.push({
+      id: file.id,
+      type: 'file',
+      file: {
+        filename: file.name,
+        file_data: file.dataUrl,
+        mime_type: file.mimeType,
+        size_bytes: file.size
+      }
     })
   }
   
@@ -3916,6 +4298,9 @@ const handleSaveEdit = async (branchId: string) => {
         }
         if (part.type === 'image_url') {
           return Boolean(part.image_url?.url)
+        }
+        if (part.type === 'file') {
+          return Boolean(part.file?.file_data)
         }
         // 其它类型默认视为有效内容
         return true
@@ -4149,6 +4534,83 @@ const handleDeleteAllVersions = () => {
       <!-- 消息滚动区：外层控制滚动，内层限制最大宽度 -->
       <div ref="chatContainer" class="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4 w-full">
         <div class="space-y-4 max-w-5xl mx-auto">
+          <div
+            v-if="currentConversation"
+            class="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 space-y-4"
+          >
+            <div class="flex flex-wrap gap-4 items-start">
+              <div class="flex flex-col gap-2 min-w-[200px]">
+                <label class="text-xs font-semibold text-gray-600">会话状态</label>
+                <select
+                  class="rounded-xl border border-gray-200 bg-gray-50 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 text-sm px-3 py-2"
+                  :value="conversationStatus"
+                  @change="handleConversationStatusChange"
+                >
+                  <option
+                    v-for="option in conversationStatusOptions"
+                    :key="option"
+                    :value="option"
+                  >
+                    {{ conversationStatusLabels[option] }}
+                  </option>
+                </select>
+              </div>
+
+              <div class="flex-1 min-w-[260px]">
+                <label class="text-xs font-semibold text-gray-600">会话标签</label>
+                <div class="flex flex-wrap gap-2 mb-2 mt-2">
+                  <span
+                    v-for="tag in conversationTags"
+                    :key="tag"
+                    class="inline-flex items-center px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-medium"
+                  >
+                    {{ tag }}
+                    <button
+                      type="button"
+                      class="ml-2 text-indigo-500 hover:text-indigo-700"
+                      @click="handleConversationTagRemove(tag)"
+                      aria-label="删除标签"
+                    >
+                      ×
+                    </button>
+                  </span>
+                  <span v-if="conversationTags.length === 0" class="text-xs text-gray-400">
+                    暂无标签
+                  </span>
+                </div>
+                <div class="flex gap-2">
+                  <input
+                    v-model="conversationTagInput"
+                    @keydown="handleConversationTagKeydown"
+                    type="text"
+                    placeholder="输入标签后按 Enter"
+                    class="flex-1 rounded-xl border border-gray-200 bg-gray-50 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 text-sm px-3 py-2"
+                  />
+                  <button
+                    type="button"
+                    class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500 transition"
+                    @click="handleConversationTagAdd"
+                  >
+                    添加
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="border-t border-gray-100 pt-3 flex flex-wrap items-center justify-between gap-3">
+              <span class="text-xs text-gray-500">
+                将当前草稿或最后一条用户消息保存为项目模板
+              </span>
+              <button
+                type="button"
+                class="px-4 py-2 text-xs font-semibold rounded-xl border border-indigo-200 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                :disabled="!canSaveConversationTemplate || saveTemplateInProgress"
+                @click="handleSaveConversationAsTemplate"
+              >
+                {{ saveTemplateInProgress ? '保存中...' : '保存为模板' }}
+              </button>
+            </div>
+          </div>
+
           <!-- 空态提示 -->
           <div
             v-if="displayMessages.length === 0"
@@ -4186,6 +4648,54 @@ const handleDeleteAllVersions = () => {
                   v-if="editingBranchId === message.branchId"
                   class="w-full"
                 >
+                  <!-- 编辑中的文件预览 -->
+                  <div v-if="editingFiles.length > 0" class="flex flex-wrap gap-2 mb-3">
+                    <div
+                      v-for="file in editingFiles"
+                      :key="file.id"
+                      class="flex items-center gap-2 px-3 py-2 rounded border border-gray-200 bg-gray-50"
+                    >
+                      <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12l5.5-5.5a3 3 0 114.24 4.24L10.5 18a4 4 0 11-5.66-5.66L13 4.17" />
+                      </svg>
+                      <div class="flex flex-col">
+                        <span class="text-sm font-medium text-gray-800">{{ file.name }}</span>
+                        <span class="text-xs text-gray-500">{{ formatFileSize(file.size) }}</span>
+                      </div>
+                      <button
+                        @click="handleRemoveEditingFile(file.id)"
+                        class="ml-2 text-xs text-red-600 hover:text-red-700"
+                        title="移除文件"
+                      >
+                        移除
+                      </button>
+                    </div>
+                    
+                    <button
+                      @click="handleAddFileToEdit"
+                      class="px-3 py-1.5 text-sm border border-dashed border-gray-300 hover:border-blue-500 rounded flex items-center gap-2 transition-colors"
+                      title="添加文件"
+                    >
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                      </svg>
+                      添加文件
+                    </button>
+                  </div>
+
+                  <div v-else class="mb-2">
+                    <button
+                      @click="handleAddFileToEdit"
+                      class="px-3 py-1.5 text-sm border border-gray-300 hover:bg-gray-50 rounded flex items-center gap-2 transition-colors"
+                      title="添加文件"
+                    >
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                      </svg>
+                      添加文件
+                    </button>
+                  </div>
+
                   <!-- 编辑中的图片预览 -->
                   <div v-if="editingImages.length > 0" class="flex flex-wrap gap-2 mb-3">
                     <div
@@ -4436,6 +4946,46 @@ const handleDeleteAllVersions = () => {
                           </button>
                         </div>
                       </div>
+
+                      <div
+                        v-else-if="part.type === 'file'"
+                        class="flex items-center gap-3 p-3 rounded-md border"
+                        :class="message.role === 'user' ? 'border-white/30 bg-white/20' : 'border-gray-200 bg-gray-50'"
+                      >
+                        <div class="flex items-center gap-2">
+                          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12l5.5-5.5a3 3 0 114.24 4.24L10.5 18a4 4 0 11-5.66-5.66L13 4.17" />
+                          </svg>
+                          <div class="flex flex-col">
+                            <span
+                              class="text-sm font-medium"
+                              :class="message.role === 'user' ? 'text-white' : 'text-gray-800'"
+                            >
+                              {{ part.file?.filename || '附件' }}
+                            </span>
+                            <span
+                              v-if="part.file?.size_bytes"
+                              class="text-xs"
+                              :class="message.role === 'user' ? 'text-white/80' : 'text-gray-500'"
+                            >
+                              {{ formatFileSize(part.file.size_bytes) }}
+                            </span>
+                          </div>
+                        </div>
+                        <div class="ml-auto flex items-center gap-2">
+                          <a
+                            v-if="part.file?.file_data"
+                            :href="part.file.file_data"
+                            :download="part.file?.filename || 'attachment'"
+                            target="_blank"
+                            rel="noreferrer"
+                            class="text-xs font-medium"
+                            :class="message.role === 'user' ? 'text-white hover:text-blue-100' : 'text-blue-600 hover:text-blue-700'"
+                          >
+                            打开
+                          </a>
+                        </div>
+                      </div>
                     </template>
                   </div>
                   
@@ -4612,6 +5162,33 @@ const handleDeleteAllVersions = () => {
             <p class="text-sm text-yellow-800">{{ visionModelWarning }}</p>
           </div>
           
+          <!-- 文件预览区域 -->
+          <div
+            v-if="pendingFiles.length > 0"
+            class="mb-3 flex flex-wrap gap-2"
+          >
+            <div
+              v-for="file in pendingFiles"
+              :key="file.id"
+              class="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg"
+            >
+              <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12l5.5-5.5a3 3 0 114.24 4.24L10.5 18a4 4 0 11-5.66-5.66L13 4.17" />
+              </svg>
+              <div class="flex flex-col">
+                <span class="text-sm font-medium text-gray-800">{{ file.name }}</span>
+                <span class="text-xs text-gray-500">{{ formatFileSize(file.size) }}</span>
+              </div>
+              <button
+                @click="removeFileAttachment(file.id)"
+                class="ml-2 text-xs text-red-600 hover:text-red-700"
+                title="移除文件"
+              >
+                移除
+              </button>
+            </div>
+          </div>
+
           <!-- 附件预览区域 -->
           <div 
             v-if="pendingAttachments.length > 0"
@@ -4627,6 +5204,49 @@ const handleDeleteAllVersions = () => {
           </div>
           
           <div class="flex items-end gap-3">
+            <!-- 文件选择按钮 -->
+            <button
+              @click="handleSelectFile"
+              :disabled="currentConversation?.generationStatus !== 'idle'"
+              class="flex-none shrink-0 p-3 text-gray-600 hover:text-blue-500 hover:bg-blue-50 disabled:text-gray-300 disabled:cursor-not-allowed rounded-lg transition-colors"
+              title="添加文件"
+            >
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12l5.5-5.5a3 3 0 114.24 4.24L10.5 18a4 4 0 11-5.66-5.66L13 4.17" />
+              </svg>
+            </button>
+
+            <!-- PDF 引擎上拉菜单，紧挨文件按钮 -->
+            <div class="relative" ref="pdfEngineMenuRef">
+              <button
+                type="button"
+                @click="togglePdfEngineMenu"
+                class="border border-gray-300 rounded px-3 py-2 text-sm flex items-center gap-2 hover:border-blue-400"
+              >
+                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a4 4 0 116 3.464V15a2 2 0 11-4 0v-1.05" />
+                </svg>
+                <span>{{ selectedPdfEngineLabel }}</span>
+                <svg class="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+              <div
+                v-if="pdfEngineMenuVisible"
+                class="absolute bottom-full mb-2 left-0 w-56 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-30"
+              >
+                <button
+                  v-for="opt in PDF_ENGINE_OPTIONS"
+                  :key="opt.value"
+                  class="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 flex items-center justify-between"
+                  @click="selectPdfEngineOption(opt.value)"
+                >
+                  <span>{{ opt.label }}</span>
+                  <span v-if="opt.value === selectedPdfEngine" class="text-blue-500 text-xs">✓</span>
+                </button>
+              </div>
+            </div>
+
             <!-- 图片选择按钮 -->
             <button
               @click="handleSelectImage"
@@ -5021,7 +5641,7 @@ const handleDeleteAllVersions = () => {
             <button
               v-if="currentConversation?.generationStatus === 'idle'"
               @click="sendMessage"
-              :disabled="!currentConversation || (!draftInput.trim() && pendingAttachments.length === 0) || (needsVisionModel && !currentModelSupportsVision)"
+              :disabled="!currentConversation || (!draftInput.trim() && pendingAttachments.length === 0 && pendingFiles.length === 0) || (needsVisionModel && !currentModelSupportsVision)"
               class="flex-none shrink-0 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg transition-colors flex items-center justify-center"
               :title="visionModelWarning || '发送消息'"
             >
