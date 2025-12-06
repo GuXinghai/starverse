@@ -9,7 +9,8 @@ import type {
   SamplingParameterSettings,
   MessageBranch,
   ConversationTree,
-  MessageVersionMetadata
+  MessageVersionMetadata,
+  PdfEngineType
 } from './chat'
 import type { ConversationStatus } from './conversation'
 
@@ -54,10 +55,12 @@ export interface Conversation {
   
   // 推理配置
   reasoningPreference?: ReasoningPreference
-  reasoning?: ReasoningPreference
   
   // 采样参数
   samplingParameters?: SamplingParameterSettings
+  
+  // PDF 引擎选择
+  pdfEngine?: PdfEngineType
   
   // 生成状态（运行时字段）
   generationStatus?: 'idle' | 'sending' | 'receiving'
@@ -93,7 +96,7 @@ export interface ConversationSnapshot {
     enabled: boolean
     level: WebSearchLevel
   }
-  reasoning?: ReasoningPreference
+  reasoningPreference?: ReasoningPreference
   samplingParameters?: SamplingParameterSettings
 }
 

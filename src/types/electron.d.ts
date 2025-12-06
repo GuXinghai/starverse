@@ -2,6 +2,17 @@ export interface ElectronStore {
   get: (key: string) => Promise<any>
   set: (key: string, value: any) => Promise<boolean>
   delete: (key: string) => Promise<boolean>
+  /**
+   * 安全清空配置
+   * @param keepKeys - 需要保留的字段（例如 API Keys）
+   * @returns 备份文件路径，如果失败则返回 null
+   */
+  clearSafe: (keepKeys?: string[]) => Promise<string | null>
+  /**
+   * 检查配置文件完整性
+   * @returns { ok: 是否正常, reason: 异常原因 }
+   */
+  checkIntegrity: () => Promise<{ ok: boolean; reason?: string }>
 }
 
 export interface SelectedFileResult {

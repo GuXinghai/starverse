@@ -50,9 +50,28 @@ export type MessagePart = TextPart | ImagePart | FilePart;
 export type WebSearchLevel = 'quick' | 'normal' | 'deep';
 
 /**
+ * PDF 引擎类型
+ * - pdf-text: 免费文本提取引擎
+ * - mistral-ocr: Mistral OCR 引擎（支持扫描件，$2/千页）
+ * - native: 模型原生文件输入（按 tokens 计费）
+ */
+export type PdfEngineType = 'pdf-text' | 'mistral-ocr' | 'native';
+
+/**
  * 推理挡位（Reasoning Effort）
  */
 export type ReasoningEffort = 'low' | 'medium' | 'high';
+
+/**
+ * 推理模式（Reasoning Mode）
+ * 用于区分预设挡位和自定义MAX_TOKENS，确保两者互斥（4档位）
+ * - minimal: 极简推理（使用effort='minimal'，约10%计算量）
+ * - low: 低档推理（使用effort='low'，约20%计算量）
+ * - medium: 中档推理（使用effort='medium'，约50%计算量）
+ * - high: 高档推理（使用effort='high'，约80%计算量）
+ * - custom: 自定义MAX_TOKENS（不使用effort，仅设置max_tokens）
+ */
+export type ReasoningMode = 'minimal' | 'low' | 'medium' | 'high' | 'custom';
 
 /**
  * 推理可见性选项
@@ -74,11 +93,15 @@ export interface ReasoningRequestPayload {
 
 /**
  * 会话级推理偏好配置
+ * mode字段用于互斥控制：
+ * - 当mode为'low'/'medium'/'high'时，使用对应的effort，maxTokens应为null
+ * - 当mode为'custom'时，不使用effort（或使用默认），maxTokens应有值
  */
 export interface ReasoningPreference {
   visibility: ReasoningVisibility;
   effort: ReasoningEffort;
   maxTokens?: number | null;
+  mode?: ReasoningMode; // 新增：推理模式，用于UI互斥控制
 }
 
 /**
@@ -276,8 +299,9 @@ export interface MessageVersionMetadata {
   errorMetadata?: Record<string, any>; // 错误元数据（如审核信息、上游原始错误等）
   retryable?: boolean;
   usage?: UsageMetrics;
-  reasoning?: MessageReasoningMetadata;
-}
+    reasoning?: MessageReasoningMetadata;
+    noticeKind?: string;                // 标识临时通知/系统提示
+  }
 
 export interface UsageMetrics {
   promptTokens?: number;
@@ -296,7 +320,7 @@ export interface UsageMetrics {
  */
 export interface Message {
   id: string;
-  role: 'user' | 'model';
+  role: 'user' | 'assistant' | 'tool';
   parts: MessagePart[];
   timestamp?: number; // 可选的时间戳
 }
@@ -336,7 +360,7 @@ export interface MessageVersion {
  */
 export interface MessageBranch {
   branchId: string;              // 分支唯一ID
-  role: 'user' | 'model';        // 消息角色
+  role: 'user' | 'assistant' | 'tool';        // 消息角色
   parentBranchId: string | null; // 父分支ID（null表示根节点）
   parentVersionId: string | null;// 源自父分支的哪个版本ID
   versions: MessageVersion[];    // 该分支的所有版本
@@ -374,7 +398,7 @@ export interface Conversation {
 /**
  * 工具函数：创建纯文本消息
  */
-export function createTextMessage(role: 'user' | 'model', text: string): Message {
+export function createTextMessage(role: 'user' | 'assistant' | 'tool', text: string): Message {
   return {
     id: crypto.randomUUID(),
     role,
