@@ -9,7 +9,7 @@
  */
 
 import { defineStore } from 'pinia'
-import { ref, watch, onUnmounted } from 'vue'
+import { ref } from 'vue'
 import { useConversationStore } from './conversation'
 import type { Conversation } from '../types/store'
 import { sqliteChatPersistence } from '../services/chatPersistence'
@@ -132,6 +132,7 @@ export const usePersistenceStore = defineStore('persistence', () => {
           effort: 'medium' as const
         },
         samplingParameters: conversation.samplingParameters || { ...DEFAULT_SAMPLING_PARAMETERS },
+        pdfEngine: conversation.pdfEngine || 'pdf-text',
         tree: serializedTree
       }
 
@@ -229,12 +230,14 @@ export const usePersistenceStore = defineStore('persistence', () => {
             enabled: snapshot.webSearchEnabled || false,
             level: snapshot.webSearchLevel || 'normal'
           },
-          reasoning: snapshot.reasoningPreference || {
+          reasoningPreference: snapshot.reasoningPreference || {
             visibility: 'visible',
             effort: 'medium',
-            maxTokens: null
+            maxTokens: null,
+            mode: 'medium'
           },
           samplingParameters: snapshot.samplingParameters || { ...DEFAULT_SAMPLING_PARAMETERS },
+          pdfEngine: snapshot.pdfEngine || 'pdf-text',
           generationStatus: 'idle',
           isGenerating: false,
           generationError: null

@@ -107,8 +107,9 @@ export const useConversationStore = defineStore('conversation', () => {
         enabled: false,
         level: 'normal'
       },
-      reasoning: { ...DEFAULT_REASONING_PREFERENCE },
+      reasoningPreference: { ...DEFAULT_REASONING_PREFERENCE },
       samplingParameters: { ...DEFAULT_SAMPLING_PARAMETERS },
+      pdfEngine: 'pdf-text',
       generationStatus: 'idle',
       isGenerating: false,
       generationError: null,
@@ -133,20 +134,25 @@ export const useConversationStore = defineStore('conversation', () => {
     // 从打开的标签中移除
     const tabIndex = openTabIds.value.indexOf(conversationId)
     if (tabIndex !== -1) {
-      openTabIds.value.splice(tabIndex, 1)
+      // 批量更新：先计算新状态，然后一次性更新
+      const newTabIds = openTabIds.value.filter(id => id !== conversationId)
+      let newActiveTabId = activeTabId.value
 
       // 如果删除的是当前激活的标签，切换到下一个标签
       if (activeTabId.value === conversationId) {
-        if (openTabIds.value.length > 0) {
+        if (newTabIds.length > 0) {
           // 优先选择右侧标签，否则选择左侧标签
-          const nextTabId = tabIndex < openTabIds.value.length
-            ? openTabIds.value[tabIndex]
-            : openTabIds.value[openTabIds.value.length - 1]
-          activeTabId.value = nextTabId
+          newActiveTabId = tabIndex < newTabIds.length
+            ? newTabIds[tabIndex]
+            : newTabIds[newTabIds.length - 1]
         } else {
-          activeTabId.value = null
+          newActiveTabId = null
         }
       }
+
+      // 一次性更新所有状态
+      openTabIds.value = newTabIds
+      activeTabId.value = newActiveTabId
     }
 
     // 从 SQLite 删除对话
@@ -187,8 +193,10 @@ export const useConversationStore = defineStore('conversation', () => {
       return
     }
 
-    // 添加到标签页列表
-    openTabIds.value.push(conversationId)
+    // 批量更新：先创建新数组，然后一次性替换
+    // 这样可以避免中间状态触发 Vue 组件更新
+    const newTabIds = [...openTabIds.value, conversationId]
+    openTabIds.value = newTabIds
     activeTabId.value = conversationId
   }
 
@@ -199,20 +207,25 @@ export const useConversationStore = defineStore('conversation', () => {
     const index = openTabIds.value.indexOf(conversationId)
     if (index === -1) return
 
-    openTabIds.value.splice(index, 1)
+    // 批量更新：先计算新状态，然后一次性更新
+    const newTabIds = openTabIds.value.filter(id => id !== conversationId)
+    let newActiveTabId = activeTabId.value
 
     // 如果关闭的是当前激活的标签，切换到下一个标签
     if (activeTabId.value === conversationId) {
-      if (openTabIds.value.length > 0) {
+      if (newTabIds.length > 0) {
         // 优先选择右侧标签，否则选择左侧标签
-        const nextTabId = index < openTabIds.value.length
-          ? openTabIds.value[index]
-          : openTabIds.value[openTabIds.value.length - 1]
-        activeTabId.value = nextTabId
+        newActiveTabId = index < newTabIds.length
+          ? newTabIds[index]
+          : newTabIds[newTabIds.length - 1]
       } else {
-        activeTabId.value = null
+        newActiveTabId = null
       }
     }
+
+    // 一次性更新所有状态
+    openTabIds.value = newTabIds
+    activeTabId.value = newActiveTabId
   }
 
   /**
@@ -306,7 +319,12 @@ export const useConversationStore = defineStore('conversation', () => {
 
     // 合并部分更新，过滤掉 undefined
     if (!conversation.reasoningPreference) {
-      conversation.reasoningPreference = { visibility: 'visible', effort: 'medium', maxTokens: null }
+      conversation.reasoningPreference = { 
+        visibility: 'visible', 
+        effort: 'medium', 
+        maxTokens: null,
+        mode: 'medium' // 默认为中档模式
+      }
     }
     
     Object.keys(preference).forEach(key => {
@@ -344,6 +362,23 @@ export const useConversationStore = defineStore('conversation', () => {
       }
     })
     
+    conversation.updatedAt = Date.now()
+    
+    // 标记为脏数据，触发自动保存
+    const persistenceStore = usePersistenceStore()
+    persistenceStore.markConversationDirty(conversationId)
+    
+    return true
+  }
+
+  /**
+   * 设置 PDF 引擎
+   */
+  const setPdfEngine = (conversationId: string, engine: 'pdf-text' | 'mistral-ocr' | 'native'): boolean => {
+    const conversation = conversationMap.value.get(conversationId)
+    if (!conversation) return false
+
+    conversation.pdfEngine = engine
     conversation.updatedAt = Date.now()
     
     // 标记为脏数据，触发自动保存
@@ -454,12 +489,25 @@ export const useConversationStore = defineStore('conversation', () => {
 
   /**
    * 设置生成状态
+   * @param conversationId - 对话 ID
+   * @param status - 生成状态：'idle' | 'sending' | 'receiving' | boolean（兼容旧版）
    */
-  const setGenerationStatus = (conversationId: string, isGenerating: boolean): boolean => {
+  const setGenerationStatus = (
+    conversationId: string, 
+    status: 'idle' | 'sending' | 'receiving' | boolean
+  ): boolean => {
     const conversation = conversationMap.value.get(conversationId)
     if (!conversation) return false
 
-    conversation.isGenerating = isGenerating
+    // 向后兼容：boolean 参数转换为状态字符串
+    if (typeof status === 'boolean') {
+      conversation.generationStatus = status ? 'sending' : 'idle'
+      conversation.isGenerating = status
+    } else {
+      conversation.generationStatus = status
+      conversation.isGenerating = status !== 'idle'
+    }
+    
     return true
   }
 
@@ -527,6 +575,7 @@ export const useConversationStore = defineStore('conversation', () => {
     setWebSearchLevel,
     setReasoningPreference,
     setSamplingParameters,
+    setPdfEngine,
     updateConversationModel,
     setConversationStatus,
     setConversationTags,
