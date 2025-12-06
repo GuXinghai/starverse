@@ -162,7 +162,17 @@ export function useImageGeneration(options: ImageGenerationOptions) {
    * 是否可以显示图像生成按钮
    */
   const canShowImageGenerationButton = computed(() => {
-    return modelSupportsImageOutput.value
+    const result = modelSupportsImageOutput.value
+    console.log('[ImageGen] 🎨 canShowImageGenerationButton 计算:', {
+      result,
+      conversationId: conversationId.value,
+      currentModelId: currentModelId.value,
+      provider: activeProvider.value,
+      isActive: isActive.value,
+      generationStatus: generationStatus.value,
+      imageGenerationEnabled: imageGenerationEnabled.value
+    })
+    return result
   })
   
   /**
@@ -280,14 +290,38 @@ export function useImageGeneration(options: ImageGenerationOptions) {
    * 切换图像生成开关
    */
   function toggleImageGeneration() {
+    console.log('[ImageGen] 🔄 尝试切换图像生成状态:', {
+      canShow: canShowImageGenerationButton.value,
+      currentEnabled: imageGenerationEnabled.value,
+      conversationId: conversationId.value,
+      modelId: currentModelId.value,
+      modelSupportsImageOutput: modelSupportsImageOutput.value,
+      generationStatus: generationStatus.value
+    })
+    
     if (!canShowImageGenerationButton.value) {
+      console.warn('[ImageGen] ⚠️ 当前模型不支持图像生成，无法切换:', {
+        modelId: currentModelId.value,
+        provider: activeProvider.value,
+        modelSupportsImageOutput: modelSupportsImageOutput.value
+      })
       return
     }
     if (generationStatus.value !== 'idle') {
+      console.warn('[ImageGen] ⚠️ 生成进行中，无法切换:', {
+        generationStatus: generationStatus.value
+      })
       return
     }
     
-    imageGenerationEnabled.value = !imageGenerationEnabled.value
+    const newValue = !imageGenerationEnabled.value
+    imageGenerationEnabled.value = newValue
+
+    console.log('[ImageGen] ✅ 图像生成状态已切换:', {
+      conversationId: conversationId.value,
+      enabled: newValue,
+      previousEnabled: !newValue
+    })
   }
 
   /**
@@ -363,7 +397,13 @@ export function useImageGeneration(options: ImageGenerationOptions) {
    * 监听模型支持状态，自动关闭不支持的功能
    */
   watch(modelSupportsImageOutput, (supports) => {
+    console.log('[ImageGen] 模型支持状态变化:', {
+      supports,
+      currentEnabled: imageGenerationEnabled.value,
+      willDisable: !supports && imageGenerationEnabled.value
+    })
     if (!supports && imageGenerationEnabled.value) {
+      console.log('[ImageGen] 🔴 自动关闭图像生成功能')
       imageGenerationEnabled.value = false
     }
   })

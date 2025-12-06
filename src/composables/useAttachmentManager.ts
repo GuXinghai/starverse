@@ -16,6 +16,7 @@ export interface AttachmentFile {
   dataUrl: string
   size: number
   mimeType?: string
+  pdfEngine?: 'pdf-text' | 'mistral-ocr' | 'native'
 }
 
 export interface AttachmentManagerOptions {
@@ -139,12 +140,15 @@ export function useAttachmentManager(options: AttachmentManagerOptions = {}) {
         // 转换为 Data URI
         const dataUri = await fileToDataUri(file)
         
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+        
         files.value.push({
           id: crypto.randomUUID(),
           name: file.name,
           dataUrl: dataUri,
           size: file.size,
-          mimeType: file.type
+          mimeType: file.type,
+          pdfEngine: isPdf ? 'pdf-text' : undefined
         })
       }
 

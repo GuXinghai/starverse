@@ -7,9 +7,11 @@
  * - Visibility 配置（visible/hidden/off）
  * - 模型推理能力检测
  * - 请求参数构建
+ * - 推理挡位和MAX_TOKENS互斥控制
  */
 
 import { computed, type Ref, type ComputedRef } from 'vue'
+import type { ReasoningMode } from '../types/chat'
 
 /**
  * 推理 Effort 级别
@@ -28,6 +30,7 @@ export interface ReasoningPreference {
   visibility: ReasoningVisibility
   effort: ReasoningEffort
   maxTokens?: number | null
+  mode?: ReasoningMode // 新增：推理模式，用于UI互斥控制
 }
 
 /**
@@ -36,7 +39,8 @@ export interface ReasoningPreference {
 export const DEFAULT_REASONING_PREFERENCE: Readonly<ReasoningPreference> = Object.freeze({
   visibility: 'visible',
   effort: 'medium',
-  maxTokens: null
+  maxTokens: null,
+  mode: 'medium' // 默认为中档模式
 })
 
 /**
@@ -84,7 +88,27 @@ export const REASONING_VISIBILITY_LABEL_MAP: Record<ReasoningVisibility, string>
 }
 
 /**
- * Effort 选项列表
+ * Mode 标签映射（用于四个互斥选项的UI展示）
+ */
+export const REASONING_MODE_LABEL_MAP: Record<ReasoningMode, string> = {
+  low: '低',
+  medium: '中',
+  high: '高',
+  custom: '自定义'
+}
+
+/**
+ * Mode 选项列表（四个互斥选项：低、中、高、自定义）
+ */
+export const REASONING_MODE_OPTIONS: ReadonlyArray<{ value: ReasoningMode; label: string }> = [
+  { value: 'low', label: REASONING_MODE_LABEL_MAP.low },
+  { value: 'medium', label: REASONING_MODE_LABEL_MAP.medium },
+  { value: 'high', label: REASONING_MODE_LABEL_MAP.high },
+  { value: 'custom', label: REASONING_MODE_LABEL_MAP.custom }
+]
+
+/**
+ * Effort 选项列表（保留用于兼容性）
  */
 export const REASONING_EFFORT_OPTIONS: ReadonlyArray<{ value: ReasoningEffort; label: string }> = [
   { value: 'low', label: REASONING_EFFORT_LABEL_MAP.low },
@@ -227,7 +251,8 @@ export function useReasoningControl(options: ReasoningControlOptions) {
     return {
       visibility: pref?.visibility ?? DEFAULT_REASONING_PREFERENCE.visibility,
       effort: pref?.effort ?? DEFAULT_REASONING_PREFERENCE.effort,
-      maxTokens: pref?.maxTokens ?? DEFAULT_REASONING_PREFERENCE.maxTokens
+      maxTokens: pref?.maxTokens ?? DEFAULT_REASONING_PREFERENCE.maxTokens,
+      mode: pref?.mode ?? DEFAULT_REASONING_PREFERENCE.mode
     }
   })
 
@@ -244,20 +269,44 @@ export function useReasoningControl(options: ReasoningControlOptions) {
   const isReasoningControlAvailable = computed(() => {
     // 性能优化：非激活状态下跳过检查
     if (!isActive.value) {
+      if (import.meta.env.DEV) {
+        console.log('[useReasoningControl] ❌ Not active')
+      }
       return false
     }
 
-    // 仅 OpenRouter 支持
-    if (activeProvider.value !== 'OpenRouter') {
+    // 仅 OpenRouter 支持（兼容大小写）
+    const provider = String(activeProvider.value || '').toLowerCase()
+    if (provider !== 'openrouter') {
+      if (import.meta.env.DEV) {
+        console.log('[useReasoningControl] ❌ Provider not OpenRouter:', activeProvider.value, '(normalized:', provider, ')')
+      }
       return false
     }
 
     const modelId = currentModelId.value
     if (!modelId) {
+      if (import.meta.env.DEV) {
+        console.log('[useReasoningControl] ❌ No modelId')
+      }
       return false
     }
 
-    return detectReasoningSupport(modelId)
+    const supported = detectReasoningSupport(modelId)
+    if (import.meta.env.DEV) {
+      const modelRecord = getModelRecord(modelId)
+      console.log('[useReasoningControl] 🔍 Model support check:', {
+        modelId,
+        supported,
+        modelDataMapSize: modelDataMap.value?.size || 0,
+        modelRecord: modelRecord ? {
+          id: modelRecord.id,
+          name: modelRecord.name,
+          rawId: modelRecord.raw?.id
+        } : null
+      })
+    }
+    return supported
   })
 
   /**
@@ -305,17 +354,27 @@ export function useReasoningControl(options: ReasoningControlOptions) {
 
   /**
    * 选择 Effort 挡位
+   * 互斥逻辑：选择挡位时清除 maxTokens，确保只使用挡位配置
    */
   function selectReasoningEffort(effort: ReasoningEffort) {
-    if (reasoningPreference.value.effort === effort) {
+    if (reasoningPreference.value.effort === effort && reasoningPreference.value.mode === effort) {
       return
     }
     
     // 选择挡位时自动启用推理（如果当前是关闭状态）
     if (!isReasoningEnabled.value) {
-      onUpdatePreference({ visibility: 'visible', effort })
+      onUpdatePreference({ 
+        visibility: 'visible', 
+        effort,
+        maxTokens: null, // 清除 maxTokens
+        mode: effort // 设置 mode 为对应的挡位
+      })
     } else {
-      onUpdatePreference({ effort })
+      onUpdatePreference({ 
+        effort,
+        maxTokens: null, // 清除 maxTokens
+        mode: effort // 设置 mode 为对应的挡位
+      })
     }
   }
 
@@ -336,7 +395,44 @@ export function useReasoningControl(options: ReasoningControlOptions) {
   }
 
   /**
+   * 更新 Max Tokens 配置
+   * 互斥逻辑：设置 maxTokens 时切换到 custom 模式
+   * @param tokens - Token 数量，null 表示使用默认值
+   */
+  function updateMaxTokens(tokens: number | null) {
+    // 验证输入
+    if (tokens !== null) {
+      if (!Number.isFinite(tokens) || tokens < 0) {
+        console.warn('Invalid maxTokens value:', tokens)
+        return
+      }
+      // 四舍五入到整数
+      tokens = Math.round(tokens)
+      // 设置合理的上限（100k tokens）
+      if (tokens > 100000) {
+        tokens = 100000
+      }
+    }
+    
+    // 如果设置了有效的 maxTokens，切换到 custom 模式
+    if (tokens !== null && tokens > 0) {
+      onUpdatePreference({ 
+        maxTokens: tokens,
+        mode: 'custom' // 切换到自定义模式
+      })
+    } else {
+      // 如果清除 maxTokens，恢复到当前的 effort 模式
+      const currentEffort = reasoningPreference.value.effort
+      onUpdatePreference({ 
+        maxTokens: null,
+        mode: currentEffort // 恢复到当前挡位模式
+      })
+    }
+  }
+
+  /**
    * 构建推理请求参数
+   * 根据当前模式决定如何设置 effort 和 max_tokens
    */
   function buildReasoningRequestOptions() {
     if (!isReasoningControlAvailable.value || !isReasoningEnabled.value) {
@@ -345,12 +441,18 @@ export function useReasoningControl(options: ReasoningControlOptions) {
 
     const pref = reasoningPreference.value
     const payload: Record<string, any> = {
-      enabled: true,
-      effort: pref.effort
+      enabled: true
     }
 
-    if (typeof pref.maxTokens === 'number' && Number.isFinite(pref.maxTokens) && pref.maxTokens > 0) {
-      payload.max_tokens = Math.round(pref.maxTokens)
+    // 根据模式设置参数
+    if (pref.mode === 'custom') {
+      // 自定义模式：只设置 max_tokens，不设置 effort
+      if (typeof pref.maxTokens === 'number' && Number.isFinite(pref.maxTokens) && pref.maxTokens > 0) {
+        payload.max_tokens = Math.round(pref.maxTokens)
+      }
+    } else {
+      // 挡位模式：设置 effort，不设置 max_tokens
+      payload.effort = pref.effort
     }
     
     if (pref.visibility === 'hidden') {
@@ -362,11 +464,52 @@ export function useReasoningControl(options: ReasoningControlOptions) {
       preference: {
         visibility: pref.visibility,
         effort: pref.effort,
-        maxTokens: pref.maxTokens ?? null
+        maxTokens: pref.maxTokens ?? null,
+        mode: pref.mode
       },
       modelId: currentModelId.value
     }
   }
+
+  /**
+   * 选择推理模式（四个互斥选项）
+   * @param mode - 'low' | 'medium' | 'high' | 'custom'
+   */
+  function selectReasoningMode(mode: ReasoningMode) {
+    if (reasoningPreference.value.mode === mode) {
+      return
+    }
+
+    if (mode === 'custom') {
+      // 切换到自定义模式，保持当前 maxTokens（如果有的话）
+      onUpdatePreference({ 
+        mode: 'custom'
+        // maxTokens 保持不变，如果为 null 用户后续可以输入
+      })
+    } else {
+      // 切换到挡位模式（low/medium/high）
+      onUpdatePreference({ 
+        effort: mode, // 将 mode 作为 effort 值
+        maxTokens: null, // 清除 maxTokens
+        mode: mode // 设置 mode
+      })
+    }
+
+    // 自动启用推理（如果当前是关闭状态）
+    if (!isReasoningEnabled.value) {
+      onUpdatePreference({ visibility: 'visible' })
+    }
+  }
+
+  /**
+   * 当前 Max Tokens 配置
+   */
+  const maxTokens = computed(() => reasoningPreference.value.maxTokens)
+  
+  /**
+   * 当前推理模式
+   */
+  const currentMode = computed(() => reasoningPreference.value.mode ?? 'medium')
 
   return {
     // 状态
@@ -379,11 +522,15 @@ export function useReasoningControl(options: ReasoningControlOptions) {
     reasoningEffortShortLabel,
     reasoningVisibility,
     reasoningButtonTitle,
+    maxTokens,
+    currentMode,
     
     // 方法
     toggleReasoningEnabled,
     selectReasoningEffort,
+    selectReasoningMode, // 新增：模式选择
     selectReasoningVisibility,
+    updateMaxTokens,
     buildReasoningRequestOptions,
     detectReasoningSupport
   }
