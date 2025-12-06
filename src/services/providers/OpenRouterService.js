@@ -18,9 +18,16 @@
  * - 实时流式推理文本展示（delta.reasoning）
  * - 结构化推理数据保存（reasoning_details）
  * - 推理摘要生成（reasoning_summary）
+ * 
+ * 🎯 统一生成参数架构 (Phase 2):
+ * - 使用 buildOpenRouterRequest() 统一构建请求参数
+ * - 自动过滤不支持的采样参数（基于 model.supported_parameters）
+ * - 推理参数通过 openrouterReasoningAdapter 处理
  */
 
 import { extractTextFromMessage } from '../../types/chat'
+import { buildOpenRouterRequest } from './generationAdapter'
+import { PROVIDERS } from '../../constants/providers'
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 
@@ -64,35 +71,6 @@ const SUPPORTED_IMAGE_ASPECT_RATIOS = new Set([
   '16:9',
   '21:9'
 ])
-
-/**
- * OpenRouter 支持的采样参数键名列表
- * 这些参数用于控制模型生成的随机性和多样性
- * 
- * @constant {string[]}
- * - temperature: 控制输出的随机性 (0-2，越高越随机)
- * - top_p: 核采样，累积概率阈值 (0-1)
- * - top_k: 限制候选词数量
- * - frequency_penalty: 降低重复词频率 (-2 到 2)
- * - presence_penalty: 鼓励谈论新话题 (-2 到 2)
- * - repetition_penalty: 重复惩罚 (>=0)
- * - min_p: 最小概率阈值 (0-1)
- * - top_a: 顶部替代采样参数
- * - max_tokens: 最大生成令牌数
- * - seed: 随机种子，用于可复现的输出
- */
-const OPENROUTER_SAMPLING_KEYS = [
-  'temperature',
-  'top_p',
-  'top_k',
-  'frequency_penalty',
-  'presence_penalty',
-  'repetition_penalty',
-  'min_p',
-  'top_a',
-  'max_tokens',
-  'seed'
-]
 
 /**
  * 深拷贝对象（优先使用原生 structuredClone）
@@ -286,7 +264,133 @@ function createReasoningAggregator() {
 */
 
 /**
- * 检查模型是否支持视觉/图像输入
+ * 安全提取 reasoning_details 用于上下文复用
+ * 
+ * 设计原则：
+ * 1. 仅包含必要的结构化数据，不传递冗余内容
+ * 2. 限制单个 detail 的大小以控制 payload 体积
+ * 3. 过滤掉加密/隐藏的推理内容
+ * 4. 保留关键字段：type, format, text, summary
+ * 
+ * @param {Object} reasoning - 推理元数据
+ * @param {Object} options - 配置选项
+ * @param {number} options.maxDetailSize - 单个 detail 的最大字符数 (默认 2000)
+ * @param {number} options.maxTotalSize - 总大小限制 (默认 10000)
+ * @returns {Array|null} - 过滤后的 reasoning_details 数组
+ */
+function extractReasoningDetailsForReuse(reasoning, options = {}) {
+  if (!reasoning || typeof reasoning !== 'object') {
+    return null
+  }
+
+  // 如果推理内容被加密/隐藏，不应回传
+  if (reasoning.excluded === true) {
+    console.log('[REASONING_REUSE] 推理内容已加密，跳过复用')
+    return null
+  }
+
+  const maxDetailSize = options.maxDetailSize || 2000
+  const maxTotalSize = options.maxTotalSize || 10000
+
+  // 优先使用 details（已清洗），备选 rawDetails
+  const sourceDetails = Array.isArray(reasoning.details) && reasoning.details.length > 0
+    ? reasoning.details
+    : (Array.isArray(reasoning.rawDetails) ? reasoning.rawDetails : [])
+
+  if (sourceDetails.length === 0) {
+    return null
+  }
+
+  let totalSize = 0
+  const sanitizedDetails = []
+
+  for (const detail of sourceDetails) {
+    if (!detail || typeof detail !== 'object') {
+      continue
+    }
+
+    // 提取关键字段
+    const sanitized = {}
+    
+    if (typeof detail.type === 'string' && detail.type) {
+      sanitized.type = detail.type
+    }
+    
+    if (typeof detail.format === 'string' && detail.format) {
+      sanitized.format = detail.format
+    }
+    
+    // 限制 text 大小
+    if (typeof detail.text === 'string' && detail.text) {
+      const truncatedText = detail.text.length > maxDetailSize
+        ? detail.text.substring(0, maxDetailSize) + '...'
+        : detail.text
+      sanitized.text = truncatedText
+      totalSize += truncatedText.length
+    }
+    
+    // 限制 summary 大小
+    if (typeof detail.summary === 'string' && detail.summary) {
+      const truncatedSummary = detail.summary.length > maxDetailSize
+        ? detail.summary.substring(0, maxDetailSize) + '...'
+        : detail.summary
+      sanitized.summary = truncatedSummary
+      totalSize += truncatedSummary.length
+    }
+
+    // 检查总大小限制
+    if (totalSize > maxTotalSize) {
+      console.log(`[REASONING_REUSE] 超过总大小限制 (${totalSize}/${maxTotalSize})，停止添加 details`)
+      break
+    }
+
+    // 只添加非空 detail
+    if (Object.keys(sanitized).length > 1) { // 至少有 type + 其他字段
+      sanitizedDetails.push(sanitized)
+    }
+  }
+
+  if (sanitizedDetails.length === 0) {
+    return null
+  }
+
+  console.log(`[REASONING_REUSE] 提取了 ${sanitizedDetails.length} 个 reasoning details，总大小: ${totalSize} 字符`)
+  return sanitizedDetails
+}
+
+/**
+ * 检查模型是否支持推理功能
+ * 
+ * 检测规则：
+ * - 模型 ID 包含 reasoning 关键词
+ * - 常见推理模型：o1, o3, qwq, deepseek, thinking 等
+ * 
+ * @param {string} modelId - 模型 ID
+ * @returns {boolean} - 是否支持推理
+ */
+function supportsReasoning(modelId) {
+  if (!modelId || typeof modelId !== 'string') {
+    return false
+  }
+
+  const lowerModelId = modelId.toLowerCase()
+  const reasoningKeywords = [
+    'o1', 'o3', 'o4',
+    'reasoning',
+    'r1',
+    'qwq',
+    'think',
+    'deepseek',
+    'sonnet-thinking',
+    'brainstorm',
+    'logic'
+  ]
+
+  return reasoningKeywords.some(keyword => lowerModelId.includes(keyword))
+}
+
+/**
+ * 检查视觉/图像输入支持
  * @param {string} modelId - 模型 ID
  * @returns {boolean} 是否支持视觉
  */
@@ -343,6 +447,31 @@ function validateOpenRouterRequestBody(body) {
       throw new Error('image_config.aspect_ratio 必须是字符串')
     }
   }
+}
+
+function resolveReasoningPreference(resolvedConfig) {
+  if (!resolvedConfig) return null
+  return {
+    visibility: resolvedConfig.showReasoningContent ? 'visible' : 'hidden',
+    effort: resolvedConfig.effort || 'medium',
+    maxTokens: resolvedConfig.maxReasoningTokens ?? null,
+    mode: resolvedConfig.controlMode || 'effort',
+  }
+}
+
+function deriveReasoningPayloadFromRequest(body) {
+  if (!body || typeof body !== 'object') return null
+  const reasoning = {}
+  if (body.reasoning && typeof body.reasoning === 'object') {
+    Object.assign(reasoning, body.reasoning)
+  }
+  if (body.include_reasoning !== undefined) {
+    reasoning.include_reasoning = body.include_reasoning
+  }
+  if (body.max_tokens !== undefined && reasoning.max_tokens === undefined) {
+    reasoning.max_tokens = body.max_tokens
+  }
+  return Object.keys(reasoning).length > 0 ? reasoning : null
 }
 
 
@@ -409,6 +538,13 @@ export const OpenRouterService = {
               modelId.includes('midjourney') ||
               modelId.includes('whisper') ||
               modelId.includes('tts')
+            
+            if (shouldExclude) {
+              // 🔍 DEBUG: 记录被排除的模型，以便调试图像生成支持
+              if (modelId.includes('dall-e') || modelId.includes('stable-diffusion') || modelId.includes('midjourney')) {
+                console.log('OpenRouterService: 排除图像生成模型:', modelId)
+              }
+            }
             
             if (!shouldExclude) {
               // 提取模型系列（从 ID 中推断）
@@ -602,9 +738,13 @@ export const OpenRouterService = {
   let webSearch = null
   let requestedModalities = null
   let imageConfig = null
-  let reasoningConfig = null
-  let samplingParameters = null
+  let generationConfig = null
+  let resolvedReasoningConfig = null
   let pdfEngine = null
+  let includeUsage = true
+  let streaming = true
+  let modelCapability = null  // 🎯 Phase 2: 模型能力对象
+  let systemInstruction = null
 
     if (options && typeof options === 'object') {
       if ('signal' in options) {
@@ -612,6 +752,15 @@ export const OpenRouterService = {
       }
       if ('webSearch' in options) {
         webSearch = options.webSearch
+      }
+      if ('modelCapability' in options) {
+        modelCapability = options.modelCapability ?? null
+      }
+      if ('generationConfig' in options) {
+        generationConfig = options.generationConfig ?? null
+      }
+      if ('resolvedReasoningConfig' in options) {
+        resolvedReasoningConfig = options.resolvedReasoningConfig ?? null
       }
       if ('requestedModalities' in options) {
         const rawModalities = options.requestedModalities
@@ -645,44 +794,41 @@ export const OpenRouterService = {
           }
         }
       }
-      if ('reasoning' in options) {
-        const rawReasoning = options.reasoning
-        if (rawReasoning && typeof rawReasoning === 'object' && rawReasoning.payload && typeof rawReasoning.payload === 'object') {
-          const payloadClone = { ...rawReasoning.payload }
-          const preferenceClone = rawReasoning.preference && typeof rawReasoning.preference === 'object'
-            ? { ...rawReasoning.preference }
-            : null
-          reasoningConfig = {
-            payload: payloadClone,
-            preference: preferenceClone,
-            modelId: rawReasoning.modelId || modelName
-          }
-        }
-      }
-      if ('parameters' in options) {
-        const rawParameters = options.parameters
-        if (rawParameters && typeof rawParameters === 'object') {
-          const cleaned = {}
-          for (const key of OPENROUTER_SAMPLING_KEYS) {
-            const value = rawParameters[key]
-            if (typeof value === 'number' && Number.isFinite(value)) {
-              cleaned[key] = value
-            }
-          }
-          if (Object.keys(cleaned).length > 0) {
-            samplingParameters = cleaned
-          }
-        }
-      }
       if ('pdfEngine' in options) {
         const rawEngine = options.pdfEngine
         if (typeof rawEngine === 'string' && rawEngine.trim()) {
           pdfEngine = rawEngine.trim()
         }
       }
+      if ('systemInstruction' in options) {
+        const rawSystem = options.systemInstruction
+        if (typeof rawSystem === 'string' && rawSystem.trim()) {
+          systemInstruction = rawSystem.trim()
+        }
+      }
+      if ('usage' in options) {
+        const usageFlag = options.usage
+        if (typeof usageFlag === 'boolean') {
+          includeUsage = usageFlag
+        } else if (usageFlag && typeof usageFlag === 'object' && 'include' in usageFlag) {
+          includeUsage = usageFlag.include !== false
+        }
+      }
+      if ('stream' in options) {
+        streaming = options.stream !== false
+      }
     } else if (options) {
       signal = options
     }
+
+    if (!resolvedReasoningConfig && generationConfig && generationConfig.reasoning) {
+      resolvedReasoningConfig = generationConfig.reasoning
+    }
+
+    const canUseReasoning =
+      (modelCapability && modelCapability.reasoning && modelCapability.reasoning.supportsReasoningParam === true)
+        ? true
+        : supportsReasoning(modelName)
     
     try {
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -692,7 +838,8 @@ export const OpenRouterService = {
       // 如果消息中包含图片，说明用户已确认当前模型支持多模态输入
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       const messages = (history || []).map(msg => {
-        const role = msg.role === 'model' ? 'assistant' : msg.role
+        // 期望输入历史为 OpenAI 语义：'user' | 'assistant' | 'tool' | 'system'
+        const role = msg.role
 
         let contentBlocks = []
         if (msg.parts && Array.isArray(msg.parts) && msg.parts.length > 0) {
@@ -751,21 +898,43 @@ export const OpenRouterService = {
           content: contentBlocks
         }
 
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 💡 Phase 3: 推理上下文复用逻辑
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 仅在模型支持推理时，将之前的 reasoning_details 回传给 API
+        // 这样可以维持推理过程的连续性，对多轮对话和工具调用特别有用
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const metadata = msg.metadata
-        if (metadata && metadata.reasoning) {
-          const rawDetails = Array.isArray(metadata.reasoning.rawDetails)
-            ? metadata.reasoning.rawDetails.map(clonePlain)
-            : null
-          if (rawDetails && rawDetails.length > 0) {
-            baseMessage.reasoning_details = rawDetails
-          }
-          if (!baseMessage.reasoning_details && typeof metadata.reasoning.text === 'string' && metadata.reasoning.text.trim()) {
-            baseMessage.reasoning = metadata.reasoning.text
+        if (metadata && metadata.reasoning && canUseReasoning) {
+          // 安全提取 reasoning_details
+          const reasoningDetails = extractReasoningDetailsForReuse(metadata.reasoning, {
+            maxDetailSize: 2000,  // 单个 detail 最大 2000 字符
+            maxTotalSize: 10000   // 总大小最大 10000 字符 (约 2500 tokens)
+          })
+
+          if (reasoningDetails && reasoningDetails.length > 0) {
+            baseMessage.reasoning_details = reasoningDetails
+            console.log(`[REASONING_REUSE] 为消息 #${messages.indexOf(msg) + 1} 附加了 ${reasoningDetails.length} 个 reasoning details`)
+          } else if (typeof metadata.reasoning.text === 'string' && metadata.reasoning.text.trim()) {
+            // 备选：如果没有 details 但有 text，使用文本摘要
+            const summaryText = metadata.reasoning.text.length > 500
+              ? metadata.reasoning.text.substring(0, 500) + '...'
+              : metadata.reasoning.text
+            baseMessage.reasoning = summaryText
+            console.log(`[REASONING_REUSE] 为消息 #${messages.indexOf(msg) + 1} 附加了 reasoning 文本摘要 (${summaryText.length} 字符)`)
           }
         }
 
         return baseMessage
       })
+
+      // System Instruction: prepend as standard system message
+      if (systemInstruction) {
+        messages.unshift({
+          role: 'system',
+          content: [{ type: 'text', text: systemInstruction }]
+        })
+      }
       
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // 🔧 消息过滤：移除空消息以符合 API 规范
@@ -947,15 +1116,52 @@ export const OpenRouterService = {
       const requestBody = {
         model: modelName,
         messages: filteredMessages,
-        stream: true,
+        stream: streaming,
         usage: {
-          include: true
+          include: includeUsage
         }
       }
 
-      if (reasoningConfig && reasoningConfig.payload && Object.keys(reasoningConfig.payload).length > 0) {
-        requestBody.reasoning = { ...reasoningConfig.payload }
-        console.log('OpenRouterService: 已附加 reasoning 参数', requestBody.reasoning)
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // 🎯 统一生成参数适配 (Phase 2 Integration)
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      if (!generationConfig) {
+        console.warn('OpenRouterService: generationConfig is missing, using empty config')
+        generationConfig = { sampling: {}, length: {} }
+      }
+
+      if (modelCapability) {
+        const adapterResult = buildOpenRouterRequest({
+          modelId: modelName,
+          capability: modelCapability,
+          effectiveConfig: generationConfig,
+          messages: filteredMessages,
+        })
+
+        Object.assign(requestBody, adapterResult.requestBodyFragment)
+
+        // 显示参数适配摘要（正常行为，非警告）
+        if (adapterResult.ignoredParameters && adapterResult.ignoredParameters.length > 0) {
+          console.log('OpenRouterService: 📋 参数适配摘要 - 以下参数已自动忽略（模型不支持）:')
+          adapterResult.ignoredParameters.forEach((param, idx) => {
+            console.log(`  ${idx + 1}. ${param.key} - ${param.reason}`)
+          })
+        }
+        
+        if (adapterResult.warnings && adapterResult.warnings.length > 0) {
+          // 区分警告类型：只有真正的问题才用 warn
+          const criticalWarnings = adapterResult.warnings.filter(w => w.type === 'ignored' || w.type === 'clipped')
+          const infoWarnings = adapterResult.warnings.filter(w => w.type === 'fallback')
+          
+          if (criticalWarnings.length > 0) {
+            console.warn('OpenRouterService: ⚠️ 参数自动调整:', criticalWarnings)
+          }
+          if (infoWarnings.length > 0) {
+            console.log('OpenRouterService: ℹ️ 配置提示:', infoWarnings.map(w => w.message))
+          }
+        }
+      } else {
+        console.warn('OpenRouterService: modelCapability is missing, skip capability-based adapter; sending minimal request body')
       }
 
       // 配置 plugins（支持多个插件）
@@ -1045,11 +1251,6 @@ export const OpenRouterService = {
         requestBody.image_config = { ...imageConfig }
         console.log('OpenRouterService: 请求 image_config =', requestBody.image_config)
       }
-
-      if (samplingParameters) {
-        Object.assign(requestBody, samplingParameters)
-        console.log('OpenRouterService: 已附加采样参数', samplingParameters)
-      }
       
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // 🔍 请求体验证与调试日志
@@ -1064,8 +1265,8 @@ export const OpenRouterService = {
         throw validationError
       }
 
-  const reasoningPreference = reasoningConfig?.preference ? { ...reasoningConfig.preference } : null
-  const reasoningPayload = reasoningConfig?.payload ? { ...reasoningConfig.payload } : null
+  const reasoningPreference = resolveReasoningPreference(resolvedReasoningConfig)
+  const reasoningPayload = deriveReasoningPayloadFromRequest(requestBody)
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 🧠 流式推理状态追踪
@@ -1160,6 +1361,27 @@ export const OpenRouterService = {
         genericError.responseText = errorText
         throw genericError
       }
+
+      const requestIdFromHeader = response.headers.get('x-request-id') ||
+        response.headers.get('x-openrouter-id') ||
+        response.headers.get('openrouter-id') ||
+        null
+
+      if (!streaming) {
+        const data = await response.json()
+        const completionUsage = data?.usage
+        if (completionUsage && typeof completionUsage === 'object') {
+          yield { type: 'usage', usage: completionUsage, requestId: data?.id ?? requestIdFromHeader ?? undefined }
+        } else {
+          console.warn('OpenRouterService: 非流式响应未包含 usage 字段')
+        }
+
+        const primaryText = data?.choices?.[0]?.message?.content
+        if (primaryText) {
+          yield { type: 'text', content: primaryText }
+        }
+        return
+      }
       
       console.log('OpenRouterService: ✓ 收到响应，开始处理流式数据')
       
@@ -1172,6 +1394,7 @@ export const OpenRouterService = {
   const emittedImages = new Set()    // 已发送图片去重集合
   let usageEmitted = false           // token 用量是否已发送
   let receivedDone = false           // 是否收到 [DONE] 标记
+  let requestId = requestIdFromHeader
 
       /**
        * 标准化图片数据为 Data URL 格式
@@ -1409,10 +1632,20 @@ export const OpenRouterService = {
                 throw streamError
               }
 
+              if (!requestId && typeof chunk?.id === 'string') {
+                requestId = chunk.id
+              }
+              if (!requestId && typeof chunk?.request_id === 'string') {
+                requestId = chunk.request_id
+              }
+              if (!requestId && typeof primaryChoice?.id === 'string') {
+                requestId = primaryChoice.id
+              }
+
               const possibleUsage = chunk.usage || primaryChoice?.usage
               if (!usageEmitted && possibleUsage && typeof possibleUsage === 'object') {
                 usageEmitted = true
-                yield { type: 'usage', usage: possibleUsage }
+                yield { type: 'usage', usage: possibleUsage, requestId }
               }
 
               const delta = primaryChoice?.delta
@@ -1586,7 +1819,7 @@ export const OpenRouterService = {
 
       // 发送推理摘要（包含请求配置和汇总信息）
       const shouldEmitReasoningSummary = (reasoningText || reasoningSummary || emittedDetailIds.size > 0) || (
-        reasoningConfig && resolvedVisibility !== 'off'
+        resolvedReasoningConfig && resolvedVisibility !== 'off'
       )
 
       if (shouldEmitReasoningSummary) {
@@ -1601,8 +1834,8 @@ export const OpenRouterService = {
             maxTokens: resolvedMaxTokens,
             payload: hasReasoningPayload ? { ...reasoningPayload } : {}
           },
-          provider: 'openrouter',
-          model: reasoningConfig?.modelId || modelName,
+          provider: PROVIDERS.OPENROUTER,
+          model: modelName,
           excluded: reasoningPayload?.exclude === true
         }
         
@@ -1610,14 +1843,44 @@ export const OpenRouterService = {
       }
 
       console.log('OpenRouterService: 流式输出完成')
-    } catch (error) {
-      // 检查是否是中止错误
-      if (error.name === 'AbortError') {
-        console.log('OpenRouterService: 流式请求已被用户中止')
-      } else {
-        console.error('OpenRouterService: 流式聊天出错！', error)
+  } catch (error) {
+    // 检查是否是中止错误
+    if (error.name === 'AbortError') {
+      console.log('OpenRouterService: 流式请求已被用户中止')
+    } else {
+      console.error('OpenRouterService: 流式聊天出错！', error)
+    }
+    throw error
+  }
+  },
+
+  /**
+   * 查询已完成请求的精确 usage（用于对账）
+   */
+  async fetchGenerationUsage(apiKey, generationId, baseUrl = OPENROUTER_BASE_URL) {
+    if (!generationId) {
+      throw new Error('fetchGenerationUsage requires generationId')
+    }
+
+    const url = `${baseUrl}/generation/${encodeURIComponent(generationId)}`
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://github.com/GuXinghai/starverse',
+        'X-Title': 'Starverse'
       }
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      const error = new Error(`OpenRouter generation lookup failed: ${response.status}`)
+      error.responseText = errorText
+      error.status = response.status
       throw error
     }
+
+    const data = await response.json()
+    return data?.data ?? data
   }
 }

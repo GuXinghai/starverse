@@ -55,19 +55,34 @@ export const useBranchStore = defineStore('branch', () => {
    * 添加新分支
    * 
    * @param conversationId - 对话 ID
-   * @param role - 'user' | 'assistant' | 'model'
+  * @param role - OpenAI 语义：'user' | 'assistant' | 'tool'
    * @param parts - 消息内容
    * @param parentBranchId - 父分支 ID，null 表示根分支
    * @returns 新分支 ID
    */
   const addMessageBranch = (
     conversationId: string,
-    role: 'user' | 'assistant' | 'model',
+    role: 'user' | 'assistant' | 'tool',
     parts: MessagePart[],
     parentBranchId: string | null = null
   ): string => {
+    console.log('[BranchStore] addMessageBranch 调用', {
+      conversationId,
+      role,
+      partsCount: parts.length,
+      parentBranchId,
+      timestamp: Date.now(),
+      stackTrace: new Error().stack?.split('\n').slice(2, 4).join('\n')
+    })
+    
     const tree = getTree(conversationId)
-    const newBranchId = addBranch(tree, role as 'user' | 'model', parts, parentBranchId)
+    const newBranchId = addBranch(tree, role as 'user' | 'assistant' | 'tool', parts, parentBranchId)
+    
+    console.log('[BranchStore] 新分支已创建', {
+      newBranchId,
+      role,
+      conversationId
+    })
     
     const conversation = conversationStore.getConversationById(conversationId)
     if (conversation) {
@@ -130,6 +145,43 @@ export const useBranchStore = defineStore('branch', () => {
     
     // 标记对话为脏状态，触发持久化保存
     persistenceStore.markConversationDirty(conversationId)
+  }
+
+  /**
+   * 创建一个临时的 notice 消息
+   */
+  const addNoticeMessage = (
+    conversationId: string,
+    noticeText: string
+  ): string => {
+    const noticeBranchId = addMessageBranch(
+      conversationId,
+      'assistant',
+      [{ type: 'text', text: noticeText }]
+    )
+    patchMetadata(conversationId, noticeBranchId, (metadata) => ({
+      ...metadata,
+      noticeKind: 'send-delay'
+    }))
+    return noticeBranchId
+  }
+
+  /**
+   * 更新 notice 消息文本
+   */
+  const updateNoticeMessageText = (
+    conversationId: string,
+    branchId: string,
+    noticeText: string
+  ): void => {
+    updateBranchParts(conversationId, branchId, [{ type: 'text', text: noticeText }])
+  }
+
+  /**
+   * 删除一条消息分支
+   */
+  const removeMessageBranch = (conversationId: string, branchId: string): void => {
+    removeBranch(conversationId, branchId, true)
   }
 
   /**
@@ -279,6 +331,12 @@ export const useBranchStore = defineStore('branch', () => {
     branchId: string,
     detail: { title?: string; content: string }
   ): void => {
+    console.log('[BranchStore] 🔍 appendReasoningDetail called:', {
+      conversationId,
+      branchId,
+      detail
+    })
+
     const tree = getTree(conversationId)
     appendReasoningDetailToBranch(tree, branchId, detail)
     
@@ -303,15 +361,30 @@ export const useBranchStore = defineStore('branch', () => {
     branchId: string,
     text: string
   ): void => {
+    console.log('[BranchStore] 🔍 appendReasoningStreamingText called:', {
+      conversationId,
+      branchId,
+      textLength: text.length,
+      textPreview: text.substring(0, 100)
+    })
+
     const tree = getTree(conversationId)
     const branch = tree.branches.get(branchId)
-    if (!branch) return
+    if (!branch) {
+      console.warn('[BranchStore] ⚠️ Branch not found:', branchId)
+      return
+    }
 
     const version = getCurrentVersion(branch)
-    if (!version) return
+    if (!version) {
+      console.warn('[BranchStore] ⚠️ No current version for branch:', branchId)
+      return
+    }
 
     // 使用正确的字段名 streamText
     const currentStreamingText = version.metadata?.reasoning?.streamText || ''
+    console.log('[BranchStore] 📝 Current streamText length:', currentStreamingText.length)
+
     const updatedMetadata: VersionMetadata = {
       ...version.metadata,
       reasoning: {
@@ -319,6 +392,11 @@ export const useBranchStore = defineStore('branch', () => {
         streamText: currentStreamingText + text
       }
     }
+
+    console.log('[BranchStore] ✅ Updated reasoning metadata:', {
+      totalStreamTextLength: updatedMetadata.reasoning?.streamText?.length,
+      hasReasoning: !!updatedMetadata.reasoning
+    })
 
     // patchBranchMetadata 需要一个函数
     patchBranchMetadata(tree, branchId, () => updatedMetadata)
@@ -373,8 +451,14 @@ export const useBranchStore = defineStore('branch', () => {
   /**
    * 获取当前对话路径的所有消息
    * 
+   * ⚠️ 引用陷阱警告：
+   * - 返回的 DisplayMessage[] 数组是新创建的（通过 .map()）
+   * - 但数组中每个消息的 `parts` 字段仍是原始引用
+   * - 如需快照（防止后续修改影响），调用方必须深拷贝：
+   *   `messages.map(msg => ({ ...msg, parts: msg.parts.map(p => ({ ...p })) }))`
+   * 
    * @param conversationId - 对话 ID
-   * @returns 显示消息数组
+   * @returns 显示消息数组（浅拷贝，parts 为引用）
    */
   const getDisplayMessages = (conversationId: string): DisplayMessage[] => {
     const tree = getTree(conversationId)
@@ -401,7 +485,8 @@ export const useBranchStore = defineStore('branch', () => {
           id: pm.versionId,  // 🔧 添加 id 字段（用于 v-for key）
           branchId: pm.branchId,
           versionIndex,
-          role: pm.role === 'model' ? 'assistant' as const : 'user' as const,
+          // 保持内部统一语义：AI 消息使用 'model'，用户消息使用 'user'
+          role: pm.role,
           parts: pm.parts,
           timestamp: pm.timestamp,  // 🔧 添加 timestamp 字段
           currentVersionIndex,  // 🔧 添加 currentVersionIndex 字段
@@ -483,9 +568,12 @@ export const useBranchStore = defineStore('branch', () => {
 
     // 内容追加
     appendToken,
-    appendImage,
-    updateBranchParts,
-    patchMetadata,
+      appendImage,
+      updateBranchParts,
+      patchMetadata,
+      addNoticeMessage,
+      updateNoticeMessageText,
+      removeMessageBranch,
 
     // 推理管理
     appendReasoningDetail,

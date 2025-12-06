@@ -88,14 +88,14 @@ export function extractTextFromBranch(branch: MessageBranch): string {
  * 3. 如果没有父分支，则为根分支
  * 
  * @param tree - 对话树
- * @param role - 'user' | 'model'
+ * @param role - OpenAI 语义：'user' | 'assistant' | 'tool'
  * @param parts - 消息内容
  * @param parentBranchId - 父分支ID，null 表示根分支
  * @returns 新分支ID
  */
 export function addBranch(
   tree: ConversationTree,
-  role: 'user' | 'model',
+  role: 'user' | 'assistant' | 'tool',
   parts: MessagePart[],
   parentBranchId: string | null
 ): string {
@@ -392,8 +392,13 @@ export function enterFirstChildOfCurrentVersion(
 /**
  * 获取当前路径的消息（用于API调用）
  * 
+ * ⚠️ 引用陷阱警告：
+ * - 返回的消息对象中的 `parts` 字段是直接引用原始数组
+ * - 调用方如需快照，必须执行深拷贝：
+ *   `messages.map(msg => ({ ...msg, parts: msg.parts.map(p => ({ ...p })) }))`
+ * 
  * @param tree - 对话树
- * @returns 消息数组，用于发送给 AI API
+ * @returns 消息数组（包含引用，非副本）
  */
 export function getCurrentPathMessages(tree: ConversationTree) {
   return tree.currentPath.map((branchId: string) => {
@@ -923,6 +928,10 @@ export function appendReasoningDetailToBranch(
       ...(existing ?? {}),
       reasoning: {
         ...reasoning,
+        // 🔧 显式保留关键字段（防御性编程）
+        streamText: reasoning.streamText,  // 保留流式文本
+        text: reasoning.text,              // 保留完整文本
+        summary: reasoning.summary,        // 保留摘要
         details: [...currentDetails, detail],
         lastUpdatedAt: Date.now()
       }
@@ -952,6 +961,10 @@ export function setReasoningSummaryForBranch(
   }
 ): boolean {
   return patchBranchMetadata(tree, branchId, (existing) => {
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🛡️ 安全性保证：patchBranchMetadata 内部从 tree.branches.get(branchId) 
+    // 实时获取最新 branch，所以这里的 existing 是最新状态，不是过时引用
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const reasoning = existing?.reasoning ?? {}
     
     return {
@@ -960,6 +973,15 @@ export function setReasoningSummaryForBranch(
         ...reasoning,
         summary: summaryData.summary,
         text: summaryData.text,
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 🔧 显式保留 streamText（关键修复）
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 问题：`...reasoning` 展开 Vue Proxy 时可能丢失流式过程中动态添加的属性
+        // 原因：Spread 运算符遍历 Proxy Target 快照，不包含后续添加的 key
+        // 修复：显式访问 `reasoning.streamText` 触发 Proxy Getter，获取最新值
+        // 用途：streamText 用于 UI 实时展示，text 用于最终保存，两者都需要保留
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        streamText: reasoning.streamText,
         request: summaryData.request ? { ...summaryData.request } : reasoning.request,
         provider: summaryData.provider ?? reasoning.provider,
         model: summaryData.model ?? reasoning.model,
@@ -1052,7 +1074,7 @@ export function migrateMessagesToTree(oldMessages: any[]): ConversationTree {
     const branchId = uuidv4()
     const branch: MessageBranch = {
       branchId,
-      role: oldMsg.role === 'model' ? 'model' : 'user',
+      role: oldMsg.role === 'assistant' ? 'assistant' : 'user',
       parentBranchId: previousBranchId,
       parentVersionId: previousVersionId, // 记录源自父分支的哪个版本
       versions: [version],

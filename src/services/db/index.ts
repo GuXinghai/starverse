@@ -22,7 +22,27 @@ import type {
   MessageListParams,
   MessageRecord,
   ReplaceMessagesPayload,
-  AppendMessageDeltaPayload
+  AppendMessageDeltaPayload,
+  UsageLogPayload,
+  ProjectUsageStats,
+  ConvoUsageStats,
+  ModelUsageStats,
+  DateRangeStats,
+  GetProjectUsageStatsParams,
+  GetConvoUsageStatsParams,
+  GetModelUsageStatsParams,
+  GetDateRangeUsageStatsParams,
+  UsageAggregateParams,
+  UsageAggregateResult,
+  UsageDrillDownParams,
+  UsageDrillDownResult,
+  UsageDrillDownRow,
+  DashboardPrefRecord,
+  SaveDashboardPrefPayload,
+  DeleteDashboardPrefPayload,
+  DashboardPrefListResult,
+  DashboardLayoutWidget,
+  DashboardFilters
 } from './types'
 
 const DEBUG_DB = typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEBUG_DB === 'true'
@@ -145,7 +165,57 @@ export const dbService = {
     invoke<FulltextSearchResult[]>('search.fulltext', params),
   
   // ========== Maintenance APIs ==========
-  optimizeFts: () => invoke<{ ok: boolean }>('maintenance.optimize')
+  optimizeFts: () => invoke<{ ok: boolean }>('maintenance.optimize'),
+
+  // ========== Usage Statistics APIs ==========
+  logUsage: (payload: UsageLogPayload) => invoke<{ ok: boolean }>('usage.log', payload),
+  getProjectUsageStats: (params: GetProjectUsageStatsParams) => invoke<ProjectUsageStats>('usage.getProjectStats', params),
+  getConvoUsageStats: (params: GetConvoUsageStatsParams) => invoke<ConvoUsageStats>('usage.getConvoStats', params),
+  getModelUsageStats: (params: GetModelUsageStatsParams) => invoke<ModelUsageStats>('usage.getModelStats', params),
+  getDateRangeUsageStats: (params: GetDateRangeUsageStatsParams) => invoke<DateRangeStats>('usage.getDateRangeStats', params),
+  aggregateUsage: async (params: UsageAggregateParams) => {
+    console.log('📊 [Service] aggregateUsage calling IPC...', params)
+    const result = await invoke<UsageAggregateResult>('usage.aggregate', params)
+    console.log('📊 [Service] aggregateUsage result:', {
+      rows: result.data.length,
+      firstRow: result.data[0]
+    })
+    return result
+  },
+  drillDownUsage: (params: UsageDrillDownParams) => invoke<UsageDrillDownResult>('usage.drillDown', params),
+  getReasoningTrend: (params: UsageAggregateParams) => invoke<UsageAggregateResult>('usage.reasoningTrend', params),
+  getReasoningModelComparison: (params: Omit<UsageAggregateParams, 'groupBy'>) => invoke<UsageAggregateResult>('usage.reasoningModelComparison', params),
+  saveDashboardPref: (payload: SaveDashboardPrefPayload) => invoke<DashboardPrefRecord>('prefs.save', payload),
+  listDashboardPrefs: (userId: string) => invoke<DashboardPrefListResult>('prefs.list', { userId }),
+  deleteDashboardPref: (payload: DeleteDashboardPrefPayload) => invoke<{ deleted: number }>('prefs.delete', payload),
+  getDefaultDashboardPref: (userId: string) => invoke<DashboardPrefRecord | null>('prefs.default', { userId })
 }
 
-export type { ProjectRecord, ConvoRecord, MessageRecord, FulltextSearchResult, ArchivedConvoRecord, HealthStatsResult }
+export type { 
+  ProjectRecord, 
+  ConvoRecord, 
+  MessageRecord, 
+  FulltextSearchResult, 
+  ArchivedConvoRecord, 
+  HealthStatsResult,
+  UsageLogPayload,
+  ProjectUsageStats,
+  ConvoUsageStats,
+  ModelUsageStats,
+  DateRangeStats,
+  GetProjectUsageStatsParams,
+  GetConvoUsageStatsParams,
+  GetModelUsageStatsParams,
+  GetDateRangeUsageStatsParams,
+  UsageAggregateParams,
+  UsageAggregateResult,
+  UsageDrillDownParams,
+  UsageDrillDownResult,
+  UsageDrillDownRow,
+  DashboardPrefRecord,
+  SaveDashboardPrefPayload,
+  DeleteDashboardPrefPayload,
+  DashboardPrefListResult,
+  DashboardLayoutWidget,
+  DashboardFilters
+}

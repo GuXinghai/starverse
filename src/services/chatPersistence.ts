@@ -176,6 +176,7 @@ export type ConversationSnapshot = {
   samplingParameters?: any  // 采样参数（包含所有模式和手动值字段）
   status: ConversationStatus
   tags: string[]
+  pdfEngine?: 'pdf-text' | 'mistral-ocr' | 'native'
   // 最近一次成功持久化的消息摘要（用于跳过重复 message.replace）
   messageDigest?: string
 }
@@ -201,6 +202,7 @@ type ConversationMetaPayload = {
   samplingParameters?: any  // 采样参数（包含所有模式和手动值字段）
   status?: ConversationStatus
   tags?: string[]
+  pdfEngine?: 'pdf-text' | 'mistral-ocr' | 'native'
   messageDigest?: string
 }
 
@@ -291,6 +293,7 @@ const mapRecordToSnapshot = (record: ConvoRecord): ConversationSnapshot => {
     samplingParameters: meta.samplingParameters,  // 恢复采样参数（包含所有模式和手动值）
     status,
     tags,
+    pdfEngine: meta.pdfEngine || 'pdf-text',
     messageDigest: meta.messageDigest
   } as ConversationSnapshot
 }
@@ -414,7 +417,8 @@ const toMessageSnapshots = (snapshot: ConversationSnapshot): MessageSnapshotPayl
     
     const body = extractTextFromMessage(message) || ''
     const createdAt = message?.timestamp || snapshot.updatedAt || Date.now()
-    const role = message?.role === 'model' ? 'assistant' : message?.role
+    // 统一采用 OpenAI 语义，直接存储 'user' | 'assistant' | 'tool' | 'system'
+    const role = message?.role
 
     // 检查 metadata 内容
     if (message?.metadata) {
@@ -577,6 +581,7 @@ export class SqliteChatPersistence {
       samplingParameters: (cleanSnapshot as any).samplingParameters,  // 保存采样参数（包含所有模式和手动值）
       status: cleanSnapshot.status ?? DEFAULT_CONVERSATION_STATUS,
       tags: cleanSnapshot.tags ?? [],
+      pdfEngine: cleanSnapshot.pdfEngine || 'pdf-text',
       // 使用旧摘要占位，防止消息写入失败时 meta 过早指向新摘要
       messageDigest: prevDigest
     }

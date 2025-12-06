@@ -171,6 +171,11 @@ export const GeminiService = {
     console.log('GeminiService: 开始流式聊天，使用模型:', modelName)
     const signal = options?.signal ?? null
     
+    // 🔍 DEBUG: 检查图像生成配置
+    if (options?.imageConfig) {
+      console.warn('GeminiService: 收到 imageConfig 但当前实现尚未支持图像生成参数', options.imageConfig)
+    }
+    
     try {
       const genAI = new GoogleGenerativeAI(apiKey)
       const model = genAI.getGenerativeModel({ model: modelName })
@@ -259,6 +264,19 @@ export const GeminiService = {
       }
       
       console.log('GeminiService: 流式响应完成')
+
+      // 流结束后获取 usage
+      const finalResponse = await result.response
+      if (finalResponse.usageMetadata) {
+        yield {
+          type: 'usage',
+          usage: {
+            promptTokens: finalResponse.usageMetadata.promptTokenCount,
+            completionTokens: finalResponse.usageMetadata.candidatesTokenCount,
+            totalTokens: finalResponse.usageMetadata.totalTokenCount
+          }
+        }
+      }
     } catch (error) {
       // ========== 错误分类处理 ==========
       
