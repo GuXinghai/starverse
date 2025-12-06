@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('electronStore', {
   get: (key: string) => ipcRenderer.invoke('store-get', key),
   set: (key: string, value: any) => ipcRenderer.invoke('store-set', key, value),
   delete: (key: string) => ipcRenderer.invoke('store-delete', key),
+  clearSafe: (keepKeys?: string[]) => ipcRenderer.invoke('store-clear-safe', keepKeys),
+  checkIntegrity: () => ipcRenderer.invoke('store-check-integrity'),
 })
 
 // Expose file dialog API for image selection

@@ -144,23 +144,30 @@ export class DbWorkerManager {
           this.dbPath = dbPath
           this.worker = worker
           this.stopping = false
-          const cleanupStart = (error?: Error) => {
-            worker.removeAllListeners('online')
-            worker.removeAllListeners('error')
-            worker.removeAllListeners('exit')
-            if (error) {
-              reject(error)
-            } else {
-              resolve()
+            const cleanupStart = (error?: Error) => {
+              // 只清理启动阶段的 online 监听，保留 error/exit 监听用于运行期错误处理
+              worker.removeAllListeners('online')
+              if (error) {
+                reject(error)
+              } else {
+                resolve()
+              }
             }
-          }
 
           worker.once('online', () => {
+            console.log(`[workerManager] Worker 已上线, threadId: ${worker.threadId}`)
             this.restartAttempts = 0
             this.clearRestartTimer()
             cleanupStart()
           })
           worker.once('error', (error) => {
+            console.error(`[workerManager] Worker 错误事件:`)
+            console.error(`[workerManager] - error 类型: ${typeof error}`)
+            console.error(`[workerManager] - error.constructor.name: ${error?.constructor?.name}`)
+            console.error(`[workerManager] - error.code: ${(error as any)?.code}`)
+            console.error(`[workerManager] - error.message: ${(error as any)?.message}`)
+            console.error(`[workerManager] - error.stack: ${(error as any)?.stack}`)
+            console.error(`[workerManager] - JSON.stringify:`, JSON.stringify(error, null, 2))
             cleanupStart(error as Error)
             this.rejectAll(error)
             this.worker = undefined

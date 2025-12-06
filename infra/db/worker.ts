@@ -5,6 +5,8 @@ import { ProjectRepo } from './repo/projectRepo'
 import { ConvoRepo } from './repo/convoRepo'
 import { MessageRepo } from './repo/messageRepo'
 import { SearchRepo } from './repo/searchRepo'
+import { UsageRepo } from './repo/usageRepo'
+import { DashboardPrefRepo } from './repo/dashboardPrefRepo'
 import {
   type WorkerInitConfig,
   type WorkerRequestMessage,
@@ -34,7 +36,17 @@ import {
   ListConvoSchema,
   ListMessageSchema,
   ReplaceMessagesSchema,
-  BatchDeleteSchema
+  BatchDeleteSchema,
+  LogUsageSchema,
+  GetProjectUsageStatsSchema,
+  GetConvoUsageStatsSchema,
+  GetModelUsageStatsSchema,
+  GetDateRangeUsageStatsSchema,
+  UsageAggregateSchema,
+  UsageDrillDownSchema,
+  SaveDashboardPrefSchema,
+  DeleteDashboardPrefSchema,
+  GetDashboardPrefsSchema
 } from './validation'
 import { configureLogging, logSlowQuery } from './logger'
 
@@ -48,19 +60,30 @@ export class DbWorkerRuntime {
   private convoRepo: ConvoRepo
   private messageRepo: MessageRepo
   private searchRepo: SearchRepo
+  private usageRepo: UsageRepo
+  private dashboardPrefRepo: DashboardPrefRepo
   private handlers = new Map<DbMethod, DbHandler>()
 
   constructor(config: WorkerInitConfig) {
+    console.log('[DbWorkerRuntime] 开始初始化, config:', config)
+    
     if (!config.dbPath) {
       throw new DbWorkerError('ERR_INTERNAL', 'dbPath missing for worker initialization')
     }
 
+    console.log('[DbWorkerRuntime] 创建数据库目录:', path.dirname(config.dbPath))
     mkdirSync(path.dirname(config.dbPath), { recursive: true })
     const schemaPath = config.schemaPath ?? defaultSchemaPath
+    console.log('[DbWorkerRuntime] Schema 路径:', schemaPath)
 
+    console.log('[DbWorkerRuntime] 打开数据库:', config.dbPath)
     this.db = new BetterSqlite3(config.dbPath)
+    console.log('[DbWorkerRuntime] 应用 Pragmas...')
     this.applyPragmas()
+    console.log('[DbWorkerRuntime] 执行 Schema...')
     this.db.exec(readFileSync(schemaPath, 'utf8'))
+    console.log('[DbWorkerRuntime] 确保 Usage Log Schema...')
+    this.ensureUsageLogSchema()
 
     if (config.logSlowQueryMs || config.logDirectory) {
       configureLogging({ slowQueryMs: config.logSlowQueryMs, directory: config.logDirectory })
@@ -76,6 +99,8 @@ export class DbWorkerRuntime {
     this.convoRepo = new ConvoRepo(this.db)
     this.messageRepo = new MessageRepo(this.db)
     this.searchRepo = new SearchRepo(this.db)
+    this.usageRepo = new UsageRepo(this.db)
+    this.dashboardPrefRepo = new DashboardPrefRepo(this.db)
     this.registerHandlers()
   }
 
@@ -86,6 +111,53 @@ export class DbWorkerRuntime {
     this.db.pragma('temp_store = MEMORY')
     this.db.pragma('mmap_size = 268435456')
     this.db.pragma('cache_size = -20000')
+  }
+
+  /**
+   * 确保 usage_log 表包含最新的统计字段
+   *
+   * 早期版本的数据库可能缺少 tokens_cached / tokens_reasoning / cost / ttft_ms / meta 等列，
+   * 这里通过 PRAGMA table_info 检测并按需执行 ALTER TABLE 进行增列，以避免 SQLite "no such column"
+   * 错误导致 Worker 启动失败。
+   */
+  private ensureUsageLogSchema() {
+    const tableRow = this.db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'usage_log'")
+      .get() as { name?: string } | undefined
+
+    if (!tableRow) {
+      return
+    }
+
+    const columns = this.db.prepare('PRAGMA table_info(usage_log)').all() as { name: string }[]
+    const columnNames = new Set(columns.map((col) => col.name))
+
+    const addColumn = (name: string, definition: string) => {
+      if (!columnNames.has(name)) {
+        this.db.exec(`ALTER TABLE usage_log ADD COLUMN ${definition}`)
+        columnNames.add(name)
+      }
+    }
+
+    addColumn('tokens_cached', 'tokens_cached INTEGER DEFAULT 0')
+    addColumn('tokens_reasoning', 'tokens_reasoning INTEGER DEFAULT 0')
+    addColumn('cost', 'cost REAL DEFAULT 0.0')
+    addColumn('request_id', 'request_id TEXT')
+    addColumn('attempt', 'attempt INTEGER DEFAULT 1')
+    addColumn('ttft_ms', 'ttft_ms INTEGER')
+    addColumn('error_code', 'error_code TEXT')
+    addColumn('meta', 'meta TEXT')
+
+    // Ensure important indexes exist for aggregation performance
+    const indexStatements = [
+      "CREATE INDEX IF NOT EXISTS idx_usage_time_project ON usage_log(timestamp DESC, project_id)",
+      "CREATE INDEX IF NOT EXISTS idx_usage_time_provider_model ON usage_log(timestamp DESC, provider, model)",
+      "CREATE INDEX IF NOT EXISTS idx_usage_status ON usage_log(status, timestamp DESC)",
+      "CREATE INDEX IF NOT EXISTS idx_usage_request_attempt ON usage_log(request_id, attempt)"
+    ]
+    for (const sql of indexStatements) {
+      this.db.exec(sql)
+    }
   }
 
   private registerHandlers() {
@@ -239,6 +311,75 @@ export class DbWorkerRuntime {
     this.handlers.set('maintenance.optimize', () => {
       this.searchRepo.optimize()
       return { ok: true }
+    })
+
+    // ========== Usage Handlers ==========
+    this.handlers.set('usage.log', (raw) => {
+        const input = LogUsageSchema.parse(raw)
+        this.usageRepo.logUsage(input)
+        return { ok: true }
+    })
+
+    this.handlers.set('usage.getProjectStats', (raw) => {
+        const input = GetProjectUsageStatsSchema.parse(raw)
+        return this.usageRepo.getProjectStats(input.projectId, input.days)
+    })
+
+    this.handlers.set('usage.getConvoStats', (raw) => {
+        const input = GetConvoUsageStatsSchema.parse(raw)
+        return this.usageRepo.getConvoStats(input.convoId, input.days)
+    })
+
+    this.handlers.set('usage.getModelStats', (raw) => {
+        const input = GetModelUsageStatsSchema.parse(raw)
+        return this.usageRepo.getModelStats(input.model, input.days)
+    })
+
+    this.handlers.set('usage.getDateRangeStats', (raw) => {
+        const input = GetDateRangeUsageStatsSchema.parse(raw)
+        return this.usageRepo.getDateRangeStats(input.startTime, input.endTime)
+    })
+
+    this.handlers.set('usage.aggregate', (raw) => {
+        const input = UsageAggregateSchema.parse(raw ?? {})
+        return this.usageRepo.aggregateUsage(input)
+    })
+
+    this.handlers.set('usage.drillDown', (raw) => {
+        const input = UsageDrillDownSchema.parse(raw ?? {})
+        return this.usageRepo.drillDown(input)
+    })
+
+    this.handlers.set('usage.reasoningTrend', (raw) => {
+        const input = UsageAggregateSchema.parse(raw ?? {})
+        return this.usageRepo.getReasoningTrend(input)
+    })
+
+    this.handlers.set('usage.reasoningModelComparison', (raw) => {
+        const input = UsageAggregateSchema.parse(raw ?? {})
+        return this.usageRepo.getReasoningModelComparison(input)
+    })
+
+    // ========== Dashboard Prefs ==========
+    this.handlers.set('prefs.save', (raw) => {
+        const input = SaveDashboardPrefSchema.parse(raw ?? {})
+        return this.dashboardPrefRepo.save(input)
+    })
+
+    this.handlers.set('prefs.list', (raw) => {
+        const input = GetDashboardPrefsSchema.parse(raw ?? {})
+        const items = this.dashboardPrefRepo.list(input.userId)
+        return { items }
+    })
+
+    this.handlers.set('prefs.delete', (raw) => {
+        const input = DeleteDashboardPrefSchema.parse(raw ?? {})
+        return this.dashboardPrefRepo.delete(input)
+    })
+
+    this.handlers.set('prefs.default', (raw) => {
+        const input = GetDashboardPrefsSchema.parse(raw ?? {})
+        return this.dashboardPrefRepo.getDefault(input.userId)
     })
   }
 

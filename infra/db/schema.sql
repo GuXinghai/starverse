@@ -80,3 +80,48 @@ CREATE INDEX IF NOT EXISTS idx_convo_project ON convo(project_id);
 CREATE INDEX IF NOT EXISTS idx_convo_updated ON convo(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_msg_convo_seq ON message(convo_id, seq);
 CREATE INDEX IF NOT EXISTS idx_tag_name ON tag(name);
+
+-- ========== Usage Statistics Table ==========
+CREATE TABLE IF NOT EXISTS usage_log (
+  id TEXT PRIMARY KEY,
+  project_id TEXT REFERENCES project(id) ON DELETE CASCADE,
+  convo_id TEXT REFERENCES convo(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  tokens_input INTEGER NOT NULL,
+  tokens_output INTEGER NOT NULL,
+  tokens_cached INTEGER DEFAULT 0,
+  tokens_reasoning INTEGER DEFAULT 0,
+  cost REAL DEFAULT 0.0,
+  request_id TEXT,
+  attempt INTEGER DEFAULT 1,
+  duration_ms INTEGER NOT NULL,
+  ttft_ms INTEGER,
+  timestamp INTEGER NOT NULL,
+  status TEXT DEFAULT 'success',  -- 'success': AI正常完成 | 'error': 系统错误(网络/API) | 'canceled': 用户主动中止
+  error_code TEXT,
+  meta TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_usage_project ON usage_log(project_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_convo ON usage_log(convo_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_model ON usage_log(model, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON usage_log(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_time_project ON usage_log(timestamp DESC, project_id);
+CREATE INDEX IF NOT EXISTS idx_usage_time_provider_model ON usage_log(timestamp DESC, provider, model);
+CREATE INDEX IF NOT EXISTS idx_usage_status ON usage_log(status, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_request_attempt ON usage_log(request_id, attempt);
+
+-- ========== Dashboard Preferences ==========
+CREATE TABLE IF NOT EXISTS user_dashboard_prefs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  view_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  layout_json TEXT NOT NULL,
+  filters_json TEXT,
+  is_default INTEGER DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_prefs_user_view ON user_dashboard_prefs(user_id, view_id);
+CREATE INDEX IF NOT EXISTS idx_prefs_user_default ON user_dashboard_prefs(user_id, is_default);
