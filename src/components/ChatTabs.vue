@@ -13,7 +13,7 @@ const openTabs = computed(() => {
     return {
       id,
       title: conversation?.title || '未知对话',
-      isLoading: persistenceStore.loadingConversationIds?.has?.(id) || false,
+      isLoading: persistenceStore.savingConversationIds?.has?.(id) || false,
       isSaving: persistenceStore.savingConversationIds?.has?.(id) || false,
       generationStatus: conversation?.generationStatus || 'idle'
     }

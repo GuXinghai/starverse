@@ -71,14 +71,6 @@ const props = withDefaults(
   }
 )
 
-const emit = defineEmits<{
-  'edit-message': [branchId: string]
-  'delete-message': [branchId: string]
-  'regenerate-message': [branchId: string]
-  'switch-version': [branchId: string, direction: number]
-  'scroll-to-bottom': []
-}>()
-
 const containerRef = ref<HTMLElement | null>(null)
 
 // 获取分支版本数量

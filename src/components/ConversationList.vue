@@ -80,6 +80,7 @@ import type { ConversationStatus } from '../types/conversation'
 import { useFormatters } from '../composables/useFormatters'
 import { useMenuPositioning } from '../composables/useMenuPositioning'
 import { useConversationSearch } from '../composables/useConversationSearch'
+import ProjectManager from './sidebar/ProjectManager.vue'
 
 type ConversationRecord = {
   id: string
@@ -183,13 +184,8 @@ const contentSearchMessageClass = computed(() => {
 // 🔴 跨域状态 - TODO 5: 重构为单向数据流，迁移到 ConversationSidebar 父组件
 const projectFilter = ref<string>('all')
 
-// 🟩 Project Tree 管理状态 - TODO 2: 迁移到 ProjectManager 组件
-const isCreatingProject = ref(false)
-const newProjectName = ref('')
-const projectEditingId = ref<string | null>(null)
-const projectEditingName = ref('')
-const projectDeletingId = ref<string | null>(null)
-const newProjectInputRef = ref<HTMLInputElement | null>(null)
+// ✅ TODO 2 已完成: 项目管理状态已迁移到 ProjectManager 组件
+// isCreatingProject, newProjectName, projectEditingId, projectEditingName, projectDeletingId, newProjectInputRef
 
 // 🟨 菜单系统状态 - TODO 3: 迁移到 useContextMenu composable
 const hoverMenuId = ref<string | null>(null)
@@ -523,7 +519,12 @@ const saveEdit = async (conversationId: string) => {
           tags: conversation.tags,
           webSearchEnabled: conversation.webSearch?.enabled ?? false,
           webSearchLevel: conversation.webSearch?.level ?? 'normal',
-          reasoningPreference: conversation.reasoning ?? { visibility: 'visible', effort: 'medium', maxTokens: null }
+          reasoningPreference: conversation.reasoning ?? { 
+            visibility: 'visible', 
+            effort: 'medium', 
+            maxTokens: null,
+            mode: 'medium'
+          }
         }
         
         await sqliteChatPersistence.saveConversation(snapshot)
@@ -736,26 +737,9 @@ watch(hoverProjectMenuId, async (next) => {
 
 
 
+// ✅ TODO 2 已完成: projectManagerEntries 已迁移到 ProjectManager 组件
 const orderedProjects = computed<ProjectRecord[]>(() => {
   return projectStore.orderedProjects as ProjectRecord[]
-})
-
-const projectManagerEntries = computed<ProjectRecord[]>(() => {
-  const allEntry: ProjectRecord = {
-    id: 'all',
-    name: '全部对话',
-    createdAt: 0,
-    updatedAt: 0,
-    isSystem: true
-  }
-  const unassignedEntry: ProjectRecord = {
-    id: 'unassigned',
-    name: '未分配',
-    createdAt: 0,
-    updatedAt: 0,
-    isSystem: true
-  }
-  return [allEntry, unassignedEntry, ...orderedProjects.value.map(project => ({ ...project }))]
 })
 
 const projectConversationCounts = computed<Record<string, number>>(() => {
@@ -872,46 +856,6 @@ watch(filteredConversations, (list) => {
   }
 })
 
-const handleCreateProject = async () => {
-  const createdId = await projectStore.createProject(newProjectName.value)
-  if (createdId) {
-    // ✅ 无论是新建还是跳转到已存在项目，都切换筛选器
-    projectFilter.value = createdId
-    newProjectName.value = ''
-    isCreatingProject.value = false
-    newProjectInputRef.value = null
-  }
-}
-
-const isProjectSelected = (projectId: string) => projectFilter.value === projectId
-
-const selectProject = (projectId: string) => {
-  projectFilter.value = projectId
-}
-
-const toggleProjectCreation = () => {
-  if (isCreatingProject.value) {
-    newProjectName.value = ''
-    nextTick(() => {
-      newProjectInputRef.value = null
-    })
-  }
-  isCreatingProject.value = !isCreatingProject.value
-  if (isCreatingProject.value) {
-    nextTick(() => {
-      newProjectInputRef.value?.focus()
-    })
-  }
-}
-
-const startProjectEdit = (project: ProjectRecord) => {
-  if (project.isSystem) {
-    return
-  }
-  projectEditingId.value = project.id
-  projectEditingName.value = project.name
-}
-
 /**
  * ========================================
  * 🔴 高风险区域 - TODO 5: 重构 projectFilter 双向同步逻辑
@@ -968,50 +912,50 @@ watch(projectFilter, (next) => {
   projectStore.setActiveProject(next)
 })
 
-const cancelProjectEdit = () => {
-  projectEditingId.value = null
-  projectEditingName.value = ''
+/**
+ * ========================================
+ * TODO 2: ProjectManager 组件事件处理器
+ * ========================================
+ */
+
+/**
+ * 处理项目创建事件
+ * 
+ * @param name - 项目名称
+ */
+const handleProjectCreatedFromManager = async (name: string) => {
+  const createdId = await projectStore.createProject(name)
+  if (createdId) {
+    // 切换到新创建的项目
+    projectFilter.value = createdId
+  }
 }
 
-const confirmProjectRename = async (projectId: string) => {
-  if (projectId === 'unassigned') {
-    return
-  }
-  const result = await projectStore.renameProject(projectId, projectEditingName.value)
-  if (result === true) {
-    // ✅ 重命名成功
-    projectEditingId.value = null
-    projectEditingName.value = ''
-  } else if (typeof result === 'string') {
-    // ✅ 名称重复，跳转到已存在的项目
+/**
+ * 处理项目重命名事件
+ * 
+ * @param projectId - 项目 ID
+ * @param newName - 新名称
+ */
+const handleProjectRenamedFromManager = async (projectId: string, newName: string) => {
+  const result = await projectStore.renameProject(projectId, newName)
+  if (typeof result === 'string') {
+    // 名称重复，跳转到已存在的项目
     projectFilter.value = result
-    projectEditingId.value = null
-    projectEditingName.value = ''
   }
-  // result === false 时，名称为空或项目不存在，不做处理
 }
 
-const requestProjectDelete = (projectId: string) => {
-  if (projectId === 'unassigned') {
-    return
-  }
-  projectDeletingId.value = projectId
-}
-
-const cancelProjectDelete = () => {
-  projectDeletingId.value = null
-}
-
-const confirmProjectDelete = async (projectId: string) => {
-  if (projectId === 'unassigned') {
-    return
-  }
+/**
+ * 处理项目删除事件
+ * 
+ * @param projectId - 项目 ID
+ */
+const handleProjectDeletedFromManager = async (projectId: string) => {
   const success = await projectStore.deleteProject(projectId)
-  // ✅ 删除项目后，切换到 "all" 而非 "unassigned"
   if (success && projectFilter.value === projectId) {
+    // 删除当前选中的项目后，切换到 "all"
     projectFilter.value = 'all'
   }
-  projectDeletingId.value = null
 }
 
 const openProjectMenu = (conversationId: string) => {
@@ -1239,97 +1183,14 @@ onUnmounted(() => {
         <span>{{ contentSearchMessage || '正在全文搜索…' }}</span>
       </div>
 
-      <div class="border-t border-gray-200 pt-3 space-y-2">
-        <div class="flex items-center justify-between">
-          <span class="text-sm font-medium text-gray-700">项目管理</span>
-          <button
-            class="text-xs text-blue-500 hover:text-blue-600"
-            @click="toggleProjectCreation"
-          >
-            {{ isCreatingProject ? '取消' : '新建项目' }}
-          </button>
-        </div>
-
-        <div v-if="isCreatingProject" class="flex gap-2">
-          <input
-            v-model="newProjectName"
-            type="text"
-            placeholder="输入项目名称"
-            class="flex-1 px-3 py-1 text-sm border border-gray-300 rounded"
-            ref="newProjectInputRef"
-          />
-          <button
-            class="px-3 py-1 text-sm text-white bg-blue-500 rounded hover:bg-blue-600"
-            @click="handleCreateProject"
-            :disabled="!newProjectName.trim()"
-          >
-            创建
-          </button>
-        </div>
-
-        <div v-if="orderedProjects.length === 0 && !isCreatingProject" class="text-xs text-gray-500">
-          暂无项目。可点击“新建项目”开始分类管理。
-        </div>
-
-        <div
-          v-for="project in projectManagerEntries"
-          :key="project.id"
-          class="flex items-center gap-2 text-sm rounded-lg px-2 py-1 transition-colors"
-          :class="[
-            isProjectSelected(project.id) ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100 text-gray-700',
-            projectEditingId === project.id ? 'cursor-default' : 'cursor-pointer'
-          ]"
-          @click="projectEditingId !== project.id && selectProject(project.id)"
-        >
-          <div class="flex-1">
-            <div v-if="project.isSystem || projectEditingId !== project.id" class="flex items-center justify-between">
-              <span class="font-medium text-gray-700">{{ project.name }}</span>
-              <span class="text-xs text-gray-500">
-                包含 {{ getProjectCount(project.id) }} 个对话
-              </span>
-            </div>
-            <div v-else class="flex gap-2">
-              <input
-                v-model="projectEditingName"
-                type="text"
-                class="flex-1 px-2 py-1 border border-gray-300 rounded"
-              />
-              <button class="px-2 py-1 text-xs text-green-600" @click.stop="confirmProjectRename(project.id)">
-                保存
-              </button>
-              <button class="px-2 py-1 text-xs text-gray-500" @click.stop="cancelProjectEdit">
-                取消
-              </button>
-            </div>
-          </div>
-          <div v-if="projectEditingId !== project.id" class="flex items-center gap-1">
-            <button
-              v-if="!project.isSystem"
-              class="text-xs text-blue-500 hover:text-blue-600"
-              @click.stop="startProjectEdit(project)"
-            >
-              重命名
-            </button>
-            <button
-              v-if="!project.isSystem"
-              class="text-xs text-red-500 hover:text-red-600"
-              @click.stop="requestProjectDelete(project.id)"
-            >
-              删除
-            </button>
-          </div>
-        </div>
-
-        <div v-if="projectDeletingId" class="text-xs text-red-600 bg-red-50 border border-red-100 rounded p-2">
-          <div class="flex items-center justify-between">
-            <span>确认删除该项目？该项目下的对话将标记为未分配。</span>
-            <div class="flex gap-2">
-              <button class="text-blue-500" @click="cancelProjectDelete">取消</button>
-              <button class="text-red-600" @click="projectDeletingId && confirmProjectDelete(projectDeletingId)">确认</button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- ✅ TODO 2 已完成: 使用 ProjectManager 组件 -->
+      <ProjectManager
+        :projects="orderedProjects"
+        v-model="projectFilter"
+        @project-created="handleProjectCreatedFromManager"
+        @project-renamed="handleProjectRenamedFromManager"
+        @project-deleted="handleProjectDeletedFromManager"
+      />
     </div>
 
     <!-- 对话列表 -->
@@ -1646,17 +1507,17 @@ onUnmounted(() => {
           </div>
 
           <!-- 编辑模式 -->
-          <div v-else class="flex items-center gap-2">
+          <div v-else class="flex items-center gap-2 w-full">
             <input
               v-model="editingTitle"
               @keyup.enter="saveEdit(conversation.id)"
               @keyup.esc="cancelEdit"
-              class="flex-1 px-2 py-1 bg-white text-gray-900 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              class="flex-1 min-w-0 px-2 py-1 bg-white text-gray-900 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               autofocus
             />
             <button
               @click="saveEdit(conversation.id)"
-              class="p-1 text-green-600 hover:bg-green-100 rounded"
+              class="flex-shrink-0 p-1 text-green-600 hover:bg-green-100 rounded"
               title="保存"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1665,7 +1526,7 @@ onUnmounted(() => {
             </button>
             <button
               @click="cancelEdit"
-              class="p-1 text-gray-600 hover:bg-gray-200 rounded"
+              class="flex-shrink-0 p-1 text-gray-600 hover:bg-gray-200 rounded"
               title="取消"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1688,3 +1549,5 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+
