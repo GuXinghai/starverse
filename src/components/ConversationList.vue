@@ -1,17 +1,97 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
+/**
+ * ================================================================================
+ * ConversationList.vue - 大型组件重构计划
+ * ================================================================================
+ * 
+ * 🚨 重要提示: 本组件共 1778 行，包含两个业务域的紧密耦合代码，需要增量式重构
+ * 
+ * 📊 当前架构问题:
+ *   1. 业务域混杂: Conversation List (900 行) + Project Tree (650 行)
+ *   2. 状态管理复杂: 42 个响应式变量，6 个定时器，2 个 ResizeObserver
+ *   3. 高风险区域: projectFilter 双向同步、菜单级联关闭、跨域操作
+ * 
+ * 🎯 重构目标:
+ *   ✅ TODO 1: 创建基础设施 Composables (低风险)
+ *      - useFormatters.ts (formatModelName, getStatusLabel, getStatusBadgeClass)
+ *      - useMenuPositioning.ts (computeMenuPosition 算法)
+ *      - useConversationSearch.ts (搜索逻辑和状态)
+ * 
+ *   ✅ TODO 2: 创建 ProjectManager 子组件 (中风险)
+ *      - 提取 1022-1094 行模板 + 833-957 行脚本
+ *      - Props: projects[], projectFilter, activeProjectId
+ *      - Emits: update:projectFilter, project-created, project-renamed, project-deleted
+ * 
+ *   🔴 TODO 3: 创建菜单系统 Composables (高风险 ⚠️)
+ *      - useContextMenu.ts + useProjectAssignmentMenu.ts
+ *      - 处理主菜单和子菜单的级联关闭 (见 394-402 行)
+ *      - 必须正确清理定时器和 ResizeObserver
+ * 
+ *   ✅ TODO 4: 创建 ConversationListItems 子组件 (中风险)
+ *      - 提取 1099-1583 行模板
+ *      - Props: filteredConversations[], currentConversationId
+ *      - Emits: conversation-selected, conversation-renamed, conversation-deleted
+ * 
+ *   🔴 TODO 5: 重构 projectFilter 双向同步逻辑 (高风险 ⚠️)
+ *      - 解决 895-917 行的双向 watch 问题
+ *      - 移除 projectSyncReady 全局标志位
+ *      - 改为单向数据流 + emit 模式
+ * 
+ *   🔴 TODO 6: 重构 changeConversationProject 跨域方法 (高风险 ⚠️)
+ *      - 拆分 1011-1035 行的跨域操作
+ *      - 严格执行菜单关闭顺序，避免 Teleport DOM 残留
+ * 
+ *   🔴 TODO 7: 创建 ConversationSidebar 父组件 (高风险 ⚠️)
+ *      - 管理所有跨域状态和逻辑
+ *      - 通过 provide/inject 共享 stores 和菜单回调
+ * 
+ *   ✅ TODO 8: 优化 filteredConversations 性能 (中风险)
+ *      - 788-827 行依赖 6 个响应式源
+ *      - 添加 WeakMap 缓存、虚拟滚动、分页
+ * 
+ *   ✅ TODO 9: 编写单元测试 (必需)
+ *      - 覆盖率目标 > 85%
+ *      - 重点测试菜单级联关闭、projectFilter 同步
+ * 
+ *   ✅ TODO 10: 迁移原组件并清理 (最终步骤)
+ *      - ConversationList.vue → ConversationList.legacy.vue
+ *      - ConversationSidebar.vue → ConversationList.vue
+ *      - 保留 .legacy 至少 2 周作为回滚保险
+ * 
+ * ⚠️ 安全重构原则:
+ *   1. 增量式重构，每次只改动一个 TODO
+ *   2. 先提取低风险 composables，再拆分组件
+ *   3. 高风险区域必须先编写测试
+ *   4. 每个 TODO 完成后运行完整的 E2E 测试
+ *   5. 确保每次提交都可独立回滚
+ * 
+ * 📝 相关文档:
+ *   - 详细分析报告: 见 AI 生成的《ConversationList.vue 深度分析报告》
+ *   - 架构审查: docs/ARCHITECTURE_REVIEW.md
+ *   - 重构进度: REFACTOR_PROGRESS.md
+ * ================================================================================
+ */
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
-// @ts-ignore
-import { useChatStore } from '../stores/chatStore'
-import { runFulltextSearch, SearchDslError } from '../services/searchService'
+import { useConversationStore } from '../stores/conversation'
+import { useProjectStore } from '../stores/project'
+import { useModelStore } from '../stores/model'
+import type { ConversationStatus } from '../types/conversation'
+import { useFormatters } from '../composables/useFormatters'
+import { useMenuPositioning } from '../composables/useMenuPositioning'
+import { useConversationSearch } from '../composables/useConversationSearch'
+import ProjectManager from './sidebar/ProjectManager.vue'
 
 type ConversationRecord = {
   id: string
   title: string
   projectId?: string | null
   model: string
-  generationStatus: 'idle' | 'sending' | 'receiving'
+  status?: ConversationStatus
+  generationStatus?: 'idle' | 'sending' | 'receiving'
+  isGenerating?: boolean
   hasError?: boolean
+  createdAt: number
   tree?: {
     branches?: Map<string, any> | Record<string, any>
     currentPath?: string[]
@@ -26,26 +106,69 @@ type ProjectRecord = {
   isSystem?: boolean
 }
 
-const chatStore = useChatStore()
+const conversationStore = useConversationStore()
+const projectStore = useProjectStore()
+const modelStore = useModelStore()
 
-// 编辑状态
+// ✅ TODO 1 已完成: 使用 useFormatters composable
+const { getStatusLabel, getStatusBadgeClass, getStatusBadgeClassActive, formatModelName } = useFormatters()
+
+// ✅ TODO 1.2 已完成: 使用 useMenuPositioning composable
+const { computeMenuPosition } = useMenuPositioning()
+
+// ✅ TODO 1.3 已完成: 使用 useConversationSearch composable
+const searchQuery = ref('')
+const rawSearchQuery = computed(() => searchQuery.value.trim())
+const {
+  searchInTitle,
+  searchInContent,
+  contentSearchLoading,
+  contentSearchMessage,
+  contentSearchMessageType,
+  conversationMatchesContent,
+  buildSearchScopes
+} = useConversationSearch(rawSearchQuery)
+
+// 检查对话是否正在生成中
+const isConversationGenerating = (conversation: ConversationRecord): boolean => {
+  // 优先使用 isGenerating 字段，如果不存在则使用 generationStatus
+  if (conversation.isGenerating !== undefined) {
+    return conversation.isGenerating
+  }
+  // 如果有 generationStatus，检查是否为 'idle'
+  if (conversation.generationStatus) {
+    return conversation.generationStatus !== 'idle'
+  }
+  // 默认不生成中
+  return false
+}
+
+/**
+ * ========================================
+ * 响应式状态变量分类 (共 42 个)
+ * ========================================
+ * 
+ * 🟦 Conversation List 专属 (14 个) - TODO 4 迁移到 ConversationListItems
+ * 🟩 Project Tree 专属 (10 个) - TODO 2 迁移到 ProjectManager
+ * 🟨 菜单系统共享 (18 个) - TODO 3 迁移到 useContextMenu/useProjectAssignmentMenu
+ * 
+ * 重构后状态管理:
+ *   - 子组件内部状态: 编辑/删除 ID、输入框内容
+ *   - 父组件统筹状态: projectFilter、filteredConversations
+ *   - Composable 封装状态: 菜单定位、搜索缓存
+ * ========================================
+ */
+
+// 🟦 Conversation List 编辑状态 - TODO 4: 迁移到 ConversationListItems 组件内部
 const editingId = ref<string | null>(null)
 const editingTitle = ref('')
 
-// 删除确认状态
+// 🟦 Conversation List 删除确认状态 - TODO 4: 迁移到 ConversationListItems 组件内部
 const deletingId = ref<string | null>(null)
 
-// 搜索与过滤
-const searchQuery = ref('')
-const rawSearchQuery = computed(() => searchQuery.value.trim())
+// ✅ TODO 1.3 已完成: 搜索状态已迁移到 useConversationSearch composable
+// 保留的 computed (UI 相关)
 const normalizedQuery = computed(() => rawSearchQuery.value.toLowerCase())
-const searchInTitle = ref(true)
-const searchInContent = ref(false)
-const contentSearchHits = ref<Set<string>>(new Set())
-const contentSearchLoading = ref(false)
-const contentSearchMessage = ref('')
-type SearchMessageTone = 'info' | 'warning' | 'error'
-const contentSearchMessageType = ref<SearchMessageTone>('info')
 const contentSearchActive = computed(() => searchInContent.value && rawSearchQuery.value.length > 0)
 const contentSearchMessageClass = computed(() => {
   switch (contentSearchMessageType.value) {
@@ -58,32 +181,38 @@ const contentSearchMessageClass = computed(() => {
   }
 })
 
-// 项目管理
+// 🔴 跨域状态 - TODO 5: 重构为单向数据流，迁移到 ConversationSidebar 父组件
 const projectFilter = ref<string>('all')
-const isCreatingProject = ref(false)
-const newProjectName = ref('')
-const projectEditingId = ref<string | null>(null)
-const projectEditingName = ref('')
-const projectDeletingId = ref<string | null>(null)
+
+// ✅ TODO 2 已完成: 项目管理状态已迁移到 ProjectManager 组件
+// isCreatingProject, newProjectName, projectEditingId, projectEditingName, projectDeletingId, newProjectInputRef
+
+// 🟨 菜单系统状态 - TODO 3: 迁移到 useContextMenu composable
 const hoverMenuId = ref<string | null>(null)
 const hoverOpenTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const hoverCloseTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+
+// 🟨 子菜单系统状态 - TODO 3: 迁移到 useProjectAssignmentMenu composable
 const hoverProjectMenuId = ref<string | null>(null)
 const hoverProjectOpenTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const hoverProjectCloseTimer = ref<ReturnType<typeof setTimeout> | null>(null)
-const newProjectInputRef = ref<HTMLInputElement | null>(null)
 
-type Placement =
-  | 'right-start' | 'right-end'
-  | 'left-start' | 'left-end'
-  | 'bottom-start' | 'bottom-end'
-  | 'top-start' | 'top-end'
-
-// ========== 菜单状态管理 ==========
-// ⚠️ 重要：主菜单和子菜单都必须 Teleport 到 body 并使用 fixed 定位
-// 原因：避免被父容器的 overflow 裁剪，确保始终浮在最上层
-// 参考文档：docs/SUBMENU_TELEPORT_FIX.md
-
+/**
+ * ========================================
+ * TODO 3: 菜单定位系统状态管理
+ * ========================================
+ * 
+ * 重要说明:
+ *   主菜单和子菜单都必须 Teleport 到 body 并使用 fixed 定位
+ *   原因: 避免被父容器的 overflow 裁剪，确保始终浮在最上层
+ *   参考文档: docs/SUBMENU_TELEPORT_FIX.md
+ * 
+ * 重构后:
+ *   - 提取到 useContextMenu composable
+ *   - 返回 { menuRef, menuStyle, openMenu, closeMenu, ... }
+ *   - 父组件通过 provide/inject 共享菜单实例
+ * ========================================
+ */
 // 主菜单状态
 const contextMenuRef = ref<HTMLElement | null>(null)
 const activeAnchorEl = ref<HTMLElement | null>(null)
@@ -211,69 +340,7 @@ const registerDprMediaQuery = () => {
   }
 }
 
-// 格式化模型名称显示
-const formatModelName = (modelName: string) => {
-  const match = modelName.match(/gemini-[\d.]+-[\w]+/)
-  if (match) {
-    return match[0]
-  }
-  const parts = modelName.split('/')
-  return parts[parts.length - 1]
-}
-
-const defaultPlacements: Placement[] = ['right-start', 'right-end', 'left-start', 'bottom-start', 'top-start']
-
-const computeMenuPosition = (anchorRect: DOMRect, menuW: number, menuH: number, prefer: Placement[] = defaultPlacements) => {
-  const PADDING = 8
-  const viewportWidth = window.innerWidth
-  const viewportHeight = window.innerHeight
-
-  const placements: Record<Placement, () => { x: number; y: number; origin: string }> = {
-    'right-start': () => ({ x: anchorRect.right + PADDING, y: anchorRect.top, origin: 'top left' }),
-    'right-end': () => ({ x: anchorRect.right + PADDING, y: anchorRect.bottom - menuH, origin: 'bottom left' }),
-    'left-start': () => ({ x: anchorRect.left - PADDING - menuW, y: anchorRect.top, origin: 'top right' }),
-    'left-end': () => ({ x: anchorRect.left - PADDING - menuW, y: anchorRect.bottom - menuH, origin: 'bottom right' }),
-    'bottom-start': () => ({ x: anchorRect.left, y: anchorRect.bottom + PADDING, origin: 'top left' }),
-    'bottom-end': () => ({ x: anchorRect.right - menuW, y: anchorRect.bottom + PADDING, origin: 'top right' }),
-    'top-start': () => ({ x: anchorRect.left, y: anchorRect.top - PADDING - menuH, origin: 'bottom left' }),
-    'top-end': () => ({ x: anchorRect.right - menuW, y: anchorRect.top - PADDING - menuH, origin: 'bottom right' })
-  }
-
-  const maxWidth = Math.max(160, viewportWidth - PADDING * 2)
-  const maxHeight = Math.max(120, viewportHeight - PADDING * 2)
-
-  for (const placement of prefer) {
-    const resolver = placements[placement]
-    if (!resolver) {
-      continue
-    }
-    let { x, y, origin } = resolver()
-
-    const maxX = Math.max(PADDING, viewportWidth - PADDING - menuW)
-    const maxY = Math.max(PADDING, viewportHeight - PADDING - menuH)
-
-    x = Math.min(Math.max(PADDING, x), maxX)
-    y = Math.min(Math.max(PADDING, y), maxY)
-
-    const overflow =
-      x + menuW > viewportWidth - PADDING ||
-      x < PADDING ||
-      y + menuH > viewportHeight - PADDING ||
-      y < PADDING
-
-    if (!overflow) {
-      return { x, y, origin, maxW: maxWidth, maxH: maxHeight }
-    }
-  }
-
-  return {
-    x: PADDING,
-    y: PADDING,
-    origin: 'top left',
-    maxW: maxWidth,
-    maxH: maxHeight
-  }
-}
+// ✅ TODO 1.2 已完成: computeMenuPosition 已移至 useMenuPositioning composable
 
 const updateContextMenuPosition = (anchorRect?: DOMRect | null) => {
   if (!hoverMenuId.value) {
@@ -331,7 +398,34 @@ const openContextMenu = (conversationId: string, anchor: HTMLElement) => {
   })
 }
 
-// ⚠️ 关闭菜单时必须同步关闭子菜单，并清理所有锚点引用
+/**
+ * ========================================
+ * 🔴 高风险区域 - TODO 3: 菜单系统级联关闭逻辑
+ * ========================================
+ * 
+ * 当前问题:
+ *   1. 主菜单 (hoverMenuId) 和子菜单 (hoverProjectMenuId) 状态强耦合
+ *   2. 必须手动同步清理 5 个相关状态变量
+ *   3. 如果清理顺序错误，可能导致 Teleport 的 DOM 残留
+ * 
+ * 重构策略:
+ *   1. 提取到 useContextMenu composable，使用状态机管理:
+ *      enum MenuState { Closed, MainMenuOpen, SubMenuOpen }
+ *   2. 关闭顺序必须严格执行:
+ *      Step 1: hoverProjectMenuId = null (关闭子菜单)
+ *      Step 2: 等待 nextTick() (确保 Teleport 卸载)
+ *      Step 3: projectMenuAnchorEl = null (清理子菜单锚点)
+ *      Step 4: hoverMenuId = null (关闭主菜单)
+ *      Step 5: activeAnchorEl = null (清理主菜单锚点)
+ *   3. 使用 onScopeDispose 确保所有 ResizeObserver 被 disconnect
+ *   4. 所有定时器 (6 个) 必须在关闭时清理
+ * 
+ * 测试要求:
+ *   - 打开子菜单后点击外部，验证两个菜单都关闭且无 DOM 残留
+ *   - 快速打开/关闭菜单 20 次，检查内存泄漏 (Chrome DevTools Memory)
+ *   - 验证 ResizeObserver 正确 disconnect (控制台无警告)
+ * ========================================
+ */
 const closeContextMenu = () => {
   if (!hoverMenuId.value) {
     hoverProjectMenuId.value = null
@@ -344,8 +438,23 @@ const closeContextMenu = () => {
   projectMenuAnchorEl.value = null
 }
 
-// ⚠️ 全局点击检测：必须同时检查主菜单和子菜单的 DOM 引用
-// 因为子菜单独立 Teleport 到 body，不在主菜单的 DOM 树内
+/**
+ * ========================================
+ * TODO 3 相关: 全局点击检测跨组件逻辑
+ * ========================================
+ * 
+ * 当前实现:
+ *   必须同时检查主菜单和子菜单的 DOM 引用，因为子菜单通过 Teleport
+ *   独立渲染到 body，不在主菜单的 DOM 树内
+ * 
+ * 重构后:
+ *   1. 将此逻辑移入 useContextMenu composable
+ *   2. 使用 provide/inject 共享菜单 ref:
+ *      provide('contextMenuRefs', { mainMenuRef, subMenuRef })
+ *   3. 子组件通过 inject 获取并在本地添加点击检测
+ *   4. 考虑使用 vOnClickOutside (@vueuse/core) 替代手动实现
+ * ========================================
+ */
 const handleGlobalPointerDown = (event: PointerEvent) => {
   if (!hoverMenuId.value) {
     return
@@ -385,9 +494,45 @@ const startEdit = (conversation: ConversationRecord) => {
 }
 
 // 保存编辑
-const saveEdit = (conversationId: string) => {
+const saveEdit = async (conversationId: string) => {
   if (editingTitle.value.trim()) {
-    chatStore.renameConversation(conversationId, editingTitle.value)
+    conversationStore.renameConversation(conversationId, editingTitle.value)
+    
+    // 立即保存到 SQLite
+    const conversation = conversationStore.conversationMap.get(conversationId)
+    if (conversation) {
+      try {
+        const { serializeTree } = await import('../stores/branchTreeHelpers')
+        const { sqliteChatPersistence } = await import('../services/chatPersistence')
+        
+        const serializedTree = serializeTree(conversation.tree)
+        const snapshot = {
+          id: conversation.id,
+          title: conversation.title,
+          draft: conversation.draft,
+          tree: serializedTree,
+          model: conversation.model,
+          createdAt: conversation.createdAt,
+          updatedAt: conversation.updatedAt,
+          projectId: conversation.projectId,
+          status: conversation.status,
+          tags: conversation.tags,
+          webSearchEnabled: conversation.webSearch?.enabled ?? false,
+          webSearchLevel: conversation.webSearch?.level ?? 'normal',
+          reasoningPreference: conversation.reasoning ?? { 
+            visibility: 'visible', 
+            effort: 'medium', 
+            maxTokens: null,
+            mode: 'medium'
+          }
+        }
+        
+        await sqliteChatPersistence.saveConversation(snapshot)
+        console.log('✅ 对话重命名已保存到 SQLite:', conversation.title)
+      } catch (error) {
+        console.error('❌ 保存对话重命名失败:', error)
+      }
+    }
   }
   editingId.value = null
   editingTitle.value = ''
@@ -405,8 +550,8 @@ const startDelete = (conversationId: string) => {
 }
 
 // 确认删除
-const confirmDelete = (conversationId: string) => {
-  const success = chatStore.deleteConversation(conversationId)
+const confirmDelete = async (conversationId: string) => {
+  const success = await conversationStore.deleteConversation(conversationId)
   if (!success) {
     console.error('删除失败：该对话可能正在使用中')
   }
@@ -419,18 +564,71 @@ const cancelDelete = () => {
 }
 
 const createConversation = () => {
-  const newId = chatStore.createNewConversation()
-  // ✅ 改进：根据当前筛选视图智能分配项目
+  // 确定当前项目上下文（将 'all' 视为 null，'unassigned' 视为 null）
+  const currentProjectId = 
+    projectFilter.value === 'all' || projectFilter.value === 'unassigned' 
+      ? null 
+      : projectFilter.value
+
+  // 获取该项目下最新的对话（按 createdAt 降序排序）
+  const conversationsInProject = conversationStore.conversations
+    .filter(conv => conv.projectId === currentProjectId)
+    .sort((a, b) => b.createdAt - a.createdAt)
+  
+  const latestConversation = conversationsInProject[0]
+
+  // 获取当前默认的对话创建参数（未来可能从项目配置中获取）
+  const defaultConversationParams = {
+    title: '新对话',
+    model: modelStore.selectedModel || 'auto',
+    webSearchEnabled: false,
+    webSearchLevel: 'normal' as const,
+    // 未来可能包括：预设 prompt、自定义参数等
+  }
+
+  // 检查最新对话的参数是否与当前默认参数相同
+  if (latestConversation) {
+    const tree = latestConversation.tree
+    const hasMessages = tree.branches.size > 0 && 
+      Array.from(tree.branches.values()).some(branch => 
+        branch.versions.some(version => 
+          version.parts && version.parts.length > 0
+        )
+      )
+    
+    // 比较对话参数是否相同
+    const isSameParams = 
+      latestConversation.title === defaultConversationParams.title &&
+      latestConversation.model === defaultConversationParams.model &&
+      latestConversation.webSearch?.enabled === defaultConversationParams.webSearchEnabled &&
+      latestConversation.webSearch?.level === defaultConversationParams.webSearchLevel
+      // 未来添加更多参数比较，如：预设 prompt、reasoning 设置等
+
+    // 如果参数相同且没有消息，直接跳转
+    if (isSameParams && !hasMessages) {
+      conversationStore.openConversationInTab(latestConversation.id)
+      console.log('ℹ️ 已存在相同参数的空白对话，直接跳转:', latestConversation.id)
+      return
+    }
+  }
+
+  // 创建新对话
+  const newConversation = conversationStore.createConversation()
+  const newId = newConversation.id
+  
+  // 根据当前筛选视图智能分配项目
   if (projectFilter.value !== 'all' && projectFilter.value !== 'unassigned') {
     // 在指定项目视图中创建时，自动分配到该项目
-    const success = chatStore.assignConversationToProject(newId, projectFilter.value)
+    const success = projectStore.assignConversationToProject(newId, projectFilter.value)
     if (!success) {
       console.warn('⚠️ 自动分配项目失败，项目可能已被删除')
       projectFilter.value = 'all'
     }
   }
   // 在 "未分配" 或 "全部" 视图中创建时，保持 projectId 为 null
-  chatStore.openConversationInTab(newId)
+  
+  conversationStore.openConversationInTab(newId)
+  console.log('✅ 创建新对话并跳转:', newId)
 }
 
 const handleRename = (conversation: ConversationRecord) => {
@@ -539,53 +737,16 @@ watch(hoverProjectMenuId, async (next) => {
 
 
 
+// ✅ TODO 2 已完成: projectManagerEntries 已迁移到 ProjectManager 组件
 const orderedProjects = computed<ProjectRecord[]>(() => {
-  if (!Array.isArray(chatStore.projects)) {
-    return []
-  }
-  return [...(chatStore.projects as ProjectRecord[])].sort((a, b) => {
-    const aTime = a.updatedAt || a.createdAt || 0
-    const bTime = b.updatedAt || b.createdAt || 0
-    // ✅ 时间相同时，按 ID 排序确保稳定性
-    if (bTime === aTime) {
-      return a.id.localeCompare(b.id)
-    }
-    return bTime - aTime
-  })
-})
-
-const projectManagerEntries = computed<ProjectRecord[]>(() => {
-  const allEntry: ProjectRecord = {
-    id: 'all',
-    name: '全部对话',
-    createdAt: 0,
-    updatedAt: 0,
-    isSystem: true
-  }
-  const unassignedEntry: ProjectRecord = {
-    id: 'unassigned',
-    name: '未分配',
-    createdAt: 0,
-    updatedAt: 0,
-    isSystem: true
-  }
-  return [allEntry, unassignedEntry, ...orderedProjects.value.map(project => ({ ...project }))]
+  return projectStore.orderedProjects as ProjectRecord[]
 })
 
 const projectConversationCounts = computed<Record<string, number>>(() => {
-  const counts: Record<string, number> = { unassigned: 0 }
-  for (const conversation of chatStore.conversations as ConversationRecord[]) {
-    const projectId = conversation.projectId
-    if (projectId) {
-      counts[projectId] = (counts[projectId] || 0) + 1
-    } else {
-      counts.unassigned += 1
-    }
-  }
-  return counts
+  return projectStore.projectConversationCounts
 })
 
-const totalConversationCount = computed(() => (chatStore.conversations as ConversationRecord[]).length)
+const totalConversationCount = computed(() => (conversationStore.conversations as ConversationRecord[]).length)
 
 const getProjectCount = (projectId: string) => {
   if (projectId === 'all') {
@@ -598,118 +759,68 @@ const getProjectLabel = (projectId: string | null | undefined) => {
   if (!projectId) {
     return '未分配'
   }
-  const project = chatStore.getProjectById(projectId)
+  const project = projectStore.getProjectById(projectId)
   return project?.name ?? '未分配'
 }
 
-const conversationMatchesContent = (conversation: ConversationRecord, query: string) => {
-  // 使用全文搜索结果
-  if (contentSearchActive.value) {
-    return contentSearchHits.value.has(conversation.id)
-  }
-  if (!query) {
-    return true
-  }
-  const tree = conversation.tree
-  if (!tree?.currentPath || !Array.isArray(tree.currentPath) || tree.currentPath.length === 0) {
-    return false
-  }
-  const branchesSource = tree.branches as Map<string, any> | Record<string, any> | undefined
-  if (!branchesSource) {
-    return false
-  }
+/**
+ * ========================================
+ * ✅ TODO 1.3 已完成: 搜索逻辑已迁移到 useConversationSearch composable
+ * ========================================
+ * 
+ * 已迁移内容:
+ *   - conversationMatchesContent() - 对话内容匹配算法 (树遍历逻辑)
+ *   - buildSearchScopes() - 搜索范围构建 (标题/内容切换)
+ *   - 全文搜索 watch - 竞态条件处理 (contentSearchRequestId)
+ *   - resetContentSearch() - 重置搜索状态
+ * 
+ * 位置: src/composables/useConversationSearch.ts
+ * 
+ * 优化说明:
+ *   - 搜索状态管理更加内聚
+ *   - 方法可复用于其他组件
+ *   - 便于单元测试和性能优化
+ * ========================================
+ */
 
-  const getBranch = (branchId: string) => {
-    if (branchesSource && typeof (branchesSource as Map<string, any>).get === 'function') {
-      return (branchesSource as Map<string, any>).get(branchId)
-    }
-    return (branchesSource as Record<string, any>)[branchId]
-  }
-
-  for (const branchId of tree.currentPath) {
-    const branch = getBranch(branchId)
-    if (!branch) continue
-    const versions = Array.isArray(branch.versions) ? branch.versions : []
-    const versionIndex = typeof branch.currentVersionIndex === 'number' ? branch.currentVersionIndex : 0
-    const currentVersion = versions[versionIndex] || versions[0]
-    if (!currentVersion || !Array.isArray(currentVersion.parts)) continue
-    for (const part of currentVersion.parts) {
-      if (part?.type === 'text' && typeof part.text === 'string' && part.text.toLowerCase().includes(query)) {
-        return true
-      }
-    }
-  }
-  return false
-}
-
-const buildSearchScopes = () => {
-  const scopes = {
-    title: searchInTitle.value,
-    content: searchInContent.value
-  }
-  if (!scopes.title && !scopes.content) {
-    scopes.title = true
-  }
-  return scopes
-}
-
-let contentSearchRequestId = 0
-const resetContentSearch = () => {
-  contentSearchHits.value = new Set()
-  contentSearchMessage.value = ''
-  contentSearchMessageType.value = 'info'
-  contentSearchLoading.value = false
-}
-
-watch(
-  [() => rawSearchQuery.value, searchInContent],
-  async ([query, searchContent]) => {
-    if (!searchContent || !query) {
-      resetContentSearch()
-      return
-    }
-
-    const requestId = ++contentSearchRequestId
-    contentSearchLoading.value = true
-    contentSearchMessage.value = ''
-    contentSearchMessageType.value = 'info'
-
-    try {
-      const results = await runFulltextSearch(query, { limit: 100, highlight: false })
-      if (requestId !== contentSearchRequestId) {
-        return
-      }
-      contentSearchHits.value = new Set(results.map(result => result.convoId))
-      contentSearchMessageType.value = 'info'
-      contentSearchMessage.value = results.length === 0 ? '未找到匹配内容' : `命中 ${results.length} 条内容`
-    } catch (error) {
-      if (requestId !== contentSearchRequestId) {
-        return
-      }
-      contentSearchHits.value = new Set()
-      if (error instanceof SearchDslError) {
-        contentSearchMessageType.value = 'warning'
-        contentSearchMessage.value = error.message
-      } else {
-        contentSearchMessageType.value = 'error'
-        contentSearchMessage.value = '全文搜索失败，请稍后重试'
-        console.error('全文搜索失败:', error)
-      }
-    } finally {
-      if (requestId === contentSearchRequestId) {
-        contentSearchLoading.value = false
-      }
-    }
-  },
-  { immediate: true }
-)
-
+/**
+ * ========================================
+ * 🟡 中风险区域 - TODO 8: 过滤计算性能优化
+ * ========================================
+ * 
+ * 当前问题:
+ *   1. 依赖 6 个响应式源，任何变化都触发全量重计算
+ *   2. 嵌套 3 层过滤逻辑 + 排序，时间复杂度 O(n log n)
+ *   3. conversationMatchesContent 每次都遍历树结构
+ *   4. 1000+ 对话时可能出现明显卡顿
+ * 
+ * 优化策略:
+ *   1. 项目筛选使用 Set 替代多次 !== 比较:
+ *      const projectIds = projectFilter === 'all' ? null : 
+ *        projectFilter === 'unassigned' ? new Set([undefined, null]) :
+ *        new Set([projectFilter])
+ *   2. 搜索匹配早期返回，减少不必要的 conversationMatchesContent 调用
+ *   3. 考虑使用虚拟滚动 (vue-virtual-scroller)，只渲染可见项
+ *   4. 分页或懒加载 (100 条/页)
+ *   5. 将排序移到 store 中，避免每次 computed 都排序
+ * 
+ * 性能目标:
+ *   - 100 条对话: < 10ms
+ *   - 1000 条对话: < 50ms
+ *   - 5000 条对话: < 200ms (with virtual scroll)
+ * 
+ * 重构后位置:
+ *   - 计算逻辑移至 ConversationSidebar 父组件
+ *   - 通过 props 传递给 ConversationListItems
+ *   - 添加 performance.mark 监控计算时间
+ * ========================================
+ */
 const filteredConversations = computed<ConversationRecord[]>(() => {
-  const conversations = chatStore.conversations as ConversationRecord[]
+  const conversations = conversationStore.conversations as ConversationRecord[]
   const query = normalizedQuery.value
   const scopes = buildSearchScopes()
 
-  return conversations.filter(conversation => {
+  const filtered = conversations.filter(conversation => {
     if (projectFilter.value === 'unassigned' && conversation.projectId) {
       return false
     }
@@ -731,6 +842,9 @@ const filteredConversations = computed<ConversationRecord[]>(() => {
 
     return false
   })
+
+  // 按创建时间降序排序，最新的对话显示在最前面
+  return filtered.sort((a, b) => b.createdAt - a.createdAt)
 })
 
 watch(filteredConversations, (list) => {
@@ -742,50 +856,41 @@ watch(filteredConversations, (list) => {
   }
 })
 
-const handleCreateProject = () => {
-  const createdId = chatStore.createProject(newProjectName.value)
-  if (createdId) {
-    // ✅ 无论是新建还是跳转到已存在项目，都切换筛选器
-    projectFilter.value = createdId
-    newProjectName.value = ''
-    isCreatingProject.value = false
-    newProjectInputRef.value = null
-  }
-}
-
-const isProjectSelected = (projectId: string) => projectFilter.value === projectId
-
-const selectProject = (projectId: string) => {
-  projectFilter.value = projectId
-}
-
-const toggleProjectCreation = () => {
-  if (isCreatingProject.value) {
-    newProjectName.value = ''
-    nextTick(() => {
-      newProjectInputRef.value = null
-    })
-  }
-  isCreatingProject.value = !isCreatingProject.value
-  if (isCreatingProject.value) {
-    nextTick(() => {
-      newProjectInputRef.value?.focus()
-    })
-  }
-}
-
-const startProjectEdit = (project: ProjectRecord) => {
-  if (project.isSystem) {
-    return
-  }
-  projectEditingId.value = project.id
-  projectEditingName.value = project.name
-}
-
+/**
+ * ========================================
+ * 🔴 高风险区域 - TODO 5: 重构 projectFilter 双向同步逻辑
+ * ========================================
+ * 
+ * 当前问题:
+ *   1. 使用全局标志位 projectSyncReady 防止循环触发，代码脆弱
+ *   2. 双向 watch 可能在极端情况下导致无限循环
+ *   3. projectStore.activeProjectId 和 projectFilter 存在状态不一致风险
+ * 
+ * 重构策略:
+ *   1. 移除 projectSyncReady 标志位
+ *   2. 改为单向数据流:
+ *      projectStore.activeProjectId (Source of Truth)
+ *        ↓
+ *      ConversationSidebar.projectFilter (父组件状态)
+ *        ↓
+ *      ProjectManager props (子组件只读)
+ *        ↓
+ *      emit('update:projectFilter', value)
+ *        ↓
+ *      父组件调用 projectStore.setActiveProject()
+ *   3. 使用 flush: 'post' 避免同步触发
+ *   4. 添加 100ms 防抖保护
+ * 
+ * 测试要求:
+ *   - 快速点击切换项目 10 次，验证状态同步正确
+ *   - 验证浏览器刷新后项目筛选器状态恢复
+ *   - 验证删除当前选中项目后自动切换到 'all'
+ * ========================================
+ */
 let projectSyncReady = false
 
 watch(
-  () => chatStore.activeProjectId,
+  () => projectStore.activeProjectId,
   (next) => {
     projectSyncReady = true
     const target = next ?? 'all'
@@ -801,56 +906,56 @@ watch(projectFilter, (next) => {
     return
   }
   if (next === 'all') {
-    chatStore.setActiveProject(null)
+    projectStore.setActiveProject(null)
     return
   }
-  chatStore.setActiveProject(next)
+  projectStore.setActiveProject(next)
 })
 
-const cancelProjectEdit = () => {
-  projectEditingId.value = null
-  projectEditingName.value = ''
+/**
+ * ========================================
+ * TODO 2: ProjectManager 组件事件处理器
+ * ========================================
+ */
+
+/**
+ * 处理项目创建事件
+ * 
+ * @param name - 项目名称
+ */
+const handleProjectCreatedFromManager = async (name: string) => {
+  const createdId = await projectStore.createProject(name)
+  if (createdId) {
+    // 切换到新创建的项目
+    projectFilter.value = createdId
+  }
 }
 
-const confirmProjectRename = (projectId: string) => {
-  if (projectId === 'unassigned') {
-    return
-  }
-  const result = chatStore.renameProject(projectId, projectEditingName.value)
-  if (result === true) {
-    // ✅ 重命名成功
-    projectEditingId.value = null
-    projectEditingName.value = ''
-  } else if (typeof result === 'string') {
-    // ✅ 名称重复，跳转到已存在的项目
+/**
+ * 处理项目重命名事件
+ * 
+ * @param projectId - 项目 ID
+ * @param newName - 新名称
+ */
+const handleProjectRenamedFromManager = async (projectId: string, newName: string) => {
+  const result = await projectStore.renameProject(projectId, newName)
+  if (typeof result === 'string') {
+    // 名称重复，跳转到已存在的项目
     projectFilter.value = result
-    projectEditingId.value = null
-    projectEditingName.value = ''
   }
-  // result === false 时，名称为空或项目不存在，不做处理
 }
 
-const requestProjectDelete = (projectId: string) => {
-  if (projectId === 'unassigned') {
-    return
-  }
-  projectDeletingId.value = projectId
-}
-
-const cancelProjectDelete = () => {
-  projectDeletingId.value = null
-}
-
-const confirmProjectDelete = (projectId: string) => {
-  if (projectId === 'unassigned') {
-    return
-  }
-  const success = chatStore.deleteProject(projectId)
-  // ✅ 删除项目后，切换到 "all" 而非 "unassigned"
+/**
+ * 处理项目删除事件
+ * 
+ * @param projectId - 项目 ID
+ */
+const handleProjectDeletedFromManager = async (projectId: string) => {
+  const success = await projectStore.deleteProject(projectId)
   if (success && projectFilter.value === projectId) {
+    // 删除当前选中的项目后，切换到 "all"
     projectFilter.value = 'all'
   }
-  projectDeletingId.value = null
 }
 
 const openProjectMenu = (conversationId: string) => {
@@ -910,8 +1015,37 @@ const cancelPendingProjectMenuClose = () => {
   cancelPendingMenuClose()
 }
 
+/**
+ * ========================================
+ * 🔴 高风险区域 - TODO 6: 跨域操作方法
+ * ========================================
+ * 
+ * 当前问题:
+ *   1. 同时读取 conversationStore 和写入 projectStore (跨域操作)
+ *   2. 调用 closeContextMenu() 影响菜单状态 (第三个域)
+ *   3. 状态更新顺序不明确，可能导致 UI 闪烁
+ * 
+ * 重构策略:
+ *   1. 将此方法移至 ConversationSidebar 父组件
+ *   2. 通过 provide/inject 向子菜单组件提供回调:
+ *      provide('assignProjectCallback', async (convId, projId) => { ... })
+ *   3. 严格执行更新顺序:
+ *      Step 1: hoverProjectMenuId.value = null (关闭子菜单)
+ *      Step 2: await nextTick() (等待 DOM 更新)
+ *      Step 3: projectStore.assignConversationToProject() (更新数据)
+ *      Step 4: await nextTick() (等待 store 更新)
+ *      Step 5: closeContextMenu() (关闭主菜单)
+ *   4. 添加错误处理和 Loading 状态
+ * 
+ * 测试要求:
+ *   - 分配项目后验证菜单正确关闭，无 Teleport DOM 残留
+ *   - 验证对话卡片上的项目标签立即更新
+ *   - 验证项目管理区域的对话计数实时更新
+ *   - 测试分配失败场景 (如项目被删除)，菜单应保持打开并显示错误
+ * ========================================
+ */
 const changeConversationProject = (conversationId: string, projectId: string | null) => {
-  const conversations = chatStore.conversations as ConversationRecord[]
+  const conversations = conversationStore.conversations as ConversationRecord[]
   const conversation = conversations.find(item => item.id === conversationId)
   if (!conversation) {
     return
@@ -925,9 +1059,9 @@ const changeConversationProject = (conversationId: string, projectId: string | n
   }
 
   if (!projectId) {
-    chatStore.removeConversationFromProject(conversationId)
+    projectStore.removeConversationFromProject(conversationId)
   } else {
-    const success = chatStore.assignConversationToProject(conversationId, projectId)
+    const success = projectStore.assignConversationToProject(conversationId, projectId)
     if (!success) {
       return
     }
@@ -947,7 +1081,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 
 watch(
   () => {
-    const list = Array.isArray(chatStore.projects) ? (chatStore.projects as ProjectRecord[]) : []
+    const list = projectStore.projects as ProjectRecord[]
     return list.map(project => project.id)
   },
   (projectIds) => {
@@ -1049,97 +1183,14 @@ onUnmounted(() => {
         <span>{{ contentSearchMessage || '正在全文搜索…' }}</span>
       </div>
 
-      <div class="border-t border-gray-200 pt-3 space-y-2">
-        <div class="flex items-center justify-between">
-          <span class="text-sm font-medium text-gray-700">项目管理</span>
-          <button
-            class="text-xs text-blue-500 hover:text-blue-600"
-            @click="toggleProjectCreation"
-          >
-            {{ isCreatingProject ? '取消' : '新建项目' }}
-          </button>
-        </div>
-
-        <div v-if="isCreatingProject" class="flex gap-2">
-          <input
-            v-model="newProjectName"
-            type="text"
-            placeholder="输入项目名称"
-            class="flex-1 px-3 py-1 text-sm border border-gray-300 rounded"
-            ref="newProjectInputRef"
-          />
-          <button
-            class="px-3 py-1 text-sm text-white bg-blue-500 rounded hover:bg-blue-600"
-            @click="handleCreateProject"
-            :disabled="!newProjectName.trim()"
-          >
-            创建
-          </button>
-        </div>
-
-        <div v-if="orderedProjects.length === 0 && !isCreatingProject" class="text-xs text-gray-500">
-          暂无项目。可点击“新建项目”开始分类管理。
-        </div>
-
-        <div
-          v-for="project in projectManagerEntries"
-          :key="project.id"
-          class="flex items-center gap-2 text-sm rounded-lg px-2 py-1 transition-colors"
-          :class="[
-            isProjectSelected(project.id) ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100 text-gray-700',
-            projectEditingId === project.id ? 'cursor-default' : 'cursor-pointer'
-          ]"
-          @click="projectEditingId !== project.id && selectProject(project.id)"
-        >
-          <div class="flex-1">
-            <div v-if="project.isSystem || projectEditingId !== project.id" class="flex items-center justify-between">
-              <span class="font-medium text-gray-700">{{ project.name }}</span>
-              <span class="text-xs text-gray-500">
-                包含 {{ getProjectCount(project.id) }} 个对话
-              </span>
-            </div>
-            <div v-else class="flex gap-2">
-              <input
-                v-model="projectEditingName"
-                type="text"
-                class="flex-1 px-2 py-1 border border-gray-300 rounded"
-              />
-              <button class="px-2 py-1 text-xs text-green-600" @click.stop="confirmProjectRename(project.id)">
-                保存
-              </button>
-              <button class="px-2 py-1 text-xs text-gray-500" @click.stop="cancelProjectEdit">
-                取消
-              </button>
-            </div>
-          </div>
-          <div class="flex items-center gap-1">
-            <button
-              v-if="!project.isSystem"
-              class="text-xs text-blue-500 hover:text-blue-600"
-              @click.stop="startProjectEdit(project)"
-            >
-              重命名
-            </button>
-            <button
-              v-if="!project.isSystem"
-              class="text-xs text-red-500 hover:text-red-600"
-              @click.stop="requestProjectDelete(project.id)"
-            >
-              删除
-            </button>
-          </div>
-        </div>
-
-        <div v-if="projectDeletingId" class="text-xs text-red-600 bg-red-50 border border-red-100 rounded p-2">
-          <div class="flex items-center justify-between">
-            <span>确认删除该项目？该项目下的对话将标记为未分配。</span>
-            <div class="flex gap-2">
-              <button class="text-blue-500" @click="cancelProjectDelete">取消</button>
-              <button class="text-red-600" @click="projectDeletingId && confirmProjectDelete(projectDeletingId)">确认</button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- ✅ TODO 2 已完成: 使用 ProjectManager 组件 -->
+      <ProjectManager
+        :projects="orderedProjects"
+        v-model="projectFilter"
+        @project-created="handleProjectCreatedFromManager"
+        @project-renamed="handleProjectRenamedFromManager"
+        @project-deleted="handleProjectDeletedFromManager"
+      />
     </div>
 
     <!-- 对话列表 -->
@@ -1152,7 +1203,7 @@ onUnmounted(() => {
         <div
           :class="[
             'rounded-lg p-3 cursor-pointer transition-all',
-            chatStore.activeTabId === conversation.id
+            conversationStore.activeTabId === conversation.id
               ? 'bg-blue-500 text-white shadow-md'
               : 'bg-white hover:bg-gray-50 text-gray-700'
           ]"
@@ -1160,18 +1211,46 @@ onUnmounted(() => {
           <!-- 正常显示模式 -->
           <div v-if="editingId !== conversation.id && deletingId !== conversation.id" class="flex items-center justify-between">
             <div
-              @click="chatStore.openConversationInTab(conversation.id)"
+              @click="conversationStore.openConversationInTab(conversation.id)"
               class="flex-1 min-w-0"
             >
               <div class="font-medium flex items-center gap-2">
                 <div class="flex flex-col flex-1 min-w-0">
                   <span class="truncate">{{ conversation.title }}</span>
-                  <span class="text-[11px] text-blue-100" v-if="conversation.projectId">
-                    {{ getProjectLabel(conversation.projectId) }}
-                  </span>
-                  <span class="text-[11px] text-gray-400" v-else>
-                    未分配
-                  </span>
+                  <div class="flex items-center gap-2 text-[11px]">
+                    <!-- 状态标签 -->
+                    <span
+                      :class="[
+                        'px-1.5 py-0.5 rounded',
+                        conversationStore.activeTabId === conversation.id
+                          ? getStatusBadgeClassActive(conversation.status)
+                          : getStatusBadgeClass(conversation.status)
+                      ]"
+                    >
+                      {{ getStatusLabel(conversation.status) }}
+                    </span>
+                    <!-- 项目标签 -->
+                    <span
+                      :class="[
+                        conversationStore.activeTabId === conversation.id
+                          ? 'text-blue-100'
+                          : 'text-gray-500'
+                      ]"
+                      v-if="conversation.projectId"
+                    >
+                      {{ getProjectLabel(conversation.projectId) }}
+                    </span>
+                    <span
+                      :class="[
+                        conversationStore.activeTabId === conversation.id
+                          ? 'text-blue-200'
+                          : 'text-gray-400'
+                      ]"
+                      v-else
+                    >
+                      未分配
+                    </span>
+                  </div>
                 </div>
 
                 
@@ -1181,7 +1260,7 @@ onUnmounted(() => {
                   v-if="conversation.generationStatus === 'sending'"
                   class="w-4 h-4 flex-shrink-0 animate-spin"
                   :class="[
-                    chatStore.activeTabId === conversation.id
+                    conversationStore.activeTabId === conversation.id
                       ? 'text-white'
                       : 'text-blue-500'
                   ]"
@@ -1198,7 +1277,7 @@ onUnmounted(() => {
                   v-else-if="conversation.generationStatus === 'receiving'"
                   class="w-4 h-4 flex-shrink-0 animate-pulse"
                   :class="[
-                    chatStore.activeTabId === conversation.id
+                    conversationStore.activeTabId === conversation.id
                       ? 'text-white'
                       : 'text-green-500'
                   ]"
@@ -1214,7 +1293,7 @@ onUnmounted(() => {
                   v-else-if="conversation.hasError"
                   class="w-4 h-4 flex-shrink-0"
                   :class="[
-                    chatStore.activeTabId === conversation.id
+                    conversationStore.activeTabId === conversation.id
                       ? 'text-yellow-300'
                       : 'text-yellow-500'
                   ]"
@@ -1230,7 +1309,7 @@ onUnmounted(() => {
                   v-else-if="conversation.generationStatus === 'idle' && (conversation.tree?.currentPath?.length ?? 0) > 0 && !conversation.hasError"
                   class="w-4 h-4 flex-shrink-0"
                   :class="[
-                    chatStore.activeTabId === conversation.id
+                    conversationStore.activeTabId === conversation.id
                       ? 'text-white'
                       : 'text-green-500'
                   ]"
@@ -1246,7 +1325,7 @@ onUnmounted(() => {
               <div
                 :class="[
                   'text-xs mt-1 flex items-center gap-1',
-                  chatStore.activeTabId === conversation.id
+                  conversationStore.activeTabId === conversation.id
                     ? 'text-blue-100'
                     : 'text-gray-500'
                 ]"
@@ -1270,7 +1349,7 @@ onUnmounted(() => {
                   @click.stop
                   :class="[
                     'p-1.5 rounded hover:bg-opacity-20 transition-colors flex items-center justify-center',
-                    chatStore.activeTabId === conversation.id ? 'text-white hover:bg-white/10' : 'text-gray-600 hover:bg-gray-200'
+                    conversationStore.activeTabId === conversation.id ? 'text-white hover:bg-white/10' : 'text-gray-600 hover:bg-gray-200'
                   ]"
                   title="更多操作"
                 >
@@ -1296,8 +1375,8 @@ onUnmounted(() => {
                     </button>
                     <button
                       class="w-full text-left px-4 py-2 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                      :disabled="conversation.generationStatus !== 'idle'"
-                      @click="conversation.generationStatus === 'idle' && handleDelete(conversation)"
+                      :disabled="isConversationGenerating(conversation)"
+                      @click="!isConversationGenerating(conversation) && handleDelete(conversation)"
                     >
                       删除
                     </button>
@@ -1391,7 +1470,7 @@ onUnmounted(() => {
           <!-- 删除确认模式 -->
           <div v-else-if="deletingId === conversation.id" class="flex items-center justify-between">
             <div class="flex-1 text-sm font-medium">
-              <span :class="chatStore.activeTabId === conversation.id ? 'text-white' : 'text-gray-700'">
+              <span :class="conversationStore.activeTabId === conversation.id ? 'text-white' : 'text-gray-700'">
                 确定删除？
               </span>
             </div>
@@ -1400,7 +1479,7 @@ onUnmounted(() => {
                 @click.stop="confirmDelete(conversation.id)"
                 class="p-1.5 rounded transition-colors"
                 :class="[
-                  chatStore.activeTabId === conversation.id
+                  conversationStore.activeTabId === conversation.id
                     ? 'text-white hover:bg-green-500 hover:bg-opacity-20'
                     : 'text-green-600 hover:bg-green-100'
                 ]"
@@ -1414,7 +1493,7 @@ onUnmounted(() => {
                 @click.stop="cancelDelete"
                 class="p-1.5 rounded transition-colors"
                 :class="[
-                  chatStore.activeTabId === conversation.id
+                  conversationStore.activeTabId === conversation.id
                     ? 'text-white hover:bg-red-500 hover:bg-opacity-20'
                     : 'text-red-600 hover:bg-red-100'
                 ]"
@@ -1428,17 +1507,17 @@ onUnmounted(() => {
           </div>
 
           <!-- 编辑模式 -->
-          <div v-else class="flex items-center gap-2">
+          <div v-else class="flex items-center gap-2 w-full">
             <input
               v-model="editingTitle"
               @keyup.enter="saveEdit(conversation.id)"
               @keyup.esc="cancelEdit"
-              class="flex-1 px-2 py-1 bg-white text-gray-900 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              class="flex-1 min-w-0 px-2 py-1 bg-white text-gray-900 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               autofocus
             />
             <button
               @click="saveEdit(conversation.id)"
-              class="p-1 text-green-600 hover:bg-green-100 rounded"
+              class="flex-shrink-0 p-1 text-green-600 hover:bg-green-100 rounded"
               title="保存"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1447,7 +1526,7 @@ onUnmounted(() => {
             </button>
             <button
               @click="cancelEdit"
-              class="p-1 text-gray-600 hover:bg-gray-200 rounded"
+              class="flex-shrink-0 p-1 text-gray-600 hover:bg-gray-200 rounded"
               title="取消"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1459,7 +1538,7 @@ onUnmounted(() => {
       </div>
 
       <!-- 空状态 -->
-      <div v-if="chatStore.conversations.length === 0" class="text-center text-gray-500 mt-12 px-4">
+      <div v-if="conversationStore.conversations.length === 0" class="text-center text-gray-500 mt-12 px-4">
         <svg class="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
         </svg>
@@ -1470,3 +1549,5 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+

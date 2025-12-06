@@ -1,7 +1,12 @@
 <template>
   <div class="favorite-model-selector">
     <!-- 收藏模型快速选择器 -->
-    <div v-if="favoriteModels.length > 0" class="favorites-list">
+    <div 
+      v-if="favoriteModels.length > 0" 
+      ref="favoritesListContainer" 
+      class="favorites-list scrollbar-auto-hide"
+      @scroll="handleFavoritesScroll"
+    >
       <button
         v-for="model in favoriteModels"
         :key="model.id"
@@ -16,6 +21,7 @@
           <!-- 模型名称滚动容器 -->
           <div 
             class="model-name-container"
+            :ref="el => setNameRef(model.id, el)"
             :class="{ 'scrolling': scrollingModels[model.id] }"
           >
             <!-- 
@@ -32,12 +38,6 @@
             <span 
               v-if="scrollingModels[model.id]"
               class="model-name-belt"
-              :style="{
-                animationName: scrollingModels[model.id].animName,      // 动态生成的 @keyframes 名称
-                animationDuration: `${scrollingModels[model.id].T}ms`,  // 动画周期（ms）
-                animationTimingFunction: 'linear',                       // 线性时间函数（关键帧内部控制速度）
-                animationIterationCount: 'infinite'                      // 无限循环
-              }"
             >
               <!-- 第一份文本：总是显示 -->
               <span class="belt-text">{{ formatModelName(model.name) }}</span>
@@ -62,7 +62,6 @@
             -->
             <span 
               v-if="!scrollingModels[model.id]" 
-              :ref="el => setNameRef(model.id, el)"
               class="model-name-static"
             >
               <!-- 添加隐藏的 .belt-text 用于宽度测量 -->
@@ -88,29 +87,68 @@
 
 <script setup>
 import { computed, ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { useChatStore } from '../stores/chatStore'
+import { useConversationStore } from '../stores/conversation'
+import { useModelStore } from '../stores/model'
 
-const chatStore = useChatStore()
+const conversationStore = useConversationStore()
+const modelStore = useModelStore()
+
+const props = defineProps({
+  conversationId: {
+    type: String,
+    default: null
+  }
+})
 
 // 从 store 获取收藏模型列表
-const favoriteModels = computed(() => chatStore.favoriteModels)
+const favoriteModels = computed(() => modelStore.favoriteModels)
 
-// 存储每个模型名称的 DOM 引用
-// key: modelId, value: .model-name-belt 元素
+// 存储每个模型名称容器的 DOM 引用
+// key: modelId, value: .model-name-container 元素
 const nameRefs = ref({})
 
-// 存储需要滚动的模型 ID 及其动画参数
-// key: modelId, value: { C, W, G, L, T, animName }
-// C: 文字区长度（px）
-// W: 窗口可用宽度（px）
-// G: 空白区长度（px）
-// L: 总环长 = C + G（px）
-// T: 动画总周期（ms）
-// animName: CSS 动画名称
+// 需要滚动的模型 ID 及动画参数
+// key: modelId, value: { C, W, G, L, T, pDelay, pRead }
+// C: 文本长度（px）
+// W: 容器宽度（px）
+// G: 间隔宽度（px）
+// L: 环带总长（px）
+// T: 动画周期（ms）
+// pDelay/pRead: 关键帧位置（百分比）
 const scrollingModels = ref({})
 
+// 管理每个模型名称带的 Web Animations 句柄
+const beltAnimations = new Map()
+
+// 滚动容器引用和定时器
+const favoritesListContainer = ref(null)
+let favoritesScrollTimer = null
+let animationHealthTimer = null
+
+const isElementActuallyVisible = (el) => {
+  if (!el) return false
+  if (el.offsetParent === null) return false
+  const style = window.getComputedStyle(el)
+  if (!style) return false
+  if (style.visibility === 'hidden' || style.display === 'none' || parseFloat(style.opacity) === 0) {
+    return false
+  }
+  if (el.getClientRects().length === 0) return false
+  return true
+}
+
+// 滚动事件处理
+const handleFavoritesScroll = () => {
+  if (!favoritesListContainer.value) return
+  favoritesListContainer.value.classList.add('scrolling')
+  if (favoritesScrollTimer !== null) clearTimeout(favoritesScrollTimer)
+  favoritesScrollTimer = setTimeout(() => {
+    favoritesListContainer.value?.classList.remove('scrolling')
+  }, 1000)
+}
+
 /**
- * 设置模型名称元素的 DOM 引用
+ * 设置模型名称容器的 DOM 引用
  * 
  * 这是 Vue 的 ref 回调函数，在模板中通过 :ref="el => setNameRef(model.id, el)" 调用
  * 每当组件渲染或更新时，Vue 会为每个元素调用此函数
@@ -121,296 +159,192 @@ const scrollingModels = ref({})
 const setNameRef = (modelId, el) => {
   if (el) {
     nameRefs.value[modelId] = el
+  } else {
+    delete nameRefs.value[modelId]
   }
 }
 
 /**
- * 检测哪些模型名称需要滚动播放
- * 
- * =====================
- * 核心功能说明
- * =====================
- * 
- * 1. 遍历所有收藏模型的名称元素
- * 2. 测量文本实际宽度（C）和容器可用宽度（W）
- * 3. 如果 C > W，说明文本溢出，需要滚动
- * 4. 为溢出的文本生成四阶段 CSS 动画
- * 5. 使用"环带"结构实现无缝循环滚动
- * 
- * =====================
- * 环带结构原理
- * =====================
- * 
- * 结构：[文本A] + [空白区G] + [文本A副本]
- * 
- * 总长度 L = C + G，其中：
- *   C = 文字区长度（单份文本的宽度）
- *   G = 空白区长度（设计为 max(40px, 0.5*C)）
- * 
- * 动画从位置 0 滚动到 -(C+G)，然后瞬间跳回 0
- * 由于环带中有两份相同文本，跳跃时视觉上是连续的
- * 
- * =====================
- * 四阶段动画设计
- * =====================
- * 
- * 根据 BELT_SCROLL_IMPLEMENTATION.md 文档要求：
- * 
- * 第1阶段（停顿）：0% → p_delay%
- *   - 位置保持在 0
- *   - 时长 tau0 = 500ms（固定）
- *   - 让用户有时间看清开头
- * 
- * 第2阶段（阅读）：p_delay% → p_read%
- *   - 位置从 0 匀速移动到 -C
- *   - 速度 v1 = 50px/s（可读速度）
- *   - 时长 t_read = C / v1 * 1000（ms）
- * 
- * 第3阶段（压缩）：p_read% → 100%
- *   - 位置从 -C 快速移动到 -(C+G)
- *   - 速度为阅读速度的 4 倍（压缩系数 0.25）
- *   - 时长 tau_gap = 0.25 * t_read
- * 
- * 第4阶段（循环）：100% → 0%
- *   - 瞬间从 -(C+G) 跳回 0
- *   - 由于环带结构，视觉无缝
- * 
- * =====================
- * 数学公式
- * =====================
- * 
- * 设计参数：
- *   v1 = 50 px/s（阅读速度）
- *   tau0 = 500 ms（停顿时间）
- *   compression_ratio = 0.25（压缩系数，即 4 倍速）
- * 
- * 计算公式：
- *   t_read = C / v1 * 1000（ms）
- *   tau_gap = compression_ratio * t_read（ms）
- *   T = tau0 + t_read + tau_gap（总周期，ms）
- *   G = max(40, 0.5 * C)（空白区长度，px）
- *   L = C + G（环带总长，px）
- * 
- * 关键帧百分比：
- *   p_delay = tau0 / T * 100（%）
- *   p_read = (tau0 + t_read) / T * 100（%）
- * 
- * @async
- * @returns {Promise<void>}
+ * 停止指定模型的动画
+ * @param {string} modelId
  */
-const detectOverflow = async () => {
-  // 等待 Vue 完成 DOM 更新
-  await nextTick()
-  
-  // 存储新的滚动模型配置
-  const newScrollingModels = {}
-  
-  // 清除旧的动画样式表，避免样式累积导致内存泄漏
-  const oldStyle = document.getElementById('favorite-scroll-animations')
-  if (oldStyle) {
-    oldStyle.remove()
-  }
-  
-  // 创建新的样式元素用于存放动态生成的 @keyframes
-  const styleEl = document.createElement('style')
-  styleEl.id = 'favorite-scroll-animations'
-  let animations = ''
-  
-  // 遍历所有已注册的模型名称元素
-  for (const [modelId, el] of Object.entries(nameRefs.value)) {
-    if (!el) continue
-    
+const stopBeltAnimation = (modelId) => {
+  const animation = beltAnimations.get(modelId)
+  if (animation) {
     try {
-      // ==================== 步骤1：测量容器和文本宽度 ====================
-      
-      // 获取 .model-name-container 容器（文本的直接父容器）
-      // 这是文本滚动的"观察窗口"，应该测量这个容器的宽度
-      // 布局结构：.model-info > .model-name-container > .model-name-belt/.model-name-static
+      animation.cancel()
+    } catch (err) {
+      console.warn(`cancel animation for ${modelId} failed`, err)
+    }
+    beltAnimations.delete(modelId)
+  }
+}
+
+/**
+ * 停止所有已记录的动画
+ */
+const stopAllBeltAnimations = () => {
+  for (const id of Array.from(beltAnimations.keys())) {
+    stopBeltAnimation(id)
+  }
+}
+
+/**
+ * 为模型名称带启动 Web Animations
+ * @param {string} modelId
+ * @param {HTMLElement} beltEl
+ * @param {{C:number, G:number, T:number, pDelay:number, pRead:number}} params
+ */
+let warnedNoAnimate = false
+
+const startBeltAnimation = (modelId, beltEl, params) => {
+  if (!beltEl || typeof beltEl.animate !== 'function') {
+    if (!warnedNoAnimate) {
+      console.warn('Web Animations API not available; model name marquee will not animate.')
+      warnedNoAnimate = true
+    }
+    return
+  }
+  const { C, G, T, pDelay, pRead } = params
+
+  // 先停止旧动画，避免叠加
+  stopBeltAnimation(modelId)
+
+  const animation = beltEl.animate(
+    [
+      { transform: 'translateX(0)', offset: 0 },
+      { transform: 'translateX(0)', offset: pDelay / 100 },
+      { transform: `translateX(${-C}px)`, offset: pRead / 100 },
+      { transform: `translateX(${-(C + G)}px)`, offset: 1 }
+    ],
+    {
+      duration: T,
+      iterations: Infinity,
+      easing: 'linear'
+    }
+  )
+
+  beltAnimations.set(modelId, animation)
+}
+
+/**
+ * DOM 更新后为需要滚动的模型应用动画
+ * @param {Record<string, any>} modelsConfig
+ */
+const applyBeltAnimations = async (modelsConfig) => {
+  await nextTick()
+  for (const [modelId, config] of Object.entries(modelsConfig)) {
+    const container = nameRefs.value[modelId]
+    if (!container || container.offsetParent === null) continue
+    const beltEl = container.querySelector('.model-name-belt')
+    if (!beltEl) continue
+    startBeltAnimation(modelId, beltEl, config)
+  }
+}
+
+/**
+ * Compute which model names need marquee and start WA animations.
+ * Steps:
+ * 1) Only measure when component is visible (offsetParent check)
+ * 2) Measure container width W and text width C
+ * 3) If C > W + 5 compute G/L/T/pDelay/pRead
+ * 4) Update scrollingModels, restart animations, cancel stale ones
+ */
+
+const detectOverflow = async () => {
+  await nextTick()
+
+  const hasVisibleContainer = Object.values(nameRefs.value).some(
+    el => isElementActuallyVisible(el)
+  )
+  if (!hasVisibleContainer) return
+
+  const newScrollingModels = {}
+
+  for (const [modelId, el] of Object.entries(nameRefs.value)) {
+    if (!el || !isElementActuallyVisible(el)) continue
+
+    try {
       const container = el.closest('.model-name-container')
       if (!container) continue
-      
-      // 计算文本可用宽度
-      // .model-name-container 的 offsetWidth 就是文本滚动区域的实际宽度
-      // 这个宽度已经包含了所有需要考虑的因素（padding、border 等）
-      const W = container.offsetWidth  // W = Window width (窗口/容器可用宽度)
-      
-      // 边界检查：可用宽度必须足够大才有意义
-      // 小于 30px 的空间无法有效显示文本，跳过该元素
+
+      const W = container.offsetWidth
       if (W < 30) continue
-      
-      // 获取实际文本元素（.belt-text）
-      // 这是第一份文本，用于测量实际渲染宽度
+
       const textSpan = el.querySelector('.belt-text')
       if (!textSpan) continue
-      
-      // 测量文本的实际渲染宽度
-      const C = textSpan.offsetWidth  // C = Content width (文字区长度)
-      
-      // 边界检查：文字宽度必须在合理范围内
-      // C <= 0：元素可能未渲染或隐藏
-      // C > 2000：异常情况，可能是 CSS 问题
+
+      const C = textSpan.offsetWidth
       if (C <= 0 || C > 2000) continue
-      
-      // ==================== 步骤2：判断是否需要滚动 ====================
-      
-      // 只有当文本宽度明显超出容器时才启用滚动
-      // 留 5px 容差，避免边界情况下的误判和频繁切换
+
       if (C > W + 5) {
-        
-        // ==================== 步骤3：计算环带几何参数 ====================
-        
-        // G = Gap width (空白区长度)
-        // 空白区用于分隔环带中的两份文本，避免它们连在一起
-        // 设计原则：
-        //   - 至少 40px，确保有明显的视觉分隔
-        //   - 或取文字区长度的一半，让间隔更自然
         const G = Math.max(40, 0.5 * C)
-        
-        // L = Loop length (总环长)
-        // 环带总长度 = 文字区长度 + 空白区长度
         const L = C + G
-        
-        // ==================== 步骤4：计算时间参数 ====================
-        
-        // 阅读速度（设计常量）
-        // v1 = 匀速阅读速度（px/s）
-        // 推荐范围：30-72 px/s
-        // 50 px/s 是一个平衡值，既不太快也不太慢
+
         const v1 = 50
-        
-        // 第1阶段：停顿时间（设计常量）
-        // tau0 = 初始停顿时长（ms）
-        // 让用户有时间看清文本开头
-        // 推荐范围：300-600ms
         const tau0 = 500
-        
-        // 第2阶段：阅读时间
-        // t_read = 匀速阅读阶段的时长（ms）
-        // 时长 = 文字区长度 / 阅读速度
-        // 乘以 1000 转换为毫秒
-        const t_read = C / v1 * 1000
-        
-        // 第3阶段：空白区压缩时间
-        // tau_gap = 空白区压缩阶段的时长（ms）
-        // 压缩系数 0.25 意味着 4 倍速度快速跳过空白区
-        // 这样可以减少等待时间，同时保持文字区的可读性
+        const t_read = (C / v1) * 1000
         const tau_gap = 0.25 * t_read
-        
-        // 总周期 = 停顿 + 阅读 + 压缩
-        // T = 完整动画循环的总时长（ms）
         const T = tau0 + t_read + tau_gap
-        
-        // ==================== 步骤5：计算关键帧百分比 ====================
-        
-        // 计算各阶段在动画时间轴上的百分比位置
-        // 这些百分比将用于 CSS @keyframes 规则
-        
-        // p_delay：停顿阶段结束的时间点（百分比）
-        // 从 0% 到 p_delay% 期间，位置保持在 0
-        const p_delay = (tau0 / T) * 100
-        
-        // p_read：阅读阶段结束的时间点（百分比）
-        // 从 p_delay% 到 p_read% 期间，位置从 0 移动到 -C
-        const p_read = ((tau0 + t_read) / T) * 100
-        
-        // 从 p_read% 到 100% 期间，位置从 -C 移动到 -(C+G)
-        // 到达 100% 后瞬间跳回 0%，开始新一轮循环
-        
-        // ==================== 步骤6：生成动画名称 ====================
-        
-        // 为每个模型生成唯一的动画名称
-        // 将特殊字符替换为下划线，确保 CSS 标识符的合法性
-        // 例如：google/gemini-1.5-pro -> scroll-google_gemini_1_5_pro
-        const animName = `scroll-${modelId.replace(/[^a-zA-Z0-9]/g, '_')}`
-        
-        // ==================== 步骤7：生成 CSS @keyframes 规则 ====================
-        
-        // 生成四阶段滚动动画的关键帧
-        // 
-        // 动画阶段详解：
-        // 
-        // 0%: 初始位置
-        //   - transform: translateX(0)
-        //   - 文本在容器最左侧，第一份文本的开头可见
-        // 
-        // p_delay%: 停顿结束
-        //   - transform: translateX(0)
-        //   - 位置不变，让用户有时间看清开头
-        // 
-        // p_read%: 阅读完成
-        //   - transform: translateX(-C px)
-        //   - 文本已滚动一个文字区的距离
-        //   - 第一份文本完全离开视野，第二份文本正好进入
-        // 
-        // 100%: 循环点
-        //   - transform: translateX(-(C+G) px)
-        //   - 整个环带滚动完毕
-        //   - 即将跳回 0% 开始新循环
-        // 
-        // 由于 0% 和 100% 处的视觉内容相同（都是文本开头），
-        // 跳跃是视觉上无缝的
-        animations += `
-@keyframes ${animName} {
-  0% { transform: translateX(0); }
-  ${p_delay.toFixed(2)}% { transform: translateX(0); }
-  ${p_read.toFixed(2)}% { transform: translateX(${-C}px); }
-  100% { transform: translateX(${-(C + G)}px); }
-}
-`
-        
-        // ==================== 步骤8：保存动画配置 ====================
-        
-        // 将这个模型的动画参数存储到结果对象中
-        // 这些参数会在模板中被使用，应用到对应的元素上
+
+        const pDelay = (tau0 / T) * 100
+        const pRead = ((tau0 + t_read) / T) * 100
+
         newScrollingModels[modelId] = {
-          C,        // 文字区长度（px）
-          W,        // 窗口可用宽度（px）
-          G,        // 空白区长度（px）
-          L,        // 总环长（px）
-          T,        // 动画总周期（ms）
-          animName  // CSS 动画名称
+          C,
+          W,
+          G,
+          L,
+          T,
+          pDelay,
+          pRead
         }
+      } else {
+        stopBeltAnimation(modelId)
       }
     } catch (error) {
-      // 单个模型的测量失败不应影响其他模型的处理
-      // 捕获异常，记录警告信息，继续处理下一个模型
-      // 可能的失败原因：
-      //   - DOM 元素尚未完全渲染
-      //   - CSS 样式异常导致宽度为 0 或 NaN
-      //   - 元素在 DOM 树中的位置异常
       console.warn(`Failed to measure model ${modelId}:`, error)
     }
   }
-  
-  // ==================== 步骤9：应用生成的动画样式 ====================
-  
-  // 将所有生成的 @keyframes 规则添加到页面的 <head> 中
-  // 只有在确实生成了动画规则的情况下才添加 <style> 元素
-  if (animations) {
-    styleEl.textContent = animations
-    document.head.appendChild(styleEl)
+
+  for (const id of Array.from(beltAnimations.keys())) {
+    if (!newScrollingModels[id]) {
+      stopBeltAnimation(id)
+    }
   }
-  
-  // 更新响应式状态，触发 Vue 模板重新渲染
-  // 模板会根据 scrollingModels 的内容决定：
-  //   - 哪些模型显示滚动动画（scrollingModels[model.id] 存在）
-  //   - 哪些模型显示静态文本（scrollingModels[model.id] 不存在）
-  //   - 应用什么动画参数（animName, T 等）
+
   scrollingModels.value = newScrollingModels
-  
+
+  await applyBeltAnimations(newScrollingModels)
 }
 
 /**
- * 获取当前会话使用的模型
- * 
- * 优先返回当前活动会话的模型
- * 如果没有活动会话，返回全局选中的模型
- * 
- * @returns {string} 当前模型的 ID
+ * 定期检查动画状态，发现缺失/暂停时尝试重启
  */
-const currentModel = computed(() => {
-  const activeConv = chatStore.activeConversation
-  return activeConv?.model || chatStore.selectedModel
+const restartBrokenAnimations = () => {
+  for (const [modelId, config] of Object.entries(scrollingModels.value)) {
+    const container = nameRefs.value[modelId]
+    if (!container || !isElementActuallyVisible(container)) continue
+    const beltEl = container.querySelector('.model-name-belt')
+    if (!beltEl) continue
+    const anim = beltAnimations.get(modelId)
+    const running = anim && anim.playState === 'running'
+    if (!running) {
+      startBeltAnimation(modelId, beltEl, config)
+    }
+  }
+}
+
+
+const resolvedConversation = computed(() => {
+  if (props.conversationId) {
+    return conversationStore.conversationMap.get(props.conversationId) || null
+  }
+  return conversationStore.activeConversation
+})
+
+const currentModelId = computed(() => {
+  return resolvedConversation.value?.model || modelStore.selectedModelId
 })
 
 /**
@@ -422,7 +356,7 @@ const currentModel = computed(() => {
  * @returns {boolean} 如果是当前模型返回 true，否则返回 false
  */
 const isCurrentModel = (modelId) => {
-  return modelId === currentModel.value
+  return modelId === currentModelId.value
 }
 
 /**
@@ -511,14 +445,12 @@ const hasMultimodal = (model) => {
  * @param {string} modelId - 要选择的模型 ID
  */
 const selectModel = (modelId) => {
-  const activeConv = chatStore.activeConversation
-  if (activeConv) {
-    // 更新活动会话的模型
-    chatStore.updateConversationModel(activeConv.id, modelId)
-  } else {
-    // 设置全局默认模型
-    chatStore.setSelectedModel(modelId)
+  const targetConversationId = props.conversationId || conversationStore.activeConversation?.id
+  if (targetConversationId) {
+    conversationStore.updateConversationModel(targetConversationId, modelId)
+    return
   }
+  modelStore.selectedModelId = modelId
 }
 
 /**
@@ -556,40 +488,47 @@ const selectModel = (modelId) => {
  *   - 重新生成动画参数
  */
 onMounted(() => {
-  // 首次快速检测（300ms）
+  // 首次检测（300ms）
   setTimeout(() => {
     detectOverflow()
   }, 300)
   
-  // 二次延迟检测（1000ms）
+  // 延迟检测（1000ms）
   setTimeout(() => {
     detectOverflow()
   }, 1000)
   
-  // 监听窗口大小变化事件
+  // 绑定窗口大小变化事件
   const handleResize = () => {
     detectOverflow()
   }
   window.addEventListener('resize', handleResize)
   
+  // 健康检查定时器，防止动画偶发停止
+  animationHealthTimer = setInterval(() => {
+    restartBrokenAnimations()
+  }, 5000)
+  
   // 组件卸载时清理事件监听器，防止内存泄漏
   onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
+    if (favoritesScrollTimer !== null) {
+      clearTimeout(favoritesScrollTimer)
+    }
+    if (animationHealthTimer !== null) {
+      clearInterval(animationHealthTimer)
+      animationHealthTimer = null
+    }
   })
 })
 
 /**
- * 组件卸载时的清理逻辑
- * 
- * 移除动态创建的 <style> 元素，避免内存泄漏
- * 如果不清理，每次组件重新挂载都会创建新的样式元素
- * 长时间运行后会导致 DOM 中积累大量无用的样式节点
+ * Cleanup on unmount: remove resize listener/timers and stop belt animations.
  */
+
+
 onUnmounted(() => {
-  const styleEl = document.getElementById('favorite-scroll-animations')
-  if (styleEl) {
-    styleEl.remove()
-  }
+  stopAllBeltAnimations()
 })
 
 /**
@@ -633,19 +572,19 @@ onUnmounted(() => {
  *   - ref 回调已经填充了新的 DOM 引用
  */
 watch(favoriteModels, () => {
-  // 清空旧的 DOM 引用和滚动状态
-  // 防止使用已失效的 DOM 引用
-  nameRefs.value = {}
+  // 清空滚动状态以重置为静态状态进行测量
+  // 注意：不要清空 nameRefs，因为 DOM 元素可能被复用，且 setNameRef 会自动处理更新
+  stopAllBeltAnimations()
   scrollingModels.value = {}
   
   // 延迟 300ms 让 DOM 完全更新并重新注册 refs 后再测量
   setTimeout(() => {
     detectOverflow()
   }, 300)
-}, { deep: true })
+}, { deep: false })
 
 /**
- * 监听会话列表的变化
+ * 监听会话数量的变化（增删会话会影响布局）
  * 
  * =====================
  * 触发场景
@@ -667,63 +606,12 @@ watch(favoriteModels, () => {
  * 特别是删除会话时，已发现过滚动失效的 bug
  * 通过重新检测可以修复这个问题
  */
-watch(() => chatStore.conversations, () => {
-  // 延迟让布局稳定后再检测
+watch(() => conversationStore.conversations.length, () => {
   setTimeout(() => {
-    detectOverflow()
-  }, 300)
-}, { deep: true })
-
-/**
- * 监听活动会话的变化
- * 
- * =====================
- * 触发场景
- * =====================
- * 
- * 1. 切换到不同的会话
- * 2. 当前会话被删除（activeConversation 变为 null）
- * 
- * =====================
- * 为什么需要监听
- * =====================
- * 
- * 切换会话时，UI 上的高亮状态（active 类）会改变
- * 某些 CSS 样式可能因为 :hover, .active 等伪类而改变
- * 导致元素尺寸发生微小变化
- * 
- * 虽然这种变化通常很小，但为了确保滚动动画始终正确
- * 在会话切换时重新检测一次是最保险的做法
- * 
- * =====================
- * 🔧 修复：避免在隐藏的 ChatView 实例中执行检测
- * =====================
- * 
- * 问题：
- *   - 多个 ChatView 实例同时存在（通过 display: none/flex 控制）
- *   - 每个实例都有独立的 FavoriteModelSelector
- *   - 切换标签页时，所有实例的 watch 都会触发
- *   - 但隐藏实例（display: none）的 DOM 元素 offsetWidth 返回 0
- *   - 导致滚动动画被错误地清空
- * 
- * 解决方案：
- *   - 只在当前激活的会话对应的 FavoriteModelSelector 中执行检测
- *   - 通过检查元素是否可见来判断（offsetParent !== null）
- */
-watch(() => chatStore.activeConversation?.id, () => {
-  // 延迟让布局稳定后再检测
-  setTimeout(() => {
-    // 🔧 关键修复：检查组件是否可见
-    // 如果父元素被 display:none 隐藏，offsetParent 会是 null
-    const firstRef = Object.values(nameRefs.value)[0]
-    if (!firstRef || firstRef.offsetParent === null) {
-      // 组件当前不可见，跳过检测
-      return
-    }
-    
     detectOverflow()
   }, 300)
 })
+
 </script>
 
 <style scoped>
@@ -735,6 +623,8 @@ watch(() => chatStore.activeConversation?.id, () => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;         /* 允许在外层 flex 容器里收缩，从而启用内部滚动 */
+  width: 100%;
 }
 
 /* 
@@ -750,39 +640,11 @@ watch(() => chatStore.activeConversation?.id, () => {
   overflow-x: auto;     /* 当内容超出时允许水平滚动 */
   overflow-y: hidden;   /* 禁止垂直滚动 */
   max-width: 100%;      /* 确保不超出父容器 */
+  min-width: 0;         /* 关键：允许自身宽度小于内容宽度，才能触发 overflow 滚动 */
   
   /* 平滑滚动效果 */
   scroll-behavior: smooth;                /* 现代浏览器支持的平滑滚动 */
   -webkit-overflow-scrolling: touch;      /* iOS Safari 的触摸滚动优化 */
-}
-
-/* 
- * ==================== 滚动条样式（WebKit 浏览器）====================
- * 适用于：Chrome, Safari, Edge
- */
-.favorites-list::-webkit-scrollbar {
-  height: 4px;                            /* 滚动条高度 */
-}
-
-.favorites-list::-webkit-scrollbar-track {
-  background: transparent;                /* 滚动条轨道透明 */
-}
-
-.favorites-list::-webkit-scrollbar-thumb {
-  background: #d1d5db;                    /* 滚动条滑块颜色 */
-  border-radius: 2px;                     /* 圆角 */
-}
-
-.favorites-list::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;                    /* 悬停时加深颜色 */
-}
-
-/* 
- * ==================== 滚动条样式（Firefox）====================
- */
-.favorites-list {
-  scrollbar-width: thin;                  /* 细滚动条 */
-  scrollbar-color: #d1d5db transparent;   /* 滑块颜色 轨道颜色 */
 }
 
 /* 
@@ -894,6 +756,7 @@ watch(() => chatStore.activeConversation?.id, () => {
   white-space: nowrap;                    /* 防止文本换行 */
   font-size: 0.875rem;
   font-weight: 600;
+  will-change: transform;                 /* 提示浏览器优化滚动动画 */
 }
 
 /* 

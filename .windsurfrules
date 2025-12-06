@@ -1,0 +1,218 @@
+# Tailwind CSS v4 Guidelines for Starverse
+
+You are working on the **Starverse** project, which uses **Tailwind CSS v4.1.16**. The syntax and configuration patterns have changed significantly from v3.
+You **MUST** strictly adhere to the following rules to avoid breaking changes and runtime errors.
+
+---
+
+## 🚨 CRITICAL: Color Opacity Syntax (The #1 Bug Source)
+
+### ❌ FORBIDDEN - These classes NO LONGER EXIST in v4:
+- `bg-opacity-*` (e.g., `bg-opacity-50`)
+- `text-opacity-*` (e.g., `text-opacity-75`)
+- `border-opacity-*` (e.g., `border-opacity-20`)
+- `ring-opacity-*`, `divide-opacity-*`, `placeholder-opacity-*`
+
+### ✅ REQUIRED - Use Slash Syntax (Color Modifiers):
+```html
+<!-- ❌ WRONG (v3 syntax - will not work!) -->
+<div class="bg-black bg-opacity-50">...</div>
+<div class="text-white text-opacity-25">...</div>
+
+<!-- ✅ CORRECT (v4 syntax) -->
+<div class="bg-black/50">...</div>
+<div class="text-white/25">...</div>
+<div class="border-red-500/30">...</div>
+<div class="ring-blue-400/50">...</div>
+```
+
+**Technical Reason**: Tailwind v4 engine no longer generates `--tw-bg-opacity`, `--tw-text-opacity` CSS variables. Using separate opacity classes will silently fail. This is not a style preference - it's a physical incompatibility.
+
+---
+
+## 📝 Configuration Rules
+
+### ❌ ABSOLUTELY FORBIDDEN - Do NOT modify `tailwind.config.js`
+The JavaScript config is **DEPRECATED** in this project. It only contains content paths.
+**ALL theme configurations MUST be in CSS using `@theme` directive.**
+
+### ✅ REQUIRED - Use CSS Variables with `@theme` directive
+
+**File**: `src/style.css` (primary theme configuration)
+
+```css
+/* ✅ CORRECT: Define custom colors in CSS */
+@theme {
+  --color-brand: #3b82f6;
+  --color-accent: #f59e0b;
+  --color-surface: #1e293b;
+  
+  /* Semantic colors */
+  --color-success: #22c55e;
+  --color-danger: #ef4444;
+  
+  /* Custom spacing */
+  --spacing-sidebar: 16rem;
+  --spacing-header: 3.5rem;
+  
+  /* Custom fonts */
+  --font-family-display: "Inter", sans-serif;
+  --font-family-mono: "JetBrains Mono", monospace;
+}
+
+/* Dark mode overrides */
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-surface: #0f172a;
+  }
+}
+```
+
+**Usage in HTML**:
+```html
+<div class="bg-[--color-brand] text-[--color-surface]">...</div>
+```
+
+---
+
+## 🎨 CSS Import Directives
+
+### ❌ FORBIDDEN - Old v3 directives:
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+
+### ✅ REQUIRED - New v4 import:
+```css
+@import "tailwindcss";
+```
+
+**Current Project Setup** (already correct):
+- File: `src/style.css`
+- Already uses: `@import "tailwindcss";`
+
+---
+
+## 🔧 Dynamic Values & Arbitrary Properties
+
+Tailwind v4 embraces **arbitrary values** more than v3. Prefer dynamic values over static config.
+
+### ✅ RECOMMENDED:
+```html
+<!-- Dynamic spacing -->
+<div class="p-[1.75rem] mt-[calc(var(--header-height)+1rem)]">...</div>
+
+<!-- Dynamic colors -->
+<div class="bg-[#ff6b35]/80 text-[oklch(0.7_0.2_200)]">...</div>
+
+<!-- Dynamic gradients -->
+<div class="bg-gradient-to-r from-[#667eea]/90 to-[#764ba2]/90">...</div>
+```
+
+---
+
+## 📦 Project-Specific Context
+
+### Current Tailwind Configuration
+- **Version**: v4.1.16
+- **PostCSS Plugin**: `@tailwindcss/postcss@4.1.16`
+- **Config Mode**: CSS-First (config.js is DEPRECATED, only contains content paths)
+- **Main CSS**: `src/style.css` (contains ALL @theme configurations)
+- **Policy**: 100% theme in CSS, 0% in JavaScript config
+
+### Custom Theme Extensions (from `tailwind.config.js`)
+These colors are **already configured** - you can use them directly:
+
+```javascript
+// Already available in the project:
+primary-{50|100|200|300|400|500|600|700|800|900}
+secondary-{50|100|200|300|400|500|600|700|800|900}
+success-{50|100|500|600|700}
+warning-{50|100|500|600|700}
+danger-{50|100|500|600|700}
+
+// Custom spacing:
+spacing-{18|88|100|112|128}
+
+// Custom animations:
+animate-marquee
+animate-spin-slow
+```
+
+### Correct Usage Examples:
+```html
+<!-- ✅ Use project colors with slash syntax -->
+<button class="bg-primary-500/90 hover:bg-primary-600/90">...</button>
+<div class="text-secondary-700/75 dark:text-secondary-300/75">...</div>
+<div class="border-success-500/50 bg-success-50/30">...</div>
+
+<!-- ✅ Use custom spacing -->
+<div class="p-18 mt-88 w-100">...</div>
+
+<!-- ✅ Use custom animations -->
+<div class="animate-marquee">...</div>
+<div class="animate-spin-slow">...</div>
+```
+
+---
+
+## 🛡️ Self-Correction Protocol
+
+If you find yourself writing any of these patterns, **STOP and self-correct immediately**:
+
+1. **Pattern**: `bg-opacity-`, `text-opacity-`, `border-opacity-`
+   - **Action**: Replace with slash syntax (e.g., `bg-black/50`)
+
+2. **Pattern**: Modifying `tailwind.config.js` theme/extend
+   - **Action**: STOP IMMEDIATELY. Use `@theme` in `src/style.css`
+   - **Why**: This project uses CSS-first strategy, JS config is deprecated
+
+3. **Pattern**: `@tailwind base;` in CSS
+   - **Action**: Use `@import "tailwindcss";"`
+
+4. **Pattern**: Creating any theme config in JavaScript
+   - **Action**: ALL theme configs go to CSS `@theme` blocks
+   - **Exception**: Only if CSS cannot express it (must provide justification)
+
+---
+
+## 📚 Reference Documentation
+
+For detailed information, refer to project docs:
+- `docs/TAILWIND_V4_MIGRATION.md` - Complete migration guide
+- `docs/TAILWIND_V4_QUICK_REFERENCE.md` - Syntax quick reference
+- `docs/TAILWIND_V4_VERIFICATION.md` - Configuration verification
+- `src/assets/tailwind-v4-theme.css` - `@theme` directive examples
+
+---
+
+## ⚡ Quick Rules Summary
+
+| Old (v3) | New (v4) | Why |
+|----------|----------|-----|
+| `bg-black bg-opacity-50` | `bg-black/50` | Opacity utilities removed |
+| `text-white text-opacity-75` | `text-white/75` | CSS variables changed |
+| Config in `tailwind.config.js` | Config in CSS `@theme` | CSS-first approach |
+| `@tailwind base;` | `@import "tailwindcss";` | Simplified imports |
+
+---
+
+## 🎯 Agent Behavior Requirements
+
+When generating code for this project:
+
+1. **NEVER** use separate opacity classes (`*-opacity-*`)
+2. **ALWAYS** use slash syntax for transparency (`color/opacity`)
+3. **PREFER** CSS variables and arbitrary values over config modifications
+4. **ASSUME** modern browser support (no need for legacy fallbacks)
+5. **VALIDATE** your output - if you see `*-opacity-*`, you made a mistake
+
+Remember: This is not a style preference. Using v3 syntax in v4 will cause **silent failures** where styles simply don't apply. The CSS variables that powered the old system no longer exist.
+
+---
+
+**Last Updated**: 2025-11-29  
+**Project**: Starverse  
+**Maintainer**: GitHub Copilot

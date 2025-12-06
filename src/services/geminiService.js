@@ -75,7 +75,7 @@ export async function listAvailableModels(apiKey) {
 /**
  * 使用指定模型开启一个聊天会话
  * @param {string} apiKey - Gemini API Key
- * @param {Array} history - 聊天历史数组，格式: [{ role: 'user' | 'model', text: '内容' }]
+ * @param {Array} history - 聊天历史数组，格式: [{ role: 'user' | 'assistant' | 'tool' | 'system', text: '内容' }]
  * @param {string} modelName - 要使用的模型名称
  * @returns {Promise<any>} - 返回一个聊天会话对象
  */
@@ -106,7 +106,7 @@ export async function startChatWithGemini(apiKey, history, modelName) {
 /**
  * 使用指定模型发起流式聊天
  * @param {string} apiKey - Gemini API Key
- * @param {Array} history - 聊天历史数组，格式: [{ role: 'user' | 'model', text: '内容' }]
+ * @param {Array} history - 聊天历史数组，格式: [{ role: 'user' | 'assistant' | 'tool' | 'system', text: '内容' }]
  * @param {string} modelName - 要使用的模型名称
  * @param {string} userMessage - 用户最新一条消息
  * @param {AbortSignal} [signal] - 可选的中止信号，用于取消请求

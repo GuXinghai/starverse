@@ -1,14 +1,54 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { electronStore as persistenceStore, isUsingElectronStoreFallback } from '../utils/electronBridge'
+import { PROVIDERS, type ProviderId, getProviderDisplayName } from '../constants/providers'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
 }
 
+/**
+ * AI Provider 类型
+ * 
+ * 注意：为了保持向后兼容性，这里保留了大写开头的显示名称
+ * - 'Gemini' 对应运行时 ID 'gemini' (PROVIDERS.GEMINI)
+ * - 'OpenRouter' 对应运行时 ID 'openrouter' (PROVIDERS.OPENROUTER)
+ * 
+ * 在与服务层交互时，应使用 PROVIDERS 常量中的小写 ID
+ */
 export type AIProvider = 'Gemini' | 'OpenRouter'
 export type WebSearchEngine = 'native' | 'exa' | 'undefined'
+
+/**
+ * AIProvider 到 ProviderId 的映射
+ * 用于在 UI 层（大写）和运行时层（小写）之间转换
+ */
+export function toProviderId(provider: AIProvider): ProviderId {
+  switch (provider) {
+    case 'Gemini':
+      return PROVIDERS.GEMINI
+    case 'OpenRouter':
+      return PROVIDERS.OPENROUTER
+    default:
+      return PROVIDERS.GEMINI
+  }
+}
+
+/**
+ * ProviderId 到 AIProvider 的映射
+ * 用于从运行时 ID 转换回 UI 显示类型
+ */
+export function toAIProvider(providerId: ProviderId): AIProvider {
+  switch (providerId) {
+    case PROVIDERS.GEMINI:
+      return 'Gemini'
+    case PROVIDERS.OPENROUTER:
+      return 'OpenRouter'
+    default:
+      return 'Gemini'
+  }
+}
 
 export const useAppStore = defineStore('app', () => {
   // ========== 多提供商配置状态 ==========
@@ -30,6 +70,12 @@ export const useAppStore = defineStore('app', () => {
   
   // Web 搜索引擎配置
   const webSearchEngine = ref<WebSearchEngine>('undefined')
+  
+  // PDF 引擎偏好（记录用户最后选择的 PDF 引擎）
+  const lastUsedPdfEngine = ref<'pdf-text' | 'mistral-ocr' | 'native'>('pdf-text')
+  
+  // 发送延时（毫秒）
+  const sendDelayMs = ref<number>(0)
   
   // 向后兼容：保留原有的 apiKey 引用（指向 geminiApiKey）
   const apiKey = ref<string>('')
@@ -53,7 +99,9 @@ export const useAppStore = defineStore('app', () => {
         savedOpenRouterBaseUrl,
         savedDefaultModel,
         savedWebSearchEngine,
-        legacyApiKey
+        savedLastUsedPdfEngine,
+        legacyApiKey,
+        savedSendDelayMs
       ] = await Promise.all([
         persistenceStore.get('activeProvider'),
         persistenceStore.get('geminiApiKey'),
@@ -61,7 +109,9 @@ export const useAppStore = defineStore('app', () => {
         persistenceStore.get('openRouterBaseUrl'),
         persistenceStore.get('defaultModel'),
         persistenceStore.get('webSearchEngine'),
-        persistenceStore.get('apiKey')
+        persistenceStore.get('lastUsedPdfEngine'),
+        persistenceStore.get('apiKey'),
+        persistenceStore.get('sendDelayMs')
       ])
       
       // 加载 API 提供商选择
@@ -101,6 +151,17 @@ export const useAppStore = defineStore('app', () => {
         console.log('appStore.initializeStore - Web 搜索引擎已加载:', savedWebSearchEngine)
       }
       
+      // 加载 PDF 引擎偏好
+      if (savedLastUsedPdfEngine && (savedLastUsedPdfEngine === 'pdf-text' || savedLastUsedPdfEngine === 'mistral-ocr' || savedLastUsedPdfEngine === 'native')) {
+        lastUsedPdfEngine.value = savedLastUsedPdfEngine
+        console.log('appStore.initializeStore - PDF 引擎偏好已加载:', savedLastUsedPdfEngine)
+      }
+
+      if (savedSendDelayMs !== undefined && savedSendDelayMs !== null) {
+        sendDelayMs.value = Math.max(0, Number(savedSendDelayMs) || 0)
+        console.log('appStore.initializeStore - 发送延时加载', sendDelayMs.value)
+      }
+
       // 向后兼容：如果没有新配置，尝试加载旧的 apiKey
       if (!savedGeminiKey && legacyApiKey) {
         geminiApiKey.value = legacyApiKey
@@ -198,6 +259,32 @@ export const useAppStore = defineStore('app', () => {
       return false
     }
   }
+
+  const saveLastUsedPdfEngine = async (engine: 'pdf-text' | 'mistral-ocr' | 'native') => {
+    try {
+      await persistenceStore.set('lastUsedPdfEngine', engine)
+      lastUsedPdfEngine.value = engine
+      console.log('✓ 已保存 PDF 引擎偏好:', engine)
+      return true
+    } catch (error) {
+      console.error('保存 PDF 引擎偏好失败:', error)
+      return false
+    }
+  }
+
+  // 保存发送延时
+  const setSendDelayMs = async (value: number) => {
+    const normalized = Math.max(0, Number(value) || 0)
+    try {
+      await persistenceStore.set('sendDelayMs', normalized)
+      sendDelayMs.value = normalized
+      console.log('✓ 已保存发送延时:', normalized)
+      return true
+    } catch (error) {
+      console.error('保存发送延时失败:', error)
+      return false
+    }
+  }
   
   // 向后兼容：保留原有的 saveApiKey 方法（实际保存到 geminiApiKey）
   const saveApiKey = async (key: string) => {
@@ -229,7 +316,9 @@ export const useAppStore = defineStore('app', () => {
     openRouterApiKey,
     openRouterBaseUrl,
     defaultModel,
-  webSearchEngine,
+    webSearchEngine,
+    lastUsedPdfEngine,
+    sendDelayMs,
     // 向后兼容
     apiKey,
     chatMessages,
@@ -244,7 +333,9 @@ export const useAppStore = defineStore('app', () => {
     saveOpenRouterApiKey,
     saveOpenRouterBaseUrl,
     saveDefaultModel,
-  saveWebSearchEngine,
+    saveWebSearchEngine,
+    saveLastUsedPdfEngine,
+    setSendDelayMs,
     saveApiKey, // 向后兼容
     // 消息管理
     addMessage,
@@ -252,3 +343,10 @@ export const useAppStore = defineStore('app', () => {
     removeMessage,
   }
 })
+
+// ========== 模块化 Store 统一导出 ==========
+export { useConversationStore } from './conversation'
+export { useModelStore } from './model'
+export { useBranchStore } from './branch'
+export { usePersistenceStore } from './persistence'
+export { useProjectStore } from './project'

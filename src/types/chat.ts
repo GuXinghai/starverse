@@ -30,7 +30,19 @@ export type ImagePart = {
  * 消息内容部分的联合类型
  * 未来可扩展更多类型：audio, video, file 等
  */
-export type MessagePart = TextPart | ImagePart;
+export type FilePart = {
+  id?: string;
+  type: 'file';
+  file: {
+    filename: string;
+    file_data: string;
+    mime_type?: string;
+    size_bytes?: number;
+    annotations?: unknown;
+  };
+};
+
+export type MessagePart = TextPart | ImagePart | FilePart;
 
 /**
  * 网络搜索挡位
@@ -38,9 +50,28 @@ export type MessagePart = TextPart | ImagePart;
 export type WebSearchLevel = 'quick' | 'normal' | 'deep';
 
 /**
+ * PDF 引擎类型
+ * - pdf-text: 免费文本提取引擎
+ * - mistral-ocr: Mistral OCR 引擎（支持扫描件，$2/千页）
+ * - native: 模型原生文件输入（按 tokens 计费）
+ */
+export type PdfEngineType = 'pdf-text' | 'mistral-ocr' | 'native';
+
+/**
  * 推理挡位（Reasoning Effort）
  */
 export type ReasoningEffort = 'low' | 'medium' | 'high';
+
+/**
+ * 推理模式（Reasoning Mode）
+ * 用于区分预设挡位和自定义MAX_TOKENS，确保两者互斥（4档位）
+ * - minimal: 极简推理（使用effort='minimal'，约10%计算量）
+ * - low: 低档推理（使用effort='low'，约20%计算量）
+ * - medium: 中档推理（使用effort='medium'，约50%计算量）
+ * - high: 高档推理（使用effort='high'，约80%计算量）
+ * - custom: 自定义MAX_TOKENS（不使用effort，仅设置max_tokens）
+ */
+export type ReasoningMode = 'minimal' | 'low' | 'medium' | 'high' | 'custom';
 
 /**
  * 推理可见性选项
@@ -62,42 +93,136 @@ export interface ReasoningRequestPayload {
 
 /**
  * 会话级推理偏好配置
+ * mode字段用于互斥控制：
+ * - 当mode为'low'/'medium'/'high'时，使用对应的effort，maxTokens应为null
+ * - 当mode为'custom'时，不使用effort（或使用默认），maxTokens应有值
  */
 export interface ReasoningPreference {
   visibility: ReasoningVisibility;
   effort: ReasoningEffort;
   maxTokens?: number | null;
+  mode?: ReasoningMode; // 新增：推理模式，用于UI互斥控制
 }
 
 /**
- * 璇锋眰閲忔嘲鍙傛暟閰嶇疆锛岀敤浜庢嫤鎴劧鏂簨鐗岀瓥鐣ヨ缃�
+ * 参数控制模式
+ */
+export type ParameterControlMode = 'SLIDER' | 'INPUT';
+
+/**
+ * 单个参数的控制状态
+ */
+export interface ParameterControlState {
+  mode: ParameterControlMode;
+  sliderValue: number;        // 滑块的归一化值 (0.0-1.0)
+  manualValue: number | null; // 手动输入的实际值
+}
+
+/**
+ * 采样参数配置，用于拦截然断事牌策畧设置
+ * 
+ * 新架构：每个参数都有独立的 mode 和 manualValue
+ * - 当 mode='SLIDER' 时，使用参数的实际值（通过 sliderValue 计算）
+ * - 当 mode='INPUT' 时，使用 manualValue（必须非空才有效）
  */
 export interface SamplingParameterSettings {
   enabled: boolean;
+  
+  // ===== 滑块型参数 =====
   temperature?: number | null;
+  temperature_mode?: ParameterControlMode;
+  temperature_manualValue?: number | null;
+  
   top_p?: number | null;
-  top_k?: number | null;
+  top_p_mode?: ParameterControlMode;
+  top_p_manualValue?: number | null;
+  
   frequency_penalty?: number | null;
+  frequency_penalty_mode?: ParameterControlMode;
+  frequency_penalty_manualValue?: number | null;
+  
   presence_penalty?: number | null;
+  presence_penalty_mode?: ParameterControlMode;
+  presence_penalty_manualValue?: number | null;
+  
   repetition_penalty?: number | null;
+  repetition_penalty_mode?: ParameterControlMode;
+  repetition_penalty_manualValue?: number | null;
+  
   min_p?: number | null;
+  min_p_mode?: ParameterControlMode;
+  min_p_manualValue?: number | null;
+  
   top_a?: number | null;
+  top_a_mode?: ParameterControlMode;
+  top_a_manualValue?: number | null;
+  
+  // ===== 整数型参数（也支持手动输入） =====
+  top_k?: number | null;
+  top_k_mode?: ParameterControlMode;
+  top_k_manualValue?: number | null;
+  
   max_tokens?: number | null;
+  max_tokens_mode?: ParameterControlMode;
+  max_tokens_manualValue?: number | null;
+  
   seed?: number | null;
+  seed_mode?: ParameterControlMode;
+  seed_manualValue?: number | null;
 }
 
 export const DEFAULT_SAMPLING_PARAMETERS: Readonly<SamplingParameterSettings> = Object.freeze({
   enabled: false,
+  
+  // Temperature
   temperature: 1,
+  temperature_mode: 'SLIDER',
+  temperature_manualValue: null,
+  
+  // Top P
   top_p: 1,
-  top_k: 0,
+  top_p_mode: 'SLIDER',
+  top_p_manualValue: null,
+  
+  // Frequency Penalty
   frequency_penalty: 0,
+  frequency_penalty_mode: 'SLIDER',
+  frequency_penalty_manualValue: null,
+  
+  // Presence Penalty
   presence_penalty: 0,
+  presence_penalty_mode: 'SLIDER',
+  presence_penalty_manualValue: null,
+  
+  // Repetition Penalty
   repetition_penalty: 1,
+  repetition_penalty_mode: 'SLIDER',
+  repetition_penalty_manualValue: null,
+  
+  // Min P
   min_p: 0,
+  min_p_mode: 'SLIDER',
+  min_p_manualValue: null,
+  
+  // Top A
   top_a: 0,
+  top_a_mode: 'SLIDER',
+  top_a_manualValue: null,
+  
+  // Top K
+  top_k: 0,
+  top_k_mode: 'SLIDER',
+  top_k_manualValue: null,
+  
+  // Max Tokens
   max_tokens: null,
-  seed: null
+  max_tokens_mode: 'SLIDER',
+  max_tokens_manualValue: null,
+  
+  // Seed
+  seed: null,
+  seed_mode: 'SLIDER',
+  seed_manualValue: null
 })
 
 /**
@@ -168,10 +293,15 @@ export interface MessageVersionMetadata {
   errorMessage?: string;
   errorParam?: string;
   errorStatus?: number;
+  errorStatusName?: string;           // OpenRouter 错误状态码名称（如 "Bad Request"）
+  errorOfficialMeaning?: string;      // OpenRouter 官方错误含义
+  errorTypicalCauses?: string;        // 典型触发原因（中文说明）
+  errorMetadata?: Record<string, any>; // 错误元数据（如审核信息、上游原始错误等）
   retryable?: boolean;
   usage?: UsageMetrics;
-  reasoning?: MessageReasoningMetadata;
-}
+    reasoning?: MessageReasoningMetadata;
+    noticeKind?: string;                // 标识临时通知/系统提示
+  }
 
 export interface UsageMetrics {
   promptTokens?: number;
@@ -190,7 +320,7 @@ export interface UsageMetrics {
  */
 export interface Message {
   id: string;
-  role: 'user' | 'model';
+  role: 'user' | 'assistant' | 'tool';
   parts: MessagePart[];
   timestamp?: number; // 可选的时间戳
 }
@@ -230,7 +360,7 @@ export interface MessageVersion {
  */
 export interface MessageBranch {
   branchId: string;              // 分支唯一ID
-  role: 'user' | 'model';        // 消息角色
+  role: 'user' | 'assistant' | 'tool';        // 消息角色
   parentBranchId: string | null; // 父分支ID（null表示根节点）
   parentVersionId: string | null;// 源自父分支的哪个版本ID
   versions: MessageVersion[];    // 该分支的所有版本
@@ -268,7 +398,7 @@ export interface Conversation {
 /**
  * 工具函数：创建纯文本消息
  */
-export function createTextMessage(role: 'user' | 'model', text: string): Message {
+export function createTextMessage(role: 'user' | 'assistant' | 'tool', text: string): Message {
   return {
     id: crypto.randomUUID(),
     role,

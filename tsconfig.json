@@ -16,6 +16,12 @@
     "noEmit": true,
     "jsx": "preserve",
 
+    /* Path Mapping */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,
@@ -23,6 +29,14 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "electron", "infra/**/*.ts"],
-  "exclude": ["node_modules", "dist", "dist-electron", "release", "archived-components"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dist-electron",
+    "release",
+    "archived-components",
+    "src/components/chat/ChatInput.vue",
+    "src/components/chat/input/ChatToolbarInternal.vue"
+  ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
