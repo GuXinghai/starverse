@@ -32,6 +32,7 @@ export interface StreamRequestOptions {
   signal?: AbortSignal | null
   webSearch?: WebSearchRequestOptions
   reasoning?: ReasoningRequestOptions | null
+  pdfEngine?: 'pdf-text' | 'mistral-ocr' | 'native'
 }
 
 /**

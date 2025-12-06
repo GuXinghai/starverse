@@ -29,6 +29,10 @@ export class MessageRepo {
   private insertFtsStmt: BetterSqlite3.Statement
   private touchConvoStmt: BetterSqlite3.Statement
   private deleteByConvoStmt: BetterSqlite3.Statement
+  private deleteFtsByConvoStmt: BetterSqlite3.Statement
+  private findMessageIdBySeqStmt: BetterSqlite3.Statement
+  private updateBodyStmt: BetterSqlite3.Statement
+  private updateFtsBodyStmt: BetterSqlite3.Statement
   private appendTxn: (input: AppendMessageInput) => MessageRecord
 
   constructor(private db: SqlDatabase) {
@@ -58,6 +62,21 @@ export class MessageRepo {
     this.deleteByConvoStmt = this.db.prepare(`
       DELETE FROM message WHERE convo_id = @convoId
     `)
+    this.deleteFtsByConvoStmt = this.db.prepare(`
+      DELETE FROM message_fts WHERE convo_id = @convoId
+    `)
+
+    this.findMessageIdBySeqStmt = this.db.prepare(`
+      SELECT id FROM message WHERE convo_id = @convoId AND seq = @seq LIMIT 1
+    `)
+
+    this.updateBodyStmt = this.db.prepare(`
+      UPDATE message_body SET body = body || @appendBody WHERE message_id = @messageId
+    `)
+
+    this.updateFtsBodyStmt = this.db.prepare(`
+      UPDATE message_fts SET body = body || @appendBody WHERE message_id = @messageId
+    `)
 
     this.appendTxn = this.db.transaction((input: AppendMessageInput) => {
       return this.insertMessageRecord(input)
@@ -68,8 +87,31 @@ export class MessageRepo {
     return this.appendTxn(input)
   }
 
+  appendDelta(input: { convoId: string; seq: number; appendBody: string }) {
+    const now = Date.now()
+    const appendTxn = this.db.transaction((payload: { convoId: string; seq: number; appendBody: string }) => {
+      const row = this.findMessageIdBySeqStmt.get({
+        convoId: payload.convoId,
+        seq: payload.seq
+      }) as { id: string } | undefined
+
+      if (!row?.id) {
+        throw new Error(`message not found for convo=${payload.convoId}, seq=${payload.seq}`)
+      }
+
+      this.updateBodyStmt.run({ messageId: row.id, appendBody: payload.appendBody })
+      this.updateFtsBodyStmt.run({ messageId: row.id, appendBody: payload.appendBody })
+
+      this.touchConvoStmt.run({ id: payload.convoId, updatedAt: now })
+    })
+
+    appendTxn(input)
+    return { ok: true }
+  }
+
   replaceForConvo(convoId: string, messages: AppendMessageInput[]) {
     const replaceTxn = this.db.transaction((payloads: AppendMessageInput[]) => {
+      this.deleteFtsByConvoStmt.run({ convoId })
       this.deleteByConvoStmt.run({ convoId })
       payloads.forEach((message, index) => {
         this.insertMessageRecord({

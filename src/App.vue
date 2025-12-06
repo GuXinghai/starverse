@@ -10,6 +10,7 @@ import ConversationList from './components/ConversationList.vue'
 import ChatTabs from './components/ChatTabs.vue'
 import TabbedChatView from './components/TabbedChatView.vue'
 import SettingsView from './components/SettingsView.vue'
+import AnalyticsView from './components/AnalyticsView.vue'
 
 console.log('✓ 组件导入成功')
 console.log('  - ConversationList:', ConversationList)
@@ -20,8 +21,8 @@ console.log('  - SettingsView:', SettingsView)
 // 获取 appStore 以访问初始化状态
 const appStore = useAppStore()
 
-// 当前视图状态：'chat' 或 'settings'
-const currentView = ref<'chat' | 'settings'>('chat')
+// 当前视图状态：'chat' | 'settings' | 'usage'
+const currentView = ref<'chat' | 'settings' | 'usage'>('chat')
 console.log('✓ 初始视图设置为:', currentView.value)
 
 const switchToChat = () => {
@@ -30,6 +31,10 @@ const switchToChat = () => {
 
 const switchToSettings = () => {
   currentView.value = 'settings'
+}
+
+const switchToUsage = () => {
+  currentView.value = 'usage'
 }
 </script>
 
@@ -86,6 +91,19 @@ const switchToSettings = () => {
           </button>
           
           <button 
+            @click="switchToUsage"
+            class="flex items-center px-4 py-1.5 rounded-lg transition-colors text-sm"
+            :class="currentView === 'usage' 
+              ? 'bg-blue-500 text-white' 
+              : 'text-gray-600 hover:bg-gray-100'"
+          >
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+            </svg>
+            统计
+          </button>
+          
+          <button 
             @click="switchToSettings"
             class="flex items-center px-4 py-1.5 rounded-lg transition-colors text-sm"
             :class="currentView === 'settings' 
@@ -111,6 +129,9 @@ const switchToSettings = () => {
           <!-- 标签页内容 -->
           <TabbedChatView />
         </div>
+
+        <!-- 统计视图 -->
+        <AnalyticsView v-else-if="currentView === 'usage'" />
 
         <!-- 设置视图 -->
         <SettingsView v-else-if="currentView === 'settings'" />

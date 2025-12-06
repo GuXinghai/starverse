@@ -120,8 +120,37 @@ export const buildSearchParams = (
     throw new SearchDslError('TEXT_QUERY_REQUIRED', '请输入至少一个检索关键词')
   }
 
+  // FTS5 查询语法处理（针对 unicode61 分词器）
+  // unicode61 分词器对中文的处理：将每个汉字作为独立的 token
+  // 1. 清理 FTS5 特殊字符: " * ( ) AND OR NOT NEAR
+  // 2. 对于中文查询，将每个汉字用 AND 连接，确保所有字符都匹配
+  let sanitizedQuery = parsed.textQuery
+    .replace(/[=<>!@#$%^&\[\]{}\\|;:,"*()]/g, ' ') // 移除特殊字符和引号
+    .replace(/\s+/g, ' ') // 合并多个空格
+    .trim()
+
+  if (!sanitizedQuery) {
+    throw new SearchDslError('TEXT_QUERY_REQUIRED', '请输入有效的检索关键词')
+  }
+
+  // 对于包含中文的查询，将字符串拆分成单字并用 AND 连接
+  // 这样可以匹配包含所有这些字符的文本（顺序可能不同）
+  // 例如: "机器学习" -> "机 AND 器 AND 学 AND 习"
+  const hasChinese = /[\u4e00-\u9fa5]/.test(sanitizedQuery)
+  let fts5Query: string
+  
+  if (hasChinese) {
+    // 提取所有字符（包括中文和英文单词）
+    const chars = sanitizedQuery.split('').filter(c => c.trim())
+    // 用 AND 连接所有字符，确保所有字符都存在
+    fts5Query = chars.join(' AND ')
+  } else {
+    // 英文查询保持原样
+    fts5Query = sanitizedQuery
+  }
+
   const params: FulltextSearchParams = {
-    query: parsed.textQuery,
+    query: fts5Query,
     projectId: overrides?.projectId ?? parsed.filters.projectId ?? null,
     tagIds: (overrides?.tagIds ?? parsed.filters.tagIds)?.length
       ? overrides?.tagIds ?? parsed.filters.tagIds

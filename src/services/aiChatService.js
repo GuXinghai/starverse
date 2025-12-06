@@ -1,25 +1,132 @@
 /**
- * AI Chat Service - 统一的服务路由器
- * 根据当前选择的 Provider (Gemini / OpenRouter) 路由请求到正确的服务实现
- * 
- * 这个抽象层解耦了 chatStore 和具体的 AI 服务提供商，
- * 使得添加新的 AI 提供商变得简单，只需实现相同的接口即可。
+ * AI 聊天服务路由器
+ *
+ * 统一在渲染进程中根据 `appStore.activeProvider` 选择具体 Provider（Gemini 或 OpenRouter），
+ * 并提供以下能力：
+ * - 列出可用模型 `listAvailableModels`
+ * - 流式获取聊天响应 `streamChatResponse`
+ * - 查询当前使用的 API Key `getCurrentApiKey`
+ * - 判断模型是否支持视觉输入 `supportsVision`
+ *
+ * 依赖：
+ * - `GeminiService` 与 `OpenRouterService` 的具体实现
+ * - `useModelStore` 提供模型参数/能力缓存
+ * - `generationConfigManager` 与 `buildModelCapability` 负责参数整合与能力建模
  */
 
 import { GeminiService } from './providers/GeminiService'
 import { OpenRouterService } from './providers/OpenRouterService'
-// 引入 chatStore 用于读取可用模型的元数据（input_modalities）
-import { useChatStore } from '../stores/chatStore'
+// 来自 modelStore 的输入模态数据查询
+import { useModelStore } from '../stores/model'
+import { generationConfigManager } from './providers/generationConfigManager'
+import { buildModelCapability } from './providers/modelCapability'
+
+const LEGACY_SAMPLING_KEYS = new Set([
+  'temperature',
+  'top_p',
+  'top_k',
+  'frequency_penalty',
+  'presence_penalty',
+  'repetition_penalty',
+  'min_p',
+  'top_a',
+  'max_tokens',
+  'seed'
+])
 
 /**
- * AI Chat Service 路由器
+ * 将旧版 UI 的 reasoning/parameters 选项整合为统一的 GenerationConfig。
+ *
+ * - 仅允许白名单中的采样参数（LEGACY_SAMPLING_KEYS）透传
+ * - 将 max_tokens 归类为长度控制，其余归为采样控制
+ * - 将旧版 reasoning 结构解析为规范化的 `resolvedReasoning`
+ *
+ * @param {Object} params
+ * @param {string} params.modelId 模型 ID（OpenRouter 需为 provider/name 形式）
+ * @param {string} [params.conversationId] 会话 ID（可选）
+ * @param {Object|null} [params.legacyReasoning] 旧版推理配置
+ * @param {Object|null} [params.legacyParameters] 旧版采样/长度参数
+ * @returns {{ effectiveConfig: any, resolvedReasoning: any }} 统一配置与解析后的推理配置
+ */
+function buildAirlockedGenerationConfig({
+  modelId,
+  conversationId,
+  legacyReasoning,
+  legacyParameters,
+}) {
+  const requestOverride = {
+    sampling: {},
+    length: {},
+    reasoning: undefined,
+  }
+
+  // 处理旧版采样与长度参数（legacy parameters）
+  if (legacyParameters && typeof legacyParameters === 'object') {
+    for (const [key, raw] of Object.entries(legacyParameters)) {
+      if (!LEGACY_SAMPLING_KEYS.has(key)) continue
+      const num = typeof raw === 'number' && Number.isFinite(raw) ? raw : null
+      if (num === null) continue
+
+      if (key === 'max_tokens') {
+        requestOverride.length.max_tokens = num
+      } else {
+        requestOverride.sampling[key] = num
+      }
+    }
+  }
+
+  // 处理旧版推理配置（legacy reasoning payload）
+  let resolvedReasoning = null
+  if (legacyReasoning && typeof legacyReasoning === 'object' && legacyReasoning.payload) {
+    const payload = legacyReasoning.payload || {}
+    const controlMode = payload.max_tokens
+      ? 'max_tokens'
+      : payload.effort
+        ? 'effort'
+        : 'disabled'
+
+    resolvedReasoning = {
+      controlMode,
+      effort: payload.effort || 'medium',
+      maxReasoningTokens: typeof payload.max_tokens === 'number' ? payload.max_tokens : undefined,
+      showReasoningContent: payload.exclude ? false : true,
+    }
+
+    requestOverride.reasoning = resolvedReasoning
+  }
+
+  // 清理空对象以避免冗余字段
+  if (Object.keys(requestOverride.sampling).length === 0) {
+    delete requestOverride.sampling
+  }
+  if (Object.keys(requestOverride.length).length === 0) {
+    delete requestOverride.length
+  }
+
+  const effectiveConfig = generationConfigManager.getEffectiveConfig({
+    modelId,
+    conversationId,
+    requestOverride,
+  })
+
+  return { effectiveConfig, resolvedReasoning }
+}
+
+/**
+ * AI 聊天服务主入口，对外暴露统一 API。
  */
 export const aiChatService = {
   
   /**
-   * 根据当前 Provider 获取对应的服务实例和配置
-   * @param {Object} appStore - Pinia appStore 实例
-   * @returns {Object} - { service, apiKey, baseUrl }
+   * 获取当前 Provider 的上下文，包括服务实现与凭据。
+   *
+   * Provider 映射：
+   * - Gemini: { service: GeminiService, apiKey: geminiApiKey, baseUrl: null }
+   * - OpenRouter: { service: OpenRouterService, apiKey: openRouterApiKey, baseUrl: openRouterBaseUrl }
+   *
+   * @param {Object} appStore Pinia 的 appStore
+   * @returns {{ service: any, apiKey: string, baseUrl: string|null }}
+   * @throws {Error} 未知的 Provider
    */
   getProviderContext(appStore) {
     const provider = appStore.activeProvider
@@ -30,7 +137,7 @@ export const aiChatService = {
       return {
         service: GeminiService,
         apiKey: appStore.geminiApiKey,
-        baseUrl: null // Gemini 不需要 baseUrl
+        baseUrl: null // Gemini 不需要自定义 baseUrl
       }
     } else if (provider === 'OpenRouter') {
       return {
@@ -40,51 +147,52 @@ export const aiChatService = {
       }
     }
     
-    // 默认或错误处理
-    throw new Error(`不支持的 API 提供商: ${provider}`)
+    // 未知 Provider
+    throw new Error(`未知的 AI Provider: ${provider}`)
   },
 
   /**
-   * 统一的模型列表获取方法
-   * @param {Object} appStore - Pinia appStore 实例
-   * @returns {Promise<string[]>} - 模型名称/ID 列表
+   * 列出当前 Provider 的可用模型列表。
+   * @param {Object} appStore Pinia 的 appStore
+   * @returns {Promise<string[]>} 模型 ID 列表
    */
   async listAvailableModels(appStore) {
-    console.log('aiChatService: 开始获取模型列表...')
+    console.log('aiChatService: 获取模型列表..')
     
     try {
       const { service, apiKey, baseUrl } = this.getProviderContext(appStore)
       
       if (!apiKey) {
-        console.warn('aiChatService: API Key 未配置')
+        console.warn('aiChatService: 缺少 API Key')
         return []
       }
       
-      // 确保所有服务都实现了 listAvailableModels 方法
-      // OpenRouter 需要 baseUrl 参数
+      // 根据 Provider 调用 listAvailableModels（OpenRouter 需要 baseUrl）
       const models = baseUrl 
         ? await service.listAvailableModels(apiKey, baseUrl)
         : await service.listAvailableModels(apiKey)
       
-      console.log('aiChatService: 成功获取模型列表，数量:', models.length)
+      console.log('aiChatService: 模型数量', models.length)
       return models
     } catch (error) {
-      console.error('aiChatService: 获取模型列表失败！', error)
+      console.error('aiChatService: 获取模型失败', error)
       return []
     }
   },
 
   /**
-   * 统一的流式对话方法
-   * @param {Object} appStore - Pinia appStore 实例
-   * @param {Array} history - 聊天历史 [{ role: 'user' | 'model', text: '...' }]
-   * @param {string} modelName - 模型名称/ID
-   * @param {string} userMessage - 用户消息
-   * @param {AbortSignal} [signal] - 可选的中止信号
-   * @returns {AsyncIterable} - 流式响应的异步迭代器
+   * 按当前 Provider 以流式方式获取聊天响应。
+   *
+   * @param {Object} appStore Pinia 的 appStore
+   * @param {Array} history 历史消息：[{ role: 'user'|'model', parts: [...] }]
+   * @param {string} modelName 模型名或 ID（OpenRouter 可为短名）
+   * @param {string} userMessage 用户输入
+   * @param {Object} [options] 额外选项
+   * @param {AbortSignal} [options.signal] 取消信号
+   * @returns {AsyncIterable<string>} 文本流
    */
   async* streamChatResponse(appStore, history, modelName, userMessage, options = {}) {
-    // 规范化入参，避免上层传入 undefined 导致崩溃
+    //  undefined 
     const safeHistory = Array.isArray(history) ? history : []
     const safeUserMessage = typeof userMessage === 'string' ? userMessage : ''
     const {
@@ -93,44 +201,146 @@ export const aiChatService = {
       requestedModalities = null,
       imageConfig = null,
       reasoning = null,
-      parameters = null
+      parameters = null,
+      pdfEngine = null,
+      conversationId = null,
+      systemInstruction = null,
     } = options || {}
 
-    console.log('aiChatService: 开始流式对话...')
+    console.log('aiChatService: 开始流式响应..')
     console.log('  - 模型:', modelName)
-    console.log('  - 历史消息数:', safeHistory.length)
-    console.log('  - 用户消息长度:', safeUserMessage.length)
+    console.log('  - 历史条数:', safeHistory.length)
+    console.log('  - 输入长度:', safeUserMessage.length)
     
+    //   Service ?
+    console.log(' [aiChatService] Options:', JSON.stringify(options, (key, value) => {
+      if (key === 'signal') return '[AbortSignal]'
+      return value
+    }, 2))
+    console.log(' [aiChatService] History Sample (last item):', safeHistory.length > 0 ? safeHistory[safeHistory.length - 1] : 'Empty')
+
     try {
       const { service, apiKey, baseUrl } = this.getProviderContext(appStore)
       
       if (!apiKey) {
-        throw new Error('API Key 未配置，请在设置中配置相应的 API Key')
+        throw new Error('缺少 API Key，无法调用接口')
       }
       
-      // 确保所有服务都实现了 streamChatResponse 方法
-      // 不同的服务可能需要不同的参数
+      // OpenRouter: 获取模型参数/能力信息
+      let modelParametersInfo = null
+      let modelCapability = null
+      if (service === OpenRouterService) {
+        try {
+          const modelStore = useModelStore()
+          
+          // 优先从 store 的能力映射获取
+          modelCapability = modelStore.getModelCapability?.(modelName)
+          
+          if (modelCapability) {
+            console.log('能力已缓存:', modelName)
+          } else if (modelStore?.getModelSupportedParameters) {
+            // 回退：从支持参数缓存构建能力
+            const cachedParams = modelStore.getModelSupportedParameters(modelName)
+            if (cachedParams) {
+              // 读取缓存条目
+              const cachedEntry = modelStore.modelSupportedParametersMap?.get(modelName)
+              if (cachedEntry) {
+                modelParametersInfo = {
+                  model: cachedEntry.model || modelName,
+                  supported_parameters: cachedEntry.supported_parameters,
+                  raw: cachedEntry.raw
+                }
+                
+                // 尝试基于原始数据构建 ModelGenerationCapability
+                if (modelParametersInfo.raw) {
+                  try {
+                    modelCapability = buildModelCapability(modelParametersInfo.raw)
+                    console.log('能力解析成功:', modelName, modelCapability.supportedParameters)
+                  } catch (capErr) {
+                    console.warn('aiChatService: 能力解析失败', capErr)
+                  }
+                }
+                // 回退：仅使用 supported_parameters 构造能力
+                if (!modelCapability && modelParametersInfo.supported_parameters) {
+                  try {
+                    modelCapability = buildModelCapability({
+                      id: modelName,
+                      supported_parameters: modelParametersInfo.supported_parameters,
+                      top_provider: {},
+                      pricing: {},
+                      name: modelName
+                    })
+                  } catch (capErr) {
+                    console.warn('aiChatService: 能力回退失败', capErr)
+                  }
+                }
+              }
+            }
+          }
+        } catch (storeErr) {
+          console.warn('aiChatService: 读取模型能力失败', storeErr)
+        }
+      }
+      
+      // 根据 Provider 调用对应的 streamChatResponse
       if (service === GeminiService) {
         // Gemini: (apiKey, history, modelName, userMessage, options)
-        yield* service.streamChatResponse(apiKey, safeHistory, modelName, safeUserMessage, { signal, webSearch, requestedModalities, imageConfig, reasoning, parameters })
+        yield* service.streamChatResponse(apiKey, safeHistory, modelName, safeUserMessage, { signal, webSearch, requestedModalities, imageConfig, reasoning, parameters, pdfEngine, systemInstruction })
       } else if (service === OpenRouterService) {
         // OpenRouter: (apiKey, history, modelName, userMessage, baseUrl, options)
-        yield* service.streamChatResponse(apiKey, safeHistory, modelName, safeUserMessage, baseUrl, { signal, webSearch, requestedModalities, imageConfig, reasoning, parameters })
+        // 处理短模型名到 provider/name 的映射
+        let openRouterModelId = modelName
+        if (!modelName.includes('/')) {
+          // 映射规则：gemini-* -> google/*, gpt-* -> openai/*, claude-* -> anthropic/*, llama-* -> meta-llama/*, auto -> openrouter/auto
+          if (modelName === 'auto') {
+            openRouterModelId = 'openrouter/auto'
+          } else if (modelName.startsWith('gemini-')) {
+            openRouterModelId = `google/${modelName}`
+          } else if (modelName.startsWith('gpt-')) {
+            openRouterModelId = `openai/${modelName}`
+          } else if (modelName.startsWith('claude-')) {
+            openRouterModelId = `anthropic/${modelName}`
+          } else if (modelName.startsWith('llama-')) {
+            openRouterModelId = `meta-llama/${modelName}`
+          }
+          console.log(` [aiChatService] 规范化模型 ID: ${modelName} -> ${openRouterModelId}`)
+        }
+
+        // Phase 2 Airlock: 旧版 UI 选项 -> 统一 GenerationConfig
+        const { effectiveConfig, resolvedReasoning } = buildAirlockedGenerationConfig({
+          modelId: openRouterModelId,
+          conversationId: conversationId?.value || conversationId,
+          legacyReasoning: reasoning,
+          legacyParameters: parameters,
+        })
+
+        yield* service.streamChatResponse(apiKey, safeHistory, openRouterModelId, safeUserMessage, baseUrl, { 
+          signal, 
+          webSearch, 
+          requestedModalities, 
+          imageConfig, 
+          pdfEngine, 
+          modelParameters: modelParametersInfo,
+          modelCapability: modelCapability,  // 解析后的能力（若可用）
+          generationConfig: effectiveConfig,
+          resolvedReasoningConfig: resolvedReasoning,
+          systemInstruction,
+        })
       } else {
-        throw new Error('未知的服务类型')
+        throw new Error('未知 Provider，无法发起请求')
       }
       
-      console.log('aiChatService: 流式对话完成')
+      console.log('aiChatService: 流式响应完成')
     } catch (error) {
-      console.error('aiChatService: 流式对话失败！', error)
+      console.error('aiChatService: 流式响应失败', error)
       throw error
     }
   },
 
   /**
-   * 获取当前激活的 API Key（用于向后兼容）
-   * @param {Object} appStore - Pinia appStore 实例
-   * @returns {string} - 当前激活的 API Key
+   * 获取当前 Provider 的 API Key。
+   * @param {Object} appStore Pinia 的 appStore
+   * @returns {string} API Key 或空字符串
    */
   getCurrentApiKey(appStore) {
     const { apiKey } = this.getProviderContext(appStore)
@@ -138,19 +348,19 @@ export const aiChatService = {
   },
 
   /**
-   * 检查指定模型是否支持视觉/图像输入
-   * @param {Object} appStore - Pinia appStore 实例
-   * @param {string} modelId - 模型 ID
-   * @returns {boolean} - 是否支持视觉
+   * 判断指定模型是否支持视觉输入（image/vision/multimodal）。
+   * @param {Object} appStore Pinia 的 appStore
+   * @param {string} modelId 模型 ID
+   * @returns {boolean} 是否支持视觉
    */
   supportsVision(appStore, modelId) {
     try {
       if (!modelId) return false
 
-      // 优先使用本地已加载的模型元数据判断（如果可用）
+      // 优先从 modelStore 的 availableModelsMap 查询
       try {
-        const chatStore = useChatStore()
-        const map = chatStore.availableModelsMap
+        const modelStore = useModelStore()
+        const map = modelStore.availableModelsMap
         if (map && typeof map.get === 'function') {
           const modelData = map.get(modelId) || map.get(String(modelId).toLowerCase())
           if (modelData && Array.isArray(modelData.input_modalities)) {
@@ -160,11 +370,11 @@ export const aiChatService = {
           }
         }
       } catch (err) {
-        // 如果读取 store 失败，继续回退到 provider 的判断
-        console.warn('aiChatService.supportsVision: 无法读取 chatStore，回退到 provider 判断', err)
+        // 回退到 Provider 层判断
+        console.warn('aiChatService.supportsVision: 读取 modelStore 失败 ', err)
       }
 
-      // 回退：调用 provider 的 supportsVision（如果实现）
+      // 回退到具体 Provider 的 supportsVision
       const { service } = this.getProviderContext(appStore)
       if (service && service.supportsVision && typeof service.supportsVision === 'function') {
         return service.supportsVision(modelId)
@@ -172,8 +382,10 @@ export const aiChatService = {
 
       return false
     } catch (error) {
-      console.error('aiChatService: 检查视觉支持失败', error)
+      console.error('aiChatService: supportsVision 判断失败', error)
       return false
     }
   }
 }
+
+

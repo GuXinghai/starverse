@@ -61,9 +61,11 @@
 
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
-import { useChatStore } from '../stores/chatStore'
+import { useConversationStore } from '../stores/conversation'
+import { useModelStore } from '../stores/model'
 
-const chatStore = useChatStore()
+const conversationStore = useConversationStore()
+const modelStore = useModelStore()
 
 const isSearchVisible = ref(false)
 const searchQuery = ref('')
@@ -74,7 +76,7 @@ const searchResults = computed(() => {
   if (!searchQuery.value) return []
   
   const query = searchQuery.value.toLowerCase()
-  return chatStore.allModels.filter(model => 
+  return modelStore.availableModels.filter(model => 
     model.id.toLowerCase().includes(query) ||
     model.name.toLowerCase().includes(query)
   )
@@ -104,11 +106,11 @@ const selectFirstResult = () => {
 
 // 选择模型
 const selectModel = (modelId) => {
-  const activeConv = chatStore.activeConversation
+  const activeConv = conversationStore.activeConversation
   if (activeConv) {
-    chatStore.updateConversationModel(activeConv.id, modelId)
+    conversationStore.updateConversationModel(activeConv.id, modelId)
   } else {
-    chatStore.setSelectedModel(modelId)
+    modelStore.selectedModelId = modelId
   }
   closeSearch()
 }

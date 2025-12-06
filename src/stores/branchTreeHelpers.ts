@@ -22,6 +22,18 @@ import type {
 } from '../types/chat'
 import { sanitizeMessageMetadata } from '../utils/ipcSanitizer.js'
 
+const DEBUG_TREE_SERIALIZE = typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEBUG_TREE === 'true'
+const debugTreeLog = (...args: any[]) => {
+  if (DEBUG_TREE_SERIALIZE) {
+    console.log(...args)
+  }
+}
+const debugTreeWarn = (...args: any[]) => {
+  if (DEBUG_TREE_SERIALIZE) {
+    console.warn(...args)
+  }
+}
+
 /**
  * 工具函数：使用 delete + set 强制触发 Vue 响应式更新
  * Map 的直接修改可能不触发响应式，展开拷贝确保更新
@@ -76,14 +88,14 @@ export function extractTextFromBranch(branch: MessageBranch): string {
  * 3. 如果没有父分支，则为根分支
  * 
  * @param tree - 对话树
- * @param role - 'user' | 'model'
+ * @param role - OpenAI 语义：'user' | 'assistant' | 'tool'
  * @param parts - 消息内容
  * @param parentBranchId - 父分支ID，null 表示根分支
  * @returns 新分支ID
  */
 export function addBranch(
   tree: ConversationTree,
-  role: 'user' | 'model',
+  role: 'user' | 'assistant' | 'tool',
   parts: MessagePart[],
   parentBranchId: string | null
 ): string {
@@ -148,6 +160,12 @@ export function addBranch(
   // 如果没有父分支，加入根分支列表
   if (!parentBranchId) {
     tree.rootBranchIds = [...tree.rootBranchIds, branch.branchId]
+  }
+
+  // 🔧 修复：自动更新 currentPath，确保新分支出现在当前路径中
+  // 如果是根分支或接在当前路径末尾的分支，自动扩展路径
+  if (!parentBranchId || tree.currentPath[tree.currentPath.length - 1] === parentBranchId) {
+    tree.currentPath = [...tree.currentPath, branch.branchId]
   }
 
   return branch.branchId
@@ -374,8 +392,13 @@ export function enterFirstChildOfCurrentVersion(
 /**
  * 获取当前路径的消息（用于API调用）
  * 
+ * ⚠️ 引用陷阱警告：
+ * - 返回的消息对象中的 `parts` 字段是直接引用原始数组
+ * - 调用方如需快照，必须执行深拷贝：
+ *   `messages.map(msg => ({ ...msg, parts: msg.parts.map(p => ({ ...p })) }))`
+ * 
  * @param tree - 对话树
- * @returns 消息数组，用于发送给 AI API
+ * @returns 消息数组（包含引用，非副本）
  */
 export function getCurrentPathMessages(tree: ConversationTree) {
   return tree.currentPath.map((branchId: string) => {
@@ -905,6 +928,10 @@ export function appendReasoningDetailToBranch(
       ...(existing ?? {}),
       reasoning: {
         ...reasoning,
+        // 🔧 显式保留关键字段（防御性编程）
+        streamText: reasoning.streamText,  // 保留流式文本
+        text: reasoning.text,              // 保留完整文本
+        summary: reasoning.summary,        // 保留摘要
         details: [...currentDetails, detail],
         lastUpdatedAt: Date.now()
       }
@@ -934,6 +961,10 @@ export function setReasoningSummaryForBranch(
   }
 ): boolean {
   return patchBranchMetadata(tree, branchId, (existing) => {
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🛡️ 安全性保证：patchBranchMetadata 内部从 tree.branches.get(branchId) 
+    // 实时获取最新 branch，所以这里的 existing 是最新状态，不是过时引用
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const reasoning = existing?.reasoning ?? {}
     
     return {
@@ -942,6 +973,15 @@ export function setReasoningSummaryForBranch(
         ...reasoning,
         summary: summaryData.summary,
         text: summaryData.text,
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 🔧 显式保留 streamText（关键修复）
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // 问题：`...reasoning` 展开 Vue Proxy 时可能丢失流式过程中动态添加的属性
+        // 原因：Spread 运算符遍历 Proxy Target 快照，不包含后续添加的 key
+        // 修复：显式访问 `reasoning.streamText` 触发 Proxy Getter，获取最新值
+        // 用途：streamText 用于 UI 实时展示，text 用于最终保存，两者都需要保留
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        streamText: reasoning.streamText,
         request: summaryData.request ? { ...summaryData.request } : reasoning.request,
         provider: summaryData.provider ?? reasoning.provider,
         model: summaryData.model ?? reasoning.model,
@@ -1034,7 +1074,7 @@ export function migrateMessagesToTree(oldMessages: any[]): ConversationTree {
     const branchId = uuidv4()
     const branch: MessageBranch = {
       branchId,
-      role: oldMsg.role === 'model' ? 'model' : 'user',
+      role: oldMsg.role === 'assistant' ? 'assistant' : 'user',
       parentBranchId: previousBranchId,
       parentVersionId: previousVersionId, // 记录源自父分支的哪个版本
       versions: [version],
@@ -1099,45 +1139,21 @@ export function getPathToBranch(tree: ConversationTree, targetBranchId: string):
 export function restoreTree(raw: any): ConversationTree {
   let branchesMap: Map<string, MessageBranch>
   
-  console.log('🔍 [restoreTree] 开始恢复树', {
-    hasBranches: !!raw?.branches,
-    branchesType: raw?.branches ? typeof raw.branches : 'undefined',
-    isArray: Array.isArray(raw?.branches),
-    isMap: raw?.branches instanceof Map,
-    branchesLength: raw?.branches?.length,
-    branchesSize: raw?.branches?.size,
-    firstItem: Array.isArray(raw?.branches) && raw.branches.length > 0 ? raw.branches[0] : undefined
-  })
-  
   if (!raw?.branches) {
     // 没有 branches，返回空树
-    console.log('⚠️ [restoreTree] 没有 branches，返回空树')
     return createEmptyTree()
   }
   
   if (raw.branches instanceof Map) {
     // 已经是 Map，直接使用
-    console.log('✅ [restoreTree] branches 已经是 Map')
     branchesMap = raw.branches
   } else if (Array.isArray(raw.branches)) {
     // 从数组恢复 Map（JSON 序列化后的格式）
-    console.log('🔄 [restoreTree] 从数组恢复 Map')
-    console.log('  📋 Array length:', raw.branches.length)
-    console.log('  📋 First 3 items:', raw.branches.slice(0, 3))
     
     // 验证数组格式：应该是 [[key, value], ...] 的格式
     if (raw.branches.length > 0) {
       const firstItem = raw.branches[0]
       const isValidMapArray = Array.isArray(firstItem) && firstItem.length === 2
-      console.log('  ✅ Valid Map array format:', isValidMapArray)
-      
-      // 详细检查第一个条目
-      console.log('  🔍 First item details:')
-      console.log('    - Type:', typeof firstItem)
-      console.log('    - Is Array:', Array.isArray(firstItem))
-      console.log('    - Length:', firstItem?.length)
-      console.log('    - [0] (key):', firstItem?.[0], '(type:', typeof firstItem?.[0], ')')
-      console.log('    - [1] (value):', firstItem?.[1])
       
       if (!isValidMapArray) {
         console.error('❌ [restoreTree] Invalid branches array format!')
@@ -1148,20 +1164,8 @@ export function restoreTree(raw: any): ConversationTree {
     }
     
     branchesMap = new Map(raw.branches)
-    console.log('  ✅ Map created with', branchesMap.size, 'entries')
-    console.log('  📋 Keys:', Array.from(branchesMap.keys()))
-    
-    // 🔍 详细检查 Map 的第一个条目
-    if (branchesMap.size > 0) {
-      const firstEntry = Array.from(branchesMap.entries())[0]
-      console.log('  🔍 First Map entry:')
-      console.log('    - Key:', firstEntry[0], '(type:', typeof firstEntry[0], ')')
-      console.log('    - Value type:', typeof firstEntry[1])
-      console.log('    - Value:', firstEntry[1])
-    }
   } else if (typeof raw.branches === 'object') {
     // 从对象恢复 Map（Object.entries 兼容）
-    console.log('🔄 [restoreTree] 从对象恢复 Map')
     branchesMap = new Map(Object.entries(raw.branches))
   } else {
     // 无法识别的格式，返回空树
@@ -1217,34 +1221,34 @@ export function restoreTree(raw: any): ConversationTree {
  * @returns 序列化的对话树数据（branches 为数组格式）
  */
 export function serializeTree(tree: ConversationTree): any {
-  console.log('🔍 [serializeTree] 开始序列化树')
+  debugTreeLog('🔍 [serializeTree] 开始序列化树')
   
   // 处理 reactive 包装的 Map
   let branchesArray: any[]
   const branches: any = tree.branches
   
-  console.log('  🌲 Branches type:', typeof branches)
-  console.log('  🌲 Is Map:', branches instanceof Map)
-  console.log('  🌲 Has entries:', typeof branches?.entries)
-  console.log('  🌲 Is Array:', Array.isArray(branches))
+  debugTreeLog('  🌲 Branches type:', typeof branches)
+  debugTreeLog('  🌲 Is Map:', branches instanceof Map)
+  debugTreeLog('  🌲 Has entries:', typeof branches?.entries)
+  debugTreeLog('  🌲 Is Array:', Array.isArray(branches))
   
   if (branches instanceof Map) {
-    console.log('  ✅ Using Map.entries()')
+    debugTreeLog('  ✅ Using Map.entries()')
     branchesArray = Array.from(branches.entries())
-    console.log('  📋 Entries count:', branchesArray.length)
-    console.log('  📋 First entry:', branchesArray[0])
+    debugTreeLog('  📋 Entries count:', branchesArray.length)
+    debugTreeLog('  📋 First entry:', branchesArray[0])
   } else if (branches && typeof branches.entries === 'function') {
     // reactive 包装后的 Map 仍有 entries 方法
-    console.log('  ✅ Using reactive Map entries()')
+    debugTreeLog('  ✅ Using reactive Map entries()')
     branchesArray = Array.from(branches.entries())
-    console.log('  📋 Entries count:', branchesArray.length)
-    console.log('  📋 First entry:', branchesArray[0])
+    debugTreeLog('  📋 Entries count:', branchesArray.length)
+    debugTreeLog('  📋 First entry:', branchesArray[0])
   } else if (Array.isArray(branches)) {
     // 已经是数组
-    console.log('  ⚠️ Already an array')
+    debugTreeLog('  ⚠️ Already an array')
     branchesArray = branches
   } else {
-    console.warn('⚠️ serializeTree: 无法识别的 branches 类型', typeof branches)
+    debugTreeWarn('⚠️ serializeTree: 无法识别的 branches 类型', typeof branches)
     branchesArray = []
   }
   
@@ -1254,7 +1258,7 @@ export function serializeTree(tree: ConversationTree): any {
     currentPath: tree.currentPath || []
   }
   
-  console.log('✅ [serializeTree] 序列化完成:', {
+  debugTreeLog('✅ [serializeTree] 序列化完成:', {
     branchesCount: branchesArray.length,
     rootBranchIdsCount: result.rootBranchIds.length,
     currentPathLength: result.currentPath.length,
