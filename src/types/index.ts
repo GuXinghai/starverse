@@ -11,7 +11,19 @@ export * from './chat'
 export * from './conversation'
 
 // Store 模块共享类型
-export * from './store'
+export type {
+  Conversation,
+  ConversationSnapshot,
+  Project,
+  ProjectMeta,
+  ProjectOverview,
+  ProjectHomepage,
+  ProjectPromptTemplate,
+  ModelData,
+  ModelParameterSupport,
+  DisplayMessage,
+  ErrorInfo
+} from './store'
 
 // Electron API 类型扩展
 // electron.d.ts 仅包含全局类型声明，无需导出

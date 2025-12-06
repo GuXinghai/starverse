@@ -9,11 +9,12 @@ export default defineConfig({
       rollupOptions: {
         input: {
           main: resolve('electron/main.ts'),
-          dbWorker: resolve('electron/db/worker.ts')
+          worker: resolve('electron/db/worker.ts')
         },
         output: {
+          format: 'cjs',
           entryFileNames: (chunkInfo) => {
-            if (chunkInfo.name === 'dbWorker') return 'db/worker.js'
+            if (chunkInfo.name === 'worker') return 'db/worker.cjs'
             return '[name].js'
           }
         }
