@@ -96,7 +96,22 @@ const allowedMethods: DbMethod[] = [
   'search.fulltext',
   
   // Maintenance
-  'maintenance.optimize'
+  'maintenance.optimize',
+  
+  // Usage Statistics
+  'usage.log',
+  'usage.getProjectStats',
+  'usage.getConvoStats',
+  'usage.getModelStats',
+  'usage.getDateRangeStats',
+  'usage.aggregate',
+  'usage.drillDown',
+  'usage.reasoningTrend',
+  'usage.reasoningModelComparison',
+  'prefs.save',
+  'prefs.list',
+  'prefs.delete',
+  'prefs.default'
 ]
 
 /**
@@ -168,21 +183,39 @@ export const registerDbBridge = (manager: DbWorkerManager) => {
    * @throws {DbWorkerError} Payload 验证失败或方法不允许
    */
   ipcMain.handle('db:invoke', async (_event, payload: InvokePayload) => {
-    // ========== 步骤 1: Payload 验证 ==========
-    if (!payload || typeof payload !== 'object') {
-      throw new DbWorkerError('ERR_VALIDATION', 'Invalid DB IPC payload')
-    }
+    try {
+      // ========== 步骤 1: Payload 验证 ==========
+      if (!payload || typeof payload !== 'object') {
+        throw new DbWorkerError('ERR_VALIDATION', 'Invalid DB IPC payload')
+      }
 
-    // ========== 步骤 2: 白名单检查 ==========
-    if (!allowSet.has(payload.method)) {
-      throw new DbWorkerError('ERR_NOT_FOUND', `Method not allowed: ${payload.method}`)
-    }
+      // ========== 步骤 2: 白名单检查 ==========
+      if (!allowSet.has(payload.method)) {
+        throw new DbWorkerError('ERR_NOT_FOUND', `Method not allowed: ${payload.method}`)
+      }
 
-    if (payload.method === 'health.stats') {
-      return manager.getStats()
-    }
+      if (payload.method === 'health.stats') {
+        return manager.getStats()
+      }
 
-    // ========== 步骤 3: 转发给 Worker ==========
-    return manager.call(payload.method, payload.params)
+      console.log(`[dbBridge] 调用方法: ${payload.method}, 参数:`, payload.params)
+
+      // ========== 步骤 3: 转发给 Worker ==========
+      return await manager.call(payload.method, payload.params)
+    } catch (error) {
+      console.error(`[dbBridge] 调用失败: ${payload?.method}`, error)
+      console.error(`[dbBridge] 错误类型: ${error?.constructor?.name}`)
+      console.error(`[dbBridge] 错误堆栈:`, (error as Error)?.stack)
+      
+      // 尝试序列化错误以查看传递给渲染进程的内容
+      try {
+        const serialized = JSON.stringify(error)
+        console.error(`[dbBridge] 序列化后的错误:`, serialized)
+      } catch (serializeError) {
+        console.error(`[dbBridge] 错误无法序列化:`, serializeError)
+      }
+      
+      throw error
+    }
   })
 }

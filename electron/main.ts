@@ -30,9 +30,40 @@ import { DbWorkerManager } from './db/workerManager'
 import { registerDbBridge } from './ipc/dbBridge'
 import { registerOpenRouterBridge, cleanupActiveStreams } from './ipc/openRouterBridge'
 import { createInAppBrowserManager } from './services/inappBrowser'
+import {
+  ALLOWED_CONFIG_KEYS,
+  CURRENT_CONFIG_VERSION,
+  migrateConfig,
+  validateAndCleanConfig,
+  checkFieldSize,
+  checkTotalSize,
+  checkConfigIntegrity,
+  safeClearConfig,
+} from './config/configSchema'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DB_LOG_DIR = path.join(app.getPath('userData'), 'logs')
+
+// 环境检测
+const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
+
+/**
+ * 默认配置值
+ * 
+ * 用于：
+ * 1. Store 初始化时的 defaults 参数
+ * 2. 配置文件损坏时的恢复
+ * 3. 新用户首次启动的初始状态
+ */
+const DEFAULT_CONFIG = {
+  configVersion: CURRENT_CONFIG_VERSION,
+  activeProvider: 'Gemini' as const,
+  theme: 'auto' as const,
+  language: 'zh-CN' as const,
+  autoScrollToBottom: true,
+  showTimestamps: true,
+  enableNotifications: true,
+} as const
 
 /**
  * 应用配置持久化存储
@@ -40,12 +71,220 @@ const DB_LOG_DIR = path.join(app.getPath('userData'), 'logs')
  * electron-store 自动将数据保存为 JSON 文件
  * 位置: app.getPath('userData')/config.json
  * 
- * 存储内容:
+ * 存储内容：仅轻量级配置
  * - API Keys (Gemini, OpenRouter)
  * - 用户偏好设置（主题、字体大小等）
  * - 窗口尺寸和位置
+ * 
+ * ⚠️ 配置文件体积限制：
+ * - 正常应该 < 200 KB
+ * - 禁止存储：模型列表、会话内容、API 响应缓存等大数据
+ * - 这些数据应使用 SQLite 或独立缓存文件
+ * 
+ * 📋 配置管理策略：
+ * - 使用版本化 schema（见 config/configSchema.ts）
+ * - 启动时自动迁移和清理
+ * - 运行时验证和告警
  */
-const store = new Store()
+
+/**
+ * 配置迁移和清理
+ * 
+ * 在应用启动时执行：
+ * 0. 检查配置文件完整性
+ * 1. 迁移旧版本配置到当前版本
+ * 2. 移除非白名单字段
+ * 3. 清理遗留的大字段
+ * 
+ * 安全保证：
+ * - 迁移前自动创建备份
+ * - 检测到异常时输出警告
+ */
+function migrateAndCleanupConfig(store: Store): void {
+  try {
+    // Step 0: 配置完整性检查
+    const integrity = checkConfigIntegrity(store)
+    if (!integrity.ok) {
+      console.warn(`[Config] ⚠️ 配置文件异常: ${integrity.reason}`)
+      console.warn('[Config] 这可能是配置文件损坏后的自动恢复')
+    }
+    
+    const rawConfig = store.store as Record<string, any>
+    
+    // Step 1: 版本迁移
+    const currentVersion = rawConfig.configVersion || 1
+    if (currentVersion < CURRENT_CONFIG_VERSION) {
+      if (isDev) {
+        console.log(`[Config] 开始配置迁移: v${currentVersion} → v${CURRENT_CONFIG_VERSION}`)
+      }
+      
+      const migratedConfig = migrateConfig(rawConfig)
+      
+      // 应用迁移后的配置
+      for (const [key, value] of Object.entries(migratedConfig)) {
+        if (rawConfig[key] !== value) {
+          store.set(key, value)
+        }
+      }
+      
+      console.log(`[Config] ✅ 配置已迁移到 v${CURRENT_CONFIG_VERSION}`)
+    }
+    
+    // Step 2: 验证和清理
+    const { removed } = validateAndCleanConfig(store.store as Record<string, any>)
+    
+    if (removed.length > 0) {
+      const totalRemoved = removed.reduce((sum, item) => sum + item.size, 0)
+      
+      // 只在有实际清理或开发环境下输出
+      if (totalRemoved > 10_000 || isDev) {
+        console.warn(`[Config] 清理 ${removed.length} 个非法字段，减少 ${(totalRemoved / 1024).toFixed(2)} KB`)
+        
+        if (isDev) {
+          removed.forEach(({ key, size }) => {
+            console.warn(`  - ${key}: ${(size / 1024).toFixed(2)} KB`)
+          })
+        }
+      }
+      
+      // 移除非法字段
+      removed.forEach(({ key }) => store.delete(key))
+    }
+    
+    // Step 3: 确保版本号存在
+    if (!store.has('configVersion')) {
+      store.set('configVersion', CURRENT_CONFIG_VERSION)
+    }
+    
+  } catch (error) {
+    console.error('[Config] 迁移和清理失败:', error)
+  }
+}
+
+/**
+ * 配置体积检查
+ * 
+ * 调用时机：
+ * - 应用启动时（必须）
+ * - 开发环境：每次写入后
+ * - 生产环境：仅在启动时或手动触发
+ */
+function performConfigSizeCheck(store: Store, context: 'startup' | 'write' = 'startup'): void {
+  try {
+    const config = store.store as Record<string, any>
+    const { size, level, topFields } = checkTotalSize(config)
+    const sizeKB = size / 1024
+    const sizeMB = size / 1024 / 1024
+    
+    if (level === 'error') {
+      console.error(`[Config] ❌ 配置文件严重超标: ${sizeMB.toFixed(2)} MB (${sizeKB.toFixed(2)} KB)`)
+      console.error('[Config] 最大的 5 个字段:')
+      topFields.forEach(({ key, size }) => {
+        console.error(`  - ${key}: ${(size / 1024).toFixed(2)} KB`)
+      })
+    } else if (level === 'warn') {
+      console.warn(`[Config] ⚠️ 配置文件体积偏大: ${sizeKB.toFixed(2)} KB`)
+      if (isDev) {
+        console.warn('[Config] 最大的 5 个字段:')
+        topFields.forEach(({ key, size }) => {
+          console.warn(`  - ${key}: ${(size / 1024).toFixed(2)} KB`)
+        })
+      }
+    } else if (context === 'startup') {
+      // 仅在启动时输出正常状态（避免日志噪音）
+      if (isDev) {
+        console.log(`[Config] ✓ 配置文件大小正常: ${sizeKB.toFixed(2)} KB`)
+      }
+    }
+  } catch (error) {
+    console.error('[Config] 体积检查失败:', error)
+  }
+}
+
+/**
+ * 初始化 electron-store 配置存储
+ * 
+ * 容错机制：
+ * 1. clearInvalidConfig: JSON 解析失败时自动重置为默认值
+ * 2. deserialize: 自定义反序列化，捕获错误并返回默认配置
+ * 3. defaults: 提供默认配置值
+ * 
+ * 安全保证：
+ * - 永远不会因为配置文件损坏而导致应用崩溃
+ * - 损坏的配置会自动备份到 config.json.corrupted
+ */
+const store = new Store({
+  // 配置文件名（默认为 config.json）
+  name: 'config',
+  
+  // JSON 解析失败时自动重置为默认值（而不是抛出错误）
+  clearInvalidConfig: true,
+  
+  // 默认配置值
+  defaults: DEFAULT_CONFIG,
+  
+  // 自定义反序列化：捕获 JSON 解析错误并返回默认值
+  deserialize: (text: string) => {
+    try {
+      // 空文件处理
+      const trimmed = text.trim()
+      if (!trimmed) {
+        console.warn('[Config] 配置文件为空，使用默认配置')
+        return DEFAULT_CONFIG
+      }
+      
+      // 正常解析（使用 trim 后的内容，移除前后空白字符和换行符）
+      const parsed = JSON.parse(trimmed)
+      
+      // 验证是否为对象
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        console.error('[Config] 配置文件格式错误（不是对象），使用默认配置')
+        backupCorruptedConfig(text, 'invalid-format')
+        return DEFAULT_CONFIG
+      }
+      
+      return parsed
+      
+    } catch (error) {
+      console.error('[Config] JSON 解析失败，配置文件已损坏:', error)
+      console.error('[Config] 原始内容:', text.substring(0, 200))
+      
+      // 备份损坏的配置
+      backupCorruptedConfig(text, 'parse-error')
+      
+      // 返回默认配置（避免应用崩溃）
+      console.warn('[Config] 已重置为默认配置')
+      return DEFAULT_CONFIG
+    }
+  },
+})
+
+/**
+ * 备份损坏的配置文件
+ * 
+ * @param content - 损坏的配置内容
+ * @param reason - 损坏原因（用于文件名）
+ */
+function backupCorruptedConfig(content: string, reason: string): void {
+  try {
+    const backupPath = path.join(
+      app.getPath('userData'),
+      `config.json.corrupted.${reason}.${Date.now()}.bak`
+    )
+    
+    writeFile(backupPath, content, 'utf-8').then(() => {
+      console.log(`[Config] 损坏的配置已备份到: ${backupPath}`)
+    }).catch(err => {
+      console.error('[Config] 备份失败:', err)
+    })
+  } catch (error) {
+    console.error('[Config] 创建备份时出错:', error)
+  }
+}
+
+// 启动时执行配置迁移、清理和体积检查
+migrateAndCleanupConfig(store)
+performConfigSizeCheck(store, 'startup')
 
 /**
  * 构建产物目录结构
@@ -315,7 +554,31 @@ ipcMain.handle('store-get', (_event, key) => {
  * @returns true 表示设置成功
  */
 ipcMain.handle('store-set', (_event, key, value) => {
+  // 1. 字段大小检查（日志已在 checkFieldSize 内部输出）
+  const sizeCheck = checkFieldSize(key, value, isDev)
+  if (!sizeCheck.ok) {
+    // 不阻止写入，但已记录严重警告
+  }
+  
+  // 2. 白名单检查
+  if (!ALLOWED_CONFIG_KEYS.has(key)) {
+    if (isDev) {
+      console.warn(`[Config] ⚠️ 写入非白名单字段: "${key}"`)
+      console.warn('[Config] 如需使用，请添加到 config/configSchema.ts 的 ALLOWED_CONFIG_KEYS')
+    } else {
+      // 生产环境：仅记录一次警告
+      console.warn(`[Config] 未知配置字段: "${key}"`)
+    }
+  }
+  
+  // 3. 执行写入
   store.set(key, value)
+  
+  // 4. 写入后体积检查（仅开发环境）
+  if (isDev) {
+    performConfigSizeCheck(store, 'write')
+  }
+  
   return true
 })
 
@@ -327,6 +590,41 @@ ipcMain.handle('store-set', (_event, key, value) => {
 ipcMain.handle('store-delete', (_event, key) => {
   store.delete(key)
   return true
+})
+
+/**
+ * 安全清空配置
+ * 
+ * 使用场景：
+ * - 配置文件体积过大需要重置
+ * - 调试时需要清除所有设置
+ * - 用户请求恢复默认设置
+ * 
+ * @param keepKeys - 需要保留的字段（例如 API Keys）
+ * @returns 备份文件路径，如果失败则返回 null
+ */
+ipcMain.handle('store-clear-safe', (_event, keepKeys: string[] = []) => {
+  try {
+    const backupPath = safeClearConfig(store, keepKeys)
+    
+    // 清空后重新执行迁移和体积检查
+    migrateAndCleanupConfig(store)
+    performConfigSizeCheck(store, 'startup')
+    
+    return backupPath
+  } catch (error) {
+    console.error('[IPC] 安全清空配置失败:', error)
+    return null
+  }
+})
+
+/**
+ * 检查配置文件完整性
+ * 
+ * @returns { ok: 是否正常, reason: 异常原因 }
+ */
+ipcMain.handle('store-check-integrity', () => {
+  return checkConfigIntegrity(store)
 })
 
 
