@@ -14,7 +14,7 @@
   >
     <!-- AI 消息 - 头像在左 -->
     <div
-      v-if="message.role !== 'user'"
+      v-if="message.role === 'assistant'"
       class="flex-none w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white text-sm font-medium"
     >
       AI
@@ -49,7 +49,7 @@
 
               <!-- AI 消息完成后：ContentRenderer 渲染 Markdown/LaTeX -->
               <ContentRenderer
-                v-else-if="message.role === 'model'"
+                v-else-if="message.role === 'assistant'"
                 :content="part.text"
                 class="text-sm"
               />
@@ -149,7 +149,7 @@
 
         <!-- 重新生成按钮（仅AI消息） -->
         <button
-          v-if="message.role === 'model'"
+          v-if="message.role === 'assistant'"
           @click="$emit('regenerate')"
           class="text-xs text-gray-500 hover:text-blue-600 transition-colors"
           title="重新生成"
@@ -194,7 +194,7 @@ import MessageBranchController from '../MessageBranchController.vue'
 
 export interface MessageItemData {
   branchId: string
-  role: 'user' | 'model'
+  role: 'user' | 'assistant'
   parts?: any[]
   text?: string
   content?: string
@@ -214,13 +214,6 @@ const props = withDefaults(
     hasBranchVersions: false
   }
 )
-
-const emit = defineEmits<{
-  'edit': []
-  'delete': []
-  'regenerate': []
-  'switch-version': [direction: number]
-}>()
 
 const copyButtonText = ref('复制')
 

@@ -659,10 +659,10 @@ const startQuickStartConversation = (template: ProjectPromptTemplate, params: Re
   
   if (template.content) {
     const resolvedContent = buildTemplateContent(template, params)
-    conversationStore.updateDraft(newConv.id, resolvedContent)
+    newConv.draft = resolvedContent
   }
 
-  conversationStore.openTab(newConv.id)
+  conversationStore.openConversationInTab(newConv.id)
 
   recordTemplateUsage(template.id)
 }

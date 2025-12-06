@@ -8,6 +8,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import './style.css'
 import App from './App.vue'
+import { PROVIDERS } from './constants/providers'
 import { useAppStore } from './stores'
 import { useConversationStore } from './stores/conversation'
 import { useModelStore } from './stores/model'
@@ -41,26 +42,6 @@ let conversationStore: ReturnType<typeof useConversationStore>
 let modelStore: ReturnType<typeof useModelStore>
 let persistenceStore: ReturnType<typeof usePersistenceStore>
 let projectStore: ReturnType<typeof useProjectStore>
-
-const initializeStores = () => {
-  console.log('正在初始化 store 实例...')
-  appStore = useAppStore()
-  conversationStore = useConversationStore()
-  modelStore = useModelStore()
-  persistenceStore = usePersistenceStore()
-  projectStore = useProjectStore()
-  console.log('✓ Store 实例初始化完成')
-  
-  // 暴露到全局，供 Electron 主进程调用
-  ;(window as any).__STORES__ = {
-    appStore,
-    conversationStore,
-    modelStore,
-    persistenceStore,
-    projectStore
-  }
-  console.log('✓ Store 已暴露到全局 window.__STORES__')
-}
 
 const mountApplication = () => {
   console.log('正在挂载应用到 #app...')
@@ -112,12 +93,7 @@ const bootstrapChatData = async () => {
   console.log(`🌌 后台加载 ${currentProvider} 模型列表...`)
   try {
     const models = await aiChatService.listAvailableModels(appStore)
-    const updated = modelStore.setAvailableModels(models)
-
-    if (!updated) {
-      console.log('ℹ️ 模型列表与缓存一致，跳过刷新')
-      return
-    }
+    modelStore.setAvailableModels(models)
 
     console.log('✓ 模型列表加载成功:', models.length, '个模型')
 
@@ -143,8 +119,8 @@ const bootstrapChatData = async () => {
         
         // 限制并发数量，避免请求过多
         const BATCH_SIZE = 5
-        const allModelIds = models.map(m => m.id || m).filter(Boolean)
-        const modelIds = allModelIds.filter(id => !SKIP_MODELS.has(id))
+        const allModelIds = models.map((m: any) => m.id || m).filter(Boolean)
+        const modelIds = allModelIds.filter((id: string) => !SKIP_MODELS.has(id))
         
         if (skipCount > 0) {
           console.log(`⏭️ 跳过 ${skipCount} 个特殊路由模型（无需获取参数）`)
@@ -153,9 +129,9 @@ const bootstrapChatData = async () => {
         for (let i = 0; i < modelIds.length; i += BATCH_SIZE) {
           const batch = modelIds.slice(i, i + BATCH_SIZE)
           const results = await Promise.allSettled(
-            batch.map(modelId => 
+            batch.map((modelId: string) =>
               OpenRouterService.getModelParameters(apiKey, modelId, baseUrl)
-                .then(info => ({ modelId, info }))
+                .then((info: any) => ({ modelId, info }))
             )
           )
           
@@ -164,7 +140,7 @@ const bootstrapChatData = async () => {
             const modelId = batch[j]
             
             if (result.status === 'fulfilled' && result.value.info?.supported_parameters) {
-              modelStore.upsertModelSupportedParameters(result.value.modelId, result.value.info)
+              modelStore.updateModelParameterSupport(result.value.modelId, result.value.info)
               successCount++
             } else if (result.status === 'rejected') {
               errorCount++
@@ -182,6 +158,59 @@ const bootstrapChatData = async () => {
         }
         
         console.log(`✓ 模型参数获取完成: 成功 ${successCount} 个${errorCount > 0 ? `，跳过 ${errorCount} 个` : ''}`)
+        
+        // 🎯 Phase 2: 构建统一能力表
+        console.log('🎯 正在构建模型能力表...')
+        try {
+          const { buildModelCapabilityMap } = await import('./services/providers/modelCapability')
+          
+          // 收集所有已获取参数的模型数据
+          const modelDataForCapability: any[] = []
+          for (const model of models) {
+            const modelId = model.id || model
+            if (!modelId) continue
+            
+            // 兼容新接口：getModelParameterSupport 存储模型参数支持信息
+            const paramSupport = modelStore.getModelParameterSupport
+              ? modelStore.getModelParameterSupport(modelId)
+              : null
+
+            if (paramSupport) {
+              // 优先使用原始元数据
+              if ((paramSupport as any).raw) {
+                modelDataForCapability.push((paramSupport as any).raw)
+              } else if (Array.isArray((paramSupport as any).supported_parameters)) {
+                // 兼容回退：仅有 supported_parameters 时也构造最小模型数据
+                modelDataForCapability.push({
+                  id: paramSupport.model || modelId,
+                  name: paramSupport.model || modelId,
+                  supported_parameters: (paramSupport as any).supported_parameters,
+                  top_provider: {},
+                  pricing: {},
+                })
+              }
+            }
+          }
+          
+          if (modelDataForCapability.length > 0) {
+            const capabilityMap = buildModelCapabilityMap({ data: modelDataForCapability })
+            console.log(`✓ 模型能力表构建完成: ${capabilityMap.size} 个模型`)
+            
+            // 将能力表存储到 modelStore
+            modelStore.setModelCapabilityMap(capabilityMap)
+            
+            // 注册到 CapabilityRegistry（统一查询接口）
+            const { registerCapability } = await import('./services/capabilityRegistry')
+            for (const [modelId, cap] of capabilityMap) {
+              registerCapability(modelId, cap)
+            }
+            console.log(`✓ 已注册 ${capabilityMap.size} 个模型能力到 Registry`)
+          } else {
+            console.log('ℹ️ 没有可用的模型数据，跳过能力表构建')
+          }
+        } catch (capError) {
+          console.error('⚠️ 构建模型能力表失败:', capError)
+        }
       }
     }
   } catch (error) {
@@ -209,7 +238,21 @@ window.addEventListener('beforeunload', async (e) => {
 // ========== 启动流程：先初始化 Pinia 和 stores，再准备配置，最后挂载 UI 和后台加载数据 ==========
 ;(async () => {
   // 1️⃣ 初始化 store 实例（必须在 app.use(pinia) 之后）
-  initializeStores()
+  appStore = useAppStore()
+  conversationStore = useConversationStore()
+  modelStore = useModelStore()
+  persistenceStore = usePersistenceStore()
+  projectStore = useProjectStore()
+  
+  // 暴露到全局，供 Electron 主进程调用
+  ;(window as any).__STORES__ = {
+    appStore,
+    conversationStore,
+    modelStore,
+    persistenceStore,
+    projectStore
+  }
+  console.log('✓ Store 已暴露到全局 window.__STORES__')
   
   // 2️⃣ 初始化 appStore 配置
   console.log('正在初始化 appStore...')
