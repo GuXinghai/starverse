@@ -1,7 +1,7 @@
 # Starverse 重构进度追踪
 
-> **最后更新**: 2025年11月30日  
-> **状态**: ✅ Phase 3-5 已完成 | 📋 Phase 6 测试待执行
+> **最后更新**: 2025年12月6日  
+> **状态**: ✅ Phase 3-5 已完成 | 🚧 ConversationList TODO 1.1-1.3 已完成 | 📋 Phase 6 测试待执行
 
 ---
 
@@ -21,8 +21,53 @@
 | 模块 | 状态 | 行数 | 说明 |
 |------|------|------|------|
 | ChatView.vue (UI) | ⏸️ 延后 | ~600 (Template) | Phase 4 可选/延后 |
-| ConversationList.vue | ❌ 未重构 | 1,474 | 项目树 + 对话列表 |
+| **ConversationList.vue** | 🚧 **重构中** | 1,474 | **TODO 1.1-1.3 已完成** ✅ |
 | AdvancedModelPickerModal.vue | ❌ 未重构 | 1,353 | 高级模型选择器 |
+
+---
+
+## 🎯 ConversationList.vue 重构进度（TODO 1）
+
+### ✅ TODO 1.1: useFormatters Composable (已完成)
+
+**提交**: `refactor(TODO 1.1): extract useFormatters composable`
+
+**提取的函数**:
+- `getStatusLabel()` - 状态标签映射
+- `getStatusBadgeClass()` - 状态徽章样式
+- `getStatusBadgeClassActive()` - 激活状态徽章样式
+- `formatModelName()` - 模型名称格式化
+
+**成果**: ~100 行，职责单一的格式化工具集
+
+---
+
+### ✅ TODO 1.2: useMenuPositioning Composable (已完成)
+
+**提交**: `refactor(TODO 1.2): extract useMenuPositioning composable`
+
+**提取的功能**:
+- `computeMenuPosition()` - 智能菜单定位算法
+- 边界碰撞检测（窗口边缘）
+- 8 个方向的位置计算
+- transform-origin 自动调整
+
+**成果**: ~150 行，解耦菜单定位逻辑
+
+---
+
+### ✅ TODO 1.3: useConversationSearch Composable (已完成)
+
+**提交**: `refactor(TODO 1.3): extract useConversationSearch composable`
+
+**提取的功能**:
+- 搜索状态管理（`searchQuery`, `searchInTitle`, `searchInContent`）
+- 全文搜索逻辑（FTS5 + Search DSL）
+- `conversationMatchesContent()` - 内容匹配判断
+- `buildSearchScopes()` - 搜索范围构建
+- 搜索防抖和竞态条件处理
+
+**成果**: ~300 行，完整的搜索逻辑封装
 
 ---
 
@@ -180,6 +225,67 @@ if (event.key === 'Escape' && textInput.value?.matches(':focus')) {
 3. 成本收益比低
 
 **决策**: 等待 Phase 3-5 测试验证稳定后再评估
+
+---
+
+## 🆕 新增功能（refactor/conversation-list-split 分支）
+
+### ChatToolbar 组件 ✅
+
+**文件**: `src/components/chat/input/ChatToolbar.vue` (~450 行)
+
+**设计理念**: Plus Menu + Chips 交互模型（类似 Perplexity/OpenAI）
+
+**核心特性**:
+- ✅ 紧凑型按钮设计（文件上传、绘画、推理、搜索、参数）
+- ✅ 内联配置菜单（搜索深度、推理努力程度）
+- ✅ 一键比例切换（图像生成场景）
+- ✅ 智能禁用状态（根据模型能力自动调整）
+- ✅ Smart Parent, Dumb Child 架构（纯展示组件）
+
+**Props**: 17 个（包括功能启用状态、可用性标志、配置标签）
+
+**Emits**: 8 个事件（toggle-*, select-*, cycle-*, upload-file）
+
+**相关文档**: `docs/CHAT_TOOLBAR_REDESIGN.md`
+
+---
+
+### 模型能力系统 Phase 2 ✅
+
+**文件**: `src/stores/model.ts` (+115 行)
+
+**新增功能**:
+1. **modelCapabilityMap**: 存储 `ModelGenerationCapability` 对象
+2. **setModelCapabilityMap()**: 批量设置能力映射表
+3. **getModelCapability()**: 获取模型能力（带即时构建回退）
+4. **updateModelCapabilities()**: 批量更新能力信息
+
+**能力系统架构**:
+- 统一生成参数架构（temperature、reasoning、web_search 等）
+- 能力注册到 `capabilityRegistry`（供适配器查询）
+- 兼容旧 `ModelParameterSupport` 结构
+
+**相关文件**:
+- `src/services/capabilityRegistry.ts`
+- `src/services/providers/modelCapability.ts`
+- `src/types/generation.ts`
+
+---
+
+### 图像生成功能增强 ✅
+
+**文件**: `src/composables/useImageGeneration.ts`
+
+**新增功能**:
+- `cycleAspectRatio()`: 一键切换图片比例（1:1 → 16:9 → 9:16 → ...）
+- 与 ChatToolbar 集成，提供流畅的比例切换体验
+- 支持模型能力检测（`supportsImageAspectRatioConfig`）
+
+**用户体验**:
+- 点击 ⟳ 按钮快速切换比例
+- 当前比例实时显示在工具栏
+- 禁用状态智能管理
 
 ---
 

@@ -290,6 +290,20 @@ export function useImageGeneration(options: ImageGenerationOptions) {
     imageGenerationEnabled.value = !imageGenerationEnabled.value
   }
 
+  /**
+   * 寮€鍏跺畾鍥惧儚寮€鍏抽閫?
+   */
+  function cycleAspectRatio() {
+    if (!supportsImageAspectRatioConfig.value) {
+      return
+    }
+    const optionCount = IMAGE_ASPECT_RATIO_OPTIONS.length
+    if (optionCount === 0) {
+      return
+    }
+    imageAspectRatioIndex.value = (imageAspectRatioIndex.value + 1) % optionCount
+  }
+
   // ========== Watchers ==========
   
   /**
@@ -381,6 +395,7 @@ export function useImageGeneration(options: ImageGenerationOptions) {
     
     // 方法
     toggleImageGeneration,
+    cycleAspectRatio,
     cloneImageConfig,
     clampAspectRatioIndex
   }

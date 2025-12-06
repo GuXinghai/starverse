@@ -96,6 +96,7 @@ npm run electron:dev
 - **多模态支持**: 
   - 上传图片到 AI 模型进行分析（GPT-4o、Gemini 1.5+、Claude 3）
   - 接收 AI 生成的图片
+  - 🆕 一键切换图片比例（1:1、16:9、9:16 等）
   - 支持消息编辑时添加/移除图片
   - 图片点击使用系统默认应用打开
   - 统一处理多种格式（URL、base64、data URI、inline_data）
@@ -215,6 +216,12 @@ npm run electron:dev
 
 ### 🎨 用户体验
 - **现代化 UI**: 基于 Tailwind CSS 的精美界面设计
+- **🆕 现代化工具栏**: Plus Menu + Chips 交互模型
+  - ✅ 紧凑型按钮设计（文件上传、绘画、推理、搜索、参数）
+  - ✅ 内联配置菜单（搜索深度、推理努力程度）
+  - ✅ 一键比例切换（图像生成场景）
+  - ✅ 智能禁用状态（根据模型能力自动调整）
+  - ✅ Smart Parent, Dumb Child 架构（纯展示组件）
 - **响应式布局**: 自适应不同窗口大小
 - **🎯 智能菜单定位** ⭐ 最新:
   - ✅ 主菜单和子菜单独立 Teleport 到 body
@@ -286,7 +293,7 @@ npm run electron:dev
 | **Vue.js** | 3.4.21 | 渐进式前端框架（Composition API） |
 | **TypeScript** | 5.2.2 | 类型安全的 JavaScript 超集 |
 | **Vite** | 5.1.6 | 新一代前端构建工具 |
-| **Pinia** | 3.0.3 | Vue 3 官方状态管理库 |
+| **Pinia** | 3.0.3 | Vue 3 官方状态管理库（8个模块化 Store，含模型能力系统） |
 
 ### 数据存储
 | 技术 | 版本 | 用途 |
@@ -404,16 +411,21 @@ Starverse/
 
 | 模块 | 文件数 | 代码行数 | 说明 |
 |------|--------|---------|------|
-| **核心组件** | 13 | ~11,800 | Vue 3 Composition API |
+| **核心组件** | 13+ | ~12,200 | Vue 3 Composition API |
 | - ChatView.vue | 1 | 5,312 | 聊天核心逻辑、多实例架构 |
-| - ConversationList.vue | 1 | 1,474 | 项目树 + 对话列表 |
+| - ConversationList.vue | 1 | 1,474 | 项目树 + 对话列表（🚧 重构中，TODO 1.1-1.3 已完成） |
+| - ChatToolbar.vue | 1 | ~450 | 🆕 现代化工具栏（Plus Menu + Chips） |
 | - AdvancedModelPickerModal.vue | 1 | 1,353 | 高级模型选择器 |
 | - ProjectHome.vue | 1 | 1,171 | 项目主页 |
-| - FavoriteModelSelector.vue | 1 | 784 | 收藏模型选择器 |
-| **状态管理** | 8 | ~3,600 | Pinia Stores (模块化) |
+| **状态管理** | 8 | ~3,800 | Pinia Stores (模块化) |
 | - conversation.ts | 1 | 433 | 对话管理、标签页 |
 | - branch.ts | 1 | 422 | 分支树操作 |
 | - branchTreeHelpers.ts | 1 | 1,140 | 树形算法实现 |
+| - model.ts | 1 | ~380 | 🆕 模型管理 + 能力系统 Phase 2（ModelGenerationCapability） |
+| **Composables** | 13+ | ~1,800 | Vue 组合式函数 |
+| - 🆕 useConversationSearch.ts | 1 | ~300 | TODO 1.3: 对话搜索逻辑（FTS5 + DSL） |
+| - 🆕 useMenuPositioning.ts | 1 | ~150 | TODO 1.2: 菜单智能定位算法 |
+| - 🆕 useFormatters.ts | 1 | ~100 | TODO 1.1: 格式化工具函数集合 |1,140 | 树形算法实现 |
 | - model.ts | 1 | 265 | 模型管理 |
 | - persistence.ts | 1 | 271 | 持久化调度 |
 | - project.ts | 1 | 475 | 项目管理 |
