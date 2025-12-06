@@ -10,6 +10,9 @@
 
 import { computed, type ComputedRef } from 'vue'
 import type { WebSearchLevel } from '../types/chat'
+import { PROVIDERS } from '../constants/providers'
+import { toProviderId } from '../stores'
+import type { AIProvider } from '../stores'
 
 /**
  * 搜索级别配置
@@ -109,7 +112,9 @@ export function useWebSearch(options: WebSearchOptions) {
     }
 
     // 仅 OpenRouter 支持
-    return activeProvider.value === 'OpenRouter'
+    // 使用类型安全的转换函数比较 Provider
+    const providerId = toProviderId(activeProvider.value as AIProvider)
+    return providerId === PROVIDERS.OPENROUTER
   })
 
   /**

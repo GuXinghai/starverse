@@ -18,6 +18,7 @@
 import { computed, type ComputedRef } from 'vue'
 import type { SamplingParameterSettings, ParameterControlMode } from '../types/chat'
 import { DEFAULT_SAMPLING_PARAMETERS } from '../types/chat'
+import { PROVIDERS } from '../constants/providers'
 
 /**
  * 滑块类型参数键
@@ -297,10 +298,26 @@ export function useSamplingParameters(options: SamplingParametersOptions) {
    * 采样控制是否可用（仅 OpenRouter 支持）
    */
   const isSamplingControlAvailable = computed(() => {
+    // 🔧 修复：不区分大小写的 Provider 比较
+    const providerLower = (activeProvider.value || '').toLowerCase()
+    const isOpenRouter = providerLower === PROVIDERS.OPENROUTER
+    
+    const result = {
+      isActive: isActive.value,
+      activeProvider: activeProvider.value,
+      providerLower: providerLower,
+      check: isOpenRouter,
+      available: false
+    }
+    
     if (!isActive.value) {
+      console.log('[useSamplingParameters] isSamplingControlAvailable = false (不活跃)', result)
       return false
     }
-    return activeProvider.value === 'OpenRouter'
+    
+    result.available = isOpenRouter
+    console.log('[useSamplingParameters] isSamplingControlAvailable 计算:', result)
+    return result.available
   })
 
   /**
