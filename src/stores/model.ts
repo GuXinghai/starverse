@@ -11,7 +11,10 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ModelData, ModelParameterSupport } from '../types/store'
+import type { ModelGenerationCapability } from '../types/generation'
 import { electronStore } from '../utils/electronBridge'
+import { registerCapability } from '../services/capabilityRegistry'
+import { buildModelCapability } from '../services/providers/modelCapability'
 
 export const useModelStore = defineStore('model', () => {
   // ========== State ==========
@@ -30,6 +33,12 @@ export const useModelStore = defineStore('model', () => {
    * 模型参数支持信息缓存
    */
   const modelParameterSupportMap = ref<Map<string, ModelParameterSupport>>(new Map())
+
+  /**
+   * 模型能力表（统一生成参数架构）
+   * 🎯 Phase 2: 存储 ModelGenerationCapability 对象
+   */
+  const modelCapabilityMap = ref<Map<string, ModelGenerationCapability>>(new Map())
 
   /**
    * 用户收藏的模型 ID 集合
@@ -210,7 +219,12 @@ export const useModelStore = defineStore('model', () => {
     modelId: string,
     support: ModelParameterSupport
   ): void => {
-    modelParameterSupportMap.value.set(modelId, support)
+    // 兼容存储：如果没有 raw 字段，保存一份原始数据以便能力构建使用
+    const enrichedSupport: any = { ...support }
+    if (!('raw' in enrichedSupport)) {
+      enrichedSupport.raw = support
+    }
+    modelParameterSupportMap.value.set(modelId, enrichedSupport)
   }
 
   /**
@@ -235,6 +249,69 @@ export const useModelStore = defineStore('model', () => {
       modelParameterSupportMap.value = new Map(supportMap)
     } else {
       modelParameterSupportMap.value = new Map(Object.entries(supportMap))
+    }
+  }
+
+  // ========== Actions - 模型能力表 (Phase 2) ==========
+
+  /**
+   * 设置模型能力表
+   * 🎯 Phase 2: 存储从 buildModelCapabilityMap 构建的能力表
+   * 
+   * @param capabilityMap - 模型能力映射表
+   */
+  const setModelCapabilityMap = (
+    capabilityMap: Map<string, ModelGenerationCapability>
+  ): void => {
+    const newMap = new Map(capabilityMap)
+    modelCapabilityMap.value = newMap
+    // 同步注册到 Capability Registry，供适配器查询
+    for (const [modelId, cap] of newMap.entries()) {
+      registerCapability(modelId, cap)
+    }
+  }
+
+  /**
+   * 获取模型能力
+   * 🎯 Phase 2: 获取特定模型的生成能力
+   * 
+   * @param modelId - 模型 ID
+   * @returns 模型能力对象或 null
+   */
+  const getModelCapability = (modelId: string): ModelGenerationCapability | null => {
+    // 1) 直接命中已缓存的能力表
+    const cached = modelCapabilityMap.value.get(modelId)
+    if (cached) return cached
+
+    // 2) 尝试基于已加载的模型原始数据即时构建能力表（避免 UI/适配器缺少能力信息）
+    try {
+      const modelRecord = modelDataMap.value.get(modelId) || modelDataMap.value.get(modelId.toLowerCase())
+      const raw = (modelRecord as any)?._raw ?? modelRecord
+      if (raw) {
+        const capability = buildModelCapability(raw)
+        modelCapabilityMap.value.set(modelId, capability)
+        registerCapability(modelId, capability)
+        return capability
+      }
+    } catch (err) {
+      console.warn('modelStore.getModelCapability: fallback build failed', err)
+    }
+
+    return null
+  }
+
+  /**
+   * 批量更新模型能力
+   * 🎯 Phase 2: 更新多个模型的能力信息
+   * 
+   * @param capabilities - 模型能力数组
+   */
+  const updateModelCapabilities = (
+    capabilities: Array<{ modelId: string; capability: ModelGenerationCapability }>
+  ): void => {
+    for (const { modelId, capability } of capabilities) {
+      modelCapabilityMap.value.set(modelId, capability)
+      registerCapability(modelId, capability)
     }
   }
 
@@ -270,6 +347,7 @@ export const useModelStore = defineStore('model', () => {
     availableModelIds,
     modelDataMap,
     modelParameterSupportMap,
+    modelCapabilityMap,
     favoriteModelIds,
     selectedModelId,
 
@@ -295,6 +373,11 @@ export const useModelStore = defineStore('model', () => {
     updateModelParameterSupport,
     getModelParameterSupport,
     setModelParameterSupportMap,
+
+    // Actions - 模型能力表 (Phase 2)
+    setModelCapabilityMap,
+    getModelCapability,
+    updateModelCapabilities,
 
     // Actions - 持久化
     loadFavorites,

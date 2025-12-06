@@ -7,7 +7,7 @@
 ### 框架与构建
 - **Electron 38.6.0** + **Vue.js 3.4** (Composition API) + **TypeScript 5.2** (严格模式)
 - **Vite 5.1** + **electron-vite 4.0** - 开发服务器与构建工具
-- **Tailwind CSS 4.1** + **PostCSS 8.5** - 原子化样式系统
+- **Tailwind CSS 4.1.16** + **@tailwindcss/postcss 4.1.16** + **PostCSS 8.5** - 原子化样式系统 (支持 v4 `@theme` 指令)
 
 ### 状态与数据
 - **Pinia 3.0** - 模块化状态管理 (7个职责清晰的 Store)
@@ -205,9 +205,33 @@ docs/                       - 90+ 个架构与优化文档
 
 ### 样式开发规范
 - **Tailwind 优先**: 95% 样式使用 Tailwind 工具类，避免自定义 CSS
+- **Tailwind v4 配置**: **CSS 优先策略** - 所有主题配置在 `src/style.css` 的 `@theme` 块中
+- **禁止修改**: `tailwind.config.js` 已弃用（仅保留 content 路径），**严禁修改 theme 配置**
 - **响应式设计**: 移动端适配使用 `sm:` / `md:` / `lg:` 前缀
 - **暗色模式**: 使用 `dark:` 前缀，配合 `useAppStore` 的主题状态
-- **自定义颜色**: 在 `tailwind.config.js` 中扩展主题，不硬编码 hex 值
+- **主题配置**: **必须在 CSS 中使用 `@theme` 指令**，除非 CSS 无法表达（需提供理由）
+- **CSS 导入**: 使用 `@import "tailwindcss"` 新语法，替代旧的 `@tailwind` 指令
+
+#### ⚠️ Tailwind v4 关键语法变更（必读）
+
+**🚨 颜色透明度语法（最常见错误）**:
+- ❌ **禁止**: `bg-opacity-*`, `text-opacity-*`, `border-opacity-*` (v4 已废弃)
+- ✅ **必须**: 使用斜杠语法 `color/opacity`
+  ```html
+  <!-- ❌ 错误 (v3 语法，v4 会失效) -->
+  <div class="bg-black bg-opacity-50">
+  
+  <!-- ✅ 正确 (v4 语法) -->
+  <div class="bg-black/50">
+  <div class="text-white/75 border-red-500/30">
+  ```
+- **技术原因**: v4 引擎不再生成 `--tw-bg-opacity` CSS 变量，旧语法物理上不可用
+
+**配置策略（重要变更）**:
+- ❌ **绝对禁止**: 修改 `tailwind.config.js` 的 `theme` 或 `extend`（已完全弃用）
+- ✅ **必须使用**: CSS `@theme` 指令在 `src/style.css` 中配置所有主题
+- 📝 **例外情况**: 仅当 CSS 无法实现时才考虑 JS 配置（需充分说明理由）
+- 📖 详细规则见 `.cursorrules` / `.windsurfrules`
 
 ### 测试编写指南
 - **单元测试**: Vitest + @testing-library/vue，覆盖 Store 和 Composable
