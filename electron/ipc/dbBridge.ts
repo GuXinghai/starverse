@@ -108,6 +108,16 @@ const allowedMethods: DbMethod[] = [
   'usage.drillDown',
   'usage.reasoningTrend',
   'usage.reasoningModelComparison',
+  
+  // Model Data Management
+  'model.saveMany',
+  'model.replaceByProvider',
+  'model.getAll',
+  'model.getByProvider',
+  'model.getById',
+  'model.clear',
+  
+  // Preferences
   'prefs.save',
   'prefs.list',
   'prefs.delete',

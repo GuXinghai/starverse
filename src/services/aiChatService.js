@@ -154,7 +154,7 @@ export const aiChatService = {
   /**
    * 列出当前 Provider 的可用模型列表。
    * @param {Object} appStore Pinia 的 appStore
-   * @returns {Promise<string[]>} 模型 ID 列表
+   * @returns {Promise<Array>} 模型对象数组（OpenRouter）或模型 ID 数组（Gemini）
    */
   async listAvailableModels(appStore) {
     console.log('aiChatService: 获取模型列表..')
@@ -207,6 +207,12 @@ export const aiChatService = {
       systemInstruction = null,
     } = options || {}
 
+    console.log('[aiChatService] 🎯 streamChatResponse 被调用', {
+      modelName,
+      historyLength: safeHistory.length,
+      userMessageLength: safeUserMessage.length,
+      timestamp: Date.now()
+    })
     console.log('aiChatService: 开始流式响应..')
     console.log('  - 模型:', modelName)
     console.log('  - 历史条数:', safeHistory.length)
@@ -220,7 +226,14 @@ export const aiChatService = {
     console.log(' [aiChatService] History Sample (last item):', safeHistory.length > 0 ? safeHistory[safeHistory.length - 1] : 'Empty')
 
     try {
+      console.log('[aiChatService] 🔍 获取 Provider 上下文')
       const { service, apiKey, baseUrl } = this.getProviderContext(appStore)
+      console.log('[aiChatService] ✅ Provider 上下文获取成功', {
+        isGemini: service === GeminiService,
+        isOpenRouter: service === OpenRouterService,
+        hasApiKey: !!apiKey,
+        baseUrl
+      })
       
       if (!apiKey) {
         throw new Error('缺少 API Key，无法调用接口')
@@ -307,11 +320,20 @@ export const aiChatService = {
         }
 
         // Phase 2 Airlock: 旧版 UI 选项 -> 统一 GenerationConfig
+        console.log('[aiChatService] 🔧 构建 GenerationConfig')
         const { effectiveConfig, resolvedReasoning } = buildAirlockedGenerationConfig({
           modelId: openRouterModelId,
           conversationId: conversationId?.value || conversationId,
           legacyReasoning: reasoning,
           legacyParameters: parameters,
+        })
+
+        console.log('[aiChatService] 🚀 准备调用 OpenRouterService.streamChatResponse', {
+          modelId: openRouterModelId,
+          hasApiKey: !!apiKey,
+          historyLength: safeHistory.length,
+          hasConfig: !!effectiveConfig,
+          timestamp: Date.now()
         })
 
         yield* service.streamChatResponse(apiKey, safeHistory, openRouterModelId, safeUserMessage, baseUrl, { 

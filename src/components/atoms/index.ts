@@ -7,6 +7,7 @@
 
 // Button components
 export { default as BaseButton } from './BaseButton.vue'
+export { default as ChatToolbarButton } from './ChatToolbarButton.vue'
 export { default as IconButton } from './IconButton.vue'
 export { default as SampleButton } from './SampleButton.vue'
 

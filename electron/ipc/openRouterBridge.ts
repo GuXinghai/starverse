@@ -1,5 +1,6 @@
 import { ipcMain, WebContents } from 'electron'
-import { OpenRouterService } from '../../src/services/providers/OpenRouterService.js'
+import { OpenRouterService } from '../../src/services/providers/OpenRouterService'
+import type { HistoryMessage } from '../../src/types/providers'
 
 type ActiveStream = {
   controller: AbortController
@@ -35,7 +36,7 @@ const safeSend = (sender: WebContents, channel: string, payload?: any) => {
 
 export const registerOpenRouterBridge = () => {
   ipcMain.handle('openrouter:list-models', async (_event, request: { apiKey?: string; baseUrl?: string } = {}) => {
-    const { apiKey, baseUrl } = request
+    const { apiKey = '', baseUrl = '' } = request
     return OpenRouterService.listAvailableModels(apiKey, baseUrl)
   })
 
@@ -43,7 +44,7 @@ export const registerOpenRouterBridge = () => {
     requestId: string
     apiKey?: string
     baseUrl?: string
-    history: Array<{ role: string; content?: any; parts?: any }>
+    history: HistoryMessage[]
     model: string
     userMessage: string
     options?: any
@@ -71,11 +72,11 @@ export const registerOpenRouterBridge = () => {
     const startStreaming = async () => {
       try {
         const stream = OpenRouterService.streamChatResponse(
-          apiKey,
+          apiKey || '',
           history,
           model,
           userMessage,
-          baseUrl,
+          baseUrl || null,
           {
             ...options,
             signal: controller.signal

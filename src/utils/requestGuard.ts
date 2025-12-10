@@ -28,6 +28,8 @@ export type RequestKey =
   | 'reliability'
   | 'drilldown'
   | 'project'
+  | 'reasoningTrend'
+  | 'reasoningModelComparison'
 // 将来新增面板时，只需在此添加新的 key
 
 class RequestGuard {

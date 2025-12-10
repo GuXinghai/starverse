@@ -1,5 +1,8 @@
 # Starverse · OpenRouter Reasoning 标准化工程 - 交付总结
 
+> **⚠️ 历史文档警告**：本文档中提到的 `ChatInputArea.vue` 组件已于 2025-12-06 归档。  
+> 现已被 `ModernChatInput.vue` 完全替代。相关架构说明仅供历史参考。
+
 ## 一、项目概述
 
 **项目名称**：Starverse OpenRouter Reasoning 标准化工程（v2）

@@ -62,7 +62,7 @@ export const useBranchStore = defineStore('branch', () => {
    */
   const addMessageBranch = (
     conversationId: string,
-    role: 'user' | 'assistant' | 'tool',
+    role: 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter',
     parts: MessagePart[],
     parentBranchId: string | null = null
   ): string => {
@@ -76,7 +76,7 @@ export const useBranchStore = defineStore('branch', () => {
     })
     
     const tree = getTree(conversationId)
-    const newBranchId = addBranch(tree, role as 'user' | 'assistant' | 'tool', parts, parentBranchId)
+    const newBranchId = addBranch(tree, role as 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter', parts, parentBranchId)
     
     console.log('[BranchStore] 新分支已创建', {
       newBranchId,
@@ -148,7 +148,10 @@ export const useBranchStore = defineStore('branch', () => {
   }
 
   /**
-   * 创建一个临时的 notice 消息
+   * 创建一个临时的 notice 消息（仅内存，不持久化）
+   * 
+   * 使用 role: 'notice' 标识系统临时通知
+   * 这些消息会在流式完成后自动清除
    */
   const addNoticeMessage = (
     conversationId: string,
@@ -156,13 +159,9 @@ export const useBranchStore = defineStore('branch', () => {
   ): string => {
     const noticeBranchId = addMessageBranch(
       conversationId,
-      'assistant',
+      'notice',
       [{ type: 'text', text: noticeText }]
     )
-    patchMetadata(conversationId, noticeBranchId, (metadata) => ({
-      ...metadata,
-      noticeKind: 'send-delay'
-    }))
     return noticeBranchId
   }
 

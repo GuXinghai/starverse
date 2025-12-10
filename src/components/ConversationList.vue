@@ -519,7 +519,7 @@ const saveEdit = async (conversationId: string) => {
           tags: conversation.tags,
           webSearchEnabled: conversation.webSearch?.enabled ?? false,
           webSearchLevel: conversation.webSearch?.level ?? 'normal',
-          reasoningPreference: conversation.reasoning ?? { 
+          reasoningPreference: conversation.reasoningPreference || { 
             visibility: 'visible', 
             effort: 'medium', 
             maxTokens: null,

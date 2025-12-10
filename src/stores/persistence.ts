@@ -127,7 +127,7 @@ export const usePersistenceStore = defineStore('persistence', () => {
         tags: conversation.tags || [],
         webSearchEnabled: conversation.webSearch?.enabled || false,
         webSearchLevel: (conversation.webSearch?.level || 'normal') as 'quick' | 'normal' | 'deep',
-        reasoningPreference: conversation.reasoningPreference || conversation.reasoning || {
+        reasoningPreference: conversation.reasoningPreference || {
           visibility: 'off' as const,
           effort: 'medium' as const
         },

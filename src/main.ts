@@ -8,15 +8,14 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import './style.css'
 import App from './App.vue'
-import { PROVIDERS } from './constants/providers'
 import { useAppStore } from './stores'
 import { useConversationStore } from './stores/conversation'
 import { useModelStore } from './stores/model'
 import { usePersistenceStore } from './stores/persistence'
 import { useProjectStore } from './stores/project'
-// @ts-ignore - aiChatService.js is a JavaScript file
 import { aiChatService } from './services/aiChatService'
 import { ipcRendererBridge } from './utils/electronBridge'
+import { extractModelSeries } from './services/providers/OpenRouterService'
 
 console.log('✓ 依赖导入成功')
 console.log('  - createApp:', typeof createApp)
@@ -69,13 +68,14 @@ const mountApplication = () => {
 const bootstrapChatData = async () => {
   console.log('🌠 正在后台加载会话数据...')
   try {
-    // 并行加载对话、项目数据和收藏模型
+    // 并行加载对话、项目数据、收藏模型和缓存的模型列表
     await Promise.all([
       persistenceStore.loadAllConversations(),
       projectStore.loadProjects(),
-      modelStore.loadFavorites()
+      modelStore.loadFavorites(),
+      modelStore.loadAvailableModels() // 从数据库加载模型列表
     ])
-    console.log('✓ 会话、项目和收藏模型数据加载完成')
+    console.log('✓ 会话、项目、收藏模型和缓存模型数据加载完成')
   } catch (error) {
     console.error('⚠️ 加载数据失败:', error)
   }
@@ -92,8 +92,64 @@ const bootstrapChatData = async () => {
 
   console.log(`🌌 后台加载 ${currentProvider} 模型列表...`)
   try {
-    const models = await aiChatService.listAvailableModels(appStore)
+    const modelData = await aiChatService.listAvailableModels(appStore)
+    
+    console.log(`📊 原始数据类型检查:`, {
+      isArray: Array.isArray(modelData),
+      length: modelData?.length,
+      firstItemType: typeof modelData?.[0],
+      firstItem: modelData?.[0]
+    })
+    
+    // 规范化处理：支持对象数组（OpenRouter）和字符串数组（Gemini）
+    const models = (Array.isArray(modelData) ? modelData : [])
+      .filter((item: any) => item && (typeof item === 'string' || item.id)) // 过滤无效项
+      .map((item: any) => {
+        // 🔧 处理字符串（Gemini）：转换为基础对象
+        if (typeof item === 'string') {
+          return {
+            id: item,
+            name: item,
+            description: undefined,
+            context_length: undefined,
+            max_output_tokens: undefined,
+            pricing: undefined,
+            architecture: undefined,
+            input_modalities: undefined,
+            output_modalities: undefined,
+            supportsVision: false,
+            supportsImageOutput: false,
+            supportsReasoning: false
+          }
+        }
+        
+        // 🔧 处理对象（OpenRouter）：保留完整字段
+        return {
+          id: String(item.id),
+          name: item.name || String(item.id),
+          description: item.description,
+          context_length: item.context_length,
+          max_output_tokens: item.max_output_tokens,
+          pricing: item.pricing,
+          architecture: item.architecture,
+          series: extractModelSeries(String(item.id)),  // 🔧 添加：从 ID 提取模型系列
+          input_modalities: item.architecture?.input_modalities || item.input_modalities || ['text'],  // 🔧 修复：优先使用 architecture.input_modalities
+          output_modalities: item.architecture?.output_modalities || item.output_modalities || ['text'],  // 🔧 修复：优先使用 architecture.output_modalities
+          supportsVision: (item.architecture?.input_modalities || item.input_modalities || []).includes('image'),
+          supportsImageOutput: (item.architecture?.output_modalities || item.output_modalities || []).includes('image'),
+          supportsReasoning: item.architecture?.reasoning === true
+        }
+      })
+    
+    console.log(`🔄 模型转换完成:`, {
+      inputCount: modelData?.length,
+      outputCount: models.length,
+      sampleModel: models[0]
+    })
+    
     modelStore.setAvailableModels(models)
+    // 后台更新完成后保存到缓存
+    await modelStore.saveAvailableModels()
 
     console.log('✓ 模型列表加载成功:', models.length, '个模型')
 
@@ -119,9 +175,13 @@ const bootstrapChatData = async () => {
         
         // 限制并发数量，避免请求过多
         const BATCH_SIZE = 5
-        const allModelIds = models.map((m: any) => m.id || m).filter(Boolean)
+        const allModelIds = models
+          .map((m: any) => m.id)
+          .filter((id): id is string => Boolean(id) && id !== 'undefined')
         const modelIds = allModelIds.filter((id: string) => !SKIP_MODELS.has(id))
         
+        // 计算跳过的模型数量
+        skipCount = allModelIds.length - modelIds.length
         if (skipCount > 0) {
           console.log(`⏭️ 跳过 ${skipCount} 个特殊路由模型（无需获取参数）`)
         }
@@ -130,28 +190,39 @@ const bootstrapChatData = async () => {
           const batch = modelIds.slice(i, i + BATCH_SIZE)
           const results = await Promise.allSettled(
             batch.map((modelId: string) =>
-              OpenRouterService.getModelParameters(apiKey, modelId, baseUrl)
+              OpenRouterService.getModelParameters?.(apiKey, modelId, baseUrl)
                 .then((info: any) => ({ modelId, info }))
+                ?? Promise.reject(new Error('getModelParameters not available'))
             )
           )
           
           for (let j = 0; j < results.length; j++) {
             const result = results[j]
+            if (!result) continue // 防止 undefined 访问
+            
             const modelId = batch[j]
             
-            if (result.status === 'fulfilled' && result.value.info?.supported_parameters) {
-              modelStore.updateModelParameterSupport(result.value.modelId, result.value.info)
-              successCount++
+            // 跳过无效的模型 ID
+            if (!modelId || modelId === 'undefined') {
+              continue
+            }
+            
+            // TypeScript 类型守卫：分离 status 检查和 value 访问
+            if (result.status === 'fulfilled') {
+              if (result.value?.info?.supported_parameters) {
+                modelStore.updateModelParameterSupport(result.value.modelId, result.value.info)
+                successCount++
+              }
             } else if (result.status === 'rejected') {
               errorCount++
               // 仅在控制台输出简短警告，不显示详细错误
               const errorMsg = result.reason?.message || String(result.reason)
-              if (errorMsg.includes('404') || errorMsg.includes('No model found')) {
+              if (errorMsg.includes('Model not found') || errorMsg.includes('404')) {
                 // 404 错误说明模型不存在或不支持参数查询，静默跳过
-                console.debug(`跳过模型参数获取: ${modelId} (模型不支持)`)
+                // 使用 debug 级别避免日志噪音
               } else {
                 // 其他错误才显示警告
-                console.warn(`⚠️ 获取模型参数失败: ${modelId}`)
+                console.warn(`⚠️ 获取模型参数失败 (${modelId}): ${errorMsg}`)
               }
             }
           }
@@ -171,20 +242,21 @@ const bootstrapChatData = async () => {
             if (!modelId) continue
             
             // 兼容新接口：getModelParameterSupport 存储模型参数支持信息
-            const paramSupport = modelStore.getModelParameterSupport
+            const paramSupport = typeof modelId === 'string' && modelStore.getModelParameterSupport
               ? modelStore.getModelParameterSupport(modelId)
               : null
 
             if (paramSupport) {
               // 优先使用原始元数据
-              if ((paramSupport as any).raw) {
-                modelDataForCapability.push((paramSupport as any).raw)
-              } else if (Array.isArray((paramSupport as any).supported_parameters)) {
+              if ((paramSupport as any)["raw"]) {
+                modelDataForCapability.push((paramSupport as any)["raw"])
+              } else if (Array.isArray((paramSupport as any)["supported_parameters"])) {
                 // 兼容回退：仅有 supported_parameters 时也构造最小模型数据
+                // 使用方括号访问索引签名属性
                 modelDataForCapability.push({
-                  id: paramSupport.model || modelId,
-                  name: paramSupport.model || modelId,
-                  supported_parameters: (paramSupport as any).supported_parameters,
+                  id: (paramSupport as any)["model"] || modelId,
+                  name: (paramSupport as any)["model"] || modelId,
+                  supported_parameters: (paramSupport as any)["supported_parameters"],
                   top_provider: {},
                   pricing: {},
                 })

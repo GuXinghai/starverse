@@ -15,6 +15,7 @@ import type { ModelGenerationCapability } from '../types/generation'
 import { electronStore } from '../utils/electronBridge'
 import { registerCapability } from '../services/capabilityRegistry'
 import { buildModelCapability } from '../services/providers/modelCapability'
+import * as modelDataClient from '../services/db/modelDataClient'
 
 export const useModelStore = defineStore('model', () => {
   // ========== State ==========
@@ -90,8 +91,11 @@ export const useModelStore = defineStore('model', () => {
 
     for (const model of models) {
       if (model && model.id) {
-        ids.push(model.id)
-        map.set(model.id, model)
+        // 确保 id 是字符串类型
+        const modelId = String(model.id)
+        ids.push(modelId)
+        // 规范化模型对象，确保 id 是字符串
+        map.set(modelId, { ...model, id: modelId })
       }
     }
 
@@ -194,6 +198,49 @@ export const useModelStore = defineStore('model', () => {
     } catch (error) {
       console.error('❌ 加载收藏模型失败:', error)
     }
+  }
+
+  /**
+   * 保存可用模型列表到数据库
+   */
+  const saveAvailableModels = async (): Promise<void> => {
+    try {
+      const modelsArray = availableModels.value
+      console.log('[model.ts] 💾 开始保存模型列表', {
+        count: modelsArray.length,
+        sample: modelsArray[0]
+      })
+      
+      await modelDataClient.saveModels(modelsArray)
+      console.log('✅ 可用模型列表已保存到数据库:', modelsArray.length, '个模型')
+    } catch (error) {
+      console.error('❌ 保存可用模型列表失败:', error)
+      // 🚨 打印更详细的错误信息
+      if (error instanceof Error) {
+        console.error('❌ 错误详情:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        })
+      }
+    }
+  }
+
+  /**
+   * 从数据库加载可用模型列表
+   */
+  const loadAvailableModels = async (): Promise<boolean> => {
+    try {
+      const modelsArray = await modelDataClient.getAllModels()
+      if (Array.isArray(modelsArray) && modelsArray.length > 0) {
+        setAvailableModels(modelsArray)
+        console.log('✅ 从数据库加载了', modelsArray.length, '个可用模型')
+        return true
+      }
+    } catch (error) {
+      console.error('❌ 加载可用模型列表失败:', error)
+    }
+    return false
   }
 
   // ========== Actions - 模型选择 ==========
@@ -382,6 +429,8 @@ export const useModelStore = defineStore('model', () => {
     // Actions - 持久化
     loadFavorites,
     saveFavorites,
+    loadAvailableModels,
+    saveAvailableModels,
 
     // Queries
     getModelById,

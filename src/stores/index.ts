@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { electronStore as persistenceStore, isUsingElectronStoreFallback } from '../utils/electronBridge'
-import { PROVIDERS, type ProviderId, getProviderDisplayName } from '../constants/providers'
+import { PROVIDERS, type ProviderId } from '../constants/providers'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -77,6 +77,15 @@ export const useAppStore = defineStore('app', () => {
   // 发送延时（毫秒）
   const sendDelayMs = ref<number>(0)
   
+  // ⚠️ 已废弃：旧的统一超时机制（保留以兼容旧配置）
+  const sendTimeoutMs = ref<number>(60000)
+  
+  // 首 token 超时（毫秒）- 从发送请求到收到首个响应块的最大等待时间
+  const firstTokenTimeoutMs = ref<number>(30000)
+  
+  // 空闲超时（毫秒）- 流式传输中两个 chunk 之间的最大间隔时间
+  const streamIdleTimeoutMs = ref<number>(30000)
+  
   // 向后兼容：保留原有的 apiKey 引用（指向 geminiApiKey）
   const apiKey = ref<string>('')
   
@@ -101,7 +110,10 @@ export const useAppStore = defineStore('app', () => {
         savedWebSearchEngine,
         savedLastUsedPdfEngine,
         legacyApiKey,
-        savedSendDelayMs
+        savedSendDelayMs,
+        savedSendTimeoutMs,
+        savedFirstTokenTimeoutMs,
+        savedStreamIdleTimeoutMs
       ] = await Promise.all([
         persistenceStore.get('activeProvider'),
         persistenceStore.get('geminiApiKey'),
@@ -111,7 +123,10 @@ export const useAppStore = defineStore('app', () => {
         persistenceStore.get('webSearchEngine'),
         persistenceStore.get('lastUsedPdfEngine'),
         persistenceStore.get('apiKey'),
-        persistenceStore.get('sendDelayMs')
+        persistenceStore.get('sendDelayMs'),
+        persistenceStore.get('sendTimeoutMs'),
+        persistenceStore.get('firstTokenTimeoutMs'),
+        persistenceStore.get('streamIdleTimeoutMs')
       ])
       
       // 加载 API 提供商选择
@@ -160,6 +175,24 @@ export const useAppStore = defineStore('app', () => {
       if (savedSendDelayMs !== undefined && savedSendDelayMs !== null) {
         sendDelayMs.value = Math.max(0, Number(savedSendDelayMs) || 0)
         console.log('appStore.initializeStore - 发送延时加载', sendDelayMs.value)
+      }
+
+      // 加载超时保护定时器配置
+      if (savedSendTimeoutMs !== undefined && savedSendTimeoutMs !== null) {
+        sendTimeoutMs.value = Math.max(0, Number(savedSendTimeoutMs) || 60000)
+        console.log('appStore.initializeStore - 超时保护定时器加载（已废弃）', sendTimeoutMs.value)
+      }
+
+      // 首 token 超时
+      if (savedFirstTokenTimeoutMs !== undefined && savedFirstTokenTimeoutMs !== null) {
+        firstTokenTimeoutMs.value = Math.max(0, Number(savedFirstTokenTimeoutMs) || 30000)
+        console.log('appStore.initializeStore - 首 token 超时加载', firstTokenTimeoutMs.value)
+      }
+
+      // 空闲超时
+      if (savedStreamIdleTimeoutMs !== undefined && savedStreamIdleTimeoutMs !== null) {
+        streamIdleTimeoutMs.value = Math.max(0, Number(savedStreamIdleTimeoutMs) || 30000)
+        console.log('appStore.initializeStore - 空闲超时加载', streamIdleTimeoutMs.value)
       }
 
       // 向后兼容：如果没有新配置，尝试加载旧的 apiKey
@@ -285,6 +318,48 @@ export const useAppStore = defineStore('app', () => {
       return false
     }
   }
+
+  // 保存超时保护定时器（已废弃，保留以兼容旧配置）
+  const setSendTimeoutMs = async (value: number) => {
+    const normalized = Math.max(0, Number(value) || 60000)
+    try {
+      await persistenceStore.set('sendTimeoutMs', normalized)
+      sendTimeoutMs.value = normalized
+      console.log('✓ 已保存超时保护定时器（已废弃）:', normalized)
+      return true
+    } catch (error) {
+      console.error('保存超时保护定时器失败:', error)
+      return false
+    }
+  }
+
+  // 保存首 token 超时
+  const setFirstTokenTimeoutMs = async (value: number) => {
+    const normalized = Math.max(0, Number(value) || 30000)
+    try {
+      await persistenceStore.set('firstTokenTimeoutMs', normalized)
+      firstTokenTimeoutMs.value = normalized
+      console.log('✓ 已保存首 token 超时:', normalized)
+      return true
+    } catch (error) {
+      console.error('保存首 token 超时失败:', error)
+      return false
+    }
+  }
+
+  // 保存空闲超时
+  const setStreamIdleTimeoutMs = async (value: number) => {
+    const normalized = Math.max(0, Number(value) || 30000)
+    try {
+      await persistenceStore.set('streamIdleTimeoutMs', normalized)
+      streamIdleTimeoutMs.value = normalized
+      console.log('✓ 已保存空闲超时:', normalized)
+      return true
+    } catch (error) {
+      console.error('保存空闲超时失败:', error)
+      return false
+    }
+  }
   
   // 向后兼容：保留原有的 saveApiKey 方法（实际保存到 geminiApiKey）
   const saveApiKey = async (key: string) => {
@@ -319,6 +394,9 @@ export const useAppStore = defineStore('app', () => {
     webSearchEngine,
     lastUsedPdfEngine,
     sendDelayMs,
+    sendTimeoutMs,  // 已废弃，保留以兼容
+    firstTokenTimeoutMs,  // 新增
+    streamIdleTimeoutMs,  // 新增
     // 向后兼容
     apiKey,
     chatMessages,
@@ -336,6 +414,9 @@ export const useAppStore = defineStore('app', () => {
     saveWebSearchEngine,
     saveLastUsedPdfEngine,
     setSendDelayMs,
+    setSendTimeoutMs,  // 已废弃，保留以兼容
+    setFirstTokenTimeoutMs,  // 新增
+    setStreamIdleTimeoutMs,  // 新增
     saveApiKey, // 向后兼容
     // 消息管理
     addMessage,

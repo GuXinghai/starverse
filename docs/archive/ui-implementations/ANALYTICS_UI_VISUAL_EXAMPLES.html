@@ -1,0 +1,400 @@
+<!-- Analytics UI Visual Examples -->
+<style>
+  .preview-card {
+    border-radius: 16px;
+    padding: 24px;
+    margin: 16px 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  }
+  
+  .kpi-demo {
+    background: linear-gradient(135deg, white 0%, #f7fafc 100%);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+  }
+  
+  .kpi-demo:hover {
+    transform: scale(1.05) translateY(-4px);
+    box-shadow: 0 20px 25px rgba(0,0,0,0.15);
+  }
+  
+  .gradient-text {
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 50%, #ec4899 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-size: 32px;
+    font-weight: 900;
+  }
+</style>
+
+# Analytics UI 视觉效果演示
+
+## 🎨 配色方案
+
+### 主渐变色
+```html
+<!-- 头部背景 -->
+<div style="background: linear-gradient(135deg, #4F46E5 0%, #9333EA 50%, #EC4899 100%); height: 100px; border-radius: 16px;"></div>
+
+<!-- 文字渐变 -->
+<span style="background: linear-gradient(90deg, #4F46E5 0%, #9333EA 50%, #EC4899 100%); 
+              -webkit-background-clip: text; 
+              -webkit-text-fill-color: transparent; 
+              font-size: 24px; 
+              font-weight: 900;">
+  $1,234.56
+</span>
+```
+
+### 状态颜色
+```html
+<!-- 成功 -->
+<span style="padding: 6px 12px; border-radius: 9999px; background: #D1FAE5; color: #047857; font-weight: 700;">✅ Success</span>
+
+<!-- 错误 -->
+<span style="padding: 6px 12px; border-radius: 9999px; background: #FEE2E2; color: #DC2626; font-weight: 700;">❌ Error</span>
+
+<!-- 警告 -->
+<span style="padding: 6px 12px; border-radius: 9999px; background: #FED7AA; color: #C2410C; font-weight: 700;">⚠️ Warning</span>
+```
+
+---
+
+## 🃏 卡片样式
+
+### KPI 卡片
+```html
+<div style="background: linear-gradient(135deg, white 0%, #F7FAFC 100%);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid rgba(226,232,240,0.7);
+            transition: all 0.3s ease;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+    <span style="font-size: 12px; text-transform: uppercase; color: #64748B; font-weight: 600;">总成本</span>
+    <span style="font-size: 24px;">💰</span>
+  </div>
+  <div style="background: linear-gradient(90deg, #4F46E5 0%, #9333EA 50%, #EC4899 100%);
+              -webkit-background-clip: text;
+              -webkit-text-fill-color: transparent;
+              font-size: 32px;
+              font-weight: 900;">
+    $1,234.56
+  </div>
+  <!-- 底部装饰条 -->
+  <div style="height: 4px; 
+              background: linear-gradient(90deg, #4F46E5 0%, #9333EA 50%, #EC4899 100%);
+              border-radius: 9999px;
+              margin-top: 12px;"></div>
+</div>
+```
+
+### 图表卡片
+```html
+<div style="background: linear-gradient(135deg, white 0%, #F7FAFC 100%);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+  <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
+    <div>
+      <p style="font-size: 12px; color: #64748B; margin-bottom: 4px;">COST OVER TIME</p>
+      <h3 style="font-size: 18px; font-weight: 700;">总成本走势</h3>
+    </div>
+    <div style="background: linear-gradient(90deg, #4F46E5 0%, #9333EA 50%, #EC4899 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                font-size: 24px;
+                font-weight: 900;">
+      $1,234.56
+    </div>
+  </div>
+  <!-- 图表区域 -->
+  <div style="height: 128px; 
+              background: linear-gradient(90deg, rgba(99,102,241,0.1) 0%, rgba(168,85,247,0.1) 100%);
+              border-radius: 8px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: #94A3B8;">
+    📈 Chart Area
+  </div>
+</div>
+```
+
+---
+
+## 🎯 按钮样式
+
+### 主按钮
+```html
+<button style="padding: 10px 20px;
+               background: linear-gradient(135deg, #4F46E5 0%, #9333EA 100%);
+               color: white;
+               border: none;
+               border-radius: 8px;
+               font-weight: 600;
+               cursor: pointer;
+               box-shadow: 0 4px 6px rgba(79,70,229,0.3);
+               transition: all 0.2s ease;">
+  🔍 查看明细
+</button>
+
+<!-- Hover 状态：增加 scale(1.05) 和更深的阴影 -->
+```
+
+### 玻璃态按钮
+```html
+<button style="padding: 10px 20px;
+               background: rgba(255,255,255,0.2);
+               backdrop-filter: blur(10px);
+               color: white;
+               border: 1px solid rgba(255,255,255,0.3);
+               border-radius: 8px;
+               font-weight: 600;
+               cursor: pointer;
+               transition: all 0.2s ease;">
+  ✏️ 编辑视图
+</button>
+```
+
+---
+
+## 📊 表格样式
+
+### 表头
+```html
+<thead style="background: linear-gradient(90deg, rgba(79,70,229,0.1) 0%, rgba(147,51,234,0.1) 100%);">
+  <tr>
+    <th style="padding: 12px 24px; 
+               text-align: left; 
+               font-size: 12px; 
+               font-weight: 700; 
+               text-transform: uppercase; 
+               color: #64748B;">
+      时间
+    </th>
+    <th style="padding: 12px 24px; text-align: left; font-size: 12px; font-weight: 700; text-transform: uppercase; color: #64748B;">模型</th>
+    <th style="padding: 12px 24px; text-align: left; font-size: 12px; font-weight: 700; text-transform: uppercase; color: #64748B;">状态</th>
+  </tr>
+</thead>
+```
+
+### 表格行
+```html
+<tr style="border-top: 1px solid #E2E8F0; transition: background-color 0.2s ease;">
+  <td style="padding: 16px 24px; color: #1E293B;">2025-11-30 10:30:45</td>
+  <td style="padding: 16px 24px;">
+    <span style="padding: 4px 10px; 
+                 background: rgba(79,70,229,0.1); 
+                 color: #4F46E5; 
+                 border-radius: 8px; 
+                 font-size: 12px; 
+                 font-weight: 700;">
+      gpt-4-turbo
+    </span>
+  </td>
+  <td style="padding: 16px 24px;">
+    <span style="padding: 6px 12px; 
+                 background: #D1FAE5; 
+                 color: #047857; 
+                 border-radius: 9999px; 
+                 font-size: 12px; 
+                 font-weight: 700; 
+                 border: 1px solid #6EE7B7;">
+      ✅ success
+    </span>
+  </td>
+</tr>
+
+<!-- Hover 状态：background-color: #F8FAFC; -->
+```
+
+---
+
+## 🎭 动画效果
+
+### 淡入动画
+```css
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out;
+}
+```
+
+### 悬停缩放
+```css
+.hover-scale {
+  transition: all 0.3s ease;
+}
+
+.hover-scale:hover {
+  transform: scale(1.05) translateY(-4px);
+  box-shadow: 0 20px 25px rgba(0,0,0,0.15);
+}
+```
+
+### 按钮反馈
+```css
+.button-feedback {
+  transition: all 0.2s ease;
+}
+
+.button-feedback:hover {
+  transform: scale(1.05);
+}
+
+.button-feedback:active {
+  transform: scale(0.95);
+}
+```
+
+---
+
+## 🌈 SVG 效果
+
+### 图表发光
+```svg
+<defs>
+  <!-- 发光滤镜 -->
+  <filter id="glow">
+    <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+    <feMerge>
+      <feMergeNode in="coloredBlur"/>
+      <feMergeNode in="SourceGraphic"/>
+    </feMerge>
+  </filter>
+  
+  <!-- 渐变线条 -->
+  <linearGradient id="lineGradient" x1="0" x2="1" y1="0" y2="0">
+    <stop offset="0%" stop-color="#6366F1" />
+    <stop offset="50%" stop-color="#A855F7" />
+    <stop offset="100%" stop-color="#EC4899" />
+  </linearGradient>
+</defs>
+
+<path 
+  d="M 10 50 L 50 30 L 90 60" 
+  stroke="url(#lineGradient)" 
+  stroke-width="3" 
+  fill="none" 
+  filter="url(#glow)"
+/>
+```
+
+---
+
+## 🎨 完整示例
+
+### 对比卡片
+```html
+<div style="background: linear-gradient(135deg, white 0%, #F7FAFC 100%);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid rgba(226,232,240,0.7);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;">
+  
+  <!-- 装饰背景 -->
+  <div style="position: absolute; 
+              inset: 0; 
+              background: linear-gradient(135deg, rgba(79,70,229,0.05) 0%, rgba(147,51,234,0.05) 50%, rgba(236,72,153,0.05) 100%);
+              opacity: 0;
+              transition: opacity 0.3s ease;"></div>
+  
+  <!-- 内容 -->
+  <div style="position: relative; z-index: 10;">
+    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+      <div>
+        <p style="font-size: 12px; color: #4F46E5; font-weight: 700; text-transform: uppercase;">OPENROUTER</p>
+        <p style="font-size: 18px; font-weight: 700; color: #1E293B;">gpt-4-turbo</p>
+      </div>
+      <span style="padding: 4px 10px; 
+                   background: linear-gradient(135deg, #4F46E5 0%, #9333EA 100%);
+                   color: white;
+                   border-radius: 9999px;
+                   font-size: 12px;
+                   font-weight: 700;">
+        对比
+      </span>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+      <div style="background: #F8FAFC; border-radius: 8px; padding: 8px;">
+        <p style="font-size: 12px; color: #64748B; margin-bottom: 4px;">成本/1k</p>
+        <p style="font-size: 14px; font-weight: 700; color: #1E293B;">$0.012</p>
+      </div>
+      <div style="background: #F8FAFC; border-radius: 8px; padding: 8px;">
+        <p style="font-size: 12px; color: #64748B; margin-bottom: 4px;">成功率</p>
+        <p style="font-size: 14px; font-weight: 700; color: #16A34A;">98%</p>
+      </div>
+    </div>
+    
+    <div style="background: #F8FAFC; border-radius: 8px; padding: 8px;">
+      <p style="font-size: 12px; color: #64748B; margin-bottom: 4px;">平均耗时</p>
+      <p style="font-size: 14px; font-weight: 700; color: #1E293B;">1,234 ms</p>
+    </div>
+  </div>
+  
+  <!-- 悬停时显示装饰背景 -->
+</div>
+```
+
+---
+
+## 📱 响应式预览
+
+### 移动端 (< 640px)
+- KPI: 1 列
+- 图表: 1 列
+- 对比: 1 列
+
+### 平板 (640px - 1024px)
+- KPI: 2 列
+- 图表: 2 列
+- 对比: 2 列
+
+### 桌面 (> 1024px)
+- KPI: 4 列
+- 图表: 3 列
+- 对比: 3 列
+
+---
+
+## 🌗 暗色模式示例
+
+```html
+<div style="background: linear-gradient(135deg, rgba(15,23,42,0.8) 0%, rgba(30,41,59,0.6) 100%);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            border: 1px solid rgba(71,85,105,1);">
+  <div style="color: #CBD5E1; font-size: 12px; font-weight: 600; margin-bottom: 8px;">总成本</div>
+  <div style="background: linear-gradient(90deg, #6366F1 0%, #A855F7 50%, #EC4899 100%);
+              -webkit-background-clip: text;
+              -webkit-text-fill-color: transparent;
+              font-size: 32px;
+              font-weight: 900;">
+    $1,234.56
+  </div>
+</div>
+```
+
+---
+
+**提示**: 所有样式均使用内联 CSS 以便快速预览，实际项目中使用 Tailwind 类名实现。
+
+2025-11-30 | Starverse UI System

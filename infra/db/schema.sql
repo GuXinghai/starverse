@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS convo_tag (
 CREATE TABLE IF NOT EXISTS message (
   id TEXT PRIMARY KEY,
   convo_id TEXT NOT NULL REFERENCES convo(id) ON DELETE CASCADE,
-  role TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool', 'system', 'notice', 'openrouter')),
   created_at INTEGER NOT NULL,
   seq INTEGER NOT NULL,
   meta TEXT,
@@ -111,6 +111,23 @@ CREATE INDEX IF NOT EXISTS idx_usage_time_project ON usage_log(timestamp DESC, p
 CREATE INDEX IF NOT EXISTS idx_usage_time_provider_model ON usage_log(timestamp DESC, provider, model);
 CREATE INDEX IF NOT EXISTS idx_usage_status ON usage_log(status, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_usage_request_attempt ON usage_log(request_id, attempt);
+
+-- ========== Model Data Table ==========
+-- 模型信息持久化表（从 electron-store 迁移）
+-- 用途：存储 AI 提供商的模型列表，避免频繁 API 请求
+CREATE TABLE IF NOT EXISTS model_data (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  context_length INTEGER,
+  pricing TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  meta TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_provider ON model_data(provider);
 
 -- ========== Dashboard Preferences ==========
 CREATE TABLE IF NOT EXISTS user_dashboard_prefs (

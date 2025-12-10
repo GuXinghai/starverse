@@ -286,7 +286,7 @@
                       <span class="metadata-item">
                         <span class="metadata-label">价格:</span>
                         <span class="metadata-value price">
-                          ${{ formatPrice(model.pricing.prompt) }} / ${{ formatPrice(model.pricing.completion) }}
+                          ${{ formatPrice(model.pricing?.prompt) }} / ${{ formatPrice(model.pricing?.completion) }}
                         </span>
                       </span>
                     </div>
@@ -765,9 +765,18 @@ const formatContextLength = (length) => {
 
 // 格式化价格：智能显示小数位
 const formatPrice = (value) => {
-  if (value < 0.1) return value.toFixed(2)  // 小于 0.1 显示 2 位小数（如 $0.05）
-  if (value < 10) return value.toFixed(1)   // 小于 10 显示 1 位小数（如 $5.5）
-  return value.toFixed(0)                   // 其他显示整数（如 $60）
+  // 处理非数字值
+  if (value == null || value === '') return 'N/A'
+  
+  // 转换为数字
+  const numValue = typeof value === 'number' ? value : parseFloat(value)
+  
+  // 无效数字处理
+  if (isNaN(numValue)) return 'N/A'
+  
+  if (numValue < 0.1) return numValue.toFixed(2)  // 小于 0.1 显示 2 位小数（如 $0.05）
+  if (numValue < 10) return numValue.toFixed(1)   // 小于 10 显示 1 位小数（如 $5.5）
+  return numValue.toFixed(0)                      // 其他显示整数（如 $60）
 }
 
 // 获取模态性图标（返回 SVG 路径）

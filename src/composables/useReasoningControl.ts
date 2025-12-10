@@ -1,37 +1,22 @@
-/**
+﻿/**
  * useReasoningControl - 推理模式配置 Composable
  * 
- * 职责：
- * - 推理模式开关管理
- * - Effort 挡位配置（low/medium/high）
- * - Visibility 配置（visible/hidden/off）
- * - 模型推理能力检测
+ * 职责�?
+ * - 推理模式开关管�?
+ * - Effort 挡位配置（low/medium/high�?
+ * - Visibility 配置（visible/hidden/off�?
+ * - 模型推理能力检�?
  * - 请求参数构建
  * - 推理挡位和MAX_TOKENS互斥控制
  */
 
 import { computed, type Ref, type ComputedRef } from 'vue'
-import type { ReasoningMode } from '../types/chat'
-
-/**
- * 推理 Effort 级别
- */
-export type ReasoningEffort = 'low' | 'medium' | 'high'
-
-/**
- * 推理可见性配置
- */
-export type ReasoningVisibility = 'visible' | 'hidden' | 'off'
-
-/**
- * 推理偏好设置
- */
-export interface ReasoningPreference {
-  visibility: ReasoningVisibility
-  effort: ReasoningEffort
-  maxTokens?: number | null
-  mode?: ReasoningMode // 新增：推理模式，用于UI互斥控制
-}
+import type { 
+  ReasoningMode,
+  ReasoningEffort,
+  ReasoningVisibility,
+  ReasoningPreference
+} from '../types/chat'
 
 /**
  * 默认推理偏好
@@ -40,7 +25,7 @@ export const DEFAULT_REASONING_PREFERENCE: Readonly<ReasoningPreference> = Objec
   visibility: 'visible',
   effort: 'medium',
   maxTokens: null,
-  mode: 'medium' // 默认为中档模式
+  mode: 'medium' // 默认为中档模�?
 })
 
 /**
@@ -64,6 +49,7 @@ export const REASONING_KEYWORDS = [
  * Effort 挡位标签映射
  */
 export const REASONING_EFFORT_LABEL_MAP: Record<ReasoningEffort, string> = {
+  minimal: '极简挡',
   low: '低挡',
   medium: '中挡',
   high: '高挡'
@@ -73,6 +59,7 @@ export const REASONING_EFFORT_LABEL_MAP: Record<ReasoningEffort, string> = {
  * Effort 挡位短标签映射
  */
 export const REASONING_EFFORT_SHORT_LABEL_MAP: Record<ReasoningEffort, string> = {
+  minimal: '极简',
   low: '低',
   medium: '中',
   high: '高'
@@ -91,6 +78,7 @@ export const REASONING_VISIBILITY_LABEL_MAP: Record<ReasoningVisibility, string>
  * Mode 标签映射（用于四个互斥选项的UI展示）
  */
 export const REASONING_MODE_LABEL_MAP: Record<ReasoningMode, string> = {
+  minimal: '极简',
   low: '低',
   medium: '中',
   high: '高',
@@ -98,7 +86,7 @@ export const REASONING_MODE_LABEL_MAP: Record<ReasoningMode, string> = {
 }
 
 /**
- * Mode 选项列表（四个互斥选项：低、中、高、自定义）
+ * Mode 选项列表（四个互斥选项：低、中、高、自定义�?
  */
 export const REASONING_MODE_OPTIONS: ReadonlyArray<{ value: ReasoningMode; label: string }> = [
   { value: 'low', label: REASONING_MODE_LABEL_MAP.low },
@@ -126,12 +114,12 @@ export const REASONING_VISIBILITY_OPTIONS: ReadonlyArray<{ value: ReasoningVisib
 
 export interface ReasoningControlOptions {
   /**
-   * 当前对话的推理偏好设置
+   * 当前对话的推理偏好设�?
    */
   reasoningPreference: ComputedRef<ReasoningPreference | null | undefined>
   
   /**
-   * 组件是否处于激活状态
+   * 组件是否处于激活状�?
    */
   isActive: Ref<boolean>
   
@@ -151,7 +139,7 @@ export interface ReasoningControlOptions {
   modelDataMap: ComputedRef<Map<string, any> | null>
   
   /**
-   * 更新推理偏好的回调函数
+   * 更新推理偏好的回调函�?
    */
   onUpdatePreference: (updates: Partial<ReasoningPreference>) => void
 }
@@ -185,7 +173,7 @@ export function useReasoningControl(options: ReasoningControlOptions) {
   }
 
   /**
-   * 检测模型是否支持推理功能
+   * 检测模型是否支持推理功�?
    */
   function detectReasoningSupport(modelId: string | null | undefined): boolean {
     if (!modelId) {
@@ -197,12 +185,12 @@ export function useReasoningControl(options: ReasoningControlOptions) {
     const raw = record?._raw ?? null
 
     if (raw) {
-      // 检查 reasoning 字段
+      // 检�?reasoning 字段
       if (raw.reasoning === true) {
         return true
       }
       
-      // 检查 capabilities
+      // 检�?capabilities
       const rawCapabilities = raw.capabilities
       if (rawCapabilities && typeof rawCapabilities === 'object') {
         if (rawCapabilities.reasoning === true || rawCapabilities.reasoning_supported === true) {
@@ -213,13 +201,13 @@ export function useReasoningControl(options: ReasoningControlOptions) {
         }
       }
       
-      // 检查 tags
+      // 检�?tags
       const rawTags = raw.tags || raw.keywords || raw.categories
       if (Array.isArray(rawTags) && rawTags.some((tag: any) => typeof tag === 'string' && tag.toLowerCase().includes('reasoning'))) {
         return true
       }
       
-      // 检查 metadata
+      // 检�?metadata
       if (raw.metadata && typeof raw.metadata === 'object') {
         const metadataTags = raw.metadata.tags || raw.metadata.capabilities
         if (Array.isArray(metadataTags) && metadataTags.some((tag: any) => typeof tag === 'string' && tag.toLowerCase().includes('reasoning'))) {
@@ -231,17 +219,17 @@ export function useReasoningControl(options: ReasoningControlOptions) {
       }
     }
 
-    // 检查描述
+    // 检查描�?
     const description: string = typeof record?.description === 'string' ? record.description.toLowerCase() : ''
     if (description.includes('reasoning') || description.includes('推理')) {
       return true
     }
 
-    // 检查模型 ID 关键词
+    // 检查模�?ID 关键�?
     return REASONING_KEYWORDS.some((keyword) => keyword && lowerId.includes(keyword))
   }
 
-  // ========== 计算属性 ==========
+  // ========== 计算属�?==========
   
   /**
    * 当前推理偏好（带默认值）
@@ -267,19 +255,19 @@ export function useReasoningControl(options: ReasoningControlOptions) {
    * 推理控制是否可用
    */
   const isReasoningControlAvailable = computed(() => {
-    // 性能优化：非激活状态下跳过检查
+    // 性能优化：非激活状态下跳过检�?
     if (!isActive.value) {
       if (import.meta.env.DEV) {
-        console.log('[useReasoningControl] ❌ Not active')
+        console.log('[useReasoningControl] �?Not active')
       }
       return false
     }
 
-    // 仅 OpenRouter 支持（兼容大小写）
+    // �?OpenRouter 支持（兼容大小写�?
     const provider = String(activeProvider.value || '').toLowerCase()
     if (provider !== 'openrouter') {
       if (import.meta.env.DEV) {
-        console.log('[useReasoningControl] ❌ Provider not OpenRouter:', activeProvider.value, '(normalized:', provider, ')')
+        console.log('[useReasoningControl] �?Provider not OpenRouter:', activeProvider.value, '(normalized:', provider, ')')
       }
       return false
     }
@@ -287,7 +275,7 @@ export function useReasoningControl(options: ReasoningControlOptions) {
     const modelId = currentModelId.value
     if (!modelId) {
       if (import.meta.env.DEV) {
-        console.log('[useReasoningControl] ❌ No modelId')
+        console.log('[useReasoningControl] �?No modelId')
       }
       return false
     }
@@ -317,7 +305,7 @@ export function useReasoningControl(options: ReasoningControlOptions) {
   })
 
   /**
-   * Effort 挡位短标签
+   * Effort 挡位短标�?
    */
   const reasoningEffortShortLabel = computed(() => {
     return REASONING_EFFORT_SHORT_LABEL_MAP[reasoningPreference.value.effort]
@@ -345,7 +333,7 @@ export function useReasoningControl(options: ReasoningControlOptions) {
   // ========== 方法 ==========
   
   /**
-   * 切换推理开关
+   * 切换推理开�?
    */
   function toggleReasoningEnabled() {
     const nextVisibility: ReasoningVisibility = isReasoningEnabled.value ? 'off' : 'visible'
@@ -354,7 +342,7 @@ export function useReasoningControl(options: ReasoningControlOptions) {
 
   /**
    * 选择 Effort 挡位
-   * 互斥逻辑：选择挡位时清除 maxTokens，确保只使用挡位配置
+   * 互斥逻辑：选择挡位时清�?maxTokens，确保只使用挡位配置
    */
   function selectReasoningEffort(effort: ReasoningEffort) {
     if (reasoningPreference.value.effort === effort && reasoningPreference.value.mode === effort) {
@@ -396,8 +384,8 @@ export function useReasoningControl(options: ReasoningControlOptions) {
 
   /**
    * 更新 Max Tokens 配置
-   * 互斥逻辑：设置 maxTokens 时切换到 custom 模式
-   * @param tokens - Token 数量，null 表示使用默认值
+   * 互斥逻辑：设�?maxTokens 时切换到 custom 模式
+   * @param tokens - Token 数量，null 表示使用默认�?
    */
   function updateMaxTokens(tokens: number | null) {
     // 验证输入
@@ -406,9 +394,9 @@ export function useReasoningControl(options: ReasoningControlOptions) {
         console.warn('Invalid maxTokens value:', tokens)
         return
       }
-      // 四舍五入到整数
+      // 四舍五入到整�?
       tokens = Math.round(tokens)
-      // 设置合理的上限（100k tokens）
+      // 设置合理的上限（100k tokens�?
       if (tokens > 100000) {
         tokens = 100000
       }
@@ -421,18 +409,18 @@ export function useReasoningControl(options: ReasoningControlOptions) {
         mode: 'custom' // 切换到自定义模式
       })
     } else {
-      // 如果清除 maxTokens，恢复到当前的 effort 模式
+      // 如果清除 maxTokens，恢复到当前�?effort 模式
       const currentEffort = reasoningPreference.value.effort
       onUpdatePreference({ 
         maxTokens: null,
-        mode: currentEffort // 恢复到当前挡位模式
+        mode: currentEffort // 恢复到当前挡位模�?
       })
     }
   }
 
   /**
    * 构建推理请求参数
-   * 根据当前模式决定如何设置 effort 和 max_tokens
+   * 根据当前模式决定如何设置 effort �?max_tokens
    */
   function buildReasoningRequestOptions() {
     if (!isReasoningControlAvailable.value || !isReasoningEnabled.value) {
@@ -446,12 +434,12 @@ export function useReasoningControl(options: ReasoningControlOptions) {
 
     // 根据模式设置参数
     if (pref.mode === 'custom') {
-      // 自定义模式：只设置 max_tokens，不设置 effort
+      // 自定义模式：只设�?max_tokens，不设置 effort
       if (typeof pref.maxTokens === 'number' && Number.isFinite(pref.maxTokens) && pref.maxTokens > 0) {
         payload.max_tokens = Math.round(pref.maxTokens)
       }
     } else {
-      // 挡位模式：设置 effort，不设置 max_tokens
+      // 挡位模式：设�?effort，不设置 max_tokens
       payload.effort = pref.effort
     }
     
@@ -472,8 +460,8 @@ export function useReasoningControl(options: ReasoningControlOptions) {
   }
 
   /**
-   * 选择推理模式（四个互斥选项）
-   * @param mode - 'low' | 'medium' | 'high' | 'custom'
+   * 选择推理模式（四个互斥选项�?
+   * @param mode - 'minimal' | 'low' | 'medium' | 'high' | 'custom'
    */
   function selectReasoningMode(mode: ReasoningMode) {
     if (reasoningPreference.value.mode === mode) {
@@ -481,15 +469,15 @@ export function useReasoningControl(options: ReasoningControlOptions) {
     }
 
     if (mode === 'custom') {
-      // 切换到自定义模式，保持当前 maxTokens（如果有的话）
+      // 切换到自定义模式，保持当�?maxTokens（如果有的话�?
       onUpdatePreference({ 
         mode: 'custom'
         // maxTokens 保持不变，如果为 null 用户后续可以输入
       })
     } else {
-      // 切换到挡位模式（low/medium/high）
+      // 切换到挡位模式（minimal/low/medium/high�?
       onUpdatePreference({ 
-        effort: mode, // 将 mode 作为 effort 值
+        effort: mode as ReasoningEffort, // �?mode 作为 effort 值（此时 mode 不是 'custom'�?
         maxTokens: null, // 清除 maxTokens
         mode: mode // 设置 mode
       })
@@ -512,10 +500,10 @@ export function useReasoningControl(options: ReasoningControlOptions) {
   const currentMode = computed(() => reasoningPreference.value.mode ?? 'medium')
 
   return {
-    // 状态
+    // 状�?
     reasoningPreference,
     
-    // 计算属性
+    // 计算属�?
     isReasoningEnabled,
     isReasoningControlAvailable,
     reasoningEffortLabel,
