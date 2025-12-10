@@ -166,15 +166,30 @@ export interface ModelData {
   id: string
   name?: string
   description?: string
-  contextWindow?: number
-  maxOutputTokens?: number
+  context_length?: number  // 🔧 修复：使用下划线命名（匹配 OpenRouter API）
+  max_output_tokens?: number  // 🔧 修复：使用下划线命名（匹配 OpenRouter API）
   pricing?: {
     prompt?: number
     completion?: number
+    image?: number  // 🔧 添加：图片输入定价
   }
+  architecture?: {
+    modality?: string
+    tokenizer?: string
+    instruct_type?: string | null
+    reasoning?: boolean  // 🔧 添加：推理能力标志
+    input_modalities?: string[]  // 🔧 添加：输入模态（架构层面）
+    output_modalities?: string[]  // 🔧 添加：输出模态（架构层面）
+  }
+  series?: string  // 🔧 添加：模型系列（如 'Anthropic', 'OpenAI', 'Google'）
+  input_modalities?: string[]  // 🔧 添加：输入模态（如 'text', 'image'）
+  output_modalities?: string[]  // 🔧 添加：输出模态（如 'text', 'image'）
+  
+  // 🔧 辅助字段（用于前端显示，基于上述字段计算）
   supportsVision?: boolean
   supportsImageOutput?: boolean
   supportsReasoning?: boolean
+  
   [key: string]: any
 }
 
@@ -198,7 +213,7 @@ export interface DisplayMessage {
   id: string  // 🔧 添加 - 版本 ID（用于 v-for key）
   branchId: string
   versionIndex: number
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter'
   parts: MessagePart[]
   timestamp: number  // 🔧 添加 - 消息时间戳
   currentVersionIndex: number  // 🔧 添加 - 当前版本索引

@@ -403,10 +403,14 @@ const toMessageSnapshots = (snapshot: ConversationSnapshot): MessageSnapshotPayl
   const pathMessages = getCurrentPathMessages(tree).filter(Boolean)
   debugLog('🔍 [toMessageSnapshots] 当前路径消息数量:', pathMessages.length)
   
-  if (!pathMessages.length) return []
+  // 🔧 过滤掉临时 notice 消息（不持久化到数据库）
+  const persistentMessages = pathMessages.filter((message: any) => message?.role !== 'notice')
+  debugLog('🔍 [toMessageSnapshots] 过滤后持久化消息数量:', persistentMessages.length, '(已排除 notice 消息)')
+  
+  if (!persistentMessages.length) return []
 
-  const result = pathMessages.map((message: any, index) => {
-    debugLog(`🔍 [toMessageSnapshots] 处理消息 ${index + 1}/${pathMessages.length}:`, {
+  const result = persistentMessages.map((message: any, index) => {
+    debugLog(`🔍 [toMessageSnapshots] 处理消息 ${index + 1}/${persistentMessages.length}:`, {
       role: message?.role,
       hasMetadata: !!message?.metadata,
       metadataKeys: message?.metadata ? Object.keys(message.metadata) : [],

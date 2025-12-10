@@ -53,6 +53,32 @@ export const GeminiService = {
   },
 
   /**
+   * 检查模型是否支持图像输入 (基于 input_modalities)
+   * @param {Object} model - 模型对象
+   * @returns {boolean}
+   */
+  supportsImage(model) {
+    if (!model || !model.input_modalities || !Array.isArray(model.input_modalities)) {
+      return false
+    }
+    const modalities = model.input_modalities.map(m => String(m).toLowerCase())
+    return modalities.includes('image') || modalities.includes('vision') || modalities.includes('multimodal')
+  },
+
+  /**
+   * 检查模型是否支持文件输入 (基于 input_modalities)
+   * @param {Object} model - 模型对象
+   * @returns {boolean}
+   */
+  supportsFileInput(model) {
+    if (!model || !model.input_modalities || !Array.isArray(model.input_modalities)) {
+      return false
+    }
+    const modalities = model.input_modalities.map(m => String(m).toLowerCase())
+    return modalities.includes('file') || modalities.includes('document') || modalities.includes('pdf')
+  },
+
+  /**
    * 获取可用的 Gemini 模型列表
    * 
    * 使用 Google Generative Language REST API 查询所有可用模型。

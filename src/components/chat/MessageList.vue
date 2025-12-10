@@ -20,6 +20,7 @@
         @edit="$emit('edit-message', message.branchId)"
         @delete="$emit('delete-message', message.branchId)"
         @regenerate="$emit('regenerate-message', message.branchId)"
+        @retry-openrouter="$emit('retry-openrouter', message.branchId)"
         @switch-version="$emit('switch-version', message.branchId, $event)"
       />
 

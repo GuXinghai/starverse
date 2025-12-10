@@ -103,7 +103,7 @@ export type ListArchivedParams = {
 
 export type AppendMessagePayload = {
   convoId: string
-  role: 'user' | 'assistant' | 'system' | 'tool'
+  role: 'user' | 'assistant' | 'system' | 'tool' | 'notice' | 'openrouter'
   body: string
   meta?: JsonRecord | null
   createdAt?: number
@@ -111,7 +111,7 @@ export type AppendMessagePayload = {
 }
 
 export type MessageSnapshotPayload = {
-  role: 'user' | 'assistant' | 'system' | 'tool'
+  role: 'user' | 'assistant' | 'system' | 'tool' | 'notice' | 'openrouter'
   body: string
   createdAt?: number
   seq?: number
@@ -197,6 +197,8 @@ export type DbMethod =
   | 'usage.getDateRangeStats'
   | 'usage.aggregate'
   | 'usage.drillDown'
+  | 'usage.reasoningTrend'
+  | 'usage.reasoningModelComparison'
   | 'prefs.save'
   | 'prefs.list'
   | 'prefs.delete'

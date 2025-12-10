@@ -1,7 +1,7 @@
 import { computed, type ComputedRef } from 'vue'
 import type { ReasoningPreference } from '../types/chat'
 import type { ModelGenerationCapability } from '../types/generation'
-import type { ReasoningConfig } from '../types/reasoning'
+import type { ReasoningConfig } from '../types/generation'
 
 export type ReasoningTier = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'custom'
 
@@ -16,12 +16,6 @@ const BUDGET_PRESETS = {
   low: 2000,
   medium: 8000,
   high: 16000,
-}
-
-function isBudgetModel(capability: ModelGenerationCapability | null): boolean {
-  if (!capability) return false
-  const policy = capability.reasoning.maxTokensPolicy
-  return policy === 'anthropic-1024-32000' || policy === 'provider-unknown-range'
 }
 
 export function useReasoningTiers(options: UseReasoningTiersOptions) {
@@ -67,7 +61,7 @@ export function useReasoningTiers(options: UseReasoningTiersOptions) {
     if (preference.value.visibility === 'off') {
       return {
         controlMode: 'disabled',
-        effort: preference.value.effort,
+        effort: preference.value.effort || undefined,
         maxReasoningTokens: undefined,
         maxCompletionTokens: undefined,
         showReasoningContent: false,
@@ -78,7 +72,7 @@ export function useReasoningTiers(options: UseReasoningTiersOptions) {
       return {
         controlMode: 'max_tokens',
         maxReasoningTokens: preference.value.maxTokens,
-        effort: preference.value.effort,
+        effort: preference.value.effort || undefined,
         maxCompletionTokens: undefined,
         showReasoningContent: preference.value.visibility === 'visible',
       }
@@ -86,7 +80,7 @@ export function useReasoningTiers(options: UseReasoningTiersOptions) {
 
     return {
       controlMode: 'effort',
-      effort: preference.value.effort,
+      effort: preference.value.effort || 'medium',
       maxReasoningTokens: undefined,
       maxCompletionTokens: undefined,
       showReasoningContent: preference.value.visibility === 'visible',

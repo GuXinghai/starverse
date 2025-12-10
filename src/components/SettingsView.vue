@@ -3,8 +3,8 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAppStore } from '../stores'
 import type { AIProvider, WebSearchEngine } from '../stores'
 import { useModelStore } from '../stores/model'
-// @ts-ignore - aiChatService.js is a JavaScript file
 import { aiChatService } from '../services/aiChatService'
+import { extractModelSeries } from '../services/providers/OpenRouterService'
 
 const store = useAppStore()
 const modelStore = useModelStore()
@@ -64,6 +64,18 @@ const defaultModel = computed({
   }
 })
 
+// 延迟发送计时器（毫秒）
+const sendDelayMs = ref<number>(0)
+
+// 超时保护定时器（毫秒）
+const sendTimeoutMs = ref<number>(60000)
+
+// 初始化加载配置
+onMounted(() => {
+  sendDelayMs.value = store.sendDelayMs
+  sendTimeoutMs.value = store.sendTimeoutMs
+})
+
 // 获取可用模型列表（用于默认模型选择器）
 const availableModelsForDefault = computed(() => {
   return modelStore.modelDataMap
@@ -84,7 +96,32 @@ watch(activeProvider, async (newProvider, oldProvider) => {
       try {
         saveMessage.value = '正在加载模型列表...'
         // @ts-ignore
-        const models = await aiChatService.listAvailableModels(store)
+        const modelData = await aiChatService.listAvailableModels(store)
+        
+        // 🔧 规范化处理：支持对象数组（OpenRouter）和字符串数组（Gemini）
+        const models = (Array.isArray(modelData) ? modelData : [])
+          .filter((item: any) => item && (typeof item === 'string' || item.id))
+          .map((item: any) => {
+            if (typeof item === 'string') {
+              return { id: item, name: item }
+            }
+            return {
+              id: String(item.id),
+              name: item.name || String(item.id),
+              description: item.description,
+              context_length: item.context_length,
+              max_output_tokens: item.max_output_tokens,
+              pricing: item.pricing,
+              architecture: item.architecture,
+              series: extractModelSeries(String(item.id)),  // 🔧 从 ID 提取模型系列
+              input_modalities: item.architecture?.input_modalities || item.input_modalities || ['text'],
+              output_modalities: item.architecture?.output_modalities || item.output_modalities || ['text'],
+              supportsVision: (item.architecture?.input_modalities || item.input_modalities || []).includes('image'),
+              supportsImageOutput: (item.architecture?.output_modalities || item.output_modalities || []).includes('image'),
+              supportsReasoning: item.architecture?.reasoning === true
+            }
+          })
+        
         modelStore.setAvailableModels(models)
         saveMessage.value = `已切换到 ${newProvider}，加载了 ${models.length} 个模型`
         console.log(`✓ 已为 ${newProvider} 加载 ${models.length} 个模型`)
@@ -158,8 +195,33 @@ const saveSettings = async () => {
     try {
       console.log('开始加载模型列表...')
       // @ts-ignore
-      const models = await aiChatService.listAvailableModels(store)
-      console.log('模型列表加载成功:', models)
+      const modelData = await aiChatService.listAvailableModels(store)
+      console.log('模型列表加载成功:', modelData)
+      
+      // 🔧 规范化处理：支持对象数组（OpenRouter）和字符串数组（Gemini）
+      const models = (Array.isArray(modelData) ? modelData : [])
+        .filter((item: any) => item && (typeof item === 'string' || item.id))
+        .map((item: any) => {
+          if (typeof item === 'string') {
+            return { id: item, name: item }
+          }
+          return {
+            id: String(item.id),
+            name: item.name || String(item.id),
+            description: item.description,
+            context_length: item.context_length,
+            max_output_tokens: item.max_output_tokens,
+            pricing: item.pricing,
+            architecture: item.architecture,
+            series: extractModelSeries(String(item.id)),  // 🔧 从 ID 提取模型系列
+            input_modalities: item.architecture?.input_modalities || item.input_modalities || ['text'],
+            output_modalities: item.architecture?.output_modalities || item.output_modalities || ['text'],
+            supportsVision: (item.architecture?.input_modalities || item.input_modalities || []).includes('image'),
+            supportsImageOutput: (item.architecture?.output_modalities || item.output_modalities || []).includes('image'),
+            supportsReasoning: item.architecture?.reasoning === true
+          }
+        })
+      
       modelStore.setAvailableModels(models)
       saveMessage.value = `设置保存成功！已加载 ${models.length} 个可用模型`
     } catch (modelError) {
@@ -181,6 +243,44 @@ const clearApiKey = (provider: 'gemini' | 'openrouter') => {
     openRouterApiKey.value = ''
   }
   saveMessage.value = ''
+}
+
+// 保存延迟发送计时器配置
+const saveSendDelayMs = async () => {
+  try {
+    // 验证并规范化为整数（不接受小数）
+    const normalized = Math.max(0, Math.floor(Number(sendDelayMs.value) || 0))
+    sendDelayMs.value = normalized
+    
+    await store.setSendDelayMs(normalized)
+    const displayText = normalized === 0 
+      ? '已禁用（立即发送）' 
+      : `${normalized}ms（${(normalized / 1000).toFixed(1)}秒）`
+    saveMessage.value = `✓ 已保存延迟发送计时器设置：${displayText}`
+    console.log('✓ 延迟发送计时器配置已保存:', normalized)
+  } catch (error) {
+    saveMessage.value = '保存延迟发送计时器配置失败，请重试'
+    console.error('保存延迟发送计时器配置失败:', error)
+  }
+}
+
+// 保存超时保护定时器配置
+const saveSendTimeoutMs = async () => {
+  try {
+    // 验证并规范化为整数（不接受小数）
+    const normalized = Math.max(0, Math.floor(Number(sendTimeoutMs.value) || 0))
+    sendTimeoutMs.value = normalized
+    
+    await store.setSendTimeoutMs(normalized)
+    const displayText = normalized === 0 
+      ? '已禁用' 
+      : `${normalized}ms（${(normalized / 1000).toFixed(1)}秒）`
+    saveMessage.value = `✓ 已保存超时保护定时器设置：${displayText}`
+    console.log('✓ 超时保护定时器配置已保存:', normalized)
+  } catch (error) {
+    saveMessage.value = '保存超时保护定时器配置失败，请重试'
+    console.error('保存超时保护定时器配置失败:', error)
+  }
 }
 
 // 保存默认模型
@@ -517,6 +617,82 @@ onUnmounted(() => {
             </select>
             <p class="mt-2 text-sm text-gray-500">
               创建新对话时将默认使用此模型。推荐使用 OpenRouter Auto 进行智能路由。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 高级设置卡片 -->
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+          <svg class="w-5 h-5 mr-2 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
+          </svg>
+          高级设置
+        </h2>
+        
+        <div class="space-y-6">
+          <!-- 延迟发送计时器配置 -->
+          <div>
+            <label for="sendDelayMs" class="block text-sm font-medium text-gray-700 mb-2">
+              延迟发送计时器（毫秒）
+            </label>
+            <div class="flex items-center space-x-3">
+              <input
+                id="sendDelayMs"
+                v-model.number="sendDelayMs"
+                type="number"
+                min="0"
+                max="10000"
+                step="1000"
+                placeholder="输入毫秒数（如：2000）"
+                class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+              />
+              <button
+                @click="saveSendDelayMs"
+                class="px-6 py-3 bg-purple-500 hover:bg-purple-600 text-white font-medium rounded-lg transition-colors"
+              >
+                保存
+              </button>
+            </div>
+            <p class="mt-2 text-sm text-gray-500">
+              设置消息发送前的延迟时间（毫秒）。在此期间可以撤回消息。
+              <br />
+              <strong>当前设置：</strong>{{ sendDelayMs === 0 ? '已禁用（立即发送）' : `${sendDelayMs}ms（${(sendDelayMs / 1000).toFixed(1)}秒）` }}
+              <br />
+              <strong>推荐值：</strong>2000ms（2秒）｜设置为 0 可禁用延迟发送（立即发送）
+            </p>
+          </div>
+
+          <!-- 超时保护定时器配置 -->
+          <div>
+            <label for="sendTimeoutMs" class="block text-sm font-medium text-gray-700 mb-2">
+              超时保护定时器（毫秒）
+            </label>
+            <div class="flex items-center space-x-3">
+              <input
+                id="sendTimeoutMs"
+                v-model.number="sendTimeoutMs"
+                type="number"
+                min="0"
+                max="300000"
+                step="1000"
+                placeholder="输入毫秒数（如：60000）"
+                class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+              />
+              <button
+                @click="saveSendTimeoutMs"
+                class="px-6 py-3 bg-purple-500 hover:bg-purple-600 text-white font-medium rounded-lg transition-colors"
+              >
+                保存
+              </button>
+            </div>
+            <p class="mt-2 text-sm text-gray-500">
+              设置发送消息的超时保护时长（毫秒）。当消息发送超过此时间未响应时，系统将自动重置状态。
+              <br />
+              <strong>当前设置：</strong>{{ sendTimeoutMs === 0 ? '已禁用' : `${sendTimeoutMs}ms（${(sendTimeoutMs / 1000).toFixed(1)}秒）` }}
+              <br />
+              <strong>推荐值：</strong>60000ms（60秒）｜设置为 0 可禁用超时保护
             </p>
           </div>
         </div>

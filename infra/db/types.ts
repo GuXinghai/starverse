@@ -110,7 +110,7 @@ export type ArchivedConvoRecord = {
 
 export type AppendMessageInput = {
   convoId: string
-  role: string
+  role: 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter'
   body: string
   meta?: JsonObject | null
   createdAt?: number
@@ -124,7 +124,7 @@ export type AppendMessageDeltaInput = {
 }
 
 export type MessageSnapshot = {
-  role: string
+  role: 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter'
   body: string
   createdAt?: number
   seq?: number
@@ -465,10 +465,18 @@ export type DbMethod =
   | 'usage.getDateRangeStats'
   | 'usage.aggregate'
   | 'usage.drillDown'
+  | 'usage.reasoningTrend'
+  | 'usage.reasoningModelComparison'
   | 'prefs.save'
   | 'prefs.list'
   | 'prefs.delete'
   | 'prefs.default'
+  | 'model.saveMany'
+  | 'model.replaceByProvider'
+  | 'model.getAll'
+  | 'model.getByProvider'
+  | 'model.getById'
+  | 'model.clear'
 
 export type WorkerRequestMessage = {
   id: string
@@ -496,3 +504,34 @@ export type DbErrorShape = {
 }
 
 export type DbHandler = (params: any) => any | Promise<any>
+
+// ========== Model Data Types ==========
+
+/**
+ * 模型数据记录（数据库持久化）
+ */
+export type ModelDataRecord = {
+  id: string
+  provider: string
+  name: string
+  description?: string
+  contextLength?: number
+  pricing?: Record<string, unknown>
+  createdAt: number
+  updatedAt: number
+  meta?: Record<string, unknown>
+}
+
+/**
+ * 保存模型数据输入
+ */
+export type SaveModelDataInput = {
+  id: string
+  provider: string
+  name?: string
+  description?: string
+  contextLength?: number
+  pricing?: Record<string, unknown>
+  createdAt?: number
+  meta?: Record<string, unknown>
+}

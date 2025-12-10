@@ -95,7 +95,7 @@ export function extractTextFromBranch(branch: MessageBranch): string {
  */
 export function addBranch(
   tree: ConversationTree,
-  role: 'user' | 'assistant' | 'tool',
+  role: 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter',
   parts: MessagePart[],
   parentBranchId: string | null
 ): string {

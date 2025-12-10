@@ -10,7 +10,11 @@
 <template>
   <div
     class="flex gap-3"
-    :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
+    :class="{
+      'justify-end': message.role === 'user',
+      'justify-start': message.role !== 'user',
+      'justify-center': message.role === 'notice' || message.role === 'openrouter'
+    }"
   >
     <!-- AI 消息 - 头像在左 -->
     <div
@@ -22,17 +26,24 @@
 
     <!-- 消息内容区 -->
     <div
-      class="flex flex-col max-w-[80%]"
-      :class="message.role === 'user' ? 'items-end' : 'items-start'"
+      class="flex flex-col"
+      :class="{
+        'max-w-[80%]': message.role === 'user' || message.role === 'assistant',
+        'max-w-[90%]': message.role === 'notice' || message.role === 'openrouter',
+        'items-end': message.role === 'user',
+        'items-start': message.role === 'assistant',
+        'items-center': message.role === 'notice' || message.role === 'openrouter'
+      }"
     >
       <!-- 消息气泡 -->
       <div
         class="rounded-2xl px-4 py-3 shadow-sm"
-        :class="[
-          message.role === 'user'
-            ? 'bg-blue-500 text-white'
-            : 'bg-white border border-gray-200'
-        ]"
+        :class="{
+          'bg-blue-500 text-white': message.role === 'user',
+          'bg-white border border-gray-200': message.role === 'assistant',
+          'bg-blue-50 border border-blue-200 text-blue-800': message.role === 'notice',
+          'bg-red-50 border-2 border-red-300 text-red-900': message.role === 'openrouter'
+        }"
       >
         <!-- 多模态内容渲染 -->
         <div v-if="message.parts && message.parts.length > 0" class="space-y-2">
@@ -126,7 +137,7 @@
 
       <!-- 操作按钮栏 -->
       <div
-        v-if="showActions"
+        v-if="showActions && message.role !== 'notice'"
         class="flex items-center gap-2 mt-2 px-2"
       >
         <!-- 分支版本控制 -->
@@ -155,6 +166,16 @@
           title="重新生成"
         >
           重新生成
+        </button>
+        
+        <!-- OpenRouter 错误重试按钮（专用样式） -->
+        <button
+          v-if="message.role === 'openrouter'"
+          @click="$emit('retry-openrouter')"
+          class="text-sm px-3 py-1 rounded-md bg-red-100 text-red-700 hover:bg-red-200 font-medium transition-colors"
+          title="重新尝试请求"
+        >
+          🔄 重新生成回复
         </button>
 
         <!-- 删除按钮 -->
@@ -194,7 +215,7 @@ import MessageBranchController from '../MessageBranchController.vue'
 
 export interface MessageItemData {
   branchId: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'notice' | 'openrouter'
   parts?: any[]
   text?: string
   content?: string

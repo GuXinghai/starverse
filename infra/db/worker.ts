@@ -7,6 +7,7 @@ import { MessageRepo } from './repo/messageRepo'
 import { SearchRepo } from './repo/searchRepo'
 import { UsageRepo } from './repo/usageRepo'
 import { DashboardPrefRepo } from './repo/dashboardPrefRepo'
+import { ModelDataRepo } from './repo/modelDataRepo'
 import {
   type WorkerInitConfig,
   type WorkerRequestMessage,
@@ -62,6 +63,7 @@ export class DbWorkerRuntime {
   private searchRepo: SearchRepo
   private usageRepo: UsageRepo
   private dashboardPrefRepo: DashboardPrefRepo
+  private modelDataRepo: ModelDataRepo
   private handlers = new Map<DbMethod, DbHandler>()
 
   constructor(config: WorkerInitConfig) {
@@ -101,6 +103,7 @@ export class DbWorkerRuntime {
     this.searchRepo = new SearchRepo(this.db)
     this.usageRepo = new UsageRepo(this.db)
     this.dashboardPrefRepo = new DashboardPrefRepo(this.db)
+    this.modelDataRepo = new ModelDataRepo(this.db)
     this.registerHandlers()
   }
 
@@ -380,6 +383,34 @@ export class DbWorkerRuntime {
     this.handlers.set('prefs.default', (raw) => {
         const input = GetDashboardPrefsSchema.parse(raw ?? {})
         return this.dashboardPrefRepo.getDefault(input.userId)
+    })
+
+    // ========== Model Data Handlers ==========
+    this.handlers.set('model.saveMany', (raw) => {
+        this.modelDataRepo.saveMany(raw.models)
+        return { ok: true }
+    })
+
+    this.handlers.set('model.replaceByProvider', (raw) => {
+        this.modelDataRepo.replaceByProvider(raw.provider, raw.models)
+        return { ok: true }
+    })
+
+    this.handlers.set('model.getAll', () => {
+        return this.modelDataRepo.getAll()
+    })
+
+    this.handlers.set('model.getByProvider', (raw) => {
+        return this.modelDataRepo.getByProvider(raw.provider)
+    })
+
+    this.handlers.set('model.getById', (raw) => {
+        return this.modelDataRepo.getById(raw.modelId)
+    })
+
+    this.handlers.set('model.clear', () => {
+        this.modelDataRepo.clear()
+        return { ok: true }
     })
   }
 

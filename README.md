@@ -105,6 +105,18 @@ npm run electron:dev
   - 三档搜索深度：快速、普通、深入
   - 灵活引擎配置：native、exa 或自动选择
   - 每条消息可独立启用/禁用
+- **推理功能（Reasoning）** ⭐ 新增:
+  - 支持 OpenRouter Reasoning API
+  - 四个推理级别：minimal、low、medium、high
+  - 可视化推理过程显示（支持的模型）
+  - 智能成本预估和延迟提示
+  - 自动模型能力检测
+- **使用统计分析** ⭐ 新增:
+  - 完整的 OpenRouter 使用数据追踪
+  - 按模型、时间范围分析成本和令牌使用
+  - 使用趋势图表和统计卡片
+  - 可视化仪表板
+  - 数据持久化到 SQLite
 - **流式响应**: 实时流式输出 AI 回复
 - **上下文管理**: 完整的对话历史管理
 - **用量可视化**:
@@ -195,9 +207,20 @@ npm run electron:dev
   - 实时索引更新
   - 高性能查询（< 10ms）
 
-### 🧠 智能对话增强 ⭐ 新增
+### 🧠 智能对话增强
 - **自定义指令**: 为每个对话设置专属的系统提示词
   - 持久化保存，无需每次输入
+- **统一生成参数架构** ⭐ 新增:
+  - 标准化所有 AI 参数处理（采样、推理、长度控制）
+  - 4 层配置覆盖系统（默认值 → 全局 → 对话 → 消息级）
+  - 模型能力自动检测系统
+  - 智能参数验证和过滤
+- **现代化聊天输入** ⭐ 新增:
+  - 胶囊式浮动设计，类似 Perplexity/ChatGPT
+  - 集成工具栏按钮（附件、搜索、推理、图像生成、参数）
+  - 自适应多行输入（1-10 行自动扩展）
+  - 智能发送按钮状态切换（发送/停止/撤回）
+  - 完整的附件预览系统
   - 不占用消息历史，不影响上下文长度
   - 支持角色扮演、格式控制、专业领域限定等场景
   - 兼容 Gemini 和 OpenRouter
@@ -293,7 +316,7 @@ npm run electron:dev
 | **Vue.js** | 3.4.21 | 渐进式前端框架（Composition API） |
 | **TypeScript** | 5.2.2 | 类型安全的 JavaScript 超集 |
 | **Vite** | 5.1.6 | 新一代前端构建工具 |
-| **Pinia** | 3.0.3 | Vue 3 官方状态管理库（8个模块化 Store，含模型能力系统） |
+| **Pinia** | 3.0.3 | Vue 3 官方状态管理库（11个模块化 Store） ⭐ |
 
 ### 数据存储
 | 技术 | 版本 | 用途 |
@@ -305,7 +328,8 @@ npm run electron:dev
 ### UI 和渲染
 | 技术 | 版本 | 用途 |
 |------|------|------|
-| **Tailwind CSS** | 4.1.16 | 原子化 CSS 框架 |
+| **Tailwind CSS** | 4.1.16 ⭐ | 原子化 CSS 框架（v4 CSS 优先配置） |
+| **@tailwindcss/postcss** | 4.1.16 ⭐ | Tailwind v4 PostCSS 引擎 |
 | **marked** | 16.4.1 | Markdown 解析和渲染 |
 | **KaTeX** | 0.16.25 | LaTeX 数学公式渲染 |
 | **highlight.js** | 11.11.1 | 代码语法高亮 |
@@ -366,7 +390,11 @@ Starverse/
 │   │   │   └── types.ts      # 类型定义
 │   │   └── providers/         # AI 提供商实现
 │   │       ├── GeminiService.js # Google Gemini
-│   │       └── OpenRouterService.js # OpenRouter（1300+ 行）
+│   │       ├── GeminiService.ts # Google Gemini (TypeScript) ⭐
+│   │       ├── OpenRouterService.ts # OpenRouter (TypeScript) ⭐
+│   │       ├── generationAdapter.ts # 统一生成参数适配器 ⭐
+│   │       ├── openrouterReasoningAdapter.ts # 推理参数适配器 ⭐
+│   │       └── modelCapability.ts # 模型能力检测 ⭐
 │   │
 │   ├── stores/                 # Pinia 状态管理（模块化架构）
 │   │   ├── index.ts           # appStore（全局配置，249 行）
@@ -375,6 +403,11 @@ Starverse/
 │   │   ├── model.ts           # 模型管理（265 行）
 │   │   ├── persistence.ts     # 持久化调度（271 行）
 │   │   ├── project.ts         # 项目管理（475 行）
+│   │   ├── projectWorkspace.ts # 项目工作区状态
+│   │   ├── analyticsStore.ts  # 使用统计状态 ⭐ 新增
+│   │   ├── usageStore.ts      # 使用数据管理 ⭐ 新增
+│   │   ├── dashboardPrefs.ts  # 仪表板配置 ⭐ 新增
+│   │   └── branchTreeHelpers.ts # 分支树算法（520 行）
 │   │   ├── projectWorkspaceStore.ts # 项目工作区（376 行）
 │   │   └── branchTreeHelpers.ts # 分支树算法（1140 行）
 │   │

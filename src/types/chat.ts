@@ -60,7 +60,7 @@ export type PdfEngineType = 'pdf-text' | 'mistral-ocr' | 'native';
 /**
  * 推理挡位（Reasoning Effort）
  */
-export type ReasoningEffort = 'low' | 'medium' | 'high';
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
 
 /**
  * 推理模式（Reasoning Mode）
@@ -299,9 +299,12 @@ export interface MessageVersionMetadata {
   errorMetadata?: Record<string, any>; // 错误元数据（如审核信息、上游原始错误等）
   retryable?: boolean;
   usage?: UsageMetrics;
-    reasoning?: MessageReasoningMetadata;
-    noticeKind?: string;                // 标识临时通知/系统提示
-  }
+  reasoning?: MessageReasoningMetadata;
+  noticeKind?: string;                // 标识临时通知/系统提示
+  streamAborted?: boolean;             // 流式传输被中止
+  canRetry?: boolean;                  // 消息是否可以重试
+  abortPhase?: 'requesting' | 'streaming'; // 中止的阶段
+}
 
 export interface UsageMetrics {
   promptTokens?: number;
@@ -320,7 +323,7 @@ export interface UsageMetrics {
  */
 export interface Message {
   id: string;
-  role: 'user' | 'assistant' | 'tool';
+  role: 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter';
   parts: MessagePart[];
   timestamp?: number; // 可选的时间戳
 }
@@ -360,7 +363,7 @@ export interface MessageVersion {
  */
 export interface MessageBranch {
   branchId: string;              // 分支唯一ID
-  role: 'user' | 'assistant' | 'tool';        // 消息角色
+  role: 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter';        // 消息角色
   parentBranchId: string | null; // 父分支ID（null表示根节点）
   parentVersionId: string | null;// 源自父分支的哪个版本ID
   versions: MessageVersion[];    // 该分支的所有版本
@@ -398,7 +401,7 @@ export interface Conversation {
 /**
  * 工具函数：创建纯文本消息
  */
-export function createTextMessage(role: 'user' | 'assistant' | 'tool', text: string): Message {
+export function createTextMessage(role: 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter', text: string): Message {
   return {
     id: crypto.randomUUID(),
     role,

@@ -1,5 +1,8 @@
 # 推理挡位扩展为4档
 
+> **⚠️ 历史文档警告**：本文档中提到的 `ChatInputArea.vue` 组件已于 2025-12-06 归档。  
+> 现已被 `ModernChatInput.vue` 完全替代。
+
 ## 概述
 
 本次更新将推理控制（Reasoning Control）从3档扩展到4档，增加了 **minimal（极简）** 档位，提供更细粒度的推理成本控制。

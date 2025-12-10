@@ -253,7 +253,8 @@ Quick reference for all files in the unified generation architecture.
 
 1. **OpenRouterService**: Update `streamChatResponse()` to use adapter
 2. **Composables**: Migrate `useReasoningControl`, `useMessageSending`, `useMessageRetry`
-3. **Components**: Update `ChatView`, `ChatToolbar`, `ChatInputArea`
+3. **Components**: Update `ChatView`, `ChatToolbar`, `ModernChatInput`  
+   *注：`ChatInputArea` 已归档*
 
 ---
 

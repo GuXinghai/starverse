@@ -59,6 +59,11 @@
   --spacing-112: 28rem;
   --spacing-128: 32rem;
 
+  /* 按钮高度设计令牌 - 全局统一尺寸 */
+  --button-height-sm: 28px;  /* 7 */
+  --button-height-md: 32px;  /* 8 */
+  --button-height-lg: 36px;  /* 9 */
+
   /* 自定义字体大小 */
   --font-size-2xs: 0.625rem;
   --font-size-2xs--line-height: 0.875rem;

@@ -1,9 +1,9 @@
 {
   "name": "starverse-client",
   "productName": "Starverse",
-  "version": "0.0.1",
-  "description": "",
-  "author": "YourName",
+  "version": "0.0.2",
+  "description": "基于 Electron + Vue 3 的新一代跨平台 AI 对话桌面应用",
+  "author": "GuXinghai",
   "private": true,
   "type": "module",
   "scripts": {

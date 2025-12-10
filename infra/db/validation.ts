@@ -81,7 +81,7 @@ export const ListConvoSchema: ZodType<ListConvoParams> = z
 
 export const AppendMessageSchema: ZodType<AppendMessageInput> = z.object({
   convoId: z.string().min(1),
-  role: z.enum(['user', 'assistant', 'system', 'tool']),
+  role: z.enum(['user', 'assistant', 'tool', 'notice', 'openrouter']),
   body: z.string(),
   createdAt: z.number().int().optional(),
   seq: z.number().int().positive().optional(),
@@ -108,7 +108,7 @@ export const DeleteConvoSchema: ZodType<DeleteConvoInput> = z.object({
 })
 
 const MessageSnapshotSchema: ZodType<MessageSnapshot> = z.object({
-  role: z.enum(['user', 'assistant', 'system', 'tool']),
+  role: z.enum(['user', 'assistant', 'tool', 'notice', 'openrouter']),
   body: z.string(),
   createdAt: z.number().int().optional(),
   seq: z.number().int().positive().optional(),

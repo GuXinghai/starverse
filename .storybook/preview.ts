@@ -1,5 +1,13 @@
 import type { Preview } from '@storybook/vue3-vite'
+import { setup } from '@storybook/vue3'
+import { createPinia } from 'pinia'
 import '../src/style.css'  // Import Tailwind CSS and design tokens
+
+// 初始化 Pinia（ModernChatInput 需要 useAppStore 和 useModelStore）
+const pinia = createPinia()
+setup((app) => {
+  app.use(pinia)
+})
 
 const preview: Preview = {
   parameters: {

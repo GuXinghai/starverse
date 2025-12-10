@@ -35,6 +35,7 @@
 <script setup lang="ts">
 // ========== Vue 核心 API ==========
 import { computed, toRef, onMounted, watch } from 'vue'
+import type { WebSearchLevel } from '@/types/chat'
 
 // ========== Composables ==========
 import { useMessageEditing } from '../composables/useMessageEditing'
@@ -72,14 +73,13 @@ import { useProjectWorkspaceStore } from '../stores/projectWorkspaceStore'
 // ========== 类型定义和工具函数 ==========
 import type { ConversationStatus } from '../types/conversation'
 import type { ModelGenerationCapability } from '../types/generation'
+import type { ReasoningPreference } from '../types/chat'
 
 // ========== 子组件 ==========
 import DeleteConfirmDialog from './DeleteConfirmDialog.vue'  // 删除确认对话框
 import ChatScrollContainer from './chat/ChatScrollContainer.vue'  // Stick-to-Bottom 滚动容器
 import ChatMessageItem from './chat/ChatMessageItem.vue'  // 单条消息渲染组件
-import ChatInputArea from './chat/input/ChatInputArea.vue'  // 输入区域组件（直接连接）
-import ModernChatInput from './chat/input/ModernChatInput.vue'  // 现代化输入组件（悬浮胶囊）
-import ChatToolbar from './chat/ChatToolbar.vue'  // 聊天工具栏组件
+import ModernChatInput from './chat/input/ModernChatInput.vue'  // 聊天输入组件
 
 // ========== Props 定义 ==========
 /**
@@ -104,10 +104,6 @@ const persistenceStore = usePersistenceStore()
 const appStore = useAppStore()  // 应用 store，管理全局配置（API Key、Provider 等）
 const projectWorkspaceStore = useProjectWorkspaceStore()
 
-// ========== 功能开关：使用现代化输入组件 ==========
-// 设置为 true 启用悬浮胶囊输入栏，false 使用传统输入组件
-const useModernInput = ref(true)
-
 // ========== Phase 6: UI State Composable 初始化 ==========
 const {
   draftInput,
@@ -116,7 +112,7 @@ const {
   activeMenu,
   conversationTagInput,
   saveTemplateInProgress,
-  // 输入区域 Refs（传递给 ChatInputArea）
+  // 输入区域 Refs（用于菜单控制）
   webSearchControlRef,
   reasoningControlRef,
   parameterControlRef,
@@ -167,12 +163,23 @@ const {
   conversationId: toRef(props, 'conversationId'),
   isActive: isComponentActive,
   pendingAttachments: computed(() => []), // 临时，Phase 2 将替换
-  activeProvider: computed(() => appStore.activeProvider)
+  activeProvider: computed(() => appStore.activeProvider),
+  appStore
 })
 
 // ========== Phase 1: 计算属性 - 从 currentConversation 派生的配置对象 ==========
 const webSearchConfig = computed(() => currentConversation.value?.webSearch)
-const reasoningPreference = computed(() => currentConversation.value?.reasoningPreference)
+const reasoningPreference = computed(() => {
+  const pref = currentConversation.value?.reasoningPreference
+  if (!pref) return undefined
+  // 规范化：确保 effort 始终存在
+  return {
+    visibility: pref.visibility,
+    effort: pref.effort || 'medium',
+    maxTokens: pref.maxTokens ?? undefined,
+    mode: pref.mode
+  } as ReasoningPreference
+})
 const samplingParameters = computed(() => currentConversation.value?.samplingParameters)
 const conversationPdfEngine = computed(() => currentConversation.value?.pdfEngine)
 const generationStatus = computed(() => currentConversation.value?.generationStatus || 'idle')
@@ -207,7 +214,7 @@ const actualModelId = computed<string | null>(() => {
 })
 
 /**
- * 当前模型的能力描述（用于能力感知控件，如 ReasoningControls）
+ * 当前模型的能力描述（用于能力感知控件）
  */
 const currentModelCapability = computed<ModelGenerationCapability | null>(() => {
   const modelId = actualModelId.value
@@ -507,11 +514,6 @@ const handleToolbarStatusChange = (status: ConversationStatus) => {
   conversationStore.setConversationStatus(props.conversationId, status)
 }
 
-const handleToolbarOutsideClick = () => {
-  // 这个函数用于关闭 ChatToolbar 内部的下拉菜单
-  // 具体逻辑由 ChatToolbar 组件内部处理
-}
-
 // ========== 分支树消息显示 ==========
 /**
  * DisplayMessage 类型：UI 渲染用的消息数据结构
@@ -561,11 +563,12 @@ const handleToolbarOutsideClick = () => {
   const {
     abortController,
     isDelayPending,
+    isAbortable,  // 是否可以中止（requesting/streaming 阶段）
     undoPendingSend,
     performSendMessage: rawPerformSendMessage,
     sendMessage: rawSendMessage,
     stopGeneration
-    // handleKeyPress - 已移除: 键盘事件处理现在在 ChatInputArea 组件内部实现
+    // handleKeyPress - 已移除: 键盘事件处理现在在 ModernChatInput 组件内部实现
   } = useMessageSending({
   conversationId: toRef(() => props.conversationId),
   draftInput,
@@ -591,9 +594,36 @@ const handleToolbarOutsideClick = () => {
   validateAllParameters                    // ✅ 从 samplingManager 解构
 })
 
-// ========== 包装 sendMessage 以添加调试日志 ==========
-const sendMessage = async (...args: any[]) => {
-  console.log('[ChatView] sendMessage 被调用 (来自 @send 事件)', {
+// 监听 isDelayPending 和 isAbortable 状态变化
+watch([isDelayPending, isAbortable], ([delayPending, abortable]) => {
+  console.log('[ChatView] 🔍 状态变化:', {
+    conversationId: props.conversationId,
+    isDelayPending: delayPending,
+    isAbortable: abortable,
+    generationStatus: generationStatus.value,
+    timestamp: Date.now()
+  })
+})
+
+// ❗ 应该显示什么按钮？
+watch(() => ({ delayPending: isDelayPending.value, abortable: isAbortable.value }), (state) => {
+  const buttonType = state.delayPending ? '撤回' : state.abortable ? '中止' : '发送'
+  console.log(`[ChatView] 🔵 当前应显示按钮: ${buttonType}`, state)
+}, { deep: true })
+
+// ⭐⭐⭐ 监听传给 ModernChatInput 的 props
+const modernChatInputProps = computed(() => ({
+  sendDelayPending: isDelayPending.value,
+  isAbortable: isAbortable.value
+}))
+
+watch(modernChatInputProps, (props) => {
+  console.log('[ChatView] 📤 传给 ModernChatInput 的 props:', props)
+}, { deep: true })
+
+// ⭐⭐⭐ 追踪 sendMessage 调用
+const sendMessageTraced = async (...args: any[]) => {
+  console.log('[ChatView] 🚀 sendMessage 被调用 (来自 @send 事件)', {
     conversationId: props.conversationId,
     args,
     timestamp: Date.now(),
@@ -601,6 +631,9 @@ const sendMessage = async (...args: any[]) => {
   })
   return rawSendMessage(...args)
 }
+
+// ========== 包装 sendMessage 以添加调试日志 ==========
+const sendMessage = sendMessageTraced
 
 const performSendMessage = async (...args: any[]) => {
   console.log('[ChatView] performSendMessage 被调用', {
@@ -613,7 +646,7 @@ const performSendMessage = async (...args: any[]) => {
 }
 
 // 推理 Effort 和 Visibility 选项列表（从 composable 导出）
-// 注：现已迁移到 ChatInputArea 组件
+// 注：现已集成到 ModernChatInput 组件
 
 // ========== 消息操作 Composable 初始化 ==========
 const {
@@ -660,11 +693,10 @@ const {
 const branchGenerationPreferences: Map<string, any> = new Map()
 
 // ========== Phase 6: Menu Control Composable 初始化 ==========
-// 注意：菜单切换函数已迁移到 ChatInputArea
+// 注意：菜单切换函数已集成到 ModernChatInput
 const {
   handleGlobalClick,
-  handleGlobalKeyDown,
-  toggleSamplingMenu
+  handleGlobalKeyDown
 } = useMenuControl({
   activeMenu,
   conversationId: toRef(props, 'conversationId'),
@@ -685,7 +717,7 @@ const {
   focusInput
 })
 
-// 注：toggleWebSearchMenu 等菜单切换函数现已迁移到 ChatInputArea
+// 注：toggleWebSearchMenu 等菜单切换函数现已集成到 ModernChatInput
 
 // ========== 采样参数菜单状态 ==========
 const showSamplingMenu = computed(() => {
@@ -779,6 +811,50 @@ const {
   branchGenerationPreferences
 })
 
+// ========== OpenRouter 错误重试处理 ==========
+/**
+ * 处理 OpenRouter 错误消息的重试
+ * 
+ * 策略：
+ * 1. 删除错误消息分支
+ * 2. 找到错误消息的父分支（用户消息）
+ * 3. 调用 handleRetryMessage 重新生成回复
+ */
+const handleRetryOpenRouterError = async (errorBranchId: string) => {
+  console.log('[ChatView] 🔄 Retry OpenRouter error, branchId:', errorBranchId)
+  
+  try {
+    const tree = currentConversation.value?.tree
+    if (!tree) {
+      console.error('[ChatView] ❌ No tree found')
+      return
+    }
+    
+    // 获取错误分支
+    const errorBranch = tree.branches.get(errorBranchId)
+    if (!errorBranch) {
+      console.error('[ChatView] ❌ Error branch not found:', errorBranchId)
+      return
+    }
+    
+    // 获取父分支（应该是用户消息）
+    const parentBranchId = errorBranch.parentBranchId
+    if (!parentBranchId) {
+      console.error('[ChatView] ❌ No parent branch found for error message')
+      return
+    }
+    
+    // 删除错误消息分支
+    branchStore.removeMessageBranch(props.conversationId, errorBranchId)
+    
+    // 调用原有的重试逻辑（从用户消息重新生成回复）
+    await handleRetryMessage(parentBranchId)
+    
+  } catch (error) {
+    console.error('[ChatView] ❌ Failed to retry OpenRouter error:', error)
+  }
+}
+
 // ========== Phase 6: Lifecycle Handlers Composable 初始化 ==========
 useLifecycleHandlers({
   conversationId: toRef(props, 'conversationId'),
@@ -828,20 +904,7 @@ onMounted(() => {
 
 <template>
   <!-- ChatView 根元素：直接作为 flex 列布局，因为父组件已经用 absolute 定位 -->
-  <div class="flex flex-col h-full w-full bg-gray-50" data-test-id="chat-view" @click="handleToolbarOutsideClick">
-    <!-- 聊天工具栏 -->
-    <ChatToolbar
-      v-if="currentConversation"
-      :conversation-status="conversationStatus"
-      :conversation-tags="conversationTags"
-      :can-save-template="canSaveConversationTemplate"
-      :save-template-in-progress="saveTemplateInProgress"
-      @update:status="handleToolbarStatusChange"
-      @add-tag="handleToolbarAddTag"
-      @remove-tag="handleConversationTagRemove"
-      @save-template="handleSaveConversationAsTemplate"
-    />
-
+  <div class="flex flex-col h-full w-full bg-gray-50" data-test-id="chat-view">
     <!-- ✅ 新滚动容器：使用 ChatScrollContainer 组件 -->
     <ChatScrollContainer ref="chatScrollRef" class="flex-1 min-h-0">
       <div class="px-4 sm:px-6 py-4 w-full">
@@ -876,6 +939,7 @@ onMounted(() => {
           @cancel-edit="handleCancelEdit"
           @save-edit="handleSaveEdit"
           @retry="handleRetryMessage"
+          @retry-openrouter="handleRetryOpenRouterError"
           @delete="handleDeleteClick"
           @switch-version="handleSwitchVersion"
           @add-image-to-edit="handleAddImageToEdit"
@@ -910,32 +974,24 @@ onMounted(() => {
       </div>
     </ChatScrollContainer>
 
-      <!-- 输入区 - 现代化简化架构 -->
-      <!-- 新版：悬浮胶囊输入栏 -->
+      <!-- 输入区 - 现代化胶囊输入栏 -->
       <ModernChatInput
-        v-if="currentConversation && useModernInput"
+        v-if="currentConversation"
         v-model="draftInput"
         :generation-status="generationStatus"
         :send-delay-pending="isDelayPending"
-        :can-send="!!draftInput.trim() || pendingAttachments.length > 0 || pendingFiles.length > 0"
+        :is-abortable="isAbortable"
         :send-button-title="'发送消息 (Ctrl+Enter)'"
         :web-search-enabled="webSearchConfig?.enabled || false"
-        :web-search-level-label="webSearchConfig?.level === 'quick' ? '快速' : webSearchConfig?.level === 'normal' ? '普通' : '深入'"
         :is-web-search-available="isWebSearchAvailable"
         :reasoning-enabled="isReasoningEnabled"
-        :reasoning-effort-label="reasoningPreference?.effort === 'low' ? '低档' : reasoningPreference?.effort === 'high' ? '高档' : '中档'"
         :is-reasoning-supported="isReasoningControlAvailable"
         :reasoning-preference="reasoningPreference"
         :image-generation-enabled="imageGenerationEnabled"
-        :current-aspect-ratio-label="currentAspectRatioLabel"
         :can-show-image-generation-button="canShowImageGenerationButton"
         :sampling-parameters-enabled="isSamplingEnabled"
         :sampling-parameters="samplingParameters"
         :show-sampling-menu="showSamplingMenu"
-        :active-provider="appStore.activeProvider"
-        :current-model-id="actualModelId"
-        :current-model-name="modelStore.getModelById(actualModelId)?.name || '未选择模型'"
-        :model-data-map="modelStore.modelDataMap"
         :model-capability="currentModelCapability"
         :pending-attachments="pendingAttachments"
         :pending-files="pendingFiles.map(f => ({ name: f.name, size: f.size, type: f.mimeType || 'application/octet-stream', pdfEngine: f.pdfEngine }))"
@@ -946,19 +1002,19 @@ onMounted(() => {
         @undo-delay="undoPendingSend"
         @select-image="handleSelectImage"
         @select-file="handleSelectFile"
-        @clear-attachments="() => { attachmentManager.clearImages(); pendingFiles.forEach(f => attachmentManager.removeFile(f.id)) }"
+        @clear-attachments="() => { attachmentManager.clearAll() }"
         @remove-image="(index) => attachmentManager.removeImage(index)"
         @remove-file="(index) => attachmentManager.removeFile(pendingFiles[index].id)"
         @update:file-pdf-engine="(index, engine) => {
           const file = pendingFiles[index]
           if (file) {
-            file.pdfEngine = engine
+            file.pdfEngine = engine as 'pdf-text' | 'mistral-ocr' | 'native'
           }
         }"
         @update:web-search-enabled="(enabled) => conversationStore.setWebSearchEnabled(props.conversationId, enabled)"
-        @select-web-search-level="(level) => conversationStore.setWebSearchLevel(props.conversationId, level)"
+        @select-web-search-level="(level) => conversationStore.setWebSearchLevel(props.conversationId, level as WebSearchLevel)"
         @toggle-reasoning="toggleReasoningEnabled"
-        @select-reasoning-effort="(effort) => conversationStore.setReasoningPreference(props.conversationId, { effort })"
+        @select-reasoning-effort="(effort) => conversationStore.setReasoningPreference(props.conversationId, { effort: effort as 'low' | 'medium' | 'high' })"
         @update:reasoning-preference="(updates) => conversationStore.setReasoningPreference(props.conversationId, updates)"
         @toggle-image-generation="toggleImageGeneration"
         @update:image-generation-aspect-ratio="(ratio) => { console.log('Update aspect ratio:', ratio) }"
@@ -970,74 +1026,7 @@ onMounted(() => {
         @open-model-picker="() => { /* TODO: 打开模型选择器 */ }"
       />
 
-      <!-- 旧版：传统输入组件（兼容模式）-->
-      <ChatInputArea
-        v-else-if="currentConversation"
-        ref="inputAreaRef"
-        v-model="draftInput"
-        :generation-status="generationStatus"
-        :send-delay-pending="isDelayPending"
-        :disabled="false"
-        :api-key-configured="!!appStore.apiKey"
-        :is-electron-available="false"
-        :is-web-search-available="isWebSearchAvailable"
-        :can-show-image-generation-button="canShowImageGenerationButton"
-        :has-attachments="pendingAttachments.length > 0 || pendingFiles.length > 0"
-        :needs-vision-model="pendingAttachments.length > 0"
-        :current-model-supports-vision="false"
-        :vision-model-warning="pendingAttachments.length > 0 ? '⚠️ 请确认当前模型支持图片' : ''"
-        :web-search-enabled="webSearchConfig?.enabled || false"
-        :web-search-level="webSearchConfig?.level || 'quick'"
-        :web-search-level-label="webSearchConfig?.level === 'quick' ? '快速' : webSearchConfig?.level === 'normal' ? '普通' : '深入'"
-        :selected-pdf-engine="selectedPdfEngine"
-        :selected-pdf-engine-label="selectedPdfEngine === 'pdf-text' ? 'PDF Text' : selectedPdfEngine === 'mistral-ocr' ? 'Mistral OCR' : 'Native'"
-        :is-reasoning-supported="isReasoningControlAvailable"
-        :reasoning-enabled="isReasoningEnabled"
-        :reasoning-effort-label="reasoningPreference?.effort === 'low' ? '低档' : reasoningPreference?.effort === 'high' ? '高档' : '中档'"
-        :reasoning-preference="reasoningPreference"
-        :active-provider="appStore.activeProvider"
-        :current-model-id="actualModelId"
-        :model-data-map="modelStore.modelDataMap"
-        :model-capability="currentModelCapability"
-        :sampling-parameters-enabled="isSamplingEnabled"
-        :sampling-parameters="samplingParameters"
-        :show-sampling-menu="showSamplingMenu"
-        :image-generation-enabled="imageGenerationEnabled"
-        :image-generation-aspect-ratio="activeImageConfig?.aspect_ratio || '1:1'"
-        :current-aspect-ratio-label="currentAspectRatioLabel"
-        :pending-attachments="pendingAttachments"
-        :pending-files="pendingFiles.map(f => ({ name: f.name, size: f.size, type: f.mimeType || 'application/octet-stream', dataUri: f.dataUrl, pdfEngine: f.pdfEngine }))"
-        :attachment-alert="''"
-        @send="sendMessage"
-        @stop="stopGeneration"
-        @select-image="handleSelectImage"
-        @select-file="handleSelectFile"
-        @update:web-search-enabled="(enabled) => conversationStore.setWebSearchEnabled(props.conversationId, enabled)"
-        @select-web-search-level="(level) => conversationStore.setWebSearchLevel(props.conversationId, level)"
-        @toggle-reasoning="toggleReasoningEnabled"
-        @select-reasoning-effort="(effort) => conversationStore.setReasoningPreference(props.conversationId, { effort })"
-        @update:reasoning-preference="(updates) => conversationStore.setReasoningPreference(props.conversationId, updates)"
-        @toggle-sampling="handleToggleSampling"
-        @disable-sampling="handleDisableSampling"
-        @update:sampling-parameters="(updates) => conversationStore.setSamplingParameters(props.conversationId, updates)"
-        @reset-sampling-parameters="samplingManager.resetSamplingParameters"
-        @toggle-image-generation="toggleImageGeneration"
-        @update:image-generation-aspect-ratio="(ratio) => {
-          // TODO: \u66f4\u65b0\u56fe\u50cf\u5bbd\u9ad8\u6bd4
-          console.log('Update aspect ratio:', ratio)
-        }"
-        @cycle-aspect-ratio="cycleAspectRatio"
-        @undo-delay="undoPendingSend"
-        @remove-image="(index) => attachmentManager.removeImage(index)"
-        @remove-file="(index) => attachmentManager.removeFile(pendingFiles[index].id)"
-        @update-file-pdf-engine="(index, engine) => {
-          const file = pendingFiles[index]
-          if (file) {
-            file.pdfEngine = engine
-          }
-        }"
-        @clear-attachment-alert="() => {}"
-      />
+
       
       <!-- 删除确认对话框 -->
       <DeleteConfirmDialog
