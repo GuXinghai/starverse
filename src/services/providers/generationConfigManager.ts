@@ -23,6 +23,7 @@ import type {
 } from '../../types/generation'
 import { electronStore } from '../../utils/electronBridge'
 import { DEFAULT_GENERATION_CONFIG } from '../../types/generation'
+import { sanitizeForIpc } from '../../utils/ipcSanitizer'
 
 // ============================================================================
 // SECTION 1: Storage Keys (存储键名)
@@ -313,7 +314,8 @@ export class GenerationConfigManager {
    */
   private async saveGlobalConfig(): Promise<void> {
     try {
-      await electronStore.set(STORAGE_KEY_GLOBAL_CONFIG, this.globalConfig.value)
+      const sanitized = sanitizeForIpc(this.globalConfig.value)
+      await electronStore.set(STORAGE_KEY_GLOBAL_CONFIG, sanitized)
     } catch (error) {
       console.error('[GenerationConfigManager] Failed to save global config:', error)
     }
@@ -325,7 +327,8 @@ export class GenerationConfigManager {
   private async saveModelConfigs(): Promise<void> {
     try {
       const obj = Object.fromEntries(this.modelConfigs.value)
-      await electronStore.set(STORAGE_KEY_MODEL_CONFIGS, obj)
+      const sanitized = sanitizeForIpc(obj)
+      await electronStore.set(STORAGE_KEY_MODEL_CONFIGS, sanitized)
     } catch (error) {
       console.error('[GenerationConfigManager] Failed to save model configs:', error)
     }
@@ -337,7 +340,8 @@ export class GenerationConfigManager {
   private async saveConversationConfigs(): Promise<void> {
     try {
       const obj = Object.fromEntries(this.conversationConfigs.value)
-      await electronStore.set(STORAGE_KEY_CONVERSATION_CONFIGS, obj)
+      const sanitized = sanitizeForIpc(obj)
+      await electronStore.set(STORAGE_KEY_CONVERSATION_CONFIGS, sanitized)
     } catch (error) {
       console.error('[GenerationConfigManager] Failed to save conversation configs:', error)
     }

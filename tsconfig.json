@@ -37,7 +37,7 @@
     "forceConsistentCasingInFileNames": true,
     "noEmitOnError": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "electron", "infra/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "electron", "infra/**/*.ts", "tests/**/*.ts"],
   "exclude": [
     "node_modules",
     "dist",

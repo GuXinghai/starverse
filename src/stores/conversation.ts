@@ -21,6 +21,7 @@ import type { WebSearchLevel, ReasoningPreference, SamplingParameterSettings } f
 import { DEFAULT_SAMPLING_PARAMETERS } from '../types/chat'
 import { createEmptyTree } from './branchTreeHelpers'
 import { usePersistenceStore } from './persistence'
+import { generationConfigManager } from '../services/providers/generationConfigManager'
 
 const DEFAULT_REASONING_PREFERENCE = Object.freeze({
   visibility: 'visible' as const,
@@ -107,7 +108,7 @@ export const useConversationStore = defineStore('conversation', () => {
         enabled: false,
         level: 'normal'
       },
-      reasoningPreference: { ...DEFAULT_REASONING_PREFERENCE },
+      reasoningPreference: null,
       samplingParameters: { ...DEFAULT_SAMPLING_PARAMETERS },
       pdfEngine: 'pdf-text',
       generationStatus: 'idle',
@@ -118,6 +119,11 @@ export const useConversationStore = defineStore('conversation', () => {
 
     // 新对话添加到数组开头，使其显示在列表顶部
     conversations.value.unshift(newConversation)
+    
+    // 标记新对话为脏数据，以便自动保存
+    const persistenceStore = usePersistenceStore()
+    persistenceStore.markConversationDirty(newConversation.id)
+    
     return newConversation
   }
 
@@ -336,6 +342,16 @@ export const useConversationStore = defineStore('conversation', () => {
     
     conversation.updatedAt = Date.now()
     
+    // 同时更新 generationConfigManager 的对话级配置
+    const reasoningConfig = {
+      reasoning: {
+        enabled: conversation.reasoningPreference.visibility === 'visible',
+        effort: conversation.reasoningPreference.effort,
+        maxTokens: conversation.reasoningPreference.maxTokens
+      }
+    }
+    generationConfigManager.setConversationConfig(conversationId, reasoningConfig)
+    
     // 标记为脏数据，触发自动保存
     const persistenceStore = usePersistenceStore()
     persistenceStore.markConversationDirty(conversationId)
@@ -363,6 +379,20 @@ export const useConversationStore = defineStore('conversation', () => {
     })
     
     conversation.updatedAt = Date.now()
+    
+    // 同时更新 generationConfigManager 的对话级配置
+    // 这样 aiChatService 在调用 getEffectiveConfig 时能读取到最新的采样参数
+    const samplingConfig = {
+      sampling: {
+        temperature: conversation.samplingParameters.temperature,
+        top_p: conversation.samplingParameters.top_p,
+        top_k: conversation.samplingParameters.top_k
+      },
+      length: {
+        max_tokens: conversation.samplingParameters.max_tokens
+      }
+    }
+    generationConfigManager.setConversationConfig(conversationId, samplingConfig)
     
     // 标记为脏数据，触发自动保存
     const persistenceStore = usePersistenceStore()

@@ -65,29 +65,15 @@ describe('Ghost Task Bug Fix', () => {
 
   describe('幽灵任务检测', () => {
     it('应该检测并清理状态为 sent 的幽灵任务', async () => {
-      const { performSendMessage, forceResetSendingState } = useMessageSending(options)
+      const { performSendMessage } = useMessageSending(options)
 
       // 模拟幽灵任务：手动设置脏状态
       // (在实际场景中，这可能是页面热重载或异常退出后的残留)
-      const ghostContext = {
-        state: 'sent' as const,
-        timerId: null,
-        conversationId: 'test-conversation',
-        userMessageId: 'ghost-user-msg',
-        noticeMessageId: 'ghost-notice-msg',
-        payloadSnapshot: { text: 'ghost message' },
-        requestOptions: {},
-        draftBackup: { text: '', images: [], files: [] },
-        completionPromise: Promise.resolve({ success: false }),
-        resolveCompletion: vi.fn(),
-        rejectCompletion: vi.fn()
-      }
-
       // 注入幽灵任务到内部状态（这需要通过某种方式模拟）
       // 在真实实现中，pendingSend 是 composable 内部的私有状态
 
       // 验证：正常发送应该能够检测并清理幽灵任务
-      const consoleSpy = vi.spyOn(console, 'error')
+      vi.spyOn(console, 'error')
       
       // 第一次调用会清理幽灵任务
       // 注意：由于 pendingSend 是内部状态，我们通过观察日志来验证
@@ -105,15 +91,13 @@ describe('Ghost Task Bug Fix', () => {
       const { performSendMessage, forceResetSendingState } = useMessageSending(options)
 
       // Mock 网络请求永远挂起
-      const mockAiChatService = {
-        streamChatResponse: vi.fn(async function* () {
-          // 永远不 yield，模拟挂起
-          await new Promise(() => {}) // 永远 pending
-        })
-      }
+      vi.fn(async function* () {
+        // 永远不 yield，模拟挂起
+        await new Promise(() => {}) // 永远 pending
+      })
 
       // 开始发送（会挂起）
-      const sendPromise = performSendMessage()
+      performSendMessage()
 
       // 快进 60 秒
       vi.advanceTimersByTime(60000)
@@ -147,7 +131,7 @@ describe('Ghost Task Bug Fix', () => {
       const promise2 = performSendMessage()
 
       // 等待两个 Promise 完成
-      const results = await Promise.all([promise1, promise2])
+      await Promise.all([promise1, promise2])
 
       // 验证：
       // - 第一个应该成功（或因为 mock 问题失败）

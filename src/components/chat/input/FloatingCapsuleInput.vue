@@ -109,6 +109,7 @@ const emit = defineEmits([
   'toggle-reasoning',
   'toggle-image-generation',
   'toggle-sampling',
+  'toggle-parameters',  // 新增：控制参数面板展开/折叠
   'select-web-search-level',
   'select-reasoning-effort',
   'cycle-aspect-ratio'
@@ -350,7 +351,8 @@ const handleToggleFeature = (featureId: string) => {
         emit('toggle-image-generation')
         break
       case 'custom':
-        emit('toggle-sampling')
+        // 参数面板改为直接触发 toggle-parameters（不再依赖采样参数开关）
+        emit('toggle-parameters')
         break
     }
   }

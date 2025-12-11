@@ -79,7 +79,7 @@ import type { ReasoningPreference } from '../types/chat'
 import DeleteConfirmDialog from './DeleteConfirmDialog.vue'  // 删除确认对话框
 import ChatScrollContainer from './chat/ChatScrollContainer.vue'  // Stick-to-Bottom 滚动容器
 import ChatMessageItem from './chat/ChatMessageItem.vue'  // 单条消息渲染组件
-import ModernChatInput from './chat/input/ModernChatInput.vue'  // 聊天输入组件
+import ModernChatInput from './chat/input/ModernChatInput.vue'  // 聊天输入组件（包含参数面板）
 
 // ========== Props 定义 ==========
 /**
@@ -171,7 +171,7 @@ const {
 const webSearchConfig = computed(() => currentConversation.value?.webSearch)
 const reasoningPreference = computed(() => {
   const pref = currentConversation.value?.reasoningPreference
-  if (!pref) return undefined
+  if (!pref) return null
   // 规范化：确保 effort 始终存在
   return {
     visibility: pref.visibility,
@@ -217,7 +217,7 @@ const actualModelId = computed<string | null>(() => {
  * 当前模型的能力描述（用于能力感知控件）
  */
 const currentModelCapability = computed<ModelGenerationCapability | null>(() => {
-  const modelId = actualModelId.value
+  const modelId = actualModelId?.value ?? null
   if (!modelId) return null
   return modelStore.getModelCapability(modelId) || null
 })
@@ -268,12 +268,12 @@ if (import.meta.env.DEV) {
     conversationId: props.conversationId,
     conversationModel: currentConversation.value?.model,
     globalModelId: modelStore.selectedModelId,
-    actualModelId: actualModelId.value,
+    actualModelId: actualModelId?.value ?? null,
     isReasoningControlAvailable: isReasoningControlAvailable.value,
     isReasoningEnabled: isReasoningEnabled.value,
     activeProvider: appStore.activeProvider,
     modelDataMapSize: modelStore.modelDataMap?.size || 0,
-    reasoningPreference: reasoningPreference.value
+    reasoningPreference: reasoningPreference?.value ?? null
   })
   
   // 监控实际模型ID变化
@@ -318,6 +318,68 @@ const {
   validateAllParameters, 
   buildSamplingParameterOverrides 
 } = samplingManager
+
+// ========== 参数面板状态管理 ==========
+/**
+ * 参数面板展开/折叠状态
+ * 
+ * 当用户点击"参数"按钮时：
+ * - 如果菜单不是 'parameters'，设置为 'parameters'（展开）
+ * - 如果菜单已是 'parameters'，设置为 null（折叠）
+ */
+const showParameterPanel = computed({
+  get: () => activeMenu.value === 'parameters',
+  set: (value: boolean) => {
+    activeMenu.value = value ? 'parameters' : null
+  }
+})
+
+/**
+ * 参数面板是否可用
+ * - OpenRouter 提供商且模型能力存在时可用
+ */
+const parameterPanelAvailable = computed(() => {
+  return appStore.activeProvider === 'OpenRouter' && !!currentModelCapability.value
+})
+
+/**
+ * 处理参数面板的采样参数更新
+ * 自动持久化到会话级配置
+ */
+const handleParameterPanelUpdateSamplingParams = (params: any) => {
+  conversationStore.setSamplingParameters(props.conversationId, params)
+}
+
+/**
+ * 处理参数面板的推理偏好更新
+ * 自动持久化到会话级配置
+ */
+const handleParameterPanelUpdateReasoningPreference = (preference: any) => {
+  conversationStore.setReasoningPreference(props.conversationId, preference)
+}
+
+/**
+ * 切换参数面板展开/折叠
+ * 参照推理/绘画面板的逻辑
+ */
+const handleToggleParameterPanel = () => {
+  console.log('[ChatView] handleToggleParameterPanel 调用前:', {
+    activeMenu: activeMenu.value,
+    parameterPanelAvailable: parameterPanelAvailable.value
+  })
+  
+  if (!parameterPanelAvailable.value) {
+    console.warn('[ChatView] 参数面板不可用（仅支持 OpenRouter）')
+    return
+  }
+  
+  showParameterPanel.value = !showParameterPanel.value
+  
+  console.log('[ChatView] handleToggleParameterPanel 调用后:', {
+    showParameterPanel: showParameterPanel.value,
+    activeMenu: activeMenu.value
+  })
+}
 
 // 附件管理器
 const attachmentManager = useAttachmentManager({
@@ -974,7 +1036,7 @@ onMounted(() => {
       </div>
     </ChatScrollContainer>
 
-      <!-- 输入区 - 现代化胶囊输入栏 -->
+      <!-- 输入区 - 现代化胶囊输入栏（包含参数面板） -->
       <ModernChatInput
         v-if="currentConversation"
         v-model="draftInput"
@@ -993,6 +1055,9 @@ onMounted(() => {
         :sampling-parameters="samplingParameters"
         :show-sampling-menu="showSamplingMenu"
         :model-capability="currentModelCapability"
+        :show-parameter-panel="showParameterPanel"
+        :parameter-panel-available="parameterPanelAvailable"
+        :model-id="actualModelId?.value ?? null"
         :pending-attachments="pendingAttachments"
         :pending-files="pendingFiles.map(f => ({ name: f.name, size: f.size, type: f.mimeType || 'application/octet-stream', pdfEngine: f.pdfEngine }))"
         :selected-pdf-engine="selectedPdfEngine"
@@ -1020,6 +1085,10 @@ onMounted(() => {
         @update:image-generation-aspect-ratio="(ratio) => { console.log('Update aspect ratio:', ratio) }"
         @cycle-aspect-ratio="cycleAspectRatio"
         @toggle-sampling="handleToggleSampling"
+        @toggle-parameters="handleToggleParameterPanel"
+        @update:show-parameter-panel="showParameterPanel = $event"
+        @update:sampling-parameters-from-panel="handleParameterPanelUpdateSamplingParams"
+        @update:reasoning-preference-from-panel="handleParameterPanelUpdateReasoningPreference"
         @disable-sampling="handleDisableSampling"
         @update:sampling-parameters="(updates) => conversationStore.setSamplingParameters(props.conversationId, updates)"
         @reset-sampling-parameters="samplingManager.resetSamplingParameters"

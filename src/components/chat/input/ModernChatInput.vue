@@ -18,6 +18,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import FloatingCapsuleInput from './FloatingCapsuleInput.vue'
+import ConversationParameterPanel from '../controls/ConversationParameterPanel.vue'
 import type { SamplingParameterSettings } from '../../../types/chat'
 import type { ReasoningPreference } from '../../../types/chat'
 import type { ModelGenerationCapability } from '../../../types/generation'
@@ -89,6 +90,11 @@ interface Props {
   // 模型能力信息（可选）
   modelCapability?: ModelGenerationCapability | null
   
+  // 参数面板相关
+  showParameterPanel?: boolean
+  parameterPanelAvailable?: boolean
+  modelId?: string | null
+  
   // ========== 已移除的 Props（优化）==========
   // ❌ canSend - 改为派生计算，使用 modelValue/pendingAttachments/pendingFiles
   // ❌ webSearchLevelLabel - 在组件内从 webSearchConfig 计算
@@ -117,7 +123,10 @@ const props = withDefaults(defineProps<Props>(), {
   isWebSearchAvailable: true,
   isReasoningSupported: true,
   canShowImageGenerationButton: true,
-  currentModelName: '未选择模型'
+  currentModelName: '未选择模型',
+  showParameterPanel: false,
+  parameterPanelAvailable: false,
+  modelId: null
 })
 
 // 监听 props 变化
@@ -142,8 +151,12 @@ const emit = defineEmits<{
   // 功能切换
   'update:web-search-enabled': [value: boolean]
   'toggle-reasoning': []
+  'update:show-parameter-panel': [value: boolean]
+  'update:sampling-parameters-from-panel': [value: SamplingParameterSettings]
+  'update:reasoning-preference-from-panel': [value: ReasoningPreference]
   'toggle-image-generation': []
   'toggle-sampling': []
+  'toggle-parameters': []
   'disable-sampling': []
   
   // 配置调整
@@ -262,6 +275,10 @@ const handleToggleSampling = () => {
   emit('toggle-sampling')
 }
 
+const handleToggleParameters = () => {
+  emit('toggle-parameters')
+}
+
 const handleSelectWebSearchLevel = (level: string) => {
   emit('select-web-search-level', level)
 }
@@ -273,10 +290,35 @@ const handleSelectReasoningEffort = (effort: string) => {
 const handleCycleAspectRatio = () => {
   emit('cycle-aspect-ratio')
 }
+
+const handleUpdateShowParameterPanel = (value: boolean) => {
+  emit('update:show-parameter-panel', value)
+}
+
+const handleUpdateSamplingParametersFromPanel = (value: SamplingParameterSettings) => {
+  emit('update:sampling-parameters-from-panel', value)
+}
+
+const handleUpdateReasoningPreferenceFromPanel = (value: ReasoningPreference) => {
+  emit('update:reasoning-preference-from-panel', value)
+}
 </script>
 
 <template>
   <div class="modern-chat-input">
+    <!-- 参数面板（会话级）- 与推理、绘画菜单保持一致的弹出位置 -->
+    <ConversationParameterPanel
+      :show="showParameterPanel"
+      :is-available="parameterPanelAvailable"
+      :model-id="modelId"
+      :model-capability="modelCapability"
+      :sampling-parameters="samplingParameters"
+      :reasoning-preference="reasoningPreference"
+      @update:show="handleUpdateShowParameterPanel"
+      @update:sampling-parameters="handleUpdateSamplingParametersFromPanel"
+      @update:reasoning-preference="handleUpdateReasoningPreferenceFromPanel"
+    />
+    
     <!-- 悬浮胶囊输入栏（包含输入框和功能按钮） -->
     <FloatingCapsuleInput
       :model-value="modelValue"
@@ -313,6 +355,7 @@ const handleCycleAspectRatio = () => {
       @toggle-reasoning="handleToggleReasoning"
       @toggle-image-generation="handleToggleImageGeneration"
       @toggle-sampling="handleToggleSampling"
+      @toggle-parameters="handleToggleParameters"
       @select-web-search-level="handleSelectWebSearchLevel"
       @select-reasoning-effort="handleSelectReasoningEffort"
       @cycle-aspect-ratio="handleCycleAspectRatio"
@@ -326,7 +369,7 @@ const handleCycleAspectRatio = () => {
 @reference '../../../style.css';
 
 .modern-chat-input {
-  @apply w-full py-4 px-4 bg-gradient-to-b from-transparent to-white/50 dark:to-gray-900/50;
+  @apply relative w-full py-4 px-4 bg-gradient-to-b from-transparent to-white/50 dark:to-gray-900/50;
 }
 
 /* 添加底部渐变遮罩效果 */

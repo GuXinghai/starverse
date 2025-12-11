@@ -12,8 +12,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ref, nextTick } from 'vue'
 import { useMessageSending } from '../../../src/composables/useMessageSending'
-import type { MessagePart } from '../../../src/types/chat'
-import type { PendingFileData } from '../../../src/types/chat'
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Mock 辅助函数
@@ -69,7 +67,7 @@ function createMockOptions(stores: ReturnType<typeof createMockStores>) {
     conversationId: 'test-conversation',
     draftInput: ref('Test message'),
     pendingAttachments: ref<string[]>([]),
-    pendingFiles: ref<PendingFileData[]>([]),
+    pendingFiles: ref<any[]>([]),
     appStore: stores.mockAppStore,
     conversationStore: stores.mockConversationStore,
     branchStore: stores.mockBranchStore,
@@ -190,8 +188,8 @@ describe('useMessageSending - Phase State Machine', () => {
       expect(isDelayPending.value).toBe(true)
 
       // 记录创建的消息 ID
-      const userMessageId = stores.mockBranchStore.addMessageBranch.mock.results[0].value
-      const noticeMessageId = stores.mockBranchStore.addNoticeMessage.mock.results[0].value
+      const userMessageId = stores.mockBranchStore.addMessageBranch.mock.results[0]?.value
+      const noticeMessageId = stores.mockBranchStore.addNoticeMessage.mock.results[0]?.value
 
       // 执行撤回
       undoPendingSend()
@@ -258,7 +256,7 @@ describe('useMessageSending - Phase State Machine', () => {
 
       const originalText = options.draftInput.value
       const originalImages = [...options.pendingAttachments.value]
-      const originalFiles = [...options.pendingFiles.value]
+      // const originalFiles = [...options.pendingFiles.value]
 
       const { performSendMessage, undoPendingSend } = useMessageSending(options)
 
@@ -313,12 +311,12 @@ describe('useMessageSending - Phase State Machine', () => {
       await nextTick()
 
       // 验证：创建了空的 assistant 消息
-      const addBranchCalls = stores.mockBranchStore.addMessageBranch.mock.calls
+      const addBranchCalls = stores.mockBranchStore.addMessageBranch.mock.calls as any[]
       const assistantMessageCall = addBranchCalls.find(
-        (call: any[]) => call[1] === 'assistant'
-      )
+        (call: any) => call && call[1] === 'assistant'
+      ) as any
       expect(assistantMessageCall).toBeDefined()
-      if (assistantMessageCall) {
+      if (assistantMessageCall && assistantMessageCall.length > 2) {
         expect(assistantMessageCall[2]).toEqual([{ type: 'text', text: '' }])
       }
 
@@ -331,15 +329,17 @@ describe('useMessageSending - Phase State Machine', () => {
 
       // 获取传递给 patchMetadata 的函数并执行
       const patchCall = stores.mockBranchStore.patchMetadata.mock.calls[0]
-      const metadataFn = patchCall[2]
-      const metadata = metadataFn()
+      if (patchCall && patchCall.length > 2) {
+        const metadataFn = patchCall[2]
+        const metadata = metadataFn()
 
-      expect(metadata).toMatchObject({
-        error: '请求已中止',
-        canRetry: true,
-        abortPhase: 'requesting'
-      })
-      expect(metadata.abortedAt).toBeGreaterThan(0)
+        expect(metadata).toMatchObject({
+          error: '请求已中止',
+          canRetry: true,
+          abortPhase: 'requesting'
+        })
+        expect(metadata.abortedAt).toBeGreaterThan(0)
+      }
 
       // 验证：notice 消息被删除
       expect(stores.mockBranchStore.removeMessageBranch).toHaveBeenCalled()

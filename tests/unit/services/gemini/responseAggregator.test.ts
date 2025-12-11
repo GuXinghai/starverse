@@ -152,10 +152,10 @@ describe('GeminiStreamAggregator', () => {
       })
 
       const usage = aggregator.getUsage()
-      expect(usage?.promptTokens).toBe(10)
-      expect(usage?.completionTokens).toBe(20)
-      expect(usage?.totalTokens).toBe(30)
-      expect(usage?.cost).toBe(0.001)
+      expect(usage?.['promptTokens']).toBe(10)
+      expect(usage?.['completionTokens']).toBe(20)
+      expect(usage?.['totalTokens']).toBe(30)
+      expect(usage?.['cost']).toBe(0.001)
     })
 
     it('应在 Usage chunk 中提取 requestId', () => {
@@ -246,9 +246,8 @@ describe('GeminiStreamAggregator', () => {
     it('应忽略未知 chunk 类型（向前兼容）', () => {
       // 这会产生 warning，但不应抛出异常
       aggregator.processChunk({
-        type: 'unknown_type' as any,
-        data: 'something'
-      })
+        type: 'unknown_type' as any
+      } as any)
 
       // 应该正常继续
       aggregator.processChunk({ type: 'text', content: 'After unknown' })
