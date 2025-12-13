@@ -54,7 +54,7 @@ export interface Conversation {
   }
   
   // 推理配置
-  reasoningPreference?: ReasoningPreference
+  reasoningPreference?: ReasoningPreference | null
   
   // 采样参数
   samplingParameters?: SamplingParameterSettings
@@ -96,7 +96,7 @@ export interface ConversationSnapshot {
     enabled: boolean
     level: WebSearchLevel
   }
-  reasoningPreference?: ReasoningPreference
+  reasoningPreference?: ReasoningPreference | null
   samplingParameters?: SamplingParameterSettings
 }
 
@@ -159,52 +159,11 @@ export interface ProjectPromptTemplate {
   [key: string]: any
 }
 
-/**
- * 模型数据
- */
-export interface ModelData {
-  id: string
-  name?: string
-  description?: string
-  context_length?: number  // 🔧 修复：使用下划线命名（匹配 OpenRouter API）
-  max_output_tokens?: number  // 🔧 修复：使用下划线命名（匹配 OpenRouter API）
-  pricing?: {
-    prompt?: number
-    completion?: number
-    image?: number  // 🔧 添加：图片输入定价
-  }
-  architecture?: {
-    modality?: string
-    tokenizer?: string
-    instruct_type?: string | null
-    reasoning?: boolean  // 🔧 添加：推理能力标志
-    input_modalities?: string[]  // 🔧 添加：输入模态（架构层面）
-    output_modalities?: string[]  // 🔧 添加：输出模态（架构层面）
-  }
-  series?: string  // 🔧 添加：模型系列（如 'Anthropic', 'OpenAI', 'Google'）
-  input_modalities?: string[]  // 🔧 添加：输入模态（如 'text', 'image'）
-  output_modalities?: string[]  // 🔧 添加：输出模态（如 'text', 'image'）
-  
-  // 🔧 辅助字段（用于前端显示，基于上述字段计算）
-  supportsVision?: boolean
-  supportsImageOutput?: boolean
-  supportsReasoning?: boolean
-  
-  [key: string]: any
-}
-
-/**
- * 模型参数支持信息
- */
-export interface ModelParameterSupport {
-  temperature?: boolean
-  top_p?: boolean
-  top_k?: boolean
-  max_tokens?: boolean
-  frequency_penalty?: boolean
-  presence_penalty?: boolean
-  [key: string]: boolean | undefined
-}
+// ============================================================
+// ⚠️ 已删除旧接口：ModelData, ModelParameterSupport
+// 统一使用 src/types/appModel.ts 中的 AppModel 类型
+// 详见：docs/OPENROUTER_MODEL_SYNC_SPEC.md
+// ============================================================
 
 /**
  * 显示消息（用于渲染）

@@ -650,7 +650,7 @@ ipcMain.handle(
         return null
       }
 
-      const filePath = result.filePaths[0]
+      const filePath = result.filePaths[0]!
       const fileBuffer = await readFile(filePath)
       const size = fileBuffer.byteLength
       const ext = path.extname(filePath).toLowerCase()
@@ -739,7 +739,7 @@ ipcMain.handle('dialog:select-image', async () => {
       return null
     }
 
-    const filePath = result.filePaths[0]
+    const filePath = result.filePaths[0]!
     const fileBuffer = await readFile(filePath)
     const ext = path.extname(filePath).toLowerCase()
     
@@ -799,6 +799,9 @@ ipcMain.handle('shell:open-image', async (_event, imageUrl: string) => {
       }
 
       const [, extension, base64Data] = matches
+      if (!extension || !base64Data) {
+        throw new Error('无效的 data URI 内容')
+      }
       const tempDir = path.join(tmpdir(), 'starverse-images')
       await mkdir(tempDir, { recursive: true })
 

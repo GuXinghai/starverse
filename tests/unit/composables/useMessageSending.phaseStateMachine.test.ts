@@ -32,7 +32,7 @@ function createMockStores() {
     getConversationById: vi.fn(() => ({
       id: 'test-conversation',
       model: 'test-model',
-      tree: { branches: {}, rootBranchIds: [] }
+      tree: { branches: {}, rootBranchIds: [], currentPath: [] }
     }))
   }
 
@@ -41,7 +41,7 @@ function createMockStores() {
     addNoticeMessage: vi.fn(() => `notice-${Date.now()}`),
     updateNoticeMessageText: vi.fn(),
     removeMessageBranch: vi.fn(),
-    getDisplayMessages: vi.fn(() => []),
+    _buildMessageHistoryForAPI: vi.fn(() => []),  // ✅ 重命名：内部 API
     appendToken: vi.fn(),
     appendImage: vi.fn(),
     patchMetadata: vi.fn(),
@@ -75,7 +75,7 @@ function createMockOptions(stores: ReturnType<typeof createMockStores>) {
     currentConversation: ref({ 
       id: 'test-conversation', 
       model: 'test-model',
-      tree: { branches: {}, rootBranchIds: [] }
+      tree: { branches: {}, rootBranchIds: [], currentPath: [] }
     }),
     buildWebSearchRequestOptions: () => ({}),
     buildReasoningRequestOptions: () => ({}),
@@ -130,7 +130,8 @@ describe('useMessageSending - Phase State Machine', () => {
       expect(stores.mockBranchStore.addMessageBranch).toHaveBeenCalledWith(
         'test-conversation',
         'user',
-        expect.any(Array)
+        expect.any(Array),
+        null
       )
       expect(stores.mockBranchStore.addNoticeMessage).toHaveBeenCalledWith(
         'test-conversation',
@@ -333,12 +334,14 @@ describe('useMessageSending - Phase State Machine', () => {
         const metadataFn = patchCall[2]
         const metadata = metadataFn()
 
+        // 验证结构化 abort reason（而非依赖具体文案）
         expect(metadata).toMatchObject({
-          error: '请求已中止',
+          aborted: true,
           canRetry: true,
-          abortPhase: 'requesting'
+          abortPhase: 'requesting'  // 结构化信号：标记中止发生在 requesting 阶段
         })
         expect(metadata.abortedAt).toBeGreaterThan(0)
+        // ⚠️ 不依赖具体 error 文案，而是通过 abortPhase 判断状态
       }
 
       // 验证：notice 消息被删除
@@ -461,6 +464,38 @@ describe('useMessageSending - Phase State Machine', () => {
       // 清理
       vi.advanceTimersByTime(1000)
       await promise1.catch(() => {})
+    })
+  })
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Test Group 7: 流式图片处理
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  describe('Streaming 图片处理', () => {
+    it('应该使用 image.content 追加图片（不再依赖 chunk.url）', async () => {
+      const { aiChatService } = await import('../../../src/services/aiChatService')
+
+      // Mock 流式响应：仅包含图片 chunk，并立即结束
+      const mockStream = {
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'image', content: 'data:image/png;base64,abc123' }
+        }
+      }
+      ;(aiChatService.streamChatResponse as any).mockReturnValue(mockStream)
+
+      // 直接进入 streaming 阶段
+      stores.mockAppStore.sendDelayMs = 0
+
+      const { performSendMessage } = useMessageSending(options)
+
+      await performSendMessage()
+
+      // 验证：appendImage 被调用且使用 content 字段
+      expect(stores.mockBranchStore.appendImage).toHaveBeenCalledWith(
+        'test-conversation',
+        expect.any(String),
+        'data:image/png;base64,abc123'
+      )
     })
   })
 

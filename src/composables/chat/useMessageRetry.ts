@@ -244,7 +244,7 @@ export function useMessageRetry(options: UseMessageRetryOptions): UseMessageRetr
     }
 
     // ========== 构建请求历史：获取该分支之前的消息 ==========
-    const allMessages = branchStore.getDisplayMessages(targetConversationId)
+    const allMessages = branchStore._buildMessageHistoryForAPI(targetConversationId)
     
     // 找到当前分支在路径中的位置
     const branchIndex = currentConversation.value.tree.currentPath.indexOf(branchId)

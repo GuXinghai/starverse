@@ -1,0 +1,51 @@
+tests/integration/conversation-parameters-integration.spec.ts(200,35): error TS2339: Property 'enabled' does not exist on type 'ReasoningResolvedConfig'.
+tests/integration/conversation-parameters-integration.spec.ts(202,35): error TS2339: Property 'maxTokens' does not exist on type 'ReasoningResolvedConfig'.
+tests/sampling-parameters-persistence.test.ts(12,32): error TS6133: 'beforeEach' is declared but its value is never read.
+tests/unit/composables/useMessageDisplay.test.ts(11,10): error TS6133: 'ref' is declared but its value is never read.
+tests/unit/integration/streaming-response.test.ts(11,10): error TS6133: 'ref' is declared but its value is never read.
+tests/unit/integration/streaming-response.test.ts(205,13): error TS6133: 'displayBranchIds' is declared but its value is never read.
+tests/unit/integration/streaming-response.test.ts(301,11): error TS6133: 'isActive' is declared but its value is never read.
+tests/unit/openrouter-usage.test.ts(114,107): error TS2345: Argument of type 'undefined' is not assignable to parameter of type 'string | null'.
+tests/unit/openrouter-usage.test.ts(151,98): error TS2345: Argument of type 'undefined' is not assignable to parameter of type 'string | null'.
+tests/unit/openrouter-usage.test.ts(196,100): error TS2345: Argument of type 'undefined' is not assignable to parameter of type 'string | null'.
+tests/unit/openrouter-usage.test.ts(225,100): error TS2345: Argument of type 'undefined' is not assignable to parameter of type 'string | null'.
+tests/unit/openrouter-usage.test.ts(238,57): error TS6133: 'init' is declared but its value is never read.
+tests/unit/openrouter-usage.test.ts(250,104): error TS2345: Argument of type 'undefined' is not assignable to parameter of type 'string | null'.
+tests/unit/openrouter-usage.test.ts(292,104): error TS2345: Argument of type 'undefined' is not assignable to parameter of type 'string | null'.
+tests/unit/openrouter-usage.test.ts(306,7): error TS2820: Type '"OpenRouter"' is not assignable to type 'ProviderId'. Did you mean '"openrouter"'?
+tests/unit/openrouter-usage.test.ts(345,7): error TS2820: Type '"OpenRouter"' is not assignable to type 'ProviderId'. Did you mean '"openrouter"'?
+tests/unit/openrouter-usage.test.ts(375,7): error TS2820: Type '"OpenRouter"' is not assignable to type 'ProviderId'. Did you mean '"openrouter"'?
+tests/unit/openrouter-usage.test.ts(414,7): error TS2820: Type '"OpenRouter"' is not assignable to type 'ProviderId'. Did you mean '"openrouter"'?
+tests/unit/services/capabilityRegistry.spec.ts(26,5): error TS2741: Property 'modelId' is missing in type '{ supportsReasoningParam: true; supportsIncludeReasoning: false; supportsMaxReasoningTokens: true; returnsVisibleReasoning: "yes"; maxCompletionTokens: number; internalReasoningPrice: null; family: "openai"; reasoningClass: "A"; maxTokensPolicy: "effort-only"; }' but required in type 'ModelReasoningCapability'.
+tests/unit/services/gemini/streamChunkConverter.test.ts(21,1): error TS6133: 'StreamChunk' is declared but its value is never read.
+tests/unit/services/GeminiService.integration.test.ts(11,32): error TS6133: 'beforeEach' is declared but its value is never read.
+tests/unit/services/GeminiService.integration.test.ts(13,1): error TS6133: 'HistoryMessage' is declared but its value is never read.
+tests/unit/services/GeminiService.integration.test.ts(43,10): error TS6133: 'createMockGeminiSDK' is declared but its value is never read.
+tests/unit/services/GeminiService.integration.test.ts(58,28): error TS2339: Property 'supportsVision' does not exist on type 'AIProviderService'.
+tests/unit/services/GeminiService.integration.test.ts(62,28): error TS2339: Property 'supportsVision' does not exist on type 'AIProviderService'.
+tests/unit/services/GeminiService.integration.test.ts(66,28): error TS2339: Property 'supportsVision' does not exist on type 'AIProviderService'.
+tests/unit/services/GeminiService.integration.test.ts(70,28): error TS2339: Property 'supportsVision' does not exist on type 'AIProviderService'.
+tests/unit/services/GeminiService.integration.test.ts(74,28): error TS2339: Property 'supportsVision' does not exist on type 'AIProviderService'.
+tests/unit/services/GeminiService.integration.test.ts(75,28): error TS2339: Property 'supportsVision' does not exist on type 'AIProviderService'.
+tests/unit/services/GeminiService.integration.test.ts(79,28): error TS2339: Property 'supportsVision' does not exist on type 'AIProviderService'.
+tests/unit/services/GeminiService.integration.test.ts(83,28): error TS2339: Property 'supportsVision' does not exist on type 'AIProviderService'.
+tests/unit/services/GeminiService.integration.test.ts(88,28): error TS2339: Property 'supportsVision' does not exist on type 'AIProviderService'.
+tests/unit/services/providers/openrouter/sseParser.spec.ts(101,23): error TS2339: Property 'content' does not exist on type 'StreamChunk'.
+  Property 'content' does not exist on type 'ReasoningStreamTextChunk'.
+tests/unit/services/providers/openrouter/sseParser.spec.ts(103,23): error TS2339: Property 'content' does not exist on type 'StreamChunk'.
+  Property 'content' does not exist on type 'ReasoningStreamTextChunk'.
+tests/unit/services/providers/openrouter/sseParser.spec.ts(247,23): error TS2339: Property 'content' does not exist on type 'StreamChunk'.
+  Property 'content' does not exist on type 'ReasoningStreamTextChunk'.
+tests/unit/services/providers/openrouter/sseParser.spec.ts(248,23): error TS2339: Property 'content' does not exist on type 'StreamChunk'.
+  Property 'content' does not exist on type 'ReasoningStreamTextChunk'.
+tests/unit/services/providers/openrouter/sseParser.spec.ts(322,23): error TS2339: Property 'error' does not exist on type 'StreamChunk'.
+  Property 'error' does not exist on type 'TextChunk'.
+tests/unit/services/providers/openrouter/sseParser.spec.ts(392,23): error TS2339: Property 'usage' does not exist on type 'StreamChunk'.
+  Property 'usage' does not exist on type 'TextChunk'.
+tests/unit/services/responseAggregator.test.ts(335,14): error TS18048: 'result.metadata.reasoning.summary' is possibly 'undefined'.
+tests/unit/services/sseParser.test.ts(16,1): error TS6133: 'StreamChunk' is declared but its value is never read.
+tests/unit/services/sseParser.test.ts(22,13): error TS6133: 'sseLines' is declared but its value is never read.
+tests/unit/services/sseParser.test.ts(38,13): error TS6133: 'sseLines' is declared but its value is never read.
+tests/unit/services/sseParser.test.ts(148,13): error TS6133: 'chunks' is declared but its value is never read.
+tests/unit/stores/conversation.spec.ts(8,1): error TS6133: 'Conversation' is declared but its value is never read.
+tests/unit/utils/generationValidation.spec.ts(1,32): error TS6133: 'beforeEach' is declared but its value is never read.

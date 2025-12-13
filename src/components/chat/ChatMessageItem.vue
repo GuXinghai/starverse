@@ -1,5 +1,10 @@
 /**
- * ChatMessageItem.vue - 单条聊天消息组件
+ * ChatMessageItem.vue - 单条聊天消息组件 (智能组件 - 重构版)
+ * 
+ * 架构变更说明：
+ * - 从"哑组件"改为"智能组件"
+ * - 直接从 Store 读取数据，而非通过 Props 接收
+ * - 实现细粒度响应式：每个组件独立追踪自己的数据变化
  * 
  * 职责：
  * - 渲染单条消息（用户/AI）
@@ -11,10 +16,11 @@
  * - 显示 Token 使用量统计
  * 
  * Props:
- * - message: 消息对象
+ * - branchId: 分支 ID（用于从 Store 读取数据）
+ * - conversationId: 对话 ID（用于定位 Store）
  * - isEditing: 是否处于编辑状态
  * - isStreaming: 是否正在流式输出
- * - isIdle: 对话是否处于空闲状态
+ * - isGenerating: 是否正在生成
  * - editingText, editingImages, editingFiles: 编辑状态数据
  * 
  * Events:
@@ -31,25 +37,14 @@
  */
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { MessagePart, MessageVersionMetadata } from '../../types/chat'
+import type { MessagePart } from '../../types/chat'
 import ContentRenderer from '../ContentRenderer.vue'
 import MessageBranchController from '../MessageBranchController.vue'
-import { extractTextFromMessage } from '../../types/chat'
 import { useReasoningDisplay } from '../../composables/chat/useReasoningDisplay'
+import { useConversationStore } from '../../stores/conversation'
+import { getCurrentVersion } from '../../stores/branchTreeHelpers'
 
 // ========== Types ==========
-interface DisplayMessage {
-  id: string
-  branchId: string
-  role: 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter'
-  parts: MessagePart[]
-  timestamp: number
-  currentVersionIndex: number
-  totalVersions: number
-  hasMultipleVersions: boolean
-  metadata?: MessageVersionMetadata | undefined
-}
-
 interface EditingFile {
   id: string
   name: string
@@ -58,7 +53,8 @@ interface EditingFile {
 
 // ========== Props ==========
 interface Props {
-  message: DisplayMessage
+  branchId: string          // 分支 ID（主要数据源）
+  conversationId: string    // 对话 ID（用于定位 Store）
   isEditing?: boolean
   isStreaming?: boolean
   isGenerating?: boolean
@@ -78,7 +74,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 // ========== Events ==========
 const emit = defineEmits<{
-  'edit': [branchId: string, message: DisplayMessage]
+  'edit': [branchId: string]
   'save-edit': [branchId: string]
   'cancel-edit': []
   'update:editingText': [value: string]
@@ -92,6 +88,50 @@ const emit = defineEmits<{
   'add-file-to-edit': []
   'remove-file-from-edit': [id: string]
 }>()
+
+// ========== Store 连接 ==========
+const conversationStore = useConversationStore()
+
+/**
+ * 🔧 直接从 Store 读取 Branch 数据
+ * 
+ * 架构优势：
+ * - Vue 自动追踪 tree.branches 的 Map 操作
+ * - 不可变更新保证 branch 引用变化时触发重新计算
+ * - 每个组件独立追踪，互不干扰
+ */
+const branch = computed(() => {
+  const conversation = conversationStore.getConversationById(props.conversationId)
+  if (!conversation?.tree) return null
+  
+  // 直接访问 Map（用户要求：直接 State 访问而非调用 getBranch()）
+  return conversation.tree.branches.get(props.branchId) || null
+})
+
+/**
+ * 当前版本数据
+ */
+const currentVersion = computed(() => {
+  const b = branch.value
+  if (!b) return null
+  return getCurrentVersion(b)
+})
+
+/**
+ * 🔧 提取内容数据（替代 Props 传递）
+ * 
+ * 这些 computed 直接绑定到模板，实现细粒度响应式
+ */
+const parts = computed(() => currentVersion.value?.parts ?? [])
+const metadata = computed(() => currentVersion.value?.metadata)
+
+/**
+ * 🔧 提取控制数据
+ */
+const role = computed(() => branch.value?.role ?? 'user')
+const currentVersionIndex = computed(() => branch.value?.currentVersionIndex ?? 0)
+const totalVersions = computed(() => branch.value?.versions.length ?? 0)
+const hasMultipleVersions = computed(() => totalVersions.value > 1)
 
 // ========== Composables ==========
 const {
@@ -107,6 +147,31 @@ const {
 const isReasoningExpanded = ref(false)
 
 // ========== 计算属性 ==========
+
+/**
+ * 🔧 CRITICAL FIX: 生成稳定且响应式的 part key
+ * 
+ * 问题：使用 `part.id ?? partIndex` 时，如果 part 没有 id，Vue 会使用 partIndex
+ *       当流式追加 token 时，partIndex 不变，Vue 认为是同一个元素，不会重新渲染
+ * 
+ * 解决：为文本 part 生成包含文本长度的 key，确保内容变化时 key 也变化
+ *       这样 Vue 就能检测到变化并重新渲染
+ */
+function getPartKey(part: MessagePart, partIndex: number): string | number {
+  if (part.id) {
+    return part.id
+  }
+  
+  // 对于文本 part，使用索引和文本长度组合，确保响应式
+  if (part.type === 'text') {
+    const textLength = (part as any).text?.length || 0
+    return `text-${partIndex}-${textLength}`
+  }
+  
+  // 其他类型使用索引
+  return partIndex
+}
+
 const internalEditingText = computed({
   get: () => props.editingText,
   set: (value: string) => emit('update:editingText', value)
@@ -151,18 +216,11 @@ const formatCredits = (value?: number | null): string => {
  * 计算推理文本（用于判断是否应折叠）
  */
 const reasoningText = computed(() => {
-  if (!props.message.metadata?.reasoning) {
-    console.log('[ChatMessageItem] 🔍 No reasoning metadata for message:', props.message.branchId)
+  if (!metadata.value?.reasoning) {
     return ''
   }
   
-  const text = getReasoningStreamText(props.message.metadata.reasoning)
-  console.log('[ChatMessageItem] 🔍 Reasoning text computed:', {
-    branchId: props.message.branchId,
-    textLength: text.length,
-    textPreview: text.substring(0, 100),
-    reasoning: props.message.metadata.reasoning
-  })
+  const text = getReasoningStreamText(metadata.value.reasoning)
   
   return text
 })
@@ -171,18 +229,18 @@ const reasoningText = computed(() => {
  * ⭐ 检测消息是否被中止
  */
 const isAborted = computed(() => {
-  return !!(props.message.metadata?.streamAborted || props.message.metadata?.canRetry)
+  return !!(metadata.value?.streamAborted || metadata.value?.canRetry)
 })
 
 /**
  * ⭐ 获取中止阶段描述
  */
 const abortPhaseLabel = computed(() => {
-  const phase = props.message.metadata?.abortPhase
+  const phase = metadata.value?.abortPhase
   if (phase === 'requesting') return '请求已中止'
   if (phase === 'streaming') return '生成已中止'
-  if (props.message.metadata?.canRetry) return '请求已中止'
-  if (props.message.metadata?.streamAborted) return '生成已中止'
+  if (metadata.value?.canRetry) return '请求已中止'
+  if (metadata.value?.streamAborted) return '生成已中止'
   return '已中止'
 })
 
@@ -190,8 +248,11 @@ const abortPhaseLabel = computed(() => {
  * ⭐ 检测是否为空消息（可重试）
  */
 const isEmptyRetryableMessage = computed(() => {
-  const hasNoContent = extractTextFromMessage(props.message).trim() === ''
-  const canRetry = props.message.metadata?.canRetry
+  // 从 parts 中提取文本
+  const textParts = parts.value.filter(p => p.type === 'text')
+  const text = textParts.map(p => (p as any).text || '').join('')
+  const hasNoContent = text.trim() === ''
+  const canRetry = metadata.value?.canRetry
   return hasNoContent && canRetry
 })
 
@@ -206,10 +267,10 @@ const shouldDefaultCollapse = computed(() => {
  * 推理配置标签
  */
 const reasoningBadges = computed(() => {
-  if (!props.message.metadata?.reasoning) {
+  if (!metadata.value?.reasoning) {
     return []
   }
-  return getReasoningConfigBadges(props.message.metadata.reasoning)
+  return getReasoningConfigBadges(metadata.value.reasoning)
 })
 
 /**
@@ -239,14 +300,22 @@ const copyReasoningToClipboard = async () => {
 </script>
 
 <template>
+  <!-- 🔧 防御性检查：branch 不存在时显示占位符，避免白屏崩溃 -->
+  <div v-if="!branch" class="flex justify-start">
+    <div class="rounded-lg px-4 py-2 bg-red-50 border border-red-200 text-red-600 text-sm">
+      ⚠️ 消息数据加载失败（branchId: {{ branchId }}）
+    </div>
+  </div>
+
   <div
+    v-else
     class="flex group"
-    :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
+    :class="role === 'user' ? 'justify-end' : 'justify-start'"
   >
     <div class="flex items-end space-x-2 w-full max-w-md lg:max-w-2xl xl:max-w-4xl relative">
       <!-- AI 消息头像 -->
       <div
-        v-if="message.role === 'assistant'"
+        v-if="role === 'assistant'"
         class="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center mb-1"
       >
         <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -349,13 +418,13 @@ const copyReasoningToClipboard = async () => {
           </div>
 
           <!-- 文本编辑框 -->
-          <slot name="edit-textarea" :branch-id="message.branchId">
+          <slot name="edit-textarea" :branch-id="branchId">
             <textarea
               v-model="internalEditingText"
               class="w-full px-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
               rows="3"
               placeholder="编辑消息文本..."
-              @keydown.enter.ctrl="emit('save-edit', message.branchId)"
+              @keydown.enter.ctrl="emit('save-edit', branchId)"
               @keydown.esc="emit('cancel-edit')"
             ></textarea>
           </slot>
@@ -363,7 +432,7 @@ const copyReasoningToClipboard = async () => {
           <!-- 操作按钮 -->
           <div class="flex gap-2 mt-2">
             <button
-              @click="emit('save-edit', message.branchId)"
+              @click="emit('save-edit', branchId)"
               class="px-3 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
             >
               保存并重新生成
@@ -381,7 +450,7 @@ const copyReasoningToClipboard = async () => {
         <div
           v-else
           class="rounded-lg px-4 py-2 shadow-sm relative group"
-          :class="message.role === 'user' ? 'bg-blue-500 text-white' : 'bg-white text-gray-800 border border-gray-200'"
+          :class="role === 'user' ? 'bg-blue-500 text-white' : 'bg-white text-gray-800 border border-gray-200'"
         >
           <!-- ⭐ 中止状态提示（空消息可重试） -->
           <div
@@ -401,7 +470,7 @@ const copyReasoningToClipboard = async () => {
                 </p>
               </div>
               <button
-                @click="emit('retry', message.branchId)"
+                @click="emit('retry', props.branchId)"
                 class="px-3 py-1.5 text-sm bg-amber-600 hover:bg-amber-700 text-white rounded transition-colors flex items-center gap-1.5"
                 title="重新生成"
               >
@@ -415,7 +484,7 @@ const copyReasoningToClipboard = async () => {
 
           <!-- ⭐ 流式中止提示（有内容但被中止） -->
           <div
-            v-else-if="message.role === 'assistant' && isAborted && !isEmptyRetryableMessage"
+            v-else-if="role === 'assistant' && isAborted && !isEmptyRetryableMessage"
             class="mb-2 px-3 py-2 rounded bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600"
           >
             <div class="flex items-center gap-2">
@@ -426,7 +495,7 @@ const copyReasoningToClipboard = async () => {
                 {{ abortPhaseLabel }} · 以下为部分生成的内容
               </span>
               <button
-                @click="emit('retry', message.branchId)"
+                @click="emit('retry', props.branchId)"
                 class="ml-auto text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1"
                 title="重新生成"
               >
@@ -440,7 +509,7 @@ const copyReasoningToClipboard = async () => {
 
           <!-- 推理细节区域 -->
           <div
-            v-if="message.role === 'assistant' && hasReasoningDisplayContent(message.metadata?.reasoning)"
+            v-if="role === 'assistant' && hasReasoningDisplayContent(metadata?.reasoning)"
             class="mb-3 pb-3 border-b border-indigo-100"
           >
             <div class="bg-indigo-50 border border-indigo-100 rounded-lg text-xs text-indigo-900">
@@ -474,7 +543,7 @@ const copyReasoningToClipboard = async () => {
 
               <!-- 加密/隐藏推理占位符 -->
               <div
-                v-if="isReasoningEncrypted(message.metadata?.reasoning)"
+                v-if="isReasoningEncrypted(metadata?.reasoning)"
                 class="mx-3 mb-3 bg-gray-100 border border-gray-200 rounded-md p-3 text-center"
               >
                 <div class="flex items-center justify-center gap-2 text-gray-500">
@@ -490,14 +559,14 @@ const copyReasoningToClipboard = async () => {
 
               <!-- 摘要文本 -->
               <div
-                v-else-if="message.metadata?.reasoning?.summary"
+                v-else-if="metadata?.reasoning?.summary"
                 class="mx-3 mb-2 bg-indigo-100 border border-indigo-200 rounded-md p-2"
               >
                 <div class="text-[10px] uppercase tracking-wide text-indigo-500 font-semibold mb-1">
                   推理摘要
                 </div>
                 <div class="text-xs leading-relaxed text-indigo-800">
-                  {{ message.metadata.reasoning.summary }}
+                  {{ metadata.reasoning.summary }}
                 </div>
               </div>
 
@@ -567,11 +636,11 @@ const copyReasoningToClipboard = async () => {
 
               <!-- 其他推理细节 -->
               <div
-                v-if="getReasoningDetailsForDisplay(message.metadata?.reasoning).length > 0"
+                v-if="getReasoningDetailsForDisplay(metadata?.reasoning).length > 0"
                 class="mx-3 mb-2 space-y-2"
               >
                 <div
-                  v-for="detail in getReasoningDetailsForDisplay(message.metadata?.reasoning)"
+                  v-for="detail in getReasoningDetailsForDisplay(metadata?.reasoning)"
                   :key="detail.key"
                   class="bg-white/70 border border-indigo-100 rounded-md p-2 text-indigo-800"
                 >
@@ -590,20 +659,20 @@ const copyReasoningToClipboard = async () => {
           </div>
 
           <!-- 多模态内容渲染 -->
-          <div v-if="message.parts && message.parts.length > 0" class="space-y-2">
-            <template v-for="(part, partIndex) in message.parts" :key="part.id ?? partIndex">
+          <div v-if="parts && parts.length > 0" class="space-y-2">
+            <template v-for="(part, partIndex) in parts" :key="getPartKey(part, partIndex)">
               <!-- 文本 part -->
               <div v-if="part.type === 'text'">
                 <!-- 流式传输中：纯文本 -->
                 <p
-                  v-if="isStreaming && partIndex === message.parts.length - 1"
+                  v-if="isStreaming && partIndex === parts.length - 1"
                   class="text-sm whitespace-pre-wrap"
                 >
                   {{ part.text }}
                 </p>
                 <!-- AI 消息完成后：ContentRenderer -->
                 <ContentRenderer
-                  v-else-if="message.role === 'assistant'"
+                  v-else-if="role === 'assistant'"
                   :content="part.text"
                   class="text-sm"
                 />
@@ -620,7 +689,7 @@ const copyReasoningToClipboard = async () => {
               >
                 <img
                   :src="part.image_url.url"
-                  :alt="message.role === 'user' ? '用户上传的图片' : 'AI 生成的图片'"
+                  :alt="role === 'user' ? '用户上传的图片' : 'AI 生成的图片'"
                   class="max-w-full max-h-96 rounded-lg shadow-md cursor-pointer hover:opacity-90 transition-opacity"
                   @click="emit('image-click', part.image_url.url)"
                 />
@@ -651,7 +720,7 @@ const copyReasoningToClipboard = async () => {
               <div
                 v-else-if="part.type === 'file'"
                 class="flex items-center gap-3 p-3 rounded-md border"
-                :class="message.role === 'user' ? 'border-white/30 bg-white/20' : 'border-gray-200 bg-gray-50'"
+                :class="role === 'user' ? 'border-white/30 bg-white/20' : 'border-gray-200 bg-gray-50'"
               >
                 <div class="flex items-center gap-2">
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -660,14 +729,14 @@ const copyReasoningToClipboard = async () => {
                   <div class="flex flex-col">
                     <span
                       class="text-sm font-medium"
-                      :class="message.role === 'user' ? 'text-white' : 'text-gray-800'"
+                      :class="role === 'user' ? 'text-white' : 'text-gray-800'"
                     >
                       {{ part.file?.filename || '附件' }}
                     </span>
                     <span
                       v-if="part.file?.size_bytes"
                       class="text-xs"
-                      :class="message.role === 'user' ? 'text-white/80' : 'text-gray-500'"
+                      :class="role === 'user' ? 'text-white/80' : 'text-gray-500'"
                     >
                       {{ formatFileSize(part.file.size_bytes) }}
                     </span>
@@ -677,18 +746,10 @@ const copyReasoningToClipboard = async () => {
             </template>
           </div>
 
-          <!-- 向后兼容：没有 parts 的旧数据 -->
+          <!-- 向后兼容：没有 parts 的旧数据（已废弃，保留防止数据损坏） -->
           <div v-else>
-            <p v-if="isStreaming" class="text-sm whitespace-pre-wrap">
-              {{ extractTextFromMessage(message) }}
-            </p>
-            <ContentRenderer
-              v-else-if="message.role === 'assistant'"
-              :content="extractTextFromMessage(message)"
-              class="text-sm"
-            />
-            <p v-else class="text-sm whitespace-pre-wrap">
-              {{ extractTextFromMessage(message) }}
+            <p class="text-sm whitespace-pre-wrap text-red-500">
+              错误：消息数据损坏（缺少 parts 字段）
             </p>
           </div>
 
@@ -699,8 +760,8 @@ const copyReasoningToClipboard = async () => {
           >
             <!-- 用户消息：编辑 -->
             <button
-              v-if="message.role === 'user'"
-              @click="emit('edit', message.branchId, message)"
+              v-if="role === 'user'"
+              @click="emit('edit', props.branchId)"
               class="p-1.5 hover:bg-gray-100 rounded transition-colors"
               title="编辑"
             >
@@ -711,8 +772,8 @@ const copyReasoningToClipboard = async () => {
 
             <!-- 助手消息：重新生成 -->
             <button
-              v-if="message.role === 'assistant'"
-              @click="emit('retry', message.branchId)"
+              v-if="role === 'assistant'"
+              @click="emit('retry', props.branchId)"
               class="p-1.5 hover:bg-gray-100 rounded transition-colors"
               title="重新生成"
             >
@@ -723,7 +784,7 @@ const copyReasoningToClipboard = async () => {
 
             <!-- 删除按钮 -->
             <button
-              @click="emit('delete', message.branchId)"
+              @click="emit('delete', props.branchId)"
               class="p-1.5 hover:bg-red-100 rounded transition-colors"
               title="删除"
             >
@@ -736,43 +797,43 @@ const copyReasoningToClipboard = async () => {
 
         <!-- Token 使用量统计 -->
         <div
-          v-if="message.role === 'assistant' && message.metadata?.usage"
+          v-if="role === 'assistant' && metadata?.usage"
           class="text-xs text-gray-500 flex flex-wrap items-center gap-x-3 gap-y-1 ml-1"
         >
           <div class="flex items-center gap-1">
             <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7h16M4 12h16M4 17h10" />
             </svg>
-            <span>Prompt {{ formatTokens(message.metadata.usage.promptTokens) }}</span>
+            <span>Prompt {{ formatTokens(metadata.usage.promptTokens) }}</span>
             <span class="text-gray-300">|</span>
-            <span>Completion {{ formatTokens(message.metadata.usage.completionTokens) }}</span>
+            <span>Completion {{ formatTokens(metadata.usage.completionTokens) }}</span>
             <span class="text-gray-300">|</span>
-            <span>Total {{ formatTokens(message.metadata.usage.totalTokens) }}</span>
+            <span>Total {{ formatTokens(metadata.usage.totalTokens) }}</span>
           </div>
           <div
-            v-if="message.metadata.usage.cost !== undefined"
+            v-if="metadata.usage.cost !== undefined"
             class="flex items-center gap-1"
           >
             <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 1.343-3 3 0 1.306.835 2.418 2 2.83V17h2v-3.17A3.001 3.001 0 0015 11c0-1.657-1.343-3-3-3z" />
             </svg>
-            <span>Credits {{ formatCredits(message.metadata.usage.cost) }}</span>
+            <span>Credits {{ formatCredits(metadata.usage.cost) }}</span>
           </div>
         </div>
 
         <!-- 分支版本控制器 -->
         <MessageBranchController
-          v-if="message.hasMultipleVersions"
-          :current-index="message.currentVersionIndex"
-          :total-versions="message.totalVersions"
-          @switch="(direction: number) => emit('switch-version', message.branchId, direction)"
+          v-if="hasMultipleVersions"
+          :current-index="currentVersionIndex"
+          :total-versions="totalVersions"
+          @switch="(direction: number) => emit('switch-version', branchId, direction)"
           class="mt-2 ml-10"
         />
       </div>
 
       <!-- 用户消息头像 -->
       <div
-        v-if="message.role === 'user'"
+        v-if="role === 'user'"
         class="flex-shrink-0 w-8 h-8 bg-gray-500 rounded-full flex items-center justify-center mb-1"
       >
         <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">

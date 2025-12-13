@@ -134,7 +134,7 @@ export function useConversationMetadata(
   // ========== 辅助函数：获取最后一条用户消息文本 ==========
   
   const getLastUserMessageText = (): string => {
-    const messages = branchStore.getDisplayMessages(conversationId.value)
+    const messages = branchStore._buildMessageHistoryForAPI(conversationId.value)
     for (let i = messages.length - 1; i >= 0; i--) {
       const message = messages[i]
       if (message?.role === 'user') {

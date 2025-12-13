@@ -51,15 +51,16 @@ const USE_NEW_IMPLEMENTATION = false
  * @param model - 完整的模型对象（必须包含 input_modalities）
  * @returns 是否支持图像输入
  */
-function supportsImage(model: import('./../../types/store').ModelData): boolean {
-  if (!model || !model.input_modalities || !Array.isArray(model.input_modalities)) {
-    if (model && !model.input_modalities) {
+function supportsImage(model: any): boolean {
+  const inputModalities = model?.input_modalities
+  if (!model || !inputModalities || !Array.isArray(inputModalities)) {
+    if (model && !inputModalities) {
       console.warn('[GeminiService] 模型缺少 input_modalities 字段:', model?.id)
     }
     return false
   }
   
-  const modalities = model.input_modalities.map(m => String(m).toLowerCase())
+  const modalities = inputModalities.map((m: string) => String(m).toLowerCase())
   return modalities.includes('image') || 
          modalities.includes('vision') || 
          modalities.includes('multimodal')
@@ -71,12 +72,13 @@ function supportsImage(model: import('./../../types/store').ModelData): boolean 
  * @param model - 完整的模型对象
  * @returns 是否支持文件/文档输入
  */
-function supportsFileInput(model: import('./../../types/store').ModelData): boolean {
-  if (!model || !model.input_modalities || !Array.isArray(model.input_modalities)) {
+function supportsFileInput(model: any): boolean {
+  const inputModalities = model?.input_modalities
+  if (!model || !inputModalities || !Array.isArray(inputModalities)) {
     return false
   }
   
-  const modalities = model.input_modalities.map(m => String(m).toLowerCase())
+  const modalities = inputModalities.map((m: string) => String(m).toLowerCase())
   return modalities.includes('file') || 
          modalities.includes('document') || 
          modalities.includes('pdf')

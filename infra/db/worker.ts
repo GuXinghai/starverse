@@ -391,21 +391,34 @@ export class DbWorkerRuntime {
         return { ok: true }
     })
 
-    this.handlers.set('model.replaceByProvider', (raw) => {
-        this.modelDataRepo.replaceByProvider(raw.provider, raw.models)
+    this.handlers.set('model.replaceByRouterSource', (raw) => {
+        this.modelDataRepo.replaceByRouterSource(raw.routerSource, raw.models)
         return { ok: true }
     })
 
-    this.handlers.set('model.getAll', () => {
-        return this.modelDataRepo.getAll()
+    this.handlers.set('model.getAll', (raw) => {
+        return this.modelDataRepo.getAll(raw || {})
     })
 
-    this.handlers.set('model.getByProvider', (raw) => {
-        return this.modelDataRepo.getByProvider(raw.provider)
+    this.handlers.set('model.getByRouterSource', (raw) => {
+        return this.modelDataRepo.getByRouterSource(
+            raw.routerSource, 
+            raw.includeArchived ?? false
+        )
     })
 
     this.handlers.set('model.getById', (raw) => {
         return this.modelDataRepo.getById(raw.modelId)
+    })
+
+    this.handlers.set('model.archive', (raw) => {
+        this.modelDataRepo.archive(raw.modelId)
+        return { ok: true }
+    })
+
+    this.handlers.set('model.unarchive', (raw) => {
+        this.modelDataRepo.unarchive(raw.modelId)
+        return { ok: true }
     })
 
     this.handlers.set('model.clear', () => {

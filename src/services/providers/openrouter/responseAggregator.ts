@@ -182,6 +182,7 @@ export class OpenRouterStreamAggregator {
         break
 
       case 'reasoning_detail':
+        console.log('3️⃣1️⃣ 推理推导（Reasoning）处理')
         // 去重：使用 id 或内容指纹
         const detail = chunk.detail
         const detailId = detail.id || this.createDetailFingerprint(detail)
@@ -200,6 +201,7 @@ export class OpenRouterStreamAggregator {
         break
 
       case 'usage':
+        console.log('2️⃣0️⃣ Usage 信息接收')
         // 合并 usage 数据（允许多次更新）
         this.usage = {
           ...this.usage,

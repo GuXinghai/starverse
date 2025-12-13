@@ -22,7 +22,7 @@ import type {
   StreamOptions, 
   HistoryMessage
 } from '../../types/providers'
-import { parseSSELine, parseOpenRouterChunk } from './openrouter/sseParser'
+import { parseOpenRouterChunk, parseSSELine } from './openrouter/sseParser'
 import { createOpenRouterAggregator } from './openrouter/responseAggregator'
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -46,15 +46,16 @@ const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
  * @param model - 完整的模型对象（必须包含 input_modalities）
  * @returns 是否支持图像输入
  */
-function supportsImage(model: import('./../../types/store').ModelData): boolean {
-  if (!model || !model.input_modalities || !Array.isArray(model.input_modalities)) {
-    if (model && !model.input_modalities) {
+function supportsImage(model: any): boolean {
+  const inputModalities = model?.input_modalities
+  if (!model || !inputModalities || !Array.isArray(inputModalities)) {
+    if (model && !inputModalities) {
       console.warn('[OpenRouterService] 模型缺少 input_modalities 字段:', model?.id)
     }
     return false
   }
   
-  const modalities = model.input_modalities.map(m => String(m).toLowerCase())
+  const modalities = inputModalities.map((m: string) => String(m).toLowerCase())
   return modalities.includes('image') || 
          modalities.includes('vision') || 
          modalities.includes('multimodal')
@@ -66,12 +67,13 @@ function supportsImage(model: import('./../../types/store').ModelData): boolean 
  * @param model - 完整的模型对象
  * @returns 是否支持文件/文档输入
  */
-function supportsFileInput(model: import('./../../types/store').ModelData): boolean {
-  if (!model || !model.input_modalities || !Array.isArray(model.input_modalities)) {
+function supportsFileInput(model: any): boolean {
+  const inputModalities = model?.input_modalities
+  if (!model || !inputModalities || !Array.isArray(inputModalities)) {
     return false
   }
   
-  const modalities = model.input_modalities.map(m => String(m).toLowerCase())
+  const modalities = inputModalities.map((m: string) => String(m).toLowerCase())
   return modalities.includes('file') || 
          modalities.includes('document') || 
          modalities.includes('pdf')
@@ -100,19 +102,9 @@ export function extractModelSeries(modelId: string): string {
   return 'Other'
 }
 
-/**
- * 检查模型是否支持推理参数
- * 
- * @param modelId - 模型 ID
- * @returns 是否支持推理
- */
-function supportsReasoning(modelId: string): boolean {
-  const id = modelId.toLowerCase()
-  return id.includes('deepseek-r1') || 
-         id.includes('qwen-qwq') || 
-         id.includes('o1') ||
-         id.includes('o3')
-}
+// ⚠️ 已删除 supportsReasoning 函数
+// 推理能力检测现在统一使用 AppModel.capabilities.hasReasoning
+// 或 modelStore.getModelCapability(modelId)?.reasoning.supported
 
 /**
  * 深拷贝对象（优先使用原生 structuredClone）
@@ -256,21 +248,18 @@ async function* streamChatResponseNew(
   baseUrl: string,
   options?: StreamOptions
 ): AsyncGenerator<any, void, unknown> {
-  console.log('[OpenRouterService] 🚀 使用新实现（Parser + Aggregator）')
-  console.log('[OpenRouterService] Model:', modelName)
-  
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 1. 参数提取与配置解析
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const signal = options?.signal
+  // 兼容：部分调用方会在 options 里传入 { stream: false } 以强制非流式
+  const isStreaming: boolean = (options as any)?.stream === false ? false : true
   const reasoningConfig = options?.resolvedReasoningConfig
   const generationConfig = options?.generationConfig
   const modelCapability = options?.modelCapability
   
-  // 判断模型是否支持推理
-  const canUseReasoning = 
-    (modelCapability?.reasoning?.supportsReasoningParam === true) ||
-    supportsReasoning(modelName)
+  // 判断模型是否支持推理（仅通过能力表判断，不再使用 ID 猜测）
+  const canUseReasoning = modelCapability?.reasoning?.supportsReasoningParam === true
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 2. 转换消息格式
@@ -303,14 +292,10 @@ async function* streamChatResponseNew(
     model: modelName,
     messages,
     ...adapterResult.requestBodyFragment,
-    stream: true
+    // OpenRouter 用量统计：需要显式声明才会在响应/流中返回 usage
+    usage: { include: true },
+    stream: isStreaming
   }
-  
-  console.log('[OpenRouterService] Request body built:', {
-    messageCount: messages.length,
-    hasReasoningParam: !!adapterResult.requestBodyFragment['reasoning'],
-    stream: true
-  })
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 4. 初始化聚合器
@@ -331,15 +316,7 @@ async function* streamChatResponseNew(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const url = `${baseUrl}/chat/completions`
   
-  console.log('[OpenRouterService] 📡 准备发起 fetch 请求', {
-    url,
-    method: 'POST',
-    hasApiKey: !!apiKey,
-    bodySize: JSON.stringify(requestBody).length,
-    timestamp: Date.now()
-  })
-
-  const fetchStartTime = Date.now()
+  console.log('5️⃣ HTTP 请求发出')
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -351,25 +328,84 @@ async function* streamChatResponseNew(
     body: JSON.stringify(requestBody),
     signal
   })
-  
-  const fetchElapsed = Date.now() - fetchStartTime
-  console.log('[OpenRouterService] ✅ fetch 返回响应', {
-    status: response.status,
-    statusText: response.statusText,
-    ok: response.ok,
-    elapsed: `${fetchElapsed}ms`,
-    timestamp: Date.now()
-  })
+
+  // OpenRouter/网关在流式场景下常把 request id 放在 header，而不是每个 data chunk 的 JSON 里
+  const headerRequestId =
+    response.headers.get('x-request-id') ||
+    response.headers.get('x-openrouter-id') ||
+    response.headers.get('x-openrouter-request-id') ||
+    response.headers.get('openrouter-request-id') ||
+    undefined
   
   if (!response.ok) {
+    console.log('2️⃣8️⃣ 网络错误处理')
     const errorText = await response.text()
     console.error('[OpenRouterService] ❌ API 错误响应', {
       status: response.status,
       errorText: errorText.substring(0, 500)
     })
-    throw new Error(`OpenRouter API 错误: ${response.status} - ${errorText}`)
+
+    // 与旧实现/UI 约定保持一致：不要 throw，让上层按 chunk 处理错误
+    yield {
+      type: 'openrouter_error',
+      status: response.status,
+      error: {
+        message: errorText || `OpenRouter API 错误: ${response.status}`,
+        statusName: response.statusText || undefined,
+        retryable: response.status >= 500 || response.status === 429
+      }
+    }
+    return
   }
   
+  console.log('6️⃣ Fetch 响应头接收')
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 6a. 非流式模式：一次性 JSON
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  console.log('7️⃣ 非流式 vs 流式判断')
+  if (!isStreaming) {
+    const payload = await response.json().catch(async () => {
+      const text = await response.text()
+      throw new Error(`OpenRouter 非流式响应不是 JSON: ${text.substring(0, 500)}`)
+    })
+
+    // 复用同一套解析逻辑：OpenRouter JSON 与 SSE chunk 结构基本一致
+    const chunks = parseOpenRouterChunk(payload)
+    for (const chunk of chunks) {
+      const enriched =
+        chunk.type === 'usage' && !chunk.requestId && headerRequestId
+          ? { ...chunk, requestId: headerRequestId }
+          : chunk
+
+      aggregator.processChunk(enriched as any)
+
+      if (enriched.type === 'text') {
+        yield { type: 'text', content: enriched.content }
+      } else if (enriched.type === 'image') {
+        yield { type: 'image', content: enriched.content }
+      } else if (enriched.type === 'reasoning_detail') {
+        yield { type: 'reasoning_detail', detail: enriched.detail }
+      } else if (enriched.type === 'reasoning_summary') {
+        yield {
+          type: 'reasoning_summary',
+          summary: enriched.summary,
+          text: enriched.text,
+          detailCount: enriched.detailCount,
+          request: enriched.request,
+          provider: enriched.provider,
+          model: enriched.model,
+          excluded: enriched.excluded
+        }
+      } else if (enriched.type === 'usage') {
+        yield { type: 'usage', usage: enriched.usage, requestId: enriched.requestId }
+      } else if (enriched.type === 'error') {
+        throw new Error(enriched.error.message || 'Stream error')
+      }
+    }
+
+    return
+  }
+
   if (!response.body) {
     throw new Error('Response body is null')
   }
@@ -383,16 +419,17 @@ async function* streamChatResponseNew(
   
   try {
     while (true) {
+      console.log('1️⃣1️⃣ 字节流读取')
       const { done, value } = await reader.read()
       
       if (done) {
-        console.log('[OpenRouterService] ✅ 流式响应完成')
         break
       }
       
       // 解码字节流
       buffer += decoder.decode(value, { stream: true })
       
+      console.log('1️⃣2️⃣ SSE 行缓冲与拆分')
       // 按行拆分（SSE 格式）
       const lines = buffer.split('\n')
       buffer = lines.pop() || '' // 保留最后一个不完整的行
@@ -401,25 +438,49 @@ async function* streamChatResponseNew(
         if (!line.trim()) continue
         
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // 6.1 SSE 解析（文本 → StreamChunk）
+        // 6.1 SSE 解析（文本 → SSEParseResult）
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        const eventData = parseSSELine(line)
-        if (!eventData) continue
+        console.log('1️⃣3️⃣ SSE 格式解析')
+        const parseResult = parseSSELine(line)
+        
+
+        
+        // 处理解析错误
+        if (parseResult.error) {
+          console.warn('[OpenRouterService] ⚠️ SSE 解析错误:', parseResult.error.message)
+          continue
+        }
         
         // 处理 [DONE] 信号
-        if (typeof eventData === 'string' && eventData === '[DONE]') {
-          console.log('[OpenRouterService] Received [DONE] signal')
+        console.log('2️⃣2️⃣ [DONE] 信号接收')
+        if (parseResult.isDone) {
           break
         }
         
-        // 解析 OpenRouter chunk
-        const streamChunks = parseOpenRouterChunk(eventData)
+        // 将单个/多个 chunk 统一成数组处理。
+        // 关键：同一条 data 行可能同时包含 usage + content 或 reasoning_details + content。
+        // 旧逻辑只处理 parseResult.chunk（第一个），会丢失其它 chunk。
+        const streamChunks = parseResult.chunks
+          ? parseResult.chunks
+          : (parseResult.chunk ? [parseResult.chunk] : [])
+
+        // 如果没有有效 chunk（如心跳包），跳过
+        if (streamChunks.length === 0) {
+          continue
+        }
         
         for (const chunk of streamChunks) {
+          // 如果 usage chunk 没有 requestId，则用响应 header 补齐
+          const enrichedChunk =
+            chunk.type === 'usage' && !(chunk as any).requestId && headerRequestId
+              ? ({ ...chunk, requestId: headerRequestId } as any)
+              : chunk
+
           // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           // 6.2 流式聚合（StreamChunk → 状态累积）
           // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-          aggregator.processChunk(chunk)
+          console.log('1️⃣4️⃣ 响应聚合器处理（Parser → Aggregator）')
+          aggregator.processChunk(enrichedChunk)
           
           // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           // 6.3 增量输出（向后兼容旧实现的对象格式）
@@ -436,32 +497,33 @@ async function* streamChatResponseNew(
           // 新实现必须完全匹配，否则 UI 层会报错
           // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           
-          if (chunk.type === 'text') {
-            yield { type: 'text', content: chunk.content }
-          } else if (chunk.type === 'image') {
-            yield { type: 'image', content: chunk.content }
-          } else if (chunk.type === 'reasoning_stream_text') {
+          if (enrichedChunk.type === 'text') {
+            console.log('1️⃣6️⃣ 文本内容 Yield')
+            yield { type: 'text', content: enrichedChunk.content }
+          } else if (enrichedChunk.type === 'image') {
+            yield { type: 'image', content: enrichedChunk.content }
+          } else if (enrichedChunk.type === 'reasoning_stream_text') {
             // 推理流文本（实时展示）- 旧实现可能不 yield 这个
             // 保持兼容性，不 yield（UI 从 metadata 获取）
             continue
-          } else if (chunk.type === 'reasoning_detail') {
-            yield { type: 'reasoning_detail', detail: chunk.detail }
-          } else if (chunk.type === 'reasoning_summary') {
+          } else if (enrichedChunk.type === 'reasoning_detail') {
+            yield { type: 'reasoning_detail', detail: enrichedChunk.detail }
+          } else if (enrichedChunk.type === 'reasoning_summary') {
             yield {
               type: 'reasoning_summary',
-              summary: chunk.summary,
-              text: chunk.text,
-              detailCount: chunk.detailCount,
-              request: chunk.request,
-              provider: chunk.provider,
-              model: chunk.model,
-              excluded: chunk.excluded
+              summary: enrichedChunk.summary,
+              text: enrichedChunk.text,
+              detailCount: enrichedChunk.detailCount,
+              request: enrichedChunk.request,
+              provider: enrichedChunk.provider,
+              model: enrichedChunk.model,
+              excluded: enrichedChunk.excluded
             }
-          } else if (chunk.type === 'usage') {
-            yield { type: 'usage', usage: chunk.usage, requestId: chunk.requestId }
-          } else if (chunk.type === 'error') {
+          } else if (enrichedChunk.type === 'usage') {
+            yield { type: 'usage', usage: enrichedChunk.usage, requestId: (enrichedChunk as any).requestId }
+          } else if (enrichedChunk.type === 'error') {
             // 错误处理：抛出异常（与旧实现一致）
-            throw new Error(chunk.error.message || 'Stream error')
+            throw new Error(enrichedChunk.error.message || 'Stream error')
           }
         }
       }
@@ -513,7 +575,7 @@ export const OpenRouterService: AIProviderService = {
    * @param baseUrl - OpenRouter Base URL
    * @returns 完整的模型对象数组（包含 id, name, architecture.modality 等字段）
    */
-  async listAvailableModels(apiKey: string, baseUrl?: string): Promise<any[]> {
+  async listAvailableModels(apiKey: string, baseUrl?: string): Promise<string[]> {
     const url = `${baseUrl || OPENROUTER_BASE_URL}/models`
     
     const response = await fetch(url, {
@@ -530,8 +592,10 @@ export const OpenRouterService: AIProviderService = {
     }
     
     const data = await response.json()
-    // 🔧 返回完整的模型对象数组，而不仅仅是 ID
-    return data.data
+    const rows = Array.isArray(data?.data) ? data.data : []
+    return rows
+      .map((m: any) => (m && typeof m.id === 'string' ? m.id : null))
+      .filter((id: string | null): id is string => !!id)
   },
 
   /**
@@ -566,87 +630,7 @@ export const OpenRouterService: AIProviderService = {
     )
   },
 
-  /**
-   * 获取模型参数支持信息
-   * 
-   * @param apiKey - OpenRouter API Key
-   * @param modelId - 模型 ID（格式：'author/slug'，如 'openai/gpt-4o'）
-   * @param baseUrl - API Base URL
-   * @param provider - 可选的 provider 参数
-   * @returns 模型参数支持信息
-   */
-  async getModelParameters(
-    apiKey: string,
-    modelId: string,
-    baseUrl?: string,
-    provider?: string | null
-  ): Promise<{ model: string; supported_parameters: string[] }> {
-    if (!modelId || typeof modelId !== 'string') {
-      throw new Error('modelId 必须是有效的字符串')
-    }
-
-    // 拆分模型 ID 为 author 和 slug
-    const parts = modelId.split('/')
-    if (parts.length !== 2) {
-      throw new Error(`无效的模型 ID 格式: ${modelId}，期望格式为 'author/slug'`)
-    }
-
-    const [author, slug] = parts
-
-    // 确保 author 和 slug 有效
-    if (!author || !slug) {
-      throw new Error(`无效的模型 ID 格式: ${modelId}，author 或 slug 为空`)
-    }
-
-    try {
-      // 构建 URL
-      const resolvedBaseUrl = baseUrl || OPENROUTER_BASE_URL
-      let url = `${resolvedBaseUrl}/parameters/${encodeURIComponent(author)}/${encodeURIComponent(slug)}`
-      if (provider) {
-        url += `?provider=${encodeURIComponent(provider)}`
-      }
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer': 'https://github.com/GuXinghai/starverse',
-          'X-Title': 'Starverse'
-        }
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        
-        // 404 是常见错误（模型不存在或不支持参数查询）
-        if (response.status === 404) {
-          throw new Error(`Model not found: ${response.status} - ${errorText}`)
-        }
-        
-        // 其他错误输出详细日志
-        console.error(`OpenRouterService: 获取模型参数失败，状态: ${response.status}`)
-        console.error('OpenRouterService: 错误响应:', errorText)
-        throw new Error(`获取模型参数失败: ${response.status} - ${errorText}`)
-      }
-
-      const data = await response.json()
-
-      // 返回格式: { data: { model: 'openai/gpt-4o', supported_parameters: [...] } }
-      if (data.data) {
-        return data.data
-      }
-
-      // 向后兼容：如果直接返回了参数列表
-      return data
-    } catch (error) {
-      // 404 错误不输出 error 日志（这是预期错误）
-      if (error instanceof Error && error.message.includes('Model not found')) {
-        throw error
-      }
-      console.error('OpenRouterService: 获取模型参数时出错', error)
-      throw error
-    }
-  }
+  // getModelParameters 已被移除：禁止调用旧 /api/v1/parameters 或 /parameters/* 旧链路，统一走 syncFromOpenRouter() + AppModel.capabilities
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

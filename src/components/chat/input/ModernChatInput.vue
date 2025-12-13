@@ -82,10 +82,10 @@ interface Props {
   canShowImageGenerationButton?: boolean
   
   // 推理配置（必需）
-  reasoningPreference?: ReasoningPreference
+  reasoningPreference?: ReasoningPreference | null
   
   // 采样参数（必需）
-  samplingParameters?: SamplingParameterSettings
+  samplingParameters?: SamplingParameterSettings | null
   
   // 模型能力信息（可选）
   modelCapability?: ModelGenerationCapability | null
@@ -120,6 +120,9 @@ const props = withDefaults(defineProps<Props>(), {
   imageGenerationEnabled: false,
   samplingParametersEnabled: false,
   showSamplingMenu: false,
+  modelCapability: null,
+  samplingParameters: null,
+  reasoningPreference: null,
   isWebSearchAvailable: true,
   isReasoningSupported: true,
   canShowImageGenerationButton: true,
@@ -188,13 +191,6 @@ const canSend = computed(() =>
   !!props.modelValue?.trim() || 
   (props.pendingAttachments?.length || 0) > 0 || 
   (props.pendingFiles?.length || 0) > 0
-)
-
-/**
- * 从 reasoningPreference 提取当前挡位
- */
-const currentReasoningEffort = computed(() => 
-  props.reasoningPreference?.effort || 'medium'
 )
 
 // ========== 事件转发 ==========
@@ -313,7 +309,7 @@ const handleUpdateReasoningPreferenceFromPanel = (value: ReasoningPreference) =>
       :model-id="modelId"
       :model-capability="modelCapability"
       :sampling-parameters="samplingParameters"
-      :reasoning-preference="reasoningPreference"
+      :reasoning-preference="reasoningPreference ?? null"
       @update:show="handleUpdateShowParameterPanel"
       @update:sampling-parameters="handleUpdateSamplingParametersFromPanel"
       @update:reasoning-preference="handleUpdateReasoningPreferenceFromPanel"
@@ -340,7 +336,7 @@ const handleUpdateReasoningPreferenceFromPanel = (value: ReasoningPreference) =>
       :is-web-search-available="isWebSearchAvailable"
       :is-reasoning-available="isReasoningSupported"
       :can-show-image-generation-button="canShowImageGenerationButton"
-      :reasoning-preference="reasoningPreference"
+      :reasoning-preference="reasoningPreference ?? undefined"
       @update:model-value="handleUpdateInput"
       @send="handleSend"
       @stop="handleStop"

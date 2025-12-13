@@ -103,6 +103,12 @@ function handleDisabledMode(
   warnings: ReasoningAdapterWarning[],
 ): ReasoningAdapterResult {
   reasoning.effort = 'none';
+  // disabled 模式下，显式关闭“返回推理”信号，避免出现 include_reasoning=true 但 effort='none' 的语义冲突
+  if (payload.include_reasoning != null) {
+    payload.include_reasoning = false;
+  }
+  // 同时将可见性标记为排除（即便 provider 忽略，也能避免误解）
+  reasoning.exclude = true;
   // 不使用 enabled:false，避免依赖未定义语义
   return { payload, warnings };
 }
@@ -320,33 +326,35 @@ function handleEffortOnlyMaxTokens(
   _strategy: StarverseReasoningStrategy,
   warnings: ReasoningAdapterWarning[],
 ): void {
+  // effort-only 的含义：provider 只保证“理解” effort 档位，但仍可能接受 reasoning.max_tokens 作为 hint。
+  // 这里的关键是：不要强制设置 reasoning.effort，否则会让用户的 max_tokens 控制形同虚设。
+  // 选择：转发 reasoning.max_tokens=requested，让 OpenRouter/provider 自行映射到内部 effort。
+  reasoning.max_tokens = requested;
+  delete (reasoning as any).effort;
+
+  // 顶层 max_tokens（输出上限）与推理预算是两回事：优先用户配置，否则使用 provider cap。
   const providerCap = capability.maxCompletionTokens;
-  const appliedEffort = config.effort ?? 'medium';
+  let completionMax = config.maxCompletionTokens ?? providerCap ?? undefined;
 
-  // ???? effort ??????????? max_tokens ????
-  reasoning.effort = appliedEffort;
-
-  let completionCap = config.maxCompletionTokens ?? requested;
-  if (providerCap != null && completionCap != null && completionCap > providerCap) {
+  if (providerCap != null && completionMax != null && completionMax > providerCap) {
     warnings.push({
       type: 'clipped',
-      message: '???? max_tokens ?????????????????????? cap??',
-      details: { requested: completionCap, providerCap },
+      message: 'max_tokens 已根据模型上限自动下调',
+      details: { requested: completionMax, providerCap },
     });
-    completionCap = providerCap;
+    completionMax = providerCap;
   }
 
-  payload.max_tokens = completionCap ?? providerCap ?? undefined;
+  payload.max_tokens = completionMax;
 
   warnings.push({
     type: 'fallback',
-    message: '???? effort-only ????max_tokens ?????????? effort ????????????????????????? provider cap??',
+    message: 'effort-only 模型：已转发 reasoning.max_tokens 作为 hint，具体映射由 provider 决定',
     details: {
       maxTokensPolicy: 'effort-only',
-      appliedEffort,
-      requested,
+      requestedReasoningMaxTokens: requested,
       providerCap,
-      completionCap,
+      appliedMaxTokens: completionMax,
     },
   });
 }

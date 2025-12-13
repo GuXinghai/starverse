@@ -79,14 +79,14 @@ export function useCurrentConversation(options: UseCurrentConversationOptions) {
     }
 
     const modelId = currentConversation.value?.model
-    const modelsMap = modelStore.modelDataMap
+    const modelsMap = modelStore.appModelsById  // 使用新的 AppModel 索引
     const mapSize = modelsMap && typeof modelsMap.size === 'number' ? modelsMap.size : 0
     
     console.log('[ModelMetadata] 🔍 查询模型元数据:', {
       modelId,
       isActive: isActive.value,
-      hasModelDataMap: !!modelsMap,
-      modelDataMapSize: mapSize,
+      hasAppModelsById: !!modelsMap,
+      appModelsByIdSize: mapSize,
       provider: activeProvider.value
     })
     
@@ -102,7 +102,7 @@ export function useCurrentConversation(options: UseCurrentConversationOptions) {
           modelId,
           hasOutputModalities: !!directMatch.output_modalities,
           outputModalities: directMatch.output_modalities,
-          architecture: directMatch.architecture
+          capabilities: directMatch.capabilities
         })
         return directMatch
       }
@@ -113,7 +113,7 @@ export function useCurrentConversation(options: UseCurrentConversationOptions) {
           modelId: modelId.toLowerCase(),
           hasOutputModalities: !!normalizedMatch.output_modalities,
           outputModalities: normalizedMatch.output_modalities,
-          architecture: normalizedMatch.architecture
+          capabilities: normalizedMatch.capabilities
         })
         return normalizedMatch
       }
@@ -127,7 +127,7 @@ export function useCurrentConversation(options: UseCurrentConversationOptions) {
         sampleAvailableModels: availableModels
       })
     } else {
-      console.log('[ModelMetadata] ❌ modelDataMap 不可用')
+      console.log('[ModelMetadata] ❌ appModelsById 不可用')
     }
 
     return null

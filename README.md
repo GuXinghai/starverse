@@ -90,9 +90,21 @@ npm run electron:dev
 
 ### 🤖 AI 对话能力
 - **多提供商支持**: 支持 Google Gemini 和 OpenRouter 双提供商，可自由切换
-- **多模型支持**: 
-  - Gemini: gemini-pro, gemini-1.5-flash, gemini-2.0-flash-exp 等
-  - OpenRouter: 支持 GPT-4, Claude, Gemini, Llama 等上百种模型
+- **统一模型管理 (AppModel)**: ⭐ v0.10 架构升级
+  - 统一的模型数据结构，消除 ModelData/ModelParameterSupport 等碎片化类型
+  - 自动能力检测（推理、工具调用、JSON 模式、多模态）
+  - 智能价格展示（USD / 1M tokens）
+  - 软删除机制（云端下架模型标记为 archived）
+  - 规范化字段映射（router_source、vendor、capabilities、pricing）
+- **OpenRouter 模型同步**: 
+  - 支持 200+ 模型（GPT-4, Claude, Gemini, Llama, DeepSeek R1 等）
+  - 自动从 /api/v1/models 同步最新列表
+  - 增量更新 + 软删除策略
+  - 本地 SQLite 缓存（避免重复请求）
+  - 首次出现时间 (first_seen_at) 和最后更新时间 (last_seen_at) 追踪
+- **Gemini 模型支持**:
+  - gemini-pro, gemini-1.5-flash, gemini-2.0-flash-exp 等
+  - 自动规范化为 AppModel 结构
 - **多模态支持**: 
   - 上传图片到 AI 模型进行分析（GPT-4o、Gemini 1.5+、Claude 3）
   - 接收 AI 生成的图片

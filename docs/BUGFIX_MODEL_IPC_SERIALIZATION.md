@@ -72,11 +72,11 @@ const allowedMethods: DbMethod[] = [
   
   // Model Data Management
   'model.saveMany',
-  'model.replaceByProvider',
-  'model.getAll',          // ✅ 新增
-  'model.getByProvider',   // ✅ 新增
-  'model.getById',         // ✅ 新增
-  'model.clear',           // ✅ 新增
+  'model.replaceByRouterSource',
+  'model.getAll',
+  'model.getByRouterSource',
+  'model.getById',
+  'model.clear',
   
   // ...
 ]
@@ -93,7 +93,7 @@ const models = modelIds.map(id => ({
   name: id
 }))
 
-modelStore.setAvailableModels(models)
+modelStore.setAppModels(models)
 ```
 
 **位置 2** (Line 160 - 类似逻辑)

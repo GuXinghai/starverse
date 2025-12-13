@@ -377,7 +377,7 @@ export interface ModelOtherCapability {
  * 数据来源：
  * - /api/v1/models 或 /api/v1/models/user 的 supported_parameters
  * - top_provider.max_completion_tokens
- * - pricing.internal_reasoning
+ * - pricing.internalReasoningUsdPerToken
  * - 手工维护的白名单（reasoning 模型识别）
  */
 export interface ModelGenerationCapability {

@@ -164,6 +164,76 @@ describe('OpenRouter usage capture', () => {
     expect(usageChunk?.requestId).toBe('gen-nonstream-1')
   })
 
+  it('toggles include_reasoning / reasoning.exclude based on showReasoningContent', async () => {
+    const fetchMock = vi.fn().mockImplementation((_url, init: RequestInit) => {
+      const capturedBody = JSON.parse(init?.body as string)
+      const payload = {
+        id: 'gen-reasoning-1',
+        choices: [{ message: { content: 'ok' } }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }
+      return Promise.resolve({ capturedBody, response: new Response(JSON.stringify(payload), { status: 200 }) })
+    })
+
+    // case 1: showReasoningContent = true
+    {
+      let captured: any = null
+      vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url, init: RequestInit) => {
+        const result: any = await fetchMock(url, init)
+        captured = result.capturedBody
+        return result.response
+      }))
+
+      const config = {
+        ...DEFAULT_GENERATION_CONFIG,
+        reasoning: {
+          ...(DEFAULT_GENERATION_CONFIG.reasoning as any),
+          showReasoningContent: true,
+        },
+      }
+
+      const chunks: any[] = []
+      const stream = OpenRouterService.streamChatResponse('test-key', [], 'openrouter/auto', 'hi', undefined, {
+        stream: false,
+        generationConfig: config as any,
+        modelCapability: MOCK_CAPABILITY,
+      })
+      for await (const chunk of stream) chunks.push(chunk)
+
+      expect(captured?.include_reasoning).toBe(true)
+      expect(captured?.reasoning?.exclude).toBe(false)
+    }
+
+    // case 2: showReasoningContent = false
+    {
+      let captured: any = null
+      vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url, init: RequestInit) => {
+        const result: any = await fetchMock(url, init)
+        captured = result.capturedBody
+        return result.response
+      }))
+
+      const config = {
+        ...DEFAULT_GENERATION_CONFIG,
+        reasoning: {
+          ...(DEFAULT_GENERATION_CONFIG.reasoning as any),
+          showReasoningContent: false,
+        },
+      }
+
+      const chunks: any[] = []
+      const stream = OpenRouterService.streamChatResponse('test-key', [], 'openrouter/auto', 'hi', undefined, {
+        stream: false,
+        generationConfig: config as any,
+        modelCapability: MOCK_CAPABILITY,
+      })
+      for await (const chunk of stream) chunks.push(chunk)
+
+      expect(captured?.include_reasoning).toBe(false)
+      expect(captured?.reasoning?.exclude).toBe(true)
+    }
+  })
+
   it('emits the final usage chunk when the stream ends with an empty choices block', async () => {
     const fetchMock = vi.fn().mockImplementation((_url, init: RequestInit) => {
       const sse = [

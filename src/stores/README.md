@@ -100,24 +100,25 @@ src/stores/
 ### 职责
 - 模型列表管理
 - 收藏模型管理
-- 模型参数支持缓存
+- 当前选中模型
 
 ### 核心 State
 ```typescript
 {
-  availableModelIds: string[]                          // 可用模型 ID 列表
-  modelDataMap: Map<string, ModelData>                 // 模型详细数据
-  modelParameterSupportMap: Map<string, ModelParameterSupport> // 参数支持缓存
+  appModels: AppModel[]                                // 规范化后的模型列表（唯一模型类型）
+  appModelsById: Map<string, AppModel>                 // O(1) 按 ID 访问
   favoriteModelIds: Set<string>                        // 收藏模型 ID
   selectedModelId: string                              // 当前选中模型
 }
 ```
 
 ### 主要 Actions
-- `setAvailableModels(models: ModelData[])` - 设置可用模型列表
+- `setAppModels(models: AppModel[])` - 设置模型列表
+- `loadAppModels()` - 从数据库加载模型列表
+- `saveAppModels()` - 保存模型列表到数据库
+- `clearModelTable()` - 仅清空模型表 (model_data)
 - `toggleFavorite(modelId: string)` - 切换收藏状态
-- `checkFavorite(modelId: string)` - 检查收藏状态
-- `updateModelParameterSupport(modelId, support)` - 更新参数支持信息
+- `isFavorite(modelId: string)` - 检查收藏状态
 
 ---
 
@@ -311,7 +312,7 @@ const handleAction = () => {
 
 ### 3. Set/Map 数据结构
 - `favoriteModelIds: Set<string>` - O(1) 查找
-- `modelDataMap: Map<string, ModelData>` - O(1) 访问
+- `appModelsById: Map<string, AppModel>` - O(1) 访问
 
 ---
 

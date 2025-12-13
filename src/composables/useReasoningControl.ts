@@ -25,25 +25,18 @@ export const DEFAULT_REASONING_PREFERENCE: Readonly<ReasoningPreference> = Objec
   visibility: 'visible',
   effort: 'medium',
   maxTokens: null,
-  mode: 'medium' // 默认为中档模�?
+  mode: 'medium' // 默认为中档模式
 })
 
 /**
- * 推理模式关键词（用于模型检测）
+ * @deprecated 推理模式关键词已废弃
+ * 
+ * ⚠️ 规范约束：禁止基于模型 ID 字符串猜测能力
+ * 参考 /docs/openrouter-model-sync-spec.md
+ * 
+ * 保留此常量仅为向后兼容，新代码不应使用
  */
-export const REASONING_KEYWORDS = [
-  'o1',
-  'o3',
-  'o4',
-  'reasoning',
-  'r1',
-  'qwq',
-  'think',
-  'deepseek',
-  'sonnet-thinking',
-  'brainstorm',
-  'logic'
-]
+export const REASONING_KEYWORDS: readonly string[] = Object.freeze([])
 
 /**
  * Effort 挡位标签映射
@@ -158,6 +151,7 @@ export function useReasoningControl(options: ReasoningControlOptions) {
   
   /**
    * 获取模型记录
+   * 兼容 AppModel 和旧格式
    */
   function getModelRecord(modelId: string | null | undefined): any {
     if (!modelId) {
@@ -173,60 +167,32 @@ export function useReasoningControl(options: ReasoningControlOptions) {
   }
 
   /**
-   * 检测模型是否支持推理功�?
+   * 检测模型是否支持推理功能
+   * 
+   * ⚠️ 规范约束 (参考 /docs/openrouter-model-sync-spec.md)：
+   * - 仅依赖 AppModel.capabilities.hasReasoning 来判断
+   * - 禁止基于模型 ID 字符串猜测能力
    */
   function detectReasoningSupport(modelId: string | null | undefined): boolean {
     if (!modelId) {
       return false
     }
 
-    const lowerId = modelId.toLowerCase()
     const record = getModelRecord(modelId)
-    const raw = record?._raw ?? null
-
-    if (raw) {
-      // 检�?reasoning 字段
-      if (raw.reasoning === true) {
-        return true
-      }
-      
-      // 检�?capabilities
-      const rawCapabilities = raw.capabilities
-      if (rawCapabilities && typeof rawCapabilities === 'object') {
-        if (rawCapabilities.reasoning === true || rawCapabilities.reasoning_supported === true) {
-          return true
-        }
-        if (Array.isArray(rawCapabilities) && rawCapabilities.some((item: any) => typeof item === 'string' && item.toLowerCase().includes('reasoning'))) {
-          return true
-        }
-      }
-      
-      // 检�?tags
-      const rawTags = raw.tags || raw.keywords || raw.categories
-      if (Array.isArray(rawTags) && rawTags.some((tag: any) => typeof tag === 'string' && tag.toLowerCase().includes('reasoning'))) {
-        return true
-      }
-      
-      // 检�?metadata
-      if (raw.metadata && typeof raw.metadata === 'object') {
-        const metadataTags = raw.metadata.tags || raw.metadata.capabilities
-        if (Array.isArray(metadataTags) && metadataTags.some((tag: any) => typeof tag === 'string' && tag.toLowerCase().includes('reasoning'))) {
-          return true
-        }
-        if (raw.metadata.reasoning === true) {
-          return true
-        }
-      }
+    
+    // 检查 AppModel.capabilities.hasReasoning
+    if (record?.capabilities?.hasReasoning === true) {
+      return true
     }
-
-    // 检查描�?
-    const description: string = typeof record?.description === 'string' ? record.description.toLowerCase() : ''
-    if (description.includes('reasoning') || description.includes('推理')) {
+    
+    // 向后兼容：检查 supported_parameters
+    const supportedParams = record?.supported_parameters
+    if (Array.isArray(supportedParams) && supportedParams.includes('reasoning')) {
       return true
     }
 
-    // 检查模�?ID 关键�?
-    return REASONING_KEYWORDS.some((keyword) => keyword && lowerId.includes(keyword))
+    // 不再基于 ID/description/tags 等字符串猜测
+    return false
   }
 
   // ========== 计算属�?==========

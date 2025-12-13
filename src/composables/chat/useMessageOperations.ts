@@ -51,7 +51,7 @@ export interface UseMessageOperationsOptions {
 
 export interface UseMessageOperationsReturn {
   // 编辑操作
-  handleEditMessage: (branchId: string, message: any) => void
+  handleEditMessage: (branchId: string) => void
   handleCancelEdit: () => void
   handleSaveEdit: (branchId: string) => Promise<void>
   
@@ -126,7 +126,7 @@ export function useMessageOperations(options: UseMessageOperationsOptions): UseM
   /**
    * 开始编辑消息
    */
-  const handleEditMessage = (branchId: string, _message: any) => {
+  const handleEditMessage = (branchId: string) => {
     startEditing(branchId)
   }
 

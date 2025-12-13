@@ -165,7 +165,8 @@ const getIconPath = (icon: string): string => {
     sliders: 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4',
     paperclip: 'M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13'
   }
-  return icons[icon] || icons.sliders
+  const iconPath = icons[icon] ?? icons.sliders
+  return iconPath
 }
 
 // 颜色映射
@@ -188,7 +189,7 @@ const getButtonColorClasses = (color: string, enabled: boolean) => {
       enabled: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700'
     }
   }
-  const colors = colorMap[color] || colorMap.blue
+  const colors = colorMap[color] ?? colorMap.blue
   return enabled ? colors.enabled : colors.base
 }
 

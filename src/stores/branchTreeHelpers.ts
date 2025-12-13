@@ -39,10 +39,19 @@ const debugTreeWarn = (...args: any[]) => {
  * Map 的直接修改可能不触发响应式，展开拷贝确保更新
  */
 function setBranch(tree: ConversationTree, branch: MessageBranch): void {
+  console.log('[branchTreeHelpers] 💾 setBranch 开始', {
+    branchId: branch.branchId,
+    role: branch.role,
+    partsCount: branch.versions[branch.currentVersionIndex]?.parts?.length,
+    timestamp: Date.now()
+  })
+  
   if (tree.branches.has(branch.branchId)) {
-    tree.branches.delete(branch.branchId)
+    // tree.branches.delete(branch.branchId) // ❌ 移除 delete 操作，避免破坏 Vue 响应式追踪或导致闪烁
   }
   tree.branches.set(branch.branchId, { ...branch })
+  
+  console.log('[branchTreeHelpers] ✅ setBranch 完成 - 响应式更新已触发')
 }
 
 /**
@@ -761,8 +770,18 @@ export function appendTokenToBranch(
   branchId: string,
   token: string
 ): boolean {
+  console.log('[branchTreeHelpers] 🔄 appendTokenToBranch 开始', {
+    branchId,
+    tokenLength: token.length,
+    tokenPreview: token.substring(0, 30),
+    timestamp: Date.now()
+  })
+  
   const branch = tree.branches.get(branchId)
-  if (!branch) return false
+  if (!branch) {
+    console.error('[branchTreeHelpers] ❌ 找不到 branch:', branchId)
+    return false
+  }
   
   const currentIndex = branch.currentVersionIndex
   const currentVersion = branch.versions[currentIndex]
@@ -806,6 +825,12 @@ export function appendTokenToBranch(
   }
   
   setBranch(tree, newBranch)
+  
+  console.log('[branchTreeHelpers] ✅ appendTokenToBranch 完成', {
+    branchId,
+    updatedTextLength: (newParts.find(p => p.type === 'text') as any)?.text?.length || 0,
+    timestamp: Date.now()
+  })
   
   return true
 }

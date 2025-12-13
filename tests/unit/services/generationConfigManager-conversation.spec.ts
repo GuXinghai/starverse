@@ -396,7 +396,7 @@ describe('GenerationConfigManager - Conversation Config', () => {
       expect(effective.sampling?.top_p).toBe(0.9)
       expect(effective.sampling?.top_k).toBe(40)
       expect(effective.length?.max_tokens).toBe(2000)
-      expect(effective.reasoning?.controlMode).toBe('managed')
+      expect(effective.reasoning?.controlMode).toBe('effort')
       expect(effective.reasoning?.effort).toBe('medium')
       expect(effective.reasoning?.maxReasoningTokens).toBe(10000)
       expect(effective.reasoning?.showReasoningContent).toBe(true)

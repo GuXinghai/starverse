@@ -113,21 +113,32 @@ CREATE INDEX IF NOT EXISTS idx_usage_status ON usage_log(status, timestamp DESC)
 CREATE INDEX IF NOT EXISTS idx_usage_request_attempt ON usage_log(request_id, attempt);
 
 -- ========== Model Data Table ==========
--- 模型信息持久化表（从 electron-store 迁移）
--- 用途：存储 AI 提供商的模型列表，避免频繁 API 请求
+-- 模型信息持久化表
+-- 参考规范：/docs/openrouter-model-sync-spec.md
+-- 用途：存储 AI 提供商的模型列表，支持软删除和时间戳追踪
 CREATE TABLE IF NOT EXISTS model_data (
   id TEXT PRIMARY KEY,
-  provider TEXT NOT NULL,
+  router_source TEXT NOT NULL DEFAULT 'openrouter',  -- 接入来源: openrouter, openai_api, anthropic_api, local
+  vendor TEXT NOT NULL DEFAULT 'unknown',            -- 模型厂商: openai, anthropic, google, deepseek 等
   name TEXT NOT NULL,
   description TEXT,
-  context_length INTEGER,
-  pricing TEXT,
+  context_length INTEGER DEFAULT -1,                  -- -1 表示未知
+  pricing TEXT,                                       -- JSON: ModelPricing 对象
+  capabilities TEXT,                                  -- JSON: ModelCapabilities 对象
+  is_archived INTEGER NOT NULL DEFAULT 0,            -- 软删除标记: 0=活跃, 1=已归档
+  first_seen_at TEXT,                                -- ISO8601: 首次在远程列表中出现的时间
+  last_seen_at TEXT,                                 -- ISO8601: 最后一次在远程列表中出现的时间
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  meta TEXT
+  meta TEXT                                          -- JSON: 其他扩展字段
 );
 
-CREATE INDEX IF NOT EXISTS idx_model_provider ON model_data(provider);
+-- 保留旧索引以兼容（provider 映射到 vendor）
+CREATE INDEX IF NOT EXISTS idx_model_provider ON model_data(vendor);
+-- 新增索引
+CREATE INDEX IF NOT EXISTS idx_model_router_source ON model_data(router_source);
+CREATE INDEX IF NOT EXISTS idx_model_archived ON model_data(is_archived);
+CREATE INDEX IF NOT EXISTS idx_model_last_seen ON model_data(last_seen_at);
 
 -- ========== Dashboard Preferences ==========
 CREATE TABLE IF NOT EXISTS user_dashboard_prefs (

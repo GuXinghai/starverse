@@ -4,7 +4,7 @@ import { useAppStore } from '../stores'
 import type { AIProvider, WebSearchEngine } from '../stores'
 import { useModelStore } from '../stores/model'
 import { aiChatService } from '../services/aiChatService'
-import { extractModelSeries } from '../services/providers/OpenRouterService'
+import { generationConfigManager } from '../services/providers/generationConfigManager'
 
 const store = useAppStore()
 const modelStore = useModelStore()
@@ -69,16 +69,50 @@ const sendDelayMs = ref<number>(0)
 
 // 超时保护定时器（毫秒）
 const sendTimeoutMs = ref<number>(60000)
+// 首 token 超时（毫秒）
+const firstTokenTimeoutMs = ref<number>(30000)
+
+// OpenRouter: 是否返回推理详情（reasoning_details）
+// 说明：OpenRouter 不区分“详情/内容”，此开关实际映射到 reasoning.showReasoningContent
+// -> include_reasoning + reasoning.exclude
+const openRouterReturnReasoningDetails = ref<boolean>(false)
 
 // 初始化加载配置
 onMounted(() => {
   sendDelayMs.value = store.sendDelayMs
   sendTimeoutMs.value = store.sendTimeoutMs
+  firstTokenTimeoutMs.value = store.firstTokenTimeoutMs
+
+  // 从 generationConfigManager 的全局生效配置读取（含默认值）
+  try {
+    const effective = generationConfigManager.getEffectiveConfig({})
+    openRouterReturnReasoningDetails.value = !!effective?.reasoning?.showReasoningContent
+  } catch (error) {
+    console.warn('读取推理详情开关失败，使用默认值', error)
+    openRouterReturnReasoningDetails.value = false
+  }
 })
+
+const saveOpenRouterReturnReasoningDetails = async () => {
+  try {
+    await generationConfigManager.setGlobalConfig({
+      reasoning: {
+        showReasoningContent: openRouterReturnReasoningDetails.value,
+      },
+    } as any)
+
+    saveMessage.value = openRouterReturnReasoningDetails.value
+      ? '✓ 已开启：返回推理详情（reasoning_details）'
+      : '✓ 已关闭：不返回推理详情（reasoning_details）'
+  } catch (error) {
+    console.error('保存推理详情开关失败:', error)
+    saveMessage.value = '保存推理详情开关失败，请重试'
+  }
+}
 
 // 获取可用模型列表（用于默认模型选择器）
 const availableModelsForDefault = computed(() => {
-  return modelStore.modelDataMap
+  return modelStore.appModelsById
 })
 
 // 监听 Provider 切换，自动刷新模型列表
@@ -95,36 +129,38 @@ watch(activeProvider, async (newProvider, oldProvider) => {
     if (hasApiKey) {
       try {
         saveMessage.value = '正在加载模型列表...'
-        // @ts-ignore
-        const modelData = await aiChatService.listAvailableModels(store)
         
-        // 🔧 规范化处理：支持对象数组（OpenRouter）和字符串数组（Gemini）
-        const models = (Array.isArray(modelData) ? modelData : [])
-          .filter((item: any) => item && (typeof item === 'string' || item.id))
-          .map((item: any) => {
-            if (typeof item === 'string') {
-              return { id: item, name: item }
-            }
-            return {
-              id: String(item.id),
-              name: item.name || String(item.id),
-              description: item.description,
-              context_length: item.context_length,
-              max_output_tokens: item.max_output_tokens,
-              pricing: item.pricing,
-              architecture: item.architecture,
-              series: extractModelSeries(String(item.id)),  // 🔧 从 ID 提取模型系列
-              input_modalities: item.architecture?.input_modalities || item.input_modalities || ['text'],
-              output_modalities: item.architecture?.output_modalities || item.output_modalities || ['text'],
-              supportsVision: (item.architecture?.input_modalities || item.input_modalities || []).includes('image'),
-              supportsImageOutput: (item.architecture?.output_modalities || item.output_modalities || []).includes('image'),
-              supportsReasoning: item.architecture?.reasoning === true
-            }
-          })
-        
-        modelStore.setAvailableModels(models)
-        saveMessage.value = `已切换到 ${newProvider}，加载了 ${models.length} 个模型`
-        console.log(`✓ 已为 ${newProvider} 加载 ${models.length} 个模型`)
+        if (newProvider === 'OpenRouter') {
+          // OpenRouter: 使用新的 syncFromOpenRouter
+          const { syncFromOpenRouter } = await import('../services/modelSync')
+          const result = await syncFromOpenRouter(
+            store.openRouterApiKey,
+            modelStore.appModels,
+            store.openRouterBaseUrl || 'https://openrouter.ai'
+          )
+          
+          if (result.success) {
+            modelStore.setAppModels(result.models)
+            await modelStore.saveAppModels()
+            saveMessage.value = `已切换到 ${newProvider}，加载了 ${result.stats.active} 个模型`
+            console.log(`✓ 已为 ${newProvider} 加载 ${result.stats.active} 个模型`)
+          } else {
+            throw result.error || new Error('同步失败')
+          }
+        } else {
+          // Gemini: 使用 batchNormalizeModels
+          const modelData = await aiChatService.listAvailableModels(store)
+          const { batchNormalizeModels } = await import('../services/modelSync')
+          
+          const rawModels = (Array.isArray(modelData) ? modelData : [])
+            .filter((item: any) => item)
+            .map((item: any) => typeof item === 'string' ? { id: item, name: item } : item)
+          
+          const normalizedModels = batchNormalizeModels(rawModels)
+          modelStore.setAppModels(normalizedModels)
+          saveMessage.value = `已切换到 ${newProvider}，加载了 ${normalizedModels.length} 个模型`
+          console.log(`✓ 已为 ${newProvider} 加载 ${normalizedModels.length} 个模型`)
+        }
       } catch (error) {
         console.error('切换 Provider 后加载模型失败:', error)
         saveMessage.value = `已切换到 ${newProvider}，但加载模型失败，请检查 API Key`
@@ -140,6 +176,24 @@ const togglePasswordVisibility = (provider: 'gemini' | 'openrouter') => {
     showGeminiPassword.value = !showGeminiPassword.value
   } else {
     showOpenRouterPassword.value = !showOpenRouterPassword.value
+  }
+}
+
+// 保存首 token 超时配置
+const saveFirstTokenTimeoutMs = async () => {
+  try {
+    const normalized = Math.max(0, Math.floor(Number(firstTokenTimeoutMs.value) || 0))
+    firstTokenTimeoutMs.value = normalized
+
+    await store.setFirstTokenTimeoutMs(normalized)
+    const displayText = normalized === 0
+      ? '已禁用'
+      : `${normalized}ms（${(normalized / 1000).toFixed(1)}秒）`
+    saveMessage.value = `✓ 已保存首 token 超时设置：${displayText}`
+    console.log('✓ 首 token 超时配置已保存:', normalized)
+  } catch (error) {
+    saveMessage.value = '保存首 token 超时配置失败，请重试'
+    console.error('保存首 token 超时配置失败:', error)
   }
 }
 
@@ -194,36 +248,39 @@ const saveSettings = async () => {
     // 保存成功后立即加载可用模型列表
     try {
       console.log('开始加载模型列表...')
-      // @ts-ignore
-      const modelData = await aiChatService.listAvailableModels(store)
-      console.log('模型列表加载成功:', modelData)
       
-      // 🔧 规范化处理：支持对象数组（OpenRouter）和字符串数组（Gemini）
-      const models = (Array.isArray(modelData) ? modelData : [])
-        .filter((item: any) => item && (typeof item === 'string' || item.id))
-        .map((item: any) => {
-          if (typeof item === 'string') {
-            return { id: item, name: item }
-          }
-          return {
-            id: String(item.id),
-            name: item.name || String(item.id),
-            description: item.description,
-            context_length: item.context_length,
-            max_output_tokens: item.max_output_tokens,
-            pricing: item.pricing,
-            architecture: item.architecture,
-            series: extractModelSeries(String(item.id)),  // 🔧 从 ID 提取模型系列
-            input_modalities: item.architecture?.input_modalities || item.input_modalities || ['text'],
-            output_modalities: item.architecture?.output_modalities || item.output_modalities || ['text'],
-            supportsVision: (item.architecture?.input_modalities || item.input_modalities || []).includes('image'),
-            supportsImageOutput: (item.architecture?.output_modalities || item.output_modalities || []).includes('image'),
-            supportsReasoning: item.architecture?.reasoning === true
-          }
-        })
-      
-      modelStore.setAvailableModels(models)
-      saveMessage.value = `设置保存成功！已加载 ${models.length} 个可用模型`
+      if (activeProvider.value === 'OpenRouter') {
+        // OpenRouter: 使用新的 syncFromOpenRouter
+        const { syncFromOpenRouter } = await import('../services/modelSync')
+        const result = await syncFromOpenRouter(
+          openRouterApiKey.value,
+          modelStore.appModels,
+          openRouterBaseUrl.value || 'https://openrouter.ai'
+        )
+        
+        if (result.success) {
+          modelStore.setAppModels(result.models)
+          await modelStore.saveAppModels()
+          saveMessage.value = `设置保存成功！已加载 ${result.stats.active} 个可用模型`
+          console.log(`✓ 模型列表加载成功: ${result.stats.active} 个模型`)
+        } else {
+          throw result.error || new Error('同步失败')
+        }
+      } else {
+        // Gemini: 使用 batchNormalizeModels
+        // @ts-ignore
+        const modelData = await aiChatService.listAvailableModels(store)
+        console.log('模型列表加载成功:', modelData)
+        
+        const { batchNormalizeModels } = await import('../services/modelSync')
+        const rawModels = (Array.isArray(modelData) ? modelData : [])
+          .filter((item: any) => item)
+          .map((item: any) => typeof item === 'string' ? { id: item, name: item } : item)
+        
+        const normalizedModels = batchNormalizeModels(rawModels)
+        modelStore.setAppModels(normalizedModels)
+        saveMessage.value = `设置保存成功！已加载 ${normalizedModels.length} 个可用模型`
+      }
     } catch (modelError) {
       console.error('加载模型列表失败:', modelError)
       saveMessage.value = '设置已保存，但加载模型列表失败。请检查 API Key 是否正确。'
@@ -546,6 +603,33 @@ onUnmounted(() => {
             </p>
           </div>
 
+          <!-- OpenRouter 推理详情开关 -->
+          <div class="border-t border-gray-200 pt-4">
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0">
+                <div class="text-sm font-medium text-gray-700">
+                  返回推理详情（reasoning_details）
+                </div>
+                <p class="mt-1 text-sm text-gray-500">
+                  开启后将请求模型返回推理过程信息（若模型支持）。可能增加延迟与 token 消耗。
+                </p>
+              </div>
+
+              <button
+                type="button"
+                class="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors"
+                :class="openRouterReturnReasoningDetails ? 'bg-green-500' : 'bg-gray-200'"
+                @click="() => { openRouterReturnReasoningDetails = !openRouterReturnReasoningDetails; saveOpenRouterReturnReasoningDetails() }"
+                :disabled="isLoading"
+              >
+                <span
+                  class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+                  :class="openRouterReturnReasoningDetails ? 'translate-x-6' : 'translate-x-1'"
+                />
+              </button>
+            </div>
+          </div>
+
           <!-- 按钮组 -->
           <div class="flex space-x-3 pt-2">
             <button
@@ -661,6 +745,38 @@ onUnmounted(() => {
               <strong>当前设置：</strong>{{ sendDelayMs === 0 ? '已禁用（立即发送）' : `${sendDelayMs}ms（${(sendDelayMs / 1000).toFixed(1)}秒）` }}
               <br />
               <strong>推荐值：</strong>2000ms（2秒）｜设置为 0 可禁用延迟发送（立即发送）
+            </p>
+          </div>
+
+          <!-- 首 token 超时配置 -->
+          <div>
+            <label for="firstTokenTimeoutMs" class="block text-sm font-medium text-gray-700 mb-2">
+              首 token 超时（毫秒）
+            </label>
+            <div class="flex items-center space-x-3">
+              <input
+                id="firstTokenTimeoutMs"
+                v-model.number="firstTokenTimeoutMs"
+                type="number"
+                min="0"
+                max="120000"
+                step="1000"
+                placeholder="输入毫秒数（如：30000）"
+                class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+              />
+              <button
+                @click="saveFirstTokenTimeoutMs"
+                class="px-6 py-3 bg-purple-500 hover:bg-purple-600 text-white font-medium rounded-lg transition-colors"
+              >
+                保存
+              </button>
+            </div>
+            <p class="mt-2 text-sm text-gray-500">
+              监控从请求发出到收到首个流式响应数据的最大等待时间。超过此值将视为超时并中止请求。
+              <br />
+              <strong>当前设置：</strong>{{ firstTokenTimeoutMs === 0 ? '已禁用' : `${firstTokenTimeoutMs}ms（${(firstTokenTimeoutMs / 1000).toFixed(1)}秒）` }}
+              <br />
+              <strong>推荐值：</strong>30000ms（30秒）
             </p>
           </div>
 

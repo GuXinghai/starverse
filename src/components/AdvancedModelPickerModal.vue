@@ -284,9 +284,9 @@
                     </div>
                     <div class="metadata-row">
                       <span class="metadata-item">
-                        <span class="metadata-label">价格:</span>
+                        <span class="metadata-label">价格 (USD / 1M tokens):</span>
                         <span class="metadata-value price">
-                          ${{ formatPrice(model.pricing?.prompt) }} / ${{ formatPrice(model.pricing?.completion) }}
+                          ${{ formatUsdPer1MFromPerToken(model.pricing?.promptUsdPerToken) }} / ${{ formatUsdPer1MFromPerToken(model.pricing?.completionUsdPerToken) }}
                         </span>
                       </span>
                     </div>
@@ -473,7 +473,7 @@ const filters = ref({
 const sortBy = ref('name')
 
 // 从 store 获取所有模型
-const allModelsData = computed(() => modelStore.availableModels)
+const allModelsData = computed(() => modelStore.appModels)
 
 // ========== 厂商提取和管理 ==========
 
@@ -672,7 +672,7 @@ const sortedModels = computed(() => {
     case 'context':
       return models.sort((a, b) => b.context_length - a.context_length)
     case 'price':
-      return models.sort((a, b) => a.pricing.prompt - b.pricing.prompt)
+      return models.sort((a, b) => parseUsdPerToken(a.pricing?.promptUsdPerToken) - parseUsdPerToken(b.pricing?.promptUsdPerToken))
     default:
       return models
   }
@@ -763,21 +763,7 @@ const formatContextLength = (length) => {
   return length.toString()
 }
 
-// 格式化价格：智能显示小数位
-const formatPrice = (value) => {
-  // 处理非数字值
-  if (value == null || value === '') return 'N/A'
-  
-  // 转换为数字
-  const numValue = typeof value === 'number' ? value : parseFloat(value)
-  
-  // 无效数字处理
-  if (isNaN(numValue)) return 'N/A'
-  
-  if (numValue < 0.1) return numValue.toFixed(2)  // 小于 0.1 显示 2 位小数（如 $0.05）
-  if (numValue < 10) return numValue.toFixed(1)   // 小于 10 显示 1 位小数（如 $5.5）
-  return numValue.toFixed(0)                      // 其他显示整数（如 $60）
-}
+import { formatUsdPer1MFromPerToken, parseUsdPerToken } from '@/utils/pricing'
 
 // 获取模态性图标（返回 SVG 路径）
 const getModalityIcon = (modality) => {

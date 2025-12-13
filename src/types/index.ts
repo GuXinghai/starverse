@@ -19,11 +19,19 @@ export type {
   ProjectOverview,
   ProjectHomepage,
   ProjectPromptTemplate,
-  ModelData,
-  ModelParameterSupport,
+  // ModelData - 已删除，使用 AppModel
+  // ModelParameterSupport - 已删除，使用 AppModel.capabilities
   DisplayMessage,
   ErrorInfo
 } from './store'
+
+// AppModel 相关类型（新架构）
+export type {
+  AppModel,
+  ModelCapabilities,
+  ModelPricing,
+  RouterSource
+} from './appModel'
 
 // Electron API 类型扩展
 // electron.d.ts 仅包含全局类型声明，无需导出
