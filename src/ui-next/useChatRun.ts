@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { applyEvent, createInitialState, startGeneration } from '@/next/state/reducer'
-import { selectSession, selectTranscript } from '@/next/state/selectors'
-import type { RootState, SessionVM } from '@/next/state/types'
+import { selectRun, selectTranscript } from '@/next/state/selectors'
+import type { RootState, RunVM } from '@/next/state/types'
 import { replayOpenRouterSSEFixtureAsEvents } from '@/next/openrouter/replayFixtureStream'
 
 import fixtureNormal from '@/next/openrouter/sse/fixtures/comment_done.txt?raw'
@@ -12,7 +12,14 @@ import fixtureDebug from '@/next/openrouter/sse/fixtures/debug_choices_empty.txt
 import fixtureReasoningDetails from '@/next/openrouter/sse/fixtures/reasoning_details.txt?raw'
 import fixtureEncrypted from '@/next/openrouter/sse/fixtures/encrypted.txt?raw'
 
-export type DemoScenario = 'normal' | 'usage' | 'midstream_error' | 'excluded' | 'reasoning_details' | 'encrypted' | 'debug'
+export type DemoScenario =
+  | 'normal'
+  | 'usage'
+  | 'midstream_error'
+  | 'excluded'
+  | 'reasoning_details'
+  | 'encrypted'
+  | 'debug'
 
 function generateId(prefix: string): string {
   const cryptoObj = (globalThis as any).crypto as { randomUUID?: () => string } | undefined
@@ -20,35 +27,35 @@ function generateId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`
 }
 
-export function useChatSession() {
+export function useChatRun() {
   const state = ref<RootState>(createInitialState())
-  const activeSessionId = ref<string | null>(null)
+  const activeRunId = ref<string | null>(null)
   const abortController = ref<AbortController | null>(null)
   const isRunning = ref(false)
 
-  const sessionVM = computed<SessionVM | null>(() => {
-    if (!activeSessionId.value) return null
-    return selectSession(state.value, activeSessionId.value)
+  const runVM = computed<RunVM | null>(() => {
+    if (!activeRunId.value) return null
+    return selectRun(state.value, activeRunId.value)
   })
 
   const transcript = computed(() => {
-    if (!activeSessionId.value) return []
-    return selectTranscript(state.value, activeSessionId.value)
+    if (!activeRunId.value) return []
+    return selectTranscript(state.value, activeRunId.value)
   })
 
   async function dispatchSend(input: { text: string; scenario: DemoScenario }) {
     if (isRunning.value) return
     isRunning.value = true
 
-    const sessionId = generateId('session')
+    const runId = generateId('run')
     const requestId = generateId('request')
     const assistantMessageId = 'assistant_1'
 
-    activeSessionId.value = sessionId
+    activeRunId.value = runId
     abortController.value = new AbortController()
 
     const started = startGeneration(state.value, {
-      sessionId,
+      runId,
       requestId,
       model: 'openrouter/auto',
       assistantMessageId,
@@ -77,7 +84,7 @@ export function useChatSession() {
         delayMs: 20,
         signal: abortController.value.signal,
       })) {
-        state.value = applyEvent(state.value, sessionId, ev)
+        state.value = applyEvent(state.value, runId, ev)
       }
     } finally {
       isRunning.value = false
@@ -85,27 +92,27 @@ export function useChatSession() {
   }
 
   function dispatchAbort() {
-    if (!activeSessionId.value) return
+    if (!activeRunId.value) return
     if (!abortController.value) return
     abortController.value.abort()
-    state.value = applyEvent(state.value, activeSessionId.value, { type: 'StreamAbort', reason: 'user' })
+    state.value = applyEvent(state.value, activeRunId.value, { type: 'StreamAbort', reason: 'user' })
   }
 
-  function resetSession() {
+  function resetRun() {
     abortController.value?.abort()
     abortController.value = null
-    activeSessionId.value = null
+    activeRunId.value = null
     state.value = createInitialState()
     isRunning.value = false
   }
 
   return {
-    sessionVM,
+    runVM,
     transcript,
     isRunning,
     dispatchSend,
     dispatchAbort,
-    resetSession,
+    resetRun,
   }
 }
 

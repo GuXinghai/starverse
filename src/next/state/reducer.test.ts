@@ -5,14 +5,14 @@ import { decodeOpenRouterSSE } from '../openrouter/sse/decoder'
 import { mapChunkToEvents } from '../openrouter/mapChunkToEvents'
 import { applyEvents, createInitialState, startGeneration } from './reducer'
 import type { DomainEvent } from './types'
-import { selectSession, selectTranscript } from './selectors'
+import { selectRun, selectTranscript } from './selectors'
 
 function readFixtureText(fileName: string) {
   const fullPath = path.join(process.cwd(), 'src/next/openrouter/sse/fixtures', fileName)
   return fs.readFileSync(fullPath, 'utf8')
 }
 
-async function replayFixture(sessionId: string, assistantMessageId: string, fileName: string): Promise<DomainEvent[]> {
+async function replayFixture(runId: string, assistantMessageId: string, fileName: string): Promise<DomainEvent[]> {
   const text = readFixtureText(fileName)
   const bytes = new TextEncoder().encode(text)
 
@@ -50,18 +50,18 @@ async function replayFixture(sessionId: string, assistantMessageId: string, file
 
 describe('next/state reducer', () => {
   it('creates assistant placeholder before streaming and accumulates deltas', async () => {
-    const sessionId = 's1'
+    const runId = 'r1'
     const started = startGeneration(createInitialState(), {
-      sessionId,
-      requestId: 'r1',
+      runId,
+      requestId: 'req1',
       model: 'openrouter/auto',
       assistantMessageId: 'assistant_1',
     })
 
-    const events = await replayFixture(sessionId, started.assistantMessageId, 'comment_done.txt')
-    const finalState = applyEvents(started.state, sessionId, events)
+    const events = await replayFixture(runId, started.assistantMessageId, 'comment_done.txt')
+    const finalState = applyEvents(started.state, runId, events)
 
-    expect(selectSession(finalState, sessionId)).toMatchInlineSnapshot(`
+    expect(selectRun(finalState, runId)).toMatchInlineSnapshot(`
       {
         "error": undefined,
         "finishReason": undefined,
@@ -69,14 +69,14 @@ describe('next/state reducer', () => {
         "model": "openrouter/auto",
         "nativeFinishReason": undefined,
         "provider": undefined,
-        "requestId": "r1",
-        "sessionId": "s1",
+        "requestId": "req1",
+        "runId": "r1",
         "status": "done",
         "usage": undefined,
       }
     `)
 
-    expect(selectTranscript(finalState, sessionId)).toMatchInlineSnapshot(`
+    expect(selectTranscript(finalState, runId)).toMatchInlineSnapshot(`
       [
         {
           "contentBlocks": [
@@ -103,29 +103,29 @@ describe('next/state reducer', () => {
     `)
   })
 
-  it('mid-stream error preserves partial content and marks session error', async () => {
-    const sessionId = 's1'
+  it('mid-stream error preserves partial content and marks run error', async () => {
+    const runId = 'r1'
     const started = startGeneration(createInitialState(), {
-      sessionId,
-      requestId: 'r1',
+      runId,
+      requestId: 'req1',
       model: 'openrouter/auto',
       assistantMessageId: 'assistant_1',
     })
 
-    const events = await replayFixture(sessionId, started.assistantMessageId, 'midstream_error.txt')
-    const finalState = applyEvents(started.state, sessionId, events)
+    const events = await replayFixture(runId, started.assistantMessageId, 'midstream_error.txt')
+    const finalState = applyEvents(started.state, runId, events)
 
-    const session = selectSession(finalState, sessionId)
-    expect(session?.status).toBe('error')
-    const transcript = selectTranscript(finalState, sessionId)
+    const run = selectRun(finalState, runId)
+    expect(run?.status).toBe('error')
+    const transcript = selectTranscript(finalState, runId)
     expect(transcript[0]?.contentBlocks?.[0]).toEqual({ type: 'text', text: 'partial' })
   })
 
-  it('abort preserves partial content and marks session aborted', () => {
-    const sessionId = 's1'
+  it('abort preserves partial content and marks run aborted', () => {
+    const runId = 'r1'
     const started = startGeneration(createInitialState(), {
-      sessionId,
-      requestId: 'r1',
+      runId,
+      requestId: 'req1',
       model: 'openrouter/auto',
       assistantMessageId: 'assistant_1',
     })
@@ -135,9 +135,9 @@ describe('next/state reducer', () => {
       { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'par' },
       { type: 'StreamAbort', reason: 'user' },
     ]
-    const finalState = applyEvents(started.state, sessionId, events)
+    const finalState = applyEvents(started.state, runId, events)
 
-    expect(selectSession(finalState, sessionId)?.status).toBe('aborted')
-    expect(selectTranscript(finalState, sessionId)[0]?.contentBlocks?.[0]).toEqual({ type: 'text', text: 'par' })
+    expect(selectRun(finalState, runId)?.status).toBe('aborted')
+    expect(selectTranscript(finalState, runId)[0]?.contentBlocks?.[0]).toEqual({ type: 'text', text: 'par' })
   })
 })

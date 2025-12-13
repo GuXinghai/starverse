@@ -5,7 +5,7 @@ import { decodeOpenRouterSSE } from '../openrouter/sse/decoder'
 import { mapChunkToEvents } from '../openrouter/mapChunkToEvents'
 import { applyEvents, createInitialState, startGeneration } from './reducer'
 import type { DomainEvent, RootState } from './types'
-import { toSessionSnapshot, NextSessionSnapshotRepo } from '../persistence/repo'
+import { toRunSnapshot, NextRunSnapshotRepo } from '../persistence/repo'
 import { migrateNextPersistence } from '../persistence/migrate'
 
 class InMemoryDb {
@@ -27,20 +27,20 @@ class InMemoryDb {
 
   prepare(sql: string) {
     const normalized = sql.replace(/\s+/g, ' ').trim().toLowerCase()
-    if (normalized.startsWith('insert into next_session_snapshots')) {
+    if (normalized.startsWith('insert into next_run_snapshots')) {
       return {
         run: (params: any) => {
-          this.snapshots.set(String(params.sessionId), String(params.snapshotJson))
+          this.snapshots.set(String(params.runId), String(params.snapshotJson))
           return { changes: 1 }
         },
         get: (_params?: any) => null,
       }
     }
-    if (normalized.startsWith('select snapshot_json as snapshotjson from next_session_snapshots')) {
+    if (normalized.startsWith('select snapshot_json as snapshotjson from next_run_snapshots')) {
       return {
         run: (_params?: any) => ({ changes: 0 }),
-        get: (sessionId: string) => {
-          const v = this.snapshots.get(String(sessionId))
+        get: (runId: string) => {
+          const v = this.snapshots.get(String(runId))
           return v ? { snapshotJson: v } : undefined
         },
       }
@@ -53,9 +53,9 @@ function fixturePath(name: string) {
   return path.join(process.cwd(), 'src/next/openrouter/sse/fixtures', name)
 }
 
-async function replaySSEFixtureIntoState(sessionId: string, assistantMessageId: string, fixtureName: string): Promise<RootState> {
+async function replaySSEFixtureIntoState(runId: string, assistantMessageId: string, fixtureName: string): Promise<RootState> {
   const started = startGeneration(createInitialState(), {
-    sessionId,
+    runId,
     requestId: 'r1',
     model: 'openrouter/auto',
     assistantMessageId,
@@ -91,7 +91,7 @@ async function replaySSEFixtureIntoState(sessionId: string, assistantMessageId: 
     }
   }
 
-  return applyEvents(started.state, sessionId, events)
+  return applyEvents(started.state, runId, events)
 }
 
 describe('TC-07/08 minimal closed-loop: Replay → Snapshot → Persist → Reload → Snapshot', () => {
@@ -104,7 +104,7 @@ describe('TC-07/08 minimal closed-loop: Replay → Snapshot → Persist → Relo
       name: 'normal streaming',
       fixture: 'comment_done.txt',
       assert: (snap) => {
-        expect(snap.session.status).toBe('done')
+        expect(snap.run.status).toBe('done')
         expect(snap.messages[0]?.contentText).toBe('hi')
       },
     },
@@ -112,8 +112,8 @@ describe('TC-07/08 minimal closed-loop: Replay → Snapshot → Persist → Relo
       name: 'streaming + usage tail (choices=[])',
       fixture: 'usage_tail_choices_empty.txt',
       assert: (snap) => {
-        expect(snap.session.status).toBe('done')
-        expect(snap.session.usage).toMatchObject({ total_tokens: 123 })
+        expect(snap.run.status).toBe('done')
+        expect(snap.run.usage).toMatchObject({ total_tokens: 123 })
         expect(snap.messages[0]?.contentText).toBe('hello')
       },
     },
@@ -121,8 +121,8 @@ describe('TC-07/08 minimal closed-loop: Replay → Snapshot → Persist → Relo
       name: 'mid-stream error preserves partial content',
       fixture: 'midstream_error.txt',
       assert: (snap) => {
-        expect(snap.session.status).toBe('error')
-        expect(snap.session.finishReason).toBe('error')
+        expect(snap.run.status).toBe('error')
+        expect(snap.run.finishReason).toBe('error')
         expect(snap.messages[0]?.contentText).toBe('partial')
       },
     },
@@ -130,7 +130,7 @@ describe('TC-07/08 minimal closed-loop: Replay → Snapshot → Persist → Relo
       name: 'debug chunk with choices=[] does not crash',
       fixture: 'debug_choices_empty.txt',
       assert: (snap) => {
-        expect(snap.session.status).toBe('done')
+        expect(snap.run.status).toBe('done')
         expect(snap.messages[0]?.contentText).toBe('ok')
       },
     },
@@ -138,25 +138,24 @@ describe('TC-07/08 minimal closed-loop: Replay → Snapshot → Persist → Relo
 
   for (const c of cases) {
     it(c.name, async () => {
-      const sessionId = 's1'
+      const runId = 'run1'
       const assistantMessageId = 'assistant_1'
 
-      const stateA = await replaySSEFixtureIntoState(sessionId, assistantMessageId, c.fixture)
-      const snapshotA = toSessionSnapshot(stateA, sessionId)
+      const stateA = await replaySSEFixtureIntoState(runId, assistantMessageId, c.fixture)
+      const snapshotA = toRunSnapshot(stateA, runId)
 
-      const stateA2 = await replaySSEFixtureIntoState(sessionId, assistantMessageId, c.fixture)
-      const snapshotA2 = toSessionSnapshot(stateA2, sessionId)
+      const stateA2 = await replaySSEFixtureIntoState(runId, assistantMessageId, c.fixture)
+      const snapshotA2 = toRunSnapshot(stateA2, runId)
       expect(snapshotA2).toEqual(snapshotA)
 
       const db = new InMemoryDb()
       migrateNextPersistence(db as any)
-      const repo = new NextSessionSnapshotRepo(db as any)
-      repo.save(sessionId, snapshotA)
-      const snapshotB = repo.get(sessionId)
+      const repo = new NextRunSnapshotRepo(db as any)
+      repo.save(runId, snapshotA)
+      const snapshotB = repo.get(runId)
 
       expect(snapshotB).toEqual(snapshotA)
       c.assert(snapshotB)
     })
   }
 })
-

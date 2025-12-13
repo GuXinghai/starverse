@@ -19,7 +19,7 @@ function readSchemaSQL(): string {
  */
 export function migrateNextPersistence(db: BetterSqliteDatabase): { schemaVersion: number } {
   const current = Number(db.pragma('user_version', { simple: true }) || 0)
-  const target = 1
+  const target = 2
 
   if (current < target) {
     db.exec(readSchemaSQL())
@@ -31,4 +31,3 @@ export function migrateNextPersistence(db: BetterSqliteDatabase): { schemaVersio
 
   return { schemaVersion: target }
 }
-

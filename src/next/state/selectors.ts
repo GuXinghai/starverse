@@ -1,10 +1,10 @@
-import type { MessageVM, ReasoningViewVisibility, RootState, SessionVM } from './types'
+import type { MessageVM, ReasoningViewVisibility, RootState, RunVM } from './types'
 
-export function selectSession(state: RootState, sessionId: string): SessionVM | null {
-  const s = state.sessions[sessionId]
+export function selectRun(state: RootState, runId: string): RunVM | null {
+  const s = state.runs[runId]
   if (!s) return null
   return {
-    sessionId: s.sessionId,
+    runId: s.runId,
     status: s.status,
     requestId: s.requestId,
     generationId: s.generationId,
@@ -99,7 +99,7 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
   }
 }
 
-export function selectTranscript(state: RootState, sessionId: string): MessageVM[] {
-  const ids = state.sessionMessageIds[sessionId] || []
+export function selectTranscript(state: RootState, runId: string): MessageVM[] {
+  const ids = state.runMessageIds[runId] || []
   return ids.map((id) => selectMessage(state, id)).filter((m): m is MessageVM => !!m)
 }

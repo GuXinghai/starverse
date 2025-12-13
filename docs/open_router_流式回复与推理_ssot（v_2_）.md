@@ -163,9 +163,9 @@
 ### 6.2 UI 合同（Reducer 输出的 ViewModel / Selectors）
 UI 不得直接解析 OpenRouter JSON，只能消费 Reducer 的只读派生数据。
 
-#### 6.2.1 会话级 ViewModel
-- `SessionVM`
-  - `sessionId`
+#### 6.2.1 Run 级 ViewModel
+- `RunVM`
+  - `runId`
   - `status`: `idle | requesting | streaming | tool_waiting | done | error | aborted`
   - `generationId`（provider generation id，可空）
   - `requestId`（可空）
@@ -185,11 +185,11 @@ UI 不得直接解析 OpenRouter JSON，只能消费 Reducer 的只读派生数�
 
 #### 6.2.3 UI 选择器（Selectors）
 - `selectTranscript(branchId) -> MessageVM[]`
-- `selectSession(sessionId) -> SessionVM`
+- `selectRun(runId) -> RunVM`
 - `selectMessage(messageId) -> MessageVM`
 
 ### 6.3 UI 组件建议（只做必要最小集）
-- `ChatComposer`：输入 + 发送/中止按钮；仅依赖 `SessionVM.status`。
+- `ChatComposer`：输入 + 发送/中止按钮；仅依赖 `RunVM.status`。
 - `ChatTranscript`：渲染当前分支线性祖先链（MessageVM 列表）。
 - `MessageBubble`：渲染 contentBlocks（text/image）+ tool call 状态。
 - `ReasoningPanel`：可折叠；渲染 `reasoningView`；支持三态：shown / hidden / not_returned。
@@ -198,13 +198,13 @@ UI 不得直接解析 OpenRouter JSON，只能消费 Reducer 的只读派生数�
 ### 6.4 交互流程（必须遵守）
 1) 用户点击发送：
    - UI 调用 `dispatchSend({ branchId, text, config })`。
-   - Reducer 立即创建 user 消息与空 assistant 占位消息，并把该 assistant 标记为本次 session 的 target。
+   - Reducer 立即创建 user 消息与空 assistant 占位消息，并把该 assistant 标记为本次 run 的 target。
 2) streaming 过程中：
    - UI 只重渲染 `MessageVM.contentBlocks/toolCalls/reasoningView` 的增量变化。
 3) mid-stream error：
    - 保留已生成内容；显示错误尾巴；提供“重试（fork/继续）”入口。
 4) abort：
-   - 标记 session 为 aborted；保留已生成内容；允许重新发送。
+   - 标记 run 为 aborted；保留已生成内容；允许重新发送。
 
 ### 6.5 UI 层面必须覆盖的边界场景
 - 注释行不会引发 UI 崩溃；最多影响“正在处理”提示。
@@ -225,11 +225,11 @@ UI 不得直接解析 OpenRouter JSON，只能消费 Reducer 的只读派生数�
 - 切换点必须是单点：入口路由/根组件/Facade 选择器。
 
 **6.6.3 数据所有权（Single-writer 原则）**
-- 生成会话状态（SessionVM）与消息状态（MessageVM）只允许由新 Reducer 作为唯一写入者。
+- 生成 run 状态（RunVM）与消息状态（MessageVM）只允许由新 Reducer 作为唯一写入者。
 - 旧 UI 若需并存，只允许只读订阅（read-only）；不得对同一份对话数据做写入（避免双写竞态）。
 
 **6.6.4 通过 UI Facade/Hook 暴露唯一接口**
-- UI 与底层交互只能通过一组稳定的 Facade/Hook（例如 `useChatSession()` / `dispatchSend()` / `dispatchAbort()` / selectors）。
+- UI 与底层交互只能通过一组稳定的 Facade/Hook（例如 `useChatRun()` / `dispatchSend()` / `dispatchAbort()` / selectors）。
 - UI 禁止直接 import 旧 store / 旧 service / 旧 parser。
 
 **6.6.5 工程化强制（建议）**
@@ -260,4 +260,3 @@ UI 不得直接解析 OpenRouter JSON，只能消费 Reducer 的只读派生数�
 - 不得以“缺字段”推断“加密”；加密只能由 `reasoning.encrypted` 明确表征。
 - 不得将分支树复杂度下沉到网络与解析层。
 - 必须记录 generation id，并支持按 id 查询 `/generation`（即便当前 UI 不展示）。
-

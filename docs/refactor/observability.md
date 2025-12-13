@@ -6,7 +6,7 @@
 
 ---
 
-## 需要记录的最小字段（建议在 SessionVM 与日志中同时具备）
+## 需要记录的最小字段（建议在 RunVM 与日志中同时具备）
 - `requestId`（客户端侧生成，用于关联 UI/IPC/网络层）
 - `generationId`（OpenRouter 响应 `id`）
 - `model`
@@ -33,9 +33,8 @@
 ### Reducer/Store（事件聚合）
 - `event_apply`：按事件类型计数（text/tool/reasoning_details/usage/error/done）
 - `reasoning_details_append`：记录 append 数量与去重命中（如实现了去重）
-- `session_state_transition`：idle→requesting→streaming→done/error/aborted
+- `run_state_transition`：idle→requesting→streaming→done/error/aborted
 
 ### UI（只读渲染）
-- `render_state`：当前 session.status、是否 target message、是否显示 reasoning 面板
+- `render_state`：当前 run.status、是否 target message、是否显示 reasoning 面板
 - `retry_action`：mid-stream error 后的“重试（fork/继续）”入口点击
-
