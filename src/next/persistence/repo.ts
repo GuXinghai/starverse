@@ -1,4 +1,4 @@
-import type { MessageState, RootState, SessionState } from '../state/types'
+import type { MessageState, RootState, RunState } from '../state/types'
 
 type BetterSqliteStatement = {
   run(params?: any): any
@@ -9,30 +9,30 @@ type BetterSqliteDatabase = {
   prepare(sql: string): BetterSqliteStatement
 }
 
-export type SessionSnapshot = Readonly<{
+export type RunSnapshot = Readonly<{
   schemaVersion: 1
-  session: SessionState
+  run: RunState
   messages: MessageState[]
 }>
 
-export function toSessionSnapshot(state: RootState, sessionId: string): SessionSnapshot {
-  const session = state.sessions[sessionId]
-  if (!session) throw new Error(`session not found: ${sessionId}`)
-  const ids = state.sessionMessageIds[sessionId] || []
+export function toRunSnapshot(state: RootState, runId: string): RunSnapshot {
+  const run = state.runs[runId]
+  if (!run) throw new Error(`run not found: ${runId}`)
+  const ids = state.runMessageIds[runId] || []
   const messages = ids.map((id) => state.messages[id]).filter((m): m is MessageState => !!m)
 
-  const snapshot: SessionSnapshot = {
+  const snapshot: RunSnapshot = {
     schemaVersion: 1,
-    session,
+    run,
     messages,
   }
 
   // Ensure the snapshot is JSON-serializable and stable for round-trip equality checks.
   // This does not infer business semantics; it only removes non-serializable shapes (e.g. `undefined` fields).
-  return JSON.parse(JSON.stringify(snapshot)) as SessionSnapshot
+  return JSON.parse(JSON.stringify(snapshot)) as RunSnapshot
 }
 
-export class NextSessionSnapshotRepo {
+export class NextRunSnapshotRepo {
   private readonly db: BetterSqliteDatabase
   private readonly upsertStmt: BetterSqliteStatement
   private readonly getStmt: BetterSqliteStatement
@@ -40,19 +40,19 @@ export class NextSessionSnapshotRepo {
   constructor(db: BetterSqliteDatabase) {
     this.db = db
     this.upsertStmt = db.prepare(
-      `INSERT INTO next_session_snapshots (session_id, snapshot_json, schema_version, updated_at_ms)
-       VALUES (@sessionId, @snapshotJson, @schemaVersion, @updatedAtMs)
-       ON CONFLICT(session_id) DO UPDATE SET
+      `INSERT INTO next_run_snapshots (run_id, snapshot_json, schema_version, updated_at_ms)
+       VALUES (@runId, @snapshotJson, @schemaVersion, @updatedAtMs)
+       ON CONFLICT(run_id) DO UPDATE SET
          snapshot_json=excluded.snapshot_json,
          schema_version=excluded.schema_version,
          updated_at_ms=excluded.updated_at_ms`
     )
-    this.getStmt = db.prepare(`SELECT snapshot_json AS snapshotJson FROM next_session_snapshots WHERE session_id = ?`)
+    this.getStmt = db.prepare(`SELECT snapshot_json AS snapshotJson FROM next_run_snapshots WHERE run_id = ?`)
   }
 
-  save(sessionId: string, snapshot: SessionSnapshot): { upserted: number } {
+  save(runId: string, snapshot: RunSnapshot): { upserted: number } {
     const result = this.upsertStmt.run({
-      sessionId,
+      runId,
       snapshotJson: JSON.stringify(snapshot),
       schemaVersion: snapshot.schemaVersion,
       updatedAtMs: Date.now(),
@@ -61,10 +61,10 @@ export class NextSessionSnapshotRepo {
     return { upserted: changes }
   }
 
-  get(sessionId: string): SessionSnapshot | null {
-    const row = this.getStmt.get(sessionId) as { snapshotJson?: string } | undefined
+  get(runId: string): RunSnapshot | null {
+    const row = this.getStmt.get(runId) as { snapshotJson?: string } | undefined
     const raw = row?.snapshotJson
     if (!raw) return null
-    return JSON.parse(raw) as SessionSnapshot
+    return JSON.parse(raw) as RunSnapshot
   }
 }

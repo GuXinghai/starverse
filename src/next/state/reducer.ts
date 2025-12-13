@@ -1,4 +1,4 @@
-import type { DomainEvent, MessageState, RootState, SessionState, StartGenerationInput } from './types'
+import type { DomainEvent, MessageState, RootState, RunState, StartGenerationInput } from './types'
 
 function generateId(prefix: string): string {
   const cryptoObj = (globalThis as any).crypto as { randomUUID?: () => string } | undefined
@@ -8,9 +8,9 @@ function generateId(prefix: string): string {
 
 export function createInitialState(): RootState {
   return {
-    sessions: {},
+    runs: {},
     messages: {},
-    sessionMessageIds: {},
+    runMessageIds: {},
   }
 }
 
@@ -55,8 +55,8 @@ export function startGeneration(state: RootState, input: StartGenerationInput): 
   const userMessageId =
     typeof input.userMessageText === 'string' ? input.userMessageId || generateId('user') : undefined
 
-  const session: SessionState = {
-    sessionId: input.sessionId,
+  const run: RunState = {
+    runId: input.runId,
     status: 'requesting',
     requestId: input.requestId,
     targetAssistantMessageId: assistantMessageId,
@@ -70,7 +70,7 @@ export function startGeneration(state: RootState, input: StartGenerationInput): 
     comments: [],
   }
 
-  const existingIds = state.sessionMessageIds[input.sessionId] || []
+  const existingIds = state.runMessageIds[input.runId] || []
   const nextIds = userMessageId ? [...existingIds, userMessageId, assistantMessageId] : [...existingIds, assistantMessageId]
 
   const nextMessages: Record<string, MessageState> = {
@@ -86,11 +86,11 @@ export function startGeneration(state: RootState, input: StartGenerationInput): 
   return {
     assistantMessageId,
     state: {
-      sessions: { ...state.sessions, [input.sessionId]: session },
+      runs: { ...state.runs, [input.runId]: run },
       messages: nextMessages,
-      sessionMessageIds: {
-        ...state.sessionMessageIds,
-        [input.sessionId]: nextIds,
+      runMessageIds: {
+        ...state.runMessageIds,
+        [input.runId]: nextIds,
       },
     },
   }
@@ -107,14 +107,14 @@ function updateMessage(state: RootState, messageId: string, updater: (m: Message
   }
 }
 
-function updateSession(state: RootState, sessionId: string, updater: (s: SessionState) => SessionState): RootState {
-  const prev = state.sessions[sessionId]
+function updateRun(state: RootState, runId: string, updater: (s: RunState) => RunState): RootState {
+  const prev = state.runs[runId]
   if (!prev) return state
   const next = updater(prev)
   if (next === prev) return state
   return {
     ...state,
-    sessions: { ...state.sessions, [sessionId]: next },
+    runs: { ...state.runs, [runId]: next },
   }
 }
 
@@ -122,21 +122,21 @@ function inferHasEncrypted(detail: unknown): boolean {
   return !!(detail && typeof detail === 'object' && (detail as any).type === 'reasoning.encrypted')
 }
 
-export function applyEvent(state: RootState, sessionId: string, event: DomainEvent): RootState {
-  const session = state.sessions[sessionId]
-  if (!session) return state
+export function applyEvent(state: RootState, runId: string, event: DomainEvent): RootState {
+  const run = state.runs[runId]
+  if (!run) return state
 
-  const targetId = session.targetAssistantMessageId
+  const targetId = run.targetAssistantMessageId
 
   switch (event.type) {
     case 'StreamComment': {
-      return updateSession(state, sessionId, (s) => ({
+      return updateRun(state, runId, (s) => ({
         ...s,
         comments: [...s.comments, event.text],
       }))
     }
     case 'MetaDelta': {
-      return updateSession(state, sessionId, (s) => ({
+      return updateRun(state, runId, (s) => ({
         ...s,
         generationId: event.meta.id ?? s.generationId,
         model: event.meta.model ?? s.model,
@@ -146,7 +146,7 @@ export function applyEvent(state: RootState, sessionId: string, event: DomainEve
       }))
     }
     case 'UsageDelta': {
-      return updateSession(state, sessionId, (s) => ({
+      return updateRun(state, runId, (s) => ({
         ...s,
         usage: event.usage,
       }))
@@ -161,8 +161,8 @@ export function applyEvent(state: RootState, sessionId: string, event: DomainEve
         }
       })
 
-      if (session.status === 'requesting') {
-        return updateSession(nextState, sessionId, (s) => ({ ...s, status: 'streaming' }))
+      if (run.status === 'requesting') {
+        return updateRun(nextState, runId, (s) => ({ ...s, status: 'streaming' }))
       }
       return nextState
     }
@@ -180,21 +180,21 @@ export function applyEvent(state: RootState, sessionId: string, event: DomainEve
       }))
     }
     case 'StreamAbort': {
-      const nextState = updateSession(state, sessionId, (s) => ({ ...s, status: 'aborted' }))
+      const nextState = updateRun(state, runId, (s) => ({ ...s, status: 'aborted' }))
       if (targetId) {
         return updateMessage(nextState, targetId, (m) => ({ ...m, streaming: { ...m.streaming, isComplete: true } }))
       }
       return nextState
     }
     case 'StreamError': {
-      const nextState = updateSession(state, sessionId, (s) => ({ ...s, status: 'error', error: event.error }))
+      const nextState = updateRun(state, runId, (s) => ({ ...s, status: 'error', error: event.error }))
       if (targetId) {
         return updateMessage(nextState, targetId, (m) => ({ ...m, streaming: { ...m.streaming, isComplete: true } }))
       }
       return nextState
     }
     case 'StreamDone': {
-      const nextState = updateSession(state, sessionId, (s) => ({
+      const nextState = updateRun(state, runId, (s) => ({
         ...s,
         status: s.status === 'error' || s.status === 'aborted' ? s.status : 'done',
       }))
@@ -208,10 +208,10 @@ export function applyEvent(state: RootState, sessionId: string, event: DomainEve
   }
 }
 
-export function applyEvents(state: RootState, sessionId: string, events: DomainEvent[]): RootState {
+export function applyEvents(state: RootState, runId: string, events: DomainEvent[]): RootState {
   let next = state
   for (const ev of events) {
-    next = applyEvent(next, sessionId, ev)
+    next = applyEvent(next, runId, ev)
   }
   return next
 }

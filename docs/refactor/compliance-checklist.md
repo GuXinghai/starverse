@@ -71,7 +71,7 @@
 
 ### 3.4 "加密/隐藏/未返回" 的 UI 语义分离
 - [x] **encrypted**：出现 `type = reasoning.encrypted` → 视为"提供方加密或红acted"，UI 显示"加密/不可见（可选展示原始 data 作为调试）"。
-- [x] **已实现**: `excluded` 判定结合请求配置（证据：`src/next/state/types.ts`, `src/next/state/reducer.ts`, `src/next/state/selectors.ts`, `src/next/state/selectors.test.ts`；demo：`src/ui-next/useChatSession.ts`, `src/ui-next/components/ChatNextComposer.vue`, `src/next/openrouter/sse/fixtures/reasoning_details.txt`, `src/next/openrouter/sse/fixtures/encrypted.txt`）
+- [x] **已实现**: `excluded` 判定结合请求配置（证据：`src/next/state/types.ts`, `src/next/state/reducer.ts`, `src/next/state/selectors.ts`, `src/next/state/selectors.test.ts`；demo：`src/ui-next/useChatRun.ts`, `src/ui-next/components/ChatNextComposer.vue`, `src/next/openrouter/sse/fixtures/reasoning_details.txt`, `src/next/openrouter/sse/fixtures/encrypted.txt`）
 - [x] **excluded**：请求使用了 `reasoning.exclude = true` 且未返回任何 reasoning 内容 → UI 显示"已按请求隐藏"。
 - [x] **not returned**：未请求 exclude，但仍未返回 reasoning / reasoning_details → UI 显示"该模型/提供方未返回推理信息"。
 
@@ -124,13 +124,13 @@
 ### 6.4 交互流程（必须遵守）
 - [x] 1) 用户点击发送：
 - [x]    - UI 调用 `dispatchSend({ branchId, text, config })`。
-- [x]    - Reducer 立即创建 user 消息与空 assistant 占位消息，并把该 assistant 标记为本次 session 的 target。
+- [x]    - Reducer 立即创建 user 消息与空 assistant 占位消息，并把该 assistant 标记为本次 run 的 target。
 - [x] 2) streaming 过程中：
 - [x]    - UI 只重渲染 `MessageVM.contentBlocks/toolCalls/reasoningView` 的增量变化。
 - [x] 3) mid-stream error：
 - [x]    - 保留已生成内容；显示错误尾巴；提供"重试（fork/继续）"入口。
 - [x] 4) abort：
-- [x]    - 标记 session 为 aborted；保留已生成内容；允许重新发送。
+- [x]    - 标记 run 为 aborted；保留已生成内容；允许重新发送。
 
 ### 6.5 UI 层面必须覆盖的边界场景
 - [x] 注释行不会引发 UI 崩溃；最多影响"正在处理"提示。
@@ -151,11 +151,11 @@
 - [x] 切换点必须是单点：入口路由/根组件/Facade 选择器。
 
 **6.6.3 数据所有权（Single-writer 原则）**
-- [x] 生成会话状态（SessionVM）与消息状态（MessageVM）只允许由新 Reducer 作为唯一写入者。
+- [x] 生成 run 状态（RunVM）与消息状态（MessageVM）只允许由新 Reducer 作为唯一写入者。
 - [x] 旧 UI 若需并存，只允许只读订阅（read-only）；不得对同一份对话数据做写入（避免双写竞态）。
 
 **6.6.4 通过 UI Facade/Hook 暴露唯一接口**
-- [x] UI 与底层交互只能通过一组稳定的 Facade/Hook（例如 `useChatSession()` / `dispatchSend()` / `dispatchAbort()` / selectors）。
+- [x] UI 与底层交互只能通过一组稳定的 Facade/Hook（例如 `useChatRun()` / `dispatchSend()` / `dispatchAbort()` / selectors）。
 - [x] UI 禁止直接 import 旧 store / 旧 service / 旧 parser。
 
 **6.6.5 工程化强制（建议）**

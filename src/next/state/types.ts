@@ -1,4 +1,4 @@
-export type SessionStatus =
+export type RunStatus =
   | 'idle'
   | 'requesting'
   | 'streaming'
@@ -32,9 +32,9 @@ export type MessageVM = Readonly<{
   streaming: { isTarget: boolean; isComplete: boolean }
 }>
 
-export type SessionVM = Readonly<{
-  sessionId: string
-  status: SessionStatus
+export type RunVM = Readonly<{
+  runId: string
+  status: RunStatus
   requestId?: string
   generationId?: string
   model?: string
@@ -84,9 +84,9 @@ export type MessageState = Readonly<{
   requestedReasoningExclude?: boolean
 }>
 
-export type SessionState = Readonly<{
-  sessionId: string
-  status: SessionStatus
+export type RunState = Readonly<{
+  runId: string
+  status: RunStatus
   requestId?: string
   targetAssistantMessageId?: string
   generationId?: string
@@ -100,13 +100,13 @@ export type SessionState = Readonly<{
 }>
 
 export type RootState = Readonly<{
-  sessions: Record<string, SessionState>
+  runs: Record<string, RunState>
   messages: Record<string, MessageState>
-  sessionMessageIds: Record<string, string[]>
+  runMessageIds: Record<string, string[]>
 }>
 
 export type StartGenerationInput = Readonly<{
-  sessionId: string
+  runId: string
   requestId: string
   model?: string
   assistantMessageId?: string

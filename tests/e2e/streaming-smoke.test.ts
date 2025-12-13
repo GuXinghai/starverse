@@ -19,17 +19,17 @@ async function runFixture(
 ): Promise<{
   events: DomainEvent[]
   state: ReturnType<typeof createInitialState>
-  sessionId: string
+  runId: string
   assistantMessageId: string
 }> {
   const fixtureText = await readFixture(name)
 
-  const sessionId = `sess_${name}`
+  const runId = `run_${name}`
   const assistantMessageId = `assistant_${name}`
 
   let state = createInitialState()
   state = startGeneration(state, {
-    sessionId,
+    runId,
     requestId: `req_${name}`,
     model: 'openrouter/auto',
     assistantMessageId,
@@ -46,7 +46,7 @@ async function runFixture(
     signal: controller.signal,
   })) {
     events.push(ev)
-    state = applyEvent(state, sessionId, ev)
+    state = applyEvent(state, runId, ev)
 
     if (
       options.abortAfterFirstText &&
@@ -60,11 +60,11 @@ async function runFixture(
     }
   }
 
-  return { events, state, sessionId, assistantMessageId }
+  return { events, state, runId, assistantMessageId }
 }
 
-function pickObservability(state: any, sessionId: string) {
-  const s = state.sessions[sessionId]
+function pickObservability(state: any, runId: string) {
+  const s = state.runs[runId]
   return {
     generationId: s?.generationId,
     finishReason: s?.finishReason,
@@ -77,9 +77,9 @@ function pickObservability(state: any, sessionId: string) {
 
 describe('TC-11 — vertical slice E2E smoke (fixture replay)', () => {
   it('streaming + usage include: usage tail chunk updates session usage', async () => {
-    const { state, sessionId, assistantMessageId } = await runFixture('usage_tail_choices_empty.txt')
+    const { state, runId, assistantMessageId } = await runFixture('usage_tail_choices_empty.txt')
 
-    const obs = pickObservability(state, sessionId)
+    const obs = pickObservability(state, runId)
     expect(obs.status).toBe('done')
     expect(obs.generationId).toBe('gen_usage_1')
     expect(obs.usage).toMatchObject({
@@ -94,9 +94,9 @@ describe('TC-11 — vertical slice E2E smoke (fixture replay)', () => {
   })
 
   it('mid-stream error: preserves partial output and ends in error', async () => {
-    const { state, sessionId, assistantMessageId } = await runFixture('midstream_error.txt')
+    const { state, runId, assistantMessageId } = await runFixture('midstream_error.txt')
 
-    const obs = pickObservability(state, sessionId)
+    const obs = pickObservability(state, runId)
     expect(obs.status).toBe('error')
     expect(obs.generationId).toBe('gen_1')
     expect(obs.finishReason).toBe('error')
@@ -109,13 +109,13 @@ describe('TC-11 — vertical slice E2E smoke (fixture replay)', () => {
   })
 
   it('abort: stops early, keeps partial output, marks session aborted', async () => {
-    const { state, sessionId, assistantMessageId, events } = await runFixture(
+    const { state, runId, assistantMessageId, events } = await runFixture(
       'usage_tail_choices_empty.txt',
       { abortAfterFirstText: true }
     )
 
     expect(events.some((e) => e.type === 'StreamAbort')).toBe(true)
-    const obs = pickObservability(state, sessionId)
+    const obs = pickObservability(state, runId)
     expect(obs.status).toBe('aborted')
     expect(obs.usage).toBeUndefined()
 
@@ -125,9 +125,9 @@ describe('TC-11 — vertical slice E2E smoke (fixture replay)', () => {
   })
 
   it('debug chunk (choices=[]): does not crash and still streams content', async () => {
-    const { state, sessionId, assistantMessageId } = await runFixture('debug_choices_empty.txt')
+    const { state, runId, assistantMessageId } = await runFixture('debug_choices_empty.txt')
 
-    const obs = pickObservability(state, sessionId)
+    const obs = pickObservability(state, runId)
     expect(obs.status).toBe('done')
     expect(obs.generationId).toBe('gen_dbg_1')
 
@@ -173,4 +173,3 @@ describe('TC-11 — vertical slice E2E smoke (fixture replay)', () => {
     expect(toolMsg).toMatchObject({ tool_call_id: 'call_1', name: 'lookup' })
   })
 })
-

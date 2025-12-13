@@ -26,7 +26,7 @@
 |---|---|---|---|---|
 | 0 | SSOT 对齐与执行编排 | `docs/refactor/**` | SSOT | 计划/Checklist/风险日志齐全且可用于后续任务引用 |
 | 1 | Transport + Parser 合同固化 | `src/services/providers/openrouter/**`、`src/services/providers/OpenRouterService.ts`、`tests/unit/services/**` | Gate 0 | SSE/非流解析满足 SSOT；事件输出与错误边界一致 |
-| 2 | Reducer/Store 事件驱动状态机 | `src/stores/**`、`src/types/**`、`tests/unit/**` | Gate 1 | Reducer 成为 single-writer；SessionVM/MessageVM/selectors 满足 SSOT |
+| 2 | Reducer/Store 事件驱动状态机 | `src/stores/**`、`src/types/**`、`tests/unit/**` | Gate 1 | Reducer 成为 single-writer；RunVM/MessageVM/selectors 满足 SSOT |
 | 3 | 上下文回传策略与 generation 追溯 | `src/services/providers/**`、`src/types/**`、（如有）`electron/**` | Gate 1–2 | 默认不回传推理块；generationId 记录与 `/generation` 查询链路可用 |
 | 4 | 新 Chat UI 隔离入口 + 垂直切片 | `src/components/**`、`src/composables/**`、`src/main.ts`（路由入口） | Gate 2–3 | UI 不解析 JSON；通过 Facade/Hook 交互；覆盖关键边界 |
 | 5 | 强制护栏与收尾 | ESLint/TS 规则、开关删除、文档 | Gate 4 | 工程化限制落地；临时开关有清除点；回归测试通过 |
@@ -94,7 +94,7 @@
 ## Gate 2 — Reducer/Store 事件驱动状态机（Single-writer）
 
 ### 目标
-实现“只消费 Domain Events”的 Reducer，成为 Session/Message 的唯一写入者，并按 SSOT 产出稳定的 ViewModel 与 selectors，供 UI 只读消费。
+实现“只消费 Domain Events”的 Reducer，成为 Run/Message 的唯一写入者，并按 SSOT 产出稳定的 ViewModel 与 selectors，供 UI 只读消费。
 
 ### 目录 allowlist（本 Gate 内每次提交）
 - `src/stores/**`
@@ -104,7 +104,7 @@
 ### 产物（必须）
 - Reducer 能处理：
   - `MessageDeltaText` / `MessageDeltaToolCall` / `MessageDeltaReasoningDetail` 的增量聚合
-  - `UsageDelta` 与 session 级 usage 归并（不绑定消息）
+  - `UsageDelta` 与 run 级 usage 归并（不绑定消息）
   - `StreamError` / `StreamDone` / abort 状态
 - reasoning_details 存储满足 SSOT：
   - append-only 原始事件序列（不得重排/不得修改/不得合并重写）
@@ -117,7 +117,7 @@
 
 ### DoD
 - “任何临时拼字符串写 store”被移除或禁止（必须走 Reducer）。
-- SessionVM/MessageVM/selectors 符合 SSOT 6.2 合同。
+- RunVM/MessageVM/selectors 符合 SSOT 6.2 合同。
 
 ### 退出条件（Gate 2）
 - Reducer/selector 单测通过；并能在垂直切片里驱动 UI 渲染（不要求 UI 完整）。
@@ -189,4 +189,3 @@
 
 ### 退出条件（Gate 5）
 - 护栏规则启用且不误伤；核心单测通过；文档可指导新成员复现关键链路。
-

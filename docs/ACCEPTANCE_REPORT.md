@@ -14,7 +14,7 @@
 | UI 不直接解析 OpenRouter JSON | ✅ 通过 | `src/ui-next/**` 仅消费 ViewModel/Selectors |
 | 不用"缺字段"推断 encrypted | ✅ 通过 | `inferHasEncrypted()` 仅检查 `type === 'reasoning.encrypted'` |
 | 分支树不下沉到网络/解析层 | ✅ 通过 | Parser/Transport 不知道分支概念 |
-| 记录 generation id | ✅ 通过 | `MetaDelta` 事件携带 `id`，存储于 `SessionState.generationId` |
+| 记录 generation id | ✅ 通过 | `MetaDelta` 事件携带 `id`，存储于 `RunState.generationId` |
 
 ---
 
@@ -55,7 +55,7 @@ usage: { include: usageInclude },
 ```typescript
 generationId: event.meta.id ?? s.generationId,
 ```
-**UI 展示**: [ChatNextStatusBar.vue#L20](src/ui-next/components/ChatNextStatusBar.vue#L20) 展示 `session.generationId`。
+**UI 展示**: [ChatNextStatusBar.vue#L20](src/ui-next/components/ChatNextStatusBar.vue#L20) 展示 `run.generationId`。
 
 ### 1.2 响应侧合规
 
@@ -119,10 +119,10 @@ export function startGeneration(state: RootState, input: StartGenerationInput): 
 ### 1.4 UI 合规
 
 #### ✅ UI 只消费 ViewModel/Selectors
-**位置**: [useChatSession.ts#L3-L4](src/ui-next/useChatSession.ts#L3-L4)
+**位置**: [useChatRun.ts#L3-L4](src/ui-next/useChatRun.ts#L3-L4)
 ```typescript
 import { applyEvent, createInitialState, startGeneration } from '@/next/state/reducer'
-import { selectSession, selectTranscript } from '@/next/state/selectors'
+import { selectRun, selectTranscript } from '@/next/state/selectors'
 ```
 
 #### ✅ 无旧 store import
@@ -173,7 +173,7 @@ grep "from '@/stores" src/ui-next/** → 0 matches (仅文档中存在)
 
 | 测试场景 | 结果 |
 |----------|------|
-| streaming + usage include: usage 尾块更新 session | ✅ |
+| streaming + usage include: usage 尾块更新 run | ✅ |
 | mid-stream error: 保留部分输出 + error 状态 | ✅ |
 | abort: 中止后保留已到达内容 + aborted 状态 | ✅ |
 | debug chunk (choices=[]) 不崩溃 | ✅ |
@@ -201,7 +201,7 @@ grep "from '@/stores" src/ui-next/** → 0 matches (仅文档中存在)
 ### 3.3 usage 位置与展示 ✅
 **验证**: 
 - usage 在流末尾 chunk 出现，choices 可为空
-- usage 绑定 session 而非消息
+- usage 绑定 run 而非消息
 **证据**: streaming-smoke.test.ts 第79-84行验证 `usage_tail_choices_empty.txt` fixture。
 
 ### 3.4 mid-stream error ✅
@@ -254,7 +254,7 @@ expect(assistantToolCallMsg.reasoning_details).toEqual(reasoningBlocks)
 - 完全独立的组件树，不与旧 UI 共享有状态容器
 
 ### 5.2 Single-writer 原则
-- `useChatSession.ts` 是唯一写入者
+- `useChatRun.ts` 是唯一写入者
 - 通过 `dispatchSend()` / `dispatchAbort()` 统一接口
 
 ### 5.3 无遗留依赖

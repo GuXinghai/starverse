@@ -25,11 +25,10 @@
 
 ## R-004 — UI 迁移期"双写/混用状态"导致竞态与回归 ✅ 已缓解
 - **现象/差异**：~~SSOT 6.6 明确禁止新旧 UI 混用 container/store 直连与双写。~~
-- **缓解**：✅ 已完成。旧 UI 已删除（`src/stores`、`src/services`、`src/components`、`src/composables` 均不存在）。新 UI 完全隔离：`src/ui-next/` 仅通过 `useChatSession()` facade 访问 Reducer。Gate 脚本 `tc10-ui-next.mjs` 验证无 legacy imports。`App.vue` 只渲染 `AppChatNext`。
+- **缓解**：✅ 已完成。旧 UI 已删除（`src/stores`、`src/services`、`src/components`、`src/composables` 均不存在）。新 UI 完全隔离：`src/ui-next/` 仅通过 `useChatRun()` facade 访问 Reducer。Gate 脚本 `tc10-ui-next.mjs` 验证无 legacy imports。`App.vue` 只渲染 `AppChatNext`。
 - **Gate**：4 → 5 ✅
 
 ## R-005 — usage chunk（流末尾、空 choices）处理回归 ✅ 已缓解
 - **现象/差异**：~~SSOT 2.3/3.6 要求支持流末尾 `usage` 且 `choices` 为空；错误聚合会导致 UI/成本展示缺失。~~
-- **缓解**：✅ 已完成。`mapChunkToEvents.ts` 正确处理 `choices=[]` + `usage` 的 chunk。`UsageDelta` 绑定 session（generation），不绑定 message。单测 `mapChunkToEvents.test.ts#L43-48` + E2E 测试 `streaming-smoke.test.ts#L79-88` 验证完整流程。
+- **缓解**：✅ 已完成。`mapChunkToEvents.ts` 正确处理 `choices=[]` + `usage` 的 chunk。`UsageDelta` 绑定 run（generation），不绑定 message。单测 `mapChunkToEvents.test.ts#L43-48` + E2E 测试 `streaming-smoke.test.ts#L79-88` 验证完整流程。
 - **Gate**：1 → 2 ✅
-

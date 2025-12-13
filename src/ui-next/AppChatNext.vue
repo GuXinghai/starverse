@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useChatSession, type DemoScenario } from './useChatSession'
+import { useChatRun, type DemoScenario } from './useChatRun'
 import ChatNextComposer from './components/ChatNextComposer.vue'
 import ChatNextTranscript from './components/ChatNextTranscript.vue'
 import ChatNextReasoningPanel from './components/ChatNextReasoningPanel.vue'
 import ChatNextStatusBar from './components/ChatNextStatusBar.vue'
 
-const { sessionVM, transcript, isRunning, dispatchSend, dispatchAbort, resetSession } = useChatSession()
+const { runVM, transcript, isRunning, dispatchSend, dispatchAbort, resetRun } = useChatRun()
 
 const draft = ref('')
 const scenario = ref<DemoScenario>('normal')
@@ -23,7 +23,7 @@ async function onSend() {
 
 <template>
   <div class="flex h-full flex-col bg-white">
-    <ChatNextStatusBar :session="sessionVM" :isRunning="isRunning" @abort="dispatchAbort" @reset="resetSession" />
+    <ChatNextStatusBar :run="runVM" :isRunning="isRunning" @abort="dispatchAbort" @reset="resetRun" />
 
     <div class="flex min-h-0 flex-1">
       <div class="min-h-0 flex-1 border-r border-gray-200">
@@ -45,4 +45,3 @@ async function onSend() {
     </div>
   </div>
 </template>
-

@@ -6,7 +6,7 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
   it('returns "excluded" when reasoning.exclude was true and no reasoning returned', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
-      sessionId: 'sess1',
+      runId: 'run1',
       requestId: 'req1',
       model: 'test-model',
       reasoningExclude: true, // User requested to exclude reasoning
@@ -21,7 +21,7 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
   it('returns "not_returned" when no exclude config and no reasoning returned', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
-      sessionId: 'sess1',
+      runId: 'run1',
       requestId: 'req1',
       model: 'test-model',
       // No reasoningExclude - user expected reasoning but model didn't provide
@@ -36,7 +36,7 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
   it('returns "shown" when reasoning content is present (regardless of exclude setting)', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
-      sessionId: 'sess1',
+      runId: 'run1',
       requestId: 'req1',
       model: 'test-model',
       reasoningExclude: true, // Even with exclude=true
@@ -63,7 +63,7 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
   it('returns "shown" when hasEncryptedReasoning is true', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
-      sessionId: 'sess1',
+      runId: 'run1',
       requestId: 'req1',
       model: 'test-model',
     })
@@ -90,7 +90,7 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
   it('never infers encrypted from empty reasoning (SSOT hard constraint)', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
-      sessionId: 'sess1',
+      runId: 'run1',
       requestId: 'req1',
       model: 'test-model',
       // No exclude, no reasoning content
@@ -109,14 +109,14 @@ describe('selectTranscript', () => {
   it('returns messages with correct visibility in transcript', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
-      sessionId: 'sess1',
+      runId: 'run1',
       requestId: 'req1',
       model: 'test-model',
       userMessageText: 'Hello',
       reasoningExclude: true,
     })
 
-    const transcript = selectTranscript(s1, 'sess1')
+    const transcript = selectTranscript(s1, 'run1')
 
     expect(transcript).toHaveLength(2)
     expect(transcript[0].role).toBe('user')

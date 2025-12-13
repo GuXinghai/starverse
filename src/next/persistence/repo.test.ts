@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { migrateNextPersistence } from './migrate'
-import { NextSessionSnapshotRepo, toSessionSnapshot } from './repo'
+import { NextRunSnapshotRepo, toRunSnapshot } from './repo'
 import { applyEvents, createInitialState, startGeneration } from '../state/reducer'
 import { decodeOpenRouterSSE } from '../openrouter/sse/decoder'
 import { mapChunkToEvents } from '../openrouter/mapChunkToEvents'
@@ -32,20 +32,20 @@ class InMemoryDb {
 
   prepare(sql: string) {
     const normalized = sql.replace(/\s+/g, ' ').trim().toLowerCase()
-    if (normalized.startsWith('insert into next_session_snapshots')) {
+    if (normalized.startsWith('insert into next_run_snapshots')) {
       return {
         run: (params: any) => {
-          this.snapshots.set(String(params.sessionId), String(params.snapshotJson))
+          this.snapshots.set(String(params.runId), String(params.snapshotJson))
           return { changes: 1 }
         },
         get: (_params?: any) => null,
       }
     }
-    if (normalized.startsWith('select snapshot_json as snapshotjson from next_session_snapshots')) {
+    if (normalized.startsWith('select snapshot_json as snapshotjson from next_run_snapshots')) {
       return {
         run: (_params?: any) => ({ changes: 0 }),
-        get: (sessionId: string) => {
-          const v = this.snapshots.get(String(sessionId))
+        get: (runId: string) => {
+          const v = this.snapshots.get(String(runId))
           return v ? { snapshotJson: v } : undefined
         },
       }
@@ -57,14 +57,14 @@ class InMemoryDb {
 const createRepo = () => {
   const db = new InMemoryDb()
   migrateNextPersistence(db as any)
-  const repo = new NextSessionSnapshotRepo(db as any)
+  const repo = new NextRunSnapshotRepo(db as any)
   return { db, repo }
 }
 
 async function replayIntoState() {
-  const sessionId = 's1'
+  const runId = 'run1'
   const started = startGeneration(createInitialState(), {
-    sessionId,
+    runId,
     requestId: 'r1',
     model: 'openrouter/auto',
     assistantMessageId: 'assistant_1',
@@ -84,12 +84,12 @@ async function replayIntoState() {
     if (ev.type === 'json') events.push(...(mapChunkToEvents({ chunk: ev.value as any, messageId: 'assistant_1' }) as any))
   }
 
-  const finalState = applyEvents(started.state, sessionId, events)
-  return { sessionId, state: finalState }
+  const finalState = applyEvents(started.state, runId, events)
+  return { runId, state: finalState }
 }
 
-describe('NextSessionSnapshotRepo', () => {
-  let instance: { db: InMemoryDb; repo: NextSessionSnapshotRepo } | null = null
+describe('NextRunSnapshotRepo', () => {
+  let instance: { db: InMemoryDb; repo: NextRunSnapshotRepo } | null = null
 
   beforeAll(() => {
     instance = createRepo()
@@ -104,10 +104,10 @@ describe('NextSessionSnapshotRepo', () => {
 
   it('roundtrips reducer snapshot without inference', async () => {
     if (!instance) throw new Error('test setup failed')
-    const { sessionId, state } = await replayIntoState()
-    const snapshot = toSessionSnapshot(state, sessionId)
-    instance.repo.save(sessionId, snapshot)
-    const loaded = instance.repo.get(sessionId)
+    const { runId, state } = await replayIntoState()
+    const snapshot = toRunSnapshot(state, runId)
+    instance.repo.save(runId, snapshot)
+    const loaded = instance.repo.get(runId)
     expect(loaded).toEqual(snapshot)
   })
 })

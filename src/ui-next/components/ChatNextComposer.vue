@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { DemoScenario } from '../useChatSession'
+import type { DemoScenario } from '../useChatRun'
 
 const props = defineProps<{
   draft: string
@@ -64,4 +64,3 @@ const canSend = computed(() => !props.disabled && props.draft.trim().length > 0)
     />
   </div>
 </template>
-
