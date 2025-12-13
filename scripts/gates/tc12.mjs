@@ -90,6 +90,7 @@ try {
   assertPathMissing('src/services')
   assertPathMissing('src/utils')
   assertPathMissing('src/types')
+  assertPathMissing('archived-services')
   console.log('PASS: legacy UI/stores/services surface removed.')
 
   section('No leftover switch references')
