@@ -21,7 +21,7 @@ describe('Conversation Store', () => {
       expect(conversation.id).toBeDefined()
       expect(conversation.title).toBe('新对话')
       expect(conversation.draft).toBe('')
-      expect(conversation.model).toBe('gemini-2.0-flash-exp')
+      expect(conversation.model).toBe('auto')
       expect(conversation.projectId).toBeNull()
       expect(conversation.tags).toEqual([])
       expect(conversation.isGenerating).toBe(false)
@@ -53,25 +53,25 @@ describe('Conversation Store', () => {
   })
 
   describe('删除对话', () => {
-    it('应该成功删除存在的对话', () => {
+    it('应该成功删除存在的对话', async () => {
       const store = useConversationStore()
       const conversation = store.createConversation()
 
       expect(store.conversations).toHaveLength(1)
-      const result = store.deleteConversation(conversation.id)
+      const result = await store.deleteConversation(conversation.id)
 
       expect(result).toBe(true)
       expect(store.conversations).toHaveLength(0)
     })
 
-    it('删除不存在的对话应该返回 false', () => {
+    it('删除不存在的对话应该返回 false', async () => {
       const store = useConversationStore()
-      const result = store.deleteConversation('non-existent-id')
+      const result = await store.deleteConversation('non-existent-id')
 
       expect(result).toBe(false)
     })
 
-    it('删除对话时应该关闭相关标签页', () => {
+    it('删除对话时应该关闭相关标签页', async () => {
       const store = useConversationStore()
       const conv1 = store.createConversation()
       const conv2 = store.createConversation()
@@ -82,20 +82,20 @@ describe('Conversation Store', () => {
       expect(store.openTabIds).toHaveLength(2)
       expect(store.activeTabId).toBe(conv2.id)
 
-      store.deleteConversation(conv2.id)
+      await store.deleteConversation(conv2.id)
 
       expect(store.openTabIds).toHaveLength(1)
       expect(store.activeTabId).toBe(conv1.id)
     })
 
-    it('删除最后一个标签页时应该清空激活状态', () => {
+    it('删除最后一个标签页时应该清空激活状态', async () => {
       const store = useConversationStore()
       const conversation = store.createConversation()
 
       store.openConversationInTab(conversation.id)
       expect(store.activeTabId).toBe(conversation.id)
 
-      store.deleteConversation(conversation.id)
+      await store.deleteConversation(conversation.id)
 
       expect(store.openTabIds).toHaveLength(0)
       expect(store.activeTabId).toBeNull()
@@ -203,6 +203,7 @@ describe('Conversation Store', () => {
       const store = useConversationStore()
       const conversation = store.createConversation()
 
+      store.setWebSearchEnabled(conversation.id, true)
       store.setWebSearchLevel(conversation.id, 'deep')
 
       expect(conversation.webSearch?.level).toBe('deep')

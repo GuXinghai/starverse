@@ -29,7 +29,12 @@ describe('Ghost Task Bug Fix', () => {
 
     mockConversationStore = {
       setGenerationStatus: vi.fn(),
-      setGenerationError: vi.fn()
+      setGenerationError: vi.fn(),
+      getConversationById: vi.fn(() => ({
+        id: 'test-conversation',
+        model: 'test-model',
+        tree: { branches: new Map(), rootBranchIds: [], currentPath: [] }
+      }))
     }
 
     mockBranchStore = {
@@ -37,9 +42,13 @@ describe('Ghost Task Bug Fix', () => {
       addNoticeMessage: vi.fn(() => 'notice-id'),
       updateNoticeMessageText: vi.fn(),
       removeMessageBranch: vi.fn(),
-      getDisplayMessages: vi.fn(() => []),
+      _buildMessageHistoryForAPI: vi.fn(() => []),  // ✅ 重命名：内部 API
       appendToken: vi.fn(),
       patchMetadata: vi.fn()
+    }
+
+    const mockPersistenceStore = {
+      markConversationDirty: vi.fn()
     }
 
     // Setup options
@@ -51,6 +60,7 @@ describe('Ghost Task Bug Fix', () => {
       appStore: mockAppStore,
       conversationStore: mockConversationStore,
       branchStore: mockBranchStore,
+      persistenceStore: mockPersistenceStore,
       currentConversation: ref({ id: 'test-conversation', model: 'test-model' })
     }
 

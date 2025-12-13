@@ -76,9 +76,9 @@ const searchResults = computed(() => {
   if (!searchQuery.value) return []
   
   const query = searchQuery.value.toLowerCase()
-  return modelStore.availableModels.filter(model => 
+  return modelStore.appModels.filter(model => 
     model.id.toLowerCase().includes(query) ||
-    model.name.toLowerCase().includes(query)
+    (model.name ?? '').toLowerCase().includes(query)
   )
 })
 

@@ -344,10 +344,7 @@ describe('Conversation Store - Parameters Management', () => {
       const store = useConversationStore()
       const conversation = store.createConversation()
 
-      expect(conversation.reasoningPreference).toBeDefined()
-      expect(conversation.reasoningPreference?.visibility).toBe('visible')
-      expect(conversation.reasoningPreference?.effort).toBe('medium')
-      expect(conversation.reasoningPreference?.maxTokens).toBeNull()
+      expect(conversation.reasoningPreference).toBeNull()
     })
   })
 

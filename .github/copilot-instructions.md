@@ -191,6 +191,17 @@ docs/                       - 90+ 个架构与优化文档
 - **持久化**: 通过 `usePersistenceStore` 统一调度，避免频繁 IPC
 - **避免副作用**: Action 中禁止直接操作 DOM 或调用 alert
 
+### 模型数据结构规范（v0.10 架构）
+- **统一类型**: 所有模型数据必须使用 `AppModel` 类型（位于 `src/types/appModel.ts`）
+- **禁止使用**:
+  - ❌ `ModelData` - 已删除，改用 `AppModel`
+  - ❌ `ModelParameterSupport` - 已删除，改用 `AppModel.capabilities`
+  - ❌ `modelCapability.ts` - 已删除，改用 `modelSync.ts` + `AppModel.capabilities`
+- **能力检测**: 所有能力信息（推理、工具、JSON、多模态）必须从 `AppModel.capabilities` 读取
+- **价格展示**: 使用 `src/utils/pricing.ts` 的辅助函数格式化价格
+- **模型同步**: 调用 `src/services/modelSync.ts` 的 `syncFromOpenRouter` 进行增量同步
+- **参考文档**: `docs/openrouter-model-sync-spec.md` 是模型数据处理的唯一规范来源
+
 ### 数据库操作规范
 - **Worker 线程**: 所有数据库操作通过 `dbClient.query()` 路由到 Worker
 - **Repository 模式**: 业务代码调用 Repository 方法，不写原始 SQL

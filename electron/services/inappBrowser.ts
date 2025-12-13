@@ -266,7 +266,7 @@ export class InAppBrowserManager {
     if (!window || !window.activeTabId) return
     const tab = this.tabs.get(window.activeTabId)
     if (!tab) return
-    const [width, height] = window.win.getSize()
+    const [width = 0, height = 0] = window.win.getSize()
     tab.view.setBounds({
       x: 0,
       y: this.toolbarHeight,

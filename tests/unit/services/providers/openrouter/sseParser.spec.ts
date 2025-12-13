@@ -26,6 +26,18 @@ describe('parseSSELine', () => {
     expect(result.chunk).toHaveProperty('content', 'Hello')
   })
 
+  it('should expose multiple chunks when one data line contains usage + content', () => {
+    const line = 'data: {"id":"req-1","usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3},"choices":[{"delta":{"content":"Hi"}}]}'
+    const result = parseSSELine(line)
+
+    // 旧行为：只返回第一个 chunk（通常是 usage），会丢失正文
+    // 新行为：当存在多个 chunk 时，用 result.chunks 暴露全部
+    expect(result.isDone).toBe(false)
+    expect(result.error).toBeUndefined()
+    expect(result.chunks).toBeTruthy()
+    expect(result.chunks?.map(c => c.type)).toEqual(['usage', 'text'])
+  })
+
   it('should return isDone: true for [DONE] signal', () => {
     const line = 'data: [DONE]'
     const result = parseSSELine(line)

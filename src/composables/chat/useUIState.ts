@@ -22,7 +22,7 @@ import type ChatScrollContainer from '../components/chat/ChatScrollContainer.vue
 
 // ========== 类型定义 ==========
 
-export type ActiveMenu = 'pdf' | 'websearch' | 'reasoning' | 'sampling' | null
+export type ActiveMenu = 'pdf' | 'websearch' | 'reasoning' | 'sampling' | 'parameters' | null
 
 export interface UseUIStateOptions {
   conversationId: Ref<string>

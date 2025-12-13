@@ -96,7 +96,7 @@ export interface ModelReasoningCapability {
 
   /**
    * 推理 tokens 的单价（USD/token）
-   * 来自 pricing.internal_reasoning
+  * 来自 pricing.internalReasoningUsdPerToken
    */
   internalReasoningPrice?: number | null;
 

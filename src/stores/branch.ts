@@ -458,8 +458,10 @@ export const useBranchStore = defineStore('branch', () => {
    * 
    * @param conversationId - 对话 ID
    * @returns 显示消息数组（浅拷贝，parts 为引用）
+   * @internal 仅供内部 composables 调用（useMessageSending 等），UI 层禁止使用
+   * @deprecated 对于 UI 渲染，请改用 displayBranchIds（见 useMessageDisplay）
    */
-  const getDisplayMessages = (conversationId: string): DisplayMessage[] => {
+  const _buildMessageHistoryForAPI = (conversationId: string): DisplayMessage[] => {
     const tree = getTree(conversationId)
     const pathMessages = getCurrentPathMessages(tree)
 
@@ -580,7 +582,7 @@ export const useBranchStore = defineStore('branch', () => {
     setReasoningSummary,
 
     // 查询
-    getDisplayMessages,
+    _buildMessageHistoryForAPI,  // 内部辅助函数（仅供 composables 使用）
     getPathTo,
     getBranchText,
     getBranch,

@@ -1,45 +1,34 @@
 /**
- * 模型管理 Store
+ * 模型管理 Store (重构版)
+ * 
+ * 🎯 设计原则：
+ * - 唯一模型类型：统一使用 AppModel，不再有 ModelData/ModelParameterSupport
+ * - 能力内置：所有模型能力信息直接存储在 AppModel.capabilities 中
+ * - 单一数据源：只从 /api/v1/models 同步，不调用 /parameters
  * 
  * 职责：
- * - 模型列表管理
+ * - 模型列表管理 (appModels)
  * - 收藏模型管理
- * - 模型参数支持缓存
  * - 当前选中模型
+ * - 按 ID 快速查询 (appModelsById)
  */
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ModelData, ModelParameterSupport } from '../types/store'
+import type { AppModel } from '../types/appModel'
 import type { ModelGenerationCapability } from '../types/generation'
 import { electronStore } from '../utils/electronBridge'
 import { registerCapability } from '../services/capabilityRegistry'
-import { buildModelCapability } from '../services/providers/modelCapability'
 import * as modelDataClient from '../services/db/modelDataClient'
 
 export const useModelStore = defineStore('model', () => {
   // ========== State ==========
 
   /**
-   * 可用模型 ID 列表（向后兼容）
+   * 🎯 核心状态：规范化后的模型列表
+   * 所有模型数据统一使用 AppModel 类型
    */
-  const availableModelIds = ref<string[]>([])
-
-  /**
-   * 模型完整数据 Map
-   */
-  const modelDataMap = ref<Map<string, ModelData>>(new Map())
-
-  /**
-   * 模型参数支持信息缓存
-   */
-  const modelParameterSupportMap = ref<Map<string, ModelParameterSupport>>(new Map())
-
-  /**
-   * 模型能力表（统一生成参数架构）
-   * 🎯 Phase 2: 存储 ModelGenerationCapability 对象
-   */
-  const modelCapabilityMap = ref<Map<string, ModelGenerationCapability>>(new Map())
+  const appModels = ref<AppModel[]>([])
 
   /**
    * 用户收藏的模型 ID 集合
@@ -54,67 +43,63 @@ export const useModelStore = defineStore('model', () => {
   // ========== Computed ==========
 
   /**
-   * 所有可用模型的完整数据数组
+   * 🎯 按 ID 索引的 Map，O(1) 查询
    */
-  const availableModels = computed<ModelData[]>(() => {
-    return availableModelIds.value
-      .map(id => modelDataMap.value.get(id))
-      .filter((model): model is ModelData => model !== undefined)
+  const appModelsById = computed<Map<string, AppModel>>(() => {
+    const map = new Map<string, AppModel>()
+    for (const model of appModels.value) {
+      map.set(model.id, model)
+    }
+    return map
   })
 
   /**
    * 收藏的模型列表
    */
-  const favoriteModels = computed<ModelData[]>(() => {
+  const favoriteModels = computed<AppModel[]>(() => {
     return Array.from(favoriteModelIds.value)
-      .map(id => modelDataMap.value.get(id))
-      .filter((model): model is ModelData => model !== undefined)
+      .map(id => appModelsById.value.get(id))
+      .filter((model): model is AppModel => model !== undefined)
   })
 
   /**
    * 当前选中的模型数据
    */
-  const selectedModel = computed<ModelData | null>(() => {
-    return modelDataMap.value.get(selectedModelId.value) || null
+  const selectedModel = computed<AppModel | null>(() => {
+    return appModelsById.value.get(selectedModelId.value) || null
   })
 
   // ========== Actions - 模型列表管理 ==========
 
   /**
-   * 设置可用模型列表
+   * 🎯 设置模型列表（主入口）
    * 
-   * @param models - 模型数据数组
+   * @param models - AppModel 数据数组
    */
-  const setAvailableModels = (models: ModelData[]): void => {
-    const ids: string[] = []
-    const map = new Map<string, ModelData>()
-
-    for (const model of models) {
-      if (model && model.id) {
-        // 确保 id 是字符串类型
-        const modelId = String(model.id)
-        ids.push(modelId)
-        // 规范化模型对象，确保 id 是字符串
-        map.set(modelId, { ...model, id: modelId })
-      }
-    }
-
-    availableModelIds.value = ids
-    modelDataMap.value = map
+  const setAppModels = (models: AppModel[]): void => {
+    // 确保每个模型都有有效的 id
+    const validModels = models.filter(m => m && m.id)
+    appModels.value = validModels
+    
+    // 同步注册到 CapabilityRegistry
+    registerAllCapabilities()
+    
+    console.log(`✅ [modelStore] 设置 ${validModels.length} 个模型`)
   }
 
   /**
    * 添加单个模型
    * 
-   * @param model - 模型数据
+   * @param model - AppModel 数据
    */
-  const addModel = (model: ModelData): void => {
+  const addModel = (model: AppModel): void => {
     if (!model || !model.id) return
 
-    if (!availableModelIds.value.includes(model.id)) {
-      availableModelIds.value.push(model.id)
+    const existing = appModelsById.value.get(model.id)
+    if (!existing) {
+      appModels.value.push(model)
+      registerModelCapability(model)
     }
-    modelDataMap.value.set(model.id, model)
   }
 
   /**
@@ -123,11 +108,10 @@ export const useModelStore = defineStore('model', () => {
    * @param modelId - 模型 ID
    */
   const removeModel = (modelId: string): void => {
-    const index = availableModelIds.value.indexOf(modelId)
+    const index = appModels.value.findIndex(m => m.id === modelId)
     if (index !== -1) {
-      availableModelIds.value.splice(index, 1)
+      appModels.value.splice(index, 1)
     }
-    modelDataMap.value.delete(modelId)
     favoriteModelIds.value.delete(modelId)
   }
 
@@ -201,46 +185,54 @@ export const useModelStore = defineStore('model', () => {
   }
 
   /**
-   * 保存可用模型列表到数据库
+   * 保存模型列表到数据库
    */
-  const saveAvailableModels = async (): Promise<void> => {
+  const saveAppModels = async (): Promise<void> => {
     try {
-      const modelsArray = availableModels.value
-      console.log('[model.ts] 💾 开始保存模型列表', {
+      const modelsArray = appModels.value
+      console.log('[modelStore] 💾 开始保存模型列表', {
         count: modelsArray.length,
-        sample: modelsArray[0]
+        sample: modelsArray[0]?.id
       })
       
-      await modelDataClient.saveModels(modelsArray)
-      console.log('✅ 可用模型列表已保存到数据库:', modelsArray.length, '个模型')
+      await modelDataClient.saveAppModels(modelsArray)
+      console.log('✅ 模型列表已保存到数据库:', modelsArray.length, '个模型')
     } catch (error) {
-      console.error('❌ 保存可用模型列表失败:', error)
-      // 🚨 打印更详细的错误信息
+      console.error('❌ 保存模型列表失败:', error)
       if (error instanceof Error) {
         console.error('❌ 错误详情:', {
           message: error.message,
-          stack: error.stack,
-          name: error.name
+          stack: error.stack
         })
       }
     }
   }
 
   /**
-   * 从数据库加载可用模型列表
+   * 从数据库加载模型列表
    */
-  const loadAvailableModels = async (): Promise<boolean> => {
+  const loadAppModels = async (): Promise<boolean> => {
     try {
-      const modelsArray = await modelDataClient.getAllModels()
+      const modelsArray = await modelDataClient.getAppModels({ includeArchived: false })
       if (Array.isArray(modelsArray) && modelsArray.length > 0) {
-        setAvailableModels(modelsArray)
-        console.log('✅ 从数据库加载了', modelsArray.length, '个可用模型')
+        setAppModels(modelsArray)
+        console.log('✅ 从数据库加载了', modelsArray.length, '个模型')
         return true
       }
     } catch (error) {
-      console.error('❌ 加载可用模型列表失败:', error)
+      console.error('❌ 加载模型列表失败:', error)
     }
     return false
+  }
+
+  /**
+   * 仅清空模型表 (model_data)
+   * - 只影响模型列表缓存与 DB 的 model_data 表
+   * - 不影响对话、消息、偏好设置等其他数据
+   */
+  const clearModelTable = async (): Promise<void> => {
+    await modelDataClient.clearModelTable()
+    setAppModels([])
   }
 
   // ========== Actions - 模型选择 ==========
@@ -254,112 +246,67 @@ export const useModelStore = defineStore('model', () => {
     selectedModelId.value = modelId
   }
 
-  // ========== Actions - 参数支持缓存 ==========
+  // ========== Actions - 能力注册 ==========
 
   /**
-   * 更新模型参数支持信息
-   * 
-   * @param modelId - 模型 ID
-   * @param support - 参数支持信息
+   * 将单个 AppModel 的能力注册到 CapabilityRegistry
    */
-  const updateModelParameterSupport = (
-    modelId: string,
-    support: ModelParameterSupport
-  ): void => {
-    // 兼容存储：如果没有 raw 字段，保存一份原始数据以便能力构建使用
-    const enrichedSupport: any = { ...support }
-    if (!('raw' in enrichedSupport)) {
-      enrichedSupport.raw = support
+  const registerModelCapability = (model: AppModel): void => {
+    // 从 AppModel.capabilities 转换为 ModelGenerationCapability
+    const capability: ModelGenerationCapability = {
+      modelId: model.id,
+      sampling: {
+        temperature: true,
+        top_p: true,
+        top_k: true,
+        min_p: false,
+        top_a: false,
+        frequency_penalty: true,
+        presence_penalty: true,
+        repetition_penalty: false,
+        seed: true,
+        logit_bias: false,
+      },
+      length: {
+        max_tokens: true,
+        stop: true,
+        verbosity: false,
+        maxCompletionTokens: model.max_output_tokens || null,
+      },
+      reasoning: {
+        modelId: model.id,
+        supportsReasoningParam: model.capabilities.hasReasoning,
+        supportsIncludeReasoning: false,
+        supportsMaxReasoningTokens: model.capabilities.hasReasoning,
+        returnsVisibleReasoning: model.capabilities.hasReasoning ? 'yes' : 'no',
+        maxCompletionTokens: model.max_output_tokens || null,
+        internalReasoningPrice: null,
+        family: model.vendor as any || 'unknown',
+        // 不支持推理的模型归类为 'C'（完全不支持推理参数）
+        reasoningClass: model.capabilities.hasReasoning ? 'A' : 'C',
+        maxTokensPolicy: 'effort-only',
+      },
+      other: {
+        tools: model.capabilities.hasTools,
+        response_format: model.capabilities.hasJsonMode,
+        structured_outputs: model.capabilities.hasJsonMode,
+        logprobs: false,
+        top_logprobs: false,
+        parallel_tool_calls: model.capabilities.hasTools,
+      },
     }
-    modelParameterSupportMap.value.set(modelId, enrichedSupport)
+    
+    registerCapability(model.id, capability)
   }
 
   /**
-   * 获取模型参数支持信息
-   * 
-   * @param modelId - 模型 ID
-   * @returns 参数支持信息或 null
+   * 批量注册所有模型能力
    */
-  const getModelParameterSupport = (modelId: string): ModelParameterSupport | null => {
-    return modelParameterSupportMap.value.get(modelId) || null
-  }
-
-  /**
-   * 批量设置参数支持信息
-   * 
-   * @param supportMap - 模型 ID 到参数支持的映射
-   */
-  const setModelParameterSupportMap = (
-    supportMap: Map<string, ModelParameterSupport> | Record<string, ModelParameterSupport>
-  ): void => {
-    if (supportMap instanceof Map) {
-      modelParameterSupportMap.value = new Map(supportMap)
-    } else {
-      modelParameterSupportMap.value = new Map(Object.entries(supportMap))
+  const registerAllCapabilities = (): void => {
+    for (const model of appModels.value) {
+      registerModelCapability(model)
     }
-  }
-
-  // ========== Actions - 模型能力表 (Phase 2) ==========
-
-  /**
-   * 设置模型能力表
-   * 🎯 Phase 2: 存储从 buildModelCapabilityMap 构建的能力表
-   * 
-   * @param capabilityMap - 模型能力映射表
-   */
-  const setModelCapabilityMap = (
-    capabilityMap: Map<string, ModelGenerationCapability>
-  ): void => {
-    const newMap = new Map(capabilityMap)
-    modelCapabilityMap.value = newMap
-    // 同步注册到 Capability Registry，供适配器查询
-    for (const [modelId, cap] of newMap.entries()) {
-      registerCapability(modelId, cap)
-    }
-  }
-
-  /**
-   * 获取模型能力
-   * 🎯 Phase 2: 获取特定模型的生成能力
-   * 
-   * @param modelId - 模型 ID
-   * @returns 模型能力对象或 null
-   */
-  const getModelCapability = (modelId: string): ModelGenerationCapability | null => {
-    // 1) 直接命中已缓存的能力表
-    const cached = modelCapabilityMap.value.get(modelId)
-    if (cached) return cached
-
-    // 2) 尝试基于已加载的模型原始数据即时构建能力表（避免 UI/适配器缺少能力信息）
-    try {
-      const modelRecord = modelDataMap.value.get(modelId) || modelDataMap.value.get(modelId.toLowerCase())
-      const raw = (modelRecord as any)?._raw ?? modelRecord
-      if (raw) {
-        const capability = buildModelCapability(raw)
-        modelCapabilityMap.value.set(modelId, capability)
-        registerCapability(modelId, capability)
-        return capability
-      }
-    } catch (err) {
-      console.warn('modelStore.getModelCapability: fallback build failed', err)
-    }
-
-    return null
-  }
-
-  /**
-   * 批量更新模型能力
-   * 🎯 Phase 2: 更新多个模型的能力信息
-   * 
-   * @param capabilities - 模型能力数组
-   */
-  const updateModelCapabilities = (
-    capabilities: Array<{ modelId: string; capability: ModelGenerationCapability }>
-  ): void => {
-    for (const { modelId, capability } of capabilities) {
-      modelCapabilityMap.value.set(modelId, capability)
-      registerCapability(modelId, capability)
-    }
+    console.log(`✅ [modelStore] 已注册 ${appModels.value.length} 个模型能力到 Registry`)
   }
 
   // ========== Queries ==========
@@ -368,10 +315,65 @@ export const useModelStore = defineStore('model', () => {
    * 根据 ID 获取模型数据
    * 
    * @param modelId - 模型 ID
-   * @returns 模型数据或 null
+   * @returns AppModel 或 null
    */
-  const getModelById = (modelId: string): ModelData | null => {
-    return modelDataMap.value.get(modelId) || null
+  const getModelById = (modelId: string): AppModel | null => {
+    return appModelsById.value.get(modelId) || null
+  }
+
+  /**
+   * 获取模型能力（从 AppModel.capabilities 读取）
+   * 
+   * @param modelId - 模型 ID
+   * @returns 模型能力对象或 null
+   */
+  const getModelCapability = (modelId: string): ModelGenerationCapability | null => {
+    const model = appModelsById.value.get(modelId)
+    if (!model) return null
+
+    // 从 AppModel 动态构建 ModelGenerationCapability
+    return {
+      modelId: model.id,
+      sampling: {
+        temperature: true,
+        top_p: true,
+        top_k: true,
+        min_p: false,
+        top_a: false,
+        frequency_penalty: true,
+        presence_penalty: true,
+        repetition_penalty: false,
+        seed: true,
+        logit_bias: false,
+      },
+      length: {
+        max_tokens: true,
+        stop: true,
+        verbosity: false,
+        maxCompletionTokens: model.max_output_tokens || null,
+      },
+      reasoning: {
+        modelId: model.id,
+        supportsReasoningParam: model.capabilities.hasReasoning,
+        supportsIncludeReasoning: false,
+        supportsMaxReasoningTokens: model.capabilities.hasReasoning,
+        returnsVisibleReasoning: model.capabilities.hasReasoning ? 'yes' : 'no',
+        maxCompletionTokens: model.max_output_tokens || null,
+        internalReasoningPrice: null,
+        family: model.vendor as any || 'unknown',
+        // 不支持推理的模型归类为 'C'（完全不支持推理参数）
+        reasoningClass: model.capabilities.hasReasoning ? 'A' : 'C',
+        maxTokensPolicy: 'effort-only',
+      },
+      other: {
+        tools: model.capabilities.hasTools,
+        response_format: model.capabilities.hasJsonMode,
+        structured_outputs: model.capabilities.hasJsonMode,
+        logprobs: false,
+        top_logprobs: false,
+        parallel_tool_calls: model.capabilities.hasTools,
+      },
+    }
   }
 
   /**
@@ -380,31 +382,50 @@ export const useModelStore = defineStore('model', () => {
    * @param query - 搜索关键词
    * @returns 匹配的模型列表
    */
-  const searchModels = (query: string): ModelData[] => {
+  const searchModels = (query: string): AppModel[] => {
     const lowerQuery = query.toLowerCase()
-    return availableModels.value.filter(model =>
+    return appModels.value.filter(model =>
       model.id.toLowerCase().includes(lowerQuery) ||
       model.name?.toLowerCase().includes(lowerQuery) ||
       model.description?.toLowerCase().includes(lowerQuery)
     )
   }
 
+  /**
+   * 检查模型是否支持推理
+   * 
+   * @param modelId - 模型 ID
+   * @returns 是否支持推理
+   */
+  const supportsReasoning = (modelId: string): boolean => {
+    const model = appModelsById.value.get(modelId)
+    return model?.capabilities.hasReasoning ?? false
+  }
+
+  /**
+   * 检查模型是否支持视觉/多模态
+   * 
+   * @param modelId - 模型 ID
+   * @returns 是否支持视觉
+   */
+  const supportsVision = (modelId: string): boolean => {
+    const model = appModelsById.value.get(modelId)
+    return model?.capabilities.isMultimodal ?? false
+  }
+
   return {
     // State
-    availableModelIds,
-    modelDataMap,
-    modelParameterSupportMap,
-    modelCapabilityMap,
+    appModels,
     favoriteModelIds,
     selectedModelId,
 
     // Computed
-    availableModels,
+    appModelsById,
     favoriteModels,
     selectedModel,
 
     // Actions - 模型列表
-    setAvailableModels,
+    setAppModels,
     addModel,
     removeModel,
 
@@ -416,24 +437,18 @@ export const useModelStore = defineStore('model', () => {
     // Actions - 选择
     setSelectedModel,
 
-    // Actions - 参数支持
-    updateModelParameterSupport,
-    getModelParameterSupport,
-    setModelParameterSupportMap,
-
-    // Actions - 模型能力表 (Phase 2)
-    setModelCapabilityMap,
-    getModelCapability,
-    updateModelCapabilities,
-
     // Actions - 持久化
     loadFavorites,
     saveFavorites,
-    loadAvailableModels,
-    saveAvailableModels,
+    loadAppModels,
+    saveAppModels,
+    clearModelTable,
 
     // Queries
     getModelById,
-    searchModels
+    getModelCapability,
+    searchModels,
+    supportsReasoning,
+    supportsVision
   }
 })

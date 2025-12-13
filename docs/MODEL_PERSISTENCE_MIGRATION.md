@@ -42,8 +42,8 @@
 ### 修改文件
 
 1. **`src/stores/model.ts`**
-   - `saveAvailableModels()`: 从 `electronStore.set()` 改为 `modelDataClient.saveModels()`
-   - `loadAvailableModels()`: 从 `electronStore.get()` 改为 `modelDataClient.getAllModels()`
+   - `saveAppModels()`: 保存模型列表到 SQLite（`modelDataClient.saveAppModels()`）
+   - `loadAppModels()`: 从 SQLite 加载模型列表（`modelDataClient.getAppModels()`）
 
 2. **`src/main.ts`**
    - 添加一次性数据迁移逻辑
@@ -52,11 +52,11 @@
 
 3. **`infra/db/worker.ts`**
    - 注册 `ModelDataRepo` 实例
-   - 添加 6 个新的 IPC 方法：
+    - 添加模型相关 IPC 方法：
      - `model.saveMany`
-     - `model.replaceByProvider`
+       - `model.replaceByRouterSource`
      - `model.getAll`
-     - `model.getByProvider`
+       - `model.getByRouterSource`
      - `model.getById`
      - `model.clear`
 

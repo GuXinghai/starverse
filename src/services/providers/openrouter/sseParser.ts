@@ -34,6 +34,18 @@ import type { StreamChunk } from '@/types/providers'
 export interface SSEParseResult {
   /** 解析成功的 StreamChunk 对象 */
   chunk: StreamChunk | null
+  /**
+   * 同一条 `data:` 事件内解析出的多个 chunk（可选）。
+   *
+   * 说明：OpenRouter/兼容 OpenAI 的 SSE 数据行有时会同时包含 usage + content
+   * 或 reasoning_details + content 等多种信息。
+   * 旧实现只消费第一个 chunk，会导致正文/推理/用量被静默丢弃。
+   *
+   * 为保持向后兼容：
+   * - 单一 chunk 时不提供该字段（只用 chunk）
+   * - 多 chunk 时提供该字段，调用方应优先处理 chunks
+   */
+  chunks?: StreamChunk[]
   /** 是否收到流结束标记 [DONE] */
   isDone: boolean
   /** 解析错误（如果有） */
@@ -311,10 +323,14 @@ export function parseSSELine(line: string): SSEParseResult {
   try {
     const rawChunk: OpenRouterSSEChunk = JSON.parse(jsonStr)
     const chunks = parseOpenRouterChunk(rawChunk)
-    
-    // 如果解析出多个 chunk（如 reasoning_detail + text），只返回第一个
-    // 调用方需要多次调用或使用 generator
-    return { chunk: chunks[0] || null, isDone: false }
+
+    // 同一条 data 行可能包含多种信息（usage + content / reasoning_details + content）。
+    // 为保持旧接口兼容：单 chunk 只填 chunk；多 chunk 额外提供 chunks。
+    if (chunks.length <= 1) {
+      return { chunk: chunks[0] || null, isDone: false }
+    }
+
+    return { chunk: chunks[0] || null, chunks, isDone: false }
   } catch (error) {
     return {
       chunk: null,

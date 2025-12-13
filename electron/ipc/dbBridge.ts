@@ -111,9 +111,9 @@ const allowedMethods: DbMethod[] = [
   
   // Model Data Management
   'model.saveMany',
-  'model.replaceByProvider',
+  'model.replaceByRouterSource',
   'model.getAll',
-  'model.getByProvider',
+  'model.getByRouterSource',
   'model.getById',
   'model.clear',
   

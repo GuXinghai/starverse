@@ -11,16 +11,16 @@
  * 依赖：
  * - `GeminiService` 与 `OpenRouterService` 的具体实现
  * - `useModelStore` 提供模型参数/能力缓存
- * - `generationConfigManager` 与 `buildModelCapability` 负责参数整合与能力建模
+ * - `generationConfigManager` 负责参数整合；模型能力来自 `AppModel.capabilities`
  * 
  * @module services/aiChatService
  */
 
-import { GeminiService } from './providers/GeminiService.js'
+import { GeminiService } from './providers/GeminiService'
 import { OpenRouterService } from './providers/OpenRouterService'
 import { useModelStore } from '../stores/model'
 import { generationConfigManager } from './providers/generationConfigManager'
-import { buildModelCapability } from './providers/modelCapability'
+// 模型能力：来自 AppModel.capabilities
 import type { 
   ProviderContext, 
   StreamOptions, 
@@ -309,56 +309,19 @@ export const aiChatService = {
         throw new Error('缺少 API Key，无法调用接口')
       }
       
-      // OpenRouter: 获取模型参数/能力信息
-      let modelParametersInfo: any = null
+      // OpenRouter: 获取模型能力信息（从 AppModel.capabilities）
       let modelCapability: any = null
       if (service === OpenRouterService) {
         try {
           const modelStore = useModelStore()
           
-          // 优先从 store 的能力映射获取
+          // 直接从 modelStore 获取能力（基于 AppModel.capabilities 动态构建）
           modelCapability = modelStore.getModelCapability?.(modelName)
           
           if (modelCapability) {
-            console.log('能力已缓存:', modelName)
+            console.log('能力获取成功:', modelName)
           } else {
-            // 回退：尝试从 modelParameterSupportMap 获取参数支持信息
-            const cachedParams = modelStore.getModelParameterSupport?.(modelName)
-            if (cachedParams) {
-              // 读取缓存条目
-              const cachedEntry = modelStore.modelParameterSupportMap?.get(modelName)
-              if (cachedEntry) {
-                modelParametersInfo = {
-                  model: cachedEntry.model || modelName,
-                  supported_parameters: cachedEntry.supported_parameters,
-                  raw: cachedEntry.raw
-                }
-                
-                // 尝试基于原始数据构建 ModelGenerationCapability
-                if (modelParametersInfo.raw) {
-                  try {
-                    modelCapability = buildModelCapability(modelParametersInfo.raw)
-                    console.log('能力解析成功:', modelName, modelCapability.supportedParameters)
-                  } catch (capErr) {
-                    console.warn('aiChatService: 能力解析失败', capErr)
-                  }
-                }
-                // 回退：仅使用 supported_parameters 构造能力
-                if (!modelCapability && modelParametersInfo.supported_parameters) {
-                  try {
-                    modelCapability = buildModelCapability({
-                      id: modelName,
-                      supported_parameters: modelParametersInfo.supported_parameters,
-                      top_provider: {},
-                      pricing: {},
-                      name: modelName
-                    })
-                  } catch (capErr) {
-                    console.warn('aiChatService: 能力回退失败', capErr)
-                  }
-                }
-              }
-            }
+            console.log('模型能力未找到:', modelName)
           }
         } catch (storeErr) {
           console.warn('aiChatService: 读取模型能力失败', storeErr)
@@ -405,8 +368,8 @@ export const aiChatService = {
           ...options,
           signal, 
           webSearch, 
-          modelParameters: modelParametersInfo,
-          modelCapability: modelCapability,  // 解析后的能力（若可用）
+          // modelParameters: 不再需要，能力直接来自 modelCapability
+          modelCapability: modelCapability,  // 从 AppModel.capabilities 构建的能力
           generationConfig: effectiveConfig,
           resolvedReasoningConfig: resolvedReasoning,
         }
@@ -449,18 +412,17 @@ export const aiChatService = {
    * // true (Gemini 2.0 支持视觉)
    * ```
    */
-  supportsImage(appStore: AppStore, modelId: string): boolean {
+  supportsImage(_appStore: AppStore, modelId: string): boolean {
     try {
       if (!modelId) return false
 
-      // 从 modelStore 获取完整 ModelData 对象
+      // 从 modelStore 获取 AppModel 对象
       const modelStore = useModelStore()
-      const model = modelStore.modelDataMap.get(modelId) || modelStore.modelDataMap.get(String(modelId).toLowerCase())
+      const model = modelStore.appModelsById.get(modelId) || modelStore.appModelsById.get(String(modelId).toLowerCase())
       if (!model) return false
 
-      // 调用 Provider 的 supportsImage 方法（基于 input_modalities）
-      const { service } = this.getProviderContext(appStore)
-      return service.supportsImage(model)
+      // 直接使用 AppModel.capabilities.isMultimodal
+      return model.capabilities?.isMultimodal ?? false
     } catch (error) {
       console.error('aiChatService: supportsImage 判断失败', error)
       return false
@@ -470,18 +432,18 @@ export const aiChatService = {
   /**
    * 检查模型是否支持文件输入（document/file 模态）
    */
-  supportsFileInput(appStore: AppStore, modelId: string): boolean {
+  supportsFileInput(_appStore: AppStore, modelId: string): boolean {
     try {
       if (!modelId) return false
 
-      // 从 modelStore 获取完整 ModelData 对象
+      // 从 modelStore 获取 AppModel 对象
       const modelStore = useModelStore()
-      const model = modelStore.modelDataMap.get(modelId) || modelStore.modelDataMap.get(String(modelId).toLowerCase())
+      const model = modelStore.appModelsById.get(modelId) || modelStore.appModelsById.get(String(modelId).toLowerCase())
       if (!model) return false
 
-      // 调用 Provider 的 supportsFileInput 方法
-      const { service } = this.getProviderContext(appStore)
-      return service.supportsFileInput(model)
+      // 检查 input_modalities 是否包含 file 或 document
+      const inputMods = model.input_modalities ?? []
+      return inputMods.includes('file') || inputMods.includes('document')
     } catch (error) {
       console.error('aiChatService: supportsFileInput 判断失败', error)
       return false

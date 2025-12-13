@@ -23,6 +23,7 @@ import { usePersistenceStore } from '@/stores/persistence'
 type WebSearchRequestOptions = any
 type ReasoningRequestOptions = any
 type SamplingParameterOverrides = any
+type AbortSource = 'user' | 'timeout' | 'other'
 
 export interface MessageSendingOptions {
   conversationId: string | Ref<string>
@@ -108,7 +109,7 @@ interface PendingSendContext {
   conversationId: string
   userMessageId: string
   noticeMessageId: string | null
-  assistantMessageId?: string  // 延时结束后创建的空 assistant 消息 ID
+  assistantMessageId?: string  // 流式开始时创建的 assistant 消息 ID（可选，在收到第一个 chunk 时创建）
   payloadSnapshot: SendMessagePayload
   requestOptions: SendRequestOptions
   draftBackup: ChatDraftSnapshot
@@ -139,6 +140,7 @@ export function useMessageSending(options: MessageSendingOptions) {
   const streamingBranchId = ref<string | null>(null)
   const sendError = ref<string | null>(null)
   const abortController = ref<AbortController | null>(null)
+  const abortSource = ref<AbortSource | null>(null)
   const pendingSend = ref<PendingSendContext | null>(null)
   // ⭐ 只有在 delay 阶段才显示撤回按钮（requesting/streaming 阶段显示中止按钮）
   const isDelayPending = computed(() => {
@@ -152,24 +154,12 @@ export function useMessageSending(options: MessageSendingOptions) {
         isStreaming: isStreaming.value
       })
     }
-    
-    console.log('[useMessageSending] 🔍 isDelayPending computed:', {
-      result,
-      hasPending: !!pendingSend.value,
-      state: pendingSend.value?.state,
-      phase: pendingSend.value?.phase
-    })
     return result
   })
 
   // ⭐ 是否可以中止（requesting 或 streaming 阶段）
   const isAbortable = computed(() => {
     const result = pendingSend.value?.phase === 'requesting' || pendingSend.value?.phase === 'streaming' || isStreaming.value
-    console.log('[useMessageSending] 🔍 isAbortable computed:', {
-      result,
-      phase: pendingSend.value?.phase,
-      isStreaming: isStreaming.value
-    })
     return result
   })
 
@@ -183,13 +173,12 @@ export function useMessageSending(options: MessageSendingOptions) {
    * 当检测到状态卡死时调用，强制清理所有发送相关状态
    */
   function forceResetSendingState() {
-    console.warn('[useMessageSending] 🚨 forceResetSendingState: 强制重置状态')
-    
     // 清理所有超时定时器
     clearAllTimeouts()
     
     // 取消网络请求
     if (abortController.value) {
+      abortSource.value = 'other'
       abortController.value.abort()
       abortController.value = null
     }
@@ -215,8 +204,6 @@ export function useMessageSending(options: MessageSendingOptions) {
     if (conversationId) {
       conversationStore.setGenerationStatus(conversationId, false)
     }
-    
-    console.log('[useMessageSending] ✅ 状态已强制重置')
   }
 
   /**
@@ -227,19 +214,44 @@ export function useMessageSending(options: MessageSendingOptions) {
    * - 流式空闲超时：流式过程中chunk间的最大间隔时间
    */
 
+  // 超时配置常量
+  const DEFAULT_FIRST_TOKEN_TIMEOUT_MS = 30000
+  const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 30000
+  
+  // 获取超时配置的辅助函数（集中处理 Ref 解包和默认值）
+  const getFirstTokenTimeoutMs = () => {
+    const configured = options.appStore?.firstTokenTimeoutMs?.value ?? 
+                       appStore.firstTokenTimeoutMs?.value ?? 
+                       DEFAULT_FIRST_TOKEN_TIMEOUT_MS
+    return Math.max(0, Number(configured) || 0)
+  }
+  
+  const getStreamIdleTimeoutMs = () => {
+    const configured = options.appStore?.streamIdleTimeoutMs?.value ?? 
+                       appStore.streamIdleTimeoutMs?.value ?? 
+                       DEFAULT_STREAM_IDLE_TIMEOUT_MS
+    return Math.max(0, Number(configured) || 0)
+  }
+
   /**
    * 启动首token超时定时器
    * 当超过 firstTokenTimeoutMs 仍未收到首个chunk时触发
    */
   function startFirstTokenTimeout() {
+    console.log('1️⃣ 首 Token 超时定时器启动')
     clearFirstTokenTimeout() // 防止重复启动
 
-    const timeoutMs = options.appStore?.firstTokenTimeoutMs?.value || 30000
-    console.log(`[useMessageSending] 🕐 启动首token超时定时器: ${timeoutMs}ms`)
+    const timeoutMs = getFirstTokenTimeoutMs()
+
+    if (timeoutMs === 0) {
+      return
+    }
+
+    const timeoutMessage = `首 token 超时：超过 ${timeoutMs}ms 未收到首个流式响应数据（服务器可能过载或网络异常）`
 
     firstTokenTimeoutTimer = window.setTimeout(() => {
-      console.error('[useMessageSending] 🚨 首token超时 - 服务器响应过慢或网络故障')
-      handleTimeoutError('timeout_connect', `连接超时：超过 ${timeoutMs}ms 未收到服务器响应`)
+      console.error('[useMessageSending] 🚨 首token超时 - 未在预期时间收到首个流式数据')
+      handleTimeoutError('timeout_first_token', timeoutMessage)
     }, timeoutMs)
   }
 
@@ -247,12 +259,9 @@ export function useMessageSending(options: MessageSendingOptions) {
    * 清除首token超时定时器
    */
   function clearFirstTokenTimeout() {
-    if (firstTokenTimeoutTimer) {
+    if (firstTokenTimeoutTimer !== null) {
       clearTimeout(firstTokenTimeoutTimer)
       firstTokenTimeoutTimer = null
-      console.log('[useMessageSending] 🕐 ✅ 清除首token超时定时器（已确认服务器响应）')
-    } else {
-      console.log('[useMessageSending] 🕐 ⚠️ 尝试清除首token超时定时器，但定时器已为空（可能重复调用）')
     }
   }
 
@@ -263,8 +272,7 @@ export function useMessageSending(options: MessageSendingOptions) {
   function refreshStreamIdleTimeout() {
     clearStreamIdleTimeout() // 清除旧定时器
 
-    const timeoutMs = options.appStore?.streamIdleTimeoutMs?.value || 30000
-    console.log(`[useMessageSending] 🕐 刷新流式空闲超时定时器: ${timeoutMs}ms`)
+    const timeoutMs = getStreamIdleTimeoutMs()
 
     streamIdleTimeoutTimer = window.setTimeout(() => {
       console.error('[useMessageSending] 🚨 流式空闲超时 - 服务器停止发送数据')
@@ -276,7 +284,7 @@ export function useMessageSending(options: MessageSendingOptions) {
    * 清除流式空闲超时定时器
    */
   function clearStreamIdleTimeout() {
-    if (streamIdleTimeoutTimer) {
+    if (streamIdleTimeoutTimer !== null) {
       clearTimeout(streamIdleTimeoutTimer)
       streamIdleTimeoutTimer = null
       console.log('[useMessageSending] 🕐 清除流式空闲超时定时器')
@@ -289,18 +297,21 @@ export function useMessageSending(options: MessageSendingOptions) {
   function clearAllTimeouts() {
     clearFirstTokenTimeout()
     clearStreamIdleTimeout()
-    console.log('[useMessageSending] 🕐 清除所有超时定时器')
   }
 
   /**
    * 统一处理超时错误
    */
-  function handleTimeoutError(errorCode: 'timeout_connect' | 'timeout_idle', message: string) {
-    console.error(`[useMessageSending] 🚨 超时错误: ${errorCode} - ${message}`)
+  function handleTimeoutError(errorCode: 'timeout_first_token' | 'timeout_idle', message: string) {
+    // 标记 abort 来源，避免被误判为用户中止
+    abortSource.value = 'timeout'
+
+    // 立即清理所有定时器，防止重复触发
+    clearAllTimeouts()
 
     // 强制中止当前发送
     if (abortController.value) {
-      abortController.value.abort()
+      abortController.value.abort(errorCode)
     }
 
     // 设置错误状态
@@ -315,14 +326,36 @@ export function useMessageSending(options: MessageSendingOptions) {
     const conversationId = resolveConversationId()
     if (conversationId) {
       conversationStore.setGenerationStatus(conversationId, false)
+      conversationStore.setGenerationError(conversationId, { message })
     }
 
-    // 通知用户（如果有pendingSend上下文）
+    // 💾 标记消息以支持重试
     if (pendingSend.value) {
-      pendingSend.value.resolveCompletion({
+      const ctx = pendingSend.value
+      
+      // 删除 notice 消息
+      if (ctx.noticeMessageId) {
+        branchStore.removeMessageBranch(ctx.conversationId, ctx.noticeMessageId)
+      }
+
+      // 标记 assistant 消息为可重试（区分 requesting 和 streaming 阶段）
+      if (ctx.assistantMessageId) {
+        const abortPhase = ctx.phase === 'streaming' ? 'streaming' : 'requesting'
+        branchStore.patchMetadata(ctx.conversationId, ctx.assistantMessageId, () => ({
+          aborted: true,
+          abortedAt: Date.now(),
+          abortPhase,
+          canRetry: true
+        }))
+      } else {
+        // 消息尚未创建（requesting 阶段超时）
+      }
+
+      ctx.phase = 'failed'
+      ctx.resolveCompletion({
         success: false,
         error: message,
-        aborted: true
+        aborted: false
       })
       pendingSend.value = null
     }
@@ -434,28 +467,19 @@ export function useMessageSending(options: MessageSendingOptions) {
     coreOptions: {
       conversationId: string
       userMessageId: string
-      assistantMessageId: string  // 由 finishPendingSend 创建并传入
       payloadSnapshot: SendMessagePayload
       requestOptions: SendRequestOptions
     }
   ): Promise<{ success: boolean; error?: string; aborted?: boolean; message?: string }> {
     const callId = `send-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    console.log(`[useMessageSending] sendMessageCore invoked [${callId}]`, {
-      isSending: isSending.value,
-      isStreaming: isStreaming.value,
-      payload: coreOptions.payloadSnapshot ? { text: coreOptions.payloadSnapshot.text?.substring(0, 50), hasImages: !!coreOptions.payloadSnapshot.images?.length, hasFiles: !!coreOptions.payloadSnapshot.files?.length } : 'undefined',
-      stackTrace: new Error().stack?.split('\n').slice(2, 5).join('\n')
-    })
 
     const targetConversationId = coreOptions.conversationId
     if (!targetConversationId) {
-      console.log(`[useMessageSending] sendMessageCore missing target conversation ID [${callId}]`)
       return { success: false, error: 'Missing conversation ID' }
     }
-    
-    console.log(`[useMessageSending] sendMessageCore conversation ID verified [${callId}]: ${targetConversationId}`)
 
     const effectivePayload = coreOptions.payloadSnapshot
+    abortSource.value = null
 
     // 🕐 启动首token超时保护
     startFirstTokenTimeout()
@@ -464,26 +488,19 @@ export function useMessageSending(options: MessageSendingOptions) {
       if (options.validateAllParameters && options.isSamplingControlAvailable?.value) {
         const errors = options.validateAllParameters()
         if (errors.length > 0) {
-          clearAllTimeouts() // 🛑 早期退出前清理定时器
           return { success: false, error: '参数校验未通过' }
         }
       }
 
       // 重置状态
       sendError.value = null
-      console.log(`[useMessageSending] 设置 isSending = true [${callId}]`)
       isSending.value = true
 
       // 构建消息 parts
       const messageParts = buildMessageParts(effectivePayload)
-      console.log(`[useMessageSending] 消息构建完成 [${callId}]`, {
-        partsCount: messageParts.length,
-        types: messageParts.map(p => p.type)
-      })
 
       // 验证消息
       if (!validateMessage(messageParts)) {
-        clearAllTimeouts() // 🛑 早期退出前清理定时器
         return { success: false, error: sendError.value || '消息验证失败' }
       }
 
@@ -508,16 +525,39 @@ export function useMessageSending(options: MessageSendingOptions) {
       // - 确保快照不随后续状态变更而改变
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-      console.log(`[useMessageSending] 📸 捕获历史快照（状态修改前） [${callId}]`)
-      const rawMessages = branchStore.getDisplayMessages(targetConversationId)
+      const rawMessages = branchStore._buildMessageHistoryForAPI(targetConversationId)
       
       // 🔧 关键修复：过滤逻辑必须排除当前消息 ID
-      // 问题根源：用户消息和 assistant 消息在捕获快照前已经写入 Store
-      // 解决方案：在过滤阶段就排除这些 ID，而不是等到校验时发现污染
+      // 问题根源：用户消息在捕获快照前已经写入 Store
+      // 解决方案：在过滤阶段就排除用户消息 ID，而不是等到校验时发现污染
       const userBranchId = coreOptions.userMessageId
-      const aiBranchId = coreOptions.assistantMessageId
       
-      // 🔧 过滤无关消息：排除临时通知、错误消息、以及当前轮次的消息
+      // ⭐ 创建 assistant 消息（流式开始前）
+      console.log('3️⃣ Assistant 消息分支创建')
+      const aiBranchId = branchStore.addMessageBranch(
+        targetConversationId,
+        'assistant',
+        [{ type: 'text', text: '' }],
+        userBranchId  // 🎯 关键：设置父消息为用户消息
+      )
+      
+      // � 保存到 context（供 cancelSending 使用）
+      if (pendingSend.value) {
+        pendingSend.value.assistantMessageId = aiBranchId
+      }
+      
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // ✍️ 状态修改：立即设置流式状态（修复空白期问题）
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      
+      // 🔧 修复：创建消息后立即设置状态，避免空白期
+
+      console.log('4️⃣ 生成状态设置为 receiving')
+      conversationStore.setGenerationStatus(targetConversationId, 'receiving')
+      
+      // 更新流式状态
+      isStreaming.value = true
+      streamingBranchId.value = aiBranchId
       // - notice: 临时系统提示（"正在发送..."）
       // - openrouter: OpenRouter API 错误信息
       // - 当前 user/assistant 消息：这些是本次请求的上下文，不应作为历史
@@ -528,37 +568,12 @@ export function useMessageSending(options: MessageSendingOptions) {
         msg.branchId !== aiBranchId        // 🎯 排除当前 assistant 消息
       )
       
-      console.log(`[useMessageSending] 过滤后消息数量 [${callId}]: ${rawMessages.length} → ${relevantMessages.length}`, {
-        filtered: rawMessages.length - relevantMessages.length,
-        excludedBreakdown: {
-          notice: rawMessages.filter((m: any) => m.role === 'notice').length,
-          openrouter: rawMessages.filter((m: any) => m.role === 'openrouter').length,
-          currentUser: rawMessages.filter((m: any) => m.branchId === userBranchId).length,
-          currentAssistant: rawMessages.filter((m: any) => m.branchId === aiBranchId).length
-        }
-      })
-      
       // 🛡️ 深拷贝防御：断开所有引用，确保快照独立
       // 必须拷贝 parts 数组和其中的对象，因为 MessagePart 可能包含嵌套对象
       const cleanHistorySnapshot = relevantMessages.map((msg: any) => ({
         ...msg,
         parts: msg.parts.map((part: any) => ({ ...part }))  // 深拷贝 parts 数组及元素
       }))
-      
-      console.log(`[useMessageSending] 快照已捕获并深拷贝 [${callId}]: ${cleanHistorySnapshot.length} 条消息`)
-
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // ✍️ 状态修改：准备流式接收（assistant 消息已在 finishPendingSend 中创建）
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-      // 更新生成状态
-      console.log(`[useMessageSending] 设置生成状态 = true [${callId}]`)
-      conversationStore.setGenerationStatus(targetConversationId, true)
-      console.log(`[useMessageSending] 使用已创建的 assistant 消息 [${callId}]: ${aiBranchId}`)
-
-      // 更新流式状态
-      isStreaming.value = true
-      streamingBranchId.value = aiBranchId
 
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // 🛡️ 双重保障机制：健壮的历史构建（Plan A + Plan B）
@@ -590,6 +605,7 @@ export function useMessageSending(options: MessageSendingOptions) {
         excludeUserMsgId: string,
         excludeAiMsgId: string
       ) => {
+        console.log('2️⃣ 历史消息快照捕获')
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         // ✅ Plan A: 检查快照是否健康
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -601,10 +617,6 @@ export function useMessageSending(options: MessageSendingOptions) {
           
           if (!hasUserMsg && !hasAiMsg) {
             // ✅ INFO: 快照健康，直接使用
-            console.log(`[useMessageSending] ✅ Plan A: 使用快照 [${callId}]`, {
-              snapshotLength: cachedSnapshot.length,
-              verified: '快照干净，未被污染'
-            })
             return cachedSnapshot
           } else {
             // ⚠️ WARN: 快照被污染（这种情况不应该发生，说明过滤逻辑有 bug）
@@ -630,23 +642,15 @@ export function useMessageSending(options: MessageSendingOptions) {
         // 🔧 Plan B: 从 Store 安全重建历史（简化版）
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         
-        console.log(`[useMessageSending] 🔧 Plan B: 从 Store 重建历史 [${callId}]`)
-        
         try {
           // 重新获取最新数据
-          const currentMessages = branchStore.getDisplayMessages(targetConversationId)
+          const currentMessages = branchStore._buildMessageHistoryForAPI(targetConversationId)
           
           // 简化的过滤逻辑：只排除当前消息 ID（角色过滤已在快照捕获时完成）
           const filtered = currentMessages.filter((msg: any) => 
             msg.branchId !== excludeUserMsgId && 
             msg.branchId !== excludeAiMsgId
           )
-          
-          console.log(`[useMessageSending] ✅ Plan B: 重建完成 [${callId}]`, {
-            totalMessages: currentMessages.length,
-            filteredMessages: filtered.length,
-            excludedIds: { user: excludeUserMsgId, ai: excludeAiMsgId }
-          })
           
           // 深拷贝（防止引用泄漏）
           return filtered.map((msg: any) => ({
@@ -685,35 +689,9 @@ export function useMessageSending(options: MessageSendingOptions) {
         .map(p => p.text)
         .join('')
 
-      console.log(`[useMessageSending] 🚀 发送 API 请求 [${callId}]`, {
-        historyLength: finalHistoryForRequest.length,
-        userMessageLength: userMessageText.length,
-        model: resolveModelId.value,
-        provider: appStore.activeProvider,
-        timestamp: Date.now()
-      })
-
-      // 🔍 DEBUG: 详细的历史消息内容
-      console.log(`[useMessageSending] 📋 历史消息详情 [${callId}]:`, {
-        messages: finalHistoryForRequest.map((msg: any, idx: number) => ({
-          index: idx,
-          role: msg.role,
-          branchId: msg.branchId,
-          textPreview: msg.parts?.find((p: any) => p.type === 'text')?.text?.substring(0, 50) || '[无文本]',
-          partsCount: msg.parts?.length || 0,
-          hasImages: msg.parts?.some((p: any) => p.type === 'image_url') || false
-        }))
-      })
-
       // 创建 AbortController
       const controller = new AbortController()
       abortController.value = controller
-
-      console.log(`[useMessageSending] 📡 准备调用 aiChatService.streamChatResponse [${callId}]`, {
-        model: resolveModelId.value,
-        historyLength: finalHistoryForRequest.length,
-        timestamp: Date.now()
-      })
 
       // 发起流式请求（使用健壮的历史数据）
       const stream = aiChatService.streamChatResponse(
@@ -734,21 +712,14 @@ export function useMessageSending(options: MessageSendingOptions) {
         }
       )
 
-      console.log(`[useMessageSending] 🔄 已获取 stream 对象 [${callId}]`, {
-        hasStream: !!stream,
-        isAsyncIterable: stream && typeof stream[Symbol.asyncIterator] === 'function',
-        timestamp: Date.now()
-      })
-
       // 校验流对象
       if (!stream || typeof stream[Symbol.asyncIterator] !== 'function') {
         throw new Error('流式响应不可用')
       }
 
-      console.log(`[useMessageSending] ⏳ 开始读取流（awaiting first chunk）[${callId}]`)
-
       // 流式读取响应
       const iterator = stream[Symbol.asyncIterator]()
+      console.log('8️⃣ 首个 Chunk 等待与接收')
       const firstResult = await iterator.next()
       
       // 🔍 DEBUG: 首个 chunk 接收
@@ -773,6 +744,7 @@ export function useMessageSending(options: MessageSendingOptions) {
       // 原因：需要确认收到的是有效的 chunk，而不仅仅是 HTTP 连接建立
 
       // ⭐ 阶段转换：requesting -> streaming
+      console.log('🔟 阶段转换：requesting → streaming')
       if (pendingSend.value && pendingSend.value.phase === 'requesting') {
         pendingSend.value.phase = 'streaming'
         
@@ -784,24 +756,26 @@ export function useMessageSending(options: MessageSendingOptions) {
             '收到首个流式回复块，正在流式显示回复，等待完成接收……'
           )
         }
-        
-        console.log('[useMessageSending] 📍 阶段转换: requesting -> streaming')
       }
 
       // 处理第一个 chunk
       await processStreamChunk(firstResult.value, targetConversationId, aiBranchId)
 
       // 处理后续 chunks
+      console.log('1️⃣7️⃣ Chunk 消费与 UI 更新')
       for await (const chunk of iterator) {
         await processStreamChunk(chunk, targetConversationId, aiBranchId)
       }
 
       // 流式完成
+      console.log('2️⃣3️⃣ 流迭代器结束')
       isStreaming.value = false
       streamingBranchId.value = null
+      console.log('2️⃣5️⃣ 生成状态重置为 idle')
       conversationStore.setGenerationStatus(targetConversationId, false)
 
       // ⭐ 阶段转换：streaming -> completed，并清理上下文
+      console.log('2️⃣4️⃣ 阶段转换：streaming → completed')
       if (pendingSend.value && pendingSend.value.conversationId === targetConversationId) {
         pendingSend.value.phase = 'completed'
         
@@ -814,19 +788,16 @@ export function useMessageSending(options: MessageSendingOptions) {
         }
         
         pendingSend.value = null  // 清理上下文
-        console.log('[useMessageSending] 📍 阶段转换: streaming -> completed')
       }
 
       // 标记脏数据并保存
+      console.log('2️⃣6️⃣ 持久化保存')
       persistenceStore.markConversationDirty(targetConversationId)
       // 自动保存由 persistence store 的机制处理
 
       // ℹ️ 输入框清空已在 performSendMessage 中完成（用户点击发送后立即清空）
 
-      // 🛑 清除所有超时保护定时器（防止幽灵超时）
-      clearAllTimeouts()
-      console.log('[useMessageSending] ✅ 流式传输成功完成，已清理所有定时器')
-
+      console.log('2️⃣7️⃣ 完成 Promise 解决')
       return { success: true }
     } catch (error: any) {
       // 🔍 DEBUG: 检查错误类型
@@ -836,12 +807,15 @@ export function useMessageSending(options: MessageSendingOptions) {
         error?.message?.includes('BodyStreamBuffer was aborted') ||
         error?.message?.includes('user aborted') ||
         error?.code === 'ABORT_ERR'
+      const abortReason = abortSource.value
       
       console.log('[useMessageSending] 🔍 捕获到错误', {
         errorName: error?.name,
         errorMessage: error?.message,
         errorCode: error?.code,
         isAbortError,
+        abortReason,
+        timeoutMessage: sendError.value,
         phase: pendingSend.value?.phase,
         conversationId: targetConversationId
       })
@@ -851,13 +825,9 @@ export function useMessageSending(options: MessageSendingOptions) {
       streamingBranchId.value = null
       conversationStore.setGenerationStatus(targetConversationId, false)
 
-      // 🛑 清除所有超时保护定时器
-      clearAllTimeouts()
-
       // ⭐ 区分处理：用户主动中止 vs 真实错误
-      if (isAbortError) {
+      if (isAbortError && abortReason === 'user') {
         // 🔵 用户主动中止：不是失败，不回滚消息
-        console.log('[useMessageSending] 🟢 用户主动中止，保留已发送的消息')
         
         if (pendingSend.value && pendingSend.value.conversationId === targetConversationId) {
           pendingSend.value.phase = 'user_aborted'
@@ -872,6 +842,48 @@ export function useMessageSending(options: MessageSendingOptions) {
           aborted: true,
           message: '用户中止了请求'
         }
+      } else if (isAbortError && abortReason === 'timeout') {
+        const timeoutMessage = sendError.value || error?.message || '请求超时'
+
+        if (pendingSend.value && pendingSend.value.conversationId === targetConversationId) {
+          pendingSend.value.phase = 'failed'
+          
+          // 💾 标记消息以支持重试（确保catch块也正确处理超时错误的消息标记）
+          const ctx = pendingSend.value
+          
+          // 删除 notice 消息
+          if (ctx.noticeMessageId) {
+            console.log('[useMessageSending] 🧹 删除超时 notice 消息（catch块）')
+            branchStore.removeMessageBranch(ctx.conversationId, ctx.noticeMessageId)
+          }
+
+          // 标记 assistant 消息为可重试
+          if (ctx.assistantMessageId) {
+            console.log('[useMessageSending] 🏷️ 标记 assistant 消息为可重试（catch块）', {
+              phase: ctx.phase
+            })
+            
+            const abortPhase = ctx.phase === 'streaming' ? 'streaming' : 'requesting'
+            branchStore.patchMetadata(ctx.conversationId, ctx.assistantMessageId, () => ({
+              aborted: true,
+              abortedAt: Date.now(),
+              abortPhase,
+              canRetry: true
+            }))
+          }
+        }
+
+        conversationStore.setGenerationError(targetConversationId, { message: timeoutMessage })
+        return { success: false, error: timeoutMessage }
+      } else if (isAbortError) {
+        const abortMessage = error?.message || '请求被中止'
+
+        if (pendingSend.value && pendingSend.value.conversationId === targetConversationId) {
+          pendingSend.value.phase = 'failed'
+        }
+
+        conversationStore.setGenerationError(targetConversationId, { message: abortMessage })
+        return { success: false, error: abortMessage }
       } else {
         // 🔴 真实错误：网络失败、API 错误等
         console.error('[useMessageSending] ❌ 真实错误发生', {
@@ -885,7 +897,7 @@ export function useMessageSending(options: MessageSendingOptions) {
 
         const errorMessage = error?.message || '发送失败'
         sendError.value = errorMessage
-        conversationStore.setGenerationError(targetConversationId, errorMessage)
+        conversationStore.setGenerationError(targetConversationId, { message: errorMessage })
 
         return { success: false, error: errorMessage }
       }
@@ -894,6 +906,7 @@ export function useMessageSending(options: MessageSendingOptions) {
       console.log('[useMessageSending] 🧹 finally: 清理发送状态')
       isSending.value = false
       abortController.value = null
+      abortSource.value = null
       
       // 🛑 双重保险：清除所有超时定时器（防止任何路径泄漏）
       clearAllTimeouts()
@@ -963,23 +976,9 @@ export function useMessageSending(options: MessageSendingOptions) {
       ctx.timerId = null
     }
     
-    // ⭐ 创建空的 assistant 消息占位符（延时结束后立即可见）
-    // 🔧 关键修复：assistant 消息必须以用户消息作为 parent，建立父子关系
-    console.log('[useMessageSending] 创建 assistant 消息占位符', {
-      parentUserMessageId: ctx.userMessageId,
-      conversationId: ctx.conversationId
-    })
-    const assistantMessageId = branchStore.addMessageBranch(
-      ctx.conversationId,
-      'assistant',
-      [{ type: 'text', text: '' }],
-      ctx.userMessageId  // 🎯 关键：设置父消息为用户消息
-    )
-    ctx.assistantMessageId = assistantMessageId
-    console.log('[useMessageSending] ✅ assistant 占位符已创建:', {
-      assistantMessageId,
-      parentUserMessageId: ctx.userMessageId
-    })
+    // ⭐ 不再创建空的 assistant 消息占位符
+    // assistant 消息将在收到第一个流式 chunk 时创建（见 sendMessageCore）
+    ctx.assistantMessageId = undefined
     
     // ⭐ 阶段转换：delay -> requesting（此时用户已可见：用户消息 + 系统消息 + 空 assistant）
     console.log('[useMessageSending] 🔄 阶段切换前:', {
@@ -1012,7 +1011,6 @@ export function useMessageSending(options: MessageSendingOptions) {
     console.log('[useMessageSending] 🚀 准备调用 sendMessageCore', {
       conversationId: ctx.conversationId,
       userMessageId: ctx.userMessageId,
-      assistantMessageId,
       hasPayload: !!ctx.payloadSnapshot,
       timestamp: Date.now()
     })
@@ -1020,7 +1018,6 @@ export function useMessageSending(options: MessageSendingOptions) {
     const sendPromise = sendMessageCore({
       conversationId: ctx.conversationId,
       userMessageId: ctx.userMessageId,
-      assistantMessageId,  // 传入已创建的 assistant ID
       payloadSnapshot: ctx.payloadSnapshot,
       requestOptions: ctx.requestOptions
     })
@@ -1100,6 +1097,7 @@ export function useMessageSending(options: MessageSendingOptions) {
     // 这才是真正的"收到首 token"信号，而不是仅仅 HTTP 响应开始
     if (firstTokenTimeoutTimer !== null) {
       clearFirstTokenTimeout()
+      console.log('9️⃣ 首 Token 超时定时器清除')
       console.log('[useMessageSending] ✅ 收到首个有效 chunk，清除首 token 超时定时器')
     }
 
@@ -1177,14 +1175,18 @@ export function useMessageSending(options: MessageSendingOptions) {
     if (chunk.type === 'text') {
       const textContent = chunk.content || chunk.text
       if (typeof textContent === 'string') {
-        console.log('[useMessageSending] ✅ Appending text token:', {
+        console.log('[useMessageSending] 🔄 即将调用 appendToken', {
           length: textContent.length,
           preview: textContent.substring(0, 50),
           conversationId,
-          aiBranchId
+          aiBranchId,
+          timestamp: Date.now()
         })
+        console.log('1️⃣8️⃣ Token 追加到 Store')
         branchStore.appendToken(conversationId, aiBranchId, textContent)
-        console.log('[useMessageSending] 📊 Token 已追加到 Store')
+        console.log('[useMessageSending] ✅ appendToken 完成', {
+          timestamp: Date.now()
+        })
         return
       } else {
         console.warn('[useMessageSending] ⚠️ 收到类型为 text 的 chunk，但 content/text 字段非字符串:', {
@@ -1196,10 +1198,18 @@ export function useMessageSending(options: MessageSendingOptions) {
       }
     }
 
-    // 图片 chunk
-    if (chunk.type === 'image' && chunk.url) {
-      console.log('[useMessageSending] 🖼️ Appending image:', chunk.url.substring(0, 50))
-      branchStore.appendImage(conversationId, aiBranchId, chunk.url)
+    // 图片 chunk（仅接受 content 字段，provider 已统一为 data URI/URL）
+    if (chunk.type === 'image') {
+      const imageContent = typeof chunk.content === 'string' ? chunk.content : ''
+      if (imageContent) {
+        console.log('[useMessageSending] 🖼️ Appending image:', imageContent.substring(0, 50))
+        console.log('3️⃣2️⃣ 图片生成 Chunk')
+        branchStore.appendImage(conversationId, aiBranchId, imageContent)
+      } else {
+        console.warn('[useMessageSending] ⚠️ image chunk 缺少 content 字段', {
+          keys: Object.keys(chunk || {})
+        })
+      }
       return
     }
 
@@ -1211,6 +1221,7 @@ export function useMessageSending(options: MessageSendingOptions) {
     }
 
     // 推理流文本（UI 显示）
+    console.log('1️⃣9️⃣ 推理流文本处理（特殊处理）')
     if (chunk.type === 'reasoning_stream_text' && typeof chunk.text === 'string') {
       console.log('[useMessageSending] 💭 Appending reasoning stream text:', chunk.text.substring(0, 50))
       branchStore.appendReasoningStreamingText(conversationId, aiBranchId, chunk.text)
@@ -1228,6 +1239,7 @@ export function useMessageSending(options: MessageSendingOptions) {
     // - OpenRouterService 返回: {type: 'usage', usage: object}
     // - 旧格式: {type: 'metadata', metadata: {usage: object}}
     if (chunk.type === 'usage' && chunk.usage) {
+      console.log('2️⃣1️⃣ 使用量元数据保存')
       console.log('[useMessageSending] 📊 Patching usage metadata:', chunk.usage)
       branchStore.patchMetadata(conversationId, aiBranchId, () => ({
         usage: chunk.usage
@@ -1261,13 +1273,15 @@ export function useMessageSending(options: MessageSendingOptions) {
    * 
    * 根据当前 phase 执行不同的中止逻辑：
    * - delay: 不应调用此函数（应使用 undoPendingSend）
-   * - requesting: 创建空的 assistant 消息壳，标记可重试
+   * - requesting: 保留用户消息，如果 assistant 消息已创建则标记为中止
    * - streaming: 保留已生成内容，标记流式被中止
    * - completed: 无操作
    */
   function cancelSending() {
+    console.log('2️⃣9️⃣ 流中止（User Cancel）')
     const targetConversationId = resolveConversationId()
     const ctx = pendingSend.value
+    abortSource.value = 'user'
 
     console.log('[useMessageSending] 🛑 cancelSending 被调用', {
       phase: ctx?.phase,
@@ -1298,20 +1312,24 @@ export function useMessageSending(options: MessageSendingOptions) {
         branchStore.removeMessageBranch(ctx.conversationId, ctx.noticeMessageId)
       }
 
-      // ⚠️ 不再创建空消息壳！用户消息已在，只是没有收到回复而已
-      // 如果需要显示中止信息，可以在 assistant 消息上添加 metadata
+      // ⚠️ 在 requesting 阶段，assistant 消息可能还未创建（新的流程）
+      // 如果已创建，标记为中止；如果未创建，则只保留用户消息
       if (ctx.assistantMessageId) {
+        console.log('[useMessageSending] 🏷️ 标记 assistant 消息为中止')
         branchStore.patchMetadata(ctx.conversationId, ctx.assistantMessageId, () => ({
           aborted: true,
           abortedAt: Date.now(),
           abortPhase: 'requesting',
           canRetry: true
         }))
+      } else {
+        console.log('[useMessageSending] ℹ️ assistant 消息尚未创建（请求阶段中止）')
       }
 
       console.log('[useMessageSending] ✅ 请求已中止，保留用户消息', {
         conversationId: ctx.conversationId,
-        userMessageId: ctx.userMessageId
+        userMessageId: ctx.userMessageId,
+        hasAssistantMessage: !!ctx.assistantMessageId
       })
     }
 
@@ -1338,6 +1356,7 @@ export function useMessageSending(options: MessageSendingOptions) {
       }
 
       // ⭐ 标记为"流式被中止，内容不完整"
+      console.log('3️⃣0️⃣ 用户中止的内容保留')
       branchStore.patchMetadata(ctx.conversationId, streamingBranchId.value, (existing: any) => ({
         ...existing,
         streamAborted: true,  // 不是error，是aborted
@@ -1449,6 +1468,7 @@ export function useMessageSending(options: MessageSendingOptions) {
       }
     }
 
+    console.log('3️⃣3️⃣ Web 搜索结果整合')
     const requestOverrides: SendRequestOptions = {
       webSearch: options.buildWebSearchRequestOptions?.(),
       reasoning: overrides?.reasoning ?? options.buildReasoningRequestOptions?.(),
@@ -1489,15 +1509,16 @@ export function useMessageSending(options: MessageSendingOptions) {
       return { success: false, error: '对话不存在' }
     }
     
-    const tree = conversation.tree
-    const lastBranchId = tree.currentPath.length > 0 
-      ? tree.currentPath[tree.currentPath.length - 1] 
+    const tree = conversation.tree as any
+    const currentPath: string[] = Array.isArray(tree?.currentPath) ? tree.currentPath : []
+    const lastBranchId = currentPath.length > 0
+      ? currentPath[currentPath.length - 1]
       : null
     
     console.log('[useMessageSending] 📍 创建用户消息', {
       conversationId: targetConversationId,
       parentBranchId: lastBranchId,
-      currentPathLength: tree.currentPath.length,
+      currentPathLength: currentPath.length,
       isRootMessage: lastBranchId === null
     })
 

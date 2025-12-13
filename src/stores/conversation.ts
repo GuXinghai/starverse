@@ -23,12 +23,6 @@ import { createEmptyTree } from './branchTreeHelpers'
 import { usePersistenceStore } from './persistence'
 import { generationConfigManager } from '../services/providers/generationConfigManager'
 
-const DEFAULT_REASONING_PREFERENCE = Object.freeze({
-  visibility: 'visible' as const,
-  effort: 'medium' as const,
-  maxTokens: null
-})
-
 const DEFAULT_MODEL = 'auto'
 
 export const useConversationStore = defineStore('conversation', () => {
@@ -384,12 +378,12 @@ export const useConversationStore = defineStore('conversation', () => {
     // 这样 aiChatService 在调用 getEffectiveConfig 时能读取到最新的采样参数
     const samplingConfig = {
       sampling: {
-        temperature: conversation.samplingParameters.temperature,
-        top_p: conversation.samplingParameters.top_p,
-        top_k: conversation.samplingParameters.top_k
+        temperature: conversation.samplingParameters.temperature ?? undefined,
+        top_p: conversation.samplingParameters.top_p ?? undefined,
+        top_k: conversation.samplingParameters.top_k ?? undefined
       },
       length: {
-        max_tokens: conversation.samplingParameters.max_tokens
+        max_tokens: conversation.samplingParameters.max_tokens ?? undefined
       }
     }
     generationConfigManager.setConversationConfig(conversationId, samplingConfig)

@@ -466,9 +466,9 @@ export class UsageRepo {
         if (durations.length > 0) {
           const MAX_DURATIONS = 5000
           const sample = durations.length > MAX_DURATIONS ? durations.slice(0, MAX_DURATIONS) : durations
-          const getPercentile = (p: number) => {
+          const getPercentile = (p: number): number | null => {
             const idx = Math.min(sample.length - 1, Math.max(0, Math.floor((sample.length - 1) * p)))
-            return sample[idx]
+            return sample[idx] ?? null
           }
           p50 = getPercentile(0.5)
           p90 = getPercentile(0.9)

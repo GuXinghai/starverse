@@ -472,10 +472,12 @@ export type DbMethod =
   | 'prefs.delete'
   | 'prefs.default'
   | 'model.saveMany'
-  | 'model.replaceByProvider'
+  | 'model.replaceByRouterSource'
   | 'model.getAll'
-  | 'model.getByProvider'
+  | 'model.getByRouterSource'
   | 'model.getById'
+  | 'model.archive'
+  | 'model.unarchive'
   | 'model.clear'
 
 export type WorkerRequestMessage = {
@@ -506,17 +508,47 @@ export type DbErrorShape = {
 export type DbHandler = (params: any) => any | Promise<any>
 
 // ========== Model Data Types ==========
+// 参考规范：/docs/openrouter-model-sync-spec.md
+
+/**
+ * 模型能力映射（持久化结构）
+ */
+export type ModelCapabilitiesRecord = {
+  hasReasoning: boolean
+  hasTools: boolean
+  hasJsonMode: boolean
+  isMultimodal: boolean
+}
+
+/**
+ * 模型价格信息（持久化结构）
+ */
+export type ModelPricingRecord = {
+  prompt: string
+  completion: string
+  request: string
+  image: string
+  web_search: string
+  internal_reasoning: string
+  input_cache_read: string
+  input_cache_write: string
+}
 
 /**
  * 模型数据记录（数据库持久化）
  */
 export type ModelDataRecord = {
   id: string
-  provider: string
+  routerSource: string              // 接入来源: openrouter, openai_api, anthropic_api, local
+  vendor: string                    // 模型厂商: openai, anthropic, google, deepseek 等
   name: string
   description?: string
-  contextLength?: number
-  pricing?: Record<string, unknown>
+  contextLength: number             // -1 表示未知
+  pricing?: ModelPricingRecord
+  capabilities?: ModelCapabilitiesRecord
+  isArchived: boolean               // 软删除标记
+  firstSeenAt?: string              // ISO8601
+  lastSeenAt?: string               // ISO8601
   createdAt: number
   updatedAt: number
   meta?: Record<string, unknown>
@@ -527,11 +559,27 @@ export type ModelDataRecord = {
  */
 export type SaveModelDataInput = {
   id: string
-  provider: string
+  routerSource?: string             // 默认 'openrouter'
+  vendor?: string                   // 默认从 id 前缀解析
   name?: string
   description?: string
-  contextLength?: number
-  pricing?: Record<string, unknown>
+  contextLength?: number            // 默认 -1
+  pricing?: ModelPricingRecord
+  capabilities?: ModelCapabilitiesRecord
+  isArchived?: boolean              // 默认 false
+  firstSeenAt?: string
+  lastSeenAt?: string
   createdAt?: number
   meta?: Record<string, unknown>
+}
+
+/**
+ * 模型列表查询参数
+ */
+export type ListModelParams = {
+  routerSource?: string
+  vendor?: string
+  includeArchived?: boolean         // 默认 false
+  limit?: number
+  offset?: number
 }

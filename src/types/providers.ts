@@ -9,7 +9,7 @@
 
 import type { MessagePart, WebSearchLevel } from './chat'
 import type { MessageMetadata } from '../utils/ipcSanitizer'
-import type { ModelData } from './store'
+import type { AppModel } from './appModel'
 
 /**
  * Provider 标识符
@@ -188,7 +188,7 @@ export interface AIProviderService {
    * @param model - 完整的模型对象（必须包含 input_modalities 字段）
    * @returns 是否支持图像输入
    */
-  supportsImage(model: ModelData): boolean
+  supportsImage(model: AppModel | any): boolean
 
   /**
    * 检查模型是否支持文件输入（基于 input_modalities）
@@ -196,7 +196,7 @@ export interface AIProviderService {
    * @param model - 完整的模型对象
    * @returns 是否支持文件/文档输入
    */
-  supportsFileInput(model: ModelData): boolean
+  supportsFileInput(model: AppModel | any): boolean
 
   /**
    * 列出可用模型列表
@@ -205,21 +205,6 @@ export interface AIProviderService {
    * @returns 模型 ID 数组
    */
   listAvailableModels(apiKey: string, baseUrl?: string): Promise<string[]>
-
-  /**
-   * 获取模型参数支持信息（仅 OpenRouter）
-   * @param apiKey - API 密钥
-   * @param modelId - 模型 ID
-   * @param baseUrl - 自定义 API 基础 URL（可选）
-   * @param provider - 可选的 provider 参数
-   * @returns 模型参数支持信息
-   */
-  getModelParameters?(
-    apiKey: string,
-    modelId: string,
-    baseUrl?: string,
-    provider?: string | null
-  ): Promise<{ model: string; supported_parameters: string[] }>
 
   /**
    * 流式生成聊天响应
@@ -287,20 +272,6 @@ export interface OpenRouterService extends AIProviderService {
     generationId: string,
     baseUrl: string
   ): Promise<OpenRouterGenerationUsage>
-}
-
-/**
- * 模型能力查询结果（来自 modelCapability.js）
- */
-export interface ModelCapability {
-  /** 模型 ID */
-  modelId: string
-  /** 是否支持视觉输入 */
-  supportsVision: boolean
-  /** 支持的输入模态 */
-  inputModalities?: string[]
-  /** 支持的输出模态 */
-  outputModalities?: string[]
 }
 
 /**

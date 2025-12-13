@@ -22,6 +22,23 @@ vi.mock('../../src/stores/analyticsStore', () => {
     pagination: { limit: 10, offset: 0 }
   }
   const drilldown = { data: [], pagination: { limit: 50 } }
+  const reasoningTrend = {
+    data: [{ bucket_start: 0, tokens_reasoning: 5, reasoning_ratio: 0.5 }],
+    pagination: { limit: 10, offset: 0 }
+  }
+  const reasoningModelComparison = {
+    data: [
+      {
+        provider: 'OpenRouter',
+        model: 'm1',
+        tokens_reasoning: 5,
+        reasoning_ratio: 0.5,
+        reasoning_usage_rate: 1,
+        cost_per_1k_reasoning: 0.2
+      }
+    ],
+    pagination: { limit: 10, offset: 0 }
+  }
 
   const refresh = vi.fn()
 
@@ -32,13 +49,45 @@ vi.mock('../../src/stores/analyticsStore', () => {
       comparison,
       reliability,
       drilldown,
+      reasoningTrend,
+      reasoningModelComparison,
       loading: ref(false),
       error: ref(null),
       refreshOverview: refresh,
       refreshComparison: refresh,
       refreshReliability: refresh,
       refreshDrilldown: refresh,
+      refreshReasoningTrend: refresh,
+      refreshReasoningModelComparison: refresh,
       toSeries: (_: any, field: string) => [{ x: 0, y: (overview.data[0] as any)[field] ?? 0 }]
+    })
+  }
+})
+
+vi.mock('../../src/stores/dashboardPrefs', () => {
+  const views = [
+    {
+      userId: 'local-user',
+      viewId: 'default',
+      name: '默认视图',
+      isDefault: true,
+      layout: [],
+      filters: null
+    }
+  ]
+
+  return {
+    useDashboardPrefsStore: () => ({
+      views,
+      listViews: vi.fn(async () => {}),
+      saveView: vi.fn(async (payload: any) => ({
+        userId: 'local-user',
+        viewId: payload?.viewId ?? 'saved',
+        name: payload?.name ?? '自定义视图',
+        isDefault: !!payload?.setDefault,
+        layout: payload?.layout ?? [],
+        filters: payload?.filters ?? null
+      }))
     })
   }
 })
@@ -52,7 +101,7 @@ describe('AnalyticsView', () => {
 
   it('renders dashboard headings', () => {
     const wrapper = mount(AnalyticsView)
-    expect(wrapper.text()).toContain('Starverse Usage Dashboard')
+    expect(wrapper.text()).toContain('Starverse 数据中心')
     expect(wrapper.text()).toContain('全局概览')
   })
 

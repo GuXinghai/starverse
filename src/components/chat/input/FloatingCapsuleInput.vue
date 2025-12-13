@@ -443,7 +443,8 @@ const getIconPath = (icon: string): string => {
     close: 'M6 18L18 6M6 6l12 12', // X 图标
     chevronDown: 'M19 9l-7 7-7-7' // 下箭头
   }
-  return icons[icon] || icons.sliders
+  const iconPath = icons[icon] ?? icons.sliders
+  return iconPath
 }
 
 // 判断是否显示关闭图标
@@ -470,7 +471,7 @@ const getButtonColorClasses = (color: string, enabled: boolean) => {
       enabled: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
     }
   }
-  const colors = colorMap[color] || colorMap.blue
+  const colors = colorMap[color] ?? colorMap.blue
   return enabled ? colors.enabled : colors.base
 }
 </script>

@@ -71,7 +71,6 @@ import { useAppStore } from '../stores'
 import { useProjectWorkspaceStore } from '../stores/projectWorkspaceStore'
 
 // ========== 类型定义和工具函数 ==========
-import type { ConversationStatus } from '../types/conversation'
 import type { ModelGenerationCapability } from '../types/generation'
 import type { ReasoningPreference } from '../types/chat'
 
@@ -249,7 +248,7 @@ const reasoningManager = useReasoningControl({
   isActive: isComponentActive,
   activeProvider: computed(() => appStore.activeProvider),
   currentModelId: actualModelId,  // 使用解析后的模型ID
-  modelDataMap: computed(() => modelStore.modelDataMap),
+  modelDataMap: computed(() => modelStore.appModelsById),  // 使用新的 AppModel 索引
   onUpdatePreference: (updates) => {
     conversationStore.setReasoningPreference(props.conversationId, updates)
   }
@@ -272,7 +271,6 @@ if (import.meta.env.DEV) {
     isReasoningControlAvailable: isReasoningControlAvailable.value,
     isReasoningEnabled: isReasoningEnabled.value,
     activeProvider: appStore.activeProvider,
-    modelDataMapSize: modelStore.modelDataMap?.size || 0,
     reasoningPreference: reasoningPreference?.value ?? null
   })
   
@@ -510,13 +508,7 @@ const handleFileInputChange = async (event: Event) => {
 // currentConversation 已由 useCurrentConversation composable 提供（见上方初始化部分）
 
 // ========== Phase 6: Conversation Metadata Composable 初始化 ==========
-const {
-  conversationStatus,
-  conversationTags,
-  canSaveConversationTemplate,
-  handleConversationTagRemove,
-  handleSaveConversationAsTemplate
-} = useConversationMetadata({
+useConversationMetadata({
   conversationId: toRef(props, 'conversationId'),
   draftInput,
   conversationTagInput,
@@ -543,7 +535,6 @@ const {
   activeRequestedModalities, 
   imageGenerationEnabled,
   activeImageConfig, 
-  currentAspectRatioLabel,
   canShowImageGenerationButton,
   supportsImageAspectRatioConfig,
   toggleImageGeneration,
@@ -560,21 +551,6 @@ watch(canShowImageGenerationButton, (newValue) => {
     currentModelSupportsImageOutput: currentModelSupportsImageOutput.value
   })
 }, { immediate: true })
-
-// ========== Toolbar 事件处理（简化版，接受参数）==========
-const handleToolbarAddTag = (tag: string) => {
-  if (!currentConversation.value || !tag.trim()) {
-    return
-  }
-  conversationStore.addTag(props.conversationId, tag.trim())
-}
-
-const handleToolbarStatusChange = (status: ConversationStatus) => {
-  if (!currentConversation.value) {
-    return
-  }
-  conversationStore.setConversationStatus(props.conversationId, status)
-}
 
 // ========== 分支树消息显示 ==========
 /**
@@ -744,7 +720,7 @@ const {
 
 // ========== 消息展示 Composable 初始化 ==========
 const {
-  displayMessages,
+  displayBranchIds,  // ✅ 重构：只返回 ID 列表
   isMessageStreaming
 } = useMessageDisplay({
   currentConversation,
@@ -876,46 +852,12 @@ const {
 // ========== OpenRouter 错误重试处理 ==========
 /**
  * 处理 OpenRouter 错误消息的重试
- * 
+ *
  * 策略：
  * 1. 删除错误消息分支
  * 2. 找到错误消息的父分支（用户消息）
  * 3. 调用 handleRetryMessage 重新生成回复
  */
-const handleRetryOpenRouterError = async (errorBranchId: string) => {
-  console.log('[ChatView] 🔄 Retry OpenRouter error, branchId:', errorBranchId)
-  
-  try {
-    const tree = currentConversation.value?.tree
-    if (!tree) {
-      console.error('[ChatView] ❌ No tree found')
-      return
-    }
-    
-    // 获取错误分支
-    const errorBranch = tree.branches.get(errorBranchId)
-    if (!errorBranch) {
-      console.error('[ChatView] ❌ Error branch not found:', errorBranchId)
-      return
-    }
-    
-    // 获取父分支（应该是用户消息）
-    const parentBranchId = errorBranch.parentBranchId
-    if (!parentBranchId) {
-      console.error('[ChatView] ❌ No parent branch found for error message')
-      return
-    }
-    
-    // 删除错误消息分支
-    branchStore.removeMessageBranch(props.conversationId, errorBranchId)
-    
-    // 调用原有的重试逻辑（从用户消息重新生成回复）
-    await handleRetryMessage(parentBranchId)
-    
-  } catch (error) {
-    console.error('[ChatView] ❌ Failed to retry OpenRouter error:', error)
-  }
-}
 
 // ========== Phase 6: Lifecycle Handlers Composable 初始化 ==========
 useLifecycleHandlers({
@@ -974,7 +916,7 @@ onMounted(() => {
 
           <!-- 空态提示 -->
           <div
-            v-if="displayMessages.length === 0"
+            v-if="displayBranchIds.length === 0"
             class="text-center py-12"
           >
             <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
@@ -986,22 +928,22 @@ onMounted(() => {
             <p class="text-gray-600">发送消息开始聊天</p>
           </div>
 
-        <!-- 消息列表 -->
+        <!-- ✅ 消息列表（重构：只传递 ID） -->
         <ChatMessageItem
-          v-for="message in displayMessages"
-          :key="message.id"
-          :message="message"
-          :is-editing="editingBranchId === message.branchId"
+          v-for="branchId in displayBranchIds"
+          :key="branchId"
+          :branch-id="branchId"
+          :conversation-id="props.conversationId"
+          :is-editing="editingBranchId === branchId"
           :is-generating="currentConversation?.generationStatus !== 'idle'"
-          :is-streaming="isMessageStreaming(message.branchId)"
+          :is-streaming="isMessageStreaming(branchId)"
           :editing-text="editingText"
           :editing-images="editingImages"
           :editing-files="editingFiles"
-          @edit="handleEditMessage"
+          @edit="(branchId) => handleEditMessage(branchId)"
           @cancel-edit="handleCancelEdit"
           @save-edit="handleSaveEdit"
           @retry="handleRetryMessage"
-          @retry-openrouter="handleRetryOpenRouterError"
           @delete="handleDeleteClick"
           @switch-version="handleSwitchVersion"
           @add-image-to-edit="handleAddImageToEdit"
@@ -1010,27 +952,6 @@ onMounted(() => {
           @remove-editing-file="handleRemoveEditingFile"
           @update:editing-text="(val) => editingText = val"
         />
-
-          <!-- 加载状态提示 -->
-          <div v-if="currentConversation?.generationStatus === 'sending'" class="flex justify-start">
-            <div class="flex items-end space-x-2 w-full max-w-md lg:max-w-2xl xl:max-w-4xl">
-              <div class="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-                </svg>
-              </div>
-              <div class="bg-white border border-gray-200 rounded-lg px-4 py-3 shadow-sm">
-                <div class="flex items-center space-x-2">
-                  <div class="flex space-x-1">
-                    <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                    <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.1s;"></div>
-                    <div class="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.2s;"></div>
-                  </div>
-                  <span class="text-sm text-gray-600">正在发送...</span>
-                </div>
-              </div>
-            </div>
-          </div>
 
         </div>
       </div>
@@ -1057,7 +978,7 @@ onMounted(() => {
         :model-capability="currentModelCapability"
         :show-parameter-panel="showParameterPanel"
         :parameter-panel-available="parameterPanelAvailable"
-        :model-id="actualModelId?.value ?? null"
+        :model-id="actualModelId ?? null"
         :pending-attachments="pendingAttachments"
         :pending-files="pendingFiles.map(f => ({ name: f.name, size: f.size, type: f.mimeType || 'application/octet-stream', pdfEngine: f.pdfEngine }))"
         :selected-pdf-engine="selectedPdfEngine"

@@ -15,7 +15,7 @@
           'favorite-model-btn',
           { 'active': isCurrentModel(model.id) }
         ]"
-        :title="`切换到 ${model.name}\n上下文: ${formatContextLength(model.context_length)}\n价格: $${model.pricing.prompt}/$${model.pricing.completion}`"
+        :title="`切换到 ${model.name}\n上下文: ${formatContextLength(model.context_length)}\n价格 (USD / 1M tokens): $${formatUsdPer1MFromPerToken(model.pricing?.promptUsdPerToken)}/$${formatUsdPer1MFromPerToken(model.pricing?.completionUsdPerToken)}`"
       >
         <div class="model-info">
           <!-- 模型名称滚动容器 -->
@@ -89,6 +89,7 @@
 import { computed, ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useConversationStore } from '../stores/conversation'
 import { useModelStore } from '../stores/model'
+import { formatUsdPer1MFromPerToken } from '@/utils/pricing'
 
 const conversationStore = useConversationStore()
 const modelStore = useModelStore()

@@ -102,6 +102,7 @@ const areaPath = computed(() => {
   if (normalized.value.length === 0) return ''
   const start = normalized.value[0]
   const end = normalized.value[normalized.value.length - 1]
+  if (!start || !end) return ''
   const lines = normalized.value
     .map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
     .join(' ')
