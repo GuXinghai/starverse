@@ -1,6 +1,7 @@
 # TC-12 — Aggressive Deletion Checklist
 
 ## Deleted (directories)
+- `archived-services/` (archived legacy provider implementations)
 - `src/components/` (legacy UI)
 - `src/stores/` (legacy Pinia stores)
 - `src/composables/` (legacy sending/search composables)
@@ -24,4 +25,3 @@
 ## Gates updated/added
 - `scripts/gates/tc12.mjs` + `scripts/gates/tc12.ps1` — assert legacy surfaces/identifiers are gone; runs full `npm test` (unless `--skip-tests`).
 - `scripts/gates/tc00-tc02.mjs` — now only checks TC-00/TC-01 artifacts (no TC-02 code expectations after deletion).
-
