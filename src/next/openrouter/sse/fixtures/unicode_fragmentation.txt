@@ -1,0 +1,6 @@
+: OPENROUTER PROCESSING
+
+data: {"id":"gen_u1","model":"openrouter/auto","choices":[{"index":0,"delta":{"content":"你好🌍"},"finish_reason":null}]}
+
+data: [DONE]
+

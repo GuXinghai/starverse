@@ -1,0 +1,6 @@
+data: {"id":"gen_usage_1","model":"openrouter/auto","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}
+
+data: {"id":"gen_usage_1","model":"openrouter/auto","choices":[],"usage":{"total_tokens":123,"prompt_tokens":100,"completion_tokens":23}}
+
+data: [DONE]
+

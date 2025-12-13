@@ -1,5 +1,9 @@
 # Starverse OpenRouter 接入重构总结
 
+> **📌 文档状态**：本文档记录了 OpenRouter 接入的架构设计，但部分实现细节已演进。  
+> **最新现状审计**：[OPENROUTER_REASONING_REALITY_CHECK_2025_12.md](../analysis/OPENROUTER_REASONING_REALITY_CHECK_2025_12.md)  
+> **更新日期**：2025年12月13日
+
 ## 📋 重构概述
 
 本次重构成功将 Starverse 项目从单一 Gemini AI 提供商扩展为支持多提供商架构（Gemini + OpenRouter），采用策略模式实现服务层抽象和解耦。

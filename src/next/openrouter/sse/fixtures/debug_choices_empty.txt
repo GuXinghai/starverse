@@ -1,0 +1,6 @@
+data: {"id":"gen_dbg_1","model":"openrouter/auto","choices":[],"debug":{"echo_upstream_body":{"stream":true,"usage":{"include":true}}}}
+
+data: {"id":"gen_dbg_1","model":"openrouter/auto","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}
+
+data: [DONE]
+
