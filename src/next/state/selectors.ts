@@ -1,4 +1,4 @@
-import type { MessageVM, RootState, SessionVM } from './types'
+import type { MessageVM, ReasoningViewVisibility, RootState, SessionVM } from './types'
 
 export function selectSession(state: RootState, sessionId: string): SessionVM | null {
   const s = state.sessions[sessionId]
@@ -17,11 +17,72 @@ export function selectSession(state: RootState, sessionId: string): SessionVM | 
   }
 }
 
+/**
+ * Compute reasoning visibility based on SSOT Section 3.4 rules:
+ * - 'shown': has encrypted reasoning OR has reasoning_details/raw content
+ * - 'excluded': request had reasoning.exclude=true AND no reasoning returned (intentional hide)
+ * - 'not_returned': no exclude requested but model didn't return reasoning (provider didn't provide)
+ *
+ * CRITICAL: We NEVER infer 'encrypted' from empty reasoning. Encrypted is only set
+ * when we see explicit `reasoning.encrypted` type in the response.
+ */
+function computeReasoningVisibility(
+  hasEncryptedReasoning: boolean,
+  reasoningDetailsRaw: unknown[],
+  requestedReasoningExclude?: boolean
+): ReasoningViewVisibility {
+  // If we have encrypted signal or actual reasoning content → shown
+  if (hasEncryptedReasoning || reasoningDetailsRaw.length > 0) {
+    return 'shown'
+  }
+  // No reasoning content: distinguish excluded vs not_returned
+  if (requestedReasoningExclude === true) {
+    return 'excluded'
+  }
+  return 'not_returned'
+}
+
+function deriveReasoningDisplayFromDetails(reasoningDetailsRaw: unknown[]): {
+  summaryText?: string
+  reasoningText?: string
+} {
+  let summaryText: string | undefined
+  const reasoningTextParts: string[] = []
+
+  for (const detail of reasoningDetailsRaw) {
+    if (!detail || typeof detail !== 'object') continue
+    const type = (detail as any).type
+
+    if (type === 'reasoning.text') {
+      const text = (detail as any).text
+      if (typeof text === 'string' && text.length > 0) reasoningTextParts.push(text)
+      continue
+    }
+
+    if (type === 'reasoning.summary') {
+      const summary = (detail as any).summary ?? (detail as any).text
+      if (typeof summary === 'string' && summary.length > 0) summaryText = summary
+      continue
+    }
+  }
+
+  const reasoningText = reasoningTextParts.length > 0 ? reasoningTextParts.join('') : undefined
+  return { summaryText, reasoningText }
+}
+
 export function selectMessage(state: RootState, messageId: string): MessageVM | null {
   const m = state.messages[messageId]
   if (!m) return null
 
-  const visibility = m.hasEncryptedReasoning ? 'shown' : m.reasoningDetailsRaw.length > 0 ? 'shown' : 'not_returned'
+  const derived = deriveReasoningDisplayFromDetails(m.reasoningDetailsRaw)
+  const summaryText = m.reasoningSummaryText ?? derived.summaryText
+  const reasoningText = derived.reasoningText ?? m.reasoningStreamingText
+
+  const visibility = computeReasoningVisibility(
+    m.hasEncryptedReasoning,
+    m.reasoningDetailsRaw,
+    m.requestedReasoningExclude
+  )
 
   return {
     messageId: m.messageId,
@@ -29,8 +90,8 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
     contentBlocks: m.contentBlocks,
     toolCalls: m.toolCalls,
     reasoningView: {
-      summaryText: m.reasoningSummaryText,
-      reasoningText: m.reasoningStreamingText,
+      summaryText,
+      reasoningText,
       hasEncrypted: m.hasEncryptedReasoning,
       visibility,
     },
@@ -42,4 +103,3 @@ export function selectTranscript(state: RootState, sessionId: string): MessageVM
   const ids = state.sessionMessageIds[sessionId] || []
   return ids.map((id) => selectMessage(state, id)).filter((m): m is MessageVM => !!m)
 }
-

@@ -31,6 +31,9 @@ const canSend = computed(() => !props.disabled && props.draft.trim().length > 0)
         <option value="normal">normal</option>
         <option value="usage">usage tail</option>
         <option value="midstream_error">mid-stream error</option>
+        <option value="excluded">excluded (reasoning.exclude=true)</option>
+        <option value="reasoning_details">reasoning_details</option>
+        <option value="encrypted">encrypted</option>
         <option value="debug">debug choices=[]</option>
       </select>
       <div class="ml-auto flex gap-2">

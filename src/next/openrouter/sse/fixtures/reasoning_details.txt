@@ -1,0 +1,7 @@
+: OPENROUTER PROCESSING
+
+data: {"id":"gen_rd_1","model":"openrouter/auto","choices":[{"index":0,"delta":{"content":"hi","reasoning_details":[{"type":"reasoning.text","text":"thought A\\n"}]},"finish_reason":null}]}
+
+data: {"id":"gen_rd_1","model":"openrouter/auto","choices":[{"index":0,"delta":{"reasoning_details":[{"type":"reasoning.summary","summary":"short summary"}]},"finish_reason":null}]}
+
+data: [DONE]

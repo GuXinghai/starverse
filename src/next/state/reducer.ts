@@ -14,7 +14,7 @@ export function createInitialState(): RootState {
   }
 }
 
-function createEmptyAssistantMessage(messageId: string, isTarget: boolean): MessageState {
+function createEmptyAssistantMessage(messageId: string, isTarget: boolean, reasoningExclude?: boolean): MessageState {
   return {
     messageId,
     role: 'assistant',
@@ -26,6 +26,7 @@ function createEmptyAssistantMessage(messageId: string, isTarget: boolean): Mess
     reasoningSummaryText: undefined,
     hasEncryptedReasoning: false,
     streaming: { isTarget, isComplete: false },
+    requestedReasoningExclude: reasoningExclude,
   }
 }
 
@@ -79,7 +80,7 @@ export function startGeneration(state: RootState, input: StartGenerationInput): 
           [userMessageId]: createUserMessage(userMessageId, input.userMessageText as string),
         }
       : {}),
-    [assistantMessageId]: createEmptyAssistantMessage(assistantMessageId, true),
+    [assistantMessageId]: createEmptyAssistantMessage(assistantMessageId, true, input.reasoningExclude),
   }
 
   return {

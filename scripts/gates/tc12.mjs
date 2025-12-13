@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
+import path from 'node:path'
 
 const args = new Set(process.argv.slice(2))
 const skipTests = args.has('--skip-tests')
@@ -31,46 +32,44 @@ function runNpm(npmArgs) {
   return result.status ?? 0
 }
 
+/**
+ * Count pattern occurrences in directory using Node.js (no ripgrep dependency)
+ */
+function grepCountSync(pattern, rootDir) {
+  let count = 0
+  const regex = new RegExp(pattern, 'g')
+  
+  function walkDir(dir) {
+    let entries
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist' || entry.name === 'dist-electron') continue
+        walkDir(fullPath)
+      } else if (entry.isFile() && (entry.name.endsWith('.ts') || entry.name.endsWith('.vue') || entry.name.endsWith('.js'))) {
+        try {
+          const content = fs.readFileSync(fullPath, 'utf8')
+          const matches = content.match(regex)
+          if (matches) count += matches.length
+        } catch {
+          // skip unreadable files
+        }
+      }
+    }
+  }
+  
+  walkDir(rootDir)
+  return count
+}
+
+// Use Node.js native grep instead of ripgrep
 function rgCount(pattern, rootDir) {
-  const result = spawnSync(
-    'rg',
-    [
-      '--count-matches',
-      '--no-messages',
-      '--hidden',
-      '--glob',
-      '!.git/**',
-      '--',
-      pattern,
-      rootDir,
-    ],
-    { encoding: 'utf8', shell: false }
-  )
-
-  if (result.error) {
-    fail(`ripgrep (rg) not found in PATH; install rg. Details: ${result.error.message}`)
-  }
-
-  if (result.status === 1) return 0
-  if (result.status !== 0) {
-    const stderr = (result.stderr || '').toString().trim()
-    fail(
-      `rg failed for pattern '${pattern}' in '${rootDir}' (exit=${result.status})${
-        stderr ? `: ${stderr}` : ''
-      }`
-    )
-  }
-
-  const stdout = (result.stdout || '').toString().trim()
-  if (!stdout) return 0
-
-  let sum = 0
-  for (const line of stdout.split(/\r?\n/g)) {
-    const parts = line.split(':')
-    const n = parts.at(-1)
-    if (n && /^\d+$/.test(n)) sum += Number.parseInt(n, 10)
-  }
-  return sum
+  return grepCountSync(pattern, rootDir)
 }
 
 const startedAt = Date.now()
