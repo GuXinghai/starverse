@@ -14,7 +14,7 @@ export type ContentBlock =
   | Readonly<{ type: 'image'; url: string }>
   | Readonly<{ type: 'unknown'; raw: unknown }>
 
-export type ReasoningViewVisibility = 'shown' | 'hidden' | 'not_returned'
+export type ReasoningViewVisibility = 'shown' | 'excluded' | 'not_returned'
 
 export type ReasoningView = Readonly<{
   summaryText?: string
@@ -76,6 +76,12 @@ export type MessageState = Readonly<{
   reasoningSummaryText?: string
   hasEncryptedReasoning: boolean
   streaming: { isTarget: boolean; isComplete: boolean }
+  /**
+   * Whether reasoning.exclude was set to true in the original request.
+   * Used to distinguish 'excluded' (intentional hide) from 'not_returned' (model didn't provide).
+   * SSOT Reference: Section 3.4 "加密/隐藏/未返回" 的 UI 语义分离
+   */
+  requestedReasoningExclude?: boolean
 }>
 
 export type SessionState = Readonly<{
@@ -106,4 +112,9 @@ export type StartGenerationInput = Readonly<{
   assistantMessageId?: string
   userMessageId?: string
   userMessageText?: string
+  /**
+   * Whether reasoning.exclude was set to true in the request.
+   * Will be stored on the assistant message for visibility judgment.
+   */
+  reasoningExclude?: boolean
 }>

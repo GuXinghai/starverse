@@ -9,7 +9,10 @@ import fixtureUsage from '@/next/openrouter/sse/fixtures/usage_tail_choices_empt
 import fixtureMidstreamError from '@/next/openrouter/sse/fixtures/midstream_error.txt?raw'
 import fixtureDebug from '@/next/openrouter/sse/fixtures/debug_choices_empty.txt?raw'
 
-export type DemoScenario = 'normal' | 'usage' | 'midstream_error' | 'debug'
+import fixtureReasoningDetails from '@/next/openrouter/sse/fixtures/reasoning_details.txt?raw'
+import fixtureEncrypted from '@/next/openrouter/sse/fixtures/encrypted.txt?raw'
+
+export type DemoScenario = 'normal' | 'usage' | 'midstream_error' | 'excluded' | 'reasoning_details' | 'encrypted' | 'debug'
 
 function generateId(prefix: string): string {
   const cryptoObj = (globalThis as any).crypto as { randomUUID?: () => string } | undefined
@@ -51,6 +54,7 @@ export function useChatSession() {
       assistantMessageId,
       userMessageId: 'user_1',
       userMessageText: input.text,
+      reasoningExclude: input.scenario === 'excluded',
     })
     state.value = started.state
 
@@ -59,6 +63,10 @@ export function useChatSession() {
         ? fixtureUsage
         : input.scenario === 'midstream_error'
           ? fixtureMidstreamError
+          : input.scenario === 'reasoning_details'
+            ? fixtureReasoningDetails
+            : input.scenario === 'encrypted'
+              ? fixtureEncrypted
           : input.scenario === 'debug'
             ? fixtureDebug
             : fixtureNormal
