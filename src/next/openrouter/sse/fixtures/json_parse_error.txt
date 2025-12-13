@@ -1,0 +1,6 @@
+data: {"id":"gen_1","model":"openrouter/auto","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}
+
+data: {"this is": "not valid json"
+
+data: [DONE]
+

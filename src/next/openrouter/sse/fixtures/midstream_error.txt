@@ -1,0 +1,7 @@
+: OPENROUTER PROCESSING
+
+data: {"id":"gen_1","model":"openrouter/auto","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}
+
+data: {"id":"gen_1","model":"openrouter/auto","error":{"message":"Upstream error","code":"upstream_error"},"choices":[{"index":0,"finish_reason":"error"}]}
+
+data: [DONE]
