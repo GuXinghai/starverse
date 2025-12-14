@@ -73,6 +73,45 @@ describe('mapChunkToEvents', () => {
     expect(events.some((e) => e.type === 'MetaDelta')).toBe(true)
   })
 
+  it('maps delta.tool_calls to MessageDeltaToolCall with mergeStrategy=append', () => {
+    const toolCalls = [
+      { index: 0, id: 'call_1', type: 'function', function: { name: 'lookup', arguments: '{"q":"' } },
+    ]
+
+    const events = mapChunkToEvents({
+      messageId: 'm1',
+      chunk: { choices: [{ index: 0, delta: { tool_calls: toolCalls } }] },
+    })
+
+    expect(events).toContainEqual({
+      type: 'MessageDeltaToolCall',
+      messageId: 'm1',
+      choiceIndex: 0,
+      mergeStrategy: 'append',
+      toolCallDeltas: toolCalls,
+    })
+  })
+
+  it('maps non-stream message.tool_calls to MessageDeltaToolCall with mergeStrategy=replace', () => {
+    const toolCalls = [
+      { index: 0, id: 'call_1', type: 'function', function: { name: 'lookup', arguments: '{"q":"x"}' } },
+    ]
+
+    const events = mapChunkToEvents({
+      messageId: 'm1',
+      chunk: { choices: [{ index: 0, message: { content: 'ok', tool_calls: toolCalls } }] },
+    })
+
+    const toolEv = events.find((e: any) => e.type === 'MessageDeltaToolCall')
+    expect(toolEv).toEqual({
+      type: 'MessageDeltaToolCall',
+      messageId: 'm1',
+      choiceIndex: 0,
+      mergeStrategy: 'replace',
+      toolCallDeltas: toolCalls,
+    })
+  })
+
   it('tolerates reasoning_details elements missing text/summary/data (keeps raw object)', () => {
     const detail = { type: 'reasoning.summary', format: 'json', index: 0 }
     const events = mapChunkToEvents({

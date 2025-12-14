@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { selectMessage, selectTranscript } from './selectors'
-import { createInitialState, startGeneration } from './reducer'
+import { selectMessage, selectTranscript, selectUsageSessionTotalDerived, selectUsageThisTurn } from './selectors'
+import { applyEvent, createInitialState, startGeneration } from './reducer'
 
 describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
   it('returns "excluded" when reasoning.exclude was true and no reasoning returned', () => {
@@ -16,6 +16,35 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
 
     // SSOT 3.4: "excluded：请求使用了 reasoning.exclude = true 且未返回任何 reasoning 内容"
     expect(vm?.reasoningView.visibility).toBe('excluded')
+  })
+
+  it('separates visibility from panelState and provides a default panelState', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'test-model',
+      reasoningExclude: true,
+    })
+
+    const vm1 = selectMessage(s1, assistantMessageId)
+    expect(vm1?.reasoningView.panelState).toBe('expanded')
+    expect(vm1?.reasoningView.visibility).toBe('excluded')
+
+    const s2 = {
+      ...s1,
+      messages: {
+        ...s1.messages,
+        [assistantMessageId]: {
+          ...s1.messages[assistantMessageId],
+          reasoningPanelState: 'collapsed',
+        },
+      },
+    }
+
+    const vm2 = selectMessage(s2, assistantMessageId)
+    expect(vm2?.reasoningView.panelState).toBe('collapsed')
+    expect(vm2?.reasoningView.visibility).toBe('excluded')
   })
 
   it('returns "not_returned" when no exclude config and no reasoning returned', () => {
@@ -123,5 +152,35 @@ describe('selectTranscript', () => {
     expect(transcript[1].role).toBe('assistant')
     expect(transcript[1].messageId).toBe(assistantMessageId)
     expect(transcript[1].reasoningView.visibility).toBe('excluded')
+  })
+})
+
+describe('usage view (turn vs session total derived)', () => {
+  it('labels this-turn as the active run usage, and session total as sum of runs', () => {
+    let state = createInitialState()
+
+    state = startGeneration(state, { runId: 'run1', requestId: 'req1', model: 'm' }).state
+    state = applyEvent(state, 'run1', {
+      type: 'UsageDelta',
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    })
+
+    state = startGeneration(state, { runId: 'run2', requestId: 'req2', model: 'm' }).state
+    state = applyEvent(state, 'run2', {
+      type: 'UsageDelta',
+      usage: { prompt_tokens: 3, completion_tokens: 7, total_tokens: 10 },
+    })
+
+    expect(selectUsageThisTurn(state, 'run2')).toEqual({
+      promptTokens: 3,
+      completionTokens: 7,
+      totalTokens: 10,
+    })
+
+    expect(selectUsageSessionTotalDerived(state)).toEqual({
+      promptTokens: 13,
+      completionTokens: 12,
+      totalTokens: 25,
+    })
   })
 })

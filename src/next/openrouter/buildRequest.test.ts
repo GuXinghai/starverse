@@ -535,9 +535,10 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
       stream: true,
       usage: { include: true },
       reasoning: { effort: 'high', exclude: true },
+      tools: [],
     })
 
-    const allowedTopLevel = new Set(['model', 'messages', 'stream', 'usage', 'reasoning'])
+    const allowedTopLevel = new Set(['model', 'messages', 'stream', 'usage', 'reasoning', 'tools'])
     for (const key of Object.keys(req)) {
       expect(allowedTopLevel.has(key)).toBe(true)
     }

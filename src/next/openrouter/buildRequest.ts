@@ -30,6 +30,7 @@ export type BuildOpenRouterRequestInput = Readonly<{
   stream: boolean
   usage?: OpenRouterUsageInput
   reasoning?: OpenRouterReasoningInput
+  tools?: unknown[]
 }>
 
 export type OpenRouterChatCompletionsRequest = Readonly<{
@@ -38,6 +39,7 @@ export type OpenRouterChatCompletionsRequest = Readonly<{
   stream: boolean
   usage: { include: boolean }
   reasoning?: Record<string, unknown>
+  tools?: unknown[]
 }>
 
 function assertBoolean(value: unknown, name: string): asserts value is boolean {
@@ -85,11 +87,19 @@ export function buildOpenRouterChatCompletionsRequest(
     stream: boolean
     usage: { include: boolean }
     reasoning?: Record<string, unknown>
+    tools?: unknown[]
   } = {
     model: input.model,
     messages: input.messages,
     stream: input.stream,
     usage: { include: usageInclude },
+  }
+
+  if (input.tools !== undefined) {
+    if (!Array.isArray(input.tools)) {
+      throw new Error('tools must be an array')
+    }
+    request.tools = input.tools
   }
 
   if (input.reasoning) {
@@ -140,4 +150,3 @@ export function buildOpenRouterChatCompletionsRequest(
 
   return request
 }
-

@@ -295,7 +295,7 @@ if (supportsParameter(capability, 'temperature')) {
   // Show temperature slider
 }
 
-// Check if model returns visible reasoning
+// Check if model returns disclosed reasoning
 if (capability?.reasoning.returnsVisibleReasoning === 'yes') {
   // Enable reasoning display toggle
 }
@@ -444,7 +444,7 @@ After migration, verify:
   - [ ] Visibility toggle works (exclude/include)
 
 - [ ] **Non-reasoning models** (GPT-4o, Claude 3.5):
-  - [ ] Reasoning controls hidden
+  - [ ] Reasoning controls not shown (unsupported models)
   - [ ] Sampling parameters work (temperature, top_p)
 
 - [ ] **Parameter filtering**:

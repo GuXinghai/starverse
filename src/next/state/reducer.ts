@@ -1,4 +1,4 @@
-import type { DomainEvent, MessageState, RootState, RunState, StartGenerationInput } from './types'
+import type { DomainEvent, MessageState, RootState, RunState, StartGenerationInput, ToolCallDelta, ToolCallVM } from './types'
 
 function generateId(prefix: string): string {
   const cryptoObj = (globalThis as any).crypto as { randomUUID?: () => string } | undefined
@@ -24,6 +24,7 @@ function createEmptyAssistantMessage(messageId: string, isTarget: boolean, reaso
     reasoningDetailsRaw: [],
     reasoningStreamingText: '',
     reasoningSummaryText: undefined,
+    reasoningPanelState: 'expanded',
     hasEncryptedReasoning: false,
     streaming: { isTarget, isComplete: false },
     requestedReasoningExclude: reasoningExclude,
@@ -41,6 +42,7 @@ function createUserMessage(messageId: string, text: string): MessageState {
     reasoningDetailsRaw: [],
     reasoningStreamingText: '',
     reasoningSummaryText: undefined,
+    reasoningPanelState: 'expanded',
     hasEncryptedReasoning: false,
     streaming: { isTarget: false, isComplete: true },
   }
@@ -107,6 +109,13 @@ function updateMessage(state: RootState, messageId: string, updater: (m: Message
   }
 }
 
+export function toggleReasoningPanelState(state: RootState, messageId: string): RootState {
+  return updateMessage(state, messageId, (m) => ({
+    ...m,
+    reasoningPanelState: m.reasoningPanelState === 'collapsed' ? 'expanded' : 'collapsed',
+  }))
+}
+
 function updateRun(state: RootState, runId: string, updater: (s: RunState) => RunState): RootState {
   const prev = state.runs[runId]
   if (!prev) return state
@@ -120,6 +129,67 @@ function updateRun(state: RootState, runId: string, updater: (s: RunState) => Ru
 
 function inferHasEncrypted(detail: unknown): boolean {
   return !!(detail && typeof detail === 'object' && (detail as any).type === 'reasoning.encrypted')
+}
+
+function normalizeToolCallDelta(input: unknown): ToolCallDelta | null {
+  if (!input || typeof input !== 'object') return null
+  const d = input as any
+  const idx = typeof d.index === 'number' ? d.index : undefined
+  const id = typeof d.id === 'string' ? d.id : undefined
+  const type = typeof d.type === 'string' ? d.type : undefined
+
+  let fn: ToolCallDelta['function'] | undefined
+  if (d.function && typeof d.function === 'object') {
+    const name = typeof d.function.name === 'string' ? d.function.name : undefined
+    const args = typeof d.function.arguments === 'string' ? d.function.arguments : undefined
+    if (name !== undefined || args !== undefined) {
+      fn = { ...(name !== undefined ? { name } : {}), ...(args !== undefined ? { arguments: args } : {}) }
+    }
+  }
+
+  if (idx === undefined && id === undefined && type === undefined && fn === undefined) return null
+  return { ...(idx === undefined ? {} : { index: idx }), ...(id ? { id } : {}), ...(type ? { type } : {}), ...(fn ? { function: fn } : {}) }
+}
+
+function mergeToolCalls(
+  prev: ReadonlyArray<ToolCallVM>,
+  deltas: ReadonlyArray<ToolCallDelta>,
+  mergeStrategy: 'append' | 'replace'
+): ToolCallVM[] {
+  const byIndex = new Map<number, ToolCallVM>()
+  for (const tc of prev) byIndex.set(tc.index, tc)
+
+  let nextAutoIndex = prev.reduce((max, tc) => Math.max(max, tc.index), -1) + 1
+
+  for (const rawDelta of deltas) {
+    const idx = typeof rawDelta.index === 'number' ? rawDelta.index : nextAutoIndex++
+    const existing = byIndex.get(idx) ?? { index: idx, argumentsText: '' }
+
+    const name =
+      typeof rawDelta.function?.name === 'string' && rawDelta.function.name.length > 0
+        ? rawDelta.function.name
+        : existing.name
+
+    const argsChunk = typeof rawDelta.function?.arguments === 'string' ? rawDelta.function.arguments : undefined
+    const argumentsText =
+      argsChunk === undefined
+        ? existing.argumentsText
+        : mergeStrategy === 'append'
+          ? existing.argumentsText + argsChunk
+          : argsChunk
+
+    const merged: ToolCallVM = {
+      index: idx,
+      id: typeof rawDelta.id === 'string' && rawDelta.id.length > 0 ? rawDelta.id : existing.id,
+      type: typeof rawDelta.type === 'string' && rawDelta.type.length > 0 ? rawDelta.type : existing.type,
+      name,
+      argumentsText,
+    }
+
+    byIndex.set(idx, merged)
+  }
+
+  return [...byIndex.values()].sort((a, b) => a.index - b.index)
 }
 
 export function applyEvent(state: RootState, runId: string, event: DomainEvent): RootState {
@@ -167,9 +237,15 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
       return nextState
     }
     case 'MessageDeltaToolCall': {
+      const normalizedDeltas = (Array.isArray(event.toolCallDeltas) ? event.toolCallDeltas : [])
+        .map(normalizeToolCallDelta)
+        .filter((d): d is ToolCallDelta => !!d)
+
+      if (normalizedDeltas.length === 0) return state
+
       return updateMessage(state, event.messageId, (m) => ({
         ...m,
-        toolCalls: [...m.toolCalls, event.toolCallDelta],
+        toolCalls: mergeToolCalls(m.toolCalls, normalizedDeltas, event.mergeStrategy),
       }))
     }
     case 'MessageDeltaReasoningDetail': {

@@ -56,6 +56,12 @@
   - **控制预算（Anthropic/Gemini 风格）**：`reasoning: { max_tokens: number }`
   - **仅内部推理、不返回**：`reasoning: { exclude: true, ... }`
 
+#### 2.1.1 产品默认（UI 默认值）
+- **协议层默认（auto/omit）**：若未指定 `reasoning`，可以省略该字段（完全不发送）。
+- **产品层默认（UI）**：默认选择 **auto/omit**，即**不发送** `reasoning` 字段（避免默认付出推理成本/延迟）。
+- **启用推理（产品默认档位）**：当用户选择“启用推理”时，默认档位为 **medium**（与 OpenRouter 的 `enabled: true` 默认 medium 对齐；产品侧用 `effort: "medium"` 表达，避免默认发送 `enabled: true`）。
+- **显式禁用推理（用户选择）**：当用户选择“禁用推理”时，发送 `reasoning: { effort: "none" }`（与 auto/omit 区分：auto 代表“完全不发送该字段”）。
+
 ### 2.2 “禁用推理” 的唯一定义
 - **禁用推理**：`reasoning.effort = "none"`（同时不允许出现 `max_tokens`）。
 - **隐藏推理输出**：`reasoning.exclude = true`（模型仍可内部推理）。
@@ -71,6 +77,10 @@
 ### 2.4 generation 追溯（成本与原生 token）
 - 响应的 `id` 视为 **generation id**，用于调用 `/api/v1/generation?id=...` 获取更精确统计。
 - UI/日志必须记录：generation id、model、provider（若返回）、finish_reason 与 native_finish_reason。
+
+### 2.5 tool calling（请求侧）
+- 若产品支持 tool calling：**每次请求都必须携带 `tools`**（同一会话/同一工具集应保持一致），否则 streaming 中出现 `tool_calls` 时将无法形成稳定闭环。
+- `tools` 的定义与执行不属于 UI；UI 仅展示 reducer/selectors 派生出的 `toolCalls`。
 
 ## 3. 响应侧 SSOT（解析、聚合、边界条件）
 
@@ -162,6 +172,7 @@
 
 ### 6.2 UI 合同（Reducer 输出的 ViewModel / Selectors）
 UI 不得直接解析 OpenRouter JSON，只能消费 Reducer 的只读派生数据。
+此外，Reasoning 展示必须拆轴：`visibility` 只表示“是否返回/可披露（shown/excluded/not_returned）”，`panelState` 只表示“UI 折叠/展开（collapsed/expanded）”，两者不得互相推断。
 
 #### 6.2.1 Run 级 ViewModel
 - `RunVM`
@@ -179,8 +190,9 @@ UI 不得直接解析 OpenRouter JSON，只能消费 Reducer 的只读派生数�
   - `messageId`
   - `role`
   - `contentBlocks`（可增量更新）
-  - `toolCalls`（可增量更新）
-  - `reasoningView`：`{ summaryText?, reasoningText?, hasEncrypted?, visibility: 'shown'|'hidden'|'not_returned' }`
+  - `toolCalls`（可增量更新；不得在 UI 层解析 OpenRouter JSON）
+    - `ToolCallVM[]`：`{ index: number, id?: string, type?: string, name?: string, argumentsText: string }`
+  - `reasoningView`：`{ summaryText?, reasoningText?, hasEncrypted?, visibility: 'shown'|'excluded'|'not_returned', panelState: 'collapsed'|'expanded' }`
   - `streaming`: `{ isTarget: boolean, isComplete: boolean }`
 
 #### 6.2.3 UI 选择器（Selectors）
@@ -192,7 +204,7 @@ UI 不得直接解析 OpenRouter JSON，只能消费 Reducer 的只读派生数�
 - `ChatComposer`：输入 + 发送/中止按钮；仅依赖 `RunVM.status`。
 - `ChatTranscript`：渲染当前分支线性祖先链（MessageVM 列表）。
 - `MessageBubble`：渲染 contentBlocks（text/image）+ tool call 状态。
-- `ReasoningPanel`：可折叠；渲染 `reasoningView`；支持三态：shown / hidden / not_returned。
+- `ReasoningPanel`：可折叠；渲染 `reasoningView`；支持三态：shown / excluded / not_returned；折叠/展开由 `reasoningView.panelState` 决定，且不得影响 visibility 判定。
 - `StreamStatusBar`：展示 streaming 状态、错误、usage、generationId（调试开关可隐藏）。
 
 ### 6.4 交互流程（必须遵守）
@@ -251,6 +263,15 @@ UI 不得直接解析 OpenRouter JSON，只能消费 Reducer 的只读派生数�
 - 文本/工具/推理详情的增量拼接顺序稳定。
 - encrypted vs excluded vs not returned 的 UI 语义判定。
 - abort：本地中止后状态一致（保留已到达内容，标记 aborted）。
+
+### 6.3 Live smoke（真实 OpenRouter 链路，可复现）
+- Gate：`node scripts/gates/tc14-ui-live-smoke.mjs`
+  - key 优先级：`--api-key` > `OPENROUTER_API_KEY` > `VITE_OPENROUTER_API_KEY`
+  - 无 key：必须 `SKIP` 并提示如何提供 key
+  - 有 key：最小请求 `/api/v1/chat/completions`（建议 stream=true），输出 generationId + done/error 摘要（不得回显 key）
+
+### 6.4 工程卫生（防伪合规）
+- Gate：`node scripts/gates/tc15-git-clean.mjs`（验收前必须 `git status` 干净）
 
 ---
 

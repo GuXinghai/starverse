@@ -16,18 +16,39 @@ export type ContentBlock =
 
 export type ReasoningViewVisibility = 'shown' | 'excluded' | 'not_returned'
 
+export type ReasoningPanelState = 'collapsed' | 'expanded'
+
+export type ToolCallVM = Readonly<{
+  index: number
+  id?: string
+  type?: string
+  name?: string
+  argumentsText: string
+}>
+
+export type ToolCallDelta = Readonly<{
+  index?: number
+  id?: string
+  type?: string
+  function?: Readonly<{
+    name?: string
+    arguments?: string
+  }>
+}>
+
 export type ReasoningView = Readonly<{
   summaryText?: string
   reasoningText?: string
   hasEncrypted?: boolean
   visibility: ReasoningViewVisibility
+  panelState: ReasoningPanelState
 }>
 
 export type MessageVM = Readonly<{
   messageId: string
   role: MessageRole
   contentBlocks: ContentBlock[]
-  toolCalls: unknown[]
+  toolCalls: ToolCallVM[]
   reasoningView: ReasoningView
   streaming: { isTarget: boolean; isComplete: boolean }
 }>
@@ -51,7 +72,13 @@ export type DomainEvent =
   | Readonly<{ type: 'StreamDone' }>
   | Readonly<{ type: 'StreamAbort'; reason?: string }>
   | Readonly<{ type: 'MessageDeltaText'; messageId: string; choiceIndex: number; text: string }>
-  | Readonly<{ type: 'MessageDeltaToolCall'; messageId: string; choiceIndex: number; toolCallDelta: unknown }>
+  | Readonly<{
+      type: 'MessageDeltaToolCall'
+      messageId: string
+      choiceIndex: number
+      mergeStrategy: 'append' | 'replace'
+      toolCallDeltas: ToolCallDelta[]
+    }>
   | Readonly<{ type: 'MessageDeltaReasoningDetail'; messageId: string; choiceIndex: number; detail: unknown }>
   | Readonly<{ type: 'UsageDelta'; usage: unknown }>
   | Readonly<{
@@ -70,10 +97,11 @@ export type MessageState = Readonly<{
   role: MessageRole
   contentText: string
   contentBlocks: ContentBlock[]
-  toolCalls: unknown[]
+  toolCalls: ToolCallVM[]
   reasoningDetailsRaw: unknown[]
   reasoningStreamingText: string
   reasoningSummaryText?: string
+  reasoningPanelState: ReasoningPanelState
   hasEncryptedReasoning: boolean
   streaming: { isTarget: boolean; isComplete: boolean }
   /**
