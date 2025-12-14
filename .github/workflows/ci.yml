@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify-ssot:
+    name: verify:ssot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Run verify:ssot
+        run: bash -lc "npm run verify:ssot | tee verify.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verify-ssot-log
+          path: verify.log
+
+  live-smoke:
+    name: tc14 live smoke (optional)
+    runs-on: ubuntu-latest
+    needs: verify-ssot
+    if: ${{ secrets.OPENROUTER_API_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Run tc14 live smoke
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: bash -lc "node scripts/gates/tc14-ui-live-smoke.mjs | tee live-smoke.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-smoke-log
+          path: live-smoke.log
+
