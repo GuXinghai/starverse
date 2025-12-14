@@ -76,7 +76,7 @@ function pickObservability(state: any, runId: string) {
 }
 
 describe('TC-11 — vertical slice E2E smoke (fixture replay)', () => {
-  it('streaming + usage include: usage tail chunk updates session usage', async () => {
+  it('streaming + usage include: usage tail chunk updates run usage', async () => {
     const { state, runId, assistantMessageId } = await runFixture('usage_tail_choices_empty.txt')
 
     const obs = pickObservability(state, runId)
@@ -108,7 +108,7 @@ describe('TC-11 — vertical slice E2E smoke (fixture replay)', () => {
     expect(msg.streaming.isComplete).toBe(true)
   })
 
-  it('abort: stops early, keeps partial output, marks session aborted', async () => {
+  it('abort: stops early, keeps partial output, marks run aborted', async () => {
     const { state, runId, assistantMessageId, events } = await runFixture(
       'usage_tail_choices_empty.txt',
       { abortAfterFirstText: true }
