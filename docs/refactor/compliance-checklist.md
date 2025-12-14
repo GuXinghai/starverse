@@ -201,6 +201,10 @@
 - [x] 旧 UI/stores/services 已删除：`src/stores`、`src/services`、`src/components`、`src/composables` 均不存在。
 - [x] Gate 脚本验证通过：TC-00、TC-01、TC-10、TC-12、TC-13 全部 PASS。
 - [x] Reasoning visibility contract gate：TC-16（`node scripts/gates/tc16-ssot-reasoning-visibility.mjs`）PASS。
+- [x] 统一验收命令：`npm run verify:ssot`（本地与 CI 必跑；产物 `verify.log`）
+- [x] CI 工作流：`.github/workflows/ci.yml`（required：`verify:ssot`；可选：tc14 live smoke）
+- [x] tc14 可复现：`node scripts/gates/tc14-ui-live-smoke.mjs`（无 key => SKIP；有 key 用 `OPENROUTER_API_KEY`/`--api-key`）
+- [x] tc15 强制干净工作区：`node scripts/gates/tc15-git-clean.mjs`
 - [ ] Live smoke gate：TC-14（无 key => SKIP；有 key => PASS）
   - `node scripts/gates/tc14-ui-live-smoke.mjs`
   - `node scripts/gates/tc14-ui-live-smoke.mjs --api-key <PASTE_KEY_HERE> --model openrouter/auto`

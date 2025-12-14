@@ -22,6 +22,8 @@
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
     "lint": "eslint . --ext .js,.cjs,.mjs,.ts,.tsx,.vue",
+    "verify:ssot": "npx vitest run && node scripts/gates/tc10-ui-next.mjs && node scripts/gates/tc12.mjs --skip-tests && node scripts/gates/tc16-ssot-reasoning-visibility.mjs && node scripts/gates/tc15-git-clean.mjs",
+    "verify:live": "node scripts/gates/tc14-ui-live-smoke.mjs",
     "gate:tc13": "node scripts/gates/tc13-ui-isolation.mjs",
     "gate:tc14": "node scripts/gates/tc14-ui-live-smoke.mjs",
     "gate:tc15": "node scripts/gates/tc15-git-clean.mjs",
