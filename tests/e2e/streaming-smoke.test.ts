@@ -136,6 +136,25 @@ describe('TC-11 — vertical slice E2E smoke (fixture replay)', () => {
     expect(msg.streaming.isComplete).toBe(true)
   })
 
+  it('tool_calls: merges streaming tool_calls deltas and sets finishReason=tool_calls', async () => {
+    const { state, runId, assistantMessageId } = await runFixture('tool_calls.txt')
+
+    const obs = pickObservability(state, runId)
+    expect(obs.status).toBe('done')
+    expect(obs.finishReason).toBe('tool_calls')
+
+    const msg = state.messages[assistantMessageId]
+    expect(Array.isArray(msg.toolCalls)).toBe(true)
+    expect(msg.toolCalls.length).toBe(1)
+    expect(msg.toolCalls[0]).toMatchObject({
+      index: 0,
+      id: 'call_1',
+      type: 'function',
+      name: 'lookup',
+    })
+    expect(String(msg.toolCalls[0].argumentsText)).toBe('{"q":"x"}')
+  })
+
   it('tool loop + optional reasoning blocks return: default off, advanced preserves sequence', () => {
     const reasoningBlocks = [
       { type: 'reasoning.text', text: 'r1' },

@@ -43,13 +43,21 @@ ChatView -> ChatInputArea -> ChatToolbar -> ReasoningControls
 
 ### 2.1 旧类型 vs 新类型映射
 
+### 2.0 术语澄清（防止 “hidden” 歧义复活）
+
+- `visibility`：**返回/披露合同**（provider 是否返回、是否允许展示）；只允许三态：`shown | excluded | not_returned`。
+- `panelState`：**UI 呈现状态**（折叠/展开）；只允许二态：`collapsed | expanded`。
+- 两者不得互相推断；不做任何 `hidden` 兼容映射。
+
 **旧类型（当前）**：
 ```ts
 // src/types/chat.ts
 interface ReasoningPreference {
   enabled: boolean;
   effort?: 'low' | 'medium' | 'high'; // 仅三档
-  visibility?: 'visible' | 'hidden';
+  // 旧的二态命名语义已废弃：SSOT v2.1 统一拆轴为 visibility + panelState
+  visibility?: 'shown' | 'excluded' | 'not_returned';
+  panelState?: 'collapsed' | 'expanded';
   max_tokens?: number; // 未明确语义
 }
 ```
@@ -480,7 +488,9 @@ const sendMessage = async (text: string, attachments: any[]) => {
   const reasoningUserConfig: ReasoningUserConfig = {
     controlMode: currentConversation.value?.reasoningPreference?.enabled ? 'effort' : 'disabled',
     effort: currentConversation.value?.reasoningPreference?.effort ?? 'medium',
-    showReasoningContent: currentConversation.value?.reasoningPreference?.visibility !== 'hidden'
+    showReasoningContent:
+      currentConversation.value?.reasoningView?.visibility === 'shown' &&
+      currentConversation.value?.reasoningView?.panelState === 'expanded'
   }
   
   const reasoningResult = buildReasoningPayload(

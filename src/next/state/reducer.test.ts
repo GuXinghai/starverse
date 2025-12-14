@@ -88,6 +88,7 @@ describe('next/state reducer', () => {
           "messageId": "assistant_1",
           "reasoningView": {
             "hasEncrypted": false,
+            "panelState": "expanded",
             "reasoningText": "",
             "summaryText": undefined,
             "visibility": "not_returned",
@@ -119,6 +120,34 @@ describe('next/state reducer', () => {
     expect(run?.status).toBe('error')
     const transcript = selectTranscript(finalState, runId)
     expect(transcript[0]?.contentBlocks?.[0]).toEqual({ type: 'text', text: 'partial' })
+  })
+
+  it('tool_calls: merges streaming deltas, sets finishReason=tool_calls, and exposes structured toolCalls in VM', async () => {
+    const runId = 'r1'
+    const started = startGeneration(createInitialState(), {
+      runId,
+      requestId: 'req1',
+      model: 'openrouter/auto',
+      assistantMessageId: 'assistant_1',
+    })
+
+    const events = await replayFixture(runId, started.assistantMessageId, 'tool_calls.txt')
+    const finalState = applyEvents(started.state, runId, events)
+
+    const run = selectRun(finalState, runId)
+    expect(run?.status).toBe('done')
+    expect(run?.finishReason).toBe('tool_calls')
+
+    const [assistant] = selectTranscript(finalState, runId)
+    expect(assistant?.role).toBe('assistant')
+    expect(assistant?.toolCalls?.length).toBe(1)
+    expect(assistant?.toolCalls?.[0]).toMatchObject({
+      index: 0,
+      id: 'call_1',
+      type: 'function',
+      name: 'lookup',
+      argumentsText: '{"q":"x"}',
+    })
   })
 
   it('abort preserves partial content and marks run aborted', () => {

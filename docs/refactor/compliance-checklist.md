@@ -35,6 +35,7 @@
 
 ## 2. 请求侧 SSOT（推理控制、流式与 usage）
 - [x] 只使用 `reasoning` 对象，不使用 `include_reasoning`。
+- [x] 产品默认（UI 默认值）：默认选择 **auto/omit**（完全不发送 `reasoning`）；显式禁用时发送 `reasoning: { effort: "none" }`；启用推理时产品默认档位为 **medium**（证据：`src/ui-next/AppChatNext.vue`, `src/ui-next/components/ChatNextComposer.vue`, `src/ui-next/live/openRouterLiveStream.test.ts`）。
 - [x] **禁用推理**：`reasoning.effort = "none"`（同时不允许出现 `max_tokens`）。
 - [x] **隐藏推理输出**：`reasoning.exclude = true`（模型仍可内部推理）。
 - [x] SSE：`stream: true`
@@ -56,6 +57,8 @@
 #### 3.3.1 解析位置（必须全覆盖）
 - [x] **流式**：`choices[].delta.reasoning_details`
 - [x] **非流**：`choices[].message.reasoning_details`
+- [x] **流式**：`choices[].delta.tool_calls`（证据：`src/next/openrouter/mapChunkToEvents.ts`, `src/next/openrouter/mapChunkToEvents.test.ts`, `src/next/openrouter/sse/fixtures/tool_calls.txt`）
+- [x] **非流**：`choices[].message.tool_calls`（证据：`src/next/openrouter/mapChunkToEvents.ts`, `src/next/openrouter/mapChunkToEvents.test.ts`）
 
 #### 3.3.2 结构化保真存储（必须原样）
 - [x] 将 `reasoning_details` 作为 **append-only 原始事件序列**保存：
@@ -120,6 +123,7 @@
 
 ## 6. UI 层实现指南（最小但可执行）
 - [x] UI 不得直接解析 OpenRouter JSON，只能消费 Reducer 的只读派生数据。
+- [x] 此外，Reasoning 展示必须拆轴：`visibility` 只表示“是否返回/可披露（shown/excluded/not_returned）”，`panelState` 只表示“UI 折叠/展开（collapsed/expanded）”，两者不得互相推断。
 
 ### 6.4 交互流程（必须遵守）
 - [x] 1) 用户点击发送：
@@ -137,6 +141,7 @@
 - [x] usage 可能只在流末尾出现，且不绑定到某条消息。
 - [x] reasoning 可能为空、excluded、encrypted、或模型不返回；UI 必须区分并给出可解释状态。
 - [x] tool calling：assistant 工具调用显示为结构化块；tool result 以 tool 消息渲染；续写后 transcript 连续。
+  - [x] 最小闭环证据：fixture `src/next/openrouter/sse/fixtures/tool_calls.txt`；E2E 回放用例 `tests/e2e/streaming-smoke.test.ts`；UI 渲染测试 `src/ui-kit/chat/ChatMessageBubble.test.ts`。
 
 ### 6.6 UI 迁移护栏（避免新旧混合导致状态管理失控）
 - [x] 本轮重构在 UI 层必须遵守以下护栏；任何违反都视为失败（除非先写 ADR 并更新 SSOT）。
@@ -161,6 +166,7 @@
 **6.6.5 工程化强制（建议）**
 - [x] 用 ESLint/TS path rule 限制新 UI 目录不得引用 legacy 目录（例如 `no-restricted-imports`）。
 - [x] 临时开关必须有"删除时间点/条件"：当新 UI 通过 M3 集成验收即删除。
+- [x] UI isolation gate：`node scripts/gates/tc13-ui-isolation.mjs`（扫描 `src/ui-next/**` 与 `src/next/**` 的禁用 import，输出命中行号）。
 
 ## 7. 测试与验收（最小但不可省）
 ### 7.1 Parser 测试
@@ -193,4 +199,10 @@
 - [x] 临时开关（generation pipeline switch）已删除：`src/next/config/flags.ts` 不存在，且 `useNextGenerationPipeline` / `readGenerationFlags` 在 `src/` 内无引用。
 - [x] legacy pipeline stub 已删除：`src/next/generation/legacyGenerationPipeline.ts` 不存在。
 - [x] 旧 UI/stores/services 已删除：`src/stores`、`src/services`、`src/components`、`src/composables` 均不存在。
-- [x] Gate 脚本验证通过：TC-00、TC-01、TC-10、TC-12 全部 PASS。
+- [x] Gate 脚本验证通过：TC-00、TC-01、TC-10、TC-12、TC-13 全部 PASS。
+- [x] Reasoning visibility contract gate：TC-16（`node scripts/gates/tc16-ssot-reasoning-visibility.mjs`）PASS。
+- [ ] Live smoke gate：TC-14（无 key => SKIP；有 key => PASS）
+  - `node scripts/gates/tc14-ui-live-smoke.mjs`
+  - `node scripts/gates/tc14-ui-live-smoke.mjs --api-key <PASTE_KEY_HERE> --model openrouter/auto`
+- [ ] Git clean gate：TC-15（验收前必须工作区干净）
+  - `node scripts/gates/tc15-git-clean.mjs`

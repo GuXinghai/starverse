@@ -3,7 +3,13 @@ export type DomainEvent =
   | Readonly<{ type: 'StreamError'; error: unknown; terminal: true }>
   | Readonly<{ type: 'StreamDone' }>
   | Readonly<{ type: 'MessageDeltaText'; messageId: string; choiceIndex: number; text: string }>
-  | Readonly<{ type: 'MessageDeltaToolCall'; messageId: string; choiceIndex: number; toolCallDelta: unknown }>
+  | Readonly<{
+      type: 'MessageDeltaToolCall'
+      messageId: string
+      choiceIndex: number
+      mergeStrategy: 'append' | 'replace'
+      toolCallDeltas: unknown[]
+    }>
   | Readonly<{ type: 'MessageDeltaReasoningDetail'; messageId: string; choiceIndex: number; detail: unknown }>
   | Readonly<{ type: 'UsageDelta'; usage: unknown }>
   | Readonly<{
@@ -107,7 +113,9 @@ export function mapChunkToEvents(input: OpenRouterChunkInput): DomainEvent[] {
 
   const toolCalls = delta?.tool_calls ?? message?.tool_calls
   if (toolCalls !== undefined) {
-    events.push({ type: 'MessageDeltaToolCall', messageId, choiceIndex, toolCallDelta: toolCalls })
+    const mergeStrategy: 'append' | 'replace' = delta?.tool_calls !== undefined ? 'append' : 'replace'
+    const toolCallDeltas = Array.isArray(toolCalls) ? toolCalls : [toolCalls]
+    events.push({ type: 'MessageDeltaToolCall', messageId, choiceIndex, mergeStrategy, toolCallDeltas })
   }
 
   const reasoningDetails = delta?.reasoning_details ?? message?.reasoning_details
@@ -124,4 +132,3 @@ export function mapChunkToEvents(input: OpenRouterChunkInput): DomainEvent[] {
 
   return events
 }
-

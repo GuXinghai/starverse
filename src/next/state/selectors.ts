@@ -94,6 +94,7 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
       reasoningText,
       hasEncrypted: m.hasEncryptedReasoning,
       visibility,
+      panelState: m.reasoningPanelState,
     },
     streaming: m.streaming,
   }
@@ -102,4 +103,53 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
 export function selectTranscript(state: RootState, runId: string): MessageVM[] {
   const ids = state.runMessageIds[runId] || []
   return ids.map((id) => selectMessage(state, id)).filter((m): m is MessageVM => !!m)
+}
+
+export type TokenUsage = Readonly<{
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+}>
+
+function normalizeTokenUsage(usage: unknown): TokenUsage | null {
+  if (!usage || typeof usage !== 'object') return null
+  const u = usage as any
+
+  const promptTokens = typeof u.prompt_tokens === 'number' ? u.prompt_tokens : null
+  const completionTokens = typeof u.completion_tokens === 'number' ? u.completion_tokens : null
+  const totalTokens = typeof u.total_tokens === 'number' ? u.total_tokens : null
+
+  if (promptTokens == null && completionTokens == null && totalTokens == null) return null
+
+  return {
+    promptTokens: promptTokens ?? 0,
+    completionTokens: completionTokens ?? 0,
+    totalTokens: totalTokens ?? 0,
+  }
+}
+
+export function selectUsageThisTurn(state: RootState, runId: string): TokenUsage | null {
+  const run = state.runs[runId]
+  if (!run) return null
+  return normalizeTokenUsage(run.usage)
+}
+
+export function selectUsageSessionTotalDerived(state: RootState): TokenUsage | null {
+  let sumPrompt = 0
+  let sumCompletion = 0
+  let sumTotal = 0
+  let hasAny = false
+
+  for (const runId of Object.keys(state.runs)) {
+    const run = state.runs[runId]
+    const u = normalizeTokenUsage(run?.usage)
+    if (!u) continue
+    hasAny = true
+    sumPrompt += u.promptTokens
+    sumCompletion += u.completionTokens
+    sumTotal += u.totalTokens
+  }
+
+  if (!hasAny) return null
+  return { promptTokens: sumPrompt, completionTokens: sumCompletion, totalTokens: sumTotal }
 }
