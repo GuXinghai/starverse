@@ -63,7 +63,12 @@ function bubbleClass(role: MessageVM['role']) {
             <template v-else-if="b.type === 'image'">
               <div class="rounded-lg border border-black/10 bg-white/70 p-3 text-xs text-gray-700">
                 <div class="font-semibold">Image</div>
-                <div class="mt-1 break-all font-mono opacity-80">{{ b.url }}</div>
+                <img
+                  class="mt-2 h-48 w-full rounded border border-black/10 bg-white object-contain"
+                  :src="b.url"
+                  alt="image"
+                />
+                <div class="mt-2 break-all font-mono opacity-80">{{ b.url }}</div>
               </div>
             </template>
             <template v-else>

@@ -3,6 +3,7 @@ export type DomainEvent =
   | Readonly<{ type: 'StreamError'; error: unknown; terminal: true }>
   | Readonly<{ type: 'StreamDone' }>
   | Readonly<{ type: 'MessageDeltaText'; messageId: string; choiceIndex: number; text: string }>
+  | Readonly<{ type: 'MessageAppendContentBlock'; messageId: string; choiceIndex: number; block: unknown }>
   | Readonly<{
       type: 'MessageDeltaToolCall'
       messageId: string
@@ -109,6 +110,25 @@ export function mapChunkToEvents(input: OpenRouterChunkInput): DomainEvent[] {
   const content = delta?.content ?? message?.content
   if (typeof content === 'string' && content.length > 0) {
     events.push({ type: 'MessageDeltaText', messageId, choiceIndex, text: content })
+  }
+  if (Array.isArray(content)) {
+    for (const part of content) {
+      if (!part || typeof part !== 'object') continue
+      const type = (part as any).type
+      if (type === 'text' || type === 'input_text') {
+        const text = (part as any).text
+        if (typeof text === 'string' && text.length > 0) {
+          events.push({ type: 'MessageDeltaText', messageId, choiceIndex, text })
+        }
+        continue
+      }
+      if (type === 'image_url') {
+        const url = (part as any)?.image_url?.url
+        if (typeof url === 'string' && url.length > 0) {
+          events.push({ type: 'MessageAppendContentBlock', messageId, choiceIndex, block: { type: 'image', url } })
+        }
+      }
+    }
   }
 
   const toolCalls = delta?.tool_calls ?? message?.tool_calls

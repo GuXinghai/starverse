@@ -1,0 +1,10 @@
+: OPENROUTER PROCESSING
+
+data: {"id":"gen_img_1","model":"openrouter/auto","choices":[{"index":0,"delta":{"role":"assistant","content":[{"type":"text","text":"Here is an image:"},{"type":"image_url","image_url":{"url":"https://example.com/cat.png"}}]},"finish_reason":null}]}
+
+data: {"id":"gen_img_1","choices":[{"index":0,"delta":{"content":[{"type":"text","text":" done"}]},"finish_reason":null}]}
+
+data: {"id":"gen_img_1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+

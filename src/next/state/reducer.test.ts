@@ -122,6 +122,57 @@ describe('next/state reducer', () => {
     expect(transcript[0]?.contentBlocks?.[0]).toEqual({ type: 'text', text: 'partial' })
   })
 
+  it('image blocks: append-only and do not overwrite existing text blocks', () => {
+    const runId = 'r1'
+    const started = startGeneration(createInitialState(), {
+      runId,
+      requestId: 'req1',
+      model: 'openrouter/auto',
+      assistantMessageId: 'assistant_1',
+    })
+    const assistantMessageId = started.assistantMessageId
+
+    const finalState = applyEvents(started.state, runId, [
+      { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'hello ' },
+      {
+        type: 'MessageAppendContentBlock',
+        messageId: assistantMessageId,
+        choiceIndex: 0,
+        block: { type: 'image', url: 'https://example.com/cat.png' },
+      },
+      { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'world' },
+    ])
+
+    const [assistant] = selectTranscript(finalState, runId)
+    expect(assistant?.contentBlocks).toEqual([
+      { type: 'text', text: 'hello ' },
+      { type: 'image', url: 'https://example.com/cat.png' },
+      { type: 'text', text: 'world' },
+    ])
+  })
+
+  it('image block can start streaming (requesting -> streaming)', () => {
+    const runId = 'r1'
+    const started = startGeneration(createInitialState(), {
+      runId,
+      requestId: 'req1',
+      model: 'openrouter/auto',
+      assistantMessageId: 'assistant_1',
+    })
+    const assistantMessageId = started.assistantMessageId
+
+    const finalState = applyEvents(started.state, runId, [
+      {
+        type: 'MessageAppendContentBlock',
+        messageId: assistantMessageId,
+        choiceIndex: 0,
+        block: { type: 'image', url: 'https://example.com/cat.png' },
+      },
+    ])
+
+    expect(selectRun(finalState, runId)?.status).toBe('streaming')
+  })
+
   it('tool_calls: merges streaming deltas, sets finishReason=tool_calls, and exposes structured toolCalls in VM', async () => {
     const runId = 'r1'
     const started = startGeneration(createInitialState(), {

@@ -15,6 +15,32 @@ describe('mapChunkToEvents', () => {
     expect(events).toContainEqual({ type: 'MessageDeltaText', messageId: 'm1', choiceIndex: 0, text: 'hi' })
   })
 
+  it('maps multimodal delta.content blocks (text + image_url)', () => {
+    const events = mapChunkToEvents({
+      messageId: 'm1',
+      chunk: {
+        choices: [
+          {
+            index: 0,
+            delta: {
+              content: [
+                { type: 'text', text: 'look ' },
+                { type: 'image_url', image_url: { url: 'https://example.com/cat.png', detail: 'auto' } },
+              ],
+            },
+          },
+        ],
+      },
+    })
+    expect(events).toContainEqual({ type: 'MessageDeltaText', messageId: 'm1', choiceIndex: 0, text: 'look ' })
+    expect(events).toContainEqual({
+      type: 'MessageAppendContentBlock',
+      messageId: 'm1',
+      choiceIndex: 0,
+      block: { type: 'image', url: 'https://example.com/cat.png' },
+    })
+  })
+
   it('maps delta.reasoning_details to MessageDeltaReasoningDetail (append-only)', () => {
     const details = [{ type: 'reasoning.text', text: 'a' }, { type: 'reasoning.text', text: 'b' }]
     const events = mapChunkToEvents({
