@@ -72,6 +72,7 @@ export type DomainEvent =
   | Readonly<{ type: 'StreamDone' }>
   | Readonly<{ type: 'StreamAbort'; reason?: string }>
   | Readonly<{ type: 'MessageDeltaText'; messageId: string; choiceIndex: number; text: string }>
+  | Readonly<{ type: 'MessageAppendContentBlock'; messageId: string; choiceIndex: number; block: ContentBlock }>
   | Readonly<{
       type: 'MessageDeltaToolCall'
       messageId: string

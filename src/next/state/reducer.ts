@@ -223,14 +223,62 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
     }
     case 'MessageDeltaText': {
       const nextState = updateMessage(state, event.messageId, (m) => {
-        const appended = m.contentText + event.text
+        if (!event.text) return m
+
+        const nextText = m.contentText + event.text
+        const prevBlocks = Array.isArray(m.contentBlocks) ? m.contentBlocks : []
+
+        let nextBlocks = prevBlocks
+        const last = prevBlocks.length > 0 ? prevBlocks[prevBlocks.length - 1] : null
+        if (!last) {
+          nextBlocks = [{ type: 'text', text: event.text }]
+        } else if (last.type === 'text') {
+          nextBlocks = [...prevBlocks.slice(0, -1), { type: 'text', text: last.text + event.text }]
+        } else {
+          nextBlocks = [...prevBlocks, { type: 'text', text: event.text }]
+        }
+
         return {
           ...m,
-          contentText: appended,
-          contentBlocks: appended ? [{ type: 'text', text: appended }] : [],
+          contentText: nextText,
+          contentBlocks: nextBlocks,
         }
       })
 
+      if (run.status === 'requesting') {
+        return updateRun(nextState, runId, (s) => ({ ...s, status: 'streaming' }))
+      }
+      return nextState
+    }
+    case 'MessageAppendContentBlock': {
+      const nextState = updateMessage(state, event.messageId, (m) => {
+        const block = event.block
+
+        if (block.type === 'text' && typeof block.text === 'string') {
+          const text = block.text
+          if (!text) return m
+
+          const prevBlocks = Array.isArray(m.contentBlocks) ? m.contentBlocks : []
+          const last = prevBlocks.length > 0 ? prevBlocks[prevBlocks.length - 1] : null
+          const nextBlocks =
+            last && last.type === 'text'
+              ? [...prevBlocks.slice(0, -1), { type: 'text', text: last.text + text }]
+              : [...prevBlocks, { type: 'text', text }]
+
+          return {
+            ...m,
+            contentText: m.contentText + text,
+            contentBlocks: nextBlocks,
+          }
+        }
+
+        return {
+          ...m,
+          contentBlocks: [...m.contentBlocks, block],
+        }
+      })
+
+      if (nextState === state) return state
       if (run.status === 'requesting') {
         return updateRun(nextState, runId, (s) => ({ ...s, status: 'streaming' }))
       }
