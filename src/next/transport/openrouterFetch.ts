@@ -40,6 +40,16 @@ export type OpenRouterFetchOptions = Readonly<{
   signal?: AbortSignal | null
   timeoutMs?: number
   requestId?: string
+  /**
+   * Debug-only request logging + invariants.
+   * Enable without code changes in DevTools:
+   *   globalThis.__STARVERSE_OPENROUTER_DEBUG_REQUEST__ = true
+   *   globalThis.__STARVERSE_OPENROUTER_DEBUG_REQUEST_ASSERT__ = true
+   */
+  debug?: Readonly<{
+    logRequestBody?: boolean
+    assertRequestInvariants?: boolean
+  }>
 }>
 
 function generateRequestId(): string {
@@ -78,6 +88,45 @@ function abortError(requestId: string): OpenRouterTransportError {
   }
 }
 
+function summarizeBodyForLog(body: unknown): {
+  include_reasoning?: unknown
+  reasoning?: { effort?: unknown; max_tokens?: unknown; exclude?: unknown; enabled?: unknown } | undefined
+  messages?: Array<{
+    role?: unknown
+    has_reasoning_details?: boolean
+    content_type?: string
+    content_length?: number | null
+  }>
+} {
+  if (!body || typeof body !== 'object') return {}
+  const b: any = body
+
+  const include_reasoning = b.include_reasoning
+
+  let reasoning: any = undefined
+  if (b.reasoning && typeof b.reasoning === 'object') {
+    reasoning = {
+      effort: (b.reasoning as any).effort,
+      max_tokens: (b.reasoning as any).max_tokens,
+      exclude: (b.reasoning as any).exclude,
+      enabled: (b.reasoning as any).enabled,
+    }
+  }
+
+  const messages = Array.isArray(b.messages)
+    ? b.messages.map((m: any) => {
+        const role = m?.role
+        const hasReasoningDetails = !!(m && typeof m === 'object' && 'reasoning_details' in m)
+        const content = m?.content
+        const contentType = Array.isArray(content) ? 'array' : typeof content
+        const contentLength = typeof content === 'string' ? content.length : null
+        return { role, has_reasoning_details: hasReasoningDetails, content_type: contentType, content_length: contentLength }
+      })
+    : undefined
+
+  return { include_reasoning, reasoning, messages }
+}
+
 /**
  * Pure transport: only sends the request and returns the raw Response.
  * - Does NOT do SSE parsing or JSON chunk mapping.
@@ -112,6 +161,55 @@ export async function openrouterFetch(
 
   try {
     const url = `${baseUrl}/chat/completions`
+    const debugLog =
+      options.debug?.logRequestBody === true ||
+      (globalThis as any).__STARVERSE_OPENROUTER_DEBUG_REQUEST__ === true
+    const debugAssert =
+      options.debug?.assertRequestInvariants === true ||
+      (globalThis as any).__STARVERSE_OPENROUTER_DEBUG_REQUEST_ASSERT__ === true
+
+    if (debugLog || debugAssert) {
+      const body: any = options.body
+      const reasoning = body?.reasoning
+      const hasIncludeReasoning = !!(body && typeof body === 'object' && 'include_reasoning' in body)
+      const hasReasoningEnabled = !!(reasoning && typeof reasoning === 'object' && 'enabled' in reasoning)
+      const hasReasoningExclude = !!(reasoning && typeof reasoning === 'object' && 'exclude' in reasoning)
+      const reasoningEffort = reasoning && typeof reasoning === 'object' ? (reasoning as any).effort : undefined
+
+      const messages = Array.isArray(body?.messages) ? body.messages : []
+      const hasMessageReasoningDetails = messages.some(
+        (m: any) => m && typeof m === 'object' && 'reasoning_details' in m
+      )
+
+      const summary = {
+        requestId,
+        url,
+        assertions: {
+          reasoning_effort_is_none: reasoningEffort === 'none',
+          reasoning_has_exclude_field: hasReasoningExclude,
+          reasoning_has_enabled_field: hasReasoningEnabled,
+          has_include_reasoning: hasIncludeReasoning,
+          has_message_reasoning_details: hasMessageReasoningDetails,
+        },
+        body: summarizeBodyForLog(options.body),
+      }
+
+      if (debugLog) {
+        // Never log apiKey; only log request/body structure.
+        console.log('[openrouterFetch] request body (sanitized)', summary)
+      }
+
+      if (debugAssert) {
+        const failures: string[] = []
+        if (hasIncludeReasoning) failures.push('include_reasoning present in request body')
+        if (hasReasoningEnabled) failures.push('reasoning.enabled present in request body')
+        if (hasMessageReasoningDetails) failures.push('messages[].reasoning_details present in request body')
+        if (failures.length > 0) {
+          throw new Error(`[openrouterFetch] invariant violation: ${failures.join('; ')}`)
+        }
+      }
+    }
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -176,4 +274,3 @@ export async function openrouterFetch(
     if (externalSignal) externalSignal.removeEventListener('abort', onAbort)
   }
 }
-

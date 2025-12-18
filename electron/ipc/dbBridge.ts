@@ -110,12 +110,17 @@ const allowedMethods: DbMethod[] = [
   'usage.reasoningModelComparison',
   
   // Model Data Management
-  'model.saveMany',
-  'model.replaceByRouterSource',
-  'model.getAll',
-  'model.getByRouterSource',
-  'model.getById',
-  'model.clear',
+  // Model Catalog (Snapshot Sync)
+  'modelCatalog.syncSnapshot',
+  'modelCatalog.list',
+
+  // Reasoning Model Index
+  'reasoningIndex.syncFromCatalog',
+  'reasoningIndex.list',
+
+  // Settings
+  'settings.getOpenRouterProviderRequireParameters',
+  'settings.setOpenRouterProviderRequireParameters',
   
   // Preferences
   'prefs.save',

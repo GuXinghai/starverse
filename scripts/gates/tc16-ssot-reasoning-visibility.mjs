@@ -117,6 +117,16 @@ function main() {
       regex: /\bshown\s*\/\s*hidden\s*\/\s*not_returned\b/g,
       reason: 'SSOT must not describe tri-state as shown/hidden/not_returned',
     },
+    {
+      id: 'ssot_reasoning_enabled_mode_object',
+      regex: /\breasoning\s*:\s*\{[^}]*\benabled\s*:\s*true\b[^}]*\}/g,
+      reason: 'SSOT must not promote reasoning.enabled:true (repo uses effort only)',
+    },
+    {
+      id: 'ssot_reasoning_enabled_field',
+      regex: /\breasoning\s*\.\s*enabled\b/g,
+      reason: 'SSOT must not describe reasoning.enabled (repo uses effort only)',
+    },
   ]
 
   const ssotViolations = scanText(ssotText, ssotForbidden).map((m) => ({
@@ -199,6 +209,21 @@ function main() {
 
     const guideForbidden = [
       {
+        id: 'guide_visibility_hidden_union',
+        regex: /visibility:\s*'shown'\s*\|\s*'hidden'\s*\|\s*'not_returned'/g,
+        reason: 'Guides must not define visibility with hidden',
+      },
+      {
+        id: 'guide_visibility_hidden_union_compact',
+        regex: /visibility:\s*'shown'\|'hidden'\|'not_returned'/g,
+        reason: 'Guides must not define visibility with hidden (compact form)',
+      },
+      {
+        id: 'guide_tristate_list_hidden',
+        regex: /\bshown\s*\/\s*hidden\s*\/\s*not_returned\b/g,
+        reason: 'Guides must not describe tri-state as shown/hidden/not_returned',
+      },
+      {
         id: 'guide_visibility_visible_hidden_union',
         regex: /visibility\??:\s*'visible'\s*\|\s*'hidden'/g,
         reason: 'Guides must not define visibility as visible/hidden',
@@ -222,6 +247,16 @@ function main() {
         id: 'guide_visibility_hidden_quoted_label',
         regex: /\bVisibility\s*\"hidden\"\b/g,
         reason: 'Guides must not describe a visibility="hidden" mode',
+      },
+      {
+        id: 'guide_reasoning_enabled_mode_object',
+        regex: /\breasoning\s*:\s*\{[^}]*\benabled\s*:\s*true\b[^}]*\}/g,
+        reason: 'Guides must not promote reasoning.enabled:true (repo uses effort only)',
+      },
+      {
+        id: 'guide_reasoning_enabled_field',
+        regex: /\breasoning\s*\.\s*enabled\b/g,
+        reason: 'Guides must not describe reasoning.enabled (repo uses effort only)',
       },
     ]
 

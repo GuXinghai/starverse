@@ -43,15 +43,6 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
     expect('reasoning' in req).toBe(false)
   })
 
-  it('supports reasoning enabled', () => {
-    const req = buildOpenRouterChatCompletionsRequest({
-      ...base,
-      stream: true,
-      reasoning: { enabled: true },
-    })
-    expect(req.reasoning).toEqual({ enabled: true })
-  })
-
   it('supports reasoning effort', () => {
     const req = buildOpenRouterChatCompletionsRequest({
       ...base,
@@ -76,7 +67,7 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
         // @ts-expect-error intentional invalid combination
         reasoning: { effort: 'none', max_tokens: 10 },
       })
-    ).toThrow(/exactly one of enabled\/effort\/max_tokens/)
+    ).toThrow(/exactly one of effort\/max_tokens/)
   })
 
   it('supports reasoning max_tokens', () => {
@@ -88,6 +79,22 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
     expect(req.reasoning).toEqual({ max_tokens: 128 })
   })
 
+  it('supports provider.require_parameters routing param (snake_case in body)', () => {
+    const reqTrue = buildOpenRouterChatCompletionsRequest({
+      ...base,
+      stream: true,
+      providerRequireParameters: true,
+    })
+    expect(reqTrue).toHaveProperty('provider.require_parameters', true)
+
+    const reqFalse = buildOpenRouterChatCompletionsRequest({
+      ...base,
+      stream: true,
+      providerRequireParameters: false,
+    })
+    expect(reqFalse).toHaveProperty('provider.require_parameters', false)
+  })
+
   it('enforces reasoning control mode mutual exclusivity', () => {
     expect(() =>
       buildOpenRouterChatCompletionsRequest({
@@ -96,7 +103,7 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
         // @ts-expect-error invalid: effort + max_tokens
         reasoning: { effort: 'high', max_tokens: 100 },
       })
-    ).toThrow(/exactly one of enabled\/effort\/max_tokens/)
+    ).toThrow(/exactly one of effort\/max_tokens/)
   })
 
   it('passes through reasoning.exclude when present', () => {
@@ -123,7 +130,6 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
     const reasoningCases: Array<[string, any | undefined]> = [
       ['none', undefined],
       ['disabled', { effort: 'none' }],
-      ['enabled', { enabled: true }],
       ['effort_high', { effort: 'high' }],
       ['effort_high_exclude', { effort: 'high', exclude: true }],
       ['max_tokens_128', { max_tokens: 128 }],
@@ -192,22 +198,6 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
           "reasoning": {
             "effort": "high",
             "exclude": true,
-          },
-          "stream": false,
-          "usage": {
-            "include": false,
-          },
-        },
-        "stream=false;usage=false;reasoning=enabled": {
-          "messages": [
-            {
-              "content": "hi",
-              "role": "user",
-            },
-          ],
-          "model": "openrouter/auto",
-          "reasoning": {
-            "enabled": true,
           },
           "stream": false,
           "usage": {
@@ -292,22 +282,6 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
             "include": true,
           },
         },
-        "stream=false;usage=true;reasoning=enabled": {
-          "messages": [
-            {
-              "content": "hi",
-              "role": "user",
-            },
-          ],
-          "model": "openrouter/auto",
-          "reasoning": {
-            "enabled": true,
-          },
-          "stream": false,
-          "usage": {
-            "include": true,
-          },
-        },
         "stream=false;usage=true;reasoning=max_tokens_128": {
           "messages": [
             {
@@ -380,22 +354,6 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
           "reasoning": {
             "effort": "high",
             "exclude": true,
-          },
-          "stream": true,
-          "usage": {
-            "include": false,
-          },
-        },
-        "stream=true;usage=false;reasoning=enabled": {
-          "messages": [
-            {
-              "content": "hi",
-              "role": "user",
-            },
-          ],
-          "model": "openrouter/auto",
-          "reasoning": {
-            "enabled": true,
           },
           "stream": true,
           "usage": {
@@ -480,22 +438,6 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
             "include": true,
           },
         },
-        "stream=true;usage=true;reasoning=enabled": {
-          "messages": [
-            {
-              "content": "hi",
-              "role": "user",
-            },
-          ],
-          "model": "openrouter/auto",
-          "reasoning": {
-            "enabled": true,
-          },
-          "stream": true,
-          "usage": {
-            "include": true,
-          },
-        },
         "stream=true;usage=true;reasoning=max_tokens_128": {
           "messages": [
             {
@@ -536,9 +478,10 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
       usage: { include: true },
       reasoning: { effort: 'high', exclude: true },
       tools: [],
+      providerRequireParameters: true,
     })
 
-    const allowedTopLevel = new Set(['model', 'messages', 'stream', 'usage', 'reasoning', 'tools'])
+    const allowedTopLevel = new Set(['model', 'messages', 'stream', 'usage', 'reasoning', 'tools', 'provider'])
     for (const key of Object.keys(req)) {
       expect(allowedTopLevel.has(key)).toBe(true)
     }

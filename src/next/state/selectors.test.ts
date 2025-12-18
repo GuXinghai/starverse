@@ -9,7 +9,7 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
       runId: 'run1',
       requestId: 'req1',
       model: 'test-model',
-      reasoningExclude: true, // User requested to exclude reasoning
+      requestedReasoningExclude: true, // User requested to exclude reasoning
     })
 
     const vm = selectMessage(s1, assistantMessageId)
@@ -24,7 +24,7 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
       runId: 'run1',
       requestId: 'req1',
       model: 'test-model',
-      reasoningExclude: true,
+      requestedReasoningExclude: true,
     })
 
     const vm1 = selectMessage(s1, assistantMessageId)
@@ -53,7 +53,7 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
       runId: 'run1',
       requestId: 'req1',
       model: 'test-model',
-      // No reasoningExclude - user expected reasoning but model didn't provide
+      // No requestedReasoningExclude - user expected reasoning but model didn't provide
     })
 
     const vm = selectMessage(s1, assistantMessageId)
@@ -68,7 +68,7 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
       runId: 'run1',
       requestId: 'req1',
       model: 'test-model',
-      reasoningExclude: true, // Even with exclude=true
+      requestedReasoningExclude: true, // Even with exclude=true
     })
 
     // Simulate receiving reasoning content
@@ -132,6 +132,21 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     expect(vm?.reasoningView.visibility).toBe('not_returned')
     expect(vm?.reasoningView.hasEncrypted).toBeFalsy()
   })
+
+  it('does not infer visibility from requestedReasoningEffort when no reasoning returned', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'test-model',
+      requestedReasoningMode: 'effort',
+      requestedReasoningEffort: 'high',
+      requestedReasoningExclude: false,
+    })
+
+    const vm = selectMessage(s1, assistantMessageId)
+    expect(vm?.reasoningView.visibility).toBe('not_returned')
+  })
 })
 
 describe('selectTranscript', () => {
@@ -142,7 +157,7 @@ describe('selectTranscript', () => {
       requestId: 'req1',
       model: 'test-model',
       userMessageText: 'Hello',
-      reasoningExclude: true,
+      requestedReasoningExclude: true,
     })
 
     const transcript = selectTranscript(s1, 'run1')

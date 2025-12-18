@@ -2,15 +2,16 @@ import { buildOpenRouterChatCompletionsRequest } from '@/next/openrouter/buildRe
 import { decodeOpenRouterSSE } from '@/next/openrouter/sse/decoder'
 import { mapChunkToEvents } from '@/next/openrouter/mapChunkToEvents'
 import { openrouterFetch } from '@/next/transport/openrouterFetch'
+import { getOpenRouterProviderRequireParameters } from '@/next/settings/openRouterProviderSettingsClient'
+import type { ReasoningEffort, RequestedReasoningMode } from '@/next/state/types'
 import type { DomainEvent } from '@/next/state/types'
-
-export type ReasoningEffort = 'xhigh' | 'high' | 'medium' | 'low' | 'minimal' | 'none'
 
 export type LiveRequestConfig = Readonly<{
   apiKey: string
   model: string
-  reasoningExclude?: boolean
-  reasoningEffort?: ReasoningEffort
+  requestedReasoningMode: RequestedReasoningMode
+  requestedReasoningEffort?: ReasoningEffort
+  requestedReasoningExclude?: boolean
   /**
    * Tool definitions sent in every request when tool calling is supported.
    * For minimal compliance, callers may pass an empty array.
@@ -45,21 +46,15 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
 
   const { apiKey, model } = options.config
 
+  const providerRequireParameters = await getOpenRouterProviderRequireParameters()
+
   const reasoning =
-    options.config.reasoningEffort === undefined && options.config.reasoningExclude !== true
+    options.config.requestedReasoningMode === 'auto'
       ? undefined
       : {
-          effort:
-            options.config.reasoningEffort ??
-            (options.config.reasoningExclude === true ? 'medium' : undefined),
-          ...(options.config.reasoningExclude === true ? { exclude: true } : {}),
+          effort: options.config.requestedReasoningEffort ?? 'none',
+          ...(options.config.requestedReasoningExclude === true ? { exclude: true } : {}),
         }
-
-  // Avoid sending an object with `effort: undefined` (when exclude is false and effort is omitted).
-  const normalizedReasoning =
-    reasoning && typeof (reasoning as any).effort === 'undefined' && options.config.reasoningExclude !== true
-      ? undefined
-      : reasoning
 
   const body = buildOpenRouterChatCompletionsRequest({
     model,
@@ -67,7 +62,8 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
     stream: true,
     usage: { include: true },
     tools: options.config.tools ?? [],
-    ...(normalizedReasoning ? { reasoning: normalizedReasoning } : {}),
+    ...(providerRequireParameters === true ? { providerRequireParameters: true } : {}),
+    ...(reasoning ? { reasoning } : {}),
   })
 
   let transport

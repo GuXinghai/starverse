@@ -1,4 +1,14 @@
-import type { DomainEvent, MessageState, RootState, RunState, StartGenerationInput, ToolCallDelta, ToolCallVM } from './types'
+import type {
+  DomainEvent,
+  MessageState,
+  ReasoningEffort,
+  RequestedReasoningMode,
+  RootState,
+  RunState,
+  StartGenerationInput,
+  ToolCallDelta,
+  ToolCallVM,
+} from './types'
 
 function generateId(prefix: string): string {
   const cryptoObj = (globalThis as any).crypto as { randomUUID?: () => string } | undefined
@@ -14,7 +24,15 @@ export function createInitialState(): RootState {
   }
 }
 
-function createEmptyAssistantMessage(messageId: string, isTarget: boolean, reasoningExclude?: boolean): MessageState {
+function createEmptyAssistantMessage(
+  messageId: string,
+  isTarget: boolean,
+  requested: Readonly<{
+    mode: RequestedReasoningMode
+    effort?: ReasoningEffort
+    exclude: boolean
+  }>
+): MessageState {
   return {
     messageId,
     role: 'assistant',
@@ -27,7 +45,9 @@ function createEmptyAssistantMessage(messageId: string, isTarget: boolean, reaso
     reasoningPanelState: 'expanded',
     hasEncryptedReasoning: false,
     streaming: { isTarget, isComplete: false },
-    requestedReasoningExclude: reasoningExclude,
+    requestedReasoningMode: requested.mode,
+    requestedReasoningEffort: requested.effort,
+    requestedReasoningExclude: requested.exclude,
   }
 }
 
@@ -45,6 +65,9 @@ function createUserMessage(messageId: string, text: string): MessageState {
     reasoningPanelState: 'expanded',
     hasEncryptedReasoning: false,
     streaming: { isTarget: false, isComplete: true },
+    requestedReasoningMode: 'effort',
+    requestedReasoningEffort: 'none',
+    requestedReasoningExclude: false,
   }
 }
 
@@ -56,6 +79,12 @@ export function startGeneration(state: RootState, input: StartGenerationInput): 
   const assistantMessageId = input.assistantMessageId || generateId('assistant')
   const userMessageId =
     typeof input.userMessageText === 'string' ? input.userMessageId || generateId('user') : undefined
+
+  const requestedReasoningMode = input.requestedReasoningMode ?? 'effort'
+  const requestedReasoningExclude =
+    requestedReasoningMode === 'auto' ? false : (input.requestedReasoningExclude ?? false)
+  const requestedReasoningEffort =
+    requestedReasoningMode === 'auto' ? undefined : (input.requestedReasoningEffort ?? 'none')
 
   const run: RunState = {
     runId: input.runId,
@@ -82,7 +111,11 @@ export function startGeneration(state: RootState, input: StartGenerationInput): 
           [userMessageId]: createUserMessage(userMessageId, input.userMessageText as string),
         }
       : {}),
-    [assistantMessageId]: createEmptyAssistantMessage(assistantMessageId, true, input.reasoningExclude),
+    [assistantMessageId]: createEmptyAssistantMessage(assistantMessageId, true, {
+      mode: requestedReasoningMode,
+      effort: requestedReasoningEffort,
+      exclude: requestedReasoningExclude,
+    }),
   }
 
   return {

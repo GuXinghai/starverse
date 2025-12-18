@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useChatRun, type DemoScenario, type RunMode } from './useChatRun'
 import ChatLayout from '@/ui-kit/chat/ChatLayout.vue'
 import ChatNextComposer from './components/ChatNextComposer.vue'
@@ -7,6 +7,13 @@ import ChatNextTranscript from './components/ChatNextTranscript.vue'
 import ChatNextReasoningPanel from './components/ChatNextReasoningPanel.vue'
 import ChatNextStatusBar from './components/ChatNextStatusBar.vue'
 import { fetchGenerationInfo, type GenerationInfo } from '@/next/transport/fetchGeneration'
+import { listModelCatalog } from '@/next/modelCatalog/modelCatalogClient'
+import { selectModelCatalogVisible, selectModelCatalogAll } from '@/next/modelCatalog/modelCatalogSelectors'
+import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
+import { listReasoningModelIndex } from '@/next/modelIndex/reasoningModelIndexClient'
+import { selectReasoningModelIndexVisible, selectReasoningModelIndexAll } from '@/next/modelIndex/reasoningModelIndexSelectors'
+import type { ReasoningModelIndexItem } from '@/next/modelIndex/reasoningModelIndexTypes'
+import type { ReasoningEffort, RequestedReasoningMode } from '@/next/state/types'
 
 const {
   runVM,
@@ -24,10 +31,14 @@ const draft = ref('')
 const scenario = ref<DemoScenario>('normal')
 const mode = ref<RunMode>('live')
 const model = ref('openrouter/auto')
-const reasoningExclude = ref(false)
-const reasoningEffort = ref<'auto' | 'none' | 'medium' | 'high' | 'xhigh'>('auto')
+const requestedReasoningExclude = ref(false)
+const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('none')
 const apiKey = ref((import.meta as any).env?.VITE_OPENROUTER_API_KEY ?? '')
 const showDerivedUsage = ref(false)
+
+const modelCatalogItems = ref<ModelCatalogItem[]>([])
+const reasoningModelIndexItems = ref<ReasoningModelIndexItem[]>([])
+const showHiddenModelsInPickers = ref(false)
 
 const generationInfo = ref<GenerationInfo | null>(null)
 const generationInfoError = ref<string | null>(null)
@@ -44,10 +55,51 @@ const canFetchGenerationInfo = computed(() => {
   return apiKey.value.trim().length > 0
 })
 
+const modelCatalogForPicker = computed(() =>
+  showHiddenModelsInPickers.value ? selectModelCatalogAll(modelCatalogItems.value) : selectModelCatalogVisible(modelCatalogItems.value)
+)
+
+const reasoningModelIndexForPicker = computed(() =>
+  showHiddenModelsInPickers.value
+    ? selectReasoningModelIndexAll(reasoningModelIndexItems.value)
+    : selectReasoningModelIndexVisible(reasoningModelIndexItems.value)
+)
+
+type IpcRendererLike = Readonly<{
+  on: (channel: string, listener: (...args: any[]) => void) => any
+}>
+
+function getIpcRenderer(): IpcRendererLike | null {
+  const ipc = (globalThis as any).ipcRenderer as IpcRendererLike | undefined
+  return ipc && typeof ipc.on === 'function' ? ipc : null
+}
+
+async function refreshModelLists() {
+  modelCatalogItems.value = await listModelCatalog('openrouter')
+  reasoningModelIndexItems.value = await listReasoningModelIndex()
+}
+
+const onModelsSynced = async () => {
+  await refreshModelLists()
+}
+
+onMounted(() => {
+  void refreshModelLists()
+  const ipc = getIpcRenderer()
+  if (!ipc) return
+  ipc.on('db:modelCatalogSynced', onModelsSynced)
+})
+
 async function onSend() {
   if (!canSend.value) return
   const text = draft.value
   draft.value = ''
+
+  const requestedReasoningMode: RequestedReasoningMode = requestedReasoningEffort.value === 'auto' ? 'auto' : 'effort'
+  const requestedReasoningEffortValue: ReasoningEffort | undefined =
+    requestedReasoningMode === 'auto' ? undefined : (requestedReasoningEffort.value as ReasoningEffort)
+  const exclude = requestedReasoningMode === 'auto' ? false : requestedReasoningExclude.value
+
   await dispatchSend({
     text,
     scenario: scenario.value,
@@ -55,8 +107,9 @@ async function onSend() {
     live: {
       apiKey: apiKey.value,
       model: model.value,
-      reasoningExclude: reasoningExclude.value,
-      ...(reasoningEffort.value === 'auto' ? {} : { reasoningEffort: reasoningEffort.value }),
+      requestedReasoningMode,
+      ...(requestedReasoningEffortValue ? { requestedReasoningEffort: requestedReasoningEffortValue } : {}),
+      ...(exclude ? { requestedReasoningExclude: true } : {}),
     },
   })
 }
@@ -121,9 +174,13 @@ function onClearGenerationInfo() {
         v-model:mode="mode"
         v-model:model="model"
         v-model:apiKey="apiKey"
-        v-model:reasoningExclude="reasoningExclude"
-        v-model:reasoningEffort="reasoningEffort"
+        v-model:requestedReasoningExclude="requestedReasoningExclude"
+        v-model:requestedReasoningEffort="requestedReasoningEffort"
+        :modelCatalog="modelCatalogForPicker"
+        :reasoningModelIndex="reasoningModelIndexForPicker"
+        :showHiddenModelsInPickers="showHiddenModelsInPickers"
         :disabled="isRunning"
+        @toggleShowHiddenModelsInPickers="showHiddenModelsInPickers = !showHiddenModelsInPickers"
         @send="onSend"
         @abort="dispatchAbort"
       />

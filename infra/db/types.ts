@@ -471,14 +471,41 @@ export type DbMethod =
   | 'prefs.list'
   | 'prefs.delete'
   | 'prefs.default'
-  | 'model.saveMany'
-  | 'model.replaceByRouterSource'
-  | 'model.getAll'
-  | 'model.getByRouterSource'
-  | 'model.getById'
-  | 'model.archive'
-  | 'model.unarchive'
-  | 'model.clear'
+  | 'modelCatalog.syncSnapshot'
+  | 'modelCatalog.list'
+  | 'reasoningIndex.syncFromCatalog'
+  | 'reasoningIndex.list'
+  | 'settings.getOpenRouterProviderRequireParameters'
+  | 'settings.setOpenRouterProviderRequireParameters'
+
+export type ModelCatalogUpsertInput = Readonly<{
+  modelId: string
+  routerSource: string
+  vendor: string
+  name: string
+  description?: string | null
+  contextLength?: number | null
+  supportedParametersJson?: string | null
+  rawJson?: string | null
+}>
+
+export type ModelCatalogSyncSnapshotParams = Readonly<{
+  snapshotId: string
+  routerSource: string
+  models: ModelCatalogUpsertInput[]
+}>
+
+export type ModelCatalogListParams = Readonly<{
+  routerSource: string
+}>
+
+export type ReasoningIndexSyncFromCatalogParams = Readonly<{
+  routerSource: string
+}>
+
+export type SetOpenRouterProviderRequireParametersParams = Readonly<{
+  value: boolean
+}>
 
 export type WorkerRequestMessage = {
   id: string

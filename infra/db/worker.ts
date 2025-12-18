@@ -7,7 +7,9 @@ import { MessageRepo } from './repo/messageRepo'
 import { SearchRepo } from './repo/searchRepo'
 import { UsageRepo } from './repo/usageRepo'
 import { DashboardPrefRepo } from './repo/dashboardPrefRepo'
-import { ModelDataRepo } from './repo/modelDataRepo'
+import { ModelCatalogRepo } from './repo/modelCatalogRepo'
+import { ReasoningModelIndexRepo } from './repo/reasoningModelIndexRepo'
+import { SettingsRepo } from './repo/settingsRepo'
 import {
   type WorkerInitConfig,
   type WorkerRequestMessage,
@@ -63,7 +65,9 @@ export class DbWorkerRuntime {
   private searchRepo: SearchRepo
   private usageRepo: UsageRepo
   private dashboardPrefRepo: DashboardPrefRepo
-  private modelDataRepo: ModelDataRepo
+  private modelCatalogRepo: ModelCatalogRepo
+  private reasoningModelIndexRepo: ReasoningModelIndexRepo
+  private settingsRepo: SettingsRepo
   private handlers = new Map<DbMethod, DbHandler>()
 
   constructor(config: WorkerInitConfig) {
@@ -103,7 +107,9 @@ export class DbWorkerRuntime {
     this.searchRepo = new SearchRepo(this.db)
     this.usageRepo = new UsageRepo(this.db)
     this.dashboardPrefRepo = new DashboardPrefRepo(this.db)
-    this.modelDataRepo = new ModelDataRepo(this.db)
+    this.modelCatalogRepo = new ModelCatalogRepo(this.db)
+    this.reasoningModelIndexRepo = new ReasoningModelIndexRepo(this.db)
+    this.settingsRepo = new SettingsRepo(this.db)
     this.registerHandlers()
   }
 
@@ -385,44 +391,46 @@ export class DbWorkerRuntime {
         return this.dashboardPrefRepo.getDefault(input.userId)
     })
 
-    // ========== Model Data Handlers ==========
-    this.handlers.set('model.saveMany', (raw) => {
-        this.modelDataRepo.saveMany(raw.models)
+    // ========== Model Catalog (Snapshot Sync) ==========
+    this.handlers.set('modelCatalog.syncSnapshot', (raw) => {
+        // Intentionally keep this as a single-writer DB entrypoint.
+        // Validation is performed in the caller/job layer for this stage.
+        this.modelCatalogRepo.syncSnapshot(raw)
         return { ok: true }
     })
 
-    this.handlers.set('model.replaceByRouterSource', (raw) => {
-        this.modelDataRepo.replaceByRouterSource(raw.routerSource, raw.models)
-        return { ok: true }
+    this.handlers.set('modelCatalog.list', (raw) => {
+        const routerSource = raw?.routerSource
+        if (!routerSource || typeof routerSource !== 'string') {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.list requires routerSource')
+        }
+        return this.modelCatalogRepo.listByRouterSource(routerSource)
     })
 
-    this.handlers.set('model.getAll', (raw) => {
-        return this.modelDataRepo.getAll(raw || {})
+    // ========== Reasoning Model Index ==========
+    this.handlers.set('reasoningIndex.syncFromCatalog', (raw) => {
+        const routerSource = raw?.routerSource
+        if (!routerSource || typeof routerSource !== 'string') {
+          throw new DbWorkerError('ERR_VALIDATION', 'reasoningIndex.syncFromCatalog requires routerSource')
+        }
+        return this.reasoningModelIndexRepo.syncFromCatalog(routerSource)
     })
 
-    this.handlers.set('model.getByRouterSource', (raw) => {
-        return this.modelDataRepo.getByRouterSource(
-            raw.routerSource, 
-            raw.includeArchived ?? false
-        )
+    this.handlers.set('reasoningIndex.list', () => {
+        return this.reasoningModelIndexRepo.listAll()
     })
 
-    this.handlers.set('model.getById', (raw) => {
-        return this.modelDataRepo.getById(raw.modelId)
+    // ========== Settings ==========
+    this.handlers.set('settings.getOpenRouterProviderRequireParameters', () => {
+        return { value: this.settingsRepo.getOpenRouterProviderRequireParameters() }
     })
 
-    this.handlers.set('model.archive', (raw) => {
-        this.modelDataRepo.archive(raw.modelId)
-        return { ok: true }
-    })
-
-    this.handlers.set('model.unarchive', (raw) => {
-        this.modelDataRepo.unarchive(raw.modelId)
-        return { ok: true }
-    })
-
-    this.handlers.set('model.clear', () => {
-        this.modelDataRepo.clear()
+    this.handlers.set('settings.setOpenRouterProviderRequireParameters', (raw) => {
+        const value = raw?.value
+        if (typeof value !== 'boolean') {
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.setOpenRouterProviderRequireParameters requires boolean value')
+        }
+        this.settingsRepo.setOpenRouterProviderRequireParameters(value)
         return { ok: true }
     })
   }

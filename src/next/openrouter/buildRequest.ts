@@ -8,10 +8,6 @@ export type OpenRouterReasoningEffort =
 
 export type OpenRouterReasoningInput =
   | {
-      enabled: true
-      exclude?: boolean
-    }
-  | {
       effort: OpenRouterReasoningEffort
       exclude?: boolean
     }
@@ -31,6 +27,12 @@ export type BuildOpenRouterRequestInput = Readonly<{
   usage?: OpenRouterUsageInput
   reasoning?: OpenRouterReasoningInput
   tools?: unknown[]
+  /**
+   * OpenRouter provider routing parameter.
+   * Body field is snake_case: provider.require_parameters.
+   * Default: false (keeps legacy behavior).
+   */
+  providerRequireParameters?: boolean
 }>
 
 export type OpenRouterChatCompletionsRequest = Readonly<{
@@ -40,6 +42,7 @@ export type OpenRouterChatCompletionsRequest = Readonly<{
   usage: { include: boolean }
   reasoning?: Record<string, unknown>
   tools?: unknown[]
+  provider?: { require_parameters: boolean }
 }>
 
 function assertBoolean(value: unknown, name: string): asserts value is boolean {
@@ -88,11 +91,17 @@ export function buildOpenRouterChatCompletionsRequest(
     usage: { include: boolean }
     reasoning?: Record<string, unknown>
     tools?: unknown[]
+    provider?: { require_parameters: boolean }
   } = {
     model: input.model,
     messages: input.messages,
     stream: input.stream,
     usage: { include: usageInclude },
+  }
+
+  if (input.providerRequireParameters !== undefined) {
+    assertBoolean(input.providerRequireParameters, 'providerRequireParameters')
+    request.provider = { require_parameters: input.providerRequireParameters }
   }
 
   if (input.tools !== undefined) {
@@ -104,24 +113,16 @@ export function buildOpenRouterChatCompletionsRequest(
 
   if (input.reasoning) {
     const reasoning = input.reasoning as Record<string, unknown>
-    const hasEnabled = 'enabled' in reasoning
     const hasEffort = 'effort' in reasoning
     const hasMaxTokens = 'max_tokens' in reasoning
 
-    const modeCount = [hasEnabled, hasEffort, hasMaxTokens].filter(Boolean).length
+    const modeCount = [hasEffort, hasMaxTokens].filter(Boolean).length
     if (modeCount !== 1) {
-      throw new Error('reasoning must specify exactly one of enabled/effort/max_tokens')
+      throw new Error('reasoning must specify exactly one of effort/max_tokens')
     }
 
     if ('exclude' in reasoning && typeof reasoning.exclude !== 'boolean') {
       throw new Error('reasoning.exclude must be boolean')
-    }
-
-    if (hasEnabled) {
-      if (reasoning.enabled !== true) {
-        throw new Error('reasoning.enabled must be true when present')
-      }
-      request.reasoning = reasoning.exclude === undefined ? { enabled: true } : { enabled: true, exclude: reasoning.exclude }
     }
 
     if (hasEffort) {
@@ -135,9 +136,6 @@ export function buildOpenRouterChatCompletionsRequest(
         effort !== 'none'
       ) {
         throw new Error('reasoning.effort is invalid')
-      }
-      if (effort === 'none' && hasMaxTokens) {
-        throw new Error('reasoning.effort="none" must not be combined with max_tokens')
       }
       request.reasoning = reasoning.exclude === undefined ? { effort } : { effort, exclude: reasoning.exclude }
     }
