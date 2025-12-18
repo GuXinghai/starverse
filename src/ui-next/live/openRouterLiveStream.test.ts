@@ -42,17 +42,20 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
 
     try {
       const events = []
-      for await (const ev of streamOpenRouterChatAsEvents({
-        requestId: 'rid',
-        assistantMessageId: 'assistant_1',
-        userText: 'hello',
-        config: {
-          apiKey: 'k',
-          model: 'openrouter/auto',
-        },
-      })) {
-        events.push(ev)
-      }
+       for await (const ev of streamOpenRouterChatAsEvents({
+         requestId: 'rid',
+         assistantMessageId: 'assistant_1',
+         userText: 'hello',
+         config: {
+           apiKey: 'k',
+           model: 'openrouter/auto',
+           requestedReasoningMode: 'effort',
+           requestedReasoningEffort: 'none',
+           requestedReasoningExclude: false,
+         },
+       })) {
+         events.push(ev)
+       }
 
       expect(events.some((e) => e.type === 'StreamComment')).toBe(true)
       expect(events.some((e) => e.type === 'MessageDeltaText')).toBe(true)
@@ -64,7 +67,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
     }
   })
 
-  it('builds request body with product-default reasoning=none (effort="none")', async () => {
+  async function captureRequestBodyText(config: Parameters<typeof streamOpenRouterChatAsEvents>[0]['config']) {
     const originalFetch = globalThis.fetch
     const calls: any[] = []
 
@@ -79,108 +82,78 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
         requestId: 'rid',
         assistantMessageId: 'assistant_1',
         userText: 'hello',
-        config: {
-          apiKey: 'k',
-          model: 'openrouter/auto',
-          reasoningEffort: 'none',
-        },
+        config,
       })) {
         // consume
       }
 
       const init = calls[0]?.init
-      const bodyText = String(init.body ?? '')
-      expect(bodyText).toMatch(/"tools"\s*:\s*\[/)
-      expect(bodyText).toMatch(/"reasoning"\s*:\s*\{\s*"effort"\s*:\s*"none"/)
-      expect(bodyText).not.toMatch(/"enabled"\s*:/)
-      expect(bodyText).not.toMatch(/"effort"\s*:\s*"low"/)
+      return String(init.body ?? '')
     } finally {
       globalThis.fetch = originalFetch
     }
+  }
+
+  it('Case1 default: mode=effort effort=none exclude=false => body.reasoning.effort==="none"', async () => {
+    const bodyText = await captureRequestBodyText({
+      apiKey: 'k',
+      model: 'openrouter/auto',
+      requestedReasoningMode: 'effort',
+      requestedReasoningEffort: 'none',
+      requestedReasoningExclude: false,
+    })
+
+    expect(bodyText).toContain('"reasoning":')
+    expect(bodyText).toContain('"effort":"none"')
+    expect(bodyText).not.toContain('"enabled":')
   })
 
-  it('omits reasoning field for auto(omit)', async () => {
-    const originalFetch = globalThis.fetch
-    const calls: any[] = []
+  it('Case2 mode=auto => body must omit reasoning field', async () => {
+    const bodyText = await captureRequestBodyText({
+      apiKey: 'k',
+      model: 'openrouter/auto',
+      requestedReasoningMode: 'auto',
+    })
 
-    globalThis.fetch = vi.fn(async (url: any, init: any) => {
-      calls.push({ url, init })
-      const body = streamFromText(fixture)
-      return new Response(body as any, { status: 200, headers: { 'x-openrouter-generation-id': 'gen_header' } })
-    }) as any
-
-    try {
-      for await (const _ of streamOpenRouterChatAsEvents({
-        requestId: 'rid',
-        assistantMessageId: 'assistant_1',
-        userText: 'hello',
-        config: {
-          apiKey: 'k',
-          model: 'openrouter/auto',
-          // reasoningEffort undefined + exclude false => omit reasoning
-        },
-      })) {
-        // consume
-      }
-
-      const init = calls[0]?.init
-      const bodyText = String(init.body ?? '')
-      expect(bodyText).toMatch(/"tools"\s*:\s*\[/)
-      expect(bodyText).not.toMatch(/"reasoning"\s*:/)
-    } finally {
-      globalThis.fetch = originalFetch
-    }
+    expect(bodyText).not.toContain('"reasoning":')
   })
 
-  it('uses medium as the enable-default (and exclude-only defaults to medium)', async () => {
-    const originalFetch = globalThis.fetch
-    const calls: any[] = []
+  it.each([
+    ['minimal', 'minimal'],
+    ['low', 'low'],
+  ] as const)('Case3 effort=%s => body.reasoning.effort=%s', async (_label, effort) => {
+    const bodyText = await captureRequestBodyText({
+      apiKey: 'k',
+      model: 'openrouter/auto',
+      requestedReasoningMode: 'effort',
+      requestedReasoningEffort: effort,
+    })
 
-    globalThis.fetch = vi.fn(async (url: any, init: any) => {
-      calls.push({ url, init })
-      const body = streamFromText(fixture)
-      return new Response(body as any, { status: 200, headers: { 'x-openrouter-generation-id': 'gen_header' } })
-    }) as any
+    expect(bodyText).toContain(`\"effort\":\"${effort}\"`)
+    expect(bodyText).not.toContain('\"enabled\":')
+  })
 
-    try {
-      // Explicit enable: medium
-      for await (const _ of streamOpenRouterChatAsEvents({
-        requestId: 'rid1',
-        assistantMessageId: 'assistant_1',
-        userText: 'hello',
-        config: {
-          apiKey: 'k',
-          model: 'openrouter/auto',
-          reasoningEffort: 'medium',
-        },
-      })) {
-        // consume
-      }
+  it('Case4 exclude=true => body.reasoning.exclude===true', async () => {
+    const bodyText = await captureRequestBodyText({
+      apiKey: 'k',
+      model: 'openrouter/auto',
+      requestedReasoningMode: 'effort',
+      requestedReasoningEffort: 'high',
+      requestedReasoningExclude: true,
+    })
 
-      const b1Text = String(calls[0].init.body ?? '')
-      expect(b1Text).toMatch(/"tools"\s*:\s*\[/)
-      expect(b1Text).toMatch(/"reasoning"\s*:\s*\{\s*"effort"\s*:\s*"medium"/)
-      expect(b1Text).not.toMatch(/"enabled"\s*:/)
+    expect(bodyText).toContain('"reasoning":{"effort":"high","exclude":true}')
+    expect(bodyText).not.toContain('"enabled":')
+  })
 
-      // Exclude only: default medium effort + exclude=true
-      for await (const _ of streamOpenRouterChatAsEvents({
-        requestId: 'rid2',
-        assistantMessageId: 'assistant_2',
-        userText: 'hello',
-        config: {
-          apiKey: 'k',
-          model: 'openrouter/auto',
-          reasoningExclude: true,
-        },
-      })) {
-        // consume
-      }
+  it('Case5: never sends reasoning.enabled:true', async () => {
+    const bodyText = await captureRequestBodyText({
+      apiKey: 'k',
+      model: 'openrouter/auto',
+      requestedReasoningMode: 'effort',
+      requestedReasoningEffort: 'medium',
+    })
 
-      const b2Text = String(calls[1].init.body ?? '')
-      expect(b2Text).toMatch(/"tools"\s*:\s*\[/)
-      expect(b2Text).toMatch(/"reasoning"\s*:\s*\{\s*"effort"\s*:\s*"medium"\s*,\s*"exclude"\s*:\s*true/)
-    } finally {
-      globalThis.fetch = originalFetch
-    }
+    expect(bodyText).not.toContain('"enabled":')
   })
 })

@@ -29,14 +29,14 @@ export function selectRun(state: RootState, runId: string): RunVM | null {
 function computeReasoningVisibility(
   hasEncryptedReasoning: boolean,
   reasoningDetailsRaw: unknown[],
-  requestedReasoningExclude?: boolean
+  requestedReasoningExclude: boolean
 ): ReasoningViewVisibility {
   // If we have encrypted signal or actual reasoning content → shown
   if (hasEncryptedReasoning || reasoningDetailsRaw.length > 0) {
     return 'shown'
   }
   // No reasoning content: distinguish excluded vs not_returned
-  if (requestedReasoningExclude === true) {
+  if (requestedReasoningExclude) {
     return 'excluded'
   }
   return 'not_returned'

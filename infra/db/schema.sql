@@ -140,6 +140,61 @@ CREATE INDEX IF NOT EXISTS idx_model_router_source ON model_data(router_source);
 CREATE INDEX IF NOT EXISTS idx_model_archived ON model_data(is_archived);
 CREATE INDEX IF NOT EXISTS idx_model_last_seen ON model_data(last_seen_at);
 
+-- ========== Model Catalog Table (Snapshot Sync) ==========
+-- Purpose:
+-- - New SSOT-compatible model catalog for full-field overwrite sync by model_id.
+-- - Snapshot marker + soft hidden (never delete).
+-- Note:
+-- - This table intentionally does NOT replace model_data yet (phase A parallel write).
+CREATE TABLE IF NOT EXISTS model_catalog (
+  model_id TEXT PRIMARY KEY CHECK (length(model_id) > 0),
+  router_source TEXT NOT NULL,
+  vendor TEXT NOT NULL,
+  name TEXT NOT NULL CHECK (length(name) > 0),
+  description TEXT,
+  context_length INTEGER NOT NULL DEFAULT -1,
+  supported_parameters_json TEXT,             -- JSON: string[]
+  raw_json TEXT,                              -- JSON: full remote model object (for audit/anti-corruption)
+  last_seen_snapshot_id TEXT,
+  is_hidden INTEGER NOT NULL DEFAULT 0 CHECK (is_hidden IN (0, 1)),
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_catalog_router_source ON model_catalog(router_source);
+CREATE INDEX IF NOT EXISTS idx_model_catalog_hidden ON model_catalog(router_source, is_hidden);
+CREATE INDEX IF NOT EXISTS idx_model_catalog_last_seen_snapshot ON model_catalog(router_source, last_seen_snapshot_id);
+
+-- ========== Reasoning Model Index (Derived from model_catalog) ==========
+-- Purpose:
+-- - Settings/selection list reads ONLY this index (id/name/status).
+-- - Derived by ReasoningIndexSyncJob from model_catalog (no OpenRouter JSON in UI).
+-- - Never delete: if a model stops being reasoning-capable, mark status='hidden'.
+CREATE TABLE IF NOT EXISTS reasoning_model_index (
+  model_id TEXT PRIMARY KEY CHECK (length(model_id) > 0),
+  name TEXT NOT NULL CHECK (length(name) > 0),
+  status TEXT NOT NULL CHECK (status IN ('visible', 'hidden')),
+  last_synced_snapshot TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reasoning_model_index_status ON reasoning_model_index(status);
+CREATE INDEX IF NOT EXISTS idx_reasoning_model_index_last_synced ON reasoning_model_index(last_synced_snapshot);
+
+-- ========== Settings (KV, JSON) ==========
+-- Purpose:
+-- - Persist global settings in SQLite (renderer reads via dbBridge; no UI parsing of provider JSON).
+-- - Never delete user settings; callers may overwrite values by key.
+CREATE TABLE IF NOT EXISTS settings_kv (
+  key TEXT PRIMARY KEY CHECK (length(key) > 0),
+  value_json TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_settings_kv_updated ON settings_kv(updated_at_ms DESC);
+
 -- ========== Dashboard Preferences ==========
 CREATE TABLE IF NOT EXISTS user_dashboard_prefs (
   id TEXT PRIMARY KEY,

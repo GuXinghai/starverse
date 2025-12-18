@@ -14,7 +14,7 @@
 ### 1.1 统一推理体验
 
 **核心原则**：
-- 所有推理相关 UI 使用 OpenRouter 官方 `effort` 枚举（`minimal/low/medium/high/none`）
+- 所有推理相关 UI 使用 OpenRouter `reasoning.effort` 枚举（`none|minimal|low|medium|high|xhigh`），并提供 `auto/omit`（不发送 reasoning 字段）
 - 区分"官方能力"与"Starverse 策略"
 - 为高成本/高延迟档位提供清晰提示
 - 对不支持推理的模型优雅降级
@@ -64,16 +64,14 @@ interface ReasoningPreference {
 
 **新类型（目标）**：
 ```ts
-// src/types/reasoning.ts
-type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'none';
-type ReasoningControlMode = 'disabled' | 'effort' | 'max_tokens' | 'auto';
+// src/next/state/types.ts
+type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+type RequestedReasoningMode = 'auto' | 'effort'
 
-interface ReasoningUserConfig {
-  controlMode: ReasoningControlMode;
-  effort?: ReasoningEffort;
-  maxReasoningTokens?: number;
-  maxCompletionTokens?: number;
-  showReasoningContent: boolean;
+type RequestedReasoningConfig = {
+  requestedReasoningMode: RequestedReasoningMode
+  requestedReasoningEffort?: ReasoningEffort // only when mode='effort'
+  requestedReasoningExclude?: boolean // only meaningful when mode='effort'
 }
 ```
 
@@ -234,8 +232,15 @@ const REASONING_MODE_OPTIONS = [
   { value: 'high', label: '高' }
 ]
 
-// 新常量（五档 + 成本标记）
+// 新常量（六档 + 成本标记）
 const REASONING_EFFORT_OPTIONS = [
+  { 
+    value: 'none', 
+    label: '关闭', 
+    description: '关闭推理（effort:none）',
+    costLevel: 'low',
+    icon: '⚪'
+  },
   { 
     value: 'minimal', 
     label: '最小', 
@@ -263,25 +268,25 @@ const REASONING_EFFORT_OPTIONS = [
     description: '~80% 推理预算（高成本）',
     costLevel: 'high',
     icon: '🔴'
+  },
+  { 
+    value: 'xhigh', 
+    label: '极限', 
+    description: '~95% 推理预算（极高成本）',
+    costLevel: 'high',
+    icon: '🔴'
   }
 ] as const
 ```
 
-**Step 4：事件映射（新旧兼容）**
+**Step 4：事件映射（不做旧兼容）**
 
 ```ts
-// 旧事件格式（三档）
-emit('select-reasoning-effort', 'low' | 'medium' | 'high')
+// UI 选择项：auto/omit 或 effort 枚举
+emit('select-reasoning-effort', 'auto' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh')
 
-// 新事件格式（五档）
-emit('select-reasoning-effort', 'minimal' | 'low' | 'medium' | 'high')
-
-// 兼容处理：若父组件仍使用旧类型，自动过滤 minimal
-const handleEffortSelect = (effort: ReasoningEffort) => {
-  // 对不支持五档的父组件，minimal 映射为 low
-  const compatEffort = effort === 'minimal' ? 'low' : effort
-  emit('select-reasoning-effort', compatEffort)
-}
+// exclude 独立开关（不是挡位）
+emit('toggle-reasoning-exclude', true | false)
 ```
 
 ## 四、ChatToolbar.vue 改造方案

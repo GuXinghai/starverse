@@ -9,6 +9,14 @@ export type RunStatus =
 
 export type MessageRole = 'user' | 'assistant' | 'tool'
 
+/**
+ * OpenRouter reasoning.effort enum (full set).
+ * Note: reasoning.exclude is a separate switch; reasoning.enabled is not used in this repo.
+ */
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+
+export type RequestedReasoningMode = 'auto' | 'effort'
+
 export type ContentBlock =
   | Readonly<{ type: 'text'; text: string }>
   | Readonly<{ type: 'image'; url: string }>
@@ -106,11 +114,12 @@ export type MessageState = Readonly<{
   hasEncryptedReasoning: boolean
   streaming: { isTarget: boolean; isComplete: boolean }
   /**
-   * Whether reasoning.exclude was set to true in the original request.
-   * Used to distinguish 'excluded' (intentional hide) from 'not_returned' (model didn't provide).
-   * SSOT Reference: Section 3.4 "加密/隐藏/未返回" 的 UI 语义分离
+   * Requested reasoning config recorded at send-time.
+   * These fields are request-side only; selectors MUST NOT infer visibility from effort.
    */
-  requestedReasoningExclude?: boolean
+  requestedReasoningMode: RequestedReasoningMode
+  requestedReasoningEffort?: ReasoningEffort
+  requestedReasoningExclude: boolean
 }>
 
 export type RunState = Readonly<{
@@ -141,9 +150,7 @@ export type StartGenerationInput = Readonly<{
   assistantMessageId?: string
   userMessageId?: string
   userMessageText?: string
-  /**
-   * Whether reasoning.exclude was set to true in the request.
-   * Will be stored on the assistant message for visibility judgment.
-   */
-  reasoningExclude?: boolean
+  requestedReasoningMode?: RequestedReasoningMode
+  requestedReasoningEffort?: ReasoningEffort
+  requestedReasoningExclude?: boolean
 }>

@@ -26,9 +26,9 @@ import path from 'node:path'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import Store from 'electron-store'
+import { syncOpenRouterModelCatalog } from '../src/next/modelCatalog/catalogSyncJob'
 import { DbWorkerManager } from './db/workerManager'
 import { registerDbBridge } from './ipc/dbBridge'
-import { registerOpenRouterBridge, cleanupActiveStreams } from './ipc/openRouterBridge'
 import { createInAppBrowserManager } from './services/inappBrowser'
 import {
   ALLOWED_CONFIG_KEYS,
@@ -359,6 +359,37 @@ const ensureDbReady = async () => {
   await dbWorkerManager.start(dbPath)
 }
 
+async function startCatalogSyncInBackground() {
+  try {
+    const apiKey = String(store.get('openRouterApiKey') ?? '').trim()
+    const baseUrl = String(store.get('openRouterBaseUrl') ?? '').trim() || null
+    if (!apiKey) return
+
+    const result = await syncOpenRouterModelCatalog({
+      apiKey,
+      baseUrl,
+      writer: {
+        syncSnapshot: (params) => dbWorkerManager.call('modelCatalog.syncSnapshot', params).then(() => {}),
+      },
+    })
+
+    if (result.ok) {
+      await dbWorkerManager.call('reasoningIndex.syncFromCatalog', { routerSource: 'openrouter' })
+      try {
+        win?.webContents?.send('db:modelCatalogSynced', {
+          routerSource: 'openrouter',
+          snapshotId: result.snapshotId,
+          modelCount: result.modelCount,
+        })
+      } catch (error) {
+        console.warn('[CatalogSyncJob] failed to notify renderer (non-fatal):', error)
+      }
+    }
+  } catch (error) {
+    console.warn('[CatalogSyncJob] failed (non-fatal):', error)
+  }
+}
+
 /**
  * 创建应用主窗口
  * 
@@ -477,26 +508,8 @@ app.on('before-quit', async (event) => {
   // 通知渲染进程保存所有脏数据
   if (win && !win.isDestroyed()) {
     console.log('[main] 通知渲染进程保存数据...')
-    try {
-      await win.webContents.executeJavaScript(`
-        (async () => {
-          if (window.__STORES__ && window.__STORES__.persistenceStore) {
-            console.log('[main->renderer] 执行退出前保存...')
-            await window.__STORES__.persistenceStore.saveAllDirtyConversations()
-            console.log('[main->renderer] 保存完成')
-          }
-        })()
-      `)
-      console.log('[main] 渲染进程保存完成')
-    } catch (error) {
-      console.error('[main] 渲染进程保存失败:', error)
-    }
-    
     win.removeAllListeners()
   }
-  
-  // 清理活动的 OpenRouter 流式请求
-  cleanupActiveStreams()
   
   // 停止数据库 Worker
   await dbWorkerManager.stop().catch((error) => {
@@ -527,8 +540,8 @@ app.whenReady()
   .then(async () => {
     await ensureDbReady()
     registerDbBridge(dbWorkerManager)
-    registerOpenRouterBridge()  // 注册 OpenRouter 网关桥接
     createWindow()
+    void startCatalogSyncInBackground()
   })
   .catch((error) => {
     console.error('[main] failed to initialize application', error)

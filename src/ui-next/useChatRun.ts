@@ -71,6 +71,12 @@ export function useChatRun() {
     activeRunId.value = runId
     abortController.value = new AbortController()
 
+    const scenarioExcluded = input.mode === 'demo' && input.scenario === 'excluded'
+    const requestedReasoningMode = scenarioExcluded ? 'effort' : input.live.requestedReasoningMode
+    const requestedReasoningExclude = scenarioExcluded ? true : (input.live.requestedReasoningExclude ?? false)
+    const requestedReasoningEffort =
+      requestedReasoningMode === 'auto' ? undefined : (input.live.requestedReasoningEffort ?? 'none')
+
     const started = startGeneration(state.value, {
       runId,
       requestId,
@@ -78,7 +84,9 @@ export function useChatRun() {
       assistantMessageId,
       userMessageId: 'user_1',
       userMessageText: input.text,
-      reasoningExclude: input.mode === 'demo' ? input.scenario === 'excluded' : input.live.reasoningExclude,
+      requestedReasoningMode,
+      requestedReasoningEffort,
+      requestedReasoningExclude,
     })
     state.value = started.state
 

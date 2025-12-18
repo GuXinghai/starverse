@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { DemoScenario, RunMode } from '../useChatRun'
 import ChatComposer from '@/ui-kit/chat/ChatComposer.vue'
+import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
+import type { ReasoningModelIndexItem } from '@/next/modelIndex/reasoningModelIndexTypes'
 
 const props = defineProps<{
   draft: string
@@ -8,8 +10,11 @@ const props = defineProps<{
   mode: RunMode
   model: string
   apiKey: string
-  reasoningExclude: boolean
-  reasoningEffort: 'auto' | 'none' | 'medium' | 'high' | 'xhigh'
+  requestedReasoningExclude: boolean
+  requestedReasoningEffort: 'auto' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  modelCatalog: readonly ModelCatalogItem[]
+  reasoningModelIndex: readonly ReasoningModelIndexItem[]
+  showHiddenModelsInPickers: boolean
   disabled: boolean
 }>()
 
@@ -19,8 +24,9 @@ const emit = defineEmits<{
   'update:mode': [value: RunMode]
   'update:model': [value: string]
   'update:apiKey': [value: string]
-  'update:reasoningExclude': [value: boolean]
-  'update:reasoningEffort': [value: 'auto' | 'none' | 'medium' | 'high' | 'xhigh']
+  'update:requestedReasoningExclude': [value: boolean]
+  'update:requestedReasoningEffort': [value: 'auto' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh']
+  toggleShowHiddenModelsInPickers: []
   send: []
   abort: []
 }>()
@@ -60,20 +66,35 @@ const isDev = (import.meta as any).env?.DEV === true
             :value="props.model"
             :disabled="props.disabled"
             placeholder="openrouter/auto"
+            list="model-catalog-datalist"
             @input="emit('update:model', ($event.target as HTMLInputElement).value)"
           />
+          <datalist id="model-catalog-datalist">
+            <option v-for="m in props.modelCatalog" :key="m.modelId" :value="m.modelId" :label="m.name" />
+          </datalist>
+          <button
+            v-if="isDev"
+            type="button"
+            class="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-600 shadow-sm"
+            :disabled="props.disabled"
+            @click="emit('toggleShowHiddenModelsInPickers')"
+          >
+            {{ props.showHiddenModelsInPickers ? 'hide hidden' : 'show hidden' }}
+          </button>
         </div>
 
         <div class="flex items-center gap-2">
           <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Reasoning</div>
           <select
             class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs shadow-sm"
-            :value="props.reasoningEffort"
+            :value="props.requestedReasoningEffort"
             :disabled="props.disabled"
-            @change="emit('update:reasoningEffort', ($event.target as HTMLSelectElement).value as any)"
+            @change="emit('update:requestedReasoningEffort', ($event.target as HTMLSelectElement).value as any)"
           >
-            <option value="auto">auto (default, omit)</option>
+            <option value="auto">auto (omit reasoning field)</option>
             <option value="none">none (explicit disable)</option>
+            <option value="minimal">minimal</option>
+            <option value="low">low</option>
             <option value="medium">medium</option>
             <option value="high">high</option>
             <option value="xhigh">xhigh</option>
@@ -82,12 +103,30 @@ const isDev = (import.meta as any).env?.DEV === true
             <input
               type="checkbox"
               class="h-4 w-4 rounded border-gray-300"
-              :checked="props.reasoningExclude"
-              :disabled="props.disabled"
-              @change="emit('update:reasoningExclude', ($event.target as HTMLInputElement).checked)"
+              :checked="props.requestedReasoningExclude"
+              :disabled="props.disabled || props.requestedReasoningEffort === 'auto'"
+              @change="emit('update:requestedReasoningExclude', ($event.target as HTMLInputElement).checked)"
             />
             exclude
           </label>
+          <div v-if="props.requestedReasoningEffort !== 'auto' && props.requestedReasoningEffort !== 'none'" class="text-[11px] text-gray-500">
+            Tip: medium is the recommended default when enabling reasoning.
+          </div>
+        </div>
+
+        <div v-if="props.reasoningModelIndex.length > 0" class="flex items-center gap-2">
+          <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Reasoning Models</div>
+          <select
+            class="w-56 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs shadow-sm"
+            :disabled="props.disabled"
+            :value="''"
+            @change="emit('update:model', ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="" disabled>(pick from reasoning index)</option>
+            <option v-for="m in props.reasoningModelIndex" :key="m.modelId" :value="m.modelId">
+              {{ m.name }}
+            </option>
+          </select>
         </div>
 
         <div v-if="isDev && props.mode === 'demo'" class="flex items-center gap-2">

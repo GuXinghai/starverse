@@ -12,7 +12,7 @@
 
 测试推理模式（Reasoning Mode）的完整功能，包括：
 - 推理模式开关（on/off）
-- Reasoning Effort 等级选择（low/medium/high）
+- Reasoning Effort 等级选择（`none|minimal|low|medium|high|xhigh` + `auto/omit`）
 - Reasoning disclosure（返回/披露合同）：`shown | excluded | not_returned`
 - Reasoning panelState（UI 呈现状态）：`collapsed | expanded`
 - 模型支持检测（11 个关键词检测）
@@ -62,12 +62,12 @@
 #### 测试步骤
 1. 点击推理模式按钮旁的下拉菜单图标
 2. 观察弹出的选项列表
-3. 依次选择 "Low"、"Medium"、"High" 三个选项
+3. 依次选择 "Minimal"、"Low"、"Medium"、"High"、"XHigh"、"None"（以及可选的 "Auto(omit)"）
 4. 每次选择后观察按钮文本变化
 
 #### 预期结果
 - **下拉菜单显示**:
-  - 显示 3 个选项：Low、Medium、High
+  - 显示完整枚举：None、Minimal、Low、Medium、High、XHigh（以及 Auto(omit)）
   - 当前选中的选项有勾选标记
   - 每个选项有中文说明
 - **选择 Low**:
@@ -291,7 +291,8 @@
 #### 验证点
 - [ ] `reasoning.effort` 正确传递
 - [ ] excluded 时会发送 `reasoning.exclude=true`
-- [ ] 推理模式关闭时不包含 reasoning 参数
+- [ ] `auto/omit` 时请求体不包含 `reasoning`
+- [ ] `effort=none` 时请求体包含 `reasoning: { effort: "none" }`
 
 ---
 
