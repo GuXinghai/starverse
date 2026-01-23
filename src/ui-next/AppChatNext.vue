@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useChatRun, type DemoScenario, type RunMode } from './useChatRun'
 import ChatLayout from '@/ui-kit/chat/ChatLayout.vue'
 import ChatNextComposer from './components/ChatNextComposer.vue'
@@ -47,6 +47,7 @@ const fetchingGenerationInfo = ref(false)
 const canSend = computed(() => !isRunning.value && draft.value.trim().length > 0)
 const activeMessageId = computed(() => transcript.value.find((m) => m.streaming.isTarget)?.messageId)
 const isDev = (import.meta as any).env?.DEV === true
+const DEV_OPENROUTER_API_KEY_STORAGE = 'starverse.ui-next.dev.openrouter_api_key'
 
 const canFetchGenerationInfo = computed(() => {
   if (!isDev) return false
@@ -89,6 +90,32 @@ onMounted(() => {
   if (!ipc) return
   ipc.on('db:modelCatalogSynced', onModelsSynced)
 })
+
+onMounted(() => {
+  if (!isDev) return
+  if (apiKey.value.trim().length > 0) return
+  try {
+    const saved = localStorage.getItem(DEV_OPENROUTER_API_KEY_STORAGE)
+    if (typeof saved === 'string' && saved.trim().length > 0) apiKey.value = saved
+  } catch {
+    // ignore
+  }
+})
+
+watch(
+  apiKey,
+  (v) => {
+    if (!isDev) return
+    try {
+      const trimmed = v.trim()
+      if (trimmed.length === 0) localStorage.removeItem(DEV_OPENROUTER_API_KEY_STORAGE)
+      else localStorage.setItem(DEV_OPENROUTER_API_KEY_STORAGE, v)
+    } catch {
+      // ignore
+    }
+  },
+  { flush: 'post' }
+)
 
 async function onSend() {
   if (!canSend.value) return
