@@ -793,8 +793,8 @@ contextBridge.exposeInMainWorld('electronApi', {
 
 | 工具 | 版本要求 | 检查命令 |
 |------|---------|---------|
-| **Node.js** | >= 18.0.0 | `node --version` |
-| **npm** | >= 9.0.0 | `npm --version` |
+| **Node.js** | 22.x（见 `.nvmrc`） | `node --version` |
+| **npm** | 10.x | `npm --version` |
 | **操作系统** | Windows 10+, macOS 10.13+, Ubuntu 18.04+ | - |
 
 ### 📥 安装步骤
@@ -809,10 +809,10 @@ cd starverse
 **步骤 2: 安装依赖**
 
 ```bash
-npm install
+npm ci
 ```
 
-> ⚠️ **Windows 用户注意**: 如果遇到 `better-sqlite3` 编译错误，请运行 `npm run rebuild`
+> ⚠️ **better-sqlite3 注意**: 如果遇到原生模块/ABI 不匹配：跑测试用 `npm run rebuild:node`；跑 Electron 用 `npm run rebuild:electron`
 
 **步骤 3: 配置 API Key**
 
@@ -888,9 +888,13 @@ npm run electron:dev
 | `npm run build` | 构建生产版本并打包 |
 | `npm run preview` | 预览构建结果 |
 | `npm run dev:clean` | 清理进程并重新启动开发服务器 |
-| `npm run rebuild` | 重新编译 better-sqlite3 原生模块 |
+| `npm run rebuild:node` | 为 Node.js 重新编译 better-sqlite3（跑测试/脚本） |
+| `npm run rebuild:electron` | 为 Electron 重新编译 better-sqlite3（跑桌面应用） |
+| `npm run rebuild` | `rebuild:electron` 的别名 |
 | `npm run build:worker` | 构建数据库 Web Worker |
 | `npm run watch:worker` | 监听模式构建 Web Worker |
+| `npm run verify:ssot` | 基线验证（测试 + SSOT gates） |
+| `npm run verify:live` | 可选 live smoke（需要 OpenRouter key） |
 
 ### 开发规范
 
