@@ -11,7 +11,7 @@ vi.mock('@/next/transport/openrouterFetch', () => {
   }
 })
 
-import { streamOpenRouterChatAsEvents } from './openRouterLiveStream'
+import { streamOpenRouterChatAsEvents } from '@/next/live/openRouterLiveStream'
 
 describe('streamOpenRouterChatAsEvents (provider.require_parameters)', () => {
   const originalDbBridge = (globalThis as any).dbBridge
@@ -71,4 +71,3 @@ describe('streamOpenRouterChatAsEvents (provider.require_parameters)', () => {
     expect(capturedBody).not.toHaveProperty('provider')
   })
 })
-

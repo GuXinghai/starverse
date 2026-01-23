@@ -3,7 +3,7 @@ import { applyEvent, createInitialState, startGeneration, toggleReasoningPanelSt
 import { selectRun, selectTranscript, selectUsageSessionTotalDerived, selectUsageThisTurn, type TokenUsage } from '@/next/state/selectors'
 import type { RootState, RunVM } from '@/next/state/types'
 import { replayOpenRouterSSEFixtureAsEvents } from '@/next/openrouter/replayFixtureStream'
-import { streamOpenRouterChatAsEvents, type LiveRequestConfig } from '@/ui-next/live/openRouterLiveStream'
+import { streamOpenRouterChatAsEvents, type LiveRequestConfig } from '@/next/live/openRouterLiveStream'
 
 import fixtureNormal from '@/next/openrouter/sse/fixtures/comment_done.txt?raw'
 import fixtureUsage from '@/next/openrouter/sse/fixtures/usage_tail_choices_empty.txt?raw'
