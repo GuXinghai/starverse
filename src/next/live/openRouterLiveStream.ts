@@ -5,6 +5,12 @@ import { openrouterFetch } from '@/next/transport/openrouterFetch'
 import { getOpenRouterProviderRequireParameters } from '@/next/settings/openRouterProviderSettingsClient'
 import type { ReasoningEffort, RequestedReasoningMode } from '@/next/state/types'
 import type { DomainEvent } from '@/next/state/types'
+import { buildOpenRouterMessages, type ContextMode, type InternalMessage } from '@/next/context/buildMessages'
+import {
+  normalizeOpenRouterErrorFromHttpNon2xx,
+  normalizeOpenRouterErrorFromSseChunkError,
+  normalizeOpenRouterUnknownStreamingError,
+} from '@/next/errors/normalizeOpenRouterError'
 
 export type LiveRequestConfig = Readonly<{
   apiKey: string
@@ -25,12 +31,23 @@ export type LiveStreamOptions = Readonly<{
   requestId: string
   assistantMessageId: string
   userText: string
+  /**
+   * Prior turns to include as request `messages[]` context.
+   * Must NOT include the current user input (passed via `userText`).
+   *
+   * Keep this as InternalMessage[] to allow future multimodal/tool support without
+   * pushing OpenRouter request-shaping into UI layers.
+   */
+  contextMessages?: ReadonlyArray<InternalMessage>
+  contextMode?: ContextMode
   signal?: AbortSignal | null
   config: LiveRequestConfig
 }>
 
 function toStreamError(err: unknown): DomainEvent {
-  return { type: 'StreamError', error: err, terminal: true }
+  const message =
+    err && typeof err === 'object' && 'message' in (err as any) ? String((err as any).message ?? 'Error') : 'Error'
+  return { type: 'StreamError', error: normalizeOpenRouterUnknownStreamingError({ message, details: { name: (err as any)?.name } }), terminal: true }
 }
 
 /**
@@ -48,6 +65,13 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
 
   const providerRequireParameters = await getOpenRouterProviderRequireParameters()
 
+  const internalMessages: InternalMessage[] = [
+    ...((options.contextMessages ?? []) as InternalMessage[]),
+    { role: 'user', contentText: options.userText },
+  ]
+
+  const messages = buildOpenRouterMessages(internalMessages, { mode: options.contextMode ?? 'default' })
+
   const reasoning =
     options.config.requestedReasoningMode === 'auto'
       ? undefined
@@ -58,7 +82,7 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
 
   const body = buildOpenRouterChatCompletionsRequest({
     model,
-    messages: [{ role: 'user', content: options.userText }],
+    messages,
     stream: true,
     usage: { include: true },
     tools: options.config.tools ?? [],
@@ -81,12 +105,27 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
       yield { type: 'StreamAbort', reason: 'aborted' }
       return
     }
+
+    if (err?.type === 'http_error') {
+      const env = normalizeOpenRouterErrorFromHttpNon2xx({
+        status: Number(err.status),
+        statusText: String(err.statusText ?? ''),
+        bodyText: String(err.bodyText ?? ''),
+        headers: (err.headers && typeof err.headers === 'object') ? (err.headers as any) : undefined,
+      })
+      yield { type: 'StreamError', error: env, terminal: true }
+      return
+    }
+
     yield toStreamError(err)
     return
   }
 
+  let lastMeta: { generationId?: string; model?: string; provider?: string; finishReason?: string; nativeFinishReason?: string } = {}
+
   if (transport.generationId) {
     yield { type: 'MetaDelta', meta: { id: transport.generationId } }
+    lastMeta.generationId = transport.generationId
   }
 
   const bodyStream = transport.response.body
@@ -112,7 +151,11 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
     }
 
     if (ev.type === 'protocol_error') {
-      yield toStreamError({ message: ev.message, raw: ev.raw })
+      yield {
+        type: 'StreamError',
+        error: normalizeOpenRouterUnknownStreamingError({ message: ev.message, details: { raw: ev.raw ? { raw: ev.raw } : {} } }),
+        terminal: true
+      }
       return
     }
 
@@ -126,7 +169,30 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
         chunk: ev.value as any,
         messageId: options.assistantMessageId,
       }) as any as DomainEvent[]
-      for (const m of mapped) yield m
+      for (const m of mapped) {
+        if (m.type === 'MetaDelta') {
+          lastMeta = {
+            generationId: m.meta?.id ?? lastMeta.generationId,
+            model: m.meta?.model ?? lastMeta.model,
+            provider: m.meta?.provider ?? lastMeta.provider,
+            finishReason: m.meta?.finish_reason ?? lastMeta.finishReason,
+            nativeFinishReason: m.meta?.native_finish_reason ?? lastMeta.nativeFinishReason,
+          }
+          yield m
+          continue
+        }
+
+        if (m.type === 'StreamError') {
+          const env = normalizeOpenRouterErrorFromSseChunkError({
+            chunkError: m.error,
+            meta: lastMeta,
+          })
+          yield { type: 'StreamError', error: env, terminal: true }
+          continue
+        }
+
+        yield m
+      }
     }
   }
 }

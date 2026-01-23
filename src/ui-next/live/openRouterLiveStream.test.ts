@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { streamOpenRouterChatAsEvents } from './openRouterLiveStream'
+import { streamOpenRouterChatAsEvents } from '@/next/live/openRouterLiveStream'
 
 function streamFromText(text: string, chunkSize = 17): ReadableStream<Uint8Array> {
   const bytes = new TextEncoder().encode(text)
@@ -155,5 +155,83 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
     })
 
     expect(bodyText).not.toContain('"enabled":')
+  })
+
+  it('mid-stream error chunk yields StreamError and terminates without StreamDone', async () => {
+    const originalFetch = globalThis.fetch
+
+    const midstream = [
+      'data: {"id":"gen_1","model":"openrouter/auto","provider":"openai","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}',
+      '',
+      'data: {"id":"gen_1","model":"openrouter/auto","provider":"openai","error":{"code":"server_error","message":"Provider disconnected","metadata":{"provider_name":"openai"}},"choices":[{"index":0,"delta":{"content":""},"finish_reason":"error"}]}',
+      '',
+      'data: [DONE]',
+      '',
+    ].join('\n')
+
+    globalThis.fetch = vi.fn(async () => {
+      const body = streamFromText(midstream)
+      return new Response(body as any, { status: 200, headers: { 'x-openrouter-generation-id': 'gen_header' } })
+    }) as any
+
+    try {
+      const events = []
+      for await (const ev of streamOpenRouterChatAsEvents({
+        requestId: 'rid',
+        assistantMessageId: 'assistant_1',
+        userText: 'hello',
+        config: { apiKey: 'k', model: 'openrouter/auto', requestedReasoningMode: 'auto' },
+      })) {
+        events.push(ev)
+      }
+
+      expect(events.some((e) => e.type === 'MessageDeltaText')).toBe(true)
+      const streamError = events.find((e) => e.type === 'StreamError') as any
+      expect(streamError).toBeTruthy()
+      expect(streamError.error?.normalized?.phase).toBe('generation')
+      expect(streamError.error?.normalized?.transport).toBe('sse')
+      expect(streamError.error?.normalized?.code).toBe('server_error')
+      expect(events.some((e) => e.type === 'StreamDone')).toBe(false)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('includes multi-turn history when contextMessages are provided', async () => {
+    const originalFetch = globalThis.fetch
+    const calls: any[] = []
+
+    globalThis.fetch = vi.fn(async (_url: any, init: any) => {
+      calls.push({ init })
+      const body = streamFromText(fixture)
+      return new Response(body as any, { status: 200, headers: { 'x-openrouter-generation-id': 'gen_header' } })
+    }) as any
+
+    try {
+      for await (const _ of streamOpenRouterChatAsEvents({
+        requestId: 'rid',
+        assistantMessageId: 'assistant_1',
+        userText: 'third',
+        contextMessages: [
+          { role: 'user', contentText: 'first' },
+          { role: 'assistant', contentText: 'second' },
+        ],
+        config: {
+          apiKey: 'k',
+          model: 'openrouter/auto',
+          requestedReasoningMode: 'auto',
+        },
+      })) {
+        // consume
+      }
+
+      const bodyText = String(calls[0]?.init?.body ?? '')
+      expect(bodyText).toContain('"messages":[')
+      expect(bodyText).toContain('"role":"user","content":"first"')
+      expect(bodyText).toContain('"role":"assistant","content":"second"')
+      expect(bodyText).toContain('"role":"user","content":"third"')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 })
