@@ -1,11 +1,12 @@
 import process from 'node:process'
+import readline from 'node:readline'
 
 function section(title) {
   process.stdout.write(`\n${'='.repeat(80)}\n${title}\n${'='.repeat(80)}\n`)
 }
 
 function parseArgs(argv) {
-  const args = { apiKey: undefined, model: undefined, withGeneration: false }
+  const args = { apiKey: undefined, model: undefined, withGeneration: false, prompt: false }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--api-key') {
@@ -22,6 +23,10 @@ function parseArgs(argv) {
       args.withGeneration = true
       continue
     }
+    if (a === '--prompt') {
+      args.prompt = true
+      continue
+    }
   }
   return args
 }
@@ -33,6 +38,26 @@ function pickApiKey(cliKey) {
     (typeof process.env.VITE_OPENROUTER_API_KEY === 'string' && process.env.VITE_OPENROUTER_API_KEY.trim()) ||
     ''
   return key || null
+}
+
+async function promptHidden(prompt) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return null
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true })
+  const originalWrite = rl._writeToOutput
+  ;(rl)._writeToOutput = function _writeToOutputMasked(str) {
+    if (typeof str !== 'string') return originalWrite.call(this, str)
+    if (str.trim().length === 0) return originalWrite.call(this, str)
+    return originalWrite.call(this, '*'.repeat(str.trimEnd().length))
+  }
+
+  return await new Promise((resolve) => {
+    rl.question(prompt, (answer) => {
+      rl.close()
+      const v = typeof answer === 'string' ? answer.trim() : ''
+      resolve(v.length > 0 ? v : null)
+    })
+  })
 }
 
 function normalizeGenerationId(raw) {
@@ -174,10 +199,20 @@ async function main() {
   section('TC-14 — ui-next live smoke (OpenRouter chat/completions)')
 
   const args = parseArgs(process.argv.slice(2))
-  const apiKey = pickApiKey(args.apiKey)
+  let apiKey = pickApiKey(args.apiKey)
   if (!apiKey) {
-    console.log('SKIP: no api key; use --api-key or env (OPENROUTER_API_KEY / VITE_OPENROUTER_API_KEY)')
-    process.exit(0)
+    if (args.prompt) {
+      section('API key')
+      console.log('No api key found in args/env. Paste one now, or press Enter to skip.')
+      apiKey = await promptHidden('OpenRouter API key: ')
+    }
+
+    if (!apiKey) {
+      console.log(
+        'SKIP: no api key; use --api-key, --prompt, or env (OPENROUTER_API_KEY / VITE_OPENROUTER_API_KEY)'
+      )
+      process.exit(0)
+    }
   }
 
   const model = typeof args.model === 'string' && args.model.trim() ? args.model.trim() : 'openrouter/auto'
@@ -263,4 +298,3 @@ main().catch((err) => {
   process.stderr.write(`\nFAIL: ${msg}\n`)
   process.exit(1)
 })
-
