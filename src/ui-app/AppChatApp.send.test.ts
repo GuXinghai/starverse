@@ -31,19 +31,75 @@ describe('ui-app AppChatApp (send: pure text)', () => {
       }),
     }
 
-    let seq = 0
+    const persisted: Array<any> = []
     const invoke = vi.fn(async (method: string, params?: any) => {
       if (method === 'convo.list') {
         return [{ id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
       }
-      if (method === 'message.list') return []
-      if (method === 'message.append') {
-        seq += 1
-        const role = String(params?.role ?? '')
-        const id = role === 'assistant' ? 'a1' : 'u1'
-        return { id, convoId: 'c1', role, seq, createdAt: Date.now(), body: String(params?.body ?? ''), meta: null }
+      if (method === 'branch.ensureDefault') {
+        return { id: 'b1', convoId: 'c1', headMessageId: null, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
       }
-      if (method === 'message.appendDelta') return { ok: true }
+      if (method === 'branch.list') {
+        return [{ id: 'b1', convoId: 'c1', headMessageId: persisted[persisted.length - 1]?.id ?? null, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }]
+      }
+      if (method === 'context.getRenderableTurns') {
+        const hasQ = persisted.some((m) => String(m.role) === 'user')
+        return {
+          messages: persisted,
+          turns: hasQ
+            ? [{ questionId: 'u1', chosenAnswerRootId: 'a1', questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }]
+            : [],
+          debug: { branchId: 'b1', excludedQuestionIds: [], includedMessageIds: persisted.map((m) => m.id), chosenAnswerRootByQuestionId: hasQ ? { u1: 'a1' } : {} },
+        }
+      }
+      if (method === 'context.buildForBranch') {
+        return { messages: [], debug: { branchId: 'b1', excludedQuestionIds: [], includedMessageIds: [], chosenAnswerRootByQuestionId: {} } }
+      }
+      if (method === 'branch.beginTurn') {
+        const userBody = String(params?.userBody ?? '')
+        const now = Date.now()
+        persisted.push({
+          id: 'u1',
+          convoId: 'c1',
+          role: 'user',
+          seq: 1,
+          createdAt: now,
+          parentId: null,
+          status: 'final',
+          answerRootId: null,
+          questionId: null,
+          body: userBody,
+          meta: null,
+        })
+        persisted.push({
+          id: 'a1',
+          convoId: 'c1',
+          role: 'assistant',
+          seq: 2,
+          createdAt: now + 1,
+          parentId: 'u1',
+          status: 'streaming',
+          answerRootId: 'a1',
+          questionId: 'u1',
+          body: '',
+          meta: null,
+        })
+        return { ok: true, convoId: 'c1', branchId: 'b1', questionId: 'u1', questionSeq: 1, assistantId: 'a1', assistantSeq: 2 }
+      }
+      if (method === 'message.appendDelta') {
+        const targetSeq = Number(params?.seq ?? NaN)
+        const appendBody = String(params?.appendBody ?? '')
+        const msg = persisted.find((m) => Number(m.seq) === targetSeq)
+        if (msg && appendBody) msg.body = String(msg.body ?? '') + appendBody
+        return { ok: true }
+      }
+      if (method === 'message.setStatus') {
+        const messageId = String(params?.messageId ?? '')
+        const status = String(params?.status ?? '')
+        const msg = persisted.find((m) => String(m.id) === messageId)
+        if (msg) msg.status = status
+        return { ok: true }
+      }
       if (method === 'convo.create') return { id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 1 }
       return { ok: true }
     })
@@ -82,9 +138,10 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await vi.runAllTimersAsync()
 
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
-    expect(invoke).toHaveBeenCalledWith('message.append', expect.objectContaining({ convoId: 'c1', role: 'user', body: 'ping' }))
-    expect(invoke).toHaveBeenCalledWith('message.append', expect.objectContaining({ convoId: 'c1', role: 'assistant', body: '' }))
+    expect(invoke).toHaveBeenCalledWith('context.buildForBranch', expect.objectContaining({ branchId: 'b1' }))
+    expect(invoke).toHaveBeenCalledWith('branch.beginTurn', expect.objectContaining({ branchId: 'b1', userBody: 'ping' }))
     expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 2 }))
+    expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a1', status: 'final' }))
     expect(invoke.mock.calls.filter((c) => c[0] === 'message.appendDelta').length).toBeGreaterThanOrEqual(1)
   })
 })
