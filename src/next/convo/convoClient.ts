@@ -47,3 +47,86 @@ export async function createConvo(input: Readonly<{ title: string; projectId?: s
   return { id, title, createdAt, updatedAt }
 }
 
+function requireDbBridge(): DbBridge {
+  const bridge = getDbBridge()
+  if (!bridge) throw new Error('Missing dbBridge')
+  return bridge
+}
+
+export async function saveConvo(input: Readonly<{ id: string; title: string; projectId?: string | null; meta?: unknown; createdAt?: number; updatedAt?: number }>): Promise<boolean> {
+  const bridge = requireDbBridge()
+  const id = String(input.id ?? '').trim()
+  if (!id) throw new Error('Missing convo id')
+
+  const title = String(input.title ?? '').trim()
+  if (!title) throw new Error('Missing title')
+
+  const payload: any = { id, title }
+  if (input.projectId !== undefined) payload.projectId = input.projectId
+  if (input.createdAt !== undefined) payload.createdAt = input.createdAt
+  if (input.updatedAt !== undefined) payload.updatedAt = input.updatedAt
+  if (input.meta !== undefined) payload.meta = input.meta
+
+  const r = await bridge.invoke('convo.save', payload)
+  return !!(r && typeof r === 'object' && 'ok' in r ? (r as any).ok : true)
+}
+
+export async function renameConvo(convoId: string, newTitle: string): Promise<boolean> {
+  const id = String(convoId ?? '').trim()
+  const title = String(newTitle ?? '').trim()
+  if (!id) throw new Error('Missing convo id')
+  if (!title) throw new Error('Missing title')
+  return saveConvo({ id, title })
+}
+
+export async function deleteConvo(convoId: string): Promise<boolean> {
+  const bridge = requireDbBridge()
+  const id = String(convoId ?? '').trim()
+  if (!id) throw new Error('Missing convo id')
+  const r = await bridge.invoke('convo.delete', { id })
+  return !!(r && typeof r === 'object' && 'ok' in r ? (r as any).ok : true)
+}
+
+export async function archiveConvo(convoId: string): Promise<boolean> {
+  const bridge = requireDbBridge()
+  const id = String(convoId ?? '').trim()
+  if (!id) throw new Error('Missing convo id')
+  const r = await bridge.invoke('convo.archive', { id })
+  return !!(r && typeof r === 'object' && 'ok' in r ? (r as any).ok : true)
+}
+
+export async function restoreConvo(convoId: string): Promise<boolean> {
+  const bridge = requireDbBridge()
+  const id = String(convoId ?? '').trim()
+  if (!id) throw new Error('Missing convo id')
+  const r = await bridge.invoke('convo.restore', { id })
+  return !!(r && typeof r === 'object' && 'ok' in r ? (r as any).ok : true)
+}
+
+export async function setConvoProject(convoId: string, projectId: string | null): Promise<boolean> {
+  const bridge = requireDbBridge()
+  const id = String(convoId ?? '').trim()
+  if (!id) throw new Error('Missing convo id')
+  const pid = projectId === null ? null : String(projectId ?? '').trim()
+  const r = await bridge.invoke('convo.setProject', { id, projectId: pid && pid.length > 0 ? pid : null })
+  return !!(r && typeof r === 'object' && 'ok' in r ? (r as any).ok : true)
+}
+
+export async function setConvoProjectMany(convoIds: readonly string[], projectId: string | null): Promise<Readonly<{ moved: number; failed: string[] }>> {
+  const bridge = requireDbBridge()
+  const ids = (convoIds ?? []).map((v) => String(v ?? '').trim()).filter(Boolean)
+  if (ids.length === 0) return { moved: 0, failed: [] }
+  const pid = projectId === null ? null : String(projectId ?? '').trim()
+  const result = await bridge.invoke('convo.setProjectMany', { ids, projectId: pid && pid.length > 0 ? pid : null })
+  const moved = typeof result?.moved === 'number' ? result.moved : 0
+  const failed = Array.isArray(result?.failed) ? result.failed.map((x: any) => String(x ?? '')).filter(Boolean) : []
+  return { moved, failed }
+}
+
+export async function deleteConvos(convoIds: readonly string[]): Promise<number> {
+  const bridge = requireDbBridge()
+  const ids = (convoIds ?? []).map((v) => String(v ?? '').trim()).filter(Boolean)
+  if (ids.length === 0) return 0
+  const result = await bridge.invoke('convo.deleteMany', { ids })
+  return typeof result?.deleted === 'number' ? result.deleted : 0
+}
