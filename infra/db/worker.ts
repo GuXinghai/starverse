@@ -4,12 +4,15 @@ import BetterSqlite3 from 'better-sqlite3'
 import { ProjectRepo } from './repo/projectRepo'
 import { ConvoRepo } from './repo/convoRepo'
 import { MessageRepo } from './repo/messageRepo'
+import { BranchRepo } from './repo/branchRepo'
+import { ContextRepo } from './repo/contextRepo'
 import { SearchRepo } from './repo/searchRepo'
 import { UsageRepo } from './repo/usageRepo'
 import { DashboardPrefRepo } from './repo/dashboardPrefRepo'
 import { ModelCatalogRepo } from './repo/modelCatalogRepo'
 import { ReasoningModelIndexRepo } from './repo/reasoningModelIndexRepo'
 import { SettingsRepo } from './repo/settingsRepo'
+import { ensureBranchingSchema } from './migrations/ensureBranchingSchema'
 import {
   type WorkerInitConfig,
   type WorkerRequestMessage,
@@ -28,18 +31,39 @@ import {
   CountConversationsSchema,
   AppendMessageSchema,
   AppendMessageDeltaSchema,
+  SetMessageStatusSchema,
   CreateConvoSchema,
   SaveConvoSchema,
   SaveConvoWithMessagesSchema,
   DeleteConvoSchema,
   ArchiveConvoSchema,
   RestoreConvoSchema,
+  SetConvoProjectSchema,
+  SetConvoProjectManySchema,
   ListArchivedSchema,
   FulltextQuerySchema,
   ListConvoSchema,
   ListMessageSchema,
   ReplaceMessagesSchema,
+  SetBranchHeadSchema,
+  SetBranchChoiceSchema,
+  SetBranchAnswerHideSchema,
+  RetryReplaceAnswerSchema,
   BatchDeleteSchema,
+  EnsureDefaultBranchSchema,
+  ListBranchSchema,
+  CreateBranchFromMessageSchema,
+  DeleteBranchSchema,
+  SwitchCandidateSchema,
+  RegenerateFromQuestionSchema,
+  GetBranchPathSchema,
+  GetCandidatesSchema,
+  EffectiveFilterSchema,
+  BeginTurnSchema,
+  SetBranchFilterSchema,
+  ClearBranchFilterSchema,
+  BuildContextForBranchSchema,
+  GetRenderableTurnsSchema,
   LogUsageSchema,
   GetProjectUsageStatsSchema,
   GetConvoUsageStatsSchema,
@@ -55,6 +79,13 @@ import { configureLogging, logSlowQuery } from './logger'
 
 type SqlDatabase = BetterSqlite3.Database
 
+const debugDbOps = process.env.SV_DEBUG_DB_OPS === '1'
+const dbgDb = (label: string, data?: unknown) => {
+  if (!debugDbOps) return
+  if (data !== undefined) console.log(`[db][dbg] ${label}`, data)
+  else console.log(`[db][dbg] ${label}`)
+}
+
 const defaultSchemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
 
 export class DbWorkerRuntime {
@@ -62,6 +93,8 @@ export class DbWorkerRuntime {
   private projectRepo: ProjectRepo
   private convoRepo: ConvoRepo
   private messageRepo: MessageRepo
+  private branchRepo: BranchRepo
+  private contextRepo: ContextRepo
   private searchRepo: SearchRepo
   private usageRepo: UsageRepo
   private dashboardPrefRepo: DashboardPrefRepo
@@ -90,6 +123,8 @@ export class DbWorkerRuntime {
     this.db.exec(readFileSync(schemaPath, 'utf8'))
     console.log('[DbWorkerRuntime] 确保 Usage Log Schema...')
     this.ensureUsageLogSchema()
+    console.log('[DbWorkerRuntime] 确保 Branching Schema...')
+    ensureBranchingSchema(this.db)
 
     if (config.logSlowQueryMs || config.logDirectory) {
       configureLogging({ slowQueryMs: config.logSlowQueryMs, directory: config.logDirectory })
@@ -104,6 +139,8 @@ export class DbWorkerRuntime {
     this.projectRepo = new ProjectRepo(this.db)
     this.convoRepo = new ConvoRepo(this.db)
     this.messageRepo = new MessageRepo(this.db)
+    this.branchRepo = new BranchRepo(this.db)
+    this.contextRepo = new ContextRepo(this.db, this.branchRepo)
     this.searchRepo = new SearchRepo(this.db)
     this.usageRepo = new UsageRepo(this.db)
     this.dashboardPrefRepo = new DashboardPrefRepo(this.db)
@@ -277,6 +314,17 @@ export class DbWorkerRuntime {
       return { ok: true }
     })
 
+    this.handlers.set('convo.setProject', (raw) => {
+      const input = SetConvoProjectSchema.parse(raw)
+      this.convoRepo.setProject(input.id, input.projectId)
+      return { ok: true }
+    })
+
+    this.handlers.set('convo.setProjectMany', (raw) => {
+      const input = SetConvoProjectManySchema.parse(raw)
+      return this.convoRepo.setProjectMany(input.ids, input.projectId)
+    })
+
     this.handlers.set('convo.listArchived', (raw) => {
       const input = ListArchivedSchema.parse(raw ?? {})
       return this.convoRepo.listArchived(input)
@@ -293,6 +341,11 @@ export class DbWorkerRuntime {
       return this.messageRepo.appendDelta(input)
     })
 
+    this.handlers.set('message.setStatus', (raw) => {
+      const input = SetMessageStatusSchema.parse(raw)
+      return this.messageRepo.setStatus(input)
+    })
+
     this.handlers.set('message.list', (raw) => {
       const input = ListMessageSchema.parse(raw)
       return this.messageRepo.list(input)
@@ -300,6 +353,12 @@ export class DbWorkerRuntime {
 
     this.handlers.set('message.replace', (raw) => {
       const input = ReplaceMessagesSchema.parse(raw)
+      if (this.branchRepo.hasAnyBranchForConvo(input.convoId)) {
+        throw new DbWorkerError(
+          'ERR_MUTATION_FORBIDDEN_ON_BRANCHING_CONVO',
+          `message.replace is forbidden for branching-enabled conversations: ${input.convoId}`
+        )
+      }
       const messages = input.messages.map((message, index) => ({
         convoId: input.convoId,
         role: message.role,
@@ -310,6 +369,271 @@ export class DbWorkerRuntime {
       }))
       this.messageRepo.replaceForConvo(input.convoId, messages)
       return { ok: true }
+    })
+
+    // ========== Branching (read-only, Phase 4+) ==========
+    this.handlers.set('branch.ensureDefault', (raw) => {
+      const input = EnsureDefaultBranchSchema.parse(raw)
+      return this.branchRepo.ensureDefault(input.convoId, input.name)
+    })
+
+    this.handlers.set('branch.list', (raw) => {
+      const input = ListBranchSchema.parse(raw)
+      return this.branchRepo.list(input.convoId, !!input.includeDeleted)
+    })
+
+    this.handlers.set('branch.createFromMessage', (raw) => {
+      const input = CreateBranchFromMessageSchema.parse(raw)
+      return this.branchRepo.createFromMessage(input)
+    })
+
+    this.handlers.set('branch.delete', (raw) => {
+      const input = DeleteBranchSchema.parse(raw)
+      return this.branchRepo.delete(input.branchId)
+    })
+
+    this.handlers.set('branch.getPathMessages', (raw) => {
+      const input = GetBranchPathSchema.parse(raw)
+      return this.branchRepo.getPathMessages(input.branchId, input.limit)
+    })
+
+    this.handlers.set('branch.getCandidates', (raw) => {
+      const input = GetCandidatesSchema.parse(raw)
+      const list = this.branchRepo.getCandidates(input.branchId, input.questionId, input.limit)
+      dbgDb('branch.getCandidates', {
+        branchId: input.branchId,
+        questionId: input.questionId,
+        count: list.length,
+        candidates: list.map((c) => ({ answerRootId: c.answerRootId, status: c.status })),
+      })
+      return list
+    })
+
+    this.handlers.set('branch.getEffectiveFilters', (raw) => {
+      const input = EffectiveFilterSchema.parse(raw)
+      return this.branchRepo.getEffectiveFilters(input.branchId, input.questionId, input.chosenAnswerRootId)
+    })
+
+    this.handlers.set('branch.beginTurn', (raw) => {
+      const input = BeginTurnSchema.parse(raw)
+      const branch = this.branchRepo.get(input.branchId)
+      if (!branch?.convoId) {
+        throw new DbWorkerError('ERR_NOT_FOUND', `Branch not found: ${input.branchId}`)
+      }
+      if (branch.deletedAt != null) {
+        throw new DbWorkerError('ERR_INVALID', `Branch is deleted: ${input.branchId}`)
+      }
+
+      const txn = this.db.transaction(() => {
+        const latest = this.branchRepo.get(input.branchId)
+        if (!latest?.convoId) throw new DbWorkerError('ERR_NOT_FOUND', `Branch not found: ${input.branchId}`)
+        if (latest.deletedAt != null) throw new DbWorkerError('ERR_INVALID', `Branch is deleted: ${input.branchId}`)
+
+        const question = this.messageRepo.append({
+          convoId: latest.convoId,
+          role: 'user',
+          body: input.userBody,
+          ...(input.userMeta !== undefined ? { meta: input.userMeta } : {}),
+          parentId: latest.headMessageId,
+        })
+
+        const assistant = this.messageRepo.append({
+          convoId: latest.convoId,
+          role: 'assistant',
+          body: '',
+          parentId: question.id,
+          status: 'streaming',
+        })
+
+        this.branchRepo.setChoice(input.branchId, question.id, assistant.id)
+        this.branchRepo.setHead(input.branchId, assistant.id)
+
+        return {
+          ok: true as const,
+          convoId: latest.convoId,
+          branchId: input.branchId,
+          questionId: question.id,
+          questionSeq: question.seq,
+          assistantId: assistant.id,
+          assistantSeq: assistant.seq,
+        }
+      })
+
+      return txn()
+    })
+
+    this.handlers.set('branch.switchCandidate', (raw) => {
+      const input = SwitchCandidateSchema.parse(raw)
+      return this.branchRepo.switchCandidate(input.branchId, input.questionId, input.answerRootId)
+    })
+
+    this.handlers.set('branch.regenerateFromQuestion', (raw) => {
+      const input = RegenerateFromQuestionSchema.parse(raw)
+      const branch = this.branchRepo.get(input.branchId)
+      if (!branch?.convoId) {
+        throw new DbWorkerError('ERR_NOT_FOUND', `Branch not found: ${input.branchId}`)
+      }
+      if (branch.deletedAt != null) {
+        throw new DbWorkerError('ERR_INVALID', `Branch is deleted: ${input.branchId}`)
+      }
+
+      if (debugDbOps) {
+        const beforeChoice = this.db
+          .prepare(`SELECT chosen_answer_root_id AS chosen FROM branch_choice WHERE branch_id=@branchId AND question_id=@questionId LIMIT 1`)
+          .get({ branchId: input.branchId, questionId: input.questionId }) as any
+        dbgDb('branch.regenerateFromQuestion:before', {
+          branchId: input.branchId,
+          questionId: input.questionId,
+          headMessageId: branch.headMessageId ?? null,
+          chosenAnswerRootId: beforeChoice?.chosen ? String(beforeChoice.chosen) : null,
+        })
+      }
+
+      // Validate question belongs to this conversation.
+      const q = this.db
+        .prepare(`SELECT 1 FROM message WHERE id=@id AND convo_id=@convoId AND role='user' LIMIT 1`)
+        .get({ id: input.questionId, convoId: branch.convoId }) as any
+      if (!q) {
+        throw new DbWorkerError('ERR_VALIDATION', `Question not found in conversation: ${input.questionId}`)
+      }
+
+      const txn = this.db.transaction(() => {
+        const created = this.messageRepo.append({
+          convoId: branch.convoId,
+          role: 'assistant',
+          body: '',
+          parentId: input.questionId,
+          status: 'streaming',
+        })
+        this.branchRepo.setChoice(input.branchId, input.questionId, created.id)
+        this.branchRepo.setHead(input.branchId, created.id)
+        return { ok: true, newAnswerRootId: created.id, newAssistantSeq: created.seq }
+      })
+
+      const out = txn()
+      if (debugDbOps) {
+        const afterChoice = this.db
+          .prepare(`SELECT chosen_answer_root_id AS chosen FROM branch_choice WHERE branch_id=@branchId AND question_id=@questionId LIMIT 1`)
+          .get({ branchId: input.branchId, questionId: input.questionId }) as any
+        const afterHead = this.db.prepare(`SELECT head_message_id AS head FROM branch WHERE id=@branchId LIMIT 1`).get({ branchId: input.branchId }) as any
+        dbgDb('branch.regenerateFromQuestion:after', {
+          branchId: input.branchId,
+          questionId: input.questionId,
+          newAnswerRootId: out.newAnswerRootId,
+          newAssistantSeq: out.newAssistantSeq,
+          headMessageId: afterHead?.head ? String(afterHead.head) : null,
+          chosenAnswerRootId: afterChoice?.chosen ? String(afterChoice.chosen) : null,
+        })
+      }
+      return out
+    })
+
+    this.handlers.set('branch.setHead', (raw) => {
+      const input = SetBranchHeadSchema.parse(raw)
+      return this.branchRepo.setHead(input.branchId, input.headMessageId)
+    })
+
+    this.handlers.set('branchChoice.set', (raw) => {
+      const input = SetBranchChoiceSchema.parse(raw)
+      return this.branchRepo.setChoice(input.branchId, input.questionId, input.chosenAnswerRootId)
+    })
+
+    this.handlers.set('branchAnswerHide.set', (raw) => {
+      const input = SetBranchAnswerHideSchema.parse(raw)
+      return this.branchRepo.setAnswerHide(input.branchId, input.questionId, input.answerRootId, input.hidden)
+    })
+
+    this.handlers.set('branch.retryReplaceAnswer', (raw) => {
+      const input = RetryReplaceAnswerSchema.parse(raw)
+      const branch = this.branchRepo.get(input.branchId)
+      if (!branch?.convoId) {
+        throw new DbWorkerError('ERR_NOT_FOUND', `Branch not found: ${input.branchId}`)
+      }
+
+      if (debugDbOps) {
+        const beforeChoice = this.db
+          .prepare(`SELECT chosen_answer_root_id AS chosen FROM branch_choice WHERE branch_id=@branchId AND question_id=@questionId LIMIT 1`)
+          .get({ branchId: input.branchId, questionId: input.questionId }) as any
+        const beforeHide = this.db
+          .prepare(
+            `SELECT hidden FROM branch_answer_hide WHERE branch_id=@branchId AND question_id=@questionId AND answer_root_id=@answerRootId LIMIT 1`
+          )
+          .get({ branchId: input.branchId, questionId: input.questionId, answerRootId: input.currentAnswerRootId }) as any
+        dbgDb('branch.retryReplaceAnswer:before', {
+          branchId: input.branchId,
+          questionId: input.questionId,
+          currentAnswerRootId: input.currentAnswerRootId,
+          headMessageId: branch.headMessageId ?? null,
+          chosenAnswerRootId: beforeChoice?.chosen ? String(beforeChoice.chosen) : null,
+          currentHidden: beforeHide?.hidden != null ? Number(beforeHide.hidden) : null,
+        })
+      }
+
+      const txn = this.db.transaction(() => {
+        // Validate terminal conditions (no follow-up question, head within group, etc.)
+        this.branchRepo.canRetryReplace(input.branchId, input.questionId, input.currentAnswerRootId)
+
+        // Hide the old answer root for this branch (branch-local).
+        this.branchRepo.setAnswerHide(input.branchId, input.questionId, input.currentAnswerRootId, true)
+
+        // Create a new answer variant root under the same question.
+        const created = this.messageRepo.append({
+          convoId: branch.convoId,
+          role: 'assistant',
+          body: '',
+          parentId: input.questionId,
+          status: 'streaming',
+        })
+
+        // Choose the new answer root and move head to it.
+        this.branchRepo.setChoice(input.branchId, input.questionId, created.id)
+        this.branchRepo.setHead(input.branchId, created.id)
+
+        return { ok: true, newAnswerRootId: created.id, newMessageId: created.id, newAssistantSeq: created.seq }
+      })
+
+      const out = txn()
+      if (debugDbOps) {
+        const afterChoice = this.db
+          .prepare(`SELECT chosen_answer_root_id AS chosen FROM branch_choice WHERE branch_id=@branchId AND question_id=@questionId LIMIT 1`)
+          .get({ branchId: input.branchId, questionId: input.questionId }) as any
+        const afterHead = this.db.prepare(`SELECT head_message_id AS head FROM branch WHERE id=@branchId LIMIT 1`).get({ branchId: input.branchId }) as any
+        const hiddenRows = this.db
+          .prepare(
+            `SELECT answer_root_id AS answerRootId, hidden FROM branch_answer_hide WHERE branch_id=@branchId AND question_id=@questionId ORDER BY updated_at DESC LIMIT 5`
+          )
+          .all({ branchId: input.branchId, questionId: input.questionId }) as any[]
+        dbgDb('branch.retryReplaceAnswer:after', {
+          branchId: input.branchId,
+          questionId: input.questionId,
+          newAnswerRootId: out.newAnswerRootId,
+          newAssistantSeq: out.newAssistantSeq,
+          headMessageId: afterHead?.head ? String(afterHead.head) : null,
+          chosenAnswerRootId: afterChoice?.chosen ? String(afterChoice.chosen) : null,
+          recentHides: hiddenRows.map((r) => ({ answerRootId: String(r.answerRootId), hidden: Number(r.hidden) })),
+        })
+      }
+      return out
+    })
+
+    this.handlers.set('branchFilter.set', (raw) => {
+      const input = SetBranchFilterSchema.parse(raw)
+      return this.branchRepo.setFilter(input.branchId, input.targetType, input.targetId, input.mode)
+    })
+
+    this.handlers.set('branchFilter.clear', (raw) => {
+      const input = ClearBranchFilterSchema.parse(raw)
+      return this.branchRepo.clearFilter(input.branchId, input.targetType, input.targetId)
+    })
+
+    this.handlers.set('context.buildForBranch', (raw) => {
+      const input = BuildContextForBranchSchema.parse(raw)
+      return this.contextRepo.buildForBranch(input.branchId, { limit: input.limit, debug: input.debug })
+    })
+
+    this.handlers.set('context.getRenderableTurns', (raw) => {
+      const input = GetRenderableTurnsSchema.parse(raw)
+      return this.contextRepo.getRenderableTurns(input.branchId, { limit: input.limit, debug: input.debug })
     })
 
     this.handlers.set('search.fulltext', (raw) => {
