@@ -96,6 +96,21 @@ export type RestoreConvoInput = {
   id: string
 }
 
+export type SetConvoProjectInput = {
+  id: string
+  projectId: string | null
+}
+
+export type SetConvoProjectManyInput = {
+  ids: string[]
+  projectId: string | null
+}
+
+export type SetConvoProjectManyResult = {
+  moved: number
+  failed: string[]
+}
+
 export type ListArchivedParams = {
   limit?: number
   offset?: number
@@ -115,6 +130,10 @@ export type AppendMessageInput = {
   meta?: JsonObject | null
   createdAt?: number
   seq?: number
+  parentId?: string | null
+  status?: 'streaming' | 'final' | 'error'
+  answerRootId?: string | null
+  questionId?: string | null
 }
 
 export type AppendMessageDeltaInput = {
@@ -122,6 +141,199 @@ export type AppendMessageDeltaInput = {
   seq: number
   appendBody: string
 }
+
+export type SetMessageStatusInput = {
+  messageId: string
+  status: 'streaming' | 'final' | 'error'
+}
+
+// ========== Branching Types (Phase 4+) ==========
+
+export type BranchRecord = {
+  id: string
+  convoId: string
+  headMessageId: string | null
+  name: string | null
+  createdAt: number
+  updatedAt: number
+  deletedAt: number | null
+}
+
+export type EnsureDefaultBranchInput = {
+  convoId: string
+  name?: string | null
+}
+
+export type ListBranchParams = {
+  convoId: string
+  includeDeleted?: boolean
+}
+
+export type CreateBranchFromMessageInput = {
+  sourceBranchId: string
+  baseMessageId: string
+  name?: string | null
+  copyChoices?: boolean
+  copyFilters?: boolean
+  requireOnSourcePath?: boolean
+}
+
+export type DeleteBranchInput = {
+  branchId: string
+}
+
+export type SwitchCandidateInput = {
+  branchId: string
+  questionId: string
+  answerRootId: string
+}
+
+export type RegenerateFromQuestionInput = {
+  branchId: string
+  questionId: string
+}
+
+export type RegenerateFromQuestionResult = {
+  ok: true
+  newAnswerRootId: string
+  newAssistantSeq: number
+}
+
+export type GetBranchPathParams = {
+  branchId: string
+  limit?: number
+}
+
+export type GetCandidatesParams = {
+  branchId: string
+  questionId: string
+  limit?: number
+}
+
+export type BranchCandidate = {
+  answerRootId: string
+  createdAt: number
+  status: string
+}
+
+export type BranchFilterMode = 'include' | 'exclude'
+
+export type EffectiveFilterParams = {
+  branchId: string
+  questionId: string
+  chosenAnswerRootId: string
+}
+
+export type EffectiveFilterResult = {
+  questionMode: BranchFilterMode
+  answerMode: BranchFilterMode
+  effectiveMode: BranchFilterMode
+  lockedByQuestionExclude: boolean
+}
+
+export type BeginTurnInput = {
+  branchId: string
+  userBody: string
+  userMeta?: JsonObject | null
+}
+
+export type BeginTurnResult = {
+  ok: true
+  convoId: string
+  branchId: string
+  questionId: string
+  questionSeq: number
+  assistantId: string
+  assistantSeq: number
+}
+
+export type SetBranchHeadInput = {
+  branchId: string
+  headMessageId: string | null
+}
+
+export type SetBranchChoiceInput = {
+  branchId: string
+  questionId: string
+  chosenAnswerRootId: string
+}
+
+export type SetBranchAnswerHideInput = {
+  branchId: string
+  questionId: string
+  answerRootId: string
+  hidden: boolean
+}
+
+export type RetryReplaceAnswerInput = {
+  branchId: string
+  questionId: string
+  currentAnswerRootId: string
+}
+
+export type SetBranchFilterInput = {
+  branchId: string
+  targetType: 'question' | 'answer'
+  targetId: string
+  mode: 'include' | 'exclude'
+}
+
+export type ClearBranchFilterInput = {
+  branchId: string
+  targetType: 'question' | 'answer'
+  targetId: string
+}
+
+export type BuildContextForBranchInput = {
+  branchId: string
+  limit?: number
+  debug?: boolean
+}
+
+export type BuildContextForBranchResult = Readonly<{
+  messages: ReadonlyArray<
+    Readonly<{
+      id: string
+      convoId: string
+      role: string
+      seq: number
+      createdAt: number
+      parentId: string | null
+      status: string
+      answerRootId: string | null
+      questionId: string | null
+      body: string
+      meta: JsonObject | null
+    }>
+  >
+  debug?: Readonly<{
+    branchId: string
+    excludedQuestionIds: string[]
+    includedMessageIds: string[]
+    chosenAnswerRootByQuestionId: Record<string, string>
+  }>
+}>
+
+export type GetRenderableTurnsInput = {
+  branchId: string
+  limit?: number
+  debug?: boolean
+}
+
+export type RenderableTurn = Readonly<{
+  questionId: string
+  chosenAnswerRootId: string | null
+  questionMode: BranchFilterMode
+  answerMode: BranchFilterMode
+  effectiveMode: BranchFilterMode
+  lockedByQuestionExclude: boolean
+}>
+
+export type GetRenderableTurnsResult = Readonly<{
+  messages: BuildContextForBranchResult['messages']
+  turns: ReadonlyArray<RenderableTurn>
+  debug?: BuildContextForBranchResult['debug']
+}>
 
 export type MessageSnapshot = {
   role: 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter'
@@ -450,11 +662,32 @@ export type DbMethod =
   | 'convo.archive'
   | 'convo.archiveMany'
   | 'convo.restore'
+  | 'convo.setProject'
+  | 'convo.setProjectMany'
   | 'convo.listArchived'
   | 'message.append'
   | 'message.appendDelta'
   | 'message.list'
   | 'message.replace'
+  | 'message.setStatus'
+  | 'branch.ensureDefault'
+  | 'branch.list'
+  | 'branch.createFromMessage'
+  | 'branch.delete'
+  | 'branch.beginTurn'
+  | 'branch.switchCandidate'
+  | 'branch.regenerateFromQuestion'
+  | 'branch.getPathMessages'
+  | 'branch.getCandidates'
+  | 'branch.getEffectiveFilters'
+  | 'branch.setHead'
+  | 'branchChoice.set'
+  | 'branchAnswerHide.set'
+  | 'branch.retryReplaceAnswer'
+  | 'branchFilter.set'
+  | 'branchFilter.clear'
+  | 'context.buildForBranch'
+  | 'context.getRenderableTurns'
   | 'search.fulltext'
   | 'maintenance.optimize'
   | 'health.stats'
@@ -525,6 +758,7 @@ export type DbErrorCode =
   | 'ERR_VALIDATION'
   | 'ERR_INTERNAL'
   | 'ERR_UNAVAILABLE'
+  | 'ERR_MUTATION_FORBIDDEN_ON_BRANCHING_CONVO'
 
 export type DbErrorShape = {
   code: DbErrorCode

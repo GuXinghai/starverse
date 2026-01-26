@@ -31,8 +31,13 @@ const safeParse = (input: string): Record<string, unknown> | null => {
 export class ConvoRepo {
   private insertStmt: BetterSqlite3.Statement
   private touchStmt: BetterSqlite3.Statement
-  private updateStmt: BetterSqlite3.Statement
+  private updateTitleStmt: BetterSqlite3.Statement
+  private updateTitleProjectStmt: BetterSqlite3.Statement
+  private updateTitleMetaStmt: BetterSqlite3.Statement
+  private updateTitleProjectMetaStmt: BetterSqlite3.Statement
   private deleteStmt: BetterSqlite3.Statement
+  private setProjectStmt: BetterSqlite3.Statement
+  private projectExistsStmt: BetterSqlite3.Statement
 
   private listBase = `
     SELECT id, project_id, title, created_at, updated_at, meta
@@ -49,7 +54,30 @@ export class ConvoRepo {
       UPDATE convo SET updated_at = @updatedAt WHERE id = @id
     `)
 
-    this.updateStmt = this.db.prepare(`
+    this.updateTitleStmt = this.db.prepare(`
+      UPDATE convo
+      SET title = @title,
+          updated_at = @updatedAt
+      WHERE id = @id
+    `)
+
+    this.updateTitleProjectStmt = this.db.prepare(`
+      UPDATE convo
+      SET project_id = @projectId,
+          title = @title,
+          updated_at = @updatedAt
+      WHERE id = @id
+    `)
+
+    this.updateTitleMetaStmt = this.db.prepare(`
+      UPDATE convo
+      SET title = @title,
+          updated_at = @updatedAt,
+          meta = @meta
+      WHERE id = @id
+    `)
+
+    this.updateTitleProjectMetaStmt = this.db.prepare(`
       UPDATE convo
       SET project_id = @projectId,
           title = @title,
@@ -59,6 +87,17 @@ export class ConvoRepo {
     `)
 
     this.deleteStmt = this.db.prepare(`DELETE FROM convo WHERE id = @id`)
+
+    this.setProjectStmt = this.db.prepare(`
+      UPDATE convo
+      SET project_id = @projectId,
+          updated_at = @updatedAt
+      WHERE id = @id
+    `)
+
+    this.projectExistsStmt = this.db.prepare(`
+      SELECT 1 FROM project WHERE id = @id LIMIT 1
+    `)
   }
 
   create(input: CreateConvoInput): ConvoRecord {
@@ -85,15 +124,34 @@ export class ConvoRepo {
 
   save(input: SaveConvoInput) {
     const now = input.updatedAt ?? Date.now()
-    const payload = {
+
+    const hasProjectId = input.projectId !== undefined
+    const hasMeta = input.meta !== undefined
+
+    const payload: Record<string, unknown> = {
       id: input.id,
-      projectId: input.projectId ?? null,
       title: input.title,
-      updatedAt: now,
-      meta: input.meta ? JSON.stringify(input.meta) : null
+      updatedAt: now
     }
 
-    const result = this.updateStmt.run(payload)
+    if (hasProjectId) {
+      payload.projectId = input.projectId ?? null
+    }
+
+    if (hasMeta) {
+      payload.meta = input.meta ? JSON.stringify(input.meta) : null
+    }
+
+    const stmt =
+      hasProjectId && hasMeta
+        ? this.updateTitleProjectMetaStmt
+        : hasProjectId
+          ? this.updateTitleProjectStmt
+          : hasMeta
+            ? this.updateTitleMetaStmt
+            : this.updateTitleStmt
+
+    const result = stmt.run(payload)
     if (result.changes && result.changes > 0) {
       return
     }
@@ -110,6 +168,42 @@ export class ConvoRepo {
 
   delete(id: string) {
     this.deleteStmt.run({ id })
+  }
+
+  setProject(id: string, projectId: string | null) {
+    if (projectId) {
+      const exists = this.projectExistsStmt.get({ id: projectId }) as any
+      if (!exists) throw new Error(`Project ${projectId} not found`)
+    }
+
+    const result = this.setProjectStmt.run({ id, projectId, updatedAt: Date.now() })
+    if (!result.changes || result.changes <= 0) {
+      throw new Error(`Conversation ${id} not found`)
+    }
+  }
+
+  setProjectMany(ids: string[], projectId: string | null): { moved: number; failed: string[] } {
+    if (ids.length === 0) return { moved: 0, failed: [] }
+
+    if (projectId) {
+      const exists = this.projectExistsStmt.get({ id: projectId }) as any
+      if (!exists) throw new Error(`Project ${projectId} not found`)
+    }
+
+    const failed: string[] = []
+    let moved = 0
+
+    const txn = this.db.transaction((convoIds: string[]) => {
+      const updatedAt = Date.now()
+      for (const id of convoIds) {
+        const r = this.setProjectStmt.run({ id, projectId, updatedAt })
+        if (r.changes && r.changes > 0) moved += 1
+        else failed.push(id)
+      }
+    })
+
+    txn(ids)
+    return { moved, failed }
   }
 
   /**

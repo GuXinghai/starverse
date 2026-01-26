@@ -31,6 +31,9 @@ export class MessageRepo {
   private deleteByConvoStmt: BetterSqlite3.Statement
   private deleteFtsByConvoStmt: BetterSqlite3.Statement
   private findMessageIdBySeqStmt: BetterSqlite3.Statement
+  private findMessageByIdStmt: BetterSqlite3.Statement
+  private findLastUserByConvoStmt: BetterSqlite3.Statement
+  private updateStatusStmt: BetterSqlite3.Statement
   private updateBodyStmt: BetterSqlite3.Statement
   private updateFtsBodyStmt: BetterSqlite3.Statement
   private appendTxn: (input: AppendMessageInput) => MessageRecord
@@ -41,8 +44,8 @@ export class MessageRepo {
     `)
 
     this.insertStmt = this.db.prepare(`
-      INSERT INTO message(id, convo_id, role, created_at, seq, meta)
-      VALUES (@id, @convoId, @role, @createdAt, @seq, @meta)
+      INSERT INTO message(id, convo_id, role, created_at, seq, parent_id, status, answer_root_id, question_id, meta)
+      VALUES (@id, @convoId, @role, @createdAt, @seq, @parentId, @status, @answerRootId, @questionId, @meta)
     `)
 
     this.insertBodyStmt = this.db.prepare(`
@@ -67,7 +70,31 @@ export class MessageRepo {
     `)
 
     this.findMessageIdBySeqStmt = this.db.prepare(`
-      SELECT id FROM message WHERE convo_id = @convoId AND seq = @seq LIMIT 1
+      SELECT id, role, status, question_id AS questionId, answer_root_id AS answerRootId
+      FROM message
+      WHERE convo_id = @convoId AND seq = @seq
+      LIMIT 1
+    `)
+
+    this.findMessageByIdStmt = this.db.prepare(`
+      SELECT id, convo_id, role, question_id AS questionId, answer_root_id AS answerRootId
+      FROM message
+      WHERE id = @id
+      LIMIT 1
+    `)
+
+    this.updateStatusStmt = this.db.prepare(`
+      UPDATE message
+      SET status = @status
+      WHERE id = @id
+    `)
+
+    this.findLastUserByConvoStmt = this.db.prepare(`
+      SELECT id
+      FROM message
+      WHERE convo_id = @convoId AND role = 'user'
+      ORDER BY seq DESC
+      LIMIT 1
     `)
 
     this.updateBodyStmt = this.db.prepare(`
@@ -93,10 +120,15 @@ export class MessageRepo {
       const row = this.findMessageIdBySeqStmt.get({
         convoId: payload.convoId,
         seq: payload.seq
-      }) as { id: string } | undefined
+      }) as { id: string; status?: string } | undefined
 
       if (!row?.id) {
         throw new Error(`message not found for convo=${payload.convoId}, seq=${payload.seq}`)
+      }
+
+      const status = String((row as any).status ?? 'final')
+      if (status !== 'streaming') {
+        throw new Error(`appendDelta rejected: message status=${status} (must be streaming)`)
       }
 
       this.updateBodyStmt.run({ messageId: row.id, appendBody: payload.appendBody })
@@ -155,12 +187,20 @@ export class MessageRepo {
     const id = randomUUID()
     const seq = input.seq ?? this.nextSeq(input.convoId) + 1
 
+    const parentId = this.deriveParentId(input, seq)
+    const status = this.deriveStatus(input)
+    const { questionId, answerRootId } = this.deriveAnswerGrouping(input, id, parentId)
+
     this.insertStmt.run({
       id,
       convoId: input.convoId,
       role: input.role,
       createdAt: now,
       seq,
+      parentId,
+      status,
+      answerRootId,
+      questionId,
       meta: input.meta ? JSON.stringify(input.meta) : null
     })
 
@@ -186,5 +226,104 @@ export class MessageRepo {
       body: input.body,
       meta: input.meta ?? null
     }
+  }
+
+  setStatus(input: { messageId: string; status: 'streaming' | 'final' | 'error' }) {
+    const id = String(input.messageId ?? '').trim()
+    if (!id) throw new Error('Missing messageId')
+
+    const status = input.status
+    if (status !== 'streaming' && status !== 'final' && status !== 'error') throw new Error('Invalid status')
+
+    console.log('[DB] messageRepo.setStatus: starting', { messageId: id.slice(0, 8), status })
+    const now = Date.now()
+    const txn = this.db.transaction(() => {
+      const row = this.findMessageByIdStmt.get({ id }) as { convo_id?: string } | undefined
+      if (!row?.convo_id) throw new Error(`message not found: ${id}`)
+      this.updateStatusStmt.run({ id, status })
+      this.touchConvoStmt.run({ id: String(row.convo_id), updatedAt: now })
+    })
+    txn()
+    console.log('[DB] messageRepo.setStatus: committed', { messageId: id.slice(0, 8), status })
+
+    return { ok: true }
+  }
+
+  private deriveParentId(input: AppendMessageInput, seq: number): string | null {
+    if (input.parentId !== undefined) {
+      return input.parentId === null ? null : String(input.parentId ?? '').trim() || null
+    }
+
+    if (seq <= 1) return null
+    const prev = this.findMessageIdBySeqStmt.get({ convoId: input.convoId, seq: seq - 1 }) as { id?: string } | undefined
+    return prev?.id ? String(prev.id) : null
+  }
+
+  private deriveStatus(input: AppendMessageInput): 'streaming' | 'final' | 'error' {
+    if (input.status === 'streaming' || input.status === 'final' || input.status === 'error') return input.status
+
+    const body = typeof input.body === 'string' ? input.body : String(input.body ?? '')
+    if (input.role === 'assistant' && body.length === 0) return 'streaming'
+    return 'final'
+  }
+
+  private deriveAnswerGrouping(
+    input: AppendMessageInput,
+    newMessageId: string,
+    parentId: string | null
+  ): { questionId: string | null; answerRootId: string | null } {
+    const questionIdExplicit = input.questionId !== undefined ? input.questionId : undefined
+    const answerRootIdExplicit = input.answerRootId !== undefined ? input.answerRootId : undefined
+
+    const role = String(input.role ?? '').trim()
+    if (role === 'user') return { questionId: null, answerRootId: null }
+
+    const normalize = (v: unknown): string | null => {
+      if (v === null) return null
+      if (typeof v === 'string') {
+        const s = v.trim()
+        return s.length > 0 ? s : null
+      }
+      return null
+    }
+
+    const explicitQuestionId = normalize(questionIdExplicit)
+    const explicitAnswerRootId = normalize(answerRootIdExplicit)
+
+    if (questionIdExplicit !== undefined || answerRootIdExplicit !== undefined) {
+      return { questionId: explicitQuestionId, answerRootId: explicitAnswerRootId }
+    }
+
+    const parent = parentId
+      ? (this.findMessageByIdStmt.get({ id: parentId }) as
+          | { id: string; role: string; questionId?: string | null; answerRootId?: string | null }
+          | undefined)
+      : undefined
+
+    if (parent) {
+      const parentRole = String(parent.role ?? '').trim()
+      const pq = normalize(parent.questionId)
+      const par = normalize(parent.answerRootId)
+
+      if (parentRole === 'user') {
+        const qid = String(parent.id)
+        if (role === 'assistant') return { questionId: qid, answerRootId: newMessageId }
+        return { questionId: qid, answerRootId: null }
+      }
+
+      if (pq) {
+        // Tool and assistant follow-up messages remain in the same answer group.
+        // If an assistant follow-up starts a group without a known root, treat it as the root.
+        if (role === 'assistant' && !par) return { questionId: pq, answerRootId: newMessageId }
+        return { questionId: pq, answerRootId: par }
+      }
+    }
+
+    const lastUser = this.findLastUserByConvoStmt.get({ convoId: input.convoId }) as { id?: string } | undefined
+    const fallbackQid = lastUser?.id ? String(lastUser.id) : null
+    if (!fallbackQid) return { questionId: null, answerRootId: null }
+
+    if (role === 'assistant') return { questionId: fallbackQid, answerRootId: newMessageId }
+    return { questionId: fallbackQid, answerRootId: null }
   }
 }

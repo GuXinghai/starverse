@@ -39,6 +39,11 @@ CREATE TABLE IF NOT EXISTS message (
   role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool', 'system', 'notice', 'openrouter')),
   created_at INTEGER NOT NULL,
   seq INTEGER NOT NULL,
+  -- Branching/graph fields (Phase 4+). Nullable for legacy linear history.
+  parent_id TEXT NULL,
+  status TEXT NOT NULL DEFAULT 'final' CHECK (status IN ('streaming', 'final', 'error')),
+  answer_root_id TEXT NULL,
+  question_id TEXT NULL,
   meta TEXT,
   UNIQUE (convo_id, seq)
 );
@@ -79,7 +84,60 @@ END;
 CREATE INDEX IF NOT EXISTS idx_convo_project ON convo(project_id);
 CREATE INDEX IF NOT EXISTS idx_convo_updated ON convo(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_msg_convo_seq ON message(convo_id, seq);
+-- NOTE: Indexes for branching/graph columns (parent_id/answer_root_id/question_id) are created by
+-- `ensureBranchingSchema()` at runtime, after it has backfilled legacy DBs that may not yet have
+-- these columns. Keeping them out of the baseline schema avoids SQLITE_ERROR on older DB files.
 CREATE INDEX IF NOT EXISTS idx_tag_name ON tag(name);
+
+-- ========== Branching Tables (Conversation-local) ==========
+-- Note: These tables are additive and safe for legacy DBs. Runtime also runs an "ensure" migration for existing DB files.
+
+CREATE TABLE IF NOT EXISTS branch (
+  id TEXT PRIMARY KEY,
+  convo_id TEXT NOT NULL REFERENCES convo(id) ON DELETE CASCADE,
+  head_message_id TEXT NULL REFERENCES message(id) ON DELETE SET NULL,
+  name TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  deleted_at INTEGER NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_branch_convo_alive ON branch(convo_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_branch_convo_updated ON branch(convo_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS branch_choice (
+  branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE CASCADE,
+  question_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+  chosen_answer_root_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (branch_id, question_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_branch_choice_branch ON branch_choice(branch_id);
+CREATE INDEX IF NOT EXISTS idx_branch_choice_question ON branch_choice(question_id);
+
+CREATE TABLE IF NOT EXISTS branch_filter (
+  branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE CASCADE,
+  target_type TEXT NOT NULL CHECK (target_type IN ('question', 'answer')),
+  target_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+  mode TEXT NOT NULL CHECK (mode IN ('include', 'exclude')),
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (branch_id, target_type, target_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_branch_filter_branch ON branch_filter(branch_id);
+CREATE INDEX IF NOT EXISTS idx_branch_filter_target ON branch_filter(target_type, target_id);
+
+CREATE TABLE IF NOT EXISTS branch_answer_hide (
+  branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE CASCADE,
+  question_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+  answer_root_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+  hidden INTEGER NOT NULL DEFAULT 1 CHECK (hidden IN (0, 1)),
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (branch_id, question_id, answer_root_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_branch_answer_hide_branch_q ON branch_answer_hide(branch_id, question_id);
 
 -- ========== Usage Statistics Table ==========
 CREATE TABLE IF NOT EXISTS usage_log (
