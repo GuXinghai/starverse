@@ -41,6 +41,30 @@ module.exports = {
         sourceType: 'module',
         extraFileExtensions: ['.vue'],
       },
+      rules: {
+        // ======== ANTI-REGRESSION: Forbid object-reference comparison on activeStream ========
+        // This prevents the JavaScript object-reference trap that caused buttons to stay disabled.
+        // Always use activeAssistantMessageId (computed) for identity checks instead.
+        'no-restricted-syntax': [
+          'error',
+          {
+            selector: "BinaryExpression[operator='==='][left.object.name='activeStream'][left.property.name='value']",
+            message: '❌ Do not compare activeStream.value with ===. Use activeAssistantMessageId instead.',
+          },
+          {
+            selector: "BinaryExpression[operator='==='][right.object.name='activeStream'][right.property.name='value']",
+            message: '❌ Do not compare activeStream.value with ===. Use activeAssistantMessageId instead.',
+          },
+          {
+            selector: "BinaryExpression[operator='!=='][left.object.name='activeStream'][left.property.name='value']",
+            message: '❌ Do not compare activeStream.value with !==. Use activeAssistantMessageId instead.',
+          },
+          {
+            selector: "BinaryExpression[operator='!=='][right.object.name='activeStream'][right.property.name='value']",
+            message: '❌ Do not compare activeStream.value with !==. Use activeAssistantMessageId instead.',
+          },
+        ],
+      },
     },
     {
       files: ['src/ui-next/**/*.{ts,tsx,vue}'],
