@@ -76,8 +76,16 @@ function getIpcRenderer(): IpcRendererLike | null {
 }
 
 async function refreshModelLists() {
-  modelCatalogItems.value = await listModelCatalog('openrouter')
-  reasoningModelIndexItems.value = await listReasoningModelIndex()
+  try {
+    modelCatalogItems.value = await listModelCatalog('openrouter')
+    reasoningModelIndexItems.value = await listReasoningModelIndex()
+  } catch (err) {
+    modelCatalogItems.value = []
+    reasoningModelIndexItems.value = []
+    // Avoid crashing ui-next on startup if DB is unavailable or a new method isn't wired yet.
+    // The main app UI (`ui-app`) is the default entry for dev.
+    console.warn('[ui-next] refreshModelLists failed (non-fatal):', err)
+  }
 }
 
 const onModelsSynced = async () => {
