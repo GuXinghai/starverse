@@ -2,6 +2,7 @@ import { z, type ZodType } from 'zod'
 import type {
   AppendMessageInput,
   AppendMessageDeltaInput,
+  SetMessageStatusInput,
   CreateConvoInput,
   SaveConvoInput,
   SaveConvoWithMessagesInput,
@@ -15,7 +16,27 @@ import type {
   ListMessageParams,
   ReplaceMessagesInput,
   MessageSnapshot,
-  BatchDeleteInput
+  BatchDeleteInput,
+  SetConvoProjectInput,
+  SetConvoProjectManyInput,
+  EnsureDefaultBranchInput,
+  ListBranchParams,
+  CreateBranchFromMessageInput,
+  DeleteBranchInput,
+  SwitchCandidateInput,
+  RegenerateFromQuestionInput,
+  GetBranchPathParams,
+  GetCandidatesParams,
+  EffectiveFilterParams,
+  BeginTurnInput,
+  SetBranchHeadInput,
+  SetBranchChoiceInput,
+  SetBranchAnswerHideInput,
+  RetryReplaceAnswerInput,
+  SetBranchFilterInput,
+  ClearBranchFilterInput,
+  BuildContextForBranchInput,
+  GetRenderableTurnsInput
 } from './types'
 
 export const jsonSchema = z.record(z.any())
@@ -85,13 +106,22 @@ export const AppendMessageSchema: ZodType<AppendMessageInput> = z.object({
   body: z.string(),
   createdAt: z.number().int().optional(),
   seq: z.number().int().positive().optional(),
-  meta: jsonSchema.optional().nullable()
+  meta: jsonSchema.optional().nullable(),
+  parentId: z.string().min(1).nullable().optional(),
+  status: z.enum(['streaming', 'final', 'error']).optional(),
+  answerRootId: z.string().min(1).nullable().optional(),
+  questionId: z.string().min(1).nullable().optional()
 })
 
 export const AppendMessageDeltaSchema: ZodType<AppendMessageDeltaInput> = z.object({
   convoId: z.string().min(1),
   seq: z.number().int().positive(),
   appendBody: z.string().min(1)
+})
+
+export const SetMessageStatusSchema: ZodType<SetMessageStatusInput> = z.object({
+  messageId: z.string().min(1),
+  status: z.enum(['streaming', 'final', 'error'])
 })
 
 export const SaveConvoSchema: ZodType<SaveConvoInput> = z.object({
@@ -128,6 +158,16 @@ export const RestoreConvoSchema = z.object({
   id: z.string().min(1)
 })
 
+export const SetConvoProjectSchema: ZodType<SetConvoProjectInput> = z.object({
+  id: z.string().min(1),
+  projectId: z.string().min(1).nullable()
+})
+
+export const SetConvoProjectManySchema: ZodType<SetConvoProjectManyInput> = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(100),
+  projectId: z.string().min(1).nullable()
+})
+
 export const ListArchivedSchema = z
   .object({
     limit: z.number().int().positive().max(1000).optional(),
@@ -147,6 +187,114 @@ export const ListMessageSchema: ZodType<ListMessageParams> = z.object({
 export const ReplaceMessagesSchema: ZodType<ReplaceMessagesInput> = z.object({
   convoId: z.string().min(1),
   messages: z.array(MessageSnapshotSchema)
+})
+
+// ========== Branching Schemas (Phase 4+) ==========
+
+export const EnsureDefaultBranchSchema: ZodType<EnsureDefaultBranchInput> = z.object({
+  convoId: z.string().min(1),
+  name: z.string().min(1).nullable().optional()
+})
+
+export const ListBranchSchema: ZodType<ListBranchParams> = z.object({
+  convoId: z.string().min(1),
+  includeDeleted: z.boolean().optional()
+})
+
+export const CreateBranchFromMessageSchema: ZodType<CreateBranchFromMessageInput> = z.object({
+  sourceBranchId: z.string().min(1),
+  baseMessageId: z.string().min(1),
+  name: z.string().min(1).nullable().optional(),
+  copyChoices: z.boolean().optional(),
+  copyFilters: z.boolean().optional(),
+  requireOnSourcePath: z.boolean().optional(),
+})
+
+export const DeleteBranchSchema: ZodType<DeleteBranchInput> = z.object({
+  branchId: z.string().min(1),
+})
+
+export const SwitchCandidateSchema: ZodType<SwitchCandidateInput> = z.object({
+  branchId: z.string().min(1),
+  questionId: z.string().min(1),
+  answerRootId: z.string().min(1),
+})
+
+export const RegenerateFromQuestionSchema: ZodType<RegenerateFromQuestionInput> = z.object({
+  branchId: z.string().min(1),
+  questionId: z.string().min(1),
+})
+
+export const GetBranchPathSchema: ZodType<GetBranchPathParams> = z.object({
+  branchId: z.string().min(1),
+  limit: z.number().int().positive().max(5000).optional()
+})
+
+export const GetCandidatesSchema: ZodType<GetCandidatesParams> = z.object({
+  branchId: z.string().min(1),
+  questionId: z.string().min(1),
+  limit: z.number().int().positive().max(200).optional()
+})
+
+export const EffectiveFilterSchema: ZodType<EffectiveFilterParams> = z.object({
+  branchId: z.string().min(1),
+  questionId: z.string().min(1),
+  chosenAnswerRootId: z.string().min(1)
+})
+
+export const BeginTurnSchema: ZodType<BeginTurnInput> = z.object({
+  branchId: z.string().min(1),
+  userBody: z.string(),
+  userMeta: z.record(z.any()).nullable().optional(),
+})
+
+export const SetBranchHeadSchema: ZodType<SetBranchHeadInput> = z.object({
+  branchId: z.string().min(1),
+  headMessageId: z.string().min(1).nullable()
+})
+
+export const SetBranchChoiceSchema: ZodType<SetBranchChoiceInput> = z.object({
+  branchId: z.string().min(1),
+  questionId: z.string().min(1),
+  chosenAnswerRootId: z.string().min(1)
+})
+
+export const SetBranchAnswerHideSchema: ZodType<SetBranchAnswerHideInput> = z.object({
+  branchId: z.string().min(1),
+  questionId: z.string().min(1),
+  answerRootId: z.string().min(1),
+  hidden: z.boolean()
+})
+
+export const RetryReplaceAnswerSchema: ZodType<RetryReplaceAnswerInput> = z.object({
+  branchId: z.string().min(1),
+  questionId: z.string().min(1),
+  currentAnswerRootId: z.string().min(1)
+})
+
+export const SetBranchFilterSchema: ZodType<SetBranchFilterInput> = z.object({
+  branchId: z.string().min(1),
+  targetType: z.enum(['question', 'answer']),
+  targetId: z.string().min(1),
+  mode: z.enum(['include', 'exclude'])
+})
+
+export const ClearBranchFilterSchema: ZodType<ClearBranchFilterInput> = z.object({
+  branchId: z.string().min(1),
+  targetType: z.enum(['question', 'answer']),
+  targetId: z.string().min(1)
+})
+
+export const BuildContextForBranchSchema: ZodType<BuildContextForBranchInput> = z.object({
+  branchId: z.string().min(1),
+  limit: z.number().int().positive().max(5000).optional(),
+  debug: z.boolean().optional()
+})
+
+export const GetRenderableTurnsSchema: ZodType<GetRenderableTurnsInput> = z.object({
+  branchId: z.string().min(1),
+  limit: z.number().int().positive().max(5000).optional(),
+  debug: z.boolean().optional(),
 })
 
 export const FulltextQuerySchema: ZodType<FulltextQueryParams> = z.object({
