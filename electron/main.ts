@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { createRequire } from 'node:module'
 import Store from 'electron-store'
 import { syncOpenRouterModelCatalog } from '../src/next/modelCatalog/catalogSyncJob'
 import { DbWorkerManager } from './db/workerManager'
@@ -355,8 +356,31 @@ const dbWorkerManager = new DbWorkerManager({
  * @throws {Error} Worker 启动失败或 Schema 执行失败
  */
 const ensureDbReady = async () => {
+  // Preflight: fail fast with a clear error if native deps (better-sqlite3) are ABI-mismatched.
+  // This commonly happens when running `npm test` (Node rebuild) and then launching Electron
+  // without re-running `npm run rebuild:electron`.
+  try {
+    const require = createRequire(import.meta.url)
+    require('better-sqlite3')
+  } catch (error: any) {
+    const details = error?.message ? String(error.message) : String(error)
+    const fixDev = `Fix (dev):\n- Close Electron\n- Run: npm run rebuild:electron\n- Then: npm run electron:dev`
+    const fixProd = `Fix (prod):\n- Reinstall the app (native dependencies are bundled per Electron version)`
+    const fix = isDev ? fixDev : fixProd
+
+    console.error('[main] failed to load better-sqlite3 (native module ABI mismatch?)', error)
+    dialog.showErrorBox('Database initialization failed', `${details}\n\n${fix}`)
+    throw error
+  }
+
   const dbPath = path.join(app.getPath('userData'), 'chat.db')
-  await dbWorkerManager.start(dbPath)
+  try {
+    await dbWorkerManager.start(dbPath)
+  } catch (error) {
+    console.error('[main] failed to start DB worker', error)
+    dialog.showErrorBox('Database initialization failed', `DB worker failed to start.\n\n${(error as any)?.message ?? String(error)}`)
+    throw error
+  }
 }
 
 async function startCatalogSyncInBackground() {
@@ -413,6 +437,15 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.mjs')
     }
   })
+
+  // Optional: mirror renderer console logs into the main process stdout for debugging timing/races.
+  // Enable with: SV_DEBUG_RENDERER_CONSOLE=1
+  if (process.env.SV_DEBUG_RENDERER_CONSOLE === '1') {
+    win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+      const src = typeof sourceId === 'string' && sourceId.length > 0 ? sourceId : 'renderer'
+      console.log(`[renderer][console:${level}] ${message} (${src}:${line})`)
+    })
+  }
 
   const isExternalHttpUrl = (targetUrl: string) => {
     if (!targetUrl || (typeof targetUrl === 'string' && targetUrl.trim() === '')) {

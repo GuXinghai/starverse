@@ -249,7 +249,20 @@ export class DbWorkerManager {
    */
   async call(method: DbMethod, params?: unknown) {
     if (!this.worker) {
-      throw new DbWorkerError('ERR_UNAVAILABLE', 'DB worker not initialized')
+      const dbPath = this.dbPath
+      if (dbPath && !this.stopping) {
+        try {
+          await this.start(dbPath)
+        } catch (error) {
+          throw new DbWorkerError('ERR_UNAVAILABLE', 'DB worker not initialized', {
+            reason: 'start_failed',
+            message: (error as any)?.message ?? String(error),
+          })
+        }
+      }
+      if (!this.worker) {
+        throw new DbWorkerError('ERR_UNAVAILABLE', 'DB worker not initialized')
+      }
     }
     const maxPending = this.options.maxPending ?? this.defaultMaxPending
     if (maxPending > 0 && this.pending.size >= maxPending) {
