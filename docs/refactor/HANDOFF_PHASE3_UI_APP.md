@@ -55,7 +55,15 @@ Non-goals kept intentionally out (for now):
 
 Optional (key injection):
 
-- `$env:VITE_OPENROUTER_API_KEY='<KEY>'; $env:VITE_STARVERSE_ENTRY='ui-app'; npm run electron:dev`
+- `ui-app` now reads OpenRouter `apiKey/baseUrl` from `electronStore` (Settings panel), not from env.
+- To set via PowerShell:
+  - `$env:VITE_STARVERSE_ENTRY='ui-app'; npm run electron:dev`
+  - Then click the top-right **Settings** button (gear) and paste your `openRouterApiKey` / `openRouterBaseUrl`.
+
+## Dev Note (Native deps)
+
+- `better-sqlite3` is a native module; do not run `npm test` (Node rebuild) while Electron is open.
+- If you see a NODE_MODULE_VERSION mismatch, run `npm run rebuild:electron` and relaunch with `npm run electron:dev`.
 
 ## How To Verify (Baseline)
 
@@ -82,4 +90,3 @@ Notes:
 4) Add persistence for run/message meta (needs a DB method like `message.updateMeta`):
    - generationId, model/provider, finishReason, normalizedError envelope (serializable)
 5) Only after 1–4 are stable: reintroduce advanced capabilities (reasoning, tool calling, multimodal, branching)
-
