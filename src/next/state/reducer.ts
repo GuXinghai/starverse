@@ -102,7 +102,12 @@ export function startGeneration(state: RootState, input: StartGenerationInput): 
   }
 
   const existingIds = state.runMessageIds[input.runId] || []
-  const nextIds = userMessageId ? [...existingIds, userMessageId, assistantMessageId] : [...existingIds, assistantMessageId]
+  // Avoid duplicate messageIds when regenerate/retry pre-loads transcript from DB
+  // before startGeneration is called. Only append IDs that are not already present.
+  const idsToAdd: string[] = []
+  if (userMessageId && !existingIds.includes(userMessageId)) idsToAdd.push(userMessageId)
+  if (!existingIds.includes(assistantMessageId)) idsToAdd.push(assistantMessageId)
+  const nextIds = idsToAdd.length > 0 ? [...existingIds, ...idsToAdd] : existingIds
 
   const nextMessages: Record<string, MessageState> = {
     ...state.messages,
