@@ -15,21 +15,51 @@ describe('ui-app (read-only) AppChatApp', () => {
         ]
       }
 
-      if (method === 'message.list') {
+      if (method === 'branch.ensureDefault') {
         const convoId = String(params?.convoId ?? '')
         if (convoId === 'c1') {
-          return [
-            { id: 'm1', convoId: 'c1', role: 'user', seq: 2, createdAt: 2, body: 'hi', meta: null },
-            { id: 'm0', convoId: 'c1', role: 'assistant', seq: 1, createdAt: 1, body: 'hello', meta: null },
-          ]
+          return { id: 'b1', convoId: 'c1', headMessageId: 'm1', name: 'Main', createdAt: 1, updatedAt: 10, deletedAt: null }
         }
         if (convoId === 'c2') {
-          return [
-            { id: 'm2', convoId: 'c2', role: 'notice', seq: 1, createdAt: 1, body: 'system note', meta: null },
-            { id: 'm3', convoId: 'c2', role: 'assistant', seq: 2, createdAt: 2, body: 'ack', meta: null },
-          ]
+          return { id: 'b2', convoId: 'c2', headMessageId: 'm3', name: 'Main', createdAt: 2, updatedAt: 20, deletedAt: null }
         }
+        return { id: 'b0', convoId, headMessageId: null, name: 'Main', createdAt: 0, updatedAt: 0, deletedAt: null }
+      }
+
+      if (method === 'branch.list') {
+        const convoId = String(params?.convoId ?? '')
+        if (convoId === 'c1') return [{ id: 'b1', convoId: 'c1', headMessageId: 'm1', name: 'Main', createdAt: 1, updatedAt: 10, deletedAt: null }]
+        if (convoId === 'c2') return [{ id: 'b2', convoId: 'c2', headMessageId: 'm3', name: 'Main', createdAt: 2, updatedAt: 20, deletedAt: null }]
         return []
+      }
+
+      if (method === 'context.getRenderableTurns') {
+        const branchId = String(params?.branchId ?? '')
+        if (branchId === 'b1') {
+          return {
+            messages: [
+              { id: 'm0', convoId: 'c1', role: 'assistant', seq: 1, createdAt: 1, parentId: null, status: 'final', answerRootId: null, questionId: null, body: 'hello', meta: null },
+              { id: 'm1', convoId: 'c1', role: 'user', seq: 2, createdAt: 2, parentId: 'm0', status: 'final', answerRootId: null, questionId: null, body: 'hi', meta: null },
+            ],
+            turns: [],
+            debug: { branchId: 'b1', excludedQuestionIds: [], includedMessageIds: ['m0', 'm1'], chosenAnswerRootByQuestionId: {} },
+          }
+        }
+        if (branchId === 'b2') {
+          return {
+            messages: [
+              { id: 'm2', convoId: 'c2', role: 'notice', seq: 1, createdAt: 1, parentId: null, status: 'final', answerRootId: null, questionId: null, body: 'system note', meta: null },
+              { id: 'm3', convoId: 'c2', role: 'assistant', seq: 2, createdAt: 2, parentId: 'm2', status: 'final', answerRootId: null, questionId: null, body: 'ack', meta: null },
+            ],
+            turns: [],
+            debug: { branchId: 'b2', excludedQuestionIds: [], includedMessageIds: ['m2', 'm3'], chosenAnswerRootByQuestionId: {} },
+          }
+        }
+        return { messages: [], turns: [], debug: { branchId, excludedQuestionIds: [], includedMessageIds: [], chosenAnswerRootByQuestionId: {} } }
+      }
+
+      if (method === 'context.buildForBranch') {
+        return { messages: [], debug: { branchId: String(params?.branchId ?? ''), excludedQuestionIds: [], includedMessageIds: [], chosenAnswerRootByQuestionId: {} } }
       }
 
       if (method === 'convo.create') {
