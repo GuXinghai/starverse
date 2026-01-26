@@ -84,13 +84,36 @@ const allowedMethods: DbMethod[] = [
   'convo.archive',
   'convo.archiveMany',
   'convo.restore',
+  'convo.setProject',
+  'convo.setProjectMany',
   'convo.listArchived',
   
   // Message Management
   'message.append',
   'message.appendDelta',
+  'message.setStatus',
   'message.list',
   'message.replace',
+
+  // Branching (Phase 4+)
+  'branch.ensureDefault',
+  'branch.list',
+  'branch.createFromMessage',
+  'branch.delete',
+  'branch.beginTurn',
+  'branch.switchCandidate',
+  'branch.regenerateFromQuestion',
+  'branch.getPathMessages',
+  'branch.getCandidates',
+  'branch.getEffectiveFilters',
+  'branch.setHead',
+  'branchChoice.set',
+  'branchAnswerHide.set',
+  'branch.retryReplaceAnswer',
+  'branchFilter.set',
+  'branchFilter.clear',
+  'context.buildForBranch',
+  'context.getRenderableTurns',
   
   // Search
   'search.fulltext',
@@ -187,6 +210,37 @@ export const registerDbBridge = (manager: DbWorkerManager) => {
   // 创建白名单 Set，用于高效查找
   const allowSet = new Set<DbMethod>(allowedMethods)
 
+  const toIpcError = (error: unknown): Error => {
+    // Electron's ipcMain.handle() only reliably transports built-in Error instances.
+    // If we throw non-Error values (or custom error subclasses), the renderer often sees:
+    // "Error invoking remote method ...: [object Object]"
+    if (error instanceof Error && error.constructor === Error) return error
+
+    if (error instanceof DbWorkerError) {
+      const e = new Error(error.message)
+      e.name = 'DbWorkerError'
+      ;(e as any).code = error.code
+      ;(e as any).details = error.details
+      return e
+    }
+
+    if (error instanceof Error) {
+      const e = new Error(error.message)
+      e.name = error.name || 'Error'
+      ;(e as any).stack = error.stack
+      return e
+    }
+
+    const message = typeof error === 'string' ? error : (() => {
+      try {
+        return JSON.stringify(error)
+      } catch {
+        return String(error)
+      }
+    })()
+    return new Error(message)
+  }
+
   /**
    * IPC Handler: db:invoke
    * 
@@ -230,7 +284,7 @@ export const registerDbBridge = (manager: DbWorkerManager) => {
         console.error(`[dbBridge] 错误无法序列化:`, serializeError)
       }
       
-      throw error
+      throw toIpcError(error)
     }
   })
 }
