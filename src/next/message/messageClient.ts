@@ -134,3 +134,83 @@ export async function setMessageStatus(input: Readonly<{ messageId: string; stat
   }
   return success
 }
+
+/** DB 写入统计 */
+export interface AppendReasoningDetailSegmentsResult {
+  ok: boolean
+  received: number
+  inserted: number
+  skipped: number
+  ignored: number
+  sumDeltaLenInserted: number
+}
+
+export async function appendReasoningDetailSegments(input: Readonly<{ messageId: string; details: unknown[] }>): Promise<AppendReasoningDetailSegmentsResult> {
+  const bridge = requireDbBridge()
+  const messageId = String(input.messageId ?? '').trim()
+  if (!messageId) throw new Error('Missing messageId')
+
+  const details = Array.isArray(input.details) ? input.details : []
+  if (details.length === 0) return { ok: true, received: 0, inserted: 0, skipped: 0, ignored: 0, sumDeltaLenInserted: 0 }
+
+  const result = await bridge.invoke('message.appendReasoningDetailSegments', { messageId, details })
+  // 透传完整 DB 统计
+  if (result && typeof result === 'object' && 'ok' in result) {
+    const r = result as any
+    return {
+      ok: !!r.ok,
+      received: r.received ?? 0,
+      inserted: r.inserted ?? 0,
+      skipped: r.skipped ?? 0,
+      ignored: r.ignored ?? 0,
+      sumDeltaLenInserted: r.sumDeltaLenInserted ?? 0,
+    }
+  }
+  return { ok: true, received: details.length, inserted: 0, skipped: 0, ignored: 0, sumDeltaLenInserted: 0 }
+}
+
+export async function finalizeReasoningDetails(input: Readonly<{ messageId: string }>): Promise<boolean> {
+  const bridge = requireDbBridge()
+  const messageId = String(input.messageId ?? '').trim()
+  if (!messageId) throw new Error('Missing messageId')
+  const result = await bridge.invoke('message.finalizeReasoningDetails', { messageId })
+  return !!(result && typeof result === 'object' && 'ok' in result ? (result as any).ok : true)
+}
+
+export async function setMessageReasoningRequestConfig(input: Readonly<{ messageId: string; value: unknown }>): Promise<boolean> {
+  const bridge = requireDbBridge()
+  const messageId = String(input.messageId ?? '').trim()
+  if (!messageId) throw new Error('Missing messageId')
+  const result = await bridge.invoke('message.setReasoningRequestConfig', { messageId, value: input.value ?? null })
+  return !!(result && typeof result === 'object' && 'ok' in result ? (result as any).ok : true)
+}
+
+/** 获取消息的推理段统计，用于诊断对照 */
+export interface ReasoningSegmentsStats {
+  cnt: number
+  sumLen: number
+}
+
+export async function getReasoningSegmentsStats(messageId: string): Promise<ReasoningSegmentsStats | null> {
+  const bridge = getDbBridge()
+  if (!bridge) {
+    console.warn('[messageClient] getReasoningSegmentsStats: dbBridge not available')
+    return null
+  }
+  const id = String(messageId ?? '').trim()
+  if (!id) {
+    console.warn('[messageClient] getReasoningSegmentsStats: empty messageId')
+    return null
+  }
+  try {
+    const result = await bridge.invoke('message.getReasoningSegmentsStats', { messageId: id })
+    if (result && typeof result === 'object' && 'cnt' in result) {
+      return { cnt: Number(result.cnt) || 0, sumLen: Number(result.sumLen) || 0 }
+    }
+    console.warn('[messageClient] getReasoningSegmentsStats: unexpected result format', result)
+    return null
+  } catch (err) {
+    console.warn('[messageClient] getReasoningSegmentsStats: invoke failed', err)
+    return null
+  }
+}

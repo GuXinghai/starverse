@@ -1,4 +1,5 @@
 import type { MessageVM, ReasoningViewVisibility, RootState, RunVM } from './types'
+import { ReasoningDetailStreamMerger, buildDetailKey } from './reasoningDetailStreamMerger'
 
 export function selectRun(state: RootState, runId: string): RunVM | null {
   const s = state.runs[runId]
@@ -46,11 +47,34 @@ function deriveReasoningDisplayFromDetails(reasoningDetailsRaw: unknown[]): {
   summaryText?: string
   reasoningText?: string
 } {
-  let summaryText: string | undefined
-  const reasoningTextParts: string[] = []
+  // 使用 Merger 重放，统一快照/增量语义
+  const merger = new ReasoningDetailStreamMerger()
+  const firstSeenOrder = new Map<string, number>()
+  let order = 0
 
   for (const detail of reasoningDetailsRaw) {
     if (!detail || typeof detail !== 'object') continue
+    merger.merge(detail)
+    const key = buildDetailKey(detail as any)
+    if (!firstSeenOrder.has(key)) {
+      firstSeenOrder.set(key, order++)
+    }
+  }
+
+  const snapshots = merger.getMergedSnapshots()
+  const sortedSnapshots = [...snapshots].sort((a, b) => {
+    const ai = typeof a.index === 'number' ? a.index : Number.POSITIVE_INFINITY
+    const bi = typeof b.index === 'number' ? b.index : Number.POSITIVE_INFINITY
+    if (ai !== bi) return ai - bi
+    const aKey = buildDetailKey(a)
+    const bKey = buildDetailKey(b)
+    return (firstSeenOrder.get(aKey) ?? 0) - (firstSeenOrder.get(bKey) ?? 0)
+  })
+
+  let summaryText: string | undefined
+  const reasoningTextParts: string[] = []
+
+  for (const detail of sortedSnapshots) {
     const type = (detail as any).type
 
     if (type === 'reasoning.text') {

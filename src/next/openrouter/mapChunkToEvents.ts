@@ -1,3 +1,13 @@
+/**
+ * OpenRouter SSE 事件映射模块
+ *
+ * 将 OpenRouter 的 JSON chunk 转换为 SSOT Domain Events。
+ * 纯函数：只转换格式，不假设上游是快照还是增量语义。
+ *
+ * @see docs/architecture/REASONING_SEMANTIC_CONTRACT.md 语义契约
+ * @see docs/architecture/REASONING_IDEMPOTENCY_CONTRACT.md 幂等契约
+ */
+
 export type DomainEvent =
   | Readonly<{ type: 'StreamComment'; text: string }>
   | Readonly<{ type: 'StreamError'; error: unknown; terminal: true }>
@@ -11,7 +21,7 @@ export type DomainEvent =
       mergeStrategy: 'append' | 'replace'
       toolCallDeltas: unknown[]
     }>
-  | Readonly<{ type: 'MessageDeltaReasoningDetail'; messageId: string; choiceIndex: number; detail: unknown }>
+  | Readonly<{ type: 'MessageDeltaReasoningDetail'; messageId: string; choiceIndex: number; detail: unknown; chunkNo?: number }>
   | Readonly<{ type: 'UsageDelta'; usage: unknown }>
   | Readonly<{
       type: 'MetaDelta'
@@ -28,6 +38,8 @@ export type OpenRouterChunkInput = Readonly<{
   chunk: any
   messageId: string
   choiceIndex?: number
+  /** 递增的 chunk 序号，用于诊断追踪 */
+  chunkNo?: number
 }>
 
 function normalizeFinishReason(native: unknown): string | undefined {
@@ -146,6 +158,7 @@ export function mapChunkToEvents(input: OpenRouterChunkInput): DomainEvent[] {
         messageId,
         choiceIndex,
         detail,
+        chunkNo: input.chunkNo,
       })
     }
   }

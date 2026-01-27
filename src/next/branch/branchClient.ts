@@ -1,6 +1,8 @@
 export type BranchSummary = Readonly<{
   id: string
   convoId: string
+  // Branch tip (definition): the current reachable tail / insertion point for follow-up turns.
+  // Not a UI cursor (selection/scroll anchor).
   headMessageId: string | null
   name: string | null
   createdAt: number
@@ -24,6 +26,12 @@ export type BranchPathMessage = Readonly<{
 
 export type BranchCandidate = Readonly<{
   answerRootId: string
+  createdAt: number
+  status: string
+}>
+
+export type QuestionCandidate = Readonly<{
+  questionId: string
   createdAt: number
   status: string
 }>
@@ -54,6 +62,17 @@ export type RegenerateFromQuestionResult = Readonly<{
 export type RetryReplaceAnswerResult = Readonly<{
   newAnswerRootId: string
   newAssistantSeq: number
+}>
+
+export type SwitchQuestionCandidateResult = Readonly<{ headMessageId: string }>
+
+export type ForkQuestionResult = Readonly<{
+  branchId: string
+  baseMessageId: string | null
+  newQuestionId: string
+  newQuestionSeq: number
+  assistantId: string
+  assistantSeq: number
 }>
 
 type DbBridge = Readonly<{
@@ -197,6 +216,19 @@ export async function switchCandidate(branchId: string, questionId: string, answ
   return { headMessageId }
 }
 
+export async function switchQuestionCandidate(branchId: string, baseMessageId: string | null, questionId: string): Promise<SwitchQuestionCandidateResult> {
+  const bridge = requireDbBridge()
+  const bid = String(branchId ?? '').trim()
+  const qid = String(questionId ?? '').trim()
+  const base = baseMessageId === null ? null : String(baseMessageId ?? '').trim() || null
+  if (!bid || !qid) throw new Error('Missing branchId/questionId')
+  const raw = await bridge.invoke('branch.switchQuestionCandidate', { branchId: bid, baseMessageId: base, questionId: qid })
+  if (!raw || typeof raw !== 'object' || raw.ok !== true) throw new Error('DB did not return ok for switchQuestionCandidate')
+  const headMessageId = String((raw as any).headMessageId ?? '').trim()
+  if (!headMessageId) throw new Error('DB did not return headMessageId for switchQuestionCandidate')
+  return { headMessageId }
+}
+
 export async function regenerateFromQuestion(branchId: string, questionId: string): Promise<RegenerateFromQuestionResult> {
   const bridge = requireDbBridge()
   const bid = String(branchId ?? '').trim()
@@ -222,6 +254,44 @@ export async function retryReplaceAnswer(branchId: string, questionId: string, c
   const newAssistantSeq = Number((raw as any).newAssistantSeq ?? NaN)
   if (!newAnswerRootId || !Number.isFinite(newAssistantSeq)) throw new Error('DB did not return retryReplaceAnswer fields')
   return { newAnswerRootId, newAssistantSeq }
+}
+
+export async function forkQuestion(branchId: string, oldQuestionId: string, newBody: string): Promise<ForkQuestionResult> {
+  const bridge = requireDbBridge()
+  const bid = String(branchId ?? '').trim()
+  const qid = String(oldQuestionId ?? '').trim()
+  const body = typeof newBody === 'string' ? newBody : String(newBody ?? '')
+  if (!bid || !qid) throw new Error('Missing branchId/oldQuestionId')
+  const raw = await bridge.invoke('branch.forkQuestion', { branchId: bid, oldQuestionId: qid, newBody: body })
+  if (!raw || typeof raw !== 'object' || raw.ok !== true) throw new Error('DB did not return ok for forkQuestion')
+  const baseMessageId = (raw as any).baseMessageId ? String((raw as any).baseMessageId) : null
+  const newQuestionId = String((raw as any).newQuestionId ?? '').trim()
+  const newQuestionSeq = Number((raw as any).newQuestionSeq ?? NaN)
+  const assistantId = String((raw as any).assistantId ?? '').trim()
+  const assistantSeq = Number((raw as any).assistantSeq ?? NaN)
+  if (!newQuestionId || !Number.isFinite(newQuestionSeq) || !assistantId || !Number.isFinite(assistantSeq)) {
+    throw new Error('DB did not return forkQuestion fields')
+  }
+  return { branchId: bid, baseMessageId, newQuestionId, newQuestionSeq, assistantId, assistantSeq }
+}
+
+export async function retryReplaceQuestion(branchId: string, oldQuestionId: string, newBody: string): Promise<ForkQuestionResult> {
+  const bridge = requireDbBridge()
+  const bid = String(branchId ?? '').trim()
+  const qid = String(oldQuestionId ?? '').trim()
+  const body = typeof newBody === 'string' ? newBody : String(newBody ?? '')
+  if (!bid || !qid) throw new Error('Missing branchId/oldQuestionId')
+  const raw = await bridge.invoke('branch.retryReplaceQuestion', { branchId: bid, oldQuestionId: qid, newBody: body })
+  if (!raw || typeof raw !== 'object' || raw.ok !== true) throw new Error('DB did not return ok for retryReplaceQuestion')
+  const baseMessageId = (raw as any).baseMessageId ? String((raw as any).baseMessageId) : null
+  const newQuestionId = String((raw as any).newQuestionId ?? '').trim()
+  const newQuestionSeq = Number((raw as any).newQuestionSeq ?? NaN)
+  const assistantId = String((raw as any).assistantId ?? '').trim()
+  const assistantSeq = Number((raw as any).assistantSeq ?? NaN)
+  if (!newQuestionId || !Number.isFinite(newQuestionSeq) || !assistantId || !Number.isFinite(assistantSeq)) {
+    throw new Error('DB did not return retryReplaceQuestion fields')
+  }
+  return { branchId: bid, baseMessageId, newQuestionId, newQuestionSeq, assistantId, assistantSeq }
 }
 
 export async function setBranchHead(branchId: string, headMessageId: string | null): Promise<boolean> {
@@ -289,6 +359,23 @@ export async function getBranchCandidates(branchId: string, questionId: string, 
       return { answerRootId, createdAt: typeof r?.createdAt === 'number' ? r.createdAt : 0, status: String(r?.status ?? 'final') } satisfies BranchCandidate
     })
     .filter((x): x is BranchCandidate => !!x)
+}
+
+export async function getQuestionCandidates(branchId: string, baseMessageId: string | null, params?: Readonly<{ limit?: number }>): Promise<QuestionCandidate[]> {
+  const bridge = getDbBridge()
+  if (!bridge) return []
+  const bid = String(branchId ?? '').trim()
+  if (!bid) return []
+  const base = baseMessageId === null ? null : String(baseMessageId ?? '').trim() || null
+  const rows = await bridge.invoke('branch.getQuestionCandidates', { branchId: bid, baseMessageId: base, ...(params ?? {}) })
+  if (!Array.isArray(rows)) return []
+  return rows
+    .map((r: any) => {
+      const questionId = String(r?.questionId ?? '').trim()
+      if (!questionId) return null
+      return { questionId, createdAt: typeof r?.createdAt === 'number' ? r.createdAt : 0, status: String(r?.status ?? 'final') } satisfies QuestionCandidate
+    })
+    .filter((x): x is QuestionCandidate => !!x)
 }
 
 export async function listBranchPathMessages(branchId: string, params?: Readonly<{ limit?: number }>): Promise<BranchPathMessage[]> {
