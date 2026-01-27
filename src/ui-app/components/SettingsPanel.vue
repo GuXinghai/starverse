@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { getOpenRouterProviderRequireParameters, setOpenRouterProviderRequireParameters } from '@/next/settings/openRouterProviderSettingsClient'
+import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningPrefsClient'
+import type { ReasoningEffort, ReasoningPrefs } from '@/next/state/types'
 
 const props = defineProps<{
   disabled: boolean
@@ -27,6 +29,8 @@ const apiKey = ref('')
 const baseUrl = ref('')
 const requireParameters = ref(false)
 const showApiKey = ref(false)
+const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('auto')
+const requestedReasoningExclude = ref(false)
 
 const loading = ref(false)
 const saving = ref(false)
@@ -50,6 +54,43 @@ function isValidUrlOrEmpty(value: string): boolean {
 
 const baseUrlValid = computed(() => isValidUrlOrEmpty(baseUrl.value))
 
+const DEFAULT_REASONING_PREFS: ReasoningPrefs = { mode: 'auto', effort: 'auto', exclude: false }
+const REASONING_EFFORTS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
+
+function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return typeof value === 'string' && (REASONING_EFFORTS as string[]).includes(value)
+}
+
+function normalizeReasoningPrefs(raw: unknown): ReasoningPrefs {
+  if (!raw || typeof raw !== 'object') return DEFAULT_REASONING_PREFS
+  const mode = (raw as any).mode === 'effort' || (raw as any).mode === 'auto' ? (raw as any).mode : 'auto'
+  const effortRaw = (raw as any).effort
+  const effort = effortRaw === 'auto' || isReasoningEffort(effortRaw) ? effortRaw : undefined
+  const exclude = (raw as any).exclude === true
+
+  if (mode === 'auto') {
+    return { mode: 'auto', effort: 'auto', exclude: false }
+  }
+
+  return { mode: 'effort', effort: (effort && effort !== 'auto' ? effort : 'none'), exclude }
+}
+
+function applyReasoningPrefs(prefs: ReasoningPrefs) {
+  if (prefs.mode === 'auto') {
+    requestedReasoningEffort.value = 'auto'
+    requestedReasoningExclude.value = false
+    return
+  }
+  requestedReasoningEffort.value = prefs.effort && prefs.effort !== 'auto' ? prefs.effort : 'none'
+  requestedReasoningExclude.value = prefs.exclude === true
+}
+
+function buildReasoningPrefs(): ReasoningPrefs {
+  const mode = requestedReasoningEffort.value === 'auto' ? 'auto' : 'effort'
+  const exclude = mode === 'auto' ? false : requestedReasoningExclude.value
+  return { mode, effort: requestedReasoningEffort.value, exclude }
+}
+
 async function load() {
   error.value = null
   savedMessage.value = null
@@ -65,6 +106,8 @@ async function load() {
     apiKey.value = String((await store.get(OPENROUTER_API_KEY_KEY)) ?? '').trim()
     baseUrl.value = String((await store.get(OPENROUTER_BASE_URL_KEY)) ?? '').trim()
     requireParameters.value = await getOpenRouterProviderRequireParameters()
+    const prefs = await getReasoningPrefs()
+    applyReasoningPrefs(normalizeReasoningPrefs(prefs))
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
@@ -92,6 +135,13 @@ async function save() {
     await store.set(OPENROUTER_API_KEY_KEY, apiKey.value.trim())
     await store.set(OPENROUTER_BASE_URL_KEY, baseUrl.value.trim())
     await setOpenRouterProviderRequireParameters(requireParameters.value === true)
+    const nextReasoningPrefs = buildReasoningPrefs()
+    await setReasoningPrefs(nextReasoningPrefs)
+    try {
+      window.dispatchEvent(new CustomEvent('settings:reasoningPrefsUpdated', { detail: nextReasoningPrefs }))
+    } catch {
+      // no-op
+    }
     savedMessage.value = 'Saved.'
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
@@ -223,7 +273,12 @@ onMounted(() => {
             <div class="text-[11px] text-gray-500">Force OpenRouter provider parameter validation</div>
           </div>
           <label class="inline-flex items-center gap-2">
-            <input type="checkbox" :disabled="!canEdit || loading || saving" v-model="requireParameters" />
+            <input
+              type="checkbox"
+              aria-label="OpenRouter require parameters"
+              :disabled="!canEdit || loading || saving"
+              v-model="requireParameters"
+            />
             <span class="text-[11px] text-gray-700">{{ requireParameters ? 'On' : 'Off' }}</span>
           </label>
         </div>
@@ -237,6 +292,44 @@ onMounted(() => {
           >
             Save
           </button>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-gray-200 bg-white p-3">
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Global Reasoning Defaults</div>
+
+        <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-gray-600">
+          <div class="flex items-center gap-2">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Reasoning</div>
+            <select
+              class="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs shadow-sm"
+              :value="requestedReasoningEffort"
+              :disabled="!canEdit || loading || saving"
+              @change="requestedReasoningEffort = ($event.target as HTMLSelectElement).value as any"
+            >
+              <option value="auto">auto</option>
+              <option value="none">none</option>
+              <option value="minimal">minimal</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+              <option value="xhigh">xhigh</option>
+            </select>
+            <label class="flex items-center gap-2">
+              <input
+                type="checkbox"
+                aria-label="Global reasoning exclude"
+                class="h-4 w-4 rounded border-gray-300"
+                :disabled="!canEdit || loading || saving || requestedReasoningEffort === 'auto'"
+                v-model="requestedReasoningExclude"
+              />
+              exclude
+            </label>
+          </div>
+
+          <div class="text-[11px] text-gray-500">
+            Defaults apply to non-project sessions. Session-level preferences override project/global defaults.
+          </div>
         </div>
       </div>
 

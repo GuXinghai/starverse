@@ -21,6 +21,8 @@ describe('ui-app SettingsPanel', () => {
     const invoke = vi.fn(async (method: string, params?: any) => {
       if (method === 'settings.getOpenRouterProviderRequireParameters') return { value: false }
       if (method === 'settings.setOpenRouterProviderRequireParameters') return { ok: true }
+      if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
+      if (method === 'settings.setReasoningPrefs') return { ok: true }
       return { ok: true }
     })
     ;(globalThis as any).dbBridge = { invoke }
@@ -45,7 +47,7 @@ describe('ui-app SettingsPanel', () => {
     await user.clear(keyInput)
     await user.type(keyInput, 'sk-new')
 
-    const checkbox = screen.getByRole('checkbox') as HTMLInputElement
+    const checkbox = screen.getByLabelText('OpenRouter require parameters') as HTMLInputElement
     expect(checkbox.checked).toBe(false)
     await user.click(checkbox)
     expect(checkbox.checked).toBe(true)
@@ -58,6 +60,7 @@ describe('ui-app SettingsPanel', () => {
 
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     expect(invoke).toHaveBeenCalledWith('settings.setOpenRouterProviderRequireParameters', { value: true })
+    expect(invoke).toHaveBeenCalledWith('settings.setReasoningPrefs', { value: { mode: 'auto', effort: 'auto', exclude: false } })
   })
 
   it('clears via electronStore.delete', async () => {
