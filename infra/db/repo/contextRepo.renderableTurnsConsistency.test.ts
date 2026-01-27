@@ -50,5 +50,35 @@ describe('ContextRepo.getRenderableTurns vs buildForBranch', () => {
     expect(send.messages.map((m) => m.body)).toEqual(['Q1', 'A1v2', 'Q2', 'A2'])
     expect(render.debug?.chosenAnswerRootByQuestionId).toEqual(send.debug?.chosenAnswerRootByQuestionId)
   })
-})
 
+  it('keeps follow-up turns reachable when a tool sibling exists under the chosen answer root', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    insertConvo(db, 'c1')
+
+    const messageRepo = new MessageRepo(db)
+    const branchRepo = new BranchRepo(db)
+    const ctxRepo = new ContextRepo(db, branchRepo)
+
+    const q1 = messageRepo.append({ convoId: 'c1', role: 'user', body: 'Q1' })
+    const a1 = messageRepo.append({ convoId: 'c1', role: 'assistant', body: 'A1', parentId: q1.id })
+    const a2 = messageRepo.append({ convoId: 'c1', role: 'assistant', body: 'A2', parentId: q1.id })
+
+    const branch = branchRepo.ensureDefault('c1', 'Main')
+
+    // Switch to A1 and create a follow-up turn under it.
+    branchRepo.switchCandidate(branch.id, q1.id, a1.id)
+    const q2 = messageRepo.append({ convoId: 'c1', role: 'user', body: 'Q2', parentId: branchRepo.get(branch.id)?.headMessageId ?? a1.id })
+    messageRepo.append({ convoId: 'c1', role: 'assistant', body: 'A3', parentId: q2.id })
+
+    // Tool sibling under A1, appended later (higher seq) but should not become branch head.
+    messageRepo.append({ convoId: 'c1', role: 'tool', body: 'T1', parentId: a1.id })
+
+    // Switch away and back to force head recompute.
+    branchRepo.switchCandidate(branch.id, q1.id, a2.id)
+    branchRepo.switchCandidate(branch.id, q1.id, a1.id)
+
+    const render = ctxRepo.getRenderableTurns(branch.id, { debug: false })
+    expect(render.messages.map((m) => m.body)).toContain('Q2')
+  })
+})

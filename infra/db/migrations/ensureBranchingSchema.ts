@@ -97,6 +97,20 @@ function ensureBranchTables(db: SqlDatabase) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_branch_answer_hide_branch_q ON branch_answer_hide(branch_id, question_id);
+
+    CREATE TABLE IF NOT EXISTS branch_question_hide (
+      branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE CASCADE,
+      -- Stores either the actual parent message id, or a sentinel (e.g. '__root__') for parent_id IS NULL.
+      -- This is intentionally NOT a foreign key, because the sentinel is not a real message id.
+      base_message_id TEXT NOT NULL,
+      question_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+      hidden INTEGER NOT NULL DEFAULT 1 CHECK (hidden IN (0, 1)),
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (branch_id, base_message_id, question_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_branch_question_hide_branch_base ON branch_question_hide(branch_id, base_message_id);
+    CREATE INDEX IF NOT EXISTS idx_branch_question_hide_branch_q ON branch_question_hide(branch_id, question_id);
   `)
 }
 

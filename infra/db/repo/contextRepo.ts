@@ -12,6 +12,34 @@ const safeParse = (input: string): Record<string, unknown> | null => {
   }
 }
 
+const mergeMetaWithReasoning = (meta: Record<string, unknown> | null, reasoningJson: unknown, requestJson: unknown) => {
+  const next: Record<string, unknown> = meta ? { ...meta } : {}
+
+  if (typeof reasoningJson === 'string' && reasoningJson.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(reasoningJson)
+      if (Array.isArray(parsed) && !next.reasoningDetailsRaw) {
+        next.reasoningDetailsRaw = parsed
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  if (typeof requestJson === 'string' && requestJson.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(requestJson)
+      if (parsed && typeof parsed === 'object') {
+        next.requestReasoningConfig = parsed
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  return Object.keys(next).length > 0 ? next : null
+}
+
 export class ContextRepo {
   private selectAnswerGroupStmt: BetterSqlite3.Statement
 
@@ -31,6 +59,8 @@ export class ContextRepo {
         m.answer_root_id,
         m.question_id,
         m.meta,
+        m.reasoning_details_final_json AS reasoningDetailsFinalJson,
+        m.request_reasoning_config_json AS requestReasoningConfigJson,
         b.body
       FROM message m
       LEFT JOIN message_body b ON b.message_id = m.id
@@ -102,6 +132,12 @@ export class ContextRepo {
       if (!chosen) continue
       const rows = this.selectAnswerGroupStmt.all({ answerRootId: chosen, questionId: qid }) as any[]
       for (const r of rows) {
+        const meta = mergeMetaWithReasoning(
+          r.meta ? safeParse(String(r.meta)) : null,
+          r.reasoningDetailsFinalJson,
+          r.requestReasoningConfigJson
+        )
+
         const row: BranchPathMessage = {
           id: String(r.id),
           convoId: String(r.convo_id),
@@ -113,7 +149,7 @@ export class ContextRepo {
           answerRootId: r.answer_root_id ? String(r.answer_root_id) : null,
           questionId: r.question_id ? String(r.question_id) : null,
           body: typeof r.body === 'string' ? r.body : String(r.body ?? ''),
-          meta: r.meta ? safeParse(String(r.meta)) : null,
+          meta,
         }
         messages.push(row)
         includedIds.push(row.id)
@@ -192,6 +228,12 @@ export class ContextRepo {
 
       const rows = this.selectAnswerGroupStmt.all({ answerRootId: chosen, questionId: qid }) as any[]
       for (const r of rows) {
+        const meta = mergeMetaWithReasoning(
+          r.meta ? safeParse(String(r.meta)) : null,
+          r.reasoningDetailsFinalJson,
+          r.requestReasoningConfigJson
+        )
+
         const row: BranchPathMessage = {
           id: String(r.id),
           convoId: String(r.convo_id),
@@ -203,7 +245,7 @@ export class ContextRepo {
           answerRootId: r.answer_root_id ? String(r.answer_root_id) : null,
           questionId: r.question_id ? String(r.question_id) : null,
           body: typeof r.body === 'string' ? r.body : String(r.body ?? ''),
-          meta: r.meta ? safeParse(String(r.meta)) : null,
+          meta,
         }
         filtered.push(row)
         includedIds.push(row.id)

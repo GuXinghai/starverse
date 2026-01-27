@@ -3,6 +3,7 @@ import BetterSqlite3 from 'better-sqlite3'
 type SqlDatabase = BetterSqlite3.Database
 
 const KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS = 'openrouter.provider.require_parameters' as const
+const KEY_REASONING_PREFS = 'reasoning.prefs' as const
 
 export class SettingsRepo {
   private getStmt: BetterSqlite3.Statement
@@ -52,6 +53,15 @@ export class SettingsRepo {
   setOpenRouterProviderRequireParameters(value: boolean): void {
     if (typeof value !== 'boolean') throw new Error('value must be boolean')
     this.writeJson(KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS, value)
+  }
+
+  getReasoningPrefs(): unknown | null {
+    const value = this.readJson(KEY_REASONING_PREFS)
+    return value === undefined ? null : value
+  }
+
+  setReasoningPrefs(value: unknown): void {
+    this.writeJson(KEY_REASONING_PREFS, value)
   }
 }
 

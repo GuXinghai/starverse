@@ -1,6 +1,6 @@
 import BetterSqlite3 from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
-import type { BranchRecord, BranchCandidate, EffectiveFilterResult } from '../types'
+import type { BranchRecord, BranchCandidate, EffectiveFilterResult, QuestionCandidate } from '../types'
 
 type SqlDatabase = BetterSqlite3.Database
 
@@ -36,19 +36,52 @@ export type BranchPathMessage = Readonly<{
   meta: Record<string, unknown> | null
 }>
 
-const mapPathRow = (row: any): BranchPathMessage => ({
-  id: String(row.id),
-  convoId: String(row.convo_id),
-  role: String(row.role),
-  seq: Number(row.seq),
-  createdAt: Number(row.created_at),
-  parentId: row.parent_id ? String(row.parent_id) : null,
-  status: String(row.status ?? 'final'),
-  answerRootId: row.answer_root_id ? String(row.answer_root_id) : null,
-  questionId: row.question_id ? String(row.question_id) : null,
-  body: typeof row.body === 'string' ? row.body : String(row.body ?? ''),
-  meta: row.meta ? safeParse(String(row.meta)) : null,
-})
+const mergeMetaWithReasoning = (meta: Record<string, unknown> | null, reasoningJson: unknown, requestJson: unknown) => {
+  const next: Record<string, unknown> = meta ? { ...meta } : {}
+
+  if (typeof reasoningJson === 'string' && reasoningJson.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(reasoningJson)
+      if (Array.isArray(parsed) && !next.reasoningDetailsRaw) {
+        next.reasoningDetailsRaw = parsed
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  if (typeof requestJson === 'string' && requestJson.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(requestJson)
+      if (parsed && typeof parsed === 'object') {
+        next.requestReasoningConfig = parsed
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  return Object.keys(next).length > 0 ? next : null
+}
+
+const mapPathRow = (row: any): BranchPathMessage => {
+  const meta = row.meta ? safeParse(String(row.meta)) : null
+  const mergedMeta = mergeMetaWithReasoning(meta, row.reasoningDetailsFinalJson, row.requestReasoningConfigJson)
+
+  return {
+    id: String(row.id),
+    convoId: String(row.convo_id),
+    role: String(row.role),
+    seq: Number(row.seq),
+    createdAt: Number(row.created_at),
+    parentId: row.parent_id ? String(row.parent_id) : null,
+    status: String(row.status ?? 'final'),
+    answerRootId: row.answer_root_id ? String(row.answer_root_id) : null,
+    questionId: row.question_id ? String(row.question_id) : null,
+    body: typeof row.body === 'string' ? row.body : String(row.body ?? ''),
+    meta: mergedMeta,
+  }
+}
 
 export class BranchRepo {
   private findAliveBranchStmt: BetterSqlite3.Statement
@@ -66,10 +99,11 @@ export class BranchRepo {
   private copyChoicesFromAncestorChainStmt: BetterSqlite3.Statement
   private copyFiltersFromAncestorChainStmt: BetterSqlite3.Statement
   private isAnswerRootForQuestionStmt: BetterSqlite3.Statement
-  private selectAnswerGroupTailStmt: BetterSqlite3.Statement
+  private selectDeepestDescendantStmt: BetterSqlite3.Statement
   private getLastMessageIdStmt: BetterSqlite3.Statement
   private getPathMessagesStmt: BetterSqlite3.Statement
   private getCandidatesStmt: BetterSqlite3.Statement
+  private getQuestionCandidatesStmt: BetterSqlite3.Statement
   private getQuestionFilterStmt: BetterSqlite3.Statement
   private getAnswerFilterStmt: BetterSqlite3.Statement
   private updateBranchHeadStmt: BetterSqlite3.Statement
@@ -82,6 +116,7 @@ export class BranchRepo {
   private hasUserChildInAnswerGroupStmt: BetterSqlite3.Statement
   private selectDefaultAnswerRootFinalStmt: BetterSqlite3.Statement
   private selectDefaultAnswerRootAnyStmt: BetterSqlite3.Statement
+  private getUserQuestionParentStmt: BetterSqlite3.Statement
 
   constructor(private db: SqlDatabase) {
     this.findAliveBranchStmt = this.db.prepare(`
@@ -179,14 +214,26 @@ export class BranchRepo {
       LIMIT 1
     `)
 
-    this.selectAnswerGroupTailStmt = this.db.prepare(`
-      SELECT id
-      FROM message
-      WHERE convo_id = @convoId
-        AND question_id = @questionId
-        AND answer_root_id = @answerRootId
-        AND role IN ('assistant','tool')
-      ORDER BY seq DESC
+    // Given a root message, find the latest (max seq) descendant in the same conversation.
+    // This lets switchCandidate/switchQuestionCandidate jump back into an existing continuation
+    // under the selected answer root (instead of truncating to the answer group's tail).
+    this.selectDeepestDescendantStmt = this.db.prepare(`
+      WITH RECURSIVE descendants(id, seq, depth, role) AS (
+        SELECT id, seq, 0, role
+        FROM message
+        WHERE convo_id = @convoId
+          AND id = @rootId
+        UNION ALL
+        SELECT m.id, m.seq, d.depth + 1, m.role
+        FROM message m
+        JOIN descendants d ON m.parent_id = d.id
+        WHERE m.convo_id = @convoId
+          AND d.depth < @maxDepth
+      )
+      SELECT id, seq, depth
+      FROM descendants
+      WHERE role != 'tool'
+      ORDER BY depth DESC, seq DESC
       LIMIT 1
     `)
 
@@ -277,6 +324,8 @@ export class BranchRepo {
         m.answer_root_id,
         m.question_id,
         m.meta,
+        m.reasoning_details_final_json AS reasoningDetailsFinalJson,
+        m.request_reasoning_config_json AS requestReasoningConfigJson,
         b.body,
         chain.depth
       FROM chain
@@ -301,6 +350,27 @@ export class BranchRepo {
         AND m.question_id = @questionId
         AND m.answer_root_id = m.id
         AND h.answer_root_id IS NULL
+      ORDER BY m.created_at DESC, m.seq DESC
+      LIMIT @limit
+    `)
+
+    this.getQuestionCandidatesStmt = this.db.prepare(`
+      SELECT
+        m.id AS questionId,
+        m.created_at AS createdAt,
+        m.status AS status
+      FROM message m
+      LEFT JOIN branch_question_hide h
+        ON h.branch_id = @branchId
+       AND h.question_id = m.id
+       AND h.hidden = 1
+      WHERE m.convo_id = @convoId
+        AND m.role = 'user'
+        AND (
+          (@baseMessageId IS NULL AND m.parent_id IS NULL)
+          OR (m.parent_id = @baseMessageId)
+        )
+        AND h.question_id IS NULL
       ORDER BY m.created_at DESC, m.seq DESC
       LIMIT @limit
     `)
@@ -415,6 +485,15 @@ export class BranchRepo {
       ORDER BY m.created_at DESC, m.seq DESC
       LIMIT 1
     `)
+
+    this.getUserQuestionParentStmt = this.db.prepare(`
+      SELECT parent_id AS parentId
+      FROM message
+      WHERE id = @questionId
+        AND convo_id = @convoId
+        AND role = 'user'
+      LIMIT 1
+    `)
   }
 
   ensureDefault(convoId: string, name?: string | null): BranchRecord {
@@ -471,8 +550,12 @@ export class BranchRepo {
     const aExists = this.isAnswerRootForQuestionStmt.get({ answerRootId: ar, convoId, questionId: qid }) as any
     if (!aExists) throw new Error(`Answer root does not belong to question: ${ar}`)
 
-    const tailRow = this.selectAnswerGroupTailStmt.get({ convoId, questionId: qid, answerRootId: ar }) as { id?: string } | undefined
-    const headMessageId = tailRow?.id ? String(tailRow.id) : ar
+    // Prefer restoring an existing continuation under this answer root (deepest descendant in parent chain).
+    // Tools are excluded so we don't accidentally move the branch head to a tool sibling and hide follow-up turns.
+    const leafRow = this.selectDeepestDescendantStmt.get({ convoId, rootId: ar, maxDepth: 5000 }) as
+      | { id?: string; seq?: number; depth?: number }
+      | undefined
+    const headMessageId = leafRow?.id ? String(leafRow.id) : ar
 
     const now = Date.now()
     const txn = this.db.transaction(() => {
@@ -483,6 +566,59 @@ export class BranchRepo {
     txn()
 
     return { ok: true, headMessageId }
+  }
+
+  switchQuestionCandidate(branchId: string, baseMessageId: string | null, questionId: string) {
+    const bid = String(branchId ?? '').trim()
+    const qid = String(questionId ?? '').trim()
+    const base = baseMessageId === null ? null : String(baseMessageId ?? '').trim() || null
+    if (!bid || !qid) throw new Error('Missing branchId/questionId')
+
+    const alive = this.getAliveBranchConvoStmt.get({ branchId: bid }) as { convoId?: string } | undefined
+    const convoId = alive?.convoId ? String(alive.convoId) : ''
+    if (!convoId) throw new Error(`Branch not found or deleted: ${bid}`)
+
+    const qRow = this.getUserQuestionParentStmt.get({ convoId, questionId: qid }) as { parentId?: string | null } | undefined
+    if (!qRow) throw new Error(`Question not found in conversation: ${qid}`)
+    const actualParentId = qRow.parentId ? String(qRow.parentId) : null
+
+    if (base === null) {
+      if (actualParentId !== null) throw new Error('Question does not belong to root slot')
+    } else {
+      if (actualParentId !== base) throw new Error('Question does not belong to base message slot')
+    }
+
+    const now = Date.now()
+    const txn = this.db.transaction(() => {
+      const existing = this.findChoiceStmt.get({ branchId: bid, questionId: qid }) as { chosenAnswerRootId?: string } | undefined
+      const chosen = existing?.chosenAnswerRootId ? String(existing.chosenAnswerRootId) : this.ensureChoice(bid, qid)
+
+      if (chosen) {
+        const leafRow = this.selectDeepestDescendantStmt.get({ convoId, rootId: chosen, maxDepth: 5000 }) as
+          | { id?: string; seq?: number; depth?: number }
+          | undefined
+        const headMessageId = leafRow?.id ? String(leafRow.id) : chosen
+        const r = this.updateBranchHeadStmt.run({ branchId: bid, headMessageId, updatedAt: now })
+        if (!r.changes || r.changes <= 0) throw new Error(`Branch not found or deleted: ${bid}`)
+        return { ok: true as const, headMessageId }
+      }
+
+      const r = this.updateBranchHeadStmt.run({ branchId: bid, headMessageId: qid, updatedAt: now })
+      if (!r.changes || r.changes <= 0) throw new Error(`Branch not found or deleted: ${bid}`)
+      return { ok: true as const, headMessageId: qid }
+    })
+
+    return txn()
+  }
+
+  computePreferredHeadForAnswerRoot(convoId: string, answerRootId: string): string {
+    const cid = String(convoId ?? '').trim()
+    const rootId = String(answerRootId ?? '').trim()
+    if (!cid || !rootId) return rootId
+    const row = this.selectDeepestDescendantStmt.get({ convoId: cid, rootId, maxDepth: 5000 }) as
+      | { id?: string; seq?: number; depth?: number }
+      | undefined
+    return row?.id ? String(row.id) : rootId
   }
 
   createFromMessage(input: Readonly<{ sourceBranchId: string; baseMessageId: string; name?: string | null; copyChoices?: boolean; copyFilters?: boolean; requireOnSourcePath?: boolean }>): BranchRecord {
@@ -600,6 +736,31 @@ export class BranchRepo {
       createdAt: Number(r.createdAt),
       status: String(r.status ?? 'final'),
     }))
+  }
+
+  getQuestionCandidates(branchId: string, baseMessageId: string | null, limit = 50): QuestionCandidate[] {
+    const bid = String(branchId ?? '').trim()
+    const base = baseMessageId === null ? null : String(baseMessageId ?? '').trim() || null
+    if (!bid) return []
+
+    const branchRow = this.getBranchConvoStmt.get({ branchId: bid }) as { convoId?: string } | undefined
+    const convoId = branchRow?.convoId ? String(branchRow.convoId) : ''
+    if (!convoId) return []
+
+    const rows = this.getQuestionCandidatesStmt.all({
+      branchId: bid,
+      convoId,
+      baseMessageId: base,
+      limit: Math.max(1, Math.min(200, Number(limit) || 50)),
+    }) as any[]
+
+    return rows
+      .map((r) => {
+        const questionId = String(r?.questionId ?? '').trim()
+        if (!questionId) return null
+        return { questionId, createdAt: Number(r?.createdAt ?? 0), status: String(r?.status ?? 'final') } satisfies QuestionCandidate
+      })
+      .filter((x): x is QuestionCandidate => !!x)
   }
 
   getEffectiveFilters(branchId: string, questionId: string, chosenAnswerRootId: string): EffectiveFilterResult {
