@@ -56,6 +56,24 @@ export type MessageRecord = {
   meta: JsonObject | null
 }
 
+export type AppendReasoningDetailSegmentsInput = Readonly<{
+  messageId: string
+  details: unknown[]
+}>
+
+export type FinalizeReasoningDetailsInput = Readonly<{
+  messageId: string
+}>
+
+export type SetReasoningRequestConfigInput = Readonly<{
+  messageId: string
+  value: unknown
+}>
+
+export type GetReasoningSegmentsStatsInput = Readonly<{
+  messageId: string
+}>
+
 export type CreateConvoInput = {
   id?: string
   projectId?: string | null
@@ -216,6 +234,18 @@ export type BranchCandidate = {
   status: string
 }
 
+export type GetQuestionCandidatesParams = {
+  branchId: string
+  baseMessageId: string | null
+  limit?: number
+}
+
+export type QuestionCandidate = {
+  questionId: string
+  createdAt: number
+  status: string
+}
+
 export type BranchFilterMode = 'include' | 'exclude'
 
 export type EffectiveFilterParams = {
@@ -270,6 +300,38 @@ export type RetryReplaceAnswerInput = {
   questionId: string
   currentAnswerRootId: string
 }
+
+export type SwitchQuestionCandidateInput = {
+  branchId: string
+  baseMessageId: string | null
+  questionId: string
+}
+
+export type SwitchQuestionCandidateResult = Readonly<{ ok: true; headMessageId: string }>
+
+export type ForkQuestionInput = {
+  branchId: string
+  oldQuestionId: string
+  newBody: string
+}
+
+export type ForkQuestionResult = Readonly<{
+  ok: true
+  branchId: string
+  baseMessageId: string | null
+  newQuestionId: string
+  newQuestionSeq: number
+  assistantId: string
+  assistantSeq: number
+}>
+
+export type RetryReplaceQuestionInput = {
+  branchId: string
+  oldQuestionId: string
+  newBody: string
+}
+
+export type RetryReplaceQuestionResult = ForkQuestionResult
 
 export type SetBranchFilterInput = {
   branchId: string
@@ -670,6 +732,10 @@ export type DbMethod =
   | 'message.list'
   | 'message.replace'
   | 'message.setStatus'
+  | 'message.appendReasoningDetailSegments'
+  | 'message.finalizeReasoningDetails'
+  | 'message.setReasoningRequestConfig'
+  | 'message.getReasoningSegmentsStats'
   | 'branch.ensureDefault'
   | 'branch.list'
   | 'branch.createFromMessage'
@@ -679,11 +745,15 @@ export type DbMethod =
   | 'branch.regenerateFromQuestion'
   | 'branch.getPathMessages'
   | 'branch.getCandidates'
+  | 'branch.getQuestionCandidates'
   | 'branch.getEffectiveFilters'
   | 'branch.setHead'
   | 'branchChoice.set'
   | 'branchAnswerHide.set'
   | 'branch.retryReplaceAnswer'
+  | 'branch.switchQuestionCandidate'
+  | 'branch.forkQuestion'
+  | 'branch.retryReplaceQuestion'
   | 'branchFilter.set'
   | 'branchFilter.clear'
   | 'context.buildForBranch'
@@ -710,6 +780,8 @@ export type DbMethod =
   | 'reasoningIndex.list'
   | 'settings.getOpenRouterProviderRequireParameters'
   | 'settings.setOpenRouterProviderRequireParameters'
+  | 'settings.getReasoningPrefs'
+  | 'settings.setReasoningPrefs'
 
 export type ModelCatalogUpsertInput = Readonly<{
   modelId: string
@@ -740,6 +812,10 @@ export type SetOpenRouterProviderRequireParametersParams = Readonly<{
   value: boolean
 }>
 
+export type SetReasoningPrefsParams = Readonly<{
+  value: unknown
+}>
+
 export type WorkerRequestMessage = {
   id: string
   method: DbMethod
@@ -756,6 +832,7 @@ export type WorkerResponseMessage = {
 export type DbErrorCode =
   | 'ERR_NOT_FOUND'
   | 'ERR_VALIDATION'
+  | 'ERR_INVALID'
   | 'ERR_INTERNAL'
   | 'ERR_UNAVAILABLE'
   | 'ERR_MUTATION_FORBIDDEN_ON_BRANCHING_CONVO'

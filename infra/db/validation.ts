@@ -3,6 +3,10 @@ import type {
   AppendMessageInput,
   AppendMessageDeltaInput,
   SetMessageStatusInput,
+  AppendReasoningDetailSegmentsInput,
+  FinalizeReasoningDetailsInput,
+  SetReasoningRequestConfigInput,
+  GetReasoningSegmentsStatsInput,
   CreateConvoInput,
   SaveConvoInput,
   SaveConvoWithMessagesInput,
@@ -27,12 +31,16 @@ import type {
   RegenerateFromQuestionInput,
   GetBranchPathParams,
   GetCandidatesParams,
+  GetQuestionCandidatesParams,
   EffectiveFilterParams,
   BeginTurnInput,
   SetBranchHeadInput,
   SetBranchChoiceInput,
   SetBranchAnswerHideInput,
   RetryReplaceAnswerInput,
+  SwitchQuestionCandidateInput,
+  ForkQuestionInput,
+  RetryReplaceQuestionInput,
   SetBranchFilterInput,
   ClearBranchFilterInput,
   BuildContextForBranchInput,
@@ -122,6 +130,24 @@ export const AppendMessageDeltaSchema: ZodType<AppendMessageDeltaInput> = z.obje
 export const SetMessageStatusSchema: ZodType<SetMessageStatusInput> = z.object({
   messageId: z.string().min(1),
   status: z.enum(['streaming', 'final', 'error'])
+})
+
+export const AppendReasoningDetailSegmentsSchema: ZodType<AppendReasoningDetailSegmentsInput> = z.object({
+  messageId: z.string().min(1),
+  details: z.array(z.any()).min(1)
+})
+
+export const FinalizeReasoningDetailsSchema: ZodType<FinalizeReasoningDetailsInput> = z.object({
+  messageId: z.string().min(1)
+})
+
+export const SetReasoningRequestConfigSchema: ZodType<SetReasoningRequestConfigInput> = z.object({
+  messageId: z.string().min(1),
+  value: z.any()
+})
+
+export const GetReasoningSegmentsStatsSchema: ZodType<GetReasoningSegmentsStatsInput> = z.object({
+  messageId: z.string().min(1)
 })
 
 export const SaveConvoSchema: ZodType<SaveConvoInput> = z.object({
@@ -236,6 +262,12 @@ export const GetCandidatesSchema: ZodType<GetCandidatesParams> = z.object({
   limit: z.number().int().positive().max(200).optional()
 })
 
+export const GetQuestionCandidatesSchema: ZodType<GetQuestionCandidatesParams> = z.object({
+  branchId: z.string().min(1),
+  baseMessageId: z.string().min(1).nullable(),
+  limit: z.number().int().positive().max(200).optional(),
+})
+
 export const EffectiveFilterSchema: ZodType<EffectiveFilterParams> = z.object({
   branchId: z.string().min(1),
   questionId: z.string().min(1),
@@ -270,6 +302,24 @@ export const RetryReplaceAnswerSchema: ZodType<RetryReplaceAnswerInput> = z.obje
   branchId: z.string().min(1),
   questionId: z.string().min(1),
   currentAnswerRootId: z.string().min(1)
+})
+
+export const SwitchQuestionCandidateSchema: ZodType<SwitchQuestionCandidateInput> = z.object({
+  branchId: z.string().min(1),
+  baseMessageId: z.string().min(1).nullable(),
+  questionId: z.string().min(1),
+})
+
+export const ForkQuestionSchema: ZodType<ForkQuestionInput> = z.object({
+  branchId: z.string().min(1),
+  oldQuestionId: z.string().min(1),
+  newBody: z.string(),
+})
+
+export const RetryReplaceQuestionSchema: ZodType<RetryReplaceQuestionInput> = z.object({
+  branchId: z.string().min(1),
+  oldQuestionId: z.string().min(1),
+  newBody: z.string(),
 })
 
 export const SetBranchFilterSchema: ZodType<SetBranchFilterInput> = z.object({

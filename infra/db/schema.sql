@@ -45,6 +45,12 @@ CREATE TABLE IF NOT EXISTS message (
   answer_root_id TEXT NULL,
   question_id TEXT NULL,
   meta TEXT,
+  reasoning_details_final_json TEXT,
+  request_reasoning_config_json TEXT,
+  reasoning_segments_count INTEGER DEFAULT 0,
+  reasoning_last_segment_id INTEGER,
+  reasoning_details_final_sha256 TEXT,
+  reasoning_details_final_bytes INTEGER,
   UNIQUE (convo_id, seq)
 );
 
@@ -52,6 +58,32 @@ CREATE TABLE IF NOT EXISTS message_body (
   message_id TEXT PRIMARY KEY REFERENCES message(id) ON DELETE CASCADE,
   body TEXT NOT NULL
 );
+
+-- Reasoning Details 段落存储
+-- @see docs/architecture/REASONING_IDEMPOTENCY_CONTRACT.md 幂等契约
+-- @see docs/architecture/REASONING_SEMANTIC_CONTRACT.md 语义契约
+CREATE TABLE IF NOT EXISTS message_reasoning_detail_segments (
+  segment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+  detail_id TEXT,                -- 原始 detail 的 id 字段
+  format TEXT,                   -- 格式，如 markdown
+  detail_index INTEGER,          -- 在数组中的索引
+  type TEXT NOT NULL,            -- 类型：reasoning.text, reasoning.summary, reasoning.encrypted
+  payload TEXT NOT NULL,         -- 原始 JSON payload（用于回放）
+  delta_text TEXT,               -- 归一化后的文本增量
+  delta_data TEXT,               -- 归一化后的 data 增量（加密模型）
+  delta_summary TEXT,            -- 归一化后的 summary 增量
+  created_at INTEGER NOT NULL,
+  segment_fingerprint TEXT       -- 幂等键：sha256(key + offsetBefore + delta + metadataDigest)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reasoning_segment_message ON message_reasoning_detail_segments(message_id);
+CREATE INDEX IF NOT EXISTS idx_reasoning_segment_message_order ON message_reasoning_detail_segments(message_id, segment_id);
+CREATE INDEX IF NOT EXISTS idx_reasoning_segment_group ON message_reasoning_detail_segments(message_id, detail_id, detail_index, type, format, segment_id);
+-- 幂等唯一约束：防止同一事件重复插入
+-- fingerprint = sha256(key + offsetBefore + deltaText + deltaSummary + deltaData + metadataDigest)
+-- 注意：历史数据 fingerprint 可能为 NULL，不参与唯一约束
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reasoning_segment_fingerprint ON message_reasoning_detail_segments(message_id, segment_fingerprint);
 
 CREATE TABLE IF NOT EXISTS attachment (
   id TEXT PRIMARY KEY,
@@ -138,6 +170,20 @@ CREATE TABLE IF NOT EXISTS branch_answer_hide (
 );
 
 CREATE INDEX IF NOT EXISTS idx_branch_answer_hide_branch_q ON branch_answer_hide(branch_id, question_id);
+
+CREATE TABLE IF NOT EXISTS branch_question_hide (
+  branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE CASCADE,
+  -- Stores either the actual parent message id, or a sentinel (e.g. '__root__') for parent_id IS NULL.
+  -- This is intentionally NOT a foreign key, because the sentinel is not a real message id.
+  base_message_id TEXT NOT NULL,
+  question_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+  hidden INTEGER NOT NULL DEFAULT 1 CHECK (hidden IN (0, 1)),
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (branch_id, base_message_id, question_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_branch_question_hide_branch_base ON branch_question_hide(branch_id, base_message_id);
+CREATE INDEX IF NOT EXISTS idx_branch_question_hide_branch_q ON branch_question_hide(branch_id, question_id);
 
 -- ========== Usage Statistics Table ==========
 CREATE TABLE IF NOT EXISTS usage_log (

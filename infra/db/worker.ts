@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import BetterSqlite3 from 'better-sqlite3'
 import { ProjectRepo } from './repo/projectRepo'
 import { ConvoRepo } from './repo/convoRepo'
@@ -32,6 +33,10 @@ import {
   AppendMessageSchema,
   AppendMessageDeltaSchema,
   SetMessageStatusSchema,
+  AppendReasoningDetailSegmentsSchema,
+  FinalizeReasoningDetailsSchema,
+  SetReasoningRequestConfigSchema,
+  GetReasoningSegmentsStatsSchema,
   CreateConvoSchema,
   SaveConvoSchema,
   SaveConvoWithMessagesSchema,
@@ -58,8 +63,12 @@ import {
   RegenerateFromQuestionSchema,
   GetBranchPathSchema,
   GetCandidatesSchema,
+  GetQuestionCandidatesSchema,
   EffectiveFilterSchema,
   BeginTurnSchema,
+  SwitchQuestionCandidateSchema,
+  ForkQuestionSchema,
+  RetryReplaceQuestionSchema,
   SetBranchFilterSchema,
   ClearBranchFilterSchema,
   BuildContextForBranchSchema,
@@ -80,10 +89,37 @@ import { configureLogging, logSlowQuery } from './logger'
 type SqlDatabase = BetterSqlite3.Database
 
 const debugDbOps = process.env.SV_DEBUG_DB_OPS === '1'
+const enableBranchInvariants = process.env.SV_BRANCH_INVARIANTS === '1'
 const dbgDb = (label: string, data?: unknown) => {
   if (!debugDbOps) return
   if (data !== undefined) console.log(`[db][dbg] ${label}`, data)
   else console.log(`[db][dbg] ${label}`)
+}
+
+function requireNonToolHead(db: SqlDatabase, headMessageId: string, context: Record<string, unknown>) {
+  const id = String(headMessageId ?? '').trim()
+  if (!id) return
+  const row = db.prepare(`SELECT role FROM message WHERE id=@id LIMIT 1`).get({ id }) as any
+  const role = String(row?.role ?? '').trim()
+  if (role === 'tool') {
+    throw new DbWorkerError('ERR_INTERNAL', 'INVARIANT: branch head must not be tool after switch', { headMessageId: id, ...context })
+  }
+}
+
+function requireHeadEquals(db: SqlDatabase, branchId: string, expectedHeadMessageId: string, context: Record<string, unknown>) {
+  const bid = String(branchId ?? '').trim()
+  const expected = String(expectedHeadMessageId ?? '').trim()
+  if (!bid || !expected) return
+  const row = db.prepare(`SELECT head_message_id AS head FROM branch WHERE id=@branchId LIMIT 1`).get({ branchId: bid }) as any
+  const actual = row?.head ? String(row.head) : ''
+  if (actual !== expected) {
+    throw new DbWorkerError('ERR_INTERNAL', 'INVARIANT: branch head mismatch after switch', {
+      branchId: bid,
+      expectedHeadMessageId: expected,
+      actualHeadMessageId: actual,
+      ...context,
+    })
+  }
 }
 
 const defaultSchemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
@@ -123,6 +159,8 @@ export class DbWorkerRuntime {
     this.db.exec(readFileSync(schemaPath, 'utf8'))
     console.log('[DbWorkerRuntime] 确保 Usage Log Schema...')
     this.ensureUsageLogSchema()
+    console.log('[DbWorkerRuntime] 确保 Reasoning Schema...')
+    this.ensureReasoningSchema()
     console.log('[DbWorkerRuntime] 确保 Branching Schema...')
     ensureBranchingSchema(this.db)
 
@@ -203,6 +241,108 @@ export class DbWorkerRuntime {
     ]
     for (const sql of indexStatements) {
       this.db.exec(sql)
+    }
+  }
+
+  private ensureReasoningSchema() {
+    const tableRow = this.db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'message'")
+      .get() as { name?: string } | undefined
+
+    if (!tableRow) {
+      return
+    }
+
+    const columns = this.db.prepare('PRAGMA table_info(message)').all() as { name: string }[]
+    const columnNames = new Set(columns.map((col) => col.name))
+
+    const addColumn = (name: string, definition: string) => {
+      if (!columnNames.has(name)) {
+        this.db.exec(`ALTER TABLE message ADD COLUMN ${definition}`)
+        columnNames.add(name)
+      }
+    }
+
+    addColumn('reasoning_details_final_json', 'reasoning_details_final_json TEXT')
+    addColumn('request_reasoning_config_json', 'request_reasoning_config_json TEXT')
+    addColumn('reasoning_segments_count', 'reasoning_segments_count INTEGER DEFAULT 0')
+    addColumn('reasoning_last_segment_id', 'reasoning_last_segment_id INTEGER')
+    addColumn('reasoning_details_final_sha256', 'reasoning_details_final_sha256 TEXT')
+    addColumn('reasoning_details_final_bytes', 'reasoning_details_final_bytes INTEGER')
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS message_reasoning_detail_segments (
+        segment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+        detail_id TEXT,
+        format TEXT,
+        detail_index INTEGER,
+        type TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        delta_text TEXT,
+        delta_data TEXT,
+        delta_summary TEXT,
+        created_at INTEGER NOT NULL,
+        segment_fingerprint TEXT
+      )
+    `)
+
+    // Ensure segment_fingerprint column exists for existing tables
+    const segmentCols = this.db.prepare('PRAGMA table_info(message_reasoning_detail_segments)').all() as { name: string }[]
+    const segmentColNames = new Set(segmentCols.map((col) => col.name))
+    if (!segmentColNames.has('segment_fingerprint')) {
+      this.db.exec('ALTER TABLE message_reasoning_detail_segments ADD COLUMN segment_fingerprint TEXT')
+    }
+
+    const indexStatements = [
+      'CREATE INDEX IF NOT EXISTS idx_reasoning_segment_message ON message_reasoning_detail_segments(message_id)',
+      'CREATE INDEX IF NOT EXISTS idx_reasoning_segment_message_order ON message_reasoning_detail_segments(message_id, segment_id)',
+      'CREATE INDEX IF NOT EXISTS idx_reasoning_segment_group ON message_reasoning_detail_segments(message_id, detail_id, detail_index, type, format, segment_id)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_reasoning_segment_fingerprint ON message_reasoning_detail_segments(message_id, segment_fingerprint)'
+    ]
+    for (const sql of indexStatements) {
+      this.db.exec(sql)
+    }
+
+    // Backfill segment_fingerprint for historical rows (idempotent, batch processing)
+    this.backfillSegmentFingerprints()
+  }
+
+  private backfillSegmentFingerprints() {
+    const BATCH_SIZE = 500
+    let totalBackfilled = 0
+
+    const selectStmt = this.db.prepare(`
+      SELECT segment_id, payload
+      FROM message_reasoning_detail_segments
+      WHERE segment_fingerprint IS NULL
+      LIMIT @limit
+    `)
+
+    const updateStmt = this.db.prepare(`
+      UPDATE message_reasoning_detail_segments
+      SET segment_fingerprint = @fingerprint
+      WHERE segment_id = @segmentId AND segment_fingerprint IS NULL
+    `)
+
+    while (true) {
+      const rows = selectStmt.all({ limit: BATCH_SIZE }) as { segment_id: number; payload: string }[]
+      if (rows.length === 0) break
+
+      const txn = this.db.transaction(() => {
+        for (const row of rows) {
+          const fingerprint = createHash('sha256').update(row.payload).digest('hex')
+          updateStmt.run({ segmentId: row.segment_id, fingerprint })
+        }
+      })
+      txn()
+
+      totalBackfilled += rows.length
+      if (rows.length < BATCH_SIZE) break
+    }
+
+    if (totalBackfilled > 0) {
+      console.log(`[DbWorkerRuntime] Backfilled segment_fingerprint for ${totalBackfilled} historical rows`)
     }
   }
 
@@ -346,6 +486,26 @@ export class DbWorkerRuntime {
       return this.messageRepo.setStatus(input)
     })
 
+    this.handlers.set('message.appendReasoningDetailSegments', (raw) => {
+      const input = AppendReasoningDetailSegmentsSchema.parse(raw)
+      return this.messageRepo.appendReasoningDetailSegments(input)
+    })
+
+    this.handlers.set('message.finalizeReasoningDetails', (raw) => {
+      const input = FinalizeReasoningDetailsSchema.parse(raw)
+      return this.messageRepo.finalizeReasoningDetails(input)
+    })
+
+    this.handlers.set('message.getReasoningSegmentsStats', (raw) => {
+      const input = GetReasoningSegmentsStatsSchema.parse(raw)
+      return this.messageRepo.getReasoningSegmentsStats(input)
+    })
+
+    this.handlers.set('message.setReasoningRequestConfig', (raw) => {
+      const input = SetReasoningRequestConfigSchema.parse(raw)
+      return this.messageRepo.setReasoningRequestConfig(input)
+    })
+
     this.handlers.set('message.list', (raw) => {
       const input = ListMessageSchema.parse(raw)
       return this.messageRepo.list(input)
@@ -409,6 +569,18 @@ export class DbWorkerRuntime {
       return list
     })
 
+    this.handlers.set('branch.getQuestionCandidates', (raw) => {
+      const input = GetQuestionCandidatesSchema.parse(raw)
+      const list = this.branchRepo.getQuestionCandidates(input.branchId, input.baseMessageId, input.limit)
+      dbgDb('branch.getQuestionCandidates', {
+        branchId: input.branchId,
+        baseMessageId: input.baseMessageId ?? null,
+        count: list.length,
+        candidates: list.map((c) => ({ questionId: c.questionId, status: c.status })),
+      })
+      return list
+    })
+
     this.handlers.set('branch.getEffectiveFilters', (raw) => {
       const input = EffectiveFilterSchema.parse(raw)
       return this.branchRepo.getEffectiveFilters(input.branchId, input.questionId, input.chosenAnswerRootId)
@@ -464,7 +636,64 @@ export class DbWorkerRuntime {
 
     this.handlers.set('branch.switchCandidate', (raw) => {
       const input = SwitchCandidateSchema.parse(raw)
-      return this.branchRepo.switchCandidate(input.branchId, input.questionId, input.answerRootId)
+      const out = this.branchRepo.switchCandidate(input.branchId, input.questionId, input.answerRootId)
+
+      if (enableBranchInvariants) {
+        const branch = this.branchRepo.get(input.branchId)
+        const convoId = branch?.convoId ? String(branch.convoId) : ''
+        const expected = convoId ? this.branchRepo.computePreferredHeadForAnswerRoot(convoId, input.answerRootId) : out.headMessageId
+        requireNonToolHead(this.db, out.headMessageId, {
+          op: 'branch.switchCandidate',
+          branchId: input.branchId,
+          questionId: input.questionId,
+          answerRootId: input.answerRootId,
+        })
+        requireHeadEquals(this.db, input.branchId, expected, {
+          op: 'branch.switchCandidate',
+          branchId: input.branchId,
+          questionId: input.questionId,
+          answerRootId: input.answerRootId,
+        })
+      }
+
+      return out
+    })
+
+    this.handlers.set('branch.switchQuestionCandidate', (raw) => {
+      const input = SwitchQuestionCandidateSchema.parse(raw)
+      const out = this.branchRepo.switchQuestionCandidate(input.branchId, input.baseMessageId, input.questionId)
+
+      if (enableBranchInvariants) {
+        const branch = this.branchRepo.get(input.branchId)
+        const convoId = branch?.convoId ? String(branch.convoId) : ''
+        if (convoId) {
+          const choiceRow = this.db
+            .prepare(
+              `SELECT chosen_answer_root_id AS chosen
+               FROM branch_choice
+               WHERE branch_id=@branchId AND question_id=@questionId
+               LIMIT 1`
+            )
+            .get({ branchId: input.branchId, questionId: input.questionId }) as any
+          const chosen = choiceRow?.chosen ? String(choiceRow.chosen) : null
+          const expected = chosen ? this.branchRepo.computePreferredHeadForAnswerRoot(convoId, chosen) : input.questionId
+          requireNonToolHead(this.db, out.headMessageId, {
+            op: 'branch.switchQuestionCandidate',
+            branchId: input.branchId,
+            questionId: input.questionId,
+            baseMessageId: input.baseMessageId ?? null,
+          })
+          requireHeadEquals(this.db, input.branchId, expected, {
+            op: 'branch.switchQuestionCandidate',
+            branchId: input.branchId,
+            questionId: input.questionId,
+            baseMessageId: input.baseMessageId ?? null,
+            chosenAnswerRootId: chosen,
+          })
+        }
+      }
+
+      return out
     })
 
     this.handlers.set('branch.regenerateFromQuestion', (raw) => {
@@ -526,6 +755,209 @@ export class DbWorkerRuntime {
         })
       }
       return out
+    })
+
+    this.handlers.set('branch.forkQuestion', (raw) => {
+      const input = ForkQuestionSchema.parse(raw)
+      const branch = this.branchRepo.get(input.branchId)
+      if (!branch?.convoId) throw new DbWorkerError('ERR_NOT_FOUND', `Branch not found: ${input.branchId}`)
+      if (branch.deletedAt != null) throw new DbWorkerError('ERR_INVALID', `Branch is deleted: ${input.branchId}`)
+      if (!branch.headMessageId) throw new DbWorkerError('ERR_INVALID', `Branch has no head: ${input.branchId}`)
+
+      const oldQuestionId = String(input.oldQuestionId ?? '').trim()
+      const newBody = typeof input.newBody === 'string' ? input.newBody : String(input.newBody ?? '')
+      if (!oldQuestionId) throw new DbWorkerError('ERR_VALIDATION', 'Missing oldQuestionId')
+
+      const oldRow = this.db
+        .prepare(`SELECT id, parent_id AS parentId FROM message WHERE id=@id AND convo_id=@convoId AND role='user' LIMIT 1`)
+        .get({ id: oldQuestionId, convoId: branch.convoId }) as any
+      if (!oldRow?.id) throw new DbWorkerError('ERR_VALIDATION', `Question not found in conversation: ${oldQuestionId}`)
+      const baseMessageId = oldRow.parentId ? String(oldRow.parentId) : null
+
+      // Guardrail: do not mutate branch while head is streaming (prevents head-switch + streaming writes divergence).
+      const headStatus = this.db.prepare(`SELECT status FROM message WHERE id=@id LIMIT 1`).get({ id: branch.headMessageId }) as any
+      if (String(headStatus?.status ?? 'final') === 'streaming') {
+        throw new DbWorkerError('ERR_INVALID', 'Branch is streaming; abort the run before editing questions')
+      }
+
+      const txn = this.db.transaction(() => {
+        const question = this.messageRepo.append({
+          convoId: branch.convoId,
+          role: 'user',
+          body: newBody,
+          parentId: baseMessageId,
+        })
+
+        const assistant = this.messageRepo.append({
+          convoId: branch.convoId,
+          role: 'assistant',
+          body: '',
+          parentId: question.id,
+          status: 'streaming',
+        })
+
+        this.branchRepo.setChoice(input.branchId, question.id, assistant.id)
+        this.branchRepo.setHead(input.branchId, assistant.id)
+
+        return {
+          ok: true as const,
+          branchId: input.branchId,
+          baseMessageId,
+          newQuestionId: question.id,
+          newQuestionSeq: question.seq,
+          assistantId: assistant.id,
+          assistantSeq: assistant.seq,
+        }
+      })
+
+      return txn()
+    })
+
+    this.handlers.set('branch.retryReplaceQuestion', (raw) => {
+      const input = RetryReplaceQuestionSchema.parse(raw)
+      const branch = this.branchRepo.get(input.branchId)
+      if (!branch?.convoId) throw new DbWorkerError('ERR_NOT_FOUND', `Branch not found: ${input.branchId}`)
+      if (branch.deletedAt != null) throw new DbWorkerError('ERR_INVALID', `Branch is deleted: ${input.branchId}`)
+      if (!branch.headMessageId) throw new DbWorkerError('ERR_INVALID', `Branch has no head: ${input.branchId}`)
+
+      const oldQuestionId = String(input.oldQuestionId ?? '').trim()
+      const newBody = typeof input.newBody === 'string' ? input.newBody : String(input.newBody ?? '')
+      if (!oldQuestionId) throw new DbWorkerError('ERR_VALIDATION', 'Missing oldQuestionId')
+
+      const oldRow = this.db
+        .prepare(`SELECT id, parent_id AS parentId FROM message WHERE id=@id AND convo_id=@convoId AND role='user' LIMIT 1`)
+        .get({ id: oldQuestionId, convoId: branch.convoId }) as any
+      if (!oldRow?.id) throw new DbWorkerError('ERR_VALIDATION', `Question not found in conversation: ${oldQuestionId}`)
+      const baseMessageId = oldRow.parentId ? String(oldRow.parentId) : null
+
+      // Branch-local terminal check: oldQuestion must be the last user in the current head->root path.
+      const path = this.branchRepo.getPathMessages(input.branchId, 5000)
+      if (path.length === 0) throw new DbWorkerError('ERR_INVALID', `Branch path is empty: ${input.branchId}`)
+      let lastUserId: string | null = null
+      for (let i = path.length - 1; i >= 0; i -= 1) {
+        if (String((path[i] as any).role ?? '').trim() === 'user') {
+          lastUserId = String((path[i] as any).id ?? '')
+          break
+        }
+      }
+      if (!lastUserId || lastUserId !== oldQuestionId) {
+        throw new DbWorkerError('ERR_INVALID', 'Replace question is only allowed on the last question of the current branch')
+      }
+
+      // Guardrail (early reject): do not mutate branch while head is streaming (prevents head-switch + streaming writes divergence).
+      // Safety boundary is enforced again inside the transaction.
+      const headStatus = this.db.prepare(`SELECT status FROM message WHERE id=@id LIMIT 1`).get({ id: branch.headMessageId }) as any
+      if (String(headStatus?.status ?? 'final') === 'streaming') {
+        throw new DbWorkerError('ERR_INVALID', 'Branch is streaming; abort the run before editing questions')
+      }
+
+      const baseKey = baseMessageId ?? '__root__'
+      const upsertHide = this.db.prepare(`
+        INSERT INTO branch_question_hide(branch_id, base_message_id, question_id, hidden, updated_at)
+        VALUES (@branchId, @baseMessageId, @questionId, @hidden, @updatedAt)
+        ON CONFLICT(branch_id, base_message_id, question_id)
+        DO UPDATE SET hidden = excluded.hidden, updated_at = excluded.updated_at
+      `)
+      const deleteHideAnyBase = this.db.prepare(`
+        DELETE FROM branch_question_hide
+        WHERE branch_id = @branchId AND question_id = @questionId
+      `)
+      const getHeadGrouping = this.db.prepare(`
+        SELECT question_id AS questionId, answer_root_id AS answerRootId
+        FROM message
+        WHERE id=@id
+        LIMIT 1
+      `)
+
+      const txn = this.db.transaction(() => {
+        // Re-fetch branch row inside txn to avoid acting on stale head/message graph state.
+        const latest = this.branchRepo.get(input.branchId)
+        if (!latest?.convoId) throw new DbWorkerError('ERR_NOT_FOUND', `Branch not found: ${input.branchId}`)
+        if (latest.deletedAt != null) throw new DbWorkerError('ERR_INVALID', `Branch is deleted: ${input.branchId}`)
+        if (!latest.headMessageId) throw new DbWorkerError('ERR_INVALID', `Branch has no head: ${input.branchId}`)
+
+        // Guardrail (DB-side safety boundary): do not mutate branch while head is streaming.
+        const latestHeadStatus = this.db.prepare(`SELECT status FROM message WHERE id=@id LIMIT 1`).get({ id: latest.headMessageId }) as any
+        if (String(latestHeadStatus?.status ?? 'final') === 'streaming') {
+          throw new DbWorkerError('ERR_INVALID', 'Branch is streaming; abort the run before editing questions')
+        }
+
+        // Branch-local terminal check (DB-side safety boundary): oldQuestion must be the last user in the current head->root path.
+        const pathInTxn = this.branchRepo.getPathMessages(input.branchId, 5000)
+        if (pathInTxn.length === 0) throw new DbWorkerError('ERR_INVALID', `Branch path is empty: ${input.branchId}`)
+        let lastUserIdInTxn: string | null = null
+        for (let i = pathInTxn.length - 1; i >= 0; i -= 1) {
+          if (String((pathInTxn[i] as any).role ?? '').trim() === 'user') {
+            lastUserIdInTxn = String((pathInTxn[i] as any).id ?? '')
+            break
+          }
+        }
+        if (!lastUserIdInTxn || lastUserIdInTxn !== oldQuestionId) {
+          throw new DbWorkerError('ERR_INVALID', 'Replace question is only allowed on the last question of the current branch')
+        }
+
+        // Strict terminal condition (DB-side safety boundary):
+        // - Allow when head == oldQuestionId (question has no answer yet), OR
+        // - Allow when head is within the chosen answer group for oldQuestionId.
+        // Chosen group definition is fixed to branchRepo.ensureChoice(branchId, questionId), which:
+        // - Uses existing branch_choice when present, OR
+        // - Chooses a default answer root (branch-aware; excludes hidden candidates) and persists it.
+        if (latest.headMessageId !== oldQuestionId) {
+          const chosen = this.branchRepo.ensureChoice(input.branchId, oldQuestionId)
+          if (!chosen) {
+            throw new DbWorkerError('ERR_INVALID', 'Replace question requires either head==question (no answer yet) or a chosen answer group')
+          }
+
+          const headGroup = getHeadGrouping.get({ id: latest.headMessageId }) as { questionId?: string | null; answerRootId?: string | null } | undefined
+          const headQuestionId = headGroup?.questionId ? String(headGroup.questionId) : null
+          const headAnswerRootId = headGroup?.answerRootId ? String(headGroup.answerRootId) : null
+
+          if (headQuestionId !== oldQuestionId || headAnswerRootId !== chosen) {
+            throw new DbWorkerError('ERR_INVALID', 'Replace question is only allowed when branch head is within the chosen answer group')
+          }
+        }
+
+        const now = Date.now()
+        // Enforce a single hide record per (branch_id, question_id) even if callers accidentally pass mismatched base keys.
+        deleteHideAnyBase.run({ branchId: input.branchId, questionId: oldQuestionId })
+        upsertHide.run({
+          branchId: input.branchId,
+          baseMessageId: baseKey,
+          questionId: oldQuestionId,
+          hidden: 1,
+          updatedAt: now,
+        })
+
+        const question = this.messageRepo.append({
+          convoId: branch.convoId,
+          role: 'user',
+          body: newBody,
+          parentId: baseMessageId,
+        })
+
+        const assistant = this.messageRepo.append({
+          convoId: branch.convoId,
+          role: 'assistant',
+          body: '',
+          parentId: question.id,
+          status: 'streaming',
+        })
+
+        this.branchRepo.setChoice(input.branchId, question.id, assistant.id)
+        this.branchRepo.setHead(input.branchId, assistant.id)
+
+        return {
+          ok: true as const,
+          branchId: input.branchId,
+          baseMessageId,
+          newQuestionId: question.id,
+          newQuestionSeq: question.seq,
+          assistantId: assistant.id,
+          assistantSeq: assistant.seq,
+        }
+      })
+
+      return txn()
     })
 
     this.handlers.set('branch.setHead', (raw) => {
@@ -755,6 +1187,19 @@ export class DbWorkerRuntime {
           throw new DbWorkerError('ERR_VALIDATION', 'settings.setOpenRouterProviderRequireParameters requires boolean value')
         }
         this.settingsRepo.setOpenRouterProviderRequireParameters(value)
+        return { ok: true }
+    })
+
+    this.handlers.set('settings.getReasoningPrefs', () => {
+        return { value: this.settingsRepo.getReasoningPrefs() }
+    })
+
+    this.handlers.set('settings.setReasoningPrefs', (raw) => {
+        const value = raw?.value
+        if (value === undefined) {
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.setReasoningPrefs requires value')
+        }
+        this.settingsRepo.setReasoningPrefs(value)
         return { ok: true }
     })
   }
