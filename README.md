@@ -896,6 +896,21 @@ npm run electron:dev
 | `npm run verify:ssot` | 基线验证（测试 + SSOT gates） |
 | `npm run verify:live` | 可选 live smoke（需要 OpenRouter key） |
 
+### Reasoning 模块变更护栏
+
+修改 `reasoning_details` 相关代码（DB repo、aggregator、Merger）时，**必须运行**：
+
+```bash
+# Repo 聚合一致性测试
+npx vitest run infra/db/repo/messageRepo.reasoningSegments.test.ts
+
+# Stress 回归测试 (100 场景，mismatch 必须为 0)
+node scripts/gates/tc19-reasoning-stress.mjs
+
+# 或通过 b_gate 集成入口（设置环境变量启用）
+REASONING_STRESS=1 node scripts/b_gate.mjs
+```
+
 ### 开发规范
 
 #### Vue 组件开发

@@ -330,9 +330,29 @@ function runVueTscCountErrors() {
   return { exitCode: proc.status ?? 0, count, output }
 }
 
+function runReasoningStressGate() {
+  // Optional: run tc19-reasoning-stress.mjs if REASONING_STRESS=1
+  if (process.env.REASONING_STRESS !== '1') {
+    return { skipped: true }
+  }
+  console.log('\n[REASONING_STRESS] Running tc19-reasoning-stress.mjs...')
+  const proc = spawnSync('node', ['scripts/gates/tc19-reasoning-stress.mjs'], {
+    cwd: REPO_ROOT,
+    stdio: 'inherit',
+    shell: false,
+  })
+  return { skipped: false, exitCode: proc.status ?? 0 }
+}
+
 function main() {
   const errors = []
   const warnings = []
+
+  // 0) Optional: Reasoning stress gate (REASONING_STRESS=1)
+  const stressResult = runReasoningStressGate()
+  if (!stressResult.skipped && stressResult.exitCode !== 0) {
+    errors.push({ ruleId: 'reasoning_stress', file: 'scripts/gates/tc19-reasoning-stress.mjs', line: 1, col: 1, excerpt: `stress gate failed with exit code ${stressResult.exitCode}`, inComment: false })
+  }
 
   // 1) High-risk type revival source
   const hasLegacyDts = fileExistsByNameRecursively('openrouter-service.d.ts')
