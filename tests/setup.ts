@@ -9,6 +9,9 @@ import { config } from '@vue/test-utils'
 
 type DbInvoke = <T = unknown>(method: string, params?: unknown) => Promise<T>
 
+// Enable DB branch invariants during tests (fail fast on semantic regressions).
+process.env.SV_BRANCH_INVARIANTS = '1'
+
 const createDbBridgeMock = () => {
   const convos = new Map<string, any>()
   const projects = new Map<string, any>()

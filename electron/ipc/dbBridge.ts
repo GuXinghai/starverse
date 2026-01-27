@@ -94,6 +94,10 @@ const allowedMethods: DbMethod[] = [
   'message.setStatus',
   'message.list',
   'message.replace',
+  'message.appendReasoningDetailSegments',
+  'message.finalizeReasoningDetails',
+  'message.setReasoningRequestConfig',
+  'message.getReasoningSegmentsStats',
 
   // Branching (Phase 4+)
   'branch.ensureDefault',
@@ -105,11 +109,15 @@ const allowedMethods: DbMethod[] = [
   'branch.regenerateFromQuestion',
   'branch.getPathMessages',
   'branch.getCandidates',
+  'branch.getQuestionCandidates',
   'branch.getEffectiveFilters',
   'branch.setHead',
   'branchChoice.set',
   'branchAnswerHide.set',
   'branch.retryReplaceAnswer',
+  'branch.switchQuestionCandidate',
+  'branch.forkQuestion',
+  'branch.retryReplaceQuestion',
   'branchFilter.set',
   'branchFilter.clear',
   'context.buildForBranch',
@@ -144,6 +152,8 @@ const allowedMethods: DbMethod[] = [
   // Settings
   'settings.getOpenRouterProviderRequireParameters',
   'settings.setOpenRouterProviderRequireParameters',
+  'settings.getReasoningPrefs',
+  'settings.setReasoningPrefs',
   
   // Preferences
   'prefs.save',

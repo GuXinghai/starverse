@@ -14,5 +14,8 @@
   },
   "tailwindCSS.experimental.classRegex": [
     ["class:\\s*?[\"'`]([^\"'`]*).*?[\"'`]", "[\"'`]([^\"'`]*)[\"'`]"]
-  ]
+  ],
+  "github.copilot.chat.anthropic.thinking.budgetTokens": 32000,
+  "github.copilot.chat.anthropic.tools.websearch.maxUses": 10,
+  "github.copilot.chat.responsesApiReasoningEffort": "high"
 }
