@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import ChatLayout from '@/ui-kit/chat/ChatLayout.vue'
+import ChatStatusBar from '@/ui-kit/chat/ChatStatusBar.vue'
 import ChatTranscript from '@/ui-kit/chat/ChatTranscript.vue'
 import ChatMessageBubble from '@/ui-kit/chat/ChatMessageBubble.vue'
-import type { MessageVM } from '@/next/state/types'
+import ChatAppReasoningPanel from './components/ChatAppReasoningPanel.vue'
+import type { MessageVM, ReasoningEffort, RequestedReasoningMode, ReasoningPrefs, RootState } from '@/next/state/types'
 import {
   createConvo,
   deleteConvo,
   deleteConvos,
   listConvos,
   renameConvo,
+  saveConvo,
   setConvoProject,
   setConvoProjectMany,
   type ConvoSummary,
@@ -18,28 +21,40 @@ import {
   clearBranchFilter,
   createBranchFromMessage,
   beginTurn,
+  forkQuestion,
   regenerateFromQuestion,
   retryReplaceAnswer,
+  retryReplaceQuestion,
   getBranchCandidates,
+  getQuestionCandidates,
   deleteBranch,
   ensureDefaultBranch,
   listBranches,
   switchCandidate,
+  switchQuestionCandidate,
   setBranchFilter,
   type BranchSummary,
   type BranchCandidate,
+  type QuestionCandidate,
   type EffectiveFilterResult,
 } from '@/next/branch/branchClient'
-import { appendMessageDelta, setMessageStatus } from '@/next/message/messageClient'
-import { listProjects, type ProjectSummary } from '@/next/project/projectClient'
+import { appendMessageDelta, appendReasoningDetailSegments, finalizeReasoningDetails, getReasoningSegmentsStats, setMessageReasoningRequestConfig, setMessageStatus } from '@/next/message/messageClient'
+import { findProjectById, listProjects, saveProject, type ProjectSummary } from '@/next/project/projectClient'
+import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningPrefsClient'
+import { listModelCatalog } from '@/next/modelCatalog/modelCatalogClient'
+import { selectModelCatalogAll, selectModelCatalogVisible } from '@/next/modelCatalog/modelCatalogSelectors'
+import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
+import { listReasoningModelIndex } from '@/next/modelIndex/reasoningModelIndexClient'
+import { selectReasoningModelIndexAll, selectReasoningModelIndexVisible } from '@/next/modelIndex/reasoningModelIndexSelectors'
+import type { ReasoningModelIndexItem } from '@/next/modelIndex/reasoningModelIndexTypes'
 import ConversationList, { type ConversationListItem, type ProjectListItem } from './components/ConversationList.vue'
 import ChatAppComposer from './components/ChatAppComposer.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import SettingsModal from './components/SettingsModal.vue'
-import { applyEvent, createInitialState, startGeneration } from '@/next/state/reducer'
-import { selectRun, selectTranscript } from '@/next/state/selectors'
-import type { RootState } from '@/next/state/types'
+import { applyEvent, createInitialState, startGeneration, toggleReasoningPanelState } from '@/next/state/reducer'
+import { selectMessage, selectRun, selectTranscript } from '@/next/state/selectors'
 import { streamOpenRouterChatAsEvents } from '@/next/live/openRouterLiveStream'
+import { ReasoningDetailStreamMerger } from '@/next/state/reasoningDetailStreamMerger'
 import { buildContextForBranchInternalMessages, getRenderableTurnsForBranch } from '@/next/context/contextClient'
 import type { InternalMessage } from '@/next/context/buildMessages'
 import { toInternalMessagesFromBranchPath } from '@/next/context/loadBranchContext'
@@ -53,12 +68,22 @@ const activeConvoId = ref<string | null>(null)
 const activeBranchId = ref<string | null>(null)
 const branches = ref<BranchSummary[]>([])
 const draft = ref('')
+const model = ref('openrouter/auto')
+const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('auto')
+const requestedReasoningExclude = ref(false)
 const settingsOpen = ref(false)
+const modelCatalogItems = ref<ModelCatalogItem[]>([])
+const reasoningModelIndexItems = ref<ReasoningModelIndexItem[]>([])
+const showHiddenModelsInPickers = ref(false)
+const modelCatalogNotice = ref<string | null>(null)
+const globalReasoningPrefs = ref<ReasoningPrefs | null>(null)
+const skipReasoningPrefSave = ref(false)
+const reasoningPrefSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
 const state = ref<RootState>(createInitialState())
 const messageSeqById = ref<Map<string, number>>(new Map())
 const messageMetaById = ref<
-  Map<string, { questionId: string | null; answerRootId: string | null; role: string; status: string }>
+  Map<string, { parentId: string | null; questionId: string | null; answerRootId: string | null; role: string; status: string }>
 >(new Map())
 const turnFiltersByQuestionId = ref<Map<string, Readonly<EffectiveFilterResult & { chosenAnswerRootId: string }>>>(new Map())
 const questionTurnOrder = ref<string[]>([])
@@ -66,6 +91,12 @@ const candidatesCache = ref<Map<string, BranchCandidate[]>>(new Map())
 const candidatesEpochGlobal = ref(0)
 const candidatesEpochByQuestionId = ref<Map<string, number>>(new Map())
 const candidatesLoading = ref<Map<string, string>>(new Map())
+const questionCandidatesCache = ref<Map<string, QuestionCandidate[]>>(new Map())
+const questionCandidatesEpochGlobal = ref(0)
+const questionCandidatesEpochBySlot = ref<Map<string, number>>(new Map())
+const questionCandidatesLoading = ref<Map<string, string>>(new Map())
+
+const questionEditDialog = ref<{ questionId: string; draft: string } | null>(null)
 
 // Anti-reordering guard for transcript refresh: only the latest request's result lands.
 const transcriptRefreshToken = ref(0)
@@ -77,6 +108,53 @@ const activeBranch = computed(() => {
   if (!id) return null
   return branches.value.find((b) => b.id === id) ?? null
 })
+
+// Branch tip (definition): reachable tail / insertion point. Not a UI cursor.
+const branchTipId = computed(() => activeBranch.value?.headMessageId ?? null)
+
+// UI-only cursor (selection / highlight) by branch. Does NOT affect branching semantics or persistence.
+const cursorByBranchId = ref<Map<string, string>>(new Map())
+
+function setCursorForBranch(branchId: string, messageId: string | null) {
+  const bid = String(branchId ?? '').trim()
+  const mid = messageId ? String(messageId).trim() : ''
+  if (!bid) return
+  const next = new Map(cursorByBranchId.value)
+  if (mid) next.set(bid, mid)
+  else next.delete(bid)
+  cursorByBranchId.value = next
+}
+
+function isMessageInTranscript(messageId: string): boolean {
+  const id = String(messageId ?? '').trim()
+  if (!id) return false
+  return transcript.value.some((m) => m.messageId === id)
+}
+
+function ensureCursorForActiveBranch() {
+  const bid = activeBranchId.value
+  if (!bid) return
+
+  const current = cursorByBranchId.value.get(bid) ?? null
+  if (current && isMessageInTranscript(current)) return
+
+  const fallback = (branchTipId.value && isMessageInTranscript(branchTipId.value) ? branchTipId.value : null) ??
+    transcript.value[transcript.value.length - 1]?.messageId ??
+    null
+  setCursorForBranch(bid, fallback)
+}
+
+function onSelectCursor(messageId: string, ev?: MouseEvent) {
+  const bid = activeBranchId.value
+  if (!bid) return
+  const mid = String(messageId ?? '').trim()
+  if (!mid) return
+
+  const target = ev?.target as HTMLElement | null
+  if (target && target.closest('button,a,input,textarea,select')) return
+
+  setCursorForBranch(bid, mid)
+}
 
 const runVM = computed(() => {
   const id = runId.value
@@ -90,7 +168,76 @@ const transcript = computed<MessageVM[]>(() => {
   return selectTranscript(state.value, id)
 })
 
+const lastAssistantMessage = computed(() => {
+  const items = transcript.value
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    if (items[i]?.role === 'assistant') return items[i]
+  }
+  return null
+})
+
+const lastAssistantMessageId = computed(() => lastAssistantMessage.value?.messageId ?? null)
+
+const showReasoningPanel = computed(() => {
+  const m = lastAssistantMessage.value
+  if (!m) return false
+  return m.reasoningView.panelState !== 'collapsed'
+})
+
+const canToggleReasoningPanel = computed(() => !!lastAssistantMessageId.value)
+
+watch([activeBranchId, transcript], () => ensureCursorForActiveBranch(), { immediate: true })
+
+watch([requestedReasoningEffort, requestedReasoningExclude], () => {
+  if (skipReasoningPrefSave.value) {
+    skipReasoningPrefSave.value = false
+    return
+  }
+  scheduleReasoningPrefsSave()
+})
+
+const activeCursorMessageId = computed(() => {
+  // During streaming, prefer highlighting the active assistant message (UI only).
+  const streamingId = activeAssistantMessageId.value
+  if (streamingId && isMessageInTranscript(streamingId)) return streamingId
+
+  const bid = activeBranchId.value
+  if (!bid) return undefined
+  const cursor = cursorByBranchId.value.get(bid)
+  if (cursor && isMessageInTranscript(cursor)) return cursor
+
+  if (branchTipId.value && isMessageInTranscript(branchTipId.value)) return branchTipId.value
+  return transcript.value[transcript.value.length - 1]?.messageId
+})
+
 const isRunning = computed(() => runVM.value?.status === 'requesting' || runVM.value?.status === 'streaming' || runVM.value?.status === 'tool_waiting')
+
+const modelCatalogForPicker = computed(() => {
+  const catalog = showHiddenModelsInPickers.value
+    ? selectModelCatalogAll(modelCatalogItems.value)
+    : selectModelCatalogVisible(modelCatalogItems.value)
+
+  if (catalog.length > 0) return catalog
+
+  const fallback = showHiddenModelsInPickers.value
+    ? selectReasoningModelIndexAll(reasoningModelIndexItems.value)
+    : selectReasoningModelIndexVisible(reasoningModelIndexItems.value)
+
+  return fallback.map((item) => ({
+    modelId: item.modelId,
+    name: item.name,
+    vendor: 'openrouter',
+    status: item.status === 'hidden' ? 'hidden' : 'visible',
+    supportedParameters: ['reasoning'],
+    lastSeenSnapshotId: item.lastSyncedSnapshot,
+  }))
+})
+
+const reasoningModelIndexForPicker = computed(() =>
+  showHiddenModelsInPickers.value
+    ? selectReasoningModelIndexAll(reasoningModelIndexItems.value)
+    : selectReasoningModelIndexVisible(reasoningModelIndexItems.value)
+)
 
 function getNormalizedErrorEnvelope(error: unknown): NormalizedErrorEnvelope | null {
   if (!error || typeof error !== 'object') return null
@@ -143,6 +290,25 @@ type ActiveStream = Readonly<{
   pendingAppendText: { value: string }
   flushing: { value: boolean }
   flushTimer: { id: ReturnType<typeof setTimeout> | null }
+  pendingReasoningDetails: { value: unknown[] }
+  reasoningFlushTimer: { id: ReturnType<typeof setTimeout> | null }
+  /** Merger 用于处理快照语义的 reasoning_details，提取真正的后缀增量 */
+  reasoningMerger: ReasoningDetailStreamMerger
+  /** 诊断追踪器：记录每个 chunkNo 的处理结果 */
+  diagnosticTracker: {
+    events: Array<{ chunkNo: number; key: string; deltaLen: number; action: 'queued' | 'skipped'; reason?: string }>
+    totalQueued: number
+    totalSkipped: number
+    totalDeltaLen: number
+    // chunkNo 到文本区间的映射 [start, end)
+    chunkRanges: Array<{ chunkNo: number; start: number; end: number }>
+    textCursor: number
+    // DB 统计
+    dbInserted: number
+    dbSkipped: number
+    dbIgnored: number
+    dbSumDeltaLenInserted: number
+  }
 }>
 
 const activeStream = ref<ActiveStream | null>(null)
@@ -169,6 +335,114 @@ function hasDbBridge(): boolean {
   return !!(bridge && typeof bridge.invoke === 'function')
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object') return null
+  return value as Record<string, unknown>
+}
+
+function extractReasoningDetailsFromMeta(meta: unknown): unknown[] {
+  const obj = asRecord(meta)
+  const raw = obj?.reasoningDetailsRaw
+  if (Array.isArray(raw)) return raw as unknown[]
+  return []
+}
+
+function extractReasoningTextFromDetails(details: unknown[]): {
+  reasoningText?: string
+  summaryText?: string
+  encryptedData?: string
+  isEncrypted: boolean
+} {
+  let summaryText: string | undefined
+  let encryptedData: string | undefined
+  const reasoningTextParts: string[] = []
+  let isEncrypted = false
+
+  for (const detail of details) {
+    if (!detail || typeof detail !== 'object') continue
+    const type = (detail as any).type
+    if (type === 'reasoning.text') {
+      const text = (detail as any).text
+      if (typeof text === 'string' && text.length > 0) reasoningTextParts.push(text)
+      continue
+    }
+    if (type === 'reasoning.summary') {
+      const summary = (detail as any).summary ?? (detail as any).text
+      if (typeof summary === 'string' && summary.length > 0) summaryText = summary
+      continue
+    }
+    if (type === 'reasoning.encrypted') {
+      isEncrypted = true
+      const data = (detail as any).data
+      if (typeof data === 'string' && data.length > 0) {
+        encryptedData = encryptedData ? encryptedData + data : data
+      }
+      continue
+    }
+  }
+
+  const reasoningText = reasoningTextParts.length > 0 ? reasoningTextParts.join('') : undefined
+  return { reasoningText, summaryText, encryptedData, isEncrypted }
+}
+
+function extractRequestReasoningConfigFromMeta(meta: unknown): { mode: RequestedReasoningMode; effort?: ReasoningEffort; exclude?: boolean } | null {
+  const obj = asRecord(meta)
+  const config = asRecord(obj?.requestReasoningConfig)
+  const resolved = asRecord(config?.resolved) ?? asRecord(config?.normalized)
+  if (!resolved) return null
+
+  const mode = resolved?.mode === 'effort' ? 'effort' : 'auto'
+  const effortRaw = resolved?.effort
+  const effort = typeof effortRaw === 'string' && effortRaw !== 'auto' ? (effortRaw as ReasoningEffort) : undefined
+  const exclude = resolved?.exclude === true
+  return { mode, effort, exclude }
+}
+
+type IpcRendererLike = Readonly<{
+  on: (channel: string, listener: (...args: any[]) => void) => any
+}>
+
+function getIpcRenderer(): IpcRendererLike | null {
+  const ipc = (globalThis as any).ipcRenderer as IpcRendererLike | undefined
+  return ipc && typeof ipc.on === 'function' ? ipc : null
+}
+
+async function refreshModelLists() {
+  if (!hasDbBridge()) {
+    modelCatalogItems.value = []
+    reasoningModelIndexItems.value = []
+    modelCatalogNotice.value = '模型目录不可用（dbBridge 未就绪）'
+    return
+  }
+
+  try {
+    const [catalog, reasoningIndex] = await Promise.all([listModelCatalog('openrouter'), listReasoningModelIndex()])
+    modelCatalogItems.value = catalog
+    reasoningModelIndexItems.value = reasoningIndex
+
+    if (catalog.length === 0 && reasoningIndex.length === 0) {
+      modelCatalogNotice.value = '模型目录尚未同步（稍后自动刷新）'
+    } else if (catalog.length === 0 && reasoningIndex.length > 0) {
+      modelCatalogNotice.value = '模型目录为空（已回退到推理模型索引）'
+    } else if (reasoningIndex.length === 0) {
+      modelCatalogNotice.value = '推理模型索引尚未同步（仅显示目录）'
+    } else {
+      modelCatalogNotice.value = null
+    }
+  } catch (err) {
+    modelCatalogItems.value = []
+    reasoningModelIndexItems.value = []
+    modelCatalogNotice.value = '模型目录不可用（同步失败）'
+    if (shouldLogDebug()) {
+      console.warn('[ui-app] refreshModelLists failed (non-fatal):', err)
+    }
+  }
+}
+
+const onModelsSynced = async () => {
+  await refreshModelLists()
+}
+
 function toMessageVMTextFallback(raw: Readonly<{ id: string; role: string; body: string }>): MessageVM {
   const roleRaw = String(raw.role ?? '').trim()
   const role: MessageVM['role'] = roleRaw === 'user' ? 'user' : roleRaw === 'assistant' ? 'assistant' : 'tool'
@@ -186,7 +460,10 @@ function toMessageVMTextFallback(raw: Readonly<{ id: string; role: string; body:
   }
 }
 
-function hydrateStateFromPersistedMessages(convoId: string, rows: ReadonlyArray<Readonly<{ id: string; role: string; seq: number; body: string }>>) {
+function hydrateStateFromPersistedMessages(
+  convoId: string,
+  rows: ReadonlyArray<Readonly<{ id: string; role: string; seq: number; body: string; meta?: unknown }>>
+) {
   const s = createInitialState()
   s.runs[convoId] = { runId: convoId, status: 'idle', comments: [] }
   s.runMessageIds[convoId] = []
@@ -198,21 +475,26 @@ function hydrateStateFromPersistedMessages(convoId: string, rows: ReadonlyArray<
     const body = typeof r.body === 'string' ? r.body : String(r.body ?? '')
     const contentText = roleRaw === role ? body : `[role:${roleRaw}]\n${body}`
 
+    const meta = r.meta ?? null
+    const reasoningDetailsRaw = extractReasoningDetailsFromMeta(meta)
+    const hasEncryptedReasoning = reasoningDetailsRaw.some((detail) => detail && typeof detail === 'object' && (detail as any).type === 'reasoning.encrypted')
+    const requestConfig = extractRequestReasoningConfigFromMeta(meta)
+
     s.messages[messageId] = {
       messageId,
       role,
       contentText,
       contentBlocks: contentText.length > 0 ? [{ type: 'text', text: contentText }] : [],
       toolCalls: [],
-      reasoningDetailsRaw: [],
+      reasoningDetailsRaw,
       reasoningStreamingText: '',
       reasoningSummaryText: undefined,
       reasoningPanelState: 'collapsed',
-      hasEncryptedReasoning: false,
+      hasEncryptedReasoning,
       streaming: { isTarget: false, isComplete: true },
-      requestedReasoningMode: 'auto',
-      requestedReasoningEffort: undefined,
-      requestedReasoningExclude: false,
+      requestedReasoningMode: requestConfig?.mode === 'effort' ? 'effort' : 'auto',
+      requestedReasoningEffort: requestConfig?.mode === 'effort' ? requestConfig.effort : undefined,
+      requestedReasoningExclude: requestConfig?.mode === 'effort' ? requestConfig.exclude === true : false,
     }
 
     s.runMessageIds[convoId].push(messageId)
@@ -230,6 +512,19 @@ function questionIdForMessage(messageId: string, role: string): string | null {
 function isAnswerRootMessage(messageId: string): boolean {
   const meta = messageMetaById.value.get(messageId)
   return !!meta && meta.role === 'assistant' && meta.answerRootId === messageId
+}
+
+function chosenQuestionIdForAnswerRootMessage(answerRootMessageId: string): string | null {
+  const qid = questionIdForMessage(answerRootMessageId, 'assistant')
+  if (!qid) {
+    if (import.meta.env?.DEV) {
+      console.log('[ui-app] chosenQuestionIdForAnswerRootMessage: missing questionId (meta not ready?)', { answerRootMessageId })
+    }
+    return null
+  }
+  const chosen = turnFiltersByQuestionId.value.get(qid)?.chosenAnswerRootId
+  if (!chosen || chosen !== answerRootMessageId) return null
+  return qid
 }
 
 function isAnswerGroupStreamingForQuestion(questionId: string): boolean {
@@ -298,6 +593,102 @@ function getCandidateLoadToken(questionId: string): string {
   const qid = String(questionId ?? '').trim()
   const qEpoch = candidatesEpochByQuestionId.value.get(qid) ?? 0
   return `${candidatesEpochGlobal.value}:${qEpoch}`
+}
+
+function getQuestionSlotKey(baseMessageId: string | null): string {
+  const base = baseMessageId === null ? null : String(baseMessageId ?? '').trim() || null
+  return base ?? '__root__'
+}
+
+function getQuestionCandidateLoadToken(slotKey: string): string {
+  const key = String(slotKey ?? '').trim()
+  const epoch = questionCandidatesEpochBySlot.value.get(key) ?? 0
+  return `${questionCandidatesEpochGlobal.value}:${epoch}`
+}
+
+function invalidateQuestionCandidatesForSlot(baseMessageId: string | null) {
+  const slotKey = getQuestionSlotKey(baseMessageId)
+
+  const nextEpoch = (questionCandidatesEpochBySlot.value.get(slotKey) ?? 0) + 1
+  questionCandidatesEpochBySlot.value.set(slotKey, nextEpoch)
+  questionCandidatesEpochBySlot.value = new Map(questionCandidatesEpochBySlot.value)
+
+  if (questionCandidatesLoading.value.has(slotKey)) {
+    questionCandidatesLoading.value.delete(slotKey)
+    questionCandidatesLoading.value = new Map(questionCandidatesLoading.value)
+  }
+
+  if (questionCandidatesCache.value.has(slotKey)) {
+    questionCandidatesCache.value.delete(slotKey)
+    questionCandidatesCache.value = new Map(questionCandidatesCache.value)
+  }
+}
+
+async function ensureQuestionCandidatesLoadedForQuestion(questionId: string) {
+  const qid = String(questionId ?? '').trim()
+  const meta = qid ? messageMetaById.value.get(qid) : null
+  if (!qid || !meta || String(meta.role ?? '').trim() !== 'user') return
+  await ensureQuestionCandidatesLoadedForSlot(meta.parentId ?? null)
+}
+
+async function ensureQuestionCandidatesLoadedForSlot(baseMessageId: string | null) {
+  const bid = activeBranchId.value
+  if (!bid) return
+
+  const slotKey = getQuestionSlotKey(baseMessageId)
+  if (questionCandidatesCache.value.has(slotKey)) return
+
+  const token = getQuestionCandidateLoadToken(slotKey)
+  if (questionCandidatesLoading.value.get(slotKey) === token) return
+
+  questionCandidatesLoading.value.set(slotKey, token)
+  questionCandidatesLoading.value = new Map(questionCandidatesLoading.value)
+  try {
+    const list = await getQuestionCandidates(bid, baseMessageId, { limit: 200 })
+
+    if (activeBranchId.value !== bid) return
+    if (getQuestionCandidateLoadToken(slotKey) !== token) return
+
+    questionCandidatesCache.value.set(slotKey, list)
+    questionCandidatesCache.value = new Map(questionCandidatesCache.value)
+  } finally {
+    if (questionCandidatesLoading.value.get(slotKey) === token) {
+      questionCandidatesLoading.value.delete(slotKey)
+      questionCandidatesLoading.value = new Map(questionCandidatesLoading.value)
+    }
+  }
+}
+
+function getOrderedQuestionCandidatesOldToNew(baseMessageId: string | null): QuestionCandidate[] | null {
+  const key = getQuestionSlotKey(baseMessageId)
+  const cached = questionCandidatesCache.value.get(key)
+  if (!cached) return null
+  return [...cached].reverse()
+}
+
+function getQuestionPagerForQuestion(questionId: string): Readonly<{ index: number; total: number; canPrev: boolean; canNext: boolean }> | null {
+  const qid = String(questionId ?? '').trim()
+  if (!qid) return null
+  const meta = messageMetaById.value.get(qid)
+  if (!meta || meta.role !== 'user') return null
+
+  const ordered = getOrderedQuestionCandidatesOldToNew(meta.parentId ?? null)
+  if (!ordered) return null
+  const total = ordered.length
+  if (total <= 0) return { index: 0, total: 0, canPrev: false, canNext: false }
+
+  const idx = ordered.findIndex((c) => c.questionId === qid)
+  if (idx < 0) return { index: 0, total, canPrev: false, canNext: false }
+  return { index: idx, total, canPrev: idx > 0, canNext: idx < total - 1 }
+}
+
+function isQuestionSlotLoadingForQuestion(questionId: string): boolean {
+  const qid = String(questionId ?? '').trim()
+  if (!qid) return false
+  const meta = messageMetaById.value.get(qid)
+  if (!meta || meta.role !== 'user') return false
+  const slotKey = getQuestionSlotKey(meta.parentId ?? null)
+  return questionCandidatesLoading.value.has(slotKey)
 }
 
 function invalidateCandidatesForQuestion(questionId: string) {
@@ -469,6 +860,83 @@ function scheduleFlush(convoId: string, stream: ActiveStream, delayMs = 80) {
   }, delayMs)
 }
 
+function clearReasoningFlushTimer(stream: ActiveStream) {
+  if (!stream.reasoningFlushTimer.id) return
+  clearTimeout(stream.reasoningFlushTimer.id)
+  stream.reasoningFlushTimer.id = null
+}
+
+async function flushReasoningDetailSegments(stream: ActiveStream, assistantMessageId: string) {
+  const pending = stream.pendingReasoningDetails.value
+  if (!pending || pending.length === 0) return
+  const batch = pending.splice(0, pending.length)
+  try {
+    const result = await appendReasoningDetailSegments({ messageId: assistantMessageId, details: batch })
+    // 累加 DB 统计到 diagnosticTracker
+    stream.diagnosticTracker.dbInserted += result.inserted
+    stream.diagnosticTracker.dbSkipped += result.skipped
+    stream.diagnosticTracker.dbIgnored += result.ignored
+    stream.diagnosticTracker.dbSumDeltaLenInserted += result.sumDeltaLenInserted
+    if (shouldLogDebug() && (result.ignored > 0 || result.skipped > 0)) {
+      console.log('[reasoning-flush] batch stats', {
+        received: result.received,
+        inserted: result.inserted,
+        skipped: result.skipped,
+        ignored: result.ignored,
+        sumDeltaLenInserted: result.sumDeltaLenInserted,
+      })
+    }
+  } catch (err) {
+    if (shouldLogDebug()) console.warn('[ui-app] appendReasoningDetailSegments failed (non-fatal):', err)
+  }
+}
+
+function scheduleReasoningDetailFlush(stream: ActiveStream, assistantMessageId: string, delayMs = 250) {
+  if (stream.reasoningFlushTimer.id) return
+  stream.reasoningFlushTimer.id = setTimeout(async () => {
+    stream.reasoningFlushTimer.id = null
+    try {
+      await flushReasoningDetailSegments(stream, assistantMessageId)
+    } finally {
+      if (stream.pendingReasoningDetails.value.length > 0) {
+        scheduleReasoningDetailFlush(stream, assistantMessageId, delayMs)
+      }
+    }
+  }, delayMs)
+}
+
+function buildReasoningRequestConfigSnapshot(input: Readonly<{
+  requestedReasoningMode: RequestedReasoningMode
+  requestedReasoningEffortValue?: ReasoningEffort
+  requestedReasoningExclude: boolean
+}>): Readonly<{ raw: unknown; normalized: unknown; resolved: unknown }> {
+  const { requestedReasoningMode, requestedReasoningEffortValue, requestedReasoningExclude } = input
+  const rawReasoning =
+    requestedReasoningMode === 'auto'
+      ? null
+      : {
+          effort: requestedReasoningEffortValue ?? 'none',
+          ...(requestedReasoningExclude ? { exclude: true } : {}),
+        }
+
+  const normalized = {
+    mode: requestedReasoningMode,
+    effort: requestedReasoningMode === 'auto' ? 'auto' : (requestedReasoningEffortValue ?? 'none'),
+    exclude: requestedReasoningMode === 'auto' ? false : requestedReasoningExclude,
+  }
+
+  const resolved =
+    requestedReasoningMode === 'auto'
+      ? { mode: 'auto', effort: 'auto', exclude: false }
+      : { mode: 'effort', effort: requestedReasoningEffortValue ?? 'none', exclude: requestedReasoningExclude }
+
+  return {
+    raw: { reasoning: rawReasoning },
+    normalized,
+    resolved,
+  }
+}
+
 async function refreshConvos() {
   loadError.value = null
   convos.value = await listConvos({ order: 'updatedAt', limit: 200 })
@@ -498,8 +966,13 @@ function resetCandidatesCache() {
   candidatesEpochGlobal.value += 1
   candidatesCache.value = new Map()
   candidatesLoading.value = new Map()
+  candidatesEpochByQuestionId.value = new Map()
+  questionCandidatesEpochGlobal.value += 1
+  questionCandidatesCache.value = new Map()
+  questionCandidatesLoading.value = new Map()
+  questionCandidatesEpochBySlot.value = new Map()
   if (shouldLogDebug()) {
-    console.log('[ui-app] resetCandidatesCache', { epochGlobal: candidatesEpochGlobal.value })
+    console.log('[ui-app] resetCandidatesCache', { answerEpochGlobal: candidatesEpochGlobal.value, questionEpochGlobal: questionCandidatesEpochGlobal.value })
   }
 }
 
@@ -539,14 +1012,18 @@ async function loadTranscriptForBranch(branchId: string) {
   }
   if (debug && rendered.debug) console.log('[ui-app] context.getRenderableTurns debug', rendered.debug)
   const rows = rendered.messages
-  hydrateStateFromPersistedMessages(bid, rows.map((m) => ({ id: m.id, role: m.role, seq: m.seq, body: m.body })))
+  hydrateStateFromPersistedMessages(
+    bid,
+    rows.map((m) => ({ id: m.id, role: m.role, seq: m.seq, body: m.body, meta: m.meta }))
+  )
   const seqMap = new Map<string, number>()
   for (const m of rows) seqMap.set(m.id, m.seq)
   messageSeqById.value = seqMap
 
-  const metaMap = new Map<string, { questionId: string | null; answerRootId: string | null; role: string; status: string }>()
+  const metaMap = new Map<string, { parentId: string | null; questionId: string | null; answerRootId: string | null; role: string; status: string }>()
   for (const m of rows) {
     metaMap.set(m.id, {
+      parentId: m.parentId ?? null,
       questionId: m.questionId ?? null,
       answerRootId: m.answerRootId ?? null,
       role: String(m.role ?? '').trim(),
@@ -587,18 +1064,37 @@ async function loadTranscriptForBranch(branchId: string) {
   }
   if (invalidated) candidatesCache.value = new Map(candidatesCache.value)
 
+  // Self-heal: question candidate cache may become stale after question replace (branch_question_hide).
+  // If the cached question variants no longer contain the currently-visible question, drop the cache for that slot.
+  let qInvalidated = false
+  for (const qid of order) {
+    const base = messageMetaById.value.get(qid)?.parentId ?? null
+    const slotKey = getQuestionSlotKey(base)
+    const cached = questionCandidatesCache.value.get(slotKey)
+    if (!cached) continue
+    if (cached.some((c) => c.questionId === qid)) continue
+    questionCandidatesCache.value.delete(slotKey)
+    qInvalidated = true
+  }
+  if (qInvalidated) questionCandidatesCache.value = new Map(questionCandidatesCache.value)
+
   for (const qid of next.keys()) {
     void ensureCandidatesLoaded(qid)
+  }
+
+  for (const qid of order) {
+    void ensureQuestionCandidatesLoadedForQuestion(qid)
   }
 }
 
 // ======== UNIFIED REFRESH ENTRY (Anti-reordering Guard) ========
 // All transcript refreshes MUST use this function to ensure token-based ordering.
+// Note: assertInvariants() is NOT called here to avoid false positives during transient states.
+// Callers should invoke assertInvariants() at stable boundaries (after all state updates complete).
 async function refreshTranscriptLatestOnly() {
-  const bid = chosenBranchId()
+  const bid = activeBranchId.value
   if (!bid) return
   await loadTranscriptForBranch(bid)
-  assertInvariants()
 }
 
 // ======== INVARIANT ASSERTION (Development Only) ========
@@ -636,6 +1132,9 @@ async function finalizeRun(assistantMessageId: string) {
   
   // ② Then clear activeStream (single re-render with consistent state)
   clearActiveIfMatch(assistantMessageId)
+  
+  // ③ Assert invariants at stable boundary (after both refresh and clear complete)
+  assertInvariants()
 }
 
 function clearActiveIfMatch(assistantMessageId: string) {
@@ -667,6 +1166,7 @@ async function loadTranscriptForActiveConvo() {
     messageMetaById.value = new Map()
     turnFiltersByQuestionId.value = new Map()
     questionTurnOrder.value = []
+    applyReasoningPrefs(DEFAULT_REASONING_PREFS)
     return
   }
 
@@ -683,12 +1183,14 @@ async function loadTranscriptForActiveConvo() {
   activeBranchId.value = selected.id
   resetCandidatesCache()
   await refreshTranscriptLatestOnly()
+  await loadReasoningPrefsForActiveConvo()
 }
 
 async function onSelectConvo(convoId: string) {
   if (isRunning.value) return
   activeConvoId.value = convoId
-  await refreshTranscriptLatestOnly()
+  await loadTranscriptForActiveConvo()
+  assertInvariants() // Stable boundary: conversation switched and refreshed
 }
 
 async function onSelectBranch(branchId: string) {
@@ -698,6 +1200,7 @@ async function onSelectBranch(branchId: string) {
   activeBranchId.value = bid
   resetCandidatesCache()
   await refreshTranscriptLatestOnly()
+  assertInvariants() // Stable boundary: branch switched and refreshed
 }
 
 async function onRenameConvo(convoId: string, title: string) {
@@ -715,7 +1218,7 @@ async function onDeleteConvo(convoId: string) {
   try {
     await deleteConvo(convoId)
     await refreshConvos()
-    await refreshTranscriptLatestOnly()
+    await loadTranscriptForActiveConvo()
   } catch (err: any) {
     loadError.value = err?.message ? String(err.message) : String(err)
   }
@@ -725,7 +1228,9 @@ async function onMoveConvoToProject(convoId: string, projectId: string | null) {
   if (isRunning.value) return
   try {
     await setConvoProject(convoId, projectId)
+    await ensureProjectReasoningPrefsInitialized(projectId)
     await refreshConvos()
+    await loadReasoningPrefsForActiveConvo()
   } catch (err: any) {
     loadError.value = err?.message ? String(err.message) : String(err)
   }
@@ -736,7 +1241,7 @@ async function onBulkDeleteConvos(convoIds: string[]) {
   try {
     await deleteConvos(convoIds)
     await refreshConvos()
-    await refreshTranscriptLatestOnly()
+    await loadTranscriptForActiveConvo()
   } catch (err: any) {
     loadError.value = err?.message ? String(err.message) : String(err)
   }
@@ -746,7 +1251,9 @@ async function onBulkMoveConvosToProject(convoIds: string[], projectId: string |
   if (isRunning.value) return
   try {
     await setConvoProjectMany(convoIds, projectId)
+    await ensureProjectReasoningPrefsInitialized(projectId)
     await refreshConvos()
+    await loadReasoningPrefsForActiveConvo()
   } catch (err: any) {
     loadError.value = err?.message ? String(err.message) : String(err)
   }
@@ -757,7 +1264,8 @@ async function onCreateConvo() {
   const created = await createConvo({ title: `New chat ${new Date().toLocaleString()}` })
   await refreshConvos()
   if (created) activeConvoId.value = created.id
-  await refreshTranscriptLatestOnly()
+  await loadTranscriptForActiveConvo()
+  assertInvariants() // Stable boundary: new conversation created and active
 }
 
 const convoListItems = computed<ConversationListItem[]>(() =>
@@ -774,7 +1282,7 @@ async function ensureActiveConvo(): Promise<string> {
   await refreshConvos()
   if (!created?.id) throw new Error('Failed to create conversation')
   activeConvoId.value = created.id
-  await refreshTranscriptLatestOnly()
+  await loadTranscriptForActiveConvo()
   return created.id
 }
 
@@ -792,6 +1300,210 @@ async function onAbort() {
   const s = activeStream.value
   if (!s) return
   s.abort.abort('abort')
+}
+
+function onToggleReasoningPanelState(messageId?: string) {
+  const targetId = typeof messageId === 'string' && messageId.trim().length > 0 ? messageId : lastAssistantMessageId.value
+  if (!targetId) return
+  state.value = toggleReasoningPanelState(state.value, targetId)
+}
+
+function getRequestedReasoningConfig(): Readonly<{
+  requestedReasoningMode: RequestedReasoningMode
+  requestedReasoningEffortValue?: ReasoningEffort
+  requestedReasoningExclude: boolean
+}> {
+  const requestedReasoningMode: RequestedReasoningMode = requestedReasoningEffort.value === 'auto' ? 'auto' : 'effort'
+  const requestedReasoningEffortValue: ReasoningEffort | undefined =
+    requestedReasoningMode === 'auto' ? undefined : (requestedReasoningEffort.value as ReasoningEffort)
+  const requestedReasoningExcludeValue = requestedReasoningMode === 'auto' ? false : requestedReasoningExclude.value
+  return {
+    requestedReasoningMode,
+    requestedReasoningEffortValue,
+    requestedReasoningExclude: requestedReasoningExcludeValue,
+  }
+}
+
+const DEFAULT_REASONING_PREFS: ReasoningPrefs = { mode: 'auto', effort: 'auto', exclude: false }
+const REASONING_EFFORTS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
+
+function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return typeof value === 'string' && (REASONING_EFFORTS as string[]).includes(value)
+}
+
+function normalizeReasoningPrefs(raw: unknown): ReasoningPrefs | null {
+  if (!raw || typeof raw !== 'object') return null
+  const mode = (raw as any).mode === 'effort' || (raw as any).mode === 'auto' ? (raw as any).mode : 'auto'
+  const effortRaw = (raw as any).effort
+  const effort = effortRaw === 'auto' || isReasoningEffort(effortRaw) ? effortRaw : undefined
+  const exclude = (raw as any).exclude === true
+
+  if (mode === 'auto') {
+    return { mode: 'auto', effort: 'auto', exclude: false }
+  }
+
+  return { mode: 'effort', effort: (effort && effort !== 'auto' ? effort : 'none'), exclude }
+}
+
+function extractReasoningPrefs(meta: unknown): ReasoningPrefs | null {
+  if (!meta || typeof meta !== 'object') return null
+  return normalizeReasoningPrefs((meta as any).reasoningPrefs)
+}
+
+function buildReasoningPrefsFromUi(): ReasoningPrefs {
+  const mode: RequestedReasoningMode = requestedReasoningEffort.value === 'auto' ? 'auto' : 'effort'
+  const effort = requestedReasoningEffort.value
+  const exclude = mode === 'auto' ? false : requestedReasoningExclude.value
+  return { mode, effort, exclude }
+}
+
+function applyReasoningPrefs(prefs: ReasoningPrefs) {
+  skipReasoningPrefSave.value = true
+  if (prefs.mode === 'auto') {
+    requestedReasoningEffort.value = 'auto'
+    requestedReasoningExclude.value = false
+    setTimeout(() => {
+      skipReasoningPrefSave.value = false
+    }, 0)
+    return
+  }
+
+  requestedReasoningEffort.value = prefs.effort && prefs.effort !== 'auto' ? prefs.effort : 'none'
+  requestedReasoningExclude.value = prefs.exclude === true
+  setTimeout(() => {
+    skipReasoningPrefSave.value = false
+  }, 0)
+}
+
+function mergeReasoningPrefsIntoMeta(meta: unknown, prefs: ReasoningPrefs): Record<string, unknown> {
+  const base = meta && typeof meta === 'object' ? { ...(meta as Record<string, unknown>) } : {}
+  return { ...base, reasoningPrefs: prefs }
+}
+
+function getActiveConvoRecord(): ConvoSummary | null {
+  const convoId = activeConvoId.value
+  if (!convoId) return null
+  return convos.value.find((c) => c.id === convoId) ?? null
+}
+
+async function refreshGlobalReasoningPrefs(): Promise<ReasoningPrefs | null> {
+  try {
+    const raw = await getReasoningPrefs()
+    const normalized = normalizeReasoningPrefs(raw)
+    globalReasoningPrefs.value = normalized
+    return normalized
+  } catch (err) {
+    if (shouldLogDebug()) console.warn('[ui-app] refreshGlobalReasoningPrefs failed (non-fatal):', err)
+    globalReasoningPrefs.value = null
+    return null
+  }
+}
+
+async function loadProjectReasoningPrefs(projectId: string): Promise<ReasoningPrefs | null> {
+  const cached = projects.value.find((p) => p.id === projectId)
+  const cachedPrefs = extractReasoningPrefs(cached?.meta ?? null)
+  if (cachedPrefs) return cachedPrefs
+
+  const found = await findProjectById(projectId)
+  if (found) {
+    projects.value = projects.value.some((p) => p.id === found.id)
+      ? projects.value.map((p) => (p.id === found.id ? found : p))
+      : [...projects.value, found]
+    return extractReasoningPrefs(found.meta ?? null)
+  }
+
+  return null
+}
+
+async function loadReasoningPrefsForActiveConvo() {
+  const convo = getActiveConvoRecord()
+  if (!convo) {
+    applyReasoningPrefs(DEFAULT_REASONING_PREFS)
+    return
+  }
+
+  const convoPrefs = extractReasoningPrefs(convo.meta ?? null)
+  let projectPrefs: ReasoningPrefs | null = null
+  if (!convoPrefs && convo.projectId) {
+    projectPrefs = await loadProjectReasoningPrefs(convo.projectId)
+  }
+
+  const globalPrefs = globalReasoningPrefs.value ?? (await refreshGlobalReasoningPrefs())
+  const effective = convoPrefs ?? projectPrefs ?? globalPrefs ?? DEFAULT_REASONING_PREFS
+  applyReasoningPrefs(effective)
+}
+
+function scheduleReasoningPrefsSave() {
+  if (reasoningPrefSaveTimer.value) clearTimeout(reasoningPrefSaveTimer.value)
+  reasoningPrefSaveTimer.value = setTimeout(() => {
+    reasoningPrefSaveTimer.value = null
+    void persistReasoningPrefs()
+  }, 500)
+}
+
+function handleGlobalReasoningPrefsUpdated(event: Event) {
+  const detail = (event as CustomEvent).detail
+  const normalized = normalizeReasoningPrefs(detail) ?? DEFAULT_REASONING_PREFS
+  globalReasoningPrefs.value = normalized
+
+  const convo = getActiveConvoRecord()
+  if (!convo) return
+  const convoPrefs = extractReasoningPrefs(convo.meta ?? null)
+  if (convoPrefs) return
+  const projectPrefs = convo.projectId
+    ? extractReasoningPrefs(projects.value.find((p) => p.id === convo.projectId)?.meta ?? null)
+    : null
+  if (projectPrefs) return
+  applyReasoningPrefs(normalized)
+}
+
+async function persistReasoningPrefs() {
+  const convo = getActiveConvoRecord()
+  if (!convo) return
+  const prefs = buildReasoningPrefsFromUi()
+  const nextMeta = mergeReasoningPrefsIntoMeta(convo.meta ?? null, prefs)
+
+  try {
+    await saveConvo({
+      id: convo.id,
+      title: convo.title,
+      projectId: convo.projectId ?? null,
+      meta: nextMeta,
+    })
+    convos.value = convos.value.map((c) => (c.id === convo.id ? { ...c, meta: nextMeta } : c))
+  } catch (err) {
+    if (shouldLogDebug()) console.warn('[ui-app] persistReasoningPrefs failed (non-fatal):', err)
+  }
+
+  if (!convo.projectId) {
+    try {
+      await setReasoningPrefs(prefs)
+      globalReasoningPrefs.value = prefs
+    } catch (err) {
+      if (shouldLogDebug()) console.warn('[ui-app] setReasoningPrefs failed (non-fatal):', err)
+    }
+  }
+}
+
+async function ensureProjectReasoningPrefsInitialized(projectId: string | null) {
+  if (!projectId) return
+  const existing = await loadProjectReasoningPrefs(projectId)
+  if (existing) return
+
+  const project = await findProjectById(projectId)
+  if (!project) return
+
+  const prefs = buildReasoningPrefsFromUi()
+  const nextMeta = mergeReasoningPrefsIntoMeta(project.meta ?? null, prefs)
+
+  try {
+    await saveProject({ id: project.id, name: project.name, meta: nextMeta })
+    projects.value = projects.value.some((p) => p.id === project.id)
+      ? projects.value.map((p) => (p.id === project.id ? { ...p, meta: nextMeta } : p))
+      : [...projects.value, { ...project, meta: nextMeta }]
+  } catch (err) {
+    if (shouldLogDebug()) console.warn('[ui-app] ensureProjectReasoningPrefsInitialized failed (non-fatal):', err)
+  }
 }
 
 function openSettings() {
@@ -855,18 +1567,33 @@ async function startStreamingForAssistantTurn(input: Readonly<{
   }
 
   const baseUrl = await getOpenRouterBaseUrl()
-  const model = 'openrouter/auto'
+  const modelId = model.value.trim() || 'openrouter/auto'
+
+  const { requestedReasoningMode, requestedReasoningEffortValue, requestedReasoningExclude } = getRequestedReasoningConfig()
 
   const started = startGeneration(state.value, {
     runId: branchId,
     requestId: randomId('req'),
-    model,
+    model: modelId,
     userMessageId: questionId,
     userMessageText: questionText,
     assistantMessageId,
-    requestedReasoningMode: 'auto',
+    requestedReasoningMode,
+    ...(requestedReasoningEffortValue ? { requestedReasoningEffort: requestedReasoningEffortValue } : {}),
+    ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
   })
   state.value = started.state
+
+  const requestReasoningConfig = buildReasoningRequestConfigSnapshot({
+    requestedReasoningMode,
+    requestedReasoningEffortValue,
+    requestedReasoningExclude,
+  })
+  try {
+    await setMessageReasoningRequestConfig({ messageId: assistantMessageId, value: requestReasoningConfig })
+  } catch (err) {
+    if (shouldLogDebug()) console.warn('[ui-app] setMessageReasoningRequestConfig failed (non-fatal):', err)
+  }
 
   const abort = new AbortController()
   const stream: ActiveStream = {
@@ -876,6 +1603,21 @@ async function startStreamingForAssistantTurn(input: Readonly<{
     pendingAppendText: { value: '' },
     flushing: { value: false },
     flushTimer: { id: null },
+    pendingReasoningDetails: { value: [] },
+    reasoningFlushTimer: { id: null },
+    reasoningMerger: new ReasoningDetailStreamMerger(),
+    diagnosticTracker: {
+      events: [],
+      totalQueued: 0,
+      totalSkipped: 0,
+      totalDeltaLen: 0,
+      chunkRanges: [],
+      textCursor: 0,
+      dbInserted: 0,
+      dbSkipped: 0,
+      dbIgnored: 0,
+      dbSumDeltaLenInserted: 0,
+    },
   }
   activeStream.value = stream
 
@@ -889,8 +1631,10 @@ async function startStreamingForAssistantTurn(input: Readonly<{
       signal: abort.signal,
       config: {
         apiKey,
-        model,
-        requestedReasoningMode: 'auto',
+        model: modelId,
+        requestedReasoningMode,
+        ...(requestedReasoningEffortValue ? { requestedReasoningEffort: requestedReasoningEffortValue } : {}),
+        ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
         ...(baseUrl ? { baseUrl } : {}),
       },
     })) {
@@ -905,10 +1649,61 @@ async function startStreamingForAssistantTurn(input: Readonly<{
         scheduleFlush(convoId, stream)
       }
 
+      if (ev.type === 'MessageDeltaReasoningDetail' && ev.messageId === assistantMessageId) {
+        // 使用 Merger 处理快照语义，提取真正的后缀增量
+        const merged = stream.reasoningMerger.merge(ev.detail)
+        const key = merged?.key ?? 'unknown'
+
+        if (merged) {
+          const deltaLen = (merged.deltaText?.length ?? 0) + (merged.deltaSummary?.length ?? 0) + (merged.deltaData?.length ?? 0)
+          // 构建带有真正 delta 和 offset 信息的对象用于存储
+          const detailWithDelta = {
+            ...merged.originalDetail,
+            __deltaText: merged.deltaText,
+            __deltaSummary: merged.deltaSummary,
+            __deltaData: merged.deltaData,
+            __isSnapshot: merged.isSnapshot,
+            __hasNewMetadata: merged.hasNewMetadata,
+            __key: merged.key,
+            __offsetBefore: merged.offsetBefore,
+            __offsetAfter: merged.offsetAfter,
+            __metadataDigest: merged.metadataDigest,
+          }
+          stream.pendingReasoningDetails.value.push(detailWithDelta)
+          scheduleReasoningDetailFlush(stream, assistantMessageId)
+
+          // 追踪诊断信息
+          stream.diagnosticTracker.events.push({ key, offsetBefore: merged.offsetBefore, deltaLen, action: 'queued' })
+          stream.diagnosticTracker.totalQueued++
+          stream.diagnosticTracker.totalDeltaLen += deltaLen
+          // 记录 offset 到文本区间的映射 [start, end)
+          const start = stream.diagnosticTracker.textCursor
+          const end = start + deltaLen
+          stream.diagnosticTracker.chunkRanges.push({ key, offsetBefore: merged.offsetBefore, start, end })
+          stream.diagnosticTracker.textCursor = end
+
+          if (shouldLogDebug()) {
+            const snapshotTail = merged.isSnapshot && typeof (merged.originalDetail as any)?.text === 'string'
+              ? (merged.originalDetail as any).text.slice(-30)
+              : undefined
+            console.log('[reasoning-chunk]', { key, offsetBefore: merged.offsetBefore, deltaLen, hasNewMetadata: merged.hasNewMetadata, isSnapshot: merged.isSnapshot, deltaHead: merged.deltaText?.slice(0, 30), snapshotTail })
+          }
+        } else {
+          // Merger 返回 null，记录跳过
+          stream.diagnosticTracker.events.push({ key, deltaLen: 0, action: 'skipped', reason: 'merger_null' })
+          stream.diagnosticTracker.totalSkipped++
+          if (shouldLogDebug()) {
+            console.log('[reasoning-chunk] SKIPPED (merger returned null)', { key })
+          }
+        }
+      }
+
       if (ev.type === 'StreamDone' || ev.type === 'StreamAbort' || ev.type === 'StreamError') {
         if (ev.type === 'StreamAbort' || ev.type === 'StreamError') finalStatus = 'error'
         clearFlushTimer(stream)
         await flushPending(convoId, stream)
+        clearReasoningFlushTimer(stream)
+        await flushReasoningDetailSegments(stream, assistantMessageId)
       }
     }
 
@@ -925,7 +1720,207 @@ async function startStreamingForAssistantTurn(input: Readonly<{
     }
   } finally {
     clearFlushTimer(stream)
+    clearReasoningFlushTimer(stream)
+    // 输出 Merger 诊断统计
+    if (shouldLogDebug()) {
+      const stats = stream.reasoningMerger.getStats()
+      console.log('[reasoning-merger] stream stats:', stats)
+      if (stats.isLikelySnapshot) {
+        console.log('[reasoning-merger] ⚠️ 检测到快照语义 (>50% prefixMatch)，已自动提取后缀增量')
+      }
+    }
     // Use unified finalization to enforce: refresh FIRST, then clear activeStream.
+    try {
+      // 记录 flush 前的队列信息
+      const pendingCountBeforeFlush = stream.pendingReasoningDetails.value.length
+      await flushReasoningDetailSegments(stream, assistantMessageId)
+      await finalizeReasoningDetails({ messageId: assistantMessageId })
+
+      if (shouldLogDebug()) {
+        const mergerStats = stream.reasoningMerger.getStats()
+        const mergerSnapshot = stream.reasoningMerger.getMergedSnapshots()
+        const mergerExtracted = extractReasoningTextFromDetails(mergerSnapshot)
+        const mergerFinalText = mergerExtracted.reasoningText
+        const isEncryptedModel = mergerExtracted.isEncrypted
+
+        let dbReplaySnapshot: unknown[] | null = null
+        let dbFinalText: string | undefined
+        let dbExtracted: ReturnType<typeof extractReasoningTextFromDetails> | null = null
+        let dbSegmentsCount: number | undefined
+        try {
+          const bridge = (globalThis as any).dbBridge as { invoke?: (method: string, params?: unknown) => Promise<any> } | undefined
+          if (bridge?.invoke) {
+            const rows = await bridge.invoke('message.list', { convoId, fromSeq: assistantSeq, limit: 1 })
+            const row = Array.isArray(rows)
+              ? (rows.find((r) => r && typeof r === 'object' && (r as any).id === assistantMessageId) ?? rows[0])
+              : null
+            const meta = row && typeof (row as any).meta === 'object' ? (row as any).meta : null
+            const reasoningDetailsRaw = Array.isArray(meta?.reasoningDetailsRaw) ? meta.reasoningDetailsRaw : null
+            if (reasoningDetailsRaw) {
+              dbReplaySnapshot = reasoningDetailsRaw
+              dbExtracted = extractReasoningTextFromDetails(dbReplaySnapshot)
+              dbFinalText = dbExtracted.reasoningText
+            }
+            // 尝试获取 segments count（如果 meta 中有的话）
+            dbSegmentsCount = typeof meta?.reasoningSegmentsCount === 'number' ? meta.reasoningSegmentsCount : undefined
+          }
+        } catch (err) {
+          console.warn('[reasoning-verify] failed to load db replay snapshot:', err)
+        }
+
+        const uiFinalText = selectMessage(state.value, assistantMessageId)?.reasoningView?.reasoningText
+
+        // 输出 diagnosticTracker 摘要（包含 DB 统计）
+        const tracker = stream.diagnosticTracker
+        console.log('[reasoning-diag] tracker summary', {
+          // UI 侧统计
+          totalQueued: tracker.totalQueued,
+          totalSkipped: tracker.totalSkipped,
+          totalDeltaLen: tracker.totalDeltaLen,
+          eventCount: tracker.events.length,
+          // DB 侧统计
+          dbInserted: tracker.dbInserted,
+          dbSkipped: tracker.dbSkipped,
+          dbIgnored: tracker.dbIgnored,
+          dbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
+        })
+
+        // 一次性 DB 统计查询（作为对照）
+        const dbRealStats = await getReasoningSegmentsStats(assistantMessageId)
+        if (dbRealStats) {
+          const matchCnt = dbRealStats.cnt === tracker.dbInserted
+          const matchSum = dbRealStats.sumLen === tracker.dbSumDeltaLenInserted
+          console.log('[reasoning-diag] DB real stats', {
+            segmentsInDb: dbRealStats.cnt,
+            sumDeltaTextLenInDb: dbRealStats.sumLen,
+            trackerDbInserted: tracker.dbInserted,
+            trackerDbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
+            matchCnt,
+            matchSum,
+          })
+          // 失败时输出差异诊断
+          if (!matchCnt || !matchSum) {
+            console.warn('[reasoning-diag] MISMATCH', {
+              messageId: assistantMessageId,
+              cntDiff: dbRealStats.cnt - tracker.dbInserted,
+              sumDiff: dbRealStats.sumLen - tracker.dbSumDeltaLenInserted,
+              trackerIgnored: tracker.dbIgnored,
+              trackerSkipped: tracker.dbSkipped,
+            })
+          }
+        } else {
+          console.warn('[reasoning-diag] failed to get DB real stats for', assistantMessageId)
+        }
+
+        // 恒等式验证
+        const eventCountExpected = tracker.dbInserted + tracker.dbIgnored + tracker.dbSkipped
+        const invariant1 = tracker.totalQueued === eventCountExpected
+        console.log('[reasoning-diag] invariants', {
+          'eventCount == dbInserted + dbIgnored + dbSkipped': invariant1,
+          totalQueued: tracker.totalQueued,
+          eventCountExpected,
+          'totalDeltaLen == dbSumDeltaLenInserted': tracker.totalDeltaLen === tracker.dbSumDeltaLenInserted,
+          totalDeltaLen: tracker.totalDeltaLen,
+          dbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
+          deltaLenDiff: tracker.totalDeltaLen - tracker.dbSumDeltaLenInserted,
+        })
+
+        // 详细诊断日志
+        console.log('[reasoning-verify] diagnostic info', {
+          messageId: assistantMessageId,
+          mergerChunkCount: mergerStats.chunkCount,
+          mergerDeltaCount: mergerStats.deltaCount,
+          mergerSnapshotCount: mergerStats.snapshotCount,
+          mergerUniqueKeys: mergerStats.uniqueKeys,
+          pendingCountBeforeFlush,
+          dbSegmentsCount,
+          isLikelySnapshot: mergerStats.isLikelySnapshot,
+          isEncryptedModel,
+        })
+
+        // 对于加密模型，比较 encryptedData；否则比较 reasoningText
+        const mergerCompareText = isEncryptedModel ? mergerExtracted.encryptedData : mergerFinalText
+        const dbCompareText = isEncryptedModel ? dbExtracted?.encryptedData : dbFinalText
+
+        console.log('[reasoning-verify] text compare', {
+          messageId: assistantMessageId,
+          isEncryptedModel,
+          mergerFinalTextLen: mergerCompareText?.length ?? 0,
+          dbFinalTextLen: dbCompareText?.length ?? 0,
+          uiFinalTextLen: uiFinalText?.length ?? 0,
+          // 加密模型不输出原文（避免日志过大）
+          mergerFinalText: isEncryptedModel ? `[encrypted ${mergerCompareText?.length ?? 0} bytes]` : mergerFinalText,
+          dbFinalText: isEncryptedModel ? `[encrypted ${dbCompareText?.length ?? 0} bytes]` : dbFinalText,
+          uiFinalText: isEncryptedModel ? '[encrypted - see UI]' : uiFinalText,
+        })
+
+        // 加密模型：比较 encryptedData；非加密模型：比较 reasoningText
+        const textMismatch = mergerCompareText !== dbCompareText
+        // UI 文本对于加密模型无法直接比较（UI 可能解密显示），跳过 UI 比较
+        const uiMismatch = !isEncryptedModel && dbFinalText !== uiFinalText
+
+        if (textMismatch || uiMismatch) {
+          // 找出具体差异位置（使用比较用的文本）
+          let diffPos = -1
+          const shorter = mergerCompareText && dbCompareText
+            ? (mergerCompareText.length <= dbCompareText.length ? mergerCompareText : dbCompareText)
+            : ''
+          const longer = mergerCompareText && dbCompareText
+            ? (mergerCompareText.length > dbCompareText.length ? mergerCompareText : dbCompareText)
+            : ''
+          for (let i = 0; i < shorter.length; i++) {
+            if (shorter[i] !== longer[i]) {
+              diffPos = i
+              break
+            }
+          }
+          if (diffPos === -1 && shorter.length !== longer.length) {
+            diffPos = shorter.length
+          }
+
+          console.warn('[reasoning-verify] MISMATCH DETECTED', {
+            messageId: assistantMessageId,
+            isEncryptedModel,
+            textMismatch,
+            uiMismatch,
+            diffPos,
+            diffContext: diffPos >= 0 && !isEncryptedModel ? {
+              mergerAround: mergerCompareText?.slice(Math.max(0, diffPos - 20), diffPos + 20),
+              dbAround: dbCompareText?.slice(Math.max(0, diffPos - 20), diffPos + 20),
+            } : null,
+            mergerSnapshotCount: mergerSnapshot.length,
+            dbSnapshotCount: dbReplaySnapshot?.length ?? 0,
+          })
+
+          // 用 diffPos 映射到 chunkNo（精确定位被吞的 chunk）
+          const affectedChunk = tracker.chunkRanges.find(r => r.start <= diffPos && diffPos < r.end)
+          console.warn('[reasoning-verify] diffPos → chunkNo mapping', {
+            diffPos,
+            affectedChunkNo: affectedChunk?.chunkNo ?? 'not found',
+            affectedChunkRange: affectedChunk ? `[${affectedChunk.start}, ${affectedChunk.end})` : null,
+            nearbyChunks: tracker.chunkRanges.filter(r => 
+              Math.abs(r.start - diffPos) < 50 || Math.abs(r.end - diffPos) < 50
+            ).slice(0, 5),
+          })
+
+          // 输出每个 snapshot 的 text 长度对比
+          console.warn('[reasoning-verify] snapshot details', {
+            mergerSnapshots: mergerSnapshot.map((s: any) => ({
+              key: `${s.id ?? ''}|${s.index ?? ''}|${s.type ?? ''}`,
+              textLen: s.text?.length ?? 0,
+              textPreview: s.text?.slice(0, 50),
+            })),
+            dbSnapshots: dbReplaySnapshot?.map((s: any) => ({
+              key: `${s.id ?? ''}|${s.index ?? ''}|${s.type ?? ''}`,
+              textLen: s.text?.length ?? 0,
+              textPreview: s.text?.slice(0, 50),
+            })),
+          })
+        }
+      }
+    } catch (err) {
+      if (shouldLogDebug()) console.warn('[ui-app] finalizeReasoningDetails failed (non-fatal):', err)
+    }
     await finalizeRun(assistantMessageId)
   }
 }
@@ -947,7 +1942,7 @@ async function onSend() {
   }
 
   const baseUrl = await getOpenRouterBaseUrl()
-  const model = 'openrouter/auto'
+  const modelId = model.value.trim() || 'openrouter/auto'
 
   let contextMessages: any[] = []
   try {
@@ -958,6 +1953,7 @@ async function onSend() {
   }
 
   const begun = await beginTurn(branch.id, text)
+  // Branch tip update (definition): the new assistant becomes the insertion point for the next turn.
   patchBranch(branch.id, { headMessageId: begun.assistantId, updatedAt: Date.now() })
 
   const userMessageId = begun.questionId
@@ -967,16 +1963,31 @@ async function onSend() {
   messageSeqById.value.set(userMessageId, begun.questionSeq)
   messageSeqById.value.set(assistantMessageId, assistantSeq)
 
+  const { requestedReasoningMode, requestedReasoningEffortValue, requestedReasoningExclude } = getRequestedReasoningConfig()
+
   const started = startGeneration(state.value, {
     runId: branch.id,
     requestId: randomId('req'),
-    model,
+    model: modelId,
     userMessageId,
     userMessageText: text,
     assistantMessageId,
-    requestedReasoningMode: 'auto',
+    requestedReasoningMode,
+    ...(requestedReasoningEffortValue ? { requestedReasoningEffort: requestedReasoningEffortValue } : {}),
+    ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
   })
   state.value = started.state
+
+  const requestReasoningConfig = buildReasoningRequestConfigSnapshot({
+    requestedReasoningMode,
+    requestedReasoningEffortValue,
+    requestedReasoningExclude,
+  })
+  try {
+    await setMessageReasoningRequestConfig({ messageId: assistantMessageId, value: requestReasoningConfig })
+  } catch (err) {
+    if (shouldLogDebug()) console.warn('[ui-app] setMessageReasoningRequestConfig failed (non-fatal):', err)
+  }
 
   const abort = new AbortController()
   const stream: ActiveStream = {
@@ -986,6 +1997,21 @@ async function onSend() {
     pendingAppendText: { value: '' },
     flushing: { value: false },
     flushTimer: { id: null },
+    pendingReasoningDetails: { value: [] },
+    reasoningFlushTimer: { id: null },
+    reasoningMerger: new ReasoningDetailStreamMerger(),
+    diagnosticTracker: {
+      events: [],
+      totalQueued: 0,
+      totalSkipped: 0,
+      totalDeltaLen: 0,
+      chunkRanges: [],
+      textCursor: 0,
+      dbInserted: 0,
+      dbSkipped: 0,
+      dbIgnored: 0,
+      dbSumDeltaLenInserted: 0,
+    },
   }
   activeStream.value = stream
 
@@ -999,8 +2025,10 @@ async function onSend() {
       signal: abort.signal,
       config: {
         apiKey,
-        model,
-        requestedReasoningMode: 'auto',
+        model: modelId,
+        requestedReasoningMode,
+        ...(requestedReasoningEffortValue ? { requestedReasoningEffort: requestedReasoningEffortValue } : {}),
+        ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
         ...(baseUrl ? { baseUrl } : {}),
       },
     })) {
@@ -1015,10 +2043,61 @@ async function onSend() {
         scheduleFlush(convoId, stream)
       }
 
+      if (ev.type === 'MessageDeltaReasoningDetail' && ev.messageId === assistantMessageId) {
+        // 使用 Merger 处理快照语义，提取真正的后缀增量
+        const merged = stream.reasoningMerger.merge(ev.detail)
+        const key = merged?.key ?? 'unknown'
+
+        if (merged) {
+          const deltaLen = (merged.deltaText?.length ?? 0) + (merged.deltaSummary?.length ?? 0) + (merged.deltaData?.length ?? 0)
+          // 构建带有真正 delta 和 offset 信息的对象用于存储
+          const detailWithDelta = {
+            ...merged.originalDetail,
+            __deltaText: merged.deltaText,
+            __deltaSummary: merged.deltaSummary,
+            __deltaData: merged.deltaData,
+            __isSnapshot: merged.isSnapshot,
+            __hasNewMetadata: merged.hasNewMetadata,
+            __key: merged.key,
+            __offsetBefore: merged.offsetBefore,
+            __offsetAfter: merged.offsetAfter,
+            __metadataDigest: merged.metadataDigest,
+          }
+          stream.pendingReasoningDetails.value.push(detailWithDelta)
+          scheduleReasoningDetailFlush(stream, assistantMessageId)
+
+          // 追踪诊断信息
+          stream.diagnosticTracker.events.push({ key, offsetBefore: merged.offsetBefore, deltaLen, action: 'queued' })
+          stream.diagnosticTracker.totalQueued++
+          stream.diagnosticTracker.totalDeltaLen += deltaLen
+          // 记录 offset 到文本区间的映射 [start, end)
+          const start = stream.diagnosticTracker.textCursor
+          const end = start + deltaLen
+          stream.diagnosticTracker.chunkRanges.push({ key, offsetBefore: merged.offsetBefore, start, end })
+          stream.diagnosticTracker.textCursor = end
+
+          if (shouldLogDebug()) {
+            const snapshotTail = merged.isSnapshot && typeof (merged.originalDetail as any)?.text === 'string'
+              ? (merged.originalDetail as any).text.slice(-30)
+              : undefined
+            console.log('[reasoning-chunk]', { key, offsetBefore: merged.offsetBefore, deltaLen, hasNewMetadata: merged.hasNewMetadata, isSnapshot: merged.isSnapshot, deltaHead: merged.deltaText?.slice(0, 30), snapshotTail })
+          }
+        } else {
+          // Merger 返回 null，记录跳过
+          stream.diagnosticTracker.events.push({ key, deltaLen: 0, action: 'skipped', reason: 'merger_null' })
+          stream.diagnosticTracker.totalSkipped++
+          if (shouldLogDebug()) {
+            console.log('[reasoning-chunk] SKIPPED (merger returned null)', { key })
+          }
+        }
+      }
+
       if (ev.type === 'StreamDone' || ev.type === 'StreamAbort' || ev.type === 'StreamError') {
         if (ev.type === 'StreamAbort' || ev.type === 'StreamError') finalStatus = 'error'
         clearFlushTimer(stream)
         await flushPending(convoId, stream)
+        clearReasoningFlushTimer(stream)
+        await flushReasoningDetailSegments(stream, assistantMessageId)
       }
     }
 
@@ -1035,7 +2114,204 @@ async function onSend() {
     }
   } finally {
     clearFlushTimer(stream)
+    clearReasoningFlushTimer(stream)
+    // 输出 Merger 诊断统计
+    if (shouldLogDebug()) {
+      const stats = stream.reasoningMerger.getStats()
+      console.log('[reasoning-merger] stream stats:', stats)
+      if (stats.isLikelySnapshot) {
+        console.log('[reasoning-merger] ⚠️ 检测到快照语义 (>50% prefixMatch)，已自动提取后缀增量')
+      }
+    }
     // Use unified finalization to enforce: refresh FIRST, then clear activeStream.
+    try {
+      // 记录 flush 前的队列信息
+      const pendingCountBeforeFlush = stream.pendingReasoningDetails.value.length
+      await flushReasoningDetailSegments(stream, assistantMessageId)
+      await finalizeReasoningDetails({ messageId: assistantMessageId })
+
+      if (shouldLogDebug()) {
+        const mergerStats = stream.reasoningMerger.getStats()
+        const mergerSnapshot = stream.reasoningMerger.getMergedSnapshots()
+        const mergerExtracted = extractReasoningTextFromDetails(mergerSnapshot)
+        const mergerFinalText = mergerExtracted.reasoningText
+        const isEncryptedModel = mergerExtracted.isEncrypted
+
+        let dbReplaySnapshot: unknown[] | null = null
+        let dbFinalText: string | undefined
+        let dbExtracted: ReturnType<typeof extractReasoningTextFromDetails> | null = null
+        let dbSegmentsCount: number | undefined
+        try {
+          const bridge = (globalThis as any).dbBridge as { invoke?: (method: string, params?: unknown) => Promise<any> } | undefined
+          if (bridge?.invoke) {
+            const rows = await bridge.invoke('message.list', { convoId, fromSeq: assistantSeq, limit: 1 })
+            const row = Array.isArray(rows)
+              ? (rows.find((r) => r && typeof r === 'object' && (r as any).id === assistantMessageId) ?? rows[0])
+              : null
+            const meta = row && typeof (row as any).meta === 'object' ? (row as any).meta : null
+            const reasoningDetailsRaw = Array.isArray(meta?.reasoningDetailsRaw) ? meta.reasoningDetailsRaw : null
+            if (reasoningDetailsRaw) {
+              dbReplaySnapshot = reasoningDetailsRaw
+              dbExtracted = extractReasoningTextFromDetails(dbReplaySnapshot)
+              dbFinalText = dbExtracted.reasoningText
+            }
+            dbSegmentsCount = typeof meta?.reasoningSegmentsCount === 'number' ? meta.reasoningSegmentsCount : undefined
+          }
+        } catch (err) {
+          console.warn('[reasoning-verify] failed to load db replay snapshot:', err)
+        }
+
+        const uiFinalText = selectMessage(state.value, assistantMessageId)?.reasoningView?.reasoningText
+
+        // 输出 diagnosticTracker 摘要（包含 DB 统计）
+        const tracker = stream.diagnosticTracker
+        console.log('[reasoning-diag] tracker summary', {
+          // UI 侧统计
+          totalQueued: tracker.totalQueued,
+          totalSkipped: tracker.totalSkipped,
+          totalDeltaLen: tracker.totalDeltaLen,
+          eventCount: tracker.events.length,
+          // DB 侧统计
+          dbInserted: tracker.dbInserted,
+          dbSkipped: tracker.dbSkipped,
+          dbIgnored: tracker.dbIgnored,
+          dbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
+        })
+
+        // 一次性 DB 统计查询（作为对照）
+        const dbRealStats = await getReasoningSegmentsStats(assistantMessageId)
+        if (dbRealStats) {
+          const matchCnt = dbRealStats.cnt === tracker.dbInserted
+          const matchSum = dbRealStats.sumLen === tracker.dbSumDeltaLenInserted
+          console.log('[reasoning-diag] DB real stats', {
+            segmentsInDb: dbRealStats.cnt,
+            sumDeltaTextLenInDb: dbRealStats.sumLen,
+            trackerDbInserted: tracker.dbInserted,
+            trackerDbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
+            matchCnt,
+            matchSum,
+          })
+          // 失败时输出差异诊断
+          if (!matchCnt || !matchSum) {
+            console.warn('[reasoning-diag] MISMATCH', {
+              messageId: assistantMessageId,
+              cntDiff: dbRealStats.cnt - tracker.dbInserted,
+              sumDiff: dbRealStats.sumLen - tracker.dbSumDeltaLenInserted,
+              trackerIgnored: tracker.dbIgnored,
+              trackerSkipped: tracker.dbSkipped,
+            })
+          }
+        } else {
+          console.warn('[reasoning-diag] failed to get DB real stats for', assistantMessageId)
+        }
+
+        // 恒等式验证
+        const eventCountExpected = tracker.dbInserted + tracker.dbIgnored + tracker.dbSkipped
+        const invariant1 = tracker.totalQueued === eventCountExpected
+        console.log('[reasoning-diag] invariants', {
+          'eventCount == dbInserted + dbIgnored + dbSkipped': invariant1,
+          totalQueued: tracker.totalQueued,
+          eventCountExpected,
+          'totalDeltaLen == dbSumDeltaLenInserted': tracker.totalDeltaLen === tracker.dbSumDeltaLenInserted,
+          totalDeltaLen: tracker.totalDeltaLen,
+          dbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
+          deltaLenDiff: tracker.totalDeltaLen - tracker.dbSumDeltaLenInserted,
+        })
+
+        // 详细诊断日志
+        console.log('[reasoning-verify] diagnostic info', {
+          messageId: assistantMessageId,
+          mergerChunkCount: mergerStats.chunkCount,
+          mergerDeltaCount: mergerStats.deltaCount,
+          mergerSnapshotCount: mergerStats.snapshotCount,
+          mergerUniqueKeys: mergerStats.uniqueKeys,
+          pendingCountBeforeFlush,
+          dbSegmentsCount,
+          isLikelySnapshot: mergerStats.isLikelySnapshot,
+          isEncryptedModel,
+        })
+
+        // 对于加密模型，比较 encryptedData；否则比较 reasoningText
+        const mergerCompareText = isEncryptedModel ? mergerExtracted.encryptedData : mergerFinalText
+        const dbCompareText = isEncryptedModel ? dbExtracted?.encryptedData : dbFinalText
+
+        console.log('[reasoning-verify] text compare', {
+          messageId: assistantMessageId,
+          isEncryptedModel,
+          mergerFinalTextLen: mergerCompareText?.length ?? 0,
+          dbFinalTextLen: dbCompareText?.length ?? 0,
+          uiFinalTextLen: uiFinalText?.length ?? 0,
+          // 加密模型不输出原文（避免日志过大）
+          mergerFinalText: isEncryptedModel ? `[encrypted ${mergerCompareText?.length ?? 0} bytes]` : mergerFinalText,
+          dbFinalText: isEncryptedModel ? `[encrypted ${dbCompareText?.length ?? 0} bytes]` : dbFinalText,
+          uiFinalText: isEncryptedModel ? '[encrypted - see UI]' : uiFinalText,
+        })
+
+        // 加密模型：比较 encryptedData；非加密模型：比较 reasoningText
+        const textMismatch = mergerCompareText !== dbCompareText
+        // UI 文本对于加密模型无法直接比较（UI 可能解密显示），跳过 UI 比较
+        const uiMismatch = !isEncryptedModel && dbFinalText !== uiFinalText
+
+        if (textMismatch || uiMismatch) {
+          let diffPos = -1
+          const shorter = mergerCompareText && dbCompareText
+            ? (mergerCompareText.length <= dbCompareText.length ? mergerCompareText : dbCompareText)
+            : ''
+          const longer = mergerCompareText && dbCompareText
+            ? (mergerCompareText.length > dbCompareText.length ? mergerCompareText : dbCompareText)
+            : ''
+          for (let i = 0; i < shorter.length; i++) {
+            if (shorter[i] !== longer[i]) {
+              diffPos = i
+              break
+            }
+          }
+          if (diffPos === -1 && shorter.length !== longer.length) {
+            diffPos = shorter.length
+          }
+
+          console.warn('[reasoning-verify] MISMATCH DETECTED', {
+            messageId: assistantMessageId,
+            isEncryptedModel,
+            textMismatch,
+            uiMismatch,
+            diffPos,
+            diffContext: diffPos >= 0 && !isEncryptedModel ? {
+              mergerAround: mergerCompareText?.slice(Math.max(0, diffPos - 20), diffPos + 20),
+              dbAround: dbCompareText?.slice(Math.max(0, diffPos - 20), diffPos + 20),
+            } : null,
+            mergerSnapshotCount: mergerSnapshot.length,
+            dbSnapshotCount: dbReplaySnapshot?.length ?? 0,
+          })
+
+          // 用 diffPos 映射到 chunkNo（精确定位被吞的 chunk）
+          const affectedChunk = tracker.chunkRanges.find(r => r.start <= diffPos && diffPos < r.end)
+          console.warn('[reasoning-verify] diffPos → chunkNo mapping', {
+            diffPos,
+            affectedChunkNo: affectedChunk?.chunkNo ?? 'not found',
+            affectedChunkRange: affectedChunk ? `[${affectedChunk.start}, ${affectedChunk.end})` : null,
+            nearbyChunks: tracker.chunkRanges.filter(r => 
+              Math.abs(r.start - diffPos) < 50 || Math.abs(r.end - diffPos) < 50
+            ).slice(0, 5),
+          })
+
+          console.warn('[reasoning-verify] snapshot details', {
+            mergerSnapshots: mergerSnapshot.map((s: any) => ({
+              key: `${s.id ?? ''}|${s.index ?? ''}|${s.type ?? ''}`,
+              textLen: s.text?.length ?? 0,
+              textPreview: s.text?.slice(0, 50),
+            })),
+            dbSnapshots: dbReplaySnapshot?.map((s: any) => ({
+              key: `${s.id ?? ''}|${s.index ?? ''}|${s.type ?? ''}`,
+              textLen: s.text?.length ?? 0,
+              textPreview: s.text?.slice(0, 50),
+            })),
+          })
+        }
+      }
+    } catch (err) {
+      if (shouldLogDebug()) console.warn('[ui-app] finalizeReasoningDetails failed (non-fatal):', err)
+    }
     await finalizeRun(assistantMessageId)
   }
 }
@@ -1049,6 +2325,7 @@ async function onForkFromHead() {
   try {
     const created = await createBranchFromMessage({
       sourceBranchId: branch.id,
+      // Fork base is the branch tip (definition), not a UI cursor.
       baseMessageId: branch.headMessageId,
       copyChoices: true,
       copyFilters: true,
@@ -1136,6 +2413,38 @@ async function onCandidateShift(questionId: string, delta: -1 | 1) {
   }
 }
 
+async function onQuestionCandidateShift(questionId: string, delta: -1 | 1) {
+  const bid = activeBranchId.value
+  if (!bid) return
+  if (activeAssistantMessageId.value) return
+
+  const qid = String(questionId ?? '').trim()
+  const meta = qid ? messageMetaById.value.get(qid) : null
+  if (!qid || !meta || meta.role !== 'user') return
+
+  const baseMessageId = meta.parentId ?? null
+  const ordered = getOrderedQuestionCandidatesOldToNew(baseMessageId)
+  if (!ordered) {
+    await ensureQuestionCandidatesLoadedForSlot(baseMessageId)
+    return
+  }
+
+  const idx = ordered.findIndex((c) => c.questionId === qid)
+  const targetIndex = idx + delta
+  if (idx < 0 || targetIndex < 0 || targetIndex >= ordered.length) return
+  const target = ordered[targetIndex]
+
+  try {
+    const res = await switchQuestionCandidate(bid, baseMessageId, target.questionId)
+    // Branch tip update (definition): backend returns the new insertion point after switching question candidate.
+    patchBranch(bid, { headMessageId: res.headMessageId, updatedAt: Date.now() })
+    await refreshRenderableBranchView(bid)
+  } catch (err: any) {
+    loadError.value = err?.message ? String(err.message) : String(err)
+    await refreshRenderableBranchView(bid)
+  }
+}
+
 async function onRegenerateFromQuestion(questionId: string) {
   if (isRunning.value) return
   if (activeAssistantMessageId.value) return
@@ -1170,6 +2479,7 @@ async function onRegenerateFromQuestion(questionId: string) {
       })
     }
     invalidateCandidatesForQuestion(qid)
+    // Branch tip update (definition): regeneration chooses a new answer root and moves insertion point.
     patchBranch(branch.id, { headMessageId: regen.newAnswerRootId, updatedAt: Date.now() })
     await refreshRenderableBranchView(branch.id)
     
@@ -1190,6 +2500,82 @@ async function onRegenerateFromQuestion(questionId: string) {
       questionText,
       assistantMessageId: regen.newAnswerRootId,
       assistantSeq: regen.newAssistantSeq,
+      contextMessages,
+    })
+  } catch (err: any) {
+    loadError.value = err?.message ? String(err.message) : String(err)
+    await refreshRenderableBranchView(branch.id)
+  }
+}
+
+function openQuestionEdit(questionId: string) {
+  const qid = String(questionId ?? '').trim()
+  if (!qid) return
+  const meta = messageMetaById.value.get(qid)
+  if (!meta || meta.role !== 'user') return
+  questionEditDialog.value = { questionId: qid, draft: getUserQuestionText(qid) }
+}
+
+function closeQuestionEdit() {
+  questionEditDialog.value = null
+}
+
+function canReplaceQuestionInUi(questionId: string): boolean {
+  const qid = String(questionId ?? '').trim()
+  if (!qid) return false
+  const meta = messageMetaById.value.get(qid)
+  if (!meta || meta.role !== 'user') return false
+  const lastQ = questionTurnOrder.value.length > 0 ? questionTurnOrder.value[questionTurnOrder.value.length - 1] : null
+  return lastQ === qid
+}
+
+async function submitQuestionEdit(mode: 'new' | 'replace') {
+  if (isRunning.value) return
+  if (activeAssistantMessageId.value) return
+
+  const convoId = activeConvoId.value
+  const branch = activeBranch.value
+  const dlg = questionEditDialog.value
+  if (!convoId || !branch?.id || !dlg) return
+
+  const oldQuestionId = String(dlg.questionId ?? '').trim()
+  const newText = typeof dlg.draft === 'string' ? dlg.draft.trim() : String(dlg.draft ?? '').trim()
+  if (!oldQuestionId || !newText) return
+
+  const baseMessageId = messageMetaById.value.get(oldQuestionId)?.parentId ?? null
+  if (mode === 'replace' && !canReplaceQuestionInUi(oldQuestionId)) return
+
+  loadError.value = null
+
+  try {
+    const res =
+      mode === 'replace'
+        ? await retryReplaceQuestion(branch.id, oldQuestionId, newText)
+        : await forkQuestion(branch.id, oldQuestionId, newText)
+
+    invalidateQuestionCandidatesForSlot(baseMessageId)
+    // Branch tip update (definition): fork/replace creates a new assistant and moves insertion point.
+    patchBranch(branch.id, { headMessageId: res.assistantId, updatedAt: Date.now() })
+
+    // Build context off the NEW head (branch is now pointed at the new assistant),
+    // then slice to messages strictly before the new question.
+    const built = await buildContextForBranchInternalMessages(branch.id, { limit: 200, debug: !!import.meta.env?.DEV })
+    const rowsBefore = built.rawMessages.filter((m) => typeof m.seq === 'number' && m.seq < res.newQuestionSeq)
+    const contextMessages = toInternalMessagesFromBranchPath(rowsBefore as any)
+
+    messageSeqById.value.set(res.newQuestionId, res.newQuestionSeq)
+    messageSeqById.value.set(res.assistantId, res.assistantSeq)
+
+    closeQuestionEdit()
+    await refreshRenderableBranchView(branch.id)
+
+    await startStreamingForAssistantTurn({
+      convoId,
+      branchId: branch.id,
+      questionId: res.newQuestionId,
+      questionText: newText,
+      assistantMessageId: res.assistantId,
+      assistantSeq: res.assistantSeq,
       contextMessages,
     })
   } catch (err: any) {
@@ -1227,15 +2613,15 @@ function canRetryReplaceInUi(questionId: string, answerRootId: string): boolean 
     return false
   }
 
-  const headId = activeBranch.value?.headMessageId
-  // Head should be within this answer group. If we can't resolve head meta from the current projection,
+  const tipId = activeBranch.value?.headMessageId
+  // Tip should be within this answer group. If we can't resolve tip meta from the current projection,
   // defer strict validation to the backend (UI keeps the button enabled).
-  if (headId) {
-    const headMeta = messageMetaById.value.get(headId)
-    const headAnswerRoot = headMeta?.answerRootId ?? null
+  if (tipId) {
+    const tipMeta = messageMetaById.value.get(tipId)
+    const tipAnswerRoot = tipMeta?.answerRootId ?? null
     // If we can't resolve head's answer root from the current projection, defer strict validation to the backend.
-    if (headMeta && headAnswerRoot && headId !== ar && headAnswerRoot !== ar) {
-      logBlock('head_not_within_answer_group', { qid, ar, headId, headAnswerRoot })
+    if (tipMeta && tipAnswerRoot && tipId !== ar && tipAnswerRoot !== ar) {
+      logBlock('head_not_within_answer_group', { qid, ar, tipId, tipAnswerRoot })
       return false
     }
   }
@@ -1262,6 +2648,7 @@ async function onRetryReplaceAnswer(questionId: string, currentAnswerRootId: str
   try {
     const res = await retryReplaceAnswer(branch.id, qid, current)
     invalidateCandidatesForQuestion(qid)
+    // Branch tip update (definition): retry-replace moves insertion point to the new answer root.
     patchBranch(branch.id, { headMessageId: res.newAnswerRootId, updatedAt: Date.now() })
     await refreshRenderableBranchView(branch.id)
     await startStreamingForAssistantTurn({
@@ -1319,12 +2706,29 @@ onMounted(async () => {
   try {
     await refreshProjects()
     await refreshConvos()
-    await refreshTranscriptLatestOnly()
+    await refreshGlobalReasoningPrefs()
+    await loadTranscriptForActiveConvo()
+    assertInvariants() // Stable boundary: initial load complete
   } catch (err: any) {
     loadError.value = err?.message ? String(err.message) : String(err)
   } finally {
     isReady.value = true
   }
+})
+
+onMounted(() => {
+  window.addEventListener('settings:reasoningPrefsUpdated', handleGlobalReasoningPrefsUpdated)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('settings:reasoningPrefsUpdated', handleGlobalReasoningPrefsUpdated)
+})
+
+onMounted(() => {
+  void refreshModelLists()
+  const ipc = getIpcRenderer()
+  if (!ipc) return
+  ipc.on('db:modelCatalogSynced', onModelsSynced)
 })
 
 const lastTranscriptSig = ref('')
@@ -1371,7 +2775,16 @@ watch(
     />
 
     <div class="min-h-0 flex-1">
-      <ChatLayout sidePanel="right">
+      <ChatLayout :sidePanel="showReasoningPanel ? 'right' : 'none'">
+        <template #header>
+          <ChatStatusBar
+            title="Starverse"
+            :run="runVM"
+            :isRunning="isRunning"
+            :showAbort="false"
+            :showReset="false"
+          />
+        </template>
         <template #status>
           <div class="flex items-center justify-between gap-2 px-4 py-2 text-xs text-gray-600">
             <div class="min-w-0">
@@ -1422,6 +2835,14 @@ watch(
               >
                 Settings
               </button>
+              <button
+                type="button"
+                class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                :disabled="!canToggleReasoningPanel"
+                @click="onToggleReasoningPanelState()"
+              >
+                {{ showReasoningPanel ? 'Hide reasoning' : 'Show reasoning' }}
+              </button>
             </div>
           </div>
           <div v-if="loadError" class="border-t border-red-200 bg-red-50 px-4 py-2 text-xs text-red-900">
@@ -1445,12 +2866,18 @@ watch(
         </template>
 
         <template #transcript>
-          <ChatTranscript :messages="transcript" :error="runVM?.error" emptyText="No messages in this conversation yet.">
+          <ChatTranscript
+            :messages="transcript"
+            :activeMessageId="activeCursorMessageId"
+            :error="runVM?.error"
+            emptyText="No messages in this conversation yet."
+          >
             <template #message="{ message }">
               <div
                 class="rounded-2xl"
                 :class="isTurnExcludedForMessage(message.messageId, message.role) ? 'opacity-45 grayscale' : ''"
                 :data-testid="`msg-wrap-${message.messageId}`"
+                @click="onSelectCursor(message.messageId, $event)"
               >
                 <ChatMessageBubble :message="message" />
 
@@ -1474,40 +2901,52 @@ watch(
                     Regenerate
                   </button>
 
-                  <div v-if="getCandidatePager(message.messageId)?.total > 1" class="ml-auto flex items-center gap-1 text-gray-600">
-                    <button
-                      type="button"
-                      class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                      :disabled="
-                        activeAssistantMessageId != null ||
-                        candidatesLoading.has(message.messageId) ||
-                        !getCandidatePager(message.messageId)?.canPrev ||
-                        isAnswerGroupStreamingForQuestion(message.messageId)
-                      "
-                      :data-testid="`cand-prev-${message.messageId}`"
-                      @click="onCandidateShift(message.messageId, -1)"
-                    >
-                      &lt;
-                    </button>
-                    <div :data-testid="`cand-pos-${message.messageId}`" class="min-w-[48px] text-center">
-                      {{
-                        `${(getCandidatePager(message.messageId)?.index ?? 0) + 1}/${getCandidatePager(message.messageId)?.total ?? 1}`
-                      }}
+                  <button
+                    type="button"
+                    class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    :disabled="activeAssistantMessageId != null || isAnswerGroupStreamingForQuestion(message.messageId)"
+                    :data-testid="`edit-q-${message.messageId}`"
+                    @click="openQuestionEdit(message.messageId)"
+                  >
+                    Edit
+                  </button>
+
+                  <div class="ml-auto flex items-center gap-3 text-gray-600">
+                    <div v-if="getQuestionPagerForQuestion(message.messageId)?.total > 1" class="flex items-center gap-1">
+                      <button
+                        type="button"
+                        class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        :disabled="
+                          activeAssistantMessageId != null ||
+                          isQuestionSlotLoadingForQuestion(message.messageId) ||
+                          !getQuestionPagerForQuestion(message.messageId)?.canPrev ||
+                          isAnswerGroupStreamingForQuestion(message.messageId)
+                        "
+                        :data-testid="`qvar-prev-${message.messageId}`"
+                        @click="onQuestionCandidateShift(message.messageId, -1)"
+                      >
+                        &lt;
+                      </button>
+                      <div :data-testid="`qvar-pos-${message.messageId}`" class="min-w-[56px] text-center">
+                        {{
+                          `${(getQuestionPagerForQuestion(message.messageId)?.index ?? 0) + 1}/${getQuestionPagerForQuestion(message.messageId)?.total ?? 1}`
+                        }}
+                      </div>
+                      <button
+                        type="button"
+                        class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        :disabled="
+                          activeAssistantMessageId != null ||
+                          isQuestionSlotLoadingForQuestion(message.messageId) ||
+                          !getQuestionPagerForQuestion(message.messageId)?.canNext ||
+                          isAnswerGroupStreamingForQuestion(message.messageId)
+                        "
+                        :data-testid="`qvar-next-${message.messageId}`"
+                        @click="onQuestionCandidateShift(message.messageId, 1)"
+                      >
+                        &gt;
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                      :disabled="
-                        activeAssistantMessageId != null ||
-                        candidatesLoading.has(message.messageId) ||
-                        !getCandidatePager(message.messageId)?.canNext ||
-                        isAnswerGroupStreamingForQuestion(message.messageId)
-                      "
-                      :data-testid="`cand-next-${message.messageId}`"
-                      @click="onCandidateShift(message.messageId, 1)"
-                    >
-                      &gt;
-                    </button>
                   </div>
                 </div>
 
@@ -1515,35 +2954,77 @@ watch(
                   v-else-if="message.role === 'assistant' && isAnswerRootMessage(message.messageId)"
                   class="mt-2 flex items-center gap-2 pl-11 text-[11px] text-gray-500"
                 >
-                  <button
-                    v-if="questionIdForMessage(message.messageId, message.role) && turnFiltersByQuestionId.get(questionIdForMessage(message.messageId, message.role)!)?.chosenAnswerRootId === message.messageId"
-                    type="button"
-                    class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                    :disabled="turnFiltersByQuestionId.get(questionIdForMessage(message.messageId, message.role)!)?.lockedByQuestionExclude === true"
-                    :data-testid="`toggle-a-${message.messageId}`"
-                    @click="onToggleAnswerExclude(questionIdForMessage(message.messageId, message.role)!, message.messageId)"
-                  >
-                    {{
-                      turnFiltersByQuestionId.get(questionIdForMessage(message.messageId, message.role)!)?.answerMode === 'exclude'
-                        ? 'Restore answer'
-                        : 'Exclude answer'
-                    }}
-                  </button>
-                  <button
-                    v-if="questionIdForMessage(message.messageId, message.role) && turnFiltersByQuestionId.get(questionIdForMessage(message.messageId, message.role)!)?.chosenAnswerRootId === message.messageId"
-                    type="button"
-                    class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                    :disabled="
-                      activeAssistantMessageId != null ||
-                      isAnswerGroupStreamingForQuestion(questionIdForMessage(message.messageId, message.role)!) ||
-                      !canRetryReplaceInUi(questionIdForMessage(message.messageId, message.role)!, message.messageId)
-                    "
-                    :data-testid="`retry-a-${message.messageId}`"
-                    @click="onRetryReplaceAnswer(questionIdForMessage(message.messageId, message.role)!, message.messageId)"
-                  >
-                    Retry replace
-                  </button>
-                  <div v-else class="text-[11px] text-gray-400">answer not selected for context</div>
+                  <template v-if="chosenQuestionIdForAnswerRootMessage(message.messageId)">
+                    <button
+                      type="button"
+                      class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      :disabled="
+                        turnFiltersByQuestionId.get(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.lockedByQuestionExclude === true
+                      "
+                      :data-testid="`toggle-a-${message.messageId}`"
+                      @click="onToggleAnswerExclude(chosenQuestionIdForAnswerRootMessage(message.messageId)!, message.messageId)"
+                    >
+                      {{
+                        turnFiltersByQuestionId.get(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.answerMode === 'exclude'
+                          ? 'Restore answer'
+                          : 'Exclude answer'
+                      }}
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      :disabled="
+                        activeAssistantMessageId != null ||
+                        isAnswerGroupStreamingForQuestion(chosenQuestionIdForAnswerRootMessage(message.messageId)!) ||
+                        !canRetryReplaceInUi(chosenQuestionIdForAnswerRootMessage(message.messageId)!, message.messageId)
+                      "
+                      :data-testid="`retry-a-${message.messageId}`"
+                      @click="onRetryReplaceAnswer(chosenQuestionIdForAnswerRootMessage(message.messageId)!, message.messageId)"
+                    >
+                      Retry replace
+                    </button>
+
+                    <div v-if="getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.total > 1" class="ml-auto flex items-center gap-1 text-gray-600">
+                      <button
+                        type="button"
+                        class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        :disabled="
+                          activeAssistantMessageId != null ||
+                          candidatesLoading.has(chosenQuestionIdForAnswerRootMessage(message.messageId)!) ||
+                          !getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.canPrev ||
+                          isAnswerGroupStreamingForQuestion(chosenQuestionIdForAnswerRootMessage(message.messageId)!)
+                        "
+                        :data-testid="`cand-prev-${chosenQuestionIdForAnswerRootMessage(message.messageId)!}`"
+                        @click="onCandidateShift(chosenQuestionIdForAnswerRootMessage(message.messageId)!, -1)"
+                      >
+                        &lt;
+                      </button>
+                      <div :data-testid="`cand-pos-${chosenQuestionIdForAnswerRootMessage(message.messageId)!}`" class="min-w-[48px] text-center">
+                        {{
+                          `${(getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.index ?? 0) + 1}/${
+                            getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.total ?? 1
+                          }`
+                        }}
+                      </div>
+                      <button
+                        type="button"
+                        class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        :disabled="
+                          activeAssistantMessageId != null ||
+                          candidatesLoading.has(chosenQuestionIdForAnswerRootMessage(message.messageId)!) ||
+                          !getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.canNext ||
+                          isAnswerGroupStreamingForQuestion(chosenQuestionIdForAnswerRootMessage(message.messageId)!)
+                        "
+                        :data-testid="`cand-next-${chosenQuestionIdForAnswerRootMessage(message.messageId)!}`"
+                        @click="onCandidateShift(chosenQuestionIdForAnswerRootMessage(message.messageId)!, 1)"
+                      >
+                        &gt;
+                      </button>
+                    </div>
+                  </template>
+                  <div v-else-if="questionIdForMessage(message.messageId, message.role)" class="text-[11px] text-gray-400">
+                    answer not selected for context
+                  </div>
                 </div>
               </div>
             </template>
@@ -1551,17 +3032,79 @@ watch(
         </template>
 
         <template #side>
-          <div class="h-full p-4 text-sm text-gray-600">Right panel placeholder (reasoning/usage later)</div>
+          <ChatAppReasoningPanel :messages="transcript" @toggle-panel-state="onToggleReasoningPanelState" />
         </template>
 
         <template #composer>
-          <ChatAppComposer v-model:draft="draft" :disabled="!isReady" :isRunning="isRunning" @send="onSend" @abort="onAbort" />
+          <ChatAppComposer
+            v-model:draft="draft"
+            v-model:model="model"
+            v-model:requestedReasoningEffort="requestedReasoningEffort"
+            v-model:requestedReasoningExclude="requestedReasoningExclude"
+            :disabled="!isReady"
+            :isRunning="isRunning"
+            :modelCatalog="modelCatalogForPicker"
+            :reasoningModelIndex="reasoningModelIndexForPicker"
+            :showHiddenModelsInPickers="showHiddenModelsInPickers"
+            :modelCatalogNotice="modelCatalogNotice"
+            @toggleShowHiddenModelsInPickers="showHiddenModelsInPickers = !showHiddenModelsInPickers"
+            @send="onSend"
+            @abort="onAbort"
+          />
         </template>
       </ChatLayout>
 
       <SettingsModal :open="settingsOpen" :disabled="!isReady" :isRunning="isRunning" @close="closeSettings">
         <SettingsPanel :disabled="!isReady" :isRunning="isRunning" />
       </SettingsModal>
+
+      <div
+        v-if="questionEditDialog"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+        data-testid="question-edit-dialog"
+        @keydown.esc="closeQuestionEdit"
+      >
+        <div class="w-full max-w-xl rounded-lg bg-white p-4 shadow-xl">
+          <div class="text-sm font-semibold text-gray-900">Edit question</div>
+          <div class="mt-2">
+            <textarea
+              class="h-28 w-full rounded border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              :value="questionEditDialog.draft"
+              @input="questionEditDialog = { ...questionEditDialog, draft: ($event.target as HTMLTextAreaElement).value }"
+            />
+            <div class="mt-1 text-[11px] text-gray-500">
+              New question creates a new question variant. Replace question hides the current question variant (branch-local) and is only allowed on the last question.
+            </div>
+          </div>
+          <div class="mt-3 flex items-center justify-end gap-2">
+            <button type="button" class="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50" @click="closeQuestionEdit">
+              Cancel
+            </button>
+            <button
+              type="button"
+              class="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="isRunning || questionEditDialog.draft.trim().length === 0"
+              data-testid="question-edit-new"
+              @click="submitQuestionEdit('new')"
+            >
+              New question
+            </button>
+            <button
+              type="button"
+              class="rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+              :disabled="
+                isRunning ||
+                questionEditDialog.draft.trim().length === 0 ||
+                !canReplaceQuestionInUi(questionEditDialog.questionId)
+              "
+              data-testid="question-edit-replace"
+              @click="submitQuestionEdit('replace')"
+            >
+              Replace question
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
