@@ -9,9 +9,11 @@ function getDbBridge(): DbBridge | null {
 
 export type ConvoSummary = Readonly<{
   id: string
+  projectId?: string | null
   title: string
   createdAt: number
   updatedAt: number
+  meta?: Record<string, unknown> | null
 }>
 
 export async function listConvos(params?: Readonly<{ limit?: number; offset?: number; order?: 'updatedAt' | 'createdAt' }>): Promise<ConvoSummary[]> {
@@ -24,10 +26,13 @@ export async function listConvos(params?: Readonly<{ limit?: number; offset?: nu
   return rows
     .map((r: any) => {
       const id = String(r?.id ?? '').trim()
+      const projectRaw = r?.projectId
+      const projectId = projectRaw === null ? null : String(projectRaw ?? '').trim()
       const title = String(r?.title ?? '').trim()
       const createdAt = typeof r?.createdAt === 'number' ? r.createdAt : 0
       const updatedAt = typeof r?.updatedAt === 'number' ? r.updatedAt : createdAt
-      return { id, title, createdAt, updatedAt } satisfies ConvoSummary
+      const meta = r?.meta && typeof r.meta === 'object' ? (r.meta as Record<string, unknown>) : null
+      return { id, projectId: projectId && projectId.length > 0 ? projectId : null, title, createdAt, updatedAt, meta } satisfies ConvoSummary
     })
     .filter((x) => x.id.length > 0 && x.title.length > 0)
 }

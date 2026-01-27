@@ -122,6 +122,7 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
   }
 
   let lastMeta: { generationId?: string; model?: string; provider?: string; finishReason?: string; nativeFinishReason?: string } = {}
+  let chunkNo = 0  // 递增的 chunk 序号，用于诊断追踪
 
   if (transport.generationId) {
     yield { type: 'MetaDelta', meta: { id: transport.generationId } }
@@ -165,9 +166,11 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
     }
 
     if (ev.type === 'json') {
+      chunkNo++
       const mapped = mapChunkToEvents({
         chunk: ev.value as any,
         messageId: options.assistantMessageId,
+        chunkNo,
       }) as any as DomainEvent[]
       for (const m of mapped) {
         if (m.type === 'MetaDelta') {

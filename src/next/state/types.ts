@@ -17,6 +17,12 @@ export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | '
 
 export type RequestedReasoningMode = 'auto' | 'effort'
 
+export type ReasoningPrefs = Readonly<{
+  mode: RequestedReasoningMode
+  effort?: ReasoningEffort | 'auto'
+  exclude?: boolean
+}>
+
 export type ContentBlock =
   | Readonly<{ type: 'text'; text: string }>
   | Readonly<{ type: 'image'; url: string }>
@@ -88,7 +94,7 @@ export type DomainEvent =
       mergeStrategy: 'append' | 'replace'
       toolCallDeltas: ToolCallDelta[]
     }>
-  | Readonly<{ type: 'MessageDeltaReasoningDetail'; messageId: string; choiceIndex: number; detail: unknown }>
+  | Readonly<{ type: 'MessageDeltaReasoningDetail'; messageId: string; choiceIndex: number; detail: unknown; chunkNo?: number }>
   | Readonly<{ type: 'UsageDelta'; usage: unknown }>
   | Readonly<{
       type: 'MetaDelta'
