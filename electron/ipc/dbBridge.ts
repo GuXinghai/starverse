@@ -73,6 +73,8 @@ const allowedMethods: DbMethod[] = [
   'project.findById',
   'project.findByName',
   'project.countConversations',
+  'project.countConversationsBatch',
+  'project.getInbox',
   
   // Conversation Management
   'convo.create',
@@ -125,6 +127,8 @@ const allowedMethods: DbMethod[] = [
   
   // Search
   'search.fulltext',
+  'search.query',
+  'search.rebuildIndex',
   
   // Maintenance
   'maintenance.optimize',
@@ -268,7 +272,14 @@ export const registerDbBridge = (manager: DbWorkerManager) => {
         throw new DbWorkerError('ERR_VALIDATION', 'Invalid DB IPC payload')
       }
 
-      // ========== 步骤 2: 白名单检查 ==========
+      // ========== 步骤 2: 特殊方法处理 ==========
+      
+      // db.reset: 重置数据库（dev-only，直接调用 manager.reset()）
+      if (payload.method === 'db.reset') {
+        return await manager.reset()
+      }
+
+      // ========== 步骤 3: 白名单检查 ==========
       if (!allowSet.has(payload.method)) {
         throw new DbWorkerError('ERR_NOT_FOUND', `Method not allowed: ${payload.method}`)
       }
@@ -279,7 +290,7 @@ export const registerDbBridge = (manager: DbWorkerManager) => {
 
       console.log(`[dbBridge] 调用方法: ${payload.method}, 参数:`, payload.params)
 
-      // ========== 步骤 3: 转发给 Worker ==========
+      // ========== 步骤 4: 转发给 Worker ==========
       return await manager.call(payload.method, payload.params)
     } catch (error) {
       console.error(`[dbBridge] 调用失败: ${payload?.method}`, error)

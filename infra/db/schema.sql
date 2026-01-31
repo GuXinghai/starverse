@@ -1,3 +1,11 @@
+-- ========================================================================
+-- Starverse Database Schema (Baseline)
+-- ========================================================================
+-- IMPORTANT: This file contains ONLY table definitions.
+-- ALL indexes are created by ensure* functions in worker.ts at runtime.
+-- This ensures consistent initialization order and avoids column-missing errors.
+-- ========================================================================
+
 PRAGMA journal_mode=WAL;
 PRAGMA synchronous=NORMAL;
 PRAGMA foreign_keys=ON;
@@ -5,12 +13,16 @@ PRAGMA mmap_size=268435456;
 PRAGMA cache_size=-20000;
 PRAGMA temp_store=MEMORY;
 
+-- ========== Core Tables ==========
+
 CREATE TABLE IF NOT EXISTS project (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  meta TEXT
+  meta TEXT,
+  is_system INTEGER DEFAULT 0,
+  system_key TEXT
 );
 
 CREATE TABLE IF NOT EXISTS convo (
@@ -39,7 +51,6 @@ CREATE TABLE IF NOT EXISTS message (
   role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool', 'system', 'notice', 'openrouter')),
   created_at INTEGER NOT NULL,
   seq INTEGER NOT NULL,
-  -- Branching/graph fields (Phase 4+). Nullable for legacy linear history.
   parent_id TEXT NULL,
   status TEXT NOT NULL DEFAULT 'final' CHECK (status IN ('streaming', 'final', 'error')),
   answer_root_id TEXT NULL,
@@ -59,31 +70,23 @@ CREATE TABLE IF NOT EXISTS message_body (
   body TEXT NOT NULL
 );
 
--- Reasoning Details 段落存储
--- @see docs/architecture/REASONING_IDEMPOTENCY_CONTRACT.md 幂等契约
--- @see docs/architecture/REASONING_SEMANTIC_CONTRACT.md 语义契约
 CREATE TABLE IF NOT EXISTS message_reasoning_detail_segments (
   segment_id INTEGER PRIMARY KEY AUTOINCREMENT,
   message_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
-  detail_id TEXT,                -- 原始 detail 的 id 字段
-  format TEXT,                   -- 格式，如 markdown
-  detail_index INTEGER,          -- 在数组中的索引
-  type TEXT NOT NULL,            -- 类型：reasoning.text, reasoning.summary, reasoning.encrypted
-  payload TEXT NOT NULL,         -- 原始 JSON payload（用于回放）
-  delta_text TEXT,               -- 归一化后的文本增量
-  delta_data TEXT,               -- 归一化后的 data 增量（加密模型）
-  delta_summary TEXT,            -- 归一化后的 summary 增量
+  detail_id TEXT,
+  format TEXT,
+  detail_index INTEGER,
+  type TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  delta_text TEXT,
+  delta_data TEXT,
+  delta_summary TEXT,
   created_at INTEGER NOT NULL,
-  segment_fingerprint TEXT       -- 幂等键：sha256(key + offsetBefore + delta + metadataDigest)
+  segment_fingerprint TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_reasoning_segment_message ON message_reasoning_detail_segments(message_id);
-CREATE INDEX IF NOT EXISTS idx_reasoning_segment_message_order ON message_reasoning_detail_segments(message_id, segment_id);
-CREATE INDEX IF NOT EXISTS idx_reasoning_segment_group ON message_reasoning_detail_segments(message_id, detail_id, detail_index, type, format, segment_id);
--- 幂等唯一约束：防止同一事件重复插入
--- fingerprint = sha256(key + offsetBefore + deltaText + deltaSummary + deltaData + metadataDigest)
--- 注意：历史数据 fingerprint 可能为 NULL，不参与唯一约束
-CREATE UNIQUE INDEX IF NOT EXISTS idx_reasoning_segment_fingerprint ON message_reasoning_detail_segments(message_id, segment_fingerprint);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reasoning_segment_fingerprint
+  ON message_reasoning_detail_segments (message_id, segment_fingerprint);
 
 CREATE TABLE IF NOT EXISTS attachment (
   id TEXT PRIMARY KEY,
@@ -100,6 +103,7 @@ CREATE TABLE IF NOT EXISTS archive_convo (
   payload BLOB
 );
 
+-- FTS5 Virtual Table (no indexes needed, built-in)
 CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
   message_id UNINDEXED,
   convo_id UNINDEXED,
@@ -113,16 +117,27 @@ CREATE TRIGGER IF NOT EXISTS trg_message_del AFTER DELETE ON message BEGIN
   VALUES('delete', (SELECT rowid FROM message_fts WHERE message_id = old.id), old.id, old.convo_id, '');
 END;
 
-CREATE INDEX IF NOT EXISTS idx_convo_project ON convo(project_id);
-CREATE INDEX IF NOT EXISTS idx_convo_updated ON convo(updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_msg_convo_seq ON message(convo_id, seq);
--- NOTE: Indexes for branching/graph columns (parent_id/answer_root_id/question_id) are created by
--- `ensureBranchingSchema()` at runtime, after it has backfilled legacy DBs that may not yet have
--- these columns. Keeping them out of the baseline schema avoids SQLITE_ERROR on older DB files.
-CREATE INDEX IF NOT EXISTS idx_tag_name ON tag(name);
+-- ========== Search Documents (v0 Skeleton) ==========
 
--- ========== Branching Tables (Conversation-local) ==========
--- Note: These tables are additive and safe for legacy DBs. Runtime also runs an "ensure" migration for existing DB files.
+CREATE TABLE IF NOT EXISTS search_docs (
+  doc_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  project_id TEXT,
+  convo_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  media_type TEXT NOT NULL DEFAULT 'text',
+  extra_json TEXT
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
+  title,
+  body,
+  tokenize = 'unicode61'
+);
+
+-- ========== Branching Tables ==========
 
 CREATE TABLE IF NOT EXISTS branch (
   id TEXT PRIMARY KEY,
@@ -134,9 +149,6 @@ CREATE TABLE IF NOT EXISTS branch (
   deleted_at INTEGER NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_branch_convo_alive ON branch(convo_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_branch_convo_updated ON branch(convo_id, updated_at DESC);
-
 CREATE TABLE IF NOT EXISTS branch_choice (
   branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE CASCADE,
   question_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
@@ -144,9 +156,6 @@ CREATE TABLE IF NOT EXISTS branch_choice (
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (branch_id, question_id)
 );
-
-CREATE INDEX IF NOT EXISTS idx_branch_choice_branch ON branch_choice(branch_id);
-CREATE INDEX IF NOT EXISTS idx_branch_choice_question ON branch_choice(question_id);
 
 CREATE TABLE IF NOT EXISTS branch_filter (
   branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE CASCADE,
@@ -157,9 +166,6 @@ CREATE TABLE IF NOT EXISTS branch_filter (
   PRIMARY KEY (branch_id, target_type, target_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_branch_filter_branch ON branch_filter(branch_id);
-CREATE INDEX IF NOT EXISTS idx_branch_filter_target ON branch_filter(target_type, target_id);
-
 CREATE TABLE IF NOT EXISTS branch_answer_hide (
   branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE CASCADE,
   question_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
@@ -169,12 +175,8 @@ CREATE TABLE IF NOT EXISTS branch_answer_hide (
   PRIMARY KEY (branch_id, question_id, answer_root_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_branch_answer_hide_branch_q ON branch_answer_hide(branch_id, question_id);
-
 CREATE TABLE IF NOT EXISTS branch_question_hide (
   branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE CASCADE,
-  -- Stores either the actual parent message id, or a sentinel (e.g. '__root__') for parent_id IS NULL.
-  -- This is intentionally NOT a foreign key, because the sentinel is not a real message id.
   base_message_id TEXT NOT NULL,
   question_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
   hidden INTEGER NOT NULL DEFAULT 1 CHECK (hidden IN (0, 1)),
@@ -182,10 +184,8 @@ CREATE TABLE IF NOT EXISTS branch_question_hide (
   PRIMARY KEY (branch_id, base_message_id, question_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_branch_question_hide_branch_base ON branch_question_hide(branch_id, base_message_id);
-CREATE INDEX IF NOT EXISTS idx_branch_question_hide_branch_q ON branch_question_hide(branch_id, question_id);
-
 -- ========== Usage Statistics Table ==========
+
 CREATE TABLE IF NOT EXISTS usage_log (
   id TEXT PRIMARY KEY,
   project_id TEXT REFERENCES project(id) ON DELETE CASCADE,
@@ -202,54 +202,32 @@ CREATE TABLE IF NOT EXISTS usage_log (
   duration_ms INTEGER NOT NULL,
   ttft_ms INTEGER,
   timestamp INTEGER NOT NULL,
-  status TEXT DEFAULT 'success',  -- 'success': AI正常完成 | 'error': 系统错误(网络/API) | 'canceled': 用户主动中止
+  status TEXT DEFAULT 'success',
   error_code TEXT,
   meta TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_usage_project ON usage_log(project_id, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_usage_convo ON usage_log(convo_id, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_usage_model ON usage_log(model, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON usage_log(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_usage_time_project ON usage_log(timestamp DESC, project_id);
-CREATE INDEX IF NOT EXISTS idx_usage_time_provider_model ON usage_log(timestamp DESC, provider, model);
-CREATE INDEX IF NOT EXISTS idx_usage_status ON usage_log(status, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_usage_request_attempt ON usage_log(request_id, attempt);
-
 -- ========== Model Data Table ==========
--- 模型信息持久化表
--- 参考规范：/docs/openrouter-model-sync-spec.md
--- 用途：存储 AI 提供商的模型列表，支持软删除和时间戳追踪
+
 CREATE TABLE IF NOT EXISTS model_data (
   id TEXT PRIMARY KEY,
-  router_source TEXT NOT NULL DEFAULT 'openrouter',  -- 接入来源: openrouter, openai_api, anthropic_api, local
-  vendor TEXT NOT NULL DEFAULT 'unknown',            -- 模型厂商: openai, anthropic, google, deepseek 等
+  router_source TEXT NOT NULL DEFAULT 'openrouter',
+  vendor TEXT NOT NULL DEFAULT 'unknown',
   name TEXT NOT NULL,
   description TEXT,
-  context_length INTEGER DEFAULT -1,                  -- -1 表示未知
-  pricing TEXT,                                       -- JSON: ModelPricing 对象
-  capabilities TEXT,                                  -- JSON: ModelCapabilities 对象
-  is_archived INTEGER NOT NULL DEFAULT 0,            -- 软删除标记: 0=活跃, 1=已归档
-  first_seen_at TEXT,                                -- ISO8601: 首次在远程列表中出现的时间
-  last_seen_at TEXT,                                 -- ISO8601: 最后一次在远程列表中出现的时间
+  context_length INTEGER DEFAULT -1,
+  pricing TEXT,
+  capabilities TEXT,
+  is_archived INTEGER NOT NULL DEFAULT 0,
+  first_seen_at TEXT,
+  last_seen_at TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  meta TEXT                                          -- JSON: 其他扩展字段
+  meta TEXT
 );
 
--- 保留旧索引以兼容（provider 映射到 vendor）
-CREATE INDEX IF NOT EXISTS idx_model_provider ON model_data(vendor);
--- 新增索引
-CREATE INDEX IF NOT EXISTS idx_model_router_source ON model_data(router_source);
-CREATE INDEX IF NOT EXISTS idx_model_archived ON model_data(is_archived);
-CREATE INDEX IF NOT EXISTS idx_model_last_seen ON model_data(last_seen_at);
-
 -- ========== Model Catalog Table (Snapshot Sync) ==========
--- Purpose:
--- - New SSOT-compatible model catalog for full-field overwrite sync by model_id.
--- - Snapshot marker + soft hidden (never delete).
--- Note:
--- - This table intentionally does NOT replace model_data yet (phase A parallel write).
+
 CREATE TABLE IF NOT EXISTS model_catalog (
   model_id TEXT PRIMARY KEY CHECK (length(model_id) > 0),
   router_source TEXT NOT NULL,
@@ -257,23 +235,16 @@ CREATE TABLE IF NOT EXISTS model_catalog (
   name TEXT NOT NULL CHECK (length(name) > 0),
   description TEXT,
   context_length INTEGER NOT NULL DEFAULT -1,
-  supported_parameters_json TEXT,             -- JSON: string[]
-  raw_json TEXT,                              -- JSON: full remote model object (for audit/anti-corruption)
+  supported_parameters_json TEXT,
+  raw_json TEXT,
   last_seen_snapshot_id TEXT,
   is_hidden INTEGER NOT NULL DEFAULT 0 CHECK (is_hidden IN (0, 1)),
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_model_catalog_router_source ON model_catalog(router_source);
-CREATE INDEX IF NOT EXISTS idx_model_catalog_hidden ON model_catalog(router_source, is_hidden);
-CREATE INDEX IF NOT EXISTS idx_model_catalog_last_seen_snapshot ON model_catalog(router_source, last_seen_snapshot_id);
+-- ========== Reasoning Model Index ==========
 
--- ========== Reasoning Model Index (Derived from model_catalog) ==========
--- Purpose:
--- - Settings/selection list reads ONLY this index (id/name/status).
--- - Derived by ReasoningIndexSyncJob from model_catalog (no OpenRouter JSON in UI).
--- - Never delete: if a model stops being reasoning-capable, mark status='hidden'.
 CREATE TABLE IF NOT EXISTS reasoning_model_index (
   model_id TEXT PRIMARY KEY CHECK (length(model_id) > 0),
   name TEXT NOT NULL CHECK (length(name) > 0),
@@ -283,13 +254,8 @@ CREATE TABLE IF NOT EXISTS reasoning_model_index (
   updated_at_ms INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_reasoning_model_index_status ON reasoning_model_index(status);
-CREATE INDEX IF NOT EXISTS idx_reasoning_model_index_last_synced ON reasoning_model_index(last_synced_snapshot);
-
 -- ========== Settings (KV, JSON) ==========
--- Purpose:
--- - Persist global settings in SQLite (renderer reads via dbBridge; no UI parsing of provider JSON).
--- - Never delete user settings; callers may overwrite values by key.
+
 CREATE TABLE IF NOT EXISTS settings_kv (
   key TEXT PRIMARY KEY CHECK (length(key) > 0),
   value_json TEXT NOT NULL,
@@ -297,9 +263,8 @@ CREATE TABLE IF NOT EXISTS settings_kv (
   updated_at_ms INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_settings_kv_updated ON settings_kv(updated_at_ms DESC);
-
 -- ========== Dashboard Preferences ==========
+
 CREATE TABLE IF NOT EXISTS user_dashboard_prefs (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -310,5 +275,3 @@ CREATE TABLE IF NOT EXISTS user_dashboard_prefs (
   is_default INTEGER DEFAULT 0,
   updated_at INTEGER NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_prefs_user_view ON user_dashboard_prefs(user_id, view_id);
-CREATE INDEX IF NOT EXISTS idx_prefs_user_default ON user_dashboard_prefs(user_id, is_default);

@@ -16,6 +16,7 @@ import type {
   DeleteProjectInput,
   ListProjectParams,
   FulltextQueryParams,
+  SearchQueryParams,
   ListConvoParams,
   ListMessageParams,
   ReplaceMessagesInput,
@@ -143,7 +144,7 @@ export const FinalizeReasoningDetailsSchema: ZodType<FinalizeReasoningDetailsInp
 
 export const SetReasoningRequestConfigSchema: ZodType<SetReasoningRequestConfigInput> = z.object({
   messageId: z.string().min(1),
-  value: z.any()
+  value: z.any().optional()
 })
 
 export const GetReasoningSegmentsStatsSchema: ZodType<GetReasoningSegmentsStatsInput> = z.object({
@@ -356,6 +357,24 @@ export const FulltextQuerySchema: ZodType<FulltextQueryParams> = z.object({
   limit: z.number().int().positive().max(200).optional(),
   offset: z.number().int().nonnegative().optional(),
   highlight: z.boolean().optional()
+})
+
+const SearchScopeSchema = z.object({
+  projectName: z.boolean(),
+  convoName: z.boolean(),
+  convoContent: z.boolean()
+})
+
+export const SearchQuerySchema: ZodType<SearchQueryParams> = z.object({
+  q: z.string().min(1),
+  scope: SearchScopeSchema,
+  projectId: z.string().min(1).optional().nullable(),
+  convoId: z.string().min(1).optional().nullable(),
+  timeFromSec: z.number().int().optional(),
+  timeToSec: z.number().int().optional(),
+  limit: z.number().int().positive().max(200).optional(),
+  offset: z.number().int().nonnegative().optional(),
+  mode: z.enum(['exact', 'fuzzy']).optional()
 })
 
 // ========== Batch Operation Schemas ==========

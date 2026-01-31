@@ -67,7 +67,7 @@ export type FinalizeReasoningDetailsInput = Readonly<{
 
 export type SetReasoningRequestConfigInput = Readonly<{
   messageId: string
-  value: unknown
+  value?: unknown
 }>
 
 export type GetReasoningSegmentsStatsInput = Readonly<{
@@ -435,6 +435,55 @@ export type FulltextResult = {
   snippet: string | null
 }
 
+// ========== Search (v0 Skeleton) ==========
+
+export type SearchEntityType = 'project' | 'convo' | 'message'
+
+export type SearchDocInput = {
+  entityType: SearchEntityType
+  entityId: string
+  projectId?: string | null
+  convoId?: string | null
+  createdAtSec: number
+  updatedAtSec: number
+  title?: string | null
+  body?: string | null
+  mediaType?: string | null
+  extraJson?: string | null
+}
+
+export type SearchScope = {
+  projectName: boolean
+  convoName: boolean
+  convoContent: boolean
+}
+
+export type SearchQueryParams = {
+  q: string
+  scope: SearchScope
+  projectId?: string | null
+  convoId?: string | null
+  timeFromSec?: number
+  timeToSec?: number
+  limit?: number
+  offset?: number
+  mode?: 'exact' | 'fuzzy'
+}
+
+export type SearchHit = {
+  entityType: SearchEntityType
+  entityId: string
+  projectId?: string | null
+  convoId?: string | null
+  createdAtSec: number
+  /**
+   * 纯文本片段，使用 \u0001 和 \u0002 标记高亮区间。
+   * 前端必须按“文本方式”渲染并自行做高亮拆分，禁止 v-html。
+   */
+  snippet: string
+  score: number
+}
+
 // ========== Usage Statistics Types ==========
 
 export type UsageLogPayload = {
@@ -707,6 +756,7 @@ export type WorkerInitConfig = {
 }
 
 export type DbMethod =
+  | 'db.reset'
   | 'health.ping'
   | 'project.create'
   | 'project.save'
@@ -715,6 +765,8 @@ export type DbMethod =
   | 'project.findById'
   | 'project.findByName'
   | 'project.countConversations'
+  | 'project.countConversationsBatch'
+  | 'project.getInbox'
   | 'convo.create'
   | 'convo.save'
   | 'convo.saveWithMessages'
@@ -759,6 +811,8 @@ export type DbMethod =
   | 'context.buildForBranch'
   | 'context.getRenderableTurns'
   | 'search.fulltext'
+  | 'search.query'
+  | 'search.rebuildIndex'
   | 'maintenance.optimize'
   | 'health.stats'
   | 'usage.log'
@@ -834,8 +888,10 @@ export type DbErrorCode =
   | 'ERR_VALIDATION'
   | 'ERR_INVALID'
   | 'ERR_INTERNAL'
+  | 'ERR_FORBIDDEN'
   | 'ERR_UNAVAILABLE'
   | 'ERR_MUTATION_FORBIDDEN_ON_BRANCHING_CONVO'
+  | 'ERR_DELETE_FORBIDDEN'
 
 export type DbErrorShape = {
   code: DbErrorCode
@@ -844,6 +900,21 @@ export type DbErrorShape = {
 }
 
 export type DbHandler = (params: any) => any | Promise<any>
+
+// ========== Database Events ==========
+// Worker -> Renderer 结构化事件类型
+
+export type DbEvent =
+  | { type: 'project.created'; projectId: string; name: string }
+  | { type: 'project.updated'; projectId: string; name?: string }
+  | { type: 'project.deleted'; projectId: string }
+  | { type: 'conversation.moved'; convoId: string; fromProjectId: string | null; toProjectId: string | null }
+  | { type: 'conversation.activity_updated'; convoId: string; updatedAt: number }
+
+export type WorkerEventMessage = {
+  type: 'event'
+  event: DbEvent
+}
 
 // ========== Model Data Types ==========
 // 参考规范：/docs/openrouter-model-sync-spec.md
