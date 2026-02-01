@@ -128,6 +128,74 @@ function summarizeBodyForLog(body: unknown): {
 }
 
 /**
+ * Format reasoning parameter for one-line summary display.
+ * Examples: "effort=medium", "max_tokens=4000,exclude=true", "enabled=true", "UNSPECIFIED"
+ */
+function formatReasoningForSummary(body: any): string {
+  const reasoning = body?.reasoning
+  const hasIncludeReasoning = !!(body && typeof body === 'object' && 'include_reasoning' in body)
+
+  if (!reasoning && !hasIncludeReasoning) return 'UNSPECIFIED'
+
+  const parts: string[] = []
+
+  if (reasoning && typeof reasoning === 'object') {
+    if ('effort' in reasoning) parts.push(`effort=${reasoning.effort}`)
+    if ('max_tokens' in reasoning) parts.push(`max_tokens=${reasoning.max_tokens}`)
+    if ('exclude' in reasoning) parts.push(`exclude=${reasoning.exclude}`)
+    if ('enabled' in reasoning) parts.push(`enabled=${reasoning.enabled}`)
+  }
+
+  if (hasIncludeReasoning) {
+    parts.push(`include_reasoning=${body.include_reasoning}`)
+  }
+
+  return parts.length > 0 ? parts.join(',') : 'EMPTY_OBJECT'
+}
+
+/**
+ * Print complete request body with clear boundaries for audit.
+ * Uses console.warn for high visibility filtering.
+ * Prints COMPLETE data including full API key - DO NOT share logs publicly.
+ */
+function logCompleteRequestBody(
+  requestId: string,
+  url: string,
+  apiKey: string,
+  body: unknown,
+  headers: Record<string, string>
+): void {
+  const isoTime = new Date().toISOString()
+  const bodyObj: any = body
+
+  console.warn(`\n${'='.repeat(80)}`)
+  console.warn(`OPENROUTER_REQUEST_BEGIN ${requestId} ${isoTime}`)
+  console.warn(`${'='.repeat(80)}`)
+  console.warn(`Endpoint: ${url}`)
+  console.warn(`API Key (FULL): ${apiKey}`)
+  console.warn(`Headers (complete):`)
+  console.warn(`  Authorization: Bearer ${apiKey}`)
+  console.warn(`  HTTP-Referer: ${headers['HTTP-Referer'] || 'N/A'}`)
+  console.warn(`  X-Title: ${headers['X-Title'] || 'N/A'}`)
+  console.warn(`  Content-Type: ${headers['Content-Type'] || 'N/A'}`)
+  console.warn(`\nRequest Body (COMPLETE - NO SANITIZATION):`)
+  console.warn(JSON.stringify(bodyObj, null, 2))
+  console.warn(`${'='.repeat(80)}`)
+  console.warn(`OPENROUTER_REQUEST_END ${requestId}`)
+  console.warn(`${'='.repeat(80)}`)
+
+  // One-line summary for quick scanning
+  const model = bodyObj?.model || 'N/A'
+  const stream = bodyObj?.stream ?? 'N/A'
+  const msgCount = Array.isArray(bodyObj?.messages) ? bodyObj.messages.length : 0
+  const reasoning = formatReasoningForSummary(bodyObj)
+
+  console.warn(
+    `OR_REQ ${requestId} model=${model} stream=${stream} reasoning=${reasoning} msgs=${msgCount}\n`
+  )
+}
+
+/**
  * Pure transport: only sends the request and returns the raw Response.
  * - Does NOT do SSE parsing or JSON chunk mapping.
  * - For non-2xx, throws a structured http_error (before any streaming begins).
@@ -167,6 +235,14 @@ export async function openrouterFetch(
     const debugAssert =
       options.debug?.assertRequestInvariants === true ||
       (globalThis as any).__STARVERSE_OPENROUTER_DEBUG_REQUEST_ASSERT__ === true
+
+    // NEW: Always log complete request body for reasoning audit
+    const requestHeaders = {
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://github.com/GuXinghai/starverse',
+      'X-Title': 'Starverse',
+    }
+    logCompleteRequestBody(requestId, url, options.apiKey, options.body, requestHeaders)
 
     if (debugLog || debugAssert) {
       const body: any = options.body
@@ -214,9 +290,7 @@ export async function openrouterFetch(
       method: 'POST',
       headers: {
         Authorization: `Bearer ${options.apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://github.com/GuXinghai/starverse',
-        'X-Title': 'Starverse',
+        ...requestHeaders,
       },
       body: JSON.stringify(options.body),
       signal: controller.signal,

@@ -118,7 +118,7 @@ const modelSelectValue = computed(() => (props.model.trim().length > 0 ? props.m
             type="checkbox"
             class="h-4 w-4 rounded border-gray-300"
             :checked="props.requestedReasoningExclude"
-            :disabled="props.disabled || props.isRunning || props.requestedReasoningEffort === 'auto'"
+            :disabled="props.disabled || props.isRunning || props.requestedReasoningEffort === 'auto' || props.requestedReasoningEffort === 'none'"
             @change="emit('update:requestedReasoningExclude', ($event.target as HTMLInputElement).checked)"
           />
           exclude

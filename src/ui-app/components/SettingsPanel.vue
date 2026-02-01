@@ -1,7 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { getOpenRouterProviderRequireParameters, setOpenRouterProviderRequireParameters } from '@/next/settings/openRouterProviderSettingsClient'
 import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningPrefsClient'
+import {
+  DEFAULT_NETEXP_SETTINGS,
+  getNetExpRuntimeInfo,
+  getNetExpSettings,
+  requestAppRelaunch,
+  setNetExpSettings,
+  type NetExpSettings,
+  type NetExpRuntimeInfo,
+} from '@/next/netExp/netExpClient'
+import { formatNetExpRunReport, getLastNetExpRunReport } from '@/next/netExp/netExpRunReport'
 import type { ReasoningEffort, ReasoningPrefs } from '@/next/state/types'
 
 const props = defineProps<{
@@ -31,14 +41,33 @@ const requireParameters = ref(false)
 const showApiKey = ref(false)
 const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('auto')
 const requestedReasoningExclude = ref(false)
+const netExpDisableHttp2 = ref(DEFAULT_NETEXP_SETTINGS.disableHttp2)
+const netExpDisableQuic = ref(DEFAULT_NETEXP_SETTINGS.disableQuic)
+const netExpStreamInMainProcess = ref(DEFAULT_NETEXP_SETTINGS.streamInMainProcess)
+const netExpForceHttp1 = ref(DEFAULT_NETEXP_SETTINGS.forceHttp1)
+const netExpKeepAliveEnable = ref(DEFAULT_NETEXP_SETTINGS.tcpKeepAliveEnable)
+const netExpKeepAliveIdleMs = ref(DEFAULT_NETEXP_SETTINGS.tcpKeepAliveIdleMs)
+const netExpInitial = ref<NetExpSettings>(DEFAULT_NETEXP_SETTINGS)
+const netExpRuntime = ref<NetExpRuntimeInfo | null>(null)
 
 const loading = ref(false)
 const saving = ref(false)
 const error = ref<string | null>(null)
 const savedMessage = ref<string | null>(null)
 
+watch(requestedReasoningEffort, (value) => {
+  if (value === 'auto' || value === 'none') {
+    if (requestedReasoningExclude.value) requestedReasoningExclude.value = false
+  }
+})
+
 const storeAvailable = computed(() => !!getElectronStore())
 const canEdit = computed(() => !props.disabled && !props.isRunning && storeAvailable.value)
+const restartRequired = computed(() => {
+  const appliedHttp2 = netExpRuntime.value?.applied?.disableHttp2 ?? netExpInitial.value.disableHttp2
+  const appliedQuic = netExpRuntime.value?.applied?.disableQuic ?? netExpInitial.value.disableQuic
+  return netExpDisableHttp2.value !== appliedHttp2 || netExpDisableQuic.value !== appliedQuic
+})
 
 function isValidUrlOrEmpty(value: string): boolean {
   const trimmed = value.trim()
@@ -66,13 +95,15 @@ function normalizeReasoningPrefs(raw: unknown): ReasoningPrefs {
   const mode = (raw as any).mode === 'effort' || (raw as any).mode === 'auto' ? (raw as any).mode : 'auto'
   const effortRaw = (raw as any).effort
   const effort = effortRaw === 'auto' || isReasoningEffort(effortRaw) ? effortRaw : undefined
-  const exclude = (raw as any).exclude === true
+  const excludeRaw = (raw as any).exclude === true
 
   if (mode === 'auto') {
     return { mode: 'auto', effort: 'auto', exclude: false }
   }
 
-  return { mode: 'effort', effort: (effort && effort !== 'auto' ? effort : 'none'), exclude }
+  const resolvedEffort = effort && effort !== 'auto' ? effort : 'none'
+  const exclude = resolvedEffort === 'none' ? false : excludeRaw
+  return { mode: 'effort', effort: resolvedEffort, exclude }
 }
 
 function applyReasoningPrefs(prefs: ReasoningPrefs) {
@@ -81,13 +112,14 @@ function applyReasoningPrefs(prefs: ReasoningPrefs) {
     requestedReasoningExclude.value = false
     return
   }
-  requestedReasoningEffort.value = prefs.effort && prefs.effort !== 'auto' ? prefs.effort : 'none'
-  requestedReasoningExclude.value = prefs.exclude === true
+  const nextEffort = prefs.effort && prefs.effort !== 'auto' ? prefs.effort : 'none'
+  requestedReasoningEffort.value = nextEffort
+  requestedReasoningExclude.value = nextEffort === 'none' ? false : prefs.exclude === true
 }
 
 function buildReasoningPrefs(): ReasoningPrefs {
   const mode = requestedReasoningEffort.value === 'auto' ? 'auto' : 'effort'
-  const exclude = mode === 'auto' ? false : requestedReasoningExclude.value
+  const exclude = mode === 'auto' || requestedReasoningEffort.value === 'none' ? false : requestedReasoningExclude.value
   return { mode, effort: requestedReasoningEffort.value, exclude }
 }
 
@@ -106,6 +138,15 @@ async function load() {
     apiKey.value = String((await store.get(OPENROUTER_API_KEY_KEY)) ?? '').trim()
     baseUrl.value = String((await store.get(OPENROUTER_BASE_URL_KEY)) ?? '').trim()
     requireParameters.value = await getOpenRouterProviderRequireParameters()
+    const netExp = await getNetExpSettings()
+    netExpDisableHttp2.value = netExp.disableHttp2
+    netExpDisableQuic.value = netExp.disableQuic
+    netExpStreamInMainProcess.value = netExp.streamInMainProcess
+    netExpForceHttp1.value = netExp.forceHttp1
+    netExpKeepAliveEnable.value = netExp.tcpKeepAliveEnable
+    netExpKeepAliveIdleMs.value = netExp.tcpKeepAliveIdleMs
+    netExpInitial.value = netExp
+    netExpRuntime.value = await getNetExpRuntimeInfo()
     const prefs = await getReasoningPrefs()
     applyReasoningPrefs(normalizeReasoningPrefs(prefs))
   } catch (err: any) {
@@ -135,6 +176,14 @@ async function save() {
     await store.set(OPENROUTER_API_KEY_KEY, apiKey.value.trim())
     await store.set(OPENROUTER_BASE_URL_KEY, baseUrl.value.trim())
     await setOpenRouterProviderRequireParameters(requireParameters.value === true)
+    await setNetExpSettings({
+      disableHttp2: netExpDisableHttp2.value,
+      disableQuic: netExpDisableQuic.value,
+      streamInMainProcess: netExpStreamInMainProcess.value,
+      forceHttp1: netExpForceHttp1.value,
+      tcpKeepAliveEnable: netExpKeepAliveEnable.value,
+      tcpKeepAliveIdleMs: netExpKeepAliveIdleMs.value,
+    })
     const nextReasoningPrefs = buildReasoningPrefs()
     await setReasoningPrefs(nextReasoningPrefs)
     try {
@@ -142,11 +191,33 @@ async function save() {
     } catch {
       // no-op
     }
-    savedMessage.value = 'Saved.'
+    savedMessage.value = restartRequired.value ? 'Saved. Restart required to apply network switches.' : 'Saved.'
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
     saving.value = false
+  }
+}
+
+async function relaunchApp() {
+  error.value = null
+  savedMessage.value = null
+  const ok = await requestAppRelaunch()
+  if (!ok) {
+    error.value = 'Failed to relaunch app.'
+  }
+}
+
+async function copyRunReport() {
+  error.value = null
+  savedMessage.value = null
+  try {
+    netExpRuntime.value = await getNetExpRuntimeInfo()
+    const report = formatNetExpRunReport(getLastNetExpRunReport(), netExpRuntime.value)
+    await navigator.clipboard.writeText(report)
+    savedMessage.value = 'Run report copied.'
+  } catch (err: any) {
+    error.value = err?.message ? String(err.message) : 'Failed to copy run report.'
   }
 }
 
@@ -296,6 +367,131 @@ onMounted(() => {
       </div>
 
       <div class="rounded-lg border border-gray-200 bg-white p-3">
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Network Experiments</div>
+
+        <div class="mt-3 space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-[11px] font-semibold text-gray-700">Disable HTTP/2</div>
+              <div class="text-[11px] text-gray-500">Append switch disable-http2 (restart required)</div>
+            </div>
+            <label class="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                aria-label="Disable HTTP/2"
+                :disabled="!canEdit || loading || saving"
+                v-model="netExpDisableHttp2"
+              />
+              <span class="text-[11px] text-gray-700">{{ netExpDisableHttp2 ? 'On' : 'Off' }}</span>
+            </label>
+          </div>
+
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-[11px] font-semibold text-gray-700">Disable QUIC / HTTP/3</div>
+              <div class="text-[11px] text-gray-500">Append switch disable-quic (restart required)</div>
+            </div>
+            <label class="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                aria-label="Disable QUIC"
+                :disabled="!canEdit || loading || saving"
+                v-model="netExpDisableQuic"
+              />
+              <span class="text-[11px] text-gray-700">{{ netExpDisableQuic ? 'On' : 'Off' }}</span>
+            </label>
+          </div>
+
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-[11px] font-semibold text-gray-700">Stream in main process</div>
+              <div class="text-[11px] text-gray-500">Use IPC + undici for SSE (enables keepalive/force HTTP/1.1)</div>
+            </div>
+            <label class="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                aria-label="Stream in main process"
+                :disabled="!canEdit || loading || saving"
+                v-model="netExpStreamInMainProcess"
+              />
+              <span class="text-[11px] text-gray-700">{{ netExpStreamInMainProcess ? 'On' : 'Off' }}</span>
+            </label>
+          </div>
+
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-[11px] font-semibold text-gray-700">Force HTTP/1.1</div>
+              <div class="text-[11px] text-gray-500">undici allowH2=false (main-process stream only)</div>
+            </div>
+            <label class="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                aria-label="Force HTTP/1.1"
+                :disabled="!canEdit || loading || saving || !netExpStreamInMainProcess"
+                v-model="netExpForceHttp1"
+              />
+              <span class="text-[11px] text-gray-700">{{ netExpForceHttp1 ? 'On' : 'Off' }}</span>
+            </label>
+          </div>
+
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-[11px] font-semibold text-gray-700">TCP keepalive</div>
+              <div class="text-[11px] text-gray-500">socket.setKeepAlive (main-process stream only)</div>
+            </div>
+            <label class="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                aria-label="Enable TCP keepalive"
+                :disabled="!canEdit || loading || saving || !netExpStreamInMainProcess"
+                v-model="netExpKeepAliveEnable"
+              />
+              <span class="text-[11px] text-gray-700">{{ netExpKeepAliveEnable ? 'On' : 'Off' }}</span>
+            </label>
+          </div>
+
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-[11px] font-semibold text-gray-700">TCP keepalive idle (ms)</div>
+              <div class="text-[11px] text-gray-500">Initial delay before probes</div>
+            </div>
+            <input
+              type="number"
+              min="0"
+              step="1000"
+              class="w-32 rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700 disabled:bg-gray-50"
+              :disabled="!canEdit || loading || saving || !netExpStreamInMainProcess || !netExpKeepAliveEnable"
+              v-model.number="netExpKeepAliveIdleMs"
+            />
+          </div>
+
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-[11px] text-gray-500">Restart required when switch values differ from applied runtime.</div>
+            <button
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || !restartRequired"
+              @click="relaunchApp"
+            >
+              Restart now
+            </button>
+          </div>
+
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-[11px] text-gray-500">Copy a run report for A/B debugging.</div>
+            <button
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+              :disabled="props.disabled || loading || saving"
+              @click="copyRunReport"
+            >
+              Copy run report
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-gray-200 bg-white p-3">
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Global Reasoning Defaults</div>
 
         <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-gray-600">
@@ -320,7 +516,7 @@ onMounted(() => {
                 type="checkbox"
                 aria-label="Global reasoning exclude"
                 class="h-4 w-4 rounded border-gray-300"
-                :disabled="!canEdit || loading || saving || requestedReasoningEffort === 'auto'"
+                :disabled="!canEdit || loading || saving || requestedReasoningEffort === 'auto' || requestedReasoningEffort === 'none'"
                 v-model="requestedReasoningExclude"
               />
               exclude

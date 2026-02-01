@@ -95,6 +95,93 @@ function logTiming(requestId: string, tag: string, data: Record<string, unknown>
   }
 }
 
+const LOG_MAX_CHARS = 20000
+
+function maskApiKey(apiKey: string): string {
+  if (!apiKey) return '[REDACTED]'
+  if (apiKey.length <= 8) return '[REDACTED]'
+  return `${apiKey.slice(0, 4)}…${apiKey.slice(-4)}`
+}
+
+function formatReasoningSummary(body: any): string {
+  const reasoning = body?.reasoning
+  const hasIncludeReasoning = !!(body && typeof body === 'object' && 'include_reasoning' in body)
+  if (!reasoning && !hasIncludeReasoning) return 'UNSPECIFIED'
+  const parts: string[] = []
+  if (reasoning && typeof reasoning === 'object') {
+    if ('effort' in reasoning) parts.push(`effort=${reasoning.effort}`)
+    if ('max_tokens' in reasoning) parts.push(`max_tokens=${reasoning.max_tokens}`)
+    if ('exclude' in reasoning) parts.push(`exclude=${reasoning.exclude}`)
+    if ('enabled' in reasoning) parts.push(`enabled=${reasoning.enabled}`)
+  }
+  if (hasIncludeReasoning) parts.push(`include_reasoning=${body.include_reasoning}`)
+  return parts.length > 0 ? parts.join(',') : 'EMPTY_OBJECT'
+}
+
+function sanitizeMessageContent(content: unknown): unknown {
+  if (typeof content === 'string') {
+    return { type: 'text', redacted: true, length: content.length }
+  }
+  if (Array.isArray(content)) {
+    return content.map((item) => sanitizeMessageContent(item))
+  }
+  if (content && typeof content === 'object') {
+    const value: any = { ...(content as any) }
+    if (typeof value.text === 'string') {
+      value.text = { redacted: true, length: value.text.length }
+    }
+    if ('image_url' in value) value.image_url = '[REDACTED_IMAGE_URL]'
+    if ('file' in value) value.file = '[REDACTED_FILE]'
+    if ('data' in value) value.data = '[REDACTED_DATA]'
+    if ('b64_json' in value) value.b64_json = '[REDACTED_B64_JSON]'
+    if ('audio' in value) value.audio = '[REDACTED_AUDIO]'
+    if ('image' in value) value.image = '[REDACTED_IMAGE]'
+    return value
+  }
+  return content
+}
+
+function sanitizeRequestBodyForLog(body: unknown): unknown {
+  if (!body || typeof body !== 'object') return body
+  const value: any = Array.isArray(body) ? [...body] : { ...(body as any) }
+
+  if (Array.isArray(value.messages)) {
+    value.messages = value.messages.map((msg: any) => {
+      const entry: any = { ...msg }
+      if ('content' in entry) entry.content = sanitizeMessageContent(entry.content)
+      if ('tool_calls' in entry) entry.tool_calls = '[REDACTED_TOOL_CALLS]'
+      if ('function_call' in entry) entry.function_call = '[REDACTED_FUNCTION_CALL]'
+      return entry
+    })
+  }
+
+  if ('prompt' in value) value.prompt = '[REDACTED_PROMPT]'
+  if ('input' in value) value.input = '[REDACTED_INPUT]'
+  if ('apiKey' in value) value.apiKey = '[REDACTED]'
+  if ('attachments' in value) value.attachments = '[REDACTED_ATTACHMENTS]'
+
+  return value
+}
+
+function safeStringifyForLog(value: unknown, maxChars: number): { text: string; truncated: boolean; originalLength: number } {
+  let text = ''
+  try {
+    text = JSON.stringify(value, null, 2)
+  } catch {
+    text = String(value)
+  }
+  const originalLength = text.length
+  if (text.length > maxChars) {
+    const head = text.slice(0, maxChars)
+    return {
+      text: `${head}\n...[truncated ${originalLength - maxChars} chars]`,
+      truncated: true,
+      originalLength,
+    }
+  }
+  return { text, truncated: false, originalLength }
+}
+
 async function startStream(sender: WebContents, payload: StreamChatRequest): Promise<void> {
   const controller = new AbortController()
   activeControllers.set(payload.requestId, controller)
@@ -116,19 +203,19 @@ async function startStream(sender: WebContents, payload: StreamChatRequest): Pro
 
     const messages = buildOpenRouterMessages(internalMessages, { mode: payload.contextMode ?? 'default' })
 
+    const reasoningEffort = payload.config.requestedReasoningEffort ?? 'none'
     const reasoning =
       payload.config.requestedReasoningMode === 'auto'
         ? undefined
         : {
-          effort: payload.config.requestedReasoningEffort ?? 'none',
-          ...(payload.config.requestedReasoningExclude === true ? { exclude: true } : {}),
+          effort: reasoningEffort,
+          ...(reasoningEffort !== 'none' && payload.config.requestedReasoningExclude === true ? { exclude: true } : {}),
         }
 
     const body = buildOpenRouterChatCompletionsRequest({
       model: payload.config.model,
       messages,
       stream: true,
-      usage: { include: true },
       tools: payload.config.tools ?? [],
       ...(payload.config.providerRequireParameters === true ? { providerRequireParameters: true } : {}),
       ...(reasoning ? { reasoning } : {}),
@@ -167,6 +254,34 @@ async function startStream(sender: WebContents, payload: StreamChatRequest): Pro
     if (typeof payload.config.timeoutMs === 'number' && payload.config.timeoutMs > 0) {
       timeoutId = setTimeout(() => controller.abort(), payload.config.timeoutMs)
     }
+
+    // LOG REQUEST BODY (main process, sanitized + truncated)
+    const isoTime = new Date().toISOString()
+    const sanitizedBody = sanitizeRequestBodyForLog(body)
+    const bodyLog = safeStringifyForLog(sanitizedBody, LOG_MAX_CHARS)
+    console.warn(`\n${'='.repeat(80)}`)
+    console.warn(`OPENROUTER_REQUEST_BEGIN ${payload.requestId} ${isoTime}`)
+    console.warn(`${'='.repeat(80)}`)
+    console.warn(`Endpoint: ${origin}${requestPath}`)
+    console.warn(`API Key (REDACTED): ${maskApiKey(payload.config.apiKey)}`)
+    console.warn(`Headers (sanitized):`)
+    console.warn(`  Authorization: [REDACTED]`)
+    console.warn(`  HTTP-Referer: https://github.com/GuXinghai/starverse`)
+    console.warn(`  X-Title: Starverse`)
+    console.warn(`  Content-Type: application/json`)
+    console.warn(`\nRequest Body (SANITIZED${bodyLog.truncated ? ' + TRUNCATED' : ''}):`)
+    console.warn(bodyLog.text)
+    if (bodyLog.truncated) {
+      console.warn(`[log] request body truncated: original ${bodyLog.originalLength} chars, limit ${LOG_MAX_CHARS}`)
+    }
+    console.warn(`${'='.repeat(80)}`)
+    console.warn(`OPENROUTER_REQUEST_END ${payload.requestId}`)
+    console.warn(`${'='.repeat(80)}`)
+    const model = (body as any)?.model || 'N/A'
+    const stream = (body as any)?.stream ?? 'N/A'
+    const msgCount = Array.isArray((body as any)?.messages) ? (body as any).messages.length : 0
+    const reasoningSummary = formatReasoningSummary(body as any)
+    console.warn(`OR_REQ ${payload.requestId} model=${model} stream=${stream} reasoning=${reasoningSummary} msgs=${msgCount}\n`)
 
     const response = await client.request({
       path: requestPath,

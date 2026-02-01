@@ -16,15 +16,10 @@ export type OpenRouterReasoningInput =
       exclude?: boolean
     }
 
-export type OpenRouterUsageInput = Readonly<{
-  include?: boolean
-}>
-
 export type BuildOpenRouterRequestInput = Readonly<{
   model: string
-  messages: unknown[]
+  messages: ReadonlyArray<unknown>
   stream: boolean
-  usage?: OpenRouterUsageInput
   reasoning?: OpenRouterReasoningInput
   tools?: unknown[]
   /**
@@ -37,9 +32,8 @@ export type BuildOpenRouterRequestInput = Readonly<{
 
 export type OpenRouterChatCompletionsRequest = Readonly<{
   model: string
-  messages: unknown[]
+  messages: ReadonlyArray<unknown>
   stream: boolean
-  usage: { include: boolean }
   reasoning?: Record<string, unknown>
   tools?: unknown[]
   provider?: { require_parameters: boolean }
@@ -62,7 +56,6 @@ function assertPositiveInteger(value: unknown, name: string): asserts value is n
  *
  * Rules (SSOT-aligned):
  * - `stream` must be boolean (reject "true"/"false" strings)
- * - `usage.include` defaults to true, and is always explicitly set in the output
  * - `reasoning` only concerns request payload, never UI display
  * - `reasoning.effort = "none"` is the only definition of "disable reasoning", and must not be combined with `max_tokens`
  * - `effort` and `max_tokens` are treated as mutually exclusive control modes
@@ -81,14 +74,10 @@ export function buildOpenRouterChatCompletionsRequest(
   }
   assertBoolean(input.stream, 'stream')
 
-  const usageInclude = input.usage?.include ?? true
-  assertBoolean(usageInclude, 'usage.include')
-
   const request: {
     model: string
     messages: unknown[]
     stream: boolean
-    usage: { include: boolean }
     reasoning?: Record<string, unknown>
     tools?: unknown[]
     provider?: { require_parameters: boolean }
@@ -96,7 +85,6 @@ export function buildOpenRouterChatCompletionsRequest(
     model: input.model,
     messages: input.messages,
     stream: input.stream,
-    usage: { include: usageInclude },
   }
 
   if (input.providerRequireParameters !== undefined) {
@@ -137,7 +125,8 @@ export function buildOpenRouterChatCompletionsRequest(
       ) {
         throw new Error('reasoning.effort is invalid')
       }
-      request.reasoning = reasoning.exclude === undefined ? { effort } : { effort, exclude: reasoning.exclude }
+      const exclude = effort === 'none' ? undefined : ('exclude' in reasoning ? reasoning.exclude : undefined)
+      request.reasoning = exclude === undefined ? { effort } : { effort, exclude }
     }
 
     if (hasMaxTokens) {
