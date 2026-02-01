@@ -104,7 +104,7 @@ const isDev = (import.meta as any).env?.DEV === true
               type="checkbox"
               class="h-4 w-4 rounded border-gray-300"
               :checked="props.requestedReasoningExclude"
-              :disabled="props.disabled || props.requestedReasoningEffort === 'auto'"
+              :disabled="props.disabled || props.requestedReasoningEffort === 'auto' || props.requestedReasoningEffort === 'none'"
               @change="emit('update:requestedReasoningExclude', ($event.target as HTMLInputElement).checked)"
             />
             exclude

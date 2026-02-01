@@ -17,24 +17,6 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
     ).toThrow(/stream must be boolean/)
   })
 
-  it('defaults usage.include to true', () => {
-    const req = buildOpenRouterChatCompletionsRequest({
-      ...base,
-      stream: true,
-    })
-    expect(req.usage).toEqual({ include: true })
-  })
-
-  it('allows usage.include to be disabled explicitly', () => {
-    const req = buildOpenRouterChatCompletionsRequest({
-      ...base,
-      stream: false,
-      usage: { include: false },
-    })
-    expect(req.stream).toBe(false)
-    expect(req.usage).toEqual({ include: false })
-  })
-
   it('omits reasoning when not provided', () => {
     const req = buildOpenRouterChatCompletionsRequest({
       ...base,
@@ -60,11 +42,17 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
     })
     expect(req.reasoning).toEqual({ effort: 'none' })
 
+    const reqExclude = buildOpenRouterChatCompletionsRequest({
+      ...base,
+      stream: true,
+      reasoning: { effort: 'none', exclude: true },
+    })
+    expect(reqExclude.reasoning).toEqual({ effort: 'none' })
+
     expect(() =>
       buildOpenRouterChatCompletionsRequest({
         ...base,
         stream: true,
-        // @ts-expect-error intentional invalid combination
         reasoning: { effort: 'none', max_tokens: 10 },
       })
     ).toThrow(/exactly one of effort\/max_tokens/)
@@ -100,7 +88,6 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
       buildOpenRouterChatCompletionsRequest({
         ...base,
         stream: true,
-        // @ts-expect-error invalid: effort + max_tokens
         reasoning: { effort: 'high', max_tokens: 100 },
       })
     ).toThrow(/exactly one of effort\/max_tokens/)
@@ -120,13 +107,12 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
       buildOpenRouterChatCompletionsRequest({
         ...base,
         stream: true,
-        // @ts-expect-error invalid value
         reasoning: { max_tokens: 0 },
       })
     ).toThrow(/reasoning\.max_tokens must be a positive integer/)
   })
 
-  it('snapshot matrix: stream/usage/reasoning (offline, reproducible)', () => {
+  it('snapshot matrix: stream/reasoning (offline, reproducible)', () => {
     const reasoningCases: Array<[string, any | undefined]> = [
       ['none', undefined],
       ['disabled', { effort: 'none' }],
@@ -137,17 +123,14 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
 
     const snapshots: Record<string, unknown> = {}
     for (const stream of [true, false]) {
-      for (const usageInclude of [true, false]) {
-        for (const [label, reasoning] of reasoningCases) {
-          const key = `stream=${stream};usage=${usageInclude};reasoning=${label}`
-          const req = buildOpenRouterChatCompletionsRequest({
-            ...base,
-            stream,
-            usage: { include: usageInclude },
-            ...(reasoning ? { reasoning } : {}),
-          })
-          snapshots[key] = req
-        }
+      for (const [label, reasoning] of reasoningCases) {
+        const key = `stream=${stream};reasoning=${label}`
+        const req = buildOpenRouterChatCompletionsRequest({
+          ...base,
+          stream,
+          ...(reasoning ? { reasoning } : {}),
+        })
+        snapshots[key] = req
       }
     }
 
@@ -155,7 +138,7 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
 
     expect(sorted).toMatchInlineSnapshot(`
       {
-        "stream=false;usage=false;reasoning=disabled": {
+        "stream=false;reasoning=disabled": {
           "messages": [
             {
               "content": "hi",
@@ -167,11 +150,8 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
             "effort": "none",
           },
           "stream": false,
-          "usage": {
-            "include": false,
-          },
         },
-        "stream=false;usage=false;reasoning=effort_high": {
+        "stream=false;reasoning=effort_high": {
           "messages": [
             {
               "content": "hi",
@@ -183,11 +163,8 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
             "effort": "high",
           },
           "stream": false,
-          "usage": {
-            "include": false,
-          },
         },
-        "stream=false;usage=false;reasoning=effort_high_exclude": {
+        "stream=false;reasoning=effort_high_exclude": {
           "messages": [
             {
               "content": "hi",
@@ -200,11 +177,8 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
             "exclude": true,
           },
           "stream": false,
-          "usage": {
-            "include": false,
-          },
         },
-        "stream=false;usage=false;reasoning=max_tokens_128": {
+        "stream=false;reasoning=max_tokens_128": {
           "messages": [
             {
               "content": "hi",
@@ -216,11 +190,8 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
             "max_tokens": 128,
           },
           "stream": false,
-          "usage": {
-            "include": false,
-          },
         },
-        "stream=false;usage=false;reasoning=none": {
+        "stream=false;reasoning=none": {
           "messages": [
             {
               "content": "hi",
@@ -229,89 +200,8 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
           ],
           "model": "openrouter/auto",
           "stream": false,
-          "usage": {
-            "include": false,
-          },
         },
-        "stream=false;usage=true;reasoning=disabled": {
-          "messages": [
-            {
-              "content": "hi",
-              "role": "user",
-            },
-          ],
-          "model": "openrouter/auto",
-          "reasoning": {
-            "effort": "none",
-          },
-          "stream": false,
-          "usage": {
-            "include": true,
-          },
-        },
-        "stream=false;usage=true;reasoning=effort_high": {
-          "messages": [
-            {
-              "content": "hi",
-              "role": "user",
-            },
-          ],
-          "model": "openrouter/auto",
-          "reasoning": {
-            "effort": "high",
-          },
-          "stream": false,
-          "usage": {
-            "include": true,
-          },
-        },
-        "stream=false;usage=true;reasoning=effort_high_exclude": {
-          "messages": [
-            {
-              "content": "hi",
-              "role": "user",
-            },
-          ],
-          "model": "openrouter/auto",
-          "reasoning": {
-            "effort": "high",
-            "exclude": true,
-          },
-          "stream": false,
-          "usage": {
-            "include": true,
-          },
-        },
-        "stream=false;usage=true;reasoning=max_tokens_128": {
-          "messages": [
-            {
-              "content": "hi",
-              "role": "user",
-            },
-          ],
-          "model": "openrouter/auto",
-          "reasoning": {
-            "max_tokens": 128,
-          },
-          "stream": false,
-          "usage": {
-            "include": true,
-          },
-        },
-        "stream=false;usage=true;reasoning=none": {
-          "messages": [
-            {
-              "content": "hi",
-              "role": "user",
-            },
-          ],
-          "model": "openrouter/auto",
-          "stream": false,
-          "usage": {
-            "include": true,
-          },
-        },
-        "stream=true;usage=false;reasoning=disabled": {
+        "stream=true;reasoning=disabled": {
           "messages": [
             {
               "content": "hi",
@@ -323,11 +213,8 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
             "effort": "none",
           },
           "stream": true,
-          "usage": {
-            "include": false,
-          },
         },
-        "stream=true;usage=false;reasoning=effort_high": {
+        "stream=true;reasoning=effort_high": {
           "messages": [
             {
               "content": "hi",
@@ -339,11 +226,8 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
             "effort": "high",
           },
           "stream": true,
-          "usage": {
-            "include": false,
-          },
         },
-        "stream=true;usage=false;reasoning=effort_high_exclude": {
+        "stream=true;reasoning=effort_high_exclude": {
           "messages": [
             {
               "content": "hi",
@@ -356,11 +240,8 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
             "exclude": true,
           },
           "stream": true,
-          "usage": {
-            "include": false,
-          },
         },
-        "stream=true;usage=false;reasoning=max_tokens_128": {
+        "stream=true;reasoning=max_tokens_128": {
           "messages": [
             {
               "content": "hi",
@@ -372,11 +253,8 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
             "max_tokens": 128,
           },
           "stream": true,
-          "usage": {
-            "include": false,
-          },
         },
-        "stream=true;usage=false;reasoning=none": {
+        "stream=true;reasoning=none": {
           "messages": [
             {
               "content": "hi",
@@ -385,87 +263,6 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
           ],
           "model": "openrouter/auto",
           "stream": true,
-          "usage": {
-            "include": false,
-          },
-        },
-        "stream=true;usage=true;reasoning=disabled": {
-          "messages": [
-            {
-              "content": "hi",
-              "role": "user",
-            },
-          ],
-          "model": "openrouter/auto",
-          "reasoning": {
-            "effort": "none",
-          },
-          "stream": true,
-          "usage": {
-            "include": true,
-          },
-        },
-        "stream=true;usage=true;reasoning=effort_high": {
-          "messages": [
-            {
-              "content": "hi",
-              "role": "user",
-            },
-          ],
-          "model": "openrouter/auto",
-          "reasoning": {
-            "effort": "high",
-          },
-          "stream": true,
-          "usage": {
-            "include": true,
-          },
-        },
-        "stream=true;usage=true;reasoning=effort_high_exclude": {
-          "messages": [
-            {
-              "content": "hi",
-              "role": "user",
-            },
-          ],
-          "model": "openrouter/auto",
-          "reasoning": {
-            "effort": "high",
-            "exclude": true,
-          },
-          "stream": true,
-          "usage": {
-            "include": true,
-          },
-        },
-        "stream=true;usage=true;reasoning=max_tokens_128": {
-          "messages": [
-            {
-              "content": "hi",
-              "role": "user",
-            },
-          ],
-          "model": "openrouter/auto",
-          "reasoning": {
-            "max_tokens": 128,
-          },
-          "stream": true,
-          "usage": {
-            "include": true,
-          },
-        },
-        "stream=true;usage=true;reasoning=none": {
-          "messages": [
-            {
-              "content": "hi",
-              "role": "user",
-            },
-          ],
-          "model": "openrouter/auto",
-          "stream": true,
-          "usage": {
-            "include": true,
-          },
         },
       }
     `)
@@ -475,13 +272,12 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
     const req = buildOpenRouterChatCompletionsRequest({
       ...base,
       stream: true,
-      usage: { include: true },
       reasoning: { effort: 'high', exclude: true },
       tools: [],
       providerRequireParameters: true,
     })
 
-    const allowedTopLevel = new Set(['model', 'messages', 'stream', 'usage', 'reasoning', 'tools', 'provider'])
+    const allowedTopLevel = new Set(['model', 'messages', 'stream', 'reasoning', 'tools', 'provider'])
     for (const key of Object.keys(req)) {
       expect(allowedTopLevel.has(key)).toBe(true)
     }
@@ -507,7 +303,6 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
       model: 'openrouter/auto',
       messages: multimodalMessages,
       stream: true,
-      usage: { include: true },
       reasoning: { effort: 'high', exclude: true },
     })
 

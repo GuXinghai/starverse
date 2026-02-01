@@ -1,7 +1,9 @@
+import { markRaw } from 'vue'
 import type {
   DomainEvent,
   MessageState,
   ReasoningEffort,
+  ReasoningPiece,
   RequestedReasoningMode,
   RootState,
   RunState,
@@ -9,6 +11,104 @@ import type {
   ToolCallDelta,
   ToolCallVM,
 } from './types'
+import { ReasoningDetailStreamMerger, injectMergerDiagRecorder } from './reasoningDetailStreamMerger'
+import { recordMergeOp } from './perfMetrics'
+import { recordReducerReasoning, recordMergerOp, startTimer, isSchedDiagEnabled } from './schedulerDiagnostics'
+
+const REASONING_PIECE_MAX_CHARS = 2048
+const REASONING_PIECE_MAX_COUNT = 200
+const REASONING_PIECE_COMPACT_COUNT = 50
+
+const reasoningMergerByMessageId = new Map<string, ReasoningDetailStreamMerger>()
+let nextPieceId = 1
+
+// 注入 merger 诊断记录器（在 sched diag 启用时会记录到聚合器）
+injectMergerDiagRecorder(recordMergerOp, isSchedDiagEnabled())
+
+function clearReasoningMerger(messageId: string): void {
+  reasoningMergerByMessageId.delete(messageId)
+}
+
+function clearAllReasoningMergers(): void {
+  reasoningMergerByMessageId.clear()
+}
+
+function getReasoningMerger(messageId: string, seedDetails?: ReadonlyArray<unknown>): ReasoningDetailStreamMerger {
+  let merger = reasoningMergerByMessageId.get(messageId)
+  if (!merger) {
+    merger = new ReasoningDetailStreamMerger()
+    if (Array.isArray(seedDetails) && seedDetails.length > 0) {
+      for (const detail of seedDetails) {
+        merger.merge(detail)
+      }
+    }
+    reasoningMergerByMessageId.set(messageId, merger)
+  }
+  return merger
+}
+
+function appendReasoningPieces(prevPieces: ReasoningPiece[] | undefined, deltaText: string): { pieces: ReasoningPiece[]; lastLen: number } {
+  if (!deltaText) {
+    const lastLen = prevPieces && prevPieces.length > 0 ? prevPieces[prevPieces.length - 1].text.length : 0
+    return { pieces: prevPieces ?? [], lastLen }
+  }
+
+  const pieces: ReasoningPiece[] = Array.isArray(prevPieces) && prevPieces.length > 0
+    ? [...prevPieces]
+    : [{ id: nextPieceId++, text: '' }]
+  let remaining = deltaText
+
+  let lastIndex = pieces.length - 1
+  let last = pieces[lastIndex]
+  if (last.text.length < REASONING_PIECE_MAX_CHARS) {
+    const space = REASONING_PIECE_MAX_CHARS - last.text.length
+    if (space > 0) {
+      const head = remaining.slice(0, space)
+      pieces[lastIndex] = { ...last, text: last.text + head }
+      remaining = remaining.slice(head.length)
+    }
+  }
+
+  while (remaining.length > 0) {
+    const chunk = remaining.slice(0, REASONING_PIECE_MAX_CHARS)
+    pieces.push({ id: nextPieceId++, text: chunk })
+    remaining = remaining.slice(chunk.length)
+  }
+
+  // 异步合并避免长任务
+  if (pieces.length > REASONING_PIECE_MAX_COUNT) {
+    scheduleAsyncCompaction(pieces)
+  }
+
+  const lastLen = pieces.length > 0 ? pieces[pieces.length - 1].text.length : 0
+  return { pieces, lastLen }
+}
+
+function scheduleAsyncCompaction(pieces: ReasoningPiece[]): void {
+  if (typeof requestIdleCallback !== 'undefined') {
+    requestIdleCallback(() => {
+      if (pieces.length > REASONING_PIECE_MAX_COUNT) {
+        const startTime = performance.now()
+        const mergedText = pieces.slice(0, REASONING_PIECE_COMPACT_COUNT).map(p => p.text).join('')
+        const mergedPiece = { id: nextPieceId++, text: mergedText }
+        pieces.splice(0, REASONING_PIECE_COMPACT_COUNT, mergedPiece)
+        const duration = performance.now() - startTime
+        recordMergeOp(duration)
+      }
+    })
+  } else {
+    setTimeout(() => {
+      if (pieces.length > REASONING_PIECE_MAX_COUNT) {
+        const startTime = performance.now()
+        const mergedText = pieces.slice(0, REASONING_PIECE_COMPACT_COUNT).map(p => p.text).join('')
+        const mergedPiece = { id: nextPieceId++, text: mergedText }
+        pieces.splice(0, REASONING_PIECE_COMPACT_COUNT, mergedPiece)
+        const duration = performance.now() - startTime
+        recordMergeOp(duration)
+      }
+    }, 0)
+  }
+}
 
 function generateId(prefix: string): string {
   const cryptoObj = (globalThis as any).crypto as { randomUUID?: () => string } | undefined
@@ -17,10 +117,14 @@ function generateId(prefix: string): string {
 }
 
 export function createInitialState(): RootState {
+  const messages: Record<string, MessageState> = {}
+  const runMessageIds: Record<string, string[]> = {}
   return {
     runs: {},
-    messages: {},
-    runMessageIds: {},
+    messages,
+    runMessageIds,
+    entities: { messagesById: messages },
+    views: { transcriptsByRunId: runMessageIds },
   }
 }
 
@@ -37,14 +141,18 @@ function createEmptyAssistantMessage(
     messageId,
     role: 'assistant',
     contentText: '',
-    contentBlocks: [],
+    contentBlocks: markRaw([]),
     toolCalls: [],
-    reasoningDetailsRaw: [],
+    reasoningDetailsRaw: markRaw([]),
     reasoningStreamingText: '',
     reasoningSummaryText: undefined,
+    reasoningPieces: markRaw([]) as ReasoningPiece[],
+    reasoningLastPieceLen: 0,
     reasoningPanelState: 'expanded',
     hasEncryptedReasoning: false,
     streaming: { isTarget, isComplete: false },
+    textVersion: 0,
+    reasoningVersion: 0,
     requestedReasoningMode: requested.mode,
     requestedReasoningEffort: requested.effort,
     requestedReasoningExclude: requested.exclude,
@@ -57,14 +165,18 @@ function createUserMessage(messageId: string, text: string): MessageState {
     messageId,
     role: 'user',
     contentText,
-    contentBlocks: contentText ? [{ type: 'text', text: contentText }] : [],
+    contentBlocks: markRaw(contentText ? [{ type: 'text', text: contentText }] : []),
     toolCalls: [],
-    reasoningDetailsRaw: [],
+    reasoningDetailsRaw: markRaw([]),
     reasoningStreamingText: '',
     reasoningSummaryText: undefined,
+    reasoningPieces: markRaw([]) as ReasoningPiece[],
+    reasoningLastPieceLen: 0,
     reasoningPanelState: 'expanded',
     hasEncryptedReasoning: false,
     streaming: { isTarget: false, isComplete: true },
+    textVersion: 0,
+    reasoningVersion: 0,
     requestedReasoningMode: 'effort',
     requestedReasoningEffort: 'none',
     requestedReasoningExclude: false,
@@ -99,6 +211,13 @@ export function startGeneration(state: RootState, input: StartGenerationInput): 
     usage: undefined,
     error: undefined,
     comments: [],
+    // Timing fields initialized to undefined
+    tRequestStart: undefined,
+    tAck: undefined,
+    tEnd: undefined,
+    endReason: undefined,
+    tTransportClosed: undefined,
+    localProcessingDurationMs: undefined,
   }
 
   const existingIds = state.runMessageIds[input.runId] || []
@@ -113,8 +232,8 @@ export function startGeneration(state: RootState, input: StartGenerationInput): 
     ...state.messages,
     ...(userMessageId
       ? {
-          [userMessageId]: createUserMessage(userMessageId, input.userMessageText as string),
-        }
+        [userMessageId]: createUserMessage(userMessageId, input.userMessageText as string),
+      }
       : {}),
     [assistantMessageId]: createEmptyAssistantMessage(assistantMessageId, true, {
       mode: requestedReasoningMode,
@@ -123,27 +242,39 @@ export function startGeneration(state: RootState, input: StartGenerationInput): 
     }),
   }
 
+  const nextRunMessageIds = {
+    ...state.runMessageIds,
+    [input.runId]: nextIds,
+  }
+
   return {
     assistantMessageId,
     state: {
       runs: { ...state.runs, [input.runId]: run },
       messages: nextMessages,
-      runMessageIds: {
-        ...state.runMessageIds,
-        [input.runId]: nextIds,
-      },
+      runMessageIds: nextRunMessageIds,
+      entities: { messagesById: nextMessages },
+      views: { transcriptsByRunId: nextRunMessageIds },
     },
   }
 }
 
 function updateMessage(state: RootState, messageId: string, updater: (m: MessageState) => MessageState): RootState {
-  const prev = state.messages[messageId]
+  const messages = state.entities?.messagesById ?? state.messages
+  const prev = messages[messageId]
   if (!prev) return state
   const next = updater(prev)
   if (next === prev) return state
+  messages[messageId] = next
+  if (state.messages !== messages) {
+    state.messages[messageId] = next
+  }
   return {
     ...state,
-    messages: { ...state.messages, [messageId]: next },
+    messages: state.messages,
+    runMessageIds: state.runMessageIds,
+    entities: state.entities,
+    views: state.views,
   }
 }
 
@@ -159,9 +290,14 @@ function updateRun(state: RootState, runId: string, updater: (s: RunState) => Ru
   if (!prev) return state
   const next = updater(prev)
   if (next === prev) return state
+  state.runs[runId] = next
   return {
     ...state,
-    runs: { ...state.runs, [runId]: next },
+    runs: state.runs,
+    messages: state.messages,
+    runMessageIds: state.runMessageIds,
+    entities: state.entities,
+    views: state.views,
   }
 }
 
@@ -269,17 +405,18 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
         let nextBlocks = prevBlocks
         const last = prevBlocks.length > 0 ? prevBlocks[prevBlocks.length - 1] : null
         if (!last) {
-          nextBlocks = [{ type: 'text', text: event.text }]
+          nextBlocks = [{ type: 'text', text: event.text } as const]
         } else if (last.type === 'text') {
-          nextBlocks = [...prevBlocks.slice(0, -1), { type: 'text', text: last.text + event.text }]
+          nextBlocks = [...prevBlocks.slice(0, -1), { type: 'text', text: last.text + event.text } as const]
         } else {
-          nextBlocks = [...prevBlocks, { type: 'text', text: event.text }]
+          nextBlocks = [...prevBlocks, { type: 'text', text: event.text } as const]
         }
 
         return {
           ...m,
           contentText: nextText,
-          contentBlocks: nextBlocks,
+          contentBlocks: markRaw(nextBlocks),
+          textVersion: m.textVersion + 1,
         }
       })
 
@@ -300,19 +437,21 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
           const last = prevBlocks.length > 0 ? prevBlocks[prevBlocks.length - 1] : null
           const nextBlocks =
             last && last.type === 'text'
-              ? [...prevBlocks.slice(0, -1), { type: 'text', text: last.text + text }]
-              : [...prevBlocks, { type: 'text', text }]
+              ? [...prevBlocks.slice(0, -1), { type: 'text', text: last.text + text } as const]
+              : [...prevBlocks, { type: 'text', text } as const]
 
           return {
             ...m,
             contentText: m.contentText + text,
-            contentBlocks: nextBlocks,
+            contentBlocks: markRaw(nextBlocks),
+            textVersion: m.textVersion + 1,
           }
         }
 
         return {
           ...m,
-          contentBlocks: [...m.contentBlocks, block],
+          contentBlocks: markRaw([...m.contentBlocks, block]),
+          textVersion: m.textVersion + 1,
         }
       })
 
@@ -335,14 +474,121 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
       }))
     }
     case 'MessageDeltaReasoningDetail': {
-      return updateMessage(state, event.messageId, (m) => ({
-        ...m,
-        reasoningDetailsRaw: [...m.reasoningDetailsRaw, event.detail], // append-only raw
-        hasEncryptedReasoning: m.hasEncryptedReasoning || inferHasEncrypted(event.detail),
-      }))
+      const endTimer = startTimer()
+      const result = updateMessage(state, event.messageId, (m) => {
+        const nextDetails = markRaw([...m.reasoningDetailsRaw, event.detail])
+        const nextVersion = m.reasoningVersion + 1
+        const hasEncryptedReasoning = m.hasEncryptedReasoning || inferHasEncrypted(event.detail)
+
+        const merger = getReasoningMerger(event.messageId, m.reasoningDetailsRaw)
+        const merged = merger.merge(event.detail)
+        const deltaText = merged?.deltaText ?? ''
+        const deltaSummary = merged?.deltaSummary ?? ''
+
+        let reasoningSummaryText = m.reasoningSummaryText
+        if (deltaSummary) {
+          reasoningSummaryText = (reasoningSummaryText ?? '') + deltaSummary
+        }
+
+        let reasoningPieces = m.reasoningPieces
+        let reasoningLastPieceLen = m.reasoningLastPieceLen
+        if (deltaText) {
+          const nextPieces = appendReasoningPieces(m.reasoningPieces, deltaText)
+          reasoningPieces = markRaw(nextPieces.pieces)
+          reasoningLastPieceLen = nextPieces.lastLen
+        }
+
+        return {
+          ...m,
+          reasoningDetailsRaw: nextDetails,
+          hasEncryptedReasoning,
+          reasoningVersion: nextVersion,
+          reasoningSummaryText,
+          reasoningPieces,
+          reasoningLastPieceLen,
+        }
+      })
+
+      // 记录诊断数据
+      if (isSchedDiagEnabled()) {
+        const messages = result.entities?.messagesById ?? result.messages
+        const msg = messages[event.messageId]
+        recordReducerReasoning({
+          applyMs: endTimer(),
+          deltaTextLen: typeof (event.detail as any)?.text === 'string' ? (event.detail as any).text.length : 0,
+          detailsCount: 1,
+          reasoningPiecesLen: msg?.reasoningPieces?.length ?? 0,
+          reasoningTotalChars: msg?.reasoningPieces?.reduce((sum, p) => sum + (p?.text?.length ?? 0), 0) ?? 0,
+        })
+      }
+
+      return result
+    }
+    case 'MessageDeltaReasoningDetailBatch': {
+      const details = Array.isArray(event.details) ? event.details : []
+      if (details.length === 0) return state
+      const hasEncrypted = details.some((detail) => inferHasEncrypted(detail))
+      const endTimer = startTimer()
+      const result = updateMessage(state, event.messageId, (m) => {
+        const nextDetails = markRaw([...m.reasoningDetailsRaw, ...details])
+        const nextVersion = m.reasoningVersion + 1
+
+        const merger = getReasoningMerger(event.messageId, m.reasoningDetailsRaw)
+        let reasoningSummaryText = m.reasoningSummaryText
+        let reasoningPieces = m.reasoningPieces
+        let reasoningLastPieceLen = m.reasoningLastPieceLen
+
+        for (const detail of details) {
+          const merged = merger.merge(detail)
+          const deltaText = merged?.deltaText ?? ''
+          const deltaSummary = merged?.deltaSummary ?? ''
+
+          if (deltaSummary) {
+            reasoningSummaryText = (reasoningSummaryText ?? '') + deltaSummary
+          }
+          if (deltaText) {
+            const nextPieces = appendReasoningPieces(reasoningPieces, deltaText)
+            reasoningPieces = nextPieces.pieces
+            reasoningLastPieceLen = nextPieces.lastLen
+          }
+        }
+
+        return {
+          ...m,
+          reasoningDetailsRaw: nextDetails,
+          hasEncryptedReasoning: m.hasEncryptedReasoning || hasEncrypted,
+          reasoningVersion: nextVersion,
+          reasoningSummaryText,
+          reasoningPieces: reasoningPieces ? markRaw(reasoningPieces) : reasoningPieces,
+          reasoningLastPieceLen,
+        }
+      })
+
+      // 记录诊断数据
+      if (isSchedDiagEnabled()) {
+        const messages = result.entities?.messagesById ?? result.messages
+        const msg = messages[event.messageId]
+        const totalTextLen = details.reduce<number>((sum, d) => {
+          const text = (d as any)?.text
+          return sum + (typeof text === 'string' ? text.length : 0)
+        }, 0)
+        recordReducerReasoning({
+          applyMs: endTimer(),
+          deltaTextLen: totalTextLen,
+          detailsCount: details.length,
+          reasoningPiecesLen: msg?.reasoningPieces?.length ?? 0,
+          reasoningTotalChars: msg?.reasoningPieces?.reduce((sum, p) => sum + (p?.text?.length ?? 0), 0) ?? 0,
+        })
+      }
+
+      return result
     }
     case 'StreamAbort': {
       const nextState = updateRun(state, runId, (s) => ({ ...s, status: 'aborted' }))
+      // 清理驻留合并器
+      if (targetId) {
+        clearReasoningMerger(targetId)
+      }
       if (targetId) {
         return updateMessage(nextState, targetId, (m) => ({ ...m, streaming: { ...m.streaming, isComplete: true } }))
       }
@@ -350,6 +596,10 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
     }
     case 'StreamError': {
       const nextState = updateRun(state, runId, (s) => ({ ...s, status: 'error', error: event.error }))
+      // 清理驻留合并器
+      if (targetId) {
+        clearReasoningMerger(targetId)
+      }
       if (targetId) {
         return updateMessage(nextState, targetId, (m) => ({ ...m, streaming: { ...m.streaming, isComplete: true } }))
       }
@@ -360,10 +610,43 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
         ...s,
         status: s.status === 'error' || s.status === 'aborted' ? s.status : 'done',
       }))
+      // 清理驻留合并器
+      if (targetId) {
+        clearReasoningMerger(targetId)
+      }
       if (targetId) {
         return updateMessage(nextState, targetId, (m) => ({ ...m, streaming: { ...m.streaming, isComplete: true } }))
       }
       return nextState
+    }
+    case 'TimingSnapshot': {
+      return updateRun(state, runId, (s) => {
+        // Guard: terminal state is immutable (both tEnd AND endReason must be set to block)
+        if (s.tEnd !== undefined && s.endReason !== undefined) {
+          return s // Already terminated, ignore
+        }
+
+        // Merge values: existing state takes precedence for tAck (first-write-wins)
+        const newTAck = s.tAck ?? event.tAck
+        const newTEnd = s.tEnd ?? event.tEnd
+        const newEndReason = s.endReason ?? event.endReason
+
+        // Calculate duration from MERGED values (not event-only)
+        const localProcessingDurationMs =
+          newTAck != null && newTEnd != null
+            ? newTEnd - newTAck
+            : s.localProcessingDurationMs
+
+        return {
+          ...s,
+          tRequestStart: event.tRequestStart ?? s.tRequestStart,
+          tAck: newTAck,
+          tEnd: newTEnd,
+          endReason: newEndReason,
+          tTransportClosed: event.tTransportClosed ?? s.tTransportClosed,
+          localProcessingDurationMs,
+        }
+      })
     }
     default:
       return state
@@ -371,9 +654,16 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
 }
 
 export function applyEvents(state: RootState, runId: string, events: DomainEvent[]): RootState {
+  return applyEventsBatch(state, runId, events)
+}
+
+export function applyEventsBatch(state: RootState, runId: string, events: DomainEvent[]): RootState {
   let next = state
   for (const ev of events) {
     next = applyEvent(next, runId, ev)
   }
   return next
 }
+
+// 导出清理函数供组件卸载时使用
+export { clearReasoningMerger, clearAllReasoningMergers }

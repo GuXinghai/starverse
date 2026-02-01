@@ -17,7 +17,8 @@ import type { ReasoningEffort, RequestedReasoningMode } from '@/next/state/types
 
 const {
   runVM,
-  transcript,
+  transcriptMessageIds,
+  transcriptMessagesById,
   isRunning,
   usageThisTurn,
   usageSessionTotalDerived,
@@ -45,7 +46,31 @@ const generationInfoError = ref<string | null>(null)
 const fetchingGenerationInfo = ref(false)
 
 const canSend = computed(() => !isRunning.value && draft.value.trim().length > 0)
-const activeMessageId = computed(() => transcript.value.find((m) => m.streaming.isTarget)?.messageId)
+const activeMessageId = computed(() => {
+  const ids = transcriptMessageIds.value
+  const messagesById = transcriptMessagesById.value
+  for (let i = ids.length - 1; i >= 0; i -= 1) {
+    const m = messagesById[ids[i]]
+    if (m?.streaming?.isTarget) return m.messageId
+  }
+  return undefined
+})
+
+const lastAssistantMessageId = computed(() => {
+  const ids = transcriptMessageIds.value
+  const messagesById = transcriptMessagesById.value
+  for (let i = ids.length - 1; i >= 0; i -= 1) {
+    const m = messagesById[ids[i]]
+    if (m?.role === 'assistant') return m.messageId
+  }
+  return null
+})
+
+const lastAssistantReasoningView = computed(() => {
+  const id = lastAssistantMessageId.value
+  if (!id) return null
+  return transcriptMessagesById.value[id]?.reasoningView ?? null
+})
 const isDev = (import.meta as any).env?.DEV === true
 const DEV_OPENROUTER_API_KEY_STORAGE = 'starverse.ui-next.dev.openrouter_api_key'
 
@@ -125,6 +150,12 @@ watch(
   { flush: 'post' }
 )
 
+watch(requestedReasoningEffort, (value) => {
+  if (value === 'auto' || value === 'none') {
+    if (requestedReasoningExclude.value) requestedReasoningExclude.value = false
+  }
+})
+
 async function onSend() {
   if (!canSend.value) return
   const text = draft.value
@@ -133,7 +164,8 @@ async function onSend() {
   const requestedReasoningMode: RequestedReasoningMode = requestedReasoningEffort.value === 'auto' ? 'auto' : 'effort'
   const requestedReasoningEffortValue: ReasoningEffort | undefined =
     requestedReasoningMode === 'auto' ? undefined : (requestedReasoningEffort.value as ReasoningEffort)
-  const exclude = requestedReasoningMode === 'auto' ? false : requestedReasoningExclude.value
+  const exclude =
+    requestedReasoningMode === 'auto' || requestedReasoningEffortValue === 'none' ? false : requestedReasoningExclude.value
 
   await dispatchSend({
     text,
@@ -195,11 +227,21 @@ function onClearGenerationInfo() {
     </template>
 
     <template #transcript>
-      <ChatNextTranscript :messages="transcript" :activeMessageId="activeMessageId" :error="runVM?.error" />
+      <ChatNextTranscript
+        :messageIds="transcriptMessageIds"
+        :messagesById="transcriptMessagesById"
+        :activeMessageId="activeMessageId"
+        :error="runVM?.error"
+      />
     </template>
 
     <template #side>
-      <ChatNextReasoningPanel :messages="transcript" @toggle-panel-state="dispatchToggleReasoningPanelState" />
+      <ChatNextReasoningPanel
+        :messageId="lastAssistantMessageId"
+        :reasoningView="lastAssistantReasoningView"
+        :localProcessingDurationMs="runVM?.localProcessingDurationMs"
+        @toggle-panel-state="dispatchToggleReasoningPanelState"
+      />
     </template>
 
     <template #composer>
