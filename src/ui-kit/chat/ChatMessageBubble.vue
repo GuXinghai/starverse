@@ -46,8 +46,11 @@ function bubbleClass(role: MessageVM['role']) {
           <div class="text-[11px] font-semibold uppercase tracking-wide opacity-70">
             {{ isUser ? 'You' : isTool ? 'Tool' : 'Assistant' }}
           </div>
-          <div v-if="showGenerating" class="text-[11px] font-medium text-blue-700">
-            正在生成<span class="font-mono">▍</span>
+          <div class="flex items-center gap-2">
+            <slot name="header-right" />
+            <div v-if="showGenerating" class="text-[11px] font-medium text-blue-700">
+              正在生成<span class="font-mono">▍</span>
+            </div>
           </div>
         </div>
 

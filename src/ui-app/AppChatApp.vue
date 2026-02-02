@@ -5,7 +5,7 @@ import ChatStatusBar from '@/ui-kit/chat/ChatStatusBar.vue'
 import ChatTranscript from '@/ui-kit/chat/ChatTranscript.vue'
 import ChatMessageBubble from '@/ui-kit/chat/ChatMessageBubble.vue'
 import ChatAppReasoningPanel from './components/ChatAppReasoningPanel.vue'
-import type { DomainEvent, MessageState, MessageVM, ReasoningEffort, RequestedReasoningMode, ReasoningPrefs, RootState } from '@/next/state/types'
+import type { DomainEvent, MessageState, MessageVM, ReasoningEffort, RequestedReasoningMode, ReasoningPrefs, RootState, StreamEndReason } from '@/next/state/types'
 import {
   createConvo,
   deleteConvo,
@@ -290,7 +290,7 @@ const lastAssistantIsStreaming = computed(() => {
   const s = lastAssistantMessage.value?.streaming
   return Boolean(s && s.isTarget && !s.isComplete)
 })
-const lastAssistantReasoningPieces = computed(() => lastAssistantMessage.value?.reasoningPieces ?? null)
+const lastAssistantReasoningPieces = computed(() => lastAssistantReasoningView.value?.reasoningPieces ?? null)
 
 const isRunning = computed(() => runVM.value?.status === 'requesting' || runVM.value?.status === 'streaming' || runVM.value?.status === 'tool_waiting')
 
@@ -562,6 +562,47 @@ function extractRequestReasoningConfigFromMeta(meta: unknown): { mode: Requested
   return { mode, effort, exclude }
 }
 
+function extractReasoningTimingFromMeta(meta: unknown): {
+  durationMs?: number | null
+  endReason?: StreamEndReason
+  isFallback?: boolean
+} {
+  const obj = asRecord(meta)
+  const rawDuration = obj?.reasoningDurationMs
+  let durationMs: number | null | undefined
+
+  if (rawDuration === null) {
+    durationMs = null
+  } else if (typeof rawDuration === 'number' && Number.isFinite(rawDuration)) {
+    durationMs = rawDuration
+  } else if (typeof rawDuration === 'string' && rawDuration.trim().length > 0) {
+    const parsed = Number(rawDuration)
+    if (Number.isFinite(parsed)) durationMs = parsed
+  }
+
+  const endReason = typeof obj?.reasoningEndReason === 'string' ? (obj.reasoningEndReason as StreamEndReason) : undefined
+  const isFallback = obj?.reasoningDurationIsFallback === true
+
+  return { durationMs, endReason, isFallback }
+}
+
+function getMessageTimingForPersist(messageId: string): {
+  reasoningDurationMs?: number | null
+  reasoningEndReason?: StreamEndReason | null
+  reasoningDurationIsFallback?: boolean
+} {
+  const id = String(messageId ?? '').trim()
+  if (!id) return {}
+  const messages = state.value.entities?.messagesById ?? state.value.messages
+  const msg = messages[id]
+  if (!msg) return {}
+  return {
+    reasoningDurationMs: msg.reasoningDurationMs ?? null,
+    reasoningEndReason: msg.reasoningEndReason ?? null,
+    reasoningDurationIsFallback: msg.reasoningDurationIsFallback === true,
+  }
+}
+
 type IpcRendererLike = Readonly<{
   on: (channel: string, listener: (...args: any[]) => void) => any
 }>
@@ -626,6 +667,7 @@ function hydrateStateFromPersistedMessages(
     const reasoningDetailsRaw = extractReasoningDetailsFromMeta(meta)
     const hasEncryptedReasoning = reasoningDetailsRaw.some((detail) => detail && typeof detail === 'object' && (detail as any).type === 'reasoning.encrypted')
     const requestConfig = extractRequestReasoningConfigFromMeta(meta)
+    const timing = extractReasoningTimingFromMeta(meta)
 
     s.messages[messageId] = {
       messageId,
@@ -640,6 +682,9 @@ function hydrateStateFromPersistedMessages(
       reasoningLastPieceLen: 0,
       reasoningPanelState: 'collapsed',
       hasEncryptedReasoning,
+      reasoningDurationMs: timing.durationMs,
+      reasoningEndReason: timing.endReason,
+      reasoningDurationIsFallback: timing.isFallback,
       streaming: { isTarget: false, isComplete: true },
       textVersion: 0,
       reasoningVersion: 0,
@@ -1867,7 +1912,7 @@ async function startStreamingForAssistantTurn(input: Readonly<{
   if (!apiKey) {
     loadError.value = 'Missing OpenRouter API key (set electron-store openRouterApiKey or VITE_OPENROUTER_API_KEY)'
     try {
-      await setMessageStatus({ messageId: assistantMessageId, status: 'error' })
+      await setMessageStatus({ messageId: assistantMessageId, status: 'error', ...getMessageTimingForPersist(assistantMessageId) })
     } catch {
       // no-op
     }
@@ -2057,7 +2102,7 @@ async function startStreamingForAssistantTurn(input: Readonly<{
     }
     clearFlushTimer(stream)
     await flushPending(convoId, stream)
-    await setMessageStatus({ messageId: assistantMessageId, status: finalStatus })
+    await setMessageStatus({ messageId: assistantMessageId, status: finalStatus, ...getMessageTimingForPersist(assistantMessageId) })
     if (!netExpFinalized) {
       netExpFinalized = true
       netExpRunTracker.onEnd(netExpTerminalStatus, netExpTerminalError)
@@ -2073,7 +2118,7 @@ async function startStreamingForAssistantTurn(input: Readonly<{
       eventScheduler.flushNow(branchId, 'flush')
     }
     try {
-      await setMessageStatus({ messageId: assistantMessageId, status: 'error' })
+      await setMessageStatus({ messageId: assistantMessageId, status: 'error', ...getMessageTimingForPersist(assistantMessageId) })
     } catch {
       // no-op
     }
@@ -2478,7 +2523,7 @@ async function onSend() {
     }
     clearFlushTimer(stream)
     await flushPending(convoId, stream)
-    await setMessageStatus({ messageId: assistantMessageId, status: finalStatus })
+    await setMessageStatus({ messageId: assistantMessageId, status: finalStatus, ...getMessageTimingForPersist(assistantMessageId) })
   } catch (err: any) {
     finalStatus = 'error'
     loadError.value = err?.message ? String(err.message) : String(err)
@@ -2486,7 +2531,7 @@ async function onSend() {
       eventScheduler.flushNow(branch.id, 'flush')
     }
     try {
-      await setMessageStatus({ messageId: assistantMessageId, status: 'error' })
+      await setMessageStatus({ messageId: assistantMessageId, status: 'error', ...getMessageTimingForPersist(assistantMessageId) })
     } catch {
       // no-op
     }
@@ -3426,7 +3471,10 @@ watch(
                 :data-testid="`msg-wrap-${message.messageId}`"
                 @click="onSelectCursor(message.messageId, $event)"
               >
-                <ChatMessageBubble :message="message" />
+                <ChatMessageBubble :message="message">
+                  <template #header-right>
+                  </template>
+                </ChatMessageBubble>
 
                 <div v-if="message.role === 'user'" class="mt-2 flex items-center gap-2 pl-11 text-[11px] text-gray-500">
                   <button
@@ -3586,6 +3634,7 @@ watch(
             :panelState="lastAssistantPanelState"
             :isStreaming="lastAssistantIsStreaming"
             :reasoningPieces="lastAssistantReasoningPieces"
+            :localProcessingDurationMs="lastAssistantMessage?.reasoningDurationMs ?? null"
             @toggle-panel-state="onToggleReasoningPanelState"
           />
         </template>

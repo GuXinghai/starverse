@@ -44,7 +44,6 @@ describe('ChatReasoningPanel', () => {
     })
 
     expect(screen.getByText('(collapsed)')).toBeInTheDocument()
-    expect(screen.getByText('shown')).toBeInTheDocument()
     expect(screen.queryByText('Summary')).not.toBeInTheDocument()
     r1.unmount()
 

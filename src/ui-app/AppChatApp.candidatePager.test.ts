@@ -96,7 +96,7 @@ describe('ui-app AppChatApp (candidate pager)', () => {
 
   it('disables < and > when the chosen answer group is streaming', async () => {
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
-    invoke.mockImplementation(async (method: string, params?: any) => {
+    invoke.mockImplementation(async (method: string, _params?: any) => {
       if (method === 'project.list') return []
       if (method === 'convo.list') return [{ id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
       if (method === 'branch.ensureDefault') return { id: 'b1', convoId: 'c1', headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }

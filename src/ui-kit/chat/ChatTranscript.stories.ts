@@ -23,41 +23,43 @@ function message(partial: Partial<MessageVM> & Pick<MessageVM, 'messageId' | 'ro
     role: partial.role,
     contentBlocks: partial.contentBlocks ?? [{ type: 'text', text: 'Hello' }],
     toolCalls: partial.toolCalls ?? [],
-    reasoningView: partial.reasoningView ?? { visibility: 'not_returned' },
+    reasoningView: partial.reasoningView ?? { visibility: 'not_returned', panelState: 'collapsed' },
     streaming: partial.streaming ?? { isTarget: false, isComplete: true },
   }
 }
 
 export const Default: Story = {
   args: {
-    messages: [
-      message({ messageId: 'u1', role: 'user', contentBlocks: [{ type: 'text', text: 'Write a haiku about refactors.' }] }),
-      message({
+    messageIds: ['u1', 'a1', 'a2'],
+    messagesById: {
+      u1: message({ messageId: 'u1', role: 'user', contentBlocks: [{ type: 'text', text: 'Write a haiku about refactors.' }] }),
+      a1: message({
         messageId: 'a1',
         role: 'assistant',
         contentBlocks: [{ type: 'text', text: 'Old code falls away\nNew seams stitched with careful tests\nClean paths for the mind' }],
       }),
-      message({
+      a2: message({
         messageId: 'a2',
         role: 'assistant',
         contentBlocks: [{ type: 'text', text: 'More...' }],
         streaming: { isTarget: true, isComplete: false },
       }),
-    ],
+    },
   },
 }
 
 export const WithErrorTail: Story = {
   args: {
-    messages: [
-      message({ messageId: 'u1', role: 'user', contentBlocks: [{ type: 'text', text: 'Continue.' }] }),
-      message({
+    messageIds: ['u1', 'a1'],
+    messagesById: {
+      u1: message({ messageId: 'u1', role: 'user', contentBlocks: [{ type: 'text', text: 'Continue.' }] }),
+      a1: message({
         messageId: 'a1',
         role: 'assistant',
         contentBlocks: [{ type: 'text', text: 'Partial output...' }],
         streaming: { isTarget: false, isComplete: true },
       }),
-    ],
+    },
     error: { message: 'mid-stream error', code: 'STREAM_ERROR' },
   },
 }

@@ -5,7 +5,8 @@ import ChatMessageBubble from './ChatMessageBubble.vue'
 
 const props = withDefaults(
   defineProps<{
-    messages: MessageVM[]
+    messageIds: string[]
+    messagesById: Record<string, MessageVM | undefined>
     activeMessageId?: string
     error?: unknown
     emptyText?: string
@@ -31,30 +32,31 @@ const errorText = computed(() => {
 
 <template>
   <div class="h-full overflow-auto bg-gradient-to-b from-gray-50 to-white p-4">
-    <div v-if="props.messages.length === 0" class="text-sm text-gray-500">
+    <div v-if="props.messageIds.length === 0" class="text-sm text-gray-500">
       {{ props.emptyText }}
     </div>
     <div v-else class="mx-auto max-w-3xl space-y-4">
-      <template v-for="m in props.messages" :key="m.messageId">
+      <template v-for="id in props.messageIds" :key="id">
         <div
+          v-if="props.messagesById[id]"
           class="rounded-2xl"
           :class="
-            props.activeMessageId && m.messageId === props.activeMessageId
+            props.activeMessageId && props.messagesById[id]?.messageId === props.activeMessageId
               ? 'ring-2 ring-blue-200 ring-offset-2 ring-offset-gray-50'
               : ''
           "
         >
-          <slot name="message" :message="m">
-            <ChatMessageBubble :message="m" :showDebug="props.showDebug" />
+          <slot name="message" :message="props.messagesById[id]">
+            <ChatMessageBubble :message="props.messagesById[id]!" :showDebug="props.showDebug" />
           </slot>
 
           <div
             v-if="
               props.activeMessageId &&
-              m.messageId === props.activeMessageId &&
-              m.role === 'assistant' &&
-              !m.streaming.isComplete &&
-              !m.streaming.isTarget
+              props.messagesById[id]?.messageId === props.activeMessageId &&
+              props.messagesById[id]?.role === 'assistant' &&
+              !props.messagesById[id]?.streaming.isComplete &&
+              !props.messagesById[id]?.streaming.isTarget
             "
             class="mt-2 pl-11 text-[11px] font-medium text-blue-700"
           >

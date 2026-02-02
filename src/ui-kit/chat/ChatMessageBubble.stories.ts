@@ -16,7 +16,7 @@ function message(partial: Partial<MessageVM> & Pick<MessageVM, 'messageId' | 'ro
     role: partial.role,
     contentBlocks: partial.contentBlocks ?? [{ type: 'text', text: 'Hello world' }],
     toolCalls: partial.toolCalls ?? [],
-    reasoningView: partial.reasoningView ?? { visibility: 'not_returned' },
+    reasoningView: partial.reasoningView ?? { visibility: 'not_returned', panelState: 'collapsed' },
     streaming: partial.streaming ?? { isTarget: false, isComplete: true },
   }
 }
@@ -58,7 +58,7 @@ export const Tool: Story = {
       messageId: 't1',
       role: 'tool',
       contentBlocks: [{ type: 'unknown', raw: { name: 'search', args: { q: 'foo' } } }],
-      toolCalls: [{}],
+      toolCalls: [{ index: 0, name: 'search', argumentsText: '{"q":"foo"}' }],
     }),
   },
 }
