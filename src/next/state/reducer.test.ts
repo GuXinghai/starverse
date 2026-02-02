@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { decodeOpenRouterSSE } from '../openrouter/sse/decoder'
 import { mapChunkToEvents } from '../openrouter/mapChunkToEvents'
-import { applyEvents, createInitialState, startGeneration } from './reducer'
+import { applyEvent, applyEvents, createInitialState, startGeneration } from './reducer'
 import type { DomainEvent } from './types'
 import { selectRun, selectTranscript } from './selectors'
 
@@ -12,7 +12,75 @@ function readFixtureText(fileName: string) {
   return fs.readFileSync(fullPath, 'utf8')
 }
 
-async function replayFixture(runId: string, assistantMessageId: string, fileName: string): Promise<DomainEvent[]> {
+
+  it('keeps non-target message references and transcript ids stable across deltas', () => {
+    const runId = 'r1'
+    const started = startGeneration(createInitialState(), {
+      runId,
+      requestId: 'req1',
+      model: 'openrouter/auto',
+      assistantMessageId: 'assistant_1',
+      userMessageId: 'user_1',
+      userMessageText: 'hello',
+    })
+
+    const s1 = started.state
+    const idsRef = s1.views?.transcriptsByRunId?.[runId]
+    const messagesByIdRef = s1.entities?.messagesById
+    const userRef = messagesByIdRef?.user_1
+    const assistantRef = messagesByIdRef?.assistant_1
+
+    const s2 = applyEvents(s1, runId, [
+      { type: 'MessageDeltaText', messageId: 'assistant_1', choiceIndex: 0, text: 'hi' },
+      { type: 'MessageDeltaText', messageId: 'assistant_1', choiceIndex: 0, text: ' there' },
+    ])
+
+    expect(s2.views?.transcriptsByRunId?.[runId]).toBe(idsRef)
+    expect(s2.entities?.messagesById).toBe(messagesByIdRef)
+    expect(s2.entities?.messagesById?.user_1).toBe(userRef)
+    expect(s2.entities?.messagesById?.assistant_1).not.toBe(assistantRef)
+  })
+
+  it('increments textVersion / reasoningVersion only on change', () => {
+    const runId = 'r1'
+    const started = startGeneration(createInitialState(), {
+      runId,
+      requestId: 'req1',
+      model: 'openrouter/auto',
+      assistantMessageId: 'assistant_1',
+      userMessageId: 'user_1',
+      userMessageText: 'hello',
+    })
+
+    const s1 = started.state
+    const base = s1.entities?.messagesById?.assistant_1
+    const baseTextVersion = base?.textVersion ?? 0
+    const baseReasoningVersion = base?.reasoningVersion ?? 0
+
+    const s2 = applyEvent(s1, runId, { type: 'MessageDeltaText', messageId: 'assistant_1', choiceIndex: 0, text: '' })
+    expect(s2.entities?.messagesById?.assistant_1).toBe(base)
+    expect(s2.entities?.messagesById?.assistant_1?.textVersion).toBe(baseTextVersion)
+
+    const s3 = applyEvent(s1, runId, { type: 'MessageDeltaText', messageId: 'assistant_1', choiceIndex: 0, text: 'x' })
+    expect(s3.entities?.messagesById?.assistant_1?.textVersion).toBe(baseTextVersion + 1)
+
+    const s4 = applyEvent(s3, runId, {
+      type: 'MessageDeltaReasoningDetailBatch',
+      messageId: 'assistant_1',
+      choiceIndex: 0,
+      details: [],
+    })
+    expect(s4.entities?.messagesById?.assistant_1?.reasoningVersion).toBe(s3.entities?.messagesById?.assistant_1?.reasoningVersion)
+
+    const s5 = applyEvent(s3, runId, {
+      type: 'MessageDeltaReasoningDetail',
+      messageId: 'assistant_1',
+      choiceIndex: 0,
+      detail: { type: 'reasoning.text', text: 'r' },
+    })
+    expect(s5.entities?.messagesById?.assistant_1?.reasoningVersion).toBe(baseReasoningVersion + 1)
+  })
+async function replayFixture(_runId: string, assistantMessageId: string, fileName: string): Promise<DomainEvent[]> {
   const text = readFixtureText(fileName)
   const bytes = new TextEncoder().encode(text)
 
@@ -89,6 +157,7 @@ describe('next/state reducer', () => {
           "reasoningView": {
             "hasEncrypted": false,
             "panelState": "expanded",
+            "reasoningPieces": undefined,
             "reasoningText": "",
             "summaryText": undefined,
             "visibility": "not_returned",

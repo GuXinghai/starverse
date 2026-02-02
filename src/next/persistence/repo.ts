@@ -33,12 +33,10 @@ export function toRunSnapshot(state: RootState, runId: string): RunSnapshot {
 }
 
 export class NextRunSnapshotRepo {
-  private readonly db: BetterSqliteDatabase
   private readonly upsertStmt: BetterSqliteStatement
   private readonly getStmt: BetterSqliteStatement
 
   constructor(db: BetterSqliteDatabase) {
-    this.db = db
     this.upsertStmt = db.prepare(
       `INSERT INTO next_run_snapshots (run_id, snapshot_json, schema_version, updated_at_ms)
        VALUES (@runId, @snapshotJson, @schemaVersion, @updatedAtMs)

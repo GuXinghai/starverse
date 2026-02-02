@@ -59,9 +59,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * 打开应用内链（In-App WebView，默认复用同一窗口）
    */
   openInAppLink: (url: string, windowId?: number) => ipcRenderer.invoke('inapp:open-link', { url, windowId }),
+
+  /**
+   * 获取网络实验运行时信息（开关注入/版本/argv）
+   */
+  getNetExpRuntimeInfo: () => ipcRenderer.invoke('netexp:get-runtime-info'),
+
+  /**
+   * 重新启动应用（用于开关生效）
+   */
+  relaunchApp: () => ipcRenderer.invoke('app:relaunch'),
 })
 
 // Expose DB bridge for renderer storage access
 contextBridge.exposeInMainWorld('dbBridge', {
   invoke: (method: string, params?: unknown) => ipcRenderer.invoke('db:invoke', { method, params }),
+  /**
+   * 订阅数据库事件（从 Worker 线程转发）
+   * @param callback 事件回调函数
+   * @returns 取消订阅函数
+   */
+  onEvent: (callback: (event: unknown) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, dbEvent: unknown) => {
+      callback(dbEvent)
+    }
+    ipcRenderer.on('db:event', handler)
+    // 返回取消订阅函数
+    return () => {
+      ipcRenderer.removeListener('db:event', handler)
+    }
+  },
 })

@@ -12,7 +12,14 @@ const safeParse = (input: string): Record<string, unknown> | null => {
   }
 }
 
-const mergeMetaWithReasoning = (meta: Record<string, unknown> | null, reasoningJson: unknown, requestJson: unknown) => {
+const mergeMetaWithReasoning = (
+  meta: Record<string, unknown> | null,
+  reasoningJson: unknown,
+  requestJson: unknown,
+  reasoningDurationMs?: number | null,
+  reasoningEndReason?: string | null,
+  reasoningDurationIsFallback?: number | null,
+) => {
   const next: Record<string, unknown> = meta ? { ...meta } : {}
 
   if (typeof reasoningJson === 'string' && reasoningJson.trim().length > 0) {
@@ -35,6 +42,20 @@ const mergeMetaWithReasoning = (meta: Record<string, unknown> | null, reasoningJ
     } catch {
       // ignore parse errors
     }
+  }
+
+  if (typeof reasoningDurationMs === 'number' && Number.isFinite(reasoningDurationMs)) {
+    next.reasoningDurationMs = reasoningDurationMs
+  } else if (reasoningDurationMs === null) {
+    next.reasoningDurationMs = null
+  }
+
+  if (typeof reasoningEndReason === 'string' && reasoningEndReason.trim().length > 0) {
+    next.reasoningEndReason = reasoningEndReason
+  }
+
+  if (reasoningDurationIsFallback === 1) {
+    next.reasoningDurationIsFallback = true
   }
 
   return Object.keys(next).length > 0 ? next : null
@@ -61,6 +82,9 @@ export class ContextRepo {
         m.meta,
         m.reasoning_details_final_json AS reasoningDetailsFinalJson,
         m.request_reasoning_config_json AS requestReasoningConfigJson,
+        m.reasoning_duration_ms AS reasoningDurationMs,
+        m.reasoning_end_reason AS reasoningEndReason,
+        m.reasoning_duration_is_fallback AS reasoningDurationIsFallback,
         b.body
       FROM message m
       LEFT JOIN message_body b ON b.message_id = m.id
@@ -135,7 +159,10 @@ export class ContextRepo {
         const meta = mergeMetaWithReasoning(
           r.meta ? safeParse(String(r.meta)) : null,
           r.reasoningDetailsFinalJson,
-          r.requestReasoningConfigJson
+          r.requestReasoningConfigJson,
+          r.reasoningDurationMs ?? null,
+          r.reasoningEndReason ?? null,
+          r.reasoningDurationIsFallback ?? null,
         )
 
         const row: BranchPathMessage = {
@@ -231,7 +258,10 @@ export class ContextRepo {
         const meta = mergeMetaWithReasoning(
           r.meta ? safeParse(String(r.meta)) : null,
           r.reasoningDetailsFinalJson,
-          r.requestReasoningConfigJson
+          r.requestReasoningConfigJson,
+          r.reasoningDurationMs ?? null,
+          r.reasoningEndReason ?? null,
+          r.reasoningDurationIsFallback ?? null,
         )
 
         const row: BranchPathMessage = {

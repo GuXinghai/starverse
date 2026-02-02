@@ -1,4 +1,4 @@
-import type { ReasoningModelIndexItem } from './reasoningModelIndexTypes'
+import type { ReasoningModelIndexItem, ReasoningModelIndexStatus } from './reasoningModelIndexTypes'
 
 type DbBridge = Readonly<{
   invoke: (method: string, params?: unknown) => Promise<any>
@@ -15,12 +15,15 @@ export async function listReasoningModelIndex(): Promise<ReasoningModelIndexItem
   const rows = await bridge.invoke('reasoningIndex.list')
   if (!Array.isArray(rows)) return []
   return rows
-    .map((r: any) => ({
-      modelId: String(r.modelId ?? ''),
-      name: String(r.name ?? ''),
-      status: r.status === 'visible' ? 'visible' : 'hidden',
-      lastSyncedSnapshot: String(r.lastSyncedSnapshot ?? ''),
-    }))
+    .map((r: any) => {
+      const status: ReasoningModelIndexStatus = r.status === 'visible' ? 'visible' : 'hidden'
+      return {
+        modelId: String(r.modelId ?? ''),
+        name: String(r.name ?? ''),
+        status,
+        lastSyncedSnapshot: String(r.lastSyncedSnapshot ?? ''),
+      }
+    })
     .filter((x) => x.modelId.length > 0 && x.name.length > 0 && x.lastSyncedSnapshot.length > 0)
 }
 

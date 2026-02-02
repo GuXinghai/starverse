@@ -9,6 +9,37 @@
  * @see docs/architecture/REASONING_IDEMPOTENCY_CONTRACT.md 幂等契约
  */
 
+// ============================================================================
+// Scheduler Diagnostics Hook (injected by state layer)
+// ============================================================================
+
+export type MergerDiagSample = Readonly<{
+  opMs: number
+  rawDetailsCount: number
+  incomingTextLen: number
+  mergedTextLen: number
+}>
+
+type MergerDiagRecorder = (sample: MergerDiagSample) => void
+
+let diagRecorder: MergerDiagRecorder | null = null
+let diagEnabled = false
+
+/**
+ * 注入诊断记录器（由 state 层调用，避免 shared 依赖 next/state）
+ */
+export function injectMergerDiagRecorder(recorder: MergerDiagRecorder | null, enabled: boolean): void {
+  diagRecorder = recorder
+  diagEnabled = enabled
+}
+
+function now(): number {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now()
+  }
+  return Date.now()
+}
+
 export type DetailKey = string
 
 export type StreamingDetail = Readonly<{
@@ -170,6 +201,9 @@ export class ReasoningDetailStreamMerger {
   merge(detail: unknown): MergedDelta | null {
     if (!detail || typeof detail !== 'object') return null
 
+    const startTs = diagEnabled ? now() : 0
+    const incomingTextLen = typeof (detail as any)?.text === 'string' ? (detail as any).text.length : 0
+
     const d = detail as StreamingDetail
     const key = buildDetailKey(d)
     const oldSnapshot = this.snapshots.get(key)
@@ -250,6 +284,17 @@ export class ReasoningDetailStreamMerger {
     }
 
     this.mergedSnapshots.set(key, nextMerged as StreamingDetail)
+
+    // 记录诊断数据
+    if (diagEnabled && diagRecorder) {
+      const mergedText = typeof nextMerged.text === 'string' ? nextMerged.text : ''
+      diagRecorder({
+        opMs: now() - startTs,
+        rawDetailsCount: this.snapshots.size,
+        incomingTextLen,
+        mergedTextLen: mergedText.length,
+      })
+    }
 
     // 【修复风险2】只有当：无增量、非首次、且无新 metadata 时才跳过
     if (!hasAnyDelta && !isFirstSeen && !hasNewMetadata) {

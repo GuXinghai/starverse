@@ -89,11 +89,13 @@ export async function buildContextForBranchInternalMessages(
 
   const raw = await bridge.invoke('context.buildForBranch', { branchId: bid, ...(params ?? {}) })
   const rowsRaw = Array.isArray(raw?.messages) ? raw.messages : []
-  const rows = rowsRaw.map(coerceMessage).filter((m): m is ContextBuiltMessage => !!m)
+  const rows = rowsRaw
+    .map(coerceMessage)
+    .filter((m: ContextBuiltMessage | null): m is ContextBuiltMessage => !!m)
 
   // Reuse the branch-path -> InternalMessage coercion (same shape).
   const contextMessages = toInternalMessagesFromBranchPath(
-    rows.map((m) => ({
+    rows.map((m: ContextBuiltMessage) => ({
       id: m.id,
       convoId: m.convoId,
       role: m.role,
@@ -122,7 +124,9 @@ export async function getRenderableTurnsForBranch(
 
   const raw = await bridge.invoke('context.getRenderableTurns', { branchId: bid, ...(params ?? {}) })
   const rowsRaw = Array.isArray(raw?.messages) ? raw.messages : []
-  const messages = rowsRaw.map(coerceMessage).filter((m): m is ContextBuiltMessage => !!m)
+  const messages = rowsRaw
+    .map(coerceMessage)
+    .filter((m: ContextBuiltMessage | null): m is ContextBuiltMessage => !!m)
 
   const turnsRaw = Array.isArray(raw?.turns) ? raw.turns : []
   const turns: RenderableTurnSummary[] = turnsRaw
@@ -136,7 +140,7 @@ export async function getRenderableTurnsForBranch(
       const lockedByQuestionExclude = t?.lockedByQuestionExclude === true
       return { questionId, chosenAnswerRootId, questionMode, answerMode, effectiveMode, lockedByQuestionExclude } satisfies RenderableTurnSummary
     })
-    .filter((x): x is RenderableTurnSummary => !!x)
+    .filter((x: RenderableTurnSummary | null): x is RenderableTurnSummary => !!x)
 
   const debug = raw?.debug && typeof raw.debug === 'object' ? (raw.debug as ContextBuildDebug) : undefined
   return { messages, turns, ...(debug ? { debug } : {}) }

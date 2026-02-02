@@ -13,7 +13,14 @@ const safeParse = (input: string): Record<string, unknown> | null => {
   }
 }
 
-const mergeMetaWithReasoning = (meta: Record<string, unknown> | null, reasoningJson: unknown, requestJson: unknown) => {
+const mergeMetaWithReasoning = (
+  meta: Record<string, unknown> | null,
+  reasoningJson: unknown,
+  requestJson: unknown,
+  reasoningDurationMs?: number | null,
+  reasoningEndReason?: string | null,
+  reasoningDurationIsFallback?: number | null,
+) => {
   const next: Record<string, unknown> = meta ? { ...meta } : {}
 
   if (typeof reasoningJson === 'string' && reasoningJson.trim().length > 0) {
@@ -38,6 +45,20 @@ const mergeMetaWithReasoning = (meta: Record<string, unknown> | null, reasoningJ
     }
   }
 
+  if (typeof reasoningDurationMs === 'number' && Number.isFinite(reasoningDurationMs)) {
+    next.reasoningDurationMs = reasoningDurationMs
+  } else if (reasoningDurationMs === null) {
+    next.reasoningDurationMs = null
+  }
+
+  if (typeof reasoningEndReason === 'string' && reasoningEndReason.trim().length > 0) {
+    next.reasoningEndReason = reasoningEndReason
+  }
+
+  if (reasoningDurationIsFallback === 1) {
+    next.reasoningDurationIsFallback = true
+  }
+
   return Object.keys(next).length > 0 ? next : null
 }
 
@@ -45,7 +66,10 @@ const mapRow = (row: any): MessageRecord => {
   const meta = mergeMetaWithReasoning(
     row.meta ? safeParse(row.meta) : null,
     row.reasoningDetailsFinalJson,
-    row.requestReasoningConfigJson
+    row.requestReasoningConfigJson,
+    row.reasoningDurationMs ?? null,
+    row.reasoningEndReason ?? null,
+    row.reasoningDurationIsFallback ?? null,
   )
 
   return {
@@ -127,7 +151,10 @@ export class MessageRepo {
 
     this.updateStatusStmt = this.db.prepare(`
       UPDATE message
-      SET status = @status
+      SET status = @status,
+          reasoning_duration_ms = COALESCE(reasoning_duration_ms, @reasoningDurationMs),
+          reasoning_end_reason = COALESCE(reasoning_end_reason, @reasoningEndReason),
+          reasoning_duration_is_fallback = MAX(COALESCE(reasoning_duration_is_fallback, 0), COALESCE(@reasoningDurationIsFallback, 0))
       WHERE id = @id
     `)
 
@@ -279,6 +306,9 @@ export class MessageRepo {
         m.meta,
         m.reasoning_details_final_json AS reasoningDetailsFinalJson,
         m.request_reasoning_config_json AS requestReasoningConfigJson,
+        m.reasoning_duration_ms AS reasoningDurationMs,
+        m.reasoning_end_reason AS reasoningEndReason,
+        m.reasoning_duration_is_fallback AS reasoningDurationIsFallback,
         b.body
       FROM message m
       JOIN message_body b ON b.message_id = m.id
@@ -347,7 +377,13 @@ export class MessageRepo {
     }
   }
 
-  setStatus(input: { messageId: string; status: 'streaming' | 'final' | 'error' }) {
+  setStatus(input: {
+    messageId: string
+    status: 'streaming' | 'final' | 'error'
+    reasoningDurationMs?: number | null
+    reasoningEndReason?: string | null
+    reasoningDurationIsFallback?: boolean
+  }) {
     const id = String(input.messageId ?? '').trim()
     if (!id) throw new Error('Missing messageId')
 
@@ -359,7 +395,13 @@ export class MessageRepo {
     const txn = this.db.transaction(() => {
       const row = this.findMessageByIdStmt.get({ id }) as { convo_id?: string } | undefined
       if (!row?.convo_id) throw new Error(`message not found: ${id}`)
-      this.updateStatusStmt.run({ id, status })
+      this.updateStatusStmt.run({
+        id,
+        status,
+        reasoningDurationMs: input.reasoningDurationMs ?? null,
+        reasoningEndReason: input.reasoningEndReason ?? null,
+        reasoningDurationIsFallback: input.reasoningDurationIsFallback ? 1 : 0,
+      })
       this.touchConvoStmt.run({ id: String(row.convo_id), updatedAt: now })
     })
     txn()

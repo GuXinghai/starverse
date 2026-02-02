@@ -20,16 +20,18 @@
  * @module electron/main
  */
 
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, session } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
 import Store from 'electron-store'
 import { syncOpenRouterModelCatalog } from '../src/next/modelCatalog/catalogSyncJob'
 import { DbWorkerManager } from './db/workerManager'
 import { registerDbBridge } from './ipc/dbBridge'
+import { registerOpenRouterStreamBridge, cleanupOpenRouterStreams } from './ipc/openRouterStreamBridge'
 import { createInAppBrowserManager } from './services/inappBrowser'
 import {
   ALLOWED_CONFIG_KEYS,
@@ -64,6 +66,14 @@ const DEFAULT_CONFIG = {
   autoScrollToBottom: true,
   showTimestamps: true,
   enableNotifications: true,
+  netExp: {
+    disableHttp2: false,
+    disableQuic: false,
+    streamInMainProcess: false,
+    forceHttp1: false,
+    tcpKeepAliveEnable: false,
+    tcpKeepAliveIdleMs: 60000,
+  },
 } as const
 
 /**
@@ -287,6 +297,61 @@ function backupCorruptedConfig(content: string, reason: string): void {
 migrateAndCleanupConfig(store)
 performConfigSizeCheck(store, 'startup')
 
+type NetExpRuntimeInfo = {
+  requested: { disableHttp2: boolean; disableQuic: boolean }
+  applied: { disableHttp2: boolean; disableQuic: boolean }
+  appliedSwitches: Array<{ name: string; value?: string }>
+  switchErrors: Array<{ name: string; error: string }>
+  electron: string
+  chrome: string
+  node: string
+  argv: string[]
+  appliedAt: string
+}
+
+const netExpRuntimeInfo: NetExpRuntimeInfo = {
+  requested: { disableHttp2: false, disableQuic: false },
+  applied: { disableHttp2: false, disableQuic: false },
+  appliedSwitches: [],
+  switchErrors: [],
+  electron: process.versions.electron ?? 'unknown',
+  chrome: process.versions.chrome ?? 'unknown',
+  node: process.versions.node ?? 'unknown',
+  argv: [...process.argv],
+  appliedAt: new Date().toISOString(),
+}
+
+function applyNetworkExperimentSwitches(store: Store) {
+  const netExp = store.get('netExp') as { disableHttp2?: unknown; disableQuic?: unknown } | undefined
+  const disableHttp2 = netExp?.disableHttp2 === true
+  const disableQuic = netExp?.disableQuic === true
+
+  netExpRuntimeInfo.requested = { disableHttp2, disableQuic }
+
+  if (disableHttp2) {
+    try {
+      app.commandLine.appendSwitch('disable-http2')
+      netExpRuntimeInfo.appliedSwitches.push({ name: 'disable-http2' })
+      netExpRuntimeInfo.applied = { ...netExpRuntimeInfo.applied, disableHttp2: true }
+    } catch (error) {
+      netExpRuntimeInfo.switchErrors.push({ name: 'disable-http2', error: String((error as any)?.message ?? error) })
+    }
+  }
+
+  if (disableQuic) {
+    try {
+      app.commandLine.appendSwitch('disable-quic')
+      netExpRuntimeInfo.appliedSwitches.push({ name: 'disable-quic' })
+      netExpRuntimeInfo.applied = { ...netExpRuntimeInfo.applied, disableQuic: true }
+    } catch (error) {
+      netExpRuntimeInfo.switchErrors.push({ name: 'disable-quic', error: String((error as any)?.message ?? error) })
+    }
+  }
+}
+
+// 必须在 app ready 前注入网络实验开关
+applyNetworkExperimentSwitches(store)
+
 /**
  * 构建产物目录结构
  * 
@@ -313,6 +378,65 @@ const DB_WORKER_SCRIPT = path.join(MAIN_DIST, 'db', 'worker.cjs')
 const DB_SCHEMA_PATH = path.join(process.env.APP_ROOT, 'infra', 'db', 'schema.sql')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
+
+const BUILD_ID_FILE = 'build-id.json'
+
+function readBuildIdFromFile(filePath: string): string | null {
+  try {
+    if (!existsSync(filePath)) return null
+    const raw = readFileSync(filePath, 'utf8')
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed.buildId === 'string' && parsed.buildId.trim()) {
+      return parsed.buildId.trim()
+    }
+  } catch {
+    // ignore
+  }
+  return null
+}
+
+function resolveMainBuildId(): { buildId: string; source: string } {
+  const envId = process.env.STARVERSE_BUILD_ID || process.env.VITE_BUILD_ID
+  if (envId && envId.trim()) return { buildId: envId.trim(), source: 'env' }
+
+  const candidates = [
+    process.env.VITE_PUBLIC ? path.join(process.env.VITE_PUBLIC, BUILD_ID_FILE) : null,
+    path.join(RENDERER_DIST, BUILD_ID_FILE),
+    path.join(process.env.APP_ROOT ?? path.join(__dirname, '..'), 'public', BUILD_ID_FILE),
+  ].filter(Boolean) as string[]
+
+  for (const candidate of candidates) {
+    const buildId = readBuildIdFromFile(candidate)
+    if (buildId) return { buildId, source: `file:${candidate}` }
+  }
+
+  return { buildId: new Date().toISOString(), source: 'runtime' }
+}
+
+const MAIN_BUILD = resolveMainBuildId()
+console.info(`[build] main build id: ${MAIN_BUILD.buildId} (source: ${MAIN_BUILD.source})`)
+
+const APP_CSP =
+  "default-src 'self'; script-src 'self'; connect-src 'self' ws://localhost:* ws://127.0.0.1:* https://generativelanguage.googleapis.com https://openrouter.ai; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+
+function registerDevCspHeaders() {
+  if (!VITE_DEV_SERVER_URL) return
+  let origin: string
+  try {
+    origin = new URL(VITE_DEV_SERVER_URL).origin
+  } catch (error) {
+    console.warn('[CSP] invalid VITE_DEV_SERVER_URL, skip CSP header injection:', error)
+    return
+  }
+
+  const filter = { urls: [`${origin}/*`] }
+  session.defaultSession.webRequest.onHeadersReceived(filter, (details, callback) => {
+    const responseHeaders = (details.responseHeaders ?? {}) as Record<string, string[]>
+    const existingKey = Object.keys(responseHeaders).find((key) => key.toLowerCase() === 'content-security-policy')
+    responseHeaders[existingKey ?? 'Content-Security-Policy'] = [APP_CSP]
+    callback({ responseHeaders })
+  })
+}
 
 // ========== In-App Browser Manager ==========
 const inAppBrowserManager = createInAppBrowserManager()
@@ -438,6 +562,15 @@ function createWindow() {
     }
   })
 
+  console.warn(`[main] VITE_DEV_SERVER_URL: ${VITE_DEV_SERVER_URL ?? '<missing>'}`)
+  if (isDev && !VITE_DEV_SERVER_URL) {
+    const message = 'VITE_DEV_SERVER_URL is missing in dev mode. Refusing to load dist/index.html.'
+    console.error(`[main] ${message}`)
+    dialog.showErrorBox('Dev startup error', message)
+    app.exit(1)
+    return
+  }
+
   // Optional: mirror renderer console logs into the main process stdout for debugging timing/races.
   // Enable with: SV_DEBUG_RENDERER_CONSOLE=1
   if (process.env.SV_DEBUG_RENDERER_CONSOLE === '1') {
@@ -479,11 +612,12 @@ function createWindow() {
 
   // 页面加载完成后发送测试消息（用于验证 IPC 通信）
   win.webContents.on('did-finish-load', () => {
+    console.warn(`[main] webContents.getURL(): ${win?.webContents.getURL()}`)
     win?.webContents.send('main-process-message', new Date().toLocaleString())
   })
 
-  if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL)
+  if (isDev) {
+    win.loadURL(VITE_DEV_SERVER_URL!)
     // 开发模式下自动打开开发者工具
     win.webContents.openDevTools()
   } else {
@@ -543,6 +677,9 @@ app.on('before-quit', async (event) => {
     console.log('[main] 通知渲染进程保存数据...')
     win.removeAllListeners()
   }
+
+  // 清理活动的 OpenRouter 流式请求
+  cleanupOpenRouterStreams()
   
   // 停止数据库 Worker
   await dbWorkerManager.stop().catch((error) => {
@@ -571,8 +708,18 @@ app.on('before-quit', async (event) => {
  */
 app.whenReady()
   .then(async () => {
+    registerDevCspHeaders()
     await ensureDbReady()
     registerDbBridge(dbWorkerManager)
+    registerOpenRouterStreamBridge()
+    
+    // 注册事件转发：Worker 事件 → Renderer
+    dbWorkerManager.onEvent((event) => {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('db:event', event)
+      }
+    })
+    
     createWindow()
     void startCatalogSyncInBackground()
   })
@@ -671,6 +818,22 @@ ipcMain.handle('store-clear-safe', (_event, keepKeys: string[] = []) => {
  */
 ipcMain.handle('store-check-integrity', () => {
   return checkConfigIntegrity(store)
+})
+
+// ========== IPC Handlers: Network Experiments ==========
+ipcMain.handle('netexp:get-runtime-info', () => {
+  return netExpRuntimeInfo
+})
+
+ipcMain.handle('app:relaunch', () => {
+  try {
+    app.relaunch({ args: process.argv.slice(1) })
+    app.exit(0)
+    return true
+  } catch (error) {
+    console.error('[main] failed to relaunch app', error)
+    return false
+  }
 })
 
 

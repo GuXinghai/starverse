@@ -241,9 +241,17 @@ export class ConvoRepo {
       offset
     }
 
-    if (params.projectId) {
-      sql += ` WHERE project_id = @projectId`
-      bind.projectId = params.projectId
+    // projectId 筛选：
+    // - undefined: 不筛选，返回全部
+    // - null: 筛选 project_id IS NULL（未分类对话）
+    // - string: 筛选指定项目
+    if (params.projectId !== undefined) {
+      if (params.projectId === null) {
+        sql += ` WHERE project_id IS NULL`
+      } else {
+        sql += ` WHERE project_id = @projectId`
+        bind.projectId = params.projectId
+      }
     }
 
     sql += ` ORDER BY ${orderBy} DESC LIMIT @limit OFFSET @offset`

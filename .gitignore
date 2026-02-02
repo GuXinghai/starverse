@@ -77,6 +77,12 @@ tmp/
 temp/
 *.tmp
 
+# Debug/test artifacts
+headers.txt
+body.txt
+payload.json
+temptest.ps1
+
 # Package manager
 .yarn/
 .pnpm-store/

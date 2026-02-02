@@ -9,17 +9,17 @@ describe('DbWorkerRuntime message.replace guard', () => {
       schemaPath: path.resolve(process.cwd(), 'infra', 'db', 'schema.sql'),
     })
 
-    const created = await runtime.handleMessage({ id: 1, method: 'convo.create', params: { title: 'Chat' } })
+    const created = await runtime.handleMessage({ id: '1', method: 'convo.create', params: { title: 'Chat' } })
     expect(created.ok).toBe(true)
     const convoId = String((created as any).result?.id ?? '')
     expect(convoId.length).toBeGreaterThan(0)
 
     // Enable branching by creating a branch row.
-    const ensured = await runtime.handleMessage({ id: 2, method: 'branch.ensureDefault', params: { convoId, name: 'Main' } })
+    const ensured = await runtime.handleMessage({ id: '2', method: 'branch.ensureDefault', params: { convoId, name: 'Main' } })
     expect(ensured.ok).toBe(true)
 
     const replaced = await runtime.handleMessage({
-      id: 3,
+      id: '3',
       method: 'message.replace',
       params: { convoId, messages: [{ role: 'user', body: 'hi' }] },
     })
@@ -34,13 +34,13 @@ describe('DbWorkerRuntime message.replace guard', () => {
       schemaPath: path.resolve(process.cwd(), 'infra', 'db', 'schema.sql'),
     })
 
-    const created = await runtime.handleMessage({ id: 1, method: 'convo.create', params: { title: 'Chat' } })
+    const created = await runtime.handleMessage({ id: '1', method: 'convo.create', params: { title: 'Chat' } })
     expect(created.ok).toBe(true)
     const convoId = String((created as any).result?.id ?? '')
     expect(convoId.length).toBeGreaterThan(0)
 
     const replaced = await runtime.handleMessage({
-      id: 2,
+      id: '2',
       method: 'message.replace',
       params: { convoId, messages: [{ role: 'user', body: 'hi' }] },
     })

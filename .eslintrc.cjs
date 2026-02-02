@@ -67,39 +67,6 @@ module.exports = {
       },
     },
     {
-      files: ['src/ui-next/**/*.{ts,tsx,vue}'],
-      rules: {
-        'no-restricted-imports': [
-          'error',
-          {
-            patterns: [
-              {
-                group: [
-                  // Legacy surfaces (removed in TC-12); keep as hard guardrail to prevent reintroduction.
-                  '@/(stores|services|components|composables|utils|types)',
-                  '@/(stores|services|components|composables|utils|types)/**',
-                ],
-                message:
-                  'ui-next must not import legacy UI/store/service surfaces; use src/next/** + facade/hooks + ui-kit only.',
-              },
-              {
-                group: [
-                  // Prevent reaching archived legacy code via relative imports.
-                  '../archived-components/**',
-                  '../archived-services/**',
-                  '../../archived-components/**',
-                  '../../archived-services/**',
-                  '../../../archived-components/**',
-                  '../../../archived-services/**',
-                ],
-                message: 'ui-next must not import archived legacy code.',
-              },
-            ],
-          },
-        ],
-      },
-    },
-    {
       files: ['src/next/**/*.{ts,tsx,js,jsx,mjs,cjs}'],
       rules: {
         'no-restricted-imports': [
@@ -107,8 +74,8 @@ module.exports = {
           {
             patterns: [
               {
-                group: ['@/ui-next', '@/ui-next/**', '@/ui-kit', '@/ui-kit/**', '**/*.vue'],
-                message: 'src/next/** must not import UI (ui-next/ui-kit/*.vue); keep domain/pipeline layer UI-free.',
+                group: ['@/ui-kit', '@/ui-kit/**', '**/*.vue'],
+                message: 'src/next/** must not import UI (ui-kit/*.vue); keep domain/pipeline layer UI-free.',
               },
             ],
           },

@@ -236,7 +236,6 @@ async function main() {
       body: JSON.stringify({
         model,
         stream: true,
-        usage: { include: true },
         messages: [{ role: 'user', content: 'tc14 live smoke: ping' }],
       }),
       signal: controller.signal,

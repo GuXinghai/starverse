@@ -278,6 +278,9 @@ export class DbWorkerRuntime {
 
     addColumn('reasoning_details_final_json', 'reasoning_details_final_json TEXT')
     addColumn('request_reasoning_config_json', 'request_reasoning_config_json TEXT')
+    addColumn('reasoning_duration_ms', 'reasoning_duration_ms INTEGER')
+    addColumn('reasoning_end_reason', 'reasoning_end_reason TEXT')
+    addColumn('reasoning_duration_is_fallback', 'reasoning_duration_is_fallback INTEGER DEFAULT 0')
     addColumn('reasoning_segments_count', 'reasoning_segments_count INTEGER DEFAULT 0')
     addColumn('reasoning_last_segment_id', 'reasoning_last_segment_id INTEGER')
     addColumn('reasoning_details_final_sha256', 'reasoning_details_final_sha256 TEXT')

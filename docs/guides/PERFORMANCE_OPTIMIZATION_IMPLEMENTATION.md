@@ -224,6 +224,39 @@ watchDebounced(
 
 ---
 
+## Phase 1 诊断开关（总开关 + 子模块）
+
+### ✅ 推荐：一键开启
+- `sv_diag=1`：开启诊断能力（性能采样、审计与调试输出）。
+
+### 可选：子模块选择（仅在 `sv_diag=1` 时生效）
+- `sv_diag_perf=1|0`：性能采样与 perf reporter（默认启用）。
+- `sv_diag_ref_audit=1|0`：引用稳定性审计（默认启用）。
+- `sv_diag_phase3_audit=1|0`：Phase 3 审计（默认关闭）。
+
+## Phase 2 固化（默认路径已统一）
+
+### ✅ 已固化的默认路径
+- 规范化 store 永远启用（`entities.messagesById` + `views.transcriptsByRunId` 作为 SSOT）。
+- `ChatTranscript` 使用 `messageIds + messagesById` 渲染，避免传数组破坏引用稳定性。
+- `ReasoningPanel` 使用 `messageId + reasoningView`，`v-memo` 固化为 **version key**。
+
+### ❌ 已移除的 A/B 开关
+- `sv_normalized_store`：不再作为运行时分支。
+- `sv_memo_key_mode`：固定为 version 模式，不再支持 ref 路径。
+
+### 观测统一
+- 诊断/审计统一使用 `sv_diag`（默认关闭）。
+
+---
+
+## DoD（Definition of Done）
+1. 默认行为无 A/B 分支，规范化 store + version memo 永远启用。
+2. 诊断默认关闭：无 interval、无 window hook、无 console 输出。
+3. typecheck 通过，vitest 通过，新增 reducer/selector 引用稳定性不变式测试覆盖。
+
+---
+
 ## 下一步建议
 
 ### 立即行动

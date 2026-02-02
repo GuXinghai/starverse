@@ -130,7 +130,10 @@ export const AppendMessageDeltaSchema: ZodType<AppendMessageDeltaInput> = z.obje
 
 export const SetMessageStatusSchema: ZodType<SetMessageStatusInput> = z.object({
   messageId: z.string().min(1),
-  status: z.enum(['streaming', 'final', 'error'])
+  status: z.enum(['streaming', 'final', 'error']),
+  reasoningDurationMs: z.number().int().nullable().optional(),
+  reasoningEndReason: z.string().nullable().optional(),
+  reasoningDurationIsFallback: z.boolean().optional(),
 })
 
 export const AppendReasoningDetailSegmentsSchema: ZodType<AppendReasoningDetailSegmentsInput> = z.object({
