@@ -8,7 +8,7 @@ function msg(partial: Partial<MessageVM> & Pick<MessageVM, 'messageId' | 'role'>
     role: partial.role,
     contentBlocks: partial.contentBlocks ?? [{ type: 'text', text: `hello-${partial.messageId}` }],
     toolCalls: partial.toolCalls ?? [],
-    reasoningView: partial.reasoningView ?? { visibility: 'not_returned' },
+    reasoningView: partial.reasoningView ?? { visibility: 'not_returned', panelState: 'collapsed' },
     streaming: partial.streaming ?? { isTarget: false, isComplete: true },
   }
 }
@@ -17,10 +17,11 @@ describe('ChatTranscript', () => {
   it('renders activeMessageId streaming marker even if message.streaming.isTarget is false', () => {
     render(ChatTranscript, {
       props: {
-        messages: [
-          msg({ messageId: 'a1', role: 'assistant', streaming: { isTarget: false, isComplete: false } }),
-          msg({ messageId: 'u1', role: 'user' }),
-        ],
+        messageIds: ['a1', 'u1'],
+        messagesById: {
+          a1: msg({ messageId: 'a1', role: 'assistant', streaming: { isTarget: false, isComplete: false } }),
+          u1: msg({ messageId: 'u1', role: 'user' }),
+        },
         activeMessageId: 'a1',
       },
     })
@@ -31,7 +32,10 @@ describe('ChatTranscript', () => {
   it('renders error tail when error is provided', () => {
     render(ChatTranscript, {
       props: {
-        messages: [msg({ messageId: 'u1', role: 'user' })],
+        messageIds: ['u1'],
+        messagesById: {
+          u1: msg({ messageId: 'u1', role: 'user' }),
+        },
         error: { message: 'boom' },
       },
     })

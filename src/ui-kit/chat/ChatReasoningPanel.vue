@@ -1,18 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ReasoningView } from './types'
+import type { ReasoningPiece, ReasoningView } from './types'
 
 const props = withDefaults(
   defineProps<{
     reasoningView: ReasoningView | null
-    showDebug?: boolean
+    reasoningPieces?: ReasoningPiece[] | null
     title?: string
     emptyText?: string
+    localProcessingDurationMs?: number
   }>(),
   {
     title: 'Reasoning',
     emptyText: 'No assistant message yet.',
-    showDebug: false,
   },
 )
 
@@ -32,14 +32,32 @@ const visibilityLabel = computed(() => {
   }
 })
 
+const reasoningPieces = computed(() => {
+  const pieces = props.reasoningPieces ?? props.reasoningView?.reasoningPieces
+  if (!Array.isArray(pieces)) return null
+  const normalized = pieces.filter((piece) => typeof piece?.text === 'string' && piece.text.trim().length > 0)
+  return normalized.length > 0 ? normalized : null
+})
+
+const hasPieces = computed(() => Array.isArray(reasoningPieces.value) && reasoningPieces.value.length > 0)
+
 const hasAnyReasoningText = computed(() => {
   if (!props.reasoningView) return false
-  return Boolean(props.reasoningView.summaryText || props.reasoningView.reasoningText)
+  const hasText = Boolean(props.reasoningView.summaryText || props.reasoningView.reasoningText)
+  return hasText || hasPieces.value
 })
 
 const showEncryptedBadge = computed(() => props.reasoningView?.hasEncrypted === true)
 
 const isCollapsed = computed(() => props.reasoningView?.panelState === 'collapsed')
+
+const formattedDuration = computed(() => {
+  const ms = props.localProcessingDurationMs
+  if (typeof ms !== 'number' || ms < 0) return null
+  // 仅在展开时显示推理时间
+  if (isCollapsed.value) return null
+  return `${(ms / 1000).toFixed(2)}s`
+})
 </script>
 
 <template>
@@ -54,9 +72,12 @@ const isCollapsed = computed(() => props.reasoningView?.panelState === 'collapse
           >
             encrypted
           </span>
-        </div>
-        <div v-if="props.reasoningView" class="mt-1 text-xs text-gray-600">
-          visibility: <span class="font-mono">{{ visibilityLabel }}</span>
+          <span
+            v-if="formattedDuration"
+            class="rounded bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-900"
+          >
+            {{ formattedDuration }}
+          </span>
         </div>
       </div>
 
@@ -65,9 +86,11 @@ const isCollapsed = computed(() => props.reasoningView?.panelState === 'collapse
         <button
           class="rounded-lg bg-gray-100 px-3 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-200"
           type="button"
+          :aria-label="isCollapsed ? 'Expand' : 'Collapse'"
+          :title="isCollapsed ? 'Expand' : 'Collapse'"
           @click="emit('toggle-panel-state')"
         >
-          {{ isCollapsed ? 'Expand' : 'Collapse' }}
+          {{ isCollapsed ? 'Expand' : '×' }}
         </button>
       </div>
     </div>
@@ -97,6 +120,15 @@ const isCollapsed = computed(() => props.reasoningView?.panelState === 'collapse
             <div class="whitespace-pre-wrap">{{ props.reasoningView.reasoningText }}</div>
           </div>
 
+          <div v-if="hasPieces" class="rounded border border-gray-200 bg-white p-2">
+            <div class="mb-1 text-xs font-semibold text-gray-700">Reasoning (pieces)</div>
+            <div class="space-y-2">
+              <div v-for="piece in reasoningPieces" :key="piece.id" class="whitespace-pre-wrap">
+                {{ piece.text }}
+              </div>
+            </div>
+          </div>
+
           <div v-if="!hasAnyReasoningText" class="text-sm text-gray-500">(no reasoning payload)</div>
         </template>
 
@@ -112,10 +144,6 @@ const isCollapsed = computed(() => props.reasoningView?.panelState === 'collapse
           </div>
         </template>
 
-        <div v-if="props.showDebug" class="rounded border border-gray-200 bg-white p-2">
-          <div class="mb-1 text-xs font-semibold text-gray-700">Debug</div>
-          <pre class="whitespace-pre-wrap text-xs">{{ JSON.stringify(props.reasoningView, null, 2) }}</pre>
-        </div>
       </div>
     </div>
   </div>

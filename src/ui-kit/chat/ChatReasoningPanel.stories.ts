@@ -6,7 +6,6 @@ const meta: Meta<typeof ChatReasoningPanel> = {
   title: 'ui-kit/chat/ChatReasoningPanel',
   component: ChatReasoningPanel,
   args: {
-    showDebug: false,
     title: 'Reasoning',
   },
 }

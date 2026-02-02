@@ -18,7 +18,7 @@ describe('ui-app SettingsPanel', () => {
 
     ;(globalThis as any).electronStore = { get, set, delete: del }
 
-    const invoke = vi.fn(async (method: string, params?: any) => {
+    const invoke = vi.fn(async (method: string, _params?: any) => {
       if (method === 'settings.getOpenRouterProviderRequireParameters') return { value: false }
       if (method === 'settings.setOpenRouterProviderRequireParameters') return { ok: true }
       if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }

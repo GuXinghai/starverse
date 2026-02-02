@@ -10,11 +10,15 @@ export type ConversationListItem = Readonly<{
 export type ProjectListItem = Readonly<{
   id: string
   name: string
+  isSystem?: boolean
+  convoCount?: number
 }>
 
 const props = defineProps<{
   items: readonly ConversationListItem[]
   activeId: string | null
+  activeProjectId: string | null
+  inboxId: string | null
   projects: readonly ProjectListItem[]
   disabled?: boolean
 }>()
@@ -28,6 +32,11 @@ const emit = defineEmits<{
   moveToProject: [convoId: string, projectId: string | null]
   bulkDelete: [convoIds: string[]]
   bulkMoveToProject: [convoIds: string[], projectId: string | null]
+  selectProject: [projectId: string | null]
+  openSearch: []
+  createProject: [name: string]
+  renameProject: [projectId: string, name: string]
+  deleteProject: [projectId: string]
 }>()
 
 const selectionMode = ref(false)
@@ -37,8 +46,30 @@ const renameDialog = ref<{ id: string; title: string } | null>(null)
 const deleteDialog = ref<{ ids: string[] } | null>(null)
 const moveDialog = ref<{ ids: string[]; projectId: string | null } | null>(null)
 
+const projectPanelOpen = ref(true)
+const projectCreateDialogOpen = ref(false)
+const projectCreateName = ref('')
+const projectRenameDialog = ref<{ id: string; name: string } | null>(null)
+const projectDeleteDialog = ref<{ id: string; name: string } | null>(null)
+const projectErrorMessage = ref<string | null>(null)
+
 const selectedCount = computed(() => selectedIds.value.size)
 const selectedIdsArray = computed(() => Array.from(selectedIds.value))
+
+const inboxProject = computed(() => {
+  if (!props.inboxId) return null
+  return props.projects.find((p) => p.id === props.inboxId) ?? null
+})
+
+const userProjects = computed(() => {
+  if (!props.inboxId) return props.projects
+  return props.projects.filter((p) => p.id !== props.inboxId)
+})
+
+function isSystemProject(project: ProjectListItem): boolean {
+  if (project.isSystem) return true
+  return !!props.inboxId && project.id === props.inboxId
+}
 
 function formatTime(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return ''
@@ -60,6 +91,24 @@ function toggleSelected(id: string) {
   else next.add(id)
   selectedIds.value = next
 }
+
+function toggleSelectAll() {
+  if (selectedIds.value.size === props.items.length) {
+    // 全部已选中，执行全不选
+    selectedIds.value = new Set()
+  } else {
+    // 未全部选中，执行全选
+    selectedIds.value = new Set(props.items.map(item => item.id))
+  }
+}
+
+const isAllSelected = computed(() => {
+  return props.items.length > 0 && selectedIds.value.size === props.items.length
+})
+
+const isSomeSelected = computed(() => {
+  return selectedIds.value.size > 0 && selectedIds.value.size < props.items.length
+})
 
 function onRowClick(id: string) {
   if (props.disabled) return
@@ -115,6 +164,74 @@ function confirmMove() {
   moveDialog.value = null
   if (selectionMode.value) selectedIds.value = new Set()
 }
+
+function onSelectProject(projectId: string | null) {
+  if (props.disabled) return
+  emit('selectProject', projectId)
+}
+
+function openProjectCreate() {
+  if (props.disabled) return
+  projectCreateName.value = ''
+  projectCreateDialogOpen.value = true
+}
+
+function confirmProjectCreate() {
+  const name = projectCreateName.value.trim()
+  if (!name) return
+  
+  // 直接创建项目，后端会处理同名逻辑（返回已存在项目并自动选中）
+  emit('createProject', name)
+  projectCreateDialogOpen.value = false
+  projectCreateName.value = ''
+}
+
+function openProjectRename(project: ProjectListItem) {
+  if (props.disabled) return
+  if (isSystemProject(project)) {
+    projectErrorMessage.value = '系统项目不可重命名'
+    setTimeout(() => {
+      projectErrorMessage.value = null
+    }, 3000)
+    return
+  }
+  projectRenameDialog.value = { id: project.id, name: project.name }
+}
+
+function confirmProjectRename() {
+  const dlg = projectRenameDialog.value
+  if (!dlg) return
+  const name = dlg.name.trim()
+  if (!name) return
+  emit('renameProject', dlg.id, name)
+  projectRenameDialog.value = null
+}
+
+function openProjectDelete(project: ProjectListItem) {
+  if (props.disabled) return
+  if (isSystemProject(project)) {
+    projectErrorMessage.value = '系统项目（Inbox）不可删除'
+    setTimeout(() => {
+      projectErrorMessage.value = null
+    }, 3000)
+    return
+  }
+  projectDeleteDialog.value = { id: project.id, name: project.name }
+}
+
+function confirmProjectDelete() {
+  const dlg = projectDeleteDialog.value
+  if (!dlg) return
+  emit('deleteProject', dlg.id)
+  projectDeleteDialog.value = null
+}
+
+function cancelProjectDialog() {
+  projectCreateDialogOpen.value = false
+  projectRenameDialog.value = null
+  projectDeleteDialog.value = null
+  projectCreateName.value = ''
+}
 </script>
 
 <template>
@@ -149,8 +266,126 @@ function confirmMove() {
       </div>
     </div>
 
+    <div class="border-b border-gray-200 px-3 py-2">
+      <div class="flex items-center justify-between gap-2">
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Projects</div>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50"
+            :disabled="props.disabled"
+            :aria-expanded="projectPanelOpen"
+            @click="projectPanelOpen = !projectPanelOpen"
+          >
+            {{ projectPanelOpen ? 'Hide' : 'Show' }}
+          </button>
+          <button
+            type="button"
+            class="rounded-md bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+            :disabled="props.disabled"
+            aria-label="Create project"
+            @click="openProjectCreate"
+          >
+            +
+          </button>
+        </div>
+      </div>
+
+      <div
+        v-if="projectErrorMessage"
+        class="mt-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700"
+      >
+        {{ projectErrorMessage }}
+      </div>
+    </div>
+
+    <div v-show="projectPanelOpen" class="border-b border-gray-200 px-3 py-2">
+      <div class="space-y-1">
+        <button
+          type="button"
+          class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors"
+          :class="props.activeProjectId === null ? 'bg-blue-100 text-blue-900' : 'text-gray-700 hover:bg-gray-100'"
+          :disabled="props.disabled"
+          @click="onSelectProject(null)"
+        >
+          <span class="text-base">📋</span>
+          <span class="min-w-0 flex-1 truncate">全部对话</span>
+        </button>
+
+        <button
+          v-if="inboxProject"
+          type="button"
+          class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors"
+          :class="props.activeProjectId === inboxProject.id ? 'bg-blue-100 text-blue-900' : 'text-gray-700 hover:bg-gray-100'"
+          :disabled="props.disabled"
+          @click="onSelectProject(inboxProject.id)"
+          @contextmenu.prevent
+        >
+          <span class="text-base">📥</span>
+          <span class="min-w-0 flex-1 truncate">{{ inboxProject.name }}</span>
+          <span v-if="inboxProject.convoCount !== undefined" class="text-[10px] text-gray-500">
+            {{ inboxProject.convoCount }}
+          </span>
+        </button>
+
+        <div v-if="userProjects.length > 0" class="my-2 border-t border-gray-200" />
+
+        <div v-for="project in userProjects" :key="project.id" class="group relative">
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors"
+            :class="props.activeProjectId === project.id ? 'bg-blue-100 text-blue-900' : 'text-gray-700 hover:bg-gray-100'"
+            :disabled="props.disabled"
+            @click="onSelectProject(project.id)"
+          >
+            <span class="text-base">📁</span>
+            <span class="min-w-0 flex-1 truncate">{{ project.name }}</span>
+            <span v-if="project.convoCount !== undefined" class="text-[10px] text-gray-500">
+              {{ project.convoCount }}
+            </span>
+          </button>
+
+          <div class="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-1 group-hover:flex">
+            <button
+              type="button"
+              class="rounded bg-white p-1 text-xs text-gray-500 shadow-sm hover:bg-gray-100 hover:text-gray-700"
+              :disabled="props.disabled"
+              @click.stop="openProjectRename(project)"
+              aria-label="Rename project"
+            >
+              ✏️
+            </button>
+            <button
+              type="button"
+              class="rounded bg-white p-1 text-xs text-red-500 shadow-sm hover:bg-red-50 hover:text-red-700"
+              :disabled="props.disabled"
+              @click.stop="openProjectDelete(project)"
+              aria-label="Delete project"
+            >
+              🗑️
+            </button>
+          </div>
+        </div>
+
+        <div v-if="userProjects.length === 0 && !inboxProject" class="px-2 py-3 text-xs text-gray-400">
+          暂无项目
+        </div>
+      </div>
+    </div>
+
     <div v-if="selectionMode" class="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 text-[11px] text-gray-700" data-testid="bulk-bar">
-      <div class="min-w-0 truncate">Selected: {{ selectedCount }}</div>
+      <div class="flex min-w-0 items-center gap-2">
+        <input
+          type="checkbox"
+          :checked="isAllSelected"
+          :indeterminate.prop="isSomeSelected"
+          :disabled="props.disabled || props.items.length === 0"
+          @change="toggleSelectAll"
+          aria-label="Select all conversations"
+          class="cursor-pointer"
+        />
+        <span class="truncate">Selected: {{ selectedCount }}</span>
+      </div>
       <div class="flex items-center gap-2">
         <button
           type="button"
@@ -174,6 +409,17 @@ function confirmMove() {
     </div>
 
     <div class="min-h-0 flex-1 overflow-auto p-2">
+      <div class="sticky top-0 z-10 bg-white pb-2">
+        <button
+          type="button"
+          class="flex w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 shadow-sm hover:bg-gray-50"
+          :disabled="props.disabled"
+          @click="emit('openSearch')"
+        >
+          <span class="text-base">🔍</span>
+          <span class="font-semibold">搜索</span>
+        </button>
+      </div>
       <div v-if="props.items.length === 0" class="p-3 text-sm text-gray-500">
         No conversations yet.
       </div>
@@ -329,6 +575,106 @@ function confirmMove() {
             @click="confirmMove"
           >
             Move
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="projectCreateDialogOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      @click.self="cancelProjectDialog"
+    >
+      <div class="w-72 rounded-lg bg-white p-4 shadow-xl">
+        <div class="mb-3 text-sm font-medium text-gray-900">创建项目</div>
+        <input
+          v-model="projectCreateName"
+          type="text"
+          class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          placeholder="项目名称"
+          @keydown.enter="confirmProjectCreate"
+          @keydown.escape="cancelProjectDialog"
+        />
+        <div v-if="projectErrorMessage" class="mb-3 text-sm text-red-600">
+          {{ projectErrorMessage }}
+        </div>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            @click="cancelProjectDialog"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+            @click="confirmProjectCreate"
+          >
+            创建
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="projectRenameDialog"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      @click.self="cancelProjectDialog"
+    >
+      <div class="w-72 rounded-lg bg-white p-4 shadow-xl">
+        <div class="mb-3 text-sm font-medium text-gray-900">重命名项目</div>
+        <input
+          v-model="projectRenameDialog.name"
+          type="text"
+          class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          placeholder="项目名称"
+          @keydown.enter="confirmProjectRename"
+          @keydown.escape="cancelProjectDialog"
+        />
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            @click="cancelProjectDialog"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+            @click="confirmProjectRename"
+          >
+            保存
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="projectDeleteDialog"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      @click.self="cancelProjectDialog"
+    >
+      <div class="w-72 rounded-lg bg-white p-4 shadow-xl">
+        <div class="mb-3 text-sm font-medium text-gray-900">删除项目</div>
+        <p class="mb-4 text-sm text-gray-600">
+          确定要删除项目「{{ projectDeleteDialog.name }}」吗？项目下的对话将移至 Inbox。
+        </p>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            @click="cancelProjectDialog"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            class="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+            @click="confirmProjectDelete"
+          >
+            删除
           </button>
         </div>
       </div>

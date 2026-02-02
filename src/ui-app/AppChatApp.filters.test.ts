@@ -10,7 +10,7 @@ describe('ui-app AppChatApp (filters: include/exclude)', () => {
   beforeEach(() => {
     ;(globalThis as any).electronStore = { get: vi.fn(async () => 'sk-test') }
 
-    const invoke = vi.fn(async (method: string, params?: any) => {
+    const invoke = vi.fn(async (method: string, _params?: any) => {
       if (method === 'project.list') return []
       if (method === 'convo.list') return [{ id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
       if (method === 'branch.ensureDefault') return { id: 'b1', convoId: 'c1', headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
