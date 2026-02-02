@@ -1,5 +1,5 @@
 <# 
-openrouter_stream_report.ps1
+openrouter_stream.ps1
 
 目标：
 - 运行一次 OpenRouter SSE 流式请求（chat/completions, stream=true）
@@ -14,8 +14,8 @@ openrouter_stream_report.ps1
 - 同时保存完整日志到文件，便于需要时回溯
 
 使用：
-1) 保存为 UTF-8：openrouter_stream_report.ps1
-2) PowerShell 运行：.\openrouter_stream_report.ps1
+1) 保存为 UTF-8：openrouter_stream.ps1
+2) PowerShell 运行：.\scripts\openrouter\openrouter_stream.ps1
 #>
 
 [CmdletBinding()]
@@ -32,7 +32,7 @@ param(
   # 结束时在 REPORT 里附带的 stderr 尾部行数
   [int]$StderrTailLines = 30,
 
-  # 日志文件路径（默认当前目录下按时间戳生成）
+  # 日志文件路径（默认 artifacts/openrouter/logs 下按时间戳生成）
   [string]$LogPath = ""
 )
 
@@ -114,7 +114,10 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 if ([string]::IsNullOrWhiteSpace($LogPath)) {
   $ts = $startLocal.ToString("yyyyMMdd_HHmmss")
-  $LogPath = Join-Path -Path (Get-Location) -ChildPath ("openrouter_stream_{0}.log" -f $ts)
+  $repoRoot = (Resolve-Path -Path (Join-Path -Path $PSScriptRoot -ChildPath "..\\..")).Path
+  $defaultLogDir = Join-Path -Path $repoRoot -ChildPath "artifacts\\openrouter\\logs"
+  New-Item -ItemType Directory -Force -Path $defaultLogDir | Out-Null
+  $LogPath = Join-Path -Path $defaultLogDir -ChildPath ("openrouter_stream_{0}.log" -f $ts)
 }
 
 $script:lock = New-Object object

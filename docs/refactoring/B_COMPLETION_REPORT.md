@@ -9,7 +9,7 @@
 
 | 步骤 | 目标 | 状态 | 验收 |
 |------|------|------|------|
-| 护栏建立 | TS 错误基线（45 errors）| ✅ | snapshot 保存在 [ts-baseline-snapshot.txt](../ts-baseline-snapshot.txt) |
+| 护栏建立 | TS 错误基线（45 errors）| ✅ | snapshot 保存在 [ts-baseline-snapshot.txt](../../artifacts/ts/ts-baseline-snapshot.txt) |
 | 第 1 步 | 删类型复活源 | ✅ | `export function getModelParameters` = 0, `openrouter-service.d.ts` = 0 |
 | 第 2 步 | 删通信旁路 | ✅ | IPC handler 中无旧方法，白名单清晰 |
 | 第 3 步 | 迁移运行时调用 | ✅ | 所有符号引用已改为 `AppModel.capabilities` / `modelSync.normalizeModel` |
@@ -127,6 +127,6 @@
 **生成时间**：2025-12-13  
 **相关文档**：
 - [B_REFACTOR_BASELINE.md](../docs/B_REFACTOR_BASELINE.md) - 护栏与基线
-- [ts-baseline-snapshot.txt](../ts-baseline-snapshot.txt) - TS 错误基线
+- [ts-baseline-snapshot.txt](../../artifacts/ts/ts-baseline-snapshot.txt) - TS 错误基线
 - [B_GATE.ps1](../B_GATE.ps1) - 黑名单验证脚本
 - [B_GATE.sh](../B_GATE.sh) - Bash wrapper（可选）
