@@ -15,8 +15,8 @@ baseline_error_count: 45
 
 ### 📊 既有 TS 错误基线
 - **总数**：45 errors
-- **建立命令**：`npx vue-tsc 2>&1 > ts-baseline-snapshot.txt`
-- **快照保存**：[ts-baseline-snapshot.txt](../ts-baseline-snapshot.txt)
+- **建立命令**：`npx vue-tsc 2>&1 > artifacts/ts/ts-baseline-snapshot.txt`
+- **快照保存**：[ts-baseline-snapshot.txt](../../artifacts/ts/ts-baseline-snapshot.txt)
 - **关键错误类别**：
   - Reasoning capability missing fields（3 errors）
   - StreamChunk 类型属性缺失（8 errors）
