@@ -7,6 +7,7 @@ import type {
   RequestedReasoningMode,
   RootState,
   RunState,
+  StreamEndReason,
   StartGenerationInput,
   ToolCallDelta,
   ToolCallVM,
@@ -53,8 +54,8 @@ function appendReasoningPieces(prevPieces: ReasoningPiece[] | undefined, deltaTe
     return { pieces: prevPieces ?? [], lastLen }
   }
 
-  const pieces: ReasoningPiece[] = Array.isArray(prevPieces) && prevPieces.length > 0
-    ? [...prevPieces]
+  const pieces: ReasoningPiece[] = Array.isArray(prevPieces) && prevPieces.length > 0 
+    ? [...prevPieces] 
     : [{ id: nextPieceId++, text: '' }]
   let remaining = deltaText
 
@@ -150,6 +151,9 @@ function createEmptyAssistantMessage(
     reasoningLastPieceLen: 0,
     reasoningPanelState: 'expanded',
     hasEncryptedReasoning: false,
+    reasoningDurationMs: undefined,
+    reasoningEndReason: undefined,
+    reasoningDurationIsFallback: undefined,
     streaming: { isTarget, isComplete: false },
     textVersion: 0,
     reasoningVersion: 0,
@@ -174,6 +178,9 @@ function createUserMessage(messageId: string, text: string): MessageState {
     reasoningLastPieceLen: 0,
     reasoningPanelState: 'expanded',
     hasEncryptedReasoning: false,
+    reasoningDurationMs: undefined,
+    reasoningEndReason: undefined,
+    reasoningDurationIsFallback: undefined,
     streaming: { isTarget: false, isComplete: true },
     textVersion: 0,
     reasoningVersion: 0,
@@ -193,10 +200,10 @@ export function startGeneration(state: RootState, input: StartGenerationInput): 
     typeof input.userMessageText === 'string' ? input.userMessageId || generateId('user') : undefined
 
   const requestedReasoningMode = input.requestedReasoningMode ?? 'effort'
-  const requestedReasoningExclude =
-    requestedReasoningMode === 'auto' ? false : (input.requestedReasoningExclude ?? false)
   const requestedReasoningEffort =
     requestedReasoningMode === 'auto' ? undefined : (input.requestedReasoningEffort ?? 'none')
+  const requestedReasoningExclude =
+    requestedReasoningMode === 'auto' || requestedReasoningEffort === 'none' ? false : (input.requestedReasoningExclude ?? false)
 
   const run: RunState = {
     runId: input.runId,
@@ -211,13 +218,7 @@ export function startGeneration(state: RootState, input: StartGenerationInput): 
     usage: undefined,
     error: undefined,
     comments: [],
-    // Timing fields initialized to undefined
-    tRequestStart: undefined,
-    tAck: undefined,
-    tEnd: undefined,
-    endReason: undefined,
-    tTransportClosed: undefined,
-    localProcessingDurationMs: undefined,
+    timingFinalized: false,
   }
 
   const existingIds = state.runMessageIds[input.runId] || []
@@ -232,8 +233,8 @@ export function startGeneration(state: RootState, input: StartGenerationInput): 
     ...state.messages,
     ...(userMessageId
       ? {
-        [userMessageId]: createUserMessage(userMessageId, input.userMessageText as string),
-      }
+          [userMessageId]: createUserMessage(userMessageId, input.userMessageText as string),
+        }
       : {}),
     [assistantMessageId]: createEmptyAssistantMessage(assistantMessageId, true, {
       mode: requestedReasoningMode,
@@ -366,6 +367,96 @@ function mergeToolCalls(
   return [...byIndex.values()].sort((a, b) => a.index - b.index)
 }
 
+const endReasonPriority: Record<StreamEndReason, number> = {
+  user_abort: 3,
+  mid_stream_error: 2,
+  transport_error: 2,
+  pre_stream_error: 2,
+  normal_complete: 1,
+}
+
+function resolveEndReason(prev?: StreamEndReason, next?: StreamEndReason): StreamEndReason | undefined {
+  if (!next) return prev
+  if (!prev) return next
+  return endReasonPriority[next] > endReasonPriority[prev] ? next : prev
+}
+
+function computeDurationMs(run: RunState): { durationMs: number | null; isFallback: boolean } {
+  if (typeof run.localProcessingDurationMs === 'number' && Number.isFinite(run.localProcessingDurationMs)) {
+    return { durationMs: Math.max(0, run.localProcessingDurationMs), isFallback: false }
+  }
+  if (typeof run.tAck === 'number' && typeof run.tEnd === 'number') {
+    return { durationMs: Math.max(0, run.tEnd - run.tAck), isFallback: false }
+  }
+  // tAck 缺失：默认 NULL（不做降级计算）
+  return { durationMs: null, isFallback: false }
+}
+
+function freezeOutputStartIfNeeded(state: RootState, runId: string, messageId?: string): RootState {
+  const run = state.runs[runId]
+  if (!run) return state
+  if (run.timingFinalized) return state
+  if (!run.targetAssistantMessageId || !messageId || run.targetAssistantMessageId !== messageId) return state
+  if (typeof run.tEnd === 'number') return state
+
+  const now = Date.now()
+  return updateRun(state, runId, (s) => {
+    if (s.timingFinalized) return s
+    if (typeof s.tEnd === 'number') return s
+    const duration = typeof s.tAck === 'number' ? Math.max(0, now - s.tAck) : s.localProcessingDurationMs
+    return {
+      ...s,
+      tEnd: now,
+      localProcessingDurationMs: duration,
+    }
+  })
+}
+
+function finalizeRunTiming(state: RootState, runId: string, endReasonHint?: StreamEndReason): RootState {
+  const run = state.runs[runId]
+  if (!run) return state
+  if (run.timingFinalized) return state
+
+  const assistantMessageId = run.targetAssistantMessageId
+  const ensuredTEnd = typeof run.tEnd === 'number' ? run.tEnd : Date.now()
+  const runWithEnd = typeof run.tEnd === 'number'
+    ? run
+    : { ...run, tEnd: ensuredTEnd }
+  if (!assistantMessageId) {
+    return updateRun(state, runId, (s) => ({
+      ...s,
+      tEnd: typeof s.tEnd === 'number' ? s.tEnd : ensuredTEnd,
+      endReason: resolveEndReason(s.endReason, endReasonHint),
+      timingFinalized: true,
+    }))
+  }
+
+  const resolvedEndReason = resolveEndReason(runWithEnd.endReason, endReasonHint)
+  const timing = computeDurationMs(runWithEnd)
+
+  let nextState = updateRun(state, runId, (s) => ({
+    ...s,
+    tEnd: typeof s.tEnd === 'number' ? s.tEnd : ensuredTEnd,
+    endReason: resolvedEndReason ?? s.endReason,
+    localProcessingDurationMs: typeof s.localProcessingDurationMs === 'number' ? s.localProcessingDurationMs : (timing.durationMs ?? s.localProcessingDurationMs),
+    timingFinalized: true,
+  }))
+
+  nextState = updateMessage(nextState, assistantMessageId, (m) => {
+    const nextDuration = m.reasoningDurationMs !== undefined ? m.reasoningDurationMs : timing.durationMs
+    const nextEndReason = m.reasoningEndReason ?? resolvedEndReason
+    const nextFallback = m.reasoningDurationIsFallback ?? (timing.isFallback ? true : undefined)
+    return {
+      ...m,
+      reasoningDurationMs: nextDuration,
+      reasoningEndReason: nextEndReason,
+      reasoningDurationIsFallback: nextFallback,
+    }
+  })
+
+  return nextState
+}
+
 export function applyEvent(state: RootState, runId: string, event: DomainEvent): RootState {
   const run = state.runs[runId]
   if (!run) return state
@@ -395,8 +486,39 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
         usage: event.usage,
       }))
     }
+    case 'TimingSnapshot': {
+      return updateRun(state, runId, (s) => {
+        const tRequestStart = typeof event.tRequestStart === 'number' && s.tRequestStart === undefined
+          ? event.tRequestStart
+          : s.tRequestStart
+        const tAck = typeof event.tAck === 'number' && s.tAck === undefined
+          ? event.tAck
+          : s.tAck
+        const tTransportClosed = typeof event.tTransportClosed === 'number' && s.tTransportClosed === undefined
+          ? event.tTransportClosed
+          : s.tTransportClosed
+
+        const endReason = typeof event.endReason === 'string'
+          ? resolveEndReason(s.endReason, event.endReason as StreamEndReason)
+          : s.endReason
+
+        const localProcessingDurationMs = (typeof tAck === 'number' && typeof s.tEnd === 'number')
+          ? Math.max(0, s.tEnd - tAck)
+          : s.localProcessingDurationMs
+
+        return {
+          ...s,
+          tRequestStart,
+          tAck,
+          tTransportClosed,
+          endReason,
+          localProcessingDurationMs,
+        }
+      })
+    }
     case 'MessageDeltaText': {
-      const nextState = updateMessage(state, event.messageId, (m) => {
+      const baseState = event.text ? freezeOutputStartIfNeeded(state, runId, event.messageId) : state
+      const nextState = updateMessage(baseState, event.messageId, (m) => {
         if (!event.text) return m
 
         const nextText = m.contentText + event.text
@@ -426,7 +548,13 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
       return nextState
     }
     case 'MessageAppendContentBlock': {
-      const nextState = updateMessage(state, event.messageId, (m) => {
+      const block = event.block
+      const hasBlockContent =
+        (block.type === 'text' && typeof (block as any).text === 'string' && (block as any).text.length > 0) ||
+        (block.type === 'image' && typeof (block as any).url === 'string' && (block as any).url.length > 0) ||
+        block.type === 'unknown'
+      const baseState = hasBlockContent ? freezeOutputStartIfNeeded(state, runId, event.messageId) : state
+      const nextState = updateMessage(baseState, event.messageId, (m) => {
         const block = event.block
 
         if (block.type === 'text' && typeof block.text === 'string') {
@@ -467,8 +595,8 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
         .filter((d): d is ToolCallDelta => !!d)
 
       if (normalizedDeltas.length === 0) return state
-
-      return updateMessage(state, event.messageId, (m) => ({
+      const baseState = freezeOutputStartIfNeeded(state, runId, event.messageId)
+      return updateMessage(baseState, event.messageId, (m) => ({
         ...m,
         toolCalls: mergeToolCalls(m.toolCalls, normalizedDeltas, event.mergeStrategy),
       }))
@@ -584,7 +712,8 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
       return result
     }
     case 'StreamAbort': {
-      const nextState = updateRun(state, runId, (s) => ({ ...s, status: 'aborted' }))
+      let nextState = updateRun(state, runId, (s) => ({ ...s, status: 'aborted' }))
+      nextState = finalizeRunTiming(nextState, runId, 'user_abort')
       // 清理驻留合并器
       if (targetId) {
         clearReasoningMerger(targetId)
@@ -595,7 +724,8 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
       return nextState
     }
     case 'StreamError': {
-      const nextState = updateRun(state, runId, (s) => ({ ...s, status: 'error', error: event.error }))
+      let nextState = updateRun(state, runId, (s) => ({ ...s, status: 'error', error: event.error }))
+      nextState = finalizeRunTiming(nextState, runId, 'mid_stream_error')
       // 清理驻留合并器
       if (targetId) {
         clearReasoningMerger(targetId)
@@ -606,10 +736,11 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
       return nextState
     }
     case 'StreamDone': {
-      const nextState = updateRun(state, runId, (s) => ({
+      let nextState = updateRun(state, runId, (s) => ({
         ...s,
         status: s.status === 'error' || s.status === 'aborted' ? s.status : 'done',
       }))
+      nextState = finalizeRunTiming(nextState, runId, 'normal_complete')
       // 清理驻留合并器
       if (targetId) {
         clearReasoningMerger(targetId)
@@ -618,35 +749,6 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
         return updateMessage(nextState, targetId, (m) => ({ ...m, streaming: { ...m.streaming, isComplete: true } }))
       }
       return nextState
-    }
-    case 'TimingSnapshot': {
-      return updateRun(state, runId, (s) => {
-        // Guard: terminal state is immutable (both tEnd AND endReason must be set to block)
-        if (s.tEnd !== undefined && s.endReason !== undefined) {
-          return s // Already terminated, ignore
-        }
-
-        // Merge values: existing state takes precedence for tAck (first-write-wins)
-        const newTAck = s.tAck ?? event.tAck
-        const newTEnd = s.tEnd ?? event.tEnd
-        const newEndReason = s.endReason ?? event.endReason
-
-        // Calculate duration from MERGED values (not event-only)
-        const localProcessingDurationMs =
-          newTAck != null && newTEnd != null
-            ? newTEnd - newTAck
-            : s.localProcessingDurationMs
-
-        return {
-          ...s,
-          tRequestStart: event.tRequestStart ?? s.tRequestStart,
-          tAck: newTAck,
-          tEnd: newTEnd,
-          endReason: newEndReason,
-          tTransportClosed: event.tTransportClosed ?? s.tTransportClosed,
-          localProcessingDurationMs,
-        }
-      })
     }
     default:
       return state

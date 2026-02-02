@@ -4,7 +4,6 @@ import path from 'node:path'
 const REPO_ROOT = process.cwd()
 
 const TARGETS = [
-  { id: 'ui-next', dir: path.join(REPO_ROOT, 'src', 'ui-next') },
   { id: 'ui-app', dir: path.join(REPO_ROOT, 'src', 'ui-app') },
   { id: 'next', dir: path.join(REPO_ROOT, 'src', 'next') },
 ]
@@ -125,9 +124,9 @@ function checkUiSpecifier(spec) {
 }
 
 function checkNextSpecifier(spec) {
-  const uiLayer = /^@\/(ui-next|ui-app|ui-kit)(\/|$)/
+  const uiLayer = /^@\/(ui-app|ui-kit)(\/|$)/
   if (uiLayer.test(spec)) {
-    return 'src/next/** must not import ui-next/ui-app/ui-kit'
+    return 'src/next/** must not import ui-app/ui-kit'
   }
 
   if (spec.endsWith('.vue') || spec.includes('.vue?')) {
@@ -164,7 +163,7 @@ function scanTarget(target) {
 }
 
 function main() {
-  section('TC-18 — UI isolation gate (ui-next + ui-app <-> next)')
+  section('TC-18 — UI isolation gate (ui-app <-> next)')
 
   const allViolations = []
 

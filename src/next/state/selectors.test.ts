@@ -31,15 +31,17 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     expect(vm1?.reasoningView.panelState).toBe('expanded')
     expect(vm1?.reasoningView.visibility).toBe('excluded')
 
+    const nextMessages = {
+      ...s1.messages,
+      [assistantMessageId]: {
+        ...s1.messages[assistantMessageId],
+        reasoningPanelState: 'collapsed' as const,
+      },
+    }
     const s2 = {
       ...s1,
-      messages: {
-        ...s1.messages,
-        [assistantMessageId]: {
-          ...s1.messages[assistantMessageId],
-          reasoningPanelState: 'collapsed',
-        },
-      },
+      messages: nextMessages,
+      entities: { ...s1.entities, messagesById: nextMessages },
     }
 
     const vm2 = selectMessage(s2, assistantMessageId)
@@ -72,15 +74,17 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     })
 
     // Simulate receiving reasoning content
+    const messagesWithReasoning = {
+      ...s1.messages,
+      [assistantMessageId]: {
+        ...s1.messages[assistantMessageId],
+        reasoningDetailsRaw: [{ type: 'reasoning.text', text: 'thinking...' }],
+      },
+    }
     const stateWithReasoning = {
       ...s1,
-      messages: {
-        ...s1.messages,
-        [assistantMessageId]: {
-          ...s1.messages[assistantMessageId],
-          reasoningDetailsRaw: [{ type: 'reasoning.text', text: 'thinking...' }],
-        },
-      },
+      messages: messagesWithReasoning,
+      entities: { ...s1.entities, messagesById: messagesWithReasoning },
     }
 
     const vm = selectMessage(stateWithReasoning, assistantMessageId)
@@ -98,15 +102,17 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     })
 
     // Simulate receiving encrypted reasoning signal
+    const messagesWithEncrypted = {
+      ...s1.messages,
+      [assistantMessageId]: {
+        ...s1.messages[assistantMessageId],
+        hasEncryptedReasoning: true,
+      },
+    }
     const stateWithEncrypted = {
       ...s1,
-      messages: {
-        ...s1.messages,
-        [assistantMessageId]: {
-          ...s1.messages[assistantMessageId],
-          hasEncryptedReasoning: true,
-        },
-      },
+      messages: messagesWithEncrypted,
+      entities: { ...s1.entities, messagesById: messagesWithEncrypted },
     }
 
     const vm = selectMessage(stateWithEncrypted, assistantMessageId)
@@ -167,6 +173,62 @@ describe('selectTranscript', () => {
     expect(transcript[1].role).toBe('assistant')
     expect(transcript[1].messageId).toBe(assistantMessageId)
     expect(transcript[1].reasoningView.visibility).toBe('excluded')
+  })
+})
+
+describe('selector reference stability', () => {
+  it('reuses message VM when message is unchanged', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'test-model',
+      userMessageId: 'u1',
+      userMessageText: 'hello',
+      assistantMessageId: 'a1',
+    })
+
+    const vm1 = selectMessage(s1, assistantMessageId)
+    const vm2 = selectMessage(s1, assistantMessageId)
+    expect(vm2).toBe(vm1)
+  })
+
+  it('returns stable transcript array when state is unchanged', () => {
+    const state = createInitialState()
+    const { state: s1 } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'test-model',
+      userMessageId: 'u1',
+      userMessageText: 'hello',
+      assistantMessageId: 'a1',
+    })
+
+    const t1 = selectTranscript(s1, 'run1')
+    const t2 = selectTranscript(s1, 'run1')
+    expect(t2).toBe(t1)
+  })
+
+  it('reuses unchanged message VM when only one message updates', () => {
+    const state = createInitialState()
+    const { state: s1 } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'test-model',
+      userMessageId: 'u1',
+      userMessageText: 'hello',
+      assistantMessageId: 'a1',
+    })
+
+    const t1 = selectTranscript(s1, 'run1')
+    const userVm1 = t1.find((m) => m.messageId === 'u1')
+
+    const s2 = applyEvent(s1, 'run1', { type: 'MessageDeltaText', messageId: 'a1', choiceIndex: 0, text: 'x' })
+    const t2 = selectTranscript(s2, 'run1')
+    const userVm2 = t2.find((m) => m.messageId === 'u1')
+
+    expect(t2).not.toBe(t1)
+    expect(userVm2).toBe(userVm1)
   })
 })
 

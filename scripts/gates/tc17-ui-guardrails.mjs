@@ -64,8 +64,7 @@ function assertUiDir(dir) {
 }
 
 try {
-  section('TC-17 — UI guardrails (ui-next + ui-app)')
-  assertUiDir('src/ui-next')
+  section('TC-17 — UI guardrails (ui-app)')
   assertUiDir('src/ui-app')
   console.log('PASS: UI guardrails hold (no legacy imports, no JSON.parse usage).')
   process.exit(0)

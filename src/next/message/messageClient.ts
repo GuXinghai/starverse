@@ -116,7 +116,13 @@ export async function appendMessageDelta(input: Readonly<{ convoId: string; seq:
   return !!(result && typeof result === 'object' && 'ok' in result ? (result as any).ok : true)
 }
 
-export async function setMessageStatus(input: Readonly<{ messageId: string; status: 'streaming' | 'final' | 'error' }>): Promise<boolean> {
+export async function setMessageStatus(input: Readonly<{
+  messageId: string
+  status: 'streaming' | 'final' | 'error'
+  reasoningDurationMs?: number | null
+  reasoningEndReason?: string | null
+  reasoningDurationIsFallback?: boolean
+}>): Promise<boolean> {
   const bridge = requireDbBridge()
   const messageId = String(input.messageId ?? '').trim()
   if (!messageId) throw new Error('Missing messageId')
@@ -127,7 +133,13 @@ export async function setMessageStatus(input: Readonly<{ messageId: string; stat
   if (import.meta.env?.DEV) {
     console.log('[messageClient] setMessageStatus: calling DB', { messageId: messageId.slice(0, 8), status })
   }
-  const result = await bridge.invoke('message.setStatus', { messageId, status })
+  const result = await bridge.invoke('message.setStatus', {
+    messageId,
+    status,
+    reasoningDurationMs: input.reasoningDurationMs ?? null,
+    reasoningEndReason: input.reasoningEndReason ?? null,
+    reasoningDurationIsFallback: input.reasoningDurationIsFallback ?? false,
+  })
   const success = !!(result && typeof result === 'object' && 'ok' in result ? (result as any).ok : true)
   if (import.meta.env?.DEV) {
     console.log('[messageClient] setMessageStatus: DB returned', { messageId: messageId.slice(0, 8), status, success, result })

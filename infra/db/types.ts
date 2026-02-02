@@ -163,6 +163,9 @@ export type AppendMessageDeltaInput = {
 export type SetMessageStatusInput = {
   messageId: string
   status: 'streaming' | 'final' | 'error'
+  reasoningDurationMs?: number | null
+  reasoningEndReason?: string | null
+  reasoningDurationIsFallback?: boolean
 }
 
 // ========== Branching Types (Phase 4+) ==========

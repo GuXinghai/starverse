@@ -4,7 +4,6 @@ import path from 'node:path'
 const REPO_ROOT = process.cwd()
 
 const TARGETS = [
-  { id: 'ui-next', dir: path.join(REPO_ROOT, 'src', 'ui-next') },
   { id: 'next', dir: path.join(REPO_ROOT, 'src', 'next') },
 ]
 
@@ -105,35 +104,12 @@ function extractImportSpecifiers(text) {
   return results
 }
 
-function checkUiNextSpecifier(spec) {
-  const legacyRoot = /^@\/(stores|services|components|composables|utils|types)(\/|$)/
-  if (legacyRoot.test(spec)) {
-    return 'ui-next must not import legacy surfaces (@/stores|@/services|@/components|@/composables|@/utils|@/types)'
-  }
 
-  // Only block upward relative imports (../...) into legacy surfaces; allow local ui-next folders like ./components.
-  const relativeLegacyRoot = /^\.\.(?:\/\.\.)*\/(stores|services|components|composables|utils|types)(\/|$)/
-  if (relativeLegacyRoot.test(spec)) {
-    return 'ui-next must not reach legacy surfaces via relative imports (../stores|../services|...)'
-  }
-
-  const archived = /^(?:\.{1,2}\/)+archived-(components|services)(\/|$)/
-  if (archived.test(spec)) {
-    return 'ui-next must not import archived legacy code (archived-components/archived-services)'
-  }
-
-  // Extra safety: block explicit "src/components/..." style specifiers.
-  if (spec.includes('src/components') || spec.includes('src/stores') || spec.includes('src/services')) {
-    return 'ui-next must not import legacy src/components|src/stores|src/services by path'
-  }
-
-  return null
-}
 
 function checkNextSpecifier(spec) {
-  const uiLayer = /^@\/(ui-next|ui-kit)(\/|$)/
+  const uiLayer = /^@\/(ui-kit)(\/|$)/
   if (uiLayer.test(spec)) {
-    return 'src/next/** must not import ui-next/ui-kit'
+    return 'src/next/** must not import ui-kit'
   }
 
   if (spec.endsWith('.vue') || spec.includes('.vue?')) {
@@ -157,7 +133,7 @@ function scanTarget(target) {
     const lineStarts = buildLineStarts(text)
 
     for (const { spec, index } of extractImportSpecifiers(text)) {
-      const reason = target.id === 'ui-next' ? checkUiNextSpecifier(spec) : checkNextSpecifier(spec)
+      const reason = checkNextSpecifier(spec)
       if (!reason) continue
 
       const loc = indexToLineCol(lineStarts, index)
@@ -170,7 +146,7 @@ function scanTarget(target) {
 }
 
 function main() {
-  section('TC-13 — UI isolation gate (ui-next <-> legacy, next <-> UI)')
+  section('TC-13 — UI isolation gate (next <-> UI)')
 
   const allViolations = []
 

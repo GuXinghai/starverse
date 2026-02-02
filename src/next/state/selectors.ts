@@ -1,5 +1,78 @@
-import type { MessageVM, ReasoningViewVisibility, RootState, RunVM } from './types'
+import type { MessageState, MessageVM, ReasoningPiece, ReasoningViewVisibility, RootState, RunVM } from './types'
 import { ReasoningDetailStreamMerger, buildDetailKey } from './reasoningDetailStreamMerger'
+import { beginDeriveMeasure, endDeriveMeasure, recordDerive, recordFallbackReplay } from './perfMetrics'
+import { getDiagnosticsFlags } from '@/shared/diagnostics/flags'
+import { createDiagnosticsLogger, publishPhase3PieceSnapshot } from '@/shared/diagnostics/bridge'
+import { recordSelectorsDerive, isSchedDiagEnabled, startTimer } from './schedulerDiagnostics'
+
+// fallbackReplayCount 监控
+let fallbackReplayCount = 0
+let lastFallbackReportTime = Date.now()
+let lastPieceReportTime = Date.now()
+const lastPieceCounts = new Map<string, { count: number; t: number }>()
+const isDev = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV === true
+const diagnosticsFlags = getDiagnosticsFlags()
+const diagnosticsLogger = createDiagnosticsLogger(diagnosticsFlags)
+
+type MessageCacheEntry = Readonly<{ source: MessageState; derived: MessageVM }>
+const messageCache = new Map<string, MessageCacheEntry>()
+
+type TranscriptCacheEntry = Readonly<{
+  idsRef: string[]
+  messageRefs: ReadonlyArray<MessageState | undefined>
+  result: MessageVM[]
+}>
+const transcriptCache = new Map<string, TranscriptCacheEntry>()
+
+function recordFallbackReplayLocal(): void {
+  if (!diagnosticsFlags.perf) return
+  fallbackReplayCount++
+  const now = Date.now()
+  if (now - lastFallbackReportTime >= 1000) {
+    const rate = fallbackReplayCount / ((now - lastFallbackReportTime) / 1000)
+    diagnosticsLogger.log('fallback-replay', { rate: Number(rate.toFixed(2)), total: fallbackReplayCount })
+    fallbackReplayCount = 0
+    lastFallbackReportTime = now
+  }
+  // 同时记录到全局性能指标
+  recordFallbackReplay()
+}
+
+function normalizeReasoningPieces(raw: ReadonlyArray<ReasoningPiece> | undefined): ReasoningPiece[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const pieces = raw.filter((piece) => typeof piece?.text === 'string' && piece.text.trim().length > 0)
+  return pieces.length > 0 ? pieces : undefined
+}
+
+function logPieceCount(messageId: string, pieces: ReasoningPiece[], lastPieceLen?: number): void {
+  if (!diagnosticsFlags.phase3Audit) return
+  if (!Array.isArray(pieces) || pieces.length === 0) return
+  const now = Date.now()
+  if (now - lastPieceReportTime < 1000) return
+  lastPieceReportTime = now
+  const count = pieces.length
+  const totalChars = pieces.reduce((sum, piece) => sum + (piece?.text?.length ?? 0), 0)
+  const resolvedLastLen =
+    typeof lastPieceLen === 'number'
+      ? lastPieceLen
+      : (pieces[count - 1]?.text?.length ?? 0)
+  const prev = lastPieceCounts.get(messageId)
+  const elapsedMs = prev ? Math.max(1, now - prev.t) : 1000
+  const delta = prev ? Math.max(0, count - prev.count) : 0
+  const pieceSplitCountPerSec = delta / (elapsedMs / 1000)
+  lastPieceCounts.set(messageId, { count, t: now })
+  diagnosticsLogger.log('piece-count', { messageId: messageId.slice(-8), count })
+  if (isDev) {
+    publishPhase3PieceSnapshot({
+      t: now,
+      messageId,
+      count,
+      reasoningTotalChars: totalChars,
+      reasoningLastPieceLen: resolvedLastLen,
+      pieceSplitCountPerSec,
+    })
+  }
+}
 
 export function selectRun(state: RootState, runId: string): RunVM | null {
   const s = state.runs[runId]
@@ -15,6 +88,8 @@ export function selectRun(state: RootState, runId: string): RunVM | null {
     nativeFinishReason: s.nativeFinishReason,
     usage: s.usage,
     error: s.error,
+    localProcessingDurationMs: s.localProcessingDurationMs,
+    tAck: s.tAck,
   }
 }
 
@@ -95,12 +170,50 @@ function deriveReasoningDisplayFromDetails(reasoningDetailsRaw: unknown[]): {
 }
 
 export function selectMessage(state: RootState, messageId: string): MessageVM | null {
-  const m = state.messages[messageId]
+  const messagesById = state.entities?.messagesById ?? state.messages
+  const m = messagesById[messageId]
   if (!m) return null
 
-  const derived = deriveReasoningDisplayFromDetails(m.reasoningDetailsRaw)
-  const summaryText = m.reasoningSummaryText ?? derived.summaryText
-  const reasoningText = derived.reasoningText ?? m.reasoningStreamingText
+  const cached = messageCache.get(messageId)
+  if (cached && cached.source === m) return cached.derived
+
+  // 诊断计时
+  const diagEnabled = isSchedDiagEnabled()
+  const endTimer = diagEnabled ? startTimer() : null
+  let usedFallback = false
+
+  const normalizedPieces = normalizeReasoningPieces(m.reasoningPieces)
+  const hasPieces = Array.isArray(normalizedPieces) && normalizedPieces.length > 0
+  const hasDetails = Array.isArray(m.reasoningDetailsRaw) && m.reasoningDetailsRaw.length > 0
+
+  // 监控 piece 数量
+  if (hasPieces && normalizedPieces) {
+    logPieceCount(messageId, normalizedPieces, m.reasoningLastPieceLen)
+  }
+
+  let summaryText = m.reasoningSummaryText
+  let reasoningText: string | undefined
+  let reasoningPieces: ReasoningPiece[] | undefined
+
+  // 优先使用增量 pieces，必要时才回退全量重放
+  if (hasPieces) {
+    reasoningPieces = normalizedPieces
+    // 使用 pieces 时不需要 reasoningText
+  } else if (summaryText) {
+    // 仅有 summary（常见于 summary-only 流）
+    reasoningText = m.reasoningStreamingText
+  } else if (hasDetails) {
+    // 回退到全量重放
+    usedFallback = true
+    recordFallbackReplayLocal()
+    const derived = deriveReasoningDisplayFromDetails(m.reasoningDetailsRaw)
+    summaryText = summaryText ?? derived.summaryText
+    reasoningText = derived.reasoningText
+  }
+
+  if (!reasoningText && !reasoningPieces) {
+    reasoningText = m.reasoningStreamingText
+  }
 
   const visibility = computeReasoningVisibility(
     m.hasEncryptedReasoning,
@@ -108,7 +221,7 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
     m.requestedReasoningExclude
   )
 
-  return {
+  const derived: MessageVM = {
     messageId: m.messageId,
     role: m.role,
     contentBlocks: m.contentBlocks,
@@ -116,17 +229,66 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
     reasoningView: {
       summaryText,
       reasoningText,
+      reasoningPieces,
       hasEncrypted: m.hasEncryptedReasoning,
       visibility,
       panelState: m.reasoningPanelState,
     },
+    reasoningDurationMs: m.reasoningDurationMs,
+    reasoningEndReason: m.reasoningEndReason,
+    reasoningDurationIsFallback: m.reasoningDurationIsFallback,
     streaming: m.streaming,
   }
+
+  messageCache.set(messageId, { source: m, derived })
+
+  // 记录诊断数据
+  if (diagEnabled && endTimer) {
+    recordSelectorsDerive({
+      deriveMs: endTimer(),
+      fallbackReplay: usedFallback,
+    })
+  }
+
+  return derived
 }
 
 export function selectTranscript(state: RootState, runId: string): MessageVM[] {
-  const ids = state.runMessageIds[runId] || []
-  return ids.map((id) => selectMessage(state, id)).filter((m): m is MessageVM => !!m)
+  const measureId = beginDeriveMeasure()
+  const ids = state.views?.transcriptsByRunId?.[runId] ?? []
+  const messagesById = state.entities?.messagesById ?? state.messages
+
+  const cached = transcriptCache.get(runId)
+  if (cached && cached.idsRef === ids && cached.messageRefs.length === ids.length) {
+    let same = true
+    for (let i = 0; i < ids.length; i += 1) {
+      if (cached.messageRefs[i] !== messagesById[ids[i]]) {
+        same = false
+        break
+      }
+    }
+    if (same) {
+      const duration = endDeriveMeasure(measureId)
+      recordDerive(duration)
+      return cached.result
+    }
+  }
+
+  const messageRefs: Array<MessageState | undefined> = new Array(ids.length)
+  const result: MessageVM[] = []
+  for (let i = 0; i < ids.length; i += 1) {
+    const id = ids[i]
+    const msg = messagesById[id]
+    messageRefs[i] = msg
+    if (!msg) continue
+    const vm = selectMessage(state, id)
+    if (vm) result.push(vm)
+  }
+
+  const duration = endDeriveMeasure(measureId)
+  recordDerive(duration)
+  transcriptCache.set(runId, { idsRef: ids, messageRefs, result })
+  return result
 }
 
 export type TokenUsage = Readonly<{

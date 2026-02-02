@@ -90,6 +90,15 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   'autoScrollToBottom',   // 是否自动滚动到底部
   'showTimestamps',       // 是否显示时间戳
   'enableNotifications',  // 是否启用通知
+
+  // ========== Network Experiments ==========
+  'netExp',               // 网络实验开关（HTTP2/QUIC/KeepAlive 等）
+  'netExp.disableHttp2',
+  'netExp.disableQuic',
+  'netExp.streamInMainProcess',
+  'netExp.forceHttp1',
+  'netExp.tcpKeepAliveEnable',
+  'netExp.tcpKeepAliveIdleMs',
   
   // ========== Window State ==========
   'windowBounds',         // 窗口位置和大小 { x, y, width, height }

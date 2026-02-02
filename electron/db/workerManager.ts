@@ -44,7 +44,9 @@ import type {
   DbMethod,
   WorkerRequestMessage,
   WorkerResponseMessage,
-  DbErrorCode
+  DbErrorCode,
+  DbEvent,
+  WorkerEventMessage
 } from '../../infra/db/types'
 import { DbWorkerError } from '../../infra/db/errors'
 
@@ -100,6 +102,7 @@ export class DbWorkerManager {
   private restartTimer?: NodeJS.Timeout          // 重启计时器
   private stopping = false                       // 标记是否为主动停止
   private defaultMaxPending = 400
+  private eventListeners = new Set<(event: DbEvent) => void>()  // 事件监听器
 
   constructor(private options: ManagerOptions) {}
 
@@ -173,7 +176,7 @@ export class DbWorkerManager {
             this.worker = undefined
             this.startPromise = undefined
           })
-          worker.on('message', (message: WorkerResponseMessage) => this.handleMessage(message))
+          worker.on('message', (message: WorkerResponseMessage | WorkerEventMessage) => this.handleMessage(message))
           worker.on('exit', (code) => {
             const wasStopping = this.stopping
             this.stopping = false
@@ -221,6 +224,94 @@ export class DbWorkerManager {
     this.clearRestartTimer()
     this.restartAttempts = 0
     this.stopping = false
+  }
+
+  /**
+   * 重置数据库（dev-only）
+   * 
+   * 🔒 双重安全保险：
+   * 1. 检查 NODE_ENV !== 'production'（第一道门）
+   * 2. 检查 app.isPackaged === false（第二道门，如可用）
+   * 
+   * 仅在 development 环境中可用，用于开发调试时快速清空数据库。
+   * 
+   * 执行流程:
+   * 1. 检查环境（双保险）
+   * 2. 停止当前 Worker（确保 SQLite 连接关闭）
+   * 3. 等待短暂时间确保句柄释放
+   * 4. 删除数据库文件（带重试机制处理 Windows 文件锁）
+   * 5. 重新启动 Worker（会自动创建新库并初始化 schema + Inbox）
+   * 
+   * @throws {DbWorkerError} 非开发环境或操作失败
+   */
+  async reset(): Promise<{ ok: true }> {
+    const fs = await import('node:fs/promises')
+    
+    // 1. 双保险检查 - 第一道门：NODE_ENV
+    const nodeEnv = process.env.NODE_ENV
+    const isProduction = nodeEnv === 'production'
+    if (isProduction) {
+      throw new DbWorkerError('ERR_FORBIDDEN', 'db.reset is forbidden in production environment')
+    }
+    
+    // 2. 双保险检查 - 第二道门：app.isPackaged（如可用）
+    try {
+      const { app } = await import('electron')
+      if (app.isPackaged) {
+        throw new DbWorkerError('ERR_FORBIDDEN', 'db.reset is forbidden in packaged app')
+      }
+    } catch {
+      // electron 模块不可用时跳过（如单元测试环境）
+    }
+    
+    // 3. 获取数据库路径
+    const dbPath = this.dbPath
+    if (!dbPath) {
+      throw new DbWorkerError('ERR_UNAVAILABLE', 'Database path not available')
+    }
+    
+    console.log('[workerManager] Resetting database:', dbPath)
+    
+    // 4. 停止 Worker（确保 SQLite 连接关闭）
+    await this.stop()
+    
+    // 5. 等待短暂时间确保句柄释放（Windows 需要）
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // 6. 删除数据库文件（带重试机制）
+    const filesToDelete = [
+      dbPath,
+      `${dbPath}-wal`,
+      `${dbPath}-shm`,
+    ]
+    
+    const deleteWithRetry = async (file: string, maxRetries = 5) => {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          await fs.unlink(file)
+          console.log(`[workerManager] Deleted: ${file}`)
+          return
+        } catch (err: any) {
+          if (err.code === 'ENOENT') return // 文件不存在，无需删除
+          if (attempt < maxRetries) {
+            // Windows 文件锁可能需要多次重试
+            await new Promise(resolve => setTimeout(resolve, 50 * attempt))
+          } else {
+            console.warn(`[workerManager] Failed to delete ${file} after ${maxRetries} attempts:`, err.message)
+          }
+        }
+      }
+    }
+    
+    for (const file of filesToDelete) {
+      await deleteWithRetry(file)
+    }
+    
+    // 7. 重新启动 Worker（会自动创建新库）
+    await this.start(dbPath)
+    
+    console.log('[workerManager] Database reset complete')
+    return { ok: true }
   }
 
   /**
@@ -330,22 +421,53 @@ export class DbWorkerManager {
    * - Worker 返回的错误会被包装为 DbWorkerError
    * - 错误码 (errorCode) 用于区分错误类型
    */
-  private handleMessage(message: WorkerResponseMessage) {
-    const pending = this.pending.get(message.id)
+  private handleMessage(message: WorkerResponseMessage | WorkerEventMessage) {
+    // 处理事件消息
+    if ('type' in message && message.type === 'event') {
+      const eventMessage = message as WorkerEventMessage
+      this.broadcastEvent(eventMessage.event)
+      return
+    }
+
+    // 处理响应消息
+    const responseMessage = message as WorkerResponseMessage
+    const pending = this.pending.get(responseMessage.id)
     if (!pending) return
-    this.pending.delete(message.id)
+    this.pending.delete(responseMessage.id)
     if (pending.timer) {
       clearTimeout(pending.timer)
     }
 
-    if (message.ok) {
-      pending.resolve(message.result)
+    if (responseMessage.ok) {
+      pending.resolve(responseMessage.result)
       return
     }
 
-    const errorCode = (message.error?.code as DbErrorCode | undefined) ?? 'ERR_INTERNAL'
-    const error = new DbWorkerError(errorCode, message.error?.message ?? 'DB worker error', message.error?.details)
+    const errorCode = (responseMessage.error?.code as DbErrorCode | undefined) ?? 'ERR_INTERNAL'
+    const error = new DbWorkerError(errorCode, responseMessage.error?.message ?? 'DB worker error', responseMessage.error?.details)
     pending.reject(error)
+  }
+
+  /**
+   * 广播事件到所有监听器
+   */
+  private broadcastEvent(event: DbEvent) {
+    for (const listener of this.eventListeners) {
+      try {
+        listener(event)
+      } catch (err) {
+        console.error('[workerManager] Event listener error:', err)
+      }
+    }
+  }
+
+  /**
+   * 注册事件监听器
+   * @returns 取消订阅函数
+   */
+  onEvent(listener: (event: DbEvent) => void): () => void {
+    this.eventListeners.add(listener)
+    return () => this.eventListeners.delete(listener)
   }
 
   /**

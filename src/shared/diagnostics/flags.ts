@@ -34,8 +34,8 @@ export function readDiagnosticsFlags(): DiagnosticsFlags {
   const enabled = diag === true
 
   // sched 独立开关：可单独启用，不依赖 sv_diag
-  const schedOverride = readFlag('sv_diag_sched')
-  const schedEnabled = schedOverride === true
+  // 临时关闭 sched-diag 以减少噪音（忽略 sv_diag_sched）
+  const schedEnabled = false
 
   return {
     enabled,

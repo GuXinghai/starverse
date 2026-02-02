@@ -16,11 +16,20 @@ export type ConvoSummary = Readonly<{
   meta?: Record<string, unknown> | null
 }>
 
-export async function listConvos(params?: Readonly<{ limit?: number; offset?: number; order?: 'updatedAt' | 'createdAt' }>): Promise<ConvoSummary[]> {
+export async function listConvos(params?: Readonly<{ projectId?: string | null; limit?: number; offset?: number; order?: 'updatedAt' | 'createdAt' }>): Promise<ConvoSummary[]> {
   const bridge = getDbBridge()
   if (!bridge) return []
 
-  const rows = await bridge.invoke('convo.list', params ?? {})
+  // 构造查询参数，DB 端会根据 projectId 进行筛选
+  const queryParams: Record<string, unknown> = {}
+  if (params) {
+    if (params.projectId !== undefined) queryParams.projectId = params.projectId
+    if (params.limit !== undefined) queryParams.limit = params.limit
+    if (params.offset !== undefined) queryParams.offset = params.offset
+    if (params.order !== undefined) queryParams.order = params.order
+  }
+
+  const rows = await bridge.invoke('convo.list', queryParams)
   if (!Array.isArray(rows)) return []
 
   return rows

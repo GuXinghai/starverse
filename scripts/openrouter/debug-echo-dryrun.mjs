@@ -37,7 +37,6 @@ const request = buildOpenRouterChatCompletionsRequest({
     },
   ],
   stream: true,
-  usage: { include: true },
   reasoning: { effort: 'high', exclude: true },
 })
 
