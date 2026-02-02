@@ -107,3 +107,7 @@ archived-components/
 
 *storybook.log
 storybook-static
+
+# Local AI tooling + test output
+.gemini/
+test_output.txt
