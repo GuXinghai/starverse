@@ -91,6 +91,15 @@ CREATE TABLE IF NOT EXISTS message_reasoning_detail_segments (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_reasoning_segment_fingerprint
   ON message_reasoning_detail_segments (message_id, segment_fingerprint);
 
+CREATE TABLE IF NOT EXISTS message_error (
+  message_id TEXT PRIMARY KEY REFERENCES message(id) ON DELETE CASCADE,
+  envelope_json TEXT NOT NULL,
+  envelope_bytes INTEGER NOT NULL,
+  is_truncated INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS attachment (
   id TEXT PRIMARY KEY,
   message_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,

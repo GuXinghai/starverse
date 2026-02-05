@@ -3,6 +3,8 @@ import type {
   AppendMessageInput,
   AppendMessageDeltaInput,
   SetMessageStatusInput,
+  UpsertMessageErrorInput,
+  ListMessageErrorByIdsInput,
   AppendReasoningDetailSegmentsInput,
   FinalizeReasoningDetailsInput,
   SetReasoningRequestConfigInput,
@@ -134,6 +136,20 @@ export const SetMessageStatusSchema: ZodType<SetMessageStatusInput> = z.object({
   reasoningDurationMs: z.number().int().nullable().optional(),
   reasoningEndReason: z.string().nullable().optional(),
   reasoningDurationIsFallback: z.boolean().optional(),
+})
+
+export const UpsertMessageErrorSchema: ZodType<UpsertMessageErrorInput> = z.object({
+  messageId: z.string().min(1),
+  envelopeJson: z.string().min(1),
+  envelopeBytes: z.number().int().nonnegative(),
+  isTruncated: z.boolean(),
+  createdAt: z.number().int().optional(),
+  updatedAt: z.number().int().optional(),
+  metaPatch: jsonSchema.optional().nullable(),
+})
+
+export const ListMessageErrorByIdsSchema: ZodType<ListMessageErrorByIdsInput> = z.object({
+  messageIds: z.array(z.string().min(1)).min(1).max(500),
 })
 
 export const AppendReasoningDetailSegmentsSchema: ZodType<AppendReasoningDetailSegmentsInput> = z.object({

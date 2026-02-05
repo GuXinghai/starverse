@@ -56,6 +56,15 @@ export type MessageRecord = {
   meta: JsonObject | null
 }
 
+export type MessageErrorRecord = {
+  messageId: string
+  envelopeJson: string
+  envelopeBytes: number
+  isTruncated: boolean
+  createdAt: number
+  updatedAt: number
+}
+
 export type AppendReasoningDetailSegmentsInput = Readonly<{
   messageId: string
   details: unknown[]
@@ -166,6 +175,20 @@ export type SetMessageStatusInput = {
   reasoningDurationMs?: number | null
   reasoningEndReason?: string | null
   reasoningDurationIsFallback?: boolean
+}
+
+export type UpsertMessageErrorInput = {
+  messageId: string
+  envelopeJson: string
+  envelopeBytes: number
+  isTruncated: boolean
+  createdAt?: number
+  updatedAt?: number
+  metaPatch?: JsonObject | null
+}
+
+export type ListMessageErrorByIdsInput = {
+  messageIds: string[]
 }
 
 // ========== Branching Types (Phase 4+) ==========
@@ -791,6 +814,8 @@ export type DbMethod =
   | 'message.finalizeReasoningDetails'
   | 'message.setReasoningRequestConfig'
   | 'message.getReasoningSegmentsStats'
+  | 'messageError.upsert'
+  | 'messageError.listByMessageIds'
   | 'branch.ensureDefault'
   | 'branch.list'
   | 'branch.createFromMessage'
