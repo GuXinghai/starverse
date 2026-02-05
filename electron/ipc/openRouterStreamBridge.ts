@@ -1,14 +1,22 @@
-import { ipcMain, type WebContents } from 'electron'
-import { Client, buildConnector } from 'undici'
+import { ipcMain, net, type WebContents } from 'electron'
+import type { IncomingMessage } from 'node:http'
 import { buildOpenRouterChatCompletionsRequest } from '../../src/next/openrouter/buildRequest'
 import { decodeOpenRouterSSE } from '../../src/next/openrouter/sse/decoder'
 import { mapChunkToEvents } from '../../src/next/openrouter/mapChunkToEvents'
+import { mapResponsesEventToTerminal } from '../../src/next/openrouter/responsesEventMapper'
 import { buildOpenRouterMessages, type ContextMode, type InternalMessage } from '../../src/next/context/buildMessages'
 import {
   normalizeOpenRouterErrorFromHttpNon2xx,
   normalizeOpenRouterErrorFromSseChunkError,
   normalizeOpenRouterUnknownStreamingError,
 } from '../../src/next/errors/normalizeOpenRouterError'
+import {
+  buildAbortEnvelope,
+  buildMidStreamSseErrorEnvelope,
+  buildPreStreamHttpErrorEnvelope,
+  buildTransportErrorEnvelope,
+} from '../../src/next/errors/openRouterErrorEnvelope'
+import type { ErrorPhase } from '../../src/next/errors/openRouterErrorEnvelope'
 import type { DomainEvent, ReasoningEffort, RequestedReasoningMode, StreamEndReason } from '../../src/next/state/types'
 
 const activeControllers = new Map<string, AbortController>()
@@ -64,10 +72,18 @@ function headersToRecord(headers: Record<string, string | string[] | undefined>)
   return record
 }
 
-function toStreamError(err: unknown): DomainEvent {
+function toStreamError(err: unknown, phase: ErrorPhase, request?: { model?: string; stream?: boolean }): DomainEvent {
   const message =
     err && typeof err === 'object' && 'message' in (err as any) ? String((err as any).message ?? 'Error') : 'Error'
-  return { type: 'StreamError', error: normalizeOpenRouterUnknownStreamingError({ message, details: { name: (err as any)?.name } }), terminal: true }
+  const normalized = normalizeOpenRouterUnknownStreamingError({ message, details: { name: (err as any)?.name } })
+  const envelope = buildTransportErrorEnvelope({
+    phase,
+    completionClass: 'error',
+    message,
+    normalized,
+    request,
+  })
+  return { type: 'StreamError', error: envelope, terminal: true }
 }
 
 function sendEvent(sender: WebContents, requestId: string, event: DomainEvent) {
@@ -182,12 +198,21 @@ function safeStringifyForLog(value: unknown, maxChars: number): { text: string; 
   return { text, truncated: false, originalLength }
 }
 
+async function readResponseBody(response: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = []
+  for await (const chunk of response) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
 async function startStream(sender: WebContents, payload: StreamChatRequest): Promise<void> {
   const controller = new AbortController()
   activeControllers.set(payload.requestId, controller)
 
-  let client: Client | null = null
+  let request: ReturnType<typeof net.request> | null = null
   let timeoutId: ReturnType<typeof setTimeout> | null = null
+  let abortHandler: (() => void) | null = null
 
   // Initialize timing state outside try block so it's accessible in catch
   const timing: TimingState = {
@@ -229,31 +254,12 @@ async function startStream(sender: WebContents, payload: StreamChatRequest): Pro
       ? `${basePath}/chat/completions`
       : `/${basePath}/chat/completions`
 
-    const allowH2 = payload.config.forceHttp1 === true ? false : true
-    const connector = buildConnector({})
-    client = new Client(origin, {
-      allowH2,
-      connect: (options, callback) => {
-        connector(options, (err, socket) => {
-          if (err) {
-            callback(err, null)
-            return
-          }
-          if (socket && payload.config.tcpKeepAliveEnable === true) {
-            try {
-              socket.setKeepAlive(true, Math.max(0, Math.floor(payload.config.tcpKeepAliveIdleMs ?? 60000)))
-            } catch {
-              // ignore keepalive errors
-            }
-          }
-          callback(null, socket)
-        })
-      },
-    })
-
     if (typeof payload.config.timeoutMs === 'number' && payload.config.timeoutMs > 0) {
       timeoutId = setTimeout(() => controller.abort(), payload.config.timeoutMs)
     }
+
+    const requestUrl = `${origin}${requestPath}`
+    const requestBody = JSON.stringify(body)
 
     // LOG REQUEST BODY (main process, sanitized + truncated)
     const isoTime = new Date().toISOString()
@@ -283,39 +289,70 @@ async function startStream(sender: WebContents, payload: StreamChatRequest): Pro
     const reasoningSummary = formatReasoningSummary(body as any)
     console.warn(`OR_REQ ${payload.requestId} model=${model} stream=${stream} reasoning=${reasoningSummary} msgs=${msgCount}\n`)
 
-    const response = await client.request({
-      path: requestPath,
+    request = net.request({
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${payload.config.apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://github.com/GuXinghai/starverse',
-        'X-Title': 'Starverse',
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
+      url: requestUrl,
     })
 
-    const headersRecord = headersToRecord(response.headers)
+    request.setHeader('Authorization', `Bearer ${payload.config.apiKey}`)
+    request.setHeader('Content-Type', 'application/json')
+    request.setHeader('HTTP-Referer', 'https://github.com/GuXinghai/starverse')
+    request.setHeader('X-Title', 'Starverse')
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      const chunks: Buffer[] = []
-      for await (const chunk of response.body) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    const response = await new Promise<IncomingMessage>((resolve, reject) => {
+      request?.once('response', (res) => resolve(res))
+      request?.once('error', (err) => {
+        console.error('[openrouter:net] request error', {
+          requestId: payload.requestId,
+          url: requestUrl,
+          message: String((err as any)?.message ?? err),
+        })
+        reject(err)
+      })
+      abortHandler = () => {
+        try {
+          request?.abort()
+        } catch {
+          // ignore abort errors
+        }
       }
-      const bodyText = Buffer.concat(chunks).toString('utf8')
+      if (controller.signal.aborted) {
+        abortHandler()
+        reject(new Error('aborted'))
+        return
+      }
+      controller.signal.addEventListener('abort', abortHandler, { once: true })
+      request?.write(requestBody)
+      request?.end()
+    })
+
+    const headersRecord = headersToRecord((response.headers ?? {}) as Record<string, string | string[] | undefined>)
+    const statusCode = response.statusCode ?? 0
+
+    if (statusCode < 200 || statusCode >= 300) {
+      const bodyText = await readResponseBody(response)
       // pre_stream_error: HTTP error before SSE streaming started
       timing.tEnd = Date.now()
       timing.endReason = 'pre_stream_error'
       logTiming(payload.requestId, 'end', { ...timing, reason: 'pre_stream_error' })
       sendEvent(sender, payload.requestId, { type: 'TimingSnapshot', tRequestStart: timing.tRequestStart, tEnd: timing.tEnd, endReason: 'pre_stream_error' })
-      const env = normalizeOpenRouterErrorFromHttpNon2xx({
-        status: response.statusCode,
+      const normalized = normalizeOpenRouterErrorFromHttpNon2xx({
+        status: statusCode,
         statusText: '',
         bodyText,
         headers: headersRecord,
       })
-      sendEvent(sender, payload.requestId, { type: 'StreamError', error: env, terminal: true })
+      const envelope = buildPreStreamHttpErrorEnvelope({
+        phase: 'pre_stream',
+        completionClass: 'error',
+        status: statusCode,
+        statusText: '',
+        bodyText,
+        headers: headersRecord,
+        normalized,
+        request: { model: payload.config.model, stream: true },
+      })
+      sendEvent(sender, payload.requestId, { type: 'StreamError', error: envelope, terminal: true })
       sendEnd(sender, payload.requestId)
       return
     }
@@ -327,23 +364,35 @@ async function startStream(sender: WebContents, payload: StreamChatRequest): Pro
 
     let lastMeta: StreamMeta = {}
     let chunkNo = 0
+    let didTerminate = false
 
     // Emit initial timing snapshot with tRequestStart (tAck will come later)
     sendEvent(sender, payload.requestId, { type: 'TimingSnapshot', tRequestStart: timing.tRequestStart })
 
-    for await (const ev of decodeOpenRouterSSE(response.body)) {
+    let receivedAnySse = false
+    for await (const ev of decodeOpenRouterSSE(response)) {
+      if (didTerminate) break
       if (controller.signal.aborted) {
+        // Abort wins: once aborted, do not emit StreamError even if transport surfaces an error afterward.
+        // After abort, ignore any later terminal events for this run.
         // user_abort: highest priority
         timing.tEnd = Date.now()
         timing.endReason = 'user_abort'
         logTiming(payload.requestId, 'end', { ...timing, reason: 'user_abort' })
         sendEvent(sender, payload.requestId, { type: 'TimingSnapshot', tAck: timing.tAck, tEnd: timing.tEnd, endReason: 'user_abort' })
-        sendEvent(sender, payload.requestId, { type: 'StreamAbort', reason: 'aborted' })
+        const envelope = buildAbortEnvelope({
+          phase: receivedAnySse ? 'mid_stream' : 'pre_stream',
+          completionClass: 'aborted',
+          reason: 'aborted',
+          request: { model: payload.config.model, stream: true },
+        })
+        sendEvent(sender, payload.requestId, { type: 'StreamAbort', reason: 'aborted', envelope })
         sendEnd(sender, payload.requestId)
         return
       }
 
       if (ev.type === 'comment') {
+        receivedAnySse = true
         // Capture tAck on first OPENROUTER PROCESSING comment (only once)
         if (timing.tAck === undefined && ev.text.includes('OPENROUTER PROCESSING')) {
           timing.tAck = Date.now()
@@ -373,11 +422,16 @@ async function startStream(sender: WebContents, payload: StreamChatRequest): Pro
         timing.endReason = 'transport_error'
         logTiming(payload.requestId, 'end', { ...timing, reason: 'transport_error_protocol' })
         sendEvent(sender, payload.requestId, { type: 'TimingSnapshot', tAck: timing.tAck, tEnd: timing.tEnd, endReason: 'transport_error' })
-        sendEvent(sender, payload.requestId, {
-          type: 'StreamError',
-          error: normalizeOpenRouterUnknownStreamingError({ message: ev.message, details: { raw: ev.raw ? { raw: ev.raw } : {} } }),
-          terminal: true,
+        const normalized = normalizeOpenRouterUnknownStreamingError({ message: ev.message, details: { raw: ev.raw ? { raw: ev.raw } : {} } })
+        const envelope = buildTransportErrorEnvelope({
+          phase: receivedAnySse ? 'mid_stream' : 'pre_stream',
+          completionClass: 'error',
+          message: ev.message,
+          normalized,
+          request: { model: payload.config.model, stream: true },
+          kind: 'parse_error',
         })
+        sendEvent(sender, payload.requestId, { type: 'StreamError', error: envelope, terminal: true })
         sendEnd(sender, payload.requestId)
         return
       }
@@ -394,12 +448,37 @@ async function startStream(sender: WebContents, payload: StreamChatRequest): Pro
       }
 
       if (ev.type === 'json') {
+        receivedAnySse = true
         // Fallback: capture tAck on first JSON data chunk if no comment seen
         if (timing.tAck === undefined) {
           timing.tAck = Date.now()
           timing.ackSource = 'first_chunk'
           logTiming(payload.requestId, 'ack', { tAck: timing.tAck, source: 'first_chunk' })
           sendEvent(sender, payload.requestId, { type: 'TimingSnapshot', tAck: timing.tAck })
+        }
+
+        const responsesTerminal = mapResponsesEventToTerminal({
+          event: ev.value,
+          request: { model: payload.config.model, stream: true },
+        })
+        if (responsesTerminal) {
+          didTerminate = true
+          if (responsesTerminal.meta) {
+            sendEvent(sender, payload.requestId, { type: 'MetaDelta', meta: responsesTerminal.meta })
+          }
+          timing.tEnd = Date.now()
+          const endReason = responsesTerminal.completionClass === 'error' ? 'mid_stream_error' : 'normal_complete'
+          timing.endReason = endReason
+          const duration = timing.tAck != null ? timing.tEnd - timing.tAck : undefined
+          logTiming(payload.requestId, 'end', { ...timing, localProcessingDurationMs: duration, reason: endReason })
+          sendEvent(sender, payload.requestId, { type: 'TimingSnapshot', tAck: timing.tAck, tEnd: timing.tEnd, endReason })
+          if (responsesTerminal.completionClass === 'ok') {
+            sendEvent(sender, payload.requestId, { type: 'StreamDone' })
+          } else if (responsesTerminal.envelope) {
+            sendEvent(sender, payload.requestId, { type: 'StreamError', error: responsesTerminal.envelope, terminal: true })
+          }
+          sendEnd(sender, payload.requestId)
+          return
         }
 
         chunkNo++
@@ -428,12 +507,27 @@ async function startStream(sender: WebContents, payload: StreamChatRequest): Pro
             timing.endReason = 'mid_stream_error'
             logTiming(payload.requestId, 'end', { ...timing, reason: 'mid_stream_error_chunk' })
             sendEvent(sender, payload.requestId, { type: 'TimingSnapshot', tAck: timing.tAck, tEnd: timing.tEnd, endReason: 'mid_stream_error' })
-            const env = normalizeOpenRouterErrorFromSseChunkError({
+            const normalized = normalizeOpenRouterErrorFromSseChunkError({
               chunkError: m.error,
               meta: lastMeta,
             })
-            sendEvent(sender, payload.requestId, { type: 'StreamError', error: env, terminal: true })
-            continue
+            const envelope = buildMidStreamSseErrorEnvelope({
+              phase: 'mid_stream',
+              completionClass: 'error',
+              normalized,
+              stream: {
+                generation_id: lastMeta.generationId,
+                model: lastMeta.model,
+                provider: lastMeta.provider,
+                finish_reason: lastMeta.finishReason,
+                native_finish_reason: lastMeta.nativeFinishReason,
+                chunk_no: chunkNo,
+              },
+              request: { model: payload.config.model, stream: true },
+            })
+            sendEvent(sender, payload.requestId, { type: 'StreamError', error: envelope, terminal: true })
+            sendEnd(sender, payload.requestId)
+            return
           }
 
           sendEvent(sender, payload.requestId, m)
@@ -449,7 +543,13 @@ async function startStream(sender: WebContents, payload: StreamChatRequest): Pro
       timing.endReason = 'user_abort'
       logTiming(payload.requestId, 'end', { ...timing, reason: 'user_abort_catch' })
       sendEvent(sender, payload.requestId, { type: 'TimingSnapshot', tAck: timing.tAck, tEnd: timing.tEnd, endReason: 'user_abort' })
-      sendEvent(sender, payload.requestId, { type: 'StreamAbort', reason: 'aborted' })
+      const envelope = buildAbortEnvelope({
+        phase: 'pre_stream',
+        completionClass: 'aborted',
+        reason: 'aborted',
+        request: { model: payload.config.model, stream: true },
+      })
+      sendEvent(sender, payload.requestId, { type: 'StreamAbort', reason: 'aborted', envelope })
       sendEnd(sender, payload.requestId)
       return
     }
@@ -459,15 +559,15 @@ async function startStream(sender: WebContents, payload: StreamChatRequest): Pro
     timing.endReason = 'transport_error'
     logTiming(payload.requestId, 'end', { ...timing, reason: 'transport_error_catch' })
     sendEvent(sender, payload.requestId, { type: 'TimingSnapshot', tAck: timing.tAck, tEnd: timing.tEnd, endReason: 'transport_error', tTransportClosed: timing.tTransportClosed })
-    sendEvent(sender, payload.requestId, toStreamError(err))
+    sendEvent(sender, payload.requestId, toStreamError(err, 'pre_stream', { model: payload.config.model, stream: true }))
     sendEnd(sender, payload.requestId)
   } finally {
     if (timeoutId) clearTimeout(timeoutId)
-    if (client) {
+    if (abortHandler) {
       try {
-        await client.close()
+        controller.signal.removeEventListener('abort', abortHandler)
       } catch {
-        // ignore close errors
+        // ignore
       }
     }
     activeControllers.delete(payload.requestId)

@@ -188,9 +188,9 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
             expect(events.some((e) => e.type === 'MessageDeltaText')).toBe(true)
             const streamError = events.find((e) => e.type === 'StreamError') as any
             expect(streamError).toBeTruthy()
-            expect(streamError.error?.normalized?.phase).toBe('generation')
-            expect(streamError.error?.normalized?.transport).toBe('sse')
-            expect(streamError.error?.normalized?.code).toBe('server_error')
+            expect(streamError.error?.normalized?.normalized?.phase).toBe('generation')
+            expect(streamError.error?.normalized?.normalized?.transport).toBe('sse')
+            expect(streamError.error?.normalized?.normalized?.code).toBe('server_error')
             expect(events.some((e) => e.type === 'StreamDone')).toBe(false)
         } finally {
             globalThis.fetch = originalFetch

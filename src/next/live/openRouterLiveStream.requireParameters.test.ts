@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
+import { stripTiming, firstOfType } from '../../../tests/utils/streamAsserts'
 
 let capturedBody: any | null = null
 
@@ -43,7 +44,9 @@ describe('streamOpenRouterChatAsEvents (provider.require_parameters)', () => {
             events.push(ev)
         }
 
-        expect(events[0]?.type).toBe('StreamAbort')
+        const nonTiming = stripTiming(events)
+        expect(nonTiming[0]?.type).toBe('StreamAbort')
+        expect(firstOfType(events, 'StreamAbort')).toBeTruthy()
         expect(capturedBody).toMatchObject({ provider: { require_parameters: true } })
     })
 

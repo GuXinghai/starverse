@@ -158,6 +158,19 @@ function formatReasoningForSummary(body: any): string {
  * Uses console.warn for high visibility filtering.
  * Prints COMPLETE data including full API key - DO NOT share logs publicly.
  */
+const defaultTestVerboseFlag =
+  typeof process !== 'undefined' && process.env?.SV_TEST_VERBOSE_OPENROUTER === '1' ? '1' : '0'
+if (typeof (globalThis as any).__SV_TEST_VERBOSE_OPENROUTER === 'undefined') {
+  ;(globalThis as any).__SV_TEST_VERBOSE_OPENROUTER = defaultTestVerboseFlag
+}
+
+function shouldLogOpenRouterRequestBody(): boolean {
+  const flag = (globalThis as any).__SV_TEST_VERBOSE_OPENROUTER
+  if (flag === '1') return true
+  if (flag === '0') return false
+  return true
+}
+
 function logCompleteRequestBody(
   requestId: string,
   url: string,
@@ -165,6 +178,7 @@ function logCompleteRequestBody(
   body: unknown,
   headers: Record<string, string>
 ): void {
+  if (!shouldLogOpenRouterRequestBody()) return
   const isoTime = new Date().toISOString()
   const bodyObj: any = body
 

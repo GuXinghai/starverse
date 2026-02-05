@@ -9,6 +9,8 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
       runId: 'run1',
       requestId: 'req1',
       model: 'test-model',
+      requestedReasoningMode: 'effort',
+      requestedReasoningEffort: 'high',
       requestedReasoningExclude: true, // User requested to exclude reasoning
     })
 
@@ -24,6 +26,8 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
       runId: 'run1',
       requestId: 'req1',
       model: 'test-model',
+      requestedReasoningMode: 'effort',
+      requestedReasoningEffort: 'high',
       requestedReasoningExclude: true,
     })
 
@@ -70,6 +74,8 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
       runId: 'run1',
       requestId: 'req1',
       model: 'test-model',
+      requestedReasoningMode: 'effort',
+      requestedReasoningEffort: 'high',
       requestedReasoningExclude: true, // Even with exclude=true
     })
 
@@ -163,6 +169,8 @@ describe('selectTranscript', () => {
       requestId: 'req1',
       model: 'test-model',
       userMessageText: 'Hello',
+      requestedReasoningMode: 'effort',
+      requestedReasoningEffort: 'high',
       requestedReasoningExclude: true,
     })
 

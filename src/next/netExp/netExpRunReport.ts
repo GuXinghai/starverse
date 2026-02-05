@@ -37,6 +37,10 @@ function asIso(ts: number): string {
 function pickErrorMessage(err: unknown): string | undefined {
   if (!err) return undefined
   if (typeof err === 'string') return err
+  if (typeof err === 'object' && 'openrouter' in (err as any)) {
+    const msg = (err as any)?.openrouter?.message
+    if (typeof msg === 'string' && msg.trim().length > 0) return msg
+  }
   if (typeof err === 'object' && 'message' in (err as any)) return String((err as any).message ?? '')
   return undefined
 }
@@ -92,7 +96,8 @@ export function startNetExpRunReport(input: {
     }
 
     if (event.type === 'StreamError') {
-      report.status = 'error'
+      const completionClass = (event.error as any)?.completionClass
+      report.status = completionClass === 'aborted' ? 'aborted' : completionClass === 'error' ? 'error' : 'done'
       report.error = { message: pickErrorMessage(event.error), raw: event.error }
     }
 

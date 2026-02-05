@@ -1,3 +1,5 @@
+import type { ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
+
 export type RunStatus =
   | 'idle'
   | 'requesting'
@@ -84,6 +86,14 @@ export type MessageVM = Readonly<{
   reasoningDurationMs?: number | null
   reasoningEndReason?: StreamEndReason
   reasoningDurationIsFallback?: boolean
+  errorEnvelope?: ErrorEnvelope | null
+  errorSummary?: Readonly<{
+    completionClass?: string
+    phase?: string
+    code?: string
+    message?: string
+    provider?: string
+  }> | null
   streaming: { isTarget: boolean; isComplete: boolean }
 }>
 
@@ -97,16 +107,16 @@ export type RunVM = Readonly<{
   finishReason?: string
   nativeFinishReason?: string
   usage?: unknown
-  error?: unknown
+  error?: ErrorEnvelope | null
   localProcessingDurationMs?: number
   tAck?: number
 }>
 
 export type DomainEvent =
   | Readonly<{ type: 'StreamComment'; text: string }>
-  | Readonly<{ type: 'StreamError'; error: unknown; terminal: true }>
+  | Readonly<{ type: 'StreamError'; error: ErrorEnvelope; terminal: true }>
   | Readonly<{ type: 'StreamDone' }>
-  | Readonly<{ type: 'StreamAbort'; reason?: string }>
+  | Readonly<{ type: 'StreamAbort'; reason?: string; envelope: ErrorEnvelope }>
   | Readonly<{
     type: 'TimingSnapshot'
     tRequestStart?: number
@@ -164,6 +174,14 @@ export type MessageState = Readonly<{
   requestedReasoningMode: RequestedReasoningMode
   requestedReasoningEffort?: ReasoningEffort
   requestedReasoningExclude: boolean
+  errorEnvelope?: ErrorEnvelope | null
+  errorSummary?: Readonly<{
+    completionClass?: string
+    phase?: string
+    code?: string
+    message?: string
+    provider?: string
+  }> | null
 }>
 
 export type RunState = Readonly<{
@@ -177,7 +195,7 @@ export type RunState = Readonly<{
   finishReason?: string
   nativeFinishReason?: string
   usage?: unknown
-  error?: unknown
+  error?: ErrorEnvelope | null
   comments: string[]
   // Timing fields for local processing duration tracking
   tRequestStart?: number            // When request initiated (Date.now())
