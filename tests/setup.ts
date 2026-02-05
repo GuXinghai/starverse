@@ -12,6 +12,11 @@ type DbInvoke = <T = unknown>(method: string, params?: unknown) => Promise<T>
 // Enable DB branch invariants during tests (fail fast on semantic regressions).
 process.env.SV_BRANCH_INVARIANTS = '1'
 
+// When VS_TEST_VERBOSE_OPENROUTER is explicitly set in tests, propagate to runtime gate.
+if (process.env.SV_TEST_VERBOSE_OPENROUTER === '1') {
+  ;(globalThis as any).__SV_TEST_VERBOSE_OPENROUTER = '1'
+}
+
 const createDbBridgeMock = () => {
   const convos = new Map<string, any>()
   const projects = new Map<string, any>()

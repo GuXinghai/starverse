@@ -8,6 +8,9 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],
+    env: {
+      SV_TEST_VERBOSE_OPENROUTER: process.env.SV_TEST_VERBOSE_OPENROUTER ?? '0',
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
