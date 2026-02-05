@@ -226,6 +226,8 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
     role: m.role,
     contentBlocks: m.contentBlocks,
     toolCalls: m.toolCalls,
+    errorEnvelope: m.errorEnvelope ?? null,
+    errorSummary: m.errorSummary ?? null,
     reasoningView: {
       summaryText,
       reasoningText,

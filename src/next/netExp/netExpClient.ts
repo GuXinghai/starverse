@@ -130,14 +130,3 @@ export async function getNetExpRuntimeInfo(): Promise<NetExpRuntimeInfo | null> 
     return null
   }
 }
-
-export async function requestAppRelaunch(): Promise<boolean> {
-  const ipc = getIpcRenderer()
-  if (!ipc) return false
-  try {
-    const result = await ipc.invoke('app:relaunch')
-    return result === true
-  } catch {
-    return false
-  }
-}

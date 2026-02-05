@@ -1,3 +1,6 @@
+import type { ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
+import { sanitizeErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
+
 export type PersistedMessageRole = 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter' | string
 
 export type PersistedMessage = Readonly<{
@@ -8,6 +11,15 @@ export type PersistedMessage = Readonly<{
   createdAt: number
   body: string
   meta: unknown
+}>
+
+export type PersistedMessageError = Readonly<{
+  messageId: string
+  envelopeJson: string
+  envelopeBytes: number
+  isTruncated: boolean
+  createdAt: number
+  updatedAt: number
 }>
 
 export type AppendableMessageRole = 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter'
@@ -225,4 +237,99 @@ export async function getReasoningSegmentsStats(messageId: string): Promise<Reas
     console.warn('[messageClient] getReasoningSegmentsStats: invoke failed', err)
     return null
   }
+}
+
+const MAX_MESSAGE_ERROR_IDS = 200
+
+function computeUtf8Bytes(text: string): number {
+  try {
+    return new TextEncoder().encode(text).length
+  } catch {
+    return text.length
+  }
+}
+
+function getErrorProvider(envelope: ErrorEnvelope): string | undefined {
+  const direct = envelope.openrouter?.provider
+  if (typeof direct === 'string' && direct.trim().length > 0) return direct
+  const meta = envelope.openrouter?.metadata as any
+  const name = meta && typeof meta === 'object' ? meta.provider_name : undefined
+  return typeof name === 'string' && name.trim().length > 0 ? name : undefined
+}
+
+function buildErrorSummary(envelope: ErrorEnvelope): Record<string, unknown> {
+  return {
+    completionClass: envelope.completionClass,
+    phase: envelope.phase,
+    code: envelope.openrouter?.code,
+    message: envelope.openrouter?.message,
+    provider: getErrorProvider(envelope),
+  }
+}
+
+export async function upsertMessageErrorEnvelope(input: Readonly<{ messageId: string; envelope: ErrorEnvelope }>): Promise<boolean> {
+  const bridge = getDbBridge()
+  if (!bridge) return false
+
+  const messageId = String(input.messageId ?? '').trim()
+  if (!messageId) throw new Error('Missing messageId')
+
+  const sanitized = sanitizeErrorEnvelope(input.envelope)
+  const envelopeJson = JSON.stringify(sanitized)
+  const envelopeBytes = computeUtf8Bytes(envelopeJson)
+  const summary = buildErrorSummary(sanitized)
+
+  const now = Date.now()
+  const result = await bridge.invoke('messageError.upsert', {
+    messageId,
+    envelopeJson,
+    envelopeBytes,
+    isTruncated: sanitized.truncated === true,
+    createdAt: now,
+    updatedAt: now,
+    metaPatch: {
+      error_ref: true,
+      error_summary: summary,
+    },
+  })
+
+  return !!(result && typeof result === 'object' && 'ok' in result ? (result as any).ok : true)
+}
+
+export async function listMessageErrorEnvelopes(messageIds: ReadonlyArray<string>): Promise<Map<string, ErrorEnvelope>> {
+  const bridge = getDbBridge()
+  if (!bridge) return new Map()
+
+  const unique = Array.from(new Set(messageIds.map((id) => String(id ?? '').trim()).filter((id) => id.length > 0)))
+  if (unique.length === 0) return new Map()
+
+  const out = new Map<string, ErrorEnvelope>()
+  for (let i = 0; i < unique.length; i += MAX_MESSAGE_ERROR_IDS) {
+    const chunk = unique.slice(i, i + MAX_MESSAGE_ERROR_IDS)
+    let rows: any[] | null = null
+    try {
+      const result = await bridge.invoke('messageError.listByMessageIds', { messageIds: chunk })
+      rows = Array.isArray(result) ? result : null
+    } catch {
+      rows = null
+    }
+    if (!rows) continue
+
+    for (const row of rows) {
+      const messageId = String(row?.messageId ?? row?.message_id ?? '').trim()
+      const envelopeJson = typeof row?.envelopeJson === 'string' ? row.envelopeJson : String(row?.envelope_json ?? '')
+      if (!messageId || !envelopeJson) continue
+      try {
+        const parsed = JSON.parse(envelopeJson)
+        if (!parsed || typeof parsed !== 'object') continue
+        if (!('completionClass' in parsed) || !('phase' in parsed) || !('openrouter' in parsed)) continue
+        const sanitized = sanitizeErrorEnvelope(parsed as ErrorEnvelope)
+        out.set(messageId, sanitized)
+      } catch {
+        // ignore parse errors
+      }
+    }
+  }
+
+  return out
 }

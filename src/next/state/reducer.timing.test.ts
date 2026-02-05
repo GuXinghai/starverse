@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createInitialState, startGeneration, applyEvent } from './reducer'
+import { buildAbortEnvelope, buildTransportErrorEnvelope } from '../errors/openRouterErrorEnvelope'
+import { normalizeOpenRouterUnknownStreamingError } from '../errors/normalizeOpenRouterError'
 import type { DomainEvent, RootState } from './types'
 
 describe('reducer TimingSnapshot handling', () => {
@@ -178,7 +180,7 @@ describe('reducer TimingSnapshot handling', () => {
             text: 'hi',
         })
 
-        state = applyEvent(state, runId, { type: 'StreamAbort', reason: 'aborted' })
+        state = applyEvent(state, runId, { type: 'StreamAbort', reason: 'aborted', envelope: buildAbortEnvelope({ phase: 'mid_stream', completionClass: 'aborted', reason: 'aborted' }) })
 
         expect(state.runs[runId].endReason).toBe('user_abort')
         expect(state.runs[runId].localProcessingDurationMs).toBe(2000)
@@ -252,13 +254,21 @@ describe('reducer TimingSnapshot handling', () => {
             text: 'hi',
         })
 
-        state = applyEvent(state, runId, { type: 'StreamAbort', reason: 'aborted' })
+        state = applyEvent(state, runId, { type: 'StreamAbort', reason: 'aborted', envelope: buildAbortEnvelope({ phase: 'mid_stream', completionClass: 'aborted', reason: 'aborted' }) })
         const msg = state.messages[assistantId]
 
         expect(msg.reasoningDurationMs).toBe(1500)
         expect(msg.reasoningEndReason).toBe('user_abort')
 
-        state = applyEvent(state, runId, { type: 'StreamError', error: new Error('oops'), terminal: true } as DomainEvent)
+        const normalized1 = normalizeOpenRouterUnknownStreamingError({ message: 'oops' })
+        const envelope1 = buildTransportErrorEnvelope({
+            phase: 'mid_stream',
+            completionClass: 'error',
+            message: 'oops',
+            normalized: normalized1,
+            kind: 'transport_error',
+        })
+        state = applyEvent(state, runId, { type: 'StreamError', error: envelope1, terminal: true } as DomainEvent)
         const msgAfter = state.messages[assistantId]
         expect(msgAfter.reasoningDurationMs).toBe(1500)
         expect(msgAfter.reasoningEndReason).toBe('user_abort')
@@ -273,7 +283,15 @@ describe('reducer TimingSnapshot handling', () => {
             endReason: 'pre_stream_error',
         } as DomainEvent)
 
-        state = applyEvent(state, runId, { type: 'StreamError', error: new Error('oops'), terminal: true } as DomainEvent)
+        const normalized2 = normalizeOpenRouterUnknownStreamingError({ message: 'oops' })
+        const envelope2 = buildTransportErrorEnvelope({
+            phase: 'pre_stream',
+            completionClass: 'error',
+            message: 'oops',
+            normalized: normalized2,
+            kind: 'transport_error',
+        })
+        state = applyEvent(state, runId, { type: 'StreamError', error: envelope2, terminal: true } as DomainEvent)
         const assistantId = state.runs[runId].targetAssistantMessageId!
         const msg = state.messages[assistantId]
 

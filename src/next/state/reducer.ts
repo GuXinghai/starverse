@@ -12,6 +12,7 @@ import type {
   ToolCallDelta,
   ToolCallVM,
 } from './types'
+import type { CompletionClass, ErrorPhase, ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import { ReasoningDetailStreamMerger, injectMergerDiagRecorder } from './reasoningDetailStreamMerger'
 import { recordMergeOp } from './perfMetrics'
 import { recordReducerReasoning, recordMergerOp, startTimer, isSchedDiagEnabled } from './schedulerDiagnostics'
@@ -160,6 +161,8 @@ function createEmptyAssistantMessage(
     requestedReasoningMode: requested.mode,
     requestedReasoningEffort: requested.effort,
     requestedReasoningExclude: requested.exclude,
+    errorEnvelope: null,
+    errorSummary: null,
   }
 }
 
@@ -187,6 +190,8 @@ function createUserMessage(messageId: string, text: string): MessageState {
     requestedReasoningMode: 'effort',
     requestedReasoningEffort: 'none',
     requestedReasoningExclude: false,
+    errorEnvelope: null,
+    errorSummary: null,
   }
 }
 
@@ -373,6 +378,16 @@ const endReasonPriority: Record<StreamEndReason, number> = {
   transport_error: 2,
   pre_stream_error: 2,
   normal_complete: 1,
+}
+
+function endReasonFromPhase(phase?: ErrorPhase): StreamEndReason {
+  if (phase === 'pre_stream') return 'pre_stream_error'
+  return 'mid_stream_error'
+}
+
+function completionClassFromEnvelope(env?: ErrorEnvelope | null): CompletionClass {
+  if (!env) return 'error'
+  return env.completionClass ?? 'error'
 }
 
 function resolveEndReason(prev?: StreamEndReason, next?: StreamEndReason): StreamEndReason | undefined {
@@ -712,26 +727,46 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
       return result
     }
     case 'StreamAbort': {
-      let nextState = updateRun(state, runId, (s) => ({ ...s, status: 'aborted' }))
+      const completionClass = completionClassFromEnvelope(event.envelope)
+      const status = completionClass === 'aborted' ? 'aborted' : completionClass === 'error' ? 'error' : 'done'
+      let nextState = updateRun(state, runId, (s) => ({ ...s, status }))
       nextState = finalizeRunTiming(nextState, runId, 'user_abort')
       // 清理驻留合并器
       if (targetId) {
         clearReasoningMerger(targetId)
       }
       if (targetId) {
-        return updateMessage(nextState, targetId, (m) => ({ ...m, streaming: { ...m.streaming, isComplete: true } }))
+        return updateMessage(nextState, targetId, (m) => ({
+          ...m,
+          errorEnvelope: event.envelope ?? m.errorEnvelope,
+          streaming: { ...m.streaming, isComplete: true },
+        }))
       }
       return nextState
     }
     case 'StreamError': {
-      let nextState = updateRun(state, runId, (s) => ({ ...s, status: 'error', error: event.error }))
-      nextState = finalizeRunTiming(nextState, runId, 'mid_stream_error')
+      const alreadyAborted = run.status === 'aborted' || run.endReason === 'user_abort'
+      if (alreadyAborted) return state
+
+      const completionClass = completionClassFromEnvelope(event.error)
+      const endReasonHint = completionClass === 'error' ? endReasonFromPhase(event.error?.phase) : undefined
+      const status = completionClass === 'aborted' ? 'aborted' : completionClass === 'error' ? 'error' : 'done'
+      let nextState = updateRun(state, runId, (s) => ({
+        ...s,
+        status,
+        error: completionClass === 'error' ? event.error : s.error,
+      }))
+      nextState = finalizeRunTiming(nextState, runId, endReasonHint)
       // 清理驻留合并器
       if (targetId) {
         clearReasoningMerger(targetId)
       }
       if (targetId) {
-        return updateMessage(nextState, targetId, (m) => ({ ...m, streaming: { ...m.streaming, isComplete: true } }))
+        return updateMessage(nextState, targetId, (m) => ({
+          ...m,
+          errorEnvelope: event.error ?? m.errorEnvelope,
+          streaming: { ...m.streaming, isComplete: true },
+        }))
       }
       return nextState
     }

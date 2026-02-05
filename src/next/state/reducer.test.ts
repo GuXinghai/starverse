@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { decodeOpenRouterSSE } from '../openrouter/sse/decoder'
+import { buildAbortEnvelope, sanitizeErrorEnvelope } from '../errors/openRouterErrorEnvelope'
 import { mapChunkToEvents } from '../openrouter/mapChunkToEvents'
+import { buildMidStreamSseErrorEnvelope, buildTransportErrorEnvelope } from '../errors/openRouterErrorEnvelope'
+import { normalizeOpenRouterErrorFromSseChunkError, normalizeOpenRouterUnknownStreamingError } from '../errors/normalizeOpenRouterError'
 import { applyEvent, applyEvents, createInitialState, startGeneration } from './reducer'
 import type { DomainEvent } from './types'
 import { selectRun, selectTranscript } from './selectors'
@@ -101,7 +104,15 @@ async function replayFixture(_runId: string, assistantMessageId: string, fileNam
       continue
     }
     if (ev.type === 'protocol_error') {
-      out.push({ type: 'StreamError', error: { message: ev.message, raw: ev.raw }, terminal: true })
+      const normalized = normalizeOpenRouterUnknownStreamingError({ message: ev.message, details: { raw: ev.raw ? { raw: ev.raw } : {} } })
+      const envelope = buildTransportErrorEnvelope({
+        phase: 'mid_stream',
+        completionClass: 'error',
+        message: ev.message,
+        normalized,
+        kind: 'parse_error',
+      })
+      out.push({ type: 'StreamError', error: envelope, terminal: true })
       break
     }
     if (ev.type === 'terminal_error') {
@@ -110,7 +121,20 @@ async function replayFixture(_runId: string, assistantMessageId: string, fileNam
     }
     if (ev.type === 'json') {
       const mapped = mapChunkToEvents({ chunk: ev.value as any, messageId: assistantMessageId })
-      out.push(...(mapped as any))
+      for (const m of mapped as any as DomainEvent[]) {
+        if (m.type === 'StreamError') {
+          const normalized = normalizeOpenRouterErrorFromSseChunkError({ chunkError: (m as any).error, meta: {} })
+          const envelope = buildMidStreamSseErrorEnvelope({
+            phase: 'mid_stream',
+            completionClass: 'error',
+            normalized,
+            request: { model: 'openrouter/auto', stream: true },
+          })
+          out.push({ type: 'StreamError', error: envelope, terminal: true })
+          continue
+        }
+        out.push(m)
+      }
     }
   }
   return out
@@ -134,12 +158,14 @@ describe('next/state reducer', () => {
         "error": undefined,
         "finishReason": undefined,
         "generationId": "gen_1",
+        "localProcessingDurationMs": undefined,
         "model": "openrouter/auto",
         "nativeFinishReason": undefined,
         "provider": undefined,
         "requestId": "req1",
         "runId": "r1",
         "status": "done",
+        "tAck": undefined,
         "usage": undefined,
       }
     `)
@@ -153,7 +179,12 @@ describe('next/state reducer', () => {
               "type": "text",
             },
           ],
+          "errorEnvelope": null,
+          "errorSummary": null,
           "messageId": "assistant_1",
+          "reasoningDurationIsFallback": undefined,
+          "reasoningDurationMs": null,
+          "reasoningEndReason": "normal_complete",
           "reasoningView": {
             "hasEncrypted": false,
             "panelState": "expanded",
@@ -282,11 +313,37 @@ describe('next/state reducer', () => {
 
     const events: DomainEvent[] = [
       { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'par' },
-      { type: 'StreamAbort', reason: 'user' },
+      { type: 'StreamAbort', reason: 'user', envelope: buildAbortEnvelope({ phase: 'mid_stream', completionClass: 'aborted', reason: 'user' }) },
     ]
     const finalState = applyEvents(started.state, runId, events)
 
     expect(selectRun(finalState, runId)?.status).toBe('aborted')
     expect(selectTranscript(finalState, runId)[0]?.contentBlocks?.[0]).toEqual({ type: 'text', text: 'par' })
+  })
+
+  it('truncated completionClass resolves to done (not error)', () => {
+    const runId = 'r1'
+    const started = startGeneration(createInitialState(), {
+      runId,
+      requestId: 'req1',
+      model: 'openrouter/auto',
+      assistantMessageId: 'assistant_1',
+    })
+    const assistantMessageId = started.assistantMessageId
+
+    const envelope = sanitizeErrorEnvelope({
+      phase: 'responses',
+      completionClass: 'truncated',
+      openrouter: { code: 'max_tokens_exceeded', message: 'trimmed' },
+      truncated: false,
+      kind: 'responses_event',
+    })
+
+    const finalState = applyEvents(started.state, runId, [
+      { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'partial' },
+      { type: 'StreamError', error: envelope, terminal: true },
+    ])
+
+    expect(selectRun(finalState, runId)?.status).toBe('done')
   })
 })

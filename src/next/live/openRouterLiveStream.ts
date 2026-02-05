@@ -1,6 +1,7 @@
 import { buildOpenRouterChatCompletionsRequest } from '@/next/openrouter/buildRequest'
 import { decodeOpenRouterSSE } from '@/next/openrouter/sse/decoder'
 import { mapChunkToEvents } from '@/next/openrouter/mapChunkToEvents'
+import { mapResponsesEventToTerminal } from '@/next/openrouter/responsesEventMapper'
 import { openrouterFetch } from '@/next/transport/openrouterFetch'
 import { getOpenRouterProviderRequireParameters } from '@/next/settings/openRouterProviderSettingsClient'
 import { getNetExpSettings, type NetExpSettings } from '@/next/netExp/netExpClient'
@@ -12,6 +13,14 @@ import {
   normalizeOpenRouterErrorFromSseChunkError,
   normalizeOpenRouterUnknownStreamingError,
 } from '@/next/errors/normalizeOpenRouterError'
+import {
+  buildAbortEnvelope,
+  buildMidStreamSseErrorEnvelope,
+  buildPreStreamHttpErrorEnvelope,
+  buildTransportErrorEnvelope,
+  sanitizeErrorEnvelope,
+} from '@/next/errors/openRouterErrorEnvelope'
+import type { ErrorPhase, ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 
 function isStreamErrorDebugEnabled(): boolean {
   try {
@@ -55,6 +64,24 @@ function logTiming(tag: string, data: Record<string, unknown>) {
   }
 }
 
+function coerceErrorEnvelope(payload: unknown, fallback: { phase: ErrorPhase; request?: { model?: string; stream?: boolean } }): ErrorEnvelope {
+  if (payload && typeof payload === 'object' && 'completionClass' in (payload as any) && 'phase' in (payload as any) && 'openrouter' in (payload as any)) {
+    return sanitizeErrorEnvelope(payload as ErrorEnvelope)
+  }
+  const message = payload && typeof payload === 'object' && 'message' in (payload as any)
+    ? String((payload as any).message ?? 'Stream error')
+    : String(payload ?? 'Stream error')
+  const normalized = normalizeOpenRouterUnknownStreamingError({ message })
+  return buildTransportErrorEnvelope({
+    phase: fallback.phase,
+    completionClass: 'error',
+    message,
+    normalized,
+    request: fallback.request,
+    kind: 'transport_error',
+  })
+}
+
 /** Mutable timing state for a single stream request */
 type TimingState = {
   tRequestStart: number
@@ -85,13 +112,23 @@ async function* streamOpenRouterChatAsEventsViaIpc(
 ): AsyncGenerator<DomainEvent> {
   const signal = options.signal ?? null
   if (signal?.aborted) {
-    yield { type: 'StreamAbort', reason: 'aborted' }
+    const envelope = buildAbortEnvelope({ phase: 'pre_stream', completionClass: 'aborted', reason: 'aborted', request: { model: options.config.model, stream: true } })
+    yield { type: 'StreamAbort', reason: 'aborted', envelope }
     return
   }
 
   const ipc = getIpcRenderer()
   if (!ipc) {
-    yield { type: 'StreamError', error: normalizeOpenRouterUnknownStreamingError({ message: 'Missing ipcRenderer' }), terminal: true }
+    const normalized = normalizeOpenRouterUnknownStreamingError({ message: 'Missing ipcRenderer' })
+    const envelope = buildTransportErrorEnvelope({
+      phase: 'pre_stream',
+      completionClass: 'error',
+      message: 'Missing ipcRenderer',
+      normalized,
+      request: { model: options.config.model, stream: true },
+      kind: 'transport_error',
+    })
+    yield { type: 'StreamError', error: envelope, terminal: true }
     return
   }
 
@@ -115,7 +152,8 @@ async function* streamOpenRouterChatAsEventsViaIpc(
     }
   }
   const onError = (_event: unknown, payload: unknown) => {
-    queue.push({ type: 'StreamError', error: payload, terminal: true })
+    const envelope = coerceErrorEnvelope(payload, { phase: 'pre_stream', request: { model: options.config.model, stream: true } })
+    queue.push({ type: 'StreamError', error: envelope, terminal: true })
     done = true
     if (wake) {
       wake()
@@ -220,11 +258,31 @@ async function* streamOpenRouterChatAsEventsViaIpc(
       },
     })
     if (result && result.ok === false) {
-      yield { type: 'StreamError', error: normalizeOpenRouterUnknownStreamingError({ message: String(result.error ?? 'IPC stream start failed') }), terminal: true }
+      const message = String(result.error ?? 'IPC stream start failed')
+      const normalized = normalizeOpenRouterUnknownStreamingError({ message })
+      const envelope = buildTransportErrorEnvelope({
+        phase: 'pre_stream',
+        completionClass: 'error',
+        message,
+        normalized,
+        request: { model: options.config.model, stream: true },
+        kind: 'transport_error',
+      })
+      yield { type: 'StreamError', error: envelope, terminal: true }
       return
     }
   } catch (err) {
-    yield { type: 'StreamError', error: normalizeOpenRouterUnknownStreamingError({ message: String((err as any)?.message ?? err) }), terminal: true }
+    const message = String((err as any)?.message ?? err)
+    const normalized = normalizeOpenRouterUnknownStreamingError({ message })
+    const envelope = buildTransportErrorEnvelope({
+      phase: 'pre_stream',
+      completionClass: 'error',
+      message,
+      normalized,
+      request: { model: options.config.model, stream: true },
+      kind: 'transport_error',
+    })
+    yield { type: 'StreamError', error: envelope, terminal: true }
     return
   }
 
@@ -283,10 +341,18 @@ export type LiveStreamOptions = Readonly<{
   config: LiveRequestConfig
 }>
 
-function toStreamError(err: unknown): DomainEvent {
+function toStreamError(err: unknown, phase: ErrorPhase, request?: { model?: string; stream?: boolean }): DomainEvent {
   const message =
     err && typeof err === 'object' && 'message' in (err as any) ? String((err as any).message ?? 'Error') : 'Error'
-  return { type: 'StreamError', error: normalizeOpenRouterUnknownStreamingError({ message, details: { name: (err as any)?.name } }), terminal: true }
+  const normalized = normalizeOpenRouterUnknownStreamingError({ message, details: { name: (err as any)?.name } })
+  const envelope = buildTransportErrorEnvelope({
+    phase,
+    completionClass: 'error',
+    message,
+    normalized,
+    request,
+  })
+  return { type: 'StreamError', error: envelope, terminal: true }
 }
 
 /**
@@ -296,11 +362,13 @@ function toStreamError(err: unknown): DomainEvent {
 export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions): AsyncGenerator<DomainEvent> {
   const signal = options.signal ?? null
   if (signal?.aborted) {
-    yield { type: 'StreamAbort', reason: 'aborted' }
+    const envelope = buildAbortEnvelope({ phase: 'pre_stream', completionClass: 'aborted', reason: 'aborted', request: { model: options.config.model, stream: true } })
+    yield { type: 'StreamAbort', reason: 'aborted', envelope }
     return
   }
 
   const { apiKey, model } = options.config
+  const requestContext = { model, stream: true }
 
   const providerRequireParameters = await getOpenRouterProviderRequireParameters()
   const netExp = await getNetExpSettings()
@@ -363,7 +431,8 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
       timing.endReason = 'user_abort'
       logTiming('end', { ...timing, reason: 'user_abort' })
       yield { type: 'TimingSnapshot', tRequestStart: timing.tRequestStart, tAck: timing.tAck, tEnd: timing.tEnd, endReason: 'user_abort' }
-      yield { type: 'StreamAbort', reason: 'aborted' }
+      const envelope = buildAbortEnvelope({ phase: 'pre_stream', completionClass: 'aborted', reason: 'aborted', request: requestContext })
+      yield { type: 'StreamAbort', reason: 'aborted', envelope }
       return
     }
 
@@ -373,14 +442,24 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
       timing.endReason = 'pre_stream_error'
       logTiming('end', { ...timing, reason: 'pre_stream_error' })
       yield { type: 'TimingSnapshot', tRequestStart: timing.tRequestStart, tEnd: timing.tEnd, endReason: 'pre_stream_error' }
-      const env = normalizeOpenRouterErrorFromHttpNon2xx({
+      const normalized = normalizeOpenRouterErrorFromHttpNon2xx({
         status: Number(err.status),
         statusText: String(err.statusText ?? ''),
         bodyText: String(err.bodyText ?? ''),
         headers: (err.headers && typeof err.headers === 'object') ? (err.headers as any) : undefined,
       })
-      logStreamError('http_error_normalized', { raw: err, normalized: env })
-      yield { type: 'StreamError', error: env, terminal: true }
+      const envelope = buildPreStreamHttpErrorEnvelope({
+        phase: 'pre_stream',
+        completionClass: 'error',
+        status: Number(err.status),
+        statusText: String(err.statusText ?? ''),
+        bodyText: String(err.bodyText ?? ''),
+        headers: (err.headers && typeof err.headers === 'object') ? (err.headers as any) : undefined,
+        normalized,
+        request: requestContext,
+      })
+      logStreamError('http_error_normalized', { raw: err, normalized })
+      yield { type: 'StreamError', error: envelope, terminal: true }
       return
     }
 
@@ -393,12 +472,14 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
     timing.endReason = 'transport_error'
     logTiming('end', { ...timing, reason: 'transport_error' })
     yield { type: 'TimingSnapshot', tRequestStart: timing.tRequestStart, tAck: timing.tAck, tEnd: timing.tEnd, endReason: 'transport_error' }
-    yield toStreamError(err)
+    const phase: ErrorPhase = 'pre_stream'
+    yield toStreamError(err, phase, requestContext)
     return
   }
 
   let lastMeta: { generationId?: string; model?: string; provider?: string; finishReason?: string; nativeFinishReason?: string } = {}
   let chunkNo = 0  // 递增的 chunk 序号，用于诊断追踪
+  let didTerminate = false
 
   if (transport.generationId) {
     yield { type: 'MetaDelta', meta: { id: transport.generationId } }
@@ -412,25 +493,31 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
     timing.endReason = 'transport_error'
     logTiming('end', { ...timing, reason: 'transport_error_no_body' })
     yield { type: 'TimingSnapshot', tRequestStart: timing.tRequestStart, tEnd: timing.tEnd, endReason: 'transport_error' }
-    yield toStreamError({ message: 'Missing response body stream' })
+    yield toStreamError({ message: 'Missing response body stream' }, 'pre_stream', requestContext)
     return
   }
 
   // Emit initial timing snapshot with tRequestStart (tAck will come later)
   yield { type: 'TimingSnapshot', tRequestStart: timing.tRequestStart }
 
+  let receivedAnySse = false
   for await (const ev of decodeOpenRouterSSE(bodyStream)) {
+    if (didTerminate) return
     if (signal?.aborted) {
+      // Abort wins: once aborted, do not emit StreamError even if transport surfaces an error afterward.
+      // After abort, ignore any later terminal events for this run.
       // user_abort: highest priority
       timing.tEnd = Date.now()
       timing.endReason = 'user_abort'
       logTiming('end', { ...timing, reason: 'user_abort' })
       yield { type: 'TimingSnapshot', tAck: timing.tAck, tEnd: timing.tEnd, endReason: 'user_abort' }
-      yield { type: 'StreamAbort', reason: 'aborted' }
+      const envelope = buildAbortEnvelope({ phase: receivedAnySse ? 'mid_stream' : 'pre_stream', completionClass: 'aborted', reason: 'aborted', request: requestContext })
+      yield { type: 'StreamAbort', reason: 'aborted', envelope }
       return
     }
 
     if (ev.type === 'comment') {
+      receivedAnySse = true
       // Capture tAck on first OPENROUTER PROCESSING comment (only once)
       if (timing.tAck === undefined && ev.text.includes('OPENROUTER PROCESSING')) {
         timing.tAck = Date.now()
@@ -460,11 +547,16 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
       logTiming('end', { ...timing, reason: 'transport_error_protocol' })
       yield { type: 'TimingSnapshot', tAck: timing.tAck, tEnd: timing.tEnd, endReason: 'transport_error' }
       logStreamError('protocol_error', { message: ev.message, raw: ev.raw })
-      yield {
-        type: 'StreamError',
-        error: normalizeOpenRouterUnknownStreamingError({ message: ev.message, details: { raw: ev.raw ? { raw: ev.raw } : {} } }),
-        terminal: true
-      }
+      const normalized = normalizeOpenRouterUnknownStreamingError({ message: ev.message, details: { raw: ev.raw ? { raw: ev.raw } : {} } })
+      const envelope = buildTransportErrorEnvelope({
+        phase: receivedAnySse ? 'mid_stream' : 'pre_stream',
+        completionClass: 'error',
+        message: ev.message,
+        normalized,
+        request: requestContext,
+        kind: 'parse_error',
+      })
+      yield { type: 'StreamError', error: envelope, terminal: true }
       return
     }
 
@@ -479,12 +571,36 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
     }
 
     if (ev.type === 'json') {
+      receivedAnySse = true
       // Fallback: capture tAck on first JSON data chunk if no comment seen
       if (timing.tAck === undefined) {
         timing.tAck = Date.now()
         timing.ackSource = 'first_chunk'
         logTiming('ack', { tAck: timing.tAck, source: 'first_chunk' })
         yield { type: 'TimingSnapshot', tAck: timing.tAck }
+      }
+
+      const responsesTerminal = mapResponsesEventToTerminal({
+        event: ev.value,
+        request: requestContext,
+      })
+      if (responsesTerminal) {
+        didTerminate = true
+        if (responsesTerminal.meta) {
+          yield { type: 'MetaDelta', meta: responsesTerminal.meta }
+        }
+        timing.tEnd = Date.now()
+        const endReason = responsesTerminal.completionClass === 'error' ? 'mid_stream_error' : 'normal_complete'
+        timing.endReason = endReason
+        const duration = timing.tAck != null ? timing.tEnd - timing.tAck : undefined
+        logTiming('end', { ...timing, localProcessingDurationMs: duration, reason: endReason })
+        yield { type: 'TimingSnapshot', tAck: timing.tAck, tEnd: timing.tEnd, endReason }
+        if (responsesTerminal.completionClass === 'ok') {
+          yield { type: 'StreamDone' }
+        } else if (responsesTerminal.envelope) {
+          yield { type: 'StreamError', error: responsesTerminal.envelope, terminal: true }
+        }
+        return
       }
 
       chunkNo++
@@ -512,13 +628,27 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
           timing.endReason = 'mid_stream_error'
           logTiming('end', { ...timing, reason: 'mid_stream_error_chunk' })
           yield { type: 'TimingSnapshot', tAck: timing.tAck, tEnd: timing.tEnd, endReason: 'mid_stream_error' }
-          const env = normalizeOpenRouterErrorFromSseChunkError({
+          const normalized = normalizeOpenRouterErrorFromSseChunkError({
             chunkError: m.error,
             meta: lastMeta,
           })
-          logStreamError('sse_chunk_error', { raw: m.error, meta: lastMeta, normalized: env })
-          yield { type: 'StreamError', error: env, terminal: true }
-          continue
+          const envelope = buildMidStreamSseErrorEnvelope({
+            phase: 'mid_stream',
+            completionClass: 'error',
+            normalized,
+            stream: {
+              generation_id: lastMeta.generationId,
+              model: lastMeta.model,
+              provider: lastMeta.provider,
+              finish_reason: lastMeta.finishReason,
+              native_finish_reason: lastMeta.nativeFinishReason,
+              chunk_no: chunkNo,
+            },
+            request: requestContext,
+          })
+          logStreamError('sse_chunk_error', { raw: m.error, meta: lastMeta, normalized })
+          yield { type: 'StreamError', error: envelope, terminal: true }
+          return
         }
 
         yield m

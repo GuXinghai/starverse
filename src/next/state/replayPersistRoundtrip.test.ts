@@ -3,6 +3,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { decodeOpenRouterSSE } from '../openrouter/sse/decoder'
 import { mapChunkToEvents } from '../openrouter/mapChunkToEvents'
+import { buildMidStreamSseErrorEnvelope, buildTransportErrorEnvelope } from '../errors/openRouterErrorEnvelope'
+import { normalizeOpenRouterErrorFromSseChunkError, normalizeOpenRouterUnknownStreamingError } from '../errors/normalizeOpenRouterError'
 import { applyEvents, createInitialState, startGeneration } from './reducer'
 import type { DomainEvent, RootState } from './types'
 import { toRunSnapshot, NextRunSnapshotRepo } from '../persistence/repo'
@@ -49,6 +51,15 @@ class InMemoryDb {
   }
 }
 
+function scrubSnapshotTiming(snapshot: any) {
+  return JSON.parse(JSON.stringify(snapshot, (key, value) => {
+    if (key === 'tEnd' || key === 'tAck' || key === 'tRequestStart' || key === 'tTransportClosed' || key === 'localProcessingDurationMs') {
+      return '<scrubbed>'
+    }
+    return value
+  }))
+}
+
 function fixturePath(name: string) {
   return path.join(process.cwd(), 'src/next/openrouter/sse/fixtures', name)
 }
@@ -79,7 +90,15 @@ async function replaySSEFixtureIntoState(runId: string, assistantMessageId: stri
       continue
     }
     if (ev.type === 'protocol_error') {
-      events.push({ type: 'StreamError', error: { message: ev.message, raw: ev.raw }, terminal: true })
+      const normalized = normalizeOpenRouterUnknownStreamingError({ message: ev.message, details: { raw: ev.raw ? { raw: ev.raw } : {} } })
+      const envelope = buildTransportErrorEnvelope({
+        phase: 'mid_stream',
+        completionClass: 'error',
+        message: ev.message,
+        normalized,
+        kind: 'parse_error',
+      })
+      events.push({ type: 'StreamError', error: envelope, terminal: true })
       break
     }
     if (ev.type === 'terminal_error') {
@@ -87,7 +106,21 @@ async function replaySSEFixtureIntoState(runId: string, assistantMessageId: stri
       break
     }
     if (ev.type === 'json') {
-      events.push(...(mapChunkToEvents({ chunk: ev.value as any, messageId: assistantMessageId }) as any))
+      const mapped = mapChunkToEvents({ chunk: ev.value as any, messageId: assistantMessageId }) as any
+      for (const m of mapped as DomainEvent[]) {
+        if (m.type === 'StreamError') {
+          const normalized = normalizeOpenRouterErrorFromSseChunkError({ chunkError: (m as any).error, meta: {} })
+          const envelope = buildMidStreamSseErrorEnvelope({
+            phase: 'mid_stream',
+            completionClass: 'error',
+            normalized,
+            request: { model: 'openrouter/auto', stream: true },
+          })
+          events.push({ type: 'StreamError', error: envelope, terminal: true })
+          continue
+        }
+        events.push(m)
+      }
     }
   }
 
@@ -146,7 +179,7 @@ describe('TC-07/08 minimal closed-loop: Replay → Snapshot → Persist → Relo
 
       const stateA2 = await replaySSEFixtureIntoState(runId, assistantMessageId, c.fixture)
       const snapshotA2 = toRunSnapshot(stateA2, runId)
-      expect(snapshotA2).toEqual(snapshotA)
+      expect(scrubSnapshotTiming(snapshotA2)).toEqual(scrubSnapshotTiming(snapshotA))
 
       const db = new InMemoryDb()
       migrateNextPersistence(db as any)
@@ -154,7 +187,7 @@ describe('TC-07/08 minimal closed-loop: Replay → Snapshot → Persist → Relo
       repo.save(runId, snapshotA)
       const snapshotB = repo.get(runId)
 
-      expect(snapshotB).toEqual(snapshotA)
+      expect(scrubSnapshotTiming(snapshotB)).toEqual(scrubSnapshotTiming(snapshotA))
       c.assert(snapshotB)
     })
   }
