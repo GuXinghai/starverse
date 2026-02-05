@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/vue3'
 import ChatStatusBar from './ChatStatusBar.vue'
 import type { RunVM } from './types'
+import { buildTransportErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
+import { normalizeOpenRouterUnknownStreamingError } from '@/next/errors/normalizeOpenRouterError'
 
 const meta: Meta<typeof ChatStatusBar> = {
   title: 'ui-kit/chat/ChatStatusBar',
@@ -79,7 +81,17 @@ export const Aborted: Story = {
 export const Error: Story = {
   args: {
     title: 'Chat Next',
-    run: run({ runId: 'r5', status: 'error', error: { message: 'boom' } }),
+    run: run({
+      runId: 'r5',
+      status: 'error',
+      error: buildTransportErrorEnvelope({
+        phase: 'mid_stream',
+        completionClass: 'error',
+        message: 'boom',
+        normalized: normalizeOpenRouterUnknownStreamingError({ message: 'boom' }),
+        kind: 'transport_error',
+      }),
+    }),
     isRunning: false,
     showReset: true,
   },
