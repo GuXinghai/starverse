@@ -38,7 +38,7 @@ import {
   type QuestionCandidate,
   type EffectiveFilterResult,
 } from '@/next/branch/branchClient'
-import { appendMessageDelta, appendReasoningDetailSegments, finalizeReasoningDetails, getReasoningSegmentsStats, setMessageReasoningRequestConfig, setMessageStatus } from '@/next/message/messageClient'
+import { appendMessageDelta, appendReasoningDetailSegments, finalizeReasoningDetails, getReasoningSegmentsStats, setMessageReasoningRequestConfig, setMessageStatus, listMessageErrorEnvelopes, upsertMessageErrorEnvelope } from '@/next/message/messageClient'
 import { findProjectById, listProjects, saveProject, getInbox, createProject, deleteProject, countConversationsBatch, type ProjectSummary } from '@/next/project/projectClient'
 import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningPrefsClient'
 import { listModelCatalog } from '@/next/modelCatalog/modelCatalogClient'
@@ -63,6 +63,9 @@ import { buildContextForBranchInternalMessages, getRenderableTurnsForBranch } fr
 import type { InternalMessage } from '@/next/context/buildMessages'
 import { toInternalMessagesFromBranchPath } from '@/next/context/loadBranchContext'
 import type { NormalizedErrorEnvelope } from '@/next/errors/normalizeOpenRouterError'
+import { normalizeOpenRouterUnknownStreamingError } from '@/next/errors/normalizeOpenRouterError'
+import type { CompletionClass, ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
+import { buildTransportErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import { destroyDbEventBus, subscribeDbEvent, flushBuffer, type DbEvent } from '@/next/db/dbEventBus'
 import { createEventScheduler } from '@/next/state/eventScheduler'
 import {
@@ -125,6 +128,10 @@ const diagnosticsBridge = installDiagnosticsBridge(diagnosticsFlags)
 
 // Anti-reordering guard for transcript refresh: only the latest request's result lands.
 const transcriptRefreshToken = ref(0)
+const inFlightEnvelopeIds = ref<Set<string>>(new Set())
+const errorEnvelopeUnavailableIds = ref<Set<string>>(new Set())
+const pendingEnvelopeIds = new Set<string>()
+let pendingEnvelopeTimer: ReturnType<typeof setTimeout> | null = null
 
 const runId = computed(() => activeBranchId.value)
 
@@ -294,6 +301,55 @@ const lastAssistantReasoningPieces = computed(() => lastAssistantReasoningView.v
 
 const isRunning = computed(() => runVM.value?.status === 'requesting' || runVM.value?.status === 'streaming' || runVM.value?.status === 'tool_waiting')
 
+const thinkingNowMs = ref(Date.now())
+let thinkingTimer: ReturnType<typeof setInterval> | null = null
+
+watch(
+  [lastAssistantIsStreaming, () => runVM.value?.tAck, () => runVM.value?.localProcessingDurationMs],
+  ([streaming, tAck, duration]) => {
+    const hasAck = typeof tAck === 'number'
+    const isFrozen = typeof duration === 'number' && duration >= 0
+    if (streaming && hasAck && !isFrozen) {
+      if (!thinkingTimer) {
+        thinkingTimer = setInterval(() => {
+          thinkingNowMs.value = Date.now()
+        }, 250)
+      }
+      return
+    }
+    if (thinkingTimer) {
+      clearInterval(thinkingTimer)
+      thinkingTimer = null
+    }
+  },
+  { immediate: true }
+)
+
+const lastAssistantThinkingLabel = computed(() => {
+  if (!lastAssistantMessageId.value) return null
+  const msg = lastAssistantMessage.value
+  if (!msg || msg.role !== 'assistant') return null
+
+  const ms = msg.reasoningDurationMs
+  if (typeof ms === 'number' && ms >= 0) return `Thinking ${(ms / 1000).toFixed(2)}s`
+  if (ms === null && msg.reasoningEndReason) return 'Thinking —'
+
+  const runDuration = runVM.value?.localProcessingDurationMs
+  if (typeof runDuration === 'number' && runDuration >= 0) return `Thinking ${(runDuration / 1000).toFixed(2)}s`
+
+  if (runVM.value?.status === 'error') return 'Thinking —'
+
+  if (lastAssistantIsStreaming.value || runVM.value?.status === 'requesting') {
+    const tAck = runVM.value?.tAck
+    if (typeof tAck === 'number') {
+      const liveMs = Math.max(0, thinkingNowMs.value - tAck)
+      return `Thinking ${(liveMs / 1000).toFixed(2)}s`
+    }
+    return 'Thinking…'
+  }
+  return null
+})
+
 const modelCatalogForPicker = computed<readonly ModelCatalogItem[]>(() => {
   const catalog = showHiddenModelsInPickers.value
     ? selectModelCatalogAll(modelCatalogItems.value)
@@ -323,7 +379,7 @@ const reasoningModelIndexForPicker = computed(() =>
 
 function getNormalizedErrorEnvelope(error: unknown): NormalizedErrorEnvelope | null {
   if (!error || typeof error !== 'object') return null
-  const env = (error as any).normalized ? (error as any) : null
+  const env = (error as any)?.normalized ?? null
   if (env && typeof env === 'object' && 'normalized' in env) return env as NormalizedErrorEnvelope
   return null
 }
@@ -498,6 +554,47 @@ function commitImmediate(runId: string, event: DomainEvent) {
   recordCommit(duration)
 }
 
+function completionClassFromEvent(event: DomainEvent): CompletionClass | null {
+  if (event.type === 'StreamError') return event.error?.completionClass ?? 'error'
+  if (event.type === 'StreamAbort') return event.envelope?.completionClass ?? 'aborted'
+  return null
+}
+
+function persistStatusFromCompletionClass(completionClass: CompletionClass | null): 'final' | 'error' {
+  return completionClass === 'error' ? 'error' : 'final'
+}
+
+function metaStatusFromCompletionClass(
+  completionClass: CompletionClass | null
+): 'final' | 'error' | 'aborted' | null {
+  if (!completionClass) return null
+  if (completionClass === 'error') return 'error'
+  if (completionClass === 'aborted') return 'aborted'
+  return 'final'
+}
+
+function ensureMessageMetaEntry(
+  messageId: string,
+  patch: Partial<{ parentId: string | null; questionId: string | null; answerRootId: string | null; role: string; status: string }>
+) {
+  const id = String(messageId ?? '').trim()
+  if (!id) return
+  const next = new Map(messageMetaById.value)
+  const prev = next.get(id)
+  if (!prev) {
+    next.set(id, {
+      parentId: patch.parentId ?? null,
+      questionId: patch.questionId ?? null,
+      answerRootId: patch.answerRootId ?? null,
+      role: patch.role ?? 'assistant',
+      status: patch.status ?? 'streaming',
+    })
+  } else {
+    next.set(id, { ...prev, ...patch })
+  }
+  messageMetaById.value = next
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object') return null
   return value as Record<string, unknown>
@@ -586,6 +683,245 @@ function extractReasoningTimingFromMeta(meta: unknown): {
   return { durationMs, endReason, isFallback }
 }
 
+function extractErrorEnvelopeFromMeta(meta: unknown): ErrorEnvelope | null {
+  const obj = asRecord(meta)
+  const raw = obj?.errorEnvelope
+  if (!raw || typeof raw !== 'object') return null
+  if (!('completionClass' in (raw as any)) || !('phase' in (raw as any))) return null
+  return raw as ErrorEnvelope
+}
+
+type ErrorSummary = Readonly<{
+  completionClass?: string
+  phase?: string
+  code?: string
+  message?: string
+  provider?: string
+}>
+
+function extractErrorSummaryFromMeta(meta: unknown): ErrorSummary | null {
+  const obj = asRecord(meta)
+  const raw = obj?.error_summary
+  if (!raw || typeof raw !== 'object') return null
+  const record = raw as Record<string, unknown>
+  const completionClass = typeof record.completionClass === 'string' ? record.completionClass : undefined
+  const phase = typeof record.phase === 'string' ? record.phase : undefined
+  const code = typeof record.code === 'string' ? record.code : undefined
+  const message = typeof record.message === 'string' ? record.message : undefined
+  const provider = typeof record.provider === 'string' ? record.provider : undefined
+  if (!completionClass && !phase && !code && !message && !provider) return null
+  return { completionClass, phase, code, message, provider }
+}
+
+async function persistMessageErrorEnvelope(messageId: string, envelope: ErrorEnvelope) {
+  const id = String(messageId ?? '').trim()
+  if (!id) return
+  try {
+    await upsertMessageErrorEnvelope({ messageId: id, envelope })
+  } catch (err) {
+    if (shouldLogDebug()) {
+      console.warn('[ui-app] persistMessageErrorEnvelope failed (non-fatal):', err)
+    }
+  }
+}
+
+const MAX_ERROR_HYDRATE = 200
+
+function applyErrorEnvelopesToState(envelopes: Map<string, ErrorEnvelope>) {
+  if (envelopes.size === 0) return
+  const messages = state.value.entities?.messagesById ?? state.value.messages
+  const nextMessages: Record<string, MessageState> = { ...messages }
+  let changed = false
+
+  const nextMeta = new Map(messageMetaById.value)
+  let metaChanged = false
+
+  for (const [messageId, envelope] of envelopes.entries()) {
+    const msg = nextMessages[messageId]
+    if (!msg) continue
+    nextMessages[messageId] = { ...msg, errorEnvelope: envelope }
+    changed = true
+
+    const meta = nextMeta.get(messageId)
+    const metaStatus = metaStatusFromCompletionClass(envelope.completionClass)
+    if (!meta) {
+      nextMeta.set(messageId, {
+        parentId: null,
+        questionId: null,
+        answerRootId: null,
+        role: msg.role ?? 'assistant',
+        status: metaStatus ?? 'final',
+      })
+      metaChanged = true
+      continue
+    }
+    if (metaStatus && meta.status !== metaStatus) {
+      nextMeta.set(messageId, { ...meta, status: metaStatus })
+      metaChanged = true
+    }
+  }
+
+  if (changed) {
+    state.value = {
+      ...state.value,
+      messages: nextMessages,
+      runMessageIds: state.value.runMessageIds,
+      entities: { messagesById: nextMessages },
+      views: state.value.views,
+    }
+  }
+  if (metaChanged) messageMetaById.value = nextMeta
+
+  if (errorEnvelopeUnavailableIds.value.size > 0) {
+    const nextUnavailable = new Set(errorEnvelopeUnavailableIds.value)
+    let changedUnavailable = false
+    for (const messageId of envelopes.keys()) {
+      if (nextUnavailable.delete(messageId)) changedUnavailable = true
+    }
+    if (changedUnavailable) errorEnvelopeUnavailableIds.value = nextUnavailable
+  }
+}
+
+function captureErrorFallbacks(): Map<string, { envelope: ErrorEnvelope | null; summary: ErrorSummary | null }> {
+  const messages = state.value.entities?.messagesById ?? state.value.messages
+  const out = new Map<string, { envelope: ErrorEnvelope | null; summary: ErrorSummary | null }>()
+  for (const [id, msg] of Object.entries(messages)) {
+    const envelope = msg?.errorEnvelope ?? null
+    const summary = msg?.errorSummary ?? null
+    if (envelope || summary) out.set(id, { envelope, summary })
+  }
+  return out
+}
+
+function applyErrorFallbacks(fallbacks: Map<string, { envelope: ErrorEnvelope | null; summary: ErrorSummary | null }>) {
+  if (!fallbacks || fallbacks.size === 0) return
+  const messages = state.value.entities?.messagesById ?? state.value.messages
+  const nextMessages: Record<string, MessageState> = { ...messages }
+  let changed = false
+
+  for (const [messageId, fallback] of fallbacks.entries()) {
+    const msg = nextMessages[messageId]
+    if (!msg) continue
+    if (msg.errorEnvelope || msg.errorSummary) continue
+    if (!fallback.envelope && !fallback.summary) continue
+    nextMessages[messageId] = {
+      ...msg,
+      errorEnvelope: fallback.envelope ?? null,
+      errorSummary: fallback.summary ?? null,
+    }
+    changed = true
+  }
+
+  if (!changed) return
+  state.value = {
+    ...state.value,
+    messages: nextMessages,
+    runMessageIds: state.value.runMessageIds,
+    entities: { messagesById: nextMessages },
+    views: state.value.views,
+  }
+
+  if (errorEnvelopeUnavailableIds.value.size > 0) {
+    const nextUnavailable = new Set(errorEnvelopeUnavailableIds.value)
+    let changedUnavailable = false
+    for (const [messageId, fallback] of fallbacks.entries()) {
+      if (fallback.envelope && nextUnavailable.delete(messageId)) changedUnavailable = true
+    }
+    if (changedUnavailable) errorEnvelopeUnavailableIds.value = nextUnavailable
+  }
+}
+
+async function hydrateErrorEnvelopesForRows(
+  rows: ReadonlyArray<Readonly<{ id: string; role: string; meta?: unknown }>>,
+  token: number
+) {
+  const candidates: string[] = []
+  for (const row of rows) {
+    const id = String(row.id ?? '').trim()
+    if (!id) continue
+    const role = String((row as any)?.role ?? '').trim()
+    if (role && role !== 'assistant') continue
+    const meta = asRecord(row.meta)
+    const hasSummary = !!meta?.error_summary
+    const status = String((row as any)?.status ?? '').trim()
+    const needsFallback = !hasSummary && (status === 'error' || status === 'aborted')
+    if ((meta?.error_ref === true && !hasSummary) || needsFallback) {
+      candidates.push(id)
+    }
+  }
+
+  const ids = candidates.length > MAX_ERROR_HYDRATE
+    ? candidates.slice(candidates.length - MAX_ERROR_HYDRATE)
+    : candidates
+
+  if (ids.length === 0) return
+
+  const envelopes = await listMessageErrorEnvelopes(ids)
+  if (transcriptRefreshToken.value !== token) return
+  applyErrorEnvelopesToState(envelopes)
+}
+
+function hasErrorEnvelope(messageId: string): boolean {
+  const id = String(messageId ?? '').trim()
+  if (!id) return false
+  const messages = state.value.entities?.messagesById ?? state.value.messages
+  return Boolean(messages[id]?.errorEnvelope)
+}
+
+function requestErrorEnvelope(messageId: string) {
+  const id = String(messageId ?? '').trim()
+  if (!id) return
+  if (hasErrorEnvelope(id)) return
+  if (inFlightEnvelopeIds.value.has(id)) return
+  if (pendingEnvelopeIds.has(id)) return
+  if (errorEnvelopeUnavailableIds.value.has(id)) return
+
+  pendingEnvelopeIds.add(id)
+  if (!inFlightEnvelopeIds.value.has(id)) {
+    const nextInFlight = new Set(inFlightEnvelopeIds.value)
+    nextInFlight.add(id)
+    inFlightEnvelopeIds.value = nextInFlight
+  }
+
+  if (!pendingEnvelopeTimer) {
+    const token = transcriptRefreshToken.value
+    pendingEnvelopeTimer = setTimeout(() => {
+      pendingEnvelopeTimer = null
+      flushPendingErrorEnvelopes(token)
+    }, 0)
+  }
+}
+
+async function flushPendingErrorEnvelopes(token: number) {
+  const ids = Array.from(pendingEnvelopeIds)
+  pendingEnvelopeIds.clear()
+  if (ids.length === 0) return
+  let envelopes: Map<string, ErrorEnvelope> | null = null
+  try {
+    envelopes = await listMessageErrorEnvelopes(ids)
+  } catch {
+    envelopes = null
+  }
+
+  const nextInFlightAfter = new Set(inFlightEnvelopeIds.value)
+  ids.forEach((id) => nextInFlightAfter.delete(id))
+  inFlightEnvelopeIds.value = nextInFlightAfter
+
+  if (transcriptRefreshToken.value !== token) return
+  if (!envelopes) return
+
+  if (envelopes.size > 0) {
+    applyErrorEnvelopesToState(envelopes)
+  }
+
+  const missing = ids.filter((id) => !envelopes!.has(id))
+  if (missing.length > 0) {
+    const nextUnavailable = new Set(errorEnvelopeUnavailableIds.value)
+    missing.forEach((id) => nextUnavailable.add(id))
+    errorEnvelopeUnavailableIds.value = nextUnavailable
+  }
+}
+
 function getMessageTimingForPersist(messageId: string): {
   reasoningDurationMs?: number | null
   reasoningEndReason?: StreamEndReason | null
@@ -668,6 +1004,8 @@ function hydrateStateFromPersistedMessages(
     const hasEncryptedReasoning = reasoningDetailsRaw.some((detail) => detail && typeof detail === 'object' && (detail as any).type === 'reasoning.encrypted')
     const requestConfig = extractRequestReasoningConfigFromMeta(meta)
     const timing = extractReasoningTimingFromMeta(meta)
+    const errorEnvelope = extractErrorEnvelopeFromMeta(meta)
+    const errorSummary = extractErrorSummaryFromMeta(meta)
 
     s.messages[messageId] = {
       messageId,
@@ -691,12 +1029,21 @@ function hydrateStateFromPersistedMessages(
       requestedReasoningMode: requestConfig?.mode === 'effort' ? 'effort' : 'auto',
       requestedReasoningEffort: requestConfig?.mode === 'effort' ? requestConfig.effort : undefined,
       requestedReasoningExclude: requestConfig?.mode === 'effort' ? requestConfig.exclude === true : false,
+      errorEnvelope,
+      errorSummary,
     }
 
     s.runMessageIds[convoId].push(messageId)
   }
 
   state.value = s
+  inFlightEnvelopeIds.value = new Set()
+  errorEnvelopeUnavailableIds.value = new Set()
+  pendingEnvelopeIds.clear()
+  if (pendingEnvelopeTimer) {
+    clearTimeout(pendingEnvelopeTimer)
+    pendingEnvelopeTimer = null
+  }
 }
 
 function questionIdForMessage(messageId: string, role: string): string | null {
@@ -1220,6 +1567,7 @@ async function loadTranscriptForBranch(branchId: string) {
 
   // Anti-reordering: capture token before async operation.
   const myToken = ++transcriptRefreshToken.value
+  const errorFallbacks = captureErrorFallbacks()
   const debug = isUiDebugEnabled()
   if (shouldLogDebug()) {
     console.log('[ui-app] loadTranscriptForBranch: fetching from DB', { branchId: bid, token: myToken, debug })
@@ -1239,6 +1587,7 @@ async function loadTranscriptForBranch(branchId: string) {
     bid,
     rows.map((m) => ({ id: m.id, role: m.role, seq: m.seq, body: m.body, meta: m.meta }))
   )
+  applyErrorFallbacks(errorFallbacks)
   const seqMap = new Map<string, number>()
   for (const m of rows) seqMap.set(m.id, m.seq)
   messageSeqById.value = seqMap
@@ -1258,6 +1607,7 @@ async function loadTranscriptForBranch(branchId: string) {
     const statuses = [...metaMap.entries()].map(([id, m]) => ({ id: id.slice(0, 8), status: m.status }))
     console.log('[ui-app] loadTranscriptForBranch: updated messageMetaById', { statuses })
   }
+  await hydrateErrorEnvelopesForRows(rows, myToken)
   const next = new Map<string, Readonly<EffectiveFilterResult & { chosenAnswerRootId: string }>>()
   const order: string[] = []
   for (const t of rendered.turns) {
@@ -1326,8 +1676,8 @@ function assertInvariants() {
   const activeId = activeAssistantMessageId.value
   if (import.meta.env.DEV && activeId) {
     const meta = messageMetaById.value.get(activeId)
-    if (meta?.status === 'final' || meta?.status === 'error') {
-      console.error('❌ INVARIANT VIOLATION: activeStream exists but message status is final/error', {
+    if (meta?.status === 'final' || meta?.status === 'error' || meta?.status === 'aborted') {
+      console.error('❌ INVARIANT VIOLATION: activeStream exists but message status is final/error/aborted', {
         assistantMessageId: activeId,
         status: meta.status
       })
@@ -1951,6 +2301,13 @@ async function startStreamingForAssistantTurn(input: Readonly<{
     ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
   })
   state.value = started.state
+  ensureMessageMetaEntry(assistantMessageId, {
+    parentId: questionId,
+    questionId,
+    answerRootId: assistantMessageId,
+    role: 'assistant',
+    status: 'streaming',
+  })
 
   const requestReasoningConfig = buildReasoningRequestConfigSnapshot({
     requestedReasoningMode,
@@ -1990,6 +2347,10 @@ async function startStreamingForAssistantTurn(input: Readonly<{
   activeStream.value = stream
 
   let finalStatus: 'final' | 'error' = 'final'
+  let finalMetaStatus: 'final' | 'error' | 'aborted' = 'final'
+  let errorPersisted = false
+  let errorPersistPromise: Promise<void> | null = null
+  let sawAnyEvent = false
   try {
     for await (const ev of streamOpenRouterChatAsEvents({
       requestId,
@@ -2006,13 +2367,23 @@ async function startStreamingForAssistantTurn(input: Readonly<{
         ...(baseUrl ? { baseUrl } : {}),
       },
     })) {
+      sawAnyEvent = true
       netExpRunTracker.onEvent(ev)
-      if (ev.type === 'StreamError') {
-        netExpTerminalStatus = 'error'
-        netExpTerminalError = ev.error
-      }
-      if (ev.type === 'StreamAbort') {
-        netExpTerminalStatus = 'aborted'
+      if (ev.type === 'StreamError' || ev.type === 'StreamAbort') {
+        const completionClass = completionClassFromEvent(ev) ?? 'error'
+        if (completionClass === 'aborted') {
+          netExpTerminalStatus = 'aborted'
+        } else if (completionClass === 'error' && netExpTerminalStatus !== 'aborted') {
+          netExpTerminalStatus = 'error'
+          netExpTerminalError = ev.type === 'StreamError' ? ev.error : ev.envelope
+        }
+        if (!errorPersisted) {
+          const envelope = ev.type === 'StreamError' ? ev.error : ev.envelope
+          if (envelope && envelope.completionClass && envelope.completionClass !== 'ok') {
+            errorPersisted = true
+            errorPersistPromise = persistMessageErrorEnvelope(assistantMessageId, envelope)
+          }
+        }
       }
 
       if (enableEventScheduler) {
@@ -2086,7 +2457,13 @@ async function startStreamingForAssistantTurn(input: Readonly<{
         }
       }
       if (ev.type === 'StreamDone' || ev.type === 'StreamAbort' || ev.type === 'StreamError') {
-        if (ev.type === 'StreamAbort' || ev.type === 'StreamError') finalStatus = 'error'
+        const completionClass = completionClassFromEvent(ev)
+        const metaStatus = metaStatusFromCompletionClass(completionClass)
+        if (metaStatus) {
+          finalMetaStatus = metaStatus
+          finalStatus = persistStatusFromCompletionClass(completionClass)
+          ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus })
+        }
         if (enableEventScheduler) {
           eventScheduler.flushNow(branchId, 'flush')
         }
@@ -2109,13 +2486,39 @@ async function startStreamingForAssistantTurn(input: Readonly<{
     }
   } catch (err: any) {
     finalStatus = 'error'
+    finalMetaStatus = 'error'
     if (!netExpFinalized) {
       netExpFinalized = true
       netExpRunTracker.onEnd('error', err)
     }
     loadError.value = err?.message ? String(err.message) : String(err)
+    const message = err?.message ? String(err.message) : 'Stream error'
+    const normalized = normalizeOpenRouterUnknownStreamingError({ message, details: { name: err?.name } })
+    const envelope = buildTransportErrorEnvelope({
+      phase: sawAnyEvent ? 'mid_stream' : 'pre_stream',
+      completionClass: 'error',
+      message,
+      normalized,
+      request: { model: modelId, stream: true },
+      kind: 'transport_error',
+    })
     if (enableEventScheduler) {
       eventScheduler.flushNow(branchId, 'flush')
+    }
+    try {
+      commitImmediate(branchId, { type: 'StreamError', error: envelope, terminal: true } as DomainEvent)
+      ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus })
+    } catch {
+      // no-op
+    }
+    try {
+      if (!errorPersisted) {
+        errorPersisted = true
+        errorPersistPromise = persistMessageErrorEnvelope(assistantMessageId, envelope)
+      }
+      if (errorPersistPromise) await errorPersistPromise
+    } catch {
+      // no-op
     }
     try {
       await setMessageStatus({ messageId: assistantMessageId, status: 'error', ...getMessageTimingForPersist(assistantMessageId) })
@@ -2325,6 +2728,13 @@ async function startStreamingForAssistantTurn(input: Readonly<{
     } catch (err) {
       if (shouldLogReasoningDebug()) console.warn('[ui-app] finalizeReasoningDetails failed (non-fatal):', err)
     }
+    if (errorPersistPromise) {
+      try {
+        await errorPersistPromise
+      } catch {
+        // no-op
+      }
+    }
     await finalizeRun(assistantMessageId)
   }
 }
@@ -2366,6 +2776,15 @@ async function onSend() {
 
   messageSeqById.value.set(userMessageId, begun.questionSeq)
   messageSeqById.value.set(assistantMessageId, assistantSeq)
+
+  ensureMessageMetaEntry(userMessageId, { role: 'user', status: 'final' })
+  ensureMessageMetaEntry(assistantMessageId, {
+    parentId: userMessageId,
+    questionId: userMessageId,
+    answerRootId: assistantMessageId,
+    role: 'assistant',
+    status: 'streaming',
+  })
 
   const { requestedReasoningMode, requestedReasoningEffortValue, requestedReasoningExclude } = getRequestedReasoningConfig()
 
@@ -2420,6 +2839,10 @@ async function onSend() {
   activeStream.value = stream
 
   let finalStatus: 'final' | 'error' = 'final'
+  let finalMetaStatus: 'final' | 'error' | 'aborted' = 'final'
+  let errorPersisted = false
+  let errorPersistPromise: Promise<void> | null = null
+  let sawAnyEvent = false
   try {
     for await (const ev of streamOpenRouterChatAsEvents({
       requestId: randomId('req'),
@@ -2436,6 +2859,7 @@ async function onSend() {
         ...(baseUrl ? { baseUrl } : {}),
       },
     })) {
+      sawAnyEvent = true
       if (enableEventScheduler) {
         eventScheduler.enqueue(branch.id, ev)
       } else {
@@ -2506,8 +2930,23 @@ async function onSend() {
           console.error('[ui-app] stream error event', ev)
         }
       }
+      if (ev.type === 'StreamError' || ev.type === 'StreamAbort') {
+        if (!errorPersisted) {
+          const envelope = ev.type === 'StreamError' ? ev.error : ev.envelope
+          if (envelope && envelope.completionClass && envelope.completionClass !== 'ok') {
+            errorPersisted = true
+            errorPersistPromise = persistMessageErrorEnvelope(assistantMessageId, envelope)
+          }
+        }
+      }
       if (ev.type === 'StreamDone' || ev.type === 'StreamAbort' || ev.type === 'StreamError') {
-        if (ev.type === 'StreamAbort' || ev.type === 'StreamError') finalStatus = 'error'
+        const completionClass = completionClassFromEvent(ev)
+        const metaStatus = metaStatusFromCompletionClass(completionClass)
+        if (metaStatus) {
+          finalMetaStatus = metaStatus
+          finalStatus = persistStatusFromCompletionClass(completionClass)
+          ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus })
+        }
         if (enableEventScheduler) {
           eventScheduler.flushNow(branch.id, 'flush')
         }
@@ -2526,9 +2965,35 @@ async function onSend() {
     await setMessageStatus({ messageId: assistantMessageId, status: finalStatus, ...getMessageTimingForPersist(assistantMessageId) })
   } catch (err: any) {
     finalStatus = 'error'
+    finalMetaStatus = 'error'
     loadError.value = err?.message ? String(err.message) : String(err)
+    const message = err?.message ? String(err.message) : 'Stream error'
+    const normalized = normalizeOpenRouterUnknownStreamingError({ message, details: { name: err?.name } })
+    const envelope = buildTransportErrorEnvelope({
+      phase: sawAnyEvent ? 'mid_stream' : 'pre_stream',
+      completionClass: 'error',
+      message,
+      normalized,
+      request: { model: modelId, stream: true },
+      kind: 'transport_error',
+    })
     if (enableEventScheduler) {
       eventScheduler.flushNow(branch.id, 'flush')
+    }
+    try {
+      commitImmediate(branch.id, { type: 'StreamError', error: envelope, terminal: true } as DomainEvent)
+      ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus })
+    } catch {
+      // no-op
+    }
+    try {
+      if (!errorPersisted) {
+        errorPersisted = true
+        errorPersistPromise = persistMessageErrorEnvelope(assistantMessageId, envelope)
+      }
+      if (errorPersistPromise) await errorPersistPromise
+    } catch {
+      // no-op
     }
     try {
       await setMessageStatus({ messageId: assistantMessageId, status: 'error', ...getMessageTimingForPersist(assistantMessageId) })
@@ -2734,6 +3199,13 @@ async function onSend() {
       }
     } catch (err) {
       if (shouldLogReasoningDebug()) console.warn('[ui-app] finalizeReasoningDetails failed (non-fatal):', err)
+    }
+    if (errorPersistPromise) {
+      try {
+        await errorPersistPromise
+      } catch {
+        // no-op
+      }
     }
     await finalizeRun(assistantMessageId)
   }
@@ -3288,6 +3760,10 @@ onUnmounted(() => {
     clearInterval(refAuditTimer)
     refAuditTimer = null
   }
+  if (thinkingTimer) {
+    clearInterval(thinkingTimer)
+    thinkingTimer = null
+  }
   if (typeof document !== 'undefined') {
     document.removeEventListener('visibilitychange', handleVisibilityChange)
   }
@@ -3471,8 +3947,22 @@ watch(
                 :data-testid="`msg-wrap-${message.messageId}`"
                 @click="onSelectCursor(message.messageId, $event)"
               >
-                <ChatMessageBubble :message="message">
+                <ChatMessageBubble
+                  :message="message"
+                  :errorEnvelopeLoading="inFlightEnvelopeIds.has(message.messageId)"
+                  :errorEnvelopeUnavailable="errorEnvelopeUnavailableIds.has(message.messageId)"
+                  :onRequestErrorEnvelope="requestErrorEnvelope"
+                >
                   <template #header-right>
+                    <button
+                      v-if="message.role === 'assistant' && message.messageId === lastAssistantMessageId && lastAssistantThinkingLabel"
+                      type="button"
+                      class="rounded bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-900 hover:bg-blue-200"
+                      title="点击查看推理详情"
+                      @click="onToggleReasoningPanelState(message.messageId)"
+                    >
+                      {{ lastAssistantThinkingLabel }}
+                    </button>
                   </template>
                 </ChatMessageBubble>
 

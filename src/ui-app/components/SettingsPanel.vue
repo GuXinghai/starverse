@@ -6,7 +6,6 @@ import {
   DEFAULT_NETEXP_SETTINGS,
   getNetExpRuntimeInfo,
   getNetExpSettings,
-  requestAppRelaunch,
   setNetExpSettings,
   type NetExpSettings,
   type NetExpRuntimeInfo,
@@ -63,12 +62,6 @@ watch(requestedReasoningEffort, (value) => {
 
 const storeAvailable = computed(() => !!getElectronStore())
 const canEdit = computed(() => !props.disabled && !props.isRunning && storeAvailable.value)
-const restartRequired = computed(() => {
-  const appliedHttp2 = netExpRuntime.value?.applied?.disableHttp2 ?? netExpInitial.value.disableHttp2
-  const appliedQuic = netExpRuntime.value?.applied?.disableQuic ?? netExpInitial.value.disableQuic
-  return netExpDisableHttp2.value !== appliedHttp2 || netExpDisableQuic.value !== appliedQuic
-})
-
 function isValidUrlOrEmpty(value: string): boolean {
   const trimmed = value.trim()
   if (!trimmed) return true
@@ -191,20 +184,11 @@ async function save() {
     } catch {
       // no-op
     }
-    savedMessage.value = restartRequired.value ? 'Saved. Restart required to apply network switches.' : 'Saved.'
+    savedMessage.value = 'Saved.'
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
     saving.value = false
-  }
-}
-
-async function relaunchApp() {
-  error.value = null
-  savedMessage.value = null
-  const ok = await requestAppRelaunch()
-  if (!ok) {
-    error.value = 'Failed to relaunch app.'
   }
 }
 
@@ -405,7 +389,7 @@ onMounted(() => {
           <div class="flex items-center justify-between gap-2">
             <div class="min-w-0">
               <div class="text-[11px] font-semibold text-gray-700">Stream in main process</div>
-              <div class="text-[11px] text-gray-500">Use IPC + undici for SSE (enables keepalive/force HTTP/1.1)</div>
+              <div class="text-[11px] text-gray-500">Use IPC + electron.net for SSE (enables keepalive/force HTTP/1.1)</div>
             </div>
             <label class="inline-flex items-center gap-2">
               <input
@@ -466,18 +450,6 @@ onMounted(() => {
           </div>
 
           <div class="flex items-center justify-between gap-2">
-            <div class="text-[11px] text-gray-500">Restart required when switch values differ from applied runtime.</div>
-            <button
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || !restartRequired"
-              @click="relaunchApp"
-            >
-              Restart now
-            </button>
-          </div>
-
-          <div class="flex items-center justify-between gap-2">
             <div class="text-[11px] text-gray-500">Copy a run report for A/B debugging.</div>
             <button
               type="button"
@@ -535,4 +507,3 @@ onMounted(() => {
     </div>
   </div>
 </template>
-

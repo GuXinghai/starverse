@@ -825,18 +825,6 @@ ipcMain.handle('netexp:get-runtime-info', () => {
   return netExpRuntimeInfo
 })
 
-ipcMain.handle('app:relaunch', () => {
-  try {
-    app.relaunch({ args: process.argv.slice(1) })
-    app.exit(0)
-    return true
-  } catch (error) {
-    console.error('[main] failed to relaunch app', error)
-    return false
-  }
-})
-
-
 ipcMain.handle(
   'dialog:select-file',
   async (

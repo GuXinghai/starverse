@@ -64,11 +64,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * 获取网络实验运行时信息（开关注入/版本/argv）
    */
   getNetExpRuntimeInfo: () => ipcRenderer.invoke('netexp:get-runtime-info'),
-
-  /**
-   * 重新启动应用（用于开关生效）
-   */
-  relaunchApp: () => ipcRenderer.invoke('app:relaunch'),
 })
 
 // Expose DB bridge for renderer storage access
