@@ -5,6 +5,7 @@ import { createInitialState, applyEvent, startGeneration } from '@/next/state/re
 import type { DomainEvent } from '@/next/state/types'
 import { replayOpenRouterSSEFixtureAsEvents } from '@/next/openrouter/replayFixtureStream'
 import { buildOpenRouterMessages, type InternalMessage } from '@/next/context/buildMessages'
+import { firstOfType } from '../utils/streamAsserts'
 
 async function readFixture(name: string): Promise<string> {
   return fs.readFile(
@@ -94,14 +95,24 @@ describe('TC-11 — vertical slice E2E smoke (fixture replay)', () => {
   })
 
   it('mid-stream error: preserves partial output and ends in error', async () => {
-    const { state, runId, assistantMessageId } = await runFixture('midstream_error.txt')
+    const { state, runId, assistantMessageId, events } = await runFixture('midstream_error.txt')
 
     const obs = pickObservability(state, runId)
     expect(obs.status).toBe('error')
     expect(obs.generationId).toBe('gen_1')
     expect(obs.finishReason).toBe('error')
     expect(obs.nativeFinishReason).toBe('error')
-    expect(obs.error).toMatchObject({ message: 'Upstream error' })
+    const streamError = firstOfType(events, 'StreamError') as any
+    expect(streamError).toBeTruthy()
+    const envelope = streamError?.error ?? null
+    expect(envelope?.completionClass).toBe('error')
+    expect(envelope?.phase).toMatch(/mid_stream|post_stream|responses/)
+    const message =
+      envelope?.openrouter?.message ??
+      envelope?.normalized?.normalized?.message ??
+      envelope?.openrouter?.metadata?.message ??
+      ''
+    expect(String(message)).toContain('Upstream error')
 
     const msg = state.messages[assistantMessageId]
     expect(msg.contentText).toBe('partial')
