@@ -813,6 +813,8 @@ npm ci
 ```
 
 > ⚠️ **better-sqlite3 注意**: 如果遇到原生模块/ABI 不匹配：跑测试用 `npm run rebuild:node`；跑 Electron 用 `npm run rebuild:electron`
+>
+> ✅ **CI 约束**: CI 必须使用与 `.nvmrc` 一致的 Node 版本，并确保 `better-sqlite3` 成功编译（`npm run rebuild:node`）。SQLite repo 测试不可跳过。
 
 **步骤 3: 配置 API Key**
 
@@ -885,6 +887,8 @@ npm run electron:dev
 |------|------|
 | `npm run dev` | 启动 Vite 开发服务器（仅渲染进程） |
 | `npm run electron:dev` | 启动完整 Electron 应用（开发模式，推荐） |
+| `npm run dev:netlog` | 启动 Electron 并录制全生命周期 NetLog（Default 模式） |
+| `npm run dev:netlog:sensitive` | 启动 Electron 并录制 NetLog（IncludeSensitive，含敏感信息） |
 | `npm run build` | 构建生产版本并打包 |
 | `npm run preview` | 预览构建结果 |
 | `npm run dev:clean` | 清理进程并重新启动开发服务器 |
@@ -895,6 +899,16 @@ npm run electron:dev
 | `npm run watch:worker` | 监听模式构建 Web Worker |
 | `npm run verify:ssot` | 基线验证（测试 + SSOT gates） |
 | `npm run verify:live` | 可选 live smoke（需要 OpenRouter key） |
+
+### NetLog 录制（开发）
+
+```bash
+npm run dev:netlog
+```
+
+- 日志默认输出目录：`d:\Starverse\.artifacts\netlog\`
+- 输出文件名：`netlog-YYYYMMDD-HHMMSS-p<pid>.json`
+- NetLog 为 Chromium JSON，可导入 NetLog Viewer 分析（重点关注 Proxy/DNS/Sockets/Timeline）
 
 ### Reasoning 模块变更护栏
 
