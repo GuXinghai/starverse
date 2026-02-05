@@ -6,6 +6,7 @@ import BetterSqlite3 from 'better-sqlite3'
 import { ProjectRepo } from './repo/projectRepo'
 import { ConvoRepo } from './repo/convoRepo'
 import { MessageRepo } from './repo/messageRepo'
+import { MessageErrorRepo } from './repo/messageErrorRepo'
 import { BranchRepo } from './repo/branchRepo'
 import { ContextRepo } from './repo/contextRepo'
 import { SearchRepo } from './repo/searchRepo'
@@ -38,6 +39,8 @@ import {
   AppendMessageSchema,
   AppendMessageDeltaSchema,
   SetMessageStatusSchema,
+  UpsertMessageErrorSchema,
+  ListMessageErrorByIdsSchema,
   AppendReasoningDetailSegmentsSchema,
   FinalizeReasoningDetailsSchema,
   SetReasoningRequestConfigSchema,
@@ -135,6 +138,7 @@ export class DbWorkerRuntime {
   private projectRepo: ProjectRepo
   private convoRepo: ConvoRepo
   private messageRepo: MessageRepo
+  private messageErrorRepo: MessageErrorRepo
   private branchRepo: BranchRepo
   private contextRepo: ContextRepo
   private searchRepo: SearchRepo
@@ -170,6 +174,8 @@ export class DbWorkerRuntime {
     this.ensureUsageLogSchema()
     console.log('[DbWorkerRuntime] 确保 Reasoning Schema...')
     this.ensureReasoningSchema()
+    console.log('[DbWorkerRuntime] 确保 Message Error Schema...')
+    this.ensureMessageErrorSchema()
     console.log('[DbWorkerRuntime] 确保 Model Catalog Schema...')
     this.ensureModelCatalogSchema()
     console.log('[DbWorkerRuntime] 确保 Reasoning Model Index Schema...')
@@ -200,6 +206,7 @@ export class DbWorkerRuntime {
     this.projectRepo = new ProjectRepo(this.db)
     this.convoRepo = new ConvoRepo(this.db)
     this.messageRepo = new MessageRepo(this.db)
+    this.messageErrorRepo = new MessageErrorRepo(this.db)
     this.branchRepo = new BranchRepo(this.db)
     this.contextRepo = new ContextRepo(this.db, this.branchRepo)
     this.searchRepo = new SearchRepo(this.db)
@@ -322,6 +329,42 @@ export class DbWorkerRuntime {
 
     // Backfill segment_fingerprint for historical rows (idempotent, batch processing)
     this.backfillSegmentFingerprints()
+  }
+
+  private ensureMessageErrorSchema() {
+    const tableRow = this.db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'message_error'")
+      .get() as { name?: string } | undefined
+
+    if (!tableRow) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS message_error (
+          message_id TEXT PRIMARY KEY REFERENCES message(id) ON DELETE CASCADE,
+          envelope_json TEXT NOT NULL,
+          envelope_bytes INTEGER NOT NULL,
+          is_truncated INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      `)
+      return
+    }
+
+    const columns = this.db.prepare('PRAGMA table_info(message_error)').all() as { name: string }[]
+    const columnNames = new Set(columns.map((col) => col.name))
+
+    const addColumn = (name: string, definition: string) => {
+      if (!columnNames.has(name)) {
+        this.db.exec(`ALTER TABLE message_error ADD COLUMN ${definition}`)
+        columnNames.add(name)
+      }
+    }
+
+    addColumn('envelope_json', 'envelope_json TEXT')
+    addColumn('envelope_bytes', 'envelope_bytes INTEGER NOT NULL DEFAULT 0')
+    addColumn('is_truncated', 'is_truncated INTEGER NOT NULL DEFAULT 0')
+    addColumn('created_at', 'created_at INTEGER NOT NULL DEFAULT 0')
+    addColumn('updated_at', 'updated_at INTEGER NOT NULL DEFAULT 0')
   }
 
   /**
@@ -544,6 +587,8 @@ export class DbWorkerRuntime {
       'CREATE INDEX IF NOT EXISTS idx_convo_updated ON convo(updated_at DESC)',
       // message 表
       'CREATE INDEX IF NOT EXISTS idx_msg_convo_seq ON message(convo_id, seq)',
+      // message_error 表
+      'CREATE INDEX IF NOT EXISTS idx_message_error_truncated ON message_error(is_truncated)',
       // tag 表
       'CREATE INDEX IF NOT EXISTS idx_tag_name ON tag(name)',
       // usage_log 表
@@ -1205,6 +1250,23 @@ export class DbWorkerRuntime {
         this.emitActivityUpdated(msgRow.convo_id)
       }
       return result
+    })
+
+    this.handlers.set('messageError.upsert', (raw) => {
+      const input = UpsertMessageErrorSchema.parse(raw)
+      const txn = this.db.transaction(() => {
+        const result = this.messageErrorRepo.upsert(input)
+        if (input.metaPatch && typeof input.metaPatch === 'object') {
+          this.messageRepo.patchMeta({ messageId: input.messageId, patch: input.metaPatch as Record<string, unknown> })
+        }
+        return result
+      })
+      return txn()
+    })
+
+    this.handlers.set('messageError.listByMessageIds', (raw) => {
+      const input = ListMessageErrorByIdsSchema.parse(raw)
+      return this.messageErrorRepo.listByMessageIds(input)
     })
 
     this.handlers.set('message.appendReasoningDetailSegments', (raw) => {

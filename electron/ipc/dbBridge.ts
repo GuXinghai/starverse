@@ -100,6 +100,8 @@ const allowedMethods: DbMethod[] = [
   'message.finalizeReasoningDetails',
   'message.setReasoningRequestConfig',
   'message.getReasoningSegmentsStats',
+  'messageError.upsert',
+  'messageError.listByMessageIds',
 
   // Branching (Phase 4+)
   'branch.ensureDefault',

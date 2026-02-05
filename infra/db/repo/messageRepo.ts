@@ -97,6 +97,7 @@ export class MessageRepo {
   private updateStatusStmt: BetterSqlite3.Statement
   private updateBodyStmt: BetterSqlite3.Statement
   private updateFtsBodyStmt: BetterSqlite3.Statement
+  private updateMetaStmt: BetterSqlite3.Statement
   private insertReasoningSegmentStmt: BetterSqlite3.Statement
   private listReasoningSegmentsStmt: BetterSqlite3.Statement
   private updateReasoningFinalStmt: BetterSqlite3.Statement
@@ -172,6 +173,10 @@ export class MessageRepo {
 
     this.updateFtsBodyStmt = this.db.prepare(`
       UPDATE message_fts SET body = body || @appendBody WHERE message_id = @messageId
+    `)
+
+    this.updateMetaStmt = this.db.prepare(`
+      UPDATE message SET meta = @meta WHERE id = @id
     `)
 
     this.insertReasoningSegmentStmt = this.db.prepare(`
@@ -407,6 +412,19 @@ export class MessageRepo {
     txn()
     console.log('[DB] messageRepo.setStatus: committed', { messageId: id.slice(0, 8), status })
 
+    return { ok: true }
+  }
+
+  patchMeta(input: { messageId: string; patch: Record<string, unknown> }) {
+    const id = String(input.messageId ?? '').trim()
+    if (!id) throw new Error('Missing messageId')
+    const patch = input.patch ?? {}
+    if (!patch || typeof patch !== 'object') throw new Error('Invalid meta patch')
+
+    const row = this.db.prepare('SELECT meta FROM message WHERE id = @id').get({ id }) as { meta?: string | null } | undefined
+    const base = row?.meta ? safeParse(row.meta) : null
+    const next: Record<string, unknown> = { ...(base ?? {}), ...(patch as Record<string, unknown>) }
+    this.updateMetaStmt.run({ id, meta: JSON.stringify(next) })
     return { ok: true }
   }
 
