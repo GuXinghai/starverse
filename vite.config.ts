@@ -16,6 +16,21 @@ export default defineConfig({
       main: {
         // Shortcut of `build.lib.entry`.
         entry: 'electron/main.ts',
+        onstart({ startup }) {
+          const netLogPath = process.env.SV_NETLOG_PATH
+          const captureMode = process.env.SV_NETLOG_CAPTURE_MODE
+
+          if (netLogPath) {
+            const argv = ['.', '--no-sandbox', `--log-net-log=${netLogPath}`]
+            if (captureMode) {
+              argv.push(`--net-log-capture-mode=${captureMode}`)
+            }
+            startup(argv)
+            return
+          }
+
+          startup()
+        },
       },
       preload: {
         // Shortcut of `build.rollupOptions.input`.
@@ -31,6 +46,13 @@ export default defineConfig({
         : {},
     }),
   ],
+  server: {
+    watch: {
+      ignored: [
+        '**/.artifacts/netlog/**',
+      ],
+    },
+  },
   build: {
     rollupOptions: {
       external: [

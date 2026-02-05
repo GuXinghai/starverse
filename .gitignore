@@ -82,6 +82,7 @@ headers.txt
 body.txt
 payload.json
 temptest.ps1
+.artifacts/netlog/*.json
 
 # Package manager
 .yarn/
