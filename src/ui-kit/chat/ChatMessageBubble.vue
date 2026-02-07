@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { MessageVM } from './types'
+import type { ErrorPanelViewModel, MessageVM } from './types'
 import ChatErrorPanel from './ChatErrorPanel.vue'
 
 const props = withDefaults(
@@ -9,12 +9,14 @@ const props = withDefaults(
     showDebug?: boolean
     errorEnvelopeLoading?: boolean
     errorEnvelopeUnavailable?: boolean
+    errorView?: ErrorPanelViewModel | null
     onRequestErrorEnvelope?: (messageId: string) => void
   }>(),
   {
     showDebug: false,
     errorEnvelopeLoading: false,
     errorEnvelopeUnavailable: false,
+    errorView: null,
   },
 )
 
@@ -118,11 +120,9 @@ function bubbleClass(role: MessageVM['role']) {
         </div>
 
         <ChatErrorPanel
-          v-if="props.message.role === 'assistant' && (props.message.errorEnvelope || props.message.errorSummary)"
+          v-if="props.message.role === 'assistant' && props.errorView"
           :messageId="props.message.messageId"
-          :envelope="props.message.errorEnvelope ?? null"
-          :summary="props.message.errorSummary ?? null"
-          :completionClass="props.message.errorSummary?.completionClass"
+          :errorView="props.errorView"
           :loading="props.errorEnvelopeLoading"
           :detailsUnavailable="props.errorEnvelopeUnavailable"
           :onRequestEnvelope="props.onRequestErrorEnvelope"
