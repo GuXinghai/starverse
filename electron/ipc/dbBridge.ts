@@ -33,140 +33,17 @@
 
 import { ipcMain } from 'electron'
 import type { DbMethod } from '../../infra/db/types'
+import { DB_RENDERER_METHOD_SET } from '../../infra/db/dbMethodsRegistry'
 import { DbWorkerError } from '../../infra/db/errors'
 import { DbWorkerManager } from '../db/workerManager'
 
 /**
- * 数据库方法白名单
+ * 数据库方法白名单（单一事实源）
  * 
- * 只有这些方法可以通过 IPC 调用。
- * 
- * 方法分类:
- * - health.*: 健康检查
- * - project.*: 项目管理 (CRUD)
- * - convo.*: 对话管理 (CRUD)
- * - message.*: 消息管理 (附加、列表、替换)
- * - search.*: 全文搜索
- * - maintenance.*: 维护操作 (优化、清理)
- * 
- * 🔒 安全考虑:
- * - 不包含原始 SQL 执行方法
- * - 所有方法均经过参数验证
- * - 防止删除系统表或修改 Schema
- * 
- * ⚠️ 添加新方法时:
- * 1. 在 infra/db/types.ts 中定义 DbMethod 类型
- * 2. 在 Worker 中实现对应的处理函数
- * 3. 添加到此白名单
- * 4. 更新 src/services/db/index.ts 中的封装
+ * 允许渲染进程调用的方法由 infra/db/dbMethodsRegistry.ts 推导，
+ * 避免手写白名单与类型/worker 注册点发生漂移。
  */
-const allowedMethods: DbMethod[] = [
-  // Health
-  'health.ping',
-  'health.stats',
-  
-  // Project Management
-  'project.create',
-  'project.save',
-  'project.list',
-  'project.delete',
-  'project.findById',
-  'project.findByName',
-  'project.countConversations',
-  'project.countConversationsBatch',
-  'project.getInbox',
-  
-  // Conversation Management
-  'convo.create',
-  'convo.save',
-  'convo.saveWithMessages',
-  'convo.list',
-  'convo.delete',
-  'convo.deleteMany',
-  'convo.archive',
-  'convo.archiveMany',
-  'convo.restore',
-  'convo.setProject',
-  'convo.setProjectMany',
-  'convo.listArchived',
-  
-  // Message Management
-  'message.append',
-  'message.appendDelta',
-  'message.setStatus',
-  'message.list',
-  'message.replace',
-  'message.appendReasoningDetailSegments',
-  'message.finalizeReasoningDetails',
-  'message.setReasoningRequestConfig',
-  'message.getReasoningSegmentsStats',
-  'messageError.upsert',
-  'messageError.listByMessageIds',
-
-  // Branching (Phase 4+)
-  'branch.ensureDefault',
-  'branch.list',
-  'branch.createFromMessage',
-  'branch.delete',
-  'branch.beginTurn',
-  'branch.switchCandidate',
-  'branch.regenerateFromQuestion',
-  'branch.getPathMessages',
-  'branch.getCandidates',
-  'branch.getQuestionCandidates',
-  'branch.getEffectiveFilters',
-  'branch.setHead',
-  'branchChoice.set',
-  'branchAnswerHide.set',
-  'branch.retryReplaceAnswer',
-  'branch.switchQuestionCandidate',
-  'branch.forkQuestion',
-  'branch.retryReplaceQuestion',
-  'branchFilter.set',
-  'branchFilter.clear',
-  'context.buildForBranch',
-  'context.getRenderableTurns',
-  
-  // Search
-  'search.fulltext',
-  'search.query',
-  'search.rebuildIndex',
-  
-  // Maintenance
-  'maintenance.optimize',
-  
-  // Usage Statistics
-  'usage.log',
-  'usage.getProjectStats',
-  'usage.getConvoStats',
-  'usage.getModelStats',
-  'usage.getDateRangeStats',
-  'usage.aggregate',
-  'usage.drillDown',
-  'usage.reasoningTrend',
-  'usage.reasoningModelComparison',
-  
-  // Model Data Management
-  // Model Catalog (Snapshot Sync)
-  'modelCatalog.syncSnapshot',
-  'modelCatalog.list',
-
-  // Reasoning Model Index
-  'reasoningIndex.syncFromCatalog',
-  'reasoningIndex.list',
-
-  // Settings
-  'settings.getOpenRouterProviderRequireParameters',
-  'settings.setOpenRouterProviderRequireParameters',
-  'settings.getReasoningPrefs',
-  'settings.setReasoningPrefs',
-  
-  // Preferences
-  'prefs.save',
-  'prefs.list',
-  'prefs.delete',
-  'prefs.default'
-]
+const allowSet: ReadonlySet<DbMethod> = DB_RENDERER_METHOD_SET
 
 /**
  * IPC 调用 Payload 结构
@@ -223,9 +100,6 @@ type InvokePayload = {
  * ```
  */
 export const registerDbBridge = (manager: DbWorkerManager) => {
-  // 创建白名单 Set，用于高效查找
-  const allowSet = new Set<DbMethod>(allowedMethods)
-
   const toIpcError = (error: unknown): Error => {
     // Electron's ipcMain.handle() only reliably transports built-in Error instances.
     // If we throw non-Error values (or custom error subclasses), the renderer often sees:
