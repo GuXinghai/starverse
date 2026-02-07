@@ -1,3 +1,10 @@
+import {
+  decodeConvoCreateResponse,
+  decodeConvoDeleteManyResponse,
+  decodeConvoListResponse,
+  decodeConvoSetProjectManyResponse,
+} from '@/next/ipc/contracts/dbBridgeContracts'
+
 type DbBridge = Readonly<{
   invoke: (method: string, params?: unknown) => Promise<any>
 }>
@@ -30,20 +37,7 @@ export async function listConvos(params?: Readonly<{ projectId?: string | null; 
   }
 
   const rows = await bridge.invoke('convo.list', queryParams)
-  if (!Array.isArray(rows)) return []
-
-  return rows
-    .map((r: any) => {
-      const id = String(r?.id ?? '').trim()
-      const projectRaw = r?.projectId
-      const projectId = projectRaw === null ? null : String(projectRaw ?? '').trim()
-      const title = String(r?.title ?? '').trim()
-      const createdAt = typeof r?.createdAt === 'number' ? r.createdAt : 0
-      const updatedAt = typeof r?.updatedAt === 'number' ? r.updatedAt : createdAt
-      const meta = r?.meta && typeof r.meta === 'object' ? (r.meta as Record<string, unknown>) : null
-      return { id, projectId: projectId && projectId.length > 0 ? projectId : null, title, createdAt, updatedAt, meta } satisfies ConvoSummary
-    })
-    .filter((x) => x.id.length > 0 && x.title.length > 0)
+  return decodeConvoListResponse(rows)
 }
 
 export async function createConvo(input: Readonly<{ title: string; projectId?: string | null }>): Promise<ConvoSummary | null> {
@@ -53,12 +47,8 @@ export async function createConvo(input: Readonly<{ title: string; projectId?: s
   const title = String(input.title ?? '').trim()
   if (title.length === 0) return null
 
-  const r = await bridge.invoke('convo.create', { title, ...(input.projectId !== undefined ? { projectId: input.projectId } : {}) })
-  const id = String(r?.id ?? '').trim()
-  const createdAt = typeof r?.createdAt === 'number' ? r.createdAt : Date.now()
-  const updatedAt = typeof r?.updatedAt === 'number' ? r.updatedAt : createdAt
-  if (!id) return null
-  return { id, title, createdAt, updatedAt }
+  const raw = await bridge.invoke('convo.create', { title, ...(input.projectId !== undefined ? { projectId: input.projectId } : {}) })
+  return decodeConvoCreateResponse(raw)
 }
 
 function requireDbBridge(): DbBridge {
@@ -132,9 +122,7 @@ export async function setConvoProjectMany(convoIds: readonly string[], projectId
   if (ids.length === 0) return { moved: 0, failed: [] }
   const pid = projectId === null ? null : String(projectId ?? '').trim()
   const result = await bridge.invoke('convo.setProjectMany', { ids, projectId: pid && pid.length > 0 ? pid : null })
-  const moved = typeof result?.moved === 'number' ? result.moved : 0
-  const failed = Array.isArray(result?.failed) ? result.failed.map((x: any) => String(x ?? '')).filter(Boolean) : []
-  return { moved, failed }
+  return decodeConvoSetProjectManyResponse(result)
 }
 
 export async function deleteConvos(convoIds: readonly string[]): Promise<number> {
@@ -142,5 +130,5 @@ export async function deleteConvos(convoIds: readonly string[]): Promise<number>
   const ids = (convoIds ?? []).map((v) => String(v ?? '').trim()).filter(Boolean)
   if (ids.length === 0) return 0
   const result = await bridge.invoke('convo.deleteMany', { ids })
-  return typeof result?.deleted === 'number' ? result.deleted : 0
+  return decodeConvoDeleteManyResponse(result)
 }

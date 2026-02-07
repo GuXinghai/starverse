@@ -1,5 +1,12 @@
 import type { ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import { sanitizeErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
+import {
+  decodeAppendReasoningDetailSegmentsResponse,
+  decodeMessageAppendResponse,
+  decodeMessageFinalizeReasoningDetailsResponse,
+  decodeMessageListResponse,
+  decodeMessageSetStatusResponse,
+} from '@/next/ipc/contracts/dbBridgeContracts'
 
 export type PersistedMessageRole = 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter' | string
 
@@ -39,19 +46,6 @@ function requireDbBridge(): DbBridge {
   return bridge
 }
 
-function coerceMessageRecord(raw: any): PersistedMessage | null {
-  const id = String(raw?.id ?? '').trim()
-  const convoId = String(raw?.convoId ?? '').trim()
-  const role = String(raw?.role ?? '').trim()
-  const seq = typeof raw?.seq === 'number' ? raw.seq : NaN
-  const createdAt = typeof raw?.createdAt === 'number' ? raw.createdAt : 0
-  const body = typeof raw?.body === 'string' ? raw.body : String(raw?.body ?? '')
-  const meta = raw?.meta ?? null
-
-  if (!id || !convoId || !Number.isFinite(seq)) return null
-  return { id, convoId, role, seq, createdAt, body, meta } satisfies PersistedMessage
-}
-
 export async function listMessages(
   convoId: string,
   params?: Readonly<{ fromSeq?: number; limit?: number; direction?: 'asc' | 'desc' }>
@@ -63,14 +57,11 @@ export async function listMessages(
   if (!cid) return []
 
   const rows = await bridge.invoke('message.list', { convoId: cid, ...(params ?? {}) })
-  if (!Array.isArray(rows)) return []
-
-  return rows
-    .map(coerceMessageRecord)
-    .filter((m): m is PersistedMessage => !!m)
-    .sort((a, b) => a.seq - b.seq)
+  const decoded = decodeMessageListResponse(rows)
+  return decoded.sort((a, b) => a.seq - b.seq)
 }
 
+// eslint-disable-next-line complexity
 export async function appendMessage(input: Readonly<{
   convoId: string
   role: AppendableMessageRole
@@ -107,9 +98,7 @@ export async function appendMessage(input: Readonly<{
   if (input.questionId !== undefined) params.questionId = input.questionId
 
   const raw = await bridge.invoke('message.append', params)
-  const msg = coerceMessageRecord(raw)
-  if (!msg) throw new Error('DB did not return a valid message record')
-  return msg
+  return decodeMessageAppendResponse(raw)
 }
 
 export async function appendMessageDelta(input: Readonly<{ convoId: string; seq: number; appendBody: string }>): Promise<boolean> {
@@ -152,7 +141,7 @@ export async function setMessageStatus(input: Readonly<{
     reasoningEndReason: input.reasoningEndReason ?? null,
     reasoningDurationIsFallback: input.reasoningDurationIsFallback ?? false,
   })
-  const success = !!(result && typeof result === 'object' && 'ok' in result ? (result as any).ok : true)
+  const success = decodeMessageSetStatusResponse(result)
   if (import.meta.env?.DEV) {
     console.log('[messageClient] setMessageStatus: DB returned', { messageId: messageId.slice(0, 8), status, success, result })
   }
@@ -178,19 +167,7 @@ export async function appendReasoningDetailSegments(input: Readonly<{ messageId:
   if (details.length === 0) return { ok: true, received: 0, inserted: 0, skipped: 0, ignored: 0, sumDeltaLenInserted: 0 }
 
   const result = await bridge.invoke('message.appendReasoningDetailSegments', { messageId, details })
-  // 透传完整 DB 统计
-  if (result && typeof result === 'object' && 'ok' in result) {
-    const r = result as any
-    return {
-      ok: !!r.ok,
-      received: r.received ?? 0,
-      inserted: r.inserted ?? 0,
-      skipped: r.skipped ?? 0,
-      ignored: r.ignored ?? 0,
-      sumDeltaLenInserted: r.sumDeltaLenInserted ?? 0,
-    }
-  }
-  return { ok: true, received: details.length, inserted: 0, skipped: 0, ignored: 0, sumDeltaLenInserted: 0 }
+  return decodeAppendReasoningDetailSegmentsResponse(result)
 }
 
 export async function finalizeReasoningDetails(input: Readonly<{ messageId: string }>): Promise<boolean> {
@@ -198,7 +175,7 @@ export async function finalizeReasoningDetails(input: Readonly<{ messageId: stri
   const messageId = String(input.messageId ?? '').trim()
   if (!messageId) throw new Error('Missing messageId')
   const result = await bridge.invoke('message.finalizeReasoningDetails', { messageId })
-  return !!(result && typeof result === 'object' && 'ok' in result ? (result as any).ok : true)
+  return decodeMessageFinalizeReasoningDetailsResponse(result)
 }
 
 export async function setMessageReasoningRequestConfig(input: Readonly<{ messageId: string; value: unknown }>): Promise<boolean> {

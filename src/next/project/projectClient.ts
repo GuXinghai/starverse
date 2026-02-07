@@ -1,3 +1,12 @@
+import {
+  decodeProjectCountConversationsBatchResponse,
+  decodeProjectCountConversationsResponse,
+  decodeProjectCreateResponse,
+  decodeProjectFindByIdResponse,
+  decodeProjectGetInboxResponse,
+  decodeProjectListResponse,
+} from '@/next/ipc/contracts/dbBridgeContracts'
+
 type DbBridge = Readonly<{
   invoke: (method: string, params?: unknown) => Promise<any>
 }>
@@ -22,18 +31,7 @@ export async function listProjects(params?: Readonly<{ limit?: number; offset?: 
   if (!bridge) return []
 
   const rows = await bridge.invoke('project.list', params ?? {})
-  if (!Array.isArray(rows)) return []
-
-  return rows
-    .map((r: any) => {
-      const id = String(r?.id ?? '').trim()
-      const name = String(r?.name ?? '').trim()
-      const createdAt = typeof r?.createdAt === 'number' ? r.createdAt : 0
-      const updatedAt = typeof r?.updatedAt === 'number' ? r.updatedAt : createdAt
-      const meta = r?.meta && typeof r.meta === 'object' ? (r.meta as Record<string, unknown>) : null
-      return { id, name, createdAt, updatedAt, meta } satisfies ProjectSummary
-    })
-    .filter((p) => p.id.length > 0 && p.name.length > 0)
+  return decodeProjectListResponse(rows)
 }
 
 function requireDbBridge(): DbBridge {
@@ -48,13 +46,17 @@ export async function findProjectById(projectId: string): Promise<ProjectSummary
   const id = String(projectId ?? '').trim()
   if (!id) return null
   const row = await bridge.invoke('project.findById', { id })
-  if (!row || typeof row !== 'object') return null
-  const name = String((row as any).name ?? '').trim()
-  const createdAt = typeof (row as any).createdAt === 'number' ? (row as any).createdAt : 0
-  const updatedAt = typeof (row as any).updatedAt === 'number' ? (row as any).updatedAt : createdAt
-  const meta = (row as any).meta && typeof (row as any).meta === 'object' ? ((row as any).meta as Record<string, unknown>) : null
-  if (!name) return null
-  return { id, name, createdAt, updatedAt, meta }
+  const decoded = decodeProjectFindByIdResponse(row)
+  if (!decoded) return null
+  return {
+    id: decoded.id,
+    name: decoded.name,
+    createdAt: decoded.createdAt,
+    updatedAt: decoded.updatedAt,
+    meta: decoded.meta,
+    ...(decoded.alreadyExists !== undefined ? { alreadyExists: decoded.alreadyExists } : {}),
+    ...(decoded.isSystemProject !== undefined ? { isSystemProject: decoded.isSystemProject } : {}),
+  }
 }
 
 export async function saveProject(input: Readonly<{ id: string; name: string; meta?: unknown; createdAt?: number; updatedAt?: number }>): Promise<boolean> {
@@ -83,16 +85,17 @@ export async function getInbox(): Promise<ProjectSummary | null> {
   if (!bridge) return null
 
   const row = await bridge.invoke('project.getInbox')
-  if (!row || typeof row !== 'object') return null
-
-  const id = String((row as any).id ?? '').trim()
-  const name = String((row as any).name ?? '').trim()
-  const createdAt = typeof (row as any).createdAt === 'number' ? (row as any).createdAt : 0
-  const updatedAt = typeof (row as any).updatedAt === 'number' ? (row as any).updatedAt : createdAt
-  const meta = (row as any).meta && typeof (row as any).meta === 'object' ? ((row as any).meta as Record<string, unknown>) : null
-
-  if (!id || !name) return null
-  return { id, name, createdAt, updatedAt, meta }
+  const decoded = decodeProjectGetInboxResponse(row)
+  if (!decoded) return null
+  return {
+    id: decoded.id,
+    name: decoded.name,
+    createdAt: decoded.createdAt,
+    updatedAt: decoded.updatedAt,
+    meta: decoded.meta,
+    ...(decoded.alreadyExists !== undefined ? { alreadyExists: decoded.alreadyExists } : {}),
+    ...(decoded.isSystemProject !== undefined ? { isSystemProject: decoded.isSystemProject } : {}),
+  }
 }
 
 /**
@@ -108,17 +111,7 @@ export async function createProject(input: Readonly<{ name: string; meta?: unkno
   if (input.meta !== undefined) payload.meta = input.meta
 
   const row = await bridge.invoke('project.create', payload)
-  if (!row || typeof row !== 'object') throw new Error('Failed to create project')
-
-  return {
-    id: String((row as any).id),
-    name: String((row as any).name),
-    createdAt: typeof (row as any).createdAt === 'number' ? (row as any).createdAt : Date.now(),
-    updatedAt: typeof (row as any).updatedAt === 'number' ? (row as any).updatedAt : Date.now(),
-    meta: (row as any).meta ?? null,
-    alreadyExists: (row as any).alreadyExists === true,
-    isSystemProject: (row as any).isSystemProject === true,
-  }
+  return decodeProjectCreateResponse(row)
 }
 
 /**
@@ -147,10 +140,7 @@ export async function countConversations(projectId: string | null): Promise<numb
   if (!bridge) return 0
 
   const result = await bridge.invoke('project.countConversations', { projectId })
-  if (result && typeof result === 'object' && 'count' in result) {
-    return typeof (result as any).count === 'number' ? (result as any).count : 0
-  }
-  return 0
+  return decodeProjectCountConversationsResponse(result)
 }
 
 /**
@@ -162,9 +152,6 @@ export async function countConversationsBatch(projectIds: string[]): Promise<Map
   if (!bridge || projectIds.length === 0) return new Map()
 
   const result = await bridge.invoke('project.countConversationsBatch', { projectIds })
-  if (result && typeof result === 'object' && 'counts' in result) {
-    const counts = (result as any).counts as Record<string, number>
-    return new Map(Object.entries(counts))
-  }
-  return new Map()
+  const counts = decodeProjectCountConversationsBatchResponse(result)
+  return new Map(Object.entries(counts))
 }

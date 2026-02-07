@@ -157,10 +157,18 @@ function sanitizeNormalizedEnvelope(env?: NormalizedErrorEnvelope): NormalizedEr
       ...(n.rawProviderError !== undefined ? { rawProviderError: n.rawProviderError } : {}),
       retryable: n.retryable,
       action: n.action,
+      appPhase: n.appPhase,
+      category: n.category,
+      grade: n.grade,
+      userActionHint: n.userActionHint,
+      ...(n.finishReason ? { finishReason: n.finishReason } : {}),
+      ...(typeof n.backoffHintMs === 'number' ? { backoffHintMs: n.backoffHintMs } : {}),
+      ...(n.debug ? { debug: n.debug } : {}),
     },
   }
 }
 
+/* eslint-disable max-lines-per-function */
 export function sanitizeErrorEnvelope(input: ErrorEnvelope): ErrorEnvelope {
   let truncated = false
 
@@ -246,7 +254,7 @@ export function sanitizeErrorEnvelope(input: ErrorEnvelope): ErrorEnvelope {
     if (size <= MAX_ENVELOPE_BYTES) return next
 
     truncated = true
-    const reduced: ErrorEnvelope = {
+    const reduced: any = {
       ...next,
       openrouter: { ...next.openrouter },
     }
@@ -279,6 +287,7 @@ export function sanitizeErrorEnvelope(input: ErrorEnvelope): ErrorEnvelope {
   const finalEnvelope = enforceSizeLimit(sanitized)
   return { ...finalEnvelope, truncated }
 }
+/* eslint-enable max-lines-per-function */
 
 export function buildPreStreamHttpErrorEnvelope(input: {
   phase: ErrorPhase
@@ -347,12 +356,19 @@ export function buildTransportErrorEnvelope(input: {
   request?: { model?: string; stream?: boolean }
   kind?: 'transport_error' | 'parse_error'
 }): ErrorEnvelope {
+  const normalized = input.normalized?.normalized
+  const code = toStringCode(normalized?.code ?? 'transport_error')
+  const message = normalized?.message ?? input.message
+  const metadata = normalized?.metadata
+  const provider = normalized?.providerName
   return sanitizeErrorEnvelope({
     phase: input.phase,
     completionClass: input.completionClass,
     openrouter: {
-      code: 'transport_error',
-      message: input.message,
+      code,
+      message,
+      ...(metadata ? { metadata } : {}),
+      ...(provider ? { provider } : {}),
     },
     context: input.request,
     ...(input.normalized ? { normalized: input.normalized } : {}),
