@@ -1,8 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/vue3'
 import ChatStatusBar from './ChatStatusBar.vue'
 import type { RunVM } from './types'
-import { buildTransportErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
-import { normalizeOpenRouterUnknownStreamingError } from '@/next/errors/normalizeOpenRouterError'
 
 const meta: Meta<typeof ChatStatusBar> = {
   title: 'ui-kit/chat/ChatStatusBar',
@@ -14,6 +12,21 @@ const meta: Meta<typeof ChatStatusBar> = {
 
 export default meta
 type Story = StoryObj<typeof ChatStatusBar>
+
+const transportErrorFixture: NonNullable<RunVM['error']> = {
+  phase: 'mid_stream',
+  completionClass: 'error',
+  truncated: false,
+  openrouter: {
+    code: 'transport_error',
+    message: 'boom',
+    provider: 'openrouter',
+    metadata: {
+      source: 'storybook',
+      category: 'network',
+    },
+  },
+}
 
 function run(partial: Partial<RunVM> & Pick<RunVM, 'runId' | 'status'>): RunVM {
   return {
@@ -84,13 +97,7 @@ export const Error: Story = {
     run: run({
       runId: 'r5',
       status: 'error',
-      error: buildTransportErrorEnvelope({
-        phase: 'mid_stream',
-        completionClass: 'error',
-        message: 'boom',
-        normalized: normalizeOpenRouterUnknownStreamingError({ message: 'boom' }),
-        kind: 'transport_error',
-      }),
+      error: transportErrorFixture,
     }),
     isRunning: false,
     showReset: true,
