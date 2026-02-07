@@ -2,69 +2,13 @@ import BetterSqlite3 from 'better-sqlite3'
 import { randomUUID, createHash } from 'node:crypto'
 import type { AppendMessageInput, ListMessageParams, MessageRecord, AppendReasoningDetailSegmentsInput, FinalizeReasoningDetailsInput, SetReasoningRequestConfigInput } from '../../db/types'
 import { buildReasoningDetailsArray, stableStringifyReasoningDetails, type ReasoningDetailSegmentRow } from './reasoningDetailsAggregator'
+import { mergeMetaWithReasoning, safeParseMessageMeta } from './shared/messageMetaMerge'
 
 type SqlDatabase = BetterSqlite3.Database
 
-const safeParse = (input: string): Record<string, unknown> | null => {
-  try {
-    return JSON.parse(input)
-  } catch {
-    return null
-  }
-}
-
-const mergeMetaWithReasoning = (
-  meta: Record<string, unknown> | null,
-  reasoningJson: unknown,
-  requestJson: unknown,
-  reasoningDurationMs?: number | null,
-  reasoningEndReason?: string | null,
-  reasoningDurationIsFallback?: number | null,
-) => {
-  const next: Record<string, unknown> = meta ? { ...meta } : {}
-
-  if (typeof reasoningJson === 'string' && reasoningJson.trim().length > 0) {
-    try {
-      const parsed = JSON.parse(reasoningJson)
-      if (Array.isArray(parsed) && !next.reasoningDetailsRaw) {
-        next.reasoningDetailsRaw = parsed
-      }
-    } catch {
-      // ignore parse errors
-    }
-  }
-
-  if (typeof requestJson === 'string' && requestJson.trim().length > 0) {
-    try {
-      const parsed = JSON.parse(requestJson)
-      if (parsed && typeof parsed === 'object') {
-        next.requestReasoningConfig = parsed
-      }
-    } catch {
-      // ignore parse errors
-    }
-  }
-
-  if (typeof reasoningDurationMs === 'number' && Number.isFinite(reasoningDurationMs)) {
-    next.reasoningDurationMs = reasoningDurationMs
-  } else if (reasoningDurationMs === null) {
-    next.reasoningDurationMs = null
-  }
-
-  if (typeof reasoningEndReason === 'string' && reasoningEndReason.trim().length > 0) {
-    next.reasoningEndReason = reasoningEndReason
-  }
-
-  if (reasoningDurationIsFallback === 1) {
-    next.reasoningDurationIsFallback = true
-  }
-
-  return Object.keys(next).length > 0 ? next : null
-}
-
 const mapRow = (row: any): MessageRecord => {
   const meta = mergeMetaWithReasoning(
-    row.meta ? safeParse(row.meta) : null,
+    row.meta ? safeParseMessageMeta(row.meta) : null,
     row.reasoningDetailsFinalJson,
     row.requestReasoningConfigJson,
     row.reasoningDurationMs ?? null,
@@ -422,7 +366,7 @@ export class MessageRepo {
     if (!patch || typeof patch !== 'object') throw new Error('Invalid meta patch')
 
     const row = this.db.prepare('SELECT meta FROM message WHERE id = @id').get({ id }) as { meta?: string | null } | undefined
-    const base = row?.meta ? safeParse(row.meta) : null
+    const base = row?.meta ? safeParseMessageMeta(row.meta) : null
     const next: Record<string, unknown> = { ...(base ?? {}), ...(patch as Record<string, unknown>) }
     this.updateMetaStmt.run({ id, meta: JSON.stringify(next) })
     return { ok: true }
