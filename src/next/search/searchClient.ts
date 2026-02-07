@@ -1,5 +1,6 @@
 import { toRaw } from 'vue'
 import type { SearchHit, SearchQueryParams } from './searchTypes'
+import { decodeBooleanAck, decodeSearchQueryResponse } from '@/next/ipc/contracts/dbBridgeContracts'
 
 type DbBridge = Readonly<{
   invoke: (method: string, params?: unknown) => Promise<any>
@@ -19,35 +20,13 @@ function requireDbBridge(): DbBridge {
 export async function runSearchQuery(params: SearchQueryParams): Promise<SearchHit[]> {
   const bridge = requireDbBridge()
   const result = await bridge.invoke('search.query', sanitizeForIpc(params))
-  if (!Array.isArray(result)) return []
-
-  return result
-    .map((raw: any) => {
-      const entityType = String(raw?.entityType ?? '').trim()
-      const entityId = String(raw?.entityId ?? '').trim()
-      if (!entityType || !entityId) return null
-      const projectId = raw?.projectId != null ? String(raw.projectId ?? '').trim() : null
-      const convoId = raw?.convoId != null ? String(raw.convoId ?? '').trim() : null
-      const createdAtSec = typeof raw?.createdAtSec === 'number' ? raw.createdAtSec : 0
-      const snippet = typeof raw?.snippet === 'string' ? raw.snippet : ''
-      const score = typeof raw?.score === 'number' ? raw.score : 0
-      return {
-        entityType: entityType as SearchHit['entityType'],
-        entityId,
-        projectId: projectId && projectId.length > 0 ? projectId : null,
-        convoId: convoId && convoId.length > 0 ? convoId : null,
-        createdAtSec,
-        snippet,
-        score,
-      } satisfies SearchHit
-    })
-    .filter((x): x is SearchHit => !!x)
+  return decodeSearchQueryResponse(result)
 }
 
 export async function rebuildSearchIndex(): Promise<boolean> {
   const bridge = requireDbBridge()
   const result = await bridge.invoke('search.rebuildIndex', undefined)
-  return !!(result && typeof result === 'object' && 'ok' in result ? (result as any).ok : true)
+  return decodeBooleanAck('search.rebuildIndex', result)
 }
 
 function sanitizeForIpc<T>(input: T): T {

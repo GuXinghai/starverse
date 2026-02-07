@@ -1,3 +1,4 @@
+/* eslint-disable max-lines-per-function, max-statements, complexity */
 import type { DomainEvent } from './types'
 import { buildDetailKey } from './reasoningDetailStreamMerger'
 import {
@@ -69,6 +70,13 @@ function now(): number {
 
 export function createEventScheduler(options: SchedulerOptions) {
   const queues = new Map<string, QueueState>()
+  // Tombstone set for "dispose => do not accept further events for this runId".
+  // Risk: if runId cardinality is unbounded in a long-lived session, this set can grow without bound.
+  // Current lifecycle relies on upper-layer teardown (`disposeAll` on app unmount) to drop scheduler instance.
+  // If this scheduler becomes long-lived across many ephemeral runIds, add explicit cleanup policy:
+  // 1) lifecycle release hook when a run is fully finalized and should be reusable; or
+  // 2) bounded LRU/TTL tombstones.
+  const disposedRunIds = new Set<string>()
   const config: SchedulerConfig = { ...DEFAULT_CONFIG, ...(options.config ?? {}) }
 
   function ensureQueue(runId: string): QueueState {
@@ -360,6 +368,7 @@ export function createEventScheduler(options: SchedulerOptions) {
     enqueue(runId: string, event: DomainEvent) {
       const id = String(runId ?? '').trim()
       if (!id) return
+      if (disposedRunIds.has(id)) return
       const queue = ensureQueue(id)
       queue.pendingQueue.push(event)
       options.onEnqueue?.(event)
@@ -378,6 +387,7 @@ export function createEventScheduler(options: SchedulerOptions) {
     dispose(runId: string) {
       const id = String(runId ?? '').trim()
       if (!id) return
+      disposedRunIds.add(id)
       const queue = queues.get(id)
       if (!queue) return
       drainAll(id, 'dispose')
