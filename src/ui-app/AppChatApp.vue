@@ -5,6 +5,7 @@ import ChatStatusBar from '@/ui-kit/chat/ChatStatusBar.vue'
 import ChatTranscript from '@/ui-kit/chat/ChatTranscript.vue'
 import ChatMessageBubble from '@/ui-kit/chat/ChatMessageBubble.vue'
 import ChatAppReasoningPanel from './components/ChatAppReasoningPanel.vue'
+import type { ErrorPanelViewModel } from '@/ui-kit/chat/types'
 import type { DomainEvent, MessageState, MessageVM, ReasoningEffort, RequestedReasoningMode, ReasoningPrefs, RootState, StreamEndReason } from '@/next/state/types'
 import {
   createConvo,
@@ -63,9 +64,10 @@ import { buildContextForBranchInternalMessages, getRenderableTurnsForBranch } fr
 import type { InternalMessage } from '@/next/context/buildMessages'
 import { toInternalMessagesFromBranchPath } from '@/next/context/loadBranchContext'
 import type { NormalizedErrorEnvelope } from '@/next/errors/normalizeOpenRouterError'
-import { normalizeOpenRouterUnknownStreamingError } from '@/next/errors/normalizeOpenRouterError'
-import type { CompletionClass, ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
-import { buildTransportErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
+import { normalizeTransportError, toNormalizedErrorEnvelope } from '@/next/errors/normalizeOpenRouterError'
+import type { AppErrorPhase } from '@/next/errors/appError'
+import type { CompletionClass, ErrorEnvelope, ErrorPhase } from '@/next/errors/openRouterErrorEnvelope'
+import { buildAbortEnvelope, buildTransportErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import { destroyDbEventBus, subscribeDbEvent, flushBuffer, type DbEvent } from '@/next/db/dbEventBus'
 import { createEventScheduler } from '@/next/state/eventScheduler'
 import {
@@ -573,6 +575,22 @@ function metaStatusFromCompletionClass(
   return 'final'
 }
 
+function mapAppPhaseToEnvelopePhase(appPhase: AppErrorPhase, fallback: ErrorPhase): ErrorPhase {
+  if (appPhase === 'pre_stream_request_error') return 'pre_stream'
+  if (appPhase === 'mid_stream_error') return 'mid_stream'
+  return fallback
+}
+
+function mapAppPhaseToEndReason(appPhase: AppErrorPhase, fallback: StreamEndReason): StreamEndReason {
+  if (appPhase === 'pre_stream_request_error') return 'pre_stream_error'
+  if (appPhase === 'mid_stream_error') return 'mid_stream_error'
+  if (appPhase === 'local_transport_error' || appPhase === 'local_protocol_error' || appPhase === 'internal_bug') {
+    return 'transport_error'
+  }
+  if (appPhase === 'user_cancelled') return 'user_abort'
+  return fallback
+}
+
 function ensureMessageMetaEntry(
   messageId: string,
   patch: Partial<{ parentId: string | null; questionId: string | null; answerRootId: string | null; role: string; status: string }>
@@ -698,6 +716,34 @@ type ErrorSummary = Readonly<{
   message?: string
   provider?: string
 }>
+
+function toErrorPanelView(message: MessageVM): ErrorPanelViewModel | null {
+  const envelope = message.errorEnvelope ?? null
+  const summary = message.errorSummary ?? null
+  if (!envelope && !summary) return null
+
+  const completionClass = envelope?.completionClass ?? summary?.completionClass ?? 'error'
+  const phase = envelope?.phase ?? summary?.phase ?? 'unknown'
+
+  const metadata = envelope?.openrouter?.metadata as Record<string, unknown> | undefined
+  const metadataProvider =
+    metadata && typeof metadata === 'object' && typeof metadata.provider_name === 'string'
+      ? metadata.provider_name
+      : undefined
+  const provider = envelope?.openrouter?.provider ?? metadataProvider ?? summary?.provider ?? 'unknown'
+  const code = envelope?.openrouter?.code ?? summary?.code ?? 'error'
+  const text = envelope?.openrouter?.message ?? summary?.message ?? 'Unknown error'
+
+  return {
+    completionClass,
+    phase,
+    code,
+    message: text,
+    provider,
+    truncated: envelope?.truncated === true,
+    details: envelope ?? null,
+  }
+}
 
 function extractErrorSummaryFromMeta(meta: unknown): ErrorSummary | null {
   const obj = asRecord(meta)
@@ -2219,6 +2265,494 @@ function closeSettings() {
   settingsOpen.value = false
 }
 
+type AssistantStreamSessionTelemetry = Readonly<{
+  onEvent?: (event: DomainEvent) => void
+  onEnd?: (status: 'done' | 'error' | 'aborted', error: unknown) => void
+}>
+
+type AssistantStreamSessionInput = Readonly<{
+  convoId: string
+  branchId: string
+  assistantMessageId: string
+  assistantSeq: number
+  modelId: string
+  createEvents: (signal: AbortSignal) => AsyncIterable<DomainEvent>
+  telemetry?: AssistantStreamSessionTelemetry
+}>
+
+type FinalizeAssistantStreamSessionInput = Readonly<{
+  convoId: string
+  assistantMessageId: string
+  assistantSeq: number
+  stream: ActiveStream
+  errorPersistPromise: Promise<void> | null
+}>
+
+function createActiveStream(assistantMessageId: string, assistantSeq: number): ActiveStream {
+  return {
+    abort: new AbortController(),
+    assistantMessageId,
+    assistantSeq,
+    pendingAppendText: { value: '' },
+    flushing: { value: false },
+    flushTimer: { id: null },
+    pendingReasoningDetails: { value: [] },
+    reasoningFlushTimer: { id: null },
+    reasoningMerger: new ReasoningDetailStreamMerger(),
+    diagnosticTracker: {
+      events: [],
+      totalQueued: 0,
+      totalSkipped: 0,
+      totalDeltaLen: 0,
+      chunkRanges: [],
+      textCursor: 0,
+      dbInserted: 0,
+      dbSkipped: 0,
+      dbIgnored: 0,
+      dbSumDeltaLenInserted: 0,
+    },
+  }
+}
+
+function processReasoningDetailEvent(ev: DomainEvent, stream: ActiveStream, assistantMessageId: string) {
+  if (ev.type !== 'MessageDeltaReasoningDetail' || ev.messageId !== assistantMessageId) return
+  // 使用 Merger 处理快照语义，提取真正的后缀增量
+  const merged = stream.reasoningMerger.merge(ev.detail)
+  const key = merged?.key ?? 'unknown'
+  const chunkNo = typeof ev.chunkNo === 'number' ? ev.chunkNo : -1
+
+  if (merged) {
+    const deltaLen = (merged.deltaText?.length ?? 0) + (merged.deltaSummary?.length ?? 0) + (merged.deltaData?.length ?? 0)
+    // 构建带有真正 delta 和 offset 信息的对象用于存储
+    const detailWithDelta = {
+      ...merged.originalDetail,
+      __deltaText: merged.deltaText,
+      __deltaSummary: merged.deltaSummary,
+      __deltaData: merged.deltaData,
+      __isSnapshot: merged.isSnapshot,
+      __hasNewMetadata: merged.hasNewMetadata,
+      __key: merged.key,
+      __offsetBefore: merged.offsetBefore,
+      __offsetAfter: merged.offsetAfter,
+      __metadataDigest: merged.metadataDigest,
+    }
+    stream.pendingReasoningDetails.value.push(detailWithDelta)
+    scheduleReasoningDetailFlush(stream, assistantMessageId)
+
+    // 追踪诊断信息
+    stream.diagnosticTracker.events.push({ chunkNo, key, offsetBefore: merged.offsetBefore, deltaLen, action: 'queued' })
+    stream.diagnosticTracker.totalQueued++
+    stream.diagnosticTracker.totalDeltaLen += deltaLen
+    // 记录 offset 到文本区间的映射 [start, end)
+    const start = stream.diagnosticTracker.textCursor
+    const end = start + deltaLen
+    stream.diagnosticTracker.chunkRanges.push({ chunkNo, key, offsetBefore: merged.offsetBefore, start, end })
+    stream.diagnosticTracker.textCursor = end
+
+    if (shouldLogReasoningDebug()) {
+      const snapshotTail = merged.isSnapshot && typeof (merged.originalDetail as any)?.text === 'string'
+        ? (merged.originalDetail as any).text.slice(-30)
+        : undefined
+      console.log('[reasoning-chunk]', { key, offsetBefore: merged.offsetBefore, deltaLen, hasNewMetadata: merged.hasNewMetadata, isSnapshot: merged.isSnapshot, deltaHead: merged.deltaText?.slice(0, 30), snapshotTail })
+    }
+    return
+  }
+
+  // Merger 返回 null，记录跳过
+  stream.diagnosticTracker.events.push({ chunkNo, key, deltaLen: 0, action: 'skipped', reason: 'merger_null' })
+  stream.diagnosticTracker.totalSkipped++
+  if (shouldLogReasoningDebug()) {
+    console.log('[reasoning-chunk] SKIPPED (merger returned null)', { key })
+  }
+}
+
+/* eslint-disable max-depth */
+async function finalizeAssistantStreamSession(input: FinalizeAssistantStreamSessionInput) {
+  const { convoId, assistantMessageId, assistantSeq, stream, errorPersistPromise } = input
+  clearFlushTimer(stream)
+  clearReasoningFlushTimer(stream)
+  // 输出 Merger 诊断统计
+  if (shouldLogReasoningDebug()) {
+    const stats = stream.reasoningMerger.getStats()
+    console.log('[reasoning-merger] stream stats:', stats)
+    if (stats.isLikelySnapshot) {
+      console.log('[reasoning-merger] ⚠️ 检测到快照语义 (>50% prefixMatch)，已自动提取后缀增量')
+    }
+  }
+  // Use unified finalization to enforce: refresh FIRST, then clear activeStream.
+  try {
+    // 记录 flush 前的队列信息
+    const pendingCountBeforeFlush = stream.pendingReasoningDetails.value.length
+    await flushReasoningDetailSegments(stream, assistantMessageId)
+    await finalizeReasoningDetails({ messageId: assistantMessageId })
+
+    if (shouldLogReasoningDebug()) {
+      const mergerStats = stream.reasoningMerger.getStats()
+      const mergerSnapshot = stream.reasoningMerger.getMergedSnapshots()
+      const mergerExtracted = extractReasoningTextFromDetails(mergerSnapshot)
+      const mergerFinalText = mergerExtracted.reasoningText
+      const isEncryptedModel = mergerExtracted.isEncrypted
+
+      let dbReplaySnapshot: unknown[] | null = null
+      let dbFinalText: string | undefined
+      let dbExtracted: ReturnType<typeof extractReasoningTextFromDetails> | null = null
+      let dbSegmentsCount: number | undefined
+      try {
+        const bridge = (globalThis as any).dbBridge as { invoke?: (method: string, params?: unknown) => Promise<any> } | undefined
+        if (bridge?.invoke) {
+          const rows = await bridge.invoke('message.list', { convoId, fromSeq: assistantSeq, limit: 1 })
+          const row = Array.isArray(rows)
+            ? (rows.find((r) => r && typeof r === 'object' && (r as any).id === assistantMessageId) ?? rows[0])
+            : null
+          const meta = row && typeof (row as any).meta === 'object' ? (row as any).meta : null
+          const reasoningDetailsRaw = Array.isArray(meta?.reasoningDetailsRaw) ? meta.reasoningDetailsRaw : null
+          if (reasoningDetailsRaw) {
+            dbReplaySnapshot = reasoningDetailsRaw
+            dbExtracted = extractReasoningTextFromDetails(dbReplaySnapshot)
+            dbFinalText = dbExtracted.reasoningText
+          }
+          // 尝试获取 segments count（如果 meta 中有的话）
+          dbSegmentsCount = typeof meta?.reasoningSegmentsCount === 'number' ? meta.reasoningSegmentsCount : undefined
+        }
+      } catch (err) {
+        console.warn('[reasoning-verify] failed to load db replay snapshot:', err)
+      }
+
+      const uiFinalText = selectMessage(state.value, assistantMessageId)?.reasoningView?.reasoningText
+
+      // 输出 diagnosticTracker 摘要（包含 DB 统计）
+      const tracker = stream.diagnosticTracker
+      console.log('[reasoning-diag] tracker summary', {
+        // UI 侧统计
+        totalQueued: tracker.totalQueued,
+        totalSkipped: tracker.totalSkipped,
+        totalDeltaLen: tracker.totalDeltaLen,
+        eventCount: tracker.events.length,
+        // DB 侧统计
+        dbInserted: tracker.dbInserted,
+        dbSkipped: tracker.dbSkipped,
+        dbIgnored: tracker.dbIgnored,
+        dbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
+      })
+
+      // 一次性 DB 统计查询（作为对照）
+      const dbRealStats = await getReasoningSegmentsStats(assistantMessageId)
+      if (dbRealStats) {
+        const matchCnt = dbRealStats.cnt === tracker.dbInserted
+        const matchSum = dbRealStats.sumLen === tracker.dbSumDeltaLenInserted
+        console.log('[reasoning-diag] DB real stats', {
+          segmentsInDb: dbRealStats.cnt,
+          sumDeltaTextLenInDb: dbRealStats.sumLen,
+          trackerDbInserted: tracker.dbInserted,
+          trackerDbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
+          matchCnt,
+          matchSum,
+        })
+        // 失败时输出差异诊断
+        if (!matchCnt || !matchSum) {
+          console.warn('[reasoning-diag] MISMATCH', {
+            messageId: assistantMessageId,
+            cntDiff: dbRealStats.cnt - tracker.dbInserted,
+            sumDiff: dbRealStats.sumLen - tracker.dbSumDeltaLenInserted,
+            trackerIgnored: tracker.dbIgnored,
+            trackerSkipped: tracker.dbSkipped,
+          })
+        }
+      } else {
+        console.warn('[reasoning-diag] failed to get DB real stats for', assistantMessageId)
+      }
+
+      // 恒等式验证
+      const eventCountExpected = tracker.dbInserted + tracker.dbIgnored + tracker.dbSkipped
+      const invariant1 = tracker.totalQueued === eventCountExpected
+      console.log('[reasoning-diag] invariants', {
+        'eventCount == dbInserted + dbIgnored + dbSkipped': invariant1,
+        totalQueued: tracker.totalQueued,
+        eventCountExpected,
+        'totalDeltaLen == dbSumDeltaLenInserted': tracker.totalDeltaLen === tracker.dbSumDeltaLenInserted,
+        totalDeltaLen: tracker.totalDeltaLen,
+        dbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
+        deltaLenDiff: tracker.totalDeltaLen - tracker.dbSumDeltaLenInserted,
+      })
+
+      // 详细诊断日志
+      console.log('[reasoning-verify] diagnostic info', {
+        messageId: assistantMessageId,
+        mergerChunkCount: mergerStats.chunkCount,
+        mergerDeltaCount: mergerStats.deltaCount,
+        mergerSnapshotCount: mergerStats.snapshotCount,
+        mergerUniqueKeys: mergerStats.uniqueKeys,
+        pendingCountBeforeFlush,
+        dbSegmentsCount,
+        isLikelySnapshot: mergerStats.isLikelySnapshot,
+        isEncryptedModel,
+      })
+
+      // 对于加密模型，比较 encryptedData；否则比较 reasoningText
+      const mergerCompareText = isEncryptedModel ? mergerExtracted.encryptedData : mergerFinalText
+      const dbCompareText = isEncryptedModel ? dbExtracted?.encryptedData : dbFinalText
+
+      console.log('[reasoning-verify] text compare', {
+        messageId: assistantMessageId,
+        isEncryptedModel,
+        mergerFinalTextLen: mergerCompareText?.length ?? 0,
+        dbFinalTextLen: dbCompareText?.length ?? 0,
+        uiFinalTextLen: uiFinalText?.length ?? 0,
+        // 加密模型不输出原文（避免日志过大）
+        mergerFinalText: isEncryptedModel ? `[encrypted ${mergerCompareText?.length ?? 0} bytes]` : mergerFinalText,
+        dbFinalText: isEncryptedModel ? `[encrypted ${dbCompareText?.length ?? 0} bytes]` : dbFinalText,
+        uiFinalText: isEncryptedModel ? '[encrypted - see UI]' : uiFinalText,
+      })
+
+      // 加密模型：比较 encryptedData；非加密模型：比较 reasoningText
+      const textMismatch = mergerCompareText !== dbCompareText
+      // UI 文本对于加密模型无法直接比较（UI 可能解密显示），跳过 UI 比较
+      const uiMismatch = !isEncryptedModel && dbFinalText !== uiFinalText
+
+      if (textMismatch || uiMismatch) {
+        // 找出具体差异位置（使用比较用的文本）
+        let diffPos = -1
+        const shorter = mergerCompareText && dbCompareText
+          ? (mergerCompareText.length <= dbCompareText.length ? mergerCompareText : dbCompareText)
+          : ''
+        const longer = mergerCompareText && dbCompareText
+          ? (mergerCompareText.length > dbCompareText.length ? mergerCompareText : dbCompareText)
+          : ''
+        for (let i = 0; i < shorter.length; i++) {
+          if (shorter[i] !== longer[i]) {
+            diffPos = i
+            break
+          }
+        }
+        if (diffPos === -1 && shorter.length !== longer.length) {
+          diffPos = shorter.length
+        }
+
+        console.warn('[reasoning-verify] MISMATCH DETECTED', {
+          messageId: assistantMessageId,
+          isEncryptedModel,
+          textMismatch,
+          uiMismatch,
+          diffPos,
+          diffContext: diffPos >= 0 && !isEncryptedModel ? {
+            mergerAround: mergerCompareText?.slice(Math.max(0, diffPos - 20), diffPos + 20),
+            dbAround: dbCompareText?.slice(Math.max(0, diffPos - 20), diffPos + 20),
+          } : null,
+          mergerSnapshotCount: mergerSnapshot.length,
+          dbSnapshotCount: dbReplaySnapshot?.length ?? 0,
+        })
+
+        // 用 diffPos 映射到 chunkNo（精确定位被吞的 chunk）
+        const affectedChunk = tracker.chunkRanges.find(r => r.start <= diffPos && diffPos < r.end)
+        console.warn('[reasoning-verify] diffPos → chunkNo mapping', {
+          diffPos,
+          affectedChunkNo: affectedChunk?.chunkNo ?? 'not found',
+          affectedChunkRange: affectedChunk ? `[${affectedChunk.start}, ${affectedChunk.end})` : null,
+          nearbyChunks: tracker.chunkRanges.filter(r =>
+            Math.abs(r.start - diffPos) < 50 || Math.abs(r.end - diffPos) < 50
+          ).slice(0, 5),
+        })
+
+        // 输出每个 snapshot 的 text 长度对比
+        console.warn('[reasoning-verify] snapshot details', {
+          mergerSnapshots: mergerSnapshot.map((s: any) => ({
+            key: `${s.id ?? ''}|${s.index ?? ''}|${s.type ?? ''}`,
+            textLen: s.text?.length ?? 0,
+            textPreview: s.text?.slice(0, 50),
+          })),
+          dbSnapshots: dbReplaySnapshot?.map((s: any) => ({
+            key: `${s.id ?? ''}|${s.index ?? ''}|${s.type ?? ''}`,
+            textLen: s.text?.length ?? 0,
+            textPreview: s.text?.slice(0, 50),
+          })),
+        })
+      }
+    }
+  } catch (err) {
+    if (shouldLogReasoningDebug()) console.warn('[ui-app] finalizeReasoningDetails failed (non-fatal):', err)
+  }
+  if (errorPersistPromise) {
+    try {
+      await errorPersistPromise
+    } catch {
+      // no-op
+    }
+  }
+  await finalizeRun(assistantMessageId)
+}
+/* eslint-enable max-depth */
+
+async function runAssistantStreamSession(input: AssistantStreamSessionInput) {
+  const { convoId, branchId, assistantMessageId, assistantSeq, modelId } = input
+  const stream = createActiveStream(assistantMessageId, assistantSeq)
+  activeStream.value = stream
+
+  let finalStatus: 'final' | 'error' = 'final'
+  let finalMetaStatus: 'final' | 'error' | 'aborted' = 'final'
+  let errorPersisted = false
+  let errorPersistPromise: Promise<void> | null = null
+  let sawAnyEvent = false
+
+  let telemetryTerminalStatus: 'done' | 'error' | 'aborted' = 'done'
+  let telemetryTerminalError: unknown = null
+  let telemetryFinalized = false
+  const finalizeTelemetry = (status: 'done' | 'error' | 'aborted', error: unknown) => {
+    if (telemetryFinalized) return
+    telemetryFinalized = true
+    input.telemetry?.onEnd?.(status, error)
+  }
+
+  try {
+    for await (const ev of input.createEvents(stream.abort.signal)) {
+      sawAnyEvent = true
+      input.telemetry?.onEvent?.(ev)
+
+      if (ev.type === 'StreamError' || ev.type === 'StreamAbort') {
+        const completionClass = completionClassFromEvent(ev) ?? 'error'
+        if (completionClass === 'aborted') {
+          telemetryTerminalStatus = 'aborted'
+        } else if (completionClass === 'error' && telemetryTerminalStatus !== 'aborted') {
+          telemetryTerminalStatus = 'error'
+          telemetryTerminalError = ev.type === 'StreamError' ? ev.error : ev.envelope
+        }
+        if (!errorPersisted) {
+          const envelope = ev.type === 'StreamError' ? ev.error : ev.envelope
+          if (envelope && envelope.completionClass && envelope.completionClass !== 'ok') {
+            errorPersisted = true
+            errorPersistPromise = persistMessageErrorEnvelope(assistantMessageId, envelope)
+          }
+        }
+      }
+
+      if (enableEventScheduler) {
+        eventScheduler.enqueue(branchId, ev)
+      } else {
+        commitImmediate(branchId, ev)
+      }
+
+      if (ev.type === 'MessageDeltaText' && ev.messageId === assistantMessageId) {
+        stream.pendingAppendText.value += ev.text
+        scheduleFlush(convoId, stream)
+      }
+      if (ev.type === 'MessageAppendContentBlock' && ev.messageId === assistantMessageId && ev.block?.type === 'text') {
+        stream.pendingAppendText.value += String((ev.block as any).text ?? '')
+        scheduleFlush(convoId, stream)
+      }
+
+      processReasoningDetailEvent(ev, stream, assistantMessageId)
+
+      if (ev.type === 'StreamError') {
+        if (String(globalThis?.localStorage?.getItem('sv_debug_stream_error') ?? '').trim() === '1') {
+          console.error('[ui-app] stream error event', ev)
+        }
+      }
+      if (ev.type === 'StreamDone' || ev.type === 'StreamAbort' || ev.type === 'StreamError') {
+        const completionClass = completionClassFromEvent(ev)
+        const metaStatus = metaStatusFromCompletionClass(completionClass)
+        if (metaStatus) {
+          finalMetaStatus = metaStatus
+          finalStatus = persistStatusFromCompletionClass(completionClass)
+          ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus })
+        }
+        if (enableEventScheduler) {
+          eventScheduler.flushNow(branchId, 'flush')
+        }
+        clearFlushTimer(stream)
+        await flushPending(convoId, stream)
+        clearReasoningFlushTimer(stream)
+        await flushReasoningDetailSegments(stream, assistantMessageId)
+      }
+    }
+
+    if (enableEventScheduler) {
+      eventScheduler.flushNow(branchId, 'flush')
+    }
+    clearFlushTimer(stream)
+    await flushPending(convoId, stream)
+    await setMessageStatus({ messageId: assistantMessageId, status: finalStatus, ...getMessageTimingForPersist(assistantMessageId) })
+    finalizeTelemetry(telemetryTerminalStatus, telemetryTerminalError)
+  } catch (err: any) {
+    const appError = normalizeTransportError(err)
+    const completionClass: CompletionClass = appError.phase === 'user_cancelled' ? 'aborted' : 'error'
+    const fallbackPhase: ErrorPhase = sawAnyEvent ? 'mid_stream' : 'pre_stream'
+    const fallbackEndReason: StreamEndReason = sawAnyEvent ? 'mid_stream_error' : 'pre_stream_error'
+    const envelopePhase = mapAppPhaseToEnvelopePhase(appError.phase, fallbackPhase)
+    const endReason = mapAppPhaseToEndReason(appError.phase, fallbackEndReason)
+
+    finalStatus = persistStatusFromCompletionClass(completionClass)
+    finalMetaStatus = metaStatusFromCompletionClass(completionClass) ?? 'error'
+    finalizeTelemetry(completionClass === 'aborted' ? 'aborted' : 'error', err)
+    if (completionClass === 'error') {
+      loadError.value = appError.message
+    }
+
+    let envelope: ErrorEnvelope
+    let terminalEvent: DomainEvent
+    if (completionClass === 'aborted') {
+      envelope = buildAbortEnvelope({
+        phase: envelopePhase,
+        completionClass: 'aborted',
+        reason: appError.message,
+        request: { model: modelId, stream: true },
+      })
+      terminalEvent = { type: 'StreamAbort', reason: 'aborted', envelope }
+    } else {
+      const normalized = toNormalizedErrorEnvelope({
+        appError,
+        endpoint: 'chat.completions',
+        transport: 'sse',
+        phase: envelopePhase === 'pre_stream' ? 'request' : 'generation',
+        raw: {
+          type: 'ui_run_stream_session_catch',
+          ...(err && typeof err === 'object' ? { details: err as Record<string, unknown> } : {}),
+        },
+      })
+      envelope = buildTransportErrorEnvelope({
+        phase: envelopePhase,
+        completionClass: 'error',
+        message: appError.message,
+        normalized,
+        request: { model: modelId, stream: true },
+        kind: appError.phase === 'local_protocol_error' ? 'parse_error' : 'transport_error',
+      })
+      terminalEvent = { type: 'StreamError', error: envelope, terminal: true }
+    }
+
+    if (enableEventScheduler) {
+      eventScheduler.flushNow(branchId, 'flush')
+    }
+    try {
+      commitImmediate(branchId, { type: 'TimingSnapshot', tEnd: Date.now(), endReason } as DomainEvent)
+      commitImmediate(branchId, terminalEvent)
+      ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus })
+    } catch {
+      // no-op
+    }
+    try {
+      if (!errorPersisted) {
+        errorPersisted = true
+        errorPersistPromise = persistMessageErrorEnvelope(assistantMessageId, envelope)
+      }
+      if (errorPersistPromise) await errorPersistPromise
+    } catch {
+      // no-op
+    }
+    try {
+      await setMessageStatus({ messageId: assistantMessageId, status: finalStatus, ...getMessageTimingForPersist(assistantMessageId) })
+    } catch {
+      // no-op
+    }
+  } finally {
+    await finalizeAssistantStreamSession({
+      convoId,
+      assistantMessageId,
+      assistantSeq,
+      stream,
+      errorPersistPromise,
+    })
+  }
+}
+
 async function startStreamingForAssistantTurn(input: Readonly<{
   convoId: string
   branchId: string
@@ -2285,9 +2819,6 @@ async function startStreamingForAssistantTurn(input: Readonly<{
     baseUrl: baseUrl ?? undefined,
     settings: netExpSettings,
   })
-  let netExpTerminalStatus: 'done' | 'error' | 'aborted' = 'done'
-  let netExpTerminalError: unknown = null
-  let netExpFinalized = false
 
   const started = startGeneration(state.value, {
     runId: branchId,
@@ -2320,44 +2851,18 @@ async function startStreamingForAssistantTurn(input: Readonly<{
     if (shouldLogDebug()) console.warn('[ui-app] setMessageReasoningRequestConfig failed (non-fatal):', err)
   }
 
-  const abort = new AbortController()
-  const stream: ActiveStream = {
-    abort,
+  await runAssistantStreamSession({
+    convoId,
+    branchId,
     assistantMessageId,
     assistantSeq,
-    pendingAppendText: { value: '' },
-    flushing: { value: false },
-    flushTimer: { id: null },
-    pendingReasoningDetails: { value: [] },
-    reasoningFlushTimer: { id: null },
-    reasoningMerger: new ReasoningDetailStreamMerger(),
-    diagnosticTracker: {
-      events: [],
-      totalQueued: 0,
-      totalSkipped: 0,
-      totalDeltaLen: 0,
-      chunkRanges: [],
-      textCursor: 0,
-      dbInserted: 0,
-      dbSkipped: 0,
-      dbIgnored: 0,
-      dbSumDeltaLenInserted: 0,
-    },
-  }
-  activeStream.value = stream
-
-  let finalStatus: 'final' | 'error' = 'final'
-  let finalMetaStatus: 'final' | 'error' | 'aborted' = 'final'
-  let errorPersisted = false
-  let errorPersistPromise: Promise<void> | null = null
-  let sawAnyEvent = false
-  try {
-    for await (const ev of streamOpenRouterChatAsEvents({
+    modelId,
+    createEvents: (signal) => streamOpenRouterChatAsEvents({
       requestId,
       assistantMessageId,
       userText: questionText,
       contextMessages: input.contextMessages,
-      signal: abort.signal,
+      signal,
       config: {
         apiKey,
         model: modelId,
@@ -2366,377 +2871,12 @@ async function startStreamingForAssistantTurn(input: Readonly<{
         ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
         ...(baseUrl ? { baseUrl } : {}),
       },
-    })) {
-      sawAnyEvent = true
-      netExpRunTracker.onEvent(ev)
-      if (ev.type === 'StreamError' || ev.type === 'StreamAbort') {
-        const completionClass = completionClassFromEvent(ev) ?? 'error'
-        if (completionClass === 'aborted') {
-          netExpTerminalStatus = 'aborted'
-        } else if (completionClass === 'error' && netExpTerminalStatus !== 'aborted') {
-          netExpTerminalStatus = 'error'
-          netExpTerminalError = ev.type === 'StreamError' ? ev.error : ev.envelope
-        }
-        if (!errorPersisted) {
-          const envelope = ev.type === 'StreamError' ? ev.error : ev.envelope
-          if (envelope && envelope.completionClass && envelope.completionClass !== 'ok') {
-            errorPersisted = true
-            errorPersistPromise = persistMessageErrorEnvelope(assistantMessageId, envelope)
-          }
-        }
-      }
-
-      if (enableEventScheduler) {
-        eventScheduler.enqueue(branchId, ev)
-      } else {
-        commitImmediate(branchId, ev)
-      }
-
-      if (ev.type === 'MessageDeltaText' && ev.messageId === assistantMessageId) {
-        stream.pendingAppendText.value += ev.text
-        scheduleFlush(convoId, stream)
-      }
-      if (ev.type === 'MessageAppendContentBlock' && ev.messageId === assistantMessageId && ev.block?.type === 'text') {
-        stream.pendingAppendText.value += String((ev.block as any).text ?? '')
-        scheduleFlush(convoId, stream)
-      }
-
-      if (ev.type === 'MessageDeltaReasoningDetail' && ev.messageId === assistantMessageId) {
-        // 使用 Merger 处理快照语义，提取真正的后缀增量
-        const merged = stream.reasoningMerger.merge(ev.detail)
-        const key = merged?.key ?? 'unknown'
-        const chunkNo = typeof ev.chunkNo === 'number' ? ev.chunkNo : -1
-
-        if (merged) {
-          const deltaLen = (merged.deltaText?.length ?? 0) + (merged.deltaSummary?.length ?? 0) + (merged.deltaData?.length ?? 0)
-          // 构建带有真正 delta 和 offset 信息的对象用于存储
-          const detailWithDelta = {
-            ...merged.originalDetail,
-            __deltaText: merged.deltaText,
-            __deltaSummary: merged.deltaSummary,
-            __deltaData: merged.deltaData,
-            __isSnapshot: merged.isSnapshot,
-            __hasNewMetadata: merged.hasNewMetadata,
-            __key: merged.key,
-            __offsetBefore: merged.offsetBefore,
-            __offsetAfter: merged.offsetAfter,
-            __metadataDigest: merged.metadataDigest,
-          }
-          stream.pendingReasoningDetails.value.push(detailWithDelta)
-          scheduleReasoningDetailFlush(stream, assistantMessageId)
-
-          // 追踪诊断信息
-          stream.diagnosticTracker.events.push({ chunkNo, key, offsetBefore: merged.offsetBefore, deltaLen, action: 'queued' })
-          stream.diagnosticTracker.totalQueued++
-          stream.diagnosticTracker.totalDeltaLen += deltaLen
-          // 记录 offset 到文本区间的映射 [start, end)
-          const start = stream.diagnosticTracker.textCursor
-          const end = start + deltaLen
-          stream.diagnosticTracker.chunkRanges.push({ chunkNo, key, offsetBefore: merged.offsetBefore, start, end })
-          stream.diagnosticTracker.textCursor = end
-
-          if (shouldLogReasoningDebug()) {
-            const snapshotTail = merged.isSnapshot && typeof (merged.originalDetail as any)?.text === 'string'
-              ? (merged.originalDetail as any).text.slice(-30)
-              : undefined
-            console.log('[reasoning-chunk]', { key, offsetBefore: merged.offsetBefore, deltaLen, hasNewMetadata: merged.hasNewMetadata, isSnapshot: merged.isSnapshot, deltaHead: merged.deltaText?.slice(0, 30), snapshotTail })
-          }
-        } else {
-          // Merger 返回 null，记录跳过
-          stream.diagnosticTracker.events.push({ chunkNo, key, deltaLen: 0, action: 'skipped', reason: 'merger_null' })
-          stream.diagnosticTracker.totalSkipped++
-          if (shouldLogReasoningDebug()) {
-            console.log('[reasoning-chunk] SKIPPED (merger returned null)', { key })
-          }
-        }
-      }
-
-      if (ev.type === 'StreamError') {
-        if (String(globalThis?.localStorage?.getItem('sv_debug_stream_error') ?? '').trim() === '1') {
-          console.error('[ui-app] stream error event', ev)
-        }
-      }
-      if (ev.type === 'StreamDone' || ev.type === 'StreamAbort' || ev.type === 'StreamError') {
-        const completionClass = completionClassFromEvent(ev)
-        const metaStatus = metaStatusFromCompletionClass(completionClass)
-        if (metaStatus) {
-          finalMetaStatus = metaStatus
-          finalStatus = persistStatusFromCompletionClass(completionClass)
-          ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus })
-        }
-        if (enableEventScheduler) {
-          eventScheduler.flushNow(branchId, 'flush')
-        }
-        clearFlushTimer(stream)
-        await flushPending(convoId, stream)
-        clearReasoningFlushTimer(stream)
-        await flushReasoningDetailSegments(stream, assistantMessageId)
-      }
-    }
-
-    if (enableEventScheduler) {
-      eventScheduler.flushNow(branchId, 'flush')
-    }
-    clearFlushTimer(stream)
-    await flushPending(convoId, stream)
-    await setMessageStatus({ messageId: assistantMessageId, status: finalStatus, ...getMessageTimingForPersist(assistantMessageId) })
-    if (!netExpFinalized) {
-      netExpFinalized = true
-      netExpRunTracker.onEnd(netExpTerminalStatus, netExpTerminalError)
-    }
-  } catch (err: any) {
-    finalStatus = 'error'
-    finalMetaStatus = 'error'
-    if (!netExpFinalized) {
-      netExpFinalized = true
-      netExpRunTracker.onEnd('error', err)
-    }
-    loadError.value = err?.message ? String(err.message) : String(err)
-    const message = err?.message ? String(err.message) : 'Stream error'
-    const normalized = normalizeOpenRouterUnknownStreamingError({ message, details: { name: err?.name } })
-    const envelope = buildTransportErrorEnvelope({
-      phase: sawAnyEvent ? 'mid_stream' : 'pre_stream',
-      completionClass: 'error',
-      message,
-      normalized,
-      request: { model: modelId, stream: true },
-      kind: 'transport_error',
-    })
-    if (enableEventScheduler) {
-      eventScheduler.flushNow(branchId, 'flush')
-    }
-    try {
-      commitImmediate(branchId, { type: 'StreamError', error: envelope, terminal: true } as DomainEvent)
-      ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus })
-    } catch {
-      // no-op
-    }
-    try {
-      if (!errorPersisted) {
-        errorPersisted = true
-        errorPersistPromise = persistMessageErrorEnvelope(assistantMessageId, envelope)
-      }
-      if (errorPersistPromise) await errorPersistPromise
-    } catch {
-      // no-op
-    }
-    try {
-      await setMessageStatus({ messageId: assistantMessageId, status: 'error', ...getMessageTimingForPersist(assistantMessageId) })
-    } catch {
-      // no-op
-    }
-  } finally {
-    clearFlushTimer(stream)
-    clearReasoningFlushTimer(stream)
-    // 输出 Merger 诊断统计
-    if (shouldLogReasoningDebug()) {
-      const stats = stream.reasoningMerger.getStats()
-      console.log('[reasoning-merger] stream stats:', stats)
-      if (stats.isLikelySnapshot) {
-        console.log('[reasoning-merger] ⚠️ 检测到快照语义 (>50% prefixMatch)，已自动提取后缀增量')
-      }
-    }
-    // Use unified finalization to enforce: refresh FIRST, then clear activeStream.
-    try {
-      // 记录 flush 前的队列信息
-      const pendingCountBeforeFlush = stream.pendingReasoningDetails.value.length
-      await flushReasoningDetailSegments(stream, assistantMessageId)
-      await finalizeReasoningDetails({ messageId: assistantMessageId })
-
-      if (shouldLogReasoningDebug()) {
-        const mergerStats = stream.reasoningMerger.getStats()
-        const mergerSnapshot = stream.reasoningMerger.getMergedSnapshots()
-        const mergerExtracted = extractReasoningTextFromDetails(mergerSnapshot)
-        const mergerFinalText = mergerExtracted.reasoningText
-        const isEncryptedModel = mergerExtracted.isEncrypted
-
-        let dbReplaySnapshot: unknown[] | null = null
-        let dbFinalText: string | undefined
-        let dbExtracted: ReturnType<typeof extractReasoningTextFromDetails> | null = null
-        let dbSegmentsCount: number | undefined
-        try {
-          const bridge = (globalThis as any).dbBridge as { invoke?: (method: string, params?: unknown) => Promise<any> } | undefined
-          if (bridge?.invoke) {
-            const rows = await bridge.invoke('message.list', { convoId, fromSeq: assistantSeq, limit: 1 })
-            const row = Array.isArray(rows)
-              ? (rows.find((r) => r && typeof r === 'object' && (r as any).id === assistantMessageId) ?? rows[0])
-              : null
-            const meta = row && typeof (row as any).meta === 'object' ? (row as any).meta : null
-            const reasoningDetailsRaw = Array.isArray(meta?.reasoningDetailsRaw) ? meta.reasoningDetailsRaw : null
-            if (reasoningDetailsRaw) {
-              dbReplaySnapshot = reasoningDetailsRaw
-              dbExtracted = extractReasoningTextFromDetails(dbReplaySnapshot)
-              dbFinalText = dbExtracted.reasoningText
-            }
-            // 尝试获取 segments count（如果 meta 中有的话）
-            dbSegmentsCount = typeof meta?.reasoningSegmentsCount === 'number' ? meta.reasoningSegmentsCount : undefined
-          }
-        } catch (err) {
-          console.warn('[reasoning-verify] failed to load db replay snapshot:', err)
-        }
-
-        const uiFinalText = selectMessage(state.value, assistantMessageId)?.reasoningView?.reasoningText
-
-        // 输出 diagnosticTracker 摘要（包含 DB 统计）
-        const tracker = stream.diagnosticTracker
-        console.log('[reasoning-diag] tracker summary', {
-          // UI 侧统计
-          totalQueued: tracker.totalQueued,
-          totalSkipped: tracker.totalSkipped,
-          totalDeltaLen: tracker.totalDeltaLen,
-          eventCount: tracker.events.length,
-          // DB 侧统计
-          dbInserted: tracker.dbInserted,
-          dbSkipped: tracker.dbSkipped,
-          dbIgnored: tracker.dbIgnored,
-          dbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
-        })
-
-        // 一次性 DB 统计查询（作为对照）
-        const dbRealStats = await getReasoningSegmentsStats(assistantMessageId)
-        if (dbRealStats) {
-          const matchCnt = dbRealStats.cnt === tracker.dbInserted
-          const matchSum = dbRealStats.sumLen === tracker.dbSumDeltaLenInserted
-          console.log('[reasoning-diag] DB real stats', {
-            segmentsInDb: dbRealStats.cnt,
-            sumDeltaTextLenInDb: dbRealStats.sumLen,
-            trackerDbInserted: tracker.dbInserted,
-            trackerDbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
-            matchCnt,
-            matchSum,
-          })
-          // 失败时输出差异诊断
-          if (!matchCnt || !matchSum) {
-            console.warn('[reasoning-diag] MISMATCH', {
-              messageId: assistantMessageId,
-              cntDiff: dbRealStats.cnt - tracker.dbInserted,
-              sumDiff: dbRealStats.sumLen - tracker.dbSumDeltaLenInserted,
-              trackerIgnored: tracker.dbIgnored,
-              trackerSkipped: tracker.dbSkipped,
-            })
-          }
-        } else {
-          console.warn('[reasoning-diag] failed to get DB real stats for', assistantMessageId)
-        }
-
-        // 恒等式验证
-        const eventCountExpected = tracker.dbInserted + tracker.dbIgnored + tracker.dbSkipped
-        const invariant1 = tracker.totalQueued === eventCountExpected
-        console.log('[reasoning-diag] invariants', {
-          'eventCount == dbInserted + dbIgnored + dbSkipped': invariant1,
-          totalQueued: tracker.totalQueued,
-          eventCountExpected,
-          'totalDeltaLen == dbSumDeltaLenInserted': tracker.totalDeltaLen === tracker.dbSumDeltaLenInserted,
-          totalDeltaLen: tracker.totalDeltaLen,
-          dbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
-          deltaLenDiff: tracker.totalDeltaLen - tracker.dbSumDeltaLenInserted,
-        })
-
-        // 详细诊断日志
-        console.log('[reasoning-verify] diagnostic info', {
-          messageId: assistantMessageId,
-          mergerChunkCount: mergerStats.chunkCount,
-          mergerDeltaCount: mergerStats.deltaCount,
-          mergerSnapshotCount: mergerStats.snapshotCount,
-          mergerUniqueKeys: mergerStats.uniqueKeys,
-          pendingCountBeforeFlush,
-          dbSegmentsCount,
-          isLikelySnapshot: mergerStats.isLikelySnapshot,
-          isEncryptedModel,
-        })
-
-        // 对于加密模型，比较 encryptedData；否则比较 reasoningText
-        const mergerCompareText = isEncryptedModel ? mergerExtracted.encryptedData : mergerFinalText
-        const dbCompareText = isEncryptedModel ? dbExtracted?.encryptedData : dbFinalText
-
-        console.log('[reasoning-verify] text compare', {
-          messageId: assistantMessageId,
-          isEncryptedModel,
-          mergerFinalTextLen: mergerCompareText?.length ?? 0,
-          dbFinalTextLen: dbCompareText?.length ?? 0,
-          uiFinalTextLen: uiFinalText?.length ?? 0,
-          // 加密模型不输出原文（避免日志过大）
-          mergerFinalText: isEncryptedModel ? `[encrypted ${mergerCompareText?.length ?? 0} bytes]` : mergerFinalText,
-          dbFinalText: isEncryptedModel ? `[encrypted ${dbCompareText?.length ?? 0} bytes]` : dbFinalText,
-          uiFinalText: isEncryptedModel ? '[encrypted - see UI]' : uiFinalText,
-        })
-
-        // 加密模型：比较 encryptedData；非加密模型：比较 reasoningText
-        const textMismatch = mergerCompareText !== dbCompareText
-        // UI 文本对于加密模型无法直接比较（UI 可能解密显示），跳过 UI 比较
-        const uiMismatch = !isEncryptedModel && dbFinalText !== uiFinalText
-
-        if (textMismatch || uiMismatch) {
-          // 找出具体差异位置（使用比较用的文本）
-          let diffPos = -1
-          const shorter = mergerCompareText && dbCompareText
-            ? (mergerCompareText.length <= dbCompareText.length ? mergerCompareText : dbCompareText)
-            : ''
-          const longer = mergerCompareText && dbCompareText
-            ? (mergerCompareText.length > dbCompareText.length ? mergerCompareText : dbCompareText)
-            : ''
-          for (let i = 0; i < shorter.length; i++) {
-            if (shorter[i] !== longer[i]) {
-              diffPos = i
-              break
-            }
-          }
-          if (diffPos === -1 && shorter.length !== longer.length) {
-            diffPos = shorter.length
-          }
-
-          console.warn('[reasoning-verify] MISMATCH DETECTED', {
-            messageId: assistantMessageId,
-            isEncryptedModel,
-            textMismatch,
-            uiMismatch,
-            diffPos,
-            diffContext: diffPos >= 0 && !isEncryptedModel ? {
-              mergerAround: mergerCompareText?.slice(Math.max(0, diffPos - 20), diffPos + 20),
-              dbAround: dbCompareText?.slice(Math.max(0, diffPos - 20), diffPos + 20),
-            } : null,
-            mergerSnapshotCount: mergerSnapshot.length,
-            dbSnapshotCount: dbReplaySnapshot?.length ?? 0,
-          })
-
-          // 用 diffPos 映射到 chunkNo（精确定位被吞的 chunk）
-          const affectedChunk = tracker.chunkRanges.find(r => r.start <= diffPos && diffPos < r.end)
-          console.warn('[reasoning-verify] diffPos → chunkNo mapping', {
-            diffPos,
-            affectedChunkNo: affectedChunk?.chunkNo ?? 'not found',
-            affectedChunkRange: affectedChunk ? `[${affectedChunk.start}, ${affectedChunk.end})` : null,
-            nearbyChunks: tracker.chunkRanges.filter(r => 
-              Math.abs(r.start - diffPos) < 50 || Math.abs(r.end - diffPos) < 50
-            ).slice(0, 5),
-          })
-
-          // 输出每个 snapshot 的 text 长度对比
-          console.warn('[reasoning-verify] snapshot details', {
-            mergerSnapshots: mergerSnapshot.map((s: any) => ({
-              key: `${s.id ?? ''}|${s.index ?? ''}|${s.type ?? ''}`,
-              textLen: s.text?.length ?? 0,
-              textPreview: s.text?.slice(0, 50),
-            })),
-            dbSnapshots: dbReplaySnapshot?.map((s: any) => ({
-              key: `${s.id ?? ''}|${s.index ?? ''}|${s.type ?? ''}`,
-              textLen: s.text?.length ?? 0,
-              textPreview: s.text?.slice(0, 50),
-            })),
-          })
-        }
-      }
-    } catch (err) {
-      if (shouldLogReasoningDebug()) console.warn('[ui-app] finalizeReasoningDetails failed (non-fatal):', err)
-    }
-    if (errorPersistPromise) {
-      try {
-        await errorPersistPromise
-      } catch {
-        // no-op
-      }
-    }
-    await finalizeRun(assistantMessageId)
-  }
+    }),
+    telemetry: {
+      onEvent: (event) => netExpRunTracker.onEvent(event),
+      onEnd: (status, error) => netExpRunTracker.onEnd(status, error),
+    },
+  })
 }
 
 async function onSend() {
@@ -2812,44 +2952,18 @@ async function onSend() {
     if (shouldLogDebug()) console.warn('[ui-app] setMessageReasoningRequestConfig failed (non-fatal):', err)
   }
 
-  const abort = new AbortController()
-  const stream: ActiveStream = {
-    abort,
+  await runAssistantStreamSession({
+    convoId,
+    branchId: branch.id,
     assistantMessageId,
     assistantSeq,
-    pendingAppendText: { value: '' },
-    flushing: { value: false },
-    flushTimer: { id: null },
-    pendingReasoningDetails: { value: [] },
-    reasoningFlushTimer: { id: null },
-    reasoningMerger: new ReasoningDetailStreamMerger(),
-    diagnosticTracker: {
-      events: [],
-      totalQueued: 0,
-      totalSkipped: 0,
-      totalDeltaLen: 0,
-      chunkRanges: [],
-      textCursor: 0,
-      dbInserted: 0,
-      dbSkipped: 0,
-      dbIgnored: 0,
-      dbSumDeltaLenInserted: 0,
-    },
-  }
-  activeStream.value = stream
-
-  let finalStatus: 'final' | 'error' = 'final'
-  let finalMetaStatus: 'final' | 'error' | 'aborted' = 'final'
-  let errorPersisted = false
-  let errorPersistPromise: Promise<void> | null = null
-  let sawAnyEvent = false
-  try {
-    for await (const ev of streamOpenRouterChatAsEvents({
+    modelId,
+    createEvents: (signal) => streamOpenRouterChatAsEvents({
       requestId: randomId('req'),
       assistantMessageId,
       userText: text,
       contextMessages,
-      signal: abort.signal,
+      signal,
       config: {
         apiKey,
         model: modelId,
@@ -2858,357 +2972,8 @@ async function onSend() {
         ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
         ...(baseUrl ? { baseUrl } : {}),
       },
-    })) {
-      sawAnyEvent = true
-      if (enableEventScheduler) {
-        eventScheduler.enqueue(branch.id, ev)
-      } else {
-        commitImmediate(branch.id, ev)
-      }
-
-      if (ev.type === 'MessageDeltaText' && ev.messageId === assistantMessageId) {
-        stream.pendingAppendText.value += ev.text
-        scheduleFlush(convoId, stream)
-      }
-      if (ev.type === 'MessageAppendContentBlock' && ev.messageId === assistantMessageId && ev.block?.type === 'text') {
-        stream.pendingAppendText.value += String((ev.block as any).text ?? '')
-        scheduleFlush(convoId, stream)
-      }
-
-      if (ev.type === 'MessageDeltaReasoningDetail' && ev.messageId === assistantMessageId) {
-        // 使用 Merger 处理快照语义，提取真正的后缀增量
-        const merged = stream.reasoningMerger.merge(ev.detail)
-        const key = merged?.key ?? 'unknown'
-        const chunkNo = typeof ev.chunkNo === 'number' ? ev.chunkNo : -1
-
-        if (merged) {
-          const deltaLen = (merged.deltaText?.length ?? 0) + (merged.deltaSummary?.length ?? 0) + (merged.deltaData?.length ?? 0)
-          // 构建带有真正 delta 和 offset 信息的对象用于存储
-          const detailWithDelta = {
-            ...merged.originalDetail,
-            __deltaText: merged.deltaText,
-            __deltaSummary: merged.deltaSummary,
-            __deltaData: merged.deltaData,
-            __isSnapshot: merged.isSnapshot,
-            __hasNewMetadata: merged.hasNewMetadata,
-            __key: merged.key,
-            __offsetBefore: merged.offsetBefore,
-            __offsetAfter: merged.offsetAfter,
-            __metadataDigest: merged.metadataDigest,
-          }
-          stream.pendingReasoningDetails.value.push(detailWithDelta)
-          scheduleReasoningDetailFlush(stream, assistantMessageId)
-
-          // 追踪诊断信息
-          stream.diagnosticTracker.events.push({ chunkNo, key, offsetBefore: merged.offsetBefore, deltaLen, action: 'queued' })
-          stream.diagnosticTracker.totalQueued++
-          stream.diagnosticTracker.totalDeltaLen += deltaLen
-          // 记录 offset 到文本区间的映射 [start, end)
-          const start = stream.diagnosticTracker.textCursor
-          const end = start + deltaLen
-          stream.diagnosticTracker.chunkRanges.push({ chunkNo, key, offsetBefore: merged.offsetBefore, start, end })
-          stream.diagnosticTracker.textCursor = end
-
-          if (shouldLogReasoningDebug()) {
-            const snapshotTail = merged.isSnapshot && typeof (merged.originalDetail as any)?.text === 'string'
-              ? (merged.originalDetail as any).text.slice(-30)
-              : undefined
-            console.log('[reasoning-chunk]', { key, offsetBefore: merged.offsetBefore, deltaLen, hasNewMetadata: merged.hasNewMetadata, isSnapshot: merged.isSnapshot, deltaHead: merged.deltaText?.slice(0, 30), snapshotTail })
-          }
-        } else {
-          // Merger 返回 null，记录跳过
-          stream.diagnosticTracker.events.push({ chunkNo, key, deltaLen: 0, action: 'skipped', reason: 'merger_null' })
-          stream.diagnosticTracker.totalSkipped++
-          if (shouldLogReasoningDebug()) {
-            console.log('[reasoning-chunk] SKIPPED (merger returned null)', { key })
-          }
-        }
-      }
-
-      if (ev.type === 'StreamError') {
-        if (String(globalThis?.localStorage?.getItem('sv_debug_stream_error') ?? '').trim() === '1') {
-          console.error('[ui-app] stream error event', ev)
-        }
-      }
-      if (ev.type === 'StreamError' || ev.type === 'StreamAbort') {
-        if (!errorPersisted) {
-          const envelope = ev.type === 'StreamError' ? ev.error : ev.envelope
-          if (envelope && envelope.completionClass && envelope.completionClass !== 'ok') {
-            errorPersisted = true
-            errorPersistPromise = persistMessageErrorEnvelope(assistantMessageId, envelope)
-          }
-        }
-      }
-      if (ev.type === 'StreamDone' || ev.type === 'StreamAbort' || ev.type === 'StreamError') {
-        const completionClass = completionClassFromEvent(ev)
-        const metaStatus = metaStatusFromCompletionClass(completionClass)
-        if (metaStatus) {
-          finalMetaStatus = metaStatus
-          finalStatus = persistStatusFromCompletionClass(completionClass)
-          ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus })
-        }
-        if (enableEventScheduler) {
-          eventScheduler.flushNow(branch.id, 'flush')
-        }
-        clearFlushTimer(stream)
-        await flushPending(convoId, stream)
-        clearReasoningFlushTimer(stream)
-        await flushReasoningDetailSegments(stream, assistantMessageId)
-      }
-    }
-
-    if (enableEventScheduler) {
-      eventScheduler.flushNow(branch.id, 'flush')
-    }
-    clearFlushTimer(stream)
-    await flushPending(convoId, stream)
-    await setMessageStatus({ messageId: assistantMessageId, status: finalStatus, ...getMessageTimingForPersist(assistantMessageId) })
-  } catch (err: any) {
-    finalStatus = 'error'
-    finalMetaStatus = 'error'
-    loadError.value = err?.message ? String(err.message) : String(err)
-    const message = err?.message ? String(err.message) : 'Stream error'
-    const normalized = normalizeOpenRouterUnknownStreamingError({ message, details: { name: err?.name } })
-    const envelope = buildTransportErrorEnvelope({
-      phase: sawAnyEvent ? 'mid_stream' : 'pre_stream',
-      completionClass: 'error',
-      message,
-      normalized,
-      request: { model: modelId, stream: true },
-      kind: 'transport_error',
-    })
-    if (enableEventScheduler) {
-      eventScheduler.flushNow(branch.id, 'flush')
-    }
-    try {
-      commitImmediate(branch.id, { type: 'StreamError', error: envelope, terminal: true } as DomainEvent)
-      ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus })
-    } catch {
-      // no-op
-    }
-    try {
-      if (!errorPersisted) {
-        errorPersisted = true
-        errorPersistPromise = persistMessageErrorEnvelope(assistantMessageId, envelope)
-      }
-      if (errorPersistPromise) await errorPersistPromise
-    } catch {
-      // no-op
-    }
-    try {
-      await setMessageStatus({ messageId: assistantMessageId, status: 'error', ...getMessageTimingForPersist(assistantMessageId) })
-    } catch {
-      // no-op
-    }
-  } finally {
-    clearFlushTimer(stream)
-    clearReasoningFlushTimer(stream)
-    // 输出 Merger 诊断统计
-    if (shouldLogReasoningDebug()) {
-      const stats = stream.reasoningMerger.getStats()
-      console.log('[reasoning-merger] stream stats:', stats)
-      if (stats.isLikelySnapshot) {
-        console.log('[reasoning-merger] ⚠️ 检测到快照语义 (>50% prefixMatch)，已自动提取后缀增量')
-      }
-    }
-    // Use unified finalization to enforce: refresh FIRST, then clear activeStream.
-    try {
-      // 记录 flush 前的队列信息
-      const pendingCountBeforeFlush = stream.pendingReasoningDetails.value.length
-      await flushReasoningDetailSegments(stream, assistantMessageId)
-      await finalizeReasoningDetails({ messageId: assistantMessageId })
-
-      if (shouldLogReasoningDebug()) {
-        const mergerStats = stream.reasoningMerger.getStats()
-        const mergerSnapshot = stream.reasoningMerger.getMergedSnapshots()
-        const mergerExtracted = extractReasoningTextFromDetails(mergerSnapshot)
-        const mergerFinalText = mergerExtracted.reasoningText
-        const isEncryptedModel = mergerExtracted.isEncrypted
-
-        let dbReplaySnapshot: unknown[] | null = null
-        let dbFinalText: string | undefined
-        let dbExtracted: ReturnType<typeof extractReasoningTextFromDetails> | null = null
-        let dbSegmentsCount: number | undefined
-        try {
-          const bridge = (globalThis as any).dbBridge as { invoke?: (method: string, params?: unknown) => Promise<any> } | undefined
-          if (bridge?.invoke) {
-            const rows = await bridge.invoke('message.list', { convoId, fromSeq: assistantSeq, limit: 1 })
-            const row = Array.isArray(rows)
-              ? (rows.find((r) => r && typeof r === 'object' && (r as any).id === assistantMessageId) ?? rows[0])
-              : null
-            const meta = row && typeof (row as any).meta === 'object' ? (row as any).meta : null
-            const reasoningDetailsRaw = Array.isArray(meta?.reasoningDetailsRaw) ? meta.reasoningDetailsRaw : null
-            if (reasoningDetailsRaw) {
-              dbReplaySnapshot = reasoningDetailsRaw
-              dbExtracted = extractReasoningTextFromDetails(dbReplaySnapshot)
-              dbFinalText = dbExtracted.reasoningText
-            }
-            dbSegmentsCount = typeof meta?.reasoningSegmentsCount === 'number' ? meta.reasoningSegmentsCount : undefined
-          }
-        } catch (err) {
-          console.warn('[reasoning-verify] failed to load db replay snapshot:', err)
-        }
-
-        const uiFinalText = selectMessage(state.value, assistantMessageId)?.reasoningView?.reasoningText
-
-        // 输出 diagnosticTracker 摘要（包含 DB 统计）
-        const tracker = stream.diagnosticTracker
-        console.log('[reasoning-diag] tracker summary', {
-          // UI 侧统计
-          totalQueued: tracker.totalQueued,
-          totalSkipped: tracker.totalSkipped,
-          totalDeltaLen: tracker.totalDeltaLen,
-          eventCount: tracker.events.length,
-          // DB 侧统计
-          dbInserted: tracker.dbInserted,
-          dbSkipped: tracker.dbSkipped,
-          dbIgnored: tracker.dbIgnored,
-          dbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
-        })
-
-        // 一次性 DB 统计查询（作为对照）
-        const dbRealStats = await getReasoningSegmentsStats(assistantMessageId)
-        if (dbRealStats) {
-          const matchCnt = dbRealStats.cnt === tracker.dbInserted
-          const matchSum = dbRealStats.sumLen === tracker.dbSumDeltaLenInserted
-          console.log('[reasoning-diag] DB real stats', {
-            segmentsInDb: dbRealStats.cnt,
-            sumDeltaTextLenInDb: dbRealStats.sumLen,
-            trackerDbInserted: tracker.dbInserted,
-            trackerDbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
-            matchCnt,
-            matchSum,
-          })
-          // 失败时输出差异诊断
-          if (!matchCnt || !matchSum) {
-            console.warn('[reasoning-diag] MISMATCH', {
-              messageId: assistantMessageId,
-              cntDiff: dbRealStats.cnt - tracker.dbInserted,
-              sumDiff: dbRealStats.sumLen - tracker.dbSumDeltaLenInserted,
-              trackerIgnored: tracker.dbIgnored,
-              trackerSkipped: tracker.dbSkipped,
-            })
-          }
-        } else {
-          console.warn('[reasoning-diag] failed to get DB real stats for', assistantMessageId)
-        }
-
-        // 恒等式验证
-        const eventCountExpected = tracker.dbInserted + tracker.dbIgnored + tracker.dbSkipped
-        const invariant1 = tracker.totalQueued === eventCountExpected
-        console.log('[reasoning-diag] invariants', {
-          'eventCount == dbInserted + dbIgnored + dbSkipped': invariant1,
-          totalQueued: tracker.totalQueued,
-          eventCountExpected,
-          'totalDeltaLen == dbSumDeltaLenInserted': tracker.totalDeltaLen === tracker.dbSumDeltaLenInserted,
-          totalDeltaLen: tracker.totalDeltaLen,
-          dbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
-          deltaLenDiff: tracker.totalDeltaLen - tracker.dbSumDeltaLenInserted,
-        })
-
-        // 详细诊断日志
-        console.log('[reasoning-verify] diagnostic info', {
-          messageId: assistantMessageId,
-          mergerChunkCount: mergerStats.chunkCount,
-          mergerDeltaCount: mergerStats.deltaCount,
-          mergerSnapshotCount: mergerStats.snapshotCount,
-          mergerUniqueKeys: mergerStats.uniqueKeys,
-          pendingCountBeforeFlush,
-          dbSegmentsCount,
-          isLikelySnapshot: mergerStats.isLikelySnapshot,
-          isEncryptedModel,
-        })
-
-        // 对于加密模型，比较 encryptedData；否则比较 reasoningText
-        const mergerCompareText = isEncryptedModel ? mergerExtracted.encryptedData : mergerFinalText
-        const dbCompareText = isEncryptedModel ? dbExtracted?.encryptedData : dbFinalText
-
-        console.log('[reasoning-verify] text compare', {
-          messageId: assistantMessageId,
-          isEncryptedModel,
-          mergerFinalTextLen: mergerCompareText?.length ?? 0,
-          dbFinalTextLen: dbCompareText?.length ?? 0,
-          uiFinalTextLen: uiFinalText?.length ?? 0,
-          // 加密模型不输出原文（避免日志过大）
-          mergerFinalText: isEncryptedModel ? `[encrypted ${mergerCompareText?.length ?? 0} bytes]` : mergerFinalText,
-          dbFinalText: isEncryptedModel ? `[encrypted ${dbCompareText?.length ?? 0} bytes]` : dbFinalText,
-          uiFinalText: isEncryptedModel ? '[encrypted - see UI]' : uiFinalText,
-        })
-
-        // 加密模型：比较 encryptedData；非加密模型：比较 reasoningText
-        const textMismatch = mergerCompareText !== dbCompareText
-        // UI 文本对于加密模型无法直接比较（UI 可能解密显示），跳过 UI 比较
-        const uiMismatch = !isEncryptedModel && dbFinalText !== uiFinalText
-
-        if (textMismatch || uiMismatch) {
-          let diffPos = -1
-          const shorter = mergerCompareText && dbCompareText
-            ? (mergerCompareText.length <= dbCompareText.length ? mergerCompareText : dbCompareText)
-            : ''
-          const longer = mergerCompareText && dbCompareText
-            ? (mergerCompareText.length > dbCompareText.length ? mergerCompareText : dbCompareText)
-            : ''
-          for (let i = 0; i < shorter.length; i++) {
-            if (shorter[i] !== longer[i]) {
-              diffPos = i
-              break
-            }
-          }
-          if (diffPos === -1 && shorter.length !== longer.length) {
-            diffPos = shorter.length
-          }
-
-          console.warn('[reasoning-verify] MISMATCH DETECTED', {
-            messageId: assistantMessageId,
-            isEncryptedModel,
-            textMismatch,
-            uiMismatch,
-            diffPos,
-            diffContext: diffPos >= 0 && !isEncryptedModel ? {
-              mergerAround: mergerCompareText?.slice(Math.max(0, diffPos - 20), diffPos + 20),
-              dbAround: dbCompareText?.slice(Math.max(0, diffPos - 20), diffPos + 20),
-            } : null,
-            mergerSnapshotCount: mergerSnapshot.length,
-            dbSnapshotCount: dbReplaySnapshot?.length ?? 0,
-          })
-
-          // 用 diffPos 映射到 chunkNo（精确定位被吞的 chunk）
-          const affectedChunk = tracker.chunkRanges.find(r => r.start <= diffPos && diffPos < r.end)
-          console.warn('[reasoning-verify] diffPos → chunkNo mapping', {
-            diffPos,
-            affectedChunkNo: affectedChunk?.chunkNo ?? 'not found',
-            affectedChunkRange: affectedChunk ? `[${affectedChunk.start}, ${affectedChunk.end})` : null,
-            nearbyChunks: tracker.chunkRanges.filter(r => 
-              Math.abs(r.start - diffPos) < 50 || Math.abs(r.end - diffPos) < 50
-            ).slice(0, 5),
-          })
-
-          console.warn('[reasoning-verify] snapshot details', {
-            mergerSnapshots: mergerSnapshot.map((s: any) => ({
-              key: `${s.id ?? ''}|${s.index ?? ''}|${s.type ?? ''}`,
-              textLen: s.text?.length ?? 0,
-              textPreview: s.text?.slice(0, 50),
-            })),
-            dbSnapshots: dbReplaySnapshot?.map((s: any) => ({
-              key: `${s.id ?? ''}|${s.index ?? ''}|${s.type ?? ''}`,
-              textLen: s.text?.length ?? 0,
-              textPreview: s.text?.slice(0, 50),
-            })),
-          })
-        }
-      }
-    } catch (err) {
-      if (shouldLogReasoningDebug()) console.warn('[ui-app] finalizeReasoningDetails failed (non-fatal):', err)
-    }
-    if (errorPersistPromise) {
-      try {
-        await errorPersistPromise
-      } catch {
-        // no-op
-      }
-    }
-    await finalizeRun(assistantMessageId)
-  }
+    }),
+  })
 }
 
 async function onForkFromHead() {
@@ -3949,6 +3714,7 @@ watch(
               >
                 <ChatMessageBubble
                   :message="message"
+                  :errorView="toErrorPanelView(message)"
                   :errorEnvelopeLoading="inFlightEnvelopeIds.has(message.messageId)"
                   :errorEnvelopeUnavailable="errorEnvelopeUnavailableIds.has(message.messageId)"
                   :onRequestErrorEnvelope="requestErrorEnvelope"
