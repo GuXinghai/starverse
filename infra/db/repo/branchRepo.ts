@@ -1,16 +1,9 @@
 import BetterSqlite3 from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import type { BranchRecord, BranchCandidate, EffectiveFilterResult, QuestionCandidate } from '../types'
+import { mergeMetaWithReasoning, safeParseMessageMeta } from './shared/messageMetaMerge'
 
 type SqlDatabase = BetterSqlite3.Database
-
-const safeParse = (input: string): Record<string, unknown> | null => {
-  try {
-    return JSON.parse(input)
-  } catch {
-    return null
-  }
-}
 
 const mapBranchRow = (row: any): BranchRecord => ({
   id: String(row.id),
@@ -36,57 +29,8 @@ export type BranchPathMessage = Readonly<{
   meta: Record<string, unknown> | null
 }>
 
-const mergeMetaWithReasoning = (
-  meta: Record<string, unknown> | null,
-  reasoningJson: unknown,
-  requestJson: unknown,
-  reasoningDurationMs?: number | null,
-  reasoningEndReason?: string | null,
-  reasoningDurationIsFallback?: number | null,
-) => {
-  const next: Record<string, unknown> = meta ? { ...meta } : {}
-
-  if (typeof reasoningJson === 'string' && reasoningJson.trim().length > 0) {
-    try {
-      const parsed = JSON.parse(reasoningJson)
-      if (Array.isArray(parsed) && !next.reasoningDetailsRaw) {
-        next.reasoningDetailsRaw = parsed
-      }
-    } catch {
-      // ignore parse errors
-    }
-  }
-
-  if (typeof requestJson === 'string' && requestJson.trim().length > 0) {
-    try {
-      const parsed = JSON.parse(requestJson)
-      if (parsed && typeof parsed === 'object') {
-        next.requestReasoningConfig = parsed
-      }
-    } catch {
-      // ignore parse errors
-    }
-  }
-
-  if (typeof reasoningDurationMs === 'number' && Number.isFinite(reasoningDurationMs)) {
-    next.reasoningDurationMs = reasoningDurationMs
-  } else if (reasoningDurationMs === null) {
-    next.reasoningDurationMs = null
-  }
-
-  if (typeof reasoningEndReason === 'string' && reasoningEndReason.trim().length > 0) {
-    next.reasoningEndReason = reasoningEndReason
-  }
-
-  if (reasoningDurationIsFallback === 1) {
-    next.reasoningDurationIsFallback = true
-  }
-
-  return Object.keys(next).length > 0 ? next : null
-}
-
 const mapPathRow = (row: any): BranchPathMessage => {
-  const meta = row.meta ? safeParse(String(row.meta)) : null
+  const meta = row.meta ? safeParseMessageMeta(String(row.meta)) : null
   const mergedMeta = mergeMetaWithReasoning(
     meta,
     row.reasoningDetailsFinalJson,
