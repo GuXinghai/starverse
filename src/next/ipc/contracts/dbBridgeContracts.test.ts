@@ -28,7 +28,7 @@ import {
 } from './dbBridgeContracts'
 import { IpcContractDecodeError } from './decodeError'
 import { switchQuestionCandidate } from '@/next/branch/branchClient'
-import { listMessages } from '@/next/message/messageClient'
+import { listMessages, setMessageStatus } from '@/next/message/messageClient'
 
 function expectProtocolInvalidError(error: unknown): void {
   expect(error).toBeInstanceOf(IpcContractDecodeError)
@@ -297,5 +297,28 @@ describe('client decode integration', () => {
     } catch (error) {
       expectProtocolInvalidError(error)
     }
+  })
+
+  it('messageClient.setMessageStatus accepts with/without metaPatch and decodes ack without protocol_invalid', async () => {
+    const calls: Array<{ method: string; params: any }> = []
+    const invoke = async (method: string, params?: unknown) => {
+      calls.push({ method, params: params ?? null })
+      return { ok: true }
+    }
+    ;(globalThis as any).dbBridge = { invoke }
+
+    await expect(setMessageStatus({ messageId: 'm1', status: 'final' })).resolves.toBe(true)
+    await expect(
+      setMessageStatus({
+        messageId: 'm1',
+        status: 'final',
+        metaPatch: { completionOutcome: 'truncated' },
+      })
+    ).resolves.toBe(true)
+
+    expect(calls[0]?.method).toBe('message.setStatus')
+    expect(calls[0]?.params?.metaPatch).toBeUndefined()
+    expect(calls[1]?.method).toBe('message.setStatus')
+    expect(calls[1]?.params?.metaPatch).toEqual({ completionOutcome: 'truncated' })
   })
 })

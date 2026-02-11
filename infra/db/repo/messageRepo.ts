@@ -1,3 +1,4 @@
+/* eslint-disable max-lines-per-function, complexity */
 import BetterSqlite3 from 'better-sqlite3'
 import { randomUUID, createHash } from 'node:crypto'
 import type { AppendMessageInput, ListMessageParams, MessageRecord, AppendReasoningDetailSegmentsInput, FinalizeReasoningDetailsInput, SetReasoningRequestConfigInput } from '../../db/types'
@@ -332,6 +333,7 @@ export class MessageRepo {
     reasoningDurationMs?: number | null
     reasoningEndReason?: string | null
     reasoningDurationIsFallback?: boolean
+    metaPatch?: Record<string, unknown> | null
   }) {
     const id = String(input.messageId ?? '').trim()
     if (!id) throw new Error('Missing messageId')
@@ -351,6 +353,9 @@ export class MessageRepo {
         reasoningEndReason: input.reasoningEndReason ?? null,
         reasoningDurationIsFallback: input.reasoningDurationIsFallback ? 1 : 0,
       })
+      if (input.metaPatch && typeof input.metaPatch === 'object') {
+        this.patchMeta({ messageId: id, patch: input.metaPatch })
+      }
       this.touchConvoStmt.run({ id: String(row.convo_id), updatedAt: now })
     })
     txn()

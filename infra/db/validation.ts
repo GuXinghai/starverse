@@ -136,6 +136,7 @@ export const SetMessageStatusSchema: ZodType<SetMessageStatusInput> = z.object({
   reasoningDurationMs: z.number().int().nullable().optional(),
   reasoningEndReason: z.string().nullable().optional(),
   reasoningDurationIsFallback: z.boolean().optional(),
+  metaPatch: jsonSchema.optional().nullable(),
 })
 
 export const UpsertMessageErrorSchema: ZodType<UpsertMessageErrorInput> = z.object({
