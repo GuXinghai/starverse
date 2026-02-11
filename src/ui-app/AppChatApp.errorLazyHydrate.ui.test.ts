@@ -96,7 +96,7 @@ function createDbBridge(
         }
       case 'messageError.listByMessageIds': {
         const ids = Array.isArray(params?.messageIds)
-          ? params.messageIds.map((v: unknown) => String(v ?? '').trim()).filter((v) => v.length > 0)
+          ? params.messageIds.map((v: unknown) => String(v ?? '').trim()).filter((v: string) => v.length > 0)
           : []
         messageErrorCalls.push(ids)
         const response = messageErrorResponder(ids, messageErrorCallIndex) ?? []
@@ -135,6 +135,7 @@ async function findPanelBySummary(summaryRegex: RegExp) {
   return panel as HTMLElement
 }
 
+// eslint-disable-next-line max-lines-per-function
 describe('AppChatApp lazy hydrate error panels', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronStore = (globalThis as any).electronStore

@@ -127,6 +127,12 @@ const derivedUsageSummary = computed(() => {
         <div v-if="props.run.finishReason">
           finish: <span class="font-mono">{{ props.run.finishReason }}</span>
         </div>
+        <div
+          v-if="props.run.completionOutcome === 'truncated'"
+          class="rounded bg-amber-100 px-2 py-0.5 font-semibold text-amber-900 ring-1 ring-amber-200"
+        >
+          Truncated
+        </div>
         <div v-if="props.showUsage && usageSummary" class="flex flex-wrap items-center gap-2">
           <span class="text-gray-500">This turn</span>
           <span class="rounded bg-black/5 px-2 py-0.5 font-mono">p={{ usageSummary.pt }}</span>

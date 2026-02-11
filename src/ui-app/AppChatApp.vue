@@ -6,7 +6,7 @@ import ChatTranscript from '@/ui-kit/chat/ChatTranscript.vue'
 import ChatMessageBubble from '@/ui-kit/chat/ChatMessageBubble.vue'
 import ChatAppReasoningPanel from './components/ChatAppReasoningPanel.vue'
 import type { ErrorPanelViewModel } from '@/ui-kit/chat/types'
-import type { DomainEvent, MessageState, MessageVM, ReasoningEffort, RequestedReasoningMode, ReasoningPrefs, RootState, StreamEndReason } from '@/next/state/types'
+import type { CompletionOutcome, DomainEvent, MessageState, MessageVM, ReasoningEffort, RequestedReasoningMode, ReasoningPrefs, RootState, StreamEndReason } from '@/next/state/types'
 import {
   createConvo,
   deleteConvo,
@@ -108,8 +108,16 @@ const searchModalOpen = ref(false)
 
 const state = ref<RootState>(createInitialState())
 const messageSeqById = ref<Map<string, number>>(new Map())
+type MessageMetaEntry = {
+  parentId: string | null
+  questionId: string | null
+  answerRootId: string | null
+  role: string
+  status: string
+  completionOutcome?: CompletionOutcome
+}
 const messageMetaById = ref<
-  Map<string, { parentId: string | null; questionId: string | null; answerRootId: string | null; role: string; status: string }>
+  Map<string, MessageMetaEntry>
 >(new Map())
 const turnFiltersByQuestionId = ref<Map<string, Readonly<EffectiveFilterResult & { chosenAnswerRootId: string }>>>(new Map())
 const questionTurnOrder = ref<string[]>([])
@@ -593,7 +601,7 @@ function mapAppPhaseToEndReason(appPhase: AppErrorPhase, fallback: StreamEndReas
 
 function ensureMessageMetaEntry(
   messageId: string,
-  patch: Partial<{ parentId: string | null; questionId: string | null; answerRootId: string | null; role: string; status: string }>
+  patch: Partial<MessageMetaEntry>
 ) {
   const id = String(messageId ?? '').trim()
   if (!id) return
@@ -699,6 +707,15 @@ function extractReasoningTimingFromMeta(meta: unknown): {
   const isFallback = obj?.reasoningDurationIsFallback === true
 
   return { durationMs, endReason, isFallback }
+}
+
+function extractCompletionOutcomeFromMeta(meta: unknown): CompletionOutcome | undefined {
+  const obj = asRecord(meta)
+  const value = obj?.completionOutcome
+  if (value === 'complete' || value === 'truncated' || value === 'filtered' || value === 'tool_calls' || value === 'unknown') {
+    return value
+  }
+  return undefined
 }
 
 function extractErrorEnvelopeFromMeta(meta: unknown): ErrorEnvelope | null {
@@ -1638,14 +1655,16 @@ async function loadTranscriptForBranch(branchId: string) {
   for (const m of rows) seqMap.set(m.id, m.seq)
   messageSeqById.value = seqMap
 
-  const metaMap = new Map<string, { parentId: string | null; questionId: string | null; answerRootId: string | null; role: string; status: string }>()
+  const metaMap = new Map<string, MessageMetaEntry>()
   for (const m of rows) {
+    const completionOutcome = extractCompletionOutcomeFromMeta(m.meta ?? null)
     metaMap.set(m.id, {
       parentId: m.parentId ?? null,
       questionId: m.questionId ?? null,
       answerRootId: m.answerRootId ?? null,
       role: String(m.role ?? '').trim(),
       status: String(m.status ?? 'final'),
+      completionOutcome,
     })
   }
   messageMetaById.value = metaMap
@@ -2589,6 +2608,10 @@ async function runAssistantStreamSession(input: AssistantStreamSessionInput) {
 
   let finalStatus: 'final' | 'error' = 'final'
   let finalMetaStatus: 'final' | 'error' | 'aborted' = 'final'
+  let finalCompletionOutcome: CompletionOutcome | undefined
+  let terminalSeen = false
+  let streamDrained = false
+  let statusPersisted = false
   let errorPersisted = false
   let errorPersistPromise: Promise<void> | null = null
   let sawAnyEvent = false
@@ -2600,6 +2623,36 @@ async function runAssistantStreamSession(input: AssistantStreamSessionInput) {
     if (telemetryFinalized) return
     telemetryFinalized = true
     input.telemetry?.onEnd?.(status, error)
+  }
+
+  const ensureTerminalDrainOnce = async () => {
+    if (streamDrained) return
+    streamDrained = true
+    if (enableEventScheduler) {
+      eventScheduler.flushNow(branchId, 'flush')
+    }
+    clearFlushTimer(stream)
+    await flushPending(convoId, stream)
+    clearReasoningFlushTimer(stream)
+    await flushReasoningDetailSegments(stream, assistantMessageId)
+  }
+
+  const ensurePersistStatusOnce = async () => {
+    if (statusPersisted) return
+    statusPersisted = true
+    await setMessageStatus({
+      messageId: assistantMessageId,
+      status: finalStatus,
+      ...getMessageTimingForPersist(assistantMessageId),
+      ...(finalCompletionOutcome ? { metaPatch: { completionOutcome: finalCompletionOutcome } } : {}),
+    })
+  }
+
+  const ensurePersistErrorEnvelopeOnce = (envelope: ErrorEnvelope | null | undefined) => {
+    if (errorPersisted) return
+    if (!envelope || !envelope.completionClass || envelope.completionClass === 'ok') return
+    errorPersisted = true
+    errorPersistPromise = persistMessageErrorEnvelope(assistantMessageId, envelope)
   }
 
   try {
@@ -2615,13 +2668,8 @@ async function runAssistantStreamSession(input: AssistantStreamSessionInput) {
           telemetryTerminalStatus = 'error'
           telemetryTerminalError = ev.type === 'StreamError' ? ev.error : ev.envelope
         }
-        if (!errorPersisted) {
-          const envelope = ev.type === 'StreamError' ? ev.error : ev.envelope
-          if (envelope && envelope.completionClass && envelope.completionClass !== 'ok') {
-            errorPersisted = true
-            errorPersistPromise = persistMessageErrorEnvelope(assistantMessageId, envelope)
-          }
-        }
+        const envelope = ev.type === 'StreamError' ? ev.error : ev.envelope
+        ensurePersistErrorEnvelopeOnce(envelope)
       }
 
       if (enableEventScheduler) {
@@ -2647,98 +2695,100 @@ async function runAssistantStreamSession(input: AssistantStreamSessionInput) {
         }
       }
       if (ev.type === 'StreamDone' || ev.type === 'StreamAbort' || ev.type === 'StreamError') {
+        terminalSeen = true
         const completionClass = completionClassFromEvent(ev)
         const metaStatus = metaStatusFromCompletionClass(completionClass)
         if (metaStatus) {
           finalMetaStatus = metaStatus
           finalStatus = persistStatusFromCompletionClass(completionClass)
-          ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus })
+          ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus, completionOutcome: undefined })
         }
-        if (enableEventScheduler) {
-          eventScheduler.flushNow(branchId, 'flush')
+        await ensureTerminalDrainOnce()
+        if (ev.type === 'StreamDone') {
+          const terminalRun = selectRun(state.value, branchId)
+          finalCompletionOutcome = terminalRun?.completionOutcome
+          if (finalCompletionOutcome) {
+            ensureMessageMetaEntry(assistantMessageId, { completionOutcome: finalCompletionOutcome })
+          }
+        } else {
+          finalCompletionOutcome = undefined
         }
-        clearFlushTimer(stream)
-        await flushPending(convoId, stream)
-        clearReasoningFlushTimer(stream)
-        await flushReasoningDetailSegments(stream, assistantMessageId)
       }
     }
 
-    if (enableEventScheduler) {
-      eventScheduler.flushNow(branchId, 'flush')
-    }
-    clearFlushTimer(stream)
-    await flushPending(convoId, stream)
-    await setMessageStatus({ messageId: assistantMessageId, status: finalStatus, ...getMessageTimingForPersist(assistantMessageId) })
+    await ensureTerminalDrainOnce()
+    await ensurePersistStatusOnce()
     finalizeTelemetry(telemetryTerminalStatus, telemetryTerminalError)
   } catch (err: any) {
-    const appError = normalizeTransportError(err)
-    const completionClass: CompletionClass = appError.phase === 'user_cancelled' ? 'aborted' : 'error'
-    const fallbackPhase: ErrorPhase = sawAnyEvent ? 'mid_stream' : 'pre_stream'
-    const fallbackEndReason: StreamEndReason = sawAnyEvent ? 'mid_stream_error' : 'pre_stream_error'
-    const envelopePhase = mapAppPhaseToEnvelopePhase(appError.phase, fallbackPhase)
-    const endReason = mapAppPhaseToEndReason(appError.phase, fallbackEndReason)
-
-    finalStatus = persistStatusFromCompletionClass(completionClass)
-    finalMetaStatus = metaStatusFromCompletionClass(completionClass) ?? 'error'
-    finalizeTelemetry(completionClass === 'aborted' ? 'aborted' : 'error', err)
-    if (completionClass === 'error') {
-      loadError.value = appError.message
-    }
-
-    let envelope: ErrorEnvelope
-    let terminalEvent: DomainEvent
-    if (completionClass === 'aborted') {
-      envelope = buildAbortEnvelope({
-        phase: envelopePhase,
-        completionClass: 'aborted',
-        reason: appError.message,
-        request: { model: modelId, stream: true },
-      })
-      terminalEvent = { type: 'StreamAbort', reason: 'aborted', envelope }
+    if (terminalSeen) {
+      finalizeTelemetry(telemetryTerminalStatus, telemetryTerminalError)
     } else {
-      const normalized = toNormalizedErrorEnvelope({
-        appError,
-        endpoint: 'chat.completions',
-        transport: 'sse',
-        phase: envelopePhase === 'pre_stream' ? 'request' : 'generation',
-        raw: {
-          type: 'ui_run_stream_session_catch',
-          ...(err && typeof err === 'object' ? { details: err as Record<string, unknown> } : {}),
-        },
-      })
-      envelope = buildTransportErrorEnvelope({
-        phase: envelopePhase,
-        completionClass: 'error',
-        message: appError.message,
-        normalized,
-        request: { model: modelId, stream: true },
-        kind: appError.phase === 'local_protocol_error' ? 'parse_error' : 'transport_error',
-      })
-      terminalEvent = { type: 'StreamError', error: envelope, terminal: true }
-    }
+      const appError = normalizeTransportError(err)
+      const completionClass: CompletionClass = appError.phase === 'user_cancelled' ? 'aborted' : 'error'
+      const fallbackPhase: ErrorPhase = sawAnyEvent ? 'mid_stream' : 'pre_stream'
+      const fallbackEndReason: StreamEndReason = sawAnyEvent ? 'mid_stream_error' : 'pre_stream_error'
+      const envelopePhase = mapAppPhaseToEnvelopePhase(appError.phase, fallbackPhase)
+      const endReason = mapAppPhaseToEndReason(appError.phase, fallbackEndReason)
 
-    if (enableEventScheduler) {
-      eventScheduler.flushNow(branchId, 'flush')
-    }
-    try {
-      commitImmediate(branchId, { type: 'TimingSnapshot', tEnd: Date.now(), endReason } as DomainEvent)
-      commitImmediate(branchId, terminalEvent)
-      ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus })
-    } catch {
-      // no-op
-    }
-    try {
-      if (!errorPersisted) {
-        errorPersisted = true
-        errorPersistPromise = persistMessageErrorEnvelope(assistantMessageId, envelope)
+      finalStatus = persistStatusFromCompletionClass(completionClass)
+      finalMetaStatus = metaStatusFromCompletionClass(completionClass) ?? 'error'
+      finalizeTelemetry(completionClass === 'aborted' ? 'aborted' : 'error', err)
+      if (completionClass === 'error') {
+        loadError.value = appError.message
       }
+
+      let envelope: ErrorEnvelope
+      let terminalEvent: DomainEvent
+      if (completionClass === 'aborted') {
+        envelope = buildAbortEnvelope({
+          phase: envelopePhase,
+          completionClass: 'aborted',
+          reason: appError.message,
+          request: { model: modelId, stream: true },
+        })
+        terminalEvent = { type: 'StreamAbort', reason: 'aborted', envelope }
+      } else {
+        const normalized = toNormalizedErrorEnvelope({
+          appError,
+          endpoint: 'chat.completions',
+          transport: 'sse',
+          phase: envelopePhase === 'pre_stream' ? 'request' : 'generation',
+          raw: {
+            type: 'ui_run_stream_session_catch',
+            ...(err && typeof err === 'object' ? { details: err as Record<string, unknown> } : {}),
+          },
+        })
+        envelope = buildTransportErrorEnvelope({
+          phase: envelopePhase,
+          completionClass: 'error',
+          message: appError.message,
+          normalized,
+          request: { model: modelId, stream: true },
+          kind: appError.phase === 'local_protocol_error' ? 'parse_error' : 'transport_error',
+        })
+        terminalEvent = { type: 'StreamError', error: envelope, terminal: true }
+      }
+
+      if (enableEventScheduler) {
+        eventScheduler.flushNow(branchId, 'flush')
+      }
+      try {
+        commitImmediate(branchId, { type: 'TimingSnapshot', tEnd: Date.now(), endReason } as DomainEvent)
+        commitImmediate(branchId, terminalEvent)
+        finalCompletionOutcome = undefined
+        ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus, completionOutcome: undefined })
+      } catch {
+        // no-op
+      }
+      ensurePersistErrorEnvelopeOnce(envelope)
+    }
+    try {
       if (errorPersistPromise) await errorPersistPromise
     } catch {
       // no-op
     }
     try {
-      await setMessageStatus({ messageId: assistantMessageId, status: finalStatus, ...getMessageTimingForPersist(assistantMessageId) })
+      await ensurePersistStatusOnce()
     } catch {
       // no-op
     }

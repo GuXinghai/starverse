@@ -16,6 +16,13 @@ export type StreamEndReason =
   | 'mid_stream_error'
   | 'transport_error'
 
+export type CompletionOutcome =
+  | 'complete'
+  | 'truncated'
+  | 'filtered'
+  | 'tool_calls'
+  | 'unknown'
+
 export type ContentBlock =
   | Readonly<{ type: 'text'; text: string }>
   | Readonly<{ type: 'image'; url: string }>
@@ -99,6 +106,7 @@ export type RunVM = Readonly<{
   provider?: string
   finishReason?: string
   nativeFinishReason?: string
+  completionOutcome?: CompletionOutcome
   usage?: unknown
   error?: ErrorEnvelopeView | null
   localProcessingDurationMs?: number
