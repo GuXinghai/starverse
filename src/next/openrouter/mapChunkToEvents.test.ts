@@ -1,7 +1,12 @@
+/* eslint-disable max-lines-per-function */
 import { describe, expect, it } from 'vitest'
 import { mapChunkToEvents } from './mapChunkToEvents'
 
 describe('mapChunkToEvents', () => {
+  function getMeta(events: ReturnType<typeof mapChunkToEvents>) {
+    return events.find((e) => e.type === 'MetaDelta') as Extract<ReturnType<typeof mapChunkToEvents>[number], { type: 'MetaDelta' }> | undefined
+  }
+
   it('maps delta.content to MessageDeltaText', () => {
     const events = mapChunkToEvents({
       messageId: 'm1',
@@ -150,5 +155,55 @@ describe('mapChunkToEvents', () => {
       choiceIndex: 0,
       detail,
     })
+  })
+
+  it('normalizes unknown finish_reason to unknown while preserving native_finish_reason', () => {
+    const events = mapChunkToEvents({
+      messageId: 'm1',
+      chunk: {
+        id: 'gen_future',
+        choices: [{ index: 0, finish_reason: 'provider_new_reason' }],
+      },
+    })
+    const meta = getMeta(events)
+    expect(meta?.meta.finish_reason).toBe('unknown')
+    expect(meta?.meta.native_finish_reason).toBe('provider_new_reason')
+  })
+
+  it('keeps explicit native_finish_reason verbatim even when finish_reason is unknown', () => {
+    const events = mapChunkToEvents({
+      messageId: 'm1',
+      chunk: {
+        id: 'gen_native',
+        choices: [{ index: 0, finish_reason: 'future_reason', native_finish_reason: 'upstream.future_reason' }],
+      },
+    })
+    const meta = getMeta(events)
+    expect(meta?.meta.finish_reason).toBe('unknown')
+    expect(meta?.meta.native_finish_reason).toBe('upstream.future_reason')
+  })
+
+  it('keeps known finish_reason values unchanged (length/content_filter)', () => {
+    const lengthMeta = getMeta(
+      mapChunkToEvents({
+        messageId: 'm1',
+        chunk: {
+          choices: [{ index: 0, finish_reason: 'length' }],
+        },
+      })
+    )
+    const contentFilterMeta = getMeta(
+      mapChunkToEvents({
+        messageId: 'm1',
+        chunk: {
+          choices: [{ index: 0, finish_reason: 'content_filter' }],
+        },
+      })
+    )
+
+    expect(lengthMeta?.meta.finish_reason).toBe('length')
+    expect(lengthMeta?.meta.native_finish_reason).toBe('length')
+    expect(contentFilterMeta?.meta.finish_reason).toBe('content_filter')
+    expect(contentFilterMeta?.meta.native_finish_reason).toBe('content_filter')
   })
 })
