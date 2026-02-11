@@ -11,11 +11,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Validate GITHUB_BASE_SHA availability
+        env:
+          GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -n "$GITHUB_BASE_SHA" ]; then
+            if ! git cat-file -e "$GITHUB_BASE_SHA^{commit}"; then
+              echo "ERROR: GITHUB_BASE_SHA is not available in local git objects: $GITHUB_BASE_SHA"
+              echo "Ensure checkout uses fetch-depth: 0 and base sha exists for this event."
+              exit 1
+            fi
+          fi
       - name: Lint changed files (complexity guardrails)
         env:
           GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -36,6 +49,8 @@ jobs:
     if: ${{ secrets.OPENROUTER_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc

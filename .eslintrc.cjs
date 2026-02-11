@@ -2,9 +2,13 @@
 
 module.exports = {
   root: true,
+  plugins: ['@typescript-eslint'],
   parserOptions: {
     ecmaVersion: 'latest',
     sourceType: 'module',
+  },
+  rules: {
+    '@typescript-eslint/no-var-requires': 'off',
   },
   ignorePatterns: [
     'node_modules/',
