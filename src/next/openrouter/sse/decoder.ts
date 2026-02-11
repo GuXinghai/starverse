@@ -1,5 +1,6 @@
 export type SSEDecodedEvent =
   | Readonly<{ type: 'comment'; text: string }>
+  | Readonly<{ type: 'event'; name: string }>
   | Readonly<{ type: 'done' }>
   | Readonly<{ type: 'json'; value: unknown; raw: string }>
   | Readonly<{ type: 'terminal_error'; error: unknown; raw: unknown; message: string }>
@@ -47,6 +48,7 @@ function tryParseJson(raw: string): { ok: true; value: unknown } | { ok: false; 
  * - `data: <json>` is parsed into `json` events
  * - mid-stream error: top-level `error` in parsed JSON emits `terminal_error` and terminates
  */
+/* eslint-disable max-lines-per-function, max-statements, complexity, max-depth */
 export async function* decodeOpenRouterSSE(
   input: ReadableStream<Uint8Array> | AsyncIterable<Uint8Array>,
   options: DecodeSSEOptions = {}
@@ -59,6 +61,8 @@ export async function* decodeOpenRouterSSE(
   const decoder = new TextDecoder()
   let buffer = ''
   let dataLines: string[] = []
+  let didTerminate = false
+  let sawDone = false
 
   const flushEvent = async function* (): AsyncGenerator<SSEDecodedEvent> {
     if (dataLines.length === 0) return
@@ -109,13 +113,22 @@ export async function* decodeOpenRouterSSE(
         const events = flushEvent()
         for await (const ev of events) {
           yield ev
-          if (ev.type === 'done' || ev.type === 'terminal_error' || ev.type === 'protocol_error') return
+          if (ev.type === 'done') sawDone = true
+          if (ev.type === 'done' || ev.type === 'terminal_error' || ev.type === 'protocol_error') {
+            didTerminate = true
+            return
+          }
         }
         continue
       }
 
       if (rawLine.startsWith(':')) {
         if (emitComments) yield { type: 'comment', text: rawLine.slice(1).trimStart() }
+        continue
+      }
+
+      if (rawLine.startsWith('event:')) {
+        yield { type: 'event', name: rawLine.slice('event:'.length).trimStart() }
         continue
       }
 
@@ -126,9 +139,45 @@ export async function* decodeOpenRouterSSE(
     }
   }
 
-  // EOF: flush any pending event (OpenRouter normally ends with [DONE], but be tolerant)
+  // Flush any pending UTF-8 code units held by TextDecoder.
+  buffer += decoder.decode()
+
+  // EOF may include a trailing line without '\n'; process it as a final SSE field line.
+  if (buffer.length > 0) {
+    const rawLine = buffer.replace(/\r$/, '')
+    buffer = ''
+    if (rawLine.startsWith(':')) {
+      if (emitComments) yield { type: 'comment', text: rawLine.slice(1).trimStart() }
+    } else if (rawLine.startsWith('event:')) {
+      yield { type: 'event', name: rawLine.slice('event:'.length).trimStart() }
+    } else if (rawLine.startsWith('data:')) {
+      dataLines.push(rawLine.slice('data:'.length).trimStart())
+    } else if (rawLine === '') {
+      const events = flushEvent()
+      for await (const ev of events) {
+        yield ev
+        if (ev.type === 'done') sawDone = true
+        if (ev.type === 'done' || ev.type === 'terminal_error' || ev.type === 'protocol_error') {
+          didTerminate = true
+          return
+        }
+      }
+    }
+  }
+
+  // EOF: flush any pending event.
   const events = flushEvent()
   for await (const ev of events) {
     yield ev
+    if (ev.type === 'done') sawDone = true
+    if (ev.type === 'done' || ev.type === 'terminal_error' || ev.type === 'protocol_error') {
+      didTerminate = true
+      return
+    }
+  }
+
+  if (!didTerminate && !sawDone) {
+    yield { type: 'protocol_error', message: 'SSE stream ended before [DONE]' }
   }
 }
+/* eslint-enable max-lines-per-function, max-statements, complexity, max-depth */

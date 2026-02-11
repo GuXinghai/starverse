@@ -1,0 +1,7 @@
+: OPENROUTER PROCESSING
+
+data: {"id":"gen_wire_race","model":"openrouter/auto","choices":[{"index":0,"delta":{"content":"race"},"finish_reason":null}]}
+
+data: [DONE]
+
+: LATE_TRAILING_COMMENT

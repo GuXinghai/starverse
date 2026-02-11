@@ -1,0 +1,5 @@
+: OPENROUTER PROCESSING
+
+data: {"id":"gen_missing_done","model":"openrouter/auto","choices":[{"index":0,"delta":{"content":"alpha"},"finish_reason":null}]}
+
+data: {"id":"gen_missing_done","choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
