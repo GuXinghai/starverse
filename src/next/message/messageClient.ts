@@ -123,6 +123,7 @@ export async function setMessageStatus(input: Readonly<{
   reasoningDurationMs?: number | null
   reasoningEndReason?: string | null
   reasoningDurationIsFallback?: boolean
+  metaPatch?: Record<string, unknown> | null
 }>): Promise<boolean> {
   const bridge = requireDbBridge()
   const messageId = String(input.messageId ?? '').trim()
@@ -140,6 +141,7 @@ export async function setMessageStatus(input: Readonly<{
     reasoningDurationMs: input.reasoningDurationMs ?? null,
     reasoningEndReason: input.reasoningEndReason ?? null,
     reasoningDurationIsFallback: input.reasoningDurationIsFallback ?? false,
+    ...(input.metaPatch && typeof input.metaPatch === 'object' ? { metaPatch: input.metaPatch } : {}),
   })
   const success = decodeMessageSetStatusResponse(result)
   if (import.meta.env?.DEV) {

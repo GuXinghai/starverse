@@ -177,6 +177,7 @@ export type SetMessageStatusInput = {
   reasoningDurationMs?: number | null
   reasoningEndReason?: string | null
   reasoningDurationIsFallback?: boolean
+  metaPatch?: JsonObject | null
 }
 
 export type UpsertMessageErrorInput = {

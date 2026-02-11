@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import type { Database } from 'better-sqlite3'
 import { MessageRepo } from './messageRepo'
 import { MessageErrorRepo } from './messageErrorRepo'
 
@@ -9,7 +10,7 @@ function loadSchema(db: any) {
   db.exec(readFileSync(schemaPath, 'utf8'))
 }
 
-function insertConvo(db: BetterSqlite3.Database, id: string) {
+function insertConvo(db: Database, id: string) {
   const now = Date.now()
   db.prepare(`INSERT INTO convo(id, project_id, title, created_at, updated_at, meta) VALUES (@id, NULL, @t, @c, @u, NULL)`).run({
     id,
