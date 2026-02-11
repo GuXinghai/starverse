@@ -86,6 +86,7 @@ export function selectRun(state: RootState, runId: string): RunVM | null {
     provider: s.provider,
     finishReason: s.finishReason,
     nativeFinishReason: s.nativeFinishReason,
+    completionOutcome: s.completionOutcome,
     usage: s.usage,
     error: s.error,
     localProcessingDurationMs: s.localProcessingDurationMs,

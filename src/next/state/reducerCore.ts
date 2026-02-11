@@ -1,5 +1,6 @@
 /* eslint-disable max-lines-per-function, complexity, max-statements */
 import type {
+  CompletionOutcome,
   DomainEvent,
   MessageState,
   ReasoningEffort,
@@ -190,6 +191,7 @@ export function startGenerationCore(
     provider: undefined,
     finishReason: undefined,
     nativeFinishReason: undefined,
+    completionOutcome: undefined,
     usage: undefined,
     error: undefined,
     comments: [],
@@ -358,6 +360,25 @@ function endReasonFromPhase(phase?: ErrorPhase): StreamEndReason {
 function completionClassFromEnvelope(env?: ErrorEnvelope | null): CompletionClass {
   if (!env) return 'error'
   return env.completionClass ?? 'error'
+}
+
+function completionOutcomeFromFinishReason(finishReason: string | undefined): CompletionOutcome | undefined {
+  const reason = typeof finishReason === 'string' ? finishReason.trim() : ''
+  if (!reason) return undefined
+  switch (reason) {
+    case 'stop':
+      return 'complete'
+    case 'length':
+      return 'truncated'
+    case 'content_filter':
+      return 'filtered'
+    case 'tool_calls':
+      return 'tool_calls'
+    case 'unknown':
+      return 'unknown'
+    default:
+      return 'unknown'
+  }
 }
 
 function resolveEndReason(prev?: StreamEndReason, next?: StreamEndReason): StreamEndReason | undefined {
@@ -678,7 +699,7 @@ export function applyEventCore(
     case 'StreamAbort': {
       const completionClass = completionClassFromEnvelope(event.envelope)
       const status = completionClass === 'aborted' ? 'aborted' : completionClass === 'error' ? 'error' : 'done'
-      let nextState = updateRun(state, runId, (s) => ({ ...s, status }))
+      let nextState = updateRun(state, runId, (s) => ({ ...s, status, completionOutcome: undefined }))
       nextState = finalizeRunTiming(nextState, runId, 'user_abort', options)
       if (targetId) {
         return updateMessage(nextState, targetId, (m) => ({
@@ -699,6 +720,7 @@ export function applyEventCore(
       let nextState = updateRun(state, runId, (s) => ({
         ...s,
         status,
+        completionOutcome: undefined,
         error: completionClass === 'error' ? event.error : s.error,
       }))
       nextState = finalizeRunTiming(nextState, runId, endReasonHint, options)
@@ -715,6 +737,10 @@ export function applyEventCore(
       let nextState = updateRun(state, runId, (s) => ({
         ...s,
         status: s.status === 'error' || s.status === 'aborted' ? s.status : 'done',
+        completionOutcome:
+          s.status === 'error' || s.status === 'aborted' || s.error
+            ? s.completionOutcome
+            : completionOutcomeFromFinishReason(s.finishReason),
       }))
       nextState = finalizeRunTiming(nextState, runId, 'normal_complete', options)
       if (targetId) {
