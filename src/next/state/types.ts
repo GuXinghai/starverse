@@ -36,6 +36,13 @@ export type StreamEndReason =
   | 'mid_stream_error'   // SSE error chunk during streaming
   | 'transport_error'    // Network/transport failure without other termination signals
 
+export type CompletionOutcome =
+  | 'complete'
+  | 'truncated'
+  | 'filtered'
+  | 'tool_calls'
+  | 'unknown'
+
 export type ContentBlock =
   | Readonly<{ type: 'text'; text: string }>
   | Readonly<{ type: 'image'; url: string }>
@@ -106,6 +113,7 @@ export type RunVM = Readonly<{
   provider?: string
   finishReason?: string
   nativeFinishReason?: string
+  completionOutcome?: CompletionOutcome
   usage?: unknown
   error?: ErrorEnvelope | null
   localProcessingDurationMs?: number
@@ -194,6 +202,7 @@ export type RunState = Readonly<{
   provider?: string
   finishReason?: string
   nativeFinishReason?: string
+  completionOutcome?: CompletionOutcome
   usage?: unknown
   error?: ErrorEnvelope | null
   comments: string[]

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines-per-function */
 import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -155,6 +156,7 @@ describe('next/state reducer', () => {
 
     expect(selectRun(finalState, runId)).toMatchInlineSnapshot(`
       {
+        "completionOutcome": undefined,
         "error": undefined,
         "finishReason": undefined,
         "generationId": "gen_1",
@@ -299,6 +301,56 @@ describe('next/state reducer', () => {
       name: 'lookup',
       argumentsText: '{"q":"x"}',
     })
+  })
+
+  it('StreamDone + finish_reason=length sets completionOutcome=truncated without changing existing end semantics', () => {
+    const runId = 'r1'
+    const started = startGeneration(createInitialState(), {
+      runId,
+      requestId: 'req1',
+      model: 'openrouter/auto',
+      assistantMessageId: 'assistant_1',
+    })
+    const assistantMessageId = started.assistantMessageId
+
+    const finalState = applyEvents(started.state, runId, [
+      { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'partial' },
+      { type: 'MetaDelta', meta: { finish_reason: 'length' } },
+      { type: 'StreamDone' },
+    ])
+
+    const run = selectRun(finalState, runId)
+    expect(run?.completionOutcome).toBe('truncated')
+    expect(run?.status).toBe('done')
+    expect(finalState.runs[runId]?.endReason).toBe('normal_complete')
+  })
+
+  it('StreamError terminal never writes truncated completionOutcome even if finish_reason=length was seen', () => {
+    const runId = 'r1'
+    const started = startGeneration(createInitialState(), {
+      runId,
+      requestId: 'req1',
+      model: 'openrouter/auto',
+      assistantMessageId: 'assistant_1',
+    })
+
+    const envelope = sanitizeErrorEnvelope({
+      phase: 'mid_stream',
+      completionClass: 'error',
+      openrouter: { code: 'provider_error', message: 'broken stream' },
+      truncated: false,
+      kind: 'mid_stream_sse',
+    })
+
+    const finalState = applyEvents(started.state, runId, [
+      { type: 'MetaDelta', meta: { finish_reason: 'length' } },
+      { type: 'StreamError', error: envelope, terminal: true },
+    ])
+
+    const run = selectRun(finalState, runId)
+    expect(run?.completionOutcome).toBeUndefined()
+    expect(run?.status).toBe('error')
+    expect(finalState.runs[runId]?.endReason).toBe('mid_stream_error')
   })
 
   it('abort preserves partial content and marks run aborted', () => {
