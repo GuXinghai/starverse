@@ -9,6 +9,10 @@ type TestResponseLike = AsyncIterable<Uint8Array> & {
   headers: Record<string, string | string[] | undefined>
 }
 
+type RendererDrainStep =
+  | Readonly<{ type: 'wire'; event: OpenRouterStreamWireEvent }>
+  | Readonly<{ type: 'end_signal' }>
+
 function responseFromChunks(input: Readonly<{
   statusCode: number
   statusMessage?: string
@@ -30,6 +34,40 @@ function responseFromChunks(input: Readonly<{
     },
   }
   return response
+}
+
+/**
+ * Simulates renderer-side drain behavior in openRouterLiveStream:
+ * - consume wire queue in-order
+ * - first `end` or an external `end_signal` closes consumption
+ * - any later wire chunk is ignored once closed
+ */
+function simulateRendererWireDrain(steps: RendererDrainStep[]): string[] {
+  const queue: OpenRouterStreamWireEvent[] = []
+  const consumed: string[] = []
+  let closed = false
+
+  const drain = () => {
+    while (!closed && queue.length > 0) {
+      const event = queue.shift() as OpenRouterStreamWireEvent
+      consumed.push(event.type)
+      if (event.type === 'end') {
+        closed = true
+      }
+    }
+  }
+
+  for (const step of steps) {
+    if (closed) break
+    if (step.type === 'wire') {
+      queue.push(step.event)
+      drain()
+      continue
+    }
+    closed = true
+  }
+
+  return consumed
 }
 
 /* eslint-disable max-lines-per-function */
@@ -137,6 +175,62 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
       expect(result.code).toBe('protocol_invalid')
       expect(result.error).toContain('Unsupported wireVersion')
     }
+  })
+
+  it('simulates duplicate end markers in current bridge contract (forward end + bridge tail end)', async () => {
+    const encoder = new TextEncoder()
+    const response = responseFromChunks({
+      statusCode: 200,
+      chunks: [encoder.encode('data: {"id":"gen_1"}\n\n')],
+    })
+    const events: OpenRouterStreamWireEvent[] = []
+    const controller = new AbortController()
+
+    await forwardOpenRouterResponseAsWireEvents({
+      requestId: 'rid_duplicate_end',
+      response,
+      signal: controller.signal,
+      emit: (event) => events.push(event),
+    })
+
+    const steps: RendererDrainStep[] = [
+      ...events.map((event) => ({ type: 'wire' as const, event })),
+      { type: 'wire', event: { type: 'end' } },
+      { type: 'end_signal' },
+    ]
+    expect(events[events.length - 1]?.type).toBe('end')
+    expect(simulateRendererWireDrain(steps)).toEqual(['responseMeta', 'chunk', 'end'])
+  })
+
+  it('simulates end/chunk race: once end signal is observed, late chunk is not consumed', async () => {
+    const encoder = new TextEncoder()
+    const response = responseFromChunks({
+      statusCode: 200,
+      chunks: [encoder.encode('data: {"id":"gen_1"}\n\n')],
+    })
+    const events: OpenRouterStreamWireEvent[] = []
+    const controller = new AbortController()
+
+    await forwardOpenRouterResponseAsWireEvents({
+      requestId: 'rid_end_chunk_race',
+      response,
+      signal: controller.signal,
+      emit: (event) => events.push(event),
+    })
+
+    const meta = events.find((event) => event.type === 'responseMeta')
+    const chunk = events.find((event) => event.type === 'chunk')
+    expect(meta?.type).toBe('responseMeta')
+    expect(chunk?.type).toBe('chunk')
+
+    const steps: RendererDrainStep[] = [
+      { type: 'wire', event: meta as OpenRouterStreamWireEvent },
+      { type: 'wire', event: chunk as OpenRouterStreamWireEvent },
+      { type: 'end_signal' },
+      { type: 'wire', event: { type: 'chunk', data: 'data: {"id":"late"}\n\n' } },
+      { type: 'wire', event: { type: 'end' } },
+    ]
+    expect(simulateRendererWireDrain(steps)).toEqual(['responseMeta', 'chunk'])
   })
 })
 /* eslint-enable max-lines-per-function */
