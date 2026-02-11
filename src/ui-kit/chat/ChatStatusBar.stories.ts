@@ -38,6 +38,7 @@ function run(partial: Partial<RunVM> & Pick<RunVM, 'runId' | 'status'>): RunVM {
     provider: partial.provider,
     finishReason: partial.finishReason,
     nativeFinishReason: partial.nativeFinishReason,
+    completionOutcome: partial.completionOutcome,
     usage: partial.usage,
     error: partial.error,
   }
@@ -98,6 +99,20 @@ export const Error: Story = {
       runId: 'r5',
       status: 'error',
       error: transportErrorFixture,
+    }),
+    isRunning: false,
+    showReset: true,
+  },
+}
+
+export const Truncated: Story = {
+  args: {
+    title: 'Chat Next',
+    run: run({
+      runId: 'r6',
+      status: 'done',
+      finishReason: 'length',
+      completionOutcome: 'truncated',
     }),
     isRunning: false,
     showReset: true,
