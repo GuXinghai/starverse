@@ -87,4 +87,39 @@ describe('decodeOpenRouterSSE', () => {
     const randomized = await collectWithRandomChunking('unicode_fragmentation.txt', 1337)
     expect(randomized).toEqual(baseline)
   })
+
+  it('joins multi data lines with newline and parses as one JSON payload (lock current behavior)', async () => {
+    const events = await collect('event_multidata_comments.txt')
+    const firstJson = events.find((event) => event.type === 'json') as any
+    expect(firstJson).toBeTruthy()
+    expect(String(firstJson.raw)).toContain('\n')
+    expect(firstJson.value?.choices?.[0]?.delta?.content).toBe('joined')
+  })
+
+  it('keeps comment events when comments are interleaved between data events (lock current behavior)', async () => {
+    const events = await collect('event_multidata_comments.txt')
+    const comments = events
+      .filter((event) => event.type === 'comment')
+      .map((event) => String((event as any).text))
+    expect(comments).toEqual(['OPENROUTER PROCESSING', 'COMMENT INTERLEAVED'])
+  })
+
+  it('parses SSE event: lines and keeps them visible without affecting data parsing', async () => {
+    const events = await collect('event_multidata_comments.txt')
+    const eventNames = events
+      .filter((event) => event.type === 'event')
+      .map((event) => String((event as any).name))
+    expect(eventNames).toEqual(['message', 'usage'])
+    expect(events.some((event) => event.type === 'protocol_error')).toBe(false)
+    expect(events.filter((event) => event.type === 'json')).toHaveLength(2)
+    expect(events.at(-1)).toEqual({ type: 'done' })
+  })
+
+  it('emits protocol_error when EOF happens before [DONE]', async () => {
+    const events = await collect('missing_done_eof.txt')
+    expect(events.some((event) => event.type === 'done')).toBe(false)
+    const protocol = events.at(-1) as any
+    expect(protocol?.type).toBe('protocol_error')
+    expect(String(protocol?.message ?? '')).toContain('[DONE]')
+  })
 })

@@ -1,0 +1,12 @@
+: OPENROUTER PROCESSING
+
+event: message
+data: {"id":"gen_event"
+data: ,"model":"openrouter/auto","choices":[{"index":0,"delta":{"content":"joined"},"finish_reason":null}]}
+
+: COMMENT INTERLEAVED
+
+event: usage
+data: {"id":"gen_event","choices":[],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}
+
+data: [DONE]
