@@ -819,6 +819,10 @@ export type SetReasoningPrefsParams = Readonly<{
   value: unknown
 }>
 
+export type SetUserMessageRenderDefaultParams = Readonly<{
+  value: boolean
+}>
+
 export type WorkerRequestMessage = {
   id: string
   method: DbMethod

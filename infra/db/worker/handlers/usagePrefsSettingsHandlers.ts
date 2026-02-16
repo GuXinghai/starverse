@@ -141,6 +141,19 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
         return { ok: true }
     })
 
+  register('settings.getUserMessageRenderDefault', () => {
+        return { value: rt.settingsRepo.getUserMessageRenderDefault() }
+    })
+
+  register('settings.setUserMessageRenderDefault', (raw) => {
+        const value = raw?.value
+        if (typeof value !== 'boolean') {
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.setUserMessageRenderDefault requires boolean value')
+        }
+        rt.settingsRepo.setUserMessageRenderDefault(value)
+        return { ok: true }
+    })
+
 
 }
 
