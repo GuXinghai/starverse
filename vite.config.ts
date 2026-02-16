@@ -62,9 +62,9 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            if (id.includes('highlight.js')) return 'highlight'
+            // Updated chunks for new dependencies
             if (id.includes('katex')) return 'katex'
-            if (id.includes('marked') || id.includes('dompurify')) return 'markdown'
+            if (id.includes('markdown-it') || id.includes('dompurify') || id.includes('shiki') || id.includes('vscode-oniguruma')) return 'markdown'
             if (id.includes('vue') || id.includes('pinia')) return 'vue'
             return 'vendor'
           }

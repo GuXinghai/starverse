@@ -42,6 +42,7 @@ import {
 import { appendMessageDelta, appendReasoningDetailSegments, finalizeReasoningDetails, getReasoningSegmentsStats, setMessageReasoningRequestConfig, setMessageStatus, listMessageErrorEnvelopes, upsertMessageErrorEnvelope } from '@/next/message/messageClient'
 import { findProjectById, listProjects, saveProject, getInbox, createProject, deleteProject, countConversationsBatch, type ProjectSummary } from '@/next/project/projectClient'
 import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningPrefsClient'
+import { getUserMessageRenderDefault } from '@/next/settings/userMessageRenderDefaultClient'
 import { listModelCatalog } from '@/next/modelCatalog/modelCatalogClient'
 import { selectModelCatalogAll, selectModelCatalogVisible } from '@/next/modelCatalog/modelCatalogSelectors'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
@@ -80,6 +81,7 @@ import {
 } from '@/next/state/perfMetrics'
 import { getDiagnosticsFlags } from '@/shared/diagnostics/flags'
 import { createDiagnosticsLogger, installDiagnosticsBridge } from '@/shared/diagnostics/bridge'
+import { nextTriState, resolveUserMessageRenderPolicy, type UserMessageRenderMode } from './prefs/userMessageRenderPolicy'
 
 const isReady = ref(false)
 const loadError = ref<string | null>(null)
@@ -101,6 +103,7 @@ const reasoningModelIndexItems = ref<ReasoningModelIndexItem[]>([])
 const showHiddenModelsInPickers = ref(false)
 const modelCatalogNotice = ref<string | null>(null)
 const globalReasoningPrefs = ref<ReasoningPrefs | null>(null)
+const globalUserMessageRenderDefault = ref<boolean | null>(null)
 const skipReasoningPrefSave = ref(false)
 const reasoningPrefSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const isDev = import.meta.env.DEV
@@ -219,6 +222,18 @@ const transcriptMessagesById = computed<Record<string, MessageVM>>(() => {
     if (vm) map[id] = vm
   }
   return map
+})
+
+const userMessageRenderPolicy = computed(() => {
+  const convoMetaValue = extractUserMessageRenderOverride(getActiveConvoRecord()?.meta ?? null)
+  return resolveUserMessageRenderPolicy(globalUserMessageRenderDefault.value, convoMetaValue)
+})
+
+const userMessageRenderModeLabel = computed(() => {
+  const policy = userMessageRenderPolicy.value
+  if (policy.mode === 'on') return 'User render: On'
+  if (policy.mode === 'off') return 'User render: Off'
+  return `User render: Follow (${policy.effective ? 'On' : 'Off'})`
 })
 
 const lastAssistantMessage = computed<MessageState | null>(() => {
@@ -2155,6 +2170,78 @@ function getActiveConvoRecord(): ConvoSummary | null {
   return convos.value.find((c) => c.id === convoId) ?? null
 }
 
+function extractUserMessageRenderOverride(meta: unknown): boolean | undefined {
+  if (!meta || typeof meta !== 'object') return undefined
+  const raw = (meta as Record<string, unknown>).renderUserMessageRichText
+  if (raw === true) return true
+  if (raw === false) return false
+  return undefined
+}
+
+function finalizeMetaObject(base: Record<string, unknown>): Record<string, unknown> | null {
+  return Object.keys(base).length > 0 ? base : null
+}
+
+function mergeUserMessageRenderModeIntoMeta(meta: unknown, mode: UserMessageRenderMode): Record<string, unknown> | null {
+  const base = meta && typeof meta === 'object' ? { ...(meta as Record<string, unknown>) } : {}
+  if (mode === 'follow') {
+    delete base.renderUserMessageRichText
+  } else {
+    base.renderUserMessageRichText = mode === 'on'
+  }
+  return finalizeMetaObject(base)
+}
+
+async function refreshGlobalUserMessageRenderDefault(): Promise<boolean | null> {
+  const value = await getUserMessageRenderDefault()
+  globalUserMessageRenderDefault.value = value
+  return value
+}
+
+function handleGlobalUserMessageRenderDefaultUpdated(event: Event) {
+  const detail = (event as CustomEvent).detail
+  globalUserMessageRenderDefault.value = detail === true
+}
+
+async function cycleUserMessageRenderMode() {
+  const convo = getActiveConvoRecord()
+  if (!convo || isRunning.value) return
+
+  const nextMode = nextTriState(userMessageRenderPolicy.value.mode)
+  const nextMeta = mergeUserMessageRenderModeIntoMeta(convo.meta ?? null, nextMode)
+
+  try {
+    await saveConvo({
+      id: convo.id,
+      title: convo.title,
+      projectId: convo.projectId ?? null,
+      meta: nextMeta,
+    })
+    convos.value = convos.value.map((c) => (c.id === convo.id ? { ...c, meta: nextMeta } : c))
+  } catch (err) {
+    if (shouldLogDebug()) console.warn('[ui-app] cycleUserMessageRenderMode failed (non-fatal):', err)
+  }
+}
+
+function getUserMessageRawText(message: MessageVM): string {
+  if (message.role !== 'user') return ''
+  const parts: string[] = []
+  for (const block of message.contentBlocks) {
+    if (block.type === 'text') parts.push(block.text)
+  }
+  return parts.join('')
+}
+
+async function copyUserMessageRaw(message: MessageVM) {
+  const raw = getUserMessageRawText(message)
+  if (!raw) return
+  try {
+    await navigator.clipboard.writeText(raw)
+  } catch {
+    // no-op
+  }
+}
+
 async function refreshGlobalReasoningPrefs(): Promise<ReasoningPrefs | null> {
   try {
     const raw = await getReasoningPrefs()
@@ -3421,6 +3508,7 @@ onMounted(async () => {
     await refreshProjects()
     await refreshConvos()
     await refreshGlobalReasoningPrefs()
+    await refreshGlobalUserMessageRenderDefault()
     await loadTranscriptForActiveConvo()
     
     // 基线同步完成，flush 缓冲的事件
@@ -3436,6 +3524,7 @@ onMounted(async () => {
 
 onMounted(() => {
   window.addEventListener('settings:reasoningPrefsUpdated', handleGlobalReasoningPrefsUpdated)
+  window.addEventListener('settings:userMessageRenderDefaultUpdated', handleGlobalUserMessageRenderDefaultUpdated)
 })
 
 onMounted(() => {
@@ -3558,6 +3647,7 @@ function handleDbEvent(event: DbEvent) {
 
 onUnmounted(() => {
   window.removeEventListener('settings:reasoningPrefsUpdated', handleGlobalReasoningPrefsUpdated)
+  window.removeEventListener('settings:userMessageRenderDefaultUpdated', handleGlobalUserMessageRenderDefaultUpdated)
   // 清理 DB 事件订阅
   if (unsubscribeDbEvent) {
     unsubscribeDbEvent()
@@ -3621,7 +3711,7 @@ watch(
 </script>
 
 <template>
-  <div class="flex h-full">
+  <div class="flex h-full min-h-0 w-full overflow-hidden">
     <!-- 对话列表 -->
     <ConversationList
       :items="convoListItems"
@@ -3656,7 +3746,7 @@ watch(
       @select="onSelectSearchHit"
     />
 
-    <div class="min-h-0 flex-1">
+    <div class="min-h-0 flex-1 overflow-hidden">
       <ChatLayout :sidePanel="showReasoningPanel ? 'right' : 'none'">
         <template #header>
           <ChatStatusBar
@@ -3707,7 +3797,7 @@ watch(
               >
                 Delete
               </button>
-              <div>Phase 3 (text-only)</div>
+              <div>Phase 3</div>
               <button
                 type="button"
                 class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
@@ -3716,6 +3806,15 @@ watch(
                 @click="openSettings"
               >
                 Settings
+              </button>
+              <button
+                type="button"
+                class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                :disabled="!isReady || isRunning || !activeConvoId"
+                data-testid="user-render-mode-toggle"
+                @click="cycleUserMessageRenderMode"
+              >
+                {{ userMessageRenderModeLabel }}
               </button>
               <button
                 type="button"
@@ -3764,6 +3863,7 @@ watch(
               >
                 <ChatMessageBubble
                   :message="message"
+                  :renderUserMessageRichText="userMessageRenderPolicy.effective"
                   :errorView="toErrorPanelView(message)"
                   :errorEnvelopeLoading="inFlightEnvelopeIds.has(message.messageId)"
                   :errorEnvelopeUnavailable="errorEnvelopeUnavailableIds.has(message.messageId)"
@@ -3783,6 +3883,16 @@ watch(
                 </ChatMessageBubble>
 
                 <div v-if="message.role === 'user'" class="mt-2 flex items-center gap-2 pl-11 text-[11px] text-gray-500">
+                  <button
+                    type="button"
+                    class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
+                    :disabled="getUserMessageRawText(message).length === 0"
+                    :data-testid="`copy-raw-q-${message.messageId}`"
+                    @click="copyUserMessageRaw(message)"
+                  >
+                    Copy raw
+                  </button>
+
                   <button
                     type="button"
                     class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"

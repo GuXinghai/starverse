@@ -31,7 +31,7 @@ const errorText = computed(() => {
 </script>
 
 <template>
-  <div class="h-full overflow-auto bg-gradient-to-b from-gray-50 to-white p-4">
+  <div class="h-full overflow-auto overscroll-contain bg-gradient-to-b from-gray-50 to-white p-4">
     <div v-if="props.messageIds.length === 0" class="text-sm text-gray-500">
       {{ props.emptyText }}
     </div>

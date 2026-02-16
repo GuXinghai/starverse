@@ -2,10 +2,14 @@
 import { computed } from 'vue'
 import type { ErrorPanelViewModel, MessageVM } from './types'
 import ChatErrorPanel from './ChatErrorPanel.vue'
+import RichTextContent from './richtext/RichTextContent.vue'
+import RichTextFinal from './richtext/RichTextFinal.vue'
+import './richtext/richtext.css'
 
 const props = withDefaults(
   defineProps<{
     message: MessageVM
+    renderUserMessageRichText?: boolean
     showDebug?: boolean
     errorEnvelopeLoading?: boolean
     errorEnvelopeUnavailable?: boolean
@@ -13,6 +17,7 @@ const props = withDefaults(
     onRequestErrorEnvelope?: (messageId: string) => void
   }>(),
   {
+    renderUserMessageRichText: false,
     showDebug: false,
     errorEnvelopeLoading: false,
     errorEnvelopeUnavailable: false,
@@ -69,6 +74,19 @@ function bubbleClass(role: MessageVM['role']) {
                 v-if="isTool"
                 class="whitespace-pre-wrap break-words rounded border border-black/10 bg-black/5 p-2 text-[11px]"
               >{{ b.text }}</pre>
+              <RichTextContent
+                v-else-if="isAssistant && !props.message.streaming.isComplete"
+                :text="b.text"
+                :streaming="true"
+              />
+              <RichTextFinal
+                v-else-if="isAssistant"
+                :text="b.text"
+              />
+              <RichTextFinal
+                v-else-if="isUser && props.renderUserMessageRichText"
+                :text="b.text"
+              />
               <div v-else class="whitespace-pre-wrap break-words">{{ b.text }}</div>
             </template>
             <template v-else-if="b.type === 'image'">
