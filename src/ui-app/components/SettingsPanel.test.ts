@@ -23,6 +23,8 @@ describe('ui-app SettingsPanel', () => {
       if (method === 'settings.setOpenRouterProviderRequireParameters') return { ok: true }
       if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
       if (method === 'settings.setReasoningPrefs') return { ok: true }
+      if (method === 'settings.getUserMessageRenderDefault') return { value: false }
+      if (method === 'settings.setUserMessageRenderDefault') return { ok: true }
       return { ok: true }
     })
     ;(globalThis as any).dbBridge = { invoke }
@@ -61,6 +63,7 @@ describe('ui-app SettingsPanel', () => {
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     expect(invoke).toHaveBeenCalledWith('settings.setOpenRouterProviderRequireParameters', { value: true })
     expect(invoke).toHaveBeenCalledWith('settings.setReasoningPrefs', { value: { mode: 'auto', effort: 'auto', exclude: false } })
+    expect(invoke).toHaveBeenCalledWith('settings.setUserMessageRenderDefault', { value: false })
   })
 
   it('clears via electronStore.delete', async () => {

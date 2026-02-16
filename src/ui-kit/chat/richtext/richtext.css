@@ -1,0 +1,252 @@
+/* ===========================================================================
+ * Rich Text Rendering Styles
+ *
+ * Styles for markdown content rendered by the dual-channel rendering engine.
+ * Covers: headings, paragraphs, lists, blockquotes, tables, code blocks,
+ * math expressions, and fallback states.
+ * =========================================================================== */
+
+/* KaTeX CSS import — required for math rendering */
+/* KaTeX CSS import — handled in index.ts via JS import */
+
+/* --- Container --- */
+.rt-content {
+  font-size: 0.875rem;
+  line-height: 1.625;
+  color: inherit;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* --- Block spacing --- */
+.rt-block {
+  margin-bottom: 0.5em;
+}
+
+.rt-block:last-child {
+  margin-bottom: 0;
+}
+
+/* --- Headings --- */
+.rt-content h1,
+.rt-content h2,
+.rt-content h3,
+.rt-content h4,
+.rt-content h5,
+.rt-content h6 {
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.rt-content h1 { font-size: 1.5em; }
+.rt-content h2 { font-size: 1.3em; }
+.rt-content h3 { font-size: 1.15em; }
+.rt-content h4 { font-size: 1.05em; }
+.rt-content h5 { font-size: 1em; }
+.rt-content h6 { font-size: 0.95em; opacity: 0.85; }
+
+/* --- Paragraphs --- */
+.rt-content p {
+  margin-top: 0;
+  margin-bottom: 0.5em;
+}
+
+.rt-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* --- Links --- */
+.rt-content a {
+  color: #3b82f6;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.rt-content a:hover {
+  color: #2563eb;
+}
+
+/* --- Strong / Emphasis --- */
+.rt-content strong {
+  font-weight: 600;
+}
+
+/* --- Lists --- */
+.rt-content ul,
+.rt-content ol {
+  margin-top: 0;
+  margin-bottom: 0.5em;
+  padding-left: 1.5em;
+}
+
+.rt-content li {
+  margin-bottom: 0.15em;
+}
+
+.rt-content li > p {
+  margin-bottom: 0.25em;
+}
+
+/* --- Blockquotes --- */
+.rt-content blockquote {
+  margin: 0.5em 0;
+  padding: 0.25em 0.75em;
+  border-left: 3px solid rgba(0, 0, 0, 0.15);
+  color: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 0 4px 4px 0;
+}
+
+.rt-content blockquote > p:last-child {
+  margin-bottom: 0;
+}
+
+/* --- Horizontal rule --- */
+.rt-content hr {
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  margin: 1em 0;
+}
+
+/* --- Tables --- */
+.rt-content table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  width: 100%;
+  font-size: 0.85em;
+}
+
+.rt-content th,
+.rt-content td {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 0.4em 0.6em;
+  text-align: left;
+}
+
+.rt-content th {
+  background: rgba(0, 0, 0, 0.03);
+  font-weight: 600;
+}
+
+.rt-content tr:nth-child(even) td {
+  background: rgba(0, 0, 0, 0.01);
+}
+
+/* --- Inline code --- */
+.rt-content code:not(pre code) {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0.15em 0.35em;
+  border-radius: 3px;
+  font-size: 0.875em;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+}
+
+/* --- Code blocks --- */
+.rt-code-block {
+  margin: 0.5em 0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.rt-code-block pre {
+  margin: 0;
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  font-size: 0.8125em;
+  line-height: 1.5;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+}
+
+/* Shiki-generated pre blocks */
+.rt-code-block .shiki {
+  border-radius: 6px;
+}
+
+.rt-code-block .shiki code {
+  font-family: inherit;
+  background: none;
+  padding: 0;
+}
+
+/* Fallback pre (before Shiki highlight) */
+.rt-pre-fallback {
+  background: #24292e;
+  color: #e1e4e8;
+  border-radius: 6px;
+}
+
+/* Open (streaming) code block */
+.rt-block-open.rt-code-block {
+  background: #24292e;
+  color: #e1e4e8;
+  padding: 0.75em 1em;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 0.8125em;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  border-radius: 6px;
+}
+
+/* --- Math blocks --- */
+.rt-math-block {
+  margin: 0.5em 0;
+  overflow-x: auto;
+}
+
+/* Open (streaming) math block */
+.rt-block-open.rt-math-block {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 0.875em;
+  color: rgba(0, 0, 0, 0.6);
+  padding: 0.5em;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+.rt-math-error {
+  color: #dc2626;
+  font-family: monospace;
+  font-size: 0.875em;
+  padding: 0.25em 0.5em;
+  background: #fef2f2;
+  border-radius: 3px;
+}
+
+/* --- Deleted / Inserted --- */
+.rt-content del {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.rt-content mark {
+  background: #fef08a;
+  padding: 0.1em 0.2em;
+  border-radius: 2px;
+}
+
+/* --- Images --- */
+.rt-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+/* --- Fallback/Security states --- */
+.rt-fallback-plaintext {
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.rt-security-warning {
+  padding: 0.5em 0.75em;
+  margin-bottom: 0.5em;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 4px;
+  font-size: 0.8125em;
+  font-weight: 500;
+}

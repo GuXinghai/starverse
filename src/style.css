@@ -89,9 +89,13 @@
   }
 }
 
-/* Custom styles */
+/* App root layout: lock viewport and keep scrolling inside designated panes */
+html,
+body,
 #app {
-  min-height: 100vh;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
 }
 
 /* 全局禁用拼写检查 */

@@ -12,7 +12,7 @@ const props = withDefaults(
 </script>
 
 <template>
-  <div class="flex h-full flex-col bg-gray-50">
+  <div class="flex h-full flex-col overflow-hidden bg-gray-50">
     <div v-if="$slots.header" class="border-b border-gray-200 bg-white">
       <slot name="header" />
     </div>
@@ -25,7 +25,7 @@ const props = withDefaults(
       class="min-h-0 flex-1"
       :class="props.sidePanel === 'bottom' ? 'flex flex-col' : 'flex'"
     >
-      <div class="min-h-0 flex-1">
+      <div class="min-h-0 flex-1 overflow-hidden">
         <slot name="transcript" />
       </div>
 

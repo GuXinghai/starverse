@@ -119,54 +119,54 @@ function migrateAndCleanupConfig(store: Store): void {
       console.warn(`[Config] ⚠️ 配置文件异常: ${integrity.reason}`)
       console.warn('[Config] 这可能是配置文件损坏后的自动恢复')
     }
-    
+
     const rawConfig = store.store as Record<string, any>
-    
+
     // Step 1: 版本迁移
     const currentVersion = rawConfig.configVersion || 1
     if (currentVersion < CURRENT_CONFIG_VERSION) {
       if (isDev) {
         console.log(`[Config] 开始配置迁移: v${currentVersion} → v${CURRENT_CONFIG_VERSION}`)
       }
-      
+
       const migratedConfig = migrateConfig(rawConfig)
-      
+
       // 应用迁移后的配置
       for (const [key, value] of Object.entries(migratedConfig)) {
         if (rawConfig[key] !== value) {
           store.set(key, value)
         }
       }
-      
+
       console.log(`[Config] ✅ 配置已迁移到 v${CURRENT_CONFIG_VERSION}`)
     }
-    
+
     // Step 2: 验证和清理
     const { removed } = validateAndCleanConfig(store.store as Record<string, any>)
-    
+
     if (removed.length > 0) {
       const totalRemoved = removed.reduce((sum, item) => sum + item.size, 0)
-      
+
       // 只在有实际清理或开发环境下输出
       if (totalRemoved > 10_000 || isDev) {
         console.warn(`[Config] 清理 ${removed.length} 个非法字段，减少 ${(totalRemoved / 1024).toFixed(2)} KB`)
-        
+
         if (isDev) {
           removed.forEach(({ key, size }) => {
             console.warn(`  - ${key}: ${(size / 1024).toFixed(2)} KB`)
           })
         }
       }
-      
+
       // 移除非法字段
       removed.forEach(({ key }) => store.delete(key))
     }
-    
+
     // Step 3: 确保版本号存在
     if (!store.has('configVersion')) {
       store.set('configVersion', CURRENT_CONFIG_VERSION)
     }
-    
+
   } catch (error) {
     console.error('[Config] 迁移和清理失败:', error)
   }
@@ -186,7 +186,7 @@ function performConfigSizeCheck(store: Store, context: 'startup' | 'write' = 'st
     const { size, level, topFields } = checkTotalSize(config)
     const sizeKB = size / 1024
     const sizeMB = size / 1024 / 1024
-    
+
     if (level === 'error') {
       console.error(`[Config] ❌ 配置文件严重超标: ${sizeMB.toFixed(2)} MB (${sizeKB.toFixed(2)} KB)`)
       console.error('[Config] 最大的 5 个字段:')
@@ -227,13 +227,13 @@ function performConfigSizeCheck(store: Store, context: 'startup' | 'write' = 'st
 const store = new Store({
   // 配置文件名（默认为 config.json）
   name: 'config',
-  
+
   // JSON 解析失败时自动重置为默认值（而不是抛出错误）
   clearInvalidConfig: true,
-  
+
   // 默认配置值
   defaults: DEFAULT_CONFIG,
-  
+
   // 自定义反序列化：捕获 JSON 解析错误并返回默认值
   deserialize: (text: string) => {
     try {
@@ -243,26 +243,26 @@ const store = new Store({
         console.warn('[Config] 配置文件为空，使用默认配置')
         return DEFAULT_CONFIG
       }
-      
+
       // 正常解析（使用 trim 后的内容，移除前后空白字符和换行符）
       const parsed = JSON.parse(trimmed)
-      
+
       // 验证是否为对象
       if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
         console.error('[Config] 配置文件格式错误（不是对象），使用默认配置')
         backupCorruptedConfig(text, 'invalid-format')
         return DEFAULT_CONFIG
       }
-      
+
       return parsed
-      
+
     } catch (error) {
       console.error('[Config] JSON 解析失败，配置文件已损坏:', error)
       console.error('[Config] 原始内容:', text.substring(0, 200))
-      
+
       // 备份损坏的配置
       backupCorruptedConfig(text, 'parse-error')
-      
+
       // 返回默认配置（避免应用崩溃）
       console.warn('[Config] 已重置为默认配置')
       return DEFAULT_CONFIG
@@ -282,7 +282,7 @@ function backupCorruptedConfig(content: string, reason: string): void {
       app.getPath('userData'),
       `config.json.corrupted.${reason}.${Date.now()}.bak`
     )
-    
+
     writeFile(backupPath, content, 'utf-8').then(() => {
       console.log(`[Config] 损坏的配置已备份到: ${backupPath}`)
     }).catch(err => {
@@ -417,7 +417,7 @@ const MAIN_BUILD = resolveMainBuildId()
 console.info(`[build] main build id: ${MAIN_BUILD.buildId} (source: ${MAIN_BUILD.source})`)
 
 const APP_CSP =
-  "default-src 'self'; script-src 'self'; connect-src 'self' ws://localhost:* ws://127.0.0.1:* https://generativelanguage.googleapis.com https://openrouter.ai; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+  "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' ws://localhost:* ws://127.0.0.1:* https://generativelanguage.googleapis.com https://openrouter.ai; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
 
 function registerDevCspHeaders() {
   if (!VITE_DEV_SERVER_URL) return
@@ -517,7 +517,7 @@ async function startCatalogSyncInBackground() {
       apiKey,
       baseUrl,
       writer: {
-        syncSnapshot: (params) => dbWorkerManager.call('modelCatalog.syncSnapshot', params).then(() => {}),
+        syncSnapshot: (params) => dbWorkerManager.call('modelCatalog.syncSnapshot', params).then(() => { }),
       },
     })
 
@@ -558,7 +558,8 @@ function createWindow() {
   win = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
     webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs')
+      preload: path.join(__dirname, 'preload.mjs'),
+      sandbox: true,
     }
   })
 
@@ -671,7 +672,7 @@ app.on('activate', () => {
 app.on('before-quit', async (event) => {
   // 阻止立即退出，等待保存完成
   event.preventDefault()
-  
+
   // 通知渲染进程保存所有脏数据
   if (win && !win.isDestroyed()) {
     console.log('[main] 通知渲染进程保存数据...')
@@ -680,12 +681,12 @@ app.on('before-quit', async (event) => {
 
   // 清理活动的 OpenRouter 流式请求
   cleanupOpenRouterStreams()
-  
+
   // 停止数据库 Worker
   await dbWorkerManager.stop().catch((error) => {
     console.error('[main] failed to stop DB worker', error)
   })
-  
+
   // 真正退出
   app.exit(0)
 })
@@ -712,14 +713,14 @@ app.whenReady()
     await ensureDbReady()
     registerDbBridge(dbWorkerManager)
     registerOpenRouterStreamBridge()
-    
+
     // 注册事件转发：Worker 事件 → Renderer
     dbWorkerManager.onEvent((event) => {
       if (win && !win.isDestroyed()) {
         win.webContents.send('db:event', event)
       }
     })
-    
+
     createWindow()
     void startCatalogSyncInBackground()
   })
@@ -752,7 +753,7 @@ ipcMain.handle('store-set', (_event, key, value) => {
   if (!sizeCheck.ok) {
     // 不阻止写入，但已记录严重警告
   }
-  
+
   // 2. 白名单检查
   if (!ALLOWED_CONFIG_KEYS.has(key)) {
     if (isDev) {
@@ -763,15 +764,15 @@ ipcMain.handle('store-set', (_event, key, value) => {
       console.warn(`[Config] 未知配置字段: "${key}"`)
     }
   }
-  
+
   // 3. 执行写入
   store.set(key, value)
-  
+
   // 4. 写入后体积检查（仅开发环境）
   if (isDev) {
     performConfigSizeCheck(store, 'write')
   }
-  
+
   return true
 })
 
@@ -799,11 +800,11 @@ ipcMain.handle('store-delete', (_event, key) => {
 ipcMain.handle('store-clear-safe', (_event, keepKeys: string[] = []) => {
   try {
     const backupPath = safeClearConfig(store, keepKeys)
-    
+
     // 清空后重新执行迁移和体积检查
     migrateAndCleanupConfig(store)
     performConfigSizeCheck(store, 'startup')
-    
+
     return backupPath
   } catch (error) {
     console.error('[IPC] 安全清空配置失败:', error)
@@ -939,7 +940,7 @@ ipcMain.handle('dialog:select-image', async () => {
     const filePath = result.filePaths[0]!
     const fileBuffer = await readFile(filePath)
     const ext = path.extname(filePath).toLowerCase()
-    
+
     // MIME 类型映射表
     const mimeTypes: Record<string, string> = {
       '.jpg': 'image/jpeg',

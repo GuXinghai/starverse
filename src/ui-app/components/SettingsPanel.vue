@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { getOpenRouterProviderRequireParameters, setOpenRouterProviderRequireParameters } from '@/next/settings/openRouterProviderSettingsClient'
 import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningPrefsClient'
+import { getUserMessageRenderDefault, setUserMessageRenderDefault } from '@/next/settings/userMessageRenderDefaultClient'
 import {
   DEFAULT_NETEXP_SETTINGS,
   getNetExpRuntimeInfo,
@@ -40,6 +41,7 @@ const requireParameters = ref(false)
 const showApiKey = ref(false)
 const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('auto')
 const requestedReasoningExclude = ref(false)
+const userMessageRenderDefault = ref(false)
 const netExpDisableHttp2 = ref(DEFAULT_NETEXP_SETTINGS.disableHttp2)
 const netExpDisableQuic = ref(DEFAULT_NETEXP_SETTINGS.disableQuic)
 const netExpStreamInMainProcess = ref(DEFAULT_NETEXP_SETTINGS.streamInMainProcess)
@@ -142,6 +144,7 @@ async function load() {
     netExpRuntime.value = await getNetExpRuntimeInfo()
     const prefs = await getReasoningPrefs()
     applyReasoningPrefs(normalizeReasoningPrefs(prefs))
+    userMessageRenderDefault.value = (await getUserMessageRenderDefault()) === true
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
@@ -179,8 +182,10 @@ async function save() {
     })
     const nextReasoningPrefs = buildReasoningPrefs()
     await setReasoningPrefs(nextReasoningPrefs)
+    await setUserMessageRenderDefault(userMessageRenderDefault.value === true)
     try {
       window.dispatchEvent(new CustomEvent('settings:reasoningPrefsUpdated', { detail: nextReasoningPrefs }))
+      window.dispatchEvent(new CustomEvent('settings:userMessageRenderDefaultUpdated', { detail: userMessageRenderDefault.value === true }))
     } catch {
       // no-op
     }
@@ -497,6 +502,22 @@ onMounted(() => {
 
           <div class="text-[11px] text-gray-500">
             Defaults apply to non-project sessions. Session-level preferences override project/global defaults.
+          </div>
+
+          <div class="mt-3 flex items-center justify-between gap-2 rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
+            <div class="min-w-0">
+              <div class="text-[11px] font-semibold text-gray-700">User message rich rendering</div>
+              <div class="text-[11px] text-gray-500">Default for sessions in follow mode.</div>
+            </div>
+            <label class="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                aria-label="Global user message rich rendering"
+                :disabled="!canEdit || loading || saving"
+                v-model="userMessageRenderDefault"
+              />
+              <span class="text-[11px] text-gray-700">{{ userMessageRenderDefault ? 'On' : 'Off' }}</span>
+            </label>
           </div>
         </div>
       </div>
