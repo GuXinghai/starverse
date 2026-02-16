@@ -179,6 +179,10 @@ const openRouterProviderRequireParametersSchema = z.object({
   value: z.boolean(),
 })
 
+const userMessageRenderDefaultSchema = z.object({
+  value: z.boolean().nullable(),
+})
+
 const projectCountSchema = z.object({
   count: z.number().finite(),
 })
@@ -376,6 +380,10 @@ export function decodeStrictAck(method: string, raw: unknown): boolean {
 
 export function decodeOpenRouterProviderRequireParametersResponse(raw: unknown): boolean {
   return decodeWithSchema('settings.getOpenRouterProviderRequireParameters', openRouterProviderRequireParametersSchema, raw).value
+}
+
+export function decodeUserMessageRenderDefaultResponse(raw: unknown): boolean | null {
+  return decodeWithSchema('settings.getUserMessageRenderDefault', userMessageRenderDefaultSchema, raw).value
 }
 
 export function decodeMessageSetStatusResponse(raw: unknown): boolean {

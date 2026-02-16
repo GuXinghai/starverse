@@ -9,8 +9,8 @@ function loadSchema(db: BetterSqlite3.Database) {
   db.exec(readFileSync(schemaPath, 'utf8'))
 }
 
-describe('SettingsRepo (openrouter.provider.require_parameters)', () => {
-  it('defaults to false and persists updates', () => {
+describe('SettingsRepo', () => {
+  it('persists openrouter.provider.require_parameters', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
     const repo = new SettingsRepo(db)
@@ -23,5 +23,18 @@ describe('SettingsRepo (openrouter.provider.require_parameters)', () => {
     repo.setOpenRouterProviderRequireParameters(false)
     expect(repo.getOpenRouterProviderRequireParameters()).toBe(false)
   })
-})
 
+  it('persists chat.user_message_render.default and defaults to null', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new SettingsRepo(db)
+
+    expect(repo.getUserMessageRenderDefault()).toBeNull()
+
+    repo.setUserMessageRenderDefault(true)
+    expect(repo.getUserMessageRenderDefault()).toBe(true)
+
+    repo.setUserMessageRenderDefault(false)
+    expect(repo.getUserMessageRenderDefault()).toBe(false)
+  })
+})

@@ -88,6 +88,8 @@ export const DB_METHODS = [
   { name: 'settings.setOpenRouterProviderRequireParameters', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.getReasoningPrefs', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.setReasoningPrefs', renderer: true, worker: true, domain: 'settings' },
+  { name: 'settings.getUserMessageRenderDefault', renderer: true, worker: true, domain: 'settings' },
+  { name: 'settings.setUserMessageRenderDefault', renderer: true, worker: true, domain: 'settings' },
 ] as const satisfies readonly DbMethodRegistryEntry[]
 
 export type DbMethod = (typeof DB_METHODS)[number]['name']

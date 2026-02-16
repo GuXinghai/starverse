@@ -18,6 +18,7 @@ import {
   decodeMessageListResponse,
   decodeMessageSetStatusResponse,
   decodeOpenRouterProviderRequireParametersResponse,
+  decodeUserMessageRenderDefaultResponse,
   decodeProjectCountConversationsBatchResponse,
   decodeProjectCountConversationsResponse,
   decodeProjectCreateResponse,
@@ -211,6 +212,13 @@ const cases: ContractCase[] = [
   {
     name: 'settings.getOpenRouterProviderRequireParameters',
     decode: decodeOpenRouterProviderRequireParametersResponse,
+    valid: { value: true },
+    missing: {},
+    wrongType: { value: 'true' },
+  },
+  {
+    name: 'settings.getUserMessageRenderDefault',
+    decode: decodeUserMessageRenderDefaultResponse,
     valid: { value: true },
     missing: {},
     wrongType: { value: 'true' },

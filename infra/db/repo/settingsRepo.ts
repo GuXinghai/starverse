@@ -1,9 +1,11 @@
 import BetterSqlite3 from 'better-sqlite3'
+import {
+  SETTINGS_KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS,
+  SETTINGS_KEY_REASONING_PREFS,
+  SETTINGS_KEY_USER_MESSAGE_RENDER_DEFAULT,
+} from './settingsKeys'
 
 type SqlDatabase = BetterSqlite3.Database
-
-const KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS = 'openrouter.provider.require_parameters' as const
-const KEY_REASONING_PREFS = 'reasoning.prefs' as const
 
 export class SettingsRepo {
   private getStmt: BetterSqlite3.Statement
@@ -46,22 +48,32 @@ export class SettingsRepo {
   }
 
   getOpenRouterProviderRequireParameters(): boolean {
-    const value = this.readJson(KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS)
+    const value = this.readJson(SETTINGS_KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS)
     return value === true
   }
 
   setOpenRouterProviderRequireParameters(value: boolean): void {
     if (typeof value !== 'boolean') throw new Error('value must be boolean')
-    this.writeJson(KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS, value)
+    this.writeJson(SETTINGS_KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS, value)
   }
 
   getReasoningPrefs(): unknown | null {
-    const value = this.readJson(KEY_REASONING_PREFS)
+    const value = this.readJson(SETTINGS_KEY_REASONING_PREFS)
     return value === undefined ? null : value
   }
 
   setReasoningPrefs(value: unknown): void {
-    this.writeJson(KEY_REASONING_PREFS, value)
+    this.writeJson(SETTINGS_KEY_REASONING_PREFS, value)
+  }
+
+  getUserMessageRenderDefault(): boolean | null {
+    const value = this.readJson(SETTINGS_KEY_USER_MESSAGE_RENDER_DEFAULT)
+    if (value === undefined) return null
+    return value === true
+  }
+
+  setUserMessageRenderDefault(value: boolean): void {
+    if (typeof value !== 'boolean') throw new Error('value must be boolean')
+    this.writeJson(SETTINGS_KEY_USER_MESSAGE_RENDER_DEFAULT, value)
   }
 }
-
