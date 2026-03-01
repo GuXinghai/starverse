@@ -3,8 +3,8 @@ import { mergeMetaWithReasoning, safeParseMessageMeta } from './messageMetaMerge
 
 describe('messageMetaMerge', () => {
   it('returns null when meta is empty and no reasoning fields are provided', () => {
-    expect(mergeMetaWithReasoning(null, null, null, undefined, undefined, undefined)).toBeNull()
-    expect(mergeMetaWithReasoning({}, null, null, undefined, undefined, undefined)).toBeNull()
+    expect(mergeMetaWithReasoning(null, null, null, undefined, undefined, undefined, undefined)).toBeNull()
+    expect(mergeMetaWithReasoning({}, null, null, undefined, undefined, undefined, undefined)).toBeNull()
   })
 
   it('merges reasoningDetailsRaw only when reasoningDetailsFinalJson exists and meta does not already have it', () => {
@@ -47,6 +47,7 @@ describe('messageMetaMerge', () => {
       { keep: 'ok' },
       '{bad-json',
       '{also-bad',
+      '{bad-annotations',
       null,
       '',
       0,
@@ -56,6 +57,22 @@ describe('messageMetaMerge', () => {
       keep: 'ok',
       reasoningDurationMs: null,
     })
+  })
+
+  it('merges annotations when annotations_json exists and meta does not already have it', () => {
+    const noAnnotations = mergeMetaWithReasoning({ keep: true }, null, null, '')
+    expect(noAnnotations).toEqual({ keep: true })
+
+    const withAnnotations = mergeMetaWithReasoning(null, null, null, '[{"type":"url_citation"}]')
+    expect(withAnnotations).toEqual({ annotations: [{ type: 'url_citation' }] })
+
+    const preserveMeta = mergeMetaWithReasoning(
+      { annotations: [{ from: 'meta' }] },
+      null,
+      null,
+      '[{"from":"column"}]'
+    )
+    expect(preserveMeta).toEqual({ annotations: [{ from: 'meta' }] })
   })
 
   it('does not accidentally overwrite unrelated existing fields', () => {
@@ -83,4 +100,3 @@ describe('messageMetaMerge', () => {
     expect(safeParseMessageMeta('{oops')).toBeNull()
   })
 })
-

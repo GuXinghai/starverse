@@ -1,7 +1,7 @@
 /* eslint-disable max-lines-per-function, complexity */
 import BetterSqlite3 from 'better-sqlite3'
 import { randomUUID, createHash } from 'node:crypto'
-import type { AppendMessageInput, ListMessageParams, MessageRecord, AppendReasoningDetailSegmentsInput, FinalizeReasoningDetailsInput, SetReasoningRequestConfigInput } from '../../db/types'
+import type { AppendMessageInput, ListMessageParams, MessageRecord, AppendReasoningDetailSegmentsInput, FinalizeReasoningDetailsInput, SetReasoningRequestConfigInput, SetMessageAnnotationsInput } from '../../db/types'
 import { buildReasoningDetailsArray, stableStringifyReasoningDetails, type ReasoningDetailSegmentRow } from './reasoningDetailsAggregator'
 import { mergeMetaWithReasoning, safeParseMessageMeta } from './shared/messageMetaMerge'
 
@@ -12,6 +12,7 @@ const mapRow = (row: any): MessageRecord => {
     row.meta ? safeParseMessageMeta(row.meta) : null,
     row.reasoningDetailsFinalJson,
     row.requestReasoningConfigJson,
+    row.annotationsJson,
     row.reasoningDurationMs ?? null,
     row.reasoningEndReason ?? null,
     row.reasoningDurationIsFallback ?? null,
@@ -43,6 +44,7 @@ export class MessageRepo {
   private updateBodyStmt: BetterSqlite3.Statement
   private updateFtsBodyStmt: BetterSqlite3.Statement
   private updateMetaStmt: BetterSqlite3.Statement
+  private updateAnnotationsStmt: BetterSqlite3.Statement
   private insertReasoningSegmentStmt: BetterSqlite3.Statement
   private listReasoningSegmentsStmt: BetterSqlite3.Statement
   private updateReasoningFinalStmt: BetterSqlite3.Statement
@@ -122,6 +124,10 @@ export class MessageRepo {
 
     this.updateMetaStmt = this.db.prepare(`
       UPDATE message SET meta = @meta WHERE id = @id
+    `)
+
+    this.updateAnnotationsStmt = this.db.prepare(`
+      UPDATE message SET annotations_json = @annotationsJson WHERE id = @id
     `)
 
     this.insertReasoningSegmentStmt = this.db.prepare(`
@@ -254,6 +260,7 @@ export class MessageRepo {
         m.seq,
         m.created_at,
         m.meta,
+        m.annotations_json AS annotationsJson,
         m.reasoning_details_final_json AS reasoningDetailsFinalJson,
         m.request_reasoning_config_json AS requestReasoningConfigJson,
         m.reasoning_duration_ms AS reasoningDurationMs,
@@ -374,6 +381,23 @@ export class MessageRepo {
     const base = row?.meta ? safeParseMessageMeta(row.meta) : null
     const next: Record<string, unknown> = { ...(base ?? {}), ...(patch as Record<string, unknown>) }
     this.updateMetaStmt.run({ id, meta: JSON.stringify(next) })
+    return { ok: true }
+  }
+
+  setAnnotations(input: SetMessageAnnotationsInput) {
+    const id = String(input.messageId ?? '').trim()
+    if (!id) throw new Error('Missing messageId')
+
+    const annotationsRaw = input.annotations
+    if (annotationsRaw !== undefined && annotationsRaw !== null && !Array.isArray(annotationsRaw)) {
+      throw new Error('Invalid annotations')
+    }
+
+    this.updateAnnotationsStmt.run({
+      id,
+      annotationsJson: Array.isArray(annotationsRaw) ? JSON.stringify(annotationsRaw) : null,
+    })
+
     return { ok: true }
   }
 

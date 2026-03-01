@@ -12,6 +12,7 @@ export const mergeMetaWithReasoning = (
   meta: MessageMeta,
   reasoningJson: unknown,
   requestJson: unknown,
+  annotationsJson?: unknown,
   reasoningDurationMs?: number | null,
   reasoningEndReason?: string | null,
   reasoningDurationIsFallback?: number | null,
@@ -40,6 +41,17 @@ export const mergeMetaWithReasoning = (
     }
   }
 
+  if (typeof annotationsJson === 'string' && annotationsJson.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(annotationsJson)
+      if (Array.isArray(parsed) && !next.annotations) {
+        next.annotations = parsed
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+
   if (typeof reasoningDurationMs === 'number' && Number.isFinite(reasoningDurationMs)) {
     next.reasoningDurationMs = reasoningDurationMs
   } else if (reasoningDurationMs === null) {
@@ -56,4 +68,3 @@ export const mergeMetaWithReasoning = (
 
   return Object.keys(next).length > 0 ? next : null
 }
-
