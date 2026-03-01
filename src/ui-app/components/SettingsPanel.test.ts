@@ -3,34 +3,46 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SettingsPanel from './SettingsPanel.vue'
 
+function createElectronStoreMock() {
+  const get = vi.fn(async (key: string) => {
+    if (key === 'openRouterApiKey') return 'sk-old'
+    if (key === 'openRouterBaseUrl') return 'https://openrouter.ai/api/v1'
+    return undefined
+  })
+  const set = vi.fn(async () => true)
+  const del = vi.fn(async () => true)
+  return { get, set, delete: del }
+}
+
+function createDbBridgeMock() {
+  const invoke = vi.fn(async (method: string, _params?: any) => {
+    if (method === 'settings.getOpenRouterProviderRequireParameters') return { value: false }
+    if (method === 'settings.setOpenRouterProviderRequireParameters') return { ok: true }
+    if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
+    if (method === 'settings.setReasoningPrefs') return { ok: true }
+    if (method === 'settings.getUserMessageRenderDefault') return { value: false }
+    if (method === 'settings.setUserMessageRenderDefault') return { ok: true }
+    if (method === 'settings.getWebSearchDefaults') return { value: null }
+    if (method === 'settings.setWebSearchDefaults') return { ok: true }
+    if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+    if (method === 'settings.setSamplingParamsDefaults') return { ok: true }
+    return { ok: true }
+  })
+  return { invoke }
+}
+
 describe('ui-app SettingsPanel', () => {
   const originalElectronStore = (globalThis as any).electronStore
   const originalDbBridge = (globalThis as any).dbBridge
 
   beforeEach(() => {
-    const get = vi.fn(async (key: string) => {
-      if (key === 'openRouterApiKey') return 'sk-old'
-      if (key === 'openRouterBaseUrl') return 'https://openrouter.ai/api/v1'
-      return undefined
-    })
-    const set = vi.fn(async () => true)
-    const del = vi.fn(async () => true)
-
-    ;(globalThis as any).electronStore = { get, set, delete: del }
-
-    const invoke = vi.fn(async (method: string, _params?: any) => {
-      if (method === 'settings.getOpenRouterProviderRequireParameters') return { value: false }
-      if (method === 'settings.setOpenRouterProviderRequireParameters') return { ok: true }
-      if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
-      if (method === 'settings.setReasoningPrefs') return { ok: true }
-      if (method === 'settings.getUserMessageRenderDefault') return { value: false }
-      if (method === 'settings.setUserMessageRenderDefault') return { ok: true }
-      return { ok: true }
-    })
-    ;(globalThis as any).dbBridge = { invoke }
+    globalThis.localStorage?.removeItem('sv_debug_openrouter_echo_upstream_body')
+    ;(globalThis as any).electronStore = createElectronStoreMock()
+    ;(globalThis as any).dbBridge = createDbBridgeMock()
   })
 
   afterEach(() => {
+    globalThis.localStorage?.removeItem('sv_debug_openrouter_echo_upstream_body')
     ;(globalThis as any).electronStore = originalElectronStore
     ;(globalThis as any).dbBridge = originalDbBridge
   })
@@ -64,6 +76,8 @@ describe('ui-app SettingsPanel', () => {
     expect(invoke).toHaveBeenCalledWith('settings.setOpenRouterProviderRequireParameters', { value: true })
     expect(invoke).toHaveBeenCalledWith('settings.setReasoningPrefs', { value: { mode: 'auto', effort: 'auto', exclude: false } })
     expect(invoke).toHaveBeenCalledWith('settings.setUserMessageRenderDefault', { value: false })
+    expect(invoke).toHaveBeenCalledWith('settings.setWebSearchDefaults', { value: null })
+    expect(invoke).toHaveBeenCalledWith('settings.setSamplingParamsDefaults', { value: null })
   })
 
   it('clears via electronStore.delete', async () => {
@@ -79,5 +93,20 @@ describe('ui-app SettingsPanel', () => {
 
     const storeDelete = (globalThis as any).electronStore.delete as ReturnType<typeof vi.fn>
     expect(storeDelete).toHaveBeenCalledWith('openRouterApiKey')
+  })
+
+  it('persists debug echo toggle in localStorage (dev-only control)', async () => {
+    const user = userEvent.setup()
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('Settings')
+    const toggle = screen.queryByLabelText('OpenRouter debug echo upstream body') as HTMLInputElement | null
+    if (!toggle) return
+
+    expect(toggle.checked).toBe(false)
+    await user.click(toggle)
+    expect(toggle.checked).toBe(true)
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(globalThis.localStorage?.getItem('sv_debug_openrouter_echo_upstream_body')).toBe('1')
   })
 })

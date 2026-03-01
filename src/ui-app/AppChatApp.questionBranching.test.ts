@@ -59,7 +59,9 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
     }
 
     const invoke = vi.fn(async (method: string, params?: any) => {
+      if (method === 'project.getInbox') return null
       if (method === 'project.list') return []
+      if (method === 'project.countConversationsBatch') return { counts: {} }
       if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
       if (method === 'branch.ensureDefault') {
         const { a2 } = renderPath()

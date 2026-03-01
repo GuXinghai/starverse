@@ -32,6 +32,20 @@ export type DecodedPersistedMessage = Readonly<{
   meta: unknown
 }>
 
+export type DecodedMessageAsset = Readonly<{
+  messageId: string
+  assetId: string
+  ordinal: number
+  hash: string
+  mime: string
+  width: number | null
+  height: number | null
+  bytes: number
+  path: string
+  fileUrl: string
+  assetUrl: string
+}>
+
 export type DecodedBeginTurnResult = Readonly<{
   convoId: string
   questionId: string
@@ -111,6 +125,32 @@ const persistedMessageSchema = z.object({
   meta: row.meta ?? null,
 }))
 
+const messageAssetSchema = z.object({
+  messageId: nonEmpty,
+  assetId: nonEmpty,
+  ordinal: z.number().int().nonnegative(),
+  hash: nonEmpty,
+  mime: nonEmpty,
+  width: z.number().int().positive().nullable().optional(),
+  height: z.number().int().positive().nullable().optional(),
+  bytes: z.number().int().nonnegative(),
+  path: nonEmpty,
+  fileUrl: nonEmpty,
+  assetUrl: nonEmpty,
+}).transform((row) => ({
+  messageId: row.messageId,
+  assetId: row.assetId,
+  ordinal: row.ordinal,
+  hash: row.hash,
+  mime: row.mime,
+  width: row.width ?? null,
+  height: row.height ?? null,
+  bytes: row.bytes,
+  path: row.path,
+  fileUrl: row.fileUrl,
+  assetUrl: row.assetUrl,
+}))
+
 const appendReasoningDetailSegmentsResultSchema = z.object({
   ok: z.boolean(),
   received: z.number().finite(),
@@ -171,12 +211,31 @@ const booleanAckSchema = z.object({
   ok: z.boolean().optional(),
 }).transform((row) => row.ok ?? true)
 
+const messageAssetPersistAckSchema = z.object({
+  ok: z.boolean().optional(),
+  assets: z.array(messageAssetSchema).optional(),
+}).transform((row) => row.assets ?? [])
+
 const strictAckSchema = z.object({
   ok: z.boolean(),
 })
 
 const openRouterProviderRequireParametersSchema = z.object({
   value: z.boolean(),
+})
+
+const definedUnknownSchema = z.any().refine((value) => value !== undefined)
+
+const webSearchDefaultsSchema = z.object({
+  value: definedUnknownSchema.nullable(),
+})
+
+const samplingParamsDefaultsSchema = z.object({
+  value: definedUnknownSchema.nullable(),
+})
+
+const imageGenerationDefaultSchema = z.object({
+  value: definedUnknownSchema.nullable(),
 })
 
 const userMessageRenderDefaultSchema = z.object({
@@ -303,6 +362,40 @@ export function decodeMessageAppendResponse(raw: unknown): DecodedPersistedMessa
   }
 }
 
+export function decodeMessageAssetPersistResponse(raw: unknown): DecodedMessageAsset[] {
+  const rows = decodeWithSchema('messageAsset.persistFromDataUrls', messageAssetPersistAckSchema, raw)
+  return rows.map((row) => ({
+    messageId: row.messageId,
+    assetId: row.assetId,
+    ordinal: row.ordinal,
+    hash: row.hash,
+    mime: row.mime,
+    width: row.width,
+    height: row.height,
+    bytes: row.bytes,
+    path: row.path,
+    fileUrl: row.fileUrl,
+    assetUrl: row.assetUrl,
+  }))
+}
+
+export function decodeMessageAssetListResponse(raw: unknown): DecodedMessageAsset[] {
+  const rows = decodeWithSchema('messageAsset.listByMessageIds', z.array(messageAssetSchema), raw)
+  return rows.map((row) => ({
+    messageId: row.messageId,
+    assetId: row.assetId,
+    ordinal: row.ordinal,
+    hash: row.hash,
+    mime: row.mime,
+    width: row.width,
+    height: row.height,
+    bytes: row.bytes,
+    path: row.path,
+    fileUrl: row.fileUrl,
+    assetUrl: row.assetUrl,
+  }))
+}
+
 export function decodeAppendReasoningDetailSegmentsResponse(raw: unknown) {
   return decodeWithSchema('message.appendReasoningDetailSegments', appendReasoningDetailSegmentsResultSchema, raw)
 }
@@ -380,6 +473,18 @@ export function decodeStrictAck(method: string, raw: unknown): boolean {
 
 export function decodeOpenRouterProviderRequireParametersResponse(raw: unknown): boolean {
   return decodeWithSchema('settings.getOpenRouterProviderRequireParameters', openRouterProviderRequireParametersSchema, raw).value
+}
+
+export function decodeWebSearchDefaultsResponse(raw: unknown): unknown | null {
+  return decodeWithSchema('settings.getWebSearchDefaults', webSearchDefaultsSchema, raw).value
+}
+
+export function decodeSamplingParamsDefaultsResponse(raw: unknown): unknown | null {
+  return decodeWithSchema('settings.getSamplingParamsDefaults', samplingParamsDefaultsSchema, raw).value
+}
+
+export function decodeImageGenerationDefaultResponse(raw: unknown): unknown | null {
+  return decodeWithSchema('settings.getImageGenerationDefault', imageGenerationDefaultSchema, raw).value
 }
 
 export function decodeUserMessageRenderDefaultResponse(raw: unknown): boolean | null {

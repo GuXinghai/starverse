@@ -27,6 +27,24 @@ type PersistedMessage = {
   meta: any
 }
 
+const defaultInboxProject = Object.freeze({
+  id: 'project_inbox',
+  name: 'Inbox',
+  createdAt: 1,
+  updatedAt: 1,
+  meta: null,
+  isSystemProject: true,
+})
+
+function mockProjectBootstrapCalls(method: string) {
+  if (method === 'project.getInbox') return defaultInboxProject
+  if (method === 'project.list') return [defaultInboxProject]
+  if (method === 'project.countConversationsBatch') {
+    return { counts: { [defaultInboxProject.id]: 0 } }
+  }
+  return undefined
+}
+
 describe('ui-app AppChatApp (regenerate + retry replace)', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronStore = (globalThis as any).electronStore
@@ -99,6 +117,8 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     }
 
     const invoke = vi.fn(async (method: string, params?: any) => {
+      const projectBootstrap = mockProjectBootstrapCalls(method)
+      if (projectBootstrap !== undefined) return projectBootstrap
       if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
       if (method === 'branch.ensureDefault') {
         return { id: branchId, convoId, headMessageId: store.headMessageId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
@@ -157,6 +177,20 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
         if (msg) msg.status = status as any
         return { ok: true }
       }
+      if (method === 'modelPrefs.recordRecent') {
+        const nowTs = Date.now()
+        return {
+          scopeType: 'global',
+          scopeId: '',
+          providerKey: String(params?.providerKey ?? 'openrouter'),
+          modelId: String(params?.modelId ?? ''),
+          modelKey: String(params?.modelKey ?? ''),
+          lastUsedAtMs: nowTs,
+          useCount: 1,
+          createdAtMs: nowTs,
+          updatedAtMs: nowTs,
+        }
+      }
       return { ok: true }
     })
 
@@ -180,6 +214,16 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     expect(invoke).toHaveBeenCalledWith('branch.regenerateFromQuestion', expect.objectContaining({ branchId: 'b1', questionId: 'u1' }))
     expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 3 }))
     expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a2', status: 'final' }))
+    expect(invoke).toHaveBeenCalledWith(
+      'modelPrefs.recordRecent',
+      expect.objectContaining({
+        scopeType: 'global',
+        scopeId: '',
+        providerKey: 'openrouter',
+        modelId: 'openrouter/auto',
+        modelKey: 'openrouter::openrouter/auto',
+      }),
+    )
     expect(invoke.mock.calls.filter((c) => c[0] === 'branch.getCandidates').length).toBeGreaterThanOrEqual(2)
   })
 
@@ -237,6 +281,8 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     const visibleCandidates = () => store.candidatesNewToOld.filter((c) => !store.hidden.has(c.answerRootId))
 
     const invoke = vi.fn(async (method: string, params?: any) => {
+      const projectBootstrap = mockProjectBootstrapCalls(method)
+      if (projectBootstrap !== undefined) return projectBootstrap
       if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
       if (method === 'branch.ensureDefault') {
         return { id: branchId, convoId, headMessageId: store.headMessageId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
@@ -292,6 +338,20 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
         if (msg) msg.status = status as any
         return { ok: true }
       }
+      if (method === 'modelPrefs.recordRecent') {
+        const nowTs = Date.now()
+        return {
+          scopeType: 'global',
+          scopeId: '',
+          providerKey: String(params?.providerKey ?? 'openrouter'),
+          modelId: String(params?.modelId ?? ''),
+          modelKey: String(params?.modelKey ?? ''),
+          lastUsedAtMs: nowTs,
+          useCount: 1,
+          createdAtMs: nowTs,
+          updatedAtMs: nowTs,
+        }
+      }
       return { ok: true }
     })
 
@@ -318,6 +378,16 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     )
     expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 4 }))
     expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a2', status: 'final' }))
+    expect(invoke).toHaveBeenCalledWith(
+      'modelPrefs.recordRecent',
+      expect.objectContaining({
+        scopeType: 'global',
+        scopeId: '',
+        providerKey: 'openrouter',
+        modelId: 'openrouter/auto',
+        modelKey: 'openrouter::openrouter/auto',
+      }),
+    )
     expect(visibleCandidates().map((c) => c.answerRootId)).not.toContain('a1')
   })
 
@@ -327,6 +397,8 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     const now = Date.now()
 
     const invoke = vi.fn(async (method: string) => {
+      const projectBootstrap = mockProjectBootstrapCalls(method)
+      if (projectBootstrap !== undefined) return projectBootstrap
       if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
       if (method === 'branch.ensureDefault') {
         return { id: branchId, convoId, headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
@@ -369,6 +441,20 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
       }
       if (method === 'context.buildForBranch') return { messages: [] }
       if (method === 'branch.getCandidates') return [{ answerRootId: 'a1', createdAt: now + 2, status: 'streaming' }]
+      if (method === 'modelPrefs.recordRecent') {
+        const nowTs = Date.now()
+        return {
+          scopeType: 'global',
+          scopeId: '',
+          providerKey: 'openrouter',
+          modelId: 'openrouter/auto',
+          modelKey: 'openrouter::openrouter/auto',
+          lastUsedAtMs: nowTs,
+          useCount: 1,
+          createdAtMs: nowTs,
+          updatedAtMs: nowTs,
+        }
+      }
       return { ok: true }
     })
 
@@ -381,4 +467,3 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     expect(await screen.findByTestId('retry-a-a1')).toBeDisabled()
   })
 })
-

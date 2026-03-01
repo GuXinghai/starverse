@@ -28,6 +28,8 @@ export type ContentBlock =
   | Readonly<{ type: 'image'; url: string }>
   | Readonly<{ type: 'unknown'; raw: unknown }>
 
+export type MessageAnnotation = Readonly<Record<string, unknown>>
+
 export type ReasoningViewVisibility = 'shown' | 'excluded' | 'not_returned'
 export type ReasoningPanelState = 'collapsed' | 'expanded'
 
@@ -87,6 +89,8 @@ export type MessageVM = Readonly<{
   messageId: string
   role: MessageRole
   contentBlocks: ContentBlock[]
+  requestedImageGeneration?: boolean
+  annotations?: MessageAnnotation[]
   toolCalls: ToolCallVM[]
   reasoningView: ReasoningView
   reasoningDurationMs?: number | null

@@ -37,6 +37,7 @@ const emit = defineEmits<{
   createProject: [name: string]
   renameProject: [projectId: string, name: string]
   deleteProject: [projectId: string]
+  openProjectSettings: [projectId: string]
 }>()
 
 const selectionMode = ref(false)
@@ -65,6 +66,8 @@ const userProjects = computed(() => {
   if (!props.inboxId) return props.projects
   return props.projects.filter((p) => p.id !== props.inboxId)
 })
+
+const showNoProjectOption = computed(() => !props.inboxId)
 
 function isSystemProject(project: ProjectListItem): boolean {
   if (project.isSystem) return true
@@ -153,7 +156,7 @@ function openMove(ids: string[]) {
   if (props.disabled) return
   const cleaned = ids.map((x) => String(x ?? '').trim()).filter(Boolean)
   if (cleaned.length === 0) return
-  moveDialog.value = { ids: cleaned, projectId: null }
+  moveDialog.value = { ids: cleaned, projectId: props.inboxId ?? null }
 }
 
 function confirmMove() {
@@ -217,6 +220,12 @@ function openProjectDelete(project: ProjectListItem) {
     return
   }
   projectDeleteDialog.value = { id: project.id, name: project.name }
+}
+
+function openProjectSettings(project: ProjectListItem) {
+  if (props.disabled) return
+  if (isSystemProject(project)) return
+  emit('openProjectSettings', project.id)
 }
 
 function confirmProjectDelete() {
@@ -346,6 +355,16 @@ function cancelProjectDialog() {
           </button>
 
           <div class="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-1 group-hover:flex">
+            <button
+              type="button"
+              class="rounded bg-white p-1 text-xs text-gray-500 shadow-sm hover:bg-gray-100 hover:text-gray-700"
+              :disabled="props.disabled"
+              :data-testid="`project-settings-${project.id}`"
+              @click.stop="openProjectSettings(project)"
+              aria-label="Project settings"
+            >
+              ⚙️
+            </button>
             <button
               type="button"
               class="rounded bg-white p-1 text-xs text-gray-500 shadow-sm hover:bg-gray-100 hover:text-gray-700"
@@ -556,7 +575,7 @@ function cancelProjectDialog() {
           :value="moveDialog.projectId ?? ''"
           @change="moveDialog = { ...moveDialog, projectId: ($event.target as HTMLSelectElement).value || null }"
         >
-          <option value="">No project</option>
+          <option v-if="showNoProjectOption" value="">No project</option>
           <option v-for="p in props.projects" :key="p.id" :value="p.id">{{ p.name }}</option>
         </select>
         <div class="mt-4 flex justify-end gap-2">

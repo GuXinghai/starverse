@@ -1,6 +1,9 @@
 import type { ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import { sanitizeErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import {
+  decodeBooleanAck,
+  decodeMessageAssetListResponse,
+  decodeMessageAssetPersistResponse,
   decodeAppendReasoningDetailSegmentsResponse,
   decodeMessageAppendResponse,
   decodeMessageFinalizeReasoningDetailsResponse,
@@ -27,6 +30,20 @@ export type PersistedMessageError = Readonly<{
   isTruncated: boolean
   createdAt: number
   updatedAt: number
+}>
+
+export type PersistedMessageImageAsset = Readonly<{
+  messageId: string
+  assetId: string
+  ordinal: number
+  hash: string
+  mime: string
+  width: number | null
+  height: number | null
+  bytes: number
+  path: string
+  fileUrl: string
+  assetUrl: string
 }>
 
 export type AppendableMessageRole = 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter'
@@ -148,6 +165,80 @@ export async function setMessageStatus(input: Readonly<{
     console.log('[messageClient] setMessageStatus: DB returned', { messageId: messageId.slice(0, 8), status, success, result })
   }
   return success
+}
+
+export async function setMessageAnnotations(input: Readonly<{
+  messageId: string
+  annotations?: unknown[] | null
+}>): Promise<boolean> {
+  const bridge = requireDbBridge()
+  const messageId = String(input.messageId ?? '').trim()
+  if (!messageId) throw new Error('Missing messageId')
+  const annotations = input.annotations
+  if (annotations !== undefined && annotations !== null && !Array.isArray(annotations)) {
+    throw new Error('Invalid annotations')
+  }
+  const result = await bridge.invoke('message.setAnnotations', {
+    messageId,
+    ...(annotations !== undefined ? { annotations } : {}),
+  })
+  return decodeBooleanAck('message.setAnnotations', result)
+}
+
+export async function persistMessageImageAssetsFromDataUrls(input: Readonly<{
+  messageId: string
+  imageDataUrls: string[]
+}>): Promise<PersistedMessageImageAsset[]> {
+  const bridge = getDbBridge()
+  if (!bridge) return []
+
+  const messageId = String(input.messageId ?? '').trim()
+  if (!messageId) return []
+  const imageDataUrls = Array.isArray(input.imageDataUrls)
+    ? input.imageDataUrls
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter((item) => item.length > 0)
+    : []
+  if (imageDataUrls.length === 0) return []
+
+  try {
+    const raw = await bridge.invoke('messageAsset.persistFromDataUrls', { messageId, imageDataUrls })
+    const normalized =
+      Array.isArray(raw)
+        ? { ok: true, assets: raw }
+        : (raw && typeof raw === 'object'
+          ? { ...(raw as Record<string, unknown>), assets: Array.isArray((raw as any).assets) ? (raw as any).assets : [] }
+          : { ok: true, assets: [] })
+    return decodeMessageAssetPersistResponse(normalized)
+  } catch (err) {
+    if (import.meta.env?.DEV) {
+      console.warn('[messageClient] messageAsset.persistFromDataUrls failed (non-fatal):', err)
+    }
+    return []
+  }
+}
+
+export async function listMessageImageAssetsByMessageIds(messageIds: ReadonlyArray<string>): Promise<PersistedMessageImageAsset[]> {
+  const bridge = getDbBridge()
+  if (!bridge) return []
+
+  const ids = Array.from(new Set(messageIds.map((item) => String(item ?? '').trim()).filter((item) => item.length > 0)))
+  if (ids.length === 0) return []
+
+  try {
+    const raw = await bridge.invoke('messageAsset.listByMessageIds', { messageIds: ids })
+    const normalized = Array.isArray(raw)
+      ? raw
+      : (raw && typeof raw === 'object' && Array.isArray((raw as any).assets)
+        ? (raw as any).assets
+        : [])
+    return decodeMessageAssetListResponse(normalized)
+  } catch (err) {
+    if (import.meta.env?.DEV) {
+      console.warn('[messageClient] messageAsset.listByMessageIds failed (non-fatal):', err)
+    }
+    return []
+  }
 }
 
 /** DB 写入统计 */

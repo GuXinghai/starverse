@@ -15,6 +15,7 @@ function message(partial: Partial<MessageVM> & Pick<MessageVM, 'messageId' | 'ro
     messageId: partial.messageId,
     role: partial.role,
     contentBlocks: partial.contentBlocks ?? [{ type: 'text', text: 'Hello world' }],
+    ...(partial.annotations ? { annotations: partial.annotations } : {}),
     toolCalls: partial.toolCalls ?? [],
     reasoningView: partial.reasoningView ?? { visibility: 'not_returned', panelState: 'collapsed' },
     streaming: partial.streaming ?? { isTarget: false, isComplete: true },
