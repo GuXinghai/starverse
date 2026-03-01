@@ -1,0 +1,748 @@
+{
+  "generatedAt": "2026-02-18T17:58:58.217Z",
+  "toolVersion": "2026-02-18",
+  "keySource": "appdata",
+  "keyHash": "6a09729b98",
+  "baseModel": "google/gemini-2.5-flash",
+  "nativeModel": "x-ai/grok-3-mini-beta",
+  "cases": [
+    {
+      "id": "A_nonstream_web",
+      "title": "A: Non-stream with web plugin",
+      "objective": "Verify message.annotations in non-stream response",
+      "request": {
+        "model": "google/gemini-2.5-flash",
+        "stream": false,
+        "max_tokens": 220,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+          }
+        ],
+        "plugins": [
+          {
+            "id": "web"
+          }
+        ]
+      },
+      "result": {
+        "mode": "json",
+        "status": 200,
+        "ok": true,
+        "startedAt": "2026-02-18T17:58:19.271Z",
+        "endedAt": "2026-02-18T17:58:22.749Z",
+        "responseModel": "google/gemini-2.5-flash",
+        "responseProvider": "Google",
+        "contentPreview": "utc_date: 2026-02-18 source_url: [mariadb.com](https://mariadb.com/docs/server/reference/sql-functions/date-time-functions/utc_date)",
+        "annotations": {
+          "count": 5,
+          "types": [
+            "url_citation"
+          ],
+          "urlCitationCount": 5,
+          "startIndexZeroCount": 5,
+          "startIndexNonZeroCount": 0,
+          "endIndexZeroCount": 5,
+          "endIndexNonZeroCount": 0,
+          "sample": {
+            "type": "url_citation",
+            "url": "https://www.litetools.net/p/current-time-in-utc.html",
+            "title": "Current Time in UTC - Live Coordinated Universal Time",
+            "start_index": 0,
+            "end_index": 0,
+            "content_preview": "Current Time in UTC - Live Coordinated Universal Time\n\nLoading...\n\nLoading...\n\nCoordinated Universal Time (UTC)\n\n### 📍 Basic Information\n\nStandard: Coordinated Universal Time Offset: UTC+0 Usage: Global time standard Adopted by: Internatio"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "id": "A_stream_web",
+      "title": "A: Stream with web plugin",
+      "objective": "Verify whether annotations arrive in delta or final packet",
+      "request": {
+        "model": "google/gemini-2.5-flash",
+        "stream": true,
+        "max_tokens": 220,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+          }
+        ],
+        "plugins": [
+          {
+            "id": "web"
+          }
+        ]
+      },
+      "result": {
+        "mode": "stream",
+        "status": 200,
+        "ok": true,
+        "startedAt": "2026-02-18T17:58:23.291Z",
+        "endedAt": "2026-02-18T17:58:26.816Z",
+        "responseModel": "google/gemini-2.5-flash",
+        "responseProvider": "Google",
+        "contentPreview": "utc_date: 2026-02-18 source_url: [utctime.net](https://www.utctime.net/)",
+        "stream": {
+          "dataLines": 6,
+          "jsonEvents": 5,
+          "doneSeen": true,
+          "firstDeltaAnnotationEvent": 1,
+          "firstMessageAnnotationEvent": -1,
+          "deltaAnnotations": {
+            "count": 5,
+            "types": [
+              "url_citation"
+            ],
+            "urlCitationCount": 5,
+            "startIndexZeroCount": 5,
+            "startIndexNonZeroCount": 0,
+            "endIndexZeroCount": 5,
+            "endIndexNonZeroCount": 0,
+            "sample": {
+              "type": "url_citation",
+              "url": "https://www.litetools.net/p/current-time-in-utc.html",
+              "title": "Current Time in UTC - Live Coordinated Universal Time",
+              "start_index": 0,
+              "end_index": 0,
+              "content_preview": "Current Time in UTC - Live Coordinated Universal Time\n\nLoading...\n\nLoading...\n\nCoordinated Universal Time (UTC)\n\n### 📍 Basic Information\n\nStandard: Coordinated Universal Time Offset: UTC+0 Usage: Global time standard Adopted by: Internatio"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "B_engine_auto",
+      "title": "B: engine=auto",
+      "objective": "Check auto fallback behavior on non-native model",
+      "request": {
+        "model": "google/gemini-2.5-flash",
+        "stream": false,
+        "max_tokens": 220,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+          }
+        ],
+        "plugins": [
+          {
+            "id": "web"
+          }
+        ]
+      },
+      "result": {
+        "mode": "json",
+        "status": 200,
+        "ok": true,
+        "startedAt": "2026-02-18T17:58:26.819Z",
+        "endedAt": "2026-02-18T17:58:29.899Z",
+        "responseModel": "google/gemini-2.5-flash",
+        "responseProvider": "Google",
+        "contentPreview": "utc_date: 2026-02-18 source_url: [mariadb.com](https://mariadb.com/docs/server/reference/sql-functions/date-time-functions/utc_date)",
+        "annotations": {
+          "count": 5,
+          "types": [
+            "url_citation"
+          ],
+          "urlCitationCount": 5,
+          "startIndexZeroCount": 5,
+          "startIndexNonZeroCount": 0,
+          "endIndexZeroCount": 5,
+          "endIndexNonZeroCount": 0,
+          "sample": {
+            "type": "url_citation",
+            "url": "https://www.litetools.net/p/current-time-in-utc.html",
+            "title": "Current Time in UTC - Live Coordinated Universal Time",
+            "start_index": 0,
+            "end_index": 0,
+            "content_preview": "Current Time in UTC - Live Coordinated Universal Time\n\nLoading...\n\nLoading...\n\nCoordinated Universal Time (UTC)\n\n### 📍 Basic Information\n\nStandard: Coordinated Universal Time Offset: UTC+0 Usage: Global time standard Adopted by: Internatio"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "id": "B_engine_native",
+      "title": "B: engine=native",
+      "objective": "Check native engine failure behavior on non-native model",
+      "request": {
+        "model": "google/gemini-2.5-flash",
+        "stream": false,
+        "max_tokens": 220,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+          }
+        ],
+        "plugins": [
+          {
+            "id": "web",
+            "engine": "native"
+          }
+        ]
+      },
+      "result": {
+        "mode": "json",
+        "status": 404,
+        "ok": false,
+        "startedAt": "2026-02-18T17:58:30.448Z",
+        "endedAt": "2026-02-18T17:58:31.341Z",
+        "responseModel": null,
+        "responseProvider": null,
+        "contentPreview": null,
+        "annotations": {
+          "count": 0,
+          "types": [],
+          "urlCitationCount": 0,
+          "startIndexZeroCount": 0,
+          "startIndexNonZeroCount": 0,
+          "endIndexZeroCount": 0,
+          "endIndexNonZeroCount": 0,
+          "sample": null
+        },
+        "error": "No endpoints found that support native web search"
+      }
+    },
+    {
+      "id": "B_engine_exa",
+      "title": "B: engine=exa",
+      "objective": "Check explicit exa behavior",
+      "request": {
+        "model": "google/gemini-2.5-flash",
+        "stream": false,
+        "max_tokens": 220,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+          }
+        ],
+        "plugins": [
+          {
+            "id": "web",
+            "engine": "exa"
+          }
+        ]
+      },
+      "result": {
+        "mode": "json",
+        "status": 200,
+        "ok": true,
+        "startedAt": "2026-02-18T17:58:31.632Z",
+        "endedAt": "2026-02-18T17:58:34.529Z",
+        "responseModel": "google/gemini-2.5-flash",
+        "responseProvider": "Google",
+        "contentPreview": "utc_date: 2026-02-18 source_url: [utctime.net](https://www.utctime.net/)",
+        "annotations": {
+          "count": 5,
+          "types": [
+            "url_citation"
+          ],
+          "urlCitationCount": 5,
+          "startIndexZeroCount": 5,
+          "startIndexNonZeroCount": 0,
+          "endIndexZeroCount": 5,
+          "endIndexNonZeroCount": 0,
+          "sample": {
+            "type": "url_citation",
+            "url": "https://www.litetools.net/p/current-time-in-utc.html",
+            "title": "Current Time in UTC - Live Coordinated Universal Time",
+            "start_index": 0,
+            "end_index": 0,
+            "content_preview": "Current Time in UTC - Live Coordinated Universal Time\n\nLoading...\n\nLoading...\n\nCoordinated Universal Time (UTC)\n\n### 📍 Basic Information\n\nStandard: Coordinated Universal Time Offset: UTC+0 Usage: Global time standard Adopted by: Internatio"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "id": "C_context_high_exa",
+      "title": "C: search_context_size=high with exa",
+      "objective": "Check if chat/completions accepts search_context_size on exa",
+      "request": {
+        "model": "google/gemini-2.5-flash",
+        "stream": false,
+        "max_tokens": 220,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+          }
+        ],
+        "plugins": [
+          {
+            "id": "web",
+            "engine": "exa"
+          }
+        ],
+        "web_search_options": {
+          "search_context_size": "high"
+        }
+      },
+      "result": {
+        "mode": "json",
+        "status": 200,
+        "ok": true,
+        "startedAt": "2026-02-18T17:58:35.048Z",
+        "endedAt": "2026-02-18T17:58:37.621Z",
+        "responseModel": "google/gemini-2.5-flash",
+        "responseProvider": "Google",
+        "contentPreview": "utc_date: 2026-02-18 source_url: [litetools.net](https://www.litetools.net/p/current-time-in-utc.html)",
+        "annotations": {
+          "count": 5,
+          "types": [
+            "url_citation"
+          ],
+          "urlCitationCount": 5,
+          "startIndexZeroCount": 5,
+          "startIndexNonZeroCount": 0,
+          "endIndexZeroCount": 5,
+          "endIndexNonZeroCount": 0,
+          "sample": {
+            "type": "url_citation",
+            "url": "https://www.litetools.net/p/current-time-in-utc.html",
+            "title": "Current Time in UTC - Live Coordinated Universal Time",
+            "start_index": 0,
+            "end_index": 0,
+            "content_preview": "Current Time in UTC - Live Coordinated Universal Time\n\nLoading...\n\nLoading...\n\nCoordinated Universal Time (UTC)\n\n### 📍 Basic Information\n\nStandard: Coordinated Universal Time Offset: UTC+0 Usage: Global time standard Adopted by: Internatio"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "id": "C_context_invalid_exa",
+      "title": "C: search_context_size=ultra with exa",
+      "objective": "Check validation behavior for invalid search_context_size on exa",
+      "request": {
+        "model": "google/gemini-2.5-flash",
+        "stream": false,
+        "max_tokens": 220,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+          }
+        ],
+        "plugins": [
+          {
+            "id": "web",
+            "engine": "exa"
+          }
+        ],
+        "web_search_options": {
+          "search_context_size": "ultra"
+        }
+      },
+      "result": {
+        "mode": "json",
+        "status": 200,
+        "ok": true,
+        "startedAt": "2026-02-18T17:58:38.556Z",
+        "endedAt": "2026-02-18T17:58:41.794Z",
+        "responseModel": "google/gemini-2.5-flash",
+        "responseProvider": "Google",
+        "contentPreview": "utc_date: 2026-02-18 source_url: [mariadb.com](https://mariadb.com/docs/server/reference/sql-functions/date-time-functions/utc_date)",
+        "annotations": {
+          "count": 5,
+          "types": [
+            "url_citation"
+          ],
+          "urlCitationCount": 5,
+          "startIndexZeroCount": 5,
+          "startIndexNonZeroCount": 0,
+          "endIndexZeroCount": 5,
+          "endIndexNonZeroCount": 0,
+          "sample": {
+            "type": "url_citation",
+            "url": "https://www.litetools.net/p/current-time-in-utc.html",
+            "title": "Current Time in UTC - Live Coordinated Universal Time",
+            "start_index": 0,
+            "end_index": 0,
+            "content_preview": "Current Time in UTC - Live Coordinated Universal Time\n\nLoading...\n\nLoading...\n\nCoordinated Universal Time (UTC)\n\n### 📍 Basic Information\n\nStandard: Coordinated Universal Time Offset: UTC+0 Usage: Global time standard Adopted by: Internatio"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "id": "C_context_high_native",
+      "title": "C: search_context_size=high with native",
+      "objective": "Check native path with search_context_size",
+      "request": {
+        "model": "google/gemini-2.5-flash",
+        "stream": false,
+        "max_tokens": 220,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+          }
+        ],
+        "plugins": [
+          {
+            "id": "web",
+            "engine": "native"
+          }
+        ],
+        "web_search_options": {
+          "search_context_size": "high"
+        }
+      },
+      "result": {
+        "mode": "json",
+        "status": 404,
+        "ok": false,
+        "startedAt": "2026-02-18T17:58:42.532Z",
+        "endedAt": "2026-02-18T17:58:43.409Z",
+        "responseModel": null,
+        "responseProvider": null,
+        "contentPreview": null,
+        "annotations": {
+          "count": 0,
+          "types": [],
+          "urlCitationCount": 0,
+          "startIndexZeroCount": 0,
+          "startIndexNonZeroCount": 0,
+          "endIndexZeroCount": 0,
+          "endIndexNonZeroCount": 0,
+          "sample": null
+        },
+        "error": "No endpoints found that support native web search"
+      }
+    },
+    {
+      "id": "D_baseline_no_plugins",
+      "title": "D: Baseline no plugins",
+      "objective": "Baseline behavior when no request-level plugin is specified",
+      "request": {
+        "model": "google/gemini-2.5-flash",
+        "stream": false,
+        "max_tokens": 220,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+          }
+        ]
+      },
+      "result": {
+        "mode": "json",
+        "status": 200,
+        "ok": true,
+        "startedAt": "2026-02-18T17:58:43.417Z",
+        "endedAt": "2026-02-18T17:58:45.318Z",
+        "responseModel": "google/gemini-2.5-flash",
+        "responseProvider": "Google",
+        "contentPreview": "utc_date: 2024-02-23 source_url: https://www.timeanddate.com/worldclock/timezone/utc",
+        "annotations": {
+          "count": 0,
+          "types": [],
+          "urlCitationCount": 0,
+          "startIndexZeroCount": 0,
+          "startIndexNonZeroCount": 0,
+          "endIndexZeroCount": 0,
+          "endIndexNonZeroCount": 0,
+          "sample": null
+        },
+        "error": null
+      }
+    },
+    {
+      "id": "D_plugins_enabled_false",
+      "title": "D: plugins enabled=false",
+      "objective": "Check whether request-level enabled:false disables web plugin",
+      "request": {
+        "model": "google/gemini-2.5-flash",
+        "stream": false,
+        "max_tokens": 220,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+          }
+        ],
+        "plugins": [
+          {
+            "id": "web",
+            "enabled": false
+          }
+        ]
+      },
+      "result": {
+        "mode": "json",
+        "status": 200,
+        "ok": true,
+        "startedAt": "2026-02-18T17:58:45.616Z",
+        "endedAt": "2026-02-18T17:58:47.429Z",
+        "responseModel": "google/gemini-2.5-flash",
+        "responseProvider": "Google",
+        "contentPreview": "utc_date: 2024-02-23 source_url: https://www.timeanddate.com/worldclock/timezone/utc",
+        "annotations": {
+          "count": 0,
+          "types": [],
+          "urlCitationCount": 0,
+          "startIndexZeroCount": 0,
+          "startIndexNonZeroCount": 0,
+          "endIndexZeroCount": 0,
+          "endIndexNonZeroCount": 0,
+          "sample": null
+        },
+        "error": null
+      }
+    },
+    {
+      "id": "D_plugins_enabled_true",
+      "title": "D: plugins enabled=true",
+      "objective": "Control case for enabled:true",
+      "request": {
+        "model": "google/gemini-2.5-flash",
+        "stream": false,
+        "max_tokens": 220,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+          }
+        ],
+        "plugins": [
+          {
+            "id": "web",
+            "enabled": true
+          }
+        ]
+      },
+      "result": {
+        "mode": "json",
+        "status": 200,
+        "ok": true,
+        "startedAt": "2026-02-18T17:58:47.802Z",
+        "endedAt": "2026-02-18T17:58:50.248Z",
+        "responseModel": "google/gemini-2.5-flash",
+        "responseProvider": "Google",
+        "contentPreview": "utc_date: 2026-02-18 source_url: [mariadb.com](https://mariadb.com/docs/server/reference/sql-functions/date-time-functions/utc_date)",
+        "annotations": {
+          "count": 5,
+          "types": [
+            "url_citation"
+          ],
+          "urlCitationCount": 5,
+          "startIndexZeroCount": 5,
+          "startIndexNonZeroCount": 0,
+          "endIndexZeroCount": 5,
+          "endIndexNonZeroCount": 0,
+          "sample": {
+            "type": "url_citation",
+            "url": "https://www.litetools.net/p/current-time-in-utc.html",
+            "title": "Current Time in UTC - Live Coordinated Universal Time",
+            "start_index": 0,
+            "end_index": 0,
+            "content_preview": "Current Time in UTC - Live Coordinated Universal Time\n\nLoading...\n\nLoading...\n\nCoordinated Universal Time (UTC)\n\n### 📍 Basic Information\n\nStandard: Coordinated Universal Time Offset: UTC+0 Usage: Global time standard Adopted by: Internatio"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "id": "EQ_suffix_online",
+      "title": "Equivalence: :online suffix",
+      "objective": "Check :online model suffix behavior",
+      "request": {
+        "model": "google/gemini-2.5-flash:online",
+        "stream": false,
+        "max_tokens": 220,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+          }
+        ]
+      },
+      "result": {
+        "mode": "json",
+        "status": 200,
+        "ok": true,
+        "startedAt": "2026-02-18T17:58:50.577Z",
+        "endedAt": "2026-02-18T17:58:53.801Z",
+        "responseModel": "google/gemini-2.5-flash",
+        "responseProvider": "Google",
+        "contentPreview": "utc_date: 2026-02-18 source_url: [litetools.net](https://www.litetools.net/p/current-time-in-utc.html)",
+        "annotations": {
+          "count": 5,
+          "types": [
+            "url_citation"
+          ],
+          "urlCitationCount": 5,
+          "startIndexZeroCount": 5,
+          "startIndexNonZeroCount": 0,
+          "endIndexZeroCount": 5,
+          "endIndexNonZeroCount": 0,
+          "sample": {
+            "type": "url_citation",
+            "url": "https://www.litetools.net/p/current-time-in-utc.html",
+            "title": "Current Time in UTC - Live Coordinated Universal Time",
+            "start_index": 0,
+            "end_index": 0,
+            "content_preview": "Current Time in UTC - Live Coordinated Universal Time\n\nLoading...\n\nLoading...\n\nCoordinated Universal Time (UTC)\n\n### 📍 Basic Information\n\nStandard: Coordinated Universal Time Offset: UTC+0 Usage: Global time standard Adopted by: Internatio"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "id": "EQ_suffix_online_plus_disable",
+      "title": "Equivalence: :online + enabled=false",
+      "objective": "Check precedence when suffix and plugins disabled are both present",
+      "request": {
+        "model": "google/gemini-2.5-flash:online",
+        "stream": false,
+        "max_tokens": 220,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+          }
+        ],
+        "plugins": [
+          {
+            "id": "web",
+            "enabled": false
+          }
+        ]
+      },
+      "result": {
+        "mode": "json",
+        "status": 200,
+        "ok": true,
+        "startedAt": "2026-02-18T17:58:54.398Z",
+        "endedAt": "2026-02-18T17:58:56.216Z",
+        "responseModel": "google/gemini-2.5-flash",
+        "responseProvider": "Google",
+        "contentPreview": "utc_date: 2024-02-28 source_url: https://www.google.com/search?q=current+utc+date",
+        "annotations": {
+          "count": 0,
+          "types": [],
+          "urlCitationCount": 0,
+          "startIndexZeroCount": 0,
+          "startIndexNonZeroCount": 0,
+          "endIndexZeroCount": 0,
+          "endIndexNonZeroCount": 0,
+          "sample": null
+        },
+        "error": null
+      }
+    },
+    {
+      "id": "EQ_plugins_object_shape",
+      "title": "Equivalence: plugins object shape",
+      "objective": "Check whether plugins accepts object vs array",
+      "request": {
+        "model": "google/gemini-2.5-flash",
+        "stream": false,
+        "max_tokens": 220,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+          }
+        ],
+        "plugins": {
+          "id": "web"
+        }
+      },
+      "result": {
+        "mode": "json",
+        "status": 400,
+        "ok": false,
+        "startedAt": "2026-02-18T17:58:56.405Z",
+        "endedAt": "2026-02-18T17:58:56.822Z",
+        "responseModel": null,
+        "responseProvider": null,
+        "contentPreview": null,
+        "annotations": {
+          "count": 0,
+          "types": [],
+          "urlCitationCount": 0,
+          "startIndexZeroCount": 0,
+          "startIndexNonZeroCount": 0,
+          "endIndexZeroCount": 0,
+          "endIndexNonZeroCount": 0,
+          "sample": null
+        },
+        "error": "Invalid input: expected array, received object"
+      }
+    },
+    {
+      "id": "B_native_model_probe",
+      "title": "B: native probe on native-candidate model",
+      "objective": "Try engine=native on a native-candidate model for availability check",
+      "request": {
+        "model": "x-ai/grok-3-mini-beta",
+        "stream": false,
+        "max_tokens": 220,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+          }
+        ],
+        "plugins": [
+          {
+            "id": "web",
+            "engine": "native"
+          }
+        ]
+      },
+      "result": {
+        "mode": "json",
+        "status": 404,
+        "ok": false,
+        "startedAt": "2026-02-18T17:58:56.827Z",
+        "endedAt": "2026-02-18T17:58:58.215Z",
+        "responseModel": null,
+        "responseProvider": null,
+        "contentPreview": null,
+        "annotations": {
+          "count": 0,
+          "types": [],
+          "urlCitationCount": 0,
+          "startIndexZeroCount": 0,
+          "startIndexNonZeroCount": 0,
+          "endIndexZeroCount": 0,
+          "endIndexNonZeroCount": 0,
+          "sample": null
+        },
+        "error": "No endpoints found that support native web search"
+      }
+    }
+  ],
+  "matrix": {
+    "keyFacts": {
+      "A_nonstream_annotations": 5,
+      "A_stream_first_delta_annotation_event": 1,
+      "A_stream_first_message_annotation_event": -1,
+      "B_auto_status": 200,
+      "B_native_status": 404,
+      "B_exa_status": 200,
+      "B_native_error": "No endpoints found that support native web search",
+      "C_high_exa_status": 200,
+      "C_invalid_exa_status": 200,
+      "C_high_native_status": 404,
+      "D_baseline_annotations": 0,
+      "D_enabled_false_annotations": 0,
+      "D_enabled_true_annotations": 5,
+      "EQ_suffix_online_annotations": 5,
+      "EQ_suffix_online_plus_disable_annotations": 0,
+      "EQ_plugins_object_shape_status": 400
+    }
+  },
+  "notes": [
+    "D default-plugin verification requires account-side default web plugin ON. This script can only probe behavior under current account settings.",
+    "If account has Prevent overrides enabled, request-level enabled:false may be ignored; verify with an account where that policy is enabled."
+  ]
+}
