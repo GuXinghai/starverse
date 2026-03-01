@@ -20,6 +20,7 @@ type ResponseLike = AsyncIterable<Uint8Array> & {
 
 const activeControllers = new Map<string, AbortController>()
 const LOG_MAX_CHARS = 20000
+export const OPENROUTER_STREAM_IPC_CHANNELS = ['openrouter:stream-chat', 'openrouter:abort'] as const
 
 type StreamRequestValidationResult =
   | Readonly<{ ok: true; payload: OpenRouterStreamWireRequest }>
@@ -134,6 +135,16 @@ function buildFallbackRequestBody(payload: OpenRouterStreamWireRequest): Record<
   }
   if (Array.isArray(payload.config.tools) && payload.config.tools.length > 0) {
     body.tools = payload.config.tools
+  }
+  if (Array.isArray(payload.config.modalities) && payload.config.modalities.length > 0) {
+    body.modalities = payload.config.modalities
+  }
+  if (
+    payload.config.imageConfig &&
+    typeof payload.config.imageConfig === 'object' &&
+    !Array.isArray(payload.config.imageConfig)
+  ) {
+    body.image_config = payload.config.imageConfig
   }
   if (reasoningMode !== 'auto') {
     body.reasoning = {
@@ -413,7 +424,7 @@ async function startStream(sender: WebContents, payload: OpenRouterStreamWireReq
   }
 }
 
-export function registerOpenRouterStreamBridge() {
+export function registerOpenRouterStreamBridge(): string[] {
   ipcMain.handle('openrouter:stream-chat', async (event, payload: unknown) => {
     const validated = validateOpenRouterStreamRequest(payload)
     if (!validated.ok) {
@@ -435,6 +446,8 @@ export function registerOpenRouterStreamBridge() {
     }
     return true
   })
+
+  return [...OPENROUTER_STREAM_IPC_CHANNELS]
 }
 
 export function cleanupOpenRouterStreams() {

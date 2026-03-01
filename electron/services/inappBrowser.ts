@@ -1,4 +1,4 @@
-import { BrowserView, BrowserWindow, clipboard, ipcMain, shell } from 'electron'
+import { BrowserView, BrowserWindow, clipboard, shell } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -47,7 +47,6 @@ export class InAppBrowserManager {
   constructor(config: InAppBrowserConfig) {
     this.config = config
     this.toolbarHeight = config.toolbarHeight ?? DEFAULT_TOOLBAR_HEIGHT
-    this.registerIpcHandlers()
   }
 
   /**
@@ -156,6 +155,12 @@ export class InAppBrowserManager {
     if (!tab) return false
     this.setActiveTab(tab.windowId, tab.id)
     return true
+  }
+
+  newWindow() {
+    const win = this.createWindow()
+    this.sendWindowState(win.id)
+    return { windowId: win.id }
   }
 
   getWindowSnapshot(windowId: number) {
@@ -364,56 +369,6 @@ export class InAppBrowserManager {
     return `https://${input}`
   }
 
-  private registerIpcHandlers() {
-    ipcMain.handle('inapp:open-link', (_event, payload: { url: string; windowId?: number }) => {
-      return this.openLink(payload?.url, payload?.windowId)
-    })
-
-    ipcMain.handle('inapp:go-back', (_event, tabId: string) => {
-      this.goBack(tabId)
-      return true
-    })
-
-    ipcMain.handle('inapp:go-forward', (_event, tabId: string) => {
-      this.goForward(tabId)
-      return true
-    })
-
-    ipcMain.handle('inapp:reload', (_event, tabId: string) => {
-      this.reload(tabId)
-      return true
-    })
-
-    ipcMain.handle('inapp:open-external', (_event, tabId: string) => {
-      return this.openExternal(tabId)
-    })
-
-    ipcMain.handle('inapp:copy-link', (_event, tabId: string) => {
-      return this.copyLink(tabId)
-    })
-
-    ipcMain.handle('inapp:close-tab', (_event, tabId: string) => {
-      return this.closeTab(tabId)
-    })
-
-    ipcMain.handle('inapp:detach-tab', (_event, tabId: string) => {
-      return this.detachTab(tabId)
-    })
-
-    ipcMain.handle('inapp:focus-tab', (_event, tabId: string) => {
-      return this.focusTab(tabId)
-    })
-
-    ipcMain.handle('inapp:get-window-state', (_event, windowId: number) => {
-      return this.getWindowSnapshot(windowId)
-    })
-
-    ipcMain.handle('inapp:new-window', () => {
-      const win = this.createWindow()
-      this.sendWindowState(win.id)
-      return { windowId: win.id }
-    })
-  }
 }
 
 /**

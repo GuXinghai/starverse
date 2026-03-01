@@ -1,0 +1,95 @@
+import type Store from 'electron-store'
+import { registerDialogIpc, DIALOG_IPC_CHANNELS } from './dialogIpc'
+import { registerImageIpc, IMAGE_IPC_CHANNELS, type ResolvedAssetFile } from './imageIpc'
+import { registerNetExpIpc, NETEXP_IPC_CHANNELS } from './netExpIpc'
+import { registerShellIpc, SHELL_IPC_CHANNELS } from './shellIpc'
+import { registerStoreIpc, STORE_IPC_CHANNELS } from './storeIpc'
+import type { RegisterInvoke } from './types'
+
+export const CORE_IPC_CHANNELS = [
+  ...STORE_IPC_CHANNELS,
+  ...NETEXP_IPC_CHANNELS,
+  ...DIALOG_IPC_CHANNELS,
+  ...SHELL_IPC_CHANNELS,
+  ...IMAGE_IPC_CHANNELS,
+] as const
+
+export const CORE_IPC_CRITICAL_CHANNELS = [
+  'store-get',
+  'store-set',
+  'dialog:select-file',
+  'dialog:select-image',
+  'shell:open-image',
+] as const
+
+type RegisterIpcInput = Readonly<{
+  registerInvoke: RegisterInvoke
+  store: Store
+  isDev: boolean
+  netExpRuntimeInfo: unknown
+  migrateAndCleanupConfig: () => void
+  performConfigSizeCheck: (context: 'startup' | 'write') => void
+  resolveAssetFileByUrl: (rawUrl: string) => Promise<ResolvedAssetFile | null>
+}>
+
+export type IpcRegistrationResult = Readonly<{
+  channels: string[]
+}>
+
+export type IpcRegistrationCheckResult =
+  | Readonly<{ ok: true; expectedCount: number; actualCount: number }>
+  | Readonly<{
+      ok: false
+      expectedCount: number
+      actualCount: number
+      missing: string[]
+      unexpected: string[]
+      missingCritical: string[]
+    }>
+
+export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
+  const channels = [
+    ...registerStoreIpc({
+      registerInvoke: input.registerInvoke,
+      store: input.store,
+      isDev: input.isDev,
+      migrateAndCleanupConfig: input.migrateAndCleanupConfig,
+      performConfigSizeCheck: input.performConfigSizeCheck,
+    }),
+    ...registerNetExpIpc({
+      registerInvoke: input.registerInvoke,
+      runtimeInfo: input.netExpRuntimeInfo,
+    }),
+    ...registerDialogIpc({ registerInvoke: input.registerInvoke }),
+    ...registerShellIpc({ registerInvoke: input.registerInvoke }),
+    ...registerImageIpc({
+      registerInvoke: input.registerInvoke,
+      resolveAssetFileByUrl: input.resolveAssetFileByUrl,
+    }),
+  ]
+
+  return { channels: [...new Set(channels)] }
+}
+
+export function validateCoreIpcRegistration(channels: readonly string[]): IpcRegistrationCheckResult {
+  const expected = [...CORE_IPC_CHANNELS]
+  const expectedSet = new Set(expected)
+  const actual = [...new Set(channels)]
+  const actualSet = new Set(actual)
+  const missing = expected.filter((channel) => !actualSet.has(channel))
+  const unexpected = actual.filter((channel) => !expectedSet.has(channel))
+  const missingCritical = CORE_IPC_CRITICAL_CHANNELS.filter((channel) => !actualSet.has(channel))
+
+  if (missing.length === 0 && unexpected.length === 0) {
+    return { ok: true, expectedCount: expected.length, actualCount: actual.length }
+  }
+
+  return {
+    ok: false,
+    expectedCount: expected.length,
+    actualCount: actual.length,
+    missing,
+    unexpected,
+    missingCritical,
+  }
+}

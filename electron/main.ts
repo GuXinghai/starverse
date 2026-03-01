@@ -20,31 +20,33 @@
  * @module electron/main
  */
 
-import { app, BrowserWindow, ipcMain, dialog, shell, session } from 'electron'
+import { app, dialog, ipcMain, session } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { readFileSync, existsSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
 import Store from 'electron-store'
-import { syncOpenRouterModelCatalog } from './modelCatalog/catalogSyncJob'
 import { DbWorkerManager } from './db/workerManager'
 import { registerDbBridge } from './ipc/dbBridge'
 import { registerOpenRouterStreamBridge, cleanupOpenRouterStreams } from './ipc/openRouterStreamBridge'
+import { registerInAppBrowserIpc } from './ipc/inappBrowserIpc'
+import { registerIpc, validateCoreIpcRegistration } from './ipc/registerIpc'
+import { validateStartupIpcRegistration } from './ipc/startupIpcAudit'
+import { runStartupBackgroundJobs, wireDbEventsToRenderer } from './jobs/startupBackgroundJobs'
 import { createInAppBrowserManager } from './services/inappBrowser'
+import { createMainWindowLifecycle } from './windows/mainWindowLifecycle'
 import {
-  ALLOWED_CONFIG_KEYS,
   CURRENT_CONFIG_VERSION,
   migrateConfig,
   validateAndCleanConfig,
-  checkFieldSize,
   checkTotalSize,
   checkConfigIntegrity,
-  safeClearConfig,
 } from './config/configSchema'
+import { DB_SCHEMA_VERSION } from '../infra/db/schemaVersion'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const nodeRequire = createRequire(import.meta.url)
 const DB_LOG_DIR = path.join(app.getPath('userData'), 'logs')
 
 // 环境检测
@@ -73,6 +75,10 @@ const DEFAULT_CONFIG = {
     forceHttp1: false,
     tcpKeepAliveEnable: false,
     tcpKeepAliveIdleMs: 60000,
+  },
+  dbExp: {
+    forceRebuildOnNextLaunch: false,
+    rebuildOnSchemaMismatch: true,
   },
 } as const
 
@@ -416,33 +422,114 @@ function resolveMainBuildId(): { buildId: string; source: string } {
 const MAIN_BUILD = resolveMainBuildId()
 console.info(`[build] main build id: ${MAIN_BUILD.buildId} (source: ${MAIN_BUILD.source})`)
 
-const APP_CSP =
-  "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' ws://localhost:* ws://127.0.0.1:* https://generativelanguage.googleapis.com https://openrouter.ai; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+type ResolvedAssetFile = Readonly<{
+  path: string
+  mime: string
+}>
 
-function registerDevCspHeaders() {
-  if (!VITE_DEV_SERVER_URL) return
-  let origin: string
+let assetProtocolRegistered = false
+
+function isPathWithinRoot(filePath: string, rootPath: string): boolean {
+  const rel = path.relative(rootPath, filePath)
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+}
+
+function extractAssetIdFromUrl(rawUrl: string): string | null {
   try {
-    origin = new URL(VITE_DEV_SERVER_URL).origin
-  } catch (error) {
-    console.warn('[CSP] invalid VITE_DEV_SERVER_URL, skip CSP header injection:', error)
-    return
+    const parsed = new URL(rawUrl)
+    if (parsed.protocol !== 'asset:') return null
+    const hostId = parsed.hostname.trim()
+    const pathId = parsed.pathname.replace(/^\/+/, '').trim()
+    const id = hostId || pathId
+    if (!id) return null
+    if (!/^[a-zA-Z0-9._:-]+$/.test(id)) return null
+    return id
+  } catch {
+    return null
   }
+}
 
-  const filter = { urls: [`${origin}/*`] }
-  session.defaultSession.webRequest.onHeadersReceived(filter, (details, callback) => {
-    const responseHeaders = (details.responseHeaders ?? {}) as Record<string, string[]>
-    const existingKey = Object.keys(responseHeaders).find((key) => key.toLowerCase() === 'content-security-policy')
-    responseHeaders[existingKey ?? 'Content-Security-Policy'] = [APP_CSP]
-    callback({ responseHeaders })
+async function resolveAssetFileByUrl(rawUrl: string): Promise<ResolvedAssetFile | null> {
+  const assetId = extractAssetIdFromUrl(rawUrl)
+  if (!assetId) return null
+
+  const dbPath = dbWorkerManager.getDatabasePath()
+  if (!dbPath) return null
+  const assetRoot = path.resolve(path.dirname(dbPath), 'assets', 'images')
+
+  try {
+    const row = (await dbWorkerManager.call('messageAsset.getById', { assetId })) as
+      | { path?: unknown; mime?: unknown }
+      | null
+    if (!row || typeof row !== 'object') return null
+
+    const filePath = path.resolve(String(row.path ?? '').trim())
+    if (!filePath) return null
+    if (!isPathWithinRoot(filePath, assetRoot)) {
+      console.warn('[asset-protocol] blocked out-of-root asset path:', filePath)
+      return null
+    }
+    if (!existsSync(filePath)) return null
+
+    const mimeRaw = String(row.mime ?? '').trim().toLowerCase()
+    const mime = mimeRaw.startsWith('image/') ? mimeRaw : 'application/octet-stream'
+    return { path: filePath, mime }
+  } catch (error) {
+    console.warn('[asset-protocol] failed to resolve asset by id:', error)
+    return null
+  }
+}
+
+async function registerAssetProtocol() {
+  if (assetProtocolRegistered) return
+  await session.defaultSession.protocol.handle('asset', async (request) => {
+    const resolved = await resolveAssetFileByUrl(request.url)
+    if (!resolved) return new Response('Asset not found', { status: 404 })
+    try {
+      const bytes = await readFile(resolved.path)
+      return new Response(bytes, {
+        status: 200,
+        headers: {
+          'Content-Type': resolved.mime,
+          'Cache-Control': 'private, max-age=31536000, immutable',
+        },
+      })
+    } catch (error) {
+      console.warn('[asset-protocol] failed to read file:', resolved.path, error)
+      return new Response('Asset read failed', { status: 500 })
+    }
   })
+  assetProtocolRegistered = true
+  if (isDev) {
+    try {
+      const handled = await session.defaultSession.protocol.isProtocolHandled('asset')
+      console.info(`[asset-protocol] scheme "asset" registered: ${handled}`)
+    } catch (error) {
+      console.warn('[asset-protocol] failed to verify scheme registration:', error)
+    }
+  }
 }
 
 // ========== In-App Browser Manager ==========
 const inAppBrowserManager = createInAppBrowserManager()
 void inAppBrowserManager
 
-let win: BrowserWindow | null
+const mainWindowLifecycle = createMainWindowLifecycle({
+  isDev,
+  viteDevServerUrl: VITE_DEV_SERVER_URL,
+  rendererDist: RENDERER_DIST,
+  publicPath: process.env.VITE_PUBLIC ?? RENDERER_DIST,
+  preloadPath: path.join(__dirname, 'preload.mjs'),
+  onMainProcessMessage: (window) => {
+    window.webContents.send('main-process-message', new Date().toLocaleString())
+  },
+})
+
+function notifyMainWindow(channel: string, payload: unknown): void {
+  const win = mainWindowLifecycle.getWindow()
+  if (!win) return
+  win.webContents.send(channel, payload)
+}
 
 /**
  * 数据库 Worker 管理器实例
@@ -468,6 +555,117 @@ const dbWorkerManager = new DbWorkerManager({
   maxPending: 400
 })
 
+type DbExpConfig = {
+  forceRebuildOnNextLaunch?: unknown
+  rebuildOnSchemaMismatch?: unknown
+}
+
+type DbRebuildDecision = {
+  rebuilt: boolean
+  reason: 'non_dev' | 'disabled' | 'missing_db' | 'schema_match' | 'force' | 'schema_probe_failed' | 'schema_mismatch'
+  version: number | null
+  deletedFiles?: string[]
+}
+
+function parseBooleanSwitch(raw: unknown): boolean | null {
+  if (typeof raw === 'boolean') return raw
+  if (typeof raw !== 'string') return null
+  const normalized = raw.trim().toLowerCase()
+  if (normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') return true
+  if (normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') return false
+  return null
+}
+
+function readDbUserVersion(dbPath: string): { version: number | null; error?: string } {
+  if (!existsSync(dbPath)) return { version: null }
+  try {
+    const BetterSqlite3Ctor = nodeRequire('better-sqlite3') as any
+    const db = new BetterSqlite3Ctor(dbPath, { readonly: true, fileMustExist: true })
+    try {
+      const raw = db.pragma('user_version', { simple: true })
+      const version = Number(raw)
+      if (!Number.isInteger(version) || version < 0) {
+        return { version: 0 }
+      }
+      return { version }
+    } finally {
+      db.close()
+    }
+  } catch (error) {
+    return { version: null, error: String((error as any)?.message ?? error) }
+  }
+}
+
+async function deleteDatabaseFilesForRebuild(dbPath: string): Promise<string[]> {
+  const fs = await import('node:fs/promises')
+  const files = [dbPath, `${dbPath}-wal`, `${dbPath}-shm`, `${dbPath}-journal`]
+  const deleted: string[] = []
+
+  const unlinkWithRetry = async (filePath: string, maxRetries = 5) => {
+    for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+      try {
+        await fs.unlink(filePath)
+        deleted.push(filePath)
+        return
+      } catch (error: any) {
+        if (error?.code === 'ENOENT') return
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 50 * attempt))
+          continue
+        }
+        throw error
+      }
+    }
+  }
+
+  for (const file of files) {
+    await unlinkWithRetry(file)
+  }
+  return deleted
+}
+
+async function maybeRebuildDatabaseAtStartup(dbPath: string): Promise<DbRebuildDecision> {
+  if (!isDev) {
+    return { rebuilt: false, reason: 'non_dev', version: null }
+  }
+
+  const dbExp = (store.get('dbExp') as DbExpConfig | undefined) ?? {}
+  const envForce = parseBooleanSwitch(process.env.SV_DB_FORCE_REBUILD)
+  const envMismatch = parseBooleanSwitch(process.env.SV_DB_REBUILD_ON_SCHEMA_MISMATCH)
+  const forceRebuild = envForce ?? (dbExp.forceRebuildOnNextLaunch === true)
+  const rebuildOnMismatch = envMismatch ?? (dbExp.rebuildOnSchemaMismatch !== false)
+
+  if (!forceRebuild && !rebuildOnMismatch) {
+    return { rebuilt: false, reason: 'disabled', version: null }
+  }
+
+  const probe = readDbUserVersion(dbPath)
+  const shouldRebuildByMismatch =
+    rebuildOnMismatch &&
+    (probe.error ? true : probe.version !== null && probe.version !== DB_SCHEMA_VERSION)
+
+  if (!forceRebuild && !shouldRebuildByMismatch) {
+    const reason = probe.version === null ? 'missing_db' : 'schema_match'
+    return { rebuilt: false, reason, version: probe.version }
+  }
+
+  const trigger = forceRebuild ? 'force' : probe.error ? 'schema_probe_failed' : 'schema_mismatch'
+  const deletedFiles = await deleteDatabaseFilesForRebuild(dbPath)
+  console.warn('[db-rebuild] Development rebuild completed', {
+    trigger,
+    dbPath,
+    expectedSchemaVersion: DB_SCHEMA_VERSION,
+    existingSchemaVersion: probe.version,
+    deletedFiles,
+  })
+
+  if (dbExp.forceRebuildOnNextLaunch === true && envForce !== true) {
+    store.set('dbExp.forceRebuildOnNextLaunch', false)
+  }
+
+  return { rebuilt: true, reason: trigger, version: probe.version, deletedFiles }
+}
+
 /**
  * 初始化数据库并等待 Worker 线程就绪
  * 
@@ -484,8 +682,7 @@ const ensureDbReady = async () => {
   // This commonly happens when running `npm test` (Node rebuild) and then launching Electron
   // without re-running `npm run rebuild:electron`.
   try {
-    const require = createRequire(import.meta.url)
-    require('better-sqlite3')
+    nodeRequire('better-sqlite3')
   } catch (error: any) {
     const details = error?.message ? String(error.message) : String(error)
     const fixDev = `Fix (dev):\n- Close Electron\n- Run: npm run rebuild:electron\n- Then: npm run electron:dev`
@@ -498,8 +695,14 @@ const ensureDbReady = async () => {
   }
 
   const dbPath = path.join(app.getPath('userData'), 'chat.db')
+  const dbExistedBeforeStartup = existsSync(dbPath)
   try {
-    await dbWorkerManager.start(dbPath)
+    const rebuildDecision = await maybeRebuildDatabaseAtStartup(dbPath)
+    const stampSchemaVersion = rebuildDecision.rebuilt || !dbExistedBeforeStartup
+    await dbWorkerManager.start(dbPath, {
+      stampSchemaVersion,
+      startupRebuildReason: rebuildDecision.reason,
+    })
   } catch (error) {
     console.error('[main] failed to start DB worker', error)
     dialog.showErrorBox('Database initialization failed', `DB worker failed to start.\n\n${(error as any)?.message ?? String(error)}`)
@@ -507,157 +710,57 @@ const ensureDbReady = async () => {
   }
 }
 
-async function startCatalogSyncInBackground() {
-  try {
-    const apiKey = String(store.get('openRouterApiKey') ?? '').trim()
-    const baseUrl = String(store.get('openRouterBaseUrl') ?? '').trim() || null
-    if (!apiKey) return
+function registerCoreIpcHandlers(): string[] {
+  const registration = registerIpc({
+    registerInvoke: (channel, handler) => {
+      ipcMain.handle(channel, handler as (...args: any[]) => unknown)
+    },
+    store,
+    isDev,
+    netExpRuntimeInfo,
+    migrateAndCleanupConfig: () => migrateAndCleanupConfig(store),
+    performConfigSizeCheck: (context) => performConfigSizeCheck(store, context),
+    resolveAssetFileByUrl,
+  })
 
-    const result = await syncOpenRouterModelCatalog({
-      apiKey,
-      baseUrl,
-      writer: {
-        syncSnapshot: (params) => dbWorkerManager.call('modelCatalog.syncSnapshot', params).then(() => { }),
+  const validation = validateCoreIpcRegistration(registration.channels)
+  if (!validation.ok) {
+    throw new Error(
+      `[ipc] core registration mismatch: expected=${validation.expectedCount}, actual=${validation.actualCount}, missing=${validation.missing.join(',')}, unexpected=${validation.unexpected.join(',')}`
+    )
+  }
+
+  return registration.channels
+}
+
+function registerAllIpcHandlers(): string[] {
+  const channels = [
+    ...registerDbBridge(dbWorkerManager),
+    ...registerOpenRouterStreamBridge(),
+    ...registerCoreIpcHandlers(),
+    ...registerInAppBrowserIpc({
+      registerInvoke: (channel, handler) => {
+        ipcMain.handle(channel, handler as (...args: any[]) => unknown)
       },
-    })
+      manager: inAppBrowserManager,
+    }),
+  ]
 
-    if (result.ok) {
-      await dbWorkerManager.call('reasoningIndex.syncFromCatalog', { routerSource: 'openrouter' })
-      try {
-        win?.webContents?.send('db:modelCatalogSynced', {
-          routerSource: 'openrouter',
-          snapshotId: result.snapshotId,
-          modelCount: result.modelCount,
-        })
-      } catch (error) {
-        console.warn('[CatalogSyncJob] failed to notify renderer (non-fatal):', error)
-      }
-    }
-  } catch (error) {
-    console.warn('[CatalogSyncJob] failed (non-fatal):', error)
+  const validation = validateStartupIpcRegistration(channels)
+  if (!validation.ok) {
+    throw new Error(
+      `[ipc] startup registration mismatch: expected=${validation.expectedCount}, actual=${validation.actualCount}, missing=${validation.missing.join(',')}, unexpected=${validation.unexpected.join(',')}, missingCritical=${validation.missingCritical.join(',')}`
+    )
   }
+
+  return [...new Set(channels)]
 }
 
-/**
- * 创建应用主窗口
- * 
- * 窗口配置:
- * - webPreferences.preload: 预加载脚本，暴露安全的 API 给渲染进程
- * - contextIsolation: 默认启用（Electron 安全最佳实践）
- * - nodeIntegration: 默认禁用（避免渲染进程直接访问 Node.js）
- * 
- * 加载策略:
- * - 开发模式: 加载 Vite Dev Server (http://localhost:5173)
- * - 生产模式: 加载本地 HTML 文件 (dist/index.html)
- * 
- * 🔒 安全边界:
- * 渲染进程只能通过 preload.ts 暴露的 API 与主进程通信，
- * 无法直接访问 Node.js 模块或 Electron API。
- */
-function createWindow() {
-  win = new BrowserWindow({
-    icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs'),
-      sandbox: true,
-    }
-  })
-
-  console.warn(`[main] VITE_DEV_SERVER_URL: ${VITE_DEV_SERVER_URL ?? '<missing>'}`)
-  if (isDev && !VITE_DEV_SERVER_URL) {
-    const message = 'VITE_DEV_SERVER_URL is missing in dev mode. Refusing to load dist/index.html.'
-    console.error(`[main] ${message}`)
-    dialog.showErrorBox('Dev startup error', message)
-    app.exit(1)
-    return
-  }
-
-  // Optional: mirror renderer console logs into the main process stdout for debugging timing/races.
-  // Enable with: SV_DEBUG_RENDERER_CONSOLE=1
-  if (process.env.SV_DEBUG_RENDERER_CONSOLE === '1') {
-    win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-      const src = typeof sourceId === 'string' && sourceId.length > 0 ? sourceId : 'renderer'
-      console.log(`[renderer][console:${level}] ${message} (${src}:${line})`)
-    })
-  }
-
-  const isExternalHttpUrl = (targetUrl: string) => {
-    if (!targetUrl || (typeof targetUrl === 'string' && targetUrl.trim() === '')) {
-      return false
-    }
-    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-      return false
-    }
-    if (VITE_DEV_SERVER_URL && targetUrl.startsWith(VITE_DEV_SERVER_URL)) {
-      return false
-    }
-    return true
-  }
-
-  // 拦截 window.open：统一交由系统浏览器打开外部链接，避免新建 Electron 窗口
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isExternalHttpUrl(url)) {
-      shell.openExternal(url)
-      return { action: 'deny' }
-    }
-    return { action: 'allow' }
-  })
-
-  // 拦截导航：阻止渲染进程跳转到外链，改为在默认浏览器打开
-  win.webContents.on('will-navigate', (event, url) => {
-    if (isExternalHttpUrl(url)) {
-      event.preventDefault()
-      shell.openExternal(url)
-    }
-  })
-
-  // 页面加载完成后发送测试消息（用于验证 IPC 通信）
-  win.webContents.on('did-finish-load', () => {
-    console.warn(`[main] webContents.getURL(): ${win?.webContents.getURL()}`)
-    win?.webContents.send('main-process-message', new Date().toLocaleString())
-  })
-
-  if (isDev) {
-    win.loadURL(VITE_DEV_SERVER_URL!)
-    // 开发模式下自动打开开发者工具
-    win.webContents.openDevTools()
-  } else {
-    win.loadFile(path.join(RENDERER_DIST, 'index.html'))
-  }
-}
-
-/**
- * 所有窗口关闭时退出应用（macOS 除外）
- * 
- * macOS 行为:
- * - 关闭窗口后应用仍在 Dock 中运行
- * - 点击 Dock 图标时通过 'activate' 事件重新创建窗口
- * 
- * Windows/Linux 行为:
- * - 关闭窗口后立即退出应用
- */
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-    win = null
-  }
-})
-
-/**
- * macOS Dock 图标点击事件
- * 
- * 当应用在 macOS 上没有窗口但仍在运行时，
- * 点击 Dock 图标会触发此事件，重新创建主窗口。
- */
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow()
-  }
-})
+mainWindowLifecycle.registerAppLifecycleHandlers()
 
 /**
  * 优雅退出处理
- * 
+ *
  * 清理步骤:
  * 1. 通知渲染进程保存所有脏数据
  * 2. 移除窗口的所有事件监听器（防止内存泄漏）
@@ -666,7 +769,7 @@ app.on('activate', () => {
  *    - 关闭 SQLite 连接
  *    - 终止 Worker 线程
  * 4. 清理临时文件（如有）
- * 
+ *
  * ⚠️ 注意: 如果 Worker 停止失败，只记录错误不阻止退出
  */
 app.on('before-quit', async (event) => {
@@ -674,9 +777,9 @@ app.on('before-quit', async (event) => {
   event.preventDefault()
 
   // 通知渲染进程保存所有脏数据
-  if (win && !win.isDestroyed()) {
+  if (mainWindowLifecycle.getWindow()) {
     console.log('[main] 通知渲染进程保存数据...')
-    win.removeAllListeners()
+    mainWindowLifecycle.clearWindowListeners()
   }
 
   // 清理活动的 OpenRouter 流式请求
@@ -693,349 +796,44 @@ app.on('before-quit', async (event) => {
 
 /**
  * 应用启动流程
- * 
+ *
  * 执行顺序:
  * 1. 等待 Electron 就绪（app.whenReady()）
  * 2. 初始化数据库 Worker 线程
  * 3. 注册数据库 IPC Handlers（dbBridge）
  * 4. 创建主窗口
- * 
+ *
  * 错误处理:
  * - 任何步骤失败都会导致应用退出
  * - 数据库初始化失败是致命错误（无法正常工作）
- * 
+ *
  * ⚠️ 注意: 必须等待数据库就绪后再创建窗口，
  * 否则渲染进程可能在数据库未准备好时发送 IPC 请求导致错误。
  */
 app.whenReady()
   .then(async () => {
-    registerDevCspHeaders()
     await ensureDbReady()
-    registerDbBridge(dbWorkerManager)
-    registerOpenRouterStreamBridge()
+    await registerAssetProtocol()
+    registerAllIpcHandlers()
+    const startupJobsResult = await runStartupBackgroundJobs({ store, dbWorkerManager })
 
     // 注册事件转发：Worker 事件 → Renderer
-    dbWorkerManager.onEvent((event) => {
-      if (win && !win.isDestroyed()) {
-        win.webContents.send('db:event', event)
-      }
+    wireDbEventsToRenderer({
+      dbWorkerManager,
+      notifyRenderer: notifyMainWindow,
     })
 
-    createWindow()
-    void startCatalogSyncInBackground()
+    mainWindowLifecycle.createWindow()
+
+    for (const notification of startupJobsResult.postWindowNotifications) {
+      try {
+        notifyMainWindow(notification.channel, notification.payload)
+      } catch (error) {
+        console.warn('[startup-jobs] failed to notify renderer (non-fatal):', error)
+      }
+    }
   })
   .catch((error) => {
     console.error('[main] failed to initialize application', error)
     app.quit()
   })
-
-// ========== IPC Handlers: 配置存储 ==========
-// 使用 electron-store 持久化应用配置（API Keys、偏好设置等）
-
-/**
- * 读取配置项
- * @param key - 配置键名（支持嵌套路径，如 'api.gemini.key'）
- * @returns 配置值，不存在时返回 undefined
- */
-ipcMain.handle('store-get', (_event, key) => {
-  return store.get(key)
-})
-
-/**
- * 设置配置项
- * @param key - 配置键名
- * @param value - 配置值（自动 JSON 序列化）
- * @returns true 表示设置成功
- */
-ipcMain.handle('store-set', (_event, key, value) => {
-  // 1. 字段大小检查（日志已在 checkFieldSize 内部输出）
-  const sizeCheck = checkFieldSize(key, value, isDev)
-  if (!sizeCheck.ok) {
-    // 不阻止写入，但已记录严重警告
-  }
-
-  // 2. 白名单检查
-  if (!ALLOWED_CONFIG_KEYS.has(key)) {
-    if (isDev) {
-      console.warn(`[Config] ⚠️ 写入非白名单字段: "${key}"`)
-      console.warn('[Config] 如需使用，请添加到 config/configSchema.ts 的 ALLOWED_CONFIG_KEYS')
-    } else {
-      // 生产环境：仅记录一次警告
-      console.warn(`[Config] 未知配置字段: "${key}"`)
-    }
-  }
-
-  // 3. 执行写入
-  store.set(key, value)
-
-  // 4. 写入后体积检查（仅开发环境）
-  if (isDev) {
-    performConfigSizeCheck(store, 'write')
-  }
-
-  return true
-})
-
-/**
- * 删除配置项
- * @param key - 配置键名
- * @returns true 表示删除成功
- */
-ipcMain.handle('store-delete', (_event, key) => {
-  store.delete(key)
-  return true
-})
-
-/**
- * 安全清空配置
- * 
- * 使用场景：
- * - 配置文件体积过大需要重置
- * - 调试时需要清除所有设置
- * - 用户请求恢复默认设置
- * 
- * @param keepKeys - 需要保留的字段（例如 API Keys）
- * @returns 备份文件路径，如果失败则返回 null
- */
-ipcMain.handle('store-clear-safe', (_event, keepKeys: string[] = []) => {
-  try {
-    const backupPath = safeClearConfig(store, keepKeys)
-
-    // 清空后重新执行迁移和体积检查
-    migrateAndCleanupConfig(store)
-    performConfigSizeCheck(store, 'startup')
-
-    return backupPath
-  } catch (error) {
-    console.error('[IPC] 安全清空配置失败:', error)
-    return null
-  }
-})
-
-/**
- * 检查配置文件完整性
- * 
- * @returns { ok: 是否正常, reason: 异常原因 }
- */
-ipcMain.handle('store-check-integrity', () => {
-  return checkConfigIntegrity(store)
-})
-
-// ========== IPC Handlers: Network Experiments ==========
-ipcMain.handle('netexp:get-runtime-info', () => {
-  return netExpRuntimeInfo
-})
-
-ipcMain.handle(
-  'dialog:select-file',
-  async (
-    _event,
-    options: { filters?: Array<{ name: string; extensions: string[] }>; defaultMimeType?: string } = {}
-  ) => {
-    try {
-      const filters =
-        Array.isArray(options.filters) && options.filters.length > 0
-          ? options.filters
-          : [{ name: 'PDF', extensions: ['pdf'] }]
-      const defaultMimeType = options.defaultMimeType || 'application/pdf'
-
-      const result = await dialog.showOpenDialog({
-        properties: ['openFile'],
-        filters
-      })
-
-      if (result.canceled || result.filePaths.length === 0) {
-        return null
-      }
-
-      const filePath = result.filePaths[0]!
-      const fileBuffer = await readFile(filePath)
-      const size = fileBuffer.byteLength
-      const ext = path.extname(filePath).toLowerCase()
-      const mimeTypes: Record<string, string> = {
-        '.pdf': 'application/pdf'
-      }
-      const mimeType = mimeTypes[ext] || defaultMimeType || 'application/octet-stream'
-      const base64Data = fileBuffer.toString('base64')
-      const dataUrl = `data:${mimeType};base64,${base64Data}`
-
-      console.log('[dialog] selected file:', filePath, 'size:', (size / 1024).toFixed(2), 'KB')
-      return {
-        dataUrl,
-        filename: path.basename(filePath),
-        size,
-        mimeType
-      }
-    } catch (error) {
-      console.error('[dialog] select file failed:', error)
-      return null
-    }
-  }
-)
-
-// ========== IPC Handler: 外部链接统一在系统浏览器打开 ==========
-
-ipcMain.handle('shell:open-external', async (_event, url: string) => {
-  try {
-    if (!url || typeof url !== 'string') {
-      throw new Error('Invalid URL')
-    }
-    const parsed = new URL(url)
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      throw new Error('Unsupported protocol')
-    }
-    await shell.openExternal(parsed.toString())
-    return { success: true }
-  } catch (error) {
-    console.error('[shell] open external error:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
-    }
-  }
-})
-
-// ========== IPC Handler: 图片选择对话框 ==========
-
-/**
- * 打开系统文件选择对话框，选择图片并转换为 Base64 Data URI
- * 
- * 使用场景:
- * - 用户在聊天中添加图片附件
- * - 支持多模态消息（文本 + 图片）
- * 
- * 执行流程:
- * 1. 打开系统文件选择对话框（限制为图片格式）
- * 2. 读取选中的图片文件为 Buffer
- * 3. 根据文件扩展名确定 MIME 类型
- * 4. 转换为 Base64 编码
- * 5. 构造 Data URI: data:image/jpeg;base64,XXXXX
- * 
- * 支持格式: JPG, JPEG, PNG, WebP, GIF, BMP
- * 
- * @returns Base64 Data URI 字符串，用户取消时返回 null
- * 
- * ⚠️ 注意:
- * - Data URI 会增大消息体积（Base64 编码增加 ~33%）
- * - 渲染进程负责限制图片大小（建议 < 5MB）
- * - 图片数据存储在对话的 tree.branches 中
- */
-ipcMain.handle('dialog:select-image', async () => {
-  try {
-    const result = await dialog.showOpenDialog({
-      properties: ['openFile'],
-      filters: [
-        {
-          name: 'Images',
-          extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp']
-        }
-      ],
-      title: '选择图片'
-    })
-
-    if (result.canceled || result.filePaths.length === 0) {
-      return null
-    }
-
-    const filePath = result.filePaths[0]!
-    const fileBuffer = await readFile(filePath)
-    const ext = path.extname(filePath).toLowerCase()
-
-    // MIME 类型映射表
-    const mimeTypes: Record<string, string> = {
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.png': 'image/png',
-      '.webp': 'image/webp',
-      '.gif': 'image/gif',
-      '.bmp': 'image/bmp'
-    }
-    const mimeType = mimeTypes[ext] || 'image/jpeg'
-    const base64Data = fileBuffer.toString('base64')
-    const dataUri = `data:${mimeType};base64,${base64Data}`
-
-    console.log('[dialog] selected image:', filePath, 'size:', (base64Data.length / 1024).toFixed(2), 'KB')
-    return dataUri
-  } catch (error) {
-    console.error('[dialog] select image failed:', error)
-    return null
-  }
-})
-
-// ========== IPC Handler: 使用系统默认应用打开图片 ==========
-
-/**
- * 使用系统默认图片查看器打开图片
- * 
- * 支持三种图片来源:
- * 1. Base64 Data URI (data:image/jpeg;base64,XXXXX)
- *    - 保存到临时文件后打开
- *    - 临时文件路径: os.tmpdir()/starverse-images/image-{timestamp}.{ext}
- * 2. HTTP/HTTPS URL (https://example.com/image.jpg)
- *    - 使用系统默认浏览器打开
- * 3. 本地文件路径 (C:/Users/.../picture.jpg)
- *    - 直接使用系统默认图片查看器打开
- * 
- * 使用场景:
- * - 用户在聊天中点击图片查看大图
- * - 右键菜单 "在系统查看器中打开"
- * 
- * @param imageUrl - 图片 URL（Data URI / HTTP URL / 文件路径）
- * @returns { success: boolean, path?: string, url?: string, error?: string }
- * 
- * 🧹 临时文件清理:
- * - 临时文件在应用退出后由操作系统自动清理
- * - 路径: Windows: %TEMP%\starverse-images, macOS: /tmp/starverse-images
- */
-ipcMain.handle('shell:open-image', async (_event, imageUrl: string) => {
-  try {
-    if (imageUrl.startsWith('data:image/')) {
-      // ========== 处理 Base64 Data URI ==========
-      const matches = imageUrl.match(/^data:image\/(\w+);base64,(.+)$/)
-      if (!matches) {
-        throw new Error('无效的 data URI 格式')
-      }
-
-      const [, extension, base64Data] = matches
-      if (!extension || !base64Data) {
-        throw new Error('无效的 data URI 内容')
-      }
-      const tempDir = path.join(tmpdir(), 'starverse-images')
-      await mkdir(tempDir, { recursive: true })
-
-      // 使用时间戳避免文件名冲突
-      const timestamp = Date.now()
-      const tempFilePath = path.join(tempDir, `image-${timestamp}.${extension}`)
-      const buffer = Buffer.from(base64Data, 'base64')
-      await writeFile(tempFilePath, buffer)
-
-      console.log('[shell] saved base64 image to temp:', tempFilePath)
-      const result = await shell.openPath(tempFilePath)
-      if (result) {
-        console.error('[shell] open image failed:', result)
-        return { success: false, error: result }
-      }
-      return { success: true, path: tempFilePath }
-    } else if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-      // ========== 处理远程 URL ==========
-      await shell.openExternal(imageUrl)
-      console.log('[shell] opened remote image:', imageUrl)
-      return { success: true, url: imageUrl }
-    } else {
-      // ========== 处理本地文件路径 ==========
-      const result = await shell.openPath(imageUrl)
-      if (result) {
-        console.error('[shell] open image failed:', result)
-        return { success: false, error: result }
-      }
-      console.log('[shell] opened local image:', imageUrl)
-      return { success: true, path: imageUrl }
-    }
-  } catch (error) {
-    console.error('[shell] open image error:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
-    }
-  }
-})
