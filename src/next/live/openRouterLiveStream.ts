@@ -1,5 +1,10 @@
 import { buildOpenRouterChatCompletionsRequest } from '@/next/openrouter/buildRequest'
+import type { OpenRouterImageConfig, OpenRouterOutputModality } from '@/next/openrouter/buildRequest'
+import type { OpenRouterWebRequestPatch } from '@/next/openrouter/searchSettingsResolver'
+import type { OpenRouterSamplingParamsPatch } from '@/next/openrouter/samplingParamsResolver'
 import { decodeOpenRouterSSE } from '@/next/openrouter/sse/decoder'
+import { resolveImageGenerationRequestModalities } from '@/next/openrouter/imageGenerationContract'
+import type { ImageCapabilityClass } from '@/next/openrouter/imageGenerationContract'
 import {
   buildStreamErrorFromAppError,
   mapAppPhaseToEndReason,
@@ -68,6 +73,119 @@ function logTiming(tag: string, data: Record<string, unknown>) {
     console.log(`[timing] ${tag}`, data)
   } catch {
     // ignore
+  }
+}
+
+const OPENROUTER_DEBUG_ECHO_UPSTREAM_BODY_KEY = 'sv_debug_openrouter_echo_upstream_body'
+
+function isDebugEchoUpstreamBodyEnabled(): boolean {
+  if (!import.meta.env?.DEV) {
+    try {
+      globalThis?.localStorage?.removeItem(OPENROUTER_DEBUG_ECHO_UPSTREAM_BODY_KEY)
+    } catch {
+      // ignore storage access error
+    }
+    return false
+  }
+  try {
+    return String(globalThis?.localStorage?.getItem(OPENROUTER_DEBUG_ECHO_UPSTREAM_BODY_KEY) ?? '').trim() === '1'
+  } catch {
+    return false
+  }
+}
+
+function resolveStreamDebugPatch(): Readonly<{ debug?: { echoUpstreamBody: true } }> {
+  if (!isDebugEchoUpstreamBodyEnabled()) return {}
+  return { debug: { echoUpstreamBody: true } }
+}
+
+function extractWebPluginFromBody(body: unknown):
+  | Readonly<{
+      enabled?: boolean
+      engine?: 'auto' | 'native' | 'exa'
+      maxResults?: number
+    }>
+  | null {
+  if (!body || typeof body !== 'object') return null
+  const plugins = (body as any).plugins
+  if (!Array.isArray(plugins)) return null
+  const web = plugins.find((row) => row && typeof row === 'object' && (row as any).id === 'web')
+  if (!web || typeof web !== 'object') return null
+  const enabled = typeof (web as any).enabled === 'boolean' ? (web as any).enabled : undefined
+  const engine =
+    (web as any).engine === 'auto' || (web as any).engine === 'native' || (web as any).engine === 'exa'
+      ? (web as any).engine
+      : undefined
+  const maxResults = Number.isFinite((web as any).max_results) ? Number((web as any).max_results) : undefined
+  return { enabled, engine, maxResults }
+}
+
+function logWebSearchRequestHints(input: Readonly<{
+  requestId: string
+  body: unknown
+  resolvedMode?: 'enable' | 'default' | 'disable'
+}>) {
+  const web = extractWebPluginFromBody(input.body)
+  if (!web) return
+
+  if (web.enabled === false && input.resolvedMode === 'disable') {
+    console.info(
+      `[openrouter][web] request=${input.requestId} explicit disable enabled:false; ` +
+      'if account-side Prevent overrides is enabled, this disable may be ignored.'
+    )
+    return
+  }
+
+  if (web.enabled !== true) return
+  const maxResults = web.maxResults ?? 5
+  const costHint = `~$0.02/request scale for ~5 results (current max_results=${maxResults})`
+  if (web.engine === 'exa') {
+    console.info(`[openrouter][web] request=${input.requestId} engine=exa may add search cost, ${costHint}.`)
+    return
+  }
+  if (web.engine === undefined || web.engine === 'auto') {
+    console.info(
+      `[openrouter][web] request=${input.requestId} engine=auto may fallback to exa and add search cost, ${costHint}.`
+    )
+  }
+}
+
+function resolveImageGenerationPatch(input: Readonly<{
+  imageGeneration?: Readonly<{
+    capabilityClass?: ImageCapabilityClass
+    modalities?: ReadonlyArray<OpenRouterOutputModality>
+    imageConfig?: OpenRouterImageConfig
+  }>
+}>): Readonly<{
+  modalities?: ReadonlyArray<OpenRouterOutputModality>
+  imageConfig?: OpenRouterImageConfig
+}> {
+  const imageGeneration = input.imageGeneration
+  if (!imageGeneration) return {}
+
+  const explicitModalities =
+    Array.isArray(imageGeneration.modalities) && imageGeneration.modalities.length > 0
+      ? [...imageGeneration.modalities]
+      : undefined
+  const derivedModalities =
+    imageGeneration.capabilityClass
+      ? resolveImageGenerationRequestModalities(imageGeneration.capabilityClass)
+      : undefined
+  const modalities = explicitModalities ?? derivedModalities
+  if (
+    explicitModalities &&
+    derivedModalities &&
+    explicitModalities.join('|') !== derivedModalities.join('|')
+  ) {
+    console.info(
+      '[openrouter][image] explicit modalities override derived capability modalities',
+      { explicit: explicitModalities, derived: derivedModalities }
+    )
+  }
+
+  return {
+    ...(modalities ? { modalities } : {}),
+    ...(imageGeneration.imageConfig ? { imageConfig: imageGeneration.imageConfig } : {}),
   }
 }
 
@@ -188,14 +306,30 @@ async function* streamOpenRouterChatAsEventsViaIpc(
           effort: reasoningEffort,
           ...(reasoningEffort !== 'none' && options.config.requestedReasoningExclude === true ? { exclude: true } : {}),
         }
+    const imageGenerationPatch = resolveImageGenerationPatch({
+      imageGeneration: options.config.imageGeneration,
+    })
+    const streamDebugPatch = resolveStreamDebugPatch()
 
     const devtoolsBody = buildOpenRouterChatCompletionsRequest({
       model: options.config.model,
       messages,
       stream: true,
       tools: options.config.tools ?? [],
+      ...imageGenerationPatch,
+      ...(options.config.webSearch?.requestPatch ? { webSearchPatch: options.config.webSearch.requestPatch } : {}),
+      ...(options.config.samplingParams ? { samplingParams: options.config.samplingParams } : {}),
       ...(providerRequireParameters === true ? { providerRequireParameters: true } : {}),
       ...(reasoning ? { reasoning } : {}),
+      ...streamDebugPatch,
+    })
+    if (streamDebugPatch.debug) {
+      console.info(`[openrouter][debug] request=${requestId} debug.echo_upstream_body enabled (DEV only).`)
+    }
+    logWebSearchRequestHints({
+      requestId,
+      body: devtoolsBody,
+      resolvedMode: options.config.webSearch?.resolvedMode,
     })
 
     // const baseUrl = (options.config.baseUrl || 'https://openrouter.ai/api/v1').replace(/\/+$/, '')
@@ -250,6 +384,8 @@ async function* streamOpenRouterChatAsEventsViaIpc(
         requestedReasoningMode: options.config.requestedReasoningMode,
         ...(options.config.requestedReasoningEffort ? { requestedReasoningEffort: options.config.requestedReasoningEffort } : {}),
         ...(options.config.requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
+        ...(imageGenerationPatch.modalities ? { modalities: imageGenerationPatch.modalities } : {}),
+        ...(imageGenerationPatch.imageConfig ? { imageConfig: imageGenerationPatch.imageConfig } : {}),
         ...(options.config.timeoutMs ? { timeoutMs: options.config.timeoutMs } : {}),
         ...(options.config.baseUrl ? { baseUrl: options.config.baseUrl } : {}),
         ...(options.config.tools ? { tools: options.config.tools } : {}),
@@ -342,6 +478,16 @@ export type LiveRequestConfig = Readonly<{
    * For minimal compliance, callers may pass an empty array.
    */
   tools?: unknown[]
+  webSearch?: Readonly<{
+    requestPatch: OpenRouterWebRequestPatch
+    resolvedMode?: 'enable' | 'default' | 'disable'
+  }>
+  samplingParams?: OpenRouterSamplingParamsPatch
+  imageGeneration?: Readonly<{
+    capabilityClass?: ImageCapabilityClass
+    modalities?: ReadonlyArray<OpenRouterOutputModality>
+    imageConfig?: OpenRouterImageConfig
+  }>
   timeoutMs?: number
   baseUrl?: string
 }>
@@ -407,14 +553,30 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
         effort: options.config.requestedReasoningEffort ?? 'none',
         ...(options.config.requestedReasoningExclude === true ? { exclude: true } : {}),
       }
+  const imageGenerationPatch = resolveImageGenerationPatch({
+    imageGeneration: options.config.imageGeneration,
+  })
+  const streamDebugPatch = resolveStreamDebugPatch()
 
   const body = buildOpenRouterChatCompletionsRequest({
     model,
     messages,
     stream: true,
     tools: options.config.tools ?? [],
+    ...imageGenerationPatch,
+    ...(options.config.webSearch?.requestPatch ? { webSearchPatch: options.config.webSearch.requestPatch } : {}),
+    ...(options.config.samplingParams ? { samplingParams: options.config.samplingParams } : {}),
     ...(providerRequireParameters === true ? { providerRequireParameters: true } : {}),
     ...(reasoning ? { reasoning } : {}),
+    ...streamDebugPatch,
+  })
+  if (streamDebugPatch.debug) {
+    console.info(`[openrouter][debug] request=${options.requestId} debug.echo_upstream_body enabled (DEV only).`)
+  }
+  logWebSearchRequestHints({
+    requestId: options.requestId,
+    body,
+    resolvedMode: options.config.webSearch?.resolvedMode,
   })
 
   let transport

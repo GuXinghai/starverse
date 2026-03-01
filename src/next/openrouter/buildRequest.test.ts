@@ -112,6 +112,42 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
     ).toThrow(/reasoning\.max_tokens must be a positive integer/)
   })
 
+  it('injects validated sampling parameters at top-level and omits unspecified keys', () => {
+    const req = buildOpenRouterChatCompletionsRequest({
+      ...base,
+      stream: true,
+      samplingParams: {
+        temperature: 0.7,
+        top_p: 0.95,
+        top_k: 20.4,
+        seed: 42.2,
+        max_tokens: 1024,
+      },
+    })
+
+    expect(req).toMatchObject({
+      temperature: 0.7,
+      top_p: 0.95,
+      top_k: 20,
+      seed: 42,
+      max_tokens: 1024,
+    })
+    expect(req).not.toHaveProperty('frequency_penalty')
+    expect(req).not.toHaveProperty('presence_penalty')
+  })
+
+  it('rejects invalid sampling parameters', () => {
+    expect(() =>
+      buildOpenRouterChatCompletionsRequest({
+        ...base,
+        stream: true,
+        samplingParams: {
+          temperature: 99,
+        },
+      })
+    ).toThrow(/samplingParams\.temperature is invalid/)
+  })
+
   it('snapshot matrix: stream/reasoning (offline, reproducible)', () => {
     const reasoningCases: Array<[string, any | undefined]> = [
       ['none', undefined],
@@ -277,7 +313,29 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
       providerRequireParameters: true,
     })
 
-    const allowedTopLevel = new Set(['model', 'messages', 'stream', 'reasoning', 'tools', 'provider'])
+    const allowedTopLevel = new Set([
+      'model',
+      'messages',
+      'stream',
+      'reasoning',
+      'tools',
+      'provider',
+      'modalities',
+      'image_config',
+      'debug',
+      'plugins',
+      'web_search_options',
+      'temperature',
+      'top_p',
+      'top_k',
+      'min_p',
+      'top_a',
+      'frequency_penalty',
+      'presence_penalty',
+      'repetition_penalty',
+      'seed',
+      'max_tokens',
+    ])
     for (const key of Object.keys(req)) {
       expect(allowedTopLevel.has(key)).toBe(true)
     }
@@ -307,5 +365,152 @@ describe('buildOpenRouterChatCompletionsRequest', () => {
     })
 
     expect(req.messages).toEqual(multimodalMessages)
+  })
+
+  it('supports image generation request fields: modalities + image_config (+ passthrough)', () => {
+    const req = buildOpenRouterChatCompletionsRequest({
+      ...base,
+      stream: true,
+      modalities: ['image', 'text'],
+      imageConfig: {
+        aspect_ratio: '16:9',
+        image_size: '1024x1024',
+        quality: 'high',
+      },
+    })
+
+    expect(req.modalities).toEqual(['image', 'text'])
+    expect(req.image_config).toEqual({
+      aspect_ratio: '16:9',
+      image_size: '1024x1024',
+      quality: 'high',
+    })
+  })
+
+  it('normalizes and deduplicates modalities', () => {
+    const req = buildOpenRouterChatCompletionsRequest({
+      ...base,
+      stream: true,
+      modalities: ['image', 'text', 'image'],
+    })
+    expect(req.modalities).toEqual(['image', 'text'])
+  })
+
+  it('rejects invalid modalities and invalid image_config shape', () => {
+    expect(() =>
+      buildOpenRouterChatCompletionsRequest({
+        ...base,
+        stream: true,
+        modalities: ['audio' as any],
+      })
+    ).toThrow(/modalities supports only text\/image/)
+
+    expect(() =>
+      buildOpenRouterChatCompletionsRequest({
+        ...base,
+        stream: true,
+        imageConfig: [] as any,
+      })
+    ).toThrow(/imageConfig must be an object/)
+
+    expect(() =>
+      buildOpenRouterChatCompletionsRequest({
+        ...base,
+        stream: true,
+        imageConfig: { aspect_ratio: '   ' },
+      })
+    ).toThrow(/imageConfig\.aspect_ratio must be a non-empty string/)
+  })
+
+  it('injects web plugin enable payload and omits engine when auto/default', () => {
+    const req = buildOpenRouterChatCompletionsRequest({
+      ...base,
+      stream: true,
+      webSearchPatch: {
+        plugins: [{ id: 'web', enabled: true, max_results: 5 }],
+        web_search_options: { search_context_size: 'medium' },
+      },
+    })
+    expect(req.plugins).toEqual([{ id: 'web', enabled: true, max_results: 5 }])
+    expect(req).not.toHaveProperty('web_search_options')
+  })
+
+  it('injects native engine + context size when policy allows native_only', () => {
+    const req = buildOpenRouterChatCompletionsRequest({
+      ...base,
+      stream: true,
+      webSearchPatch: {
+        plugins: [{ id: 'web', enabled: true, engine: 'native', max_results: 8 }],
+        web_search_options: { search_context_size: 'high' },
+      },
+    })
+    expect(req.plugins).toEqual([{ id: 'web', enabled: true, engine: 'native', max_results: 8 }])
+    expect(req.web_search_options).toEqual({ search_context_size: 'high' })
+  })
+
+  it('supports explicit disable payload for reliable override', () => {
+    const req = buildOpenRouterChatCompletionsRequest({
+      ...base,
+      stream: true,
+      webSearchPatch: {
+        plugins: [{ id: 'web', enabled: false }],
+      },
+    })
+    expect(req.plugins).toEqual([{ id: 'web', enabled: false }])
+    expect(req).not.toHaveProperty('web_search_options')
+  })
+
+  it('can force context_size injection on non-native engines via always policy', () => {
+    const req = buildOpenRouterChatCompletionsRequest({
+      ...base,
+      stream: true,
+      webSearchPatch: {
+        plugins: [{ id: 'web', enabled: true, engine: 'exa', max_results: 5 }],
+        web_search_options: { search_context_size: 'medium' },
+      },
+      webSearchContextPolicy: 'always',
+    })
+    expect(req.web_search_options).toEqual({ search_context_size: 'medium' })
+  })
+
+  it('rejects invalid web plugin engine', () => {
+    expect(() =>
+      buildOpenRouterChatCompletionsRequest({
+        ...base,
+        stream: true,
+        webSearchPatch: {
+          plugins: [{ id: 'web', enabled: true, engine: 'bad' as any }],
+        },
+      })
+    ).toThrow(/plugins\[\]\.engine is invalid/)
+  })
+
+  it('supports debug.echo_upstream_body in stream mode only', () => {
+    const streamReq = buildOpenRouterChatCompletionsRequest({
+      ...base,
+      stream: true,
+      debug: { echoUpstreamBody: true },
+    })
+    expect(streamReq.debug).toEqual({ echo_upstream_body: true })
+
+    const nonStreamReq = buildOpenRouterChatCompletionsRequest({
+      ...base,
+      stream: false,
+      debug: { echoUpstreamBody: true },
+    })
+    expect('debug' in nonStreamReq).toBe(false)
+  })
+
+  it('validates debug.echoUpstreamBody type', () => {
+    expect(() =>
+      buildOpenRouterChatCompletionsRequest({
+        ...base,
+        stream: true,
+        debug: {
+          // @ts-expect-error test invalid type
+          echoUpstreamBody: 'yes',
+        },
+      })
+    ).toThrow(/debug\.echoUpstreamBody must be boolean/)
   })
 })

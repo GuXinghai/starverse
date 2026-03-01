@@ -23,6 +23,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
     const originalDbBridge = (globalThis as any).dbBridge
 
     beforeEach(() => {
+        globalThis.localStorage?.removeItem('sv_debug_openrouter_echo_upstream_body')
         ;(globalThis as any).dbBridge = {
             invoke: vi.fn(async (method: string) => {
                 if (method === 'settings.getOpenRouterProviderRequireParameters') return { value: false }
@@ -32,6 +33,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
     })
 
     afterEach(() => {
+        globalThis.localStorage?.removeItem('sv_debug_openrouter_echo_upstream_body')
         ;(globalThis as any).dbBridge = originalDbBridge
     })
 
@@ -212,6 +214,52 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
             expect(streamError.error?.normalized?.normalized?.category).toBe('provider_error_unknown')
             expect(streamError.error?.normalized?.normalized?.grade).toBe(1)
             expect(events.some((e) => e.type === 'StreamDone')).toBe(false)
+        } finally {
+            globalThis.fetch = originalFetch
+        }
+    })
+
+    it('maps delta.images chunks to MessageAppendContentBlock during streaming', async () => {
+        const originalFetch = globalThis.fetch
+        const imageFixture = [
+            ': OPENROUTER PROCESSING',
+            '',
+            'data: {"id":"gen_img_1","model":"openrouter/auto","choices":[{"index":0,"delta":{"images":[{"image_url":{"url":"data:image/png;base64,AAAA"}}]},"finish_reason":null}]}',
+            '',
+            'data: [DONE]',
+            '',
+        ].join('\n')
+
+        globalThis.fetch = vi.fn(async () => {
+            const body = streamFromText(imageFixture)
+            return new Response(body as any, {
+                status: 200,
+                headers: { 'x-openrouter-generation-id': 'gen_img_1' },
+            })
+        }) as any
+
+        try {
+            const events = []
+            for await (const ev of streamOpenRouterChatAsEvents({
+                requestId: 'rid_img',
+                assistantMessageId: 'assistant_1',
+                userText: 'draw a cat',
+                config: {
+                    apiKey: 'k',
+                    model: 'openrouter/auto',
+                    requestedReasoningMode: 'auto',
+                },
+            })) {
+                events.push(ev)
+            }
+
+            expect(events).toContainEqual({
+                type: 'MessageAppendContentBlock',
+                messageId: 'assistant_1',
+                choiceIndex: 0,
+                block: { type: 'image', url: 'data:image/png;base64,AAAA' },
+            })
+            expect(events.some((e) => e.type === 'StreamDone')).toBe(true)
         } finally {
             globalThis.fetch = originalFetch
         }
