@@ -21,6 +21,13 @@ export type DomainEvent =
       mergeStrategy: 'append' | 'replace'
       toolCallDeltas: unknown[]
     }>
+  | Readonly<{
+      type: 'MessageDeltaAnnotationBatch'
+      messageId: string
+      choiceIndex: number
+      mergeStrategy: 'append' | 'replace'
+      annotations: unknown[]
+    }>
   | Readonly<{ type: 'MessageDeltaReasoningDetail'; messageId: string; choiceIndex: number; detail: unknown; chunkNo?: number }>
   | Readonly<{ type: 'UsageDelta'; usage: unknown }>
   | Readonly<{
@@ -41,6 +48,37 @@ export type OpenRouterChunkInput = Readonly<{
   /** 递增的 chunk 序号，用于诊断追踪 */
   chunkNo?: number
 }>
+
+function extractImageUrlFromImageEntry(entry: unknown): string | null {
+  if (!entry || typeof entry !== 'object') return null
+  const value = entry as Record<string, unknown>
+  const directUrl = value.url
+  if (typeof directUrl === 'string' && directUrl.length > 0) return directUrl
+  const nestedUrl = (value.image_url as Record<string, unknown> | undefined)?.url
+  if (typeof nestedUrl === 'string' && nestedUrl.length > 0) return nestedUrl
+  return null
+}
+
+function pushImageEventsFromImagesField(input: Readonly<{
+  events: DomainEvent[]
+  messageId: string
+  choiceIndex: number
+  images: unknown
+  seenUrls: Set<string>
+}>) {
+  const images = Array.isArray(input.images) ? input.images : [input.images]
+  for (const image of images) {
+    const url = extractImageUrlFromImageEntry(image)
+    if (!url || input.seenUrls.has(url)) continue
+    input.seenUrls.add(url)
+    input.events.push({
+      type: 'MessageAppendContentBlock',
+      messageId: input.messageId,
+      choiceIndex: input.choiceIndex,
+      block: { type: 'image', url },
+    })
+  }
+}
 
 function normalizeFinishReason(native: unknown): string | undefined {
   if (typeof native !== 'string' || !native) return undefined
@@ -118,6 +156,7 @@ export function mapChunkToEvents(input: OpenRouterChunkInput): DomainEvent[] {
 
   const delta = choice.delta && typeof choice.delta === 'object' ? choice.delta : null
   const message = choice.message && typeof choice.message === 'object' ? choice.message : null
+  const seenImageUrls = new Set<string>()
 
   const content = delta?.content ?? message?.content
   if (typeof content === 'string' && content.length > 0) {
@@ -135,12 +174,24 @@ export function mapChunkToEvents(input: OpenRouterChunkInput): DomainEvent[] {
         continue
       }
       if (type === 'image_url') {
-        const url = (part as any)?.image_url?.url
-        if (typeof url === 'string' && url.length > 0) {
+        const url = extractImageUrlFromImageEntry((part as any)?.image_url ? part : (part as any)?.image_url)
+        if (typeof url === 'string' && url.length > 0 && !seenImageUrls.has(url)) {
+          seenImageUrls.add(url)
           events.push({ type: 'MessageAppendContentBlock', messageId, choiceIndex, block: { type: 'image', url } })
         }
       }
     }
+  }
+
+  const imagePayload = delta?.images ?? message?.images
+  if (imagePayload !== undefined) {
+    pushImageEventsFromImagesField({
+      events,
+      messageId,
+      choiceIndex,
+      images: imagePayload,
+      seenUrls: seenImageUrls,
+    })
   }
 
   const toolCalls = delta?.tool_calls ?? message?.tool_calls
@@ -148,6 +199,19 @@ export function mapChunkToEvents(input: OpenRouterChunkInput): DomainEvent[] {
     const mergeStrategy: 'append' | 'replace' = delta?.tool_calls !== undefined ? 'append' : 'replace'
     const toolCallDeltas = Array.isArray(toolCalls) ? toolCalls : [toolCalls]
     events.push({ type: 'MessageDeltaToolCall', messageId, choiceIndex, mergeStrategy, toolCallDeltas })
+  }
+
+  const annotations = delta?.annotations ?? message?.annotations
+  if (annotations !== undefined) {
+    const mergeStrategy: 'append' | 'replace' = delta?.annotations !== undefined ? 'append' : 'replace'
+    const annotationDeltas = Array.isArray(annotations) ? annotations : [annotations]
+    events.push({
+      type: 'MessageDeltaAnnotationBatch',
+      messageId,
+      choiceIndex,
+      mergeStrategy,
+      annotations: annotationDeltas,
+    })
   }
 
   const reasoningDetails = delta?.reasoning_details ?? message?.reasoning_details

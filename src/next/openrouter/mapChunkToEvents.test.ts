@@ -46,6 +46,85 @@ describe('mapChunkToEvents', () => {
     })
   })
 
+  it('maps streaming delta.images to image content blocks', () => {
+    const events = mapChunkToEvents({
+      messageId: 'm1',
+      chunk: {
+        choices: [
+          {
+            index: 0,
+            delta: {
+              images: [
+                {
+                  image_url: {
+                    url: 'data:image/png;base64,AAAA',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    })
+    expect(events).toContainEqual({
+      type: 'MessageAppendContentBlock',
+      messageId: 'm1',
+      choiceIndex: 0,
+      block: { type: 'image', url: 'data:image/png;base64,AAAA' },
+    })
+  })
+
+  it('maps non-stream message.images to image content blocks', () => {
+    const events = mapChunkToEvents({
+      messageId: 'm1',
+      chunk: {
+        choices: [
+          {
+            index: 0,
+            message: {
+              images: [
+                {
+                  image_url: {
+                    url: 'data:image/webp;base64,BBBB',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    })
+    expect(events).toContainEqual({
+      type: 'MessageAppendContentBlock',
+      messageId: 'm1',
+      choiceIndex: 0,
+      block: { type: 'image', url: 'data:image/webp;base64,BBBB' },
+    })
+  })
+
+  it('deduplicates duplicate image URLs across content.image_url and delta.images in one chunk', () => {
+    const events = mapChunkToEvents({
+      messageId: 'm1',
+      chunk: {
+        choices: [
+          {
+            index: 0,
+            delta: {
+              content: [
+                { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
+              ],
+              images: [
+                { image_url: { url: 'data:image/png;base64,AAAA' } },
+              ],
+            },
+          },
+        ],
+      },
+    })
+    const imageBlocks = events.filter((event: any) => event.type === 'MessageAppendContentBlock')
+    expect(imageBlocks).toHaveLength(1)
+  })
+
   it('maps delta.reasoning_details to MessageDeltaReasoningDetail (append-only)', () => {
     const details = [{ type: 'reasoning.text', text: 'a' }, { type: 'reasoning.text', text: 'b' }]
     const events = mapChunkToEvents({
@@ -140,6 +219,50 @@ describe('mapChunkToEvents', () => {
       choiceIndex: 0,
       mergeStrategy: 'replace',
       toolCallDeltas: toolCalls,
+    })
+  })
+
+  it('maps delta.annotations to MessageDeltaAnnotationBatch with mergeStrategy=append', () => {
+    const annotations = [
+      {
+        type: 'url_citation',
+        url_citation: { url: 'https://example.com/a', title: 'A', start_index: 1, end_index: 4 },
+      },
+    ]
+
+    const events = mapChunkToEvents({
+      messageId: 'm1',
+      chunk: { choices: [{ index: 0, delta: { annotations } }] },
+    })
+
+    expect(events).toContainEqual({
+      type: 'MessageDeltaAnnotationBatch',
+      messageId: 'm1',
+      choiceIndex: 0,
+      mergeStrategy: 'append',
+      annotations,
+    })
+  })
+
+  it('maps non-stream message.annotations to MessageDeltaAnnotationBatch with mergeStrategy=replace', () => {
+    const annotations = [
+      {
+        type: 'url_citation',
+        url_citation: { url: 'https://example.com/final', start_index: 0, end_index: 0 },
+      },
+    ]
+
+    const events = mapChunkToEvents({
+      messageId: 'm1',
+      chunk: { choices: [{ index: 0, message: { content: 'ok', annotations } }] },
+    })
+
+    expect(events).toContainEqual({
+      type: 'MessageDeltaAnnotationBatch',
+      messageId: 'm1',
+      choiceIndex: 0,
+      mergeStrategy: 'replace',
+      annotations,
     })
   })
 
