@@ -46,7 +46,8 @@ import type {
   WorkerResponseMessage,
   DbErrorCode,
   DbEvent,
-  WorkerEventMessage
+  WorkerEventMessage,
+  WorkerInitConfig,
 } from '../../infra/db/types'
 import { DbWorkerError } from '../../infra/db/errors'
 
@@ -103,6 +104,7 @@ export class DbWorkerManager {
   private stopping = false                       // 标记是否为主动停止
   private defaultMaxPending = 400
   private eventListeners = new Set<(event: DbEvent) => void>()  // 事件监听器
+  private workerInitFlags: Pick<WorkerInitConfig, 'stampSchemaVersion' | 'startupRebuildReason'> = {}
 
   constructor(private options: ManagerOptions) {}
 
@@ -130,8 +132,9 @@ export class DbWorkerManager {
    * - 如果已启动，直接返回
    * - 如果正在启动，等待现有的 startPromise
    */
-  async start(dbPath: string) {
+  async start(dbPath: string, initFlags?: Pick<WorkerInitConfig, 'stampSchemaVersion' | 'startupRebuildReason'>) {
     if (this.worker) return
+    this.workerInitFlags = initFlags ?? {}
     if (!this.startPromise) {
       this.startPromise = new Promise((resolve, reject) => {
         try {
@@ -141,7 +144,9 @@ export class DbWorkerManager {
               dbPath,
               schemaPath: this.options.schemaPath,
               logSlowQueryMs: this.options.logSlowQueryMs,
-              logDirectory: this.options.logDirectory
+              logDirectory: this.options.logDirectory,
+              stampSchemaVersion: this.workerInitFlags.stampSchemaVersion,
+              startupRebuildReason: this.workerInitFlags.startupRebuildReason,
             }
           })
           this.dbPath = dbPath
@@ -283,6 +288,7 @@ export class DbWorkerManager {
       dbPath,
       `${dbPath}-wal`,
       `${dbPath}-shm`,
+      `${dbPath}-journal`,
     ]
     
     const deleteWithRetry = async (file: string, maxRetries = 5) => {
@@ -308,7 +314,7 @@ export class DbWorkerManager {
     }
     
     // 7. 重新启动 Worker（会自动创建新库）
-    await this.start(dbPath)
+    await this.start(dbPath, { stampSchemaVersion: true, startupRebuildReason: 'manual_reset' })
     
     console.log('[workerManager] Database reset complete')
     return { ok: true }
@@ -524,7 +530,7 @@ export class DbWorkerManager {
     this.clearRestartTimer()
 
     this.restartTimer = setTimeout(() => {
-      this.start(this.dbPath!).catch((error) => {
+      this.start(this.dbPath!, this.workerInitFlags).catch((error) => {
         console.error('[DbWorkerManager] failed to restart worker', error)
       })
     }, delay)

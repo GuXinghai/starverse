@@ -3,8 +3,12 @@ import type {
   AppendMessageInput,
   AppendMessageDeltaInput,
   SetMessageStatusInput,
+  SetMessageAnnotationsInput,
   UpsertMessageErrorInput,
   ListMessageErrorByIdsInput,
+  PersistMessageAssetsFromDataUrlsInput,
+  ListMessageAssetsByMessageIdsInput,
+  GetMessageAssetByIdInput,
   AppendReasoningDetailSegmentsInput,
   FinalizeReasoningDetailsInput,
   SetReasoningRequestConfigInput,
@@ -47,7 +51,14 @@ import type {
   SetBranchFilterInput,
   ClearBranchFilterInput,
   BuildContextForBranchInput,
-  GetRenderableTurnsInput
+  GetRenderableTurnsInput,
+  ModelPrefsListFavoritesParams,
+  ModelPrefsAddFavoriteParams,
+  ModelPrefsRemoveFavoriteParams,
+  ModelPrefsReorderFavoritesParams,
+  ModelPrefsListRecentsParams,
+  ModelPrefsRecordRecentParams,
+  ModelPrefsScopeType,
 } from './types'
 
 export const jsonSchema = z.record(z.any())
@@ -139,6 +150,11 @@ export const SetMessageStatusSchema: ZodType<SetMessageStatusInput> = z.object({
   metaPatch: jsonSchema.optional().nullable(),
 })
 
+export const SetMessageAnnotationsSchema: ZodType<SetMessageAnnotationsInput> = z.object({
+  messageId: z.string().min(1),
+  annotations: z.array(z.unknown()).nullable().optional(),
+})
+
 export const UpsertMessageErrorSchema: ZodType<UpsertMessageErrorInput> = z.object({
   messageId: z.string().min(1),
   envelopeJson: z.string().min(1),
@@ -151,6 +167,19 @@ export const UpsertMessageErrorSchema: ZodType<UpsertMessageErrorInput> = z.obje
 
 export const ListMessageErrorByIdsSchema: ZodType<ListMessageErrorByIdsInput> = z.object({
   messageIds: z.array(z.string().min(1)).min(1).max(500),
+})
+
+export const PersistMessageAssetsFromDataUrlsSchema: ZodType<PersistMessageAssetsFromDataUrlsInput> = z.object({
+  messageId: z.string().min(1),
+  imageDataUrls: z.array(z.string().min(1)).max(64),
+})
+
+export const ListMessageAssetsByMessageIdsSchema: ZodType<ListMessageAssetsByMessageIdsInput> = z.object({
+  messageIds: z.array(z.string().min(1)).min(1).max(500),
+})
+
+export const GetMessageAssetByIdSchema: ZodType<GetMessageAssetByIdInput> = z.object({
+  assetId: z.string().min(1),
 })
 
 export const AppendReasoningDetailSegmentsSchema: ZodType<AppendReasoningDetailSegmentsInput> = z.object({
@@ -548,3 +577,74 @@ export const DeleteDashboardPrefSchema = z.object({
 export const GetDashboardPrefsSchema = z.object({
   userId: z.string().min(1)
 })
+
+// ========== Model Preferences Schemas ==========
+
+const modelPrefsScopeTypeSchema: z.ZodType<ModelPrefsScopeType> = z.enum([
+  'global',
+  'project',
+  'conversation',
+])
+
+const modelPrefsScopeSchema = z.object({
+  scopeType: modelPrefsScopeTypeSchema.optional(),
+  scopeId: z.string().max(256).nullable().optional(),
+})
+
+const modelPrefsModelRefObjectSchema = z.object({
+  providerKey: z.string().min(1).max(128).optional(),
+  modelId: z.string().min(1).max(512).optional(),
+  modelKey: z.string().min(1).max(768).optional(),
+})
+
+const validateModelPrefsModelRef = (
+  row: {
+    providerKey?: string
+    modelId?: string
+    modelKey?: string
+  },
+  ctx: z.RefinementCtx,
+) => {
+  const hasModelKey = typeof row.modelKey === 'string' && row.modelKey.trim().length > 0
+  const hasProviderModel =
+    typeof row.providerKey === 'string' &&
+    row.providerKey.trim().length > 0 &&
+    typeof row.modelId === 'string' &&
+    row.modelId.trim().length > 0
+
+  if (!hasModelKey && !hasProviderModel) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'model refs require modelKey or providerKey+modelId',
+    })
+  }
+}
+
+export const ModelPrefsListFavoritesSchema: ZodType<ModelPrefsListFavoritesParams> = modelPrefsScopeSchema
+
+export const ModelPrefsAddFavoriteSchema: ZodType<ModelPrefsAddFavoriteParams> = modelPrefsScopeSchema
+  .merge(modelPrefsModelRefObjectSchema)
+  .extend({
+    sortRank: z.number().int().nonnegative().optional(),
+  })
+  .superRefine(validateModelPrefsModelRef)
+
+export const ModelPrefsRemoveFavoriteSchema: ZodType<ModelPrefsRemoveFavoriteParams> = modelPrefsScopeSchema
+  .merge(modelPrefsModelRefObjectSchema)
+  .superRefine(validateModelPrefsModelRef)
+
+export const ModelPrefsReorderFavoritesSchema: ZodType<ModelPrefsReorderFavoritesParams> = modelPrefsScopeSchema
+  .extend({
+    orderedModelKeys: z.array(z.string().min(1)).min(1).max(2000),
+  })
+
+export const ModelPrefsListRecentsSchema: ZodType<ModelPrefsListRecentsParams> = modelPrefsScopeSchema.extend({
+  limit: z.number().int().positive().max(500).optional(),
+})
+
+export const ModelPrefsRecordRecentSchema: ZodType<ModelPrefsRecordRecentParams> = modelPrefsScopeSchema
+  .merge(modelPrefsModelRefObjectSchema)
+  .extend({
+    usedAtMs: z.number().int().nonnegative().optional(),
+  })
+  .superRefine(validateModelPrefsModelRef)

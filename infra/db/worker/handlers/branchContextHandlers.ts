@@ -1,5 +1,5 @@
 /* eslint-disable max-lines-per-function, max-statements, complexity, max-depth */
-import type { DbWorkerRuntime } from '../../worker'
+import type { DbWorkerRuntime } from '../runtime'
 import type { RegisterHandler } from './types'
 import { DbWorkerError } from '../../errors'
 import {

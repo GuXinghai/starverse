@@ -16,6 +16,7 @@ const mergeMetaWithReasoning = (
   meta: Record<string, unknown> | null,
   reasoningJson: unknown,
   requestJson: unknown,
+  annotationsJson?: unknown,
   reasoningDurationMs?: number | null,
   reasoningEndReason?: string | null,
   reasoningDurationIsFallback?: number | null,
@@ -38,6 +39,17 @@ const mergeMetaWithReasoning = (
       const parsed = JSON.parse(requestJson)
       if (parsed && typeof parsed === 'object') {
         next.requestReasoningConfig = parsed
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  if (typeof annotationsJson === 'string' && annotationsJson.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(annotationsJson)
+      if (Array.isArray(parsed) && !next.annotations) {
+        next.annotations = parsed
       }
     } catch {
       // ignore parse errors
@@ -80,6 +92,7 @@ export class ContextRepo {
         m.answer_root_id,
         m.question_id,
         m.meta,
+        m.annotations_json AS annotationsJson,
         m.reasoning_details_final_json AS reasoningDetailsFinalJson,
         m.request_reasoning_config_json AS requestReasoningConfigJson,
         m.reasoning_duration_ms AS reasoningDurationMs,
@@ -160,6 +173,7 @@ export class ContextRepo {
           r.meta ? safeParse(String(r.meta)) : null,
           r.reasoningDetailsFinalJson,
           r.requestReasoningConfigJson,
+          r.annotationsJson,
           r.reasoningDurationMs ?? null,
           r.reasoningEndReason ?? null,
           r.reasoningDurationIsFallback ?? null,
@@ -259,6 +273,7 @@ export class ContextRepo {
           r.meta ? safeParse(String(r.meta)) : null,
           r.reasoningDetailsFinalJson,
           r.requestReasoningConfigJson,
+          r.annotationsJson,
           r.reasoningDurationMs ?? null,
           r.reasoningEndReason ?? null,
           r.reasoningDurationIsFallback ?? null,

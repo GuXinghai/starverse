@@ -99,6 +99,11 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   'netExp.forceHttp1',
   'netExp.tcpKeepAliveEnable',
   'netExp.tcpKeepAliveIdleMs',
+
+  // ========== Database Dev Rebuild (dev-only) ==========
+  'dbExp',                           // DB 开发态实验开关（破坏性重建）
+  'dbExp.forceRebuildOnNextLaunch', // 下次启动强制删库重建（一次性）
+  'dbExp.rebuildOnSchemaMismatch',  // schema_version 不匹配时自动重建
   
   // ========== Window State ==========
   'windowBounds',         // 窗口位置和大小 { x, y, width, height }

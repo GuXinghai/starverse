@@ -1,5 +1,5 @@
 /* eslint-disable max-lines-per-function, max-statements, complexity, max-depth */
-import type { DbWorkerRuntime } from '../../worker'
+import type { DbWorkerRuntime } from '../runtime'
 import type { RegisterHandler } from './types'
 import { DbWorkerError } from '../../errors'
 import {
@@ -16,8 +16,12 @@ import {
   AppendMessageSchema,
   AppendMessageDeltaSchema,
   SetMessageStatusSchema,
+  SetMessageAnnotationsSchema,
   UpsertMessageErrorSchema,
   ListMessageErrorByIdsSchema,
+  PersistMessageAssetsFromDataUrlsSchema,
+  ListMessageAssetsByMessageIdsSchema,
+  GetMessageAssetByIdSchema,
   AppendReasoningDetailSegmentsSchema,
   FinalizeReasoningDetailsSchema,
   SetReasoningRequestConfigSchema,
@@ -263,6 +267,11 @@ export function registerConvoMessageHandlers(register: RegisterHandler, runtime:
       return result
     })
 
+  register('message.setAnnotations', (raw) => {
+      const input = SetMessageAnnotationsSchema.parse(raw)
+      return rt.messageRepo.setAnnotations(input)
+    })
+
   register('messageError.upsert', (raw) => {
       const input = UpsertMessageErrorSchema.parse(raw)
       const txn = rt.db.transaction(() => {
@@ -278,6 +287,21 @@ export function registerConvoMessageHandlers(register: RegisterHandler, runtime:
   register('messageError.listByMessageIds', (raw) => {
       const input = ListMessageErrorByIdsSchema.parse(raw)
       return rt.messageErrorRepo.listByMessageIds(input)
+    })
+
+  register('messageAsset.persistFromDataUrls', (raw) => {
+      const input = PersistMessageAssetsFromDataUrlsSchema.parse(raw)
+      return rt.messageAssetRepo.persistFromDataUrls(input)
+    })
+
+  register('messageAsset.listByMessageIds', (raw) => {
+      const input = ListMessageAssetsByMessageIdsSchema.parse(raw)
+      return rt.messageAssetRepo.listByMessageIds(input)
+    })
+
+  register('messageAsset.getById', (raw) => {
+      const input = GetMessageAssetByIdSchema.parse(raw)
+      return rt.messageAssetRepo.getById(input)
     })
 
   register('message.appendReasoningDetailSegments', (raw) => {
