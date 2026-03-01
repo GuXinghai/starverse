@@ -380,59 +380,85 @@ Starverse/
 │   ├── db/                     # 数据库 Worker 管理
 │   │   ├── workerManager.ts   # Worker 进程管理器
 │   │   └── worker.ts          # SQLite Worker 实现
-│   └── ipc/                    # IPC 处理器
-│       └── dbBridge.ts        # 数据库 IPC 桥接
+│   ├── ipc/                    # IPC 处理器（多模块）
+│   │   ├── registerIpc.ts     # IPC 注册入口
+│   │   ├── dbBridge.ts        # 数据库 IPC 桥接
+│   │   ├── openRouterStreamBridge.ts # OpenRouter 流式 IPC
+│   │   ├── storeIpc.ts        # 配置存储 IPC
+│   │   ├── shellIpc.ts        # Shell 命令 IPC
+│   │   ├── imageIpc.ts        # 图片处理 IPC
+│   │   ├── dialogIpc.ts       # 系统对话框 IPC
+│   │   ├── inappBrowserIpc.ts # 应用内浏览器 IPC
+│   │   └── netExpIpc.ts       # 网络实验 IPC
+│   ├── modelCatalog/          # 主进程模型目录管理
+│   ├── jobs/                  # 后台定时任务
+│   ├── config/                # 主进程配置
+│   ├── windows/               # 窗口管理
+│   └── services/              # 主进程服务
+│       └── inappBrowser.ts    # 应用内浏览器服务
 │
 ├── src/                        # Vue 渲染进程
-│   ├── components/             # 12 个 Vue 组件
-│   │   ├── ChatView.vue       # 核心聊天视图（5000+ 行）
-│   │   ├── TabbedChatView.vue # 多标签容器
-│   │   ├── ConversationList.vue # 对话列表侧边栏
-│   │   ├── AdvancedModelPickerModal.vue # 高级模型选择器
-│   │   ├── FavoriteModelSelector.vue # 收藏模型选择器
-│   │   └── ...                # 其他组件
-│   │
-│   ├── services/               # 业务逻辑服务
-│   │   ├── aiChatService.js   # AI 服务路由器（策略模式）
-│   │   ├── chatPersistence.ts # SQLite 对话持久化
-│   │   ├── projectPersistence.ts # 项目管理持久化
-│   │   ├── searchService.ts   # FTS5 全文搜索
-│   │   ├── db/                # 数据库 IPC 封装
-│   │   │   ├── index.ts      # 数据库服务客户端
-│   │   │   └── types.ts      # 类型定义
-│   │   └── providers/         # AI 提供商实现
-│   │       ├── GeminiService.js # Google Gemini
-│   │       ├── GeminiService.ts # Google Gemini (TypeScript) ⭐
-│   │       ├── OpenRouterService.ts # OpenRouter (TypeScript) ⭐
-│   │       ├── generationAdapter.ts # 统一生成参数适配器 ⭐
-│   │       ├── openrouterReasoningAdapter.ts # 推理参数适配器 ⭐
-│   │       └── modelCapability.ts # 模型能力检测 ⭐
-│   │
-│   ├── stores/                 # Pinia 状态管理（模块化架构）
-│   │   ├── index.ts           # appStore（全局配置，249 行）
-│   │   ├── conversation.ts    # 对话管理（433 行）
-│   │   ├── branch.ts          # 分支树操作（422 行）
-│   │   ├── model.ts           # 模型管理（265 行）
-│   │   ├── persistence.ts     # 持久化调度（271 行）
-│   │   ├── project.ts         # 项目管理（475 行）
-│   │   ├── projectWorkspace.ts # 项目工作区状态
-│   │   ├── analyticsStore.ts  # 使用统计状态 ⭐ 新增
-│   │   ├── usageStore.ts      # 使用数据管理 ⭐ 新增
-│   │   ├── dashboardPrefs.ts  # 仪表板配置 ⭐ 新增
-│   │   └── branchTreeHelpers.ts # 分支树算法（520 行）
-│   │   ├── projectWorkspaceStore.ts # 项目工作区（376 行）
-│   │   └── branchTreeHelpers.ts # 分支树算法（1140 行）
-│   │
-│   ├── types/                  # TypeScript 类型
-│   │   ├── chat.ts            # 聊天类型（300+ 行）
-│   │   └── electron.d.ts      # Window 接口扩展
-│   │
-│   ├── utils/                  # 工具函数
-│   │   ├── electronBridge.ts  # Electron API 桥接
-│   │   └── ipcSanitizer.js    # IPC 数据清理
-│   │
 │   ├── App.vue                 # 根组件
-│   └── main.ts                 # Vue 应用入口
+│   ├── main.ts                 # Vue 应用入口
+│   ├── style.css               # 全局样式（Tailwind v4 @theme）
+│   ├── constants/              # 应用常量
+│   │
+│   ├── ui-app/                 # 主应用 UI 层（页面级组件）
+│   │   ├── AppChatApp.vue     # 核心聊天应用主组件
+│   │   ├── components/        # 高阶 UI 组件
+│   │   │   ├── ChatAppComposer.vue        # 聊天输入组合器
+│   │   │   ├── ChatAppReasoningPanel.vue  # 推理面板
+│   │   │   ├── ConversationList.vue       # 对话列表侧边栏
+│   │   │   ├── ModelPickerDialog.vue      # 模型选择对话框
+│   │   │   ├── EndpointDetailPanel.vue    # 模型端点详情
+│   │   │   ├── SettingsModal.vue          # 设置弹窗
+│   │   │   ├── SettingsPanel.vue          # 设置面板
+│   │   │   ├── ProjectSidebar.vue         # 项目侧边栏
+│   │   │   ├── SearchModal.vue            # 搜索弹窗
+│   │   │   └── WebSearchSettingsEditor.vue # 网络搜索配置
+│   │   ├── app/               # 应用业务逻辑（Composables）
+│   │   │   ├── appChatApp.logic.ts       # 主应用核心逻辑
+│   │   │   ├── useChatSession.ts         # 对话会话管理
+│   │   │   ├── useLiveStreamController.ts # 流式控制
+│   │   │   ├── useDiagnostics.ts         # 诊断工具
+│   │   │   └── useSettingsBindings.ts    # 设置绑定
+│   │   └── prefs/             # 用户偏好
+│   │       └── userMessageRenderPolicy.ts
+│   │
+│   ├── ui-kit/                 # 可复用 UI 组件库
+│   │   └── chat/              # 聊天 UI 基础组件
+│   │       ├── ChatComposer.vue       # 输入组件
+│   │       ├── ChatTranscript.vue     # 消息列表
+│   │       ├── ChatMessageBubble.vue  # 消息气泡
+│   │       ├── ChatReasoningPanel.vue # 推理展示
+│   │       ├── ChatStatusBar.vue      # 状态栏
+│   │       ├── ChatLayout.vue         # 布局容器
+│   │       └── richtext/              # 富文本渲染系统
+│   │           ├── RichTextContent.vue  # 流式内容渲染
+│   │           ├── RichTextFinal.vue    # 完成态渲染
+│   │           ├── streamRenderer.ts    # 流式渲染器
+│   │           ├── finalRenderer.ts     # 最终渲染器（markdown-it + Shiki）
+│   │           └── sanitizer.ts         # HTML 安全清理
+│   │
+│   ├── next/                   # 领域驱动业务逻辑（DDD 架构）
+│   │   ├── branch/            # 分支管理领域
+│   │   ├── convo/             # 对话领域
+│   │   ├── message/           # 消息领域
+│   │   ├── modelCatalog/      # 模型目录（同步、查询）
+│   │   ├── modelPrefs/        # 模型偏好
+│   │   ├── openrouter/        # OpenRouter 集成
+│   │   ├── persistence/       # 持久化服务
+│   │   ├── project/           # 项目管理领域
+│   │   ├── search/            # 全文搜索
+│   │   ├── settings/          # 设置管理
+│   │   └── streaming/         # 流式响应处理
+│   │
+│   └── shared/                 # 跨层共享模块
+│       ├── composables/       # 通用 Vue Composables
+│       ├── ipc/               # IPC 通信封装
+│       ├── modelCatalog/      # 模型目录客户端
+│       ├── reasoningDetailStreamMerger.ts  # 推理流合并器
+│       └── security/          # 安全工具
 │
 ├── infra/                      # 基础设施层（TypeScript）
 │   └── db/                    # 数据库核心
@@ -504,11 +530,11 @@ Starverse/
 │                                                              │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │  表现层 (Presentation Layer)                         │   │
-│  │  12 个 Vue 组件，采用 Composition API                │   │
-│  │  - ChatView.vue (5000+ 行核心视图)                   │   │
-│  │  - TabbedChatView.vue (多实例容器)                   │   │
+│  │  ui-app/ + ui-kit/，采用 Composition API               │   │
+│  │  - AppChatApp.vue (主应用入口)                        │   │
+│  │  - ui-kit/chat/ (可复用聊天组件库)                │   │
 │  │  - ConversationList.vue (项目+对话树)                │   │
-│  │  - AdvancedModelPickerModal.vue (高级选择器)         │   │
+│  │  - ModelPickerDialog.vue (模型选择器)               │   │
 │  └────────────────────┬─────────────────────────────────┘   │
 │                       │                                      │
 │  ┌────────────────────┴─────────────────────────────────┐   │
@@ -518,18 +544,16 @@ Starverse/
 │  │  - branchStore (422 行): 分支树操作、流式追加       │   │
 │  │  - modelStore (265 行): 模型列表、收藏管理          │   │
 │  │  - persistenceStore (271 行): 自动保存、脏数据追踪  │   │
-│  │  - projectStore (475 行): 项目管理、对话关联        │   │
-│  │  - branchTreeHelpers (1140 行): 树算法、序列化      │   │
+│  │  - next/search/: FTS5 全文搜索封装                    │   │
+│  │  - next/project/: 项目管理领域                       │   │
 │  └────────────────────┬─────────────────────────────────┘   │
 │                       │                                      │
 │  ┌────────────────────┴─────────────────────────────────┐   │
-│  │  服务层 (Service Layer)                              │   │
-│  │  - aiChatService: AI 服务路由器（策略模式）          │   │
-│  │    ├─ GeminiService: Google Gemini SDK               │   │
-│  │    └─ OpenRouterService: SSE 流式（1300+ 行）        │   │
-│  │  - chatPersistence: SQLite 持久化服务                │   │
-│  │  - projectPersistence: 项目管理服务                  │   │
-│  │  - searchService: FTS5 搜索 DSL                      │   │
+│  │  服务层 (Service Layer - next/openrouter/ 等)          │   │
+│  │  - next/openrouter/: OpenRouter SDK 封装         │   │
+│  │  - GeminiService: Google Gemini SDK                  │   │
+│  │  - openRouterStreamBridge: 主进程 SSE 流式代理  │   │
+│  │  - next/persistence/: 持久化调度器，防抖保存策略  │   │
 │  └────────────────────┬─────────────────────────────────┘   │
 │                       │ IPC: db:invoke                       │
 └───────────────────────┼──────────────────────────────────────┘
@@ -560,19 +584,23 @@ Starverse/
 └─────────────────────────────────────────────────────────────┘
 ```
 
-#### 2. **状态管理架构**
+#### 2. **领域驱动架构（next/ 模块）**
 
-**appStore** (全局应用状态)
-- 多提供商配置 (`activeProvider`, `geminiApiKey`, `openRouterApiKey`)
-- API Key 管理和持久化
-- 应用初始化状态 (`isAppReady`)
-- 全局配置管理
+`next/` 是项目的核心业务逻辑层，按领域划分为独立模块，每个领域包含请求/响应类型、服务（service）和相关测试:
 
-**chatStore** (对话状态)
-- 对话会话管理（`conversations`）
-- 标签页状态（`openConversationIds`, `activeTabId`）
-- 模型列表（`availableModels`）
-- 提供原子化 API，支持异步安全操作
+| 领域模块 | 职责 |
+|---------|------|
+| `next/convo/` | 对话 CRUD、标题管理、对话树序列化 |
+| `next/branch/` | 分支树状态、版本切换、路径计算 |
+| `next/message/` | 消息持久化、批量操作 |
+| `next/modelCatalog/` | 模型目录同步、查询服务（AppModel 类型） |
+| `next/modelPrefs/` | 模型偏好、收藏、默认 |
+| `next/openrouter/` | OpenRouter SDK 封装、请求构建 |
+| `next/streaming/` | SSE 流式响应处理管道 |
+| `next/search/` | FTS5 搜索封装、DSL 构建 |
+| `next/persistence/` | 持久化调度，防抖保存策略 |
+| `next/project/` | 项目管理领域 |
+| `next/settings/` | 设置项管理 |
 
 #### 3. **多提供商服务架构 (策略模式)**
 
