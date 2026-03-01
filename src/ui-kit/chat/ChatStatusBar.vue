@@ -98,6 +98,49 @@ const derivedUsageSummary = computed(() => {
   if (!u) return null
   return { pt: u.promptTokens, ct: u.completionTokens, tt: u.totalTokens }
 })
+
+function parseNumberLike(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+function resolveUsageCostInfo(usage: unknown): Readonly<{ value: number; currency: string }> | null {
+  if (!usage || typeof usage !== 'object') return null
+  const raw = usage as Record<string, unknown>
+  const rawCost = raw.cost
+
+  let value = parseNumberLike(rawCost)
+  if (value == null && rawCost && typeof rawCost === 'object') {
+    const costObj = rawCost as Record<string, unknown>
+    value =
+      parseNumberLike(costObj.amount) ??
+      parseNumberLike(costObj.value) ??
+      parseNumberLike(costObj.total) ??
+      parseNumberLike(costObj.usd)
+  }
+  if (value == null) return null
+
+  const rawCurrency =
+    (rawCost && typeof rawCost === 'object' ? (rawCost as Record<string, unknown>).currency : undefined) ??
+    raw.cost_currency ??
+    raw.currency
+  const currency = typeof rawCurrency === 'string' && rawCurrency.trim().length > 0 ? rawCurrency.trim().toUpperCase() : 'USD'
+  return { value, currency }
+}
+
+const usageCostSummary = computed(() => {
+  const info = resolveUsageCostInfo(props.run?.usage)
+  if (!info) return null
+  const decimals = info.value >= 1 ? 4 : 6
+  return {
+    ...info,
+    text: `${info.currency} ${info.value.toFixed(decimals)}`,
+  }
+})
 </script>
 
 <template>
@@ -138,6 +181,7 @@ const derivedUsageSummary = computed(() => {
           <span class="rounded bg-black/5 px-2 py-0.5 font-mono">p={{ usageSummary.pt }}</span>
           <span class="rounded bg-black/5 px-2 py-0.5 font-mono">c={{ usageSummary.ct }}</span>
           <span class="rounded bg-black/5 px-2 py-0.5 font-mono">t={{ usageSummary.tt }}</span>
+          <span v-if="usageCostSummary" class="rounded bg-black/5 px-2 py-0.5 font-mono">cost={{ usageCostSummary.text }}</span>
         </div>
         <div
           v-if="props.showUsage && props.showSessionTotalDerived && derivedUsageSummary"

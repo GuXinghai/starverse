@@ -6,6 +6,7 @@ import {
   decodeProjectGetInboxResponse,
   decodeProjectListResponse,
 } from '@/next/ipc/contracts/dbBridgeContracts'
+import { sanitizeForIpc } from '@/next/ipc/sanitizeForIpc'
 
 type DbBridge = Readonly<{
   invoke: (method: string, params?: unknown) => Promise<any>
@@ -30,7 +31,7 @@ export async function listProjects(params?: Readonly<{ limit?: number; offset?: 
   const bridge = getDbBridge()
   if (!bridge) return []
 
-  const rows = await bridge.invoke('project.list', params ?? {})
+  const rows = await bridge.invoke('project.list', sanitizeForIpc(params ?? {}))
   return decodeProjectListResponse(rows)
 }
 
@@ -45,7 +46,7 @@ export async function findProjectById(projectId: string): Promise<ProjectSummary
   if (!bridge) return null
   const id = String(projectId ?? '').trim()
   if (!id) return null
-  const row = await bridge.invoke('project.findById', { id })
+  const row = await bridge.invoke('project.findById', sanitizeForIpc({ id }))
   const decoded = decodeProjectFindByIdResponse(row)
   if (!decoded) return null
   return {
@@ -71,7 +72,7 @@ export async function saveProject(input: Readonly<{ id: string; name: string; me
   if (input.updatedAt !== undefined) payload.updatedAt = input.updatedAt
   if (input.meta !== undefined) payload.meta = input.meta
 
-  const r = await bridge.invoke('project.save', payload)
+  const r = await bridge.invoke('project.save', sanitizeForIpc(payload))
   return !!(r && typeof r === 'object' && 'ok' in r ? (r as any).ok : true)
 }
 
@@ -110,7 +111,7 @@ export async function createProject(input: Readonly<{ name: string; meta?: unkno
   const payload: any = { name }
   if (input.meta !== undefined) payload.meta = input.meta
 
-  const row = await bridge.invoke('project.create', payload)
+  const row = await bridge.invoke('project.create', sanitizeForIpc(payload))
   return decodeProjectCreateResponse(row)
 }
 
@@ -124,7 +125,7 @@ export async function deleteProject(projectId: string): Promise<{ ok: boolean; e
   const id = String(projectId ?? '').trim()
   if (!id) throw new Error('Missing project id')
 
-  const result = await bridge.invoke('project.delete', { id })
+  const result = await bridge.invoke('project.delete', sanitizeForIpc({ id }))
   if (result && typeof result === 'object' && 'ok' in result) {
     return result as { ok: boolean; error?: { code: string; message: string } }
   }
@@ -139,7 +140,7 @@ export async function countConversations(projectId: string | null): Promise<numb
   const bridge = getDbBridge()
   if (!bridge) return 0
 
-  const result = await bridge.invoke('project.countConversations', { projectId })
+  const result = await bridge.invoke('project.countConversations', sanitizeForIpc({ projectId }))
   return decodeProjectCountConversationsResponse(result)
 }
 
@@ -151,7 +152,7 @@ export async function countConversationsBatch(projectIds: string[]): Promise<Map
   const bridge = getDbBridge()
   if (!bridge || projectIds.length === 0) return new Map()
 
-  const result = await bridge.invoke('project.countConversationsBatch', { projectIds })
+  const result = await bridge.invoke('project.countConversationsBatch', sanitizeForIpc({ projectIds }))
   const counts = decodeProjectCountConversationsBatchResponse(result)
   return new Map(Object.entries(counts))
 }

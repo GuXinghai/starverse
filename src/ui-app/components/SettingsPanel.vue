@@ -3,6 +3,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { getOpenRouterProviderRequireParameters, setOpenRouterProviderRequireParameters } from '@/next/settings/openRouterProviderSettingsClient'
 import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningPrefsClient'
 import { getUserMessageRenderDefault, setUserMessageRenderDefault } from '@/next/settings/userMessageRenderDefaultClient'
+import { getWebSearchDefaults, setWebSearchDefaults } from '@/next/settings/webSearchDefaultsClient'
+import { getSamplingParamsDefaults, setSamplingParamsDefaults } from '@/next/settings/samplingParamsDefaultsClient'
 import {
   DEFAULT_NETEXP_SETTINGS,
   getNetExpRuntimeInfo,
@@ -13,11 +15,18 @@ import {
 } from '@/next/netExp/netExpClient'
 import { formatNetExpRunReport, getLastNetExpRunReport } from '@/next/netExp/netExpRunReport'
 import type { ReasoningEffort, ReasoningPrefs } from '@/next/state/types'
+import { normalizeSearchSettingsLayer } from '@/next/openrouter/searchSettingsPersistence'
+import { resolveSearchSettings, type SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
+import { normalizeSamplingParamsLayer } from '@/next/openrouter/samplingParamsPersistence'
+import { resolveSamplingParams, type SamplingParamsLayer } from '@/next/openrouter/samplingParamsResolver'
+import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
+import SamplingParamsSettingsEditor from './SamplingParamsSettingsEditor.vue'
 
 const props = defineProps<{
   disabled: boolean
   isRunning: boolean
 }>()
+const isDev = import.meta.env?.DEV === true
 
 type ElectronStoreLike = Readonly<{
   get: (key: string) => Promise<any>
@@ -34,14 +43,18 @@ function getElectronStore(): ElectronStoreLike | null {
 
 const OPENROUTER_API_KEY_KEY = 'openRouterApiKey'
 const OPENROUTER_BASE_URL_KEY = 'openRouterBaseUrl'
+const OPENROUTER_DEBUG_ECHO_UPSTREAM_BODY_KEY = 'sv_debug_openrouter_echo_upstream_body'
 
 const apiKey = ref('')
 const baseUrl = ref('')
 const requireParameters = ref(false)
+const debugEchoUpstreamBody = ref(false)
 const showApiKey = ref(false)
 const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('auto')
 const requestedReasoningExclude = ref(false)
 const userMessageRenderDefault = ref(false)
+const webSearchDefaults = ref<SearchSettingsLayer | null>(null)
+const samplingParamsDefaults = ref<SamplingParamsLayer | null>(null)
 const netExpDisableHttp2 = ref(DEFAULT_NETEXP_SETTINGS.disableHttp2)
 const netExpDisableQuic = ref(DEFAULT_NETEXP_SETTINGS.disableQuic)
 const netExpStreamInMainProcess = ref(DEFAULT_NETEXP_SETTINGS.streamInMainProcess)
@@ -64,6 +77,23 @@ watch(requestedReasoningEffort, (value) => {
 
 const storeAvailable = computed(() => !!getElectronStore())
 const canEdit = computed(() => !props.disabled && !props.isRunning && storeAvailable.value)
+const globalWebSearchResolved = computed(() =>
+  resolveSearchSettings(
+    { global: webSearchDefaults.value },
+    { accountDefaultEnabled: false }
+  )
+)
+const globalWebSearchInheritanceHint = computed(() => {
+  const mode = globalWebSearchResolved.value.resolvedMode
+  if (mode === 'default') {
+    return 'Global mode=default inherits your OpenRouter account plugin default.'
+  }
+  return 'Global defaults apply when project/session keeps mode=default.'
+})
+const globalSamplingParamsResolved = computed(() =>
+  resolveSamplingParams({ global: samplingParamsDefaults.value })
+)
+
 function isValidUrlOrEmpty(value: string): boolean {
   const trimmed = value.trim()
   if (!trimmed) return true
@@ -145,6 +175,31 @@ async function load() {
     const prefs = await getReasoningPrefs()
     applyReasoningPrefs(normalizeReasoningPrefs(prefs))
     userMessageRenderDefault.value = (await getUserMessageRenderDefault()) === true
+    if (isDev) {
+      try {
+        debugEchoUpstreamBody.value =
+          String(globalThis?.localStorage?.getItem(OPENROUTER_DEBUG_ECHO_UPSTREAM_BODY_KEY) ?? '').trim() === '1'
+      } catch {
+        debugEchoUpstreamBody.value = false
+      }
+    } else {
+      debugEchoUpstreamBody.value = false
+      try {
+        globalThis?.localStorage?.removeItem(OPENROUTER_DEBUG_ECHO_UPSTREAM_BODY_KEY)
+      } catch {
+        // no-op
+      }
+    }
+    try {
+      webSearchDefaults.value = normalizeSearchSettingsLayer(await getWebSearchDefaults())
+    } catch {
+      webSearchDefaults.value = null
+    }
+    try {
+      samplingParamsDefaults.value = normalizeSamplingParamsLayer(await getSamplingParamsDefaults())
+    } catch {
+      samplingParamsDefaults.value = null
+    }
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
@@ -183,9 +238,32 @@ async function save() {
     const nextReasoningPrefs = buildReasoningPrefs()
     await setReasoningPrefs(nextReasoningPrefs)
     await setUserMessageRenderDefault(userMessageRenderDefault.value === true)
+    if (isDev) {
+      try {
+        if (debugEchoUpstreamBody.value) {
+          globalThis?.localStorage?.setItem(OPENROUTER_DEBUG_ECHO_UPSTREAM_BODY_KEY, '1')
+        } else {
+          globalThis?.localStorage?.removeItem(OPENROUTER_DEBUG_ECHO_UPSTREAM_BODY_KEY)
+        }
+      } catch {
+        // no-op
+      }
+    } else {
+      try {
+        globalThis?.localStorage?.removeItem(OPENROUTER_DEBUG_ECHO_UPSTREAM_BODY_KEY)
+      } catch {
+        // no-op
+      }
+    }
+    const normalizedWebSearchDefaults = normalizeSearchSettingsLayer(webSearchDefaults.value)
+    const normalizedSamplingParamsDefaults = normalizeSamplingParamsLayer(samplingParamsDefaults.value)
+    await setWebSearchDefaults(normalizedWebSearchDefaults)
+    await setSamplingParamsDefaults(normalizedSamplingParamsDefaults)
     try {
       window.dispatchEvent(new CustomEvent('settings:reasoningPrefsUpdated', { detail: nextReasoningPrefs }))
       window.dispatchEvent(new CustomEvent('settings:userMessageRenderDefaultUpdated', { detail: userMessageRenderDefault.value === true }))
+      window.dispatchEvent(new CustomEvent('settings:webSearchDefaultsUpdated', { detail: normalizedWebSearchDefaults }))
+      window.dispatchEvent(new CustomEvent('settings:samplingParamsDefaultsUpdated', { detail: normalizedSamplingParamsDefaults }))
     } catch {
       // no-op
     }
@@ -343,6 +421,22 @@ onMounted(() => {
           </label>
         </div>
 
+        <div v-if="isDev" class="mt-4 flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50/70 px-3 py-2">
+          <div class="min-w-0">
+            <div class="text-[11px] font-semibold text-amber-900">debug.echo_upstream_body</div>
+            <div class="text-[11px] text-amber-800">DEV only, stream mode only. Helps diagnose provider parameter mapping.</div>
+          </div>
+          <label class="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              aria-label="OpenRouter debug echo upstream body"
+              :disabled="!canEdit || loading || saving"
+              v-model="debugEchoUpstreamBody"
+            />
+            <span class="text-[11px] text-amber-900">{{ debugEchoUpstreamBody ? 'On' : 'Off' }}</span>
+          </label>
+        </div>
+
         <div class="mt-4 flex justify-end">
           <button
             type="button"
@@ -469,6 +563,18 @@ onMounted(() => {
       </div>
 
       <div class="rounded-lg border border-gray-200 bg-white p-3">
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Global Custom Parameters</div>
+        <div class="mt-3">
+          <SamplingParamsSettingsEditor
+            v-model="samplingParamsDefaults"
+            :disabled="!canEdit || loading || saving"
+            :resolved="globalSamplingParamsResolved"
+            :defaultCollapsed="true"
+          />
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-gray-200 bg-white p-3">
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Global Reasoning Defaults</div>
 
         <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-gray-600">
@@ -519,6 +625,18 @@ onMounted(() => {
               <span class="text-[11px] text-gray-700">{{ userMessageRenderDefault ? 'On' : 'Off' }}</span>
             </label>
           </div>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-gray-200 bg-white p-3">
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Global Web Search Defaults</div>
+        <div class="mt-3">
+          <WebSearchSettingsEditor
+            v-model="webSearchDefaults"
+            :disabled="!canEdit || loading || saving"
+            :resolved="globalWebSearchResolved"
+            :inheritanceHint="globalWebSearchInheritanceHint"
+          />
         </div>
       </div>
 
