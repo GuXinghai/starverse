@@ -1,0 +1,62 @@
+{
+  "data": [
+    {
+      "id": "openai/vision-image-dual",
+      "fixture_only": true,
+      "canonical_slug": "openai/vision-image-dual",
+      "name": "Vision Image Dual",
+      "description": "Reference fixture model for text+image output",
+      "created": 1702001001,
+      "context_length": 64000,
+      "supported_parameters": ["temperature", "response_format"],
+      "architecture": {
+        "modality": "text->text+image",
+        "input_modalities": ["text"],
+        "output_modalities": ["text", "image"],
+        "tokenizer": "dual-tokenizer",
+        "instruct_type": "chatml"
+      },
+      "top_provider": {
+        "is_moderated": false,
+        "context_length": 64000,
+        "max_completion_tokens": 2048
+      },
+      "pricing": {
+        "prompt": "0.00005",
+        "completion": "0.00009",
+        "request": "0",
+        "image": "0.0002"
+      },
+      "expiration_date": null
+    },
+    {
+      "id": "openai/image-writer",
+      "fixture_only": true,
+      "canonical_slug": "openai/image-writer",
+      "name": "Image Writer",
+      "description": "Reference fixture model for image-only output",
+      "created": 1702001002,
+      "context_length": 64000,
+      "supported_parameters": ["temperature", "response_format"],
+      "architecture": {
+        "modality": "text->image",
+        "input_modalities": ["text"],
+        "output_modalities": ["image"],
+        "tokenizer": "image-tokenizer",
+        "instruct_type": "json"
+      },
+      "top_provider": {
+        "is_moderated": false,
+        "context_length": 64000,
+        "max_completion_tokens": 2048
+      },
+      "pricing": {
+        "prompt": "0.00005",
+        "completion": "0.00009",
+        "request": "0",
+        "image": "0.0002"
+      },
+      "expiration_date": null
+    }
+  ]
+}

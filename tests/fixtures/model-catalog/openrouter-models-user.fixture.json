@@ -1,0 +1,92 @@
+{
+  "data": [
+    {
+      "id": "openai/vision-pro",
+      "canonical_slug": "openai/vision-pro",
+      "name": "Vision Pro",
+      "description": "Vision analysis model for multimodal tasks",
+      "created": "1701000001",
+      "context_length": 200000,
+      "supported_parameters": ["temperature", "tools", "response_format"],
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": ["text", "image"],
+        "output_modalities": ["text"],
+        "tokenizer": "cl100k_base",
+        "instruct_type": "chatml"
+      },
+      "top_provider": {
+        "is_moderated": true,
+        "context_length": 200000,
+        "max_completion_tokens": 4096
+      },
+      "per_request_limits": {
+        "max_input_tokens": 180000
+      },
+      "default_parameters": {
+        "temperature": 0.2
+      },
+      "pricing": {
+        "prompt": "0.00003",
+        "completion": "0.00006",
+        "request": "0",
+        "image": "0",
+        "web_search": "0.0009",
+        "internal_reasoning": "0.0011",
+        "input_cache_read": "0.000004",
+        "input_cache_write": "0.000008"
+      },
+      "expiration_date": "2099-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "openai/reasoner-mini",
+      "canonical_slug": "openai/reasoner-mini",
+      "name": "Reasoner Mini",
+      "description": "Reasoning-focused long context model",
+      "created": 1701000002,
+      "context_length": 128000,
+      "supported_parameters": ["temperature", "reasoning"],
+      "architecture": {
+        "modality": "TEXT->TEXT",
+        "input_modalities": ["text"],
+        "output_modalities": ["text"],
+        "tokenizer": "gpt-tokenizer",
+        "instruct_type": "responses"
+      },
+      "top_provider": {
+        "is_moderated": false,
+        "context_length": 128000,
+        "max_completion_tokens": 8192
+      },
+      "pricing": {
+        "prompt": "0.000001",
+        "completion": "0.000002",
+        "request": "0",
+        "image": "0"
+      },
+      "expiration_date": "not-a-date"
+    },
+    {
+      "id": "anthropic/text-fast",
+      "canonical_slug": "anthropic/text-fast",
+      "name": "Text Fast",
+      "description": "General purpose text model",
+      "created": 1701000003.987,
+      "context_length": 8192,
+      "supported_parameters": ["temperature", "top_p"],
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": ["text"],
+        "output_modalities": ["text"],
+        "tokenizer": "",
+        "instruct_type": ""
+      },
+      "pricing": {
+        "prompt": "0.00001",
+        "completion": "0.00001",
+        "request": "0",
+        "image": "0"
+      }
+    }
+  ]
+}
