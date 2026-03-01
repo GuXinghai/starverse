@@ -1,0 +1,17 @@
+{
+  "model": "google/gemini-2.5-flash",
+  "stream": false,
+  "max_tokens": 220,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Use web search now.\nReturn exactly two lines:\nutc_date: <current UTC date YYYY-MM-DD>\nsource_url: <one URL you actually used>"
+    }
+  ],
+  "plugins": [
+    {
+      "id": "web",
+      "engine": "native"
+    }
+  ]
+}

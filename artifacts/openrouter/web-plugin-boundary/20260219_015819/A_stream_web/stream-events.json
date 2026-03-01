@@ -1,0 +1,37 @@
+[
+  {
+    "eventIndex": 1,
+    "finishReason": null,
+    "deltaContentChars": 3,
+    "deltaAnnotationCount": 5,
+    "messageAnnotationCount": 0
+  },
+  {
+    "eventIndex": 2,
+    "finishReason": null,
+    "deltaContentChars": 8,
+    "deltaAnnotationCount": 0,
+    "messageAnnotationCount": 0
+  },
+  {
+    "eventIndex": 3,
+    "finishReason": null,
+    "deltaContentChars": 25,
+    "deltaAnnotationCount": 0,
+    "messageAnnotationCount": 0
+  },
+  {
+    "eventIndex": 4,
+    "finishReason": "stop",
+    "deltaContentChars": 36,
+    "deltaAnnotationCount": 0,
+    "messageAnnotationCount": 0
+  },
+  {
+    "eventIndex": 5,
+    "finishReason": null,
+    "deltaContentChars": 0,
+    "deltaAnnotationCount": 0,
+    "messageAnnotationCount": 0
+  }
+]
