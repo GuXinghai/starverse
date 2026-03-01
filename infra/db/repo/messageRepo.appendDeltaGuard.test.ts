@@ -66,4 +66,44 @@ describe('MessageRepo.appendDelta guard', () => {
     expect((assistant?.meta as any)?.existing).toBe('keep-me')
     expect((assistant?.meta as any)?.reasoningDetailsRaw).toEqual([{ type: 'reasoning.text', text: 'seed' }])
   })
+
+  it('setAnnotations persists annotations_json and exposes it via message meta', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    insertConvo(db, 'c1')
+    const repo = new MessageRepo(db)
+
+    const a1 = repo.append({
+      convoId: 'c1',
+      role: 'assistant',
+      body: 'answer',
+    })
+
+    repo.setAnnotations({
+      messageId: a1.id,
+      annotations: [
+        {
+          type: 'url_citation',
+          url_citation: {
+            url: 'https://example.com',
+            start_index: 0,
+            end_index: 0,
+          },
+        },
+      ],
+    })
+
+    const listed = repo.list({ convoId: 'c1' })
+    const assistant = listed.find((row) => row.id === a1.id)
+    expect((assistant?.meta as any)?.annotations).toEqual([
+      {
+        type: 'url_citation',
+        url_citation: {
+          url: 'https://example.com',
+          start_index: 0,
+          end_index: 0,
+        },
+      },
+    ])
+  })
 })
