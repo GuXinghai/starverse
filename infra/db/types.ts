@@ -180,6 +180,11 @@ export type SetMessageStatusInput = {
   metaPatch?: JsonObject | null
 }
 
+export type SetMessageAnnotationsInput = Readonly<{
+  messageId: string
+  annotations?: unknown[] | null
+}>
+
 export type UpsertMessageErrorInput = {
   messageId: string
   envelopeJson: string
@@ -193,6 +198,33 @@ export type UpsertMessageErrorInput = {
 export type ListMessageErrorByIdsInput = {
   messageIds: string[]
 }
+
+export type PersistMessageAssetsFromDataUrlsInput = Readonly<{
+  messageId: string
+  imageDataUrls: string[]
+}>
+
+export type ListMessageAssetsByMessageIdsInput = Readonly<{
+  messageIds: string[]
+}>
+
+export type GetMessageAssetByIdInput = Readonly<{
+  assetId: string
+}>
+
+export type MessageAssetRecord = Readonly<{
+  messageId: string
+  assetId: string
+  ordinal: number
+  hash: string
+  mime: string
+  width: number | null
+  height: number | null
+  bytes: number
+  path: string
+  fileUrl: string
+  assetUrl: string
+}>
 
 // ========== Branching Types (Phase 4+) ==========
 
@@ -782,6 +814,8 @@ export type WorkerInitConfig = {
   schemaPath?: string
   logSlowQueryMs?: number
   logDirectory?: string
+  stampSchemaVersion?: boolean
+  startupRebuildReason?: string
 }
 
 export type { DbMethod } from './dbMethodsRegistry'
@@ -803,8 +837,310 @@ export type ModelCatalogSyncSnapshotParams = Readonly<{
   models: ModelCatalogUpsertInput[]
 }>
 
+export type ModelCatalogCoreProviderUpsertInput = Readonly<{
+  providerKey: string
+  displayName: string
+  slug?: string | null
+  privacyPolicyUrl?: string | null
+  termsOfServiceUrl?: string | null
+  statusPageUrl?: string | null
+  updatedAtMs: number
+  rawJson?: string | null
+}>
+
+export type ModelCatalogCoreModelUpsertInput = Readonly<{
+  providerKey: string
+  modelId: string
+  modelKey: string
+  canonicalSlug?: string | null
+  displayName: string
+  description?: string | null
+  vendor?: string | null
+  family?: string | null
+  status: 'active' | 'deprecated' | 'archived'
+  visibility: 'visible' | 'hidden'
+  contextLength?: number | null
+  maxOutputTokens?: number | null
+  architectureModality?: string | null
+  inputModalitiesJson: string
+  outputModalitiesJson: string
+  tokenizer?: string | null
+  instructType?: string | null
+  supportedParametersJson: string
+  capabilitiesJson: string
+  capReasoning: 0 | 1
+  capTools: 0 | 1
+  capStructuredOutputs: 0 | 1
+  capVision: 0 | 1
+  capLongContext: 0 | 1
+  pricingJson?: string | null
+  pricePrompt?: string | null
+  priceCompletion?: string | null
+  priceRequest?: string | null
+  priceImage?: string | null
+  priceWebSearch?: string | null
+  priceInternalReasoning?: string | null
+  priceInputCacheRead?: string | null
+  priceInputCacheWrite?: string | null
+  createdAtSec?: number | null
+  expirationDate?: string | null
+  expirationAtSec?: number | null
+  unknownExpiration?: 0 | 1
+  perRequestLimitsJson?: string | null
+  defaultParametersJson?: string | null
+  hasPerRequestLimits?: 0 | 1
+  hasDefaultParameters?: 0 | 1
+  hasTools?: 0 | 1
+  hasStructuredOutputs?: 0 | 1
+  hasReasoning?: 0 | 1
+  hasSeed?: 0 | 1
+  inModalityImage?: 0 | 1
+  topProviderContextLength?: number | null
+  topProviderIsModerated?: 0 | 1 | null
+  firstSeenAtMs: number
+  lastSeenAtMs: number
+  syncedAtMs: number
+  rawJson?: string | null
+}>
+
+export type ModelCatalogCoreTagUpsertInput = Readonly<{
+  providerKey: string
+  modelId: string
+  tagKey: string
+  tagLabel: string
+  tagType: 'capability' | 'category' | 'vendor' | 'status' | 'custom'
+  confidence: number
+  source: 'derived' | 'provider' | 'manual'
+  updatedAtMs: number
+}>
+
+export type ModelCatalogCoreMetaUpsertInput = Readonly<{
+  providerKey: string
+  schemaVersion: number
+  dataSource: 'models_user_primary' | 'models_fallback' | 'mixed'
+  baseUrl: string
+  snapshotId: string
+  modelCount: number
+  visibleModelCount: number
+  hiddenModelCount: number
+  providerCount?: number | null
+  lastCountProbe?: number | null
+  lastCountProbeAtMs?: number | null
+  lastSyncAtMs: number
+  ttlSeconds: number
+  syncState: 'idle' | 'syncing' | 'ok' | 'error'
+  lastErrorCode?: string | null
+  lastErrorMessage?: string | null
+  rawRetentionPolicyJson: string
+}>
+
+export type ModelCatalogSyncCoreSnapshotParams = Readonly<{
+  providerKey: string
+  snapshotId: string
+  providers: ModelCatalogCoreProviderUpsertInput[]
+  models: ModelCatalogCoreModelUpsertInput[]
+  tags: ModelCatalogCoreTagUpsertInput[]
+  meta: ModelCatalogCoreMetaUpsertInput
+}>
+
+export type ModelCatalogEndpointMetaUpsertInput = Readonly<{
+  providerKey: string
+  baseUrl: string
+  modelId: string
+  endpointKey: string
+  providerName?: string | null
+  tag?: string | null
+  quantization?: string | null
+  contextLength?: number | null
+  maxCompletionTokens?: number | null
+  maxPromptTokens?: number | null
+  supportedParametersJson?: string | null
+  supportsImplicitCaching?: 0 | 1 | null
+  status?: null
+  rawJson?: string | null
+}>
+
+export type ModelCatalogReplaceEndpointMetaParams = Readonly<{
+  providerKey: string
+  baseUrl: string
+  modelId: string
+  fetchedAtMs: number
+  endpoints: ModelCatalogEndpointMetaUpsertInput[]
+}>
+
+export type ModelCatalogListEndpointMetaParams = Readonly<{
+  providerKey: string
+  baseUrl: string
+  modelId: string
+}>
+
 export type ModelCatalogListParams = Readonly<{
   routerSource: string
+}>
+
+export type ModelCatalogGetCoreMetaParams = Readonly<{
+  providerKey: string
+}>
+
+export type ModelCatalogGetModelDetailParams = Readonly<{
+  providerKey: string
+  modelId: string
+}>
+
+export type ModelCatalogModelDetailRow = Readonly<{
+  providerKey: string
+  modelId: string
+  modelKey: string
+  canonicalSlug: string | null
+  displayName: string
+  description: string | null
+  vendor: string | null
+  family: string | null
+  status: 'active' | 'deprecated' | 'archived'
+  visibility: 'visible' | 'hidden'
+  contextLength: number | null
+  maxOutputTokens: number | null
+  architectureModality: string | null
+  inputModalitiesJson: string
+  outputModalitiesJson: string
+  tokenizer: string | null
+  instructType: string | null
+  supportedParametersJson: string
+  capabilitiesJson: string
+  capReasoning: 0 | 1
+  capTools: 0 | 1
+  capStructuredOutputs: 0 | 1
+  capVision: 0 | 1
+  capLongContext: 0 | 1
+  pricingJson: string | null
+  pricePrompt: string | null
+  priceCompletion: string | null
+  priceRequest: string | null
+  priceImage: string | null
+  priceWebSearch: string | null
+  priceInternalReasoning: string | null
+  priceInputCacheRead: string | null
+  priceInputCacheWrite: string | null
+  createdAtSec: number | null
+  expirationDate: string | null
+  expirationAtSec: number | null
+  unknownExpiration: 0 | 1
+  perRequestLimitsJson: string | null
+  defaultParametersJson: string | null
+  hasPerRequestLimits: 0 | 1
+  hasDefaultParameters: 0 | 1
+  hasTools: 0 | 1
+  hasStructuredOutputs: 0 | 1
+  hasReasoning: 0 | 1
+  hasSeed: 0 | 1
+  inModalityImage: 0 | 1
+  topProviderContextLength: number | null
+  topProviderIsModerated: 0 | 1 | null
+  firstSeenAtMs: number
+  lastSeenAtMs: number
+  syncedAtMs: number
+  rawJson: string | null
+}>
+
+export type ModelCatalogQueryCoreSortBy = 'name' | 'created_at' | 'context_length' | 'max_output_tokens'
+export type ModelCatalogQueryCoreSortOrder = 'asc' | 'desc'
+export type ModelCatalogQueryCoreContextBucket = 'small' | 'medium' | 'large' | 'xlarge' | 'unknown'
+export type ModelCatalogQueryCorePriceBucket = 'cheap' | 'standard' | 'expensive' | 'unknown'
+export type ModelCatalogQueryCoreModality = 'text' | 'image' | 'audio' | 'video' | 'file'
+export type ModelCatalogQueryCoreNumberRange = Readonly<{
+  min?: number
+  max?: number
+}>
+
+export type ModelCatalogQueryCoreCursor = Readonly<{
+  sortBy: ModelCatalogQueryCoreSortBy
+  sortOrder: ModelCatalogQueryCoreSortOrder
+  name?: string
+  createdAtSec?: number
+  contextLength?: number
+  maxOutputTokens?: number
+  modelKey: string
+  /**
+   * @deprecated Legacy cursor payload fields.
+   */
+  providerKey?: string
+  /**
+   * @deprecated Legacy cursor payload fields.
+   */
+  modelId?: string
+}>
+
+export type ModelCatalogQueryCoreParams = Readonly<{
+  /**
+   * Source catalog provider dimension.
+   * Examples: openrouter, openai-direct, anthropic-direct.
+   */
+  sourceProviderKey?: string
+  /**
+   * Source catalog provider dimension used by DB query execution.
+   * Deprecated alias of sourceProviderKey. Worker normalizes both.
+   */
+  providerKey?: string
+  searchText?: string
+  /**
+   * Model vendor/author dimension. Mapped to models.vendor.
+   */
+  vendors?: string[]
+  /**
+   * @deprecated Use vendors. Kept for short-term compatibility.
+   * Note: this is vendor/author filtering, not source provider filtering.
+   */
+  providers?: string[]
+  modelIds?: string[]
+  tags?: string[]
+  contextBuckets?: ModelCatalogQueryCoreContextBucket[]
+  contextLength?: ModelCatalogQueryCoreNumberRange
+  maxOutputTokens?: ModelCatalogQueryCoreNumberRange
+  expiringWithinDays?: number
+  priceBuckets?: ModelCatalogQueryCorePriceBucket[]
+  hasPerRequestLimits?: boolean
+  hasDefaultParameters?: boolean
+  topProviderIsModerated?: boolean
+  architectureModalities?: string[]
+  tokenizers?: string[]
+  instructTypes?: string[]
+  modalities?: ModelCatalogQueryCoreModality[]
+  inputModalities?: ModelCatalogQueryCoreModality[]
+  outputModalities?: ModelCatalogQueryCoreModality[]
+  supportedParameters?: string[]
+  sortBy?: ModelCatalogQueryCoreSortBy
+  sortOrder?: ModelCatalogQueryCoreSortOrder
+  limit?: number
+  cursor?: ModelCatalogQueryCoreCursor | null
+}>
+
+export type ModelCatalogQueryCoreRow = Readonly<{
+  providerKey: string
+  modelId: string
+  modelKey: string
+  canonicalSlug: string | null
+  displayName: string
+  description: string | null
+  vendor: string | null
+  status: 'active' | 'deprecated' | 'archived'
+  visibility: 'visible' | 'hidden'
+  contextLength: number | null
+  maxOutputTokens: number | null
+  createdAtSec: number | null
+  pricePrompt: string | null
+  priceCompletion: string | null
+  priceRequest: string | null
+  priceImage: string | null
+  capReasoning: 0 | 1
+  capTools: 0 | 1
+  capStructuredOutputs: 0 | 1
+  capVision: 0 | 1
+  capLongContext: 0 | 1
+}>
+
+export type ModelCatalogQueryCoreResult = Readonly<{
+  items: ModelCatalogQueryCoreRow[]
+  nextCursor: ModelCatalogQueryCoreCursor | null
 }>
 
 export type ReasoningIndexSyncFromCatalogParams = Readonly<{
@@ -819,8 +1155,87 @@ export type SetReasoningPrefsParams = Readonly<{
   value: unknown
 }>
 
+export type SetWebSearchDefaultsParams = Readonly<{
+  value: unknown
+}>
+
 export type SetUserMessageRenderDefaultParams = Readonly<{
   value: boolean
+}>
+
+// ========== Model Preferences (Favorites/Recents) ==========
+
+export type ModelPrefsScopeType = 'global' | 'project' | 'conversation'
+
+export type ModelPrefsScopeParams = Readonly<{
+  scopeType?: ModelPrefsScopeType
+  scopeId?: string | null
+}>
+
+export type ModelPrefsModelRefParams = Readonly<{
+  providerKey?: string
+  modelId?: string
+  modelKey?: string
+}>
+
+export type ModelPrefsFavoriteRecord = Readonly<{
+  scopeType: ModelPrefsScopeType
+  scopeId: string
+  providerKey: string
+  modelId: string
+  modelKey: string
+  sortRank: number
+  createdAtMs: number
+  updatedAtMs: number
+}>
+
+export type ModelPrefsRecentRecord = Readonly<{
+  scopeType: ModelPrefsScopeType
+  scopeId: string
+  providerKey: string
+  modelId: string
+  modelKey: string
+  lastUsedAtMs: number
+  useCount: number
+  createdAtMs: number
+  updatedAtMs: number
+}>
+
+export type ModelPrefsListFavoritesParams = ModelPrefsScopeParams
+
+export type ModelPrefsAddFavoriteParams = Readonly<
+  ModelPrefsScopeParams &
+    ModelPrefsModelRefParams & {
+      sortRank?: number
+    }
+>
+
+export type ModelPrefsRemoveFavoriteParams = Readonly<
+  ModelPrefsScopeParams &
+    ModelPrefsModelRefParams
+>
+
+export type ModelPrefsReorderFavoritesParams = Readonly<
+  ModelPrefsScopeParams & {
+    orderedModelKeys: string[]
+  }
+>
+
+export type ModelPrefsListRecentsParams = Readonly<
+  ModelPrefsScopeParams & {
+    limit?: number
+  }
+>
+
+export type ModelPrefsRecordRecentParams = Readonly<
+  ModelPrefsScopeParams &
+    ModelPrefsModelRefParams & {
+      usedAtMs?: number
+    }
+>
+
+export type ModelPrefsRemoveFavoriteResult = Readonly<{
+  removed: number
 }>
 
 export type WorkerRequestMessage = {

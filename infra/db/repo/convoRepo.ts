@@ -282,7 +282,7 @@ export class ConvoRepo {
 
       // 2. 获取所有消息
       const messagesStmt = this.db.prepare(`
-        SELECT m.id, m.convo_id, m.role, m.created_at, m.seq, m.meta, mb.body
+        SELECT m.id, m.convo_id, m.role, m.created_at, m.seq, m.meta, m.annotations_json, mb.body
         FROM message m
         LEFT JOIN message_body mb ON m.id = mb.message_id
         WHERE m.convo_id = @convoId
@@ -335,7 +335,7 @@ export class ConvoRepo {
       `)
 
       const messagesStmt = this.db.prepare(`
-        SELECT m.id, m.convo_id, m.role, m.created_at, m.seq, m.meta, mb.body
+        SELECT m.id, m.convo_id, m.role, m.created_at, m.seq, m.meta, m.annotations_json, mb.body
         FROM message m
         LEFT JOIN message_body mb ON m.id = mb.message_id
         WHERE m.convo_id = @convoId
@@ -416,8 +416,8 @@ export class ConvoRepo {
       // 3. 恢复消息
       if (snapshot.messages && snapshot.messages.length > 0) {
         const insertMessageStmt = this.db.prepare(`
-          INSERT INTO message(id, convo_id, role, created_at, seq, meta)
-          VALUES (@id, @convoId, @role, @createdAt, @seq, @meta)
+          INSERT INTO message(id, convo_id, role, created_at, seq, meta, annotations_json)
+          VALUES (@id, @convoId, @role, @createdAt, @seq, @meta, @annotationsJson)
         `)
         const insertBodyStmt = this.db.prepare(`
           INSERT INTO message_body(message_id, body)
@@ -435,7 +435,8 @@ export class ConvoRepo {
             role: message.role,
             createdAt: message.created_at,
             seq: message.seq,
-            meta: message.meta
+            meta: message.meta,
+            annotationsJson: message.annotations_json ?? null,
           })
 
           if (message.body) {

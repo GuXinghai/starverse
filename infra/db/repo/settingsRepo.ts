@@ -1,8 +1,11 @@
 import BetterSqlite3 from 'better-sqlite3'
 import {
+  SETTINGS_KEY_IMAGE_GENERATION_DEFAULT,
   SETTINGS_KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS,
   SETTINGS_KEY_REASONING_PREFS,
+  SETTINGS_KEY_SAMPLING_PARAMS_DEFAULTS,
   SETTINGS_KEY_USER_MESSAGE_RENDER_DEFAULT,
+  SETTINGS_KEY_WEB_SEARCH_DEFAULTS,
 } from './settingsKeys'
 
 type SqlDatabase = BetterSqlite3.Database
@@ -64,6 +67,33 @@ export class SettingsRepo {
 
   setReasoningPrefs(value: unknown): void {
     this.writeJson(SETTINGS_KEY_REASONING_PREFS, value)
+  }
+
+  getWebSearchDefaults(): unknown | null {
+    const value = this.readJson(SETTINGS_KEY_WEB_SEARCH_DEFAULTS)
+    return value === undefined ? null : value
+  }
+
+  setWebSearchDefaults(value: unknown): void {
+    this.writeJson(SETTINGS_KEY_WEB_SEARCH_DEFAULTS, value)
+  }
+
+  getSamplingParamsDefaults(): unknown | null {
+    const value = this.readJson(SETTINGS_KEY_SAMPLING_PARAMS_DEFAULTS)
+    return value === undefined ? null : value
+  }
+
+  setSamplingParamsDefaults(value: unknown): void {
+    this.writeJson(SETTINGS_KEY_SAMPLING_PARAMS_DEFAULTS, value)
+  }
+
+  getImageGenerationDefault(): unknown | null {
+    const value = this.readJson(SETTINGS_KEY_IMAGE_GENERATION_DEFAULT)
+    return value === undefined ? null : value
+  }
+
+  setImageGenerationDefault(value: unknown): void {
+    this.writeJson(SETTINGS_KEY_IMAGE_GENERATION_DEFAULT, value)
   }
 
   getUserMessageRenderDefault(): boolean | null {
