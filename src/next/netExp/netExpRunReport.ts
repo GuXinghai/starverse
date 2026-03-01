@@ -17,6 +17,13 @@ export type NetExpRunReport = {
   firstByteMs?: number
   maxIdleMs?: number
   maxIdleWindow?: { start: string; end: string }
+  usage?: {
+    promptTokens?: number
+    completionTokens?: number
+    totalTokens?: number
+    cost?: number
+    currency?: string
+  }
   status?: NetExpRunStatus
   error?: { message?: string; raw?: unknown }
   settings: NetExpSettings
@@ -43,6 +50,42 @@ function pickErrorMessage(err: unknown): string | undefined {
   }
   if (typeof err === 'object' && 'message' in (err as any)) return String((err as any).message ?? '')
   return undefined
+}
+
+function parseNumberLike(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return undefined
+}
+
+function parseUsageCost(usage: Record<string, unknown>): { cost?: number; currency?: string } {
+  const rawCost = usage.cost
+  const rawCurrency =
+    (rawCost && typeof rawCost === 'object' ? (rawCost as Record<string, unknown>).currency : undefined) ??
+    usage.cost_currency ??
+    usage.currency
+
+  let cost = parseNumberLike(rawCost)
+  if (cost === undefined && rawCost && typeof rawCost === 'object') {
+    const costObj = rawCost as Record<string, unknown>
+    cost =
+      parseNumberLike(costObj.amount) ??
+      parseNumberLike(costObj.value) ??
+      parseNumberLike(costObj.total) ??
+      parseNumberLike(costObj.usd)
+  }
+
+  const currency =
+    typeof rawCurrency === 'string' && rawCurrency.trim().length > 0
+      ? rawCurrency.trim().toUpperCase()
+      : undefined
+  return {
+    ...(cost !== undefined ? { cost } : {}),
+    ...(currency ? { currency } : {}),
+  }
 }
 
 export function startNetExpRunReport(input: {
@@ -93,6 +136,21 @@ export function startNetExpRunReport(input: {
       report.generationId = event.meta?.id ?? report.generationId
       report.model = event.meta?.model ?? report.model
       report.provider = event.meta?.provider ?? report.provider
+    }
+
+    if (event.type === 'UsageDelta' && event.usage && typeof event.usage === 'object') {
+      const usage = event.usage as Record<string, unknown>
+      const promptTokens = parseNumberLike(usage.prompt_tokens)
+      const completionTokens = parseNumberLike(usage.completion_tokens)
+      const totalTokens = parseNumberLike(usage.total_tokens)
+      const cost = parseUsageCost(usage)
+      report.usage = {
+        ...(promptTokens !== undefined ? { promptTokens } : {}),
+        ...(completionTokens !== undefined ? { completionTokens } : {}),
+        ...(totalTokens !== undefined ? { totalTokens } : {}),
+        ...(cost.cost !== undefined ? { cost: cost.cost } : {}),
+        ...(cost.currency ? { currency: cost.currency } : {}),
+      }
     }
 
     if (event.type === 'StreamError') {
@@ -161,6 +219,11 @@ export function formatNetExpRunReport(report: NetExpRunReport | null, runtime?: 
   lines.push(`FirstByteMs: ${report.firstByteMs ?? 'n/a'}`)
   lines.push(`MaxIdleMs: ${report.maxIdleMs ?? 'n/a'}`)
   lines.push(`MaxIdleWindow: ${report.maxIdleWindow ? `${report.maxIdleWindow.start} → ${report.maxIdleWindow.end}` : 'n/a'}`)
+  lines.push(`Usage.prompt_tokens: ${report.usage?.promptTokens ?? 'n/a'}`)
+  lines.push(`Usage.completion_tokens: ${report.usage?.completionTokens ?? 'n/a'}`)
+  lines.push(`Usage.total_tokens: ${report.usage?.totalTokens ?? 'n/a'}`)
+  lines.push(`Usage.cost: ${report.usage?.cost ?? 'n/a'}`)
+  lines.push(`Usage.currency: ${report.usage?.currency ?? 'n/a'}`)
 
   if (report.error) {
     lines.push(`ErrorMessage: ${report.error.message ?? 'n/a'}`)

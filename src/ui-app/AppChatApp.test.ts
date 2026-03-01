@@ -8,6 +8,18 @@ describe('ui-app (read-only) AppChatApp', () => {
 
   beforeEach(() => {
     const invoke = vi.fn(async (method: string, params?: any) => {
+      if (method === 'project.getInbox') {
+        return null
+      }
+
+      if (method === 'project.list') {
+        return []
+      }
+
+      if (method === 'project.countConversationsBatch') {
+        return { counts: {} }
+      }
+
       if (method === 'convo.list') {
         return [
           { id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 10 },
@@ -112,4 +124,5 @@ describe('ui-app (read-only) AppChatApp', () => {
     // The mock list doesn't include c3, so selection falls back to existing convos.
     await screen.findByRole('button', { name: /Chat 1/ })
   })
+
 })

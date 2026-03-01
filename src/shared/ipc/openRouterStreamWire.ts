@@ -7,6 +7,8 @@ export type OpenRouterStreamWireRequestConfig = Readonly<{
   requestedReasoningEffort?: string
   requestedReasoningExclude?: boolean
   tools?: unknown[]
+  modalities?: ReadonlyArray<'image' | 'text'>
+  imageConfig?: Readonly<Record<string, unknown>>
   timeoutMs?: number
   baseUrl?: string
   providerRequireParameters?: boolean
