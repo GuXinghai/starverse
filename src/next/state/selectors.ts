@@ -226,6 +226,8 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
     messageId: m.messageId,
     role: m.role,
     contentBlocks: m.contentBlocks,
+    ...(m.requestedImageGeneration === true ? { requestedImageGeneration: true } : {}),
+    ...(Array.isArray(m.annotations) && m.annotations.length > 0 ? { annotations: m.annotations } : {}),
     toolCalls: m.toolCalls,
     errorEnvelope: m.errorEnvelope ?? null,
     errorSummary: m.errorSummary ?? null,

@@ -275,6 +275,37 @@ describe('next/state reducer', () => {
     expect(selectRun(finalState, runId)?.status).toBe('streaming')
   })
 
+  it('deduplicates duplicate image URL across streaming chunk then terminal chunk', () => {
+    const runId = 'r1'
+    const started = startGeneration(createInitialState(), {
+      runId,
+      requestId: 'req1',
+      model: 'openrouter/auto',
+      assistantMessageId: 'assistant_1',
+    })
+    const assistantMessageId = started.assistantMessageId
+    const imageUrl = 'data:image/png;base64,AAAA'
+
+    const finalState = applyEvents(started.state, runId, [
+      {
+        type: 'MessageAppendContentBlock',
+        messageId: assistantMessageId,
+        choiceIndex: 0,
+        block: { type: 'image', url: imageUrl },
+      },
+      {
+        type: 'MessageAppendContentBlock',
+        messageId: assistantMessageId,
+        choiceIndex: 0,
+        block: { type: 'image', url: imageUrl },
+      },
+    ])
+
+    const [assistant] = selectTranscript(finalState, runId)
+    const imageBlocks = (assistant?.contentBlocks ?? []).filter((block) => block.type === 'image')
+    expect(imageBlocks).toHaveLength(1)
+  })
+
   it('tool_calls: merges streaming deltas, sets finishReason=tool_calls, and exposes structured toolCalls in VM', async () => {
     const runId = 'r1'
     const started = startGeneration(createInitialState(), {
@@ -301,6 +332,62 @@ describe('next/state reducer', () => {
       name: 'lookup',
       argumentsText: '{"q":"x"}',
     })
+  })
+
+  it('annotations: appends incrementally, de-duplicates, and supports final replace', () => {
+    const runId = 'r1'
+    const started = startGeneration(createInitialState(), {
+      runId,
+      requestId: 'req1',
+      model: 'openrouter/auto',
+      assistantMessageId: 'assistant_1',
+    })
+
+    const ann1 = {
+      type: 'url_citation',
+      url_citation: { url: 'https://example.com/a', start_index: 0, end_index: 5 },
+    }
+    const ann2 = {
+      type: 'url_citation',
+      url_citation: { url: 'https://example.com/b', start_index: 6, end_index: 8 },
+    }
+
+    let state = applyEvent(started.state, runId, {
+      type: 'MessageDeltaAnnotationBatch',
+      messageId: 'assistant_1',
+      choiceIndex: 0,
+      mergeStrategy: 'append',
+      annotations: [ann1],
+    })
+    state = applyEvent(state, runId, {
+      type: 'MessageDeltaAnnotationBatch',
+      messageId: 'assistant_1',
+      choiceIndex: 0,
+      mergeStrategy: 'append',
+      annotations: [ann1, ann2],
+    })
+
+    const messageAfterAppend = state.messages.assistant_1
+    expect(messageAfterAppend.annotations).toHaveLength(2)
+    expect(state.runs[runId]?.status).toBe('streaming')
+
+    const unchanged = applyEvent(state, runId, {
+      type: 'MessageDeltaAnnotationBatch',
+      messageId: 'assistant_1',
+      choiceIndex: 0,
+      mergeStrategy: 'append',
+      annotations: [ann1],
+    })
+    expect(unchanged.messages.assistant_1).toBe(messageAfterAppend)
+
+    const replaced = applyEvent(state, runId, {
+      type: 'MessageDeltaAnnotationBatch',
+      messageId: 'assistant_1',
+      choiceIndex: 0,
+      mergeStrategy: 'replace',
+      annotations: [ann2],
+    })
+    expect(replaced.messages.assistant_1.annotations).toEqual([ann2])
   })
 
   it('StreamDone + finish_reason=length sets completionOutcome=truncated without changing existing end semantics', () => {
