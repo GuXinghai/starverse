@@ -1,0 +1,188 @@
+{
+  "data": [
+    {
+      "id": "openai/vision-pro",
+      "canonical_slug": "openai/vision-pro",
+      "name": "Vision Pro",
+      "description": "Vision analysis model for multimodal tasks",
+      "created": 1702000001,
+      "context_length": 200000,
+      "supported_parameters": ["temperature", "tools", "response_format"],
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": ["text", "image"],
+        "output_modalities": ["text"],
+        "tokenizer": "cl100k_base",
+        "instruct_type": "chatml"
+      },
+      "top_provider": {
+        "is_moderated": true,
+        "context_length": 200000,
+        "max_completion_tokens": 4096
+      },
+      "per_request_limits": {
+        "max_input_tokens": 180000
+      },
+      "default_parameters": {
+        "temperature": 0.2
+      },
+      "pricing": {
+        "prompt": "0.00003",
+        "completion": "0.00006",
+        "request": "0",
+        "image": "0",
+        "web_search": "0.0009",
+        "internal_reasoning": "0.0011",
+        "input_cache_read": "0.000004",
+        "input_cache_write": "0.000008"
+      },
+      "expiration_date": "2099-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "openai/reasoner-mini",
+      "canonical_slug": "openai/reasoner-mini",
+      "name": "Reasoner Mini",
+      "description": "Reasoning-focused long context model",
+      "created": 1702000002,
+      "context_length": 128000,
+      "supported_parameters": ["temperature", "reasoning", "seed"],
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": ["text"],
+        "output_modalities": ["text"],
+        "tokenizer": "gpt-tokenizer",
+        "instruct_type": "responses"
+      },
+      "top_provider": {
+        "is_moderated": false,
+        "context_length": 128000,
+        "max_completion_tokens": 8192
+      },
+      "pricing": {
+        "prompt": "0.000001",
+        "completion": "0.000002",
+        "request": "0",
+        "image": "0"
+      },
+      "expiration_date": null
+    },
+    {
+      "id": "openai/image-writer",
+      "canonical_slug": "openai/image-writer",
+      "name": "Image Writer",
+      "description": "Text to image endpoint-compatible model",
+      "created": 1702000003,
+      "context_length": 64000,
+      "supported_parameters": ["temperature", "response_format"],
+      "architecture": {
+        "modality": "text->image",
+        "input_modalities": ["text"],
+        "output_modalities": ["image"],
+        "tokenizer": "image-tokenizer",
+        "instruct_type": "json"
+      },
+      "top_provider": {
+        "is_moderated": false,
+        "context_length": 64000,
+        "max_completion_tokens": 2048
+      },
+      "pricing": {
+        "prompt": "0.00005",
+        "completion": "0.00009",
+        "request": "0",
+        "image": "0.0002"
+      },
+      "expiration_date": null
+    },
+    {
+      "id": "anthropic/text-fast",
+      "canonical_slug": "anthropic/text-fast",
+      "name": "Text Fast",
+      "description": "General purpose text model",
+      "created": 1702000004,
+      "context_length": 8192,
+      "supported_parameters": ["temperature", "top_p"],
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": ["text"],
+        "output_modalities": ["text"],
+        "tokenizer": "anthropic-tokenizer",
+        "instruct_type": "messages"
+      },
+      "top_provider": {
+        "is_moderated": false,
+        "context_length": 8192,
+        "max_completion_tokens": 1024
+      },
+      "pricing": {
+        "prompt": "0.00001",
+        "completion": "0.00001",
+        "request": "0",
+        "image": "0"
+      },
+      "expiration_date": null
+    },
+    {
+      "id": "openai/expired-legacy",
+      "canonical_slug": "openai/expired-legacy",
+      "name": "Expired Legacy",
+      "description": "Legacy model already expired",
+      "created": 1702000005,
+      "context_length": 32768,
+      "supported_parameters": ["temperature"],
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": ["text"],
+        "output_modalities": ["text"],
+        "tokenizer": "legacy-tokenizer",
+        "instruct_type": "chatml"
+      },
+      "top_provider": {
+        "is_moderated": false,
+        "context_length": 32768,
+        "max_completion_tokens": 1024
+      },
+      "pricing": {
+        "prompt": "0.00002",
+        "completion": "0.00002",
+        "request": "0",
+        "image": "0"
+      },
+      "expiration_date": "2000-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "openai/structured-lite",
+      "canonical_slug": "openai/structured-lite",
+      "name": "Structured Lite",
+      "description": "Lightweight structured output model",
+      "created": 1702000006,
+      "context_length": 32768,
+      "supported_parameters": ["response_format", "seed"],
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": ["text"],
+        "output_modalities": ["text"],
+        "tokenizer": "cl100k_base",
+        "instruct_type": "chatml"
+      },
+      "top_provider": {
+        "is_moderated": false,
+        "context_length": 32768,
+        "max_completion_tokens": 3072
+      },
+      "default_parameters": {
+        "response_format": {
+          "type": "json_object"
+        }
+      },
+      "pricing": {
+        "prompt": "0.000008",
+        "completion": "0.000012",
+        "request": "0",
+        "image": "0"
+      },
+      "expiration_date": null
+    }
+  ]
+}
+

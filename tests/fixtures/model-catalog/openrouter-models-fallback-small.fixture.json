@@ -1,0 +1,104 @@
+{
+  "data": [
+    {
+      "id": "openai/bulk-00",
+      "canonical_slug": "openai/bulk-00",
+      "name": "Bulk 00",
+      "description": "Fallback model 00",
+      "created": 1702000000,
+      "context_length": 8192,
+      "supported_parameters": ["temperature"],
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": ["text"],
+        "output_modalities": ["text"]
+      },
+      "pricing": {
+        "prompt": "0.00001",
+        "completion": "0.00002",
+        "request": "0",
+        "image": "0"
+      }
+    },
+    {
+      "id": "openai/bulk-01",
+      "canonical_slug": "openai/bulk-01",
+      "name": "Bulk 01",
+      "description": "Fallback model 01",
+      "created": 1702000001,
+      "context_length": 8192,
+      "supported_parameters": ["temperature"],
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": ["text"],
+        "output_modalities": ["text"]
+      },
+      "pricing": {
+        "prompt": "0.00001",
+        "completion": "0.00002",
+        "request": "0",
+        "image": "0"
+      }
+    },
+    {
+      "id": "openai/bulk-02",
+      "canonical_slug": "openai/bulk-02",
+      "name": "Bulk 02",
+      "description": "Fallback model 02",
+      "created": 1702000002,
+      "context_length": 8192,
+      "supported_parameters": ["temperature"],
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": ["text"],
+        "output_modalities": ["text"]
+      },
+      "pricing": {
+        "prompt": "0.00001",
+        "completion": "0.00002",
+        "request": "0",
+        "image": "0"
+      }
+    },
+    {
+      "id": "openai/bulk-03",
+      "canonical_slug": "openai/bulk-03",
+      "name": "Bulk 03",
+      "description": "Fallback model 03",
+      "created": 1702000003,
+      "context_length": 8192,
+      "supported_parameters": ["temperature"],
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": ["text"],
+        "output_modalities": ["text"]
+      },
+      "pricing": {
+        "prompt": "0.00001",
+        "completion": "0.00002",
+        "request": "0",
+        "image": "0"
+      }
+    },
+    {
+      "id": "openai/bulk-04",
+      "canonical_slug": "openai/bulk-04",
+      "name": "Bulk 04",
+      "description": "Fallback model 04",
+      "created": 1702000004,
+      "context_length": 8192,
+      "supported_parameters": ["temperature"],
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": ["text"],
+        "output_modalities": ["text"]
+      },
+      "pricing": {
+        "prompt": "0.00001",
+        "completion": "0.00002",
+        "request": "0",
+        "image": "0"
+      }
+    }
+  ]
+}

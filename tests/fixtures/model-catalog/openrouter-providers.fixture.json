@@ -1,0 +1,14 @@
+{
+  "data": [
+    {
+      "name": "OpenAI",
+      "slug": "openai",
+      "privacy_policy_url": "https://openai.com/policies/privacy-policy"
+    },
+    {
+      "name": "Anthropic",
+      "slug": "anthropic",
+      "privacy_policy_url": "https://www.anthropic.com/privacy"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "data": {
+    "endpoints": [
+      {
+        "provider_name": "OpenAI",
+        "tag": "openai",
+        "quantization": "fp16",
+        "context_length": 8192,
+        "max_completion_tokens": 4096,
+        "max_prompt_tokens": 8192,
+        "supported_parameters": ["temperature", "tools"],
+        "supports_implicit_caching": true,
+        "uptime_last_30m": 99.5,
+        "latency_last_30m": { "p50": 0.25, "p99": 0.85 },
+        "throughput_last_30m": { "p50": 45.2, "p99": 15.1 },
+        "status": 0
+      },
+      {
+        "provider_name": "OpenAI",
+        "tag": "openai",
+        "quantization": "int8",
+        "context_length": 8192,
+        "max_completion_tokens": 2048,
+        "max_prompt_tokens": 8192,
+        "supported_parameters": ["temperature"],
+        "supports_implicit_caching": false,
+        "uptime_last_30m": 96.3,
+        "latency_last_30m": { "p50": 0.31, "p99": 0.99 },
+        "throughput_last_30m": { "p50": 35.2, "p99": 12.7 },
+        "status": 1
+      }
+    ]
+  }
+}
+
