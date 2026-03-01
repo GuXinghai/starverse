@@ -140,9 +140,9 @@ npm run electron:dev
 - **Markdown 支持**: GitHub Flavored Markdown (GFM)
   - 标题、列表、表格、引用、链接、图片
   - 加粗、斜体、删除线
-- **代码高亮**: highlight.js 语法高亮
-  - 支持 200+ 编程语言
-  - GitHub 浅色主题
+- **代码高亮**: Shiki 语法高亮
+  - 支持 200+ 编程语言（TextMate Grammars）
+  - 多主题支持，流式输出期间自动降级渲染
 - **LaTeX 数学公式**: KaTeX 公式渲染
   - 行内公式：`$E = mc^2$`
   - 块级公式：`$$\int_0^1 x^2 dx$$`
@@ -342,9 +342,9 @@ npm run electron:dev
 |------|------|------|
 | **Tailwind CSS** | 4.1.16 ⭐ | 原子化 CSS 框架（v4 CSS 优先配置） |
 | **@tailwindcss/postcss** | 4.1.16 ⭐ | Tailwind v4 PostCSS 引擎 |
-| **marked** | 16.4.1 | Markdown 解析和渲染 |
+| **markdown-it** | 14.1.1 | Markdown 解析和渲染 |
 | **KaTeX** | 0.16.25 | LaTeX 数学公式渲染 |
-| **highlight.js** | 11.11.1 | 代码语法高亮 |
+| **Shiki** | 3.22.0 | 代码语法高亮（TextMate Grammars） |
 | **DOMPurify** | 3.3.0 | HTML 安全过滤 |
 
 ### AI 服务
