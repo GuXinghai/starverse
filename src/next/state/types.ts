@@ -48,6 +48,8 @@ export type ContentBlock =
   | Readonly<{ type: 'image'; url: string }>
   | Readonly<{ type: 'unknown'; raw: unknown }>
 
+export type MessageAnnotation = Readonly<Record<string, unknown>>
+
 export type ReasoningViewVisibility = 'shown' | 'excluded' | 'not_returned'
 
 export type ReasoningPanelState = 'collapsed' | 'expanded'
@@ -88,6 +90,8 @@ export type MessageVM = Readonly<{
   messageId: string
   role: MessageRole
   contentBlocks: ContentBlock[]
+  requestedImageGeneration?: boolean
+  annotations?: MessageAnnotation[]
   toolCalls: ToolCallVM[]
   reasoningView: ReasoningView
   reasoningDurationMs?: number | null
@@ -142,6 +146,13 @@ export type DomainEvent =
     mergeStrategy: 'append' | 'replace'
     toolCallDeltas: ToolCallDelta[]
   }>
+  | Readonly<{
+    type: 'MessageDeltaAnnotationBatch'
+    messageId: string
+    choiceIndex: number
+    mergeStrategy: 'append' | 'replace'
+    annotations: MessageAnnotation[]
+  }>
   | Readonly<{ type: 'MessageDeltaReasoningDetail'; messageId: string; choiceIndex: number; detail: unknown; chunkNo?: number }>
   | Readonly<{ type: 'MessageDeltaReasoningDetailBatch'; messageId: string; choiceIndex: number; details: unknown[] }>
   | Readonly<{ type: 'UsageDelta'; usage: unknown }>
@@ -161,6 +172,8 @@ export type MessageState = Readonly<{
   role: MessageRole
   contentText: string
   contentBlocks: ContentBlock[]
+  requestedImageGeneration?: boolean
+  annotations?: MessageAnnotation[]
   toolCalls: ToolCallVM[]
   reasoningDetailsRaw: unknown[]
   reasoningStreamingText: string
@@ -235,6 +248,7 @@ export type StartGenerationInput = Readonly<{
   assistantMessageId?: string
   userMessageId?: string
   userMessageText?: string
+  requestedImageGeneration?: boolean
   requestedReasoningMode?: RequestedReasoningMode
   requestedReasoningEffort?: ReasoningEffort
   requestedReasoningExclude?: boolean

@@ -67,6 +67,9 @@ function markMessageRawFields(message: MessageState | undefined): void {
   if (Array.isArray(message.reasoningDetailsRaw)) {
     markRaw(message.reasoningDetailsRaw)
   }
+  if (Array.isArray(message.annotations)) {
+    markRaw(message.annotations)
+  }
   if (Array.isArray(message.reasoningPieces)) {
     markRaw(message.reasoningPieces)
   }
