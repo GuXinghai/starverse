@@ -1915,6 +1915,38 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 
 ### 最近更新 ✨
 
+**2025年12月** - 重大架构重构与新功能 ⭐
+- ✨ **前端架构全面重构（DDD 领域驱动设计）**
+  - `src/` 结构重组：旧的 `components/stores/services/` 平铺结构升级为 `ui-app/ui-kit/next/shared/` 分层架构
+  - `next/` 目录：20+ 个独立领域模块（convo、branch、message、modelCatalog、streaming 等）
+  - `ui-kit/chat/` 可复用聊天组件库（ChatTranscript、ChatMessageBubble 等）
+  - `AppChatApp.vue` 取代 `ChatView.vue` 成为核心应用入口
+- ✨ **富文本渲染引擎升级**
+  - **Markdown**：从 `marked` 迁移至 `markdown-it`（更好的 GFM 扩展支持）
+  - **代码高亮**：从 `highlight.js` 迁移至 `Shiki 3.22`（TextMate Grammars，精准高亮）
+  - 新增 `richtext/` 子系统：`streamRenderer`（流式）/ `finalRenderer`（完成态）分离渲染
+- ✨ **使用统计分析系统**
+  - 完整的 OpenRouter 使用数据追踪（按模型、时间范围分析成本和 Token 使用）
+  - SQLite 新增 `usage` 和 `dashboard_prefs` 表
+  - 使用趋势图表和统计付表板
+- ✨ **推理功能标准化（Reasoning）**
+  - 完整支持 OpenRouter Reasoning API（4 个推理级别：minimal/low/medium/high）
+  - 可视化推理过程显示
+  - `openrouterReasoningAdapter.ts` + `reasoningDetailStreamMerger.ts`
+- ✨ **IPC 多模块化重组**
+  - IPC 处理器从单一 `dbBridge.ts` 拆分为 9 个专职模块
+  - 新增 `openRouterStreamBridge`（流式代理）、`netExpIpc`（网络实验）等
+- 🐛 **修复消息发送幽灵任务 Bug（Critical）**
+  - 4 层防御机制彻底解决并发状态导致的“伪发送”问题
+  - 新增 `forceResetSendingState()` 紧急恢复方法
+- 🔄 **Tailwind CSS 升级至 v4.1.16**
+  - CSS 优先配置策略（`@theme` 指令）
+  - 废弃旧 `tailwind.config.js` theme 配置
+
+详见：[CHANGELOG.md](CHANGELOG.md)
+
+---
+
 **2025年1月** - 用户体验优化
 - ✨ **收藏模型滚动动画**
   - 模型名称过长时自动启用智能滚动播放
@@ -1996,17 +2028,20 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 - ✅ 网络搜索集成：OpenRouter Web 搜索插件
 - ✅ 自定义指令：系统提示词配置
 - ✅ 采样参数配置：Temperature、Top-P、Top-K 等
-- ✅ 思维链推理：支持推理模型
+- ✅ 思维链推理：支持推理模型（4 个推理级别）
+- ✅ 使用统计分析：OpenRouter 成本和 Token 追踪与可视化
 
 **架构优化**
+- ✅ 前端 DDD 架构重构：ui-app/ + ui-kit/ + next/ + shared/
 - ✅ SQLite 数据库迁移：从 JSON 到 SQLite
 - ✅ FTS5 全文搜索：中英文分词支持
 - ✅ Web Worker 架构：数据库异步操作
 - ✅ 边界防御机制：Vue Proxy 处理
 - ✅ 性能优化：标签切换 75% 提升
+- ✅ 富文本引擎升级：markdown-it + Shiki 替代 marked + highlight.js
 
 **多提供商支持**
-- ✅ ChatView 多提供商逻辑适配
+- ✅ AppChatApp 多提供商逻辑适配
 - ✅ OpenRouter BaseURL 持久化
 - ✅ Provider 切换自动刷新模型列表
 - ✅ SSE 缓冲区溢出防护
@@ -2035,7 +2070,6 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 - [ ] 代码块一键复制增强
 - [ ] 对话标签和标记系统
 - [ ] 高级搜索和过滤
-- [ ] 成本统计和使用量追踪
 - [ ] 语音输入/输出支持（TTS/STT）
 - [ ] 插件系统架构
 
