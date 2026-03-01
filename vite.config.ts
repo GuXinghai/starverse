@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import path from 'node:path'
 import electron from 'vite-plugin-electron/simple'
 import vue from '@vitejs/plugin-vue'
+import { getAppCsp, injectAppCspIntoHtml, normalizeAppCspEnv } from './src/shared/security/appCsp'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -11,6 +12,14 @@ export default defineConfig({
     }
   },
   plugins: [
+    {
+      name: 'app-csp-meta-inject',
+      transformIndexHtml(html) {
+        // SSOT: CSP is generated here and injected into index.html placeholder.
+        const env = normalizeAppCspEnv(process.env.NODE_ENV)
+        return injectAppCspIntoHtml(html, getAppCsp(env))
+      },
+    },
     vue(),
     electron({
       main: {

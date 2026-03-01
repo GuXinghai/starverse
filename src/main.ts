@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import 'katex/dist/katex.min.css'
 import './style.css'
 import App from './App.vue'
+import { installScrollbarMetrics } from './ui-app/infra/ui/scrollbarMetrics'
 
 async function logRendererBuildId() {
 	if (!(import.meta as any).env?.DEV) return
@@ -19,5 +20,6 @@ async function logRendererBuildId() {
 	}
 }
 
+installScrollbarMetrics()
 createApp(App).mount('#app')
 void logRendererBuildId()

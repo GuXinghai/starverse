@@ -37,6 +37,8 @@ import { DB_RENDERER_METHOD_SET } from '../../infra/db/dbMethodsRegistry'
 import { DbWorkerError } from '../../infra/db/errors'
 import { DbWorkerManager } from '../db/workerManager'
 
+export const DB_BRIDGE_IPC_CHANNELS = ['db:invoke'] as const
+
 /**
  * 数据库方法白名单（单一事实源）
  * 
@@ -99,7 +101,7 @@ type InvokePayload = {
  * createWindow()
  * ```
  */
-export const registerDbBridge = (manager: DbWorkerManager) => {
+export const registerDbBridge = (manager: DbWorkerManager): string[] => {
   const toIpcError = (error: unknown): Error => {
     // Electron's ipcMain.handle() only reliably transports built-in Error instances.
     // If we throw non-Error values (or custom error subclasses), the renderer often sees:
@@ -184,4 +186,6 @@ export const registerDbBridge = (manager: DbWorkerManager) => {
       throw toIpcError(error)
     }
   })
+
+  return [...DB_BRIDGE_IPC_CHANNELS]
 }

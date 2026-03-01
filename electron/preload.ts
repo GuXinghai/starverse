@@ -49,6 +49,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Promise<{success: boolean, path?: string, url?: string, error?: string}>}
    */
   openImage: (imageUrl: string) => ipcRenderer.invoke('shell:open-image', imageUrl),
+  copyImageToClipboard: (imageUrl: string) =>
+    ipcRenderer.invoke('clipboard:write-image', { imageUrl }),
+  resolveImagePath: (imageUrl: string) =>
+    ipcRenderer.invoke('shell:resolve-image-path', { imageUrl }),
+  exportImage: (imageUrl: string, options?: { suggestedName?: string }) =>
+    ipcRenderer.invoke('dialog:export-image', { imageUrl, ...(options ?? {}) }),
 
   /**
    * 在新的 BrowserWindow 中打开外部链接（类似微信/QQ 内的外链弹窗）
