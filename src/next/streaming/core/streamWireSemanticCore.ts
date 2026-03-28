@@ -15,6 +15,51 @@ import type { OpenRouterStreamWireError } from '@/shared/ipc/openRouterStreamWir
 import { streamFetchSemanticCore } from '@/next/streaming/core/streamSemanticCore'
 import type { StreamWireSemanticCoreInput } from '@/next/streaming/core/types'
 
+import { normalizeInternalBugError } from '@/next/errors/normalizeOpenRouterError'
+import { buildStreamErrorFromAppError, mapAppPhaseToEnvelopePhase, mapAppPhaseToEndReason } from '@/next/streaming/core/streamSemanticCore'
+import type { StreamRequestContext } from '@/next/streaming/core/types'
+
+export function* semanticMapIpcMissingError(
+  requestContext: StreamRequestContext
+): Generator<DomainEvent> {
+  const appError = normalizeInternalBugError({ code: 'ipc_renderer_missing', message: 'Missing ipcRenderer' })
+  const envelope = buildStreamErrorFromAppError({ appError, phase: 'pre_stream', request: requestContext, raw: { type: 'ipc_missing' } })
+  yield { type: 'StreamError', error: envelope, terminal: true }
+}
+
+export function* semanticMapIpcStartInvokeError(
+  errResult: unknown,
+  isProtocolInvalidCodeValue: boolean,
+  requestContext: StreamRequestContext
+): Generator<DomainEvent> {
+  const message = errResult && typeof errResult === 'object' && 'error' in errResult ? String(errResult.error ?? 'IPC stream start failed') : 'IPC stream start failed'
+  const appError = isProtocolInvalidCodeValue
+    ? normalizeProtocolError({ code: 'protocol_invalid', message }, errResult as Record<string, unknown>)
+    : normalizeTransportError({ code: 'ipc_stream_start_failed', message })
+  const envelope = buildStreamErrorFromAppError({
+    appError,
+    phase: mapAppPhaseToEnvelopePhase(appError.phase, 'pre_stream'),
+    request: requestContext,
+    raw: { type: 'ipc_stream_start_failed' },
+  })
+  yield { type: 'StreamError', error: envelope, terminal: true }
+}
+
+export function* semanticMapIpcInvokeCatchError(
+  err: unknown,
+  requestContext: StreamRequestContext
+): Generator<DomainEvent> {
+  const appError = normalizeTransportError(err)
+  const envelope = buildStreamErrorFromAppError({
+    appError,
+    phase: mapAppPhaseToEnvelopePhase(appError.phase, 'pre_stream'),
+    request: requestContext,
+    raw: { type: 'ipc_stream_invoke_failed' },
+  })
+  yield { type: 'StreamError', error: envelope, terminal: true }
+}
+
+
 function pickGenerationId(headers: Record<string, string>): string | undefined {
   const candidates = ['x-openrouter-generation-id', 'x-generation-id', 'x-request-id']
   for (const key of candidates) {
