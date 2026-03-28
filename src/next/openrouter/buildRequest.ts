@@ -94,6 +94,36 @@ export type OpenRouterChatCompletionsRequest = Readonly<{
   image_config?: OpenRouterImageConfig
 }>
 
+type MutableOpenRouterChatCompletionsRequest = {
+  model: string
+  messages: unknown[]
+  stream: boolean
+  reasoning?: Record<string, unknown>
+  tools?: unknown[]
+  provider?: { require_parameters: boolean }
+  modalities?: OpenRouterOutputModality[]
+  image_config?: OpenRouterImageConfig
+  plugins?: Array<{
+    id: 'web'
+    enabled?: boolean
+    engine?: 'auto' | 'native' | 'exa'
+    max_results?: number
+    search_prompt?: string
+  }>
+  web_search_options?: { search_context_size: 'low' | 'medium' | 'high' }
+  temperature?: number
+  top_p?: number
+  top_k?: number
+  min_p?: number
+  top_a?: number
+  frequency_penalty?: number
+  presence_penalty?: number
+  repetition_penalty?: number
+  seed?: number
+  max_tokens?: number
+  debug?: { echo_upstream_body?: boolean }
+}
+
 function assertBoolean(value: unknown, name: string): asserts value is boolean {
   if (typeof value !== 'boolean') {
     throw new Error(`${name} must be boolean`)
@@ -160,6 +190,18 @@ function normalizeImageConfig(raw: unknown): OpenRouterImageConfig {
   return normalized as OpenRouterImageConfig
 }
 
+function assertImageGenerationPatchConsistency(input: Readonly<{
+  modalities?: ReadonlyArray<OpenRouterOutputModality>
+  imageConfig?: OpenRouterImageConfig
+}>) {
+  if (input.imageConfig && !input.modalities) {
+    throw new Error('imageConfig requires image modalities')
+  }
+  if (input.modalities && !input.modalities.includes('image')) {
+    throw new Error('modalities must include image when image generation is requested')
+  }
+}
+
 function normalizeWebPlugin(raw: unknown):
   | {
       id: 'web'
@@ -220,6 +262,125 @@ function normalizeSamplingParamsPatch(raw: unknown): OpenRouterSamplingParamsPat
   return next
 }
 
+function createBaseRequest(input: BuildOpenRouterRequestInput): MutableOpenRouterChatCompletionsRequest {
+  return {
+    model: input.model,
+    messages: input.messages,
+    stream: input.stream,
+  }
+}
+
+function applyProviderPatch(request: MutableOpenRouterChatCompletionsRequest, input: BuildOpenRouterRequestInput) {
+  if (input.providerRequireParameters === undefined) return
+  assertBoolean(input.providerRequireParameters, 'providerRequireParameters')
+  request.provider = { require_parameters: input.providerRequireParameters }
+}
+
+function applyToolsPatch(request: MutableOpenRouterChatCompletionsRequest, input: BuildOpenRouterRequestInput) {
+  if (input.tools === undefined) return
+  if (!Array.isArray(input.tools)) {
+    throw new Error('tools must be an array')
+  }
+  request.tools = input.tools
+}
+
+function applyImageGenerationPatch(request: MutableOpenRouterChatCompletionsRequest, input: BuildOpenRouterRequestInput) {
+  if (input.modalities !== undefined) {
+    request.modalities = normalizeOutputModalities(input.modalities)
+  }
+  if (input.imageConfig !== undefined) {
+    request.image_config = normalizeImageConfig(input.imageConfig)
+  }
+  assertImageGenerationPatchConsistency({
+    modalities: request.modalities,
+    imageConfig: request.image_config,
+  })
+}
+
+function applySamplingParamsPatch(request: MutableOpenRouterChatCompletionsRequest, input: BuildOpenRouterRequestInput) {
+  if (input.samplingParams === undefined) return
+  const sampling = normalizeSamplingParamsPatch(input.samplingParams)
+  for (const key of OPENROUTER_SAMPLING_PARAM_KEYS) {
+    const value = sampling[key]
+    if (value === undefined) continue
+    ;(request as Record<string, unknown>)[key] = value
+  }
+}
+
+function assertReasoningModeCount(reasoning: Record<string, unknown>) {
+  const hasEffort = 'effort' in reasoning
+  const hasMaxTokens = 'max_tokens' in reasoning
+  const modeCount = [hasEffort, hasMaxTokens].filter(Boolean).length
+  if (modeCount !== 1) {
+    throw new Error('reasoning must specify exactly one of effort/max_tokens')
+  }
+  return { hasEffort, hasMaxTokens }
+}
+
+function assertReasoningExclude(reasoning: Record<string, unknown>) {
+  if ('exclude' in reasoning && typeof reasoning.exclude !== 'boolean') {
+    throw new Error('reasoning.exclude must be boolean')
+  }
+}
+
+function normalizeReasoningEffort(reasoning: Record<string, unknown>): Record<string, unknown> {
+  const effort = reasoning.effort
+  if (
+    effort !== 'xhigh' &&
+    effort !== 'high' &&
+    effort !== 'medium' &&
+    effort !== 'low' &&
+    effort !== 'minimal' &&
+    effort !== 'none'
+  ) {
+    throw new Error('reasoning.effort is invalid')
+  }
+  const exclude = effort === 'none' ? undefined : ('exclude' in reasoning ? reasoning.exclude : undefined)
+  return exclude === undefined ? { effort } : { effort, exclude }
+}
+
+function normalizeReasoningMaxTokens(reasoning: Record<string, unknown>): Record<string, unknown> {
+  assertPositiveInteger(reasoning.max_tokens, 'reasoning.max_tokens')
+  return reasoning.exclude === undefined
+    ? { max_tokens: reasoning.max_tokens }
+    : { max_tokens: reasoning.max_tokens, exclude: reasoning.exclude }
+}
+
+function normalizeReasoningRequest(raw: OpenRouterReasoningInput): Record<string, unknown> {
+  const reasoning = raw as Record<string, unknown>
+  const { hasEffort } = assertReasoningModeCount(reasoning)
+  assertReasoningExclude(reasoning)
+  return hasEffort
+    ? normalizeReasoningEffort(reasoning)
+    : normalizeReasoningMaxTokens(reasoning)
+}
+
+function applyDebugPatch(request: MutableOpenRouterChatCompletionsRequest, input: BuildOpenRouterRequestInput) {
+  if (!input.debug || typeof input.debug !== 'object') return
+  const rawEcho = (input.debug as Record<string, unknown>).echoUpstreamBody
+  if (rawEcho === undefined) return
+  assertBoolean(rawEcho, 'debug.echoUpstreamBody')
+  if (input.stream && rawEcho === true) {
+    request.debug = { echo_upstream_body: true }
+  }
+}
+
+function applyWebSearchPatch(request: MutableOpenRouterChatCompletionsRequest, input: BuildOpenRouterRequestInput) {
+  const webPatch = input.webSearchPatch
+  if (!webPatch) return
+  const rawPlugins = Array.isArray(webPatch.plugins) ? webPatch.plugins : []
+  const webPlugin = rawPlugins.map((row) => normalizeWebPlugin(row)).find((row) => row !== null) ?? null
+  if (!webPlugin) return
+
+  request.plugins = [webPlugin]
+  const contextSize = webPatch.web_search_options?.search_context_size
+  const policy = input.webSearchContextPolicy ?? 'native_only'
+  const allowContext = policy === 'always' || (policy === 'native_only' && webPlugin.engine === 'native')
+  if (allowContext && isContextSize(contextSize)) {
+    request.web_search_options = { search_context_size: contextSize }
+  }
+}
+
 /**
  * Pure request builder for OpenRouter Chat Completions.
  *
@@ -243,131 +404,17 @@ export function buildOpenRouterChatCompletionsRequest(
   }
   assertBoolean(input.stream, 'stream')
 
-  const request: {
-    model: string
-    messages: unknown[]
-    stream: boolean
-    reasoning?: Record<string, unknown>
-    tools?: unknown[]
-    provider?: { require_parameters: boolean }
-    modalities?: OpenRouterOutputModality[]
-    image_config?: OpenRouterImageConfig
-    plugins?: Array<{
-      id: 'web'
-      enabled?: boolean
-      engine?: 'auto' | 'native' | 'exa'
-      max_results?: number
-      search_prompt?: string
-    }>
-    web_search_options?: { search_context_size: 'low' | 'medium' | 'high' }
-    temperature?: number
-    top_p?: number
-    top_k?: number
-    min_p?: number
-    top_a?: number
-    frequency_penalty?: number
-    presence_penalty?: number
-    repetition_penalty?: number
-    seed?: number
-    max_tokens?: number
-    debug?: { echo_upstream_body?: boolean }
-  } = {
-    model: input.model,
-    messages: input.messages,
-    stream: input.stream,
-  }
-
-  if (input.providerRequireParameters !== undefined) {
-    assertBoolean(input.providerRequireParameters, 'providerRequireParameters')
-    request.provider = { require_parameters: input.providerRequireParameters }
-  }
-
-  if (input.tools !== undefined) {
-    if (!Array.isArray(input.tools)) {
-      throw new Error('tools must be an array')
-    }
-    request.tools = input.tools
-  }
-
-  if (input.modalities !== undefined) {
-    request.modalities = normalizeOutputModalities(input.modalities)
-  }
-
-  if (input.imageConfig !== undefined) {
-    request.image_config = normalizeImageConfig(input.imageConfig)
-  }
-
-  if (input.samplingParams !== undefined) {
-    const sampling = normalizeSamplingParamsPatch(input.samplingParams)
-    for (const key of OPENROUTER_SAMPLING_PARAM_KEYS) {
-      const value = sampling[key]
-      if (value === undefined) continue
-      ;(request as any)[key] = value
-    }
-  }
+  const request = createBaseRequest(input)
+  applyProviderPatch(request, input)
+  applyToolsPatch(request, input)
+  applyImageGenerationPatch(request, input)
+  applySamplingParamsPatch(request, input)
 
   if (input.reasoning) {
-    const reasoning = input.reasoning as Record<string, unknown>
-    const hasEffort = 'effort' in reasoning
-    const hasMaxTokens = 'max_tokens' in reasoning
-
-    const modeCount = [hasEffort, hasMaxTokens].filter(Boolean).length
-    if (modeCount !== 1) {
-      throw new Error('reasoning must specify exactly one of effort/max_tokens')
-    }
-
-    if ('exclude' in reasoning && typeof reasoning.exclude !== 'boolean') {
-      throw new Error('reasoning.exclude must be boolean')
-    }
-
-    if (hasEffort) {
-      const effort = reasoning.effort
-      if (
-        effort !== 'xhigh' &&
-        effort !== 'high' &&
-        effort !== 'medium' &&
-        effort !== 'low' &&
-        effort !== 'minimal' &&
-        effort !== 'none'
-      ) {
-        throw new Error('reasoning.effort is invalid')
-      }
-      const exclude = effort === 'none' ? undefined : ('exclude' in reasoning ? reasoning.exclude : undefined)
-      request.reasoning = exclude === undefined ? { effort } : { effort, exclude }
-    }
-
-    if (hasMaxTokens) {
-      assertPositiveInteger(reasoning.max_tokens, 'reasoning.max_tokens')
-      request.reasoning = reasoning.exclude === undefined ? { max_tokens: reasoning.max_tokens } : { max_tokens: reasoning.max_tokens, exclude: reasoning.exclude }
-    }
+    request.reasoning = normalizeReasoningRequest(input.reasoning)
   }
 
-  if (input.debug && typeof input.debug === 'object') {
-    const rawEcho = (input.debug as Record<string, unknown>).echoUpstreamBody
-    if (rawEcho !== undefined) {
-      assertBoolean(rawEcho, 'debug.echoUpstreamBody')
-      // OpenRouter debug echo is stream-only; omit it for non-stream requests.
-      if (input.stream && rawEcho === true) {
-        request.debug = { echo_upstream_body: true }
-      }
-    }
-  }
-
-  const webPatch = input.webSearchPatch
-  if (webPatch) {
-    const rawPlugins = Array.isArray(webPatch.plugins) ? webPatch.plugins : []
-    const webPlugin = rawPlugins.map((row) => normalizeWebPlugin(row)).find((row) => row !== null) ?? null
-    if (webPlugin) {
-      request.plugins = [webPlugin]
-      const contextSize = webPatch.web_search_options?.search_context_size
-      const policy = input.webSearchContextPolicy ?? 'native_only'
-      const allowContext =
-        policy === 'always' || (policy === 'native_only' && webPlugin.engine === 'native')
-      if (allowContext && isContextSize(contextSize)) {
-        request.web_search_options = { search_context_size: contextSize }
-      }
-    }
-  }
-
+  applyDebugPatch(request, input)
+  applyWebSearchPatch(request, input)
   return request
 }

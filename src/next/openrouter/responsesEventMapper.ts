@@ -1,3 +1,4 @@
+import { readApprovedDebugFlag } from '@/shared/diagnostics/flags'
 import type { CompletionClass, ErrorEnvelope } from '../errors/openRouterErrorEnvelope'
 import { sanitizeErrorEnvelope } from '../errors/openRouterErrorEnvelope'
 
@@ -25,11 +26,7 @@ const TERMINAL_EVENT_TYPES = new Set([
 ])
 
 function isResponsesDebugEnabled(): boolean {
-  try {
-    return String(globalThis?.localStorage?.getItem('sv_debug_responses') ?? '').trim() === '1'
-  } catch {
-    return false
-  }
+  return readApprovedDebugFlag('responses')
 }
 
 function logResponsesDebug(tag: string, payload: Record<string, unknown>) {
@@ -89,89 +86,114 @@ function normalizeTruncationCode(code?: string): string | null {
   return RESPONSES_TRUNCATION_CODES.has(normalized) ? normalized : null
 }
 
-export function mapResponsesEventToTerminal(input: Readonly<{ event: unknown; request?: RequestContext }>): ResponsesTerminalMapping | null {
-  const record = asRecord(input.event)
-  if (!record) return null
+type ParsedTerminalEvent = Readonly<{
+  eventType: string
+  responseId?: string
+  responseModel?: string
+  responseProvider?: string
+  responseStatus?: string
+  incompleteDetails: Record<string, unknown> | null
+  incompleteReason?: string
+  errorRecord: Record<string, unknown> | null
+  errorCode?: string
+  errorMessage?: string
+  truncationCode: string | null
+}>
+
+function parseTerminalEvent(record: Record<string, unknown>): ParsedTerminalEvent | null {
   const eventType = safeString(record.type)
   if (!eventType || !TERMINAL_EVENT_TYPES.has(eventType)) return null
 
   const response = asRecord(record.response)
-  const responseId = safeString(response?.id)
-  const responseModel = safeString(response?.model)
-  const responseProvider = safeString(response?.provider)
-  const responseStatus = safeString(response?.status)
-
   const incompleteDetails = asRecord(response?.incomplete_details) ?? asRecord(record.incomplete_details)
-  const incompleteReason = safeString(incompleteDetails?.reason)
-
   const errorRecord = asRecord(record.error) ?? asRecord(response?.error)
-  const errorCode = toStringCode(errorRecord?.code ?? record.code)
-  const errorMessage = safeString(errorRecord?.message ?? record.message)
-  const truncationCode = normalizeTruncationCode(errorCode)
 
-  let completionClass: CompletionClass
-  if (eventType === 'response.completed') {
-    completionClass = 'ok'
-  } else if (eventType === 'response.incomplete') {
-    completionClass = 'truncated'
-  } else if (truncationCode) {
-    completionClass = 'truncated'
-  } else {
-    completionClass = 'error'
+  return {
+    eventType,
+    responseId: safeString(response?.id),
+    responseModel: safeString(response?.model),
+    responseProvider: safeString(response?.provider),
+    responseStatus: safeString(response?.status),
+    incompleteDetails,
+    incompleteReason: safeString(incompleteDetails?.reason),
+    errorRecord,
+    errorCode: toStringCode(errorRecord?.code ?? record.code),
+    errorMessage: safeString(errorRecord?.message ?? record.message),
+    truncationCode: normalizeTruncationCode(toStringCode(errorRecord?.code ?? record.code)),
+  }
+}
+
+function resolveCompletionClass(parsed: ParsedTerminalEvent): CompletionClass {
+  if (parsed.eventType === 'response.completed') return 'ok'
+  if (parsed.eventType === 'response.incomplete' || parsed.truncationCode) return 'truncated'
+  return 'error'
+}
+
+function buildTerminalMeta(parsed: ParsedTerminalEvent): ResponsesTerminalMapping['meta'] {
+  if (!parsed.responseId && !parsed.responseModel && !parsed.responseProvider) return undefined
+  return {
+    id: parsed.responseId,
+    model: parsed.responseModel,
+    provider: parsed.responseProvider,
+  }
+}
+
+function buildFallbackMessage(parsed: ParsedTerminalEvent, completionClass: CompletionClass): string {
+  if (parsed.eventType === 'response.incomplete') {
+    return `Response incomplete${parsed.incompleteReason ? `: ${parsed.incompleteReason}` : ''}`
+  }
+  if (completionClass === 'truncated') {
+    return `Response truncated${parsed.truncationCode ? `: ${parsed.truncationCode}` : ''}`
+  }
+  return parsed.eventType === 'response.failed' ? 'Response failed' : 'Response error'
+}
+
+function buildEnvelopeMetadata(parsed: ParsedTerminalEvent): Record<string, unknown> {
+  const metadata: Record<string, unknown> = { event_type: parsed.eventType }
+  if (parsed.responseStatus) metadata.response_status = parsed.responseStatus
+  if (parsed.incompleteReason) metadata.incomplete_reason = parsed.incompleteReason
+  if (parsed.incompleteDetails && Object.keys(parsed.incompleteDetails).length > 0) {
+    metadata.incomplete_details = parsed.incompleteDetails
+  }
+  if (parsed.errorRecord) {
+    if ('type' in parsed.errorRecord) metadata.error_type = parsed.errorRecord.type
+    if ('param' in parsed.errorRecord) metadata.param = parsed.errorRecord.param
+  }
+  return metadata
+}
+
+function resolveProvider(parsed: ParsedTerminalEvent): string | undefined {
+  const providerMeta = asRecord(parsed.errorRecord?.metadata)
+  return safeString(providerMeta?.provider_name) ?? parsed.responseProvider
+}
+
+export function mapResponsesEventToTerminal(input: Readonly<{ event: unknown; request?: RequestContext }>): ResponsesTerminalMapping | null {
+  const record = asRecord(input.event)
+  if (!record) return null
+  const parsed = parseTerminalEvent(record)
+  if (!parsed) return null
+
+  const completionClass = resolveCompletionClass(parsed)
+
+  if (completionClass === 'error' && parsed.errorCode) {
+    logResponsesDebug('error_code', { eventType: parsed.eventType, code: parsed.errorCode })
   }
 
-  if (completionClass === 'error' && errorCode) {
-    logResponsesDebug('error_code', { eventType, code: errorCode })
-  }
-
-  const meta =
-    responseId || responseModel || responseProvider
-      ? {
-          id: responseId,
-          model: responseModel,
-          provider: responseProvider,
-        }
-      : undefined
-
+  const meta = buildTerminalMeta(parsed)
   if (completionClass === 'ok') {
     return { completionClass, meta }
   }
 
-  const fallbackMessage = eventType === 'response.incomplete'
-    ? `Response incomplete${incompleteReason ? `: ${incompleteReason}` : ''}`
-    : completionClass === 'truncated'
-      ? `Response truncated${truncationCode ? `: ${truncationCode}` : ''}`
-      : eventType === 'response.failed'
-        ? 'Response failed'
-        : 'Response error'
-
-  const code = errorCode ?? incompleteReason ?? responseStatus ?? 'error'
-  const message = errorMessage ?? fallbackMessage
-
-  const metadata: Record<string, unknown> = { event_type: eventType }
-  if (responseStatus) metadata.response_status = responseStatus
-  if (incompleteReason) metadata.incomplete_reason = incompleteReason
-  if (incompleteDetails && Object.keys(incompleteDetails).length > 0) {
-    metadata.incomplete_details = incompleteDetails
-  }
-  if (errorRecord && typeof errorRecord === 'object') {
-    if ('type' in errorRecord) metadata.error_type = (errorRecord as any).type
-    if ('param' in errorRecord) metadata.param = (errorRecord as any).param
-  }
-
-  const providerMeta = asRecord((errorRecord as any)?.metadata)
-  const provider = safeString(providerMeta?.provider_name) ?? responseProvider
-
   const envelope = buildResponsesEnvelope({
     completionClass,
-    code,
-    message,
-    metadata,
-    provider,
+    code: parsed.errorCode ?? parsed.incompleteReason ?? parsed.responseStatus ?? 'error',
+    message: parsed.errorMessage ?? buildFallbackMessage(parsed, completionClass),
+    metadata: buildEnvelopeMetadata(parsed),
+    provider: resolveProvider(parsed),
     stream: {
-      generation_id: responseId,
-      model: responseModel,
-      provider: responseProvider,
+      generation_id: parsed.responseId,
+      model: parsed.responseModel,
+      provider: parsed.responseProvider,
     },
     request: input.request,
   })

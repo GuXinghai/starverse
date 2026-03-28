@@ -13,6 +13,7 @@ import type { ErrorEnvelope, ErrorPhase } from '@/next/errors/openRouterErrorEnv
 import { mapChunkToEvents } from '@/next/openrouter/mapChunkToEvents'
 import { mapResponsesEventToTerminal } from '@/next/openrouter/responsesEventMapper'
 import type { DomainEvent, StreamEndReason } from '@/next/state/types'
+import { normalizeTransportError } from '@/next/errors/normalizeOpenRouterError'
 import { TerminalArbiter } from '@/next/streaming/core/terminalArbiter'
 import { TimingMachine } from '@/next/streaming/core/timingMachine'
 import type { BuildStreamErrorFromAppErrorInput, StreamSemanticCoreInput } from '@/next/streaming/core/types'
@@ -219,3 +220,99 @@ export async function* streamFetchSemanticCore(input: StreamSemanticCoreInput): 
 }
 /* eslint-enable max-lines-per-function, max-statements, complexity */
 
+
+
+export function* semanticMapFetchPreStreamError(
+  err: any,
+  context: Readonly<{
+    requestId: string
+    requestContext: StreamRequestContext
+    tRequestStart: number
+    timeoutMs?: number
+    baseUrl?: string
+    logTiming?: (tag: string, data: Record<string, unknown>) => void
+    logStreamError?: (tag: string, payload: unknown) => void
+  }>
+): Generator<DomainEvent> {
+  const { requestId, requestContext, timeoutMs, baseUrl, tRequestStart, logStreamError, logTiming } = context
+  logStreamError?.('transport_error', { error: err, requestId, timeoutMs, baseUrl })
+
+  if (err?.type === 'aborted') {
+    const tEnd = Date.now()
+    logTiming?.('end', { tRequestStart, tEnd, endReason: 'user_abort', reason: 'user_abort' })
+    yield { type: 'TimingSnapshot', tRequestStart, tEnd, endReason: 'user_abort' }
+    const envelope = buildAbortEnvelope({ phase: 'pre_stream', completionClass: 'aborted', reason: 'aborted', request: requestContext })
+    yield { type: 'StreamAbort', reason: 'aborted', envelope }
+    return
+  }
+
+  if (err?.type === 'http_error') {
+    const tEnd = Date.now()
+    logTiming?.('end', { tRequestStart, tEnd, endReason: 'pre_stream_error', reason: 'pre_stream_error' })
+    yield { type: 'TimingSnapshot', tRequestStart, tEnd, endReason: 'pre_stream_error' }
+    const normalized = normalizeOpenRouterErrorFromHttpNon2xx({
+      status: Number(err.status),
+      statusText: String(err.statusText ?? ''),
+      bodyText: String(err.bodyText ?? ''),
+      headers: (err.headers && typeof err.headers === 'object') ? (err.headers as any) : undefined,
+    })
+    const envelope = buildPreStreamHttpErrorEnvelope({
+      phase: 'pre_stream',
+      completionClass: 'error',
+      status: Number(err.status),
+      statusText: String(err.statusText ?? ''),
+      bodyText: String(err.bodyText ?? ''),
+      headers: (err.headers && typeof err.headers === 'object') ? (err.headers as any) : undefined,
+      normalized,
+      request: requestContext,
+    })
+    logStreamError?.('http_error_normalized', { raw: err, normalized })
+    yield { type: 'StreamError', error: envelope, terminal: true }
+    return
+  }
+
+  const appError = normalizeTransportError(err)
+  const endReason = mapAppPhaseToEndReason(appError.phase, 'transport_error')
+  const envelopePhase = mapAppPhaseToEnvelopePhase(appError.phase, 'pre_stream')
+  if (err?.type === 'timeout') {
+    logStreamError?.('timeout', { err, appError })
+  }
+  const tEnd = Date.now()
+  logTiming?.('end', { tRequestStart, tEnd, endReason, reason: endReason })
+  yield { type: 'TimingSnapshot', tRequestStart, tEnd, endReason }
+  if (appError.phase === 'user_cancelled') {
+    const envelope = buildAbortEnvelope({ phase: envelopePhase, completionClass: 'aborted', reason: appError.message, request: requestContext })
+    yield { type: 'StreamAbort', reason: 'aborted', envelope }
+    return
+  }
+  yield {
+    type: 'StreamError',
+    error: buildStreamErrorFromAppError({
+      appError,
+      phase: envelopePhase,
+      request: requestContext,
+      raw: { type: 'transport_fetch_catch', ...(err && typeof err === 'object' ? { details: err as Record<string, unknown> } : {}) },
+    }),
+    terminal: true,
+  }
+}
+
+export function* semanticMapMissingBodyError(
+  context: Readonly<{
+    requestContext: StreamRequestContext
+    tRequestStart: number
+    logTiming?: (tag: string, data: Record<string, unknown>) => void
+  }>
+): Generator<DomainEvent> {
+  const appError = normalizeTransportError({ code: 'missing_response_body', message: 'Missing response body stream' })
+  const endReason = mapAppPhaseToEndReason(appError.phase, 'transport_error')
+  const envelopePhase = mapAppPhaseToEnvelopePhase(appError.phase, 'pre_stream')
+  const tEnd = Date.now()
+  context.logTiming?.('end', { tRequestStart: context.tRequestStart, tEnd, endReason, reason: endReason })
+  yield { type: 'TimingSnapshot', tRequestStart: context.tRequestStart, tEnd, endReason }
+  yield {
+    type: 'StreamError',
+    error: buildStreamErrorFromAppError({ appError, phase: envelopePhase, request: context.requestContext, raw: { type: 'missing_response_body' } }),
+    terminal: true,
+  }
+}

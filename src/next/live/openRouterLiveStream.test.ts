@@ -176,6 +176,18 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
         expect(bodyText).not.toContain('"enabled":')
     })
 
+    it('includes debug echo patch only through the shared stream runtime debug entry', async () => {
+        globalThis.localStorage?.setItem('sv_debug_openrouter_echo_upstream_body', '1')
+
+        const bodyText = await captureRequestBodyText({
+            apiKey: 'k',
+            model: 'openrouter/auto',
+            requestedReasoningMode: 'auto',
+        })
+
+        expect(bodyText).toContain('"debug":{"echo_upstream_body":true}')
+    })
+
     it('mid-stream error chunk yields StreamError and terminates without StreamDone', async () => {
         const originalFetch = globalThis.fetch
 

@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { getApprovedDebugFlagStorageKey } from '@/shared/diagnostics/flags'
 import { mapResponsesEventToTerminal, RESPONSES_TRUNCATION_CODES } from './responsesEventMapper'
 
-describe('mapResponsesEventToTerminal', () => {
-  const request = { model: 'openrouter/auto', stream: true }
+const request = { model: 'openrouter/auto', stream: true }
+
+describe('mapResponsesEventToTerminal lifecycle', () => {
+  afterEach(() => {
+    globalThis.localStorage?.removeItem(getApprovedDebugFlagStorageKey('responses'))
+    vi.restoreAllMocks()
+  })
 
   it('maps response.failed to error envelope', () => {
     const result = mapResponsesEventToTerminal({
@@ -69,7 +75,9 @@ describe('mapResponsesEventToTerminal', () => {
     expect(result?.envelope?.openrouter?.code).toBe('max_tokens')
     expect(result?.envelope?.openrouter?.message).toContain('Response incomplete')
   })
+})
 
+describe('mapResponsesEventToTerminal completion state', () => {
   it('maps response.completed to ok without envelope', () => {
     const result = mapResponsesEventToTerminal({
       event: {
@@ -103,5 +111,34 @@ describe('mapResponsesEventToTerminal', () => {
       request,
     })
     expect(result).toBeNull()
+  })
+})
+
+describe('mapResponsesEventToTerminal debug logging', () => {
+  it('only emits responses debug logs when the approved flag is enabled', () => {
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
+
+    mapResponsesEventToTerminal({
+      event: {
+        type: 'response.error',
+        error: { code: 'server_error', message: 'boom' },
+      },
+      request,
+    })
+    expect(debugSpy).not.toHaveBeenCalled()
+
+    globalThis.localStorage?.setItem(getApprovedDebugFlagStorageKey('responses'), '1')
+
+    mapResponsesEventToTerminal({
+      event: {
+        type: 'response.error',
+        error: { code: 'server_error', message: 'boom' },
+      },
+      request,
+    })
+    expect(debugSpy).toHaveBeenCalledWith('[responses] error_code', {
+      eventType: 'response.error',
+      code: 'server_error',
+    })
   })
 })
