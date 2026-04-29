@@ -4,6 +4,7 @@ import { DB_WORKER_METHODS, assertDbMethodCoverage } from './dbMethodsRegistry'
 import { registerProjectHandlers } from './worker/handlers/projectHandlers'
 import { registerConvoMessageHandlers } from './worker/handlers/convoMessageHandlers'
 import { registerBranchContextHandlers } from './worker/handlers/branchContextHandlers'
+import { registerFilePipelineHandlers } from './worker/handlers/filePipelineHandlers'
 import { registerSearchMaintenanceHandlers } from './worker/handlers/searchMaintenanceHandlers'
 import { registerUsagePrefsSettingsHandlers } from './worker/handlers/usagePrefsSettingsHandlers'
 
@@ -17,6 +18,7 @@ describe('DbWorker handler registration modules', () => {
     const runtime = {} as any
     registerProjectHandlers(register, runtime)
     registerConvoMessageHandlers(register, runtime)
+    registerFilePipelineHandlers(register, runtime)
     registerBranchContextHandlers(register, runtime)
     registerSearchMaintenanceHandlers(register, runtime)
     registerUsagePrefsSettingsHandlers(register, runtime)

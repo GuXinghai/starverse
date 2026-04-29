@@ -3,4 +3,4 @@
  *
  * Bump this value whenever schema contract changes require a clean rebuild.
  */
-export const DB_SCHEMA_VERSION = 8
+export const DB_SCHEMA_VERSION = 12

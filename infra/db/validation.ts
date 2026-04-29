@@ -9,6 +9,42 @@ import type {
   PersistMessageAssetsFromDataUrlsInput,
   ListMessageAssetsByMessageIdsInput,
   GetMessageAssetByIdInput,
+  CreateFileAssetInput,
+  ListFileAssetsByIdsInput,
+  SoftDeleteFileAssetInput,
+  CreateFileDerivativeInput,
+  GetFileDerivativeByIdInput,
+  GetLatestReadyFileDerivativeInput,
+  UpdateFileDerivativeInput,
+  CreateDerivativeJobInput,
+  GetDerivativeJobByIdInput,
+  ListDerivativeJobsByAssetIdInput,
+  RunDerivativeJobInput,
+  RetryDerivativeJobInput,
+  CancelDerivativeJobInput,
+  CapturePdfAnnotationDerivativeInput,
+  ListFileDerivativesByParentAssetIdInput,
+  CreateMessageAttachmentInput,
+  ListMessageAttachmentsByMessageIdInput,
+  ListMessageAttachmentsByAssetIdInput,
+  RestoreConversationDraftInput,
+  UpdateConversationDraftTextInput,
+  AddDraftAttachmentInput,
+  RemoveDraftAttachmentInput,
+  UpdateDraftAttachmentSettingsInput,
+  CommitDraftToUserMessageInput,
+  AttachDraftToMessageInput,
+  CloneMessageAttachmentsToDraftInput,
+  DetachMessageAttachmentInput,
+  MarkAttachmentAbandonedInput,
+  GetAssetAttachmentOwnershipInput,
+  GetAttachmentCandidateSnapshotInput,
+  BuildCurrentSendPlanInput,
+  PrepareOpenRouterReplayFromMessageInput,
+  IngestLocalFileInput,
+  IngestUrlInput,
+  PreviewEnsureInput,
+  PreviewGetLatestInput,
   AppendReasoningDetailSegmentsInput,
   FinalizeReasoningDetailsInput,
   SetReasoningRequestConfigInput,
@@ -48,6 +84,7 @@ import type {
   SwitchQuestionCandidateInput,
   ForkQuestionInput,
   RetryReplaceQuestionInput,
+  TruncateBranchFromQuestionInput,
   SetBranchFilterInput,
   ClearBranchFilterInput,
   BuildContextForBranchInput,
@@ -180,6 +217,339 @@ export const ListMessageAssetsByMessageIdsSchema: ZodType<ListMessageAssetsByMes
 
 export const GetMessageAssetByIdSchema: ZodType<GetMessageAssetByIdInput> = z.object({
   assetId: z.string().min(1),
+})
+
+const AssetKindSchema = z.enum(['image', 'document', 'text', 'audio', 'video', 'archive', 'binary'])
+const SourceKindSchema = z.enum(['local_upload', 'url_import', 'generated', 'derived'])
+const StorageBackendSchema = z.enum(['local_fs', 'remote_url'])
+const FileIngestStatusSchema = z.enum([
+  'pending',
+  'probing',
+  'materializing',
+  'registered',
+  'stored',
+  'probe_failed',
+  'materialization_failed',
+  'failed',
+  'deleted',
+])
+const FilePreviewStatusSchema = z.enum(['not_requested', 'pending', 'ready', 'failed'])
+const DerivedKindSchema = z.enum([
+  'thumbnail',
+  'extracted_text',
+  'ocr_text',
+  'transcript',
+  'converted_pdf',
+  'send_optimized',
+  'preview_optimized',
+  'embedding_vector',
+])
+const FileDerivativeStatusSchema = z.enum(['pending', 'ready', 'failed', 'deleted'])
+const TaskFamilySchema = z.enum(['chat_context', 'transcription', 'embeddings'])
+const DerivativeJobStatusSchema = z.enum(['pending', 'running', 'ready', 'failed', 'cancelled'])
+const AiPayloadKindSchema = z.enum(['image', 'pdf', 'text', 'audio', 'video', 'binary'])
+const ProcessingStatusSchema = z.enum(['native_supported', 'convertible', 'local_only', 'unsupported'])
+const DraftAttachmentSendModePreferenceSchema = z.enum(['default', 'auto', 'url_ref', 'inline_base64'])
+const UrlRetentionModeSchema = z.enum(['link_only', 'link_and_file'])
+
+export const CreateFileAssetSchema: ZodType<CreateFileAssetInput> = z.object({
+  id: z.string().min(1).optional(),
+  sha256: z.string().min(1).nullable().optional(),
+  filename: z.string().min(1),
+  extension: z.string().min(1).nullable().optional(),
+  mime: z.string().min(1).nullable().optional(),
+  sizeBytes: z.number().int().nonnegative(),
+  assetKind: AssetKindSchema,
+  sourceKind: SourceKindSchema,
+  storageBackend: StorageBackendSchema.optional(),
+  storageUri: z.string().min(1),
+  ingestStatus: FileIngestStatusSchema.optional(),
+  previewStatus: FilePreviewStatusSchema.optional(),
+  sourceMetaJson: jsonSchema.optional().nullable(),
+  createdAt: z.number().int().optional(),
+  updatedAt: z.number().int().optional(),
+})
+
+export const GetFileAssetByIdSchema = z.object({
+  id: z.string().min(1),
+})
+
+export const ListFileAssetsByIdsSchema: ZodType<ListFileAssetsByIdsInput> = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(500),
+})
+
+export const SoftDeleteFileAssetSchema: ZodType<SoftDeleteFileAssetInput> = z.object({
+  id: z.string().min(1),
+  deletedAt: z.number().int().optional(),
+})
+
+export const CreateFileDerivativeSchema: ZodType<CreateFileDerivativeInput> = z.object({
+  id: z.string().min(1).optional(),
+  parentAssetId: z.string().min(1),
+  derivedKind: DerivedKindSchema,
+  mime: z.string().min(1).nullable().optional(),
+  storageUri: z.string().min(1),
+  generator: z.string().min(1),
+  status: FileDerivativeStatusSchema.optional(),
+  metaJson: jsonSchema.optional().nullable(),
+  createdAt: z.number().int().optional(),
+  updatedAt: z.number().int().optional(),
+})
+
+export const ListFileDerivativesByParentAssetIdSchema: ZodType<ListFileDerivativesByParentAssetIdInput> = z.object({
+  parentAssetId: z.string().min(1),
+})
+
+export const GetFileDerivativeByIdSchema: ZodType<GetFileDerivativeByIdInput> = z.object({
+  id: z.string().min(1),
+})
+
+export const GetLatestReadyFileDerivativeSchema: ZodType<GetLatestReadyFileDerivativeInput> = z.object({
+  parentAssetId: z.string().min(1),
+  derivedKind: DerivedKindSchema,
+})
+
+export const UpdateFileDerivativeSchema: ZodType<UpdateFileDerivativeInput> = z.object({
+  id: z.string().min(1),
+  mime: z.string().min(1).nullable().optional(),
+  storageUri: z.string().min(1).optional(),
+  generator: z.string().min(1).optional(),
+  status: FileDerivativeStatusSchema.optional(),
+  metaJson: jsonSchema.optional().nullable(),
+  updatedAt: z.number().int().optional(),
+  deletedAt: z.number().int().nullable().optional(),
+})
+
+export const CreateDerivativeJobSchema: ZodType<CreateDerivativeJobInput> = z.object({
+  id: z.string().min(1).optional(),
+  assetId: z.string().min(1),
+  derivativeKind: DerivedKindSchema,
+  taskFamily: TaskFamilySchema,
+  generator: z.string().min(1),
+  provider: z.string().min(1).nullable().optional(),
+  modelId: z.string().min(1).nullable().optional(),
+  inputSnapshotJson: jsonSchema.optional().nullable(),
+  configJson: jsonSchema.optional().nullable(),
+  status: DerivativeJobStatusSchema.optional(),
+  attemptCount: z.number().int().nonnegative().optional(),
+  createdAt: z.number().int().optional(),
+  updatedAt: z.number().int().optional(),
+  startedAt: z.number().int().nullable().optional(),
+  finishedAt: z.number().int().nullable().optional(),
+})
+
+export const GetDerivativeJobByIdSchema: ZodType<GetDerivativeJobByIdInput> = z.object({
+  id: z.string().min(1),
+})
+
+export const ListDerivativeJobsByAssetIdSchema: ZodType<ListDerivativeJobsByAssetIdInput> = z.object({
+  assetId: z.string().min(1),
+})
+
+const DerivativeRunTransportSchema = z.object({
+  jobId: z.string().min(1),
+  apiKey: z.string().min(1).nullable().optional(),
+  baseUrl: z.string().min(1).nullable().optional(),
+  timeoutMs: z.number().int().positive().nullable().optional(),
+})
+
+export const RunDerivativeJobSchema: ZodType<RunDerivativeJobInput> = DerivativeRunTransportSchema
+
+export const RetryDerivativeJobSchema: ZodType<RetryDerivativeJobInput> = DerivativeRunTransportSchema
+
+export const CancelDerivativeJobSchema: ZodType<CancelDerivativeJobInput> = z.object({
+  jobId: z.string().min(1),
+  reason: z.string().nullable().optional(),
+})
+
+export const CapturePdfAnnotationDerivativeSchema: ZodType<CapturePdfAnnotationDerivativeInput> = z.object({
+  messageId: z.string().min(1),
+  assetIds: z.array(z.string().min(1)).min(1).max(64),
+  generator: z.string().min(1).optional(),
+})
+
+export const CreateMessageAttachmentSchema: ZodType<CreateMessageAttachmentInput> = z.object({
+  id: z.string().min(1).optional(),
+  messageId: z.string().min(1),
+  assetId: z.string().min(1),
+  aiPayloadKind: AiPayloadKindSchema,
+  processingStatus: ProcessingStatusSchema,
+  includeInNextRequest: z.boolean().optional(),
+  excludedReason: z.string().nullable().optional(),
+  createdAt: z.number().int().optional(),
+  updatedAt: z.number().int().optional(),
+})
+
+export const ListMessageAttachmentsByMessageIdSchema: ZodType<ListMessageAttachmentsByMessageIdInput> = z.object({
+  messageId: z.string().min(1),
+})
+
+export const ListMessageAttachmentsByAssetIdSchema: ZodType<ListMessageAttachmentsByAssetIdInput> = z.object({
+  assetId: z.string().min(1),
+})
+
+const DraftModeSchema = z.enum(['compose', 'edit'])
+
+export const RestoreConversationDraftSchema: ZodType<RestoreConversationDraftInput> = z.object({
+  conversationId: z.string().min(1),
+})
+
+export const UpdateConversationDraftTextSchema: ZodType<UpdateConversationDraftTextInput> = z.object({
+  conversationId: z.string().min(1),
+  draftText: z.string(),
+  draftMode: DraftModeSchema.optional(),
+  editingSourceMessageId: z.string().min(1).nullable().optional(),
+  updatedAt: z.number().int().optional(),
+})
+
+export const AddDraftAttachmentSchema: ZodType<AddDraftAttachmentInput> = z.object({
+  conversationId: z.string().min(1),
+  assetId: z.string().min(1),
+  attachmentOrder: z.number().int().nonnegative().optional(),
+  includeInNextRequest: z.boolean().optional(),
+  excludedReason: z.string().nullable().optional(),
+  preferredSendMode: DraftAttachmentSendModePreferenceSchema.nullable().optional(),
+  urlRetentionMode: UrlRetentionModeSchema.nullable().optional(),
+  createdAt: z.number().int().optional(),
+  updatedAt: z.number().int().optional(),
+})
+
+export const RemoveDraftAttachmentSchema: ZodType<RemoveDraftAttachmentInput> = z.object({
+  conversationId: z.string().min(1),
+  assetId: z.string().min(1),
+  updatedAt: z.number().int().optional(),
+})
+
+export const UpdateDraftAttachmentSettingsSchema: ZodType<UpdateDraftAttachmentSettingsInput> = z.object({
+  conversationId: z.string().min(1),
+  assetId: z.string().min(1),
+  preferredSendMode: DraftAttachmentSendModePreferenceSchema.nullable().optional(),
+  urlRetentionMode: UrlRetentionModeSchema.nullable().optional(),
+  updatedAt: z.number().int().optional(),
+})
+
+export const CommitDraftToUserMessageSchema: ZodType<CommitDraftToUserMessageInput> = z.object({
+  conversationId: z.string().min(1),
+  body: z.string().optional(),
+  createdAt: z.number().int().optional(),
+  meta: jsonSchema.optional().nullable(),
+  sentAssetIds: z.array(z.string().min(1)).optional(),
+})
+
+export const AttachDraftToMessageSchema: ZodType<AttachDraftToMessageInput> = z.object({
+  conversationId: z.string().min(1),
+  messageId: z.string().min(1),
+  updatedAt: z.number().int().optional(),
+  sentAssetIds: z.array(z.string().min(1)).optional(),
+})
+
+export const CloneMessageAttachmentsToDraftSchema: ZodType<CloneMessageAttachmentsToDraftInput> = z.object({
+  conversationId: z.string().min(1),
+  sourceMessageId: z.string().min(1),
+  updatedAt: z.number().int().optional(),
+})
+
+export const DetachMessageAttachmentSchema: ZodType<DetachMessageAttachmentInput> = z.object({
+  messageId: z.string().min(1),
+  assetId: z.string().min(1),
+  reason: z.string().nullable().optional(),
+  updatedAt: z.number().int().optional(),
+})
+
+export const MarkAttachmentAbandonedSchema: ZodType<MarkAttachmentAbandonedInput> = z.object({
+  assetId: z.string().min(1),
+  reason: z.string().nullable().optional(),
+  updatedAt: z.number().int().optional(),
+})
+
+export const GetAssetAttachmentOwnershipSchema: ZodType<GetAssetAttachmentOwnershipInput> = z.object({
+  assetId: z.string().min(1),
+})
+
+export const GetAttachmentCandidateSnapshotSchema: ZodType<GetAttachmentCandidateSnapshotInput> = z.object({
+  messageIds: z.array(z.string().min(1)).optional(),
+  branchId: z.string().min(1).optional(),
+}).refine((value) => !!value.branchId || !!value.messageIds, {
+  message: 'messageIds or branchId is required',
+})
+
+const SendPlanModelDescriptorSchema = z.object({
+  providerKey: z.string().min(1),
+  modelId: z.string().min(1),
+  modelKey: z.string().min(1),
+  inputModalities: z.array(z.string()),
+  outputModalities: z.array(z.string()).optional(),
+})
+
+const SendPlanProviderContextSchema = z.object({
+  providerKey: z.string().min(1),
+  baseUrl: z.string().nullable().optional(),
+  supportsImageUrlRef: z.boolean().optional(),
+  supportsPdfInputs: z.boolean().optional(),
+  supportsPdfUrlRef: z.boolean().optional(),
+  supportsTextUrlRef: z.boolean().optional(),
+  supportsVideoUrlRef: z.boolean().optional(),
+  supportsInlineData: z.boolean().optional(),
+  supportsProviderFileRef: z.boolean().optional(),
+  preferredDraftSendModes: z.array(z.enum(['url_ref', 'inline_base64', 'provider_file_ref'])).optional(),
+})
+
+const OpenRouterPdfFileParserConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  engine: z.enum(['native', 'cloudflare-ai', 'mistral-ocr']).optional(),
+}).nullable().optional()
+
+export const BuildCurrentSendPlanSchema: ZodType<BuildCurrentSendPlanInput> = z.object({
+  conversationId: z.string().min(1),
+  draftText: z.string().optional(),
+  historyScope: GetAttachmentCandidateSnapshotSchema.nullable().optional(),
+  model: SendPlanModelDescriptorSchema,
+  providerContext: SendPlanProviderContextSchema,
+})
+
+export const PrepareOpenRouterSendSchema = z.object({
+  conversationId: z.string().min(1),
+  draftText: z.string().optional(),
+  historyMessageIds: z.array(z.string().min(1)).optional(),
+  model: SendPlanModelDescriptorSchema,
+  providerContext: SendPlanProviderContextSchema,
+  pdfFileParser: OpenRouterPdfFileParserConfigSchema,
+})
+
+export const PrepareOpenRouterReplayFromMessageSchema: ZodType<PrepareOpenRouterReplayFromMessageInput> = z.object({
+  branchId: z.string().min(1),
+  userMessageId: z.string().min(1),
+  model: SendPlanModelDescriptorSchema,
+  providerContext: SendPlanProviderContextSchema,
+  replayMode: z.literal('current'),
+  editedUserText: z.string().optional(),
+  attachmentDecisions: z.array(z.object({
+    attachmentId: z.string().min(1),
+    source: z.enum(['history', 'draft', 'edit_restored']).optional(),
+    decision: z.enum(['exclude', 'remove']),
+    reasonCode: z.string().min(1).optional(),
+  })).optional(),
+})
+
+export const IngestLocalFileSchema: ZodType<IngestLocalFileInput> = z.object({
+  filePath: z.string().min(1),
+  mimeType: z.string().min(1).nullable().optional(),
+  sourceKind: z.enum(['local_upload', 'generated']).optional(),
+})
+
+export const IngestUrlSchema: ZodType<IngestUrlInput> = z.object({
+  url: z.string().min(1),
+  retentionMode: UrlRetentionModeSchema,
+})
+
+export const PreviewGetLatestSchema: ZodType<PreviewGetLatestInput> = z.object({
+  assetId: z.string().min(1),
+})
+
+export const PreviewEnsureSchema: ZodType<PreviewEnsureInput> = z.object({
+  assetId: z.string().min(1),
+  generator: z.string().min(1).optional(),
+  maxEdge: z.number().int().positive().optional(),
 })
 
 export const AppendReasoningDetailSegmentsSchema: ZodType<AppendReasoningDetailSegmentsInput> = z.object({
@@ -328,6 +698,8 @@ export const BeginTurnSchema: ZodType<BeginTurnInput> = z.object({
   branchId: z.string().min(1),
   userBody: z.string(),
   userMeta: z.record(z.any()).nullable().optional(),
+  attachConversationDraft: z.boolean().optional(),
+  sentAssetIds: z.array(z.string().min(1)).optional(),
 })
 
 export const SetBranchHeadSchema: ZodType<SetBranchHeadInput> = z.object({
@@ -370,6 +742,11 @@ export const RetryReplaceQuestionSchema: ZodType<RetryReplaceQuestionInput> = z.
   branchId: z.string().min(1),
   oldQuestionId: z.string().min(1),
   newBody: z.string(),
+})
+
+export const TruncateBranchFromQuestionSchema: ZodType<TruncateBranchFromQuestionInput> = z.object({
+  branchId: z.string().min(1),
+  questionId: z.string().min(1),
 })
 
 export const SetBranchFilterSchema: ZodType<SetBranchFilterInput> = z.object({
