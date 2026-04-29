@@ -1,6 +1,9 @@
 /* eslint-disable max-lines-per-function */
 import { describe, expect, it } from 'vitest'
 import { mapChunkToEvents } from './mapChunkToEvents'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from './openRouterTestModels'
+
+const testModel = DEFAULT_OPENROUTER_TEST_MODEL
 
 describe('mapChunkToEvents', () => {
   function getMeta(events: ReturnType<typeof mapChunkToEvents>) {
@@ -12,7 +15,7 @@ describe('mapChunkToEvents', () => {
       messageId: 'm1',
       chunk: {
         id: 'gen_1',
-        model: 'openrouter/auto',
+        model: testModel,
         choices: [{ index: 0, delta: { content: 'hi' } }],
       },
     })
@@ -177,7 +180,7 @@ describe('mapChunkToEvents', () => {
   it('tolerates debug chunk with choices=[] (does not assume choices[0])', () => {
     const events = mapChunkToEvents({
       messageId: 'm1',
-      chunk: { id: 'gen_dbg_1', model: 'openrouter/auto', choices: [], debug: { echo_upstream_body: { stream: true } } },
+      chunk: { id: 'gen_dbg_1', model: testModel, choices: [], debug: { echo_upstream_body: { stream: true } } },
     })
     // observable: at minimum, keep generation metadata if present
     expect(events.some((e) => e.type === 'MetaDelta')).toBe(true)

@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getApprovedDebugFlagStorageKey } from '@/shared/diagnostics/flags'
 import { mapResponsesEventToTerminal, RESPONSES_TRUNCATION_CODES } from './responsesEventMapper'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from './openRouterTestModels'
 
-const request = { model: 'openrouter/auto', stream: true }
+const request = { model: DEFAULT_OPENROUTER_TEST_MODEL, stream: true }
 
 describe('mapResponsesEventToTerminal lifecycle', () => {
   afterEach(() => {

@@ -1,7 +1,9 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { stripTiming, firstOfType } from '../../../tests/utils/streamAsserts'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 
 let capturedBody: any | null = null
+const testModel = DEFAULT_OPENROUTER_TEST_MODEL
 
 vi.mock('@/next/transport/openrouterFetch', () => {
     return {
@@ -38,7 +40,7 @@ describe('streamOpenRouterChatAsEvents (provider.require_parameters)', () => {
             userText: 'hi',
             config: {
                 apiKey: 'k',
-                model: 'openrouter/auto',
+                model: testModel,
                 requestedReasoningMode: 'auto',
             },
         })) {
@@ -65,7 +67,7 @@ describe('streamOpenRouterChatAsEvents (provider.require_parameters)', () => {
             userText: 'hi',
             config: {
                 apiKey: 'k',
-                model: 'openrouter/auto',
+                model: testModel,
                 requestedReasoningMode: 'auto',
             },
         })) {
@@ -89,7 +91,7 @@ describe('streamOpenRouterChatAsEvents (provider.require_parameters)', () => {
             userText: 'hi',
             config: {
                 apiKey: 'k',
-                model: 'openrouter/auto',
+                model: testModel,
                 requestedReasoningMode: 'auto',
                 webSearch: {
                     requestPatch: {
@@ -115,7 +117,7 @@ describe('streamOpenRouterChatAsEvents (provider.require_parameters)', () => {
             userText: 'hi',
             config: {
                 apiKey: 'k',
-                model: 'openrouter/auto',
+                model: testModel,
                 requestedReasoningMode: 'auto',
                 webSearch: {
                     requestPatch: { plugins: [{ id: 'web', enabled: false }] },
@@ -145,7 +147,7 @@ describe('streamOpenRouterChatAsEvents (provider.require_parameters)', () => {
             userText: 'draw a fox',
             config: {
                 apiKey: 'k',
-                model: 'openrouter/auto',
+                model: testModel,
                 requestedReasoningMode: 'auto',
                 imageGeneration: {
                     modalities: ['image', 'text'],
@@ -184,7 +186,7 @@ describe('streamOpenRouterChatAsEvents (provider.require_parameters)', () => {
             userText: 'draw',
             config: {
                 apiKey: 'k',
-                model: 'openrouter/auto',
+                model: testModel,
                 requestedReasoningMode: 'auto',
                 imageGeneration: {
                     capabilityClass: 'image_only',
@@ -201,7 +203,7 @@ describe('streamOpenRouterChatAsEvents (provider.require_parameters)', () => {
             userText: 'draw',
             config: {
                 apiKey: 'k',
-                model: 'openrouter/auto',
+                model: testModel,
                 requestedReasoningMode: 'auto',
                 imageGeneration: {
                     capabilityClass: 'text_and_image',
@@ -229,7 +231,7 @@ describe('streamOpenRouterChatAsEvents (provider.require_parameters)', () => {
             userText: 'hi',
             config: {
                 apiKey: 'k',
-                model: 'openrouter/auto',
+                model: testModel,
                 requestedReasoningMode: 'auto',
             },
         })) {

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { decodeOpenRouterSSE } from '@/next/openrouter/sse/decoder'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import type { DomainEvent } from '@/next/state/types'
 import { streamOpenRouterChatAsEvents } from '@/next/live/openRouterLiveStream'
 import {
@@ -10,6 +11,8 @@ import {
   mapAppPhaseToEnvelopePhase,
   streamFetchSemanticCore,
 } from '@/next/streaming/core'
+
+const testModel = DEFAULT_OPENROUTER_TEST_MODEL
 
 type TerminalType = 'StreamDone' | 'StreamAbort' | 'StreamError' | null
 
@@ -161,7 +164,7 @@ async function collectViaFetch(fixtureText: string, fixtureName: string): Promis
       requestId: `fetch_core_${fixtureName}`,
       assistantMessageId: 'assistant_fixture',
       userText: 'hello',
-      config: { apiKey: 'k', model: 'openrouter/auto', requestedReasoningMode: 'auto' },
+      config: { apiKey: 'k', model: testModel, requestedReasoningMode: 'auto' },
     })) {
       events.push(event)
     }
@@ -178,7 +181,7 @@ async function collectViaCore(fixtureText: string): Promise<DomainEvent[]> {
   for await (const event of streamFetchSemanticCore({
     decodedEvents: decodeOpenRouterSSE(streamFromText(fixtureText)),
     assistantMessageId: 'assistant_fixture',
-    requestContext: { model: 'openrouter/auto', stream: true },
+    requestContext: { model: testModel, stream: true },
     tRequestStart: Date.now(),
     mapAppPhaseToEnvelopePhase,
     mapAppPhaseToEndReason,

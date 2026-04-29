@@ -9,7 +9,10 @@ import {
   mapAppPhaseToEnvelopePhase,
   streamWireSemanticCore,
 } from '@/next/streaming/core'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import type { OpenRouterStreamWireEvent } from '@/shared/ipc/openRouterStreamWire'
+
+const testModel = DEFAULT_OPENROUTER_TEST_MODEL
 
 function readFixtureText(fileName: string): string {
   const fullPath = path.join(process.cwd(), 'src/next/openrouter/sse/fixtures', fileName)
@@ -68,7 +71,7 @@ async function collect(events: readonly unknown[]): Promise<DomainEvent[]> {
   for await (const event of streamWireSemanticCore({
     wireEvents: wireStream(events),
     assistantMessageId: 'assistant_fixture',
-    requestContext: { model: 'openrouter/auto', stream: true },
+    requestContext: { model: testModel, stream: true },
     tRequestStart: Date.now(),
     mapAppPhaseToEnvelopePhase,
     mapAppPhaseToEndReason,
@@ -153,7 +156,7 @@ describe('streamWireSemanticCore', () => {
       },
       {
         type: 'chunk',
-        data: 'data: {"id":"gen_1","model":"openrouter/auto","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}\n\n',
+        data: `data: {"id":"gen_1","model":"${testModel}","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}\n\n`,
       },
       { type: 'end' },
       { type: 'chunk', data: 'data: [DONE]\n\n' },

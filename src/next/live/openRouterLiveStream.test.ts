@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { streamOpenRouterChatAsEvents } from '@/next/live/openRouterLiveStream'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import { OPENROUTER_STREAM_WIRE_VERSION } from '@/shared/ipc/openRouterStreamWire'
 
 function streamFromText(text: string, chunkSize = 17): ReadableStream<Uint8Array> {
@@ -40,7 +41,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
     const fixture = [
         ': OPENROUTER PROCESSING',
         '',
-        'data: {"id":"gen_1","model":"openrouter/auto","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}',
+        `data: {"id":"gen_1","model":"${DEFAULT_OPENROUTER_TEST_MODEL}","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}`,
         '',
         'data: {"id":"gen_1","usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3},"choices":[]}',
         '',
@@ -67,7 +68,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
                 userText: 'hello',
                 config: {
                     apiKey: 'k',
-                    model: 'openrouter/auto',
+                    model: DEFAULT_OPENROUTER_TEST_MODEL,
                     requestedReasoningMode: 'effort',
                     requestedReasoningEffort: 'none',
                     requestedReasoningExclude: false,
@@ -116,7 +117,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
     it('Case1 default: mode=effort effort=none exclude=false => body.reasoning.effort==="none"', async () => {
         const bodyText = await captureRequestBodyText({
             apiKey: 'k',
-            model: 'openrouter/auto',
+            model: DEFAULT_OPENROUTER_TEST_MODEL,
             requestedReasoningMode: 'effort',
             requestedReasoningEffort: 'none',
             requestedReasoningExclude: false,
@@ -130,7 +131,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
     it('Case2 mode=auto => body must omit reasoning field', async () => {
         const bodyText = await captureRequestBodyText({
             apiKey: 'k',
-            model: 'openrouter/auto',
+            model: DEFAULT_OPENROUTER_TEST_MODEL,
             requestedReasoningMode: 'auto',
         })
 
@@ -143,7 +144,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
     ] as const)('Case3 effort=%s => body.reasoning.effort=%s', async (_label, effort) => {
         const bodyText = await captureRequestBodyText({
             apiKey: 'k',
-            model: 'openrouter/auto',
+            model: DEFAULT_OPENROUTER_TEST_MODEL,
             requestedReasoningMode: 'effort',
             requestedReasoningEffort: effort,
         })
@@ -155,7 +156,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
     it('Case4 exclude=true => body.reasoning.exclude===true', async () => {
         const bodyText = await captureRequestBodyText({
             apiKey: 'k',
-            model: 'openrouter/auto',
+            model: DEFAULT_OPENROUTER_TEST_MODEL,
             requestedReasoningMode: 'effort',
             requestedReasoningEffort: 'high',
             requestedReasoningExclude: true,
@@ -168,7 +169,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
     it('Case5: never sends reasoning.enabled:true', async () => {
         const bodyText = await captureRequestBodyText({
             apiKey: 'k',
-            model: 'openrouter/auto',
+            model: DEFAULT_OPENROUTER_TEST_MODEL,
             requestedReasoningMode: 'effort',
             requestedReasoningEffort: 'medium',
         })
@@ -181,7 +182,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
 
         const bodyText = await captureRequestBodyText({
             apiKey: 'k',
-            model: 'openrouter/auto',
+            model: DEFAULT_OPENROUTER_TEST_MODEL,
             requestedReasoningMode: 'auto',
         })
 
@@ -192,9 +193,9 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
         const originalFetch = globalThis.fetch
 
         const midstream = [
-            'data: {"id":"gen_1","model":"openrouter/auto","provider":"openai","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}',
+            `data: {"id":"gen_1","model":"${DEFAULT_OPENROUTER_TEST_MODEL}","provider":"openai","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}`,
             '',
-            'data: {"id":"gen_1","model":"openrouter/auto","provider":"openai","error":{"code":"server_error","message":"Provider disconnected","metadata":{"provider_name":"openai"}},"choices":[{"index":0,"delta":{"content":""},"finish_reason":"error"}]}',
+            `data: {"id":"gen_1","model":"${DEFAULT_OPENROUTER_TEST_MODEL}","provider":"openai","error":{"code":"server_error","message":"Provider disconnected","metadata":{"provider_name":"openai"}},"choices":[{"index":0,"delta":{"content":""},"finish_reason":"error"}]}`,
             '',
             'data: [DONE]',
             '',
@@ -211,7 +212,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
                 requestId: 'rid',
                 assistantMessageId: 'assistant_1',
                 userText: 'hello',
-                config: { apiKey: 'k', model: 'openrouter/auto', requestedReasoningMode: 'auto' },
+                config: { apiKey: 'k', model: DEFAULT_OPENROUTER_TEST_MODEL, requestedReasoningMode: 'auto' },
             })) {
                 events.push(ev)
             }
@@ -236,7 +237,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
         const imageFixture = [
             ': OPENROUTER PROCESSING',
             '',
-            'data: {"id":"gen_img_1","model":"openrouter/auto","choices":[{"index":0,"delta":{"images":[{"image_url":{"url":"data:image/png;base64,AAAA"}}]},"finish_reason":null}]}',
+            `data: {"id":"gen_img_1","model":"${DEFAULT_OPENROUTER_TEST_MODEL}","choices":[{"index":0,"delta":{"images":[{"image_url":{"url":"data:image/png;base64,AAAA"}}]},"finish_reason":null}]}`,
             '',
             'data: [DONE]',
             '',
@@ -258,7 +259,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
                 userText: 'draw a cat',
                 config: {
                     apiKey: 'k',
-                    model: 'openrouter/auto',
+                    model: DEFAULT_OPENROUTER_TEST_MODEL,
                     requestedReasoningMode: 'auto',
                 },
             })) {
@@ -281,7 +282,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
         const originalFetch = globalThis.fetch
 
         const lengthTruncated = [
-            'data: {"id":"gen_1","model":"openrouter/auto","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":"length"}]}',
+            `data: {"id":"gen_1","model":"${DEFAULT_OPENROUTER_TEST_MODEL}","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":"length"}]}`,
             '',
             'data: [DONE]',
             '',
@@ -298,7 +299,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
                 requestId: 'rid',
                 assistantMessageId: 'assistant_1',
                 userText: 'hello',
-                config: { apiKey: 'k', model: 'openrouter/auto', requestedReasoningMode: 'auto' },
+                config: { apiKey: 'k', model: DEFAULT_OPENROUTER_TEST_MODEL, requestedReasoningMode: 'auto' },
             })) {
                 events.push(ev)
             }
@@ -316,7 +317,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
         const originalFetch = globalThis.fetch
 
         const contentFiltered = [
-            'data: {"id":"gen_1","model":"openrouter/auto","choices":[{"index":0,"delta":{"content":"filtered"},"finish_reason":"content_filter"}]}',
+            `data: {"id":"gen_1","model":"${DEFAULT_OPENROUTER_TEST_MODEL}","choices":[{"index":0,"delta":{"content":"filtered"},"finish_reason":"content_filter"}]}`,
             '',
             'data: [DONE]',
             '',
@@ -333,7 +334,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
                 requestId: 'rid',
                 assistantMessageId: 'assistant_1',
                 userText: 'hello',
-                config: { apiKey: 'k', model: 'openrouter/auto', requestedReasoningMode: 'auto' },
+                config: { apiKey: 'k', model: DEFAULT_OPENROUTER_TEST_MODEL, requestedReasoningMode: 'auto' },
             })) {
                 events.push(ev)
             }
@@ -362,7 +363,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
                 requestId: 'rid',
                 assistantMessageId: 'assistant_1',
                 userText: 'hello',
-                config: { apiKey: 'k', model: 'openrouter/auto', requestedReasoningMode: 'auto' },
+                config: { apiKey: 'k', model: DEFAULT_OPENROUTER_TEST_MODEL, requestedReasoningMode: 'auto' },
             })) {
                 events.push(ev)
             }
@@ -426,7 +427,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
                 requestId: 'ipc_rid',
                 assistantMessageId: 'assistant_1',
                 userText: 'hello',
-                config: { apiKey: 'k', model: 'openrouter/auto', requestedReasoningMode: 'auto' },
+                config: { apiKey: 'k', model: DEFAULT_OPENROUTER_TEST_MODEL, requestedReasoningMode: 'auto' },
             })) {
                 events.push(ev)
             }
@@ -479,7 +480,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
                 requestId: 'ipc_protocol_invalid',
                 assistantMessageId: 'assistant_1',
                 userText: 'hello',
-                config: { apiKey: 'k', model: 'openrouter/auto', requestedReasoningMode: 'auto' },
+                config: { apiKey: 'k', model: DEFAULT_OPENROUTER_TEST_MODEL, requestedReasoningMode: 'auto' },
             })) {
                 events.push(ev)
             }
@@ -508,9 +509,9 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
         }
         try {
             const midstream = [
-                'data: {"id":"gen_1","model":"openrouter/auto","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}',
+                `data: {"id":"gen_1","model":"${DEFAULT_OPENROUTER_TEST_MODEL}","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}`,
                 '',
-                'data: {"id":"gen_1","model":"openrouter/auto","error":{"code":"server_error","message":"Provider disconnected","metadata":{"provider_name":"openai","flagged_input":"very-secret","raw":{"token":"sensitive-raw"}}},"choices":[{"index":0,"delta":{"content":""},"finish_reason":"error"}]}',
+                `data: {"id":"gen_1","model":"${DEFAULT_OPENROUTER_TEST_MODEL}","error":{"code":"server_error","message":"Provider disconnected","metadata":{"provider_name":"openai","flagged_input":"very-secret","raw":{"token":"sensitive-raw"}}},"choices":[{"index":0,"delta":{"content":""},"finish_reason":"error"}]}`,
                 '',
                 'data: [DONE]',
                 '',
@@ -526,7 +527,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
                 requestId: 'rid',
                 assistantMessageId: 'assistant_1',
                 userText: 'hello',
-                config: { apiKey: 'k', model: 'openrouter/auto', requestedReasoningMode: 'auto' },
+                config: { apiKey: 'k', model: DEFAULT_OPENROUTER_TEST_MODEL, requestedReasoningMode: 'auto' },
             })) {
                 events.push(ev)
             }
@@ -562,7 +563,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
                 ],
                 config: {
                     apiKey: 'k',
-                    model: 'openrouter/auto',
+                    model: DEFAULT_OPENROUTER_TEST_MODEL,
                     requestedReasoningMode: 'auto',
                 },
             })) {
@@ -574,6 +575,45 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
             expect(bodyText).toContain('"role":"user","content":"first"')
             expect(bodyText).toContain('"role":"assistant","content":"second"')
             expect(bodyText).toContain('"role":"user","content":"third"')
+        } finally {
+            globalThis.fetch = originalFetch
+        }
+    })
+
+    it('passes pre-serialized multimodal user content blocks through without rebuilding eligibility', async () => {
+        const originalFetch = globalThis.fetch
+        const calls: any[] = []
+
+        globalThis.fetch = vi.fn(async (_url: any, init: any) => {
+            calls.push({ init })
+            const body = streamFromText(fixture)
+            return new Response(body as any, { status: 200, headers: { 'x-openrouter-generation-id': 'gen_header' } })
+        }) as any
+
+        try {
+            for await (const _ of streamOpenRouterChatAsEvents({
+                requestId: 'rid_multimodal',
+                assistantMessageId: 'assistant_1',
+                userText: 'describe the attachment',
+                currentUserContentBlocks: [
+                    { type: 'text', text: 'describe the attachment' },
+                    { type: 'image_url', image_url: { url: 'https://cdn.example.test/photo.png' } },
+                    { type: 'file', file: { filename: 'manual.pdf', file_data: 'https://cdn.example.test/manual.pdf' } },
+                ],
+                config: {
+                    apiKey: 'k',
+                    model: DEFAULT_OPENROUTER_TEST_MODEL,
+                    requestedReasoningMode: 'auto',
+                    openRouterAdditionalPlugins: [{ id: 'file-parser', pdf: { engine: 'native' } }],
+                },
+            })) {
+                // consume
+            }
+
+            const bodyText = String(calls[0]?.init?.body ?? '')
+            expect(bodyText).toContain('"plugins":[{"id":"file-parser","pdf":{"engine":"native"}}]')
+            expect(bodyText).toContain('"content":[{"type":"text","text":"describe the attachment"},{"type":"image_url"')
+            expect(bodyText).toContain('"type":"file","file":{"filename":"manual.pdf","file_data":"https://cdn.example.test/manual.pdf"}}')
         } finally {
             globalThis.fetch = originalFetch
         }

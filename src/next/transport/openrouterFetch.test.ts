@@ -1,8 +1,12 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { openrouterFetch } from './openrouterFetch'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '../openrouter/openRouterTestModels'
+
+const testModel = DEFAULT_OPENROUTER_TEST_MODEL
 
 describe('openrouterFetch (transport)', () => {
   const originalFetch = globalThis.fetch
+  const originalVerboseFlag = (globalThis as any).__SV_TEST_VERBOSE_OPENROUTER
 
   beforeEach(() => {
     vi.useFakeTimers()
@@ -11,6 +15,8 @@ describe('openrouterFetch (transport)', () => {
   afterEach(() => {
     vi.useRealTimers()
     globalThis.fetch = originalFetch
+    ;(globalThis as any).__SV_TEST_VERBOSE_OPENROUTER = originalVerboseFlag
+    vi.restoreAllMocks()
   })
 
   it('throws structured http_error on non-2xx (before streaming)', async () => {
@@ -19,7 +25,7 @@ describe('openrouterFetch (transport)', () => {
     await expect(
       openrouterFetch({
         apiKey: 'k',
-        body: { model: 'openrouter/auto' },
+        body: { model: testModel },
         requestId: 'rid',
       })
     ).rejects.toMatchObject({
@@ -36,7 +42,7 @@ describe('openrouterFetch (transport)', () => {
     await expect(
       openrouterFetch({
         apiKey: 'k',
-        body: { model: 'openrouter/auto' },
+        body: { model: testModel },
         requestId: 'rid',
         signal: ac.signal,
       })
@@ -60,7 +66,7 @@ describe('openrouterFetch (transport)', () => {
 
     const promise = openrouterFetch({
       apiKey: 'k',
-      body: { model: 'openrouter/auto' },
+      body: { model: testModel },
       requestId: 'rid',
       timeoutMs: 50,
     })
@@ -76,5 +82,46 @@ describe('openrouterFetch (transport)', () => {
     await vi.advanceTimersByTimeAsync(60)
 
     await assertion
+  })
+
+  it('logs only sanitized multimodal request summaries when verbose logging is enabled', async () => {
+    ;(globalThis as any).__SV_TEST_VERBOSE_OPENROUTER = '1'
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const secretKey = 'sk-or-secret-key'
+    const imageBase64 = 'IMG_SECRET_BASE64_PAYLOAD'
+    const pdfBase64 = 'PDF_SECRET_BASE64_PAYLOAD'
+    const textAttachmentBody = 'FULL TEXT ATTACHMENT BODY SHOULD NOT APPEAR'
+    globalThis.fetch = vi.fn(async () => new Response('ok', { status: 200 })) as any
+
+    await openrouterFetch({
+      apiKey: secretKey,
+      body: {
+        model: testModel,
+        stream: true,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: textAttachmentBody },
+            { type: 'image_url', image_url: { url: `data:image/png;base64,${imageBase64}` } },
+            { type: 'file', file: { filename: 'manual.pdf', file_data: `data:application/pdf;base64,${pdfBase64}` } },
+          ],
+        }],
+      },
+      requestId: 'rid',
+    })
+
+    const [, init] = (globalThis.fetch as any).mock.calls[0] ?? []
+    const requestBody = JSON.parse(String(init?.body ?? '{}'))
+    expect(requestBody.model).toBe(DEFAULT_OPENROUTER_TEST_MODEL)
+
+    const logged = warnSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
+    expect(logged).not.toContain(secretKey)
+    expect(logged).not.toContain(`Bearer ${secretKey}`)
+    expect(logged).not.toContain(imageBase64)
+    expect(logged).not.toContain(pdfBase64)
+    expect(logged).not.toContain(textAttachmentBody)
+    expect(logged).toContain('Request Body Summary (SANITIZED)')
+    expect(logged).toContain('data:image/png;base64')
+    expect(logged).toContain('data:application/pdf;base64')
   })
 })
