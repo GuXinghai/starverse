@@ -45,10 +45,10 @@
 - [开发指南](#-开发指南)
 - [构建部署](#-构建部署)
 - [数据清理](#-数据清理)
-- [核心功能说明](#-核心功能说明)
+- [核心架构](#-核心架构)
 - [安全性](#-安全性)
 - [性能优化](#-性能优化)
-- [更多文档](#-更多文档)
+- [文档导航](#-文档导航)
 - [最近更新和路线图](#-最近更新和路线图)
 - [常见问题](#-常见问题faq)
 - [贡献指南](#-贡献)
@@ -88,234 +88,18 @@ npm run electron:dev
 
 ## ✨ 功能特性
 
-### 🤖 AI 对话能力
-- **多提供商支持**: 支持 Google Gemini 和 OpenRouter 双提供商，可自由切换
-- **统一模型管理 (AppModel)**: ⭐ v0.10 架构升级
-  - 统一的模型数据结构，消除 ModelData/ModelParameterSupport 等碎片化类型
-  - 自动能力检测（推理、工具调用、JSON 模式、多模态）
-  - 智能价格展示（USD / 1M tokens）
-  - 软删除机制（云端下架模型标记为 archived）
-  - 规范化字段映射（router_source、vendor、capabilities、pricing）
-- **OpenRouter 模型同步**: 
-  - 支持 200+ 模型（GPT-4, Claude, Gemini, Llama, DeepSeek R1 等）
-  - 自动从 /api/v1/models 同步最新列表
-  - 增量更新 + 软删除策略
-  - 本地 SQLite 缓存（避免重复请求）
-  - 首次出现时间 (first_seen_at) 和最后更新时间 (last_seen_at) 追踪
-- **Gemini 模型支持**:
-  - gemini-pro, gemini-1.5-flash, gemini-2.0-flash-exp 等
-  - 自动规范化为 AppModel 结构
-- **多模态支持**: 
-  - 上传图片到 AI 模型进行分析（GPT-4o、Gemini 1.5+、Claude 3）
-  - 接收 AI 生成的图片
-  - 🆕 一键切换图片比例（1:1、16:9、9:16 等）
-  - 支持消息编辑时添加/移除图片
-  - 图片点击使用系统默认应用打开
-  - 统一处理多种格式（URL、base64、data URI、inline_data）
-- **网络搜索集成**:
-  - OpenRouter Web 搜索插件支持
-  - 三档搜索深度：快速、普通、深入
-  - 灵活引擎配置：native、exa 或自动选择
-  - 每条消息可独立启用/禁用
-- **推理功能（Reasoning）** ⭐ 新增:
-  - 支持 OpenRouter Reasoning API
-  - 四个推理级别：minimal、low、medium、high
-  - 可视化推理过程显示（支持的模型）
-  - 智能成本预估和延迟提示
-  - 自动模型能力检测
-- **使用统计分析** ⭐ 新增:
-  - 完整的 OpenRouter 使用数据追踪
-  - 按模型、时间范围分析成本和令牌使用
-  - 使用趋势图表和统计卡片
-  - 可视化仪表板
-  - 数据持久化到 SQLite
-- **流式响应**: 实时流式输出 AI 回复
-- **上下文管理**: 完整的对话历史管理
-- **用量可视化**:
-  - 实时解析 OpenRouter usage chunk
-  - 显示 Token 统计和 Credits 费用
-  - 数据持久化到分支元数据
-
-### 📝 富文本渲染
-- **Markdown 支持**: GitHub Flavored Markdown (GFM)
-  - 标题、列表、表格、引用、链接、图片
-  - 加粗、斜体、删除线
-- **代码高亮**: Shiki 语法高亮
-  - 支持 200+ 编程语言（TextMate Grammars）
-  - 多主题支持，流式输出期间自动降级渲染
-- **LaTeX 数学公式**: KaTeX 公式渲染
-  - 行内公式：`$E = mc^2$`
-  - 块级公式：`$$\int_0^1 x^2 dx$$`
-- **智能渲染**: 
-  - 流式传输时显示纯文本
-  - 完成后渲染 Markdown
-  - 无语言代码块作为 Markdown 渲染
-
-### 💬 会话管理
-- **多会话**: 创建和管理无限数量的对话
-- **智能复用**: 创建新会话时智能复用空白聊天
-  - 只复用默认名称（"新对话"）的空白会话
-  - 保护已重命名但未开始的会话
-- **项目管理**:
-  - 创建项目对对话进行分类管理
-  - 项目重命名和删除
-  - 对话快速分配到项目
-  - 项目筛选视图（全部/未分配/指定项目）
-  - 右键菜单快速移动对话
-- **标签页模式**: 类似浏览器的多标签界面
-- **会话持久化**: electron-store 自动保存
-- **会话操作**: 重命名、删除、清空消息
-
-### 🌳 分支化对话系统
-- **树形对话历史**: 任意消息处创建新分支
-- **多版本回复**: 同一位置的多个 AI 回复可自由切换
-- **路径导航**: 清晰展示当前路径和分支结构
-- **分支管理**: 删除单个版本或整个分支树
-- **多模态分支**: 完全支持文本和图像混合消息
-
-### 🎯 高级模型选择器
-- **收藏模型**: 快速访问常用 AI 模型
-  - 智能滚动动画：模型名称过长时自动滚动
-  - 四阶段动画：停顿 → 阅读 → 压缩 → 循环
-  - 自适应窗口大小变化
-- **智能筛选**: 
-  - 模型系列筛选（GPT、Claude、Gemini、Llama）
-  - 多模态能力筛选（文本、图像、音频）
-  - 上下文长度筛选（自适应分位数滑块）
-  - 价格区间筛选
-- **实时搜索**: 模糊搜索模型名称、ID 和描述
-- **多维排序**: 按名称、上下文长度或价格排序
-- **详细信息**: 显示模型描述、定价、上下文长度等
-
-### ✏️ 消息编辑
-- **编辑用户消息**: 双击或点击编辑按钮修改已发送消息
-- **重新生成**: 编辑后自动触发 AI 重新生成回复
-- **图片管理**: 编辑时可添加或移除图片附件
-- **历史保留**: 编辑操作创建新分支，保留原有路径
-- **智能去重**: 编辑未改动内容时不生成冗余版本
-- **边界处理**: 无回复的提问也可触发首次生成
-
-### 💾 数据持久化
-- **SQLite 存储**:
-  - better-sqlite3 高性能数据库引擎
-  - Web Worker 异步操作，不阻塞 UI
-  - 项目管理独立存储（完整 CRUD 操作）
-  - 对话归档功能（archive/restore）
-  - FTS5 全文搜索支持（中英文分词）
-  - 外键约束确保数据一致性
-  - 完整的数据迁移系统
-- **边界防御机制**:
-  - IPC 边界统一去代理化（深度去除 Vue Proxy）
-  - 消除 Vue Proxy structuredClone 错误
-  - Web Worker 异步数据库操作
-  - 增量序列化优化大型对话保存
-  - 数据验证 Schema（Zod）
-
-### 🔍 全文搜索 ⭐ 新增
-- **SQLite FTS5 全文检索**:
-  - 支持对话标题和消息内容搜索
-  - 中英文分词和停用词过滤
-  - 按相关性排序搜索结果
-  - 实时索引更新
-  - 高性能查询（< 10ms）
-
-### 🧠 智能对话增强
-- **自定义指令**: 为每个对话设置专属的系统提示词
-  - 持久化保存，无需每次输入
-- **统一生成参数架构** ⭐ 新增:
-  - 标准化所有 AI 参数处理（采样、推理、长度控制）
-  - 4 层配置覆盖系统（默认值 → 全局 → 对话 → 消息级）
-  - 模型能力自动检测系统
-  - 智能参数验证和过滤
-- **现代化聊天输入** ⭐ 新增:
-  - 胶囊式浮动设计，类似 Perplexity/ChatGPT
-  - 集成工具栏按钮（附件、搜索、推理、图像生成、参数）
-  - 自适应多行输入（1-10 行自动扩展）
-  - 智能发送按钮状态切换（发送/停止/撤回）
-  - 完整的附件预览系统
-  - 不占用消息历史，不影响上下文长度
-  - 支持角色扮演、格式控制、专业领域限定等场景
-  - 兼容 Gemini 和 OpenRouter
-- **采样参数配置**: 精细控制 AI 生成行为
-  - 温度（Temperature）：0-2，控制随机性
-  - Top-P/Top-K：核采样和词汇截断
-  - 频率/存在惩罚：减少重复，鼓励新话题
-  - 最大输出长度：限制回复长度
-  - 随机种子：实现可重现输出
-  - 每个对话独立配置，持久化保存
-- **思维链推理支持**:
-  - 支持 OpenRouter 推理模型（o1、Gemini Thinking 等）
-  - 可配置推理可见性（显示/隐藏）
-  - 推理努力程度控制（低/中/高）
-  - 最大推理 Token 限制
-
-### 🎨 用户体验
-- **现代化 UI**: 基于 Tailwind CSS 的精美界面设计
-- **🆕 现代化工具栏**: Plus Menu + Chips 交互模型
-  - ✅ 紧凑型按钮设计（文件上传、绘画、推理、搜索、参数）
-  - ✅ 内联配置菜单（搜索深度、推理努力程度）
-  - ✅ 一键比例切换（图像生成场景）
-  - ✅ 智能禁用状态（根据模型能力自动调整）
-  - ✅ Smart Parent, Dumb Child 架构（纯展示组件）
-- **响应式布局**: 自适应不同窗口大小
-- **🎯 智能菜单定位** ⭐ 最新:
-  - ✅ 主菜单和子菜单独立 Teleport 到 body
-  - ✅ 智能防溢出算法（优先级: 右→下/上→左）
-  - ✅ 响应窗口大小、滚动、DPI 变化
-  - ✅ 防止被容器的 overflow 裁剪
-  - ✅ 正确的 z-index 层级管理
-- **⚡ 性能优化** ⭐ 最新:
-  - ✅ 标签页切换性能提升 75%（40-50ms → 10ms）
-  - ✅ 持久化优化：UI 状态保存速度提升 40 倍（0.8ms → 0.02ms）
-  - ✅ 智能增量保存策略（标签状态 vs 完整数据）
-  - ✅ O(1) 对话查找性能（conversationsMap）
-  - ✅ 条件化昂贵计算（减少多实例重复计算）
-- **加载动画**: 优雅的应用初始化和消息加载动画
-- **草稿保存**: 自动保存输入框的草稿内容
-- **鼠标悬停预览**: 消息悬停显示编辑和分支控制按钮
-- **滚动优化**: 支持拖动滚动条时暂停自动滚动
-
-### ⚙️ 配置管理
-- **多提供商配置**: 可视化选择 Gemini 或 OpenRouter
-- **API Key 管理**: 安全存储和配置多个 API Key
-- **模型切换**: 每个会话可独立选择 AI 模型
-- **设置界面**: 友好的设置面板，集中管理所有配置
-
-### 🔧 开发者体验
-- **完善的代码注释**:
-  - ChatView.vue: 800+ 行详细注释（26% 覆盖率）
-  - 架构说明、算法解释、性能考量文档化
-  - 所有活跃组件通过注释质量审查
-- **代码质量保障**:
-  - TypeScript 严格模式，零编译错误
-  - 移除非关键调试日志，保留错误追踪
-  - 模块化架构，职责清晰
-  - 边界防御实施（IPC 层）
-- **完善的文档体系**:
-  - 详细的架构文档和开发指南
-  - API 使用文档和最佳实践
-  - 问题修复记录和优化总结
-  - 70+ 份技术文档
-
-### 🔧 技术特性
-- **持久化架构**:
-  - SQLite 数据库（对话、消息、项目）
-  - better-sqlite3 + Web Worker（异步操作）
-  - FTS5 全文搜索（中英文分词）
-  - 增量序列化优化
-  - 完整的数据迁移系统
-- **安全性保障**:
-  - Electron 上下文隔离
-  - 预加载脚本安全桥接
-  - API Key 加密存储
-  - structuredClone 边界防御
-  - DOMPurify HTML 清理
-- **性能优化**:
-  - 标签页切换 75% 性能提升（10ms）
-  - UI 状态保存速度提升 40 倍
-  - 智能增量保存策略
-  - O(1) 对话查找性能
-  - 虚拟滚动和懒加载
+| 模块 | 说明 | 代码入口 | 文档入口 |
+|------|------|---------|---------|
+| AI 对话 | 多提供商 (Gemini + OpenRouter)，200+ 模型同步 (AppModel)，流式响应，多模态，推理 (4 级)，网络搜索，用量统计 | `src/next/openrouter/`, `src/ui-app/app/` | [OVERVIEW](docs/architecture/OVERVIEW.md), [OpenRouter 集成](docs/architecture/OPENROUTER_INTEGRATION_SUMMARY.md) |
+| 富文本渲染 | GFM Markdown, Shiki 语法高亮 (200+ 语言), KaTeX LaTeX 公式, 流式/完成态智能切换 | `src/ui-kit/chat/richtext/` | — |
+| 会话与分支 | 树形分支对话，多会话管理，项目分类，标签页，消息编辑与重新生成 | `src/next/convo/`, `src/next/branch/` | [OVERVIEW](docs/architecture/OVERVIEW.md) |
+| 模型选择器 | 收藏模型，多维筛选 (系列/能力/上下文/价格)，实时搜索 | `src/ui-app/components/ModelPickerDialog.vue` | — |
+| 数据持久化 | SQLite (WAL+FTS5) + Web Worker 异步，IPC 边界防御 (Zod)，增量序列化 | `infra/db/`, `src/next/persistence/` | [OVERVIEW](docs/architecture/OVERVIEW.md) |
+| 文件管道与附件 | 文件资产上传/管理，Send Plan 兼容性门禁，preview_optimized 预览衍生物，格式转换 (PDF/音频/文本嵌入) | `src/shared/files/`, `infra/db/`, `src/ui-app/app/` | [File Pipeline](docs/file-pipeline/README.md), [进度台账](docs/file-pipeline/progress-ledger.md), [格式转换](docs/file-pipeline/format-conversion-preview-final.md) |
+| 全文搜索 | SQLite FTS5，中英文分词，实时索引，相关性排序 (< 10ms) | `src/next/search/` | — |
+| 智能增强 | 自定义指令，4 层生成参数覆盖，胶囊式输入，采样参数配置 | `src/next/settings/`, `src/ui-kit/chat/ChatComposer.vue` | — |
+| 用户体验 | Tailwind CSS v4 响应式 UI，智能菜单防溢出，性能优化 (Tab 切换 75%↑) | `src/ui-app/`, `src/ui-kit/` | [Tailwind v4](docs/tailwind/TAILWIND_V4_README.md) |
+| 文档与治理 | 70+ 文档，导航中心，ADR (5 个)，File Pipeline Phase 1-9 已完成 | `docs/` | [INDEX](docs/guides/INDEX.md), [ADR](docs/decisions/README.md), [维护者入口](docs/maintenance/maintainer-entry.md), [File Pipeline](docs/file-pipeline/README.md) |
 
 ---
 
@@ -480,113 +264,31 @@ Starverse/
 
 ### 代码统计 📊
 
-| 模块 | 文件数 | 代码行数 | 说明 |
-|------|--------|---------|------|
-| **核心组件** | 13+ | ~12,200 | Vue 3 Composition API |
-| - ChatView.vue | 1 | 5,312 | 聊天核心逻辑、多实例架构 |
-| - ConversationList.vue | 1 | 1,474 | 项目树 + 对话列表（🚧 重构中，TODO 1.1-1.3 已完成） |
-| - ChatToolbar.vue | 1 | ~450 | 🆕 现代化工具栏（Plus Menu + Chips） |
-| - AdvancedModelPickerModal.vue | 1 | 1,353 | 高级模型选择器 |
-| - ProjectHome.vue | 1 | 1,171 | 项目主页 |
-| **状态管理** | 8 | ~3,800 | Pinia Stores (模块化) |
-| - conversation.ts | 1 | 433 | 对话管理、标签页 |
-| - branch.ts | 1 | 422 | 分支树操作 |
-| - branchTreeHelpers.ts | 1 | 1,140 | 树形算法实现 |
-| - model.ts | 1 | ~380 | 🆕 模型管理 + 能力系统 Phase 2（ModelGenerationCapability） |
-| **Composables** | 13+ | ~1,800 | Vue 组合式函数 |
-| - 🆕 useConversationSearch.ts | 1 | ~300 | TODO 1.3: 对话搜索逻辑（FTS5 + DSL） |
-| - 🆕 useMenuPositioning.ts | 1 | ~150 | TODO 1.2: 菜单智能定位算法 |
-| - 🆕 useFormatters.ts | 1 | ~100 | TODO 1.1: 格式化工具函数集合 |1,140 | 树形算法实现 |
-| - model.ts | 1 | 265 | 模型管理 |
-| - persistence.ts | 1 | 271 | 持久化调度 |
-| - project.ts | 1 | 475 | 项目管理 |
-| **服务层** | 8 | ~3,000 | 业务逻辑层 |
-| - OpenRouterService.js | 1 | 1,337 | SSE 流式解析 |
-| - chatPersistence.ts | 1 | ~400 | SQLite 持久化 |
-| **类型定义** | 2 | ~400 | TypeScript 类型 |
-| - chat.ts | 1 | 312 | 多模态消息类型 |
-| **基础设施** | 6 | ~800 | 数据库层 |
-| - schema.sql | 1 | ~150 | DDL 定义 |
-| - repo/* | 4 | ~500 | 数据访问对象 |
-| **文档** | 70+ | ~50,000 | Markdown 文档 |
-| **总计** | ~100 | ~18,000+ | 不含 node_modules |
+| 模块 | 说明 |
+|------|------|
+| `src/ui-app/` | 主应用 UI 层（页面级组件 + 应用编排逻辑） |
+| `src/ui-kit/chat/` | 可复用聊天基础组件（Composer, Transcript, MessageBox, richtext 渲染） |
+| `src/next/` | DDD 领域模块（convo, branch, message, openrouter, persistence 等 11 模块） |
+| `src/shared/` | 跨层共享模块（composables, IPC 封装, 文件类型, 安全工具） |
+| `infra/` | 基础设施层（SQLite Worker, Repository, Send Plan 服务） |
+| `electron/` | 主进程（窗口管理, IPC 多模块, 模型目录, 后台任务） |
+| `docs/` | 70+ 份技术文档 |
 
 ### 架构设计
 
-#### 1. **四层架构（Presentation → State → Service → Infrastructure）**
+核心架构采用**分层+领域驱动设计**，详见专题文档：
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   Electron 主进程 (main.ts)                  │
-│  - 窗口管理（BrowserWindow）                                  │
-│  - 应用生命周期（app events）                                 │
-│  - IPC 通信处理（ipcMain.handle）                            │
-│  - DB Worker 管理（DbWorkerManager）                         │
-└────────────────────────┬────────────────────────────────────┘
-                         │ contextBridge (preload.ts)
-                         │ 安全的 IPC 桥接
-┌────────────────────────┴────────────────────────────────────┐
-│                   Vue 渲染进程 (src/)                        │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │  表现层 (Presentation Layer)                         │   │
-│  │  ui-app/ + ui-kit/，采用 Composition API               │   │
-│  │  - AppChatApp.vue (主应用入口)                        │   │
-│  │  - ui-kit/chat/ (可复用聊天组件库)                │   │
-│  │  - ConversationList.vue (项目+对话树)                │   │
-│  │  - ModelPickerDialog.vue (模型选择器)               │   │
-│  └────────────────────┬─────────────────────────────────┘   │
-│                       │                                      │
-│  ┌────────────────────┴─────────────────────────────────┐   │
-│  │  状态层 (State Management - Pinia，模块化设计)      │   │
-│  │  - appStore (249 行): 全局配置、API Key、Provider   │   │
-│  │  - conversationStore (433 行): 对话 CRUD、标签管理  │   │
-│  │  - branchStore (422 行): 分支树操作、流式追加       │   │
-│  │  - modelStore (265 行): 模型列表、收藏管理          │   │
-│  │  - persistenceStore (271 行): 自动保存、脏数据追踪  │   │
-│  │  - next/search/: FTS5 全文搜索封装                    │   │
-│  │  - next/project/: 项目管理领域                       │   │
-│  └────────────────────┬─────────────────────────────────┘   │
-│                       │                                      │
-│  ┌────────────────────┴─────────────────────────────────┐   │
-│  │  服务层 (Service Layer - next/openrouter/ 等)          │   │
-│  │  - next/openrouter/: OpenRouter SDK 封装         │   │
-│  │  - GeminiService: Google Gemini SDK                  │   │
-│  │  - openRouterStreamBridge: 主进程 SSE 流式代理  │   │
-│  │  - next/persistence/: 持久化调度器，防抖保存策略  │   │
-│  └────────────────────┬─────────────────────────────────┘   │
-│                       │ IPC: db:invoke                       │
-└───────────────────────┼──────────────────────────────────────┘
-                        │
-┌───────────────────────┴──────────────────────────────────────┐
-│              基础设施层 (Infrastructure - infra/db)           │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │  Web Worker (异步 SQLite 操作)                       │   │
-│  │  - workerManager.ts: 任务调度、超时控制              │   │
-│  │  - worker.ts: SQLite3 + Repository 实例化            │   │
-│  └────────────────────┬─────────────────────────────────┘   │
-│                       │                                      │
-│  ┌────────────────────┴─────────────────────────────────┐   │
-│  │  Repository 层 (数据访问对象)                         │   │
-│  │  - ConvoRepo: 对话 CRUD + 归档                       │   │
-│  │  - MessageRepo: 消息批量操作 + FTS5 索引             │   │
-│  │  - ProjectRepo: 项目管理 + 计数统计                  │   │
-│  │  - SearchRepo: FTS5 全文检索 + BM25 排序             │   │
-│  └────────────────────┬─────────────────────────────────┘   │
-│                       │                                      │
-│  ┌────────────────────┴─────────────────────────────────┐   │
-│  │  SQLite 数据库 (chat.db)                             │   │
-│  │  - WAL 模式，外键约束                                │   │
-│  │  - 7 张表 + 1 个 FTS5 虚拟表                         │   │
-│  │  - schema.sql: 完整 DDL 定义                         │   │
-│  └──────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-```
+| 主题 | 文档 |
+|------|------|
+| **架构总览** | [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md) — 三层分离与项目结构 |
+| **文件管道** | [docs/file-pipeline/README.md](docs/file-pipeline/README.md) — File Pipeline Phase 1-9 |
+| **架构决策** | [docs/decisions/README.md](docs/decisions/README.md) — ADR 记录 |
+| **治理护栏** | [docs/governance/app-chat-app-logic-boundary.md](docs/governance/app-chat-app-logic-boundary.md) |
+| **维护者接手** | [docs/maintenance/maintainer-entry.md](docs/maintenance/maintainer-entry.md) |
 
-#### 2. **领域驱动架构（next/ 模块）**
+#### 领域驱动架构（next/ 模块）
 
-`next/` 是项目的核心业务逻辑层，按领域划分为独立模块，每个领域包含请求/响应类型、服务（service）和相关测试:
+`next/` 是项目核心业务逻辑层，按领域划分为独立模块：
 
 | 领域模块 | 职责 |
 |---------|------|
@@ -601,215 +303,6 @@ Starverse/
 | `next/persistence/` | 持久化调度，防抖保存策略 |
 | `next/project/` | 项目管理领域 |
 | `next/settings/` | 设置项管理 |
-
-#### 3. **多提供商服务架构 (策略模式)**
-
-```
-┌──────────────────────────────────┐
-│      aiChatService (路由器)       │
-│  - getProviderContext()          │
-│  - listAvailableModels()         │
-│  - streamChatResponse()          │
-└──────────────┬───────────────────┘
-               │
-        根据 activeProvider 路由
-               │
-    ┌──────────┴──────────┐
-    │                     │
-┌───▼──────────┐  ┌──────▼──────────┐
-│GeminiService │  │OpenRouterService│
-│- Google SDK  │  │- Fetch + SSE    │
-└──────────────┘  └─────────────────┘
-```
-
-#### 4. **数据库 Schema（SQLite + FTS5）**
-
-```sql
--- 核心表结构
-CREATE TABLE project (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
-  meta TEXT  -- JSON 元数据
-);
-
-CREATE TABLE convo (
-  id TEXT PRIMARY KEY,
-  project_id TEXT REFERENCES project(id) ON DELETE SET NULL,
-  title TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
-  meta TEXT  -- JSON: 包含分支树、模型、草稿等
-);
-
-CREATE TABLE message (
-  id TEXT PRIMARY KEY,
-  convo_id TEXT NOT NULL REFERENCES convo(id) ON DELETE CASCADE,
-  role TEXT NOT NULL,  -- 'user' | 'assistant'
-  created_at INTEGER NOT NULL,
-  seq INTEGER NOT NULL,  -- 消息序号
-  meta TEXT,  -- JSON: branchId, versionId, metadata
-  UNIQUE (convo_id, seq)
-);
-
-CREATE TABLE message_body (
-  message_id TEXT PRIMARY KEY REFERENCES message(id) ON DELETE CASCADE,
-  body TEXT NOT NULL  -- 消息正文
-);
-
-CREATE TABLE tag (
-  id TEXT PRIMARY KEY,
-  name TEXT UNIQUE NOT NULL
-);
-
-CREATE TABLE convo_tag (
-  convo_id TEXT NOT NULL REFERENCES convo(id) ON DELETE CASCADE,
-  tag_id TEXT NOT NULL REFERENCES tag(id) ON DELETE CASCADE,
-  PRIMARY KEY (convo_id, tag_id)
-);
-
--- FTS5 全文搜索虚拟表
-CREATE VIRTUAL TABLE message_fts USING fts5(
-  message_id UNINDEXED,
-  convo_id UNINDEXED,
-  body,
-  tokenize = 'unicode61'  -- 中英文分词
-);
-
--- 性能优化索引
-CREATE INDEX idx_convo_project ON convo(project_id);
-CREATE INDEX idx_convo_updated ON convo(updated_at DESC);
-CREATE INDEX idx_msg_convo_seq ON message(convo_id, seq);
-
--- WAL 模式配置
-PRAGMA journal_mode=WAL;       -- Write-Ahead Logging
-PRAGMA synchronous=NORMAL;     -- 性能与安全平衡
-PRAGMA foreign_keys=ON;        -- 外键约束
-PRAGMA mmap_size=268435456;    -- 256MB 内存映射
-PRAGMA cache_size=-20000;      -- 20MB 缓存
-```
-
-**分支树存储策略**:
-- `convo.meta` 存储完整分支树的序列化 JSON
-- `message` 表仅存储当前路径的消息（用于 FTS5 搜索）
-- 分支切换时重建 `message` 表记录，保持搜索索引同步
-
-#### 5. **进程间通信 (IPC)**
-
-```typescript
-// 预加载脚本暴露的安全 API (preload.ts)
-contextBridge.exposeInMainWorld('electronStore', {
-  get: (key: string) => ipcRenderer.invoke('store-get', key),
-  set: (key: string, value: any) => ipcRenderer.invoke('store-set', key, value),
-  delete: (key: string) => ipcRenderer.invoke('store-delete', key)
-})
-
-contextBridge.exposeInMainWorld('electronDb', {
-  invoke: (payload: { method: DbMethod, params?: unknown }) =>
-    ipcRenderer.invoke('db:invoke', payload)
-})
-
-contextBridge.exposeInMainWorld('electronApi', {
-  openExternal: (url: string) => ipcRenderer.invoke('api:open-external', url),
-  saveTempImage: (dataUrl: string) => ipcRenderer.invoke('api:save-temp-image', dataUrl)
-})
-```
-
-**IPC 安全机制**:
-1. **Context Isolation**: 完全隔离主进程和渲染进程
-2. **白名单模式**: 只暴露必要的 API 方法
-3. **数据清理**: `ipcSanitizer` 深度去除 Vue Proxy
-4. **方法验证**: 数据库 IPC 只允许预定义的 26 个方法
-
-#### 6. **数据流（AI 对话 + 持久化）**
-
-```
-┌──────────────────────────────────────────────────────────┐
-│                  用户输入消息                             │
-└────────────────────────┬─────────────────────────────────┘
-                         ↓
-┌────────────────────────┴─────────────────────────────────┐
-│  ChatView.vue - handleSendMessage()                      │
-│  - 捕获 conversationId（上下文固化）                      │
-│  - 上传图片 → base64 data URI                            │
-│  - 调用 branchStore.addBranch()                          │
-└────────────────────────┬─────────────────────────────────┘
-                         ↓
-┌────────────────────────┴─────────────────────────────────┐
-│  BranchStore + ConversationStore                         │
-│  1. 添加用户消息到分支树（branchStore）                   │
-│  2. 创建 AI 消息占位符（branchStore）                     │
-│  3. 调用 aiChatService.streamChatResponse()              │
-│  4. 标记脏数据（persistenceStore）                        │
-└────────────────────────┬─────────────────────────────────┘
-                         ↓
-┌────────────────────────┴─────────────────────────────────┐
-│  aiChatService.js - 策略模式路由                          │
-│  根据 appStore.activeProvider 选择服务:                   │
-│  - Gemini → GeminiService                                │
-│  - OpenRouter → OpenRouterService                        │
-└─────────────┬───────────────────────┬────────────────────┘
-              ↓                       ↓
-  ┌───────────────────┐   ┌──────────────────────┐
-  │ GeminiService.js  │   │ OpenRouterService.js │
-  │ Google SDK        │   │ Fetch + SSE Parser   │
-  │ generateContent() │   │ 1300+ 行实现          │
-  └───────────────────┘   └──────────────────────┘
-              ↓                       ↓
-  ┌───────────────────┐   ┌──────────────────────┐
-  │ Gemini API        │   │ OpenRouter API       │
-  │ 流式响应          │   │ SSE 流式响应          │
-  └───────────────────┘   └──────────────────────┘
-              ↓                       ↓
-              └───────────┬───────────┘
-                          ↓
-┌─────────────────────────┴────────────────────────────────┐
-│  chatStore - 逐 Token 更新                                │
-│  - appendTokenToMessage() / appendImageToMessage()       │
-│  - 更新分支树中的消息内容                                  │
-│  - Vue 响应式自动触发 UI 更新                             │
-└─────────────────────────┬────────────────────────────────┘
-                          ↓
-┌─────────────────────────┴────────────────────────────────┐
-│  ContentRenderer.vue - 实时渲染                           │
-│  - 流式中：显示纯文本（性能优化）                          │
-│  - 完成后：Markdown + LaTeX + 代码高亮                    │
-└─────────────────────────┬────────────────────────────────┘
-                          ↓
-┌─────────────────────────┴────────────────────────────────┐
-│  chatStore - 自动持久化（50ms 防抖）                      │
-│  调用 sqliteChatPersistence.saveConversation()            │
-└─────────────────────────┬────────────────────────────────┘
-                          ↓
-┌─────────────────────────┴────────────────────────────────┐
-│  chatPersistence.ts                                      │
-│  1. deepToRaw() 去除 Vue Proxy                           │
-│  2. serializeTree() 分支树序列化                          │
-│  3. toMessageSnapshots() 提取当前路径消息                 │
-│  4. 调用 dbService.saveConvo() / replaceMessages()       │
-└─────────────────────────┬────────────────────────────────┘
-                          ↓ IPC: db:invoke
-┌─────────────────────────┴────────────────────────────────┐
-│  主进程 - dbBridge.ts                                     │
-│  验证方法白名单 → 调用 DbWorkerManager                    │
-└─────────────────────────┬────────────────────────────────┘
-                          ↓
-┌─────────────────────────┴────────────────────────────────┐
-│  Web Worker - worker.ts                                  │
-│  1. 接收任务（通过 postMessage）                          │
-│  2. 实例化 Repository                                    │
-│  3. 执行 SQLite 操作（同步调用，不阻塞 UI）               │
-│  4. 返回结果                                             │
-└─────────────────────────┬────────────────────────────────┘
-                          ↓
-┌─────────────────────────┴────────────────────────────────┐
-│  SQLite 数据库 (chat.db)                                 │
-│  - convo 表：存储分支树 JSON                              │
-│  - message + message_fts：当前路径 + FTS5 索引            │
-│  - 事务保证数据一致性                                     │
-└──────────────────────────────────────────────────────────┘
-```
 
 ---
 
@@ -1160,593 +653,45 @@ node scripts/clear-all-data.js
 - 创建一个新的空对话
 - 所有项目列表为空
 
-📖 **详细说明**：参见 [数据清理指南](docs/DATA_CLEANUP_GUIDE.md)
+📖 **详细说明**：参见 [数据清理指南](docs/guides/DATA_CLEANUP_GUIDE.md)
 
 ---
 
-## 🔑 核心技术实现
-
-### 1. 分支化对话树系统 🌳
-
-**数据结构**（branchTreeHelpers.ts）：
-```typescript
-type ConversationTree = {
-  branches: Map<string, Branch>,      // branchId → Branch
-  rootBranchIds: string[],            // 根分支 ID 列表
-  currentPath: string[]               // 当前路径（branchId 序列）
-}
-
-type Branch = {
-  id: string,
-  parentBranchId: string | null,
-  versions: Version[],                // 同一位置的多个版本
-  currentVersionIndex: number         // 当前选中的版本
-}
-
-type Version = {
-  id: string,
-  message: Message,                   // 完整消息对象
-  children: string[]                  // 子分支 ID 列表
-}
-```
-
-**核心算法**：
-- **添加分支**: O(1) - Map 查找 + 数组追加
-- **切换版本**: O(n) - 重建当前路径，n 为深度
-- **删除分支**: O(m) - 递归删除子树，m 为子节点数
-- **序列化**: O(n) - 深度优先遍历，转换 Map 为数组
-
-**存储策略**：
-- 内存中使用 `Map<string, Branch>` 保证 O(1) 查找
-- 持久化时序列化为 JSON 数组存储在 `convo.meta`
-- 恢复时重建 Map 结构
-
-### 2. Web Worker 数据库架构 ⚡
-
-**Worker 管理器**（electron/db/workerManager.ts）：
-```typescript
-class DbWorkerManager {
-  private worker: Worker | null = null
-  private requestMap: Map<number, PendingRequest> = new Map()
-  private requestId = 0
-
-  async call(method: DbMethod, params?: unknown): Promise<any> {
-    const id = ++this.requestId
-    
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.requestMap.delete(id)
-        reject(new DbWorkerError('ERR_TIMEOUT', 'Request timeout'))
-      }, 30000)  // 30秒超时
-      
-      this.requestMap.set(id, { resolve, reject, timeout })
-      this.worker!.postMessage({ id, method, params })
-    })
-  }
-}
-```
-
-**Worker 实现**（infra/db/worker.ts）：
-```typescript
-// Worker 线程中的消息处理
-self.onmessage = async (event: MessageEvent) => {
-  const { id, method, params } = event.data
-  
-  try {
-    // 实例化 Repository
-    const repo = getRepository(method)  // 根据 method 获取对应 repo
-    const result = await repo[methodName](params)
-    
-    // 返回结果
-    self.postMessage({
-      id,
-      type: 'success',
-      result
-    })
-  } catch (error) {
-    self.postMessage({
-      id,
-      type: 'error',
-      error: serializeError(error)
-    })
-  }
-}
-```
-
-**优势**：
-- ✅ SQLite 同步操作不阻塞 UI 线程
-- ✅ 请求队列化，避免并发冲突
-- ✅ 超时控制，防止请求挂起
-- ✅ 错误隔离，Worker 崩溃不影响主进程
-
-### 3. FTS5 全文搜索引擎 🔍
-
-**Schema 定义**（infra/db/schema.sql）：
-```sql
--- FTS5 虚拟表
-CREATE VIRTUAL TABLE message_fts USING fts5(
-  message_id UNINDEXED,
-  convo_id UNINDEXED,
-  body,
-  tokenize = 'unicode61'  -- 支持中英文分词
-);
-
--- 删除触发器（保持 FTS 索引同步）
-CREATE TRIGGER trg_message_del AFTER DELETE ON message BEGIN
-  INSERT INTO message_fts(message_fts, rowid, message_id, convo_id, body)
-  VALUES('delete', (SELECT rowid FROM message_fts WHERE message_id = old.id), old.id, old.convo_id, '');
-END;
-```
-
-**搜索实现**（infra/db/repo/searchRepo.ts）：
-```typescript
-fulltext(params: FulltextQueryParams): FulltextResult[] {
-  const sql = `
-    SELECT
-      m.id AS messageId,
-      m.convo_id AS convoId,
-      snippet(message_fts, 2, '<em>', '</em>', '…', 20) as snippet,
-      bm25(message_fts) AS rank,          -- BM25 相关性评分
-      m.created_at AS createdAt
-    FROM message_fts
-    JOIN message m ON m.id = message_fts.message_id
-    WHERE message_fts.body MATCH @query   -- 全文匹配
-    ORDER BY rank, m.created_at DESC      -- 按相关性排序
-    LIMIT @limit OFFSET @offset
-  `
-  return this.db.prepare(sql).all(params)
-}
-```
-
-**搜索特性**：
-- ✅ BM25 算法排序（相关性评分）
-- ✅ Snippet 高亮（20 字符上下文）
-- ✅ 支持布尔查询（AND、OR、NOT）
-- ✅ 项目和标签过滤
-- ✅ 时间范围筛选
-
-### 4. 多提供商服务架构（策略模式） 🎯
-
-**统一路由器**（src/services/aiChatService.js）：
-```javascript
-export const aiChatService = {
-  getProviderContext(appStore) {
-    const provider = appStore.activeProvider
-    
-    if (provider === 'Gemini') {
-      return {
-        service: GeminiService,
-        apiKey: appStore.geminiApiKey,
-        baseUrl: null
-      }
-    } else if (provider === 'OpenRouter') {
-      return {
-        service: OpenRouterService,
-        apiKey: appStore.openRouterApiKey,
-        baseUrl: appStore.openRouterBaseUrl
-      }
-    }
-  },
-
-  async* streamChatResponse(appStore, history, modelName, userMessage, options) {
-    const { service, apiKey, baseUrl } = this.getProviderContext(appStore)
-    
-    // 统一的流式接口
-    yield* service.streamChatResponse(
-      apiKey,
-      history,
-      modelName,
-      userMessage,
-      baseUrl,
-      options.signal,
-      options
-    )
-  }
-}
-```
-
-**OpenRouter SSE 解析**（1300+ 行实现）：
-```javascript
-async* streamChatResponse(apiKey, history, modelName, userMessage, baseUrl, signal, options) {
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: modelName,
-      messages: formatMessages(history, userMessage),
-      stream: true,
-      // 采样参数
-      temperature: options.parameters?.temperature,
-      top_p: options.parameters?.top_p,
-      // 推理配置
-      reasoning: options.reasoning,
-      // Web 搜索
-      provider: { order: options.webSearch?.engines }
-    }),
-    signal
-  })
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder('utf-8')
-  let buffer = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6).trim()
-        if (data === '[DONE]') return
-
-        const chunk = JSON.parse(data)
-        
-        // 处理不同类型的 chunk
-        if (chunk.choices?.[0]?.delta?.content) {
-          yield { type: 'text', content: chunk.choices[0].delta.content }
-        }
-        if (chunk.usage) {
-          yield { type: 'usage', metrics: chunk.usage }
-        }
-        if (chunk.choices?.[0]?.delta?.reasoning_detail) {
-          yield { type: 'reasoning', detail: chunk.choices[0].delta.reasoning_detail }
-        }
-      }
-    }
-  }
-}
-```
-
-### 5. Vue Proxy 边界防御 🛡️
-
-**问题**：Vue 3 的响应式 Proxy 无法通过 `structuredClone` 传递给 Electron IPC。
-
-**解决方案**（src/services/chatPersistence.ts）：
-```typescript
-function deepToRaw(obj: any, depth: number = 0, path: string = 'root'): any {
-  // 处理原始类型
-  if (obj === null || obj === undefined || typeof obj !== 'object') {
-    return obj
-  }
-
-  // 去除顶层 Proxy
-  const raw = toRaw(obj)
-
-  // 递归处理数组
-  if (Array.isArray(raw)) {
-    return raw.map((item, index) => 
-      deepToRaw(item, depth + 1, `${path}[${index}]`)
-    )
-  }
-
-  // 递归处理对象
-  const result: any = {}
-  for (const key in raw) {
-    if (Object.prototype.hasOwnProperty.call(raw, key)) {
-      result[key] = deepToRaw(raw[key], depth + 1, `${path}.${key}`)
-    }
-  }
-  return result
-}
-
-// 保存对话前清理
-async saveConversation(snapshot: ConversationSnapshot) {
-  // 1. 序列化分支树（Map → 数组）
-  const serializedTree = serializeTree(snapshot.tree)
-  
-  // 2. 深度去除 Proxy
-  const cleanSnapshot = deepToRaw({ ...snapshot, tree: serializedTree })
-  
-  // 3. 保存到 SQLite
-  await dbService.saveConvo({
-    id: cleanSnapshot.id,
-    meta: {
-      tree: cleanSnapshot.tree,  // 已清理的树
-      model: cleanSnapshot.model,
-      // ...
-    }
-  })
-}
-```
-
-### 6. 多实例组件架构 🔄
-
-**ChatView.vue 多实例设计**：
-```vue
-<script setup lang="ts">
-// ========== 上下文固化原则 ==========
-// 问题：props.conversationId 在异步操作期间可能变化（标签切换）
-// 解决：在异步任务启动时立即捕获到局部常量
-
-const handleSendMessage = async () => {
-  const targetConversationId = props.conversationId  // 🔒 固化
-
-  try {
-    // 异步操作使用固化的 ID，不受标签切换影响
-    await chatStore.sendMessage(targetConversationId, userInput, attachments)
-  } catch (error) {
-    console.error(`[ChatView] conversationId=${targetConversationId} send failed`)
-  }
-}
-
-// 流式响应也需要固化
-watch(() => chatStore.streamingMessageId, () => {
-  const targetConversationId = props.conversationId  // 🔒 固化
-  
-  nextTick(() => {
-    if (chatStore.isConversationStreaming(targetConversationId)) {
-      scrollToBottom()
-    }
-  })
-})
-</script>
-```
-
-**TabbedChatView 容器管理**：
-```vue
-<template>
-  <div v-for="id in chatStore.openConversationIds" :key="id">
-    <!-- 通过 display 控制可见性，不销毁实例 -->
-    <ChatView 
-      :conversationId="id"
-      :style="{ display: id === chatStore.activeTabId ? 'flex' : 'none' }"
-    />
-  </div>
-</template>
-```
-
-**优势**：
-- ✅ 切换标签页不触发组件重建（性能优化）
-- ✅ 后台标签的流式生成可以继续运行
-- ✅ 保留滚动位置和输入框状态
-- ✅ 避免多次重复加载模型列表
-
----
-
-## 🔑 核心功能说明
-
-### 1. 会话管理系统
-
-#### 创建新会话
-```javascript
-const conversationId = chatStore.createConversation()
-chatStore.openConversationInTab(conversationId)
-```
-
-#### 发送消息
-```javascript
-await chatStore.sendMessage(conversationId, userInput)
-// 自动处理：
-// - 添加用户消息到历史
-// - 调用 Gemini API
-// - 流式接收并显示 AI 回复
-```
-
-#### 会话操作
-```javascript
-// 重命名会话
-chatStore.renameConversation(conversationId, newTitle)
-
-// 删除会话
-chatStore.deleteConversation(conversationId)
-
-// 清空消息
-chatStore.clearConversationMessages(conversationId)
-```
-
-### 2. 多提供商服务架构
-
-#### 统一路由器 (aiChatService)
-```javascript
-// 自动根据 appStore.activeProvider 路由请求
-import { aiChatService } from '@/services/aiChatService'
-
-// 获取可用模型列表
-const models = await aiChatService.listAvailableModels(appStore)
-
-// 流式对话
-const stream = aiChatService.streamChatResponse(
-  appStore,
-  history,
-  modelName,
-  userMessage,
-  abortSignal
-)
-
-for await (const chunk of stream) {
-  console.log(chunk) // 实时接收文本片段
-}
-```
-
-#### 提供商实现
-```javascript
-// GeminiService - 使用 Google 官方 SDK
-import { GoogleGenerativeAI } from '@google/generative-ai'
-
-// OpenRouterService - 使用 Fetch API + SSE 解析
-const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${apiKey}`,
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({ model, messages, stream: true })
-})
-```
-
-### 3. 流式响应实现
-
-#### Gemini 流式处理
-```javascript
-export async function* streamChatResponse(apiKey, history, modelName, userMessage, signal) {
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: modelName })
-  
-  const result = await model.generateContentStream({
-    contents: [...history, { parts: [{ text: userMessage }] }],
-    signal: signal
-  })
-  
-  for await (const chunk of result.stream) {
-    yield chunk.text()
-  }
-}
-```
-
-#### OpenRouter SSE 流式处理
-```javascript
-export async function* streamChatResponse(apiKey, history, modelName, userMessage, baseUrl, signal) {
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: modelName,
-      messages: history.map(msg => ({
-        role: msg.role === 'model' ? 'assistant' : msg.role,
-        content: msg.text
-      })),
-      stream: true
-    }),
-    signal: signal
-  })
-  
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder('utf-8')
-  let buffer = ''
-  
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-    
-    for (const line of lines) {
-      if (line.startsWith('data:')) {
-        const jsonStr = line.slice(5).trim()
-        if (jsonStr === '[DONE]') return
-        
-        const chunk = JSON.parse(jsonStr)
-        const content = chunk.choices?.[0]?.delta?.content
-        if (content) yield content
-      }
-    }
-  }
-}
-```
-
-### 4. 数据持久化
-
-```typescript
-// 保存对话数据
-await window.electronStore.set('conversations', conversations.value)
-
-// 加载对话数据
-const savedConversations = await window.electronStore.get('conversations')
-```
-
-### 4. 模型动态加载
-
-```javascript
-// 自动获取所有支持 generateContent 的模型
-const models = await geminiService.listAvailableModels(apiKey)
-// 返回: ['models/gemini-pro', 'models/gemini-1.5-flash', ...]
-```
-
-### 4. 富文本渲染系统
-
-#### ContentRenderer 组件
-智能渲染 AI 回复中的 Markdown、LaTeX 和代码：
-
-```vue
-<template>
-  <ContentRenderer :content="message.text" />
-</template>
-```
-
-#### 渲染流程
-```javascript
-// 1. 提取 LaTeX 公式（避免被 Markdown 处理）
-text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
-  const rendered = katex.renderToString(formula, { displayMode: true })
-  return placeholder // 使用占位符
-})
-
-// 2. Markdown 转 HTML
-let html = marked(text, { renderer, breaks: true, gfm: true })
-
-// 3. 替换占位符为渲染后的公式
-html = html.replace(placeholder, renderedFormula)
-```
-
-#### 智能代码块渲染
-```javascript
-renderer.code = function({ text, lang }) {
-  // 无语言或 text/markdown/md → 作为 Markdown 渲染
-  if (!lang || ['text', 'markdown', 'md'].includes(lang)) {
-    return `<div class="nested-markdown">${marked(text)}</div>`
-  }
-  
-  // 其他语言 → 语法高亮
-  const highlighted = hljs.highlight(text, { language: lang }).value
-  return `<pre><code class="hljs">${highlighted}</code></pre>`
-}
-```
-
-#### 性能优化
-```javascript
-// 流式传输中：显示纯文本
-<p v-if="isMessageStreaming(index)">{{ message.text }}</p>
-
-// 流式完成后：完整渲染
-<ContentRenderer v-else :content="message.text" />
-```
-
-#### 支持的格式
-
-**Markdown 基础语法**
-```markdown
-# 标题 1-6 级
-**加粗** *斜体* ~~删除线~~
-- 无序列表
-1. 有序列表
-> 引用块
-[链接](url)
-![图片](url)
-```
-
-**LaTeX 数学公式**
-```markdown
-行内公式：$E = mc^2$
-块级公式：
-$$
-\int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}
-$$
-```
-
-**代码块**
-````markdown
-```python
-def hello():
-    print("Hello, World!")
-```
+## 🔑 核心架构
+
+### 模块职责
+
+| 层 | 目录 | 职责 |
+|----|------|------|
+| **UI 表现层** | `src/ui-app/` | 页面级组件（AppChatApp, ConversationList, ModelPickerDialog），应用编排逻辑（appChatApp.logic.ts） |
+| **UI 组件库** | `src/ui-kit/chat/` | 可复用聊天基础组件（ChatComposer, ChatTranscript, ChatMessageBubble, richtext 渲染系统） |
+| **领域逻辑** | `src/next/` | DDD 领域模块：convo / branch / message / modelCatalog / openrouter / persistence / project / search / settings / streaming |
+| **共享层** | `src/shared/` | 通用 composables、IPC 封装、文件资产类型、安全工具、推理流合并器 |
+| **基础设施** | `infra/db/` | SQLite Worker、Repository 层（convoRepo, messageRepo, projectRepo, searchRepo）、schema.sql、Zod 验证 |
+| **主进程** | `electron/` | 窗口管理、IPC 多模块（dbBridge, openRouterStreamBridge, storeIpc 等 9 个）、模型目录、后台任务 |
+| **文档** | `docs/` | 架构文档、功能文档、File Pipeline 专题、ADR 决策记录、治理护栏 |
+
+### 核心设计模式
+
+- **分支化对话树**：`Map<string, Branch>` O(1) 查找，JSON 序列化存储在 `convo.meta`
+- **Web Worker 数据库**：better-sqlite3 在独立 Worker 线程执行，IPC + MessagePort 通信，30s 超时保护
+- **FTS5 全文搜索**：message_fts 虚拟表，BM25 排序，unicode61 中英文分词，触发器同步索引
+- **多提供商策略**：`next/openrouter/` 封装 OpenRouter SDK + SSE 解析，Gemini 通过 `@google/generative-ai` SDK
+- **Vue Proxy 边界防御**：`deepToRaw()` 深度去除 Proxy 后再经 IPC 传递，消除 structuredClone 错误
+- **Send Plan + 文件管道**：`src/shared/files/` + `infra/files/` 实现 attachment 语义、send preflight、兼容性门禁（详见 [file-pipeline](docs/file-pipeline/README.md)）
+
+### 数据流
 
 ```
-无语言代码块会被当作 Markdown 渲染
-### 这个标题会正常显示
+用户输入 → AppChatApp.vue + appChatApp.logic.ts
+    → send preflight (有附件时调用 Send Plan)
+    → next/openrouter/ 构建请求
+    → openRouterStreamBridge (主进程 SSE 代理)
+    → ui-kit/chat/ 逐 Token 更新 + 流式/完成态渲染
+    → next/persistence/ 防抖持久化 → IPC → Worker → SQLite
 ```
-````
+
+详见：[架构总览](docs/architecture/OVERVIEW.md) | [文件管道](docs/file-pipeline/README.md)
 
 ---
 
@@ -1836,7 +781,7 @@ const duration = performance.now() - startTime
 console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 ```
 
-详细文档：[PERFORMANCE_OPTIMIZATION_COMPLETE.md](docs/PERFORMANCE_OPTIMIZATION_COMPLETE.md)
+详细文档：参见 [归档中心](docs/archive/README.md) 中已完成性能优化记录
 
 ---
 
@@ -1855,244 +800,41 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 
 ---
 
-## 📚 更多文档
+## 📚 文档导航
 
-### 核心功能文档 ⭐
-- [分支化聊天管理系统完整实现](./docs/BRANCH_CHAT_SYSTEM_COMPLETE.md) 🌳
-- [高级模型选择器实现总结](./docs/ADVANCED_MODEL_PICKER_IMPLEMENTATION.md) 🎯
-- [分支树架构重构完成](./docs/BRANCH_TREE_REFACTOR_COMPLETE.md) 🔧
-- [OpenRouter 接入重构总结](./docs/OPENROUTER_INTEGRATION_SUMMARY.md) ⭐ 
-- [系统默认应用打开图片](./docs/SYSTEM_IMAGE_OPENER.md) 📷
-- [网络搜索集成文档](./docs/WEB_SEARCH_INTEGRATION.md) 🔍
-- [采样参数功能说明](./docs/SAMPLING_PARAMETERS_FEATURE.md) ⚙️
-
-### 数据存储与持久化
-- [SQLite 增强实施文档](./docs/SQLITE_ENHANCEMENT_IMPLEMENTATION.md) 🗄️
-- [边界防御实施文档](./docs/BOUNDARY_DEFENSE_IMPLEMENTATION.md) 🛡️
-- [Web Worker 实现文档](./docs/WEB_WORKER_IMPLEMENTATION.md) ⚡
-- [增量序列化指南](./docs/INCREMENTAL_SERIALIZATION_GUIDE.md) 📦
-- [数据清理指南](./docs/DATA_CLEANUP_GUIDE.md) 🧹
-
-### 性能优化文档
-- [性能优化完整总结](./docs/PERFORMANCE_OPTIMIZATION_COMPLETE.md) ⚡
-- [标签切换性能优化实施](./docs/CHAT_SWITCHING_OPTIMIZATION_IMPLEMENTATION.md) 🏃
-- [ChatView 优化总结](./docs/CHATVIEW_OPTIMIZATION_SUMMARY.md) 📊
-- [保存优化总结](./docs/SAVE_OPTIMIZATION_SUMMARY.md) 💾
-- [长对话性能优化](./docs/LONG_CONVERSATION_PERFORMANCE.md) 📈
-
-### 测试与验证指南
-- [自适应分位数滑块测试指南](./docs/QUANTILE_SLIDER_TEST_GUIDE.md) 🧪
-- [分支树重构测试指南](./docs/REFACTOR_TEST_GUIDE.md) ✅
-- [DOM 清理验证](./docs/DOM_CLEANUP_VERIFICATION.md) 🔍
-- [存储验证报告](./docs/STORAGE_VERIFICATION_REPORT.md) 📋
-
-### API 与开发文档
-- [Chat Store API 使用指南](./src/stores/CHAT_STORE_GUIDE.md) 📖
-- [ChatView 更新说明](./docs/CHATVIEW_UPDATE_SUMMARY.md) 📝
-- [模型列表调试文档](./docs/DEBUG_MODEL_LIST.md) 🐛
-
-### 问题修复记录
-- [2025年11月修复汇总](./docs/RECENT_FIXES_2025_11.md) 🔧
-- [2025年1月更新汇总](./docs/RECENT_UPDATES_2025_01.md) ✨
-- [全部修复完成总结](./docs/ALL_FIXES_COMPLETE.md) ✅
-- [优先级修复总结](./docs/PRIORITY_FIXES_SUMMARY.md) 🎯
-- [项目管理修复](./docs/PROJECT_MANAGEMENT_FIXES.md) 📁
-
-### 代码质量文档
-- [代码清理总结](./docs/CLEANUP_SUMMARY.md) 🧹
-- [代码清理报告](./docs/CODE_CLEANUP_REPORT.md) 📊
-- [组件归档说明](./docs/ARCHIVED_COMPONENTS.md) 📦
-- [ChatView 注释改进](./docs/CHATVIEW_COMMENTS_IMPROVEMENT.md) 💬
-
-### UI/UX 文档
-- [收藏模型滚动动画实现](./docs/BELT_SCROLL_IMPLEMENTATION.md) 🎞️
-- [智能菜单定位修复](./docs/SUBMENU_TELEPORT_FIX.md) 🎯
-- [按钮交互优化](./docs/BUTTON_INTERACTION_OPTIMIZATION.md) 🖱️
+### 快速入口
+| 文档 | 说明 |
+|------|------|
+| [文档导航中心](docs/guides/INDEX.md) | 按场景查找所有文档 |
+| [架构总览](docs/architecture/OVERVIEW.md) | 系统架构设计 |
+| [文件管道入口](docs/file-pipeline/README.md) | File Pipeline Phase 1-9 状态与文档映射 |
+| [File Pipeline 进度账本](docs/file-pipeline/progress-ledger.md) | 决策记录、冻结决策、未做清单 |
+| [格式转换与预览方案](docs/file-pipeline/format-conversion-preview-final.md) | 文档格式转换与预览 SSOT |
+| [维护者接手入口](docs/maintenance/maintainer-entry.md) | 接手项目时的优先阅读顺序与注意事项 |
+| [ADR 规则](docs/adr/README.md) | 架构决策记录编写规则 |
+| [ADR 索引](docs/decisions/README.md) | 架构决策记录列表 |
+| [归档中心](docs/archive/README.md) | 46 个已归档历史文档 |
+| [变更日志](CHANGELOG.md) | 版本更新历史 |
 
 ---
 
 ## 🚧 最近更新和路线图
 
-### 最近更新 ✨
+### 关键里程碑
 
-**2025年12月** - 重大架构重构与新功能 ⭐
-- ✨ **前端架构全面重构（DDD 领域驱动设计）**
-  - `src/` 结构重组：旧的 `components/stores/services/` 平铺结构升级为 `ui-app/ui-kit/next/shared/` 分层架构
-  - `next/` 目录：20+ 个独立领域模块（convo、branch、message、modelCatalog、streaming 等）
-  - `ui-kit/chat/` 可复用聊天组件库（ChatTranscript、ChatMessageBubble 等）
-  - `AppChatApp.vue` 取代 `ChatView.vue` 成为核心应用入口
-- ✨ **富文本渲染引擎升级**
-  - **Markdown**：从 `marked` 迁移至 `markdown-it`（更好的 GFM 扩展支持）
-  - **代码高亮**：从 `highlight.js` 迁移至 `Shiki 3.22`（TextMate Grammars，精准高亮）
-  - 新增 `richtext/` 子系统：`streamRenderer`（流式）/ `finalRenderer`（完成态）分离渲染
-- ✨ **使用统计分析系统**
-  - 完整的 OpenRouter 使用数据追踪（按模型、时间范围分析成本和 Token 使用）
-  - SQLite 新增 `usage` 和 `dashboard_prefs` 表
-  - 使用趋势图表和统计付表板
-- ✨ **推理功能标准化（Reasoning）**
-  - 完整支持 OpenRouter Reasoning API（4 个推理级别：minimal/low/medium/high）
-  - 可视化推理过程显示
-  - `openrouterReasoningAdapter.ts` + `reasoningDetailStreamMerger.ts`
-- ✨ **IPC 多模块化重组**
-  - IPC 处理器从单一 `dbBridge.ts` 拆分为 9 个专职模块
-  - 新增 `openRouterStreamBridge`（流式代理）、`netExpIpc`（网络实验）等
-- 🐛 **修复消息发送幽灵任务 Bug（Critical）**
-  - 4 层防御机制彻底解决并发状态导致的“伪发送”问题
-  - 新增 `forceResetSendingState()` 紧急恢复方法
-- 🔄 **Tailwind CSS 升级至 v4.1.16**
-  - CSS 优先配置策略（`@theme` 指令）
-  - 废弃旧 `tailwind.config.js` theme 配置
+| 时间 | 主题 | 状态 | 详情 |
+|------|------|------|------|
+| 2024-11 | SQLite 数据库迁移 + 边界防御 + 性能优化 | ✅ 完成 | [SQLite 实现](docs/features/SQLITE_ENHANCEMENT_IMPLEMENTATION.md), [边界防御](docs/archive/ui-implementations/BOUNDARY_DEFENSE_IMPLEMENTATION.md) |
+| 2024-11 | 问题修复与代码质量提升（组件归档、注释完善） | ✅ 完成 | [修复记录](docs/bugfix/RECENT_FIXES_2025_11.md), [归档中心](docs/archive/completed-features/CHATVIEW_OPTIMIZATION_SUMMARY.md) |
+| 2025-01 | 用户体验优化（收藏模型滚动动画、会话复用） | ✅ 完成 | [归档中心](docs/archive/completed-features/CHATVIEW_COMMENTS_IMPROVEMENT.md) |
+| 2025-12 | 重大架构重构：DDD 分层（AppChatApp 取代 ChatView.vue）、富文本引擎 (markdown-it+Shiki)、Reasoning、IPC 多模块 | ✅ 完成 | [架构总览](docs/architecture/OVERVIEW.md), [CHANGELOG](CHANGELOG.md) |
+| 2026-04 | 文件管道 Phase 1-9：文件资产 Schema、Send Plan 三层门禁、preview_optimized 衍生物、前端 UI MVP | ✅ 完成 | [File Pipeline](docs/file-pipeline/README.md), [进度台账](docs/file-pipeline/progress-ledger.md) |
+| 2026-04 | 格式转换与预览方案（PDF/音频/文本嵌入）通过治理 | 📐 方案阶段 | [格式转换](docs/file-pipeline/format-conversion-preview-final.md) |
+| 2026-04 | 文档治理 G1a-G1e：链接修复、语义校准、Feature/Roadmap 节精简 | ✅ 完成 | [导航中心](docs/guides/INDEX.md), [维护者入口](docs/maintenance/maintainer-entry.md) |
 
-详见：[CHANGELOG.md](CHANGELOG.md)
-
----
-
-**2025年1月** - 用户体验优化
-- ✨ **收藏模型滚动动画**
-  - 模型名称过长时自动启用智能滚动播放
-  - 四阶段环带算法：停顿（500ms）→ 阅读（50px/s）→ 压缩（4倍速）→ 循环
-  - 响应窗口大小变化，自动重新计算
-  - 完整的代码注释文档（689行新增）
-- ✨ **新建会话复用优化**
-  - 只复用默认名称（"新对话"）的空白会话
-  - 保护已重命名但未开始的会话，避免误覆盖
-  - 智能判断会话状态
-
-详见：[docs/RECENT_UPDATES_2025_01.md](docs/RECENT_UPDATES_2025_01.md)
-
----
-
-**2024年11月** - SQLite 迁移与性能优化 🗄️
-- ✅ **SQLite 数据库迁移**
-  - 从 electron-store JSON 迁移到 SQLite
-  - better-sqlite3 + Web Worker 架构
-  - FTS5 全文搜索支持
-  - 完整的数据迁移系统
-- ✅ **边界防御实施**
-  - 深度去除 Vue Proxy 包装
-  - IPC 边界数据清理
-  - 消除 structuredClone 错误
-- ✅ **性能优化**
-  - 标签页切换性能提升 75%（40-50ms → 10ms）
-  - 持久化优化：UI 状态保存速度提升 40 倍
-  - 智能增量保存策略
-
-详见：
-- [docs/SQLITE_ENHANCEMENT_IMPLEMENTATION.md](docs/SQLITE_ENHANCEMENT_IMPLEMENTATION.md)
-- [docs/BOUNDARY_DEFENSE_IMPLEMENTATION.md](docs/BOUNDARY_DEFENSE_IMPLEMENTATION.md)
-- [docs/PERFORMANCE_OPTIMIZATION_COMPLETE.md](docs/PERFORMANCE_OPTIMIZATION_COMPLETE.md)
-
----
-
-**2024年11月** - 重要问题修复 🐛
-- ✅ **编辑无回复提问时的边界处理**
-  - 编辑未改动内容时不再生成冗余版本
-  - 无回复的提问也可触发首次生成
-- ✅ **删除提问分支时路径错误修复**
-  - 删除分支后自动重建有效路径
-  - 智能选择下一个可用分支并保持路径完整性
-- ✅ **多模态模型重新生成时图片显示修复**
-  - 统一处理多种图片格式（URL、base64、data URI、inline_data 等）
-  - 支持 OpenRouter 各种模型的图片返回格式
-  - 增强去重逻辑，避免重复渲染
-
-详见：[docs/RECENT_FIXES_2025_11.md](docs/RECENT_FIXES_2025_11.md)
-
----
-
-**2024年11月** - 代码质量提升 📝
-- ✅ **代码注释完善**
-  - ChatView.vue：新增 800+ 行详细注释（26% 覆盖率）
-  - 清理 20+ 非关键调试日志，保留所有错误日志
-  - 组件注释质量审查：12 个活跃组件全部通过
-- ✅ **组件归档管理**
-  - 归档 3 个未使用组件（HelloWorld、ModelSelector、StartupSplash）
-  - 更新 tsconfig.json：排除 archived-components 目录
-  - TypeScript 严格模式：零编译错误
-
-详见：
-- [docs/CHATVIEW_OPTIMIZATION_SUMMARY.md](docs/CHATVIEW_OPTIMIZATION_SUMMARY.md)
-- [docs/ARCHIVED_COMPONENTS.md](docs/ARCHIVED_COMPONENTS.md)
-- [docs/CLEANUP_SUMMARY.md](docs/CLEANUP_SUMMARY.md)
-
----
-
-### 已完成功能 ✅
-
-**核心功能**
-- ✅ 分支化对话系统：支持树形对话历史和多版本回复切换
-- ✅ 高级模型选择器：收藏、筛选、搜索、排序功能
-- ✅ 消息编辑功能：双击编辑用户消息并重新生成 AI 回复
-- ✅ 多模态支持：完整的图片上传、预览、编辑功能
-- ✅ 项目管理系统：对话分类、筛选、移动
-- ✅ 网络搜索集成：OpenRouter Web 搜索插件
-- ✅ 自定义指令：系统提示词配置
-- ✅ 采样参数配置：Temperature、Top-P、Top-K 等
-- ✅ 思维链推理：支持推理模型（4 个推理级别）
-- ✅ 使用统计分析：OpenRouter 成本和 Token 追踪与可视化
-
-**架构优化**
-- ✅ 前端 DDD 架构重构：ui-app/ + ui-kit/ + next/ + shared/
-- ✅ SQLite 数据库迁移：从 JSON 到 SQLite
-- ✅ FTS5 全文搜索：中英文分词支持
-- ✅ Web Worker 架构：数据库异步操作
-- ✅ 边界防御机制：Vue Proxy 处理
-- ✅ 性能优化：标签切换 75% 提升
-- ✅ 富文本引擎升级：markdown-it + Shiki 替代 marked + highlight.js
-
-**多提供商支持**
-- ✅ AppChatApp 多提供商逻辑适配
-- ✅ OpenRouter BaseURL 持久化
-- ✅ Provider 切换自动刷新模型列表
-- ✅ SSE 缓冲区溢出防护
-- ✅ 速率限制友好提示
-- ✅ API Key 格式校验
-- ✅ 智能默认模型选择
-
-**UI/UX 增强**
-- ✅ 收藏模型滚动动画
-- ✅ 智能菜单定位（Teleport + 防溢出）
-- ✅ 自适应分位数滑块
-- ✅ 系统默认应用打开图片
-- ✅ 响应式布局优化
-
-### 未来计划 🚀
-
-**AI 能力增强**
-- [ ] 支持更多 AI 提供商（Anthropic Claude API, Azure OpenAI, 本地模型）
-- [ ] 流式思维链可视化显示
-- [ ] 多模态增强（音频、视频支持）
-- [ ] AI 辅助代码执行和调试
-- [ ] 对话模板系统
-
-**功能扩展**
-- [ ] 对话导出/导入功能（JSON, Markdown, PDF, Word）
-- [ ] 代码块一键复制增强
-- [ ] 对话标签和标记系统
-- [ ] 高级搜索和过滤
-- [ ] 语音输入/输出支持（TTS/STT）
-- [ ] 插件系统架构
-
-**UI/UX 改进**
-- [ ] 主题系统（暗色模式、自定义主题）
-- [ ] 多语言支持（i18n）- 英语、中文、日语等
-- [ ] 窗口布局自定义
-- [ ] 快捷键系统完善
-- [ ] 拖拽排序和组织
-
-**性能和稳定性**
-- [ ] 更大规模对话性能优化（10000+ 消息）
-- [ ] 数据库索引优化
-- [ ] 离线模式支持
-- [ ] 自动备份和恢复
-- [ ] 错误日志系统
-
-**开发者体验**
-- [ ] 完整的单元测试覆盖
-- [ ] E2E 测试框架
-- [ ] CI/CD 流水线
-- [ ] 自动化文档生成
-- [ ] 开发者 API 文档
+### 当前方向
+- 持续归档已完成功能，建立每月文档审查机制
+- 详见 [guides/INDEX.md](docs/guides/INDEX.md) | [progress-ledger.md](docs/file-pipeline/progress-ledger.md) | [archive/README.md](docs/archive/README.md)
 
 ---
 
@@ -2145,7 +887,7 @@ node scripts/clear-all-data-standalone.cjs
 **方法 2: 手动删除**
 删除数据目录中的 `chat.db*` 文件
 
-详见：[数据清理指南](docs/DATA_CLEANUP_GUIDE.md)
+详见：[数据清理指南](docs/guides/DATA_CLEANUP_GUIDE.md)
 
 </details>
 
