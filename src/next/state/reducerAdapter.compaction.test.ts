@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { applyEvent, startGeneration, createInitialState } from './reducer'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '../openrouter/openRouterTestModels'
+
+const testModel = DEFAULT_OPENROUTER_TEST_MODEL
 
 describe('reducerAdapter compaction behavior', () => {
   afterEach(() => {
@@ -13,7 +16,7 @@ describe('reducerAdapter compaction behavior', () => {
     const { state: started, assistantMessageId } = startGeneration(createInitialState(), {
       runId,
       requestId: 'req-compaction',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'assistant_compact',
     })
 

@@ -448,6 +448,53 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
         return { ok: true }
     })
 
+  register('settings.getChatReasoningDisplayMode', () => {
+        return { value: rt.settingsRepo.getChatReasoningDisplayMode() }
+    })
+
+  register('settings.setChatReasoningDisplayMode', (raw) => {
+        const value = raw?.value
+        if (value !== 'inline' && value !== 'rail') {
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.setChatReasoningDisplayMode requires inline|rail value')
+        }
+        rt.settingsRepo.setChatReasoningDisplayMode(value)
+        return { ok: true }
+    })
+
+  register('settings.getChatDraft', (raw) => {
+        const key = String(raw?.key ?? '').trim()
+        if (!key) {
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.getChatDraft requires key')
+        }
+        return { value: rt.settingsRepo.getChatDraft(key) }
+    })
+
+  register('settings.setChatDraft', (raw) => {
+        const key = String(raw?.key ?? '').trim()
+        if (!key) {
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.setChatDraft requires key')
+        }
+        const value = typeof raw?.value === 'string' ? raw.value : String(raw?.value ?? '')
+        rt.settingsRepo.setChatDraft(key, value)
+        return { ok: true }
+    })
+
+  register('settings.deleteChatDraft', (raw) => {
+        const key = String(raw?.key ?? '').trim()
+        if (!key) {
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.deleteChatDraft requires key')
+        }
+        return { deleted: rt.settingsRepo.deleteChatDraft(key) }
+    })
+
+  register('settings.deleteChatDraftsByPrefix', (raw) => {
+        const prefix = String(raw?.prefix ?? '').trim()
+        if (!prefix) {
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.deleteChatDraftsByPrefix requires prefix')
+        }
+        return { deleted: rt.settingsRepo.deleteChatDraftsByPrefix(prefix) }
+    })
+
 
 }
 

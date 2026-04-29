@@ -3,8 +3,11 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppChatApp from './AppChatApp.vue'
 
+const streamOpenRouterChatCallArgs: any[] = []
+
 vi.mock('@/next/live/openRouterLiveStream', () => {
-  async function* streamOpenRouterChatAsEvents() {
+  async function* streamOpenRouterChatAsEvents(options: any) {
+    streamOpenRouterChatCallArgs.push(options)
     yield { type: 'StreamDone' }
   }
   return { streamOpenRouterChatAsEvents }
@@ -13,8 +16,15 @@ vi.mock('@/next/live/openRouterLiveStream', () => {
 describe('ui-app AppChatApp (question branching: pager + edit)', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronStore = (globalThis as any).electronStore
+  let forceCloneFromMessageFailure = false
+  let replayStatusByMessageId: Record<string, 'sendable' | 'blocked' | 'needs_confirmation'> = {}
+  let replayBlockingReasonByMessageId: Record<string, string> = {}
 
   beforeEach(() => {
+    streamOpenRouterChatCallArgs.length = 0
+    forceCloneFromMessageFailure = false
+    replayStatusByMessageId = {}
+    replayBlockingReasonByMessageId = {}
     ;(globalThis as any).electronStore = { get: vi.fn(async () => 'sk-test') }
 
     const convoId = 'c1'
@@ -35,6 +45,22 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
 
     let headQuestionId: 'u2' | 'u2alt' | 'u2b' = 'u2'
     let u2bCounter = 0
+    let draftState = {
+      conversationId: convoId,
+      draftText: '',
+      draftMode: 'compose' as const | 'edit',
+      editingSourceMessageId: null as string | null,
+      attachedAssetIds: [] as string[],
+      attachments: [] as Array<Record<string, unknown>>,
+      updatedAt: 1,
+    }
+    const historyAttachmentsByMessageId: Record<string, Array<Record<string, unknown>>> = {}
+
+    const resolveQuestionBodyById = (questionId: string): string => {
+      if (questionId === 'u1') return base.u1.body
+      const variant = Object.values(variantsByBaseA1).find((item) => item.qid === questionId)
+      return variant?.qBody ?? ''
+    }
 
     const listQuestionCandidates = () => {
       const items = Object.values(variantsByBaseA1).map((v) => ({ questionId: v.qid, createdAt: v.createdAt, status: 'final' }))
@@ -62,6 +88,12 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
       if (method === 'project.getInbox') return null
       if (method === 'project.list') return []
       if (method === 'project.countConversationsBatch') return { counts: {} }
+      if (method === 'settings.getWebSearchDefaults') return { value: null }
+      if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+      if (method === 'settings.getImageGenerationDefault') return { value: null }
+      if (method === 'settings.getUserMessageRenderDefault') return { value: null }
+      if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
+      if (method === 'settings.getChatDraft') return { value: null }
       if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
       if (method === 'branch.ensureDefault') {
         const { a2 } = renderPath()
@@ -143,6 +175,243 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
         }
       }
 
+      if (method === 'conversationDraft.restore') {
+        return draftState
+      }
+
+      if (method === 'conversationDraft.updateText') {
+        draftState = {
+          ...draftState,
+          draftText: String(params?.draftText ?? ''),
+          draftMode: params?.draftMode === 'edit' ? 'edit' : 'compose',
+          editingSourceMessageId:
+            params?.editingSourceMessageId == null || String(params?.editingSourceMessageId ?? '').trim().length === 0
+              ? null
+              : String(params?.editingSourceMessageId),
+          updatedAt: draftState.updatedAt + 1,
+        }
+        return draftState
+      }
+
+      if (method === 'conversationDraft.cloneFromMessage') {
+        if (forceCloneFromMessageFailure) throw new Error('clone failed')
+        const sourceMessageId = String(params?.sourceMessageId ?? '')
+        const body = resolveQuestionBodyById(sourceMessageId)
+        const attachment = {
+          id: `draft-attachment-${sourceMessageId}`,
+          conversationId: convoId,
+          assetId: `asset-${sourceMessageId}`,
+          attachmentOrder: 0,
+          aiPayloadKind: 'text',
+          processingStatus: 'native_supported',
+          includeInNextRequest: true,
+          excludedReason: null,
+          preferredSendMode: null,
+          urlRetentionMode: null,
+          createdAt: 1,
+          updatedAt: 1,
+        }
+        draftState = {
+          ...draftState,
+          draftText: body,
+          draftMode: 'edit',
+          editingSourceMessageId: sourceMessageId,
+          attachedAssetIds: [attachment.assetId],
+          attachments: [attachment],
+          updatedAt: draftState.updatedAt + 1,
+        }
+        return draftState
+      }
+
+      if (method === 'conversationDraft.attachToMessage') {
+        const messageId = String(params?.messageId ?? '')
+        const attachments = draftState.attachments.map((attachment: any) => ({
+          id: `attached-${attachment.assetId}`,
+          messageId,
+          assetId: attachment.assetId,
+          aiPayloadKind: attachment.aiPayloadKind,
+          processingStatus: attachment.processingStatus,
+          includeInNextRequest: attachment.includeInNextRequest,
+          excludedReason: attachment.excludedReason,
+          createdAt: 1,
+          updatedAt: 1,
+        }))
+        historyAttachmentsByMessageId[messageId] = attachments.map((item: any) => ({ ...item }))
+        draftState = {
+          ...draftState,
+          draftText: '',
+          draftMode: 'compose',
+          editingSourceMessageId: null,
+          attachedAssetIds: [],
+          attachments: [],
+          updatedAt: draftState.updatedAt + 1,
+        }
+        return {
+          messageId,
+          attachments,
+          draft: draftState,
+        }
+      }
+
+      if (method === 'conversationDraft.removeAttachment') {
+        const assetId = String(params?.assetId ?? '')
+        const removed = draftState.attachments.some((attachment: any) => attachment.assetId === assetId)
+        const nextAttachments = draftState.attachments.filter((attachment: any) => attachment.assetId !== assetId)
+        draftState = {
+          ...draftState,
+          attachedAssetIds: nextAttachments.map((attachment: any) => String(attachment.assetId)),
+          attachments: nextAttachments,
+          updatedAt: draftState.updatedAt + 1,
+        }
+        return { ok: true, removed, ownership: { assetId, ownerKind: 'detached', lifecycleStatus: 'detached', draftConversationIds: [], messageIds: [], reason: 'removed_from_draft', updatedAt: Date.now() } }
+      }
+
+      if (method === 'conversationDraft.updateAttachmentSettings') {
+        const assetId = String(params?.assetId ?? '')
+        draftState = {
+          ...draftState,
+          attachments: draftState.attachments.map((attachment: any) => (
+            String(attachment.assetId) === assetId
+              ? {
+                  ...attachment,
+                  ...(params?.includeInNextRequest === undefined ? {} : { includeInNextRequest: params.includeInNextRequest === true }),
+                  ...(params?.excludedReason === undefined ? {} : { excludedReason: params.excludedReason }),
+                  updatedAt: draftState.updatedAt + 1,
+                }
+              : attachment
+          )),
+          updatedAt: draftState.updatedAt + 1,
+        }
+        return draftState.attachments.find((attachment: any) => String(attachment.assetId) === assetId) ?? null
+      }
+
+      if (method === 'conversationDraft.addAttachment') {
+        const assetId = String(params?.assetId ?? '')
+        const next = {
+          id: `draft-attachment-${assetId}`,
+          conversationId: convoId,
+          assetId,
+          attachmentOrder: draftState.attachments.length,
+          aiPayloadKind: 'image',
+          processingStatus: 'native_supported',
+          includeInNextRequest: true,
+          excludedReason: null,
+          preferredSendMode: null,
+          urlRetentionMode: null,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }
+        draftState = {
+          ...draftState,
+          attachedAssetIds: Array.from(new Set([...draftState.attachedAssetIds, assetId])),
+          attachments: [...draftState.attachments, next],
+          updatedAt: draftState.updatedAt + 1,
+        }
+        return next
+      }
+
+      if (method === 'sendPlan.buildCurrent') {
+        const attachmentPlans = draftState.attachments.map((attachment: any) => {
+          const forcedExcluded = attachment.includeInNextRequest !== true || String(attachment.excludedReason ?? '').trim().length > 0
+          const forcedBlocked = String(attachment.assetId ?? '').includes('blocked')
+          const eligibility = forcedBlocked ? 'blocked' : forcedExcluded ? 'excluded' : 'included'
+          const exclusionReason = forcedBlocked
+            ? 'hard_gate_blocked'
+            : forcedExcluded
+              ? String(attachment.excludedReason ?? 'manually_excluded')
+              : null
+          return {
+            assetId: attachment.assetId,
+            attachmentId: attachment.id,
+            source: 'draft',
+            messageId: null,
+            aiPayloadKind: attachment.aiPayloadKind,
+            selectedSendMode: 'inline_base64',
+            fallbackSendModes: [],
+            eligibility,
+            exclusionReason,
+            displayStatus: forcedBlocked ? 'failed' : forcedExcluded ? 'unsupported' : 'ready',
+            needsUserAttention: forcedBlocked || forcedExcluded,
+            notes: forcedBlocked ? ['attachment blocked by send gate'] : forcedExcluded ? ['manually excluded'] : [],
+          }
+        })
+        const hasBlocked = attachmentPlans.some((plan: any) => plan.eligibility === 'blocked')
+        const hasExcluded = attachmentPlans.some((plan: any) => plan.eligibility === 'excluded')
+        const includedAttachments = attachmentPlans
+          .filter((plan: any) => plan.eligibility === 'included')
+          .map((plan: any) => ({
+            assetId: plan.assetId,
+            source: plan.source,
+            attachmentId: plan.attachmentId,
+            messageId: null,
+          }))
+        const excludedAttachments = attachmentPlans
+          .filter((plan: any) => plan.eligibility !== 'included')
+          .map((plan: any) => ({
+            assetId: plan.assetId,
+            source: plan.source,
+            attachmentId: plan.attachmentId,
+            messageId: null,
+            exclusionReason: plan.exclusionReason ?? 'excluded',
+          }))
+        return {
+          sendPlan: {
+            status: hasBlocked ? 'blocked' : hasExcluded ? 'partially_sendable' : 'sendable',
+            warnings: [],
+            blockingReasons: hasBlocked ? [{ code: 'hard_gate_blocked', message: 'attachment blocked by send gate' }] : [],
+            includedAttachments,
+            excludedAttachments,
+            attachmentPlans,
+            requiresModelChange: false,
+            canProceedAfterDroppingExcluded: !hasBlocked,
+            requiresUserConfirmation: hasBlocked || hasExcluded,
+            plannerVersion: 'test',
+          },
+          draftText: draftState.draftText,
+          assets: [],
+          storageRootDir: 'D:/Starverse',
+        }
+      }
+      if (method === 'sendPlan.prepareOpenRouterReplayFromMessage') {
+        const text = typeof params?.editedUserText === 'string' && params.editedUserText.trim().length > 0
+          ? params.editedUserText
+          : String(params?.userMessageId ?? '')
+        const messageId = String(params?.userMessageId ?? '')
+        const status = replayStatusByMessageId[messageId] ?? 'sendable'
+        const rows = historyAttachmentsByMessageId[messageId] ?? []
+        const rawDecisions = Array.isArray(params?.attachmentDecisions) ? params.attachmentDecisions as Array<Record<string, unknown>> : []
+        const excludedByDecision = new Set(
+          rawDecisions
+            .filter((item) => String(item?.decision ?? '').trim() === 'exclude')
+            .map((item) => String(item?.attachmentId ?? '').trim())
+            .filter(Boolean)
+        )
+        const excludedRows = rows.filter((row: any) => row?.includeInNextRequest !== true || row?.excludedReason)
+        const unresolvedExcludedRows = excludedRows.filter((row: any) => !excludedByDecision.has(String(row?.id ?? '')))
+        const effectiveStatus: 'sendable' | 'blocked' | 'needs_confirmation' =
+          status === 'needs_confirmation' && excludedRows.length > 0 && unresolvedExcludedRows.length === 0
+            ? 'sendable'
+            : status
+        const includedRows = rows.filter((row: any) => {
+          if (row?.includeInNextRequest !== true) return false
+          if (row?.excludedReason) return false
+          if (excludedByDecision.has(String(row?.id ?? ''))) return false
+          return true
+        })
+        const nonTextBlocks = includedRows.map((row: any) => ({ type: 'image_url', image_url: { url: `https://cdn.test/${String(row.assetId)}.png` } }))
+        return {
+          status: effectiveStatus,
+          currentUserContentBlocks: [{ type: 'text', text }, ...nonTextBlocks],
+          sentAssetIds: includedRows.map((row: any) => String(row.assetId)),
+          includedAttachments: includedRows.map((row: any) => ({ assetId: row.assetId, source: 'history', attachmentId: row.id, messageId })),
+          excludedAttachments: excludedRows.map((row: any) => ({ assetId: row.assetId, source: 'history', attachmentId: row.id, messageId, exclusionReason: row.excludedReason ?? 'manually_excluded' })),
+          blockingReasons: effectiveStatus === 'sendable' ? [] : [{ code: effectiveStatus === 'needs_confirmation' ? 'history_attachment_excluded' : 'hard_gate_blocked', message: replayBlockingReasonByMessageId[messageId] ?? 'blocked' }],
+          diagnostics: { sendPlanStatus: effectiveStatus === 'sendable' ? 'sendable' : effectiveStatus === 'needs_confirmation' ? 'partially_sendable' : 'blocked' },
+          modelCapabilitySnapshot: { providerKey: 'openrouter' },
+          manifestDraft: { replayMode: 'current', attachmentDecisions: rawDecisions },
+        }
+      }
+
       if (method === 'branch.forkQuestion') {
         // Only used in one test; simulate adding a new question variant (u2b).
         u2bCounter += 1
@@ -198,13 +467,34 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
     await screen.findByText('Q2')
 
     await user.click(screen.getByTestId('edit-q-u1'))
-    await screen.findByTestId('question-edit-dialog')
+    await screen.findByTestId('question-edit-controls')
     expect(screen.getByTestId('question-edit-replace')).toBeDisabled()
-    await user.click(screen.getByText('Cancel'))
+    await user.click(within(screen.getByTestId('question-edit-controls')).getByText('Cancel'))
 
     await user.click(screen.getByTestId('edit-q-u2'))
-    await screen.findByTestId('question-edit-dialog')
+    await screen.findByTestId('question-edit-controls')
     expect(screen.getByTestId('question-edit-replace')).not.toBeDisabled()
+  })
+
+  it('Edit action clones message draft from conversationDraft.cloneFromMessage', async () => {
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await screen.findByText('Q2')
+    await user.click(screen.getByTestId('edit-q-u2'))
+    await screen.findByTestId('question-edit-controls')
+    await screen.findByTestId('draft-attachment-strip')
+    const textarea = screen.getByTestId('composer-draft')
+    await user.clear(textarea)
+    await user.type(textarea, 'Q2 draft edit only')
+    expect(screen.getByText('Q2')).toBeTruthy()
+    expect(screen.queryByText('Q2 draft edit only')).toBeNull()
+
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+    expect(invoke).toHaveBeenCalledWith('conversationDraft.cloneFromMessage', expect.objectContaining({
+      conversationId: 'c1',
+      sourceMessageId: 'u2',
+    }))
   })
 
   it('New question calls branch.forkQuestion and renders the new question text', async () => {
@@ -214,9 +504,9 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
     await screen.findByText('Q2')
 
     await user.click(screen.getByTestId('edit-q-u2'))
-    await screen.findByTestId('question-edit-dialog')
+    await screen.findByTestId('question-edit-controls')
 
-    const textarea = within(screen.getByTestId('question-edit-dialog')).getByRole('textbox')
+    const textarea = screen.getByTestId('composer-draft')
     await user.clear(textarea)
     await user.type(textarea, 'Q2 edited')
 
@@ -225,5 +515,164 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
 
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     expect(invoke).toHaveBeenCalledWith('branch.forkQuestion', expect.objectContaining({ branchId: 'b1', oldQuestionId: 'u2', newBody: 'Q2 edited' }))
+    expect(invoke).toHaveBeenCalledWith('conversationDraft.attachToMessage', expect.objectContaining({
+      conversationId: 'c1',
+      messageId: 'u2b',
+    }))
+  })
+
+  it('Edit fallback branch is blocked and does not silently submit text-only resend', async () => {
+    forceCloneFromMessageFailure = true
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await screen.findByText('Q2')
+    await user.click(screen.getByTestId('edit-q-u2'))
+    await waitFor(() => {
+      expect(screen.queryByTestId('question-edit-controls')).toBeNull()
+    })
+
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+    expect(invoke.mock.calls.some((call) => call[0] === 'branch.forkQuestion')).toBe(false)
+  })
+
+  it('Edit Question with removed restored attachment does not replay that attachment', async () => {
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await screen.findByText('Q2')
+    await user.click(screen.getByTestId('edit-q-u2'))
+    await screen.findByTestId('question-edit-controls')
+    await screen.findByTestId('draft-attachment-strip')
+
+    await user.click(screen.getByTestId('draft-attachment-remove-asset-u2'))
+    await user.click(screen.getByTestId('question-edit-new'))
+    await screen.findByText('Q2')
+
+    const lastCall = streamOpenRouterChatCallArgs.at(-1)
+    expect(lastCall).toEqual(expect.objectContaining({ currentUserContentBlocks: expect.any(Array) }))
+    const blocks = lastCall.currentUserContentBlocks as any[]
+    expect(blocks.filter((block: any) => block.type === 'image_url').length).toBe(0)
+  })
+
+  it('Edit Question with excluded restored attachment keeps UI item but does not replay it', async () => {
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await screen.findByText('Q2')
+    await user.click(screen.getByTestId('edit-q-u2'))
+    await screen.findByTestId('question-edit-controls')
+    await screen.findByTestId('draft-attachment-card-asset-u2')
+
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+    await invoke('conversationDraft.updateAttachmentSettings', {
+      conversationId: 'c1',
+      assetId: 'asset-u2',
+      includeInNextRequest: false,
+      excludedReason: 'manually_excluded',
+    })
+    expect(screen.getByTestId('draft-attachment-card-asset-u2')).toBeTruthy()
+
+    await user.click(screen.getByTestId('question-edit-new'))
+    await screen.findByTestId('attachment-confirm-panel')
+    await user.click(screen.getByTestId('attachment-confirm-current-exclude-all'))
+    await user.click(screen.getByTestId('attachment-confirm-confirm'))
+    await screen.findByText('Q2')
+
+    const lastCall = streamOpenRouterChatCallArgs.at(-1)
+    expect(lastCall).toEqual(expect.objectContaining({ currentUserContentBlocks: expect.any(Array) }))
+    const blocks = lastCall.currentUserContentBlocks as any[]
+    expect(blocks.filter((block: any) => block.type === 'image_url').length).toBe(0)
+  })
+
+  it('Edit Question keeps restored and newly added attachments distinct in replay inputs', async () => {
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await screen.findByText('Q2')
+    await user.click(screen.getByTestId('edit-q-u2'))
+    await screen.findByTestId('question-edit-controls')
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+    await invoke('conversationDraft.addAttachment', { conversationId: 'c1', assetId: 'asset-new-upload' })
+
+    await user.click(screen.getByTestId('question-edit-new'))
+    await screen.findByText('Q2')
+
+    const lastCall = streamOpenRouterChatCallArgs.at(-1)
+    const blocks = lastCall.currentUserContentBlocks as any[]
+    expect(blocks.filter((block: any) => block.type === 'image_url').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('Edit Question requires confirmation decisions before submit and blocks unresolved submission', async () => {
+    const user = userEvent.setup()
+    render(AppChatApp)
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+
+    await screen.findByText('Q2')
+    await user.click(screen.getByTestId('edit-q-u2'))
+    await screen.findByTestId('question-edit-controls')
+    await invoke('conversationDraft.updateAttachmentSettings', {
+      conversationId: 'c1',
+      assetId: 'asset-u2',
+      includeInNextRequest: false,
+      excludedReason: 'manually_excluded',
+    })
+    await user.click(screen.getByTestId('question-edit-new'))
+    await screen.findByTestId('attachment-confirm-panel')
+    expect((screen.getByTestId('composer-draft') as HTMLTextAreaElement).disabled).toBe(true)
+    expect(screen.getByTestId('question-edit-new')).toBeDisabled()
+    await user.click(screen.getByTestId('attachment-confirm-confirm'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('attachment-confirm-validation').textContent).toContain('请为每个当前不受支持附件选择 exclude 或 remove')
+    })
+    expect(invoke.mock.calls.some((call) => call[0] === 'branch.forkQuestion')).toBe(false)
+    expect(invoke.mock.calls.some((call) => call[0] === 'message.appendDelta')).toBe(false)
+  })
+
+  it('Edit Question cancel on confirmation panel restores edit session without submitting', async () => {
+    const user = userEvent.setup()
+    render(AppChatApp)
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+
+    await screen.findByText('Q2')
+    await user.click(screen.getByTestId('edit-q-u2'))
+    await screen.findByTestId('question-edit-controls')
+    await invoke('conversationDraft.updateAttachmentSettings', {
+      conversationId: 'c1',
+      assetId: 'asset-u2',
+      includeInNextRequest: false,
+      excludedReason: 'manually_excluded',
+    })
+    await user.click(screen.getByTestId('question-edit-new'))
+    await screen.findByTestId('attachment-confirm-panel')
+    await user.click(screen.getByTestId('attachment-confirm-cancel'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('attachment-confirm-panel')).toBeNull()
+      expect(screen.getByTestId('question-edit-controls')).toBeTruthy()
+    })
+    expect(invoke.mock.calls.some((call) => call[0] === 'branch.forkQuestion')).toBe(false)
+  })
+
+  it('Edit Question replay does not mix unrelated composer draft attachments', async () => {
+    const user = userEvent.setup()
+    render(AppChatApp)
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+
+    await invoke('conversationDraft.addAttachment', { conversationId: 'c1', assetId: 'asset-unrelated-compose' })
+    await screen.findByText('Q2')
+    await user.click(screen.getByTestId('edit-q-u2'))
+    await screen.findByTestId('question-edit-controls')
+    await user.click(screen.getByTestId('question-edit-new'))
+    await screen.findByText('Q2')
+
+    const lastCall = streamOpenRouterChatCallArgs.at(-1)
+    const blocks = lastCall.currentUserContentBlocks as any[]
+    const imageUrls = blocks
+      .filter((block: any) => block.type === 'image_url')
+      .map((block: any) => String(block?.image_url?.url ?? ''))
+    expect(imageUrls.some((url: string) => url.includes('asset-unrelated-compose'))).toBe(false)
+    expect(imageUrls.some((url: string) => url.includes('asset-u2'))).toBe(true)
   })
 })

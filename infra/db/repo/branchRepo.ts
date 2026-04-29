@@ -896,4 +896,76 @@ export class BranchRepo {
 
     return { ok: true }
   }
+
+  truncateFromQuestion(branchId: string, questionId: string): Readonly<{ ok: true; headMessageId: string | null; fallbackQuestionId: string | null }> {
+    const bid = String(branchId ?? '').trim()
+    const qid = String(questionId ?? '').trim()
+    if (!bid || !qid) throw new Error('Missing branchId/questionId')
+
+    const alive = this.getAliveBranchConvoStmt.get({ branchId: bid }) as { convoId?: string; headMessageId?: string | null } | undefined
+    const convoId = alive?.convoId ? String(alive.convoId) : ''
+    const headMessageId = alive?.headMessageId ? String(alive.headMessageId) : null
+    if (!convoId) throw new Error(`Branch not found or deleted: ${bid}`)
+
+    const qRow = this.getUserQuestionParentStmt.get({ convoId, questionId: qid }) as { parentId?: string | null } | undefined
+    if (!qRow) throw new Error(`Question not found in conversation: ${qid}`)
+
+    if (headMessageId) {
+      const onPath = this.isMessageOnBranchPathStmt.get({ headId: headMessageId, baseId: qid, maxDepth: 5000 }) as any
+      if (!onPath) throw new Error(`Question is not on current branch path: ${qid}`)
+    }
+
+    const parentId = qRow.parentId ? String(qRow.parentId) : null
+    const baseKey = parentId ?? '__root__'
+    const now = Date.now()
+
+    const deleteHideAnyBase = this.db.prepare(`
+      DELETE FROM branch_question_hide
+      WHERE branch_id = @branchId AND question_id = @questionId
+    `)
+    const upsertHide = this.db.prepare(`
+      INSERT INTO branch_question_hide(branch_id, base_message_id, question_id, hidden, updated_at)
+      VALUES (@branchId, @baseMessageId, @questionId, 1, @updatedAt)
+      ON CONFLICT(branch_id, base_message_id, question_id)
+      DO UPDATE SET hidden = excluded.hidden, updated_at = excluded.updated_at
+    `)
+
+    const txn = this.db.transaction(() => {
+      deleteHideAnyBase.run({ branchId: bid, questionId: qid })
+      upsertHide.run({
+        branchId: bid,
+        baseMessageId: baseKey,
+        questionId: qid,
+        updatedAt: now,
+      })
+
+      const siblingRows = this.getQuestionCandidatesStmt.all({
+        branchId: bid,
+        convoId,
+        baseMessageId: parentId,
+        limit: 50,
+      }) as Array<{ questionId?: string }>
+
+      let fallbackQuestionId: string | null = null
+      let nextHeadMessageId: string | null = parentId
+      for (const row of siblingRows) {
+        const candidateQuestionId = row?.questionId ? String(row.questionId) : ''
+        if (!candidateQuestionId || candidateQuestionId === qid) continue
+        fallbackQuestionId = candidateQuestionId
+        const chosen = this.ensureChoice(bid, candidateQuestionId)
+        nextHeadMessageId = chosen ? this.computePreferredHeadForAnswerRoot(convoId, chosen) : candidateQuestionId
+        break
+      }
+
+      const result = this.updateBranchHeadStmt.run({
+        branchId: bid,
+        headMessageId: nextHeadMessageId,
+        updatedAt: now,
+      })
+      if (!result.changes || result.changes <= 0) throw new Error(`Branch not found or deleted: ${bid}`)
+      return { ok: true as const, headMessageId: nextHeadMessageId, fallbackQuestionId }
+    })
+
+    return txn()
+  }
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { decodeOpenRouterSSE } from '../openrouter/sse/decoder'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '../openrouter/openRouterTestModels'
 import { mapChunkToEvents } from '../openrouter/mapChunkToEvents'
 import { buildMidStreamSseErrorEnvelope, buildTransportErrorEnvelope } from '../errors/openRouterErrorEnvelope'
 import { normalizeOpenRouterErrorFromSseChunkError, normalizeOpenRouterUnknownStreamingError } from '../errors/normalizeOpenRouterError'
@@ -9,6 +10,8 @@ import { applyEvents, createInitialState, startGeneration } from './reducer'
 import type { DomainEvent, RootState } from './types'
 import { toRunSnapshot, NextRunSnapshotRepo } from '../persistence/repo'
 import { migrateNextPersistence } from '../persistence/migrate'
+
+const testModel = DEFAULT_OPENROUTER_TEST_MODEL
 
 class InMemoryDb {
   private userVersion = 0
@@ -68,7 +71,7 @@ async function replaySSEFixtureIntoState(runId: string, assistantMessageId: stri
   const started = startGeneration(createInitialState(), {
     runId,
     requestId: 'r1',
-    model: 'openrouter/auto',
+    model: testModel,
     assistantMessageId,
   })
 
@@ -114,7 +117,7 @@ async function replaySSEFixtureIntoState(runId: string, assistantMessageId: stri
             phase: 'mid_stream',
             completionClass: 'error',
             normalized,
-            request: { model: 'openrouter/auto', stream: true },
+            request: { model: testModel, stream: true },
           })
           events.push({ type: 'StreamError', error: envelope, terminal: true })
           continue

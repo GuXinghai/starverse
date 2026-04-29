@@ -1,7 +1,10 @@
 /* eslint-disable max-lines-per-function */
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '../openrouter/openRouterTestModels'
 import { applyEventCore, createInitialStateCore, startGenerationCore } from './reducerCore'
 import type { DomainEvent, RootState } from './types'
+
+const testModel = DEFAULT_OPENROUTER_TEST_MODEL
 
 function summarizeState(state: RootState, runId: string) {
   const run = state.runs[runId]
@@ -82,7 +85,7 @@ describe('reducerCore semantic snapshots', () => {
     const started = startGenerationCore(createInitialStateCore(), {
       runId,
       requestId: 'req-normal',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'a1',
       userMessageId: 'u1',
       userMessageText: 'hello',
@@ -141,7 +144,7 @@ describe('reducerCore semantic snapshots', () => {
     const started = startGenerationCore(createInitialStateCore(), {
       runId,
       requestId: 'req-error',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'a2',
     })
 
@@ -204,7 +207,7 @@ describe('reducerCore semantic snapshots', () => {
     const started = startGenerationCore(createInitialStateCore(), {
       runId,
       requestId: 'req-cancel',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'a3',
     })
 
@@ -255,7 +258,7 @@ describe('reducerCore semantic snapshots', () => {
     const started = startGenerationCore(createInitialStateCore(), {
       runId,
       requestId: 'req-reasoning',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'a4',
     })
 

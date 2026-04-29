@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '../../openrouter/openRouterTestModels'
 import { applyEventCore, createInitialStateCore, startGenerationCore } from '../reducerCore'
 import type { DomainEvent, MessageState, RootState, StartGenerationInput } from '../types'
 
@@ -63,7 +64,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-send',
           requestId: 'req-send-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-send-1',
           userMessageId: 'u-send-1',
           userMessageText: 'hello world',
@@ -80,7 +81,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-stream',
           requestId: 'req-stream-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-stream-1',
         },
       },
@@ -98,7 +99,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-length',
           requestId: 'req-length-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-length-1',
         },
       },
@@ -116,7 +117,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-blocks',
           requestId: 'req-blocks-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-blocks-1',
         },
       },
@@ -155,7 +156,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-tools',
           requestId: 'req-tools-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-tools-1',
         },
       },
@@ -206,7 +207,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-annotations',
           requestId: 'req-annotations-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-annotations-1',
         },
       },
@@ -292,7 +293,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-reasoning',
           requestId: 'req-reasoning-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-reasoning-1',
           requestedReasoningMode: 'effort',
           requestedReasoningEffort: 'high',
@@ -354,7 +355,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-error',
           requestId: 'req-error-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-error-1',
         },
       },
@@ -381,7 +382,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-abort',
           requestId: 'req-abort-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-abort-1',
         },
       },
@@ -419,7 +420,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-retry',
           requestId: 'req-retry-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-retry-1',
         },
       },
@@ -439,7 +440,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-retry',
           requestId: 'req-retry-2',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-retry-2',
           userMessageId: 'u-retry-2',
           userMessageText: 'retry prompt',
@@ -456,7 +457,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-regenerate',
           requestId: 'req-regenerate-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-regenerate-1',
           userMessageId: 'u-regenerate-1',
           userMessageText: 'Q1',
@@ -467,7 +468,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-regenerate',
           requestId: 'req-regenerate-2',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-regenerate-1',
           userMessageId: 'u-regenerate-1',
           userMessageText: 'Q1',
@@ -484,7 +485,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-branch-a',
           requestId: 'req-branch-a-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-branch-a-1',
           userMessageId: 'u-branch-a-1',
           userMessageText: 'A',
@@ -495,7 +496,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-branch-b',
           requestId: 'req-branch-b-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-branch-b-1',
           userMessageId: 'u-branch-b-1',
           userMessageText: 'B',
@@ -515,7 +516,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-meta',
           requestId: 'req-meta-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-meta-1',
         },
       },
@@ -558,7 +559,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-missing-message',
           requestId: 'req-missing-message-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
           assistantMessageId: 'a-missing-message-1',
         },
       },
@@ -584,7 +585,7 @@ const SCENARIOS: Scenario[] = [
         input: {
           runId: 'run-generated',
           requestId: 'req-generated-1',
-          model: 'openrouter/auto',
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
         },
       },
     ],
@@ -811,3 +812,4 @@ describe('reducerCore characterization snapshots', () => {
     })
   }
 })
+

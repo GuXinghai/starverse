@@ -10,6 +10,9 @@ import { normalizeOpenRouterErrorFromSseChunkError, normalizeOpenRouterUnknownSt
 import { applyEvent, applyEvents, createInitialState, startGeneration } from './reducer'
 import type { DomainEvent } from './types'
 import { selectRun, selectTranscript } from './selectors'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '../openrouter/openRouterTestModels'
+
+const testModel = DEFAULT_OPENROUTER_TEST_MODEL
 
 function readFixtureText(fileName: string) {
   const fullPath = path.join(process.cwd(), 'src/next/openrouter/sse/fixtures', fileName)
@@ -22,7 +25,7 @@ function readFixtureText(fileName: string) {
     const started = startGeneration(createInitialState(), {
       runId,
       requestId: 'req1',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'assistant_1',
       userMessageId: 'user_1',
       userMessageText: 'hello',
@@ -50,7 +53,7 @@ function readFixtureText(fileName: string) {
     const started = startGeneration(createInitialState(), {
       runId,
       requestId: 'req1',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'assistant_1',
       userMessageId: 'user_1',
       userMessageText: 'hello',
@@ -129,7 +132,7 @@ async function replayFixture(_runId: string, assistantMessageId: string, fileNam
             phase: 'mid_stream',
             completionClass: 'error',
             normalized,
-            request: { model: 'openrouter/auto', stream: true },
+            request: { model: testModel, stream: true },
           })
           out.push({ type: 'StreamError', error: envelope, terminal: true })
           continue
@@ -147,7 +150,7 @@ describe('next/state reducer', () => {
     const started = startGeneration(createInitialState(), {
       runId,
       requestId: 'req1',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'assistant_1',
     })
 
@@ -161,7 +164,7 @@ describe('next/state reducer', () => {
         "finishReason": undefined,
         "generationId": "gen_1",
         "localProcessingDurationMs": undefined,
-        "model": "openrouter/auto",
+        "model": "deepseek/deepseek-v4-flash",
         "nativeFinishReason": undefined,
         "provider": undefined,
         "requestId": "req1",
@@ -211,7 +214,7 @@ describe('next/state reducer', () => {
     const started = startGeneration(createInitialState(), {
       runId,
       requestId: 'req1',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'assistant_1',
     })
 
@@ -229,7 +232,7 @@ describe('next/state reducer', () => {
     const started = startGeneration(createInitialState(), {
       runId,
       requestId: 'req1',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'assistant_1',
     })
     const assistantMessageId = started.assistantMessageId
@@ -258,7 +261,7 @@ describe('next/state reducer', () => {
     const started = startGeneration(createInitialState(), {
       runId,
       requestId: 'req1',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'assistant_1',
     })
     const assistantMessageId = started.assistantMessageId
@@ -280,7 +283,7 @@ describe('next/state reducer', () => {
     const started = startGeneration(createInitialState(), {
       runId,
       requestId: 'req1',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'assistant_1',
     })
     const assistantMessageId = started.assistantMessageId
@@ -311,7 +314,7 @@ describe('next/state reducer', () => {
     const started = startGeneration(createInitialState(), {
       runId,
       requestId: 'req1',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'assistant_1',
     })
 
@@ -339,7 +342,7 @@ describe('next/state reducer', () => {
     const started = startGeneration(createInitialState(), {
       runId,
       requestId: 'req1',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'assistant_1',
     })
 
@@ -395,7 +398,7 @@ describe('next/state reducer', () => {
     const started = startGeneration(createInitialState(), {
       runId,
       requestId: 'req1',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'assistant_1',
     })
     const assistantMessageId = started.assistantMessageId
@@ -417,7 +420,7 @@ describe('next/state reducer', () => {
     const started = startGeneration(createInitialState(), {
       runId,
       requestId: 'req1',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'assistant_1',
     })
 
@@ -445,7 +448,7 @@ describe('next/state reducer', () => {
     const started = startGeneration(createInitialState(), {
       runId,
       requestId: 'req1',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'assistant_1',
     })
     const assistantMessageId = started.assistantMessageId
@@ -465,7 +468,7 @@ describe('next/state reducer', () => {
     const started = startGeneration(createInitialState(), {
       runId,
       requestId: 'req1',
-      model: 'openrouter/auto',
+      model: testModel,
       assistantMessageId: 'assistant_1',
     })
     const assistantMessageId = started.assistantMessageId
