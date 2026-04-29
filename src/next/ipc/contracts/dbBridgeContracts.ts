@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { decodeWithSchema } from './decodeError'
+import type { SendPlan, SendPlanAttachment, SendPlanAttachmentRef, SendPlanIssue } from '@/shared/files/sendPlanTypes'
 
 const nonEmpty = z.string().trim().min(1)
 
@@ -46,6 +47,187 @@ export type DecodedMessageAsset = Readonly<{
   assetUrl: string
 }>
 
+export type DecodedFileAsset = Readonly<{
+  id: string
+  sha256: string | null
+  filename: string
+  extension: string | null
+  mime: string | null
+  sizeBytes: number
+  assetKind: string
+  sourceKind: string
+  storageBackend: string
+  storageUri: string
+  ingestStatus: string
+  previewStatus: string
+  sourceMetaJson: Record<string, unknown> | null
+  createdAt: number
+  updatedAt: number
+  deletedAt: number | null
+}>
+
+export type DecodedFileDerivative = Readonly<{
+  id: string
+  parentAssetId: string
+  derivedKind: string
+  mime: string | null
+  storageUri: string
+  generator: string
+  status: string
+  metaJson: Record<string, unknown> | null
+  createdAt: number
+  updatedAt: number
+  deletedAt: number | null
+}>
+
+export type DecodedDerivativeJob = Readonly<{
+  id: string
+  assetId: string
+  derivativeKind: string
+  taskFamily: string
+  status: string
+  generator: string
+  provider: string | null
+  modelId: string | null
+  inputSnapshotJson: Record<string, unknown> | null
+  configJson: Record<string, unknown> | null
+  outputDerivativeId: string | null
+  errorCode: string | null
+  errorMessage: string | null
+  attemptCount: number
+  createdAt: number
+  updatedAt: number
+  startedAt: number | null
+  finishedAt: number | null
+}>
+
+export type DecodedMessageAttachment = Readonly<{
+  id: string
+  messageId: string
+  assetId: string
+  aiPayloadKind: string
+  processingStatus: string
+  includeInNextRequest: boolean
+  excludedReason: string | null
+  createdAt: number
+  updatedAt: number
+}>
+
+export type DecodedDraftAttachment = Readonly<{
+  id: string
+  conversationId: string
+  assetId: string
+  attachmentOrder: number
+  aiPayloadKind: string
+  processingStatus: string
+  includeInNextRequest: boolean
+  excludedReason: string | null
+  preferredSendMode: 'default' | 'auto' | 'url_ref' | 'inline_base64' | null
+  urlRetentionMode: 'default' | 'link_only' | 'link_and_file' | null
+  createdAt: number
+  updatedAt: number
+}>
+
+export type DecodedConversationDraft = Readonly<{
+  conversationId: string
+  draftText: string
+  draftMode: 'compose' | 'edit'
+  editingSourceMessageId: string | null
+  attachedAssetIds: string[]
+  attachments: DecodedDraftAttachment[]
+  updatedAt: number
+}>
+
+export type DecodedAssetAttachmentOwnership = Readonly<{
+  assetId: string
+  ownerKind: string
+  lifecycleStatus: string
+  draftConversationIds: string[]
+  messageIds: string[]
+  reason: string | null
+  updatedAt: number | null
+}>
+
+export type DecodedAttachmentCandidateSnapshot = Readonly<{
+  scope: 'messages' | 'branch'
+  messageIds: string[]
+  included: DecodedAttachmentSnapshotItem[]
+  excluded: DecodedAttachmentSnapshotItem[]
+  items: DecodedAttachmentSnapshotItem[]
+}>
+
+export type DecodedAttachmentSnapshotItem = Readonly<{
+  attachmentId: string
+  messageId: string
+  assetId: string
+  aiPayloadKind: string
+  processingStatus: string
+  included: boolean
+  excludedReason: string | null
+  sourceKind: string | null
+  storageBackend: string | null
+}>
+
+export type DecodedCommitDraftToUserMessageResult = Readonly<{
+  message: DecodedPersistedMessage
+  attachments: DecodedMessageAttachment[]
+  draft: DecodedConversationDraft
+}>
+
+export type DecodedAttachDraftToMessageResult = Readonly<{
+  messageId: string
+  attachments: DecodedMessageAttachment[]
+  draft: DecodedConversationDraft
+}>
+
+export type DecodedFileIngestionResult = Readonly<{
+  success: boolean
+  sourceKind: string
+  assetId: string | null
+  normalizedExtension: string | null
+  assetKind: string
+  aiPayloadKind: string
+  processingStatus: string
+  isNativeSupportedForMvp: boolean
+  isConvertibleCandidate: boolean
+  importStatus: string
+  sendEligibilityHints: Readonly<{
+    canUseUrlRef: boolean
+    canUseLocalFile: boolean
+    canUseInlinePayload: boolean
+    urlReferenceMayStillBeUsable: boolean
+    notes: string[]
+  }>
+  warnings: ReadonlyArray<Readonly<{ code: string; message: string }>>
+  failureReasonCode: string | null
+  retentionMode?: string
+  probeStatus?: string
+  materializationStatus?: string
+  originalUrl?: string
+  resolvedUrl?: string
+}>
+
+export type DecodedPreviewPayload = Readonly<{
+  assetId: string
+  status: 'ready' | 'missing' | 'failed'
+  derivativeId: string | null
+  mime: string | null
+  dataUrl: string | null
+  width: number | null
+  height: number | null
+  bytes: number | null
+  reused: boolean
+  errorCode: string | null
+  errorMessage: string | null
+}>
+
+export type DecodedBuildCurrentSendPlanResult = Readonly<{
+  sendPlan: SendPlan
+  draftText: string
+  assets: DecodedFileAsset[]
+  storageRootDir: string
+}>
+
 export type DecodedBeginTurnResult = Readonly<{
   convoId: string
   questionId: string
@@ -69,6 +251,11 @@ export type DecodedForkQuestionResult = Readonly<{
   newQuestionSeq: number
   assistantId: string
   assistantSeq: number
+}>
+
+export type DecodedTruncateBranchFromQuestionResult = Readonly<{
+  headMessageId: string | null
+  fallbackQuestionId: string | null
 }>
 
 export type DecodedConvoSetProjectManyResult = Readonly<{
@@ -151,6 +338,367 @@ const messageAssetSchema = z.object({
   assetUrl: row.assetUrl,
 }))
 
+const fileAssetSchema = z.object({
+  id: nonEmpty,
+  sha256: z.string().trim().nullable().optional(),
+  filename: nonEmpty,
+  extension: z.string().trim().nullable().optional(),
+  mime: z.string().trim().nullable().optional(),
+  sizeBytes: z.number().int().nonnegative(),
+  assetKind: nonEmpty,
+  sourceKind: nonEmpty,
+  storageBackend: nonEmpty,
+  storageUri: nonEmpty,
+  ingestStatus: nonEmpty,
+  previewStatus: nonEmpty,
+  sourceMetaJson: z.record(z.unknown()).nullable().optional(),
+  createdAt: z.number().finite(),
+  updatedAt: z.number().finite(),
+  deletedAt: z.number().finite().nullable().optional(),
+}).transform((row) => ({
+  ...row,
+  extension: row.extension ?? null,
+  mime: row.mime ?? null,
+  sha256: row.sha256 ?? null,
+  sourceMetaJson: row.sourceMetaJson ?? null,
+  deletedAt: row.deletedAt ?? null,
+}))
+
+const fileDerivativeSchema = z.object({
+  id: nonEmpty,
+  parentAssetId: nonEmpty,
+  derivedKind: nonEmpty,
+  mime: z.string().trim().nullable().optional(),
+  storageUri: nonEmpty,
+  generator: nonEmpty,
+  status: nonEmpty,
+  metaJson: z.record(z.unknown()).nullable().optional(),
+  createdAt: z.number().finite(),
+  updatedAt: z.number().finite(),
+  deletedAt: z.number().finite().nullable().optional(),
+}).transform((row) => ({
+  ...row,
+  mime: row.mime ?? null,
+  metaJson: row.metaJson ?? null,
+  deletedAt: row.deletedAt ?? null,
+}))
+
+const derivativeJobSchema = z.object({
+  id: nonEmpty,
+  assetId: nonEmpty,
+  derivativeKind: nonEmpty,
+  taskFamily: nonEmpty,
+  status: nonEmpty,
+  generator: nonEmpty,
+  provider: z.string().trim().nullable().optional(),
+  modelId: z.string().trim().nullable().optional(),
+  inputSnapshotJson: z.record(z.unknown()).nullable().optional(),
+  configJson: z.record(z.unknown()).nullable().optional(),
+  outputDerivativeId: z.string().trim().nullable().optional(),
+  errorCode: z.string().trim().nullable().optional(),
+  errorMessage: z.string().nullable().optional(),
+  attemptCount: z.number().int().nonnegative(),
+  createdAt: z.number().finite(),
+  updatedAt: z.number().finite(),
+  startedAt: z.number().finite().nullable().optional(),
+  finishedAt: z.number().finite().nullable().optional(),
+}).transform((row) => ({
+  ...row,
+  provider: row.provider ?? null,
+  modelId: row.modelId ?? null,
+  inputSnapshotJson: row.inputSnapshotJson ?? null,
+  configJson: row.configJson ?? null,
+  outputDerivativeId: row.outputDerivativeId ?? null,
+  errorCode: row.errorCode ?? null,
+  errorMessage: row.errorMessage ?? null,
+  startedAt: row.startedAt ?? null,
+  finishedAt: row.finishedAt ?? null,
+}))
+
+const messageAttachmentSchema = z.object({
+  id: nonEmpty,
+  messageId: nonEmpty,
+  assetId: nonEmpty,
+  aiPayloadKind: nonEmpty,
+  processingStatus: nonEmpty,
+  includeInNextRequest: z.boolean(),
+  excludedReason: z.string().nullable().optional(),
+  createdAt: z.number().finite(),
+  updatedAt: z.number().finite(),
+}).transform((row) => ({
+  ...row,
+  excludedReason: row.excludedReason ?? null,
+}))
+
+const draftAttachmentSchema = z.object({
+  id: nonEmpty,
+  conversationId: nonEmpty,
+  assetId: nonEmpty,
+  attachmentOrder: z.number().int().nonnegative(),
+  aiPayloadKind: nonEmpty,
+  processingStatus: nonEmpty,
+  includeInNextRequest: z.boolean(),
+  excludedReason: z.string().nullable().optional(),
+  preferredSendMode: z.enum(['default', 'auto', 'url_ref', 'inline_base64']).nullable().optional(),
+  urlRetentionMode: z.enum(['link_only', 'link_and_file']).nullable().optional(),
+  createdAt: z.number().finite(),
+  updatedAt: z.number().finite(),
+}).transform((row) => ({
+  ...row,
+  excludedReason: row.excludedReason ?? null,
+  preferredSendMode: row.preferredSendMode ?? null,
+  urlRetentionMode: row.urlRetentionMode ?? null,
+}))
+
+const conversationDraftSchema = z.object({
+  conversationId: nonEmpty,
+  draftText: z.string(),
+  draftMode: z.enum(['compose', 'edit']),
+  editingSourceMessageId: z.string().trim().nullable().optional(),
+  attachedAssetIds: z.array(nonEmpty),
+  attachments: z.array(draftAttachmentSchema),
+  updatedAt: z.number().finite(),
+}).transform((row) => ({
+  ...row,
+  editingSourceMessageId: row.editingSourceMessageId ?? null,
+}))
+
+const assetAttachmentOwnershipSchema = z.object({
+  assetId: nonEmpty,
+  ownerKind: nonEmpty,
+  lifecycleStatus: nonEmpty,
+  draftConversationIds: z.array(nonEmpty),
+  messageIds: z.array(nonEmpty),
+  reason: z.string().nullable().optional(),
+  updatedAt: z.number().finite().nullable().optional(),
+}).transform((row) => ({
+  ...row,
+  reason: row.reason ?? null,
+  updatedAt: row.updatedAt ?? null,
+}))
+
+const attachmentSnapshotItemSchema = z.object({
+  attachmentId: nonEmpty,
+  messageId: nonEmpty,
+  assetId: nonEmpty,
+  aiPayloadKind: nonEmpty,
+  processingStatus: nonEmpty,
+  included: z.boolean(),
+  excludedReason: z.string().nullable().optional(),
+  sourceKind: z.string().nullable().optional(),
+  storageBackend: z.string().nullable().optional(),
+}).transform((row) => ({
+  ...row,
+  excludedReason: row.excludedReason ?? null,
+  sourceKind: row.sourceKind ?? null,
+  storageBackend: row.storageBackend ?? null,
+}))
+
+const attachmentCandidateSnapshotSchema = z.object({
+  scope: z.enum(['messages', 'branch']),
+  messageIds: z.array(nonEmpty),
+  included: z.array(attachmentSnapshotItemSchema),
+  excluded: z.array(attachmentSnapshotItemSchema),
+  items: z.array(attachmentSnapshotItemSchema),
+})
+
+const commitDraftToUserMessageResultSchema = z.object({
+  message: persistedMessageSchema,
+  attachments: z.array(messageAttachmentSchema),
+  draft: conversationDraftSchema,
+})
+
+const attachDraftToMessageResultSchema = z.object({
+  messageId: nonEmpty,
+  attachments: z.array(messageAttachmentSchema),
+  draft: conversationDraftSchema,
+})
+
+const fileIngestionWarningSchema = z.object({
+  code: nonEmpty,
+  message: nonEmpty,
+})
+
+const fileIngestionHintsSchema = z.object({
+  canUseUrlRef: z.boolean(),
+  canUseLocalFile: z.boolean(),
+  canUseInlinePayload: z.boolean(),
+  urlReferenceMayStillBeUsable: z.boolean(),
+  notes: z.array(z.string()),
+})
+
+const fileIngestionResultSchema = z.object({
+  success: z.boolean(),
+  sourceKind: nonEmpty,
+  assetId: z.string().trim().nullable().optional(),
+  normalizedExtension: z.string().trim().nullable().optional(),
+  assetKind: nonEmpty,
+  aiPayloadKind: nonEmpty,
+  processingStatus: nonEmpty,
+  isNativeSupportedForMvp: z.boolean(),
+  isConvertibleCandidate: z.boolean(),
+  importStatus: nonEmpty,
+  sendEligibilityHints: fileIngestionHintsSchema,
+  warnings: z.array(fileIngestionWarningSchema),
+  failureReasonCode: z.string().nullable().optional(),
+  retentionMode: z.string().optional(),
+  probeStatus: z.string().optional(),
+  materializationStatus: z.string().optional(),
+  originalUrl: z.string().optional(),
+  resolvedUrl: z.string().optional(),
+}).transform((row) => ({
+  ...row,
+  assetId: row.assetId ?? null,
+  normalizedExtension: row.normalizedExtension ?? null,
+  failureReasonCode: row.failureReasonCode ?? null,
+}))
+
+const previewPayloadSchema = z.object({
+  assetId: nonEmpty,
+  status: z.enum(['ready', 'missing', 'failed']),
+  derivativeId: z.string().trim().nullable().optional(),
+  mime: z.string().trim().nullable().optional(),
+  dataUrl: z.string().nullable().optional(),
+  width: z.number().finite().nullable().optional(),
+  height: z.number().finite().nullable().optional(),
+  bytes: z.number().finite().nullable().optional(),
+  reused: z.boolean(),
+  errorCode: z.string().trim().nullable().optional(),
+  errorMessage: z.string().nullable().optional(),
+}).transform((row) => ({
+  ...row,
+  derivativeId: row.derivativeId ?? null,
+  mime: row.mime ?? null,
+  dataUrl: row.dataUrl ?? null,
+  width: row.width ?? null,
+  height: row.height ?? null,
+  bytes: row.bytes ?? null,
+  errorCode: row.errorCode ?? null,
+  errorMessage: row.errorMessage ?? null,
+}))
+
+const sendPlanIssueSchema = z.object({
+  code: nonEmpty,
+  message: nonEmpty,
+  assetId: z.string().trim().nullable().optional(),
+  source: z.enum(['draft', 'history', 'request']),
+}).transform((row) => ({
+  ...row,
+  assetId: row.assetId ?? null,
+}))
+
+const sendPlanAttachmentRefBaseSchema = z.object({
+  assetId: nonEmpty,
+  source: z.enum(['draft', 'history']),
+  attachmentId: nonEmpty,
+  messageId: z.string().trim().nullable().optional(),
+})
+
+const sendPlanAttachmentRefSchema = sendPlanAttachmentRefBaseSchema.transform((row) => ({
+  ...row,
+  messageId: row.messageId ?? null,
+}))
+
+const sendPlanAttachmentSchema = z.object({
+  assetId: nonEmpty,
+  attachmentId: nonEmpty,
+  source: z.enum(['draft', 'history']),
+  messageId: z.string().trim().nullable().optional(),
+  aiPayloadKind: nonEmpty,
+  semantic: z.object({
+    targetKind: z.enum(['plain_text', 'markdown', 'code', 'table_markdown', 'pdf_attachment', 'native_file', 'hybrid', 'unsupported']),
+    sendStrategy: z.enum(['text_in_prompt', 'file_attachment', 'mixed', 'unsupported']),
+    mappedFromLegacy: z.boolean(),
+  }).optional(),
+  selectedSendMode: z.enum(['url_ref', 'inline_base64', 'provider_file_ref']).nullable().optional(),
+  fallbackSendModes: z.array(z.enum(['url_ref', 'inline_base64', 'provider_file_ref'])),
+  eligibility: z.enum(['included', 'warning', 'excluded', 'blocked']),
+  exclusionReason: z.string().trim().nullable().optional(),
+  displayStatus: z.enum(['parsing', 'ready', 'failed', 'incompatible_with_current_model', 'ready_with_warnings', 'unsupported']),
+  needsUserAttention: z.boolean(),
+  notes: z.array(z.string()),
+  lineage: z.object({
+    state: z.enum(['ok', 'unknown', 'preview_only_asset_not_sendable', 'stale_derived_asset', 'preview_send_asset_mismatch', 'send_asset_not_ready']),
+    stale: z.boolean(),
+    staleReason: z.string().nullable().optional(),
+    sourceHash: z.string().nullable().optional(),
+    previewContentHash: z.string().nullable().optional(),
+    sendContentHash: z.string().nullable().optional(),
+    conversionSettingsHash: z.string().nullable().optional(),
+  }).optional(),
+}).transform((row) => ({
+  ...row,
+  messageId: row.messageId ?? null,
+  selectedSendMode: row.selectedSendMode ?? null,
+  exclusionReason: row.exclusionReason ?? null,
+  semantic: row.semantic ?? inferLegacyAttachmentSemantic(row.aiPayloadKind),
+  lineage: row.lineage ?? {
+    state: 'unknown',
+    stale: false,
+    staleReason: null,
+    sourceHash: null,
+    previewContentHash: null,
+    sendContentHash: null,
+    conversionSettingsHash: null,
+  },
+}))
+
+const sendPlanSchema = z.object({
+  status: z.enum(['sendable', 'sendable_with_warnings', 'partially_sendable', 'blocked']),
+  warnings: z.array(sendPlanIssueSchema),
+  blockingReasons: z.array(sendPlanIssueSchema),
+  includedAttachments: z.array(sendPlanAttachmentRefSchema),
+  excludedAttachments: z.array(sendPlanAttachmentRefBaseSchema.extend({
+    exclusionReason: nonEmpty,
+  }).transform((row) => ({
+    ...row,
+    messageId: row.messageId ?? null,
+  }))),
+  attachmentPlans: z.array(sendPlanAttachmentSchema),
+  requiresModelChange: z.boolean(),
+  canProceedAfterDroppingExcluded: z.boolean(),
+  requiresUserConfirmation: z.boolean(),
+  plannerVersion: nonEmpty,
+})
+
+function inferLegacyAttachmentSemantic(aiPayloadKind: string): {
+  targetKind: 'plain_text' | 'pdf_attachment' | 'native_file' | 'unsupported'
+  sendStrategy: 'text_in_prompt' | 'file_attachment' | 'unsupported'
+  mappedFromLegacy: true
+} {
+  const normalized = aiPayloadKind.trim().toLowerCase()
+  if (normalized === 'text') {
+    return { targetKind: 'plain_text', sendStrategy: 'text_in_prompt', mappedFromLegacy: true }
+  }
+  if (normalized === 'pdf') {
+    return { targetKind: 'pdf_attachment', sendStrategy: 'file_attachment', mappedFromLegacy: true }
+  }
+  if (normalized === 'image' || normalized === 'audio' || normalized === 'video') {
+    return { targetKind: 'native_file', sendStrategy: 'file_attachment', mappedFromLegacy: true }
+  }
+  return { targetKind: 'unsupported', sendStrategy: 'unsupported', mappedFromLegacy: true }
+}
+
+const buildCurrentSendPlanResultSchema = z.object({
+  sendPlan: sendPlanSchema,
+  draftText: z.string(),
+  assets: z.array(fileAssetSchema),
+  storageRootDir: nonEmpty,
+})
+
+const fileAssetSoftDeleteSchema = z.object({
+  ok: z.literal(true),
+  softDeleted: z.boolean(),
+  physicalCleanupRequired: z.literal(true),
+})
+
+const fileAssetPhysicalCleanupPlanSchema = z.object({
+  ok: z.literal(true),
+  assetId: nonEmpty,
+  storageUris: z.array(nonEmpty),
+  physicalDeletePerformed: z.literal(false),
+})
+
 const appendReasoningDetailSegmentsResultSchema = z.object({
   ok: z.boolean(),
   received: z.number().finite(),
@@ -191,6 +739,12 @@ const forkQuestionResultSchema = z.object({
   newQuestionSeq: z.number().finite(),
   assistantId: nonEmpty,
   assistantSeq: z.number().finite(),
+})
+
+const truncateBranchFromQuestionResultSchema = z.object({
+  ok: z.literal(true),
+  headMessageId: z.string().trim().nullable(),
+  fallbackQuestionId: z.string().trim().nullable(),
 })
 
 const searchHitSchema = z.object({
@@ -240,6 +794,18 @@ const imageGenerationDefaultSchema = z.object({
 
 const userMessageRenderDefaultSchema = z.object({
   value: z.boolean().nullable(),
+})
+
+const chatReasoningDisplayModeSchema = z.object({
+  value: z.enum(['inline', 'rail']),
+})
+
+const chatDraftSchema = z.object({
+  value: z.string().nullable(),
+})
+
+const deletedCountSchema = z.object({
+  deleted: z.number().int().nonnegative(),
 })
 
 const projectCountSchema = z.object({
@@ -396,6 +962,112 @@ export function decodeMessageAssetListResponse(raw: unknown): DecodedMessageAsse
   }))
 }
 
+export function decodeFileAssetResponse(raw: unknown): DecodedFileAsset {
+  return decodeWithSchema('fileAsset', fileAssetSchema, raw)
+}
+
+export function decodeNullableFileAssetResponse(raw: unknown): DecodedFileAsset | null {
+  if (raw === null || raw === undefined) return null
+  return decodeFileAssetResponse(raw)
+}
+
+export function decodeFileAssetListResponse(raw: unknown): DecodedFileAsset[] {
+  return decodeWithSchema('fileAsset.listByIds', z.array(fileAssetSchema), raw)
+}
+
+export function decodeFileDerivativeResponse(raw: unknown): DecodedFileDerivative {
+  return decodeWithSchema('fileDerivative', fileDerivativeSchema, raw)
+}
+
+export function decodeFileDerivativeListResponse(raw: unknown): DecodedFileDerivative[] {
+  return decodeWithSchema('fileDerivative.listByParentAssetId', z.array(fileDerivativeSchema), raw)
+}
+
+export function decodeDerivativeJobResponse(raw: unknown): DecodedDerivativeJob {
+  return decodeWithSchema('derivativeJob', derivativeJobSchema, raw)
+}
+
+export function decodeNullableDerivativeJobResponse(raw: unknown): DecodedDerivativeJob | null {
+  if (raw === null || raw === undefined) return null
+  return decodeDerivativeJobResponse(raw)
+}
+
+export function decodeDerivativeJobListResponse(raw: unknown): DecodedDerivativeJob[] {
+  return decodeWithSchema('derivativeJob.listByAssetId', z.array(derivativeJobSchema), raw)
+}
+
+export function decodeMessageAttachmentResponse(raw: unknown): DecodedMessageAttachment {
+  return decodeWithSchema('messageAttachment', messageAttachmentSchema, raw)
+}
+
+export function decodeMessageAttachmentListResponse(raw: unknown): DecodedMessageAttachment[] {
+  return decodeWithSchema('messageAttachment.list', z.array(messageAttachmentSchema), raw)
+}
+
+export function decodeConversationDraftResponse(raw: unknown): DecodedConversationDraft {
+  return decodeWithSchema('conversationDraft', conversationDraftSchema, raw)
+}
+
+export function decodeDraftAttachmentResponse(raw: unknown): DecodedDraftAttachment {
+  return decodeWithSchema('conversationDraft.attachment', draftAttachmentSchema, raw)
+}
+
+export function decodeUpdateDraftAttachmentSettingsResponse(raw: unknown): DecodedDraftAttachment {
+  return decodeWithSchema('conversationDraft.updateAttachmentSettings', draftAttachmentSchema, raw)
+}
+
+export function decodeCommitDraftToUserMessageResponse(raw: unknown): DecodedCommitDraftToUserMessageResult {
+  return decodeWithSchema('conversationDraft.commitToUserMessage', commitDraftToUserMessageResultSchema, raw)
+}
+
+export function decodeAttachDraftToMessageResponse(raw: unknown): DecodedAttachDraftToMessageResult {
+  return decodeWithSchema('conversationDraft.attachToMessage', attachDraftToMessageResultSchema, raw)
+}
+
+export function decodeFileIngestionResultResponse(method: string, raw: unknown): DecodedFileIngestionResult {
+  return decodeWithSchema(method, fileIngestionResultSchema, raw)
+}
+
+export function decodePreviewPayloadResponse(method: string, raw: unknown): DecodedPreviewPayload {
+  return decodeWithSchema(method, previewPayloadSchema, raw)
+}
+
+export function decodeBuildCurrentSendPlanResponse(raw: unknown): DecodedBuildCurrentSendPlanResult {
+  return decodeWithSchema('sendPlan.buildCurrent', buildCurrentSendPlanResultSchema, raw)
+}
+
+export function decodeAssetAttachmentOwnershipResponse(raw: unknown): DecodedAssetAttachmentOwnership {
+  return decodeWithSchema('messageAttachment.getAssetOwnership', assetAttachmentOwnershipSchema, raw)
+}
+
+export function decodeAttachmentCandidateSnapshotResponse(raw: unknown): DecodedAttachmentCandidateSnapshot {
+  return decodeWithSchema('messageAttachment.getCandidateSnapshot', attachmentCandidateSnapshotSchema, raw)
+}
+
+export function decodeRemoveDraftAttachmentResponse(raw: unknown) {
+  return decodeWithSchema('conversationDraft.removeAttachment', z.object({
+    ok: z.literal(true),
+    removed: z.boolean(),
+    ownership: assetAttachmentOwnershipSchema,
+  }), raw)
+}
+
+export function decodeDetachMessageAttachmentResponse(raw: unknown) {
+  return decodeWithSchema('messageAttachment.detach', z.object({
+    ok: z.literal(true),
+    detached: z.boolean(),
+    ownership: assetAttachmentOwnershipSchema,
+  }), raw)
+}
+
+export function decodeFileAssetSoftDeleteResponse(raw: unknown) {
+  return decodeWithSchema('fileAsset.softDelete', fileAssetSoftDeleteSchema, raw)
+}
+
+export function decodeFileAssetPhysicalCleanupPlanResponse(raw: unknown) {
+  return decodeWithSchema('fileAsset.planPhysicalCleanup', fileAssetPhysicalCleanupPlanSchema, raw)
+}
+
 export function decodeAppendReasoningDetailSegmentsResponse(raw: unknown) {
   return decodeWithSchema('message.appendReasoningDetailSegments', appendReasoningDetailSegmentsResultSchema, raw)
 }
@@ -450,6 +1122,14 @@ export function decodeBranchRetryReplaceQuestionResponse(raw: unknown): DecodedF
   }
 }
 
+export function decodeBranchTruncateFromQuestionResponse(raw: unknown): DecodedTruncateBranchFromQuestionResult {
+  const row = decodeWithSchema('branch.truncateFromQuestion', truncateBranchFromQuestionResultSchema, raw)
+  return {
+    headMessageId: row.headMessageId ?? null,
+    fallbackQuestionId: row.fallbackQuestionId ?? null,
+  }
+}
+
 export function decodeSearchQueryResponse(raw: unknown): DecodedSearchHit[] {
   const rows = decodeWithSchema('search.query', z.array(searchHitSchema), raw)
   return rows.map((row) => ({
@@ -489,6 +1169,18 @@ export function decodeImageGenerationDefaultResponse(raw: unknown): unknown | nu
 
 export function decodeUserMessageRenderDefaultResponse(raw: unknown): boolean | null {
   return decodeWithSchema('settings.getUserMessageRenderDefault', userMessageRenderDefaultSchema, raw).value
+}
+
+export function decodeChatReasoningDisplayModeResponse(raw: unknown): 'inline' | 'rail' {
+  return decodeWithSchema('settings.getChatReasoningDisplayMode', chatReasoningDisplayModeSchema, raw).value
+}
+
+export function decodeChatDraftResponse(raw: unknown): string | null {
+  return decodeWithSchema('settings.getChatDraft', chatDraftSchema, raw).value
+}
+
+export function decodeDeletedCountResponse(method: string, raw: unknown): number {
+  return decodeWithSchema(method, deletedCountSchema, raw).deleted
 }
 
 export function decodeMessageSetStatusResponse(raw: unknown): boolean {
