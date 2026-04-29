@@ -9,6 +9,11 @@ import { ConvoRepo } from '../repo/convoRepo'
 import { MessageRepo } from '../repo/messageRepo'
 import { MessageErrorRepo } from '../repo/messageErrorRepo'
 import { MessageAssetRepo } from '../repo/messageAssetRepo'
+import { FileAssetRepo } from '../repo/fileAssetRepo'
+import { FileDerivativeRepo } from '../repo/fileDerivativeRepo'
+import { DerivativeJobRepo } from '../repo/derivativeJobRepo'
+import { MessageAttachmentRepo } from '../repo/messageAttachmentRepo'
+import { ConversationDraftRepo } from '../repo/conversationDraftRepo'
 import { BranchRepo } from '../repo/branchRepo'
 import { ContextRepo } from '../repo/contextRepo'
 import { SearchRepo } from '../repo/searchRepo'
@@ -20,6 +25,11 @@ import { ReasoningModelIndexRepo } from '../repo/reasoningModelIndexRepo'
 import { SettingsRepo } from '../repo/settingsRepo'
 import { ensureBranchingSchema } from '../migrations/ensureBranchingSchema'
 import { ensureSearchSchema } from '../migrations/ensureSearchSchema'
+import { ensureFilePipelineSchema } from '../migrations/ensureFilePipelineSchema'
+import { ConversationAttachmentService } from '../../files/conversationAttachmentService'
+import { DerivativeJobService } from '../../files/derivativeJobService'
+import { FileIngestionService } from '../../files/fileIngestionService'
+import { SendPlanService } from '../../files/sendPlanService'
 import {
   type WorkerInitConfig,
   type WorkerRequestMessage,
@@ -78,6 +88,16 @@ export class DbWorkerRuntime {
   readonly messageRepo: MessageRepo
   readonly messageErrorRepo: MessageErrorRepo
   readonly messageAssetRepo: MessageAssetRepo
+  readonly fileAssetRepo: FileAssetRepo
+  readonly fileDerivativeRepo: FileDerivativeRepo
+  readonly derivativeJobRepo: DerivativeJobRepo
+  readonly messageAttachmentRepo: MessageAttachmentRepo
+  readonly conversationDraftRepo: ConversationDraftRepo
+  readonly conversationAttachmentService: ConversationAttachmentService
+  readonly derivativeJobService: DerivativeJobService
+  readonly fileIngestionService: FileIngestionService
+  readonly sendPlanService: SendPlanService
+  readonly fileStorageRootDir: string
   readonly branchRepo: BranchRepo
   readonly contextRepo: ContextRepo
   readonly searchRepo: SearchRepo
@@ -92,6 +112,9 @@ export class DbWorkerRuntime {
   private activityThrottle = new Map<string, { timer: ReturnType<typeof setTimeout>; updatedAt: number }>()
   private activityThrottleMs = 200
 
+  // Runtime construction wires all repos and migration guards in one place.
+  // Splitting this constructor is out of scope for the file pipeline phases.
+  // eslint-disable-next-line max-lines-per-function, max-statements
   constructor(config: WorkerInitConfig) {
     console.log('[DbWorkerRuntime] 开始初始化, config:', config)
     
@@ -118,6 +141,8 @@ export class DbWorkerRuntime {
     this.ensureMessageErrorSchema()
     console.log('[DbWorkerRuntime] 确保 Message Asset Schema...')
     this.ensureMessageAssetSchema()
+    console.log('[DbWorkerRuntime] 确保 File Pipeline Schema...')
+    ensureFilePipelineSchema(this.db)
     console.log('[DbWorkerRuntime] 确保 Model Catalog Schema...')
     this.ensureModelCatalogSchema()
     console.log('[DbWorkerRuntime] 确保 Reasoning Model Index Schema...')
@@ -159,13 +184,43 @@ export class DbWorkerRuntime {
     this.messageRepo = new MessageRepo(this.db)
     this.messageErrorRepo = new MessageErrorRepo(this.db)
     this.messageAssetRepo = new MessageAssetRepo(this.db, path.join(path.dirname(config.dbPath), 'assets', 'images'))
+    this.fileStorageRootDir = path.dirname(config.dbPath)
+    this.fileAssetRepo = new FileAssetRepo(this.db)
+    this.fileDerivativeRepo = new FileDerivativeRepo(this.db)
+    this.derivativeJobRepo = new DerivativeJobRepo(this.db)
+    this.messageAttachmentRepo = new MessageAttachmentRepo(this.db)
+    this.conversationDraftRepo = new ConversationDraftRepo(this.db)
     this.branchRepo = new BranchRepo(this.db)
+    this.conversationAttachmentService = new ConversationAttachmentService({
+      db: this.db,
+      fileAssetRepo: this.fileAssetRepo,
+      messageRepo: this.messageRepo,
+      messageAttachmentRepo: this.messageAttachmentRepo,
+      branchRepo: this.branchRepo,
+      draftRepo: this.conversationDraftRepo,
+    })
+    this.sendPlanService = new SendPlanService({
+      conversationAttachmentService: this.conversationAttachmentService,
+      fileAssetRepo: this.fileAssetRepo,
+    })
+    this.fileIngestionService = new FileIngestionService({
+      fileAssetRepo: this.fileAssetRepo,
+      storageRootDir: this.fileStorageRootDir,
+    })
     this.contextRepo = new ContextRepo(this.db, this.branchRepo)
     this.searchRepo = new SearchRepo(this.db)
     this.usageRepo = new UsageRepo(this.db)
     this.dashboardPrefRepo = new DashboardPrefRepo(this.db)
     this.modelPreferencesRepo = new ModelPreferencesRepo(this.db)
     this.modelCatalogRepo = new ModelCatalogRepo(this.db)
+    this.derivativeJobService = new DerivativeJobService({
+      db: this.db,
+      fileAssetRepo: this.fileAssetRepo,
+      fileDerivativeRepo: this.fileDerivativeRepo,
+      derivativeJobRepo: this.derivativeJobRepo,
+      modelCatalogRepo: this.modelCatalogRepo,
+      storageRootDir: this.fileStorageRootDir,
+    })
     this.reasoningModelIndexRepo = new ReasoningModelIndexRepo(this.db)
     this.settingsRepo = new SettingsRepo(this.db)
     this.handlers = createWorkerHandlerContainer(this).handlers
@@ -677,6 +732,17 @@ export class DbWorkerRuntime {
       'CREATE UNIQUE INDEX IF NOT EXISTS idx_asset_hash ON asset(hash)',
       'CREATE INDEX IF NOT EXISTS idx_message_asset_message ON message_asset(message_id, ordinal)',
       'CREATE INDEX IF NOT EXISTS idx_message_asset_asset ON message_asset(asset_id)',
+      // file pipeline 表
+      'CREATE INDEX IF NOT EXISTS idx_file_assets_sha256 ON file_assets(sha256)',
+      'CREATE INDEX IF NOT EXISTS idx_file_assets_deleted ON file_assets(deleted_at)',
+      'CREATE INDEX IF NOT EXISTS idx_file_derivatives_parent ON file_derivatives(parent_asset_id, created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_derivative_jobs_asset_created ON derivative_jobs(asset_id, created_at DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_derivative_jobs_status_updated ON derivative_jobs(status, updated_at DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_message_attachments_message ON message_attachments(message_id, created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_message_attachments_asset ON message_attachments(asset_id, created_at)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_message_attachments_message_asset ON message_attachments(message_id, asset_id)',
+      'CREATE INDEX IF NOT EXISTS idx_draft_attachments_conversation_order ON draft_attachments(conversation_id, attachment_order)',
+      'CREATE INDEX IF NOT EXISTS idx_draft_attachments_asset ON draft_attachments(asset_id)',
       // tag 表
       'CREATE INDEX IF NOT EXISTS idx_tag_name ON tag(name)',
       // usage_log 表

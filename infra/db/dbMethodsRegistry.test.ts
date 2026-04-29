@@ -29,8 +29,13 @@ describe('dbMethodsRegistry', () => {
     const actual = [...DB_WORKER_METHODS].sort()
     expect(actual).toEqual(expected)
 
+    expect(DB_WORKER_METHOD_SET.has('sendPlan.prepareOpenRouterReplayFromMessage')).toBe(true)
     expect(DB_WORKER_METHOD_SET.has('health.stats')).toBe(false)
     expect(DB_WORKER_METHOD_SET.has('health.ping')).toBe(true)
+  })
+
+  it('keeps replay preparation method available to renderer callers', () => {
+    expect(DB_RENDERER_METHOD_SET.has('sendPlan.prepareOpenRouterReplayFromMessage')).toBe(true)
   })
 
   it('reports missing and extra methods with readable error', () => {

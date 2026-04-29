@@ -4,6 +4,7 @@ import type { DbHandler } from '../types'
 import { registerProjectHandlers } from './handlers/projectHandlers'
 import { registerConvoMessageHandlers } from './handlers/convoMessageHandlers'
 import { registerBranchContextHandlers } from './handlers/branchContextHandlers'
+import { registerFilePipelineHandlers } from './handlers/filePipelineHandlers'
 import { registerSearchMaintenanceHandlers } from './handlers/searchMaintenanceHandlers'
 import { registerUsagePrefsSettingsHandlers } from './handlers/usagePrefsSettingsHandlers'
 import type { DbWorkerRuntime } from './runtime'
@@ -20,6 +21,7 @@ export function createWorkerHandlerContainer(runtime: DbWorkerRuntime): WorkerHa
 
   registerProjectHandlers(register, runtime)
   registerConvoMessageHandlers(register, runtime)
+  registerFilePipelineHandlers(register, runtime)
   registerBranchContextHandlers(register, runtime)
   registerSearchMaintenanceHandlers(register, runtime)
   registerUsagePrefsSettingsHandlers(register, runtime)

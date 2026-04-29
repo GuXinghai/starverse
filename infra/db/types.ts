@@ -1,4 +1,19 @@
 import type { DbMethod } from './dbMethodsRegistry'
+import type {
+  AiPayloadKind,
+  AssetKind,
+  DerivedKind,
+  DraftAttachmentSendModePreference,
+  DraftAttachmentUrlRetentionPreference,
+  ProcessingStatus,
+  SourceKind,
+  TaskFamily,
+} from '../../src/shared/files/fileTypes'
+import type {
+  SendPlan,
+  SendPlanModelDescriptor,
+  SendPlanProviderContext,
+} from '../../src/shared/files/sendPlanTypes'
 
 export type JsonObject = Record<string, unknown>
 
@@ -226,6 +241,538 @@ export type MessageAssetRecord = Readonly<{
   assetUrl: string
 }>
 
+// ========== File Pipeline Types ==========
+
+export type FileStorageBackend = 'local_fs' | 'remote_url'
+export type FileIngestStatus =
+  | 'pending'
+  | 'probing'
+  | 'materializing'
+  | 'registered'
+  | 'stored'
+  | 'probe_failed'
+  | 'materialization_failed'
+  | 'failed'
+  | 'deleted'
+export type FilePreviewStatus = 'not_requested' | 'pending' | 'ready' | 'failed'
+export type FileDerivativeStatus = 'pending' | 'ready' | 'failed' | 'deleted'
+export type DerivativeJobStatus = 'pending' | 'running' | 'ready' | 'failed' | 'cancelled'
+
+export type DerivativeErrorCode =
+  | 'derivative_asset_missing'
+  | 'derivative_asset_not_supported'
+  | 'derivative_kind_not_implemented'
+  | 'conversion_not_implemented'
+  | 'derivative_input_missing'
+  | 'derivative_local_file_missing'
+  | 'derivative_local_file_read_failed'
+  | 'derivative_output_write_failed'
+  | 'derivative_task_timeout'
+  | 'derivative_task_cancelled'
+  | 'preview_asset_missing'
+  | 'preview_asset_not_image'
+  | 'preview_source_not_supported'
+  | 'preview_local_file_missing'
+  | 'preview_local_file_read_failed'
+  | 'preview_generation_failed'
+  | 'preview_output_write_failed'
+  | 'preview_output_invalid'
+  | 'extracted_text_empty'
+  | 'pdf_annotation_missing'
+  | 'pdf_annotation_parse_failed'
+  | 'transcript_model_missing'
+  | 'transcript_model_not_audio_capable'
+  | 'transcript_request_failed'
+  | 'audio_url_not_supported_for_transcript'
+  | 'embedding_model_missing'
+  | 'embedding_input_empty'
+  | 'embedding_request_failed'
+  | 'embedding_response_invalid'
+  | 'embedding_output_write_failed'
+
+export type FileAssetRecord = Readonly<{
+  id: string
+  sha256: string | null
+  filename: string
+  extension: string | null
+  mime: string | null
+  sizeBytes: number
+  assetKind: AssetKind
+  sourceKind: SourceKind
+  storageBackend: FileStorageBackend
+  storageUri: string
+  ingestStatus: FileIngestStatus
+  previewStatus: FilePreviewStatus
+  sourceMetaJson: JsonObject | null
+  createdAt: number
+  updatedAt: number
+  deletedAt: number | null
+}>
+
+export type CreateFileAssetInput = Readonly<{
+  id?: string
+  sha256?: string | null
+  filename: string
+  extension?: string | null
+  mime?: string | null
+  sizeBytes: number
+  assetKind: AssetKind
+  sourceKind: SourceKind
+  storageBackend?: FileStorageBackend
+  storageUri: string
+  ingestStatus?: FileIngestStatus
+  previewStatus?: FilePreviewStatus
+  sourceMetaJson?: JsonObject | null
+  createdAt?: number
+  updatedAt?: number
+}>
+
+export type ListFileAssetsByIdsInput = Readonly<{
+  ids: string[]
+}>
+
+export type SoftDeleteFileAssetInput = Readonly<{
+  id: string
+  deletedAt?: number
+}>
+
+export type FileAssetPhysicalCleanupPlan = Readonly<{
+  ok: true
+  assetId: string
+  storageUris: string[]
+  physicalDeletePerformed: false
+}>
+
+export type FileDerivativeRecord = Readonly<{
+  id: string
+  parentAssetId: string
+  derivedKind: DerivedKind
+  mime: string | null
+  storageUri: string
+  generator: string
+  status: FileDerivativeStatus
+  metaJson: JsonObject | null
+  createdAt: number
+  updatedAt: number
+  deletedAt: number | null
+}>
+
+export type CreateFileDerivativeInput = Readonly<{
+  id?: string
+  parentAssetId: string
+  derivedKind: DerivedKind
+  mime?: string | null
+  storageUri: string
+  generator: string
+  status?: FileDerivativeStatus
+  metaJson?: JsonObject | null
+  createdAt?: number
+  updatedAt?: number
+}>
+
+export type ListFileDerivativesByParentAssetIdInput = Readonly<{
+  parentAssetId: string
+}>
+
+export type GetFileDerivativeByIdInput = Readonly<{
+  id: string
+}>
+
+export type GetLatestReadyFileDerivativeInput = Readonly<{
+  parentAssetId: string
+  derivedKind: DerivedKind
+}>
+
+export type UpdateFileDerivativeInput = Readonly<{
+  id: string
+  mime?: string | null
+  storageUri?: string
+  generator?: string
+  status?: FileDerivativeStatus
+  metaJson?: JsonObject | null
+  updatedAt?: number
+  deletedAt?: number | null
+}>
+
+export type DerivativeJobRecord = Readonly<{
+  id: string
+  assetId: string
+  derivativeKind: DerivedKind
+  taskFamily: TaskFamily
+  status: DerivativeJobStatus
+  generator: string
+  provider: string | null
+  modelId: string | null
+  inputSnapshotJson: JsonObject | null
+  configJson: JsonObject | null
+  outputDerivativeId: string | null
+  errorCode: DerivativeErrorCode | null
+  errorMessage: string | null
+  attemptCount: number
+  createdAt: number
+  updatedAt: number
+  startedAt: number | null
+  finishedAt: number | null
+}>
+
+export type CreateDerivativeJobInput = Readonly<{
+  id?: string
+  assetId: string
+  derivativeKind: DerivedKind
+  taskFamily: TaskFamily
+  generator: string
+  provider?: string | null
+  modelId?: string | null
+  inputSnapshotJson?: JsonObject | null
+  configJson?: JsonObject | null
+  status?: DerivativeJobStatus
+  attemptCount?: number
+  createdAt?: number
+  updatedAt?: number
+  startedAt?: number | null
+  finishedAt?: number | null
+}>
+
+export type GetDerivativeJobByIdInput = Readonly<{
+  id: string
+}>
+
+export type ListDerivativeJobsByAssetIdInput = Readonly<{
+  assetId: string
+}>
+
+export type RunDerivativeJobInput = Readonly<{
+  jobId: string
+  apiKey?: string | null
+  baseUrl?: string | null
+  timeoutMs?: number | null
+}>
+
+export type RetryDerivativeJobInput = Readonly<{
+  jobId: string
+  apiKey?: string | null
+  baseUrl?: string | null
+  timeoutMs?: number | null
+}>
+
+export type CancelDerivativeJobInput = Readonly<{
+  jobId: string
+  reason?: string | null
+}>
+
+export type CapturePdfAnnotationDerivativeInput = Readonly<{
+  messageId: string
+  assetIds: string[]
+  generator?: string
+}>
+
+export type MessageAttachmentRecord = Readonly<{
+  id: string
+  messageId: string
+  assetId: string
+  aiPayloadKind: AiPayloadKind
+  processingStatus: ProcessingStatus
+  includeInNextRequest: boolean
+  excludedReason: string | null
+  createdAt: number
+  updatedAt: number
+}>
+
+export type CreateMessageAttachmentInput = Readonly<{
+  id?: string
+  messageId: string
+  assetId: string
+  aiPayloadKind: AiPayloadKind
+  processingStatus: ProcessingStatus
+  includeInNextRequest?: boolean
+  excludedReason?: string | null
+  createdAt?: number
+  updatedAt?: number
+}>
+
+export type ListMessageAttachmentsByMessageIdInput = Readonly<{
+  messageId: string
+}>
+
+export type ListMessageAttachmentsByAssetIdInput = Readonly<{
+  assetId: string
+}>
+
+export type DraftMode = 'compose' | 'edit'
+export type AttachmentOwnerKind = 'draft' | 'message' | 'detached' | 'abandoned'
+export type AttachmentLifecycleStatus = 'active' | 'detached' | 'abandoned' | 'soft_deleted'
+
+export type DraftAttachmentRecord = Readonly<{
+  id: string
+  conversationId: string
+  assetId: string
+  attachmentOrder: number
+  aiPayloadKind: AiPayloadKind
+  processingStatus: ProcessingStatus
+  includeInNextRequest: boolean
+  excludedReason: string | null
+  preferredSendMode: DraftAttachmentSendModePreference | null
+  urlRetentionMode: DraftAttachmentUrlRetentionPreference | null
+  createdAt: number
+  updatedAt: number
+}>
+
+export type ConversationDraftRecord = Readonly<{
+  conversationId: string
+  draftText: string
+  draftMode: DraftMode
+  editingSourceMessageId: string | null
+  attachedAssetIds: string[]
+  attachments: DraftAttachmentRecord[]
+  updatedAt: number
+}>
+
+export type RestoreConversationDraftInput = Readonly<{
+  conversationId: string
+}>
+
+export type UpdateConversationDraftTextInput = Readonly<{
+  conversationId: string
+  draftText: string
+  draftMode?: DraftMode
+  editingSourceMessageId?: string | null
+  updatedAt?: number
+}>
+
+export type AddDraftAttachmentInput = Readonly<{
+  conversationId: string
+  assetId: string
+  attachmentOrder?: number
+  includeInNextRequest?: boolean
+  excludedReason?: string | null
+  preferredSendMode?: DraftAttachmentSendModePreference | null
+  urlRetentionMode?: DraftAttachmentUrlRetentionPreference | null
+  createdAt?: number
+  updatedAt?: number
+}>
+
+export type RemoveDraftAttachmentInput = Readonly<{
+  conversationId: string
+  assetId: string
+  updatedAt?: number
+}>
+
+export type UpdateDraftAttachmentSettingsInput = Readonly<{
+  conversationId: string
+  assetId: string
+  preferredSendMode?: DraftAttachmentSendModePreference | null
+  urlRetentionMode?: DraftAttachmentUrlRetentionPreference | null
+  updatedAt?: number
+}>
+
+export type CommitDraftToUserMessageInput = Readonly<{
+  conversationId: string
+  body?: string
+  createdAt?: number
+  meta?: JsonObject | null
+  sentAssetIds?: string[]
+}>
+
+export type CommitDraftToUserMessageResult = Readonly<{
+  message: MessageRecord
+  attachments: MessageAttachmentRecord[]
+  draft: ConversationDraftRecord
+}>
+
+export type AttachDraftToMessageInput = Readonly<{
+  conversationId: string
+  messageId: string
+  updatedAt?: number
+  sentAssetIds?: string[]
+}>
+
+export type AttachDraftToMessageResult = Readonly<{
+  messageId: string
+  attachments: MessageAttachmentRecord[]
+  draft: ConversationDraftRecord
+}>
+
+export type CloneMessageAttachmentsToDraftInput = Readonly<{
+  conversationId: string
+  sourceMessageId: string
+  updatedAt?: number
+}>
+
+export type DetachMessageAttachmentInput = Readonly<{
+  messageId: string
+  assetId: string
+  reason?: string | null
+  updatedAt?: number
+}>
+
+export type MarkAttachmentAbandonedInput = Readonly<{
+  assetId: string
+  reason?: string | null
+  updatedAt?: number
+}>
+
+export type GetAssetAttachmentOwnershipInput = Readonly<{
+  assetId: string
+}>
+
+export type AssetAttachmentOwnership = Readonly<{
+  assetId: string
+  ownerKind: AttachmentOwnerKind
+  lifecycleStatus: AttachmentLifecycleStatus
+  draftConversationIds: string[]
+  messageIds: string[]
+  reason: string | null
+  updatedAt: number | null
+}>
+
+export type AttachmentSnapshotItem = Readonly<{
+  attachmentId: string
+  messageId: string
+  assetId: string
+  aiPayloadKind: AiPayloadKind
+  processingStatus: ProcessingStatus
+  included: boolean
+  excludedReason: string | null
+  sourceKind: SourceKind | null
+  storageBackend: FileStorageBackend | null
+}>
+
+export type AttachmentCandidateSnapshot = Readonly<{
+  scope: 'messages' | 'branch'
+  messageIds: string[]
+  included: AttachmentSnapshotItem[]
+  excluded: AttachmentSnapshotItem[]
+  items: AttachmentSnapshotItem[]
+}>
+
+export type GetAttachmentCandidateSnapshotInput = Readonly<{
+  messageIds?: string[]
+  branchId?: string
+}>
+
+export type BuildCurrentSendPlanInput = Readonly<{
+  conversationId: string
+  draftText?: string
+  historyScope?: GetAttachmentCandidateSnapshotInput | null
+  model: SendPlanModelDescriptor
+  providerContext: SendPlanProviderContext
+}>
+
+export type BuildCurrentSendPlanResult = Readonly<{
+  sendPlan: SendPlan
+  draftText: string
+  assets: FileAssetRecord[]
+  storageRootDir: string
+}>
+
+export type PrepareOpenRouterReplayFromMessageInput = Readonly<{
+  branchId: string
+  userMessageId: string
+  model: SendPlanModelDescriptor
+  providerContext: SendPlanProviderContext
+  replayMode: 'current'
+  editedUserText?: string
+  attachmentDecisions?: ReadonlyArray<Readonly<{
+    attachmentId: string
+    source?: 'history' | 'draft' | 'edit_restored'
+    decision: 'exclude' | 'remove'
+    reasonCode?: string
+  }>>
+}>
+
+export type PrepareOpenRouterReplayFromMessageResult = Readonly<{
+  status: 'sendable' | 'blocked' | 'needs_confirmation'
+  currentUserContentBlocks: unknown[]
+  sentAssetIds: string[]
+  includedAttachments: SendPlan['includedAttachments']
+  excludedAttachments: SendPlan['excludedAttachments']
+  blockingReasons: SendPlan['blockingReasons']
+  diagnostics: Record<string, unknown>
+  modelCapabilitySnapshot: Record<string, unknown>
+  manifestDraft: Record<string, unknown>
+}>
+
+export type UrlRetentionMode = 'link_only' | 'link_and_file'
+export type MaterializationStatus = 'not_requested' | 'materializing' | 'stored' | 'materialization_failed'
+export type FileImportStatus =
+  | 'pending'
+  | 'probing'
+  | 'materializing'
+  | 'ready'
+  | 'failed'
+  | 'probe_failed'
+  | 'materialization_failed'
+export type UrlProbeStatus = 'accessible' | 'probe_failed' | 'rejected'
+
+export type FileIngestionWarning = Readonly<{
+  code: string
+  message: string
+}>
+
+export type SendEligibilityHints = Readonly<{
+  canUseUrlRef: boolean
+  canUseLocalFile: boolean
+  canUseInlinePayload: boolean
+  urlReferenceMayStillBeUsable: boolean
+  notes: string[]
+}>
+
+export type FileIngestionResult = Readonly<{
+  success: boolean
+  sourceKind: SourceKind
+  assetId: string | null
+  normalizedExtension: string | null
+  assetKind: AssetKind
+  aiPayloadKind: AiPayloadKind
+  processingStatus: ProcessingStatus
+  isNativeSupportedForMvp: boolean
+  isConvertibleCandidate: boolean
+  importStatus: FileImportStatus
+  sendEligibilityHints: SendEligibilityHints
+  warnings: FileIngestionWarning[]
+  failureReasonCode: string | null
+  retentionMode?: UrlRetentionMode
+  probeStatus?: UrlProbeStatus
+  materializationStatus?: MaterializationStatus
+  originalUrl?: string
+  resolvedUrl?: string
+}>
+
+export type IngestLocalFileInput = Readonly<{
+  filePath: string
+  mimeType?: string | null
+  sourceKind?: Extract<SourceKind, 'local_upload' | 'generated'>
+}>
+
+export type IngestUrlInput = Readonly<{
+  url: string
+  retentionMode: UrlRetentionMode
+}>
+
+export type PreviewImagePayload = Readonly<{
+  assetId: string
+  status: 'ready' | 'missing' | 'failed'
+  derivativeId: string | null
+  mime: string | null
+  dataUrl: string | null
+  width: number | null
+  height: number | null
+  bytes: number | null
+  reused: boolean
+  errorCode: string | null
+  errorMessage: string | null
+}>
+
+export type PreviewGetLatestInput = Readonly<{
+  assetId: string
+}>
+
+export type PreviewEnsureInput = Readonly<{
+  assetId: string
+  generator?: string
+  maxEdge?: number
+}>
+
 // ========== Branching Types (Phase 4+) ==========
 
 export type BranchRecord = {
@@ -326,6 +873,8 @@ export type BeginTurnInput = {
   branchId: string
   userBody: string
   userMeta?: JsonObject | null
+  attachConversationDraft?: boolean
+  sentAssetIds?: string[]
 }
 
 export type BeginTurnResult = {
@@ -393,6 +942,17 @@ export type RetryReplaceQuestionInput = {
 }
 
 export type RetryReplaceQuestionResult = ForkQuestionResult
+
+export type TruncateBranchFromQuestionInput = {
+  branchId: string
+  questionId: string
+}
+
+export type TruncateBranchFromQuestionResult = Readonly<{
+  ok: true
+  headMessageId: string | null
+  fallbackQuestionId: string | null
+}>
 
 export type SetBranchFilterInput = {
   branchId: string
