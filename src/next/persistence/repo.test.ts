@@ -4,6 +4,7 @@ import { NextRunSnapshotRepo, toRunSnapshot } from './repo'
 import { applyEvents, createInitialState, startGeneration } from '../state/reducer'
 import { decodeOpenRouterSSE } from '../openrouter/sse/decoder'
 import { mapChunkToEvents } from '../openrouter/mapChunkToEvents'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '../openrouter/openRouterTestModels'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -66,7 +67,7 @@ async function replayIntoState() {
   const started = startGeneration(createInitialState(), {
     runId,
     requestId: 'r1',
-    model: 'openrouter/auto',
+    model: DEFAULT_OPENROUTER_TEST_MODEL,
     assistantMessageId: 'assistant_1',
   })
 
@@ -111,3 +112,4 @@ describe('NextRunSnapshotRepo', () => {
     expect(loaded).toEqual(snapshot)
   })
 })
+

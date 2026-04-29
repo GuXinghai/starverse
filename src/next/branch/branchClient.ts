@@ -6,6 +6,7 @@ import {
   decodeBranchSetHeadResponse,
   decodeBranchSwitchCandidateResponse,
   decodeBranchSwitchQuestionCandidateResponse,
+  decodeBranchTruncateFromQuestionResponse,
 } from '@/next/ipc/contracts/dbBridgeContracts'
 
 export type BranchSummary = Readonly<{
@@ -83,6 +84,11 @@ export type ForkQuestionResult = Readonly<{
   newQuestionSeq: number
   assistantId: string
   assistantSeq: number
+}>
+
+export type TruncateBranchFromQuestionResult = Readonly<{
+  headMessageId: string | null
+  fallbackQuestionId: string | null
 }>
 
 type DbBridge = Readonly<{
@@ -193,14 +199,24 @@ export async function deleteBranch(branchId: string): Promise<boolean> {
   return !!(result && typeof result === 'object' && 'ok' in result ? (result as any).ok : true)
 }
 
-export async function beginTurn(branchId: string, userBody: string, params?: Readonly<{ userMeta?: unknown }>): Promise<BeginTurnResult> {
+export async function beginTurn(
+  branchId: string,
+  userBody: string,
+  params?: Readonly<{ userMeta?: unknown; attachConversationDraft?: boolean; sentAssetIds?: string[] }>
+): Promise<BeginTurnResult> {
   const bridge = requireDbBridge()
   const bid = String(branchId ?? '').trim()
   const body = typeof userBody === 'string' ? userBody : String(userBody ?? '')
   if (!bid) throw new Error('Missing branchId')
   if (!body.trim()) throw new Error('Missing userBody')
 
-  const raw = await bridge.invoke('branch.beginTurn', { branchId: bid, userBody: body, ...(params?.userMeta !== undefined ? { userMeta: params.userMeta } : {}) })
+  const raw = await bridge.invoke('branch.beginTurn', {
+    branchId: bid,
+    userBody: body,
+    ...(params?.userMeta !== undefined ? { userMeta: params.userMeta } : {}),
+    ...(params?.attachConversationDraft === true ? { attachConversationDraft: true } : {}),
+    ...(params?.sentAssetIds && params.sentAssetIds.length > 0 ? { sentAssetIds: params.sentAssetIds } : {}),
+  })
   const decoded = decodeBranchBeginTurnResponse(raw)
   return {
     convoId: decoded.convoId,
@@ -290,6 +306,15 @@ export async function retryReplaceQuestion(branchId: string, oldQuestionId: stri
     assistantId: decoded.assistantId,
     assistantSeq: decoded.assistantSeq,
   }
+}
+
+export async function truncateBranchFromQuestion(branchId: string, questionId: string): Promise<TruncateBranchFromQuestionResult> {
+  const bridge = requireDbBridge()
+  const bid = String(branchId ?? '').trim()
+  const qid = String(questionId ?? '').trim()
+  if (!bid || !qid) throw new Error('Missing branchId/questionId')
+  const raw = await bridge.invoke('branch.truncateFromQuestion', { branchId: bid, questionId: qid })
+  return decodeBranchTruncateFromQuestionResponse(raw)
 }
 
 export async function setBranchHead(branchId: string, headMessageId: string | null): Promise<boolean> {

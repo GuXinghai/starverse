@@ -17,6 +17,7 @@ import {
   RegenerateFromQuestionSchema,
   ForkQuestionSchema,
   RetryReplaceQuestionSchema,
+  TruncateBranchFromQuestionSchema,
   SetBranchHeadSchema,
   SetBranchChoiceSchema,
   SetBranchAnswerHideSchema,
@@ -115,6 +116,14 @@ export function registerBranchContextHandlers(register: RegisterHandler, runtime
         const questionDoc = rt.loadMessageSearchDoc(question.id)
         if (questionDoc) {
           rt.searchRepo.upsertDoc(questionDoc)
+        }
+
+        if (input.attachConversationDraft === true) {
+          rt.conversationAttachmentService.attachDraftToMessage({
+            conversationId: latest.convoId,
+            messageId: question.id,
+            ...(input.sentAssetIds && input.sentAssetIds.length > 0 ? { sentAssetIds: input.sentAssetIds } : {}),
+          })
         }
 
         const assistant = rt.messageRepo.append({
@@ -479,6 +488,11 @@ export function registerBranchContextHandlers(register: RegisterHandler, runtime
       })
 
       return txn()
+    })
+
+  register('branch.truncateFromQuestion', (raw) => {
+      const input = TruncateBranchFromQuestionSchema.parse(raw)
+      return rt.branchRepo.truncateFromQuestion(input.branchId, input.questionId)
     })
 
   register('branch.setHead', (raw) => {

@@ -1,5 +1,6 @@
 import BetterSqlite3 from 'better-sqlite3'
 import {
+  SETTINGS_KEY_CHAT_REASONING_DISPLAY_MODE,
   SETTINGS_KEY_IMAGE_GENERATION_DEFAULT,
   SETTINGS_KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS,
   SETTINGS_KEY_REASONING_PREFS,
@@ -13,6 +14,8 @@ type SqlDatabase = BetterSqlite3.Database
 export class SettingsRepo {
   private getStmt: BetterSqlite3.Statement
   private upsertStmt: BetterSqlite3.Statement
+  private deleteStmt: BetterSqlite3.Statement
+  private deleteByPrefixStmt: BetterSqlite3.Statement
 
   constructor(private db: SqlDatabase) {
     this.getStmt = this.db.prepare(`
@@ -28,6 +31,16 @@ export class SettingsRepo {
       ON CONFLICT(key) DO UPDATE SET
         value_json = excluded.value_json,
         updated_at_ms = excluded.updated_at_ms
+    `)
+
+    this.deleteStmt = this.db.prepare(`
+      DELETE FROM settings_kv
+      WHERE key = @key
+    `)
+
+    this.deleteByPrefixStmt = this.db.prepare(`
+      DELETE FROM settings_kv
+      WHERE key LIKE @prefixLike
     `)
   }
 
@@ -48,6 +61,18 @@ export class SettingsRepo {
       valueJson: JSON.stringify(value),
       nowMs,
     })
+  }
+
+  private deleteKey(key: string): number {
+    const result = this.deleteStmt.run({ key })
+    return Number(result.changes ?? 0)
+  }
+
+  private deleteKeysByPrefix(prefix: string): number {
+    const normalized = String(prefix ?? '')
+    if (!normalized) return 0
+    const result = this.deleteByPrefixStmt.run({ prefixLike: `${normalized}%` })
+    return Number(result.changes ?? 0)
   }
 
   getOpenRouterProviderRequireParameters(): boolean {
@@ -105,5 +130,41 @@ export class SettingsRepo {
   setUserMessageRenderDefault(value: boolean): void {
     if (typeof value !== 'boolean') throw new Error('value must be boolean')
     this.writeJson(SETTINGS_KEY_USER_MESSAGE_RENDER_DEFAULT, value)
+  }
+
+  getChatReasoningDisplayMode(): 'inline' | 'rail' {
+    const value = this.readJson(SETTINGS_KEY_CHAT_REASONING_DISPLAY_MODE)
+    return value === 'rail' ? 'rail' : 'inline'
+  }
+
+  setChatReasoningDisplayMode(value: 'inline' | 'rail'): void {
+    if (value !== 'inline' && value !== 'rail') throw new Error('value must be inline or rail')
+    this.writeJson(SETTINGS_KEY_CHAT_REASONING_DISPLAY_MODE, value)
+  }
+
+  getChatDraft(key: string): string | null {
+    const normalized = String(key ?? '').trim()
+    if (!normalized) return null
+    const value = this.readJson(normalized)
+    return typeof value === 'string' ? value : null
+  }
+
+  setChatDraft(key: string, value: string): void {
+    const normalizedKey = String(key ?? '').trim()
+    if (!normalizedKey) throw new Error('key must be non-empty')
+    const normalizedValue = typeof value === 'string' ? value : String(value ?? '')
+    this.writeJson(normalizedKey, normalizedValue)
+  }
+
+  deleteChatDraft(key: string): number {
+    const normalized = String(key ?? '').trim()
+    if (!normalized) return 0
+    return this.deleteKey(normalized)
+  }
+
+  deleteChatDraftsByPrefix(prefix: string): number {
+    const normalized = String(prefix ?? '').trim()
+    if (!normalized) return 0
+    return this.deleteKeysByPrefix(normalized)
   }
 }
