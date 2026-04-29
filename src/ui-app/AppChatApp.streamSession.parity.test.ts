@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 
 const hoisted = vi.hoisted(() => {
   const fixtureErrorEnvelope: ErrorEnvelope = {
@@ -44,7 +45,7 @@ vi.mock('@/next/state/reducer', async () => {
 
 vi.mock('@/next/live/openRouterLiveStream', () => {
   const fixtureEvents = [
-    { type: 'MetaDelta', meta: { id: 'gen_fixture', model: 'openrouter/auto' } },
+    { type: 'MetaDelta', meta: { id: 'gen_fixture', model: DEFAULT_OPENROUTER_TEST_MODEL } },
     { type: 'MessageDeltaText', messageId: '__assistant__', choiceIndex: 0, text: 'he' },
     { type: 'MessageAppendContentBlock', messageId: '__assistant__', choiceIndex: 0, block: { type: 'text', text: 'llo' } },
     {
@@ -170,7 +171,63 @@ function createDbBridge(mode: ScenarioMode) {
     if (method === 'project.countConversations') return { count: 0 }
     if (method === 'settings.getReasoningPrefs') return { value: null }
     if (method === 'settings.getOpenRouterProviderRequireParameters') return { value: false }
-    if (method === 'modelCatalog.list') return []
+    if (method === 'modelCatalog.list') {
+      return [
+        {
+          modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+          name: 'Test Default',
+          vendor: 'deepseek',
+          lastSeenSnapshotId: 'snap_default',
+          isHidden: 0,
+          supportedParametersJson: '[]',
+        },
+      ]
+    }
+    if (method === 'modelCatalog.getModelDetail') {
+      const modelId = String(params?.modelId ?? '')
+      if (modelId === DEFAULT_OPENROUTER_TEST_MODEL) {
+        return {
+          providerKey: 'openrouter',
+          modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+          modelKey: `openrouter::${DEFAULT_OPENROUTER_TEST_MODEL}`,
+          canonicalSlug: DEFAULT_OPENROUTER_TEST_MODEL,
+          displayName: 'Test Default',
+          description: null,
+          vendor: 'deepseek',
+          family: null,
+          status: 'active',
+          visibility: 'visible',
+          contextLength: 128000,
+          maxOutputTokens: 8192,
+          architectureModality: 'text->text',
+          inputModalitiesJson: '["text"]',
+          outputModalitiesJson: '["text"]',
+          tokenizer: null,
+          instructType: null,
+          supportedParametersJson: '[]',
+          capabilitiesJson: '{"reasoning":true,"tools":true,"structuredOutputs":true,"vision":false,"longContext":true}',
+          pricePrompt: null,
+          priceCompletion: null,
+          priceRequest: null,
+          priceImage: null,
+          pricingJson: null,
+          createdAtSec: 1,
+          expirationDate: null,
+          expirationAtSec: null,
+          unknownExpiration: 0,
+          hasPerRequestLimits: 0,
+          hasDefaultParameters: 0,
+          perRequestLimitsJson: null,
+          defaultParametersJson: null,
+          topProviderContextLength: null,
+          topProviderIsModerated: false,
+          firstSeenAtMs: 1,
+          lastSeenAtMs: 1,
+          syncedAtMs: 1,
+        }
+      }
+      return null
+    }
     if (method === 'reasoningModelIndex.list') return []
 
     if (method === 'branch.ensureDefault') {
@@ -202,6 +259,17 @@ function createDbBridge(mode: ScenarioMode) {
     }
     if (method === 'context.buildForBranch') {
       return { messages: orderedMessages() }
+    }
+    if (method === 'conversationDraft.restore' || method === 'conversationDraft.updateText') {
+      return {
+        conversationId: convoId,
+        draftText: '',
+        draftMode: 'compose',
+        editingSourceMessageId: null,
+        attachedAssetIds: [],
+        attachments: [],
+        updatedAt: Date.now(),
+      }
     }
 
     if (method === 'branch.beginTurn') {
@@ -327,7 +395,10 @@ async function runScenario(mode: ScenarioMode, options?: { expectHello?: boolean
   ;(globalThis as any).dbBridge = { invoke }
 
   render(AppChatApp)
-  await screen.findByRole('button', { name: /Chat 1/ })
+  const convoButton = await screen.findByRole('button', { name: /Chat 1/ })
+  if (mode !== 'send') {
+    await user.click(convoButton)
+  }
 
   if (mode !== 'send') {
     await screen.findByText('Q1')
@@ -473,3 +544,4 @@ describe('ui-app AppChatApp stream session parity', () => {
     expect(summary.appendDeltaText).toBe('')
   })
 })
+

@@ -179,18 +179,24 @@ const vendorOptions = computed(() => {
   return Array.from(vendorSet).sort((a, b) => a.localeCompare(b))
 })
 
-const activeIndex = computed(() => items.value.findIndex((item) => item.modelId === activeModelId.value))
+const activeIndex = computed(() => {
+  const active = normalizeModelId(activeModelId.value)
+  return items.value.findIndex((item) => normalizeModelId(item.modelId) === active)
+})
 const activeItem = computed(() => {
   const index = activeIndex.value
   return index >= 0 ? items.value[index] : null
 })
 
+const selectedModelId = computed(() => normalizeModelId(props.selectedModelId))
+
 const selectedModelLabel = computed(() => {
-  const inResults = items.value.find((item) => item.modelId === props.selectedModelId)
+  const selected = selectedModelId.value
+  const inResults = items.value.find((item) => normalizeModelId(item.modelId) === selected)
   if (inResults) return inResults.displayName
-  const inFallback = props.fallbackModels.find((item) => item.modelId === props.selectedModelId)
+  const inFallback = props.fallbackModels.find((item) => normalizeModelId(item.modelId) === selected)
   if (inFallback) return inFallback.name
-  return props.selectedModelId || 'openrouter/auto'
+  return selected || 'openrouter/auto'
 })
 
 const effectiveNotice = computed(() => {
@@ -262,6 +268,14 @@ function parseModelIdFromModelKey(modelKey: string): string {
   const delimiterIndex = normalized.indexOf(delimiter)
   if (delimiterIndex < 0 || delimiterIndex + delimiter.length >= normalized.length) return normalized
   return normalized.slice(delimiterIndex + delimiter.length).trim()
+}
+
+function normalizeModelId(value: unknown): string {
+  return String(value ?? '').trim()
+}
+
+function isSelectedModel(modelId: string): boolean {
+  return normalizeModelId(modelId) === selectedModelId.value
 }
 
 function normalizeFavoriteModelKeys(input: readonly string[]): string[] {
@@ -478,9 +492,9 @@ function ensureActiveCandidate() {
     activeModelId.value = ''
     return
   }
-  if (activeModelId.value && items.value.some((item) => item.modelId === activeModelId.value)) return
-  const selected = props.selectedModelId.trim()
-  const selectedExists = selected && items.value.some((item) => item.modelId === selected)
+  if (activeModelId.value && items.value.some((item) => normalizeModelId(item.modelId) === normalizeModelId(activeModelId.value))) return
+  const selected = selectedModelId.value
+  const selectedExists = selected && items.value.some((item) => normalizeModelId(item.modelId) === selected)
   activeModelId.value = selectedExists ? selected : items.value[0].modelId
 }
 
@@ -615,7 +629,7 @@ function openDialogState() {
   skipAutoQuery = true
   items.value = []
   nextCursor.value = null
-  activeModelId.value = props.selectedModelId.trim()
+  activeModelId.value = selectedModelId.value
   modelDetail.value = null
   modelDetailLoading.value = false
   modelDetailError.value = null
@@ -762,9 +776,10 @@ watch(
   () => props.selectedModelId,
   (next) => {
     if (!props.open) return
-    if (!next) return
-    if (items.value.some((item) => item.modelId === next)) {
-      activeModelId.value = next
+    const normalized = normalizeModelId(next)
+    if (!normalized) return
+    if (items.value.some((item) => normalizeModelId(item.modelId) === normalized)) {
+      activeModelId.value = normalized
     }
   },
 )
@@ -1291,7 +1306,7 @@ onBeforeUnmount(() => {
                     type="button"
                     class="mb-2 w-full rounded-lg border px-3 py-2 text-left shadow-sm transition"
                     :class="
-                      activeModelId === item.modelId
+                      isSelectedModel(item.modelId)
                         ? 'border-blue-300 bg-blue-50'
                         : 'border-gray-200 bg-white hover:bg-gray-50'
                     "
@@ -1299,7 +1314,7 @@ onBeforeUnmount(() => {
                     @mouseenter="activeModelId = item.modelId"
                     @focus="activeModelId = item.modelId"
                     @click="onSelectModel(item.modelId)"
-                    :ref="(el) => onRowRef(item.modelId, el)"
+                    :ref="(el) => onRowRef(item.modelId, el as Element | null)"
                   >
                     <div class="flex items-center justify-between gap-2">
                       <div class="min-w-0">

@@ -1,14 +1,16 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_OPENROUTER_TEST_MODEL, OPENROUTER_TEST_MODELS } from '@/next/openrouter/openRouterTestModels'
 import AppChatApp from './AppChatApp.vue'
 
 const streamOpenRouterChatCallArgs: any[] = []
+const imageCapableModel = OPENROUTER_TEST_MODELS[1] ?? OPENROUTER_TEST_MODELS[0]
 
 vi.mock('@/next/live/openRouterLiveStream', () => {
   async function* streamOpenRouterChatAsEvents(options: any) {
     streamOpenRouterChatCallArgs.push(options)
-    const selectedModel = String(options?.config?.model ?? 'openrouter/auto')
+    const selectedModel = String(options?.config?.model ?? DEFAULT_OPENROUTER_TEST_MODEL)
     const assistantMessageId = String(options?.assistantMessageId ?? 'a1')
     yield { type: 'MetaDelta', meta: { id: 'gen_1', model: selectedModel } }
     yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'h' }
@@ -63,8 +65,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
 
     const catalogRows: Array<any> = [
       {
-        modelId: 'anthropic/claude-3',
-        name: 'Claude 3',
+        modelId: imageCapableModel,
+        name: 'Image-Capable Test Model',
         vendor: 'anthropic',
         status: 'visible',
         supportedParameters: [],
@@ -160,13 +162,13 @@ describe('ui-app AppChatApp (send: pure text)', () => {
       }
       if (method === 'modelCatalog.getModelDetail') {
         const modelId = String(params?.modelId ?? '')
-        if (modelId === 'anthropic/claude-3') {
+        if (modelId === imageCapableModel) {
           return {
             providerKey: 'openrouter',
-            modelId: 'anthropic/claude-3',
-            modelKey: 'openrouter::anthropic/claude-3',
-            canonicalSlug: 'anthropic/claude-3',
-            displayName: 'Claude 3',
+            modelId: imageCapableModel,
+            modelKey: `openrouter::${imageCapableModel}`,
+            canonicalSlug: imageCapableModel,
+            displayName: 'Image-Capable Test Model',
             description: null,
             vendor: 'anthropic',
             family: null,
@@ -202,6 +204,17 @@ describe('ui-app AppChatApp (send: pure text)', () => {
           }
         }
         return null
+      }
+      if (method === 'conversationDraft.restore' || method === 'conversationDraft.updateText') {
+        return {
+          conversationId: 'c1',
+          draftText: '',
+          draftMode: 'compose',
+          editingSourceMessageId: null,
+          attachedAssetIds: [],
+          attachments: [],
+          updatedAt: Date.now(),
+        }
       }
       if (method === 'modelCatalog.listEndpointMeta') return []
       if (method === 'modelCatalog.replaceEndpointMeta') return { ok: true }
@@ -359,8 +372,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         scopeType: 'global',
         scopeId: '',
         providerKey: 'openrouter',
-        modelId: 'openrouter/auto',
-        modelKey: 'openrouter::openrouter/auto',
+        modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        modelKey: `openrouter::${DEFAULT_OPENROUTER_TEST_MODEL}`,
       }),
     )
     const last = streamOpenRouterChatCallArgs[streamOpenRouterChatCallArgs.length - 1]
@@ -383,7 +396,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('hi')
 
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId('model-picker-item-anthropic/claude-3'))
+    await user.click(await screen.findByTestId(`model-picker-item-${imageCapableModel}`))
 
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     await waitFor(() => {
@@ -391,7 +404,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         'convo.save',
         expect.objectContaining({
           id: 'c1',
-          meta: expect.objectContaining({ selectedModelKey: 'anthropic/claude-3' }),
+          meta: expect.objectContaining({ selectedModelKey: imageCapableModel }),
         }),
       )
     })
@@ -407,7 +420,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         expect.objectContaining({ branchId: 'b1', userBody: 'selected model send' }),
       )
       const last = streamOpenRouterChatCallArgs[streamOpenRouterChatCallArgs.length - 1]
-      expect(last?.config?.model).toBe('anthropic/claude-3')
+      expect(last?.config?.model).toBe(imageCapableModel)
     })
 
     await waitFor(() => {
@@ -417,8 +430,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
           scopeType: 'global',
           scopeId: '',
           providerKey: 'openrouter',
-          modelId: 'anthropic/claude-3',
-          modelKey: 'openrouter::anthropic/claude-3',
+          modelId: imageCapableModel,
+          modelKey: `openrouter::${imageCapableModel}`,
         }),
       )
     })
@@ -431,7 +444,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'New' })).not.toBeDisabled())
 
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId('model-picker-item-anthropic/claude-3'))
+    await user.click(await screen.findByTestId(`model-picker-item-${imageCapableModel}`))
     await screen.findByText('selected model supports text+image output.')
 
     const enable = screen.getByTestId('composer-image-enable')
@@ -472,7 +485,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'New' })).not.toBeDisabled())
 
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId('model-picker-item-anthropic/claude-3'))
+    await user.click(await screen.findByTestId(`model-picker-item-${imageCapableModel}`))
     await screen.findByText('selected model supports text+image output.')
 
     const enable = screen.getByTestId('composer-image-enable')
@@ -507,7 +520,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'New' })).not.toBeDisabled())
 
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId('model-picker-item-anthropic/claude-3'))
+    await user.click(await screen.findByTestId(`model-picker-item-${imageCapableModel}`))
     await screen.findByText('selected model supports text+image output.')
 
     await user.click(screen.getByTestId('composer-image-enable'))
@@ -530,7 +543,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
 
   it('does not send legacy pixel image_size from persisted convo config', async () => {
     convoListMeta = {
-      selectedModelKey: 'anthropic/claude-3',
+      selectedModelKey: imageCapableModel,
       imageGenerationMode: 'custom',
       imageGenerationCustom: {
         enabled: true,
@@ -565,7 +578,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'New' })).not.toBeDisabled())
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId('model-picker-item-anthropic/claude-3'))
+    await user.click(await screen.findByTestId(`model-picker-item-${imageCapableModel}`))
     await screen.findByText('selected model supports text+image output.')
 
     const box = screen.getByPlaceholderText('Type a message...')

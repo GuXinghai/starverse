@@ -101,6 +101,46 @@ export type MessageVM = Readonly<{
   streaming: { isTarget: boolean; isComplete: boolean }
 }>
 
+export type MessageAttachmentDisplayStatus =
+  | 'ready'
+  | 'ready_with_warnings'
+  | 'incompatible_with_current_model'
+  | 'excluded_from_current_context'
+  | 'failed'
+  | 'unsupported'
+  | 'parsing'
+
+export type MessageAttachmentBorderTone = 'green' | 'yellow' | 'red' | 'neutral'
+
+export type MessageAttachmentIconKind =
+  | 'image'
+  | 'pdf'
+  | 'text'
+  | 'link'
+  | 'audio'
+  | 'video'
+  | 'file'
+
+export type MessageAttachmentVM = Readonly<{
+  messageId: string
+  attachmentId: string
+  assetId: string
+  filename: string
+  extension: string | null
+  mime: string | null
+  assetKind: string
+  aiPayloadKind: string
+  sourceKind: string
+  displayStatus: MessageAttachmentDisplayStatus
+  borderTone: MessageAttachmentBorderTone
+  isHistoryIncompatible: boolean
+  incompatibilityReason: string | null
+  isActiveLocatedAttachment: boolean
+  previewDataUrl: string | null
+  iconKind: MessageAttachmentIconKind
+  createdAt: number
+}>
+
 export type RunVM = Readonly<{
   runId: string
   status: RunStatus

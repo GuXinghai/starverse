@@ -1,9 +1,10 @@
-import { defineComponent, ref } from 'vue'
+import { computed, defineComponent, ref } from 'vue'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/catalogQueryService'
 import { __resetModelPrefsServiceCacheForTests } from '@/next/modelPrefs/modelPrefsService'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import ChatAppComposer from './ChatAppComposer.vue'
 
 function createResult(items: CatalogQueryResult['items']): CatalogQueryResult {
@@ -12,6 +13,29 @@ function createResult(items: CatalogQueryResult['items']): CatalogQueryResult {
     nextCursor: null,
     notice: null,
   }
+}
+
+function createSessionConfig() {
+  return {
+    model: { selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL },
+    reasoning: { enabled: true, effort: 'medium' as const },
+    webSearch: { enabled: true, level: 'low' as const, detail: null },
+    imageGeneration: {
+      enabled: true,
+      resolution: '1K' as const,
+      aspectRatio: '1:1' as const,
+      mode: 'default' as const,
+      detail: null,
+    },
+    samplingParams: { detail: null },
+  }
+}
+
+function createBoundSessionConfig(model: { value: string }) {
+  return computed(() => ({
+    ...createSessionConfig(),
+    model: { selectedModelKey: model.value },
+  }))
 }
 
 describe('ChatAppComposer model picker integration', () => {
@@ -53,9 +77,10 @@ describe('ChatAppComposer model picker integration', () => {
       components: { ChatAppComposer },
       setup() {
         const draft = ref('')
-        const model = ref('openrouter/auto')
+        const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
+        const sessionConfig = createBoundSessionConfig(model)
         const modelCatalog = ref([
           {
             modelId: 'openai/gpt-4o',
@@ -72,6 +97,7 @@ describe('ChatAppComposer model picker integration', () => {
           model,
           requestedReasoningEffort,
           requestedReasoningExclude,
+          sessionConfig,
           modelCatalog,
           queryFn,
         }
@@ -84,6 +110,7 @@ describe('ChatAppComposer model picker integration', () => {
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
           :isRunning="false"
+          :sessionConfig="sessionConfig"
           :modelCatalog="modelCatalog"
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
@@ -95,7 +122,7 @@ describe('ChatAppComposer model picker integration', () => {
     render(Wrapper)
 
     const pillBefore = await screen.findByTestId('current-model-pill')
-    expect(pillBefore.textContent).toContain('openrouter/auto')
+    expect(pillBefore.textContent).toContain(DEFAULT_OPENROUTER_TEST_MODEL)
 
     await user.click(pillBefore)
     await screen.findByTestId('model-picker-item-anthropic/claude-3')
@@ -136,9 +163,10 @@ describe('ChatAppComposer model picker integration', () => {
       components: { ChatAppComposer },
       setup() {
         const draft = ref('')
-        const model = ref('openrouter/auto')
+        const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
+        const sessionConfig = createBoundSessionConfig(model)
         const modelCatalog = ref([
           {
             modelId: 'openai/gpt-image-1',
@@ -154,6 +182,7 @@ describe('ChatAppComposer model picker integration', () => {
           model,
           requestedReasoningEffort,
           requestedReasoningExclude,
+          sessionConfig,
           modelCatalog,
           queryFn,
         }
@@ -166,6 +195,7 @@ describe('ChatAppComposer model picker integration', () => {
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
           :isRunning="false"
+          :sessionConfig="sessionConfig"
           :modelCatalog="modelCatalog"
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
@@ -234,6 +264,7 @@ describe('ChatAppComposer model picker integration', () => {
         const model = ref('openai/gpt-4o')
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
+        const sessionConfig = createBoundSessionConfig(model)
         const modelCatalog = ref([
           {
             modelId: 'openai/gpt-4o',
@@ -250,6 +281,7 @@ describe('ChatAppComposer model picker integration', () => {
           model,
           requestedReasoningEffort,
           requestedReasoningExclude,
+          sessionConfig,
           modelCatalog,
         }
       },
@@ -261,6 +293,7 @@ describe('ChatAppComposer model picker integration', () => {
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
           :isRunning="false"
+          :sessionConfig="sessionConfig"
           :modelCatalog="modelCatalog"
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
@@ -309,9 +342,10 @@ describe('ChatAppComposer model picker integration', () => {
       components: { ChatAppComposer },
       setup() {
         const draft = ref('')
-        const model = ref('openrouter/auto')
+        const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
+        const sessionConfig = createBoundSessionConfig(model)
         const modelCatalog = ref([
           {
             modelId: 'openai/gpt-4o',
@@ -328,6 +362,7 @@ describe('ChatAppComposer model picker integration', () => {
           model,
           requestedReasoningEffort,
           requestedReasoningExclude,
+          sessionConfig,
           modelCatalog,
         }
       },
@@ -339,6 +374,7 @@ describe('ChatAppComposer model picker integration', () => {
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
           :isRunning="false"
+          :sessionConfig="sessionConfig"
           :modelCatalog="modelCatalog"
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
@@ -363,15 +399,17 @@ describe('ChatAppComposer model picker integration', () => {
       components: { ChatAppComposer },
       setup() {
         const draft = ref('')
-        const model = ref('openrouter/auto')
+        const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
+        const sessionConfig = createBoundSessionConfig(model)
         const modelCatalog = ref([])
         return {
           draft,
           model,
           requestedReasoningEffort,
           requestedReasoningExclude,
+          sessionConfig,
           modelCatalog,
         }
       },
@@ -383,6 +421,7 @@ describe('ChatAppComposer model picker integration', () => {
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
           :isRunning="true"
+          :sessionConfig="sessionConfig"
           :modelCatalog="modelCatalog"
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
@@ -458,9 +497,10 @@ describe('ChatAppComposer model picker integration', () => {
       components: { ChatAppComposer },
       setup() {
         const draft = ref('')
-        const model = ref('openrouter/auto')
+        const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
+        const sessionConfig = createBoundSessionConfig(model)
         const modelCatalog = ref([
           {
             modelId: 'openai/gpt-4o',
@@ -477,6 +517,7 @@ describe('ChatAppComposer model picker integration', () => {
           model,
           requestedReasoningEffort,
           requestedReasoningExclude,
+          sessionConfig,
           modelCatalog,
           queryFn,
         }
@@ -489,6 +530,7 @@ describe('ChatAppComposer model picker integration', () => {
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
           :isRunning="false"
+          :sessionConfig="sessionConfig"
           :modelCatalog="modelCatalog"
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
@@ -536,9 +578,10 @@ describe('ChatAppComposer model picker integration', () => {
       components: { ChatAppComposer },
       setup() {
         const draft = ref('')
-        const model = ref('openrouter/auto')
+        const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
+        const sessionConfig = createBoundSessionConfig(model)
         const modelCatalog = ref([
           {
             modelId: 'anthropic/claude-3',
@@ -555,6 +598,7 @@ describe('ChatAppComposer model picker integration', () => {
           model,
           requestedReasoningEffort,
           requestedReasoningExclude,
+          sessionConfig,
           modelCatalog,
         }
       },
@@ -566,6 +610,7 @@ describe('ChatAppComposer model picker integration', () => {
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
           :isRunning="false"
+          :sessionConfig="sessionConfig"
           :modelCatalog="modelCatalog"
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
@@ -633,9 +678,10 @@ describe('ChatAppComposer model picker integration', () => {
       components: { ChatAppComposer },
       setup() {
         const draft = ref('')
-        const model = ref('openrouter/auto')
+        const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
+        const sessionConfig = createBoundSessionConfig(model)
         const modelCatalog = ref(
           recents.map((item) => ({
             modelId: item.modelId,
@@ -652,6 +698,7 @@ describe('ChatAppComposer model picker integration', () => {
           model,
           requestedReasoningEffort,
           requestedReasoningExclude,
+          sessionConfig,
           modelCatalog,
           queryFn,
         }
@@ -664,6 +711,7 @@ describe('ChatAppComposer model picker integration', () => {
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
           :isRunning="false"
+          :sessionConfig="sessionConfig"
           :modelCatalog="modelCatalog"
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
@@ -779,10 +827,11 @@ describe('ChatAppComposer model picker integration', () => {
       components: { ChatAppComposer },
       setup() {
         const draft = ref('')
-        const model = ref('openrouter/auto')
+        const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
         const modelPrefsScope = ref({ scopeType: 'conversation' as const, scopeId: 'convo-42' })
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
+        const sessionConfig = createBoundSessionConfig(model)
         const modelCatalog = ref([
           {
             modelId: 'openai/gpt-4o',
@@ -820,6 +869,7 @@ describe('ChatAppComposer model picker integration', () => {
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
           :isRunning="false"
+          :sessionConfig="sessionConfig"
           :modelCatalog="modelCatalog"
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
@@ -965,10 +1015,11 @@ describe('ChatAppComposer model picker integration', () => {
       components: { ChatAppComposer },
       setup() {
         const draft = ref('')
-        const model = ref('openrouter/auto')
+        const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
         const modelPrefsScope = ref({ scopeType: 'conversation' as const, scopeId: 'convo-42' })
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
+        const sessionConfig = createBoundSessionConfig(model)
         const modelCatalog = ref([
           {
             modelId: 'openai/gpt-4o',
@@ -1006,6 +1057,7 @@ describe('ChatAppComposer model picker integration', () => {
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
           :isRunning="false"
+          :sessionConfig="sessionConfig"
           :modelCatalog="modelCatalog"
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
@@ -1067,6 +1119,7 @@ describe('ChatAppComposer model picker integration', () => {
         const modelPrefsScope = ref({ scopeType: 'project' as const, scopeId: 'project-77' })
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
+        const sessionConfig = createBoundSessionConfig(model)
         const modelCatalog = ref([
           {
             modelId: 'openai/gpt-4o',
@@ -1084,6 +1137,7 @@ describe('ChatAppComposer model picker integration', () => {
           modelPrefsScope,
           requestedReasoningEffort,
           requestedReasoningExclude,
+          sessionConfig,
           modelCatalog,
         }
       },
@@ -1095,6 +1149,7 @@ describe('ChatAppComposer model picker integration', () => {
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
           :isRunning="false"
+          :sessionConfig="sessionConfig"
           :modelCatalog="modelCatalog"
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
@@ -1131,3 +1186,4 @@ describe('ChatAppComposer model picker integration', () => {
     })
   })
 })
+
