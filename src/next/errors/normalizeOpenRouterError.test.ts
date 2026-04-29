@@ -7,6 +7,7 @@ import {
   toNormalizedErrorEnvelope,
 } from './normalizeOpenRouterError'
 import { buildTransportErrorEnvelope } from './openRouterErrorEnvelope'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '../openrouter/openRouterTestModels'
 
 /* eslint-disable max-lines-per-function */
 describe('normalizeOpenRouterError', () => {
@@ -135,7 +136,7 @@ describe('normalizeOpenRouterError', () => {
       completionClass: 'error',
       message: appError.message,
       normalized,
-      request: { model: 'openrouter/auto', stream: true },
+      request: { model: DEFAULT_OPENROUTER_TEST_MODEL, stream: true },
     })
     expect(envelope).toMatchObject({
       phase: 'pre_stream',

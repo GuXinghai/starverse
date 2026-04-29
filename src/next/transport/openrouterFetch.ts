@@ -153,11 +153,6 @@ function formatReasoningForSummary(body: any): string {
   return parts.length > 0 ? parts.join(',') : 'EMPTY_OBJECT'
 }
 
-/**
- * Print complete request body with clear boundaries for audit.
- * Uses console.warn for high visibility filtering.
- * Prints COMPLETE data including full API key - DO NOT share logs publicly.
- */
 const defaultTestVerboseFlag =
   typeof process !== 'undefined' && process.env?.SV_TEST_VERBOSE_OPENROUTER === '1' ? '1' : '0'
 if (typeof (globalThis as any).__SV_TEST_VERBOSE_OPENROUTER === 'undefined') {
@@ -171,42 +166,114 @@ function shouldLogOpenRouterRequestBody(): boolean {
   return true
 }
 
-function logCompleteRequestBody(
+function summarizeContentPart(part: unknown): Record<string, unknown> {
+  if (!part || typeof part !== 'object') return { type: typeof part }
+  const row = part as Record<string, unknown>
+  const type = typeof row.type === 'string' ? row.type : 'unknown'
+  const summary: Record<string, unknown> = { type }
+  if (type === 'text') {
+    const text = typeof row.text === 'string' ? row.text : ''
+    summary.textLength = text.length
+    return summary
+  }
+  if (type === 'image_url') {
+    const url = (row.image_url as Record<string, unknown> | undefined)?.url
+    summary.imageUrl = summarizePayloadReference(url)
+    return summary
+  }
+  if (type === 'file') {
+    const file = row.file as Record<string, unknown> | undefined
+    summary.filename = typeof file?.filename === 'string' ? file.filename : null
+    summary.fileData = summarizePayloadReference(file?.file_data)
+    return summary
+  }
+  if (type === 'input_audio') {
+    const audio = row.input_audio as Record<string, unknown> | undefined
+    summary.format = typeof audio?.format === 'string' ? audio.format : null
+    summary.data = summarizePayloadReference(audio?.data, 'base64')
+    return summary
+  }
+  if (type === 'video_url') {
+    const url = (row.video_url as Record<string, unknown> | undefined)?.url
+    summary.videoUrl = summarizePayloadReference(url)
+    return summary
+  }
+  return summary
+}
+
+function summarizePayloadReference(value: unknown, assumedKind?: 'base64'): Record<string, unknown> {
+  if (typeof value !== 'string') return { kind: typeof value }
+  if (value.startsWith('data:')) {
+    const comma = value.indexOf(',')
+    const header = comma >= 0 ? value.slice(0, comma) : 'data:'
+    return { kind: 'data_url', header, length: value.length }
+  }
+  if (assumedKind === 'base64') return { kind: 'base64', length: value.length }
+  if (/^https?:\/\//i.test(value)) return { kind: 'url', length: value.length }
+  return { kind: 'string', length: value.length }
+}
+
+function summarizeRequestBodyForVerboseLog(body: unknown): Record<string, unknown> {
+  if (!body || typeof body !== 'object') return { bodyType: typeof body }
+  const b = body as any
+  const messages = Array.isArray(b.messages)
+    ? b.messages.map((message: any) => {
+        const content = message?.content
+        const parts = Array.isArray(content) ? content.map(summarizeContentPart) : undefined
+        return {
+          role: message?.role,
+          contentType: Array.isArray(content) ? 'array' : typeof content,
+          contentLength: typeof content === 'string' ? content.length : null,
+          contentPartCount: parts?.length ?? 0,
+          contentPartTypes: parts?.map((part) => part.type),
+          contentParts: parts,
+        }
+      })
+    : []
+  const plugins = Array.isArray(b.plugins)
+    ? b.plugins.map((plugin: any) => ({ id: typeof plugin?.id === 'string' ? plugin.id : 'unknown' }))
+    : []
+  const partTypes = messages.flatMap((message: any) => Array.isArray(message.contentParts) ? message.contentParts.map((part: any) => part.type) : [])
+  return {
+    model: typeof b.model === 'string' ? b.model : null,
+    stream: b.stream ?? null,
+    messageCount: messages.length,
+    messages,
+    contentPartCount: partTypes.length,
+    contentPartTypes: partTypes,
+    hasImageUrl: partTypes.includes('image_url'),
+    hasFile: partTypes.includes('file'),
+    hasInputAudio: partTypes.includes('input_audio'),
+    hasVideoUrl: partTypes.includes('video_url'),
+    plugins,
+    reasoning: formatReasoningForSummary(b),
+  }
+}
+
+function logSanitizedRequestSummary(
   requestId: string,
   url: string,
-  apiKey: string,
   body: unknown,
   headers: Record<string, string>
 ): void {
   if (!shouldLogOpenRouterRequestBody()) return
   const isoTime = new Date().toISOString()
-  const bodyObj: any = body
 
   console.warn(`\n${'='.repeat(80)}`)
   console.warn(`OPENROUTER_REQUEST_BEGIN ${requestId} ${isoTime}`)
   console.warn(`${'='.repeat(80)}`)
   console.warn(`Endpoint: ${url}`)
-  console.warn(`API Key (FULL): ${apiKey}`)
-  console.warn(`Headers (complete):`)
-  console.warn(`  Authorization: Bearer ${apiKey}`)
+  console.warn('API Key: [REDACTED]')
+  console.warn('Headers (sanitized):')
+  console.warn('  Authorization: [REDACTED_PRESENT]')
   console.warn(`  HTTP-Referer: ${headers['HTTP-Referer'] || 'N/A'}`)
   console.warn(`  X-Title: ${headers['X-Title'] || 'N/A'}`)
   console.warn(`  Content-Type: ${headers['Content-Type'] || 'N/A'}`)
-  console.warn(`\nRequest Body (COMPLETE - NO SANITIZATION):`)
-  console.warn(JSON.stringify(bodyObj, null, 2))
+  console.warn('\nRequest Body Summary (SANITIZED):')
+  console.warn(JSON.stringify(summarizeRequestBodyForVerboseLog(body), null, 2))
   console.warn(`${'='.repeat(80)}`)
   console.warn(`OPENROUTER_REQUEST_END ${requestId}`)
   console.warn(`${'='.repeat(80)}`)
-
-  // One-line summary for quick scanning
-  const model = bodyObj?.model || 'N/A'
-  const stream = bodyObj?.stream ?? 'N/A'
-  const msgCount = Array.isArray(bodyObj?.messages) ? bodyObj.messages.length : 0
-  const reasoning = formatReasoningForSummary(bodyObj)
-
-  console.warn(
-    `OR_REQ ${requestId} model=${model} stream=${stream} reasoning=${reasoning} msgs=${msgCount}\n`
-  )
 }
 
 /**
@@ -250,13 +317,12 @@ export async function openrouterFetch(
       options.debug?.assertRequestInvariants === true ||
       (globalThis as any).__STARVERSE_OPENROUTER_DEBUG_REQUEST_ASSERT__ === true
 
-    // NEW: Always log complete request body for reasoning audit
     const requestHeaders = {
       'Content-Type': 'application/json',
       'HTTP-Referer': 'https://github.com/GuXinghai/starverse',
       'X-Title': 'Starverse',
     }
-    logCompleteRequestBody(requestId, url, options.apiKey, options.body, requestHeaders)
+    logSanitizedRequestSummary(requestId, url, options.body, requestHeaders)
 
     if (debugLog || debugAssert) {
       const body: any = options.body

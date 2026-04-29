@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { buildOpenRouterChatCompletionsRequest } from './buildRequest'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from './openRouterTestModels'
 
 const baseInput = {
-  model: 'openrouter/test',
+  model: DEFAULT_OPENROUTER_TEST_MODEL,
   messages: [{ role: 'user', content: 'hi' }],
   stream: true,
 } as const
@@ -102,5 +103,31 @@ describe('buildOpenRouterChatCompletionsRequest normal path', () => {
         quality: 'high',
       },
     })
+  })
+
+  it('appends file-parser plugins without overriding web plugins', () => {
+    expect(
+      buildOpenRouterChatCompletionsRequest({
+        ...baseInput,
+        webSearchPatch: {
+          plugins: [{ id: 'web', enabled: true, engine: 'native' }],
+        },
+        additionalPlugins: [{ id: 'file-parser', pdf: { engine: 'native' } }],
+      })
+    ).toMatchObject({
+      plugins: [
+        { id: 'web', enabled: true, engine: 'native' },
+        { id: 'file-parser', pdf: { engine: 'native' } },
+      ],
+    })
+  })
+
+  it('rejects invalid file-parser engine values', () => {
+    expect(() =>
+      buildOpenRouterChatCompletionsRequest({
+        ...baseInput,
+        additionalPlugins: [{ id: 'file-parser', pdf: { engine: 'invalid-engine' as any } }],
+      })
+    ).toThrow('additionalPlugins[].pdf.engine is invalid')
   })
 })

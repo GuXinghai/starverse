@@ -34,6 +34,26 @@ export type OpenRouterDebugConfig = Readonly<{
   echoUpstreamBody?: boolean
 }>
 
+export type OpenRouterWebPlugin = Readonly<{
+  id: 'web'
+  enabled?: boolean
+  engine?: 'auto' | 'native' | 'exa'
+  max_results?: number
+  search_prompt?: string
+}>
+
+export type OpenRouterFileParserEngine = 'native' | 'cloudflare-ai' | 'mistral-ocr'
+
+export type OpenRouterFileParserPlugin = Readonly<{
+  id: 'file-parser'
+  pdf?: Readonly<{
+    engine?: OpenRouterFileParserEngine
+  }>
+}>
+
+export type OpenRouterAdditionalPlugin = OpenRouterFileParserPlugin
+export type OpenRouterRequestPlugin = OpenRouterWebPlugin | OpenRouterAdditionalPlugin
+
 export type BuildOpenRouterRequestInput = Readonly<{
   model: string
   messages: ReadonlyArray<unknown>
@@ -60,6 +80,7 @@ export type BuildOpenRouterRequestInput = Readonly<{
   webSearchContextPolicy?: 'always' | 'native_only'
   samplingParams?: OpenRouterSamplingParamsPatch
   debug?: OpenRouterDebugConfig
+  additionalPlugins?: ReadonlyArray<OpenRouterAdditionalPlugin>
 }>
 
 export type OpenRouterChatCompletionsRequest = Readonly<{
@@ -69,13 +90,7 @@ export type OpenRouterChatCompletionsRequest = Readonly<{
   reasoning?: Record<string, unknown>
   tools?: unknown[]
   provider?: { require_parameters: boolean }
-  plugins?: ReadonlyArray<Readonly<{
-    id: 'web'
-    enabled?: boolean
-    engine?: 'auto' | 'native' | 'exa'
-    max_results?: number
-    search_prompt?: string
-  }>>
+  plugins?: ReadonlyArray<OpenRouterRequestPlugin>
   web_search_options?: Readonly<{ search_context_size: 'low' | 'medium' | 'high' }>
   temperature?: number
   top_p?: number
@@ -103,13 +118,7 @@ type MutableOpenRouterChatCompletionsRequest = {
   provider?: { require_parameters: boolean }
   modalities?: OpenRouterOutputModality[]
   image_config?: OpenRouterImageConfig
-  plugins?: Array<{
-    id: 'web'
-    enabled?: boolean
-    engine?: 'auto' | 'native' | 'exa'
-    max_results?: number
-    search_prompt?: string
-  }>
+  plugins?: OpenRouterRequestPlugin[]
   web_search_options?: { search_context_size: 'low' | 'medium' | 'high' }
   temperature?: number
   top_p?: number
@@ -203,13 +212,7 @@ function assertImageGenerationPatchConsistency(input: Readonly<{
 }
 
 function normalizeWebPlugin(raw: unknown):
-  | {
-      id: 'web'
-      enabled?: boolean
-      engine?: 'auto' | 'native' | 'exa'
-      max_results?: number
-      search_prompt?: string
-    }
+  | OpenRouterWebPlugin
   | null {
   if (!raw || typeof raw !== 'object') return null
   const v = raw as Record<string, unknown>
@@ -245,6 +248,39 @@ function normalizeWebPlugin(raw: unknown):
   return plugin
 }
 
+function normalizeAdditionalPlugin(raw: unknown): OpenRouterAdditionalPlugin {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('additionalPlugins[] must be an object')
+  }
+
+  const value = raw as Record<string, unknown>
+  if (value.id !== 'file-parser') {
+    throw new Error('additionalPlugins[] only supports file-parser')
+  }
+
+  if (value.pdf === undefined) {
+    return { id: 'file-parser' }
+  }
+
+  if (!value.pdf || typeof value.pdf !== 'object' || Array.isArray(value.pdf)) {
+    throw new Error('additionalPlugins[].pdf must be an object')
+  }
+
+  const pdf = value.pdf as Record<string, unknown>
+  if (pdf.engine === undefined) {
+    return { id: 'file-parser', pdf: {} }
+  }
+  if (pdf.engine !== 'native' && pdf.engine !== 'cloudflare-ai' && pdf.engine !== 'mistral-ocr') {
+    throw new Error('additionalPlugins[].pdf.engine is invalid')
+  }
+  return {
+    id: 'file-parser',
+    pdf: {
+      engine: pdf.engine,
+    },
+  }
+}
+
 function normalizeSamplingParamsPatch(raw: unknown): OpenRouterSamplingParamsPatch {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('samplingParams must be an object')
@@ -265,7 +301,7 @@ function normalizeSamplingParamsPatch(raw: unknown): OpenRouterSamplingParamsPat
 function createBaseRequest(input: BuildOpenRouterRequestInput): MutableOpenRouterChatCompletionsRequest {
   return {
     model: input.model,
-    messages: input.messages,
+    messages: [...input.messages],
     stream: input.stream,
   }
 }
@@ -372,13 +408,23 @@ function applyWebSearchPatch(request: MutableOpenRouterChatCompletionsRequest, i
   const webPlugin = rawPlugins.map((row) => normalizeWebPlugin(row)).find((row) => row !== null) ?? null
   if (!webPlugin) return
 
-  request.plugins = [webPlugin]
+  request.plugins = [...(request.plugins ?? []), webPlugin]
   const contextSize = webPatch.web_search_options?.search_context_size
   const policy = input.webSearchContextPolicy ?? 'native_only'
   const allowContext = policy === 'always' || (policy === 'native_only' && webPlugin.engine === 'native')
   if (allowContext && isContextSize(contextSize)) {
     request.web_search_options = { search_context_size: contextSize }
   }
+}
+
+function applyAdditionalPluginsPatch(request: MutableOpenRouterChatCompletionsRequest, input: BuildOpenRouterRequestInput) {
+  if (input.additionalPlugins === undefined) return
+  if (!Array.isArray(input.additionalPlugins)) {
+    throw new Error('additionalPlugins must be an array')
+  }
+  const normalized = input.additionalPlugins.map((plugin) => normalizeAdditionalPlugin(plugin))
+  if (normalized.length === 0) return
+  request.plugins = [...(request.plugins ?? []), ...normalized]
 }
 
 /**
@@ -416,5 +462,6 @@ export function buildOpenRouterChatCompletionsRequest(
 
   applyDebugPatch(request, input)
   applyWebSearchPatch(request, input)
+  applyAdditionalPluginsPatch(request, input)
   return request
 }

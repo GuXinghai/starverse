@@ -1,5 +1,6 @@
 import { buildOpenRouterChatCompletionsRequest } from '@/next/openrouter/buildRequest'
 import type { OpenRouterImageConfig, OpenRouterOutputModality } from '@/next/openrouter/buildRequest'
+import type { OpenRouterAdditionalPlugin } from '@/next/openrouter/buildRequest'
 import type { OpenRouterWebRequestPatch } from '@/next/openrouter/searchSettingsResolver'
 import type { OpenRouterSamplingParamsPatch } from '@/next/openrouter/samplingParamsResolver'
 import { decodeOpenRouterSSE } from '@/next/openrouter/sse/decoder'
@@ -328,6 +329,7 @@ export type LiveRequestConfig = Readonly<{
     modalities?: ReadonlyArray<OpenRouterOutputModality>
     imageConfig?: OpenRouterImageConfig
   }>
+  openRouterAdditionalPlugins?: ReadonlyArray<OpenRouterAdditionalPlugin>
   timeoutMs?: number
   baseUrl?: string
 }>
@@ -344,6 +346,7 @@ export type LiveStreamOptions = Readonly<{
    * pushing OpenRouter request-shaping into UI layers.
    */
   contextMessages?: ReadonlyArray<InternalMessage>
+  currentUserContentBlocks?: ReadonlyArray<Readonly<{ type: string; [key: string]: unknown }>>
   contextMode?: ContextMode
   signal?: AbortSignal | null
   config: LiveRequestConfig
@@ -435,7 +438,9 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
 
   const internalMessages: InternalMessage[] = [
     ...((options.contextMessages ?? []) as InternalMessage[]),
-    { role: 'user', contentText: options.userText },
+    options.currentUserContentBlocks && options.currentUserContentBlocks.length > 0
+      ? { role: 'user', contentBlocks: options.currentUserContentBlocks }
+      : { role: 'user', contentText: options.userText },
   ]
 
   const messages = buildOpenRouterMessages(internalMessages, { mode: options.contextMode ?? 'default' })
@@ -462,6 +467,7 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
     ...(options.config.samplingParams ? { samplingParams: options.config.samplingParams } : {}),
     ...(providerRequireParameters === true ? { providerRequireParameters: true } : {}),
     ...(reasoning ? { reasoning } : {}),
+    ...(options.config.openRouterAdditionalPlugins ? { additionalPlugins: options.config.openRouterAdditionalPlugins } : {}),
     ...streamDebugPatch,
   })
   
@@ -498,6 +504,7 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
         ...(options.config.timeoutMs ? { timeoutMs: options.config.timeoutMs } : {}),
         ...(options.config.baseUrl ? { baseUrl: options.config.baseUrl } : {}),
         ...(options.config.tools ? { tools: options.config.tools } : {}),
+        ...(options.config.openRouterAdditionalPlugins ? { openRouterAdditionalPlugins: options.config.openRouterAdditionalPlugins } : {}),
         providerRequireParameters,
         forceHttp1: netExp.forceHttp1 === true,
         tcpKeepAliveEnable: netExp.tcpKeepAliveEnable === true,

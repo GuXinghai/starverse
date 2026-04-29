@@ -4,6 +4,9 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DomainEvent } from '@/next/state/types'
 import { streamOpenRouterChatAsEvents } from '@/next/live/openRouterLiveStream'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
+
+const testModel = DEFAULT_OPENROUTER_TEST_MODEL
 
 /**
  * Comparison scope (stable summary):
@@ -178,7 +181,7 @@ async function collectViaFetch(fixtureText: string, fixtureName: string): Promis
       requestId: `fetch_${fixtureName}`,
       assistantMessageId: 'assistant_fixture',
       userText: 'hello',
-      config: { apiKey: 'k', model: 'openrouter/auto', requestedReasoningMode: 'auto' },
+      config: { apiKey: 'k', model: testModel, requestedReasoningMode: 'auto' },
     })) {
       events.push(event)
     }
@@ -254,7 +257,7 @@ async function collectViaIpc(fixtureText: string, fixtureName: string): Promise<
       requestId: `ipc_${fixtureName}`,
       assistantMessageId: 'assistant_fixture',
       userText: 'hello',
-      config: { apiKey: 'k', model: 'openrouter/auto', requestedReasoningMode: 'auto' },
+      config: { apiKey: 'k', model: testModel, requestedReasoningMode: 'auto' },
     })) {
       events.push(event)
     }
