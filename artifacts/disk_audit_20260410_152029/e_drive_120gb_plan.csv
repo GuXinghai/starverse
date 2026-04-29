@@ -1,0 +1,8 @@
+"Step","TargetDrive","Path","Action","RiskLevel","EstimatedReleaseGB","CumulativeReleaseGB","Notes"
+"1","E:","E:\webui_forge_cu121_torch231\webui\models\Stable-diffusion\sdxl\sd_xl_base_1.0.safetensors","移入回收站","低风险","6.46","6.46","哈希确认重复，保留 ComfyUI 副本。"
+"2","E:","E:\webui_forge_cu121_torch231\webui\models\Stable-diffusion\NoobAI\One obsession-一念痴迷动漫 含热门角色_16NoobAi-内置VAE.safetensors","移入回收站","低风险","6.46","12.92","哈希确认重复，保留规范命名副本。"
+"3","E:","E:\webui_forge_cu121_torch231\webui\models\Stable-diffusion\sd1.5\anything_v5.safetensors","移入回收站","低风险","1.99","14.91","哈希确认重复，保留较新副本。"
+"4","E:","E:\webui_forge_cu121_torch231\webui\models\ControlNet\manga-recolor\ControlNet-manga-recolor15.safetensors","移入回收站","低风险","1.35","16.26","哈希确认重复，保留下载目录副本。"
+"5","E:","E:\ComfyUI_windows_portable\ComfyUI\models\text_encoders","上云后删除本地","中风险","61.07","77.33","文件大多 2025-09 至 2026-03 访问，适合先归档。"
+"6","E:","E:\ComfyUI_windows_portable\ComfyUI\models\diffusion_models","上云后删除本地","中风险","57.08","134.41","此步后单盘 E 达成 120GB 目标。"
+"7","E:","E:\ComfyUI_windows_portable\ComfyUI\models\unet","上云后删除本地","中风险","144.47","160.73","备选单步方案；若执行此项，可替代步骤 5-6。"

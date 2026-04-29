@@ -10,7 +10,7 @@
  * 验收用例：
  * 1. 推理关闭：reasoning.effort = "none"
  * 2. 推理 medium：reasoning.effort = "medium" 
- * 3. 推理 high 且不回显：reasoning.effort = "high" + reasoning.exclude = true
+ * 3. 推理 high 且不回显：reasoning.effort = "high" + reasonigogogng.exclude = true
  */
 
 import { buildOpenRouterChatCompletionsRequest } from '../src/next/openrouter/buildRequest.ts'

@@ -1,0 +1,35 @@
+[
+  {
+    "Drive": "C:",
+    "VolumeName": "Windows-SSD",
+    "SizeBytes": 567623921664,
+    "UsedBytes": 473142222848,
+    "FreeBytes": 94481698816,
+    "SizeHuman": "528.64 GB",
+    "UsedHuman": "440.65 GB",
+    "FreeHuman": "87.99 GB",
+    "UsagePercent": 83.35
+  },
+  {
+    "Drive": "D:",
+    "VolumeName": "Software",
+    "SizeBytes": 454197653504,
+    "UsedBytes": 442334687232,
+    "FreeBytes": 11862966272,
+    "SizeHuman": "423.00 GB",
+    "UsedHuman": "411.96 GB",
+    "FreeHuman": "11.05 GB",
+    "UsagePercent": 97.39
+  },
+  {
+    "Drive": "E:",
+    "VolumeName": "Models",
+    "SizeBytes": 1024191361024,
+    "UsedBytes": 1009158836224,
+    "FreeBytes": 15032524800,
+    "SizeHuman": "953.85 GB",
+    "UsedHuman": "939.85 GB",
+    "FreeHuman": "14.00 GB",
+    "UsagePercent": 98.53
+  }
+]

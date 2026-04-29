@@ -1,0 +1,197 @@
+{
+  "SessionDir": "d:\\Starverse\\artifacts\\disk_audit_20260410_152029",
+  "VolumeStats": [
+    {
+      "Drive": "C:",
+      "VolumeName": "Windows-SSD",
+      "SizeBytes": 567623921664,
+      "UsedBytes": 473664978944,
+      "FreeBytes": 93958942720,
+      "SizeHuman": "528.64 GB",
+      "UsedHuman": "441.13 GB",
+      "FreeHuman": "87.51 GB",
+      "UsagePercent": 83.45
+    },
+    {
+      "Drive": "D:",
+      "VolumeName": "Software",
+      "SizeBytes": 454197653504,
+      "UsedBytes": 442340261888,
+      "FreeBytes": 11857391616,
+      "SizeHuman": "423.00 GB",
+      "UsedHuman": "411.96 GB",
+      "FreeHuman": "11.04 GB",
+      "UsagePercent": 97.39
+    },
+    {
+      "Drive": "E:",
+      "VolumeName": "Models",
+      "SizeBytes": 1024191361024,
+      "UsedBytes": 1009158836224,
+      "FreeBytes": 15032524800,
+      "SizeHuman": "953.85 GB",
+      "UsedHuman": "939.85 GB",
+      "FreeHuman": "14.00 GB",
+      "UsagePercent": 98.53
+    }
+  ],
+  "RiskSummary": [
+    {
+      "RiskLevel": "低风险",
+      "Count": 24,
+      "SizeBytes": 105208518437,
+      "SizeHuman": "97.98 GB"
+    },
+    {
+      "RiskLevel": "高风险",
+      "Count": 302,
+      "SizeBytes": 5957937370569,
+      "SizeHuman": "5.42 TB"
+    },
+    {
+      "RiskLevel": "中风险",
+      "Count": 304,
+      "SizeBytes": 5577812532862,
+      "SizeHuman": "5.07 TB"
+    }
+  ],
+  "DuplicateMappings": [
+    {
+      "DuplicateGroup": "DUP-0001",
+      "KeepPath": "C:\\Users\\m1389\\Downloads\\ControlNet-manga-recolor15.safetensors",
+      "RemovePath": "E:\\webui_forge_cu121_torch231\\webui\\models\\ControlNet\\manga-recolor\\ControlNet-manga-recolor15.safetensors",
+      "SizeBytes": 1445157120,
+      "SizeHuman": "1.35 GB",
+      "Hash": "8B2F190A6801B674712929577A4F7C11F0C3026770358E6D4B8839CE4A69AE3F",
+      "SuggestedAction": "移入回收站"
+    },
+    {
+      "DuplicateGroup": "DUP-0002",
+      "KeepPath": "E:\\webui_forge_cu121_torch231\\webui\\models\\Stable-diffusion\\sd1.5\\Anything_v5_PRT_RE.safetensors",
+      "RemovePath": "E:\\webui_forge_cu121_torch231\\webui\\models\\Stable-diffusion\\sd1.5\\anything_v5.safetensors",
+      "SizeBytes": 2132626102,
+      "SizeHuman": "1.99 GB",
+      "Hash": "7F96A1A9CA9B3A3242A9AE95D19284F0D2DA8D5282B42D2D974398BF7663A252",
+      "SuggestedAction": "移入回收站"
+    },
+    {
+      "DuplicateGroup": "DUP-0003",
+      "KeepPath": "E:\\webui_forge_cu121_torch231\\webui\\models\\Stable-diffusion\\NoobAI\\oneObsession_v16Noobai.safetensors",
+      "RemovePath": "E:\\webui_forge_cu121_torch231\\webui\\models\\Stable-diffusion\\NoobAI\\One obsession-一念痴迷动漫 含热门角色_16NoobAi-内置VAE.safetensors",
+      "SizeBytes": 6938040682,
+      "SizeHuman": "6.46 GB",
+      "Hash": "148DA66FE449FA513A7EA8E3694CC71788982E5026582BFAB01D91A05924C67D",
+      "SuggestedAction": "移入回收站"
+    },
+    {
+      "DuplicateGroup": "DUP-0004",
+      "KeepPath": "E:\\webui_forge_cu121_torch231\\webui\\models\\Stable-diffusion\\sdxl\\iniverseMixSFWNSFW_ponyRealGuofengV51.safetensors",
+      "RemovePath": "D:\\Forge Models\\Stable-Diffusion\\pony\\iniverseMixSFWNSFW_ponyRealGuofengV51.safetensors",
+      "SizeBytes": 6938045946,
+      "SizeHuman": "6.46 GB",
+      "Hash": "1FE5E6475207C8DAA3579D124A7D7DBCC18888604577EC0CE356920213BB2F9F",
+      "SuggestedAction": "移入回收站"
+    },
+    {
+      "DuplicateGroup": "DUP-0005",
+      "KeepPath": "E:\\ComfyUI_windows_portable\\ComfyUI\\models\\checkpoints\\sd_xl_base_1.0.safetensors",
+      "RemovePath": "E:\\webui_forge_cu121_torch231\\webui\\models\\Stable-diffusion\\sdxl\\sd_xl_base_1.0.safetensors",
+      "SizeBytes": 6938078334,
+      "SizeHuman": "6.46 GB",
+      "Hash": "31E35C80FC4829D14F90153F4C74CD59C90B779F6AFE05A74CD6120B893F7E5B",
+      "SuggestedAction": "移入回收站"
+    }
+  ],
+  "KnownFindings": [
+    {
+      "Path": "C:\\hiberfil.sys",
+      "Category": "隐藏大户",
+      "SizeBytes": 13628076032,
+      "SizeHuman": "12.69 GB",
+      "RiskLevel": "高风险",
+      "SuggestedAction": "保留不动",
+      "Reason": "系统关键文件，不应直接处理。"
+    },
+    {
+      "Path": "C:\\pagefile.sys",
+      "Category": "隐藏大户",
+      "SizeBytes": 68719476736,
+      "SizeHuman": "64.00 GB",
+      "RiskLevel": "高风险",
+      "SuggestedAction": "保留不动",
+      "Reason": "系统关键文件，不应直接处理。"
+    },
+    {
+      "Path": "C:\\swapfile.sys",
+      "Category": "隐藏大户",
+      "SizeBytes": 16777216,
+      "SizeHuman": "16.00 MB",
+      "RiskLevel": "高风险",
+      "SuggestedAction": "保留不动",
+      "Reason": "系统关键文件，不应直接处理。"
+    },
+    {
+      "Path": "C:\\Windows\\WinSxS",
+      "Category": "WinSxS",
+      "SizeBytes": 22869826196,
+      "SizeHuman": "21.30 GB",
+      "RiskLevel": "高风险",
+      "SuggestedAction": "保留不动",
+      "Reason": "组件存储目录，不建议手工删除。"
+    },
+    {
+      "Path": "C:\\Users\\m1389\\AppData\\Local\\Docker",
+      "Category": "Docker Desktop",
+      "SizeBytes": 4304187218,
+      "SizeHuman": "4.01 GB",
+      "RiskLevel": "高风险",
+      "SuggestedAction": "需要用户确认",
+      "Reason": "Docker 镜像和卷清理可能影响容器。"
+    },
+    {
+      "Path": "C:\\Users\\m1389\\AppData\\Local\\Packages",
+      "Category": "UWP/WSL 包",
+      "SizeBytes": 757254710,
+      "SizeHuman": "722.17 MB",
+      "RiskLevel": "高风险",
+      "SuggestedAction": "需要用户确认",
+      "Reason": "其中可能包含 WSL、Android 子系统或应用虚拟磁盘。"
+    },
+    {
+      "Path": "C:\\Users\\m1389\\.cache\\huggingface",
+      "Category": "AI 模型权重、数据集、缓存",
+      "SizeBytes": 2,
+      "SizeHuman": "2.00 B",
+      "RiskLevel": "中风险",
+      "SuggestedAction": "需要用户确认",
+      "Reason": "Hugging Face 缓存通常可重下，但可能影响离线推理。"
+    },
+    {
+      "Path": "C:\\Users\\m1389\\.nuget",
+      "Category": "开发工具缓存",
+      "SizeBytes": 739632208,
+      "SizeHuman": "705.37 MB",
+      "RiskLevel": "中风险",
+      "SuggestedAction": "需要用户确认",
+      "Reason": "NuGet 包缓存可重建，但会影响构建速度。"
+    },
+    {
+      "Path": "C:\\Users\\m1389\\AppData\\Local\\npm-cache",
+      "Category": "开发工具缓存",
+      "SizeBytes": 2326802542,
+      "SizeHuman": "2.17 GB",
+      "RiskLevel": "中风险",
+      "SuggestedAction": "需要用户确认",
+      "Reason": "npm 缓存可重建，但会影响安装速度。"
+    },
+    {
+      "Path": "C:\\Users\\m1389\\.conda",
+      "Category": "开发工具缓存",
+      "SizeBytes": 85,
+      "SizeHuman": "85.00 B",
+      "RiskLevel": "中风险",
+      "SuggestedAction": "需要用户确认",
+      "Reason": "Conda 包缓存可重建，但会影响环境恢复速度。"
+    }
+  ]
+}
