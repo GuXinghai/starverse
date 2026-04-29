@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectImage: () => ipcRenderer.invoke('dialog:select-image'),
   selectFile: (options?: { filters?: Array<{ name: string; extensions: string[] }>; defaultMimeType?: string }) =>
     ipcRenderer.invoke('dialog:select-file', options),
+  selectLocalFiles: (options?: { context?: 'file' | 'image'; allowMultiple?: boolean }) =>
+    ipcRenderer.invoke('dialog:select-local-files', options),
 
   /**
    * 使用系统默认应用打开图片

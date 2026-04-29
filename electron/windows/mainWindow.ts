@@ -1,5 +1,6 @@
 import { BrowserWindow, app, dialog, shell } from 'electron'
 import path from 'node:path'
+import { CHAT_WORKSPACE_MIN_WINDOW_WIDTH_PX } from '../../src/shared/ui/chatWorkspaceLayout'
 
 export type CreateMainWindowInput = Readonly<{
   isDev: boolean
@@ -13,6 +14,7 @@ export type CreateMainWindowInput = Readonly<{
 export function createMainWindow(input: CreateMainWindowInput): BrowserWindow | null {
   const win = new BrowserWindow({
     icon: path.join(input.publicPath, 'electron-vite.svg'),
+    minWidth: CHAT_WORKSPACE_MIN_WINDOW_WIDTH_PX,
     webPreferences: {
       preload: input.preloadPath,
       sandbox: true,
