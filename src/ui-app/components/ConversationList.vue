@@ -42,6 +42,7 @@ const emit = defineEmits<{
 
 const selectionMode = ref(false)
 const selectedIds = ref<Set<string>>(new Set())
+const openConvoMenuId = ref<string | null>(null)
 
 const renameDialog = ref<{ id: string; title: string } | null>(null)
 const deleteDialog = ref<{ ids: string[] } | null>(null)
@@ -115,11 +116,17 @@ const isSomeSelected = computed(() => {
 
 function onRowClick(id: string) {
   if (props.disabled) return
+  openConvoMenuId.value = null
   if (selectionMode.value) {
     toggleSelected(id)
     return
   }
   emit('select', id)
+}
+
+function toggleConvoMenu(id: string) {
+  if (props.disabled) return
+  openConvoMenuId.value = openConvoMenuId.value === id ? null : id
 }
 
 function openRename(id: string, currentTitle: string) {
@@ -245,34 +252,16 @@ function cancelProjectDialog() {
 
 <template>
   <div class="flex h-full w-80 flex-col border-r border-gray-200 bg-white">
-    <div class="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-2">
-      <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Conversations</div>
-      <div class="flex items-center gap-2">
-        <button
-          type="button"
-          class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50"
-          :disabled="props.disabled"
-          @click="setSelectionMode(!selectionMode)"
-        >
-          {{ selectionMode ? 'Done' : 'Select' }}
-        </button>
-        <button
-          type="button"
-          class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50"
-          :disabled="props.disabled"
-          @click="emit('refresh')"
-        >
-          Refresh
-        </button>
-        <button
-          type="button"
-          class="rounded-md bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-700"
-          :disabled="props.disabled"
-          @click="emit('create')"
-        >
-          New
-        </button>
-      </div>
+    <div class="border-b border-gray-200 px-3 py-3">
+      <button
+        type="button"
+        class="flex w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 shadow-sm hover:bg-gray-50"
+        :disabled="props.disabled"
+        @click="emit('openSearch')"
+      >
+        <span class="text-base">🔍</span>
+        <span class="font-semibold">Search</span>
+      </button>
     </div>
 
     <div class="border-b border-gray-200 px-3 py-2">
@@ -392,6 +381,36 @@ function cancelProjectDialog() {
       </div>
     </div>
 
+    <div class="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-2">
+      <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Conversations</div>
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50"
+          :disabled="props.disabled"
+          @click="setSelectionMode(!selectionMode)"
+        >
+          {{ selectionMode ? 'Done' : 'Select' }}
+        </button>
+        <button
+          type="button"
+          class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50"
+          :disabled="props.disabled"
+          @click="emit('refresh')"
+        >
+          Refresh
+        </button>
+        <button
+          type="button"
+          class="rounded-md bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-700"
+          :disabled="props.disabled"
+          @click="emit('create')"
+        >
+          New
+        </button>
+      </div>
+    </div>
+
     <div v-if="selectionMode" class="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 text-[11px] text-gray-700" data-testid="bulk-bar">
       <div class="flex min-w-0 items-center gap-2">
         <input
@@ -428,17 +447,6 @@ function cancelProjectDialog() {
     </div>
 
     <div class="min-h-0 flex-1 overflow-auto p-2">
-      <div class="sticky top-0 z-10 bg-white pb-2">
-        <button
-          type="button"
-          class="flex w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 shadow-sm hover:bg-gray-50"
-          :disabled="props.disabled"
-          @click="emit('openSearch')"
-        >
-          <span class="text-base">🔍</span>
-          <span class="font-semibold">搜索</span>
-        </button>
-      </div>
       <div v-if="props.items.length === 0" class="p-3 text-sm text-gray-500">
         No conversations yet.
       </div>
@@ -473,34 +481,46 @@ function cancelProjectDialog() {
             </div>
           </button>
 
-          <div class="flex items-center gap-1 pr-2">
+          <div class="relative flex items-start pr-2 pt-2">
             <button
               type="button"
               class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               :disabled="props.disabled"
-              aria-label="Rename"
-              @click="openRename(c.id, c.title)"
+              :data-testid="`convo-menu-${c.id}`"
+              aria-label="More actions"
+              @click.stop="toggleConvoMenu(c.id)"
             >
-              Rename
+              ...
             </button>
-            <button
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="props.disabled"
-              aria-label="Move"
-              @click="openMove([c.id])"
+            <div
+              v-if="openConvoMenuId === c.id"
+              class="absolute right-2 top-11 z-10 min-w-[8rem] rounded-lg border border-gray-200 bg-white p-1 shadow-lg"
             >
-              Move
-            </button>
-            <button
-              type="button"
-              class="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] text-red-700 hover:bg-red-100 disabled:opacity-50"
-              :disabled="props.disabled"
-              aria-label="Delete"
-              @click="openDelete([c.id])"
-            >
-              Delete
-            </button>
+              <button
+                type="button"
+                class="flex w-full rounded-md px-3 py-2 text-left text-[11px] text-gray-700 hover:bg-gray-50"
+                :disabled="props.disabled"
+                @click.stop="openRename(c.id, c.title); openConvoMenuId = null"
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                class="flex w-full rounded-md px-3 py-2 text-left text-[11px] text-gray-700 hover:bg-gray-50"
+                :disabled="props.disabled"
+                @click.stop="openMove([c.id]); openConvoMenuId = null"
+              >
+                Move
+              </button>
+              <button
+                type="button"
+                class="flex w-full rounded-md px-3 py-2 text-left text-[11px] text-red-700 hover:bg-red-50"
+                :disabled="props.disabled"
+                @click.stop="openDelete([c.id]); openConvoMenuId = null"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       </div>

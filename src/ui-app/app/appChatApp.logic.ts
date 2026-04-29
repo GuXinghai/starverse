@@ -28,6 +28,7 @@ import {
   switchCandidate,
   switchQuestionCandidate,
   setBranchFilter,
+  truncateBranchFromQuestion,
   type BranchSummary,
   type BranchCandidate,
   type QuestionCandidate,
@@ -49,10 +50,17 @@ import {
 } from '@/next/message/messageClient'
 import { findProjectById, listProjects, saveProject, getInbox, createProject, deleteProject, countConversationsBatch, type ProjectSummary } from '@/next/project/projectClient'
 import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningPrefsClient'
+import {
+  deleteChatDraftsForConvo,
+} from '@/next/settings/chatDraftClient'
 import { getUserMessageRenderDefault } from '@/next/settings/userMessageRenderDefaultClient'
 import { getWebSearchDefaults } from '@/next/settings/webSearchDefaultsClient'
 import { getImageGenerationDefault } from '@/next/settings/imageGenerationDefaultClient'
 import { getSamplingParamsDefaults } from '@/next/settings/samplingParamsDefaultsClient'
+import {
+  getChatReasoningDisplayMode,
+  setChatReasoningDisplayMode,
+} from '@/next/settings/chatDisplayPrefsClient'
 import { listModelCatalog } from '@/next/modelCatalog/modelCatalogClient'
 import { selectModelCatalogAll, selectModelCatalogVisible } from '@/next/modelCatalog/modelCatalogSelectors'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
@@ -64,9 +72,7 @@ import type { OpenRouterImageConfig, OpenRouterOutputModality } from '@/next/ope
 import { evaluateImageGenerationModel, type ImageCapabilityClass, type ImageModelFilterReason } from '@/next/openrouter/imageGenerationContract'
 import {
   DEFAULT_IMAGE_GENERATION_USER_CONFIG,
-  mergeConvoImageGenerationMeta,
   normalizeImageGenerationUserConfig,
-  resolveEffectiveImageGenerationConfig,
   type ConvoImageGenerationMode,
   type ImageGenerationUserConfig,
 } from '@/next/openrouter/imageGenerationSettingsPersistence'
@@ -77,9 +83,41 @@ import { applyEventsBatch, createInitialState, startGeneration, toggleReasoningP
 import { selectMessage, selectRun } from '@/next/state/selectors'
 import { streamOpenRouterChatAsEvents } from '@/next/live/openRouterLiveStream'
 import {
+  prepareOpenRouterReplayFromMessage,
+  prepareOpenRouterSendFromDraft,
+  type PreparedOpenRouterReplay,
+  type PreparedOpenRouterSend,
+} from '@/next/openrouter/openRouterSendPreparation'
+import { capturePdfAnnotationDerivatives } from '@/next/files/derivativeJobClient'
+import {
+  addConversationDraftAttachment,
+  attachConversationDraftToMessage,
+  cloneConversationDraftFromMessage,
+  removeConversationDraftAttachment,
+  restoreConversationDraft,
+  updateConversationDraftAttachmentSettings,
+  updateConversationDraftText,
+} from '@/next/files/conversationDraftClient'
+import { listFileAssetsByIds } from '@/next/files/fileAssetClient'
+import { ingestLocalFile, ingestUrl } from '@/next/files/fileIngestionClient'
+import { listMessageAttachmentsByMessageId } from '@/next/files/messageAttachmentClient'
+import { buildCurrentSendPlan } from '@/next/files/sendPlanClient'
+import type { SendPlan, SendPlanAttachment, SendPlanModelDescriptor, SendPlanProviderContext } from '@/shared/files/sendPlanTypes'
+import type { DraftAttachmentSendModePreference, DraftAttachmentUrlRetentionPreference, SendMode } from '@/shared/files/fileTypes'
+import type { MessageAttachmentVM, MessageAttachmentDisplayStatus } from '@/ui-kit/chat/types'
+import type {
+  DecodedConversationDraft,
+  DecodedDraftAttachment,
+  DecodedFileAsset,
+  DecodedMessageAttachment,
+  DecodedPreviewPayload,
+} from '@/next/ipc/contracts/dbBridgeContracts'
+import { decodePreviewPayloadResponse } from '@/next/ipc/contracts/dbBridgeContracts'
+import { ensurePreview, getLatestReadyPreview } from '@/next/files/previewClient'
+import { normalizeExtension } from '@/shared/files/fileRules'
+import {
   extractConvoWebSearchOverride,
   extractProjectWebSearchDefaults,
-  mergeConvoWebSearchOverrideMeta,
   mergeProjectWebSearchDefaultsMeta,
   normalizeSearchSettingsLayer,
   resolveSearchSettingsFromStoredLayers,
@@ -99,7 +137,6 @@ import {
 import {
   extractConvoSamplingParamsOverride,
   extractProjectSamplingParamsDefaults,
-  mergeConvoSamplingParamsOverrideMeta,
   mergeProjectSamplingParamsDefaultsMeta,
   normalizeSamplingParamsLayer,
   resolveSamplingParamsFromStoredLayers,
@@ -130,8 +167,23 @@ import { useLiveStreamController } from './useLiveStreamController'
 import { useSettingsBindings } from './useSettingsBindings'
 import { nextTriState, resolveUserMessageRenderPolicy, type UserMessageRenderMode } from '../prefs/userMessageRenderPolicy'
 import type { SearchConvoOption, SearchProjectOption } from '../components/SearchModal.vue'
-import type { ConversationListItem, type ProjectListItem } from '../components/ConversationList.vue'
+import type { ConversationListItem, ProjectListItem } from '../components/ConversationList.vue'
+import {
+  deserializeChatSessionConfigFromConvoMeta,
+  mergeChatSessionConfig,
+  serializeChatSessionConfigToConvoMeta,
+  type ChatSessionConfig,
+  type ChatSessionConfigPatch,
+} from './chatSessionConfig'
 
+/**
+ * Architecture boundary (phase: containment):
+ * - Keep this module as app-level orchestration only.
+ * - Do not add new domain rules here (model capability, send-plan policy, attachment compatibility, provider-specific rules).
+ * - Add new domain logic to domain services / client adapters / pure helpers / dedicated composables first.
+ * - Changes in this file must be regression-checked across: model switch, draft/history attachment send-plan, preflight gate, and history incompatible navigation.
+ * - This module is pending staged split; follow docs/governance/app-chat-app-logic-boundary.md.
+ */
 export function useAppChatAppLogic() {
 
   const isReady = ref(false)
@@ -145,6 +197,10 @@ export function useAppChatAppLogic() {
   const activeBranchId = ref<string | null>(null)
   const branches = ref<BranchSummary[]>([])
   const draft = ref('')
+  const reasoningDisplayMode = ref<'inline' | 'rail'>('inline')
+  const rightRailOpen = ref(true)
+  const rightRailView = ref<'reasoning' | 'console'>('console')
+  const pendingDeleteQuestionId = ref<string | null>(null)
   const DEFAULT_CHAT_MODEL_ID = 'openrouter/auto'
   const CONVO_META_SELECTED_MODEL_KEY = 'selectedModelKey'
   const model = ref(DEFAULT_CHAT_MODEL_ID)
@@ -184,6 +240,272 @@ export function useAppChatAppLogic() {
   const reasoningPrefSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
   const isDev = import.meta.env.DEV
   const searchModalOpen = ref(false)
+  const draftSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+  const draftSendPlanRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+  const draftAttachmentParsingPollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+  const draftFlushPromise = ref<Promise<void> | null>(null)
+  const lastDraftScopeKey = ref<string | null>(null)
+  const attachmentFeedbackTone = ref<'info' | 'warning' | 'error' | 'success' | null>(null)
+  const attachmentFeedbackMessage = ref<string | null>(null)
+  const attachmentFeedbackTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+  const attachmentUrlDialogOpen = ref(false)
+  const attachmentUrlDraft = ref('')
+  const attachmentUrlRetentionMode = ref<'default' | 'link_only' | 'link_and_file'>('default')
+  const composerImageInputSupported = ref<boolean | null>(null)
+  const composerImageInputSupportReason = ref<string | null>(null)
+  type DraftAttachmentDisplayStatus =
+    | 'parsing'
+    | 'ready'
+    | 'ready_with_warnings'
+    | 'incompatible_with_current_model'
+    | 'failed'
+    | 'unsupported'
+  type DraftAttachmentBorderTone = 'green' | 'yellow' | 'red' | 'neutral'
+  type DraftAttachmentSendModeOption = Readonly<{
+    value: DraftAttachmentSendModePreference
+    label: string
+    disabled: boolean
+    reason: string | null
+  }>
+  type DraftAttachmentUrlRetentionOption = Readonly<{
+    value: DraftAttachmentUrlRetentionPreference
+    label: string
+    disabled: boolean
+    reason: string | null
+  }>
+  type DraftAttachmentViewModel = Readonly<{
+    draftAttachmentId: string
+    assetId: string
+    filename: string
+    extension: string | null
+    assetKind: string
+    aiPayloadKind: string
+    sourceKind: string
+    displayStatus: DraftAttachmentDisplayStatus
+    borderTone: DraftAttachmentBorderTone
+    isParsing: boolean
+    warningReason: string | null
+    blockingReason: string | null
+    previewDataUrl: string | null
+    canRemove: boolean
+  }>
+  type DraftAttachmentDetailsViewModel = DraftAttachmentViewModel & Readonly<{
+    mime: string | null
+    createdAt: number
+    updatedAt: number
+    preferredSendMode: DraftAttachmentSendModePreference
+    urlRetentionMode: DraftAttachmentUrlRetentionPreference
+    sendPlanStatus: string | null
+    currentSendMode: SendMode | null
+    currentSendModeLabel: string
+    sendModeOptions: DraftAttachmentSendModeOption[]
+    urlRetentionOptions: DraftAttachmentUrlRetentionOption[]
+    originalUrl: string | null
+    resolvedUrl: string | null
+    probeStatus: string | null
+    materializationStatus: string | null
+    lastProbeAt: number | null
+    probeWarning: string | null
+    contentTypeFromProbe: string | null
+    contentLengthFromProbe: string | null
+    localCopyExists: boolean
+    retryPreviewAvailable: boolean
+    retryPreviewReason: string | null
+  }>
+  type HistoryIncompatibleAttachmentDisplayStatus =
+    | 'incompatible_with_current_model'
+    | 'excluded_from_current_context'
+  type HistoryIncompatibleAttachmentViewModel = Readonly<{
+    messageId: string
+    attachmentId: string
+    assetId: string
+    filename: string
+    aiPayloadKind: string
+    reasonCode: string
+    reasonText: string
+    source: 'history'
+    branchId: string | null
+    displayStatus: HistoryIncompatibleAttachmentDisplayStatus
+  }>
+  type HistoryAttachmentPreviewState = DecodedPreviewPayload | null
+  type HistoryIncompatibleAttachmentSummary = Readonly<{
+    count: number
+    currentIndex: number
+    items: HistoryIncompatibleAttachmentViewModel[]
+    activeItem: HistoryIncompatibleAttachmentViewModel | null
+    hasItems: boolean
+    warningText: string | null
+    navigationActive: boolean
+  }>
+  type AttachmentDecisionSource = 'history' | 'draft' | 'edit_restored'
+  type AttachmentDecisionValue = 'exclude' | 'remove'
+  type AttachmentDecision = Readonly<{
+    attachmentId: string
+    source: AttachmentDecisionSource
+    decision: AttachmentDecisionValue
+    reasonCode?: string
+  }>
+  type ConfirmationHistoryAttachmentItem = Readonly<{
+    attachmentId: string
+    messageId: string
+    assetId: string
+    filename: string
+    detailText: string
+    reasonCode: string
+    reasonText: string
+    previewDataUrl: string | null
+    iconKind: MessageAttachmentVM['iconKind']
+  }>
+  type ConfirmationCurrentAttachmentItem = Readonly<{
+    attachmentId: string
+    draftAttachmentId: string
+    assetId: string
+    filename: string
+    detailText: string
+    reasonCode: string
+    reasonText: string
+    previewDataUrl: string | null
+    source: 'draft' | 'edit_restored'
+  }>
+  type AttachmentConfirmationSessionKind = 'composer_send' | 'regenerate' | 'retry_replace' | 'edit_submit'
+  type AttachmentConfirmationResumePayload = Readonly<{
+    kind: AttachmentConfirmationSessionKind
+    decisions: AttachmentDecision[]
+  }>
+  type AttachmentConfirmationSession = Readonly<{
+    kind: AttachmentConfirmationSessionKind
+    title: string
+    historyItems: ConfirmationHistoryAttachmentItem[]
+    currentItems: ConfirmationCurrentAttachmentItem[]
+    historyAllExcluded: boolean
+    currentDecisionsByAttachmentId: Record<string, AttachmentDecisionValue | null>
+    collapsed: boolean
+    historySectionExpanded: boolean
+    currentSectionExpanded: boolean
+    showHistoryValidation: boolean
+    currentValidationAttachmentId: string | null
+    validationMessage: string | null
+    historyLocateActive: boolean
+    historyLocateIndex: number
+  }>
+  type AttachmentConfirmationRequestInput = Readonly<{
+    kind: AttachmentConfirmationSessionKind
+    historyItems: ConfirmationHistoryAttachmentItem[]
+    currentItems: ConfirmationCurrentAttachmentItem[]
+  }>
+  type AttachmentConfirmationResult = Readonly<{
+    confirmed: boolean
+    decisions: AttachmentDecision[]
+  }>
+  const draftAttachmentViewModels = ref<DraftAttachmentViewModel[]>([])
+  const draftAttachmentRecords = ref<DecodedDraftAttachment[]>([])
+  const editRestoredDraftAttachmentAssetIds = ref<Set<string>>(new Set())
+  const draftAttachmentAssetsById = ref<Record<string, DecodedFileAsset | null>>({})
+  const draftAttachmentPlansByAssetId = ref<Record<string, SendPlanAttachment | null>>({})
+  const draftAttachmentSendPlanStatus = ref<string | null>(null)
+  const composerSendPlanStatus = ref<SendPlan['status'] | null>(null)
+  const composerSendPlanCanProceed = ref(true)
+  const composerSendPlanBlockingSummary = ref<string | null>(null)
+  const composerSendPlanWarningSummary = ref<string | null>(null)
+  const composerSendPlanLoading = ref(false)
+  const composerSendPlanIsPartialAllowed = ref(false)
+  const draftAttachmentPreviewCache = ref<Record<string, DecodedPreviewPayload | null>>({})
+  const selectedDraftAttachmentAssetId = ref<string | null>(null)
+  const historyAttachmentViewModelsByMessageIdBase = ref<Record<string, MessageAttachmentVM[]>>({})
+  const historyAttachmentPreviewCache = ref<Record<string, HistoryAttachmentPreviewState>>({})
+  const historyAttachmentPreviewEnsuring = new Set<string>()
+  const historyIncompatibleAttachmentItems = ref<HistoryIncompatibleAttachmentViewModel[]>([])
+  const historyIncompatibleAttachmentIndex = ref(0)
+  const historyIncompatibleNavigationActive = ref(false)
+  const activeHistoryIncompatibleAttachmentId = ref<string | null>(null)
+  const historyIncompatibleRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+  const historyAttachmentRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+  let historyIncompatibleRefreshSeq = 0
+  let historyAttachmentRefreshSeq = 0
+  let draftAttachmentRefreshSeq = 0
+  const draftAttachmentPreviewEnsuring = new Set<string>()
+  const selectedDraftAttachmentDetails = computed(() =>
+    buildDraftAttachmentDetailsViewModel(selectedDraftAttachmentAssetId.value)
+  )
+  const historyAttachmentViewModelsByMessageId = computed<Record<string, MessageAttachmentVM[]>>(() => {
+    const activeAttachmentId = activeHistoryIncompatibleAttachmentId.value
+    const base = historyAttachmentViewModelsByMessageIdBase.value
+    const incompatibleByAttachmentId = new Map(historyIncompatibleAttachmentItems.value.map((item) => [item.attachmentId, item]))
+    const next: Record<string, MessageAttachmentVM[]> = {}
+    for (const [messageId, attachments] of Object.entries(base)) {
+      next[messageId] = attachments.map((attachment) => {
+        const incompatibleItem = incompatibleByAttachmentId.get(attachment.attachmentId) ?? null
+        const status = incompatibleItem?.displayStatus ?? attachment.displayStatus
+        return {
+          ...attachment,
+          displayStatus: status,
+          borderTone: mapHistoryAttachmentBorderTone(status),
+          isHistoryIncompatible: incompatibleItem != null,
+          incompatibilityReason: incompatibleItem?.reasonText ?? null,
+          isActiveLocatedAttachment: attachment.attachmentId === activeAttachmentId,
+        }
+      })
+    }
+    return next
+  })
+  const historyIncompatibleAttachmentSummary = computed<HistoryIncompatibleAttachmentSummary>(() => {
+    const items = historyIncompatibleAttachmentItems.value
+    const count = items.length
+    const hasItems = count > 0
+    if (!hasItems) {
+      return {
+        count: 0,
+        currentIndex: 0,
+        items,
+        activeItem: null,
+        hasItems: false,
+        warningText: null,
+        navigationActive: false,
+      }
+    }
+    const normalizedIndex = Math.max(0, Math.min(historyIncompatibleAttachmentIndex.value, count - 1))
+    const activeItem = items[normalizedIndex] ?? null
+    return {
+      count,
+      currentIndex: normalizedIndex + 1,
+      items,
+      activeItem,
+      hasItems: true,
+      warningText: `${count} 个历史附件不会纳入当前模型上下文。`,
+      navigationActive: historyIncompatibleNavigationActive.value,
+    }
+  })
+  const composerSendGateBlockedReason = computed(() => composerSendPlanBlockingSummary.value)
+  const composerSendGateWarningReason = computed(() => composerSendPlanWarningSummary.value)
+  const attachmentConfirmationSession = ref<AttachmentConfirmationSession | null>(null)
+  const attachmentConfirmationResolver = ref<((result: AttachmentConfirmationResult) => void) | null>(null)
+  const isAttachmentConfirmationActive = computed(() => attachmentConfirmationSession.value != null)
+  const isDraftInteractionLocked = computed(() => isAttachmentConfirmationActive.value)
+  const composerCanSend = computed(() => {
+    if (isRunning.value) return false
+    if (isDraftInteractionLocked.value) return false
+    if (isQuestionEditMode.value) return false
+    if (composerSendPlanLoading.value) return false
+    if (draft.value.trim().length === 0) return false
+    return composerSendPlanCanProceed.value
+  })
+  const attachmentConfirmationVisible = computed(() => {
+    const session = attachmentConfirmationSession.value
+    return session != null && session.collapsed === false
+  })
+  const attachmentConfirmationCollapsedBannerVisible = computed(() => {
+    const session = attachmentConfirmationSession.value
+    return session != null && session.collapsed === true && session.historyLocateActive === false
+  })
+  const attachmentConfirmationHistoryLocatorVisible = computed(() => {
+    const session = attachmentConfirmationSession.value
+    return session != null && session.collapsed === true && session.historyLocateActive === true
+  })
+  const attachmentConfirmationHistoryLocatorLabel = computed(() => {
+    const session = attachmentConfirmationSession.value
+    if (!session || session.historyItems.length === 0) return '0/0'
+    return `${session.historyLocateIndex + 1}/${session.historyItems.length}`
+  })
 
   const state = ref<RootState>(createInitialState())
   const messageSeqById = ref<Map<string, number>>(new Map())
@@ -209,7 +531,102 @@ export function useAppChatAppLogic() {
   const questionCandidatesEpochBySlot = ref<Map<string, number>>(new Map())
   const questionCandidatesLoading = ref<Map<string, string>>(new Map())
 
-  const questionEditDialog = ref<{ questionId: string; draft: string } | null>(null)
+  const questionEditSession = ref<{
+    questionId: string
+    previousDraft: DecodedConversationDraft
+  } | null>(null)
+  const isQuestionEditMode = computed(() => questionEditSession.value != null)
+  const draftPersistenceMode = ref<'compose' | 'edit'>('compose')
+  const draftPersistenceEditingSourceMessageId = ref<string | null>(null)
+  const draftPersistenceQueuedWhileAttachmentConfirmationActive = ref(false)
+
+  function applyDraftPersistenceState(next: Readonly<{
+    draftMode: 'compose' | 'edit'
+    editingSourceMessageId: string | null
+  }>) {
+    draftPersistenceMode.value = next.draftMode
+    draftPersistenceEditingSourceMessageId.value = next.editingSourceMessageId
+  }
+
+  function applyDraftPersistenceStateFromDraft(next: Pick<DecodedConversationDraft, 'draftMode' | 'editingSourceMessageId'> | null | undefined) {
+    if (!next) {
+      applyDraftPersistenceState({ draftMode: 'compose', editingSourceMessageId: null })
+      return
+    }
+    applyDraftPersistenceState({
+      draftMode: next.draftMode,
+      editingSourceMessageId: next.editingSourceMessageId ?? null,
+    })
+  }
+
+  function isEditingDraftForMessage(messageId: string): boolean {
+    const normalized = String(messageId ?? '').trim()
+    if (!normalized) return false
+    return (
+      draftPersistenceMode.value === 'edit' &&
+      String(draftPersistenceEditingSourceMessageId.value ?? '').trim() === normalized
+    )
+  }
+
+  async function restoreDraftSnapshot(snapshot: DecodedConversationDraft): Promise<void> {
+    const convoId = String(activeConvoId.value ?? '').trim()
+    if (!convoId) return
+    const current = await restoreConversationDraft(convoId)
+    const targetByAssetId = new Map(
+      snapshot.attachments.map((item) => [String(item.assetId ?? '').trim(), item]).filter(([assetId]) => assetId.length > 0),
+    )
+    const currentByAssetId = new Map(
+      current.attachments.map((item) => [String(item.assetId ?? '').trim(), item]).filter(([assetId]) => assetId.length > 0),
+    )
+
+    for (const [assetId] of currentByAssetId) {
+      if (targetByAssetId.has(assetId)) continue
+      await removeConversationDraftAttachment({ conversationId: convoId, assetId })
+    }
+    for (const [assetId, target] of targetByAssetId) {
+      const existing = currentByAssetId.get(assetId)
+      if (!existing) {
+        await addConversationDraftAttachment({
+          conversationId: convoId,
+          assetId,
+          attachmentOrder: target.attachmentOrder,
+          includeInNextRequest: target.includeInNextRequest,
+          excludedReason: target.excludedReason,
+          preferredSendMode: target.preferredSendMode,
+          urlRetentionMode: target.urlRetentionMode,
+        })
+        continue
+      }
+      if (
+        existing.preferredSendMode !== target.preferredSendMode ||
+        existing.urlRetentionMode !== target.urlRetentionMode ||
+        existing.includeInNextRequest !== target.includeInNextRequest ||
+        existing.excludedReason !== target.excludedReason
+      ) {
+        await updateConversationDraftAttachmentSettings({
+          conversationId: convoId,
+          assetId,
+          preferredSendMode: target.preferredSendMode,
+          urlRetentionMode: target.urlRetentionMode,
+          includeInNextRequest: target.includeInNextRequest,
+          excludedReason: target.excludedReason,
+        })
+      }
+    }
+
+    const restored = await updateConversationDraftText({
+      conversationId: convoId,
+      draftText: snapshot.draftText,
+      draftMode: snapshot.draftMode,
+      editingSourceMessageId: snapshot.editingSourceMessageId ?? null,
+    })
+    applyDraftPersistenceStateFromDraft(restored)
+    draft.value = restored.draftText
+    editRestoredDraftAttachmentAssetIds.value = restored.draftMode === 'edit'
+      ? new Set(restored.attachedAssetIds.map((assetId) => String(assetId ?? '').trim()).filter(Boolean))
+      : new Set()
+    await refreshDraftAttachmentViewModels({ restoredDraft: restored })
+  }
 
   const {
     diagnosticsFlags,
@@ -339,9 +756,24 @@ export function useAppChatAppLogic() {
     return m.reasoningPanelState !== 'collapsed'
   })
 
+  const reasoningInlineMode = computed(() => reasoningDisplayMode.value === 'inline')
+  const reasoningRailMode = computed(() => reasoningDisplayMode.value === 'rail')
+  const rightRailCanShowReasoning = computed(() => reasoningRailMode.value && !!lastAssistantMessageId.value)
+  const effectiveRightRailView = computed<'reasoning' | 'console'>(() =>
+    rightRailCanShowReasoning.value ? rightRailView.value : 'console'
+  )
+
   const canToggleReasoningPanel = computed(() => !!lastAssistantMessageId.value)
 
   watch([activeBranchId, transcriptMessageIds], () => ensureCursorForActiveBranch(), { immediate: true })
+
+  watch(
+    [transcriptMessageIds, activeConvoId, activeBranchId, model],
+    () => {
+      scheduleHistoryAttachmentRefresh()
+    },
+    { immediate: true },
+  )
 
   watch(
     activeBranchId,
@@ -391,10 +823,40 @@ export function useAppChatAppLogic() {
     scheduleReasoningPrefsSave()
   })
 
+  watch([activeConvoId, activeBranchId], async (_next, [prevConvoId, prevBranchId]) => {
+    const prevScopeValid = String(prevConvoId ?? '').trim().length > 0 && String(prevBranchId ?? '').trim().length > 0
+    if (prevScopeValid) {
+      await flushDraftPersistence()
+    }
+    await restoreDraftForActiveScope()
+  }, { flush: 'sync' })
+
+  watch(draft, () => {
+    if (!getActiveDraftScope()) return
+    scheduleDraftPersistence()
+    if (draftAttachmentRecords.value.length > 0) {
+      scheduleDraftSendPlanRefresh()
+    }
+  })
+
+  watch(
+    [activeConvoId, globalReasoningPrefs, globalWebSearchDefaults, globalSamplingParamsDefaults, globalImageGenerationDefault],
+    () => {
+      hydrateSessionConfigUiFromActiveConvo()
+    },
+    { immediate: false, flush: 'sync' }
+  )
+
   watch(
     () => model.value,
-    () => {
+    (next, prev) => {
       void refreshSelectedModelImageCapability()
+      if (prev === undefined || next === prev) return
+      if (draftAttachmentRecords.value.length > 0) {
+        scheduleDraftSendPlanRefresh()
+      }
+      scheduleHistoryIncompatibleRefresh()
+      scheduleHistoryAttachmentRefresh()
     },
     { immediate: true },
   )
@@ -580,10 +1042,17 @@ export function useAppChatAppLogic() {
   let idsRefChangedCount = 0
 
   function handleVisibilityChange() {
+    if (typeof document !== 'undefined' && document.hidden) {
+      void flushDraftPersistence()
+    }
     if (!enableEventScheduler) return
     if (typeof document !== 'undefined' && document.hidden) {
       eventScheduler.flushAll('visibility')
     }
+  }
+
+  function handlePageHide() {
+    void flushDraftPersistence()
   }
 
   function commitImmediate(runId: string, event: DomainEvent) {
@@ -1373,7 +1842,6 @@ export function useAppChatAppLogic() {
         ...(annotations.length > 0 ? { annotations: markRaw(annotations) } : {}),
         reasoningDetailsRaw: markRaw(reasoningDetailsRaw),
         reasoningStreamingText: '',
-        reasoningSummaryText: undefined,
         reasoningPieces: markRaw([]),
         reasoningLastPieceLen: 0,
         reasoningPanelState: 'collapsed',
@@ -1385,11 +1853,11 @@ export function useAppChatAppLogic() {
         textVersion: 0,
         reasoningVersion: 0,
         requestedReasoningMode: requestConfig?.mode === 'effort' ? 'effort' : 'auto',
-        requestedReasoningEffort: requestConfig?.mode === 'effort' ? requestConfig.effort : undefined,
+        ...(requestConfig?.mode === 'effort' ? { requestedReasoningEffort: requestConfig.effort } : {}),
         requestedReasoningExclude: requestConfig?.mode === 'effort' ? requestConfig.exclude === true : false,
         errorEnvelope,
         errorSummary,
-      }
+      } as MessageState
 
       s.runMessageIds[convoId].push(messageId)
     }
@@ -2127,6 +2595,7 @@ export function useAppChatAppLogic() {
 
   async function onSelectConvo(convoId: string) {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     activeConvoId.value = convoId
     await loadTranscriptForActiveConvo()
     assertInvariants() // Stable boundary: conversation switched and refreshed
@@ -2134,6 +2603,7 @@ export function useAppChatAppLogic() {
 
   async function onSelectBranch(branchId: string) {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     const bid = String(branchId ?? '').trim()
     if (!bid || bid === activeBranchId.value) return
     activeBranchId.value = bid
@@ -2144,6 +2614,7 @@ export function useAppChatAppLogic() {
 
   async function onRenameConvo(convoId: string, title: string) {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     try {
       await renameConvo(convoId, title)
       await refreshConvos()
@@ -2154,7 +2625,9 @@ export function useAppChatAppLogic() {
 
   async function onDeleteConvo(convoId: string) {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     try {
+      await deleteChatDraftsForConvo(convoId)
       await deleteConvo(convoId)
       await refreshConvos()
       await loadTranscriptForActiveConvo()
@@ -2165,6 +2638,7 @@ export function useAppChatAppLogic() {
 
   async function onMoveConvoToProject(convoId: string, projectId: string | null) {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     try {
       await setConvoProject(convoId, projectId)
       await ensureProjectReasoningPrefsInitialized(projectId)
@@ -2178,7 +2652,9 @@ export function useAppChatAppLogic() {
 
   async function onBulkDeleteConvos(convoIds: string[]) {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     try {
+      await Promise.all(convoIds.map((id) => deleteChatDraftsForConvo(id)))
       await deleteConvos(convoIds)
       await refreshConvos()
       await loadTranscriptForActiveConvo()
@@ -2189,6 +2665,7 @@ export function useAppChatAppLogic() {
 
   async function onBulkMoveConvosToProject(convoIds: string[], projectId: string | null) {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     try {
       await setConvoProjectMany(convoIds, projectId)
       await ensureProjectReasoningPrefsInitialized(projectId)
@@ -2204,6 +2681,7 @@ export function useAppChatAppLogic() {
 
   function onSelectProject(projectId: string | null) {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     activeProjectId.value = projectId
     // 切换项目后刷新对话列表
     void refreshConvos()
@@ -2211,6 +2689,7 @@ export function useAppChatAppLogic() {
 
   async function onCreateProject(name: string) {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     try {
       const created = await createProject({ name })
       
@@ -2234,6 +2713,7 @@ export function useAppChatAppLogic() {
 
   async function onRenameProject(projectId: string, name: string) {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     try {
       await saveProject({ id: projectId, name })
       await refreshProjects()
@@ -2244,6 +2724,7 @@ export function useAppChatAppLogic() {
 
   async function onDeleteProject(projectId: string) {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     try {
       const result = await deleteProject(projectId)
       if (!result.ok && result.error) {
@@ -2263,6 +2744,7 @@ export function useAppChatAppLogic() {
 
   async function onCreateConvo() {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     const created = await createConvo({ title: `New chat ${new Date().toLocaleString()}` })
     await refreshConvos()
     if (created) activeConvoId.value = created.id
@@ -2301,19 +2783,449 @@ export function useAppChatAppLogic() {
     searchModalOpen.value = false
   }
 
-  async function focusMessageAfterSearch(messageId: string) {
+  async function focusMessageAfterSearch(messageId: string): Promise<boolean> {
     const mid = String(messageId ?? '').trim()
-    if (!mid) return
+    if (!mid) return false
     const bid = activeBranchId.value
-    if (!bid) return
+    if (!bid) return false
 
     setCursorForBranch(bid, mid)
     await nextTick()
-    if (!isMessageInTranscript(mid)) return
+    if (!isMessageInTranscript(mid)) return false
     const el = document.querySelector(`[data-testid="msg-wrap-${mid}"]`) as HTMLElement | null
     if (el?.scrollIntoView) {
       el.scrollIntoView({ block: 'center', behavior: 'smooth' })
     }
+    return true
+  }
+
+  async function focusHistoryIncompatibleAttachmentAt(index: number): Promise<boolean> {
+    const items = historyIncompatibleAttachmentItems.value
+    if (items.length === 0) return false
+    let probe = normalizeHistoryIncompatibleIndex(index, items.length)
+    for (let attempt = 0; attempt < items.length; attempt += 1) {
+      const item = items[probe]
+      if (item && await focusMessageAfterSearch(item.messageId)) {
+        historyIncompatibleAttachmentIndex.value = probe
+        activeHistoryIncompatibleAttachmentId.value = item.attachmentId
+        return true
+      }
+      probe = normalizeHistoryIncompatibleIndex(probe + 1, items.length)
+    }
+    setAttachmentFeedback('warning', '目标历史附件对应的消息当前不可见。')
+    return false
+  }
+
+  async function onReviewHistoryIncompatibleAttachments() {
+    if (!historyIncompatibleAttachmentSummary.value.hasItems) return
+    historyIncompatibleNavigationActive.value = true
+    await focusHistoryIncompatibleAttachmentAt(0)
+  }
+
+  async function onNavigateHistoryIncompatibleAttachments(delta: -1 | 1) {
+    const items = historyIncompatibleAttachmentItems.value
+    if (items.length === 0) return
+    historyIncompatibleNavigationActive.value = true
+    let probe = normalizeHistoryIncompatibleIndex(historyIncompatibleAttachmentIndex.value + delta, items.length)
+    for (let attempt = 0; attempt < items.length; attempt += 1) {
+      const item = items[probe]
+      if (item && await focusMessageAfterSearch(item.messageId)) {
+        historyIncompatibleAttachmentIndex.value = probe
+        activeHistoryIncompatibleAttachmentId.value = item.attachmentId
+        return
+      }
+      probe = normalizeHistoryIncompatibleIndex(probe + delta, items.length)
+    }
+    setAttachmentFeedback('warning', '目标历史附件对应的消息当前不可见。')
+  }
+
+  function mutateAttachmentConfirmationSession(
+    updater: (prev: AttachmentConfirmationSession) => AttachmentConfirmationSession
+  ) {
+    const prev = attachmentConfirmationSession.value
+    if (!prev) return
+    attachmentConfirmationSession.value = updater(prev)
+  }
+
+  function closeAttachmentConfirmationSessionWith(result: AttachmentConfirmationResult) {
+    const resolve = attachmentConfirmationResolver.value
+    attachmentConfirmationResolver.value = null
+    attachmentConfirmationSession.value = null
+    historyIncompatibleNavigationActive.value = false
+    activeHistoryIncompatibleAttachmentId.value = null
+    const shouldFlushDraftPersistence = draftPersistenceQueuedWhileAttachmentConfirmationActive.value
+    draftPersistenceQueuedWhileAttachmentConfirmationActive.value = false
+    if (shouldFlushDraftPersistence) {
+      void flushDraftPersistence()
+    }
+    if (resolve) resolve(result)
+  }
+
+  function historyAttachmentDetailText(item: MessageAttachmentVM | null): string {
+    if (!item) return 'history attachment'
+    const parts: string[] = []
+    if (item.sourceKind && item.sourceKind !== 'unknown') parts.push(item.sourceKind)
+    if (item.extension) parts.push(item.extension)
+    if (parts.length === 0 && item.assetKind) parts.push(item.assetKind)
+    return parts.join(' · ')
+  }
+
+  function buildHistoryConfirmationItemsFromReplayPrepared(
+    prepared: PreparedOpenRouterReplay | null | undefined
+  ): ConfirmationHistoryAttachmentItem[] {
+    if (!prepared) return []
+    const excluded = Array.isArray(prepared.excludedAttachments) ? prepared.excludedAttachments : []
+    if (excluded.length === 0) return []
+    const viewMap = new Map<string, MessageAttachmentVM>()
+    for (const attachments of Object.values(historyAttachmentViewModelsByMessageId.value)) {
+      for (const attachment of attachments) {
+        viewMap.set(attachment.attachmentId, attachment)
+      }
+    }
+    const out: ConfirmationHistoryAttachmentItem[] = []
+    for (const row of excluded) {
+      const attachmentId = String((row as any)?.attachmentId ?? '').trim()
+      const messageId = String((row as any)?.messageId ?? '').trim()
+      const assetId = String((row as any)?.assetId ?? '').trim()
+      if (!attachmentId || !messageId) continue
+      const vm = viewMap.get(attachmentId) ?? null
+      const reasonCode = String((row as any)?.exclusionReason ?? 'history_attachment_excluded').trim() || 'history_attachment_excluded'
+      out.push({
+        attachmentId,
+        messageId,
+        assetId: assetId || (vm?.assetId ?? ''),
+        filename: vm?.filename ?? (assetId || attachmentId),
+        detailText: historyAttachmentDetailText(vm),
+        reasonCode,
+        reasonText: sanitizeHistoryAttachmentReason(String((row as any)?.reason ?? (row as any)?.message ?? reasonCode)),
+        previewDataUrl: vm?.previewDataUrl ?? null,
+        iconKind: vm?.iconKind ?? 'file',
+      })
+    }
+    return out
+  }
+
+  function buildCurrentConfirmationItemsFromSendPlan(sendPlan: SendPlan): ConfirmationCurrentAttachmentItem[] {
+    const draftByAssetId = new Map(draftAttachmentRecords.value.map((item) => [item.assetId, item]))
+    const viewByAssetId = new Map(draftAttachmentViewModels.value.map((item) => [item.assetId, item]))
+    const restoredAssetIdSet = editRestoredDraftAttachmentAssetIds.value
+    const out: ConfirmationCurrentAttachmentItem[] = []
+    for (const plan of sendPlan.attachmentPlans) {
+      if (plan.source !== 'draft') continue
+      if (plan.eligibility === 'included' || plan.eligibility === 'warning') continue
+      const draftRecord = draftByAssetId.get(plan.assetId)
+      if (!draftRecord) continue
+      const view = viewByAssetId.get(plan.assetId)
+      const reasonCode = String(plan.exclusionReason ?? plan.displayStatus ?? 'unsupported_attachment').trim() || 'unsupported_attachment'
+      const source: 'draft' | 'edit_restored' =
+        restoredAssetIdSet.has(plan.assetId) ? 'edit_restored' : 'draft'
+      const detailParts: string[] = []
+      if (view?.sourceKind) detailParts.push(view.sourceKind)
+      if (view?.extension) detailParts.push(view.extension)
+      if (detailParts.length === 0) detailParts.push(view?.assetKind ?? 'attachment')
+      out.push({
+        attachmentId: draftRecord.id,
+        draftAttachmentId: draftRecord.id,
+        assetId: plan.assetId,
+        filename: view?.filename ?? plan.assetId,
+        detailText: detailParts.join(' · '),
+        reasonCode,
+        reasonText: sanitizeSendPlanSummaryMessage(plan.notes?.[0] ?? '') ?? 'Current model or send gate cannot include this attachment.',
+        previewDataUrl: view?.previewDataUrl ?? null,
+        source,
+      })
+    }
+    return out
+  }
+
+  function buildHistoryConfirmationItemsFromSendPlan(sendPlan: SendPlan): ConfirmationHistoryAttachmentItem[] {
+    const viewMap = new Map<string, MessageAttachmentVM>()
+    for (const attachments of Object.values(historyAttachmentViewModelsByMessageId.value)) {
+      for (const attachment of attachments) {
+        viewMap.set(attachment.attachmentId, attachment)
+      }
+    }
+    const out: ConfirmationHistoryAttachmentItem[] = []
+    for (const plan of sendPlan.attachmentPlans) {
+      if (plan.source !== 'history') continue
+      if (plan.eligibility === 'included' || plan.eligibility === 'warning') continue
+      const messageId = String(plan.messageId ?? '').trim()
+      if (!messageId) continue
+      const vm = viewMap.get(plan.attachmentId) ?? null
+      const reasonCode = String(plan.exclusionReason ?? plan.displayStatus ?? 'history_attachment_excluded').trim() || 'history_attachment_excluded'
+      out.push({
+        attachmentId: plan.attachmentId,
+        messageId,
+        assetId: plan.assetId,
+        filename: vm?.filename ?? plan.assetId,
+        detailText: historyAttachmentDetailText(vm),
+        reasonCode,
+        reasonText: sanitizeHistoryAttachmentReason(plan.notes?.[0] ?? reasonCode),
+        previewDataUrl: vm?.previewDataUrl ?? null,
+        iconKind: vm?.iconKind ?? 'file',
+      })
+    }
+    return out
+  }
+
+  function buildAttachmentConfirmationSession(input: AttachmentConfirmationRequestInput): AttachmentConfirmationSession | null {
+    if (input.historyItems.length === 0 && input.currentItems.length === 0) return null
+    const titleByKind: Record<AttachmentConfirmationSessionKind, string> = {
+      composer_send: '发送前确认附件',
+      regenerate: '重新生成前确认附件',
+      retry_replace: '替换重试前确认附件',
+      edit_submit: '提交编辑前确认附件',
+    }
+    return {
+      kind: input.kind,
+      title: titleByKind[input.kind],
+      historyItems: input.historyItems,
+      currentItems: input.currentItems,
+      historyAllExcluded: input.historyItems.length === 0,
+      currentDecisionsByAttachmentId: Object.fromEntries(input.currentItems.map((item) => [item.attachmentId, null])),
+      collapsed: false,
+      historySectionExpanded: true,
+      currentSectionExpanded: true,
+      showHistoryValidation: false,
+      currentValidationAttachmentId: null,
+      validationMessage: null,
+      historyLocateActive: false,
+      historyLocateIndex: 0,
+    }
+  }
+
+  async function requestAttachmentConfirmation(input: AttachmentConfirmationRequestInput): Promise<AttachmentConfirmationResult> {
+    if (attachmentConfirmationSession.value) {
+      return { confirmed: false, decisions: [] }
+    }
+    const session = buildAttachmentConfirmationSession(input)
+    if (!session) return { confirmed: true, decisions: [] }
+    return await new Promise<AttachmentConfirmationResult>((resolve) => {
+      attachmentConfirmationResolver.value = resolve
+      attachmentConfirmationSession.value = session
+    })
+  }
+
+  function closeAttachmentConfirmationByCancel() {
+    closeAttachmentConfirmationSessionWith({ confirmed: false, decisions: [] })
+  }
+
+  function openAttachmentConfirmationPanel() {
+    mutateAttachmentConfirmationSession((prev) => ({
+      ...prev,
+      collapsed: false,
+      validationMessage: null,
+    }))
+  }
+
+  function collapseAttachmentConfirmationPanel() {
+    mutateAttachmentConfirmationSession((prev) => ({
+      ...prev,
+      collapsed: true,
+      validationMessage: null,
+    }))
+  }
+
+  function toggleAttachmentConfirmationHistorySection() {
+    mutateAttachmentConfirmationSession((prev) => ({
+      ...prev,
+      historySectionExpanded: !prev.historySectionExpanded,
+    }))
+  }
+
+  function toggleAttachmentConfirmationCurrentSection() {
+    mutateAttachmentConfirmationSession((prev) => ({
+      ...prev,
+      currentSectionExpanded: !prev.currentSectionExpanded,
+    }))
+  }
+
+  function setAttachmentConfirmationHistoryExcludeAll(checked: boolean) {
+    mutateAttachmentConfirmationSession((prev) => ({
+      ...prev,
+      historyAllExcluded: checked,
+      showHistoryValidation: checked ? false : prev.showHistoryValidation,
+      validationMessage: null,
+    }))
+  }
+
+  function setAttachmentConfirmationCurrentDecision(attachmentId: string, decision: AttachmentDecisionValue | null) {
+    const normalizedAttachmentId = String(attachmentId ?? '').trim()
+    if (!normalizedAttachmentId) return
+    mutateAttachmentConfirmationSession((prev) => {
+      const nextDecisions = {
+        ...prev.currentDecisionsByAttachmentId,
+        [normalizedAttachmentId]: decision,
+      }
+      return {
+        ...prev,
+        currentDecisionsByAttachmentId: nextDecisions,
+        currentValidationAttachmentId:
+          prev.currentValidationAttachmentId === normalizedAttachmentId && decision
+            ? null
+            : prev.currentValidationAttachmentId,
+        validationMessage: null,
+      }
+    })
+  }
+
+  function setAttachmentConfirmationCurrentDecisionForAll(decision: AttachmentDecisionValue | null) {
+    mutateAttachmentConfirmationSession((prev) => {
+      const next: Record<string, AttachmentDecisionValue | null> = {}
+      for (const item of prev.currentItems) {
+        next[item.attachmentId] = decision
+      }
+      return {
+        ...prev,
+        currentDecisionsByAttachmentId: next,
+        currentValidationAttachmentId: null,
+        validationMessage: null,
+      }
+    })
+  }
+
+  async function focusAttachmentConfirmationValidationTarget(target: Readonly<{
+    history: boolean
+    attachmentId?: string | null
+  }>) {
+    await nextTick()
+    const key = target.history
+      ? 'attachment-confirm-history-exclude-all'
+      : `attachment-confirm-current-row-${String(target.attachmentId ?? '').trim()}`
+    const el = document.querySelector(`[data-testid="${key}"]`) as HTMLElement | null
+    if (el?.scrollIntoView) {
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      el.focus?.()
+    }
+  }
+
+  function collectAttachmentConfirmationDecisions(session: AttachmentConfirmationSession): AttachmentDecision[] {
+    const decisions: AttachmentDecision[] = []
+    if (session.historyItems.length > 0 && session.historyAllExcluded) {
+      for (const item of session.historyItems) {
+        decisions.push({
+          attachmentId: item.attachmentId,
+          source: 'history',
+          decision: 'exclude',
+          reasonCode: item.reasonCode,
+        })
+      }
+    }
+    for (const item of session.currentItems) {
+      const decision = session.currentDecisionsByAttachmentId[item.attachmentId]
+      if (!decision) continue
+      decisions.push({
+        attachmentId: item.attachmentId,
+        source: item.source,
+        decision,
+        reasonCode: item.reasonCode,
+      })
+    }
+    return decisions
+  }
+
+  async function confirmAttachmentConfirmationSession() {
+    const session = attachmentConfirmationSession.value
+    if (!session) return
+    if (session.historyItems.length > 0 && !session.historyAllExcluded) {
+      mutateAttachmentConfirmationSession((prev) => ({
+        ...prev,
+        showHistoryValidation: true,
+        validationMessage: '请先确认：历史附件全部从本次模型上下文中排除。',
+      }))
+      await focusAttachmentConfirmationValidationTarget({ history: true })
+      return
+    }
+    const missingCurrent = session.currentItems.find((item) => !session.currentDecisionsByAttachmentId[item.attachmentId]) ?? null
+    if (missingCurrent) {
+      mutateAttachmentConfirmationSession((prev) => ({
+        ...prev,
+        currentValidationAttachmentId: missingCurrent.attachmentId,
+        validationMessage: '请为每个当前不受支持附件选择 exclude 或 remove。',
+      }))
+      await focusAttachmentConfirmationValidationTarget({ history: false, attachmentId: missingCurrent.attachmentId })
+      return
+    }
+    closeAttachmentConfirmationSessionWith({
+      confirmed: true,
+      decisions: collectAttachmentConfirmationDecisions(session),
+    })
+  }
+
+  async function focusAttachmentConfirmationHistoryAt(index: number): Promise<boolean> {
+    const session = attachmentConfirmationSession.value
+    if (!session || session.historyItems.length === 0) return false
+    const normalized = normalizeHistoryIncompatibleIndex(index, session.historyItems.length)
+    const item = session.historyItems[normalized]
+    if (!item) return false
+    const focused = await focusMessageAfterSearch(item.messageId)
+    if (!focused) {
+      setAttachmentFeedback('warning', '目标历史附件对应的消息当前不可见。')
+      return false
+    }
+    activeHistoryIncompatibleAttachmentId.value = item.attachmentId
+    mutateAttachmentConfirmationSession((prev) => ({
+      ...prev,
+      collapsed: true,
+      historyLocateActive: true,
+      historyLocateIndex: normalized,
+      validationMessage: null,
+    }))
+    return true
+  }
+
+  async function locateAttachmentConfirmationHistoryAll() {
+    await focusAttachmentConfirmationHistoryAt(0)
+  }
+
+  async function locateAttachmentConfirmationHistoryByAttachmentId(attachmentId: string) {
+    const session = attachmentConfirmationSession.value
+    if (!session) return
+    const idx = session.historyItems.findIndex((item) => item.attachmentId === attachmentId)
+    if (idx < 0) return
+    await focusAttachmentConfirmationHistoryAt(idx)
+  }
+
+  async function navigateAttachmentConfirmationHistory(delta: -1 | 1) {
+    const session = attachmentConfirmationSession.value
+    if (!session || session.historyItems.length === 0) return
+    await focusAttachmentConfirmationHistoryAt(session.historyLocateIndex + delta)
+  }
+
+  function closeAttachmentConfirmationLocatorBar() {
+    mutateAttachmentConfirmationSession((prev) => ({
+      ...prev,
+      historyLocateActive: false,
+    }))
+  }
+
+  async function applyDraftAttachmentDecisions(decisions: ReadonlyArray<AttachmentDecision>): Promise<void> {
+    const convoId = String(activeConvoId.value ?? '').trim()
+    if (!convoId) return
+    for (const decision of decisions) {
+      if (decision.source === 'history') continue
+      const draftRecord = draftAttachmentRecords.value.find((item) => item.id === decision.attachmentId)
+      if (!draftRecord) continue
+      if (decision.decision === 'remove') {
+        await removeConversationDraftAttachment({
+          conversationId: convoId,
+          assetId: draftRecord.assetId,
+        })
+        if (editRestoredDraftAttachmentAssetIds.value.has(draftRecord.assetId)) {
+          const next = new Set(editRestoredDraftAttachmentAssetIds.value)
+          next.delete(draftRecord.assetId)
+          editRestoredDraftAttachmentAssetIds.value = next
+        }
+        continue
+      }
+      await updateConversationDraftAttachmentSettings({
+        conversationId: convoId,
+        assetId: draftRecord.assetId,
+        includeInNextRequest: false,
+        excludedReason: 'manually_excluded',
+      })
+    }
+    await refreshDraftAttachmentViewModels()
   }
 
   async function onSelectSearchHit(hit: SearchHit) {
@@ -2392,6 +3304,59 @@ export function useAppChatAppLogic() {
     const targetId = typeof messageId === 'string' && messageId.trim().length > 0 ? messageId : lastAssistantMessageId.value
     if (!targetId) return
     state.value = toggleReasoningPanelState(state.value, targetId)
+  }
+
+  function onOpenReasoningDisplayForMessage(messageId?: string) {
+    const targetId = typeof messageId === 'string' && messageId.trim().length > 0 ? messageId : lastAssistantMessageId.value
+    if (!targetId) return
+    if (reasoningRailMode.value) {
+      if (rightRailOpen.value && effectiveRightRailView.value === 'reasoning') {
+        rightRailOpen.value = false
+        return
+      }
+      rightRailOpen.value = true
+      rightRailView.value = 'reasoning'
+      return
+    }
+    onToggleReasoningPanelState(targetId)
+  }
+
+  function requestDeleteQuestion(questionId: string) {
+    const qid = String(questionId ?? '').trim()
+    if (!qid || isRunning.value) return
+    const meta = messageMetaById.value.get(qid)
+    if (!meta || meta.role !== 'user') return
+    pendingDeleteQuestionId.value = qid
+  }
+
+  function cancelDeleteQuestion() {
+    pendingDeleteQuestionId.value = null
+  }
+
+  async function confirmDeleteQuestion(questionId: string) {
+    if (isRunning.value) return
+    const bid = String(activeBranchId.value ?? '').trim()
+    const qid = String(questionId ?? '').trim()
+    if (!bid || !qid) return
+    const meta = messageMetaById.value.get(qid)
+    if (!meta || meta.role !== 'user') return
+
+    pendingDeleteQuestionId.value = null
+    loadError.value = null
+
+    try {
+      const result = await truncateBranchFromQuestion(bid, qid)
+      patchBranch(bid, {
+        headMessageId: result.headMessageId,
+        updatedAt: Date.now(),
+      })
+      setCursorForBranch(bid, result.headMessageId)
+      resetCandidatesCache()
+      await refreshRenderableBranchView(bid)
+      await refreshBranchesForActiveConvo()
+    } catch (err: any) {
+      loadError.value = err?.message ? String(err.message) : String(err)
+    }
   }
 
   function getRequestedReasoningConfig(): Readonly<{
@@ -2476,6 +3441,1591 @@ export function useAppChatAppLogic() {
     return convos.value.find((c) => c.id === convoId) ?? null
   }
 
+  function updateLocalConvoMeta(convoId: string, nextMeta: Record<string, unknown> | null) {
+    convos.value = convos.value.map((c) => (c.id === convoId ? { ...c, meta: nextMeta } : c))
+  }
+
+  async function persistConvoMetaUpdate(convo: ConvoSummary, nextMeta: Record<string, unknown> | null) {
+    await saveConvo({
+      id: convo.id,
+      title: convo.title,
+      projectId: convo.projectId ?? null,
+      meta: nextMeta,
+    })
+    updateLocalConvoMeta(convo.id, nextMeta)
+  }
+
+  function getChatSessionConfigForConvo(convo: ConvoSummary | null): ChatSessionConfig {
+    const projectMeta = convo?.projectId
+      ? getProjectByIdLocal(convo.projectId)?.meta ?? null
+      : null
+    return deserializeChatSessionConfigFromConvoMeta({
+      convoMeta: convo?.meta ?? null,
+      projectMeta,
+      globalReasoningPrefs: globalReasoningPrefs.value,
+      globalWebSearchDefaults: globalWebSearchDefaults.value,
+      globalSamplingParamsDefaults: globalSamplingParamsDefaults.value,
+      globalImageGenerationDefault: globalImageGenerationDefault.value,
+      defaultModelKey: DEFAULT_CHAT_MODEL_ID,
+    })
+  }
+
+  const activeSessionConfig = computed(() => getChatSessionConfigForConvo(getActiveConvoRecord()))
+
+  async function updateActiveConvoSessionConfig(patch: ChatSessionConfigPatch): Promise<ChatSessionConfig | null> {
+    const convo = getActiveConvoRecord()
+    if (!convo) return null
+    const current = getChatSessionConfigForConvo(convo)
+    const nextConfig = mergeChatSessionConfig(current, patch)
+    const nextMeta = serializeChatSessionConfigToConvoMeta({
+      baseMeta: convo.meta ?? null,
+      config: nextConfig,
+      convoProjectId: convo.projectId ?? null,
+      defaultModelKey: DEFAULT_CHAT_MODEL_ID,
+    })
+    updateLocalConvoMeta(convo.id, nextMeta)
+    await persistConvoMetaUpdate(convo, nextMeta)
+    return nextConfig
+  }
+
+  async function onUpdateReasoningEnabled(nextEnabled: boolean) {
+    if (isDraftInteractionLocked.value) return
+    await updateActiveConvoSessionConfig({
+      reasoning: {
+        enabled: nextEnabled,
+      },
+    })
+    hydrateSessionConfigUiFromActiveConvo()
+  }
+
+  async function onUpdateReasoningEffortLevel(nextEffort: 'low' | 'medium' | 'high') {
+    if (isDraftInteractionLocked.value) return
+    await updateActiveConvoSessionConfig({
+      reasoning: {
+        enabled: true,
+        effort: nextEffort,
+      },
+    })
+    hydrateSessionConfigUiFromActiveConvo()
+  }
+
+  async function onUpdateWebSearchEnabled(nextEnabled: boolean) {
+    if (isDraftInteractionLocked.value) return
+    const current = activeSessionConfig.value.webSearch
+    await updateActiveConvoSessionConfig({
+      webSearch: {
+        enabled: nextEnabled,
+        level: current.level,
+        detail: current.detail,
+      },
+    })
+  }
+
+  async function onUpdateWebSearchLevel(nextLevel: 'low' | 'high') {
+    if (isDraftInteractionLocked.value) return
+    const current = activeSessionConfig.value.webSearch
+    await updateActiveConvoSessionConfig({
+      webSearch: {
+        enabled: current.enabled,
+        level: nextLevel,
+        detail: current.detail,
+      },
+    })
+  }
+
+  async function onUpdateImageGenerationEnabled(nextEnabled: boolean) {
+    if (isDraftInteractionLocked.value) return
+    const current = activeSessionConfig.value.imageGeneration
+    await updateActiveConvoSessionConfig({
+      imageGeneration: {
+        enabled: nextEnabled,
+        resolution: current.resolution,
+        aspectRatio: current.aspectRatio,
+        mode: 'custom',
+        detail: current.detail,
+      },
+    })
+    hydrateSessionConfigUiFromActiveConvo()
+  }
+
+  async function onUpdateImageGenerationResolution(nextResolution: '1K' | '2K' | '4K') {
+    if (isDraftInteractionLocked.value) return
+    const current = activeSessionConfig.value.imageGeneration
+    await updateActiveConvoSessionConfig({
+      imageGeneration: {
+        enabled: current.enabled,
+        resolution: nextResolution,
+        aspectRatio: current.aspectRatio,
+        mode: 'custom',
+        detail: current.detail,
+      },
+    })
+    hydrateSessionConfigUiFromActiveConvo()
+  }
+
+  async function onUpdateImageGenerationAspectRatio(nextAspectRatio: '16:9' | '3:4' | '1:1' | '4:3') {
+    if (isDraftInteractionLocked.value) return
+    const current = activeSessionConfig.value.imageGeneration
+    await updateActiveConvoSessionConfig({
+      imageGeneration: {
+        enabled: current.enabled,
+        resolution: current.resolution,
+        aspectRatio: nextAspectRatio,
+        mode: 'custom',
+        detail: current.detail,
+      },
+    })
+    hydrateSessionConfigUiFromActiveConvo()
+  }
+
+  async function onUpdateReasoningDisplayMode(nextMode: 'inline' | 'rail') {
+    if (isDraftInteractionLocked.value) return
+    reasoningDisplayMode.value = nextMode
+    await setChatReasoningDisplayMode(nextMode)
+    if (nextMode === 'inline' && rightRailView.value === 'reasoning') {
+      rightRailView.value = 'console'
+    }
+  }
+
+  function toggleRightRailOpen() {
+    rightRailOpen.value = !rightRailOpen.value
+  }
+
+  function setRightRailView(view: 'reasoning' | 'console') {
+    rightRailView.value = view
+  }
+
+  function applySessionConfigToUi(config: ChatSessionConfig) {
+    skipReasoningPrefSave.value = true
+    model.value = normalizeModelKey(config.model.selectedModelKey ?? DEFAULT_CHAT_MODEL_ID)
+    requestedReasoningEffort.value = config.reasoning.enabled ? config.reasoning.effort : 'auto'
+    requestedReasoningExclude.value = false
+    imageGenerationConvoMode.value = config.imageGeneration.mode
+    imageGenerationState.value = normalizeImageGenerationState({
+      ...normalizeImageGenerationState(config.imageGeneration.detail),
+      enabled: config.imageGeneration.enabled,
+      imageSize: config.imageGeneration.resolution,
+      aspectRatio: config.imageGeneration.aspectRatio,
+    })
+    setTimeout(() => {
+      skipReasoningPrefSave.value = false
+    }, 0)
+  }
+
+  function hydrateSessionConfigUiFromActiveConvo() {
+    applySessionConfigToUi(activeSessionConfig.value)
+  }
+
+  function getActiveDraftScope(): Readonly<{ convoId: string }> | null {
+    const convoId = String(activeConvoId.value ?? '').trim()
+    if (!convoId) return null
+    return { convoId }
+  }
+
+  function getDraftScopeKey(scope: Readonly<{ convoId: string }> | null): string | null {
+    if (!scope) return null
+    return scope.convoId
+  }
+
+  function getElectronApi(): Readonly<{
+    selectLocalFiles: (options?: { context?: 'file' | 'image'; allowMultiple?: boolean }) => Promise<{ filePaths: string[] } | null>
+  }> | null {
+    const api = (globalThis as any)?.electronAPI as
+      | Readonly<{
+        selectLocalFiles: (options?: { context?: 'file' | 'image'; allowMultiple?: boolean }) => Promise<{ filePaths: string[] } | null>
+      }>
+      | undefined
+    return api && typeof api.selectLocalFiles === 'function' ? api : null
+  }
+
+  function clearAttachmentFeedback() {
+    if (attachmentFeedbackTimer.value) {
+      clearTimeout(attachmentFeedbackTimer.value)
+      attachmentFeedbackTimer.value = null
+    }
+    attachmentFeedbackTone.value = null
+    attachmentFeedbackMessage.value = null
+  }
+
+  function setAttachmentFeedback(
+    tone: 'info' | 'warning' | 'error' | 'success',
+    message: string,
+    timeoutMs = 3500,
+  ) {
+    clearAttachmentFeedback()
+    attachmentFeedbackTone.value = tone
+    attachmentFeedbackMessage.value = message
+    attachmentFeedbackTimer.value = setTimeout(() => {
+      clearAttachmentFeedback()
+    }, timeoutMs)
+  }
+
+  function clearDraftSendPlanRefreshTimer() {
+    if (draftSendPlanRefreshTimer.value) {
+      clearTimeout(draftSendPlanRefreshTimer.value)
+      draftSendPlanRefreshTimer.value = null
+    }
+  }
+
+  function scheduleDraftSendPlanRefresh() {
+    clearDraftSendPlanRefreshTimer()
+    draftSendPlanRefreshTimer.value = setTimeout(() => {
+      void refreshDraftAttachmentViewModels()
+    }, 220)
+  }
+
+  function clearHistoryIncompatibleRefreshTimer() {
+    if (historyIncompatibleRefreshTimer.value) {
+      clearTimeout(historyIncompatibleRefreshTimer.value)
+      historyIncompatibleRefreshTimer.value = null
+    }
+  }
+
+  function scheduleHistoryIncompatibleRefresh() {
+    clearHistoryIncompatibleRefreshTimer()
+    historyIncompatibleRefreshTimer.value = setTimeout(() => {
+      void refreshHistoryIncompatibleAttachments()
+    }, 220)
+  }
+
+  function clearHistoryAttachmentRefreshTimer() {
+    if (historyAttachmentRefreshTimer.value) {
+      clearTimeout(historyAttachmentRefreshTimer.value)
+      historyAttachmentRefreshTimer.value = null
+    }
+  }
+
+  function resetHistoryAttachmentViewModels() {
+    historyAttachmentViewModelsByMessageIdBase.value = {}
+    historyAttachmentPreviewCache.value = {}
+    historyAttachmentPreviewEnsuring.clear()
+  }
+
+  function scheduleHistoryAttachmentRefresh() {
+    clearHistoryAttachmentRefreshTimer()
+    historyAttachmentRefreshTimer.value = setTimeout(() => {
+      void refreshHistoryAttachmentViewModels()
+    }, 220)
+  }
+
+  function clearDraftAttachmentParsingPollTimer() {
+    if (draftAttachmentParsingPollTimer.value) {
+      clearTimeout(draftAttachmentParsingPollTimer.value)
+      draftAttachmentParsingPollTimer.value = null
+    }
+  }
+
+  function scheduleDraftAttachmentParsingPoll() {
+    clearDraftAttachmentParsingPollTimer()
+    if (!draftAttachmentViewModels.value.some((item) => item.isParsing)) return
+    draftAttachmentParsingPollTimer.value = setTimeout(() => {
+      void refreshDraftAttachmentViewModels()
+    }, 1400)
+  }
+
+  function resetComposerSendPlanGateState() {
+    composerSendPlanStatus.value = null
+    composerSendPlanCanProceed.value = true
+    composerSendPlanBlockingSummary.value = null
+    composerSendPlanWarningSummary.value = null
+    composerSendPlanIsPartialAllowed.value = false
+  }
+
+  function normalizeHistoryIncompatibleIndex(index: number, total: number): number {
+    if (total <= 0) return 0
+    const next = Number.isFinite(index) ? Math.trunc(index) : 0
+    const mod = next % total
+    return mod >= 0 ? mod : mod + total
+  }
+
+  function resetHistoryIncompatibleAttachmentSummary() {
+    historyIncompatibleAttachmentItems.value = []
+    historyIncompatibleAttachmentIndex.value = 0
+    historyIncompatibleNavigationActive.value = false
+    activeHistoryIncompatibleAttachmentId.value = null
+  }
+
+  function sanitizeHistoryAttachmentReason(reason: string | null | undefined): string {
+    const sanitized = sanitizeSendPlanSummaryMessage(reason)
+    if (sanitized) return sanitized
+    return '当前模型不会纳入此历史附件。'
+  }
+
+  function buildHistoryIncompatibleAttachmentItem(
+    plan: SendPlanAttachment,
+    assetById: ReadonlyMap<string, DecodedFileAsset>,
+    branchId: string | null,
+  ): HistoryIncompatibleAttachmentViewModel {
+    const asset = assetById.get(plan.assetId)
+    const filename = String(asset?.filename ?? '').trim() || plan.assetId
+    const incompatible = plan.displayStatus === 'incompatible_with_current_model'
+    return {
+      messageId: String(plan.messageId ?? '').trim(),
+      attachmentId: plan.attachmentId,
+      assetId: plan.assetId,
+      filename,
+      aiPayloadKind: plan.aiPayloadKind,
+      reasonCode: incompatible
+        ? 'incompatible_with_current_model'
+        : String(plan.exclusionReason ?? 'excluded_from_current_context'),
+      reasonText: sanitizeHistoryAttachmentReason(plan.notes?.[0] ?? null),
+      source: 'history',
+      branchId,
+      displayStatus: incompatible ? 'incompatible_with_current_model' : 'excluded_from_current_context',
+    }
+  }
+
+  function applyHistoryIncompatibleAttachmentItems(items: HistoryIncompatibleAttachmentViewModel[]) {
+    const next = items.filter((item) => item.messageId.length > 0)
+    const prevActiveAttachmentId = activeHistoryIncompatibleAttachmentId.value
+    historyIncompatibleAttachmentItems.value = next
+    if (next.length === 0) {
+      historyIncompatibleAttachmentIndex.value = 0
+      historyIncompatibleNavigationActive.value = false
+      activeHistoryIncompatibleAttachmentId.value = null
+      return
+    }
+    const matchedIndex = prevActiveAttachmentId
+      ? next.findIndex((item) => item.attachmentId === prevActiveAttachmentId)
+      : -1
+    const nextIndex = matchedIndex >= 0 ? matchedIndex : normalizeHistoryIncompatibleIndex(historyIncompatibleAttachmentIndex.value, next.length)
+    historyIncompatibleAttachmentIndex.value = nextIndex
+    activeHistoryIncompatibleAttachmentId.value = next[nextIndex]?.attachmentId ?? null
+  }
+
+  async function computeHistoryScopeMessageIds(branchId: string): Promise<string[]> {
+    const built = await buildContextForBranchInternalMessages(branchId, { limit: 200, debug: !!import.meta.env?.DEV })
+    return built.rawMessages.map((message) => message.id)
+  }
+
+  async function refreshHistoryIncompatibleAttachments() {
+    const seq = ++historyIncompatibleRefreshSeq
+    const convoId = String(activeConvoId.value ?? '').trim()
+    const branchId = String(activeBranchId.value ?? '').trim()
+    if (!convoId || !branchId) {
+      resetHistoryIncompatibleAttachmentSummary()
+      return
+    }
+    try {
+      const historyMessageIds = await computeHistoryScopeMessageIds(branchId)
+      if (seq !== historyIncompatibleRefreshSeq) return
+      if (historyMessageIds.length === 0) {
+        resetHistoryIncompatibleAttachmentSummary()
+        return
+      }
+      const [modelDescriptor, baseUrl] = await Promise.all([
+        buildSendPlanModelDescriptor(model.value),
+        getOpenRouterBaseUrl().catch(() => null),
+      ])
+      if (seq !== historyIncompatibleRefreshSeq) return
+      const response = await buildCurrentSendPlan({
+        conversationId: convoId,
+        draftText: draft.value,
+        historyScope: { messageIds: historyMessageIds },
+        model: modelDescriptor,
+        providerContext: buildSendPlanProviderContext(baseUrl),
+      })
+      if (seq !== historyIncompatibleRefreshSeq) return
+      const assetById = new Map(response.assets.map((asset) => [asset.id, asset]))
+      const editingSourceMessageId = String(draftPersistenceEditingSourceMessageId.value ?? '').trim()
+      const editingAssetIdSet = editRestoredDraftAttachmentAssetIds.value
+      const items = response.sendPlan.attachmentPlans
+        .filter((plan) => plan.source === 'history')
+        .filter((plan) => {
+          if (draftPersistenceMode.value !== 'edit') return true
+          if (editingSourceMessageId && String(plan.messageId ?? '').trim() === editingSourceMessageId) return false
+          if (editingAssetIdSet.has(String(plan.assetId ?? '').trim())) return false
+          return true
+        })
+        .filter((plan) => plan.displayStatus === 'incompatible_with_current_model' || plan.eligibility === 'excluded')
+        .map((plan) => buildHistoryIncompatibleAttachmentItem(plan, assetById, branchId))
+      applyHistoryIncompatibleAttachmentItems(items)
+    } catch (error) {
+      if (shouldLogDebug()) {
+        console.warn('[ui-app] refreshHistoryIncompatibleAttachments failed (non-fatal):', error)
+      }
+      resetHistoryIncompatibleAttachmentSummary()
+    }
+  }
+
+  async function refreshHistoryAttachmentViewModels() {
+    const seq = ++historyAttachmentRefreshSeq
+    const convoId = String(activeConvoId.value ?? '').trim()
+    const branchId = String(activeBranchId.value ?? '').trim()
+    const messagesById = state.value.entities?.messagesById ?? state.value.messages
+    const visibleUserMessageIds = transcriptMessageIds.value.filter((messageId) => messagesById[messageId]?.role === 'user')
+
+    if (!convoId || !branchId || visibleUserMessageIds.length === 0) {
+      resetHistoryAttachmentViewModels()
+      return
+    }
+
+    try {
+      const attachmentResults = await Promise.all(
+        visibleUserMessageIds.map(async (messageId) => {
+          try {
+            const attachments = await listMessageAttachmentsByMessageId(messageId)
+            return { messageId, attachments, failed: false as const }
+          } catch (error) {
+            if (shouldLogDebug()) {
+              console.warn('[ui-app] listMessageAttachmentsByMessageId failed (non-fatal):', { messageId, error })
+            }
+            return { messageId, attachments: [] as DecodedMessageAttachment[], failed: true as const }
+          }
+        }),
+      )
+      if (seq !== historyAttachmentRefreshSeq) return
+
+      const allAttachments = attachmentResults.flatMap((row) => row.attachments)
+      const assetIds = Array.from(new Set(allAttachments.map((attachment) => attachment.assetId).filter((assetId) => String(assetId ?? '').trim().length > 0)))
+      let assets: DecodedFileAsset[] = []
+      if (assetIds.length > 0) {
+        try {
+          assets = await listFileAssetsByIds(assetIds)
+        } catch (error) {
+          if (shouldLogDebug()) {
+            console.warn('[ui-app] listFileAssetsByIds failed (non-fatal):', error)
+          }
+          assets = []
+        }
+      }
+      if (seq !== historyAttachmentRefreshSeq) return
+
+      const assetById = new Map(assets.map((asset) => [asset.id, asset]))
+      const next: Record<string, MessageAttachmentVM[]> = {}
+
+      for (const result of attachmentResults) {
+        if (seq !== historyAttachmentRefreshSeq) return
+
+        if (result.failed) {
+          next[result.messageId] = [buildHistoryAttachmentFailureViewModel(result.messageId, '附件加载失败。')]
+          continue
+        }
+
+        const sortedAttachments = [...result.attachments].sort((left, right) => {
+          if (left.createdAt !== right.createdAt) return left.createdAt - right.createdAt
+          if (left.updatedAt !== right.updatedAt) return left.updatedAt - right.updatedAt
+          return left.id.localeCompare(right.id)
+        })
+
+        const views = await Promise.all(
+          sortedAttachments.map(async (attachment) => {
+            if (seq !== historyAttachmentRefreshSeq) {
+              return buildHistoryAttachmentFailureViewModel(result.messageId, '附件加载失败。')
+            }
+            const asset = assetById.get(attachment.assetId) ?? null
+            const preview = await resolveHistoryAttachmentPreview(attachment, asset, seq)
+            if (seq !== historyAttachmentRefreshSeq) {
+              return buildHistoryAttachmentFailureViewModel(result.messageId, '附件加载失败。')
+            }
+            return buildHistoryAttachmentViewModel(
+              attachment,
+              asset,
+              preview?.status === 'ready' ? preview.dataUrl ?? null : null,
+            )
+          }),
+        )
+        next[result.messageId] = views
+      }
+
+      if (seq !== historyAttachmentRefreshSeq) return
+      historyAttachmentViewModelsByMessageIdBase.value = next
+    } catch (error) {
+      if (shouldLogDebug()) {
+        console.warn('[ui-app] refreshHistoryAttachmentViewModels failed (non-fatal):', error)
+      }
+      resetHistoryAttachmentViewModels()
+    }
+  }
+
+  function openAttachmentUrlDialog(prefillUrl = '') {
+    if (isDraftInteractionLocked.value) return
+    attachmentUrlDraft.value = String(prefillUrl ?? '').trim()
+    attachmentUrlRetentionMode.value = 'default'
+    attachmentUrlDialogOpen.value = true
+  }
+
+  function closeAttachmentUrlDialog() {
+    attachmentUrlDialogOpen.value = false
+  }
+
+  function resolveAttachmentRetentionMode(mode: 'default' | 'link_only' | 'link_and_file'): 'link_only' | 'link_and_file' {
+    return mode === 'link_and_file' ? 'link_and_file' : 'link_only'
+  }
+
+  function isProbablyImageAttachment(file: Pick<File, 'name' | 'type'> & { path?: string | null }): boolean {
+    const mime = String(file.type ?? '').trim().toLowerCase()
+    if (mime.startsWith('image/')) return true
+    const name = String(file.path ?? file.name ?? '')
+    const ext = normalizeExtension(name)
+    return ext ? ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].includes(ext) : false
+  }
+
+  function getLocalFilePath(file: Pick<File, 'name' | 'type'> & { path?: string | null }): string {
+    return String(file.path ?? '').trim()
+  }
+
+  function isImageAssetLike(asset: DecodedFileAsset | null | undefined, attachment: DecodedDraftAttachment): boolean {
+    if (asset?.assetKind === 'image') return true
+    if (attachment.aiPayloadKind === 'image') return true
+    const extension = normalizeExtension(asset?.extension ?? asset?.filename ?? '')
+    return extension ? ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].includes(extension) : false
+  }
+
+  function normalizeDraftAttachmentDisplayStatus(
+    plan: SendPlanAttachment | null | undefined,
+    attachment: DecodedDraftAttachment,
+    asset: DecodedFileAsset | null | undefined,
+  ): DraftAttachmentDisplayStatus {
+    if (plan?.displayStatus === 'parsing') return 'parsing'
+    if (plan?.displayStatus === 'incompatible_with_current_model') return 'incompatible_with_current_model'
+    if (plan?.displayStatus === 'ready_with_warnings') return 'ready_with_warnings'
+    if (plan?.displayStatus === 'unsupported') return 'unsupported'
+    if (plan?.displayStatus === 'ready') {
+      if (plan.eligibility === 'excluded') return 'ready_with_warnings'
+      return 'ready'
+    }
+    if (plan?.displayStatus === 'failed') {
+      if (attachment.processingStatus === 'unsupported' || asset?.assetKind === 'binary') return 'unsupported'
+      return 'failed'
+    }
+    if (attachment.processingStatus === 'unsupported') return 'unsupported'
+    if (attachment.processingStatus === 'local_only' || attachment.processingStatus === 'convertible') return 'ready_with_warnings'
+    if (attachment.processingStatus === 'pending' || attachment.processingStatus === 'probing' || attachment.processingStatus === 'materializing') return 'parsing'
+    return asset?.ingestStatus === 'failed' ? 'failed' : 'ready'
+  }
+
+  function mapDraftAttachmentBorderTone(status: DraftAttachmentDisplayStatus): DraftAttachmentBorderTone {
+    if (status === 'ready') return 'green'
+    if (status === 'ready_with_warnings') return 'yellow'
+    if (status === 'parsing') return 'neutral'
+    return 'red'
+  }
+
+  function getDraftAttachmentWarningReason(
+    plan: SendPlanAttachment | null | undefined,
+    status: DraftAttachmentDisplayStatus,
+  ): string | null {
+    if (status !== 'ready_with_warnings') return null
+    if (plan?.notes?.length) return plan.notes[0] ?? null
+    if (plan?.exclusionReason) return plan.exclusionReason
+    return 'Attachment may be sent with warnings.'
+  }
+
+  function getDraftAttachmentBlockingReason(
+    plan: SendPlanAttachment | null | undefined,
+    status: DraftAttachmentDisplayStatus,
+  ): string | null {
+    if (status === 'ready' || status === 'ready_with_warnings') return null
+    if (plan?.notes?.length) return plan.notes[0] ?? null
+    if (plan?.exclusionReason) return plan.exclusionReason
+    if (status === 'parsing') return 'Attachment is still parsing.'
+    if (status === 'incompatible_with_current_model') return 'Current model does not support this attachment.'
+    if (status === 'unsupported') return 'This attachment type is unsupported.'
+    return 'Attachment is not ready to send.'
+  }
+
+  function buildFallbackDraftAttachmentViewModel(
+    attachment: DecodedDraftAttachment,
+    asset: DecodedFileAsset | null,
+  ): DraftAttachmentViewModel {
+    const status = normalizeDraftAttachmentDisplayStatus(null, attachment, asset)
+    const filename = asset?.filename?.trim().length ? asset.filename : attachment.assetId
+    const extension = asset?.extension ?? normalizeExtension(filename)
+    return {
+      draftAttachmentId: attachment.id,
+      assetId: attachment.assetId,
+      filename,
+      extension,
+      assetKind: asset?.assetKind ?? attachment.aiPayloadKind,
+      aiPayloadKind: attachment.aiPayloadKind,
+      sourceKind: asset?.sourceKind ?? 'draft',
+      displayStatus: status,
+      borderTone: mapDraftAttachmentBorderTone(status),
+      isParsing: status === 'parsing',
+      warningReason: getDraftAttachmentWarningReason(null, status),
+      blockingReason: getDraftAttachmentBlockingReason(null, status),
+      previewDataUrl: null,
+      canRemove: true,
+    }
+  }
+
+  function buildDraftAttachmentViewModel(
+    attachment: DecodedDraftAttachment,
+    asset: DecodedFileAsset | null,
+    plan: SendPlanAttachment | null,
+    previewDataUrl: string | null,
+  ): DraftAttachmentViewModel {
+    const status = normalizeDraftAttachmentDisplayStatus(plan, attachment, asset)
+    const filename = asset?.filename?.trim().length ? asset.filename : attachment.assetId
+    const extension = asset?.extension ?? normalizeExtension(filename)
+    return {
+      draftAttachmentId: attachment.id,
+      assetId: attachment.assetId,
+      filename,
+      extension,
+      assetKind: asset?.assetKind ?? attachment.aiPayloadKind,
+      aiPayloadKind: attachment.aiPayloadKind,
+      sourceKind: asset?.sourceKind ?? 'draft',
+      displayStatus: status,
+      borderTone: mapDraftAttachmentBorderTone(status),
+      isParsing: status === 'parsing',
+      warningReason: getDraftAttachmentWarningReason(plan, status),
+      blockingReason: getDraftAttachmentBlockingReason(plan, status),
+      previewDataUrl: previewDataUrl,
+      canRemove: true,
+    }
+  }
+
+  function readAssetSourceMeta(asset: DecodedFileAsset | null): Record<string, unknown> | null {
+    if (!asset?.sourceMetaJson || typeof asset.sourceMetaJson !== 'object') return null
+    return asset.sourceMetaJson as Record<string, unknown>
+  }
+
+  function readMetaString(meta: Record<string, unknown> | null, key: string): string | null {
+    if (!meta) return null
+    const value = meta[key]
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+  }
+
+  function readMetaNumber(meta: Record<string, unknown> | null, key: string): number | null {
+    if (!meta) return null
+    const value = meta[key]
+    return typeof value === 'number' && Number.isFinite(value) ? value : null
+  }
+
+  function isImageHistoryAttachment(asset: DecodedFileAsset | null, attachment: DecodedMessageAttachment): boolean {
+    if (asset?.assetKind === 'image') return true
+    if (attachment.aiPayloadKind === 'image') return true
+    const extension = normalizeExtension(asset?.extension ?? asset?.filename ?? '')
+    return extension ? ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].includes(extension) : false
+  }
+
+  function isHistoryAttachmentUrlBased(asset: DecodedFileAsset | null): boolean {
+    if (!asset) return false
+    if (asset.sourceKind === 'url_import') return true
+    const meta = readAssetSourceMeta(asset)
+    return !!(readMetaString(meta, 'originalUrl') || readMetaString(meta, 'resolvedUrl'))
+  }
+
+  function resolveHistoryAttachmentIconKind(asset: DecodedFileAsset | null, attachment: DecodedMessageAttachment): MessageAttachmentVM['iconKind'] {
+    if (isImageHistoryAttachment(asset, attachment)) return 'image'
+    if (attachment.aiPayloadKind === 'pdf') return 'pdf'
+    if (attachment.aiPayloadKind === 'text') return 'text'
+    if (attachment.aiPayloadKind === 'audio') return 'audio'
+    if (attachment.aiPayloadKind === 'video') return 'video'
+    if (asset?.assetKind === 'archive' || asset?.assetKind === 'binary' || attachment.aiPayloadKind === 'binary') return 'file'
+    if (isHistoryAttachmentUrlBased(asset)) return 'link'
+    return 'file'
+  }
+
+  function resolveHistoryAttachmentDisplayStatus(
+    attachment: DecodedMessageAttachment,
+    asset: DecodedFileAsset | null,
+    incompatibleDisplayStatus: HistoryIncompatibleAttachmentDisplayStatus | null,
+  ): MessageAttachmentDisplayStatus {
+    if (incompatibleDisplayStatus) {
+      return incompatibleDisplayStatus
+    }
+    if (attachment.processingStatus === 'pending' || attachment.processingStatus === 'probing' || attachment.processingStatus === 'materializing') {
+      return 'parsing'
+    }
+    if (attachment.processingStatus === 'unsupported' || asset?.assetKind === 'archive' || asset?.assetKind === 'binary' || attachment.aiPayloadKind === 'binary') {
+      return 'unsupported'
+    }
+    if (!asset || asset.deletedAt != null || asset.ingestStatus === 'failed') {
+      return 'failed'
+    }
+    if (attachment.processingStatus === 'local_only' || attachment.processingStatus === 'convertible') {
+      return 'ready_with_warnings'
+    }
+    if (isHistoryAttachmentUrlBased(asset)) {
+      return 'ready_with_warnings'
+    }
+    return 'ready'
+  }
+
+  function mapHistoryAttachmentBorderTone(status: MessageAttachmentDisplayStatus): MessageAttachmentVM['borderTone'] {
+    if (status === 'ready') return 'green'
+    if (status === 'ready_with_warnings') return 'yellow'
+    if (status === 'parsing') return 'neutral'
+    return 'red'
+  }
+
+  function buildHistoryAttachmentFailureViewModel(messageId: string, reason: string): MessageAttachmentVM {
+    const normalizedMessageId = String(messageId ?? '').trim()
+    const attachmentId = `history-attachment-load-${normalizedMessageId || 'unknown'}`
+    return {
+      messageId: normalizedMessageId,
+      attachmentId,
+      assetId: attachmentId,
+      filename: reason,
+      extension: null,
+      mime: null,
+      assetKind: 'binary',
+      aiPayloadKind: 'binary',
+      sourceKind: 'unknown',
+      displayStatus: 'failed',
+      borderTone: 'red',
+      isHistoryIncompatible: false,
+      incompatibilityReason: reason,
+      isActiveLocatedAttachment: false,
+      previewDataUrl: null,
+      iconKind: 'file',
+      createdAt: Date.now(),
+    }
+  }
+
+  function buildHistoryAttachmentViewModel(
+    attachment: DecodedMessageAttachment,
+    asset: DecodedFileAsset | null,
+    previewDataUrl: string | null,
+  ): MessageAttachmentVM {
+    const filename = asset?.filename?.trim().length ? asset.filename : attachment.assetId
+    const extension = asset?.extension ?? normalizeExtension(filename)
+    const displayStatus = resolveHistoryAttachmentDisplayStatus(attachment, asset, null)
+    return {
+      messageId: attachment.messageId,
+      attachmentId: attachment.id,
+      assetId: attachment.assetId,
+      filename,
+      extension,
+      mime: asset?.mime ?? null,
+      assetKind: asset?.assetKind ?? attachment.aiPayloadKind,
+      aiPayloadKind: attachment.aiPayloadKind,
+      sourceKind: asset?.sourceKind ?? 'unknown',
+      displayStatus,
+      borderTone: mapHistoryAttachmentBorderTone(displayStatus),
+      isHistoryIncompatible: false,
+      incompatibilityReason: null,
+      isActiveLocatedAttachment: false,
+      previewDataUrl,
+      iconKind: resolveHistoryAttachmentIconKind(asset, attachment),
+      createdAt: asset?.createdAt ?? attachment.createdAt,
+    }
+  }
+
+  async function resolveHistoryAttachmentPreview(
+    attachment: DecodedMessageAttachment,
+    asset: DecodedFileAsset | null,
+    seq: number,
+  ): Promise<HistoryAttachmentPreviewState> {
+    if (!isImageHistoryAttachment(asset, attachment)) return null
+
+    const cached = historyAttachmentPreviewCache.value[attachment.assetId]
+    if (cached?.status === 'ready') return cached
+
+    try {
+      const latest = await getLatestReadyPreview(attachment.assetId)
+      if (seq !== historyAttachmentRefreshSeq) return latest
+      historyAttachmentPreviewCache.value = {
+        ...historyAttachmentPreviewCache.value,
+        [attachment.assetId]: latest,
+      }
+      if (latest.status === 'ready') return latest
+      if (latest.status !== 'missing') return latest
+
+      if (historyAttachmentPreviewEnsuring.has(attachment.assetId)) return latest
+      historyAttachmentPreviewEnsuring.add(attachment.assetId)
+      try {
+        const ensured = await ensurePreview({ assetId: attachment.assetId })
+        if (seq !== historyAttachmentRefreshSeq) return ensured
+        historyAttachmentPreviewCache.value = {
+          ...historyAttachmentPreviewCache.value,
+          [attachment.assetId]: ensured,
+        }
+        return ensured
+      } finally {
+        historyAttachmentPreviewEnsuring.delete(attachment.assetId)
+      }
+    } catch (error) {
+      const failed: DecodedPreviewPayload = {
+        assetId: attachment.assetId,
+        status: 'failed',
+        derivativeId: null,
+        mime: null,
+        dataUrl: null,
+        width: null,
+        height: null,
+        bytes: null,
+        reused: false,
+        errorCode: 'preview_read_failed',
+        errorMessage: error instanceof Error ? error.message : String(error),
+      }
+      historyAttachmentPreviewCache.value = {
+        ...historyAttachmentPreviewCache.value,
+        [attachment.assetId]: failed,
+      }
+      return failed
+    }
+  }
+
+  function isUrlAttachment(asset: DecodedFileAsset | null, attachment: DecodedDraftAttachment): boolean {
+    if (attachment.urlRetentionMode !== undefined && attachment.urlRetentionMode !== null) return true
+    if (asset?.sourceKind === 'url_import') return true
+    const meta = readAssetSourceMeta(asset)
+    return !!(readMetaString(meta, 'originalUrl') || readMetaString(meta, 'resolvedUrl'))
+  }
+
+  function isStoredLocalCopy(asset: DecodedFileAsset | null): boolean {
+    return !!asset &&
+      asset.storageBackend === 'local_fs' &&
+      asset.ingestStatus === 'stored' &&
+      asset.deletedAt == null
+  }
+
+  function resolveAttachmentSendModeLabel(value: DraftAttachmentSendModePreference): string {
+    if (value === 'default') return '跟随默认设定'
+    if (value === 'auto') return '自动'
+    if (value === 'url_ref') return '链接'
+    return '文件副本'
+  }
+
+  function resolveActualSendModeLabel(value: SendMode | null): string {
+    if (value === 'url_ref') return '链接'
+    if (value === 'inline_base64') return '文件副本'
+    if (value === 'provider_file_ref') return '提供方文件'
+    return '—'
+  }
+
+  function resolveAttachmentUrlRetentionLabel(value: DraftAttachmentUrlRetentionPreference): string {
+    if (value === 'default') return '跟随默认设定'
+    if (value === 'link_only') return '仅保留链接'
+    return '保留链接并尝试保存本地副本'
+  }
+
+  function getSendModeAvailabilityReason(
+    mode: DraftAttachmentSendModePreference,
+    attachment: DecodedDraftAttachment,
+    asset: DecodedFileAsset | null,
+    plan: SendPlanAttachment | null
+  ): string | null {
+    if (mode === 'default') return null
+    if (mode === 'auto') {
+      if (plan?.selectedSendMode || (plan?.fallbackSendModes?.length ?? 0) > 0) return null
+      return plan?.notes?.[0] ?? 'No sendable representation is available for this attachment.'
+    }
+    if (mode === 'url_ref') {
+      if (attachment.aiPayloadKind === 'audio') return '音频附件不支持链接发送。'
+      if (!isUrlAttachment(asset, attachment)) return '当前附件没有可保留的链接。'
+      if (plan?.selectedSendMode === 'url_ref' || (plan?.fallbackSendModes?.includes('url_ref') ?? false)) return null
+      if (plan?.exclusionReason) return plan.notes?.[0] ?? '当前模型或提供方不允许链接发送。'
+      return '当前模型或提供方不允许链接发送。'
+    }
+    if (!isStoredLocalCopy(asset)) return '当前附件没有可用的本地副本。'
+    if (plan?.selectedSendMode === 'inline_base64' || (plan?.fallbackSendModes?.includes('inline_base64') ?? false)) return null
+    if (plan?.exclusionReason) return plan.notes?.[0] ?? '当前模型或提供方不允许文件副本发送。'
+    return '当前模型或提供方不允许文件副本发送。'
+  }
+
+  function buildSendModeOptions(
+    attachment: DecodedDraftAttachment,
+    asset: DecodedFileAsset | null,
+    plan: SendPlanAttachment | null
+  ): DraftAttachmentSendModeOption[] {
+    const options: DraftAttachmentSendModeOption[] = [
+      {
+        value: 'default',
+        label: resolveAttachmentSendModeLabel('default'),
+        disabled: false,
+        reason: null,
+      },
+      {
+        value: 'auto',
+        label: resolveAttachmentSendModeLabel('auto'),
+        disabled: false,
+        reason: null,
+      },
+      {
+        value: 'url_ref',
+        label: resolveAttachmentSendModeLabel('url_ref'),
+        disabled: false,
+        reason: null,
+      },
+      {
+        value: 'inline_base64',
+        label: resolveAttachmentSendModeLabel('inline_base64'),
+        disabled: false,
+        reason: null,
+      },
+    ]
+
+    return options.map((option) => {
+      const reason = getSendModeAvailabilityReason(option.value, attachment, asset, plan)
+      return {
+        ...option,
+        disabled: reason !== null,
+        reason,
+      }
+    })
+  }
+
+  function buildUrlRetentionOptions(isUrl: boolean): DraftAttachmentUrlRetentionOption[] {
+    return [
+      {
+        value: 'default',
+        label: resolveAttachmentUrlRetentionLabel('default'),
+        disabled: !isUrl,
+        reason: isUrl ? null : '仅 URL 附件支持保留方式设置。',
+      },
+      {
+        value: 'link_only',
+        label: resolveAttachmentUrlRetentionLabel('link_only'),
+        disabled: !isUrl,
+        reason: isUrl ? null : '仅 URL 附件支持保留方式设置。',
+      },
+      {
+        value: 'link_and_file',
+        label: resolveAttachmentUrlRetentionLabel('link_and_file'),
+        disabled: !isUrl,
+        reason: isUrl ? null : '仅 URL 附件支持保留方式设置。',
+      },
+    ]
+  }
+
+  function buildDraftAttachmentDetailsViewModel(assetId: string | null): DraftAttachmentDetailsViewModel | null {
+    const id = String(assetId ?? '').trim()
+    if (!id) return null
+    const attachment = draftAttachmentRecords.value.find((item) => item.assetId === id) ?? null
+    if (!attachment) return null
+    const asset = draftAttachmentAssetsById.value[id] ?? null
+    const plan = draftAttachmentPlansByAssetId.value[id] ?? null
+    const base = draftAttachmentViewModels.value.find((item) => item.assetId === id) ?? null
+    if (!base) return null
+
+    const meta = readAssetSourceMeta(asset)
+    const urlInfo = isUrlAttachment(asset, attachment)
+      ? {
+          originalUrl: readMetaString(meta, 'originalUrl'),
+          resolvedUrl: readMetaString(meta, 'resolvedUrl'),
+          probeStatus: readMetaString(meta, 'probeStatus'),
+          materializationStatus: readMetaString(meta, 'materializationStatus'),
+          lastProbeAt: readMetaNumber(meta, 'lastProbeAt'),
+          probeWarning: readMetaString(meta, 'probeWarning'),
+          contentTypeFromProbe: readMetaString(meta, 'contentTypeFromProbe'),
+          contentLengthFromProbe: readMetaString(meta, 'contentLengthFromProbe'),
+          localCopyExists: isStoredLocalCopy(asset),
+        }
+      : null
+
+    const currentSendMode = plan?.selectedSendMode ?? null
+    const sendModeOptions = buildSendModeOptions(attachment, asset, plan)
+    const urlRetentionOptions = buildUrlRetentionOptions(isUrlAttachment(asset, attachment))
+    const retryPreviewAvailable = isImageAssetLike(asset, attachment) && base.previewDataUrl == null && base.displayStatus !== 'parsing'
+    const retryPreviewReason = retryPreviewAvailable ? null : '仅在图片预览缺失或失败时可重试。'
+    return {
+      ...base,
+      mime: asset?.mime ?? null,
+      createdAt: asset?.createdAt ?? attachment.createdAt,
+      updatedAt: asset?.updatedAt ?? attachment.updatedAt,
+      preferredSendMode: attachment.preferredSendMode ?? 'default',
+      urlRetentionMode: attachment.urlRetentionMode ?? 'default',
+      sendPlanStatus: draftAttachmentSendPlanStatus.value,
+      currentSendMode,
+      currentSendModeLabel: resolveActualSendModeLabel(currentSendMode),
+      sendModeOptions,
+      urlRetentionOptions,
+      originalUrl: urlInfo?.originalUrl ?? null,
+      resolvedUrl: urlInfo?.resolvedUrl ?? null,
+      probeStatus: urlInfo?.probeStatus ?? null,
+      materializationStatus: urlInfo?.materializationStatus ?? null,
+      lastProbeAt: urlInfo?.lastProbeAt ?? null,
+      probeWarning: urlInfo?.probeWarning ?? null,
+      contentTypeFromProbe: urlInfo?.contentTypeFromProbe ?? null,
+      contentLengthFromProbe: urlInfo?.contentLengthFromProbe ?? null,
+      localCopyExists: urlInfo?.localCopyExists ?? false,
+      retryPreviewAvailable,
+      retryPreviewReason,
+    }
+  }
+
+  async function resolveDraftAttachmentPreview(
+    attachment: DecodedDraftAttachment,
+    asset: DecodedFileAsset | null,
+    seq: number,
+    forceEnsure = false,
+  ): Promise<DecodedPreviewPayload | null> {
+    if (!isImageAssetLike(asset, attachment)) return null
+
+    const cached = draftAttachmentPreviewCache.value[attachment.assetId]
+    if (cached?.status === 'ready') return cached
+
+    try {
+      const previewBridge = (globalThis as any).dbBridge as { invoke?: (method: string, params?: unknown) => Promise<unknown> } | undefined
+      if (!previewBridge?.invoke) {
+        throw new Error('Missing dbBridge for preview lookup')
+      }
+      const latestRaw = await previewBridge.invoke('preview.getLatestReady', { assetId: attachment.assetId })
+      const latest = decodePreviewPayloadResponse('preview.getLatestReady', latestRaw)
+      if (seq !== draftAttachmentRefreshSeq) return latest
+      draftAttachmentPreviewCache.value = {
+        ...draftAttachmentPreviewCache.value,
+        [attachment.assetId]: latest,
+      }
+      if (latest.status === 'ready') return latest
+      if (latest.status !== 'missing' && !forceEnsure) return latest
+
+      if (draftAttachmentPreviewEnsuring.has(attachment.assetId)) return latest
+      draftAttachmentPreviewEnsuring.add(attachment.assetId)
+      try {
+        const ensuredRaw = await previewBridge.invoke('preview.ensure', { assetId: attachment.assetId })
+        const ensured = decodePreviewPayloadResponse('preview.ensure', ensuredRaw)
+        if (seq !== draftAttachmentRefreshSeq) return ensured
+        draftAttachmentPreviewCache.value = {
+          ...draftAttachmentPreviewCache.value,
+          [attachment.assetId]: ensured,
+        }
+        return ensured
+      } finally {
+        draftAttachmentPreviewEnsuring.delete(attachment.assetId)
+      }
+    } catch (error) {
+      if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
+        console.warn('[ui-app] resolveDraftAttachmentPreview failed (non-fatal):', error)
+      }
+      const failed: DecodedPreviewPayload = {
+        assetId: attachment.assetId,
+        status: 'failed',
+        derivativeId: null,
+        mime: null,
+        dataUrl: null,
+        width: null,
+        height: null,
+        bytes: null,
+        reused: false,
+        errorCode: 'preview_read_failed',
+        errorMessage: error instanceof Error ? error.message : String(error),
+      }
+      draftAttachmentPreviewCache.value = {
+        ...draftAttachmentPreviewCache.value,
+        [attachment.assetId]: failed,
+      }
+      return failed
+    }
+  }
+
+  async function refreshDraftAttachmentViewModels(input?: Readonly<{
+    restoredDraft?: DecodedConversationDraft | null
+    syncDraftText?: boolean
+  }>) {
+    const scope = getActiveDraftScope()
+    if (!scope) {
+      clearDraftSendPlanRefreshTimer()
+      clearDraftAttachmentParsingPollTimer()
+      draftAttachmentViewModels.value = []
+      draftAttachmentRecords.value = []
+      draftAttachmentAssetsById.value = {}
+      draftAttachmentPlansByAssetId.value = {}
+      draftAttachmentSendPlanStatus.value = null
+      selectedDraftAttachmentAssetId.value = null
+      resetComposerSendPlanGateState()
+      composerSendPlanLoading.value = false
+      resetHistoryIncompatibleAttachmentSummary()
+      return
+    }
+
+    const seq = ++draftAttachmentRefreshSeq
+    const shouldToggleComposerSendPlanLoading =
+      composerSendPlanStatus.value == null &&
+      composerSendPlanBlockingSummary.value == null &&
+      composerSendPlanWarningSummary.value == null
+    if (shouldToggleComposerSendPlanLoading) {
+      composerSendPlanLoading.value = true
+    }
+    const restored = input?.restoredDraft ?? await restoreConversationDraft(scope.convoId)
+    if (seq !== draftAttachmentRefreshSeq) return
+    applyDraftPersistenceStateFromDraft(restored)
+
+    if (input?.syncDraftText === true) {
+      draft.value = restored.draftText
+    }
+
+    const attachments = [...restored.attachments].sort((left, right) => left.attachmentOrder - right.attachmentOrder)
+    draftAttachmentRecords.value = attachments
+    try {
+      const [modelDescriptor, baseUrl] = await Promise.all([
+        buildSendPlanModelDescriptor(model.value),
+        getOpenRouterBaseUrl().catch(() => null),
+      ])
+      if (seq !== draftAttachmentRefreshSeq) return
+
+      const sendPlanResponse = await buildCurrentSendPlan({
+        conversationId: scope.convoId,
+        draftText: draft.value,
+        model: modelDescriptor,
+        providerContext: buildSendPlanProviderContext(baseUrl),
+      })
+      if (seq !== draftAttachmentRefreshSeq) return
+
+      const assetById = new Map(sendPlanResponse.assets.map((asset) => [asset.id, asset]))
+      const draftPlans = new Map(
+        sendPlanResponse.sendPlan.attachmentPlans
+          .filter((plan) => plan.source === 'draft')
+          .map((plan) => [plan.assetId, plan]),
+      )
+      draftAttachmentAssetsById.value = Object.fromEntries(assetById.entries())
+      draftAttachmentPlansByAssetId.value = Object.fromEntries(draftPlans.entries())
+      draftAttachmentSendPlanStatus.value = sendPlanResponse.sendPlan.status
+      applyComposerSendPlanGateState(sendPlanResponse.sendPlan)
+
+      const next: DraftAttachmentViewModel[] = []
+      for (const attachment of attachments) {
+        if (seq !== draftAttachmentRefreshSeq) return
+        const asset = assetById.get(attachment.assetId) ?? null
+        const plan = draftPlans.get(attachment.assetId) ?? null
+        const preview = await resolveDraftAttachmentPreview(attachment, asset, seq)
+        if (seq !== draftAttachmentRefreshSeq) return
+        next.push(buildDraftAttachmentViewModel(attachment, asset, plan, preview?.dataUrl ?? null))
+      }
+      draftAttachmentViewModels.value = next
+      if (selectedDraftAttachmentAssetId.value && !next.some((item) => item.assetId === selectedDraftAttachmentAssetId.value)) {
+        selectedDraftAttachmentAssetId.value = null
+      }
+      scheduleDraftAttachmentParsingPoll()
+      if (seq === draftAttachmentRefreshSeq && shouldToggleComposerSendPlanLoading) {
+        composerSendPlanLoading.value = false
+      }
+      scheduleHistoryIncompatibleRefresh()
+      return
+    } catch (error) {
+      if (shouldLogDebug()) {
+        console.warn('[ui-app] refreshDraftAttachmentViewModels send-plan fallback (non-fatal):', error)
+      }
+    }
+
+    const fallback: DraftAttachmentViewModel[] = attachments.map((attachment) => {
+      const asset = null
+      return buildFallbackDraftAttachmentViewModel(attachment, asset)
+    })
+    if (seq !== draftAttachmentRefreshSeq) return
+    draftAttachmentAssetsById.value = {}
+    draftAttachmentPlansByAssetId.value = {}
+    draftAttachmentSendPlanStatus.value = null
+    draftAttachmentViewModels.value = fallback
+    const fallbackBlocking = fallback
+      .map((item) => item.blockingReason)
+      .find((value) => typeof value === 'string' && value.trim().length > 0) ?? null
+    const fallbackWarning = fallback
+      .map((item) => item.warningReason)
+      .find((value) => typeof value === 'string' && value.trim().length > 0) ?? null
+    composerSendPlanStatus.value = null
+    composerSendPlanCanProceed.value = fallbackBlocking == null
+    composerSendPlanBlockingSummary.value = fallbackBlocking
+    composerSendPlanWarningSummary.value = fallbackBlocking ? null : fallbackWarning
+    composerSendPlanIsPartialAllowed.value = false
+    if (selectedDraftAttachmentAssetId.value && !fallback.some((item) => item.assetId === selectedDraftAttachmentAssetId.value)) {
+      selectedDraftAttachmentAssetId.value = null
+    }
+    scheduleDraftAttachmentParsingPoll()
+    if (seq === draftAttachmentRefreshSeq && shouldToggleComposerSendPlanLoading) {
+      composerSendPlanLoading.value = false
+    }
+    scheduleHistoryIncompatibleRefresh()
+    return
+  }
+
+  async function ingestLocalFiles(
+    filePaths: readonly string[],
+    options?: Readonly<{ mimeType?: string | null; sourceKind?: 'local_upload' | 'generated' }>,
+  ) {
+    const cleaned = filePaths.map((value) => String(value ?? '').trim()).filter((value) => value.length > 0)
+    if (cleaned.length === 0) return
+    const convoId = await ensureActiveConvo()
+
+    let successCount = 0
+    let failureCount = 0
+    let lastSuccessLabel: string | null = null
+
+    for (const filePath of cleaned) {
+      try {
+        const result = await ingestLocalFile({
+          filePath,
+          mimeType: options?.mimeType ?? null,
+          sourceKind: options?.sourceKind ?? 'local_upload',
+        })
+        if (!result.success || !result.assetId) {
+          failureCount += 1
+          continue
+        }
+        await addConversationDraftAttachment({
+          conversationId: convoId,
+          assetId: result.assetId,
+        })
+        successCount += 1
+        lastSuccessLabel = result.normalizedExtension ?? result.assetKind ?? 'attachment'
+      } catch (error) {
+        failureCount += 1
+        if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
+          console.warn('[ui-app] ingestLocalFiles failed for one file (non-fatal):', error)
+        }
+      }
+    }
+
+    if (successCount > 0) {
+      void refreshDraftAttachmentViewModels()
+      const label = successCount === 1 ? 'attachment' : 'attachments'
+      setAttachmentFeedback('success', `Added ${successCount} ${label}.`)
+    } else if (failureCount > 0) {
+      setAttachmentFeedback('error', 'Attachment import failed.')
+    }
+    if (successCount > 0 && lastSuccessLabel && shouldLogDebug()) {
+      console.info('[ui-app] attachment import completed:', { successCount, failureCount, lastSuccessLabel })
+    }
+  }
+
+  async function ingestUrlAttachment(url: string, retentionMode: 'default' | 'link_only' | 'link_and_file') {
+    const trimmed = String(url ?? '').trim()
+    if (!trimmed) {
+      setAttachmentFeedback('error', 'URL is required.')
+      return
+    }
+    try {
+      const convoId = await ensureActiveConvo()
+      const result = await ingestUrl({
+        url: trimmed,
+        retentionMode: resolveAttachmentRetentionMode(retentionMode),
+      })
+      if (!result.success || !result.assetId) {
+        setAttachmentFeedback('error', 'URL import failed.')
+        return
+      }
+      await addConversationDraftAttachment({
+        conversationId: convoId,
+        assetId: result.assetId,
+        urlRetentionMode: retentionMode,
+      })
+      void refreshDraftAttachmentViewModels()
+      setAttachmentFeedback('success', 'URL added to draft.')
+    } catch (error) {
+      setAttachmentFeedback('error', error instanceof Error ? error.message : 'URL import failed.')
+      if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
+        console.warn('[ui-app] ingestUrlAttachment failed:', error)
+      }
+    }
+  }
+
+  function parseAttachmentUrlText(raw: string): string | null {
+    const trimmed = String(raw ?? '').trim()
+    if (!trimmed) return null
+    try {
+      const parsed = new URL(trimmed)
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+      return parsed.toString()
+    } catch {
+      return null
+    }
+  }
+
+  async function flushDraftPersistence(): Promise<void> {
+    const scope = getActiveDraftScope()
+    const text = draft.value
+    if (!scope) return
+    if (isAttachmentConfirmationActive.value) {
+      draftPersistenceQueuedWhileAttachmentConfirmationActive.value = true
+      if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
+        console.warn('[ui-app] flushDraftPersistence deferred while attachment confirmation is active', {
+          draftMode: draftPersistenceMode.value,
+          draftLength: text.length,
+          draftAttachmentCount: draftAttachmentRecords.value.length,
+          hasEditingSourceMessageId: String(draftPersistenceEditingSourceMessageId.value ?? '').trim().length > 0,
+        })
+      }
+      return
+    }
+    if (draftSaveTimer.value) {
+      clearTimeout(draftSaveTimer.value)
+      draftSaveTimer.value = null
+    }
+    draftFlushPromise.value = (async () => {
+      try {
+        const updated = await updateConversationDraftText({
+          conversationId: scope.convoId,
+          draftText: text,
+          draftMode: draftPersistenceMode.value,
+          editingSourceMessageId: draftPersistenceEditingSourceMessageId.value,
+        })
+        applyDraftPersistenceStateFromDraft(updated)
+      } catch (err) {
+        if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
+          console.warn('[ui-app] flushDraftPersistence failed (non-fatal):', {
+            err,
+            draftMode: draftPersistenceMode.value,
+            draftLength: text.length,
+            draftAttachmentCount: draftAttachmentRecords.value.length,
+            hasEditingSourceMessageId: String(draftPersistenceEditingSourceMessageId.value ?? '').trim().length > 0,
+          })
+        }
+      }
+    })()
+    try {
+      await draftFlushPromise.value
+    } finally {
+      draftFlushPromise.value = null
+    }
+  }
+
+  function scheduleDraftPersistence() {
+    if (isAttachmentConfirmationActive.value) {
+      draftPersistenceQueuedWhileAttachmentConfirmationActive.value = true
+      if (draftSaveTimer.value) {
+        clearTimeout(draftSaveTimer.value)
+        draftSaveTimer.value = null
+      }
+      return
+    }
+    if (draftSaveTimer.value) clearTimeout(draftSaveTimer.value)
+    draftSaveTimer.value = setTimeout(() => {
+      void flushDraftPersistence()
+    }, 250)
+  }
+
+  async function restoreDraftForActiveScope() {
+    const scope = getActiveDraftScope()
+    if (!scope) {
+      lastDraftScopeKey.value = null
+      draft.value = ''
+      applyDraftPersistenceState({ draftMode: 'compose', editingSourceMessageId: null })
+      editRestoredDraftAttachmentAssetIds.value = new Set()
+      draftAttachmentViewModels.value = []
+      resetHistoryIncompatibleAttachmentSummary()
+      return
+    }
+    lastDraftScopeKey.value = getDraftScopeKey(scope)
+    try {
+      const restored = await restoreConversationDraft(scope.convoId)
+      applyDraftPersistenceStateFromDraft(restored)
+      draft.value = restored.draftText
+      editRestoredDraftAttachmentAssetIds.value = restored.draftMode === 'edit'
+        ? new Set(restored.attachedAssetIds.map((assetId) => String(assetId ?? '').trim()).filter(Boolean))
+        : new Set()
+      await refreshDraftAttachmentViewModels({ restoredDraft: restored })
+      scheduleHistoryIncompatibleRefresh()
+    } catch (err) {
+      if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
+        console.warn('[ui-app] restoreDraftForActiveScope failed (non-fatal):', err)
+      }
+      draft.value = ''
+      applyDraftPersistenceState({ draftMode: 'compose', editingSourceMessageId: null })
+      editRestoredDraftAttachmentAssetIds.value = new Set()
+      draftAttachmentViewModels.value = []
+      resetHistoryIncompatibleAttachmentSummary()
+    }
+  }
+
+  async function onAttachFilesRequested() {
+    if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
+    const api = getElectronApi()
+    if (!api) {
+      setAttachmentFeedback('error', 'File picker is unavailable.')
+      return
+    }
+    const result = await api.selectLocalFiles({ context: 'file', allowMultiple: true })
+    const filePaths = Array.isArray(result?.filePaths) ? result.filePaths : []
+    if (filePaths.length === 0) return
+    await ingestLocalFiles(filePaths, { sourceKind: 'local_upload' })
+  }
+
+  async function onAttachImagesRequested() {
+    if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
+    if (composerImageInputSupported.value === false) {
+      setAttachmentFeedback('error', composerImageInputSupportReason.value ?? 'Current model does not support image inputs.')
+      return
+    }
+    const api = getElectronApi()
+    if (!api) {
+      setAttachmentFeedback('error', 'File picker is unavailable.')
+      return
+    }
+    const result = await api.selectLocalFiles({ context: 'image', allowMultiple: true })
+    const filePaths = Array.isArray(result?.filePaths) ? result.filePaths : []
+    if (filePaths.length === 0) return
+    await ingestLocalFiles(filePaths, { sourceKind: 'local_upload' })
+  }
+
+  function onAttachUrlRequested(prefillUrl?: string | null) {
+    if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
+    openAttachmentUrlDialog(prefillUrl ?? '')
+  }
+
+  async function submitAttachmentUrl() {
+    if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
+    const url = attachmentUrlDraft.value.trim()
+    if (!url) {
+      setAttachmentFeedback('error', 'URL is required.')
+      return
+    }
+    const retentionMode = attachmentUrlRetentionMode.value
+    attachmentUrlDialogOpen.value = false
+    await ingestUrlAttachment(url, retentionMode)
+  }
+
+  async function handleRemoveDraftAttachment(assetId: string) {
+    if (isDraftInteractionLocked.value) return
+    const convoId = String(activeConvoId.value ?? '').trim()
+    if (!convoId || !assetId) return
+    try {
+      const result = await removeConversationDraftAttachment({
+        conversationId: convoId,
+        assetId,
+      })
+      await refreshDraftAttachmentViewModels()
+      if (result.removed) {
+        setAttachmentFeedback('success', 'Attachment removed from draft.')
+      } else {
+        setAttachmentFeedback('warning', 'Attachment was already removed.')
+      }
+    } catch (error) {
+      setAttachmentFeedback('error', error instanceof Error ? error.message : 'Failed to remove attachment.')
+    }
+  }
+
+  function openDraftAttachmentDetails(assetId: string) {
+    const id = String(assetId ?? '').trim()
+    if (!id) return
+    selectedDraftAttachmentAssetId.value = id
+  }
+
+  function closeDraftAttachmentDetails() {
+    selectedDraftAttachmentAssetId.value = null
+  }
+
+  async function updateSelectedDraftAttachmentSettings(input: Readonly<{
+    preferredSendMode?: DraftAttachmentSendModePreference | null
+    urlRetentionMode?: DraftAttachmentUrlRetentionPreference | null
+  }>) {
+    if (isDraftInteractionLocked.value) return
+    const convoId = String(activeConvoId.value ?? '').trim()
+    const assetId = String(selectedDraftAttachmentAssetId.value ?? '').trim()
+    if (!convoId || !assetId) return
+    try {
+      await updateConversationDraftAttachmentSettings({
+        conversationId: convoId,
+        assetId,
+        ...input,
+      })
+      await refreshDraftAttachmentViewModels()
+      selectedDraftAttachmentAssetId.value = assetId
+    } catch (error) {
+      setAttachmentFeedback('error', error instanceof Error ? error.message : 'Failed to update attachment settings.')
+    }
+  }
+
+  async function updateSelectedDraftAttachmentSendMode(preferredSendMode: DraftAttachmentSendModePreference) {
+    await updateSelectedDraftAttachmentSettings({ preferredSendMode })
+  }
+
+  async function updateSelectedDraftAttachmentUrlRetentionMode(urlRetentionMode: DraftAttachmentUrlRetentionPreference) {
+    await updateSelectedDraftAttachmentSettings({ urlRetentionMode })
+  }
+
+  async function retrySelectedDraftAttachmentPreview() {
+    const assetId = String(selectedDraftAttachmentAssetId.value ?? '').trim()
+    if (!assetId) return
+    const attachment = draftAttachmentRecords.value.find((item) => item.assetId === assetId) ?? null
+    const asset = draftAttachmentAssetsById.value[assetId] ?? null
+    if (!attachment || !asset || !isImageAssetLike(asset, attachment)) {
+      setAttachmentFeedback('warning', 'Preview retry is only available for image attachments.')
+      return
+    }
+    const seq = ++draftAttachmentRefreshSeq
+    const preview = await resolveDraftAttachmentPreview(attachment, asset, seq, true)
+    if (preview?.status === 'ready') {
+      setAttachmentFeedback('success', 'Preview refreshed.')
+    } else {
+      setAttachmentFeedback('warning', 'Preview retry completed, but no ready preview was available.')
+    }
+    await refreshDraftAttachmentViewModels()
+    selectedDraftAttachmentAssetId.value = assetId
+  }
+
+  async function handleDropFiles(event: DragEvent) {
+    if (isDraftInteractionLocked.value) {
+      event.preventDefault()
+      setAttachmentFeedback('warning', '附件确认面板处理中，当前草稿已锁定。')
+      return
+    }
+    const files = Array.from(event.dataTransfer?.files ?? [])
+    if (files.length === 0) return
+    event.preventDefault()
+    if (isRunning.value) {
+      setAttachmentFeedback('warning', 'Attachments are disabled while a response is running.')
+      return
+    }
+    const imageFiles = files.filter((file) => isProbablyImageAttachment(file))
+    if (composerImageInputSupported.value === false && imageFiles.length > 0) {
+      setAttachmentFeedback('error', composerImageInputSupportReason.value ?? 'Current model does not support image inputs.')
+      const allowedFiles = files.filter((file) => !isProbablyImageAttachment(file))
+      if (allowedFiles.length === 0) return
+      const allowedPaths = allowedFiles.map((file) => getLocalFilePath(file)).filter((value) => value.length > 0)
+      if (allowedPaths.length === 0) return
+      await ingestLocalFiles(allowedPaths, { sourceKind: 'local_upload' })
+      return
+    }
+
+    event.preventDefault()
+    const paths = files.map((file) => getLocalFilePath(file)).filter((value) => value.length > 0)
+    if (paths.length === 0) {
+      setAttachmentFeedback('error', 'Dropped files are not accessible from this build.')
+      return
+    }
+    await ingestLocalFiles(paths, { sourceKind: 'local_upload' })
+  }
+
+  async function handlePasteAttachment(event: ClipboardEvent) {
+    if (isDraftInteractionLocked.value) {
+      event.preventDefault()
+      setAttachmentFeedback('warning', '附件确认面板处理中，当前草稿已锁定。')
+      return
+    }
+    const clipboard = event.clipboardData
+    if (!clipboard) return
+
+    const files = Array.from(clipboard.files ?? [])
+    if (files.length > 0) {
+      event.preventDefault()
+      if (isRunning.value) {
+        setAttachmentFeedback('warning', 'Attachments are disabled while a response is running.')
+        return
+      }
+      const imageFiles = files.filter((file) => isProbablyImageAttachment(file))
+      if (composerImageInputSupported.value === false && imageFiles.length > 0) {
+        setAttachmentFeedback('error', composerImageInputSupportReason.value ?? 'Current model does not support image inputs.')
+        const allowedFiles = files.filter((file) => !isProbablyImageAttachment(file))
+        const allowedPaths = allowedFiles.map((file) => getLocalFilePath(file)).filter((value) => value.length > 0)
+        if (allowedPaths.length > 0) {
+          await ingestLocalFiles(allowedPaths, { sourceKind: 'local_upload' })
+        }
+        return
+      }
+
+      event.preventDefault()
+      const paths = files.map((file) => getLocalFilePath(file)).filter((value) => value.length > 0)
+      if (paths.length === 0) {
+        setAttachmentFeedback('error', 'Pasted files are not accessible from this build.')
+        return
+      }
+      await ingestLocalFiles(paths, { sourceKind: 'local_upload' })
+      return
+    }
+
+    const pastedText = String(clipboard.getData('text/plain') || clipboard.getData('text/uri-list') || '').trim()
+    const attachmentUrl = parseAttachmentUrlText(pastedText)
+    if (isRunning.value) {
+      if (attachmentUrl || files.length > 0) {
+        event.preventDefault()
+        setAttachmentFeedback('warning', 'Attachments are disabled while a response is running.')
+      }
+      return
+    }
+    if (!attachmentUrl) return
+    openAttachmentUrlDialog(attachmentUrl)
+    event.preventDefault()
+  }
+
   const ACCOUNT_DEFAULT_WEB_SEARCH_ENABLED = false
   const FALLBACK_WEB_SEARCH_PATCH: OpenRouterWebRequestPatch = {
     plugins: [{ id: 'web', enabled: false }],
@@ -2551,11 +5101,11 @@ export function useAppChatAppLogic() {
   }
 
   const activeSessionWebSearchLayer = computed<SearchSettingsLayer | null>(() =>
-    getActiveConvoWebSearchLayer()
+    activeSessionConfig.value.webSearch.detail
   )
 
   const activeSessionSamplingParamsLayer = computed<SamplingParamsLayer | null>(() =>
-    getActiveConvoSamplingParamsLayer()
+    activeSessionConfig.value.samplingParams.detail
   )
 
   const activeSessionSamplingParamsResolved = computed(() =>
@@ -2702,6 +5252,7 @@ export function useAppChatAppLogic() {
 
   function onOpenProjectWebSearchSettings(projectId: string) {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     const project = getProjectByIdLocal(projectId)
     if (!project) return
     projectWebSearchSettingsStatus.value = null
@@ -2720,35 +5271,28 @@ export function useAppChatAppLogic() {
   }
 
   async function persistActiveConvoWebSearchOverride(nextLayer: SearchSettingsLayer | null) {
-    const convo = getActiveConvoRecord()
-    if (!convo) return
     const normalizedNext = normalizeSearchSettingsLayer(nextLayer)
-    const nextMeta = mergeConvoWebSearchOverrideMeta(convo.meta ?? null, normalizedNext)
-    await saveConvo({
-      id: convo.id,
-      title: convo.title,
-      projectId: convo.projectId ?? null,
-      meta: nextMeta,
+    await updateActiveConvoSessionConfig({
+      webSearch: {
+        detail: normalizedNext,
+        enabled: normalizedNext?.searchMode === 'disable' ? false : true,
+        level: normalizedNext?.searchDepth === 'low' ? 'low' : 'high',
+      },
     })
-    convos.value = convos.value.map((c) => (c.id === convo.id ? { ...c, meta: nextMeta } : c))
   }
 
   async function persistActiveConvoSamplingParamsOverride(nextLayer: SamplingParamsLayer | null) {
-    const convo = getActiveConvoRecord()
-    if (!convo) return
     const normalizedNext = normalizeSamplingParamsLayer(nextLayer)
-    const nextMeta = mergeConvoSamplingParamsOverrideMeta(convo.meta ?? null, normalizedNext)
-    await saveConvo({
-      id: convo.id,
-      title: convo.title,
-      projectId: convo.projectId ?? null,
-      meta: nextMeta,
+    await updateActiveConvoSessionConfig({
+      samplingParams: {
+        detail: normalizedNext,
+      },
     })
-    convos.value = convos.value.map((c) => (c.id === convo.id ? { ...c, meta: nextMeta } : c))
   }
 
   async function onComposerUpdateWebSearchLayer(nextLayer: SearchSettingsLayer | null) {
     if (isRunning.value || sessionWebSearchQuickSaving.value) return
+    if (isDraftInteractionLocked.value) return
     sessionWebSearchQuickSaving.value = true
     try {
       await persistActiveConvoWebSearchOverride(nextLayer)
@@ -2761,6 +5305,7 @@ export function useAppChatAppLogic() {
 
   async function onComposerUpdateSamplingParamsLayer(nextLayer: SamplingParamsLayer | null) {
     if (isRunning.value || sessionSamplingParamsQuickSaving.value) return
+    if (isDraftInteractionLocked.value) return
     sessionSamplingParamsQuickSaving.value = true
     try {
       await persistActiveConvoSamplingParamsOverride(nextLayer)
@@ -2772,10 +5317,12 @@ export function useAppChatAppLogic() {
   }
 
   function onComposerOpenWebSearchSettings() {
+    if (isDraftInteractionLocked.value) return
     openSessionWebSearchSettings()
   }
 
   async function saveSessionWebSearchSettings() {
+    if (isDraftInteractionLocked.value) return
     if (!getActiveConvoRecord() || sessionWebSearchSettingsSaving.value) return
     sessionWebSearchSettingsSaving.value = true
     sessionWebSearchSettingsStatus.value = null
@@ -2791,6 +5338,7 @@ export function useAppChatAppLogic() {
   }
 
   async function saveProjectWebSearchSettings() {
+    if (isDraftInteractionLocked.value) return
     const project = projectWebSearchSettingsTarget.value
     if (!project || projectWebSearchSettingsSaving.value) return
     projectWebSearchSettingsSaving.value = true
@@ -2955,6 +5503,8 @@ export function useAppChatAppLogic() {
     if (modelId === DEFAULT_CHAT_MODEL_ID) {
       selectedModelImageCapabilityClass.value = null
       selectedModelImageCapabilityReason.value = 'select a concrete model to enable image generation.'
+      composerImageInputSupported.value = null
+      composerImageInputSupportReason.value = null
       selectedModelImageCapabilityLoading.value = false
       return
     }
@@ -2966,8 +5516,14 @@ export function useAppChatAppLogic() {
       if (!item) {
         selectedModelImageCapabilityClass.value = null
         selectedModelImageCapabilityReason.value = 'model detail unavailable for image capability detection.'
+        composerImageInputSupported.value = null
+        composerImageInputSupportReason.value = null
         return
       }
+      composerImageInputSupported.value = Array.isArray(item.inputModalities) && item.inputModalities.includes('image')
+      composerImageInputSupportReason.value = composerImageInputSupported.value
+        ? null
+        : 'Current model does not support image inputs.'
       const eligibility = evaluateImageGenerationModel({
         modelId: item.modelId,
         inputModalities: item.inputModalities,
@@ -2993,6 +5549,8 @@ export function useAppChatAppLogic() {
       if (seq !== imageCapabilityQuerySeq.value) return
       selectedModelImageCapabilityClass.value = null
       selectedModelImageCapabilityReason.value = 'failed to detect image capability.'
+      composerImageInputSupported.value = null
+      composerImageInputSupportReason.value = null
     } finally {
       if (seq === imageCapabilityQuerySeq.value) {
         selectedModelImageCapabilityLoading.value = false
@@ -3023,41 +5581,31 @@ export function useAppChatAppLogic() {
   }
 
   function applyImageGenerationStateForActiveConvo() {
-    const convo = getActiveConvoRecord()
-    if (!convo) {
-      imageGenerationConvoMode.value = 'default'
-      imageGenerationState.value = globalImageGenerationDefault.value
-      return
-    }
-    const projectMeta = convo.projectId
-      ? getProjectByIdLocal(convo.projectId)?.meta ?? null
-      : null
-    const resolved = resolveEffectiveImageGenerationConfig({
-      convoMeta: convo.meta ?? null,
-      projectMeta,
-      globalDefault: globalImageGenerationDefault.value,
-    })
-    imageGenerationConvoMode.value = resolved.mode
-    imageGenerationState.value = resolved.effective
+    hydrateSessionConfigUiFromActiveConvo()
   }
 
   async function persistImageGenerationConfigForActiveConvo(input: Readonly<{
     mode: ConvoImageGenerationMode
     custom: ImageGenerationUiState | null
   }>): Promise<void> {
-    const convo = getActiveConvoRecord()
-    if (!convo) return
-    const nextMeta = mergeConvoImageGenerationMeta(convo.meta ?? null, {
-      mode: input.mode,
-      custom: input.custom ? normalizeImageGenerationState(input.custom) : null,
+    const normalized = normalizeImageGenerationState(input.custom)
+    const resolution =
+      normalized.imageSize === '1K' || normalized.imageSize === '2K' || normalized.imageSize === '4K'
+        ? normalized.imageSize
+        : '1K'
+    const aspectRatio =
+      normalized.aspectRatio === '16:9' || normalized.aspectRatio === '3:4' || normalized.aspectRatio === '1:1' || normalized.aspectRatio === '4:3'
+        ? normalized.aspectRatio
+        : '1:1'
+    await updateActiveConvoSessionConfig({
+      imageGeneration: {
+        mode: input.mode,
+        detail: input.mode === 'custom' ? normalized : null,
+        enabled: normalized.enabled,
+        resolution,
+        aspectRatio,
+      },
     })
-    await saveConvo({
-      id: convo.id,
-      title: convo.title,
-      projectId: convo.projectId ?? null,
-      meta: nextMeta,
-    })
-    convos.value = convos.value.map((c) => (c.id === convo.id ? { ...c, meta: nextMeta } : c))
   }
 
   async function onUpdateImageGenerationFollowDefault(nextFollowDefault: boolean) {
@@ -3147,16 +5695,6 @@ export function useAppChatAppLogic() {
     return normalized.length > 0 ? normalized : null
   }
 
-  function mergeSelectedModelKeyIntoMeta(meta: unknown, selectedModelKey: string): Record<string, unknown> | null {
-    const base = meta && typeof meta === 'object' ? { ...(meta as Record<string, unknown>) } : {}
-    if (selectedModelKey === DEFAULT_CHAT_MODEL_ID) {
-      delete base[CONVO_META_SELECTED_MODEL_KEY]
-    } else {
-      base[CONVO_META_SELECTED_MODEL_KEY] = selectedModelKey
-    }
-    return finalizeMetaObject(base)
-  }
-
   function resolveSelectedModelAvailability(modelKey: string): 'available' | 'hidden' | 'missing' | 'unknown' {
     const normalized = normalizeModelKey(modelKey)
     if (!normalized) return 'unknown'
@@ -3174,19 +5712,13 @@ export function useAppChatAppLogic() {
   }
 
   function applySelectedModelOverrideForActiveConvo() {
-    const convo = getActiveConvoRecord()
-    if (!convo) return
-
-    const selectedModelKey = extractSelectedModelKey(convo.meta ?? null)
-    if (!selectedModelKey) return
-
-    const normalized = normalizeModelKey(selectedModelKey)
+    const normalized = normalizeModelKey(activeSessionConfig.value.model.selectedModelKey ?? DEFAULT_CHAT_MODEL_ID)
     model.value = normalized
 
     const availability = resolveSelectedModelAvailability(normalized)
     if ((availability === 'hidden' || availability === 'missing') && shouldLogDebug()) {
       console.warn('[ui-app] selected model from convo meta is not currently visible in local catalog; keep using session override', {
-        convoId: convo.id,
+        convoId: getActiveConvoRecord()?.id,
         selectedModelKey: normalized,
         availability,
       })
@@ -3202,15 +5734,12 @@ export function useAppChatAppLogic() {
     const shouldPersist = normalized === DEFAULT_CHAT_MODEL_ID ? null : normalized
     if (currentPersisted === shouldPersist) return
 
-    const nextMeta = mergeSelectedModelKeyIntoMeta(convo.meta ?? null, normalized)
     try {
-      await saveConvo({
-        id: convo.id,
-        title: convo.title,
-        projectId: convo.projectId ?? null,
-        meta: nextMeta,
+      await updateActiveConvoSessionConfig({
+        model: {
+          selectedModelKey: normalized === DEFAULT_CHAT_MODEL_ID ? null : normalized,
+        },
       })
-      convos.value = convos.value.map((c) => (c.id === convo.id ? { ...c, meta: nextMeta } : c))
     } catch (err) {
       if (shouldLogDebug()) {
         console.warn('[ui-app] persistSelectedModelForActiveConvo failed (non-fatal):', err, {
@@ -3222,21 +5751,28 @@ export function useAppChatAppLogic() {
   }
 
   async function onUpdateModel(nextModelKey: string) {
+    if (isDraftInteractionLocked.value) return
     const normalized = normalizeModelKey(nextModelKey)
     model.value = normalized
     await persistSelectedModelForActiveConvo(normalized)
+    void refreshDraftAttachmentViewModels()
+    scheduleHistoryIncompatibleRefresh()
   }
 
   async function recordRecentModelUsage(modelId: string) {
     const normalized = normalizeModelKey(modelId)
     if (!normalized) return
-    const result = await ModelPrefsService.recordRecent({
-      scopeType: 'global',
-      scopeId: '',
-      providerKey: 'openrouter',
-      modelId: normalized,
-      modelKey: `openrouter::${normalized}`,
-    })
+    const result = await ModelPrefsService.recordRecent(
+      {
+        providerKey: 'openrouter',
+        modelId: normalized,
+        modelKey: `openrouter::${normalized}`,
+      },
+      {
+        scopeType: 'global',
+        scopeId: '',
+      },
+    )
     if (!result && shouldLogDebug()) {
       console.warn('[ui-app] recordRecentModelUsage failed (non-fatal)', {
         modelId: normalized,
@@ -3430,16 +5966,10 @@ export function useAppChatAppLogic() {
       applyReasoningPrefs(DEFAULT_REASONING_PREFS)
       return
     }
-
-    const convoPrefs = extractReasoningPrefs(convo.meta ?? null)
-    let projectPrefs: ReasoningPrefs | null = null
-    if (!convoPrefs && convo.projectId) {
-      projectPrefs = await loadProjectReasoningPrefs(convo.projectId)
+    if (!globalReasoningPrefs.value) {
+      await refreshGlobalReasoningPrefs()
     }
-
-    const globalPrefs = globalReasoningPrefs.value ?? (await refreshGlobalReasoningPrefs())
-    const effective = convoPrefs ?? projectPrefs ?? globalPrefs ?? DEFAULT_REASONING_PREFS
-    applyReasoningPrefs(effective)
+    hydrateSessionConfigUiFromActiveConvo()
   }
 
   function scheduleReasoningPrefsSave() {
@@ -3454,32 +5984,26 @@ export function useAppChatAppLogic() {
     const detail = (event as CustomEvent).detail
     const normalized = normalizeReasoningPrefs(detail) ?? DEFAULT_REASONING_PREFS
     globalReasoningPrefs.value = normalized
-
-    const convo = getActiveConvoRecord()
-    if (!convo) return
-    const convoPrefs = extractReasoningPrefs(convo.meta ?? null)
-    if (convoPrefs) return
-    const projectPrefs = convo.projectId
-      ? extractReasoningPrefs(projects.value.find((p) => p.id === convo.projectId)?.meta ?? null)
-      : null
-    if (projectPrefs) return
-    applyReasoningPrefs(normalized)
+    hydrateSessionConfigUiFromActiveConvo()
   }
 
   async function persistReasoningPrefs() {
     const convo = getActiveConvoRecord()
     if (!convo) return
     const prefs = buildReasoningPrefsFromUi()
-    const nextMeta = mergeReasoningPrefsIntoMeta(convo.meta ?? null, prefs)
 
     try {
-      await saveConvo({
-        id: convo.id,
-        title: convo.title,
-        projectId: convo.projectId ?? null,
-        meta: nextMeta,
+      await updateActiveConvoSessionConfig({
+        reasoning: {
+          enabled: prefs.mode === 'effort' && prefs.effort !== 'none',
+          effort:
+            prefs.effort === 'high' || prefs.effort === 'xhigh'
+              ? 'high'
+              : prefs.effort === 'low' || prefs.effort === 'minimal'
+                ? 'low'
+                : 'medium',
+        },
       })
-      convos.value = convos.value.map((c) => (c.id === convo.id ? { ...c, meta: nextMeta } : c))
     } catch (err) {
       if (shouldLogDebug()) console.warn('[ui-app] persistReasoningPrefs failed (non-fatal):', err)
     }
@@ -3528,6 +6052,8 @@ export function useAppChatAppLogic() {
     assistantSeq: number
     modelId: string
     createEvents: (signal: AbortSignal) => AsyncIterable<DomainEvent>
+    pdfAnnotationCaptureAssetIds?: ReadonlyArray<string>
+    replayManifestDraft?: Record<string, unknown> | null
     telemetry?: AssistantStreamSessionTelemetry
   }>
 
@@ -3856,6 +6382,9 @@ export function useAppChatAppLogic() {
       if (latestUsageSnapshot) {
         metaPatch.usage = latestUsageSnapshot
       }
+      if (input.replayManifestDraft && typeof input.replayManifestDraft === 'object') {
+        metaPatch.currentReplayManifestDraft = input.replayManifestDraft
+      }
       await setMessageStatus({
         messageId: assistantMessageId,
         status: finalStatus,
@@ -3873,6 +6402,13 @@ export function useAppChatAppLogic() {
           messageId: assistantMessageId,
           annotations: stream.annotationsBuffer.value ?? [],
         })
+        const pdfAssetIds = Array.from(new Set((input.pdfAnnotationCaptureAssetIds ?? []).map((id) => String(id ?? '').trim()).filter(Boolean)))
+        if (pdfAssetIds.length > 0) {
+          await capturePdfAnnotationDerivatives({
+            messageId: assistantMessageId,
+            assetIds: pdfAssetIds,
+          })
+        }
       } catch (err) {
         if (shouldLogDebug()) console.warn('[ui-app] setMessageAnnotations failed (non-fatal):', err)
       }
@@ -4102,6 +6638,7 @@ export function useAppChatAppLogic() {
     assistantMessageId: string
     assistantSeq: number
     contextMessages: ReadonlyArray<InternalMessage>
+    replayPrepared?: PreparedOpenRouterReplay | null
   }>) {
     const convoId = String(input.convoId ?? '').trim()
     const branchId = String(input.branchId ?? '').trim()
@@ -4110,6 +6647,7 @@ export function useAppChatAppLogic() {
     const assistantSeq = Number(input.assistantSeq ?? NaN)
     const questionText = typeof input.questionText === 'string' ? input.questionText : String(input.questionText ?? '')
     if (!convoId || !branchId || !questionId || !assistantMessageId || !Number.isFinite(assistantSeq) || !questionText.trim()) return
+    const replayPrepared = input.replayPrepared ?? null
 
     // Invariant: while streaming a regenerate/retry answer, the UI should already be projected onto the new chosen answer root.
     // If not, force a single DB-backed rehydrate before we begin streaming to avoid temporarily rendering both old+new variants.
@@ -4204,11 +6742,13 @@ export function useAppChatAppLogic() {
       assistantMessageId,
       assistantSeq,
       modelId,
+      replayManifestDraft: replayPrepared?.manifestDraft ?? null,
       createEvents: (signal) => streamOpenRouterChatAsEvents({
         requestId,
         assistantMessageId,
         userText: questionText,
         contextMessages: input.contextMessages,
+        ...(replayPrepared?.currentUserContentBlocks.length ? { currentUserContentBlocks: replayPrepared.currentUserContentBlocks } : {}),
         signal,
         config: {
           apiKey,
@@ -4229,11 +6769,349 @@ export function useAppChatAppLogic() {
     })
   }
 
+  async function prepareReplayForHistoricalUserMessage(input: Readonly<{
+    branchId: string
+    userMessageId: string
+    userText: string
+    attachmentDecisions?: ReadonlyArray<AttachmentDecision>
+  }>): Promise<PreparedOpenRouterReplay | null> {
+    const baseUrl = await getOpenRouterBaseUrl()
+    const modelDescriptor = await buildSendPlanModelDescriptor(normalizeModelKey(model.value))
+    const prepared = await prepareOpenRouterReplayFromMessage({
+      branchId: input.branchId,
+      userMessageId: input.userMessageId,
+      model: modelDescriptor,
+      providerContext: buildSendPlanProviderContext(baseUrl),
+      replayMode: 'current',
+      editedUserText: input.userText,
+      attachmentDecisions: input.attachmentDecisions?.map((item) => ({
+        attachmentId: item.attachmentId,
+        source: item.source,
+        decision: item.decision,
+        ...(item.reasonCode ? { reasonCode: item.reasonCode } : {}),
+      })),
+    })
+    return prepared
+  }
+
+  function buildAttachmentConfirmationRequestFromSendPlan(
+    kind: AttachmentConfirmationSessionKind,
+    sendPlan: SendPlan | null | undefined
+  ): AttachmentConfirmationRequestInput | null {
+    if (!sendPlan) return null
+    const historyItems = buildHistoryConfirmationItemsFromSendPlan(sendPlan)
+    const currentItems = buildCurrentConfirmationItemsFromSendPlan(sendPlan)
+    if (historyItems.length === 0 && currentItems.length === 0) return null
+    return {
+      kind,
+      historyItems,
+      currentItems,
+    }
+  }
+
+  function buildAttachmentConfirmationRequestFromReplay(
+    kind: AttachmentConfirmationSessionKind,
+    replayPrepared: PreparedOpenRouterReplay | null | undefined
+  ): AttachmentConfirmationRequestInput | null {
+    if (!replayPrepared) return null
+    const historyItems = buildHistoryConfirmationItemsFromReplayPrepared(replayPrepared)
+    if (historyItems.length === 0) return null
+    return {
+      kind,
+      historyItems,
+      currentItems: [],
+    }
+  }
+
+  function buildReplayBlockedMessage(prepared: PreparedOpenRouterReplay | null | undefined): string {
+    const status = prepared?.status ?? 'blocked'
+    const reasons = Array.isArray(prepared?.blockingReasons) ? prepared!.blockingReasons : []
+    const reasonText = reasons
+      .map((item: any) => String(item?.message ?? item?.code ?? '').trim())
+      .find((value) => value.length > 0)
+    const normalizedReason = sanitizeSendPlanSummaryMessage(reasonText) ?? 'historical attachments require confirmation or remediation before resend.'
+    if (status === 'needs_confirmation') {
+      return `Current replay blocked (needs_confirmation): ${normalizedReason}`
+    }
+    return `Current replay blocked (${status}): ${normalizedReason}`
+  }
+
+  async function buildSendPlanModelDescriptor(modelId: string): Promise<SendPlanModelDescriptor> {
+    const normalized = normalizeModelKey(modelId)
+    try {
+      if (normalized !== DEFAULT_CHAT_MODEL_ID) {
+        const detail = await getModelCatalogModelDetail({ providerKey: 'openrouter', modelId: normalized })
+        if (detail.item) {
+          return {
+            providerKey: 'openrouter',
+            modelId: detail.item.modelId,
+            modelKey: detail.item.modelKey,
+            inputModalities: detail.item.inputModalities,
+            outputModalities: detail.item.outputModalities,
+          }
+        }
+      }
+    } catch (err) {
+      if (shouldLogDebug()) console.warn('[ui-app] model detail unavailable for file send planning', err)
+    }
+    return {
+      providerKey: 'openrouter',
+      modelId: normalized,
+      modelKey: `openrouter::${normalized}`,
+      inputModalities: ['text'],
+      outputModalities: ['text'],
+    }
+  }
+
+  function buildSendPlanProviderContext(baseUrl: string | null): SendPlanProviderContext {
+    return {
+      providerKey: 'openrouter',
+      ...(baseUrl ? { baseUrl } : {}),
+      supportsImageUrlRef: true,
+      supportsPdfInputs: true,
+      supportsPdfUrlRef: true,
+      supportsTextUrlRef: true,
+      supportsVideoUrlRef: false,
+      supportsInlineData: true,
+      supportsProviderFileRef: false,
+      preferredDraftSendModes: ['url_ref', 'inline_base64'],
+    }
+  }
+
+  function sanitizeSendPlanSummaryMessage(raw: string | null | undefined): string | null {
+    const input = String(raw ?? '').trim()
+    if (!input) return null
+    const hasInlineBase64 = /data:[^\s]{0,120};base64,/i.test(input) || /base64/i.test(input)
+    if (hasInlineBase64) {
+      return '检测到附件内容风险，请处理附件后重试。'
+    }
+    const redacted = input
+      .replace(/[A-Za-z]:[\\/][^\s"''<>]+/g, '[local path]')
+      .replace(/\/(?:Users|home|var|tmp|private|mnt|opt)\/[^ "''<>]+/g, '[local path]')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (!redacted) return null
+    if (redacted.length <= 140) return redacted
+    return `${redacted.slice(0, 137)}...`
+  }
+
+  function resolveSendPlanBlockingMessage(sendPlan: SendPlan): string {
+    const reasonFromIssues = sendPlan.blockingReasons
+      .map((item) => String(item.message ?? '').trim())
+      .find((value) => value.length > 0 && value.toLowerCase() !== 'blocked')
+    const sanitizedReasonFromIssues = sanitizeSendPlanSummaryMessage(reasonFromIssues)
+    if (sanitizedReasonFromIssues) return sanitizedReasonFromIssues
+    const reasonFromPlans = sendPlan.attachmentPlans
+      .filter((item) => item.eligibility === 'blocked')
+      .flatMap((item) => item.notes ?? [])
+      .map((item) => String(item ?? '').trim())
+      .find((value) => value.length > 0)
+    const sanitizedReasonFromPlans = sanitizeSendPlanSummaryMessage(reasonFromPlans)
+    if (sanitizedReasonFromPlans) return sanitizedReasonFromPlans
+    return '当前请求无法发送，请处理附件或更换模型。'
+  }
+
+  function resolveSendPlanWarningMessage(sendPlan: SendPlan): string | null {
+    const reasonFromIssues = sendPlan.warnings
+      .map((item) => String(item.message ?? '').trim())
+      .find((value) => value.length > 0)
+    const sanitizedReasonFromIssues = sanitizeSendPlanSummaryMessage(reasonFromIssues)
+    if (sanitizedReasonFromIssues) return sanitizedReasonFromIssues
+    const reasonFromPlans = sendPlan.attachmentPlans
+      .filter((item) => item.eligibility === 'warning')
+      .flatMap((item) => item.notes ?? [])
+      .map((item) => String(item ?? '').trim())
+      .find((value) => value.length > 0)
+    const sanitizedReasonFromPlans = sanitizeSendPlanSummaryMessage(reasonFromPlans)
+    if (sanitizedReasonFromPlans) return sanitizedReasonFromPlans
+    if (sendPlan.status === 'sendable_with_warnings' || sendPlan.status === 'partially_sendable') {
+      return '部分附件存在警告，但可以发送。'
+    }
+    return null
+  }
+
+  function canProceedForPartiallySendable(sendPlan: SendPlan): boolean {
+    if (sendPlan.status !== 'partially_sendable') return false
+    if (!sendPlan.canProceedAfterDroppingExcluded) return false
+    if (sendPlan.includedAttachments.length === 0) return false
+    const hasExcludedDraft = sendPlan.excludedAttachments.some((item) => item.source === 'draft')
+    if (hasExcludedDraft) return false
+    const hasBlockedDraft = sendPlan.attachmentPlans.some((item) =>
+      item.source === 'draft' && (item.eligibility === 'blocked' || item.displayStatus === 'parsing')
+    )
+    if (hasBlockedDraft) return false
+    return true
+  }
+
+  function evaluateComposerSendPlanGate(sendPlan: SendPlan): Readonly<{
+    status: SendPlan['status']
+    canProceed: boolean
+    blockingReason: string | null
+    warningReason: string | null
+    partialAllowed: boolean
+  }> {
+    const hasParsingDraft = sendPlan.attachmentPlans.some((item) => item.source === 'draft' && item.displayStatus === 'parsing')
+    if (hasParsingDraft) {
+      return {
+        status: sendPlan.status,
+        canProceed: false,
+        blockingReason: '附件仍在解析中，完成后才能发送。',
+        warningReason: null,
+        partialAllowed: false,
+      }
+    }
+
+    const hasResolvableConfirmationItems = sendPlan.attachmentPlans.some((item) =>
+      (item.source === 'draft' || item.source === 'history') &&
+      item.displayStatus !== 'parsing' &&
+      (item.eligibility === 'excluded' || item.eligibility === 'blocked')
+    )
+
+    const hasBlockingDraft = sendPlan.attachmentPlans.some((item) => item.source === 'draft' && item.eligibility === 'blocked')
+    if (sendPlan.status === 'blocked' || sendPlan.blockingReasons.length > 0 || hasBlockingDraft) {
+      if (hasResolvableConfirmationItems) {
+        return {
+          status: sendPlan.status,
+          canProceed: true,
+          blockingReason: null,
+          warningReason: '检测到无法直接纳入模型上下文的附件，发送前需要确认处理方式。',
+          partialAllowed: false,
+        }
+      }
+      return {
+        status: sendPlan.status,
+        canProceed: false,
+        blockingReason: resolveSendPlanBlockingMessage(sendPlan),
+        warningReason: null,
+        partialAllowed: false,
+      }
+    }
+
+    if (sendPlan.status === 'partially_sendable') {
+      if (hasResolvableConfirmationItems) {
+        return {
+          status: sendPlan.status,
+          canProceed: true,
+          blockingReason: null,
+          warningReason: '检测到无法直接纳入模型上下文的附件，发送前需要确认处理方式。',
+          partialAllowed: false,
+        }
+      }
+      const partialAllowed = canProceedForPartiallySendable(sendPlan)
+      if (!partialAllowed) {
+        return {
+          status: sendPlan.status,
+          canProceed: false,
+          blockingReason: '部分附件无法发送，请处理附件后再发送。',
+          warningReason: null,
+          partialAllowed: false,
+        }
+      }
+      return {
+        status: sendPlan.status,
+        canProceed: true,
+        blockingReason: null,
+        warningReason: '部分附件不会发送，仍可继续。',
+        partialAllowed: true,
+      }
+    }
+
+    const warningReason = resolveSendPlanWarningMessage(sendPlan)
+    return {
+      status: sendPlan.status,
+      canProceed: true,
+      blockingReason: null,
+      warningReason,
+      partialAllowed: false,
+    }
+  }
+
+  function applyComposerSendPlanGateState(sendPlan: SendPlan | null) {
+    if (!sendPlan) {
+      resetComposerSendPlanGateState()
+      return
+    }
+    const evaluated = evaluateComposerSendPlanGate(sendPlan)
+    composerSendPlanStatus.value = evaluated.status
+    composerSendPlanCanProceed.value = evaluated.canProceed
+    composerSendPlanBlockingSummary.value = evaluated.blockingReason
+    composerSendPlanWarningSummary.value = evaluated.warningReason
+    composerSendPlanIsPartialAllowed.value = evaluated.partialAllowed
+  }
+
+  async function preflightDraftAttachmentSendGate(input: Readonly<{
+    conversationId: string
+    draftText: string
+    modelId: string
+    baseUrl: string | null
+    historyMessageIds: ReadonlyArray<string>
+  }>): Promise<Readonly<{
+    status: SendPlan['status'] | null
+    canProceed: boolean
+    blockingReason: string | null
+    warningReason: string | null
+    sendPlan: SendPlan | null
+  }>> {
+    if (draftAttachmentRecords.value.length === 0) {
+      return {
+        status: null,
+        canProceed: true,
+        blockingReason: null,
+        warningReason: null,
+        sendPlan: null,
+      }
+    }
+    const modelDescriptor = await buildSendPlanModelDescriptor(input.modelId)
+    const response = await buildCurrentSendPlan({
+      conversationId: input.conversationId,
+      draftText: input.draftText,
+      historyScope: input.historyMessageIds.length > 0 ? { messageIds: Array.from(input.historyMessageIds) } : null,
+      model: modelDescriptor,
+      providerContext: buildSendPlanProviderContext(input.baseUrl),
+    })
+    const sendPlan = response.sendPlan
+    const evaluated = evaluateComposerSendPlanGate(sendPlan)
+    return {
+      status: evaluated.status,
+      canProceed: evaluated.canProceed,
+      blockingReason: evaluated.blockingReason,
+      warningReason: evaluated.warningReason,
+      sendPlan,
+    }
+  }
+
+  async function prepareFileSend(input: Readonly<{
+    conversationId: string
+    userText: string
+    modelId: string
+    baseUrl: string | null
+    historyMessageIds?: ReadonlyArray<string>
+  }>): Promise<PreparedOpenRouterSend | null> {
+    const modelDescriptor = await buildSendPlanModelDescriptor(input.modelId)
+    const prepared = await prepareOpenRouterSendFromDraft({
+      conversationId: input.conversationId,
+      userText: input.userText,
+      model: modelDescriptor,
+      providerContext: buildSendPlanProviderContext(input.baseUrl),
+      historyMessageIds: input.historyMessageIds,
+      pdfFileParser: { enabled: true, engine: 'native' },
+    })
+    if (prepared && shouldLogDebug()) {
+      console.info('[ui-app] file send plan prepared', {
+        status: prepared.sendPlan.status,
+        includedAttachmentCount: prepared.diagnostics.includedAttachmentCount,
+        excludedAttachmentCount: prepared.diagnostics.excludedAttachmentCount,
+        injectedPlugins: prepared.diagnostics.injectedPlugins,
+      })
+    }
+    return prepared
+  }
+
   async function onSend() {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     const text = draft.value.trim()
     if (!text) return
-    draft.value = ''
 
     const convoId = await ensureActiveConvo()
     const branch = await ensureActiveBranch(convoId)
@@ -4249,14 +7127,96 @@ export function useAppChatAppLogic() {
     const modelId = normalizeModelKey(model.value)
 
     let contextMessages: any[] = []
+    let contextMessageIds: string[] = []
     try {
       const built = await buildContextForBranchInternalMessages(branch.id, { limit: 200, debug: !!import.meta.env?.DEV })
       contextMessages = built.contextMessages as any[]
+      contextMessageIds = built.rawMessages.map((message) => message.id)
     } catch (err) {
       if (import.meta.env?.DEV) console.warn('[ui-app] context.buildForBranch failed; using empty context', err)
     }
 
-    const begun = await beginTurn(branch.id, text)
+    composerSendPlanLoading.value = true
+    let gate: Readonly<{
+      status: SendPlan['status'] | null
+      canProceed: boolean
+      blockingReason: string | null
+      warningReason: string | null
+      sendPlan: SendPlan | null
+    }> = {
+      status: null,
+      canProceed: true,
+      blockingReason: null,
+      warningReason: null,
+      sendPlan: null,
+    }
+    try {
+      gate = await preflightDraftAttachmentSendGate({
+        conversationId: convoId,
+        draftText: text,
+        modelId,
+        baseUrl,
+        historyMessageIds: contextMessageIds,
+      })
+      applyComposerSendPlanGateState(gate.sendPlan)
+      const confirmationRequest = buildAttachmentConfirmationRequestFromSendPlan('composer_send', gate.sendPlan)
+      if (confirmationRequest) {
+        const result = await requestAttachmentConfirmation(confirmationRequest)
+        if (!result.confirmed) return
+        const draftDecisions = result.decisions.filter((item) => item.source !== 'history')
+        if (draftDecisions.length > 0) {
+          await applyDraftAttachmentDecisions(draftDecisions)
+          gate = await preflightDraftAttachmentSendGate({
+            conversationId: convoId,
+            draftText: text,
+            modelId,
+            baseUrl,
+            historyMessageIds: contextMessageIds,
+          })
+          applyComposerSendPlanGateState(gate.sendPlan)
+        }
+      }
+      if (!gate.canProceed) {
+        setAttachmentFeedback('error', gate.blockingReason ?? '当前请求无法发送，请处理附件或更换模型。')
+        return
+      }
+      if (gate.warningReason) {
+        setAttachmentFeedback('warning', gate.warningReason)
+      }
+    } catch (err: any) {
+      loadError.value = err?.message ? String(err.message) : String(err)
+      return
+    } finally {
+      composerSendPlanLoading.value = false
+    }
+
+    let preparedFileSend: PreparedOpenRouterSend | null = null
+    try {
+      preparedFileSend = await prepareFileSend({
+        conversationId: convoId,
+        userText: text,
+        modelId,
+        baseUrl,
+        historyMessageIds: contextMessageIds,
+      })
+    } catch (err: any) {
+      loadError.value = err?.message ? String(err.message) : String(err)
+      return
+    }
+
+    const begun = await beginTurn(branch.id, text, {
+      ...(preparedFileSend?.hasDraftAttachmentPlans ? { attachConversationDraft: true } : {}),
+      ...(preparedFileSend ? { sentAssetIds: collectSentAssetIds(preparedFileSend.sendPlan) } : {}),
+    })
+    draft.value = ''
+    const cleared = await updateConversationDraftText({
+      conversationId: convoId,
+      draftText: '',
+      draftMode: 'compose',
+      editingSourceMessageId: null,
+    })
+    applyDraftPersistenceStateFromDraft(cleared)
+    void refreshDraftAttachmentViewModels()
     // Branch tip update (definition): the new assistant becomes the insertion point for the next turn.
     patchBranch(branch.id, { headMessageId: begun.assistantId, updatedAt: Date.now() })
 
@@ -4315,11 +7275,13 @@ export function useAppChatAppLogic() {
       assistantMessageId,
       assistantSeq,
       modelId,
+      ...(preparedFileSend ? { pdfAnnotationCaptureAssetIds: getPreparedPdfAssetIds(preparedFileSend) } : {}),
       createEvents: (signal) => streamOpenRouterChatAsEvents({
         requestId,
         assistantMessageId,
         userText: text,
         contextMessages,
+        ...(preparedFileSend?.contentParts.length ? { currentUserContentBlocks: preparedFileSend.contentParts } : {}),
         signal,
         config: {
           apiKey,
@@ -4330,10 +7292,25 @@ export function useAppChatAppLogic() {
           ...(imageGenerationConfig ? { imageGeneration: imageGenerationConfig } : {}),
           ...(requestedReasoningEffortValue ? { requestedReasoningEffort: requestedReasoningEffortValue } : {}),
           ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
+          ...(preparedFileSend?.additionalPlugins.length ? { openRouterAdditionalPlugins: preparedFileSend.additionalPlugins } : {}),
           ...(baseUrl ? { baseUrl } : {}),
         },
       }),
     })
+  }
+
+  function getPreparedPdfAssetIds(prepared: PreparedOpenRouterSend): string[] {
+    return Array.from(
+      new Set(
+        prepared.sendPlan.attachmentPlans
+          .filter((plan) => (plan.eligibility === 'included' || plan.eligibility === 'warning') && plan.aiPayloadKind === 'pdf')
+          .map((plan) => plan.assetId)
+      )
+    )
+  }
+
+  function collectSentAssetIds(sendPlan: PreparedOpenRouterSend['sendPlan']): string[] {
+    return Array.from(new Set(sendPlan.includedAttachments.map((attachment) => attachment.assetId)))
   }
 
   async function onForkFromHead() {
@@ -4380,6 +7357,7 @@ export function useAppChatAppLogic() {
   }
 
   async function onCandidateShift(questionId: string, delta: -1 | 1) {
+    if (isDraftInteractionLocked.value) return
     const bid = activeBranchId.value
     if (!bid) return
     if (activeAssistantMessageId.value) return
@@ -4434,6 +7412,7 @@ export function useAppChatAppLogic() {
   }
 
   async function onQuestionCandidateShift(questionId: string, delta: -1 | 1) {
+    if (isDraftInteractionLocked.value) return
     const bid = activeBranchId.value
     if (!bid) return
     if (activeAssistantMessageId.value) return
@@ -4467,6 +7446,7 @@ export function useAppChatAppLogic() {
 
   async function onRegenerateFromQuestion(questionId: string) {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     if (activeAssistantMessageId.value) return
 
     const convoId = activeConvoId.value
@@ -4489,6 +7469,33 @@ export function useAppChatAppLogic() {
 
     loadError.value = null
     const contextMessages = await buildContextMessagesBeforeQuestion(branch.id, qid)
+    let replayPrepared: PreparedOpenRouterReplay | null = null
+    try {
+      replayPrepared = await prepareReplayForHistoricalUserMessage({
+        branchId: branch.id,
+        userMessageId: qid,
+        userText: questionText,
+      })
+      const confirmationRequest = buildAttachmentConfirmationRequestFromReplay('regenerate', replayPrepared)
+      if (confirmationRequest) {
+        const result = await requestAttachmentConfirmation(confirmationRequest)
+        if (!result.confirmed) return
+        replayPrepared = await prepareReplayForHistoricalUserMessage({
+          branchId: branch.id,
+          userMessageId: qid,
+          userText: questionText,
+          attachmentDecisions: result.decisions,
+        })
+      } else if (replayPrepared?.status === 'needs_confirmation') {
+        throw new Error(buildReplayBlockedMessage(replayPrepared))
+      }
+      if (!replayPrepared || replayPrepared.status !== 'sendable') {
+        throw new Error(buildReplayBlockedMessage(replayPrepared))
+      }
+    } catch (err: any) {
+      loadError.value = err?.message ? String(err.message) : String(err)
+      return
+    }
 
     try {
       const regen = await regenerateFromQuestion(branch.id, qid)
@@ -4521,6 +7528,7 @@ export function useAppChatAppLogic() {
         assistantMessageId: regen.newAnswerRootId,
         assistantSeq: regen.newAssistantSeq,
         contextMessages,
+        replayPrepared,
       })
     } catch (err: any) {
       loadError.value = err?.message ? String(err.message) : String(err)
@@ -4528,16 +7536,42 @@ export function useAppChatAppLogic() {
     }
   }
 
-  function openQuestionEdit(questionId: string) {
+  async function openQuestionEdit(questionId: string) {
+    if (isDraftInteractionLocked.value) return
     const qid = String(questionId ?? '').trim()
     if (!qid) return
     const meta = messageMetaById.value.get(qid)
     if (!meta || meta.role !== 'user') return
-    questionEditDialog.value = { questionId: qid, draft: getUserQuestionText(qid) }
+    const convoId = String(activeConvoId.value ?? '').trim()
+    if (!convoId) return
+    try {
+      const previousDraft = await restoreConversationDraft(convoId)
+      const cloned = await cloneConversationDraftFromMessage({
+        conversationId: convoId,
+        sourceMessageId: qid,
+      })
+      applyDraftPersistenceStateFromDraft(cloned)
+      draft.value = cloned.draftText
+      editRestoredDraftAttachmentAssetIds.value = new Set(cloned.attachedAssetIds.map((assetId) => String(assetId ?? '').trim()).filter(Boolean))
+      await refreshDraftAttachmentViewModels({ restoredDraft: cloned })
+      questionEditSession.value = { questionId: qid, previousDraft }
+    } catch (err) {
+      editRestoredDraftAttachmentAssetIds.value = new Set()
+      questionEditSession.value = null
+      setAttachmentFeedback('error', err instanceof Error ? err.message : 'Failed to open edit draft.')
+    }
   }
 
-  function closeQuestionEdit() {
-    questionEditDialog.value = null
+  async function closeQuestionEdit() {
+    if (isDraftInteractionLocked.value) return
+    const session = questionEditSession.value
+    questionEditSession.value = null
+    if (!session) return
+    try {
+      await restoreDraftSnapshot(session.previousDraft)
+    } catch (err) {
+      setAttachmentFeedback('error', err instanceof Error ? err.message : 'Failed to restore draft after cancel.')
+    }
   }
 
   function canReplaceQuestionInUi(questionId: string): boolean {
@@ -4551,27 +7585,91 @@ export function useAppChatAppLogic() {
 
   async function submitQuestionEdit(mode: 'new' | 'replace') {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     if (activeAssistantMessageId.value) return
 
     const convoId = activeConvoId.value
     const branch = activeBranch.value
-    const dlg = questionEditDialog.value
-    if (!convoId || !branch?.id || !dlg) return
+    const editSession = questionEditSession.value
+    if (!convoId || !branch?.id || !editSession) return
 
-    const oldQuestionId = String(dlg.questionId ?? '').trim()
-    const newText = typeof dlg.draft === 'string' ? dlg.draft.trim() : String(dlg.draft ?? '').trim()
+    const oldQuestionId = String(editSession.questionId ?? '').trim()
+    const useDraftClone = isEditingDraftForMessage(oldQuestionId)
+    const newText = draft.value.trim()
     if (!oldQuestionId || !newText) return
 
     const baseMessageId = messageMetaById.value.get(oldQuestionId)?.parentId ?? null
     if (mode === 'replace' && !canReplaceQuestionInUi(oldQuestionId)) return
 
     loadError.value = null
+    let replayPreparedForEdit: PreparedOpenRouterReplay | null = null
+    let confirmedAttachmentDecisions: AttachmentDecision[] = []
+    if (!useDraftClone) {
+      loadError.value = 'Edit Question fallback path is blocked: historical attachments could not be restored into draft for current replay.'
+      setAttachmentFeedback('error', '无法恢复历史附件，已阻断本次编辑重发（避免静默纯文本发送）。')
+      return
+    }
+
+    const modelId = normalizeModelKey(model.value)
+    const baseUrl = await getOpenRouterBaseUrl()
+    let historyMessageIdsForGate: string[] = []
+    try {
+      const built = await buildContextForBranchInternalMessages(branch.id, { limit: 200, debug: !!import.meta.env?.DEV })
+      historyMessageIdsForGate = built.rawMessages.map((message) => message.id)
+    } catch {
+      historyMessageIdsForGate = []
+    }
+    const runEditPreflight = async () => await preflightDraftAttachmentSendGate({
+      conversationId: convoId,
+      draftText: newText,
+      modelId,
+      baseUrl,
+      historyMessageIds: historyMessageIdsForGate,
+    })
+    let editGate = await runEditPreflight()
+    applyComposerSendPlanGateState(editGate.sendPlan)
+    const confirmationRequest = buildAttachmentConfirmationRequestFromSendPlan('edit_submit', editGate.sendPlan)
+    if (confirmationRequest) {
+      const result = await requestAttachmentConfirmation(confirmationRequest)
+      if (!result.confirmed) return
+      confirmedAttachmentDecisions = result.decisions
+      const draftDecisions = result.decisions.filter((item) => item.source !== 'history')
+      if (draftDecisions.length > 0) {
+        await applyDraftAttachmentDecisions(draftDecisions)
+        editGate = await runEditPreflight()
+        applyComposerSendPlanGateState(editGate.sendPlan)
+      }
+    }
+    if (!editGate.canProceed) {
+      setAttachmentFeedback('error', editGate.blockingReason ?? '当前编辑请求无法发送，请处理附件后重试。')
+      return
+    }
 
     try {
       const res =
         mode === 'replace'
           ? await retryReplaceQuestion(branch.id, oldQuestionId, newText)
           : await forkQuestion(branch.id, oldQuestionId, newText)
+
+      if (useDraftClone) {
+        const attached = await attachConversationDraftToMessage({
+          conversationId: convoId,
+          messageId: res.newQuestionId,
+        })
+        applyDraftPersistenceStateFromDraft(attached.draft)
+        draft.value = attached.draft.draftText
+        editRestoredDraftAttachmentAssetIds.value = new Set()
+        await refreshDraftAttachmentViewModels({ restoredDraft: attached.draft })
+        replayPreparedForEdit = await prepareReplayForHistoricalUserMessage({
+          branchId: branch.id,
+          userMessageId: res.newQuestionId,
+          userText: newText,
+          attachmentDecisions: confirmedAttachmentDecisions,
+        })
+        if (!replayPreparedForEdit || replayPreparedForEdit.status !== 'sendable') {
+          throw new Error(buildReplayBlockedMessage(replayPreparedForEdit))
+        }
+      }
 
       invalidateQuestionCandidatesForSlot(baseMessageId)
       // Branch tip update (definition): fork/replace creates a new assistant and moves insertion point.
@@ -4586,7 +7684,7 @@ export function useAppChatAppLogic() {
       messageSeqById.value.set(res.newQuestionId, res.newQuestionSeq)
       messageSeqById.value.set(res.assistantId, res.assistantSeq)
 
-      closeQuestionEdit()
+      questionEditSession.value = null
       await refreshRenderableBranchView(branch.id)
 
       await startStreamingForAssistantTurn({
@@ -4597,6 +7695,7 @@ export function useAppChatAppLogic() {
         assistantMessageId: res.assistantId,
         assistantSeq: res.assistantSeq,
         contextMessages,
+        replayPrepared: replayPreparedForEdit,
       })
     } catch (err: any) {
       loadError.value = err?.message ? String(err.message) : String(err)
@@ -4651,6 +7750,7 @@ export function useAppChatAppLogic() {
 
   async function onRetryReplaceAnswer(questionId: string, currentAnswerRootId: string) {
     if (isRunning.value) return
+    if (isDraftInteractionLocked.value) return
     if (activeAssistantMessageId.value) return
 
     const convoId = activeConvoId.value
@@ -4664,6 +7764,33 @@ export function useAppChatAppLogic() {
 
     loadError.value = null
     const contextMessages = await buildContextMessagesBeforeQuestion(branch.id, qid)
+    let replayPrepared: PreparedOpenRouterReplay | null = null
+    try {
+      replayPrepared = await prepareReplayForHistoricalUserMessage({
+        branchId: branch.id,
+        userMessageId: qid,
+        userText: questionText,
+      })
+      const confirmationRequest = buildAttachmentConfirmationRequestFromReplay('retry_replace', replayPrepared)
+      if (confirmationRequest) {
+        const result = await requestAttachmentConfirmation(confirmationRequest)
+        if (!result.confirmed) return
+        replayPrepared = await prepareReplayForHistoricalUserMessage({
+          branchId: branch.id,
+          userMessageId: qid,
+          userText: questionText,
+          attachmentDecisions: result.decisions,
+        })
+      } else if (replayPrepared?.status === 'needs_confirmation') {
+        throw new Error(buildReplayBlockedMessage(replayPrepared))
+      }
+      if (!replayPrepared || replayPrepared.status !== 'sendable') {
+        throw new Error(buildReplayBlockedMessage(replayPrepared))
+      }
+    } catch (err: any) {
+      loadError.value = err?.message ? String(err.message) : String(err)
+      return
+    }
 
     try {
       const res = await retryReplaceAnswer(branch.id, qid, current)
@@ -4679,6 +7806,7 @@ export function useAppChatAppLogic() {
         assistantMessageId: res.newAnswerRootId,
         assistantSeq: res.newAssistantSeq,
         contextMessages,
+        replayPrepared,
       })
     } catch (err: any) {
       loadError.value = err?.message ? String(err.message) : String(err)
@@ -4735,7 +7863,9 @@ export function useAppChatAppLogic() {
       await refreshGlobalSamplingParamsDefaults()
       await refreshGlobalUserMessageRenderDefault()
       await refreshGlobalImageGenerationDefault()
+      reasoningDisplayMode.value = await getChatReasoningDisplayMode()
       await loadTranscriptForActiveConvo()
+      await restoreDraftForActiveScope()
       
       // 基线同步完成，flush 缓冲的事件
       flushBuffer()
@@ -4754,6 +7884,8 @@ export function useAppChatAppLogic() {
     window.addEventListener('settings:webSearchDefaultsUpdated', handleGlobalWebSearchDefaultsUpdated)
     window.addEventListener('settings:samplingParamsDefaultsUpdated', handleGlobalSamplingParamsDefaultsUpdated)
     window.addEventListener('settings:imageGenerationDefaultUpdated', handleGlobalImageGenerationDefaultUpdated)
+    window.addEventListener('pagehide', handlePageHide)
+    window.addEventListener('beforeunload', handlePageHide)
   })
 
   onMounted(() => {
@@ -4875,11 +8007,14 @@ export function useAppChatAppLogic() {
   }
 
   onUnmounted(() => {
+    void flushDraftPersistence()
     window.removeEventListener('settings:reasoningPrefsUpdated', handleGlobalReasoningPrefsUpdated)
     window.removeEventListener('settings:userMessageRenderDefaultUpdated', handleGlobalUserMessageRenderDefaultUpdated)
     window.removeEventListener('settings:webSearchDefaultsUpdated', handleGlobalWebSearchDefaultsUpdated)
     window.removeEventListener('settings:samplingParamsDefaultsUpdated', handleGlobalSamplingParamsDefaultsUpdated)
     window.removeEventListener('settings:imageGenerationDefaultUpdated', handleGlobalImageGenerationDefaultUpdated)
+    window.removeEventListener('pagehide', handlePageHide)
+    window.removeEventListener('beforeunload', handlePageHide)
     // 清理 DB 事件订阅
     if (unsubscribeDbEvent) {
       unsubscribeDbEvent()
@@ -4901,6 +8036,14 @@ export function useAppChatAppLogic() {
       clearInterval(thinkingTimer)
       thinkingTimer = null
     }
+    if (attachmentFeedbackTimer.value) {
+      clearTimeout(attachmentFeedbackTimer.value)
+      attachmentFeedbackTimer.value = null
+    }
+    clearDraftSendPlanRefreshTimer()
+    clearHistoryIncompatibleRefreshTimer()
+    clearHistoryAttachmentRefreshTimer()
+    clearDraftAttachmentParsingPollTimer()
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
@@ -4969,6 +8112,15 @@ export function useAppChatAppLogic() {
     closeSearchModal,
     onSelectSearchHit,
     showReasoningPanel,
+    reasoningDisplayMode,
+    reasoningInlineMode,
+    reasoningRailMode,
+    rightRailOpen,
+    rightRailCanShowReasoning,
+    toggleRightRailOpen,
+    rightRailView,
+    effectiveRightRailView,
+    setRightRailView,
     runVM,
     isRunning,
     activeTitle,
@@ -4985,6 +8137,7 @@ export function useAppChatAppLogic() {
     userMessageRenderModeLabel,
     canToggleReasoningPanel,
     onToggleReasoningPanelState,
+    onOpenReasoningDisplayForMessage,
     normalizedErrorSummary,
     normalizedErrorActionHint,
     copyErrorDetails,
@@ -5031,6 +8184,45 @@ export function useAppChatAppLogic() {
     lastAssistantReasoningPieces,
     lastAssistantMessage,
     draft,
+    draftAttachmentViewModels,
+    selectedDraftAttachmentDetails,
+    composerCanSend,
+    composerSendPlanStatus,
+    composerSendPlanLoading,
+    composerSendGateBlockedReason,
+    composerSendGateWarningReason,
+    isDraftInteractionLocked,
+    attachmentConfirmationSession,
+    attachmentConfirmationVisible,
+    attachmentConfirmationCollapsedBannerVisible,
+    attachmentConfirmationHistoryLocatorVisible,
+    attachmentConfirmationHistoryLocatorLabel,
+    openAttachmentConfirmationPanel,
+    collapseAttachmentConfirmationPanel,
+    closeAttachmentConfirmationByCancel,
+    confirmAttachmentConfirmationSession,
+    toggleAttachmentConfirmationHistorySection,
+    toggleAttachmentConfirmationCurrentSection,
+    setAttachmentConfirmationHistoryExcludeAll,
+    setAttachmentConfirmationCurrentDecision,
+    setAttachmentConfirmationCurrentDecisionForAll,
+    locateAttachmentConfirmationHistoryAll,
+    locateAttachmentConfirmationHistoryByAttachmentId,
+    navigateAttachmentConfirmationHistory,
+    closeAttachmentConfirmationLocatorBar,
+    historyIncompatibleAttachmentSummary,
+    activeHistoryIncompatibleAttachmentId,
+    historyAttachmentViewModelsByMessageId,
+    onReviewHistoryIncompatibleAttachments,
+    onNavigateHistoryIncompatibleAttachments,
+    attachmentFeedbackTone,
+    attachmentFeedbackMessage,
+    attachmentUrlDialogOpen,
+    attachmentUrlDraft,
+    attachmentUrlRetentionMode,
+    composerImageInputSupported,
+    composerImageInputSupportReason,
+    activeSessionConfig,
     model,
     requestedReasoningEffort,
     requestedReasoningExclude,
@@ -5052,11 +8244,33 @@ export function useAppChatAppLogic() {
     imageGenerationSupportHint,
     imageGenerationAdvancedError,
     onUpdateModel,
+    onUpdateReasoningEnabled,
+    onUpdateReasoningEffortLevel,
+    onUpdateWebSearchEnabled,
+    onUpdateWebSearchLevel,
+    onUpdateImageGenerationEnabled,
+    onUpdateImageGenerationResolution,
+    onUpdateImageGenerationAspectRatio,
+    onUpdateReasoningDisplayMode,
     onComposerUpdateSamplingParamsLayer,
     onComposerUpdateWebSearchLayer,
     onUpdateImageGeneration,
     onUpdateImageGenerationFollowDefault,
     onComposerOpenWebSearchSettings,
+    onAttachFilesRequested,
+    onAttachImagesRequested,
+    onAttachUrlRequested,
+    handleDropFiles,
+    handlePasteAttachment,
+    handleRemoveDraftAttachment,
+    openDraftAttachmentDetails,
+    closeDraftAttachmentDetails,
+    updateSelectedDraftAttachmentSendMode,
+    updateSelectedDraftAttachmentUrlRetentionMode,
+    retrySelectedDraftAttachmentPreview,
+    openAttachmentUrlDialog,
+    closeAttachmentUrlDialog,
+    submitAttachmentUrl,
     onSend,
     onAbort,
     settingsOpen,
@@ -5081,9 +8295,14 @@ export function useAppChatAppLogic() {
     projectWebSearchSettingsStatus,
     saveProjectWebSearchSettings,
     projectWebSearchSettingsSaving,
-    questionEditDialog,
+    questionEditSession,
+    isQuestionEditMode,
     closeQuestionEdit,
     submitQuestionEdit,
     canReplaceQuestionInUi,
+    pendingDeleteQuestionId,
+    requestDeleteQuestion,
+    cancelDeleteQuestion,
+    confirmDeleteQuestion,
   }
 }

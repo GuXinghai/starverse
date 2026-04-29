@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { __resetModelPrefsServiceCacheForTests } from '@/next/modelPrefs/modelPrefsService'
 import type { SamplingParamsLayer } from '@/next/openrouter/samplingParamsResolver'
 import type { SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import ChatAppComposer from './ChatAppComposer.vue'
 
 describe('ChatAppComposer web search send guard', () => {
@@ -16,7 +17,7 @@ describe('ChatAppComposer web search send guard', () => {
     vi.restoreAllMocks()
   })
 
-  function installDbBridgeStub(input?: Readonly<{ favorites?: unknown[]; recents?: unknown[] }>) {
+function installDbBridgeStub(input?: Readonly<{ favorites?: unknown[]; recents?: unknown[] }>) {
     const favorites = Array.isArray(input?.favorites) ? input?.favorites : []
     const recents = Array.isArray(input?.recents) ? input?.recents : []
     ;(globalThis as any).dbBridge = {
@@ -25,8 +26,24 @@ describe('ChatAppComposer web search send guard', () => {
         if (method === 'modelPrefs.listRecents') return recents
         return null
       }),
-    }
   }
+}
+
+function createSessionConfig() {
+  return {
+    model: { selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL },
+    reasoning: { enabled: true, effort: 'medium' as const },
+    webSearch: { enabled: true, level: 'low' as const, detail: null },
+    imageGeneration: {
+      enabled: true,
+      resolution: '1K' as const,
+      aspectRatio: '1:1' as const,
+      mode: 'default' as const,
+      detail: null,
+    },
+    samplingParams: { detail: null },
+  }
+}
 
   function renderHarness(initialLayer: SearchSettingsLayer | null, input?: Readonly<{ favorites?: unknown[]; recents?: unknown[] }>) {
     installDbBridgeStub(input)
@@ -34,9 +51,10 @@ describe('ChatAppComposer web search send guard', () => {
       components: { ChatAppComposer },
       setup() {
         const draft = ref('hello')
-        const model = ref('openrouter/auto')
+        const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
+        const sessionConfig = ref(createSessionConfig())
         const samplingParamsLayer = ref<SamplingParamsLayer | null>(null)
         const imageGeneration = ref({
           enabled: false,
@@ -58,6 +76,7 @@ describe('ChatAppComposer web search send guard', () => {
           model,
           requestedReasoningEffort,
           requestedReasoningExclude,
+          sessionConfig,
           samplingParamsLayer,
           imageGeneration,
           imageGenerationSupported,
@@ -79,6 +98,7 @@ describe('ChatAppComposer web search send guard', () => {
             v-model:requestedReasoningExclude="requestedReasoningExclude"
             v-model:samplingParamsLayer="samplingParamsLayer"
             v-model:webSearchLayer="webSearchLayer"
+            :sessionConfig="sessionConfig"
             :imageGeneration="imageGeneration"
             :imageGenerationVisible="true"
             :imageGenerationSupported="imageGenerationSupported"
@@ -257,8 +277,8 @@ describe('ChatAppComposer web search send guard', () => {
           scopeType: 'global',
           scopeId: '',
           providerKey: 'openrouter',
-          modelId: 'openrouter/auto',
-          modelKey: 'openrouter::openrouter/auto',
+          modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+          modelKey: `openrouter::${DEFAULT_OPENROUTER_TEST_MODEL}`,
           sortRank: 0,
           createdAtMs: 1,
           updatedAtMs: 1,
@@ -290,7 +310,7 @@ describe('ChatAppComposer web search send guard', () => {
       components: { ChatAppComposer },
       setup() {
         const draft = ref('hello')
-        const model = ref('openrouter/auto')
+        const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
         const imageGeneration = ref({
@@ -342,3 +362,4 @@ describe('ChatAppComposer web search send guard', () => {
     )
   })
 })
+

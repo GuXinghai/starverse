@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/catalogQueryService'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import ModelPickerDialog from './ModelPickerDialog.vue'
 
 function createResult(items: CatalogQueryResult['items'], nextCursor: CatalogQueryResult['nextCursor'] = null): CatalogQueryResult {
@@ -54,7 +55,7 @@ describe('ModelPickerDialog', () => {
     const view = render(ModelPickerDialog, {
       props: {
         open: true,
-        selectedModelId: 'openrouter/auto',
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
         debounceMs: 0,
@@ -107,7 +108,7 @@ describe('ModelPickerDialog', () => {
     const view = render(ModelPickerDialog, {
       props: {
         open: true,
-        selectedModelId: 'openrouter/auto',
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
         debounceMs: 0,
@@ -179,7 +180,7 @@ describe('ModelPickerDialog', () => {
     const view = render(ModelPickerDialog, {
       props: {
         open: true,
-        selectedModelId: 'openrouter/auto',
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         favoriteModelKeys: ['openrouter::openai/gpt-4o', 'openrouter::anthropic/claude-3'],
         queryFn,
         endpointDetailFn,
@@ -243,7 +244,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
-        selectedModelId: 'openrouter/auto',
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
         debounceMs: 300,
@@ -273,7 +274,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
-        selectedModelId: 'openrouter/auto',
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
         debounceMs: 0,
@@ -369,7 +370,7 @@ describe('ModelPickerDialog', () => {
     const view = render(ModelPickerDialog, {
       props: {
         open: true,
-        selectedModelId: 'openrouter/auto',
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
         debounceMs: 300,
@@ -426,7 +427,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
-        selectedModelId: 'openrouter/auto',
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
         debounceMs: 0,
@@ -612,7 +613,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
-        selectedModelId: 'openrouter/auto',
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
         modelDetailFn,
@@ -649,3 +650,4 @@ describe('ModelPickerDialog', () => {
     expect(endpointDetailFn).toHaveBeenCalledTimes(2)
   })
 })
+

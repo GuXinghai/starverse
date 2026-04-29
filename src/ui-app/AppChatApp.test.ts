@@ -20,6 +20,50 @@ describe('ui-app (read-only) AppChatApp', () => {
         return { counts: {} }
       }
 
+      if (method === 'settings.getReasoningPrefs') {
+        return { value: null }
+      }
+
+      if (method === 'settings.getWebSearchDefaults') {
+        return { value: null }
+      }
+
+      if (method === 'settings.getSamplingParamsDefaults') {
+        return { value: null }
+      }
+
+      if (method === 'settings.getUserMessageRenderDefault') {
+        return { value: null }
+      }
+
+      if (method === 'settings.getImageGenerationDefault') {
+        return { value: null }
+      }
+
+      if (method === 'settings.getChatReasoningDisplayMode') {
+        return { value: 'inline' }
+      }
+
+      if (method === 'settings.getChatDraft') {
+        return { value: null }
+      }
+
+      if (method === 'settings.setChatDraft') {
+        return { ok: true }
+      }
+
+      if (method === 'settings.deleteChatDraft') {
+        return { deleted: 0 }
+      }
+
+      if (method === 'settings.deleteChatDraftsByPrefix') {
+        return { deleted: 0 }
+      }
+
+      if (method === 'settings.setChatReasoningDisplayMode') {
+        return { ok: true }
+      }
+
       if (method === 'convo.list') {
         return [
           { id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 10 },
