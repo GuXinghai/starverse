@@ -1,5 +1,9 @@
 # 📦 Starverse 文档归档中心
 
+> **Status**: `archived`
+> ⚠️ **Read-only historical records**. Default: skip unless tasked with history tracing, regression check, or migration audit.
+> 💡 **For agents**: Use [../DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md) to find active/reference docs instead.
+
 本目录存储已完成项目的历史文档，保持主文档目录清晰简洁。
 
 ## 📊 归档统计

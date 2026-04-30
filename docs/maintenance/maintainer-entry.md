@@ -3,6 +3,8 @@
 **最后更新**: 2026-04-30  
 **用途**: 新维护者接手项目时的优先阅读顺序与注意事项
 
+> 💡 **编程 Agent 注意**: 如果你是自动化编程 Agent，请先读 [../AGENT_INDEX.md](../AGENT_INDEX.md) 和 [../DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md)，会更快地定位任务。
+
 ---
 
 ## 当前项目状态
@@ -12,7 +14,7 @@
 - **活跃代码目录**: `src/ui-app/`, `src/next/`, `src/shared/files/`, `infra/files/`, `infra/db/`
 - **治理体系**: ADR (`docs/adr/`)、边界护栏 (`docs/governance/`)、门禁脚本 (`scripts/gates/`)
 - **开发启动**: `npm run electron:dev`（完整 Electron 应用）
-- **测试运行**: `npm run test`（Vitest, 400+ tests）
+- **测试运行**: 按需运行与修改路径最相关的单元测试
 - **关键维护边界**: `appChatApp.logic.ts`（~6.7k 行, 不追加业务规则）、`openRouterSendPlanSerializer.ts`（唯一 payload 合成入口）
 
 ---
@@ -77,7 +79,7 @@
 
 | 命令 | 用途 |
 |------|------|
-| `npm run test` | 运行全部单元测试 |
+| 按需运行最近的相关测试 | 运行与修改路径最相关的单元测试 |
 | `npm run verify:ssot` | 基线验证（测试 + SSOT gates） |
 | `npm run verify:live` | Live smoke 测试（需 OpenRouter key） |
 | `node scripts/b_gate.mjs` | 跨平台黑名单门禁 |

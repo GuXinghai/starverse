@@ -54,7 +54,7 @@ The architecture is **100% aligned with OpenRouter's official documentation** an
                    ▼
 ┌─────────────────────────────────────────────────────────┐
 │           Model Capability Table                        │
-│   (modelCapability.ts - from /models API)               │
+│   (AppModel.capabilities snapshot from /models API)     │
 │   - Sampling: temperature, top_p, penalties...          │
 │   - Length: max_tokens, stop, maxCompletionTokens       │
 │   - Reasoning: family, maxTokensPolicy, visibility      │
@@ -107,7 +107,7 @@ src/
 ├── services/providers/
 │   ├── generationAdapter.ts           ⭐ NEW - Unified adapter
 │   ├── generationConfigManager.ts     ⭐ NEW - 4-layer config system
-│   ├── modelCapability.ts             ⭐ NEW - Capability table builder
+│   ├── AppModel.capabilities          ✅ EXISTING - Capability snapshot source
 │   ├── openrouterReasoningAdapter.ts  ✅ EXISTS - Reasoning sub-adapter
 │   └── OpenRouterService.js           🔧 TO UPDATE - Use new adapter
 │

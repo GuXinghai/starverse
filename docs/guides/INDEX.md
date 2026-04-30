@@ -6,6 +6,17 @@
 
 ---
 
+## 🤖 编程 Agent 专用入口
+
+**编程 Agent 请先读这两个文件，可减少重复扫描成本**:
+
+| 文档 | 用途 |
+|------|------|
+| [../AGENT_INDEX.md](../AGENT_INDEX.md) | 首读：快速路由表、任务映射、护栏规则 (3 min) |
+| [../DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md) | 文档活跃度与优先级判断表 (2 min) |
+
+---
+
 ## 🎯 快速导航
 
 ### 🚀 我想快速开始
@@ -263,7 +274,7 @@ Tailwind CSS v4 升级相关的所有文档。
 
 **维护者**: @GuXinghai  
 **贡献者**: GitHub Copilot, Starverse Team  
-**License**: 未声明
+**License**: MIT
 
 **最近更新历史**:
 - 2026-04-30: v2.1.0 - 路径校准与语义修复（G1c），所有链接路径修正，归档/重构条目标注为历史
