@@ -1,5 +1,9 @@
 # Starverse OpenRouter 接入重构总结
 
+> **Status**: reference
+> **Agent use**: read for OpenRouter integration history, architecture intent, and migration context
+> **Do not use as**: current request-builder truth or send-plan policy source
+
 > **📌 文档状态**：本文档记录了 OpenRouter 接入的架构设计，但部分实现细节已演进。  
 > **最新现状审计**：[OPENROUTER_REASONING_REALITY_CHECK_2025_12.md](../analysis/OPENROUTER_REASONING_REALITY_CHECK_2025_12.md)  
 > **更新日期**：2025年12月13日

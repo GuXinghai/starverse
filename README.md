@@ -51,6 +51,7 @@
 - [文档导航](#-文档导航)
 - [最近更新和路线图](#-最近更新和路线图)
 - [常见问题](#-常见问题faq)
+- [许可证](#-许可证)
 - [贡献指南](#-贡献)
 
 ---
@@ -748,7 +749,9 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 ### 快速入口
 | 文档 | 说明 |
 |------|------|
+| 🤖 **[Agent 入口](docs/AGENT_INDEX.md)** | **编程 Agent 首读** — 快速路由表、文档状态规则、任务映射 |
 | [文档导航中心](docs/guides/INDEX.md) | 按场景查找所有文档 |
+| [文档状态索引](docs/DOC_STATUS_INDEX.md) | 文档活跃度与优先级判断 |
 | [架构总览](docs/architecture/OVERVIEW.md) | 系统架构设计 |
 | [文件管道入口](docs/file-pipeline/README.md) | File Pipeline Phase 1-9 状态与文档映射 |
 | [File Pipeline 进度账本](docs/file-pipeline/progress-ledger.md) | 决策记录、冻结决策、未做清单 |
@@ -790,6 +793,12 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 | 支持哪些操作系统？ | Windows 10+, macOS 10.13+, Linux (Ubuntu 18.04+, Fedora 32+) |
 | 遇到编译或运行问题？ | 查看[故障排查](docs/guides/TROUBLESHOOTING.md) |
 | 报告问题或贡献代码？ | 前往 [GitHub Issues](https://github.com/GuXinghai/starverse/issues) |
+
+---
+
+## 📄 许可证
+
+本项目采用 MIT License。详见 [LICENSE](LICENSE)。
 
 ---
 

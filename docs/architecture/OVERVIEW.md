@@ -1,5 +1,9 @@
 # Starverse 架构总览
 
+> **Status**: active
+> **Agent use**: read for layer boundaries, ownership, and canonical entry paths
+> **Do not use as**: exhaustive file inventory or a substitute for implementation-specific docs
+
 > **最后更新**: 2025年12月3日  
 > **架构版本**: 1.0.0
 
