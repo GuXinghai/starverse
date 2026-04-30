@@ -15,17 +15,17 @@
   - 命令速查
 
 ### 📖 完整指南
-- **[迁移指南](./TAILWIND_V4_MIGRATION.md)**
+- **[迁移指南](../archive/migrations/TAILWIND_V4_MIGRATION.md)**
   - v3 到 v4 的完整迁移步骤
   - 配置方式对比
   - 渐进式迁移策略
 
-- **[验证报告](./TAILWIND_V4_VERIFICATION.md)**
+- **[验证报告](../archive/migrations/TAILWIND_V4_VERIFICATION.md)**
   - 功能验证结果
   - 配置文件检查
   - 测试清单
 
-- **[总结文档](./TAILWIND_V4_SUMMARY.md)**
+- **[总结文档](../archive/migrations/TAILWIND_V4_SUMMARY.md)**
   - 验证成果汇总
   - 文档产出列表
   - 后续建议
@@ -37,16 +37,16 @@
   - 常见错误处理
 
 ### 📁 项目规则文件
-- **[.cursorrules](../.cursorrules)** - Cursor IDE 规则
-- **[.windsurfrules](../.windsurfrules)** - Windsurf IDE 规则
-- **[copilot-instructions.md](../.github/copilot-instructions.md)** - GitHub Copilot 指南（已更新）
+- **[.cursorrules](../../.cursorrules)** - Cursor IDE 规则
+- **[.windsurfrules](../../.windsurfrules)** - Windsurf IDE 规则
+- **[copilot-instructions.md](../../.github/copilot-instructions.md)** - GitHub Copilot 指南（已更新）
 
 ### 💡 示例代码
-- **[tailwind-v4-theme.css](../src/assets/tailwind-v4-theme.css)**
+- **[tailwind-v4-theme.css](../../src/assets/tailwind-v4-theme.css)**
   - `@theme` 指令完整示例
   - 280+ 行带注释的配置
 
-- **[TailwindV4Demo.vue](../src/components/TailwindV4Demo.vue)**
+- **TailwindV4Demo.vue**（文件已归档，内容已合并至主代码库）
   - 可视化功能演示组件
   - 所有特性的实际应用
 
@@ -56,7 +56,7 @@
 
 ### 场景 1: 我是新加入的开发者
 1. 阅读 **[快速参考](./TAILWIND_V4_QUICK_REFERENCE.md)** (5 分钟)
-2. 查看 **[.cursorrules](../.cursorrules)** 了解项目规则 (3 分钟)
+2. 查看 **[.cursorrules](../../.cursorrules)** 了解项目规则 (3 分钟)
 3. 如果使用 AI 助手，复制 **[AI Prompt](./TAILWIND_V4_AI_PROMPT.md)** (2 分钟)
 
 **总计**: 10 分钟即可上手
@@ -66,28 +66,28 @@
 ### 场景 2: 我需要配置 AI 助手
 1. 如果使用 Cursor/Windsurf，无需操作（自动读取 `.cursorrules`）
 2. 如果使用 ChatGPT/Claude/Gemini，使用 **[AI Prompt 模板](./TAILWIND_V4_AI_PROMPT.md)**
-3. 如果使用 VS Code Copilot，查看 **[copilot-instructions.md](../.github/copilot-instructions.md)**
+3. 如果使用 VS Code Copilot，查看 **[copilot-instructions.md](../../.github/copilot-instructions.md)**
 
 ---
 
 ### 场景 3: 我遇到了样式问题
 1. 检查是否使用了 `*-opacity-*` 类（v4 已废弃）
 2. 参考 **[快速参考 - 常见问题](./TAILWIND_V4_QUICK_REFERENCE.md#常见问题)**
-3. 查看 **[.cursorrules](../.cursorrules)** 中的"自我纠正协议"
+3. 查看 **[.cursorrules](../../.cursorrules)** 中的"自我纠正协议"
 
 ---
 
 ### 场景 4: 我需要深入理解 v4
-1. 阅读 **[迁移指南](./TAILWIND_V4_MIGRATION.md)** 的完整内容
-2. 查看 **[验证报告](./TAILWIND_V4_VERIFICATION.md)** 了解项目配置
-3. 研究 **[tailwind-v4-theme.css](../src/assets/tailwind-v4-theme.css)** 示例代码
+1. 阅读 **[迁移指南](../archive/migrations/TAILWIND_V4_MIGRATION.md)** 的完整内容
+2. 查看 **[验证报告](../archive/migrations/TAILWIND_V4_VERIFICATION.md)** 了解项目配置
+3. 研究 **[tailwind-v4-theme.css](../../src/assets/tailwind-v4-theme.css)** 示例代码
 
 ---
 
 ### 场景 5: 我需要添加自定义主题
 1. **不要修改** `tailwind.config.js`
 2. 在 `src/style.css` 中使用 `@theme` 指令
-3. 参考 **[tailwind-v4-theme.css](../src/assets/tailwind-v4-theme.css)** 的示例
+3. 参考 **[tailwind-v4-theme.css](../../src/assets/tailwind-v4-theme.css)** 的示例
 
 ```css
 @theme {
@@ -227,7 +227,7 @@ npm run dev:clean
 
 如果发现文档问题或有改进建议：
 
-1. 检查 [TAILWIND_V4_SUMMARY.md](./TAILWIND_V4_SUMMARY.md) 是否已记录
+1. 检查 [TAILWIND_V4_SUMMARY.md](../archive/migrations/TAILWIND_V4_SUMMARY.md) 是否已记录
 2. 更新相关文档
 3. 在文档末尾添加更新日期
 
@@ -238,9 +238,9 @@ npm run dev:clean
 如果遇到问题：
 
 1. **语法错误**: 查看 [快速参考 - 常见问题](./TAILWIND_V4_QUICK_REFERENCE.md#常见问题)
-2. **配置问题**: 查看 [验证报告](./TAILWIND_V4_VERIFICATION.md)
+2. **配置问题**: 查看 [验证报告](../archive/migrations/TAILWIND_V4_VERIFICATION.md)
 3. **AI 生成错误代码**: 使用 [AI Prompt 模板](./TAILWIND_V4_AI_PROMPT.md) 纠正
-4. **深入理解**: 阅读 [迁移指南](./TAILWIND_V4_MIGRATION.md)
+4. **深入理解**: 阅读 [迁移指南](../archive/migrations/TAILWIND_V4_MIGRATION.md)
 
 ---
 

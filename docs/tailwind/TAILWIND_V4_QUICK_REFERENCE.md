@@ -140,11 +140,11 @@ export default {
 
 ## 相关文档
 
-- 📖 [完整迁移指南](./TAILWIND_V4_MIGRATION.md)
-- 📋 [验证报告](./TAILWIND_V4_VERIFICATION.md)
-- 💡 [示例文件](../src/assets/tailwind-v4-theme.css)
+- 📖 [完整迁移指南](../archive/migrations/TAILWIND_V4_MIGRATION.md)
+- 📋 [验证报告](../archive/migrations/TAILWIND_V4_VERIFICATION.md)
+- 💡 [示例文件](../../src/assets/tailwind-v4-theme.css)
 - 🤖 [AI 助手 Prompt](./TAILWIND_V4_AI_PROMPT.md)
-- 🛡️ [项目规则文件](../.cursorrules)
+- 🛡️ [项目规则文件](../../.cursorrules)
 
 ## 命令速查
 
