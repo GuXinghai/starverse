@@ -4,7 +4,7 @@
 用户创建新的会话，但当应用重启后，该会话就消失了。这说明新会话没有被正确保存到 SQLite 数据库。
 
 ## 根本原因
-在 [src/stores/conversation.ts](src/stores/conversation.ts) 的 `createConversation` 方法中，新会话被创建和添加到内存状态，但**没有标记为脏数据**。
+在 src/stores/conversation.ts 的 `createConversation` 方法中，新会话被创建和添加到内存状态，但**没有标记为脏数据**。
 
 持久化系统采用了"脏数据追踪"机制：
 - 只有被标记为脏数据的会话才会被自动保存到 SQLite
@@ -16,7 +16,7 @@
 ## 修复方案
 
 ### 改动文件
-- [src/stores/conversation.ts](src/stores/conversation.ts) - 修复 `createConversation` 方法
+- src/stores/conversation.ts - 修复 `createConversation` 方法
 
 ### 具体修复
 在 `createConversation` 方法中，新对话添加到数组后，立即标记为脏数据：
@@ -59,7 +59,7 @@ const createConversation = (options?: {
 
 ## 测试验证
 
-新增单元测试文件：[tests/unit/stores/conversation.persistence.spec.ts](tests/unit/stores/conversation.persistence.spec.ts)
+新增单元测试文件：tests/unit/stores/conversation.persistence.spec.ts
 
 测试覆盖：
 - ✅ 创建新对话时应该自动标记为脏数据
@@ -71,23 +71,23 @@ const createConversation = (options?: {
 ## 影响范围
 
 此修复影响以下调用路径：
-- [src/components/ProjectHome.vue](src/components/ProjectHome.vue#L655) - 项目首页创建新会话
-- [src/components/ConversationList.vue](src/components/ConversationList.vue#L616) - 对话列表创建新会话
+- src/components/ProjectHome.vue - 项目首页创建新会话
+- src/components/ConversationList.vue - 对话列表创建新会话
 
 两个位置都调用同一个 `createConversation()` 方法，因此修复会同时覆盖这两个入口。
 
 ## 相关代码
 
 ### 脏数据追踪机制
-- [src/stores/persistence.ts#L49-L65](src/stores/persistence.ts#L49-L65) - `markConversationDirty`, `clearConversationDirty`
-- [src/stores/persistence.ts#L287-L304](src/stores/persistence.ts#L287-L304) - 自动保存机制 (`startAutoSave`)
+- src/stores/persistence.ts#L49-L65 - `markConversationDirty`, `clearConversationDirty`
+- src/stores/persistence.ts#L287-L304 - 自动保存机制 (`startAutoSave`)
 
 ### 持久化流程
-- [src/services/chatPersistence.ts#L521-L691](src/services/chatPersistence.ts#L521-L691) - `saveConversation` 实现
-- [src/stores/persistence.ts#L208-L255](src/stores/persistence.ts#L208-L255) - `loadAllConversations` 实现
+- src/services/chatPersistence.ts#L521-L691 - `saveConversation` 实现
+- src/stores/persistence.ts#L208-L255 - `loadAllConversations` 实现
 
 ### 应用初始化
-- [src/main.ts#L69-L87](src/main.ts#L69-L87) - `bootstrapChatData` 加载会话数据
+- [src/main.ts#L69-L87](../../src/main.ts#L69-L87) - `bootstrapChatData` 加载会话数据
 
 ## 验证步骤
 

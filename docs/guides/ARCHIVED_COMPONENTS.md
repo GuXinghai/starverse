@@ -159,9 +159,9 @@ archived-components/
 
 ## 相关文档
 
-- [组件注释审查报告](./CHATVIEW_OPTIMIZATION_SUMMARY.md)
-- [性能优化总结](./PERFORMANCE_OPTIMIZATION_COMPLETE.md)
-- [最近修复汇总](./RECENT_FIXES_2025_11.md)
+- [组件注释审查报告](../archive/completed-features/CHATVIEW_OPTIMIZATION_SUMMARY.md)
+- 性能优化总结
+- [最近修复汇总](../bugfix/RECENT_FIXES_2025_11.md)
 
 ---
 
