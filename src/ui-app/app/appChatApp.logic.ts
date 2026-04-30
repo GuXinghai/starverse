@@ -834,9 +834,9 @@ export function useAppChatAppLogic() {
   watch(draft, () => {
     if (!getActiveDraftScope()) return
     scheduleDraftPersistence()
-    if (draftAttachmentRecords.value.length > 0) {
-      scheduleDraftSendPlanRefresh()
-    }
+    // Draft text changes must refresh send plan so stale no_sendable_current_input
+    // does not remain after the user types.
+    scheduleDraftSendPlanRefresh()
   })
 
   watch(
@@ -5755,6 +5755,9 @@ export function useAppChatAppLogic() {
     const normalized = normalizeModelKey(nextModelKey)
     model.value = normalized
     await persistSelectedModelForActiveConvo(normalized)
+    // Contract: this is the commit path for a manual model selection.
+    // Do not rehydrate from active session state here; that would overwrite
+    // the just-submitted model with stale convo meta and can snap back to auto.
     void refreshDraftAttachmentViewModels()
     scheduleHistoryIncompatibleRefresh()
   }
