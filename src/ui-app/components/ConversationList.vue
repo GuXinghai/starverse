@@ -455,8 +455,8 @@ function cancelProjectDialog() {
         <div
           v-for="c in props.items"
           :key="c.id"
-          class="flex items-stretch gap-2 rounded-lg border bg-white shadow-sm"
-          :class="c.id === props.activeId ? 'border-blue-200 bg-blue-50' : 'border-gray-200'"
+          class="flex items-stretch gap-2 rounded-lg border shadow-sm transition-colors"
+          :class="c.id === props.activeId ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-white hover:bg-gray-50'"
           :data-testid="`convo-row-${c.id}`"
         >
           <div v-if="selectionMode" class="flex items-center pl-2">
@@ -475,7 +475,7 @@ function cancelProjectDialog() {
             :disabled="props.disabled"
             @click="onRowClick(c.id)"
           >
-            <div class="truncate text-sm font-medium text-gray-900">{{ c.title }}</div>
+            <div class="truncate text-sm font-medium" :class="c.id === props.activeId ? 'text-blue-700' : 'text-gray-900'">{{ c.title }}</div>
             <div class="mt-1 truncate text-[11px] text-gray-500">
               {{ formatTime(c.updatedAt) }}
             </div>
