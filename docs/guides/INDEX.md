@@ -1,8 +1,8 @@
 # 📚 Starverse 文档导航中心
 
-> **最后更新**: 2025年12月6日  
-> **文档体系版本**: 2.0.0  
-> **重大变更**: 完成文档归档与重组，主目录文档减少 63%
+> **最后更新**: 2026年4月30日
+> **文档体系版本**: 2.1.0
+> **重大变更**: 路径校准与语义修复（G1c），所有链接路径修正，归档/重构条目标注为历史材料
 
 ---
 
@@ -12,26 +12,26 @@
 
 | 场景 | 文档 | 用时 |
 |------|------|------|
-| 5分钟启动项目 | [README.md](../README.md) | 5 min |
-| 配置开发环境 | [guides/DEVELOPMENT_SETUP.md](guides/DEVELOPMENT_SETUP.md) | 15 min |
-| 了解项目架构 | [architecture/OVERVIEW.md](architecture/OVERVIEW.md) | 10 min |
+| 5分钟启动项目 | [README.md](../../README.md) | 5 min |
+| 配置开发环境 | [DEVELOPMENT_SETUP.md](DEVELOPMENT_SETUP.md) | 15 min |
+| 了解项目架构 | [../architecture/OVERVIEW.md](../architecture/OVERVIEW.md) | 10 min |
 
 ### 📖 我想了解某个功能
 
 | 功能 | 文档 |
 |------|------|
-| 分支化对话系统 | [archive/completed-features/BRANCH_CHAT_SYSTEM_COMPLETE.md](archive/completed-features/BRANCH_CHAT_SYSTEM_COMPLETE.md) |
-| 多提供商 AI 集成 | [architecture/OPENROUTER_INTEGRATION_SUMMARY.md](architecture/OPENROUTER_INTEGRATION_SUMMARY.md) |
-| 生成配置架构 | [architecture/UNIFIED_GENERATION_ARCHITECTURE.md](architecture/UNIFIED_GENERATION_ARCHITECTURE.md) |
-| Tailwind V4 升级 | [tailwind/TAILWIND_V4_README.md](tailwind/TAILWIND_V4_README.md) |
+| 分支化对话系统（历史实现） | [../archive/completed-features/BRANCH_CHAT_SYSTEM_COMPLETE.md](../archive/completed-features/BRANCH_CHAT_SYSTEM_COMPLETE.md) |
+| 多提供商 AI 集成 | [../architecture/OPENROUTER_INTEGRATION_SUMMARY.md](../architecture/OPENROUTER_INTEGRATION_SUMMARY.md) |
+| 生成配置架构 | [../architecture/UNIFIED_GENERATION_ARCHITECTURE.md](../architecture/UNIFIED_GENERATION_ARCHITECTURE.md) |
+| Tailwind V4 升级 | [../tailwind/TAILWIND_V4_README.md](../tailwind/TAILWIND_V4_README.md) |
 
 ### 🔧 我想解决问题
 
 | 问题 | 文档 |
 |------|------|
-| 数据清理指南 | [guides/DATA_CLEANUP_GUIDE.md](guides/DATA_CLEANUP_GUIDE.md) |
-| 分支删除测试 | [guides/BRANCH_DELETE_TEST_GUIDE.md](guides/BRANCH_DELETE_TEST_GUIDE.md) |
-| 推理系统测试 | [guides/REASONING_TESTING_STRATEGY.md](guides/REASONING_TESTING_STRATEGY.md) |
+| 数据清理指南 | [DATA_CLEANUP_GUIDE.md](DATA_CLEANUP_GUIDE.md) |
+| 分支删除测试 | [BRANCH_DELETE_TEST_GUIDE.md](BRANCH_DELETE_TEST_GUIDE.md) |
+| 推理系统测试 | [REASONING_TESTING_STRATEGY.md](REASONING_TESTING_STRATEGY.md) |
 
 ---
 
@@ -43,12 +43,10 @@
 
 | 文档 | 说明 |
 |------|------|
-| [OVERVIEW.md](architecture/OVERVIEW.md) | 架构总览 - 理解项目结构的第一步 |
-| [ARCHITECTURE_REVIEW.md](architecture/ARCHITECTURE_REVIEW.md) | 架构审查报告 |
-| [OPENROUTER_INTEGRATION_SUMMARY.md](architecture/OPENROUTER_INTEGRATION_SUMMARY.md) | AI 多提供商集成架构 |
-| [UNIFIED_GENERATION_ARCHITECTURE.md](architecture/UNIFIED_GENERATION_ARCHITECTURE.md) | 统一生成配置架构 |
-
-**查看**: [architecture/README.md](architecture/README.md)（待创建）
+| [OVERVIEW.md](../architecture/OVERVIEW.md) | 架构总览 - 理解项目结构的第一步 |
+| [ARCHITECTURE_REVIEW.md](../architecture/ARCHITECTURE_REVIEW.md) | 架构审查报告 |
+| [OPENROUTER_INTEGRATION_SUMMARY.md](../architecture/OPENROUTER_INTEGRATION_SUMMARY.md) | AI 多提供商集成架构 |
+| [UNIFIED_GENERATION_ARCHITECTURE.md](../architecture/UNIFIED_GENERATION_ARCHITECTURE.md) | 统一生成配置架构 |
 
 ---
 
@@ -58,16 +56,15 @@
 
 | 类别 | 文档 |
 |------|------|
-| **开发环境** | [DEVELOPMENT_SETUP.md](guides/DEVELOPMENT_SETUP.md) |
-| **数据管理** | [DATA_CLEANUP_GUIDE.md](guides/DATA_CLEANUP_GUIDE.md) |
-| **迁移指南** | [GENERATION_MIGRATION_GUIDE.md](guides/GENERATION_MIGRATION_GUIDE.md) |
-| | [PHASE_3_MIGRATION_GUIDE.md](guides/PHASE_3_MIGRATION_GUIDE.md) |
-| | [REASONING_UI_MIGRATION_GUIDE.md](guides/REASONING_UI_MIGRATION_GUIDE.md) |
-| **测试策略** | [BRANCH_DELETE_TEST_GUIDE.md](guides/BRANCH_DELETE_TEST_GUIDE.md) |
-| | [REASONING_TESTING_STRATEGY.md](guides/REASONING_TESTING_STRATEGY.md) |
-| **组件规范** | [components-specification.md](guides/components-specification.md) |
-
-**查看**: [guides/README.md](guides/README.md)（待创建）
+| **开发环境** | [DEVELOPMENT_SETUP.md](DEVELOPMENT_SETUP.md) |
+| **数据管理** | [DATA_CLEANUP_GUIDE.md](DATA_CLEANUP_GUIDE.md) |
+| **迁移指南** | [GENERATION_MIGRATION_GUIDE.md](GENERATION_MIGRATION_GUIDE.md) |
+| | [PHASE_3_MIGRATION_GUIDE.md](PHASE_3_MIGRATION_GUIDE.md) |
+| | [REASONING_UI_MIGRATION_GUIDE.md](REASONING_UI_MIGRATION_GUIDE.md) |
+| **测试策略** | [BRANCH_DELETE_TEST_GUIDE.md](BRANCH_DELETE_TEST_GUIDE.md) |
+| | [REASONING_TESTING_STRATEGY.md](REASONING_TESTING_STRATEGY.md) |
+| **故障排查** | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
+| **归档组件指南** | [ARCHIVED_COMPONENTS.md](ARCHIVED_COMPONENTS.md) |
 
 ---
 
@@ -77,11 +74,11 @@ Tailwind CSS v4 升级相关的所有文档。
 
 | 文档 | 说明 |
 |------|------|
-| [TAILWIND_V4_README.md](tailwind/TAILWIND_V4_README.md) | Tailwind v4 索引页 |
-| [TAILWIND_V4_QUICK_REFERENCE.md](tailwind/TAILWIND_V4_QUICK_REFERENCE.md) | 快速参考手册 |
-| [TAILWIND_V4_AI_PROMPT.md](tailwind/TAILWIND_V4_AI_PROMPT.md) | AI 提示词配置 |
+| [TAILWIND_V4_README.md](../tailwind/TAILWIND_V4_README.md) | Tailwind v4 索引页 |
+| [TAILWIND_V4_QUICK_REFERENCE.md](../tailwind/TAILWIND_V4_QUICK_REFERENCE.md) | 快速参考手册 |
+| [TAILWIND_V4_AI_PROMPT.md](../tailwind/TAILWIND_V4_AI_PROMPT.md) | AI 提示词配置 |
 
-**迁移记录已归档**: [archive/migrations/](archive/migrations/)
+**迁移记录已归档**: [../archive/migrations/](../archive/migrations/)
 
 ---
 
@@ -91,36 +88,26 @@ Tailwind CSS v4 升级相关的所有文档。
 
 | 文档 | 说明 |
 |------|------|
-| [CLONE_ERROR_FIX.md](bugfix/CLONE_ERROR_FIX.md) | Vue Proxy 克隆错误修复 |
-| [PROXY_CLONE_PREVENTION.md](bugfix/PROXY_CLONE_PREVENTION.md) | Proxy 克隆防御机制 |
+| [CLONE_ERROR_FIX.md](../bugfix/CLONE_ERROR_FIX.md) | Vue Proxy 克隆错误修复 |
+| [VUE_PROXY_CLONE_FIX.md](../bugfix/VUE_PROXY_CLONE_FIX.md) | Vue Proxy 克隆错误修复 |
 
-**历史修复已归档**: [archive/bugfixes/](archive/bugfixes/) (8 个文档)
-
----
-
-### 🗂️ components-dev/ - 组件开发文档 (2 个文档)
-
-组件开发规范和最佳实践。
-
-| 文档 | 说明 |
-|------|------|
-| [development-setup.md](components-dev/development-setup.md) | 组件开发环境配置 |
-| [components-specification.md](components-dev/components-specification.md) | 组件规范 |
+**历史修复已归档**: [../archive/bugfixes/](../archive/bugfixes/) (8 个文档)
 
 ---
 
-### 🎯 decisions/ - 架构决策记录 (待创建)
+### 🎯 decisions/ - 架构决策记录
 
 记录重大技术决策的 ADR（Architecture Decision Records）。
 
-**计划文档**:
-- ADR-001: 为什么选择 Electron
-- ADR-002: 为什么选择 Vue 3
-- ADR-003: 为什么使用 SQLite Worker 线程
-- ADR-004: 为什么升级 Tailwind v4
-- ADR-005: 为什么采用多提供商架构
+| ADR | 标题 | 状态 |
+|-----|------|------|
+| [ADR-001](../decisions/001-why-electron.md) | 为什么选择 Electron | 已接受 |
+| [ADR-002](../decisions/002-why-vue3.md) | 为什么选择 Vue 3 | 已接受 |
+| [ADR-003](../decisions/003-sqlite-worker-thread.md) | 为什么使用 SQLite Worker 线程 | 已接受 |
+| [ADR-004](../decisions/004-tailwind-v4-upgrade.md) | 为什么升级 Tailwind v4 | 已接受 |
+| [ADR-005](../decisions/005-multi-provider-strategy.md) | 为什么采用多提供商架构 | 已接受 |
 
-**状态**: 阶段5待创建
+**查看索引**: [decisions/README.md](../decisions/README.md)
 
 ---
 
@@ -130,18 +117,18 @@ Tailwind CSS v4 升级相关的所有文档。
 
 | 归档目录 | 文档数 | 说明 |
 |----------|--------|------|
-| [refactoring/](archive/refactoring/) | 5 | Phase 0-3 重构项目记录 |
-| [completed-features/](archive/completed-features/) | 6 | 已完成功能实现 |
-| [bugfixes/](archive/bugfixes/) | 8 | 已修复的 Bug 记录 |
-| [optimizations/](archive/optimizations/) | 7 | 性能优化实现 |
-| [ui-implementations/](archive/ui-implementations/) | 10 | UI 组件实现 |
-| [analysis/](archive/analysis/) | 9 | 问题分析报告 |
-| [testing/](archive/testing/) | 1 | 测试验证记录 |
-| [migrations/](archive/migrations/) | 0 | 迁移文档（待归档） |
-| [database/](archive/database/) | 0 | 数据库相关（待归档） |
-| [documentation/](archive/documentation/) | 0 | 文档治理（待归档） |
+| [refactoring/](../archive/refactoring/) | 5 | Phase 0-3 重构项目记录 |
+| [completed-features/](../archive/completed-features/) | 6 | 已完成功能实现 |
+| [bugfixes/](../archive/bugfixes/) | 8 | 已修复的 Bug 记录 |
+| [optimizations/](../archive/optimizations/) | 7 | 性能优化实现 |
+| [ui-implementations/](../archive/ui-implementations/) | 10 | UI 组件实现 |
+| [analysis/](../archive/analysis/) | 9 | 问题分析报告 |
+| [testing/](../archive/testing/) | 1 | 测试验证记录 |
+| [migrations/](../archive/migrations/) | 0 | 迁移文档（待归档） |
+| database/ | 0 | 数据库相关（待归档） |
+| documentation/ | 0 | 文档治理（待归档） |
 
-**查看归档索引**: [archive/README.md](archive/README.md)
+**查看归档索引**: [../archive/README.md](../archive/README.md)
 
 **归档原则**:
 - 标题含 "COMPLETE"、"已完成" 且完成日期 > 30 天
@@ -154,15 +141,15 @@ Tailwind CSS v4 升级相关的所有文档。
 
 | 关键词 | 相关文档 |
 |--------|----------|
-| **架构** | [overview.md](architecture/overview.md), [ARCHITECTURE_REVIEW.md](architecture/ARCHITECTURE_REVIEW.md) |
-| **分支对话** | [BRANCH_CHAT_SYSTEM_COMPLETE.md](architecture/BRANCH_CHAT_SYSTEM_COMPLETE.md) |
-| **AI集成** | [OPENROUTER_INTEGRATION_SUMMARY.md](architecture/OPENROUTER_INTEGRATION_SUMMARY.md) |
-| **生成配置** | [UNIFIED_GENERATION_ARCHITECTURE.md](architecture/UNIFIED_GENERATION_ARCHITECTURE.md) |
-| **Tailwind V4** | [tailwind/TAILWIND_V4_README.md](tailwind/TAILWIND_V4_README.md) |
-| **数据清理** | [guides/DATA_CLEANUP_GUIDE.md](guides/DATA_CLEANUP_GUIDE.md) |
-| **测试** | [guides/BRANCH_DELETE_TEST_GUIDE.md](guides/BRANCH_DELETE_TEST_GUIDE.md), [guides/REASONING_TESTING_STRATEGY.md](guides/REASONING_TESTING_STRATEGY.md) |
-| **迁移指南** | [guides/GENERATION_MIGRATION_GUIDE.md](guides/GENERATION_MIGRATION_GUIDE.md), [guides/PHASE_3_MIGRATION_GUIDE.md](guides/PHASE_3_MIGRATION_GUIDE.md) |
-| **历史记录** | [archive/README.md](archive/README.md) - 46个已归档文档 |
+| **架构** | [OVERVIEW.md](../architecture/OVERVIEW.md), [ARCHITECTURE_REVIEW.md](../architecture/ARCHITECTURE_REVIEW.md) |
+| **分支对话（历史）** | [BRANCH_CHAT_SYSTEM_COMPLETE.md](../archive/completed-features/BRANCH_CHAT_SYSTEM_COMPLETE.md) |
+| **AI集成** | [OPENROUTER_INTEGRATION_SUMMARY.md](../architecture/OPENROUTER_INTEGRATION_SUMMARY.md) |
+| **生成配置** | [UNIFIED_GENERATION_ARCHITECTURE.md](../architecture/UNIFIED_GENERATION_ARCHITECTURE.md) |
+| **Tailwind V4** | [TAILWIND_V4_README.md](../tailwind/TAILWIND_V4_README.md) |
+| **数据清理** | [DATA_CLEANUP_GUIDE.md](DATA_CLEANUP_GUIDE.md) |
+| **测试** | [BRANCH_DELETE_TEST_GUIDE.md](BRANCH_DELETE_TEST_GUIDE.md), [REASONING_TESTING_STRATEGY.md](REASONING_TESTING_STRATEGY.md) |
+| **迁移指南** | [GENERATION_MIGRATION_GUIDE.md](GENERATION_MIGRATION_GUIDE.md), [PHASE_3_MIGRATION_GUIDE.md](PHASE_3_MIGRATION_GUIDE.md) |
+| **历史记录** | [../archive/README.md](../archive/README.md) — 46 个已归档文档 |
 
 ---
 
@@ -170,40 +157,27 @@ Tailwind CSS v4 升级相关的所有文档。
 
 主目录保留的核心活跃文档（约 80 个）：
 
-### 📌 正在进行的工作
-- [REFACTOR_PROGRESS.md](REFACTOR_PROGRESS.md) - 重构进度跟踪
-- [CHATVIEW_REFACTOR_PLAN.md](CHATVIEW_REFACTOR_PLAN.md) - ChatView 重构计划
-- [UI_REFACTOR_STRATEGY_PAUSED.md](UI_REFACTOR_STRATEGY_PAUSED.md) - UI 重构策略暂停说明
-
-### 📝 待办计划
-- TODO_1.3_USECONVERSATIONSEARCH_PLAN.md
-- TODO_REASONING_DISPLAY_FIX.md
-- CHATVIEW_COMMENTS_IMPROVEMENT.md
-- CHATVIEW_COMMENTS_PROGRESS.md
-- 以及其他计划文档...
+### 📌 重构参考材料（历史阶段）
+- [REFACTOR_PROGRESS.md](../refactoring/REFACTOR_PROGRESS.md) — 重构进度跟踪（历史）
+- [CHATVIEW_REFACTOR_PLAN.md](../refactoring/CHATVIEW_REFACTOR_PLAN.md) — ChatView 重构计划（历史）
+- [UI_REFACTOR_PAUSED_STATE.md](UI_REFACTOR_PAUSED_STATE.md) — UI 重构策略暂停说明
 
 ### 📄 性能与优化指南
-- CHAT_MULTITHREADING_PERFORMANCE_GUIDE.md
-- LONG_CONVERSATION_PERFORMANCE.md
-- 以及其他性能相关文档...
-
-**注**: 主目录文档仍在整理中，更多文档将在后续阶段归档或重组。
+- [CHAT_MULTITHREADING_PERFORMANCE_GUIDE.md](CHAT_MULTITHREADING_PERFORMANCE_GUIDE.md)
+- 及其他文件（见 [guides/ 目录](#-guides---开发指南-8-个文档)）
 
 ---
 
 ## 📋 文档整理进度
 
-### ✅ 已完成（2025年12月6日）
+### ✅ 已完成
 
 1. **阶段1**: 建立归档目录并归档 46 个已完成项目文档
 2. **阶段2**: 删除 13 个重复/临时文档
 3. **阶段3**: 重组核心文档到子目录（architecture/, guides/, tailwind/）
-4. **阶段4**: 更新 INDEX.md 导航（本次更新）
-
-### 🔄 进行中
-
-5. **阶段5**: 创建 ADR 架构决策记录（计划中）
-6. **阶段6**: 建立文档维护机制（计划中）
+4. **阶段4**: 更新 INDEX.md 导航
+5. **阶段5**: 创建 ADR 架构决策记录（[decisions/](../decisions/README.md)，5 个核心决策已就绪）
+6. **阶段6**: 建立文档维护原则（见本页 [文档维护原则](#%E6%96%87%E6%A1%A3%E7%BB%B4%E6%8A%A4%E5%8E%9F%E5%88%99)）
 
 ### 📈 整理成果
 
@@ -276,23 +250,22 @@ Tailwind CSS v4 升级相关的所有文档。
 - **找不到文档?** 使用本页的关键词索引或在 `docs/` 目录搜索
 - **文档有误?** 提交 Issue 或直接提 PR 修复
 - **需要新文档?** 联系项目维护者讨论文档需求
-- **查找历史实现?** 查看 [archive/README.md](archive/README.md)
+- **查找历史实现?** 查看 [../archive/README.md](../archive/README.md)
 
 ---
 
 ## 📌 下一步计划
 
-1. 创建 `decisions/` 目录的 ADR 文档（5个核心决策）
-2. 为 `architecture/` 和 `guides/` 创建 README 索引
-3. 继续归档主目录中的已完成文档
-4. 建立每月文档审查机制
+1. 持续归档主目录中的已完成文档
+2. 建立每月文档审查机制
 
 ---
 
 **维护者**: @GuXinghai  
 **贡献者**: GitHub Copilot, Starverse Team  
-**License**: 见 [LICENSE](../LICENSE)  
+**License**: 未声明
 
 **最近更新历史**:
+- 2026-04-30: v2.1.0 - 路径校准与语义修复（G1c），所有链接路径修正，归档/重构条目标注为历史
 - 2025-12-06: v2.0.0 - 完成文档归档与重组，主目录减少 38%
 - 2025-12-03: v1.0.0 - 初始版本

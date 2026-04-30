@@ -52,7 +52,6 @@
 - [最近更新和路线图](#-最近更新和路线图)
 - [常见问题](#-常见问题faq)
 - [贡献指南](#-贡献)
-- [许可证](#-许可证)
 
 ---
 
@@ -592,68 +591,12 @@ npm run build
 
 ## 🧹 数据清理
 
-### 完全清理聊天记录
+如需要重置应用或清理全部聊天记录：
 
-如果遇到数据损坏或需要重置应用，可以使用以下工具完全清理所有聊天记录和项目数据：
+- **Windows**: 双击运行 `clear-all-data.bat`
+- **通用**: `node scripts/clear-all-data-standalone.cjs`
 
-#### 方法 1：一键清理（推荐）
-
-**Windows 批处理脚本** - 双击运行：
-```bash
-clear-all-data.bat
-```
-
-**PowerShell 脚本** - 右键使用 PowerShell 运行：
-```bash
-.\clear-all-data.ps1
-```
-
-#### 方法 2：使用 Node.js 脚本
-
-**独立清理脚本**（推荐，无需 Electron 运行时）：
-```bash
-node scripts/clear-all-data-standalone.cjs
-```
-
-**Electron 内清理脚本**：
-```bash
-node scripts/clear-all-data.js
-```
-
-### 清理内容
-
-清理工具会删除以下数据：
-
-✅ **SQLite 数据库文件**
-- `chat.db` - 主数据库
-- `chat.db-wal` - 预写日志
-- `chat.db-shm` - 共享内存
-
-✅ **对话和项目数据**
-- 所有聊天记录
-- 所有项目和分类
-- 打开的标签页记录
-- 收藏的模型列表
-
-🛡️ **保留的数据**
-- API 密钥配置
-- 模型选择偏好
-- 提供商设置
-- 其他应用设置
-
-### 注意事项
-
-⚠️ **使用前请确保**：
-1. 已完全关闭 Starverse 应用
-2. 已备份重要的聊天记录（如需保留）
-3. 理解此操作不可逆
-
-💡 **清理后首次启动**：
-- 应用会自动创建新的数据库
-- 创建一个新的空对话
-- 所有项目列表为空
-
-📖 **详细说明**：参见 [数据清理指南](docs/guides/DATA_CLEANUP_GUIDE.md)
+清理工具会删除 `chat.db`（对话/项目数据），保留 API Key 等配置。详见 [数据清理指南](docs/guides/DATA_CLEANUP_GUIDE.md)。
 
 ---
 
@@ -838,172 +781,15 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 
 ---
 
-## ❓ 常见问题（FAQ）
+## ❓ 常见问题
 
-<details>
-<summary><b>Q: 为什么选择 Starverse 而不是其他 AI 客户端？</b></summary>
-
-**A:** Starverse 的独特优势：
-- 🌳 **分支化对话系统**：探索不同对话路径，不丢失任何上下文
-- 🔍 **强大的全文搜索**：快速找到历史对话内容
-- 🤖 **多提供商支持**：一个应用访问所有主流 AI 模型
-- 💾 **本地数据存储**：完全掌控您的数据隐私
-- ⚡ **企业级性能**：经过深度优化，流畅体验
-
-</details>
-
-<details>
-<summary><b>Q: 我的数据存储在哪里？</b></summary>
-
-**A:** 所有数据都存储在您的本地计算机：
-- **Windows**: `C:\Users\<用户名>\AppData\Roaming\starverse\`
-- **macOS**: `~/Library/Application Support/starverse/`
-- **Linux**: `~/.config/starverse/`
-
-数据包括：
-- SQLite 数据库文件（`chat.db`）
-- 配置文件（electron-store）
-- 完全离线可用，无需担心隐私泄露
-
-</details>
-
-<details>
-<summary><b>Q: 如何清理所有聊天记录？</b></summary>
-
-**A:** 提供多种清理方式：
-
-**方法 1: 使用一键清理脚本**
-```bash
-# Windows
-.\clear-all-data.bat
-
-# PowerShell
-.\clear-all-data.ps1
-
-# Node.js
-node scripts/clear-all-data-standalone.cjs
-```
-
-**方法 2: 手动删除**
-删除数据目录中的 `chat.db*` 文件
-
-详见：[数据清理指南](docs/guides/DATA_CLEANUP_GUIDE.md)
-
-</details>
-
-<details>
-<summary><b>Q: 支持哪些 AI 模型？</b></summary>
-
-**A:** 支持的模型取决于您选择的提供商：
-
-**Google Gemini**:
-- Gemini 2.0 Flash (最新)
-- Gemini 1.5 Pro / Flash
-- Gemini Pro Vision (多模态)
-
-**OpenRouter** (100+ 模型):
-- OpenAI: GPT-4o, GPT-4 Turbo, o1
-- Anthropic: Claude 3.5 Sonnet, Claude 3 Opus
-- Google: Gemini Pro, Gemini Flash
-- Meta: Llama 3.1, Llama 3.2
-- 更多开源模型...
-
-</details>
-
-<details>
-<summary><b>Q: 遇到 "better-sqlite3" 编译错误怎么办？</b></summary>
-
-**A:** 这是原生模块编译问题，解决方法：
-
-**Windows**:
-```bash
-# 确保安装了 Visual Studio Build Tools
-npm install --global windows-build-tools
-
-# 重新编译
-npm run rebuild
-```
-
-**macOS/Linux**:
-```bash
-# 确保安装了编译工具
-# macOS: xcode-select --install
-# Ubuntu: sudo apt-get install build-essential
-
-npm run rebuild
-```
-
-如果仍有问题，删除 `node_modules` 重新安装：
-```bash
-rm -rf node_modules package-lock.json
-npm install
-```
-
-</details>
-
-<details>
-<summary><b>Q: 如何导出我的对话记录？</b></summary>
-
-**A:** 目前支持：
-- 📋 **复制消息内容**：右键点击消息
-- 💾 **备份数据库**：复制 `chat.db` 文件
-
-**即将支持**（路线图）：
-- 导出为 Markdown 格式
-- 导出为 JSON 格式
-- 导出为 PDF 文档
-
-</details>
-
-<details>
-<summary><b>Q: 应用占用多少存储空间？</b></summary>
-
-**A:** 空间占用取决于使用情况：
-
-- **应用本身**: ~200MB（包含 Electron 和依赖）
-- **数据库**: 
-  - 空数据库: ~100KB
-  - 100 个对话: ~10MB
-  - 1000 个对话: ~100MB
-- **缓存**: 可通过清理脚本清除
-
-SQLite 的高效存储使其比 JSON 文件节省约 40% 空间。
-
-</details>
-
-<details>
-<summary><b>Q: 支持哪些操作系统？</b></summary>
-
-**A:** 跨平台支持：
-
-| 操作系统 | 版本要求 | 状态 |
-|---------|---------|------|
-| **Windows** | 10 及以上 | ✅ 完全支持 |
-| **macOS** | 10.13 及以上 | ✅ 完全支持 |
-| **Linux** | Ubuntu 18.04+, Fedora 32+ | ✅ 完全支持 |
-
-</details>
-
-<details>
-<summary><b>Q: 如何贡献代码或报告问题？</b></summary>
-
-**A:** 欢迎参与贡献！
-
-**报告问题**:
-1. 前往 [GitHub Issues](https://github.com/GuXinghai/starverse/issues)
-2. 搜索是否已有类似问题
-3. 创建新 Issue，详细描述问题和复现步骤
-
-**贡献代码**:
-1. Fork 本项目
-2. 创建特性分支：`git checkout -b feature/AmazingFeature`
-3. 提交更改：`git commit -m 'Add some AmazingFeature'`
-4. 推送到分支：`git push origin feature/AmazingFeature`
-5. 开启 Pull Request
-
-详见：[贡献指南](#-贡献)
-
-</details>
+| 问题 | 说明 |
+|------|------|
+| 数据存储在哪里？ | Windows: `%APPDATA%/starverse/` · macOS: `~/Library/Application Support/starverse/` · Linux: `~/.config/starverse/` |
+| 如何清理全部数据？ | 运行 `clear-all-data.bat` 或 `node scripts/clear-all-data-standalone.cjs`，详见[数据清理指南](docs/guides/DATA_CLEANUP_GUIDE.md) |
+| 支持哪些操作系统？ | Windows 10+, macOS 10.13+, Linux (Ubuntu 18.04+, Fedora 32+) |
+| 遇到编译或运行问题？ | 查看[故障排查](docs/guides/TROUBLESHOOTING.md) |
+| 报告问题或贡献代码？ | 前往 [GitHub Issues](https://github.com/GuXinghai/starverse/issues) |
 
 ---
 
@@ -1018,14 +804,6 @@ SQLite 的高效存储使其比 JSON 文件节省约 40% 空间。
 4. 推送到分支 (`git push origin feature/AmazingFeature`)
 5. 开启 Pull Request
 6. **统一编码**：所有文件（含 README、日志、源码）必须使用 UTF-8（无 BOM）保存。请在编辑器设置中显式启用 UTF-8，并避免切换到 ANSI/GBK 以免 emoji 和中文说明被破坏。
-
----
-
-## 📄 许可证
-
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
-
----
 
 ## 🙏 致谢
 
