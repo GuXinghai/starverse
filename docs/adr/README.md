@@ -39,3 +39,7 @@
   https://github.com/joelparkerhenderson/architecture-decision-record
 - arc42（示例/风格参考）：https://docs.arc42.org/
 
+---
+
+> 另见 `docs/decisions/README.md` —— 另一份并存的架构决策索引入口（编号 001-005），两套入口当前仅做交叉引用，不迁移或合并。
+

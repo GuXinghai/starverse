@@ -132,10 +132,10 @@ find . -name "*关键词*.md"
 
 ## 🔗 相关链接
 
-- [../INDEX.md](../INDEX.md) - 文档导航中心
+- [../guides/INDEX.md](../guides/INDEX.md) - 文档导航中心
 - [../architecture/](../architecture/) - 核心架构文档（活跃）
 - [../guides/](../guides/) - 开发指南（活跃）
-- [../../REFACTOR_PROGRESS.md](../../REFACTOR_PROGRESS.md) - 当前重构进度（活跃）
+- [../refactoring/REFACTOR_PROGRESS.md](../refactoring/REFACTOR_PROGRESS.md) - 当前重构进度（活跃）
 
 ## 📌 维护说明
 
