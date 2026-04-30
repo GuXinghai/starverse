@@ -33,7 +33,7 @@ grep include_reasoning → 20 matches
 **结论**: ✅ **生产代码不使用 `include_reasoning`**，测试用例明确验证此约束。
 
 #### ✅ 禁用推理定义
-**位置**: [buildRequest.ts#L127-L130](src/next/openrouter/buildRequest.ts#L127-L130)
+**位置**: [buildRequest.ts#L127-L130](../src/next/openrouter/buildRequest.ts#L127-L130)
 ```typescript
 if (effort === 'none' && hasMaxTokens) {
   throw new Error('reasoning.effort="none" must not be combined with max_tokens')
@@ -42,7 +42,7 @@ if (effort === 'none' && hasMaxTokens) {
 **单测覆盖**: `buildRequest.test.ts` 包含 14 个测试用例验证 reasoning 参数互斥规则。
 
 #### ✅ Usage Accounting
-**位置**: [buildRequest.ts#L79-L92](src/next/openrouter/buildRequest.ts#L79-L92)
+**位置**: [buildRequest.ts#L79-L92](../src/next/openrouter/buildRequest.ts#L79-L92)
 ```typescript
 const usageInclude = input.usage?.include ?? true  // 默认启用
 // ...
@@ -51,16 +51,16 @@ usage: { include: usageInclude },
 **单测**: `defaults usage.include to true` 测试用例验证。
 
 #### ✅ Generation ID 记录
-**位置**: [reducer.ts#L140](src/next/state/reducer.ts#L140)
+**位置**: [reducer.ts#L140](../src/next/state/reducer.ts#L140)
 ```typescript
 generationId: event.meta.id ?? s.generationId,
 ```
-**UI 展示**: [ChatNextStatusBar.vue#L20](src/ui-next/components/ChatNextStatusBar.vue#L20) 展示 `run.generationId`。
+**UI 展示**: ChatNextStatusBar.vue#L20 展示 `run.generationId`。
 
 ### 1.2 响应侧合规
 
 #### ✅ SSE 注释行先识别
-**位置**: [decoder.ts#L117](src/next/openrouter/sse/decoder.ts#L117)
+**位置**: [decoder.ts#L117](../src/next/openrouter/sse/decoder.ts#L117)
 ```typescript
 if (rawLine.startsWith(':')) {
   if (emitComments) yield { type: 'comment', text: rawLine.slice(1).trimStart() }
@@ -69,7 +69,7 @@ if (rawLine.startsWith(':')) {
 ```
 
 #### ✅ mid-stream error 处理
-**位置**: [decoder.ts#L85-L92](src/next/openrouter/sse/decoder.ts#L85-L92)
+**位置**: [decoder.ts#L85-L92](../src/next/openrouter/sse/decoder.ts#L85-L92)
 ```typescript
 if (value && typeof value === 'object' && 'error' in (value as any) && (value as any).error) {
   yield { type: 'terminal_error', error: (value as any).error, ... }
@@ -78,7 +78,7 @@ if (value && typeof value === 'object' && 'error' in (value as any) && (value as
 ```
 
 #### ✅ reasoning_details 双路径覆盖
-**位置**: [mapChunkToEvents.ts#L113](src/next/openrouter/mapChunkToEvents.ts#L113)
+**位置**: [mapChunkToEvents.ts#L113](../src/next/openrouter/mapChunkToEvents.ts#L113)
 ```typescript
 const reasoningDetails = delta?.reasoning_details ?? message?.reasoning_details
 ```
@@ -87,7 +87,7 @@ const reasoningDetails = delta?.reasoning_details ?? message?.reasoning_details
 - `maps non-stream message.reasoning_details`
 
 #### ✅ reasoning_details append-only 存储
-**位置**: [reducer.ts#L176-L179](src/next/state/reducer.ts#L176-L179)
+**位置**: [reducer.ts#L176-L179](../src/next/state/reducer.ts#L176-L179)
 ```typescript
 case 'MessageDeltaReasoningDetail': {
   return updateMessage(state, event.messageId, (m) => ({
@@ -108,7 +108,7 @@ src/next/
 ```
 
 #### ✅ 发送前创建占位消息
-**位置**: [reducer.ts#L49-L86](src/next/state/reducer.ts#L49-L86)
+**位置**: [reducer.ts#L49-L86](../src/next/state/reducer.ts#L49-L86)
 ```typescript
 export function startGeneration(state: RootState, input: StartGenerationInput): { state: RootState; assistantMessageId: string } {
   const assistantMessageId = input.assistantMessageId || generateId('assistant')
@@ -119,7 +119,7 @@ export function startGeneration(state: RootState, input: StartGenerationInput): 
 ### 1.4 UI 合规
 
 #### ✅ UI 只消费 ViewModel/Selectors
-**位置**: [useChatRun.ts#L3-L4](src/ui-next/useChatRun.ts#L3-L4)
+**位置**: useChatRun.ts#L3-L4
 ```typescript
 import { applyEvent, createInitialState, startGeneration } from '@/next/state/reducer'
 import { selectRun, selectTranscript } from '@/next/state/selectors'
@@ -226,7 +226,7 @@ grep "from '@/stores" src/ui-next/** → 0 matches (仅文档中存在)
 
 ## 4. 持久化与回放验收 ✅
 
-**测试文件**: [replayPersistRoundtrip.test.ts](src/next/state/replayPersistRoundtrip.test.ts)
+**测试文件**: [replayPersistRoundtrip.test.ts](../src/next/state/replayPersistRoundtrip.test.ts)
 
 **验证**:
 1. 生成包含 reasoning_details 的对话

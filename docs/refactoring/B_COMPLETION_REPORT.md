@@ -50,9 +50,9 @@
 ### ✅ 工程层
 
 - [x] TS 错误数 ≤ 45（无增加）
-- [x] 黑名单 gate + TS 基线门禁可重复执行（见 [B_GATE.ps1](../B_GATE.ps1) / [scripts/b_gate.mjs](../scripts/b_gate.mjs)）
+- [x] 黑名单 gate + TS 基线门禁可重复执行（见 [B_GATE.ps1](../../B_GATE.ps1) / [scripts/b_gate.mjs](../../scripts/b_gate.mjs)）
 - [x] 所有改动点附上 `@revival_risk_reason`（见代码注释）
-- [x] 基线文档已记录（见 [B_REFACTOR_BASELINE.md](../docs/B_REFACTOR_BASELINE.md)）
+- [x] 基线文档已记录（见 [B_REFACTOR_BASELINE.md](./B_REFACTOR_BASELINE.md)）
 
 ### ✅ 安全层
 
@@ -78,7 +78,7 @@
 - PR 描述明确说明防复活机制
 
 ### 4. CI/CD 防护
-- 黑名单 gate 脚本（[scripts/b_gate.mjs](../scripts/b_gate.mjs)）可集成到 CI
+- 黑名单 gate 脚本（[scripts/b_gate.mjs](../../scripts/b_gate.mjs)）可集成到 CI
 - 每次合并自动检验：TS 错误数不高于基线 + 旧链路黑名单无“代码命中”
 - 若违规，CI 直接 fail（阻止合并）
 
@@ -126,7 +126,7 @@
 **生成者**：Agent  
 **生成时间**：2025-12-13  
 **相关文档**：
-- [B_REFACTOR_BASELINE.md](../docs/B_REFACTOR_BASELINE.md) - 护栏与基线
+- [B_REFACTOR_BASELINE.md](./B_REFACTOR_BASELINE.md) - 护栏与基线
 - [ts-baseline-snapshot.txt](../../artifacts/ts/ts-baseline-snapshot.txt) - TS 错误基线
-- [B_GATE.ps1](../B_GATE.ps1) - 黑名单验证脚本
-- [B_GATE.sh](../B_GATE.sh) - Bash wrapper（可选）
+- [B_GATE.ps1](../../B_GATE.ps1) - 黑名单验证脚本
+- [B_GATE.sh](../../B_GATE.sh) - Bash wrapper（可选）

@@ -2,7 +2,7 @@
 
 ## Current State
 
-- [src/ui-app/app/appChatApp.logic.ts](src/ui-app/app/appChatApp.logic.ts) is a high-density app-layer orchestration module (about 6.7k lines) coordinating conversation/project/session flow, draft attachments, send preflight, streaming lifecycle, and UI-derived state.
+- [src/ui-app/app/appChatApp.logic.ts](../../src/ui-app/app/appChatApp.logic.ts) is a high-density app-layer orchestration module (about 6.7k lines) coordinating conversation/project/session flow, draft attachments, send preflight, streaming lifecycle, and UI-derived state.
 - The file currently mixes orchestration with several rule-like helper clusters, which increases onboarding and regression risk.
 - This document is a containment guardrail for the current phase. It is not a refactor spec.
 
@@ -10,7 +10,7 @@
 
 - Compose and sequence user events across existing clients/services.
 - Own UI-scoped refs/computed/watch/timers for screen behavior.
-- Bridge view events from [src/ui-app/AppChatApp.vue](src/ui-app/AppChatApp.vue) and [src/ui-app/components/ChatAppComposer.vue](src/ui-app/components/ChatAppComposer.vue).
+- Bridge view events from [src/ui-app/AppChatApp.vue](../../src/ui-app/AppChatApp.vue) and [src/ui-app/components/ChatAppComposer.vue](../../src/ui-app/components/ChatAppComposer.vue).
 - Coordinate send pipeline entry: context build, preflight call, OpenRouter preparation call, stream session start.
 - Aggregate read models for template consumption.
 
@@ -26,9 +26,9 @@
 ## Preferred Migration Targets
 
 - Domain service:
-  - send-plan and attachment compatibility policies into infra service/helper layer near [infra/files/sendPlanService.ts](infra/files/sendPlanService.ts).
+  - send-plan and attachment compatibility policies into infra service/helper layer near [infra/files/sendPlanService.ts](../../infra/files/sendPlanService.ts).
 - Client adapter:
-  - bridge invocation normalization in [src/next/files/sendPlanClient.ts](src/next/files/sendPlanClient.ts), [src/next/files/conversationDraftClient.ts](src/next/files/conversationDraftClient.ts), [src/next/openrouter/openRouterSendPreparation.ts](src/next/openrouter/openRouterSendPreparation.ts).
+  - bridge invocation normalization in [src/next/files/sendPlanClient.ts](../../src/next/files/sendPlanClient.ts), [src/next/files/conversationDraftClient.ts](../../src/next/files/conversationDraftClient.ts), [src/next/openrouter/openRouterSendPreparation.ts](../../src/next/openrouter/openRouterSendPreparation.ts).
 - Pure helper/selectors:
   - summary message normalization and gate decision folding from app logic.
 - Dedicated composables:
@@ -51,13 +51,13 @@
 
 ## Test Entry Points
 
-- [src/ui-app/AppChatApp.attachments.test.ts](src/ui-app/AppChatApp.attachments.test.ts)
-- [src/ui-app/AppChatApp.send.test.ts](src/ui-app/AppChatApp.send.test.ts)
-- [src/ui-app/AppChatApp.test.ts](src/ui-app/AppChatApp.test.ts)
-- [src/ui-app/components/ChatAppComposer.attachments.test.ts](src/ui-app/components/ChatAppComposer.attachments.test.ts)
-- [src/next/openrouter/openRouterSendPreparation.test.ts](src/next/openrouter/openRouterSendPreparation.test.ts)
-- [src/next/openrouter/openRouterSendPlanSerializer.test.ts](src/next/openrouter/openRouterSendPlanSerializer.test.ts)
-- [infra/files/sendPlanService.test.ts](infra/files/sendPlanService.test.ts)
+- [src/ui-app/AppChatApp.attachments.test.ts](../../src/ui-app/AppChatApp.attachments.test.ts)
+- [src/ui-app/AppChatApp.send.test.ts](../../src/ui-app/AppChatApp.send.test.ts)
+- [src/ui-app/AppChatApp.test.ts](../../src/ui-app/AppChatApp.test.ts)
+- [src/ui-app/components/ChatAppComposer.attachments.test.ts](../../src/ui-app/components/ChatAppComposer.attachments.test.ts)
+- [src/next/openrouter/openRouterSendPreparation.test.ts](../../src/next/openrouter/openRouterSendPreparation.test.ts)
+- [src/next/openrouter/openRouterSendPlanSerializer.test.ts](../../src/next/openrouter/openRouterSendPlanSerializer.test.ts)
+- [infra/files/sendPlanService.test.ts](../../infra/files/sendPlanService.test.ts)
 
 ## Reviewer Checklist (Lightweight Guardrail)
 
