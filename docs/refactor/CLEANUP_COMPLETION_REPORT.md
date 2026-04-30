@@ -119,7 +119,7 @@ PASS: ui-next has no legacy imports and no JSON.parse usage.
 **SSOT 原文（第 2 章）**:
 > 必须记录 generation id，并支持按 id 查询 `/generation`（即便当前 UI 不展示）。
 
-**实现位置**: [src/next/transport/fetchGeneration.ts](../src/next/transport/fetchGeneration.ts)
+**实现位置**: [src/next/transport/fetchGeneration.ts](../../src/next/transport/fetchGeneration.ts)
 
 ```typescript
 export async function fetchGenerationInfo(
@@ -136,7 +136,7 @@ export async function fetchGenerationInfo(
 - ✅ AbortSignal 支持：`opts.signal`
 - ✅ 自定义 baseUrl 支持：`opts.baseUrl`
 
-**测试覆盖**: [fetchGeneration.test.ts](../src/next/transport/fetchGeneration.test.ts) (6 tests)
+**测试覆盖**: [fetchGeneration.test.ts](../../src/next/transport/fetchGeneration.test.ts) (6 tests)
 - `fetches generation info with correct URL and headers`
 - `uses custom baseUrl when provided`
 - `encodes generationId in URL`
@@ -153,19 +153,19 @@ export async function fetchGenerationInfo(
 > 不允许用"excluded 且为空"去推断"encrypted"。
 
 **实现位置**:
-1. **类型扩展**: [types.ts](../src/next/state/types.ts)
+1. **类型扩展**: [types.ts](../../src/next/state/types.ts)
    - `MessageState.requestedReasoningExclude?: boolean` — 记录请求时的 exclude 配置
    - `StartGenerationInput.reasoningExclude?: boolean` — 输入参数
    - `ReasoningViewVisibility` 添加 `'excluded'` 类型
 
-2. **Reducer 记录配置**: [reducer.ts](../src/next/state/reducer.ts)
+2. **Reducer 记录配置**: [reducer.ts](../../src/next/state/reducer.ts)
    ```typescript
    [assistantMessageId]: createEmptyAssistantMessage(
      assistantMessageId, true, input.reasoningExclude
    )
    ```
 
-3. **Selector 语义判定**: [selectors.ts](../src/next/state/selectors.ts)
+3. **Selector 语义判定**: [selectors.ts](../../src/next/state/selectors.ts)
    ```typescript
    function computeReasoningVisibility(
      hasEncryptedReasoning: boolean,
@@ -182,7 +182,7 @@ export async function fetchGenerationInfo(
    }
    ```
 
-**测试覆盖**: [selectors.test.ts](../src/next/state/selectors.test.ts) (6 tests)
+**测试覆盖**: [selectors.test.ts](../../src/next/state/selectors.test.ts) (6 tests)
 - `returns "excluded" when reasoning.exclude was true and no reasoning returned`
 - `returns "not_returned" when no exclude config and no reasoning returned`
 - `returns "shown" when reasoning content is present (regardless of exclude setting)`
@@ -194,14 +194,14 @@ export async function fetchGenerationInfo(
 
 | SSOT 条目 | 实现位置 | 验证证据 |
 |-----------|----------|----------|
-| 只使用 `reasoning` 对象，不使用 `include_reasoning` | [buildRequest.ts](../src/next/openrouter/buildRequest.ts#L106-L137) | [buildRequest.test.ts#L545](../src/next/openrouter/buildRequest.test.ts#L545) 负例断言 |
-| 永远先识别注释行（`: ` 开头） | [decoder.ts](../src/next/openrouter/sse/decoder.ts#L14-L19) | [decoder.test.ts](../src/next/openrouter/sse/decoder.test.ts) |
-| `data: [DONE]` 产出 `StreamDone` | [mapChunkToEvents.ts](../src/next/openrouter/mapChunkToEvents.ts#L53-L59) | [mapChunkToEvents.test.ts](../src/next/openrouter/mapChunkToEvents.test.ts) |
-| `reasoning_details` 双路径解析 | [mapChunkToEvents.ts](../src/next/openrouter/mapChunkToEvents.ts#L84-L96) | mapChunkToEvents.test.ts |
-| `reasoning_details` append-only 存储 | [reducer.ts](../src/next/state/reducer.ts#L157-L167) | reducer.test.ts |
-| mid-stream error 保留已生成内容 | [reducer.ts](../src/next/state/reducer.ts#L186-L199) | reducer.test.ts |
-| Parser 不写入 store（只产出 Events） | [mapChunkToEvents.ts](../src/next/openrouter/mapChunkToEvents.ts) | TC-10 隔离护栏 |
-| generation id 记录与暴露 | [reducer.ts](../src/next/state/reducer.ts#L140) + [selectors.ts](../src/next/state/selectors.ts#L10) | reducer.test.ts |
+| 只使用 `reasoning` 对象，不使用 `include_reasoning` | [buildRequest.ts](../../src/next/openrouter/buildRequest.ts#L106-L137) | [buildRequest.test.ts#L545](../../src/next/openrouter/buildRequest.test.ts#L545) 负例断言 |
+| 永远先识别注释行（`: ` 开头） | [decoder.ts](../../src/next/openrouter/sse/decoder.ts#L14-L19) | [decoder.test.ts](../../src/next/openrouter/sse/decoder.test.ts) |
+| `data: [DONE]` 产出 `StreamDone` | [mapChunkToEvents.ts](../../src/next/openrouter/mapChunkToEvents.ts#L53-L59) | [mapChunkToEvents.test.ts](../../src/next/openrouter/mapChunkToEvents.test.ts) |
+| `reasoning_details` 双路径解析 | [mapChunkToEvents.ts](../../src/next/openrouter/mapChunkToEvents.ts#L84-L96) | mapChunkToEvents.test.ts |
+| `reasoning_details` append-only 存储 | [reducer.ts](../../src/next/state/reducer.ts#L157-L167) | reducer.test.ts |
+| mid-stream error 保留已生成内容 | [reducer.ts](../../src/next/state/reducer.ts#L186-L199) | reducer.test.ts |
+| Parser 不写入 store（只产出 Events） | [mapChunkToEvents.ts](../../src/next/openrouter/mapChunkToEvents.ts) | TC-10 隔离护栏 |
+| generation id 记录与暴露 | [reducer.ts](../../src/next/state/reducer.ts#L140) + [selectors.ts](../../src/next/state/selectors.ts#L10) | reducer.test.ts |
 
 ---
 

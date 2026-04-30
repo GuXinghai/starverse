@@ -395,16 +395,16 @@ npm run build -- --skipLibCheck
 
 ## 📚 下一步
 
-- 📖 阅读 [编码规范](coding-standards.md)
-- 🏗️ 了解 [架构设计](../architecture/overview.md)
-- 🧪 查看 [测试指南](testing.md)
-- 🐛 参考 [故障排查手册](troubleshooting.md)
+- 📖 编码规范
+- 🏗️ 了解 [架构设计](../architecture/OVERVIEW.md)
+- 🧪 测试指南
+- 🐛 参考 [故障排查手册](TROUBLESHOOTING.md)
 
 ---
 
 ## 🆘 获取帮助
 
-- **文档**: 查看 [docs/INDEX.md](../INDEX.md) 导航中心
+- **文档**: 查看 [INDEX.md](INDEX.md) 导航中心
 - **Issue**: 提交到 [GitHub Issues](https://github.com/GuXinghai/starverse/issues)
 - **讨论**: 加入 [GitHub Discussions](https://github.com/GuXinghai/starverse/discussions)
 
