@@ -5,6 +5,7 @@
   "description": "基于 Electron + Vue 3 的新一代跨平台 AI 对话桌面应用",
   "author": "GuXinghai",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=22 <23",
