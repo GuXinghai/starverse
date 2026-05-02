@@ -12,7 +12,7 @@ import { MessageRepo } from '../db/repo/messageRepo'
 import { ConversationAttachmentService } from './conversationAttachmentService'
 import { SendPlanService, type CollectedAttachmentInput, __sendPlanEligibilityInternals } from './sendPlanService'
 import type { AttachmentSemanticSummary, SendPlanModelDescriptor, SendPlanProviderContext } from '../../src/shared/files/sendPlanTypes'
-import type { FileAssetRecord, FileAssetIngestStatus } from '../db/types'
+import type { FileAssetRecord, FileIngestStatus } from '../db/types'
 
 function canOpenBetterSqlite(): boolean {
   try {
@@ -38,7 +38,7 @@ function makeLocalAsset(overrides: Partial<FileAssetRecord> = {}): FileAssetReco
     sourceKind: 'local_upload',
     storageBackend: 'local_fs',
     storageUri: 'assets/original/as/asset-test.txt',
-    ingestStatus: 'stored' as FileAssetIngestStatus,
+    ingestStatus: 'stored' as FileIngestStatus,
     previewStatus: 'not_requested',
     sourceMetaJson: null,
     deletedAt: null,
