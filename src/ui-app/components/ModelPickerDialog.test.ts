@@ -39,6 +39,7 @@ describe('ModelPickerDialog', () => {
           description: 'omni',
           vendor: 'openai',
           contextLength: 128000,
+          maxOutputTokens: 8192,
           createdAtSec: 1700000123,
           pricing: { prompt: '0.1', completion: '0.2', request: '0', image: '0' },
           capabilities: {
@@ -92,6 +93,7 @@ describe('ModelPickerDialog', () => {
           description: 'omni',
           vendor: 'openai',
           contextLength: 128000,
+          maxOutputTokens: 8192,
           createdAtSec: 1700000123,
           pricing: { prompt: '0.1', completion: '0.2', request: '0', image: '0' },
           capabilities: {
@@ -145,6 +147,7 @@ describe('ModelPickerDialog', () => {
           description: null,
           vendor: 'openai',
           contextLength: 128000,
+          maxOutputTokens: 8192,
           createdAtSec: 1700000123,
           pricing: { prompt: '0.1', completion: '0.2', request: '0', image: '0' },
           capabilities: {
@@ -164,6 +167,7 @@ describe('ModelPickerDialog', () => {
           description: null,
           vendor: 'anthropic',
           contextLength: 200000,
+          maxOutputTokens: null,
           createdAtSec: 1700000123,
           pricing: { prompt: '0.1', completion: '0.2', request: '0', image: '0' },
           capabilities: {
@@ -228,6 +232,7 @@ describe('ModelPickerDialog', () => {
           description: null,
           vendor: 'openai',
           contextLength: 8192,
+          maxOutputTokens: null,
           createdAtSec: 1700000123,
           pricing: { prompt: null, completion: null, request: null, image: null },
           capabilities: {
@@ -321,6 +326,7 @@ describe('ModelPickerDialog', () => {
               description: null,
               vendor: 'openai',
               contextLength: 8192,
+              maxOutputTokens: 4096,
               createdAtSec: 1700000123,
               pricing: { prompt: null, completion: null, request: null, image: null },
               capabilities: {
@@ -351,6 +357,7 @@ describe('ModelPickerDialog', () => {
             description: null,
             vendor: 'openai',
             contextLength: 8192,
+            maxOutputTokens: 4096,
             createdAtSec: 1700000123,
             pricing: { prompt: null, completion: null, request: null, image: null },
             capabilities: {
@@ -411,6 +418,7 @@ describe('ModelPickerDialog', () => {
           description: null,
           vendor: 'openai',
           contextLength: 128000,
+          maxOutputTokens: 8192,
           createdAtSec: 1700000123,
           pricing: { prompt: '0.1', completion: '0.2', request: '0', image: '0' },
           capabilities: {
@@ -597,6 +605,7 @@ describe('ModelPickerDialog', () => {
           description: 'omni',
           vendor: 'openai',
           contextLength: 128000,
+          maxOutputTokens: null,
           createdAtSec: 1700000123,
           pricing: { prompt: '0.1', completion: '0.2', request: '0', image: '0' },
           capabilities: {
