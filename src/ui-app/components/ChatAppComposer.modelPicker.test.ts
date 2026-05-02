@@ -60,6 +60,7 @@ describe('ChatAppComposer model picker integration', () => {
           description: 'fallback',
           vendor: 'anthropic',
           contextLength: 200000,
+          maxOutputTokens: null,
           createdAtSec: 1700000123,
           pricing: { prompt: '0.01', completion: '0.02', request: '0', image: '0' },
           capabilities: {
@@ -146,6 +147,7 @@ describe('ChatAppComposer model picker integration', () => {
           description: 'image model',
           vendor: 'openai',
           contextLength: 32000,
+          maxOutputTokens: null,
           createdAtSec: 1700000123,
           pricing: { prompt: '0.01', completion: '0.02', request: '0', image: '0.04' },
           capabilities: {
@@ -480,6 +482,7 @@ describe('ChatAppComposer model picker integration', () => {
           description: 'fallback',
           vendor: 'anthropic',
           contextLength: 200000,
+          maxOutputTokens: null,
           createdAtSec: 1700000123,
           pricing: { prompt: '0.01', completion: '0.02', request: '0', image: '0' },
           capabilities: {
@@ -661,6 +664,7 @@ describe('ChatAppComposer model picker integration', () => {
           description: 'fallback',
           vendor: 'vendor',
           contextLength: 32768,
+          maxOutputTokens: null,
           createdAtSec: 1700000000,
           pricing: { prompt: '0.01', completion: '0.02', request: '0', image: '0' },
           capabilities: {
@@ -763,7 +767,7 @@ describe('ChatAppComposer model picker integration', () => {
         const ordered = Array.isArray(params?.orderedModelKeys) ? params.orderedModelKeys.map((value: unknown) => String(value)) : []
         const byKey = new Map(favorites.map((row) => [row.modelKey, row]))
         favorites = ordered
-          .map((key, index) => {
+          .map((key: string, index: number) => {
             const existing = byKey.get(key)
             if (!existing) return null
             return {
@@ -772,7 +776,7 @@ describe('ChatAppComposer model picker integration', () => {
               updatedAtMs: now + index + 1,
             }
           })
-          .filter((row): row is (typeof favorites)[number] => row !== null)
+          .filter((row: (typeof favorites)[number] | null): row is (typeof favorites)[number] => row !== null)
         return favorites
       }
       return null
@@ -791,6 +795,7 @@ describe('ChatAppComposer model picker integration', () => {
           description: null,
           vendor: 'openai',
           contextLength: 128000,
+          maxOutputTokens: null,
           createdAtSec: 1700000123,
           pricing: { prompt: '0.1', completion: '0.2', request: '0', image: '0' },
           capabilities: {
@@ -819,6 +824,7 @@ describe('ChatAppComposer model picker integration', () => {
             vision: false,
             longContext: true,
           },
+          maxOutputTokens: null,
         },
       ]),
     )
@@ -856,6 +862,7 @@ describe('ChatAppComposer model picker integration', () => {
           model,
           requestedReasoningEffort,
           requestedReasoningExclude,
+          sessionConfig,
           modelPrefsScope,
           modelCatalog,
           queryFn,
@@ -951,7 +958,7 @@ describe('ChatAppComposer model picker integration', () => {
         const ordered = Array.isArray(params?.orderedModelKeys) ? params.orderedModelKeys.map((value: unknown) => String(value)) : []
         const byKey = new Map(favorites.map((row) => [row.modelKey, row]))
         favorites = ordered
-          .map((key, index) => {
+          .map((key: string, index: number) => {
             const existing = byKey.get(key)
             if (!existing) return null
             return {
@@ -960,7 +967,7 @@ describe('ChatAppComposer model picker integration', () => {
               updatedAtMs: now + index + 1,
             }
           })
-          .filter((row): row is (typeof favorites)[number] => row !== null)
+          .filter((row: (typeof favorites)[number] | null): row is (typeof favorites)[number] => row !== null)
         return favorites
       }
       return null
@@ -988,6 +995,7 @@ describe('ChatAppComposer model picker integration', () => {
             vision: true,
             longContext: true,
           },
+           maxOutputTokens: null,
         },
         {
           providerKey: 'openrouter',
@@ -1007,6 +1015,7 @@ describe('ChatAppComposer model picker integration', () => {
             vision: false,
             longContext: true,
           },
+           maxOutputTokens: null,
         },
       ]),
     )
@@ -1044,6 +1053,7 @@ describe('ChatAppComposer model picker integration', () => {
           model,
           requestedReasoningEffort,
           requestedReasoningExclude,
+          sessionConfig,
           modelPrefsScope,
           modelCatalog,
           queryFn,
