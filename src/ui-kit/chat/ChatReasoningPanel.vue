@@ -20,18 +20,6 @@ const emit = defineEmits<{
   'toggle-panel-state': []
 }>()
 
-const visibilityLabel = computed(() => {
-  if (!props.reasoningView) return null
-  switch (props.reasoningView.visibility) {
-    case 'shown':
-      return 'shown'
-    case 'excluded':
-      return 'excluded'
-    case 'not_returned':
-      return 'not_returned'
-  }
-})
-
 const reasoningPieces = computed(() => {
   const pieces = props.reasoningPieces ?? props.reasoningView?.reasoningPieces
   if (!Array.isArray(pieces)) return null

@@ -10,8 +10,8 @@ describe('scrollbarMetrics', () => {
 
   it('writes measured scrollbar metrics into css variables', () => {
     const originalCreateElement = document.createElement.bind(document)
-    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
-      const el = originalCreateElement(tagName)
+    vi.spyOn(document, 'createElement').mockImplementation(((tagName: string, options?: ElementCreationOptions) => {
+      const el = originalCreateElement(tagName, options)
       if (String(tagName).toLowerCase() === 'div') {
         Object.defineProperty(el, 'offsetWidth', { value: 100, configurable: true })
         Object.defineProperty(el, 'clientWidth', { value: 84, configurable: true })
@@ -19,7 +19,7 @@ describe('scrollbarMetrics', () => {
         Object.defineProperty(el, 'clientHeight', { value: 90, configurable: true })
       }
       return el
-    })
+    }) as typeof document.createElement)
 
     updateScrollbarMetrics()
 
@@ -51,8 +51,8 @@ describe('scrollbarMetrics', () => {
   it('keeps existing scrollbar height when global measure is smaller', () => {
     document.documentElement.style.setProperty('--sv-scrollbar-h', '16px')
     const originalCreateElement = document.createElement.bind(document)
-    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
-      const el = originalCreateElement(tagName)
+    vi.spyOn(document, 'createElement').mockImplementation(((tagName: string, options?: ElementCreationOptions) => {
+      const el = originalCreateElement(tagName, options)
       if (String(tagName).toLowerCase() === 'div') {
         Object.defineProperty(el, 'offsetWidth', { value: 100, configurable: true })
         Object.defineProperty(el, 'clientWidth', { value: 85, configurable: true })
@@ -60,7 +60,7 @@ describe('scrollbarMetrics', () => {
         Object.defineProperty(el, 'clientHeight', { value: 85, configurable: true })
       }
       return el
-    })
+    }) as typeof document.createElement)
 
     updateScrollbarMetrics()
 

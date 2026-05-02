@@ -53,7 +53,7 @@ describe('renderer import boundary', () => {
     for (const file of files) {
       const content = readFileSync(file, 'utf8')
       if (forbiddenImportPattern.test(content)) {
-        offenders.push(relative(repoRoot, file).replaceAll('\\', '/'))
+        offenders.push(relative(repoRoot, file).split('\\').join('/'))
       }
     }
 
