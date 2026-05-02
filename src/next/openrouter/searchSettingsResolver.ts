@@ -119,7 +119,7 @@ function firstConcreteDepth(layers: Array<SearchSettingsLayer | null | undefined
   return 'default'
 }
 
-function firstConcreteEngine(layers: Array<SearchSettingsLayer | null | undefined>): SearchEngine {
+function firstConcreteEngine(layers: Array<SearchSettingsLayer | null | undefined>): Exclude<SearchEngine, 'default'> {
   for (const layer of layers) {
     const engine = normalizeEngine(layer?.searchEngine)
     if (engine !== 'default') return engine
@@ -204,7 +204,7 @@ export function resolveSearchSettings(
       : mapDepthToMaxResults(resolvedDepth)
 
   const effectiveSearchContextSize = mapDepthToContextSize(resolvedDepth, effectiveMaxResults)
-  const effectiveEngine = resolvedEngine === 'auto' ? '' : resolvedEngine
+  const effectiveEngine: ResolvedSearchSettings['effectiveEngine'] = resolvedEngine === 'auto' ? '' : resolvedEngine
   const preset = options.starverseSearchPromptPreset?.trim() || STARVERSE_SEARCH_PROMPT_PRESET_DEFAULT
   const effectiveSearchPrompt = resolveEffectivePromptText(resolvedPrompt, preset)
 
