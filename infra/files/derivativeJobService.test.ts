@@ -12,18 +12,9 @@ import { DerivativeJobRepo } from '../db/repo/derivativeJobRepo'
 import { ModelCatalogRepo } from '../db/repo/modelCatalogRepo'
 import { MessageRepo } from '../db/repo/messageRepo'
 import { DerivativeJobService } from './derivativeJobService'
+import { canOpenBetterSqliteForSuite } from '../testUtils/betterSqliteGate'
 
-function canOpenBetterSqlite(): boolean {
-  try {
-    const db = new BetterSqlite3(':memory:')
-    db.close()
-    return true
-  } catch {
-    return false
-  }
-}
-
-const describeIfBetterSqlite = canOpenBetterSqlite() ? describe : describe.skip
+const describeIfBetterSqlite = canOpenBetterSqliteForSuite('DerivativeJobService') ? describe : describe.skip
 
 function loadSchema(db: BetterSqlite3.Database) {
   const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')

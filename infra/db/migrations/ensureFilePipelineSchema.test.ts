@@ -2,18 +2,9 @@ import { describe, expect, it } from 'vitest'
 import BetterSqlite3 from 'better-sqlite3'
 import { FileAssetRepo } from '../repo/fileAssetRepo'
 import { ensureFilePipelineSchema } from './ensureFilePipelineSchema'
+import { canOpenBetterSqliteForSuite } from '../../testUtils/betterSqliteGate'
 
-function canOpenBetterSqlite(): boolean {
-  try {
-    const db = new BetterSqlite3(':memory:')
-    db.close()
-    return true
-  } catch {
-    return false
-  }
-}
-
-const describeIfBetterSqlite = canOpenBetterSqlite() ? describe : describe.skip
+const describeIfBetterSqlite = canOpenBetterSqliteForSuite('ensureFilePipelineSchema') ? describe : describe.skip
 
 const LEGACY_FILE_ASSETS_SQL = `
   CREATE TABLE message (

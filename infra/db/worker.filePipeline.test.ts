@@ -19,18 +19,9 @@ import { ConversationAttachmentService } from '../files/conversationAttachmentSe
 import { DerivativeJobService } from '../files/derivativeJobService'
 import { FileIngestionService } from '../files/fileIngestionService'
 import { SendPlanService } from '../files/sendPlanService'
+import { canOpenBetterSqliteForSuite } from '../testUtils/betterSqliteGate'
 
-function canOpenBetterSqlite(): boolean {
-  try {
-    const db = new BetterSqlite3(':memory:')
-    db.close()
-    return true
-  } catch {
-    return false
-  }
-}
-
-const describeIfBetterSqlite = canOpenBetterSqlite() ? describe : describe.skip
+const describeIfBetterSqlite = canOpenBetterSqliteForSuite('file pipeline worker handlers') ? describe : describe.skip
 
 function loadSchema(db: BetterSqlite3.Database) {
   const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
