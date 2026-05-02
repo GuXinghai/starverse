@@ -1,11 +1,13 @@
 import type { AppErrorPhase } from '@/next/errors/appError'
 import {
+  normalizeOpenRouterErrorFromHttpNon2xx,
   normalizeOpenRouterErrorFromSseChunkError,
   normalizeProtocolError,
   toNormalizedErrorEnvelope,
 } from '@/next/errors/normalizeOpenRouterError'
 import {
   buildAbortEnvelope,
+  buildPreStreamHttpErrorEnvelope,
   buildMidStreamSseErrorEnvelope,
   buildTransportErrorEnvelope,
 } from '@/next/errors/openRouterErrorEnvelope'
@@ -16,7 +18,7 @@ import type { DomainEvent, StreamEndReason } from '@/next/state/types'
 import { normalizeTransportError } from '@/next/errors/normalizeOpenRouterError'
 import { TerminalArbiter } from '@/next/streaming/core/terminalArbiter'
 import { TimingMachine } from '@/next/streaming/core/timingMachine'
-import type { BuildStreamErrorFromAppErrorInput, StreamSemanticCoreInput } from '@/next/streaming/core/types'
+import type { BuildStreamErrorFromAppErrorInput, StreamRequestContext, StreamSemanticCoreInput } from '@/next/streaming/core/types'
 
 export function mapAppPhaseToEnvelopePhase(appPhase: AppErrorPhase, fallback: ErrorPhase): ErrorPhase {
   if (appPhase === 'pre_stream_request_error') return 'pre_stream'
