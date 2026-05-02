@@ -84,7 +84,7 @@ describe('messageMetaMerge', () => {
       null,
       null,
       undefined,
-      '',
+      undefined,
       undefined,
     )
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import BetterSqlite3 from 'better-sqlite3'
 import { readFileSync } from 'node:fs'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import type { DbHandler, DbMethod } from './types'
