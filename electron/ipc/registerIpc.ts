@@ -73,7 +73,7 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
 
 export function validateCoreIpcRegistration(channels: readonly string[]): IpcRegistrationCheckResult {
   const expected = [...CORE_IPC_CHANNELS]
-  const expectedSet = new Set(expected)
+  const expectedSet = new Set<string>(expected)
   const actual = [...new Set(channels)]
   const actualSet = new Set(actual)
   const missing = expected.filter((channel) => !actualSet.has(channel))
