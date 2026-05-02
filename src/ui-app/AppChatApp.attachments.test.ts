@@ -101,7 +101,32 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     return vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => rect)
   }
 
-  function makeDraftAttachment(assetId: string, overrides?: Partial<Record<string, unknown>>) {
+  type DraftAttachment = Readonly<{
+    id: string
+    conversationId: string
+    assetId: string
+    attachmentOrder: number
+    aiPayloadKind: string
+    processingStatus: string
+    includeInNextRequest: boolean
+    excludedReason: string | null
+    preferredSendMode: string | null
+    urlRetentionMode: string | null
+    createdAt: number
+    updatedAt: number
+  }>
+
+  type DraftResponse = Readonly<{
+    conversationId: string
+    draftText: string
+    draftMode: 'compose'
+    editingSourceMessageId: string | null
+    attachedAssetIds: string[]
+    attachments: DraftAttachment[]
+    updatedAt: number
+  }>
+
+  function makeDraftAttachment(assetId: string, overrides?: Partial<Record<string, unknown>>): DraftAttachment {
     const normalized = String(assetId ?? '').toLowerCase()
     const aiPayloadKind =
       normalized.includes('image')
@@ -137,7 +162,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
       createdAt: 1,
       updatedAt: 1,
       ...overrides,
-    }
+    } as DraftAttachment
   }
 
   function makeFileAsset(assetId: string) {
@@ -604,7 +629,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     }
   }
 
-  function baseDraft() {
+  function baseDraft(): DraftResponse {
     return {
       conversationId: 'c1',
       draftText: 'restored from conversation draft',

@@ -1,4 +1,5 @@
 import DOMPurify from 'dompurify'
+import type { Config as DOMPurifyConfig } from 'dompurify'
 
 /**
  * DOMPurify wrapper with security hardening.
@@ -55,7 +56,7 @@ const FORBID_ATTR = [
     'oninput', 'onkeydown', 'onkeyup', 'onkeypress',
 ]
 
-const SANITIZE_CONFIG: DOMPurify.Config = {
+const SANITIZE_CONFIG: DOMPurifyConfig = {
     ALLOWED_TAGS,
     ALLOWED_ATTR,
     FORBID_ATTR,
@@ -131,7 +132,7 @@ export function sanitizeHtml(dirty: string): SanitizeResult {
         }
     })
 
-    const html = DOMPurify.sanitize(dirty, SANITIZE_CONFIG)
+    const html = DOMPurify.sanitize(dirty, SANITIZE_CONFIG) as string
 
     DOMPurify.removeAllHooks()
 
