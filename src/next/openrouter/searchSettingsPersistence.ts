@@ -54,11 +54,19 @@ function normalizeMaxResults(value: unknown): number | undefined {
   return rounded
 }
 
+type SearchSettingsLayerDraft = {
+  searchMode?: SearchSettingsLayer['searchMode']
+  searchDepth?: SearchSettingsLayer['searchDepth']
+  maxResults?: SearchSettingsLayer['maxResults']
+  searchEngine?: SearchSettingsLayer['searchEngine']
+  searchPrompt?: SearchSettingsLayer['searchPrompt']
+}
+
 export function normalizeSearchSettingsLayer(raw: unknown): SearchSettingsLayer | null {
   const value = asRecord(raw)
   if (!value) return null
 
-  const next: SearchSettingsLayer = {}
+  const next: SearchSettingsLayerDraft = {}
 
   const mode = normalizeMode(value.searchMode)
   if (mode !== undefined) next.searchMode = mode
@@ -76,7 +84,7 @@ export function normalizeSearchSettingsLayer(raw: unknown): SearchSettingsLayer 
   if (searchPrompt !== undefined) next.searchPrompt = searchPrompt
 
   if (next.searchDepth !== 'custom' && next.maxResults !== undefined) {
-    delete (next as any).maxResults
+    delete next.maxResults
   }
 
   return Object.keys(next).length > 0 ? next : null
