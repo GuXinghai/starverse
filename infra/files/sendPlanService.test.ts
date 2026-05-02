@@ -13,18 +13,9 @@ import { ConversationAttachmentService } from './conversationAttachmentService'
 import { SendPlanService, type CollectedAttachmentInput, __sendPlanEligibilityInternals } from './sendPlanService'
 import type { AttachmentSemanticSummary, SendPlanModelDescriptor, SendPlanProviderContext } from '../../src/shared/files/sendPlanTypes'
 import type { FileAssetRecord, FileIngestStatus } from '../db/types'
+import { canOpenBetterSqliteForSuite } from '../testUtils/betterSqliteGate'
 
-function canOpenBetterSqlite(): boolean {
-  try {
-    const db = new BetterSqlite3(':memory:')
-    db.close()
-    return true
-  } catch {
-    return false
-  }
-}
-
-const describeIfBetterSqlite = canOpenBetterSqlite() ? describe : describe.skip
+const describeIfBetterSqlite = canOpenBetterSqliteForSuite('SendPlanService send planning') ? describe : describe.skip
 
 function makeLocalAsset(overrides: Partial<FileAssetRecord> = {}): FileAssetRecord {
   return {

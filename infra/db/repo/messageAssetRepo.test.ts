@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { MessageRepo } from './messageRepo'
 import { MessageAssetRepo } from './messageAssetRepo'
+import { canOpenBetterSqliteForSuite } from '../../testUtils/betterSqliteGate'
 
 function loadSchema(db: BetterSqlite3.Database) {
   const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
@@ -27,17 +28,7 @@ function insertConvo(db: BetterSqlite3.Database, id: string) {
 const ONE_BY_ONE_PNG_DATA_URL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAGgwJ/l7h5NwAAAABJRU5ErkJggg=='
 
-function canOpenBetterSqlite(): boolean {
-  try {
-    const db = new BetterSqlite3(':memory:')
-    db.close()
-    return true
-  } catch {
-    return false
-  }
-}
-
-const describeIfBetterSqlite = canOpenBetterSqlite() ? describe : describe.skip
+const describeIfBetterSqlite = canOpenBetterSqliteForSuite('MessageAssetRepo') ? describe : describe.skip
 
 describeIfBetterSqlite('MessageAssetRepo', () => {
   it('deduplicates files by content hash and links assets to multiple messages', () => {

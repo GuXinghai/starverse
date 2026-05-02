@@ -6,18 +6,9 @@ import path from 'node:path'
 import { FileAssetRepo } from '../db/repo/fileAssetRepo'
 import { FileIngestionService } from './fileIngestionService'
 import type { FetchLike } from './urlProbe'
+import { canOpenBetterSqliteForSuite } from '../testUtils/betterSqliteGate'
 
-function canOpenBetterSqlite(): boolean {
-  try {
-    const db = new BetterSqlite3(':memory:')
-    db.close()
-    return true
-  } catch {
-    return false
-  }
-}
-
-const describeIfBetterSqlite = canOpenBetterSqlite() ? describe : describe.skip
+const describeIfBetterSqlite = canOpenBetterSqliteForSuite('FileIngestionService') ? describe : describe.skip
 
 function loadSchema(db: BetterSqlite3.Database) {
   const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')

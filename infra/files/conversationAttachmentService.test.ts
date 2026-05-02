@@ -8,18 +8,9 @@ import { MessageAttachmentRepo } from '../db/repo/messageAttachmentRepo'
 import { MessageRepo } from '../db/repo/messageRepo'
 import { BranchRepo } from '../db/repo/branchRepo'
 import { ConversationDraftRepo } from '../db/repo/conversationDraftRepo'
+import { canOpenBetterSqliteForSuite } from '../testUtils/betterSqliteGate'
 
-function canOpenBetterSqlite(): boolean {
-  try {
-    const db = new BetterSqlite3(':memory:')
-    db.close()
-    return true
-  } catch {
-    return false
-  }
-}
-
-const describeIfBetterSqlite = canOpenBetterSqlite() ? describe : describe.skip
+const describeIfBetterSqlite = canOpenBetterSqliteForSuite('ConversationAttachmentService') ? describe : describe.skip
 
 function loadSchema(db: BetterSqlite3.Database) {
   const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
