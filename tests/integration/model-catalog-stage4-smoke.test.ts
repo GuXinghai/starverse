@@ -68,6 +68,7 @@ describe('integration: stage4 catalog smoke (fixtures only)', () => {
       },
     })
     expect(syncResult.ok).toBe(true)
+    if (!syncResult.ok) throw new Error(`expected successful sync, got ${syncResult.reason}`)
     expect(syncResult.modelCount).toBe(6)
 
     const byIdentity = repo.queryCore({

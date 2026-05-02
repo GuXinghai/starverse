@@ -169,10 +169,8 @@ describe('ModelPrefsService', () => {
           if (set.has(row.modelKey)) continue
           reordered.push(row)
         }
-        reordered.forEach((row, index) => {
-          row.sortRank = index
-        })
-        return { items: reordered }
+        const items = reordered.map((row, index) => ({ ...row, sortRank: index }))
+        return { items }
       }
       return null
     })
