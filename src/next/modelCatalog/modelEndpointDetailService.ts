@@ -427,6 +427,32 @@ export async function getModelEndpointDetails(
       slug: parsedModelId.slug,
     })
 
+    if (!network) {
+      logModelCatalogEvent('endpoints', 'fetch_fail', {
+        stage: 'network_or_upsert',
+        providerKey,
+        modelId,
+        modelKey,
+        baseUrl,
+        durationMs: Date.now() - startedAtMs,
+        forceRefresh,
+        fallback: diskRows.length > 0 ? 'cache' : 'empty',
+        fallbackItemCount: diskRows.length,
+        reason: 'empty_endpoint_payload',
+      })
+      return {
+        providerKey,
+        modelId,
+        fetchedAtMs: maxFetchedAt(diskRows),
+        source: 'cache',
+        items: mergeDetails(diskRows, volatileByEndpointKey),
+        error:
+          diskRows.length > 0
+            ? 'OpenRouter endpoint details unavailable. Showing cached endpoint details.'
+            : 'OpenRouter endpoint details unavailable.',
+      }
+    }
+
     const volatilePairs = network.endpoints.map((endpoint) => {
       const endpointKey = buildEndpointKey(modelId, {
         tag: endpoint.tag ?? null,
