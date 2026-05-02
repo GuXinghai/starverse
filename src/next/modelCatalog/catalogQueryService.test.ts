@@ -335,7 +335,7 @@ describe('CatalogQueryService.query', () => {
       }
       return null
     })
-    const fetchImpl = vi.fn(async () => {
+    const fetchImpl = vi.fn(async (_url: string) => {
       return new Response(
         JSON.stringify({
           data: [{ id: 'openai/gpt-4o' }, { id: 'anthropic/claude-3' }],
@@ -370,8 +370,8 @@ describe('CatalogQueryService.query', () => {
     })
 
     expect(fetchImpl).toHaveBeenCalledTimes(1)
-    expect(String(fetchImpl.mock.calls[0]?.[0] ?? '')).toContain(
-      'https://eu.openrouter.ai/api/v1/models?category=programming'
+    expect(fetchImpl).toHaveBeenCalledWith(
+      expect.stringContaining('https://eu.openrouter.ai/api/v1/models?category=programming')
     )
     expect(invoke.mock.calls.filter((call) => call[0] === 'modelCatalog.queryCore')).toHaveLength(2)
     expect(invoke).toHaveBeenNthCalledWith(
@@ -404,7 +404,7 @@ describe('CatalogQueryService.query', () => {
       }
       return null
     })
-    const fetchImpl = vi.fn(async () => {
+    const fetchImpl = vi.fn(async (_url: string) => {
       return new Response(
         JSON.stringify({
           data: [{ id: 'openai/gpt-4o' }],
@@ -506,7 +506,7 @@ describe('CatalogQueryService.query', () => {
     })
 
     expect(fetchImpl).toHaveBeenCalledTimes(1)
-    expect(String(fetchImpl.mock.calls[0]?.[0] ?? '')).toContain('category=programming')
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('category=programming'))
     expect(invoke).toHaveBeenCalledWith(
       'modelCatalog.queryCore',
       expect.objectContaining({

@@ -516,7 +516,9 @@ export class CatalogQueryService {
 
       const raw = await bridge.invoke('modelCatalog.queryCore', payload)
       const rawItems = Array.isArray(raw?.items) ? raw.items : []
-      const items = rawItems.map((row: unknown) => normalizeItem(row)).filter((row): row is CatalogQueryItem => row !== null)
+      const items = rawItems
+        .map((row: unknown) => normalizeItem(row))
+        .filter((row: CatalogQueryItem | null): row is CatalogQueryItem => row !== null)
       const nextCursor = normalizeCursor(raw?.nextCursor)
       let finalNotice = categoryNotice
       if (effectiveCategory && items.length === 0) {
