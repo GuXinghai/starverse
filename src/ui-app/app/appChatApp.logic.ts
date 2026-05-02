@@ -368,10 +368,6 @@ export function useAppChatAppLogic() {
     source: 'draft' | 'edit_restored'
   }>
   type AttachmentConfirmationSessionKind = 'composer_send' | 'regenerate' | 'retry_replace' | 'edit_submit'
-  type AttachmentConfirmationResumePayload = Readonly<{
-    kind: AttachmentConfirmationSessionKind
-    decisions: AttachmentDecision[]
-  }>
   type AttachmentConfirmationSession = Readonly<{
     kind: AttachmentConfirmationSessionKind
     title: string
@@ -572,12 +568,18 @@ export function useAppChatAppLogic() {
     const convoId = String(activeConvoId.value ?? '').trim()
     if (!convoId) return
     const current = await restoreConversationDraft(convoId)
-    const targetByAssetId = new Map(
-      snapshot.attachments.map((item) => [String(item.assetId ?? '').trim(), item]).filter(([assetId]) => assetId.length > 0),
-    )
-    const currentByAssetId = new Map(
-      current.attachments.map((item) => [String(item.assetId ?? '').trim(), item]).filter(([assetId]) => assetId.length > 0),
-    )
+    type DraftAttachmentEntry = readonly [string, DecodedDraftAttachment]
+    const toAttachmentEntries = (items: readonly DecodedDraftAttachment[]): DraftAttachmentEntry[] =>
+      items
+        .map((item): DraftAttachmentEntry | null => {
+          const assetId = String(item.assetId ?? '').trim()
+          if (!assetId) return null
+          return [assetId, item]
+        })
+        .filter((entry): entry is DraftAttachmentEntry => entry !== null)
+
+    const targetByAssetId = new Map(toAttachmentEntries(snapshot.attachments))
+    const currentByAssetId = new Map(toAttachmentEntries(current.attachments))
 
     for (const [assetId] of currentByAssetId) {
       if (targetByAssetId.has(assetId)) continue
@@ -597,19 +599,34 @@ export function useAppChatAppLogic() {
         })
         continue
       }
-      if (
-        existing.preferredSendMode !== target.preferredSendMode ||
-        existing.urlRetentionMode !== target.urlRetentionMode ||
+      const needsRecreate =
         existing.includeInNextRequest !== target.includeInNextRequest ||
         existing.excludedReason !== target.excludedReason
+      if (needsRecreate) {
+        await removeConversationDraftAttachment({
+          conversationId: convoId,
+          assetId,
+        })
+        await addConversationDraftAttachment({
+          conversationId: convoId,
+          assetId,
+          attachmentOrder: target.attachmentOrder,
+          includeInNextRequest: target.includeInNextRequest,
+          excludedReason: target.excludedReason,
+          preferredSendMode: target.preferredSendMode,
+          urlRetentionMode: target.urlRetentionMode,
+        })
+        continue
+      }
+      if (
+        existing.preferredSendMode !== target.preferredSendMode ||
+        existing.urlRetentionMode !== target.urlRetentionMode
       ) {
         await updateConversationDraftAttachmentSettings({
           conversationId: convoId,
           assetId,
           preferredSendMode: target.preferredSendMode,
           urlRetentionMode: target.urlRetentionMode,
-          includeInNextRequest: target.includeInNextRequest,
-          excludedReason: target.excludedReason,
         })
       }
     }
@@ -3218,11 +3235,18 @@ export function useAppChatAppLogic() {
         }
         continue
       }
-      await updateConversationDraftAttachmentSettings({
+      await removeConversationDraftAttachment({
         conversationId: convoId,
         assetId: draftRecord.assetId,
+      })
+      await addConversationDraftAttachment({
+        conversationId: convoId,
+        assetId: draftRecord.assetId,
+        attachmentOrder: draftRecord.attachmentOrder,
         includeInNextRequest: false,
         excludedReason: 'manually_excluded',
+        preferredSendMode: draftRecord.preferredSendMode,
+        urlRetentionMode: draftRecord.urlRetentionMode,
       })
     }
     await refreshDraftAttachmentViewModels()

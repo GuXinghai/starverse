@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, type CSSProperties } from 'vue'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
 import { ModelPrefsService, type ModelPrefsFavorite, type ModelPrefsRecent } from '@/next/modelPrefs/modelPrefsService'
 import type { ChatSessionConfig } from '../app/chatSessionConfig'
@@ -29,6 +29,31 @@ const props = defineProps<{
     navigationActive: boolean
   }> | null
 }>()
+
+const defaultSessionConfig: ChatSessionConfig = {
+  model: {
+    selectedModelKey: null,
+  },
+  reasoning: {
+    enabled: false,
+    effort: 'medium',
+  },
+  webSearch: {
+    enabled: false,
+    level: 'high',
+    detail: null,
+  },
+  imageGeneration: {
+    enabled: false,
+    resolution: '1K',
+    aspectRatio: '1:1',
+    mode: 'default',
+    detail: null,
+  },
+  samplingParams: {
+    detail: null,
+  },
+}
 
 const emit = defineEmits<{
   (e: 'update:draft', value: string): void
@@ -61,7 +86,7 @@ const attachmentMenuReady = ref(false)
 const attachmentMenuError = ref<string | null>(null)
 const attachmentToggleRef = ref<HTMLElement | null>(null)
 const attachmentMenuRef = ref<HTMLElement | null>(null)
-const attachmentMenuStyle = ref<Record<string, string>>({})
+const attachmentMenuStyle = ref<CSSProperties>({})
 let unsubscribeModelPrefs: (() => void) | null = null
 let attachmentMenuOpenToken = 0
 let attachmentMenuFrameId: number | null = null
@@ -70,7 +95,6 @@ const ATTACHMENT_MENU_GAP_PX = 8
 const ATTACHMENT_MENU_VIEWPORT_PADDING_PX = 8
 const ATTACHMENT_MENU_MAX_HEIGHT_PX = 320
 const ATTACHMENT_MENU_MIN_WIDTH_PX = 176
-const ATTACHMENT_MENU_DEFAULT_HEIGHT_PX = 140
 
 function clamp(value: number, min: number, max: number): number {
   if (value < min) return min
@@ -78,7 +102,7 @@ function clamp(value: number, min: number, max: number): number {
   return value
 }
 
-const attachmentMenuHiddenStyle = {
+const attachmentMenuHiddenStyle: CSSProperties = {
   position: 'fixed',
   top: '0px',
   left: '0px',
@@ -105,7 +129,7 @@ function clearAttachmentMenuState() {
   attachmentMenuStyle.value = {}
 }
 
-function buildAttachmentMenuStyle(triggerRect: DOMRect, menuRect: DOMRect) {
+function buildAttachmentMenuStyle(triggerRect: DOMRect, menuRect: DOMRect): CSSProperties {
   const viewportWidth = window.innerWidth
   const viewportHeight = window.innerHeight
   const menuWidth = Math.max(menuRect.width, ATTACHMENT_MENU_MIN_WIDTH_PX)
@@ -244,6 +268,7 @@ const disabled = computed(() => props.disabled || props.isRunning)
 function normalizeModelKey(value: unknown): string {
   return String(value ?? '').trim()
 }
+const resolvedSessionConfig = computed(() => props.sessionConfig ?? defaultSessionConfig)
 const sendPlanBlockingSummary = computed(() => {
   const direct = String(props.sendPlanBlockingSummary ?? '').trim()
   if (direct.length > 0) return direct
@@ -257,7 +282,7 @@ const sendPlanWarningSummary = computed(() => {
 const canSend = computed(() => (typeof props.canSend === 'boolean' ? props.canSend : false))
 const historyIncompatibleSummary = computed(() => props.historyIncompatibleSummary ?? null)
 const selectedModel = computed(() => {
-  const normalized = normalizeModelKey(props.sessionConfig?.model?.selectedModelKey)
+  const normalized = normalizeModelKey(resolvedSessionConfig.value.model.selectedModelKey)
   return normalized || 'openrouter/auto'
 })
 const modelNameById = computed(() => {
@@ -639,7 +664,7 @@ onBeforeUnmount(() => {
         <label class="flex items-center gap-2 text-xs text-gray-700">
           <input
             type="checkbox"
-            :checked="props.sessionConfig.reasoning.enabled"
+            :checked="resolvedSessionConfig.reasoning.enabled"
             :disabled="disabled"
             @change="emit('updateReasoningEnabled', ($event.target as HTMLInputElement).checked)"
           />
@@ -651,8 +676,8 @@ onBeforeUnmount(() => {
             :key="effort"
             type="button"
             class="rounded-md border px-2 py-1"
-            :class="chipClass(props.sessionConfig.reasoning.effort === effort)"
-            :disabled="disabled || !props.sessionConfig.reasoning.enabled"
+            :class="chipClass(resolvedSessionConfig.reasoning.effort === effort)"
+            :disabled="disabled || !resolvedSessionConfig.reasoning.enabled"
             @click="emit('updateReasoningEffort', effort as 'low' | 'medium' | 'high')"
           >
             {{ effort }}
@@ -664,7 +689,7 @@ onBeforeUnmount(() => {
         <label class="flex items-center gap-2 text-xs text-gray-700">
           <input
             type="checkbox"
-            :checked="props.sessionConfig.webSearch.enabled"
+            :checked="resolvedSessionConfig.webSearch.enabled"
             :disabled="disabled"
             @change="emit('updateWebSearchEnabled', ($event.target as HTMLInputElement).checked)"
           />
@@ -674,8 +699,8 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="rounded-md border px-2 py-1"
-            :class="chipClass(props.sessionConfig.webSearch.level === 'low')"
-            :disabled="disabled || !props.sessionConfig.webSearch.enabled"
+            :class="chipClass(resolvedSessionConfig.webSearch.level === 'low')"
+            :disabled="disabled || !resolvedSessionConfig.webSearch.enabled"
             @click="emit('updateWebSearchLevel', 'low')"
           >
             low
@@ -683,8 +708,8 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="rounded-md border px-2 py-1"
-            :class="chipClass(props.sessionConfig.webSearch.level === 'high')"
-            :disabled="disabled || !props.sessionConfig.webSearch.enabled"
+            :class="chipClass(resolvedSessionConfig.webSearch.level === 'high')"
+            :disabled="disabled || !resolvedSessionConfig.webSearch.enabled"
             @click="emit('updateWebSearchLevel', 'high')"
           >
             high
@@ -696,7 +721,7 @@ onBeforeUnmount(() => {
         <label class="flex items-center gap-2 text-xs text-gray-700">
           <input
             type="checkbox"
-            :checked="props.sessionConfig.imageGeneration.enabled"
+            :checked="resolvedSessionConfig.imageGeneration.enabled"
             :disabled="disabled"
             @change="emit('updateImageGenerationEnabled', ($event.target as HTMLInputElement).checked)"
           />
@@ -708,8 +733,8 @@ onBeforeUnmount(() => {
             :key="resolution"
             type="button"
             class="rounded-md border px-2 py-1"
-            :class="chipClass(props.sessionConfig.imageGeneration.resolution === resolution)"
-            :disabled="disabled || !props.sessionConfig.imageGeneration.enabled"
+            :class="chipClass(resolvedSessionConfig.imageGeneration.resolution === resolution)"
+            :disabled="disabled || !resolvedSessionConfig.imageGeneration.enabled"
             @click="emit('updateImageGenerationResolution', resolution as '1K' | '2K' | '4K')"
           >
             {{ resolution }}
@@ -721,8 +746,8 @@ onBeforeUnmount(() => {
             :key="ratio"
             type="button"
             class="rounded-md border px-2 py-1"
-            :class="chipClass(props.sessionConfig.imageGeneration.aspectRatio === ratio)"
-            :disabled="disabled || !props.sessionConfig.imageGeneration.enabled"
+            :class="chipClass(resolvedSessionConfig.imageGeneration.aspectRatio === ratio)"
+            :disabled="disabled || !resolvedSessionConfig.imageGeneration.enabled"
             @click="emit('updateImageGenerationAspectRatio', ratio as '16:9' | '3:4' | '1:1' | '4:3')"
           >
             {{ ratio }}

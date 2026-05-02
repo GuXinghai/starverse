@@ -288,18 +288,18 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
       if (method === 'conversationDraft.addAttachment') {
         const assetId = String(params?.assetId ?? '')
         const next = {
-          id: `draft-attachment-${assetId}`,
+          id: `draft-attachment-${assetId}-${Date.now()}`,
           conversationId: convoId,
           assetId,
-          attachmentOrder: draftState.attachments.length,
+          attachmentOrder: params?.attachmentOrder ?? draftState.attachments.length,
           aiPayloadKind: 'image',
           processingStatus: 'native_supported',
-          includeInNextRequest: true,
-          excludedReason: null,
-          preferredSendMode: null,
-          urlRetentionMode: null,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
+          includeInNextRequest: params?.includeInNextRequest ?? true,
+          excludedReason: params?.excludedReason ?? null,
+          preferredSendMode: params?.preferredSendMode ?? null,
+          urlRetentionMode: params?.urlRetentionMode ?? null,
+          createdAt: params?.createdAt ?? Date.now(),
+          updatedAt: params?.updatedAt ?? Date.now(),
         }
         draftState = {
           ...draftState,
