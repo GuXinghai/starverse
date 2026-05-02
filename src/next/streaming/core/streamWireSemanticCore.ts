@@ -16,7 +16,7 @@ import { streamFetchSemanticCore } from '@/next/streaming/core/streamSemanticCor
 import type { StreamWireSemanticCoreInput } from '@/next/streaming/core/types'
 
 import { normalizeInternalBugError } from '@/next/errors/normalizeOpenRouterError'
-import { buildStreamErrorFromAppError, mapAppPhaseToEnvelopePhase, mapAppPhaseToEndReason } from '@/next/streaming/core/streamSemanticCore'
+import { buildStreamErrorFromAppError, mapAppPhaseToEnvelopePhase } from '@/next/streaming/core/streamSemanticCore'
 import type { StreamRequestContext } from '@/next/streaming/core/types'
 
 export function* semanticMapIpcMissingError(

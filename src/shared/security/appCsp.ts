@@ -44,5 +44,5 @@ export function injectAppCspIntoHtml(html: string, csp: string): string {
   if (!html.includes(APP_CSP_PLACEHOLDER)) {
     throw new Error(`[app-csp] missing placeholder: ${APP_CSP_PLACEHOLDER}`)
   }
-  return html.replaceAll(APP_CSP_PLACEHOLDER, csp)
+  return html.split(APP_CSP_PLACEHOLDER).join(csp)
 }
