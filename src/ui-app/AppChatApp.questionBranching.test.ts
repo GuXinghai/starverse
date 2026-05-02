@@ -45,10 +45,18 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
 
     let headQuestionId: 'u2' | 'u2alt' | 'u2b' = 'u2'
     let u2bCounter = 0
-    let draftState = {
+    let draftState: {
+      conversationId: string
+      draftText: string
+      draftMode: 'compose' | 'edit'
+      editingSourceMessageId: string | null
+      attachedAssetIds: string[]
+      attachments: Array<Record<string, unknown>>
+      updatedAt: number
+    } = {
       conversationId: convoId,
       draftText: '',
-      draftMode: 'compose' as const | 'edit',
+      draftMode: 'compose',
       editingSourceMessageId: null as string | null,
       attachedAssetIds: [] as string[],
       attachments: [] as Array<Record<string, unknown>>,

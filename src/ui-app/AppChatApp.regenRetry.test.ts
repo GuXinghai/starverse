@@ -117,7 +117,20 @@ const defaultConvoRow = Object.freeze({
 })
 
 let historyAttachmentRowsByMessageId: Record<string, Array<Record<string, unknown>>> = {}
-let fileAssetsById: Record<string, Record<string, unknown>> = {}
+type ReplayAssetSourceMeta = {
+  previewOnly?: boolean
+  resolvedUrl?: string
+  originalUrl?: string
+}
+
+type ReplayFileAsset = {
+  deletedAt: number | null
+  ingestStatus?: string
+  sourceMetaJson?: ReplayAssetSourceMeta
+  [key: string]: unknown
+}
+
+let fileAssetsById: Record<string, ReplayFileAsset> = {}
 let replayPrepareStatusByMessageId: Record<string, 'sendable' | 'blocked' | 'needs_confirmation'> = {}
 let replayPrepareBlockingReasonByMessageId: Record<string, string> = {}
 
