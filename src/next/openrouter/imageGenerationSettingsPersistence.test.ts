@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_IMAGE_GENERATION_USER_CONFIG,
+  type ImageGenerationUserConfig,
   extractConvoImageGenerationCustom,
   extractConvoImageGenerationMode,
   mergeConvoImageGenerationMeta,
@@ -54,7 +55,7 @@ describe('imageGenerationSettingsPersistence', () => {
       aspectRatio: '1:1',
       imageSize: '',
       advancedJson: '',
-    }
+    } satisfies ImageGenerationUserConfig
     const merged = mergeConvoImageGenerationMeta({ selectedModelKey: 'x' }, { mode: 'custom', custom })
     expect(merged).toEqual({
       selectedModelKey: 'x',
