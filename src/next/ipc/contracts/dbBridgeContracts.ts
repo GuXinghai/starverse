@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { decodeWithSchema } from './decodeError'
-import type { SendPlan, SendPlanAttachment, SendPlanAttachmentRef, SendPlanIssue } from '@/shared/files/sendPlanTypes'
+import type { SendPlan } from '@/shared/files/sendPlanTypes'
 
 const nonEmpty = z.string().trim().min(1)
 
@@ -599,12 +599,14 @@ const sendPlanAttachmentRefSchema = sendPlanAttachmentRefBaseSchema.transform((r
   messageId: row.messageId ?? null,
 }))
 
+const aiPayloadKindSchema = z.enum(['image', 'pdf', 'text', 'audio', 'video', 'binary'])
+
 const sendPlanAttachmentSchema = z.object({
   assetId: nonEmpty,
   attachmentId: nonEmpty,
   source: z.enum(['draft', 'history']),
   messageId: z.string().trim().nullable().optional(),
-  aiPayloadKind: nonEmpty,
+  aiPayloadKind: aiPayloadKindSchema,
   semantic: z.object({
     targetKind: z.enum(['plain_text', 'markdown', 'code', 'table_markdown', 'pdf_attachment', 'native_file', 'hybrid', 'unsupported']),
     sendStrategy: z.enum(['text_in_prompt', 'file_attachment', 'mixed', 'unsupported']),
@@ -632,15 +634,25 @@ const sendPlanAttachmentSchema = z.object({
   selectedSendMode: row.selectedSendMode ?? null,
   exclusionReason: row.exclusionReason ?? null,
   semantic: row.semantic ?? inferLegacyAttachmentSemantic(row.aiPayloadKind),
-  lineage: row.lineage ?? {
-    state: 'unknown',
-    stale: false,
-    staleReason: null,
-    sourceHash: null,
-    previewContentHash: null,
-    sendContentHash: null,
-    conversionSettingsHash: null,
-  },
+  lineage: row.lineage
+    ? {
+        state: row.lineage.state,
+        stale: row.lineage.stale,
+        staleReason: row.lineage.staleReason ?? null,
+        sourceHash: row.lineage.sourceHash ?? null,
+        previewContentHash: row.lineage.previewContentHash ?? null,
+        sendContentHash: row.lineage.sendContentHash ?? null,
+        conversionSettingsHash: row.lineage.conversionSettingsHash ?? null,
+      }
+    : {
+        state: 'unknown',
+        stale: false,
+        staleReason: null,
+        sourceHash: null,
+        previewContentHash: null,
+        sendContentHash: null,
+        conversionSettingsHash: null,
+      },
 }))
 
 const sendPlanSchema = z.object({
@@ -685,6 +697,24 @@ const buildCurrentSendPlanResultSchema = z.object({
   assets: z.array(fileAssetSchema),
   storageRootDir: nonEmpty,
 })
+
+type BuildCurrentSendPlanSchemaOutput = z.output<typeof buildCurrentSendPlanResultSchema>
+
+function toDecodedBuildCurrentSendPlanResult(
+  value: BuildCurrentSendPlanSchemaOutput,
+): DecodedBuildCurrentSendPlanResult {
+  // Zod has validated the runtime shape. TypeScript may still complain about
+  // deep `readonly` compatibility (mutable arrays vs ReadonlyArray). The
+  // conversion below performs a shallow field mapping; we use a single
+  // assertion at the boundary to satisfy the Readonly<> return type without
+  // changing runtime behavior.
+  return {
+    draftText: value.draftText,
+    sendPlan: value.sendPlan,
+    assets: value.assets,
+    storageRootDir: value.storageRootDir,
+  } as DecodedBuildCurrentSendPlanResult
+}
 
 const fileAssetSoftDeleteSchema = z.object({
   ok: z.literal(true),
@@ -1033,7 +1063,8 @@ export function decodePreviewPayloadResponse(method: string, raw: unknown): Deco
 }
 
 export function decodeBuildCurrentSendPlanResponse(raw: unknown): DecodedBuildCurrentSendPlanResult {
-  return decodeWithSchema('sendPlan.buildCurrent', buildCurrentSendPlanResultSchema, raw)
+  const parsed = decodeWithSchema('sendPlan.buildCurrent', buildCurrentSendPlanResultSchema, raw) as BuildCurrentSendPlanSchemaOutput
+  return toDecodedBuildCurrentSendPlanResult(parsed)
 }
 
 export function decodeAssetAttachmentOwnershipResponse(raw: unknown): DecodedAssetAttachmentOwnership {
