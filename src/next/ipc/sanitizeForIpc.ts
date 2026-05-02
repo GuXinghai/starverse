@@ -61,14 +61,20 @@ function deepToRaw(input: unknown, seen: WeakMap<object, unknown>): unknown {
 
 function cloneArrayBufferView(view: ArrayBufferView): ArrayBufferView {
   if (view instanceof DataView) {
-    const buffer = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength)
+    const buffer = copyViewBufferToArrayBuffer(view)
     return new DataView(buffer)
   }
   const ctor = view.constructor as {
     new (buffer: ArrayBuffer, byteOffset?: number, length?: number): ArrayBufferView
   }
-  const buffer = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength)
+  const buffer = copyViewBufferToArrayBuffer(view)
   const bytesPerElement = (view as any).BYTES_PER_ELEMENT
   const length = typeof bytesPerElement === 'number' && bytesPerElement > 0 ? view.byteLength / bytesPerElement : undefined
   return length === undefined ? new ctor(buffer) : new ctor(buffer, 0, length)
+}
+
+function copyViewBufferToArrayBuffer(view: ArrayBufferView): ArrayBuffer {
+  const copied = new Uint8Array(view.byteLength)
+  copied.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength))
+  return copied.buffer
 }
