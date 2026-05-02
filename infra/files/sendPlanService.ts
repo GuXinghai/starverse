@@ -736,7 +736,6 @@ function capabilitySetsForSemantic(
       return [['file_in']]
     case 'mixed':
       return [['text_in', 'file_in']]
-    case 'unsupported':
     default:
       return []
   }

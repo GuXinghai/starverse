@@ -365,12 +365,16 @@ export class DerivativeJobService {
         })
         results.push(await this.runPdfAnnotationTextJob(job, asset, candidate))
       } catch (error) {
-        const mapped = normalizeDerivativeError(error, {
-          id: 'capture',
-          assetId: asset.id,
-          derivativeKind: 'extracted_text',
-          taskFamily: 'chat_context',
-        } as DerivativeJobRecord)
+        const mapped = normalizeDerivativeError(
+          error,
+          {
+            id: 'capture',
+            assetId: asset.id,
+            derivativeKind: 'extracted_text',
+            taskFamily: 'chat_context',
+          } as DerivativeJobRecord,
+          this.deps.storageRootDir
+        )
         failures.push({ assetId: asset.id, errorCode: mapped.code, message: mapped.message })
       }
     }
