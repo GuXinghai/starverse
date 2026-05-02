@@ -31,6 +31,12 @@ export const SETTINGS_PANEL_DEBUG_FLAGS = Object.freeze([
 
 export type SettingsPanelDebugFlagName = (typeof SETTINGS_PANEL_DEBUG_FLAGS)[number]
 
+function isDevOnlyFlagEntry(
+  entry: (typeof APPROVED_DEBUG_FLAGS)[ApprovedDebugFlagName],
+): entry is (typeof APPROVED_DEBUG_FLAGS)[ApprovedDebugFlagName] & Readonly<{ devOnly: true }> {
+  return 'devOnly' in entry && entry.devOnly === true
+}
+
 function readFlag(key: string): FlagState {
   if (typeof window === 'undefined') return null
   try {
@@ -97,7 +103,7 @@ export function readApprovedDebugFlag(
 ): boolean {
   const entry = APPROVED_DEBUG_FLAGS[name]
   const devRuntime = options?.devRuntime ?? isDiagnosticsDevRuntime()
-  if (entry.devOnly && !devRuntime) {
+  if (isDevOnlyFlagEntry(entry) && !devRuntime) {
     clearFlag(entry.storageKey)
     return false
   }
@@ -111,7 +117,7 @@ export function writeApprovedDebugFlag(
 ): void {
   const entry = APPROVED_DEBUG_FLAGS[name]
   const devRuntime = options?.devRuntime ?? isDiagnosticsDevRuntime()
-  if (entry.devOnly && !devRuntime) {
+  if (isDevOnlyFlagEntry(entry) && !devRuntime) {
     clearFlag(entry.storageKey)
     return
   }
