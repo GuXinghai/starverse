@@ -36,6 +36,7 @@ import type { DbMethod } from '../../infra/db/types'
 import { DB_RENDERER_METHOD_SET } from '../../infra/db/dbMethodsRegistry'
 import { DbWorkerError } from '../../infra/db/errors'
 import { DbWorkerManager } from '../db/workerManager'
+import { summarizeErrorForLog, summarizeIpcParamsForLog } from './logSanitizer'
 
 export const DB_BRIDGE_IPC_CHANNELS = ['db:invoke'] as const
 
@@ -166,22 +167,13 @@ export const registerDbBridge = (manager: DbWorkerManager): string[] => {
         return manager.getStats()
       }
 
-      console.log(`[dbBridge] 调用方法: ${payload.method}, 参数:`, payload.params)
+      console.log(`[dbBridge] 调用方法: ${payload.method}`, summarizeIpcParamsForLog(payload.params))
 
       // ========== 步骤 4: 转发给 Worker ==========
       return await manager.call(payload.method, payload.params)
     } catch (error) {
-      console.error(`[dbBridge] 调用失败: ${payload?.method}`, error)
-      console.error(`[dbBridge] 错误类型: ${error?.constructor?.name}`)
-      console.error(`[dbBridge] 错误堆栈:`, (error as Error)?.stack)
-      
-      // 尝试序列化错误以查看传递给渲染进程的内容
-      try {
-        const serialized = JSON.stringify(error)
-        console.error(`[dbBridge] 序列化后的错误:`, serialized)
-      } catch (serializeError) {
-        console.error(`[dbBridge] 错误无法序列化:`, serializeError)
-      }
+      const errorSummary = summarizeErrorForLog(error)
+      console.error(`[dbBridge] 调用失败: ${payload?.method}`, errorSummary)
       
       throw toIpcError(error)
     }
