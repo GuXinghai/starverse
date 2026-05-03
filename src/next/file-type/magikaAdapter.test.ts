@@ -1,0 +1,26 @@
+import { describe, expect, it } from 'vitest'
+import { createNoopMagikaAdapter, mapMagikaOutputToEvidence, runMagikaProbe } from './magikaAdapter'
+
+describe('magikaAdapter', () => {
+  it('maps known magika labels through taxonomy map', () => {
+    const evidence = mapMagikaOutputToEvidence({ label: 'pdf', score: 0.94 })
+    expect(evidence.detectedFormatId).toBe('pdf')
+    expect(evidence.confidence).toBe('high')
+    expect(evidence.source).toBe('magika')
+  })
+
+  it('keeps unknown labels in low-confidence unknown bucket', () => {
+    const evidence = mapMagikaOutputToEvidence({ label: 'totally-unknown-label', score: 0.99 })
+    expect(evidence.detectedFormatId).toBe('unknown')
+    expect(evidence.confidence).toBe('low')
+    expect(evidence.note).toContain('unmapped')
+  })
+
+  it('supports a noop adapter for mockable stage usage', async () => {
+    const evidence = await runMagikaProbe(createNoopMagikaAdapter(), {
+      bytes: new Uint8Array([1, 2, 3]),
+      filename: 'a.bin',
+    })
+    expect(evidence).toBeNull()
+  })
+})
