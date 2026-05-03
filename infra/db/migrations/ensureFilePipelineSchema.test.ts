@@ -87,7 +87,8 @@ describeIfBetterSqlite('ensureFilePipelineSchema', () => {
           'message_attachments',
           'conversation_drafts',
           'draft_attachments',
-          'file_attachment_lifecycle'
+          'file_attachment_lifecycle',
+          'file_type_verdicts'
         )
       ORDER BY name ASC
     `).all() as Array<{ name: string }>
@@ -98,11 +99,42 @@ describeIfBetterSqlite('ensureFilePipelineSchema', () => {
       'file_assets',
       'file_attachment_lifecycle',
       'file_derivatives',
+      'file_type_verdicts',
       'message_attachments',
     ])
 
     const assetColumns = db.prepare(`PRAGMA table_info(file_assets)`).all() as Array<{ name: string }>
     expect(assetColumns.map((column) => column.name)).toContain('source_meta_json')
+
+    const verdictColumns = db.prepare(`PRAGMA table_info(file_type_verdicts)`).all() as Array<{ name: string }>
+    const verdictColumnNames = verdictColumns.map((column) => column.name)
+    expect(verdictColumnNames).toEqual(expect.arrayContaining([
+      'asset_id',
+      'verdict_json',
+      'primary_format_id',
+      'primary_kind',
+      'confidence_level',
+      'schema_version',
+      'taxonomy_version',
+      'taxonomy_map_version',
+      'magic_table_version',
+      'merge_rules_version',
+      'container_probe_version',
+      'text_probe_version',
+      'magika_model_version',
+      'fingerprint_json',
+      'is_current',
+      'stale_reason',
+    ]))
+
+    const verdictIndexes = db.prepare(`PRAGMA index_list(file_type_verdicts)`).all() as Array<{ name: string }>
+    expect(verdictIndexes.map((row) => row.name)).toEqual(expect.arrayContaining([
+      'idx_file_type_verdicts_asset_id',
+      'idx_file_type_verdicts_is_current',
+      'idx_file_type_verdicts_primary_format_id',
+      'idx_file_type_verdicts_confidence_level',
+      'idx_file_type_verdicts_asset_current',
+    ]))
   })
 
   it('upgrades legacy file_assets constraints for URL source records', () => {
