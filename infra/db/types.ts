@@ -850,6 +850,36 @@ export type PreviewEnsureInput = Readonly<{
   maxEdge?: number
 }>
 
+export type FileTypeDetectionMode = 'basic' | 'full'
+export type FileTypeDetectionJobStatus = 'running' | 'ready' | 'failed' | 'cancelled'
+
+export type FileTypeDetectionJob = Readonly<{
+  jobId: string
+  assetId: string
+  mode: FileTypeDetectionMode
+  status: FileTypeDetectionJobStatus
+  createdAt: number
+  updatedAt: number
+  errorCode: string | null
+  errorMessage: string | null
+}>
+
+export type DetectFileTypeInput = Readonly<{
+  assetId: string
+  forceRedetect?: boolean
+}>
+
+export type DetectFileTypeResult = Readonly<{
+  job: FileTypeDetectionJob
+  verdict: FileTypeVerdictRecord | null
+  fromCache: boolean
+}>
+
+export type MarkFileTypeVerdictStaleInput = Readonly<{
+  assetId: string
+  staleReason: string
+}>
+
 // ========== Branching Types (Phase 4+) ==========
 
 export type BranchRecord = {

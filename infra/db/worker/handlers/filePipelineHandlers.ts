@@ -42,6 +42,8 @@ import {
   IngestUrlSchema,
   PreviewGetLatestSchema,
   PreviewEnsureSchema,
+  DetectFileTypeSchema,
+  MarkFileTypeVerdictStaleSchema,
 } from '../../validation'
 
 export function registerFilePipelineHandlers(register: RegisterHandler, runtime: DbWorkerRuntime) {
@@ -177,6 +179,21 @@ export function registerFilePipelineHandlers(register: RegisterHandler, runtime:
         errorMessage: error instanceof Error ? error.message : String(error),
       } as const
     }
+  })
+
+  register('fileType.detectBasic', async (raw) => {
+    const input = DetectFileTypeSchema.parse(raw)
+    return await runtime.fileTypeDetectionService.detectBasic(input)
+  })
+
+  register('fileType.detectFull', async (raw) => {
+    const input = DetectFileTypeSchema.parse(raw)
+    return await runtime.fileTypeDetectionService.detectFull(input)
+  })
+
+  register('fileType.markStale', (raw) => {
+    const input = MarkFileTypeVerdictStaleSchema.parse(raw)
+    return runtime.fileTypeDetectionService.markStaleByAssetId(input.assetId, input.staleReason)
   })
 }
 

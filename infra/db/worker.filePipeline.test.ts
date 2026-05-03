@@ -15,10 +15,12 @@ import { MessageRepo } from './repo/messageRepo'
 import { BranchRepo } from './repo/branchRepo'
 import { ConversationDraftRepo } from './repo/conversationDraftRepo'
 import { ModelCatalogRepo } from './repo/modelCatalogRepo'
+import { FileTypeVerdictRepo } from './repo/fileTypeVerdictRepo'
 import { ConversationAttachmentService } from '../files/conversationAttachmentService'
 import { DerivativeJobService } from '../files/derivativeJobService'
 import { FileIngestionService } from '../files/fileIngestionService'
 import { SendPlanService } from '../files/sendPlanService'
+import { FileTypeDetectionService } from '../files/fileTypeDetectionService'
 import { canOpenBetterSqliteForSuite } from '../testUtils/betterSqliteGate'
 
 const describeIfBetterSqlite = canOpenBetterSqliteForSuite('file pipeline worker handlers') ? describe : describe.skip
@@ -49,6 +51,7 @@ function createWorkerHarness() {
   const fileAssetRepo = new FileAssetRepo(db)
   const fileDerivativeRepo = new FileDerivativeRepo(db)
   const derivativeJobRepo = new DerivativeJobRepo(db)
+  const fileTypeVerdictRepo = new FileTypeVerdictRepo(db)
   const messageAttachmentRepo = new MessageAttachmentRepo(db)
   const messageRepo = new MessageRepo(db)
   const branchRepo = new BranchRepo(db)
@@ -65,6 +68,7 @@ function createWorkerHarness() {
   })
   const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
   registerFilePipelineHandlers((method, handler) => handlers.set(method, handler), {
+    db,
     fileAssetRepo,
     fileDerivativeRepo,
     derivativeJobRepo,
@@ -76,12 +80,19 @@ function createWorkerHarness() {
       fileDerivativeRepo,
       derivativeJobRepo,
       modelCatalogRepo,
-      storageRootDir: path.dirname(':memory:'),
+      storageRootDir,
       now: () => 1000,
     }),
     sendPlanService: new SendPlanService({
       conversationAttachmentService,
       fileAssetRepo,
+    }),
+    fileTypeDetectionService: new FileTypeDetectionService({
+      db,
+      fileAssetRepo,
+      fileTypeVerdictRepo,
+      storageRootDir,
+      now: () => 1000,
     }),
     fileIngestionService: new FileIngestionService({
       fileAssetRepo,
@@ -189,6 +200,10 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
   it('routes send plan build and draft-to-existing-message migration methods', async () => {
     const { handlers, message } = createWorkerHarness()
     await createWorkerAsset(handlers)
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const storageUri = 'assets/original/as/asset-1.txt'
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), 'hello')
     await dispatchWorkerMessage(handlers, {
       id: 'req-draft-add',
       method: 'conversationDraft.addAttachment',
@@ -205,7 +220,7 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
           providerKey: 'openrouter',
           modelId: 'test/text',
           modelKey: 'openrouter::test/text',
-          inputModalities: ['text'],
+          inputModalities: ['text', 'file'],
           outputModalities: ['text'],
         },
         providerContext: {
@@ -284,7 +299,7 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
           providerKey: 'openrouter',
           modelId: 'openai/gpt-4o',
           modelKey: 'openrouter::openai/gpt-4o',
-          inputModalities: ['text', 'image'],
+          inputModalities: ['text', 'image', 'file'],
         },
         providerContext: {
           providerKey: 'openrouter',
@@ -410,5 +425,61 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     })
 
     await rm(tempDir, { recursive: true, force: true })
+  })
+
+  it('routes file type detection methods without changing send behavior', async () => {
+    const { handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const storageUri = 'assets/original/as/asset-ft.txt'
+    const localPath = path.join(storageRootDir, ...storageUri.split('/'))
+    await mkdir(path.dirname(localPath), { recursive: true })
+    await writeFile(localPath, 'file type content')
+
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-asset-ft',
+      method: 'fileAsset.create',
+      params: {
+        id: 'asset-ft',
+        sha256: null,
+        filename: 'asset-ft.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 17,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageBackend: 'local_fs',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+
+    const detected = await dispatchWorkerMessage(handlers, {
+      id: 'req-ft-basic',
+      method: 'fileType.detectBasic',
+      params: {
+        assetId: 'asset-ft',
+      },
+    })
+    expect(detected).toMatchObject({
+      ok: true,
+      result: {
+        fromCache: false,
+        job: expect.objectContaining({ status: 'ready' }),
+        verdict: expect.objectContaining({ assetId: 'asset-ft', primaryFormatId: 'plain_text' }),
+      },
+    })
+
+    const stale = await dispatchWorkerMessage(handlers, {
+      id: 'req-ft-stale',
+      method: 'fileType.markStale',
+      params: {
+        assetId: 'asset-ft',
+        staleReason: 'manual_test',
+      },
+    })
+    expect(stale).toMatchObject({
+      ok: true,
+      result: { ok: true, updated: 1 },
+    })
   })
 })
