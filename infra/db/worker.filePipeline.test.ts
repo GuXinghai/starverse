@@ -86,6 +86,7 @@ function createWorkerHarness() {
     sendPlanService: new SendPlanService({
       conversationAttachmentService,
       fileAssetRepo,
+      fileTypeVerdictRepo,
     }),
     fileTypeDetectionService: new FileTypeDetectionService({
       db,

@@ -207,6 +207,7 @@ export class DbWorkerRuntime {
     this.sendPlanService = new SendPlanService({
       conversationAttachmentService: this.conversationAttachmentService,
       fileAssetRepo: this.fileAssetRepo,
+      fileTypeVerdictRepo: this.fileTypeVerdictRepo,
     })
     this.fileIngestionService = new FileIngestionService({
       fileAssetRepo: this.fileAssetRepo,

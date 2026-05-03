@@ -19,7 +19,15 @@ import type {
   GetAttachmentCandidateSnapshotInput,
 } from '../db/types'
 import type { FileAssetRepo } from '../db/repo/fileAssetRepo'
+import type { FileTypeVerdictRepo } from '../db/repo/fileTypeVerdictRepo'
 import type { ConversationAttachmentService } from './conversationAttachmentService'
+import {
+  buildSendPlanCandidates,
+  type FileTypeVerdict,
+  type ModelInputCapabilities,
+  type SendPlanCandidate,
+  type SendRoute,
+} from '../../src/next/file-type'
 
 const SEND_PLANNER_VERSION = 'phase-5/v1'
 const DEFAULT_PARSING_TIMEOUT_MS = 5 * 60 * 1000
@@ -33,6 +41,7 @@ type NormalizedProviderContext = Readonly<Required<Omit<SendPlanProviderContext,
 
 type DraftRestoreApi = Pick<ConversationAttachmentService, 'restoreDraft' | 'getCandidateAttachmentSnapshot'>
 type FileAssetLookupApi = Pick<FileAssetRepo, 'listByIds'>
+type FileTypeVerdictLookupApi = Pick<FileTypeVerdictRepo, 'getCurrentByAssetId'>
 
 export type CollectCurrentSendInputsInput = Readonly<{
   conversationId: string
@@ -54,6 +63,7 @@ export type CollectedAttachmentInput = Readonly<{
   preferredSendMode: DraftAttachmentSendModePreference | null
   fileAsset: FileAssetRecord | null
   semantic?: AttachmentSemanticSummary | null
+  routeCandidates?: readonly SendPlanCandidate[] | null
 }>
 
 export type CollectedSendInputs = Readonly<{
@@ -97,6 +107,7 @@ type EligibilityEvaluationMode = 'legacy' | 'semantic'
 export type SendPlanServiceDeps = Readonly<{
   conversationAttachmentService: DraftRestoreApi
   fileAssetRepo: FileAssetLookupApi
+  fileTypeVerdictRepo?: FileTypeVerdictLookupApi
   now?: () => number
   parsingTimeoutMs?: number
 }>
@@ -112,6 +123,9 @@ export class SendPlanService {
 
   collectCurrentSendInputs(input: CollectCurrentSendInputsInput): CollectedSendInputs {
     const conversationId = requireNonEmpty(input.conversationId, 'conversationId')
+    const normalizedModel = normalizeModelDescriptor(input.model)
+    const normalizedProviderContext = normalizeProviderContext(input.providerContext)
+    const modelCapabilities = modelInputCapabilitiesFromDescriptor(normalizedModel, normalizedProviderContext)
     const draft = this.deps.conversationAttachmentService.restoreDraft({ conversationId })
     const draftAssets = this.deps.fileAssetRepo.listByIds({ ids: draft.attachedAssetIds })
     const draftAssetMap = new Map(draftAssets.map((asset) => [asset.id, asset]))
@@ -121,31 +135,48 @@ export class SendPlanService {
     const historyAssetIds = historySnapshot ? Array.from(new Set(historySnapshot.items.map((item) => item.assetId))) : []
     const historyAssets = historyAssetIds.length > 0 ? this.deps.fileAssetRepo.listByIds({ ids: historyAssetIds }) : []
     const historyAssetMap = new Map(historyAssets.map((asset) => [asset.id, asset]))
+    const verdictByAssetId = loadCurrentVerdictByAssetId(
+      this.deps.fileTypeVerdictRepo,
+      [...draftAssets, ...historyAssets].map((asset) => asset.id)
+    )
 
     const draftText = input.draftText !== undefined ? String(input.draftText) : draft.draftText
     return {
       conversationId,
       draft,
       draftText,
-      draftAttachments: draft.attachments.map((attachment) => ({
-        attachmentId: attachment.id,
-        assetId: attachment.assetId,
-        source: 'draft',
-        messageId: null,
-        aiPayloadKind: attachment.aiPayloadKind,
-        processingStatus: attachment.processingStatus,
-        includeInNextRequest: attachment.includeInNextRequest,
-        excludedReason: attachment.excludedReason,
-        preferredSendMode: attachment.preferredSendMode ?? null,
-        fileAsset: draftAssetMap.get(attachment.assetId) ?? null,
-        semantic: buildDefaultSemanticSummary(attachment, draftAssetMap.get(attachment.assetId) ?? null),
-      })),
+      draftAttachments: draft.attachments.map((attachment) => {
+        const fileAsset = draftAssetMap.get(attachment.assetId) ?? null
+        const routeCandidates = buildRouteCandidatesFromVerdict(
+          verdictByAssetId.get(attachment.assetId) ?? null,
+          modelCapabilities
+        )
+        return {
+          attachmentId: attachment.id,
+          assetId: attachment.assetId,
+          source: 'draft',
+          messageId: null,
+          aiPayloadKind: attachment.aiPayloadKind,
+          processingStatus: attachment.processingStatus,
+          includeInNextRequest: attachment.includeInNextRequest,
+          excludedReason: attachment.excludedReason,
+          preferredSendMode: attachment.preferredSendMode ?? null,
+          fileAsset,
+          routeCandidates,
+          semantic: buildDefaultSemanticSummary(attachment, fileAsset, routeCandidates),
+        }
+      }),
       historySnapshot,
       historyAttachments: historySnapshot
-        ? historySnapshot.items.map((item) => mapHistoryAttachment(item, historyAssetMap.get(item.assetId) ?? null))
+        ? historySnapshot.items.map((item) => mapHistoryAttachment(
+          item,
+          historyAssetMap.get(item.assetId) ?? null,
+          verdictByAssetId.get(item.assetId) ?? null,
+          modelCapabilities
+        ))
         : [],
-      model: normalizeModelDescriptor(input.model),
-      providerContext: normalizeProviderContext(input.providerContext),
+      model: normalizedModel,
+      providerContext: normalizedProviderContext,
     }
   }
 
@@ -486,8 +517,11 @@ export class SendPlanService {
 
 function mapHistoryAttachment(
   item: AttachmentSnapshotItem,
-  fileAsset: FileAssetRecord | null
+  fileAsset: FileAssetRecord | null,
+  verdict: FileTypeVerdict | null,
+  modelCapabilities: ModelInputCapabilities
 ): CollectedAttachmentInput {
+  const routeCandidates = buildRouteCandidatesFromVerdict(verdict, modelCapabilities)
   const base = {
     attachmentId: item.attachmentId,
     assetId: item.assetId,
@@ -499,10 +533,11 @@ function mapHistoryAttachment(
     excludedReason: item.excludedReason,
     preferredSendMode: null,
     fileAsset,
+    routeCandidates,
   } satisfies Omit<CollectedAttachmentInput, 'semantic'>
   return {
     ...base,
-    semantic: buildDefaultSemanticSummary(base, fileAsset),
+    semantic: buildDefaultSemanticSummary(base, fileAsset, routeCandidates),
   }
 }
 
@@ -548,6 +583,131 @@ function modelCapabilitiesFromDescriptor(model: SendPlanModelDescriptor): Set<Mo
     if (normalized === 'file') capabilities.add('file_in')
   }
   return capabilities
+}
+
+function modelInputCapabilitiesFromDescriptor(
+  model: SendPlanModelDescriptor,
+  providerContext: NormalizedProviderContext
+): ModelInputCapabilities {
+  const capabilities = modelCapabilitiesFromDescriptor(model)
+  return {
+    acceptsText: capabilities.has('text_in'),
+    acceptsImage: capabilities.has('image_in'),
+    acceptsAudio: capabilities.has('audio_in'),
+    acceptsVideo: capabilities.has('video_in'),
+    acceptsFile: capabilities.has('file_in'),
+    acceptsPdf: capabilities.has('file_in') && providerContext.supportsPdfInputs,
+    acceptsCsv: capabilities.has('text_in'),
+    acceptsTsv: capabilities.has('text_in'),
+    acceptsUrlRef: providerContext.supportsImageUrlRef
+      || providerContext.supportsPdfUrlRef
+      || providerContext.supportsTextUrlRef
+      || providerContext.supportsVideoUrlRef,
+    acceptsInlineData: providerContext.supportsInlineData,
+  }
+}
+
+function loadCurrentVerdictByAssetId(
+  repo: FileTypeVerdictLookupApi | undefined,
+  assetIds: readonly string[]
+): Map<string, FileTypeVerdict> {
+  const out = new Map<string, FileTypeVerdict>()
+  if (!repo) return out
+  for (const assetId of new Set(assetIds)) {
+    const verdictRecord = repo.getCurrentByAssetId(assetId)
+    if (verdictRecord?.verdict) {
+      out.set(assetId, verdictRecord.verdict)
+    }
+  }
+  return out
+}
+
+function buildRouteCandidatesFromVerdict(
+  verdict: FileTypeVerdict | null,
+  modelCapabilities: ModelInputCapabilities
+): readonly SendPlanCandidate[] | null {
+  if (!verdict) return null
+  return buildSendPlanCandidates({
+    verdict,
+    modelCapabilities,
+  })
+}
+
+function semanticSummaryFromRouteCandidates(
+  routeCandidates: readonly SendPlanCandidate[] | null,
+  aiPayloadKind: AiPayloadKind
+): AttachmentSemanticSummary | null {
+  if (!routeCandidates || routeCandidates.length === 0) return null
+  const candidate = preferredRouteCandidate(routeCandidates)
+  if (!candidate) return null
+  return semanticFromRoute(candidate.route, aiPayloadKind)
+}
+
+function preferredRouteCandidate(candidates: readonly SendPlanCandidate[]): SendPlanCandidate | null {
+  const viable = candidates.find((candidate) => candidate.compatible && !candidate.blocked)
+  if (viable) return viable
+  const askUser = candidates.find((candidate) => candidate.route === 'ask_user')
+  if (askUser) return askUser
+  const blocked = candidates.find((candidate) => candidate.route === 'blocked')
+  if (blocked) return blocked
+  return candidates[0] ?? null
+}
+
+function semanticFromRoute(route: SendRoute, aiPayloadKind: AiPayloadKind): AttachmentSemanticSummary {
+  switch (route) {
+    case 'direct_text':
+      return { targetKind: 'plain_text', sendStrategy: 'text_in_prompt', mappedFromLegacy: false }
+    case 'converted_markdown':
+      return { targetKind: 'markdown', sendStrategy: 'text_in_prompt', mappedFromLegacy: false }
+    case 'converted_plain_text':
+    case 'extracted_text':
+      return { targetKind: 'plain_text', sendStrategy: 'text_in_prompt', mappedFromLegacy: false }
+    case 'converted_csv':
+    case 'converted_tsv':
+      return { targetKind: 'table_markdown', sendStrategy: 'text_in_prompt', mappedFromLegacy: false }
+    case 'direct_file':
+    case 'converted_pdf':
+      return {
+        targetKind: aiPayloadKind === 'pdf' ? 'pdf_attachment' : 'native_file',
+        sendStrategy: 'file_attachment',
+        mappedFromLegacy: false,
+      }
+    case 'direct_image':
+    case 'rendered_images':
+    case 'direct_audio':
+    case 'extracted_audio':
+    case 'direct_video':
+    case 'selected_frames':
+      return { targetKind: 'native_file', sendStrategy: 'file_attachment', mappedFromLegacy: false }
+    case 'ask_user':
+    case 'blocked':
+    case 'skip':
+    default:
+      return { targetKind: 'unsupported', sendStrategy: 'unsupported', mappedFromLegacy: false }
+  }
+}
+
+function evaluateRouteCandidateGate(
+  routeCandidates: readonly SendPlanCandidate[] | null
+): Readonly<{ blocked: boolean; reasonCode: string; notes: string[] }> {
+  if (!routeCandidates || routeCandidates.length === 0) {
+    return { blocked: false, reasonCode: '', notes: [] }
+  }
+  const supported = routeCandidates.some((candidate) => candidate.compatible && !candidate.blocked)
+  if (supported) {
+    return { blocked: false, reasonCode: '', notes: [] }
+  }
+  const blockedReasons = Array.from(new Set(
+    routeCandidates
+      .flatMap((candidate) => candidate.blockedBy)
+      .filter((reason) => typeof reason === 'string' && reason.trim().length > 0)
+  ))
+  const blockedLabel = blockedReasons.length > 0 ? blockedReasons.join(', ') : 'policy'
+  return {
+    blocked: true,
+    reasonCode: 'file_type_route_blocked',
+    notes: [`Attachment is blocked by file type route policy (${blockedLabel}).`],
+  }
 }
 
 function evaluateCompatibilityForAttachment(
@@ -636,7 +796,7 @@ function evaluateCompatibilityFromSemantic(
   providerContext: NormalizedProviderContext,
   semantic: AttachmentSemanticSummary = buildAttachmentSemanticSummary(attachment)
 ): AttachmentCompatibilityDescriptor {
-  const acceptedCapabilitySets = capabilitySetsForSemantic(semantic, providerContext)
+  const acceptedCapabilitySets = capabilitySetsForSemantic(semantic, providerContext, attachment.aiPayloadKind)
   const reasonCodeFromStatus = compatibilityReasonFromProcessingStatusForSemantic(attachment, semantic)
   if (reasonCodeFromStatus) {
     return {
@@ -721,7 +881,8 @@ function capabilitySetsForLegacyAttachment(
 
 function capabilitySetsForSemantic(
   semantic: AttachmentSemanticSummary,
-  providerContext: NormalizedProviderContext
+  providerContext: NormalizedProviderContext,
+  aiPayloadKind: AiPayloadKind
 ): ModelCapability[][] {
   if (semantic.sendStrategy === 'unsupported') return []
 
@@ -732,6 +893,18 @@ function capabilitySetsForSemantic(
       if (semantic.targetKind === 'pdf_attachment') {
         if (!providerContext.supportsPdfInputs) return []
         return [['file_in']]
+      }
+      if (semantic.targetKind === 'native_file') {
+        switch (aiPayloadKind) {
+          case 'image':
+            return [['image_in'], ['file_in']]
+          case 'audio':
+            return [['audio_in'], ['file_in']]
+          case 'video':
+            return [['video_in'], ['file_in']]
+          default:
+            return [['file_in']]
+        }
       }
       return [['file_in']]
     case 'mixed':
@@ -796,6 +969,10 @@ function selectAttachmentSendModeInternal(
     return noModeSelection(attachment, 'asset_soft_deleted', ['Attachment asset has been soft deleted.'])
   }
   const semantic = resolveAttachmentSemanticSummary(attachment) ?? buildAttachmentSemanticSummary(attachment)
+  const candidateGate = evaluateRouteCandidateGate(attachment.routeCandidates ?? null)
+  if (candidateGate.blocked) {
+    return noModeSelection(attachment, candidateGate.reasonCode, candidateGate.notes)
+  }
   if (attachment.processingStatus === 'convertible' && !hasReadyTextConversionAsset(attachment, semantic)) {
     return noModeSelection(attachment, 'conversion_required_before_send', ['Attachment requires conversion before it can be sent.'])
   }
@@ -1538,8 +1715,14 @@ const TEXT_TARGET_KINDS = new Set<AttachmentSemanticSummary['targetKind']>([
 
 function buildDefaultSemanticSummary(
   attachment: Pick<CollectedAttachmentInput, 'aiPayloadKind' | 'processingStatus'>,
-  fileAsset: FileAssetRecord | null
+  fileAsset: FileAssetRecord | null,
+  routeCandidates: readonly SendPlanCandidate[] | null = null
 ): AttachmentSemanticSummary {
+  const mappedFromRouteCandidates = semanticSummaryFromRouteCandidates(routeCandidates, attachment.aiPayloadKind)
+  if (mappedFromRouteCandidates) {
+    return mappedFromRouteCandidates
+  }
+
   const ext = String(fileAsset?.extension ?? '').trim().toLowerCase()
   const mime = String(fileAsset?.mime ?? '').trim().toLowerCase()
   if (attachment.processingStatus === 'convertible') {
@@ -1638,6 +1821,10 @@ export const __sendPlanEligibilityInternals = {
   evaluateAttachmentCompatibilityByMode,
   buildAttachmentSemanticSummary,
   buildDefaultSemanticSummary,
+  buildRouteCandidatesFromVerdict,
+  semanticSummaryFromRouteCandidates,
+  evaluateRouteCandidateGate,
+  modelInputCapabilitiesFromDescriptor,
   resolveAttachmentSemanticSummary,
   resolveEligibilityEvaluationMode,
   evaluateAttachmentLineageSummary,
