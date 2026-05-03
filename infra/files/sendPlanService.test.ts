@@ -7,12 +7,14 @@ import path from 'node:path'
 import { BranchRepo } from '../db/repo/branchRepo'
 import { ConversationDraftRepo } from '../db/repo/conversationDraftRepo'
 import { FileAssetRepo } from '../db/repo/fileAssetRepo'
+import { FileTypeVerdictRepo } from '../db/repo/fileTypeVerdictRepo'
 import { MessageAttachmentRepo } from '../db/repo/messageAttachmentRepo'
 import { MessageRepo } from '../db/repo/messageRepo'
 import { ConversationAttachmentService } from './conversationAttachmentService'
 import { SendPlanService, type CollectedAttachmentInput, __sendPlanEligibilityInternals } from './sendPlanService'
 import type { AttachmentSemanticSummary, SendPlanModelDescriptor, SendPlanProviderContext } from '../../src/shared/files/sendPlanTypes'
 import type { FileAssetRecord, FileIngestStatus } from '../db/types'
+import type { ConfidenceLevel, FileFormatId, FileKind, FileTypeVerdict } from '../../src/next/file-type'
 import { canOpenBetterSqliteForSuite } from '../testUtils/betterSqliteGate'
 
 const describeIfBetterSqlite = canOpenBetterSqliteForSuite('SendPlanService send planning') ? describe : describe.skip
@@ -82,6 +84,30 @@ function normalizedProvider(overrides: Partial<{
     supportsProviderFileRef: false,
     preferredDraftSendModes: ['url_ref', 'inline_base64'] as Array<'url_ref' | 'inline_base64'>,
     ...overrides,
+  }
+}
+
+function makeVerdict(
+  formatId: FileFormatId,
+  kind: FileKind,
+  confidence: ConfidenceLevel = 'high',
+  flags: FileTypeVerdict['flags'] = []
+): FileTypeVerdict {
+  return {
+    primary: {
+      formatId,
+      kind,
+      confidence,
+      reasonCodes: [],
+      sourceCodeMeta: null,
+    },
+    conflicts: [],
+    flags,
+    evidence: [],
+    schemaVersion: 'v1',
+    taxonomyVersion: 'taxonomy-v1',
+    detectionCost: 'low',
+    fingerprint: 'fp',
   }
 }
 
@@ -495,6 +521,69 @@ describe('SendPlanService semantic eligibility internals', () => {
       reasonCode: 'stale_derived_asset',
     })
   })
+
+  it('maps send route candidates into semantic targets for major format classes', () => {
+    const modelCapabilities = __sendPlanEligibilityInternals.modelInputCapabilitiesFromDescriptor(
+      model(['text', 'image', 'audio', 'video', 'file']),
+      normalizedProvider()
+    )
+    const cases: Array<{
+      formatId: FileFormatId
+      kind: FileKind
+      aiPayloadKind: CollectedAttachmentInput['aiPayloadKind']
+      targetKind: AttachmentSemanticSummary['targetKind']
+      sendStrategy: AttachmentSemanticSummary['sendStrategy']
+    }> = [
+      { formatId: 'plain_text', kind: 'text', aiPayloadKind: 'text', targetKind: 'plain_text', sendStrategy: 'text_in_prompt' },
+      { formatId: 'markdown', kind: 'text', aiPayloadKind: 'text', targetKind: 'plain_text', sendStrategy: 'text_in_prompt' },
+      { formatId: 'png', kind: 'image', aiPayloadKind: 'image', targetKind: 'native_file', sendStrategy: 'file_attachment' },
+      { formatId: 'pdf', kind: 'document', aiPayloadKind: 'pdf', targetKind: 'markdown', sendStrategy: 'text_in_prompt' },
+      { formatId: 'docx', kind: 'document', aiPayloadKind: 'text', targetKind: 'markdown', sendStrategy: 'text_in_prompt' },
+      { formatId: 'xlsx', kind: 'spreadsheet', aiPayloadKind: 'text', targetKind: 'table_markdown', sendStrategy: 'text_in_prompt' },
+      { formatId: 'pptx', kind: 'presentation', aiPayloadKind: 'text', targetKind: 'markdown', sendStrategy: 'text_in_prompt' },
+      { formatId: 'html', kind: 'text', aiPayloadKind: 'text', targetKind: 'unsupported', sendStrategy: 'unsupported' },
+      { formatId: 'svg', kind: 'image', aiPayloadKind: 'image', targetKind: 'native_file', sendStrategy: 'file_attachment' },
+      { formatId: 'zip', kind: 'archive', aiPayloadKind: 'binary', targetKind: 'unsupported', sendStrategy: 'unsupported' },
+      { formatId: 'windows_exe', kind: 'executable', aiPayloadKind: 'binary', targetKind: 'unsupported', sendStrategy: 'unsupported' },
+      { formatId: 'unknown_binary', kind: 'binary', aiPayloadKind: 'binary', targetKind: 'unsupported', sendStrategy: 'unsupported' },
+    ]
+
+    for (const testCase of cases) {
+      const candidates = __sendPlanEligibilityInternals.buildRouteCandidatesFromVerdict(
+        makeVerdict(testCase.formatId, testCase.kind),
+        modelCapabilities
+      )
+      const semantic = __sendPlanEligibilityInternals.semanticSummaryFromRouteCandidates(candidates, testCase.aiPayloadKind)
+      expect(semantic).toMatchObject({
+        targetKind: testCase.targetKind,
+        sendStrategy: testCase.sendStrategy,
+        mappedFromLegacy: false,
+      })
+    }
+  })
+
+  it('enforces blocked candidate gate for unsafe verdict routes', () => {
+    const modelCapabilities = __sendPlanEligibilityInternals.modelInputCapabilitiesFromDescriptor(
+      model(['text', 'image', 'audio', 'video', 'file']),
+      normalizedProvider()
+    )
+    const blockedCandidates = __sendPlanEligibilityInternals.buildRouteCandidatesFromVerdict(
+      makeVerdict('windows_exe', 'executable'),
+      modelCapabilities
+    )
+    expect(__sendPlanEligibilityInternals.evaluateRouteCandidateGate(blockedCandidates)).toMatchObject({
+      blocked: true,
+      reasonCode: 'file_type_route_blocked',
+    })
+
+    const askUserCandidates = __sendPlanEligibilityInternals.buildRouteCandidatesFromVerdict(
+      makeVerdict('zip', 'archive'),
+      modelCapabilities
+    )
+    expect(__sendPlanEligibilityInternals.evaluateRouteCandidateGate(askUserCandidates)).toMatchObject({
+      blocked: false,
+    })
+  })
 })
 
 function loadSchema(db: BetterSqlite3.Database) {
@@ -513,6 +602,7 @@ function createHarness() {
   const db = new BetterSqlite3(':memory:')
   loadSchema(db)
   const fileAssetRepo = new FileAssetRepo(db)
+  const fileTypeVerdictRepo = new FileTypeVerdictRepo(db)
   const messageRepo = new MessageRepo(db)
   const messageAttachmentRepo = new MessageAttachmentRepo(db)
   const branchRepo = new BranchRepo(db)
@@ -529,12 +619,14 @@ function createHarness() {
   const sendPlanService = new SendPlanService({
     conversationAttachmentService,
     fileAssetRepo,
+    fileTypeVerdictRepo,
     now: () => 2_000,
     parsingTimeoutMs: 100,
   })
   return {
     db,
     fileAssetRepo,
+    fileTypeVerdictRepo,
     messageRepo,
     branchRepo,
     conversationAttachmentService,
@@ -563,6 +655,60 @@ function createAsset(
     createdAt: 1_000,
     updatedAt: 1_950,
     ...overrides,
+  })
+}
+
+function createVerdict(
+  h: ReturnType<typeof createHarness>,
+  assetId: string,
+  formatId: FileFormatId,
+  kind: FileKind,
+  confidence: ConfidenceLevel = 'high',
+  flags: FileTypeVerdict['flags'] = []
+) {
+  h.fileTypeVerdictRepo.upsertCurrent({
+    assetId,
+    verdict: {
+      primary: {
+        formatId,
+        kind,
+        confidence,
+        reasonCodes: [],
+        sourceCodeMeta: null,
+      },
+      conflicts: [],
+      flags,
+      evidence: [],
+      schemaVersion: 'v1',
+      taxonomyVersion: 'taxonomy-v1',
+      detectionCost: 'low',
+      fingerprint: `${assetId}-fp`,
+    },
+    primaryFormatId: formatId,
+    primaryKind: kind,
+    confidenceLevel: confidence,
+    versionInfo: {
+      schemaVersion: 'schema-v1',
+      taxonomyVersion: 'taxonomy-v1',
+      taxonomyMapVersion: 'taxonomy-map-v1',
+      magicTableVersion: 'magic-v1',
+      mergeRulesVersion: 'merge-v1',
+      containerProbeVersion: 'container-v1',
+      textProbeVersion: 'text-v1',
+      magikaModelVersion: null,
+    },
+    fingerprintJson: {
+      algorithmVersion: 'sha256-v1',
+      size: 4,
+      modifiedTime: 1,
+      headHash: `${assetId}-head`,
+      headBytes: 4,
+      tailHash: `${assetId}-tail`,
+      tailBytes: 4,
+      fullHash: `${assetId}-full`,
+      fullHashStatus: 'computed',
+    },
+    updatedAt: 2_000,
   })
 }
 
@@ -1242,8 +1388,8 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       exclusionReason: 'incompatible_with_current_model',
       selectedSendMode: null,
       semantic: {
-        targetKind: 'pdf_attachment',
-        sendStrategy: 'unsupported',
+        targetKind: 'markdown',
+        sendStrategy: 'text_in_prompt',
         mappedFromLegacy: true,
       },
     })
@@ -1301,5 +1447,97 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
         exclusionReason: 'stale_derived_asset',
       }),
     ])
+  })
+
+  it('derives semantic from sendRouteMapping candidates when verdict is available', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'docx-v', {
+      filename: 'draft.docx',
+      extension: 'docx',
+      mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      assetKind: 'document',
+      storageUri: 'assets/original/do/docx-v.docx',
+    })
+    createVerdict(h, 'docx-v', 'docx', 'document')
+    h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'docx-v' })
+    h.db.prepare(`
+      UPDATE draft_attachments
+      SET ai_payload_kind = 'text',
+          processing_status = 'native_supported'
+      WHERE asset_id = 'docx-v'
+    `).run()
+
+    const collected = h.sendPlanService.collectCurrentSendInputs({
+      conversationId: 'c1',
+      model: model(['text', 'file']),
+      providerContext: providerContext(),
+    })
+    const docxAttachment = collected.draftAttachments.find((item) => item.assetId === 'docx-v')
+    expect(docxAttachment?.semantic).toMatchObject({
+      targetKind: 'markdown',
+      sendStrategy: 'text_in_prompt',
+      mappedFromLegacy: false,
+    })
+    expect(docxAttachment?.routeCandidates?.length ?? 0).toBeGreaterThan(0)
+  })
+
+  it('changes route candidate compatibility on model switch without mutating detection metadata', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'pdf-route', {
+      filename: 'manual.pdf',
+      extension: 'pdf',
+      mime: 'application/pdf',
+      assetKind: 'document',
+      storageUri: 'assets/original/pd/pdf-route.pdf',
+      sourceMetaJson: {
+        fileTypeDetection: {
+          currentJobId: 'job-1',
+          lastVerdictId: 'verdict-1',
+        },
+      },
+    })
+    createVerdict(h, 'pdf-route', 'pdf', 'document')
+    h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'pdf-route' })
+    h.db.prepare(`
+      UPDATE draft_attachments
+      SET ai_payload_kind = 'pdf',
+          processing_status = 'native_supported'
+      WHERE asset_id = 'pdf-route'
+    `).run()
+
+    const beforeMeta = h.db.prepare(`
+      SELECT source_meta_json AS sourceMetaJson
+      FROM file_assets
+      WHERE id = 'pdf-route'
+      LIMIT 1
+    `).get() as { sourceMetaJson: string | null }
+
+    const withFileModel = h.sendPlanService.collectCurrentSendInputs({
+      conversationId: 'c1',
+      model: model(['text', 'file']),
+      providerContext: providerContext(),
+    })
+    const withTextOnlyModel = h.sendPlanService.collectCurrentSendInputs({
+      conversationId: 'c1',
+      model: model(['text']),
+      providerContext: providerContext(),
+    })
+
+    const fileModelAttachment = withFileModel.draftAttachments.find((item) => item.assetId === 'pdf-route')
+    const textModelAttachment = withTextOnlyModel.draftAttachments.find((item) => item.assetId === 'pdf-route')
+    expect(fileModelAttachment?.routeCandidates?.some((candidate) => candidate.compatible && !candidate.blocked)).toBe(true)
+    expect(textModelAttachment?.routeCandidates?.some((candidate) => candidate.compatible && !candidate.blocked)).toBe(true)
+    expect(fileModelAttachment?.routeCandidates?.find((candidate) => candidate.route === 'direct_file')?.compatible).toBe(true)
+    expect(textModelAttachment?.routeCandidates?.find((candidate) => candidate.route === 'direct_file')?.compatible).toBe(false)
+
+    const afterMeta = h.db.prepare(`
+      SELECT source_meta_json AS sourceMetaJson
+      FROM file_assets
+      WHERE id = 'pdf-route'
+      LIMIT 1
+    `).get() as { sourceMetaJson: string | null }
+    expect(afterMeta.sourceMetaJson).toBe(beforeMeta.sourceMetaJson)
   })
 })
