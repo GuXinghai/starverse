@@ -2362,7 +2362,7 @@ export function useAppChatAppLogic() {
       projectCounts.value = new Map()
       return
     }
-    
+
     const projectIds = projects.value.map(p => p.id)
     projectCounts.value = await countConversationsBatch(projectIds)
   }
@@ -2550,10 +2550,10 @@ export function useAppChatAppLogic() {
         console.warn('[ui-app] finalizeRun: refresh failed', err)
       }
     }
-    
+
     // ② Then clear activeStream (single re-render with consistent state)
     clearActiveIfMatch(assistantMessageId)
-    
+
     // ③ Assert invariants at stable boundary (after both refresh and clear complete)
     assertInvariants()
   }
@@ -2709,7 +2709,7 @@ export function useAppChatAppLogic() {
     if (isDraftInteractionLocked.value) return
     try {
       const created = await createProject({ name })
-      
+
       // 如果是已存在的项目，直接选中，不刷新列表（避免不必要的 DB 查询）
       if (created.alreadyExists) {
         // 对系统项目（Inbox）给出特殊提示
@@ -2719,7 +2719,7 @@ export function useAppChatAppLogic() {
         onSelectProject(created.id)
         return
       }
-      
+
       // 仅在真正创建新项目时刷新列表
       await refreshProjects()
       onSelectProject(created.id)
@@ -7402,7 +7402,7 @@ export function useAppChatAppLogic() {
     const chosen = current?.chosenAnswerRootId
     const idx = chosen ? ordered.findIndex((c) => c.answerRootId === chosen) : -1
     const targetIndex = idx + delta
-    
+
     if (import.meta.env?.DEV) {
       console.log('[ui-app] onCandidateShift', {
         questionId,
@@ -7415,7 +7415,7 @@ export function useAppChatAppLogic() {
         canShift: idx >= 0 && targetIndex >= 0 && targetIndex < ordered.length,
       })
     }
-    
+
     if (idx < 0 || targetIndex < 0 || targetIndex >= ordered.length) return
 
     const target = ordered[targetIndex]
@@ -7536,7 +7536,7 @@ export function useAppChatAppLogic() {
       // Branch tip update (definition): regeneration chooses a new answer root and moves insertion point.
       patchBranch(branch.id, { headMessageId: regen.newAnswerRootId, updatedAt: Date.now() })
       await refreshRenderableBranchView(branch.id)
-      
+
       // Log candidates after refresh
       if (import.meta.env?.DEV) {
         const cachedCandidates = candidatesCache.value.get(qid)
@@ -7546,7 +7546,7 @@ export function useAppChatAppLogic() {
           newChosenAnswerRootId: turnFiltersByQuestionId.value.get(qid)?.chosenAnswerRootId,
         })
       }
-      
+
       await startStreamingForAssistantTurn({
         convoId,
         branchId: branch.id,
@@ -7893,10 +7893,10 @@ export function useAppChatAppLogic() {
       reasoningDisplayMode.value = await getChatReasoningDisplayMode()
       await loadTranscriptForActiveConvo()
       await restoreDraftForActiveScope()
-      
+
       // 基线同步完成，flush 缓冲的事件
       flushBuffer()
-      
+
       assertInvariants() // Stable boundary: initial load complete
     } catch (err: any) {
       loadError.value = err?.message ? String(err.message) : String(err)
