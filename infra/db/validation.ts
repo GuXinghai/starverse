@@ -45,6 +45,8 @@ import type {
   IngestUrlInput,
   PreviewEnsureInput,
   PreviewGetLatestInput,
+  DetectFileTypeInput,
+  MarkFileTypeVerdictStaleInput,
   AppendReasoningDetailSegmentsInput,
   FinalizeReasoningDetailsInput,
   SetReasoningRequestConfigInput,
@@ -550,6 +552,16 @@ export const PreviewEnsureSchema: ZodType<PreviewEnsureInput> = z.object({
   assetId: z.string().min(1),
   generator: z.string().min(1).optional(),
   maxEdge: z.number().int().positive().optional(),
+})
+
+export const DetectFileTypeSchema: ZodType<DetectFileTypeInput> = z.object({
+  assetId: z.string().min(1),
+  forceRedetect: z.boolean().optional(),
+})
+
+export const MarkFileTypeVerdictStaleSchema: ZodType<MarkFileTypeVerdictStaleInput> = z.object({
+  assetId: z.string().min(1),
+  staleReason: z.string().min(1),
 })
 
 export const AppendReasoningDetailSegmentsSchema: ZodType<AppendReasoningDetailSegmentsInput> = z.object({
