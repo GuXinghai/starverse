@@ -3,6 +3,7 @@ import path from 'node:path'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import type { RegisterInvoke } from './types'
+import { basenameForLog, redactSensitiveString, summarizeErrorForLog } from './logSanitizer'
 
 export type ResolvedAssetFile = Readonly<{
   path: string
@@ -168,10 +169,10 @@ export function registerImageIpc(input: RegisterImageIpcInput): string[] {
       const base64Data = fileBuffer.toString('base64')
       const dataUri = `data:${mimeType};base64,${base64Data}`
 
-      console.log('[dialog] selected image:', filePath, 'size:', (base64Data.length / 1024).toFixed(2), 'KB')
+      console.log('[dialog] selected image:', basenameForLog(filePath), 'size:', (base64Data.length / 1024).toFixed(2), 'KB')
       return dataUri
     } catch (error) {
-      console.error('[dialog] select image failed:', error)
+      console.error('[dialog] select image failed:', summarizeErrorForLog(error))
       return null
     }
   })
@@ -256,17 +257,18 @@ export function registerImageIpc(input: RegisterImageIpcInput): string[] {
         const buffer = Buffer.from(base64Data, 'base64')
         await writeFile(tempFilePath, buffer)
 
-        console.log('[shell] saved base64 image to temp:', tempFilePath)
+        console.log('[shell] saved base64 image to temp:', basenameForLog(tempFilePath))
         const result = await shell.openPath(tempFilePath)
         if (result) {
-          console.error('[shell] open image failed:', result)
-          return { success: false, error: result }
+          const sanitized = redactSensitiveString(result)
+          console.error('[shell] open image failed:', sanitized)
+          return { success: false, error: sanitized }
         }
         return { success: true, path: tempFilePath }
       }
       if (normalizedImageUrl.startsWith('http://') || normalizedImageUrl.startsWith('https://')) {
         await shell.openExternal(normalizedImageUrl)
-        console.log('[shell] opened remote image:', normalizedImageUrl)
+        console.log('[shell] opened remote image:', { urlKind: 'remote' })
         return { success: true, url: normalizedImageUrl }
       }
       if (normalizedImageUrl.startsWith('asset://')) {
@@ -276,25 +278,27 @@ export function registerImageIpc(input: RegisterImageIpcInput): string[] {
         }
         const result = await shell.openPath(resolved.path)
         if (result) {
-          console.error('[shell] open asset image failed:', result)
-          return { success: false, error: result }
+          const sanitized = redactSensitiveString(result)
+          console.error('[shell] open asset image failed:', sanitized)
+          return { success: false, error: sanitized }
         }
-        console.log('[shell] opened asset image:', normalizedImageUrl, '->', resolved.path)
+        console.log('[shell] opened asset image:', { urlKind: 'asset', file: basenameForLog(resolved.path) })
         return { success: true, path: resolved.path }
       }
 
       const result = await shell.openPath(normalizedImageUrl)
       if (result) {
-        console.error('[shell] open image failed:', result)
-        return { success: false, error: result }
+        const sanitized = redactSensitiveString(result)
+        console.error('[shell] open image failed:', sanitized)
+        return { success: false, error: sanitized }
       }
-      console.log('[shell] opened local image:', normalizedImageUrl)
+      console.log('[shell] opened local image:', { urlKind: 'local', file: basenameForLog(normalizedImageUrl) })
       return { success: true, path: normalizedImageUrl }
     } catch (error) {
-      console.error('[shell] open image error:', error)
+      console.error('[shell] open image error:', summarizeErrorForLog(error))
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: redactSensitiveString(error instanceof Error ? error.message : String(error)),
       }
     }
   })
