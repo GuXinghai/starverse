@@ -14,6 +14,12 @@ import type {
   SendPlanModelDescriptor,
   SendPlanProviderContext,
 } from '../../src/shared/files/sendPlanTypes'
+import type {
+  ConfidenceLevel,
+  FileFormatId,
+  FileKind,
+  FileTypeVerdict,
+} from '../../src/next/file-type/types'
 
 export type JsonObject = Record<string, unknown>
 
@@ -413,6 +419,77 @@ export type DerivativeJobRecord = Readonly<{
   updatedAt: number
   startedAt: number | null
   finishedAt: number | null
+}>
+
+export type FileTypeFullHashStatus =
+  | 'computed'
+  | 'not_computed'
+  | 'failed'
+  | 'not_applicable'
+
+export type FileTypeFingerprintJson = Readonly<{
+  algorithmVersion: string
+  size: number
+  modifiedTime: number | null
+  headHash: string | null
+  headBytes: number | null
+  tailHash: string | null
+  tailBytes: number | null
+  fullHash: string | null
+  fullHashStatus: FileTypeFullHashStatus
+}>
+
+export type FileTypeVerdictVersionInfo = Readonly<{
+  schemaVersion: string
+  taxonomyVersion: string
+  taxonomyMapVersion: string
+  magicTableVersion: string
+  mergeRulesVersion: string
+  containerProbeVersion: string
+  textProbeVersion: string
+  magikaModelVersion: string | null
+}>
+
+export type FileTypeVerdictRecord = Readonly<{
+  id: string
+  assetId: string
+  verdict: FileTypeVerdict
+  primaryFormatId: FileFormatId
+  primaryKind: FileKind
+  confidenceLevel: ConfidenceLevel
+  versionInfo: FileTypeVerdictVersionInfo
+  fingerprintJson: FileTypeFingerprintJson
+  isCurrent: boolean
+  staleReason: string | null
+  createdAt: number
+  updatedAt: number
+}>
+
+export type UpsertFileTypeVerdictInput = Readonly<{
+  id?: string
+  assetId: string
+  verdict: FileTypeVerdict
+  primaryFormatId: FileFormatId
+  primaryKind: FileKind
+  confidenceLevel: ConfidenceLevel
+  versionInfo: FileTypeVerdictVersionInfo
+  fingerprintJson: FileTypeFingerprintJson
+  createdAt?: number
+  updatedAt?: number
+}>
+
+export type GetCurrentFileTypeVerdictByAssetIdInput = Readonly<{
+  assetId: string
+}>
+
+export type MarkFileTypeVerdictStaleByAssetIdInput = Readonly<{
+  assetId: string
+  staleReason: string
+  updatedAt?: number
+}>
+
+export type DeleteFileTypeVerdictByAssetIdInput = Readonly<{
+  assetId: string
 }>
 
 export type CreateDerivativeJobInput = Readonly<{

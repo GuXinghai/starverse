@@ -105,6 +105,28 @@ ${FILE_ASSETS_COLUMNS_SQL}
       updated_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS file_type_verdicts (
+      id TEXT PRIMARY KEY,
+      asset_id TEXT NOT NULL REFERENCES file_assets(id) ON DELETE CASCADE,
+      verdict_json TEXT NOT NULL,
+      primary_format_id TEXT NOT NULL,
+      primary_kind TEXT NOT NULL,
+      confidence_level TEXT NOT NULL,
+      schema_version TEXT NOT NULL,
+      taxonomy_version TEXT NOT NULL,
+      taxonomy_map_version TEXT NOT NULL,
+      magic_table_version TEXT NOT NULL,
+      merge_rules_version TEXT NOT NULL,
+      container_probe_version TEXT NOT NULL,
+      text_probe_version TEXT NOT NULL,
+      magika_model_version TEXT,
+      fingerprint_json TEXT NOT NULL,
+      is_current INTEGER NOT NULL DEFAULT 1 CHECK (is_current IN (0, 1)),
+      stale_reason TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_file_assets_sha256 ON file_assets(sha256);
     CREATE INDEX IF NOT EXISTS idx_file_assets_deleted ON file_assets(deleted_at);
     CREATE INDEX IF NOT EXISTS idx_file_derivatives_parent ON file_derivatives(parent_asset_id, created_at);
@@ -115,6 +137,11 @@ ${FILE_ASSETS_COLUMNS_SQL}
     CREATE UNIQUE INDEX IF NOT EXISTS idx_message_attachments_message_asset ON message_attachments(message_id, asset_id);
     CREATE INDEX IF NOT EXISTS idx_draft_attachments_conversation_order ON draft_attachments(conversation_id, attachment_order);
     CREATE INDEX IF NOT EXISTS idx_draft_attachments_asset ON draft_attachments(asset_id);
+    CREATE INDEX IF NOT EXISTS idx_file_type_verdicts_asset_id ON file_type_verdicts(asset_id);
+    CREATE INDEX IF NOT EXISTS idx_file_type_verdicts_is_current ON file_type_verdicts(is_current);
+    CREATE INDEX IF NOT EXISTS idx_file_type_verdicts_primary_format_id ON file_type_verdicts(primary_format_id);
+    CREATE INDEX IF NOT EXISTS idx_file_type_verdicts_confidence_level ON file_type_verdicts(confidence_level);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_file_type_verdicts_asset_current ON file_type_verdicts(asset_id) WHERE is_current = 1;
   `)
 
   ensureFileAssetsCompatibility(db)
@@ -218,5 +245,10 @@ function createFilePipelineIndexes(db: BetterSqlite3.Database): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_message_attachments_message_asset ON message_attachments(message_id, asset_id);
     CREATE INDEX IF NOT EXISTS idx_draft_attachments_conversation_order ON draft_attachments(conversation_id, attachment_order);
     CREATE INDEX IF NOT EXISTS idx_draft_attachments_asset ON draft_attachments(asset_id);
+    CREATE INDEX IF NOT EXISTS idx_file_type_verdicts_asset_id ON file_type_verdicts(asset_id);
+    CREATE INDEX IF NOT EXISTS idx_file_type_verdicts_is_current ON file_type_verdicts(is_current);
+    CREATE INDEX IF NOT EXISTS idx_file_type_verdicts_primary_format_id ON file_type_verdicts(primary_format_id);
+    CREATE INDEX IF NOT EXISTS idx_file_type_verdicts_confidence_level ON file_type_verdicts(confidence_level);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_file_type_verdicts_asset_current ON file_type_verdicts(asset_id) WHERE is_current = 1;
   `)
 }
