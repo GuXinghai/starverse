@@ -227,6 +227,8 @@ export type SendPlanCandidate = Readonly<{
   compatible: boolean
   requiresJob: boolean
   blocked: boolean
+  blockedBy: readonly string[]
+  warnings: readonly string[]
   reasonCodes: readonly string[]
   warningLabelCodes: readonly string[]
   blockedLabelCodes: readonly string[]
