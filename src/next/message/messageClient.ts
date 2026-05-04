@@ -2,8 +2,6 @@ import type { ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import { sanitizeErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import {
   decodeBooleanAck,
-  decodeMessageAssetListResponse,
-  decodeMessageAssetPersistResponse,
   decodeAppendReasoningDetailSegmentsResponse,
   decodeMessageAppendResponse,
   decodeMessageFinalizeReasoningDetailsResponse,
@@ -189,56 +187,13 @@ export async function persistMessageImageAssetsFromDataUrls(input: Readonly<{
   messageId: string
   imageDataUrls: string[]
 }>): Promise<PersistedMessageImageAsset[]> {
-  const bridge = getDbBridge()
-  if (!bridge) return []
-
-  const messageId = String(input.messageId ?? '').trim()
-  if (!messageId) return []
-  const imageDataUrls = Array.isArray(input.imageDataUrls)
-    ? input.imageDataUrls
-      .map((item) => (typeof item === 'string' ? item.trim() : ''))
-      .filter((item) => item.length > 0)
-    : []
-  if (imageDataUrls.length === 0) return []
-
-  try {
-    const raw = await bridge.invoke('messageAsset.persistFromDataUrls', { messageId, imageDataUrls })
-    const normalized =
-      Array.isArray(raw)
-        ? { ok: true, assets: raw }
-        : (raw && typeof raw === 'object'
-          ? { ...(raw as Record<string, unknown>), assets: Array.isArray((raw as any).assets) ? (raw as any).assets : [] }
-          : { ok: true, assets: [] })
-    return decodeMessageAssetPersistResponse(normalized)
-  } catch (err) {
-    if (import.meta.env?.DEV) {
-      console.warn('[messageClient] messageAsset.persistFromDataUrls failed (non-fatal):', err)
-    }
-    return []
-  }
+  void input
+  return []
 }
 
 export async function listMessageImageAssetsByMessageIds(messageIds: ReadonlyArray<string>): Promise<PersistedMessageImageAsset[]> {
-  const bridge = getDbBridge()
-  if (!bridge) return []
-
-  const ids = Array.from(new Set(messageIds.map((item) => String(item ?? '').trim()).filter((item) => item.length > 0)))
-  if (ids.length === 0) return []
-
-  try {
-    const raw = await bridge.invoke('messageAsset.listByMessageIds', { messageIds: ids })
-    const normalized = Array.isArray(raw)
-      ? raw
-      : (raw && typeof raw === 'object' && Array.isArray((raw as any).assets)
-        ? (raw as any).assets
-        : [])
-    return decodeMessageAssetListResponse(normalized)
-  } catch (err) {
-    if (import.meta.env?.DEV) {
-      console.warn('[messageClient] messageAsset.listByMessageIds failed (non-fatal):', err)
-    }
-    return []
-  }
+  void messageIds
+  return []
 }
 
 /** DB 写入统计 */
