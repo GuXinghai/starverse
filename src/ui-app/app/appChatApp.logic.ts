@@ -102,9 +102,15 @@ import { listFileAssetsByIds } from '@/next/files/fileAssetClient'
 import { ingestLocalFile, ingestUrl } from '@/next/files/fileIngestionClient'
 import { listMessageAttachmentsByMessageId } from '@/next/files/messageAttachmentClient'
 import { buildCurrentSendPlan } from '@/next/files/sendPlanClient'
-import type { SendPlan, SendPlanAttachment, SendPlanModelDescriptor, SendPlanProviderContext } from '@/shared/files/sendPlanTypes'
+import type {
+  SendPlan,
+  SendPlanAttachment,
+  SendPlanAttachmentFileTypeSummary,
+  SendPlanModelDescriptor,
+  SendPlanProviderContext,
+} from '@/shared/files/sendPlanTypes'
 import type { DraftAttachmentSendModePreference, DraftAttachmentUrlRetentionPreference, SendMode } from '@/shared/files/fileTypes'
-import type { MessageAttachmentVM, MessageAttachmentDisplayStatus } from '@/ui-kit/chat/types'
+import type { MessageAttachmentDisplayStatus, MessageAttachmentFileTypeInfo, MessageAttachmentVM } from '@/ui-kit/chat/types'
 import type {
   DecodedConversationDraft,
   DecodedDraftAttachment,
@@ -286,6 +292,7 @@ export function useAppChatAppLogic() {
     isParsing: boolean
     warningReason: string | null
     blockingReason: string | null
+    fileTypeInfo: MessageAttachmentFileTypeInfo | null
     previewDataUrl: string | null
     canRemove: boolean
   }>
@@ -3916,6 +3923,31 @@ export function useAppChatAppLogic() {
       if (seq !== historyAttachmentRefreshSeq) return
 
       const assetById = new Map(assets.map((asset) => [asset.id, asset]))
+      let historyPlanByAttachmentId = new Map<string, SendPlanAttachment>()
+      try {
+        const [modelDescriptor, baseUrl] = await Promise.all([
+          buildSendPlanModelDescriptor(model.value),
+          getOpenRouterBaseUrl().catch(() => null),
+        ])
+        if (seq !== historyAttachmentRefreshSeq) return
+        const historySendPlan = await buildCurrentSendPlan({
+          conversationId: convoId,
+          draftText: draft.value,
+          historyScope: { messageIds: visibleUserMessageIds, branchId },
+          model: modelDescriptor,
+          providerContext: buildSendPlanProviderContext(baseUrl),
+        })
+        if (seq !== historyAttachmentRefreshSeq) return
+        historyPlanByAttachmentId = new Map(
+          historySendPlan.sendPlan.attachmentPlans
+            .filter((plan) => plan.source === 'history')
+            .map((plan) => [plan.attachmentId, plan]),
+        )
+      } catch (error) {
+        if (shouldLogDebug()) {
+          console.warn('[ui-app] refreshHistoryAttachmentViewModels history send-plan probe failed (non-fatal):', error)
+        }
+      }
       const next: Record<string, MessageAttachmentVM[]> = {}
 
       for (const result of attachmentResults) {
@@ -3938,6 +3970,7 @@ export function useAppChatAppLogic() {
               return buildHistoryAttachmentFailureViewModel(result.messageId, '附件加载失败。')
             }
             const asset = assetById.get(attachment.assetId) ?? null
+            const historyPlan = historyPlanByAttachmentId.get(attachment.id) ?? null
             const preview = await resolveHistoryAttachmentPreview(attachment, asset, seq)
             if (seq !== historyAttachmentRefreshSeq) {
               return buildHistoryAttachmentFailureViewModel(result.messageId, '附件加载失败。')
@@ -3945,6 +3978,7 @@ export function useAppChatAppLogic() {
             return buildHistoryAttachmentViewModel(
               attachment,
               asset,
+              historyPlan,
               preview?.status === 'ready' ? preview.dataUrl ?? null : null,
             )
           }),
@@ -4049,6 +4083,28 @@ export function useAppChatAppLogic() {
     return 'Attachment is not ready to send.'
   }
 
+  function mapSendPlanFileTypeInfo(
+    fileType: SendPlanAttachmentFileTypeSummary | null | undefined
+  ): MessageAttachmentFileTypeInfo | null {
+    if (!fileType) return null
+    return {
+      formatId: fileType.formatId,
+      kind: fileType.kind,
+      confidenceLevel: fileType.confidenceLevel,
+      recommendedRoute: fileType.recommendedRoute ?? null,
+      recommendedRouteLabelCode: fileType.recommendedRouteLabelCode ?? null,
+      compatibility: fileType.compatibility,
+      blocked: fileType.blocked,
+      requiresJob: fileType.requiresJob,
+      engineUnavailable: fileType.engineUnavailable,
+      hasConflicts: fileType.hasConflicts,
+      hasExtensionMimeConflict: fileType.hasExtensionMimeConflict,
+      warningLabelCodes: [...fileType.warningLabelCodes],
+      blockedLabelCodes: [...fileType.blockedLabelCodes],
+      blockedBy: [...fileType.blockedBy],
+    }
+  }
+
   function buildFallbackDraftAttachmentViewModel(
     attachment: DecodedDraftAttachment,
     asset: DecodedFileAsset | null,
@@ -4069,6 +4125,7 @@ export function useAppChatAppLogic() {
       isParsing: status === 'parsing',
       warningReason: getDraftAttachmentWarningReason(null, status),
       blockingReason: getDraftAttachmentBlockingReason(null, status),
+      fileTypeInfo: null,
       previewDataUrl: null,
       canRemove: true,
     }
@@ -4096,6 +4153,7 @@ export function useAppChatAppLogic() {
       isParsing: status === 'parsing',
       warningReason: getDraftAttachmentWarningReason(plan, status),
       blockingReason: getDraftAttachmentBlockingReason(plan, status),
+      fileTypeInfo: mapSendPlanFileTypeInfo(plan?.fileType),
       previewDataUrl: previewDataUrl,
       canRemove: true,
     }
@@ -4196,6 +4254,7 @@ export function useAppChatAppLogic() {
       isActiveLocatedAttachment: false,
       previewDataUrl: null,
       iconKind: 'file',
+      fileTypeInfo: null,
       createdAt: Date.now(),
     }
   }
@@ -4203,6 +4262,7 @@ export function useAppChatAppLogic() {
   function buildHistoryAttachmentViewModel(
     attachment: DecodedMessageAttachment,
     asset: DecodedFileAsset | null,
+    plan: SendPlanAttachment | null,
     previewDataUrl: string | null,
   ): MessageAttachmentVM {
     const filename = asset?.filename?.trim().length ? asset.filename : attachment.assetId
@@ -4225,6 +4285,7 @@ export function useAppChatAppLogic() {
       isActiveLocatedAttachment: false,
       previewDataUrl,
       iconKind: resolveHistoryAttachmentIconKind(asset, attachment),
+      fileTypeInfo: mapSendPlanFileTypeInfo(plan?.fileType),
       createdAt: asset?.createdAt ?? attachment.createdAt,
     }
   }

@@ -62,6 +62,7 @@ export type CollectedAttachmentInput = Readonly<{
   excludedReason: string | null
   preferredSendMode: DraftAttachmentSendModePreference | null
   fileAsset: FileAssetRecord | null
+  fileTypeVerdict?: FileTypeVerdict | null
   semantic?: AttachmentSemanticSummary | null
   routeCandidates?: readonly SendPlanCandidate[] | null
 }>
@@ -162,6 +163,7 @@ export class SendPlanService {
           excludedReason: attachment.excludedReason,
           preferredSendMode: attachment.preferredSendMode ?? null,
           fileAsset,
+          fileTypeVerdict: verdictByAssetId.get(attachment.assetId) ?? null,
           routeCandidates,
           semantic: buildDefaultSemanticSummary(attachment, fileAsset, routeCandidates),
         }
@@ -533,6 +535,7 @@ function mapHistoryAttachment(
     excludedReason: item.excludedReason,
     preferredSendMode: null,
     fileAsset,
+    fileTypeVerdict: verdict,
     routeCandidates,
   } satisfies Omit<CollectedAttachmentInput, 'semantic'>
   return {
@@ -1198,6 +1201,7 @@ function includedPlan(
     needsUserAttention: notes.length > 0,
     notes,
     lineage,
+    fileType: buildAttachmentFileTypeSummary(attachment),
   }
 }
 
@@ -1224,6 +1228,7 @@ function excludedPlan(
     needsUserAttention,
     notes,
     lineage,
+    fileType: buildAttachmentFileTypeSummary(attachment),
   }
 }
 
@@ -1249,6 +1254,42 @@ function blockedPlan(
     needsUserAttention: true,
     notes,
     lineage,
+    fileType: buildAttachmentFileTypeSummary(attachment),
+  }
+}
+
+function buildAttachmentFileTypeSummary(
+  attachment: CollectedAttachmentInput
+): SendPlanAttachment['fileType'] {
+  const verdict = attachment.fileTypeVerdict
+  if (!verdict?.primary) return null
+  const preferredCandidate = preferredRouteCandidate(attachment.routeCandidates ?? [])
+  const blockedBy = preferredCandidate?.blockedBy ? [...preferredCandidate.blockedBy] : []
+  const engineUnavailable = blockedBy.some((reason) => reason.startsWith('engine_'))
+  const hasExtensionMimeConflict = verdict.conflicts.some((conflict) =>
+    conflict.reasonCodes.some((code) => code === 'reason.extension_mismatch' || code === 'reason.browser_mime_mismatch' || code === 'reason.os_mime_mismatch')
+  )
+  const compatibility: 'compatible' | 'warning' | 'blocked' | 'unknown' =
+    !preferredCandidate ? 'unknown'
+      : preferredCandidate.blocked ? 'blocked'
+        : preferredCandidate.warnings.length > 0 ? 'warning'
+          : preferredCandidate.compatible ? 'compatible'
+            : 'unknown'
+  return {
+    formatId: verdict.primary.formatId,
+    kind: verdict.primary.kind,
+    confidenceLevel: verdict.primary.confidence,
+    recommendedRoute: preferredCandidate?.route ?? null,
+    recommendedRouteLabelCode: preferredCandidate?.routeLabelCode ?? null,
+    compatibility,
+    blocked: preferredCandidate?.blocked ?? false,
+    requiresJob: preferredCandidate?.requiresJob ?? false,
+    engineUnavailable,
+    hasConflicts: verdict.conflicts.length > 0,
+    hasExtensionMimeConflict,
+    warningLabelCodes: preferredCandidate ? [...preferredCandidate.warningLabelCodes] : [],
+    blockedLabelCodes: preferredCandidate ? [...preferredCandidate.blockedLabelCodes] : [],
+    blockedBy,
   }
 }
 
