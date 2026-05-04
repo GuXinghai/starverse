@@ -46,6 +46,13 @@ describe('textProbe', () => {
     expect(result.evidence?.detectedFormatId).toBe('svg')
   })
 
+  it('detects HTML with doctype marker', () => {
+    const bytes = new TextEncoder().encode('<!doctype html><html><body>ok</body></html>')
+    const result = probeText(bytes)
+    expect(result.evidence?.detectedFormatId).toBe('html')
+    expect(result.evidence?.confidence).toBe('high')
+  })
+
   it('flags large line text', () => {
     const bytes = new TextEncoder().encode('a'.repeat(9000))
     const result = probeText(bytes)

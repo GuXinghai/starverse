@@ -202,6 +202,9 @@ export type FileTypeStaticPolicyResult = Readonly<{
   warning: boolean
   blockingReasonCodes: readonly string[]
   warningReasonCodes: readonly string[]
+  blocksDirectSend: boolean
+  blocksConversion: boolean
+  needsParserValidation: boolean
   defaultPreviewMode: PreviewMode
   defaultSendRoutes: readonly SendRoute[]
 }>

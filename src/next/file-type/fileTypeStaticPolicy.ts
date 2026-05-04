@@ -1,5 +1,5 @@
 import { FILE_FORMAT_DESCRIPTORS } from './taxonomy'
-import type { FileTypeConflict, FileTypeFlag, FileTypePrimary, FileTypeStaticPolicyResult, SendRoute } from './types'
+import type { FileTypeConflict, FileTypeFlag, FileTypePrimary, FileTypeStaticPolicyResult } from './types'
 
 export type FileTypeStaticPolicyInput = Readonly<{
   primary: FileTypePrimary
@@ -26,14 +26,38 @@ export function evaluateFileTypeStaticPolicy(input: FileTypeStaticPolicyInput): 
 
   const blocked = blockingReasonCodes.size > 0
   const warning = !blocked && warningReasonCodes.size > 0
+  const defaultSendRoutes = pickDefaultRoutes(descriptor?.primaryKind ?? input.primary.kind, blocked)
+  const effectiveKind = descriptor?.primaryKind ?? input.primary.kind
+  const blocksDirectSend =
+    blocked ||
+    effectiveKind === 'archive' ||
+    effectiveKind === 'container' ||
+    effectiveKind === 'binary' ||
+    effectiveKind === 'unknown' ||
+    effectiveKind === 'executable'
+  const blocksConversion =
+    blocked ||
+    effectiveKind === 'archive' ||
+    effectiveKind === 'container' ||
+    effectiveKind === 'binary' ||
+    effectiveKind === 'unknown' ||
+    effectiveKind === 'executable'
+  const needsParserValidation =
+    Boolean(descriptor?.parserRecommended) ||
+    input.conflicts.length > 0 ||
+    warningReasonCodes.has('reason.macro_capable_document') ||
+    warningReasonCodes.has('reason.scriptable_format')
 
   return {
     blocked,
     warning,
     blockingReasonCodes: Array.from(blockingReasonCodes),
     warningReasonCodes: Array.from(warningReasonCodes),
+    blocksDirectSend,
+    blocksConversion,
+    needsParserValidation,
     defaultPreviewMode: pickPreviewMode(descriptor?.primaryKind ?? input.primary.kind),
-    defaultSendRoutes: pickDefaultRoutes(descriptor?.primaryKind ?? input.primary.kind, blocked),
+    defaultSendRoutes,
   }
 }
 
