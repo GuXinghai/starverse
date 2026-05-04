@@ -76,6 +76,23 @@ export type AttachmentLineageSummary = Readonly<{
   conversionSettingsHash: string | null
 }>
 
+export type SendPlanAttachmentFileTypeSummary = Readonly<{
+  formatId: string
+  kind: string
+  confidenceLevel: string
+  recommendedRoute: string | null
+  recommendedRouteLabelCode: string | null
+  compatibility: 'compatible' | 'warning' | 'blocked' | 'unknown'
+  blocked: boolean
+  requiresJob: boolean
+  engineUnavailable: boolean
+  hasConflicts: boolean
+  hasExtensionMimeConflict: boolean
+  warningLabelCodes: string[]
+  blockedLabelCodes: string[]
+  blockedBy: string[]
+}>
+
 export type SendPlanAttachment = Readonly<{
   assetId: string
   attachmentId: string
@@ -91,6 +108,7 @@ export type SendPlanAttachment = Readonly<{
   needsUserAttention: boolean
   notes: string[]
   lineage: AttachmentLineageSummary
+  fileType?: SendPlanAttachmentFileTypeSummary | null
 }>
 
 export type SendPlan = Readonly<{

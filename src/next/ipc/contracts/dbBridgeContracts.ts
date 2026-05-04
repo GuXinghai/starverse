@@ -628,6 +628,22 @@ const sendPlanAttachmentSchema = z.object({
     sendContentHash: z.string().nullable().optional(),
     conversionSettingsHash: z.string().nullable().optional(),
   }).optional(),
+  fileType: z.object({
+    formatId: nonEmpty,
+    kind: nonEmpty,
+    confidenceLevel: nonEmpty,
+    recommendedRoute: z.string().trim().nullable().optional(),
+    recommendedRouteLabelCode: z.string().trim().nullable().optional(),
+    compatibility: z.enum(['compatible', 'warning', 'blocked', 'unknown']),
+    blocked: z.boolean(),
+    requiresJob: z.boolean(),
+    engineUnavailable: z.boolean(),
+    hasConflicts: z.boolean(),
+    hasExtensionMimeConflict: z.boolean(),
+    warningLabelCodes: z.array(z.string()),
+    blockedLabelCodes: z.array(z.string()),
+    blockedBy: z.array(z.string()),
+  }).nullable().optional(),
 }).transform((row) => ({
   ...row,
   messageId: row.messageId ?? null,
@@ -653,6 +669,24 @@ const sendPlanAttachmentSchema = z.object({
         sendContentHash: null,
         conversionSettingsHash: null,
       },
+  fileType: row.fileType
+    ? {
+        formatId: row.fileType.formatId,
+        kind: row.fileType.kind,
+        confidenceLevel: row.fileType.confidenceLevel,
+        recommendedRoute: row.fileType.recommendedRoute ?? null,
+        recommendedRouteLabelCode: row.fileType.recommendedRouteLabelCode ?? null,
+        compatibility: row.fileType.compatibility,
+        blocked: row.fileType.blocked,
+        requiresJob: row.fileType.requiresJob,
+        engineUnavailable: row.fileType.engineUnavailable,
+        hasConflicts: row.fileType.hasConflicts,
+        hasExtensionMimeConflict: row.fileType.hasExtensionMimeConflict,
+        warningLabelCodes: [...row.fileType.warningLabelCodes],
+        blockedLabelCodes: [...row.fileType.blockedLabelCodes],
+        blockedBy: [...row.fileType.blockedBy],
+      }
+    : null,
 }))
 
 const sendPlanSchema = z.object({

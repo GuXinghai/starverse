@@ -121,6 +121,23 @@ export type MessageAttachmentIconKind =
   | 'video'
   | 'file'
 
+export type MessageAttachmentFileTypeInfo = Readonly<{
+  formatId: string
+  kind: string
+  confidenceLevel: string
+  recommendedRoute: string | null
+  recommendedRouteLabelCode: string | null
+  compatibility: 'compatible' | 'warning' | 'blocked' | 'unknown'
+  blocked: boolean
+  requiresJob: boolean
+  engineUnavailable: boolean
+  hasConflicts: boolean
+  hasExtensionMimeConflict: boolean
+  warningLabelCodes: string[]
+  blockedLabelCodes: string[]
+  blockedBy: string[]
+}>
+
 export type MessageAttachmentVM = Readonly<{
   messageId: string
   attachmentId: string
@@ -138,6 +155,7 @@ export type MessageAttachmentVM = Readonly<{
   isActiveLocatedAttachment: boolean
   previewDataUrl: string | null
   iconKind: MessageAttachmentIconKind
+  fileTypeInfo?: MessageAttachmentFileTypeInfo | null
   createdAt: number
 }>
 

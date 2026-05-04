@@ -56,6 +56,23 @@ const subtitle = computed(() => {
   if (parts.length === 0) parts.push(props.attachment.assetKind)
   return parts.join(' · ')
 })
+
+function normalizeLabelCode(value: string | null): string | null {
+  const normalized = String(value ?? '').trim()
+  if (!normalized) return null
+  const lastDot = normalized.lastIndexOf('.')
+  return lastDot >= 0 ? normalized.slice(lastDot + 1) : normalized
+}
+
+const fileTypeHint = computed(() => props.attachment.fileTypeInfo ?? null)
+const recommendedRouteLabel = computed(() => normalizeLabelCode(fileTypeHint.value?.recommendedRouteLabelCode ?? null))
+const compatibilityLabel = computed(() => {
+  const compatibility = fileTypeHint.value?.compatibility ?? 'unknown'
+  if (compatibility === 'blocked') return 'blocked'
+  if (compatibility === 'warning') return 'warning'
+  if (compatibility === 'compatible') return 'compatible'
+  return 'unknown'
+})
 </script>
 
 <template>
@@ -107,6 +124,19 @@ const subtitle = computed(() => {
 
         <div v-if="props.attachment.incompatibilityReason" class="mt-1 text-[11px] text-red-700">
           {{ props.attachment.incompatibilityReason }}
+        </div>
+        <div v-if="fileTypeHint" class="mt-1.5 space-y-0.5 text-[11px] text-gray-600">
+          <div>
+            type: {{ fileTypeHint.formatId }} · {{ fileTypeHint.confidenceLevel }}
+          </div>
+          <div>
+            route: {{ recommendedRouteLabel ?? 'n/a' }} · {{ compatibilityLabel }}
+            <span v-if="fileTypeHint.requiresJob"> · needs-job</span>
+            <span v-if="fileTypeHint.engineUnavailable"> · engine-unavailable</span>
+          </div>
+          <div v-if="fileTypeHint.hasConflicts || fileTypeHint.hasExtensionMimeConflict" class="text-amber-700">
+            type conflict detected
+          </div>
         </div>
       </div>
     </div>

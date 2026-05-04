@@ -14,6 +14,22 @@ type DraftAttachmentCardViewModel = Readonly<{
   isParsing: boolean
   warningReason: string | null
   blockingReason: string | null
+  fileTypeInfo: Readonly<{
+    formatId: string
+    kind: string
+    confidenceLevel: string
+    recommendedRoute: string | null
+    recommendedRouteLabelCode: string | null
+    compatibility: 'compatible' | 'warning' | 'blocked' | 'unknown'
+    blocked: boolean
+    requiresJob: boolean
+    engineUnavailable: boolean
+    hasConflicts: boolean
+    hasExtensionMimeConflict: boolean
+    warningLabelCodes: string[]
+    blockedLabelCodes: string[]
+    blockedBy: string[]
+  }> | null
   previewDataUrl: string | null
   canRemove: boolean
 }>
