@@ -1,0 +1,293 @@
+{
+  "version": "stage-i-v1",
+  "fixtures": {
+    "plain_text": {
+      "primary": { "formatId": "plain_text", "kind": "text" },
+      "confidenceLevel": "medium",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": false },
+      "preview": { "defaultPreviewMode": "inline_text" },
+      "candidate": { "route": "direct_text", "routeLabelCode": "send.route.direct_text", "blocked": false, "requiresJob": false }
+    },
+    "utf8_text": {
+      "primary": { "formatId": "plain_text", "kind": "text" },
+      "confidenceLevel": "medium",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": false },
+      "preview": { "defaultPreviewMode": "inline_text" },
+      "candidate": { "route": "direct_text", "routeLabelCode": "send.route.direct_text", "blocked": false, "requiresJob": false }
+    },
+    "utf16le_text": {
+      "primary": { "formatId": "plain_text", "kind": "text" },
+      "confidenceLevel": "medium",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": false },
+      "preview": { "defaultPreviewMode": "inline_text" },
+      "candidate": { "route": "direct_text", "routeLabelCode": "send.route.direct_text", "blocked": false, "requiresJob": false }
+    },
+    "utf16be_text": {
+      "primary": { "formatId": "plain_text", "kind": "text" },
+      "confidenceLevel": "medium",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": false },
+      "preview": { "defaultPreviewMode": "inline_text" },
+      "candidate": { "route": "direct_text", "routeLabelCode": "send.route.direct_text", "blocked": false, "requiresJob": false }
+    },
+    "json": {
+      "primary": { "formatId": "json", "kind": "text" },
+      "confidenceLevel": "high",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "inline_text" },
+      "candidate": { "route": "direct_text", "routeLabelCode": "send.route.direct_text", "blocked": false, "requiresJob": false }
+    },
+    "jsonl": {
+      "primary": { "formatId": "json", "kind": "text" },
+      "confidenceLevel": "high",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "inline_text" },
+      "candidate": { "route": "direct_text", "routeLabelCode": "send.route.direct_text", "blocked": false, "requiresJob": false }
+    },
+    "csv": {
+      "primary": { "formatId": "csv", "kind": "spreadsheet" },
+      "confidenceLevel": "high",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "inline_table" },
+      "candidate": { "route": "converted_csv", "routeLabelCode": "send.route.converted_csv", "blocked": false, "requiresJob": true }
+    },
+    "tsv": {
+      "primary": { "formatId": "tsv", "kind": "spreadsheet" },
+      "confidenceLevel": "high",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "inline_table" },
+      "candidate": { "route": "converted_tsv", "routeLabelCode": "send.route.converted_tsv", "blocked": false, "requiresJob": true }
+    },
+    "markdown": {
+      "primary": { "formatId": "markdown", "kind": "text" },
+      "confidenceLevel": "high",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": false },
+      "preview": { "defaultPreviewMode": "inline_text" },
+      "candidate": { "route": "direct_text", "routeLabelCode": "send.route.direct_text", "blocked": false, "requiresJob": false }
+    },
+    "html_with_script": {
+      "primary": { "formatId": "html", "kind": "document" },
+      "confidenceLevel": "high",
+      "minConflictCount": 0,
+      "requiredFlagReasons": ["reason.scriptable_format"],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "inline_text" },
+      "candidate": { "route": "ask_user", "routeLabelCode": "send.route.ask_user", "blocked": false, "requiresJob": false }
+    },
+    "svg_with_script": {
+      "primary": { "formatId": "svg", "kind": "image" },
+      "confidenceLevel": "high",
+      "minConflictCount": 0,
+      "requiredFlagReasons": ["reason.scriptable_format"],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "inline_image" },
+      "candidate": { "route": "direct_image", "routeLabelCode": "send.route.direct_image", "blocked": false, "requiresJob": false }
+    },
+    "xml_external_entity_marker": {
+      "primary": { "formatId": "xml", "kind": "text" },
+      "confidenceLevel": "high",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "inline_text" },
+      "candidate": { "route": "direct_text", "routeLabelCode": "send.route.direct_text", "blocked": false, "requiresJob": false }
+    },
+    "pdf": {
+      "primary": { "formatId": "pdf", "kind": "document" },
+      "confidenceLevel": "high",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "inline_text" },
+      "candidate": { "route": "converted_markdown", "routeLabelCode": "send.route.converted_markdown", "blocked": false, "requiresJob": true }
+    },
+    "png": {
+      "primary": { "formatId": "png", "kind": "image" },
+      "confidenceLevel": "high",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": false },
+      "preview": { "defaultPreviewMode": "inline_image" },
+      "candidate": { "route": "direct_image", "routeLabelCode": "send.route.direct_image", "blocked": false, "requiresJob": false }
+    },
+    "jpeg": {
+      "primary": { "formatId": "jpeg", "kind": "image" },
+      "confidenceLevel": "high",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": false },
+      "preview": { "defaultPreviewMode": "inline_image" },
+      "candidate": { "route": "direct_image", "routeLabelCode": "send.route.direct_image", "blocked": false, "requiresJob": false }
+    },
+    "wav": {
+      "primary": { "formatId": "wav", "kind": "audio" },
+      "confidenceLevel": "high",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "audio_waveform" },
+      "candidate": { "route": "direct_audio", "routeLabelCode": "send.route.direct_audio", "blocked": false, "requiresJob": false }
+    },
+    "sqlite": {
+      "primary": { "formatId": "sqlite_db", "kind": "database" },
+      "confidenceLevel": "high",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "download_only" },
+      "candidate": { "route": "ask_user", "routeLabelCode": "send.route.ask_user", "blocked": false, "requiresJob": false }
+    },
+    "wasm": {
+      "primary": { "formatId": "unknown_binary", "kind": "binary" },
+      "confidenceLevel": "high",
+      "minConflictCount": 1,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": true, "blocksConversion": true, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "download_only" },
+      "candidate": { "route": "blocked", "routeLabelCode": "send.route.blocked", "blocked": true, "requiresJob": false }
+    },
+    "zip": {
+      "primary": { "formatId": "zip", "kind": "archive" },
+      "confidenceLevel": "medium",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": true, "blocksConversion": true, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "download_only" },
+      "candidate": { "route": "ask_user", "routeLabelCode": "send.route.ask_user", "blocked": false, "requiresJob": false }
+    },
+    "fake_docx_missing_content_types": {
+      "primary": { "formatId": "zip", "kind": "archive" },
+      "confidenceLevel": "medium",
+      "minConflictCount": 2,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": true, "blocksConversion": true, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "download_only" },
+      "candidate": { "route": "ask_user", "routeLabelCode": "send.route.ask_user", "blocked": false, "requiresJob": false }
+    },
+    "docx_minimal": {
+      "primary": { "formatId": "docx", "kind": "document" },
+      "confidenceLevel": "high",
+      "minConflictCount": 1,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "inline_text" },
+      "candidate": { "route": "converted_markdown", "routeLabelCode": "send.route.converted_markdown", "blocked": false, "requiresJob": true }
+    },
+    "docm_macro_marker": {
+      "primary": { "formatId": "docm", "kind": "document" },
+      "confidenceLevel": "high",
+      "minConflictCount": 1,
+      "requiredFlagReasons": ["reason.macro_capable_document"],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "inline_text" },
+      "candidate": { "route": "converted_markdown", "routeLabelCode": "send.route.converted_markdown", "blocked": false, "requiresJob": true }
+    },
+    "xlsx_minimal": {
+      "primary": { "formatId": "xlsx", "kind": "spreadsheet" },
+      "confidenceLevel": "high",
+      "minConflictCount": 1,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "inline_table" },
+      "candidate": { "route": "converted_csv", "routeLabelCode": "send.route.converted_csv", "blocked": false, "requiresJob": true }
+    },
+    "pptx_minimal": {
+      "primary": { "formatId": "pptx", "kind": "presentation" },
+      "confidenceLevel": "high",
+      "minConflictCount": 1,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "download_only" },
+      "candidate": { "route": "converted_markdown", "routeLabelCode": "send.route.converted_markdown", "blocked": false, "requiresJob": true }
+    },
+    "epub_minimal": {
+      "primary": { "formatId": "epub", "kind": "document" },
+      "confidenceLevel": "high",
+      "minConflictCount": 1,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "inline_text" },
+      "candidate": { "route": "converted_markdown", "routeLabelCode": "send.route.converted_markdown", "blocked": false, "requiresJob": true }
+    },
+    "apk_minimal": {
+      "primary": { "formatId": "apk", "kind": "executable" },
+      "confidenceLevel": "high",
+      "minConflictCount": 1,
+      "requiredFlagReasons": ["reason.executable_content"],
+      "staticPolicy": { "blocked": true, "blocksDirectSend": true, "blocksConversion": true, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "download_only" },
+      "candidate": { "route": "blocked", "routeLabelCode": "send.route.blocked", "blocked": true, "requiresJob": false }
+    },
+    "zip_slip_archive": {
+      "primary": { "formatId": "zip", "kind": "archive" },
+      "confidenceLevel": "medium",
+      "minConflictCount": 0,
+      "requiredFlagReasons": ["reason.polyglot_suspected"],
+      "staticPolicy": { "blocked": true, "blocksDirectSend": true, "blocksConversion": true, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "download_only" },
+      "candidate": { "route": "blocked", "routeLabelCode": "send.route.blocked", "blocked": true, "requiresJob": false }
+    },
+    "duplicate_entry_zip": {
+      "primary": { "formatId": "zip", "kind": "archive" },
+      "confidenceLevel": "medium",
+      "minConflictCount": 0,
+      "requiredFlagReasons": ["reason.container_probe_failed"],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": true, "blocksConversion": true, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "download_only" },
+      "candidate": { "route": "ask_user", "routeLabelCode": "send.route.ask_user", "blocked": false, "requiresJob": false }
+    },
+    "exe_renamed_as_pdf": {
+      "primary": { "formatId": "windows_exe", "kind": "executable" },
+      "confidenceLevel": "high",
+      "minConflictCount": 2,
+      "requiredFlagReasons": ["reason.executable_content"],
+      "staticPolicy": { "blocked": true, "blocksDirectSend": true, "blocksConversion": true, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "download_only" },
+      "candidate": { "route": "blocked", "routeLabelCode": "send.route.blocked", "blocked": true, "requiresJob": false }
+    },
+    "pdf_renamed_as_txt": {
+      "primary": { "formatId": "pdf", "kind": "document" },
+      "confidenceLevel": "high",
+      "minConflictCount": 2,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": false, "blocksConversion": false, "needsParserValidation": true },
+      "preview": { "defaultPreviewMode": "inline_text" },
+      "candidate": { "route": "converted_markdown", "routeLabelCode": "send.route.converted_markdown", "blocked": false, "requiresJob": true }
+    },
+    "unknown_binary": {
+      "primary": { "formatId": "octet_stream", "kind": "binary" },
+      "confidenceLevel": "medium",
+      "minConflictCount": 0,
+      "requiredFlagReasons": [],
+      "staticPolicy": { "blocked": false, "blocksDirectSend": true, "blocksConversion": true, "needsParserValidation": false },
+      "preview": { "defaultPreviewMode": "download_only" },
+      "candidate": { "route": "blocked", "routeLabelCode": "send.route.blocked", "blocked": true, "requiresJob": false }
+    }
+  },
+  "deferred": [
+    { "id": "gbk_chinese_text", "reason": "Stage I kept UTF-8/UTF-16 deterministic fixtures; GBK probe deferred for future charset extension." },
+    { "id": "mp4_minimal", "reason": "Current matrix covers audio/video route behavior via WAV; MP4 sample can be added in Stage I+ without changing routing logic." },
+    { "id": "polyglot_pdf_zip_minimal", "reason": "Current Stage D detector does not parse embedded polyglot tails; dedicated adversarial builder deferred." },
+    { "id": "image_with_executable_tail", "reason": "Needs dedicated tail-scan heuristic not in Stage D minimal scope; deferred to later security hardening." },
+    { "id": "zip64_huge_declared_size", "reason": "Zip64 huge declaration fixture deferred due synthetic archive edge-case builder cost." },
+    { "id": "xlsm_macro_marker", "reason": "docm macro marker already covers macro-capable route/policy in Stage I minimal matrix." },
+    { "id": "pptm_macro_marker", "reason": "docm macro marker already covers macro-capable route/policy in Stage I minimal matrix." }
+  ]
+}

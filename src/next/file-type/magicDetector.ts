@@ -118,6 +118,7 @@ function looksLikeMachO(bytes: Uint8Array): boolean {
 }
 
 function looksLikeMp3(bytes: Uint8Array): boolean {
+  if (startsWith(bytes, [0xff, 0xfe]) || startsWith(bytes, [0xfe, 0xff])) return false
   if (startsWithAscii(bytes, 'ID3')) return true
   if (bytes.length < 2) return false
   return bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0

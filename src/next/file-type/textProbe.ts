@@ -85,9 +85,9 @@ function detectStructuredFormat(text: string): FileFormatId | null {
 
   if (looksLikeJson(trimmed)) return 'json'
   if (looksLikeJsonLines(trimmed)) return 'json'
+  if (looksLikeHtml(trimmed)) return 'html'
+  if (looksLikeSvg(trimmed)) return 'svg'
   if (looksLikeXml(trimmed)) {
-    if (looksLikeSvg(trimmed)) return 'svg'
-    if (looksLikeHtml(trimmed)) return 'html'
     return 'xml'
   }
   if (looksLikeMarkdown(trimmed)) return 'markdown'

@@ -30,4 +30,10 @@ describe('magicDetector', () => {
     expect(result.evidence).toBeNull()
     expect(result.magicId).toBeNull()
   })
+
+  it('does not treat UTF-16 BOM as mp3 frame sync', () => {
+    const result = detectMagic(Uint8Array.from([0xff, 0xfe, 0x68, 0x00, 0x69, 0x00]))
+    expect(result.magicId).toBeNull()
+    expect(result.evidence).toBeNull()
+  })
 })
