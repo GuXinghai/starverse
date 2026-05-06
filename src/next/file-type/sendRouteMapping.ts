@@ -6,6 +6,7 @@ import {
   WARNING_LABEL_CODES,
 } from './labelCodes'
 import { evaluateFileTypeStaticPolicy } from './fileTypeStaticPolicy'
+import type { EngineAvailability, EngineRouteAvailability } from './externalEngineTypes'
 import type {
   FileTypeVerdict,
   FileUserOverride,
@@ -14,15 +15,7 @@ import type {
   SendRoute,
 } from './types'
 
-export type SendRouteMappingEngineAvailability = Readonly<{
-  documentConversion: boolean
-  spreadsheetConversion: boolean
-  presentationConversion: boolean
-  renderedImages: boolean
-  textExtraction: boolean
-  audioExtraction: boolean
-  frameSelection: boolean
-}>
+export type SendRouteMappingEngineAvailability = EngineRouteAvailability
 
 export type SendRouteMappingUserPrefs = Readonly<{
   preferDirectFile: boolean
@@ -34,7 +27,7 @@ export type BuildSendPlanCandidatesInput = Readonly<{
   verdict: FileTypeVerdict
   modelCapabilities: ModelInputCapabilities
   userPrefs?: Partial<SendRouteMappingUserPrefs> | null
-  engineAvailability?: Partial<SendRouteMappingEngineAvailability> | null
+  engineAvailability?: Partial<SendRouteMappingEngineAvailability> | EngineAvailability | null
   override?: FileUserOverride | null
 }>
 
@@ -68,7 +61,7 @@ const ARCHIVE_FORMATS = new Set(['zip', 'rar', 'seven_zip', 'tar', 'gzip', 'gene
 
 export function buildSendPlanCandidates(input: BuildSendPlanCandidatesInput): SendPlanCandidate[] {
   const prefs = { ...DEFAULT_PREFS, ...(input.userPrefs ?? {}) }
-  const engines = { ...DEFAULT_ENGINES, ...(input.engineAvailability ?? {}) }
+  const engines = resolveEngineAvailability(input.engineAvailability)
   const policy = evaluateFileTypeStaticPolicy({
     primary: input.verdict.primary,
     conflicts: input.verdict.conflicts,
@@ -129,6 +122,27 @@ export function buildSendPlanCandidates(input: BuildSendPlanCandidatesInput): Se
   }
 
   return dedupeCandidates(routes.map((route) => candidateFromRoute(route, input, policy, capabilities, engines, [], [])))
+}
+
+function resolveEngineAvailability(
+  value: BuildSendPlanCandidatesInput['engineAvailability']
+): SendRouteMappingEngineAvailability {
+  if (!value) return DEFAULT_ENGINES
+  if (isEngineAvailabilityEnvelope(value)) {
+    return {
+      ...DEFAULT_ENGINES,
+      ...value.routeAvailability,
+    }
+  }
+  return {
+    ...DEFAULT_ENGINES,
+    ...value,
+  }
+}
+
+function isEngineAvailabilityEnvelope(value: unknown): value is EngineAvailability {
+  if (!value || typeof value !== 'object') return false
+  return 'routeAvailability' in value
 }
 
 function candidateFromRoute(
