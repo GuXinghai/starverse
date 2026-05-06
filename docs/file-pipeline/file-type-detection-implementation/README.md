@@ -46,6 +46,8 @@ Next phase: 完成稳定化回归、缺口登记与 Phase 3 进入门槛评估
 - 新增成果文档：`04-step1-repo-survey-binding-map.md`、`05-owner-decisions-before-step2.md`、`06-agent-implementation-appendix.md`、`07-stage-implementation-plan.md`、`08-acceptance-command-matrix.md`、`09-risk-and-decision-register.md`
 - Phase 1 MVP closeout report added：`10-phase1-mvp-closeout-report.md`
 - Phase 2 stabilization gap review added：`11-phase2-stabilization-gap-review.md`
+- Manual smoke test deferred by Owner decision（本轮仅文档口径修正、自动化基线复核、Group D 清理与缺口复核）
+- 当 UI 正式接入文件类型识别或外部 runtime 执行层改变用户可见行为时，必须补完整手工烟测
 - remaining follow-ups listed（legacy message_asset 最终退场、provider_file_ref 延后、真实外部引擎执行与扩展 fixture）
 - 本目录为文件类型检测工程实现专属目录
 - 下一步：执行 Phase 2 stabilization / gap review，并评估是否满足进入 Phase 3 门槛
