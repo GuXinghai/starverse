@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildSendPlanCandidates } from './sendRouteMapping'
+import { createExternalEngineRegistry } from './externalEngineRegistry'
 import type {
   FileTypeVerdict,
   ModelInputCapabilities,
@@ -107,6 +108,24 @@ describe('sendRouteMapping', () => {
     expect(converted?.blocked).toBe(true)
     expect(converted?.blockedBy).toContain('engine_document_conversion_unavailable')
     expect(inputVerdict.primary.formatId).toBe('docx')
+  })
+
+  it('accepts registry engineAvailability envelope and uses routeAvailability for gating', () => {
+    const registry = createExternalEngineRegistry(() => 1000)
+    registry.registerBuiltInEngineDefinitions()
+    registry.markEngineHealthy({ engineId: 'tika' })
+    registry.disableEngine('tika')
+    const availability = registry.getEngineAvailability()
+
+    const candidates = buildSendPlanCandidates({
+      verdict: verdict('docx'),
+      modelCapabilities: fullCapabilities,
+      engineAvailability: availability,
+    })
+
+    const converted = candidates.find((item) => item.route === 'converted_markdown')
+    expect(converted?.blocked).toBe(true)
+    expect(converted?.blockedBy).toContain('engine_document_conversion_unavailable')
   })
 
   it('changes candidates with model capability changes while detection input remains stable', () => {
