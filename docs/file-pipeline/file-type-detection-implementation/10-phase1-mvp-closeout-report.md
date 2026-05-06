@@ -1,4 +1,4 @@
-# Starverse File Type Detection Final Closeout Report
+# Starverse File Type Detection Phase 1 MVP Closeout Report
 
 ## 1. 阶段完成状态表（A~K）
 
@@ -17,7 +17,7 @@
 | Stage J | completed / partial retirement accepted | `64f9cf2` | 旧 `message_asset` 写路径与批量读取主链路退场；保留 `asset://` 只读兼容 |
 | Stage K | completed | `3514d7d` | external engine registry/manifest/health scaffolding + engine availability 集成 |
 
-## 2. 当前功能闭环摘要
+## 2. Phase 1 MVP 主闭环摘要
 
 1. `taxonomy`：`FileKind`/`FileFormatId`/descriptor/taxonomy map 已落地并有静态一致性测试。
 2. persistence：`file_type_verdicts` 独立持久化链路已具备最小可用读写。
@@ -77,9 +77,9 @@
 - 工程主线发布前单独开清理分支处理 Group D。
 - 对工具/临时产物采用 `.gitignore` 或规范化本地清理脚本。
 
-## 7. 是否建议进入后续稳定化/烟测阶段
+## 7. 是否建议进入 Phase 2 稳定化/烟测阶段
 
-建议进入稳定化/烟测阶段。
+建议进入 Phase 2 稳定化/烟测阶段。
 
 建议范围：
 

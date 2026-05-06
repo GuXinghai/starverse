@@ -1,9 +1,9 @@
 # Starverse 文件类型检测工程实现目录
 
-Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed
+Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Final closeout completed
-Next phase: 稳定化/烟测与遗留项收敛
+Current phase: Phase 2 stabilization / gap review
+Next phase: 完成稳定化回归、缺口登记与 Phase 3 进入门槛评估
 
 ## 目录用途
 
@@ -27,7 +27,8 @@ Next phase: 稳定化/烟测与遗留项收敛
 | 07-stage-implementation-plan.md | Step 2 阶段实施计划：Stage A~K 的目标、边界、验收、回滚、确认要求 |
 | 08-acceptance-command-matrix.md | Step 2 验收命令矩阵：各阶段检查命令、口径与禁止项扫描 |
 | 09-risk-and-decision-register.md | Step 2 风险与决策登记：五项冻结决策、风险清单与待决策问题 |
-| 10-final-closeout-report.md | 最终收口报告：A~K 阶段状态、验收汇总、剩余风险与后续建议 |
+| 10-phase1-mvp-closeout-report.md | Phase 1 MVP 收口报告：A~K 阶段状态、验收汇总、剩余风险与后续建议 |
+| 11-phase2-stabilization-gap-review.md | Phase 2 稳定化与缺口复核：回归基线、Group D 处理、风险登记与 Phase 3 门槛 |
 
 ## Step 状态
 
@@ -41,15 +42,16 @@ Next phase: 稳定化/烟测与遗留项收敛
   - provider_file_ref 不进入 MVP
   - 路径日志泄露先做独立最小护栏修复
 - Step 2 completed（方案转译已验收）
-- Stage A~K completed
+- Stage A~K completed（Phase 1 MVP 主闭环已实现）
 - 新增成果文档：`04-step1-repo-survey-binding-map.md`、`05-owner-decisions-before-step2.md`、`06-agent-implementation-appendix.md`、`07-stage-implementation-plan.md`、`08-acceptance-command-matrix.md`、`09-risk-and-decision-register.md`
-- final closeout report added：`10-final-closeout-report.md`
+- Phase 1 MVP closeout report added：`10-phase1-mvp-closeout-report.md`
+- Phase 2 stabilization gap review added：`11-phase2-stabilization-gap-review.md`
 - remaining follow-ups listed（legacy message_asset 最终退场、provider_file_ref 延后、真实外部引擎执行与扩展 fixture）
 - 本目录为文件类型检测工程实现专属目录
-- 下一步：进入稳定化/烟测阶段并处理 follow-up 任务
+- 下一步：执行 Phase 2 stabilization / gap review，并评估是否满足进入 Phase 3 门槛
 
 ## 当前冻结结论
 
-Starverse 文件类型检测体系第一轮落地已完成 MVP 主闭环；外部引擎真实执行、legacy 彻底退场和深度样本矩阵进入后续阶段。
+Starverse 文件类型检测体系第一轮落地已完成 Phase 1 MVP 主闭环；外部引擎真实执行、legacy 彻底退场和深度样本矩阵进入后续阶段。
 
-后续阶段以稳定化、风险收敛和增量扩展为主，不做无边界重构。
+当前不将 A~K 视为全项目最终完成。Phase 2 以稳定化、风险收敛和增量扩展为主，不做无边界重构。
