@@ -72,9 +72,11 @@
 - 真实 Tika / LibreOffice / ffprobe / Pandoc 执行。
 - legacy `message_asset` 完全删除（含 destructive DB cleanup）。
 
-## 6. 手工烟测与关键回归记录
+## 6. 手工烟测延期说明与关键自动回归记录
 
-本轮以“最小烟测 + 关键自动回归”组合执行：
+Manual smoke test is deferred intentionally. This Phase 2 round changed documentation and cleanup state only, with no production behavior changes. Full manual smoke testing is required later when file-type UI integration or external runtime execution changes user-visible behavior.
+
+本轮执行的关键自动回归：
 
 1. 文件类型样本（txt/png/pdf/docx/伪装样本）：
    - 通过 `fileTypeFixtureMatrix` 与 `fileTypeDetectionService.fixtures` 回归验证。
