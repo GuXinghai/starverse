@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Phase 3 planning (external runtime + security execution layer)
-Next phase: P3-B 与 P3-C（在 P3-A 完成后继续推进）
+Current phase: Phase 3 execution (P3-A completed, entering P3-B after audit)
+Next phase: P3-B implementation（Magika runtime 接入与降级闭环）
 
 ## 目录用途
 
@@ -57,6 +57,7 @@ Next phase: P3-B 与 P3-C（在 P3-A 完成后继续推进）
 - 新增 P3-A 实施前任务包：`13-p3a-runtime-safety-task-package.md`（implementation package，非 implementation completed）
 - P3-A implementation 已完成最小闭环（external process policy/runner、health check runner 接入、availability 降级与测试），未进入 P3-B/P3-C
 - P3-A post-implementation audit 已完成并记录：`14-p3a-runtime-safety-audit.md`（结论：pass with follow-ups，进入 P3-B 前需先修 P0）
+- P3-A audit P0 fix 已完成（解释器跳板阻断 + kill 后有界收口），P3-B entry status 更新为 allowed
 - remaining follow-ups listed（legacy message_asset 最终退场、provider_file_ref 延后、真实外部引擎执行与扩展 fixture）
 - 本目录为文件类型检测工程实现专属目录
 - 下一步：仅执行 Phase 3 任务包规划与审批，不进入实现
