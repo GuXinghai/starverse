@@ -31,6 +31,7 @@ Next phase: P3-B 与 P3-C（在 P3-A 完成后继续推进）
 | 11-phase2-stabilization-gap-review.md | Phase 2 稳定化与缺口复核：回归基线、Group D 处理、风险登记与 Phase 3 门槛 |
 | 12-phase3-external-runtime-planning.md | Phase 3 规划文档：真实 runtime 接入边界、外部执行安全层、验收矩阵与延期项 |
 | 13-p3a-runtime-safety-task-package.md | P3-A 实施前任务包：外部 runtime 安全底座的代码勘察、缺口分解、最小实施范围与验收口径 |
+| 14-p3a-runtime-safety-audit.md | P3-A 实现后审计：边界复核、风险分级、P0/P1 修复建议与 P3-B 进入门槛 |
 
 ## Step 状态
 
@@ -55,6 +56,7 @@ Next phase: P3-B 与 P3-C（在 P3-A 完成后继续推进）
 - Phase 3 planning 任务包已压缩为 3 个：P3-A 外部 runtime 安全底座、P3-B Magika runtime 接入与降级闭环、P3-C 验收矩阵与失败降级收口
 - 新增 P3-A 实施前任务包：`13-p3a-runtime-safety-task-package.md`（implementation package，非 implementation completed）
 - P3-A implementation 已完成最小闭环（external process policy/runner、health check runner 接入、availability 降级与测试），未进入 P3-B/P3-C
+- P3-A post-implementation audit 已完成并记录：`14-p3a-runtime-safety-audit.md`（结论：pass with follow-ups，进入 P3-B 前需先修 P0）
 - remaining follow-ups listed（legacy message_asset 最终退场、provider_file_ref 延后、真实外部引擎执行与扩展 fixture）
 - 本目录为文件类型检测工程实现专属目录
 - 下一步：仅执行 Phase 3 任务包规划与审批，不进入实现
