@@ -65,4 +65,24 @@ describe('magikaAdapter', () => {
     expect(probe.unavailableReason).toBe('runtime_unavailable')
     expect(probe.modelVersion).toBe('magika-model-v2')
   })
+
+  it('propagates adapter_only runtimeKind through evidence without mock label', async () => {
+    const probe = await runMagikaRuntimeProbe(
+      createMockMagikaRuntimeLoader({
+        runtimeKind: 'adapter_only',
+        modelVersion: null,
+        output: { label: 'json', score: 0.93 },
+      }),
+      {
+        bytes: new Uint8Array([0x7b, 0x22, 0x6b, 0x22, 0x3a, 0x31, 0x7d]),
+        filename: 'data.json',
+      }
+    )
+    expect(probe.unavailableReason).toBeNull()
+    expect(probe.runtimeKind).toBe('adapter_only')
+    expect(probe.modelVersion).toBeNull()
+    expect(probe.evidence?.engineRuntimeKind).toBe('adapter_only')
+    expect(probe.evidence?.engineVersion).toBeNull()
+    expect(probe.evidence?.detectedFormatId).toBe('json')
+  })
 })
