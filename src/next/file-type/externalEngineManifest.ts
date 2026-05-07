@@ -50,6 +50,7 @@ export function validateManagedEnginePluginManifest(input: unknown): ManifestVal
   const resourceLimits = parseResourceLimits(source.resourceLimits, errors)
   const sandbox = parseSandbox(source.sandbox, errors)
   const network = parseNetwork(source.network, errors)
+  const healthcheck = parseHealthcheck(source.healthcheck, errors)
 
   if (errors.length > 0) {
     return { ok: false, errors }
@@ -69,6 +70,7 @@ export function validateManagedEnginePluginManifest(input: unknown): ManifestVal
       resourceLimits,
       sandbox,
       network,
+      healthcheck,
     },
   }
 }
@@ -182,6 +184,52 @@ function parseNetwork(input: unknown, errors: string[]): ManagedEnginePluginMani
     return { allowed: false }
   }
   return { allowed }
+}
+
+function parseHealthcheck(
+  input: unknown,
+  errors: string[]
+): ManagedEnginePluginManifest['healthcheck'] {
+  if (input == null) return null
+  const source = asObject(input)
+  if (!source) {
+    errors.push('healthcheck must be an object when provided')
+    return null
+  }
+  const command = readNonEmptyString(source.command)
+  if (!command) {
+    errors.push('healthcheck.command is required when healthcheck is provided')
+    return null
+  }
+
+  const argsInput = source.args
+  const args: string[] = []
+  if (argsInput != null) {
+    if (!Array.isArray(argsInput)) {
+      errors.push('healthcheck.args must be an array of strings when provided')
+    } else {
+      for (const value of argsInput) {
+        if (typeof value === 'string') args.push(value)
+      }
+    }
+  }
+
+  const cwdInput = source.cwd
+  let cwd: string | null = null
+  if (cwdInput != null) {
+    if (typeof cwdInput !== 'string') {
+      errors.push('healthcheck.cwd must be a string or null when provided')
+    } else {
+      const normalized = cwdInput.trim()
+      cwd = normalized.length > 0 ? normalized : null
+    }
+  }
+
+  return {
+    command,
+    args,
+    cwd,
+  }
 }
 
 function parseNullableFiniteNumber(input: unknown, field: string, errors: string[]): number | null {

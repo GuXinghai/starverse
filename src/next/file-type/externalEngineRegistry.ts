@@ -39,6 +39,8 @@ export type ExternalEngineRegistry = Readonly<{
 const FILE_FORMAT_ID_SET = new Set<string>(FILE_FORMAT_IDS)
 const WINDOWS_ABSOLUTE_PATH_RE = /\b[A-Za-z]:\\[^\s"'`]+/g
 const UNIX_ABSOLUTE_PATH_RE = /(?:\/Users\/|\/home\/|\/mnt\/|\/var\/|\/tmp\/)[^\s"'`]+/g
+const CONTENT_TOKEN_RE = /(contentToken["'\s:=]+)([^\s"',}]+)/gi
+const FULL_HASH_RE = /(fullHash["'\s:=]+)([A-Za-z0-9+/=:_-]{12,})/gi
 
 const BUILT_IN_MANIFESTS: readonly ManagedEnginePluginManifest[] = [
   parseManagedEnginePluginManifest({
@@ -114,6 +116,7 @@ const BUILT_IN_MANIFESTS: readonly ManagedEnginePluginManifest[] = [
   }),
 ] as const
 
+// eslint-disable-next-line max-lines-per-function
 export function createExternalEngineRegistry(now: () => number = Date.now): ExternalEngineRegistry {
   const records = new Map<EngineId, ExternalEngineRecord>()
   const diagnostics: EngineDiagnosticEvent[] = []
@@ -143,6 +146,7 @@ export function createExternalEngineRegistry(now: () => number = Date.now): Exte
       failureReason: existing?.failureReason ?? null,
       failureDetails: existing?.failureDetails ?? null,
       lastCheckedAt: existing?.lastCheckedAt ?? null,
+      healthcheck: manifest.healthcheck ?? existing?.healthcheck ?? null,
     }
     records.set(manifest.id, next)
     return next
@@ -271,6 +275,8 @@ export function sanitizeEngineDetailForDiagnostics(value: string | null): string
   const compact = value.trim()
   if (!compact) return null
   return compact
+    .replace(CONTENT_TOKEN_RE, '$1[redacted-token]')
+    .replace(FULL_HASH_RE, '$1[redacted-hash]')
     .replace(WINDOWS_ABSOLUTE_PATH_RE, '[redacted-path]')
     .replace(UNIX_ABSOLUTE_PATH_RE, '[redacted-path]')
 }

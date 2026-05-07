@@ -5,6 +5,11 @@
 本文件是 **P3-A implementation package**，不是 implementation completed。
 本轮仅做代码级勘察与实施任务包收敛，不新增生产功能，不接入真实外部 runtime。
 
+### 状态摘要（P3-A 实施后更新）
+
+- P3-A 最小实现已落地：`externalProcessPolicy`、`externalProcessRunner`、health runner 注入闭环、availability 降级映射与测试。
+- 仍未进入 P3-B/P3-C；未接入真实 Magika runtime，未接入真实 Tika/LibreOffice/ffprobe/Pandoc。
+
 ## 2. P3-A 目标
 
 P3-A 仅建立“外部 runtime 安全底座”最小闭环，覆盖以下能力：
