@@ -30,6 +30,7 @@ Next phase: 输出 Phase 3 任务包并等待 Owner 审核后进入实现阶段
 | 10-phase1-mvp-closeout-report.md | Phase 1 MVP 收口报告：A~K 阶段状态、验收汇总、剩余风险与后续建议 |
 | 11-phase2-stabilization-gap-review.md | Phase 2 稳定化与缺口复核：回归基线、Group D 处理、风险登记与 Phase 3 门槛 |
 | 12-phase3-external-runtime-planning.md | Phase 3 规划文档：真实 runtime 接入边界、外部执行安全层、验收矩阵与延期项 |
+| 13-p3a-runtime-safety-task-package.md | P3-A 实施前任务包：外部 runtime 安全底座的代码勘察、缺口分解、最小实施范围与验收口径 |
 
 ## Step 状态
 
@@ -52,6 +53,7 @@ Next phase: 输出 Phase 3 任务包并等待 Owner 审核后进入实现阶段
 - Phase 2 stabilization / gap review 已完成，进入 Phase 3 planning（非实现阶段）
 - 新增 Phase 3 规划文档：`12-phase3-external-runtime-planning.md`
 - Phase 3 planning 任务包已压缩为 3 个：P3-A 外部 runtime 安全底座、P3-B Magika runtime 接入与降级闭环、P3-C 验收矩阵与失败降级收口
+- 新增 P3-A 实施前任务包：`13-p3a-runtime-safety-task-package.md`（implementation package，非 implementation completed）
 - remaining follow-ups listed（legacy message_asset 最终退场、provider_file_ref 延后、真实外部引擎执行与扩展 fixture）
 - 本目录为文件类型检测工程实现专属目录
 - 下一步：仅执行 Phase 3 任务包规划与审批，不进入实现
