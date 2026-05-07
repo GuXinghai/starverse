@@ -35,6 +35,8 @@ export type ExternalProcessRunResult = Readonly<{
   stderr: string
   timedOut: boolean
   outputLimited: boolean
+  terminationAttempted: boolean
+  terminated: boolean
   errorCode: ExternalProcessErrorCode | null
   elapsedMs: number
 }>
@@ -52,6 +54,8 @@ export async function runExternalProcess(input: RunExternalProcessInput): Promis
       stderr: sanitizeForProcessResult(policyResult.message),
       timedOut: false,
       outputLimited: false,
+      terminationAttempted: false,
+      terminated: false,
       errorCode: policyResult.errorCode,
       elapsedMs: Math.max(0, now() - startedAt),
     }
@@ -69,11 +73,14 @@ export async function runExternalProcess(input: RunExternalProcessInput): Promis
   const stderrChunks: Buffer[] = []
   let timedOut = false
   let outputLimited = false
+  let terminationAttempted = false
   let errorCode: ExternalProcessErrorCode | null = null
   let resolved = false
+  let closeObserved = false
   let killTriggered = false
   let killFailed = false
   let spawnErrorDetail: string | null = null
+  let terminationGraceHandle: ReturnType<typeof setTimeout> | null = null
 
   let child: ChildProcessWithoutNullStreams
   try {
@@ -93,6 +100,8 @@ export async function runExternalProcess(input: RunExternalProcessInput): Promis
       stderr: sanitizeForProcessResult(summarizeSpawnError(error)),
       timedOut: false,
       outputLimited: false,
+      terminationAttempted: false,
+      terminated: false,
       errorCode: classifySpawnError(error),
       elapsedMs: Math.max(0, now() - startedAt),
     }
@@ -108,6 +117,10 @@ export async function runExternalProcess(input: RunExternalProcessInput): Promis
     if (resolved) return
     resolved = true
     clearTimeout(timeoutHandle)
+    if (terminationGraceHandle) {
+      clearTimeout(terminationGraceHandle)
+      terminationGraceHandle = null
+    }
 
     const stdout = sanitizeForProcessResult(Buffer.concat(stdoutChunks).toString('utf8'))
     let stderr = sanitizeForProcessResult(Buffer.concat(stderrChunks).toString('utf8'))
@@ -130,6 +143,8 @@ export async function runExternalProcess(input: RunExternalProcessInput): Promis
       stderr,
       timedOut,
       outputLimited,
+      terminationAttempted,
+      terminated: closeObserved,
       errorCode,
       elapsedMs: Math.max(0, now() - startedAt),
     } satisfies ExternalProcessRunResult
@@ -138,9 +153,31 @@ export async function runExternalProcess(input: RunExternalProcessInput): Promis
   async function requestKill(): Promise<void> {
     if (killTriggered) return
     killTriggered = true
-    const ok = await killProcessTreeImpl(child.pid, platform)
-    if (!ok) {
+    terminationAttempted = true
+    try {
+      const ok = await killProcessTreeImpl(child.pid, platform)
+      if (!ok) {
+        killFailed = true
+      }
+    } catch {
       killFailed = true
+    }
+    if (!terminationGraceHandle) {
+      terminationGraceHandle = setTimeout(() => {
+        if (resolved) return
+        if (killFailed) {
+          errorCode = 'process_kill_failed'
+        } else if (
+          errorCode === 'process_timeout' ||
+          errorCode === 'output_limit_exceeded'
+        ) {
+          errorCode = 'process_exit_unconfirmed'
+        } else if (!errorCode) {
+          errorCode = 'process_exit_unconfirmed'
+        }
+        const result = finalize(null, null)
+        if (result) resolveRef(result)
+      }, policy.terminationGraceMs)
     }
   }
 
@@ -167,7 +204,10 @@ export async function runExternalProcess(input: RunExternalProcessInput): Promis
     return maxBytes
   }
 
+  let resolveRef: (value: ExternalProcessRunResult) => void = () => {}
+
   return await new Promise<ExternalProcessRunResult>((resolve) => {
+    resolveRef = resolve
     child.stdout.on('data', (data) => {
       stdoutBytes = appendChunk(
         stdoutChunks,
@@ -203,6 +243,7 @@ export async function runExternalProcess(input: RunExternalProcessInput): Promis
     })
 
     child.once('close', (code, signal) => {
+      closeObserved = true
       const result = finalize(code, signal)
       if (result) resolve(result)
     })

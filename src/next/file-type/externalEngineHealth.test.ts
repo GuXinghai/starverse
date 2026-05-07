@@ -137,4 +137,40 @@ describe('externalEngineHealth', () => {
     expect(availability.engines.some((engine) => engine.id === 'demo-missing')).toBe(true)
     expect(availability.routeAvailability.documentConversion).toBe(false)
   })
+
+  it('maps output_limit_exceeded to dedicated failure reason', async () => {
+    const registry = createExternalEngineRegistry(() => 6789)
+    registry.registerManifest({
+      id: 'demo-output-limit',
+      displayName: 'Demo Output Limit',
+      version: '0.0.1',
+      platform: 'any',
+      kind: 'plugin',
+      capabilities: ['text_extraction'],
+      supportedFormatIds: ['plain_text'],
+      supportedMimeTypes: ['text/plain'],
+      resourceLimits: { maxInputBytes: null, maxDurationMs: null },
+      sandbox: { enabled: true },
+      network: { allowed: false },
+      healthcheck: { command: 'limit', args: [], cwd: null },
+    })
+
+    const updated = await runEngineHealthCheck({
+      registry,
+      engineId: 'demo-output-limit',
+      processRunner: async () => ({
+        exitCode: null,
+        signal: null,
+        stdout: '',
+        stderr: 'too much output',
+        timedOut: false,
+        outputLimited: true,
+        errorCode: 'output_limit_exceeded',
+        elapsedMs: 7,
+      }),
+    })
+
+    expect(updated.healthStatus).toBe('failed')
+    expect(updated.failureReason).toBe('output_limit_exceeded')
+  })
 })

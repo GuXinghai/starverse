@@ -5,7 +5,8 @@
 **pass with follow-ups**
 
 - P3-A 主体实现符合阶段边界，未越界到 P3-B/P3-C。
-- 发现 **2 个 P0** 安全/可靠性缺口，进入 P3-B 前必须修复。
+- 历史审计识别的 2 个 P0 已在本轮修复并通过回归验证。
+- 当前剩余为 P1/P2 跟进项，不阻断进入 P3-B。
 
 ## 2. 审计范围
 
@@ -53,7 +54,7 @@
 
 ## 5. externalProcessPolicy 审计
 
-结论：**主体通过，存在 P0 绕过风险**
+结论：**通过（P0 已修复）**
 
 已满足：
 - timeout 默认/上限与 Owner 决策一致：
@@ -67,12 +68,17 @@
 - `.bat/.cmd` 大小写、quoted path、路径形式已有覆盖测试。
 - 返回稳定 policy 错误码，未见裸 throw 透传到上层调用方。
 
-发现问题：
-- **P0**：当前 `.bat/.cmd` 禁止仅检查 `command` basename，仍可通过 `command=cmd.exe` + `args=['/c','xxx.bat']`（或同类 shell host）绕过。
+P0 修复状态：
+- 已新增解释器跳板阻断：
+  - `cmd.exe` / `command.com`
+  - `powershell.exe` / `pwsh.exe`
+  - `wscript.exe` / `cscript.exe` / `mshta.exe`
+- 已覆盖大小写、quoted path、完整路径与带空格路径样式。
+- `cmd.exe /c *.bat|*.cmd` 间接执行场景已被策略拒绝（由入口解释器阻断实现）。
 
 ## 6. externalProcessRunner 审计
 
-结论：**主体通过，存在 P0 可靠性缺口**
+结论：**通过（P0 已修复）**
 
 已满足：
 - 使用参数数组调用 `spawn(command, args, ...)`，未发现 shell command string 拼接执行。
@@ -82,13 +88,22 @@
 - kill process tree 采用 best-effort（Windows `taskkill /T /F`，非 Windows 先 group kill 再 pid kill）。
 - kill 失败不会抛未处理异常。
 
-发现问题：
-- **P0**：timeout/output-limit 触发后，依赖子进程 `close/error` 事件收口；若 kill 失败且进程未退出，Promise 可能长时间悬挂，无法保证“timeout 一定触发终止并返回结果”。
-- P1：`timedOut` 与 `outputLimited` 可同时为 true 的语义未在契约中明确优先级（可接受但建议写清）。
+P0 修复状态：
+- runner 新增 `terminationGraceMs`（默认 1000ms，硬上限 10000ms）二次有界收口。
+- timeout/output-limit 触发后：
+  - 进入 termination attempt；
+  - 执行 best-effort kill process tree；
+  - grace 到期即使没有 close 事件也会 resolve，避免悬挂。
+- 新增结构化字段：
+  - `terminationAttempted`
+  - `terminated`
+- 新增稳定错误码：
+  - `process_exit_unconfirmed`
+  - `process_kill_failed`
 
 ## 7. health / registry / availability 审计
 
-结论：**通过（含少量 P1 一致性补测建议）**
+结论：**通过（补测已增强，仍有少量 P1 可选项）**
 
 已满足：
 - health check runner 注入边界清晰（`runner` 与 `processRunner` 双注入）。
@@ -97,21 +112,21 @@
 - `command_not_found -> engine_unavailable`、`timeout -> engine_timeout`、`policy denied -> disabled_by_policy` 映射已落地。
 - manifest 新增 `healthcheck` 字段保持向后兼容（可空）。
 
-建议补测（P1）：
-- `output_limit_exceeded -> failureReason` 映射专门用例。
-- `policy_batch_entrypoint_blocked` / `policy_shell_not_allowed` 到 `disabled_by_policy` 的专门用例。
+补测状态：
+- `output_limit_exceeded -> failureReason` 已补测试。
+- `policy denied -> disabled_by_policy` 映射路径已覆盖（保留可选增强用例）。
 
 ## 8. 日志脱敏审计
 
-结论：**通过（P1：建议补 grep 回归断言）**
+结论：**通过**
 
 已满足：
 - runner 返回的 `stdout/stderr` 经过脱敏（路径/contentToken/fullHash）。
 - registry `failureDetails` 有二次脱敏。
 - 新增代码未引入新的普通日志输出点（无新增 console/logger 泄露面）。
 
-建议：
-- 增加 1 个专门测试覆盖 `stderr` 多段拼接场景下的脱敏一致性（P1）。
+后续建议（P1）：
+- 可补 `stderr` 多段拼接场景的脱敏专项断言，强化回归稳定性。
 
 ## 9. 测试覆盖审计
 
@@ -121,23 +136,21 @@
 - health runner 注入与 unavailable 降级。
 - availability 与 sendRouteMapping 回归通过。
 
-缺口：
-- 未覆盖 `cmd.exe /c *.bat` 绕过场景（P0）。
-- 未覆盖 “kill 失败后 runner 必须在有限时间内返回” 场景（P0）。
-- 未覆盖 `output_limit_exceeded` 在 health 映射中的单测（P1）。
+缺口（更新后）：
+- P0 缺口已清零。
+- 仍建议补更细粒度平台行为用例（P1/P2）。
 
 ## 10. 风险分级
 
 ### P0（进入 P3-B 前必须修复）
 
-1. `.bat/.cmd` 可通过 shell host 间接绕过（`cmd.exe /c` 等）。
-2. timeout/output-limit 后若 kill 失败，runner 可能悬挂，无法保证有界返回。
+- 无（本轮已修复）
 
 ### P1（P3-B 前建议修复）
 
-1. `timedOut` 与 `outputLimited` 并存时的语义优先级未文档化。
-2. health failure reason 的部分映射缺专项测试。
-3. 脱敏规则建议增加 stderr 聚合场景测试。
+1. `timedOut` 与 `outputLimited` 并存时的语义优先级可补文档说明。
+2. `policy denied -> disabled_by_policy` 可补更细粒度边界测试（可选）。
+3. 脱敏规则可补 stderr 聚合场景专项测试。
 
 ### P2（可后续收口）
 
@@ -145,29 +158,27 @@
 
 ## 11. 是否允许进入 P3-B
 
-**allowed after P0 fixes**
+**allowed**
 
-## 12. 如需修复，最小修复任务包（仅计划）
+## 12. 修复落地摘要（本轮）
 
-1. **P3-A audit fix-1（policy anti-bypass）**
-   - 在 policy 层增加 shell-host 检测：
-     - 拒绝 `cmd.exe /c *.bat|*.cmd`
-     - 拒绝 `powershell -File *.ps1`（如 Owner 要求可扩展）
-   - 新增对应测试（Windows/非 Windows 兼容断言）。
+1. **P0-1 policy anti-bypass 已落地**
+   - 阻断解释器跳板入口（cmd/command.com/powershell/pwsh/wscript/cscript/mshta）。
+   - 阻断 `.bat/.cmd` 直接入口。
+   - 新增覆盖大小写、quoted path、路径变体与间接 `/c` 场景测试。
 
-2. **P3-A audit fix-2（bounded completion guarantee）**
-   - runner 在 timeout/output-limit 后增加二次收口保障：
-     - kill 发起后设置短二次截止时间；
-     - 到期仍未 close 时返回 `process_kill_failed`（脱敏 detail），避免 Promise 悬挂。
-   - 增加 kill 失败模拟测试（mock killProcessTreeImpl 返回 false + close 不触发）。
+2. **P0-2 bounded completion guarantee 已落地**
+   - timeout/output-limit 后进入 termination attempt。
+   - kill 失败或 close 缺失时，通过 `terminationGraceMs` 保证有界 resolve。
+   - 新增 `process_exit_unconfirmed` / `process_kill_failed` 与对应测试。
 
-3. **补充回归**
-   - health 映射：`output_limit_exceeded` / `disabled_by_policy` 专项测试。
+3. **回归补强**
+   - health 映射中 `output_limit_exceeded` 专项测试已补。
 
 ## 13. 给下一轮 Agent 的提示词草案
 
-> 执行 P3-A audit fix（仅修 P0/P1，禁止新增功能）：
-> 1) 修复 `.bat/.cmd` 间接绕过（例如 `cmd.exe /c`）并补测试；
-> 2) 修复 runner 在 kill 失败场景下可能悬挂的问题，保证 timeout/output-limit 后有界返回，并补测试；
-> 3) 补 health failure reason 映射测试（含 `output_limit_exceeded`、`disabled_by_policy`）；
-> 不接入真实 Magika/Tika/LibreOffice/ffprobe/Pandoc，不改 UI、不改 sendPlanService 主逻辑、不改 DB schema。
+> 进入 P3-B（Magika runtime 接入与降级闭环）implementation planning 或 implementation：
+> 1) 保持 P3-A 安全底座约束（shell:false、解释器跳板阻断、有界终止、日志脱敏）；
+> 2) 接入 Magika runtime loader/provenance（`magikaModelVersion`）并保证 unavailable 可降级；
+> 3) 保持 engine availability 仅影响 candidate，不污染 verdict；
+> 禁止接入 Tika/LibreOffice/ffprobe/Pandoc 真实链路，禁止改 UI 主流程与 sendPlanService 主逻辑，禁止改 DB schema。

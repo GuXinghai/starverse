@@ -7,6 +7,7 @@ export const EXTERNAL_PROCESS_POLICY_ERROR_CODES = [
   'policy_invalid_command',
   'policy_shell_not_allowed',
   'policy_batch_entrypoint_blocked',
+  'policy_script_interpreter_blocked',
 ] as const
 export type ExternalProcessPolicyErrorCode = (typeof EXTERNAL_PROCESS_POLICY_ERROR_CODES)[number]
 
@@ -18,6 +19,7 @@ export const EXTERNAL_PROCESS_ERROR_CODES = [
   'process_timeout',
   'output_limit_exceeded',
   'process_kill_failed',
+  'process_exit_unconfirmed',
 ] as const
 export type ExternalProcessErrorCode = (typeof EXTERNAL_PROCESS_ERROR_CODES)[number]
 
@@ -29,6 +31,8 @@ export const EXTERNAL_PROCESS_POLICY_DEFAULTS = Object.freeze({
   stderrBytes: 256 * 1024,
   maxStdoutBytes: 10 * 1024 * 1024,
   maxStderrBytes: 1024 * 1024,
+  terminationGraceMs: 1000,
+  maxTerminationGraceMs: 10000,
   shell: false,
   allowBatchEntrypoint: false,
 })
@@ -39,6 +43,7 @@ export type ExternalProcessPolicyInput = Readonly<{
   timeoutMs?: number | null
   maxStdoutBytes?: number | null
   maxStderrBytes?: number | null
+  terminationGraceMs?: number | null
   shell?: boolean | null
   allowBatchEntrypoint?: boolean | null
 }>
@@ -49,6 +54,7 @@ export type ResolvedExternalProcessPolicy = Readonly<{
   timeoutMs: number
   maxStdoutBytes: number
   maxStderrBytes: number
+  terminationGraceMs: number
   shell: false
   allowBatchEntrypoint: boolean
 }>
@@ -94,6 +100,14 @@ export function evaluateExternalProcessPolicy(
     }
   }
 
+  if (isBlockedScriptInterpreter(command)) {
+    return {
+      ok: false,
+      errorCode: 'policy_script_interpreter_blocked',
+      message: `script interpreter entrypoint is blocked for command ${safeCommandName(command)}`,
+    }
+  }
+
   const mode = normalizeMode(input.mode)
   const timeoutDefault =
     mode === 'health_check'
@@ -120,6 +134,11 @@ export function evaluateExternalProcessPolicy(
         EXTERNAL_PROCESS_POLICY_DEFAULTS.stderrBytes,
         EXTERNAL_PROCESS_POLICY_DEFAULTS.maxStderrBytes
       ),
+      terminationGraceMs: clampPositiveInteger(
+        input.terminationGraceMs,
+        EXTERNAL_PROCESS_POLICY_DEFAULTS.terminationGraceMs,
+        EXTERNAL_PROCESS_POLICY_DEFAULTS.maxTerminationGraceMs
+      ),
       shell: false,
       allowBatchEntrypoint,
     },
@@ -131,6 +150,23 @@ export function isBatchEntrypoint(command: string): boolean {
   if (!normalized) return false
   const base = safeCommandName(normalized)
   return base.endsWith('.bat') || base.endsWith('.cmd')
+}
+
+const BLOCKED_SCRIPT_INTERPRETERS = new Set<string>([
+  'cmd.exe',
+  'command.com',
+  'powershell.exe',
+  'pwsh.exe',
+  'wscript.exe',
+  'cscript.exe',
+  'mshta.exe',
+])
+
+export function isBlockedScriptInterpreter(command: string): boolean {
+  const normalized = normalizeCommand(command)
+  if (!normalized) return false
+  const base = safeCommandName(normalized).toLowerCase()
+  return BLOCKED_SCRIPT_INTERPRETERS.has(base)
 }
 
 function normalizeMode(mode: ExternalProcessPolicyMode | null | undefined): ExternalProcessPolicyMode {
