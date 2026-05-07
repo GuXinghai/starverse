@@ -162,6 +162,8 @@ export type FileTypeEvidence = Readonly<{
   reasonCodes: readonly string[]
   errorCode: string | null
   note: string | null
+  engineVersion?: string | null
+  engineRuntimeKind?: string | null
 }>
 
 export type FileTypeConflict = Readonly<{

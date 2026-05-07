@@ -8,6 +8,10 @@ import { FileAssetRepo } from '../db/repo/fileAssetRepo'
 import { FileTypeVerdictRepo } from '../db/repo/fileTypeVerdictRepo'
 import { FileTypeDetectionService } from './fileTypeDetectionService'
 import type { MagikaAdapter } from '../../src/next/file-type/magikaAdapter'
+import {
+  createMockMagikaRuntimeLoader,
+  createUnavailableMagikaRuntimeLoader,
+} from '../../src/next/file-type/magikaRuntimeLoader'
 
 function loadSchema(db: BetterSqlite3.Database) {
   const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
@@ -54,6 +58,7 @@ function readDetectionMeta(db: BetterSqlite3.Database, assetId: string): Record<
   return meta && typeof meta === 'object' ? (meta as Record<string, unknown>) : null
 }
 
+// eslint-disable-next-line max-lines-per-function
 describe('FileTypeDetectionService', () => {
   it('detectBasic writes current verdict and marks job ready', async () => {
     await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
@@ -284,6 +289,137 @@ describe('FileTypeDetectionService', () => {
       expect(result.job.status).toBe('ready')
       expect(result.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(true)
       expect(result.verdict?.primaryFormatId).toBe('json')
+    })
+  })
+
+  it('writes magikaModelVersion from runtime loader provenance on detectFull', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-7.txt'
+      await writeAssetFile(storageRootDir, storageUri, '{"name":"starverse"}')
+      fileAssetRepo.create({
+        id: 'asset-7',
+        sha256: null,
+        filename: 'asset-7.txt',
+        extension: 'txt',
+        mime: 'application/json',
+        sizeBytes: 21,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      const service = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaRuntimeLoader: createMockMagikaRuntimeLoader({
+          modelVersion: 'magika-model-v1',
+          output: { label: 'json', score: 0.99 },
+        }),
+      })
+
+      const result = await service.detectFull({ assetId: 'asset-7' })
+      expect(result.job.status).toBe('ready')
+      expect(result.verdict?.versionInfo.magikaModelVersion).toBe('magika-model-v1')
+      const magikaEvidence = result.verdict?.verdict.evidence.find((item) => item.source === 'magika')
+      expect(magikaEvidence?.engineVersion).toBe('magika-model-v1')
+    })
+  })
+
+  it('falls back when magika runtime is unavailable and keeps detectFull usable', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-8.txt'
+      await writeAssetFile(storageRootDir, storageUri, 'fallback text content')
+      fileAssetRepo.create({
+        id: 'asset-8',
+        sha256: null,
+        filename: 'asset-8.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 21,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      const service = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaRuntimeLoader: createUnavailableMagikaRuntimeLoader({
+          reason: 'runtime_unavailable',
+          detail: 'runtime is not configured',
+          modelVersion: 'magika-model-v2',
+        }),
+      })
+
+      const result = await service.detectFull({ assetId: 'asset-8' })
+      expect(result.job.status).toBe('ready')
+      expect(result.verdict?.primaryFormatId).toBe('plain_text')
+      expect(result.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
+      expect(result.verdict?.versionInfo.magikaModelVersion).toBe('magika-model-v2')
+    })
+  })
+
+  it('invalidates full-mode cache when magika model version changes', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-9.txt'
+      await writeAssetFile(storageRootDir, storageUri, '{"id":9}')
+      fileAssetRepo.create({
+        id: 'asset-9',
+        sha256: null,
+        filename: 'asset-9.txt',
+        extension: 'txt',
+        mime: 'application/json',
+        sizeBytes: 8,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      const serviceV1 = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaRuntimeLoader: createMockMagikaRuntimeLoader({
+          modelVersion: 'magika-model-v1',
+          output: { label: 'json', score: 0.92 },
+        }),
+      })
+
+      const first = await serviceV1.detectFull({ assetId: 'asset-9' })
+      expect(first.fromCache).toBe(false)
+
+      const serviceV2 = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaRuntimeLoader: createMockMagikaRuntimeLoader({
+          modelVersion: 'magika-model-v2',
+          output: { label: 'json', score: 0.92 },
+        }),
+      })
+
+      const second = await serviceV2.detectFull({ assetId: 'asset-9' })
+      expect(second.fromCache).toBe(false)
+      expect(second.verdict?.id).not.toBe(first.verdict?.id)
+      expect(second.verdict?.versionInfo.magikaModelVersion).toBe('magika-model-v2')
+      const rows = db.prepare(`
+        SELECT is_current AS isCurrent, stale_reason AS staleReason
+        FROM file_type_verdicts
+        WHERE asset_id='asset-9'
+        ORDER BY created_at ASC
+      `).all() as Array<{ isCurrent: number; staleReason: string | null }>
+      expect(rows).toHaveLength(2)
+      expect(rows[0]?.staleReason).toBe('magika_model_version_changed')
+      expect(rows[1]?.isCurrent).toBe(1)
     })
   })
 })

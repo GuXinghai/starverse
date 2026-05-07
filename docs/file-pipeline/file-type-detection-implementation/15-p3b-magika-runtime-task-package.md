@@ -4,6 +4,12 @@
 
 本文件是 P3-B implementation package（实施前任务包），用于约束下一轮实现范围与验收，不代表 P3-B implementation completed。
 
+### 1.1 状态更新（P3-B 首轮实现后）
+
+- 已完成：mockable runtime loader interface、unavailable fallback、`magikaModelVersion` provenance 写入、未知 label 降级、modelVersion cache 边界、sendRouteMapping availability 回归补强。
+- 未完成：真实 Magika runtime 依赖引入与模型打包策略。
+- 口径：当前仅为 P3-B 首轮闭环，不代表 Phase 3 全部完成。
+
 ## 2. P3-B 目标
 
 - 明确真实 Magika runtime 或 runtime loader 的接入边界。
@@ -52,10 +58,10 @@
 
 ## 5. 当前 Magika scaffold 与可复用能力
 
-- `magikaAdapter` 当前是 mockable adapter：`detect(input) -> {label, score} | null`，并通过 `mapMagikaOutputToEvidence` 转成 `FileTypeEvidence`。
-- `detectFull` 路径会调用 `runMagikaProbe`；`detectBasic` 不调用。
-- 未知 Magika label 当前被映射为 `unknown` 且强制降为 low confidence，不扩展内部枚举。
-- `fileTypeDetectionService` 已有 versionInfo 落库能力，包含 `magikaModelVersion` 字段，但默认值仍是 `null`。
+- `magikaRuntimeLoader` 已提供 `mock/unavailable/local_loader` 边界；默认可注入 mock runtime，不要求真实模型文件。
+- `detectFull` 路径调用 `runMagikaRuntimeProbe`；`detectBasic` 仍不调用 Magika。
+- 未知 Magika label 映射为 `unknown` 且强制 low confidence，不扩展内部枚举。
+- `fileTypeDetectionService` 已将 `magikaModelVersion` 通过 versionInfo 落到 `file_type_verdicts` provenance。
 - `externalEngineRegistry/Health/Availability` 已有 scaffold，health 可注入 process runner，失败可映射 availability 与 diagnostics，不会直接修改 verdict。
 - `sendRouteMapping` 已消费 `engineAvailability` 影响 requiresJob 路线 gating，但该 gating 目前与 Magika 运行时可用性尚未形成专门契约。
 

@@ -15,9 +15,11 @@ import {
   probeText,
   mergeFileTypeEvidence,
   evaluateFileTypeStaticPolicy,
+  createMockMagikaRuntimeLoader,
   createNoopMagikaAdapter,
-  runMagikaProbe,
+  runMagikaRuntimeProbe,
   type MagikaAdapter,
+  type MagikaRuntimeLoader,
 } from '../../src/next/file-type'
 import { resolveManagedStoragePath } from '../../src/shared/files/localStorageResolver'
 import { FileTypeVerdictRepo } from '../db/repo/fileTypeVerdictRepo'
@@ -70,7 +72,15 @@ type FileTypeDetectionServiceDeps = Readonly<{
   readBytes?: (filePath: string) => Promise<Uint8Array>
   statFile?: (filePath: string) => Promise<{ size: number; modifiedTime: number | null }>
   magikaAdapter?: MagikaAdapter
+  magikaRuntimeLoader?: MagikaRuntimeLoader
   versionInfo?: Partial<FileTypeVerdictVersionInfo>
+}>
+
+type MagikaRuntimeState = Readonly<{
+  loader: MagikaRuntimeLoader
+  available: boolean
+  modelVersion: string | null
+  runtimeKind: string
 }>
 
 const DEFAULT_VERSION_INFO: FileTypeVerdictVersionInfo = {
@@ -91,7 +101,7 @@ export class FileTypeDetectionService {
   private readonly idFactory: () => string
   private readonly readBytes: (filePath: string) => Promise<Uint8Array>
   private readonly statFile: (filePath: string) => Promise<{ size: number; modifiedTime: number | null }>
-  private readonly magikaAdapter: MagikaAdapter
+  private readonly magikaRuntimeLoader: MagikaRuntimeLoader
   private readonly versionInfo: FileTypeVerdictVersionInfo
 
   constructor(private readonly deps: FileTypeDetectionServiceDeps) {
@@ -99,7 +109,14 @@ export class FileTypeDetectionService {
     this.idFactory = deps.idFactory ?? randomUUID
     this.readBytes = deps.readBytes ?? defaultReadBytes
     this.statFile = deps.statFile ?? defaultStatFile
-    this.magikaAdapter = deps.magikaAdapter ?? createNoopMagikaAdapter()
+    const adapter = deps.magikaAdapter ?? createNoopMagikaAdapter()
+    this.magikaRuntimeLoader =
+      deps.magikaRuntimeLoader ??
+      createMockMagikaRuntimeLoader({
+        runtimeKind: 'mock',
+        modelVersion: deps.versionInfo?.magikaModelVersion ?? null,
+        classify: (probe) => adapter.detect(probe),
+      })
     this.versionInfo = { ...DEFAULT_VERSION_INFO, ...(deps.versionInfo ?? {}) }
   }
 
@@ -145,24 +162,49 @@ export class FileTypeDetectionService {
       const [bytes, fileStat] = await Promise.all([this.readBytes(resolvedPath.path), this.statFile(resolvedPath.path)])
       const fingerprint = buildFingerprint(bytes, fileStat)
       const currentVerdict = this.deps.fileTypeVerdictRepo.getCurrentByAssetId(assetId)
+      const magikaRuntimeState = mode === 'full' ? await this.loadMagikaRuntimeState() : null
 
-      if (!forceRedetect && currentVerdict && fingerprintsEqual(currentVerdict.fingerprintJson, fingerprint)) {
+      if (
+        !forceRedetect &&
+        currentVerdict &&
+        fingerprintsEqual(currentVerdict.fingerprintJson, fingerprint) &&
+        this.isModelVersionCacheCompatible(currentVerdict, magikaRuntimeState)
+      ) {
         const readyJob = this.finishReady(runningJob, currentVerdict.id, fingerprint, true)
         return { job: readyJob, verdict: currentVerdict, fromCache: true }
       }
 
-      if (currentVerdict && !fingerprintsEqual(currentVerdict.fingerprintJson, fingerprint)) {
-        this.deps.fileTypeVerdictRepo.markStaleByAssetId({
-          assetId,
-          staleReason: 'fingerprint_mismatch',
-          updatedAt: this.now(),
-        })
+      if (currentVerdict) {
+        const staleReason = !fingerprintsEqual(currentVerdict.fingerprintJson, fingerprint)
+          ? 'fingerprint_mismatch'
+          : this.resolveModelVersionStaleReason(currentVerdict, magikaRuntimeState)
+        if (staleReason) {
+          this.deps.fileTypeVerdictRepo.markStaleByAssetId({
+            assetId,
+            staleReason,
+            updatedAt: this.now(),
+          })
+        }
       }
 
-      const assembled = await this.assembleVerdict({ mode, asset, bytes, fingerprint })
+      const assembled = await this.assembleVerdict({
+        mode,
+        asset,
+        bytes,
+        fingerprint,
+        magikaRuntimeState,
+      })
       if (!this.isCurrentJob(assetId, runningJob.jobId)) {
         const cancelled = this.toJob(runningJob, 'cancelled', null, null)
         return { job: cancelled, verdict: null, fromCache: false }
+      }
+
+      const resolvedVersionInfo: FileTypeVerdictVersionInfo = {
+        ...this.versionInfo,
+        magikaModelVersion:
+          assembled.magikaModelVersion ??
+          magikaRuntimeState?.modelVersion ??
+          this.versionInfo.magikaModelVersion,
       }
 
       const saved = this.deps.fileTypeVerdictRepo.upsertCurrent({
@@ -171,7 +213,7 @@ export class FileTypeDetectionService {
         primaryFormatId: assembled.verdict.primary.formatId,
         primaryKind: assembled.verdict.primary.kind,
         confidenceLevel: assembled.verdict.primary.confidence,
-        versionInfo: this.versionInfo,
+        versionInfo: resolvedVersionInfo,
         fingerprintJson: fingerprint,
         updatedAt: this.now(),
       })
@@ -189,7 +231,8 @@ export class FileTypeDetectionService {
     asset: FileAssetRecord
     bytes: Uint8Array
     fingerprint: FileTypeFingerprintJson
-  }>): Promise<Readonly<{ verdict: FileTypeVerdict }>> {
+    magikaRuntimeState: MagikaRuntimeState | null
+  }>): Promise<Readonly<{ verdict: FileTypeVerdict; magikaModelVersion: string | null }>> {
     const evidence: FileTypeEvidence[] = []
 
     const extension = normalizeExtension(input.asset.extension ?? input.asset.filename)
@@ -229,13 +272,15 @@ export class FileTypeDetectionService {
     const text = probeText(input.bytes)
     if (text.evidence) evidence.push(text.evidence)
 
-    if (input.mode === 'full') {
-      const magikaEvidence = await runMagikaProbe(this.magikaAdapter, {
+    let magikaModelVersion: string | null = null
+    if (input.mode === 'full' && input.magikaRuntimeState) {
+      const magikaProbe = await runMagikaRuntimeProbe(input.magikaRuntimeState.loader, {
         bytes: input.bytes,
         filename: input.asset.filename,
         mime: normalizedMime,
       })
-      if (magikaEvidence) evidence.push(magikaEvidence)
+      if (magikaProbe.evidence) evidence.push(magikaProbe.evidence)
+      magikaModelVersion = magikaProbe.modelVersion ?? input.magikaRuntimeState.modelVersion ?? null
     }
 
     const merged = mergeFileTypeEvidence({ evidence })
@@ -263,7 +308,58 @@ export class FileTypeDetectionService {
         detectionCost: input.mode === 'full' ? 'medium' : 'low',
         fingerprint: input.fingerprint.fullHash ?? input.fingerprint.headHash,
       },
+      magikaModelVersion,
     }
+  }
+
+  private async loadMagikaRuntimeState(): Promise<MagikaRuntimeState> {
+    try {
+      const loaded = await this.magikaRuntimeLoader.load()
+      if (loaded.available) {
+        return {
+          loader: this.magikaRuntimeLoader,
+          available: true,
+          modelVersion: normalizeNullableModelVersion(loaded.runtime.modelVersion),
+          runtimeKind: loaded.runtime.kind,
+        }
+      }
+      return {
+        loader: this.magikaRuntimeLoader,
+        available: false,
+        modelVersion: normalizeNullableModelVersion(loaded.modelVersion),
+        runtimeKind: loaded.runtimeKind,
+      }
+    } catch {
+      return {
+        loader: this.magikaRuntimeLoader,
+        available: false,
+        modelVersion: null,
+        runtimeKind: 'unavailable',
+      }
+    }
+  }
+
+  private isModelVersionCacheCompatible(
+    currentVerdict: FileTypeVerdictRecord,
+    magikaRuntimeState: MagikaRuntimeState | null
+  ): boolean {
+    if (!magikaRuntimeState || !magikaRuntimeState.available) return true
+    const currentVersion = normalizeNullableModelVersion(currentVerdict.versionInfo.magikaModelVersion)
+    const runtimeVersion = normalizeNullableModelVersion(magikaRuntimeState.modelVersion)
+    if (!runtimeVersion) return true
+    return currentVersion === runtimeVersion
+  }
+
+  private resolveModelVersionStaleReason(
+    currentVerdict: FileTypeVerdictRecord,
+    magikaRuntimeState: MagikaRuntimeState | null
+  ): string | null {
+    if (!magikaRuntimeState || !magikaRuntimeState.available) return null
+    const currentVersion = normalizeNullableModelVersion(currentVerdict.versionInfo.magikaModelVersion)
+    const runtimeVersion = normalizeNullableModelVersion(magikaRuntimeState.modelVersion)
+    if (!runtimeVersion) return null
+    if (currentVersion === runtimeVersion) return null
+    return 'magika_model_version_changed'
   }
 
   private startJob(assetId: string, mode: DetectFileTypeMode, timestamp: number): FileTypeDetectionJob {
@@ -504,6 +600,11 @@ function safeParseObject(value: string): Record<string, unknown> | null {
   } catch {
     return null
   }
+}
+
+function normalizeNullableModelVersion(value: string | null | undefined): string | null {
+  const normalized = String(value ?? '').trim()
+  return normalized.length > 0 ? normalized : null
 }
 
 function normalizeExtension(value: string | null | undefined): string | null {
