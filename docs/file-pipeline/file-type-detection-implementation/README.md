@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Phase 2 stabilization / gap review
-Next phase: 完成稳定化回归、缺口登记与 Phase 3 进入门槛评估
+Current phase: Phase 3 planning (external runtime + security execution layer)
+Next phase: 输出 Phase 3 任务包并等待 Owner 审核后进入实现阶段
 
 ## 目录用途
 
@@ -29,6 +29,7 @@ Next phase: 完成稳定化回归、缺口登记与 Phase 3 进入门槛评估
 | 09-risk-and-decision-register.md | Step 2 风险与决策登记：五项冻结决策、风险清单与待决策问题 |
 | 10-phase1-mvp-closeout-report.md | Phase 1 MVP 收口报告：A~K 阶段状态、验收汇总、剩余风险与后续建议 |
 | 11-phase2-stabilization-gap-review.md | Phase 2 稳定化与缺口复核：回归基线、Group D 处理、风险登记与 Phase 3 门槛 |
+| 12-phase3-external-runtime-planning.md | Phase 3 规划文档：真实 runtime 接入边界、外部执行安全层、验收矩阵与延期项 |
 
 ## Step 状态
 
@@ -48,9 +49,11 @@ Next phase: 完成稳定化回归、缺口登记与 Phase 3 进入门槛评估
 - Phase 2 stabilization gap review added：`11-phase2-stabilization-gap-review.md`
 - Manual smoke test deferred by Owner decision（本轮仅文档口径修正、自动化基线复核、Group D 清理与缺口复核）
 - 当 UI 正式接入文件类型识别或外部 runtime 执行层改变用户可见行为时，必须补完整手工烟测
+- Phase 2 stabilization / gap review 已完成，进入 Phase 3 planning（非实现阶段）
+- 新增 Phase 3 规划文档：`12-phase3-external-runtime-planning.md`
 - remaining follow-ups listed（legacy message_asset 最终退场、provider_file_ref 延后、真实外部引擎执行与扩展 fixture）
 - 本目录为文件类型检测工程实现专属目录
-- 下一步：执行 Phase 2 stabilization / gap review，并评估是否满足进入 Phase 3 门槛
+- 下一步：仅执行 Phase 3 任务包规划与审批，不进入实现
 
 ## 当前冻结结论
 
