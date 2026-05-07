@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { createNoopMagikaAdapter, mapMagikaOutputToEvidence, runMagikaProbe } from './magikaAdapter'
+import {
+  createNoopMagikaAdapter,
+  mapMagikaOutputToEvidence,
+  runMagikaProbe,
+  runMagikaRuntimeProbe,
+} from './magikaAdapter'
+import {
+  createMockMagikaRuntimeLoader,
+  createUnavailableMagikaRuntimeLoader,
+} from './magikaRuntimeLoader'
 
 describe('magikaAdapter', () => {
   it('maps known magika labels through taxonomy map', () => {
@@ -22,5 +31,38 @@ describe('magikaAdapter', () => {
       filename: 'a.bin',
     })
     expect(evidence).toBeNull()
+  })
+
+  it('records modelVersion from runtime loader on mapped evidence', async () => {
+    const probe = await runMagikaRuntimeProbe(
+      createMockMagikaRuntimeLoader({
+        modelVersion: 'magika-model-v1',
+        output: { label: 'pdf', score: 0.95 },
+      }),
+      {
+        bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+        filename: 'a.pdf',
+      }
+    )
+    expect(probe.unavailableReason).toBeNull()
+    expect(probe.modelVersion).toBe('magika-model-v1')
+    expect(probe.evidence?.engineVersion).toBe('magika-model-v1')
+    expect(probe.evidence?.detectedFormatId).toBe('pdf')
+  })
+
+  it('returns structured unavailable result without throwing', async () => {
+    const probe = await runMagikaRuntimeProbe(
+      createUnavailableMagikaRuntimeLoader({
+        reason: 'runtime_unavailable',
+        detail: 'runtime disabled',
+        modelVersion: 'magika-model-v2',
+      }),
+      {
+        bytes: new Uint8Array([1]),
+      }
+    )
+    expect(probe.evidence).toBeNull()
+    expect(probe.unavailableReason).toBe('runtime_unavailable')
+    expect(probe.modelVersion).toBe('magika-model-v2')
   })
 })

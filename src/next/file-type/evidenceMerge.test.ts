@@ -49,4 +49,24 @@ describe('evidenceMerge', () => {
     )
     expect(merged.conflicts.length).toBeGreaterThan(0)
   })
+
+  it('keeps strong magic ahead of high-confidence magika', () => {
+    const merged = mergeFileTypeEvidence({
+      evidence: [
+        evidence({ source: 'magic', detectedFormatId: 'windows_exe', confidence: 'high', note: 'magic:pe:strong' }),
+        evidence({ source: 'magika', detectedFormatId: 'pdf', confidence: 'high', note: 'magika:pdf:0.990' }),
+      ],
+    })
+    expect(merged.primary.formatId).toBe('windows_exe')
+  })
+
+  it('keeps successful container probe ahead of magika', () => {
+    const merged = mergeFileTypeEvidence({
+      evidence: [
+        evidence({ source: 'container_probe', detectedFormatId: 'docx', confidence: 'high' }),
+        evidence({ source: 'magika', detectedFormatId: 'zip', confidence: 'high' }),
+      ],
+    })
+    expect(merged.primary.formatId).toBe('docx')
+  })
 })

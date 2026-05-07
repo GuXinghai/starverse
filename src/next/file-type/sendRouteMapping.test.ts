@@ -43,6 +43,7 @@ function routesOf(items: readonly { route: SendRoute }[]): SendRoute[] {
   return items.map((item) => item.route)
 }
 
+// eslint-disable-next-line max-lines-per-function
 describe('sendRouteMapping', () => {
   it('maps plain text-like formats to direct_text first', () => {
     const candidates = buildSendPlanCandidates({
@@ -126,6 +127,57 @@ describe('sendRouteMapping', () => {
     const converted = candidates.find((item) => item.route === 'converted_markdown')
     expect(converted?.blocked).toBe(true)
     expect(converted?.blockedBy).toContain('engine_document_conversion_unavailable')
+  })
+
+  it('does not globally block routes when magika engine is unavailable but routeAvailability stays true', () => {
+    const availability = {
+      engines: [
+        {
+          id: 'magika',
+          displayName: 'Magika',
+          version: 'mock-v1',
+          platform: 'any',
+          kind: 'builtin',
+          capabilities: [],
+          supportedFormatIds: [],
+          supportedMimeTypes: [],
+          enabled: true,
+          healthStatus: 'failed',
+          failureReason: 'engine_unavailable',
+          failureDetails: 'runtime unavailable',
+          lastCheckedAt: 1000,
+          healthcheck: null,
+        },
+      ],
+      diagnostics: [],
+      capabilityAvailability: {
+        document_conversion: true,
+        spreadsheet_conversion: true,
+        presentation_conversion: true,
+        rendered_images: true,
+        text_extraction: true,
+        audio_extraction: true,
+        frame_selection: true,
+      },
+      routeAvailability: {
+        documentConversion: true,
+        spreadsheetConversion: true,
+        presentationConversion: true,
+        renderedImages: true,
+        textExtraction: true,
+        audioExtraction: true,
+        frameSelection: true,
+      },
+    } as const
+
+    const candidates = buildSendPlanCandidates({
+      verdict: verdict('docx'),
+      modelCapabilities: fullCapabilities,
+      engineAvailability: availability,
+    })
+    const converted = candidates.find((item) => item.route === 'converted_markdown')
+    expect(converted?.blocked).toBe(false)
+    expect(converted?.blockedBy).toEqual([])
   })
 
   it('changes candidates with model capability changes while detection input remains stable', () => {
