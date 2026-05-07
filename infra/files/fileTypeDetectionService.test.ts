@@ -422,4 +422,81 @@ describe('FileTypeDetectionService', () => {
       expect(rows[1]?.isCurrent).toBe(1)
     })
   })
+
+  it('marks magika evidence with adapter_only runtimeKind when only magikaAdapter is injected', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-10.txt'
+      await writeAssetFile(storageRootDir, storageUri, '{"x":1}')
+      fileAssetRepo.create({
+        id: 'asset-10',
+        sha256: null,
+        filename: 'asset-10.txt',
+        extension: 'txt',
+        mime: 'application/json',
+        sizeBytes: 7,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      const adapter: MagikaAdapter = {
+        detect: () => ({ label: 'json', score: 0.97 }),
+      }
+      const service = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaAdapter: adapter,
+        // magikaRuntimeLoader intentionally NOT injected
+      })
+
+      const result = await service.detectFull({ assetId: 'asset-10' })
+      expect(result.job.status).toBe('ready')
+
+      const magikaEvidence = result.verdict?.verdict.evidence.find((item) => item.source === 'magika')
+      expect(magikaEvidence).toBeTruthy()
+      expect(magikaEvidence?.engineRuntimeKind).toBe('adapter_only')
+      expect(magikaEvidence?.engineRuntimeKind).not.toBe('mock')
+    })
+  })
+
+  it('does not infer magikaModelVersion from static versionInfo when only adapter is injected', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-11.txt'
+      await writeAssetFile(storageRootDir, storageUri, 'hello from adapter-only')
+      fileAssetRepo.create({
+        id: 'asset-11',
+        sha256: null,
+        filename: 'asset-11.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 22,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      const adapter: MagikaAdapter = {
+        detect: () => ({ label: 'txt', score: 0.85 }),
+      }
+      const service = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaAdapter: adapter,
+        versionInfo: { magikaModelVersion: 'should-not-leak' },
+      })
+
+      const result = await service.detectFull({ assetId: 'asset-11' })
+      expect(result.job.status).toBe('ready')
+      expect(result.verdict?.versionInfo.magikaModelVersion).toBeNull()
+
+      const magikaEvidence = result.verdict?.verdict.evidence.find((item) => item.source === 'magika')
+      expect(magikaEvidence?.engineVersion).toBeNull()
+    })
+  })
 })

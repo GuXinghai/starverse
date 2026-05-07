@@ -113,8 +113,12 @@ export class FileTypeDetectionService {
     this.magikaRuntimeLoader =
       deps.magikaRuntimeLoader ??
       createMockMagikaRuntimeLoader({
-        runtimeKind: 'mock',
-        modelVersion: deps.versionInfo?.magikaModelVersion ?? null,
+        // adapter_only: no MagikaRuntimeLoader was injected; we wrap
+        // the caller-supplied adapter (or noop) behind a loader shell.
+        // modelVersion MUST be null here because we cannot infer the
+        // adapter's backing model version from static config.
+        runtimeKind: 'adapter_only',
+        modelVersion: null,
         classify: (probe) => adapter.detect(probe),
       })
     this.versionInfo = { ...DEFAULT_VERSION_INFO, ...(deps.versionInfo ?? {}) }
@@ -204,7 +208,10 @@ export class FileTypeDetectionService {
         magikaModelVersion:
           assembled.magikaModelVersion ??
           magikaRuntimeState?.modelVersion ??
-          this.versionInfo.magikaModelVersion,
+          // Only fall back to static config when no runtime state exists
+          // (basic mode). In full mode, if the runtime provides no version,
+          // keep it null — do not fabricate from versionInfo.
+          (magikaRuntimeState ? null : this.versionInfo.magikaModelVersion),
       }
 
       const saved = this.deps.fileTypeVerdictRepo.upsertCurrent({
