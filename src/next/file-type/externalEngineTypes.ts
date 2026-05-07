@@ -34,11 +34,18 @@ export const ENGINE_FAILURE_REASONS = [
   'engine_unavailable',
   'engine_timeout',
   'engine_failed',
+  'output_limit_exceeded',
   'manifest_invalid',
   'platform_unsupported',
   'disabled_by_policy',
 ] as const
 export type EngineFailureReason = (typeof ENGINE_FAILURE_REASONS)[number]
+
+export type EngineHealthCheckCommand = Readonly<{
+  command: string
+  args: readonly string[]
+  cwd: string | null
+}>
 
 export type ManagedEnginePluginManifest = Readonly<{
   id: EngineId
@@ -59,6 +66,7 @@ export type ManagedEnginePluginManifest = Readonly<{
   network: Readonly<{
     allowed: boolean
   }>
+  healthcheck: EngineHealthCheckCommand | null
 }>
 
 export type ExternalEngineRecord = Readonly<{
@@ -75,6 +83,7 @@ export type ExternalEngineRecord = Readonly<{
   failureReason: EngineFailureReason | null
   failureDetails: string | null
   lastCheckedAt: number | null
+  healthcheck: EngineHealthCheckCommand | null
 }>
 
 export type EngineCapabilityAvailability = Readonly<Record<EngineCapability, boolean>>
