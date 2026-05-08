@@ -2,7 +2,7 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: P4-A completed; P4-B pending (Magika managed plugin real package & classify call)
+Current phase: P4-A completed; P4-B planning completed; P4-B implementation pending (Magika managed plugin real package & classify call)
 Next phase: P4-B
 
 ## 目录用途
@@ -38,6 +38,7 @@ Next phase: P4-B
 | 18-phase3-final-acceptance-and-closeout.md | Phase 3 收口验收：失败降级矩阵、禁止项扫描、阶段结论与后续 follow-ups |
 | 19-phase4-planning.md | Phase 4 规划：插件生命周期、真实 runtime 与深度转换任务包与验收草案 |
 | 20-p4a-official-plugin-marketplace-closeout.md | P4-A 收口：官方限定插件市场、trusted roots、lifecycle test、settings UI 最小闭环 |
+| 21-p4b-magika-official-managed-plugin-planning.md | P4-B planning: Magika official managed plugin 真实包与 classify call 规划 |
 
 ## Step 状态
 
@@ -77,7 +78,7 @@ Next phase: P4-B
 - 本目录为文件类型检测工程实现专属目录
 - 下一步：按 `19-phase4-planning.md` 拆分 P4-A~P4-D，进入分包实施前确认
 - P4-A completed：官方限定插件市场最小闭环、trusted roots 注入、lifecycle service/client 测试补强、settings UI（见 `20-p4a-official-plugin-marketplace-closeout.md`）
-- 下一步：P4-B（Magika managed plugin 真实包与 classify call 规划）
+- 下一步：P4-B implementation（等待 P4-B1~P4-B5 子任务包启动）
 
 ## 当前冻结结论
 
