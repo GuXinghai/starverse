@@ -28,6 +28,7 @@ import { SettingsRepo } from '../repo/settingsRepo'
 import { ensureBranchingSchema } from '../migrations/ensureBranchingSchema'
 import { ensureSearchSchema } from '../migrations/ensureSearchSchema'
 import { ensureFilePipelineSchema } from '../migrations/ensureFilePipelineSchema'
+import { ensureP4C1DerivedKindSchema } from '../migrations/ensureP4C1DerivedKindSchema'
 import { ensureEnginePluginRegistrySchema } from '../migrations/ensureEnginePluginRegistrySchema'
 import { ConversationAttachmentService } from '../../files/conversationAttachmentService'
 import { DerivativeJobService } from '../../files/derivativeJobService'
@@ -153,6 +154,8 @@ export class DbWorkerRuntime {
     this.ensureMessageAssetSchema()
     console.log('[DbWorkerRuntime] 确保 File Pipeline Schema...')
     ensureFilePipelineSchema(this.db)
+    console.log('[DbWorkerRuntime] 确保 P4-C1 Derived Kind Schema...')
+    ensureP4C1DerivedKindSchema(this.db)
     console.log('[DbWorkerRuntime] 确保 Engine Plugin Registry Schema...')
     ensureEnginePluginRegistrySchema(this.db)
     console.log('[DbWorkerRuntime] 确保 Model Catalog Schema...')

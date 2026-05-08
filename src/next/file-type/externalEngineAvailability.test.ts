@@ -46,6 +46,7 @@ describe('externalEngineAvailability', () => {
       presentation_conversion: true,
       rendered_images: true,
       text_extraction: false,
+      metadata_extraction: false,
       audio_extraction: true,
       frame_selection: false,
     })

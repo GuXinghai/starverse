@@ -69,10 +69,12 @@ describe('externalEngineHealth', () => {
       capabilities: ['text_extraction'],
       supportedFormatIds: ['plain_text'],
       supportedMimeTypes: ['text/plain'],
+      supportedOutputRoutes: [],
       resourceLimits: { maxInputBytes: null, maxDurationMs: null },
       sandbox: { enabled: true },
       network: { allowed: false },
       healthcheck: { command: 'demo', args: ['--version'], cwd: null },
+      metadataAllowlist: null,
     })
 
     const updated = await runEngineHealthCheck({
@@ -89,6 +91,8 @@ describe('externalEngineHealth', () => {
           stderr: '',
           timedOut: false,
           outputLimited: false,
+          terminationAttempted: false,
+          terminated: false,
           errorCode: null,
           elapsedMs: 12,
         }
@@ -110,10 +114,12 @@ describe('externalEngineHealth', () => {
       capabilities: ['document_conversion'],
       supportedFormatIds: ['docx'],
       supportedMimeTypes: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      supportedOutputRoutes: [],
       resourceLimits: { maxInputBytes: null, maxDurationMs: null },
       sandbox: { enabled: true },
       network: { allowed: false },
       healthcheck: { command: 'missing', args: [], cwd: null },
+      metadataAllowlist: null,
     })
 
     const updated = await runEngineHealthCheck({
@@ -126,6 +132,8 @@ describe('externalEngineHealth', () => {
         stderr: 'spawn ENOENT',
         timedOut: false,
         outputLimited: false,
+        terminationAttempted: false,
+        terminated: false,
         errorCode: 'command_not_found',
         elapsedMs: 5,
       }),
@@ -149,10 +157,12 @@ describe('externalEngineHealth', () => {
       capabilities: ['text_extraction'],
       supportedFormatIds: ['plain_text'],
       supportedMimeTypes: ['text/plain'],
+      supportedOutputRoutes: [],
       resourceLimits: { maxInputBytes: null, maxDurationMs: null },
       sandbox: { enabled: true },
       network: { allowed: false },
       healthcheck: { command: 'limit', args: [], cwd: null },
+      metadataAllowlist: null,
     })
 
     const updated = await runEngineHealthCheck({
@@ -165,6 +175,8 @@ describe('externalEngineHealth', () => {
         stderr: 'too much output',
         timedOut: false,
         outputLimited: true,
+        terminationAttempted: false,
+        terminated: false,
         errorCode: 'output_limit_exceeded',
         elapsedMs: 7,
       }),
