@@ -4,6 +4,7 @@ import path from 'node:path'
 import { runEngineHealthCheck } from './externalEngineHealth'
 import { parseManagedEnginePluginManifest } from './externalEngineManifest'
 import { createExternalEngineRegistry, sanitizeEngineDetailForDiagnostics } from './externalEngineRegistry'
+import { runMagikaClassify, type MagikaClassifyRunnerResult } from './magikaClassifyRunner'
 import type {
   EngineAvailability,
   EngineFailureReason,
@@ -447,6 +448,28 @@ export function toManagedEnginePluginManifest(
     network: { allowed: false },
     healthcheck: manifest.healthcheck,
   })
+}
+
+export function createMagikaClassifyCallback(
+  descriptor: MagikaManagedPluginDescriptor
+): (
+  input: Readonly<{
+    probe: MagikaRuntimeDetectionInput
+    descriptor: MagikaManagedPluginDescriptor
+  }>
+) => Promise<MagikaRuntimeClassifyOutput | null> {
+  const modelDirPath = path.dirname(descriptor.modelFilePaths[0] ?? path.join(descriptor.pluginDir, 'model'))
+  const configDirPath = path.dirname(descriptor.configFilePaths[0] ?? path.join(descriptor.pluginDir, 'model'))
+  return async ({ probe }) => {
+    const result = await runMagikaClassify({
+      inputBytes: probe.bytes,
+      runtimeEntryPath: descriptor.runtimeEntryPath,
+      modelDirPath,
+      configDirPath,
+    })
+    if (!result.ok) return null
+    return { label: result.label, score: result.score }
+  }
 }
 
 type ReadManifestSuccess = Readonly<{ ok: true; manifest: MagikaManagedPluginManifest }>
