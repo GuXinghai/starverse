@@ -12,6 +12,7 @@ import {
   createMockMagikaRuntimeLoader,
   createUnavailableMagikaRuntimeLoader,
 } from '../../src/next/file-type/magikaRuntimeLoader'
+import { createManagedPluginMagikaRuntimeLoader } from '../../src/next/file-type/magikaManagedPlugin'
 
 function loadSchema(db: BetterSqlite3.Database) {
   const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
@@ -497,6 +498,85 @@ describe('FileTypeDetectionService', () => {
 
       const magikaEvidence = result.verdict?.verdict.evidence.find((item) => item.source === 'magika')
       expect(magikaEvidence?.engineVersion).toBeNull()
+    })
+  })
+
+  it('keeps detectFull ready via fallback when managed plugin is unavailable', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-12.txt'
+      await writeAssetFile(storageRootDir, storageUri, 'managed plugin fallback')
+      fileAssetRepo.create({
+        id: 'asset-12',
+        sha256: null,
+        filename: 'asset-12.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 23,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      const service = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaRuntimeLoader: createManagedPluginMagikaRuntimeLoader({
+          pluginDirs: [path.join(storageRootDir, '.missing-magika-plugin')],
+        }),
+      })
+
+      const result = await service.detectFull({ assetId: 'asset-12' })
+      expect(result.job.status).toBe('ready')
+      expect(result.verdict?.primaryFormatId).toBe('plain_text')
+      expect(result.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
+    })
+  })
+
+  it('does not invoke magika plugin loader during detectBasic', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-13.txt'
+      await writeAssetFile(storageRootDir, storageUri, 'detect basic no magika runtime')
+      fileAssetRepo.create({
+        id: 'asset-13',
+        sha256: null,
+        filename: 'asset-13.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 30,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      let loadCalls = 0
+      const service = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaRuntimeLoader: {
+          load: () => {
+            loadCalls += 1
+            return {
+              available: true,
+              runtime: {
+                kind: 'local_loader',
+                modelVersion: 'v-test',
+                classify: () => ({ label: 'json', score: 0.99 }),
+              },
+            }
+          },
+        },
+      })
+
+      const result = await service.detectBasic({ assetId: 'asset-13' })
+      expect(result.job.status).toBe('ready')
+      expect(loadCalls).toBe(0)
+      expect(result.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
     })
   })
 })

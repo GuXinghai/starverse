@@ -118,7 +118,11 @@ export function mapProcessRunToProbe(result: ExternalProcessRunResult): EngineHe
     }
   }
 
-  if (result.errorCode === 'policy_batch_entrypoint_blocked' || result.errorCode === 'policy_shell_not_allowed') {
+  if (
+    result.errorCode === 'policy_batch_entrypoint_blocked' ||
+    result.errorCode === 'policy_shell_not_allowed' ||
+    result.errorCode === 'policy_script_interpreter_blocked'
+  ) {
     return {
       status: 'failed',
       reason: 'disabled_by_policy',

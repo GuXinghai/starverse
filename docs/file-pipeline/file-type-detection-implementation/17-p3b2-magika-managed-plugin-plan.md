@@ -2,8 +2,8 @@
 
 ## 1. 阶段定位
 
-本文件是 P3-B2 的 plugin planning 文档，不是插件 runner implementation completed。  
-本轮仅修正方向与任务包，不接入真实 Magika runtime，不修改主程序运行时代码。
+本文件用于记录 P3-B2 managed plugin 路线与最小闭环状态。
+当前完成的是 manifest/discovery/integrity/health/availability/runtime-loader 边界，不是完整插件系统 completed。
 
 ## 2. 修正后的 P3-B2 结论
 
@@ -122,12 +122,23 @@ engines/magika/
 - Phase 3 仅允许预留 registry 字段与“手动放置插件目录”路径。
 - Phase 4 再做 settings UI、下载、升级、回滚、卸载、签名校验、进度显示。
 
-## 10. P3-B2 拆分建议
+## 10. P3-B2 本轮最小闭环状态
 
-- `P3-B2a`：Magika managed plugin manifest / directory / health planning
-- `P3-B2b`：Magika plugin manifest + health minimal implementation
-- `P3-B2c`：Magika plugin runner real classify spike
-- `P3-B2d`：P3-B2 audit / fallback validation
+已完成（最小闭环）：
+
+- manifest 解析与字段约束（含 `modelVersion`、`runtimeEntry`、`modelFiles`、`configFiles`、`integrity`）
+- 插件目录发现（可注入目录，支持 dev/userData/portable 语义边界）
+- runtime/model/config 文件存在性检查
+- sha256 integrity 校验与结构化失败原因映射
+- health check 与 availability 联动（失败不阻断 Core Detector）
+- `magikaRuntimeLoader` managed plugin 边界接入（unavailable fallback 保持）
+- `detectFull` 可消费 managed loader；`detectBasic` 不调用插件 runtime
+
+未完成（仍延期）：
+
+- 真实 Magika 模型打包与生产 classify 执行链路
+- 插件安装/更新/卸载 UI 与下载器
+- 签名与 trusted root
 
 ## 11. 测试策略
 
@@ -177,6 +188,9 @@ engines/magika/
 
 ## 14. 给下一轮 Agent 的提示词草案
 
-请在 `D:/Starverse` 执行 `P3-B2a`（Magika managed plugin 规划落地到最小可实现清单），仅输出实现任务包与验收矩阵，不写生产代码。  
-必须覆盖：manifest 字段冻结、目录策略、health check 最小闭环、modelVersion 唯一来源、与 `detectFull` 的 fallback 边界、以及“主包不引入 magika/tfjs 依赖”的禁止项扫描。  
-不得进入真实 runtime 接入，不修改 `package.json/lockfile`，不得提交模型文件。
+请在 `D:/Starverse` 执行 P3-B2 post-implementation audit：
+1) 复核 managed plugin manifest/discovery/integrity/health/availability 的边界是否满足 Phase 3 约束；
+2) 复核 `detectFull` 在插件 unavailable 时 fallback 行为与 `detectBasic` 不调用插件 runtime 的契约；
+3) 复核 sendRouteMapping 在 Magika unavailable 下不会全局 blocked；
+4) 输出 P0/P1/P2 风险与最小修复任务包。
+不得接入真实模型打包，不修改 `package.json/lockfile`，不得把 P3-B2 写成完整插件系统已完成。

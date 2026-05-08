@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Phase 3 execution (P3-B2 direction corrected to managed Magika engine plugin planning)
-Next phase: P3-B2a/P3-B2b plugin planning and minimal manifest-health integration or P3-C implementation（验收矩阵、失败降级与收口）
+Current phase: Phase 3 execution (P3-B2 managed Magika plugin minimal boundary completed)
+Next phase: P3-B2 post-implementation audit or P3-C implementation（验收矩阵、失败降级与收口）
 
 ## 目录用途
 
@@ -65,6 +65,7 @@ Next phase: P3-B2a/P3-B2b plugin planning and minimal manifest-health integratio
 - P3-B implementation 已完成首轮闭环：Magika runtime loader interface + mock/unavailable fallback + modelVersion provenance + cache boundary（未接入真实模型打包）
 - 新增 P3-B2 评估文档：`16-p3b2-real-magika-runtime-assessment.md`（主包依赖结论：assessment_only）
 - 新增 P3-B2 修正规划：`17-p3b2-magika-managed-plugin-plan.md`（结论：proceed_to_plugin_integration_planning）
+- P3-B2 implementation 已完成 managed plugin 最小闭环（manifest/discovery/integrity/health/availability/loader fallback），未完成完整插件生命周期与真实模型打包
 - P3-B2 当前口径：不把 Magika 绑定进 Starverse 主包，不代表真实 runtime 完整完成
 - remaining follow-ups listed（legacy message_asset 最终退场、provider_file_ref 延后、真实外部引擎执行与扩展 fixture）
 - 本目录为文件类型检测工程实现专属目录
