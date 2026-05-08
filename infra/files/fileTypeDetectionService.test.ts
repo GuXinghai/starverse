@@ -579,4 +579,42 @@ describe('FileTypeDetectionService', () => {
       expect(result.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
     })
   })
+
+  it('runs detectFull with classify callback through mock runtime loader', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-14.txt'
+      await writeAssetFile(storageRootDir, storageUri, 'classify callback test')
+      fileAssetRepo.create({
+        id: 'asset-14',
+        sha256: null,
+        filename: 'asset-14.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 22,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      const service = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaRuntimeLoader: createMockMagikaRuntimeLoader({
+          modelVersion: 'magika-model-p4b4',
+          runtimeKind: 'local_loader',
+          classify: async () => ({ label: 'json', score: 0.98 }),
+        }),
+      })
+
+      const result = await service.detectFull({ assetId: 'asset-14' })
+      expect(result.job.status).toBe('ready')
+      const magikaEvidence = result.verdict?.verdict.evidence.find((item) => item.source === 'magika')
+      expect(magikaEvidence).toBeTruthy()
+      expect(magikaEvidence?.detectedFormatId).toBe('json')
+      expect(result.verdict?.versionInfo.magikaModelVersion).toBe('magika-model-p4b4')
+    })
+  })
 })
