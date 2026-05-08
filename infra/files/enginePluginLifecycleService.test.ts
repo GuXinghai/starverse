@@ -145,7 +145,7 @@ function createService(tempRoot: string, trustedRoots: TrustedCatalogPublicKeyMa
 describe('EnginePluginLifecycleService', () => {
   it('registers local official plugin via catalog signature and hash verification', async () => {
     const fixture = await createFixture()
-    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots)
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, { trustedRootSource: 'official' })
     try {
       const registered = await service.registerLocalOfficialPlugin({
         catalogPath: fixture.catalogPath,
@@ -160,6 +160,7 @@ describe('EnginePluginLifecycleService', () => {
       if (!registered.ok) return
       expect(registered.value.engineId).toBe('magika')
       expect(registered.value.installState).toBe('installed')
+      expect(registered.value.installRootKind).toBe('managed_root')
 
       const official = await service.listOfficialPlugins({ catalogPath: fixture.catalogPath })
       expect(official.ok).toBe(true)
@@ -253,6 +254,45 @@ describe('EnginePluginLifecycleService', () => {
       expect(result.ok).toBe(true)
       if (!result.ok) return
       expect(result.value[0]?.recommendedInstallRootKind).toBe('managed_root')
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects test_root when trusted root source is official', async () => {
+    const fixture = await createFixture()
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, { trustedRootSource: 'official' })
+    try {
+      const result = await service.registerLocalOfficialPlugin({
+        catalogPath: fixture.catalogPath,
+        pluginId: 'magika',
+        pluginVersion: '0.1.0',
+        installRootKind: 'test_root',
+        installRef: fixture.installRef,
+      })
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.reason).toBe('install_root_kind_mismatch')
+      }
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('accepts test_root when trusted root source is test', async () => {
+    const fixture = await createFixture()
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, { trustedRootSource: 'test' })
+    try {
+      const result = await service.registerLocalOfficialPlugin({
+        catalogPath: fixture.catalogPath,
+        pluginId: 'magika',
+        pluginVersion: '0.1.0',
+        installRootKind: 'test_root',
+        installRef: fixture.installRef,
+      })
+      expect(result.ok).toBe(true)
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })
