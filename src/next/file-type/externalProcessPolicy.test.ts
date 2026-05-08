@@ -151,33 +151,33 @@ describe('externalProcessPolicy', () => {
       EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionTimeoutMs
     )
     expect(result.policy.maxStdoutBytes).toBe(
-      EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionStdoutBytes
+      EXTERNAL_PROCESS_POLICY_DEFAULTS.stdoutBytes
     )
     expect(result.policy.maxStderrBytes).toBe(
-      EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionStderrBytes
+      EXTERNAL_PROCESS_POLICY_DEFAULTS.stderrBytes
     )
     expect(result.policy.shell).toBe(false)
     expect(result.policy.allowBatchEntrypoint).toBe(false)
   })
 
-  it('clamps conversion mode to conversion-specific hard caps', () => {
+  it('clamps conversion mode to unified hard caps', () => {
     const result = evaluateExternalProcessPolicy({
       command: 'java',
       mode: 'conversion',
-      timeoutMs: EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxTimeoutMs + 5000,
-      maxStdoutBytes: EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxStdoutBytes + 1024,
-      maxStderrBytes: EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxStderrBytes + 1024,
+      timeoutMs: EXTERNAL_PROCESS_POLICY_DEFAULTS.maxTimeoutMs + 5000,
+      maxStdoutBytes: EXTERNAL_PROCESS_POLICY_DEFAULTS.maxStdoutBytes + 1024,
+      maxStderrBytes: EXTERNAL_PROCESS_POLICY_DEFAULTS.maxStderrBytes + 1024,
     })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.policy.timeoutMs).toBe(
-      EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxTimeoutMs
+      EXTERNAL_PROCESS_POLICY_DEFAULTS.maxTimeoutMs
     )
     expect(result.policy.maxStdoutBytes).toBe(
-      EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxStdoutBytes
+      EXTERNAL_PROCESS_POLICY_DEFAULTS.maxStdoutBytes
     )
     expect(result.policy.maxStderrBytes).toBe(
-      EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxStderrBytes
+      EXTERNAL_PROCESS_POLICY_DEFAULTS.maxStderrBytes
     )
   })
 

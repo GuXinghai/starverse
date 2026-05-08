@@ -1,6 +1,44 @@
 # P4-C1：外部转换引擎 manifest / package spec 扩展
 
-Status: **P4-C1 implementation completed**
+Status: **P4-C1 implemented — unblock patch applied**
+
+## 0. P4-C1 Unblock Patch (c373574 follow-up)
+
+### 原因
+
+Initial commit `c373574` 在 External Audit 中被 BLOCKED：
+
+- **P0**: 27 TypeScript errors，主要原因为 `ENGINE_CAPABILITIES` 新增 `metadata_extraction` 后 `EngineCapabilityAvailability` 对象字面量未补齐，以及 manifest fixtures 缺少 `supportedOutputRoutes` / `metadataAllowlist`
+- **P1**: `ensureP4C1DerivedKindSchema` 已写但未接入 DB ensure 链路
+- **P2**: conversion mode hard caps (300s timeout / 100MiB stdout) 超出 P3-A 安全边界
+
+### 修复内容
+
+| # | 类别 | 修复 |
+|---|------|------|
+| 1 | P0 TS | `externalEngineAvailability.test.ts:43` 补齐 `metadata_extraction: false` |
+| 2 | P0 TS | `externalEngineHealth.test.ts` 3 处 manifest fixture 补齐 `supportedOutputRoutes: []` + `metadataAllowlist: null` |
+| 3 | P0 TS | `externalEngineHealth.test.ts` 3 处 fake process runner result 补齐 `terminationAttempted: false` + `terminated: false` |
+| 4 | P0 TS | `externalEngineHealth.ts:139` — TS2367 fix: `errorCode === 'process_timeout'` → `result.timedOut` |
+| 5 | P0 TS | `magikaManagedPlugin.test.ts:508` 补齐 `metadata_extraction: false` |
+| 6 | P0 TS | `sendRouteMapping.test.ts:153` 补齐 `metadata_extraction: false` |
+| 7 | P1 Migration | `runtime.ts` 接入 `ensureP4C1DerivedKindSchema(this.db)` 到 ensure chain |
+| 8 | P2 Policy | 移除 conversion-specific hard caps；所有 mode 复用统一 `maxTimeoutMs`(60s) / `maxStdoutBytes`(10MiB) / `maxStderrBytes`(1MiB) |
+| 9 | P2 Policy | 更新 `externalProcessPolicy.test.ts` conversion tests 匹配保守 caps |
+| 10 | Doc | 本文档更新，登记后续 Owner 决策项 |
+
+### Conversion mode 临时 Owner 决策
+
+conversion mode 保留，但资源上限回落到 P3-A 安全边界：
+- conversion default timeout: 60000ms（硬上限 60000ms，复用统一 `maxTimeoutMs`）
+- stdout/stderr caps: 复用统一值（10MiB stdout / 1MiB stderr）
+- 更大转换资源上限登记为 **P4-C3/P4-D follow-up**，需单独 Owner 决策
+
+### P4-C1 仍不是 P4-C completed
+
+本轮 unblock patch 不代表 P4-C completed。P4-C2~P4-C7 全部待实施。
+
+---
 
 ## 1. P4-C1 阶段定位
 
@@ -147,12 +185,14 @@ export const EXTERNAL_PROCESS_POLICY_MODES = ['health_check', 'process', 'conver
 
 | 参数 | health_check | process | conversion (新增) |
 |------|-------------|---------|-------------------|
-| 默认 timeout | 3s | 10s | 60s |
-| 硬上限 timeout | 60s | 60s | **300s** |
-| 默认 stdout | 1MiB | 1MiB | **50MiB** |
-| 硬上限 stdout | 10MiB | 10MiB | **100MiB** |
-| 默认 stderr | 256KiB | 256KiB | 1MiB |
-| 硬上限 stderr | 1MiB | 1MiB | **5MiB** |
+| 默认 timeout | 3s | 10s | **60s** |
+| 硬上限 timeout | 60s | 60s | **60s**（复用统一 `maxTimeoutMs`） |
+| 默认 stdout | 1MiB | 1MiB | 1MiB（复用统一） |
+| 硬上限 stdout | 10MiB | 10MiB | 10MiB（复用统一 `maxStdoutBytes`） |
+| 默认 stderr | 256KiB | 256KiB | 256KiB（复用统一） |
+| 硬上限 stderr | 1MiB | 1MiB | 1MiB（复用统一 `maxStderrBytes`） |
+
+**注意**：更大的转换资源上限（如 50MiB stdout、300s timeout）不在此阶段冻结。需 **Owner 决策**后单独登记为 P4-C3/P4-D follow-up。
 
 ### 6.3 不变的安全约束
 

@@ -511,6 +511,7 @@ describe('magikaManagedPlugin', () => {
           presentation_conversion: true,
           rendered_images: true,
           text_extraction: true,
+          metadata_extraction: false,
           audio_extraction: true,
           frame_selection: true,
         },

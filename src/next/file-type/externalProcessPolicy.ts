@@ -28,15 +28,10 @@ export const EXTERNAL_PROCESS_POLICY_DEFAULTS = Object.freeze({
   processTimeoutMs: 10000,
   conversionTimeoutMs: 60000,
   maxTimeoutMs: 60000,
-  conversionMaxTimeoutMs: 300000,
   stdoutBytes: 1024 * 1024,
   stderrBytes: 256 * 1024,
-  conversionStdoutBytes: 50 * 1024 * 1024,
-  conversionStderrBytes: 1024 * 1024,
   maxStdoutBytes: 10 * 1024 * 1024,
   maxStderrBytes: 1024 * 1024,
-  conversionMaxStdoutBytes: 100 * 1024 * 1024,
-  conversionMaxStderrBytes: 5 * 1024 * 1024,
   terminationGraceMs: 1000,
   maxTerminationGraceMs: 10000,
   shell: false,
@@ -121,21 +116,6 @@ export function evaluateExternalProcessPolicy(
     : mode === 'health_check'
       ? EXTERNAL_PROCESS_POLICY_DEFAULTS.healthCheckTimeoutMs
       : EXTERNAL_PROCESS_POLICY_DEFAULTS.processTimeoutMs
-  const timeoutHardMax = isConversion
-    ? EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxTimeoutMs
-    : EXTERNAL_PROCESS_POLICY_DEFAULTS.maxTimeoutMs
-  const stdoutDefault = isConversion
-    ? EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionStdoutBytes
-    : EXTERNAL_PROCESS_POLICY_DEFAULTS.stdoutBytes
-  const stdoutHardMax = isConversion
-    ? EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxStdoutBytes
-    : EXTERNAL_PROCESS_POLICY_DEFAULTS.maxStdoutBytes
-  const stderrDefault = isConversion
-    ? EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionStderrBytes
-    : EXTERNAL_PROCESS_POLICY_DEFAULTS.stderrBytes
-  const stderrHardMax = isConversion
-    ? EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxStderrBytes
-    : EXTERNAL_PROCESS_POLICY_DEFAULTS.maxStderrBytes
 
   return {
     ok: true,
@@ -145,17 +125,17 @@ export function evaluateExternalProcessPolicy(
       timeoutMs: clampPositiveInteger(
         input.timeoutMs,
         timeoutDefault,
-        timeoutHardMax
+        EXTERNAL_PROCESS_POLICY_DEFAULTS.maxTimeoutMs
       ),
       maxStdoutBytes: clampPositiveInteger(
         input.maxStdoutBytes,
-        stdoutDefault,
-        stdoutHardMax
+        EXTERNAL_PROCESS_POLICY_DEFAULTS.stdoutBytes,
+        EXTERNAL_PROCESS_POLICY_DEFAULTS.maxStdoutBytes
       ),
       maxStderrBytes: clampPositiveInteger(
         input.maxStderrBytes,
-        stderrDefault,
-        stderrHardMax
+        EXTERNAL_PROCESS_POLICY_DEFAULTS.stderrBytes,
+        EXTERNAL_PROCESS_POLICY_DEFAULTS.maxStderrBytes
       ),
       terminationGraceMs: clampPositiveInteger(
         input.terminationGraceMs,

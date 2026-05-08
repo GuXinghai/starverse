@@ -136,7 +136,7 @@ export function mapProcessRunToProbe(result: ExternalProcessRunResult): EngineHe
 
   return {
     status: 'failed',
-    reason: result.errorCode === 'process_timeout' ? 'engine_timeout' : 'engine_failed',
+    reason: result.timedOut ? 'engine_timeout' : 'engine_failed',
     detail: summarizeResultDetail(result),
   }
 }
