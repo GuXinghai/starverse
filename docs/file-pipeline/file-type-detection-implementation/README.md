@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Phase 3 execution (P3-B2 managed Magika plugin boundary with audit P0 fixes completed)
-Next phase: P3-C implementation（验收矩阵、失败降级与收口）
+Current phase: Phase 3 external runtime stabilization completed with follow-ups. Real model runtime packaging and full plugin lifecycle deferred to Phase 4.
+Next phase: Phase 4 planning
 
 ## 目录用途
 
