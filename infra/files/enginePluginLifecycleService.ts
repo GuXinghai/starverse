@@ -38,6 +38,7 @@ const FAILURE_REASON_SET = new Set([
   'health_check_unavailable',
   'health_check_failed',
   'not_installed',
+  'official_trusted_root_unconfigured',
 ])
 
 type LifecycleFailureReason = (typeof FAILURE_REASON_SET extends Set<infer T> ? T : never) & string
@@ -339,6 +340,12 @@ export class EnginePluginLifecycleService {
   private async loadAndVerifyCatalog(
     catalogPathInput?: string
   ): Promise<LifecycleActionResult<OfficialPluginCatalog>> {
+    if (Object.keys(this.deps.trustedRoots).length === 0) {
+      return fail(
+        'official_trusted_root_unconfigured',
+        'official plugin trusted roots are not configured'
+      )
+    }
     const catalogPath = requireNonEmpty(catalogPathInput ?? this.deps.defaultCatalogPath, 'catalogPath')
     let catalog: OfficialPluginCatalog
     try {

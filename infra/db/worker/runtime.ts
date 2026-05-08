@@ -35,6 +35,7 @@ import { FileIngestionService } from '../../files/fileIngestionService'
 import { SendPlanService } from '../../files/sendPlanService'
 import { FileTypeDetectionService } from '../../files/fileTypeDetectionService'
 import { EnginePluginLifecycleService } from '../../files/enginePluginLifecycleService'
+import { getActiveTrustedRoots } from '../../next/file-type/officialPluginTrustedRoots'
 import {
   type WorkerInitConfig,
   type WorkerRequestMessage,
@@ -227,9 +228,10 @@ export class DbWorkerRuntime {
       fileTypeVerdictRepo: this.fileTypeVerdictRepo,
       storageRootDir: this.fileStorageRootDir,
     })
+    const activeTrustedRoots = getActiveTrustedRoots()
     this.enginePluginLifecycleService = new EnginePluginLifecycleService({
       registryRepo: this.enginePluginRegistryRepo,
-      trustedRoots: {},
+      trustedRoots: activeTrustedRoots.ok ? activeTrustedRoots.trustedRoots : {},
       resolveInstallPluginDir: ({ installRootKind, installRef }) => {
         const safeRef = installRef.replace(/[^a-zA-Z0-9._-]+/g, '_')
         return path.join(this.fileStorageRootDir, 'engine-plugins', installRootKind, safeRef)

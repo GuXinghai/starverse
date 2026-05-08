@@ -6,6 +6,7 @@ import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { createCatalogSigningPayload, type TrustedCatalogPublicKeyMap } from '../../src/next/file-type/pluginCatalogSignature'
+import { createTestTrustedRoots } from '../../src/next/file-type/officialPluginTrustedRoots'
 import { ensureEnginePluginRegistrySchema } from '../db/migrations/ensureEnginePluginRegistrySchema'
 import { EnginePluginRegistryRepo } from '../db/repo/enginePluginRegistryRepo'
 import { EnginePluginLifecycleService } from './enginePluginLifecycleService'
@@ -139,6 +140,7 @@ function createService(tempRoot: string, trustedRoots: TrustedCatalogPublicKeyMa
   return { db, repo, service }
 }
 
+// eslint-disable-next-line max-lines-per-function
 describe('EnginePluginLifecycleService', () => {
   it('registers local official plugin via catalog signature and hash verification', async () => {
     const fixture = await createFixture()
@@ -221,6 +223,493 @@ describe('EnginePluginLifecycleService', () => {
       if (!enabled.ok) return
       expect(enabled.value.enabled).toBe(true)
       expect(enabled.value.installState).toBe('installed')
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('returns official_trusted_root_unconfigured when trusted roots are empty', async () => {
+    const fixture = await createFixture()
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    ensureEnginePluginRegistrySchema(db)
+    const repo = new EnginePluginRegistryRepo(db)
+    const service = new EnginePluginLifecycleService({
+      registryRepo: repo,
+      trustedRoots: {},
+      resolveInstallPluginDir: ({ installRef }) => path.join(fixture.tempRoot, installRef),
+    })
+    try {
+      const result = await service.listOfficialPlugins({ catalogPath: fixture.catalogPath })
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.reason).toBe('official_trusted_root_unconfigured')
+      }
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('registerLocalOfficialPlugin fails with official_trusted_root_unconfigured when trusted roots empty', async () => {
+    const fixture = await createFixture()
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    ensureEnginePluginRegistrySchema(db)
+    const repo = new EnginePluginRegistryRepo(db)
+    const service = new EnginePluginLifecycleService({
+      registryRepo: repo,
+      trustedRoots: {},
+      resolveInstallPluginDir: ({ installRef }) => path.join(fixture.tempRoot, installRef),
+    })
+    try {
+      const result = await service.registerLocalOfficialPlugin({
+        catalogPath: fixture.catalogPath,
+        pluginId: 'magika',
+        pluginVersion: '0.1.0',
+        installRootKind: 'managed_root',
+        installRef: fixture.installRef,
+      })
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.reason).toBe('official_trusted_root_unconfigured')
+      }
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('fails when catalog signature is invalid (wrong key)', async () => {
+    const fixture = await createFixture()
+    const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+    const wrongRoots: TrustedCatalogPublicKeyMap = {
+      'wrong-key': {
+        keyId: 'wrong-key',
+        algorithm: 'ed25519',
+        publicKeyPem: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      },
+    }
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    ensureEnginePluginRegistrySchema(db)
+    const repo = new EnginePluginRegistryRepo(db)
+    const service = new EnginePluginLifecycleService({
+      registryRepo: repo,
+      trustedRoots: wrongRoots,
+      resolveInstallPluginDir: ({ installRef }) => path.join(fixture.tempRoot, installRef),
+    })
+    try {
+      const result = await service.listOfficialPlugins({ catalogPath: fixture.catalogPath })
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.reason).toBe('catalog_signature_invalid')
+      }
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('fails when manifest hash does not match catalog entry', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+    const keyId = 'starverse-test-root'
+    const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
+    const trustedRoots: TrustedCatalogPublicKeyMap = {
+      [keyId]: { keyId, algorithm: 'ed25519', publicKeyPem },
+    }
+
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-engine-lifecycle-'))
+    const installRef = 'plugin_hash_mismatch'
+    const pluginRoot = path.join(tempRoot, installRef)
+    await mkdir(path.join(pluginRoot, 'runtime'), { recursive: true })
+    await mkdir(path.join(pluginRoot, 'model'), { recursive: true })
+
+    const runtimePath = path.join(pluginRoot, 'runtime', 'runner.js')
+    const modelPath = path.join(pluginRoot, 'model', 'model.bin')
+    const configPath = path.join(pluginRoot, 'model', 'config.json')
+    const packagePath = path.join(pluginRoot, 'package.tgz')
+    await writeFileAsync(runtimePath, 'module.exports = {}')
+    await writeFileAsync(modelPath, 'model-v1')
+    await writeFileAsync(configPath, '{"ok":true}')
+    await writeFileAsync(packagePath, 'package-bytes')
+
+    const integrity = {
+      'runtime/runner.js': sha256(readFileSync(runtimePath)),
+      'model/model.bin': sha256(readFileSync(modelPath)),
+      'model/config.json': sha256(readFileSync(configPath)),
+    }
+
+    const manifest = {
+      manifestSchemaVersion: '1', engineId: 'magika', displayName: 'Magika',
+      pluginVersion: '0.1.0', runtimeKind: 'local_loader', runtimeEntry: 'runtime/runner.js',
+      modelVersion: 'magika-v3', modelFiles: ['model/model.bin'],
+      configFiles: ['model/config.json'], integrity, license: 'Apache-2.0',
+      attribution: 'Google Magika', capabilities: ['text_extraction'],
+      supportedFormatIds: [], supportedMimeTypes: [], supportedLabels: ['json'], platform: 'any',
+    }
+    await writeFileAsync(path.join(pluginRoot, 'manifest.json'), JSON.stringify(manifest, null, 2))
+
+    const actualPackageHash = sha256(readFileSync(packagePath))
+    const wrongManifestHash = sha256(Buffer.from('tampered'))
+
+    const unsignedCatalog = {
+      schemaVersion: '1', source: 'official', generatedAt: '2026-05-08T00:00:00.000Z',
+      plugins: [{
+        pluginId: 'magika', pluginVersion: '0.1.0',
+        packageSha256: actualPackageHash,
+        manifestSha256: wrongManifestHash,
+        packagePath: 'package.tgz', manifestPath: 'manifest.json',
+      }],
+    }
+    const signatureValue = sign(
+      null,
+      Buffer.from(createCatalogSigningPayload(unsignedCatalog)),
+      privateKey
+    ).toString('base64')
+    const catalogPath = path.join(tempRoot, 'catalog.json')
+    await writeFileAsync(catalogPath, JSON.stringify({ ...unsignedCatalog, signature: { keyId, algorithm: 'ed25519', value: signatureValue } }, null, 2))
+
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    ensureEnginePluginRegistrySchema(db)
+    const repo = new EnginePluginRegistryRepo(db)
+    const service = new EnginePluginLifecycleService({
+      registryRepo: repo,
+      trustedRoots,
+      resolveInstallPluginDir: ({ installRef: ref }) => path.join(tempRoot, ref),
+    })
+    try {
+      const result = await service.registerLocalOfficialPlugin({
+        catalogPath,
+        pluginId: 'magika',
+        pluginVersion: '0.1.0',
+        installRootKind: 'managed_root',
+        installRef,
+      })
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.reason).toBe('hash_verification_failed')
+      }
+    } finally {
+      db.close()
+      await rmAsync(tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('fails when package hash does not match catalog entry', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+    const keyId = 'starverse-test-root'
+    const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
+    const trustedRoots: TrustedCatalogPublicKeyMap = {
+      [keyId]: { keyId, algorithm: 'ed25519', publicKeyPem },
+    }
+
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-engine-lifecycle-'))
+    const installRef = 'plugin_magika_001'
+    const pluginRoot = path.join(tempRoot, installRef)
+    await mkdir(path.join(pluginRoot, 'runtime'), { recursive: true })
+    await mkdir(path.join(pluginRoot, 'model'), { recursive: true })
+
+    const runtimePath = path.join(pluginRoot, 'runtime', 'runner.js')
+    const modelPath = path.join(pluginRoot, 'model', 'model.bin')
+    const configPath = path.join(pluginRoot, 'model', 'config.json')
+    const packagePath = path.join(pluginRoot, 'package.tgz')
+    await writeFileAsync(runtimePath, 'module.exports = {}')
+    await writeFileAsync(modelPath, 'model-v1')
+    await writeFileAsync(configPath, '{"ok":true}')
+    await writeFileAsync(packagePath, 'package-bytes')
+
+    const integrity = {
+      'runtime/runner.js': sha256(readFileSync(runtimePath)),
+      'model/model.bin': sha256(readFileSync(modelPath)),
+      'model/config.json': sha256(readFileSync(configPath)),
+    }
+
+    const manifest = {
+      manifestSchemaVersion: '1', engineId: 'magika', displayName: 'Magika',
+      pluginVersion: '0.1.0', runtimeKind: 'local_loader', runtimeEntry: 'runtime/runner.js',
+      modelVersion: 'magika-v3', modelFiles: ['model/model.bin'],
+      configFiles: ['model/config.json'], integrity, license: 'Apache-2.0',
+      attribution: 'Google Magika', capabilities: ['text_extraction'],
+      supportedFormatIds: [], supportedMimeTypes: [], supportedLabels: ['json'], platform: 'any',
+    }
+    await writeFileAsync(path.join(pluginRoot, 'manifest.json'), JSON.stringify(manifest, null, 2))
+
+    const actualManifestHash = sha256(readFileSync(path.join(pluginRoot, 'manifest.json')))
+    const wrongPackageHash = sha256(Buffer.from('tampered'))
+
+    const unsignedCatalog = {
+      schemaVersion: '1', source: 'official', generatedAt: '2026-05-08T00:00:00.000Z',
+      plugins: [{
+        pluginId: 'magika', pluginVersion: '0.1.0',
+        packageSha256: wrongPackageHash,
+        manifestSha256: actualManifestHash,
+        packagePath: 'package.tgz', manifestPath: 'manifest.json',
+      }],
+    }
+    const signatureValue = sign(
+      null,
+      Buffer.from(createCatalogSigningPayload(unsignedCatalog)),
+      privateKey
+    ).toString('base64')
+    const catalogPath = path.join(tempRoot, 'catalog.json')
+    await writeFileAsync(catalogPath, JSON.stringify({ ...unsignedCatalog, signature: { keyId, algorithm: 'ed25519', value: signatureValue } }, null, 2))
+
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    ensureEnginePluginRegistrySchema(db)
+    const repo = new EnginePluginRegistryRepo(db)
+    const service = new EnginePluginLifecycleService({
+      registryRepo: repo,
+      trustedRoots,
+      resolveInstallPluginDir: ({ installRef: ref }) => path.join(tempRoot, ref),
+    })
+    try {
+      const result = await service.registerLocalOfficialPlugin({
+        catalogPath,
+        pluginId: 'magika',
+        pluginVersion: '0.1.0',
+        installRootKind: 'managed_root',
+        installRef,
+      })
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.reason).toBe('hash_verification_failed')
+      }
+    } finally {
+      db.close()
+      await rmAsync(tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('fails when manifest engineId does not match catalog entry', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+    const keyId = 'starverse-test-root'
+    const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
+    const trustedRoots: TrustedCatalogPublicKeyMap = {
+      [keyId]: { keyId, algorithm: 'ed25519', publicKeyPem },
+    }
+
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-engine-lifecycle-'))
+    const installRef = 'plugin_wrong_engine'
+    const pluginRoot = path.join(tempRoot, installRef)
+    await mkdir(path.join(pluginRoot, 'runtime'), { recursive: true })
+    await mkdir(path.join(pluginRoot, 'model'), { recursive: true })
+
+    const runtimePath = path.join(pluginRoot, 'runtime', 'runner.js')
+    const modelPath = path.join(pluginRoot, 'model', 'model.bin')
+    const configPath = path.join(pluginRoot, 'model', 'config.json')
+    const packagePath = path.join(pluginRoot, 'package.tgz')
+    await writeFileAsync(runtimePath, 'module.exports = {}')
+    await writeFileAsync(modelPath, 'model-v1')
+    await writeFileAsync(configPath, '{"ok":true}')
+    await writeFileAsync(packagePath, 'package-bytes')
+
+    const integrity = {
+      'runtime/runner.js': sha256(readFileSync(runtimePath)),
+      'model/model.bin': sha256(readFileSync(modelPath)),
+      'model/config.json': sha256(readFileSync(configPath)),
+    }
+
+    const manifest = {
+      manifestSchemaVersion: '1', engineId: 'magika', displayName: 'Magika',
+      pluginVersion: '0.1.0', runtimeKind: 'local_loader', runtimeEntry: 'runtime/runner.js',
+      modelVersion: 'magika-v3', modelFiles: ['model/model.bin'],
+      configFiles: ['model/config.json'], integrity, license: 'Apache-2.0',
+      attribution: 'Google Magika', capabilities: ['text_extraction'],
+      supportedFormatIds: [], supportedMimeTypes: [], supportedLabels: ['json'], platform: 'any',
+    }
+    await writeFileAsync(path.join(pluginRoot, 'manifest.json'), JSON.stringify(manifest, null, 2))
+
+    const actualManifestHash = sha256(readFileSync(path.join(pluginRoot, 'manifest.json')))
+    const actualPackageHash = sha256(readFileSync(packagePath))
+
+    const unsignedCatalog = {
+      schemaVersion: '1', source: 'official', generatedAt: '2026-05-08T00:00:00.000Z',
+      plugins: [{
+        pluginId: 'tika', pluginVersion: '0.1.0',
+        packageSha256: actualPackageHash,
+        manifestSha256: actualManifestHash,
+        packagePath: 'package.tgz', manifestPath: 'manifest.json',
+      }],
+    }
+    const signatureValue = sign(
+      null,
+      Buffer.from(createCatalogSigningPayload(unsignedCatalog)),
+      privateKey
+    ).toString('base64')
+    const catalogPath = path.join(tempRoot, 'catalog.json')
+    await writeFileAsync(catalogPath, JSON.stringify({ ...unsignedCatalog, signature: { keyId, algorithm: 'ed25519', value: signatureValue } }, null, 2))
+
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    ensureEnginePluginRegistrySchema(db)
+    const repo = new EnginePluginRegistryRepo(db)
+    const service = new EnginePluginLifecycleService({
+      registryRepo: repo,
+      trustedRoots,
+      resolveInstallPluginDir: ({ installRef: ref }) => path.join(tempRoot, ref),
+    })
+    try {
+      const result = await service.registerLocalOfficialPlugin({
+        catalogPath,
+        pluginId: 'tika',
+        pluginVersion: '0.1.0',
+        installRootKind: 'managed_root',
+        installRef,
+      })
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.reason).toBe('manifest_engine_mismatch')
+      }
+    } finally {
+      db.close()
+      await rmAsync(tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('fails when manifest pluginVersion does not match catalog entry', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+    const keyId = 'starverse-test-root'
+    const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
+    const trustedRoots: TrustedCatalogPublicKeyMap = {
+      [keyId]: { keyId, algorithm: 'ed25519', publicKeyPem },
+    }
+
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-engine-lifecycle-'))
+    const installRef = 'plugin_wrong_version'
+    const pluginRoot = path.join(tempRoot, installRef)
+    await mkdir(path.join(pluginRoot, 'runtime'), { recursive: true })
+    await mkdir(path.join(pluginRoot, 'model'), { recursive: true })
+
+    const runtimePath = path.join(pluginRoot, 'runtime', 'runner.js')
+    const modelPath = path.join(pluginRoot, 'model', 'model.bin')
+    const configPath = path.join(pluginRoot, 'model', 'config.json')
+    const packagePath = path.join(pluginRoot, 'package.tgz')
+    await writeFileAsync(runtimePath, 'module.exports = {}')
+    await writeFileAsync(modelPath, 'model-v1')
+    await writeFileAsync(configPath, '{"ok":true}')
+    await writeFileAsync(packagePath, 'package-bytes')
+
+    const integrity = {
+      'runtime/runner.js': sha256(readFileSync(runtimePath)),
+      'model/model.bin': sha256(readFileSync(modelPath)),
+      'model/config.json': sha256(readFileSync(configPath)),
+    }
+
+    const manifest = {
+      manifestSchemaVersion: '1', engineId: 'magika', displayName: 'Magika',
+      pluginVersion: '9.9.9', runtimeKind: 'local_loader', runtimeEntry: 'runtime/runner.js',
+      modelVersion: 'magika-v3', modelFiles: ['model/model.bin'],
+      configFiles: ['model/config.json'], integrity, license: 'Apache-2.0',
+      attribution: 'Google Magika', capabilities: ['text_extraction'],
+      supportedFormatIds: [], supportedMimeTypes: [], supportedLabels: ['json'], platform: 'any',
+    }
+    await writeFileAsync(path.join(pluginRoot, 'manifest.json'), JSON.stringify(manifest, null, 2))
+
+    const actualManifestHash = sha256(readFileSync(path.join(pluginRoot, 'manifest.json')))
+    const actualPackageHash = sha256(readFileSync(packagePath))
+
+    const unsignedCatalog = {
+      schemaVersion: '1', source: 'official', generatedAt: '2026-05-08T00:00:00.000Z',
+      plugins: [{
+        pluginId: 'magika', pluginVersion: '0.1.0',
+        packageSha256: actualPackageHash,
+        manifestSha256: actualManifestHash,
+        packagePath: 'package.tgz', manifestPath: 'manifest.json',
+      }],
+    }
+    const signatureValue = sign(
+      null,
+      Buffer.from(createCatalogSigningPayload(unsignedCatalog)),
+      privateKey
+    ).toString('base64')
+    const catalogPath = path.join(tempRoot, 'catalog.json')
+    await writeFileAsync(catalogPath, JSON.stringify({ ...unsignedCatalog, signature: { keyId, algorithm: 'ed25519', value: signatureValue } }, null, 2))
+
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    ensureEnginePluginRegistrySchema(db)
+    const repo = new EnginePluginRegistryRepo(db)
+    const service = new EnginePluginLifecycleService({
+      registryRepo: repo,
+      trustedRoots,
+      resolveInstallPluginDir: ({ installRef: ref }) => path.join(tempRoot, ref),
+    })
+    try {
+      const result = await service.registerLocalOfficialPlugin({
+        catalogPath,
+        pluginId: 'magika',
+        pluginVersion: '0.1.0',
+        installRootKind: 'managed_root',
+        installRef,
+      })
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.reason).toBe('manifest_version_mismatch')
+      }
+    } finally {
+      db.close()
+      await rmAsync(tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('failureReason is sanitized in dto output', async () => {
+    const fixture = await createFixture()
+    const { db, repo, service } = createService(fixture.tempRoot, fixture.trustedRoots)
+    try {
+      const registered = await service.registerLocalOfficialPlugin({
+        catalogPath: fixture.catalogPath,
+        pluginId: 'magika',
+        pluginVersion: '0.1.0',
+        installRootKind: 'managed_root',
+        installRef: fixture.installRef,
+      })
+      expect(registered.ok).toBe(true)
+
+      repo.markFailed({
+        engineId: 'magika',
+        failureReason: `C:\\Users\\test\\plugins\\magika\\manifest.json invalid abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890`,
+      })
+
+      const installed = service.getInstalledPlugins()
+      const failed = installed.find((item) => item.engineId === 'magika')
+      expect(failed).toBeDefined()
+      if (failed) {
+        expect(failed.failureReason).not.toContain('C:')
+        expect(failed.failureReason).not.toContain('Users')
+        expect(failed.failureReason).not.toMatch(/\b[a-f0-9]{64}\b/)
+      }
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('failureReason in error message is sanitized', async () => {
+    const fixture = await createFixture()
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots)
+    try {
+      const registered = await service.registerLocalOfficialPlugin({
+        catalogPath: fixture.catalogPath,
+        pluginId: 'magika',
+        pluginVersion: '0.1.0',
+        installRootKind: 'managed_root',
+        installRef: fixture.installRef,
+      })
+      expect(registered.ok).toBe(true)
+
+      // Remove the runtime file to force a health failure
+      await rmAsync(path.join(fixture.tempRoot, fixture.installRef, 'runtime', 'runner.js'))
+
+      const health = await service.runHealthCheck({ engineId: 'magika' })
+      expect(health.ok).toBe(false)
+      if (!health.ok) {
+        expect(health.message).not.toContain(fixture.tempRoot)
+        expect(health.message).not.toMatch(/\b[a-f0-9]{64}\b/)
+      }
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })

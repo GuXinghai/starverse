@@ -21,6 +21,7 @@ import { normalizeSamplingParamsLayer } from '@/next/openrouter/samplingParamsPe
 import { resolveSamplingParams, type SamplingParamsLayer } from '@/next/openrouter/samplingParamsResolver'
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import SamplingParamsSettingsEditor from './SamplingParamsSettingsEditor.vue'
+import EnginePluginSettingsPanel from './EnginePluginSettingsPanel.vue'
 
 const props = defineProps<{
   disabled: boolean
@@ -639,6 +640,8 @@ onMounted(() => {
           />
         </div>
       </div>
+
+      <EnginePluginSettingsPanel />
 
       <div class="text-[11px] text-gray-500">
         ui-app reads OpenRouter settings from electron-store (not env) to avoid hidden overrides.
