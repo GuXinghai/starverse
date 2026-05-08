@@ -11,6 +11,7 @@ import {
   parseMagikaManagedPluginManifest,
   runManagedMagikaPluginHealthCheck,
   toManagedEnginePluginManifest,
+  validateMagikaPackageLayout,
   type MagikaManagedPluginManifest,
 } from './magikaManagedPlugin'
 import type { ModelInputCapabilities } from './types'
@@ -566,6 +567,55 @@ describe('magikaManagedPlugin', () => {
       expect(manifest.kind).toBe('plugin')
       expect(manifest.version).toBe('0.1.0')
     })
+  })
+
+  it('validates package layout with required files and dirs', async () => {
+    await withPluginFixture(async ({ rootDir }) => {
+      const result = await validateMagikaPackageLayout({ pluginRootPath: rootDir })
+      expect(result.valid).toBe(true)
+    })
+  })
+
+  it('rejects package layout when manifest is missing', async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-magika-layout-'))
+    try {
+      const result = await validateMagikaPackageLayout({ pluginRootPath: rootDir })
+      expect(result.valid).toBe(false)
+      if (result.valid) return
+      expect(result.reason).toBe('plugin_not_found')
+      expect(result.detail).toContain('manifest.json')
+    } finally {
+      await rm(rootDir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects package layout when runtime dir is missing', async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-magika-layout-'))
+    try {
+      await writeFile(path.join(rootDir, 'manifest.json'), '{}')
+      const result = await validateMagikaPackageLayout({ pluginRootPath: rootDir })
+      expect(result.valid).toBe(false)
+      if (result.valid) return
+      expect(result.reason).toBe('plugin_not_found')
+      expect(result.detail).toContain('runtime')
+    } finally {
+      await rm(rootDir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects package layout when model dir is missing', async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-magika-layout-'))
+    try {
+      await writeFile(path.join(rootDir, 'manifest.json'), '{}')
+      await mkdir(path.join(rootDir, 'runtime'), { recursive: true })
+      const result = await validateMagikaPackageLayout({ pluginRootPath: rootDir })
+      expect(result.valid).toBe(false)
+      if (result.valid) return
+      expect(result.reason).toBe('plugin_not_found')
+      expect(result.detail).toContain('model')
+    } finally {
+      await rm(rootDir, { recursive: true, force: true })
+    }
   })
 
   it('sanitizes absolute paths from discovery failure detail', async () => {

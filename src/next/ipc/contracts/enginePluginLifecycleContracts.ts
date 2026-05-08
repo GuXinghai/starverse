@@ -27,6 +27,7 @@ const officialPluginSchema = z.object({
   catalogGeneratedAt: z.string().trim().nullable(),
   installState: z.enum(['installed', 'failed', 'uninstalled', 'update_available', 'not_installed']),
   enabled: z.boolean(),
+  recommendedInstallRootKind: z.enum(['managed_root', 'test_root']),
 })
 
 const lifecycleFailureSchema = z.object({

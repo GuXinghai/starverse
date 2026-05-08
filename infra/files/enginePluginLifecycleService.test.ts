@@ -127,7 +127,7 @@ async function createFixture(): Promise<Fixture> {
   }
 }
 
-function createService(tempRoot: string, trustedRoots: TrustedCatalogPublicKeyMap) {
+function createService(tempRoot: string, trustedRoots: TrustedCatalogPublicKeyMap, opts: Readonly<{ trustedRootSource?: 'official' | 'test' | null }> = {}) {
   const db = new BetterSqlite3(':memory:')
   loadSchema(db)
   ensureEnginePluginRegistrySchema(db)
@@ -135,6 +135,7 @@ function createService(tempRoot: string, trustedRoots: TrustedCatalogPublicKeyMa
   const service = new EnginePluginLifecycleService({
     registryRepo: repo,
     trustedRoots,
+    trustedRootSource: opts.trustedRootSource ?? 'test',
     resolveInstallPluginDir: ({ installRef }) => path.join(tempRoot, installRef),
   })
   return { db, repo, service }
@@ -223,6 +224,35 @@ describe('EnginePluginLifecycleService', () => {
       if (!enabled.ok) return
       expect(enabled.value.enabled).toBe(true)
       expect(enabled.value.installState).toBe('installed')
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('includes recommendedInstallRootKind in listOfficialPlugins response', async () => {
+    const fixture = await createFixture()
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, { trustedRootSource: 'test' })
+    try {
+      const result = await service.listOfficialPlugins({ catalogPath: fixture.catalogPath })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.value).toHaveLength(1)
+      expect(result.value[0]?.recommendedInstallRootKind).toBe('test_root')
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('returns managed_root when trusted root source is official', async () => {
+    const fixture = await createFixture()
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, { trustedRootSource: 'official' })
+    try {
+      const result = await service.listOfficialPlugins({ catalogPath: fixture.catalogPath })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.value[0]?.recommendedInstallRootKind).toBe('managed_root')
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })

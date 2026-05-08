@@ -66,7 +66,7 @@ describe('EnginePluginSettingsPanel', () => {
     ;(globalThis as any).dbBridge = createDbBridgeMock({
       listOfficialPlugins: {
         ok: true,
-        value: [{ pluginId: 'magika', pluginVersion: '0.1.0', catalogGeneratedAt: '2026-05-08T00:00:00.000Z', installState: 'not_installed', enabled: false }],
+        value: [{ pluginId: 'magika', pluginVersion: '0.1.0', catalogGeneratedAt: '2026-05-08T00:00:00.000Z', installState: 'not_installed', enabled: false, recommendedInstallRootKind: 'managed_root' }],
       },
       listInstalledPlugins: [],
     })
@@ -218,6 +218,37 @@ describe('EnginePluginSettingsPanel', () => {
 
     await waitFor(() => {
       expect(bridge.invoke).toHaveBeenCalledWith('enginePluginLifecycle.uninstallPlugin', { engineId: 'magika' })
+    })
+  })
+
+  it('passes recommendedInstallRootKind from response to register request', async () => {
+    const user = userEvent.setup()
+    const bridge = createDbBridgeMock({
+      listOfficialPlugins: {
+        ok: true,
+        value: [{ pluginId: 'magika', pluginVersion: '0.1.0', catalogGeneratedAt: '2026-05-08T00:00:00.000Z', installState: 'not_installed', enabled: false, recommendedInstallRootKind: 'managed_root' }],
+      },
+      listInstalledPlugins: [],
+      registerLocalOfficialPlugin: {
+        ok: true,
+        value: { engineId: 'magika', displayName: 'Test', pluginVersion: '1.0.0', manifestSchemaVersion: '1', runtimeKind: 'local_loader', modelVersion: null, installState: 'installed', enabled: false, healthStatus: 'unknown', failureReason: null, installSource: 'official_catalog', installRootKind: 'managed_root', installedAt: 1, updatedAt: 2, lastVerifiedAt: 2, lastHealthCheckAt: null },
+      },
+    })
+    ;(globalThis as any).dbBridge = bridge
+
+    render(EnginePluginSettingsPanel)
+
+    await waitFor(() => {
+      expect(screen.getByText('Register')).toBeTruthy()
+    })
+
+    await user.click(screen.getByText('Register'))
+
+    await waitFor(() => {
+      expect(bridge.invoke).toHaveBeenCalledWith(
+        'enginePluginLifecycle.registerLocalOfficialPlugin',
+        expect.objectContaining({ installRootKind: 'managed_root' })
+      )
     })
   })
 
