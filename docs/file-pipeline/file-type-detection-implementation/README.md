@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: P4-A completed; P4-B completed with follow-ups; P4-C~P4-D pending
-Next phase: P4-C planning (pending external audit)
+Current phase: P4-A completed; P4-B completed with follow-ups; P4-C planning completed; P4-C implementation pending
+Next phase: P4-C implementation (after external audit of P4-C planning)
 
 ## 目录用途
 
@@ -44,6 +44,7 @@ Next phase: P4-C planning (pending external audit)
 | 24-p4b3-magika-classify-runner-contract.md | P4-B3: Magika classify runner contract + fake runtime tests |
 | 25-p4b4-detectfull-gated-runtime.md | P4-B4: detectFull integration + gated real-runtime test scaffold |
 | 26-p4b-magika-official-managed-plugin-closeout.md | P4-B closeout: P4-B completed with follow-ups |
+| 27-p4c-external-conversion-engines-planning.md | P4-C planning: Tika/LibreOffice/ffprobe/Pandoc 优先级与深度转换闭环规划 |
 
 ## Step 状态
 
@@ -83,7 +84,7 @@ Next phase: P4-C planning (pending external audit)
 - 本目录为文件类型检测工程实现专属目录
 - 下一步：按 `19-phase4-planning.md` 拆分 P4-A~P4-D，进入分包实施前确认
 - P4-A completed：官方限定插件市场最小闭环、trusted roots 注入、lifecycle service/client 测试补强、settings UI（见 `20-p4a-official-plugin-marketplace-closeout.md`）
-- 下一步：P4-C planning（依赖 P4-B 外部审计通过）
+- 下一步：P4-C implementation（依赖 P4-C planning 外部审计通过）
 
 ## 当前冻结结论
 
