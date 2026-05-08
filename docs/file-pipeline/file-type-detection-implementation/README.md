@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Phase 3 external runtime stabilization completed with follow-ups. Real model runtime packaging and full plugin lifecycle deferred to Phase 4.
-Next phase: Phase 4 planning
+Current phase: Phase 4 planning (plugin lifecycle, real runtime packaging boundary, deep conversion roadmap)
+Next phase: P4-A planning-to-implementation handoff
 
 ## 目录用途
 
@@ -35,6 +35,8 @@ Next phase: Phase 4 planning
 | 15-p3b-magika-runtime-task-package.md | P3-B 实施前任务包：Magika runtime 接入边界、降级闭环、version/caching 联动与 Owner 待确认项 |
 | 16-p3b2-real-magika-runtime-assessment.md | P3-B2 评估报告：真实 Magika NPM runtime、模型供应链、兼容性与最小集成准入结论 |
 | 17-p3b2-magika-managed-plugin-plan.md | P3-B2 修正规划：Magika 从主包依赖路线切换到 managed engine plugin 路线 |
+| 18-phase3-final-acceptance-and-closeout.md | Phase 3 收口验收：失败降级矩阵、禁止项扫描、阶段结论与后续 follow-ups |
+| 19-phase4-planning.md | Phase 4 规划：插件生命周期、真实 runtime 与深度转换任务包与验收草案 |
 
 ## Step 状态
 
@@ -68,9 +70,11 @@ Next phase: Phase 4 planning
 - P3-B2 implementation 已完成 managed plugin 最小闭环（manifest/discovery/integrity/health/availability/loader fallback），未完成完整插件生命周期与真实模型打包
 - P3-B2 audit P0 fix 已完成（路径穿越防护 + 核心文件 integrity 强制覆盖），P3-C entry status：allowed
 - P3-B2 当前口径：不把 Magika 绑定进 Starverse 主包，不代表真实 runtime 完整完成
+- Phase 3 external runtime stabilization 已完成收口（见 `18-phase3-final-acceptance-and-closeout.md`），并进入 Phase 4 planning
+- 新增 Phase 4 规划文档：`19-phase4-planning.md`
 - remaining follow-ups listed（legacy message_asset 最终退场、provider_file_ref 延后、真实外部引擎执行与扩展 fixture）
 - 本目录为文件类型检测工程实现专属目录
-- 下一步：进入 P3-C（验收矩阵、失败降级与收口），Phase 4 再处理真实 runtime 打包与深度扩展
+- 下一步：按 `19-phase4-planning.md` 拆分 P4-A~P4-D，进入分包实施前确认
 
 ## 当前冻结结论
 
