@@ -13,6 +13,7 @@ import { FileAssetRepo } from '../repo/fileAssetRepo'
 import { FileDerivativeRepo } from '../repo/fileDerivativeRepo'
 import { DerivativeJobRepo } from '../repo/derivativeJobRepo'
 import { FileTypeVerdictRepo } from '../repo/fileTypeVerdictRepo'
+import { EnginePluginRegistryRepo } from '../repo/enginePluginRegistryRepo'
 import { MessageAttachmentRepo } from '../repo/messageAttachmentRepo'
 import { ConversationDraftRepo } from '../repo/conversationDraftRepo'
 import { BranchRepo } from '../repo/branchRepo'
@@ -33,6 +34,7 @@ import { DerivativeJobService } from '../../files/derivativeJobService'
 import { FileIngestionService } from '../../files/fileIngestionService'
 import { SendPlanService } from '../../files/sendPlanService'
 import { FileTypeDetectionService } from '../../files/fileTypeDetectionService'
+import { EnginePluginLifecycleService } from '../../files/enginePluginLifecycleService'
 import {
   type WorkerInitConfig,
   type WorkerRequestMessage,
@@ -95,12 +97,14 @@ export class DbWorkerRuntime {
   readonly fileDerivativeRepo: FileDerivativeRepo
   readonly derivativeJobRepo: DerivativeJobRepo
   readonly fileTypeVerdictRepo: FileTypeVerdictRepo
+  readonly enginePluginRegistryRepo: EnginePluginRegistryRepo
   readonly messageAttachmentRepo: MessageAttachmentRepo
   readonly conversationDraftRepo: ConversationDraftRepo
   readonly conversationAttachmentService: ConversationAttachmentService
   readonly derivativeJobService: DerivativeJobService
   readonly fileIngestionService: FileIngestionService
   readonly fileTypeDetectionService: FileTypeDetectionService
+  readonly enginePluginLifecycleService: EnginePluginLifecycleService
   readonly sendPlanService: SendPlanService
   readonly fileStorageRootDir: string
   readonly branchRepo: BranchRepo
@@ -196,6 +200,7 @@ export class DbWorkerRuntime {
     this.fileDerivativeRepo = new FileDerivativeRepo(this.db)
     this.derivativeJobRepo = new DerivativeJobRepo(this.db)
     this.fileTypeVerdictRepo = new FileTypeVerdictRepo(this.db)
+    this.enginePluginRegistryRepo = new EnginePluginRegistryRepo(this.db)
     this.messageAttachmentRepo = new MessageAttachmentRepo(this.db)
     this.conversationDraftRepo = new ConversationDraftRepo(this.db)
     this.branchRepo = new BranchRepo(this.db)
@@ -221,6 +226,14 @@ export class DbWorkerRuntime {
       fileAssetRepo: this.fileAssetRepo,
       fileTypeVerdictRepo: this.fileTypeVerdictRepo,
       storageRootDir: this.fileStorageRootDir,
+    })
+    this.enginePluginLifecycleService = new EnginePluginLifecycleService({
+      registryRepo: this.enginePluginRegistryRepo,
+      trustedRoots: {},
+      resolveInstallPluginDir: ({ installRootKind, installRef }) => {
+        const safeRef = installRef.replace(/[^a-zA-Z0-9._-]+/g, '_')
+        return path.join(this.fileStorageRootDir, 'engine-plugins', installRootKind, safeRef)
+      },
     })
     this.contextRepo = new ContextRepo(this.db, this.branchRepo)
     this.searchRepo = new SearchRepo(this.db)
