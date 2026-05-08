@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { access, readFile } from 'node:fs/promises'
+import { access, readFile, realpath as fsRealpath } from 'node:fs/promises'
 import path from 'node:path'
 import { runEngineHealthCheck } from './externalEngineHealth'
 import { parseManagedEnginePluginManifest } from './externalEngineManifest'
@@ -22,6 +22,7 @@ import type {
 
 type ExistsFile = (filePath: string) => Promise<boolean>
 type ReadBytes = (filePath: string) => Promise<Uint8Array>
+type ResolveRealPath = (filePath: string) => Promise<string>
 
 const WINDOWS_ABSOLUTE_PATH_RE = /\b[A-Za-z]:\\[^\s"'`]+/g
 const UNIX_ABSOLUTE_PATH_RE = /(?:\/Users\/|\/home\/|\/mnt\/|\/var\/|\/tmp\/)[^\s"'`]+/g
@@ -92,6 +93,7 @@ export type DiscoverMagikaManagedPluginInput = Readonly<{
   pluginDirs: readonly string[]
   existsFile?: ExistsFile
   readBytes?: ReadBytes
+  resolveRealPath?: ResolveRealPath
 }>
 
 export type BuildMagikaManagedRuntimeLoaderInput = Readonly<{
@@ -110,11 +112,29 @@ export type EvaluateMagikaManagedPluginAvailabilityInput = Readonly<{
   healthRunner?: EngineHealthRunner
 }>
 
+type ValidatedPluginFilePath = Readonly<{
+  relativePath: string
+  absolutePath: string
+}>
+
+type ValidatePluginFilePathResult =
+  | Readonly<{
+      ok: true
+      path: ValidatedPluginFilePath
+    }>
+  | Readonly<{
+      ok: false
+      reason: EngineFailureReason
+      detail: string
+    }>
+
+// eslint-disable-next-line max-lines-per-function
 export async function discoverMagikaManagedPlugin(
   input: DiscoverMagikaManagedPluginInput
 ): Promise<MagikaManagedPluginDiscoveryResult> {
   const existsFile = input.existsFile ?? fileExists
   const readBytes = input.readBytes ?? readFileAsBytes
+  const resolveRealPath = input.resolveRealPath ?? fsRealpath
   const dirs = normalizePluginDirs(input.pluginDirs)
   if (dirs.length === 0) {
     return unavailable('plugin_not_found', 'magika plugin directory is not configured')
@@ -122,7 +142,9 @@ export async function discoverMagikaManagedPlugin(
 
   let lastError: MagikaManagedPluginDiscoveryResult | null = null
   for (const pluginDir of dirs) {
-    const manifestPath = path.join(pluginDir, 'manifest.json')
+    const pluginRootPath = path.resolve(pluginDir)
+    const pluginRootRealPath = await resolvePluginRootRealPath(pluginRootPath, resolveRealPath)
+    const manifestPath = path.join(pluginRootPath, 'manifest.json')
     if (!(await existsFile(manifestPath))) continue
 
     const parsed = await readManifest(manifestPath, readBytes)
@@ -136,42 +158,84 @@ export async function discoverMagikaManagedPlugin(
       continue
     }
 
-    const runtimeEntryPath = path.resolve(pluginDir, parsed.manifest.runtimeEntry)
-    if (!(await existsFile(runtimeEntryPath))) {
-      lastError = unavailable('runtime_entry_missing', `runtime entry missing: ${runtimeEntryPath}`)
+    const runtimeEntry = await validatePluginFilePath({
+      pluginRootPath,
+      pluginRootRealPath,
+      rawPath: parsed.manifest.runtimeEntry,
+      field: 'runtimeEntry',
+      existsFile,
+      resolveRealPath,
+    })
+    if (!runtimeEntry.ok) {
+      lastError = unavailable(runtimeEntry.reason, runtimeEntry.detail)
       continue
     }
 
-    const modelFilePaths = parsed.manifest.modelFiles.map((value) => path.resolve(pluginDir, value))
-    const configFilePaths = parsed.manifest.configFiles.map((value) => path.resolve(pluginDir, value))
-
-    if (!(await allFilesExist(modelFilePaths, existsFile))) {
-      lastError = unavailable('model_file_missing', 'one or more model files are missing')
+    if (!(await existsFile(runtimeEntry.path.absolutePath))) {
+      lastError = unavailable('runtime_entry_missing', 'runtime entry file is missing')
       continue
     }
-    if (!(await allFilesExist(configFilePaths, existsFile))) {
-      lastError = unavailable('config_file_missing', 'one or more config files are missing')
+
+    const modelFiles = await validatePluginFileList({
+      pluginRootPath,
+      pluginRootRealPath,
+      rawPaths: parsed.manifest.modelFiles,
+      field: 'modelFiles',
+      existsFile,
+      resolveRealPath,
+    })
+    if (!modelFiles.ok) {
+      lastError = unavailable(modelFiles.reason, modelFiles.detail)
+      continue
+    }
+    const missingModel = await firstMissingFile(modelFiles.paths, existsFile)
+    if (missingModel) {
+      lastError = unavailable('model_file_missing', `model file missing: ${missingModel.relativePath}`)
+      continue
+    }
+
+    const configFiles = await validatePluginFileList({
+      pluginRootPath,
+      pluginRootRealPath,
+      rawPaths: parsed.manifest.configFiles,
+      field: 'configFiles',
+      existsFile,
+      resolveRealPath,
+    })
+    if (!configFiles.ok) {
+      lastError = unavailable(configFiles.reason, configFiles.detail)
+      continue
+    }
+    const missingConfig = await firstMissingFile(configFiles.paths, existsFile)
+    if (missingConfig) {
+      lastError = unavailable('config_file_missing', `config file missing: ${missingConfig.relativePath}`)
       continue
     }
 
     const integrity = await verifyManifestIntegrity({
       manifest: parsed.manifest,
-      pluginDir,
+      pluginRootPath,
+      pluginRootRealPath,
+      runtimeEntry: runtimeEntry.path,
+      modelFiles: modelFiles.paths,
+      configFiles: configFiles.paths,
+      existsFile,
       readBytes,
+      resolveRealPath,
     })
     if (!integrity.ok) {
-      lastError = unavailable('hash_mismatch', integrity.detail)
+      lastError = unavailable(integrity.reason, integrity.detail)
       continue
     }
 
     return {
       available: true,
       descriptor: {
-        pluginDir,
+        pluginDir: pluginRootPath,
         manifestPath,
-        runtimeEntryPath,
-        modelFilePaths,
-        configFilePaths,
+        runtimeEntryPath: runtimeEntry.path.absolutePath,
+        modelFilePaths: modelFiles.paths.map((item) => item.absolutePath),
+        configFilePaths: configFiles.paths.map((item) => item.absolutePath),
         manifest: parsed.manifest,
       },
     }
@@ -405,38 +469,198 @@ export function parseMagikaManagedPluginManifest(input: unknown): MagikaManagedP
 
 async function verifyManifestIntegrity(input: Readonly<{
   manifest: MagikaManagedPluginManifest
-  pluginDir: string
+  pluginRootPath: string
+  pluginRootRealPath: string
+  runtimeEntry: ValidatedPluginFilePath
+  modelFiles: readonly ValidatedPluginFilePath[]
+  configFiles: readonly ValidatedPluginFilePath[]
+  existsFile: ExistsFile
   readBytes: ReadBytes
-}>): Promise<Readonly<{ ok: true } | { ok: false; detail: string }>> {
-  const entries = Object.entries(input.manifest.integrity)
-  for (const [relativePath, expectedHash] of entries) {
+  resolveRealPath: ResolveRealPath
+}>): Promise<
+  Readonly<{ ok: true } | { ok: false; reason: EngineFailureReason; detail: string }>
+> {
+  const entries = new Map<string, string>()
+  for (const [rawRelativePath, expectedHash] of Object.entries(input.manifest.integrity)) {
+    const validated = await validatePluginFilePath({
+      pluginRootPath: input.pluginRootPath,
+      pluginRootRealPath: input.pluginRootRealPath,
+      rawPath: rawRelativePath,
+      field: `integrity.${rawRelativePath}`,
+      existsFile: input.existsFile,
+      resolveRealPath: input.resolveRealPath,
+    })
+    if (!validated.ok) {
+      return {
+        ok: false,
+        reason: validated.reason,
+        detail: validated.detail,
+      }
+    }
+    entries.set(validated.path.relativePath, expectedHash)
+  }
+
+  const required = new Set<string>([
+    input.runtimeEntry.relativePath,
+    ...input.modelFiles.map((item) => item.relativePath),
+    ...input.configFiles.map((item) => item.relativePath),
+  ])
+  for (const requiredPath of required) {
+    if (!entries.has(requiredPath)) {
+      return {
+        ok: false,
+        reason: 'integrity_missing',
+        detail: sanitizeForDetails(`integrity missing for ${requiredPath}`) ?? 'integrity missing',
+      }
+    }
+  }
+
+  for (const requiredPath of required) {
+    const expectedHash = entries.get(requiredPath) ?? ''
     const normalizedExpected = normalizeSha(expectedHash)
-    if (!normalizedExpected) continue
-    const absolutePath = path.resolve(input.pluginDir, relativePath)
+    if (!normalizedExpected) {
+      return {
+        ok: false,
+        reason: 'manifest_invalid',
+        detail: sanitizeForDetails(`invalid integrity hash for ${requiredPath}`) ?? 'invalid integrity hash',
+      }
+    }
+    const absolutePath = path.resolve(input.pluginRootPath, requiredPath)
     try {
       const bytes = await input.readBytes(absolutePath)
       const actualHash = createHash('sha256').update(Buffer.from(bytes)).digest('hex')
       if (actualHash.toLowerCase() !== normalizedExpected) {
         return {
           ok: false,
-          detail: sanitizeForDetails(`integrity mismatch for ${relativePath}`) ?? 'integrity mismatch',
+          reason: 'hash_mismatch',
+          detail: sanitizeForDetails(`integrity mismatch for ${requiredPath}`) ?? 'integrity mismatch',
         }
       }
     } catch {
       return {
         ok: false,
-        detail: sanitizeForDetails(`integrity file missing for ${relativePath}`) ?? 'integrity file missing',
+        reason: 'hash_mismatch',
+        detail: sanitizeForDetails(`integrity file missing for ${requiredPath}`) ?? 'integrity file missing',
       }
     }
   }
   return { ok: true }
 }
 
-async function allFilesExist(filePaths: readonly string[], existsFile: ExistsFile): Promise<boolean> {
-  for (const filePath of filePaths) {
-    if (!(await existsFile(filePath))) return false
+async function validatePluginFileList(input: Readonly<{
+  pluginRootPath: string
+  pluginRootRealPath: string
+  rawPaths: readonly string[]
+  field: string
+  existsFile: ExistsFile
+  resolveRealPath: ResolveRealPath
+}>): Promise<
+  Readonly<{ ok: true; paths: readonly ValidatedPluginFilePath[] } | { ok: false; reason: EngineFailureReason; detail: string }>
+> {
+  const out: ValidatedPluginFilePath[] = []
+  for (let index = 0; index < input.rawPaths.length; index += 1) {
+    const validated = await validatePluginFilePath({
+      pluginRootPath: input.pluginRootPath,
+      pluginRootRealPath: input.pluginRootRealPath,
+      rawPath: input.rawPaths[index] ?? '',
+      field: `${input.field}[${index}]`,
+      existsFile: input.existsFile,
+      resolveRealPath: input.resolveRealPath,
+    })
+    if (!validated.ok) {
+      return validated
+    }
+    out.push(validated.path)
   }
-  return true
+  return { ok: true, paths: out }
+}
+
+async function firstMissingFile(
+  filePaths: readonly ValidatedPluginFilePath[],
+  existsFile: ExistsFile
+): Promise<ValidatedPluginFilePath | null> {
+  for (const item of filePaths) {
+    if (!(await existsFile(item.absolutePath))) {
+      return item
+    }
+  }
+  return null
+}
+
+async function validatePluginFilePath(input: Readonly<{
+  pluginRootPath: string
+  pluginRootRealPath: string
+  rawPath: string
+  field: string
+  existsFile: ExistsFile
+  resolveRealPath: ResolveRealPath
+}>): Promise<ValidatePluginFilePathResult> {
+  const cleaned = normalizeManifestPathLiteral(input.rawPath)
+  if (!cleaned) {
+    return invalidPath('manifest_invalid', `${input.field} is empty`)
+  }
+  if (cleaned.includes('\u0000')) {
+    return invalidPath('manifest_invalid', `${input.field} contains NUL byte`)
+  }
+  if (isAbsoluteLikePath(cleaned)) {
+    return invalidPath('manifest_invalid', `${input.field} must be a relative plugin path`)
+  }
+
+  const normalizedRelativePath = normalizeRelativePluginPath(cleaned)
+  if (!normalizedRelativePath || normalizedRelativePath === '.' || normalizedRelativePath.startsWith('..')) {
+    return invalidPath('plugin_path_outside_root', `${input.field} escapes plugin root`)
+  }
+
+  const absolutePath = path.resolve(input.pluginRootPath, normalizedRelativePath)
+  const relative = path.relative(input.pluginRootPath, absolutePath)
+  if (!relative || relative === '' || relative === '.') {
+    return invalidPath('manifest_invalid', `${input.field} must point to a file path`)
+  }
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    return invalidPath('plugin_path_outside_root', `${input.field} escapes plugin root`)
+  }
+
+  if (await input.existsFile(absolutePath)) {
+    const resolvedRealPath = await safeRealpath(absolutePath, input.resolveRealPath)
+    if (resolvedRealPath) {
+      const relativeReal = path.relative(input.pluginRootRealPath, resolvedRealPath)
+      if (
+        relativeReal === '' ||
+        relativeReal === '.' ||
+        relativeReal.startsWith('..') ||
+        path.isAbsolute(relativeReal)
+      ) {
+        return invalidPath('plugin_path_outside_root', `${input.field} resolves outside plugin root`)
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    path: {
+      relativePath: normalizedRelativePath,
+      absolutePath,
+    },
+  }
+}
+
+async function resolvePluginRootRealPath(
+  pluginRootPath: string,
+  resolveRealPath: ResolveRealPath
+): Promise<string> {
+  const real = await safeRealpath(pluginRootPath, resolveRealPath)
+  return real ?? pluginRootPath
+}
+
+async function safeRealpath(
+  targetPath: string,
+  resolveRealPath: ResolveRealPath
+): Promise<string | null> {
+  try {
+    return await resolveRealPath(targetPath)
+  } catch {
+    return null
+  }
 }
 
 function normalizePluginDirs(input: readonly string[]): string[] {
@@ -448,6 +672,43 @@ function normalizePluginDirs(input: readonly string[]): string[] {
     out.add(path.resolve(trimmed))
   }
   return Array.from(out.values())
+}
+
+function normalizeManifestPathLiteral(value: string): string {
+  const trimmed = String(value ?? '').trim()
+  if (!trimmed) return ''
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim()
+  }
+  return trimmed
+}
+
+function normalizeRelativePluginPath(value: string): string {
+  const canonical = value.replace(/\\/g, '/').replace(/\/+/g, '/')
+  const normalized = path.posix.normalize(canonical)
+  return normalized.replace(/^\.\/+/, '')
+}
+
+function isAbsoluteLikePath(value: string): boolean {
+  if (!value) return false
+  if (path.isAbsolute(value)) return true
+  if (/^[A-Za-z]:[\\/]/.test(value)) return true
+  if (/^\\\\[^\\]/.test(value)) return true
+  return false
+}
+
+function invalidPath(
+  reason: EngineFailureReason,
+  detail: string
+): Readonly<{ ok: false; reason: EngineFailureReason; detail: string }> {
+  return {
+    ok: false,
+    reason,
+    detail: sanitizeForDetails(detail) ?? 'invalid plugin path',
+  }
 }
 
 function parseRuntimeKind(input: unknown): MagikaRuntimeKind {

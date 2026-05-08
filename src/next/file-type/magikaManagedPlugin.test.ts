@@ -115,6 +115,20 @@ async function withPluginFixture(
   }
 }
 
+async function readManifestObject(manifestPath: string): Promise<Record<string, unknown>> {
+  const raw = await readFile(manifestPath, 'utf8')
+  return JSON.parse(raw) as Record<string, unknown>
+}
+
+async function updateManifestObject(
+  manifestPath: string,
+  update: (manifest: Record<string, unknown>) => void
+): Promise<void> {
+  const manifest = await readManifestObject(manifestPath)
+  update(manifest)
+  await writeFile(manifestPath, JSON.stringify(manifest, null, 2))
+}
+
 // eslint-disable-next-line max-lines-per-function
 describe('magikaManagedPlugin', () => {
   it('parses a valid managed plugin manifest', async () => {
@@ -164,6 +178,216 @@ describe('magikaManagedPlugin', () => {
       expect(discovery.available).toBe(false)
       if (discovery.available) return
       expect(discovery.reason).toBe('config_file_missing')
+    })
+  })
+
+  it('rejects runtimeEntry path traversal outside plugin root', async () => {
+    await withPluginFixture(async ({ rootDir, manifestPath }) => {
+      await updateManifestObject(manifestPath, (manifest) => {
+        manifest.runtimeEntry = '../../../system/sensitive.dll'
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('plugin_path_outside_root')
+    })
+  })
+
+  it('rejects modelFiles path traversal outside plugin root', async () => {
+    await withPluginFixture(async ({ rootDir, manifestPath }) => {
+      await updateManifestObject(manifestPath, (manifest) => {
+        manifest.modelFiles = ['../model.bin']
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('plugin_path_outside_root')
+    })
+  })
+
+  it('rejects configFiles path traversal outside plugin root', async () => {
+    await withPluginFixture(async ({ rootDir, manifestPath }) => {
+      await updateManifestObject(manifestPath, (manifest) => {
+        manifest.configFiles = ['../config.json']
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('plugin_path_outside_root')
+    })
+  })
+
+  it('rejects runtimeEntry absolute path', async () => {
+    await withPluginFixture(async ({ rootDir, manifestPath }) => {
+      const absolute = path.resolve(rootDir, 'runtime', 'runner.js')
+      await updateManifestObject(manifestPath, (manifest) => {
+        manifest.runtimeEntry = absolute
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('manifest_invalid')
+    })
+  })
+
+  it('rejects runtimeEntry Windows drive path', async () => {
+    await withPluginFixture(async ({ rootDir, manifestPath }) => {
+      await updateManifestObject(manifestPath, (manifest) => {
+        manifest.runtimeEntry = 'C:\\Windows\\System32\\cmd.exe'
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('manifest_invalid')
+    })
+  })
+
+  it('rejects runtimeEntry UNC path', async () => {
+    await withPluginFixture(async ({ rootDir, manifestPath }) => {
+      await updateManifestObject(manifestPath, (manifest) => {
+        manifest.runtimeEntry = '\\\\server\\share\\magika.exe'
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('manifest_invalid')
+    })
+  })
+
+  it('rejects quoted absolute runtimeEntry path', async () => {
+    await withPluginFixture(async ({ rootDir, manifestPath }) => {
+      await updateManifestObject(manifestPath, (manifest) => {
+        manifest.runtimeEntry = '"C:\\Windows\\System32\\cmd.exe"'
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('manifest_invalid')
+    })
+  })
+
+  it('rejects runtimeEntry absolute path with spaces', async () => {
+    await withPluginFixture(async ({ rootDir, manifestPath }) => {
+      await updateManifestObject(manifestPath, (manifest) => {
+        manifest.runtimeEntry = 'C:\\Program Files\\Windows NT\\cmd.exe'
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('manifest_invalid')
+    })
+  })
+
+  it('rejects path that targets sibling directory with similar prefix', async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-magika-prefix-'))
+    const pluginDir = path.join(baseDir, 'magika')
+    const siblingDir = path.join(baseDir, 'magika-evil')
+    await mkdir(pluginDir, { recursive: true })
+    await mkdir(path.join(pluginDir, 'runtime'), { recursive: true })
+    await mkdir(path.join(pluginDir, 'model'), { recursive: true })
+    await mkdir(siblingDir, { recursive: true })
+    await writeFile(path.join(pluginDir, 'runtime', 'runner.js'), 'module.exports = {}')
+    await writeFile(path.join(pluginDir, 'model', 'model.bin'), 'mock-model')
+    await writeFile(path.join(pluginDir, 'model', 'config.json'), '{"version":"m-v1"}')
+    await writeFile(path.join(siblingDir, 'runner.js'), 'evil')
+
+    const runtimeBytes = await readFile(path.join(pluginDir, 'runtime', 'runner.js'))
+    const modelBytes = await readFile(path.join(pluginDir, 'model', 'model.bin'))
+    const configBytes = await readFile(path.join(pluginDir, 'model', 'config.json'))
+    const manifestPath = path.join(pluginDir, 'manifest.json')
+    const manifest = {
+      manifestSchemaVersion: '1',
+      engineId: 'magika',
+      displayName: 'Magika managed plugin',
+      pluginVersion: '0.1.0',
+      runtimeKind: 'local_loader',
+      runtimeEntry: '../magika-evil/runner.js',
+      modelVersion: 'magika-model-v3',
+      modelFiles: ['model/model.bin'],
+      configFiles: ['model/config.json'],
+      integrity: {
+        '../magika-evil/runner.js': sha256(runtimeBytes),
+        'model/model.bin': sha256(modelBytes),
+        'model/config.json': sha256(configBytes),
+      },
+      license: 'Apache-2.0',
+      attribution: 'Google Magika',
+      capabilities: ['text_extraction'],
+    }
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2))
+
+    try {
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [pluginDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('plugin_path_outside_root')
+    } finally {
+      await rm(baseDir, { recursive: true, force: true })
+    }
+  })
+
+  it('fails discovery when runtimeEntry integrity entry is missing', async () => {
+    await withPluginFixture(async ({ rootDir, manifestPath }) => {
+      await updateManifestObject(manifestPath, (manifest) => {
+        const integrity = { ...(manifest.integrity as Record<string, string>) }
+        delete integrity['runtime/runner.js']
+        manifest.integrity = integrity
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('integrity_missing')
+    })
+  })
+
+  it('fails discovery when modelFiles integrity entry is missing', async () => {
+    await withPluginFixture(async ({ rootDir, manifestPath }) => {
+      await updateManifestObject(manifestPath, (manifest) => {
+        const integrity = { ...(manifest.integrity as Record<string, string>) }
+        delete integrity['model/model.bin']
+        manifest.integrity = integrity
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('integrity_missing')
+    })
+  })
+
+  it('fails discovery when configFiles integrity entry is missing', async () => {
+    await withPluginFixture(async ({ rootDir, manifestPath }) => {
+      await updateManifestObject(manifestPath, (manifest) => {
+        const integrity = { ...(manifest.integrity as Record<string, string>) }
+        delete integrity['model/config.json']
+        manifest.integrity = integrity
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('integrity_missing')
+    })
+  })
+
+  it('rejects integrity key path traversal', async () => {
+    await withPluginFixture(async ({ rootDir, manifestPath, runtimeEntryPath }) => {
+      await updateManifestObject(manifestPath, (manifest) => {
+        manifest.integrity = {
+          '../runtime/runner.js': sha256(Buffer.from('fake')),
+          ...(manifest.integrity as Record<string, string>),
+        }
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('plugin_path_outside_root')
+      expect(discovery.detail).not.toContain(runtimeEntryPath)
+    })
+  })
+
+  it('passes discovery when all core files include correct integrity hashes', async () => {
+    await withPluginFixture(async ({ rootDir }) => {
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(true)
     })
   })
 
@@ -351,7 +575,8 @@ describe('magikaManagedPlugin', () => {
       expect(discovery.available).toBe(false)
       if (discovery.available) return
       expect(discovery.detail).not.toContain(runtimeEntryPath)
-      expect(discovery.detail).toContain('[redacted-path]')
+      expect(discovery.detail).not.toMatch(/[A-Za-z]:\\/u)
+      expect(discovery.detail).not.toMatch(/\/Users\/|\/home\/|\/mnt\/|\/var\/|\/tmp\//u)
     })
   })
 })
