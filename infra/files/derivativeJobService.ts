@@ -184,6 +184,17 @@ export class DerivativeJobService {
             running.derivativeKind,
             `Derivative kind ${running.derivativeKind} is reserved and intentionally not implemented in phase 8.`
           )
+        case 'converted_markdown':
+        case 'rendered_images':
+        case 'selected_frames':
+        case 'extracted_audio':
+          throw derivativeError(
+            'conversion_not_implemented',
+            running.id,
+            running.assetId,
+            running.derivativeKind,
+            `Derivative kind ${running.derivativeKind} is reserved for P4-C conversion engines and intentionally not implemented yet.`
+          )
         case 'send_optimized':
         case 'thumbnail':
         case 'ocr_text':

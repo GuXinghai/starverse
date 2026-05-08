@@ -1,4 +1,4 @@
-import type { FileFormatId } from './types'
+import type { FileFormatId, SendRoute } from './types'
 
 export const KNOWN_ENGINE_IDS = ['tika', 'libreoffice', 'ffprobe', 'pandoc', 'magika'] as const
 export type KnownEngineId = (typeof KNOWN_ENGINE_IDS)[number]
@@ -16,6 +16,7 @@ export const ENGINE_CAPABILITIES = [
   'presentation_conversion',
   'rendered_images',
   'text_extraction',
+  'metadata_extraction',
   'audio_extraction',
   'frame_selection',
 ] as const
@@ -63,6 +64,7 @@ export type ManagedEnginePluginManifest = Readonly<{
   capabilities: readonly EngineCapability[]
   supportedFormatIds: readonly FileFormatId[]
   supportedMimeTypes: readonly string[]
+  supportedOutputRoutes: readonly SendRoute[]
   resourceLimits: Readonly<{
     maxInputBytes: number | null
     maxDurationMs: number | null
@@ -74,6 +76,7 @@ export type ManagedEnginePluginManifest = Readonly<{
     allowed: boolean
   }>
   healthcheck: EngineHealthCheckCommand | null
+  metadataAllowlist: readonly string[] | null
 }>
 
 export type ExternalEngineRecord = Readonly<{

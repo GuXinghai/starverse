@@ -38,9 +38,11 @@ describe('externalEngineManifest', () => {
 
     expect(manifest.supportedFormatIds).toEqual([])
     expect(manifest.supportedMimeTypes).toEqual([])
+    expect(manifest.supportedOutputRoutes).toEqual([])
     expect(manifest.resourceLimits).toEqual({ maxInputBytes: null, maxDurationMs: null })
     expect(manifest.sandbox.enabled).toBe(true)
     expect(manifest.network.allowed).toBe(false)
+    expect(manifest.metadataAllowlist).toBeNull()
   })
 
   it('rejects unknown capabilities and format ids', () => {
@@ -58,5 +60,98 @@ describe('externalEngineManifest', () => {
     if (result.ok) return
     expect(result.errors.join(' ')).toContain('unknown_capability')
     expect(result.errors.join(' ')).toContain('fake_format')
+  })
+
+  it('validates supportedOutputRoutes against known send routes', () => {
+    const valid = validateManagedEnginePluginManifest({
+      id: 'tika',
+      displayName: 'Tika',
+      version: '2.9.0',
+      platform: 'any',
+      kind: 'plugin',
+      capabilities: ['text_extraction', 'metadata_extraction'],
+      supportedOutputRoutes: ['extracted_text', 'converted_markdown'],
+    })
+
+    expect(valid.ok).toBe(true)
+    if (!valid.ok) return
+    expect(valid.manifest.supportedOutputRoutes).toEqual(['extracted_text', 'converted_markdown'])
+  })
+
+  it('rejects unknown output routes', () => {
+    const result = validateManagedEnginePluginManifest({
+      id: 'broken',
+      displayName: 'Broken',
+      version: '0.0.1',
+      platform: 'any',
+      kind: 'plugin',
+      capabilities: ['text_extraction'],
+      supportedOutputRoutes: ['unknown_route'],
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.errors.join(' ')).toContain('unknown_route')
+  })
+
+  it('validates metadataAllowlist with explicit field names', () => {
+    const manifest = parseManagedEnginePluginManifest({
+      id: 'tika',
+      displayName: 'Tika',
+      version: '2.9.0',
+      platform: 'any',
+      kind: 'plugin',
+      capabilities: ['metadata_extraction', 'text_extraction'],
+      metadataAllowlist: ['dc:title', 'dc:creator', 'Content-Type'],
+    })
+
+    expect(manifest.metadataAllowlist).toEqual(['dc:title', 'dc:creator', 'Content-Type'])
+  })
+
+  it('rejects metadataAllowlist with empty array', () => {
+    const result = validateManagedEnginePluginManifest({
+      id: 'tika',
+      displayName: 'Tika',
+      version: '2.9.0',
+      platform: 'any',
+      kind: 'plugin',
+      capabilities: ['metadata_extraction'],
+      metadataAllowlist: [],
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.errors.join(' ')).toContain('metadataAllowlist')
+  })
+
+  it('handles metadataAllowlist as null', () => {
+    const manifest = parseManagedEnginePluginManifest({
+      id: 'tika',
+      displayName: 'Tika',
+      version: '2.9.0',
+      platform: 'any',
+      kind: 'plugin',
+      capabilities: ['text_extraction'],
+      metadataAllowlist: null,
+    })
+
+    expect(manifest.metadataAllowlist).toBeNull()
+  })
+
+  it('validates metadata_extraction capability', () => {
+    const manifest = parseManagedEnginePluginManifest({
+      id: 'tika',
+      displayName: 'Tika',
+      version: '2.9.0',
+      platform: 'any',
+      kind: 'plugin',
+      capabilities: ['metadata_extraction', 'text_extraction', 'document_conversion'],
+    })
+
+    expect(manifest.capabilities).toEqual([
+      'metadata_extraction',
+      'text_extraction',
+      'document_conversion',
+    ])
   })
 })
