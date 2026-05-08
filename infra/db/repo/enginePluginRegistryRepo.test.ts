@@ -196,4 +196,69 @@ describeIfBetterSqlite('EnginePluginRegistryRepo', () => {
       updatedAt: 404,
     })).toThrow(/64-char sha256 hex/i)
   })
+
+  it('rejects empty string installRef', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    ensureEnginePluginRegistrySchema(db)
+    const repo = new EnginePluginRegistryRepo(db)
+
+    expect(() => repo.insert({
+      ...createBaseInput('engine.magika'),
+      installRef: '',
+      updatedAt: 500,
+    })).toThrow(/required/)
+  })
+
+  it('rejects NUL byte in installRef', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    ensureEnginePluginRegistrySchema(db)
+    const repo = new EnginePluginRegistryRepo(db)
+
+    expect(() => repo.insert({
+      ...createBaseInput('engine.magika'),
+      installRef: 'registry\u0000.magika',
+      updatedAt: 501,
+    })).toThrow(/NUL/)
+  })
+
+  it('rejects UNC path as installRef', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    ensureEnginePluginRegistrySchema(db)
+    const repo = new EnginePluginRegistryRepo(db)
+
+    expect(() => repo.insert({
+      ...createBaseInput('engine.magika'),
+      installRef: '\\\\server\\share\\plugins',
+      updatedAt: 502,
+    })).toThrow(/backslash/)
+  })
+
+  it('rejects Unix absolute path as installRef', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    ensureEnginePluginRegistrySchema(db)
+    const repo = new EnginePluginRegistryRepo(db)
+
+    expect(() => repo.insert({
+      ...createBaseInput('engine.magika'),
+      installRef: '/opt/plugins/magika',
+      updatedAt: 503,
+    })).toThrow(/abstract reference|absolute path/)
+  })
+
+  it('rejects file:// scheme as installRef', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    ensureEnginePluginRegistrySchema(db)
+    const repo = new EnginePluginRegistryRepo(db)
+
+    expect(() => repo.insert({
+      ...createBaseInput('engine.magika'),
+      installRef: 'file:///opt/plugins/magika',
+      updatedAt: 504,
+    })).toThrow(/URL scheme/)
+  })
 })
