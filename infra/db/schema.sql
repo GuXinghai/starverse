@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS file_assets (
 CREATE TABLE IF NOT EXISTS file_derivatives (
   id TEXT PRIMARY KEY,
   parent_asset_id TEXT NOT NULL REFERENCES file_assets(id),
-  derived_kind TEXT NOT NULL CHECK (derived_kind IN ('thumbnail', 'extracted_text', 'ocr_text', 'transcript', 'converted_pdf', 'send_optimized', 'preview_optimized', 'embedding_vector')),
+  derived_kind TEXT NOT NULL CHECK (derived_kind IN ('thumbnail', 'extracted_text', 'ocr_text', 'transcript', 'converted_pdf', 'converted_markdown', 'rendered_images', 'selected_frames', 'extracted_audio', 'send_optimized', 'preview_optimized', 'embedding_vector')),
   mime TEXT,
   storage_uri TEXT NOT NULL,
   generator TEXT NOT NULL,

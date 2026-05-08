@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-export const EXTERNAL_PROCESS_POLICY_MODES = ['health_check', 'process'] as const
+export const EXTERNAL_PROCESS_POLICY_MODES = ['health_check', 'process', 'conversion'] as const
 export type ExternalProcessPolicyMode = (typeof EXTERNAL_PROCESS_POLICY_MODES)[number]
 
 export const EXTERNAL_PROCESS_POLICY_ERROR_CODES = [
@@ -26,11 +26,17 @@ export type ExternalProcessErrorCode = (typeof EXTERNAL_PROCESS_ERROR_CODES)[num
 export const EXTERNAL_PROCESS_POLICY_DEFAULTS = Object.freeze({
   healthCheckTimeoutMs: 3000,
   processTimeoutMs: 10000,
+  conversionTimeoutMs: 60000,
   maxTimeoutMs: 60000,
+  conversionMaxTimeoutMs: 300000,
   stdoutBytes: 1024 * 1024,
   stderrBytes: 256 * 1024,
+  conversionStdoutBytes: 50 * 1024 * 1024,
+  conversionStderrBytes: 1024 * 1024,
   maxStdoutBytes: 10 * 1024 * 1024,
   maxStderrBytes: 1024 * 1024,
+  conversionMaxStdoutBytes: 100 * 1024 * 1024,
+  conversionMaxStderrBytes: 5 * 1024 * 1024,
   terminationGraceMs: 1000,
   maxTerminationGraceMs: 10000,
   shell: false,
@@ -109,10 +115,27 @@ export function evaluateExternalProcessPolicy(
   }
 
   const mode = normalizeMode(input.mode)
-  const timeoutDefault =
-    mode === 'health_check'
+  const isConversion = mode === 'conversion'
+  const timeoutDefault = isConversion
+    ? EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionTimeoutMs
+    : mode === 'health_check'
       ? EXTERNAL_PROCESS_POLICY_DEFAULTS.healthCheckTimeoutMs
       : EXTERNAL_PROCESS_POLICY_DEFAULTS.processTimeoutMs
+  const timeoutHardMax = isConversion
+    ? EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxTimeoutMs
+    : EXTERNAL_PROCESS_POLICY_DEFAULTS.maxTimeoutMs
+  const stdoutDefault = isConversion
+    ? EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionStdoutBytes
+    : EXTERNAL_PROCESS_POLICY_DEFAULTS.stdoutBytes
+  const stdoutHardMax = isConversion
+    ? EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxStdoutBytes
+    : EXTERNAL_PROCESS_POLICY_DEFAULTS.maxStdoutBytes
+  const stderrDefault = isConversion
+    ? EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionStderrBytes
+    : EXTERNAL_PROCESS_POLICY_DEFAULTS.stderrBytes
+  const stderrHardMax = isConversion
+    ? EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxStderrBytes
+    : EXTERNAL_PROCESS_POLICY_DEFAULTS.maxStderrBytes
 
   return {
     ok: true,
@@ -122,17 +145,17 @@ export function evaluateExternalProcessPolicy(
       timeoutMs: clampPositiveInteger(
         input.timeoutMs,
         timeoutDefault,
-        EXTERNAL_PROCESS_POLICY_DEFAULTS.maxTimeoutMs
+        timeoutHardMax
       ),
       maxStdoutBytes: clampPositiveInteger(
         input.maxStdoutBytes,
-        EXTERNAL_PROCESS_POLICY_DEFAULTS.stdoutBytes,
-        EXTERNAL_PROCESS_POLICY_DEFAULTS.maxStdoutBytes
+        stdoutDefault,
+        stdoutHardMax
       ),
       maxStderrBytes: clampPositiveInteger(
         input.maxStderrBytes,
-        EXTERNAL_PROCESS_POLICY_DEFAULTS.stderrBytes,
-        EXTERNAL_PROCESS_POLICY_DEFAULTS.maxStderrBytes
+        stderrDefault,
+        stderrHardMax
       ),
       terminationGraceMs: clampPositiveInteger(
         input.terminationGraceMs,
@@ -170,7 +193,7 @@ export function isBlockedScriptInterpreter(command: string): boolean {
 }
 
 function normalizeMode(mode: ExternalProcessPolicyMode | null | undefined): ExternalProcessPolicyMode {
-  return mode === 'health_check' ? 'health_check' : 'process'
+  return mode === 'health_check' ? 'health_check' : mode === 'conversion' ? 'conversion' : 'process'
 }
 
 function clampPositiveInteger(

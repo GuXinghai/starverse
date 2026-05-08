@@ -28,7 +28,7 @@ ${FILE_ASSETS_COLUMNS_SQL}
     CREATE TABLE IF NOT EXISTS file_derivatives (
       id TEXT PRIMARY KEY,
       parent_asset_id TEXT NOT NULL REFERENCES file_assets(id),
-      derived_kind TEXT NOT NULL CHECK (derived_kind IN ('thumbnail', 'extracted_text', 'ocr_text', 'transcript', 'converted_pdf', 'send_optimized', 'preview_optimized', 'embedding_vector')),
+      derived_kind TEXT NOT NULL CHECK (derived_kind IN ('thumbnail', 'extracted_text', 'ocr_text', 'transcript', 'converted_pdf', 'converted_markdown', 'rendered_images', 'selected_frames', 'extracted_audio', 'send_optimized', 'preview_optimized', 'embedding_vector')),
       mime TEXT,
       storage_uri TEXT NOT NULL,
       generator TEXT NOT NULL,
@@ -42,7 +42,7 @@ ${FILE_ASSETS_COLUMNS_SQL}
     CREATE TABLE IF NOT EXISTS derivative_jobs (
       id TEXT PRIMARY KEY,
       asset_id TEXT NOT NULL REFERENCES file_assets(id),
-      derivative_kind TEXT NOT NULL CHECK (derivative_kind IN ('thumbnail', 'extracted_text', 'ocr_text', 'transcript', 'converted_pdf', 'send_optimized', 'preview_optimized', 'embedding_vector')),
+      derivative_kind TEXT NOT NULL CHECK (derivative_kind IN ('thumbnail', 'extracted_text', 'ocr_text', 'transcript', 'converted_pdf', 'converted_markdown', 'rendered_images', 'selected_frames', 'extracted_audio', 'send_optimized', 'preview_optimized', 'embedding_vector')),
       task_family TEXT NOT NULL CHECK (task_family IN ('chat_context', 'transcription', 'embeddings')),
       status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'ready', 'failed', 'cancelled')),
       generator TEXT NOT NULL,

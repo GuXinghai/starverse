@@ -1,4 +1,4 @@
-import { FILE_FORMAT_IDS, type FileFormatId } from './types'
+import { FILE_FORMAT_IDS, SEND_ROUTES, type FileFormatId, type SendRoute } from './types'
 import {
   ENGINE_CAPABILITIES,
   ENGINE_KINDS,
@@ -22,6 +22,7 @@ type ManifestValidationFailure = Readonly<{
 export type ManifestValidationResult = ManifestValidationSuccess | ManifestValidationFailure
 
 const FILE_FORMAT_ID_SET = new Set<string>(FILE_FORMAT_IDS)
+const SEND_ROUTE_SET = new Set<string>(SEND_ROUTES)
 const ENGINE_KIND_SET = new Set<string>(ENGINE_KINDS)
 const ENGINE_PLATFORM_SET = new Set<string>(ENGINE_PLATFORMS)
 const ENGINE_CAPABILITY_SET = new Set<string>(ENGINE_CAPABILITIES)
@@ -47,10 +48,12 @@ export function validateManagedEnginePluginManifest(input: unknown): ManifestVal
   const capabilities = parseCapabilities(source.capabilities, errors)
   const supportedFormatIds = parseSupportedFormatIds(source.supportedFormatIds, errors)
   const supportedMimeTypes = parseSupportedMimeTypes(source.supportedMimeTypes, errors)
+  const supportedOutputRoutes = parseSupportedOutputRoutes(source.supportedOutputRoutes, errors)
   const resourceLimits = parseResourceLimits(source.resourceLimits, errors)
   const sandbox = parseSandbox(source.sandbox, errors)
   const network = parseNetwork(source.network, errors)
   const healthcheck = parseHealthcheck(source.healthcheck, errors)
+  const metadataAllowlist = parseMetadataAllowlist(source.metadataAllowlist, errors)
 
   if (errors.length > 0) {
     return { ok: false, errors }
@@ -67,10 +70,12 @@ export function validateManagedEnginePluginManifest(input: unknown): ManifestVal
       capabilities,
       supportedFormatIds,
       supportedMimeTypes,
+      supportedOutputRoutes,
       resourceLimits,
       sandbox,
       network,
       healthcheck,
+      metadataAllowlist,
     },
   }
 }
@@ -142,6 +147,50 @@ function parseSupportedMimeTypes(input: unknown, errors: string[]): readonly str
     out.add(normalized)
   }
   return Array.from(out)
+}
+
+function parseSupportedOutputRoutes(input: unknown, errors: string[]): readonly SendRoute[] {
+  if (input == null) return []
+  if (!Array.isArray(input)) {
+    errors.push('supportedOutputRoutes must be an array when provided')
+    return []
+  }
+  const out: SendRoute[] = []
+  const seen = new Set<string>()
+  for (const value of input) {
+    const normalized = readNonEmptyString(value)
+    if (!normalized) continue
+    if (!SEND_ROUTE_SET.has(normalized)) {
+      errors.push(`unsupported output route: ${normalized}`)
+      continue
+    }
+    if (seen.has(normalized)) continue
+    seen.add(normalized)
+    out.push(normalized as SendRoute)
+  }
+  return out
+}
+
+function parseMetadataAllowlist(input: unknown, errors: string[]): readonly string[] | null {
+  if (input == null) return null
+  if (!Array.isArray(input)) {
+    errors.push('metadataAllowlist must be an array or null')
+    return null
+  }
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const value of input) {
+    const normalized = readNonEmptyString(value)
+    if (!normalized) continue
+    if (seen.has(normalized)) continue
+    seen.add(normalized)
+    out.push(normalized)
+  }
+  if (out.length === 0) {
+    errors.push('metadataAllowlist must contain at least one entry when provided')
+    return null
+  }
+  return out
 }
 
 function parseResourceLimits(

@@ -138,4 +138,65 @@ describe('externalProcessPolicy', () => {
     expect(isBlockedScriptInterpreter('"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"')).toBe(true)
     expect(isBlockedScriptInterpreter('/usr/bin/node')).toBe(false)
   })
+
+  it('uses conversion defaults for conversion mode', () => {
+    const result = evaluateExternalProcessPolicy({
+      command: 'java',
+      mode: 'conversion',
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.policy.mode).toBe('conversion')
+    expect(result.policy.timeoutMs).toBe(
+      EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionTimeoutMs
+    )
+    expect(result.policy.maxStdoutBytes).toBe(
+      EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionStdoutBytes
+    )
+    expect(result.policy.maxStderrBytes).toBe(
+      EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionStderrBytes
+    )
+    expect(result.policy.shell).toBe(false)
+    expect(result.policy.allowBatchEntrypoint).toBe(false)
+  })
+
+  it('clamps conversion mode to conversion-specific hard caps', () => {
+    const result = evaluateExternalProcessPolicy({
+      command: 'java',
+      mode: 'conversion',
+      timeoutMs: EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxTimeoutMs + 5000,
+      maxStdoutBytes: EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxStdoutBytes + 1024,
+      maxStderrBytes: EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxStderrBytes + 1024,
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.policy.timeoutMs).toBe(
+      EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxTimeoutMs
+    )
+    expect(result.policy.maxStdoutBytes).toBe(
+      EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxStdoutBytes
+    )
+    expect(result.policy.maxStderrBytes).toBe(
+      EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionMaxStderrBytes
+    )
+  })
+
+  it('conversion mode retains shell:false and interpreter blocks', () => {
+    const shellResult = evaluateExternalProcessPolicy({
+      command: 'java',
+      mode: 'conversion',
+      shell: true,
+    })
+    expect(shellResult.ok).toBe(false)
+    if (shellResult.ok) return
+    expect(shellResult.errorCode).toBe('policy_shell_not_allowed')
+
+    const interpreterResult = evaluateExternalProcessPolicy({
+      command: 'cmd.exe',
+      mode: 'conversion',
+    })
+    expect(interpreterResult.ok).toBe(false)
+    if (interpreterResult.ok) return
+    expect(interpreterResult.errorCode).toBe('policy_script_interpreter_blocked')
+  })
 })
