@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { runEngineHealthCheck } from './externalEngineHealth'
+import { mapProcessRunToProbe, runEngineHealthCheck } from './externalEngineHealth'
 import { createExternalEngineRegistry } from './externalEngineRegistry'
 
 // eslint-disable-next-line max-lines-per-function
@@ -172,5 +172,22 @@ describe('externalEngineHealth', () => {
 
     expect(updated.healthStatus).toBe('failed')
     expect(updated.failureReason).toBe('output_limit_exceeded')
+  })
+
+  it('maps script interpreter policy block to disabled_by_policy', () => {
+    const probe = mapProcessRunToProbe({
+      exitCode: null,
+      signal: null,
+      stdout: '',
+      stderr: 'blocked by policy',
+      timedOut: false,
+      outputLimited: false,
+      terminationAttempted: false,
+      terminated: false,
+      errorCode: 'policy_script_interpreter_blocked',
+      elapsedMs: 3,
+    })
+    expect(probe.status).toBe('failed')
+    expect(probe.reason).toBe('disabled_by_policy')
   })
 })

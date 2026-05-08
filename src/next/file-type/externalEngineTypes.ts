@@ -1,6 +1,6 @@
 import type { FileFormatId } from './types'
 
-export const KNOWN_ENGINE_IDS = ['tika', 'libreoffice', 'ffprobe', 'pandoc'] as const
+export const KNOWN_ENGINE_IDS = ['tika', 'libreoffice', 'ffprobe', 'pandoc', 'magika'] as const
 export type KnownEngineId = (typeof KNOWN_ENGINE_IDS)[number]
 export type EngineId = KnownEngineId | (string & {})
 
@@ -35,6 +35,11 @@ export const ENGINE_FAILURE_REASONS = [
   'engine_timeout',
   'engine_failed',
   'output_limit_exceeded',
+  'hash_mismatch',
+  'runtime_entry_missing',
+  'model_file_missing',
+  'config_file_missing',
+  'plugin_not_found',
   'manifest_invalid',
   'platform_unsupported',
   'disabled_by_policy',
