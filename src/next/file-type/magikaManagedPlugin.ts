@@ -89,6 +89,58 @@ export type MagikaManagedPluginAvailabilityResult = Readonly<{
   descriptor: MagikaManagedPluginDescriptor | null
 }>
 
+export type MagikaPackageLayoutSpec = Readonly<{
+  rootDirName: string
+  requiredFiles: readonly string[]
+  requiredDirs: readonly string[]
+  optionalFiles: readonly string[]
+}>
+
+export const MAGIKA_PACKAGE_LAYOUT: MagikaPackageLayoutSpec = {
+  rootDirName: 'engines/magika',
+  requiredFiles: ['manifest.json'],
+  requiredDirs: ['runtime', 'model'],
+  optionalFiles: ['NOTICE', 'LICENSE', 'ATTRIBUTION', 'README.md'],
+}
+
+export type MagikaPackageLayoutValidation =
+  | Readonly<{ valid: true }>
+  | Readonly<{ valid: false; reason: EngineFailureReason; detail: string }>
+
+export async function validateMagikaPackageLayout(input: Readonly<{
+  pluginRootPath: string
+  existsFile?: ExistsFile
+  existsDir?: (dirPath: string) => Promise<boolean>
+}>): Promise<MagikaPackageLayoutValidation> {
+  const existsFile = input.existsFile ?? fileExists
+  const existsDir = input.existsDir ?? dirExists
+  const pluginRootPath = path.resolve(input.pluginRootPath)
+
+  for (const requiredFile of MAGIKA_PACKAGE_LAYOUT.requiredFiles) {
+    const filePath = path.join(pluginRootPath, requiredFile)
+    if (!(await existsFile(filePath))) {
+      return {
+        valid: false,
+        reason: 'plugin_not_found',
+        detail: `required file missing: ${requiredFile}`,
+      }
+    }
+  }
+
+  for (const requiredDir of MAGIKA_PACKAGE_LAYOUT.requiredDirs) {
+    const dirPath = path.join(pluginRootPath, requiredDir)
+    if (!(await existsDir(dirPath))) {
+      return {
+        valid: false,
+        reason: 'plugin_not_found',
+        detail: `required directory missing: ${requiredDir}`,
+      }
+    }
+  }
+
+  return { valid: true }
+}
+
 export type DiscoverMagikaManagedPluginInput = Readonly<{
   pluginDirs: readonly string[]
   existsFile?: ExistsFile
@@ -833,6 +885,16 @@ function sanitizeForDetails(value: string | null): string | null {
     .replace(WINDOWS_ABSOLUTE_PATH_RE, '[redacted-path]')
     .replace(UNIX_ABSOLUTE_PATH_RE, '[redacted-path]')
   return sanitizeEngineDetailForDiagnostics(normalized)
+}
+
+async function dirExists(dirPath: string): Promise<boolean> {
+  try {
+    const { stat: statAsync } = await import('node:fs/promises')
+    const entry = await statAsync(dirPath)
+    return entry.isDirectory()
+  } catch {
+    return false
+  }
 }
 
 async function fileExists(filePath: string): Promise<boolean> {

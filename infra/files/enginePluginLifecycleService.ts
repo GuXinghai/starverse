@@ -68,6 +68,7 @@ export type OfficialPluginDto = Readonly<{
   catalogGeneratedAt: string | null
   installState: EnginePluginRegistryRecord['installState'] | 'not_installed'
   enabled: boolean
+  recommendedInstallRootKind: 'managed_root' | 'test_root'
 }>
 
 export type LifecycleActionResult<T> =
@@ -87,6 +88,7 @@ export type EnginePluginLifecycleServiceDeps = Readonly<{
     | 'updateHealth'
   >
   trustedRoots: TrustedCatalogPublicKeyMap
+  trustedRootSource?: 'official' | 'test' | null
   defaultCatalogPath?: string
   resolveInstallPluginDir: (input: Readonly<{
     installRootKind: EnginePluginInstallRootKind
@@ -130,6 +132,7 @@ export class EnginePluginLifecycleService {
 
     const installed = this.deps.registryRepo.list()
     const installedById = new Map(installed.map((item) => [item.engineId, item]))
+    const recommendedInstallRootKind = this.getRecommendedInstallRootKind()
     const rows = catalogResult.value.plugins.map((entry) => {
       const installedRecord = installedById.get(entry.pluginId)
       return {
@@ -138,6 +141,7 @@ export class EnginePluginLifecycleService {
         catalogGeneratedAt: catalogResult.value.generatedAt,
         installState: installedRecord?.installState ?? 'not_installed',
         enabled: installedRecord?.enabled ?? false,
+        recommendedInstallRootKind,
       } as OfficialPluginDto
     })
 
@@ -335,6 +339,11 @@ export class EnginePluginLifecycleService {
     const healthy = this.deps.registryRepo.getByEngineId(engineId)
     if (!healthy) return fail('not_installed', 'plugin record is not found after health check')
     return ok(toInstalledDto(healthy))
+  }
+
+  private getRecommendedInstallRootKind(): 'managed_root' | 'test_root' {
+    if (this.deps.trustedRootSource === 'official') return 'managed_root'
+    return 'test_root'
   }
 
   private async loadAndVerifyCatalog(

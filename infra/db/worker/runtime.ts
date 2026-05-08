@@ -232,6 +232,7 @@ export class DbWorkerRuntime {
     this.enginePluginLifecycleService = new EnginePluginLifecycleService({
       registryRepo: this.enginePluginRegistryRepo,
       trustedRoots: activeTrustedRoots.ok ? activeTrustedRoots.trustedRoots : {},
+      trustedRootSource: activeTrustedRoots.ok ? activeTrustedRoots.source : null,
       resolveInstallPluginDir: ({ installRootKind, installRef }) => {
         const safeRef = installRef.replace(/[^a-zA-Z0-9._-]+/g, '_')
         return path.join(this.fileStorageRootDir, 'engine-plugins', installRootKind, safeRef)

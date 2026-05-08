@@ -20,6 +20,7 @@ type OfficialRow = Readonly<{
   catalogGeneratedAt: string | null
   installState: string
   enabled: boolean
+  recommendedInstallRootKind: 'managed_root' | 'test_root'
 }>
 
 type PluginViewModel = Readonly<{
@@ -80,7 +81,7 @@ async function loadData() {
   }
 }
 
-async function doRegister(pluginId: string, pluginVersion: string) {
+async function doRegister(pluginId: string, pluginVersion: string, recommendedInstallRootKind: 'managed_root' | 'test_root') {
   error.value = null
   statusMessage.value = null
   loading.value = true
@@ -88,7 +89,7 @@ async function doRegister(pluginId: string, pluginVersion: string) {
     const result = await registerLocalOfficialPlugin({
       pluginId,
       pluginVersion,
-      installRootKind: 'test_root',
+      installRootKind: recommendedInstallRootKind,
       installRef: `plugin_${pluginId}_${pluginVersion.replace(/[^a-zA-Z0-9._-]/g, '_')}`,
       enabled: false,
     })
@@ -246,7 +247,7 @@ onMounted(() => {
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             :disabled="loading"
-            @click="doRegister(row.pluginId, row.pluginVersion)"
+            @click="doRegister(row.pluginId, row.pluginVersion, row.recommendedInstallRootKind)"
           >
             Register
           </button>
