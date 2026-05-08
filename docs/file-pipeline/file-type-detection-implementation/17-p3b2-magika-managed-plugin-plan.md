@@ -140,6 +140,18 @@ engines/magika/
 - 插件安装/更新/卸载 UI 与下载器
 - 签名与 trusted root
 
+## 10.1 P3-B2 audit P0 修复状态
+
+已完成两项 P0 修复（仅安全加固，无功能扩张）：
+
+- P0-1：manifest 路径边界加固。`runtimeEntry` / `modelFiles` / `configFiles` 与 `integrity` key 统一走相对路径策略，拒绝 `..` 逃逸、绝对路径、Windows 盘符路径、UNC 路径、NUL 字符，并在可用时通过 realpath 边界复核。
+- P0-2：核心文件 integrity 强制覆盖。`runtimeEntry`、全部 `modelFiles`、全部 `configFiles` 必须声明并通过 `sha256`；缺失返回 `integrity_missing`，不匹配返回 `hash_mismatch`。
+
+状态结论：
+
+- P3-B2 managed plugin 最小闭环在安全边界上已满足进入 P3-C 的门槛（`allowed`）。
+- 该结论不代表完整插件生命周期已完成，也不代表真实模型打包与发布策略已完成。
+
 ## 11. 测试策略
 
 至少包括：
@@ -193,4 +205,4 @@ engines/magika/
 2) 复核 `detectFull` 在插件 unavailable 时 fallback 行为与 `detectBasic` 不调用插件 runtime 的契约；
 3) 复核 sendRouteMapping 在 Magika unavailable 下不会全局 blocked；
 4) 输出 P0/P1/P2 风险与最小修复任务包。
-不得接入真实模型打包，不修改 `package.json/lockfile`，不得把 P3-B2 写成完整插件系统已完成。
+不得接入真实模型打包，不修改 `package.json/lockfile`，不得把 P3-B2 写成插件体系已全部收口。
