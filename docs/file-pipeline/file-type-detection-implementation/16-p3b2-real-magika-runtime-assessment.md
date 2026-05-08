@@ -2,9 +2,11 @@
 
 ## 1. 评估结论
 
-`assessment_only`
+主包依赖路径结论：`assessment_only`
+修正后路线结论：`proceed_to_plugin_integration_planning`
 
-本轮结论是不进入真实 runtime 最小集成。原因不是架构不可行，而是关键前置条件仍未闭合：依赖体量/打包影响、模型文件供应策略、`magikaModelVersion` 稳定来源与离线策略尚未冻结，现阶段直接改依赖会引入不可控发布风险。
+本轮保持“不进入主包依赖最小集成”。原因不是架构不可行，而是把 `magika` / `@tensorflow/tfjs` 绑定到 Starverse 主包会引入高体量与打包边界风险。
+Owner 已澄清方向：真实 Magika runtime 应走 managed engine plugin 路线，主包保持隔离。
 
 ## 2. 当前 Starverse runtime 边界
 
@@ -33,7 +35,8 @@
 
 结论：
 - 功能上可接入。
-- 工程上存在明显体量与构建边界风险，不能在未冻结策略时直接引入依赖。
+- 作为主包依赖存在明显体量与构建边界风险，不建议直接引入主包。
+- 风险应转移到插件包维度管理（下载、安装、更新、卸载、完整性与回滚）。
 
 ## 4. 模型文件与版本来源评估
 
@@ -64,7 +67,8 @@
 - 需明确 runtime 实际运行上下文（main/worker）与 bundle external 策略，避免将重量依赖卷入不必要构建目标。
 
 结论：
-- 兼容性无明确“不可行”证据，但构建与发布风险尚未完成定量验证。
+- 兼容性无明确“不可行”证据。
+- 但不建议将该风险施加到主包构建链路，应通过 managed plugin 隔离。
 
 ## 6. 离线运行与本地 model/config path 策略
 
@@ -78,20 +82,30 @@
 
 ## 7. Starverse 最小接入方案
 
-仅在 Owner 冻结以下条件后推进最小集成：
+本节修正为两条路径：
+
+### 7.1 主包依赖路径（不推进）
+
+不推进 `magika` / `@tensorflow/tfjs` 进入 Starverse 主包依赖。
+
+### 7.2 managed plugin 路径（可推进到规划）
+
+可推进 `proceed_to_plugin_integration_planning`，前提是冻结以下条件：
 
 1. 依赖冻结
-- 明确是否允许加入 `magika`（以及是否允许/禁止 `@tensorflow/tfjs-node`）。
-- 明确 lockfile 变化可接受范围与平台安装策略。
+- 主包不新增 `magika` / `@tensorflow/tfjs` 依赖。
+- 插件 runtime 依赖与版本由插件 manifest 管理，独立于主包 lockfile。
 
 2. 模型供应链冻结
 - 明确模型/config 的获取与部署方式（禁止测试联网下载）。
 - 明确模型版本命名规范，作为 `magikaModelVersion` 唯一来源之一。
 
 3. 运行边界冻结
-- 仅 `detectFull` 接入真实 runtime。
+- 仅 `detectFull` 接入真实 runtime（通过插件可用性）。
 - `detectBasic` 保持无 Magika 硬依赖。
 - runtime 异常只影响 Magika evidence，不阻断核心识别。
+- 主程序不直接 `import magika` / `@tensorflow/tfjs`。
+- 主程序仅通过 manifest/health/availability 与插件交互。
 
 ## 8. 测试策略
 
@@ -107,7 +121,8 @@
 ## 9. 风险与回滚策略
 
 主要风险：
-- 依赖体积导致安装/构建/打包回归。
+- 主包依赖体积导致安装/构建/打包回归（该风险已通过路线修正规避）。
+- 插件包体积与下载/安装/更新/卸载带来的生命周期风险。
 - 模型文件供应链不稳定导致“本地可用性”不可重复。
 - `magikaModelVersion` 来源不稳定导致 cache/provenance 混乱。
 - 运行时不可用路径处理不一致，意外影响 detectFull 延迟与稳定性。
@@ -116,17 +131,17 @@
 回滚策略：
 - 保持 loader 注入边界不变，优先通过配置回退到 `unavailable/mock`。
 - 不改 detectBasic 路径。
-- 真实 runtime 改动应独立提交，异常时可整包回滚。
+- 真实 runtime 改动应作为插件侧独立变更提交，异常时插件可禁用/移除，主包不回滚核心链路。
 
 ## 10. 是否允许本轮继续最小集成
 
-不允许。
+不允许（针对主包依赖集成）。
 
-本轮结论为 `assessment_only`。建议先补一轮 Owner 冻结：
-- 依赖引入许可与版本；
-- 模型文件供应链与体积预算；
-- `magikaModelVersion` 元数据来源规范；
-- worker 打包/external 策略；
-- 真实 runtime gated test 策略。
+本轮结论：
+- 主包依赖集成：`assessment_only`
+- managed plugin 路线：`proceed_to_plugin_integration_planning`
 
-在上述项冻结前，不修改 `package.json/lockfile`，不做真实 runtime 接入代码提交。
+后续建议：
+- 进入 `P3-B2 Magika managed plugin` 规划与分阶段任务包；
+- 主程序继续保持无 `magika` / `@tensorflow/tfjs` 直接依赖；
+- 在插件路线冻结前，不修改 `package.json/lockfile`，不做真实 runtime 接入代码提交。
