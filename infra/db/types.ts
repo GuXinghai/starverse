@@ -492,6 +492,124 @@ export type DeleteFileTypeVerdictByAssetIdInput = Readonly<{
   assetId: string
 }>
 
+export type EnginePluginInstallState =
+  | 'installed'
+  | 'failed'
+  | 'uninstalled'
+  | 'update_available'
+
+export type EnginePluginHealthStatus =
+  | 'unknown'
+  | 'healthy'
+  | 'degraded'
+  | 'unhealthy'
+
+export type EnginePluginInstallSource = 'official_catalog'
+
+export type EnginePluginInstallRootKind =
+  | 'managed_root'
+  | 'managed_cache'
+  | 'test_root'
+
+export type EnginePluginRegistryRecord = Readonly<{
+  engineId: string
+  displayName: string
+  pluginVersion: string
+  manifestSchemaVersion: string
+  manifestHash: string
+  runtimeKind: string
+  modelVersion: string | null
+  installState: EnginePluginInstallState
+  enabled: boolean
+  healthStatus: EnginePluginHealthStatus
+  failureReason: string | null
+  installSource: EnginePluginInstallSource
+  installRootKind: EnginePluginInstallRootKind
+  installRef: string
+  installedAt: number | null
+  updatedAt: number
+  lastVerifiedAt: number | null
+  lastHealthCheckAt: number | null
+  metadataJson: JsonObject | null
+}>
+
+export type InsertEnginePluginRegistryInput = Readonly<{
+  engineId: string
+  displayName: string
+  pluginVersion: string
+  manifestSchemaVersion: string
+  manifestHash: string
+  runtimeKind: string
+  modelVersion?: string | null
+  installState?: EnginePluginInstallState
+  enabled?: boolean
+  healthStatus?: EnginePluginHealthStatus
+  failureReason?: string | null
+  installSource?: EnginePluginInstallSource
+  installRootKind: EnginePluginInstallRootKind
+  installRef: string
+  installedAt?: number | null
+  updatedAt?: number
+  lastVerifiedAt?: number | null
+  lastHealthCheckAt?: number | null
+  metadataJson?: JsonObject | null
+}>
+
+export type UpsertEnginePluginRegistryInput = Readonly<{
+  engineId: string
+  displayName: string
+  pluginVersion: string
+  manifestSchemaVersion: string
+  manifestHash: string
+  runtimeKind: string
+  modelVersion?: string | null
+  installState?: EnginePluginInstallState
+  enabled?: boolean
+  healthStatus?: EnginePluginHealthStatus
+  failureReason?: string | null
+  installSource?: EnginePluginInstallSource
+  installRootKind: EnginePluginInstallRootKind
+  installRef: string
+  installedAt?: number | null
+  updatedAt?: number
+  lastVerifiedAt?: number | null
+  lastHealthCheckAt?: number | null
+  metadataJson?: JsonObject | null
+}>
+
+export type GetEnginePluginRegistryByEngineIdInput = Readonly<{
+  engineId: string
+}>
+
+export type ListEnginePluginRegistryInput = Readonly<{
+  includeUninstalled?: boolean
+}>
+
+export type SetEnginePluginEnabledInput = Readonly<{
+  engineId: string
+  enabled: boolean
+  updatedAt?: number
+}>
+
+export type MarkEnginePluginFailedInput = Readonly<{
+  engineId: string
+  failureReason: string
+  updatedAt?: number
+  lastHealthCheckAt?: number | null
+}>
+
+export type UpdateEnginePluginHealthInput = Readonly<{
+  engineId: string
+  healthStatus: EnginePluginHealthStatus
+  updatedAt?: number
+  lastHealthCheckAt?: number | null
+}>
+
+export type MarkEnginePluginUninstalledInput = Readonly<{
+  engineId: string
+  updatedAt?: number
+}>
+
 export type CreateDerivativeJobInput = Readonly<{
   id?: string
   assetId: string

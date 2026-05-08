@@ -27,6 +27,7 @@ import { SettingsRepo } from '../repo/settingsRepo'
 import { ensureBranchingSchema } from '../migrations/ensureBranchingSchema'
 import { ensureSearchSchema } from '../migrations/ensureSearchSchema'
 import { ensureFilePipelineSchema } from '../migrations/ensureFilePipelineSchema'
+import { ensureEnginePluginRegistrySchema } from '../migrations/ensureEnginePluginRegistrySchema'
 import { ConversationAttachmentService } from '../../files/conversationAttachmentService'
 import { DerivativeJobService } from '../../files/derivativeJobService'
 import { FileIngestionService } from '../../files/fileIngestionService'
@@ -147,6 +148,8 @@ export class DbWorkerRuntime {
     this.ensureMessageAssetSchema()
     console.log('[DbWorkerRuntime] 确保 File Pipeline Schema...')
     ensureFilePipelineSchema(this.db)
+    console.log('[DbWorkerRuntime] 确保 Engine Plugin Registry Schema...')
+    ensureEnginePluginRegistrySchema(this.db)
     console.log('[DbWorkerRuntime] 确保 Model Catalog Schema...')
     this.ensureModelCatalogSchema()
     console.log('[DbWorkerRuntime] 确保 Reasoning Model Index Schema...')
