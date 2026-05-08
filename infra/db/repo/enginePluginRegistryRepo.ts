@@ -46,6 +46,9 @@ const DEFAULT_HEALTH_STATUS: EnginePluginHealthStatus = 'unknown'
 const WINDOWS_ABSOLUTE_PATH_RE = /^[a-zA-Z]:[\\/]/u
 const WINDOWS_UNC_RE = /^\\\\/u
 const UNIX_ABSOLUTE_PATH_RE = /^\//u
+const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//iu
+const ABSTRACT_INSTALL_REF_RE = /^[a-z0-9][a-z0-9._:-]{1,127}$/iu
+const SHA256_HEX_RE = /^[a-f0-9]{64}$/u
 const NUL_CHAR_RE = /\u0000/u
 
 export class EnginePluginRegistryRepo {
@@ -341,7 +344,7 @@ function normalizePayload(input: InsertEnginePluginRegistryInput | UpsertEngineP
     displayName: requireNonEmpty(input.displayName, 'displayName'),
     pluginVersion: requireNonEmpty(input.pluginVersion, 'pluginVersion'),
     manifestSchemaVersion: requireNonEmpty(input.manifestSchemaVersion, 'manifestSchemaVersion'),
-    manifestHash: requireNonEmpty(input.manifestHash, 'manifestHash'),
+    manifestHash: normalizeManifestHash(input.manifestHash),
     runtimeKind: requireNonEmpty(input.runtimeKind, 'runtimeKind'),
     modelVersion: normalizeNullable(input.modelVersion),
     installState: input.installState ?? DEFAULT_INSTALL_STATE,
@@ -399,8 +402,28 @@ function normalizeNullable(value: string | null | undefined): string | null {
 
 function normalizeInstallRef(value: string): string {
   const normalized = requireNonEmpty(value, 'installRef')
+  if (normalized.includes('..')) {
+    throw new Error('installRef must not contain traversal segments')
+  }
+  if (normalized.includes('\\')) {
+    throw new Error('installRef must not contain backslashes')
+  }
   if (WINDOWS_ABSOLUTE_PATH_RE.test(normalized) || WINDOWS_UNC_RE.test(normalized) || UNIX_ABSOLUTE_PATH_RE.test(normalized)) {
     throw new Error('installRef must be an abstract reference, not an absolute path')
+  }
+  if (URL_SCHEME_RE.test(normalized)) {
+    throw new Error('installRef must not include URL scheme')
+  }
+  if (!ABSTRACT_INSTALL_REF_RE.test(normalized)) {
+    throw new Error('installRef must be an abstract reference token')
+  }
+  return normalized
+}
+
+function normalizeManifestHash(value: string): string {
+  const normalized = requireNonEmpty(value, 'manifestHash').toLowerCase()
+  if (!SHA256_HEX_RE.test(normalized)) {
+    throw new Error('manifestHash must be a 64-char sha256 hex string')
   }
   return normalized
 }

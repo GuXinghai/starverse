@@ -19,7 +19,7 @@ function createBaseInput(engineId: string) {
     displayName: 'Magika',
     pluginVersion: '1.0.0',
     manifestSchemaVersion: '1',
-    manifestHash: 'ab12',
+    manifestHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     runtimeKind: 'node',
     installRootKind: 'managed_root' as const,
     installRef: `registry:${engineId}`,
@@ -156,6 +156,44 @@ describeIfBetterSqlite('EnginePluginRegistryRepo', () => {
       ...createBaseInput('engine.magika'),
       installRef: 'C:\\plugins\\magika',
       updatedAt: 400,
-    })).toThrow(/installRef must be an abstract reference/i)
+    })).toThrow(/backslashes|abstract reference/i)
+  })
+
+  it('rejects traversal, URL scheme and backslash installRef disguises', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    ensureEnginePluginRegistrySchema(db)
+    const repo = new EnginePluginRegistryRepo(db)
+
+    expect(() => repo.insert({
+      ...createBaseInput('engine.magika'),
+      installRef: '..',
+      updatedAt: 401,
+    })).toThrow(/traversal/i)
+
+    expect(() => repo.insert({
+      ...createBaseInput('engine.magika'),
+      installRef: 'http://example.test/plugin',
+      updatedAt: 402,
+    })).toThrow(/URL scheme/i)
+
+    expect(() => repo.insert({
+      ...createBaseInput('engine.magika'),
+      installRef: 'registry\\engine.magika',
+      updatedAt: 403,
+    })).toThrow(/backslashes/i)
+  })
+
+  it('rejects non-sha256 manifestHash', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    ensureEnginePluginRegistrySchema(db)
+    const repo = new EnginePluginRegistryRepo(db)
+
+    expect(() => repo.insert({
+      ...createBaseInput('engine.magika'),
+      manifestHash: 'short-hash',
+      updatedAt: 404,
+    })).toThrow(/64-char sha256 hex/i)
   })
 })
