@@ -30,16 +30,17 @@ const FAILURE_REASON_SET = new Set([
   'manifest_parse_failed',
   'manifest_integrity_failed',
   'manifest_engine_mismatch',
-  'manifest_version_mismatch',
-  'plugin_not_found',
-  'plugin_uninstalled',
-  'plugin_failed_reverify_required',
-  'plugin_failed_health_check_failed',
-  'health_check_unavailable',
-  'health_check_failed',
-  'not_installed',
-  'official_trusted_root_unconfigured',
-])
+    'manifest_version_mismatch',
+    'plugin_not_found',
+    'plugin_uninstalled',
+    'plugin_failed_reverify_required',
+    'plugin_failed_health_check_failed',
+    'health_check_unavailable',
+    'health_check_failed',
+    'not_installed',
+    'official_trusted_root_unconfigured',
+    'install_root_kind_mismatch',
+  ])
 
 type LifecycleFailureReason = (typeof FAILURE_REASON_SET extends Set<infer T> ? T : never) & string
 
@@ -164,6 +165,10 @@ export class EnginePluginLifecycleService {
     )
     if (!entry) {
       return fail('catalog_entry_not_found', 'official plugin entry is not found in catalog')
+    }
+
+    if (!this.isValidInstallRootKind(input.installRootKind)) {
+      return fail('install_root_kind_mismatch', 'installRootKind is not allowed for the current trusted root source')
     }
 
     const pluginDir = this.deps.resolveInstallPluginDir({
@@ -344,6 +349,12 @@ export class EnginePluginLifecycleService {
   private getRecommendedInstallRootKind(): 'managed_root' | 'test_root' {
     if (this.deps.trustedRootSource === 'official') return 'managed_root'
     return 'test_root'
+  }
+
+  private isValidInstallRootKind(kind: string): boolean {
+    if (kind !== 'managed_root' && kind !== 'test_root' && kind !== 'managed_cache') return false
+    if (this.deps.trustedRootSource === 'official' && kind === 'test_root') return false
+    return true
   }
 
   private async loadAndVerifyCatalog(

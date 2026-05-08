@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: P4-A completed; P4-B1 completed; P4-B2~P4-B5 pending (Magika managed plugin real package & classify call)
-Next phase: P4-B2
+Current phase: P4-A completed; P4-B1~B2 completed; P4-B3~P4-B5 pending (Magika managed plugin real package & classify call)
+Next phase: P4-B3
 
 ## 目录用途
 
@@ -40,6 +40,7 @@ Next phase: P4-B2
 | 20-p4a-official-plugin-marketplace-closeout.md | P4-A 收口：官方限定插件市场、trusted roots、lifecycle test、settings UI 最小闭环 |
 | 21-p4b-magika-official-managed-plugin-planning.md | P4-B planning: Magika official managed plugin 真实包与 classify call 规划 |
 | 22-p4b1-magika-package-spec-and-distribution.md | P4-B1: Magika package specification + trusted root / catalog distribution hardening |
+| 23-p4b2-managed-root-registration.md | P4-B2: Managed root / official pre-staged package registration replacement |
 
 ## Step 状态
 
@@ -79,7 +80,7 @@ Next phase: P4-B2
 - 本目录为文件类型检测工程实现专属目录
 - 下一步：按 `19-phase4-planning.md` 拆分 P4-A~P4-D，进入分包实施前确认
 - P4-A completed：官方限定插件市场最小闭环、trusted roots 注入、lifecycle service/client 测试补强、settings UI（见 `20-p4a-official-plugin-marketplace-closeout.md`）
-- 下一步：P4-B implementation（P4-B1 completed，进入 P4-B2）
+- 下一步：P4-B implementation（P4-B1~B2 completed，进入 P4-B3）
 
 ## 当前冻结结论
 
