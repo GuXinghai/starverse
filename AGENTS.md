@@ -29,3 +29,19 @@ Starverse repair policy:
 - Do not modify unrelated files.
 - Do not refactor tests unless explicitly requested.
 - Do not continue style/highlight work when the task is about state flow, persistence, or runtime behavior.
+
+## Project Codex subagents
+
+When the user explicitly asks to use Codex subagents, the parent agent should select from these four project-scoped agents:
+
+- code_mapper: use for read-only codebase mapping, symbol tracing, execution-path discovery, and integration seam discovery before implementation.
+- risk_reviewer: use for read-only P0/P1 review of correctness, security, migrations, registry integrity, logging, and missing tests.
+- test_runner: use for approved validation commands, test execution, failure summarization, and regression attribution. It should not edit files unless explicitly authorized.
+- doc_consistency: use for phase language, acceptance matrix, owner decision, non-goal, and documentation consistency checks.
+
+Delegation rules:
+- Keep max_depth at 1; child agents must not spawn more child agents.
+- Prefer one code_mapper before implementation, one risk_reviewer before merge, one test_runner for acceptance, and one doc_consistency when docs or phase claims change.
+- Do not delegate owner decisions, final phase status, or security-boundary changes to child agents.
+- Parent agent owns final synthesis, patch selection, and merge readiness.
+- Child agents must return concise evidence with repo-relative paths.
