@@ -220,4 +220,190 @@ describe('sendRouteMapping', () => {
     expect(unknownBlocked[0]?.route).toBe('blocked')
     expect(unknownAsk[0]?.route).toBe('ask_user')
   })
+
+  // === P4-C6 engine-specific tests ===
+
+  function engineAvailabilityWith(overrides: Partial<Record<string, boolean>>) {
+    const base = {
+      documentConversion: false,
+      spreadsheetConversion: false,
+      presentationConversion: false,
+      renderedImages: false,
+      textExtraction: false,
+      audioExtraction: false,
+      frameSelection: false,
+    }
+    return { ...base, ...overrides }
+  }
+
+  it('blocks extracted_text when textExtraction is unavailable', () => {
+    const candidates = buildSendPlanCandidates({
+      verdict: verdict('docx'),
+      modelCapabilities: fullCapabilities,
+      engineAvailability: engineAvailabilityWith({ textExtraction: false }),
+    })
+    const extracted = candidates.find((item) => item.route === 'extracted_text')
+    expect(extracted).toBeDefined()
+    expect(extracted?.blocked).toBe(true)
+    expect(extracted?.blockedBy).toContain('engine_text_extraction_unavailable')
+  })
+
+  it('unlocks extracted_text when textExtraction is available', () => {
+    const candidates = buildSendPlanCandidates({
+      verdict: verdict('docx'),
+      modelCapabilities: fullCapabilities,
+      engineAvailability: engineAvailabilityWith({ textExtraction: true }),
+    })
+    const extracted = candidates.find((item) => item.route === 'extracted_text')
+    expect(extracted).toBeDefined()
+    expect(extracted?.blocked).toBe(false)
+    expect(extracted?.blockedBy).toEqual([])
+  })
+
+  it('blocks converted_markdown when documentConversion is unavailable', () => {
+    const candidates = buildSendPlanCandidates({
+      verdict: verdict('docx'),
+      modelCapabilities: fullCapabilities,
+      engineAvailability: engineAvailabilityWith({ documentConversion: false }),
+    })
+    const md = candidates.find((item) => item.route === 'converted_markdown')
+    expect(md).toBeDefined()
+    expect(md?.blocked).toBe(true)
+    expect(md?.blockedBy).toContain('engine_document_conversion_unavailable')
+  })
+
+  it('unlocks converted_markdown when documentConversion is available', () => {
+    const candidates = buildSendPlanCandidates({
+      verdict: verdict('docx'),
+      modelCapabilities: fullCapabilities,
+      engineAvailability: engineAvailabilityWith({ documentConversion: true }),
+    })
+    const md = candidates.find((item) => item.route === 'converted_markdown')
+    expect(md?.blocked).toBe(false)
+  })
+
+  it('blocks selected_frames when frameSelection is unavailable', () => {
+    const candidates = buildSendPlanCandidates({
+      verdict: verdict('mp4'),
+      modelCapabilities: fullCapabilities,
+      engineAvailability: engineAvailabilityWith({ frameSelection: false }),
+    })
+    const frames = candidates.find((item) => item.route === 'selected_frames')
+    expect(frames).toBeDefined()
+    expect(frames?.blocked).toBe(true)
+    expect(frames?.blockedBy).toContain('engine_frame_selection_unavailable')
+  })
+
+  it('blocks extracted_audio when audioExtraction is unavailable', () => {
+    const candidates = buildSendPlanCandidates({
+      verdict: verdict('mp3'),
+      modelCapabilities: fullCapabilities,
+      engineAvailability: engineAvailabilityWith({ audioExtraction: false }),
+    })
+    const audio = candidates.find((item) => item.route === 'extracted_audio')
+    expect(audio).toBeDefined()
+    expect(audio?.blocked).toBe(true)
+    expect(audio?.blockedBy).toContain('engine_audio_extraction_unavailable')
+  })
+
+  it('blocks rendered_images when both renderedImages and presentationConversion are unavailable', () => {
+    const candidates = buildSendPlanCandidates({
+      verdict: verdict('pptx'),
+      modelCapabilities: fullCapabilities,
+      engineAvailability: engineAvailabilityWith({ renderedImages: false, presentationConversion: false }),
+    })
+    const images = candidates.find((item) => item.route === 'rendered_images')
+    expect(images).toBeDefined()
+    expect(images?.blocked).toBe(true)
+    expect(images?.blockedBy).toContain('engine_rendered_images_unavailable')
+  })
+
+  it('executable files stay blocked even when all engines are available', () => {
+    const candidates = buildSendPlanCandidates({
+      verdict: verdict('windows_exe', [{ flag: 'executable_content', reasonCode: 'reason.executable_content', blocking: true }]),
+      modelCapabilities: fullCapabilities,
+      engineAvailability: engineAvailabilityWith({
+        documentConversion: true,
+        textExtraction: true,
+        spreadsheetConversion: true,
+        presentationConversion: true,
+        renderedImages: true,
+        audioExtraction: true,
+        frameSelection: true,
+      }),
+    })
+    expect(candidates[0]?.route).toBe('blocked')
+  })
+
+  it('does not mutate verdict when engine availability affects candidates', () => {
+    const inputVerdict = verdict('docx')
+    const snapshot = JSON.stringify(inputVerdict)
+    buildSendPlanCandidates({
+      verdict: inputVerdict,
+      modelCapabilities: fullCapabilities,
+      engineAvailability: engineAvailabilityWith({ textExtraction: false }),
+    })
+    expect(JSON.stringify(inputVerdict)).toBe(snapshot)
+  })
+
+  it('accepts registry envelope with real engine availability gating documentConversion', () => {
+    const registry = createExternalEngineRegistry(() => 1000)
+    registry.registerBuiltInEngineDefinitions()
+    const docEngines = ['tika', 'libreoffice', 'pandoc'] as const
+    for (const id of docEngines) {
+      registry.disableEngine(id)
+    }
+    const availability = registry.getEngineAvailability()
+
+    const candidates = buildSendPlanCandidates({
+      verdict: verdict('docx'),
+      modelCapabilities: fullCapabilities,
+      engineAvailability: availability,
+    })
+    const converted = candidates.find((item) => item.route === 'converted_markdown')
+    expect(converted?.blocked).toBe(true)
+    expect(converted?.blockedBy).toContain('engine_document_conversion_unavailable')
+  })
+
+  it('accepts registry envelope with tika alone unlocking both text extraction and document conversion', () => {
+    const registry = createExternalEngineRegistry(() => 1000)
+    registry.registerBuiltInEngineDefinitions()
+    for (const id of ['tika', 'libreoffice', 'pandoc'] as const) {
+      registry.disableEngine(id)
+    }
+    registry.enableEngine('tika')
+    registry.markEngineHealthy({ engineId: 'tika' })
+    const availability = registry.getEngineAvailability()
+
+    const candidates = buildSendPlanCandidates({
+      verdict: verdict('docx'),
+      modelCapabilities: fullCapabilities,
+      engineAvailability: availability,
+    })
+    const extracted = candidates.find((item) => item.route === 'extracted_text')
+    expect(extracted?.blocked).toBe(false)
+    const converted = candidates.find((item) => item.route === 'converted_markdown')
+    expect(converted?.blocked).toBe(false) // tika manifest includes document_conversion
+  })
+
+  it('accepts registry envelope with only pandoc providing documentConversion', () => {
+    const registry = createExternalEngineRegistry(() => 1000)
+    registry.registerBuiltInEngineDefinitions()
+    for (const id of ['tika', 'libreoffice', 'pandoc'] as const) {
+      registry.disableEngine(id)
+    }
+    registry.enableEngine('pandoc')
+    registry.markEngineHealthy({ engineId: 'pandoc' })
+    const availability = registry.getEngineAvailability()
+
+    const candidates = buildSendPlanCandidates({
+      verdict: verdict('docx'),
+      modelCapabilities: fullCapabilities,
+      engineAvailability: availability,
+    })
+    const extracted = candidates.find((item) => item.route === 'extracted_text')
+    expect(extracted?.blocked).toBe(true) // pandoc manifest has no text_extraction
+    const converted = candidates.find((item) => item.route === 'converted_markdown')
+    expect(converted?.blocked).toBe(false) // pandoc has document_conversion
+  })
 })

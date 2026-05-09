@@ -59,6 +59,7 @@ const TEXT_FORMATS = new Set(['plain_text', 'markdown', 'source_code', 'json', '
 const EXECUTABLE_FORMATS = new Set(['windows_exe', 'msi', 'dll', 'elf', 'mach_o', 'apk', 'dmg', 'script_file'])
 const ARCHIVE_FORMATS = new Set(['zip', 'rar', 'seven_zip', 'tar', 'gzip', 'generic_container', 'ooxml_container', 'odf_container'])
 
+// eslint-disable-next-line complexity
 export function buildSendPlanCandidates(input: BuildSendPlanCandidatesInput): SendPlanCandidate[] {
   const prefs = { ...DEFAULT_PREFS, ...(input.userPrefs ?? {}) }
   const engines = resolveEngineAvailability(input.engineAvailability)
@@ -145,6 +146,7 @@ function isEngineAvailabilityEnvelope(value: unknown): value is EngineAvailabili
   return 'routeAvailability' in value
 }
 
+// eslint-disable-next-line max-params
 function candidateFromRoute(
   route: SendRoute,
   input: BuildSendPlanCandidatesInput,
@@ -240,6 +242,7 @@ function evaluateEngineGate(
   switch (route) {
     case 'converted_markdown':
     case 'converted_plain_text':
+    case 'converted_pdf':
       return { available: engines.documentConversion, reason: 'engine_document_conversion_unavailable' }
     case 'converted_csv':
     case 'converted_tsv':
