@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: P4-A completed; P4-B completed with follow-ups; P4-C completed with follow-ups (closeout pending external audit); P4-D pending
-Next phase: P4-D final acceptance planning (after external audit)
+Current phase: P4-A completed; P4-B completed with follow-ups; P4-C completed with follow-ups; P4-D planning in progress
+Next phase: P4-D implementation pending
 
 ## 目录用途
 
@@ -52,6 +52,7 @@ Next phase: P4-D final acceptance planning (after external audit)
 | 32-p4c5-pandoc-conversion-contract.md | P4-C5: Pandoc document conversion contract |
 | 33-p4c6-route-conversion-candidate-integration.md | P4-C6: route mapping / conversion candidate integration |
 | 34-p4c-external-conversion-engines-closeout.md | P4-C closeout: completed with follow-ups |
+| 35-p4d-final-acceptance-planning.md | P4-D final acceptance planning |
 
 ## Step 状态
 
@@ -93,8 +94,8 @@ Next phase: P4-D final acceptance planning (after external audit)
 - P4-A completed：官方限定插件市场最小闭环、trusted roots 注入、lifecycle service/client 测试补强、settings UI（见 `20-p4a-official-plugin-marketplace-closeout.md`）
 - P4-B completed with follow-ups：Magika official managed plugin（见 `26-p4b-magika-official-managed-plugin-closeout.md`）
 - P4-C completed with follow-ups：Tika / LibreOffice / ffprobe / Pandoc fake runner contracts + route mapping integration（见 `34-p4c-external-conversion-engines-closeout.md`）
-- P4-C closeout pending external audit
-- 下一步：P4-D final acceptance planning（等待外部审计后）
+- P4-D planning in progress：Phase 4 final acceptance planning（见 `35-p4d-final-acceptance-planning.md`）
+- P4-D implementation pending
 
 ## 当前冻结结论
 
