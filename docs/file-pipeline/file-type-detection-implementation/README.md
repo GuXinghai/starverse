@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: P4-A completed; P4-B completed with follow-ups; P4-C completed with follow-ups; P4-D1 completed; P4-D2 completed; P4-D implementation in progress
-Next phase: P4-D3~D5 remaining
+Current phase: P4-A completed; P4-B completed with follow-ups; P4-C completed with follow-ups; P4-D1 completed; P4-D2 completed; P4-D3 completed; P4-D implementation in progress
+Next phase: P4-D4~D5 remaining
 
 ## 目录用途
 
@@ -55,6 +55,7 @@ Next phase: P4-D3~D5 remaining
 | 35-p4d-final-acceptance-planning.md | P4-D final acceptance planning |
 | 36-p4d1-baseline-verification-ledger.md | P4-D1 baseline verification and known-issue ledger |
 | 37-p4d2-manual-smoke-execution-package.md | P4-D2 manual smoke checklist execution package |
+| 38-p4d3-security-privacy-followup-audit.md | P4-D3 security/privacy/follow-up audit package |
 
 ## Step 状态
 
@@ -99,6 +100,7 @@ Next phase: P4-D3~D5 remaining
 - P4-D planning in progress：Phase 4 final acceptance planning（见 `35-p4d-final-acceptance-planning.md`）
 - P4-D1 completed：baseline verification and known-issue ledger established（见 `36-p4d1-baseline-verification-ledger.md`）
 - P4-D2 completed：manual smoke execution package compiled (43 items, all not_run pending Electron + real runtime)（见 `37-p4d2-manual-smoke-execution-package.md`）
+- P4-D3 completed：security/privacy/follow-up audit — 2 new P0 risks (legacy messageAsset IPC, DEV_MODE=1) registered as closeout blockers（见 `38-p4d3-security-privacy-followup-audit.md`）
 - P4-D implementation pending
 
 ## 当前冻结结论
