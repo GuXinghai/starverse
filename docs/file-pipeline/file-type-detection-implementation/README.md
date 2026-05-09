@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: P4-A completed; P4-B completed with follow-ups; P4-C planning completed; P4-C1 implementation completed (unblock patch applied); P4-C2 implementation completed; P4-C3~C7 pending
-Next phase: P4-C3 (Tika real runner integration, pending Owner decision)
+Current phase: P4-A completed; P4-B completed with follow-ups; P4-C completed with follow-ups (closeout pending external audit); P4-D pending
+Next phase: P4-D final acceptance planning (after external audit)
 
 ## 目录用途
 
@@ -46,6 +46,12 @@ Next phase: P4-C3 (Tika real runner integration, pending Owner decision)
 | 26-p4b-magika-official-managed-plugin-closeout.md | P4-B closeout: P4-B completed with follow-ups |
 | 27-p4c-external-conversion-engines-planning.md | P4-C planning: Tika/LibreOffice/ffprobe/Pandoc 优先级与深度转换闭环规划 |
 | 28-p4c1-conversion-engine-spec-extension.md | P4-C1: external conversion engine manifest/package spec extension |
+| 29-p4c2-tika-fake-runner-contract.md | P4-C2: Tika fake runner contract implementation |
+| 30-p4c3-libreoffice-conversion-contract.md | P4-C3: LibreOffice conversion contract |
+| 31-p4c4-ffprobe-metadata-contract.md | P4-C4: ffprobe metadata probe contract |
+| 32-p4c5-pandoc-conversion-contract.md | P4-C5: Pandoc document conversion contract |
+| 33-p4c6-route-conversion-candidate-integration.md | P4-C6: route mapping / conversion candidate integration |
+| 34-p4c-external-conversion-engines-closeout.md | P4-C closeout: completed with follow-ups |
 
 ## Step 状态
 
@@ -85,7 +91,10 @@ Next phase: P4-C3 (Tika real runner integration, pending Owner decision)
 - 本目录为文件类型检测工程实现专属目录
 - 下一步：按 `19-phase4-planning.md` 拆分 P4-A~P4-D，进入分包实施前确认
 - P4-A completed：官方限定插件市场最小闭环、trusted roots 注入、lifecycle service/client 测试补强、settings UI（见 `20-p4a-official-plugin-marketplace-closeout.md`）
-- 下一步：P4-C2（Tika fake runner implementation）
+- P4-B completed with follow-ups：Magika official managed plugin（见 `26-p4b-magika-official-managed-plugin-closeout.md`）
+- P4-C completed with follow-ups：Tika / LibreOffice / ffprobe / Pandoc fake runner contracts + route mapping integration（见 `34-p4c-external-conversion-engines-closeout.md`）
+- P4-C closeout pending external audit
+- 下一步：P4-D final acceptance planning（等待外部审计后）
 
 ## 当前冻结结论
 
