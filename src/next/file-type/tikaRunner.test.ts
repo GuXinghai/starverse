@@ -23,13 +23,16 @@ function createFakeTikaRuntime(mode: 'detect' | 'extract_text' | 'metadata' | 'c
   return `process.stdout.write(JSON.stringify({detectedFormatId:"pdf",detectedMime:"application/pdf",extractedText:"Hello world content",metadata:{"Content-Type":"application/pdf","Author":"Alice","X-Custom":"secret"},warnings:["truncated"]}))`
 }
 
-function createErrorRuntime(errorType: 'exit1' | 'bad_json' | 'empty_object' | 'no_fields' | 'bad_metadata' | 'crash'): string {
+function createErrorRuntime(errorType: 'exit1' | 'bad_json' | 'empty_object' | 'no_fields' | 'bad_metadata' | 'crash' | 'sensitive_metadata'): string {
   if (errorType === 'exit1') return 'process.exit(1)'
   if (errorType === 'bad_json') return 'process.stdout.write("not json")'
   if (errorType === 'empty_object') return 'process.stdout.write("{}")'
   if (errorType === 'no_fields') return 'process.stdout.write(JSON.stringify({unrelated:true}))'
   if (errorType === 'bad_metadata') return 'process.stdout.write(JSON.stringify({metadata:"not-an-object"}))'
   if (errorType === 'crash') return 'throw new Error("tika crash")'
+  if (errorType === 'sensitive_metadata') {
+    return `process.stdout.write(JSON.stringify({metadata:{"Author":"alice","Resource-Name":"C:\\\\Users\\\\alice\\\\secret\\\\doc.pdf","X-Temp-Path":"/tmp/tika-input-abc123.bin","Custom-Hash":"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789beef"}}))`
+  }
   return 'process.exit(0)'
 }
 
@@ -41,7 +44,7 @@ type TempFixture = Readonly<{
 
 async function createTempFixture(input: Readonly<{
   mode?: 'detect' | 'extract_text' | 'metadata' | 'combined'
-  errorType?: 'exit1' | 'bad_json' | 'empty_object' | 'no_fields' | 'bad_metadata' | 'crash'
+  errorType?: 'exit1' | 'bad_json' | 'empty_object' | 'no_fields' | 'bad_metadata' | 'crash' | 'sensitive_metadata'
 }> = {}): Promise<TempFixture> {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-tika-runner-'))
   const runtimeDir = path.join(rootDir, 'runtime')
@@ -134,7 +137,10 @@ describe('tikaRunner', () => {
   it('runs fake tika in metadata mode and returns metadata', async () => {
     const fixture = await createTempFixture({ mode: 'metadata' })
     try {
-      const result = await runTikaWithFixture(fixture, { mode: 'metadata' })
+      const result = await runTikaWithFixture(fixture, {
+        mode: 'metadata',
+        metadataAllowlist: ['Content-Type', 'Author', 'X-Custom'],
+      })
       expect(result.ok).toBe(true)
       if (!result.ok) return
       expect(result.metadata).toBeDefined()
@@ -152,7 +158,9 @@ describe('tikaRunner', () => {
   it('runs fake tika in combined mode and returns all fields', async () => {
     const fixture = await createTempFixture({ mode: 'combined' })
     try {
-      const result = await runTikaWithFixture(fixture)
+      const result = await runTikaWithFixture(fixture, {
+        metadataAllowlist: ['Content-Type', 'Author', 'X-Custom'],
+      })
       expect(result.ok).toBe(true)
       if (!result.ok) return
       expect(result.detectedFormatId).toBe('pdf')
@@ -351,16 +359,14 @@ describe('tikaRunner', () => {
     }
   })
 
-  // -- metadata allowlist: null (passthrough all) --
-  it('passes through all metadata when allowlist is null', async () => {
+  // -- metadata allowlist: null blocks all (capability disabled) --
+  it('blocks all metadata when allowlist is null', async () => {
     const fixture = await createTempFixture({ mode: 'metadata' })
     try {
       const result = await runTikaWithFixture(fixture, { mode: 'metadata', metadataAllowlist: null })
       expect(result.ok).toBe(true)
       if (!result.ok) return
-      expect(result.metadata).toBeDefined()
-      expect(Object.keys(result.metadata!)).toHaveLength(3)
-      expect(result.metadata!['X-Custom']).toBe('secret')
+      expect(result.metadata).toBeUndefined()
     } finally {
       await fixture.cleanup()
     }
@@ -429,6 +435,49 @@ describe('tikaRunner', () => {
       expect(result.ok).toBe(true)
       if (!result.ok) return
       expect(result.detectedFormatId).toBe('pdf')
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
+  // -- sensitive metadata values: paths and hashes are redacted --
+  it('redacts Windows and Unix paths in metadata values', async () => {
+    const fixture = await createTempFixture({ errorType: 'sensitive_metadata' })
+    try {
+      const result = await runTikaWithFixture(fixture, {
+        mode: 'metadata',
+        metadataAllowlist: ['Author', 'Resource-Name', 'X-Temp-Path', 'Custom-Hash'],
+      })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.metadata).toBeDefined()
+      expect(result.metadata!['Author']).toBe('alice')
+      expect(result.metadata!['Resource-Name']).toContain('[redacted-path]')
+      expect(result.metadata!['Resource-Name']).not.toContain('C:')
+      expect(result.metadata!['X-Temp-Path']).toContain('[redacted-path]')
+      expect(result.metadata!['X-Temp-Path']).not.toContain('/tmp/')
+      expect(result.metadata!['Custom-Hash']).toContain('[redacted-hash]')
+      expect(result.metadata!['Custom-Hash']).not.toMatch(/[0-9a-fA-F]{64,}/)
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
+  // -- sensitive metadata values: unknown keys not in allowlist are dropped --
+  it('drops metadata keys not in allowlist even when value is benign', async () => {
+    const fixture = await createTempFixture({ errorType: 'sensitive_metadata' })
+    try {
+      const result = await runTikaWithFixture(fixture, {
+        mode: 'metadata',
+        metadataAllowlist: ['Author'],
+      })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.metadata).toBeDefined()
+      expect(result.metadata!['Author']).toBe('alice')
+      expect(result.metadata!['Resource-Name']).toBeUndefined()
+      expect(result.metadata!['X-Temp-Path']).toBeUndefined()
+      expect(result.metadata!['Custom-Hash']).toBeUndefined()
     } finally {
       await fixture.cleanup()
     }
