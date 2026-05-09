@@ -172,16 +172,27 @@ function parseMetadata(
 ): Record<string, string> | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
   const source = raw as Record<string, unknown>
-  const allowlistSet = allowlist ? new Set(allowlist) : null
+  const allowlistSet = new Set(allowlist ?? [])
 
   const out: Record<string, string> = {}
   for (const [key, value] of Object.entries(source)) {
     if (typeof value !== 'string') continue
-    if (allowlistSet && !allowlistSet.has(key)) continue
-    out[key] = value
+    if (!allowlistSet.has(key)) continue
+    out[key] = sanitizeMetadataValue(value)
   }
 
   return Object.keys(out).length > 0 ? out : undefined
+}
+
+const WINDOWS_PATH_RE = /\b[A-Za-z]:\\[^\s"'`]+/g
+const UNIX_PATH_RE = /(?:\/Users\/|\/home\/|\/mnt\/|\/var\/|\/tmp\/)[^\s"'`\\]+/g
+const HASH_64_RE = /\b[0-9a-fA-F]{64,}\b/g
+
+function sanitizeMetadataValue(value: string): string {
+  return value
+    .replace(WINDOWS_PATH_RE, '[redacted-path]')
+    .replace(UNIX_PATH_RE, '[redacted-path]')
+    .replace(HASH_64_RE, '[redacted-hash]')
 }
 
 function parseWarnings(raw: unknown): string[] | undefined {
