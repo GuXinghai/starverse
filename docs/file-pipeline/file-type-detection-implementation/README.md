@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: P4-A completed; P4-B completed with follow-ups; P4-C planning completed; P4-C1 implementation completed (unblock patch applied); P4-C2~C7 pending
-Next phase: P4-C2 (Tika fake runner implementation, pending re-audit)
+Current phase: P4-A completed; P4-B completed with follow-ups; P4-C planning completed; P4-C1 implementation completed (unblock patch applied); P4-C2 implementation completed; P4-C3~C7 pending
+Next phase: P4-C3 (Tika real runner integration, pending Owner decision)
 
 ## 目录用途
 
