@@ -406,6 +406,7 @@ export async function runManagedMagikaPluginHealthCheck(input: Readonly<{
   const registry = createExternalEngineRegistry()
   registry.registerBuiltInEngineDefinitions()
   registry.registerManifest(toManagedEnginePluginManifest(input.descriptor))
+  registry.setVerificationStatus({ engineId: 'magika', verificationStatus: 'verified' })
 
   const checked =
     input.descriptor.manifest.healthcheck == null
