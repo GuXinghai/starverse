@@ -17,6 +17,7 @@ export type MagikaRuntimeDetectionInput = Readonly<{
 export type MagikaRuntimeClassifyOutput = Readonly<{
   label: string
   score: number
+  modelVersion?: string | null
 }>
 
 export interface MagikaRuntime {

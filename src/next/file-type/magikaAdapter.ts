@@ -68,10 +68,10 @@ export async function runMagikaRuntimeProbe(
 
       return {
         evidence: mapMagikaOutputToEvidence(raw, {
-          modelVersion: loaded.runtime.modelVersion,
+          modelVersion: raw.modelVersion ?? loaded.runtime.modelVersion,
           runtimeKind: loaded.runtime.kind,
         }),
-        modelVersion: normalizeModelVersion(loaded.runtime.modelVersion),
+        modelVersion: normalizeModelVersion(raw.modelVersion ?? loaded.runtime.modelVersion),
         runtimeKind: loaded.runtime.kind,
         unavailableReason: null,
         unavailableDetail: null,
