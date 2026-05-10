@@ -359,8 +359,8 @@ Commits: ed7ccb6 → e595b06 → 7800aa3 → 1d1a5dc → 67b9a0c → (P4-D5 pend
 
 ## 18. Final Declaration
 
-Phase 4 code implementation (P4-A/P4-B/P4-C) is **completed with follow-ups**.  
-P4-D planning, audit, and decision packages are **completed**.  
+Phase 4 code implementation (P4-A/P4-B/P4-C) is **completed with follow-ups**.
+P4-D planning, audit, and decision packages are **completed**.
 Phase 4 final closeout is **pending external audit** with 7 unresolved closeout blockers (BL-01~BL-07).
 
 Phase 4 does NOT represent project completion, complete plugin system completion, or real external engine completion.
