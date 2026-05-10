@@ -171,13 +171,9 @@ const cases: ContractCase[] = [
           messageId: 'm1',
           assetId: 'a1',
           ordinal: 0,
-          hash: 'abc',
           mime: 'image/png',
           width: 1,
           height: 1,
-          bytes: 68,
-          path: 'C:/tmp/abc.png',
-          fileUrl: 'file:///C:/tmp/abc.png',
           assetUrl: 'asset://a1',
         },
       ],
@@ -193,13 +189,9 @@ const cases: ContractCase[] = [
         messageId: 'm1',
         assetId: 'a1',
         ordinal: 0,
-        hash: 'abc',
         mime: 'image/png',
         width: 1,
         height: 1,
-        bytes: 68,
-        path: 'C:/tmp/abc.png',
-        fileUrl: 'file:///C:/tmp/abc.png',
         assetUrl: 'asset://a1',
       },
     ],
@@ -965,5 +957,66 @@ describe('client decode integration', () => {
     expect(calls[0]?.params?.metaPatch).toBeUndefined()
     expect(calls[1]?.method).toBe('message.setStatus')
     expect(calls[1]?.params?.metaPatch).toEqual({ completionOutcome: 'truncated' })
+  })
+})
+
+describe('BL-07 messageAsset renderer IPC sanitization', () => {
+  it('decodeMessageAssetPersistResponse strips path from output', () => {
+    const result = decodeMessageAssetPersistResponse({
+      ok: true,
+      assets: [{
+        messageId: 'm1',
+        assetId: 'a1',
+        ordinal: 0,
+        mime: 'image/png',
+        width: 100,
+        height: 200,
+        assetUrl: 'asset://a1',
+        path: 'C:/Users/test/file.png',
+        fileUrl: 'file:///C:/Users/test/file.png',
+        hash: 'abc123def',
+        bytes: 1024,
+      }],
+    })
+    expect(result).toHaveLength(1)
+    const asset = result[0]!
+    expect(asset).not.toHaveProperty('path')
+    expect(asset).not.toHaveProperty('fileUrl')
+    expect(asset).not.toHaveProperty('hash')
+    expect(asset).not.toHaveProperty('bytes')
+    expect(asset.assetUrl).toBe('asset://a1')
+    expect(asset.mime).toBe('image/png')
+  })
+
+  it('decodeMessageAssetListResponse strips path from output', () => {
+    const result = decodeMessageAssetListResponse([{
+      messageId: 'm1',
+      assetId: 'a1',
+      ordinal: 0,
+      mime: 'image/png',
+      width: 100,
+      height: 200,
+      assetUrl: 'asset://a1',
+      path: '/home/user/file.png',
+      fileUrl: 'file:///home/user/file.png',
+      hash: 'def456abc',
+      bytes: 2048,
+    }])
+    expect(result).toHaveLength(1)
+    const asset = result[0]!
+    expect(asset).not.toHaveProperty('path')
+    expect(asset).not.toHaveProperty('fileUrl')
+    expect(asset).not.toHaveProperty('hash')
+    expect(asset).not.toHaveProperty('bytes')
+  })
+
+  it('decodeMessageAssetPersistResponse returns empty array for empty assets', () => {
+    const result = decodeMessageAssetPersistResponse({ ok: true, assets: [] })
+    expect(result).toEqual([])
+  })
+
+  it('decodeMessageAssetListResponse returns empty array for empty list', () => {
+    const result = decodeMessageAssetListResponse([])
+    expect(result).toEqual([])
   })
 })

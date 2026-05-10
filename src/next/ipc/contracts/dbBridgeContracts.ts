@@ -47,6 +47,16 @@ export type DecodedMessageAsset = Readonly<{
   assetUrl: string
 }>
 
+export type DecodedMessageAssetRender = Readonly<{
+  messageId: string
+  assetId: string
+  ordinal: number
+  mime: string
+  width: number | null
+  height: number | null
+  assetUrl: string
+}>
+
 export type DecodedFileAsset = Readonly<{
   id: string
   sha256: string | null
@@ -312,7 +322,7 @@ const persistedMessageSchema = z.object({
   meta: row.meta ?? null,
 }))
 
-const messageAssetSchema = z.object({
+const messageAssetObjectSchema = z.object({
   messageId: nonEmpty,
   assetId: nonEmpty,
   ordinal: z.number().int().nonnegative(),
@@ -324,7 +334,9 @@ const messageAssetSchema = z.object({
   path: nonEmpty,
   fileUrl: nonEmpty,
   assetUrl: nonEmpty,
-}).transform((row) => ({
+})
+
+const messageAssetSchema = messageAssetObjectSchema.transform((row) => ({
   messageId: row.messageId,
   assetId: row.assetId,
   ordinal: row.ordinal,
@@ -335,6 +347,21 @@ const messageAssetSchema = z.object({
   bytes: row.bytes,
   path: row.path,
   fileUrl: row.fileUrl,
+  assetUrl: row.assetUrl,
+}))
+
+const messageAssetRenderSchema = messageAssetObjectSchema.omit({
+  path: true,
+  fileUrl: true,
+  hash: true,
+  bytes: true,
+}).transform((row) => ({
+  messageId: row.messageId,
+  assetId: row.assetId,
+  ordinal: row.ordinal,
+  mime: row.mime,
+  width: row.width ?? null,
+  height: row.height ?? null,
   assetUrl: row.assetUrl,
 }))
 
@@ -831,7 +858,7 @@ const booleanAckSchema = z.object({
 
 const messageAssetPersistAckSchema = z.object({
   ok: z.boolean().optional(),
-  assets: z.array(messageAssetSchema).optional(),
+  assets: z.array(messageAssetRenderSchema).optional(),
 }).transform((row) => row.assets ?? [])
 
 const strictAckSchema = z.object({
@@ -992,36 +1019,28 @@ export function decodeMessageAppendResponse(raw: unknown): DecodedPersistedMessa
   }
 }
 
-export function decodeMessageAssetPersistResponse(raw: unknown): DecodedMessageAsset[] {
+export function decodeMessageAssetPersistResponse(raw: unknown): DecodedMessageAssetRender[] {
   const rows = decodeWithSchema('messageAsset.persistFromDataUrls', messageAssetPersistAckSchema, raw)
   return rows.map((row) => ({
     messageId: row.messageId,
     assetId: row.assetId,
     ordinal: row.ordinal,
-    hash: row.hash,
     mime: row.mime,
     width: row.width,
     height: row.height,
-    bytes: row.bytes,
-    path: row.path,
-    fileUrl: row.fileUrl,
     assetUrl: row.assetUrl,
   }))
 }
 
-export function decodeMessageAssetListResponse(raw: unknown): DecodedMessageAsset[] {
-  const rows = decodeWithSchema('messageAsset.listByMessageIds', z.array(messageAssetSchema), raw)
+export function decodeMessageAssetListResponse(raw: unknown): DecodedMessageAssetRender[] {
+  const rows = decodeWithSchema('messageAsset.listByMessageIds', z.array(messageAssetRenderSchema), raw)
   return rows.map((row) => ({
     messageId: row.messageId,
     assetId: row.assetId,
     ordinal: row.ordinal,
-    hash: row.hash,
     mime: row.mime,
     width: row.width,
     height: row.height,
-    bytes: row.bytes,
-    path: row.path,
-    fileUrl: row.fileUrl,
     assetUrl: row.assetUrl,
   }))
 }
