@@ -58,6 +58,7 @@ Next phase: Phase 5 (external audit → real runtime packaging → production si
 | 38-p4d3-security-privacy-followup-audit.md | P4-D3 security/privacy/follow-up audit package |
 | 39-p4d4-provider-legacy-decision-package.md | P4-D4 provider_file_ref / legacy message_asset decision package |
 | 40-phase4-final-closeout-report.md | Phase 4 final closeout report |
+| 41-phase4-owner-decision-record.md | Phase 4 Owner decision record |
 
 ## Step 状态
 
