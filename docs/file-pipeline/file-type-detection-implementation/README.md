@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: P4-A completed; P4-B completed with follow-ups; P4-C completed with follow-ups (Gemini CLI external audit passed); P4-D1 completed; P4-D2 completed; P4-D3 completed; P4-D4 completed; P4-D5 drafted (pending external audit)
-Next phase: Phase 5 (external audit → real runtime packaging → production signing)
+Current phase: P4-A completed; P4-B completed with follow-ups; P4-C completed with follow-ups (Gemini CLI external audit passed); P4-D1~D5 completed; Phase 5 BL-06/BL-07 security planning
+Next phase: Phase 5 P5-A/P5-B implementation (BL-06/BL-07)
 
 ## 目录用途
 
@@ -59,6 +59,7 @@ Next phase: Phase 5 (external audit → real runtime packaging → production si
 | 39-p4d4-provider-legacy-decision-package.md | P4-D4 provider_file_ref / legacy message_asset decision package |
 | 40-phase4-final-closeout-report.md | Phase 4 final closeout report |
 | 41-phase4-owner-decision-record.md | Phase 4 Owner decision record |
+| 42-phase5-bl06-bl07-security-planning.md | Phase 5 BL-06/BL-07 security planning |
 
 ## Step 状态
 
@@ -96,17 +97,10 @@ Next phase: Phase 5 (external audit → real runtime packaging → production si
 - 新增 Phase 4 规划文档：`19-phase4-planning.md`
 - remaining follow-ups listed（legacy message_asset 最终退场、provider_file_ref 延后、真实外部引擎执行与扩展 fixture）
 - 本目录为文件类型检测工程实现专属目录
-- 下一步：按 `19-phase4-planning.md` 拆分 P4-A~P4-D，进入分包实施前确认
-- P4-A completed：官方限定插件市场最小闭环、trusted roots 注入、lifecycle service/client 测试补强、settings UI（见 `20-p4a-official-plugin-marketplace-closeout.md`）
-- P4-B completed with follow-ups：Magika official managed plugin（见 `26-p4b-magika-official-managed-plugin-closeout.md`）
-- P4-C completed with follow-ups：Tika / LibreOffice / ffprobe / Pandoc fake runner contracts + route mapping integration（见 `34-p4c-external-conversion-engines-closeout.md`）
-- P4-D planning completed：Phase 4 final acceptance planning（见 `35-p4d-final-acceptance-planning.md`）
-- P4-D1 completed：baseline verification and known-issue ledger established（见 `36-p4d1-baseline-verification-ledger.md`）
-- P4-D2 completed：manual smoke execution package compiled (43 items, all not_run pending Electron + real runtime)（见 `37-p4d2-manual-smoke-execution-package.md`）
-- P4-D3 completed：security/privacy/follow-up audit — 2 new P0 risks (legacy messageAsset IPC, DEV_MODE=1) registered as closeout blockers（见 `38-p4d3-security-privacy-followup-audit.md`）
-- P4-D4 completed：provider_file_ref / legacy message_asset decision package — decision-only, no implementation, no cleanup（见 `39-p4d4-provider-legacy-decision-package.md`）
-- P4-D5 drafted: Phase 4 final closeout report, pending Gemini CLI external audit（见 `40-phase4-final-closeout-report.md`）
-- Phase 4 closeout pending external audit
+- Phase 4 closeout accepted by Owner decision（见 `41-phase4-owner-decision-record.md`）
+- Phase 4 implementation package accepted with documented blockers; Phase 4 remains NOT completed in the strict production sense
+- Phase 5 planning: BL-06/BL-07 security planning（见 `42-phase5-bl06-bl07-security-planning.md`）
+- Phase 5 pending: P5-A (BL-06 implementation), P5-B (BL-07 implementation), P5-C (security regression + smoke planning)
 
 ## 当前冻结结论
 
