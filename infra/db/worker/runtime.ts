@@ -231,7 +231,7 @@ export class DbWorkerRuntime {
       fileTypeVerdictRepo: this.fileTypeVerdictRepo,
       storageRootDir: this.fileStorageRootDir,
     })
-    const activeTrustedRoots = getActiveTrustedRoots()
+    const activeTrustedRoots = getActiveTrustedRoots(undefined, { isProduction: config.isProduction })
     this.enginePluginLifecycleService = new EnginePluginLifecycleService({
       registryRepo: this.enginePluginRegistryRepo,
       trustedRoots: activeTrustedRoots.ok ? activeTrustedRoots.trustedRoots : {},

@@ -678,6 +678,18 @@ async function maybeRebuildDatabaseAtStartup(dbPath: string): Promise<DbRebuildD
  * @throws {Error} Worker 启动失败或 Schema 执行失败
  */
 const ensureDbReady = async () => {
+  const isProduction = process.env.NODE_ENV === 'production' || app.isPackaged
+  if (isProduction && process.env.SV_ENGINE_PLUGIN_DEV_MODE === '1') {
+    console.warn('[security] SV_ENGINE_PLUGIN_DEV_MODE=1 rejected in production', {
+      event: 'sv_engine_plugin_dev_mode_rejected_in_production',
+      isPackaged: app.isPackaged,
+      nodeEnv: process.env.NODE_ENV ?? 'unspecified',
+      timestamp: new Date().toISOString(),
+    })
+    app.exit(1)
+    return
+  }
+
   // Preflight: fail fast with a clear error if native deps (better-sqlite3) are ABI-mismatched.
   // This commonly happens when running `npm test` (Node rebuild) and then launching Electron
   // without re-running `npm run rebuild:electron`.
@@ -702,6 +714,7 @@ const ensureDbReady = async () => {
     await dbWorkerManager.start(dbPath, {
       stampSchemaVersion,
       startupRebuildReason: rebuildDecision.reason,
+      isProduction,
     })
   } catch (error) {
     console.error('[main] failed to start DB worker', error)

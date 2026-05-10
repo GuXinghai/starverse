@@ -151,4 +151,116 @@ describe('officialPluginTrustedRoots', () => {
     })
     expect(result.ok).toBe(false)
   })
+
+  it('rejects SV_ENGINE_PLUGIN_DEV_MODE=1 when isProduction is true', () => {
+    const result = getActiveTrustedRoots(
+      { SV_ENGINE_PLUGIN_DEV_MODE: '1' },
+      { isProduction: true },
+    )
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.reason).toBe('official_trusted_root_unconfigured')
+    }
+  })
+
+  it('allows SV_ENGINE_PLUGIN_DEV_MODE=1 when isProduction is false', () => {
+    const result = getActiveTrustedRoots(
+      { SV_ENGINE_PLUGIN_DEV_MODE: '1' },
+      { isProduction: false },
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.source).toBe('test')
+    }
+  })
+
+  it('allows VITEST=true even when isProduction is true', () => {
+    const result = getActiveTrustedRoots(
+      { VITEST: 'true' },
+      { isProduction: true },
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.source).toBe('test')
+    }
+  })
+
+  it('returns unconfigured in production with no env vars set', () => {
+    const result = getActiveTrustedRoots({}, { isProduction: true })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.reason).toBe('official_trusted_root_unconfigured')
+    }
+  })
+
+  it('allows SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS in production', () => {
+    const { publicKey } = generateKeyPairSync('ed25519')
+    const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString().trim()
+    const config = JSON.stringify({
+      'starverse-official-root-001': {
+        keyId: 'starverse-official-root-001',
+        algorithm: 'ed25519',
+        publicKeyPem: pem,
+      },
+    })
+    const result = getActiveTrustedRoots(
+      { SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS: config },
+      { isProduction: true },
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.source).toBe('official')
+    }
+  })
+
+  it('allows SV_TEST_TRUSTED_ROOTS in production', () => {
+    const { publicKey } = generateKeyPairSync('ed25519')
+    const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString().trim()
+    const config = JSON.stringify({
+      'starverse-test-root': {
+        keyId: 'starverse-test-root',
+        algorithm: 'ed25519',
+        publicKeyPem: pem,
+      },
+    })
+    const result = getActiveTrustedRoots(
+      { SV_TEST_TRUSTED_ROOTS: config },
+      { isProduction: true },
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.source).toBe('test')
+    }
+  })
+
+  it('allows NODE_ENV=test when isProduction is true', () => {
+    const result = getActiveTrustedRoots(
+      { NODE_ENV: 'test' },
+      { isProduction: true },
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.source).toBe('test')
+    }
+  })
+
+  it('allows SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS in production even with DEV_MODE=1', () => {
+    const { publicKey } = generateKeyPairSync('ed25519')
+    const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString().trim()
+    const config = JSON.stringify({
+      'starverse-official-root-001': {
+        keyId: 'starverse-official-root-001',
+        algorithm: 'ed25519',
+        publicKeyPem: pem,
+      },
+    })
+    const result = getActiveTrustedRoots(
+      { SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS: config, SV_ENGINE_PLUGIN_DEV_MODE: '1' },
+      { isProduction: true },
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.source).toBe('official')
+    }
+  })
 })
