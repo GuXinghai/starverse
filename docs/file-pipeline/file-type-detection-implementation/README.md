@@ -2,7 +2,7 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Phase 5 batch 1 P5-A/P5-B/P5-C completed; Phase 5 remains open for P5-D trusted root / signing and P5-E real runtime packaging
+Current phase: Phase 5 batch 1 P5-A/P5-B/P5-C completed and externally audited (Gemini CLI: PASS); Phase 5 remains open for P5-D trusted root / signing and P5-E real runtime packaging
 Next phase: P5-D production trusted root / offline signing workflow (future)
 
 ## 目录用途
@@ -61,6 +61,7 @@ Next phase: P5-D production trusted root / offline signing workflow (future)
 | 41-phase4-owner-decision-record.md | Phase 4 Owner decision record |
 | 42-phase5-bl06-bl07-security-planning.md | Phase 5 BL-06/BL-07 security planning |
 | 43-phase5-batch1-security-closeout.md | Phase 5 batch 1 P5-A/P5-B/P5-C closeout |
+| 44-phase5-batch1-external-audit-record.md | Phase 5 batch 1 external audit record (Gemini CLI) |
 
 ## Step 状态
 
@@ -102,6 +103,7 @@ Next phase: P5-D production trusted root / offline signing workflow (future)
 - Phase 4 implementation package accepted with documented blockers; Phase 4 remains NOT completed in the strict production sense
 - Phase 5 planning: BL-06/BL-07 security planning（见 `42-phase5-bl06-bl07-security-planning.md`）
 - Phase 5 batch 1 completed: P5-A (BL-06 dev-mode guard), P5-B (BL-07 messageAsset IPC sanitization), P5-C (security closeout)（见 `43-phase5-batch1-security-closeout.md`）
+- Phase 5 batch 1 external audit completed: Gemini CLI PASS（见 `44-phase5-batch1-external-audit-record.md`）
 - Phase 5 remains open for P5-D (trusted root / signing) and P5-E (real runtime packaging)
 
 ## 当前冻结结论
