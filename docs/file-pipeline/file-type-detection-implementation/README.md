@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Phase 5 Batch 2 P5-D/P5-E joint planning; Phase 5 Batch 1 completed and externally audited (Gemini CLI: PASS); Full Phase 5 remains open
-Next phase: P5-D production trusted root / offline signing workflow (future, planning only in this package)
+Current phase: Phase 5 P5-D implementation foundation completed; Phase 5 Batch 2 planning completed; Phase 5 Batch 1 completed and externally audited (Gemini CLI: PASS); Full Phase 5 remains open for P5-E real runtime packaging
+Next phase: P5-E real runtime packaging / model pre-stage (future)
 
 ## 目录用途
 
@@ -63,6 +63,7 @@ Next phase: P5-D production trusted root / offline signing workflow (future, pla
 | 43-phase5-batch1-security-closeout.md | Phase 5 batch 1 P5-A/P5-B/P5-C closeout |
 | 44-phase5-batch1-external-audit-record.md | Phase 5 batch 1 external audit record (Gemini CLI) |
 | 45-phase5-batch2-trust-runtime-planning.md | Phase 5 batch 2 P5-D/P5-E trust & runtime packaging joint planning |
+| 46-phase5-p5d-trust-signing-closeout.md | Phase 5 P5-D trust & signing closeout |
 
 ## Step 状态
 
@@ -107,6 +108,8 @@ Next phase: P5-D production trusted root / offline signing workflow (future, pla
 - Phase 5 batch 1 external audit completed: Gemini CLI PASS（见 `44-phase5-batch1-external-audit-record.md`）
 - Phase 5 remains open for P5-D (trusted root / signing) and P5-E (real runtime packaging)
 - Phase 5 Batch 2 planning: P5-D/P5-E joint planning package created（见 `45-phase5-batch2-trust-runtime-planning.md`）— planning only, no implementation
+- Phase 5 P5-D implementation: trust contracts, production verification gate, root rotation/revocation scaffold implemented（见 `46-phase5-p5d-trust-signing-closeout.md`）
+- P5-E real runtime packaging / model pre-stage remains future scope
 
 ## 当前冻结结论
 
