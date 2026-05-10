@@ -36,6 +36,32 @@ const lifecycleFailureSchema = z.object({
   message: nonEmpty,
 })
 
+const diagnosticsEntrySchema = z.object({
+  engineId: nonEmpty,
+  displayName: nonEmpty,
+  kind: z.enum(['builtin', 'plugin']),
+  installed: z.boolean(),
+  enabled: z.boolean(),
+  healthStatus: nonEmpty,
+  verificationStatus: nonEmpty.nullable(),
+  pluginVersion: nonEmpty.nullable(),
+  modelVersion: nonEmpty.nullable(),
+  failureReason: nonEmpty.nullable(),
+  installSource: nonEmpty.nullable(),
+})
+
+const diagnosticsSummarySchema = z.object({
+  engines: z.array(diagnosticsEntrySchema),
+  counts: z.object({
+    total: z.number().int().nonnegative(),
+    installed: z.number().int().nonnegative(),
+    enabled: z.number().int().nonnegative(),
+    healthy: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    unverified: z.number().int().nonnegative(),
+  }),
+})
+
 const lifecycleSuccessSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
   z.object({
     ok: z.literal(true),
@@ -56,12 +82,19 @@ export type DecodedInstalledPlugin = z.infer<typeof installedPluginSchema>
 export type DecodedOfficialPlugin = z.infer<typeof officialPluginSchema>
 export type DecodedLifecycleInstalledResult = z.infer<typeof lifecycleInstalledResultSchema>
 export type DecodedLifecycleListOfficialResult = z.infer<typeof listOfficialResultSchema>
+export type DecodedDiagnosticsSummary = z.infer<typeof diagnosticsSummarySchema>
 
 export type ListOfficialPluginsRequest = Readonly<{ catalogPath?: string }>
 export type RegisterLocalOfficialPluginRequest = Readonly<{
   catalogPath?: string
   pluginId: string
   pluginVersion: string
+  installRootKind: 'managed_root' | 'managed_cache' | 'test_root'
+  installRef: string
+  enabled?: boolean
+}>
+export type RegisterLocalPackageRequest = Readonly<{
+  packageDir: string
   installRootKind: 'managed_root' | 'managed_cache' | 'test_root'
   installRef: string
   enabled?: boolean
@@ -78,4 +111,8 @@ export function decodeListOfficialPluginsResponse(raw: unknown): DecodedLifecycl
 
 export function decodeLifecycleInstalledResult(raw: unknown): DecodedLifecycleInstalledResult {
   return lifecycleInstalledResultSchema.parse(raw)
+}
+
+export function decodeDiagnosticsSummary(raw: unknown): DecodedDiagnosticsSummary {
+  return diagnosticsSummarySchema.parse(raw)
 }

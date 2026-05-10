@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import {
   loadOfficialPluginCatalogFromFile,
@@ -12,6 +13,7 @@ import {
   discoverMagikaManagedPlugin,
   parseMagikaManagedPluginManifest,
   runManagedMagikaPluginHealthCheck,
+  type MagikaManagedPluginDescriptor,
 } from '../../src/next/file-type/magikaManagedPlugin'
 import type { EnginePluginRegistryRepo } from '../db/repo/enginePluginRegistryRepo'
 import type {
@@ -40,6 +42,8 @@ const FAILURE_REASON_SET = new Set([
     'not_installed',
     'official_trusted_root_unconfigured',
     'install_root_kind_mismatch',
+    'local_package_unavailable',
+    'local_package_manifest_hash_missing',
   ])
 
 type LifecycleFailureReason = (typeof FAILURE_REASON_SET extends Set<infer T> ? T : never) & string
@@ -117,6 +121,39 @@ export type EnablePluginInput = Readonly<{ engineId: string }>
 export type DisablePluginInput = Readonly<{ engineId: string }>
 export type UninstallPluginInput = Readonly<{ engineId: string }>
 export type RunHealthCheckInput = Readonly<{ engineId: string }>
+
+export type RegisterLocalPackageInput = Readonly<{
+  packageDir: string
+  installRootKind: EnginePluginInstallRootKind
+  installRef: string
+  enabled?: boolean
+}>
+
+export type EngineDiagnosticsSummary = Readonly<{
+  engines: readonly EngineDiagnosticsEntry[]
+  counts: Readonly<{
+    total: number
+    installed: number
+    enabled: number
+    healthy: number
+    failed: number
+    unverified: number
+  }>
+}>
+
+export type EngineDiagnosticsEntry = Readonly<{
+  engineId: string
+  displayName: string
+  kind: 'builtin' | 'plugin'
+  installed: boolean
+  enabled: boolean
+  healthStatus: string
+  verificationStatus: string | null
+  pluginVersion: string | null
+  modelVersion: string | null
+  failureReason: string | null
+  installSource: string | null
+}>
 
 export class EnginePluginLifecycleService {
   private readonly readBytes: ReadBytes
@@ -292,6 +329,123 @@ export class EnginePluginLifecycleService {
     const uninstalled = this.deps.registryRepo.getByEngineId(engineId)
     if (!uninstalled) return fail('not_installed', 'plugin record is not found after uninstall')
     return ok(toInstalledDto(uninstalled))
+  }
+
+  async registerLocalPackage(
+    input: RegisterLocalPackageInput
+  ): Promise<LifecycleActionResult<InstalledEnginePluginDto>> {
+    const packageDir = requireNonEmpty(input.packageDir, 'packageDir')
+    const installRef = requireNonEmpty(input.installRef, 'installRef')
+
+    if (!this.isValidInstallRootKind(input.installRootKind)) {
+      return fail('install_root_kind_mismatch', 'installRootKind is not allowed for the current trusted root source')
+    }
+
+    const resolvedPluginDir = this.deps.resolveInstallPluginDir({
+      installRootKind: input.installRootKind,
+      installRef,
+    })
+
+    const discovered = await discoverMagikaManagedPlugin({ pluginDirs: [packageDir, resolvedPluginDir] })
+    if (!discovered.available) {
+      return fail('local_package_unavailable', discovered.detail ?? 'local Magika package discovery failed')
+    }
+
+    const descriptor = discovered.descriptor
+    const manifestBytes = await this.readBytes(descriptor.manifestPath).catch(() => null)
+    if (!manifestBytes) {
+      return fail('local_package_manifest_hash_missing', 'cannot read local package manifest for hash calculation')
+    }
+    const manifestHash = buildSha256Hex(manifestBytes)
+
+    const timestamp = this.now()
+    const upserted = this.deps.registryRepo.upsert({
+      engineId: descriptor.manifest.engineId,
+      displayName: descriptor.manifest.displayName,
+      pluginVersion: descriptor.manifest.pluginVersion,
+      manifestSchemaVersion: descriptor.manifest.manifestSchemaVersion,
+      manifestHash,
+      runtimeKind: descriptor.manifest.runtimeKind,
+      modelVersion: descriptor.manifest.modelVersion,
+      installState: 'installed',
+      enabled: input.enabled !== false,
+      healthStatus: 'unknown',
+      failureReason: null,
+      installSource: 'local_package',
+      installRootKind: input.installRootKind,
+      installRef,
+      installedAt: timestamp,
+      updatedAt: timestamp,
+      lastVerifiedAt: timestamp,
+      lastHealthCheckAt: null,
+      metadataJson: {
+        localPackage: {
+          packageDir: sanitizeMessage(packageDir),
+          pluginVersion: descriptor.manifest.pluginVersion,
+          runtimeKind: descriptor.manifest.runtimeKind,
+        },
+      },
+    })
+
+    return ok(toInstalledDto(upserted))
+  }
+
+  getDiagnosticsSummary(): EngineDiagnosticsSummary {
+    const records = this.deps.registryRepo.list({ includeUninstalled: true })
+    const entries: EngineDiagnosticsEntry[] = []
+
+    const builtinIds = new Set(['tika', 'libreoffice', 'ffprobe', 'pandoc'])
+    for (const builtinId of builtinIds) {
+      const installed = records.find((r) => r.engineId === builtinId && r.installState !== 'uninstalled')
+      entries.push({
+        engineId: builtinId,
+        displayName: installed?.displayName ?? `${builtinId} (builtin)`,
+        kind: 'builtin',
+        installed: !!installed,
+        enabled: installed?.enabled ?? true,
+        healthStatus: installed?.healthStatus ?? 'unknown',
+        verificationStatus: null,
+        pluginVersion: installed?.pluginVersion ?? null,
+        modelVersion: installed?.modelVersion ?? null,
+        failureReason: installed?.failureReason ?? null,
+        installSource: installed?.installSource ?? null,
+      })
+    }
+
+    for (const record of records) {
+      if (builtinIds.has(record.engineId)) continue
+      entries.push({
+        engineId: record.engineId,
+        displayName: record.displayName,
+        kind: 'plugin',
+        installed: record.installState !== 'uninstalled',
+        enabled: record.enabled,
+        healthStatus: record.healthStatus,
+        verificationStatus: record.installState === 'installed' ? 'unverified' : null,
+        pluginVersion: record.pluginVersion,
+        modelVersion: record.modelVersion,
+        failureReason: record.failureReason,
+        installSource: record.installSource,
+      })
+    }
+
+    const installedCount = entries.filter((e) => e.installed).length
+    const enabledCount = entries.filter((e) => e.enabled).length
+    const healthyCount = entries.filter((e) => e.healthStatus === 'healthy').length
+    const failedCount = entries.filter((e) => e.healthStatus === 'unhealthy' || e.healthStatus === 'degraded').length
+    const unverifiedCount = entries.filter((e) => e.kind === 'plugin' && e.verificationStatus === 'unverified').length
+
+    return {
+      engines: entries,
+      counts: {
+        total: entries.length,
+        installed: installedCount,
+        enabled: enabledCount,
+        healthy: healthyCount,
+        failed: failedCount,
+        unverified: unverifiedCount,
+      },
+    }
   }
 
   async runHealthCheck(input: RunHealthCheckInput): Promise<LifecycleActionResult<InstalledEnginePluginDto>> {
@@ -491,6 +645,10 @@ function sanitizeStoredFailureReason(input: string | null | undefined): string |
   if (FAILURE_REASON_SET.has(normalized)) return normalized
   if (/^[a-z0-9_]+$/u.test(normalized)) return normalized
   return 'health_check_failed'
+}
+
+function buildSha256Hex(bytes: Uint8Array): string {
+  return createHash('sha256').update(Buffer.from(bytes)).digest('hex')
 }
 
 async function defaultReadBytes(filePath: string): Promise<Uint8Array> {

@@ -2,12 +2,15 @@ import {
   decodeInstalledPluginsResponse,
   decodeLifecycleInstalledResult,
   decodeListOfficialPluginsResponse,
+  decodeDiagnosticsSummary,
   type DecodedInstalledPlugin,
   type DecodedLifecycleInstalledResult,
   type DecodedLifecycleListOfficialResult,
+  type DecodedDiagnosticsSummary,
   type LifecycleEngineRequest,
   type ListOfficialPluginsRequest,
   type RegisterLocalOfficialPluginRequest,
+  type RegisterLocalPackageRequest,
 } from '@/next/ipc/contracts/enginePluginLifecycleContracts'
 
 type DbBridge = Readonly<{
@@ -62,4 +65,16 @@ export async function uninstallPlugin(params: LifecycleEngineRequest): Promise<D
 export async function runPluginHealthCheck(params: LifecycleEngineRequest): Promise<DecodedLifecycleInstalledResult> {
   const raw = await requireDbBridge().invoke('enginePluginLifecycle.runHealthCheck', params)
   return decodeLifecycleInstalledResult(raw)
+}
+
+export async function registerLocalPackage(
+  params: RegisterLocalPackageRequest
+): Promise<DecodedLifecycleInstalledResult> {
+  const raw = await requireDbBridge().invoke('enginePluginLifecycle.registerLocalPackage', params)
+  return decodeLifecycleInstalledResult(raw)
+}
+
+export async function getDiagnosticsSummary(): Promise<DecodedDiagnosticsSummary> {
+  const raw = await requireDbBridge().invoke('enginePluginLifecycle.getDiagnosticsSummary')
+  return decodeDiagnosticsSummary(raw)
 }
