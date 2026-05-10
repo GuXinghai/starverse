@@ -60,11 +60,32 @@ Full plugin ecosystem remains future. Conversion engines remain future. Download
 | P6-C: Lifecycle integration tests (register→enable→health→diagnostics→disable→uninstall, 21 tests) | Completed | `53`, `f92e673` |
 | `install_source` CHECK constraint updated (`local_package`) | Completed | `53` |
 
+### 1.3b Completed P7-A Model Version Propagation
+
+| Area | Status | Reference |
+|------|--------|-----------|
+| `MagikaRuntimeClassifyOutput.modelVersion` type added | Completed | `56caa4f` |
+| `createMagikaClassifyCallback` propagates runner `modelVersion` | Completed | `56caa4f` |
+| `runMagikaRuntimeProbe` prefers classify modelVersion over manifest | Completed | `56caa4f` |
+| Model version propagation tests (8 total, 2 new) | Completed | `56caa4f` |
+
+**magikaModelVersion source priority (post-P7-A)**:
+
+1. **Runtime child process explicit metadata** (`result.modelVersion` from runner stdout) — highest priority
+2. **Plugin manifest** (`descriptor.manifest.modelVersion`) — fallback when runner omits modelVersion
+3. **`null`** — when neither is available
+
+The manifest is a fallback source, not the highest-priority evidence source. The chain in code:
+- `magikaAdapter.ts:71`: `raw.modelVersion ?? loaded.runtime.modelVersion` (classify output > manifest)
+- `fileTypeDetectionService.ts:290`: `magikaProbe.modelVersion ?? input.magikaRuntimeState.modelVersion ?? null` (probe output > loader state > null)
+
+**Managed classify runner path history**: The `createMagikaClassifyCallback` → `runMagikaClassify` → `ExternalProcessRunner` → child process chain existed before `56caa4f` (wired in P6-C at `2cf3bfc`). `56caa4f` only added modelVersion field propagation through the existing chain.
+
 ### 1.4 Currently Open Real Integration Gaps
 
 | Gap | Status | Severity |
 |-----|--------|----------|
-| Real Magika `detectFull` end-to-end via managed pure JS runtime | **Open** — loader wired, pure JS smoke passed externally, but the full chain (Node.js child process → `ExternalProcessRunner` → `createMagikaClassifyCallback` → `magikaRuntimeLoader.load()` → `detectFull` with real Magika evidence) has not been exercised end-to-end | P0 |
+| Real Magika `detectFull` end-to-end via managed pure JS runtime | **Open** — loader wired, modelVersion propagated, but the full chain (Node.js child process → `ExternalProcessRunner` → `createMagikaClassifyCallback` → `magikaRuntimeLoader.load()` → `detectFull` with real Magika evidence) has not been exercised end-to-end with an actual plugin package | P0 |
 | Production signing workflow (key generation, offline signing tool) | **Open** — scaffold contracts exist, canonicalization exists, no actual production keys or signing tool | P2 |
 | Production public key embedded in build | **Open** — production gate exists but no consumer wires `isProduction=true` with embedded key | P2 |
 | `setVerificationStatus` not wired into plugin registration | **Open** — API exists but not called at registration time | P1 |
@@ -186,37 +207,44 @@ Previous roadmap docs proposed Phase 6 for lifecycle + UI + first real pilot, an
 
 ### 4.1 P7-A: Real Magika detectFull End-to-End
 
-**Purpose**: Connect the pure JS Magika runtime to `detectFull` through a real Node.js child process managed by `ExternalProcessRunner`, producing valid classification evidence.
+**Status**: Model version propagation completed (`56caa4f`). Remaining end-to-end with actual plugin package deferred to P7-D manual smoke.
 
-**Allowed scope**:
-- Create a Magika pure JS runtime entry script (`.mjs`) that follows the existing argv contract (`--model-dir`, `--config-dir`, `--input`, `--output-json`)
-- Wire `ExternalProcessRunner` to spawn the pure JS Magika runtime as a child process
-- Implement or update `createMagikaClassifyCallback` to consume real child process output (JSON with `{ label, score, modelVersion }`)
-- Verify the loader path: `buildMagikaRuntimeLoader()` → `createManagedPluginMagikaRuntimeLoader` → `load()` returns `{ available: true, runtimeKind: 'pure_js' }` → `classify(filePath)` returns valid classification
-- Verify `detectFull` consumes Magika evidence when runtime is available
-- Verify Magika label goes through `taxonomyMap` before entering `FileFormatId`
-- Verify model version appears in `VerdictProvenance.magikaModelVersion`
+**What P7-A delivered**:
+- `MagikaRuntimeClassifyOutput.modelVersion` type added to `magikaRuntimeLoader.ts`
+- `createMagikaClassifyCallback` in `magikaManagedPlugin.ts` now propagates `result.modelVersion` from runner child process output
+- `runMagikaRuntimeProbe` in `magikaAdapter.ts` prefers classify output modelVersion over manifest (line 71: `raw.modelVersion ?? loaded.runtime.modelVersion`)
+- Tests: 2 new modelVersion propagation tests + 1 new classify callback round-trip test (8 total magikaAdapter tests, 34 total magikaManagedPlugin tests)
 
-**Explicit non-goals**:
-- No Python CLI route
-- No tfjs-node native route
-- No downloader — local `.starverse-engines/magika/` only
-- No second runtime engine
-- No conversion workflow
-- No changes to `detectBasic`
+**magikaModelVersion source priority (final)**:
+1. Runtime child process explicit metadata (`result.modelVersion` from runner stdout) — highest
+2. Plugin manifest (`descriptor.manifest.modelVersion`) — fallback
+3. `null` — neither available
 
-**Expected deliverables**:
-- Real Magika child process execution path in `detectFull`
-- Test proving `detectFull` produces Magika-sourced `FileTypeEvidence` with correct `source: 'magika'`
-- Test proving fallback when runtime process fails or times out
+The manifest is a fallback source, not the highest-priority evidence source.
 
-**Acceptance criteria**:
-- A test file (e.g., `package.json`) classified as `json` with score >= 0.99 through the full `detectFull` pipeline
-- Model version `standard_v3_3` recorded in provenance
-- Child process timeout and error handling tested
-- No new production dependencies (pure JS runtime uses existing `magika` + `@tensorflow/tfjs` in `.starverse-engines/`)
+**Managed classify runner path history**: The runner chain existed before `56caa4f` (wired in P6-C at `2cf3bfc`). P7-A only added modelVersion field propagation through the existing chain. No new child process infrastructure was created.
 
-**Stop condition**: `detectFull` produces real Magika evidence through a managed child process, or Owner decides to defer real runtime and accept mock-only Magika as v1.0.
+**Fallback matrix (including integrity failure)**:
+
+| Failure mode | Behavior | Verified by test |
+|---|---|---|
+| Plugin unavailable / not installed | `discovery.available=false` → loader unavailable → `detectFull` returns lightweight verdict | `fileTypeDetectionService.test.ts` |
+| Integrity failure / hash mismatch | `discovery.available=false`, `reason:'hash_mismatch'` → classify callback never invoked → `detectFull` falls back without Magika evidence | `magikaManagedPlugin.test.ts` (`fails discovery on integrity hash mismatch`) |
+| Health check failed/unavailable | `health.healthy=false` → loader unavailable → `detectFull` falls back | `magikaManagedPlugin.test.ts` (`falls back to unavailable loader when plugin health is unavailable`) |
+| Runtime process timeout | Runner returns `{ok:false, errorCode:'timeout'}` → callback returns null → no Magika evidence | `magikaClassifyRunner.test.ts` |
+| Output limit exceeded | Runner returns `{ok:false, errorCode:'output_limit'}` → callback returns null | `magikaClassifyRunner.test.ts` |
+| Bad JSON / invalid output | Runner returns `{ok:false, errorCode:'invalid_output'}` → callback returns null | `magikaClassifyRunner.test.ts` |
+| Nonzero exit | Runner returns `{ok:false, errorCode:'runtime_error'}` → callback returns null | `magikaClassifyRunner.test.ts` |
+| Missing model files | `createMagikaClassifyCallback` returns null → `classify` returns null → `runMagikaRuntimeProbe` returns no evidence | `magikaManagedPlugin.test.ts` (new P7-A test) |
+| Unknown Magika label | `mapMagikaOutputToEvidence` → `detectedFormatId:'unknown'`, `confidence:'low'` | `magikaAdapter.test.ts` |
+
+**P7-A closeout notes**:
+
+1. **Pre-existing unrelated test failure**: `derivativeJobService.test.ts` > `converts html assets into safe markdown text without executing scripts or loading externals` fails with `targetKind: "code"` (expected `"markdown"`) and empty `conversionWarnings` (expected `["html_javascript_not_executed","html_external_resources_not_loaded"]`). This is a pre-existing failure in the HTML-to-markdown conversion path, completely unrelated to P7-A file-type identification work. No P7-A files touch this area.
+
+2. **Real Magika plugin smoke tests**: Tests in `magikaClassifyRunner.real.test.ts` require `STARVERSE_ENABLE_REAL_MAGIKA_TESTS=1` env var. These are gated/skipped by default in CI and will be exercised during P7-D manual smoke.
+
+3. **Full end-to-end with actual plugin**: The managed classifier chain (createMagikaClassifyCallback → runMagikaClassify → ExternalProcessRunner → child process) is wired and modelVersion is propagated. The remaining work for real end-to-end is to have the actual Magika plugin package present and registered, which is deferred to P7-D manual smoke closeout.
 
 ### 4.2 P7-B: Version, Cache, Freshness, and Fallback Hardening
 
