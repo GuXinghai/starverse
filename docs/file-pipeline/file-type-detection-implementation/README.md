@@ -2,7 +2,7 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Phase 5 P5-D implementation foundation completed; Phase 5 Batch 2 planning completed; Phase 5 Batch 1 completed and externally audited (Gemini CLI: PASS); Full Phase 5 remains open for P5-E real runtime packaging
+Current phase: Phase 5 P5-E1/P5-E2 scaffold completed; P5-D implementation foundation completed; Full Phase 5 remains open for real runtime packaging
 Next phase: P5-E real runtime packaging / model pre-stage (future)
 
 ## 目录用途
@@ -64,6 +64,7 @@ Next phase: P5-E real runtime packaging / model pre-stage (future)
 | 44-phase5-batch1-external-audit-record.md | Phase 5 batch 1 external audit record (Gemini CLI) |
 | 45-phase5-batch2-trust-runtime-planning.md | Phase 5 batch 2 P5-D/P5-E trust & runtime packaging joint planning |
 | 46-phase5-p5d-trust-signing-closeout.md | Phase 5 P5-D trust & signing closeout |
+| 47-phase5-p5e1-p5e2-runtime-package-scaffold-closeout.md | Phase 5 P5-E1/P5-E2 runtime package scaffold closeout |
 
 ## Step 状态
 
@@ -109,6 +110,7 @@ Next phase: P5-E real runtime packaging / model pre-stage (future)
 - Phase 5 remains open for P5-D (trusted root / signing) and P5-E (real runtime packaging)
 - Phase 5 Batch 2 planning: P5-D/P5-E joint planning package created（见 `45-phase5-batch2-trust-runtime-planning.md`）— planning only, no implementation
 - Phase 5 P5-D implementation: trust contracts, production verification gate, root rotation/revocation scaffold implemented（见 `46-phase5-p5d-trust-signing-closeout.md`）
+- Phase 5 P5-E1/P5-E2 scaffold completed: runtime package inventory contract + fake Magika pre-stage scaffold（见 `47-phase5-p5e1-p5e2-runtime-package-scaffold-closeout.md`）
 - P5-E real runtime packaging / model pre-stage remains future scope
 
 ## 当前冻结结论
