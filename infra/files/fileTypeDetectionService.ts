@@ -350,8 +350,18 @@ export class FileTypeDetectionService {
     currentVerdict: FileTypeVerdictRecord,
     magikaRuntimeState: MagikaRuntimeState | null
   ): boolean {
+    const cached = currentVerdict.versionInfo
+    const config = this.versionInfo
+    if (cached.schemaVersion !== config.schemaVersion) return false
+    if (cached.taxonomyVersion !== config.taxonomyVersion) return false
+    if (cached.taxonomyMapVersion !== config.taxonomyMapVersion) return false
+    if (cached.magicTableVersion !== config.magicTableVersion) return false
+    if (cached.mergeRulesVersion !== config.mergeRulesVersion) return false
+    if (cached.containerProbeVersion !== config.containerProbeVersion) return false
+    if (cached.textProbeVersion !== config.textProbeVersion) return false
+
     if (!magikaRuntimeState || !magikaRuntimeState.available) return true
-    const currentVersion = normalizeNullableModelVersion(currentVerdict.versionInfo.magikaModelVersion)
+    const currentVersion = normalizeNullableModelVersion(cached.magikaModelVersion)
     const runtimeVersion = normalizeNullableModelVersion(magikaRuntimeState.modelVersion)
     if (!runtimeVersion) return true
     return currentVersion === runtimeVersion
@@ -361,8 +371,18 @@ export class FileTypeDetectionService {
     currentVerdict: FileTypeVerdictRecord,
     magikaRuntimeState: MagikaRuntimeState | null
   ): string | null {
+    const cached = currentVerdict.versionInfo
+    const config = this.versionInfo
+    if (cached.schemaVersion !== config.schemaVersion) return 'schema_version_changed'
+    if (cached.taxonomyVersion !== config.taxonomyVersion) return 'taxonomy_version_changed'
+    if (cached.taxonomyMapVersion !== config.taxonomyMapVersion) return 'taxonomy_map_version_changed'
+    if (cached.magicTableVersion !== config.magicTableVersion) return 'magic_table_version_changed'
+    if (cached.mergeRulesVersion !== config.mergeRulesVersion) return 'merge_rules_version_changed'
+    if (cached.containerProbeVersion !== config.containerProbeVersion) return 'container_probe_version_changed'
+    if (cached.textProbeVersion !== config.textProbeVersion) return 'text_probe_version_changed'
+
     if (!magikaRuntimeState || !magikaRuntimeState.available) return null
-    const currentVersion = normalizeNullableModelVersion(currentVerdict.versionInfo.magikaModelVersion)
+    const currentVersion = normalizeNullableModelVersion(cached.magikaModelVersion)
     const runtimeVersion = normalizeNullableModelVersion(magikaRuntimeState.modelVersion)
     if (!runtimeVersion) return null
     if (currentVersion === runtimeVersion) return null

@@ -617,4 +617,305 @@ describe('FileTypeDetectionService', () => {
       expect(result.verdict?.versionInfo.magikaModelVersion).toBe('magika-model-p4b4')
     })
   })
+
+  it('reuses cache in detectFull when fingerprint and all version fields match', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-15.txt'
+      await writeAssetFile(storageRootDir, storageUri, 'cache-reuse-full-test')
+      fileAssetRepo.create({
+        id: 'asset-15',
+        sha256: null,
+        filename: 'asset-15.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 22,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      const versionInfo = {
+        schemaVersion: 'v-test',
+        taxonomyVersion: 'tax-v1',
+        taxonomyMapVersion: 'map-v1',
+        magicTableVersion: 'magic-v1',
+        mergeRulesVersion: 'merge-v1',
+        containerProbeVersion: 'container-v1',
+        textProbeVersion: 'text-v1',
+        magikaModelVersion: 'magika-v1',
+      }
+      const service = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        versionInfo,
+        magikaRuntimeLoader: createMockMagikaRuntimeLoader({
+          modelVersion: 'magika-v1',
+          output: { label: 'txt', score: 0.99 },
+        }),
+      })
+
+      const first = await service.detectFull({ assetId: 'asset-15' })
+      expect(first.fromCache).toBe(false)
+      expect(first.verdict?.versionInfo.magikaModelVersion).toBe('magika-v1')
+
+      const second = await service.detectFull({ assetId: 'asset-15' })
+      expect(second.fromCache).toBe(true)
+      expect(second.verdict?.id).toBe(first.verdict?.id)
+    })
+  })
+
+  it('invalidates full-mode cache when taxonomyMapVersion changes', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-16.txt'
+      await writeAssetFile(storageRootDir, storageUri, '{"v":16}')
+      fileAssetRepo.create({
+        id: 'asset-16',
+        sha256: null,
+        filename: 'asset-16.txt',
+        extension: 'txt',
+        mime: 'application/json',
+        sizeBytes: 8,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      const baseVersion = {
+        schemaVersion: 'v-test',
+        taxonomyVersion: 'tax-v1',
+        taxonomyMapVersion: 'map-v1',
+        magicTableVersion: 'magic-v1',
+        mergeRulesVersion: 'merge-v1',
+        containerProbeVersion: 'container-v1',
+        textProbeVersion: 'text-v1',
+        magikaModelVersion: null,
+      }
+
+      const serviceV1 = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        versionInfo: baseVersion,
+        magikaRuntimeLoader: createMockMagikaRuntimeLoader({
+          modelVersion: 'magika-v1',
+          output: { label: 'json', score: 0.95 },
+        }),
+      })
+
+      const first = await serviceV1.detectFull({ assetId: 'asset-16' })
+      expect(first.fromCache).toBe(false)
+      expect(first.verdict?.versionInfo.taxonomyMapVersion).toBe('map-v1')
+
+      const serviceV2 = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        versionInfo: { ...baseVersion, taxonomyMapVersion: 'map-v2' },
+        magikaRuntimeLoader: createMockMagikaRuntimeLoader({
+          modelVersion: 'magika-v1',
+          output: { label: 'json', score: 0.95 },
+        }),
+      })
+
+      const second = await serviceV2.detectFull({ assetId: 'asset-16' })
+      expect(second.fromCache).toBe(false)
+      expect(second.verdict?.versionInfo.taxonomyMapVersion).toBe('map-v2')
+
+      const rows = db.prepare(`
+        SELECT stale_reason AS staleReason, is_current AS isCurrent
+        FROM file_type_verdicts
+        WHERE asset_id='asset-16'
+        ORDER BY created_at ASC
+      `).all() as Array<{ staleReason: string | null; isCurrent: number }>
+      expect(rows[0]?.staleReason).toBe('taxonomy_map_version_changed')
+      expect(rows[1]?.isCurrent).toBe(1)
+    })
+  })
+
+  it('invalidates full-mode cache when mergeRulesVersion changes', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-17.txt'
+      await writeAssetFile(storageRootDir, storageUri, 'merge-version-test')
+      fileAssetRepo.create({
+        id: 'asset-17',
+        sha256: null,
+        filename: 'asset-17.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 19,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      const baseVersion = {
+        schemaVersion: 'v-test',
+        taxonomyVersion: 'tax-v1',
+        taxonomyMapVersion: 'map-v1',
+        magicTableVersion: 'magic-v1',
+        mergeRulesVersion: 'merge-v1',
+        containerProbeVersion: 'container-v1',
+        textProbeVersion: 'text-v1',
+        magikaModelVersion: null,
+      }
+
+      const serviceV1 = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        versionInfo: baseVersion,
+        magikaRuntimeLoader: createMockMagikaRuntimeLoader({
+          modelVersion: 'magika-v1',
+          output: { label: 'txt', score: 0.85 },
+        }),
+      })
+
+      const first = await serviceV1.detectFull({ assetId: 'asset-17' })
+      expect(first.fromCache).toBe(false)
+
+      const serviceV2 = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        versionInfo: { ...baseVersion, mergeRulesVersion: 'merge-v2' },
+        magikaRuntimeLoader: createMockMagikaRuntimeLoader({
+          modelVersion: 'magika-v1',
+          output: { label: 'txt', score: 0.85 },
+        }),
+      })
+
+      const second = await serviceV2.detectFull({ assetId: 'asset-17' })
+      expect(second.fromCache).toBe(false)
+
+      const rows = db.prepare(`
+        SELECT stale_reason AS staleReason
+        FROM file_type_verdicts
+        WHERE asset_id='asset-17' AND is_current = 0
+      `).all() as Array<{ staleReason: string | null }>
+      expect(rows[0]?.staleReason).toBe('merge_rules_version_changed')
+    })
+  })
+
+  it('invalidates basic-mode cache when any static version field changes', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-18.txt'
+      await writeAssetFile(storageRootDir, storageUri, 'basic version cache test')
+      fileAssetRepo.create({
+        id: 'asset-18',
+        sha256: null,
+        filename: 'asset-18.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 24,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      const serviceV1 = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        versionInfo: {
+          schemaVersion: 'v1',
+          taxonomyVersion: 'tax-v1',
+          taxonomyMapVersion: 'map-v1',
+          magicTableVersion: 'magic-v1',
+          mergeRulesVersion: 'merge-v1',
+          containerProbeVersion: 'container-v1',
+          textProbeVersion: 'text-v1',
+          magikaModelVersion: null,
+        },
+      })
+
+      const first = await serviceV1.detectBasic({ assetId: 'asset-18' })
+      expect(first.fromCache).toBe(false)
+
+      const serviceV2 = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        versionInfo: {
+          schemaVersion: 'v2',
+          taxonomyVersion: 'tax-v1',
+          taxonomyMapVersion: 'map-v1',
+          magicTableVersion: 'magic-v1',
+          mergeRulesVersion: 'merge-v1',
+          containerProbeVersion: 'container-v1',
+          textProbeVersion: 'text-v1',
+          magikaModelVersion: null,
+        },
+      })
+
+      const second = await serviceV2.detectBasic({ assetId: 'asset-18' })
+      expect(second.fromCache).toBe(false)
+      expect(second.verdict?.id).not.toBe(first.verdict?.id)
+    })
+  })
+
+  it('does not poison full-mode cache when magika runtime is unavailable', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-19.txt'
+      await writeAssetFile(storageRootDir, storageUri, 'cache poison test')
+      fileAssetRepo.create({
+        id: 'asset-19',
+        sha256: null,
+        filename: 'asset-19.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 17,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      // First: Magika unavailable, fallback verdict without Magika evidence
+      const serviceUnavailable = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaRuntimeLoader: createUnavailableMagikaRuntimeLoader({
+          reason: 'runtime_unavailable',
+          detail: 'runtime disabled',
+        }),
+      })
+
+      const fallback = await serviceUnavailable.detectFull({ assetId: 'asset-19' })
+      expect(fallback.job.status).toBe('ready')
+      expect(fallback.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
+
+      // Second: Magika available, should re-detect with Magika evidence
+      const serviceAvailable = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaRuntimeLoader: createMockMagikaRuntimeLoader({
+          modelVersion: 'magika-v1',
+          output: { label: 'txt', score: 0.99 },
+        }),
+      })
+
+      const fresh = await serviceAvailable.detectFull({ assetId: 'asset-19' })
+      expect(fresh.fromCache).toBe(false)
+      const magikaEvidence = fresh.verdict?.verdict.evidence.find((item) => item.source === 'magika')
+      expect(magikaEvidence).toBeTruthy()
+      // The fallback verdict should not have been reused — it had no Magika evidence
+      // and was produced with unavailable runtime, so versionInfo mismatch triggers re-detection
+    })
+  })
 })
