@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Post-P5 user-level roadmap complete; P5 scaffold work through E4 completed; real runtime distribution, production plugin lifecycle move to P6
-Next phase: P6-A minimal plugin lifecycle state / registration boundary (recommended); real runtime pilot (Pandoc) in P6-C
+Current phase: Phase 6 user-level lifecycle scaffold + diagnostics surface + Magika pilot integration completed; real Magika smoke blocked_by_missing_local_magika_package; real runtime distribution, production plugin lifecycle remain open
+Next phase: P6-D manual smoke when real Magika package available; P7 runtime expansion (Pandoc) optional
 
 ## 目录用途
 
@@ -68,6 +68,7 @@ Next phase: P6-A minimal plugin lifecycle state / registration boundary (recomme
 | 48-phase5-p5e3-first-runtime-pilot-closeout.md | Phase 5 P5-E3 first runtime pilot scaffold closeout |
 | 49-phase5-p5e4-packaging-regression-smoke-closeout.md | Phase 5 P5-E4 packaging regression / smoke scaffold closeout |
 | 50-post-p5-user-level-roadmap.md | Post-P5 user-level roadmap (Phase 6, Phase 7, scope control, lean acceptance) |
+| 51-phase6-user-level-magika-runtime-pilot-closeout.md | Phase 6 user-level Magika runtime pilot closeout |
 
 ## Step 状态
 
@@ -119,6 +120,8 @@ Next phase: P6-A minimal plugin lifecycle state / registration boundary (recomme
 - P5-E real runtime packaging / model pre-stage remains future scope
 - Post-P5 user-level roadmap created: Phase 6 (lifecycle, UI, first real pilot) + Phase 7 (expansion, conversion integration)（见 `50-post-p5-user-level-roadmap.md`）
 - Recommended next step: P6-A minimal plugin lifecycle implementation
+- Phase 6 user-level lifecycle scaffold + diagnostics + Magika pilot integration completed（见 `51-phase6-user-level-magika-runtime-pilot-closeout.md`）
+- Real Magika classifier smoke blocked_by_missing_local_magika_package; downloader / installer remain future
 
 ## 当前冻结结论
 
