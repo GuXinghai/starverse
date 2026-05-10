@@ -174,14 +174,14 @@ describe('officialPluginTrustedRoots', () => {
     }
   })
 
-  it('allows VITEST=true even when isProduction is true', () => {
+  it('rejects VITEST=true when isProduction is true (env roots blocked in production)', () => {
     const result = getActiveTrustedRoots(
       { VITEST: 'true' },
       { isProduction: true },
     )
-    expect(result.ok).toBe(true)
-    if (result.ok) {
-      expect(result.source).toBe('test')
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.reason).toBe('official_trusted_root_unconfigured')
     }
   })
 
@@ -193,7 +193,7 @@ describe('officialPluginTrustedRoots', () => {
     }
   })
 
-  it('allows SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS in production', () => {
+  it('blocks SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS env var in production (fail-closed)', () => {
     const { publicKey } = generateKeyPairSync('ed25519')
     const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString().trim()
     const config = JSON.stringify({
@@ -207,13 +207,13 @@ describe('officialPluginTrustedRoots', () => {
       { SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS: config },
       { isProduction: true },
     )
-    expect(result.ok).toBe(true)
-    if (result.ok) {
-      expect(result.source).toBe('official')
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.reason).toBe('official_trusted_root_unconfigured')
     }
   })
 
-  it('allows SV_TEST_TRUSTED_ROOTS in production', () => {
+  it('blocks SV_TEST_TRUSTED_ROOTS env var in production (fail-closed)', () => {
     const { publicKey } = generateKeyPairSync('ed25519')
     const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString().trim()
     const config = JSON.stringify({
@@ -227,24 +227,24 @@ describe('officialPluginTrustedRoots', () => {
       { SV_TEST_TRUSTED_ROOTS: config },
       { isProduction: true },
     )
-    expect(result.ok).toBe(true)
-    if (result.ok) {
-      expect(result.source).toBe('test')
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.reason).toBe('official_trusted_root_unconfigured')
     }
   })
 
-  it('allows NODE_ENV=test when isProduction is true', () => {
+  it('rejects NODE_ENV=test when isProduction is true (env roots blocked in production)', () => {
     const result = getActiveTrustedRoots(
       { NODE_ENV: 'test' },
       { isProduction: true },
     )
-    expect(result.ok).toBe(true)
-    if (result.ok) {
-      expect(result.source).toBe('test')
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.reason).toBe('official_trusted_root_unconfigured')
     }
   })
 
-  it('allows SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS in production even with DEV_MODE=1', () => {
+  it('blocks SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS in production even with DEV_MODE=1 (both env vars blocked)', () => {
     const { publicKey } = generateKeyPairSync('ed25519')
     const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString().trim()
     const config = JSON.stringify({
@@ -258,9 +258,9 @@ describe('officialPluginTrustedRoots', () => {
       { SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS: config, SV_ENGINE_PLUGIN_DEV_MODE: '1' },
       { isProduction: true },
     )
-    expect(result.ok).toBe(true)
-    if (result.ok) {
-      expect(result.source).toBe('official')
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.reason).toBe('official_trusted_root_unconfigured')
     }
   })
 })

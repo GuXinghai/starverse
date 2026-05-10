@@ -202,4 +202,34 @@ describe('externalEngineHealth', () => {
     expect(probe.status).toBe('failed')
     expect(probe.reason).toBe('disabled_by_policy')
   })
+
+  it('blocks health check when verificationStatus is failed', async () => {
+    const registry = createExternalEngineRegistry(() => 5678)
+    registry.registerBuiltInEngineDefinitions()
+    registry.setVerificationStatus({ engineId: 'pandoc', verificationStatus: 'failed' })
+
+    const updated = await runEngineHealthCheck({
+      registry,
+      engineId: 'pandoc',
+      runner: async () => ({ status: 'healthy', reason: null, detail: null }),
+    })
+    expect(updated.healthStatus).toBe('failed')
+    expect(updated.failureReason).toBe('disabled_by_policy')
+    expect(updated.failureDetails).toContain('failed')
+  })
+
+  it('blocks health check when verificationStatus is revoked', async () => {
+    const registry = createExternalEngineRegistry(() => 9999)
+    registry.registerBuiltInEngineDefinitions()
+    registry.setVerificationStatus({ engineId: 'tika', verificationStatus: 'revoked' })
+
+    const updated = await runEngineHealthCheck({
+      registry,
+      engineId: 'tika',
+      runner: async () => ({ status: 'healthy', reason: null, detail: null }),
+    })
+    expect(updated.healthStatus).toBe('failed')
+    expect(updated.failureReason).toBe('disabled_by_policy')
+    expect(updated.failureDetails).toContain('revoked')
+  })
 })
