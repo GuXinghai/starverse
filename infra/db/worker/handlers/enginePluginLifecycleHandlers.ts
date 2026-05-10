@@ -59,6 +59,21 @@ export function registerEnginePluginLifecycleHandlers(
     })
     return result
   })
+
+  register('enginePluginLifecycle.registerLocalPackage', async (raw) => {
+    const input = asObject(raw)
+    const result = await runtime.enginePluginLifecycleService.registerLocalPackage({
+      packageDir: requiredString(input.packageDir, 'packageDir'),
+      installRootKind: requiredInstallRootKind(input.installRootKind),
+      installRef: requiredString(input.installRef, 'installRef'),
+      enabled: typeof input.enabled === 'boolean' ? input.enabled : true,
+    })
+    return result
+  })
+
+  register('enginePluginLifecycle.getDiagnosticsSummary', () => {
+    return runtime.enginePluginLifecycleService.getDiagnosticsSummary()
+  })
 }
 
 function asObject(value: unknown): Record<string, unknown> {

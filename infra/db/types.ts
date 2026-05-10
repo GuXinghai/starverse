@@ -504,7 +504,7 @@ export type EnginePluginHealthStatus =
   | 'degraded'
   | 'unhealthy'
 
-export type EnginePluginInstallSource = 'official_catalog'
+export type EnginePluginInstallSource = 'official_catalog' | 'local_package'
 
 export type EnginePluginInstallRootKind =
   | 'managed_root'

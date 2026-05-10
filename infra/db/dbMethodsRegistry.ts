@@ -92,6 +92,8 @@ export const DB_METHODS = [
   { name: 'enginePluginLifecycle.disablePlugin', renderer: true, worker: true, domain: 'enginePluginLifecycle' },
   { name: 'enginePluginLifecycle.uninstallPlugin', renderer: true, worker: true, domain: 'enginePluginLifecycle' },
   { name: 'enginePluginLifecycle.runHealthCheck', renderer: true, worker: true, domain: 'enginePluginLifecycle' },
+  { name: 'enginePluginLifecycle.registerLocalPackage', renderer: true, worker: true, domain: 'enginePluginLifecycle' },
+  { name: 'enginePluginLifecycle.getDiagnosticsSummary', renderer: true, worker: true, domain: 'enginePluginLifecycle' },
   { name: 'branch.ensureDefault', renderer: true, worker: true, domain: 'branch' },
   { name: 'branch.list', renderer: true, worker: true, domain: 'branch' },
   { name: 'branch.createFromMessage', renderer: true, worker: true, domain: 'branch' },
