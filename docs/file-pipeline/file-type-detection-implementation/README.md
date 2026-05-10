@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Phase 6 user-level lifecycle scaffold + diagnostics surface + Magika pilot integration completed; real Magika Node smoke blocked (tfjs-node ERR_DLOPEN_FAILED); pure JS Magika smoke passed; real runtime distribution, production plugin lifecycle remain open
-Next phase: P6-D manual smoke when full lifecycle handshake ready; P7 runtime expansion (Pandoc) optional
+Current phase: Phase 6 user-level lifecycle scaffold + diagnostics surface + Magika pilot integration completed; real Magika Node smoke blocked (tfjs-node ERR_DLOPEN_FAILED); pure JS Magika smoke passed; lifecycle integration (register→enable→health→diagnostics) completed; real runtime distribution, production plugin lifecycle remain open
+Next phase: P6-D manual end-to-end smoke via real plugin + native process; P7 runtime expansion (Pandoc) optional
 
 ## 目录用途
 
@@ -70,6 +70,7 @@ Next phase: P6-D manual smoke when full lifecycle handshake ready; P7 runtime ex
 | 50-post-p5-user-level-roadmap.md | Post-P5 user-level roadmap (Phase 6, Phase 7, scope control, lean acceptance) |
 | 51-phase6-user-level-magika-runtime-pilot-closeout.md | Phase 6 user-level Magika runtime pilot closeout |
 | 52-phase6-magika-pure-js-runtime-smoke.md | Phase 6 Magika pure JS runtime smoke result |
+| 53-phase6-magika-lifecycle-integration.md | Phase 6 Magika lifecycle integration status |
 
 ## Step 状态
 
@@ -124,6 +125,7 @@ Next phase: P6-D manual smoke when full lifecycle handshake ready; P7 runtime ex
 - Phase 6 user-level lifecycle scaffold + diagnostics + Magika pilot integration completed（见 `51-phase6-user-level-magika-runtime-pilot-closeout.md`）
 - Real Magika classifier smoke blocked: tfjs-node native binding incompatible (ERR_DLOPEN_FAILED); downloader / installer remain future
 - Magika pure JS runtime smoke passed (见 `52-phase6-magika-pure-js-runtime-smoke.md`); Python route intentionally avoided
+- Lifecycle integration implemented (见 `53-phase6-magika-lifecycle-integration.md`); register→enable→health→diagnostics→disable→uninstall chain completed
 
 ## 当前冻结结论
 
