@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Phase 6 user-level lifecycle scaffold + diagnostics surface + Magika pilot integration completed; real Magika Node smoke blocked (tfjs-node ERR_DLOPEN_FAILED); pure JS Magika smoke passed; lifecycle integration (register→enable→health→diagnostics) completed; real runtime distribution, production plugin lifecycle remain open
-Next phase: P6-D manual end-to-end smoke via real plugin + native process; P7 runtime expansion (Pandoc) optional
+Current phase: Phase 6 user-level lifecycle scaffold + diagnostics surface + Magika pilot integration completed; real Magika Node smoke blocked (tfjs-node ERR_DLOPEN_FAILED); pure JS Magika smoke passed; lifecycle integration (register→enable→health→diagnostics) completed; remaining phase boundaries proposed for Owner review (Phase 7: File Content Identification v1.0); real runtime distribution, production plugin lifecycle, conversion engines remain open
+Next phase: Owner review of remaining phase plan; P7-A real Magika detectFull end-to-end pending approval
 
 ## 目录用途
 
@@ -71,6 +71,7 @@ Next phase: P6-D manual end-to-end smoke via real plugin + native process; P7 ru
 | 51-phase6-user-level-magika-runtime-pilot-closeout.md | Phase 6 user-level Magika runtime pilot closeout |
 | 52-phase6-magika-pure-js-runtime-smoke.md | Phase 6 Magika pure JS runtime smoke result |
 | 53-phase6-magika-lifecycle-integration.md | Phase 6 Magika lifecycle integration status |
+| 54-file-content-identification-v1-roadmap.md | File Content Identification v1.0 remaining phase plan proposal |
 
 ## Step 状态
 
@@ -126,6 +127,7 @@ Next phase: P6-D manual end-to-end smoke via real plugin + native process; P7 ru
 - Real Magika classifier smoke blocked: tfjs-node native binding incompatible (ERR_DLOPEN_FAILED); downloader / installer remain future
 - Magika pure JS runtime smoke passed (见 `52-phase6-magika-pure-js-runtime-smoke.md`); Python route intentionally avoided
 - Lifecycle integration implemented (见 `53-phase6-magika-lifecycle-integration.md`); register→enable→health→diagnostics→disable→uninstall chain completed
+- Remaining phase plan proposed for Owner review (见 `54-file-content-identification-v1-roadmap.md`); File Content Identification v1.0 endpoint proposed; Phase 7 (P7-A through P7-D) defined; conversion engines, downloader, marketplace remain future
 
 ## 当前冻结结论
 
