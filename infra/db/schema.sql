@@ -283,7 +283,7 @@ CREATE TABLE IF NOT EXISTS engine_plugin_registry (
   enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
   health_status TEXT NOT NULL DEFAULT 'unknown' CHECK (health_status IN ('unknown', 'healthy', 'degraded', 'unhealthy')),
   failure_reason TEXT,
-  install_source TEXT NOT NULL DEFAULT 'official_catalog' CHECK (install_source IN ('official_catalog')),
+  install_source TEXT NOT NULL DEFAULT 'official_catalog' CHECK (install_source IN ('official_catalog', 'local_package')),
   install_root_kind TEXT NOT NULL CHECK (install_root_kind IN ('managed_root', 'managed_cache', 'test_root')),
   install_ref TEXT NOT NULL,
   installed_at INTEGER,
