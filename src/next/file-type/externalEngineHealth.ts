@@ -7,6 +7,7 @@ import {
   sanitizeEngineDetailForDiagnostics,
   type ExternalEngineRegistry,
 } from './externalEngineRegistry'
+import { isEngineTrustVerified } from './enginePluginTrustContracts'
 import type {
   EngineFailureReason,
   EngineHealthProbeResult,
@@ -36,14 +37,11 @@ export async function runEngineHealthCheck(
   if (!record) throw new Error(`unknown engine: ${input.engineId}`)
   if (!record.enabled) return record
 
-  if (
-    record.verificationStatus !== undefined &&
-    record.verificationStatus !== 'verified'
-  ) {
+  if (!isEngineTrustVerified(record)) {
     return input.registry.markEngineFailed({
       engineId: record.id,
       reason: 'disabled_by_policy',
-      detail: `engine verification status is ${record.verificationStatus}`,
+      detail: `engine verification status is ${record.verificationStatus ?? 'unverified'}`,
       version: record.version,
     })
   }

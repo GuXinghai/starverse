@@ -6,6 +6,7 @@ import {
   type EngineRouteAvailability,
   type ExternalEngineRecord,
 } from './externalEngineTypes'
+import { isEngineTrustVerified } from './enginePluginTrustContracts'
 
 const CAPABILITIES = ENGINE_CAPABILITIES
 
@@ -29,7 +30,7 @@ export function buildCapabilityAvailability(
     (engine) =>
       engine.enabled &&
       engine.healthStatus === 'healthy' &&
-      (engine.verificationStatus === undefined || engine.verificationStatus === 'verified'),
+      isEngineTrustVerified(engine),
   )
   const map = {} as Record<EngineCapability, boolean>
   for (const capability of CAPABILITIES) {

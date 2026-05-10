@@ -7,6 +7,8 @@ import {
   failedResult,
   filterActiveTrustedRoots,
   filterRevokedRoots,
+  isEngineTrustVerificationRequired,
+  isEngineTrustVerified,
   isKeyIdRevoked,
   isPluginVerified,
   mapVerificationStatusToFailureReason,
@@ -445,6 +447,55 @@ describe('enginePluginTrustContracts', () => {
       })
       const result = filterRevokedRoots(roots, revoked)
       expect(Object.keys(result)).toHaveLength(0)
+    })
+  })
+
+  describe('isEngineTrustVerificationRequired', () => {
+    it('returns true for plugin-kind engines', () => {
+      expect(isEngineTrustVerificationRequired({ kind: 'plugin' })).toBe(true)
+    })
+
+    it('returns false for builtin-kind engines', () => {
+      expect(isEngineTrustVerificationRequired({ kind: 'builtin' })).toBe(false)
+    })
+
+    it('returns false when kind is undefined', () => {
+      expect(isEngineTrustVerificationRequired({})).toBe(false)
+    })
+  })
+
+  describe('isEngineTrustVerified', () => {
+    it('returns true for builtin engines regardless of verificationStatus', () => {
+      expect(isEngineTrustVerified({ kind: 'builtin' })).toBe(true)
+      expect(isEngineTrustVerified({ kind: 'builtin', verificationStatus: undefined })).toBe(true)
+    })
+
+    it('returns true for plugin engines with verificationStatus=verified', () => {
+      expect(isEngineTrustVerified({ kind: 'plugin', verificationStatus: 'verified' })).toBe(true)
+    })
+
+    it('returns false for plugin engines with verificationStatus=unverified', () => {
+      expect(isEngineTrustVerified({ kind: 'plugin', verificationStatus: 'unverified' })).toBe(false)
+    })
+
+    it('returns false for plugin engines with verificationStatus undefined', () => {
+      expect(isEngineTrustVerified({ kind: 'plugin' })).toBe(false)
+    })
+
+    it('returns false for plugin engines with verificationStatus=failed', () => {
+      expect(isEngineTrustVerified({ kind: 'plugin', verificationStatus: 'failed' })).toBe(false)
+    })
+
+    it('returns false for plugin engines with verificationStatus=revoked', () => {
+      expect(isEngineTrustVerified({ kind: 'plugin', verificationStatus: 'revoked' })).toBe(false)
+    })
+
+    it('returns false for plugin engines with verificationStatus=expired', () => {
+      expect(isEngineTrustVerified({ kind: 'plugin', verificationStatus: 'expired' })).toBe(false)
+    })
+
+    it('returns false for plugin engines with verificationStatus=unconfigured', () => {
+      expect(isEngineTrustVerified({ kind: 'plugin', verificationStatus: 'unconfigured' })).toBe(false)
     })
   })
 })
