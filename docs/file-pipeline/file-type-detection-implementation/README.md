@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Phase 5 P5-E4 packaging regression / smoke scaffold completed; P5-E3 first runtime pilot scaffold completed; P5-E1/P5-E2 scaffold completed; P5-D implementation foundation completed; Full Phase 5 remains open; P5-F final closeout remains future
-Next phase: P5-E real runtime packaging / model pre-stage (future)
+Current phase: Post-P5 user-level roadmap complete; P5 scaffold work through E4 completed; real runtime distribution, production plugin lifecycle move to P6
+Next phase: P6-A minimal plugin lifecycle state / registration boundary (recommended); real runtime pilot (Pandoc) in P6-C
 
 ## 目录用途
 
@@ -67,6 +67,7 @@ Next phase: P5-E real runtime packaging / model pre-stage (future)
 | 47-phase5-p5e1-p5e2-runtime-package-scaffold-closeout.md | Phase 5 P5-E1/P5-E2 runtime package scaffold closeout |
 | 48-phase5-p5e3-first-runtime-pilot-closeout.md | Phase 5 P5-E3 first runtime pilot scaffold closeout |
 | 49-phase5-p5e4-packaging-regression-smoke-closeout.md | Phase 5 P5-E4 packaging regression / smoke scaffold closeout |
+| 50-post-p5-user-level-roadmap.md | Post-P5 user-level roadmap (Phase 6, Phase 7, scope control, lean acceptance) |
 
 ## Step 状态
 
@@ -116,6 +117,8 @@ Next phase: P5-E real runtime packaging / model pre-stage (future)
 - Phase 5 P5-E3 first runtime pilot scaffold completed: Pandoc conversion runtime pilot scaffold（见 `48-phase5-p5e3-first-runtime-pilot-closeout.md`）
 - Phase 5 P5-E4 packaging regression / smoke scaffold completed（见 `49-phase5-p5e4-packaging-regression-smoke-closeout.md`）
 - P5-E real runtime packaging / model pre-stage remains future scope
+- Post-P5 user-level roadmap created: Phase 6 (lifecycle, UI, first real pilot) + Phase 7 (expansion, conversion integration)（见 `50-post-p5-user-level-roadmap.md`）
+- Recommended next step: P6-A minimal plugin lifecycle implementation
 
 ## 当前冻结结论
 
