@@ -34,13 +34,9 @@ export type PersistedMessageImageAsset = Readonly<{
   messageId: string
   assetId: string
   ordinal: number
-  hash: string
   mime: string
   width: number | null
   height: number | null
-  bytes: number
-  path: string
-  fileUrl: string
   assetUrl: string
 }>
 

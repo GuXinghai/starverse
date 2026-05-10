@@ -1211,9 +1211,7 @@ export function useAppChatAppLogic() {
   function resolveImageRenderUrl(asset: PersistedMessageImageAsset): string {
     const assetUrl = typeof asset.assetUrl === 'string' ? asset.assetUrl.trim() : ''
     if (assetUrl.length > 0) return assetUrl
-    const fileUrl = typeof asset.fileUrl === 'string' ? asset.fileUrl.trim() : ''
-    if (fileUrl.length > 0) return fileUrl
-    return typeof asset.path === 'string' ? asset.path.trim() : ''
+    return ''
   }
 
   function collectMessageImageDataUrls(messageId: string): string[] {
