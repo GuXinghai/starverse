@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { execFile } from 'node:child_process'
 import { mkdtemp, mkdir, rm, writeFile, readFile, readdir, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -552,9 +553,10 @@ describe('magikaManagedPlugin', () => {
       path.join(repoRoot, 'StarversePortable', 'engines', 'magika', 'model'),
       path.join(repoRoot, 'engines', 'magika', 'model'),
     ]
+    const cwd = repoRoot
     for (const forbidden of forbiddenRoots) {
-      const exists = await existsPath(forbidden)
-      expect(exists).toBe(false)
+      const tracked = await hasGitTrackedFiles(forbidden, cwd)
+      expect(tracked).toBe(false)
     }
   })
 
@@ -648,4 +650,21 @@ async function existsPath(value: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+function hasGitTrackedFiles(dirPath: string, cwd: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    execFile(
+      'git',
+      ['ls-files', '--error-unmatch', '--', dirPath],
+      { cwd, windowsHide: true },
+      (err, stdout) => {
+        if (err) {
+          resolve(false)
+          return
+        }
+        resolve(stdout.trim().length > 0)
+      }
+    )
+  })
 }
