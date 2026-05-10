@@ -115,31 +115,31 @@ Fixed `magikaManagedPlugin.test.ts` test "maps health timeout and output limit w
 | Item | Result |
 |------|--------|
 | Path checked | `D:\Starverse\.starverse-engines\magika\` |
-| Exists | No |
-| Manual prep performed | Not performed |
-| Real smoke status | **blocked_by_missing_local_magika_package** |
+| Exists | No (not created manually) |
+| npm install performed | Yes (`D:\Starverse\.external-runtime-work\magika-js-work\`) |
+| npm packages installed | `magika@1.0.0`, `@tensorflow/tfjs@4.22.0`, `@tensorflow/tfjs-node@4.22.0` |
+| tfjs-node native binding | ERR_DLOPEN_FAILED — incompatible with this Windows/Node.js v22 combination |
+| Magika classify smoke | **blocked: tfjs-node native binding DLL load failure** |
 
 ---
 
-## 7. Manual Package Preparation Instructions
+## 7. Manual Package Preparation Attempt
 
-To prepare a local Magika package for manual smoke:
+**Route A (npm) attempted**:
+- `npm install magika` succeeded in `D:\Starverse\.external-runtime-work\magika-js-work\`
+- 125 packages installed including `@tensorflow/tfjs@4.22.0`, `@tensorflow/tfjs-node@4.22.0`
+- `@tensorflow/tfjs-node` native binding `tfjs_binding.node` failed to load (`ERR_DLOPEN_FAILED`)
+- tfjs WASM CPU backend works standalone, but Magika's `model-node.js` hard-requires `@tensorflow/tfjs-node` for `tfn.io.fileSystem(modelPath)`
+- Magika `MagikaNode.create()` cannot complete without a working `@tensorflow/tfjs-node`
+- Root cause: native DLL compatibility issue (likely missing MSVC runtime or Node.js v22 incompatibility)
 
-**Route A: npm package route**
-```
-mkdir D:\Starverse\.starverse-engines\magika
-cd /d D:\Starverse\.starverse-engines\magika
-mkdir runtime model config
-```
-Then create `manifest.json` following the `MagikaManagedPluginManifest` schema. The npm `magika` package directory can be placed under `runtime/`.
+**No files were committed** — all external work is in untracked `.external-runtime-work/`.
 
-**Route B: Official Google Magika repository route**
-```
-cd /d C:\temp
-git clone https://github.com/google/magika.git
-```
+**Local `.starverse-engines\magika\` was not created** — without a working runtime, no local package directory was assembled.
 
-Neither route was executed in this session.
+**Route B (git clone) not attempted** — would require same native binding dependency.
+
+**Resolution**: When tfjs-node is installable on this platform, run manual smoke as documented in §4 of the P5-E4 closeout (doc 49).
 
 ---
 
@@ -182,14 +182,15 @@ Neither route was executed in this session.
 
 | Item | Status |
 |------|--------|
-| Real Magika package preparation | Not performed |
-| Real Magika classify smoke | `not_run` / blocked |
+| tfjs-node native binding resolution | Blocked by platform (ERR_DLOPEN_FAILED) |
+| Real Magika package directory assembly | Not performed (requires working runtime) |
+| Real Magika classify smoke | `blocked: tfjs-node native DLL` |
 | Downloader / installer | Future |
 | Marketplace | Future |
 | Second engine (Pandoc) | Future (P7) |
 | Production signing workflow | Future |
 | P5-F closeout | Optional / may skip |
-| P6-D manual smoke | Future (requires real Magika package) |
+| P6-D manual smoke | Blocked pending runtime availability |
 
 ---
 

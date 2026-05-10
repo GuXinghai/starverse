@@ -121,7 +121,7 @@ Next phase: P6-D manual smoke when real Magika package available; P7 runtime exp
 - Post-P5 user-level roadmap created: Phase 6 (lifecycle, UI, first real pilot) + Phase 7 (expansion, conversion integration)（见 `50-post-p5-user-level-roadmap.md`）
 - Recommended next step: P6-A minimal plugin lifecycle implementation
 - Phase 6 user-level lifecycle scaffold + diagnostics + Magika pilot integration completed（见 `51-phase6-user-level-magika-runtime-pilot-closeout.md`）
-- Real Magika classifier smoke blocked_by_missing_local_magika_package; downloader / installer remain future
+- Real Magika classifier smoke blocked: tfjs-node native binding incompatible (ERR_DLOPEN_FAILED); downloader / installer remain future
 
 ## 当前冻结结论
 
