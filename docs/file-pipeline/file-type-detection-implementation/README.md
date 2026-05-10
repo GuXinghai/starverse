@@ -2,8 +2,8 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: P4-A completed; P4-B completed with follow-ups; P4-C completed with follow-ups (Gemini CLI external audit passed); P4-D1~D5 completed; Phase 5 BL-06/BL-07 security planning
-Next phase: Phase 5 P5-A/P5-B implementation (BL-06/BL-07)
+Current phase: Phase 5 batch 1 P5-A/P5-B/P5-C completed; Phase 5 remains open for P5-D trusted root / signing and P5-E real runtime packaging
+Next phase: P5-D production trusted root / offline signing workflow (future)
 
 ## 目录用途
 
@@ -60,6 +60,7 @@ Next phase: Phase 5 P5-A/P5-B implementation (BL-06/BL-07)
 | 40-phase4-final-closeout-report.md | Phase 4 final closeout report |
 | 41-phase4-owner-decision-record.md | Phase 4 Owner decision record |
 | 42-phase5-bl06-bl07-security-planning.md | Phase 5 BL-06/BL-07 security planning |
+| 43-phase5-batch1-security-closeout.md | Phase 5 batch 1 P5-A/P5-B/P5-C closeout |
 
 ## Step 状态
 
@@ -100,7 +101,8 @@ Next phase: Phase 5 P5-A/P5-B implementation (BL-06/BL-07)
 - Phase 4 closeout accepted by Owner decision（见 `41-phase4-owner-decision-record.md`）
 - Phase 4 implementation package accepted with documented blockers; Phase 4 remains NOT completed in the strict production sense
 - Phase 5 planning: BL-06/BL-07 security planning（见 `42-phase5-bl06-bl07-security-planning.md`）
-- Phase 5 pending: P5-A (BL-06 implementation), P5-B (BL-07 implementation), P5-C (security regression + smoke planning)
+- Phase 5 batch 1 completed: P5-A (BL-06 dev-mode guard), P5-B (BL-07 messageAsset IPC sanitization), P5-C (security closeout)（见 `43-phase5-batch1-security-closeout.md`）
+- Phase 5 remains open for P5-D (trusted root / signing) and P5-E (real runtime packaging)
 
 ## 当前冻结结论
 
