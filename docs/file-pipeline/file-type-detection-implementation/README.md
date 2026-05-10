@@ -2,7 +2,7 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Phase 5 P5-E3 first runtime pilot scaffold completed; P5-E1/P5-E2 scaffold completed; P5-D implementation foundation completed; Full Phase 5 remains open for real runtime packaging
+Current phase: Phase 5 P5-E4 packaging regression / smoke scaffold completed; P5-E3 first runtime pilot scaffold completed; P5-E1/P5-E2 scaffold completed; P5-D implementation foundation completed; Full Phase 5 remains open; P5-F final closeout remains future
 Next phase: P5-E real runtime packaging / model pre-stage (future)
 
 ## 目录用途
@@ -66,6 +66,7 @@ Next phase: P5-E real runtime packaging / model pre-stage (future)
 | 46-phase5-p5d-trust-signing-closeout.md | Phase 5 P5-D trust & signing closeout |
 | 47-phase5-p5e1-p5e2-runtime-package-scaffold-closeout.md | Phase 5 P5-E1/P5-E2 runtime package scaffold closeout |
 | 48-phase5-p5e3-first-runtime-pilot-closeout.md | Phase 5 P5-E3 first runtime pilot scaffold closeout |
+| 49-phase5-p5e4-packaging-regression-smoke-closeout.md | Phase 5 P5-E4 packaging regression / smoke scaffold closeout |
 
 ## Step 状态
 
@@ -113,6 +114,7 @@ Next phase: P5-E real runtime packaging / model pre-stage (future)
 - Phase 5 P5-D implementation: trust contracts, production verification gate, root rotation/revocation scaffold implemented（见 `46-phase5-p5d-trust-signing-closeout.md`）
 - Phase 5 P5-E1/P5-E2 scaffold completed: runtime package inventory contract + fake Magika pre-stage scaffold（见 `47-phase5-p5e1-p5e2-runtime-package-scaffold-closeout.md`）
 - Phase 5 P5-E3 first runtime pilot scaffold completed: Pandoc conversion runtime pilot scaffold（见 `48-phase5-p5e3-first-runtime-pilot-closeout.md`）
+- Phase 5 P5-E4 packaging regression / smoke scaffold completed（见 `49-phase5-p5e4-packaging-regression-smoke-closeout.md`）
 - P5-E real runtime packaging / model pre-stage remains future scope
 
 ## 当前冻结结论
