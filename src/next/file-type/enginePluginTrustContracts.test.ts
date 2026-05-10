@@ -6,8 +6,11 @@ import {
   emptyVerificationBinding,
   failedResult,
   filterActiveTrustedRoots,
+  filterRevokedRoots,
+  isKeyIdRevoked,
   isPluginVerified,
   mapVerificationStatusToFailureReason,
+  parseRevokedRootsList,
   resolveTrustRootEnvironment,
   revokedResult,
   sanitizeVerificationDetail,
@@ -322,6 +325,125 @@ describe('enginePluginTrustContracts', () => {
         [key2.keyId]: trustedRootMetadataFromPublicKey(key2, { expiresAt: '2019-01-01T00:00:00Z' }),
       }
       const result = filterActiveTrustedRoots(roots, metadata)
+      expect(Object.keys(result)).toHaveLength(0)
+    })
+  })
+
+  describe('parseRevokedRootsList', () => {
+    it('parses a valid revoked roots JSON', () => {
+      const input = {
+        schemaVersion: '1',
+        entries: [
+          { keyId: 'compromised-key-1', revokedAt: '2026-06-01T00:00:00Z', reason: 'key compromised' },
+        ],
+      }
+      const result = parseRevokedRootsList(input)
+      expect(result).not.toBeNull()
+      expect(result!.schemaVersion).toBe('1')
+      expect(result!.entries).toHaveLength(1)
+      expect(result!.entries[0].keyId).toBe('compromised-key-1')
+    })
+
+    it('rejects non-object input', () => {
+      expect(parseRevokedRootsList(null)).toBeNull()
+      expect(parseRevokedRootsList('invalid')).toBeNull()
+      expect(parseRevokedRootsList([])).toBeNull()
+    })
+
+    it('rejects wrong schema version', () => {
+      const input = { schemaVersion: '2', entries: [] }
+      expect(parseRevokedRootsList(input)).toBeNull()
+    })
+
+    it('rejects entries that is not an array', () => {
+      const input = { schemaVersion: '1', entries: 'not-an-array' }
+      expect(parseRevokedRootsList(input)).toBeNull()
+    })
+
+    it('skips entries with missing keyId', () => {
+      const input = {
+        schemaVersion: '1',
+        entries: [
+          { keyId: '', revokedAt: '2026-01-01T00:00:00Z' },
+          { keyId: 'valid-key', revokedAt: '2026-01-01T00:00:00Z' },
+        ],
+      }
+      const result = parseRevokedRootsList(input)
+      expect(result!.entries).toHaveLength(1)
+      expect(result!.entries[0].keyId).toBe('valid-key')
+    })
+
+    it('skips entries with missing revokedAt', () => {
+      const input = {
+        schemaVersion: '1',
+        entries: [
+          { keyId: 'some-key', revokedAt: '' },
+        ],
+      }
+      const result = parseRevokedRootsList(input)
+      expect(result!.entries).toHaveLength(0)
+    })
+
+    it('handles empty entries array', () => {
+      const input = { schemaVersion: '1', entries: [] }
+      const result = parseRevokedRootsList(input)
+      expect(result).not.toBeNull()
+      expect(result!.entries).toHaveLength(0)
+    })
+  })
+
+  describe('isKeyIdRevoked', () => {
+    it('returns false for null revoked roots list', () => {
+      expect(isKeyIdRevoked('any-key', null)).toBe(false)
+    })
+
+    it('returns true for revoked keyId', () => {
+      const list = parseRevokedRootsList({
+        schemaVersion: '1',
+        entries: [{ keyId: 'revoked-1', revokedAt: '2026-01-01T00:00:00Z' }],
+      })
+      expect(isKeyIdRevoked('revoked-1', list)).toBe(true)
+    })
+
+    it('returns false for non-revoked keyId', () => {
+      const list = parseRevokedRootsList({
+        schemaVersion: '1',
+        entries: [{ keyId: 'revoked-1', revokedAt: '2026-01-01T00:00:00Z' }],
+      })
+      expect(isKeyIdRevoked('active-key', list)).toBe(false)
+    })
+  })
+
+  describe('filterRevokedRoots', () => {
+    const key1 = testKey
+    const key2: TrustedCatalogPublicKey = { keyId: 'root-v2', algorithm: 'ed25519', publicKeyPem }
+    const roots = { [key1.keyId]: key1, [key2.keyId]: key2 }
+
+    it('returns all roots when revoked list is null', () => {
+      const result = filterRevokedRoots(roots, null)
+      expect(Object.keys(result)).toHaveLength(2)
+    })
+
+    it('filters out revoked keyIds', () => {
+      const revoked = parseRevokedRootsList({
+        schemaVersion: '1',
+        entries: [{ keyId: key1.keyId, revokedAt: '2026-01-01T00:00:00Z' }],
+      })
+      const result = filterRevokedRoots(roots, revoked)
+      expect(Object.keys(result)).toHaveLength(1)
+      expect(result[key1.keyId]).toBeUndefined()
+      expect(result[key2.keyId]).toBeDefined()
+    })
+
+    it('filters out all roots when all are revoked', () => {
+      const revoked = parseRevokedRootsList({
+        schemaVersion: '1',
+        entries: [
+          { keyId: key1.keyId, revokedAt: '2026-01-01T00:00:00Z' },
+          { keyId: key2.keyId, revokedAt: '2026-01-01T00:00:00Z' },
+        ],
+      })
+      const result = filterRevokedRoots(roots, revoked)
       expect(Object.keys(result)).toHaveLength(0)
     })
   })
