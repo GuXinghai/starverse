@@ -1,4 +1,4 @@
-export const MAGIKA_RUNTIME_KINDS = ['mock', 'unavailable', 'local_loader', 'adapter_only'] as const
+export const MAGIKA_RUNTIME_KINDS = ['mock', 'unavailable', 'local_loader', 'adapter_only', 'pure_js'] as const
 export type MagikaRuntimeKind = (typeof MAGIKA_RUNTIME_KINDS)[number]
 
 export const MAGIKA_RUNTIME_UNAVAILABLE_REASONS = [

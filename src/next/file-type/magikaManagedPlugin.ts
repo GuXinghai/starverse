@@ -789,8 +789,8 @@ function invalidPath(
 
 function parseRuntimeKind(input: unknown): MagikaRuntimeKind {
   const value = requireNonEmptyString(input, 'runtimeKind')
-  if (value !== 'mock' && value !== 'unavailable' && value !== 'local_loader' && value !== 'adapter_only') {
-    throw new Error('runtimeKind must be one of mock/unavailable/local_loader/adapter_only')
+  if (value !== 'mock' && value !== 'unavailable' && value !== 'local_loader' && value !== 'adapter_only' && value !== 'pure_js') {
+    throw new Error('runtimeKind must be one of mock/unavailable/local_loader/adapter_only/pure_js')
   }
   return value
 }
