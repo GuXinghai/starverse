@@ -1601,6 +1601,7 @@ export type WorkerInitConfig = {
   logDirectory?: string
   stampSchemaVersion?: boolean
   startupRebuildReason?: string
+  isProduction?: boolean
 }
 
 export type { DbMethod } from './dbMethodsRegistry'

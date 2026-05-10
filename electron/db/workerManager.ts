@@ -132,7 +132,7 @@ export class DbWorkerManager {
    * - 如果已启动，直接返回
    * - 如果正在启动，等待现有的 startPromise
    */
-  async start(dbPath: string, initFlags?: Pick<WorkerInitConfig, 'stampSchemaVersion' | 'startupRebuildReason'>) {
+  async start(dbPath: string, initFlags?: Pick<WorkerInitConfig, 'stampSchemaVersion' | 'startupRebuildReason' | 'isProduction'>) {
     if (this.worker) return
     this.workerInitFlags = initFlags ?? {}
     if (!this.startPromise) {
@@ -147,6 +147,7 @@ export class DbWorkerManager {
               logDirectory: this.options.logDirectory,
               stampSchemaVersion: this.workerInitFlags.stampSchemaVersion,
               startupRebuildReason: this.workerInitFlags.startupRebuildReason,
+              isProduction: this.workerInitFlags.isProduction,
             }
           })
           this.dbPath = dbPath

@@ -12,13 +12,16 @@ export type ActiveTrustedRootsResult =
   | Readonly<{ ok: true; trustedRoots: TrustedCatalogPublicKeyMap; source: 'official' | 'test' }>
   | Readonly<{ ok: false; reason: 'official_trusted_root_unconfigured' }>
 
-export function getActiveTrustedRoots(env: {
-  readonly NODE_ENV?: string
-  readonly VITEST?: string
-  readonly SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS?: string
-  readonly SV_TEST_TRUSTED_ROOTS?: string
-  readonly SV_ENGINE_PLUGIN_DEV_MODE?: string
-} = typeof process !== 'undefined' ? process.env as Record<string, string | undefined> : {}): ActiveTrustedRootsResult {
+export function getActiveTrustedRoots(
+  env: {
+    readonly NODE_ENV?: string
+    readonly VITEST?: string
+    readonly SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS?: string
+    readonly SV_TEST_TRUSTED_ROOTS?: string
+    readonly SV_ENGINE_PLUGIN_DEV_MODE?: string
+  } = typeof process !== 'undefined' ? process.env as Record<string, string | undefined> : {},
+  options?: { isProduction?: boolean },
+): ActiveTrustedRootsResult {
   const officialJson = (env.SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS ?? '').trim()
   if (officialJson.length > 0) {
     const roots = parseTrustedRootsJson(officialJson)
@@ -35,7 +38,12 @@ export function getActiveTrustedRoots(env: {
     }
   }
 
-  if (env.VITEST === 'true' || env.NODE_ENV === 'test' || env.SV_ENGINE_PLUGIN_DEV_MODE === '1') {
+  const isDevMode = env.SV_ENGINE_PLUGIN_DEV_MODE === '1'
+  if (options?.isProduction && isDevMode) {
+    return { ok: false, reason: 'official_trusted_root_unconfigured' }
+  }
+
+  if (env.VITEST === 'true' || env.NODE_ENV === 'test' || isDevMode) {
     return {
       ok: true,
       trustedRoots: createTestTrustedRoots(TEST_ROOT_PUBLIC_KEY_PEM),
