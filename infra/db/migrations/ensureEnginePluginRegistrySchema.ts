@@ -4,7 +4,7 @@ type SqlDatabase = BetterSqlite3.Database
 
 const INSTALL_STATE_CHECK = "CHECK (install_state IN ('installed', 'failed', 'uninstalled', 'update_available'))"
 const HEALTH_STATUS_CHECK = "CHECK (health_status IN ('unknown', 'healthy', 'degraded', 'unhealthy'))"
-const INSTALL_SOURCE_CHECK = "CHECK (install_source IN ('official_catalog'))"
+const INSTALL_SOURCE_CHECK = "CHECK (install_source IN ('official_catalog', 'local_package'))"
 const INSTALL_ROOT_KIND_CHECK = "CHECK (install_root_kind IN ('managed_root', 'managed_cache', 'test_root'))"
 
 export function ensureEnginePluginRegistrySchema(db: SqlDatabase): void {

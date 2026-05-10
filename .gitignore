@@ -114,3 +114,7 @@ storybook-static
 .gemini/
 test_output.txt
 reports/
+
+# Local-only runtime packages (manual preparation, not for commit)
+.external-runtime-work/
+.starverse-engines/
