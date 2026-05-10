@@ -201,3 +201,55 @@ export function filterActiveTrustedRoots(
 export const OFFICIAL_TRUST_ROOT_SCOPE = 'production' satisfies TrustRootScope
 export const TEST_TRUST_ROOT_SCOPE = 'test' satisfies TrustRootScope
 export const DEV_TRUST_ROOT_SCOPE = 'development' satisfies TrustRootScope
+
+export type RevokedRootEntry = Readonly<{
+  keyId: string
+  revokedAt: string
+  reason: string | null
+}>
+
+export type RevokedRootsList = Readonly<{
+  schemaVersion: '1'
+  entries: readonly RevokedRootEntry[]
+}>
+
+export function parseRevokedRootsList(input: unknown): RevokedRootsList | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  const source = input as Record<string, unknown>
+  const schemaVersion = typeof source.schemaVersion === 'string' ? source.schemaVersion.trim() : ''
+  if (schemaVersion !== '1') return null
+  const entriesRaw = source.entries
+  if (!Array.isArray(entriesRaw)) return null
+  const entries: RevokedRootEntry[] = []
+  for (const item of entriesRaw) {
+    if (!item || typeof item !== 'object') continue
+    const entry = item as Record<string, unknown>
+    const keyId = typeof entry.keyId === 'string' ? entry.keyId.trim() : ''
+    const revokedAt = typeof entry.revokedAt === 'string' ? entry.revokedAt.trim() : ''
+    const reason = typeof entry.reason === 'string' ? entry.reason.trim() : null
+    if (!keyId || !revokedAt) continue
+    entries.push({ keyId, revokedAt, reason: reason || null })
+  }
+  return { schemaVersion: '1', entries }
+}
+
+export function isKeyIdRevoked(
+  keyId: string,
+  revokedRoots: RevokedRootsList | null,
+): boolean {
+  if (!revokedRoots) return false
+  return revokedRoots.entries.some((entry) => entry.keyId === keyId)
+}
+
+export function filterRevokedRoots(
+  roots: TrustedCatalogPublicKeyMap,
+  revokedRoots: RevokedRootsList | null,
+): TrustedCatalogPublicKeyMap {
+  if (!revokedRoots || revokedRoots.entries.length === 0) return roots
+  const filtered: Record<string, TrustedCatalogPublicKey> = {}
+  for (const [keyId, key] of Object.entries(roots)) {
+    if (isKeyIdRevoked(keyId, revokedRoots)) continue
+    filtered[keyId] = key
+  }
+  return filtered
+}
