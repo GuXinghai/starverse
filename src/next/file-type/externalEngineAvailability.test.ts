@@ -78,27 +78,51 @@ describe('externalEngineAvailability', () => {
     expect(snapshot.routeAvailability.documentConversion).toBe(false)
   })
 
-  it('excludes engines with verificationStatus=failed from capability availability', () => {
+  it('excludes plugin engines with verificationStatus=failed from capability availability', () => {
     const engines: ExternalEngineRecord[] = [
-      engine({ id: 'a', capabilities: ['document_conversion'], healthStatus: 'healthy', verificationStatus: 'failed' }),
-      engine({ id: 'b', capabilities: ['text_extraction'], healthStatus: 'healthy', verificationStatus: 'verified' }),
+      engine({ kind: 'plugin', id: 'a', capabilities: ['document_conversion'], healthStatus: 'healthy', verificationStatus: 'failed' }),
+      engine({ kind: 'plugin', id: 'b', capabilities: ['text_extraction'], healthStatus: 'healthy', verificationStatus: 'verified' }),
     ]
     const capabilities = buildCapabilityAvailability(engines)
     expect(capabilities.document_conversion).toBe(false)
     expect(capabilities.text_extraction).toBe(true)
   })
 
-  it('excludes engines with verificationStatus=revoked from capability availability', () => {
+  it('excludes plugin engines with verificationStatus=revoked from capability availability', () => {
     const engines: ExternalEngineRecord[] = [
-      engine({ id: 'a', capabilities: ['document_conversion'], healthStatus: 'healthy', verificationStatus: 'revoked' }),
+      engine({ kind: 'plugin', id: 'a', capabilities: ['document_conversion'], healthStatus: 'healthy', verificationStatus: 'revoked' }),
     ]
     const capabilities = buildCapabilityAvailability(engines)
     expect(capabilities.document_conversion).toBe(false)
   })
 
-  it('includes engines with verificationStatus=verified in capability availability', () => {
+  it('excludes plugin engines with verificationStatus undefined from capability availability', () => {
     const engines: ExternalEngineRecord[] = [
-      engine({ id: 'a', capabilities: ['document_conversion'], healthStatus: 'healthy', verificationStatus: 'verified' }),
+      engine({ kind: 'plugin', id: 'a', capabilities: ['document_conversion'], healthStatus: 'healthy' }),
+    ]
+    const capabilities = buildCapabilityAvailability(engines)
+    expect(capabilities.document_conversion).toBe(false)
+  })
+
+  it('excludes plugin engines with verificationStatus=unconfigured from capability availability', () => {
+    const engines: ExternalEngineRecord[] = [
+      engine({ kind: 'plugin', id: 'a', capabilities: ['document_conversion'], healthStatus: 'healthy', verificationStatus: 'unconfigured' }),
+    ]
+    const capabilities = buildCapabilityAvailability(engines)
+    expect(capabilities.document_conversion).toBe(false)
+  })
+
+  it('includes plugin engines with verificationStatus=verified in capability availability', () => {
+    const engines: ExternalEngineRecord[] = [
+      engine({ kind: 'plugin', id: 'a', capabilities: ['document_conversion'], healthStatus: 'healthy', verificationStatus: 'verified' }),
+    ]
+    const capabilities = buildCapabilityAvailability(engines)
+    expect(capabilities.document_conversion).toBe(true)
+  })
+
+  it('includes builtin engines with no verificationStatus in capability availability', () => {
+    const engines: ExternalEngineRecord[] = [
+      engine({ kind: 'builtin', id: 'a', capabilities: ['document_conversion'], healthStatus: 'healthy' }),
     ]
     const capabilities = buildCapabilityAvailability(engines)
     expect(capabilities.document_conversion).toBe(true)

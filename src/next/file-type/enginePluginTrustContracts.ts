@@ -253,3 +253,21 @@ export function filterRevokedRoots(
   }
   return filtered
 }
+
+export type TrustVerificationCheckRecord = Readonly<{
+  kind?: string
+  verificationStatus?: TrustVerificationStatus
+}>
+
+export function isEngineTrustVerificationRequired(
+  record: TrustVerificationCheckRecord,
+): boolean {
+  return record.kind === 'plugin'
+}
+
+export function isEngineTrustVerified(
+  record: TrustVerificationCheckRecord,
+): boolean {
+  if (!isEngineTrustVerificationRequired(record)) return true
+  return record.verificationStatus === 'verified'
+}

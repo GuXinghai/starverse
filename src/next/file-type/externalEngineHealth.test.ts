@@ -1,6 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import { mapProcessRunToProbe, runEngineHealthCheck } from './externalEngineHealth'
 import { createExternalEngineRegistry } from './externalEngineRegistry'
+import type { ManagedEnginePluginManifest } from './externalEngineTypes'
+
+function pluginManifest(overrides?: Partial<ManagedEnginePluginManifest>): ManagedEnginePluginManifest {
+  return {
+    id: overrides?.id ?? 'test-plugin',
+    displayName: overrides?.displayName ?? 'Test Plugin',
+    version: overrides?.version ?? '0.0.1',
+    platform: overrides?.platform ?? 'any',
+    kind: 'plugin',
+    capabilities: overrides?.capabilities ?? ['document_conversion'],
+    supportedFormatIds: overrides?.supportedFormatIds ?? [],
+    supportedMimeTypes: overrides?.supportedMimeTypes ?? [],
+    supportedOutputRoutes: overrides?.supportedOutputRoutes ?? [],
+    resourceLimits: overrides?.resourceLimits ?? { maxInputBytes: null, maxDurationMs: null },
+    sandbox: overrides?.sandbox ?? { enabled: true },
+    network: overrides?.network ?? { allowed: false },
+    healthcheck: overrides?.healthcheck ?? { command: 'echo', args: ['ok'], cwd: null },
+    metadataAllowlist: overrides?.metadataAllowlist ?? null,
+  }
+}
 
 // eslint-disable-next-line max-lines-per-function
 describe('externalEngineHealth', () => {
@@ -65,7 +85,7 @@ describe('externalEngineHealth', () => {
       displayName: 'Demo Health',
       version: '0.0.1',
       platform: 'any',
-      kind: 'plugin',
+      kind: 'builtin',
       capabilities: ['text_extraction'],
       supportedFormatIds: ['plain_text'],
       supportedMimeTypes: ['text/plain'],
@@ -110,7 +130,7 @@ describe('externalEngineHealth', () => {
       displayName: 'Demo Missing',
       version: '0.0.1',
       platform: 'any',
-      kind: 'plugin',
+      kind: 'builtin',
       capabilities: ['document_conversion'],
       supportedFormatIds: ['docx'],
       supportedMimeTypes: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
@@ -153,7 +173,7 @@ describe('externalEngineHealth', () => {
       displayName: 'Demo Output Limit',
       version: '0.0.1',
       platform: 'any',
-      kind: 'plugin',
+      kind: 'builtin',
       capabilities: ['text_extraction'],
       supportedFormatIds: ['plain_text'],
       supportedMimeTypes: ['text/plain'],
@@ -205,12 +225,12 @@ describe('externalEngineHealth', () => {
 
   it('blocks health check when verificationStatus is failed', async () => {
     const registry = createExternalEngineRegistry(() => 5678)
-    registry.registerBuiltInEngineDefinitions()
-    registry.setVerificationStatus({ engineId: 'pandoc', verificationStatus: 'failed' })
+    registry.registerManifest(pluginManifest({ id: 'plugin-1', kind: 'plugin' }))
+    registry.setVerificationStatus({ engineId: 'plugin-1', verificationStatus: 'failed' })
 
     const updated = await runEngineHealthCheck({
       registry,
-      engineId: 'pandoc',
+      engineId: 'plugin-1',
       runner: async () => ({ status: 'healthy', reason: null, detail: null }),
     })
     expect(updated.healthStatus).toBe('failed')
@@ -220,16 +240,70 @@ describe('externalEngineHealth', () => {
 
   it('blocks health check when verificationStatus is revoked', async () => {
     const registry = createExternalEngineRegistry(() => 9999)
-    registry.registerBuiltInEngineDefinitions()
-    registry.setVerificationStatus({ engineId: 'tika', verificationStatus: 'revoked' })
+    registry.registerManifest(pluginManifest({ id: 'plugin-2', kind: 'plugin' }))
+    registry.setVerificationStatus({ engineId: 'plugin-2', verificationStatus: 'revoked' })
 
     const updated = await runEngineHealthCheck({
       registry,
-      engineId: 'tika',
+      engineId: 'plugin-2',
       runner: async () => ({ status: 'healthy', reason: null, detail: null }),
     })
     expect(updated.healthStatus).toBe('failed')
     expect(updated.failureReason).toBe('disabled_by_policy')
     expect(updated.failureDetails).toContain('revoked')
+  })
+
+  it('blocks health check for plugin engine when verificationStatus is undefined', async () => {
+    const registry = createExternalEngineRegistry(() => 1000)
+    registry.registerManifest(pluginManifest({ id: 'plugin-3', kind: 'plugin' }))
+
+    const updated = await runEngineHealthCheck({
+      registry,
+      engineId: 'plugin-3',
+      runner: async () => ({ status: 'healthy', reason: null, detail: null }),
+    })
+    expect(updated.healthStatus).toBe('failed')
+    expect(updated.failureReason).toBe('disabled_by_policy')
+    expect(updated.failureDetails).toContain('unverified')
+  })
+
+  it('blocks health check for plugin engine when verificationStatus is unconfigured', async () => {
+    const registry = createExternalEngineRegistry(() => 2000)
+    registry.registerManifest(pluginManifest({ id: 'plugin-4', kind: 'plugin' }))
+    registry.setVerificationStatus({ engineId: 'plugin-4', verificationStatus: 'unconfigured' })
+
+    const updated = await runEngineHealthCheck({
+      registry,
+      engineId: 'plugin-4',
+      runner: async () => ({ status: 'healthy', reason: null, detail: null }),
+    })
+    expect(updated.healthStatus).toBe('failed')
+    expect(updated.failureReason).toBe('disabled_by_policy')
+  })
+
+  it('allows health check for plugin engine when verificationStatus is verified', async () => {
+    const registry = createExternalEngineRegistry(() => 3000)
+    registry.registerManifest(pluginManifest({ id: 'plugin-5', kind: 'plugin' }))
+    registry.setVerificationStatus({ engineId: 'plugin-5', verificationStatus: 'verified' })
+
+    const updated = await runEngineHealthCheck({
+      registry,
+      engineId: 'plugin-5',
+      runner: async () => ({ status: 'healthy', reason: null, detail: null }),
+    })
+    expect(updated.healthStatus).toBe('healthy')
+    expect(updated.failureReason).toBeNull()
+  })
+
+  it('allows health check for builtin engine with no verificationStatus', async () => {
+    const registry = createExternalEngineRegistry(() => 4000)
+    registry.registerBuiltInEngineDefinitions()
+
+    const updated = await runEngineHealthCheck({
+      registry,
+      engineId: 'pandoc',
+      runner: async () => ({ status: 'healthy', reason: null, detail: null }),
+    })
+    expect(updated.healthStatus).toBe('healthy')
   })
 })
