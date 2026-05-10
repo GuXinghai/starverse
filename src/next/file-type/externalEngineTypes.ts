@@ -1,4 +1,5 @@
 import type { FileFormatId, SendRoute } from './types'
+import type { TrustVerificationStatus } from './enginePluginTrustContracts'
 
 export const KNOWN_ENGINE_IDS = ['tika', 'libreoffice', 'ffprobe', 'pandoc', 'magika'] as const
 export type KnownEngineId = (typeof KNOWN_ENGINE_IDS)[number]
@@ -94,6 +95,7 @@ export type ExternalEngineRecord = Readonly<{
   failureDetails: string | null
   lastCheckedAt: number | null
   healthcheck: EngineHealthCheckCommand | null
+  verificationStatus?: TrustVerificationStatus
 }>
 
 export type EngineCapabilityAvailability = Readonly<Record<EngineCapability, boolean>>
