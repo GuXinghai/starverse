@@ -25,7 +25,12 @@ export function computeEngineAvailability(
 export function buildCapabilityAvailability(
   engines: readonly ExternalEngineRecord[]
 ): EngineCapabilityAvailability {
-  const enabledHealthy = engines.filter((engine) => engine.enabled && engine.healthStatus === 'healthy')
+  const enabledHealthy = engines.filter(
+    (engine) =>
+      engine.enabled &&
+      engine.healthStatus === 'healthy' &&
+      (engine.verificationStatus === undefined || engine.verificationStatus === 'verified'),
+  )
   const map = {} as Record<EngineCapability, boolean>
   for (const capability of CAPABILITIES) {
     map[capability] = enabledHealthy.some((engine) => engine.capabilities.includes(capability))

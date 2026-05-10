@@ -22,28 +22,32 @@ export function getActiveTrustedRoots(
   } = typeof process !== 'undefined' ? process.env as Record<string, string | undefined> : {},
   options?: { isProduction?: boolean },
 ): ActiveTrustedRootsResult {
-  const officialJson = (env.SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS ?? '').trim()
-  if (officialJson.length > 0) {
-    const roots = parseTrustedRootsJson(officialJson)
-    if (Object.keys(roots).length > 0) {
-      return { ok: true, trustedRoots: roots, source: 'official' }
-    }
-  }
+  const isProduction = options?.isProduction === true
 
-  const testJson = (env.SV_TEST_TRUSTED_ROOTS ?? '').trim()
-  if (testJson.length > 0) {
-    const roots = parseTrustedRootsJson(testJson)
-    if (Object.keys(roots).length > 0) {
-      return { ok: true, trustedRoots: roots, source: 'test' }
+  if (!isProduction) {
+    const officialJson = (env.SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS ?? '').trim()
+    if (officialJson.length > 0) {
+      const roots = parseTrustedRootsJson(officialJson)
+      if (Object.keys(roots).length > 0) {
+        return { ok: true, trustedRoots: roots, source: 'official' }
+      }
+    }
+
+    const testJson = (env.SV_TEST_TRUSTED_ROOTS ?? '').trim()
+    if (testJson.length > 0) {
+      const roots = parseTrustedRootsJson(testJson)
+      if (Object.keys(roots).length > 0) {
+        return { ok: true, trustedRoots: roots, source: 'test' }
+      }
     }
   }
 
   const isDevMode = env.SV_ENGINE_PLUGIN_DEV_MODE === '1'
-  if (options?.isProduction && isDevMode) {
+  if (isProduction && isDevMode) {
     return { ok: false, reason: 'official_trusted_root_unconfigured' }
   }
 
-  if (env.VITEST === 'true' || env.NODE_ENV === 'test' || isDevMode) {
+  if (!isProduction && (env.VITEST === 'true' || env.NODE_ENV === 'test' || isDevMode)) {
     return {
       ok: true,
       trustedRoots: createTestTrustedRoots(TEST_ROOT_PUBLIC_KEY_PEM),

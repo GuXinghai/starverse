@@ -10,6 +10,7 @@ import type {
   ExternalEngineRecord,
   ManagedEnginePluginManifest,
 } from './externalEngineTypes'
+import type { TrustVerificationStatus } from './enginePluginTrustContracts'
 
 export type MarkEngineHealthyInput = Readonly<{
   engineId: EngineId
@@ -23,6 +24,11 @@ export type MarkEngineFailedInput = Readonly<{
   version?: string | null
 }>
 
+export type SetEngineVerificationStatusInput = Readonly<{
+  engineId: EngineId
+  verificationStatus: TrustVerificationStatus | null
+}>
+
 export type ExternalEngineRegistry = Readonly<{
   registerBuiltInEngineDefinitions: () => ExternalEngineRecord[]
   registerManifest: (manifest: ManagedEnginePluginManifest) => ExternalEngineRecord
@@ -33,6 +39,7 @@ export type ExternalEngineRegistry = Readonly<{
   markEngineFailed: (input: MarkEngineFailedInput) => ExternalEngineRecord
   disableEngine: (engineId: EngineId) => ExternalEngineRecord
   enableEngine: (engineId: EngineId) => ExternalEngineRecord
+  setVerificationStatus: (input: SetEngineVerificationStatusInput) => ExternalEngineRecord
   clearDiagnostics: () => void
 }>
 
@@ -225,6 +232,12 @@ export function createExternalEngineRegistry(now: () => number = Date.now): Exte
     diagnostics.length = 0
   }
 
+  function setVerificationStatus(input: SetEngineVerificationStatusInput): ExternalEngineRecord {
+    const record = requireRecord(input.engineId)
+    const next = patchRecord(record, { verificationStatus: input.verificationStatus as TrustVerificationStatus | undefined })
+    return next
+  }
+
   function requireRecord(engineId: EngineId): ExternalEngineRecord {
     const record = records.get(engineId)
     if (!record) throw new Error(`unknown engine: ${engineId}`)
@@ -266,6 +279,7 @@ export function createExternalEngineRegistry(now: () => number = Date.now): Exte
     markEngineFailed,
     disableEngine,
     enableEngine,
+    setVerificationStatus,
     clearDiagnostics,
   }
 }

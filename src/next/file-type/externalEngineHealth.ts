@@ -36,6 +36,18 @@ export async function runEngineHealthCheck(
   if (!record) throw new Error(`unknown engine: ${input.engineId}`)
   if (!record.enabled) return record
 
+  if (
+    record.verificationStatus !== undefined &&
+    record.verificationStatus !== 'verified'
+  ) {
+    return input.registry.markEngineFailed({
+      engineId: record.id,
+      reason: 'disabled_by_policy',
+      detail: `engine verification status is ${record.verificationStatus}`,
+      version: record.version,
+    })
+  }
+
   const timeoutMs = normalizeTimeoutMs(input.timeoutMs)
   const healthRunner =
     input.runner ??
