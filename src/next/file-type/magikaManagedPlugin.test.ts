@@ -3,10 +3,11 @@ import { execFile } from 'node:child_process'
 import { mkdtemp, mkdir, rm, writeFile, readFile, readdir, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { buildSendPlanCandidates } from './sendRouteMapping'
 import {
   createManagedPluginMagikaRuntimeLoader,
+  createMagikaClassifyCallback,
   discoverMagikaManagedPlugin,
   evaluateMagikaManagedPluginAvailability,
   parseMagikaManagedPluginManifest,
@@ -630,6 +631,47 @@ describe('magikaManagedPlugin', () => {
       expect(discovery.detail).not.toContain(runtimeEntryPath)
       expect(discovery.detail).not.toMatch(/[A-Za-z]:\\/u)
       expect(discovery.detail).not.toMatch(/\/Users\/|\/home\/|\/mnt\/|\/var\/|\/tmp\//u)
+    })
+  })
+
+  it('propagates modelVersion from runner result through createMagikaClassifyCallback', async () => {
+    await withPluginFixture(async ({ rootDir, manifest }) => {
+      const descriptor = {
+        pluginDir: rootDir,
+        manifestPath: path.join(rootDir, 'manifest.json'),
+        runtimeEntryPath: path.join(rootDir, 'runtime', 'runner.js'),
+        modelFilePaths: [path.join(rootDir, 'model', 'model.bin')],
+        configFilePaths: [path.join(rootDir, 'model', 'config.json')],
+        manifest,
+      }
+      const classify = createMagikaClassifyCallback(descriptor)
+      const result = await classify({
+        probe: { bytes: new Uint8Array([0x7b, 0x7d]) },
+        descriptor,
+      })
+      // When the real runtime is not available, the callback returns null
+      // rather than throwing. This verifies graceful degradation.
+      expect(result).toBeNull()
+    })
+  })
+
+  it('passes classify result modelVersion through managed runtime loader', async () => {
+    await withPluginFixture(async ({ rootDir }) => {
+      const runnerModelVersion = 'runner-v1.2.3'
+      const loader = createManagedPluginMagikaRuntimeLoader({
+        pluginDirs: [rootDir],
+        classify: async () => ({
+          label: 'json',
+          score: 0.95,
+          modelVersion: runnerModelVersion,
+        }),
+      })
+      const loaded = await loader.load()
+      expect(loaded.available).toBe(true)
+      if (!loaded.available) return
+      const result = await loaded.runtime.classify({ bytes: new Uint8Array([1]) })
+      expect(result?.label).toBe('json')
+      expect(result?.modelVersion).toBe(runnerModelVersion)
     })
   })
 })

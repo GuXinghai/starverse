@@ -469,7 +469,7 @@ export function createMagikaClassifyCallback(
       configDirPath,
     })
     if (!result.ok) return null
-    return { label: result.label, score: result.score }
+    return { label: result.label, score: result.score, modelVersion: result.modelVersion }
   }
 }
 

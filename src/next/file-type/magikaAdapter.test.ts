@@ -8,6 +8,7 @@ import {
 import {
   createMockMagikaRuntimeLoader,
   createUnavailableMagikaRuntimeLoader,
+  type MagikaRuntimeClassifyOutput,
 } from './magikaRuntimeLoader'
 
 describe('magikaAdapter', () => {
@@ -84,5 +85,48 @@ describe('magikaAdapter', () => {
     expect(probe.evidence?.engineRuntimeKind).toBe('adapter_only')
     expect(probe.evidence?.engineVersion).toBeNull()
     expect(probe.evidence?.detectedFormatId).toBe('json')
+  })
+
+  it('prefers modelVersion from classify output over loader manifest modelVersion', async () => {
+    const classifyWithRuntimeVersion = async (): Promise<MagikaRuntimeClassifyOutput | null> => ({
+      label: 'pdf',
+      score: 0.97,
+      modelVersion: 'runner-reported-v3',
+    })
+    const probe = await runMagikaRuntimeProbe(
+      createMockMagikaRuntimeLoader({
+        modelVersion: 'manifest-v2',
+        classify: classifyWithRuntimeVersion,
+      }),
+      {
+        bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+        filename: 'doc.pdf',
+      }
+    )
+    expect(probe.unavailableReason).toBeNull()
+    expect(probe.modelVersion).toBe('runner-reported-v3')
+    expect(probe.evidence?.engineVersion).toBe('runner-reported-v3')
+    expect(probe.evidence?.detectedFormatId).toBe('pdf')
+  })
+
+  it('falls back to manifest modelVersion when classify output omits it', async () => {
+    const classifyWithoutVersion = async (): Promise<MagikaRuntimeClassifyOutput | null> => ({
+      label: 'png',
+      score: 0.99,
+    })
+    const probe = await runMagikaRuntimeProbe(
+      createMockMagikaRuntimeLoader({
+        modelVersion: 'manifest-fallback-v5',
+        classify: classifyWithoutVersion,
+      }),
+      {
+        bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+        filename: 'img.png',
+      }
+    )
+    expect(probe.unavailableReason).toBeNull()
+    expect(probe.modelVersion).toBe('manifest-fallback-v5')
+    expect(probe.evidence?.engineVersion).toBe('manifest-fallback-v5')
+    expect(probe.evidence?.detectedFormatId).toBe('png')
   })
 })
