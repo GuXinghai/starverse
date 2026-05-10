@@ -38,6 +38,10 @@ import { FileTypeDetectionService } from '../../files/fileTypeDetectionService'
 import { EnginePluginLifecycleService } from '../../files/enginePluginLifecycleService'
 import { getActiveTrustedRoots } from '../../next/file-type/officialPluginTrustedRoots'
 import {
+  createManagedPluginMagikaRuntimeLoader,
+  createMagikaClassifyCallback,
+} from '../../next/file-type/magikaManagedPlugin'
+import {
   type WorkerInitConfig,
   type WorkerRequestMessage,
   type WorkerResponseMessage,
@@ -230,6 +234,7 @@ export class DbWorkerRuntime {
       fileAssetRepo: this.fileAssetRepo,
       fileTypeVerdictRepo: this.fileTypeVerdictRepo,
       storageRootDir: this.fileStorageRootDir,
+      magikaRuntimeLoader: this.buildMagikaRuntimeLoader(),
     })
     const activeTrustedRoots = getActiveTrustedRoots(undefined, { isProduction: config.isProduction })
     this.enginePluginLifecycleService = new EnginePluginLifecycleService({
@@ -258,6 +263,31 @@ export class DbWorkerRuntime {
     this.reasoningModelIndexRepo = new ReasoningModelIndexRepo(this.db)
     this.settingsRepo = new SettingsRepo(this.db)
     this.handlers = createWorkerHandlerContainer(this).handlers
+  }
+
+  private buildMagikaRuntimeLoader() {
+    const resolvePluginDir = (installRootKind: string, installRef: string) => {
+      const safeRef = installRef.replace(/[^a-zA-Z0-9._-]+/g, '_')
+      return path.join(this.fileStorageRootDir, 'engine-plugins', installRootKind, safeRef)
+    }
+
+    const installed = this.enginePluginRegistryRepo.list({ includeUninstalled: false })
+    const magikaInstalled = installed.find(
+      (r) => r.engineId === 'magika' && r.installState !== 'uninstalled'
+    )
+    const pluginDirs: string[] = []
+    if (magikaInstalled) {
+      pluginDirs.push(resolvePluginDir(magikaInstalled.installRootKind, magikaInstalled.installRef))
+    }
+    pluginDirs.push(path.join(this.fileStorageRootDir, 'engine-plugins', 'managed_root', 'magika'))
+
+    return createManagedPluginMagikaRuntimeLoader({
+      pluginDirs,
+      classify: async ({ probe, descriptor }) => {
+        const classifyCb = createMagikaClassifyCallback(descriptor)
+        return classifyCb({ probe, descriptor })
+      },
+    })
   }
 
   private applyPragmas() {
