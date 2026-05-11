@@ -179,6 +179,8 @@ function normalizeScoreField(
 
 function sanitizeForRunner(detail: string): string {
   return detail
+    .replace(/(contentToken["'\s:=]+)([^\s"',}]+)/gi, '$1[redacted-token]')
+    .replace(/(fullHash["'\s:=]+)([A-Za-z0-9+/=:_-]{12,})/gi, '$1[redacted-hash]')
     .replace(/\b[A-Za-z]:\\[^\s"'`]+/g, '[redacted-path]')
     .replace(/(?:\/Users\/|\/home\/|\/mnt\/|\/var\/|\/tmp\/)[^\s"'`\\]+/g, '[redacted-path]')
 }

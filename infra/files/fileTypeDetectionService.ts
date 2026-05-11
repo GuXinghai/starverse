@@ -364,6 +364,12 @@ export class FileTypeDetectionService {
     const currentVersion = normalizeNullableModelVersion(cached.magikaModelVersion)
     const runtimeVersion = normalizeNullableModelVersion(magikaRuntimeState.modelVersion)
     if (!runtimeVersion) return true
+    if (
+      currentVersion &&
+      !currentVerdict.verdict.evidence.some((e) => e.source === 'magika')
+    ) {
+      return false
+    }
     return currentVersion === runtimeVersion
   }
 

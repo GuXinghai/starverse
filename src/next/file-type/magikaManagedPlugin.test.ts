@@ -404,6 +404,19 @@ describe('magikaManagedPlugin', () => {
     })
   })
 
+  it('sanitizes integrity failure details', async () => {
+    await withPluginFixture(async ({ rootDir, modelPath }) => {
+      await writeFile(modelPath, 'tampered-model')
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.detail).toBeTruthy()
+      const detail = discovery.detail ?? ''
+      expect(detail).not.toContain(rootDir)
+      expect(detail).not.toMatch(/[A-Za-z]:\\/u)
+    })
+  })
+
   it('propagates modelVersion through managed runtime loader', async () => {
     await withPluginFixture(async ({ rootDir }) => {
       const loader = createManagedPluginMagikaRuntimeLoader({
