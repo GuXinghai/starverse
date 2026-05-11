@@ -261,6 +261,34 @@ describe('magikaClassifyRunner', () => {
     }
   })
 
+  it('sanitizes contentToken, fullHash, and paths in failure details', async () => {
+    const fixture = await createTempFixture()
+    try {
+      const result = await runMagikaClassify({
+        inputBytes: new Uint8Array([1]),
+        runtimeEntryPath: fixture.runtimeEntryPath,
+        modelDirPath: fixture.modelDirPath,
+        configDirPath: fixture.configDirPath,
+      }, {
+        processRunner: createMockProcessRunner({
+          errorCode: 'spawn_failed',
+          exitCode: null,
+          stdout: '',
+          stderr: `contentToken=tok-abc123 C:\\Users\\alice\\data\\file.bin fullHash=fedcba9876543210`,
+        }),
+      })
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.detail).toContain('[redacted-token]')
+      expect(result.detail).toContain('[redacted-hash]')
+      expect(result.detail).toContain('[redacted-path]')
+      expect(result.detail).not.toContain('tok-abc123')
+      expect(result.detail).not.toContain('fedcba9876543210')
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
   it('sanitizes paths in failure details', async () => {
     const fixture = await createTempFixture({ errorType: 'exit1' })
     try {

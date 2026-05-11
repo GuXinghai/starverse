@@ -865,6 +865,62 @@ describe('FileTypeDetectionService', () => {
     })
   })
 
+  it('re-detects when cached full-mode verdict lacks Magika evidence but runtime is now available', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-miss-19.txt'
+      await writeAssetFile(storageRootDir, storageUri, 'transient classify failure test')
+      fileAssetRepo.create({
+        id: 'asset-miss-19',
+        sha256: null,
+        filename: 'asset-miss-19.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 31,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      // First: Magika loader is available with modelVersion='magika-v1',
+      // but classify returns null (simulating transient failure).
+      const serviceFirst = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaRuntimeLoader: createMockMagikaRuntimeLoader({
+          modelVersion: 'magika-v1',
+          classify: () => null,
+        }),
+      })
+
+      const fallback = await serviceFirst.detectFull({ assetId: 'asset-miss-19' })
+      expect(fallback.job.status).toBe('ready')
+      expect(fallback.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
+      expect(fallback.verdict?.versionInfo.magikaModelVersion).toBe('magika-v1')
+
+      // Second: Same modelVersion but classify now works.
+      const serviceSecond = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaRuntimeLoader: createMockMagikaRuntimeLoader({
+          modelVersion: 'magika-v1',
+          output: { label: 'txt', score: 0.99 },
+        }),
+      })
+
+      const fresh = await serviceSecond.detectFull({ assetId: 'asset-miss-19' })
+      expect(fresh.fromCache).toBe(false)
+      const magikaEvidence = fresh.verdict?.verdict.evidence.find((item) => item.source === 'magika')
+      expect(magikaEvidence).toBeTruthy()
+      // Must not reuse the no-evidence fallback verdict
+      expect(fresh.verdict?.id).not.toBe(fallback.verdict?.id)
+    })
+  })
+
   it('does not poison full-mode cache when magika runtime is unavailable', async () => {
     await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
       const storageUri = 'assets/original/ab/asset-19.txt'
@@ -916,6 +972,49 @@ describe('FileTypeDetectionService', () => {
       expect(magikaEvidence).toBeTruthy()
       // The fallback verdict should not have been reused — it had no Magika evidence
       // and was produced with unavailable runtime, so versionInfo mismatch triggers re-detection
+    })
+  })
+
+  it('produces verdict JSON free of absolute paths and content tokens', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-20.txt'
+      await writeAssetFile(storageRootDir, storageUri, 'privacy audit verdict json')
+      fileAssetRepo.create({
+        id: 'asset-20',
+        sha256: null,
+        filename: 'asset-20.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 25,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      const service = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaRuntimeLoader: createMockMagikaRuntimeLoader({
+          modelVersion: 'magika-v1',
+          output: { label: 'txt', score: 0.99 },
+        }),
+      })
+
+      const result = await service.detectFull({ assetId: 'asset-20' })
+      expect(result.job.status).toBe('ready')
+      const json = JSON.stringify(result.verdict?.verdict ?? {})
+      expect(json).not.toMatch(/[A-Za-z]:\\/u)
+      expect(json).not.toMatch(/\/Users\/|\/home\/|\/mnt\/|\/tmp\//u)
+      expect(json).not.toMatch(/contentToken/i)
+      // Evidence items should not contain raw paths or hashes
+      for (const evidence of result.verdict?.verdict.evidence ?? []) {
+        const evidenceJson = JSON.stringify(evidence)
+        expect(evidenceJson).not.toMatch(/[A-Za-z]:\\/u)
+        expect(evidenceJson).not.toMatch(/contentToken/i)
+      }
     })
   })
 })
