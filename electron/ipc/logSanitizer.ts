@@ -8,6 +8,7 @@ export function redactSensitiveString(input: unknown): string {
     .replace(/data:[^,\s]+;base64,[A-Za-z0-9+/=]+/gi, 'data:[redacted]')
     .replace(/\b[A-Za-z0-9+/]{80,}={0,2}\b/g, '[redacted-base64]')
     .replace(/(contentToken["'\s:=]+)([^\s"',}]+)/gi, '$1[redacted-token]')
+    .replace(/(fullHash["'\s:=]+)([A-Za-z0-9+/=:_-]{12,})/gi, '$1[redacted-hash]')
     .replace(/\b[A-Za-z]:\\[^\s'"`]+/g, '[redacted-path]')
     .replace(/\\\\[^\s'"`]+/g, '[redacted-path]')
     .replace(/\/Users\/[^\s'"`]+/g, '[redacted-path]')
