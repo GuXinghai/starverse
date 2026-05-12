@@ -319,12 +319,18 @@ State rules:
 
 **Task packages**:
 
-- PDP1-A Package anatomy and manifest contract.
-- PDP1-B Artifact inventory and SHA-256/size coverage.
-- PDP1-C Catalog metadata schema and official source policy.
-- PDP1-D Trust root, signing, expiry, rotation, and revocation policy.
-- PDP1-E Install states, health states, verification states, and failure reasons.
-- PDP1-F Closeout and claim-safety review.
+- PDP1-A Package, manifest, and inventory contract.
+  - Define package anatomy, manifest schema, relative-path-only rules, artifact classes, required license/attribution files, and SHA-256/size coverage.
+  - Preserve runtime-kind neutrality so Magika, Pandoc, Tika, LibreOffice, ffprobe, and future official plugins use the same distribution contract.
+- PDP1-B Official catalog and compatibility contract.
+  - Define official source policy, catalog entry schema, platform/arch filtering, app version range, runtime kind, engine id, plugin version, model version, manifest schema version, and artifact inventory version.
+  - Confirm catalog browsing has no package execution, no arbitrary package scripts, and no user-provided catalog URLs.
+- PDP1-C Trust, signing, revocation, and verification contract.
+  - Define trust root, offline signing, catalog signing, package signing, expiry, key rotation, revocation, and verification order from trust root through post-install health check.
+  - Preserve the minimal TUF-inspired / deferred Sigstore-inspired decisions in this roadmap.
+- PDP1-D Lifecycle states, failure taxonomy, and closeout.
+  - Define install states, health states, verification states, failure reasons, rollback/quarantine labels, and sanitized reporting requirements.
+  - Complete closeout with claim-safety review and no downloader, installer, update, UI, or payload work.
 
 **Acceptance criteria**:
 
@@ -347,13 +353,17 @@ State rules:
 
 **Task packages**:
 
-- PDP2-A Local package selection and controlled-root install plan.
-- PDP2-B Verify before install.
-- PDP2-C Atomic install and rollback-on-failure plan.
-- PDP2-D Registry persistence and state transitions.
-- PDP2-E Enable, disable, and uninstall semantics.
-- PDP2-F Health check integration.
-- PDP2-G Closeout.
+- PDP2-A Local package intake and verify-before-install.
+  - Handle manual/local package selection, controlled-root eligibility, trust-root checks, catalog/package signature verification, inventory coverage, hash/size checks, and relative path containment.
+  - Keep remote download, remote catalog browsing, auto-update, marketplace UI, and third-party plugins out of scope.
+- PDP2-B Atomic install and registry transitions.
+  - Install into controlled roots only, stage writes atomically, rollback failed installs, and persist install state, verification state, health state, failure reason, install root kind, redacted install ref, and timestamps.
+  - Ensure interrupted installs leave no enabled partial plugin.
+- PDP2-C Enable, disable, uninstall, and health integration.
+  - Gate enable on verified install, preserve user disable semantics, uninstall cleanly, and run health checks only after verified install.
+  - Ensure plugin failure never blocks startup or core file-identification fallback.
+- PDP2-D Local package closeout.
+  - Validate state transitions, failure sanitization, no raw path/hash/token/argv leakage, and no unsigned package execution.
 
 **Acceptance criteria**:
 
@@ -376,12 +386,15 @@ State rules:
 
 **Task packages**:
 
-- PDP3-A Catalog source policy.
-- PDP3-B Signed catalog verification.
-- PDP3-C Read-only catalog DTO.
-- PDP3-D Compatibility filtering.
-- PDP3-E UI/IPC planning for display-only catalog.
-- PDP3-F Closeout.
+- PDP3-A Official catalog source and signature verification.
+  - Accept official catalog sources only, verify catalog signature, expiry, version, target hashes, and target sizes before entries are trusted.
+  - Keep user-provided catalog URLs, third-party channels, and network execution hooks out of scope.
+- PDP3-B Read-only catalog DTO and compatibility filtering.
+  - Expose plugin id, engine id, runtime kind, versions, platform/arch/app compatibility, license/attribution refs, revocation status, and sanitized availability reasons.
+  - Do not unpack, install, execute, or run health checks during browsing.
+- PDP3-C Display-only UI/IPC plan and closeout.
+  - Plan read-only catalog display with absent or disabled install/update controls until PDP-Phase 4 readiness is complete.
+  - Close out with claim-safety review that the feature is catalog display only, not a marketplace ecosystem.
 
 **Acceptance criteria**:
 
@@ -403,13 +416,18 @@ State rules:
 
 **Task packages**:
 
-- PDP4-A Downloader policy and network boundary.
-- PDP4-B Download temp file and hash verification.
-- PDP4-C Package signature verification before unpack/install.
-- PDP4-D Atomic install into controlled roots.
-- PDP4-E Interruption, resume, cancel, and cleanup semantics.
-- PDP4-F Sanitized progress and failure reporting.
-- PDP4-G Closeout.
+- PDP4-A Downloader policy and temporary artifact boundary.
+  - Accept official catalog package URLs only, download into non-executable temp storage, and define cancel/resume/interruption cleanup semantics.
+  - Prevent arbitrary user URLs and prevent temp artifacts from being loaded or executed.
+- PDP4-B Download verification and package authenticity.
+  - Verify package size, package hash, catalog entry binding, package signature, manifest hash, inventory hash, and per-file integrity before unpack/install.
+  - Fail closed on unsigned, signature-invalid, hash-mismatch, integrity-missing, expired, revoked, or incompatible packages.
+- PDP4-C Verified install into controlled roots.
+  - Unpack only after verification, install atomically into controlled roots, update registry states, and preserve rollback-on-failure semantics.
+  - Ensure partial downloads or installs never become enabled packages.
+- PDP4-D Progress, failure reporting, and closeout.
+  - Report sanitized progress and failure reasons without raw absolute paths, raw hashes, tokens, argv paths, package temp locations, or plugin directories.
+  - Close out with downloader/install claim-safety checks and no auto-update.
 
 **Acceptance criteria**:
 
@@ -433,12 +451,15 @@ State rules:
 
 **Task packages**:
 
-- PDP5-A Update check metadata and version policy.
-- PDP5-B Staged update install.
-- PDP5-C Rollback to previous known-good version.
-- PDP5-D Quarantine failed or revoked package.
-- PDP5-E Revocation response policy.
-- PDP5-F Closeout.
+- PDP5-A Update metadata and staged replacement policy.
+  - Use signed metadata, monotonic version rules, expiry checks, compatibility filtering, and explicit downgrade blocking except for approved rollback.
+  - Stage updates without replacing the previous known-good package until verification and health pass.
+- PDP5-B Rollback and previous-known-good recovery.
+  - Persist previous known-good references, restore or disable safely after failed update, and define `rollback_pending`, `rolling_back`, `rolled_back`, and `rollback_unavailable` behavior.
+  - Ensure startup and core file identification continue when rollback is unavailable.
+- PDP5-C Quarantine, revocation response, and closeout.
+  - Quarantine or disable failed/revoked packages before execution, fail closed on revoked trust roots or revoked packages, and sanitize all reporting.
+  - Close out with proof that auto-update remains blocked until rollback and quarantine pass acceptance.
 
 **Acceptance criteria**:
 
@@ -460,12 +481,18 @@ State rules:
 
 **Task packages**:
 
-- PDP6-A Installed plugin status UI.
+- PDP6-A Installed plugin status and diagnostics UI.
+  - Show installed, enabled, disabled, failed, unhealthy, unverified, revoked, incompatible, and quarantined states with sanitized messages.
+  - Do not display raw absolute paths, raw hashes, tokens, argv paths, plugin directories, or package temp locations.
 - PDP6-B Official-only catalog UI.
-- PDP6-C Install, update, remove, enable, and disable controls.
-- PDP6-D Health diagnostics and sanitized failure display.
-- PDP6-E Manual package import affordance.
-- PDP6-F Closeout.
+  - Display official catalog entries, compatibility status, versions, license/attribution refs, and revocation status without third-party marketplace language or user-provided URLs.
+  - Keep catalog browsing non-executing.
+- PDP6-C Management controls.
+  - Expose install, update, remove, enable, disable, and manual package import only through already-defined lifecycle operations.
+  - Do not introduce UI trust bypasses or allow actions before verification, rollback, and quarantine requirements are met.
+- PDP6-D UI closeout and claim-safety review.
+  - Validate sanitized health diagnostics, failure display, startup non-blocking behavior, and official-only language.
+  - Confirm the UI is plugin management for official packages, not a third-party ecosystem.
 
 **Acceptance criteria**:
 
@@ -492,13 +519,13 @@ State rules:
 
 | Phase | Task packages |
 |-------|---------------|
-| PDP-Phase 1 | 6 |
-| PDP-Phase 2 | 7 |
-| PDP-Phase 3 | 6 |
-| PDP-Phase 4 | 7 |
-| PDP-Phase 5 | 6 |
-| PDP-Phase 6 | 6 |
-| **Total PDP-Phase 1 through 6** | **38** |
+| PDP-Phase 1 | 4 |
+| PDP-Phase 2 | 4 |
+| PDP-Phase 3 | 3 |
+| PDP-Phase 4 | 4 |
+| PDP-Phase 5 | 3 |
+| PDP-Phase 6 | 4 |
+| **Total PDP-Phase 1 through 6** | **22** |
 
 ## 9. Gap mapping
 
