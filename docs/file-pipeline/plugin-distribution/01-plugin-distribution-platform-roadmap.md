@@ -413,34 +413,38 @@ State rules:
 - Stop if browsing a catalog can trigger package execution.
 - Stop if display language implies a marketplace ecosystem or third-party plugin support.
 
-### PDP-Phase 4 - Downloader and Installer
+### PDP-Phase 4 - Verified Downloader and Atomic Installer
 
-**Goal**: Add official package download and verified installation.
+**Goal**: Add official package cryptographic verification, constrained package download, safe staging, and controlled-root atomic install contracts.
 
 **Task packages**:
 
-- PDP4-A Downloader policy and temporary artifact boundary.
-  - Accept official catalog package URLs only, download into non-executable temp storage, and define cancel/resume/interruption cleanup semantics.
-  - Prevent arbitrary user URLs and prevent temp artifacts from being loaded or executed.
-- PDP4-B Download verification and package authenticity.
-  - Verify package size, package hash, catalog entry binding, package signature, manifest hash, inventory hash, and per-file integrity before unpack/install.
-  - Fail closed on unsigned, signature-invalid, hash-mismatch, integrity-missing, expired, revoked, or incompatible packages.
-- PDP4-C Verified install into controlled roots.
-  - Unpack only after verification, install atomically into controlled roots, update registry states, and preserve rollback-on-failure semantics.
-  - Ensure partial downloads or installs never become enabled packages.
-- PDP4-D Progress, failure reporting, and closeout.
-  - Report sanitized progress and failure reasons without raw absolute paths, raw hashes, tokens, argv paths, package temp locations, or plugin directories.
-  - Close out with downloader/install claim-safety checks and no auto-update.
+- PDP4-A Actual cryptographic verification gate.
+  - Verify Ed25519 package signatures with trusted key metadata, package hash/size, metadata expiry, rollback blocking, and compatibility checks before any downloader or installer path is trusted.
+  - Fail closed on missing signatures, unsupported algorithms, unknown keys, invalid signatures, stale metadata, hash/size mismatch, rollback, or incompatibility.
+- PDP4-B Verified download staging.
+  - Accept official catalog package references only, require HTTPS official host pinning, reject user URLs and third-party sources, and use injected transport for bounded staging.
+  - Verify downloaded bytes against expected SHA-256 and size before representing them as staged.
+- PDP4-C Atomic controlled-root installer contracts.
+  - Produce install plans and finalization state only from cryptographically verified packages and controlled root kinds.
+  - Keep actual archive extraction and durable filesystem staging deferred until a dedicated filesystem implementation can be reviewed.
+- PDP4-D Interruption, cancel, and failure recovery.
+  - Preserve previous known-good metadata on download, verification, staging, install, cancellation, and cleanup failures.
+  - Ensure failed or cancelled operations cannot become enabled half-installs.
+- PDP4-E Sanitized progress, failure reporting, and closeout.
+  - Report progress and failure DTOs without raw absolute paths, raw URLs, raw hashes, signatures, tokens, argv paths, or package temp locations.
+  - Close out with downloader/install claim-safety checks and no marketplace UI, settings UI, plugin execution, or auto-update.
 
 **Acceptance criteria**:
 
-- Downloader accepts official catalog package URLs only.
-- Package bytes are downloaded to a temp location that cannot be executed.
+- Downloader accepts official catalog package references only.
+- Package bytes are staged through a constrained injected transport and cannot be executed by PDP modules.
 - Hash and size verification occur before unpack/install.
 - Signature verification occurs before unpack/install.
 - Interrupted installs leave no enabled partial plugin.
 - Failure reporting is sanitized.
-- Package install uses controlled roots only.
+- Package install planning/finalization uses controlled roots only.
+- Actual archive extraction and durable filesystem installation remain deferred.
 
 **Stop conditions**:
 
