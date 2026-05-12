@@ -389,23 +389,23 @@ State rules:
 
 **Task packages**:
 
-- PDP3-A Official catalog source and signature verification.
-  - Accept official catalog sources only, verify catalog signature, expiry, version, target hashes, and target sizes before entries are trusted.
+- PDP3-A Official catalog source and signature metadata validation.
+  - Accept local/static official catalog sources only, validate signature metadata shape, expiry, version, target hashes, and target sizes before entries are represented.
+  - Keep actual cryptographic catalog signature verification deferred until signing-key verification is implemented.
   - Keep user-provided catalog URLs, third-party channels, and network execution hooks out of scope.
 - PDP3-B Read-only catalog DTO and compatibility filtering.
   - Expose plugin id, engine id, runtime kind, versions, platform/arch/app compatibility, license/attribution refs, revocation status, and sanitized availability reasons.
   - Do not unpack, install, execute, or run health checks during browsing.
-- PDP3-C Display-only UI/IPC plan and closeout.
-  - Plan read-only catalog display with absent or disabled install/update controls until PDP-Phase 4 readiness is complete.
-  - Close out with claim-safety review that the feature is catalog display only, not a marketplace ecosystem.
+- PDP3-C Phase closeout and roadmap synchronization.
+  - Close out with claim-safety review that the feature is read-only catalog metadata, not a downloader, installer, marketplace ecosystem, or remote catalog client.
 
 **Acceptance criteria**:
 
 - Only official catalog sources are accepted.
-- Catalog signature, expiry, version, target hash, and target size metadata are validated before entries are trusted.
+- Catalog signature metadata, expiry, version, target hash, and target size metadata are validated before entries are represented.
 - Catalog browsing does not execute code or package hooks.
 - Compatibility filtering does not reveal raw local paths or internal argv.
-- Install/update controls remain absent or disabled unless PDP-Phase 4 readiness is complete.
+- Installability status is informational and does not expose install/update actions unless PDP-Phase 4 readiness is complete.
 
 **Stop conditions**:
 
