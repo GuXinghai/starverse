@@ -347,31 +347,34 @@ State rules:
 - Stop if any task implies unsigned production execution.
 - Stop if a package field requires plugin payload behavior design.
 
-### PDP-Phase 2 - Local Package Register / Install / Enable / Disable
+### PDP-Phase 2 - Local Package Verification and Manual Registration
 
 **Goal**: Implement local/manual-only plugin package handling without downloader, remote catalog browsing, auto-update, or marketplace UI.
 
 **Task packages**:
 
-- PDP2-A Local package intake and verify-before-install.
-  - Handle manual/local package selection, controlled-root eligibility, trust-root checks, catalog/package signature verification, inventory coverage, hash/size checks, and relative path containment.
+- PDP2-A Local package verification gate.
+  - Handle manual/local package verification contracts: manifest/inventory validation, controlled-root eligibility rules, signature metadata presence checks, policy compatibility checks, hash-shape checks, platform/arch/app compatibility checks, and relative path containment.
+  - Explicitly keep cryptographic signature execution deferred in this phase.
   - Keep remote download, remote catalog browsing, auto-update, marketplace UI, and third-party plugins out of scope.
-- PDP2-B Atomic install and registry transitions.
-  - Install into controlled roots only, stage writes atomically, rollback failed installs, and persist install state, verification state, health state, failure reason, install root kind, redacted install ref, and timestamps.
-  - Ensure interrupted installs leave no enabled partial plugin.
-- PDP2-C Enable, disable, uninstall, and health integration.
-  - Gate enable on verified install, preserve user disable semantics, uninstall cleanly, and run health checks only after verified install.
+- PDP2-B Controlled-root manual registration contract.
+  - Define local/manual registration DTOs and root kinds (`user_local`, `portable`, `dev_only`) with sanitized install/package references.
+  - Allow host boundary local selection inputs, but do not expose raw absolute paths in public DTOs.
+- PDP2-C Registry and lifecycle state modeling.
+  - Define guarded state transitions for discovered/registered/verifying/verified/enabled/disabled/failed/uninstalled.
+  - Gate enable on verified state, preserve disable semantics, and keep uninstall metadata-only for this phase.
+- PDP2-D Existing lifecycle health integration seam.
+  - Map existing safe health outcomes into PDP lifecycle state without executing arbitrary plugin payloads in PDP modules.
   - Ensure plugin failure never blocks startup or core file-identification fallback.
-- PDP2-D Local package closeout.
-  - Validate state transitions, failure sanitization, no raw path/hash/token/argv leakage, and no unsigned package execution.
+  - Validate failure sanitization and no raw path/hash/token/argv leakage.
 
 **Acceptance criteria**:
 
-- Local manual package import uses the same signature/hash policy as future downloaded packages.
-- Install target is one of the controlled roots.
-- Install is atomic or fails back to the previous registry/filesystem state.
-- Enable does not occur until verification and install succeed.
-- Health failure disables or marks the plugin without breaking startup or core identification.
+- Local manual package verification is available through non-UI service/domain APIs.
+- Controlled roots are enforced and public DTOs do not expose raw absolute paths.
+- Enable does not occur until verification status is eligible.
+- Health mapping updates lifecycle health status without invalidating artifact-integrity verification state.
+- Install orchestration, atomic filesystem staging/rollback, and registry persistence execution remain deferred to a later phase.
 - No downloader, official catalog browsing, auto-update, third-party plugins, or marketplace UI is implemented.
 
 **Stop conditions**:
