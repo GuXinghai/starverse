@@ -24,4 +24,48 @@ describe('sanitizePluginDistributionText', () => {
     expect(sanitized).toContain('[redacted-path]')
     expect(sanitized).not.toContain('\\\\server\\share\\plugins\\pkg')
   })
+
+  it('redacts key-value Unix path diagnostics', () => {
+    const sanitized = sanitizePluginDistributionText('download failed path=/opt/starverse/plugin')
+    expect(sanitized).toContain('path=[redacted-path]')
+    expect(sanitized).not.toContain('/opt/starverse/plugin')
+  })
+
+  it('redacts quoted key-value Unix path diagnostics', () => {
+    const sanitized = sanitizePluginDistributionText('download failed path="/opt/starverse/plugin"')
+    expect(sanitized).toContain('path="[redacted-path]"')
+    expect(sanitized).not.toContain('/opt/starverse/plugin')
+  })
+
+  it('redacts quoted key-value Unix paths containing spaces', () => {
+    const sanitized = sanitizePluginDistributionText('download failed path="/opt/Starverse Plugin/plugin"')
+    expect(sanitized).toContain('path="[redacted-path]"')
+    expect(sanitized).not.toContain('/opt/Starverse Plugin/plugin')
+    expect(sanitized).not.toContain('Plugin/plugin')
+  })
+
+  it('redacts unterminated quoted key-value Unix path diagnostics', () => {
+    const sanitized = sanitizePluginDistributionText('download failed path="/opt/starverse/plugin')
+    expect(sanitized).toContain('path="[redacted-path]"')
+    expect(sanitized).not.toContain('/opt/starverse/plugin')
+  })
+
+  it('redacts mixed-delimiter Windows diagnostics', () => {
+    const sanitized = sanitizePluginDistributionText('cleanup path=C:/Users/owner/plugin')
+    expect(sanitized).toContain('path=[redacted-path]')
+    expect(sanitized).not.toContain('C:/Users/owner/plugin')
+  })
+
+  it('redacts Windows paths containing spaces', () => {
+    const sanitized = sanitizePluginDistributionText('failed at C:\\Users\\owner\\My Documents\\plugin')
+    expect(sanitized).toContain('[redacted-path]')
+    expect(sanitized).not.toContain('C:\\Users\\owner\\My Documents\\plugin')
+    expect(sanitized).not.toContain('Documents\\plugin')
+  })
+
+  it('redacts unterminated quoted mixed-delimiter Windows diagnostics', () => {
+    const sanitized = sanitizePluginDistributionText('cleanup path="C:/Users/owner/plugin')
+    expect(sanitized).toContain('path="[redacted-path]"')
+    expect(sanitized).not.toContain('C:/Users/owner/plugin')
+  })
 })
