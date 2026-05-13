@@ -129,6 +129,7 @@ storybook-static
 .gemini/
 test_output.txt
 reports/
+.tmp-file-pipeline-worker-tests/
 
 # Local-only runtime packages (manual preparation, not for commit)
 .external-runtime-work/
