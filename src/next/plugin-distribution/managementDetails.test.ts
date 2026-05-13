@@ -97,6 +97,17 @@ describe('buildPdpManagementDetailModel', () => {
     expect(JSON.stringify(details)).not.toContain('signature value')
   })
 
+  it('does not infer cryptographic verification performed from verified status', () => {
+    const details = buildPdpManagementDetailModel({
+      plugin: plugin(),
+      verification: {
+        status: 'verified',
+      },
+    })
+    expect(details.verification.status).toBe('verified')
+    expect(details.verification.cryptographicVerificationPerformed).toBe(false)
+  })
+
   it('shows revocation and quarantine without implying a malware verdict', () => {
     const model = buildPdpManagementViewModel({
       registryRecords: [

@@ -48,9 +48,38 @@ function firstPlugin(input: Parameters<typeof buildPdpManagementViewModel>[0]) {
 }
 
 describe('buildPdpManagementActions', () => {
-  it('enables action only for verified eligible records', () => {
+  it('keeps future-only contract actions disabled by default', () => {
     const plugin = firstPlugin({ registryRecords: [registryRecord()] })
     const actions = buildPdpManagementActions(plugin)
+    expect(findPdpManagementAction(actions, 'manual_local_package_registration')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['unsupported_action_contract_missing'],
+    })
+    expect(findPdpManagementAction(actions, 'verify_package')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['unsupported_action_contract_missing'],
+    })
+    expect(findPdpManagementAction(actions, 'manual_update_eligibility')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['unsupported_action_contract_missing'],
+    })
+    expect(findPdpManagementAction(actions, 'stage_update_contract')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['unsupported_action_contract_missing'],
+    })
+    expect(findPdpManagementAction(actions, 'rollback_metadata')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['unsupported_action_contract_missing'],
+    })
+    expect(findPdpManagementAction(actions, 'acknowledge_quarantine')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['unsupported_action_contract_missing'],
+    })
+  })
+
+  it('enables action only for verified eligible records', () => {
+    const plugin = firstPlugin({ registryRecords: [registryRecord()] })
+    const actions = buildPdpManagementActions(plugin, { hasEnableDisableContract: true })
     expect(findPdpManagementAction(actions, 'enable')).toMatchObject({ enabled: true })
 
     const unverified = firstPlugin({
@@ -63,14 +92,17 @@ describe('buildPdpManagementActions', () => {
         }),
       ],
     })
-    const blocked = findPdpManagementAction(buildPdpManagementActions(unverified), 'enable')
+    const blocked = findPdpManagementAction(
+      buildPdpManagementActions(unverified, { hasEnableDisableContract: true }),
+      'enable'
+    )
     expect(blocked.enabled).toBe(false)
     expect(blocked.reasonCodes).toContain('verification_required')
   })
 
   it('keeps install or update action unavailable when only read-only catalog metadata exists', () => {
     const plugin = firstPlugin({ catalogEntries: [catalogEntry()] })
-    const actions = buildPdpManagementActions(plugin)
+    const actions = buildPdpManagementActions(plugin, { hasStageUpdateContract: true })
     expect(findPdpManagementAction(actions, 'enable').enabled).toBe(false)
     expect(findPdpManagementAction(actions, 'stage_update_contract').enabled).toBe(false)
     expect(findPdpManagementAction(actions, 'stage_update_contract').reasonCodes).toContain(
@@ -81,12 +113,15 @@ describe('buildPdpManagementActions', () => {
   it('exposes manual registration as local/manual only and not for already registered plugins', () => {
     const catalogOnly = firstPlugin({ catalogEntries: [catalogEntry()] })
     expect(
-      findPdpManagementAction(buildPdpManagementActions(catalogOnly), 'manual_local_package_registration')
+      findPdpManagementAction(
+        buildPdpManagementActions(catalogOnly, { hasLocalManualRegistrationContract: true }),
+        'manual_local_package_registration'
+      )
     ).toMatchObject({ enabled: true, label: 'Register local package' })
 
     const registered = firstPlugin({ registryRecords: [registryRecord()] })
     const action = findPdpManagementAction(
-      buildPdpManagementActions(registered),
+      buildPdpManagementActions(registered, { hasLocalManualRegistrationContract: true }),
       'manual_local_package_registration'
     )
     expect(action.enabled).toBe(false)
@@ -95,7 +130,12 @@ describe('buildPdpManagementActions', () => {
 
   it('makes rollback action available only with previous verified known-good metadata', () => {
     const unavailable = firstPlugin({ registryRecords: [registryRecord()] })
-    expect(findPdpManagementAction(buildPdpManagementActions(unavailable), 'rollback_metadata')).toMatchObject({
+    expect(
+      findPdpManagementAction(
+        buildPdpManagementActions(unavailable, { hasRollbackMetadataContract: true }),
+        'rollback_metadata'
+      )
+    ).toMatchObject({
       enabled: false,
       reasonCodes: ['previous_known_good_missing'],
     })
@@ -116,7 +156,12 @@ describe('buildPdpManagementActions', () => {
         },
       ],
     })
-    expect(findPdpManagementAction(buildPdpManagementActions(eligible), 'rollback_metadata')).toMatchObject({
+    expect(
+      findPdpManagementAction(
+        buildPdpManagementActions(eligible, { hasRollbackMetadataContract: true }),
+        'rollback_metadata'
+      )
+    ).toMatchObject({
       enabled: true,
     })
   })
@@ -133,10 +178,14 @@ describe('buildPdpManagementActions', () => {
         }),
       ],
     })
-    const enable = findPdpManagementAction(buildPdpManagementActions(plugin), 'enable')
+    const actions = buildPdpManagementActions(plugin, {
+      hasEnableDisableContract: true,
+      hasQuarantineAcknowledgementContract: true,
+    })
+    const enable = findPdpManagementAction(actions, 'enable')
     expect(enable.enabled).toBe(false)
     expect(enable.reasonCodes).toContain('quarantined')
-    expect(findPdpManagementAction(buildPdpManagementActions(plugin), 'acknowledge_quarantine')).toMatchObject({
+    expect(findPdpManagementAction(actions, 'acknowledge_quarantine')).toMatchObject({
       enabled: true,
     })
   })

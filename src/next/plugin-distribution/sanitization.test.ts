@@ -68,4 +68,22 @@ describe('sanitizePluginDistributionText', () => {
     expect(sanitized).toContain('path="[redacted-path]"')
     expect(sanitized).not.toContain('C:/Users/owner/plugin')
   })
+
+  it('redacts http and https URLs including query strings', () => {
+    const sanitized = sanitizePluginDistributionText(
+      'fetch http://example.test/plugin.svpkg?token=secret and https://example.test/a/b?hash=abc#frag'
+    )
+    expect(sanitized).toContain('[redacted-url]')
+    expect(sanitized).not.toContain('http://example.test')
+    expect(sanitized).not.toContain('https://example.test')
+    expect(sanitized).not.toContain('token=secret')
+    expect(sanitized).not.toContain('hash=abc')
+  })
+
+  it('redacts file URLs without leaking raw URL paths', () => {
+    const sanitized = sanitizePluginDistributionText('loaded file:///C:/Users/owner/plugin.svpkg?sig=secret')
+    expect(sanitized).toContain('[redacted-url]')
+    expect(sanitized).not.toContain('file:///C:/Users/owner/plugin.svpkg')
+    expect(sanitized).not.toContain('sig=secret')
+  })
 })
