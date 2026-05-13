@@ -486,22 +486,26 @@ State rules:
 
 ### PDP-Phase 6 - Plugin Management UI
 
-**Goal**: Expose a user-facing official plugin management page.
+**Status**: Completed in `07-pdp-phase6-plugin-management-ui-closeout.md`.
+
+**Goal**: Expose a user-facing official plugin management panel for the already-implemented PDP read models and lifecycle contracts.
 
 **Task packages**:
 
-- PDP6-A Installed plugin status and diagnostics UI.
-  - Show installed, enabled, disabled, failed, unhealthy, unverified, revoked, incompatible, and quarantined states with sanitized messages.
-  - Do not display raw absolute paths, raw hashes, tokens, argv paths, plugin directories, or package temp locations.
-- PDP6-B Official-only catalog UI.
-  - Display official catalog entries, compatibility status, versions, license/attribution refs, and revocation status without third-party marketplace language or user-provided URLs.
-  - Keep catalog browsing non-executing.
-- PDP6-C Management controls.
-  - Expose install, update, remove, enable, disable, and manual package import only through already-defined lifecycle operations.
-  - Do not introduce UI trust bypasses or allow actions before verification, rollback, and quarantine requirements are met.
-- PDP6-D UI closeout and claim-safety review.
-  - Validate sanitized health diagnostics, failure display, startup non-blocking behavior, and official-only language.
-  - Confirm the UI is plugin management for official packages, not a third-party ecosystem.
+- PDP6-A Management read model and status labels.
+  - Show catalog metadata, registered lifecycle state, verification, install/update/quarantine/rollback/health status, and sanitized diagnostics.
+  - Keep metadata-compatible catalog entries distinct from installed records.
+- PDP6-B Action availability contract.
+  - Expose only actions backed by existing PDP contracts and Settings lifecycle wiring.
+  - Render unsupported or future-only actions as disabled with reason codes.
+- PDP6-C Minimal Settings UI integration.
+  - Display official plugin status and read-only catalog metadata in Settings.
+  - Use existing lifecycle client methods only; add no broad IPC or preload surface.
+- PDP6-D Sanitized diagnostics and detail model.
+  - Provide safe manifest, catalog, verification, signature algorithm, health, update, rollback, quarantine, and failure detail models.
+  - Omit raw paths, URLs, hashes, signatures, argv, `contentToken`, and `fullHash`.
+- PDP6-E Closeout and roadmap synchronization.
+  - Close out with claim-safety review and confirm no marketplace, auto-update, third-party ecosystem, conversion engine, provider-file lifecycle, runtime execution, or raw sensitive diagnostic exposure was added.
 
 **Acceptance criteria**:
 
@@ -545,7 +549,7 @@ State rules:
 | Plugin upgrade / rollback | PDP-Phase 5 | Full update lifecycle belongs after downloader/installer and before marketplace-like UX. |
 | Settings UI for plugin management | PDP-Phase 6 | Separate from identification plugin settings; this is official distribution management. |
 | Downloader / installer | PDP-Phase 4 | Must wait for trust/package contract and local install semantics. |
-| Official marketplace/catalog | PDP-Phase 3, PDP-Phase 6 | Read-only catalog before install controls; official-only UI later. |
+| Official catalog / plugin management UI | PDP-Phase 3, PDP-Phase 6 | Read-only catalog before backed management controls; official-only UI later. |
 | Magika local package | PDP-Phase 2 | First pilot package; must not make platform Magika-specific. |
 | Future Pandoc/Tika/LibreOffice package reuse | PDP-Phase 1 through PDP-Phase 6 | Same package, catalog, registry, lifecycle, verification, rollback, and UI model; payload behavior remains out of scope. |
 
