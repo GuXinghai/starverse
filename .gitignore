@@ -130,6 +130,7 @@ storybook-static
 test_output.txt
 reports/
 .tmp-file-pipeline-worker-tests/
+.artifacts/vitest-main-promotion-*.json
 
 # Local-only runtime packages (manual preparation, not for commit)
 .external-runtime-work/
