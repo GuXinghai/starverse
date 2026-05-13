@@ -144,6 +144,9 @@ function uiActions(plugin: PdpManagementPluginViewModel): readonly UiAction[] {
   const actionSet = buildPdpManagementActions(plugin, {
     hasLocalManualRegistrationContract: false,
     hasPackageVerificationContract: false,
+    hasHealthCheckContract: true,
+    hasMetadataUninstallContract: true,
+    hasEnableDisableContract: true,
     hasUpdateEligibilityContract: false,
     hasStageUpdateContract: false,
     hasRollbackMetadataContract: false,

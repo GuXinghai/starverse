@@ -41,15 +41,15 @@ export type PdpManagementActionOptions = Readonly<{
 }>
 
 const DEFAULT_ACTION_OPTIONS: Required<PdpManagementActionOptions> = {
-  hasLocalManualRegistrationContract: true,
-  hasPackageVerificationContract: true,
-  hasHealthCheckContract: true,
-  hasMetadataUninstallContract: true,
-  hasEnableDisableContract: true,
-  hasUpdateEligibilityContract: true,
-  hasStageUpdateContract: true,
-  hasRollbackMetadataContract: true,
-  hasQuarantineAcknowledgementContract: true,
+  hasLocalManualRegistrationContract: false,
+  hasPackageVerificationContract: false,
+  hasHealthCheckContract: false,
+  hasMetadataUninstallContract: false,
+  hasEnableDisableContract: false,
+  hasUpdateEligibilityContract: false,
+  hasStageUpdateContract: false,
+  hasRollbackMetadataContract: false,
+  hasQuarantineAcknowledgementContract: false,
 }
 
 export function buildPdpManagementActions(

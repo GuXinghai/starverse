@@ -163,9 +163,7 @@ export function buildPdpManagementDetailModel(
     verification: {
       status: verificationStatus,
       label: labelPdpVerificationStatus(verificationStatus),
-      cryptographicVerificationPerformed:
-        input.verification?.cryptographicVerificationPerformed ??
-        verificationStatus === 'verified',
+      cryptographicVerificationPerformed: input.verification?.cryptographicVerificationPerformed === true,
       signatureAlgorithm: describeSignatureAlgorithm(input.verification?.signatureAlgorithm),
     },
     health: {
