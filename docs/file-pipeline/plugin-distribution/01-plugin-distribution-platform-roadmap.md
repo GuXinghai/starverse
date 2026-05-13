@@ -454,6 +454,8 @@ State rules:
 
 ### PDP-Phase 5 - Update / Rollback / Quarantine
 
+**Status**: Completed in `06-pdp-phase5-update-rollback-quarantine-closeout.md`.
+
 **Goal**: Enable safe plugin updates and failure recovery.
 
 **Task packages**:
