@@ -21,11 +21,26 @@ release/
 
 # Environment variables
 .env
+.env.*
+!.env.example
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 .env.*.local
+
+# Certificates and private key material
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+
+# Local databases
+*.sqlite
+*.db
 
 # IDE - VSCode
 .vscode/*
@@ -118,3 +133,12 @@ reports/
 # Local-only runtime packages (manual preparation, not for commit)
 .external-runtime-work/
 .starverse-engines/
+
+# Local model/runtime binaries and packaged artifacts
+*.onnx
+*.tflite
+*.bin
+*.dll
+*.7z
+*.tar
+*.gz
