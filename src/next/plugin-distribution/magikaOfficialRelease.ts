@@ -1,6 +1,13 @@
 import type {
   OfficialPackageReleaseMetadata,
 } from './officialPackageRelease'
+import {
+  buildReadOnlyCatalogDto,
+  validateOfficialPluginCatalog,
+  type CatalogCompatibilityEnvironment,
+  type ReadOnlyCatalogDto,
+} from './catalogReadModel'
+import { validatePluginTrustRootMetadata } from './trustPolicy'
 import type {
   PluginCatalogEntry,
   PluginCatalogMetadata,
@@ -8,6 +15,7 @@ import type {
   PluginTargetMetadata,
   PluginTrustRootMetadata,
 } from './types'
+import type { TrustedCatalogPublicKeyMap } from '../file-type/pluginCatalogSignature'
 
 export const MAGIKA_OFFICIAL_PLUGIN_ID = 'magika'
 export const MAGIKA_OFFICIAL_PLUGIN_VERSION = '0.1.0'
@@ -123,3 +131,60 @@ export const MAGIKA_OFFICIAL_RELEASE_METADATA = {
   targetMetadata: MAGIKA_OFFICIAL_TARGET_METADATA,
   compatibility: MAGIKA_OFFICIAL_CATALOG_ENTRY.compatibility,
 } as const satisfies OfficialPackageReleaseMetadata
+
+export type MagikaOfficialCatalogReadModelResult =
+  | Readonly<{ ok: true; catalog: ReadOnlyCatalogDto }>
+  | Readonly<{ ok: false; reason: 'official_trusted_root_unconfigured' | 'official_release_metadata_invalid' }>
+
+export function buildMagikaOfficialCatalogReadModel(input: Readonly<{
+  trustedRoots: TrustedCatalogPublicKeyMap
+  trustedRootSource?: 'official' | 'test' | null
+  now?: Date
+  environment?: CatalogCompatibilityEnvironment
+}>): MagikaOfficialCatalogReadModelResult {
+  const now = input.now ?? new Date()
+  if (
+    input.trustedRootSource !== 'official' ||
+    !hasMagikaOfficialProductionTrustedRoot(input.trustedRoots)
+  ) {
+    return { ok: false, reason: 'official_trusted_root_unconfigured' }
+  }
+
+  const trustRoot = validatePluginTrustRootMetadata(MAGIKA_OFFICIAL_RELEASE_METADATA.trustRoot, { now })
+  const validation = validateOfficialPluginCatalog({
+    source: { kind: 'bundled_static', sourceRef: 'magika_official_release' },
+    catalog: MAGIKA_OFFICIAL_CATALOG_METADATA,
+    signatureMetadata: MAGIKA_OFFICIAL_RELEASE_METADATA.signatureEnvelope,
+    trustPolicy: { requireSignedCatalogs: true },
+    environment: { now },
+  })
+  if (!MAGIKA_OFFICIAL_RELEASE_METADATA.remoteInstallEnabled || !trustRoot.ok || !validation.ok) {
+    return { ok: false, reason: 'official_release_metadata_invalid' }
+  }
+
+  return {
+    ok: true,
+    catalog: buildReadOnlyCatalogDto({
+      validation,
+      environment: input.environment,
+      entryMetadata: {
+        [`${MAGIKA_OFFICIAL_PLUGIN_ID}@${MAGIKA_OFFICIAL_PLUGIN_VERSION}`]: {
+          displayName: 'Magika',
+          publisher: 'Google Magika',
+          capabilities: ['file_identification', 'model_inference'],
+          modelVersion: MAGIKA_OFFICIAL_MODEL_VERSION,
+        },
+      },
+    }),
+  }
+}
+
+export function hasMagikaOfficialProductionTrustedRoot(
+  trustedRoots: TrustedCatalogPublicKeyMap
+): boolean {
+  const trustedRoot = trustedRoots[MAGIKA_OFFICIAL_SIGNATURE_KEY_ID]
+  return (
+    trustedRoot?.algorithm === 'ed25519' &&
+    trustedRoot.publicKeyPem.trim() === MAGIKA_OFFICIAL_PUBLIC_KEY_PEM.trim()
+  )
+}

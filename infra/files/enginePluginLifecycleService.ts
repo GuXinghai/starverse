@@ -15,6 +15,13 @@ import {
   runManagedMagikaPluginHealthCheck,
   type MagikaManagedPluginDescriptor,
 } from '../../src/next/file-type/magikaManagedPlugin'
+import {
+  buildMagikaOfficialCatalogReadModel,
+} from '../../src/next/plugin-distribution/magikaOfficialRelease'
+import type {
+  ReadOnlyCatalogEntryDto,
+} from '../../src/next/plugin-distribution/catalogReadModel'
+import type { PluginPackageCapability } from '../../src/next/plugin-distribution/types'
 import type { EnginePluginRegistryRepo } from '../db/repo/enginePluginRegistryRepo'
 import type {
   EnginePluginInstallRootKind,
@@ -69,11 +76,21 @@ export type InstalledEnginePluginDto = Readonly<{
 
 export type OfficialPluginDto = Readonly<{
   pluginId: string
+  displayName: string
+  publisher: string
   pluginVersion: string
+  runtimeKind: string
+  capabilities: readonly PluginPackageCapability[]
+  modelVersion: string | null
   catalogGeneratedAt: string | null
   installState: EnginePluginRegistryRecord['installState'] | 'not_installed'
   enabled: boolean
   recommendedInstallRootKind: 'managed_root' | 'test_root'
+  catalogStatus: string
+  verificationMetadataStatus: string
+  installabilityStatus: string
+  reasons: readonly string[]
+  warnings: readonly string[]
 }>
 
 export type LifecycleActionResult<T> =
@@ -165,6 +182,10 @@ export class EnginePluginLifecycleService {
   }
 
   async listOfficialPlugins(input: ListOfficialPluginsInput = {}): Promise<LifecycleActionResult<OfficialPluginDto[]>> {
+    if (!input.catalogPath && !this.deps.defaultCatalogPath) {
+      return this.listEmbeddedOfficialPlugins()
+    }
+
     const catalogResult = await this.loadAndVerifyCatalog(input.catalogPath)
     if (!catalogResult.ok) return catalogResult
 
@@ -175,11 +196,21 @@ export class EnginePluginLifecycleService {
       const installedRecord = installedById.get(entry.pluginId)
       return {
         pluginId: entry.pluginId,
+        displayName: entry.pluginId,
+        publisher: 'Starverse',
         pluginVersion: entry.pluginVersion,
+        runtimeKind: 'managed',
+        capabilities: [],
+        modelVersion: null,
         catalogGeneratedAt: catalogResult.value.generatedAt,
         installState: installedRecord?.installState ?? 'not_installed',
         enabled: installedRecord?.enabled ?? false,
         recommendedInstallRootKind,
+        catalogStatus: 'valid_metadata_only',
+        verificationMetadataStatus: 'metadata_present_crypto_deferred',
+        installabilityStatus: installedRecord ? 'unavailable_read_only' : 'metadata_compatible_future_install',
+        reasons: ['read_only_catalog_no_install_action'],
+        warnings: [],
       } as OfficialPluginDto
     })
 
@@ -188,6 +219,63 @@ export class EnginePluginLifecycleService {
 
   getInstalledPlugins(): InstalledEnginePluginDto[] {
     return this.deps.registryRepo.list().map(toInstalledDto)
+  }
+
+  private listEmbeddedOfficialPlugins(): LifecycleActionResult<OfficialPluginDto[]> {
+    const catalogResult = buildMagikaOfficialCatalogReadModel({
+      trustedRoots: this.deps.trustedRoots,
+      trustedRootSource: this.deps.trustedRootSource,
+      now: new Date(this.now()),
+      environment: {
+        platform: process.platform,
+        architecture: process.arch,
+        appVersion: '0.0.0',
+      },
+    })
+    if (!catalogResult.ok) {
+      if (catalogResult.reason === 'official_trusted_root_unconfigured') {
+        return fail('official_trusted_root_unconfigured', 'official plugin trusted roots are not configured')
+      }
+      return fail('catalog_signature_invalid', 'official plugin release metadata verification failed')
+    }
+
+    const installed = this.deps.registryRepo.list()
+    const installedById = new Map(installed.map((item) => [item.engineId, item]))
+    const recommendedInstallRootKind = this.getRecommendedInstallRootKind()
+    return ok(catalogResult.catalog.entries.map((entry) =>
+      this.toOfficialPluginDto(
+        entry,
+        installedById.get(entry.pluginId),
+        recommendedInstallRootKind,
+        catalogResult.catalog.generatedAt
+      )
+    ))
+  }
+
+  private toOfficialPluginDto(
+    entry: ReadOnlyCatalogEntryDto,
+    installedRecord: EnginePluginRegistryRecord | undefined,
+    recommendedInstallRootKind: 'managed_root' | 'test_root',
+    catalogGeneratedAt: string | null
+  ): OfficialPluginDto {
+    return {
+      pluginId: entry.pluginId,
+      displayName: entry.displayName,
+      publisher: entry.publisher,
+      pluginVersion: entry.pluginVersion,
+      runtimeKind: entry.runtimeKind,
+      capabilities: entry.capabilities,
+      modelVersion: entry.modelVersion,
+      catalogGeneratedAt,
+      installState: installedRecord?.installState ?? 'not_installed',
+      enabled: installedRecord?.enabled ?? false,
+      recommendedInstallRootKind,
+      catalogStatus: entry.catalogStatus,
+      verificationMetadataStatus: entry.verificationMetadataStatus,
+      installabilityStatus: installedRecord ? 'unavailable_read_only' : entry.installabilityStatus,
+      reasons: entry.reasons,
+      warnings: entry.warnings,
+    }
   }
 
   // eslint-disable-next-line max-lines-per-function
@@ -402,12 +490,12 @@ export class EnginePluginLifecycleService {
         displayName: installed?.displayName ?? `${builtinId} (builtin)`,
         kind: 'builtin',
         installed: !!installed,
-        enabled: installed?.enabled ?? true,
+        enabled: installed?.enabled ?? false,
         healthStatus: installed?.healthStatus ?? 'unknown',
         verificationStatus: null,
         pluginVersion: installed?.pluginVersion ?? null,
         modelVersion: installed?.modelVersion ?? null,
-        failureReason: installed?.failureReason ?? null,
+        failureReason: sanitizeStoredFailureReason(installed?.failureReason),
         installSource: installed?.installSource ?? null,
       })
     }
@@ -424,15 +512,16 @@ export class EnginePluginLifecycleService {
         verificationStatus: record.installState === 'installed' ? 'unverified' : null,
         pluginVersion: record.pluginVersion,
         modelVersion: record.modelVersion,
-        failureReason: record.failureReason,
+        failureReason: sanitizeStoredFailureReason(record.failureReason),
         installSource: record.installSource,
       })
     }
 
-    const installedCount = entries.filter((e) => e.installed).length
-    const enabledCount = entries.filter((e) => e.enabled).length
-    const healthyCount = entries.filter((e) => e.healthStatus === 'healthy').length
-    const failedCount = entries.filter((e) => e.healthStatus === 'unhealthy' || e.healthStatus === 'degraded').length
+    const installedEntries = entries.filter((e) => e.kind === 'plugin' && e.installed)
+    const installedCount = installedEntries.length
+    const enabledCount = installedEntries.filter((e) => e.enabled).length
+    const healthyCount = installedEntries.filter((e) => e.healthStatus === 'healthy').length
+    const failedCount = installedEntries.filter((e) => e.healthStatus === 'unhealthy' || e.healthStatus === 'degraded').length
     const unverifiedCount = entries.filter((e) => e.kind === 'plugin' && e.verificationStatus === 'unverified').length
 
     return {

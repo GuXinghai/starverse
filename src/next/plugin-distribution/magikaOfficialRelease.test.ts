@@ -5,13 +5,16 @@ import {
   MAGIKA_OFFICIAL_PACKAGE_SHA256,
   MAGIKA_OFFICIAL_PACKAGE_SIZE_BYTES,
   MAGIKA_OFFICIAL_PUBLIC_KEY_FINGERPRINT_SHA256,
+  MAGIKA_OFFICIAL_PUBLIC_KEY_PEM,
   MAGIKA_OFFICIAL_RELEASE_METADATA,
   MAGIKA_OFFICIAL_RELEASE_URL,
+  buildMagikaOfficialCatalogReadModel,
   validatePluginCatalogMetadata,
   validatePluginSignatureEnvelope,
   validatePluginTrustRootMetadata,
   verifyOfficialPackageReleaseDownload,
 } from './index'
+import { createOfficialTrustedRoots } from '../file-type/officialPluginTrustedRoots'
 
 describe('Magika official release metadata', () => {
   it('exposes a production-enabled GitHub release target with exact immutable metadata', () => {
@@ -54,7 +57,35 @@ describe('Magika official release metadata', () => {
     expect(signature.ok).toBe(true)
     expect(trustRoot.ok).toBe(true)
   })
+})
 
+describe('Magika official release read model', () => {
+  it('builds the read model only when the production trusted root is configured', () => {
+    const configured = buildMagikaOfficialCatalogReadModel({
+      trustedRoots: createOfficialTrustedRoots(MAGIKA_OFFICIAL_PUBLIC_KEY_PEM),
+      trustedRootSource: 'official',
+      now: new Date('2026-05-14T15:10:00.000Z'),
+      environment: { platform: 'win32', architecture: 'x64', appVersion: '0.0.2' },
+    })
+    expect(configured.ok).toBe(true)
+    if (configured.ok) {
+      expect(configured.catalog.entries[0]).toMatchObject({
+        pluginId: 'magika',
+        displayName: 'Magika',
+        installabilityStatus: 'metadata_compatible_future_install',
+      })
+    }
+
+    const missingRoot = buildMagikaOfficialCatalogReadModel({
+      trustedRoots: {},
+      trustedRootSource: null,
+      now: new Date('2026-05-14T15:10:00.000Z'),
+    })
+    expect(missingRoot).toEqual({ ok: false, reason: 'official_trusted_root_unconfigured' })
+  })
+})
+
+describe('Magika official release verification', () => {
   it('fails closed when the published bytes do not match catalog metadata', async () => {
     const result = await verifyOfficialPackageReleaseDownload({
       release: MAGIKA_OFFICIAL_RELEASE_METADATA,

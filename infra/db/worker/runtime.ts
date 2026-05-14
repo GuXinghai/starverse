@@ -236,7 +236,10 @@ export class DbWorkerRuntime {
       storageRootDir: this.fileStorageRootDir,
       magikaRuntimeLoader: this.buildMagikaRuntimeLoader(),
     })
-    const activeTrustedRoots = getActiveTrustedRoots(undefined, { isProduction: config.isProduction })
+    const activeTrustedRoots = getActiveTrustedRoots(undefined, {
+      isProduction: config.isProduction,
+      includeEmbeddedOfficialRoot: true,
+    })
     this.enginePluginLifecycleService = new EnginePluginLifecycleService({
       registryRepo: this.enginePluginRegistryRepo,
       trustedRoots: activeTrustedRoots.ok ? activeTrustedRoots.trustedRoots : {},

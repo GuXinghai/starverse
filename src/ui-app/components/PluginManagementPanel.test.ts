@@ -80,11 +80,21 @@ function installedPlugin(overrides?: Record<string, unknown>) {
 function officialPlugin(overrides?: Record<string, unknown>) {
   return {
     pluginId: 'magika-managed',
+    displayName: 'Magika Managed',
+    publisher: 'Starverse',
     pluginVersion: '1.2.3',
+    runtimeKind: 'managed',
+    capabilities: ['file_identification'],
+    modelVersion: null,
     catalogGeneratedAt: '2026-05-08T00:00:00.000Z',
     installState: 'not_installed',
     enabled: false,
     recommendedInstallRootKind: 'managed_root',
+    catalogStatus: 'valid_metadata_only',
+    verificationMetadataStatus: 'metadata_present_crypto_deferred',
+    installabilityStatus: 'metadata_compatible_future_install',
+    reasons: ['read_only_catalog_no_install_action'],
+    warnings: [],
     ...overrides,
   }
 }
@@ -151,6 +161,35 @@ describe('PluginManagementPanel', () => {
     await screen.findByText(/Catalog: metadata_compatible_future_install/)
     expect(screen.getByText(/Register local package/)).toBeTruthy()
     expect(screen.getAllByText(/unsupported_action_contract_missing/).length).toBeGreaterThan(0)
+  })
+
+  it('renders official Magika entry instead of empty state when catalog metadata exists', async () => {
+    ;(globalThis as any).dbBridge = createDbBridgeMock({
+      listOfficialPlugins: {
+        ok: true,
+        value: [
+          officialPlugin({
+            pluginId: 'magika',
+            displayName: 'Magika',
+            publisher: 'Google Magika',
+            pluginVersion: '0.1.0',
+            modelVersion: 'standard_v3_3',
+          }),
+        ],
+      },
+      listInstalledPlugins: [],
+      getDiagnosticsSummary: {
+        engines: [],
+        counts: { total: 0, installed: 0, enabled: 0, healthy: 0, failed: 0, unverified: 0 },
+      },
+    })
+
+    const { container } = render(PluginManagementPanel)
+
+    await screen.findByText('Magika')
+    await screen.findByText(/magika v0\.1\.0/)
+    expect(container.textContent).toContain('0 registered, 0 enabled, 0 healthy, 0 failed')
+    expect(container.textContent).not.toContain('No official plugins or registered plugin metadata available.')
   })
 
   it('does not expose raw path, URL, hash, signature, contentToken, or fullHash text', async () => {

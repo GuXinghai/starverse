@@ -161,6 +161,15 @@ describe('officialPluginTrustedRoots', () => {
     }
   })
 
+  it('returns embedded official roots when the service path requests them', () => {
+    const result = getActiveTrustedRoots({}, { includeEmbeddedOfficialRoot: true })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.source).toBe('official')
+      expect(result.trustedRoots['starverse-pdp-ed25519-prod-2026Q2']).toBeDefined()
+    }
+  })
+
   it('ignores SV_ENGINE_PLUGIN_DEV_MODE=1 when isProduction is true', () => {
     const result = getActiveTrustedRoots(
       { SV_ENGINE_PLUGIN_DEV_MODE: '1' },

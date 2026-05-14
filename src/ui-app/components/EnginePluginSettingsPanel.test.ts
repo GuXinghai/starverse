@@ -3,6 +3,28 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import EnginePluginSettingsPanel from './EnginePluginSettingsPanel.vue'
 
+function officialPlugin(overrides?: Record<string, unknown>) {
+  return {
+    pluginId: 'magika',
+    displayName: 'Magika',
+    publisher: 'Google Magika',
+    pluginVersion: '0.1.0',
+    runtimeKind: 'managed',
+    capabilities: ['file_identification'],
+    modelVersion: 'standard_v3_3',
+    catalogGeneratedAt: '2026-05-08T00:00:00.000Z',
+    installState: 'not_installed',
+    enabled: false,
+    recommendedInstallRootKind: 'managed_root',
+    catalogStatus: 'valid_metadata_only',
+    verificationMetadataStatus: 'metadata_present_crypto_deferred',
+    installabilityStatus: 'metadata_compatible_future_install',
+    reasons: ['read_only_catalog_no_install_action'],
+    warnings: [],
+    ...overrides,
+  }
+}
+
 function createDbBridgeMock(outputs?: {
   listOfficialPlugins?: unknown
   listInstalledPlugins?: unknown
@@ -66,7 +88,7 @@ describe('EnginePluginSettingsPanel', () => {
     ;(globalThis as any).dbBridge = createDbBridgeMock({
       listOfficialPlugins: {
         ok: true,
-        value: [{ pluginId: 'magika', pluginVersion: '0.1.0', catalogGeneratedAt: '2026-05-08T00:00:00.000Z', installState: 'not_installed', enabled: false, recommendedInstallRootKind: 'managed_root' }],
+        value: [officialPlugin()],
       },
       listInstalledPlugins: [],
     })
@@ -226,7 +248,7 @@ describe('EnginePluginSettingsPanel', () => {
     const bridge = createDbBridgeMock({
       listOfficialPlugins: {
         ok: true,
-        value: [{ pluginId: 'magika', pluginVersion: '0.1.0', catalogGeneratedAt: '2026-05-08T00:00:00.000Z', installState: 'not_installed', enabled: false, recommendedInstallRootKind: 'managed_root' }],
+        value: [officialPlugin()],
       },
       listInstalledPlugins: [],
       registerLocalOfficialPlugin: {

@@ -6,7 +6,12 @@ import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { createCatalogSigningPayload, type TrustedCatalogPublicKeyMap } from '../../src/next/file-type/pluginCatalogSignature'
-import { createTestTrustedRoots } from '../../src/next/file-type/officialPluginTrustedRoots'
+import {
+  createOfficialTrustedRoots,
+} from '../../src/next/file-type/officialPluginTrustedRoots'
+import {
+  MAGIKA_OFFICIAL_PUBLIC_KEY_PEM,
+} from '../../src/next/plugin-distribution/magikaOfficialRelease'
 import { ensureEnginePluginRegistrySchema } from '../db/migrations/ensureEnginePluginRegistrySchema'
 import { EnginePluginRegistryRepo } from '../db/repo/enginePluginRegistryRepo'
 import { EnginePluginLifecycleService } from './enginePluginLifecycleService'
@@ -139,6 +144,31 @@ function createService(tempRoot: string, trustedRoots: TrustedCatalogPublicKeyMa
     resolveInstallPluginDir: ({ installRef }) => path.join(tempRoot, installRef),
   })
   return { db, repo, service }
+}
+
+function registryRecord(overrides?: Record<string, unknown>) {
+  return {
+    engineId: 'magika',
+    displayName: 'Magika',
+    pluginVersion: '0.1.0',
+    manifestSchemaVersion: '1',
+    manifestHash: 'a'.repeat(64),
+    runtimeKind: 'local_loader',
+    modelVersion: 'magika-v3',
+    installState: 'installed',
+    enabled: true,
+    healthStatus: 'unknown',
+    failureReason: null,
+    installSource: 'official_catalog',
+    installRootKind: 'managed_root',
+    installRef: 'plugin_magika_001',
+    installedAt: 1,
+    updatedAt: 2,
+    lastVerifiedAt: 2,
+    lastHealthCheckAt: null,
+    metadataJson: null,
+    ...overrides,
+  } as const
 }
 
 // eslint-disable-next-line max-lines-per-function
@@ -911,6 +941,130 @@ describe('EnginePluginLifecycleService', () => {
       }
       expect(diagnostics.engines.length).toBeGreaterThanOrEqual(4)
       expect(diagnostics.counts.total).toBeGreaterThanOrEqual(4)
+      expect(diagnostics.counts.installed).toBe(0)
+      expect(diagnostics.counts.enabled).toBe(0)
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('does not count registered builtin rows in plugin summary totals', async () => {
+    const fixture = await createFixture()
+    const { db, repo, service } = createService(fixture.tempRoot, fixture.trustedRoots, { trustedRootSource: 'test' })
+    try {
+      repo.upsert(registryRecord({
+        engineId: 'tika',
+        displayName: 'Tika',
+        enabled: true,
+        healthStatus: 'healthy',
+      }))
+
+      const diagnostics = service.getDiagnosticsSummary()
+      const tika = diagnostics.engines.find((entry) => entry.engineId === 'tika')
+      expect(tika?.kind).toBe('builtin')
+      expect(tika?.installed).toBe(true)
+      expect(tika?.enabled).toBe(true)
+      expect(diagnostics.counts.installed).toBe(0)
+      expect(diagnostics.counts.enabled).toBe(0)
+      expect(diagnostics.counts.healthy).toBe(0)
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('lists embedded official Magika when the production trusted root is configured', async () => {
+    const fixture = await createFixture()
+    const officialRoots = createOfficialTrustedRoots(MAGIKA_OFFICIAL_PUBLIC_KEY_PEM)
+    const { db, service } = createService(fixture.tempRoot, officialRoots, { trustedRootSource: 'official' })
+    try {
+      const result = await service.listOfficialPlugins()
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.value).toHaveLength(1)
+      expect(result.value[0]).toMatchObject({
+        pluginId: 'magika',
+        displayName: 'Magika',
+        pluginVersion: '0.1.0',
+        installState: 'not_installed',
+        enabled: false,
+        installabilityStatus: 'metadata_compatible_future_install',
+        recommendedInstallRootKind: 'managed_root',
+      })
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps catalog-only Magika out of registered and enabled diagnostics counts', async () => {
+    const fixture = await createFixture()
+    const officialRoots = createOfficialTrustedRoots(MAGIKA_OFFICIAL_PUBLIC_KEY_PEM)
+    const { db, service } = createService(fixture.tempRoot, officialRoots, { trustedRootSource: 'official' })
+    try {
+      const official = await service.listOfficialPlugins()
+      expect(official.ok).toBe(true)
+
+      const diagnostics = service.getDiagnosticsSummary()
+      expect(diagnostics.engines.find((entry) => entry.engineId === 'magika')).toBeFalsy()
+      expect(diagnostics.counts.installed).toBe(0)
+      expect(diagnostics.counts.enabled).toBe(0)
+      expect(diagnostics.counts.enabled).toBeLessThanOrEqual(diagnostics.counts.installed)
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('counts registered disabled and enabled plugins consistently', async () => {
+    const fixture = await createFixture()
+    const { db, repo, service } = createService(fixture.tempRoot, fixture.trustedRoots)
+    try {
+      repo.upsert(registryRecord({ engineId: 'magika-disabled', enabled: false, healthStatus: 'healthy' }))
+
+      const disabledSummary = service.getDiagnosticsSummary()
+      expect(disabledSummary.counts.installed).toBe(1)
+      expect(disabledSummary.counts.enabled).toBe(0)
+      expect(disabledSummary.counts.healthy).toBe(1)
+      expect(disabledSummary.counts.enabled).toBeLessThanOrEqual(disabledSummary.counts.installed)
+
+      repo.upsert(registryRecord({
+        engineId: 'magika-enabled',
+        enabled: true,
+        healthStatus: 'unhealthy',
+        failureReason: 'health_check_failed',
+      }))
+
+      const enabledSummary = service.getDiagnosticsSummary()
+      expect(enabledSummary.counts.installed).toBe(2)
+      expect(enabledSummary.counts.enabled).toBe(1)
+      expect(enabledSummary.counts.healthy).toBe(1)
+      expect(enabledSummary.counts.failed).toBe(1)
+      expect(enabledSummary.counts.enabled).toBeLessThanOrEqual(enabledSummary.counts.installed)
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('does not expose raw paths or hashes in diagnostics summary', async () => {
+    const fixture = await createFixture()
+    const { db, repo, service } = createService(fixture.tempRoot, fixture.trustedRoots)
+    try {
+      const hash = 'd'.repeat(64)
+      repo.upsert(registryRecord({
+        engineId: 'magika-failed',
+        enabled: false,
+        installState: 'failed',
+        healthStatus: 'unhealthy',
+        failureReason: `C:\\Users\\owner\\private.pem signature ${hash}`,
+      }))
+
+      const text = JSON.stringify(service.getDiagnosticsSummary())
+      expect(text).not.toContain('C:\\Users\\owner')
+      expect(text).not.toContain('private.pem')
+      expect(text).not.toContain(hash)
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })
