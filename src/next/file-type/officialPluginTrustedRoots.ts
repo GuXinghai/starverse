@@ -24,11 +24,11 @@ export function getActiveTrustedRoots(
     readonly SV_TEST_TRUSTED_ROOTS?: string
     readonly SV_ENGINE_PLUGIN_DEV_MODE?: string
   } = typeof process !== 'undefined' ? process.env as Record<string, string | undefined> : {},
-  options?: { isProduction?: boolean },
+  options?: { isProduction?: boolean; includeEmbeddedOfficialRoot?: boolean },
 ): ActiveTrustedRootsResult {
   const isProduction = options?.isProduction === true
 
-  if (isProduction) {
+  if (isProduction || options?.includeEmbeddedOfficialRoot === true) {
     return {
       ok: true,
       trustedRoots: createOfficialTrustedRoots(OFFICIAL_ROOT_PUBLIC_KEY_PEM),

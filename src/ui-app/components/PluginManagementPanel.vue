@@ -169,18 +169,18 @@ function uiActions(plugin: PdpManagementPluginViewModel): readonly UiAction[] {
 function toCatalogEntry(item: DecodedOfficialPlugin): PdpManagementCatalogInput {
   return {
     pluginId: item.pluginId,
-    displayName: item.pluginId,
-    publisher: 'Starverse',
+    displayName: item.displayName,
+    publisher: item.publisher,
     pluginVersion: item.pluginVersion,
-    runtimeKind: 'managed',
-    capabilities: [],
+    runtimeKind: item.runtimeKind,
+    capabilities: item.capabilities,
     installabilityStatus: item.installState === 'not_installed'
-      ? 'metadata_compatible_future_install'
+      ? item.installabilityStatus
       : 'unavailable_read_only',
-    reasons: ['read_only_catalog_no_install_action'],
-    warnings: [],
-    catalogStatus: 'valid_metadata_only',
-    verificationMetadataStatus: 'metadata_present_crypto_deferred',
+    reasons: item.reasons,
+    warnings: item.warnings,
+    catalogStatus: item.catalogStatus,
+    verificationMetadataStatus: item.verificationMetadataStatus,
   }
 }
 

@@ -1,6 +1,17 @@
 import { z } from 'zod'
 
 const nonEmpty = z.string().trim().min(1)
+const pluginPackageCapabilitySchema = z.enum([
+  'file_identification',
+  'document_conversion',
+  'spreadsheet_conversion',
+  'presentation_conversion',
+  'text_extraction',
+  'metadata_extraction',
+  'audio_video_probe',
+  'model_inference',
+  'utility',
+])
 
 const installedPluginSchema = z.object({
   engineId: nonEmpty,
@@ -23,11 +34,21 @@ const installedPluginSchema = z.object({
 
 const officialPluginSchema = z.object({
   pluginId: nonEmpty,
+  displayName: nonEmpty,
+  publisher: nonEmpty,
   pluginVersion: nonEmpty,
+  runtimeKind: nonEmpty,
+  capabilities: z.array(pluginPackageCapabilitySchema),
+  modelVersion: z.string().trim().nullable(),
   catalogGeneratedAt: z.string().trim().nullable(),
   installState: z.enum(['installed', 'failed', 'uninstalled', 'update_available', 'not_installed']),
   enabled: z.boolean(),
   recommendedInstallRootKind: z.enum(['managed_root', 'test_root']),
+  catalogStatus: nonEmpty,
+  verificationMetadataStatus: nonEmpty,
+  installabilityStatus: nonEmpty,
+  reasons: z.array(nonEmpty),
+  warnings: z.array(nonEmpty),
 })
 
 const lifecycleFailureSchema = z.object({
