@@ -1,4 +1,5 @@
 import { createHash, createPublicKey, verify } from 'node:crypto'
+import { SUPPORTED_PLUGIN_CRYPTO_SIGNATURE_ALGORITHMS } from './cryptoPolicy'
 import { sanitizePluginDistributionText } from './sanitization'
 import { validatePluginSignatureEnvelope, validatePluginTrustRootMetadata } from './trustPolicy'
 import type {
@@ -23,9 +24,10 @@ import {
   validateSafeRelativePath,
 } from './validation'
 
-export const SUPPORTED_PLUGIN_CRYPTO_SIGNATURE_ALGORITHMS = ['ed25519'] as const
-export type SupportedPluginCryptoSignatureAlgorithm =
-  (typeof SUPPORTED_PLUGIN_CRYPTO_SIGNATURE_ALGORITHMS)[number]
+export {
+  SUPPORTED_PLUGIN_CRYPTO_SIGNATURE_ALGORITHMS,
+  type SupportedPluginCryptoSignatureAlgorithm,
+} from './cryptoPolicy'
 
 export type TrustedPluginPublicKeyMaterial = Readonly<{
   publicKeyRef: string
