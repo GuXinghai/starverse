@@ -1,6 +1,10 @@
 import type { TrustedCatalogPublicKey, TrustedCatalogPublicKeyMap } from './pluginCatalogSignature'
 
-const OFFICIAL_ROOT_ID = 'starverse-official-root-001'
+const OFFICIAL_ROOT_ID = 'starverse-pdp-ed25519-prod-2026Q2'
+
+const OFFICIAL_ROOT_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAOqFZKnmTjxC/vZpT2NWxP5n/i8R/F/rXXGiH63frJBE=
+-----END PUBLIC KEY-----`
 
 const TEST_ROOT_ID = 'starverse-test-root'
 
@@ -24,6 +28,14 @@ export function getActiveTrustedRoots(
 ): ActiveTrustedRootsResult {
   const isProduction = options?.isProduction === true
 
+  if (isProduction) {
+    return {
+      ok: true,
+      trustedRoots: createOfficialTrustedRoots(OFFICIAL_ROOT_PUBLIC_KEY_PEM),
+      source: 'official',
+    }
+  }
+
   if (!isProduction) {
     const officialJson = (env.SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS ?? '').trim()
     if (officialJson.length > 0) {
@@ -43,9 +55,6 @@ export function getActiveTrustedRoots(
   }
 
   const isDevMode = env.SV_ENGINE_PLUGIN_DEV_MODE === '1'
-  if (isProduction && isDevMode) {
-    return { ok: false, reason: 'official_trusted_root_unconfigured' }
-  }
 
   if (!isProduction && (env.VITEST === 'true' || env.NODE_ENV === 'test' || isDevMode)) {
     return {

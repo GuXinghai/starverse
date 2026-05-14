@@ -2,7 +2,9 @@
 
 Date: 2026-05-14
 
-Status: release-prepared only. Remote install remains disabled because the package is dev/test-signed and the GitHub Release asset has not been published.
+Status: superseded by the production release closeout in `docs/file-pipeline/plugin-distribution/11-magika-production-release-closeout.md`.
+
+This readiness checklist recorded the pre-publication state. The package was later production-signed, uploaded to GitHub Releases, verified from the published asset, and enabled through the built-in official Magika release metadata. Keep this document as the gate checklist; use the closeout document for the published release result.
 
 ## Package Target
 
