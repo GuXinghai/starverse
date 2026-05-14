@@ -36,11 +36,11 @@ import { FileIngestionService } from '../../files/fileIngestionService'
 import { SendPlanService } from '../../files/sendPlanService'
 import { FileTypeDetectionService } from '../../files/fileTypeDetectionService'
 import { EnginePluginLifecycleService } from '../../files/enginePluginLifecycleService'
-import { getActiveTrustedRoots } from '../../next/file-type/officialPluginTrustedRoots'
+import { getActiveTrustedRoots } from '../../../src/next/file-type/officialPluginTrustedRoots'
 import {
   createManagedPluginMagikaRuntimeLoader,
   createMagikaClassifyCallback,
-} from '../../next/file-type/magikaManagedPlugin'
+} from '../../../src/next/file-type/magikaManagedPlugin'
 import {
   type WorkerInitConfig,
   type WorkerRequestMessage,
