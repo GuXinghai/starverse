@@ -1,4 +1,4 @@
-import { SUPPORTED_PLUGIN_CRYPTO_SIGNATURE_ALGORITHMS } from './cryptoVerification'
+import { SUPPORTED_PLUGIN_CRYPTO_SIGNATURE_ALGORITHMS } from './cryptoPolicy'
 import {
   labelPdpFailureReason,
   labelPdpHealthStatus,

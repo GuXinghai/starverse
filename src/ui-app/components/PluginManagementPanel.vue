@@ -21,7 +21,7 @@ import {
   type PdpManagementCatalogInput,
   type PdpManagementPluginViewModel,
   type PdpManagementRegistryInput,
-} from '@/next/plugin-distribution'
+} from '@/next/plugin-distribution/browser'
 import type {
   DecodedDiagnosticsSummary,
   DecodedInstalledPlugin,
@@ -32,7 +32,7 @@ import type {
   PluginHealthStatus,
   PluginInstallState,
   PluginVerificationStatus,
-} from '@/next/plugin-distribution'
+} from '@/next/plugin-distribution/browser'
 
 type PluginPanelRow = Readonly<{
   plugin: PdpManagementPluginViewModel
