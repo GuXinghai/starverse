@@ -99,6 +99,7 @@ payload.json
 temptest.ps1
 .git_missed.txt
 .artifacts/netlog/*.json
+.artifacts/plugin-packages/
 
 # Package manager
 .yarn/
