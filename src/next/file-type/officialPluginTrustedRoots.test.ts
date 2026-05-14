@@ -91,7 +91,7 @@ describe('officialPluginTrustedRoots', () => {
     const roots = createOfficialTrustedRoots(
       '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAiaIm/edVF9H9tvP4dFVpw5XF+IMfnfvLwUxGNAc5MI0=\n-----END PUBLIC KEY-----'
     )
-    expect(roots['starverse-official-root-001']).toBeDefined()
+    expect(roots['starverse-pdp-ed25519-prod-2026Q2']).toBeDefined()
   })
 
   it('parseTrustedRootsJson rejects invalid input gracefully', () => {
@@ -152,14 +152,23 @@ describe('officialPluginTrustedRoots', () => {
     expect(result.ok).toBe(false)
   })
 
-  it('rejects SV_ENGINE_PLUGIN_DEV_MODE=1 when isProduction is true', () => {
+  it('returns embedded official roots when isProduction is true', () => {
+    const result = getActiveTrustedRoots({}, { isProduction: true })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.source).toBe('official')
+      expect(result.trustedRoots['starverse-pdp-ed25519-prod-2026Q2']).toBeDefined()
+    }
+  })
+
+  it('ignores SV_ENGINE_PLUGIN_DEV_MODE=1 when isProduction is true', () => {
     const result = getActiveTrustedRoots(
       { SV_ENGINE_PLUGIN_DEV_MODE: '1' },
       { isProduction: true },
     )
-    expect(result.ok).toBe(false)
-    if (!result.ok) {
-      expect(result.reason).toBe('official_trusted_root_unconfigured')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.source).toBe('official')
     }
   })
 
@@ -174,26 +183,18 @@ describe('officialPluginTrustedRoots', () => {
     }
   })
 
-  it('rejects VITEST=true when isProduction is true (env roots blocked in production)', () => {
+  it('ignores VITEST=true when isProduction is true', () => {
     const result = getActiveTrustedRoots(
       { VITEST: 'true' },
       { isProduction: true },
     )
-    expect(result.ok).toBe(false)
-    if (!result.ok) {
-      expect(result.reason).toBe('official_trusted_root_unconfigured')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.source).toBe('official')
     }
   })
 
-  it('returns unconfigured in production with no env vars set', () => {
-    const result = getActiveTrustedRoots({}, { isProduction: true })
-    expect(result.ok).toBe(false)
-    if (!result.ok) {
-      expect(result.reason).toBe('official_trusted_root_unconfigured')
-    }
-  })
-
-  it('blocks SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS env var in production (fail-closed)', () => {
+  it('ignores SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS env var in production', () => {
     const { publicKey } = generateKeyPairSync('ed25519')
     const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString().trim()
     const config = JSON.stringify({
@@ -207,13 +208,14 @@ describe('officialPluginTrustedRoots', () => {
       { SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS: config },
       { isProduction: true },
     )
-    expect(result.ok).toBe(false)
-    if (!result.ok) {
-      expect(result.reason).toBe('official_trusted_root_unconfigured')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.source).toBe('official')
+      expect(result.trustedRoots['starverse-pdp-ed25519-prod-2026Q2']?.publicKeyPem).not.toBe(pem)
     }
   })
 
-  it('blocks SV_TEST_TRUSTED_ROOTS env var in production (fail-closed)', () => {
+  it('ignores SV_TEST_TRUSTED_ROOTS env var in production', () => {
     const { publicKey } = generateKeyPairSync('ed25519')
     const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString().trim()
     const config = JSON.stringify({
@@ -227,24 +229,24 @@ describe('officialPluginTrustedRoots', () => {
       { SV_TEST_TRUSTED_ROOTS: config },
       { isProduction: true },
     )
-    expect(result.ok).toBe(false)
-    if (!result.ok) {
-      expect(result.reason).toBe('official_trusted_root_unconfigured')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.source).toBe('official')
     }
   })
 
-  it('rejects NODE_ENV=test when isProduction is true (env roots blocked in production)', () => {
+  it('ignores NODE_ENV=test when isProduction is true', () => {
     const result = getActiveTrustedRoots(
       { NODE_ENV: 'test' },
       { isProduction: true },
     )
-    expect(result.ok).toBe(false)
-    if (!result.ok) {
-      expect(result.reason).toBe('official_trusted_root_unconfigured')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.source).toBe('official')
     }
   })
 
-  it('blocks SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS in production even with DEV_MODE=1 (both env vars blocked)', () => {
+  it('ignores SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS in production even with DEV_MODE=1', () => {
     const { publicKey } = generateKeyPairSync('ed25519')
     const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString().trim()
     const config = JSON.stringify({
@@ -258,9 +260,10 @@ describe('officialPluginTrustedRoots', () => {
       { SV_OFFICIAL_PLUGIN_TRUSTED_ROOTS: config, SV_ENGINE_PLUGIN_DEV_MODE: '1' },
       { isProduction: true },
     )
-    expect(result.ok).toBe(false)
-    if (!result.ok) {
-      expect(result.reason).toBe('official_trusted_root_unconfigured')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.source).toBe('official')
+      expect(result.trustedRoots['starverse-pdp-ed25519-prod-2026Q2']?.publicKeyPem).not.toBe(pem)
     }
   })
 })
