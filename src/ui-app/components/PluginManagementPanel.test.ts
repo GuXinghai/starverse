@@ -366,6 +366,210 @@ describe('PluginManagementPanel', () => {
     expect(screen.getByText('Install: Registering plugin')).toBeTruthy()
   })
 
+  it('keeps terminal failed install operation visible and allows retry', async () => {
+    ;(globalThis as any).dbBridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+      listInstalledPlugins: [],
+      getInstallOperationStatus: {
+        ok: true,
+        value: installOperation({
+          state: 'failed',
+          failureReason: 'registration_failed',
+          diagnosticCode: 'registration_failed',
+          progressSummary: 'Install failed: registration_failed',
+          stateHistory: ['accepted', 'pending', 'downloading', 'verifying', 'staging', 'registering', 'failed'],
+          terminalAt: 2,
+        }),
+      },
+    })
+
+    const { container } = render(PluginManagementPanel)
+
+    await screen.findByText('Install failed: registration_failed')
+    expect(container.textContent).toContain('0 registered, 0 enabled, 0 healthy, 0 failed')
+    expect(container.textContent).toContain('Install: Install failed: registration_failed')
+    expect(container.textContent).toContain('Failure: registration_failed')
+    expect(screen.getByRole('button', { name: 'Install official plugin' })).toBeEnabled()
+  })
+
+  it('refreshes registry state after terminal installed operation', async () => {
+    let installedCalls = 0
+    const bridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+    })
+    bridge.invoke.mockImplementation(async (method: string, params?: unknown) => {
+      if (method === 'enginePluginLifecycle.listInstalledPlugins') {
+        installedCalls += 1
+        return installedCalls === 1
+          ? []
+          : [installedPlugin({
+              engineId: 'magika',
+              displayName: 'Magika',
+              pluginVersion: '0.1.0',
+              enabled: false,
+              healthStatus: 'healthy',
+            })]
+      }
+      if (method === 'enginePluginLifecycle.getInstallOperationStatus') {
+        return {
+          ok: true,
+          value: installOperation({
+            state: 'installed',
+            stateHistory: ['accepted', 'pending', 'downloading', 'verifying', 'staging', 'registering', 'health_checking', 'installed'],
+            terminalAt: 2,
+            installedEngineId: 'magika',
+            result: {
+              engineId: 'magika',
+              pluginVersion: '0.1.0',
+              installState: 'installed',
+              healthStatus: 'healthy',
+            },
+          }),
+        }
+      }
+      if (method === 'enginePluginLifecycle.getDiagnosticsSummary') {
+        return {
+          engines: [],
+          counts: installedCalls > 1
+            ? { total: 1, installed: 1, enabled: 0, healthy: 1, failed: 0, unverified: 0 }
+            : { total: 0, installed: 0, enabled: 0, healthy: 0, failed: 0, unverified: 0 },
+        }
+      }
+      return createDbBridgeMock({
+        listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+      }).invoke(method, params)
+    })
+    ;(globalThis as any).dbBridge = bridge
+
+    const { container } = render(PluginManagementPanel)
+
+    await screen.findByText('Install official plugin: Installed')
+    expect(screen.getByText('Install: Installed')).toBeTruthy()
+    expect(installedCalls).toBeGreaterThan(1)
+    expect(container.textContent).toContain('1 registered, 0 enabled, 1 healthy, 0 failed')
+    expect(screen.getByRole('button', { name: /Install official plugin/u })).toBeDisabled()
+  })
+
+  it('keeps polling and blocks install when terminal installed operation is waiting for registry reconciliation', async () => {
+    ;(globalThis as any).dbBridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+      listInstalledPlugins: [],
+      getInstallOperationStatus: {
+        ok: true,
+        value: installOperation({
+          state: 'installed',
+          stateHistory: ['accepted', 'pending', 'downloading', 'verifying', 'staging', 'registering', 'health_checking', 'installed'],
+          terminalAt: 2,
+          installedEngineId: 'magika',
+        }),
+      },
+    })
+
+    const { container } = render(PluginManagementPanel)
+
+    await screen.findByText('Install official plugin: Reconciling installed registry state')
+    expect(container.textContent).toContain('0 registered, 0 enabled, 0 healthy, 0 failed')
+    expect(container.textContent).toContain('Install: Installed')
+    expect(screen.getByRole('button', { name: /Install official plugin/u })).toBeDisabled()
+    expect(container.textContent).toContain('install_reconciling')
+  })
+
+  it('does not show terminal installed success when registry reconciles to failed', async () => {
+    ;(globalThis as any).dbBridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+      listInstalledPlugins: [
+        installedPlugin({
+          engineId: 'magika',
+          displayName: 'Magika',
+          pluginVersion: '0.1.0',
+          installState: 'failed',
+          enabled: false,
+          healthStatus: 'unhealthy',
+          failureReason: 'health_failed',
+        }),
+      ],
+      getInstallOperationStatus: {
+        ok: true,
+        value: installOperation({
+          state: 'installed',
+          stateHistory: ['accepted', 'pending', 'downloading', 'verifying', 'staging', 'registering', 'health_checking', 'installed'],
+          terminalAt: 2,
+          installedEngineId: 'magika',
+        }),
+      },
+    })
+
+    const { container } = render(PluginManagementPanel)
+
+    await screen.findByText('Install: Installed')
+    expect(container.textContent).not.toContain('Install official plugin: Installed')
+    expect(screen.getByRole('button', { name: 'Install official plugin' })).toBeEnabled()
+    expect(container.textContent).not.toContain('install_reconciling')
+  })
+
+  it('allows retry when terminal failed operation has a failed registry row', async () => {
+    ;(globalThis as any).dbBridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+      listInstalledPlugins: [
+        installedPlugin({
+          engineId: 'magika',
+          displayName: 'Magika',
+          pluginVersion: '0.1.0',
+          installState: 'failed',
+          enabled: false,
+          healthStatus: 'unhealthy',
+          failureReason: 'health_failed',
+        }),
+      ],
+      getInstallOperationStatus: {
+        ok: true,
+        value: installOperation({
+          state: 'failed',
+          failureReason: 'health_failed',
+          diagnosticCode: 'health_failed',
+          progressSummary: 'Install failed: health_failed',
+          terminalAt: 2,
+        }),
+      },
+    })
+
+    const { container } = render(PluginManagementPanel)
+
+    await screen.findByText('Install failed: health_failed')
+    expect(container.textContent).toContain('Install: Install failed: health_failed')
+    expect(screen.getByRole('button', { name: 'Install official plugin' })).toBeEnabled()
+    expect(container.textContent).not.toContain('already_registered')
+  })
+
+  it('does not expose unsafe terminal operation failure diagnostics', async () => {
+    const hash = 'a'.repeat(64)
+    ;(globalThis as any).dbBridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+      listInstalledPlugins: [],
+      getInstallOperationStatus: {
+        ok: true,
+        value: installOperation({
+          state: 'failed',
+          failureReason: `signature failed at C:\\Users\\owner\\plugin.svpkg https://example.test/${hash} contentToken=secret fullHash=${hash}`,
+          diagnosticCode: 'signature_invalid',
+          progressSummary: 'Install failed: signature_invalid',
+          sanitizedDiagnostics: ['signature_invalid'],
+          stateHistory: ['accepted', 'pending', 'downloading', 'verifying', 'failed'],
+          terminalAt: 2,
+        }),
+      },
+    })
+
+    const { container } = render(PluginManagementPanel)
+
+    await screen.findByText('Install failed: signature_invalid')
+    expect(container.textContent).not.toContain('C:\\Users')
+    expect(container.textContent).not.toContain('https://example.test')
+    expect(container.textContent).not.toContain(hash)
+    expect(container.textContent).not.toContain('contentToken')
+    expect(container.textContent).not.toContain('fullHash')
+  })
+
   it('shows structured install failure and hides raw timeout text for official install', async () => {
     const user = userEvent.setup()
     const bridge = createDbBridgeMock({
@@ -399,7 +603,8 @@ describe('PluginManagementPanel', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Install official plugin' }))
 
-    await waitFor(() => expect(container.textContent).toContain('Install official plugin status unavailable'))
+    await waitFor(() => expect(container.textContent).toContain('Install failed'))
+    expect(container.textContent).toContain('download_failed')
     expect(container.textContent).not.toContain('DB worker call timed out')
   })
 

@@ -97,7 +97,7 @@ function installOfficialPluginAction(
   if (!flags.hasOfficialRemoteInstallContract) {
     return disabledAction('install_official_plugin', 'Install official plugin', ['unsupported_action_contract_missing'])
   }
-  if (hasActiveRegistryRecord(plugin)) {
+  if (hasActiveRegistryRecord(plugin, { allowFailedRetry: true })) {
     return disabledAction('install_official_plugin', 'Install official plugin', ['already_registered'])
   }
   if (!plugin.catalog.present) {
@@ -303,8 +303,13 @@ function enableBlockers(plugin: PdpManagementPluginViewModel): readonly string[]
   return uniqueCodes(blockers)
 }
 
-function hasActiveRegistryRecord(plugin: PdpManagementPluginViewModel): boolean {
-  return plugin.registry.present && plugin.status.installState !== 'uninstalled'
+function hasActiveRegistryRecord(
+  plugin: PdpManagementPluginViewModel,
+  options: Readonly<{ allowFailedRetry?: boolean }> = {}
+): boolean {
+  return plugin.registry.present &&
+    plugin.status.installState !== 'uninstalled' &&
+    (!options.allowFailedRetry || plugin.status.installState !== 'failed')
 }
 
 function blockedReinstallReason(plugin: PdpManagementPluginViewModel): string | null {

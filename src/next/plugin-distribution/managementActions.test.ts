@@ -343,6 +343,68 @@ describe('buildPdpManagementActions', () => {
     })
   })
 
+  it('allows official install retry for failed non-trust registry records', () => {
+    const plugin = firstPlugin({
+      catalogEntries: [
+        catalogEntry({
+          installabilityStatus: 'official_remote_install_available',
+          reasons: ['official_remote_install_available', 'production_signature_available', 'verify_before_install'],
+          verificationMetadataStatus: 'production_signature_available',
+        }),
+      ],
+      registryRecords: [
+        registryRecord({
+          registryState: 'failed',
+          installState: 'failed',
+          verificationStatus: 'failed',
+          enabled: false,
+          healthStatus: 'failed',
+          failureReason: 'health_failed',
+          installSource: 'official_catalog',
+        }),
+      ],
+    })
+
+    const action = findPdpManagementAction(
+      buildPdpManagementActions(plugin, { hasOfficialRemoteInstallContract: true }),
+      'install_official_plugin'
+    )
+
+    expect(action.enabled).toBe(true)
+    expect(action.reasonCodes).toEqual([])
+  })
+
+  it('keeps official install retry blocked for failed trust records', () => {
+    const plugin = firstPlugin({
+      catalogEntries: [
+        catalogEntry({
+          installabilityStatus: 'official_remote_install_available',
+          reasons: ['official_remote_install_available', 'production_signature_available', 'verify_before_install'],
+          verificationMetadataStatus: 'production_signature_available',
+        }),
+      ],
+      registryRecords: [
+        registryRecord({
+          registryState: 'failed',
+          installState: 'failed',
+          verificationStatus: 'failed',
+          enabled: false,
+          healthStatus: 'failed',
+          failureReason: 'signature_invalid',
+          installSource: 'official_catalog',
+        }),
+      ],
+    })
+
+    const action = findPdpManagementAction(
+      buildPdpManagementActions(plugin, { hasOfficialRemoteInstallContract: true }),
+      'install_official_plugin'
+    )
+
+    expect(action.enabled).toBe(false)
+    expect(action.reasonCodes).toContain('signature_invalid')
+  })
+
   it('includes reason code when an action contract is unsupported', () => {
     const plugin = firstPlugin({ registryRecords: [registryRecord()] })
     const action = findPdpManagementAction(

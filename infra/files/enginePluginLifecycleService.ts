@@ -518,12 +518,12 @@ export class EnginePluginLifecycleService {
     }
 
     const existing = this.deps.registryRepo.getByEngineId(pluginId)
-    if (existing && existing.installState !== 'uninstalled') {
-      return fail('already_registered', 'official plugin is already registered')
-    }
     const blockedExisting = existing?.failureReason ? blockedPluginReinstallFailure(existing.failureReason) : null
     if (blockedExisting) {
       return fail(blockedExisting, 'official plugin reinstall is blocked by prior trust or compatibility state')
+    }
+    if (existing && existing.installState !== 'uninstalled' && existing.installState !== 'failed') {
+      return fail('already_registered', 'official plugin is already registered')
     }
 
     const installRootKind = this.getRecommendedInstallRootKind()
