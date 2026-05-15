@@ -105,6 +105,9 @@ async function loadData(options?: Readonly<{ preserveMessages?: boolean; silent?
       ensureInstallPoller()
     } else {
       stopInstallPoller()
+      if (statusMessage.value?.startsWith('Install official plugin:')) {
+        statusMessage.value = null
+      }
     }
     if (!official.ok) {
       error.value = sanitizePdpManagementText(official.reason, 'Official catalog unavailable')
@@ -141,21 +144,29 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
   loading.value = true
   error.value = null
   statusMessage.value = null
+  let localInstallKey: string | null = null
   try {
     if (action.id === 'install_official_plugin') {
+      localInstallKey = installOperationKey(row.plugin.id, row.plugin.pluginVersion)
+      if (isActiveInstallOperation(installOperations.value[localInstallKey] ?? row.installOperation)) {
+        statusMessage.value = `${action.label}: ${installOperationLabel('downloading')}`
+        return
+      }
+      upsertInstallOperation(createLocalInstallOperation(row))
+      statusMessage.value = `${action.label}: ${installOperationLabel('downloading')}`
       const result = await installOfficialPlugin({
         pluginId: row.plugin.id,
         pluginVersion: row.plugin.pluginVersion,
         enabled: false,
       })
       if (result.ok) {
-        installOperations.value = {
-          ...installOperations.value,
-          [installOperationKey(result.value.pluginId, result.value.pluginVersion)]: result.value,
-        }
+        upsertInstallOperation(result.value)
         statusMessage.value = `${action.label}: ${installOperationLabel(result.value.state)}`
-        ensureInstallPoller()
+        if (isActiveInstallOperation(result.value)) {
+          ensureInstallPoller()
+        }
       } else {
+        removeInstallOperation(localInstallKey)
         error.value = sanitizePdpManagementText(result.reason, `${action.label} failed`)
       }
       return
@@ -167,6 +178,7 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
       error.value = sanitizePdpManagementText(result.reason, `${action.label} failed`)
     }
   } catch (err: any) {
+    if (localInstallKey) removeInstallOperation(localInstallKey)
     error.value = formatActionError(action, err)
   } finally {
     loading.value = false
@@ -325,6 +337,46 @@ function actionReason(action: UiAction): string {
 
 function installOperationKey(pluginId: string, pluginVersion: string): string {
   return `${pluginId}:${pluginVersion}`
+}
+
+function createLocalInstallOperation(row: PluginPanelRow): DecodedOfficialInstallOperation {
+  const now = Date.now()
+  return {
+    operationId: `local-install-${row.plugin.id}-${row.plugin.pluginVersion}`,
+    pluginId: row.plugin.id,
+    pluginVersion: row.plugin.pluginVersion,
+    state: 'downloading',
+    stateHistory: ['pending', 'downloading'],
+    startedAt: now,
+    updatedAt: now,
+    failureReason: null,
+    diagnosticCode: null,
+    installedEngineId: null,
+  }
+}
+
+function upsertInstallOperation(operation: DecodedOfficialInstallOperation): void {
+  const key = installOperationKey(operation.pluginId, operation.pluginVersion)
+  installOperations.value = {
+    ...installOperations.value,
+    [key]: operation,
+  }
+  rows.value = rows.value.map((row) => (
+    installOperationKey(row.plugin.id, row.plugin.pluginVersion) === key
+      ? { ...row, installOperation: operation }
+      : row
+  ))
+}
+
+function removeInstallOperation(key: string): void {
+  const next = { ...installOperations.value }
+  delete next[key]
+  installOperations.value = next
+  rows.value = rows.value.map((row) => (
+    installOperationKey(row.plugin.id, row.plugin.pluginVersion) === key
+      ? { ...row, installOperation: null }
+      : row
+  ))
 }
 
 function isActiveInstallOperation(operation: DecodedOfficialInstallOperation | null): boolean {

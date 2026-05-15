@@ -131,6 +131,16 @@ function installOperation(overrides?: Record<string, unknown>) {
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((innerResolve, innerReject) => {
+    resolve = innerResolve
+    reject = innerReject
+  })
+  return { promise, resolve, reject }
+}
+
 describe('PluginManagementPanel', () => {
   const originalDbBridge = (globalThis as any).dbBridge
 
@@ -209,6 +219,74 @@ describe('PluginManagementPanel', () => {
       })
     })
     expect(JSON.stringify(bridge.invoke.mock.calls)).not.toMatch(/https?:|4397df63|signature/iu)
+  })
+
+  it('shows pending install progress immediately and blocks repeated install clicks', async () => {
+    const user = userEvent.setup()
+    const installDeferred = deferred<unknown>()
+    const bridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+      listInstalledPlugins: [],
+    })
+    bridge.invoke.mockImplementation(async (method: string, params?: unknown) => {
+      if (method === 'enginePluginLifecycle.installOfficialPlugin') {
+        return installDeferred.promise
+      }
+      return createDbBridgeMock({
+        listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+        listInstalledPlugins: [],
+      }).invoke(method, params)
+    })
+    ;(globalThis as any).dbBridge = bridge
+
+    const { container } = render(PluginManagementPanel)
+
+    const install = await screen.findByRole('button', { name: 'Install official plugin' })
+    await user.click(install)
+
+    await screen.findByText('Install: Downloading')
+    expect(screen.getByRole('button', { name: /Install official plugin/u })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: /Install official plugin/u }))
+    expect(bridge.invoke.mock.calls.filter(([method]) => method === 'enginePluginLifecycle.installOfficialPlugin')).toHaveLength(1)
+
+    installDeferred.resolve({
+      ok: true,
+      value: installOperation({ state: 'installed', stateHistory: ['pending', 'downloading', 'installed'] }),
+    })
+    await waitFor(() => {
+      expect(bridge.invoke.mock.calls.filter(([method]) => method === 'enginePluginLifecycle.listInstalledPlugins').length).toBeGreaterThan(1)
+    })
+    expect(container.textContent).not.toContain('Install official plugin: Downloading')
+  })
+
+  it('clears local install progress and shows safe failure when official install fails', async () => {
+    const user = userEvent.setup()
+    const installDeferred = deferred<unknown>()
+    const bridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+      listInstalledPlugins: [],
+    })
+    bridge.invoke.mockImplementation(async (method: string, params?: unknown) => {
+      if (method === 'enginePluginLifecycle.installOfficialPlugin') {
+        return installDeferred.promise
+      }
+      return createDbBridgeMock({
+        listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+        listInstalledPlugins: [],
+      }).invoke(method, params)
+    })
+    ;(globalThis as any).dbBridge = bridge
+
+    const { container } = render(PluginManagementPanel)
+
+    await user.click(await screen.findByRole('button', { name: 'Install official plugin' }))
+    await screen.findByText('Install: Downloading')
+
+    installDeferred.resolve({ ok: false, reason: 'download_failed', message: 'download_failed' })
+
+    await waitFor(() => expect(container.textContent).toContain('download_failed'))
+    expect(container.textContent).not.toContain('Install: Downloading')
+    expect(container.textContent).not.toMatch(/https?:|contentToken|fullHash/iu)
   })
 
   it('disables the official install action while an install operation is in progress', async () => {
