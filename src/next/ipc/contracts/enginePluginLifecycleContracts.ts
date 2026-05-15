@@ -57,6 +57,30 @@ const lifecycleFailureSchema = z.object({
   message: nonEmpty,
 })
 
+const officialInstallOperationStateSchema = z.enum([
+  'pending',
+  'downloading',
+  'verifying',
+  'registering',
+  'health_checking',
+  'installed',
+  'failed',
+  'cancelled',
+])
+
+const officialInstallOperationSchema = z.object({
+  operationId: nonEmpty,
+  pluginId: nonEmpty,
+  pluginVersion: nonEmpty,
+  state: officialInstallOperationStateSchema,
+  stateHistory: z.array(officialInstallOperationStateSchema),
+  startedAt: z.number().finite(),
+  updatedAt: z.number().finite(),
+  failureReason: z.string().trim().nullable(),
+  diagnosticCode: z.string().trim().nullable(),
+  installedEngineId: z.string().trim().nullable(),
+})
+
 const diagnosticsEntrySchema = z.object({
   engineId: nonEmpty,
   displayName: nonEmpty,
@@ -98,10 +122,21 @@ const lifecycleInstalledResultSchema = z.union([
   lifecycleSuccessSchema(installedPluginSchema),
   lifecycleFailureSchema,
 ])
+const installOfficialPluginResultSchema = z.union([
+  lifecycleSuccessSchema(officialInstallOperationSchema),
+  lifecycleFailureSchema,
+])
+const installOperationStatusResultSchema = z.union([
+  lifecycleSuccessSchema(officialInstallOperationSchema.nullable()),
+  lifecycleFailureSchema,
+])
 
 export type DecodedInstalledPlugin = z.infer<typeof installedPluginSchema>
 export type DecodedOfficialPlugin = z.infer<typeof officialPluginSchema>
+export type DecodedOfficialInstallOperation = z.infer<typeof officialInstallOperationSchema>
 export type DecodedLifecycleInstalledResult = z.infer<typeof lifecycleInstalledResultSchema>
+export type DecodedInstallOfficialPluginResult = z.infer<typeof installOfficialPluginResultSchema>
+export type DecodedInstallOperationStatusResult = z.infer<typeof installOperationStatusResultSchema>
 export type DecodedLifecycleListOfficialResult = z.infer<typeof listOfficialResultSchema>
 export type DecodedDiagnosticsSummary = z.infer<typeof diagnosticsSummarySchema>
 
@@ -125,6 +160,11 @@ export type InstallOfficialPluginRequest = Readonly<{
   pluginVersion?: string
   enabled?: boolean
 }>
+export type GetInstallOperationStatusRequest = Readonly<{
+  operationId?: string
+  pluginId?: string
+  pluginVersion?: string
+}>
 export type LifecycleEngineRequest = Readonly<{ engineId: string }>
 
 export function decodeInstalledPluginsResponse(raw: unknown): DecodedInstalledPlugin[] {
@@ -137,6 +177,14 @@ export function decodeListOfficialPluginsResponse(raw: unknown): DecodedLifecycl
 
 export function decodeLifecycleInstalledResult(raw: unknown): DecodedLifecycleInstalledResult {
   return lifecycleInstalledResultSchema.parse(raw)
+}
+
+export function decodeInstallOfficialPluginResult(raw: unknown): DecodedInstallOfficialPluginResult {
+  return installOfficialPluginResultSchema.parse(raw)
+}
+
+export function decodeInstallOperationStatusResult(raw: unknown): DecodedInstallOperationStatusResult {
+  return installOperationStatusResultSchema.parse(raw)
 }
 
 export function decodeDiagnosticsSummary(raw: unknown): DecodedDiagnosticsSummary {

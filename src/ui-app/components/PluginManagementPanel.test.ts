@@ -9,6 +9,7 @@ function createDbBridgeMock(outputs?: {
   listInstalledPlugins?: unknown
   getDiagnosticsSummary?: unknown
   installOfficialPlugin?: unknown
+  getInstallOperationStatus?: unknown
   enablePlugin?: unknown
   disablePlugin?: unknown
   uninstallPlugin?: unknown
@@ -30,15 +31,16 @@ function createDbBridgeMock(outputs?: {
     if (method === 'enginePluginLifecycle.installOfficialPlugin') {
       return outputs?.installOfficialPlugin ?? {
         ok: true,
-        value: installedPlugin({
-          engineId: 'magika',
-          displayName: 'Magika',
+        value: installOperation({
+          operationId: 'official-install-magika-0.1.0-1',
+          pluginId: 'magika',
           pluginVersion: '0.1.0',
-          enabled: false,
-          healthStatus: 'unknown',
-          lastVerifiedAt: 4,
+          state: 'pending',
         }),
       }
+    }
+    if (method === 'enginePluginLifecycle.getInstallOperationStatus') {
+      return outputs?.getInstallOperationStatus ?? { ok: true, value: null }
     }
     if (method === 'enginePluginLifecycle.enablePlugin') {
       return outputs?.enablePlugin ?? {
@@ -109,6 +111,22 @@ function officialPlugin(overrides?: Record<string, unknown>) {
     installabilityStatus: 'official_remote_install_available',
     reasons: ['official_remote_install_available', 'production_signature_available', 'verify_before_install'],
     warnings: [],
+    ...overrides,
+  }
+}
+
+function installOperation(overrides?: Record<string, unknown>) {
+  return {
+    operationId: 'official-install-magika-0.1.0-1',
+    pluginId: 'magika',
+    pluginVersion: '0.1.0',
+    state: 'pending',
+    stateHistory: ['pending'],
+    startedAt: 1,
+    updatedAt: 1,
+    failureReason: null,
+    diagnosticCode: null,
+    installedEngineId: null,
     ...overrides,
   }
 }
@@ -191,6 +209,59 @@ describe('PluginManagementPanel', () => {
       })
     })
     expect(JSON.stringify(bridge.invoke.mock.calls)).not.toMatch(/https?:|4397df63|signature/iu)
+  })
+
+  it('disables the official install action while an install operation is in progress', async () => {
+    ;(globalThis as any).dbBridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+      listInstalledPlugins: [],
+      getInstallOperationStatus: {
+        ok: true,
+        value: installOperation({ state: 'downloading', stateHistory: ['pending', 'downloading'] }),
+      },
+    })
+
+    const { container } = render(PluginManagementPanel)
+
+    await screen.findByText('Install: Downloading')
+    expect(screen.getByRole('button', { name: /Install official plugin/u })).toBeDisabled()
+    expect(container.textContent).toContain('install_in_progress')
+  })
+
+  it('shows structured install failure and hides raw timeout text for official install', async () => {
+    const user = userEvent.setup()
+    const bridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+      listInstalledPlugins: [],
+    })
+    bridge.invoke.mockImplementation(async (method: string) => {
+      if (method === 'enginePluginLifecycle.installOfficialPlugin') {
+        throw new Error('DbWorkerError: DB worker call timed out: enginePluginLifecycle.installOfficialPlugin')
+      }
+      if (method === 'enginePluginLifecycle.getInstallOperationStatus') {
+        return {
+          ok: true,
+          value: installOperation({
+            state: 'failed',
+            failureReason: 'download_failed',
+            diagnosticCode: 'download_failed',
+            stateHistory: ['pending', 'downloading', 'failed'],
+          }),
+        }
+      }
+      return createDbBridgeMock({
+        listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+        listInstalledPlugins: [],
+      }).invoke(method)
+    })
+    ;(globalThis as any).dbBridge = bridge
+
+    const { container } = render(PluginManagementPanel)
+
+    await user.click(await screen.findByRole('button', { name: 'Install official plugin' }))
+
+    await waitFor(() => expect(container.textContent).toContain('Install official plugin status unavailable'))
+    expect(container.textContent).not.toContain('DB worker call timed out')
   })
 
   it('renders post-uninstall Magika as installable catalog metadata without registered blockers', async () => {

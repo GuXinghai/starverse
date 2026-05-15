@@ -1,5 +1,5 @@
 import { createHash, generateKeyPairSync, sign } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdtemp, mkdir, rm as rmAsync, writeFile as writeFileAsync } from 'node:fs/promises'
 import { deflateRawSync } from 'node:zlib'
 import os from 'node:os'
@@ -14,6 +14,7 @@ import {
   MAGIKA_OFFICIAL_PUBLIC_KEY_PEM,
 } from '../../src/next/plugin-distribution/magikaOfficialRelease'
 import type { OfficialPackageReleaseMetadata } from '../../src/next/plugin-distribution/officialPackageRelease'
+import type { PackageDownloadTransport } from '../../src/next/plugin-distribution/packageDownloader'
 import { ensureEnginePluginRegistrySchema } from '../db/migrations/ensureEnginePluginRegistrySchema'
 import { EnginePluginRegistryRepo } from '../db/repo/enginePluginRegistryRepo'
 import { EnginePluginLifecycleService } from './enginePluginLifecycleService'
@@ -141,6 +142,8 @@ function createService(
     trustedRootSource?: 'official' | 'test' | null
     magikaOfficialRelease?: OfficialPackageReleaseMetadata
     officialPackageBytes?: Uint8Array
+    officialPackageTransport?: PackageDownloadTransport
+    readBytes?: (filePath: string) => Promise<Uint8Array>
   }> = {}
 ) {
   const db = new BetterSqlite3(':memory:')
@@ -152,8 +155,9 @@ function createService(
     trustedRoots,
     trustedRootSource: opts.trustedRootSource ?? 'test',
     resolveInstallPluginDir: ({ installRef }) => path.join(tempRoot, installRef),
+    readBytes: opts.readBytes,
     magikaOfficialRelease: opts.magikaOfficialRelease,
-    officialPackageTransport: opts.officialPackageBytes
+    officialPackageTransport: opts.officialPackageTransport ?? (opts.officialPackageBytes
       ? {
           async fetchPackage() {
             return {
@@ -163,7 +167,7 @@ function createService(
             }
           },
         }
-      : undefined,
+      : undefined),
   })
   return { db, repo, service }
 }
@@ -191,6 +195,22 @@ function registryRecord(overrides?: Record<string, unknown>) {
     metadataJson: null,
     ...overrides,
   } as const
+}
+
+async function waitForInstallOperation(
+  service: EnginePluginLifecycleService,
+  operationId: string,
+  predicate: (state: string) => boolean = (state) => state === 'installed' || state === 'failed'
+) {
+  const deadline = Date.now() + 3000
+  while (Date.now() < deadline) {
+    const status = service.getInstallOperationStatus({ operationId })
+    if (status.ok && status.value && predicate(status.value.state)) {
+      return status.value
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  throw new Error(`install operation did not reach expected state: ${operationId}`)
 }
 
 // eslint-disable-next-line max-lines-per-function
@@ -383,12 +403,13 @@ describe('EnginePluginLifecycleService', () => {
       const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
 
       expect(result.ok).toBe(true)
-      if (result.ok) {
-        expect(result.value.engineId).toBe('magika')
-        expect(result.value.installState).toBe('installed')
-        expect(result.value.enabled).toBe(false)
-        expect(result.value.lastVerifiedAt).toBeTruthy()
-      }
+      if (!result.ok) return
+      expect(result.value.pluginId).toBe('magika')
+      expect(['pending', 'downloading']).toContain(result.value.state)
+      const completed = await waitForInstallOperation(service, result.value.operationId)
+      expect(completed.state).toBe('installed')
+      expect(completed.installedEngineId).toBe('magika')
+      expect(completed.stateHistory).toEqual(['pending', 'downloading', 'verifying', 'registering', 'installed'])
       expect(repo.getByEngineId('magika')).toMatchObject({
         engineId: 'magika',
         installSource: 'official_catalog',
@@ -403,6 +424,111 @@ describe('EnginePluginLifecycleService', () => {
       const duplicate = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
       expect(duplicate.ok).toBe(false)
       if (!duplicate.ok) expect(duplicate.reason).toBe('already_registered')
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('starts official Magika install as a quick operation and reuses it for duplicate clicks', async () => {
+    const fixture = await createOfficialRemoteInstallFixture()
+    let fetchCalls = 0
+    let releaseDownload: (value: void) => void = () => undefined
+    const downloadGate = new Promise<void>((resolve) => {
+      releaseDownload = resolve
+    })
+    const transport: PackageDownloadTransport = {
+      async fetchPackage() {
+        fetchCalls += 1
+        await downloadGate
+        return {
+          ok: true,
+          bytes: fixture.bytes,
+          finalRef: 'https://release-assets.githubusercontent.com/github-production-release-asset/1/pkg.zip',
+        }
+      },
+    }
+    const { db, service, repo } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      magikaOfficialRelease: fixture.release,
+      officialPackageTransport: transport,
+    })
+    try {
+      const startedAt = Date.now()
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      expect(Date.now() - startedAt).toBeLessThan(100)
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+
+      const duplicate = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      expect(duplicate.ok).toBe(true)
+      if (!duplicate.ok) return
+      expect(duplicate.value.operationId).toBe(result.value.operationId)
+      expect(fetchCalls).toBe(1)
+
+      releaseDownload()
+      const completed = await waitForInstallOperation(service, result.value.operationId)
+      expect(completed.state).toBe('installed')
+      expect(repo.getByEngineId('magika')?.enabled).toBe(false)
+    } finally {
+      releaseDownload()
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('records a structured failed operation and leaves Magika unregistered when download fails', async () => {
+    const fixture = await createOfficialRemoteInstallFixture()
+    const { db, service, repo } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      magikaOfficialRelease: fixture.release,
+      officialPackageTransport: {
+        async fetchPackage() {
+          return { ok: false, code: 'download_failed', detail: 'network_unavailable' }
+        },
+      },
+    })
+    try {
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+
+      const failed = await waitForInstallOperation(service, result.value.operationId)
+      expect(failed).toMatchObject({
+        state: 'failed',
+        failureReason: 'download_failed',
+        diagnosticCode: 'download_failed',
+        installedEngineId: null,
+      })
+      expect(repo.getByEngineId('magika')).toBeNull()
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('records a structured failed operation and leaves Magika disabled when registration fails', async () => {
+    const fixture = await createOfficialRemoteInstallFixture()
+    const { db, service, repo } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      magikaOfficialRelease: fixture.release,
+      officialPackageBytes: fixture.bytes,
+      async readBytes() {
+        throw new Error('C:\\Users\\owner\\private.pem fullHash=' + 'a'.repeat(64))
+      },
+    })
+    try {
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+
+      const failed = await waitForInstallOperation(service, result.value.operationId)
+      expect(failed.state).toBe('failed')
+      expect(failed.failureReason).toBe('registration_failed')
+      expect(JSON.stringify(failed)).not.toContain('private.pem')
+      expect(JSON.stringify(failed)).not.toContain('fullHash=')
+      expect(repo.getByEngineId('magika')).toBeNull()
+      expect(existsSync(path.join(fixture.tempRoot, 'magika'))).toBe(false)
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })
@@ -445,8 +571,11 @@ describe('EnginePluginLifecycleService', () => {
     try {
       const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
 
-      expect(result.ok).toBe(false)
-      if (!result.ok) expect(result.reason).toBe('official_remote_install_failed')
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      const failed = await waitForInstallOperation(service, result.value.operationId)
+      expect(failed.state).toBe('failed')
+      expect(failed.failureReason).toBe('verification_failed')
       expect(repo.getByEngineId('magika')).toBeNull()
     } finally {
       db.close()
@@ -728,7 +857,7 @@ describe('EnginePluginLifecycleService', () => {
 
   it('fails when catalog signature is invalid (wrong key)', async () => {
     const fixture = await createFixture()
-    const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+    const { publicKey } = generateKeyPairSync('ed25519')
     const wrongRoots: TrustedCatalogPublicKeyMap = {
       'wrong-key': {
         keyId: 'wrong-key',
@@ -1163,7 +1292,7 @@ describe('EnginePluginLifecycleService', () => {
 
   it('registers local package, enables, runs health check, and returns diagnostics with full lifecycle state', async () => {
     const fixture = await createFixture()
-    const { db, repo, service } = createService(fixture.tempRoot, fixture.trustedRoots, { trustedRootSource: 'test' })
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, { trustedRootSource: 'test' })
     try {
       const packageDir = path.join(fixture.tempRoot, fixture.installRef)
       const registered = await service.registerLocalPackage({
@@ -1426,6 +1555,8 @@ describe('EnginePluginLifecycleService', () => {
     try {
       const installed = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
       expect(installed.ok).toBe(true)
+      if (!installed.ok) return
+      await waitForInstallOperation(service, installed.value.operationId)
 
       const uninstalled = await service.uninstallPlugin({ engineId: 'magika' })
       expect(uninstalled.ok).toBe(true)
@@ -1443,9 +1574,9 @@ describe('EnginePluginLifecycleService', () => {
 
       const reinstalled = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
       expect(reinstalled.ok).toBe(true)
-      if (reinstalled.ok) {
-        expect(reinstalled.value.installState).toBe('installed')
-      }
+      if (!reinstalled.ok) return
+      const completed = await waitForInstallOperation(service, reinstalled.value.operationId)
+      expect(completed.state).toBe('installed')
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })

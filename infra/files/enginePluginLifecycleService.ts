@@ -29,6 +29,7 @@ import {
   type OfficialPackageReleaseVerificationResult,
 } from '../../src/next/plugin-distribution/officialPackageRelease'
 import type { PackageDownloadTransport } from '../../src/next/plugin-distribution/packageDownloader'
+import { sanitizePluginDistributionText } from '../../src/next/plugin-distribution/sanitization'
 import type {
   ReadOnlyCatalogEntryDto,
 } from '../../src/next/plugin-distribution/catalogReadModel'
@@ -76,6 +77,9 @@ const FAILURE_REASON_SET = new Set([
   'integrity_missing',
   'expired_metadata',
   'rollback_detected',
+  'download_failed',
+  'verification_failed',
+  'registration_failed',
 ])
 
 type LifecycleFailureReason = (typeof FAILURE_REASON_SET extends Set<infer T> ? T : never) & string
@@ -121,6 +125,42 @@ export type OfficialPluginDto = Readonly<{
 export type LifecycleActionResult<T> =
   | Readonly<{ ok: true; value: T }>
   | Readonly<{ ok: false; reason: LifecycleFailureReason; message: string }>
+
+export type OfficialInstallOperationState =
+  | 'pending'
+  | 'downloading'
+  | 'verifying'
+  | 'registering'
+  | 'health_checking'
+  | 'installed'
+  | 'failed'
+  | 'cancelled'
+
+export type OfficialInstallOperationDto = Readonly<{
+  operationId: string
+  pluginId: string
+  pluginVersion: string
+  state: OfficialInstallOperationState
+  stateHistory: readonly OfficialInstallOperationState[]
+  startedAt: number
+  updatedAt: number
+  failureReason: string | null
+  diagnosticCode: string | null
+  installedEngineId: string | null
+}>
+
+type OfficialInstallOperationRecord = {
+  operationId: string
+  pluginId: string
+  pluginVersion: string
+  state: OfficialInstallOperationState
+  stateHistory: OfficialInstallOperationState[]
+  startedAt: number
+  updatedAt: number
+  failureReason: string | null
+  diagnosticCode: string | null
+  installedEngineId: string | null
+}
 
 export type EnginePluginLifecycleServiceDeps = Readonly<{
   registryRepo: Pick<
@@ -179,6 +219,12 @@ export type InstallOfficialPluginInput = Readonly<{
   enabled?: boolean
 }>
 
+export type GetInstallOperationStatusInput = Readonly<{
+  operationId?: string
+  pluginId?: string
+  pluginVersion?: string
+}>
+
 export type EngineDiagnosticsSummary = Readonly<{
   engines: readonly EngineDiagnosticsEntry[]
   counts: Readonly<{
@@ -208,6 +254,9 @@ export type EngineDiagnosticsEntry = Readonly<{
 export class EnginePluginLifecycleService {
   private readonly readBytes: ReadBytes
   private readonly now: () => number
+  private readonly installOperations = new Map<string, OfficialInstallOperationRecord>()
+  private readonly inFlightOfficialInstalls = new Map<string, string>()
+  private installOperationCounter = 0
 
   constructor(private readonly deps: EnginePluginLifecycleServiceDeps) {
     this.readBytes = deps.readBytes ?? defaultReadBytes
@@ -422,7 +471,7 @@ export class EnginePluginLifecycleService {
 
   async installOfficialPlugin(
     input: InstallOfficialPluginInput
-  ): Promise<LifecycleActionResult<InstalledEnginePluginDto>> {
+  ): Promise<LifecycleActionResult<OfficialInstallOperationDto>> {
     const pluginId = requireNonEmpty(input.pluginId, 'pluginId')
     const pluginVersion = String(input.pluginVersion ?? MAGIKA_OFFICIAL_PLUGIN_VERSION).trim()
     if (pluginId !== MAGIKA_OFFICIAL_PLUGIN_ID || pluginVersion !== MAGIKA_OFFICIAL_PLUGIN_VERSION) {
@@ -441,56 +490,173 @@ export class EnginePluginLifecycleService {
     if (blockedExisting) {
       return fail(blockedExisting, 'official plugin reinstall is blocked by prior trust or compatibility state')
     }
-    const verified = await verifyOfficialPackageReleaseDownload({
-      release,
-      transport: this.deps.officialPackageTransport ?? defaultOfficialPackageTransport,
-      now: new Date(this.now()),
-      previousTrustedVersion: existing?.lastVerifiedAt ? existing.pluginVersion : null,
-      environment: {
-        platform: process.platform,
-        architecture: process.arch,
-        appVersion: '0.0.0',
-      },
-    })
-    if (!verified.ok) {
-      return fail(
-        'official_remote_install_failed',
-        `official package verification failed: ${verified.failureReasons[0] ?? 'unknown'}`
-      )
-    }
 
     const installRootKind = this.getRecommendedInstallRootKind()
     if (installRootKind !== 'managed_root') {
       return fail('install_root_kind_mismatch', 'official remote install requires the managed root')
     }
 
+    const operationKey = officialInstallOperationKey(pluginId, pluginVersion)
+    const existingOperationId = this.inFlightOfficialInstalls.get(operationKey)
+    if (existingOperationId) {
+      const operation = this.installOperations.get(existingOperationId)
+      if (operation) return ok(toOfficialInstallOperationDto(operation)!)
+    }
+
+    const operation = this.createOfficialInstallOperation(pluginId, pluginVersion)
+    this.inFlightOfficialInstalls.set(operationKey, operation.operationId)
+    void this.runOfficialInstallOperation({
+      operationId: operation.operationId,
+      pluginId,
+      pluginVersion,
+      release,
+      existing,
+      installRootKind,
+    })
+
+    return ok(toOfficialInstallOperationDto(operation)!)
+  }
+
+  getInstallOperationStatus(
+    input: GetInstallOperationStatusInput = {}
+  ): LifecycleActionResult<OfficialInstallOperationDto | null> {
+    const operationId = String(input.operationId ?? '').trim()
+    if (operationId) {
+      return ok(toOfficialInstallOperationDto(this.installOperations.get(operationId) ?? null))
+    }
+
+    const pluginId = String(input.pluginId ?? MAGIKA_OFFICIAL_PLUGIN_ID).trim() || MAGIKA_OFFICIAL_PLUGIN_ID
+    const pluginVersion = String(input.pluginVersion ?? MAGIKA_OFFICIAL_PLUGIN_VERSION).trim() ||
+      MAGIKA_OFFICIAL_PLUGIN_VERSION
+    const operationKey = officialInstallOperationKey(pluginId, pluginVersion)
+    const inFlightId = this.inFlightOfficialInstalls.get(operationKey)
+    if (inFlightId) return ok(toOfficialInstallOperationDto(this.installOperations.get(inFlightId) ?? null))
+
+    const latest = Array.from(this.installOperations.values())
+      .filter((operation) => operation.pluginId === pluginId && operation.pluginVersion === pluginVersion)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null
+    return ok(toOfficialInstallOperationDto(latest))
+  }
+
+  private createOfficialInstallOperation(
+    pluginId: string,
+    pluginVersion: string
+  ): OfficialInstallOperationRecord {
+    const timestamp = this.now()
+    const operation: OfficialInstallOperationRecord = {
+      operationId: `official-install-${pluginId}-${pluginVersion}-${timestamp}-${++this.installOperationCounter}`,
+      pluginId,
+      pluginVersion,
+      state: 'pending',
+      stateHistory: ['pending'],
+      startedAt: timestamp,
+      updatedAt: timestamp,
+      failureReason: null,
+      diagnosticCode: null,
+      installedEngineId: null,
+    }
+    this.installOperations.set(operation.operationId, operation)
+    return operation
+  }
+
+  private async runOfficialInstallOperation(input: Readonly<{
+    operationId: string
+    pluginId: string
+    pluginVersion: string
+    release: OfficialPackageReleaseMetadata
+    existing: EnginePluginRegistryRecord | null
+    installRootKind: EnginePluginInstallRootKind
+  }>): Promise<void> {
+    const operation = this.installOperations.get(input.operationId)
+    if (!operation) return
+
     const installRef = MAGIKA_OFFICIAL_PLUGIN_ID
-    const finalDir = this.deps.resolveInstallPluginDir({ installRootKind, installRef })
+    const finalDir = this.deps.resolveInstallPluginDir({ installRootKind: input.installRootKind, installRef })
     const stageDir = `${finalDir}.stage-${this.now()}`
     try {
+      this.transitionOfficialInstallOperation(operation, 'downloading')
+      const verified = await verifyOfficialPackageReleaseDownload({
+        release: input.release,
+        transport: this.deps.officialPackageTransport ?? defaultOfficialPackageTransport,
+        now: new Date(this.now()),
+        previousTrustedVersion: input.existing?.lastVerifiedAt ? input.existing.pluginVersion : null,
+        environment: {
+          platform: process.platform,
+          architecture: process.arch,
+          appVersion: '0.0.0',
+        },
+      })
+      this.transitionOfficialInstallOperation(operation, 'verifying')
+      if (!verified.ok) {
+        this.failOfficialInstallOperation(
+          operation,
+          verified.status === 'download_failed' ? 'download_failed' : 'verification_failed',
+          verified.failureReasons[0] ?? verified.status
+        )
+        return
+      }
+
+      this.transitionOfficialInstallOperation(operation, 'registering')
       const extracted = await this.extractAndValidateOfficialMagika({
         verified,
-        release,
+        release: input.release,
         stageDir,
         finalDir,
-        pluginId,
-        pluginVersion,
+        pluginId: input.pluginId,
+        pluginVersion: input.pluginVersion,
       })
-      if (!extracted.ok) return extracted
+      if (!extracted.ok) {
+        this.failOfficialInstallOperation(operation, 'registration_failed', extracted.reason)
+        return
+      }
 
       const upserted = this.upsertOfficialMagikaInstall({
         descriptor: extracted.value.descriptor,
         manifestBytes: extracted.value.manifestBytes,
-        existing,
-        installRootKind,
+        existing: input.existing,
+        installRootKind: input.installRootKind,
         installRef,
         verified,
       })
 
-      return ok(toInstalledDto(upserted))
+      operation.installedEngineId = upserted.engineId
+    } catch (err: any) {
+      this.failOfficialInstallOperation(operation, 'registration_failed', err?.message ?? 'official install failed')
     } finally {
       await rm(stageDir, { recursive: true, force: true }).catch(() => undefined)
+      if (operation.failureReason && !operation.installedEngineId) {
+        await rm(finalDir, { recursive: true, force: true }).catch(() => undefined)
+      }
+      const operationKey = officialInstallOperationKey(input.pluginId, input.pluginVersion)
+      if (this.inFlightOfficialInstalls.get(operationKey) === input.operationId) {
+        this.inFlightOfficialInstalls.delete(operationKey)
+      }
+      if (operation.installedEngineId && operation.state !== 'failed') {
+        this.transitionOfficialInstallOperation(operation, 'installed')
+      } else if (operation.failureReason && operation.state !== 'failed') {
+        this.transitionOfficialInstallOperation(operation, 'failed')
+      }
     }
+  }
+
+  private transitionOfficialInstallOperation(
+    operation: OfficialInstallOperationRecord,
+    state: OfficialInstallOperationState
+  ): void {
+    operation.state = state
+    operation.updatedAt = this.now()
+    if (operation.stateHistory[operation.stateHistory.length - 1] !== state) {
+      operation.stateHistory.push(state)
+    }
+  }
+
+  private failOfficialInstallOperation(
+    operation: OfficialInstallOperationRecord,
+    failureReason: string,
+    diagnosticCode: string
+  ): void {
+    operation.failureReason = sanitizeOperationCode(failureReason)
+    operation.diagnosticCode = sanitizeOperationCode(diagnosticCode)
   }
 
   private verifyOfficialMagikaReleaseMetadata(
@@ -533,14 +699,14 @@ export class EnginePluginLifecycleService {
       await extractOfficialMagikaPackage({
         bytes: input.verified.stagedPackage.bytes,
         stageDir: input.stageDir,
-        finalDir: input.finalDir,
         release: input.release,
       })
     } catch {
       return fail('official_package_extract_failed', 'official package extraction failed')
     }
 
-    const discovered = await discoverMagikaManagedPlugin({ pluginDirs: [input.finalDir] })
+    const stagedEngineDir = path.join(input.stageDir, 'engine')
+    const discovered = await discoverMagikaManagedPlugin({ pluginDirs: [stagedEngineDir] })
     if (!discovered.available) {
       return fail('manifest_integrity_failed', 'managed plugin integrity verification failed')
     }
@@ -553,9 +719,21 @@ export class EnginePluginLifecycleService {
     }
 
     const manifestBytes = await this.readBytes(descriptor.manifestPath).catch(() => null)
-    return manifestBytes
-      ? ok({ descriptor, manifestBytes })
-      : fail('local_package_manifest_hash_missing', 'cannot read installed package manifest for hash calculation')
+    if (!manifestBytes) {
+      return fail('local_package_manifest_hash_missing', 'cannot read installed package manifest for hash calculation')
+    }
+
+    try {
+      await promoteOfficialMagikaEngine({ stagedEngineDir, finalDir: input.finalDir })
+    } catch {
+      return fail('official_package_extract_failed', 'official package extraction failed')
+    }
+
+    const installed = await discoverMagikaManagedPlugin({ pluginDirs: [input.finalDir] })
+    if (!installed.available) {
+      return fail('manifest_integrity_failed', 'managed plugin integrity verification failed')
+    }
+    return ok({ descriptor: installed.descriptor, manifestBytes })
   }
 
   private upsertOfficialMagikaInstall(input: Readonly<{
@@ -921,6 +1099,42 @@ function toInstalledDto(record: EnginePluginRegistryRecord): InstalledEnginePlug
   }
 }
 
+function toOfficialInstallOperationDto(
+  operation: OfficialInstallOperationRecord | null | undefined
+): OfficialInstallOperationDto | null {
+  if (!operation) return null
+  return {
+    operationId: sanitizeOperationIdentifier(operation.operationId, 'official-install'),
+    pluginId: sanitizeOperationIdentifier(operation.pluginId, MAGIKA_OFFICIAL_PLUGIN_ID),
+    pluginVersion: sanitizeOperationIdentifier(operation.pluginVersion, MAGIKA_OFFICIAL_PLUGIN_VERSION),
+    state: operation.state,
+    stateHistory: [...operation.stateHistory],
+    startedAt: operation.startedAt,
+    updatedAt: operation.updatedAt,
+    failureReason: sanitizeOperationCode(operation.failureReason),
+    diagnosticCode: sanitizeOperationCode(operation.diagnosticCode),
+    installedEngineId: sanitizeOperationCode(operation.installedEngineId),
+  }
+}
+
+function officialInstallOperationKey(pluginId: string, pluginVersion: string): string {
+  return `${pluginId}:${pluginVersion}`
+}
+
+function sanitizeOperationIdentifier(input: string | null | undefined, fallback: string): string {
+  const sanitized = sanitizePluginDistributionText(input)
+    ?.replace(/[^a-z0-9._:-]/giu, '_')
+    .slice(0, 128)
+  return sanitized || fallback
+}
+
+function sanitizeOperationCode(input: string | null | undefined): string | null {
+  const sanitized = sanitizePluginDistributionText(input)
+    ?.replace(/[^a-z0-9._:-]/giu, '_')
+    .slice(0, 128)
+  return sanitized || null
+}
+
 function resolveCatalogEntryPaths(
   pluginDir: string,
   entry: OfficialPluginCatalogEntry
@@ -1022,11 +1236,9 @@ const defaultOfficialPackageTransport: PackageDownloadTransport = {
 async function extractOfficialMagikaPackage(input: Readonly<{
   bytes: Uint8Array
   stageDir: string
-  finalDir: string
   release: OfficialPackageReleaseMetadata
 }>): Promise<void> {
   assertSafeInstallDir(input.stageDir)
-  assertSafeInstallDir(input.finalDir)
   await rm(input.stageDir, { recursive: true, force: true })
   await mkdir(input.stageDir, { recursive: true })
   await extractZipToDirectory(input.bytes, input.stageDir)
@@ -1046,9 +1258,16 @@ async function extractOfficialMagikaPackage(input: Readonly<{
 
   const engineDir = path.join(input.stageDir, 'engine')
   if (!existsSync(engineDir)) throw new Error('official package engine directory missing')
+}
+
+async function promoteOfficialMagikaEngine(input: Readonly<{
+  stagedEngineDir: string
+  finalDir: string
+}>): Promise<void> {
+  assertSafeInstallDir(input.finalDir)
   await rm(input.finalDir, { recursive: true, force: true })
   await mkdir(input.finalDir, { recursive: true })
-  await cp(engineDir, input.finalDir, {
+  await cp(input.stagedEngineDir, input.finalDir, {
     recursive: true,
     force: true,
     errorOnExist: false,
