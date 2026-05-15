@@ -89,6 +89,7 @@ export const DB_METHODS = [
   { name: 'enginePluginLifecycle.listInstalledPlugins', renderer: true, worker: true, domain: 'enginePluginLifecycle' },
   { name: 'enginePluginLifecycle.registerLocalOfficialPlugin', renderer: true, worker: true, domain: 'enginePluginLifecycle' },
   { name: 'enginePluginLifecycle.installOfficialPlugin', renderer: true, worker: true, domain: 'enginePluginLifecycle' },
+  { name: 'enginePluginLifecycle.getInstallOperationStatus', renderer: true, worker: true, domain: 'enginePluginLifecycle' },
   { name: 'enginePluginLifecycle.enablePlugin', renderer: true, worker: true, domain: 'enginePluginLifecycle' },
   { name: 'enginePluginLifecycle.disablePlugin', renderer: true, worker: true, domain: 'enginePluginLifecycle' },
   { name: 'enginePluginLifecycle.uninstallPlugin', renderer: true, worker: true, domain: 'enginePluginLifecycle' },

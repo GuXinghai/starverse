@@ -1,12 +1,17 @@
 import {
   decodeInstalledPluginsResponse,
+  decodeInstallOfficialPluginResult,
+  decodeInstallOperationStatusResult,
   decodeLifecycleInstalledResult,
   decodeListOfficialPluginsResponse,
   decodeDiagnosticsSummary,
   type DecodedInstalledPlugin,
+  type DecodedInstallOfficialPluginResult,
+  type DecodedInstallOperationStatusResult,
   type DecodedLifecycleInstalledResult,
   type DecodedLifecycleListOfficialResult,
   type DecodedDiagnosticsSummary,
+  type GetInstallOperationStatusRequest,
   type LifecycleEngineRequest,
   type InstallOfficialPluginRequest,
   type ListOfficialPluginsRequest,
@@ -50,9 +55,16 @@ export async function registerLocalOfficialPlugin(
 
 export async function installOfficialPlugin(
   params: InstallOfficialPluginRequest
-): Promise<DecodedLifecycleInstalledResult> {
+): Promise<DecodedInstallOfficialPluginResult> {
   const raw = await requireDbBridge().invoke('enginePluginLifecycle.installOfficialPlugin', params)
-  return decodeLifecycleInstalledResult(raw)
+  return decodeInstallOfficialPluginResult(raw)
+}
+
+export async function getInstallOperationStatus(
+  params: GetInstallOperationStatusRequest = {}
+): Promise<DecodedInstallOperationStatusResult> {
+  const raw = await requireDbBridge().invoke('enginePluginLifecycle.getInstallOperationStatus', params)
+  return decodeInstallOperationStatusResult(raw)
 }
 
 export async function enablePlugin(params: LifecycleEngineRequest): Promise<DecodedLifecycleInstalledResult> {

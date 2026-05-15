@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   disablePlugin,
   enablePlugin,
+  getInstallOperationStatus,
   installOfficialPlugin,
   listInstalledPlugins,
   listOfficialPlugins,
@@ -75,6 +76,40 @@ describe('enginePluginLifecycleClient', () => {
           ],
         }
       }
+      if (method === 'enginePluginLifecycle.installOfficialPlugin') {
+        return {
+          ok: true,
+          value: {
+            operationId: 'official-install-magika-0.1.0-1',
+            pluginId: 'magika',
+            pluginVersion: '0.1.0',
+            state: 'pending',
+            stateHistory: ['pending'],
+            startedAt: 1,
+            updatedAt: 1,
+            failureReason: null,
+            diagnosticCode: null,
+            installedEngineId: null,
+          },
+        }
+      }
+      if (method === 'enginePluginLifecycle.getInstallOperationStatus') {
+        return {
+          ok: true,
+          value: {
+            operationId: 'official-install-magika-0.1.0-1',
+            pluginId: 'magika',
+            pluginVersion: '0.1.0',
+            state: 'installed',
+            stateHistory: ['pending', 'downloading', 'verifying', 'registering', 'installed'],
+            startedAt: 1,
+            updatedAt: 2,
+            failureReason: null,
+            diagnosticCode: null,
+            installedEngineId: 'magika',
+          },
+        }
+      }
       return {
         ok: true,
         value: {
@@ -112,6 +147,7 @@ describe('enginePluginLifecycleClient', () => {
       pluginId: 'magika',
       pluginVersion: '0.1.0',
     })
+    const installStatus = await getInstallOperationStatus({ pluginId: 'magika', pluginVersion: '0.1.0' })
     const enabled = await enablePlugin({ engineId: 'magika' })
     const disabled = await disablePlugin({ engineId: 'magika' })
     const uninstalled = await uninstallPlugin({ engineId: 'magika' })
@@ -121,6 +157,8 @@ describe('enginePluginLifecycleClient', () => {
     expect(installed[0]?.engineId).toBe('magika')
     expect(registered.ok).toBe(true)
     expect(installedOfficial.ok).toBe(true)
+    expect(installStatus.ok).toBe(true)
+    if (installStatus.ok) expect(installStatus.value?.state).toBe('installed')
     expect(enabled.ok).toBe(true)
     expect(disabled.ok).toBe(true)
     expect(uninstalled.ok).toBe(true)

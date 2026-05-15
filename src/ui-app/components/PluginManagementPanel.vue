@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   disablePlugin,
   enablePlugin,
   getDiagnosticsSummary,
+  getInstallOperationStatus,
   installOfficialPlugin,
   listInstalledPlugins,
   listOfficialPlugins,
@@ -25,6 +26,7 @@ import {
 } from '@/next/plugin-distribution/browser'
 import type {
   DecodedDiagnosticsSummary,
+  DecodedOfficialInstallOperation,
   DecodedInstalledPlugin,
   DecodedLifecycleInstalledResult,
   DecodedOfficialPlugin,
@@ -38,6 +40,7 @@ import type {
 type PluginPanelRow = Readonly<{
   plugin: PdpManagementPluginViewModel
   engineId: string | null
+  installOperation: DecodedOfficialInstallOperation | null
 }>
 
 type UiAction = PdpManagementAction & Readonly<{ clickable: boolean }>
@@ -47,6 +50,8 @@ const error = ref<string | null>(null)
 const statusMessage = ref<string | null>(null)
 const rows = ref<PluginPanelRow[]>([])
 const diagnosticsSummary = ref<DecodedDiagnosticsSummary | null>(null)
+const installOperations = ref<Record<string, DecodedOfficialInstallOperation>>({})
+let installPollTimer: ReturnType<typeof setInterval> | null = null
 
 const summaryText = computed(() => {
   const counts = diagnosticsSummary.value?.counts
@@ -58,18 +63,29 @@ onMounted(() => {
   void loadData()
 })
 
-async function loadData(options?: Readonly<{ preserveMessages?: boolean }>): Promise<void> {
-  loading.value = true
+onBeforeUnmount(() => {
+  stopInstallPoller()
+})
+
+async function loadData(options?: Readonly<{ preserveMessages?: boolean; silent?: boolean }>): Promise<void> {
+  if (!options?.silent) loading.value = true
   if (!options?.preserveMessages) {
     error.value = null
     statusMessage.value = null
   }
 
   try {
-    const [official, installed] = await Promise.all([
+    const [official, installed, installOperation] = await Promise.all([
       listOfficialPlugins(),
       listInstalledPlugins(),
+      loadInstallOperationStatus(),
     ])
+    if (installOperation) {
+      installOperations.value = {
+        ...installOperations.value,
+        [installOperationKey(installOperation.pluginId, installOperation.pluginVersion)]: installOperation,
+      }
+    }
     diagnosticsSummary.value = await loadDiagnosticsSummary()
     const catalogEntries = official.ok ? official.value.map(toCatalogEntry) : []
     const registryRecords = installed.map(toRegistryRecord)
@@ -83,7 +99,13 @@ async function loadData(options?: Readonly<{ preserveMessages?: boolean }>): Pro
       engineId: installed.find((item) =>
         item.engineId === plugin.id && item.pluginVersion === plugin.pluginVersion
       )?.engineId ?? null,
+      installOperation: installOperations.value[installOperationKey(plugin.id, plugin.pluginVersion)] ?? null,
     }))
+    if (rows.value.some((row) => isActiveInstallOperation(row.installOperation))) {
+      ensureInstallPoller()
+    } else {
+      stopInstallPoller()
+    }
     if (!official.ok) {
       error.value = sanitizePdpManagementText(official.reason, 'Official catalog unavailable')
     }
@@ -91,13 +113,22 @@ async function loadData(options?: Readonly<{ preserveMessages?: boolean }>): Pro
     error.value = sanitizePdpManagementText(err?.message ?? String(err), 'Plugin management unavailable')
     rows.value = []
   } finally {
-    loading.value = false
+    if (!options?.silent) loading.value = false
   }
 }
 
 async function loadDiagnosticsSummary(): Promise<DecodedDiagnosticsSummary | null> {
   try {
     return await getDiagnosticsSummary()
+  } catch {
+    return null
+  }
+}
+
+async function loadInstallOperationStatus(): Promise<DecodedOfficialInstallOperation | null> {
+  try {
+    const result = await getInstallOperationStatus()
+    return result.ok ? result.value : null
   } catch {
     return null
   }
@@ -111,6 +142,24 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
   error.value = null
   statusMessage.value = null
   try {
+    if (action.id === 'install_official_plugin') {
+      const result = await installOfficialPlugin({
+        pluginId: row.plugin.id,
+        pluginVersion: row.plugin.pluginVersion,
+        enabled: false,
+      })
+      if (result.ok) {
+        installOperations.value = {
+          ...installOperations.value,
+          [installOperationKey(result.value.pluginId, result.value.pluginVersion)]: result.value,
+        }
+        statusMessage.value = `${action.label}: ${installOperationLabel(result.value.state)}`
+        ensureInstallPoller()
+      } else {
+        error.value = sanitizePdpManagementText(result.reason, `${action.label} failed`)
+      }
+      return
+    }
     const result = await invokeLifecycleAction(action.id, row)
     if (result.ok) {
       statusMessage.value = `${action.label}: ${sanitizePdpManagementText(result.value.engineId, 'plugin')}`
@@ -118,7 +167,7 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
       error.value = sanitizePdpManagementText(result.reason, `${action.label} failed`)
     }
   } catch (err: any) {
-    error.value = sanitizePdpManagementText(err?.message ?? String(err), `${action.label} failed`)
+    error.value = formatActionError(action, err)
   } finally {
     loading.value = false
     await loadData({ preserveMessages: true })
@@ -129,13 +178,6 @@ async function invokeLifecycleAction(
   actionId: PdpManagementActionId,
   row: PluginPanelRow
 ): Promise<DecodedLifecycleInstalledResult> {
-  if (actionId === 'install_official_plugin') {
-    return installOfficialPlugin({
-      pluginId: row.plugin.id,
-      pluginVersion: row.plugin.pluginVersion,
-      enabled: false,
-    })
-  }
   const engineId = row.engineId
   if (!engineId) {
     return { ok: false, reason: 'settings_action_not_wired', message: 'registered plugin id unavailable' }
@@ -147,7 +189,8 @@ async function invokeLifecycleAction(
   return { ok: false, reason: 'settings_action_not_wired', message: 'action unavailable in settings' }
 }
 
-function uiActions(plugin: PdpManagementPluginViewModel): readonly UiAction[] {
+function uiActions(row: PluginPanelRow): readonly UiAction[] {
+  const plugin = row.plugin
   const clickable = new Set<PdpManagementActionId>([
     'enable',
     'disable',
@@ -169,7 +212,16 @@ function uiActions(plugin: PdpManagementPluginViewModel): readonly UiAction[] {
   })
   return actionSet.actions.map((action) => {
     const isClickable = clickable.has(action.id)
-    if (isClickable) return { ...action, clickable: true }
+    if (isClickable) {
+      const installInProgress = action.id === 'install_official_plugin' &&
+        isActiveInstallOperation(row.installOperation)
+      return {
+        ...action,
+        enabled: installInProgress ? false : action.enabled,
+        clickable: true,
+        reasonCodes: installInProgress ? ['install_in_progress'] : action.reasonCodes,
+      }
+    }
     if (
       action.id === 'manual_local_package_registration' &&
       action.reasonCodes.includes('unsupported_action_contract_missing')
@@ -270,6 +322,52 @@ function mapHealthStatus(item: DecodedInstalledPlugin): PluginHealthStatus {
 function actionReason(action: UiAction): string {
   return action.reasonCodes.join(', ')
 }
+
+function installOperationKey(pluginId: string, pluginVersion: string): string {
+  return `${pluginId}:${pluginVersion}`
+}
+
+function isActiveInstallOperation(operation: DecodedOfficialInstallOperation | null): boolean {
+  return Boolean(operation && [
+    'pending',
+    'downloading',
+    'verifying',
+    'registering',
+    'health_checking',
+  ].includes(operation.state))
+}
+
+function installOperationLabel(state: DecodedOfficialInstallOperation['state']): string {
+  if (state === 'pending') return 'Install pending'
+  if (state === 'downloading') return 'Downloading'
+  if (state === 'verifying') return 'Verifying package'
+  if (state === 'registering') return 'Registering'
+  if (state === 'health_checking') return 'Checking health'
+  if (state === 'installed') return 'Installed'
+  if (state === 'failed') return 'Install failed'
+  return 'Install cancelled'
+}
+
+function ensureInstallPoller(): void {
+  if (installPollTimer) return
+  installPollTimer = setInterval(() => {
+    void loadData({ preserveMessages: true, silent: true })
+  }, 1500)
+}
+
+function stopInstallPoller(): void {
+  if (!installPollTimer) return
+  clearInterval(installPollTimer)
+  installPollTimer = null
+}
+
+function formatActionError(action: UiAction, err: any): string {
+  const raw = err?.message ?? String(err)
+  if (action.id === 'install_official_plugin' && /DB worker call timed out/iu.test(raw)) {
+    return `${action.label} status unavailable`
+  }
+  return sanitizePdpManagementText(raw, `${action.label} failed`)
+}
 </script>
 
 <template>
@@ -337,6 +435,12 @@ function actionReason(action: UiAction): string {
           <div>Lifecycle: {{ row.plugin.status.lifecycle }}</div>
           <div>Update: {{ row.plugin.status.updateState }}</div>
           <div>Rollback: {{ row.plugin.status.rollbackState }}</div>
+          <div v-if="row.installOperation">
+            Install: {{ installOperationLabel(row.installOperation.state) }}
+          </div>
+          <div v-if="row.installOperation?.failureReason">
+            Failure: {{ sanitizePdpManagementText(row.installOperation.failureReason, 'install_failed') }}
+          </div>
         </div>
 
         <div v-if="row.plugin.reasonCodes.length > 0" class="mt-2 flex flex-wrap gap-1">
@@ -351,7 +455,7 @@ function actionReason(action: UiAction): string {
 
         <div class="mt-2 flex flex-wrap gap-1">
           <button
-            v-for="action in uiActions(row.plugin)"
+            v-for="action in uiActions(row)"
             :key="action.id"
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"

@@ -40,6 +40,8 @@ export function registerEnginePluginLifecycleHandlers(
     return result
   })
 
+  registerInstallOperationStatusHandler(register, runtime)
+
   register('enginePluginLifecycle.enablePlugin', async (raw) => {
     const input = asObject(raw)
     const result = await runtime.enginePluginLifecycleService.enablePlugin({
@@ -83,6 +85,20 @@ export function registerEnginePluginLifecycleHandlers(
 
   register('enginePluginLifecycle.getDiagnosticsSummary', () => {
     return runtime.enginePluginLifecycleService.getDiagnosticsSummary()
+  })
+}
+
+function registerInstallOperationStatusHandler(
+  register: RegisterHandler,
+  runtime: DbWorkerRuntime
+): void {
+  register('enginePluginLifecycle.getInstallOperationStatus', (raw) => {
+    const input = asObject(raw)
+    return runtime.enginePluginLifecycleService.getInstallOperationStatus({
+      operationId: optionalString(input.operationId),
+      pluginId: optionalString(input.pluginId),
+      pluginVersion: optionalString(input.pluginVersion),
+    })
   })
 }
 

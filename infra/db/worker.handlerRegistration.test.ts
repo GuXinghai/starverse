@@ -100,7 +100,22 @@ function createLifecycleRuntime() {
     })),
     installOfficialPlugin: vi.fn(() => Promise.resolve({
       ok: true,
-      value: { engineId: 'magika', enabled: false, installState: 'installed' },
+      value: {
+        operationId: 'official-install-magika-0.1.0-1',
+        pluginId: 'magika',
+        pluginVersion: '0.1.0',
+        state: 'pending',
+        stateHistory: ['pending'],
+        startedAt: 1,
+        updatedAt: 1,
+        failureReason: null,
+        diagnosticCode: null,
+        installedEngineId: null,
+      },
+    })),
+    getInstallOperationStatus: vi.fn(() => ({
+      ok: true,
+      value: null,
     })),
     registerLocalOfficialPlugin: vi.fn(() => Promise.resolve({
       ok: false,
@@ -166,6 +181,11 @@ describe('DbWorker handler registration modules', () => {
       pluginVersion: '0.1.0',
       enabled: false,
     })
+    expect(spies.getInstallOperationStatus).toHaveBeenCalledWith({
+      operationId: undefined,
+      pluginId: 'magika',
+      pluginVersion: '0.1.0',
+    })
     expect(spies.registerLocalOfficialPlugin).toHaveBeenCalledWith({
       catalogPath: 'catalog.json',
       pluginId: 'magika',
@@ -208,6 +228,7 @@ const lifecycleMethods = [
   'enginePluginLifecycle.getDiagnosticsSummary',
   'enginePluginLifecycle.registerLocalOfficialPlugin',
   'enginePluginLifecycle.installOfficialPlugin',
+  'enginePluginLifecycle.getInstallOperationStatus',
   'enginePluginLifecycle.enablePlugin',
   'enginePluginLifecycle.disablePlugin',
   'enginePluginLifecycle.uninstallPlugin',
@@ -247,7 +268,25 @@ async function exerciseLifecycleHandlers(handlers: ReadonlyMap<DbMethod, DbHandl
     pluginVersion: '0.1.0',
   })).resolves.toEqual({
     ok: true,
-    value: { engineId: 'magika', enabled: false, installState: 'installed' },
+    value: {
+      operationId: 'official-install-magika-0.1.0-1',
+      pluginId: 'magika',
+      pluginVersion: '0.1.0',
+      state: 'pending',
+      stateHistory: ['pending'],
+      startedAt: 1,
+      updatedAt: 1,
+      failureReason: null,
+      diagnosticCode: null,
+      installedEngineId: null,
+    },
+  })
+  expect(handlers.get('enginePluginLifecycle.getInstallOperationStatus')!({
+    pluginId: 'magika',
+    pluginVersion: '0.1.0',
+  })).toEqual({
+    ok: true,
+    value: null,
   })
   await expect(handlers.get('enginePluginLifecycle.registerLocalOfficialPlugin')!({
     catalogPath: 'catalog.json',
