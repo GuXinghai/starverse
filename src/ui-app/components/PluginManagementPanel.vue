@@ -15,6 +15,7 @@ import {
   buildPdpManagementActions,
   buildPdpManagementViewModel,
   isOfficialInstallOperationActive,
+  isOfficialInstallOperationTerminal,
   labelOfficialInstallOperationPhase,
   labelPdpHealthStatus,
   labelPdpInstallState,
@@ -77,15 +78,19 @@ async function loadData(options?: Readonly<{ preserveMessages?: boolean; silent?
   }
 
   try {
-    const [official, installed, installOperation] = await Promise.all([
+    const [official, initialInstalled, installOperation] = await Promise.all([
       listOfficialPlugins(),
       listInstalledPlugins(),
       loadInstallOperationStatus(),
     ])
+    let installed = initialInstalled
     if (installOperation) {
       installOperations.value = {
         ...installOperations.value,
         [installOperationKey(installOperation.pluginId, installOperation.pluginVersion)]: installOperation,
+      }
+      if (installOperation.state === 'installed' && !hasInstalledPlugin(initialInstalled, installOperation)) {
+        installed = await listInstalledPlugins()
       }
     }
     diagnosticsSummary.value = await loadDiagnosticsSummary()
@@ -103,13 +108,15 @@ async function loadData(options?: Readonly<{ preserveMessages?: boolean; silent?
       )?.engineId ?? null,
       installOperation: installOperations.value[installOperationKey(plugin.id, plugin.pluginVersion)] ?? null,
     }))
-    if (rows.value.some((row) => isActiveInstallOperation(row.installOperation))) {
+    const hasActiveInstallOperation = rows.value.some((row) => isActiveInstallOperation(row.installOperation))
+    if (rows.value.some((row) => isPollingInstallOperation(row))) {
       ensureInstallPoller()
+      if (!hasActiveInstallOperation) {
+        applyTerminalInstallOperationMessage()
+      }
     } else {
       stopInstallPoller()
-      if (statusMessage.value?.startsWith('Install official plugin:')) {
-        statusMessage.value = null
-      }
+      applyTerminalInstallOperationMessage()
     }
     if (!official.ok) {
       error.value = sanitizePdpManagementText(official.reason, 'Official catalog unavailable')
@@ -228,11 +235,20 @@ function uiActions(row: PluginPanelRow): readonly UiAction[] {
     if (isClickable) {
       const installInProgress = action.id === 'install_official_plugin' &&
         isActiveInstallOperation(row.installOperation)
+      const installAwaitingRegistry = action.id === 'install_official_plugin' &&
+        row.installOperation?.state === 'installed' &&
+        row.plugin.status.installState !== 'installed' &&
+        row.plugin.status.installState !== 'failed'
+      const installBlocked = installInProgress || installAwaitingRegistry
       return {
         ...action,
-        enabled: installInProgress ? false : action.enabled,
+        enabled: installBlocked ? false : action.enabled,
         clickable: true,
-        reasonCodes: installInProgress ? ['install_in_progress'] : action.reasonCodes,
+        reasonCodes: installInProgress
+          ? ['install_in_progress']
+          : installAwaitingRegistry
+            ? ['install_reconciling']
+            : action.reasonCodes,
       }
     }
     if (
@@ -368,6 +384,29 @@ function isActiveInstallOperation(operation: DecodedOfficialInstallOperation | n
   return Boolean(operation && isOfficialInstallOperationActive(operation.state))
 }
 
+function isTerminalInstallOperation(operation: DecodedOfficialInstallOperation | null): boolean {
+  return Boolean(operation && isOfficialInstallOperationTerminal(operation.state))
+}
+
+function isPollingInstallOperation(row: PluginPanelRow): boolean {
+  return isActiveInstallOperation(row.installOperation) || (
+    row.installOperation?.state === 'installed' &&
+    row.plugin.status.installState !== 'installed' &&
+    row.plugin.status.installState !== 'failed'
+  )
+}
+
+function hasInstalledPlugin(
+  installed: readonly DecodedInstalledPlugin[],
+  operation: DecodedOfficialInstallOperation
+): boolean {
+  return installed.some((item) =>
+    item.engineId === operation.pluginId &&
+    item.pluginVersion === operation.pluginVersion &&
+    item.installState === 'installed'
+  )
+}
+
 function installOperationLabel(state: DecodedOfficialInstallOperation['state']): string {
   return labelOfficialInstallOperationPhase(state)
 }
@@ -375,6 +414,50 @@ function installOperationLabel(state: DecodedOfficialInstallOperation['state']):
 function installOperationSummary(operation: DecodedOfficialInstallOperation): string {
   if (operation.progressSummary) return sanitizePdpManagementText(operation.progressSummary, installOperationLabel(operation.state))
   return installOperationLabel(operation.state)
+}
+
+function applyTerminalInstallOperationMessage(): void {
+  const operation = rows.value
+    .map((row) => row.installOperation)
+    .filter((item): item is DecodedOfficialInstallOperation => isTerminalInstallOperation(item))
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null
+
+  if (!operation) {
+    if (statusMessage.value?.startsWith('Install official plugin:')) {
+      statusMessage.value = null
+    }
+    return
+  }
+
+  const summary = installOperationSummary(operation)
+  if (operation.state === 'failed' || operation.state === 'cancelled' || operation.state === 'stale') {
+    const reason = installOperationFailureReason(operation)
+    error.value = reason && !summary.includes(reason)
+      ? `${summary}: ${reason}`
+      : summary
+    if (statusMessage.value?.startsWith('Install official plugin:')) {
+      statusMessage.value = null
+    }
+    return
+  }
+
+  if (operation.state === 'installed') {
+    const installed = rows.value.some((row) =>
+      row.installOperation?.operationId === operation.operationId &&
+      row.plugin.status.installState === 'installed'
+    )
+    error.value = null
+    statusMessage.value = installed
+      ? `Install official plugin: ${summary}`
+      : 'Install official plugin: Reconciling installed registry state'
+  }
+}
+
+function installOperationFailureReason(operation: DecodedOfficialInstallOperation): string {
+  return sanitizePdpManagementText(
+    operation.diagnosticCode ?? operation.failureReason ?? '',
+    ''
+  )
 }
 
 function ensureInstallPoller(): void {
@@ -468,7 +551,7 @@ function formatActionError(action: UiAction, err: any): string {
             Install: {{ installOperationSummary(row.installOperation) }}
           </div>
           <div v-if="row.installOperation?.failureReason">
-            Failure: {{ sanitizePdpManagementText(row.installOperation.failureReason, 'install_failed') }}
+            Failure: {{ installOperationFailureReason(row.installOperation) }}
           </div>
         </div>
 

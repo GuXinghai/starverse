@@ -714,6 +714,12 @@ describe('EnginePluginLifecycleService', () => {
         healthStatus: 'unhealthy',
         failureReason: 'health_failed',
       })
+      const retry = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      expect(retry.ok).toBe(true)
+      if (retry.ok) {
+        expect(retry.value.operationId).not.toBe(result.value.operationId)
+        await waitForInstallOperation(service, retry.value.operationId)
+      }
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })
