@@ -132,6 +132,12 @@ export const MAGIKA_OFFICIAL_RELEASE_METADATA = {
   compatibility: MAGIKA_OFFICIAL_CATALOG_ENTRY.compatibility,
 } as const satisfies OfficialPackageReleaseMetadata
 
+const RELEASE_READY_REASON_OVERRIDES = new Set([
+  'metadata_compatible_future_install',
+  'read_only_catalog_no_install_action',
+  'signature_verification_deferred',
+])
+
 export type MagikaOfficialCatalogReadModelResult =
   | Readonly<{ ok: true; catalog: ReadOnlyCatalogDto }>
   | Readonly<{ ok: false; reason: 'official_trusted_root_unconfigured' | 'official_release_metadata_invalid' }>
@@ -162,20 +168,35 @@ export function buildMagikaOfficialCatalogReadModel(input: Readonly<{
     return { ok: false, reason: 'official_release_metadata_invalid' }
   }
 
+  const catalog = buildReadOnlyCatalogDto({
+    validation,
+    environment: input.environment,
+    entryMetadata: {
+      [`${MAGIKA_OFFICIAL_PLUGIN_ID}@${MAGIKA_OFFICIAL_PLUGIN_VERSION}`]: {
+        displayName: 'Magika',
+        publisher: 'Google Magika',
+        capabilities: ['file_identification', 'model_inference'],
+        modelVersion: MAGIKA_OFFICIAL_MODEL_VERSION,
+      },
+    },
+  })
+
   return {
     ok: true,
-    catalog: buildReadOnlyCatalogDto({
-      validation,
-      environment: input.environment,
-      entryMetadata: {
-        [`${MAGIKA_OFFICIAL_PLUGIN_ID}@${MAGIKA_OFFICIAL_PLUGIN_VERSION}`]: {
-          displayName: 'Magika',
-          publisher: 'Google Magika',
-          capabilities: ['file_identification', 'model_inference'],
-          modelVersion: MAGIKA_OFFICIAL_MODEL_VERSION,
-        },
-      },
-    }),
+    catalog: {
+      ...catalog,
+      entries: catalog.entries.map((entry) => ({
+        ...entry,
+        verificationMetadataStatus: 'production_signature_available',
+        installabilityStatus: 'official_remote_install_available',
+        reasons: [
+          ...entry.reasons.filter((reason) => !RELEASE_READY_REASON_OVERRIDES.has(reason)),
+          'official_remote_install_available',
+          'production_signature_available',
+          'verify_before_install',
+        ],
+      })),
+    },
   }
 }
 

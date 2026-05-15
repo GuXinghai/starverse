@@ -4,6 +4,7 @@ import {
   disablePlugin,
   enablePlugin,
   getDiagnosticsSummary,
+  installOfficialPlugin,
   listInstalledPlugins,
   listOfficialPlugins,
   runPluginHealthCheck,
@@ -103,13 +104,14 @@ async function loadDiagnosticsSummary(): Promise<DecodedDiagnosticsSummary | nul
 }
 
 async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
-  if (!action.clickable || !action.enabled || !row.engineId) return
+  if (!action.clickable || !action.enabled) return
+  if (action.id !== 'install_official_plugin' && !row.engineId) return
 
   loading.value = true
   error.value = null
   statusMessage.value = null
   try {
-    const result = await invokeLifecycleAction(action.id, row.engineId)
+    const result = await invokeLifecycleAction(action.id, row)
     if (result.ok) {
       statusMessage.value = `${action.label}: ${sanitizePdpManagementText(result.value.engineId, 'plugin')}`
     } else {
@@ -125,8 +127,19 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
 
 async function invokeLifecycleAction(
   actionId: PdpManagementActionId,
-  engineId: string
+  row: PluginPanelRow
 ): Promise<DecodedLifecycleInstalledResult> {
+  if (actionId === 'install_official_plugin') {
+    return installOfficialPlugin({
+      pluginId: row.plugin.id,
+      pluginVersion: row.plugin.pluginVersion,
+      enabled: false,
+    })
+  }
+  const engineId = row.engineId
+  if (!engineId) {
+    return { ok: false, reason: 'settings_action_not_wired', message: 'registered plugin id unavailable' }
+  }
   if (actionId === 'enable') return enablePlugin({ engineId })
   if (actionId === 'disable') return disablePlugin({ engineId })
   if (actionId === 'uninstall_metadata') return uninstallPlugin({ engineId })
@@ -140,8 +153,10 @@ function uiActions(plugin: PdpManagementPluginViewModel): readonly UiAction[] {
     'disable',
     'uninstall_metadata',
     'check_health',
+    'install_official_plugin',
   ])
   const actionSet = buildPdpManagementActions(plugin, {
+    hasOfficialRemoteInstallContract: true,
     hasLocalManualRegistrationContract: false,
     hasPackageVerificationContract: false,
     hasHealthCheckContract: true,
@@ -155,6 +170,17 @@ function uiActions(plugin: PdpManagementPluginViewModel): readonly UiAction[] {
   return actionSet.actions.map((action) => {
     const isClickable = clickable.has(action.id)
     if (isClickable) return { ...action, clickable: true }
+    if (
+      action.id === 'manual_local_package_registration' &&
+      action.reasonCodes.includes('unsupported_action_contract_missing')
+    ) {
+      return {
+        ...action,
+        enabled: false,
+        clickable: false,
+        reasonCodes: ['local_registration_ui_not_wired'],
+      }
+    }
     return {
       ...action,
       enabled: false,
@@ -223,7 +249,6 @@ function mapInstallState(item: DecodedInstalledPlugin): PluginInstallState {
   if (item.failureReason === 'revoked') return 'quarantined'
   if (item.installState === 'failed') return 'failed'
   if (item.installState === 'uninstalled') return 'uninstalled'
-  if (!item.enabled) return 'disabled'
   return 'installed'
 }
 
@@ -251,7 +276,7 @@ function actionReason(action: UiAction): string {
       <div>
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Plugin Management</div>
         <div class="mt-1 text-[11px] text-gray-500">
-          Official catalog metadata is read-only; extraction remains deferred where only contracts exist.
+          Built-in Magika installs through the official verify-before-install release path.
         </div>
       </div>
       <button
@@ -328,7 +353,7 @@ function actionReason(action: UiAction): string {
             :key="action.id"
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="loading || !action.enabled || !action.clickable || !row.engineId"
+            :disabled="loading || !action.enabled || !action.clickable || (action.id !== 'install_official_plugin' && !row.engineId)"
             :title="action.enabled ? action.label : actionReason(action)"
             @click="runAction(row, action)"
           >

@@ -98,6 +98,10 @@ function createLifecycleRuntime() {
       ok: true,
       value: { engineId: 'magika', healthStatus: 'healthy' },
     })),
+    installOfficialPlugin: vi.fn(() => Promise.resolve({
+      ok: true,
+      value: { engineId: 'magika', enabled: false, installState: 'installed' },
+    })),
   }
   return { runtime: { enginePluginLifecycleService: spies } as any, spies }
 }
@@ -147,6 +151,11 @@ describe('DbWorker handler registration modules', () => {
     expect(spies.listOfficialPlugins).toHaveBeenCalledWith({ catalogPath: 'catalog.json' })
     expect(spies.getInstalledPlugins).toHaveBeenCalledWith()
     expect(spies.getDiagnosticsSummary).toHaveBeenCalledWith()
+    expect(spies.installOfficialPlugin).toHaveBeenCalledWith({
+      pluginId: 'magika',
+      pluginVersion: '0.1.0',
+      enabled: false,
+    })
     expect(spies.enablePlugin).toHaveBeenCalledWith({ engineId: 'magika' })
     expect(spies.disablePlugin).toHaveBeenCalledWith({ engineId: 'magika' })
     expect(spies.uninstallPlugin).toHaveBeenCalledWith({ engineId: 'magika' })
@@ -173,6 +182,7 @@ const lifecycleMethods = [
   'enginePluginLifecycle.listOfficialPlugins',
   'enginePluginLifecycle.listInstalledPlugins',
   'enginePluginLifecycle.getDiagnosticsSummary',
+  'enginePluginLifecycle.installOfficialPlugin',
   'enginePluginLifecycle.enablePlugin',
   'enginePluginLifecycle.disablePlugin',
   'enginePluginLifecycle.uninstallPlugin',
@@ -206,6 +216,13 @@ async function exerciseLifecycleHandlers(handlers: ReadonlyMap<DbMethod, DbHandl
     counts: { total: 0, installed: 0, enabled: 0, healthy: 0, failed: 0, unverified: 0 },
   })
   await expect(handlers.get('enginePluginLifecycle.listOfficialPlugins')!({ catalogPath: 'catalog.json' })).resolves.toEqual({ ok: true, value: [] })
+  await expect(handlers.get('enginePluginLifecycle.installOfficialPlugin')!({
+    pluginId: 'magika',
+    pluginVersion: '0.1.0',
+  })).resolves.toEqual({
+    ok: true,
+    value: { engineId: 'magika', enabled: false, installState: 'installed' },
+  })
   await expect(handlers.get('enginePluginLifecycle.enablePlugin')!({ engineId: 'magika' })).resolves.toEqual({
     ok: true,
     value: { engineId: 'magika', enabled: true, installState: 'installed' },

@@ -30,6 +30,16 @@ export function registerEnginePluginLifecycleHandlers(
     return result
   })
 
+  register('enginePluginLifecycle.installOfficialPlugin', async (raw) => {
+    const input = asObject(raw)
+    const result = await runtime.enginePluginLifecycleService.installOfficialPlugin({
+      pluginId: requiredString(input.pluginId, 'pluginId'),
+      pluginVersion: optionalString(input.pluginVersion),
+      enabled: typeof input.enabled === 'boolean' ? input.enabled : false,
+    })
+    return result
+  })
+
   register('enginePluginLifecycle.enablePlugin', async (raw) => {
     const input = asObject(raw)
     const result = await runtime.enginePluginLifecycleService.enablePlugin({

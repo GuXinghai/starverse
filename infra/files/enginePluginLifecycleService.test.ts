@@ -1,6 +1,7 @@
 import { createHash, generateKeyPairSync, sign } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { mkdtemp, mkdir, rm as rmAsync, writeFile as writeFileAsync } from 'node:fs/promises'
+import { deflateRawSync } from 'node:zlib'
 import os from 'node:os'
 import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
@@ -12,6 +13,7 @@ import {
 import {
   MAGIKA_OFFICIAL_PUBLIC_KEY_PEM,
 } from '../../src/next/plugin-distribution/magikaOfficialRelease'
+import type { OfficialPackageReleaseMetadata } from '../../src/next/plugin-distribution/officialPackageRelease'
 import { ensureEnginePluginRegistrySchema } from '../db/migrations/ensureEnginePluginRegistrySchema'
 import { EnginePluginRegistryRepo } from '../db/repo/enginePluginRegistryRepo'
 import { EnginePluginLifecycleService } from './enginePluginLifecycleService'
@@ -132,7 +134,15 @@ async function createFixture(): Promise<Fixture> {
   }
 }
 
-function createService(tempRoot: string, trustedRoots: TrustedCatalogPublicKeyMap, opts: Readonly<{ trustedRootSource?: 'official' | 'test' | null }> = {}) {
+function createService(
+  tempRoot: string,
+  trustedRoots: TrustedCatalogPublicKeyMap,
+  opts: Readonly<{
+    trustedRootSource?: 'official' | 'test' | null
+    magikaOfficialRelease?: OfficialPackageReleaseMetadata
+    officialPackageBytes?: Uint8Array
+  }> = {}
+) {
   const db = new BetterSqlite3(':memory:')
   loadSchema(db)
   ensureEnginePluginRegistrySchema(db)
@@ -142,6 +152,18 @@ function createService(tempRoot: string, trustedRoots: TrustedCatalogPublicKeyMa
     trustedRoots,
     trustedRootSource: opts.trustedRootSource ?? 'test',
     resolveInstallPluginDir: ({ installRef }) => path.join(tempRoot, installRef),
+    magikaOfficialRelease: opts.magikaOfficialRelease,
+    officialPackageTransport: opts.officialPackageBytes
+      ? {
+          async fetchPackage() {
+            return {
+              ok: true,
+              bytes: opts.officialPackageBytes!,
+              finalRef: 'https://release-assets.githubusercontent.com/github-production-release-asset/1/pkg.zip',
+            }
+          },
+        }
+      : undefined,
   })
   return { db, repo, service }
 }
@@ -172,7 +194,266 @@ function registryRecord(overrides?: Record<string, unknown>) {
 }
 
 // eslint-disable-next-line max-lines-per-function
+async function createOfficialRemoteInstallFixture() {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-official-magika-install-'))
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+  const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
+  const keyId = 'starverse-test-official-root'
+  const publicKeyRef = 'keys/test.public.pem'
+  const trustedRoots: TrustedCatalogPublicKeyMap = {
+    [keyId]: {
+      keyId,
+      algorithm: 'ed25519',
+      publicKeyPem,
+    },
+  }
+
+  const engineRuntime = Buffer.from('module.exports = {}')
+  const engineModel = Buffer.from('model-v1')
+  const engineConfig = Buffer.from('{"ok":true}')
+  const managedManifest = Buffer.from(JSON.stringify({
+    manifestSchemaVersion: '1',
+    engineId: 'magika',
+    displayName: 'Magika managed plugin',
+    pluginVersion: '0.1.0',
+    runtimeKind: 'local_loader',
+    runtimeEntry: 'runtime/runner.js',
+    modelVersion: 'magika-v3',
+    modelFiles: ['model/model.bin'],
+    configFiles: ['model/config.json'],
+    integrity: {
+      'runtime/runner.js': sha256(engineRuntime),
+      'model/model.bin': sha256(engineModel),
+      'model/config.json': sha256(engineConfig),
+    },
+    license: 'Apache-2.0',
+    attribution: 'Google Magika',
+    capabilities: ['text_extraction'],
+    supportedFormatIds: [],
+    supportedMimeTypes: [],
+    supportedLabels: ['json'],
+    platform: 'any',
+  }, null, 2))
+  const packageManifest = Buffer.from(JSON.stringify({
+    manifestSchemaVersion: '1',
+    pluginId: 'magika',
+    displayName: 'Magika',
+    publisher: 'Google Magika',
+    pluginVersion: '0.1.0',
+    runtimeKind: 'managed',
+    compatibility: { platforms: ['win32'], architectures: ['x64'], starverseVersionRange: '>=0.0.0' },
+    capabilities: ['file_identification', 'model_inference'],
+    artifactInventoryRef: 'inventory.json',
+    licenseRefs: ['licenses/LICENSE.txt'],
+    attributionRefs: ['attribution/NOTICE.txt'],
+    network: { allowed: false },
+  }, null, 2))
+  const inventory = Buffer.from(JSON.stringify({
+    inventorySchemaVersion: '1',
+    pluginId: 'magika',
+    pluginVersion: '0.1.0',
+    artifacts: [
+      {
+        artifactId: 'managed-manifest',
+        relativePath: 'engine/manifest.json',
+        artifactClass: 'manifest',
+        sha256: sha256(managedManifest),
+        sizeBytes: managedManifest.byteLength,
+        required: true,
+      },
+    ],
+  }, null, 2))
+  const bytes = createZip([
+    ['manifest.json', packageManifest],
+    ['inventory.json', inventory],
+    ['engine/manifest.json', managedManifest],
+    ['engine/runtime/runner.js', engineRuntime],
+    ['engine/model/model.bin', engineModel],
+    ['engine/model/config.json', engineConfig],
+  ])
+  const signature = sign(null, Buffer.from(bytes), privateKey).toString('base64')
+  const release: OfficialPackageReleaseMetadata = {
+    catalogEntry: {
+      pluginId: 'magika',
+      pluginVersion: '0.1.0',
+      runtimeKind: 'managed',
+      platform: 'win32',
+      arch: 'x64',
+      packageRef: 'starverse-plugin-magika-v0.1.0/test.zip',
+      packageSha256: sha256(bytes),
+      packageSizeBytes: bytes.byteLength,
+      manifestSha256: sha256(packageManifest),
+      inventorySha256: sha256(inventory),
+      signatureRef: 'signatures/package.sig.json',
+      compatibility: { platforms: ['win32'], architectures: ['x64'], starverseVersionRange: '>=0.0.0' },
+      channel: 'stable',
+    },
+    releaseUrl: 'https://github.com/GuXinghai/starverse/releases/download/starverse-plugin-magika-v0.1.0/test.zip',
+    remoteInstallEnabled: true,
+    downloadPolicy: {
+      maxBytes: bytes.byteLength + 10,
+      allowedOfficialHosts: ['github.com', 'release-assets.githubusercontent.com'],
+    },
+    signatureEnvelope: {
+      signatureSchemaVersion: '1',
+      keyId,
+      algorithm: 'ed25519',
+      signedAt: '2026-05-14T00:00:00.000Z',
+      expiresAt: '2027-05-14T00:00:00.000Z',
+      value: signature,
+      coveredManifestSha256: sha256(packageManifest),
+      coveredInventorySha256: sha256(inventory),
+    },
+    trustRoot: {
+      rootSchemaVersion: '1',
+      rootVersion: 1,
+      generatedAt: '2026-05-14T00:00:00.000Z',
+      expiresAt: '2027-05-14T00:00:00.000Z',
+      keys: [{ keyId, algorithm: 'ed25519', publicKeyRef, role: 'targets' }],
+      snapshotRole: 'reserved',
+      timestampRole: 'reserved',
+      delegatedRoles: 'reserved',
+    },
+    trustedKeys: [{ publicKeyRef, publicKeyPem }],
+    targetMetadata: {
+      pluginId: 'magika',
+      pluginVersion: '0.1.0',
+      packageSha256: sha256(bytes),
+      packageSizeBytes: bytes.byteLength,
+      expiresAt: '2027-05-14T00:00:00.000Z',
+      signatureRef: 'signatures/package.sig.json',
+    },
+    compatibility: { platforms: ['win32'], architectures: ['x64'], starverseVersionRange: '>=0.0.0' },
+  }
+  return { tempRoot, trustedRoots, release, bytes }
+}
+
+function createZip(entries: readonly (readonly [string, Buffer])[]): Uint8Array {
+  const localParts: Buffer[] = []
+  const centralParts: Buffer[] = []
+  let offset = 0
+  for (const [name, content] of entries) {
+    const nameBytes = Buffer.from(name, 'utf8')
+    const compressed = deflateRawSync(content)
+    const crc = 0
+    const local = Buffer.alloc(30)
+    local.writeUInt32LE(0x04034b50, 0)
+    local.writeUInt16LE(20, 4)
+    local.writeUInt16LE(8, 8)
+    local.writeUInt32LE(crc, 14)
+    local.writeUInt32LE(compressed.byteLength, 18)
+    local.writeUInt32LE(content.byteLength, 22)
+    local.writeUInt16LE(nameBytes.byteLength, 26)
+    localParts.push(local, nameBytes, compressed)
+
+    const central = Buffer.alloc(46)
+    central.writeUInt32LE(0x02014b50, 0)
+    central.writeUInt16LE(20, 4)
+    central.writeUInt16LE(20, 6)
+    central.writeUInt16LE(8, 10)
+    central.writeUInt32LE(crc, 16)
+    central.writeUInt32LE(compressed.byteLength, 20)
+    central.writeUInt32LE(content.byteLength, 24)
+    central.writeUInt16LE(nameBytes.byteLength, 28)
+    central.writeUInt32LE(offset, 42)
+    centralParts.push(central, nameBytes)
+    offset += local.byteLength + nameBytes.byteLength + compressed.byteLength
+  }
+  const centralOffset = offset
+  const central = Buffer.concat(centralParts)
+  const eocd = Buffer.alloc(22)
+  eocd.writeUInt32LE(0x06054b50, 0)
+  eocd.writeUInt16LE(entries.length, 10)
+  eocd.writeUInt16LE(entries.length, 8)
+  eocd.writeUInt32LE(central.byteLength, 12)
+  eocd.writeUInt32LE(centralOffset, 16)
+  return new Uint8Array(Buffer.concat([...localParts, central, eocd]))
+}
+
+// eslint-disable-next-line max-lines-per-function
 describe('EnginePluginLifecycleService', () => {
+  it('installs official Magika through verified release download and registers disabled metadata', async () => {
+    const fixture = await createOfficialRemoteInstallFixture()
+    const { db, service, repo } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      magikaOfficialRelease: fixture.release,
+      officialPackageBytes: fixture.bytes,
+    })
+    try {
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.value.engineId).toBe('magika')
+        expect(result.value.installState).toBe('installed')
+        expect(result.value.enabled).toBe(false)
+        expect(result.value.lastVerifiedAt).toBeTruthy()
+      }
+      expect(repo.getByEngineId('magika')).toMatchObject({
+        engineId: 'magika',
+        installSource: 'official_catalog',
+        installRootKind: 'managed_root',
+        installRef: 'magika',
+        enabled: false,
+      })
+      expect(readFileSync(path.join(fixture.tempRoot, 'magika', 'manifest.json'), 'utf8')).toContain(
+        'Magika managed plugin'
+      )
+
+      const duplicate = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      expect(duplicate.ok).toBe(false)
+      if (!duplicate.ok) expect(duplicate.reason).toBe('already_registered')
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('does not install official Magika when production trust root is missing', async () => {
+    const fixture = await createOfficialRemoteInstallFixture()
+    const { db, service, repo } = createService(fixture.tempRoot, {}, {
+      trustedRootSource: null,
+      magikaOfficialRelease: fixture.release,
+      officialPackageBytes: fixture.bytes,
+    })
+    try {
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.reason).toBe('official_trusted_root_unconfigured')
+      expect(repo.getByEngineId('magika')).toBeNull()
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('does not install official Magika when production signature verification fails', async () => {
+    const fixture = await createOfficialRemoteInstallFixture()
+    const brokenRelease = {
+      ...fixture.release,
+      signatureEnvelope: {
+        ...fixture.release.signatureEnvelope,
+        value: Buffer.from('bad-signature').toString('base64'),
+      },
+    }
+    const { db, service, repo } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      magikaOfficialRelease: brokenRelease,
+      officialPackageBytes: fixture.bytes,
+    })
+    try {
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.reason).toBe('official_remote_install_failed')
+      expect(repo.getByEngineId('magika')).toBeNull()
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
   it('registers local official plugin via catalog signature and hash verification', async () => {
     const fixture = await createFixture()
     const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, { trustedRootSource: 'official' })
@@ -850,13 +1131,13 @@ describe('EnginePluginLifecycleService', () => {
       expect(magikaEntry!.installed).toBe(true)
       expect(magikaEntry!.enabled).toBe(true)
       expect(magikaEntry!.healthStatus).toBe('healthy')
-      expect(magikaEntry!.verificationStatus).toBe('unverified')
+      expect(magikaEntry!.verificationStatus).toBe('verified')
       expect(magikaEntry!.installSource).toBe('local_package')
       expect(magikaEntry!.modelVersion).toBe('magika-v3')
       expect(magikaEntry!.pluginVersion).toBe('0.1.0')
       expect(diagnostics.counts.installed).toBeGreaterThanOrEqual(1)
       expect(diagnostics.counts.healthy).toBeGreaterThanOrEqual(1)
-      expect(diagnostics.counts.unverified).toBeGreaterThanOrEqual(1)
+      expect(diagnostics.counts.unverified).toBe(0)
 
       const disabled = await service.disablePlugin({ engineId: 'magika' })
       expect(disabled.ok).toBe(true)
@@ -989,7 +1270,8 @@ describe('EnginePluginLifecycleService', () => {
         pluginVersion: '0.1.0',
         installState: 'not_installed',
         enabled: false,
-        installabilityStatus: 'metadata_compatible_future_install',
+        installabilityStatus: 'official_remote_install_available',
+        verificationMetadataStatus: 'production_signature_available',
         recommendedInstallRootKind: 'managed_root',
       })
     } finally {
@@ -1093,7 +1375,7 @@ describe('EnginePluginLifecycleService', () => {
       const magika = after.engines.find((e) => e.engineId === 'magika')
       expect(magika).toBeDefined()
       expect(magika!.kind).toBe('plugin')
-      expect(after.counts.unverified).toBe(1)
+      expect(after.counts.unverified).toBe(0)
       expect(after.counts.installed).toBe(1)
     } finally {
       db.close()

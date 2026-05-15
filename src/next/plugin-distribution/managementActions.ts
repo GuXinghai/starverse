@@ -2,6 +2,7 @@ import type { PdpManagementPluginViewModel } from './managementViewModel'
 
 export const PDP_MANAGEMENT_ACTION_IDS = [
   'view_details',
+  'install_official_plugin',
   'manual_local_package_registration',
   'enable',
   'disable',
@@ -30,6 +31,7 @@ export type PdpManagementActionSet = Readonly<{
 
 export type PdpManagementActionOptions = Readonly<{
   hasLocalManualRegistrationContract?: boolean
+  hasOfficialRemoteInstallContract?: boolean
   hasPackageVerificationContract?: boolean
   hasHealthCheckContract?: boolean
   hasMetadataUninstallContract?: boolean
@@ -42,6 +44,7 @@ export type PdpManagementActionOptions = Readonly<{
 
 const DEFAULT_ACTION_OPTIONS: Required<PdpManagementActionOptions> = {
   hasLocalManualRegistrationContract: false,
+  hasOfficialRemoteInstallContract: false,
   hasPackageVerificationContract: false,
   hasHealthCheckContract: false,
   hasMetadataUninstallContract: false,
@@ -61,6 +64,7 @@ export function buildPdpManagementActions(
     pluginId: plugin.id,
     actions: [
       viewDetailsAction(),
+      installOfficialPluginAction(plugin, flags),
       manualLocalRegistrationAction(plugin, flags),
       enableAction(plugin, flags),
       disableAction(plugin, flags),
@@ -84,6 +88,31 @@ export function findPdpManagementAction(
 
 function viewDetailsAction(): PdpManagementAction {
   return enabledAction('view_details', 'View details')
+}
+
+function installOfficialPluginAction(
+  plugin: PdpManagementPluginViewModel,
+  flags: Required<PdpManagementActionOptions>
+): PdpManagementAction {
+  if (!flags.hasOfficialRemoteInstallContract) {
+    return disabledAction('install_official_plugin', 'Install official plugin', ['unsupported_action_contract_missing'])
+  }
+  if (plugin.registry.present) {
+    return disabledAction('install_official_plugin', 'Install official plugin', ['already_registered'])
+  }
+  if (!plugin.catalog.present) {
+    return disabledAction('install_official_plugin', 'Install official plugin', ['catalog_missing'])
+  }
+  if (plugin.catalog.installabilityStatus !== 'official_remote_install_available') {
+    return disabledAction('install_official_plugin', 'Install official plugin', ['official_remote_install_unavailable'])
+  }
+  if (plugin.reasonCodes.includes('signature_missing')) {
+    return disabledAction('install_official_plugin', 'Install official plugin', ['signature_missing'])
+  }
+  if (plugin.reasonCodes.includes('official_trusted_root_unconfigured')) {
+    return disabledAction('install_official_plugin', 'Install official plugin', ['official_trusted_root_unconfigured'])
+  }
+  return enabledAction('install_official_plugin', 'Install official plugin')
 }
 
 function manualLocalRegistrationAction(

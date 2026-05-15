@@ -8,6 +8,7 @@ import {
   type DecodedLifecycleListOfficialResult,
   type DecodedDiagnosticsSummary,
   type LifecycleEngineRequest,
+  type InstallOfficialPluginRequest,
   type ListOfficialPluginsRequest,
   type RegisterLocalOfficialPluginRequest,
   type RegisterLocalPackageRequest,
@@ -44,6 +45,13 @@ export async function registerLocalOfficialPlugin(
   params: RegisterLocalOfficialPluginRequest
 ): Promise<DecodedLifecycleInstalledResult> {
   const raw = await requireDbBridge().invoke('enginePluginLifecycle.registerLocalOfficialPlugin', params)
+  return decodeLifecycleInstalledResult(raw)
+}
+
+export async function installOfficialPlugin(
+  params: InstallOfficialPluginRequest
+): Promise<DecodedLifecycleInstalledResult> {
+  const raw = await requireDbBridge().invoke('enginePluginLifecycle.installOfficialPlugin', params)
   return decodeLifecycleInstalledResult(raw)
 }
 

@@ -8,6 +8,7 @@ function createDbBridgeMock(outputs?: {
   listOfficialPlugins?: unknown
   listInstalledPlugins?: unknown
   getDiagnosticsSummary?: unknown
+  installOfficialPlugin?: unknown
   enablePlugin?: unknown
   disablePlugin?: unknown
   uninstallPlugin?: unknown
@@ -24,6 +25,19 @@ function createDbBridgeMock(outputs?: {
       return outputs?.getDiagnosticsSummary ?? {
         engines: [],
         counts: { total: 0, installed: 0, enabled: 0, healthy: 0, failed: 0, unverified: 0 },
+      }
+    }
+    if (method === 'enginePluginLifecycle.installOfficialPlugin') {
+      return outputs?.installOfficialPlugin ?? {
+        ok: true,
+        value: installedPlugin({
+          engineId: 'magika',
+          displayName: 'Magika',
+          pluginVersion: '0.1.0',
+          enabled: false,
+          healthStatus: 'unknown',
+          lastVerifiedAt: 4,
+        }),
       }
     }
     if (method === 'enginePluginLifecycle.enablePlugin') {
@@ -91,9 +105,9 @@ function officialPlugin(overrides?: Record<string, unknown>) {
     enabled: false,
     recommendedInstallRootKind: 'managed_root',
     catalogStatus: 'valid_metadata_only',
-    verificationMetadataStatus: 'metadata_present_crypto_deferred',
-    installabilityStatus: 'metadata_compatible_future_install',
-    reasons: ['read_only_catalog_no_install_action'],
+    verificationMetadataStatus: 'production_signature_available',
+    installabilityStatus: 'official_remote_install_available',
+    reasons: ['official_remote_install_available', 'production_signature_available', 'verify_before_install'],
     warnings: [],
     ...overrides,
   }
@@ -145,22 +159,61 @@ describe('PluginManagementPanel', () => {
 
     render(PluginManagementPanel)
 
-    await screen.findByText('Disabled')
+    await screen.findByText('Installed')
     await screen.findByText('Quarantined / disabled')
     expect(screen.getByText('Revoked by trust metadata')).toBeTruthy()
   })
 
-  it('renders disabled future-only actions with reason codes', async () => {
+  it('renders Magika-only official install action for complete built-in release metadata', async () => {
+    const user = userEvent.setup()
+    const bridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+      listInstalledPlugins: [],
+    })
+    ;(globalThis as any).dbBridge = bridge
+
+    const { container } = render(PluginManagementPanel)
+
+    const install = await screen.findByRole('button', { name: 'Install official plugin' })
+    expect(install).toBeTruthy()
+    expect(container.textContent).toContain('Built-in Magika installs through the official verify-before-install release path.')
+    expect(container.textContent).toContain('Production Signature Available')
+    expect(container.textContent).toContain('Verify Before Install')
+    expect(container.textContent).not.toMatch(/Cryptographic Verification Deferred/iu)
+
+    await user.click(install)
+
+    await waitFor(() => {
+      expect(bridge.invoke).toHaveBeenCalledWith('enginePluginLifecycle.installOfficialPlugin', {
+        pluginId: 'magika',
+        pluginVersion: '0.1.0',
+        enabled: false,
+      })
+    })
+    expect(JSON.stringify(bridge.invoke.mock.calls)).not.toMatch(/https?:|4397df63|signature/iu)
+  })
+
+  it('keeps read-only catalog entries without release metadata unavailable for install', async () => {
     ;(globalThis as any).dbBridge = createDbBridgeMock({
-      listOfficialPlugins: { ok: true, value: [officialPlugin()] },
+      listOfficialPlugins: {
+        ok: true,
+        value: [
+          officialPlugin({
+            verificationMetadataStatus: 'metadata_present_crypto_deferred',
+            installabilityStatus: 'metadata_compatible_future_install',
+            reasons: ['read_only_catalog_no_install_action'],
+          }),
+        ],
+      },
       listInstalledPlugins: [],
     })
 
     render(PluginManagementPanel)
 
     await screen.findByText(/Catalog: metadata_compatible_future_install/)
+    expect(screen.getByText(/Install official plugin/).closest('button')).toBeDisabled()
     expect(screen.getByText(/Register local package/)).toBeTruthy()
-    expect(screen.getAllByText(/unsupported_action_contract_missing/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/local_registration_ui_not_wired/).length).toBeGreaterThan(0)
   })
 
   it('renders official Magika entry instead of empty state when catalog metadata exists', async () => {
@@ -241,7 +294,7 @@ describe('PluginManagementPanel', () => {
       })
     })
     expect(bridge.invoke).not.toHaveBeenCalledWith(
-      expect.stringMatching(/registerLocalPackage|stageUpdate|rollback/),
+      expect.stringMatching(/registerLocalPackage|stageUpdate|rollback|installOfficialPlugin/),
       expect.anything()
     )
   })

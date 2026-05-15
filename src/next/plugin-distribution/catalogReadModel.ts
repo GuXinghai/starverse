@@ -95,9 +95,16 @@ export type ReadOnlyCatalogEntryDto = Readonly<{
   }>
   modelVersion: string | null
   packageSizeBytes: number
-  verificationMetadataStatus: 'metadata_present_crypto_deferred' | 'metadata_missing' | 'metadata_invalid'
+  verificationMetadataStatus:
+    | 'metadata_present_crypto_deferred'
+    | 'production_signature_available'
+    | 'metadata_missing'
+    | 'metadata_invalid'
   catalogStatus: OfficialCatalogValidationStatus
-  installabilityStatus: 'metadata_compatible_future_install' | 'unavailable_read_only'
+  installabilityStatus:
+    | 'metadata_compatible_future_install'
+    | 'official_remote_install_available'
+    | 'unavailable_read_only'
   reasons: readonly string[]
   warnings: readonly string[]
   packageRefLabel: string

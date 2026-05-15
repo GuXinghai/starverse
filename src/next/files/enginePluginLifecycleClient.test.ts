@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   disablePlugin,
   enablePlugin,
+  installOfficialPlugin,
   listInstalledPlugins,
   listOfficialPlugins,
   registerLocalOfficialPlugin,
@@ -55,11 +56,21 @@ describe('enginePluginLifecycleClient', () => {
           value: [
             {
               pluginId: 'magika',
+              displayName: 'Magika',
+              publisher: 'Google Magika',
               pluginVersion: '0.1.0',
+              runtimeKind: 'managed',
+              capabilities: ['file_identification'],
+              modelVersion: 'standard_v3_3',
               catalogGeneratedAt: '2026-05-08T00:00:00.000Z',
               installState: 'installed',
               enabled: true,
               recommendedInstallRootKind: 'managed_root',
+              catalogStatus: 'valid_metadata_only',
+              verificationMetadataStatus: 'production_signature_available',
+              installabilityStatus: 'official_remote_install_available',
+              reasons: ['official_remote_install_available'],
+              warnings: [],
             },
           ],
         }
@@ -97,6 +108,10 @@ describe('enginePluginLifecycleClient', () => {
       installRootKind: 'managed_root',
       installRef: 'plugin_magika_001',
     })
+    const installedOfficial = await installOfficialPlugin({
+      pluginId: 'magika',
+      pluginVersion: '0.1.0',
+    })
     const enabled = await enablePlugin({ engineId: 'magika' })
     const disabled = await disablePlugin({ engineId: 'magika' })
     const uninstalled = await uninstallPlugin({ engineId: 'magika' })
@@ -105,6 +120,7 @@ describe('enginePluginLifecycleClient', () => {
     expect(official.ok).toBe(true)
     expect(installed[0]?.engineId).toBe('magika')
     expect(registered.ok).toBe(true)
+    expect(installedOfficial.ok).toBe(true)
     expect(enabled.ok).toBe(true)
     expect(disabled.ok).toBe(true)
     expect(uninstalled.ok).toBe(true)
