@@ -487,6 +487,70 @@ describe('EnginePluginLifecycleService', () => {
     }
   })
 
+  it('registerLocalOfficialPlugin rejects active registered records', async () => {
+    const fixture = await createFixture()
+    const { db, repo, service } = createService(fixture.tempRoot, fixture.trustedRoots, { trustedRootSource: 'official' })
+    try {
+      repo.upsert(registryRecord({
+        engineId: 'magika',
+        displayName: 'Magika',
+        pluginVersion: '0.1.0',
+        installState: 'installed',
+        enabled: false,
+        healthStatus: 'unknown',
+        failureReason: null,
+      }))
+
+      const result = await service.registerLocalOfficialPlugin({
+        catalogPath: fixture.catalogPath,
+        pluginId: 'magika',
+        pluginVersion: '0.1.0',
+        installRootKind: 'managed_root',
+        installRef: fixture.installRef,
+      })
+
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.reason).toBe('already_registered')
+      }
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('registerLocalOfficialPlugin rejects blocked uninstalled tombstones', async () => {
+    const fixture = await createFixture()
+    const { db, repo, service } = createService(fixture.tempRoot, fixture.trustedRoots, { trustedRootSource: 'official' })
+    try {
+      repo.upsert(registryRecord({
+        engineId: 'magika',
+        displayName: 'Magika',
+        pluginVersion: '0.1.0',
+        installState: 'uninstalled',
+        enabled: false,
+        healthStatus: 'unknown',
+        failureReason: 'revoked',
+      }))
+
+      const result = await service.registerLocalOfficialPlugin({
+        catalogPath: fixture.catalogPath,
+        pluginId: 'magika',
+        pluginVersion: '0.1.0',
+        installRootKind: 'managed_root',
+        installRef: fixture.installRef,
+      })
+
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.reason).toBe('revoked')
+      }
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
   it('returns structured failure when enabling uninstalled plugin', async () => {
     const fixture = await createFixture()
     const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots)
@@ -1185,6 +1249,74 @@ describe('EnginePluginLifecycleService', () => {
     }
   })
 
+  it('registerLocalPackage rejects active registered records', async () => {
+    const fixture = await createFixture()
+    const { db, repo, service } = createService(fixture.tempRoot, fixture.trustedRoots, { trustedRootSource: 'test' })
+    try {
+      repo.upsert(registryRecord({
+        engineId: 'magika',
+        displayName: 'Magika',
+        pluginVersion: '0.1.0',
+        installState: 'installed',
+        enabled: false,
+        healthStatus: 'unknown',
+        failureReason: null,
+      }))
+
+      const registered = await service.registerLocalPackage({
+        packageDir: path.join(fixture.tempRoot, fixture.installRef),
+        installRootKind: 'test_root',
+        installRef: fixture.installRef,
+      })
+
+      expect(registered.ok).toBe(false)
+      if (!registered.ok) {
+        expect(registered.reason).toBe('already_registered')
+      }
+      expect(repo.getByEngineId('magika')).toMatchObject({
+        installState: 'installed',
+        failureReason: null,
+      })
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('registerLocalPackage rejects blocked uninstalled tombstones', async () => {
+    const fixture = await createFixture()
+    const { db, repo, service } = createService(fixture.tempRoot, fixture.trustedRoots, { trustedRootSource: 'test' })
+    try {
+      repo.upsert(registryRecord({
+        engineId: 'magika',
+        displayName: 'Magika',
+        pluginVersion: '0.1.0',
+        installState: 'uninstalled',
+        enabled: false,
+        healthStatus: 'unknown',
+        failureReason: 'revoked',
+      }))
+
+      const registered = await service.registerLocalPackage({
+        packageDir: path.join(fixture.tempRoot, fixture.installRef),
+        installRootKind: 'test_root',
+        installRef: fixture.installRef,
+      })
+
+      expect(registered.ok).toBe(false)
+      if (!registered.ok) {
+        expect(registered.reason).toBe('revoked')
+      }
+      expect(repo.getByEngineId('magika')).toMatchObject({
+        installState: 'uninstalled',
+        failureReason: 'revoked',
+      })
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
   it('registerLocalPackage sanitizes failure message to exclude raw paths', async () => {
     const fixture = await createFixture()
     const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, { trustedRootSource: 'test' })
@@ -1274,6 +1406,82 @@ describe('EnginePluginLifecycleService', () => {
         verificationMetadataStatus: 'production_signature_available',
         recommendedInstallRootKind: 'managed_root',
       })
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps uninstalled official Magika tombstone installable from embedded release metadata', async () => {
+    const fixture = await createOfficialRemoteInstallFixture()
+    const trustedRoots = {
+      ...fixture.trustedRoots,
+      ...createOfficialTrustedRoots(MAGIKA_OFFICIAL_PUBLIC_KEY_PEM),
+    }
+    const { db, service } = createService(fixture.tempRoot, trustedRoots, {
+      trustedRootSource: 'official',
+      magikaOfficialRelease: fixture.release,
+      officialPackageBytes: fixture.bytes,
+    })
+    try {
+      const installed = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      expect(installed.ok).toBe(true)
+
+      const uninstalled = await service.uninstallPlugin({ engineId: 'magika' })
+      expect(uninstalled.ok).toBe(true)
+
+      const official = await service.listOfficialPlugins()
+      expect(official.ok).toBe(true)
+      if (!official.ok) return
+      expect(official.value[0]).toMatchObject({
+        pluginId: 'magika',
+        installState: 'uninstalled',
+        enabled: false,
+        installabilityStatus: 'official_remote_install_available',
+        verificationMetadataStatus: 'production_signature_available',
+      })
+
+      const reinstalled = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      expect(reinstalled.ok).toBe(true)
+      if (reinstalled.ok) {
+        expect(reinstalled.value.installState).toBe('installed')
+      }
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('blocks official Magika reinstall when uninstall tombstone preserves revoked state', async () => {
+    const fixture = await createOfficialRemoteInstallFixture()
+    const { db, repo, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      magikaOfficialRelease: fixture.release,
+      officialPackageBytes: fixture.bytes,
+    })
+    try {
+      repo.upsert(registryRecord({
+        engineId: 'magika',
+        displayName: 'Magika',
+        pluginVersion: '0.1.0',
+        installState: 'failed',
+        enabled: false,
+        healthStatus: 'unhealthy',
+        failureReason: 'revoked',
+      }))
+
+      const uninstalled = await service.uninstallPlugin({ engineId: 'magika' })
+      expect(uninstalled.ok).toBe(true)
+      if (uninstalled.ok) {
+        expect(uninstalled.value.installState).toBe('uninstalled')
+        expect(uninstalled.value.failureReason).toBe('revoked')
+      }
+
+      const reinstalled = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      expect(reinstalled.ok).toBe(false)
+      if (!reinstalled.ok) {
+        expect(reinstalled.reason).toBe('revoked')
+      }
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })

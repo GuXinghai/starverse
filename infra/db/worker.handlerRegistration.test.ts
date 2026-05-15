@@ -102,6 +102,16 @@ function createLifecycleRuntime() {
       ok: true,
       value: { engineId: 'magika', enabled: false, installState: 'installed' },
     })),
+    registerLocalOfficialPlugin: vi.fn(() => Promise.resolve({
+      ok: false,
+      reason: 'already_registered',
+      message: 'official plugin is already registered',
+    })),
+    registerLocalPackage: vi.fn(() => Promise.resolve({
+      ok: false,
+      reason: 'already_registered',
+      message: 'plugin is already registered',
+    })),
   }
   return { runtime: { enginePluginLifecycleService: spies } as any, spies }
 }
@@ -156,10 +166,24 @@ describe('DbWorker handler registration modules', () => {
       pluginVersion: '0.1.0',
       enabled: false,
     })
+    expect(spies.registerLocalOfficialPlugin).toHaveBeenCalledWith({
+      catalogPath: 'catalog.json',
+      pluginId: 'magika',
+      pluginVersion: '0.1.0',
+      installRootKind: 'managed_root',
+      installRef: 'plugin_magika_001',
+      enabled: true,
+    })
     expect(spies.enablePlugin).toHaveBeenCalledWith({ engineId: 'magika' })
     expect(spies.disablePlugin).toHaveBeenCalledWith({ engineId: 'magika' })
     expect(spies.uninstallPlugin).toHaveBeenCalledWith({ engineId: 'magika' })
     expect(spies.runHealthCheck).toHaveBeenCalledWith({ engineId: 'magika' })
+    expect(spies.registerLocalPackage).toHaveBeenCalledWith({
+      packageDir: 'package-dir',
+      installRootKind: 'test_root',
+      installRef: 'plugin_magika_001',
+      enabled: true,
+    })
   })
 })
 
@@ -182,11 +206,13 @@ const lifecycleMethods = [
   'enginePluginLifecycle.listOfficialPlugins',
   'enginePluginLifecycle.listInstalledPlugins',
   'enginePluginLifecycle.getDiagnosticsSummary',
+  'enginePluginLifecycle.registerLocalOfficialPlugin',
   'enginePluginLifecycle.installOfficialPlugin',
   'enginePluginLifecycle.enablePlugin',
   'enginePluginLifecycle.disablePlugin',
   'enginePluginLifecycle.uninstallPlugin',
   'enginePluginLifecycle.runHealthCheck',
+  'enginePluginLifecycle.registerLocalPackage',
 ] as const satisfies readonly DbMethod[]
 
 function exerciseRepresentativeHandlers(handlers: ReadonlyMap<DbMethod, DbHandler>) {
@@ -223,6 +249,17 @@ async function exerciseLifecycleHandlers(handlers: ReadonlyMap<DbMethod, DbHandl
     ok: true,
     value: { engineId: 'magika', enabled: false, installState: 'installed' },
   })
+  await expect(handlers.get('enginePluginLifecycle.registerLocalOfficialPlugin')!({
+    catalogPath: 'catalog.json',
+    pluginId: 'magika',
+    pluginVersion: '0.1.0',
+    installRootKind: 'managed_root',
+    installRef: 'plugin_magika_001',
+  })).resolves.toEqual({
+    ok: false,
+    reason: 'already_registered',
+    message: 'official plugin is already registered',
+  })
   await expect(handlers.get('enginePluginLifecycle.enablePlugin')!({ engineId: 'magika' })).resolves.toEqual({
     ok: true,
     value: { engineId: 'magika', enabled: true, installState: 'installed' },
@@ -238,6 +275,15 @@ async function exerciseLifecycleHandlers(handlers: ReadonlyMap<DbMethod, DbHandl
   await expect(handlers.get('enginePluginLifecycle.runHealthCheck')!({ engineId: 'magika' })).resolves.toEqual({
     ok: true,
     value: { engineId: 'magika', healthStatus: 'healthy' },
+  })
+  await expect(handlers.get('enginePluginLifecycle.registerLocalPackage')!({
+    packageDir: 'package-dir',
+    installRootKind: 'test_root',
+    installRef: 'plugin_magika_001',
+  })).resolves.toEqual({
+    ok: false,
+    reason: 'already_registered',
+    message: 'plugin is already registered',
   })
 }
 

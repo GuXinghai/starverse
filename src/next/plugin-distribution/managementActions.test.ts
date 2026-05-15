@@ -151,8 +151,116 @@ describe('buildPdpManagementActions', () => {
       findPdpManagementAction(
         buildPdpManagementActions(registered, { hasOfficialRemoteInstallContract: true }),
         'install_official_plugin'
-      ).enabled
-    ).toBe(false)
+      )
+    ).toMatchObject({ enabled: false, reasonCodes: ['already_registered'] })
+  })
+
+  it('does not let uninstalled tombstone metadata block official reinstall', () => {
+    const plugin = firstPlugin({
+      catalogEntries: [
+        catalogEntry({
+          installabilityStatus: 'official_remote_install_available',
+          verificationMetadataStatus: 'production_signature_available',
+          reasons: ['official_remote_install_available', 'production_signature_available', 'verify_before_install'],
+        }),
+      ],
+      registryRecords: [
+        registryRecord({
+          registryState: 'uninstalled',
+          installState: 'uninstalled',
+          enabled: false,
+          healthStatus: 'disabled',
+          failureReason: null,
+        }),
+      ],
+    })
+    const actions = buildPdpManagementActions(plugin, {
+      hasOfficialRemoteInstallContract: true,
+      hasEnableDisableContract: true,
+      hasHealthCheckContract: true,
+      hasMetadataUninstallContract: true,
+      hasPackageVerificationContract: true,
+    })
+
+    expect(findPdpManagementAction(actions, 'install_official_plugin')).toMatchObject({
+      enabled: true,
+      reasonCodes: [],
+    })
+    expect(findPdpManagementAction(actions, 'enable')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['not_installed'],
+    })
+    expect(findPdpManagementAction(actions, 'check_health')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['uninstalled'],
+    })
+    expect(findPdpManagementAction(actions, 'verify_package')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['uninstalled'],
+    })
+    expect(findPdpManagementAction(actions, 'uninstall_metadata')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['already_uninstalled'],
+    })
+    expect(JSON.stringify(actions)).not.toContain('already_registered')
+  })
+
+  it('keeps official reinstall disabled for revoked uninstalled tombstones', () => {
+    const plugin = firstPlugin({
+      catalogEntries: [
+        catalogEntry({
+          installabilityStatus: 'official_remote_install_available',
+          verificationMetadataStatus: 'production_signature_available',
+          reasons: ['official_remote_install_available', 'production_signature_available', 'verify_before_install'],
+        }),
+      ],
+      registryRecords: [
+        registryRecord({
+          registryState: 'uninstalled',
+          installState: 'uninstalled',
+          enabled: false,
+          verificationStatus: 'revoked',
+          healthStatus: 'disabled',
+          failureReason: 'revoked',
+        }),
+      ],
+    })
+
+    expect(
+      findPdpManagementAction(
+        buildPdpManagementActions(plugin, { hasOfficialRemoteInstallContract: true }),
+        'install_official_plugin'
+      )
+    ).toMatchObject({
+      enabled: false,
+      reasonCodes: ['revoked'],
+    })
+  })
+
+  it('keeps manual registration disabled for revoked uninstalled tombstones', () => {
+    const plugin = firstPlugin({
+      catalogEntries: [catalogEntry()],
+      registryRecords: [
+        registryRecord({
+          registryState: 'uninstalled',
+          installState: 'uninstalled',
+          enabled: false,
+          verificationStatus: 'revoked',
+          healthStatus: 'disabled',
+          failureReason: 'revoked',
+        }),
+      ],
+    })
+
+    expect(
+      findPdpManagementAction(
+        buildPdpManagementActions(plugin, { hasLocalManualRegistrationContract: true }),
+        'manual_local_package_registration'
+      )
+    ).toMatchObject({
+      enabled: false,
+      reasonCodes: ['revoked'],
+    })
   })
 
   it('exposes manual registration as local/manual only and not for already registered plugins', () => {

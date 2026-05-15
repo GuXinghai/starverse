@@ -226,7 +226,20 @@ export class EnginePluginRegistryRepo {
       SET install_state = 'uninstalled',
           enabled = 0,
           health_status = 'unknown',
-          failure_reason = NULL,
+          failure_reason = CASE
+            WHEN failure_reason IN (
+              'revoked',
+              'incompatible_platform',
+              'incompatible_arch',
+              'incompatible_app_version',
+              'signature_invalid',
+              'hash_mismatch',
+              'integrity_missing',
+              'expired_metadata',
+              'rollback_detected'
+            ) THEN failure_reason
+            ELSE NULL
+          END,
           updated_at = @updatedAt
       WHERE engine_id = @engineId
     `)
