@@ -58,27 +58,43 @@ const lifecycleFailureSchema = z.object({
 })
 
 const officialInstallOperationStateSchema = z.enum([
+  'accepted',
   'pending',
   'downloading',
   'verifying',
+  'staging',
   'registering',
   'health_checking',
   'installed',
   'failed',
   'cancelled',
+  'stale',
 ])
 
 const officialInstallOperationSchema = z.object({
   operationId: nonEmpty,
   pluginId: nonEmpty,
   pluginVersion: nonEmpty,
+  operationType: z.literal('official_install'),
+  source: z.literal('official_builtin'),
   state: officialInstallOperationStateSchema,
+  phase: officialInstallOperationStateSchema,
+  phaseLabel: nonEmpty,
+  progressSummary: nonEmpty,
   stateHistory: z.array(officialInstallOperationStateSchema),
   startedAt: z.number().finite(),
   updatedAt: z.number().finite(),
+  terminalAt: z.number().finite().nullable(),
   failureReason: z.string().trim().nullable(),
   diagnosticCode: z.string().trim().nullable(),
+  sanitizedDiagnostics: z.array(z.string().trim()),
   installedEngineId: z.string().trim().nullable(),
+  result: z.object({
+    engineId: nonEmpty,
+    pluginVersion: nonEmpty,
+    installState: nonEmpty,
+    healthStatus: nonEmpty,
+  }).nullable(),
 })
 
 const diagnosticsEntrySchema = z.object({

@@ -7,6 +7,7 @@ import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { createCatalogSigningPayload, type TrustedCatalogPublicKeyMap } from '../../src/next/file-type/pluginCatalogSignature'
+import type { EngineHealthRunner } from '../../src/next/file-type'
 import {
   createOfficialTrustedRoots,
 } from '../../src/next/file-type/officialPluginTrustedRoots'
@@ -144,6 +145,7 @@ function createService(
     officialPackageBytes?: Uint8Array
     officialPackageTransport?: PackageDownloadTransport
     readBytes?: (filePath: string) => Promise<Uint8Array>
+    healthRunner?: EngineHealthRunner
   }> = {}
 ) {
   const db = new BetterSqlite3(':memory:')
@@ -156,6 +158,7 @@ function createService(
     trustedRootSource: opts.trustedRootSource ?? 'test',
     resolveInstallPluginDir: ({ installRef }) => path.join(tempRoot, installRef),
     readBytes: opts.readBytes,
+    healthRunner: opts.healthRunner,
     magikaOfficialRelease: opts.magikaOfficialRelease,
     officialPackageTransport: opts.officialPackageTransport ?? (opts.officialPackageBytes
       ? {
@@ -214,7 +217,7 @@ async function waitForInstallOperation(
 }
 
 // eslint-disable-next-line max-lines-per-function
-async function createOfficialRemoteInstallFixture() {
+async function createOfficialRemoteInstallFixture(options: Readonly<{ healthcheck?: boolean }> = {}) {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-official-magika-install-'))
   const { privateKey, publicKey } = generateKeyPairSync('ed25519')
   const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
@@ -253,6 +256,9 @@ async function createOfficialRemoteInstallFixture() {
     supportedMimeTypes: [],
     supportedLabels: ['json'],
     platform: 'any',
+    ...(options.healthcheck
+      ? { healthcheck: { command: 'magika-health', args: ['--check'] } }
+      : {}),
   }, null, 2))
   const packageManifest = Buffer.from(JSON.stringify({
     manifestSchemaVersion: '1',
@@ -405,17 +411,31 @@ describe('EnginePluginLifecycleService', () => {
       expect(result.ok).toBe(true)
       if (!result.ok) return
       expect(result.value.pluginId).toBe('magika')
-      expect(['pending', 'downloading']).toContain(result.value.state)
+      expect(result.value.operationType).toBe('official_install')
+      expect(result.value.source).toBe('official_builtin')
+      expect(['accepted', 'pending', 'downloading']).toContain(result.value.state)
       const completed = await waitForInstallOperation(service, result.value.operationId)
       expect(completed.state).toBe('installed')
       expect(completed.installedEngineId).toBe('magika')
-      expect(completed.stateHistory).toEqual(['pending', 'downloading', 'verifying', 'registering', 'installed'])
+      expect(completed.stateHistory).toEqual([
+        'accepted',
+        'pending',
+        'downloading',
+        'verifying',
+        'staging',
+        'registering',
+        'health_checking',
+        'installed',
+      ])
+      expect(completed.terminalAt).toBeGreaterThanOrEqual(completed.startedAt)
+      expect(completed.progressSummary).toBe('Installed')
       expect(repo.getByEngineId('magika')).toMatchObject({
         engineId: 'magika',
         installSource: 'official_catalog',
         installRootKind: 'managed_root',
         installRef: 'magika',
         enabled: false,
+        healthStatus: 'healthy',
       })
       expect(readFileSync(path.join(fixture.tempRoot, 'magika', 'manifest.json'), 'utf8')).toContain(
         'Magika managed plugin'
@@ -477,6 +497,60 @@ describe('EnginePluginLifecycleService', () => {
     }
   })
 
+  it('keeps duplicate official install requests attached after registry upsert until terminal state', async () => {
+    const fixture = await createOfficialRemoteInstallFixture({ healthcheck: true })
+    let fetchCalls = 0
+    let releaseHealth: (value: void) => void = () => undefined
+    const healthGate = new Promise<void>((resolve) => {
+      releaseHealth = resolve
+    })
+    const { db, service, repo } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      magikaOfficialRelease: fixture.release,
+      officialPackageTransport: {
+        async fetchPackage() {
+          fetchCalls += 1
+          return {
+            ok: true,
+            bytes: fixture.bytes,
+            finalRef: 'https://release-assets.githubusercontent.com/github-production-release-asset/1/pkg.zip',
+          }
+        },
+      },
+      async healthRunner() {
+        await healthGate
+        return { status: 'healthy', reason: null, detail: null }
+      },
+    })
+    try {
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+
+      const checking = await waitForInstallOperation(
+        service,
+        result.value.operationId,
+        (state) => state === 'health_checking'
+      )
+      expect(checking.state).toBe('health_checking')
+      expect(repo.getByEngineId('magika')).toMatchObject({ installState: 'installed', enabled: false })
+
+      const duplicate = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      expect(duplicate.ok).toBe(true)
+      if (!duplicate.ok) return
+      expect(duplicate.value.operationId).toBe(result.value.operationId)
+      expect(fetchCalls).toBe(1)
+
+      releaseHealth()
+      const completed = await waitForInstallOperation(service, result.value.operationId)
+      expect(completed.state).toBe('installed')
+    } finally {
+      releaseHealth()
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
   it('records a structured failed operation and leaves Magika unregistered when download fails', async () => {
     const fixture = await createOfficialRemoteInstallFixture()
     const { db, service, repo } = createService(fixture.tempRoot, fixture.trustedRoots, {
@@ -500,6 +574,7 @@ describe('EnginePluginLifecycleService', () => {
         diagnosticCode: 'download_failed',
         installedEngineId: null,
       })
+      expect(failed.sanitizedDiagnostics).toContain('download_failed')
       expect(repo.getByEngineId('magika')).toBeNull()
     } finally {
       db.close()
@@ -575,8 +650,70 @@ describe('EnginePluginLifecycleService', () => {
       if (!result.ok) return
       const failed = await waitForInstallOperation(service, result.value.operationId)
       expect(failed.state).toBe('failed')
-      expect(failed.failureReason).toBe('verification_failed')
+      expect(failed.failureReason).toBe('signature_invalid')
       expect(repo.getByEngineId('magika')).toBeNull()
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('records hash mismatch as terminal failure and leaves Magika unregistered', async () => {
+    const fixture = await createOfficialRemoteInstallFixture()
+    const tampered = new Uint8Array(Buffer.from('not-the-official-package'))
+    const { db, service, repo } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      magikaOfficialRelease: fixture.release,
+      officialPackageTransport: {
+        async fetchPackage() {
+          return {
+            ok: true,
+            bytes: tampered,
+            finalRef: 'https://release-assets.githubusercontent.com/github-production-release-asset/1/pkg.zip',
+          }
+        },
+      },
+    })
+    try {
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      const failed = await waitForInstallOperation(service, result.value.operationId)
+      expect(failed.state).toBe('failed')
+      expect(['hash_mismatch', 'size_mismatch']).toContain(failed.failureReason)
+      expect(repo.getByEngineId('magika')).toBeNull()
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('marks registered official Magika failed when post-install health check fails', async () => {
+    const fixture = await createOfficialRemoteInstallFixture({ healthcheck: true })
+    const { db, service, repo } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      magikaOfficialRelease: fixture.release,
+      officialPackageBytes: fixture.bytes,
+      async healthRunner() {
+        return { status: 'failed', reason: 'engine_failed', detail: 'probe failed' }
+      },
+    })
+    try {
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      const failed = await waitForInstallOperation(service, result.value.operationId)
+      expect(failed).toMatchObject({
+        state: 'failed',
+        failureReason: 'health_failed',
+        installedEngineId: 'magika',
+      })
+      expect(repo.getByEngineId('magika')).toMatchObject({
+        installState: 'failed',
+        enabled: false,
+        healthStatus: 'unhealthy',
+        failureReason: 'health_failed',
+      })
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })

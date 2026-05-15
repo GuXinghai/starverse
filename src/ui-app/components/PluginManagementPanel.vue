@@ -14,6 +14,8 @@ import {
 import {
   buildPdpManagementActions,
   buildPdpManagementViewModel,
+  isOfficialInstallOperationActive,
+  labelOfficialInstallOperationPhase,
   labelPdpHealthStatus,
   labelPdpInstallState,
   labelPdpVerificationStatus,
@@ -152,8 +154,7 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
         statusMessage.value = `${action.label}: ${installOperationLabel('downloading')}`
         return
       }
-      upsertInstallOperation(createLocalInstallOperation(row))
-      statusMessage.value = `${action.label}: ${installOperationLabel('downloading')}`
+      statusMessage.value = `${action.label}: ${installOperationLabel('accepted')}`
       const result = await installOfficialPlugin({
         pluginId: row.plugin.id,
         pluginVersion: row.plugin.pluginVersion,
@@ -161,7 +162,7 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
       })
       if (result.ok) {
         upsertInstallOperation(result.value)
-        statusMessage.value = `${action.label}: ${installOperationLabel(result.value.state)}`
+        statusMessage.value = `${action.label}: ${installOperationSummary(result.value)}`
         if (isActiveInstallOperation(result.value)) {
           ensureInstallPoller()
         }
@@ -339,22 +340,6 @@ function installOperationKey(pluginId: string, pluginVersion: string): string {
   return `${pluginId}:${pluginVersion}`
 }
 
-function createLocalInstallOperation(row: PluginPanelRow): DecodedOfficialInstallOperation {
-  const now = Date.now()
-  return {
-    operationId: `local-install-${row.plugin.id}-${row.plugin.pluginVersion}`,
-    pluginId: row.plugin.id,
-    pluginVersion: row.plugin.pluginVersion,
-    state: 'downloading',
-    stateHistory: ['pending', 'downloading'],
-    startedAt: now,
-    updatedAt: now,
-    failureReason: null,
-    diagnosticCode: null,
-    installedEngineId: null,
-  }
-}
-
 function upsertInstallOperation(operation: DecodedOfficialInstallOperation): void {
   const key = installOperationKey(operation.pluginId, operation.pluginVersion)
   installOperations.value = {
@@ -380,24 +365,16 @@ function removeInstallOperation(key: string): void {
 }
 
 function isActiveInstallOperation(operation: DecodedOfficialInstallOperation | null): boolean {
-  return Boolean(operation && [
-    'pending',
-    'downloading',
-    'verifying',
-    'registering',
-    'health_checking',
-  ].includes(operation.state))
+  return Boolean(operation && isOfficialInstallOperationActive(operation.state))
 }
 
 function installOperationLabel(state: DecodedOfficialInstallOperation['state']): string {
-  if (state === 'pending') return 'Install pending'
-  if (state === 'downloading') return 'Downloading'
-  if (state === 'verifying') return 'Verifying package'
-  if (state === 'registering') return 'Registering'
-  if (state === 'health_checking') return 'Checking health'
-  if (state === 'installed') return 'Installed'
-  if (state === 'failed') return 'Install failed'
-  return 'Install cancelled'
+  return labelOfficialInstallOperationPhase(state)
+}
+
+function installOperationSummary(operation: DecodedOfficialInstallOperation): string {
+  if (operation.progressSummary) return sanitizePdpManagementText(operation.progressSummary, installOperationLabel(operation.state))
+  return installOperationLabel(operation.state)
 }
 
 function ensureInstallPoller(): void {
@@ -488,7 +465,7 @@ function formatActionError(action: UiAction, err: any): string {
           <div>Update: {{ row.plugin.status.updateState }}</div>
           <div>Rollback: {{ row.plugin.status.rollbackState }}</div>
           <div v-if="row.installOperation">
-            Install: {{ installOperationLabel(row.installOperation.state) }}
+            Install: {{ installOperationSummary(row.installOperation) }}
           </div>
           <div v-if="row.installOperation?.failureReason">
             Failure: {{ sanitizePdpManagementText(row.installOperation.failureReason, 'install_failed') }}

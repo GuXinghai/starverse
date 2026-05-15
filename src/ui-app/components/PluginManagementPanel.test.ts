@@ -15,7 +15,7 @@ function createDbBridgeMock(outputs?: {
   uninstallPlugin?: unknown
   runHealthCheck?: unknown
 }) {
-  const invoke = vi.fn(async (method: string, _params?: unknown) => {
+  const invoke = vi.fn(async (method: string, _params?: unknown): Promise<unknown> => {
     if (method === 'enginePluginLifecycle.listOfficialPlugins') {
       return outputs?.listOfficialPlugins ?? { ok: true, value: [] }
     }
@@ -116,19 +116,41 @@ function officialPlugin(overrides?: Record<string, unknown>) {
 }
 
 function installOperation(overrides?: Record<string, unknown>) {
+  const state = typeof overrides?.state === 'string' ? overrides.state : 'pending'
   return {
     operationId: 'official-install-magika-0.1.0-1',
     pluginId: 'magika',
     pluginVersion: '0.1.0',
-    state: 'pending',
-    stateHistory: ['pending'],
+    operationType: 'official_install',
+    source: 'official_builtin',
+    state,
+    phase: state,
+    phaseLabel: installPhaseLabel(state),
+    progressSummary: installPhaseLabel(state),
+    stateHistory: ['accepted', state],
     startedAt: 1,
     updatedAt: 1,
+    terminalAt: null,
     failureReason: null,
     diagnosticCode: null,
+    sanitizedDiagnostics: [],
     installedEngineId: null,
+    result: null,
     ...overrides,
   }
+}
+
+function installPhaseLabel(state: string): string {
+  if (state === 'accepted' || state === 'pending') return 'Preparing install'
+  if (state === 'downloading') return 'Downloading official package'
+  if (state === 'verifying') return 'Verifying signature'
+  if (state === 'staging') return 'Staging plugin'
+  if (state === 'registering') return 'Registering plugin'
+  if (state === 'health_checking') return 'Checking health'
+  if (state === 'installed') return 'Installed'
+  if (state === 'failed') return 'Install failed'
+  if (state === 'stale') return 'Install status stale'
+  return 'Cancelled'
 }
 
 function deferred<T>() {
@@ -244,19 +266,24 @@ describe('PluginManagementPanel', () => {
     const install = await screen.findByRole('button', { name: 'Install official plugin' })
     await user.click(install)
 
-    await screen.findByText('Install: Downloading')
+    await screen.findByText('Install official plugin: Preparing install')
     expect(screen.getByRole('button', { name: /Install official plugin/u })).toBeDisabled()
     await user.click(screen.getByRole('button', { name: /Install official plugin/u }))
     expect(bridge.invoke.mock.calls.filter(([method]) => method === 'enginePluginLifecycle.installOfficialPlugin')).toHaveLength(1)
 
     installDeferred.resolve({
       ok: true,
-      value: installOperation({ state: 'installed', stateHistory: ['pending', 'downloading', 'installed'] }),
+      value: installOperation({
+        state: 'installed',
+        stateHistory: ['accepted', 'pending', 'downloading', 'installed'],
+        terminalAt: 2,
+        installedEngineId: 'magika',
+      }),
     })
     await waitFor(() => {
       expect(bridge.invoke.mock.calls.filter(([method]) => method === 'enginePluginLifecycle.listInstalledPlugins').length).toBeGreaterThan(1)
     })
-    expect(container.textContent).not.toContain('Install official plugin: Downloading')
+    expect(container.textContent).not.toContain('Install official plugin: Preparing install')
   })
 
   it('clears local install progress and shows safe failure when official install fails', async () => {
@@ -280,12 +307,12 @@ describe('PluginManagementPanel', () => {
     const { container } = render(PluginManagementPanel)
 
     await user.click(await screen.findByRole('button', { name: 'Install official plugin' }))
-    await screen.findByText('Install: Downloading')
+    await screen.findByText('Install official plugin: Preparing install')
 
     installDeferred.resolve({ ok: false, reason: 'download_failed', message: 'download_failed' })
 
     await waitFor(() => expect(container.textContent).toContain('download_failed'))
-    expect(container.textContent).not.toContain('Install: Downloading')
+    expect(container.textContent).not.toContain('Install: Preparing install')
     expect(container.textContent).not.toMatch(/https?:|contentToken|fullHash/iu)
   })
 
@@ -295,15 +322,48 @@ describe('PluginManagementPanel', () => {
       listInstalledPlugins: [],
       getInstallOperationStatus: {
         ok: true,
-        value: installOperation({ state: 'downloading', stateHistory: ['pending', 'downloading'] }),
+        value: installOperation({ state: 'downloading', stateHistory: ['accepted', 'pending', 'downloading'] }),
       },
     })
 
     const { container } = render(PluginManagementPanel)
 
-    await screen.findByText('Install: Downloading')
+    await screen.findByText('Install: Downloading official package')
     expect(screen.getByRole('button', { name: /Install official plugin/u })).toBeDisabled()
     expect(container.textContent).toContain('install_in_progress')
+  })
+
+  it('renders backend install operation phases while polling', async () => {
+    let pollCount = 0
+    const bridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+      listInstalledPlugins: [],
+    })
+    bridge.invoke.mockImplementation(async (method: string, params?: unknown) => {
+      if (method === 'enginePluginLifecycle.getInstallOperationStatus') {
+        pollCount += 1
+        return {
+          ok: true,
+          value: installOperation({
+            state: pollCount < 2 ? 'verifying' : 'registering',
+            stateHistory: pollCount < 2
+              ? ['accepted', 'pending', 'downloading', 'verifying']
+              : ['accepted', 'pending', 'downloading', 'verifying', 'staging', 'registering'],
+          }),
+        }
+      }
+      return createDbBridgeMock({
+        listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
+        listInstalledPlugins: [],
+      }).invoke(method, params)
+    })
+    ;(globalThis as any).dbBridge = bridge
+
+    render(PluginManagementPanel)
+
+    await screen.findByText('Install: Verifying signature')
+    await waitFor(() => expect(pollCount).toBeGreaterThan(1), { timeout: 2500 })
+    expect(screen.getByText('Install: Registering plugin')).toBeTruthy()
   })
 
   it('shows structured install failure and hides raw timeout text for official install', async () => {
@@ -323,7 +383,8 @@ describe('PluginManagementPanel', () => {
             state: 'failed',
             failureReason: 'download_failed',
             diagnosticCode: 'download_failed',
-            stateHistory: ['pending', 'downloading', 'failed'],
+            stateHistory: ['accepted', 'pending', 'downloading', 'failed'],
+            terminalAt: 2,
           }),
         }
       }
