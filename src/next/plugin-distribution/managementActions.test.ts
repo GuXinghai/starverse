@@ -55,6 +55,10 @@ describe('buildPdpManagementActions', () => {
       enabled: false,
       reasonCodes: ['unsupported_action_contract_missing'],
     })
+    expect(findPdpManagementAction(actions, 'install_official_plugin')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['unsupported_action_contract_missing'],
+    })
     expect(findPdpManagementAction(actions, 'verify_package')).toMatchObject({
       enabled: false,
       reasonCodes: ['unsupported_action_contract_missing'],
@@ -102,12 +106,53 @@ describe('buildPdpManagementActions', () => {
 
   it('keeps install or update action unavailable when only read-only catalog metadata exists', () => {
     const plugin = firstPlugin({ catalogEntries: [catalogEntry()] })
-    const actions = buildPdpManagementActions(plugin, { hasStageUpdateContract: true })
+    const actions = buildPdpManagementActions(plugin, {
+      hasOfficialRemoteInstallContract: true,
+      hasStageUpdateContract: true,
+    })
     expect(findPdpManagementAction(actions, 'enable').enabled).toBe(false)
+    expect(findPdpManagementAction(actions, 'install_official_plugin')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['official_remote_install_unavailable'],
+    })
     expect(findPdpManagementAction(actions, 'stage_update_contract').enabled).toBe(false)
     expect(findPdpManagementAction(actions, 'stage_update_contract').reasonCodes).toContain(
       'manual_update_not_eligible'
     )
+  })
+
+  it('enables official install only for built-in Magika metadata with a ready official release', () => {
+    const plugin = firstPlugin({
+      catalogEntries: [
+        catalogEntry({
+          installabilityStatus: 'official_remote_install_available',
+          verificationMetadataStatus: 'production_signature_available',
+          reasons: ['official_remote_install_available', 'production_signature_available', 'verify_before_install'],
+        }),
+      ],
+    })
+    expect(
+      findPdpManagementAction(
+        buildPdpManagementActions(plugin, { hasOfficialRemoteInstallContract: true }),
+        'install_official_plugin'
+      )
+    ).toMatchObject({ enabled: true, label: 'Install official plugin' })
+
+    const registered = firstPlugin({
+      catalogEntries: [
+        catalogEntry({
+          installabilityStatus: 'official_remote_install_available',
+          verificationMetadataStatus: 'production_signature_available',
+        }),
+      ],
+      registryRecords: [registryRecord()],
+    })
+    expect(
+      findPdpManagementAction(
+        buildPdpManagementActions(registered, { hasOfficialRemoteInstallContract: true }),
+        'install_official_plugin'
+      ).enabled
+    ).toBe(false)
   })
 
   it('exposes manual registration as local/manual only and not for already registered plugins', () => {

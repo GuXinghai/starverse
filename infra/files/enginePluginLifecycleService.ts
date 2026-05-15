@@ -1,6 +1,8 @@
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { inflateRawSync } from 'node:zlib'
 import {
   loadOfficialPluginCatalogFromFile,
   verifyCatalogEntryHashes,
@@ -11,13 +13,22 @@ import {
 import { type EngineHealthRunner, type TrustedCatalogPublicKeyMap } from '../../src/next/file-type'
 import {
   discoverMagikaManagedPlugin,
+  type MagikaManagedPluginDescriptor,
   parseMagikaManagedPluginManifest,
   runManagedMagikaPluginHealthCheck,
-  type MagikaManagedPluginDescriptor,
 } from '../../src/next/file-type/magikaManagedPlugin'
 import {
   buildMagikaOfficialCatalogReadModel,
+  MAGIKA_OFFICIAL_PLUGIN_ID,
+  MAGIKA_OFFICIAL_PLUGIN_VERSION,
+  MAGIKA_OFFICIAL_RELEASE_METADATA,
 } from '../../src/next/plugin-distribution/magikaOfficialRelease'
+import {
+  verifyOfficialPackageReleaseDownload,
+  type OfficialPackageReleaseMetadata,
+  type OfficialPackageReleaseVerificationResult,
+} from '../../src/next/plugin-distribution/officialPackageRelease'
+import type { PackageDownloadTransport } from '../../src/next/plugin-distribution/packageDownloader'
 import type {
   ReadOnlyCatalogEntryDto,
 } from '../../src/next/plugin-distribution/catalogReadModel'
@@ -29,6 +40,7 @@ import type {
 } from '../db/types'
 
 type ReadBytes = (filePath: string) => Promise<Uint8Array>
+type VerifiedOfficialPackageRelease = Extract<OfficialPackageReleaseVerificationResult, { ok: true }>
 
 const FAILURE_REASON_SET = new Set([
   'catalog_load_failed',
@@ -39,19 +51,23 @@ const FAILURE_REASON_SET = new Set([
   'manifest_parse_failed',
   'manifest_integrity_failed',
   'manifest_engine_mismatch',
-    'manifest_version_mismatch',
-    'plugin_not_found',
-    'plugin_uninstalled',
-    'plugin_failed_reverify_required',
-    'plugin_failed_health_check_failed',
-    'health_check_unavailable',
-    'health_check_failed',
-    'not_installed',
-    'official_trusted_root_unconfigured',
-    'install_root_kind_mismatch',
-    'local_package_unavailable',
-    'local_package_manifest_hash_missing',
-  ])
+  'manifest_version_mismatch',
+  'plugin_not_found',
+  'plugin_uninstalled',
+  'plugin_failed_reverify_required',
+  'plugin_failed_health_check_failed',
+  'health_check_unavailable',
+  'health_check_failed',
+  'not_installed',
+  'already_registered',
+  'official_trusted_root_unconfigured',
+  'install_root_kind_mismatch',
+  'local_package_unavailable',
+  'local_package_manifest_hash_missing',
+  'official_release_metadata_invalid',
+  'official_remote_install_failed',
+  'official_package_extract_failed',
+])
 
 type LifecycleFailureReason = (typeof FAILURE_REASON_SET extends Set<infer T> ? T : never) & string
 
@@ -119,6 +135,8 @@ export type EnginePluginLifecycleServiceDeps = Readonly<{
   readBytes?: ReadBytes
   now?: () => number
   healthRunner?: EngineHealthRunner
+  officialPackageTransport?: PackageDownloadTransport
+  magikaOfficialRelease?: OfficialPackageReleaseMetadata
 }>
 
 export type RegisterLocalOfficialPluginInput = Readonly<{
@@ -143,6 +161,12 @@ export type RegisterLocalPackageInput = Readonly<{
   packageDir: string
   installRootKind: EnginePluginInstallRootKind
   installRef: string
+  enabled?: boolean
+}>
+
+export type InstallOfficialPluginInput = Readonly<{
+  pluginId: string
+  pluginVersion?: string
   enabled?: boolean
 }>
 
@@ -375,6 +399,178 @@ export class EnginePluginLifecycleService {
     return ok(toInstalledDto(upserted))
   }
 
+  async installOfficialPlugin(
+    input: InstallOfficialPluginInput
+  ): Promise<LifecycleActionResult<InstalledEnginePluginDto>> {
+    const pluginId = requireNonEmpty(input.pluginId, 'pluginId')
+    const pluginVersion = String(input.pluginVersion ?? MAGIKA_OFFICIAL_PLUGIN_VERSION).trim()
+    if (pluginId !== MAGIKA_OFFICIAL_PLUGIN_ID || pluginVersion !== MAGIKA_OFFICIAL_PLUGIN_VERSION) {
+      return fail('catalog_entry_not_found', 'official plugin entry is not found in bundled release metadata')
+    }
+
+    const release = this.deps.magikaOfficialRelease ?? MAGIKA_OFFICIAL_RELEASE_METADATA
+    const releaseReady = this.verifyOfficialMagikaReleaseMetadata(release)
+    if (!releaseReady.ok) return releaseReady
+
+    const existing = this.deps.registryRepo.getByEngineId(pluginId)
+    if (existing && existing.installState !== 'uninstalled') {
+      return fail('already_registered', 'official plugin is already registered')
+    }
+    const verified = await verifyOfficialPackageReleaseDownload({
+      release,
+      transport: this.deps.officialPackageTransport ?? defaultOfficialPackageTransport,
+      now: new Date(this.now()),
+      previousTrustedVersion: existing?.lastVerifiedAt ? existing.pluginVersion : null,
+      environment: {
+        platform: process.platform,
+        architecture: process.arch,
+        appVersion: '0.0.0',
+      },
+    })
+    if (!verified.ok) {
+      return fail(
+        'official_remote_install_failed',
+        `official package verification failed: ${verified.failureReasons[0] ?? 'unknown'}`
+      )
+    }
+
+    const installRootKind = this.getRecommendedInstallRootKind()
+    if (installRootKind !== 'managed_root') {
+      return fail('install_root_kind_mismatch', 'official remote install requires the managed root')
+    }
+
+    const installRef = MAGIKA_OFFICIAL_PLUGIN_ID
+    const finalDir = this.deps.resolveInstallPluginDir({ installRootKind, installRef })
+    const stageDir = `${finalDir}.stage-${this.now()}`
+    try {
+      const extracted = await this.extractAndValidateOfficialMagika({
+        verified,
+        release,
+        stageDir,
+        finalDir,
+        pluginId,
+        pluginVersion,
+      })
+      if (!extracted.ok) return extracted
+
+      const upserted = this.upsertOfficialMagikaInstall({
+        descriptor: extracted.value.descriptor,
+        manifestBytes: extracted.value.manifestBytes,
+        existing,
+        installRootKind,
+        installRef,
+        verified,
+      })
+
+      return ok(toInstalledDto(upserted))
+    } finally {
+      await rm(stageDir, { recursive: true, force: true }).catch(() => undefined)
+    }
+  }
+
+  private verifyOfficialMagikaReleaseMetadata(
+    release: OfficialPackageReleaseMetadata
+  ): LifecycleActionResult<void> {
+    if (release !== MAGIKA_OFFICIAL_RELEASE_METADATA) {
+      return hasConfiguredTrustedRootForRelease(release, this.deps.trustedRoots, this.deps.trustedRootSource)
+        ? ok(undefined)
+        : fail('official_trusted_root_unconfigured', 'official plugin trusted roots are not configured')
+    }
+
+    const catalogResult = buildMagikaOfficialCatalogReadModel({
+      trustedRoots: this.deps.trustedRoots,
+      trustedRootSource: this.deps.trustedRootSource,
+      now: new Date(this.now()),
+      environment: {
+        platform: process.platform,
+        architecture: process.arch,
+        appVersion: '0.0.0',
+      },
+    })
+    if (catalogResult.ok) return ok(undefined)
+    return catalogResult.reason === 'official_trusted_root_unconfigured'
+      ? fail('official_trusted_root_unconfigured', 'official plugin trusted roots are not configured')
+      : fail('official_release_metadata_invalid', 'official plugin release metadata verification failed')
+  }
+
+  private async extractAndValidateOfficialMagika(input: Readonly<{
+    verified: VerifiedOfficialPackageRelease
+    release: OfficialPackageReleaseMetadata
+    stageDir: string
+    finalDir: string
+    pluginId: string
+    pluginVersion: string
+  }>): Promise<LifecycleActionResult<Readonly<{
+    descriptor: MagikaManagedPluginDescriptor
+    manifestBytes: Uint8Array
+  }>>> {
+    try {
+      await extractOfficialMagikaPackage({
+        bytes: input.verified.stagedPackage.bytes,
+        stageDir: input.stageDir,
+        finalDir: input.finalDir,
+        release: input.release,
+      })
+    } catch {
+      return fail('official_package_extract_failed', 'official package extraction failed')
+    }
+
+    const discovered = await discoverMagikaManagedPlugin({ pluginDirs: [input.finalDir] })
+    if (!discovered.available) {
+      return fail('manifest_integrity_failed', 'managed plugin integrity verification failed')
+    }
+    const descriptor = discovered.descriptor
+    if (descriptor.manifest.engineId !== input.pluginId) {
+      return fail('manifest_engine_mismatch', 'manifest engineId does not match official release metadata')
+    }
+    if (descriptor.manifest.pluginVersion !== input.pluginVersion) {
+      return fail('manifest_version_mismatch', 'manifest pluginVersion does not match official release metadata')
+    }
+
+    const manifestBytes = await this.readBytes(descriptor.manifestPath).catch(() => null)
+    return manifestBytes
+      ? ok({ descriptor, manifestBytes })
+      : fail('local_package_manifest_hash_missing', 'cannot read installed package manifest for hash calculation')
+  }
+
+  private upsertOfficialMagikaInstall(input: Readonly<{
+    descriptor: MagikaManagedPluginDescriptor
+    manifestBytes: Uint8Array
+    existing: EnginePluginRegistryRecord | null
+    installRootKind: EnginePluginInstallRootKind
+    installRef: string
+    verified: VerifiedOfficialPackageRelease
+  }>): EnginePluginRegistryRecord {
+    const timestamp = this.now()
+    return this.deps.registryRepo.upsert({
+      engineId: input.descriptor.manifest.engineId,
+      displayName: input.descriptor.manifest.displayName,
+      pluginVersion: input.descriptor.manifest.pluginVersion,
+      manifestSchemaVersion: input.descriptor.manifest.manifestSchemaVersion,
+      manifestHash: buildSha256Hex(input.manifestBytes),
+      runtimeKind: input.descriptor.manifest.runtimeKind,
+      modelVersion: input.descriptor.manifest.modelVersion,
+      installState: 'installed',
+      enabled: false,
+      healthStatus: 'unknown',
+      failureReason: null,
+      installSource: 'official_catalog',
+      installRootKind: input.installRootKind,
+      installRef: input.installRef,
+      installedAt: input.existing?.installedAt ?? timestamp,
+      updatedAt: timestamp,
+      lastVerifiedAt: timestamp,
+      lastHealthCheckAt: null,
+      metadataJson: {
+        officialRelease: {
+          pluginId: input.descriptor.manifest.engineId,
+          pluginVersion: input.descriptor.manifest.pluginVersion,
+          status: input.verified.status,
+        },
+      },
+    })
+  }
+
   async enablePlugin(input: EnablePluginInput): Promise<LifecycleActionResult<InstalledEnginePluginDto>> {
     const engineId = requireNonEmpty(input.engineId, 'engineId')
     const record = this.deps.registryRepo.getByEngineId(engineId)
@@ -509,7 +705,11 @@ export class EnginePluginLifecycleService {
         installed: record.installState !== 'uninstalled',
         enabled: record.enabled,
         healthStatus: record.healthStatus,
-        verificationStatus: record.installState === 'installed' ? 'unverified' : null,
+        verificationStatus: record.installState === 'installed'
+          ? record.lastVerifiedAt
+            ? 'verified'
+            : 'unverified'
+          : null,
         pluginVersion: record.pluginVersion,
         modelVersion: record.modelVersion,
         failureReason: sanitizeStoredFailureReason(record.failureReason),
@@ -742,4 +942,166 @@ function buildSha256Hex(bytes: Uint8Array): string {
 
 async function defaultReadBytes(filePath: string): Promise<Uint8Array> {
   return new Uint8Array(await readFile(filePath))
+}
+
+const defaultOfficialPackageTransport: PackageDownloadTransport = {
+  async fetchPackage(request) {
+    const response = await fetch(request.transportRef, { signal: request.signal })
+    if (!response.ok) {
+      return { ok: false, code: 'download_failed', detail: `http_${response.status}` }
+    }
+    const contentLength = Number(response.headers.get('content-length') ?? '0')
+    if (Number.isFinite(contentLength) && contentLength > request.maxBytes) {
+      return { ok: false, code: 'too_large', finalRef: response.url }
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    if (bytes.byteLength > request.maxBytes) {
+      return { ok: false, code: 'too_large', finalRef: response.url }
+    }
+    return { ok: true, bytes, finalRef: response.url }
+  },
+}
+
+async function extractOfficialMagikaPackage(input: Readonly<{
+  bytes: Uint8Array
+  stageDir: string
+  finalDir: string
+  release: OfficialPackageReleaseMetadata
+}>): Promise<void> {
+  assertSafeInstallDir(input.stageDir)
+  assertSafeInstallDir(input.finalDir)
+  await rm(input.stageDir, { recursive: true, force: true })
+  await mkdir(input.stageDir, { recursive: true })
+  await extractZipToDirectory(input.bytes, input.stageDir)
+
+  const packageManifestPath = path.join(input.stageDir, 'manifest.json')
+  const inventoryPath = path.join(input.stageDir, 'inventory.json')
+  const [packageManifestBytes, inventoryBytes] = await Promise.all([
+    readFile(packageManifestPath),
+    readFile(inventoryPath),
+  ])
+  if (buildSha256Hex(packageManifestBytes) !== input.release.catalogEntry.manifestSha256) {
+    throw new Error('official package manifest hash mismatch')
+  }
+  if (buildSha256Hex(inventoryBytes) !== input.release.catalogEntry.inventorySha256) {
+    throw new Error('official package inventory hash mismatch')
+  }
+
+  const engineDir = path.join(input.stageDir, 'engine')
+  if (!existsSync(engineDir)) throw new Error('official package engine directory missing')
+  await rm(input.finalDir, { recursive: true, force: true })
+  await mkdir(input.finalDir, { recursive: true })
+  await cp(engineDir, input.finalDir, {
+    recursive: true,
+    force: true,
+    errorOnExist: false,
+    verbatimSymlinks: false,
+  })
+}
+
+function extractZipToDirectory(bytes: Uint8Array, targetDir: string): Promise<void> {
+  const buffer = Buffer.from(bytes)
+  const entries = readZipCentralDirectory(buffer)
+  return entries.reduce(
+    (previous, entry) => previous.then(() => writeZipEntry(buffer, entry, targetDir)),
+    Promise.resolve()
+  )
+}
+
+type ZipEntry = Readonly<{
+  fileName: string
+  compressionMethod: number
+  compressedSize: number
+  uncompressedSize: number
+  localHeaderOffset: number
+}>
+
+function readZipCentralDirectory(buffer: Buffer): readonly ZipEntry[] {
+  const eocdOffset = findEndOfCentralDirectory(buffer)
+  if (eocdOffset < 0) throw new Error('zip end of central directory not found')
+  const entryCount = buffer.readUInt16LE(eocdOffset + 10)
+  const centralDirectoryOffset = buffer.readUInt32LE(eocdOffset + 16)
+  const entries: ZipEntry[] = []
+  let offset = centralDirectoryOffset
+  for (let index = 0; index < entryCount; index += 1) {
+    if (buffer.readUInt32LE(offset) !== 0x02014b50) throw new Error('zip central directory entry invalid')
+    const compressionMethod = buffer.readUInt16LE(offset + 10)
+    const compressedSize = buffer.readUInt32LE(offset + 20)
+    const uncompressedSize = buffer.readUInt32LE(offset + 24)
+    const fileNameLength = buffer.readUInt16LE(offset + 28)
+    const extraLength = buffer.readUInt16LE(offset + 30)
+    const commentLength = buffer.readUInt16LE(offset + 32)
+    const localHeaderOffset = buffer.readUInt32LE(offset + 42)
+    const fileName = buffer.subarray(offset + 46, offset + 46 + fileNameLength).toString('utf8')
+    entries.push({ fileName, compressionMethod, compressedSize, uncompressedSize, localHeaderOffset })
+    offset += 46 + fileNameLength + extraLength + commentLength
+  }
+  return entries
+}
+
+function findEndOfCentralDirectory(buffer: Buffer): number {
+  const minOffset = Math.max(0, buffer.length - 0xffff - 22)
+  for (let offset = buffer.length - 22; offset >= minOffset; offset -= 1) {
+    if (buffer.readUInt32LE(offset) === 0x06054b50) return offset
+  }
+  return -1
+}
+
+async function writeZipEntry(buffer: Buffer, entry: ZipEntry, targetDir: string): Promise<void> {
+  const relativePath = normalizeZipEntryName(entry.fileName)
+  if (!relativePath) return
+  if (buffer.readUInt32LE(entry.localHeaderOffset) !== 0x04034b50) {
+    throw new Error('zip local file header invalid')
+  }
+  const nameLength = buffer.readUInt16LE(entry.localHeaderOffset + 26)
+  const extraLength = buffer.readUInt16LE(entry.localHeaderOffset + 28)
+  const dataStart = entry.localHeaderOffset + 30 + nameLength + extraLength
+  const dataEnd = dataStart + entry.compressedSize
+  if (dataEnd > buffer.length) throw new Error('zip entry exceeds package size')
+  const compressed = buffer.subarray(dataStart, dataEnd)
+  const content = entry.compressionMethod === 0
+    ? compressed
+    : entry.compressionMethod === 8
+      ? inflateRawSync(compressed)
+      : null
+  if (!content) throw new Error('zip compression method unsupported')
+  if (content.byteLength !== entry.uncompressedSize) throw new Error('zip entry size mismatch')
+
+  const targetPath = path.resolve(targetDir, relativePath)
+  const backtrack = path.relative(targetDir, targetPath)
+  if (backtrack.startsWith('..') || path.isAbsolute(backtrack)) {
+    throw new Error('zip entry escapes target directory')
+  }
+  await mkdir(path.dirname(targetPath), { recursive: true })
+  await writeFile(targetPath, content)
+}
+
+function normalizeZipEntryName(input: string): string | null {
+  const normalized = input.trim().replace(/\\/gu, '/')
+  if (!normalized || normalized.endsWith('/')) return null
+  if (normalized.includes('\u0000')) return null
+  if (normalized.startsWith('/') || normalized.includes('../') || normalized === '..') return null
+  if (/^[a-z][a-z0-9+.-]*:/iu.test(normalized)) return null
+  return normalized.replace(/^\.\//u, '')
+}
+
+function assertSafeInstallDir(dir: string): void {
+  const resolved = path.resolve(dir)
+  if (resolved === path.parse(resolved).root) throw new Error('install directory cannot be filesystem root')
+  const base = path.basename(resolved)
+  if (!/^[a-z0-9][a-z0-9._-]{1,127}$/iu.test(base)) {
+    throw new Error('install directory basename is unsafe')
+  }
+}
+
+function hasConfiguredTrustedRootForRelease(
+  release: OfficialPackageReleaseMetadata,
+  trustedRoots: TrustedCatalogPublicKeyMap,
+  trustedRootSource: 'official' | 'test' | null | undefined
+): boolean {
+  if (trustedRootSource !== 'official') return false
+  const keyId = release.signatureEnvelope.keyId
+  const trustedRoot = trustedRoots[keyId]
+  const trustedKey = release.trustedKeys.find((key) => key.publicKeyPem.trim() === trustedRoot?.publicKeyPem.trim())
+  return trustedRoot?.algorithm === release.signatureEnvelope.algorithm && Boolean(trustedKey)
 }

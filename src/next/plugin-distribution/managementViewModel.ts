@@ -224,7 +224,9 @@ function buildPluginViewModel(
     },
     status: {
       lifecycle: resolveLifecycleState(record, installState, enabled, quarantined),
-      sourceKind: record?.installSource === 'manual_local' ? 'local_manual' : 'official_catalog',
+      sourceKind: record?.installSource === 'manual_local' || record?.installSource === 'local_package'
+        ? 'local_manual'
+        : 'official_catalog',
       installState,
       verificationStatus,
       healthStatus,

@@ -72,7 +72,8 @@ describe('Magika official release read model', () => {
       expect(configured.catalog.entries[0]).toMatchObject({
         pluginId: 'magika',
         displayName: 'Magika',
-        installabilityStatus: 'metadata_compatible_future_install',
+        installabilityStatus: 'official_remote_install_available',
+        verificationMetadataStatus: 'production_signature_available',
       })
     }
 

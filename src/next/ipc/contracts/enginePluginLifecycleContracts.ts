@@ -24,7 +24,7 @@ const installedPluginSchema = z.object({
   enabled: z.boolean(),
   healthStatus: z.enum(['unknown', 'healthy', 'degraded', 'unhealthy']),
   failureReason: z.string().trim().nullable(),
-  installSource: z.literal('official_catalog'),
+  installSource: z.enum(['official_catalog', 'local_package']),
   installRootKind: z.enum(['managed_root', 'managed_cache', 'test_root']),
   installedAt: z.number().finite().nullable(),
   updatedAt: z.number().finite(),
@@ -118,6 +118,11 @@ export type RegisterLocalPackageRequest = Readonly<{
   packageDir: string
   installRootKind: 'managed_root' | 'managed_cache' | 'test_root'
   installRef: string
+  enabled?: boolean
+}>
+export type InstallOfficialPluginRequest = Readonly<{
+  pluginId: string
+  pluginVersion?: string
   enabled?: boolean
 }>
 export type LifecycleEngineRequest = Readonly<{ engineId: string }>
