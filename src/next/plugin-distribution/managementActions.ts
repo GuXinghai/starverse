@@ -97,7 +97,7 @@ function installOfficialPluginAction(
   if (!flags.hasOfficialRemoteInstallContract) {
     return disabledAction('install_official_plugin', 'Install official plugin', ['unsupported_action_contract_missing'])
   }
-  if (plugin.registry.present) {
+  if (hasActiveRegistryRecord(plugin)) {
     return disabledAction('install_official_plugin', 'Install official plugin', ['already_registered'])
   }
   if (!plugin.catalog.present) {
@@ -105,6 +105,10 @@ function installOfficialPluginAction(
   }
   if (plugin.catalog.installabilityStatus !== 'official_remote_install_available') {
     return disabledAction('install_official_plugin', 'Install official plugin', ['official_remote_install_unavailable'])
+  }
+  const blockedReinstall = blockedReinstallReason(plugin)
+  if (blockedReinstall) {
+    return disabledAction('install_official_plugin', 'Install official plugin', [blockedReinstall])
   }
   if (plugin.reasonCodes.includes('signature_missing')) {
     return disabledAction('install_official_plugin', 'Install official plugin', ['signature_missing'])
@@ -126,11 +130,19 @@ function manualLocalRegistrationAction(
       ['unsupported_action_contract_missing']
     )
   }
-  if (plugin.registry.present) {
+  if (hasActiveRegistryRecord(plugin)) {
     return disabledAction(
       'manual_local_package_registration',
       'Register local package',
       ['already_registered']
+    )
+  }
+  const blockedReinstall = blockedReinstallReason(plugin)
+  if (blockedReinstall) {
+    return disabledAction(
+      'manual_local_package_registration',
+      'Register local package',
+      [blockedReinstall]
     )
   }
   return enabledAction('manual_local_package_registration', 'Register local package')
@@ -184,6 +196,9 @@ function verifyPackageAction(
   }
   if (!plugin.registry.present) {
     return disabledAction('verify_package', 'Verify package', ['not_registered'])
+  }
+  if (plugin.status.installState === 'uninstalled') {
+    return disabledAction('verify_package', 'Verify package', ['uninstalled'])
   }
   if (plugin.status.quarantined) {
     return disabledAction('verify_package', 'Verify package', ['quarantined'])
@@ -277,6 +292,7 @@ function acknowledgeQuarantineAction(
 function enableBlockers(plugin: PdpManagementPluginViewModel): readonly string[] {
   const blockers: string[] = []
   if (!plugin.registry.present) blockers.push('not_registered')
+  if (plugin.status.installState === 'uninstalled') return ['not_installed']
   if (plugin.status.quarantined) blockers.push('quarantined')
   if (plugin.status.enabled) blockers.push('already_enabled')
   if (plugin.status.verificationStatus !== 'verified') blockers.push('verification_required')
@@ -285,6 +301,34 @@ function enableBlockers(plugin: PdpManagementPluginViewModel): readonly string[]
   }
   if (plugin.reasonCodes.includes('revoked')) blockers.push('revoked')
   return uniqueCodes(blockers)
+}
+
+function hasActiveRegistryRecord(plugin: PdpManagementPluginViewModel): boolean {
+  return plugin.registry.present && plugin.status.installState !== 'uninstalled'
+}
+
+function blockedReinstallReason(plugin: PdpManagementPluginViewModel): string | null {
+  const blockedTrust = firstReasonCode(plugin, [
+    'revoked',
+    'signature_invalid',
+    'hash_mismatch',
+    'integrity_missing',
+    'expired_metadata',
+    'rollback_detected',
+  ])
+  if (plugin.status.quarantined || blockedTrust) return blockedTrust ?? 'revoked'
+  return firstReasonCode(plugin, [
+    'incompatible_platform',
+    'incompatible_arch',
+    'incompatible_app_version',
+  ])
+}
+
+function firstReasonCode(
+  plugin: PdpManagementPluginViewModel,
+  reasonCodes: readonly string[]
+): string | null {
+  return reasonCodes.find((reasonCode) => plugin.reasonCodes.includes(reasonCode)) ?? null
 }
 
 function enabledAction(id: PdpManagementActionId, label: string): PdpManagementAction {

@@ -200,7 +200,7 @@ function toCatalogEntry(item: DecodedOfficialPlugin): PdpManagementCatalogInput 
     pluginVersion: item.pluginVersion,
     runtimeKind: item.runtimeKind,
     capabilities: item.capabilities,
-    installabilityStatus: item.installState === 'not_installed'
+    installabilityStatus: item.installState === 'not_installed' || item.installState === 'uninstalled'
       ? item.installabilityStatus
       : 'unavailable_read_only',
     reasons: item.reasons,
@@ -255,10 +255,12 @@ function mapInstallState(item: DecodedInstalledPlugin): PluginInstallState {
 function mapVerificationStatus(item: DecodedInstalledPlugin): PluginVerificationStatus {
   if (item.failureReason === 'revoked') return 'revoked'
   if (item.installState === 'failed') return 'failed'
+  if (item.installState === 'uninstalled') return 'unverified'
   return item.lastVerifiedAt === null ? 'unverified' : 'verified'
 }
 
 function mapHealthStatus(item: DecodedInstalledPlugin): PluginHealthStatus {
+  if (item.installState === 'uninstalled') return 'disabled'
   if (!item.enabled && item.healthStatus === 'unknown') return 'disabled'
   if (item.healthStatus === 'healthy') return 'healthy'
   if (item.healthStatus === 'unhealthy' || item.healthStatus === 'degraded') return 'failed'

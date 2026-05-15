@@ -193,6 +193,55 @@ describe('PluginManagementPanel', () => {
     expect(JSON.stringify(bridge.invoke.mock.calls)).not.toMatch(/https?:|4397df63|signature/iu)
   })
 
+  it('renders post-uninstall Magika as installable catalog metadata without registered blockers', async () => {
+    const bridge = createDbBridgeMock({
+      listOfficialPlugins: {
+        ok: true,
+        value: [
+          officialPlugin({
+            pluginId: 'magika',
+            displayName: 'Magika',
+            pluginVersion: '0.1.0',
+            installState: 'uninstalled',
+            enabled: false,
+            installabilityStatus: 'official_remote_install_available',
+          }),
+        ],
+      },
+      listInstalledPlugins: [
+        installedPlugin({
+          engineId: 'magika',
+          displayName: 'Magika',
+          pluginVersion: '0.1.0',
+          installState: 'uninstalled',
+          enabled: false,
+          healthStatus: 'unknown',
+          lastVerifiedAt: 4,
+        }),
+      ],
+      getDiagnosticsSummary: {
+        engines: [],
+        counts: { total: 0, installed: 0, enabled: 0, healthy: 0, failed: 0, unverified: 0 },
+      },
+    })
+    ;(globalThis as any).dbBridge = bridge
+
+    const { container } = render(PluginManagementPanel)
+
+    await screen.findByText('Magika')
+    expect(container.textContent).toContain('0 registered, 0 enabled, 0 healthy, 0 failed')
+    expect(container.textContent).toContain('Metadata uninstalled')
+    expect(container.textContent).toContain('Catalog: official_remote_install_available')
+    expect(container.textContent).toContain('Lifecycle: uninstalled')
+    expect(container.textContent).toContain('Production Signature Available')
+    expect(container.textContent).not.toContain('Verified by supported policy')
+    expect(container.textContent).not.toContain('already_registered')
+    expect(screen.getByRole('button', { name: 'Install official plugin' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /^Enable/u })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^Check health/u })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^Uninstall metadata/u })).toBeDisabled()
+  })
+
   it('keeps read-only catalog entries without release metadata unavailable for install', async () => {
     ;(globalThis as any).dbBridge = createDbBridgeMock({
       listOfficialPlugins: {

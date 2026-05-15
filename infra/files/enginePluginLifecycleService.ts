@@ -67,6 +67,15 @@ const FAILURE_REASON_SET = new Set([
   'official_release_metadata_invalid',
   'official_remote_install_failed',
   'official_package_extract_failed',
+  'revoked',
+  'incompatible_platform',
+  'incompatible_arch',
+  'incompatible_app_version',
+  'signature_invalid',
+  'hash_mismatch',
+  'integrity_missing',
+  'expired_metadata',
+  'rollback_detected',
 ])
 
 type LifecycleFailureReason = (typeof FAILURE_REASON_SET extends Set<infer T> ? T : never) & string
@@ -218,6 +227,7 @@ export class EnginePluginLifecycleService {
     const recommendedInstallRootKind = this.getRecommendedInstallRootKind()
     const rows = catalogResult.value.plugins.map((entry) => {
       const installedRecord = installedById.get(entry.pluginId)
+      const activeInstalledRecord = isActiveInstalledRecord(installedRecord)
       return {
         pluginId: entry.pluginId,
         displayName: entry.pluginId,
@@ -232,7 +242,7 @@ export class EnginePluginLifecycleService {
         recommendedInstallRootKind,
         catalogStatus: 'valid_metadata_only',
         verificationMetadataStatus: 'metadata_present_crypto_deferred',
-        installabilityStatus: installedRecord ? 'unavailable_read_only' : 'metadata_compatible_future_install',
+        installabilityStatus: activeInstalledRecord ? 'unavailable_read_only' : 'metadata_compatible_future_install',
         reasons: ['read_only_catalog_no_install_action'],
         warnings: [],
       } as OfficialPluginDto
@@ -296,7 +306,7 @@ export class EnginePluginLifecycleService {
       recommendedInstallRootKind,
       catalogStatus: entry.catalogStatus,
       verificationMetadataStatus: entry.verificationMetadataStatus,
-      installabilityStatus: installedRecord ? 'unavailable_read_only' : entry.installabilityStatus,
+      installabilityStatus: isActiveInstalledRecord(installedRecord) ? 'unavailable_read_only' : entry.installabilityStatus,
       reasons: entry.reasons,
       warnings: entry.warnings,
     }
@@ -363,6 +373,17 @@ export class EnginePluginLifecycleService {
       return fail('manifest_version_mismatch', 'manifest pluginVersion does not match official catalog entry')
     }
 
+    const existing = this.deps.registryRepo.getByEngineId(manifest.engineId)
+    if (existing && existing.installState !== 'uninstalled') {
+      return fail('already_registered', 'official plugin is already registered')
+    }
+    const blockedExisting = existing?.installState === 'uninstalled' && existing.failureReason
+      ? blockedPluginReinstallFailure(existing.failureReason)
+      : null
+    if (blockedExisting) {
+      return fail(blockedExisting, 'official plugin registration is blocked by prior trust or compatibility state')
+    }
+
     const discovered = await discoverMagikaManagedPlugin({ pluginDirs: [pluginDir] })
     if (!discovered.available) {
       return fail('manifest_integrity_failed', 'managed plugin integrity verification failed')
@@ -415,6 +436,10 @@ export class EnginePluginLifecycleService {
     const existing = this.deps.registryRepo.getByEngineId(pluginId)
     if (existing && existing.installState !== 'uninstalled') {
       return fail('already_registered', 'official plugin is already registered')
+    }
+    const blockedExisting = existing?.failureReason ? blockedPluginReinstallFailure(existing.failureReason) : null
+    if (blockedExisting) {
+      return fail(blockedExisting, 'official plugin reinstall is blocked by prior trust or compatibility state')
     }
     const verified = await verifyOfficialPackageReleaseDownload({
       release,
@@ -636,6 +661,16 @@ export class EnginePluginLifecycleService {
     }
 
     const descriptor = discovered.descriptor
+    const existing = this.deps.registryRepo.getByEngineId(descriptor.manifest.engineId)
+    if (existing && existing.installState !== 'uninstalled') {
+      return fail('already_registered', 'plugin is already registered')
+    }
+    const blockedExisting = existing?.installState === 'uninstalled' && existing.failureReason
+      ? blockedPluginReinstallFailure(existing.failureReason)
+      : null
+    if (blockedExisting) {
+      return fail(blockedExisting, 'local package registration is blocked by prior trust or compatibility state')
+    }
     const manifestBytes = await this.readBytes(descriptor.manifestPath).catch(() => null)
     if (!manifestBytes) {
       return fail('local_package_manifest_hash_missing', 'cannot read local package manifest for hash calculation')
@@ -827,6 +862,28 @@ export class EnginePluginLifecycleService {
     return ok(catalog)
   }
 }
+
+function isActiveInstalledRecord(record: EnginePluginRegistryRecord | undefined): boolean {
+  return record !== undefined && record.installState !== 'uninstalled'
+}
+
+function blockedPluginReinstallFailure(failureReason: string): LifecycleFailureReason | null {
+  return BLOCKED_PLUGIN_REINSTALL_FAILURES.has(failureReason)
+    ? failureReason as LifecycleFailureReason
+    : null
+}
+
+const BLOCKED_PLUGIN_REINSTALL_FAILURES = new Set([
+  'revoked',
+  'incompatible_platform',
+  'incompatible_arch',
+  'incompatible_app_version',
+  'signature_invalid',
+  'hash_mismatch',
+  'integrity_missing',
+  'expired_metadata',
+  'rollback_detected',
+])
 
 function ok<T>(value: T): LifecycleActionResult<T> {
   return { ok: true, value }

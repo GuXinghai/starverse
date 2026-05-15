@@ -62,6 +62,35 @@ describe('buildPdpManagementViewModel', () => {
     expect(vm.plugins[0]?.status.lifecycle).toBe('catalog_only')
   })
 
+  it('displays uninstalled tombstone metadata as inactive and not registered', () => {
+    const vm = buildPdpManagementViewModel({
+      catalogEntries: [
+        catalogEntry({
+          installabilityStatus: 'official_remote_install_available',
+          verificationMetadataStatus: 'production_signature_available',
+          reasons: ['official_remote_install_available', 'production_signature_available', 'verify_before_install'],
+        }),
+      ],
+      registryRecords: [
+        registryRecord({
+          registryState: 'uninstalled',
+          installState: 'uninstalled',
+          enabled: false,
+          healthStatus: 'healthy',
+          verificationStatus: 'verified',
+          failureReason: null,
+        }),
+      ],
+    })
+
+    expect(vm.plugins[0]?.status.lifecycle).toBe('uninstalled')
+    expect(vm.plugins[0]?.status.installState).toBe('uninstalled')
+    expect(vm.plugins[0]?.status.enabled).toBe(false)
+    expect(vm.plugins[0]?.status.healthStatus).toBe('disabled')
+    expect(vm.plugins[0]?.status.verificationStatus).toBe('unverified')
+    expect(vm.plugins[0]?.catalog.installabilityStatus).toBe('official_remote_install_available')
+  })
+
   it('does not display an unverified package as enabled', () => {
     const vm = buildPdpManagementViewModel({
       registryRecords: [

@@ -9,7 +9,13 @@ import type {
 } from './types'
 
 export type PdpManagementSourceKind = 'official_catalog' | 'local_manual'
-export type PdpManagementLifecycleState = 'catalog_only' | 'registered' | 'enabled' | 'disabled' | 'blocked'
+export type PdpManagementLifecycleState =
+  | 'catalog_only'
+  | 'registered'
+  | 'enabled'
+  | 'disabled'
+  | 'blocked'
+  | 'uninstalled'
 export type PdpManagementUpdateState = 'not_checked' | 'eligible_manual' | 'staged_contract' | 'ineligible'
 export type PdpManagementRollbackState = 'unavailable' | 'previous_known_good_metadata'
 
@@ -180,8 +186,12 @@ function buildPluginViewModel(
 ): PdpManagementPluginViewModel {
   const pluginId = record?.pluginId ?? catalogEntry?.pluginId ?? 'unknown'
   const installState = record?.installState ?? 'not_installed'
-  const verificationStatus = record?.verificationStatus ?? 'unverified'
-  const healthStatus = health?.healthStatus ?? record?.healthStatus ?? 'unknown'
+  const verificationStatus = installState === 'uninstalled'
+    ? 'unverified'
+    : record?.verificationStatus ?? 'unverified'
+  const healthStatus = installState === 'uninstalled'
+    ? 'disabled'
+    : health?.healthStatus ?? record?.healthStatus ?? 'unknown'
   const enabled = record?.enabled ?? false
   const quarantined = installState === 'quarantined' || verificationStatus === 'revoked'
   const updateState = update?.state ?? 'not_checked'
@@ -248,6 +258,7 @@ function resolveLifecycleState(
   quarantined: boolean
 ): PdpManagementLifecycleState {
   if (!record) return 'catalog_only'
+  if (installState === 'uninstalled') return 'uninstalled'
   if (quarantined || installState === 'failed') return 'blocked'
   if (enabled) return 'enabled'
   if (installState === 'disabled') return 'disabled'

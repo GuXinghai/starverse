@@ -146,6 +146,43 @@ describeIfBetterSqlite('EnginePluginRegistryRepo', () => {
     })
   })
 
+  it('preserves blocking trust or compatibility failures on uninstall tombstones', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    ensureEnginePluginRegistrySchema(db)
+    const repo = new EnginePluginRegistryRepo(db)
+
+    repo.insert({
+      ...createBaseInput('engine.revoked'),
+      installState: 'failed',
+      enabled: false,
+      failureReason: 'revoked',
+      updatedAt: 340,
+    })
+    repo.insert({
+      ...createBaseInput('engine.signature'),
+      installState: 'failed',
+      enabled: false,
+      failureReason: 'signature_invalid',
+      updatedAt: 341,
+    })
+
+    expect(repo.markUninstalled({ engineId: 'engine.revoked', updatedAt: 350 })).toEqual({ ok: true, updated: 1 })
+    expect(repo.markUninstalled({ engineId: 'engine.signature', updatedAt: 351 })).toEqual({
+      ok: true,
+      updated: 1,
+    })
+
+    expect(repo.getByEngineId('engine.revoked')).toMatchObject({
+      installState: 'uninstalled',
+      failureReason: 'revoked',
+    })
+    expect(repo.getByEngineId('engine.signature')).toMatchObject({
+      installState: 'uninstalled',
+      failureReason: 'signature_invalid',
+    })
+  })
+
   it('rejects absolute paths in installRef', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
