@@ -112,7 +112,7 @@ function makeVerdict(
 }
 
 describe('SendPlanService semantic eligibility internals', () => {
-  it('uses semantic mode when explicit semantic is present and falls back to legacy mode when absent', () => {
+  it('uses semantic mode and does not switch to legacy routing when semantic is absent', () => {
     const base = makeCollectedAttachment({
       aiPayloadKind: 'binary',
       processingStatus: 'ready',
@@ -132,10 +132,10 @@ describe('SendPlanService semantic eligibility internals', () => {
     })
 
     expect(withSemantic).toBe('semantic')
-    expect(withoutSemantic).toBe('legacy')
+    expect(withoutSemantic).toBe('semantic')
   })
 
-  it('resolves semantic summary from explicit semantic first and falls back to legacy mapper', () => {
+  it('resolves semantic summary from explicit semantic only', () => {
     const explicit = __sendPlanEligibilityInternals.resolveAttachmentSemanticSummary(makeCollectedAttachment({
       semantic: {
         targetKind: 'code',
@@ -143,7 +143,7 @@ describe('SendPlanService semantic eligibility internals', () => {
         mappedFromLegacy: false,
       },
     }))
-    const fallback = __sendPlanEligibilityInternals.resolveAttachmentSemanticSummary(makeCollectedAttachment({
+    const absent = __sendPlanEligibilityInternals.resolveAttachmentSemanticSummary(makeCollectedAttachment({
       aiPayloadKind: 'pdf',
       processingStatus: 'ready',
       semantic: null,
@@ -154,11 +154,7 @@ describe('SendPlanService semantic eligibility internals', () => {
       sendStrategy: 'text_in_prompt',
       mappedFromLegacy: false,
     })
-    expect(fallback).toEqual({
-      targetKind: 'pdf_attachment',
-      sendStrategy: 'file_attachment',
-      mappedFromLegacy: true,
-    })
+    expect(absent).toBeNull()
   })
 
   it('evaluates semantic text_in_prompt as compatible when model has text_in', () => {
@@ -358,62 +354,8 @@ describe('SendPlanService semantic eligibility internals', () => {
     expect(psResult.reasonCode).toBe('conversion_required_before_send')
   })
 
-  it('maps convertible docx and xlsx defaults to text semantic targets for Step 4 baseline', () => {
-    const docxSemantic = __sendPlanEligibilityInternals.buildDefaultSemanticSummary(
-      makeCollectedAttachment({
-        aiPayloadKind: 'pdf',
-        processingStatus: 'convertible',
-      }),
-      makeLocalAsset({
-        filename: 'draft.docx',
-        extension: 'docx',
-        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        assetKind: 'document',
-      })
-    )
-    const xlsxSemantic = __sendPlanEligibilityInternals.buildDefaultSemanticSummary(
-      makeCollectedAttachment({
-        aiPayloadKind: 'pdf',
-        processingStatus: 'convertible',
-      }),
-      makeLocalAsset({
-        filename: 'sheet.xlsx',
-        extension: 'xlsx',
-        mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        assetKind: 'document',
-      })
-    )
-    expect(docxSemantic).toMatchObject({ targetKind: 'markdown', sendStrategy: 'text_in_prompt' })
-    expect(xlsxSemantic).toMatchObject({ targetKind: 'table_markdown', sendStrategy: 'text_in_prompt' })
-  })
-
-  it('maps convertible html and postscript defaults to safe text semantic targets', () => {
-    const htmlSemantic = __sendPlanEligibilityInternals.buildDefaultSemanticSummary(
-      makeCollectedAttachment({
-        aiPayloadKind: 'text',
-        processingStatus: 'convertible',
-      }),
-      makeLocalAsset({
-        filename: 'index.html',
-        extension: 'html',
-        mime: 'text/html',
-        assetKind: 'text',
-      })
-    )
-    const psSemantic = __sendPlanEligibilityInternals.buildDefaultSemanticSummary(
-      makeCollectedAttachment({
-        aiPayloadKind: 'text',
-        processingStatus: 'convertible',
-      }),
-      makeLocalAsset({
-        filename: 'figure.eps',
-        extension: 'eps',
-        mime: 'application/postscript',
-        assetKind: 'text',
-      })
-    )
-    expect(htmlSemantic).toMatchObject({ targetKind: 'markdown', sendStrategy: 'text_in_prompt' })
-    expect(psSemantic).toMatchObject({ targetKind: 'code', sendStrategy: 'text_in_prompt' })
+  it('does not expose the legacy default semantic mapper as a normal route helper', () => {
+    expect((__sendPlanEligibilityInternals as unknown as { buildDefaultSemanticSummary?: unknown }).buildDefaultSemanticSummary).toBeUndefined()
   })
 
   it('requires both text_in and file_in for semantic mixed strategy', () => {
@@ -764,6 +706,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       assetKind: 'image',
       storageUri: 'assets/original/im/img-1.png',
     })
+    createVerdict(h, 'img-1', 'png', 'image')
     h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'img-1' })
 
     const collected = h.sendPlanService.collectCurrentSendInputs({
@@ -804,6 +747,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
         materializationStatus: 'not_requested',
       },
     })
+    createVerdict(h, 'text-url', 'plain_text', 'text')
     h.conversationAttachmentService.addDraftAttachment({
       conversationId: 'c1',
       assetId: 'text-url',
@@ -838,6 +782,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       previewStatus: 'failed',
       storageUri: 'assets/original/im/img-preview-failed.png',
     })
+    createVerdict(h, 'img-preview-failed', 'png', 'image')
     h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'img-preview-failed' })
 
     const collected = h.sendPlanService.collectCurrentSendInputs({
@@ -869,6 +814,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       assetKind: 'audio',
       storageUri: 'assets/original/au/audio-1.mp3',
     })
+    createVerdict(h, 'audio-1', 'mp3', 'audio')
     h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'audio-1' })
     const userMessage = h.conversationAttachmentService.commitDraftToUserMessage({ conversationId: 'c1' }).message
 
@@ -918,6 +864,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
         materializationStatus: 'not_requested',
       },
     })
+    createVerdict(h, 'url-img', 'png', 'image')
     h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'url-img' })
 
     const collected = h.sendPlanService.collectCurrentSendInputs({
@@ -958,6 +905,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
         materializationStatus: 'materialization_failed',
       },
     })
+    createVerdict(h, 'url-pdf', 'pdf', 'document')
     h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'url-pdf' })
 
     const collected = h.sendPlanService.collectCurrentSendInputs({
@@ -985,6 +933,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       assetKind: 'image',
       storageUri: 'assets/original/im/img-1.png',
     })
+    createVerdict(h, 'img-1', 'png', 'image')
     h.conversationAttachmentService.updateDraftText({ conversationId: 'c1', draftText: 'keep the text' })
     h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'img-1' })
 
@@ -1016,6 +965,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       assetKind: 'image',
       storageUri: 'assets/original/im/img-1.png',
     })
+    createVerdict(h, 'img-1', 'png', 'image')
     h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'img-1' })
 
     const collected = h.sendPlanService.collectCurrentSendInputs({
@@ -1063,7 +1013,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
     ])
   })
 
-  it('treats stale parsing as a terminal failure fallback and avoids permanent blocked state', () => {
+  it('treats stale parsing as a terminal failure and avoids permanent blocked state', () => {
     const h = createHarness()
     insertConvo(h.db, 'c1')
     createAsset(h.fileAssetRepo, 'stale-1', {
@@ -1075,7 +1025,8 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       updatedAt: 1_000,
       storageUri: 'assets/original/st/stale-1.mp3',
     })
-    h.conversationAttachmentService.updateDraftText({ conversationId: 'c1', draftText: 'fallback text' })
+    createVerdict(h, 'stale-1', 'mp3', 'audio')
+    h.conversationAttachmentService.updateDraftText({ conversationId: 'c1', draftText: 'text remains sendable' })
     h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'stale-1' })
 
     const collected = h.sendPlanService.collectCurrentSendInputs({
@@ -1104,6 +1055,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       updatedAt: 1_980,
       storageUri: 'assets/original/im/img-1.png',
     })
+    createVerdict(h, 'img-1', 'png', 'image')
     h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'img-1' })
 
     const blocked = h.sendPlanService.recomputeEligibilityOnAttachmentResolved({
@@ -1144,6 +1096,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       assetKind: 'image',
       storageUri: 'assets/original/sh/shared-1.png',
     })
+    createVerdict(h, 'shared-1', 'png', 'image')
     h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'shared-1' })
     const firstMessage = h.conversationAttachmentService.commitDraftToUserMessage({ conversationId: 'c1' }).message
     h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'shared-1' })
@@ -1188,6 +1141,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
         materializationStatus: 'stored',
       },
     })
+    createVerdict(h, 'img-url', 'png', 'image')
     createAsset(h.fileAssetRepo, 'pdf-url', {
       sha256: 'pdf',
       filename: 'remote.pdf',
@@ -1205,6 +1159,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
         materializationStatus: 'stored',
       },
     })
+    createVerdict(h, 'pdf-url', 'pdf', 'document')
     createAsset(h.fileAssetRepo, 'audio-local', {
       filename: 'voice.mp3',
       extension: 'mp3',
@@ -1212,6 +1167,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       assetKind: 'audio',
       storageUri: 'assets/original/au/audio-local.mp3',
     })
+    createVerdict(h, 'audio-local', 'mp3', 'audio')
     createAsset(h.fileAssetRepo, 'video-url', {
       filename: 'clip.mp4',
       extension: 'mp4',
@@ -1223,6 +1179,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
         resolvedUrl: 'https://example.test/clip.mp4',
       },
     })
+    createVerdict(h, 'video-url', 'mp4', 'video')
 
     h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'img-url' })
     h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'pdf-url' })
@@ -1282,6 +1239,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
         materializationStatus: 'not_requested',
       },
     })
+    createVerdict(h, 'pdf-url', 'pdf', 'document')
     h.conversationAttachmentService.updateDraftText({ conversationId: 'c1', draftText: 'pdf context still exists' })
     h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'pdf-url' })
 
@@ -1298,7 +1256,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       expect.objectContaining({
         assetId: 'pdf-url',
         source: 'draft',
-        exclusionReason: 'incompatible_with_current_model',
+        exclusionReason: 'pdf_not_supported_by_provider',
       }),
     ])
     expect(plan.attachmentPlans[0]).toMatchObject({
@@ -1311,7 +1269,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
     expect(plan.blockingReasons).toEqual([])
   })
 
-  it('emits normalized semantic summary while preserving existing send behavior', () => {
+  it('blocks attachments without verdict instead of deriving routes from extension or MIME', () => {
     const h = createHarness()
     insertConvo(h.db, 'c1')
     createAsset(h.fileAssetRepo, 'text-1', {
@@ -1338,28 +1296,37 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
     })
     const plan = h.sendPlanService.buildSendPlan(collected)
 
-    expect(plan.status).toBe('sendable')
+    expect(plan.status).toBe('blocked')
     expect(plan.attachmentPlans).toEqual([
       expect.objectContaining({
         assetId: 'text-1',
+        displayStatus: 'detection_required',
+        exclusionReason: 'file_type_detection_required',
         semantic: {
-          targetKind: 'plain_text',
-          sendStrategy: 'text_in_prompt',
-          mappedFromLegacy: true,
+          targetKind: 'unsupported',
+          sendStrategy: 'unsupported',
+          mappedFromLegacy: false,
         },
       }),
       expect.objectContaining({
         assetId: 'pdf-1',
+        displayStatus: 'detection_required',
+        exclusionReason: 'file_type_detection_required',
         semantic: {
-          targetKind: 'pdf_attachment',
-          sendStrategy: 'file_attachment',
-          mappedFromLegacy: true,
+          targetKind: 'unsupported',
+          sendStrategy: 'unsupported',
+          mappedFromLegacy: false,
         },
       }),
     ])
+    expect(plan.includedAttachments).toEqual([])
+    expect(plan.blockingReasons).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'draft_attachment_blocked', assetId: 'text-1' }),
+      expect.objectContaining({ code: 'draft_attachment_blocked', assetId: 'pdf-1' }),
+    ]))
   })
 
-  it('keeps convertible attachments blocked but exposes semantic baseline for follow-up selection work', () => {
+  it('keeps convertible attachments blocked until verdict-based routing is available', () => {
     const h = createHarness()
     insertConvo(h.db, 'c1')
     createAsset(h.fileAssetRepo, 'docx-1', {
@@ -1385,18 +1352,19 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
     const draftDocPlan = plan.attachmentPlans.find((item) => item.assetId === 'docx-1')
 
     expect(draftDocPlan).toMatchObject({
-      exclusionReason: 'incompatible_with_current_model',
+      displayStatus: 'detection_required',
+      exclusionReason: 'file_type_detection_required',
       selectedSendMode: null,
       semantic: {
-        targetKind: 'markdown',
-        sendStrategy: 'text_in_prompt',
-        mappedFromLegacy: true,
+        targetKind: 'unsupported',
+        sendStrategy: 'unsupported',
+        mappedFromLegacy: false,
       },
     })
     expect(plan.status).toBe('blocked')
-    expect(plan.blockingReasons).toEqual([
-      expect.objectContaining({ code: 'current_draft_incompatible_with_current_model' }),
-    ])
+    expect(plan.blockingReasons).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'draft_attachment_blocked', assetId: 'docx-1' }),
+    ]))
   })
 
   it('blocks preview-only or stale lineage assets in send plan preflight', () => {

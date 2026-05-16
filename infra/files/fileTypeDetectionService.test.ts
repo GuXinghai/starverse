@@ -197,7 +197,7 @@ describe('FileTypeDetectionService', () => {
       })
 
       let readCount = 0
-      let releaseFirst: (() => void) | null = null
+      let releaseFirst!: () => void
       const waitFirst = new Promise<void>((resolve) => {
         releaseFirst = resolve
       })
@@ -217,7 +217,7 @@ describe('FileTypeDetectionService', () => {
 
       const firstPromise = service.detectBasic({ assetId: 'asset-4', forceRedetect: true })
       const secondPromise = service.detectBasic({ assetId: 'asset-4', forceRedetect: true })
-      if (releaseFirst) releaseFirst()
+      releaseFirst()
       const [first, second] = await Promise.all([firstPromise, secondPromise])
 
       expect([first.job.status, second.job.status].sort()).toEqual(['cancelled', 'ready'])
@@ -329,10 +329,10 @@ describe('FileTypeDetectionService', () => {
     })
   })
 
-  it('falls back when magika runtime is unavailable and keeps detectFull usable', async () => {
+  it('fails full detection when magika runtime is unavailable', async () => {
     await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
       const storageUri = 'assets/original/ab/asset-8.txt'
-      await writeAssetFile(storageRootDir, storageUri, 'fallback text content')
+      await writeAssetFile(storageRootDir, storageUri, 'advanced failure text content')
       fileAssetRepo.create({
         id: 'asset-8',
         sha256: null,
@@ -359,14 +359,23 @@ describe('FileTypeDetectionService', () => {
       })
 
       const result = await service.detectFull({ assetId: 'asset-8' })
-      expect(result.job.status).toBe('ready')
-      expect(result.verdict?.primaryFormatId).toBe('plain_text')
-      expect(result.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
-      expect(result.verdict?.versionInfo.magikaModelVersion).toBe('magika-model-v2')
+      expect(result.job.status).toBe('failed')
+      expect(result.job.errorCode).toBe('error.magika_unavailable')
+      expect(result.verdict).toBeNull()
+      const meta = readDetectionMeta(db, 'asset-8')
+      expect(meta).toMatchObject({
+        routeEligibility: 'detection_failed',
+        detectionLevel: 'advanced',
+        engineMode: 'core_plus_magika',
+        usedMagika: false,
+        magikaState: 'unavailable',
+        advancedAttempted: true,
+        advancedFailureReason: 'runtime_unavailable',
+      })
     })
   })
 
-  it('does not reuse cached Magika evidence after the runtime becomes unavailable', async () => {
+  it('does not overwrite cached Magika evidence when the runtime becomes unavailable', async () => {
     await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
       const storageUri = 'assets/original/ab/asset-8b.txt'
       await writeAssetFile(storageRootDir, storageUri, 'runtime disabled cache refresh')
@@ -424,9 +433,8 @@ describe('FileTypeDetectionService', () => {
       runtimeAvailable = false
       const second = await service.detectFull({ assetId: 'asset-8b' })
       expect(second.fromCache).toBe(false)
-      expect(second.verdict?.id).not.toBe(first.verdict?.id)
-      expect(second.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
-      expect(second.verdict?.versionInfo.magikaModelVersion).toBeNull()
+      expect(second.job.status).toBe('failed')
+      expect(second.verdict).toBeNull()
       expect(classifyCalls).toBe(1)
 
       const rows = db.prepare(`
@@ -435,9 +443,11 @@ describe('FileTypeDetectionService', () => {
         WHERE asset_id='asset-8b'
         ORDER BY created_at ASC
       `).all() as Array<{ staleReason: string | null; isCurrent: number }>
-      expect(rows).toHaveLength(2)
-      expect(rows[0]).toEqual({ staleReason: 'magika_runtime_unavailable', isCurrent: 0 })
-      expect(rows[1]).toEqual({ staleReason: null, isCurrent: 1 })
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toEqual({ staleReason: null, isCurrent: 1 })
+      const current = fileTypeVerdictRepo.getCurrentByAssetId('asset-8b')
+      expect(current?.id).toBe(first.verdict?.id)
+      expect(current?.verdict.evidence.some((item) => item.source === 'magika')).toBe(true)
     })
   })
 
@@ -576,10 +586,10 @@ describe('FileTypeDetectionService', () => {
     })
   })
 
-  it('keeps detectFull ready via fallback when managed plugin is unavailable', async () => {
+  it('fails detectFull when managed plugin runtime is unavailable', async () => {
     await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
       const storageUri = 'assets/original/ab/asset-12.txt'
-      await writeAssetFile(storageRootDir, storageUri, 'managed plugin fallback')
+      await writeAssetFile(storageRootDir, storageUri, 'managed plugin unavailable')
       fileAssetRepo.create({
         id: 'asset-12',
         sha256: null,
@@ -604,16 +614,16 @@ describe('FileTypeDetectionService', () => {
       })
 
       const result = await service.detectFull({ assetId: 'asset-12' })
-      expect(result.job.status).toBe('ready')
-      expect(result.verdict?.primaryFormatId).toBe('plain_text')
-      expect(result.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
+      expect(result.job.status).toBe('failed')
+      expect(result.job.errorCode).toBe('error.magika_unavailable')
+      expect(result.verdict).toBeNull()
     })
   })
 
-  it('keeps detectFull fallback when magika registry gate removes every plugin root', async () => {
+  it('fails detectFull when magika registry gate removes every plugin root', async () => {
     await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
       const storageUri = 'assets/original/ab/asset-12b.txt'
-      await writeAssetFile(storageRootDir, storageUri, 'disabled magika fallback')
+      await writeAssetFile(storageRootDir, storageUri, 'disabled magika unavailable')
       fileAssetRepo.create({
         id: 'asset-12b',
         sha256: null,
@@ -643,10 +653,9 @@ describe('FileTypeDetectionService', () => {
       })
 
       const result = await service.detectFull({ assetId: 'asset-12b' })
-      expect(result.job.status).toBe('ready')
-      expect(result.verdict?.primaryFormatId).toBe('plain_text')
-      expect(result.verdict?.versionInfo.magikaModelVersion).toBeNull()
-      expect(result.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
+      expect(result.job.status).toBe('failed')
+      expect(result.job.errorCode).toBe('error.magika_unavailable')
+      expect(result.verdict).toBeNull()
       expect(classifyCalls).toBe(0)
     })
   })
@@ -780,6 +789,7 @@ describe('FileTypeDetectionService', () => {
       const second = await service.detectFull({ assetId: 'asset-15' })
       expect(second.fromCache).toBe(true)
       expect(second.verdict?.id).toBe(first.verdict?.id)
+      expect(second.verdict?.verdict.evidence).toEqual(first.verdict?.verdict.evidence)
     })
   })
 
@@ -981,7 +991,7 @@ describe('FileTypeDetectionService', () => {
     })
   })
 
-  it('re-detects when cached full-mode verdict lacks Magika evidence but runtime is now available', async () => {
+  it('does not save a full-mode verdict when Magika returns no evidence', async () => {
     await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
       const storageUri = 'assets/original/ab/asset-miss-19.txt'
       await writeAssetFile(storageRootDir, storageUri, 'transient classify failure test')
@@ -1011,10 +1021,10 @@ describe('FileTypeDetectionService', () => {
         }),
       })
 
-      const fallback = await serviceFirst.detectFull({ assetId: 'asset-miss-19' })
-      expect(fallback.job.status).toBe('ready')
-      expect(fallback.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
-      expect(fallback.verdict?.versionInfo.magikaModelVersion).toBe('magika-v1')
+      const failed = await serviceFirst.detectFull({ assetId: 'asset-miss-19' })
+      expect(failed.job.status).toBe('failed')
+      expect(failed.job.errorCode).toBe('error.magika_no_evidence')
+      expect(failed.verdict).toBeNull()
 
       // Second: Same modelVersion but classify now works.
       const serviceSecond = new FileTypeDetectionService({
@@ -1032,8 +1042,7 @@ describe('FileTypeDetectionService', () => {
       expect(fresh.fromCache).toBe(false)
       const magikaEvidence = fresh.verdict?.verdict.evidence.find((item) => item.source === 'magika')
       expect(magikaEvidence).toBeTruthy()
-      // Must not reuse the no-evidence fallback verdict
-      expect(fresh.verdict?.id).not.toBe(fallback.verdict?.id)
+      expect(fileTypeVerdictRepo.getCurrentByAssetId('asset-miss-19')?.id).toBe(fresh.verdict?.id)
     })
   })
 
@@ -1054,7 +1063,7 @@ describe('FileTypeDetectionService', () => {
         ingestStatus: 'stored',
       })
 
-      // First: Magika unavailable, fallback verdict without Magika evidence
+      // First: Magika unavailable, no verdict is saved.
       const serviceUnavailable = new FileTypeDetectionService({
         db,
         fileAssetRepo,
@@ -1066,9 +1075,9 @@ describe('FileTypeDetectionService', () => {
         }),
       })
 
-      const fallback = await serviceUnavailable.detectFull({ assetId: 'asset-19' })
-      expect(fallback.job.status).toBe('ready')
-      expect(fallback.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
+      const failed = await serviceUnavailable.detectFull({ assetId: 'asset-19' })
+      expect(failed.job.status).toBe('failed')
+      expect(failed.verdict).toBeNull()
 
       // Second: Magika available, should re-detect with Magika evidence
       const serviceAvailable = new FileTypeDetectionService({
@@ -1086,8 +1095,6 @@ describe('FileTypeDetectionService', () => {
       expect(fresh.fromCache).toBe(false)
       const magikaEvidence = fresh.verdict?.verdict.evidence.find((item) => item.source === 'magika')
       expect(magikaEvidence).toBeTruthy()
-      // The fallback verdict should not have been reused — it had no Magika evidence
-      // and was produced with unavailable runtime, so versionInfo mismatch triggers re-detection
     })
   })
 
