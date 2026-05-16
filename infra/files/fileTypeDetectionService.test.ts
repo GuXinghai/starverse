@@ -366,6 +366,81 @@ describe('FileTypeDetectionService', () => {
     })
   })
 
+  it('does not reuse cached Magika evidence after the runtime becomes unavailable', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-8b.txt'
+      await writeAssetFile(storageRootDir, storageUri, 'runtime disabled cache refresh')
+      fileAssetRepo.create({
+        id: 'asset-8b',
+        sha256: null,
+        filename: 'asset-8b.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 30,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      let runtimeAvailable = true
+      let classifyCalls = 0
+      const service = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaRuntimeLoader: {
+          load: () => {
+            if (!runtimeAvailable) {
+              return {
+                available: false,
+                runtimeKind: 'unavailable',
+                modelVersion: null,
+                reason: 'runtime_unavailable',
+                detail: 'runtime disabled',
+              }
+            }
+            return {
+              available: true,
+              runtime: {
+                kind: 'local_loader',
+                modelVersion: 'magika-v1',
+                classify: () => {
+                  classifyCalls += 1
+                  return { label: 'txt', score: 0.99, modelVersion: 'magika-v1' }
+                },
+              },
+            }
+          },
+        },
+      })
+
+      const first = await service.detectFull({ assetId: 'asset-8b' })
+      expect(first.job.status).toBe('ready')
+      expect(first.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(true)
+      expect(classifyCalls).toBe(1)
+
+      runtimeAvailable = false
+      const second = await service.detectFull({ assetId: 'asset-8b' })
+      expect(second.fromCache).toBe(false)
+      expect(second.verdict?.id).not.toBe(first.verdict?.id)
+      expect(second.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
+      expect(second.verdict?.versionInfo.magikaModelVersion).toBeNull()
+      expect(classifyCalls).toBe(1)
+
+      const rows = db.prepare(`
+        SELECT stale_reason AS staleReason, is_current AS isCurrent
+        FROM file_type_verdicts
+        WHERE asset_id='asset-8b'
+        ORDER BY created_at ASC
+      `).all() as Array<{ staleReason: string | null; isCurrent: number }>
+      expect(rows).toHaveLength(2)
+      expect(rows[0]).toEqual({ staleReason: 'magika_runtime_unavailable', isCurrent: 0 })
+      expect(rows[1]).toEqual({ staleReason: null, isCurrent: 1 })
+    })
+  })
+
   it('invalidates full-mode cache when magika model version changes', async () => {
     await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
       const storageUri = 'assets/original/ab/asset-9.txt'
@@ -532,6 +607,47 @@ describe('FileTypeDetectionService', () => {
       expect(result.job.status).toBe('ready')
       expect(result.verdict?.primaryFormatId).toBe('plain_text')
       expect(result.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
+    })
+  })
+
+  it('keeps detectFull fallback when magika registry gate removes every plugin root', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-12b.txt'
+      await writeAssetFile(storageRootDir, storageUri, 'disabled magika fallback')
+      fileAssetRepo.create({
+        id: 'asset-12b',
+        sha256: null,
+        filename: 'asset-12b.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 24,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      let classifyCalls = 0
+      const service = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaRuntimeLoader: createManagedPluginMagikaRuntimeLoader({
+          pluginDirs: [],
+          classify: async () => {
+            classifyCalls += 1
+            return { label: 'txt', score: 0.99, modelVersion: 'magika-disabled-should-not-run' }
+          },
+        }),
+      })
+
+      const result = await service.detectFull({ assetId: 'asset-12b' })
+      expect(result.job.status).toBe('ready')
+      expect(result.verdict?.primaryFormatId).toBe('plain_text')
+      expect(result.verdict?.versionInfo.magikaModelVersion).toBeNull()
+      expect(result.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
+      expect(classifyCalls).toBe(0)
     })
   })
 

@@ -360,7 +360,8 @@ export class FileTypeDetectionService {
     if (cached.containerProbeVersion !== config.containerProbeVersion) return false
     if (cached.textProbeVersion !== config.textProbeVersion) return false
 
-    if (!magikaRuntimeState || !magikaRuntimeState.available) return true
+    if (!magikaRuntimeState) return true
+    if (!magikaRuntimeState.available) return !hasMagikaEvidence(currentVerdict)
     const currentVersion = normalizeNullableModelVersion(cached.magikaModelVersion)
     const runtimeVersion = normalizeNullableModelVersion(magikaRuntimeState.modelVersion)
     if (!runtimeVersion) return true
@@ -387,7 +388,10 @@ export class FileTypeDetectionService {
     if (cached.containerProbeVersion !== config.containerProbeVersion) return 'container_probe_version_changed'
     if (cached.textProbeVersion !== config.textProbeVersion) return 'text_probe_version_changed'
 
-    if (!magikaRuntimeState || !magikaRuntimeState.available) return null
+    if (!magikaRuntimeState) return null
+    if (!magikaRuntimeState.available) {
+      return hasMagikaEvidence(currentVerdict) ? 'magika_runtime_unavailable' : null
+    }
     const currentVersion = normalizeNullableModelVersion(cached.magikaModelVersion)
     const runtimeVersion = normalizeNullableModelVersion(magikaRuntimeState.modelVersion)
     if (!runtimeVersion) return null
@@ -585,6 +589,10 @@ function dedupeFlags(flags: readonly FileTypeFlag[]): FileTypeFlag[] {
     map.set(`${item.flag}:${item.reasonCode}:${item.blocking ? 1 : 0}`, item)
   }
   return Array.from(map.values())
+}
+
+function hasMagikaEvidence(verdict: FileTypeVerdictRecord): boolean {
+  return verdict.verdict.evidence.some((item) => item.source === 'magika')
 }
 
 function reasonToFlag(reasonCode: string): string {

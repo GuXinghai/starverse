@@ -40,7 +40,9 @@ import { getActiveTrustedRoots } from '../../../src/next/file-type/officialPlugi
 import {
   createManagedPluginMagikaRuntimeLoader,
   createMagikaClassifyCallback,
+  type BuildMagikaManagedRuntimeLoaderInput,
 } from '../../../src/next/file-type/magikaManagedPlugin'
+import type { MagikaRuntimeLoader } from '../../../src/next/file-type/magikaRuntimeLoader'
 import {
   type WorkerInitConfig,
   type WorkerRequestMessage,
@@ -48,6 +50,7 @@ import {
   type DbEvent,
   type WorkerEventMessage,
   type SearchDocInput,
+  type EnginePluginRegistryRecord,
 } from '../types'
 import { DbWorkerError } from '../errors'
 import { configureLogging, logSlowQuery } from '../logger'
@@ -55,6 +58,49 @@ import { createWorkerHandlerContainer } from './container'
 import { dispatchWorkerMessage, type WorkerHandlerMap } from './router'
 
 type SqlDatabase = BetterSqlite3.Database
+
+export type MagikaRuntimeRegistryRecord = Pick<
+  EnginePluginRegistryRecord,
+  'engineId' | 'enabled' | 'installState' | 'installRootKind' | 'installRef'
+>
+type CreateManagedMagikaRuntimeLoader = (input: BuildMagikaManagedRuntimeLoaderInput) => MagikaRuntimeLoader
+
+function resolveEnginePluginDir(storageRootDir: string, installRootKind: string, installRef: string): string {
+  const safeRef = installRef.replace(/[^a-zA-Z0-9._-]+/g, '_')
+  return path.join(storageRootDir, 'engine-plugins', installRootKind, safeRef)
+}
+
+export function collectActiveMagikaRuntimePluginDirs(input: {
+  storageRootDir: string
+  registryRecords: readonly MagikaRuntimeRegistryRecord[]
+}): string[] {
+  const activeMagika = input.registryRecords.find(
+    (record) => record.engineId === 'magika' && record.enabled === true && record.installState === 'installed'
+  )
+  if (!activeMagika) return []
+  return [resolveEnginePluginDir(input.storageRootDir, activeMagika.installRootKind, activeMagika.installRef)]
+}
+
+export function createRegistryGatedMagikaRuntimeLoader(input: Readonly<{
+  storageRootDir: string
+  listRegistryRecords: () => readonly MagikaRuntimeRegistryRecord[]
+  classify: NonNullable<BuildMagikaManagedRuntimeLoaderInput['classify']>
+  createManagedLoader?: CreateManagedMagikaRuntimeLoader
+}>): MagikaRuntimeLoader {
+  const createManagedLoader = input.createManagedLoader ?? createManagedPluginMagikaRuntimeLoader
+  return {
+    load: () => {
+      const pluginDirs = collectActiveMagikaRuntimePluginDirs({
+        storageRootDir: input.storageRootDir,
+        registryRecords: input.listRegistryRecords(),
+      })
+      return createManagedLoader({
+        pluginDirs,
+        classify: input.classify,
+      }).load()
+    },
+  }
+}
 
 const debugDbOps = process.env.SV_DEBUG_DB_OPS === '1'
 const enableBranchInvariants = process.env.SV_BRANCH_INVARIANTS === '1'
@@ -269,23 +315,9 @@ export class DbWorkerRuntime {
   }
 
   private buildMagikaRuntimeLoader() {
-    const resolvePluginDir = (installRootKind: string, installRef: string) => {
-      const safeRef = installRef.replace(/[^a-zA-Z0-9._-]+/g, '_')
-      return path.join(this.fileStorageRootDir, 'engine-plugins', installRootKind, safeRef)
-    }
-
-    const installed = this.enginePluginRegistryRepo.list({ includeUninstalled: false })
-    const magikaInstalled = installed.find(
-      (r) => r.engineId === 'magika' && r.installState !== 'uninstalled'
-    )
-    const pluginDirs: string[] = []
-    if (magikaInstalled) {
-      pluginDirs.push(resolvePluginDir(magikaInstalled.installRootKind, magikaInstalled.installRef))
-    }
-    pluginDirs.push(path.join(this.fileStorageRootDir, 'engine-plugins', 'managed_root', 'magika'))
-
-    return createManagedPluginMagikaRuntimeLoader({
-      pluginDirs,
+    return createRegistryGatedMagikaRuntimeLoader({
+      storageRootDir: this.fileStorageRootDir,
+      listRegistryRecords: () => this.enginePluginRegistryRepo.list({ includeUninstalled: true }),
       classify: async ({ probe, descriptor }) => {
         const classifyCb = createMagikaClassifyCallback(descriptor)
         return classifyCb({ probe, descriptor })
