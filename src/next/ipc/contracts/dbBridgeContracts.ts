@@ -336,20 +336,6 @@ const messageAssetObjectSchema = z.object({
   assetUrl: nonEmpty,
 })
 
-const messageAssetSchema = messageAssetObjectSchema.transform((row) => ({
-  messageId: row.messageId,
-  assetId: row.assetId,
-  ordinal: row.ordinal,
-  hash: row.hash,
-  mime: row.mime,
-  width: row.width ?? null,
-  height: row.height ?? null,
-  bytes: row.bytes,
-  path: row.path,
-  fileUrl: row.fileUrl,
-  assetUrl: row.assetUrl,
-}))
-
 const messageAssetRenderSchema = messageAssetObjectSchema.omit({
   path: true,
   fileUrl: true,
@@ -628,6 +614,32 @@ const sendPlanAttachmentRefSchema = sendPlanAttachmentRefBaseSchema.transform((r
 
 const aiPayloadKindSchema = z.enum(['image', 'pdf', 'text', 'audio', 'video', 'binary'])
 
+const sendPlanAttachmentDetectionSchema = z.object({
+  routeEligibility: z.enum(['verdict_ready', 'detection_pending', 'detection_failed', 'detection_required']),
+  detectionLevel: z.enum(['basic', 'advanced', 'parser_validated']).nullable().optional(),
+  engineMode: z.enum(['core_only', 'core_plus_magika', 'core_plus_parser', 'core_plus_external']).nullable().optional(),
+  usedMagika: z.boolean(),
+  magikaState: z.enum(['not_installed', 'disabled', 'unavailable', 'available', 'failed', 'not_requested']),
+  evidenceSources: z.array(z.string()),
+  decisiveEvidenceSource: z.string().trim().nullable().optional(),
+  detectionTrigger: z.string().trim().nullable().optional(),
+  magikaModelVersion: z.string().trim().nullable().optional(),
+  advancedAttempted: z.boolean(),
+  advancedFailureReason: z.string().trim().nullable().optional(),
+}).transform((row) => ({
+  routeEligibility: row.routeEligibility,
+  detectionLevel: row.detectionLevel ?? null,
+  engineMode: row.engineMode ?? null,
+  usedMagika: row.usedMagika,
+  magikaState: row.magikaState,
+  evidenceSources: [...row.evidenceSources],
+  decisiveEvidenceSource: row.decisiveEvidenceSource ?? null,
+  detectionTrigger: row.detectionTrigger ?? null,
+  magikaModelVersion: row.magikaModelVersion ?? null,
+  advancedAttempted: row.advancedAttempted,
+  advancedFailureReason: row.advancedFailureReason ?? null,
+}))
+
 const sendPlanAttachmentSchema = z.object({
   assetId: nonEmpty,
   attachmentId: nonEmpty,
@@ -643,7 +655,7 @@ const sendPlanAttachmentSchema = z.object({
   fallbackSendModes: z.array(z.enum(['url_ref', 'inline_base64', 'provider_file_ref'])),
   eligibility: z.enum(['included', 'warning', 'excluded', 'blocked']),
   exclusionReason: z.string().trim().nullable().optional(),
-  displayStatus: z.enum(['parsing', 'ready', 'failed', 'incompatible_with_current_model', 'ready_with_warnings', 'unsupported']),
+  displayStatus: z.enum(['parsing', 'detection_pending', 'detection_failed', 'detection_required', 'ready', 'failed', 'incompatible_with_current_model', 'ready_with_warnings', 'unsupported']),
   needsUserAttention: z.boolean(),
   notes: z.array(z.string()),
   lineage: z.object({
@@ -671,12 +683,13 @@ const sendPlanAttachmentSchema = z.object({
     blockedLabelCodes: z.array(z.string()),
     blockedBy: z.array(z.string()),
   }).nullable().optional(),
+  detection: sendPlanAttachmentDetectionSchema.nullable().optional(),
 }).transform((row) => ({
   ...row,
   messageId: row.messageId ?? null,
   selectedSendMode: row.selectedSendMode ?? null,
   exclusionReason: row.exclusionReason ?? null,
-  semantic: row.semantic ?? inferLegacyAttachmentSemantic(row.aiPayloadKind),
+  semantic: row.semantic ?? inferMissingAttachmentSemantic(),
   lineage: row.lineage
     ? {
         state: row.lineage.state,
@@ -714,6 +727,7 @@ const sendPlanAttachmentSchema = z.object({
         blockedBy: [...row.fileType.blockedBy],
       }
     : null,
+  detection: row.detection ?? null,
 }))
 
 const sendPlanSchema = z.object({
@@ -734,22 +748,12 @@ const sendPlanSchema = z.object({
   plannerVersion: nonEmpty,
 })
 
-function inferLegacyAttachmentSemantic(aiPayloadKind: string): {
-  targetKind: 'plain_text' | 'pdf_attachment' | 'native_file' | 'unsupported'
-  sendStrategy: 'text_in_prompt' | 'file_attachment' | 'unsupported'
-  mappedFromLegacy: true
+function inferMissingAttachmentSemantic(): {
+  targetKind: 'unsupported'
+  sendStrategy: 'unsupported'
+  mappedFromLegacy: false
 } {
-  const normalized = aiPayloadKind.trim().toLowerCase()
-  if (normalized === 'text') {
-    return { targetKind: 'plain_text', sendStrategy: 'text_in_prompt', mappedFromLegacy: true }
-  }
-  if (normalized === 'pdf') {
-    return { targetKind: 'pdf_attachment', sendStrategy: 'file_attachment', mappedFromLegacy: true }
-  }
-  if (normalized === 'image' || normalized === 'audio' || normalized === 'video') {
-    return { targetKind: 'native_file', sendStrategy: 'file_attachment', mappedFromLegacy: true }
-  }
-  return { targetKind: 'unsupported', sendStrategy: 'unsupported', mappedFromLegacy: true }
+  return { targetKind: 'unsupported', sendStrategy: 'unsupported', mappedFromLegacy: false }
 }
 
 const buildCurrentSendPlanResultSchema = z.object({

@@ -35,6 +35,7 @@ import { DerivativeJobService } from '../../files/derivativeJobService'
 import { FileIngestionService } from '../../files/fileIngestionService'
 import { SendPlanService } from '../../files/sendPlanService'
 import { FileTypeDetectionService } from '../../files/fileTypeDetectionService'
+import { FileTypeDetectionCoordinator } from '../../files/fileTypeDetectionCoordinator'
 import { EnginePluginLifecycleService } from '../../files/enginePluginLifecycleService'
 import { getActiveTrustedRoots } from '../../../src/next/file-type/officialPluginTrustedRoots'
 import {
@@ -156,6 +157,7 @@ export class DbWorkerRuntime {
   readonly derivativeJobService: DerivativeJobService
   readonly fileIngestionService: FileIngestionService
   readonly fileTypeDetectionService: FileTypeDetectionService
+  readonly fileTypeDetectionCoordinator: FileTypeDetectionCoordinator
   readonly enginePluginLifecycleService: EnginePluginLifecycleService
   readonly sendPlanService: SendPlanService
   readonly fileStorageRootDir: string
@@ -275,12 +277,19 @@ export class DbWorkerRuntime {
       fileAssetRepo: this.fileAssetRepo,
       storageRootDir: this.fileStorageRootDir,
     })
+    const magikaRuntimeLoader = this.buildMagikaRuntimeLoader()
     this.fileTypeDetectionService = new FileTypeDetectionService({
       db: this.db,
       fileAssetRepo: this.fileAssetRepo,
       fileTypeVerdictRepo: this.fileTypeVerdictRepo,
       storageRootDir: this.fileStorageRootDir,
-      magikaRuntimeLoader: this.buildMagikaRuntimeLoader(),
+      magikaRuntimeLoader,
+    })
+    this.fileTypeDetectionCoordinator = new FileTypeDetectionCoordinator({
+      fileTypeVerdictRepo: this.fileTypeVerdictRepo,
+      enginePluginRegistryRepo: this.enginePluginRegistryRepo,
+      fileTypeDetectionService: this.fileTypeDetectionService,
+      magikaRuntimeLoader,
     })
     const activeTrustedRoots = getActiveTrustedRoots(undefined, {
       isProduction: config.isProduction,

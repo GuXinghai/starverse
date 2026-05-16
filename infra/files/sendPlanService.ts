@@ -6,6 +6,7 @@ import type {
   AttachmentDisplayStatus,
   AttachmentPlanSource,
   SendPlan,
+  SendPlanAttachmentDetectionSummary,
   SendPlanAttachment,
   SendPlanIssue,
   SendPlanModelDescriptor,
@@ -16,6 +17,7 @@ import type {
   AttachmentSnapshotItem,
   ConversationDraftRecord,
   FileAssetRecord,
+  FileTypeVerdictRecord,
   GetAttachmentCandidateSnapshotInput,
 } from '../db/types'
 import type { FileAssetRepo } from '../db/repo/fileAssetRepo'
@@ -65,6 +67,7 @@ export type CollectedAttachmentInput = Readonly<{
   fileTypeVerdict?: FileTypeVerdict | null
   semantic?: AttachmentSemanticSummary | null
   routeCandidates?: readonly SendPlanCandidate[] | null
+  detection?: SendPlanAttachmentDetectionSummary | null
 }>
 
 export type CollectedSendInputs = Readonly<{
@@ -103,7 +106,7 @@ type PlannedAttachmentBatch = Readonly<{
   includedAssetIds: Set<string>
 }>
 
-type EligibilityEvaluationMode = 'legacy' | 'semantic'
+type EligibilityEvaluationMode = 'semantic'
 
 export type SendPlanServiceDeps = Readonly<{
   conversationAttachmentService: DraftRestoreApi
@@ -148,8 +151,10 @@ export class SendPlanService {
       draftText,
       draftAttachments: draft.attachments.map((attachment) => {
         const fileAsset = draftAssetMap.get(attachment.assetId) ?? null
+        const verdictRecord = verdictByAssetId.get(attachment.assetId) ?? null
+        const verdict = verdictRecord?.verdict ?? null
         const routeCandidates = buildRouteCandidatesFromVerdict(
-          verdictByAssetId.get(attachment.assetId) ?? null,
+          verdict,
           modelCapabilities
         )
         return {
@@ -163,9 +168,10 @@ export class SendPlanService {
           excludedReason: attachment.excludedReason,
           preferredSendMode: attachment.preferredSendMode ?? null,
           fileAsset,
-          fileTypeVerdict: verdictByAssetId.get(attachment.assetId) ?? null,
+          fileTypeVerdict: verdict,
           routeCandidates,
-          semantic: buildDefaultSemanticSummary(attachment, fileAsset, routeCandidates),
+          semantic: semanticSummaryFromRouteCandidates(routeCandidates, attachment.aiPayloadKind),
+          detection: buildAttachmentDetectionSummary(verdict, fileAsset),
         }
       }),
       historySnapshot,
@@ -173,7 +179,7 @@ export class SendPlanService {
         ? historySnapshot.items.map((item) => mapHistoryAttachment(
           item,
           historyAssetMap.get(item.assetId) ?? null,
-          verdictByAssetId.get(item.assetId) ?? null,
+          verdictByAssetId.get(item.assetId)?.verdict ?? null,
           modelCapabilities
         ))
         : [],
@@ -341,6 +347,16 @@ export class SendPlanService {
         lineageGate.lineage
       )
     }
+    const detectionGate = evaluateAttachmentDetectionGate(attachment)
+    if (detectionGate.blocked) {
+      return blockedPlan(
+        attachment,
+        detectionGate.displayStatus,
+        detectionGate.reasonCode,
+        detectionGate.notes,
+        lineageGate.lineage
+      )
+    }
     if (!compatibility.compatible) {
       return excludedPlan(attachment, 'incompatible_with_current_model', 'incompatible_with_current_model', true, [
         compatibilityMessage(attachment, compatibility),
@@ -400,6 +416,16 @@ export class SendPlanService {
         'failed',
         lineageGate.reasonCode ?? 'attachment_lineage_blocked',
         lineageGate.notes,
+        lineageGate.lineage
+      )
+    }
+    const detectionGate = evaluateAttachmentDetectionGate(attachment)
+    if (detectionGate.blocked) {
+      return blockedPlan(
+        attachment,
+        detectionGate.displayStatus,
+        detectionGate.reasonCode,
+        detectionGate.notes,
         lineageGate.lineage
       )
     }
@@ -537,10 +563,11 @@ function mapHistoryAttachment(
     fileAsset,
     fileTypeVerdict: verdict,
     routeCandidates,
+    detection: buildAttachmentDetectionSummary(verdict, fileAsset),
   } satisfies Omit<CollectedAttachmentInput, 'semantic'>
   return {
     ...base,
-    semantic: buildDefaultSemanticSummary(base, fileAsset, routeCandidates),
+    semantic: semanticSummaryFromRouteCandidates(routeCandidates, item.aiPayloadKind),
   }
 }
 
@@ -613,13 +640,13 @@ function modelInputCapabilitiesFromDescriptor(
 function loadCurrentVerdictByAssetId(
   repo: FileTypeVerdictLookupApi | undefined,
   assetIds: readonly string[]
-): Map<string, FileTypeVerdict> {
-  const out = new Map<string, FileTypeVerdict>()
+): Map<string, FileTypeVerdictRecord> {
+  const out = new Map<string, FileTypeVerdictRecord>()
   if (!repo) return out
   for (const assetId of new Set(assetIds)) {
     const verdictRecord = repo.getCurrentByAssetId(assetId)
     if (verdictRecord?.verdict) {
-      out.set(assetId, verdictRecord.verdict)
+      out.set(assetId, verdictRecord)
     }
   }
   return out
@@ -690,6 +717,97 @@ function semanticFromRoute(route: SendRoute, aiPayloadKind: AiPayloadKind): Atta
   }
 }
 
+function unsupportedSemanticSummary(): AttachmentSemanticSummary {
+  return { targetKind: 'unsupported', sendStrategy: 'unsupported', mappedFromLegacy: false }
+}
+
+function buildAttachmentDetectionSummary(
+  verdict: FileTypeVerdict | null,
+  asset: FileAssetRecord | null
+): SendPlanAttachmentDetectionSummary {
+  const meta = readFileTypeDetectionMeta(asset)
+  if (verdict?.primary) {
+    const provenance = verdict.provenance ?? null
+    const usedMagika = provenance?.usedMagika ?? verdict.evidence.some((item) => item.source === 'magika')
+    const evidenceSources = provenance?.evidenceSources
+      ? [...provenance.evidenceSources]
+      : Array.from(new Set(verdict.evidence.map((item) => item.source)))
+    return {
+      routeEligibility: 'verdict_ready',
+      detectionLevel: provenance?.detectionLevel ?? (usedMagika ? 'advanced' : 'basic'),
+      engineMode: provenance?.engineMode ?? (usedMagika ? 'core_plus_magika' : 'core_only'),
+      usedMagika,
+      magikaState: provenance?.magikaState ?? (usedMagika ? 'available' : normalizeMagikaState(meta?.magikaState, 'not_requested')),
+      evidenceSources,
+      decisiveEvidenceSource: provenance?.decisiveEvidenceSource ?? resolveDecisiveEvidenceSource(verdict),
+      detectionTrigger: provenance?.detectionTrigger ?? readMetaString(meta, 'detectionTrigger'),
+      magikaModelVersion: provenance?.magikaModelVersion ?? readMetaString(meta, 'magikaModelVersion'),
+      advancedAttempted: provenance?.advancedAttempted ?? usedMagika,
+      advancedFailureReason: provenance?.advancedFailureReason ?? null,
+    }
+  }
+
+  const routeEligibility = normalizeRouteEligibility(meta?.routeEligibility)
+  return {
+    routeEligibility,
+    detectionLevel: normalizeDetectionLevel(meta?.detectionLevel),
+    engineMode: normalizeEngineMode(meta?.engineMode),
+    usedMagika: meta?.usedMagika === true,
+    magikaState: normalizeMagikaState(meta?.magikaState, 'not_requested'),
+    evidenceSources: [],
+    decisiveEvidenceSource: null,
+    detectionTrigger: readMetaString(meta, 'detectionTrigger'),
+    magikaModelVersion: readMetaString(meta, 'magikaModelVersion'),
+    advancedAttempted: meta?.advancedAttempted === true,
+    advancedFailureReason: readMetaString(meta, 'advancedFailureReason'),
+  }
+}
+
+function evaluateAttachmentDetectionGate(
+  attachment: CollectedAttachmentInput
+): Readonly<{ blocked: boolean; displayStatus: AttachmentDisplayStatus; reasonCode: string; notes: string[] }> {
+  if (attachment.fileTypeVerdict?.primary) {
+    return { blocked: false, displayStatus: 'ready', reasonCode: '', notes: [] }
+  }
+  const detection = attachment.detection ?? buildAttachmentDetectionSummary(null, attachment.fileAsset)
+  if (detection.routeEligibility === 'detection_failed') {
+    const advancedFailed = detection.advancedAttempted || detection.detectionLevel === 'advanced'
+    return {
+      blocked: true,
+      displayStatus: 'detection_failed',
+      reasonCode: advancedFailed ? 'advanced_file_type_detection_failed' : 'file_type_detection_failed',
+      notes: [
+        advancedFailed
+          ? `Attachment ${attachment.assetId} advanced file type detection failed. Retry will re-check Magika availability.`
+          : `Attachment ${attachment.assetId} file type detection failed. Retry detection before sending.`,
+      ],
+    }
+  }
+  if (detection.routeEligibility === 'detection_pending') {
+    return {
+      blocked: true,
+      displayStatus: 'detection_pending',
+      reasonCode: 'file_type_detection_pending',
+      notes: [`Attachment ${attachment.assetId} file type detection is still running.`],
+    }
+  }
+  return {
+    blocked: true,
+    displayStatus: 'detection_required',
+    reasonCode: 'file_type_detection_required',
+    notes: [`Attachment ${attachment.assetId} requires file type detection before send planning.`],
+  }
+}
+
+function detectionReasonCode(attachment: CollectedAttachmentInput): string {
+  const detection = attachment.detection ?? buildAttachmentDetectionSummary(null, attachment.fileAsset)
+  if (detection.routeEligibility === 'detection_failed') {
+    return detection.advancedAttempted ? 'advanced_file_type_detection_failed' : 'file_type_detection_failed'
+  }
+  if (detection.routeEligibility === 'detection_pending') return 'file_type_detection_pending'
+  return 'file_type_detection_required'
+}
+
 function evaluateRouteCandidateGate(
   routeCandidates: readonly SendPlanCandidate[] | null
 ): Readonly<{ blocked: boolean; reasonCode: string; notes: string[] }> {
@@ -733,63 +851,26 @@ function evaluateAttachmentCompatibilityByMode(
     if (semantic) {
       return evaluateCompatibilityFromSemantic(attachment, modelCapabilities, providerContext, semantic)
     }
-    return evaluateCompatibilityFromLegacy(attachment, modelCapabilities, providerContext)
+    return detectionCompatibilityDescriptor(attachment)
   }
-  return evaluateCompatibilityFromLegacy(attachment, modelCapabilities, providerContext)
-}
-
-function evaluateCompatibilityFromLegacy(
-  attachment: CollectedAttachmentInput,
-  modelCapabilities: Set<ModelCapability>,
-  providerContext: NormalizedProviderContext
-): AttachmentCompatibilityDescriptor {
-  const acceptedCapabilitySets = capabilitySetsForLegacyAttachment(attachment, providerContext)
-  const reasonCodeFromStatus = compatibilityReasonFromProcessingStatus(attachment.processingStatus)
-  if (reasonCodeFromStatus) {
-    return {
-      assetId: attachment.assetId,
-      source: attachment.source,
-      compatible: false,
-      reasonCode: reasonCodeFromStatus,
-      missingCapabilities: [],
-      acceptedCapabilitySets,
-    }
-  }
-
-  if (acceptedCapabilitySets.length === 0) {
-    return {
-      assetId: attachment.assetId,
-      source: attachment.source,
-      compatible: false,
-      reasonCode: 'unsupported_attachment_payload',
-      missingCapabilities: [],
-      acceptedCapabilitySets,
-    }
-  }
-
-  const satisfied = acceptedCapabilitySets.find((set) => set.every((capability) => modelCapabilities.has(capability)))
-  if (satisfied) {
-    return {
-      assetId: attachment.assetId,
-      source: attachment.source,
-      compatible: true,
-      reasonCode: null,
-      missingCapabilities: [],
-      acceptedCapabilitySets,
-    }
-  }
-
-  const bestSet = acceptedCapabilitySets.reduce<ModelCapability[]>((best, current) => {
-    if (best.length === 0 || current.length < best.length) return current
-    return best
-  }, [])
   return {
     assetId: attachment.assetId,
     source: attachment.source,
     compatible: false,
-    reasonCode: missingCapabilityReason(attachment.aiPayloadKind),
-    missingCapabilities: bestSet.filter((capability) => !modelCapabilities.has(capability)),
-    acceptedCapabilitySets,
+    reasonCode: detectionReasonCode(attachment),
+    missingCapabilities: [],
+    acceptedCapabilitySets: [],
+  }
+}
+
+function detectionCompatibilityDescriptor(attachment: CollectedAttachmentInput): AttachmentCompatibilityDescriptor {
+  return {
+    assetId: attachment.assetId,
+    source: attachment.source,
+    compatible: false,
+    reasonCode: detectionReasonCode(attachment),
+    missingCapabilities: [],
+    acceptedCapabilitySets: [],
   }
 }
 
@@ -797,7 +878,7 @@ function evaluateCompatibilityFromSemantic(
   attachment: CollectedAttachmentInput,
   modelCapabilities: Set<ModelCapability>,
   providerContext: NormalizedProviderContext,
-  semantic: AttachmentSemanticSummary = buildAttachmentSemanticSummary(attachment)
+  semantic: AttachmentSemanticSummary
 ): AttachmentCompatibilityDescriptor {
   const acceptedCapabilitySets = capabilitySetsForSemantic(semantic, providerContext, attachment.aiPayloadKind)
   const reasonCodeFromStatus = compatibilityReasonFromProcessingStatusForSemantic(attachment, semantic)
@@ -860,28 +941,6 @@ function evaluateCompatibilityFromSemantic(
   }
 }
 
-function capabilitySetsForLegacyAttachment(
-  attachment: CollectedAttachmentInput,
-  providerContext: NormalizedProviderContext
-): ModelCapability[][] {
-  switch (attachment.aiPayloadKind) {
-    case 'text':
-      return [['text_in']]
-    case 'image':
-      return [['image_in']]
-    case 'audio':
-      return [['audio_in']]
-    case 'video':
-      return [['video_in']]
-    case 'pdf':
-      if (!providerContext.supportsPdfInputs) return []
-      return [['file_in']]
-    case 'binary':
-    default:
-      return []
-  }
-}
-
 function capabilitySetsForSemantic(
   semantic: AttachmentSemanticSummary,
   providerContext: NormalizedProviderContext,
@@ -917,12 +976,6 @@ function capabilitySetsForSemantic(
   }
 }
 
-function compatibilityReasonFromProcessingStatus(processingStatus: string): string | null {
-  if (processingStatus === 'unsupported') return 'unsupported_processing_status'
-  if (processingStatus === 'convertible') return 'conversion_required_before_send'
-  return null
-}
-
 function compatibilityReasonFromProcessingStatusForSemantic(
   attachment: CollectedAttachmentInput,
   semantic: AttachmentSemanticSummary
@@ -942,24 +995,6 @@ function semanticCompatibilityMissingReason(semantic: AttachmentSemanticSummary)
   return 'unsupported_attachment_payload'
 }
 
-function missingCapabilityReason(aiPayloadKind: AiPayloadKind): string {
-  switch (aiPayloadKind) {
-    case 'text':
-      return 'missing_text_input_capability'
-    case 'image':
-      return 'missing_image_input_capability'
-    case 'audio':
-      return 'missing_audio_input_capability'
-    case 'video':
-      return 'missing_video_input_capability'
-    case 'pdf':
-      return 'missing_pdf_input_capability'
-    case 'binary':
-    default:
-      return 'unsupported_attachment_payload'
-  }
-}
-
 function selectAttachmentSendModeInternal(
   attachment: CollectedAttachmentInput,
   providerContext: NormalizedProviderContext
@@ -971,7 +1006,14 @@ function selectAttachmentSendModeInternal(
   if (asset.deletedAt != null || asset.ingestStatus === 'deleted') {
     return noModeSelection(attachment, 'asset_soft_deleted', ['Attachment asset has been soft deleted.'])
   }
-  const semantic = resolveAttachmentSemanticSummary(attachment) ?? buildAttachmentSemanticSummary(attachment)
+  const detectionGate = evaluateAttachmentDetectionGate(attachment)
+  if (detectionGate.blocked) {
+    return noModeSelection(attachment, detectionGate.reasonCode, detectionGate.notes)
+  }
+  const semantic = resolveAttachmentSemanticSummary(attachment)
+  if (!semantic) {
+    return noModeSelection(attachment, detectionReasonCode(attachment), ['Attachment has no verdict-based send route candidate.'])
+  }
   const candidateGate = evaluateRouteCandidateGate(attachment.routeCandidates ?? null)
   if (candidateGate.blocked) {
     return noModeSelection(attachment, candidateGate.reasonCode, candidateGate.notes)
@@ -1192,7 +1234,7 @@ function includedPlan(
     source: attachment.source,
     messageId: attachment.messageId,
     aiPayloadKind: attachment.aiPayloadKind,
-    semantic: resolveAttachmentSemanticSummary(attachment) ?? buildAttachmentSemanticSummary(attachment),
+    semantic: resolveAttachmentSemanticSummary(attachment) ?? unsupportedSemanticSummary(),
     selectedSendMode,
     fallbackSendModes,
     eligibility: notes.length > 0 ? 'warning' : 'included',
@@ -1202,6 +1244,7 @@ function includedPlan(
     notes,
     lineage,
     fileType: buildAttachmentFileTypeSummary(attachment),
+    detection: attachment.detection ?? null,
   }
 }
 
@@ -1219,7 +1262,7 @@ function excludedPlan(
     source: attachment.source,
     messageId: attachment.messageId,
     aiPayloadKind: attachment.aiPayloadKind,
-    semantic: resolveAttachmentSemanticSummary(attachment) ?? buildAttachmentSemanticSummary(attachment),
+    semantic: resolveAttachmentSemanticSummary(attachment) ?? unsupportedSemanticSummary(),
     selectedSendMode: null,
     fallbackSendModes: [],
     eligibility: 'excluded',
@@ -1229,6 +1272,7 @@ function excludedPlan(
     notes,
     lineage,
     fileType: buildAttachmentFileTypeSummary(attachment),
+    detection: attachment.detection ?? null,
   }
 }
 
@@ -1245,7 +1289,7 @@ function blockedPlan(
     source: attachment.source,
     messageId: attachment.messageId,
     aiPayloadKind: attachment.aiPayloadKind,
-    semantic: resolveAttachmentSemanticSummary(attachment) ?? buildAttachmentSemanticSummary(attachment),
+    semantic: resolveAttachmentSemanticSummary(attachment) ?? unsupportedSemanticSummary(),
     selectedSendMode: null,
     fallbackSendModes: [],
     eligibility: 'blocked',
@@ -1255,6 +1299,7 @@ function blockedPlan(
     notes,
     lineage,
     fileType: buildAttachmentFileTypeSummary(attachment),
+    detection: attachment.detection ?? null,
   }
 }
 
@@ -1417,6 +1462,76 @@ function normalizeObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
 }
 
+function readFileTypeDetectionMeta(asset: FileAssetRecord | null): Record<string, unknown> | null {
+  const root = normalizeObject(asset?.sourceMetaJson)
+  return normalizeObject(root?.fileTypeDetection)
+}
+
+function readMetaString(meta: Record<string, unknown> | null, key: string): string | null {
+  const value = meta?.[key]
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+}
+
+function normalizeRouteEligibility(value: unknown): SendPlanAttachmentDetectionSummary['routeEligibility'] {
+  switch (value) {
+    case 'verdict_ready':
+    case 'detection_pending':
+    case 'detection_failed':
+    case 'detection_required':
+      return value
+    default:
+      return 'detection_required'
+  }
+}
+
+function normalizeDetectionLevel(value: unknown): SendPlanAttachmentDetectionSummary['detectionLevel'] {
+  switch (value) {
+    case 'basic':
+    case 'advanced':
+    case 'parser_validated':
+      return value
+    default:
+      return null
+  }
+}
+
+function normalizeEngineMode(value: unknown): SendPlanAttachmentDetectionSummary['engineMode'] {
+  switch (value) {
+    case 'core_only':
+    case 'core_plus_magika':
+    case 'core_plus_parser':
+    case 'core_plus_external':
+      return value
+    default:
+      return null
+  }
+}
+
+function normalizeMagikaState(
+  value: unknown,
+  fallback: SendPlanAttachmentDetectionSummary['magikaState']
+): SendPlanAttachmentDetectionSummary['magikaState'] {
+  switch (value) {
+    case 'not_installed':
+    case 'disabled':
+    case 'unavailable':
+    case 'available':
+    case 'failed':
+    case 'not_requested':
+      return value
+    default:
+      return fallback
+  }
+}
+
+function resolveDecisiveEvidenceSource(verdict: FileTypeVerdict): string | null {
+  const provenanceSource = verdict.provenance?.decisiveEvidenceSource ?? null
+  if (provenanceSource) return provenanceSource
+  const primaryFormatId = verdict.primary.formatId
+  const matching = verdict.evidence.filter((item) => item.detectedFormatId === primaryFormatId)
+  return matching[0]?.source ?? verdict.evidence[0]?.source ?? null
+}
+
 function resolveSendPlanStatus(input: Readonly<{
   blockingReasons: SendPlanIssue[]
   hasEffectiveCurrentInput: boolean
@@ -1481,6 +1596,13 @@ function noSendModeMessage(attachment: CollectedAttachmentInput, reasonCode: str
       return `Attachment ${attachment.assetId} requires conversion before a send mode can be selected.`
     case 'unsupported_processing_status':
       return `Attachment ${attachment.assetId} is unsupported for direct send planning.`
+    case 'file_type_detection_required':
+      return `Attachment ${attachment.assetId} requires file type detection before it can be sent.`
+    case 'file_type_detection_pending':
+      return `Attachment ${attachment.assetId} file type detection is still running.`
+    case 'file_type_detection_failed':
+    case 'advanced_file_type_detection_failed':
+      return `Attachment ${attachment.assetId} file type detection failed and must be retried before sending.`
     case 'pdf_not_supported_by_provider':
       return `Attachment ${attachment.assetId} cannot be sent because the current provider context does not allow PDF inputs.`
     default:
@@ -1667,86 +1789,6 @@ function issue(code: string, assetId: string | null, source: SendPlanIssue['sour
   return { code, assetId, source, message }
 }
 
-function buildAttachmentSemanticSummary(
-  attachment: Pick<CollectedAttachmentInput, 'aiPayloadKind' | 'processingStatus'>
-): AttachmentSemanticSummary {
-  // Step 1 migration note: selected conversion option will populate semantic directly;
-  // this legacy mapper remains as a compatibility fallback during the transition.
-  if (attachment.processingStatus === 'unsupported') {
-    return {
-      targetKind: 'unsupported',
-      sendStrategy: 'unsupported',
-      mappedFromLegacy: true,
-    }
-  }
-
-  if (attachment.processingStatus === 'convertible') {
-    return {
-      targetKind: defaultTargetKindForPayload(attachment.aiPayloadKind),
-      sendStrategy: 'unsupported',
-      mappedFromLegacy: true,
-    }
-  }
-
-  switch (attachment.aiPayloadKind) {
-    case 'text':
-      return {
-        targetKind: 'plain_text',
-        sendStrategy: 'text_in_prompt',
-        mappedFromLegacy: true,
-      }
-    case 'pdf':
-      return {
-        targetKind: 'pdf_attachment',
-        sendStrategy: 'file_attachment',
-        mappedFromLegacy: true,
-      }
-    case 'image':
-    case 'audio':
-    case 'video':
-      return {
-        targetKind: 'native_file',
-        sendStrategy: 'file_attachment',
-        mappedFromLegacy: true,
-      }
-    case 'binary':
-    default:
-      return {
-        targetKind: 'unsupported',
-        sendStrategy: 'unsupported',
-        mappedFromLegacy: true,
-      }
-  }
-}
-
-const CODE_EXTENSIONS = new Set([
-  'js', 'ts', 'jsx', 'tsx', 'py', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd',
-  'json', 'yaml', 'yml', 'xml', 'toml', 'ini', 'env', 'sql', 'go', 'rs',
-  'java', 'c', 'cc', 'cpp', 'h', 'hpp', 'cs', 'php', 'rb', 'swift', 'kt',
-  'scala', 'lua', 'dockerfile',
-])
-
-const OFFICE_MARKDOWN_EXTENSIONS = new Set([
-  'docx',
-  'doc',
-  'rtf',
-])
-
-const OFFICE_TABLE_EXTENSIONS = new Set([
-  'xlsx',
-  'xls',
-])
-
-const HTML_MARKDOWN_EXTENSIONS = new Set([
-  'html',
-  'htm',
-])
-
-const PS_CODE_EXTENSIONS = new Set([
-  'ps',
-  'eps',
-])
-
 const TEXT_TARGET_KINDS = new Set<AttachmentSemanticSummary['targetKind']>([
   'plain_text',
   'markdown',
@@ -1754,80 +1796,17 @@ const TEXT_TARGET_KINDS = new Set<AttachmentSemanticSummary['targetKind']>([
   'table_markdown',
 ])
 
-function buildDefaultSemanticSummary(
-  attachment: Pick<CollectedAttachmentInput, 'aiPayloadKind' | 'processingStatus'>,
-  fileAsset: FileAssetRecord | null,
-  routeCandidates: readonly SendPlanCandidate[] | null = null
-): AttachmentSemanticSummary {
-  const mappedFromRouteCandidates = semanticSummaryFromRouteCandidates(routeCandidates, attachment.aiPayloadKind)
-  if (mappedFromRouteCandidates) {
-    return mappedFromRouteCandidates
-  }
-
-  const ext = String(fileAsset?.extension ?? '').trim().toLowerCase()
-  const mime = String(fileAsset?.mime ?? '').trim().toLowerCase()
-  if (attachment.processingStatus === 'convertible') {
-    if (OFFICE_MARKDOWN_EXTENSIONS.has(ext)) {
-      return { targetKind: 'markdown', sendStrategy: 'text_in_prompt', mappedFromLegacy: true }
-    }
-    if (OFFICE_TABLE_EXTENSIONS.has(ext)) {
-      return { targetKind: 'table_markdown', sendStrategy: 'text_in_prompt', mappedFromLegacy: true }
-    }
-    if (HTML_MARKDOWN_EXTENSIONS.has(ext) || mime === 'text/html') {
-      return { targetKind: 'markdown', sendStrategy: 'text_in_prompt', mappedFromLegacy: true }
-    }
-    if (PS_CODE_EXTENSIONS.has(ext) || mime === 'application/postscript') {
-      return { targetKind: 'code', sendStrategy: 'text_in_prompt', mappedFromLegacy: true }
-    }
-  }
-  const legacy = buildAttachmentSemanticSummary(attachment)
-  if (attachment.aiPayloadKind !== 'text') return legacy
-  if (ext === 'md' || ext === 'markdown' || mime === 'text/markdown' || mime === 'text/x-markdown') {
-    return { targetKind: 'markdown', sendStrategy: 'text_in_prompt', mappedFromLegacy: true }
-  }
-  if (ext === 'csv' || ext === 'tsv' || mime === 'text/csv' || mime === 'text/tab-separated-values') {
-    return { targetKind: 'table_markdown', sendStrategy: 'text_in_prompt', mappedFromLegacy: true }
-  }
-  if (CODE_EXTENSIONS.has(ext)) {
-    return { targetKind: 'code', sendStrategy: 'text_in_prompt', mappedFromLegacy: true }
-  }
-  if (ext === 'txt' || ext === 'log' || mime === 'text/plain') {
-    return { targetKind: 'plain_text', sendStrategy: 'text_in_prompt', mappedFromLegacy: true }
-  }
-  return legacy
-}
-
 function resolveAttachmentSemanticSummary(
   attachment: Pick<CollectedAttachmentInput, 'aiPayloadKind' | 'processingStatus' | 'semantic'>
 ): AttachmentSemanticSummary | null {
   if (attachment.semantic) return attachment.semantic
-  return buildAttachmentSemanticSummary(attachment)
+  return null
 }
 
 function resolveEligibilityEvaluationMode(
-  attachment: Pick<CollectedAttachmentInput, 'semantic'>
+  _attachment: Pick<CollectedAttachmentInput, 'semantic'>
 ): EligibilityEvaluationMode {
-  // Step 1 close-out: semantic is the canonical eligibility entry when present.
-  // Legacy mode remains available as an explicit compatibility fallback.
-  return attachment.semantic ? 'semantic' : 'legacy'
-}
-
-function defaultTargetKindForPayload(
-  aiPayloadKind: CollectedAttachmentInput['aiPayloadKind']
-): AttachmentSemanticSummary['targetKind'] {
-  switch (aiPayloadKind) {
-    case 'text':
-      return 'plain_text'
-    case 'pdf':
-      return 'pdf_attachment'
-    case 'image':
-    case 'audio':
-    case 'video':
-      return 'native_file'
-    case 'binary':
-    default:
-      return 'unsupported'
-  }
+  return 'semantic'
 }
 
 function normalizeStringArray(values: ReadonlyArray<string>): string[] {
@@ -1857,11 +1836,8 @@ function requireNonEmpty(value: string | null | undefined, field: string): strin
 }
 
 export const __sendPlanEligibilityInternals = {
-  evaluateCompatibilityFromLegacy,
   evaluateCompatibilityFromSemantic,
   evaluateAttachmentCompatibilityByMode,
-  buildAttachmentSemanticSummary,
-  buildDefaultSemanticSummary,
   buildRouteCandidatesFromVerdict,
   semanticSummaryFromRouteCandidates,
   evaluateRouteCandidateGate,

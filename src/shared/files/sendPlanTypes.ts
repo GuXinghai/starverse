@@ -10,6 +10,9 @@ export type AttachmentPlanSource = 'draft' | 'history'
 
 export type AttachmentDisplayStatus =
   | 'parsing'
+  | 'detection_pending'
+  | 'detection_failed'
+  | 'detection_required'
   | 'ready'
   | 'failed'
   | 'incompatible_with_current_model'
@@ -93,6 +96,20 @@ export type SendPlanAttachmentFileTypeSummary = Readonly<{
   blockedBy: string[]
 }>
 
+export type SendPlanAttachmentDetectionSummary = Readonly<{
+  routeEligibility: 'verdict_ready' | 'detection_pending' | 'detection_failed' | 'detection_required'
+  detectionLevel: 'basic' | 'advanced' | 'parser_validated' | null
+  engineMode: 'core_only' | 'core_plus_magika' | 'core_plus_parser' | 'core_plus_external' | null
+  usedMagika: boolean
+  magikaState: 'not_installed' | 'disabled' | 'unavailable' | 'available' | 'failed' | 'not_requested'
+  evidenceSources: string[]
+  decisiveEvidenceSource: string | null
+  detectionTrigger: string | null
+  magikaModelVersion: string | null
+  advancedAttempted: boolean
+  advancedFailureReason: string | null
+}>
+
 export type SendPlanAttachment = Readonly<{
   assetId: string
   attachmentId: string
@@ -109,6 +126,7 @@ export type SendPlanAttachment = Readonly<{
   notes: string[]
   lineage: AttachmentLineageSummary
   fileType?: SendPlanAttachmentFileTypeSummary | null
+  detection?: SendPlanAttachmentDetectionSummary | null
 }>
 
 export type SendPlan = Readonly<{

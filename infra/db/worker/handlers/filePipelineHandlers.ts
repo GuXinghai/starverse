@@ -3,6 +3,7 @@ import type { RegisterHandler } from './types'
 import { readFile } from 'node:fs/promises'
 import { createHash, randomUUID } from 'node:crypto'
 import { resolveManagedStoragePath } from '../../../../src/shared/files/localStorageResolver'
+import type { SendPlan } from '../../../../src/shared/files/sendPlanTypes'
 import { serializeSendPlanForOpenRouter } from '../../../../src/next/openrouter/openRouterSendPlanSerializer'
 import {
   CreateFileAssetSchema,
@@ -210,7 +211,11 @@ function registerConversationAttachmentHandlers(register: RegisterHandler, runti
 
   register('conversationDraft.addAttachment', (raw) => {
     const input = AddDraftAttachmentSchema.parse(raw)
-    return runtime.conversationAttachmentService.addDraftAttachment(input)
+    const attachment = runtime.conversationAttachmentService.addDraftAttachment(input)
+    runtime.fileTypeDetectionCoordinator.scheduleDraftAttachmentDetection(attachment.assetId, {
+      detectionTrigger: 'upload',
+    })
+    return attachment
   })
 
   register('conversationDraft.removeAttachment', (raw) => {
@@ -283,6 +288,15 @@ function registerConversationAttachmentHandlers(register: RegisterHandler, runti
       })
     }
     const sendPlan = runtime.sendPlanService.buildSendPlan(collected)
+    if (sendPlan.status === 'blocked') {
+      return {
+        sendPlan,
+        contentParts: [],
+        additionalPlugins: [],
+        diagnostics: buildBlockedOpenRouterDiagnostics(sendPlan),
+        hasDraftAttachmentPlans: sendPlan.attachmentPlans.some((plan) => plan.source === 'draft'),
+      }
+    }
     const assetIds = Array.from(new Set([
       ...sendPlan.attachmentPlans.map((plan) => plan.assetId),
       ...sendPlan.includedAttachments.map((attachment) => attachment.assetId),
@@ -458,11 +472,44 @@ function registerConversationAttachmentHandlers(register: RegisterHandler, runti
   })
 }
 
+function buildBlockedOpenRouterDiagnostics(sendPlan: SendPlan) {
+  const excludedAttachments = sendPlan.attachmentPlans
+    .filter((plan) => plan.eligibility !== 'included' && plan.eligibility !== 'warning')
+    .map((plan) => ({
+      assetId: plan.assetId,
+      attachmentId: plan.attachmentId,
+      source: plan.source,
+      exclusionReason: plan.exclusionReason ?? plan.displayStatus,
+    }))
+  return {
+    sendPlanStatus: sendPlan.status,
+    includedAttachmentCount: 0,
+    excludedAttachmentCount: excludedAttachments.length,
+    includedAttachments: [],
+    excludedAttachments,
+    injectedPlugins: [],
+    attachmentErrors: sendPlan.attachmentPlans
+      .filter((plan) => plan.eligibility === 'blocked' || plan.exclusionReason != null)
+      .map((plan) => ({
+        code: plan.exclusionReason ?? 'send_plan_blocked',
+        message: plan.notes[0] ?? 'Attachment is blocked by the current send plan.',
+        assetId: plan.assetId,
+        attachmentId: plan.attachmentId,
+        messageId: plan.messageId,
+        selectedSendMode: plan.selectedSendMode,
+        aiPayloadKind: plan.aiPayloadKind,
+      })),
+    containsMultimodalParts: false,
+  }
+}
+
 async function buildCurrentSendPlanPayloadAsync(
   runtime: DbWorkerRuntime,
   input: Parameters<DbWorkerRuntime['sendPlanService']['collectCurrentSendInputs']>[0]
 ) {
   let collected = runtime.sendPlanService.collectCurrentSendInputs(input)
+  await ensureFileTypeVerdictsForCollected(runtime, collected)
+  collected = runtime.sendPlanService.collectCurrentSendInputs(input)
   const conversionUpdated = await ensureTextDerivativesForCollected(runtime, collected)
   if (conversionUpdated) {
     collected = runtime.sendPlanService.collectCurrentSendInputs(input)
@@ -480,6 +527,22 @@ async function buildCurrentSendPlanPayloadAsync(
     assets,
     storageRootDir: runtime.fileStorageRootDir,
   }
+}
+
+async function ensureFileTypeVerdictsForCollected(
+  runtime: DbWorkerRuntime,
+  collected: ReturnType<DbWorkerRuntime['sendPlanService']['collectCurrentSendInputs']>
+): Promise<void> {
+  const assetIds = Array.from(new Set(
+    [...collected.draftAttachments, ...collected.historyAttachments]
+      .filter((attachment) => attachment.includeInNextRequest && !attachment.excludedReason)
+      .filter((attachment) => attachment.fileAsset && attachment.fileAsset.deletedAt == null && attachment.fileAsset.ingestStatus !== 'deleted')
+      .map((attachment) => attachment.assetId)
+  ))
+  if (assetIds.length === 0) return
+  await runtime.fileTypeDetectionCoordinator.ensureVerdictsForAssets(assetIds, {
+    detectionTrigger: 'send_plan_build',
+  })
 }
 
 function historyScopeFromIds(messageIds: ReadonlyArray<string> | undefined): Readonly<{ messageIds: string[] }> | null {
