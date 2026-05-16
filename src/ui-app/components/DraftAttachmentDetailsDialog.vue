@@ -15,6 +15,20 @@ type DraftAttachmentUrlRetentionOption = Readonly<{
   reason: string | null
 }>
 
+type DraftAttachmentDetectionInfo = Readonly<{
+  routeEligibility: 'verdict_ready' | 'detection_pending' | 'detection_failed' | 'detection_required'
+  detectionLevel: 'basic' | 'advanced' | 'parser_validated' | null
+  engineMode: 'core_only' | 'core_plus_magika' | 'core_plus_parser' | 'core_plus_external' | null
+  usedMagika: boolean
+  magikaState: 'not_installed' | 'disabled' | 'unavailable' | 'available' | 'failed' | 'not_requested'
+  evidenceSources: readonly string[]
+  decisiveEvidenceSource: string | null
+  detectionTrigger: string | null
+  magikaModelVersion: string | null
+  advancedAttempted: boolean
+  advancedFailureReason: string | null
+}>
+
 type DraftAttachmentDetailsViewModel = Readonly<{
   draftAttachmentId: string
   assetId: string
@@ -23,7 +37,7 @@ type DraftAttachmentDetailsViewModel = Readonly<{
   assetKind: string
   aiPayloadKind: string
   sourceKind: string
-  displayStatus: 'parsing' | 'ready' | 'ready_with_warnings' | 'incompatible_with_current_model' | 'failed' | 'unsupported'
+  displayStatus: 'parsing' | 'detection_pending' | 'detection_failed' | 'detection_required' | 'ready' | 'ready_with_warnings' | 'incompatible_with_current_model' | 'failed' | 'unsupported'
   borderTone: 'green' | 'yellow' | 'red' | 'neutral'
   isParsing: boolean
   warningReason: string | null
@@ -51,6 +65,7 @@ type DraftAttachmentDetailsViewModel = Readonly<{
   localCopyExists: boolean
   retryPreviewAvailable: boolean
   retryPreviewReason: string | null
+  detectionInfo: DraftAttachmentDetectionInfo | null
 }> 
 
 const props = defineProps<{
@@ -133,6 +148,7 @@ function removeAttachment() {
             <dt class="text-gray-500">AI payload</dt><dd class="text-gray-900">{{ props.attachment.aiPayloadKind }}</dd>
             <dt class="text-gray-500">Source</dt><dd class="text-gray-900">{{ props.attachment.sourceKind }}</dd>
             <dt class="text-gray-500">Status</dt><dd class="text-gray-900">{{ props.attachment.displayStatus }}</dd>
+            <dt class="text-gray-500">Detection</dt><dd class="text-gray-900">{{ props.attachment.detectionInfo?.detectionLevel ?? props.attachment.detectionInfo?.routeEligibility ?? '-' }}</dd>
             <dt class="text-gray-500">Send plan</dt><dd class="text-gray-900">{{ props.attachment.sendPlanStatus ?? '-' }}</dd>
             <dt class="text-gray-500">Current send</dt><dd class="text-gray-900">{{ props.attachment.currentSendModeLabel }}</dd>
             <dt class="text-gray-500">Send mode</dt><dd class="text-gray-900">{{ formatSendModePreference(props.attachment.preferredSendMode) }}</dd>

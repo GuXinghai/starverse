@@ -106,6 +106,9 @@ export type MessageAttachmentDisplayStatus =
   | 'ready_with_warnings'
   | 'incompatible_with_current_model'
   | 'excluded_from_current_context'
+  | 'detection_pending'
+  | 'detection_failed'
+  | 'detection_required'
   | 'failed'
   | 'unsupported'
   | 'parsing'
@@ -138,6 +141,20 @@ export type MessageAttachmentFileTypeInfo = Readonly<{
   blockedBy: string[]
 }>
 
+export type MessageAttachmentDetectionInfo = Readonly<{
+  routeEligibility: 'verdict_ready' | 'detection_pending' | 'detection_failed' | 'detection_required'
+  detectionLevel: 'basic' | 'advanced' | 'parser_validated' | null
+  engineMode: 'core_only' | 'core_plus_magika' | 'core_plus_parser' | 'core_plus_external' | null
+  usedMagika: boolean
+  magikaState: 'not_installed' | 'disabled' | 'unavailable' | 'available' | 'failed' | 'not_requested'
+  evidenceSources: string[]
+  decisiveEvidenceSource: string | null
+  detectionTrigger: string | null
+  magikaModelVersion: string | null
+  advancedAttempted: boolean
+  advancedFailureReason: string | null
+}>
+
 export type MessageAttachmentVM = Readonly<{
   messageId: string
   attachmentId: string
@@ -156,6 +173,7 @@ export type MessageAttachmentVM = Readonly<{
   previewDataUrl: string | null
   iconKind: MessageAttachmentIconKind
   fileTypeInfo?: MessageAttachmentFileTypeInfo | null
+  detectionInfo?: MessageAttachmentDetectionInfo | null
   createdAt: number
 }>
 
