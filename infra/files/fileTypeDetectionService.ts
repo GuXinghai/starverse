@@ -6,9 +6,12 @@ import {
   FILE_TYPE_TAXONOMY_MAP_VERSION,
   EXTENSION_TO_FORMAT_ID,
   MIME_TO_FORMAT_ID,
+  type EvidenceSource,
   type FileTypeConflict,
+  type FileTypeDetectionTrigger,
   type FileTypeEvidence,
   type FileTypeFlag,
+  type FileTypeMagikaState,
   type FileTypeVerdict,
   detectMagic,
   probeContainer,
@@ -51,6 +54,8 @@ export type FileTypeDetectionJob = Readonly<{
 export type DetectFileTypeInput = Readonly<{
   assetId: string
   forceRedetect?: boolean
+  detectionTrigger?: FileTypeDetectionTrigger
+  magikaState?: FileTypeMagikaState
 }>
 
 export type DetectFileTypeResult = Readonly<{
@@ -81,10 +86,12 @@ type MagikaRuntimeState = Readonly<{
   available: boolean
   modelVersion: string | null
   runtimeKind: string
+  unavailableReason: string | null
+  unavailableDetail: string | null
 }>
 
-const DEFAULT_VERSION_INFO: FileTypeVerdictVersionInfo = {
-  schemaVersion: 'v1-stage-e',
+export const CURRENT_FILE_TYPE_VERDICT_VERSION_INFO: FileTypeVerdictVersionInfo = {
+  schemaVersion: 'v1-stage-f1',
   taxonomyVersion: FILE_TYPE_TAXONOMY_VERSION,
   taxonomyMapVersion: FILE_TYPE_TAXONOMY_MAP_VERSION,
   magicTableVersion: 'magic-v1',
@@ -92,6 +99,38 @@ const DEFAULT_VERSION_INFO: FileTypeVerdictVersionInfo = {
   containerProbeVersion: 'container-v1',
   textProbeVersion: 'text-v1',
   magikaModelVersion: null,
+}
+
+type DetectionFailureMeta = Readonly<{
+  detectionTrigger: FileTypeDetectionTrigger
+  detectionLevel: 'basic' | 'advanced'
+  engineMode: 'core_only' | 'core_plus_magika'
+  usedMagika: false
+  magikaState: FileTypeMagikaState
+  advancedAttempted: boolean
+  advancedFailureReason: string | null
+}>
+
+type DetectionReadyMeta = Readonly<{
+  detectionTrigger: FileTypeDetectionTrigger
+  detectionLevel: 'basic' | 'advanced' | 'parser_validated'
+  engineMode: 'core_only' | 'core_plus_magika' | 'core_plus_parser' | 'core_plus_external'
+  usedMagika: boolean
+  magikaState: FileTypeMagikaState
+  advancedAttempted: boolean
+  advancedFailureReason: string | null
+}>
+
+class FileTypeDetectionRuntimeError extends Error {
+  constructor(
+    readonly errorCode: string,
+    message: string,
+    readonly magikaState: FileTypeMagikaState,
+    readonly advancedFailureReason: string
+  ) {
+    super(message)
+    this.name = 'FileTypeDetectionRuntimeError'
+  }
 }
 
 const HEAD_TAIL_BYTES = 64 * 1024
@@ -121,7 +160,7 @@ export class FileTypeDetectionService {
         modelVersion: null,
         classify: (probe) => adapter.detect(probe),
       })
-    this.versionInfo = { ...DEFAULT_VERSION_INFO, ...(deps.versionInfo ?? {}) }
+    this.versionInfo = { ...CURRENT_FILE_TYPE_VERDICT_VERSION_INFO, ...(deps.versionInfo ?? {}) }
   }
 
   async detectBasic(input: DetectFileTypeInput): Promise<DetectFileTypeResult> {
@@ -151,7 +190,13 @@ export class FileTypeDetectionService {
   private async detectWithMode(mode: DetectFileTypeMode, input: DetectFileTypeInput): Promise<DetectFileTypeResult> {
     const assetId = requireNonEmpty(input.assetId, 'assetId')
     const now = this.now()
-    const runningJob = this.startJob(assetId, mode, now)
+    const detectionTrigger = input.detectionTrigger ?? 'manual_redetect'
+    const initialMagikaState = input.magikaState ?? (mode === 'full' ? 'available' : 'not_requested')
+    const runningJob = this.startJob(assetId, mode, now, {
+      detectionTrigger,
+      magikaState: initialMagikaState,
+    })
+    const baseFailureMeta = buildFailureMeta(mode, detectionTrigger, initialMagikaState)
     const forceRedetect = input.forceRedetect === true
     try {
       const asset = this.requireAsset(assetId)
@@ -160,13 +205,26 @@ export class FileTypeDetectionService {
         deletedAt: asset.deletedAt,
       })
       if (resolvedPath.kind !== 'ok') {
-        return this.finishFailed(runningJob, 'error.file_access_expired', 'File path is not available for detection.')
+        return this.finishFailed(runningJob, 'error.file_access_expired', 'File path is not available for detection.', baseFailureMeta)
       }
 
       const [bytes, fileStat] = await Promise.all([this.readBytes(resolvedPath.path), this.statFile(resolvedPath.path)])
       const fingerprint = buildFingerprint(bytes, fileStat)
       const currentVerdict = this.deps.fileTypeVerdictRepo.getCurrentByAssetId(assetId)
       const magikaRuntimeState = mode === 'full' ? await this.loadMagikaRuntimeState() : null
+      if (mode === 'full' && (!magikaRuntimeState || !magikaRuntimeState.available)) {
+        const magikaState = magikaRuntimeState?.unavailableReason === 'runtime_error' ? 'failed' : 'unavailable'
+        return this.finishFailed(
+          runningJob,
+          'error.magika_unavailable',
+          magikaRuntimeState?.unavailableDetail ?? 'Magika runtime became unavailable during advanced detection.',
+          {
+            ...baseFailureMeta,
+            magikaState,
+            advancedFailureReason: magikaRuntimeState?.unavailableReason ?? 'runtime_unavailable',
+          }
+        )
+      }
 
       if (
         !forceRedetect &&
@@ -174,7 +232,13 @@ export class FileTypeDetectionService {
         fingerprintsEqual(currentVerdict.fingerprintJson, fingerprint) &&
         this.isModelVersionCacheCompatible(currentVerdict, magikaRuntimeState)
       ) {
-        const readyJob = this.finishReady(runningJob, currentVerdict.id, fingerprint, true)
+        const readyJob = this.finishReady(
+          runningJob,
+          currentVerdict.id,
+          fingerprint,
+          true,
+          readyMetaFromVerdict(currentVerdict.verdict, detectionTrigger)
+        )
         return { job: readyJob, verdict: currentVerdict, fromCache: true }
       }
 
@@ -197,6 +261,8 @@ export class FileTypeDetectionService {
         bytes,
         fingerprint,
         magikaRuntimeState,
+        detectionTrigger,
+        requestedMagikaState: initialMagikaState,
       })
       if (!this.isCurrentJob(assetId, runningJob.jobId)) {
         const cancelled = this.toJob(runningJob, 'cancelled', null, null)
@@ -225,11 +291,18 @@ export class FileTypeDetectionService {
         updatedAt: this.now(),
       })
 
-      const ready = this.finishReady(runningJob, saved.id, fingerprint, false)
+      const ready = this.finishReady(runningJob, saved.id, fingerprint, false, readyMetaFromVerdict(saved.verdict, detectionTrigger))
       return { job: ready, verdict: saved, fromCache: false }
     } catch (error) {
+      if (error instanceof FileTypeDetectionRuntimeError) {
+        return this.finishFailed(runningJob, error.errorCode, error.message, {
+          ...baseFailureMeta,
+          magikaState: error.magikaState,
+          advancedFailureReason: error.advancedFailureReason,
+        })
+      }
       const message = error instanceof Error ? error.message : String(error)
-      return this.finishFailed(runningJob, 'error.read_failed', message)
+      return this.finishFailed(runningJob, 'error.read_failed', message, baseFailureMeta)
     }
   }
 
@@ -239,6 +312,8 @@ export class FileTypeDetectionService {
     bytes: Uint8Array
     fingerprint: FileTypeFingerprintJson
     magikaRuntimeState: MagikaRuntimeState | null
+    detectionTrigger: FileTypeDetectionTrigger
+    requestedMagikaState: FileTypeMagikaState
   }>): Promise<Readonly<{ verdict: FileTypeVerdict; magikaModelVersion: string | null }>> {
     const evidence: FileTypeEvidence[] = []
 
@@ -286,6 +361,22 @@ export class FileTypeDetectionService {
         filename: input.asset.filename,
         mime: normalizedMime,
       })
+      if (magikaProbe.unavailableReason) {
+        throw new FileTypeDetectionRuntimeError(
+          'error.magika_runtime_failed',
+          magikaProbe.unavailableDetail ?? 'Magika runtime failed during advanced detection.',
+          magikaProbe.unavailableReason === 'runtime_error' ? 'failed' : 'unavailable',
+          magikaProbe.unavailableReason
+        )
+      }
+      if (!magikaProbe.evidence) {
+        throw new FileTypeDetectionRuntimeError(
+          'error.magika_no_evidence',
+          'Magika did not return classification evidence for advanced detection.',
+          'failed',
+          'magika_no_evidence'
+        )
+      }
       if (magikaProbe.evidence) evidence.push(magikaProbe.evidence)
       magikaModelVersion = magikaProbe.modelVersion ?? input.magikaRuntimeState.modelVersion ?? null
     }
@@ -310,6 +401,19 @@ export class FileTypeDetectionService {
         conflicts: merged.conflicts as FileTypeConflict[],
         flags: finalFlags,
         evidence,
+        provenance: {
+          detectionLevel: input.mode === 'full' ? 'advanced' : 'basic',
+          engineMode: input.mode === 'full' ? 'core_plus_magika' : 'core_only',
+          usedMagika: input.mode === 'full',
+          magikaState: input.mode === 'full' ? 'available' : input.requestedMagikaState,
+          evidenceSources: evidenceSourcesOf(evidence),
+          decisiveEvidenceSource: resolveDecisiveEvidenceSource(evidence, merged.primary.formatId),
+          detectionTrigger: input.detectionTrigger,
+          routeEligibility: 'verdict_ready',
+          magikaModelVersion,
+          advancedAttempted: input.mode === 'full',
+          advancedFailureReason: null,
+        },
         schemaVersion: this.versionInfo.schemaVersion,
         taxonomyVersion: this.versionInfo.taxonomyVersion,
         detectionCost: input.mode === 'full' ? 'medium' : 'low',
@@ -328,6 +432,8 @@ export class FileTypeDetectionService {
           available: true,
           modelVersion: normalizeNullableModelVersion(loaded.runtime.modelVersion),
           runtimeKind: loaded.runtime.kind,
+          unavailableReason: null,
+          unavailableDetail: null,
         }
       }
       return {
@@ -335,6 +441,8 @@ export class FileTypeDetectionService {
         available: false,
         modelVersion: normalizeNullableModelVersion(loaded.modelVersion),
         runtimeKind: loaded.runtimeKind,
+        unavailableReason: loaded.reason,
+        unavailableDetail: loaded.detail,
       }
     } catch {
       return {
@@ -342,6 +450,8 @@ export class FileTypeDetectionService {
         available: false,
         modelVersion: null,
         runtimeKind: 'unavailable',
+        unavailableReason: 'runtime_error',
+        unavailableDetail: 'Magika runtime loader threw during availability check.',
       }
     }
   }
@@ -399,7 +509,12 @@ export class FileTypeDetectionService {
     return 'magika_model_version_changed'
   }
 
-  private startJob(assetId: string, mode: DetectFileTypeMode, timestamp: number): FileTypeDetectionJob {
+  private startJob(
+    assetId: string,
+    mode: DetectFileTypeMode,
+    timestamp: number,
+    meta: Readonly<{ detectionTrigger: FileTypeDetectionTrigger; magikaState: FileTypeMagikaState }>
+  ): FileTypeDetectionJob {
     const jobId = this.idFactory()
     const job = this.toJob(
       {
@@ -420,6 +535,14 @@ export class FileTypeDetectionService {
       ...current,
       currentJobId: jobId,
       lastJob: job,
+      detectionTrigger: meta.detectionTrigger,
+      detectionLevel: mode === 'full' ? 'advanced' : 'basic',
+      engineMode: mode === 'full' ? 'core_plus_magika' : 'core_only',
+      usedMagika: false,
+      magikaState: meta.magikaState,
+      advancedAttempted: mode === 'full',
+      advancedFailureReason: null,
+      routeEligibility: 'detection_pending',
       stale: false,
       staleReason: null,
     }))
@@ -430,7 +553,8 @@ export class FileTypeDetectionService {
     runningJob: FileTypeDetectionJob,
     verdictId: string,
     fingerprint: FileTypeFingerprintJson,
-    fromCache: boolean
+    fromCache: boolean,
+    readyMeta: DetectionReadyMeta
   ): FileTypeDetectionJob {
     const ready = this.toJob(runningJob, 'ready', null, null)
     this.updateDetectionMetaIfCurrentJob(runningJob.assetId, runningJob.jobId, (current) => ({
@@ -443,6 +567,14 @@ export class FileTypeDetectionService {
         fromCache,
         updatedAt: this.now(),
       },
+      detectionTrigger: readyMeta.detectionTrigger,
+      detectionLevel: readyMeta.detectionLevel,
+      engineMode: readyMeta.engineMode,
+      usedMagika: readyMeta.usedMagika,
+      magikaState: readyMeta.magikaState,
+      advancedAttempted: readyMeta.advancedAttempted,
+      advancedFailureReason: readyMeta.advancedFailureReason,
+      routeEligibility: 'verdict_ready',
       stale: false,
       staleReason: null,
     }))
@@ -452,13 +584,22 @@ export class FileTypeDetectionService {
   private finishFailed(
     runningJob: FileTypeDetectionJob,
     errorCode: string,
-    errorMessage: string
+    errorMessage: string,
+    meta: DetectionFailureMeta
   ): DetectFileTypeResult {
     const failed = this.toJob(runningJob, 'failed', errorCode, errorMessage)
     this.updateDetectionMetaIfCurrentJob(runningJob.assetId, runningJob.jobId, (current) => ({
       ...current,
       currentJobId: runningJob.jobId,
       lastJob: failed,
+      detectionTrigger: meta.detectionTrigger,
+      detectionLevel: meta.detectionLevel,
+      engineMode: meta.engineMode,
+      usedMagika: meta.usedMagika,
+      magikaState: meta.magikaState,
+      advancedAttempted: meta.advancedAttempted,
+      advancedFailureReason: meta.advancedFailureReason,
+      routeEligibility: 'detection_failed',
       stale: true,
       staleReason: errorCode,
     }))
@@ -541,6 +682,65 @@ export class FileTypeDetectionService {
     if (!current || current.currentJobId !== jobId) return
     this.writeDetectionMeta(assetId, updater)
   }
+}
+
+function buildFailureMeta(
+  mode: DetectFileTypeMode,
+  detectionTrigger: FileTypeDetectionTrigger,
+  magikaState: FileTypeMagikaState
+): DetectionFailureMeta {
+  return {
+    detectionTrigger,
+    detectionLevel: mode === 'full' ? 'advanced' : 'basic',
+    engineMode: mode === 'full' ? 'core_plus_magika' : 'core_only',
+    usedMagika: false,
+    magikaState,
+    advancedAttempted: mode === 'full',
+    advancedFailureReason: mode === 'full' ? 'advanced_detection_failed' : null,
+  }
+}
+
+function readyMetaFromVerdict(
+  verdict: FileTypeVerdict,
+  fallbackTrigger: FileTypeDetectionTrigger
+): DetectionReadyMeta {
+  const provenance = verdict.provenance ?? null
+  const usedMagika = provenance?.usedMagika ?? verdict.evidence.some((item) => item.source === 'magika')
+  return {
+    detectionTrigger: provenance?.detectionTrigger ?? fallbackTrigger,
+    detectionLevel: provenance?.detectionLevel ?? (usedMagika ? 'advanced' : 'basic'),
+    engineMode: provenance?.engineMode ?? (usedMagika ? 'core_plus_magika' : 'core_only'),
+    usedMagika,
+    magikaState: provenance?.magikaState ?? (usedMagika ? 'available' : 'not_requested'),
+    advancedAttempted: provenance?.advancedAttempted ?? usedMagika,
+    advancedFailureReason: provenance?.advancedFailureReason ?? null,
+  }
+}
+
+function evidenceSourcesOf(evidence: readonly FileTypeEvidence[]): EvidenceSource[] {
+  return Array.from(new Set(evidence.map((item) => item.source)))
+}
+
+function resolveDecisiveEvidenceSource(
+  evidence: readonly FileTypeEvidence[],
+  primaryFormatId: FileTypeVerdict['primary']['formatId']
+): EvidenceSource | null {
+  const matching = evidence.filter((item) => item.detectedFormatId === primaryFormatId)
+  if (matching.length === 0) return evidence[0]?.source ?? null
+  const priority: EvidenceSource[] = [
+    'magic',
+    'container_probe',
+    'text_probe',
+    'magika',
+    'mime_os',
+    'mime_browser',
+    'extension',
+  ]
+  for (const source of priority) {
+    const found = matching.find((item) => item.source === source)
+    if (found) return found.source
+  }
+  return matching[0]?.source ?? null
 }
 
 function mapPolicyToFlags(

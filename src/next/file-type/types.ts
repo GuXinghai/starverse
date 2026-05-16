@@ -104,6 +104,8 @@ export const EVIDENCE_SOURCES = [
   'container_probe',
   'text_probe',
   'magika',
+  'parser_probe',
+  'external_detector',
   'user_override',
   'cache',
 ] as const
@@ -111,6 +113,45 @@ export type EvidenceSource = (typeof EVIDENCE_SOURCES)[number]
 
 export const DETECTION_COSTS = ['low', 'medium', 'high'] as const
 export type DetectionCost = (typeof DETECTION_COSTS)[number]
+
+export const FILE_TYPE_DETECTION_LEVELS = ['basic', 'advanced', 'parser_validated'] as const
+export type FileTypeDetectionLevel = (typeof FILE_TYPE_DETECTION_LEVELS)[number]
+
+export const FILE_TYPE_ENGINE_MODES = [
+  'core_only',
+  'core_plus_magika',
+  'core_plus_parser',
+  'core_plus_external',
+] as const
+export type FileTypeEngineMode = (typeof FILE_TYPE_ENGINE_MODES)[number]
+
+export const FILE_TYPE_MAGIKA_STATES = [
+  'not_installed',
+  'disabled',
+  'unavailable',
+  'available',
+  'failed',
+  'not_requested',
+] as const
+export type FileTypeMagikaState = (typeof FILE_TYPE_MAGIKA_STATES)[number]
+
+export const FILE_TYPE_DETECTION_TRIGGERS = [
+  'upload',
+  'send_plan_build',
+  'preview_request',
+  'conversion_request',
+  'manual_redetect',
+  'background_upgrade',
+] as const
+export type FileTypeDetectionTrigger = (typeof FILE_TYPE_DETECTION_TRIGGERS)[number]
+
+export const FILE_TYPE_ROUTE_ELIGIBILITIES = [
+  'verdict_ready',
+  'detection_pending',
+  'detection_failed',
+  'detection_required',
+] as const
+export type FileTypeRouteEligibility = (typeof FILE_TYPE_ROUTE_ELIGIBILITIES)[number]
 
 export const PREVIEW_MODES = [
   'none',
@@ -188,11 +229,26 @@ export type FileTypePrimary = Readonly<{
   sourceCodeMeta: SourceCodeMeta | null
 }>
 
+export type FileTypeVerdictProvenance = Readonly<{
+  detectionLevel: FileTypeDetectionLevel
+  engineMode: FileTypeEngineMode
+  usedMagika: boolean
+  magikaState: FileTypeMagikaState
+  evidenceSources: readonly EvidenceSource[]
+  decisiveEvidenceSource: EvidenceSource | null
+  detectionTrigger: FileTypeDetectionTrigger
+  routeEligibility: FileTypeRouteEligibility
+  magikaModelVersion: string | null
+  advancedAttempted?: boolean
+  advancedFailureReason?: string | null
+}>
+
 export type FileTypeVerdict = Readonly<{
   primary: FileTypePrimary
   conflicts: readonly FileTypeConflict[]
   flags: readonly FileTypeFlag[]
   evidence: readonly FileTypeEvidence[]
+  provenance?: FileTypeVerdictProvenance | null
   schemaVersion: string
   taxonomyVersion: string
   detectionCost: DetectionCost
