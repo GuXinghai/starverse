@@ -72,6 +72,7 @@ Next phase: Owner review of remaining phase plan; P7-A real Magika detectFull en
 | 52-phase6-magika-pure-js-runtime-smoke.md | Phase 6 Magika pure JS runtime smoke result |
 | 53-phase6-magika-lifecycle-integration.md | Phase 6 Magika lifecycle integration status |
 | 54-file-content-identification-v1-roadmap.md | File Content Identification v1.0 remaining phase plan proposal |
+| 60-p5-f1-strict-verdict-routing-closeout.md | P5-F1 strict verdict-based routing closeout |
 
 ## Step 状态
 

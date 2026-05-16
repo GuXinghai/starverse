@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import BetterSqlite3 from 'better-sqlite3'
 import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -67,6 +67,38 @@ function createWorkerHarness() {
     now: () => 1000,
   })
   const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+  const fileTypeDetectionService = new FileTypeDetectionService({
+    db,
+    fileAssetRepo,
+    fileTypeVerdictRepo,
+    storageRootDir,
+    now: () => 1000,
+  })
+  const fileTypeDetectionCoordinator = {
+    scheduleDraftAttachmentDetection: vi.fn(() => ({ scheduled: true })),
+    ensureVerdictsForAssets: vi.fn(async (assetIds: readonly string[], options?: { detectionTrigger?: string }) => {
+      const results = []
+      for (const assetId of assetIds) {
+        const result = await fileTypeDetectionService.detectBasic({
+          assetId,
+          detectionTrigger: options?.detectionTrigger as any,
+          magikaState: 'not_installed',
+        })
+        results.push({
+          assetId,
+          status: result.job.status === 'ready' && result.verdict ? 'ready' : 'failed',
+          verdict: result.verdict,
+          fromCache: result.fromCache,
+          reusedCurrent: false,
+          pipeline: 'basic',
+          magikaState: 'not_installed',
+          errorCode: result.job.errorCode,
+          errorMessage: result.job.errorMessage,
+        })
+      }
+      return results
+    }),
+  }
   registerFilePipelineHandlers((method, handler) => handlers.set(method, handler), {
     db,
     fileAssetRepo,
@@ -88,20 +120,15 @@ function createWorkerHarness() {
       fileAssetRepo,
       fileTypeVerdictRepo,
     }),
-    fileTypeDetectionService: new FileTypeDetectionService({
-      db,
-      fileAssetRepo,
-      fileTypeVerdictRepo,
-      storageRootDir,
-      now: () => 1000,
-    }),
+    fileTypeDetectionService,
+    fileTypeDetectionCoordinator,
     fileIngestionService: new FileIngestionService({
       fileAssetRepo,
       storageRootDir,
     }),
     fileStorageRootDir: storageRootDir,
   } as any)
-  return { handlers, message }
+  return { handlers, message, fileTypeDetectionCoordinator, fileTypeVerdictRepo }
 }
 
 async function createWorkerAsset(handlers: Map<DbMethod, DbHandler>) {
@@ -168,7 +195,7 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
   })
 
   it('routes draft attachment restore, add, and commit methods', async () => {
-    const { handlers } = createWorkerHarness()
+    const { handlers, fileTypeDetectionCoordinator } = createWorkerHarness()
     await createWorkerAsset(handlers)
     const restoreDraft = await dispatchWorkerMessage(handlers, {
       id: 'req-draft',
@@ -181,6 +208,9 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       id: 'req-draft-add',
       method: 'conversationDraft.addAttachment',
       params: { conversationId: 'c1', assetId: 'asset-1' },
+    })
+    expect(fileTypeDetectionCoordinator.scheduleDraftAttachmentDetection).toHaveBeenCalledWith('asset-1', {
+      detectionTrigger: 'upload',
     })
 
     const commitDraft = await dispatchWorkerMessage(handlers, {
@@ -199,7 +229,7 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
   })
 
   it('routes send plan build and draft-to-existing-message migration methods', async () => {
-    const { handlers, message } = createWorkerHarness()
+    const { handlers, message, fileTypeDetectionCoordinator } = createWorkerHarness()
     await createWorkerAsset(handlers)
     const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
     const storageUri = 'assets/original/as/asset-1.txt'
@@ -237,6 +267,9 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
         sendPlan: expect.objectContaining({ status: 'sendable' }),
         assets: [expect.objectContaining({ id: 'asset-1' })],
       },
+    })
+    expect(fileTypeDetectionCoordinator.ensureVerdictsForAssets).toHaveBeenCalledWith(['asset-1'], {
+      detectionTrigger: 'send_plan_build',
     })
 
     const attached = await dispatchWorkerMessage(handlers, {
@@ -312,11 +345,17 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     expect(prepared).toMatchObject({
       ok: true,
       result: expect.objectContaining({
-        sendPlan: expect.objectContaining({ status: 'sendable' }),
-        contentParts: [
-          { type: 'text', text: 'describe this image' },
-          { type: 'image_url', image_url: { url: expect.stringMatching(/^data:image\/png;base64,/) } },
-        ],
+        sendPlan: expect.objectContaining({ status: 'blocked' }),
+        contentParts: [],
+        diagnostics: expect.objectContaining({
+          sendPlanStatus: 'blocked',
+          attachmentErrors: [
+            expect.objectContaining({
+              code: 'file_type_detection_required',
+              assetId,
+            }),
+          ],
+        }),
       }),
     })
   })
