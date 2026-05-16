@@ -285,6 +285,7 @@ export class EnginePluginLifecycleService {
   private readonly now: () => number
   private readonly installOperations = new Map<string, OfficialInstallOperationRecord>()
   private readonly inFlightOfficialInstalls = new Map<string, string>()
+  private readonly officialInstallFinalDirLocks = new Map<string, Promise<void>>()
   private installOperationCounter = 0
 
   constructor(private readonly deps: EnginePluginLifecycleServiceDeps) {
@@ -517,6 +518,11 @@ export class EnginePluginLifecycleService {
       return ok(toOfficialInstallOperationDto(existingOperation)!)
     }
 
+    const blockedTerminalOperation = this.getBlockedTerminalOfficialInstallOperation(pluginId, pluginVersion)
+    if (blockedTerminalOperation) {
+      return fail(blockedTerminalOperation, 'official plugin reinstall is blocked by prior trust state')
+    }
+
     const existing = this.deps.registryRepo.getByEngineId(pluginId)
     const blockedExisting = existing?.failureReason ? blockedPluginReinstallFailure(existing.failureReason) : null
     if (blockedExisting) {
@@ -606,76 +612,147 @@ export class EnginePluginLifecycleService {
 
     const installRef = MAGIKA_OFFICIAL_PLUGIN_ID
     const finalDir = this.deps.resolveInstallPluginDir({ installRootKind: input.installRootKind, installRef })
-    const stageDir = `${finalDir}.stage-${this.now()}`
+    const stageDir = `${finalDir}.stage-${input.operationId}`
     try {
-      this.transitionOfficialInstallOperation(operation, 'pending')
-      this.transitionOfficialInstallOperation(operation, 'downloading')
-      const verified = await verifyOfficialPackageReleaseDownload({
-        release: input.release,
-        transport: this.deps.officialPackageTransport ?? defaultOfficialPackageTransport,
-        now: new Date(this.now()),
-        previousTrustedVersion: input.existing?.lastVerifiedAt ? input.existing.pluginVersion : null,
-        environment: {
-          platform: process.platform,
-          architecture: process.arch,
-          appVersion: '0.0.0',
-        },
-      })
-      if (!verified.ok) {
-        if (verified.status === 'signature_failed') {
-          this.transitionOfficialInstallOperation(operation, 'verifying')
-        }
-        const failure = mapOfficialReleaseFailure(verified)
-        this.failOfficialInstallOperation(operation, failure.reason, failure.diagnostic, failure.state)
-        return
-      }
-
-      this.transitionOfficialInstallOperation(operation, 'verifying')
-      this.transitionOfficialInstallOperation(operation, 'staging')
-      const extracted = await this.extractAndValidateOfficialMagika({
-        verified,
-        release: input.release,
-        stageDir,
-        finalDir,
-        pluginId: input.pluginId,
-        pluginVersion: input.pluginVersion,
-      })
-      if (!extracted.ok) {
-        this.failOfficialInstallOperation(operation, 'registration_failed', extracted.reason)
-        return
-      }
-
-      this.transitionOfficialInstallOperation(operation, 'registering')
-      const upserted = this.upsertOfficialMagikaInstall({
-        descriptor: extracted.value.descriptor,
-        manifestBytes: extracted.value.manifestBytes,
-        existing: input.existing,
-        installRootKind: input.installRootKind,
-        installRef,
-        verified,
-      })
-
-      operation.installedEngineId = upserted.engineId
-      operation.result = toOfficialInstallOperationResult(upserted)
-      this.transitionOfficialInstallOperation(operation, 'health_checking')
-      await this.recordOfficialInstallHealthResult(operation, extracted.value.descriptor)
+      await this.executeOfficialInstallOperation(input, operation, { finalDir, installRef, stageDir })
     } catch (err: any) {
       this.failOfficialInstallOperation(operation, 'registration_failed', err?.message ?? 'official install failed')
     } finally {
-      await rm(stageDir, { recursive: true, force: true }).catch(() => undefined)
-      if (operation.failureReason && !operation.installedEngineId) {
-        await rm(finalDir, { recursive: true, force: true }).catch(() => undefined)
-      }
-      const operationKey = officialInstallOperationKey(input.pluginId, input.pluginVersion)
-      if (this.inFlightOfficialInstalls.get(operationKey) === input.operationId) {
-        this.inFlightOfficialInstalls.delete(operationKey)
-      }
-      if (operation.installedEngineId && operation.state !== 'failed') {
-        this.transitionOfficialInstallOperation(operation, 'installed')
-      } else if (operation.failureReason && operation.state !== 'failed') {
-        this.transitionOfficialInstallOperation(operation, 'failed')
-      }
+      await this.finalizeOfficialInstallOperation(input, operation, { finalDir, stageDir })
     }
+  }
+
+  private async executeOfficialInstallOperation(
+    input: Readonly<{
+      pluginId: string
+      pluginVersion: string
+      release: OfficialPackageReleaseMetadata
+      existing: EnginePluginRegistryRecord | null
+      installRootKind: EnginePluginInstallRootKind
+    }>,
+    operation: OfficialInstallOperationRecord,
+    paths: Readonly<{ finalDir: string; installRef: string; stageDir: string }>
+  ): Promise<void> {
+    if (!this.transitionCurrentOfficialInstallOperation(operation, 'pending')) return
+    if (!this.transitionCurrentOfficialInstallOperation(operation, 'downloading')) return
+    const verified = await this.downloadAndVerifyOfficialInstall(input)
+    if (!this.isOfficialInstallOperationCurrent(operation)) return
+    if (!verified.ok) {
+      this.failOfficialInstallFromVerification(operation, verified)
+      return
+    }
+
+    if (!this.transitionCurrentOfficialInstallOperation(operation, 'verifying')) return
+    if (!this.transitionCurrentOfficialInstallOperation(operation, 'staging')) return
+    const extracted = await this.extractAndValidateOfficialMagika({
+      verified,
+      release: input.release,
+      stageDir: paths.stageDir,
+      pluginId: input.pluginId,
+      pluginVersion: input.pluginVersion,
+    })
+    if (!this.isOfficialInstallOperationCurrent(operation)) return
+    if (!extracted.ok) {
+      this.failOfficialInstallOperation(operation, 'registration_failed', extracted.reason)
+      return
+    }
+
+    const promoted = await this.promoteCurrentOfficialMagika({
+      operation,
+      stagedEngineDir: extracted.value.stagedEngineDir,
+      finalDir: paths.finalDir,
+    })
+    if (!promoted.ok) {
+      this.failOfficialInstallOperation(operation, 'registration_failed', promoted.reason)
+      return
+    }
+    if (!promoted.value) return
+
+    if (!this.transitionCurrentOfficialInstallOperation(operation, 'registering')) return
+    const upserted = this.upsertOfficialMagikaInstall({
+      descriptor: promoted.value,
+      manifestBytes: extracted.value.manifestBytes,
+      existing: input.existing,
+      installRootKind: input.installRootKind,
+      installRef: paths.installRef,
+      verified,
+    })
+    operation.installedEngineId = upserted.engineId
+    operation.result = toOfficialInstallOperationResult(upserted)
+    if (!this.transitionCurrentOfficialInstallOperation(operation, 'health_checking')) return
+    await this.recordOfficialInstallHealthResult(operation, promoted.value)
+  }
+
+  private async downloadAndVerifyOfficialInstall(input: Readonly<{
+    release: OfficialPackageReleaseMetadata
+    existing: EnginePluginRegistryRecord | null
+  }>): Promise<OfficialPackageReleaseVerificationResult> {
+    return verifyOfficialPackageReleaseDownload({
+      release: input.release,
+      transport: this.deps.officialPackageTransport ?? defaultOfficialPackageTransport,
+      now: new Date(this.now()),
+      previousTrustedVersion: input.existing?.lastVerifiedAt ? input.existing.pluginVersion : null,
+      environment: {
+        platform: process.platform,
+        architecture: process.arch,
+        appVersion: '0.0.0',
+      },
+    })
+  }
+
+  private failOfficialInstallFromVerification(
+    operation: OfficialInstallOperationRecord,
+    verified: Extract<OfficialPackageReleaseVerificationResult, { ok: false }>
+  ): void {
+    if (verified.status === 'signature_failed') {
+      this.transitionOfficialInstallOperation(operation, 'verifying')
+    }
+    const failure = mapOfficialReleaseFailure(verified)
+    this.failOfficialInstallOperation(operation, failure.reason, failure.diagnostic, failure.state)
+  }
+
+  private async finalizeOfficialInstallOperation(
+    input: Readonly<{ operationId: string; pluginId: string; pluginVersion: string }>,
+    operation: OfficialInstallOperationRecord,
+    paths: Readonly<{ finalDir: string; stageDir: string }>
+  ): Promise<void> {
+    await rm(paths.stageDir, { recursive: true, force: true }).catch(() => undefined)
+    if (this.shouldCleanFailedOfficialInstallFinalDir(operation)) {
+      await this.withOfficialInstallFinalDirLock(input.pluginId, async () => {
+        if (this.shouldCleanFailedOfficialInstallFinalDir(operation)) {
+          await rm(paths.finalDir, { recursive: true, force: true }).catch(() => undefined)
+        }
+      })
+    }
+    const operationKey = officialInstallOperationKey(input.pluginId, input.pluginVersion)
+    if (this.inFlightOfficialInstalls.get(operationKey) === input.operationId) {
+      this.inFlightOfficialInstalls.delete(operationKey)
+    }
+    this.markOfficialInstallOperationTerminal(operation)
+  }
+
+  private markOfficialInstallOperationTerminal(operation: OfficialInstallOperationRecord): void {
+    if (isOfficialInstallOperationTerminal(operation.state)) return
+    if (operation.installedEngineId && operation.state !== 'failed') {
+      this.transitionOfficialInstallOperation(operation, 'installed')
+    } else if (operation.failureReason) {
+      this.transitionOfficialInstallOperation(operation, 'failed')
+    }
+  }
+
+  private shouldCleanFailedOfficialInstallFinalDir(operation: OfficialInstallOperationRecord): boolean {
+    if (!operation.failureReason || operation.installedEngineId || operation.state === 'stale') return false
+    const operationKey = officialInstallOperationKey(operation.pluginId, operation.pluginVersion)
+    return this.inFlightOfficialInstalls.get(operationKey) === operation.operationId
+  }
+
+  private transitionCurrentOfficialInstallOperation(
+    operation: OfficialInstallOperationRecord,
+    state: OfficialInstallOperationState
+  ): boolean {
+    if (!this.isOfficialInstallOperationCurrent(operation)) return false
+    this.transitionOfficialInstallOperation(operation, state)
+    return this.isOfficialInstallOperationCurrent(operation)
   }
 
   private transitionOfficialInstallOperation(
@@ -717,12 +794,13 @@ export class EnginePluginLifecycleService {
     operation: OfficialInstallOperationRecord,
     descriptor: MagikaManagedPluginDescriptor
   ): Promise<void> {
-    if (!operation.installedEngineId) return
+    if (!operation.installedEngineId || !this.isOfficialInstallOperationCurrent(operation)) return
     try {
       const health = await runManagedMagikaPluginHealthCheck({
         descriptor,
         healthRunner: this.deps.healthRunner,
       })
+      if (!this.isOfficialInstallOperationCurrent(operation)) return
       this.deps.registryRepo.updateHealth({
         engineId: operation.installedEngineId,
         healthStatus: health.healthy ? 'healthy' : 'unhealthy',
@@ -732,27 +810,98 @@ export class EnginePluginLifecycleService {
       const current = this.deps.registryRepo.getByEngineId(operation.installedEngineId)
       if (current) operation.result = toOfficialInstallOperationResult(current)
       if (!health.healthy) {
-        this.deps.registryRepo.markFailed({
-          engineId: operation.installedEngineId,
-          failureReason: 'health_failed',
-          updatedAt: this.now(),
-          lastHealthCheckAt: this.now(),
-        })
-        const failed = this.deps.registryRepo.getByEngineId(operation.installedEngineId)
+        const failed = this.markOfficialInstallHealthFailed(operation.installedEngineId)
         if (failed) operation.result = toOfficialInstallOperationResult(failed)
-        this.failOfficialInstallOperation(operation, 'health_failed', health.reason ?? 'health_failed')
+        this.markOfficialInstallOperationHealthFailed(operation, health.reason ?? 'health_failed')
       }
     } catch (err: any) {
-      this.deps.registryRepo.markFailed({
-        engineId: operation.installedEngineId,
-        failureReason: 'health_failed',
-        updatedAt: this.now(),
-        lastHealthCheckAt: this.now(),
-      })
-      const current = this.deps.registryRepo.getByEngineId(operation.installedEngineId)
+      if (!this.isOfficialInstallOperationCurrent(operation)) return
+      const current = this.markOfficialInstallHealthFailed(operation.installedEngineId)
       if (current) operation.result = toOfficialInstallOperationResult(current)
-      this.failOfficialInstallOperation(operation, 'health_failed', err?.message ?? 'health_failed')
+      this.markOfficialInstallOperationHealthFailed(operation, err?.message ?? 'health_failed')
     }
+  }
+
+  private async promoteCurrentOfficialMagika(input: Readonly<{
+    operation: OfficialInstallOperationRecord
+    stagedEngineDir: string
+    finalDir: string
+  }>): Promise<LifecycleActionResult<MagikaManagedPluginDescriptor | null>> {
+    if (!this.isOfficialInstallOperationCurrent(input.operation)) return ok(null)
+    return this.withOfficialInstallFinalDirLock(input.operation.pluginId, async () => {
+      if (!this.isOfficialInstallOperationCurrent(input.operation)) return ok(null)
+      try {
+        await promoteOfficialMagikaEngine({
+          stagedEngineDir: input.stagedEngineDir,
+          finalDir: input.finalDir,
+        })
+      } catch {
+        return fail('official_package_extract_failed', 'official package extraction failed')
+      }
+      if (!this.isOfficialInstallOperationCurrent(input.operation)) return ok(null)
+      const installed = await discoverMagikaManagedPlugin({ pluginDirs: [input.finalDir] })
+      if (!installed.available) {
+        return fail('manifest_integrity_failed', 'managed plugin integrity verification failed')
+      }
+      return ok(installed.descriptor)
+    })
+  }
+
+  private async withOfficialInstallFinalDirLock<T>(
+    pluginId: string,
+    task: () => Promise<T>
+  ): Promise<T> {
+    const previous = this.officialInstallFinalDirLocks.get(pluginId) ?? Promise.resolve()
+    let release: () => void = () => undefined
+    const current = previous.then(() => new Promise<void>((resolve) => {
+      release = resolve
+    }))
+    this.officialInstallFinalDirLocks.set(pluginId, current)
+    await previous.catch(() => undefined)
+    try {
+      return await task()
+    } finally {
+      release()
+      if (this.officialInstallFinalDirLocks.get(pluginId) === current) {
+        this.officialInstallFinalDirLocks.delete(pluginId)
+      }
+    }
+  }
+
+  private markOfficialInstallHealthFailed(engineId: string): EnginePluginRegistryRecord | null {
+    const current = this.deps.registryRepo.getByEngineId(engineId)
+    if (!current || current.installState === 'uninstalled') return current
+    const timestamp = this.now()
+    return this.deps.registryRepo.upsert({
+      engineId: current.engineId,
+      displayName: current.displayName,
+      pluginVersion: current.pluginVersion,
+      manifestSchemaVersion: current.manifestSchemaVersion,
+      manifestHash: current.manifestHash,
+      runtimeKind: current.runtimeKind,
+      modelVersion: current.modelVersion,
+      installState: 'installed',
+      enabled: false,
+      healthStatus: 'unhealthy',
+      failureReason: 'health_failed',
+      installSource: current.installSource,
+      installRootKind: current.installRootKind,
+      installRef: current.installRef,
+      installedAt: current.installedAt,
+      updatedAt: timestamp,
+      lastVerifiedAt: current.lastVerifiedAt,
+      lastHealthCheckAt: timestamp,
+      metadataJson: current.metadataJson,
+    })
+  }
+
+  private markOfficialInstallOperationHealthFailed(
+    operation: OfficialInstallOperationRecord,
+    diagnostic: string
+  ): void {
+    operation.failureReason = sanitizeOperationCode('health_failed')
+    operation.diagnosticCode = sanitizeOperationCode(diagnostic)
+    operation.sanitizedDiagnostics = appendSanitizedDiagnostic(operation.sanitizedDiagnostics, diagnostic)
   }
 
   private getActiveOfficialInstallOperation(operationKey: string): OfficialInstallOperationRecord | null {
@@ -764,6 +913,28 @@ export class EnginePluginLifecycleService {
       return null
     }
     return operation
+  }
+
+  private getBlockedTerminalOfficialInstallOperation(
+    pluginId: string,
+    pluginVersion: string
+  ): LifecycleFailureReason | null {
+    const latest = Array.from(this.installOperations.values())
+      .filter((operation) =>
+        operation.pluginId === pluginId &&
+        operation.pluginVersion === pluginVersion &&
+        operation.state === 'failed'
+      )
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null
+    if (!latest?.failureReason) return null
+    return blockedPluginReinstallFailure(latest.failureReason)
+  }
+
+  private isOfficialInstallOperationCurrent(operation: OfficialInstallOperationRecord): boolean {
+    const operationKey = officialInstallOperationKey(operation.pluginId, operation.pluginVersion)
+    return this.installOperations.get(operation.operationId) === operation &&
+      this.inFlightOfficialInstalls.get(operationKey) === operation.operationId &&
+      isOfficialInstallOperationActive(operation.state)
   }
 
   private reconcileOfficialInstallOperation(
@@ -851,11 +1022,10 @@ export class EnginePluginLifecycleService {
     verified: VerifiedOfficialPackageRelease
     release: OfficialPackageReleaseMetadata
     stageDir: string
-    finalDir: string
     pluginId: string
     pluginVersion: string
   }>): Promise<LifecycleActionResult<Readonly<{
-    descriptor: MagikaManagedPluginDescriptor
+    stagedEngineDir: string
     manifestBytes: Uint8Array
   }>>> {
     try {
@@ -886,17 +1056,7 @@ export class EnginePluginLifecycleService {
       return fail('local_package_manifest_hash_missing', 'cannot read installed package manifest for hash calculation')
     }
 
-    try {
-      await promoteOfficialMagikaEngine({ stagedEngineDir, finalDir: input.finalDir })
-    } catch {
-      return fail('official_package_extract_failed', 'official package extraction failed')
-    }
-
-    const installed = await discoverMagikaManagedPlugin({ pluginDirs: [input.finalDir] })
-    if (!installed.available) {
-      return fail('manifest_integrity_failed', 'managed plugin integrity verification failed')
-    }
-    return ok({ descriptor: installed.descriptor, manifestBytes })
+    return ok({ stagedEngineDir, manifestBytes })
   }
 
   private upsertOfficialMagikaInstall(input: Readonly<{
@@ -975,10 +1135,11 @@ export class EnginePluginLifecycleService {
     const record = this.deps.registryRepo.getByEngineId(engineId)
     if (!record) return fail('not_installed', 'plugin record is not found')
 
-    this.deps.registryRepo.markUninstalled({ engineId, updatedAt: this.now() })
+    const uninstalledAt = this.now()
+    this.deps.registryRepo.markUninstalled({ engineId, updatedAt: uninstalledAt })
     const uninstalled = this.deps.registryRepo.getByEngineId(engineId)
     if (!uninstalled) return fail('not_installed', 'plugin record is not found after uninstall')
-    this.markOfficialInstallOperationsStale(engineId, 'operation_stale')
+    this.markOfficialInstallOperationsStale(engineId, 'operation_stale', uninstalledAt)
     return ok(toInstalledDto(uninstalled))
   }
 
@@ -1166,15 +1327,30 @@ export class EnginePluginLifecycleService {
     return ok(toInstalledDto(healthy))
   }
 
-  private markOfficialInstallOperationsStale(pluginId: string, diagnostic: string): void {
+  private markOfficialInstallOperationsStale(pluginId: string, diagnostic: string, supersededAt: number): void {
     for (const operation of this.installOperations.values()) {
-      if (operation.pluginId !== pluginId || !isOfficialInstallOperationActive(operation.state)) continue
-      operation.failureReason = sanitizeOperationCode('operation_stale')
-      operation.diagnosticCode = sanitizeOperationCode(diagnostic)
-      operation.sanitizedDiagnostics = appendSanitizedDiagnostic(operation.sanitizedDiagnostics, diagnostic)
-      this.transitionOfficialInstallOperation(operation, 'stale')
-      this.clearInFlightOfficialInstall(operation)
+      if (operation.pluginId !== pluginId || operation.startedAt > supersededAt) continue
+      this.supersedeOfficialInstallOperation(operation, diagnostic, supersededAt)
     }
+  }
+
+  private supersedeOfficialInstallOperation(
+    operation: OfficialInstallOperationRecord,
+    diagnostic: string,
+    supersededAt: number
+  ): void {
+    operation.failureReason = sanitizeOperationCode('operation_stale')
+    operation.diagnosticCode = sanitizeOperationCode(diagnostic)
+    operation.sanitizedDiagnostics = appendSanitizedDiagnostic(operation.sanitizedDiagnostics, diagnostic)
+    operation.state = 'stale'
+    operation.updatedAt = supersededAt
+    if (operation.terminalAt === null) {
+      operation.terminalAt = supersededAt
+    }
+    if (operation.stateHistory[operation.stateHistory.length - 1] !== 'stale') {
+      operation.stateHistory.push('stale')
+    }
+    this.clearInFlightOfficialInstall(operation)
   }
 
   private getRecommendedInstallRootKind(): 'managed_root' | 'test_root' {

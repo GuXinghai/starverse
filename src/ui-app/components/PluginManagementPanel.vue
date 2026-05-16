@@ -12,10 +12,8 @@ import {
   uninstallPlugin,
 } from '@/next/files/enginePluginLifecycleClient'
 import {
-  buildPdpManagementActions,
+  buildPluginManagementStateFromSources,
   buildPdpManagementViewModel,
-  isOfficialInstallOperationActive,
-  isOfficialInstallOperationTerminal,
   labelOfficialInstallOperationPhase,
   labelPdpHealthStatus,
   labelPdpInstallState,
@@ -26,6 +24,7 @@ import {
   type PdpManagementCatalogInput,
   type PdpManagementPluginViewModel,
   type PdpManagementRegistryInput,
+  type PdpPluginManagementStateFromSources,
 } from '@/next/plugin-distribution/browser'
 import type {
   DecodedDiagnosticsSummary,
@@ -44,6 +43,8 @@ type PluginPanelRow = Readonly<{
   plugin: PdpManagementPluginViewModel
   engineId: string | null
   installOperation: DecodedOfficialInstallOperation | null
+  registryRecord: PdpManagementRegistryInput | null
+  managementState: PdpPluginManagementStateFromSources
 }>
 
 type UiAction = PdpManagementAction & Readonly<{ clickable: boolean }>
@@ -55,6 +56,19 @@ const rows = ref<PluginPanelRow[]>([])
 const diagnosticsSummary = ref<DecodedDiagnosticsSummary | null>(null)
 const installOperations = ref<Record<string, DecodedOfficialInstallOperation>>({})
 let installPollTimer: ReturnType<typeof setInterval> | null = null
+
+const PANEL_ACTION_OPTIONS = {
+  hasOfficialRemoteInstallContract: true,
+  hasLocalManualRegistrationContract: false,
+  hasPackageVerificationContract: false,
+  hasHealthCheckContract: true,
+  hasMetadataUninstallContract: true,
+  hasEnableDisableContract: true,
+  hasUpdateEligibilityContract: false,
+  hasStageUpdateContract: false,
+  hasRollbackMetadataContract: false,
+  hasQuarantineAcknowledgementContract: false,
+} as const
 
 const summaryText = computed(() => {
   const counts = diagnosticsSummary.value?.counts
@@ -101,28 +115,46 @@ async function loadData(options?: Readonly<{ preserveMessages?: boolean; silent?
       registryRecords,
       updates: installed.filter((item) => item.installState === 'update_available').map(toUpdateInput),
     })
-    rows.value = viewModel.plugins.map((plugin) => ({
-      plugin,
-      engineId: installed.find((item) =>
-        item.engineId === plugin.id && item.pluginVersion === plugin.pluginVersion
-      )?.engineId ?? null,
-      installOperation: installOperations.value[installOperationKey(plugin.id, plugin.pluginVersion)] ?? null,
-    }))
-    const hasActiveInstallOperation = rows.value.some((row) => isActiveInstallOperation(row.installOperation))
-    if (rows.value.some((row) => isPollingInstallOperation(row))) {
-      ensureInstallPoller()
-      if (!hasActiveInstallOperation) {
-        applyTerminalInstallOperationMessage()
+    const catalogByKey = new Map(catalogEntries.map((entry) => [
+      installOperationKey(entry.pluginId, entry.pluginVersion),
+      entry,
+    ]))
+    const registryByKey = new Map(registryRecords.map((record) => [
+      installOperationKey(record.pluginId, record.pluginVersion),
+      record,
+    ]))
+    rows.value = viewModel.plugins.map((plugin) => {
+      const key = installOperationKey(plugin.id, plugin.pluginVersion)
+      const operation = installOperations.value[key] ?? null
+      const managementState = buildPluginManagementStateFromSources({
+        plugin,
+        catalogEntry: catalogByKey.get(key) ?? null,
+        registryRecord: registryByKey.get(key) ?? null,
+        installOperation: operation,
+        actionOptions: PANEL_ACTION_OPTIONS,
+      })
+      return {
+        plugin,
+        engineId: installed.find((item) =>
+          item.engineId === plugin.id && item.pluginVersion === plugin.pluginVersion
+        )?.engineId ?? null,
+        installOperation: managementState.installOperation.visible ? operation : null,
+        registryRecord: registryByKey.get(key) ?? null,
+        managementState,
       }
+    })
+    pruneSupersededInstallOperations(rows.value)
+    if (rows.value.some((row) => row.managementState.installOperation.shouldPoll)) {
+      ensureInstallPoller()
     } else {
       stopInstallPoller()
-      applyTerminalInstallOperationMessage()
     }
+    applyInstallOperationMessage()
     if (!official.ok) {
       error.value = sanitizePdpManagementText(official.reason, 'Official catalog unavailable')
     }
   } catch (err: any) {
-    error.value = sanitizePdpManagementText(err?.message ?? String(err), 'Plugin management unavailable')
+    error.value = formatLifecycleError(err, 'Plugin management unavailable')
     rows.value = []
   } finally {
     if (!options?.silent) loading.value = false
@@ -157,7 +189,13 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
   try {
     if (action.id === 'install_official_plugin') {
       localInstallKey = installOperationKey(row.plugin.id, row.plugin.pluginVersion)
-      if (isActiveInstallOperation(installOperations.value[localInstallKey] ?? row.installOperation)) {
+      const currentState = buildPluginManagementStateFromSources({
+        plugin: row.plugin,
+        registryRecord: row.registryRecord,
+        installOperation: installOperations.value[localInstallKey] ?? row.installOperation,
+        actionOptions: PANEL_ACTION_OPTIONS,
+      })
+      if (currentState.installOperation.active) {
         statusMessage.value = `${action.label}: ${installOperationLabel('downloading')}`
         return
       }
@@ -170,7 +208,12 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
       if (result.ok) {
         upsertInstallOperation(result.value)
         statusMessage.value = `${action.label}: ${installOperationSummary(result.value)}`
-        if (isActiveInstallOperation(result.value)) {
+        if (buildPluginManagementStateFromSources({
+          plugin: row.plugin,
+          registryRecord: row.registryRecord,
+          installOperation: result.value,
+          actionOptions: PANEL_ACTION_OPTIONS,
+        }).installOperation.active) {
           ensureInstallPoller()
         }
       } else {
@@ -210,7 +253,6 @@ async function invokeLifecycleAction(
 }
 
 function uiActions(row: PluginPanelRow): readonly UiAction[] {
-  const plugin = row.plugin
   const clickable = new Set<PdpManagementActionId>([
     'enable',
     'disable',
@@ -218,37 +260,12 @@ function uiActions(row: PluginPanelRow): readonly UiAction[] {
     'check_health',
     'install_official_plugin',
   ])
-  const actionSet = buildPdpManagementActions(plugin, {
-    hasOfficialRemoteInstallContract: true,
-    hasLocalManualRegistrationContract: false,
-    hasPackageVerificationContract: false,
-    hasHealthCheckContract: true,
-    hasMetadataUninstallContract: true,
-    hasEnableDisableContract: true,
-    hasUpdateEligibilityContract: false,
-    hasStageUpdateContract: false,
-    hasRollbackMetadataContract: false,
-    hasQuarantineAcknowledgementContract: false,
-  })
-  return actionSet.actions.map((action) => {
+  return row.managementState.actions.actions.map((action) => {
     const isClickable = clickable.has(action.id)
     if (isClickable) {
-      const installInProgress = action.id === 'install_official_plugin' &&
-        isActiveInstallOperation(row.installOperation)
-      const installAwaitingRegistry = action.id === 'install_official_plugin' &&
-        row.installOperation?.state === 'installed' &&
-        row.plugin.status.installState !== 'installed' &&
-        row.plugin.status.installState !== 'failed'
-      const installBlocked = installInProgress || installAwaitingRegistry
       return {
         ...action,
-        enabled: installBlocked ? false : action.enabled,
         clickable: true,
-        reasonCodes: installInProgress
-          ? ['install_in_progress']
-          : installAwaitingRegistry
-            ? ['install_reconciling']
-            : action.reasonCodes,
       }
     }
     if (
@@ -304,6 +321,7 @@ function toRegistryRecord(item: DecodedInstalledPlugin): PdpManagementRegistryIn
     enabled: item.enabled,
     healthStatus: mapHealthStatus(item),
     failureReason: item.failureReason,
+    updatedAt: item.updatedAt,
     diagnostics: item.failureReason ? [item.failureReason] : [],
   }
 }
@@ -364,7 +382,7 @@ function upsertInstallOperation(operation: DecodedOfficialInstallOperation): voi
   }
   rows.value = rows.value.map((row) => (
     installOperationKey(row.plugin.id, row.plugin.pluginVersion) === key
-      ? { ...row, installOperation: operation }
+      ? refreshRowManagementState({ ...row, installOperation: operation })
       : row
   ))
 }
@@ -375,25 +393,23 @@ function removeInstallOperation(key: string): void {
   installOperations.value = next
   rows.value = rows.value.map((row) => (
     installOperationKey(row.plugin.id, row.plugin.pluginVersion) === key
-      ? { ...row, installOperation: null }
+      ? refreshRowManagementState({ ...row, installOperation: null })
       : row
   ))
 }
 
-function isActiveInstallOperation(operation: DecodedOfficialInstallOperation | null): boolean {
-  return Boolean(operation && isOfficialInstallOperationActive(operation.state))
-}
-
-function isTerminalInstallOperation(operation: DecodedOfficialInstallOperation | null): boolean {
-  return Boolean(operation && isOfficialInstallOperationTerminal(operation.state))
-}
-
-function isPollingInstallOperation(row: PluginPanelRow): boolean {
-  return isActiveInstallOperation(row.installOperation) || (
-    row.installOperation?.state === 'installed' &&
-    row.plugin.status.installState !== 'installed' &&
-    row.plugin.status.installState !== 'failed'
-  )
+function refreshRowManagementState(row: PluginPanelRow): PluginPanelRow {
+  const managementState = buildPluginManagementStateFromSources({
+    plugin: row.plugin,
+    registryRecord: row.registryRecord,
+    installOperation: row.installOperation,
+    actionOptions: PANEL_ACTION_OPTIONS,
+  })
+  return {
+    ...row,
+    managementState,
+    installOperation: managementState.installOperation.visible ? row.installOperation : null,
+  }
 }
 
 function hasInstalledPlugin(
@@ -416,41 +432,51 @@ function installOperationSummary(operation: DecodedOfficialInstallOperation): st
   return installOperationLabel(operation.state)
 }
 
-function applyTerminalInstallOperationMessage(): void {
-  const operation = rows.value
-    .map((row) => row.installOperation)
-    .filter((item): item is DecodedOfficialInstallOperation => isTerminalInstallOperation(item))
-    .sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null
+function applyInstallOperationMessage(): void {
+  const projections = rows.value
+    .map((row) => row.managementState.installOperation)
+    .filter((projection) => projection.visible)
 
-  if (!operation) {
-    if (statusMessage.value?.startsWith('Install official plugin:')) {
-      statusMessage.value = null
-    }
-    return
-  }
-
-  const summary = installOperationSummary(operation)
-  if (operation.state === 'failed' || operation.state === 'cancelled' || operation.state === 'stale') {
-    const reason = installOperationFailureReason(operation)
-    error.value = reason && !summary.includes(reason)
-      ? `${summary}: ${reason}`
-      : summary
-    if (statusMessage.value?.startsWith('Install official plugin:')) {
-      statusMessage.value = null
-    }
-    return
-  }
-
-  if (operation.state === 'installed') {
-    const installed = rows.value.some((row) =>
-      row.installOperation?.operationId === operation.operationId &&
-      row.plugin.status.installState === 'installed'
-    )
+  const active = projections.find((projection) => projection.active && projection.bannerMessage)
+  if (active?.bannerMessage) {
     error.value = null
-    statusMessage.value = installed
-      ? `Install official plugin: ${summary}`
-      : 'Install official plugin: Reconciling installed registry state'
+    statusMessage.value = active.bannerMessage
+    return
   }
+
+  const failed = projections.find((projection) => projection.errorMessage)
+  if (failed?.errorMessage) {
+    error.value = failed.errorMessage
+    if (statusMessage.value?.startsWith('Install official plugin:')) {
+      statusMessage.value = null
+    }
+    return
+  }
+
+  const reconciling = projections.find((projection) => projection.bannerMessage)
+  if (reconciling?.bannerMessage) {
+    error.value = null
+    statusMessage.value = reconciling.bannerMessage
+    return
+  }
+
+  if (statusMessage.value?.startsWith('Install official plugin:')) {
+    statusMessage.value = null
+  }
+}
+
+function pruneSupersededInstallOperations(nextRows: readonly PluginPanelRow[]): void {
+  const next = { ...installOperations.value }
+  let changed = false
+  for (const row of nextRows) {
+    if (!row.managementState.installOperation.superseded) continue
+    const key = installOperationKey(row.plugin.id, row.plugin.pluginVersion)
+    if (next[key]) {
+      delete next[key]
+      changed = true
+    }
+  }
+  if (changed) installOperations.value = next
 }
 
 function installOperationFailureReason(operation: DecodedOfficialInstallOperation): string {
@@ -474,11 +500,15 @@ function stopInstallPoller(): void {
 }
 
 function formatActionError(action: UiAction, err: any): string {
+  return formatLifecycleError(err, `${action.label} failed`, action.label)
+}
+
+function formatLifecycleError(err: any, fallback: string, actionLabel?: string): string {
   const raw = err?.message ?? String(err)
-  if (action.id === 'install_official_plugin' && /DB worker call timed out/iu.test(raw)) {
-    return `${action.label} status unavailable`
+  if (/DbWorkerError|DB worker call timed out|fetch failed|stack trace/iu.test(raw)) {
+    return actionLabel ? `${actionLabel} status unavailable` : fallback
   }
-  return sanitizePdpManagementText(raw, `${action.label} failed`)
+  return sanitizePdpManagementText(raw, fallback)
 }
 </script>
 

@@ -1,7 +1,14 @@
 /* eslint-disable max-lines-per-function */
 import { describe, expect, it } from 'vitest'
-import type { PdpPluginRegistryRecord } from './registryModel'
-import { buildPdpManagementViewModel, type PdpManagementCatalogInput } from './managementViewModel'
+import {
+  buildPdpManagementViewModel,
+  type PdpManagementCatalogInput,
+  type PdpManagementRegistryInput,
+} from './managementViewModel'
+import {
+  buildPluginManagementStateFromSources,
+  type PdpManagementInstallOperationInput,
+} from './managementStateMachine'
 
 function catalogEntry(overrides?: Partial<PdpManagementCatalogInput>): PdpManagementCatalogInput {
   return {
@@ -20,15 +27,13 @@ function catalogEntry(overrides?: Partial<PdpManagementCatalogInput>): PdpManage
   }
 }
 
-function registryRecord(overrides?: Partial<PdpPluginRegistryRecord>): PdpPluginRegistryRecord {
+function registryRecord(overrides?: Partial<PdpManagementRegistryInput>): PdpManagementRegistryInput {
   return {
     pluginId: 'magika-managed',
     pluginVersion: '1.2.3',
     runtimeKind: 'managed',
     controlledRootKind: 'user_local',
     installSource: 'manual_local',
-    installRef: 'install_magika_1_2_3',
-    packageRef: 'package_magika_1_2_3',
     registryState: 'enabled',
     installState: 'installed',
     verificationStatus: 'verified',
@@ -36,6 +41,35 @@ function registryRecord(overrides?: Partial<PdpPluginRegistryRecord>): PdpPlugin
     healthStatus: 'healthy',
     failureReason: null,
     diagnostics: [],
+    ...overrides,
+  }
+}
+
+function installOperation(
+  overrides?: Partial<PdpManagementInstallOperationInput>
+): PdpManagementInstallOperationInput {
+  const state = overrides?.state ?? 'downloading'
+  return {
+    operationId: 'official-install-magika-managed-1.2.3-1',
+    pluginId: 'magika-managed',
+    pluginVersion: '1.2.3',
+    state,
+    progressSummary: state === 'downloading'
+      ? 'Downloading official package'
+      : state === 'verifying'
+        ? 'Verifying signature'
+        : state === 'registering'
+          ? 'Registering plugin'
+          : state === 'installed'
+            ? 'Installed'
+            : state === 'failed'
+              ? 'Install failed'
+              : 'Preparing install',
+    failureReason: null,
+    diagnosticCode: null,
+    startedAt: 100,
+    updatedAt: 110,
+    terminalAt: null,
     ...overrides,
   }
 }
@@ -236,5 +270,364 @@ describe('buildPdpManagementViewModel', () => {
     ])
     expect(vm.plugins[0]?.status.lifecycle).toBe('catalog_only')
     expect(vm.plugins[1]?.status.lifecycle).toBe('enabled')
+  })
+})
+
+describe('buildPluginManagementStateFromSources', () => {
+  const installableCatalog = catalogEntry({
+    installabilityStatus: 'official_remote_install_available',
+    verificationMetadataStatus: 'production_signature_available',
+    reasons: ['official_remote_install_available', 'production_signature_available', 'verify_before_install'],
+  })
+  const actionOptions = { hasOfficialRemoteInstallContract: true }
+
+  it('makes catalog-only Magika installable and not counted as registered', () => {
+    const state = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      actionOptions,
+    })
+
+    expect(state.lifecycle).toBe('catalog_only')
+    expect(state.summaryContribution).toEqual({ registered: 0, enabled: 0, healthy: 0, failed: 0 })
+    expect(state.actions.actions.find((action) => action.id === 'install_official_plugin')).toMatchObject({
+      enabled: true,
+      reasonCodes: [],
+    })
+  })
+
+  it.each([
+    ['downloading', 'Downloading official package'],
+    ['verifying', 'Verifying signature'],
+    ['registering', 'Registering plugin'],
+  ] as const)('keeps active %s progress visible across refresh', (operationState, label) => {
+    const state = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      installOperation: installOperation({
+        state: operationState,
+        progressSummary: label,
+      }),
+      actionOptions,
+    })
+
+    expect(state.installOperation.visible).toBe(true)
+    expect(state.installOperation.shouldPoll).toBe(true)
+    expect(state.installOperation.bannerMessage).toBe(`Install official plugin: ${label}`)
+    expect(state.actions.actions.find((action) => action.id === 'install_official_plugin')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['install_in_progress'],
+    })
+  })
+
+  it('lets registry installed state win over stale active or terminal operation state', () => {
+    const staleDownload = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      registryRecord: registryRecord({ updatedAt: 200, enabled: false }),
+      installOperation: installOperation({ state: 'downloading', updatedAt: 120 }),
+      actionOptions,
+    })
+    const terminalInstalled = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      registryRecord: registryRecord({ updatedAt: 200, enabled: false }),
+      installOperation: installOperation({
+        state: 'installed',
+        progressSummary: 'Installed',
+        terminalAt: 120,
+        updatedAt: 120,
+      }),
+      actionOptions,
+    })
+
+    expect(staleDownload.lifecycle).toBe('registered')
+    expect(staleDownload.installOperation.visible).toBe(false)
+    expect(terminalInstalled.installOperation.visible).toBe(false)
+    expect(terminalInstalled.summaryContribution.registered).toBe(1)
+  })
+
+  it('shows temporary reconciling only while terminal installed has no registry confirmation', () => {
+    const reconciling = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      installOperation: installOperation({
+        state: 'installed',
+        progressSummary: 'Installed',
+        terminalAt: 120,
+        updatedAt: 120,
+      }),
+      actionOptions,
+    })
+    const stale = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      installOperation: installOperation({
+        state: 'installed',
+        progressSummary: 'Installed',
+        terminalAt: 120,
+        updatedAt: 120,
+      }),
+      actionOptions,
+      now: 200_000,
+      reconcileGraceMs: 1_000,
+    })
+
+    expect(reconciling.installOperation.bannerMessage).toBe(
+      'Install official plugin: Reconciling installed registry state'
+    )
+    expect(reconciling.actions.actions.find((action) => action.id === 'install_official_plugin')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['install_reconciling'],
+    })
+    expect(stale.installOperation.visible).toBe(false)
+    expect(stale.actions.actions.find((action) => action.id === 'install_official_plugin')).toMatchObject({
+      enabled: true,
+    })
+  })
+
+  it('lets uninstalled tombstone state supersede old install operations and remain installable', () => {
+    const state = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      registryRecord: registryRecord({
+        registryState: 'uninstalled',
+        installState: 'uninstalled',
+        enabled: false,
+        healthStatus: 'unknown',
+        verificationStatus: 'verified',
+        failureReason: null,
+        updatedAt: 200,
+      }),
+      installOperation: installOperation({
+        state: 'installed',
+        progressSummary: 'Installed',
+        terminalAt: 120,
+        updatedAt: 120,
+      }),
+      actionOptions,
+    })
+
+    expect(state.lifecycle).toBe('uninstalled')
+    expect(state.installOperation.visible).toBe(false)
+    expect(state.summaryContribution).toEqual({ registered: 0, enabled: 0, healthy: 0, failed: 0 })
+    expect(state.actions.actions.find((action) => action.id === 'install_official_plugin')).toMatchObject({
+      enabled: true,
+      reasonCodes: [],
+    })
+  })
+
+  it('keeps terminal installed reconciling when an uninstalled registry snapshot is stale', () => {
+    const state = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      registryRecord: registryRecord({
+        registryState: 'uninstalled',
+        installState: 'uninstalled',
+        enabled: false,
+        healthStatus: 'unknown',
+        verificationStatus: 'verified',
+        failureReason: null,
+        updatedAt: 90,
+      }),
+      installOperation: installOperation({
+        state: 'installed',
+        progressSummary: 'Installed',
+        updatedAt: 120,
+        terminalAt: 120,
+      }),
+      actionOptions,
+    })
+
+    expect(state.installOperation.visible).toBe(true)
+    expect(state.installOperation.shouldPoll).toBe(true)
+    expect(state.installOperation.bannerMessage).toBe(
+      'Install official plugin: Reconciling installed registry state'
+    )
+    expect(state.actions.actions.find((action) => action.id === 'install_official_plugin')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['install_reconciling'],
+    })
+  })
+
+  it('hides terminal installed operations when a newer uninstalled registry state supersedes them', () => {
+    const state = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      registryRecord: registryRecord({
+        registryState: 'uninstalled',
+        installState: 'uninstalled',
+        enabled: false,
+        healthStatus: 'unknown',
+        verificationStatus: 'verified',
+        failureReason: null,
+        updatedAt: 130,
+      }),
+      installOperation: installOperation({
+        state: 'installed',
+        progressSummary: 'Installed',
+        updatedAt: 120,
+        terminalAt: 120,
+      }),
+      actionOptions,
+    })
+
+    expect(state.installOperation.visible).toBe(false)
+    expect(state.installOperation.superseded).toBe(true)
+    expect(state.actions.actions.find((action) => action.id === 'install_official_plugin')).toMatchObject({
+      enabled: true,
+      reasonCodes: [],
+    })
+  })
+
+  it('does not hide terminal failures behind uninstalled rows older than the failure', () => {
+    const state = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      registryRecord: registryRecord({
+        registryState: 'uninstalled',
+        installState: 'uninstalled',
+        enabled: false,
+        healthStatus: 'unknown',
+        verificationStatus: 'verified',
+        failureReason: null,
+        updatedAt: 110,
+      }),
+      installOperation: installOperation({
+        state: 'failed',
+        progressSummary: 'Install failed: registration_failed',
+        failureReason: 'registration_failed',
+        diagnosticCode: 'registration_failed',
+        updatedAt: 120,
+        terminalAt: 120,
+      }),
+      actionOptions,
+    })
+
+    expect(state.installOperation.visible).toBe(true)
+    expect(state.installOperation.errorMessage).toBe('Install failed: registration_failed')
+    expect(state.installOperation.failureDisplay).toBe('registration_failed')
+  })
+
+  it('keeps terminal failures visible while applying retry policy by failure class', () => {
+    const downloadFailed = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      installOperation: installOperation({
+        state: 'failed',
+        progressSummary: 'Install failed: download_failed',
+        failureReason: 'download_failed',
+        diagnosticCode: 'download_failed',
+        terminalAt: 120,
+      }),
+      actionOptions,
+    })
+    const signatureInvalid = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      installOperation: installOperation({
+        state: 'failed',
+        progressSummary: 'Install failed: signature_invalid',
+        failureReason: 'signature_invalid',
+        diagnosticCode: 'signature_invalid',
+        terminalAt: 120,
+      }),
+      actionOptions,
+    })
+
+    expect(downloadFailed.installOperation.errorMessage).toBe('Install failed: download_failed')
+    expect(downloadFailed.actions.actions.find((action) => action.id === 'install_official_plugin')).toMatchObject({
+      enabled: true,
+    })
+    expect(signatureInvalid.installOperation.errorMessage).toBe('Install failed: signature_invalid')
+    expect(signatureInvalid.actions.actions.find((action) => action.id === 'install_official_plugin')).toMatchObject({
+      enabled: false,
+      reasonCodes: ['signature_invalid'],
+    })
+  })
+
+  it('does not hide terminal failures behind registry rows older than the failure', () => {
+    const state = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      registryRecord: registryRecord({
+        enabled: false,
+        healthStatus: 'healthy',
+        updatedAt: 110,
+      }),
+      installOperation: installOperation({
+        state: 'failed',
+        progressSummary: 'Install failed: registration_failed',
+        failureReason: 'registration_failed',
+        diagnosticCode: 'registration_failed',
+        updatedAt: 120,
+        terminalAt: 120,
+      }),
+      actionOptions,
+    })
+
+    expect(state.installOperation.visible).toBe(true)
+    expect(state.installOperation.errorMessage).toBe('Install failed: registration_failed')
+    expect(state.installOperation.failureDisplay).toBe('registration_failed')
+  })
+
+  it('keeps health failures as registered health failures instead of failed installs when registry succeeded', () => {
+    const state = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      registryRecord: registryRecord({
+        enabled: false,
+        healthStatus: 'failed',
+        failureReason: 'health_failed',
+        updatedAt: 200,
+      }),
+      installOperation: installOperation({
+        state: 'failed',
+        progressSummary: 'Install failed: health_failed',
+        failureReason: 'health_failed',
+        diagnosticCode: 'health_failed',
+        terminalAt: 120,
+      }),
+      actionOptions,
+    })
+
+    expect(state.lifecycle).toBe('registered')
+    expect(state.installOperation.visible).toBe(false)
+    expect(state.summaryContribution).toEqual({ registered: 1, enabled: 0, healthy: 0, failed: 1 })
+    expect(state.plugin.reasonCodes).toContain('health_failed')
+  })
+
+  it('keeps newer terminal health failures visible when registry state is stale', () => {
+    const state = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      registryRecord: registryRecord({
+        enabled: false,
+        healthStatus: 'healthy',
+        updatedAt: 90,
+      }),
+      installOperation: installOperation({
+        state: 'failed',
+        progressSummary: 'Install failed: health_failed',
+        failureReason: 'health_failed',
+        diagnosticCode: 'health_failed',
+        updatedAt: 120,
+        terminalAt: 120,
+      }),
+      actionOptions,
+    })
+
+    expect(state.installOperation.visible).toBe(true)
+    expect(state.installOperation.errorMessage).toBe('Install failed: health_failed')
+    expect(state.installOperation.failureDisplay).toBe('health_failed')
+  })
+
+  it('hides terminal health failures once a newer installed registry state is observed', () => {
+    const state = buildPluginManagementStateFromSources({
+      catalogEntry: installableCatalog,
+      registryRecord: registryRecord({
+        enabled: false,
+        healthStatus: 'failed',
+        failureReason: 'health_failed',
+        updatedAt: 130,
+      }),
+      installOperation: installOperation({
+        state: 'failed',
+        progressSummary: 'Install failed: health_failed',
+        failureReason: 'health_failed',
+        diagnosticCode: 'health_failed',
+        updatedAt: 120,
+        terminalAt: 120,
+      }),
+      actionOptions,
+    })
+
+    expect(state.installOperation.visible).toBe(false)
+    expect(state.summaryContribution).toEqual({ registered: 1, enabled: 0, healthy: 0, failed: 1 })
   })
 })
