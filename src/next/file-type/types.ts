@@ -239,7 +239,7 @@ export type FileTypeVerdictProvenance = Readonly<{
   detectionTrigger: FileTypeDetectionTrigger
   routeEligibility: FileTypeRouteEligibility
   magikaModelVersion: string | null
-  advancedAttempted?: boolean
+  advancedAttempted: boolean
   advancedFailureReason?: string | null
 }>
 

@@ -53,7 +53,7 @@ function makeAttachmentPlan(
         : overrides.aiPayloadKind === 'binary'
           ? 'unsupported'
           : 'file_attachment',
-      mappedFromLegacy: true,
+      mappedFromLegacy: false,
     },
     selectedSendMode: overrides.selectedSendMode,
     fallbackSendModes: overrides.fallbackSendModes ?? [],
@@ -728,7 +728,7 @@ describe('openRouterSendPlanSerializer', () => {
           semantic: {
             targetKind: 'markdown',
             sendStrategy: 'text_in_prompt',
-            mappedFromLegacy: true,
+            mappedFromLegacy: false,
           },
         }),
       ]),
