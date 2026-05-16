@@ -557,6 +557,22 @@ export const PreviewEnsureSchema: ZodType<PreviewEnsureInput> = z.object({
 export const DetectFileTypeSchema: ZodType<DetectFileTypeInput> = z.object({
   assetId: z.string().min(1),
   forceRedetect: z.boolean().optional(),
+  detectionTrigger: z.enum([
+    'upload',
+    'send_plan_build',
+    'preview_request',
+    'conversion_request',
+    'manual_redetect',
+    'background_upgrade',
+  ]).optional(),
+  magikaState: z.enum([
+    'not_installed',
+    'disabled',
+    'unavailable',
+    'available',
+    'failed',
+    'not_requested',
+  ]).optional(),
 })
 
 export const MarkFileTypeVerdictStaleSchema: ZodType<MarkFileTypeVerdictStaleInput> = z.object({
