@@ -105,12 +105,13 @@ import { buildCurrentSendPlan } from '@/next/files/sendPlanClient'
 import type {
   SendPlan,
   SendPlanAttachment,
+  SendPlanAttachmentDetectionSummary,
   SendPlanAttachmentFileTypeSummary,
   SendPlanModelDescriptor,
   SendPlanProviderContext,
 } from '@/shared/files/sendPlanTypes'
 import type { DraftAttachmentSendModePreference, DraftAttachmentUrlRetentionPreference, SendMode } from '@/shared/files/fileTypes'
-import type { MessageAttachmentDisplayStatus, MessageAttachmentFileTypeInfo, MessageAttachmentVM } from '@/ui-kit/chat/types'
+import type { MessageAttachmentDetectionInfo, MessageAttachmentDisplayStatus, MessageAttachmentFileTypeInfo, MessageAttachmentVM } from '@/ui-kit/chat/types'
 import type {
   DecodedConversationDraft,
   DecodedDraftAttachment,
@@ -261,6 +262,9 @@ export function useAppChatAppLogic() {
   const composerImageInputSupportReason = ref<string | null>(null)
   type DraftAttachmentDisplayStatus =
     | 'parsing'
+    | 'detection_pending'
+    | 'detection_failed'
+    | 'detection_required'
     | 'ready'
     | 'ready_with_warnings'
     | 'incompatible_with_current_model'
@@ -293,6 +297,7 @@ export function useAppChatAppLogic() {
     warningReason: string | null
     blockingReason: string | null
     fileTypeInfo: MessageAttachmentFileTypeInfo | null
+    detectionInfo: MessageAttachmentDetectionInfo | null
     previewDataUrl: string | null
     canRemove: boolean
   }>
@@ -4034,6 +4039,9 @@ export function useAppChatAppLogic() {
     asset: DecodedFileAsset | null | undefined,
   ): DraftAttachmentDisplayStatus {
     if (plan?.displayStatus === 'parsing') return 'parsing'
+    if (plan?.displayStatus === 'detection_pending') return 'detection_pending'
+    if (plan?.displayStatus === 'detection_failed') return 'detection_failed'
+    if (plan?.displayStatus === 'detection_required') return 'detection_required'
     if (plan?.displayStatus === 'incompatible_with_current_model') return 'incompatible_with_current_model'
     if (plan?.displayStatus === 'ready_with_warnings') return 'ready_with_warnings'
     if (plan?.displayStatus === 'unsupported') return 'unsupported'
@@ -4076,6 +4084,9 @@ export function useAppChatAppLogic() {
     if (plan?.notes?.length) return plan.notes[0] ?? null
     if (plan?.exclusionReason) return plan.exclusionReason
     if (status === 'parsing') return 'Attachment is still parsing.'
+    if (status === 'detection_pending') return 'File type detection is still running.'
+    if (status === 'detection_required') return 'File type detection is required before sending.'
+    if (status === 'detection_failed') return 'File type detection failed. Retry detection before sending.'
     if (status === 'incompatible_with_current_model') return 'Current model does not support this attachment.'
     if (status === 'unsupported') return 'This attachment type is unsupported.'
     return 'Attachment is not ready to send.'
@@ -4103,6 +4114,25 @@ export function useAppChatAppLogic() {
     }
   }
 
+  function mapSendPlanDetectionInfo(
+    detection: SendPlanAttachmentDetectionSummary | null | undefined
+  ): MessageAttachmentDetectionInfo | null {
+    if (!detection) return null
+    return {
+      routeEligibility: detection.routeEligibility,
+      detectionLevel: detection.detectionLevel ?? null,
+      engineMode: detection.engineMode ?? null,
+      usedMagika: detection.usedMagika,
+      magikaState: detection.magikaState,
+      evidenceSources: [...detection.evidenceSources],
+      decisiveEvidenceSource: detection.decisiveEvidenceSource ?? null,
+      detectionTrigger: detection.detectionTrigger ?? null,
+      magikaModelVersion: detection.magikaModelVersion ?? null,
+      advancedAttempted: detection.advancedAttempted,
+      advancedFailureReason: detection.advancedFailureReason ?? null,
+    }
+  }
+
   function buildFallbackDraftAttachmentViewModel(
     attachment: DecodedDraftAttachment,
     asset: DecodedFileAsset | null,
@@ -4124,6 +4154,7 @@ export function useAppChatAppLogic() {
       warningReason: getDraftAttachmentWarningReason(null, status),
       blockingReason: getDraftAttachmentBlockingReason(null, status),
       fileTypeInfo: null,
+      detectionInfo: null,
       previewDataUrl: null,
       canRemove: true,
     }
@@ -4152,6 +4183,7 @@ export function useAppChatAppLogic() {
       warningReason: getDraftAttachmentWarningReason(plan, status),
       blockingReason: getDraftAttachmentBlockingReason(plan, status),
       fileTypeInfo: mapSendPlanFileTypeInfo(plan?.fileType),
+      detectionInfo: mapSendPlanDetectionInfo(plan?.detection),
       previewDataUrl: previewDataUrl,
       canRemove: true,
     }
@@ -4253,6 +4285,7 @@ export function useAppChatAppLogic() {
       previewDataUrl: null,
       iconKind: 'file',
       fileTypeInfo: null,
+      detectionInfo: null,
       createdAt: Date.now(),
     }
   }
@@ -4284,6 +4317,7 @@ export function useAppChatAppLogic() {
       previewDataUrl,
       iconKind: resolveHistoryAttachmentIconKind(asset, attachment),
       fileTypeInfo: mapSendPlanFileTypeInfo(plan?.fileType),
+      detectionInfo: mapSendPlanDetectionInfo(plan?.detection),
       createdAt: asset?.createdAt ?? attachment.createdAt,
     }
   }
@@ -7036,12 +7070,26 @@ export function useAppChatAppLogic() {
     warningReason: string | null
     partialAllowed: boolean
   }> {
-    const hasParsingDraft = sendPlan.attachmentPlans.some((item) => item.source === 'draft' && item.displayStatus === 'parsing')
+    const hasParsingDraft = sendPlan.attachmentPlans.some((item) =>
+      item.source === 'draft' && (item.displayStatus === 'parsing' || item.displayStatus === 'detection_pending')
+    )
     if (hasParsingDraft) {
       return {
         status: sendPlan.status,
         canProceed: false,
-        blockingReason: '附件仍在解析中，完成后才能发送。',
+        blockingReason: '附件仍在解析或检测中，完成后才能发送。',
+        warningReason: null,
+        partialAllowed: false,
+      }
+    }
+    const hasDetectionFailedDraft = sendPlan.attachmentPlans.some((item) =>
+      item.source === 'draft' && (item.displayStatus === 'detection_failed' || item.displayStatus === 'detection_required')
+    )
+    if (hasDetectionFailedDraft) {
+      return {
+        status: sendPlan.status,
+        canProceed: false,
+        blockingReason: '附件文件类型检测未完成或失败，不能发送。',
         warningReason: null,
         partialAllowed: false,
       }

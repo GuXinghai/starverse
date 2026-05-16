@@ -9,7 +9,7 @@ type DraftAttachmentCardViewModel = Readonly<{
   assetKind: string
   aiPayloadKind: string
   sourceKind: string
-  displayStatus: 'parsing' | 'ready' | 'ready_with_warnings' | 'incompatible_with_current_model' | 'failed' | 'unsupported'
+  displayStatus: 'parsing' | 'detection_pending' | 'detection_failed' | 'detection_required' | 'ready' | 'ready_with_warnings' | 'incompatible_with_current_model' | 'failed' | 'unsupported'
   borderTone: 'green' | 'yellow' | 'red' | 'neutral'
   isParsing: boolean
   warningReason: string | null
@@ -29,6 +29,19 @@ type DraftAttachmentCardViewModel = Readonly<{
     warningLabelCodes: string[]
     blockedLabelCodes: string[]
     blockedBy: string[]
+  }> | null
+  detectionInfo: Readonly<{
+    routeEligibility: 'verdict_ready' | 'detection_pending' | 'detection_failed' | 'detection_required'
+    detectionLevel: 'basic' | 'advanced' | 'parser_validated' | null
+    engineMode: 'core_only' | 'core_plus_magika' | 'core_plus_parser' | 'core_plus_external' | null
+    usedMagika: boolean
+    magikaState: 'not_installed' | 'disabled' | 'unavailable' | 'available' | 'failed' | 'not_requested'
+    evidenceSources: string[]
+    decisiveEvidenceSource: string | null
+    detectionTrigger: string | null
+    magikaModelVersion: string | null
+    advancedAttempted: boolean
+    advancedFailureReason: string | null
   }> | null
   previewDataUrl: string | null
   canRemove: boolean

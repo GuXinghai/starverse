@@ -3,6 +3,9 @@ import { computed } from 'vue'
 
 type DraftAttachmentDisplayStatus =
   | 'parsing'
+  | 'detection_pending'
+  | 'detection_failed'
+  | 'detection_required'
   | 'ready'
   | 'ready_with_warnings'
   | 'incompatible_with_current_model'
@@ -40,6 +43,19 @@ type DraftAttachmentCardViewModel = Readonly<{
     blockedLabelCodes: string[]
     blockedBy: string[]
   }> | null
+  detectionInfo: Readonly<{
+    routeEligibility: 'verdict_ready' | 'detection_pending' | 'detection_failed' | 'detection_required'
+    detectionLevel: 'basic' | 'advanced' | 'parser_validated' | null
+    engineMode: 'core_only' | 'core_plus_magika' | 'core_plus_parser' | 'core_plus_external' | null
+    usedMagika: boolean
+    magikaState: 'not_installed' | 'disabled' | 'unavailable' | 'available' | 'failed' | 'not_requested'
+    evidenceSources: string[]
+    decisiveEvidenceSource: string | null
+    detectionTrigger: string | null
+    magikaModelVersion: string | null
+    advancedAttempted: boolean
+    advancedFailureReason: string | null
+  }> | null
   previewDataUrl: string | null
   canRemove: boolean
 }>
@@ -54,6 +70,9 @@ const emit = defineEmits<{
 }>()
 
 const statusLabel = computed(() => {
+  if (props.attachment.displayStatus === 'detection_pending') return '待检测'
+  if (props.attachment.displayStatus === 'detection_required') return '待检测'
+  if (props.attachment.displayStatus === 'detection_failed') return '检测失败'
   const value = props.attachment.displayStatus.replace(/_/g, ' ')
   return value.length > 0 ? value : 'ready'
 })
@@ -90,6 +109,7 @@ function normalizeLabelCode(value: string | null): string | null {
 }
 
 const fileTypeHint = computed(() => props.attachment.fileTypeInfo)
+const detectionInfo = computed(() => props.attachment.detectionInfo)
 const recommendedRouteLabel = computed(() => normalizeLabelCode(fileTypeHint.value?.recommendedRouteLabelCode ?? null))
 const compatibilityLabel = computed(() => {
   const compatibility = fileTypeHint.value?.compatibility ?? 'unknown'
@@ -97,6 +117,33 @@ const compatibilityLabel = computed(() => {
   if (compatibility === 'warning') return 'warning'
   if (compatibility === 'compatible') return 'compatible'
   return 'unknown'
+})
+
+const detectionLabel = computed(() => {
+  const detection = detectionInfo.value
+  if (!detection) return null
+  if (detection.routeEligibility === 'detection_pending' || detection.routeEligibility === 'detection_required') return '待检测'
+  if (detection.routeEligibility === 'detection_failed') {
+    return detection.advancedAttempted ? '高级检测失败 / Magika 检测失败' : '检测失败'
+  }
+  if (detection.detectionLevel === 'advanced' && detection.usedMagika) return '高级检测 · Magika'
+  if (detection.detectionLevel === 'basic') return '基础检测'
+  return '待检测'
+})
+
+const detectionDetail = computed(() => {
+  const detection = detectionInfo.value
+  if (!detection) return null
+  const parts = [
+    `detectionLevel=${detection.detectionLevel ?? 'n/a'}`,
+    `usedMagika=${String(detection.usedMagika)}`,
+    `magikaState=${detection.magikaState}`,
+    `evidenceSources=${detection.evidenceSources.length ? detection.evidenceSources.join(',') : 'none'}`,
+    `decisiveEvidenceSource=${detection.decisiveEvidenceSource ?? 'n/a'}`,
+  ]
+  if (detection.magikaModelVersion) parts.push(`magikaModelVersion=${detection.magikaModelVersion}`)
+  if (detection.advancedFailureReason) parts.push(`advancedFailureReason=${detection.advancedFailureReason}`)
+  return parts.join(' · ')
 })
 
 function removeAttachment() {
@@ -174,6 +221,14 @@ function openDetails() {
         </div>
         <div v-else-if="props.attachment.blockingReason" class="mt-1 text-[11px] text-red-700">
           {{ props.attachment.blockingReason }}
+        </div>
+        <div
+          v-if="detectionLabel"
+          class="mt-1.5 text-[11px]"
+          :class="detectionInfo?.routeEligibility === 'detection_failed' ? 'text-red-700' : 'text-gray-600'"
+          :title="detectionDetail ?? undefined"
+        >
+          {{ detectionLabel }}
         </div>
         <div v-if="fileTypeHint" class="mt-1.5 space-y-0.5 text-[11px] text-gray-600">
           <div>
