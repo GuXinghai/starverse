@@ -46,6 +46,7 @@ export type PdpManagementRegistryInput = Readonly<{
   enabled: boolean
   healthStatus: PluginHealthStatus
   failureReason: string | null
+  updatedAt?: number
   diagnostics?: readonly string[]
 }>
 

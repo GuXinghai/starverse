@@ -316,7 +316,8 @@ describe('PluginManagementPanel', () => {
     expect(container.textContent).not.toMatch(/https?:|contentToken|fullHash/iu)
   })
 
-  it('disables the official install action while an install operation is in progress', async () => {
+  it('keeps downloading visible when Refresh is clicked during an active install', async () => {
+    const user = userEvent.setup()
     ;(globalThis as any).dbBridge = createDbBridgeMock({
       listOfficialPlugins: { ok: true, value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })] },
       listInstalledPlugins: [],
@@ -328,9 +329,14 @@ describe('PluginManagementPanel', () => {
 
     const { container } = render(PluginManagementPanel)
 
+    await screen.findByText('Install official plugin: Downloading official package')
     await screen.findByText('Install: Downloading official package')
     expect(screen.getByRole('button', { name: /Install official plugin/u })).toBeDisabled()
     expect(container.textContent).toContain('install_in_progress')
+
+    await user.click(screen.getByRole('button', { name: 'Refresh' }))
+    await screen.findByText('Install official plugin: Downloading official package')
+    expect(container.textContent).toContain('Install: Downloading official package')
   })
 
   it('renders backend install operation phases while polling', async () => {
@@ -443,10 +449,10 @@ describe('PluginManagementPanel', () => {
 
     const { container } = render(PluginManagementPanel)
 
-    await screen.findByText('Install official plugin: Installed')
-    expect(screen.getByText('Install: Installed')).toBeTruthy()
+    await waitFor(() => expect(container.textContent).toContain('1 registered, 0 enabled, 1 healthy, 0 failed'))
     expect(installedCalls).toBeGreaterThan(1)
-    expect(container.textContent).toContain('1 registered, 0 enabled, 1 healthy, 0 failed')
+    expect(container.textContent).not.toContain('Reconciling installed registry state')
+    expect(container.textContent).not.toContain('Install: Installed')
     expect(screen.getByRole('button', { name: /Install official plugin/u })).toBeDisabled()
   })
 
@@ -501,7 +507,7 @@ describe('PluginManagementPanel', () => {
 
     const { container } = render(PluginManagementPanel)
 
-    await screen.findByText('Install: Installed')
+    await screen.findByText('Install failed')
     expect(container.textContent).not.toContain('Install official plugin: Installed')
     expect(screen.getByRole('button', { name: 'Install official plugin' })).toBeEnabled()
     expect(container.textContent).not.toContain('install_reconciling')
@@ -655,6 +661,96 @@ describe('PluginManagementPanel', () => {
     expect(screen.getByRole('button', { name: /^Enable/u })).toBeDisabled()
     expect(screen.getByRole('button', { name: /^Check health/u })).toBeDisabled()
     expect(screen.getByRole('button', { name: /^Uninstall metadata/u })).toBeDisabled()
+  })
+
+  it('clears stale reconciling install state after uninstall metadata', async () => {
+    const user = userEvent.setup()
+    let uninstalled = false
+    const bridge = createDbBridgeMock({
+      listOfficialPlugins: {
+        ok: true,
+        value: [
+          officialPlugin({
+            pluginId: 'magika',
+            displayName: 'Magika',
+            pluginVersion: '0.1.0',
+            installabilityStatus: 'official_remote_install_available',
+          }),
+        ],
+      },
+    })
+    bridge.invoke.mockImplementation(async (method: string, params?: unknown) => {
+      if (method === 'enginePluginLifecycle.listInstalledPlugins') {
+        return [
+          installedPlugin({
+            engineId: 'magika',
+            displayName: 'Magika',
+            pluginVersion: '0.1.0',
+            installState: uninstalled ? 'uninstalled' : 'installed',
+            enabled: false,
+            healthStatus: uninstalled ? 'unknown' : 'healthy',
+            updatedAt: uninstalled ? 300 : 200,
+          }),
+        ]
+      }
+      if (method === 'enginePluginLifecycle.getDiagnosticsSummary') {
+        return {
+          engines: [],
+          counts: uninstalled
+            ? { total: 0, installed: 0, enabled: 0, healthy: 0, failed: 0, unverified: 0 }
+            : { total: 1, installed: 1, enabled: 0, healthy: 1, failed: 0, unverified: 0 },
+        }
+      }
+      if (method === 'enginePluginLifecycle.getInstallOperationStatus') {
+        return {
+          ok: true,
+          value: installOperation({
+            pluginId: 'magika',
+            pluginVersion: '0.1.0',
+            state: 'installed',
+            progressSummary: 'Installed',
+            stateHistory: ['accepted', 'pending', 'downloading', 'verifying', 'staging', 'registering', 'health_checking', 'installed'],
+            startedAt: 100,
+            updatedAt: 150,
+            terminalAt: 150,
+            installedEngineId: 'magika',
+          }),
+        }
+      }
+      if (method === 'enginePluginLifecycle.uninstallPlugin') {
+        uninstalled = true
+        return {
+          ok: true,
+          value: installedPlugin({
+            engineId: 'magika',
+            pluginVersion: '0.1.0',
+            installState: 'uninstalled',
+            enabled: false,
+            healthStatus: 'unknown',
+            updatedAt: 300,
+          }),
+        }
+      }
+      return createDbBridgeMock({
+        listOfficialPlugins: {
+          ok: true,
+          value: [officialPlugin({ pluginId: 'magika', displayName: 'Magika', pluginVersion: '0.1.0' })],
+        },
+      }).invoke(method, params)
+    })
+    ;(globalThis as any).dbBridge = bridge
+
+    const { container } = render(PluginManagementPanel)
+
+    await user.click(await screen.findByRole('button', { name: 'Uninstall metadata' }))
+
+    await waitFor(() => expect(container.textContent).toContain('0 registered, 0 enabled, 0 healthy, 0 failed'))
+    expect(container.textContent).not.toContain('Reconciling installed registry state')
+    expect(container.textContent).not.toContain('install_reconciling')
+    expect(screen.getByRole('button', { name: 'Install official plugin' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /^Enable/u })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^Disable/u })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^Check health/u })).toBeDisabled()
   })
 
   it('keeps read-only catalog entries without release metadata unavailable for install', async () => {
