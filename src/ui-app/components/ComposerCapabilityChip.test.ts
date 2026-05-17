@@ -5,7 +5,8 @@ import ComposerCapabilityChip from './ComposerCapabilityChip.vue'
 function mountChip(props: Partial<{
   enabled: boolean
   label: string
-  summary: string | null
+  activeLabel: string | null
+  kind: 'reasoning' | 'webSearch' | 'image'
   disabled: boolean
   options: readonly string[]
   selectedOption: string | null
@@ -14,7 +15,8 @@ function mountChip(props: Partial<{
   const defaults = {
     enabled: false,
     label: 'Test',
-    summary: null,
+    activeLabel: null as string | null,
+    kind: undefined as undefined,
     disabled: false,
     options: ['low', 'medium', 'high'],
     selectedOption: null,
@@ -35,19 +37,21 @@ function mountChip(props: Partial<{
 }
 
 describe('ComposerCapabilityChip', () => {
-  it('renders label text', () => {
-    mountChip({ label: 'Reasoning' })
-    expect(screen.getByText('Reasoning')).toBeTruthy()
+  it('renders label text when disabled', () => {
+    mountChip({ label: 'Think', enabled: false })
+    expect(screen.getByText('Think')).toBeTruthy()
   })
 
-  it('shows summary when enabled', () => {
-    mountChip({ enabled: true, summary: ': medium' })
-    expect(screen.getByText(': medium')).toBeTruthy()
+  it('renders activeLabel when enabled', () => {
+    mountChip({ label: 'Think', activeLabel: 'medium', enabled: true })
+    expect(screen.getByText('medium')).toBeTruthy()
+    expect(screen.queryByText('Think')).toBeNull()
   })
 
-  it('does not show summary when disabled/enabled=false', () => {
-    mountChip({ enabled: false, summary: ': medium' })
-    expect(screen.queryByText(': medium')).toBeNull()
+  it('does not render activeLabel when disabled', () => {
+    mountChip({ label: 'Think', activeLabel: 'medium', enabled: false })
+    expect(screen.getByText('Think')).toBeTruthy()
+    expect(screen.queryByText('medium')).toBeNull()
   })
 
   it('emits toggle when chip body is clicked', async () => {
@@ -122,14 +126,14 @@ describe('ComposerCapabilityChip', () => {
   })
 
   it('applies active styling when enabled', () => {
-    mountChip({ enabled: true, label: 'Reasoning' })
+    mountChip({ enabled: true, label: 'Think' })
     const body = screen.getByTestId('capability-chip-body')
     expect(body.className).toContain('border-gray-900')
     expect(body.className).toContain('bg-gray-900')
   })
 
   it('applies inactive styling when disabled', () => {
-    mountChip({ enabled: false, label: 'Reasoning' })
+    mountChip({ enabled: false, label: 'Think' })
     const body = screen.getByTestId('capability-chip-body')
     expect(body.className).toContain('border-gray-200')
     expect(body.className).toContain('bg-white')
@@ -147,5 +151,117 @@ describe('ComposerCapabilityChip', () => {
     expect(screen.getByTestId('capability-chip-menu')).toBeTruthy()
     await fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByTestId('capability-chip-menu')).toBeNull()
+  })
+})
+
+describe('ComposerCapabilityChip label rules', () => {
+  it('Reasoning shows Think when disabled', () => {
+    mountChip({ label: 'Think', enabled: false, kind: 'reasoning' })
+    expect(screen.getByText('Think')).toBeTruthy()
+  })
+
+  it('Reasoning shows effort when enabled, not "Reasoning: medium"', () => {
+    mountChip({ label: 'Think', activeLabel: 'medium', enabled: true, kind: 'reasoning' })
+    expect(screen.getByText('medium')).toBeTruthy()
+    expect(screen.queryByText('Think')).toBeNull()
+    expect(screen.queryByText(/Reasoning:/)).toBeNull()
+  })
+
+  it('Web Search shows Search when disabled', () => {
+    mountChip({ label: 'Search', enabled: false, kind: 'webSearch' })
+    expect(screen.getByText('Search')).toBeTruthy()
+  })
+
+  it('Web Search shows level when enabled, not "Web Search: high"', () => {
+    mountChip({ label: 'Search', activeLabel: 'high', enabled: true, kind: 'webSearch' })
+    expect(screen.getByText('high')).toBeTruthy()
+    expect(screen.queryByText('Search')).toBeNull()
+    expect(screen.queryByText(/Web Search:/)).toBeNull()
+  })
+
+  it('Image shows Image when disabled', () => {
+    mountChip({ label: 'Image', enabled: false, kind: 'image' })
+    expect(screen.getByText('Image')).toBeTruthy()
+  })
+
+  it('Image shows size+ratio when enabled, not "Image: 1K · 1:1"', () => {
+    mountChip({ label: 'Image', activeLabel: '1K · 1:1', enabled: true, kind: 'image' })
+    expect(screen.getByText('1K · 1:1')).toBeTruthy()
+    expect(screen.queryByText('Image')).toBeNull()
+    expect(screen.queryByText(/Image:/)).toBeNull()
+  })
+
+  it('sets title with full description when disabled', () => {
+    mountChip({ label: 'Think', enabled: false, kind: 'reasoning' })
+    const body = screen.getByTestId('capability-chip-body')
+    expect(body.getAttribute('title')).toBe('Reasoning')
+  })
+
+  it('sets title with full description when enabled', () => {
+    mountChip({ label: 'Think', activeLabel: 'medium', enabled: true, kind: 'reasoning' })
+    const body = screen.getByTestId('capability-chip-body')
+    expect(body.getAttribute('title')).toBe('Reasoning medium enabled')
+  })
+
+  it('sets title for Web Search when enabled', () => {
+    mountChip({ label: 'Search', activeLabel: 'high', enabled: true, kind: 'webSearch' })
+    const body = screen.getByTestId('capability-chip-body')
+    expect(body.getAttribute('title')).toBe('Web Search high enabled')
+  })
+
+  it('sets title for Image when enabled', () => {
+    mountChip({ label: 'Image', activeLabel: '1K · 1:1', enabled: true, kind: 'image' })
+    const body = screen.getByTestId('capability-chip-body')
+    expect(body.getAttribute('title')).toBe('Image 1K · 1:1 enabled')
+  })
+})
+
+describe('ComposerCapabilityChip fixed width', () => {
+  it('applies w-[7.5rem] for reasoning kind', () => {
+    mountChip({ kind: 'reasoning', label: 'Think', enabled: false })
+    const root = screen.getByTestId('test-chip')
+    expect(root.className).toContain('w-[7.5rem]')
+  })
+
+  it('applies w-[7.5rem] for webSearch kind', () => {
+    mountChip({ kind: 'webSearch', label: 'Search', enabled: false })
+    const root = screen.getByTestId('test-chip')
+    expect(root.className).toContain('w-[7.5rem]')
+  })
+
+  it('applies w-[9rem] for image kind', () => {
+    mountChip({ kind: 'image', label: 'Image', enabled: false })
+    const root = screen.getByTestId('test-chip')
+    expect(root.className).toContain('w-[9rem]')
+  })
+
+  it('uses same width class when reasoning is enabled', () => {
+    mountChip({ kind: 'reasoning', label: 'Think', activeLabel: 'medium', enabled: true })
+    const root = screen.getByTestId('test-chip')
+    expect(root.className).toContain('w-[7.5rem]')
+  })
+
+  it('uses same width class when webSearch is enabled', () => {
+    mountChip({ kind: 'webSearch', label: 'Search', activeLabel: 'high', enabled: true })
+    const root = screen.getByTestId('test-chip')
+    expect(root.className).toContain('w-[7.5rem]')
+  })
+
+  it('uses same width class when image is enabled', () => {
+    mountChip({ kind: 'image', label: 'Image', activeLabel: '1K · 1:1', enabled: true })
+    const root = screen.getByTestId('test-chip')
+    expect(root.className).toContain('w-[9rem]')
+  })
+
+  it('sets data-width-kind attribute', () => {
+    mountChip({ kind: 'reasoning', label: 'Think', enabled: false })
+    const root = screen.getByTestId('test-chip')
+    expect(root.getAttribute('data-width-kind')).toBe('reasoning')
+  })
+
+  it('sets data-width-kind when enabled', () => {
+    mountChip({ kind: 'image', label: 'Image', activeLabel: '4K · 16:9', enabled: true })
+    const root = screen.getByTestId('test-chip')
+    expect(root.getAttribute('data-width-kind')).toBe('image')
   })
 })
