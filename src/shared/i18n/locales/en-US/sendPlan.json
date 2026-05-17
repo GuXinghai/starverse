@@ -47,6 +47,11 @@
     },
     "issueFallback": "Attachment sending is restricted. Please handle attachments and retry.",
     "issueUnknown": "Send plan has an unknown issue.",
-    "targetMessageUnavailable": "The message for this history attachment is currently not visible."
+    "targetMessageUnavailable": "The message for this history attachment is currently not visible.",
+    "urlRetention": {
+      "default": "Follow default",
+      "linkOnly": "Link only",
+      "linkAndFile": "Link and save local copy"
+    }
   }
 }

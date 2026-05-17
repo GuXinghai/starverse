@@ -48,11 +48,15 @@
     "gate:tc18": "node scripts/gates/tc18-ui-isolation.mjs",
     "gate:tc20": "node scripts/gates/tc20-katex-css-artifact.mjs",
     "verify:artifact-katex-css": "npx vite build && npm run gate:tc20",
+    "i18n:check": "node scripts/i18n/check-i18n-coverage.mjs",
+    "i18n:scan-hardcoded": "node scripts/i18n/check-hardcoded-ui-text.mjs",
+    "i18n:sendplan-map": "node scripts/i18n/check-sendplan-code-map.mjs",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "postinstall": "npm run rebuild:node"
   },
   "dependencies": {
+    "@floating-ui/vue": "^1.1.11",
     "@google/generative-ai": "^0.24.1",
     "@types/dompurify": "^3.0.5",
     "@types/markdown-it": "^14.1.2",

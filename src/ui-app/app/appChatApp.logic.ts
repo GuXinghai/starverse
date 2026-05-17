@@ -4449,9 +4449,9 @@ export function useAppChatAppLogic() {
   }
 
   function resolveAttachmentUrlRetentionLabel(value: DraftAttachmentUrlRetentionPreference): string {
-    if (value === 'default') return '跟随默认设定'
-    if (value === 'link_only') return '仅保留链接'
-    return '保留链接并尝试保存本地副本'
+    if (value === 'default') return t('sendPlan.urlRetention.default')
+    if (value === 'link_only') return t('sendPlan.urlRetention.linkOnly')
+    return t('sendPlan.urlRetention.linkAndFile')
   }
 
   function getSendModeAvailabilityReason(

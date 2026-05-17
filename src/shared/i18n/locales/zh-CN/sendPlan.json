@@ -47,6 +47,11 @@
     },
     "issueFallback": "附件发送受限，请处理附件后重试。",
     "issueUnknown": "发送计划存在未知问题。",
-    "targetMessageUnavailable": "目标历史附件对应的消息当前不可见。"
+    "targetMessageUnavailable": "目标历史附件对应的消息当前不可见。",
+    "urlRetention": {
+      "default": "跟随默认设定",
+      "linkOnly": "仅保留链接",
+      "linkAndFile": "保留链接并尝试保存本地副本"
+    }
   }
 }

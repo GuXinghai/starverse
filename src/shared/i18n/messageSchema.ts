@@ -324,6 +324,11 @@ export interface SendPlanMessages {
     readonly issueFallback: string
     readonly issueUnknown: string
     readonly targetMessageUnavailable: string
+    readonly urlRetention: {
+      readonly default: string
+      readonly linkOnly: string
+      readonly linkAndFile: string
+    }
   }
 }
 
