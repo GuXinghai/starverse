@@ -220,7 +220,56 @@ export interface ComposerMessages {
  * 所有 namespace 的消息类型总表
  * 扩展新 namespace 时在此处添加。
  */
-export interface AllMessages extends CommonMessages, SettingsMessages, NavigationMessages, ComposerMessages, SendPlanMessages, ErrorsMessages, DiagnosticsMessages, FilePipelineMessages {}
+export interface AllMessages extends CommonMessages, SettingsMessages, NavigationMessages, ComposerMessages, SendPlanMessages, ErrorsMessages, DiagnosticsMessages, FilePipelineMessages, DialogsMessages {}
+
+/**
+ * dialogs namespace — 主进程 native dialog 文案
+ */
+export interface DialogsMessages {
+  readonly dialogs: {
+    readonly image: {
+      readonly selectTitle: string
+      readonly filterName: string
+    }
+    readonly file: {
+      readonly filterPdf: string
+      readonly filterImages: string
+      readonly filterAllFiles: string
+    }
+    readonly export: {
+      readonly imageTitle: string
+      readonly filterImage: string
+      readonly filterAllFiles: string
+    }
+    readonly errors: {
+      readonly missingImageUrl: string
+      readonly invalidImageDataUrl: string
+      readonly assetNotFound: string
+      readonly invalidFileUrl: string
+      readonly downloadFailed: string
+      readonly invalidDataUriFormat: string
+      readonly invalidDataUriContent: string
+      readonly invalidUrl: string
+      readonly unsupportedProtocol: string
+      readonly invalidPayload: string
+      readonly methodNotAllowed: string
+      readonly invalidStreamPayload: string
+      readonly unsupportedWireVersion: string
+      readonly missingImageUrlShort: string
+      readonly assetNotFoundShort: string
+      readonly invalidFileUrlShort: string
+      readonly invalidImageBytes: string
+    }
+    readonly startup: {
+      readonly dbInitFailed: string
+      readonly dbWorkerFailed: string
+      readonly fixDev: string
+      readonly fixProd: string
+      readonly devStartupError: string
+      readonly viteDevServerMissing: string
+    }
+  }
+}
 
 /**
  * sendPlan namespace

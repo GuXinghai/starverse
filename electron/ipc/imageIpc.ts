@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import type { RegisterInvoke } from './types'
 import { basenameForLog, redactSensitiveString, summarizeErrorForLog } from './logSanitizer'
+import { t, tf } from '../i18n/mainI18n'
 
 export type ResolvedAssetFile = Readonly<{
   path: string
@@ -85,11 +86,11 @@ async function resolveImageSource(
   resolveAssetFileByUrl: (rawUrl: string) => Promise<ResolvedAssetFile | null>
 ): Promise<ResolvedImageSource> {
   const imageUrl = String(imageUrlRaw ?? '').trim()
-  if (!imageUrl) throw new Error('Missing image URL')
+  if (!imageUrl) throw new Error(t('dialogs.errors.missingImageUrl'))
 
   if (imageUrl.startsWith('data:image/')) {
     const matches = imageUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/)
-    if (!matches) throw new Error('Invalid image data URL')
+    if (!matches) throw new Error(t('dialogs.errors.invalidImageDataUrl'))
     const mime = String(matches[1] ?? '').trim().toLowerCase() || 'image/png'
     const base64Data = String(matches[2] ?? '')
     const bytes = Buffer.from(base64Data, 'base64')
@@ -98,14 +99,14 @@ async function resolveImageSource(
 
   if (imageUrl.startsWith('asset://')) {
     const resolved = await resolveAssetFileByUrl(imageUrl)
-    if (!resolved) throw new Error('Asset not found')
+    if (!resolved) throw new Error(t('dialogs.errors.assetNotFound'))
     const bytes = await readFile(resolved.path)
     return { bytes: Buffer.from(bytes), mime: resolved.mime, ext: extensionFromMime(resolved.mime), path: resolved.path }
   }
 
   if (imageUrl.startsWith('file://')) {
     const filePath = decodeFileUrlPath(imageUrl)
-    if (!filePath) throw new Error('Invalid file URL')
+    if (!filePath) throw new Error(t('dialogs.errors.invalidFileUrl'))
     const bytes = await readFile(filePath)
     return {
       bytes: Buffer.from(bytes),
@@ -117,7 +118,7 @@ async function resolveImageSource(
 
   if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
     const response = await fetch(imageUrl)
-    if (!response.ok) throw new Error(`Download failed: ${response.status}`)
+    if (!response.ok) throw new Error(tf('dialogs.errors.downloadFailed', { status: response.status }))
     const bytes = Buffer.from(await response.arrayBuffer())
     const mime = String(response.headers.get('content-type') ?? '').trim() || 'image/*'
     return { bytes, mime, ext: extensionFromMime(mime) }
@@ -142,11 +143,11 @@ export function registerImageIpc(input: RegisterImageIpcInput): string[] {
         properties: ['openFile'],
         filters: [
           {
-            name: 'Images',
+            name: t('dialogs.image.filterName'),
             extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'],
           },
         ],
-        title: '选择图片',
+        title: t('dialogs.image.selectTitle'),
       })
 
       if (result.canceled || result.filePaths.length === 0) {
@@ -181,16 +182,16 @@ export function registerImageIpc(input: RegisterImageIpcInput): string[] {
     try {
       const imageUrl = typeof payload === 'string' ? payload : String((payload as { imageUrl?: unknown })?.imageUrl ?? '')
       const trimmed = imageUrl.trim()
-      if (!trimmed) return { success: false, error: 'Missing image URL' }
+      if (!trimmed) return { success: false, error: t('dialogs.errors.missingImageUrlShort') }
 
       if (trimmed.startsWith('asset://')) {
         const resolved = await resolveAssetFileByUrl(trimmed)
-        if (!resolved) return { success: false, error: 'Asset not found' }
+        if (!resolved) return { success: false, error: t('dialogs.errors.assetNotFoundShort') }
         return { success: true, path: resolved.path }
       }
       if (trimmed.startsWith('file://')) {
         const filePath = decodeFileUrlPath(trimmed)
-        if (!filePath) return { success: false, error: 'Invalid file URL' }
+        if (!filePath) return { success: false, error: t('dialogs.errors.invalidFileUrlShort') }
         return { success: true, path: filePath }
       }
       return { success: true, path: trimmed }
@@ -204,7 +205,7 @@ export function registerImageIpc(input: RegisterImageIpcInput): string[] {
       const imageUrl = String((payload as { imageUrl?: unknown })?.imageUrl ?? '').trim()
       const source = await resolveImageSource(imageUrl, resolveAssetFileByUrl)
       const image = nativeImage.createFromBuffer(source.bytes)
-      if (image.isEmpty()) return { success: false, error: 'Invalid image bytes' }
+      if (image.isEmpty())           return { success: false, error: t('dialogs.errors.invalidImageBytes') }
       clipboard.writeImage(image)
       return { success: true }
     } catch (error) {
@@ -221,11 +222,11 @@ export function registerImageIpc(input: RegisterImageIpcInput): string[] {
       const fileName = sanitizeSuggestedName(String(payloadObject.suggestedName ?? ''), ext)
       const defaultPath = path.join(app.getPath('downloads'), fileName)
       const result = await dialog.showSaveDialog({
-        title: 'Export image',
+        title: t('dialogs.export.imageTitle'),
         defaultPath,
         filters: [
-          { name: 'Image', extensions: [ext] },
-          { name: 'All Files', extensions: ['*'] },
+          { name: t('dialogs.export.filterImage'), extensions: [ext] },
+          { name: t('dialogs.export.filterAllFiles'), extensions: ['*'] },
         ],
       })
       if (result.canceled || !result.filePath) return { success: false, canceled: true }
@@ -242,12 +243,12 @@ export function registerImageIpc(input: RegisterImageIpcInput): string[] {
       if (normalizedImageUrl.startsWith('data:image/')) {
         const matches = normalizedImageUrl.match(/^data:image\/(\w+);base64,(.+)$/)
         if (!matches) {
-          throw new Error('无效的 data URI 格式')
+          throw new Error(t('dialogs.errors.invalidDataUriFormat'))
         }
 
         const [, extension, base64Data] = matches
         if (!extension || !base64Data) {
-          throw new Error('无效的 data URI 内容')
+          throw new Error(t('dialogs.errors.invalidDataUriContent'))
         }
         const tempDir = path.join(tmpdir(), 'starverse-images')
         await mkdir(tempDir, { recursive: true })
@@ -274,7 +275,7 @@ export function registerImageIpc(input: RegisterImageIpcInput): string[] {
       if (normalizedImageUrl.startsWith('asset://')) {
         const resolved = await resolveAssetFileByUrl(normalizedImageUrl)
         if (!resolved) {
-          return { success: false, error: 'Asset not found' }
+          return { success: false, error: t('dialogs.errors.assetNotFoundShort') }
         }
         const result = await shell.openPath(resolved.path)
         if (result) {

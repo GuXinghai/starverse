@@ -1,5 +1,6 @@
 import { shell } from 'electron'
 import type { RegisterInvoke } from './types'
+import { t } from '../i18n/mainI18n'
 
 export const SHELL_IPC_CHANNELS = ['shell:open-external'] as const
 
@@ -14,11 +15,11 @@ export function registerShellIpc(input: RegisterShellIpcInput): string[] {
     try {
       const rawUrl = typeof url === 'string' ? url : ''
       if (!rawUrl) {
-        throw new Error('Invalid URL')
+        throw new Error(t('dialogs.errors.invalidUrl'))
       }
       const parsed = new URL(rawUrl)
       if (!['http:', 'https:'].includes(parsed.protocol)) {
-        throw new Error('Unsupported protocol')
+        throw new Error(t('dialogs.errors.unsupportedProtocol'))
       }
       await shell.openExternal(parsed.toString())
       return { success: true }

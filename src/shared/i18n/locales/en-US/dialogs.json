@@ -1,0 +1,45 @@
+{
+  "dialogs": {
+    "image": {
+      "selectTitle": "Select image",
+      "filterName": "Images"
+    },
+    "file": {
+      "filterPdf": "PDF",
+      "filterImages": "Images",
+      "filterAllFiles": "All Files"
+    },
+    "export": {
+      "imageTitle": "Export image",
+      "filterImage": "Image",
+      "filterAllFiles": "All Files"
+    },
+    "errors": {
+      "missingImageUrl": "Missing image URL.",
+      "invalidImageDataUrl": "Invalid image data URL.",
+      "assetNotFound": "Asset not found.",
+      "invalidFileUrl": "Invalid file URL.",
+      "downloadFailed": "Download failed: HTTP {status}.",
+      "invalidDataUriFormat": "Invalid data URI format.",
+      "invalidDataUriContent": "Invalid data URI content.",
+      "invalidUrl": "Invalid URL.",
+      "unsupportedProtocol": "Unsupported protocol.",
+      "invalidPayload": "Invalid IPC payload.",
+      "methodNotAllowed": "Method not allowed: {method}.",
+      "invalidStreamPayload": "Invalid stream payload.",
+      "unsupportedWireVersion": "Unsupported wire version: wireVersion={actual}, expected {expected}.",
+      "missingImageUrlShort": "Missing image URL.",
+      "assetNotFoundShort": "Asset not found.",
+      "invalidFileUrlShort": "Invalid file URL.",
+      "invalidImageBytes": "Invalid image bytes."
+    },
+    "startup": {
+      "dbInitFailed": "Database initialization failed",
+      "dbWorkerFailed": "DB worker failed to start.",
+      "fixDev": "Fix (dev):\n- Close Electron\n- Run: npm run rebuild:electron\n- Then: npm run electron:dev",
+      "fixProd": "Fix (prod):\n- Reinstall the app (native dependencies are bundled per Electron version)",
+      "devStartupError": "Dev startup error",
+      "viteDevServerMissing": "VITE_DEV_SERVER_URL is missing in dev mode. Refusing to load dist/index.html."
+    }
+  }
+}
