@@ -682,8 +682,9 @@ onBeforeUnmount(() => {
 
       <ComposerCapabilityChip
         :enabled="resolvedSessionConfig.reasoning.enabled"
-        label="Reasoning"
-        :summary="resolvedSessionConfig.reasoning.enabled ? `: ${resolvedSessionConfig.reasoning.effort}` : null"
+        label="Think"
+        :active-label="resolvedSessionConfig.reasoning.enabled ? resolvedSessionConfig.reasoning.effort : null"
+        kind="reasoning"
         :disabled="disabled"
         :options="['low', 'medium', 'high']"
         :selected-option="resolvedSessionConfig.reasoning.effort"
@@ -703,8 +704,9 @@ onBeforeUnmount(() => {
 
       <ComposerCapabilityChip
         :enabled="resolvedSessionConfig.webSearch.enabled"
-        label="Web Search"
-        :summary="resolvedSessionConfig.webSearch.enabled ? `: ${resolvedSessionConfig.webSearch.level}` : null"
+        label="Search"
+        :active-label="resolvedSessionConfig.webSearch.enabled ? resolvedSessionConfig.webSearch.level : null"
+        kind="webSearch"
         :disabled="disabled"
         :options="['low', 'high']"
         :selected-option="resolvedSessionConfig.webSearch.level"
@@ -725,7 +727,8 @@ onBeforeUnmount(() => {
       <ComposerCapabilityChip
         :enabled="resolvedSessionConfig.imageGeneration.enabled"
         label="Image"
-        :summary="resolvedSessionConfig.imageGeneration.enabled ? `: ${resolvedSessionConfig.imageGeneration.resolution} · ${resolvedSessionConfig.imageGeneration.aspectRatio}` : null"
+        :active-label="resolvedSessionConfig.imageGeneration.enabled ? `${resolvedSessionConfig.imageGeneration.resolution} · ${resolvedSessionConfig.imageGeneration.aspectRatio}` : null"
+        kind="image"
         :disabled="disabled"
         :options="['1K', '2K', '4K', '—', '16:9', '3:4', '1:1', '4:3']"
         :selected-option="null"

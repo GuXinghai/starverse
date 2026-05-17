@@ -4,7 +4,8 @@ import { ref, computed, onBeforeUnmount, type CSSProperties } from 'vue'
 const props = defineProps<{
   enabled: boolean
   label: string
-  summary?: string | null
+  activeLabel?: string | null
+  kind?: 'reasoning' | 'webSearch' | 'image'
   disabled?: boolean
   options?: readonly string[]
   selectedOption?: string | null
@@ -19,6 +20,36 @@ const emit = defineEmits<{
 const menuOpen = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
 const triggerRef = ref<HTMLElement | null>(null)
+
+const widthClass = computed(() => {
+  switch (props.kind) {
+    case 'reasoning': return 'w-[7.5rem]'
+    case 'webSearch': return 'w-[7.5rem]'
+    case 'image': return 'w-[9rem]'
+    default: return ''
+  }
+})
+
+const displayText = computed(() => {
+  if (props.enabled && props.activeLabel) return props.activeLabel
+  return props.label
+})
+
+const fullLabel = computed(() => {
+  switch (props.kind) {
+    case 'reasoning': return 'Reasoning'
+    case 'webSearch': return 'Web Search'
+    case 'image': return 'Image'
+    default: return props.label
+  }
+})
+
+const titleText = computed(() => {
+  if (props.enabled && props.activeLabel) {
+    return `${fullLabel.value} ${props.activeLabel} enabled`
+  }
+  return fullLabel.value
+})
 
 const menuStyle = computed<CSSProperties>(() => {
   const trigger = triggerRef.value
@@ -82,28 +113,34 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="relative inline-flex items-center" :data-testid="dataTestId">
+  <div
+    class="relative inline-flex items-center"
+    :class="widthClass"
+    :data-testid="dataTestId"
+    :data-width-kind="kind"
+  >
     <button
       type="button"
-      class="inline-flex items-center gap-1.5 rounded-l-md border px-2 py-1 text-[11px] leading-tight transition-colors disabled:opacity-50"
+      class="flex w-full items-center rounded-l-md border px-2 py-1 text-[11px] leading-tight transition-colors disabled:opacity-50"
       :class="
         enabled
           ? 'border-gray-900 bg-gray-900 text-white'
           : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700'
       "
       :disabled="disabled"
+      :title="titleText"
+      :aria-label="titleText"
       data-testid="capability-chip-body"
       @click="onChipClick"
     >
       <slot name="icon" />
-      <span>{{ label }}</span>
-      <span v-if="enabled && summary" class="opacity-75">{{ summary }}</span>
+      <span class="flex-1 text-center">{{ displayText }}</span>
     </button>
     <button
       v-if="options && options.length > 0"
       ref="triggerRef"
       type="button"
-      class="inline-flex items-center rounded-r-md border border-l-0 px-1 py-1 text-[10px] leading-none transition-colors disabled:opacity-50"
+      class="shrink-0 inline-flex items-center rounded-r-md border border-l-0 px-1 py-1 text-[10px] leading-none transition-colors disabled:opacity-50"
       :class="
         enabled
           ? 'border-gray-900 bg-gray-800 text-gray-300 hover:bg-gray-700'
