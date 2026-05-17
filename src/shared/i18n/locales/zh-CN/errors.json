@@ -1,0 +1,51 @@
+{
+  "errors": {
+    "provider": {
+      "apiKeyMissing": "缺少 API Key。",
+      "apiKeyInvalid": "API Key 无效或已过期。",
+      "authFailed": "认证失败，请检查 API Key。",
+      "rateLimited": "请求过于频繁，请稍后重试。",
+      "networkFailed": "网络连接失败，请检查网络。",
+      "modelUnavailable": "所选模型不可用，请更换模型。",
+      "requestFailed": "请求失败，请重试。",
+      "userAborted": "请求已取消。",
+      "unknown": "发生未知错误。"
+    },
+    "action": {
+      "checkApiKey": "请检查 API Key 并重试。",
+      "topUp": "请充值或更换模型。",
+      "editPrompt": "请修改提示词并重试。",
+      "fixParams": "请修正请求参数并重试。",
+      "retryWithBackoff": "请稍后重试。",
+      "switchModel": "请更换提供方或模型并重试。",
+      "relaxConstraints": "请放宽路由约束或更换模型。",
+      "unknown": "请重试或联系支持。"
+    },
+    "attachment": {
+      "importFailed": "附件导入失败。",
+      "urlRequired": "请输入 URL。",
+      "urlImportFailed": "URL 导入失败。",
+      "urlAdded": "URL 已添加到草稿。",
+      "filePickerUnavailable": "文件选择器不可用。",
+      "removedFromDraft": "附件已从草稿中移除。",
+      "alreadyRemoved": "附件已被移除。",
+      "removeFailed": "移除附件失败。",
+      "updateFailed": "更新附件设置失败。",
+      "previewRetryImageOnly": "仅图片附件支持预览重试。",
+      "previewRefreshed": "预览已刷新。",
+      "menuUnavailable": "附件菜单暂时无法打开，请重试。",
+      "disabledWhileRunning": "回复生成中，附件功能暂时禁用。",
+      "droppedNotAccessible": "当前构建无法访问拖放的文件。",
+      "pastedNotAccessible": "当前构建无法访问粘贴的文件。",
+      "addedCount": "已添加 {count} 个 {label}。",
+      "modelNoImageSupport": "当前模型不支持图片输入。"
+    },
+    "modelCatalog": {
+      "unavailable": "模型目录不可用。",
+      "notSynced": "模型目录尚未同步，稍后自动刷新。",
+      "empty": "模型目录为空，已回退到推理模型索引。",
+      "indexNotSynced": "推理模型索引尚未同步，仅显示目录。",
+      "syncFailed": "模型目录不可用（同步失败）。"
+    }
+  }
+}

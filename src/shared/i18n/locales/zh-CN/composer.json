@@ -21,7 +21,8 @@
     "status": {
       "noSendableInput": "无可发送内容",
       "updatingSendPlan": "正在更新发送计划…",
-      "model": "模型"
+      "model": "模型",
+      "review": "查看"
     },
     "modelPicker": {
       "favorites": "收藏",

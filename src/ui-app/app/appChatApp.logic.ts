@@ -1,4 +1,5 @@
 import { computed, markRaw, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { t, tf } from '@/shared/i18n'
 import type { ErrorPanelViewModel } from '@/ui-kit/chat/types'
 import type { CompletionOutcome, DomainEvent, MessageState, MessageVM, ReasoningEffort, RequestedReasoningMode, ReasoningPrefs, RootState, StreamEndReason } from '@/next/state/types'
 import {
@@ -61,6 +62,7 @@ import {
   getChatReasoningDisplayMode,
   setChatReasoningDisplayMode,
 } from '@/next/settings/chatDisplayPrefsClient'
+import { getChatReasoningPanelDefaultExpanded } from '@/next/settings/reasoningPanelDefaultClient'
 import { listModelCatalog } from '@/next/modelCatalog/modelCatalogClient'
 import { selectModelCatalogAll, selectModelCatalogVisible } from '@/next/modelCatalog/modelCatalogSelectors'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
@@ -206,7 +208,7 @@ export function useAppChatAppLogic() {
   const branches = ref<BranchSummary[]>([])
   const draft = ref('')
   const reasoningDisplayMode = ref<'inline' | 'rail'>('inline')
-  const rightRailOpen = ref(true)
+  const rightRailOpen = ref(false)
   const rightRailView = ref<'reasoning' | 'console'>('console')
   const pendingDeleteQuestionId = ref<string | null>(null)
   const DEFAULT_CHAT_MODEL_ID = 'openrouter/auto'
@@ -241,6 +243,7 @@ export function useAppChatAppLogic() {
   const modelCatalogNotice = ref<string | null>(null)
   const modelPrefsScopeForUi = computed(() => ({ scopeType: 'global' as const, scopeId: '' as const }))
   const globalReasoningPrefs = ref<ReasoningPrefs | null>(null)
+  const globalReasoningPanelDefaultExpanded = ref(true)
   const globalUserMessageRenderDefault = ref<boolean | null>(null)
   const globalWebSearchDefaults = ref<SearchSettingsLayer | null>(null)
   const globalSamplingParamsDefaults = ref<SamplingParamsLayer | null>(null)
@@ -480,7 +483,7 @@ export function useAppChatAppLogic() {
       items,
       activeItem,
       hasItems: true,
-      warningText: `${count} 个历史附件不会纳入当前模型上下文。`,
+      warningText: tf('sendPlan.historyAttachmentsExcluded', { count }),
       navigationActive: historyIncompatibleNavigationActive.value,
     }
   })
@@ -928,7 +931,6 @@ export function useAppChatAppLogic() {
   })
 
   const lastAssistantReasoningVersion = computed(() => lastAssistantMessage.value?.reasoningVersion ?? 0)
-  const lastAssistantPanelState = computed(() => lastAssistantMessage.value?.reasoningPanelState ?? 'collapsed')
   const lastAssistantIsStreaming = computed(() => {
     const s = lastAssistantMessage.value?.streaming
     return Boolean(s && s.isTarget && !s.isComplete)
@@ -1030,14 +1032,14 @@ export function useAppChatAppLogic() {
   const normalizedErrorActionHint = computed(() => {
     const a = normalizedError.value?.normalized?.action
     if (!a) return null
-    if (a === 'reauth') return 'Action: API key invalid/expired; update key and retry.'
-    if (a === 'topup_credits') return 'Action: credits insufficient; top up or switch model.'
-    if (a === 'modify_input_moderation') return 'Action: input flagged; revise prompt and retry.'
-    if (a === 'fix_request') return 'Action: fix request parameters and retry.'
-    if (a === 'backoff_retry') return 'Action: retry with backoff.'
-    if (a === 'switch_provider_or_model') return 'Action: switch provider/model and retry.'
-    if (a === 'relax_routing_constraints') return 'Action: relax routing constraints or switch model.'
-    return 'Action: unknown.'
+    if (a === 'reauth') return t('errors.action.checkApiKey')
+    if (a === 'topup_credits') return t('errors.action.topUp')
+    if (a === 'modify_input_moderation') return t('errors.action.editPrompt')
+    if (a === 'fix_request') return t('errors.action.fixParams')
+    if (a === 'backoff_retry') return t('errors.action.retryWithBackoff')
+    if (a === 'switch_provider_or_model') return t('errors.action.switchModel')
+    if (a === 'relax_routing_constraints') return t('errors.action.relaxConstraints')
+    return t('errors.action.unknown')
   })
 
   async function copyErrorDetails() {
@@ -3014,10 +3016,10 @@ export function useAppChatAppLogic() {
   function buildAttachmentConfirmationSession(input: AttachmentConfirmationRequestInput): AttachmentConfirmationSession | null {
     if (input.historyItems.length === 0 && input.currentItems.length === 0) return null
     const titleByKind: Record<AttachmentConfirmationSessionKind, string> = {
-      composer_send: '发送前确认附件',
-      regenerate: '重新生成前确认附件',
-      retry_replace: '替换重试前确认附件',
-      edit_submit: '提交编辑前确认附件',
+      composer_send: t('sendPlan.confirmSendTitle'),
+      regenerate: t('sendPlan.confirmRegenerateTitle'),
+      retry_replace: t('sendPlan.confirmRetryTitle'),
+      edit_submit: t('sendPlan.confirmEditTitle'),
     }
     return {
       kind: input.kind,
@@ -3174,7 +3176,7 @@ export function useAppChatAppLogic() {
       mutateAttachmentConfirmationSession((prev) => ({
         ...prev,
         showHistoryValidation: true,
-        validationMessage: '请先确认：历史附件全部从本次模型上下文中排除。',
+        validationMessage: t('sendPlan.historyAllExcludedPrompt'),
       }))
       await focusAttachmentConfirmationValidationTarget({ history: true })
       return
@@ -3184,7 +3186,7 @@ export function useAppChatAppLogic() {
       mutateAttachmentConfirmationSession((prev) => ({
         ...prev,
         currentValidationAttachmentId: missingCurrent.attachmentId,
-        validationMessage: '请为每个当前不受支持附件选择 exclude 或 remove。',
+        validationMessage: t('sendPlan.currentDecisionRequired'),
       }))
       await focusAttachmentConfirmationValidationTarget({ history: false, attachmentId: missingCurrent.attachmentId })
       return
@@ -3374,8 +3376,8 @@ export function useAppChatAppLogic() {
         rightRailOpen.value = false
         return
       }
-      rightRailOpen.value = true
       rightRailView.value = 'reasoning'
+      rightRailOpen.value = true
       return
     }
     onToggleReasoningPanelState(targetId)
@@ -3572,11 +3574,15 @@ export function useAppChatAppLogic() {
   async function onUpdateWebSearchEnabled(nextEnabled: boolean) {
     if (isDraftInteractionLocked.value) return
     const current = activeSessionConfig.value.webSearch
+    const detail = {
+      ...(current.detail ?? {}),
+      searchMode: nextEnabled ? 'enable' as const : 'disable' as const,
+    }
     await updateActiveConvoSessionConfig({
       webSearch: {
         enabled: nextEnabled,
         level: current.level,
-        detail: current.detail,
+        detail,
       },
     })
   }
@@ -3584,11 +3590,16 @@ export function useAppChatAppLogic() {
   async function onUpdateWebSearchLevel(nextLevel: 'low' | 'high') {
     if (isDraftInteractionLocked.value) return
     const current = activeSessionConfig.value.webSearch
+    const detail = {
+      ...(current.detail ?? {}),
+      searchDepth: nextLevel,
+    }
+    if ('maxResults' in detail) delete detail.maxResults
     await updateActiveConvoSessionConfig({
       webSearch: {
         enabled: current.enabled,
         level: nextLevel,
-        detail: current.detail,
+        detail,
       },
     })
   }
@@ -3644,15 +3655,21 @@ export function useAppChatAppLogic() {
     await setChatReasoningDisplayMode(nextMode)
     if (nextMode === 'inline' && rightRailView.value === 'reasoning') {
       rightRailView.value = 'console'
+      rightRailOpen.value = false
     }
   }
 
-  function toggleRightRailOpen() {
-    rightRailOpen.value = !rightRailOpen.value
+  function closeRightRailPanel() {
+    rightRailOpen.value = false
   }
 
-  function setRightRailView(view: 'reasoning' | 'console') {
-    rightRailView.value = view
+  function toggleConsolePanel() {
+    if (rightRailOpen.value && effectiveRightRailView.value === 'console') {
+      rightRailOpen.value = false
+      return
+    }
+    rightRailView.value = 'console'
+    rightRailOpen.value = true
   }
 
   function applySessionConfigToUi(config: ChatSessionConfig) {
@@ -4446,19 +4463,19 @@ export function useAppChatAppLogic() {
     if (mode === 'default') return null
     if (mode === 'auto') {
       if (plan?.selectedSendMode || (plan?.fallbackSendModes?.length ?? 0) > 0) return null
-      return plan?.notes?.[0] ?? 'No sendable representation is available for this attachment.'
+      return plan?.notes?.[0] ?? t('sendPlan.noSendableRepresentation')
     }
     if (mode === 'url_ref') {
-      if (attachment.aiPayloadKind === 'audio') return '音频附件不支持链接发送。'
-      if (!isUrlAttachment(asset, attachment)) return '当前附件没有可保留的链接。'
+      if (attachment.aiPayloadKind === 'audio') return t('sendPlan.audioNoUrlRef')
+      if (!isUrlAttachment(asset, attachment)) return t('sendPlan.noRetainableUrl')
       if (plan?.selectedSendMode === 'url_ref' || (plan?.fallbackSendModes?.includes('url_ref') ?? false)) return null
-      if (plan?.exclusionReason) return plan.notes?.[0] ?? '当前模型或提供方不允许链接发送。'
-      return '当前模型或提供方不允许链接发送。'
+      if (plan?.exclusionReason) return plan.notes?.[0] ?? t('sendPlan.urlRefNotAllowed')
+      return t('sendPlan.urlRefNotAllowed')
     }
-    if (!isStoredLocalCopy(asset)) return '当前附件没有可用的本地副本。'
+    if (!isStoredLocalCopy(asset)) return t('sendPlan.noLocalCopy')
     if (plan?.selectedSendMode === 'inline_base64' || (plan?.fallbackSendModes?.includes('inline_base64') ?? false)) return null
-    if (plan?.exclusionReason) return plan.notes?.[0] ?? '当前模型或提供方不允许文件副本发送。'
-    return '当前模型或提供方不允许文件副本发送。'
+    if (plan?.exclusionReason) return plan.notes?.[0] ?? t('sendPlan.fileCopyNotAllowed')
+    return t('sendPlan.fileCopyNotAllowed')
   }
 
   function buildSendModeOptions(
@@ -4509,19 +4526,19 @@ export function useAppChatAppLogic() {
         value: 'default',
         label: resolveAttachmentUrlRetentionLabel('default'),
         disabled: !isUrl,
-        reason: isUrl ? null : '仅 URL 附件支持保留方式设置。',
+        reason: isUrl ? null : t('sendPlan.urlOnlyRetention'),
       },
       {
         value: 'link_only',
         label: resolveAttachmentUrlRetentionLabel('link_only'),
         disabled: !isUrl,
-        reason: isUrl ? null : '仅 URL 附件支持保留方式设置。',
+        reason: isUrl ? null : t('sendPlan.urlOnlyRetention'),
       },
       {
         value: 'link_and_file',
         label: resolveAttachmentUrlRetentionLabel('link_and_file'),
         disabled: !isUrl,
-        reason: isUrl ? null : '仅 URL 附件支持保留方式设置。',
+        reason: isUrl ? null : t('sendPlan.urlOnlyRetention'),
       },
     ]
   }
@@ -4807,9 +4824,9 @@ export function useAppChatAppLogic() {
     if (successCount > 0) {
       void refreshDraftAttachmentViewModels()
       const label = successCount === 1 ? 'attachment' : 'attachments'
-      setAttachmentFeedback('success', `Added ${successCount} ${label}.`)
+      setAttachmentFeedback('success', tf('errors.attachment.addedCount', { count: successCount, label }))
     } else if (failureCount > 0) {
-      setAttachmentFeedback('error', 'Attachment import failed.')
+      setAttachmentFeedback('error', t('errors.attachment.importFailed'))
     }
     if (successCount > 0 && lastSuccessLabel && shouldLogDebug()) {
       console.info('[ui-app] attachment import completed:', { successCount, failureCount, lastSuccessLabel })
@@ -4819,7 +4836,7 @@ export function useAppChatAppLogic() {
   async function ingestUrlAttachment(url: string, retentionMode: 'default' | 'link_only' | 'link_and_file') {
     const trimmed = String(url ?? '').trim()
     if (!trimmed) {
-      setAttachmentFeedback('error', 'URL is required.')
+      setAttachmentFeedback('error', t('errors.attachment.urlRequired'))
       return
     }
     try {
@@ -4829,7 +4846,7 @@ export function useAppChatAppLogic() {
         retentionMode: resolveAttachmentRetentionMode(retentionMode),
       })
       if (!result.success || !result.assetId) {
-        setAttachmentFeedback('error', 'URL import failed.')
+        setAttachmentFeedback('error', t('errors.attachment.urlImportFailed'))
         return
       }
       await addConversationDraftAttachment({
@@ -4838,7 +4855,7 @@ export function useAppChatAppLogic() {
         urlRetentionMode: retentionMode,
       })
       void refreshDraftAttachmentViewModels()
-      setAttachmentFeedback('success', 'URL added to draft.')
+      setAttachmentFeedback('success', t('errors.attachment.urlAdded'))
     } catch (error) {
       setAttachmentFeedback('error', error instanceof Error ? error.message : 'URL import failed.')
       if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
@@ -4960,7 +4977,7 @@ export function useAppChatAppLogic() {
     if (isDraftInteractionLocked.value) return
     const api = getElectronApi()
     if (!api) {
-      setAttachmentFeedback('error', 'File picker is unavailable.')
+      setAttachmentFeedback('error', t('errors.attachment.filePickerUnavailable'))
       return
     }
     const result = await api.selectLocalFiles({ context: 'file', allowMultiple: true })
@@ -4973,12 +4990,12 @@ export function useAppChatAppLogic() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     if (composerImageInputSupported.value === false) {
-      setAttachmentFeedback('error', composerImageInputSupportReason.value ?? 'Current model does not support image inputs.')
+      setAttachmentFeedback('error', composerImageInputSupportReason.value ?? t('errors.attachment.modelNoImageSupport'))
       return
     }
     const api = getElectronApi()
     if (!api) {
-      setAttachmentFeedback('error', 'File picker is unavailable.')
+      setAttachmentFeedback('error', t('errors.attachment.filePickerUnavailable'))
       return
     }
     const result = await api.selectLocalFiles({ context: 'image', allowMultiple: true })
@@ -4998,7 +5015,7 @@ export function useAppChatAppLogic() {
     if (isDraftInteractionLocked.value) return
     const url = attachmentUrlDraft.value.trim()
     if (!url) {
-      setAttachmentFeedback('error', 'URL is required.')
+      setAttachmentFeedback('error', t('errors.attachment.urlRequired'))
       return
     }
     const retentionMode = attachmentUrlRetentionMode.value
@@ -5017,12 +5034,12 @@ export function useAppChatAppLogic() {
       })
       await refreshDraftAttachmentViewModels()
       if (result.removed) {
-        setAttachmentFeedback('success', 'Attachment removed from draft.')
+        setAttachmentFeedback('success', t('errors.attachment.removedFromDraft'))
       } else {
-        setAttachmentFeedback('warning', 'Attachment was already removed.')
+        setAttachmentFeedback('warning', t('errors.attachment.alreadyRemoved'))
       }
     } catch (error) {
-      setAttachmentFeedback('error', error instanceof Error ? error.message : 'Failed to remove attachment.')
+      setAttachmentFeedback('error', error instanceof Error ? error.message : t('errors.attachment.removeFailed'))
     }
   }
 
@@ -5053,7 +5070,7 @@ export function useAppChatAppLogic() {
       await refreshDraftAttachmentViewModels()
       selectedDraftAttachmentAssetId.value = assetId
     } catch (error) {
-      setAttachmentFeedback('error', error instanceof Error ? error.message : 'Failed to update attachment settings.')
+      setAttachmentFeedback('error', error instanceof Error ? error.message : t('errors.attachment.updateFailed'))
     }
   }
 
@@ -5071,13 +5088,13 @@ export function useAppChatAppLogic() {
     const attachment = draftAttachmentRecords.value.find((item) => item.assetId === assetId) ?? null
     const asset = draftAttachmentAssetsById.value[assetId] ?? null
     if (!attachment || !asset || !isImageAssetLike(asset, attachment)) {
-      setAttachmentFeedback('warning', 'Preview retry is only available for image attachments.')
+      setAttachmentFeedback('warning', t('errors.attachment.previewRetryImageOnly'))
       return
     }
     const seq = ++draftAttachmentRefreshSeq
     const preview = await resolveDraftAttachmentPreview(attachment, asset, seq, true)
     if (preview?.status === 'ready') {
-      setAttachmentFeedback('success', 'Preview refreshed.')
+      setAttachmentFeedback('success', t('errors.attachment.previewRefreshed'))
     } else {
       setAttachmentFeedback('warning', 'Preview retry completed, but no ready preview was available.')
     }
@@ -5095,12 +5112,12 @@ export function useAppChatAppLogic() {
     if (files.length === 0) return
     event.preventDefault()
     if (isRunning.value) {
-      setAttachmentFeedback('warning', 'Attachments are disabled while a response is running.')
+      setAttachmentFeedback('warning', t('errors.attachment.disabledWhileRunning'))
       return
     }
     const imageFiles = files.filter((file) => isProbablyImageAttachment(file))
     if (composerImageInputSupported.value === false && imageFiles.length > 0) {
-      setAttachmentFeedback('error', composerImageInputSupportReason.value ?? 'Current model does not support image inputs.')
+      setAttachmentFeedback('error', composerImageInputSupportReason.value ?? t('errors.attachment.modelNoImageSupport'))
       const allowedFiles = files.filter((file) => !isProbablyImageAttachment(file))
       if (allowedFiles.length === 0) return
       const allowedPaths = allowedFiles.map((file) => getLocalFilePath(file)).filter((value) => value.length > 0)
@@ -5112,7 +5129,7 @@ export function useAppChatAppLogic() {
     event.preventDefault()
     const paths = files.map((file) => getLocalFilePath(file)).filter((value) => value.length > 0)
     if (paths.length === 0) {
-      setAttachmentFeedback('error', 'Dropped files are not accessible from this build.')
+      setAttachmentFeedback('error', t('errors.attachment.droppedNotAccessible'))
       return
     }
     await ingestLocalFiles(paths, { sourceKind: 'local_upload' })
@@ -5131,12 +5148,12 @@ export function useAppChatAppLogic() {
     if (files.length > 0) {
       event.preventDefault()
       if (isRunning.value) {
-        setAttachmentFeedback('warning', 'Attachments are disabled while a response is running.')
+        setAttachmentFeedback('warning', t('errors.attachment.disabledWhileRunning'))
         return
       }
       const imageFiles = files.filter((file) => isProbablyImageAttachment(file))
       if (composerImageInputSupported.value === false && imageFiles.length > 0) {
-        setAttachmentFeedback('error', composerImageInputSupportReason.value ?? 'Current model does not support image inputs.')
+        setAttachmentFeedback('error', composerImageInputSupportReason.value ?? t('errors.attachment.modelNoImageSupport'))
         const allowedFiles = files.filter((file) => !isProbablyImageAttachment(file))
         const allowedPaths = allowedFiles.map((file) => getLocalFilePath(file)).filter((value) => value.length > 0)
         if (allowedPaths.length > 0) {
@@ -5148,7 +5165,7 @@ export function useAppChatAppLogic() {
       event.preventDefault()
       const paths = files.map((file) => getLocalFilePath(file)).filter((value) => value.length > 0)
       if (paths.length === 0) {
-        setAttachmentFeedback('error', 'Pasted files are not accessible from this build.')
+        setAttachmentFeedback('error', t('errors.attachment.pastedNotAccessible'))
         return
       }
       await ingestLocalFiles(paths, { sourceKind: 'local_upload' })
@@ -5160,7 +5177,7 @@ export function useAppChatAppLogic() {
     if (isRunning.value) {
       if (attachmentUrl || files.length > 0) {
         event.preventDefault()
-        setAttachmentFeedback('warning', 'Attachments are disabled while a response is running.')
+        setAttachmentFeedback('warning', t('errors.attachment.disabledWhileRunning'))
       }
       return
     }
@@ -6090,6 +6107,18 @@ export function useAppChatAppLogic() {
     }
   }
 
+  async function refreshGlobalReasoningPanelDefaultExpanded(): Promise<boolean> {
+    try {
+      const value = await getChatReasoningPanelDefaultExpanded()
+      globalReasoningPanelDefaultExpanded.value = value
+      return value
+    } catch (err) {
+      if (shouldLogDebug()) console.warn('[ui-app] refreshGlobalReasoningPanelDefaultExpanded failed (non-fatal):', err)
+      globalReasoningPanelDefaultExpanded.value = true
+      return true
+    }
+  }
+
   async function loadProjectReasoningPrefs(projectId: string): Promise<ReasoningPrefs | null> {
     const cached = projects.value.find((p) => p.id === projectId)
     const cachedPrefs = extractReasoningPrefs(cached?.meta ?? null)
@@ -6131,6 +6160,10 @@ export function useAppChatAppLogic() {
     const normalized = normalizeReasoningPrefs(detail) ?? DEFAULT_REASONING_PREFS
     globalReasoningPrefs.value = normalized
     hydrateSessionConfigUiFromActiveConvo()
+  }
+
+  function handleGlobalReasoningPanelDefaultExpandedUpdated(event: Event) {
+    globalReasoningPanelDefaultExpanded.value = (event as CustomEvent).detail !== false
   }
 
   async function persistReasoningPrefs() {
@@ -6855,6 +6888,7 @@ export function useAppChatAppLogic() {
       userMessageId: questionId,
       userMessageText: questionText,
       assistantMessageId,
+      reasoningPanelDefaultExpanded: globalReasoningPanelDefaultExpanded.value,
       ...(imageGenerationConfig ? { requestedImageGeneration: true } : {}),
       requestedReasoningMode,
       ...(requestedReasoningEffortValue ? { requestedReasoningEffort: requestedReasoningEffortValue } : {}),
@@ -7029,7 +7063,7 @@ export function useAppChatAppLogic() {
     if (!input) return null
     const hasInlineBase64 = /data:[^\s]{0,120};base64,/i.test(input) || /base64/i.test(input)
     if (hasInlineBase64) {
-      return '检测到附件内容风险，请处理附件后重试。'
+      return 'sendPlan.attachmentContentRisk'
     }
     const redacted = input
       .replace(/[A-Za-z]:[\\/][^\s"''<>]+/g, '[local path]')
@@ -7054,7 +7088,7 @@ export function useAppChatAppLogic() {
       .find((value) => value.length > 0)
     const sanitizedReasonFromPlans = sanitizeSendPlanSummaryMessage(reasonFromPlans)
     if (sanitizedReasonFromPlans) return sanitizedReasonFromPlans
-    return '当前请求无法发送，请处理附件或更换模型。'
+    return 'sendPlan.routeUnavailable'
   }
 
   function resolveSendPlanWarningMessage(sendPlan: SendPlan): string | null {
@@ -7071,7 +7105,7 @@ export function useAppChatAppLogic() {
     const sanitizedReasonFromPlans = sanitizeSendPlanSummaryMessage(reasonFromPlans)
     if (sanitizedReasonFromPlans) return sanitizedReasonFromPlans
     if (sendPlan.status === 'sendable_with_warnings' || sendPlan.status === 'partially_sendable') {
-      return '部分附件存在警告，但可以发送。'
+      return 'sendPlan.attachmentWarning'
     }
     return null
   }
@@ -7103,7 +7137,7 @@ export function useAppChatAppLogic() {
       return {
         status: sendPlan.status,
         canProceed: false,
-        blockingReason: '附件仍在解析或检测中，完成后才能发送。',
+        blockingReason: 'sendPlan.detectionPending',
         warningReason: null,
         partialAllowed: false,
       }
@@ -7115,7 +7149,7 @@ export function useAppChatAppLogic() {
       return {
         status: sendPlan.status,
         canProceed: false,
-        blockingReason: '附件文件类型检测未完成或失败，不能发送。',
+        blockingReason: 'sendPlan.detectionRequired',
         warningReason: null,
         partialAllowed: false,
       }
@@ -7147,7 +7181,7 @@ export function useAppChatAppLogic() {
           status: sendPlan.status,
           canProceed: true,
           blockingReason: null,
-          warningReason: '检测到无法直接纳入模型上下文的附件，发送前需要确认处理方式。',
+          warningReason: 'sendPlan.confirmationRequired',
           partialAllowed: false,
         }
       }
@@ -7166,7 +7200,7 @@ export function useAppChatAppLogic() {
           status: sendPlan.status,
           canProceed: true,
           blockingReason: null,
-          warningReason: '检测到无法直接纳入模型上下文的附件，发送前需要确认处理方式。',
+          warningReason: 'sendPlan.confirmationRequired',
           partialAllowed: false,
         }
       }
@@ -7175,7 +7209,7 @@ export function useAppChatAppLogic() {
         return {
           status: sendPlan.status,
           canProceed: false,
-          blockingReason: '部分附件无法发送，请处理附件后再发送。',
+          blockingReason: 'sendPlan.attachmentBlocked',
           warningReason: null,
           partialAllowed: false,
         }
@@ -7184,7 +7218,7 @@ export function useAppChatAppLogic() {
         status: sendPlan.status,
         canProceed: true,
         blockingReason: null,
-        warningReason: '部分附件不会发送，仍可继续。',
+        warningReason: 'sendPlan.attachmentPartialBlock',
         partialAllowed: true,
       }
     }
@@ -7423,6 +7457,7 @@ export function useAppChatAppLogic() {
       userMessageId,
       userMessageText: text,
       assistantMessageId,
+      reasoningPanelDefaultExpanded: globalReasoningPanelDefaultExpanded.value,
       ...(imageGenerationConfig ? { requestedImageGeneration: true } : {}),
       requestedReasoningMode,
       ...(requestedReasoningEffortValue ? { requestedReasoningEffort: requestedReasoningEffortValue } : {}),
@@ -8033,6 +8068,7 @@ export function useAppChatAppLogic() {
       await refreshProjects()
       await refreshConvos()
       await refreshGlobalReasoningPrefs()
+      await refreshGlobalReasoningPanelDefaultExpanded()
       await refreshGlobalWebSearchDefaults()
       await refreshGlobalSamplingParamsDefaults()
       await refreshGlobalUserMessageRenderDefault()
@@ -8054,6 +8090,7 @@ export function useAppChatAppLogic() {
 
   onMounted(() => {
     window.addEventListener('settings:reasoningPrefsUpdated', handleGlobalReasoningPrefsUpdated)
+    window.addEventListener('settings:reasoningPanelDefaultExpandedUpdated', handleGlobalReasoningPanelDefaultExpandedUpdated)
     window.addEventListener('settings:userMessageRenderDefaultUpdated', handleGlobalUserMessageRenderDefaultUpdated)
     window.addEventListener('settings:webSearchDefaultsUpdated', handleGlobalWebSearchDefaultsUpdated)
     window.addEventListener('settings:samplingParamsDefaultsUpdated', handleGlobalSamplingParamsDefaultsUpdated)
@@ -8183,6 +8220,7 @@ export function useAppChatAppLogic() {
   onUnmounted(() => {
     void flushDraftPersistence()
     window.removeEventListener('settings:reasoningPrefsUpdated', handleGlobalReasoningPrefsUpdated)
+    window.removeEventListener('settings:reasoningPanelDefaultExpandedUpdated', handleGlobalReasoningPanelDefaultExpandedUpdated)
     window.removeEventListener('settings:userMessageRenderDefaultUpdated', handleGlobalUserMessageRenderDefaultUpdated)
     window.removeEventListener('settings:webSearchDefaultsUpdated', handleGlobalWebSearchDefaultsUpdated)
     window.removeEventListener('settings:samplingParamsDefaultsUpdated', handleGlobalSamplingParamsDefaultsUpdated)
@@ -8291,10 +8329,10 @@ export function useAppChatAppLogic() {
     reasoningRailMode,
     rightRailOpen,
     rightRailCanShowReasoning,
-    toggleRightRailOpen,
+    closeRightRailPanel,
+    toggleConsolePanel,
     rightRailView,
     effectiveRightRailView,
-    setRightRailView,
     runVM,
     isRunning,
     activeTitle,
@@ -8353,7 +8391,6 @@ export function useAppChatAppLogic() {
     questionIdForMessage,
     lastAssistantReasoningView,
     lastAssistantReasoningVersion,
-    lastAssistantPanelState,
     lastAssistantIsStreaming,
     lastAssistantReasoningPieces,
     lastAssistantMessage,

@@ -1,0 +1,42 @@
+{
+  "filePipeline": {
+    "detection": {
+      "notStarted": "未开始",
+      "metadataReady": "元数据就绪",
+      "basicDetecting": "基础检测中",
+      "basicReady": "基础就绪",
+      "fullDetecting": "完整检测中",
+      "fullReady": "完整就绪",
+      "parserValidating": "解析器验证中",
+      "failed": "检测失败",
+      "stale": "已过期",
+      "cancelled": "已取消"
+    },
+    "flags": {
+      "extensionMismatch": "扩展名不匹配",
+      "lowConfidence": "低置信度",
+      "scriptableFormat": "可执行脚本格式",
+      "macroCapableDocument": "支持宏的文档",
+      "executableContent": "可执行内容",
+      "polyglotSuspected": "疑似多语种文件"
+    },
+    "route": {
+      "eligible": "可发送",
+      "blocked": "已阻止",
+      "detectionRequired": "需要检测",
+      "detectionPending": "检测中",
+      "detectionFailed": "检测失败"
+    },
+    "displayStatus": {
+      "parsing": "解析中",
+      "detectionPending": "等待检测",
+      "detectionFailed": "检测失败",
+      "detectionRequired": "需要检测",
+      "ready": "就绪",
+      "failed": "失败",
+      "incompatible": "与当前模型不兼容",
+      "readyWithWarnings": "就绪（有警告）",
+      "unsupported": "不支持"
+    }
+  }
+}

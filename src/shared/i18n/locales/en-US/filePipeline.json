@@ -1,0 +1,42 @@
+{
+  "filePipeline": {
+    "detection": {
+      "notStarted": "Not started",
+      "metadataReady": "Metadata ready",
+      "basicDetecting": "Basic detecting",
+      "basicReady": "Basic ready",
+      "fullDetecting": "Full detecting",
+      "fullReady": "Full ready",
+      "parserValidating": "Parser validating",
+      "failed": "Failed",
+      "stale": "Stale",
+      "cancelled": "Cancelled"
+    },
+    "flags": {
+      "extensionMismatch": "Extension mismatch",
+      "lowConfidence": "Low confidence",
+      "scriptableFormat": "Scriptable format",
+      "macroCapableDocument": "Macro-capable document",
+      "executableContent": "Executable content",
+      "polyglotSuspected": "Polyglot suspected"
+    },
+    "route": {
+      "eligible": "Eligible",
+      "blocked": "Blocked",
+      "detectionRequired": "Detection required",
+      "detectionPending": "Detection pending",
+      "detectionFailed": "Detection failed"
+    },
+    "displayStatus": {
+      "parsing": "Parsing",
+      "detectionPending": "Awaiting detection",
+      "detectionFailed": "Detection failed",
+      "detectionRequired": "Detection required",
+      "ready": "Ready",
+      "failed": "Failed",
+      "incompatible": "Incompatible with current model",
+      "readyWithWarnings": "Ready (with warnings)",
+      "unsupported": "Unsupported"
+    }
+  }
+}

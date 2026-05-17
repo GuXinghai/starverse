@@ -203,6 +203,7 @@ export interface ComposerMessages {
       readonly noSendableInput: string
       readonly updatingSendPlan: string
       readonly model: string
+      readonly review: string
     }
     readonly modelPicker: {
       readonly favorites: string
@@ -219,7 +220,170 @@ export interface ComposerMessages {
  * 所有 namespace 的消息类型总表
  * 扩展新 namespace 时在此处添加。
  */
-export interface AllMessages extends CommonMessages, SettingsMessages, NavigationMessages, ComposerMessages {}
+export interface AllMessages extends CommonMessages, SettingsMessages, NavigationMessages, ComposerMessages, SendPlanMessages, ErrorsMessages, DiagnosticsMessages, FilePipelineMessages {}
+
+/**
+ * sendPlan namespace
+ */
+export interface SendPlanMessages {
+  readonly sendPlan: {
+    readonly noSendableInput: string
+    readonly detectionRequired: string
+    readonly detectionPending: string
+    readonly detectionFailed: string
+    readonly attachmentBlocked: string
+    readonly attachmentWarning: string
+    readonly attachmentPartialBlock: string
+    readonly attachmentContentRisk: string
+    readonly routeUnavailable: string
+    readonly confirmationRequired: string
+    readonly unsupportedAttachment: string
+    readonly conversionRequired: string
+    readonly conversionUnavailable: string
+    readonly modelDoesNotSupportFiles: string
+    readonly modelDoesNotSupportImages: string
+    readonly modelDoesNotSupportAudio: string
+    readonly modelDoesNotSupportVideo: string
+    readonly pdfNotSupportedByProvider: string
+    readonly historyAttachmentExcluded: string
+    readonly historyAttachmentsExcluded: string
+    readonly attachmentReviewRequired: string
+    readonly historyAllExcluded: string
+    readonly sendPlanBlocked: string
+    readonly sendPlanPartial: string
+    readonly sendPlanWarning: string
+    readonly confirmSendTitle: string
+    readonly confirmRegenerateTitle: string
+    readonly confirmRetryTitle: string
+    readonly confirmEditTitle: string
+    readonly historyAllExcludedPrompt: string
+    readonly currentDecisionRequired: string
+    readonly noSendableRepresentation: string
+    readonly audioNoUrlRef: string
+    readonly noRetainableUrl: string
+    readonly urlRefNotAllowed: string
+    readonly noLocalCopy: string
+    readonly fileCopyNotAllowed: string
+    readonly urlOnlyRetention: string
+  }
+}
+
+/**
+ * errors namespace
+ */
+export interface ErrorsMessages {
+  readonly errors: {
+    readonly provider: {
+      readonly apiKeyMissing: string
+      readonly apiKeyInvalid: string
+      readonly authFailed: string
+      readonly rateLimited: string
+      readonly networkFailed: string
+      readonly modelUnavailable: string
+      readonly requestFailed: string
+      readonly userAborted: string
+      readonly unknown: string
+    }
+    readonly action: {
+      readonly checkApiKey: string
+      readonly topUp: string
+      readonly editPrompt: string
+      readonly fixParams: string
+      readonly retryWithBackoff: string
+      readonly switchModel: string
+      readonly relaxConstraints: string
+      readonly unknown: string
+    }
+    readonly attachment: {
+      readonly importFailed: string
+      readonly urlRequired: string
+      readonly urlImportFailed: string
+      readonly urlAdded: string
+      readonly filePickerUnavailable: string
+      readonly removedFromDraft: string
+      readonly alreadyRemoved: string
+      readonly removeFailed: string
+      readonly updateFailed: string
+      readonly previewRetryImageOnly: string
+      readonly previewRefreshed: string
+      readonly menuUnavailable: string
+      readonly disabledWhileRunning: string
+      readonly droppedNotAccessible: string
+      readonly pastedNotAccessible: string
+      readonly addedCount: string
+      readonly modelNoImageSupport: string
+    }
+    readonly modelCatalog: {
+      readonly unavailable: string
+      readonly notSynced: string
+      readonly empty: string
+      readonly indexNotSynced: string
+      readonly syncFailed: string
+    }
+  }
+}
+
+/**
+ * diagnostics namespace
+ */
+export interface DiagnosticsMessages {
+  readonly diagnostics: {
+    readonly cacheHit: string
+    readonly cacheMiss: string
+    readonly detectStarted: string
+    readonly detectCompleted: string
+    readonly detectFailed: string
+    readonly engineUnavailable: string
+    readonly engineTimeout: string
+    readonly verdictStale: string
+  }
+}
+
+/**
+ * filePipeline namespace
+ */
+export interface FilePipelineMessages {
+  readonly filePipeline: {
+    readonly detection: {
+      readonly notStarted: string
+      readonly metadataReady: string
+      readonly basicDetecting: string
+      readonly basicReady: string
+      readonly fullDetecting: string
+      readonly fullReady: string
+      readonly parserValidating: string
+      readonly failed: string
+      readonly stale: string
+      readonly cancelled: string
+    }
+    readonly flags: {
+      readonly extensionMismatch: string
+      readonly lowConfidence: string
+      readonly scriptableFormat: string
+      readonly macroCapableDocument: string
+      readonly executableContent: string
+      readonly polyglotSuspected: string
+    }
+    readonly route: {
+      readonly eligible: string
+      readonly blocked: string
+      readonly detectionRequired: string
+      readonly detectionPending: string
+      readonly detectionFailed: string
+    }
+    readonly displayStatus: {
+      readonly parsing: string
+      readonly detectionPending: string
+      readonly detectionFailed: string
+      readonly detectionRequired: string
+      readonly ready: string
+      readonly failed: string
+      readonly incompatible: string
+      readonly readyWithWarnings: string
+      readonly unsupported: string
+    }
+  }
+}
 
 /**
  * 消息 key 的路径类型
