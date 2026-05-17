@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchLocale, normalizeLanguagePrefs } from './localeMatcher'
+import { matchLocale, matchSystemLocale, normalizeLanguagePrefs } from './localeMatcher'
 
 describe('localeMatcher', () => {
   describe('matchLocale', () => {
@@ -62,6 +62,45 @@ describe('localeMatcher', () => {
       // Exact match is case-sensitive
       expect(matchLocale('zh-cn')).toBe('zh-CN') // falls through to prefix match
       expect(matchLocale('EN')).toBe('en-US') // prefix match
+    })
+  })
+
+  describe('matchSystemLocale', () => {
+    it('matches zh from languages list', () => {
+      expect(matchSystemLocale(['zh-CN', 'en-US'])).toBe('zh-CN')
+    })
+
+    it('matches en from languages list', () => {
+      expect(matchSystemLocale(['en-US', 'zh-CN'])).toBe('en-US')
+    })
+
+    it('matches zh-Hans from languages list', () => {
+      expect(matchSystemLocale(['zh-Hans'])).toBe('zh-CN')
+    })
+
+    it('matches en-GB from languages list', () => {
+      expect(matchSystemLocale(['en-GB'])).toBe('en-US')
+    })
+
+    it('falls back to singleLanguage when list is empty', () => {
+      expect(matchSystemLocale([], 'zh-CN')).toBe('zh-CN')
+    })
+
+    it('falls back to singleLanguage when list is null', () => {
+      expect(matchSystemLocale(null, 'en-US')).toBe('en-US')
+    })
+
+    it('returns DEFAULT_LOCALE for unknown list and no single', () => {
+      expect(matchSystemLocale(['ja-JP', 'fr-FR'])).toBe('zh-CN')
+    })
+
+    it('returns DEFAULT_LOCALE when all inputs are null', () => {
+      expect(matchSystemLocale(null, null)).toBe('zh-CN')
+    })
+
+    it('prioritizes first matching language in list', () => {
+      expect(matchSystemLocale(['ja-JP', 'zh-CN', 'en-US'])).toBe('zh-CN')
+      expect(matchSystemLocale(['ja-JP', 'en-US', 'zh-CN'])).toBe('en-US')
     })
   })
 

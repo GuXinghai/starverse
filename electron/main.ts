@@ -65,6 +65,7 @@ const DEFAULT_CONFIG = {
   activeProvider: 'Gemini' as const,
   theme: 'auto' as const,
   language: 'zh-CN' as const,
+  languageManual: 'zh-CN' as const,
   autoScrollToBottom: true,
   showTimestamps: true,
   enableNotifications: true,

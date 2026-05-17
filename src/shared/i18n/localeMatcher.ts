@@ -48,6 +48,44 @@ export function matchLocale(locale: string | undefined | null): SupportedLocale 
 }
 
 /**
+ * 从系统语言列表中匹配最佳 SupportedLocale
+ *
+ * 使用 navigator.languages（优先）或 navigator.language 进行匹配。
+ * 遍历列表，返回第一个匹配的 SupportedLocale。
+ * 若无匹配，返回 DEFAULT_LOCALE。
+ *
+ * @param systemLanguages - 系统语言列表（如 navigator.languages）
+ * @param singleLanguage - 单个系统语言（如 navigator.language），作为后备
+ */
+export function matchSystemLocale(
+  systemLanguages?: readonly string[] | null,
+  singleLanguage?: string | null
+): SupportedLocale {
+  // 优先遍历语言列表
+  if (systemLanguages && systemLanguages.length > 0) {
+    for (const lang of systemLanguages) {
+      const matched = matchLocale(lang)
+      // matchLocale 不会返回 unknown（它总是返回 SupportedLocale），
+      // 但我们只在语言前缀匹配成功时接受
+      const lower = lang.toLowerCase()
+      if (
+        lower === 'zh-cn' || lower === 'zh' || lower.startsWith('zh-') ||
+        lower === 'en-us' || lower === 'en' || lower.startsWith('en-')
+      ) {
+        return matched
+      }
+    }
+  }
+
+  // 后备：单个语言
+  if (singleLanguage) {
+    return matchLocale(singleLanguage)
+  }
+
+  return DEFAULT_LOCALE
+}
+
+/**
  * 规范化 LanguagePrefs 输入，确保返回合法值
  *
  * @param input - 原始输入（可能来自 electron-store 或用户输入）

@@ -79,7 +79,8 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   
   // ========== User Preferences ==========
   'theme',                // 主题设置 ('light' | 'dark' | 'auto')
-  'language',             // 界面语言 ('zh-CN' | 'en-US')
+  'language',             // 界面语言 ('zh-CN' | 'en-US' | 'system')
+  'languageManual',       // 手动选择的语言（仅 manual 模式有意义）
   'fontSize',             // 字体大小
   'webSearchEngine',      // Web 搜索引擎 ('native' | 'exa' | 'undefined')
   'webSearchLevel',       // Web 搜索级别（详细程度）
@@ -90,6 +91,7 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   'autoScrollToBottom',   // 是否自动滚动到底部
   'showTimestamps',       // 是否显示时间戳
   'enableNotifications',  // 是否启用通知
+  'maxRecentModels',      // Model Picker 最近使用模型数量上限（正整数）
 
   // ========== Network Experiments ==========
   'netExp',               // 网络实验开关（HTTP2/QUIC/KeepAlive 等）

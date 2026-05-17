@@ -4,6 +4,7 @@ import {
   tf,
   applyLanguagePrefs,
   setLocale,
+  getCurrentLocale,
   getMessages,
   SUPPORTED_LOCALES,
   DEFAULT_LOCALE,
@@ -89,6 +90,30 @@ describe('i18n index', () => {
       setLocale('en-US')
       setLocale('zh-CN')
       expect(t('common.settings')).toBe('设置')
+    })
+
+    it('updates getCurrentLocale() synchronously', () => {
+      setLocale('en-US')
+      expect(getCurrentLocale()).toBe('en-US')
+      setLocale('zh-CN')
+      expect(getCurrentLocale()).toBe('zh-CN')
+    })
+  })
+
+  describe('getCurrentLocale()', () => {
+    it('returns default locale initially', () => {
+      applyLanguagePrefs({ uiLocale: 'zh-CN' })
+      expect(getCurrentLocale()).toBe('zh-CN')
+    })
+
+    it('reflects setLocale changes', () => {
+      setLocale('en-US')
+      expect(getCurrentLocale()).toBe('en-US')
+    })
+
+    it('reflects applyLanguagePrefs changes', () => {
+      applyLanguagePrefs({ uiLocale: 'en-US' })
+      expect(getCurrentLocale()).toBe('en-US')
     })
   })
 

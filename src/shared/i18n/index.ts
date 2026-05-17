@@ -15,7 +15,7 @@
 import { reactive, ref, readonly } from 'vue'
 import type { SupportedLocale, LocaleMode, LanguagePrefs, MessageBundle } from './localeTypes'
 import { SUPPORTED_LOCALES, DEFAULT_LOCALE, FALLBACK_LOCALE, LOCALE_DISPLAY_NAMES, LOCALE_DIRECTION, isSupportedLocale } from './localeRegistry'
-import { matchLocale, normalizeLanguagePrefs } from './localeMatcher'
+import { matchLocale, matchSystemLocale, normalizeLanguagePrefs } from './localeMatcher'
 import { formatDate, formatTime, formatRelativeTime, formatNumber, formatFileSize } from './formatters'
 
 // ── 静态导入消息 ──────────────────────────────────────────
@@ -116,6 +116,7 @@ export function applyLanguagePrefs(prefs: {
   currentPrefs.uiLocale = normalized.uiLocale
   currentPrefs.fallbackLocale = normalized.fallbackLocale
   currentLocale.value = normalized.uiLocale
+  updateDocumentLocale(normalized.uiLocale)
 }
 
 /**
@@ -125,6 +126,25 @@ export function setLocale(locale: SupportedLocale): void {
   currentLocale.value = locale
   currentPrefs.uiLocale = locale
   currentPrefs.mode = 'manual'
+  updateDocumentLocale(locale)
+}
+
+/**
+ * 获取当前 locale（非响应式，同步返回当前值）
+ *
+ * 供纯 TS 模块安全读取，无需访问 Vue ref。
+ */
+export function getCurrentLocale(): SupportedLocale {
+  return currentLocale.value
+}
+
+/**
+ * 更新 document.documentElement 的 lang 和 dir 属性
+ */
+export function updateDocumentLocale(locale: SupportedLocale): void {
+  if (typeof document === 'undefined') return
+  document.documentElement.lang = locale
+  document.documentElement.dir = LOCALE_DIRECTION[locale]
 }
 
 // ── 带参数的消息格式化 ────────────────────────────────────
@@ -159,6 +179,7 @@ export {
   LOCALE_DIRECTION,
   isSupportedLocale,
   matchLocale,
+  matchSystemLocale,
   normalizeLanguagePrefs,
   formatDate,
   formatTime,

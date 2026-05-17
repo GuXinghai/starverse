@@ -4,6 +4,7 @@
     "cancel": "取消",
     "confirm": "确认",
     "save": "保存",
+    "saved": "已保存",
     "delete": "删除",
     "close": "关闭",
     "reload": "重新加载",
@@ -22,6 +23,10 @@
     "enabled": "已启用",
     "disabled": "已禁用",
     "settings": "设置",
-    "untitledConversation": "未命名对话"
+    "untitledConversation": "未命名对话",
+    "language": "界面语言",
+    "languageFollowSystem": "跟随系统",
+    "languageFollowSystemDesc": "根据系统语言自动切换界面语言",
+    "languageManual": "手动选择"
   }
 }
