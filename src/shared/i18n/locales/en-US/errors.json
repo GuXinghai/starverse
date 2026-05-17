@@ -38,7 +38,10 @@
       "droppedNotAccessible": "Dropped files are not accessible from this build.",
       "pastedNotAccessible": "Pasted files are not accessible from this build.",
       "addedCount": "Added {count} {label}.",
-      "modelNoImageSupport": "Current model does not support image inputs."
+      "modelNoImageSupport": "Current model does not support image inputs.",
+      "loadFailed": "Attachment load failed.",
+      "previewRetryNoReady": "Preview retry completed, but no ready preview was available.",
+      "draftLocked": "Attachment confirmation panel is active. Draft is locked."
     },
     "modelCatalog": {
       "unavailable": "Model catalog is unavailable.",

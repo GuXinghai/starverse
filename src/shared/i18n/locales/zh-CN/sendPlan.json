@@ -37,6 +37,16 @@
     "urlRefNotAllowed": "当前模型或提供方不允许链接发送。",
     "noLocalCopy": "当前附件没有可用的本地副本。",
     "fileCopyNotAllowed": "当前模型或提供方不允许文件副本发送。",
-    "urlOnlyRetention": "仅 URL 附件支持保留方式设置。"
+    "urlOnlyRetention": "仅 URL 附件支持保留方式设置。",
+    "sendMode": {
+      "default": "跟随默认设定",
+      "auto": "自动",
+      "urlRef": "链接",
+      "inlineBase64": "文件副本",
+      "providerFileRef": "提供方文件"
+    },
+    "issueFallback": "附件发送受限，请处理附件后重试。",
+    "issueUnknown": "发送计划存在未知问题。",
+    "targetMessageUnavailable": "目标历史附件对应的消息当前不可见。"
   }
 }

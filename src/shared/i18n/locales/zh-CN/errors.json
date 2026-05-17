@@ -38,7 +38,10 @@
       "droppedNotAccessible": "当前构建无法访问拖放的文件。",
       "pastedNotAccessible": "当前构建无法访问粘贴的文件。",
       "addedCount": "已添加 {count} 个 {label}。",
-      "modelNoImageSupport": "当前模型不支持图片输入。"
+      "modelNoImageSupport": "当前模型不支持图片输入。",
+      "loadFailed": "附件加载失败。",
+      "previewRetryNoReady": "预览重试完成，但没有可用的预览。",
+      "draftLocked": "附件确认面板处理中，当前草稿已锁定。"
     },
     "modelCatalog": {
       "unavailable": "模型目录不可用。",
