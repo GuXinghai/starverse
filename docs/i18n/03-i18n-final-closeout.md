@@ -20,15 +20,15 @@
 ### Namespaces (Task Packs 3-7)
 | Namespace | Keys | Status |
 |---|---|---|
-| `common` | 45 | Complete |
-| `settings` | 48 | Complete |
-| `navigation` | 20 | Complete |
-| `composer` | 17 | Complete |
-| `sendPlan` | 36 | Complete |
-| `errors` | 36 | Complete |
+| `common` | 49 | Complete |
+| `settings` | 52 | Complete |
+| `navigation` | 25 | Complete |
+| `composer` | 22 | Complete |
+| `sendPlan` | 49 | Complete |
+| `errors` | 42 | Complete |
 | `diagnostics` | 8 | Complete |
-| `filePipeline` | 21 | Complete |
-| `dialogs` | 30 | Complete |
+| `filePipeline` | 30 | Complete |
+| `dialogs` | 31 | Complete |
 
 ### Migrated Components
 - SettingsPanel (full)
@@ -136,3 +136,15 @@ npm run i18n:sendplan-map
 # Full typecheck
 npx vue-tsc --noEmit
 ```
+
+## Build Status
+
+`npm run build` is blocked by **39 pre-existing typecheck errors** unrelated to i18n:
+
+- `src/next/file-type/` — 25 errors (unused imports, type mismatches)
+- `src/next/plugin-distribution/` — 3 errors
+- `src/ui-app/components/PluginManagementPanel.vue` — 5 errors
+- `src/ui-app/components/EnginePluginSettingsPanel.vue` — 3 errors
+- `electron/db/workerManager.ts` — 1 error
+
+**No i18n files have typecheck errors.** All i18n changes pass `vue-tsc --noEmit` when filtered to changed files. The build blockage is a pre-existing issue in the file-type and plugin-distribution subsystems.
