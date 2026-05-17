@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
-import { afterEach, vi } from 'vitest'
+import { afterEach, beforeEach, vi } from 'vitest'
 import ChatMessageBubble from './ChatMessageBubble.vue'
 import type { MessageVM } from './types'
+import { resetI18nForTests } from '@/shared/i18n'
 
 function msg(partial: Partial<MessageVM> & Pick<MessageVM, 'messageId' | 'role'>): MessageVM {
   return {
@@ -19,6 +20,10 @@ function msg(partial: Partial<MessageVM> & Pick<MessageVM, 'messageId' | 'role'>
 describe('ChatMessageBubble', () => {
   const originalClipboard = globalThis.navigator.clipboard
   const originalIpcRenderer = (globalThis as any).ipcRenderer
+
+  beforeEach(() => {
+    resetI18nForTests()
+  })
 
   afterEach(() => {
     Object.defineProperty(globalThis.navigator, 'clipboard', {

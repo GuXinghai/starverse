@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, beforeEach } from 'vitest'
 import zhCNCommon from './zh-CN/common.json'
 import enUSCommon from './en-US/common.json'
 import zhCNSettings from './zh-CN/settings.json'
@@ -7,7 +7,22 @@ import zhCNNavigation from './zh-CN/navigation.json'
 import enUSNavigation from './en-US/navigation.json'
 import zhCNComposer from './zh-CN/composer.json'
 import enUSComposer from './en-US/composer.json'
-import { t, getMessages } from '../index'
+import { t, getMessages, resetI18nForTests } from '../index'
+
+/** Registered namespace names — must match messageRegistry keys in index.ts */
+const REGISTERED_NAMESPACES = ['settings', 'navigation', 'composer'] as const
+
+/**
+ * Reserved top-level prefixes that common namespace must not use as nested key paths.
+ * e.g. common.json must not contain "settings.title" or "navigation.project.title",
+ * but a flat key named "settings" is acceptable.
+ */
+const RESERVED_NS_PREFIXES = [
+  ...REGISTERED_NAMESPACES,
+  'filePipeline',
+  'errors',
+  'diagnostics',
+]
 
 function flattenKeys(obj: any, prefix = ''): string[] {
   const keys: string[] = []
@@ -29,6 +44,10 @@ function extractParams(msg: string): string[] {
 }
 
 describe('locale key consistency', () => {
+  beforeEach(() => {
+    resetI18nForTests()
+  })
+
   it('zh-CN and en-US common have identical keys', () => {
     const zhKeys = flattenKeys(zhCNCommon.common).sort()
     const enKeys = flattenKeys(enUSCommon.common).sort()
@@ -76,19 +95,21 @@ describe('locale key consistency', () => {
     expect((enUSComposer.composer as any).actions.send).toBeTruthy()
   })
 
-  it('namespace names do not shadow common flat keys (known overlap)', () => {
-    // common.json has a key 'settings' with value '设置'.
-    // The 'settings' namespace also exists.
-    // With namespace-detection-first lookup, t('settings') resolves to common.settings,
-    // while t('settings.title') resolves to settings.title. Both work correctly.
-    // This test documents the overlap for awareness, not as a hard failure.
-    const commonKeys = Object.keys(zhCNCommon.common)
-    const nsNames = ['navigation', 'composer']
-    for (const ns of nsNames) {
-      expect(commonKeys).not.toContain(ns)
+  it('common namespace has no nested keys with reserved namespace prefixes', () => {
+    // common.json flat keys (like "settings") are acceptable.
+    // But nested paths like "settings.title" in common.json would be ambiguous
+    // with namespace-detection-first lookup and must be forbidden.
+    const zhCommonFlat = flattenKeys(zhCNCommon.common)
+    const enCommonFlat = flattenKeys(enUSCommon.common)
+    const violations: string[] = []
+    for (const key of [...zhCommonFlat, ...enCommonFlat]) {
+      for (const prefix of RESERVED_NS_PREFIXES) {
+        if (key.startsWith(`${prefix}.`)) {
+          violations.push(key)
+        }
+      }
     }
-    // 'settings' key exists in common — this is acceptable with current t() design
-    expect(commonKeys).toContain('settings')
+    expect(violations).toEqual([])
   })
 
   it('cross-namespace key paths do not silently shadow each other', () => {

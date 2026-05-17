@@ -196,6 +196,19 @@ export function updateDocumentLocale(locale: SupportedLocale): void {
   document.documentElement.dir = LOCALE_DIRECTION[locale]
 }
 
+/**
+ * 重置 i18n 单例状态到默认值（仅用于测试）
+ *
+ * 在 beforeEach 中调用，防止测试间 currentLocale/currentPrefs 状态污染。
+ * 生产代码不应调用此函数。
+ */
+export function resetI18nForTests(): void {
+  currentLocale.value = DEFAULT_LOCALE
+  currentPrefs.mode = 'manual'
+  currentPrefs.uiLocale = DEFAULT_LOCALE
+  currentPrefs.fallbackLocale = FALLBACK_LOCALE
+}
+
 // ── 带参数的消息格式化 ────────────────────────────────────
 
 /**

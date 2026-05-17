@@ -6,6 +6,7 @@ import {
   setLocale,
   getCurrentLocale,
   getMessages,
+  resetI18nForTests,
   SUPPORTED_LOCALES,
   DEFAULT_LOCALE,
   FALLBACK_LOCALE,
@@ -15,8 +16,7 @@ import {
 
 describe('i18n index', () => {
   beforeEach(() => {
-    // Reset to defaults
-    applyLanguagePrefs({ uiLocale: 'zh-CN' })
+    resetI18nForTests()
   })
 
   describe('t() — message lookup', () => {

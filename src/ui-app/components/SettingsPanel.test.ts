@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SettingsPanel from './SettingsPanel.vue'
+import { resetI18nForTests } from '@/shared/i18n'
 
 function createElectronStoreMock() {
   const get = vi.fn(async (key: string) => {
@@ -38,6 +39,7 @@ describe('ui-app SettingsPanel', () => {
   const originalDbBridge = (globalThis as any).dbBridge
 
   beforeEach(() => {
+    resetI18nForTests()
     globalThis.localStorage?.removeItem('sv_debug_openrouter_echo_upstream_body')
     ;(globalThis as any).electronStore = createElectronStoreMock()
     ;(globalThis as any).dbBridge = createDbBridgeMock()

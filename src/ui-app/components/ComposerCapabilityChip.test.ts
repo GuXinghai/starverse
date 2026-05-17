@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/vue'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import ComposerCapabilityChip from './ComposerCapabilityChip.vue'
+import { resetI18nForTests } from '@/shared/i18n'
 
 function mountChip(props: Partial<{
   enabled: boolean
@@ -37,6 +38,8 @@ function mountChip(props: Partial<{
 }
 
 describe('ComposerCapabilityChip', () => {
+  beforeEach(() => { resetI18nForTests() })
+
   it('renders label text when disabled', () => {
     mountChip({ label: 'Think', enabled: false })
     expect(screen.getByText('Think')).toBeTruthy()
@@ -155,6 +158,8 @@ describe('ComposerCapabilityChip', () => {
 })
 
 describe('ComposerCapabilityChip label rules', () => {
+  beforeEach(() => { resetI18nForTests() })
+
   it('Reasoning shows Think when disabled', () => {
     mountChip({ label: 'Think', enabled: false, kind: 'reasoning' })
     expect(screen.getByText('Think')).toBeTruthy()
@@ -217,6 +222,8 @@ describe('ComposerCapabilityChip label rules', () => {
 })
 
 describe('ComposerCapabilityChip fixed width', () => {
+  beforeEach(() => { resetI18nForTests() })
+
   it('applies w-[6.25rem] for reasoning kind', () => {
     mountChip({ kind: 'reasoning', label: 'Think', enabled: false })
     const root = screen.getByTestId('test-chip')
