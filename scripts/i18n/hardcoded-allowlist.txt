@@ -1,0 +1,39 @@
+# Hardcoded UI text allowlist
+# Each line is a regex pattern. Lines starting with # are comments.
+# Add patterns here to suppress false positives from check-hardcoded-ui-text.mjs
+
+# Internal debug strings
+dbBridge unavailable\.
+model catalog sync failed\.
+dbBridge 未就绪
+同步失败
+
+# Technical labels that should stay English
+Model
+OpenRouter
+provider\.require_parameters
+debug\.echo_upstream_body
+stream in main process
+Force HTTP/1\.1
+
+# Components not yet migrated (deferred)
+WebSearchSettingsEditor
+SamplingParamsSettingsEditor
+PluginManagementPanel
+ModelPickerDialog
+
+# Attachment confirmation panel internal labels
+exclude
+remove
+
+# Send mode technical values
+url_ref
+inline_base64
+provider_file_ref
+
+# Error envelope internal fields
+pre_stream_request_error
+mid_stream_error
+local_transport_error
+user_cancelled
+internal_bug
