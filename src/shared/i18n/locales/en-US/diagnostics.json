@@ -1,0 +1,12 @@
+{
+  "diagnostics": {
+    "cacheHit": "Cache hit",
+    "cacheMiss": "Cache miss",
+    "detectStarted": "Detection started",
+    "detectCompleted": "Detection completed",
+    "detectFailed": "Detection failed",
+    "engineUnavailable": "Detection engine unavailable",
+    "engineTimeout": "Detection engine timeout",
+    "verdictStale": "Detection verdict stale"
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "errors": {
+    "provider": {
+      "apiKeyMissing": "API key is missing.",
+      "apiKeyInvalid": "API key is invalid or expired.",
+      "authFailed": "Authentication failed. Please check your API key.",
+      "rateLimited": "Rate limited. Please try again later.",
+      "networkFailed": "Network connection failed. Please check your network.",
+      "modelUnavailable": "Selected model is unavailable. Please switch models.",
+      "requestFailed": "Request failed. Please retry.",
+      "userAborted": "Request was cancelled.",
+      "unknown": "An unknown error occurred."
+    },
+    "action": {
+      "checkApiKey": "Please check your API key and retry.",
+      "topUp": "Please top up credits or switch models.",
+      "editPrompt": "Please revise your prompt and retry.",
+      "fixParams": "Please fix request parameters and retry.",
+      "retryWithBackoff": "Please retry with backoff.",
+      "switchModel": "Please switch provider/model and retry.",
+      "relaxConstraints": "Please relax routing constraints or switch models.",
+      "unknown": "Please retry or contact support."
+    },
+    "attachment": {
+      "importFailed": "Attachment import failed.",
+      "urlRequired": "URL is required.",
+      "urlImportFailed": "URL import failed.",
+      "urlAdded": "URL added to draft.",
+      "filePickerUnavailable": "File picker is unavailable.",
+      "removedFromDraft": "Attachment removed from draft.",
+      "alreadyRemoved": "Attachment was already removed.",
+      "removeFailed": "Failed to remove attachment.",
+      "updateFailed": "Failed to update attachment settings.",
+      "previewRetryImageOnly": "Preview retry is only available for image attachments.",
+      "previewRefreshed": "Preview refreshed.",
+      "menuUnavailable": "Attachment menu is temporarily unavailable. Please retry.",
+      "disabledWhileRunning": "Attachments are disabled while a response is running.",
+      "droppedNotAccessible": "Dropped files are not accessible from this build.",
+      "pastedNotAccessible": "Pasted files are not accessible from this build.",
+      "addedCount": "Added {count} {label}.",
+      "modelNoImageSupport": "Current model does not support image inputs."
+    },
+    "modelCatalog": {
+      "unavailable": "Model catalog is unavailable.",
+      "notSynced": "Model catalog has not synced yet. Will auto-refresh shortly.",
+      "empty": "Model catalog is empty. Fell back to reasoning model index.",
+      "indexNotSynced": "Reasoning model index has not synced. Showing catalog only.",
+      "syncFailed": "Model catalog is unavailable (sync failed)."
+    }
+  }
+}

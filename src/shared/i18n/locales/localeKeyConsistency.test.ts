@@ -7,10 +7,18 @@ import zhCNNavigation from './zh-CN/navigation.json'
 import enUSNavigation from './en-US/navigation.json'
 import zhCNComposer from './zh-CN/composer.json'
 import enUSComposer from './en-US/composer.json'
+import zhCNSendPlan from './zh-CN/sendPlan.json'
+import enUSSendPlan from './en-US/sendPlan.json'
+import zhCNErrors from './zh-CN/errors.json'
+import enUSErrors from './en-US/errors.json'
+import zhCNDiagnostics from './zh-CN/diagnostics.json'
+import enUSDiagnostics from './en-US/diagnostics.json'
+import zhCNFilePipeline from './zh-CN/filePipeline.json'
+import enUSFilePipeline from './en-US/filePipeline.json'
 import { t, getMessages, resetI18nForTests } from '../index'
 
 /** Registered namespace names — must match messageRegistry keys in index.ts */
-const REGISTERED_NAMESPACES = ['settings', 'navigation', 'composer'] as const
+const REGISTERED_NAMESPACES = ['settings', 'navigation', 'composer', 'sendPlan', 'errors', 'diagnostics', 'filePipeline'] as const
 
 /**
  * Reserved top-level prefixes that common namespace must not use as nested key paths.
@@ -72,6 +80,30 @@ describe('locale key consistency', () => {
     expect(zhKeys).toEqual(enKeys)
   })
 
+  it('zh-CN and en-US sendPlan have identical keys', () => {
+    const zhKeys = flattenKeys(zhCNSendPlan.sendPlan).sort()
+    const enKeys = flattenKeys(enUSSendPlan.sendPlan).sort()
+    expect(zhKeys).toEqual(enKeys)
+  })
+
+  it('zh-CN and en-US errors have identical keys', () => {
+    const zhKeys = flattenKeys(zhCNErrors.errors).sort()
+    const enKeys = flattenKeys(enUSErrors.errors).sort()
+    expect(zhKeys).toEqual(enKeys)
+  })
+
+  it('zh-CN and en-US diagnostics have identical keys', () => {
+    const zhKeys = flattenKeys(zhCNDiagnostics.diagnostics).sort()
+    const enKeys = flattenKeys(enUSDiagnostics.diagnostics).sort()
+    expect(zhKeys).toEqual(enKeys)
+  })
+
+  it('zh-CN and en-US filePipeline have identical keys', () => {
+    const zhKeys = flattenKeys(zhCNFilePipeline.filePipeline).sort()
+    const enKeys = flattenKeys(enUSFilePipeline.filePipeline).sort()
+    expect(zhKeys).toEqual(enKeys)
+  })
+
   it('common namespace has at least core action keys', () => {
     const coreKeys = ['ok', 'cancel', 'save', 'delete', 'close', 'search', 'send', 'stop']
     for (const key of coreKeys) {
@@ -118,6 +150,10 @@ describe('locale key consistency', () => {
       ...flattenKeys(zhCNSettings.settings).map(k => `settings.${k}`),
       ...flattenKeys(zhCNNavigation.navigation).map(k => `navigation.${k}`),
       ...flattenKeys(zhCNComposer.composer).map(k => `composer.${k}`),
+      ...flattenKeys(zhCNSendPlan.sendPlan).map(k => `sendPlan.${k}`),
+      ...flattenKeys(zhCNErrors.errors).map(k => `errors.${k}`),
+      ...flattenKeys(zhCNDiagnostics.diagnostics).map(k => `diagnostics.${k}`),
+      ...flattenKeys(zhCNFilePipeline.filePipeline).map(k => `filePipeline.${k}`),
     ]
     const seen = new Set<string>()
     const dupes: string[] = []
@@ -136,6 +172,14 @@ describe('locale key consistency', () => {
       ['navigation.project.title', 'en-US', 'Projects'],
       ['composer.actions.send', 'zh-CN', '发送'],
       ['composer.actions.send', 'en-US', 'Send'],
+      ['sendPlan.detectionPending', 'zh-CN', '附件仍在解析或检测中，完成后才能发送。'],
+      ['sendPlan.detectionPending', 'en-US', 'Attachments are still being parsed or detected. Please wait.'],
+      ['errors.provider.apiKeyInvalid', 'zh-CN', 'API Key 无效或已过期。'],
+      ['errors.provider.apiKeyInvalid', 'en-US', 'API key is invalid or expired.'],
+      ['diagnostics.detectFailed', 'zh-CN', '检测失败'],
+      ['diagnostics.detectFailed', 'en-US', 'Detection failed'],
+      ['filePipeline.detection.failed', 'zh-CN', '检测失败'],
+      ['filePipeline.detection.failed', 'en-US', 'Failed'],
       ['common.ok', 'zh-CN', '确定'],
       ['common.ok', 'en-US', 'OK'],
     ]
@@ -150,6 +194,10 @@ describe('locale key consistency', () => {
       { zh: zhCNSettings.settings, en: enUSSettings.settings, name: 'settings' },
       { zh: zhCNNavigation.navigation, en: enUSNavigation.navigation, name: 'navigation' },
       { zh: zhCNComposer.composer, en: enUSComposer.composer, name: 'composer' },
+      { zh: zhCNSendPlan.sendPlan, en: enUSSendPlan.sendPlan, name: 'sendPlan' },
+      { zh: zhCNErrors.errors, en: enUSErrors.errors, name: 'errors' },
+      { zh: zhCNDiagnostics.diagnostics, en: enUSDiagnostics.diagnostics, name: 'diagnostics' },
+      { zh: zhCNFilePipeline.filePipeline, en: enUSFilePipeline.filePipeline, name: 'filePipeline' },
     ]
     for (const ns of namespaces) {
       const zhFlat = flattenKeys(ns.zh)
@@ -171,7 +219,7 @@ describe('locale key consistency', () => {
   })
 
   it('getMessages returns inner content for all namespaces', () => {
-    const nsNames = ['common', 'settings', 'navigation', 'composer']
+    const nsNames = ['common', 'settings', 'navigation', 'composer', 'sendPlan', 'errors', 'diagnostics', 'filePipeline']
     for (const ns of nsNames) {
       const zhMsgs = getMessages('zh-CN', ns)
       expect(zhMsgs).toBeDefined()

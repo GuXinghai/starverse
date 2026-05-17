@@ -21,7 +21,8 @@
     "status": {
       "noSendableInput": "No sendable input",
       "updatingSendPlan": "Updating send plan…",
-      "model": "Model"
+      "model": "Model",
+      "review": "Review"
     },
     "modelPicker": {
       "favorites": "Fav",

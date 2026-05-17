@@ -1,0 +1,12 @@
+{
+  "diagnostics": {
+    "cacheHit": "缓存命中",
+    "cacheMiss": "缓存未命中",
+    "detectStarted": "检测已开始",
+    "detectCompleted": "检测已完成",
+    "detectFailed": "检测失败",
+    "engineUnavailable": "检测引擎不可用",
+    "engineTimeout": "检测引擎超时",
+    "verdictStale": "检测结论已过期"
+  }
+}

@@ -209,7 +209,7 @@ function failAttachmentMenuOpen(details: Readonly<{
   clearAttachmentMenuState()
   attachmentMenuOpenToken += 1
   attachmentMenuOpen.value = false
-  attachmentMenuError.value = '附件菜单暂时无法打开，请重试'
+  attachmentMenuError.value = t('errors.attachment.menuUnavailable')
   console.error('[ChatAppComposer] attachment menu failed to open', {
     attemptCount: details.attemptCount,
     triggerRectValid: details.triggerRectValid,
@@ -369,8 +369,8 @@ const activeQuickModelItems = computed(() => {
   return []
 })
 const activeQuickModelEmptyText = computed(() => {
-  if (modelQuickMode.value === 'favorites') return 'No favorite models yet.'
-  if (modelQuickMode.value === 'recents') return 'No recent models in this session yet.'
+  if (modelQuickMode.value === 'favorites') return t('composer.modelPicker.noFavorites')
+  if (modelQuickMode.value === 'recents') return t('composer.modelPicker.noRecents')
   return null
 })
 const currentModelDisplayName = computed(() => modelNameById.value.get(selectedModel.value) ?? selectedModel.value)
@@ -726,7 +726,7 @@ onBeforeUnmount(() => {
           data-testid="composer-history-incompatible-review"
           @click="emit('reviewHistoryIncompatible')"
         >
-          查看
+          {{ t('composer.status.review') }}
         </button>
         <template v-if="historyIncompatibleSummary.navigationActive">
           <button
@@ -860,7 +860,7 @@ onBeforeUnmount(() => {
             type="button"
             class="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
             :disabled="!isSendButtonEnabled"
-            :title="sendPlanBlockingSummary ?? undefined"
+            :title="sendPlanBlockingSummary ? t(sendPlanBlockingSummary) : undefined"
             data-testid="composer-send"
             @click="emit('send')"
           >
@@ -882,14 +882,14 @@ onBeforeUnmount(() => {
         class="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-800"
         data-testid="composer-send-gate-block"
       >
-        {{ sendPlanBlockingSummary }}
+        {{ t(sendPlanBlockingSummary) }}
       </div>
       <div
         v-else-if="sendPlanWarningSummary"
         class="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800"
         data-testid="composer-send-gate-warning"
       >
-        {{ sendPlanWarningSummary }}
+        {{ t(sendPlanWarningSummary) }}
       </div>
     </div>
 
@@ -1000,7 +1000,7 @@ onBeforeUnmount(() => {
           type="button"
           class="block w-full rounded px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
           :disabled="props.disabled || props.isRunning || props.imageInputSupported === false"
-          :title="props.imageInputSupported === false ? props.imageInputDisabledReason ?? 'Current model does not support image inputs.' : undefined"
+          :title="props.imageInputSupported === false ? props.imageInputDisabledReason ?? t('errors.attachment.modelNoImageSupport') : undefined"
           data-testid="composer-attach-image"
           @click="requestAttachImages"
         >

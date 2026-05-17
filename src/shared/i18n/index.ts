@@ -27,6 +27,14 @@ import zhCNNavigation from './locales/zh-CN/navigation.json'
 import enUSNavigation from './locales/en-US/navigation.json'
 import zhCNComposer from './locales/zh-CN/composer.json'
 import enUSComposer from './locales/en-US/composer.json'
+import zhCNSendPlan from './locales/zh-CN/sendPlan.json'
+import enUSSendPlan from './locales/en-US/sendPlan.json'
+import zhCNErrors from './locales/zh-CN/errors.json'
+import enUSErrors from './locales/en-US/errors.json'
+import zhCNDiagnostics from './locales/zh-CN/diagnostics.json'
+import enUSDiagnostics from './locales/en-US/diagnostics.json'
+import zhCNFilePipeline from './locales/zh-CN/filePipeline.json'
+import enUSFilePipeline from './locales/en-US/filePipeline.json'
 
 // ── 消息注册表 ────────────────────────────────────────────
 
@@ -36,12 +44,20 @@ const messageRegistry: Record<SupportedLocale, Record<string, MessageBundle>> = 
     settings: zhCNSettings as unknown as MessageBundle,
     navigation: zhCNNavigation as unknown as MessageBundle,
     composer: zhCNComposer as unknown as MessageBundle,
+    sendPlan: zhCNSendPlan as unknown as MessageBundle,
+    errors: zhCNErrors as unknown as MessageBundle,
+    diagnostics: zhCNDiagnostics as unknown as MessageBundle,
+    filePipeline: zhCNFilePipeline as unknown as MessageBundle,
   },
   'en-US': {
     common: enUSCommon as unknown as MessageBundle,
     settings: enUSSettings as unknown as MessageBundle,
     navigation: enUSNavigation as unknown as MessageBundle,
     composer: enUSComposer as unknown as MessageBundle,
+    sendPlan: enUSSendPlan as unknown as MessageBundle,
+    errors: enUSErrors as unknown as MessageBundle,
+    diagnostics: enUSDiagnostics as unknown as MessageBundle,
+    filePipeline: enUSFilePipeline as unknown as MessageBundle,
   },
 }
 
