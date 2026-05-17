@@ -8,7 +8,8 @@
       "projectName": "Project name",
       "deleteConfirm": "Delete project \"{name}\"? Conversations under it will be moved to Inbox.",
       "systemProjectNoRename": "System project cannot be renamed",
-      "systemProjectNoDelete": "System project (Inbox) cannot be deleted"
+      "systemProjectNoDelete": "System project (Inbox) cannot be deleted",
+      "projectSettings": "Project settings"
     },
     "conversation": {
       "title": "Conversations",
@@ -29,7 +30,8 @@
       "selectAll": "Select all",
       "bulkMove": "Bulk move",
       "bulkDelete": "Bulk delete",
-      "selected": "Selected:"
+      "selected": "Selected:",
+      "moreActions": "More actions"
     }
   }
 }

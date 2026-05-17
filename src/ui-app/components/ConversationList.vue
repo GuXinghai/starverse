@@ -351,7 +351,7 @@ function cancelProjectDialog() {
               :disabled="props.disabled"
               :data-testid="`project-settings-${project.id}`"
               @click.stop="openProjectSettings(project)"
-              aria-label="Project settings"
+              :aria-label="t('navigation.project.projectSettings')"
             >
               ⚙️
             </button>
@@ -430,7 +430,7 @@ function cancelProjectDialog() {
           type="button"
           class="rounded-md border border-gray-200 bg-white px-2 py-1 shadow-sm hover:bg-gray-50 disabled:opacity-50"
           :disabled="props.disabled || selectedCount === 0"
-          aria-label="Bulk move"
+          :aria-label="t('navigation.actions.bulkMove')"
           @click="openMove(selectedIdsArray)"
         >
           {{ t('common.move') }}
@@ -439,7 +439,7 @@ function cancelProjectDialog() {
           type="button"
           class="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-red-700 shadow-sm hover:bg-red-100 disabled:opacity-50"
           :disabled="props.disabled || selectedCount === 0"
-          aria-label="Bulk delete"
+          :aria-label="t('navigation.actions.bulkDelete')"
           @click="openDelete(selectedIdsArray)"
         >
           {{ t('common.delete') }}
@@ -488,7 +488,7 @@ function cancelProjectDialog() {
               class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               :disabled="props.disabled"
               :data-testid="`convo-menu-${c.id}`"
-              aria-label="More actions"
+              :aria-label="t('navigation.actions.moreActions')"
               @click.stop="toggleConvoMenu(c.id)"
             >
               ...

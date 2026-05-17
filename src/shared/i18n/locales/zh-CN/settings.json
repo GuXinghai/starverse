@@ -13,9 +13,11 @@
       "title": "OpenRouter",
       "apiKey": "API Key",
       "apiKeyPlaceholder": "sk-…",
+      "apiKeyCleared": "API Key 已清除。",
       "baseUrl": "Base URL（可选）",
       "baseUrlPlaceholder": "https://openrouter.ai/api/v1",
       "baseUrlInvalid": "URL 无效。",
+      "baseUrlCleared": "Base URL 已清除。",
       "requireParameters": "provider.require_parameters",
       "requireParametersDesc": "强制 OpenRouter 校验 provider 参数",
       "debugEcho": "debug.echo_upstream_body",
@@ -54,7 +56,9 @@
       "recentModelsLimitDesc": "控制模型选择器中的最近使用列表。"
     },
     "search": {
-      "title": "全局搜索默认值"
+      "title": "全局搜索默认值",
+      "hintDefault": "全局 mode=default 继承你的 OpenRouter 账户插件默认值。",
+      "hintGlobal": "当项目/会话保持 mode=default 时，应用全局默认值。"
     },
     "customParams": {
       "title": "全局自定义参数"

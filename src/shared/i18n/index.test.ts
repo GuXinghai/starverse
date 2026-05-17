@@ -29,7 +29,6 @@ describe('i18n index', () => {
     })
 
     it('falls back to fallback locale when key missing', () => {
-      // 'nonexistent.key' doesn't exist in either locale
       expect(t('nonexistent.key', 'zh-CN', 'en-US')).toBe('nonexistent.key')
     })
 
@@ -40,6 +39,41 @@ describe('i18n index', () => {
     it('uses currentLocale when locale param omitted', () => {
       setLocale('en-US')
       expect(t('common.ok')).toBe('OK')
+    })
+
+    it('auto-detects namespace from key prefix', () => {
+      expect(t('settings.title', 'zh-CN', 'en-US')).toBe('设置')
+      expect(t('settings.title', 'en-US', 'zh-CN')).toBe('Settings')
+    })
+
+    it('auto-detects navigation namespace', () => {
+      expect(t('navigation.project.title', 'zh-CN', 'en-US')).toBe('项目')
+    })
+
+    it('auto-detects composer namespace', () => {
+      expect(t('composer.actions.send', 'zh-CN', 'en-US')).toBe('发送')
+    })
+
+    it('full key in explicit namespace takes priority over namespace detection', () => {
+      // 'settings' as a bare key exists in common namespace (value: '设置')
+      // t('settings', 'zh-CN') should resolve via common namespace, not try to extract ns
+      expect(t('settings', 'zh-CN', 'en-US')).toBe('设置')
+    })
+
+    it('auto-detects namespace from key prefix even with explicit namespace', () => {
+      // t('settings.title', 'zh-CN', 'en-US', 'settings') — candidateNs='settings' is detected,
+      // inner key 'title' is looked up in settings ns
+      expect(t('settings.title', 'zh-CN', 'en-US', 'settings')).toBe('设置')
+    })
+
+    it('auto-detection works when key prefix differs from explicit namespace', () => {
+      // t('settings.title', 'zh-CN', 'en-US', 'common') — candidateNs='settings' detected,
+      // inner key 'title' resolved in settings ns (not common)
+      expect(t('settings.title', 'zh-CN', 'en-US', 'common')).toBe('设置')
+    })
+
+    it('returns key when both locale and fallback miss', () => {
+      expect(t('completely.fake.key', 'zh-CN', 'en-US')).toBe('completely.fake.key')
     })
   })
 
@@ -65,6 +99,36 @@ describe('i18n index', () => {
 
     it('returns undefined for unknown namespace', () => {
       expect(getMessages('zh-CN', 'nonexistent')).toBeUndefined()
+    })
+
+    it('returns inner content for settings namespace (strips wrapper)', () => {
+      const msgs = getMessages('zh-CN', 'settings')
+      expect(msgs).toBeDefined()
+      expect((msgs as any).title).toBe('设置')
+    })
+
+    it('returns inner content for navigation namespace', () => {
+      const msgs = getMessages('zh-CN', 'navigation')
+      expect(msgs).toBeDefined()
+      expect((msgs as any).project.title).toBe('项目')
+    })
+
+    it('returns inner content for composer namespace', () => {
+      const msgs = getMessages('en-US', 'composer')
+      expect(msgs).toBeDefined()
+      expect((msgs as any).actions.send).toBe('Send')
+    })
+
+    it('common bundle has generating key', () => {
+      const msgs = getMessages('zh-CN', 'common')
+      expect(msgs).toBeDefined()
+      expect((msgs as any).generating).toBe('正在生成')
+    })
+
+    it('common bundle has reload key', () => {
+      const msgs = getMessages('zh-CN', 'common')
+      expect(msgs).toBeDefined()
+      expect((msgs as any).reload).toBe('重新加载')
     })
   })
 

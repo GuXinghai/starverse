@@ -8,7 +8,8 @@
       "projectName": "项目名称",
       "deleteConfirm": "确定要删除项目「{name}」吗？项目下的对话将移至 Inbox。",
       "systemProjectNoRename": "系统项目不可重命名",
-      "systemProjectNoDelete": "系统项目（Inbox）不可删除"
+      "systemProjectNoDelete": "系统项目（Inbox）不可删除",
+      "projectSettings": "项目设置"
     },
     "conversation": {
       "title": "对话",
@@ -29,7 +30,8 @@
       "selectAll": "全选",
       "bulkMove": "批量移动",
       "bulkDelete": "批量删除",
-      "selected": "已选："
+      "selected": "已选：",
+      "moreActions": "更多操作"
     }
   }
 }

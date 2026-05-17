@@ -97,9 +97,9 @@ const globalWebSearchResolved = computed(() =>
 const globalWebSearchInheritanceHint = computed(() => {
   const mode = globalWebSearchResolved.value.resolvedMode
   if (mode === 'default') {
-    return 'Global mode=default inherits your OpenRouter account plugin default.'
+    return t('settings.search.hintDefault')
   }
-  return 'Global defaults apply when project/session keeps mode=default.'
+  return t('settings.search.hintGlobal')
 })
 const globalSamplingParamsResolved = computed(() =>
   resolveSamplingParams({ global: samplingParamsDefaults.value })
@@ -242,7 +242,7 @@ async function save() {
   }
 
   if (!baseUrlValid.value) {
-    error.value = 'Base URL is invalid.'
+    error.value = t('settings.openrouter.baseUrlInvalid')
     return
   }
   const nextMaxRecentModels = parsePositiveIntegerText(maxRecentModelsDraft.value)
@@ -300,7 +300,7 @@ async function save() {
     } catch {
       // no-op
     }
-    savedMessage.value = 'Saved.'
+    savedMessage.value = t('common.saved')
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
@@ -315,9 +315,9 @@ async function copyRunReport() {
     netExpRuntime.value = await getNetExpRuntimeInfo()
     const report = formatNetExpRunReport(getLastNetExpRunReport(), netExpRuntime.value)
     await navigator.clipboard.writeText(report)
-    savedMessage.value = 'Run report copied.'
+    savedMessage.value = t('settings.network.runReportCopied')
   } catch (err: any) {
-    error.value = err?.message ? String(err.message) : 'Failed to copy run report.'
+    error.value = err?.message ? String(err.message) : t('common.error')
   }
 }
 
@@ -333,7 +333,7 @@ async function clearApiKey() {
   try {
     await store.delete(OPENROUTER_API_KEY_KEY)
     apiKey.value = ''
-    savedMessage.value = 'API key cleared.'
+    savedMessage.value = t('settings.openrouter.apiKeyCleared')
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
@@ -353,7 +353,7 @@ async function clearBaseUrl() {
   try {
     await store.delete(OPENROUTER_BASE_URL_KEY)
     baseUrl.value = ''
-    savedMessage.value = 'Base URL cleared.'
+    savedMessage.value = t('settings.openrouter.baseUrlCleared')
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
@@ -476,14 +476,14 @@ onMounted(() => {
       </div>
 
       <div class="rounded-lg border border-gray-200 bg-white p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">OpenRouter</div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.openrouter.title') }}</div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">API Key</label>
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.apiKey') }}</label>
         <div class="mt-1 flex items-center gap-2">
           <input
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
             :type="showApiKey ? 'text' : 'password'"
-            placeholder="sk-…"
+            :placeholder="t('settings.openrouter.apiKeyPlaceholder')"
             :disabled="!canEdit || loading || saving"
             v-model="apiKey"
           />
@@ -493,7 +493,7 @@ onMounted(() => {
             :disabled="props.disabled || loading || saving"
             @click="showApiKey = !showApiKey"
           >
-            {{ showApiKey ? 'Hide' : 'Show' }}
+            {{ showApiKey ? t('common.hide') : t('common.show') }}
           </button>
           <button
             type="button"
@@ -501,16 +501,16 @@ onMounted(() => {
             :disabled="!canEdit || loading || saving"
             @click="clearApiKey"
           >
-            Clear
+            {{ t('common.clear') }}
           </button>
         </div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">Base URL (optional)</label>
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.baseUrl') }}</label>
         <div class="mt-1 flex items-center gap-2">
           <input
             class="min-w-0 flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
             :class="baseUrlValid ? 'border-gray-200' : 'border-red-300'"
-            placeholder="https://openrouter.ai/api/v1"
+            :placeholder="t('settings.openrouter.baseUrlPlaceholder')"
             :disabled="!canEdit || loading || saving"
             v-model="baseUrl"
           />
@@ -520,40 +520,40 @@ onMounted(() => {
             :disabled="!canEdit || loading || saving"
             @click="clearBaseUrl"
           >
-            Clear
+            {{ t('common.clear') }}
           </button>
         </div>
-        <div v-if="!baseUrlValid" class="mt-1 text-[11px] text-red-700">Invalid URL.</div>
+        <div v-if="!baseUrlValid" class="mt-1 text-[11px] text-red-700">{{ t('settings.openrouter.baseUrlInvalid') }}</div>
 
         <div class="mt-4 flex items-center justify-between gap-2">
           <div class="min-w-0">
             <div class="text-[11px] font-semibold text-gray-700">provider.require_parameters</div>
-            <div class="text-[11px] text-gray-500">Force OpenRouter provider parameter validation</div>
+            <div class="text-[11px] text-gray-500">{{ t('settings.openrouter.requireParametersDesc') }}</div>
           </div>
           <label class="inline-flex items-center gap-2">
             <input
               type="checkbox"
-              aria-label="OpenRouter require parameters"
+              :aria-label="t('settings.openrouter.requireParametersDesc')"
               :disabled="!canEdit || loading || saving"
               v-model="requireParameters"
             />
-            <span class="text-[11px] text-gray-700">{{ requireParameters ? 'On' : 'Off' }}</span>
+            <span class="text-[11px] text-gray-700">{{ requireParameters ? t('common.on') : t('common.off') }}</span>
           </label>
         </div>
 
         <div v-if="isDev" class="mt-4 flex items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50/70 px-3 py-2">
           <div class="min-w-0">
             <div class="text-[11px] font-semibold text-amber-900">debug.echo_upstream_body</div>
-            <div class="text-[11px] text-amber-800">DEV only, stream mode only. Helps diagnose provider parameter mapping.</div>
+            <div class="text-[11px] text-amber-800">{{ t('settings.openrouter.debugEchoDesc') }}</div>
           </div>
           <label class="inline-flex items-center gap-2">
             <input
               type="checkbox"
-              aria-label="OpenRouter debug echo upstream body"
+              :aria-label="t('settings.openrouter.debugEchoDesc')"
               :disabled="!canEdit || loading || saving"
               v-model="debugEchoUpstreamBody"
             />
-            <span class="text-[11px] text-amber-900">{{ debugEchoUpstreamBody ? 'On' : 'Off' }}</span>
+            <span class="text-[11px] text-amber-900">{{ debugEchoUpstreamBody ? t('common.on') : t('common.off') }}</span>
           </label>
         </div>
 
@@ -570,93 +570,93 @@ onMounted(() => {
       </div>
 
       <div class="rounded-lg border border-gray-200 bg-white p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Network Experiments</div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.network.title') }}</div>
 
         <div class="mt-3 space-y-3">
           <div class="flex items-center justify-between gap-2">
             <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">Disable HTTP/2</div>
-              <div class="text-[11px] text-gray-500">Append switch disable-http2 (restart required)</div>
+              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.network.disableHttp2') }}</div>
+              <div class="text-[11px] text-gray-500">{{ t('settings.network.disableHttp2Desc') }}</div>
             </div>
             <label class="inline-flex items-center gap-2">
               <input
                 type="checkbox"
-                aria-label="Disable HTTP/2"
+                :aria-label="t('settings.network.disableHttp2')"
                 :disabled="!canEdit || loading || saving"
                 v-model="netExpDisableHttp2"
               />
-              <span class="text-[11px] text-gray-700">{{ netExpDisableHttp2 ? 'On' : 'Off' }}</span>
+              <span class="text-[11px] text-gray-700">{{ netExpDisableHttp2 ? t('common.on') : t('common.off') }}</span>
             </label>
           </div>
 
           <div class="flex items-center justify-between gap-2">
             <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">Disable QUIC / HTTP/3</div>
-              <div class="text-[11px] text-gray-500">Append switch disable-quic (restart required)</div>
+              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.network.disableQuic') }}</div>
+              <div class="text-[11px] text-gray-500">{{ t('settings.network.disableQuicDesc') }}</div>
             </div>
             <label class="inline-flex items-center gap-2">
               <input
                 type="checkbox"
-                aria-label="Disable QUIC"
+                :aria-label="t('settings.network.disableQuic')"
                 :disabled="!canEdit || loading || saving"
                 v-model="netExpDisableQuic"
               />
-              <span class="text-[11px] text-gray-700">{{ netExpDisableQuic ? 'On' : 'Off' }}</span>
+              <span class="text-[11px] text-gray-700">{{ netExpDisableQuic ? t('common.on') : t('common.off') }}</span>
             </label>
           </div>
 
           <div class="flex items-center justify-between gap-2">
             <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">Stream in main process</div>
-              <div class="text-[11px] text-gray-500">Use IPC + electron.net for SSE (enables keepalive/force HTTP/1.1)</div>
+              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.network.streamInMain') }}</div>
+              <div class="text-[11px] text-gray-500">{{ t('settings.network.streamInMainDesc') }}</div>
             </div>
             <label class="inline-flex items-center gap-2">
               <input
                 type="checkbox"
-                aria-label="Stream in main process"
+                :aria-label="t('settings.network.streamInMain')"
                 :disabled="!canEdit || loading || saving"
                 v-model="netExpStreamInMainProcess"
               />
-              <span class="text-[11px] text-gray-700">{{ netExpStreamInMainProcess ? 'On' : 'Off' }}</span>
+              <span class="text-[11px] text-gray-700">{{ netExpStreamInMainProcess ? t('common.on') : t('common.off') }}</span>
             </label>
           </div>
 
           <div class="flex items-center justify-between gap-2">
             <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">Force HTTP/1.1</div>
-              <div class="text-[11px] text-gray-500">undici allowH2=false (main-process stream only)</div>
+              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.network.forceHttp1') }}</div>
+              <div class="text-[11px] text-gray-500">{{ t('settings.network.forceHttp1Desc') }}</div>
             </div>
             <label class="inline-flex items-center gap-2">
               <input
                 type="checkbox"
-                aria-label="Force HTTP/1.1"
+                :aria-label="t('settings.network.forceHttp1')"
                 :disabled="!canEdit || loading || saving || !netExpStreamInMainProcess"
                 v-model="netExpForceHttp1"
               />
-              <span class="text-[11px] text-gray-700">{{ netExpForceHttp1 ? 'On' : 'Off' }}</span>
+              <span class="text-[11px] text-gray-700">{{ netExpForceHttp1 ? t('common.on') : t('common.off') }}</span>
             </label>
           </div>
 
           <div class="flex items-center justify-between gap-2">
             <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">TCP keepalive</div>
-              <div class="text-[11px] text-gray-500">socket.setKeepAlive (main-process stream only)</div>
+              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.network.tcpKeepalive') }}</div>
+              <div class="text-[11px] text-gray-500">{{ t('settings.network.tcpKeepaliveDesc') }}</div>
             </div>
             <label class="inline-flex items-center gap-2">
               <input
                 type="checkbox"
-                aria-label="Enable TCP keepalive"
+                :aria-label="t('settings.network.tcpKeepalive')"
                 :disabled="!canEdit || loading || saving || !netExpStreamInMainProcess"
                 v-model="netExpKeepAliveEnable"
               />
-              <span class="text-[11px] text-gray-700">{{ netExpKeepAliveEnable ? 'On' : 'Off' }}</span>
+              <span class="text-[11px] text-gray-700">{{ netExpKeepAliveEnable ? t('common.on') : t('common.off') }}</span>
             </label>
           </div>
 
           <div class="flex items-center justify-between gap-2">
             <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">TCP keepalive idle (ms)</div>
-              <div class="text-[11px] text-gray-500">Initial delay before probes</div>
+              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.network.tcpKeepaliveIdle') }}</div>
+              <div class="text-[11px] text-gray-500">{{ t('settings.network.tcpKeepaliveIdleDesc') }}</div>
             </div>
             <input
               type="number"
@@ -669,21 +669,21 @@ onMounted(() => {
           </div>
 
           <div class="flex items-center justify-between gap-2">
-            <div class="text-[11px] text-gray-500">Copy a run report for A/B debugging.</div>
+            <div class="text-[11px] text-gray-500">{{ t('settings.network.copyRunReportDesc') }}</div>
             <button
               type="button"
               class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
               :disabled="props.disabled || loading || saving"
               @click="copyRunReport"
             >
-              Copy run report
+              {{ t('settings.network.copyRunReport') }}
             </button>
           </div>
         </div>
       </div>
 
       <div class="rounded-lg border border-gray-200 bg-white p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Global Custom Parameters</div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.customParams.title') }}</div>
         <div class="mt-3">
           <SamplingParamsSettingsEditor
             v-model="samplingParamsDefaults"
@@ -695,11 +695,11 @@ onMounted(() => {
       </div>
 
       <div class="rounded-lg border border-gray-200 bg-white p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Global Reasoning Defaults</div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.reasoning.title') }}</div>
 
         <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-gray-600">
           <div class="flex items-center gap-2">
-            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Reasoning</div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('settings.reasoning.reasoning') }}</div>
             <select
               class="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs shadow-sm"
               :value="requestedReasoningEffort"
@@ -717,55 +717,55 @@ onMounted(() => {
             <label class="flex items-center gap-2">
               <input
                 type="checkbox"
-                aria-label="Global reasoning exclude"
+                :aria-label="t('settings.reasoning.exclude')"
                 class="h-4 w-4 rounded border-gray-300"
                 :disabled="!canEdit || loading || saving || requestedReasoningEffort === 'auto' || requestedReasoningEffort === 'none'"
                 v-model="requestedReasoningExclude"
               />
-              exclude
+              {{ t('settings.reasoning.exclude') }}
             </label>
           </div>
 
           <div class="text-[11px] text-gray-500">
-            Defaults apply to non-project sessions. Session-level preferences override project/global defaults.
+            {{ t('settings.reasoning.hint') }}
           </div>
 
           <div class="mt-3 flex items-center justify-between gap-2 rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
             <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">Inline reasoning default</div>
-              <div class="text-[11px] text-gray-500">Controls whether new assistant inline reasoning opens expanded.</div>
+              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.reasoning.inlineDefault') }}</div>
+              <div class="text-[11px] text-gray-500">{{ t('settings.reasoning.inlineDefaultDesc') }}</div>
             </div>
             <label class="inline-flex items-center gap-2">
               <input
                 type="checkbox"
-                aria-label="Default expand reasoning details"
+                :aria-label="t('settings.reasoning.inlineDefault')"
                 :disabled="!canEdit || loading || saving"
                 v-model="reasoningPanelDefaultExpanded"
               />
-              <span class="text-[11px] text-gray-700">{{ reasoningPanelDefaultExpanded ? 'Expanded' : 'Collapsed' }}</span>
+              <span class="text-[11px] text-gray-700">{{ reasoningPanelDefaultExpanded ? t('settings.reasoning.expanded') : t('settings.reasoning.collapsed') }}</span>
             </label>
           </div>
 
           <div class="mt-3 flex items-center justify-between gap-2 rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
             <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">User message rich rendering</div>
-              <div class="text-[11px] text-gray-500">Default for sessions in follow mode.</div>
+              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.reasoning.userMessageRich') }}</div>
+              <div class="text-[11px] text-gray-500">{{ t('settings.reasoning.userMessageRichDesc') }}</div>
             </div>
             <label class="inline-flex items-center gap-2">
               <input
                 type="checkbox"
-                aria-label="Global user message rich rendering"
+                :aria-label="t('settings.reasoning.userMessageRich')"
                 :disabled="!canEdit || loading || saving"
                 v-model="userMessageRenderDefault"
               />
-              <span class="text-[11px] text-gray-700">{{ userMessageRenderDefault ? 'On' : 'Off' }}</span>
+              <span class="text-[11px] text-gray-700">{{ userMessageRenderDefault ? t('common.on') : t('common.off') }}</span>
             </label>
           </div>
 
           <div class="mt-3 flex items-center justify-between gap-3 rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
             <div class="min-w-0">
-              <div class="text-[11px] font-semibold text-gray-700">Recent models limit</div>
-              <div class="text-[11px] text-gray-500">Controls the Model Picker Rec list.</div>
+              <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.reasoning.recentModelsLimit') }}</div>
+              <div class="text-[11px] text-gray-500">{{ t('settings.reasoning.recentModelsLimitDesc') }}</div>
             </div>
             <input
               v-model="maxRecentModelsDraft"
@@ -781,7 +781,7 @@ onMounted(() => {
       </div>
 
       <div class="rounded-lg border border-gray-200 bg-white p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Global Web Search Defaults</div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.search.title') }}</div>
         <div class="mt-3">
           <WebSearchSettingsEditor
             v-model="webSearchDefaults"
@@ -795,7 +795,7 @@ onMounted(() => {
       <PluginManagementPanel />
 
       <div class="text-[11px] text-gray-500">
-        ui-app reads OpenRouter settings from electron-store (not env) to avoid hidden overrides.
+        {{ t('settings.footer') }}
       </div>
     </div>
   </div>
