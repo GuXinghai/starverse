@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { getOpenRouterProviderRequireParameters, setOpenRouterProviderRequireParameters } from '@/next/settings/openRouterProviderSettingsClient'
 import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningPrefsClient'
 import { getUserMessageRenderDefault, setUserMessageRenderDefault } from '@/next/settings/userMessageRenderDefaultClient'
+import { getChatReasoningPanelDefaultExpanded, setChatReasoningPanelDefaultExpanded } from '@/next/settings/reasoningPanelDefaultClient'
 import { getWebSearchDefaults, setWebSearchDefaults } from '@/next/settings/webSearchDefaultsClient'
 import { getSamplingParamsDefaults, setSamplingParamsDefaults } from '@/next/settings/samplingParamsDefaultsClient'
 import {
@@ -22,6 +23,8 @@ import { resolveSamplingParams, type SamplingParamsLayer } from '@/next/openrout
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import SamplingParamsSettingsEditor from './SamplingParamsSettingsEditor.vue'
 import PluginManagementPanel from './PluginManagementPanel.vue'
+import { t, useLanguagePrefs, LOCALE_DISPLAY_NAMES, type SupportedLocale, type LocaleMode } from '@/shared/i18n'
+import { saveLanguagePref, saveLanguagePrefSystem, getSystemLocale } from '@/next/settings/languagePrefs'
 
 const props = defineProps<{
   disabled: boolean
@@ -45,6 +48,7 @@ function getElectronStore(): ElectronStoreLike | null {
 const OPENROUTER_API_KEY_KEY = 'openRouterApiKey'
 const OPENROUTER_BASE_URL_KEY = 'openRouterBaseUrl'
 const OPENROUTER_DEBUG_ECHO_UPSTREAM_BODY_KEY = 'sv_debug_openrouter_echo_upstream_body'
+const MAX_RECENT_MODELS_KEY = 'maxRecentModels'
 
 const apiKey = ref('')
 const baseUrl = ref('')
@@ -53,7 +57,9 @@ const debugEchoUpstreamBody = ref(false)
 const showApiKey = ref(false)
 const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('auto')
 const requestedReasoningExclude = ref(false)
+const reasoningPanelDefaultExpanded = ref(true)
 const userMessageRenderDefault = ref(false)
+const maxRecentModelsDraft = ref('8')
 const webSearchDefaults = ref<SearchSettingsLayer | null>(null)
 const samplingParamsDefaults = ref<SamplingParamsLayer | null>(null)
 const netExpDisableHttp2 = ref(DEFAULT_NETEXP_SETTINGS.disableHttp2)
@@ -64,6 +70,10 @@ const netExpKeepAliveEnable = ref(DEFAULT_NETEXP_SETTINGS.tcpKeepAliveEnable)
 const netExpKeepAliveIdleMs = ref(DEFAULT_NETEXP_SETTINGS.tcpKeepAliveIdleMs)
 const netExpInitial = ref<NetExpSettings>(DEFAULT_NETEXP_SETTINGS)
 const netExpRuntime = ref<NetExpRuntimeInfo | null>(null)
+
+const langPrefs = useLanguagePrefs()
+const langMode = ref<LocaleMode>('manual')
+const langManualLocale = ref<SupportedLocale>('zh-CN')
 
 const loading = ref(false)
 const saving = ref(false)
@@ -149,6 +159,14 @@ function buildReasoningPrefs(): ReasoningPrefs {
   return { mode, effort: requestedReasoningEffort.value, exclude }
 }
 
+function parsePositiveIntegerText(value: string): number | null {
+  const normalized = String(value ?? '').trim()
+  if (!/^[1-9]\d*$/.test(normalized)) return null
+  const parsed = Number(normalized)
+  if (!Number.isSafeInteger(parsed)) return null
+  return parsed
+}
+
 async function load() {
   error.value = null
   savedMessage.value = null
@@ -163,6 +181,8 @@ async function load() {
   try {
     apiKey.value = String((await store.get(OPENROUTER_API_KEY_KEY)) ?? '').trim()
     baseUrl.value = String((await store.get(OPENROUTER_BASE_URL_KEY)) ?? '').trim()
+    const storedMaxRecentModels = parsePositiveIntegerText(String((await store.get(MAX_RECENT_MODELS_KEY)) ?? ''))
+    maxRecentModelsDraft.value = String(storedMaxRecentModels ?? 8)
     requireParameters.value = await getOpenRouterProviderRequireParameters()
     const netExp = await getNetExpSettings()
     netExpDisableHttp2.value = netExp.disableHttp2
@@ -173,8 +193,11 @@ async function load() {
     netExpKeepAliveIdleMs.value = netExp.tcpKeepAliveIdleMs
     netExpInitial.value = netExp
     netExpRuntime.value = await getNetExpRuntimeInfo()
+    langMode.value = langPrefs.mode
+    langManualLocale.value = langPrefs.mode === 'manual' ? langPrefs.uiLocale : getSystemLocale()
     const prefs = await getReasoningPrefs()
     applyReasoningPrefs(normalizeReasoningPrefs(prefs))
+    reasoningPanelDefaultExpanded.value = await getChatReasoningPanelDefaultExpanded()
     userMessageRenderDefault.value = (await getUserMessageRenderDefault()) === true
     if (isDev) {
       try {
@@ -222,11 +245,17 @@ async function save() {
     error.value = 'Base URL is invalid.'
     return
   }
+  const nextMaxRecentModels = parsePositiveIntegerText(maxRecentModelsDraft.value)
+  if (nextMaxRecentModels === null) {
+    error.value = 'maxRecentModels must be a positive integer.'
+    return
+  }
 
   saving.value = true
   try {
     await store.set(OPENROUTER_API_KEY_KEY, apiKey.value.trim())
     await store.set(OPENROUTER_BASE_URL_KEY, baseUrl.value.trim())
+    await store.set(MAX_RECENT_MODELS_KEY, nextMaxRecentModels)
     await setOpenRouterProviderRequireParameters(requireParameters.value === true)
     await setNetExpSettings({
       disableHttp2: netExpDisableHttp2.value,
@@ -238,6 +267,7 @@ async function save() {
     })
     const nextReasoningPrefs = buildReasoningPrefs()
     await setReasoningPrefs(nextReasoningPrefs)
+    await setChatReasoningPanelDefaultExpanded(reasoningPanelDefaultExpanded.value === true)
     await setUserMessageRenderDefault(userMessageRenderDefault.value === true)
     if (isDev) {
       try {
@@ -262,9 +292,11 @@ async function save() {
     await setSamplingParamsDefaults(normalizedSamplingParamsDefaults)
     try {
       window.dispatchEvent(new CustomEvent('settings:reasoningPrefsUpdated', { detail: nextReasoningPrefs }))
+      window.dispatchEvent(new CustomEvent('settings:reasoningPanelDefaultExpandedUpdated', { detail: reasoningPanelDefaultExpanded.value === true }))
       window.dispatchEvent(new CustomEvent('settings:userMessageRenderDefaultUpdated', { detail: userMessageRenderDefault.value === true }))
       window.dispatchEvent(new CustomEvent('settings:webSearchDefaultsUpdated', { detail: normalizedWebSearchDefaults }))
       window.dispatchEvent(new CustomEvent('settings:samplingParamsDefaultsUpdated', { detail: normalizedSamplingParamsDefaults }))
+      window.dispatchEvent(new CustomEvent('settings:maxRecentModelsUpdated', { detail: nextMaxRecentModels }))
     } catch {
       // no-op
     }
@@ -329,6 +361,42 @@ async function clearBaseUrl() {
   }
 }
 
+async function applyLanguageMode(mode: LocaleMode) {
+  error.value = null
+  savedMessage.value = null
+  saving.value = true
+  try {
+    if (mode === 'system') {
+      await saveLanguagePrefSystem()
+      langMode.value = 'system'
+    } else {
+      await saveLanguagePref(langManualLocale.value)
+      langMode.value = 'manual'
+    }
+    savedMessage.value = t('common.saved') + ''
+  } catch (err: any) {
+    error.value = err?.message ? String(err.message) : String(err)
+  } finally {
+    saving.value = false
+  }
+}
+
+async function applyLanguageLocale(locale: SupportedLocale) {
+  error.value = null
+  savedMessage.value = null
+  saving.value = true
+  try {
+    langManualLocale.value = locale
+    await saveLanguagePref(locale)
+    langMode.value = 'manual'
+    savedMessage.value = t('common.saved') + ''
+  } catch (err: any) {
+    error.value = err?.message ? String(err.message) : String(err)
+  } finally {
+    saving.value = false
+  }
+}
+
 onMounted(() => {
   void load()
 })
@@ -354,6 +422,57 @@ onMounted(() => {
       </div>
       <div v-else-if="savedMessage" class="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-900">
         {{ savedMessage }}
+      </div>
+
+      <div class="rounded-lg border border-gray-200 bg-white p-3">
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('common.language') }}</div>
+
+        <div class="mt-3 space-y-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="language-mode"
+              value="system"
+              :disabled="saving"
+              :checked="langMode === 'system'"
+              @change="applyLanguageMode('system')"
+            />
+            <div>
+              <div class="text-[11px] font-semibold text-gray-700">{{ t('common.languageFollowSystem') }}</div>
+              <div class="text-[11px] text-gray-500">{{ t('common.languageFollowSystemDesc') }}</div>
+            </div>
+          </label>
+
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="language-mode"
+              value="manual"
+              :disabled="saving"
+              :checked="langMode === 'manual'"
+              @change="applyLanguageMode('manual')"
+            />
+            <div class="text-[11px] font-semibold text-gray-700">{{ t('common.languageManual') }}</div>
+          </label>
+
+          <div v-if="langMode === 'manual'" class="ml-6 flex flex-col gap-1">
+            <label
+              v-for="locale in ['zh-CN', 'en-US'] as const"
+              :key="locale"
+              class="flex items-center gap-2 cursor-pointer"
+            >
+              <input
+                type="radio"
+                name="language-locale"
+                :value="locale"
+                :disabled="saving"
+                :checked="langManualLocale === locale"
+                @change="applyLanguageLocale(locale)"
+              />
+              <span class="text-[11px] text-gray-700">{{ LOCALE_DISPLAY_NAMES[locale] }}</span>
+            </label>
+          </div>
+        </div>
       </div>
 
       <div class="rounded-lg border border-gray-200 bg-white p-3">
@@ -613,6 +732,22 @@ onMounted(() => {
 
           <div class="mt-3 flex items-center justify-between gap-2 rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
             <div class="min-w-0">
+              <div class="text-[11px] font-semibold text-gray-700">Inline reasoning default</div>
+              <div class="text-[11px] text-gray-500">Controls whether new assistant inline reasoning opens expanded.</div>
+            </div>
+            <label class="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                aria-label="Default expand reasoning details"
+                :disabled="!canEdit || loading || saving"
+                v-model="reasoningPanelDefaultExpanded"
+              />
+              <span class="text-[11px] text-gray-700">{{ reasoningPanelDefaultExpanded ? 'Expanded' : 'Collapsed' }}</span>
+            </label>
+          </div>
+
+          <div class="mt-3 flex items-center justify-between gap-2 rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
+            <div class="min-w-0">
               <div class="text-[11px] font-semibold text-gray-700">User message rich rendering</div>
               <div class="text-[11px] text-gray-500">Default for sessions in follow mode.</div>
             </div>
@@ -625,6 +760,22 @@ onMounted(() => {
               />
               <span class="text-[11px] text-gray-700">{{ userMessageRenderDefault ? 'On' : 'Off' }}</span>
             </label>
+          </div>
+
+          <div class="mt-3 flex items-center justify-between gap-3 rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
+            <div class="min-w-0">
+              <div class="text-[11px] font-semibold text-gray-700">Recent models limit</div>
+              <div class="text-[11px] text-gray-500">Controls the Model Picker Rec list.</div>
+            </div>
+            <input
+              v-model="maxRecentModelsDraft"
+              type="number"
+              min="1"
+              step="1"
+              class="w-24 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+              :disabled="!canEdit || loading || saving"
+              data-testid="settings-max-recent-models"
+            />
           </div>
         </div>
       </div>

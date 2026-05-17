@@ -4,6 +4,7 @@
     "cancel": "Cancel",
     "confirm": "Confirm",
     "save": "Save",
+    "saved": "Saved",
     "delete": "Delete",
     "close": "Close",
     "reload": "Reload",
@@ -22,6 +23,10 @@
     "enabled": "Enabled",
     "disabled": "Disabled",
     "settings": "Settings",
-    "untitledConversation": "Untitled conversation"
+    "untitledConversation": "Untitled conversation",
+    "language": "Language",
+    "languageFollowSystem": "Follow system",
+    "languageFollowSystemDesc": "Automatically switch UI language based on system language",
+    "languageManual": "Manual"
   }
 }

@@ -17,6 +17,7 @@ export interface CommonMessages {
     readonly cancel: string
     readonly confirm: string
     readonly save: string
+    readonly saved: string
     readonly delete: string
     readonly close: string
     readonly reload: string
@@ -36,6 +37,10 @@ export interface CommonMessages {
     readonly disabled: string
     readonly settings: string
     readonly untitledConversation: string
+    readonly language: string
+    readonly languageFollowSystem: string
+    readonly languageFollowSystemDesc: string
+    readonly languageManual: string
   }
 }
 
