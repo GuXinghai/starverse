@@ -182,6 +182,7 @@ import {
   type ChatSessionConfig,
   type ChatSessionConfigPatch,
 } from './chatSessionConfig'
+import { deriveSendButtonMode, type SendButtonMode } from './sendButtonMode'
 
 /**
  * Architecture boundary (phase: containment):
@@ -505,14 +506,13 @@ export function useAppChatAppLogic() {
     return composerSendPlanCanProceed.value
   })
 
-  type SendButtonMode = 'enabled_arrow' | 'disabled_arrow' | 'stop_square' | 'busy_spinner'
-
-  const sendButtonMode = computed<SendButtonMode>(() => {
-    if (isRunning.value) return 'stop_square'
-    if (composerSendPlanLoading.value) return 'busy_spinner'
-    if (composerCanSend.value) return 'enabled_arrow'
-    return 'disabled_arrow'
-  })
+  const sendButtonMode = computed<SendButtonMode>(() =>
+    deriveSendButtonMode({
+      isRunning: isRunning.value,
+      isSendPlanLoading: composerSendPlanLoading.value,
+      canSend: composerCanSend.value,
+    }),
+  )
 
   const attachmentConfirmationVisible = computed(() => {
     const session = attachmentConfirmationSession.value
