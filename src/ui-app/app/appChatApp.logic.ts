@@ -1816,7 +1816,7 @@ export function useAppChatAppLogic() {
     if (!hasDbBridge()) {
       modelCatalogItems.value = []
       reasoningModelIndexItems.value = []
-      modelCatalogNotice.value = '模型目录不可用（dbBridge 未就绪）'
+      modelCatalogNotice.value = t('errors.modelCatalog.unavailable')
       selectedModelImageCapabilityClass.value = null
       selectedModelImageCapabilityReason.value = 'dbBridge unavailable.'
       return
@@ -1828,11 +1828,11 @@ export function useAppChatAppLogic() {
       reasoningModelIndexItems.value = reasoningIndex
 
       if (catalog.length === 0 && reasoningIndex.length === 0) {
-        modelCatalogNotice.value = '模型目录尚未同步（稍后自动刷新）'
+        modelCatalogNotice.value = t('errors.modelCatalog.notSynced')
       } else if (catalog.length === 0 && reasoningIndex.length > 0) {
-        modelCatalogNotice.value = '模型目录为空（已回退到推理模型索引）'
+        modelCatalogNotice.value = t('errors.modelCatalog.empty')
       } else if (reasoningIndex.length === 0) {
-        modelCatalogNotice.value = '推理模型索引尚未同步（仅显示目录）'
+        modelCatalogNotice.value = t('errors.modelCatalog.indexNotSynced')
       } else {
         modelCatalogNotice.value = null
       }
@@ -1841,7 +1841,7 @@ export function useAppChatAppLogic() {
     } catch (err) {
       modelCatalogItems.value = []
       reasoningModelIndexItems.value = []
-      modelCatalogNotice.value = '模型目录不可用（同步失败）'
+      modelCatalogNotice.value = t('errors.modelCatalog.syncFailed')
       selectedModelImageCapabilityClass.value = null
       selectedModelImageCapabilityReason.value = 'model catalog sync failed.'
       if (shouldLogDebug()) {
@@ -2857,7 +2857,7 @@ export function useAppChatAppLogic() {
       }
       probe = normalizeHistoryIncompatibleIndex(probe + 1, items.length)
     }
-    setAttachmentFeedback('warning', '目标历史附件对应的消息当前不可见。')
+    setAttachmentFeedback('warning', t('sendPlan.targetMessageUnavailable'))
     return false
   }
 
@@ -2881,7 +2881,7 @@ export function useAppChatAppLogic() {
       }
       probe = normalizeHistoryIncompatibleIndex(probe + delta, items.length)
     }
-    setAttachmentFeedback('warning', '目标历史附件对应的消息当前不可见。')
+    setAttachmentFeedback('warning', t('sendPlan.targetMessageUnavailable'))
   }
 
   function mutateAttachmentConfirmationSession(
@@ -3205,7 +3205,7 @@ export function useAppChatAppLogic() {
     if (!item) return false
     const focused = await focusMessageAfterSearch(item.messageId)
     if (!focused) {
-      setAttachmentFeedback('warning', '目标历史附件对应的消息当前不可见。')
+      setAttachmentFeedback('warning', t('sendPlan.targetMessageUnavailable'))
       return false
     }
     activeHistoryIncompatibleAttachmentId.value = item.attachmentId
@@ -3825,7 +3825,7 @@ export function useAppChatAppLogic() {
   function sanitizeHistoryAttachmentReason(reason: string | null | undefined): string {
     const sanitized = sanitizeSendPlanSummaryMessage(reason)
     if (sanitized) return sanitized
-    return '当前模型不会纳入此历史附件。'
+    return t('sendPlan.historyAttachmentExcluded')
   }
 
   function buildHistoryIncompatibleAttachmentItem(
@@ -4000,7 +4000,7 @@ export function useAppChatAppLogic() {
         if (seq !== historyAttachmentRefreshSeq) return
 
         if (result.failed) {
-          next[result.messageId] = [buildHistoryAttachmentFailureViewModel(result.messageId, '附件加载失败。')]
+          next[result.messageId] = [buildHistoryAttachmentFailureViewModel(result.messageId, t('errors.attachment.loadFailed'))]
           continue
         }
 
@@ -4435,16 +4435,16 @@ export function useAppChatAppLogic() {
   }
 
   function resolveAttachmentSendModeLabel(value: DraftAttachmentSendModePreference): string {
-    if (value === 'default') return '跟随默认设定'
-    if (value === 'auto') return '自动'
-    if (value === 'url_ref') return '链接'
-    return '文件副本'
+    if (value === 'default') return t('sendPlan.sendMode.default')
+    if (value === 'auto') return t('sendPlan.sendMode.auto')
+    if (value === 'url_ref') return t('sendPlan.sendMode.urlRef')
+    return t('sendPlan.sendMode.inlineBase64')
   }
 
   function resolveActualSendModeLabel(value: SendMode | null): string {
-    if (value === 'url_ref') return '链接'
-    if (value === 'inline_base64') return '文件副本'
-    if (value === 'provider_file_ref') return '提供方文件'
+    if (value === 'url_ref') return t('sendPlan.sendMode.urlRef')
+    if (value === 'inline_base64') return t('sendPlan.sendMode.inlineBase64')
+    if (value === 'provider_file_ref') return t('sendPlan.sendMode.providerFileRef')
     return '—'
   }
 
@@ -5096,7 +5096,7 @@ export function useAppChatAppLogic() {
     if (preview?.status === 'ready') {
       setAttachmentFeedback('success', t('errors.attachment.previewRefreshed'))
     } else {
-      setAttachmentFeedback('warning', 'Preview retry completed, but no ready preview was available.')
+      setAttachmentFeedback('warning', t('errors.attachment.previewRetryNoReady'))
     }
     await refreshDraftAttachmentViewModels()
     selectedDraftAttachmentAssetId.value = assetId
@@ -5105,7 +5105,7 @@ export function useAppChatAppLogic() {
   async function handleDropFiles(event: DragEvent) {
     if (isDraftInteractionLocked.value) {
       event.preventDefault()
-      setAttachmentFeedback('warning', '附件确认面板处理中，当前草稿已锁定。')
+      setAttachmentFeedback('warning', t('errors.attachment.draftLocked'))
       return
     }
     const files = Array.from(event.dataTransfer?.files ?? [])
@@ -5138,7 +5138,7 @@ export function useAppChatAppLogic() {
   async function handlePasteAttachment(event: ClipboardEvent) {
     if (isDraftInteractionLocked.value) {
       event.preventDefault()
-      setAttachmentFeedback('warning', '附件确认面板处理中，当前草稿已锁定。')
+      setAttachmentFeedback('warning', t('errors.attachment.draftLocked'))
       return
     }
     const clipboard = event.clipboardData
@@ -7058,6 +7058,67 @@ export function useAppChatAppLogic() {
     }
   }
 
+  /** Known SendPlan issue code → i18n key mapping */
+  const ISSUE_CODE_TO_I18N: Record<string, string> = {
+    'attachment_parsing_incomplete': 'sendPlan.detectionPending',
+    'current_draft_incompatible_with_current_model': 'sendPlan.routeUnavailable',
+    'draft_attachment_blocked': 'sendPlan.attachmentBlocked',
+    'history_attachment_blocked': 'sendPlan.historyAttachmentExcluded',
+    'file_type_detection_required': 'sendPlan.detectionRequired',
+    'file_type_detection_pending': 'sendPlan.detectionPending',
+    'file_type_detection_failed': 'sendPlan.detectionFailed',
+    'advanced_file_type_detection_failed': 'sendPlan.detectionFailed',
+    'file_type_route_blocked': 'sendPlan.attachmentBlocked',
+    'unsupported_attachment_payload': 'sendPlan.unsupportedAttachment',
+    'missing_text_input_capability': 'sendPlan.modelDoesNotSupportFiles',
+    'missing_mixed_input_capability': 'sendPlan.modelDoesNotSupportFiles',
+    'missing_pdf_input_capability': 'sendPlan.pdfNotSupportedByProvider',
+    'missing_file_input_capability': 'sendPlan.modelDoesNotSupportFiles',
+    'conversion_required_before_send': 'sendPlan.conversionRequired',
+    'unsupported_processing_status': 'sendPlan.conversionUnavailable',
+    'incompatible_with_current_model': 'sendPlan.routeUnavailable',
+    'converted_text_hard_limit_exceeded': 'sendPlan.attachmentBlocked',
+    'no_send_mode_available': 'sendPlan.routeUnavailable',
+    'no_sendable_representation': 'sendPlan.noSendableRepresentation',
+    'pdf_not_supported_by_provider': 'sendPlan.pdfNotSupportedByProvider',
+    'audio_requires_local_file': 'sendPlan.audioNoUrlRef',
+    'video_url_ref_not_allowed': 'sendPlan.unsupportedAttachment',
+    'preview_only_asset_not_sendable': 'sendPlan.attachmentBlocked',
+    'stale_derived_asset': 'sendPlan.attachmentBlocked',
+    'preview_send_asset_mismatch': 'sendPlan.attachmentBlocked',
+    'send_asset_not_ready': 'sendPlan.detectionPending',
+    'excluded_from_current_context': 'sendPlan.attachmentBlocked',
+    'deduped_to_current_draft': 'sendPlan.attachmentBlocked',
+    'duplicate_history_asset': 'sendPlan.attachmentBlocked',
+    'history_attachment_excluded': 'sendPlan.historyAttachmentExcluded',
+    'asset_record_missing': 'sendPlan.attachmentBlocked',
+    'asset_soft_deleted': 'sendPlan.attachmentBlocked',
+    'attachment_lineage_blocked': 'sendPlan.attachmentBlocked',
+  }
+
+  /**
+   * Resolve a SendPlan issue code or raw message to an i18n key.
+   *
+   * Priority:
+   * 1. If raw is already an i18n key (starts with registered namespace prefix), return as-is
+   * 2. If code maps to a known i18n key, return the i18n key
+   * 3. Otherwise return null (caller should use sanitized fallback)
+   */
+  function resolveIssueToI18nKey(raw: string | null | undefined, code?: string | null): string | null {
+    const trimmed = String(raw ?? '').trim()
+    if (!trimmed && !code) return null
+    // If raw is already an i18n key, use it directly
+    if (trimmed && /^(sendPlan|errors|common|settings|navigation|composer|filePipeline|diagnostics)\./.test(trimmed)) {
+      return trimmed
+    }
+    // Try code-based mapping
+    if (code) {
+      const mapped = ISSUE_CODE_TO_I18N[code]
+      if (mapped) return mapped
+    }
+    return null
+  }
+
   function sanitizeSendPlanSummaryMessage(raw: string | null | undefined): string | null {
     const input = String(raw ?? '').trim()
     if (!input) return null
@@ -7076,6 +7137,12 @@ export function useAppChatAppLogic() {
   }
 
   function resolveSendPlanBlockingMessage(sendPlan: SendPlan): string {
+    // Prefer code-based mapping from blocking reasons
+    for (const issue of sendPlan.blockingReasons) {
+      const i18nKey = resolveIssueToI18nKey(issue.message, issue.code)
+      if (i18nKey) return i18nKey
+    }
+    // Fallback to sanitized raw message
     const reasonFromIssues = sendPlan.blockingReasons
       .map((item) => String(item.message ?? '').trim())
       .find((value) => value.length > 0 && value.toLowerCase() !== 'blocked')
@@ -7092,6 +7159,12 @@ export function useAppChatAppLogic() {
   }
 
   function resolveSendPlanWarningMessage(sendPlan: SendPlan): string | null {
+    // Prefer code-based mapping from warnings
+    for (const issue of sendPlan.warnings) {
+      const i18nKey = resolveIssueToI18nKey(issue.message, issue.code)
+      if (i18nKey) return i18nKey
+    }
+    // Fallback to sanitized raw message
     const reasonFromIssues = sendPlan.warnings
       .map((item) => String(item.message ?? '').trim())
       .find((value) => value.length > 0)

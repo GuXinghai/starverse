@@ -37,6 +37,16 @@
     "urlRefNotAllowed": "Current model or provider does not allow URL sending.",
     "noLocalCopy": "This attachment has no available local copy.",
     "fileCopyNotAllowed": "Current model or provider does not allow file copy sending.",
-    "urlOnlyRetention": "Only URL attachments support retention mode settings."
+    "urlOnlyRetention": "Only URL attachments support retention mode settings.",
+    "sendMode": {
+      "default": "Follow default",
+      "auto": "Auto",
+      "urlRef": "Link",
+      "inlineBase64": "File copy",
+      "providerFileRef": "Provider file"
+    },
+    "issueFallback": "Attachment sending is restricted. Please handle attachments and retry.",
+    "issueUnknown": "Send plan has an unknown issue.",
+    "targetMessageUnavailable": "The message for this history attachment is currently not visible."
   }
 }

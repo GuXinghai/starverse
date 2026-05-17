@@ -265,6 +265,16 @@ export interface SendPlanMessages {
     readonly noLocalCopy: string
     readonly fileCopyNotAllowed: string
     readonly urlOnlyRetention: string
+    readonly sendMode: {
+      readonly default: string
+      readonly auto: string
+      readonly urlRef: string
+      readonly inlineBase64: string
+      readonly providerFileRef: string
+    }
+    readonly issueFallback: string
+    readonly issueUnknown: string
+    readonly targetMessageUnavailable: string
   }
 }
 
@@ -312,6 +322,9 @@ export interface ErrorsMessages {
       readonly pastedNotAccessible: string
       readonly addedCount: string
       readonly modelNoImageSupport: string
+      readonly loadFailed: string
+      readonly previewRetryNoReady: string
+      readonly draftLocked: string
     }
     readonly modelCatalog: {
       readonly unavailable: string

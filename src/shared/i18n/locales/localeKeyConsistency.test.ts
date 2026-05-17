@@ -227,4 +227,41 @@ describe('locale key consistency', () => {
       expect(enMsgs).toBeDefined()
     }
   })
+
+  it('sendPlan.sendMode keys resolve in both locales', () => {
+    const modes = ['default', 'auto', 'urlRef', 'inlineBase64', 'providerFileRef']
+    for (const mode of modes) {
+      const zhVal = t(`sendPlan.sendMode.${mode}`, 'zh-CN')
+      expect(zhVal).not.toBe(`sendPlan.sendMode.${mode}`)
+      const enVal = t(`sendPlan.sendMode.${mode}`, 'en-US')
+      expect(enVal).not.toBe(`sendPlan.sendMode.${mode}`)
+    }
+  })
+
+  it('all issue code i18n targets exist in sendPlan namespace', () => {
+    // These are the i18n keys referenced by ISSUE_CODE_TO_I18N in appChatApp.logic.ts
+    // If any key is missing from the JSON, t() would return the raw key.
+    const referencedKeys = [
+      'sendPlan.detectionPending',
+      'sendPlan.routeUnavailable',
+      'sendPlan.attachmentBlocked',
+      'sendPlan.historyAttachmentExcluded',
+      'sendPlan.detectionRequired',
+      'sendPlan.detectionFailed',
+      'sendPlan.unsupportedAttachment',
+      'sendPlan.modelDoesNotSupportFiles',
+      'sendPlan.pdfNotSupportedByProvider',
+      'sendPlan.conversionRequired',
+      'sendPlan.conversionUnavailable',
+      'sendPlan.noSendableRepresentation',
+      'sendPlan.audioNoUrlRef',
+      'sendPlan.attachmentContentRisk',
+    ]
+    for (const key of referencedKeys) {
+      const zhVal = t(key, 'zh-CN')
+      expect(zhVal).not.toBe(key)
+      const enVal = t(key, 'en-US')
+      expect(enVal).not.toBe(key)
+    }
+  })
 })
