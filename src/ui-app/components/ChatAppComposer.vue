@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, type CSSProperties
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
 import { ModelPrefsService, type ModelPrefsFavorite, type ModelPrefsRecent } from '@/next/modelPrefs/modelPrefsService'
 import type { ChatSessionConfig } from '../app/chatSessionConfig'
+import ComposerCapabilityChip from './ComposerCapabilityChip.vue'
 import ModelPickerDialog from './ModelPickerDialog.vue'
 
 const props = defineProps<{
@@ -411,10 +412,16 @@ function onPaste(event: ClipboardEvent) {
   emit('paste', event)
 }
 
-function chipClass(active: boolean): string {
-  return active
-    ? 'border-gray-900 bg-gray-900 text-white'
-    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+function onImageChipOption(value: string) {
+  const resolutions = ['1K', '2K', '4K']
+  const aspectRatios = ['16:9', '3:4', '1:1', '4:3']
+  if (resolutions.includes(value)) {
+    emit('updateImageGenerationResolution', value as '1K' | '2K' | '4K')
+    emit('updateImageGenerationEnabled', true)
+  } else if (aspectRatios.includes(value)) {
+    emit('updateImageGenerationAspectRatio', value as '16:9' | '3:4' | '1:1' | '4:3')
+    emit('updateImageGenerationEnabled', true)
+  }
 }
 
 function openModelPicker() {
@@ -673,100 +680,67 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-2">
-        <label class="flex items-center gap-2 text-xs text-gray-700">
-          <input
-            type="checkbox"
-            :checked="resolvedSessionConfig.reasoning.enabled"
-            :disabled="disabled"
-            @change="emit('updateReasoningEnabled', ($event.target as HTMLInputElement).checked)"
-          />
-          Reasoning
-        </label>
-        <div class="flex items-center gap-1">
-          <button
-            v-for="effort in ['low', 'medium', 'high']"
-            :key="effort"
-            type="button"
-            class="rounded-md border px-2 py-1"
-            :class="chipClass(resolvedSessionConfig.reasoning.effort === effort)"
-            :disabled="disabled || !resolvedSessionConfig.reasoning.enabled"
-            @click="emit('updateReasoningEffort', effort as 'low' | 'medium' | 'high')"
-          >
-            {{ effort }}
-          </button>
-        </div>
-      </div>
+      <ComposerCapabilityChip
+        :enabled="resolvedSessionConfig.reasoning.enabled"
+        label="Reasoning"
+        :summary="resolvedSessionConfig.reasoning.enabled ? `: ${resolvedSessionConfig.reasoning.effort}` : null"
+        :disabled="disabled"
+        :options="['low', 'medium', 'high']"
+        :selected-option="resolvedSessionConfig.reasoning.effort"
+        data-test-id="reasoning-chip"
+        @toggle="emit('updateReasoningEnabled', !resolvedSessionConfig.reasoning.enabled)"
+        @select-option="(v) => { emit('updateReasoningEffort', v as 'low' | 'medium' | 'high'); emit('updateReasoningEnabled', true) }"
+      >
+        <template #icon>
+          <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="8" cy="6" r="3" />
+            <path d="M8 9v3" />
+            <path d="M5 14h6" />
+            <path d="M6 12h4" />
+          </svg>
+        </template>
+      </ComposerCapabilityChip>
 
-      <div class="flex flex-wrap items-center gap-2">
-        <label class="flex items-center gap-2 text-xs text-gray-700">
-          <input
-            type="checkbox"
-            :checked="resolvedSessionConfig.webSearch.enabled"
-            :disabled="disabled"
-            @change="emit('updateWebSearchEnabled', ($event.target as HTMLInputElement).checked)"
-          />
-          Web Search
-        </label>
-        <div class="flex items-center gap-1">
-          <button
-            type="button"
-            class="rounded-md border px-2 py-1"
-            :class="chipClass(resolvedSessionConfig.webSearch.level === 'low')"
-            :disabled="disabled || !resolvedSessionConfig.webSearch.enabled"
-            @click="emit('updateWebSearchLevel', 'low')"
-          >
-            low
-          </button>
-          <button
-            type="button"
-            class="rounded-md border px-2 py-1"
-            :class="chipClass(resolvedSessionConfig.webSearch.level === 'high')"
-            :disabled="disabled || !resolvedSessionConfig.webSearch.enabled"
-            @click="emit('updateWebSearchLevel', 'high')"
-          >
-            high
-          </button>
-        </div>
-      </div>
+      <ComposerCapabilityChip
+        :enabled="resolvedSessionConfig.webSearch.enabled"
+        label="Web Search"
+        :summary="resolvedSessionConfig.webSearch.enabled ? `: ${resolvedSessionConfig.webSearch.level}` : null"
+        :disabled="disabled"
+        :options="['low', 'high']"
+        :selected-option="resolvedSessionConfig.webSearch.level"
+        data-test-id="web-search-chip"
+        @toggle="emit('updateWebSearchEnabled', !resolvedSessionConfig.webSearch.enabled)"
+        @select-option="(v) => { emit('updateWebSearchLevel', v as 'low' | 'high'); emit('updateWebSearchEnabled', true) }"
+      >
+        <template #icon>
+          <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="8" cy="8" r="5" />
+            <path d="M3 8h10" />
+            <path d="M8 3c1.5 1.5 2 3 2 5s-.5 3.5-2 5" />
+            <path d="M8 3c-1.5 1.5-2 3-2 5s.5 3.5 2 5" />
+          </svg>
+        </template>
+      </ComposerCapabilityChip>
 
-      <div class="flex flex-wrap items-center gap-2">
-        <label class="flex items-center gap-2 text-xs text-gray-700">
-          <input
-            type="checkbox"
-            :checked="resolvedSessionConfig.imageGeneration.enabled"
-            :disabled="disabled"
-            @change="emit('updateImageGenerationEnabled', ($event.target as HTMLInputElement).checked)"
-          />
-          Image
-        </label>
-        <div class="flex items-center gap-1">
-          <button
-            v-for="resolution in ['1K', '2K', '4K']"
-            :key="resolution"
-            type="button"
-            class="rounded-md border px-2 py-1"
-            :class="chipClass(resolvedSessionConfig.imageGeneration.resolution === resolution)"
-            :disabled="disabled || !resolvedSessionConfig.imageGeneration.enabled"
-            @click="emit('updateImageGenerationResolution', resolution as '1K' | '2K' | '4K')"
-          >
-            {{ resolution }}
-          </button>
-        </div>
-        <div class="flex items-center gap-1">
-          <button
-            v-for="ratio in ['16:9', '3:4', '1:1', '4:3']"
-            :key="ratio"
-            type="button"
-            class="rounded-md border px-2 py-1"
-            :class="chipClass(resolvedSessionConfig.imageGeneration.aspectRatio === ratio)"
-            :disabled="disabled || !resolvedSessionConfig.imageGeneration.enabled"
-            @click="emit('updateImageGenerationAspectRatio', ratio as '16:9' | '3:4' | '1:1' | '4:3')"
-          >
-            {{ ratio }}
-          </button>
-        </div>
-      </div>
+      <ComposerCapabilityChip
+        :enabled="resolvedSessionConfig.imageGeneration.enabled"
+        label="Image"
+        :summary="resolvedSessionConfig.imageGeneration.enabled ? `: ${resolvedSessionConfig.imageGeneration.resolution} · ${resolvedSessionConfig.imageGeneration.aspectRatio}` : null"
+        :disabled="disabled"
+        :options="['1K', '2K', '4K', '—', '16:9', '3:4', '1:1', '4:3']"
+        :selected-option="null"
+        data-test-id="image-chip"
+        @toggle="emit('updateImageGenerationEnabled', !resolvedSessionConfig.imageGeneration.enabled)"
+        @select-option="onImageChipOption"
+      >
+        <template #icon>
+          <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="12" height="12" rx="1.5" />
+            <circle cx="5.5" cy="5.5" r="1" />
+            <path d="M14 10l-3-3-7 7" />
+          </svg>
+        </template>
+      </ComposerCapabilityChip>
     </div>
   </div>
 
