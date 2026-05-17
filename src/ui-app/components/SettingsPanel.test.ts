@@ -20,6 +20,8 @@ function createDbBridgeMock() {
     if (method === 'settings.setOpenRouterProviderRequireParameters') return { ok: true }
     if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
     if (method === 'settings.setReasoningPrefs') return { ok: true }
+    if (method === 'settings.getChatReasoningPanelDefaultExpanded') return { value: true }
+    if (method === 'settings.setChatReasoningPanelDefaultExpanded') return { ok: true }
     if (method === 'settings.getUserMessageRenderDefault') return { value: false }
     if (method === 'settings.setUserMessageRenderDefault') return { ok: true }
     if (method === 'settings.getWebSearchDefaults') return { value: null }
@@ -51,7 +53,7 @@ describe('ui-app SettingsPanel', () => {
     const user = userEvent.setup()
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
 
-    await screen.findByText('Settings')
+    await screen.findByText('设置')
     await waitFor(() => expect((globalThis as any).electronStore.get).toHaveBeenCalled())
 
     const keyInput = screen.getByPlaceholderText('sk-…') as HTMLInputElement
@@ -66,7 +68,7 @@ describe('ui-app SettingsPanel', () => {
     await user.click(checkbox)
     expect(checkbox.checked).toBe(true)
 
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
 
     const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
     expect(storeSet).toHaveBeenCalledWith('openRouterApiKey', 'sk-new')
@@ -75,6 +77,7 @@ describe('ui-app SettingsPanel', () => {
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     expect(invoke).toHaveBeenCalledWith('settings.setOpenRouterProviderRequireParameters', { value: true })
     expect(invoke).toHaveBeenCalledWith('settings.setReasoningPrefs', { value: { mode: 'auto', effort: 'auto', exclude: false } })
+    expect(invoke).toHaveBeenCalledWith('settings.setChatReasoningPanelDefaultExpanded', { value: true })
     expect(invoke).toHaveBeenCalledWith('settings.setUserMessageRenderDefault', { value: false })
     expect(invoke).toHaveBeenCalledWith('settings.setWebSearchDefaults', { value: null })
     expect(invoke).toHaveBeenCalledWith('settings.setSamplingParamsDefaults', { value: null })
@@ -84,7 +87,7 @@ describe('ui-app SettingsPanel', () => {
     const user = userEvent.setup()
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
 
-    await screen.findByText('Settings')
+    await screen.findByText('设置')
 
     const clearButtons = screen.getAllByRole('button', { name: 'Clear' })
     expect(clearButtons.length).toBeGreaterThanOrEqual(2)
@@ -99,14 +102,14 @@ describe('ui-app SettingsPanel', () => {
     const user = userEvent.setup()
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
 
-    await screen.findByText('Settings')
+    await screen.findByText('设置')
     const toggle = screen.queryByLabelText('OpenRouter debug echo upstream body') as HTMLInputElement | null
     if (!toggle) return
 
     expect(toggle.checked).toBe(false)
     await user.click(toggle)
     expect(toggle.checked).toBe(true)
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
     expect(globalThis.localStorage?.getItem('sv_debug_openrouter_echo_upstream_body')).toBe('1')
   })
 })

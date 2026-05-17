@@ -15,6 +15,7 @@
  */
 
 import { ref, computed } from 'vue'
+import { t, tf } from '@/shared/i18n'
 
 export type ProjectItem = Readonly<{
   id: string
@@ -83,7 +84,7 @@ function confirmCreate() {
 function openRename(project: ProjectItem) {
   if (props.disabled) return
   if (project.isSystem) {
-    errorMessage.value = '系统项目不可重命名'
+    errorMessage.value = t('navigation.project.systemProjectNoRename')
     setTimeout(() => { errorMessage.value = null }, 3000)
     return
   }
@@ -102,7 +103,7 @@ function confirmRename() {
 function openDelete(project: ProjectItem) {
   if (props.disabled) return
   if (project.isSystem) {
-    errorMessage.value = '系统项目（Inbox）不可删除'
+    errorMessage.value = t('navigation.project.systemProjectNoDelete')
     setTimeout(() => { errorMessage.value = null }, 3000)
     return
   }
@@ -128,13 +129,13 @@ function cancelDialog() {
   <div class="flex h-full w-48 flex-col border-r border-gray-200 bg-gray-50">
     <!-- 标题栏 -->
     <div class="flex items-center justify-between border-b border-gray-200 px-3 py-2">
-      <span class="text-xs font-semibold uppercase tracking-wide text-gray-600">Projects</span>
+      <span class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('navigation.project.title') }}</span>
       <button
         type="button"
         class="rounded-md bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
         :disabled="props.disabled"
         @click="openCreate"
-        aria-label="Create project"
+        :aria-label="t('navigation.project.newProject')"
       >
         +
       </button>
@@ -159,7 +160,7 @@ function cancelDialog() {
         @click="onSelect(null)"
       >
         <span class="text-base">📋</span>
-        <span class="min-w-0 flex-1 truncate">全部对话</span>
+        <span class="min-w-0 flex-1 truncate">{{ t('navigation.empty.allConversations') }}</span>
       </button>
 
       <!-- Inbox（系统项目） -->
@@ -209,7 +210,7 @@ function cancelDialog() {
             class="rounded bg-white p-1 text-xs text-gray-500 shadow-sm hover:bg-gray-100 hover:text-gray-700"
             :disabled="props.disabled"
             @click.stop="openRename(project)"
-            aria-label="Rename project"
+            :aria-label="t('navigation.project.renameProject')"
           >
             ✏️
           </button>
@@ -218,7 +219,7 @@ function cancelDialog() {
             class="rounded bg-white p-1 text-xs text-red-500 shadow-sm hover:bg-red-50 hover:text-red-700"
             :disabled="props.disabled"
             @click.stop="openDelete(project)"
-            aria-label="Delete project"
+            :aria-label="t('navigation.project.deleteProject')"
           >
             🗑️
           </button>
@@ -226,7 +227,7 @@ function cancelDialog() {
       </div>
 
       <div v-if="userProjects.length === 0 && !inboxProject" class="px-2 py-3 text-xs text-gray-400">
-        暂无项目
+        {{ t('navigation.empty.noProjects') }}
       </div>
     </div>
 
@@ -237,12 +238,12 @@ function cancelDialog() {
       @click.self="cancelDialog"
     >
       <div class="w-72 rounded-lg bg-white p-4 shadow-xl">
-        <div class="mb-3 text-sm font-medium text-gray-900">创建项目</div>
+        <div class="mb-3 text-sm font-medium text-gray-900">{{ t('navigation.project.newProject') }}</div>
         <input
           v-model="createName"
           type="text"
           class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder="项目名称"
+          :placeholder="t('navigation.project.projectName')"
           @keydown.enter="confirmCreate"
           @keydown.escape="cancelDialog"
         />
@@ -252,14 +253,14 @@ function cancelDialog() {
             class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
             @click="cancelDialog"
           >
-            取消
+            {{ t('common.cancel') }}
           </button>
           <button
             type="button"
             class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
             @click="confirmCreate"
           >
-            创建
+            {{ t('common.create') }}
           </button>
         </div>
       </div>
@@ -272,12 +273,12 @@ function cancelDialog() {
       @click.self="cancelDialog"
     >
       <div class="w-72 rounded-lg bg-white p-4 shadow-xl">
-        <div class="mb-3 text-sm font-medium text-gray-900">重命名项目</div>
+        <div class="mb-3 text-sm font-medium text-gray-900">{{ t('navigation.project.renameProject') }}</div>
         <input
           v-model="renameDialog.name"
           type="text"
           class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder="项目名称"
+          :placeholder="t('navigation.project.projectName')"
           @keydown.enter="confirmRename"
           @keydown.escape="cancelDialog"
         />
@@ -287,14 +288,14 @@ function cancelDialog() {
             class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
             @click="cancelDialog"
           >
-            取消
+            {{ t('common.cancel') }}
           </button>
           <button
             type="button"
             class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
             @click="confirmRename"
           >
-            保存
+            {{ t('common.save') }}
           </button>
         </div>
       </div>
@@ -307,9 +308,9 @@ function cancelDialog() {
       @click.self="cancelDialog"
     >
       <div class="w-72 rounded-lg bg-white p-4 shadow-xl">
-        <div class="mb-3 text-sm font-medium text-gray-900">删除项目</div>
+        <div class="mb-3 text-sm font-medium text-gray-900">{{ t('navigation.project.deleteProject') }}</div>
         <p class="mb-4 text-sm text-gray-600">
-          确定要删除项目「{{ deleteDialog.name }}」吗？项目下的对话将移至 Inbox。
+          {{ tf('navigation.project.deleteConfirm', { name: deleteDialog.name }) }}
         </p>
         <div class="flex justify-end gap-2">
           <button
@@ -317,14 +318,14 @@ function cancelDialog() {
             class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
             @click="cancelDialog"
           >
-            取消
+            {{ t('common.cancel') }}
           </button>
           <button
             type="button"
             class="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
             @click="confirmDelete"
           >
-            删除
+            {{ t('common.delete') }}
           </button>
         </div>
       </div>

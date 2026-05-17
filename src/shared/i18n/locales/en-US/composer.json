@@ -1,0 +1,35 @@
+{
+  "composer": {
+    "placeholder": {
+      "default": "Type a message…"
+    },
+    "actions": {
+      "send": "Send",
+      "stop": "Stop",
+      "attach": "Attach",
+      "removeAttachment": "Remove attachment",
+      "uploadFile": "Upload file",
+      "uploadImage": "Upload image",
+      "uploadLink": "Upload link"
+    },
+    "capabilities": {
+      "reasoning": "Think",
+      "webSearch": "Search",
+      "image": "Image",
+      "enabledSuffix": "enabled"
+    },
+    "status": {
+      "noSendableInput": "No sendable input",
+      "updatingSendPlan": "Updating send plan…",
+      "model": "Model"
+    },
+    "modelPicker": {
+      "favorites": "Fav",
+      "recents": "Rec",
+      "favoriteModels": "Favorite models",
+      "recentModels": "Recent models in this session",
+      "noFavorites": "No favorite models yet.",
+      "noRecents": "No recent models in this session yet."
+    }
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "settings": {
+    "title": "Settings",
+    "language": {
+      "title": "Language",
+      "followSystem": "Follow system",
+      "followSystemDesc": "Automatically switch UI language based on system language",
+      "manual": "Manual",
+      "simplifiedChinese": "简体中文",
+      "englishUS": "English (US)"
+    },
+    "openrouter": {
+      "title": "OpenRouter",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "sk-…",
+      "baseUrl": "Base URL (optional)",
+      "baseUrlPlaceholder": "https://openrouter.ai/api/v1",
+      "baseUrlInvalid": "Invalid URL.",
+      "requireParameters": "provider.require_parameters",
+      "requireParametersDesc": "Force OpenRouter provider parameter validation",
+      "debugEcho": "debug.echo_upstream_body",
+      "debugEchoDesc": "DEV only, stream mode only. Helps diagnose provider parameter mapping."
+    },
+    "network": {
+      "title": "Network Experiments",
+      "disableHttp2": "Disable HTTP/2",
+      "disableHttp2Desc": "Append switch disable-http2 (restart required)",
+      "disableQuic": "Disable QUIC / HTTP/3",
+      "disableQuicDesc": "Append switch disable-quic (restart required)",
+      "streamInMain": "Stream in main process",
+      "streamInMainDesc": "Use IPC + electron.net for SSE (enables keepalive/force HTTP/1.1)",
+      "forceHttp1": "Force HTTP/1.1",
+      "forceHttp1Desc": "undici allowH2=false (main-process stream only)",
+      "tcpKeepalive": "TCP keepalive",
+      "tcpKeepaliveDesc": "socket.setKeepAlive (main-process stream only)",
+      "tcpKeepaliveIdle": "TCP keepalive idle (ms)",
+      "tcpKeepaliveIdleDesc": "Initial delay before probes",
+      "copyRunReport": "Copy run report",
+      "copyRunReportDesc": "Copy a run report for A/B debugging.",
+      "runReportCopied": "Run report copied."
+    },
+    "reasoning": {
+      "title": "Global Reasoning Defaults",
+      "reasoning": "Reasoning",
+      "exclude": "exclude",
+      "hint": "Defaults apply to non-project sessions. Session-level preferences override project/global defaults.",
+      "inlineDefault": "Inline reasoning default",
+      "inlineDefaultDesc": "Controls whether new assistant inline reasoning opens expanded.",
+      "expanded": "Expanded",
+      "collapsed": "Collapsed",
+      "userMessageRich": "User message rich rendering",
+      "userMessageRichDesc": "Default for sessions in follow mode.",
+      "recentModelsLimit": "Recent models limit",
+      "recentModelsLimitDesc": "Controls the Model Picker Rec list."
+    },
+    "search": {
+      "title": "Global Web Search Defaults"
+    },
+    "customParams": {
+      "title": "Global Custom Parameters"
+    },
+    "footer": "ui-app reads OpenRouter settings from electron-store (not env) to avoid hidden overrides."
+  }
+}

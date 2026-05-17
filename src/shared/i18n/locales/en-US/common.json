@@ -27,6 +27,27 @@
     "language": "Language",
     "languageFollowSystem": "Follow system",
     "languageFollowSystemDesc": "Automatically switch UI language based on system language",
-    "languageManual": "Manual"
+    "languageManual": "Manual",
+    "retry": "Retry",
+    "copy": "Copy",
+    "move": "Move",
+    "done": "Done",
+    "select": "Select",
+    "refresh": "Refresh",
+    "new": "New",
+    "send": "Send",
+    "stop": "Stop",
+    "attach": "Attach",
+    "yes": "Yes",
+    "no": "No",
+    "generating": "Generating…",
+    "streaming": "Streaming",
+    "encrypted": "Encrypted",
+    "summary": "Summary",
+    "untitled": "Untitled",
+    "images": "Images",
+    "references": "References",
+    "toolCalls": "Tool calls",
+    "closePreview": "Close preview"
   }
 }

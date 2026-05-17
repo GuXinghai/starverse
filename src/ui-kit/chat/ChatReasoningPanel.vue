@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ReasoningPiece, ReasoningView } from './types'
+import { t } from '@/shared/i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -11,14 +12,10 @@ const props = withDefaults(
     localProcessingDurationMs?: number
   }>(),
   {
-    title: 'Reasoning',
-    emptyText: 'No assistant message yet.',
+    title: '',
+    emptyText: '',
   },
 )
-
-const emit = defineEmits<{
-  'toggle-panel-state': []
-}>()
 
 const reasoningPieces = computed(() => {
   const pieces = props.reasoningPieces ?? props.reasoningView?.reasoningPieces
@@ -37,13 +34,9 @@ const hasAnyReasoningText = computed(() => {
 
 const showEncryptedBadge = computed(() => props.reasoningView?.hasEncrypted === true)
 
-const isCollapsed = computed(() => props.reasoningView?.panelState === 'collapsed')
-
 const formattedDuration = computed(() => {
   const ms = props.localProcessingDurationMs
   if (typeof ms !== 'number' || ms < 0) return null
-  // 仅在展开时显示推理时间
-  if (isCollapsed.value) return null
   return `${(ms / 1000).toFixed(2)}s`
 })
 </script>
@@ -53,12 +46,12 @@ const formattedDuration = computed(() => {
     <div class="mb-2 flex items-start justify-between gap-3">
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-2">
-          <div class="text-sm font-semibold text-gray-800">{{ props.title }}</div>
+          <div class="text-sm font-semibold text-gray-800">{{ props.title || t('common.summary') }}</div>
           <span
             v-if="showEncryptedBadge"
             class="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900"
           >
-            encrypted
+            {{ t('common.encrypted') }}
           </span>
           <span
             v-if="formattedDuration"
@@ -71,28 +64,15 @@ const formattedDuration = computed(() => {
 
       <div class="flex items-center gap-2">
         <slot name="actions" />
-        <button
-          class="rounded-lg bg-gray-100 px-3 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-200"
-          type="button"
-          :aria-label="isCollapsed ? 'Expand' : 'Collapse'"
-          :title="isCollapsed ? 'Expand' : 'Collapse'"
-          @click="emit('toggle-panel-state')"
-        >
-          {{ isCollapsed ? 'Expand' : '×' }}
-        </button>
       </div>
     </div>
 
-    <slot v-if="!props.reasoningView" name="empty">
-      <div class="text-sm text-gray-500">{{ props.emptyText }}</div>
-    </slot>
+      <slot v-if="!props.reasoningView" name="empty">
+        <div class="text-sm text-gray-500">{{ props.emptyText || t('common.loading') }}</div>
+      </slot>
 
     <div v-else class="space-y-2">
-      <div v-if="isCollapsed" class="text-sm text-gray-500">
-        (collapsed)
-      </div>
-
-      <div v-else class="space-y-2 text-sm">
+      <div class="space-y-2 text-sm">
         <template v-if="props.reasoningView.visibility === 'shown'">
           <div v-if="props.reasoningView.hasEncrypted === true" class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
             <div class="text-xs font-semibold uppercase tracking-wide">Encrypted reasoning</div>
@@ -100,16 +80,14 @@ const formattedDuration = computed(() => {
           </div>
 
           <div v-if="props.reasoningView.summaryText" class="rounded border border-gray-200 bg-white p-2">
-            <div class="mb-1 text-xs font-semibold text-gray-700">Summary</div>
+            <div class="mb-1 text-xs font-semibold text-gray-700">{{ t('common.summary') }}</div>
             <div>{{ props.reasoningView.summaryText }}</div>
           </div>
           <div v-if="props.reasoningView.reasoningText" class="rounded border border-gray-200 bg-white p-2">
-            <div class="mb-1 text-xs font-semibold text-gray-700">Reasoning</div>
             <div class="whitespace-pre-wrap">{{ props.reasoningView.reasoningText }}</div>
           </div>
 
           <div v-if="hasPieces" class="rounded border border-gray-200 bg-white p-2">
-            <div class="mb-1 text-xs font-semibold text-gray-700">Reasoning (pieces)</div>
             <div class="space-y-2">
               <div v-for="piece in reasoningPieces" :key="piece.id" class="whitespace-pre-wrap">
                 {{ piece.text }}

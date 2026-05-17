@@ -1,0 +1,35 @@
+{
+  "navigation": {
+    "project": {
+      "title": "Projects",
+      "newProject": "New project",
+      "renameProject": "Rename project",
+      "deleteProject": "Delete project",
+      "projectName": "Project name",
+      "deleteConfirm": "Delete project \"{name}\"? Conversations under it will be moved to Inbox.",
+      "systemProjectNoRename": "System project cannot be renamed",
+      "systemProjectNoDelete": "System project (Inbox) cannot be deleted"
+    },
+    "conversation": {
+      "title": "Conversations",
+      "newConversation": "New conversation",
+      "renameConversation": "Rename conversation",
+      "deleteConversation": "Delete conversation",
+      "deleteConversationConfirm": "This will permanently delete {count} conversation(s).",
+      "moveToProject": "Move to project",
+      "movePrompt": "Move {count} conversation(s) to:",
+      "noProject": "No project"
+    },
+    "empty": {
+      "noConversations": "No conversations yet.",
+      "noProjects": "No projects",
+      "allConversations": "All conversations"
+    },
+    "actions": {
+      "selectAll": "Select all",
+      "bulkMove": "Bulk move",
+      "bulkDelete": "Bulk delete",
+      "selected": "Selected:"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "composer": {
+    "placeholder": {
+      "default": "输入消息…"
+    },
+    "actions": {
+      "send": "发送",
+      "stop": "停止",
+      "attach": "附件",
+      "removeAttachment": "移除附件",
+      "uploadFile": "上传文件",
+      "uploadImage": "上传图片",
+      "uploadLink": "上传链接"
+    },
+    "capabilities": {
+      "reasoning": "推理",
+      "webSearch": "搜索",
+      "image": "图片",
+      "enabledSuffix": "已启用"
+    },
+    "status": {
+      "noSendableInput": "无可发送内容",
+      "updatingSendPlan": "正在更新发送计划…",
+      "model": "模型"
+    },
+    "modelPicker": {
+      "favorites": "收藏",
+      "recents": "最近",
+      "favoriteModels": "收藏的模型",
+      "recentModels": "本次会话中的最近模型",
+      "noFavorites": "暂无收藏模型。",
+      "noRecents": "本次会话暂无最近模型。"
+    }
+  }
+}
