@@ -13,9 +13,11 @@
       "title": "OpenRouter",
       "apiKey": "API Key",
       "apiKeyPlaceholder": "sk-…",
+      "apiKeyCleared": "API key cleared.",
       "baseUrl": "Base URL (optional)",
       "baseUrlPlaceholder": "https://openrouter.ai/api/v1",
       "baseUrlInvalid": "Invalid URL.",
+      "baseUrlCleared": "Base URL cleared.",
       "requireParameters": "provider.require_parameters",
       "requireParametersDesc": "Force OpenRouter provider parameter validation",
       "debugEcho": "debug.echo_upstream_body",
@@ -54,7 +56,9 @@
       "recentModelsLimitDesc": "Controls the Model Picker Rec list."
     },
     "search": {
-      "title": "Global Web Search Defaults"
+      "title": "Global Web Search Defaults",
+      "hintDefault": "Global mode=default inherits your OpenRouter account plugin default.",
+      "hintGlobal": "Global defaults apply when project/session keeps mode=default."
     },
     "customParams": {
       "title": "Global Custom Parameters"

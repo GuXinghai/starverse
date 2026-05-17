@@ -76,16 +76,21 @@ function lookup(bundle: MessageBundle | undefined, key: string): string | undefi
 /**
  * 查找消息，带 fallback 支持
  *
- * key 格式支持两种：
- * 1. 带命名空间前缀：'settings.title', 'navigation.project.title', 'composer.actions.send'
- *    → 自动从第一个 '.' 前段提取命名空间
- * 2. 纯路径：'common.ok' 或 'ok'
- *    → namespace 参数决定（默认 'common'）
+ * Lookup priority:
+ * 1. Auto-detect namespace from key prefix (e.g. 'settings.title' → ns='settings', key='title')
+ *    This handles the common case of namespace-qualified keys.
+ * 2. If no namespace detected, try full key in explicitly provided namespace
+ *    e.g. t('ok') with namespace='common' → looks up 'ok' in common
+ * 3. Fallback locale with same resolution
+ * 4. Returns raw key as last resort
  *
- * @param key - 消息 key
+ * Auto-detection of namespace from key prefix is the primary path. The explicit
+ * namespace parameter is a fallback for bare keys like 'ok' or 'cancel'.
+ *
+ * @param key - 消息 key (dot-separated path)
  * @param locale - 当前 locale
  * @param fallback - 回退 locale
- * @param namespace - 命名空间（默认 'common'，当 key 带已知前缀时自动覆盖）
+ * @param namespace - 命名空间（默认 'common'）
  * @returns 消息字符串，若全部缺失则返回 key 本身
  */
 export function t(
@@ -94,27 +99,28 @@ export function t(
   fallback: SupportedLocale = FALLBACK_LOCALE,
   namespace = 'common'
 ): string {
-  // 自动检测命名空间：key 的第一段如果是已注册的命名空间，自动提取
-  let lookupKey = key
-  let lookupNs = namespace
   const dotIdx = key.indexOf('.')
   if (dotIdx > 0) {
     const candidateNs = key.substring(0, dotIdx)
-    // Check raw registry (before stripping namespace wrapper)
     const localeRegistry = messageRegistry[locale]
     const fallbackRegistry = messageRegistry[fallback]
     const hasNs = (localeRegistry && candidateNs in localeRegistry) || (fallbackRegistry && candidateNs in fallbackRegistry)
     if (hasNs) {
-      lookupNs = candidateNs
-      lookupKey = key.substring(dotIdx + 1)
+      const innerKey = key.substring(dotIdx + 1)
+      const nsResult =
+        lookup(getMessages(locale, candidateNs), innerKey) ??
+        lookup(getMessages(fallback, candidateNs), innerKey)
+      if (nsResult !== undefined) return nsResult
     }
   }
 
-  return (
-    lookup(getMessages(locale, lookupNs), lookupKey) ??
-    lookup(getMessages(fallback, lookupNs), lookupKey) ??
-    key
-  )
+  // Phase 2: Try full key in explicitly provided namespace
+  const directResult =
+    lookup(getMessages(locale, namespace), key) ??
+    lookup(getMessages(fallback, namespace), key)
+  if (directResult !== undefined) return directResult
+
+  return key
 }
 
 // ── 响应式 locale 状态（仅 Vue 渲染进程） ──────────────────

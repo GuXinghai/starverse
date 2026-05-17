@@ -63,7 +63,7 @@ describe('ui-app SettingsPanel', () => {
     await user.clear(keyInput)
     await user.type(keyInput, 'sk-new')
 
-    const checkbox = screen.getByLabelText('OpenRouter require parameters') as HTMLInputElement
+    const checkbox = screen.getByLabelText('强制 OpenRouter 校验 provider 参数') as HTMLInputElement
     expect(checkbox.checked).toBe(false)
     await user.click(checkbox)
     expect(checkbox.checked).toBe(true)
@@ -89,7 +89,7 @@ describe('ui-app SettingsPanel', () => {
 
     await screen.findByText('设置')
 
-    const clearButtons = screen.getAllByRole('button', { name: 'Clear' })
+    const clearButtons = screen.getAllByRole('button', { name: '清除' })
     expect(clearButtons.length).toBeGreaterThanOrEqual(2)
 
     await user.click(clearButtons[0])
@@ -103,7 +103,7 @@ describe('ui-app SettingsPanel', () => {
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
 
     await screen.findByText('设置')
-    const toggle = screen.queryByLabelText('OpenRouter debug echo upstream body') as HTMLInputElement | null
+    const toggle = screen.queryByLabelText('仅开发环境，仅 stream 模式。用于诊断 provider 参数映射。') as HTMLInputElement | null
     if (!toggle) return
 
     expect(toggle.checked).toBe(false)

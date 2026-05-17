@@ -7,6 +7,7 @@ import zhCNNavigation from './zh-CN/navigation.json'
 import enUSNavigation from './en-US/navigation.json'
 import zhCNComposer from './zh-CN/composer.json'
 import enUSComposer from './en-US/composer.json'
+import { t, getMessages } from '../index'
 
 function flattenKeys(obj: any, prefix = ''): string[] {
   const keys: string[] = []
@@ -19,6 +20,12 @@ function flattenKeys(obj: any, prefix = ''): string[] {
     }
   }
   return keys
+}
+
+/** Extract {param} placeholders from a message string */
+function extractParams(msg: string): string[] {
+  const matches = msg.match(/\{(\w+)\}/g)
+  return matches ? matches.map(m => m.slice(1, -1)).sort() : []
 }
 
 describe('locale key consistency', () => {
@@ -67,5 +74,88 @@ describe('locale key consistency', () => {
   it('composer namespace has at least actions.send key', () => {
     expect((zhCNComposer.composer as any).actions.send).toBeTruthy()
     expect((enUSComposer.composer as any).actions.send).toBeTruthy()
+  })
+
+  it('namespace names do not shadow common flat keys (known overlap)', () => {
+    // common.json has a key 'settings' with value '设置'.
+    // The 'settings' namespace also exists.
+    // With namespace-detection-first lookup, t('settings') resolves to common.settings,
+    // while t('settings.title') resolves to settings.title. Both work correctly.
+    // This test documents the overlap for awareness, not as a hard failure.
+    const commonKeys = Object.keys(zhCNCommon.common)
+    const nsNames = ['navigation', 'composer']
+    for (const ns of nsNames) {
+      expect(commonKeys).not.toContain(ns)
+    }
+    // 'settings' key exists in common — this is acceptable with current t() design
+    expect(commonKeys).toContain('settings')
+  })
+
+  it('cross-namespace key paths do not silently shadow each other', () => {
+    const allZhKeys = [
+      ...flattenKeys(zhCNCommon.common).map(k => `common.${k}`),
+      ...flattenKeys(zhCNSettings.settings).map(k => `settings.${k}`),
+      ...flattenKeys(zhCNNavigation.navigation).map(k => `navigation.${k}`),
+      ...flattenKeys(zhCNComposer.composer).map(k => `composer.${k}`),
+    ]
+    const seen = new Set<string>()
+    const dupes: string[] = []
+    for (const k of allZhKeys) {
+      if (seen.has(k)) dupes.push(k)
+      seen.add(k)
+    }
+    expect(dupes).toEqual([])
+  })
+
+  it('t() resolves all namespace-qualified keys without returning raw key', () => {
+    const testCases = [
+      ['settings.title', 'zh-CN', '设置'],
+      ['settings.title', 'en-US', 'Settings'],
+      ['navigation.project.title', 'zh-CN', '项目'],
+      ['navigation.project.title', 'en-US', 'Projects'],
+      ['composer.actions.send', 'zh-CN', '发送'],
+      ['composer.actions.send', 'en-US', 'Send'],
+      ['common.ok', 'zh-CN', '确定'],
+      ['common.ok', 'en-US', 'OK'],
+    ]
+    for (const [key, locale, expected] of testCases) {
+      expect(t(key, locale as any)).toBe(expected)
+    }
+  })
+
+  it('zh-CN and en-US variable params are consistent per namespace', () => {
+    const namespaces = [
+      { zh: zhCNCommon.common, en: enUSCommon.common, name: 'common' },
+      { zh: zhCNSettings.settings, en: enUSSettings.settings, name: 'settings' },
+      { zh: zhCNNavigation.navigation, en: enUSNavigation.navigation, name: 'navigation' },
+      { zh: zhCNComposer.composer, en: enUSComposer.composer, name: 'composer' },
+    ]
+    for (const ns of namespaces) {
+      const zhFlat = flattenKeys(ns.zh)
+      for (const key of zhFlat) {
+        const parts = key.split('.')
+        let zhVal: any = ns.zh
+        let enVal: any = ns.en
+        for (const p of parts) {
+          zhVal = zhVal?.[p]
+          enVal = enVal?.[p]
+        }
+        if (typeof zhVal === 'string' && typeof enVal === 'string') {
+          const zhParams = extractParams(zhVal)
+          const enParams = extractParams(enVal)
+          expect(enParams).toEqual(zhParams)
+        }
+      }
+    }
+  })
+
+  it('getMessages returns inner content for all namespaces', () => {
+    const nsNames = ['common', 'settings', 'navigation', 'composer']
+    for (const ns of nsNames) {
+      const zhMsgs = getMessages('zh-CN', ns)
+      expect(zhMsgs).toBeDefined()
+      const enMsgs = getMessages('en-US', ns)
+      expect(enMsgs).toBeDefined()
+    }
   })
 })

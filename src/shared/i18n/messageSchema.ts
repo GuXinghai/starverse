@@ -83,9 +83,11 @@ export interface SettingsMessages {
       readonly title: string
       readonly apiKey: string
       readonly apiKeyPlaceholder: string
+      readonly apiKeyCleared: string
       readonly baseUrl: string
       readonly baseUrlPlaceholder: string
       readonly baseUrlInvalid: string
+      readonly baseUrlCleared: string
       readonly requireParameters: string
       readonly requireParametersDesc: string
       readonly debugEcho: string
@@ -123,7 +125,11 @@ export interface SettingsMessages {
       readonly recentModelsLimit: string
       readonly recentModelsLimitDesc: string
     }
-    readonly search: { readonly title: string }
+    readonly search: {
+      readonly title: string
+      readonly hintDefault: string
+      readonly hintGlobal: string
+    }
     readonly customParams: { readonly title: string }
     readonly footer: string
   }
@@ -143,6 +149,7 @@ export interface NavigationMessages {
       readonly deleteConfirm: string
       readonly systemProjectNoRename: string
       readonly systemProjectNoDelete: string
+      readonly projectSettings: string
     }
     readonly conversation: {
       readonly title: string
@@ -164,6 +171,7 @@ export interface NavigationMessages {
       readonly bulkMove: string
       readonly bulkDelete: string
       readonly selected: string
+      readonly moreActions: string
     }
   }
 }
