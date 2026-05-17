@@ -489,14 +489,31 @@ export function useAppChatAppLogic() {
   const attachmentConfirmationResolver = ref<((result: AttachmentConfirmationResult) => void) | null>(null)
   const isAttachmentConfirmationActive = computed(() => attachmentConfirmationSession.value != null)
   const isDraftInteractionLocked = computed(() => isAttachmentConfirmationActive.value)
+  const hasSendableDraftAttachment = computed(() =>
+    Object.values(draftAttachmentPlansByAssetId.value).some((plan) =>
+      plan != null &&
+      plan.source === 'draft' &&
+      (plan.eligibility === 'included' || plan.eligibility === 'warning')
+    )
+  )
   const composerCanSend = computed(() => {
     if (isRunning.value) return false
     if (isDraftInteractionLocked.value) return false
     if (isQuestionEditMode.value) return false
     if (composerSendPlanLoading.value) return false
-    if (draft.value.trim().length === 0) return false
+    if (draft.value.trim().length === 0 && !hasSendableDraftAttachment.value) return false
     return composerSendPlanCanProceed.value
   })
+
+  type SendButtonMode = 'enabled_arrow' | 'disabled_arrow' | 'stop_square' | 'busy_spinner'
+
+  const sendButtonMode = computed<SendButtonMode>(() => {
+    if (isRunning.value) return 'stop_square'
+    if (composerSendPlanLoading.value) return 'busy_spinner'
+    if (composerCanSend.value) return 'enabled_arrow'
+    return 'disabled_arrow'
+  })
+
   const attachmentConfirmationVisible = computed(() => {
     const session = attachmentConfirmationSession.value
     return session != null && session.collapsed === false
@@ -863,8 +880,7 @@ export function useAppChatAppLogic() {
   watch(draft, () => {
     if (!getActiveDraftScope()) return
     scheduleDraftPersistence()
-    // Draft text changes must refresh send plan so stale no_sendable_current_input
-    // does not remain after the user types.
+    // Draft text changes can alter whether the composer has sendable current input.
     scheduleDraftSendPlanRefresh()
   })
 
@@ -3328,8 +3344,18 @@ export function useAppChatAppLogic() {
   async function onAbort() {
     const s = activeStream.value
     if (!s) return
-    if (enableEventScheduler && activeBranchId.value) {
-      eventScheduler.flushNow(activeBranchId.value, 'flush')
+    const currentBranchId = activeBranchId.value
+    if (!currentBranchId || s.branchId !== currentBranchId) {
+      if (import.meta.env?.DEV) {
+        console.warn('[ui-app] onAbort: activeStream branch mismatch, skipping abort', {
+          streamBranchId: s.branchId,
+          currentBranchId,
+        })
+      }
+      return
+    }
+    if (enableEventScheduler) {
+      eventScheduler.flushNow(currentBranchId, 'flush')
     }
     s.abort.abort('abort')
   }
@@ -6455,7 +6481,7 @@ export function useAppChatAppLogic() {
 
   async function runAssistantStreamSession(input: AssistantStreamSessionInput) {
     const { convoId, branchId, assistantMessageId, assistantSeq, modelId, requestId } = input
-    const stream = createActiveStream(assistantMessageId, assistantSeq)
+    const stream = createActiveStream(branchId, assistantMessageId, assistantSeq)
     activeStream.value = stream
 
     let finalStatus: 'final' | 'error' = 'final'
@@ -7102,6 +7128,19 @@ export function useAppChatAppLogic() {
     )
 
     const hasBlockingDraft = sendPlan.attachmentPlans.some((item) => item.source === 'draft' && item.eligibility === 'blocked')
+    const isIdleEmptyDraftPlan =
+      sendPlan.status === 'blocked' &&
+      sendPlan.blockingReasons.length === 0 &&
+      sendPlan.attachmentPlans.length === 0
+    if (isIdleEmptyDraftPlan) {
+      return {
+        status: sendPlan.status,
+        canProceed: false,
+        blockingReason: null,
+        warningReason: null,
+        partialAllowed: false,
+      }
+    }
     if (sendPlan.status === 'blocked' || sendPlan.blockingReasons.length > 0 || hasBlockingDraft) {
       if (hasResolvableConfirmationItems) {
         return {
@@ -7245,7 +7284,8 @@ export function useAppChatAppLogic() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     const text = draft.value.trim()
-    if (!text) return
+    const hasDraftAttachments = draftAttachmentRecords.value.length > 0
+    if (!text && !hasDraftAttachments) return
 
     const convoId = await ensureActiveConvo()
     const branch = await ensureActiveBranch(convoId)
@@ -8321,6 +8361,7 @@ export function useAppChatAppLogic() {
     draftAttachmentViewModels,
     selectedDraftAttachmentDetails,
     composerCanSend,
+    sendButtonMode,
     composerSendPlanStatus,
     composerSendPlanLoading,
     composerSendGateBlockedReason,

@@ -105,6 +105,7 @@ const {
   draftAttachmentViewModels,
   selectedDraftAttachmentDetails,
   composerCanSend,
+  sendButtonMode,
   composerSendPlanStatus,
   composerSendPlanLoading,
   composerSendGateBlockedReason,
@@ -700,6 +701,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             :attachmentFeedbackTone="attachmentFeedbackTone"
             :attachmentFeedbackMessage="attachmentFeedbackMessage"
             :canSend="composerCanSend"
+            :sendButtonMode="sendButtonMode"
             :sendPlanStatus="composerSendPlanStatus"
             :sendPlanBlockingSummary="composerSendGateBlockedReason"
             :sendPlanWarningSummary="composerSendGateWarningReason"

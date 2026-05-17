@@ -3,6 +3,7 @@ import { ReasoningDetailStreamMerger } from '@/next/state/reasoningDetailStreamM
 
 export type ActiveStream = Readonly<{
   abort: AbortController
+  branchId: string
   assistantMessageId: string
   assistantSeq: number
   pendingAppendText: { value: string }
@@ -32,9 +33,10 @@ export function useLiveStreamController() {
 
   const activeAssistantMessageId = computed(() => activeStream.value?.assistantMessageId ?? null)
 
-  function createActiveStream(assistantMessageId: string, assistantSeq: number): ActiveStream {
+  function createActiveStream(branchId: string, assistantMessageId: string, assistantSeq: number): ActiveStream {
     return {
       abort: new AbortController(),
+      branchId,
       assistantMessageId,
       assistantSeq,
       pendingAppendText: { value: '' },

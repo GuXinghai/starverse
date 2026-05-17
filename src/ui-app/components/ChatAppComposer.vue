@@ -15,6 +15,7 @@ const props = defineProps<{
   imageInputSupported?: boolean | null
   imageInputDisabledReason?: string | null
   canSend?: boolean | null
+  sendButtonMode?: 'enabled_arrow' | 'disabled_arrow' | 'stop_square' | 'busy_spinner'
   sendPlanStatus?: 'sendable' | 'sendable_with_warnings' | 'partially_sendable' | 'blocked' | null
   sendPlanBlockingSummary?: string | null
   sendPlanWarningSummary?: string | null
@@ -280,6 +281,16 @@ const sendPlanWarningSummary = computed(() => {
   return null
 })
 const canSend = computed(() => (typeof props.canSend === 'boolean' ? props.canSend : false))
+const resolvedSendButtonMode = computed(() => {
+  if (props.sendButtonMode) return props.sendButtonMode
+  if (props.isRunning) return 'stop_square'
+  if (props.isSendPlanLoading) return 'busy_spinner'
+  if (canSend.value) return 'enabled_arrow'
+  return 'disabled_arrow'
+})
+const isSendButtonStop = computed(() => resolvedSendButtonMode.value === 'stop_square')
+const isSendButtonBusy = computed(() => resolvedSendButtonMode.value === 'busy_spinner')
+const isSendButtonEnabled = computed(() => resolvedSendButtonMode.value === 'enabled_arrow')
 const historyIncompatibleSummary = computed(() => props.historyIncompatibleSummary ?? null)
 const selectedModel = computed(() => {
   const normalized = normalizeModelKey(resolvedSessionConfig.value.model.selectedModelKey)
@@ -344,7 +355,7 @@ function onDraftInput(event: Event) {
 function onDraftKeydown(event: KeyboardEvent) {
   if (event.key !== 'Enter' || event.shiftKey) return
   event.preventDefault()
-  if (canSend.value) emit('send')
+  if (isSendButtonEnabled.value) emit('send')
 }
 
 function toggleAttachmentMenu() {
@@ -560,9 +571,10 @@ onBeforeUnmount(() => {
         </div>
         <div class="flex items-center gap-2">
           <button
-            v-if="props.isRunning"
+            v-if="isSendButtonStop"
             type="button"
             class="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100"
+            data-testid="composer-stop"
             @click="emit('abort')"
           >
             Stop
@@ -571,11 +583,12 @@ onBeforeUnmount(() => {
             v-else
             type="button"
             class="rounded-md bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-            :disabled="!canSend"
+            :disabled="!isSendButtonEnabled"
             :title="sendPlanBlockingSummary ?? undefined"
             data-testid="composer-send"
             @click="emit('send')"
           >
+            <span v-if="isSendButtonBusy" class="inline-block animate-spin mr-1">⟳</span>
             Send
           </button>
         </div>
