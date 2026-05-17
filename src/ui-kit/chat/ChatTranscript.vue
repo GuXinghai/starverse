@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { MessageVM } from './types'
 import ChatMessageBubble from './ChatMessageBubble.vue'
+import { t } from '@/shared/i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -13,7 +14,7 @@ const props = withDefaults(
     showDebug?: boolean
   }>(),
   {
-    emptyText: 'No messages yet.',
+    emptyText: '',
     showDebug: false,
   },
 )
@@ -33,7 +34,7 @@ const errorText = computed(() => {
 <template>
   <div class="h-full overflow-auto overscroll-contain bg-gradient-to-b from-gray-50 to-white p-4">
     <div v-if="props.messageIds.length === 0" class="text-sm text-gray-500">
-      {{ props.emptyText }}
+      {{ props.emptyText || t('navigation.empty.noConversations') }}
     </div>
     <div v-else class="mx-auto max-w-3xl space-y-4">
       <template v-for="id in props.messageIds" :key="id">
@@ -60,7 +61,7 @@ const errorText = computed(() => {
             "
             class="mt-2 pl-11 text-[11px] font-medium text-blue-700"
           >
-            正在生成<span class="font-mono">▍</span>
+            {{ t('common.generating') }}<span class="font-mono">▍</span>
           </div>
         </div>
       </template>

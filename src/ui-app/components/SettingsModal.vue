@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue'
+import { t } from '@/shared/i18n'
 
 const props = withDefaults(defineProps<{
   open: boolean
@@ -7,7 +8,7 @@ const props = withDefaults(defineProps<{
   isRunning: boolean
   title?: string
 }>(), {
-  title: 'Settings',
+  title: '',
 })
 
 const emit = defineEmits<{
@@ -39,15 +40,15 @@ onUnmounted(() => {
   <div v-if="props.open" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" @click.self="onClose">
     <div class="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-xl">
       <div class="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-3">
-        <div class="text-sm font-semibold text-gray-900">{{ props.title }}</div>
+        <div class="text-sm font-semibold text-gray-900">{{ props.title || t('settings.title') }}</div>
         <button
           type="button"
           class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
           :disabled="!canClose"
-          aria-label="Close settings"
+          :aria-label="t('common.close')"
           @click="onClose"
         >
-          Close
+          {{ t('common.close') }}
         </button>
       </div>
 

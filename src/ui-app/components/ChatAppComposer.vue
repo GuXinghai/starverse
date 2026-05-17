@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, type CSSProperties } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch, type CSSProperties } from 'vue'
+import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/catalogQueryService'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
-import { ModelPrefsService, type ModelPrefsFavorite, type ModelPrefsRecent } from '@/next/modelPrefs/modelPrefsService'
+import { ModelPrefsService, type ModelPrefsFavorite, type ModelPrefsRecent, type ModelPrefsScopeInput } from '@/next/modelPrefs/modelPrefsService'
 import type { ChatSessionConfig } from '../app/chatSessionConfig'
 import ComposerCapabilityChip from './ComposerCapabilityChip.vue'
 import ModelPickerDialog from './ModelPickerDialog.vue'
+import { formatModelIndicatorName } from './modelIndicatorName'
+import { t } from '@/shared/i18n'
 
 const props = defineProps<{
   draft: string
@@ -30,6 +33,10 @@ const props = defineProps<{
     warningText: string | null
     navigationActive: boolean
   }> | null
+  modelPickerQueryFn?: (input: CatalogQueryInput) => Promise<CatalogQueryResult>
+  modelPrefsScope?: ModelPrefsScopeInput | null
+  modelCatalogNotice?: string | null
+  maxRecentModels?: number | string | null
 }>()
 
 const defaultSessionConfig: ChatSessionConfig = {
@@ -82,6 +89,9 @@ const emit = defineEmits<{
 
 const favoriteModels = ref<ModelPrefsFavorite[]>([])
 const recentModels = ref<ModelPrefsRecent[]>([])
+const maxRecentModels = ref(8)
+const modelDisplayNameOverrides = ref<Record<string, string>>({})
+const modelQuickMode = ref<'favorites' | 'recents' | null>(null)
 const modelPickerOpen = ref(false)
 const attachmentMenuOpen = ref(false)
 const attachmentMenuReady = ref(false)
@@ -90,6 +100,8 @@ const attachmentToggleRef = ref<HTMLElement | null>(null)
 const attachmentMenuRef = ref<HTMLElement | null>(null)
 const attachmentMenuStyle = ref<CSSProperties>({})
 let unsubscribeModelPrefs: (() => void) | null = null
+let recentPersistTimer: ReturnType<typeof setTimeout> | null = null
+let pendingRecentModelId: string | null = null
 let attachmentMenuOpenToken = 0
 let attachmentMenuFrameId: number | null = null
 
@@ -97,6 +109,18 @@ const ATTACHMENT_MENU_GAP_PX = 8
 const ATTACHMENT_MENU_VIEWPORT_PADDING_PX = 8
 const ATTACHMENT_MENU_MAX_HEIGHT_PX = 320
 const ATTACHMENT_MENU_MIN_WIDTH_PX = 176
+const RECENT_MODEL_PERSIST_DEBOUNCE_MS = 300
+const MAX_RECENT_MODELS_KEY = 'maxRecentModels'
+
+type ElectronStoreLike = Readonly<{
+  get: (key: string) => Promise<any>
+}>
+
+function getElectronStore(): ElectronStoreLike | null {
+  const store = (globalThis as any).electronStore as ElectronStoreLike | undefined
+  if (!store || typeof store.get !== 'function') return null
+  return store
+}
 
 function clamp(value: number, min: number, max: number): number {
   if (value < min) return min
@@ -301,7 +325,12 @@ const modelNameById = computed(() => {
   const map = new Map<string, string>()
   map.set('openrouter/auto', 'openrouter/auto')
   for (const item of props.modelCatalog) {
-    map.set(normalizeModelKey(item.modelId), item.name)
+    map.set(normalizeModelKey(item.modelId), formatModelIndicatorName(item.name))
+  }
+  for (const [modelId, name] of Object.entries(modelDisplayNameOverrides.value)) {
+    const normalized = normalizeModelKey(modelId)
+    const displayName = formatModelIndicatorName(name)
+    if (normalized && displayName) map.set(normalized, displayName)
   }
   return map
 })
@@ -318,6 +347,8 @@ const attachmentFeedbackClass = computed(() => {
   return 'border-gray-200 bg-gray-50 text-gray-700'
 })
 const currentModelIsFavorite = computed(() => favoriteModelKeySet.value.has(currentModelKey.value))
+const favoriteModelKeys = computed(() => favoriteModels.value.map((item) => item.modelKey))
+const recentModelKeys = computed(() => recentModels.value.map((item) => item.modelKey).slice(0, maxRecentModels.value))
 const favoriteDisplayItems = computed(() =>
   favoriteModels.value.map((item) => ({
     modelId: normalizeModelKey(item.modelId),
@@ -326,12 +357,22 @@ const favoriteDisplayItems = computed(() =>
 )
 const recentDisplayItems = computed(() =>
   recentModels.value
-    .filter((item) => !favoriteModelKeySet.value.has(item.modelKey))
+    .slice(0, maxRecentModels.value)
     .map((item) => ({
       modelId: normalizeModelKey(item.modelId),
       name: modelNameById.value.get(normalizeModelKey(item.modelId)) ?? item.modelId,
     })),
 )
+const activeQuickModelItems = computed(() => {
+  if (modelQuickMode.value === 'favorites') return favoriteDisplayItems.value
+  if (modelQuickMode.value === 'recents') return recentDisplayItems.value
+  return []
+})
+const activeQuickModelEmptyText = computed(() => {
+  if (modelQuickMode.value === 'favorites') return 'No favorite models yet.'
+  if (modelQuickMode.value === 'recents') return 'No recent models in this session yet.'
+  return null
+})
 const currentModelDisplayName = computed(() => modelNameById.value.get(selectedModel.value) ?? selectedModel.value)
 
 function isSelectedModel(modelId: string): boolean {
@@ -344,9 +385,115 @@ function modelChipClass(modelId: string): string {
     : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
 }
 
+function normalizePositiveInteger(value: unknown, fallback: number): number {
+  const parsed = typeof value === 'number' ? value : Number(String(value ?? '').trim())
+  if (!Number.isInteger(parsed) || parsed <= 0) return fallback
+  return Math.min(500, parsed)
+}
+
+function activePrefsScope(): ModelPrefsScopeInput {
+  const scopeType = props.modelPrefsScope?.scopeType
+  const scopeId = String(props.modelPrefsScope?.scopeId ?? '').trim()
+  if ((scopeType === 'project' || scopeType === 'conversation') && scopeId) {
+    return { scopeType, scopeId }
+  }
+  return { scopeType: 'global', scopeId: '' }
+}
+
+function secondaryFavoriteScope(): ModelPrefsScopeInput | null {
+  const scope = activePrefsScope()
+  return scope.scopeType === 'global' ? null : scope
+}
+
+function mergeFavoriteLists(primary: readonly ModelPrefsFavorite[], secondary: readonly ModelPrefsFavorite[]): ModelPrefsFavorite[] {
+  const seen = new Set<string>()
+  const merged: ModelPrefsFavorite[] = []
+  for (const item of [...primary, ...secondary]) {
+    const modelKey = String(item.modelKey ?? '').trim()
+    if (!modelKey || seen.has(modelKey)) continue
+    seen.add(modelKey)
+    merged.push(item)
+  }
+  return merged
+}
+
+async function hydrateMaxRecentModels() {
+  const fromProp = normalizePositiveInteger(props.maxRecentModels, 0)
+  if (fromProp > 0) {
+    maxRecentModels.value = fromProp
+    recentModels.value = recentModels.value.slice(0, maxRecentModels.value)
+    return
+  }
+  const store = getElectronStore()
+  if (!store) return
+  const stored = await store.get(MAX_RECENT_MODELS_KEY)
+  maxRecentModels.value = normalizePositiveInteger(stored, maxRecentModels.value)
+  recentModels.value = recentModels.value.slice(0, maxRecentModels.value)
+}
+
 async function refreshQuickModels() {
-  favoriteModels.value = await ModelPrefsService.listFavorites({ scopeType: 'global', scopeId: '' })
-  recentModels.value = await ModelPrefsService.listRecents({ scopeType: 'global', scopeId: '' })
+  const scopedFavoriteScope = secondaryFavoriteScope()
+  const [scopedFavorites, globalFavorites] = await Promise.all([
+    scopedFavoriteScope ? ModelPrefsService.listFavorites(scopedFavoriteScope, { forceRefresh: true }) : Promise.resolve([]),
+    ModelPrefsService.listFavorites({ scopeType: 'global', scopeId: '' }, { forceRefresh: true }),
+  ])
+  favoriteModels.value = mergeFavoriteLists(scopedFavorites, globalFavorites)
+}
+
+async function hydrateModelPickerPrefs() {
+  await Promise.all([hydrateMaxRecentModels(), refreshQuickModels()])
+}
+
+function clearRecentPersistTimer() {
+  if (!recentPersistTimer) return
+  clearTimeout(recentPersistTimer)
+  recentPersistTimer = null
+}
+
+function buildRecentRecord(modelId: string): ModelPrefsRecent {
+  const nowMs = Date.now()
+  return {
+    scopeType: (activePrefsScope().scopeType ?? 'global') as ModelPrefsRecent['scopeType'],
+    scopeId: String(activePrefsScope().scopeId ?? ''),
+    providerKey: 'openrouter',
+    modelId,
+    modelKey: `openrouter::${modelId}`,
+    lastUsedAtMs: nowMs,
+    useCount: 1,
+    createdAtMs: nowMs,
+    updatedAtMs: nowMs,
+  }
+}
+
+function scheduleRecentPersistence(modelId: string) {
+  pendingRecentModelId = modelId
+  clearRecentPersistTimer()
+  recentPersistTimer = setTimeout(() => {
+    const pending = pendingRecentModelId
+    pendingRecentModelId = null
+    recentPersistTimer = null
+    if (!pending) return
+    void ModelPrefsService.recordRecent(
+      {
+        providerKey: 'openrouter',
+        modelId: pending,
+        modelKey: `openrouter::${pending}`,
+      },
+      activePrefsScope(),
+    )
+  }, RECENT_MODEL_PERSIST_DEBOUNCE_MS)
+}
+
+function recordRecentModelSelection(modelId: string) {
+  const normalized = normalizeModelKey(modelId)
+  if (!normalized || normalized === 'openrouter/auto') return
+  const modelKey = `openrouter::${normalized}`
+  const next = [
+    buildRecentRecord(normalized),
+    ...recentModels.value.filter((item) => item.modelKey !== modelKey),
+  ].slice(0, maxRecentModels.value)
+  recentModels.value = next
+  scheduleRecentPersistence(normalized)
 }
 
 function onDraftInput(event: Event) {
@@ -426,6 +573,7 @@ function onImageChipOption(value: string) {
 
 function openModelPicker() {
   if (props.disabled) return
+  modelQuickMode.value = null
   modelPickerOpen.value = true
 }
 
@@ -433,15 +581,35 @@ function closeModelPicker() {
   modelPickerOpen.value = false
 }
 
-function onSelectModelFromPicker(modelId: string) {
+function setModelQuickMode(mode: 'favorites' | 'recents') {
+  if (props.disabled) return
+  modelPickerOpen.value = false
+  modelQuickMode.value = modelQuickMode.value === mode ? null : mode
+  void hydrateModelPickerPrefs()
+}
+
+function rememberModelDisplayName(modelId: string, displayName?: string) {
+  const normalized = normalizeModelKey(modelId)
+  const name = String(displayName ?? '').trim()
+  if (!normalized || !name || name === normalized) return
+  modelDisplayNameOverrides.value = {
+    ...modelDisplayNameOverrides.value,
+    [normalized]: name,
+  }
+}
+
+function onSelectModelFromPicker(modelId: string, displayName?: string) {
+  rememberModelDisplayName(modelId, displayName)
   emit('updateModel', modelId)
   emit('update:model', modelId)
+  recordRecentModelSelection(modelId)
   modelPickerOpen.value = false
 }
 
 function onUpdateModel(modelId: string) {
   emit('updateModel', modelId)
   emit('update:model', modelId)
+  recordRecentModelSelection(modelId)
 }
 
 async function onToggleCurrentModelFavorite() {
@@ -453,7 +621,7 @@ async function onToggleCurrentModelFavorite() {
       modelId,
       modelKey: `openrouter::${modelId}`,
     },
-    { scopeType: 'global', scopeId: '' },
+    activePrefsScope(),
   )
   await refreshQuickModels()
 }
@@ -467,21 +635,63 @@ async function onToggleModelPickerFavorite(modelId: string) {
       modelId: normalized,
       modelKey: `openrouter::${normalized}`,
     },
-    { scopeType: 'global', scopeId: '' },
+    activePrefsScope(),
   )
   await refreshQuickModels()
 }
 
-onMounted(() => {
-  void refreshQuickModels()
-  unsubscribeModelPrefs = ModelPrefsService.subscribe(() => {
-    void refreshQuickModels()
-  })
+async function onReorderModelPickerFavorites(orderedModelKeys: string[]) {
+  const scope = activePrefsScope()
+  const currentKeys = favoriteModelKeys.value
+  const orderedSet = new Set(orderedModelKeys)
+  const removed = currentKeys.filter((key) => !orderedSet.has(key))
+  await Promise.all(
+    removed.map((modelKey) => ModelPrefsService.removeFavorite({ modelKey }, scope)),
+  )
+  if (orderedModelKeys.length > 0) {
+    await ModelPrefsService.reorderFavorites(orderedModelKeys, scope)
+  }
+  await refreshQuickModels()
+}
+
+function shouldRefreshForModelPrefsEvent(event: Readonly<{ scopeType: string; scopeId: string }>): boolean {
+  if (event.scopeType === 'global' && event.scopeId === '') return true
+  const secondary = secondaryFavoriteScope()
+  return Boolean(secondary && event.scopeType === secondary.scopeType && event.scopeId === String(secondary.scopeId ?? ''))
+}
+
+function onMaxRecentModelsUpdated(event: Event) {
+  const detail = (event as CustomEvent).detail
+  maxRecentModels.value = normalizePositiveInteger(detail, maxRecentModels.value)
+  recentModels.value = recentModels.value.slice(0, maxRecentModels.value)
+}
+
+watch(modelPickerOpen, (open) => {
+  if (!open) {
+    if (unsubscribeModelPrefs) {
+      unsubscribeModelPrefs()
+      unsubscribeModelPrefs = null
+    }
+    window.removeEventListener('settings:maxRecentModelsUpdated', onMaxRecentModelsUpdated)
+    return
+  }
+  void hydrateModelPickerPrefs()
+  if (!unsubscribeModelPrefs) {
+    unsubscribeModelPrefs = ModelPrefsService.subscribe((event) => {
+      if (event.kind !== 'favorites') return
+      if (event.reason === 'refresh') return
+      if (!modelPickerOpen.value || !shouldRefreshForModelPrefsEvent(event)) return
+      void refreshQuickModels()
+    })
+  }
+  window.addEventListener('settings:maxRecentModelsUpdated', onMaxRecentModelsUpdated)
 })
 
 onBeforeUnmount(() => {
   removeAttachmentMenuListeners()
   cancelAttachmentMenuFrame()
+  clearRecentPersistTimer()
+  window.removeEventListener('settings:maxRecentModelsUpdated', onMaxRecentModelsUpdated)
   if (unsubscribeModelPrefs) {
     unsubscribeModelPrefs()
     unsubscribeModelPrefs = null
@@ -496,7 +706,7 @@ onBeforeUnmount(() => {
         class="min-h-[96px] w-full resize-none border-0 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400"
         :disabled="props.disabled"
         :value="props.draft"
-        placeholder="Type a message..."
+        :placeholder="t('composer.placeholder.default')"
         data-testid="composer-draft"
         @input="onDraftInput"
         @keydown="onDraftKeydown"
@@ -561,20 +771,79 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="mt-3 flex items-center justify-between gap-3">
-        <div class="flex items-center gap-2 text-[11px] text-gray-500">
-          <div>Drafts are restored per conversation and branch.</div>
-          <div>
-            <button
-              ref="attachmentToggleRef"
-              type="button"
-              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              :disabled="props.disabled || props.isRunning"
-              data-testid="composer-attach-toggle"
-              @click="toggleAttachmentMenu"
-            >
-              +
-            </button>
-          </div>
+        <div class="flex min-w-0 flex-wrap items-center gap-1.5">
+          <button
+            ref="attachmentToggleRef"
+            type="button"
+            class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :disabled="props.disabled || props.isRunning"
+            data-testid="composer-attach-toggle"
+            @click="toggleAttachmentMenu"
+          >
+            +
+          </button>
+          <ComposerCapabilityChip
+            :enabled="resolvedSessionConfig.reasoning.enabled"
+            :label="t('composer.capabilities.reasoning')"
+            :active-label="resolvedSessionConfig.reasoning.enabled ? resolvedSessionConfig.reasoning.effort : null"
+            kind="reasoning"
+            :disabled="disabled"
+            :options="['low', 'medium', 'high']"
+            :selected-option="resolvedSessionConfig.reasoning.effort"
+            data-test-id="reasoning-chip"
+            @toggle="emit('updateReasoningEnabled', !resolvedSessionConfig.reasoning.enabled)"
+            @select-option="(v) => { emit('updateReasoningEffort', v as 'low' | 'medium' | 'high'); emit('updateReasoningEnabled', true) }"
+          >
+            <template #icon>
+              <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="8" cy="6" r="3" />
+                <path d="M8 9v3" />
+                <path d="M5 14h6" />
+                <path d="M6 12h4" />
+              </svg>
+            </template>
+          </ComposerCapabilityChip>
+          <ComposerCapabilityChip
+            :enabled="resolvedSessionConfig.webSearch.enabled"
+            :label="t('composer.capabilities.webSearch')"
+            :active-label="resolvedSessionConfig.webSearch.enabled ? resolvedSessionConfig.webSearch.level : null"
+            kind="webSearch"
+            :disabled="disabled"
+            :options="['low', 'high']"
+            :selected-option="resolvedSessionConfig.webSearch.level"
+            data-test-id="web-search-chip"
+            @toggle="emit('updateWebSearchEnabled', !resolvedSessionConfig.webSearch.enabled)"
+            @select-option="(v) => { emit('updateWebSearchLevel', v as 'low' | 'high'); emit('updateWebSearchEnabled', true) }"
+          >
+            <template #icon>
+              <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="8" cy="8" r="5" />
+                <path d="M3 8h10" />
+                <path d="M8 3c1.5 1.5 2 3 2 5s-.5 3.5-2 5" />
+                <path d="M8 3c-1.5 1.5-2 3-2 5s.5 3.5 2 5" />
+              </svg>
+            </template>
+          </ComposerCapabilityChip>
+          <ComposerCapabilityChip
+            :enabled="resolvedSessionConfig.imageGeneration.enabled"
+            :label="t('composer.capabilities.image')"
+            :active-label="resolvedSessionConfig.imageGeneration.enabled ? `${resolvedSessionConfig.imageGeneration.resolution} · ${resolvedSessionConfig.imageGeneration.aspectRatio}` : null"
+            kind="image"
+            :disabled="disabled"
+            :options="['1K', '2K', '4K', '—', '16:9', '3:4', '1:1', '4:3']"
+            :selected-option="null"
+            data-test-id="image-chip"
+            @toggle="emit('updateImageGenerationEnabled', !resolvedSessionConfig.imageGeneration.enabled)"
+            @select-option="onImageChipOption"
+          >
+            <template #icon>
+              <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="12" height="12" rx="1.5" />
+                <circle cx="5.5" cy="5.5" r="1" />
+                <path d="M14 10l-3-3-7 7" />
+              </svg>
+            </template>
+          </ComposerCapabilityChip>
         </div>
         <div class="flex items-center gap-2">
           <button
@@ -584,7 +853,7 @@ onBeforeUnmount(() => {
             data-testid="composer-stop"
             @click="emit('abort')"
           >
-            Stop
+            {{ t('composer.actions.stop') }}
           </button>
           <button
             v-else
@@ -596,7 +865,7 @@ onBeforeUnmount(() => {
             @click="emit('send')"
           >
             <span v-if="isSendButtonBusy" class="inline-block animate-spin mr-1">⟳</span>
-            Send
+            {{ t('composer.actions.send') }}
           </button>
         </div>
       </div>
@@ -606,7 +875,7 @@ onBeforeUnmount(() => {
         class="mt-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-700"
         data-testid="composer-send-gate-loading"
       >
-        正在更新发送计划...
+        {{ t('composer.status.updatingSendPlan') }}
       </div>
       <div
         v-else-if="sendPlanBlockingSummary"
@@ -624,7 +893,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="flex flex-wrap items-center gap-3 text-xs text-gray-600">
+    <div class="space-y-2 text-xs text-gray-600">
       <div class="flex min-w-0 flex-wrap items-center gap-2">
         <div class="font-semibold uppercase tracking-wide text-gray-500">Model</div>
         <button
@@ -650,100 +919,62 @@ onBeforeUnmount(() => {
         >
           {{ currentModelIsFavorite ? '★' : '☆' }}
         </button>
-        <div class="flex max-w-full items-center gap-1 overflow-x-auto">
+        <div class="grid w-44 grid-cols-2 gap-1" data-testid="model-quick-mode-tabs">
           <button
-            v-for="item in favoriteDisplayItems"
-            :key="`favorite-model-${item.modelId}`"
             type="button"
-            class="rounded-md border px-2 py-1 text-[11px] shadow-sm disabled:opacity-50"
-            :class="modelChipClass(item.modelId)"
-            :disabled="disabled"
-            :data-testid="`favorite-model-${item.modelId}`"
-            :aria-pressed="isSelectedModel(item.modelId)"
-            @click="onUpdateModel(item.modelId)"
+            class="flex items-center justify-center gap-1 rounded-md border px-2 py-1 text-[11px] shadow-sm disabled:opacity-50"
+            :class="modelQuickMode === 'favorites' ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'"
+            :disabled="props.disabled"
+            title="Favorite models"
+            data-testid="model-main-tab-favorites"
+            @click="setModelQuickMode('favorites')"
           >
-            {{ item.name }}
+            <span aria-hidden="true">★</span>
+            <span>Fav</span>
           </button>
           <button
-            v-for="item in recentDisplayItems.slice(0, 4)"
-            :key="`recent-model-${item.modelId}`"
             type="button"
-            class="rounded-md border px-2 py-1 text-[11px] shadow-sm disabled:opacity-50"
-            :class="modelChipClass(item.modelId)"
-            :disabled="disabled"
-            :data-testid="`recent-model-${item.modelId}`"
-            :aria-pressed="isSelectedModel(item.modelId)"
-            @click="onUpdateModel(item.modelId)"
+            class="flex items-center justify-center gap-1 rounded-md border px-2 py-1 text-[11px] shadow-sm disabled:opacity-50"
+            :class="modelQuickMode === 'recents' ? 'border-green-300 bg-green-50 text-green-700' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'"
+            :disabled="props.disabled"
+            title="Recent models in this session"
+            data-testid="model-main-tab-recents"
+            @click="setModelQuickMode('recents')"
           >
-            {{ item.name }}
+            <span aria-hidden="true">↺</span>
+            <span>Rec</span>
           </button>
         </div>
       </div>
 
-      <ComposerCapabilityChip
-        :enabled="resolvedSessionConfig.reasoning.enabled"
-        label="Think"
-        :active-label="resolvedSessionConfig.reasoning.enabled ? resolvedSessionConfig.reasoning.effort : null"
-        kind="reasoning"
-        :disabled="disabled"
-        :options="['low', 'medium', 'high']"
-        :selected-option="resolvedSessionConfig.reasoning.effort"
-        data-test-id="reasoning-chip"
-        @toggle="emit('updateReasoningEnabled', !resolvedSessionConfig.reasoning.enabled)"
-        @select-option="(v) => { emit('updateReasoningEffort', v as 'low' | 'medium' | 'high'); emit('updateReasoningEnabled', true) }"
+      <div
+        v-if="modelQuickMode"
+        class="flex max-w-full items-center gap-1 overflow-x-auto pl-[3.25rem]"
+        data-testid="favorites-strip"
       >
-        <template #icon>
-          <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="8" cy="6" r="3" />
-            <path d="M8 9v3" />
-            <path d="M5 14h6" />
-            <path d="M6 12h4" />
-          </svg>
+        <div
+          v-if="activeQuickModelItems.length === 0"
+          class="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-500"
+          data-testid="model-main-empty-state"
+        >
+          {{ activeQuickModelEmptyText }}
+        </div>
+        <template v-else>
+          <button
+            v-for="item in activeQuickModelItems"
+            :key="`${modelQuickMode}-model-${item.modelId}`"
+            type="button"
+            class="rounded-md border px-2 py-1 text-[11px] shadow-sm disabled:opacity-50"
+            :class="modelChipClass(item.modelId)"
+            :disabled="disabled"
+            :data-testid="`${modelQuickMode === 'favorites' ? 'favorite' : 'recent'}-model-${item.modelId}`"
+            :aria-pressed="isSelectedModel(item.modelId)"
+            @click="onUpdateModel(item.modelId)"
+          >
+            {{ item.name }}
+          </button>
         </template>
-      </ComposerCapabilityChip>
-
-      <ComposerCapabilityChip
-        :enabled="resolvedSessionConfig.webSearch.enabled"
-        label="Search"
-        :active-label="resolvedSessionConfig.webSearch.enabled ? resolvedSessionConfig.webSearch.level : null"
-        kind="webSearch"
-        :disabled="disabled"
-        :options="['low', 'high']"
-        :selected-option="resolvedSessionConfig.webSearch.level"
-        data-test-id="web-search-chip"
-        @toggle="emit('updateWebSearchEnabled', !resolvedSessionConfig.webSearch.enabled)"
-        @select-option="(v) => { emit('updateWebSearchLevel', v as 'low' | 'high'); emit('updateWebSearchEnabled', true) }"
-      >
-        <template #icon>
-          <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="8" cy="8" r="5" />
-            <path d="M3 8h10" />
-            <path d="M8 3c1.5 1.5 2 3 2 5s-.5 3.5-2 5" />
-            <path d="M8 3c-1.5 1.5-2 3-2 5s.5 3.5 2 5" />
-          </svg>
-        </template>
-      </ComposerCapabilityChip>
-
-      <ComposerCapabilityChip
-        :enabled="resolvedSessionConfig.imageGeneration.enabled"
-        label="Image"
-        :active-label="resolvedSessionConfig.imageGeneration.enabled ? `${resolvedSessionConfig.imageGeneration.resolution} · ${resolvedSessionConfig.imageGeneration.aspectRatio}` : null"
-        kind="image"
-        :disabled="disabled"
-        :options="['1K', '2K', '4K', '—', '16:9', '3:4', '1:1', '4:3']"
-        :selected-option="null"
-        data-test-id="image-chip"
-        @toggle="emit('updateImageGenerationEnabled', !resolvedSessionConfig.imageGeneration.enabled)"
-        @select-option="onImageChipOption"
-      >
-        <template #icon>
-          <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="2" width="12" height="12" rx="1.5" />
-            <circle cx="5.5" cy="5.5" r="1" />
-            <path d="M14 10l-3-3-7 7" />
-          </svg>
-        </template>
-      </ComposerCapabilityChip>
+      </div>
     </div>
   </div>
 
@@ -763,7 +994,7 @@ onBeforeUnmount(() => {
           data-testid="composer-attach-file"
           @click="requestAttachFiles"
         >
-          Upload file
+          {{ t('composer.actions.uploadFile') }}
         </button>
         <button
           type="button"
@@ -773,7 +1004,7 @@ onBeforeUnmount(() => {
           data-testid="composer-attach-image"
           @click="requestAttachImages"
         >
-          Upload image
+          {{ t('composer.actions.uploadImage') }}
         </button>
         <button
           type="button"
@@ -782,7 +1013,7 @@ onBeforeUnmount(() => {
           data-testid="composer-attach-url"
           @click="requestAttachUrl"
         >
-          Upload link
+          {{ t('composer.actions.uploadLink') }}
         </button>
       </div>
     </Teleport>
@@ -792,10 +1023,14 @@ onBeforeUnmount(() => {
     :disabled="props.disabled"
     :isRunning="props.isRunning"
     :selectedModelId="selectedModel"
-    :favoriteModelKeys="favoriteModels.map((item) => item.modelKey)"
+    :favoriteModelKeys="favoriteModelKeys"
+    :recentModelKeys="recentModelKeys"
     :fallbackModels="props.modelCatalog"
+    :notice="props.modelCatalogNotice"
+    :queryFn="props.modelPickerQueryFn"
     @close="closeModelPicker"
     @select="onSelectModelFromPicker"
     @toggleFavorite="onToggleModelPickerFavorite"
+    @reorderFavorites="onReorderModelPickerFavorites"
   />
 </template>

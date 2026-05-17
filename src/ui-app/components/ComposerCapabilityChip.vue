@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount, type CSSProperties } from 'vue'
+import { ref, computed, nextTick, onBeforeUnmount } from 'vue'
+import { useFloatingDropdown } from '../composables/useFloatingDropdown'
+import { t } from '@/shared/i18n'
 
 const props = defineProps<{
   enabled: boolean
@@ -20,12 +22,17 @@ const emit = defineEmits<{
 const menuOpen = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
 const triggerRef = ref<HTMLElement | null>(null)
+const { dropdownStyle, update: updateMenuPosition } = useFloatingDropdown(triggerRef, menuRef, {
+  placement: 'top-start',
+  offset: 8,
+  padding: 8,
+})
 
 const widthClass = computed(() => {
   switch (props.kind) {
-    case 'reasoning': return 'w-[7.5rem]'
-    case 'webSearch': return 'w-[7.5rem]'
-    case 'image': return 'w-[9rem]'
+    case 'reasoning': return 'w-[6.25rem]'
+    case 'webSearch': return 'w-[6.25rem]'
+    case 'image': return 'w-[7.75rem]'
     default: return ''
   }
 })
@@ -37,30 +44,18 @@ const displayText = computed(() => {
 
 const fullLabel = computed(() => {
   switch (props.kind) {
-    case 'reasoning': return 'Reasoning'
-    case 'webSearch': return 'Web Search'
-    case 'image': return 'Image'
+    case 'reasoning': return t('composer.capabilities.reasoning')
+    case 'webSearch': return t('composer.capabilities.webSearch')
+    case 'image': return t('composer.capabilities.image')
     default: return props.label
   }
 })
 
 const titleText = computed(() => {
   if (props.enabled && props.activeLabel) {
-    return `${fullLabel.value} ${props.activeLabel} enabled`
+    return `${fullLabel.value} ${props.activeLabel} ${t('composer.capabilities.enabledSuffix')}`
   }
   return fullLabel.value
-})
-
-const menuStyle = computed<CSSProperties>(() => {
-  const trigger = triggerRef.value
-  if (!trigger) return { visibility: 'hidden' }
-  const rect = trigger.getBoundingClientRect()
-  return {
-    position: 'fixed',
-    top: `${rect.bottom + 4}px`,
-    left: `${rect.left}px`,
-    zIndex: '1200',
-  }
 })
 
 function onBodyClick(event: MouseEvent) {
@@ -77,6 +72,9 @@ function onKeydown(event: KeyboardEvent) {
 
 function openMenu() {
   menuOpen.value = true
+  void nextTick(() => {
+    void updateMenuPosition()
+  })
   document.addEventListener('mousedown', onBodyClick)
   document.addEventListener('keydown', onKeydown)
 }
@@ -121,7 +119,7 @@ onBeforeUnmount(() => {
   >
     <button
       type="button"
-      class="flex w-full items-center rounded-l-md border px-2 py-1 text-[11px] leading-tight transition-colors disabled:opacity-50"
+      class="flex w-full items-center rounded-l-md border px-1.5 py-1 text-[11px] leading-tight transition-colors disabled:opacity-50"
       :class="
         enabled
           ? 'border-gray-900 bg-gray-900 text-white'
@@ -140,7 +138,7 @@ onBeforeUnmount(() => {
       v-if="options && options.length > 0"
       ref="triggerRef"
       type="button"
-      class="shrink-0 inline-flex items-center rounded-r-md border border-l-0 px-1 py-1 text-[10px] leading-none transition-colors disabled:opacity-50"
+      class="shrink-0 inline-flex items-center rounded-r-md border border-l-0 px-0.5 py-1 text-[10px] leading-none transition-colors disabled:opacity-50"
       :class="
         enabled
           ? 'border-gray-900 bg-gray-800 text-gray-300 hover:bg-gray-700'
@@ -166,8 +164,8 @@ onBeforeUnmount(() => {
       <div
         v-if="menuOpen && options && options.length > 0"
         ref="menuRef"
-        class="fixed z-[1200] min-w-[80px] rounded-md border border-gray-200 bg-white py-1 shadow-lg"
-        :style="menuStyle"
+        class="fixed z-[var(--z-popover)] min-w-[80px] rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+        :style="dropdownStyle"
         data-testid="capability-chip-menu"
       >
         <template v-for="option in options" :key="option">

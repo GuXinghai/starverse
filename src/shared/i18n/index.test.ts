@@ -54,13 +54,13 @@ describe('i18n index', () => {
     it('returns messages for zh-CN common', () => {
       const msgs = getMessages('zh-CN', 'common')
       expect(msgs).toBeDefined()
-      expect((msgs as any).common.ok).toBe('确定')
+      expect((msgs as any).ok).toBe('确定')
     })
 
     it('returns messages for en-US common', () => {
       const msgs = getMessages('en-US', 'common')
       expect(msgs).toBeDefined()
-      expect((msgs as any).common.ok).toBe('OK')
+      expect((msgs as any).ok).toBe('OK')
     })
 
     it('returns undefined for unknown namespace', () => {

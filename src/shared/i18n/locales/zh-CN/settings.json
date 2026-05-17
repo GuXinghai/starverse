@@ -1,0 +1,64 @@
+{
+  "settings": {
+    "title": "设置",
+    "language": {
+      "title": "界面语言",
+      "followSystem": "跟随系统",
+      "followSystemDesc": "根据系统语言自动切换界面语言",
+      "manual": "手动选择",
+      "simplifiedChinese": "简体中文",
+      "englishUS": "English (US)"
+    },
+    "openrouter": {
+      "title": "OpenRouter",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "sk-…",
+      "baseUrl": "Base URL（可选）",
+      "baseUrlPlaceholder": "https://openrouter.ai/api/v1",
+      "baseUrlInvalid": "URL 无效。",
+      "requireParameters": "provider.require_parameters",
+      "requireParametersDesc": "强制 OpenRouter 校验 provider 参数",
+      "debugEcho": "debug.echo_upstream_body",
+      "debugEchoDesc": "仅开发环境，仅 stream 模式。用于诊断 provider 参数映射。"
+    },
+    "network": {
+      "title": "网络实验",
+      "disableHttp2": "禁用 HTTP/2",
+      "disableHttp2Desc": "追加 disable-http2 开关（需重启）",
+      "disableQuic": "禁用 QUIC / HTTP/3",
+      "disableQuicDesc": "追加 disable-quic 开关（需重启）",
+      "streamInMain": "主进程流式传输",
+      "streamInMainDesc": "使用 IPC + electron.net 进行 SSE（启用 keepalive/强制 HTTP/1.1）",
+      "forceHttp1": "强制 HTTP/1.1",
+      "forceHttp1Desc": "undici allowH2=false（仅主进程流式传输）",
+      "tcpKeepalive": "TCP keepalive",
+      "tcpKeepaliveDesc": "socket.setKeepAlive（仅主进程流式传输）",
+      "tcpKeepaliveIdle": "TCP keepalive 空闲时间（ms）",
+      "tcpKeepaliveIdleDesc": "探测前的初始延迟",
+      "copyRunReport": "复制运行报告",
+      "copyRunReportDesc": "复制 A/B 调试用的运行报告",
+      "runReportCopied": "运行报告已复制。"
+    },
+    "reasoning": {
+      "title": "全局推理默认值",
+      "reasoning": "推理",
+      "exclude": "排除",
+      "hint": "默认值适用于非项目会话。会话级偏好覆盖项目/全局默认值。",
+      "inlineDefault": "内联推理默认值",
+      "inlineDefaultDesc": "控制新的助手内联推理是否默认展开。",
+      "expanded": "已展开",
+      "collapsed": "已收起",
+      "userMessageRich": "用户消息富渲染",
+      "userMessageRichDesc": "跟随模式下会话的默认值。",
+      "recentModelsLimit": "最近模型数量限制",
+      "recentModelsLimitDesc": "控制模型选择器中的最近使用列表。"
+    },
+    "search": {
+      "title": "全局搜索默认值"
+    },
+    "customParams": {
+      "title": "全局自定义参数"
+    },
+    "footer": "ui-app 从 electron-store（非 env）读取 OpenRouter 设置，以避免隐式覆盖。"
+  }
+}

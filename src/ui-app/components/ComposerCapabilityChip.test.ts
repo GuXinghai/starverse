@@ -194,63 +194,63 @@ describe('ComposerCapabilityChip label rules', () => {
   it('sets title with full description when disabled', () => {
     mountChip({ label: 'Think', enabled: false, kind: 'reasoning' })
     const body = screen.getByTestId('capability-chip-body')
-    expect(body.getAttribute('title')).toBe('Reasoning')
+    expect(body.getAttribute('title')).toBe('推理')
   })
 
   it('sets title with full description when enabled', () => {
     mountChip({ label: 'Think', activeLabel: 'medium', enabled: true, kind: 'reasoning' })
     const body = screen.getByTestId('capability-chip-body')
-    expect(body.getAttribute('title')).toBe('Reasoning medium enabled')
+    expect(body.getAttribute('title')).toBe('推理 medium 已启用')
   })
 
   it('sets title for Web Search when enabled', () => {
     mountChip({ label: 'Search', activeLabel: 'high', enabled: true, kind: 'webSearch' })
     const body = screen.getByTestId('capability-chip-body')
-    expect(body.getAttribute('title')).toBe('Web Search high enabled')
+    expect(body.getAttribute('title')).toBe('搜索 high 已启用')
   })
 
   it('sets title for Image when enabled', () => {
     mountChip({ label: 'Image', activeLabel: '1K · 1:1', enabled: true, kind: 'image' })
     const body = screen.getByTestId('capability-chip-body')
-    expect(body.getAttribute('title')).toBe('Image 1K · 1:1 enabled')
+    expect(body.getAttribute('title')).toBe('图片 1K · 1:1 已启用')
   })
 })
 
 describe('ComposerCapabilityChip fixed width', () => {
-  it('applies w-[7.5rem] for reasoning kind', () => {
+  it('applies w-[6.25rem] for reasoning kind', () => {
     mountChip({ kind: 'reasoning', label: 'Think', enabled: false })
     const root = screen.getByTestId('test-chip')
-    expect(root.className).toContain('w-[7.5rem]')
+    expect(root.className).toContain('w-[6.25rem]')
   })
 
-  it('applies w-[7.5rem] for webSearch kind', () => {
+  it('applies w-[6.25rem] for webSearch kind', () => {
     mountChip({ kind: 'webSearch', label: 'Search', enabled: false })
     const root = screen.getByTestId('test-chip')
-    expect(root.className).toContain('w-[7.5rem]')
+    expect(root.className).toContain('w-[6.25rem]')
   })
 
-  it('applies w-[9rem] for image kind', () => {
+  it('applies w-[7.75rem] for image kind', () => {
     mountChip({ kind: 'image', label: 'Image', enabled: false })
     const root = screen.getByTestId('test-chip')
-    expect(root.className).toContain('w-[9rem]')
+    expect(root.className).toContain('w-[7.75rem]')
   })
 
   it('uses same width class when reasoning is enabled', () => {
     mountChip({ kind: 'reasoning', label: 'Think', activeLabel: 'medium', enabled: true })
     const root = screen.getByTestId('test-chip')
-    expect(root.className).toContain('w-[7.5rem]')
+    expect(root.className).toContain('w-[6.25rem]')
   })
 
   it('uses same width class when webSearch is enabled', () => {
     mountChip({ kind: 'webSearch', label: 'Search', activeLabel: 'high', enabled: true })
     const root = screen.getByTestId('test-chip')
-    expect(root.className).toContain('w-[7.5rem]')
+    expect(root.className).toContain('w-[6.25rem]')
   })
 
   it('uses same width class when image is enabled', () => {
     mountChip({ kind: 'image', label: 'Image', activeLabel: '1K · 1:1', enabled: true })
     const root = screen.getByTestId('test-chip')
-    expect(root.className).toContain('w-[9rem]')
+    expect(root.className).toContain('w-[7.75rem]')
   })
 
   it('sets data-width-kind attribute', () => {

@@ -21,19 +21,40 @@ import { formatDate, formatTime, formatRelativeTime, formatNumber, formatFileSiz
 // ── 静态导入消息 ──────────────────────────────────────────
 import zhCNCommon from './locales/zh-CN/common.json'
 import enUSCommon from './locales/en-US/common.json'
+import zhCNSettings from './locales/zh-CN/settings.json'
+import enUSSettings from './locales/en-US/settings.json'
+import zhCNNavigation from './locales/zh-CN/navigation.json'
+import enUSNavigation from './locales/en-US/navigation.json'
+import zhCNComposer from './locales/zh-CN/composer.json'
+import enUSComposer from './locales/en-US/composer.json'
 
 // ── 消息注册表 ────────────────────────────────────────────
 
 const messageRegistry: Record<SupportedLocale, Record<string, MessageBundle>> = {
-  'zh-CN': { common: zhCNCommon as unknown as MessageBundle },
-  'en-US': { common: enUSCommon as unknown as MessageBundle },
+  'zh-CN': {
+    common: zhCNCommon as unknown as MessageBundle,
+    settings: zhCNSettings as unknown as MessageBundle,
+    navigation: zhCNNavigation as unknown as MessageBundle,
+    composer: zhCNComposer as unknown as MessageBundle,
+  },
+  'en-US': {
+    common: enUSCommon as unknown as MessageBundle,
+    settings: enUSSettings as unknown as MessageBundle,
+    navigation: enUSNavigation as unknown as MessageBundle,
+    composer: enUSComposer as unknown as MessageBundle,
+  },
 }
 
 /**
  * 获取指定 locale + namespace 的消息包
+ * 返回 namespace 内层内容（剥离外层 namespace key）
  */
 export function getMessages(locale: SupportedLocale, namespace: string): MessageBundle | undefined {
-  return messageRegistry[locale]?.[namespace]
+  const localeBundle = messageRegistry[locale]?.[namespace]
+  if (!localeBundle) return undefined
+  // JSON 文件结构为 { "namespace": { ... } }，需要剥离外层
+  const inner = (localeBundle as any)[namespace]
+  return (typeof inner === 'object' && inner !== null) ? inner : localeBundle
 }
 
 // ── 消息查找（纯函数） ────────────────────────────────────
@@ -41,7 +62,7 @@ export function getMessages(locale: SupportedLocale, namespace: string): Message
 /**
  * 从消息包中按 dot-path 查找值
  */
-function lookupKey(bundle: MessageBundle | undefined, key: string): string | undefined {
+function lookup(bundle: MessageBundle | undefined, key: string): string | undefined {
   if (!bundle) return undefined
   const parts = key.split('.')
   let current: any = bundle
@@ -55,10 +76,16 @@ function lookupKey(bundle: MessageBundle | undefined, key: string): string | und
 /**
  * 查找消息，带 fallback 支持
  *
- * @param key - 消息 key（如 'common.ok'）
+ * key 格式支持两种：
+ * 1. 带命名空间前缀：'settings.title', 'navigation.project.title', 'composer.actions.send'
+ *    → 自动从第一个 '.' 前段提取命名空间
+ * 2. 纯路径：'common.ok' 或 'ok'
+ *    → namespace 参数决定（默认 'common'）
+ *
+ * @param key - 消息 key
  * @param locale - 当前 locale
  * @param fallback - 回退 locale
- * @param namespace - 命名空间（默认 'common'）
+ * @param namespace - 命名空间（默认 'common'，当 key 带已知前缀时自动覆盖）
  * @returns 消息字符串，若全部缺失则返回 key 本身
  */
 export function t(
@@ -67,9 +94,25 @@ export function t(
   fallback: SupportedLocale = FALLBACK_LOCALE,
   namespace = 'common'
 ): string {
+  // 自动检测命名空间：key 的第一段如果是已注册的命名空间，自动提取
+  let lookupKey = key
+  let lookupNs = namespace
+  const dotIdx = key.indexOf('.')
+  if (dotIdx > 0) {
+    const candidateNs = key.substring(0, dotIdx)
+    // Check raw registry (before stripping namespace wrapper)
+    const localeRegistry = messageRegistry[locale]
+    const fallbackRegistry = messageRegistry[fallback]
+    const hasNs = (localeRegistry && candidateNs in localeRegistry) || (fallbackRegistry && candidateNs in fallbackRegistry)
+    if (hasNs) {
+      lookupNs = candidateNs
+      lookupKey = key.substring(dotIdx + 1)
+    }
+  }
+
   return (
-    lookupKey(getMessages(locale, namespace), key) ??
-    lookupKey(getMessages(fallback, namespace), key) ??
+    lookup(getMessages(locale, lookupNs), lookupKey) ??
+    lookup(getMessages(fallback, lookupNs), lookupKey) ??
     key
   )
 }

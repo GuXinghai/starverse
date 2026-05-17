@@ -5,6 +5,7 @@ import ChatErrorPanel from './ChatErrorPanel.vue'
 import RichTextContent from './richtext/RichTextContent.vue'
 import RichTextFinal from './richtext/RichTextFinal.vue'
 import './richtext/richtext.css'
+import { t } from '@/shared/i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -392,12 +393,14 @@ function bubbleClass(role: MessageVM['role']) {
           <div class="flex items-center gap-2">
             <slot name="header-right" />
             <div v-if="showGenerating" class="text-[11px] font-medium text-blue-700">
-              正在生成<span class="font-mono">▍</span>
+              {{ t('common.generating') }}<span class="font-mono">▍</span>
             </div>
           </div>
         </div>
 
         <div class="space-y-2">
+          <slot name="before-content" />
+
           <div v-for="(b, idx) in textBlocks" :key="`text-${idx}`">
             <template v-if="b.type === 'text'">
               <pre
@@ -427,12 +430,12 @@ function bubbleClass(role: MessageVM['role']) {
             data-testid="message-image-section"
           >
             <div class="mb-2 flex items-center justify-between gap-2">
-              <div class="font-semibold">Images ({{ imageBlocks.length }})</div>
+              <div class="font-semibold">{{ t('common.images') }} ({{ imageBlocks.length }})</div>
               <div
                 v-if="isAssistant && !props.message.streaming.isComplete"
                 class="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700"
               >
-                streaming
+                {{ t('common.streaming') }}
               </div>
             </div>
 
@@ -523,7 +526,7 @@ function bubbleClass(role: MessageVM['role']) {
           class="mt-3 rounded-lg border border-gray-200 bg-white/70 p-3"
         >
           <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-600">
-            References ({{ citations.length }})
+            {{ t('common.references') }} ({{ citations.length }})
           </div>
           <div class="mt-2 flex flex-wrap gap-1">
             <a
@@ -575,7 +578,7 @@ function bubbleClass(role: MessageVM['role']) {
 
         <div v-if="props.message.toolCalls.length" class="mt-3 space-y-2">
           <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-600">
-            Tool calls ({{ props.message.toolCalls.length }})
+            {{ t('common.toolCalls') }} ({{ props.message.toolCalls.length }})
           </div>
 
           <details
@@ -631,14 +634,14 @@ function bubbleClass(role: MessageVM['role']) {
   >
     <div class="max-h-full w-full max-w-5xl overflow-hidden rounded-xl bg-white shadow-2xl">
       <div class="flex items-center justify-between border-b border-gray-200 px-3 py-2 text-xs text-gray-600">
-        <div>Image preview #{{ (previewImageIndex ?? 0) + 1 }}</div>
+        <div>{{ t('common.images') }} #{{ (previewImageIndex ?? 0) + 1 }}</div>
         <button
           type="button"
           class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
           data-testid="message-image-preview-close"
           @click="closePreview"
         >
-          Close
+          {{ t('common.closePreview') }}
         </button>
       </div>
       <div class="max-h-[80vh] overflow-auto bg-gray-50 p-3">

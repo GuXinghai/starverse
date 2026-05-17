@@ -40,6 +40,21 @@ describe('ChatMessageBubble', () => {
     expect(screen.queryByText(/References \(/)).not.toBeInTheDocument()
   })
 
+  it('renders before-content slot inside the message bubble', () => {
+    render(ChatMessageBubble, {
+      props: {
+        message: msg({ messageId: 'a_slot_1', role: 'assistant' }),
+      },
+      slots: {
+        'before-content': '<div data-testid="inline-reasoning-slot">Reasoning</div>',
+      },
+    })
+
+    const bubble = screen.getByText('Assistant').closest('.rounded-2xl')
+    expect(bubble).not.toBeNull()
+    expect(bubble).toContainElement(screen.getByTestId('inline-reasoning-slot'))
+  })
+
   it('shows image placeholder only when image generation was requested', () => {
     render(ChatMessageBubble, {
       props: {
@@ -92,7 +107,7 @@ describe('ChatMessageBubble', () => {
       },
     })
 
-    expect(screen.getByText(/Tool calls/)).toBeInTheDocument()
+    expect(screen.getByText(/工具调用/)).toBeInTheDocument()
     expect(screen.getByText('lookup')).toBeInTheDocument()
     expect(screen.getByText('call_1')).toBeInTheDocument()
     expect(screen.getByText('{"q":"x"}')).toBeInTheDocument()
@@ -120,7 +135,7 @@ describe('ChatMessageBubble', () => {
       },
     })
 
-    expect(screen.getByText('References (1)')).toBeInTheDocument()
+    expect(screen.getByText(/引用 \(1\)/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'OpenRouter Docs' })).toHaveAttribute('href', 'https://openrouter.ai/docs')
     expect(screen.getByText('OpenRouter')).toBeInTheDocument()
   })
@@ -232,7 +247,7 @@ describe('ChatMessageBubble', () => {
       },
     })
 
-    expect(screen.getByTestId('message-image-section').textContent).toContain('Images (2)')
+    expect(screen.getByTestId('message-image-section').textContent).toContain('图片 (2)')
     expect(screen.getByTestId('message-image-card-1')).toBeInTheDocument()
 
     await fireEvent.click(screen.getByTestId('message-image-preview-open-2'))

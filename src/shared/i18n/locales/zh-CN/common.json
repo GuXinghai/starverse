@@ -27,6 +27,27 @@
     "language": "界面语言",
     "languageFollowSystem": "跟随系统",
     "languageFollowSystemDesc": "根据系统语言自动切换界面语言",
-    "languageManual": "手动选择"
+    "languageManual": "手动选择",
+    "retry": "重试",
+    "copy": "复制",
+    "move": "移动",
+    "done": "完成",
+    "select": "选择",
+    "refresh": "刷新",
+    "new": "新建",
+    "send": "发送",
+    "stop": "停止",
+    "attach": "附件",
+    "yes": "是",
+    "no": "否",
+    "generating": "正在生成",
+    "streaming": "流式传输中",
+    "encrypted": "已加密",
+    "summary": "摘要",
+    "untitled": "无标题",
+    "images": "图片",
+    "references": "引用",
+    "toolCalls": "工具调用",
+    "closePreview": "关闭预览"
   }
 }

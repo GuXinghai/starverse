@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { t, tf } from '@/shared/i18n'
 
 export type ConversationListItem = Readonly<{
   id: string
@@ -199,7 +200,7 @@ function confirmProjectCreate() {
 function openProjectRename(project: ProjectListItem) {
   if (props.disabled) return
   if (isSystemProject(project)) {
-    projectErrorMessage.value = '系统项目不可重命名'
+    projectErrorMessage.value = t('navigation.project.systemProjectNoRename')
     setTimeout(() => {
       projectErrorMessage.value = null
     }, 3000)
@@ -220,7 +221,7 @@ function confirmProjectRename() {
 function openProjectDelete(project: ProjectListItem) {
   if (props.disabled) return
   if (isSystemProject(project)) {
-    projectErrorMessage.value = '系统项目（Inbox）不可删除'
+    projectErrorMessage.value = t('navigation.project.systemProjectNoDelete')
     setTimeout(() => {
       projectErrorMessage.value = null
     }, 3000)
@@ -260,13 +261,13 @@ function cancelProjectDialog() {
         @click="emit('openSearch')"
       >
         <span class="text-base">🔍</span>
-        <span class="font-semibold">Search</span>
+        <span class="font-semibold">{{ t('common.search') }}</span>
       </button>
     </div>
 
     <div class="border-b border-gray-200 px-3 py-2">
       <div class="flex items-center justify-between gap-2">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Projects</div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('navigation.project.title') }}</div>
         <div class="flex items-center gap-2">
           <button
             type="button"
@@ -275,13 +276,13 @@ function cancelProjectDialog() {
             :aria-expanded="projectPanelOpen"
             @click="projectPanelOpen = !projectPanelOpen"
           >
-            {{ projectPanelOpen ? 'Hide' : 'Show' }}
+            {{ projectPanelOpen ? t('common.hide') : t('common.show') }}
           </button>
           <button
             type="button"
             class="rounded-md bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
             :disabled="props.disabled"
-            aria-label="Create project"
+            :aria-label="t('navigation.project.newProject')"
             @click="openProjectCreate"
           >
             +
@@ -307,7 +308,7 @@ function cancelProjectDialog() {
           @click="onSelectProject(null)"
         >
           <span class="text-base">📋</span>
-          <span class="min-w-0 flex-1 truncate">全部对话</span>
+          <span class="min-w-0 flex-1 truncate">{{ t('navigation.empty.allConversations') }}</span>
         </button>
 
         <button
@@ -359,7 +360,7 @@ function cancelProjectDialog() {
               class="rounded bg-white p-1 text-xs text-gray-500 shadow-sm hover:bg-gray-100 hover:text-gray-700"
               :disabled="props.disabled"
               @click.stop="openProjectRename(project)"
-              aria-label="Rename project"
+              :aria-label="t('navigation.project.renameProject')"
             >
               ✏️
             </button>
@@ -368,7 +369,7 @@ function cancelProjectDialog() {
               class="rounded bg-white p-1 text-xs text-red-500 shadow-sm hover:bg-red-50 hover:text-red-700"
               :disabled="props.disabled"
               @click.stop="openProjectDelete(project)"
-              aria-label="Delete project"
+              :aria-label="t('navigation.project.deleteProject')"
             >
               🗑️
             </button>
@@ -376,13 +377,13 @@ function cancelProjectDialog() {
         </div>
 
         <div v-if="userProjects.length === 0 && !inboxProject" class="px-2 py-3 text-xs text-gray-400">
-          暂无项目
+          {{ t('navigation.empty.noProjects') }}
         </div>
       </div>
     </div>
 
     <div class="flex items-center justify-between gap-2 border-b border-gray-200 px-3 py-2">
-      <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Conversations</div>
+      <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('navigation.conversation.title') }}</div>
       <div class="flex items-center gap-2">
         <button
           type="button"
@@ -390,7 +391,7 @@ function cancelProjectDialog() {
           :disabled="props.disabled"
           @click="setSelectionMode(!selectionMode)"
         >
-          {{ selectionMode ? 'Done' : 'Select' }}
+          {{ selectionMode ? t('common.done') : t('common.select') }}
         </button>
         <button
           type="button"
@@ -398,7 +399,7 @@ function cancelProjectDialog() {
           :disabled="props.disabled"
           @click="emit('refresh')"
         >
-          Refresh
+          {{ t('common.refresh') }}
         </button>
         <button
           type="button"
@@ -406,7 +407,7 @@ function cancelProjectDialog() {
           :disabled="props.disabled"
           @click="emit('create')"
         >
-          New
+          {{ t('common.new') }}
         </button>
       </div>
     </div>
@@ -419,10 +420,10 @@ function cancelProjectDialog() {
           :indeterminate.prop="isSomeSelected"
           :disabled="props.disabled || props.items.length === 0"
           @change="toggleSelectAll"
-          aria-label="Select all conversations"
+          :aria-label="t('navigation.actions.selectAll')"
           class="cursor-pointer"
         />
-        <span class="truncate">Selected: {{ selectedCount }}</span>
+        <span class="truncate">{{ t('navigation.actions.selected') }} {{ selectedCount }}</span>
       </div>
       <div class="flex items-center gap-2">
         <button
@@ -432,7 +433,7 @@ function cancelProjectDialog() {
           aria-label="Bulk move"
           @click="openMove(selectedIdsArray)"
         >
-          Move
+          {{ t('common.move') }}
         </button>
         <button
           type="button"
@@ -441,14 +442,14 @@ function cancelProjectDialog() {
           aria-label="Bulk delete"
           @click="openDelete(selectedIdsArray)"
         >
-          Delete
+          {{ t('common.delete') }}
         </button>
       </div>
     </div>
 
     <div class="min-h-0 flex-1 overflow-auto p-2">
       <div v-if="props.items.length === 0" class="p-3 text-sm text-gray-500">
-        No conversations yet.
+        {{ t('navigation.empty.noConversations') }}
       </div>
 
       <div v-else class="space-y-1">
@@ -465,7 +466,7 @@ function cancelProjectDialog() {
               :checked="selectedIds.has(c.id)"
               :disabled="props.disabled"
               @change="toggleSelected(c.id)"
-              aria-label="Select conversation"
+              :aria-label="t('common.select')"
             />
           </div>
 
@@ -502,7 +503,7 @@ function cancelProjectDialog() {
                 :disabled="props.disabled"
                 @click.stop="openRename(c.id, c.title); openConvoMenuId = null"
               >
-                Rename
+                {{ t('common.rename') }}
               </button>
               <button
                 type="button"
@@ -510,7 +511,7 @@ function cancelProjectDialog() {
                 :disabled="props.disabled"
                 @click.stop="openMove([c.id]); openConvoMenuId = null"
               >
-                Move
+                {{ t('common.move') }}
               </button>
               <button
                 type="button"
@@ -518,7 +519,7 @@ function cancelProjectDialog() {
                 :disabled="props.disabled"
                 @click.stop="openDelete([c.id]); openConvoMenuId = null"
               >
-                Delete
+                {{ t('common.delete') }}
               </button>
             </div>
           </div>
@@ -528,7 +529,7 @@ function cancelProjectDialog() {
 
     <div v-if="renameDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" data-testid="rename-dialog">
       <div class="w-full max-w-sm rounded-lg bg-white p-4 shadow-lg">
-        <div class="text-sm font-semibold text-gray-900">Rename conversation</div>
+        <div class="text-sm font-semibold text-gray-900">{{ t('navigation.conversation.renameConversation') }}</div>
         <input
           class="mt-3 w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
           :disabled="props.disabled"
@@ -542,7 +543,7 @@ function cancelProjectDialog() {
             :disabled="props.disabled"
             @click="renameDialog = null"
           >
-            Cancel
+            {{ t('common.cancel') }}
           </button>
           <button
             type="button"
@@ -550,7 +551,7 @@ function cancelProjectDialog() {
             :disabled="props.disabled || renameDialog.title.trim().length === 0"
             @click="confirmRename"
           >
-            Save
+            {{ t('common.save') }}
           </button>
         </div>
       </div>
@@ -558,9 +559,9 @@ function cancelProjectDialog() {
 
     <div v-if="deleteDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" data-testid="delete-dialog">
       <div class="w-full max-w-sm rounded-lg bg-white p-4 shadow-lg">
-        <div class="text-sm font-semibold text-gray-900">Delete conversation{{ deleteDialog.ids.length > 1 ? 's' : '' }}?</div>
+        <div class="text-sm font-semibold text-gray-900">{{ t('navigation.conversation.deleteConversation') }}{{ deleteDialog.ids.length > 1 ? 's' : '' }}?</div>
         <div class="mt-2 text-sm text-gray-600">
-          This will permanently delete {{ deleteDialog.ids.length }} conversation{{ deleteDialog.ids.length > 1 ? 's' : '' }}.
+          {{ tf('navigation.conversation.deleteConversationConfirm', { count: deleteDialog.ids.length }) }}
         </div>
         <div class="mt-4 flex justify-end gap-2">
           <button
@@ -569,7 +570,7 @@ function cancelProjectDialog() {
             :disabled="props.disabled"
             @click="deleteDialog = null"
           >
-            Cancel
+            {{ t('common.cancel') }}
           </button>
           <button
             type="button"
@@ -577,7 +578,7 @@ function cancelProjectDialog() {
             :disabled="props.disabled"
             @click="confirmDelete"
           >
-            Delete
+            {{ t('common.delete') }}
           </button>
         </div>
       </div>
@@ -585,9 +586,9 @@ function cancelProjectDialog() {
 
     <div v-if="moveDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" data-testid="move-dialog">
       <div class="w-full max-w-sm rounded-lg bg-white p-4 shadow-lg">
-        <div class="text-sm font-semibold text-gray-900">Move to project</div>
+        <div class="text-sm font-semibold text-gray-900">{{ t('navigation.conversation.moveToProject') }}</div>
         <div class="mt-2 text-sm text-gray-600">
-          Move {{ moveDialog.ids.length }} conversation{{ moveDialog.ids.length > 1 ? 's' : '' }} to:
+          {{ tf('navigation.conversation.movePrompt', { count: moveDialog.ids.length }) }}
         </div>
         <select
           class="mt-3 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
@@ -595,7 +596,7 @@ function cancelProjectDialog() {
           :value="moveDialog.projectId ?? ''"
           @change="moveDialog = { ...moveDialog, projectId: ($event.target as HTMLSelectElement).value || null }"
         >
-          <option v-if="showNoProjectOption" value="">No project</option>
+          <option v-if="showNoProjectOption" value="">{{ t('navigation.conversation.noProject') }}</option>
           <option v-for="p in props.projects" :key="p.id" :value="p.id">{{ p.name }}</option>
         </select>
         <div class="mt-4 flex justify-end gap-2">
@@ -605,7 +606,7 @@ function cancelProjectDialog() {
             :disabled="props.disabled"
             @click="moveDialog = null"
           >
-            Cancel
+            {{ t('common.cancel') }}
           </button>
           <button
             type="button"
@@ -613,7 +614,7 @@ function cancelProjectDialog() {
             :disabled="props.disabled"
             @click="confirmMove"
           >
-            Move
+            {{ t('common.move') }}
           </button>
         </div>
       </div>
@@ -625,12 +626,12 @@ function cancelProjectDialog() {
       @click.self="cancelProjectDialog"
     >
       <div class="w-72 rounded-lg bg-white p-4 shadow-xl">
-        <div class="mb-3 text-sm font-medium text-gray-900">创建项目</div>
+        <div class="mb-3 text-sm font-medium text-gray-900">{{ t('navigation.project.newProject') }}</div>
         <input
           v-model="projectCreateName"
           type="text"
           class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder="项目名称"
+          :placeholder="t('navigation.project.projectName')"
           @keydown.enter="confirmProjectCreate"
           @keydown.escape="cancelProjectDialog"
         />
@@ -643,14 +644,14 @@ function cancelProjectDialog() {
             class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
             @click="cancelProjectDialog"
           >
-            取消
+            {{ t('common.cancel') }}
           </button>
           <button
             type="button"
             class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
             @click="confirmProjectCreate"
           >
-            创建
+            {{ t('common.create') }}
           </button>
         </div>
       </div>
@@ -662,12 +663,12 @@ function cancelProjectDialog() {
       @click.self="cancelProjectDialog"
     >
       <div class="w-72 rounded-lg bg-white p-4 shadow-xl">
-        <div class="mb-3 text-sm font-medium text-gray-900">重命名项目</div>
+        <div class="mb-3 text-sm font-medium text-gray-900">{{ t('navigation.project.renameProject') }}</div>
         <input
           v-model="projectRenameDialog.name"
           type="text"
           class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder="项目名称"
+          :placeholder="t('navigation.project.projectName')"
           @keydown.enter="confirmProjectRename"
           @keydown.escape="cancelProjectDialog"
         />
@@ -677,14 +678,14 @@ function cancelProjectDialog() {
             class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
             @click="cancelProjectDialog"
           >
-            取消
+            {{ t('common.cancel') }}
           </button>
           <button
             type="button"
             class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
             @click="confirmProjectRename"
           >
-            保存
+            {{ t('common.save') }}
           </button>
         </div>
       </div>
@@ -696,9 +697,9 @@ function cancelProjectDialog() {
       @click.self="cancelProjectDialog"
     >
       <div class="w-72 rounded-lg bg-white p-4 shadow-xl">
-        <div class="mb-3 text-sm font-medium text-gray-900">删除项目</div>
+        <div class="mb-3 text-sm font-medium text-gray-900">{{ t('navigation.project.deleteProject') }}</div>
         <p class="mb-4 text-sm text-gray-600">
-          确定要删除项目「{{ projectDeleteDialog.name }}」吗？项目下的对话将移至 Inbox。
+          {{ tf('navigation.project.deleteConfirm', { name: projectDeleteDialog.name }) }}
         </p>
         <div class="flex justify-end gap-2">
           <button
@@ -706,14 +707,14 @@ function cancelProjectDialog() {
             class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
             @click="cancelProjectDialog"
           >
-            取消
+            {{ t('common.cancel') }}
           </button>
           <button
             type="button"
             class="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
             @click="confirmProjectDelete"
           >
-            删除
+            {{ t('common.delete') }}
           </button>
         </div>
       </div>

@@ -1,0 +1,35 @@
+{
+  "navigation": {
+    "project": {
+      "title": "项目",
+      "newProject": "创建项目",
+      "renameProject": "重命名项目",
+      "deleteProject": "删除项目",
+      "projectName": "项目名称",
+      "deleteConfirm": "确定要删除项目「{name}」吗？项目下的对话将移至 Inbox。",
+      "systemProjectNoRename": "系统项目不可重命名",
+      "systemProjectNoDelete": "系统项目（Inbox）不可删除"
+    },
+    "conversation": {
+      "title": "对话",
+      "newConversation": "新建对话",
+      "renameConversation": "重命名对话",
+      "deleteConversation": "删除对话",
+      "deleteConversationConfirm": "此操作将永久删除 {count} 条对话。",
+      "moveToProject": "移动到项目",
+      "movePrompt": "移动 {count} 条对话到：",
+      "noProject": "无项目"
+    },
+    "empty": {
+      "noConversations": "暂无对话。",
+      "noProjects": "暂无项目",
+      "allConversations": "全部对话"
+    },
+    "actions": {
+      "selectAll": "全选",
+      "bulkMove": "批量移动",
+      "bulkDelete": "批量删除",
+      "selected": "已选："
+    }
+  }
+}

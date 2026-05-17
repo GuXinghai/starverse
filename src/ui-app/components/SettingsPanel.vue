@@ -405,14 +405,14 @@ onMounted(() => {
 <template>
   <div class="h-full p-4">
     <div class="flex items-center justify-between gap-2">
-      <div class="text-sm font-semibold text-gray-900">Settings</div>
+      <div class="text-sm font-semibold text-gray-900">{{ t('settings.title') }}</div>
       <button
         type="button"
         class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
         :disabled="props.disabled || props.isRunning || loading || saving"
         @click="load"
       >
-        Reload
+        {{ t('common.reload') }}
       </button>
     </div>
 
@@ -564,7 +564,7 @@ onMounted(() => {
             :disabled="!canEdit || loading || saving"
             @click="save"
           >
-            Save
+            {{ t('common.save') }}
           </button>
         </div>
       </div>
