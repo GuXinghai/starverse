@@ -44,6 +44,7 @@ import {
   checkConfigIntegrity,
 } from './config/configSchema'
 import { DB_SCHEMA_VERSION } from '../infra/db/schemaVersion'
+import { initMainI18n, t } from './i18n/mainI18n'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const nodeRequire = createRequire(import.meta.url)
@@ -276,6 +277,9 @@ const store = new Store({
     }
   },
 })
+
+// 初始化主进程 i18n（在任何 dialog 调用之前）
+initMainI18n(store, app.getPreferredSystemLanguages())
 
 /**
  * 备份损坏的配置文件
@@ -698,12 +702,10 @@ const ensureDbReady = async () => {
     nodeRequire('better-sqlite3')
   } catch (error: any) {
     const details = error?.message ? String(error.message) : String(error)
-    const fixDev = `Fix (dev):\n- Close Electron\n- Run: npm run rebuild:electron\n- Then: npm run electron:dev`
-    const fixProd = `Fix (prod):\n- Reinstall the app (native dependencies are bundled per Electron version)`
-    const fix = isDev ? fixDev : fixProd
+    const fix = isDev ? t('dialogs.startup.fixDev') : t('dialogs.startup.fixProd')
 
     console.error('[main] failed to load better-sqlite3 (native module ABI mismatch?)', error)
-    dialog.showErrorBox('Database initialization failed', `${details}\n\n${fix}`)
+    dialog.showErrorBox(t('dialogs.startup.dbInitFailed'), `${details}\n\n${fix}`)
     throw error
   }
 
@@ -719,7 +721,7 @@ const ensureDbReady = async () => {
     })
   } catch (error) {
     console.error('[main] failed to start DB worker', error)
-    dialog.showErrorBox('Database initialization failed', `DB worker failed to start.\n\n${(error as any)?.message ?? String(error)}`)
+    dialog.showErrorBox(t('dialogs.startup.dbInitFailed'), `${t('dialogs.startup.dbWorkerFailed')}\n\n${(error as any)?.message ?? String(error)}`)
     throw error
   }
 }

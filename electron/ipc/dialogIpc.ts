@@ -2,6 +2,7 @@ import { dialog } from 'electron'
 import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import type { RegisterInvoke } from './types'
+import { t } from '../i18n/mainI18n'
 
 export const DIALOG_IPC_CHANNELS = ['dialog:select-file', 'dialog:select-local-files'] as const
 
@@ -76,8 +77,8 @@ export function registerDialogIpc(input: RegisterDialogIpcInput): string[] {
       const result = await dialog.showOpenDialog({
         properties: allowMultiple ? ['openFile', 'multiSelections'] : ['openFile'],
         filters: context === 'image'
-          ? [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }]
-          : [{ name: 'All Files', extensions: ['*'] }],
+          ? [{ name: t('dialogs.file.filterImages'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }]
+          : [{ name: t('dialogs.file.filterAllFiles'), extensions: ['*'] }],
       })
       if (result.canceled || result.filePaths.length === 0) {
         return { filePaths: [] }

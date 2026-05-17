@@ -15,6 +15,8 @@ import zhCNDiagnostics from './zh-CN/diagnostics.json'
 import enUSDiagnostics from './en-US/diagnostics.json'
 import zhCNFilePipeline from './zh-CN/filePipeline.json'
 import enUSFilePipeline from './en-US/filePipeline.json'
+import zhCNDialogs from './zh-CN/dialogs.json'
+import enUSDialogs from './en-US/dialogs.json'
 import { t, getMessages, resetI18nForTests } from '../index'
 
 /** Registered namespace names — must match messageRegistry keys in index.ts */
@@ -104,6 +106,12 @@ describe('locale key consistency', () => {
     expect(zhKeys).toEqual(enKeys)
   })
 
+  it('zh-CN and en-US dialogs have identical keys', () => {
+    const zhKeys = flattenKeys(zhCNDialogs.dialogs).sort()
+    const enKeys = flattenKeys(enUSDialogs.dialogs).sort()
+    expect(zhKeys).toEqual(enKeys)
+  })
+
   it('common namespace has at least core action keys', () => {
     const coreKeys = ['ok', 'cancel', 'save', 'delete', 'close', 'search', 'send', 'stop']
     for (const key of coreKeys) {
@@ -154,6 +162,7 @@ describe('locale key consistency', () => {
       ...flattenKeys(zhCNErrors.errors).map(k => `errors.${k}`),
       ...flattenKeys(zhCNDiagnostics.diagnostics).map(k => `diagnostics.${k}`),
       ...flattenKeys(zhCNFilePipeline.filePipeline).map(k => `filePipeline.${k}`),
+      ...flattenKeys(zhCNDialogs.dialogs).map(k => `dialogs.${k}`),
     ]
     const seen = new Set<string>()
     const dupes: string[] = []
@@ -180,6 +189,10 @@ describe('locale key consistency', () => {
       ['diagnostics.detectFailed', 'en-US', 'Detection failed'],
       ['filePipeline.detection.failed', 'zh-CN', '检测失败'],
       ['filePipeline.detection.failed', 'en-US', 'Failed'],
+      ['dialogs.startup.dbInitFailed', 'zh-CN', '数据库初始化失败'],
+      ['dialogs.startup.dbInitFailed', 'en-US', 'Database initialization failed'],
+      ['dialogs.errors.invalidUrl', 'zh-CN', '无效的 URL。'],
+      ['dialogs.errors.invalidUrl', 'en-US', 'Invalid URL.'],
       ['common.ok', 'zh-CN', '确定'],
       ['common.ok', 'en-US', 'OK'],
     ]
@@ -198,6 +211,7 @@ describe('locale key consistency', () => {
       { zh: zhCNErrors.errors, en: enUSErrors.errors, name: 'errors' },
       { zh: zhCNDiagnostics.diagnostics, en: enUSDiagnostics.diagnostics, name: 'diagnostics' },
       { zh: zhCNFilePipeline.filePipeline, en: enUSFilePipeline.filePipeline, name: 'filePipeline' },
+      { zh: zhCNDialogs.dialogs, en: enUSDialogs.dialogs, name: 'dialogs' },
     ]
     for (const ns of namespaces) {
       const zhFlat = flattenKeys(ns.zh)
@@ -219,7 +233,7 @@ describe('locale key consistency', () => {
   })
 
   it('getMessages returns inner content for all namespaces', () => {
-    const nsNames = ['common', 'settings', 'navigation', 'composer', 'sendPlan', 'errors', 'diagnostics', 'filePipeline']
+    const nsNames = ['common', 'settings', 'navigation', 'composer', 'sendPlan', 'errors', 'diagnostics', 'filePipeline', 'dialogs']
     for (const ns of nsNames) {
       const zhMsgs = getMessages('zh-CN', ns)
       expect(zhMsgs).toBeDefined()

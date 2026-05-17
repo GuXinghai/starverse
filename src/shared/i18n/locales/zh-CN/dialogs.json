@@ -1,0 +1,45 @@
+{
+  "dialogs": {
+    "image": {
+      "selectTitle": "选择图片",
+      "filterName": "图片"
+    },
+    "file": {
+      "filterPdf": "PDF",
+      "filterImages": "图片",
+      "filterAllFiles": "所有文件"
+    },
+    "export": {
+      "imageTitle": "导出图片",
+      "filterImage": "图片",
+      "filterAllFiles": "所有文件"
+    },
+    "errors": {
+      "missingImageUrl": "缺少图片 URL。",
+      "invalidImageDataUrl": "无效的图片 data URL。",
+      "assetNotFound": "资源未找到。",
+      "invalidFileUrl": "无效的文件 URL。",
+      "downloadFailed": "下载失败：HTTP {status}。",
+      "invalidDataUriFormat": "无效的 data URI 格式。",
+      "invalidDataUriContent": "无效的 data URI 内容。",
+      "invalidUrl": "无效的 URL。",
+      "unsupportedProtocol": "不支持的协议。",
+      "invalidPayload": "无效的 IPC 载荷。",
+      "methodNotAllowed": "不允许的方法：{method}。",
+      "invalidStreamPayload": "无效的流载荷。",
+      "unsupportedWireVersion": "不支持的协议版本：wireVersion={actual}，需要 {expected}。",
+      "missingImageUrlShort": "缺少图片 URL。",
+      "assetNotFoundShort": "资源未找到。",
+      "invalidFileUrlShort": "无效的文件 URL。",
+      "invalidImageBytes": "无效的图片字节。"
+    },
+    "startup": {
+      "dbInitFailed": "数据库初始化失败",
+      "dbWorkerFailed": "DB worker 启动失败。",
+      "fixDev": "修复方法（开发环境）：\n- 关闭 Electron\n- 运行：npm run rebuild:electron\n- 然后：npm run electron:dev",
+      "fixProd": "修复方法（生产环境）：\n- 重新安装应用（原生依赖按 Electron 版本打包）",
+      "devStartupError": "开发启动错误",
+      "viteDevServerMissing": "开发模式下缺少 VITE_DEV_SERVER_URL。拒绝加载 dist/index.html。"
+    }
+  }
+}

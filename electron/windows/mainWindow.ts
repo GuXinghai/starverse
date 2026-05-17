@@ -1,6 +1,7 @@
 import { BrowserWindow, app, dialog, shell } from 'electron'
 import path from 'node:path'
 import { CHAT_WORKSPACE_MIN_WINDOW_WIDTH_PX } from '../../src/shared/ui/chatWorkspaceLayout'
+import { t } from '../i18n/mainI18n'
 
 export type CreateMainWindowInput = Readonly<{
   isDev: boolean
@@ -23,9 +24,9 @@ export function createMainWindow(input: CreateMainWindowInput): BrowserWindow | 
 
   console.warn(`[main] VITE_DEV_SERVER_URL: ${input.viteDevServerUrl ?? '<missing>'}`)
   if (input.isDev && !input.viteDevServerUrl) {
-    const message = 'VITE_DEV_SERVER_URL is missing in dev mode. Refusing to load dist/index.html.'
+    const message = t('dialogs.startup.viteDevServerMissing')
     console.error(`[main] ${message}`)
-    dialog.showErrorBox('Dev startup error', message)
+    dialog.showErrorBox(t('dialogs.startup.devStartupError'), message)
     app.exit(1)
     return null
   }
