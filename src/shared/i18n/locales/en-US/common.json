@@ -1,0 +1,27 @@
+{
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "delete": "Delete",
+    "close": "Close",
+    "reload": "Reload",
+    "show": "Show",
+    "hide": "Hide",
+    "clear": "Clear",
+    "search": "Search",
+    "create": "Create",
+    "rename": "Rename",
+    "remove": "Remove",
+    "loading": "Loading…",
+    "error": "Error",
+    "copied": "Copied",
+    "on": "On",
+    "off": "Off",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "settings": "Settings",
+    "untitledConversation": "Untitled conversation"
+  }
+}
