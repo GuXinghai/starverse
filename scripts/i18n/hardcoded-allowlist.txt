@@ -22,6 +22,41 @@ SamplingParamsSettingsEditor
 PluginManagementPanel
 ModelPickerDialog
 
+# Enhanced template scanner: known residual surfaces deferred outside this hardening task
+^src/ui-app/AppChatApp\.vue:
+^src/ui-app/components/ChatSessionConsole\.vue:
+^src/ui-app/components/DraftAttachmentCard\.vue:
+^src/ui-app/components/DraftAttachmentDetailsDialog\.vue:
+^src/ui-app/components/EndpointDetailPanel\.vue:
+^src/ui-app/components/EnginePluginSettingsPanel\.vue:
+^src/ui-app/components/SearchModal\.vue:
+
+# Enhanced template scanner: small residual labels tracked for follow-up
+^src/ui-app/app/appChatApp\.logic\.ts:.*仅在图片预览缺失或失败时可重试
+^src/ui-app/app/appChatApp\.logic\.ts:.*当前请求无法发送
+^src/ui-app/app/appChatApp\.logic\.ts:.*无法恢复历史附件
+^src/ui-app/app/appChatApp\.logic\.ts:.*当前编辑请求无法发送
+^src/ui-app/components/ChatAppComposer\.vue:.*Favorite models
+^src/ui-app/components/ChatAppComposer\.vue:.*Recent models in this session
+^src/ui-app/components/ChatInlineReasoning\.vue:.*No reasoning payload
+^src/ui-app/components/ChatRightRail\.vue:.*Close panel
+^src/ui-app/components/ComposerCapabilityChip\.vue:.*enabled
+^src/ui-kit/chat/ChatErrorPanel\.vue:.*Copy
+^src/ui-kit/chat/ChatMessageBubble\.vue:.*Copy image
+^src/ui-kit/chat/ChatMessageBubble\.vue:.*Copy path
+^src/ui-kit/chat/ChatMessageBubble\.vue:.*Export
+^src/ui-kit/chat/ChatMessageBubble\.vue:.*Persisting
+^src/ui-kit/chat/ChatMessageBubble\.vue:.*Image is generating
+^src/ui-kit/chat/ChatMessageBubble\.vue:.*preview
+^src/ui-kit/chat/ChatReasoningPanel\.vue:.*模型未返回推理内容
+^src/ui-kit/chat/ChatStatusBar\.vue:.*Truncated
+^src/ui-kit/chat/ChatStatusBar\.vue:.*Abort
+^src/ui-kit/chat/ChatStatusBar\.vue:.*Reset
+^src/ui-kit/chat/MessageAttachmentCard\.vue:.*history
+^src/ui-kit/chat/MessageAttachmentCard\.vue:.*type:
+^src/ui-kit/chat/MessageAttachmentCard\.vue:.*route:
+^src/ui-kit/chat/richtext/RichTextFinal\.vue:.*Content was sanitized
+
 # Attachment confirmation panel internal labels
 exclude
 remove

@@ -21,10 +21,15 @@ type RegisterStoreIpcInput = Readonly<{
   isDev: boolean
   performConfigSizeCheck: (context: 'startup' | 'write') => void
   migrateAndCleanupConfig: () => void
+  refreshMainLocale?: () => void
 }>
 
+function isLocaleConfigKey(key: string): boolean {
+  return key === 'language' || key === 'languageManual'
+}
+
 export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
-  const { registerInvoke, store, isDev, performConfigSizeCheck, migrateAndCleanupConfig } = input
+  const { registerInvoke, store, isDev, performConfigSizeCheck, migrateAndCleanupConfig, refreshMainLocale } = input
 
   registerInvoke('store-get', (_event: unknown, key: unknown) => {
     return store.get(String(key ?? ''))
@@ -49,6 +54,10 @@ export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
 
     store.set(keyText, value)
 
+    if (isLocaleConfigKey(keyText)) {
+      refreshMainLocale?.()
+    }
+
     if (isDev) {
       performConfigSizeCheck('write')
     }
@@ -57,7 +66,11 @@ export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
   })
 
   registerInvoke('store-delete', (_event: unknown, key: unknown) => {
-    store.delete(String(key ?? ''))
+    const keyText = String(key ?? '')
+    store.delete(keyText)
+    if (isLocaleConfigKey(keyText)) {
+      refreshMainLocale?.()
+    }
     return true
   })
 
@@ -67,6 +80,9 @@ export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
       const backupPath = safeClearConfig(store, safeKeepKeys)
       migrateAndCleanupConfig()
       performConfigSizeCheck('startup')
+      if (!safeKeepKeys.includes('language') || !safeKeepKeys.includes('languageManual')) {
+        refreshMainLocale?.()
+      }
       return backupPath
     } catch (error) {
       console.error('[IPC] 安全清空配置失败:', error)
