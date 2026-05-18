@@ -8,7 +8,7 @@
  * Exit code 0 = pass, 1 = fail (hardcoded text found)
  */
 
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, statSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execSync } from 'node:child_process'
@@ -147,7 +147,7 @@ function getFilesToScan() {
   for (const target of SCAN_DIRS) {
     const fullPath = join(ROOT, target)
     try {
-      const stat = require('node:fs').statSync(fullPath)
+      const stat = statSync(fullPath)
       if (stat.isDirectory()) {
         const output = execSync(
           `git ls-files "${target}"`,
@@ -174,6 +174,80 @@ function getFilesToScan() {
   return [...new Set(files)]
 }
 
+function stripVueMustaches(text) {
+  return text.replace(/\{\{[\s\S]*?\}\}/g, ' ')
+}
+
+function stripHtmlTags(text) {
+  return text.replace(/<[^>]+>/g, ' ')
+}
+
+function normalizeText(text) {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+function hasUserVisibleText(text) {
+  const normalized = normalizeText(text)
+  if (!normalized) return false
+  if (normalized.length < 2) return false
+  if (/^[\d\s.,:;()[\]{}#/+*-]+$/.test(normalized)) return false
+  return CHINESE_RE.test(normalized) || /[A-Za-z][A-Za-z\s.,:;!?'"()/-]{2,}/.test(normalized)
+}
+
+function isLikelyVueExpression(text) {
+  return /[`{}?]|\|\||&&|=>|\b(props|const|let|return)\b|\.[A-Za-z_$]/.test(text)
+}
+
+function isTemplateSyntaxOnly(text) {
+  return /^(@|v-|:|#)/.test(text) ||
+    /^(v-else|v-if|v-for|v-show|v-slot|template)$/.test(text) ||
+    /^(&lt;|&gt;|<|>)$/.test(text)
+}
+
+function pushFinding(findings, file, line, kind, text) {
+  findings.push({
+    file,
+    line,
+    text: normalizeText(text).substring(0, 120),
+    kind,
+  })
+}
+
+function scanVueTemplateLine(file, line, lineNum, allowlist, findings) {
+  const trimmed = line.trim()
+  if (!trimmed || trimmed.startsWith('<!--')) return
+  if (isAllowlisted(`${file}:${line}`, allowlist)) return
+
+  const attrRe = /\b(title|aria-label|placeholder|alt)=["']([^"']+)["']/g
+  for (const match of line.matchAll(attrRe)) {
+    if (line[match.index - 1] === ':') continue
+    const value = match[2]
+    if (value.includes('{{') || value.includes('t(') || value.startsWith(':')) continue
+    if (isLikelyVueExpression(value)) continue
+    if (hasUserVisibleText(value)) {
+      pushFinding(findings, file, lineNum, `attribute:${match[1]}`, value)
+    }
+  }
+
+  const textWithoutTags = normalizeText(stripHtmlTags(line))
+  const textWithoutMustaches = normalizeText(stripVueMustaches(textWithoutTags))
+  if (textWithoutMustaches && textWithoutMustaches !== textWithoutTags && hasUserVisibleText(textWithoutMustaches)) {
+    pushFinding(findings, file, lineNum, 'mustache-adjacent-text', textWithoutMustaches)
+    return
+  }
+
+  if (
+    !trimmed.startsWith('<') &&
+    !trimmed.startsWith('{{') &&
+    !trimmed.includes('=') &&
+    !isTemplateSyntaxOnly(textWithoutMustaches) &&
+    !isLikelyVueExpression(textWithoutMustaches) &&
+    hasUserVisibleText(textWithoutMustaches)
+  ) {
+    pushFinding(findings, file, lineNum, 'template-text', textWithoutMustaches)
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────
 
 console.log('Hardcoded UI text scan\n')
@@ -192,18 +266,34 @@ for (const file of files) {
   }
 
   const lines = content.split('\n')
+  let vueTemplateDepth = 0
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     const lineNum = i + 1
+    const trimmed = line.trim()
 
-    // Skip allowlisted patterns
-    if (isAllowlisted(line, allowlist)) continue
+    if (file.endsWith('.vue')) {
+      if (trimmed.startsWith('<template')) {
+        vueTemplateDepth++
+        continue
+      }
+      const inVueTemplate = vueTemplateDepth > 0
+      if (trimmed.startsWith('</template')) {
+        vueTemplateDepth = Math.max(0, vueTemplateDepth - 1)
+        continue
+      }
+      if (inVueTemplate) {
+        scanVueTemplateLine(file, line, lineNum, allowlist, findings)
+      }
+    }
+
+    // Skip allowlisted patterns for script/string literal checks.
+    if (isAllowlisted(`${file}:${line}`, allowlist) || isAllowlisted(line, allowlist)) continue
 
     // Check for Chinese characters in non-string contexts
     // (Chinese in template literals or string assignments)
     if (CHINESE_RE.test(line)) {
       // Only flag if it looks like a user-visible string
-      const trimmed = line.trim()
       if (
         trimmed.startsWith("'") ||
         trimmed.startsWith('"') ||

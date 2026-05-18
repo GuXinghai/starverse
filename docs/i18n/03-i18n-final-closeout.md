@@ -4,7 +4,7 @@
 
 **Supported languages:** zh-CN (Simplified Chinese), en-US (American English)
 
-**Infrastructure complete.** Core UI migrated. Gates and scans established.
+**Infrastructure complete.** Core UI first-pass migration completed, with explicit deferred and residual surfaces listed below. Gates and scans established.
 
 ## Completed Scope
 
@@ -26,9 +26,11 @@
 | `composer` | 22 | Complete |
 | `sendPlan` | 49 | Complete |
 | `errors` | 42 | Complete |
-| `diagnostics` | 8 | Complete |
-| `filePipeline` | 30 | Complete |
+| `diagnostics` | 8 | Locale resources complete; consumer wiring partial |
+| `filePipeline` | 30 | Locale resources complete; consumer wiring partial |
 | `dialogs` | 31 | Complete |
+
+Namespace status means locale resource coverage across zh-CN and en-US. It does not claim every consumer is fully migrated.
 
 ### Migrated Components
 - SettingsPanel (full)
@@ -49,8 +51,8 @@
 
 ### Gates & Scans
 - `npm run i18n:check` — locale key coverage gate
-- `npm run i18n:scan-hardcoded` — hardcoded UI text scanner
-- `npm run i18n:sendplan-map` — SendPlan issue code mapping validation
+- `npm run i18n:scan-hardcoded` — hardcoded UI text guardrail, including Vue template text and common static attributes
+- `npm run i18n:sendplan-map` — SendPlan production/test issue code mapping validation
 
 ## Deferred Scope
 
@@ -62,6 +64,8 @@
 - **appChatApp.logic.ts internal debug strings** — `dbBridge unavailable`, `model catalog sync failed` (not user-visible)
 - **Provider raw error messages** — shown as sanitized fallback only
 - **IPC error messages in dbBridge.ts / openRouterStreamBridge.ts** — technical errors
+- **Enhanced hardcoded-scan residuals** — known residual template strings and deferred component surfaces are tracked in `scripts/i18n/hardcoded-allowlist.txt`; the scan is a guardrail, not a full-repository zero-hardcoding proof
+- **diagnostics/filePipeline consumers** — locale namespaces exist and are covered, but consumer wiring is not full-surface complete
 
 ### Not Implemented (out of scope)
 - ja-JP support
@@ -139,12 +143,4 @@ npx vue-tsc --noEmit
 
 ## Build Status
 
-`npm run build` is blocked by **39 pre-existing typecheck errors** unrelated to i18n:
-
-- `src/next/file-type/` — 25 errors (unused imports, type mismatches)
-- `src/next/plugin-distribution/` — 3 errors
-- `src/ui-app/components/PluginManagementPanel.vue` — 5 errors
-- `src/ui-app/components/EnginePluginSettingsPanel.vue` — 3 errors
-- `electron/db/workerManager.ts` — 1 error
-
-**No i18n files have typecheck errors.** All i18n changes pass `vue-tsc --noEmit` when filtered to changed files. The build blockage is a pre-existing issue in the file-type and plugin-distribution subsystems.
+`npx vue-tsc --noEmit` and `npm run build` may be blocked by known pre-existing typecheck errors unrelated to i18n. The exact count can drift as adjacent work lands; validate the current distribution from the latest command output before treating a build failure as an i18n regression.

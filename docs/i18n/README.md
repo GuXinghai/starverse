@@ -45,9 +45,11 @@ npm run i18n:sendplan-map
 | `composer` | Chat input area | `composer.json` |
 | `sendPlan` | Send plan status, attachment blocking | `sendPlan.json` |
 | `errors` | Provider errors, attachment feedback, model catalog | `errors.json` |
-| `diagnostics` | Detection engine status | `diagnostics.json` |
-| `filePipeline` | File detection states, flags, routes | `filePipeline.json` |
+| `diagnostics` | Detection engine status resource bundle | `diagnostics.json` |
+| `filePipeline` | File detection states, flags, routes resource bundle | `filePipeline.json` |
 | `dialogs` | Native Electron dialog strings | `dialogs.json` |
+
+Namespace coverage means the locale resource files are present and consistent across supported locales. It does not imply every current consumer has been fully wired to those resources.
 
 ## Key Lookup
 

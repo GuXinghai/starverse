@@ -29,6 +29,7 @@ type RegisterIpcInput = Readonly<{
   netExpRuntimeInfo: unknown
   migrateAndCleanupConfig: () => void
   performConfigSizeCheck: (context: 'startup' | 'write') => void
+  refreshMainLocale?: () => void
   resolveAssetFileByUrl: (rawUrl: string) => Promise<ResolvedAssetFile | null>
 }>
 
@@ -55,6 +56,7 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
       isDev: input.isDev,
       migrateAndCleanupConfig: input.migrateAndCleanupConfig,
       performConfigSizeCheck: input.performConfigSizeCheck,
+      refreshMainLocale: input.refreshMainLocale,
     }),
     ...registerNetExpIpc({
       registerInvoke: input.registerInvoke,

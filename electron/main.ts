@@ -759,6 +759,7 @@ function registerCoreIpcHandlers(): string[] {
     netExpRuntimeInfo,
     migrateAndCleanupConfig: () => migrateAndCleanupConfig(store),
     performConfigSizeCheck: (context) => performConfigSizeCheck(store, context),
+    refreshMainLocale: () => initMainI18n(store, app.getPreferredSystemLanguages()),
     resolveAssetFileByUrl,
   })
 

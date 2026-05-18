@@ -16,6 +16,8 @@ Scans `src/ui-app`, `src/ui-kit`, `electron/ipc`, `electron/windows`, `electron/
 
 - Chinese characters in user-visible string literals
 - Common English UI strings (Save, Cancel, Close, Invalid URL, etc.)
+- Vue template text nodes, including static text next to mustache bindings
+- Static user-visible HTML attributes (`title`, `aria-label`, `placeholder`, `alt`)
 
 Excludes:
 - Test files, locale JSON, docs, snapshots
@@ -23,19 +25,25 @@ Excludes:
 - Technical constants, IPC channel names, CSS classes
 - Lines matching `scripts/i18n/hardcoded-allowlist.txt`
 
+This scanner is a guardrail. A passing scan means the current heuristics and allowlist did not find new high-signal hardcoded UI text; it is not a guarantee that the full repository has zero hardcoded strings.
+
 ## SendPlan Code Map: `npm run i18n:sendplan-map`
 
 Validates `ISSUE_CODE_TO_I18N` mapping in `appChatApp.logic.ts`:
 
-1. Extracts known issue codes from `sendPlanService.test.ts`
-2. Verifies each code is in the mapping
-3. Verifies each mapped i18n key exists in locale JSON
+1. Validates the maintained production issue-code list against `infra/files/sendPlanService.ts`
+2. Extracts secondary known issue codes from `sendPlanService.test.ts`
+3. Verifies each known production/test code is in the mapping unless explicitly documented as non-mapped internal flow
+4. Verifies each mapped i18n key exists in locale JSON
+
+The production list is intentionally explicit because SendPlan issue codes are emitted from object literals, helper returns, and derived warning flows. The script also scans production snake-case literals and fails on newly introduced unclassified values. When adding a production issue code in `sendPlanService.ts`, update the list in `scripts/i18n/check-sendplan-code-map.mjs` and map it unless it is explicitly handled outside `ISSUE_CODE_TO_I18N`.
 
 ## Current Allowlist (`hardcoded-allowlist.txt`)
 
 Items deferred to future task packs:
 
 - `WebSearchSettingsEditor` / `SamplingParamsSettingsEditor` / `PluginManagementPanel` / `ModelPickerDialog` — complex sub-components
+- Enhanced template-scan residuals recorded by file/line pattern for follow-up, including selected chat transcript, attachment, and settings surfaces
 - Internal debug strings (`dbBridge unavailable`, `model catalog sync failed`)
 - Technical labels (`Model`, `OpenRouter`, `provider.require_parameters`)
 - Send mode technical values (`url_ref`, `inline_base64`)
@@ -43,7 +51,7 @@ Items deferred to future task packs:
 
 ## SendPlan Issue Codes
 
-Known codes (from `sendPlanService.test.ts`):
+Known mapped production codes are validated from `sendPlanService.ts` by `scripts/i18n/check-sendplan-code-map.mjs`. The table below lists representative mapped codes and historical test coverage anchors; the script output is the source of truth for the current full set.
 
 | Code | i18n Key | Status |
 |---|---|---|

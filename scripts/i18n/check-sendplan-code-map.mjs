@@ -3,8 +3,8 @@
  * check-sendplan-code-map.mjs — SendPlan issue code ↔ i18n mapping validation
  *
  * Extracts known SendPlan issue codes from:
- * - infra/files/sendPlanService.test.ts (reasonCode/exclusionReason assertions)
- * - infra/files/sendPlanService.ts (issue() calls)
+ * - infra/files/sendPlanService.ts (production issue/reason code literals)
+ * - infra/files/sendPlanService.test.ts (test assertions, secondary guard)
  *
  * Then verifies:
  * 1. Each known code exists in ISSUE_CODE_TO_I18N mapping
@@ -22,6 +22,102 @@ const ROOT = join(__dirname, '..', '..')
 
 let failures = 0
 
+// Explicit production code inventory. The script verifies each entry still exists
+// in sendPlanService.ts, then requires it in ISSUE_CODE_TO_I18N. Keep this list
+// in sync whenever production SendPlan issue/reason code literals are added.
+const KNOWN_PRODUCTION_CODES = [
+  'advanced_file_type_detection_failed',
+  'asset_record_missing',
+  'asset_soft_deleted',
+  'attachment_lineage_blocked',
+  'attachment_parsing_incomplete',
+  'audio_requires_local_file',
+  'converted_text_hard_limit_exceeded',
+  'conversion_required_before_send',
+  'current_draft_incompatible_with_current_model',
+  'deduped_to_current_draft',
+  'draft_attachment_blocked',
+  'duplicate_history_asset',
+  'file_type_detection_failed',
+  'file_type_detection_pending',
+  'file_type_detection_required',
+  'file_type_route_blocked',
+  'history_attachment_blocked',
+  'history_attachment_excluded',
+  'incompatible_with_current_model',
+  'missing_file_input_capability',
+  'missing_mixed_input_capability',
+  'missing_pdf_input_capability',
+  'missing_text_input_capability',
+  'no_send_mode_available',
+  'no_sendable_representation',
+  'pdf_not_supported_by_provider',
+  'preview_only_asset_not_sendable',
+  'preview_send_asset_mismatch',
+  'send_asset_not_ready',
+  'stale_derived_asset',
+  'unsupported_attachment_payload',
+  'unsupported_processing_status',
+  'video_url_ref_not_allowed',
+]
+
+const KNOWN_UNMAPPED_PRODUCTION_CODES = [
+  // Dynamic warning code family (`attachment_warning`, `attachment_warning_2`, ...)
+  // uses the warning message path instead of ISSUE_CODE_TO_I18N mapping.
+  'attachment_warning',
+]
+
+const PRODUCTION_NON_ISSUE_LITERALS = [
+  'ask_user',
+  'audio_in',
+  'converted_csv',
+  'converted_markdown',
+  'converted_pdf',
+  'converted_plain_text',
+  'converted_tsv',
+  'core_only',
+  'core_plus_external',
+  'core_plus_magika',
+  'core_plus_parser',
+  'detection_failed',
+  'detection_pending',
+  'detection_required',
+  'direct_audio',
+  'direct_file',
+  'direct_image',
+  'direct_text',
+  'direct_video',
+  'engine_',
+  'extracted_audio',
+  'extracted_text',
+  'file_attachment',
+  'file_in',
+  'image_in',
+  'inline_base64',
+  'local_fs',
+  'manually_excluded',
+  'materialization_failed',
+  'native_file',
+  'not_installed',
+  'not_requested',
+  'parser_validated',
+  'partially_sendable',
+  'pdf_attachment',
+  'plain_text',
+  'probe_failed',
+  'ready_with_warnings',
+  'remote_url',
+  'rendered_images',
+  'selected_frames',
+  'sendable_with_warnings',
+  'table_markdown',
+  'text_in',
+  'text_in_prompt',
+  'url_ref',
+  'verdict_ready',
+  'video_in',
+]
+
 function fail(msg) {
   console.error(`  FAIL: ${msg}`)
   failures++
@@ -32,6 +128,54 @@ function ok(msg) {
 }
 
 // ── Extract known codes ───────────────────────────────────
+
+function readSendPlanService() {
+  const serviceFile = join(ROOT, 'infra', 'files', 'sendPlanService.ts')
+  try {
+    return readFileSync(serviceFile, 'utf-8')
+  } catch {
+    console.warn('  WARN: Could not read sendPlanService.ts')
+    return ''
+  }
+}
+
+function extractCodesFromProductionService() {
+  const content = readSendPlanService()
+  if (!content) return []
+
+  const codes = new Set()
+  const knownCodeSet = new Set(KNOWN_PRODUCTION_CODES)
+  const knownUnmappedSet = new Set(KNOWN_UNMAPPED_PRODUCTION_CODES)
+  const knownNonIssueSet = new Set(PRODUCTION_NON_ISSUE_LITERALS)
+  for (const code of KNOWN_PRODUCTION_CODES) {
+    if (content.includes(`'${code}'`) || content.includes(`\`${code}`)) {
+      codes.add(code)
+    } else {
+      fail(`known production code '${code}' not found in sendPlanService.ts; update KNOWN_PRODUCTION_CODES`)
+    }
+  }
+
+  for (const code of KNOWN_UNMAPPED_PRODUCTION_CODES) {
+    if (!(content.includes(`'${code}'`) || content.includes(`\`${code}`))) {
+      fail(`known unmapped production code '${code}' not found in sendPlanService.ts; update KNOWN_UNMAPPED_PRODUCTION_CODES`)
+    }
+  }
+
+  const literalMatches = content.matchAll(/['`]([a-z][a-z0-9_]+)['`]/g)
+  const unexpectedLiterals = new Set()
+  for (const match of literalMatches) {
+    const literal = match[1]
+    if (!literal.includes('_')) continue
+    if (knownCodeSet.has(literal) || knownUnmappedSet.has(literal) || knownNonIssueSet.has(literal)) continue
+    unexpectedLiterals.add(literal)
+  }
+
+  for (const literal of [...unexpectedLiterals].sort()) {
+    fail(`unexpected production snake-case literal '${literal}' in sendPlanService.ts; classify it as mapped, unmapped, or non-issue`)
+  }
+
+  return [...codes].sort()
+}
 
 function extractCodesFromTestFile() {
   const testFile = join(ROOT, 'infra', 'files', 'sendPlanService.test.ts')
@@ -133,9 +277,15 @@ function checkKeyExists(key) {
 console.log('SendPlan issue code mapping check\n')
 
 // 1. Extract known codes from test file
-console.log('1. Extracting known issue codes from test file:')
-const knownCodes = extractCodesFromTestFile()
-console.log(`   Found ${knownCodes.length} known codes: ${knownCodes.join(', ')}`)
+console.log('1. Extracting known issue codes from production service:')
+const productionCodes = extractCodesFromProductionService()
+console.log(`   Found ${productionCodes.length} production codes: ${productionCodes.join(', ')}`)
+
+console.log('\n1b. Extracting secondary known issue codes from test file:')
+const testCodes = extractCodesFromTestFile()
+console.log(`   Found ${testCodes.length} test codes: ${testCodes.join(', ')}`)
+const knownCodes = [...new Set([...productionCodes, ...testCodes])].sort()
+console.log(`   Combined known codes: ${knownCodes.length}`)
 
 // 2. Extract mapping from logic
 console.log('\n2. Extracting ISSUE_CODE_TO_I18N mapping:')
