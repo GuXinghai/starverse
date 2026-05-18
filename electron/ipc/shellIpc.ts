@@ -1,6 +1,7 @@
 import { shell } from 'electron'
 import type { RegisterInvoke } from './types'
 import { t } from '../i18n/mainI18n'
+import { summarizeErrorForLog } from './logSanitizer'
 
 export const SHELL_IPC_CHANNELS = ['shell:open-external'] as const
 
@@ -24,13 +25,30 @@ export function registerShellIpc(input: RegisterShellIpcInput): string[] {
       await shell.openExternal(parsed.toString())
       return { success: true }
     } catch (error) {
-      console.error('[shell] open external error:', error)
+      const errorSummary = summarizeErrorForLog(error)
+      console.error('[shell] open external error:', {
+        errorName: errorSummary.name,
+        errorCode: errorSummary.code,
+        errorCategory: categorizeOpenExternalError(url),
+      })
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorSummary.sanitizedMessage,
       }
     }
   })
 
   return [...SHELL_IPC_CHANNELS]
+}
+
+function categorizeOpenExternalError(url: unknown): string {
+  const rawUrl = typeof url === 'string' ? url : ''
+  if (!rawUrl) return 'invalid_url'
+  try {
+    const parsed = new URL(rawUrl)
+    if (!['http:', 'https:'].includes(parsed.protocol)) return 'unsupported_protocol'
+  } catch {
+    return 'invalid_url'
+  }
+  return 'open_external_failed'
 }

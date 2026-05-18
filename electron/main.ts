@@ -45,6 +45,7 @@ import {
 } from './config/configSchema'
 import { DB_SCHEMA_VERSION } from '../infra/db/schemaVersion'
 import { initMainI18n, t } from './i18n/mainI18n'
+import { basenameForLog, summarizeErrorForLog } from './ipc/logSanitizer'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const nodeRequire = createRequire(import.meta.url)
@@ -265,8 +266,14 @@ const store = new Store({
       return parsed
 
     } catch (error) {
-      console.error('[Config] JSON 解析失败，配置文件已损坏:', error)
-      console.error('[Config] 原始内容:', text.substring(0, 200))
+      const errorSummary = summarizeErrorForLog(error)
+      console.error('[Config] JSON 解析失败，配置文件已损坏:', {
+        errorName: errorSummary.name,
+        errorCode: errorSummary.code,
+        errorCategory: 'json_parse_error',
+        configTextLength: text.length,
+        configByteLength: Buffer.byteLength(text, 'utf8'),
+      })
 
       // 备份损坏的配置
       backupCorruptedConfig(text, 'parse-error')
@@ -289,18 +296,34 @@ initMainI18n(store, app.getPreferredSystemLanguages())
  */
 function backupCorruptedConfig(content: string, reason: string): void {
   try {
-    const backupPath = path.join(
+    const backupFilePath = path.join(
       app.getPath('userData'),
       `config.json.corrupted.${reason}.${Date.now()}.bak`
     )
+    const backupFile = basenameForLog(backupFilePath)
 
-    writeFile(backupPath, content, 'utf-8').then(() => {
-      console.log(`[Config] 损坏的配置已备份到: ${backupPath}`)
+    writeFile(backupFilePath, content, 'utf-8').then(() => {
+      console.log('[Config] 损坏的配置已备份', {
+        backupCreated: true,
+        backupFile,
+      })
     }).catch(err => {
-      console.error('[Config] 备份失败:', err)
+      const errorSummary = summarizeErrorForLog(err)
+      console.error('[Config] 备份失败:', {
+        backupCreated: false,
+        backupFile,
+        errorName: errorSummary.name,
+        errorCode: errorSummary.code,
+        errorCategory: 'backup_write_failed',
+      })
     })
   } catch (error) {
-    console.error('[Config] 创建备份时出错:', error)
+    const errorSummary = summarizeErrorForLog(error)
+    console.error('[Config] 创建备份时出错:', {
+      errorName: errorSummary.name,
+      errorCode: errorSummary.code,
+      errorCategory: 'backup_create_failed',
+    })
   }
 }
 
