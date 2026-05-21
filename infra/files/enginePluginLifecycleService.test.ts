@@ -12,6 +12,7 @@ import {
   createOfficialTrustedRoots,
 } from '../../src/next/file-type/officialPluginTrustedRoots'
 import {
+  MAGIKA_OFFICIAL_PLUGIN_VERSION,
   MAGIKA_OFFICIAL_PUBLIC_KEY_PEM,
 } from '../../src/next/plugin-distribution/magikaOfficialRelease'
 import type { OfficialPackageReleaseMetadata } from '../../src/next/plugin-distribution/officialPackageRelease'
@@ -179,7 +180,7 @@ function registryRecord(overrides?: Record<string, unknown>) {
   return {
     engineId: 'magika',
     displayName: 'Magika',
-    pluginVersion: '0.1.0',
+    pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION,
     manifestSchemaVersion: '1',
     manifestHash: 'a'.repeat(64),
     runtimeKind: 'local_loader',
@@ -259,7 +260,7 @@ async function createOfficialRemoteInstallFixture(options: Readonly<{
     manifestSchemaVersion: '1',
     engineId: 'magika',
     displayName: 'Magika managed plugin',
-    pluginVersion: '0.1.0',
+    pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION,
     runtimeKind: 'local_loader',
     runtimeEntry: 'runtime/runner.js',
     modelVersion: 'magika-v3',
@@ -293,7 +294,7 @@ async function createOfficialRemoteInstallFixture(options: Readonly<{
     pluginId: 'magika',
     displayName: 'Magika',
     publisher: 'Google Magika',
-    pluginVersion: '0.1.0',
+    pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION,
     runtimeKind: 'managed',
     compatibility: { platforms: ['win32'], architectures: ['x64'], starverseVersionRange: '>=0.0.0' },
     capabilities: ['file_identification', 'model_inference'],
@@ -305,7 +306,7 @@ async function createOfficialRemoteInstallFixture(options: Readonly<{
   const inventoryObj: Record<string, unknown> = {
     inventorySchemaVersion: '1',
     pluginId: 'magika',
-    pluginVersion: '0.1.0',
+    pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION,
     artifacts: [
       {
         artifactId: 'package-manifest',
@@ -404,11 +405,11 @@ async function createOfficialRemoteInstallFixture(options: Readonly<{
   const release: OfficialPackageReleaseMetadata = {
     catalogEntry: {
       pluginId: 'magika',
-      pluginVersion: '0.1.0',
+      pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION,
       runtimeKind: 'managed',
       platform: 'win32',
       arch: 'x64',
-      packageRef: 'starverse-plugin-magika-v0.1.0/test.zip',
+      packageRef: `starverse-plugin-magika-v${MAGIKA_OFFICIAL_PLUGIN_VERSION}/test.zip`,
       packageSha256: sha256(bytes),
       packageSizeBytes: bytes.byteLength,
       manifestSha256: sha256(packageManifest),
@@ -417,7 +418,7 @@ async function createOfficialRemoteInstallFixture(options: Readonly<{
       compatibility: { platforms: ['win32'], architectures: ['x64'], starverseVersionRange: '>=0.0.0' },
       channel: 'stable',
     },
-    releaseUrl: 'https://github.com/GuXinghai/starverse/releases/download/starverse-plugin-magika-v0.1.0/test.zip',
+    releaseUrl: `https://github.com/GuXinghai/starverse/releases/download/starverse-plugin-magika-v${MAGIKA_OFFICIAL_PLUGIN_VERSION}/test.zip`,
     remoteInstallEnabled: true,
     downloadPolicy: {
       maxBytes: bytes.byteLength + 10,
@@ -446,7 +447,7 @@ async function createOfficialRemoteInstallFixture(options: Readonly<{
     trustedKeys: [{ publicKeyRef, publicKeyPem }],
     targetMetadata: {
       pluginId: 'magika',
-      pluginVersion: '0.1.0',
+      pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION,
       packageSha256: sha256(bytes),
       packageSizeBytes: bytes.byteLength,
       expiresAt: '2027-05-14T00:00:00.000Z',
@@ -509,7 +510,7 @@ describe('EnginePluginLifecycleService', () => {
       officialPackageBytes: fixture.bytes,
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
 
       expect(result.ok).toBe(true)
       if (!result.ok) return
@@ -545,7 +546,7 @@ describe('EnginePluginLifecycleService', () => {
       )
       expect(existsSync(path.join(fixture.tempRoot, 'magika', 'node_modules', 'magika', 'package.json'))).toBe(true)
 
-      const duplicate = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const duplicate = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(duplicate.ok).toBe(false)
       if (!duplicate.ok) expect(duplicate.reason).toBe('already_registered')
     } finally {
@@ -565,7 +566,7 @@ describe('EnginePluginLifecycleService', () => {
       officialPackageBytes: fixture.bytes,
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(result.ok).toBe(true)
       if (!result.ok) return
       const failed = await waitForInstallOperation(service, result.value.operationId)
@@ -599,7 +600,7 @@ describe('EnginePluginLifecycleService', () => {
       officialPackageBytes: fixture.bytes,
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(result.ok).toBe(true)
       if (!result.ok) return
       const failed = await waitForInstallOperation(service, result.value.operationId)
@@ -625,7 +626,7 @@ describe('EnginePluginLifecycleService', () => {
       officialPackageBytes: fixture.bytes,
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(result.ok).toBe(true)
       if (!result.ok) return
       const failed = await waitForInstallOperation(service, result.value.operationId)
@@ -651,7 +652,7 @@ describe('EnginePluginLifecycleService', () => {
       officialPackageBytes: fixture.bytes,
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(result.ok).toBe(true)
       if (!result.ok) return
       const failed = await waitForInstallOperation(service, result.value.operationId)
@@ -677,7 +678,7 @@ describe('EnginePluginLifecycleService', () => {
       officialPackageBytes: fixture.bytes,
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(result.ok).toBe(true)
       if (!result.ok) return
       const failed = await waitForInstallOperation(service, result.value.operationId)
@@ -703,7 +704,7 @@ describe('EnginePluginLifecycleService', () => {
       officialPackageBytes: fixture.bytes,
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(result.ok).toBe(true)
       if (!result.ok) return
       const completed = await waitForInstallOperation(service, result.value.operationId)
@@ -797,7 +798,7 @@ describe('EnginePluginLifecycleService', () => {
         installRef: 'magika',
       }))
 
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(result.ok).toBe(true)
       if (!result.ok) return
       const failed = await waitForInstallOperation(service, result.value.operationId)
@@ -840,12 +841,12 @@ describe('EnginePluginLifecycleService', () => {
     })
     try {
       const startedAt = Date.now()
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(Date.now() - startedAt).toBeLessThan(100)
       expect(result.ok).toBe(true)
       if (!result.ok) return
 
-      const duplicate = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const duplicate = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(duplicate.ok).toBe(true)
       if (!duplicate.ok) return
       expect(duplicate.value.operationId).toBe(result.value.operationId)
@@ -893,7 +894,7 @@ describe('EnginePluginLifecycleService', () => {
       },
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(result.ok).toBe(true)
       if (!result.ok) return
 
@@ -905,7 +906,7 @@ describe('EnginePluginLifecycleService', () => {
       expect(checking.state).toBe('health_checking')
       expect(repo.getByEngineId('magika')).toBeNull()
 
-      const duplicate = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const duplicate = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(duplicate.ok).toBe(true)
       if (!duplicate.ok) return
       expect(duplicate.value.operationId).toBe(result.value.operationId)
@@ -945,14 +946,14 @@ describe('EnginePluginLifecycleService', () => {
       repo.upsert(registryRecord({
         engineId: 'magika',
         displayName: 'Magika',
-        pluginVersion: '0.1.0',
+        pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION,
         installState: 'uninstalled',
         enabled: false,
         healthStatus: 'unknown',
         failureReason: null,
       }))
 
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(result.ok).toBe(true)
       if (!result.ok) return
       await waitForInstallOperation(service, result.value.operationId, (state) => state === 'downloading')
@@ -1012,7 +1013,7 @@ describe('EnginePluginLifecycleService', () => {
         failureReason: null,
       }))
 
-      const first = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const first = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(first.ok).toBe(true)
       if (!first.ok) return
       await waitForInstallOperation(service, first.value.operationId, (state) => state === 'downloading')
@@ -1020,7 +1021,7 @@ describe('EnginePluginLifecycleService', () => {
       const uninstalled = await service.uninstallPlugin({ engineId: 'magika' })
       expect(uninstalled.ok).toBe(true)
 
-      const second = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const second = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(second.ok).toBe(true)
       if (!second.ok) return
       expect(second.value.operationId).not.toBe(first.value.operationId)
@@ -1052,7 +1053,7 @@ describe('EnginePluginLifecycleService', () => {
       officialPackageBytes: fixture.bytes,
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(result.ok).toBe(true)
       if (!result.ok) return
       const installed = await waitForInstallOperation(service, result.value.operationId)
@@ -1083,7 +1084,7 @@ describe('EnginePluginLifecycleService', () => {
       },
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(result.ok).toBe(true)
       if (!result.ok) return
 
@@ -1096,7 +1097,7 @@ describe('EnginePluginLifecycleService', () => {
       })
       expect(failed.sanitizedDiagnostics).toContain('download_failed')
       expect(repo.getByEngineId('magika')).toBeNull()
-      const retry = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const retry = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(retry.ok).toBe(true)
       if (retry.ok) {
         expect(retry.value.operationId).not.toBe(result.value.operationId)
@@ -1119,7 +1120,7 @@ describe('EnginePluginLifecycleService', () => {
       },
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(result.ok).toBe(true)
       if (!result.ok) return
 
@@ -1149,7 +1150,7 @@ describe('EnginePluginLifecycleService', () => {
       officialPackageBytes: fixture.bytes,
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
 
       expect(result.ok).toBe(false)
       if (!result.ok) expect(result.reason).toBe('official_trusted_root_unconfigured')
@@ -1175,7 +1176,7 @@ describe('EnginePluginLifecycleService', () => {
       officialPackageBytes: fixture.bytes,
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
 
       expect(result.ok).toBe(true)
       if (!result.ok) return
@@ -1183,7 +1184,7 @@ describe('EnginePluginLifecycleService', () => {
       expect(failed.state).toBe('failed')
       expect(failed.failureReason).toBe('signature_invalid')
       expect(repo.getByEngineId('magika')).toBeNull()
-      const retry = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const retry = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(retry.ok).toBe(false)
       if (!retry.ok) expect(retry.reason).toBe('signature_invalid')
     } finally {
@@ -1209,7 +1210,7 @@ describe('EnginePluginLifecycleService', () => {
       },
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(result.ok).toBe(true)
       if (!result.ok) return
       const failed = await waitForInstallOperation(service, result.value.operationId)
@@ -1233,7 +1234,7 @@ describe('EnginePluginLifecycleService', () => {
       },
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(result.ok).toBe(true)
       if (!result.ok) return
       const failed = await waitForInstallOperation(service, result.value.operationId)
@@ -1263,7 +1264,7 @@ describe('EnginePluginLifecycleService', () => {
       officialPackageBytes: fixture.bytes,
     })
     try {
-      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(result.ok).toBe(true)
       if (!result.ok) return
       const failed = await waitForInstallOperation(service, result.value.operationId)
@@ -2274,7 +2275,7 @@ describe('EnginePluginLifecycleService', () => {
       expect(result.value[0]).toMatchObject({
         pluginId: 'magika',
         displayName: 'Magika',
-        pluginVersion: '0.1.0',
+        pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION,
         installState: 'not_installed',
         enabled: false,
         installabilityStatus: 'official_remote_install_available',
@@ -2299,7 +2300,7 @@ describe('EnginePluginLifecycleService', () => {
       officialPackageBytes: fixture.bytes,
     })
     try {
-      const installed = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const installed = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(installed.ok).toBe(true)
       if (!installed.ok) return
       await waitForInstallOperation(service, installed.value.operationId)
@@ -2318,7 +2319,7 @@ describe('EnginePluginLifecycleService', () => {
         verificationMetadataStatus: 'production_signature_available',
       })
 
-      const reinstalled = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const reinstalled = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(reinstalled.ok).toBe(true)
       if (!reinstalled.ok) return
       const completed = await waitForInstallOperation(service, reinstalled.value.operationId)
@@ -2354,7 +2355,7 @@ describe('EnginePluginLifecycleService', () => {
         expect(uninstalled.value.failureReason).toBe('revoked')
       }
 
-      const reinstalled = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      const reinstalled = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
       expect(reinstalled.ok).toBe(false)
       if (!reinstalled.ok) {
         expect(reinstalled.reason).toBe('revoked')

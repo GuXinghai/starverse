@@ -1,0 +1,80 @@
+name: Release Magika official plugin
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Magika official plugin version to release.
+        required: true
+        default: 0.1.1
+      dryRun:
+        description: Build and sign without creating or updating the GitHub Release.
+        required: true
+        default: 'false'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, sign, and publish Magika plugin
+    runs-on: windows-latest
+    environment: plugin-release-production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Validate release input
+        shell: pwsh
+        run: |
+          if ("${{ inputs.version }}" -ne "0.1.1") {
+            throw "This workflow currently packages only Magika v0.1.1."
+          }
+
+      - name: Build official Magika package
+        shell: pwsh
+        run: node scripts/dev/package-official-magika-v011.mjs
+
+      - name: Sign official Magika package
+        shell: pwsh
+        env:
+          STARVERSE_PLUGIN_SIGNING_PRIVATE_KEY: ${{ secrets.STARVERSE_PLUGIN_SIGNING_PRIVATE_KEY }}
+          STARVERSE_PLUGIN_SIGNING_KEY_ID: ${{ secrets.STARVERSE_PLUGIN_SIGNING_KEY_ID }}
+        run: |
+          $zip = ".artifacts/plugin-packages/starverse-plugin-magika-${{ inputs.version }}-win32-x64.zip"
+          $sig = ".artifacts/plugin-packages/signatures/starverse-plugin-magika-${{ inputs.version }}-win32-x64.sig.json"
+          $summary = ".artifacts/plugin-packages/starverse-plugin-magika-${{ inputs.version }}-win32-x64.release-summary.json"
+          node scripts/plugin-signing/sign-official-plugin-release.mjs --zip $zip --out $sig --summary-out $summary
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: magika-plugin-${{ inputs.version }}-release-metadata
+          path: |
+            .artifacts/plugin-packages/starverse-plugin-magika-${{ inputs.version }}-win32-x64.summary.json
+            .artifacts/plugin-packages/starverse-plugin-magika-${{ inputs.version }}-win32-x64.release-summary.json
+            .artifacts/plugin-packages/signatures/starverse-plugin-magika-${{ inputs.version }}-win32-x64.sig.json
+
+      - name: Publish GitHub Release
+        if: ${{ inputs.dryRun != 'true' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ inputs.version }}"
+          $tag = "starverse-plugin-magika-v$version"
+          $zip = ".artifacts/plugin-packages/starverse-plugin-magika-$version-win32-x64.zip"
+          $sig = ".artifacts/plugin-packages/signatures/starverse-plugin-magika-$version-win32-x64.sig.json"
+          $title = "Starverse Magika official plugin v$version"
+          $notes = "Self-contained Magika managed runtime package for Starverse."
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $zip $sig --repo $env:GITHUB_REPOSITORY --clobber
+          } else {
+            gh release create $tag $zip $sig --repo $env:GITHUB_REPOSITORY --title $title --notes $notes
+          }

@@ -73,7 +73,9 @@ async function main() {
     packageSha256: sha256(zipBytes),
     signatureStatus: 'pending-production-signature',
     signaturePayload: 'entire zip bytes',
-    requiredRuntimePaths: [{ path: 'node_modules/magika/package.json', kind: 'file' }],
+    requiredRuntimePaths: [
+      { path: 'node_modules/magika/package.json', kind: 'file' },
+    ],
     dependencyRoots: [{ path: 'node_modules', kind: 'directory' }],
     stagedFileCount: zipEntries.length,
   }
@@ -105,6 +107,25 @@ async function copyEnginePayload() {
       await cp(sourcePath, path.join(ENGINE_DIR, dirName), { recursive: true })
     }
   }
+  await pruneRuntimeDependencyBuildArtifacts()
+  await writeFile(path.join(ENGINE_DIR, 'runtime', 'magika-pure-js-runtime.mjs'), NODE_RUNTIME_WRAPPER)
+}
+
+async function pruneRuntimeDependencyBuildArtifacts() {
+  const nodeModulesDir = path.join(ENGINE_DIR, 'node_modules')
+  const directPrunePaths = [
+    path.join(nodeModulesDir, '@tensorflow', 'tfjs', '.rollup.cache'),
+  ]
+  for (const prunePath of directPrunePaths) {
+    await rm(prunePath, { recursive: true, force: true })
+  }
+
+  const tfjsNodeDir = path.join(nodeModulesDir, '@tensorflow', 'tfjs-node')
+  if (!existsSync(tfjsNodeDir)) return
+  const entries = await readdir(tfjsNodeDir, { withFileTypes: true })
+  await Promise.all(entries
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith('build-tmp-'))
+    .map((entry) => rm(path.join(tfjsNodeDir, entry.name), { recursive: true, force: true })))
 }
 
 async function writeEngineManifest() {
@@ -240,11 +261,12 @@ function artifactClassForPath(relativePath) {
 }
 
 function artifactIdForPath(relativePath) {
-  return relativePath
+  const slug = relativePath
     .toLowerCase()
     .replace(/[^a-z0-9]+/gu, '-')
     .replace(/^-|-$/gu, '')
-    .slice(0, 180)
+    .slice(0, 160)
+  return `${slug}-${sha256(Buffer.from(relativePath, 'utf8')).slice(0, 12)}`
 }
 
 async function listFiles(rootDir) {
@@ -330,3 +352,91 @@ function crc32(buffer) {
 function sha256(bytes) {
   return createHash('sha256').update(Buffer.from(bytes)).digest('hex')
 }
+
+const NODE_RUNTIME_WRAPPER = `import { Magika } from "magika";
+import * as tf from "@tensorflow/tfjs";
+import * as http from "node:http";
+import * as path from "node:path";
+import * as fs from "node:fs/promises";
+
+function parseArgs(argv) {
+  const args = {};
+  for (let i = 2; i < argv.length; i++) {
+    if (argv[i] === "--model-dir" && i + 1 < argv.length) args.modelDir = argv[++i];
+    else if (argv[i] === "--config-dir" && i + 1 < argv.length) args.configDir = argv[++i];
+    else if (argv[i] === "--input" && i + 1 < argv.length) args.input = argv[++i];
+    else if (argv[i] === "--output-json") args.outputJson = true;
+  }
+  return args;
+}
+
+function serveDirReadOnly(root) {
+  const resolvedRoot = path.resolve(root);
+  const server = http.createServer(async (req, res) => {
+    try {
+      const reqPath = new URL(req.url, "http://localhost").pathname;
+      const filePath = path.resolve(resolvedRoot, \`.\${reqPath}\`);
+      if (!filePath.startsWith(resolvedRoot + path.sep) && filePath !== resolvedRoot) {
+        res.writeHead(403);
+        res.end("Forbidden");
+        return;
+      }
+      const stat = await fs.stat(filePath);
+      if (!stat.isFile()) {
+        res.writeHead(404);
+        res.end("Not Found");
+        return;
+      }
+      const data = await fs.readFile(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeMap = { ".json": "application/json", ".bin": "application/octet-stream" };
+      res.writeHead(200, { "Content-Type": mimeMap[ext] || "application/octet-stream" });
+      res.end(data);
+    } catch {
+      res.writeHead(500);
+      res.end("Internal Error");
+    }
+  });
+  return new Promise((resolve, reject) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve({ server, port: server.address().port });
+    });
+    server.on("error", reject);
+  });
+}
+
+async function main() {
+  const args = parseArgs(process.argv);
+  if (!args.modelDir || !args.input) {
+    process.stderr.write("usage: node runtime.mjs --model-dir <dir> --input <file> [--config-dir <dir>] [--output-json]\\n");
+    process.exit(1);
+  }
+
+  await tf.setBackend("cpu");
+  await tf.ready();
+
+  const { server, port } = await serveDirReadOnly(args.modelDir);
+  const modelURL = \`http://127.0.0.1:\${port}/model.json\`;
+  const modelConfigURL = \`http://127.0.0.1:\${port}/config.min.json\`;
+
+  try {
+    const magika = new Magika();
+    await magika.load({ modelURL, modelConfigURL });
+    const inputBytes = await fs.readFile(args.input);
+    const result = await magika.identifyBytes(new Uint8Array(inputBytes));
+    const output = {
+      label: result.prediction?.output?.label ?? "unknown",
+      score: result.prediction?.score ?? 0,
+      modelVersion: Magika.MODEL_VERSION ?? "unknown",
+    };
+    process.stdout.write(JSON.stringify(output));
+  } finally {
+    server.close();
+  }
+}
+
+main().catch((error) => {
+  process.stderr.write(\`classify error: \${error instanceof Error ? error.message : String(error)}\\n\`);
+  process.exit(1);
+});
+`

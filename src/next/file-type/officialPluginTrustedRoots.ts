@@ -1,9 +1,9 @@
 import type { TrustedCatalogPublicKey, TrustedCatalogPublicKeyMap } from './pluginCatalogSignature'
 
-const OFFICIAL_ROOT_ID = 'starverse-pdp-ed25519-prod-2026Q2'
+const OFFICIAL_ROOT_ID = 'starverse-official-plugin-ed25519-2026-05'
 
 const OFFICIAL_ROOT_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAOqFZKnmTjxC/vZpT2NWxP5n/i8R/F/rXXGiH63frJBE=
+MCowBQYDK2VwAyEA2JUh2pJsKuiIHxWl41yFXPF8GCPfkN34Y2VMbppsz0I=
 -----END PUBLIC KEY-----`
 
 const TEST_ROOT_ID = 'starverse-test-root'
