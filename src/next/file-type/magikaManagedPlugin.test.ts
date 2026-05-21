@@ -11,6 +11,7 @@ import {
   discoverMagikaManagedPlugin,
   evaluateMagikaManagedPluginAvailability,
   parseMagikaManagedPluginManifest,
+  runManagedMagikaPluginHealthCheck,
   toManagedEnginePluginManifest,
   validateMagikaPackageLayout,
   type MagikaManagedPluginManifest,
@@ -539,8 +540,12 @@ describe('magikaManagedPlugin', () => {
 
       expect(health.available).toBe(false)
       expect(health.reason).toBe('engine_unavailable')
+      expect(health.record.failureReason).toBe('engine_unavailable')
       expect(health.detail).toContain('missing_dependency')
       expect(health.detail).toContain('ERR_MODULE_NOT_FOUND')
+      expect(health.detail).toContain('health_result_unhealthy')
+      expect(health.detail).toContain('specificReason=magika_runtime_missing_dependency')
+      expect(health.detail).toContain('sanitizedRootCause=ERR_MODULE_NOT_FOUND')
       expect(health.detail).not.toContain(fixture.rootDir)
       expect(health.detail).not.toMatch(/[A-Za-z]:\\/u)
 
@@ -552,6 +557,51 @@ describe('magikaManagedPlugin', () => {
       if (loaded.available) return
       expect(loaded.reason).toBe('runtime_unavailable')
       expect(loaded.detail).toContain('ERR_MODULE_NOT_FOUND')
+    })
+  })
+
+  it('classifies missing dependency health self-test as unhealthy result with specific reason', async () => {
+    await withPluginFixture(async (fixture) => {
+      await replaceRuntimeEntry(fixture, {
+        relativePath: 'runtime/runner.mjs',
+        code: `import { Magika } from 'magika';\nvoid Magika;\n`,
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [fixture.rootDir] })
+      expect(discovery.available).toBe(true)
+      if (!discovery.available) return
+
+      const health = await runManagedMagikaPluginHealthCheck({ descriptor: discovery.descriptor })
+
+      expect(health.healthy).toBe(false)
+      expect(health.healthCheckOutcome).toBe('unhealthy_result')
+      expect(health.specificReason).toBe('magika_runtime_missing_dependency')
+      expect(health.sanitizedRootCause).toBe('ERR_MODULE_NOT_FOUND')
+      expect(health.healthCheckStage).toBe('classify_self_test')
+      expect(health.detail).toContain('health_result_unhealthy')
+      expect(health.detail).toContain('specificReason=magika_runtime_missing_dependency')
+      expect(health.detail).not.toContain(fixture.rootDir)
+    })
+  })
+
+  it('classifies health runner exceptions as execution failures', async () => {
+    await withPluginFixture(async (fixture) => {
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [fixture.rootDir] })
+      expect(discovery.available).toBe(true)
+      if (!discovery.available) return
+
+      const health = await runManagedMagikaPluginHealthCheck({
+        descriptor: discovery.descriptor,
+        async healthRunner() {
+          throw new Error('spawn failed')
+        },
+      })
+
+      expect(health.healthy).toBe(false)
+      expect(health.healthCheckOutcome).toBe('execution_failed')
+      expect(health.specificReason).toBe('magika_health_check_execution_failed')
+      expect(health.healthCheckStage).toBe('custom_healthcheck')
+      expect(health.detail).toContain('health_check_execution_failed')
+      expect(health.detail).toContain('specificReason=magika_health_check_execution_failed')
     })
   })
 
