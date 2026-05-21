@@ -56,9 +56,9 @@ This audit is read-only. No production code, tests, package.json, or lockfiles w
 
 - **File Content Identification v1.0 is complete** as a code-level and gated-runtime architecture milestone.
 - **101 of 124 tests pass** (23 fail due to `better-sqlite3` Node.js version mismatch — environment-only, not code regression).
-- **No misleading claims found** in documentation — all docs properly qualify scope.
+- **Documentation mostly qualifies scope**; later audits found several historical planning notes that need superseded/current-status labels.
 - **No `shell:true` in production code** — confirmed by scan.
-- **No contentToken/fullHash leaks in logs** — confirmed by scan.
+- **No known contentToken/fullHash leaks in the scanned file-type logs**, with Electron-layer redaction kept as a remaining hardening area below.
 - **All conversion engines remain scaffold/fake** — correctly documented as future.
 - **Major gap**: `FileAccessRef` and `FileReadAdapter` do not exist as standalone abstractions (functionality embedded in service layer).
 - **Minor gap**: `fullHash` redaction missing from Electron `logSanitizer.ts` (defense-in-depth only).
@@ -261,7 +261,7 @@ This audit is read-only. No production code, tests, package.json, or lockfiles w
 | Requirement | Status | Evidence |
 |------------|--------|----------|
 | Allowed log fields (assetId, extension, formatId, etc.) | completed | Logging follows rules |
-| Forbidden log fields (path, contentToken, fullHash, file body) | completed | 0 leaks confirmed by scan |
+| Forbidden log fields (path, contentToken, fullHash, file body) | partially_completed | File-type scan found no direct leaks; Electron-layer redaction remained a hardening follow-up in this audit |
 | FileTypeDiagnosticEvent types | completed | Types exist |
 | Developer diagnostic mode | needs_verification | Mentioned in spec; no clear implementation found |
 

@@ -678,6 +678,28 @@ function providerContext(overrides: Partial<SendPlanProviderContext> = {}): Send
 }
 
 describeIfBetterSqlite('SendPlanService send planning', () => {
+  it('treats an empty draft as idle without creating a SendPlan issue', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+
+    const collected = h.sendPlanService.collectCurrentSendInputs({
+      conversationId: 'c1',
+      model: model(['text']),
+      providerContext: providerContext(),
+    })
+    const plan = h.sendPlanService.buildSendPlan(collected)
+
+    expect(plan.status).toBe('blocked')
+    expect(plan.includedAttachments).toEqual([])
+    expect(plan.excludedAttachments).toEqual([])
+    expect(plan.attachmentPlans).toEqual([])
+    expect(plan.warnings).toEqual([])
+    expect(plan.blockingReasons).toEqual([])
+    expect(plan.requiresModelChange).toBe(false)
+    expect(plan.canProceedAfterDroppingExcluded).toBe(false)
+    expect(plan.requiresUserConfirmation).toBe(false)
+  })
+
   it('marks pure text as sendable with no attachment requirements', () => {
     const h = createHarness()
     insertConvo(h.db, 'c1')
@@ -1475,6 +1497,8 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       WHERE asset_id = 'pdf-route'
     `).run()
 
+    const beforeVerdict = h.fileTypeVerdictRepo.getCurrentByAssetId('pdf-route')
+    const beforeVerdictJson = JSON.stringify(beforeVerdict)
     const beforeMeta = h.db.prepare(`
       SELECT source_meta_json AS sourceMetaJson
       FROM file_assets
@@ -1495,10 +1519,14 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
 
     const fileModelAttachment = withFileModel.draftAttachments.find((item) => item.assetId === 'pdf-route')
     const textModelAttachment = withTextOnlyModel.draftAttachments.find((item) => item.assetId === 'pdf-route')
+    const fileModelPlan = h.sendPlanService.buildSendPlan(withFileModel)
+    const textModelPlan = h.sendPlanService.buildSendPlan(withTextOnlyModel)
     expect(fileModelAttachment?.routeCandidates?.some((candidate) => candidate.compatible && !candidate.blocked)).toBe(true)
     expect(textModelAttachment?.routeCandidates?.some((candidate) => candidate.compatible && !candidate.blocked)).toBe(true)
     expect(fileModelAttachment?.routeCandidates?.find((candidate) => candidate.route === 'direct_file')?.compatible).toBe(true)
     expect(textModelAttachment?.routeCandidates?.find((candidate) => candidate.route === 'direct_file')?.compatible).toBe(false)
+    expect(fileModelPlan.attachmentPlans[0]?.fileType).toBeTruthy()
+    expect(textModelPlan.attachmentPlans[0]?.fileType).toBeTruthy()
 
     const afterMeta = h.db.prepare(`
       SELECT source_meta_json AS sourceMetaJson
@@ -1507,5 +1535,9 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       LIMIT 1
     `).get() as { sourceMetaJson: string | null }
     expect(afterMeta.sourceMetaJson).toBe(beforeMeta.sourceMetaJson)
+    const afterVerdict = h.fileTypeVerdictRepo.getCurrentByAssetId('pdf-route')
+    expect(JSON.stringify(afterVerdict)).toBe(beforeVerdictJson)
+    expect(JSON.stringify(afterVerdict)).not.toContain('routeCandidates')
+    expect(JSON.stringify(afterVerdict)).not.toContain('direct_file')
   })
 })

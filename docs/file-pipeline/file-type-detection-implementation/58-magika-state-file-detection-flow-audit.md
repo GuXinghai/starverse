@@ -8,6 +8,8 @@
 
 本报告只记录本轮代码级审计和文档化结论，不构成生产代码修复声明，也不构成 Document Conversion and Preview 主题的实现验收声明。
 
+**Current-status note (2026-05-21)**: this audit is historical. The disabled-runtime-gate P1 described here was superseded by `59-magika-disabled-runtime-gate-fix.md`; do not treat this document's blocking conclusion as the active project status.
+
 ## 1. 范围与基线
 
 ### 1.1 Preflight
