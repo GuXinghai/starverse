@@ -213,7 +213,8 @@ export class FileTypeDetectionService {
       const currentVerdict = this.deps.fileTypeVerdictRepo.getCurrentByAssetId(assetId)
       const magikaRuntimeState = mode === 'full' ? await this.loadMagikaRuntimeState() : null
       if (mode === 'full' && (!magikaRuntimeState || !magikaRuntimeState.available)) {
-        const magikaState = magikaRuntimeState?.unavailableReason === 'runtime_error' ? 'failed' : 'unavailable'
+        const unavailableReason = magikaRuntimeState?.unavailableReason ?? 'runtime_unavailable'
+        const magikaState = isFailedMagikaRuntimeReason(unavailableReason) ? 'failed' : 'unavailable'
         return this.finishFailed(
           runningJob,
           'error.magika_unavailable',
@@ -221,7 +222,7 @@ export class FileTypeDetectionService {
           {
             ...baseFailureMeta,
             magikaState,
-            advancedFailureReason: magikaRuntimeState?.unavailableReason ?? 'runtime_unavailable',
+            advancedFailureReason: unavailableReason,
           }
         )
       }
@@ -362,11 +363,12 @@ export class FileTypeDetectionService {
         mime: normalizedMime,
       })
       if (magikaProbe.unavailableReason) {
+        const advancedFailureReason = magikaProbe.unavailableReason
         throw new FileTypeDetectionRuntimeError(
-          'error.magika_runtime_failed',
+          errorCodeForMagikaRuntimeFailure(advancedFailureReason),
           magikaProbe.unavailableDetail ?? 'Magika runtime failed during advanced detection.',
-          magikaProbe.unavailableReason === 'runtime_error' ? 'failed' : 'unavailable',
-          magikaProbe.unavailableReason
+          isFailedMagikaRuntimeReason(advancedFailureReason) ? 'failed' : 'unavailable',
+          advancedFailureReason
         )
       }
       if (!magikaProbe.evidence) {
@@ -715,6 +717,15 @@ function readyMetaFromVerdict(
     advancedAttempted: provenance?.advancedAttempted ?? usedMagika,
     advancedFailureReason: provenance?.advancedFailureReason ?? null,
   }
+}
+
+function isFailedMagikaRuntimeReason(reason: string | null | undefined): boolean {
+  if (!reason) return false
+  return reason === 'runtime_error' || reason.startsWith('magika_')
+}
+
+function errorCodeForMagikaRuntimeFailure(reason: string): string {
+  return reason.startsWith('magika_') ? `error.${reason}` : 'error.magika_runtime_failed'
 }
 
 function evidenceSourcesOf(evidence: readonly FileTypeEvidence[]): EvidenceSource[] {

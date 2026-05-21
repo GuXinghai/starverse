@@ -5,6 +5,15 @@ export const MAGIKA_RUNTIME_UNAVAILABLE_REASONS = [
   'runtime_unavailable',
   'runtime_error',
   'loader_not_configured',
+  'magika_input_too_large',
+  'magika_spawn_failed',
+  'magika_timeout',
+  'magika_output_limit',
+  'magika_process_kill_failed',
+  'magika_child_process_exit_nonzero',
+  'magika_stdout_parse_failed',
+  'magika_runtime_missing_dependency',
+  'magika_unknown_runtime_error',
 ] as const
 export type MagikaRuntimeUnavailableReason = (typeof MAGIKA_RUNTIME_UNAVAILABLE_REASONS)[number]
 
@@ -43,6 +52,17 @@ export type MagikaRuntimeLoadResult =
 
 export interface MagikaRuntimeLoader {
   load(): Promise<MagikaRuntimeLoadResult> | MagikaRuntimeLoadResult
+}
+
+export class MagikaRuntimeClassificationError extends Error {
+  constructor(
+    readonly reason: MagikaRuntimeUnavailableReason,
+    message: string,
+    readonly detail: string | null = null
+  ) {
+    super(message)
+    this.name = 'MagikaRuntimeClassificationError'
+  }
 }
 
 export function createUnavailableMagikaRuntimeLoader(

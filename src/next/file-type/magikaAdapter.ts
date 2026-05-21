@@ -2,6 +2,7 @@ import { MAGIKA_LABEL_TO_FORMAT_ID } from './taxonomyMap'
 import type { FileTypeEvidence } from './types'
 import {
   createUnavailableMagikaRuntimeLoader,
+  MagikaRuntimeClassificationError,
   type MagikaRuntimeClassifyOutput,
   type MagikaRuntimeDetectionInput,
   type MagikaRuntimeLoader,
@@ -77,6 +78,15 @@ export async function runMagikaRuntimeProbe(
         unavailableDetail: null,
       }
     } catch (error) {
+      if (error instanceof MagikaRuntimeClassificationError) {
+        return {
+          evidence: null,
+          modelVersion: normalizeModelVersion(loaded.runtime.modelVersion),
+          runtimeKind: loaded.runtime.kind,
+          unavailableReason: error.reason,
+          unavailableDetail: error.detail ?? summarizeRuntimeError(error),
+        }
+      }
       return {
         evidence: null,
         modelVersion: normalizeModelVersion(loaded.runtime.modelVersion),
