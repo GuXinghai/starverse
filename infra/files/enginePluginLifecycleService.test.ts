@@ -230,6 +230,8 @@ async function createOfficialRemoteInstallFixture(options: Readonly<{
   healthcheck?: boolean
   omitDependency?: boolean
   omitInventory?: boolean
+  tamperArtifactHash?: string
+  tamperArtifactSize?: string
 }> = {}) {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-official-magika-install-'))
   const { privateKey, publicKey } = generateKeyPairSync('ed25519')
@@ -295,7 +297,7 @@ async function createOfficialRemoteInstallFixture(options: Readonly<{
     attributionRefs: ['attribution/NOTICE.txt'],
     network: { allowed: false },
   }, null, 2))
-  const inventory = Buffer.from(JSON.stringify({
+  const inventoryObj: Record<string, unknown> = {
     inventorySchemaVersion: '1',
     pluginId: 'magika',
     pluginVersion: '0.1.0',
@@ -365,7 +367,21 @@ async function createOfficialRemoteInstallFixture(options: Readonly<{
         required: true,
       },
     ],
-  }, null, 2))
+  }
+  if (options.tamperArtifactHash || options.tamperArtifactSize) {
+    const artifacts = inventoryObj.artifacts as Array<Record<string, unknown>>
+    const targetId = options.tamperArtifactHash ?? options.tamperArtifactSize
+    const target = artifacts.find((a) => a.artifactId === targetId)
+    if (target) {
+      if (options.tamperArtifactHash) {
+        target.sha256 = '0'.repeat(64)
+      }
+      if (options.tamperArtifactSize) {
+        target.sizeBytes = 999999
+      }
+    }
+  }
+  const inventory = Buffer.from(JSON.stringify(inventoryObj, null, 2))
   const zipEntries: Array<[string, Buffer]> = [
     ['manifest.json', packageManifest],
     ['signatures/package.sig.json', packageSignatureFile],
@@ -578,6 +594,56 @@ describe('EnginePluginLifecycleService', () => {
       })
       expect(existsSync(path.join(fixture.tempRoot, 'magika'))).toBe(false)
       await waitForPathToDisappear(path.join(fixture.tempRoot, `magika.stage-${result.value.operationId}`))
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('fails official Magika install when inventory artifact sha256 is tampered', async () => {
+    const fixture = await createOfficialRemoteInstallFixture({ tamperArtifactHash: 'managed-runtime' })
+    const { db, service, repo } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      magikaOfficialRelease: fixture.release,
+      officialPackageBytes: fixture.bytes,
+    })
+    try {
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      const failed = await waitForInstallOperation(service, result.value.operationId)
+      expect(failed.state).toBe('failed')
+      expect(repo.getByEngineId('magika')).toMatchObject({
+        installState: 'failed',
+        enabled: false,
+        healthStatus: 'unhealthy',
+      })
+      expect(existsSync(path.join(fixture.tempRoot, 'magika'))).toBe(false)
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('fails official Magika install when inventory artifact size is tampered', async () => {
+    const fixture = await createOfficialRemoteInstallFixture({ tamperArtifactSize: 'config' })
+    const { db, service, repo } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      magikaOfficialRelease: fixture.release,
+      officialPackageBytes: fixture.bytes,
+    })
+    try {
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: '0.1.0' })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      const failed = await waitForInstallOperation(service, result.value.operationId)
+      expect(failed.state).toBe('failed')
+      expect(repo.getByEngineId('magika')).toMatchObject({
+        installState: 'failed',
+        enabled: false,
+        healthStatus: 'unhealthy',
+      })
+      expect(existsSync(path.join(fixture.tempRoot, 'magika'))).toBe(false)
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })
