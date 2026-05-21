@@ -1,7 +1,7 @@
 # Documentation Governance Records (Archived)
 
-**Status**: archived  
-**Archived**: 2026-05-22  
+**Status**: archived
+**Archived**: 2026-05-22
 **Owner**: DGR-1
 
 ---

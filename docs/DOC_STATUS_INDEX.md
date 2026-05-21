@@ -2,8 +2,8 @@
 
 **Purpose**: Help agents judge document timeliness and reading priority.
 
-**Status**: active  
-**Last updated**: 2026-05-22  
+**Status**: active
+**Last updated**: 2026-05-22
 **Governance**: DGR-1 dual-dimension status model
 
 ---

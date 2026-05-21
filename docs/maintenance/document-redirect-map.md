@@ -2,8 +2,8 @@
 
 **Purpose**: Track all document moves, renames, and archives for traceability.
 
-**Status**: active  
-**Last updated**: 2026-05-22  
+**Status**: active
+**Last updated**: 2026-05-22
 **Owner**: DGR-1
 
 ---
@@ -86,8 +86,8 @@
 ```markdown
 # [Directory Name] (Archived)
 
-**Status**: archived  
-**Archived**: 2026-05-22  
+**Status**: archived
+**Archived**: 2026-05-22
 **Reason**: [Reason for archive]
 
 This directory has been archived. Documents have been moved to:
@@ -105,8 +105,8 @@ Redirect map: [docs/maintenance/document-redirect-map.md](../maintenance/documen
 ```markdown
 # [Original Filename] (Renamed)
 
-**Status**: renamed  
-**Renamed**: 2026-05-22  
+**Status**: renamed
+**Renamed**: 2026-05-22
 **New name**: [New filename]
 
 This file has been renamed. The content is now at:
