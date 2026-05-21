@@ -694,6 +694,16 @@ function writeAssetConversionFailureMeta(
 ): void {
   const row = runtime.db.prepare('SELECT source_meta_json AS sourceMetaJson FROM file_assets WHERE id=@id LIMIT 1').get({ id: assetId }) as { sourceMetaJson?: string | null } | undefined
   const existing = row?.sourceMetaJson ? safeParseJson(row.sourceMetaJson) : null
+  const routeLevelOnly = isRouteLevelTextConversionFailure(errorCode)
+  const existingLineage = normalizeObject(existing?.lineage) ?? {}
+  const nextLineage = routeLevelOnly
+    ? clearRouteLevelTextConversionStale(existingLineage)
+    : {
+        ...existingLineage,
+        sendAssetReady: false,
+        stale: true,
+        staleReason: errorCode || 'send_asset_not_ready',
+      }
   const next = {
     ...(existing ?? {}),
     textConversion: {
@@ -701,12 +711,7 @@ function writeAssetConversionFailureMeta(
       errorCode,
       errorMessage,
     },
-    lineage: {
-      ...(normalizeObject(existing?.lineage) ?? {}),
-      sendAssetReady: false,
-      stale: true,
-      staleReason: errorCode || 'send_asset_not_ready',
-    },
+    lineage: nextLineage,
   }
   runtime.db.prepare(`
     UPDATE file_assets
@@ -717,6 +722,20 @@ function writeAssetConversionFailureMeta(
     sourceMetaJson: JSON.stringify(next),
     updatedAt: Date.now(),
   })
+}
+
+function isRouteLevelTextConversionFailure(errorCode: string): boolean {
+  return errorCode === 'derivative_asset_not_supported'
+}
+
+function clearRouteLevelTextConversionStale(lineage: Record<string, any>): Record<string, any> {
+  const next = { ...lineage }
+  if (next.staleReason === 'derivative_asset_not_supported') {
+    next.stale = false
+    next.staleReason = null
+    delete next.sendAssetReady
+  }
+  return next
 }
 
 function normalizeObject(value: unknown): Record<string, any> | null {

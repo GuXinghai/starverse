@@ -153,9 +153,12 @@ export class SendPlanService {
         const fileAsset = draftAssetMap.get(attachment.assetId) ?? null
         const verdictRecord = verdictByAssetId.get(attachment.assetId) ?? null
         const verdict = verdictRecord?.verdict ?? null
-        const routeCandidates = buildRouteCandidatesFromVerdict(
-          verdict,
-          modelCapabilities
+        const routeCandidates = applyRouteLevelDerivativeAvailability(
+          buildRouteCandidatesFromVerdict(
+            verdict,
+            modelCapabilities
+          ),
+          fileAsset
         )
         return {
           attachmentId: attachment.id,
@@ -549,7 +552,10 @@ function mapHistoryAttachment(
   verdict: FileTypeVerdict | null,
   modelCapabilities: ModelInputCapabilities
 ): CollectedAttachmentInput {
-  const routeCandidates = buildRouteCandidatesFromVerdict(verdict, modelCapabilities)
+  const routeCandidates = applyRouteLevelDerivativeAvailability(
+    buildRouteCandidatesFromVerdict(verdict, modelCapabilities),
+    fileAsset
+  )
   const base = {
     attachmentId: item.attachmentId,
     assetId: item.assetId,
@@ -661,6 +667,52 @@ function buildRouteCandidatesFromVerdict(
     verdict,
     modelCapabilities,
   })
+}
+
+function applyRouteLevelDerivativeAvailability(
+  routeCandidates: readonly SendPlanCandidate[] | null,
+  fileAsset: FileAssetRecord | null
+): readonly SendPlanCandidate[] | null {
+  const reason = routeLevelTextDerivativeUnavailableReason(fileAsset)
+  if (!routeCandidates || !reason) return routeCandidates
+  return routeCandidates.map((candidate) => {
+    if (!routeDependsOnTextDerivative(candidate.route)) return candidate
+    const blockedBy = Array.from(new Set([...candidate.blockedBy, reason]))
+    const reasonCodes = Array.from(new Set([...candidate.reasonCodes, reason]))
+    return {
+      ...candidate,
+      compatible: false,
+      blocked: true,
+      blockedBy,
+      reasonCodes,
+      blockedLabelCodes: candidate.blockedLabelCodes.length > 0 ? [...candidate.blockedLabelCodes] : ['blocked.policy_denied'],
+    }
+  })
+}
+
+function routeLevelTextDerivativeUnavailableReason(fileAsset: FileAssetRecord | null): string | null {
+  const meta = normalizeObject(fileAsset?.sourceMetaJson)
+  const textConversion = normalizeObject(meta?.textConversion)
+  const status = typeof textConversion?.status === 'string' ? textConversion.status.trim() : ''
+  const errorCode = typeof textConversion?.errorCode === 'string' ? textConversion.errorCode.trim() : ''
+  return status === 'failed' && isRouteLevelTextConversionFailure(errorCode) ? errorCode : null
+}
+
+function isRouteLevelTextConversionFailure(errorCode: string | null): boolean {
+  return errorCode === 'derivative_asset_not_supported'
+}
+
+function routeDependsOnTextDerivative(route: SendRoute): boolean {
+  switch (route) {
+    case 'converted_markdown':
+    case 'converted_plain_text':
+    case 'converted_csv':
+    case 'converted_tsv':
+    case 'extracted_text':
+      return true
+    default:
+      return false
+  }
 }
 
 function semanticSummaryFromRouteCandidates(
@@ -1418,8 +1470,9 @@ function evaluateAttachmentLineageSummary(attachment: CollectedAttachmentInput):
     return typeof fromRoot === 'boolean' ? fromRoot : null
   }
 
-  const stale = readBoolean('stale') === true
   const staleReason = readString('staleReason')
+  const routeLevelDerivativeUnavailable = isRouteLevelTextConversionStale(meta, staleReason)
+  const stale = readBoolean('stale') === true && !routeLevelDerivativeUnavailable
   const sourceHash = readString('sourceHash') ?? asset.sha256 ?? null
   const previewContentHash = readString('previewContentHash')
   const sendContentHash = readString('sendContentHash')
@@ -1428,7 +1481,7 @@ function evaluateAttachmentLineageSummary(attachment: CollectedAttachmentInput):
   const previewSettingsHash = readString('previewSettingsHash')
   const sendSettingsHash = readString('sendSettingsHash')
   const conversionSettingsHash = readString('conversionSettingsHash') ?? sendSettingsHash
-  const sendAssetReady = readBoolean('sendAssetReady')
+  const sendAssetReady = routeLevelDerivativeUnavailable ? null : readBoolean('sendAssetReady')
   const isPreviewOnlyExplicit = readBoolean('previewOnly') === true
   const isDerived = asset.sourceKind === 'derived'
 
@@ -1452,6 +1505,13 @@ function evaluateAttachmentLineageSummary(attachment: CollectedAttachmentInput):
     sendContentHash,
     conversionSettingsHash,
   }
+}
+
+function isRouteLevelTextConversionStale(meta: Record<string, unknown> | null, staleReason: string | null): boolean {
+  const textConversion = normalizeObject(meta?.textConversion)
+  const status = typeof textConversion?.status === 'string' ? textConversion.status.trim() : ''
+  const errorCode = typeof textConversion?.errorCode === 'string' ? textConversion.errorCode.trim() : ''
+  return status === 'failed' && isRouteLevelTextConversionFailure(errorCode) && staleReason === errorCode
 }
 
 function valuePairMismatch(left: string | null, right: string | null): boolean {
@@ -1839,6 +1899,7 @@ export const __sendPlanEligibilityInternals = {
   evaluateCompatibilityFromSemantic,
   evaluateAttachmentCompatibilityByMode,
   buildRouteCandidatesFromVerdict,
+  applyRouteLevelDerivativeAvailability,
   semanticSummaryFromRouteCandidates,
   evaluateRouteCandidateGate,
   modelInputCapabilitiesFromDescriptor,
