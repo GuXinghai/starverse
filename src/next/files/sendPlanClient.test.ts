@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildCurrentSendPlan } from './sendPlanClient'
+import {
+  buildCurrentSendPlan,
+  prepareOpenRouterReplayFromMessage,
+  SendPlanClientContractError,
+} from './sendPlanClient'
 
 describe('sendPlanClient', () => {
   const originalDbBridge = (globalThis as any).dbBridge
@@ -58,5 +62,56 @@ describe('sendPlanClient', () => {
     }))
     expect(result.sendPlan.status).toBe('sendable')
     expect(result.storageRootDir).toBe('C:/tmp')
+  })
+
+  it('throws a contract error for malformed replay preparation responses', async () => {
+    const invoke = vi.fn(async () => ({
+      status: 'unexpected',
+      currentUserContentBlocks: [],
+      sentAssetIds: [],
+      includedAttachments: [],
+      excludedAttachments: [],
+      blockingReasons: [],
+      diagnostics: {},
+      modelCapabilitySnapshot: {},
+      manifestDraft: {},
+    }))
+    ;(globalThis as any).dbBridge = { invoke }
+
+    await expect(prepareOpenRouterReplayFromMessage({
+      branchId: 'branch-1',
+      userMessageId: 'user-1',
+      replayMode: 'current',
+      model: {
+        providerKey: 'openrouter',
+        modelId: 'openai/gpt-4o',
+        modelKey: 'openrouter::openai/gpt-4o',
+        inputModalities: ['text'],
+        outputModalities: ['text'],
+      },
+      providerContext: {
+        providerKey: 'openrouter',
+      },
+    })).rejects.toMatchObject({
+      name: 'SendPlanClientContractError',
+      code: 'sendplan_contract_decode_failed',
+      method: 'sendPlan.prepareOpenRouterReplayFromMessage',
+    })
+
+    await expect(prepareOpenRouterReplayFromMessage({
+      branchId: 'branch-1',
+      userMessageId: 'user-1',
+      replayMode: 'current',
+      model: {
+        providerKey: 'openrouter',
+        modelId: 'openai/gpt-4o',
+        modelKey: 'openrouter::openai/gpt-4o',
+        inputModalities: ['text'],
+        outputModalities: ['text'],
+      },
+      providerContext: {
+        providerKey: 'openrouter',
+      },
+    })).rejects.toBeInstanceOf(SendPlanClientContractError)
   })
 })

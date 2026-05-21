@@ -453,6 +453,7 @@ console.info(`[build] main build id: ${MAIN_BUILD.buildId} (source: ${MAIN_BUILD
 type ResolvedAssetFile = Readonly<{
   path: string
   mime: string
+  assetId: string
 }>
 
 let assetProtocolRegistered = false
@@ -494,16 +495,23 @@ async function resolveAssetFileByUrl(rawUrl: string): Promise<ResolvedAssetFile 
     const filePath = path.resolve(String(row.path ?? '').trim())
     if (!filePath) return null
     if (!isPathWithinRoot(filePath, assetRoot)) {
-      console.warn('[asset-protocol] blocked out-of-root asset path:', filePath)
+      console.warn('[asset-protocol] blocked out-of-root asset path:', {
+        assetId,
+        pathClass: 'out_of_root',
+        file: basenameForLog(filePath),
+      })
       return null
     }
     if (!existsSync(filePath)) return null
 
     const mimeRaw = String(row.mime ?? '').trim().toLowerCase()
     const mime = mimeRaw.startsWith('image/') ? mimeRaw : 'application/octet-stream'
-    return { path: filePath, mime }
+    return { path: filePath, mime, assetId }
   } catch (error) {
-    console.warn('[asset-protocol] failed to resolve asset by id:', error)
+    console.warn('[asset-protocol] failed to resolve asset by id:', {
+      assetId,
+      error: summarizeErrorForLog(error),
+    })
     return null
   }
 }
@@ -523,7 +531,11 @@ async function registerAssetProtocol() {
         },
       })
     } catch (error) {
-      console.warn('[asset-protocol] failed to read file:', resolved.path, error)
+      console.warn('[asset-protocol] failed to read file:', {
+        assetId: resolved.assetId,
+        file: basenameForLog(resolved.path),
+        error: summarizeErrorForLog(error),
+      })
       return new Response('Asset read failed', { status: 500 })
     }
   })
@@ -533,7 +545,7 @@ async function registerAssetProtocol() {
       const handled = await session.defaultSession.protocol.isProtocolHandled('asset')
       console.info(`[asset-protocol] scheme "asset" registered: ${handled}`)
     } catch (error) {
-      console.warn('[asset-protocol] failed to verify scheme registration:', error)
+      console.warn('[asset-protocol] failed to verify scheme registration:', summarizeErrorForLog(error))
     }
   }
 }

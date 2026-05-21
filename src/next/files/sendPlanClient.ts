@@ -46,6 +46,19 @@ export type PrepareOpenRouterReplayFromMessageResult = Readonly<{
   manifestDraft: Record<string, unknown>
 }>
 
+export class SendPlanClientContractError extends Error {
+  readonly code = 'sendplan_contract_decode_failed'
+  readonly method: string
+  readonly issues: string[]
+
+  constructor(method: string, issues: readonly string[]) {
+    super(`${method} returned malformed IPC response: ${issues.join('; ')}`)
+    this.name = 'SendPlanClientContractError'
+    this.method = method
+    this.issues = [...issues]
+  }
+}
+
 function getDbBridge(): DbBridge | null {
   const bridge = (globalThis as any).dbBridge as DbBridge | undefined
   return bridge && typeof bridge.invoke === 'function' ? bridge : null
@@ -65,17 +78,50 @@ export async function buildCurrentSendPlan(input: BuildCurrentSendPlanInput): Pr
 export async function prepareOpenRouterReplayFromMessage(
   input: PrepareOpenRouterReplayFromMessageInput
 ): Promise<PrepareOpenRouterReplayFromMessageResult> {
-  const raw = await requireDbBridge().invoke('sendPlan.prepareOpenRouterReplayFromMessage', input) as any
-  const status = raw?.status === 'sendable' || raw?.status === 'needs_confirmation' ? raw.status : 'blocked'
-  return {
-    status,
-    currentUserContentBlocks: Array.isArray(raw?.currentUserContentBlocks) ? raw.currentUserContentBlocks : [],
-    sentAssetIds: Array.isArray(raw?.sentAssetIds) ? raw.sentAssetIds.map((id: unknown) => String(id ?? '').trim()).filter(Boolean) : [],
-    includedAttachments: Array.isArray(raw?.includedAttachments) ? raw.includedAttachments : [],
-    excludedAttachments: Array.isArray(raw?.excludedAttachments) ? raw.excludedAttachments : [],
-    blockingReasons: Array.isArray(raw?.blockingReasons) ? raw.blockingReasons : [],
-    diagnostics: raw?.diagnostics && typeof raw.diagnostics === 'object' ? raw.diagnostics : {},
-    modelCapabilitySnapshot: raw?.modelCapabilitySnapshot && typeof raw.modelCapabilitySnapshot === 'object' ? raw.modelCapabilitySnapshot : {},
-    manifestDraft: raw?.manifestDraft && typeof raw.manifestDraft === 'object' ? raw.manifestDraft : {},
+  const raw = await requireDbBridge().invoke('sendPlan.prepareOpenRouterReplayFromMessage', input)
+  return decodePrepareOpenRouterReplayFromMessageResponse(raw)
+}
+
+function decodePrepareOpenRouterReplayFromMessageResponse(raw: unknown): PrepareOpenRouterReplayFromMessageResult {
+  const method = 'sendPlan.prepareOpenRouterReplayFromMessage'
+  const issues: string[] = []
+  if (!isRecord(raw)) {
+    throw new SendPlanClientContractError(method, ['response must be an object'])
   }
+  const status = raw.status
+  if (status !== 'sendable' && status !== 'blocked' && status !== 'needs_confirmation') {
+    issues.push('status must be sendable, blocked, or needs_confirmation')
+  }
+  for (const field of [
+    'currentUserContentBlocks',
+    'sentAssetIds',
+    'includedAttachments',
+    'excludedAttachments',
+    'blockingReasons',
+  ] as const) {
+    if (!Array.isArray(raw[field])) issues.push(`${field} must be an array`)
+  }
+  for (const field of ['diagnostics', 'modelCapabilitySnapshot', 'manifestDraft'] as const) {
+    if (!isRecord(raw[field])) issues.push(`${field} must be an object`)
+  }
+  if (Array.isArray(raw.sentAssetIds) && raw.sentAssetIds.some((id) => typeof id !== 'string')) {
+    issues.push('sentAssetIds must contain only strings')
+  }
+  if (issues.length > 0) throw new SendPlanClientContractError(method, issues)
+
+  return {
+    status: status as PrepareOpenRouterReplayFromMessageResult['status'],
+    currentUserContentBlocks: raw.currentUserContentBlocks as unknown[],
+    sentAssetIds: (raw.sentAssetIds as string[]).map((id) => id.trim()).filter(Boolean),
+    includedAttachments: raw.includedAttachments as unknown[],
+    excludedAttachments: raw.excludedAttachments as unknown[],
+    blockingReasons: raw.blockingReasons as unknown[],
+    diagnostics: raw.diagnostics as Record<string, unknown>,
+    modelCapabilitySnapshot: raw.modelCapabilitySnapshot as Record<string, unknown>,
+    manifestDraft: raw.manifestDraft as Record<string, unknown>,
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
 }

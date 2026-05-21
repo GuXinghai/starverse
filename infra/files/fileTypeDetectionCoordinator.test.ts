@@ -236,6 +236,36 @@ describe('FileTypeDetectionCoordinator', () => {
     })
   })
 
+  it('routes to basic detection without loading Magika when registry health is unhealthy', async () => {
+    let loadCalls = 0
+    await withHarness({
+      loader: {
+        load: () => {
+          loadCalls += 1
+          return createMockMagikaRuntimeLoader({ modelVersion: 'magika-v1', output: { label: 'txt', score: 0.99 } }).load()
+        },
+      },
+    }, async (ctx) => {
+      await createStoredAsset(ctx, 'asset-unhealthy')
+      upsertMagikaRegistry(ctx.enginePluginRegistryRepo, {
+        healthStatus: 'unhealthy',
+        failureReason: 'engine_failed',
+      })
+
+      const result = await ctx.coordinator.ensureVerdictForAsset('asset-unhealthy', { detectionTrigger: 'upload' })
+
+      expect(loadCalls).toBe(0)
+      expect(result).toMatchObject({ status: 'ready', pipeline: 'basic', magikaState: 'failed' })
+      expect(result.verdict?.verdict.provenance).toMatchObject({
+        detectionLevel: 'basic',
+        engineMode: 'core_only',
+        usedMagika: false,
+        magikaState: 'failed',
+      })
+      expect(result.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
+    })
+  })
+
   it('routes to advanced detection when Magika is installed, enabled, and available', async () => {
     await withHarness({
       loader: createMockMagikaRuntimeLoader({

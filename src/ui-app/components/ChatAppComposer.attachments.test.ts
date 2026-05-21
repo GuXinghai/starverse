@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
+import { t } from '@/shared/i18n'
 import ChatAppComposer from './ChatAppComposer.vue'
 
 function installDbBridgeStub() {
@@ -72,9 +73,9 @@ describe('ChatAppComposer attachments entry', () => {
 
     await user.click(screen.getByTestId('composer-attach-toggle'))
 
-    expect(screen.getByTestId('composer-attach-file').textContent).toContain('Upload file')
-    expect(screen.getByTestId('composer-attach-image').textContent).toContain('Upload image')
-    expect(screen.getByTestId('composer-attach-url').textContent).toContain('Upload link')
+    expect(screen.getByTestId('composer-attach-file').textContent).toContain(t('composer.actions.uploadFile'))
+    expect(screen.getByTestId('composer-attach-image').textContent).toContain(t('composer.actions.uploadImage'))
+    expect(screen.getByTestId('composer-attach-url').textContent).toContain(t('composer.actions.uploadLink'))
   })
 
   it('disables image upload entry when the current model does not support images', async () => {

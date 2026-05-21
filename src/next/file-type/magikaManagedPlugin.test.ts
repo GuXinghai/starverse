@@ -55,7 +55,7 @@ async function withPluginFixture(
   const runtimeEntryPath = path.join(runtimeDir, 'runner.js')
   const modelPath = path.join(modelDir, 'model.bin')
   const configPath = path.join(modelDir, 'config.json')
-  await writeFile(runtimeEntryPath, 'module.exports = {}')
+  await writeFile(runtimeEntryPath, `process.stdout.write(JSON.stringify({ label: 'json', score: 0.98, modelVersion: 'fixture-runtime-v1' }));`)
   await writeFile(modelPath, 'mock-model')
   await writeFile(configPath, '{"version":"m-v1"}')
 
@@ -234,6 +234,34 @@ describe('magikaManagedPlugin', () => {
       expect(discovery.available).toBe(false)
       if (discovery.available) return
       expect(discovery.reason).toBe('plugin_path_outside_root')
+    })
+  })
+
+  it('rejects malformed required runtime path entries instead of dropping them', async () => {
+    await withPluginFixture(async ({ rootDir, manifestPath }) => {
+      await updateManifestObject(manifestPath, (manifest) => {
+        manifest.requiredRuntimePaths = [{ path: 'runtime/runner.js' }]
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('manifest_invalid')
+      expect(discovery.detail).toContain('requiredRuntimePaths[0].kind')
+      expect(discovery.detail).not.toContain(rootDir)
+    })
+  })
+
+  it('rejects malformed dependency root entries instead of dropping them', async () => {
+    await withPluginFixture(async ({ rootDir, manifestPath }) => {
+      await updateManifestObject(manifestPath, (manifest) => {
+        manifest.dependencyRoots = ['runtime', 42]
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('manifest_invalid')
+      expect(discovery.detail).toContain('dependencyRoots[1]')
+      expect(discovery.detail).not.toContain(rootDir)
     })
   })
 
@@ -510,7 +538,8 @@ describe('magikaManagedPlugin', () => {
       })
 
       expect(health.available).toBe(false)
-      expect(health.reason).toBe('engine_failed')
+      expect(health.reason).toBe('engine_unavailable')
+      expect(health.detail).toContain('missing_dependency')
       expect(health.detail).toContain('ERR_MODULE_NOT_FOUND')
       expect(health.detail).not.toContain(fixture.rootDir)
       expect(health.detail).not.toMatch(/[A-Za-z]:\\/u)
@@ -524,6 +553,28 @@ describe('magikaManagedPlugin', () => {
       expect(loaded.reason).toBe('runtime_unavailable')
       expect(loaded.detail).toContain('ERR_MODULE_NOT_FOUND')
     })
+  })
+
+  it('does not mark manifest-only empty runtime healthy even when manifest healthcheck exits zero', async () => {
+    await withPluginFixture(
+      async (fixture) => {
+        await replaceRuntimeEntry(fixture, {
+          relativePath: 'runtime/runner.js',
+          code: 'module.exports = {}',
+        })
+
+        const health = await evaluateMagikaManagedPluginAvailability({
+          pluginDirs: [fixture.rootDir],
+        })
+
+        expect(health.available).toBe(false)
+        expect(health.reason).toBe('engine_failed')
+        expect(health.detail).toContain('stdout_parse_failed')
+        expect(health.detail).not.toContain(fixture.rootDir)
+        expect(health.detail).not.toMatch(/[A-Za-z]:\\/u)
+      },
+      { withHealthcheck: true }
+    )
   })
 
   it('passes default runtime health check for a healthy fake runtime and remains available', async () => {

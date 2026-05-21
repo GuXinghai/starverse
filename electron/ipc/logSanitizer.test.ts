@@ -47,4 +47,30 @@ describe('logSanitizer', () => {
     expect(summary.sanitizedMessage).not.toContain('C:\\Users\\alice\\notes.txt')
     expect(summary.sanitizedMessage).not.toContain('abc123def456')
   })
+
+  it('supports asset protocol warning payloads without absolute paths', () => {
+    const payload = {
+      assetId: 'asset-1',
+      pathClass: 'out_of_root',
+      file: basenameForLog('C:\\Users\\alice\\Pictures\\secret.png'),
+      error: summarizeErrorForLog(new Error('ENOENT C:\\Users\\alice\\Pictures\\secret.png')),
+    }
+    const serialized = JSON.stringify(payload)
+    expect(serialized).toContain('secret.png')
+    expect(serialized).not.toContain('C:\\Users\\alice')
+    expect(serialized).not.toMatch(/[A-Za-z]:\\/u)
+  })
+
+  it('supports asset protocol scheme-registration warnings without raw error paths', () => {
+    const error = new Error('failed for C:\\Users\\alice\\AppData\\Local\\Starverse\\asset-cache contentToken=tok fullHash=abc123def456abc123def456')
+    error.stack = 'Error\n at verify (C:\\Users\\alice\\Starverse\\electron\\main.ts:1:1)'
+    const payload = summarizeErrorForLog(error)
+    const serialized = JSON.stringify(payload)
+    expect(serialized).toContain('[redacted-path]')
+    expect(serialized).toContain('[redacted-token]')
+    expect(serialized).toContain('[redacted-hash]')
+    expect(serialized).not.toContain('C:\\Users\\alice')
+    expect(serialized).not.toContain('contentToken=tok')
+    expect(serialized).not.toContain('abc123def456')
+  })
 })
