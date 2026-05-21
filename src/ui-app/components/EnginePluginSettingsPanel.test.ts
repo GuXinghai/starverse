@@ -70,6 +70,7 @@ describe('EnginePluginSettingsPanel', () => {
 
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
+    vi.restoreAllMocks()
   })
 
   it('shows trusted root unconfigured status', async () => {
@@ -216,8 +217,9 @@ describe('EnginePluginSettingsPanel', () => {
     })
   })
 
-  it('calls uninstallPlugin via dbBridge when Uninstall clicked', async () => {
+  it('calls uninstallPlugin via dbBridge when managed Uninstall plugin is confirmed', async () => {
     const user = userEvent.setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const bridge = createDbBridgeMock({
       listOfficialPlugins: { ok: true, value: [] },
       listInstalledPlugins: [{
@@ -233,14 +235,85 @@ describe('EnginePluginSettingsPanel', () => {
     render(EnginePluginSettingsPanel)
 
     await waitFor(() => {
-      expect(screen.getByText('Uninstall')).toBeTruthy()
+      expect(screen.getByText('Uninstall plugin')).toBeTruthy()
     })
 
-    await user.click(screen.getByText('Uninstall'))
+    await user.click(screen.getByText('Uninstall plugin'))
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Starverse-managed Magika runtime'))
 
     await waitFor(() => {
       expect(bridge.invoke).toHaveBeenCalledWith('enginePluginLifecycle.uninstallPlugin', { engineId: 'magika' })
     })
+  })
+
+  it('shows Remove registration for local package rows without file deletion wording', async () => {
+    const user = userEvent.setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const bridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [] },
+      listInstalledPlugins: [{
+        engineId: 'local-magika', displayName: 'Local Magika', pluginVersion: '1.0.0',
+        manifestSchemaVersion: '1', runtimeKind: 'local_loader', modelVersion: null,
+        installState: 'installed', enabled: false, healthStatus: 'unknown',
+        failureReason: null, installSource: 'local_package', installRootKind: 'external_path',
+        installedAt: 1, updatedAt: 2, lastVerifiedAt: 2, lastHealthCheckAt: null,
+      }],
+    })
+    ;(globalThis as any).dbBridge = bridge
+
+    render(EnginePluginSettingsPanel)
+
+    await user.click(await screen.findByText('Remove registration'))
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('will not delete external files'))
+    await waitFor(() => {
+      expect(bridge.invoke).toHaveBeenCalledWith('enginePluginLifecycle.uninstallPlugin', { engineId: 'local-magika' })
+    })
+  })
+
+  it('shows cleanup_failed when managed uninstall cleanup fails', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const bridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [] },
+      listInstalledPlugins: [{
+        engineId: 'magika', displayName: 'Magika Plugin', pluginVersion: '1.0.0',
+        manifestSchemaVersion: '1', runtimeKind: 'local_loader', modelVersion: null,
+        installState: 'installed', enabled: false, healthStatus: 'unhealthy',
+        failureReason: null, installSource: 'official_catalog', installRootKind: 'managed_root',
+        installedAt: 1, updatedAt: 2, lastVerifiedAt: 2, lastHealthCheckAt: 3,
+      }],
+      uninstallPlugin: { ok: false, reason: 'cleanup_failed', message: 'cleanup_failed' },
+    })
+    ;(globalThis as any).dbBridge = bridge
+
+    const { container } = render(EnginePluginSettingsPanel)
+
+    await user.click(await screen.findByText('Uninstall plugin'))
+
+    await waitFor(() => expect(container.textContent).toContain('cleanup_failed'))
+    expect(container.textContent).not.toContain('Uninstall plugin:')
+  })
+
+  it('does not expose plugin removal actions for uninstalled tombstones', async () => {
+    ;(globalThis as any).dbBridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [] },
+      listInstalledPlugins: [{
+        engineId: 'magika', displayName: 'Magika Plugin', pluginVersion: '1.0.0',
+        manifestSchemaVersion: '1', runtimeKind: 'local_loader', modelVersion: null,
+        installState: 'uninstalled', enabled: false, healthStatus: 'unknown',
+        failureReason: null, installSource: 'official_catalog', installRootKind: 'managed_root',
+        installedAt: 1, updatedAt: 2, lastVerifiedAt: 2, lastHealthCheckAt: null,
+      }],
+    })
+
+    render(EnginePluginSettingsPanel)
+
+    await waitFor(() => expect(screen.getByText('Magika Plugin')).toBeTruthy())
+    expect(screen.queryByText('Uninstall plugin')).toBeNull()
+    expect(screen.queryByText('Remove registration')).toBeNull()
+    expect(screen.queryByText('Health Check')).toBeNull()
   })
 
   it('passes recommendedInstallRootKind from response to register request', async () => {
