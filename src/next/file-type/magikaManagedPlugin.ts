@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { access, readFile, realpath as fsRealpath } from 'node:fs/promises'
+import { access, readFile, realpath as fsRealpath, stat as fsStat } from 'node:fs/promises'
 import path from 'node:path'
 import { runEngineHealthCheck } from './externalEngineHealth'
 import { parseManagedEnginePluginManifest } from './externalEngineManifest'
@@ -27,6 +27,7 @@ import type {
 type ExistsFile = (filePath: string) => Promise<boolean>
 type ReadBytes = (filePath: string) => Promise<Uint8Array>
 type ResolveRealPath = (filePath: string) => Promise<string>
+type StatPath = (filePath: string) => Promise<{ isFile(): boolean; isDirectory(): boolean }>
 
 const WINDOWS_ABSOLUTE_PATH_RE = /\b[A-Za-z]:\\[^\s"'`]+/g
 const UNIX_ABSOLUTE_PATH_RE = /(?:\/Users\/|\/home\/|\/mnt\/|\/var\/|\/tmp\/)[^\s"'`]+/g
@@ -53,8 +54,15 @@ export type MagikaManagedPluginManifest = Readonly<{
   supportedMimeTypes: ManagedEnginePluginManifest['supportedMimeTypes']
   taxonomyMapVersionCompatibility: string | null
   supportedLabels: readonly string[]
+  requiredRuntimePaths: readonly MagikaManagedRequiredRuntimePath[]
+  dependencyRoots: readonly string[]
   minStarverseVersion: string | null
   platform: EnginePlatform
+}>
+
+export type MagikaManagedRequiredRuntimePath = Readonly<{
+  path: string
+  kind: 'file' | 'directory'
 }>
 
 export type MagikaManagedPluginDescriptor = Readonly<{
@@ -149,6 +157,7 @@ export async function validateMagikaPackageLayout(input: Readonly<{
 export type DiscoverMagikaManagedPluginInput = Readonly<{
   pluginDirs: readonly string[]
   existsFile?: ExistsFile
+  statPath?: StatPath
   readBytes?: ReadBytes
   resolveRealPath?: ResolveRealPath
 }>
@@ -190,6 +199,7 @@ export async function discoverMagikaManagedPlugin(
   input: DiscoverMagikaManagedPluginInput
 ): Promise<MagikaManagedPluginDiscoveryResult> {
   const existsFile = input.existsFile ?? fileExists
+  const statPath = input.statPath ?? fsStat
   const readBytes = input.readBytes ?? readFileAsBytes
   const resolveRealPath = input.resolveRealPath ?? fsRealpath
   const dirs = normalizePluginDirs(input.pluginDirs)
@@ -282,6 +292,19 @@ export async function discoverMagikaManagedPlugin(
     })
     if (!integrity.ok) {
       lastError = unavailable(integrity.reason, integrity.detail)
+      continue
+    }
+
+    const requiredRuntimePaths = await validateRequiredRuntimePaths({
+      pluginRootPath,
+      pluginRootRealPath,
+      requiredRuntimePaths: parsed.manifest.requiredRuntimePaths,
+      dependencyRoots: parsed.manifest.dependencyRoots,
+      statPath,
+      resolveRealPath,
+    })
+    if (!requiredRuntimePaths.ok) {
+      lastError = unavailable(requiredRuntimePaths.reason, requiredRuntimePaths.detail)
       continue
     }
 
@@ -478,14 +501,9 @@ function createManagedMagikaRuntimeHealthRunner(
   descriptor: MagikaManagedPluginDescriptor
 ): EngineHealthRunner {
   return async () => {
-    const healthcheck = descriptor.manifest.healthcheck ?? buildDefaultMagikaRuntimeHealthcheck(descriptor)
-    if (!healthcheck) {
-      return {
-        status: 'failed',
-        reason: 'engine_unavailable',
-        detail: 'healthcheck command not configured',
-      }
-    }
+    const healthcheck = descriptor.manifest.healthcheck
+    if (!healthcheck) return runDefaultMagikaRuntimeSelfTest(descriptor)
+
     const result = await runExternalProcess({
       command: healthcheck.command,
       args: healthcheck.args,
@@ -502,9 +520,7 @@ function createManagedMagikaRuntimeHealthRunner(
         detail: sanitizeForDetails(result.stderr) ?? 'magika health check timed out',
       }
     }
-    if (result.exitCode === 0 && !result.errorCode && !result.outputLimited) {
-      return { status: 'healthy', reason: null, detail: null }
-    }
+    if (result.exitCode === 0 && !result.errorCode && !result.outputLimited) return runDefaultMagikaRuntimeSelfTest(descriptor)
     return {
       status: 'failed',
       reason: 'engine_failed',
@@ -513,20 +529,33 @@ function createManagedMagikaRuntimeHealthRunner(
   }
 }
 
-function buildDefaultMagikaRuntimeHealthcheck(
+async function runDefaultMagikaRuntimeSelfTest(
   descriptor: MagikaManagedPluginDescriptor
-): ManagedEnginePluginManifest['healthcheck'] {
+): ReturnType<EngineHealthRunner> {
+  const result = await runMagikaClassify({
+    inputBytes: new Uint8Array([0x7b, 0x7d]),
+    runtimeEntryPath: descriptor.runtimeEntryPath,
+    modelDirPath: modelDirPathOf(descriptor),
+    configDirPath: configDirPathOf(descriptor),
+    timeoutMs: 3000,
+    maxOutputBytes: 16 * 1024,
+  })
+  if (result.ok) {
+    return { status: 'healthy', reason: null, detail: null }
+  }
+  if (result.errorCode === 'timeout') {
+    return {
+      status: 'timeout',
+      reason: 'engine_timeout',
+      detail: sanitizeForDetails(`magika runtime self-test failed: ${result.errorCode}: ${result.detail}`) ?? 'magika runtime self-test timed out',
+    }
+  }
   return {
-    command: 'node',
-    args: [
-      descriptor.runtimeEntryPath,
-      '--model-dir',
-      modelDirPathOf(descriptor),
-      '--config-dir',
-      configDirPathOf(descriptor),
-      '--healthcheck',
-    ],
-    cwd: null,
+    status: 'failed',
+    reason: result.errorCode === 'spawn_failed' || result.errorCode === 'missing_dependency'
+      ? 'engine_unavailable'
+      : 'engine_failed',
+    detail: sanitizeForDetails(`magika runtime self-test failed: ${result.errorCode}: ${result.detail}`) ?? 'magika runtime self-test failed',
   }
 }
 
@@ -625,6 +654,8 @@ export function parseMagikaManagedPluginManifest(input: unknown): MagikaManagedP
   const supportedFormatIds = parseStringArray(source.supportedFormatIds)
   const supportedMimeTypes = parseStringArray(source.supportedMimeTypes)
   const supportedLabels = parseStringArray(source.supportedLabels)
+  const requiredRuntimePaths = parseRequiredRuntimePaths(source.requiredRuntimePaths)
+  const dependencyRoots = parseDependencyRoots(source.dependencyRoots)
   const taxonomyMapVersionCompatibility = optionalNonEmptyString(source.taxonomyMapVersionCompatibility)
   const minStarverseVersion = optionalNonEmptyString(source.minStarverseVersion)
   const healthcheck = parseHealthcheck(source.healthcheck)
@@ -648,9 +679,82 @@ export function parseMagikaManagedPluginManifest(input: unknown): MagikaManagedP
     supportedMimeTypes,
     taxonomyMapVersionCompatibility,
     supportedLabels,
+    requiredRuntimePaths,
+    dependencyRoots,
     minStarverseVersion,
     platform,
   }
+}
+
+async function validateRequiredRuntimePaths(input: Readonly<{
+  pluginRootPath: string
+  pluginRootRealPath: string
+  requiredRuntimePaths: readonly MagikaManagedRequiredRuntimePath[]
+  dependencyRoots: readonly string[]
+  statPath: StatPath
+  resolveRealPath: ResolveRealPath
+}>): Promise<Readonly<{ ok: true } | { ok: false; reason: EngineFailureReason; detail: string }>> {
+  const entries: MagikaManagedRequiredRuntimePath[] = [
+    ...input.requiredRuntimePaths,
+    ...input.dependencyRoots.map((item) => ({ path: item, kind: 'directory' as const })),
+  ]
+  for (const entry of entries) {
+    const validated = await validatePluginFilePath({
+      pluginRootPath: input.pluginRootPath,
+      pluginRootRealPath: input.pluginRootRealPath,
+      rawPath: entry.path,
+      field: 'requiredRuntimePaths',
+      existsFile: async () => true,
+      resolveRealPath: input.resolveRealPath,
+    })
+    if (!validated.ok) {
+      return {
+        ok: false,
+        reason: validated.reason,
+        detail: validated.detail,
+      }
+    }
+    try {
+      const actual = await input.statPath(validated.path.absolutePath)
+      if (entry.kind === 'file' && !actual.isFile()) {
+        return {
+          ok: false,
+          reason: 'runtime_entry_missing',
+          detail: sanitizeForDetails(`required runtime file missing: ${validated.path.relativePath}`) ?? 'required runtime file missing',
+        }
+      }
+      if (entry.kind === 'directory' && !actual.isDirectory()) {
+        return {
+          ok: false,
+          reason: 'runtime_entry_missing',
+          detail: sanitizeForDetails(`required runtime directory missing: ${validated.path.relativePath}`) ?? 'required runtime directory missing',
+        }
+      }
+    } catch {
+      return {
+        ok: false,
+        reason: 'runtime_entry_missing',
+        detail: sanitizeForDetails(`required runtime path missing: ${validated.path.relativePath}`) ?? 'required runtime path missing',
+      }
+    }
+    const resolvedRealPath = await safeRealpath(validated.path.absolutePath, input.resolveRealPath)
+    if (resolvedRealPath) {
+      const relativeReal = path.relative(input.pluginRootRealPath, resolvedRealPath)
+      if (
+        relativeReal === '' ||
+        relativeReal === '.' ||
+        relativeReal.startsWith('..') ||
+        path.isAbsolute(relativeReal)
+      ) {
+        return {
+          ok: false,
+          reason: 'plugin_path_outside_root',
+          detail: 'required runtime path resolves outside plugin root',
+        }
+      }
+    }
+  }
+  return { ok: true }
 }
 
 async function verifyManifestIntegrity(input: Readonly<{
@@ -949,6 +1053,43 @@ function parseHealthcheck(input: unknown): ManagedEnginePluginManifest['healthch
     args,
     cwd,
   }
+}
+
+function parseRequiredRuntimePaths(input: unknown): MagikaManagedRequiredRuntimePath[] {
+  if (input === null || input === undefined) return []
+  if (!Array.isArray(input)) throw new Error('requiredRuntimePaths must be an array')
+  const out: MagikaManagedRequiredRuntimePath[] = []
+  const seen = new Set<string>()
+  input.forEach((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error(`requiredRuntimePaths[${index}] must be an object`)
+    }
+    const source = item as Record<string, unknown>
+    const requiredPath = optionalNonEmptyString(source.path)
+    const kind = source.kind === 'file' || source.kind === 'directory' ? source.kind : null
+    if (!requiredPath) throw new Error(`requiredRuntimePaths[${index}].path is required`)
+    if (!kind) throw new Error(`requiredRuntimePaths[${index}].kind must be file or directory`)
+    const normalizedPath = normalizeRelativePluginPath(requiredPath)
+    if (!normalizedPath) throw new Error(`requiredRuntimePaths[${index}].path is invalid`)
+    if (seen.has(normalizedPath)) return
+    seen.add(normalizedPath)
+    out.push({ path: normalizedPath, kind })
+  })
+  return out
+}
+
+function parseDependencyRoots(input: unknown): string[] {
+  if (input === null || input === undefined) return []
+  if (!Array.isArray(input)) throw new Error('dependencyRoots must be an array')
+  const out = new Set<string>()
+  input.forEach((root, index) => {
+    const value = optionalNonEmptyString(root)
+    if (!value) throw new Error(`dependencyRoots[${index}] must be a non-empty string`)
+    const normalized = normalizeRelativePluginPath(value)
+    if (!normalized) throw new Error(`dependencyRoots[${index}] is invalid`)
+    out.add(normalized)
+  })
+  return Array.from(out.values())
 }
 
 function parseIntegrity(input: unknown): MagikaManagedPluginIntegrity {
