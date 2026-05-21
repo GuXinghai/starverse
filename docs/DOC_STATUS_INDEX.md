@@ -2,57 +2,93 @@
 
 **Purpose**: Help agents judge document timeliness and reading priority.
 
-**Status**: active
-**Last updated**: 2026-05-01
+**Status**: active  
+**Last updated**: 2026-05-22  
+**Governance**: DGR-1 dual-dimension status model
 
 ---
 
 ## Status Legend
 
+Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.md](maintenance/document-status-taxonomy.md) for full definition.
+
+### Lifecycle Status
+
 - **active**: Current fact or maintained entry point. Read first.
 - **reference**: Stable background, principles, or design patterns. Contextual reading.
-- **historical**: Process records, phase logs, migration traces. Read only for history tracing or regression check.
+- **planned**: Document describes planned work, not yet implemented.
+- **scaffold**: Document structure exists but content is incomplete.
+- **pilot**: Document describes experimental/pilot implementation.
+- **historical**: Process records, phase logs, migration traces. Read only for history tracing.
 - **archived**: Read-only record. Default: skip unless explicitly asked for history.
+- **obsolete-candidate**: Suspected outdated but not yet confirmed.
+- **pending-classification**: Not yet classified; status unknown.
+
+### Document Role
+
+- **entry**: Entry point for a domain or feature
+- **ssot**: Single Source of Truth for a specific domain
+- **roadmap**: Plans, milestones, future directions
+- **closeout**: Phase or feature completion record
+- **implementation-note**: Implementation details, technical notes
+- **decision**: Architecture Decision Record
+- **maintenance**: Maintainer guides, governance rules
+- **archive-index**: Index of archived documents
+- **template**: Document template
+- **debug-record**: Debug investigation record
+- **candidate-action-list**: Pending actions requiring owner decision
+- **spec**: Specification or contract
+- **guide**: How-to guide or tutorial
 
 ---
 
 ## Core Documents
 
-| Path | Status | Domain | Read When | Notes |
-|------|--------|--------|-----------|-------|
-| [README.md](../README.md) | active | Project | Always first | 5-min project overview & quick start |
-| [AGENT_INDEX.md](AGENT_INDEX.md) | active | Routing | Agent first read | Fast routing table for tasks |
-| [guides/INDEX.md](guides/INDEX.md) | active | Navigation | After AGENT_INDEX | Main doc hub by scenario |
-| [maintenance/maintainer-entry.md](maintenance/maintainer-entry.md) | active | Boundaries | Team onboarding | Key directories, code boundaries, high-risk zones |
-| [architecture/OVERVIEW.md](architecture/OVERVIEW.md) | active | Architecture | Understand system | Layers, naming, module responsibilities |
-| [file-pipeline/README.md](file-pipeline/README.md) | active | Feature track | File/conversion tasks | Status of Phase 1-9 pipeline |
-| [governance/app-chat-app-logic-boundary.md](governance/app-chat-app-logic-boundary.md) | active | Boundary | Send Plan, attachment tasks | Core app logic boundaries & code paths |
-| [adr/README.md](adr/README.md) | reference | Decision | Trace design decisions | Architecture Decision Records catalog |
-| [decisions/README.md](decisions/README.md) | reference | Decision | Trace decisions | Architecture decision list |
-| [architecture/UNIFIED_GENERATION_ARCHITECTURE.md](architecture/UNIFIED_GENERATION_ARCHITECTURE.md) | active | Architecture | Generation/streaming tasks | Current generation config architecture |
-| [architecture/OPENROUTER_INTEGRATION_SUMMARY.md](architecture/OPENROUTER_INTEGRATION_SUMMARY.md) | reference | Integration | OpenRouter tasks; legacy integration context | Multi-provider AI integration; current implementation may differ |
-| [tailwind/TAILWIND_V4_README.md](tailwind/TAILWIND_V4_README.md) | active | Styling | UI/style tasks | Tailwind v4 migration & rules |
-| [archive/README.md](archive/README.md) | archived | Catalog | History trace only | 46+ archived docs (completed-features, bugfixes, analysis, etc.) |
+| Path | Lifecycle Status | Document Role | Domain | Read When | Notes |
+|------|------------------|---------------|--------|-----------|-------|
+| [README.md](../README.md) | active | entry | Project | Always first | 5-min project overview & quick start |
+| [AGENT_INDEX.md](AGENT_INDEX.md) | active | entry | Routing | Agent first read | Fast routing table for tasks |
+| [DOC_STATUS_INDEX.md](DOC_STATUS_INDEX.md) | active | entry | Status | Check before reading unfamiliar doc | This file |
+| [guides/INDEX.md](guides/INDEX.md) | active | entry | Navigation | After AGENT_INDEX | Main doc hub by scenario |
+| [maintenance/maintainer-entry.md](maintenance/maintainer-entry.md) | active | maintenance | Boundaries | Team onboarding | Key directories, code boundaries, high-risk zones |
+| [architecture/OVERVIEW.md](architecture/OVERVIEW.md) | active | ssot | Architecture | Understand system | Layers, naming, module responsibilities |
+| [file-pipeline/README.md](file-pipeline/README.md) | active | entry | Feature track | File/conversion tasks | **Entry point**: routes to progress-ledger as SSOT |
+| [file-pipeline/progress-ledger.md](file-pipeline/progress-ledger.md) | active | ssot | File Pipeline | Current decisions & blockers | SSOT for file pipeline status |
+| [governance/app-chat-app-logic-boundary.md](governance/app-chat-app-logic-boundary.md) | active | ssot | Boundary | Send Plan, attachment tasks | Core app logic boundaries & code paths |
+| [adr/README.md](adr/README.md) | reference | decision | Decisions | Trace design decisions | ADR process rules, templates, engineering decisions (000-003) |
+| [decisions/README.md](decisions/README.md) | reference | decision | Decisions | Trace decisions | Project foundation decisions (001-005) |
+| [architecture/UNIFIED_GENERATION_ARCHITECTURE.md](architecture/UNIFIED_GENERATION_ARCHITECTURE.md) | active | ssot | Architecture | Generation/streaming tasks | Current generation config architecture |
+| [architecture/OPENROUTER_INTEGRATION_SUMMARY.md](architecture/OPENROUTER_INTEGRATION_SUMMARY.md) | reference | implementation-note | Integration | OpenRouter tasks; legacy integration context | Multi-provider AI integration; current implementation may differ |
+| [tailwind/TAILWIND_V4_README.md](tailwind/TAILWIND_V4_README.md) | active | entry | Styling | UI/style tasks | Tailwind v4 migration & rules |
+| [archive/README.md](archive/README.md) | archived | archive-index | Catalog | History trace only | 46+ archived docs (completed-features, bugfixes, analysis, etc.) |
+
+### DGR-1 Governance Documents
+
+| Path | Lifecycle Status | Document Role | Domain | Read When | Notes |
+|------|------------------|---------------|--------|-----------|-------|
+| [maintenance/document-status-taxonomy.md](maintenance/document-status-taxonomy.md) | active | maintenance | Governance | Understanding status model | Dual-dimension status model definition |
+| [maintenance/document-governance.md](maintenance/document-governance.md) | active | maintenance | Governance | Documentation lifecycle rules | Archive, delete, redirect rules |
+| [maintenance/document-redirect-map.md](maintenance/document-redirect-map.md) | active | maintenance | Governance | Tracking moved/renamed docs | Redirect map for DGR-1 changes |
 
 ---
 
 ## File Pipeline Documents
 
-| Path | Status | Focus | Read When |
-|------|--------|-------|-----------|
-| [file-pipeline/README.md](file-pipeline/README.md) | reference | Overview | Use for phase map context; current facts follow Core Documents and progress ledger |
-| [file-pipeline/progress-ledger.md](file-pipeline/progress-ledger.md) | active | Ledger | Frozen decisions & blockers |
-| [file-pipeline/phase-1-domain-model.md](file-pipeline/phase-1-domain-model.md) | historical | Design | Phase 1 process record |
-| [file-pipeline/phase-2-persistence-and-storage.md](file-pipeline/phase-2-persistence-and-storage.md) | historical | Design | Phase 2 process record |
-| [file-pipeline/phase-3-ingestion-and-import.md](file-pipeline/phase-3-ingestion-and-import.md) | historical | Design | Phase 3 process record |
-| [file-pipeline/phase-5-send-eligibility-and-planning.md](file-pipeline/phase-5-send-eligibility-and-planning.md) | historical | Design | Phase 5 process record |
-| [file-pipeline/phase-6-openrouter-request-adapter.md](file-pipeline/phase-6-openrouter-request-adapter.md) | historical | Design | Phase 6 process record |
-| [file-pipeline/phase-7-derived-tasks-and-embeddings.md](file-pipeline/phase-7-derived-tasks-and-embeddings.md) | historical | Design | Phase 7 process record |
-| [file-pipeline/phase-8-preview-derivatives.md](file-pipeline/phase-8-preview-derivatives.md) | historical | Design | Phase 8 process record |
-| [file-pipeline/phase-9-frontend-ui-mvp.md](file-pipeline/phase-9-frontend-ui-mvp.md) | historical | Design | Phase 9 process record |
-| [file-pipeline/format-conversion-preview-progress.md](file-pipeline/format-conversion-preview-progress.md) | historical | Progress | Format conversion project log |
-| [file-pipeline/format-conversion-preview-implementation-plan.md](file-pipeline/format-conversion-preview-implementation-plan.md) | historical | Plan | Format conversion plan (reference) |
-| [file-pipeline/format-conversion-preview-final.md](file-pipeline/format-conversion-preview-final.md) | reference | Design | Format conversion final design |
+| Path | Lifecycle Status | Document Role | Focus | Read When |
+|------|------------------|---------------|-------|-----------|
+| [file-pipeline/README.md](file-pipeline/README.md) | active | entry | Overview | **Entry point**: routes to progress-ledger as SSOT |
+| [file-pipeline/progress-ledger.md](file-pipeline/progress-ledger.md) | active | ssot | Ledger | Frozen decisions & blockers — **SSOT for pipeline status** |
+| [file-pipeline/phase-1-domain-model.md](file-pipeline/phase-1-domain-model.md) | historical | closeout | Design | Phase 1 process record |
+| [file-pipeline/phase-2-persistence-and-storage.md](file-pipeline/phase-2-persistence-and-storage.md) | historical | closeout | Design | Phase 2 process record |
+| [file-pipeline/phase-3-ingestion-and-import.md](file-pipeline/phase-3-ingestion-and-import.md) | historical | closeout | Design | Phase 3 process record |
+| [file-pipeline/phase-5-send-eligibility-and-planning.md](file-pipeline/phase-5-send-eligibility-and-planning.md) | historical | closeout | Design | Phase 5 process record |
+| [file-pipeline/phase-6-openrouter-request-adapter.md](file-pipeline/phase-6-openrouter-request-adapter.md) | historical | closeout | Design | Phase 6 process record |
+| [file-pipeline/phase-7-derived-tasks-and-embeddings.md](file-pipeline/phase-7-derived-tasks-and-embeddings.md) | historical | closeout | Design | Phase 7 process record |
+| [file-pipeline/phase-8-preview-derivatives.md](file-pipeline/phase-8-preview-derivatives.md) | historical | closeout | Design | Phase 8 process record |
+| [file-pipeline/phase-9-frontend-ui-mvp.md](file-pipeline/phase-9-frontend-ui-mvp.md) | historical | closeout | Design | Phase 9 process record |
+| [file-pipeline/format-conversion-preview-progress.md](file-pipeline/format-conversion-preview-progress.md) | historical | closeout | Progress | Format conversion project log |
+| [file-pipeline/format-conversion-preview-implementation-plan.md](file-pipeline/format-conversion-preview-implementation-plan.md) | historical | closeout | Plan | Format conversion plan (reference) |
+| [file-pipeline/format-conversion-preview-final.md](file-pipeline/format-conversion-preview-final.md) | reference | ssot | Design | Format conversion final design — **SSOT for conversion design** |
 
 ---
 
@@ -74,18 +110,45 @@ Examples in archive:
 - `archive/refactoring/` — Refactor process records
 - `archive/optimizations/` — Past optimization work
 - `archive/migrations/` — Migration records
+- `archive/debug/` — Debug investigation records (DGR-1)
+- `archive/documentation/` — Documentation governance records (DGR-1)
+- `archive/architecture/` — Architecture records (DGR-1)
 
 ---
 
 ## Governance & Development
 
-| Path | Status | Domain | Read When |
-|------|--------|--------|-----------|
-| [governance/](governance/) | reference | Domain index | Directory scope reference; read concrete governance docs for current rules |
-| [adr/](adr/) | reference | Decisions | Design justification |
-| [decisions/](decisions/) | reference | Decisions | Architecture decision trace |
-| [bugfix/](bugfix/) | reference | Fixes | Complex historical fixes (not archived) |
-| [refactor/](refactor/) | reference | Refactor | Active refactor projects |
+| Path | Lifecycle Status | Document Role | Domain | Read When |
+|------|------------------|---------------|--------|-----------|
+| [governance/](governance/) | reference | maintenance | Domain index | Directory scope reference; read concrete governance docs for current rules |
+| [adr/](adr/) | reference | decision | Decisions | ADR process rules, templates, engineering decisions (000-003) |
+| [decisions/](decisions/) | reference | decision | Decisions | Project foundation decisions (001-005) |
+| [bugfix/](bugfix/) | reference | implementation-note | Fixes | Complex historical fixes (not archived) |
+| [refactor/](refactor/) | reference | implementation-note | Refactor | SSOT v2 refactor plans (OpenRouter) |
+| [refactoring/](refactoring/) | reference | implementation-note | Refactor | UI component refactoring (ChatView, ConversationList) |
+
+> **Note on dual entries**: `refactor/`, `refactoring/`, and `bugfix/` appear in both "Governance & Development" (directory-level role) and "Pending-Classification Directories" (individual files awaiting DGR-2 classification). This is intentional: the directory has a known role, but individual files within it have not yet received per-file lifecycle status.
+
+---
+
+## Pending-Classification Directories
+
+The following directories contain documents that have not yet been classified with dual-dimension status. They are registered as `pending-classification` and will be classified in DGR-2.
+
+| Directory | File Count | Likely Role | Status | Next Step |
+|-----------|------------|-------------|--------|-----------|
+| [features/](features/) | 31 | implementation-note | pending-classification | DGR-2: classify each file |
+| [spec/](spec/) | 17 | spec | pending-classification | DGR-2: classify each file |
+| [architecture/](architecture/) | 22 | various | pending-classification | DGR-2: classify each file |
+| [bugfix/](bugfix/) | 18+ | implementation-note | pending-classification | DGR-2: classify each file |
+| [i18n/](i18n/) | 5 | spec/guide | pending-classification | DGR-2: classify each file |
+| [rfc/](rfc/) | 1 | spec | pending-classification | DGR-2: classify each file |
+| [notes/](notes/) | 4 | implementation-note | pending-classification | DGR-2: classify each file |
+| [requirements/](requirements/) | 3 | spec | pending-classification | DGR-2: classify each file |
+| [refactor/](refactor/) | 10 | implementation-note | pending-classification | DGR-2: classify each file |
+| [refactoring/](refactoring/) | 9 | implementation-note | pending-classification | DGR-2: classify each file |
+
+**Note**: These directories are NOT individually modified in DGR-1. They are only registered here for tracking.
 
 ---
 
@@ -102,10 +165,35 @@ Examples in archive:
 
 ## Sync Notes
 
-Last sync: 2026-05-01
+Last sync: 2026-05-22 (DGR-1)
 
 When adding new docs to docs/ or updating existing status:
 1. Update this index
 2. Link from guides/INDEX.md or AGENT_INDEX.md
 3. Check docs/guides/INDEX.md for any cross-links
 4. Run: `rg -n "docs/AGENT_INDEX.md|DOC_STATUS_INDEX" README.md docs`
+
+### DGR-1 Changes (2026-05-22)
+
+**Status Model**:
+- Introduced dual-dimension model: Lifecycle Status + Document Role
+- See [document-status-taxonomy.md](maintenance/document-status-taxonomy.md) for full definition
+
+**Archived**:
+- 4 DEBUG_OPENROUTER_REQUEST_*.md → `archive/debug/`
+- ACCEPTANCE_REPORT.md → `archive/documentation/`
+- CLEANUP_REPORT_2025_12.md → `archive/documentation/`
+- GENERATION_ARCHITECTURE_SUMMARY.md → `archive/architecture/`
+
+**Created**:
+- `maintenance/document-status-taxonomy.md`
+- `maintenance/document-governance.md`
+- `maintenance/document-redirect-map.md`
+- `archive/debug/README.md`
+- `archive/documentation/README.md`
+- `archive/architecture/README.md`
+
+**Pending**:
+- ADR directory restructuring (owner decision required)
+- Chinese filename rename (owner decision required)
+- refactor/ vs refactoring/ clarification (owner decision required)

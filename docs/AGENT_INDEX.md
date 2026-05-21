@@ -3,7 +3,8 @@
 **Purpose**: Fast entrypoint for coding agents. Reduces redundant scanning and misdirection.
 
 **Status**: active
-**Last updated**: 2026-05-01
+**Last updated**: 2026-05-22
+**Governance**: DGR-1 dual-dimension status model
 
 ---
 
@@ -24,7 +25,9 @@ Agent should read in this sequence:
 
 ## Document Status Rules
 
-Apply these rules when reading docs:
+Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.md](maintenance/document-status-taxonomy.md) for full definition.
+
+### Lifecycle Status
 
 | Status | Meaning | When to read | Example |
 |--------|---------|--------------|---------|
@@ -32,6 +35,16 @@ Apply these rules when reading docs:
 | **reference** | Stable background or principle docs | For context | Design patterns, ADR decisions |
 | **historical** | Process records, migration traces, phase logs | Only for history tracing or regression check | `docs/file-pipeline/phase-5-*.md` |
 | **archived** | Read-only record; not current implementation | Never as default | `docs/archive/*` |
+| **pending-classification** | Not yet classified; status unknown | Read with caution; verify before relying | Unclassed docs |
+
+### Document Role
+
+| Role | Meaning | Example |
+|------|---------|---------|
+| **entry** | Entry point for a domain or feature | `docs/file-pipeline/README.md` |
+| **ssot** | Single Source of Truth for a specific domain | `docs/file-pipeline/progress-ledger.md` |
+| **decision** | Architecture Decision Record | `docs/adr/001-*.md`, `docs/decisions/001-*.md` |
+| **closeout** | Phase or feature completion record | `docs/file-pipeline/phase-9-frontend-ui-mvp.md` |
 
 **Golden rule for agents**: Unless task is "trace history", "reproduce old flow", or "audit migration", skip `docs/archive/` entirely.
 
@@ -70,7 +83,18 @@ Apply these rules when reading docs:
 - Check `docs/DOC_STATUS_INDEX.md` before reading unfamiliar docs.
 - Validate assumption against `src/next/` or `electron/` imports.
 - Run the smallest relevant test slice for the touched area to confirm the refactor baseline.
-- Document new architectural decisions in `docs/adr/` or `docs/decisions/`.
+- Document new architectural decisions in `docs/adr/` using the template and numbering system.
+
+**ADR Entry Clarification**:
+
+Starverse has two ADR directories with different purposes:
+
+| Directory | Purpose | Content | When to Use |
+|-----------|---------|---------|-------------|
+| `docs/adr/` | ADR process rules, templates, engineering decisions | 000-003 (kebab-case, English) | **New ADRs**: Use this directory's template and numbering |
+| `docs/decisions/` | Project foundation decisions | 001-005 (ADR-XXX format, Chinese) | **Reference only**: Historical foundation decisions |
+
+**Rule**: When creating new ADRs, always use `docs/adr/` with `template.md`. Do not add new ADRs to `docs/decisions/`.
 
 ---
 
@@ -90,3 +114,6 @@ After modifying docs or code paths, prefer the narrowest checks for the touched 
 - [guides/INDEX.md](guides/INDEX.md) — Full doc navigation hub
 - [maintenance/maintainer-entry.md](maintenance/maintainer-entry.md) — Code boundaries & high-risk zones
 - [architecture/OVERVIEW.md](architecture/OVERVIEW.md) — Architecture layers & naming conventions
+- [maintenance/document-status-taxonomy.md](maintenance/document-status-taxonomy.md) — Dual-dimension status model
+- [maintenance/document-governance.md](maintenance/document-governance.md) — Documentation governance rules
+- [maintenance/document-redirect-map.md](maintenance/document-redirect-map.md) — Redirect map for moved/renamed docs

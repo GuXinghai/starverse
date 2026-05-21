@@ -1,7 +1,8 @@
 # Starverse 维护者入口
 
-**最后更新**: 2026-04-30  
+**最后更新**: 2026-05-22  
 **用途**: 新维护者接手项目时的优先阅读顺序与注意事项
+**治理**: DGR-1 双维度状态模型
 
 > 💡 **编程 Agent 注意**: 如果你是自动化编程 Agent，请先读 [../AGENT_INDEX.md](../AGENT_INDEX.md) 和 [../DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md)，会更快地定位任务。
 
@@ -12,7 +13,8 @@
 - **版本**: 0.0.2（开发中）
 - **主线工作**: File Pipeline Phase 1-9 已完成代码实现；格式转换与预览方案已通过治理，代码尚未开始
 - **活跃代码目录**: `src/ui-app/`, `src/next/`, `src/shared/files/`, `infra/files/`, `infra/db/`
-- **治理体系**: ADR (`docs/adr/`)、边界护栏 (`docs/governance/`)、门禁脚本 (`scripts/gates/`)
+- **治理体系**: ADR (`docs/adr/`)、边界护栏 (`docs/governance/`)、门禁脚本 (`scripts/gates/`)、文档治理 (`docs/maintenance/document-governance.md`)
+- **文档状态模型**: 双维度模型（Lifecycle Status + Document Role），详见 [document-status-taxonomy.md](document-status-taxonomy.md)
 - **开发启动**: `npm run electron:dev`（完整 Electron 应用）
 - **测试运行**: 按需运行与修改路径最相关的单元测试
 - **关键维护边界**: `appChatApp.logic.ts`（~6.7k 行, 不追加业务规则）、`openRouterSendPlanSerializer.ts`（唯一 payload 合成入口）
@@ -27,8 +29,9 @@
 4. **[docs/file-pipeline/README.md](../file-pipeline/README.md)** — 文件管道主线工作状态
 5. **[docs/file-pipeline/progress-ledger.md](../file-pipeline/progress-ledger.md)** — 冻结决策与未做事项
 6. **[docs/governance/app-chat-app-logic-boundary.md](../governance/app-chat-app-logic-boundary.md)** — 核心编排模块职责边界
-7. **[docs/adr/README.md](../adr/README.md)** — ADR 决策记录规则
-8. **[docs/decisions/README.md](../decisions/README.md)** — 架构决策列表
+7. **[docs/adr/README.md](../adr/README.md)** — ADR 决策记录规则（新 ADR 使用此目录）
+8. **[docs/decisions/README.md](../decisions/README.md)** — 基础架构决策列表（历史参考）
+9. **[docs/maintenance/document-governance.md](document-governance.md)** — 文档治理规则（DGR-1）
 
 ---
 
@@ -57,7 +60,10 @@
 - **UI 层不要直接拼接真实发送请求**。`send preflight`（`sendPlan.buildCurrent`）是发送前的强制门禁。
 - **不要在日志中输出本地绝对路径、原始 base64 负载或 API Key**。诊断输出必须经过脱敏。
 - **`appChatApp.logic.ts` 的职责边界以 `docs/governance/app-chat-app-logic-boundary.md` 为准**。新的业务规则不应追加到该文件。
-- **ADR 与 decisions 两套入口并存**。当前只做交叉引用，不迁移。新增 ADR 请使用 `docs/adr/` 下的编号规则。
+- **ADR 入口澄清**：Starverse 有两个 ADR 目录，用途不同：
+  - `docs/adr/`：ADR 流程规则、模板、工程决策（000-003）— **新 ADR 使用此目录**
+  - `docs/decisions/`：项目基础决策（001-005）— **仅历史参考**
+- **文档状态模型**：使用双维度模型（Lifecycle Status + Document Role），详见 [document-status-taxonomy.md](document-status-taxonomy.md)
 
 ---
 
@@ -97,3 +103,5 @@
 - 不要创建新的治理概念或阶段命名
 - 不要对整个仓库做断链修复（只修入口文档）
 - 不要修改代码（本仓库的第一约束是文档与代码同步，但修改代码超出维护文档范畴）
+- 不要在 `docs/decisions/` 中添加新 ADR（使用 `docs/adr/`）
+- 不要将 `planned`、`scaffold`、`pilot`、`deferred` 写成 `completed`
