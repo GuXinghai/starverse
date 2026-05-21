@@ -47,6 +47,7 @@
     "gate:tc17": "node scripts/gates/tc17-ui-guardrails.mjs",
     "gate:tc18": "node scripts/gates/tc18-ui-isolation.mjs",
     "gate:tc20": "node scripts/gates/tc20-katex-css-artifact.mjs",
+    "gate:privacy": "node scripts/gates/privacy-scan.mjs",
     "verify:artifact-katex-css": "npx vite build && npm run gate:tc20",
     "i18n:check": "node scripts/i18n/check-i18n-coverage.mjs",
     "i18n:scan-hardcoded": "node scripts/i18n/check-hardcoded-ui-text.mjs",
