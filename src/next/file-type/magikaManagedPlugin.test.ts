@@ -266,6 +266,30 @@ describe('magikaManagedPlugin', () => {
     })
   })
 
+  it('accepts directory dependency root entries', async () => {
+    await withPluginFixture(async ({ manifestPath }) => {
+      await updateManifestObject(manifestPath, (manifest) => {
+        manifest.dependencyRoots = [{ path: 'runtime', kind: 'directory' }]
+      })
+      const manifest = parseMagikaManagedPluginManifest(await readManifestObject(manifestPath))
+      expect(manifest.dependencyRoots).toEqual(['runtime'])
+    })
+  })
+
+  it('rejects dependency root entries with non-directory kind', async () => {
+    await withPluginFixture(async ({ rootDir, manifestPath }) => {
+      await updateManifestObject(manifestPath, (manifest) => {
+        manifest.dependencyRoots = [{ path: 'runtime/runner.js', kind: 'file' }]
+      })
+      const discovery = await discoverMagikaManagedPlugin({ pluginDirs: [rootDir] })
+      expect(discovery.available).toBe(false)
+      if (discovery.available) return
+      expect(discovery.reason).toBe('manifest_invalid')
+      expect(discovery.detail).toContain('dependencyRoots[0].kind')
+      expect(discovery.detail).not.toContain(rootDir)
+    })
+  })
+
   it('rejects runtimeEntry absolute path', async () => {
     await withPluginFixture(async ({ rootDir, manifestPath }) => {
       const absolute = path.resolve(rootDir, 'runtime', 'runner.js')

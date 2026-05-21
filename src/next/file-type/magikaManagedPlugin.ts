@@ -1289,8 +1289,15 @@ function parseDependencyRoots(input: unknown): string[] {
   if (!Array.isArray(input)) throw new Error('dependencyRoots must be an array')
   const out = new Set<string>()
   input.forEach((root, index) => {
-    const value = optionalNonEmptyString(root)
-    if (!value) throw new Error(`dependencyRoots[${index}] must be a non-empty string`)
+    const value = typeof root === 'string'
+      ? optionalNonEmptyString(root)
+      : root && typeof root === 'object' && !Array.isArray(root)
+        ? optionalNonEmptyString((root as Record<string, unknown>).path)
+        : null
+    if (!value) throw new Error(`dependencyRoots[${index}] must be a non-empty string or directory entry`)
+    if (root && typeof root === 'object' && !Array.isArray(root) && (root as Record<string, unknown>).kind !== 'directory') {
+      throw new Error(`dependencyRoots[${index}].kind must be directory`)
+    }
     const normalized = normalizeRelativePluginPath(value)
     if (!normalized) throw new Error(`dependencyRoots[${index}] is invalid`)
     out.add(normalized)
