@@ -137,7 +137,7 @@ export class FileTypeDetectionCoordinator {
     try {
       const loaded = await this.deps.magikaRuntimeLoader.load()
       if (!loaded.available) {
-        return basicDecision(loaded.reason === 'runtime_error' ? 'failed' : 'unavailable', loaded.modelVersion, loaded.runtimeKind)
+        return basicDecision(isFailedMagikaRuntimeReason(loaded.reason) ? 'failed' : 'unavailable', loaded.modelVersion, loaded.runtimeKind)
       }
       return {
         pipeline: 'advanced',
@@ -149,6 +149,11 @@ export class FileTypeDetectionCoordinator {
       return basicDecision('failed')
     }
   }
+}
+
+function isFailedMagikaRuntimeReason(reason: string | null | undefined): boolean {
+  if (!reason) return false
+  return reason === 'runtime_error' || reason.startsWith('magika_')
 }
 
 function basicDecision(
