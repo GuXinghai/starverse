@@ -606,7 +606,8 @@ function createVerdict(
   formatId: FileFormatId,
   kind: FileKind,
   confidence: ConfidenceLevel = 'high',
-  flags: FileTypeVerdict['flags'] = []
+  flags: FileTypeVerdict['flags'] = [],
+  provenance: FileTypeVerdict['provenance'] = null
 ) {
   h.fileTypeVerdictRepo.upsertCurrent({
     assetId,
@@ -621,6 +622,7 @@ function createVerdict(
       conflicts: [],
       flags,
       evidence: [],
+      provenance,
       schemaVersion: 'v1',
       taxonomyVersion: 'taxonomy-v1',
       detectionCost: 'low',
@@ -1539,5 +1541,156 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
     expect(JSON.stringify(afterVerdict)).toBe(beforeVerdictJson)
     expect(JSON.stringify(afterVerdict)).not.toContain('routeCandidates')
     expect(JSON.stringify(afterVerdict)).not.toContain('direct_file')
+  })
+
+  it('keeps direct PDF send available when text derivative is unsupported', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'pdf-route-derivative', {
+      filename: 'manual.pdf',
+      extension: 'pdf',
+      mime: 'application/pdf',
+      assetKind: 'document',
+      storageUri: 'assets/original/pd/pdf-route-derivative.pdf',
+      sourceMetaJson: {
+        textConversion: {
+          status: 'failed',
+          errorCode: 'derivative_asset_not_supported',
+          errorMessage: 'Extracted text only supports text assets or captured PDF annotations in phase 7.',
+        },
+        lineage: {
+          stale: true,
+          staleReason: 'derivative_asset_not_supported',
+          sendAssetReady: false,
+        },
+        fileTypeDetection: {
+          routeEligibility: 'verdict_ready',
+          detectionLevel: 'advanced',
+          engineMode: 'core_plus_magika',
+          usedMagika: true,
+          magikaState: 'available',
+          advancedAttempted: true,
+        },
+      },
+    })
+    createVerdict(h, 'pdf-route-derivative', 'pdf', 'document', 'high', [], {
+      routeEligibility: 'verdict_ready',
+      detectionLevel: 'advanced',
+      engineMode: 'core_plus_magika',
+      usedMagika: true,
+      magikaState: 'available',
+      evidenceSources: ['extension', 'mime_os', 'magic', 'magika'],
+      decisiveEvidenceSource: 'magic',
+      detectionTrigger: 'send_plan_build',
+      magikaModelVersion: 'standard_v3_3',
+      advancedAttempted: true,
+      advancedFailureReason: null,
+    })
+    h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'pdf-route-derivative' })
+    h.db.prepare(`
+      UPDATE draft_attachments
+      SET ai_payload_kind = 'pdf',
+          processing_status = 'native_supported'
+      WHERE asset_id = 'pdf-route-derivative'
+    `).run()
+
+    const collected = h.sendPlanService.collectCurrentSendInputs({
+      conversationId: 'c1',
+      model: model(['text', 'file']),
+      providerContext: providerContext(),
+    })
+    const attachment = collected.draftAttachments.find((item) => item.assetId === 'pdf-route-derivative')
+    expect(attachment?.routeCandidates?.find((candidate) => candidate.route === 'converted_markdown')).toMatchObject({
+      blocked: true,
+      blockedBy: expect.arrayContaining(['derivative_asset_not_supported']),
+    })
+    expect(attachment?.routeCandidates?.find((candidate) => candidate.route === 'extracted_text')).toMatchObject({
+      blocked: true,
+      blockedBy: expect.arrayContaining(['derivative_asset_not_supported']),
+    })
+    expect(attachment?.routeCandidates?.find((candidate) => candidate.route === 'direct_file')).toMatchObject({
+      compatible: true,
+      blocked: false,
+    })
+    expect(attachment?.semantic).toMatchObject({
+      targetKind: 'pdf_attachment',
+      sendStrategy: 'file_attachment',
+    })
+
+    const plan = h.sendPlanService.buildSendPlan(collected)
+    expect(plan.status).toBe('sendable')
+    expect(plan.includedAttachments).toEqual([
+      expect.objectContaining({
+        assetId: 'pdf-route-derivative',
+      }),
+    ])
+    expect(plan.excludedAttachments).toEqual([])
+    expect(plan.attachmentPlans[0]).toMatchObject({
+      assetId: 'pdf-route-derivative',
+      eligibility: 'included',
+      exclusionReason: null,
+      selectedSendMode: 'inline_base64',
+      fileType: expect.objectContaining({
+        recommendedRoute: 'direct_file',
+        blocked: false,
+      }),
+      detection: expect.objectContaining({
+        routeEligibility: 'verdict_ready',
+        detectionLevel: 'advanced',
+        usedMagika: true,
+        magikaState: 'available',
+      }),
+      lineage: expect.objectContaining({
+        state: 'ok',
+        stale: false,
+        staleReason: 'derivative_asset_not_supported',
+      }),
+    })
+  })
+
+  it('blocks PDF send when text derivative is unsupported and direct file is incompatible', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'pdf-no-direct', {
+      filename: 'manual.pdf',
+      extension: 'pdf',
+      mime: 'application/pdf',
+      assetKind: 'document',
+      storageUri: 'assets/original/pd/pdf-no-direct.pdf',
+      sourceMetaJson: {
+        textConversion: {
+          status: 'failed',
+          errorCode: 'derivative_asset_not_supported',
+          errorMessage: 'Extracted text only supports text assets or captured PDF annotations in phase 7.',
+        },
+      },
+    })
+    createVerdict(h, 'pdf-no-direct', 'pdf', 'document')
+    h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'pdf-no-direct' })
+    h.db.prepare(`
+      UPDATE draft_attachments
+      SET ai_payload_kind = 'pdf',
+          processing_status = 'native_supported'
+      WHERE asset_id = 'pdf-no-direct'
+    `).run()
+
+    const collected = h.sendPlanService.collectCurrentSendInputs({
+      conversationId: 'c1',
+      model: model(['text']),
+      providerContext: providerContext(),
+    })
+    const plan = h.sendPlanService.buildSendPlan(collected)
+    expect(plan.status).toBe('blocked')
+    expect(plan.includedAttachments).toEqual([])
+    expect(plan.attachmentPlans[0]).toMatchObject({
+      assetId: 'pdf-no-direct',
+      eligibility: 'excluded',
+      exclusionReason: 'file_type_route_blocked',
+      fileType: expect.objectContaining({
+        recommendedRoute: 'converted_markdown',
+        blocked: true,
+        blockedBy: expect.arrayContaining(['derivative_asset_not_supported']),
+      }),
+    })
   })
 })

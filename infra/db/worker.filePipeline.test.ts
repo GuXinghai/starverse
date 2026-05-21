@@ -128,7 +128,7 @@ function createWorkerHarness() {
     }),
     fileStorageRootDir: storageRootDir,
   } as any)
-  return { handlers, message, fileTypeDetectionCoordinator, fileTypeVerdictRepo }
+  return { db, handlers, message, fileTypeDetectionCoordinator, fileTypeVerdictRepo }
 }
 
 async function createWorkerAsset(handlers: Map<DbMethod, DbHandler>) {
@@ -285,6 +285,109 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
         draft: expect.objectContaining({ attachedAssetIds: [] }),
       },
     })
+  })
+
+  it('keeps PDF direct send available when extracted text is unsupported', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-pdf-direct'
+    const storageUri = 'assets/original/as/asset-pdf-direct.pdf'
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-pdf-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'sha-pdf-direct',
+        filename: 'manual.pdf',
+        extension: 'pdf',
+        mime: 'application/pdf',
+        sizeBytes: 32,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageBackend: 'local_fs',
+        storageUri,
+        ingestStatus: 'stored',
+        previewStatus: 'not_requested',
+      },
+    })
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n'))
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-pdf-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+    db.prepare(`
+      UPDATE draft_attachments
+      SET ai_payload_kind = 'pdf',
+          processing_status = 'native_supported'
+      WHERE asset_id = @assetId
+    `).run({ assetId })
+
+    const planResult = await dispatchWorkerMessage(handlers, {
+      id: 'req-pdf-send-plan',
+      method: 'sendPlan.buildCurrent',
+      params: {
+        conversationId: 'c1',
+        draftText: 'send pdf',
+        model: {
+          providerKey: 'openrouter',
+          modelId: 'test/pdf',
+          modelKey: 'openrouter::test/pdf',
+          inputModalities: ['text', 'file'],
+          outputModalities: ['text'],
+        },
+        providerContext: {
+          providerKey: 'openrouter',
+          supportsInlineData: true,
+          supportsPdfInputs: true,
+          supportsPdfUrlRef: true,
+          supportsTextUrlRef: true,
+        },
+      },
+    })
+
+    expect(planResult).toMatchObject({
+      ok: true,
+      result: {
+        sendPlan: expect.objectContaining({
+          status: 'sendable',
+          includedAttachments: [
+            expect.objectContaining({
+              assetId,
+            }),
+          ],
+          excludedAttachments: [],
+          attachmentPlans: [
+            expect.objectContaining({
+              assetId,
+              eligibility: 'included',
+              selectedSendMode: 'inline_base64',
+              fileType: expect.objectContaining({
+                recommendedRoute: 'direct_file',
+                blocked: false,
+              }),
+              detection: expect.objectContaining({
+                routeEligibility: 'verdict_ready',
+              }),
+            }),
+          ],
+        }),
+      },
+    })
+    const row = db.prepare(`
+      SELECT source_meta_json AS sourceMetaJson
+      FROM file_assets
+      WHERE id = @assetId
+      LIMIT 1
+    `).get({ assetId }) as { sourceMetaJson: string | null }
+    const meta = row.sourceMetaJson ? JSON.parse(row.sourceMetaJson) : null
+    expect(meta?.textConversion).toMatchObject({
+      status: 'failed',
+      errorCode: 'derivative_asset_not_supported',
+    })
+    expect(meta?.lineage?.stale).not.toBe(true)
+    expect(meta?.lineage?.sendAssetReady).not.toBe(false)
   })
 
   it('routes OpenRouter preparation through the worker-side serializer', async () => {
