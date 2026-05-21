@@ -1,8 +1,8 @@
 # 📚 Starverse 文档导航中心
 
-> **最后更新**: 2026年4月30日
-> **文档体系版本**: 2.1.0
-> **重大变更**: 路径校准与语义修复（G1c），所有链接路径修正，归档/重构条目标注为历史材料
+> **最后更新**: 2026年5月22日
+> **文档体系版本**: 3.0.0
+> **重大变更**: DGR-1 文档治理重构 — 双维度状态模型、DEBUG 归档、pending-classification 登记
 
 ---
 
@@ -122,7 +122,7 @@ Tailwind CSS v4 升级相关的所有文档。
 
 ---
 
-### 📦 archive/ - 历史文档归档 (46 个文档 + 8 个索引)
+### 📦 archive/ - 历史文档归档 (46+ 个文档 + 11 个索引)
 
 已完成项目的历史文档，保持主目录清晰。
 
@@ -136,8 +136,9 @@ Tailwind CSS v4 升级相关的所有文档。
 | [analysis/](../archive/analysis/) | 9 | 问题分析报告 |
 | [testing/](../archive/testing/) | 1 | 测试验证记录 |
 | [migrations/](../archive/migrations/) | 0 | 迁移文档（待归档） |
-| database/ | 0 | 数据库相关（待归档） |
-| documentation/ | 0 | 文档治理（待归档） |
+| [debug/](../archive/debug/) | 4 | Debug 调查记录（DGR-1） |
+| [documentation/](../archive/documentation/) | 2 | 文档治理记录（DGR-1） |
+| [architecture/](../archive/architecture/) | 1 | 架构记录（DGR-1） |
 
 **查看归档索引**: [../archive/README.md](../archive/README.md)
 
@@ -145,6 +146,7 @@ Tailwind CSS v4 升级相关的所有文档。
 - 标题含 "COMPLETE"、"已完成" 且完成日期 > 30 天
 - 问题已解决且验证稳定
 - 分析已完成并产生后续行动
+- DEBUG 文档在问题解决后归档（有参考价值时）
 
 ---
 
@@ -160,7 +162,9 @@ Tailwind CSS v4 升级相关的所有文档。
 | **数据清理** | [DATA_CLEANUP_GUIDE.md](DATA_CLEANUP_GUIDE.md) |
 | **测试** | [BRANCH_DELETE_TEST_GUIDE.md](BRANCH_DELETE_TEST_GUIDE.md), [REASONING_TESTING_STRATEGY.md](REASONING_TESTING_STRATEGY.md) |
 | **迁移指南** | [GENERATION_MIGRATION_GUIDE.md](GENERATION_MIGRATION_GUIDE.md), [PHASE_3_MIGRATION_GUIDE.md](PHASE_3_MIGRATION_GUIDE.md) |
-| **历史记录** | [../archive/README.md](../archive/README.md) — 46 个已归档文档 |
+| **历史记录** | [../archive/README.md](../archive/README.md) — 46+ 个已归档文档 |
+| **文档治理** | [../maintenance/document-governance.md](../maintenance/document-governance.md), [../maintenance/document-status-taxonomy.md](../maintenance/document-status-taxonomy.md), [../maintenance/document-redirect-map.md](../maintenance/document-redirect-map.md) |
+| **ADR** | [../adr/README.md](../adr/README.md) — ADR 规则与模板，[../decisions/README.md](../decisions/README.md) — 基础决策记录 |
 
 ---
 
@@ -189,15 +193,19 @@ Tailwind CSS v4 升级相关的所有文档。
 4. **阶段4**: 更新 INDEX.md 导航
 5. **阶段5**: 创建 ADR 架构决策记录（[decisions/](../decisions/README.md)，5 个核心决策已就绪）
 6. **阶段6**: 建立文档维护原则（见本页 [文档维护原则](#%E6%96%87%E6%A1%A3%E7%BB%B4%E6%8A%A4%E5%8E%9F%E5%88%99)）
+7. **DGR-1**: 文档治理重构 — 双维度状态模型、DEBUG 归档、pending-classification 登记
 
 ### 📈 整理成果
 
 | 指标 | 整理前 | 整理后 | 改善 |
 |------|--------|--------|------|
 | 主目录文档数 | 130+ | 80 | **↓ 38%** |
-| 归档文档 | 0 | 46 | ✅ 历史可查 |
+| 归档文档 | 0 | 53+ | ✅ 历史可查 |
 | 已删除重复 | - | 13 | ✅ 消除冗余 |
 | 子目录结构 | 不完整 | 完善 | ✅ 分类清晰 |
+| 状态模型 | 单维度 | 双维度 | ✅ 更精确 |
+| DEBUG 文档 | 根目录散落 | 归档到 archive/debug/ | ✅ 治理合规 |
+| pending-classification | 未登记 | 10 个目录已登记 | ✅ 可追踪 |
 
 ---
 
@@ -215,7 +223,7 @@ Tailwind CSS v4 升级相关的所有文档。
 
 1. **避免僵尸文档**: 与代码不符的文档立即更新或删除
 2. **避免重复**: 同一主题只保留一个权威文档
-3. **避免临时调试文档**: 问题解决后立即删除 `DEBUG_*.md`
+3. **避免临时调试文档**: 问题解决后将 `DEBUG_*.md` 归档到 `archive/debug/`
 4. **避免过度分散**: 相关文档集中在同一子目录
 5. **避免无维护者**: 每个文档应有明确责任人
 
@@ -277,6 +285,7 @@ Tailwind CSS v4 升级相关的所有文档。
 **License**: MIT
 
 **最近更新历史**:
+- 2026-05-22: v3.0.0 - DGR-1 文档治理重构，双维度状态模型，DEBUG 归档，pending-classification 登记
 - 2026-04-30: v2.1.0 - 路径校准与语义修复（G1c），所有链接路径修正，归档/重构条目标注为历史
 - 2025-12-06: v2.0.0 - 完成文档归档与重组，主目录减少 38%
 - 2025-12-03: v1.0.0 - 初始版本
