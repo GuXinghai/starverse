@@ -11,6 +11,7 @@ import type { MagikaAdapter } from '../../src/next/file-type/magikaAdapter'
 import {
   createMockMagikaRuntimeLoader,
   createUnavailableMagikaRuntimeLoader,
+  MagikaRuntimeClassificationError,
 } from '../../src/next/file-type/magikaRuntimeLoader'
 import { createManagedPluginMagikaRuntimeLoader } from '../../src/next/file-type/magikaManagedPlugin'
 
@@ -1025,6 +1026,11 @@ describe('FileTypeDetectionService', () => {
       expect(failed.job.status).toBe('failed')
       expect(failed.job.errorCode).toBe('error.magika_no_evidence')
       expect(failed.verdict).toBeNull()
+      expect(readDetectionMeta(db, 'asset-miss-19')).toMatchObject({
+        routeEligibility: 'detection_failed',
+        magikaState: 'failed',
+        advancedFailureReason: 'magika_no_evidence',
+      })
 
       // Second: Same modelVersion but classify now works.
       const serviceSecond = new FileTypeDetectionService({
@@ -1043,6 +1049,59 @@ describe('FileTypeDetectionService', () => {
       const magikaEvidence = fresh.verdict?.verdict.evidence.find((item) => item.source === 'magika')
       expect(magikaEvidence).toBeTruthy()
       expect(fileTypeVerdictRepo.getCurrentByAssetId('asset-miss-19')?.id).toBe(fresh.verdict?.id)
+    })
+  })
+
+  it('records specific Magika runtime failure reason without saving an advanced verdict', async () => {
+    await withHarness(async ({ db, storageRootDir, fileAssetRepo, fileTypeVerdictRepo }) => {
+      const storageUri = 'assets/original/ab/asset-runtime-missing.txt'
+      await writeAssetFile(storageRootDir, storageUri, '{"pdf":false}')
+      fileAssetRepo.create({
+        id: 'asset-runtime-missing',
+        sha256: null,
+        filename: 'asset-runtime-missing.pdf',
+        extension: 'pdf',
+        mime: 'application/pdf',
+        sizeBytes: 13,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      })
+
+      const service = new FileTypeDetectionService({
+        db,
+        fileAssetRepo,
+        fileTypeVerdictRepo,
+        storageRootDir,
+        magikaRuntimeLoader: createMockMagikaRuntimeLoader({
+          modelVersion: 'magika-v1',
+          runtimeKind: 'local_loader',
+          classify: () => {
+            throw new MagikaRuntimeClassificationError(
+              'magika_runtime_missing_dependency',
+              'magika_runtime_missing_dependency',
+              'rootCause=ERR_MODULE_NOT_FOUND'
+            )
+          },
+        }),
+      })
+
+      const result = await service.detectFull({ assetId: 'asset-runtime-missing' })
+      expect(result.job.status).toBe('failed')
+      expect(result.job.errorCode).toBe('error.magika_runtime_missing_dependency')
+      expect(result.job.errorMessage).toBe('rootCause=ERR_MODULE_NOT_FOUND')
+      expect(result.verdict).toBeNull()
+      expect(fileTypeVerdictRepo.getCurrentByAssetId('asset-runtime-missing')).toBeNull()
+      expect(readDetectionMeta(db, 'asset-runtime-missing')).toMatchObject({
+        routeEligibility: 'detection_failed',
+        detectionLevel: 'advanced',
+        engineMode: 'core_plus_magika',
+        usedMagika: false,
+        magikaState: 'failed',
+        advancedAttempted: true,
+        advancedFailureReason: 'magika_runtime_missing_dependency',
+      })
     })
   })
 

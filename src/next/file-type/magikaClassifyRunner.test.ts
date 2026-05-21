@@ -4,7 +4,6 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   runMagikaClassify,
-  type MagikaClassifyRunnerResult,
 } from './magikaClassifyRunner'
 import type { ExternalProcessRunResult } from './externalProcessRunner'
 
@@ -133,7 +132,7 @@ describe('magikaClassifyRunner', () => {
       })
       expect(result.ok).toBe(false)
       if (result.ok) return
-      expect(result.errorCode).toBe('runtime_error')
+      expect(result.errorCode).toBe('process_exited_non_zero')
     } finally {
       await fixture.cleanup()
     }
@@ -150,7 +149,7 @@ describe('magikaClassifyRunner', () => {
       })
       expect(result.ok).toBe(false)
       if (result.ok) return
-      expect(result.errorCode).toBe('invalid_output')
+      expect(result.errorCode).toBe('stdout_parse_failed')
     } finally {
       await fixture.cleanup()
     }
@@ -167,7 +166,7 @@ describe('magikaClassifyRunner', () => {
       })
       expect(result.ok).toBe(false)
       if (result.ok) return
-      expect(result.errorCode).toBe('invalid_output')
+      expect(result.errorCode).toBe('stdout_parse_failed')
     } finally {
       await fixture.cleanup()
     }
@@ -184,7 +183,7 @@ describe('magikaClassifyRunner', () => {
       })
       expect(result.ok).toBe(false)
       if (result.ok) return
-      expect(result.errorCode).toBe('invalid_output')
+      expect(result.errorCode).toBe('stdout_parse_failed')
     } finally {
       await fixture.cleanup()
     }
@@ -256,6 +255,33 @@ describe('magikaClassifyRunner', () => {
       expect(result.ok).toBe(false)
       if (result.ok) return
       expect(result.errorCode).toBe('process_kill_failed')
+    } finally {
+      await fixture.cleanup()
+    }
+  })
+
+  it('maps missing magika dependency from stderr to a stable failure code', async () => {
+    const fixture = await createTempFixture()
+    try {
+      const result = await runMagikaClassify({
+        inputBytes: new Uint8Array([1]),
+        runtimeEntryPath: fixture.runtimeEntryPath,
+        modelDirPath: fixture.modelDirPath,
+        configDirPath: fixture.configDirPath,
+      }, {
+        processRunner: createMockProcessRunner({
+          errorCode: 'process_exit_nonzero',
+          exitCode: 1,
+          stdout: '',
+          stderr: `Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'magika' imported from C:\\Users\\alice\\runtime\\runner.mjs`,
+        }),
+      })
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.errorCode).toBe('missing_dependency')
+      expect(result.detail).toContain('ERR_MODULE_NOT_FOUND')
+      expect(result.detail).not.toContain('C:\\Users\\alice')
+      expect(result.detail).not.toMatch(/[A-Za-z]:\\/u)
     } finally {
       await fixture.cleanup()
     }

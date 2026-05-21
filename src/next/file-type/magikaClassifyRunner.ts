@@ -10,6 +10,7 @@ import {
 const MAX_INPUT_BYTES = 10 * 1024 * 1024
 const CLASSIFY_TIMEOUT_MS_DEFAULT = 30000
 const CLASSIFY_MAX_OUTPUT_BYTES = 1024 * 1024
+const RUNNER_DETAIL_MAX_CHARS = 1000
 
 export type MagikaClassifyRunnerInput = Readonly<{
   inputBytes: Uint8Array
@@ -37,11 +38,14 @@ export type MagikaClassifyRunnerFailure = Readonly<{
 
 export type MagikaClassifyRunnerErrorCode =
   | 'input_too_large'
+  | 'spawn_failed'
   | 'timeout'
   | 'output_limit'
-  | 'runtime_error'
-  | 'invalid_output'
   | 'process_kill_failed'
+  | 'process_exited_non_zero'
+  | 'stdout_parse_failed'
+  | 'missing_dependency'
+  | 'unknown_runtime_error'
 
 export type MagikaClassifyRunnerResult = MagikaClassifyRunnerSuccess | MagikaClassifyRunnerFailure
 
@@ -115,10 +119,16 @@ function toProcessErrorResult(
     return { ok: false, errorCode: 'process_kill_failed', detail: sanitizeForRunner('classify process termination failed'), elapsedMs }
   }
   if (result.errorCode === 'command_not_found' || result.errorCode === 'spawn_failed') {
-    return { ok: false, errorCode: 'runtime_error', detail: sanitizeForRunner(`runtime entry not executable: ${result.stderr}`), elapsedMs }
+    return { ok: false, errorCode: 'spawn_failed', detail: sanitizeForRunner(`runtime entry not executable: ${result.stderr}`), elapsedMs }
   }
   if (result.exitCode !== 0 || result.errorCode) {
-    return { ok: false, errorCode: 'runtime_error', detail: sanitizeForRunner(`classify process exited non-zero: ${result.stderr}`), elapsedMs }
+    const detail = sanitizeForRunner(`classify process exited non-zero: ${result.stderr}`)
+    return {
+      ok: false,
+      errorCode: isMissingDependencyDetail(result.stderr) ? 'missing_dependency' : 'process_exited_non_zero',
+      detail,
+      elapsedMs,
+    }
   }
   return null
 }
@@ -131,22 +141,22 @@ function parseClassifyOutput(
   try {
     parsed = JSON.parse(stdout)
   } catch {
-    return { ok: false, errorCode: 'invalid_output', detail: 'classify output is not valid JSON', elapsedMs }
+    return { ok: false, errorCode: 'stdout_parse_failed', detail: 'classify output is not valid JSON', elapsedMs }
   }
 
   if (!parsed || typeof parsed !== 'object') {
-    return { ok: false, errorCode: 'invalid_output', detail: 'classify output is not a JSON object', elapsedMs }
+    return { ok: false, errorCode: 'stdout_parse_failed', detail: 'classify output is not a JSON object', elapsedMs }
   }
 
   const source = parsed as Record<string, unknown>
   const label = normalizeRequiredField(source, 'label')
   if (!label) {
-    return { ok: false, errorCode: 'invalid_output', detail: 'classify output missing required label field', elapsedMs }
+    return { ok: false, errorCode: 'stdout_parse_failed', detail: 'classify output missing required label field', elapsedMs }
   }
 
   const scoreField = normalizeScoreField(source, 'score')
   if (!scoreField.ok) {
-    return { ok: false, errorCode: 'invalid_output', detail: scoreField.detail, elapsedMs }
+    return { ok: false, errorCode: 'stdout_parse_failed', detail: scoreField.detail, elapsedMs }
   }
 
   const modelVersion = normalizeOptionalField(source, 'modelVersion') ?? 'unknown'
@@ -178,9 +188,16 @@ function normalizeScoreField(
 }
 
 function sanitizeForRunner(detail: string): string {
-  return detail
+  const sanitized = detail
     .replace(/(contentToken["'\s:=]+)([^\s"',}]+)/gi, '$1[redacted-token]')
     .replace(/(fullHash["'\s:=]+)([A-Za-z0-9+/=:_-]{12,})/gi, '$1[redacted-hash]')
     .replace(/\b[A-Za-z]:\\[^\s"'`]+/g, '[redacted-path]')
     .replace(/(?:\/Users\/|\/home\/|\/mnt\/|\/var\/|\/tmp\/)[^\s"'`\\]+/g, '[redacted-path]')
+  return sanitized.length > RUNNER_DETAIL_MAX_CHARS
+    ? `${sanitized.slice(0, RUNNER_DETAIL_MAX_CHARS)}...[truncated]`
+    : sanitized
+}
+
+function isMissingDependencyDetail(detail: string): boolean {
+  return /ERR_MODULE_NOT_FOUND|Cannot find package ['"]?magika['"]?/i.test(detail)
 }
