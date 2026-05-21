@@ -2,8 +2,8 @@
 
 **Purpose**: Define governance rules for Starverse documentation lifecycle management.
 
-**Status**: active  
-**Last updated**: 2026-05-22  
+**Status**: active
+**Last updated**: 2026-05-22
 **Owner**: DGR-1
 
 ---

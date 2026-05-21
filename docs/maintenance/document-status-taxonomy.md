@@ -2,8 +2,8 @@
 
 **Purpose**: Define the dual-dimension status model for Starverse documentation governance.
 
-**Status**: active  
-**Last updated**: 2026-05-22  
+**Status**: active
+**Last updated**: 2026-05-22
 **Owner**: DGR-1
 
 ---
