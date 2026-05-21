@@ -5,6 +5,8 @@ import { runEngineHealthCheck } from './externalEngineHealth'
 import { parseManagedEnginePluginManifest } from './externalEngineManifest'
 import { createExternalEngineRegistry, sanitizeEngineDetailForDiagnostics } from './externalEngineRegistry'
 import { runMagikaClassify, type MagikaClassifyRunnerResult } from './magikaClassifyRunner'
+import { runExternalProcess } from './externalProcessRunner'
+import { MagikaRuntimeClassificationError } from './magikaRuntimeLoader'
 import type {
   EngineAvailability,
   EngineFailureReason,
@@ -19,6 +21,7 @@ import type {
   MagikaRuntimeKind,
   MagikaRuntimeLoadResult,
   MagikaRuntimeLoader,
+  MagikaRuntimeUnavailableReason,
 } from './magikaRuntimeLoader'
 
 type ExistsFile = (filePath: string) => Promise<boolean>
@@ -27,6 +30,7 @@ type ResolveRealPath = (filePath: string) => Promise<string>
 
 const WINDOWS_ABSOLUTE_PATH_RE = /\b[A-Za-z]:\\[^\s"'`]+/g
 const UNIX_ABSOLUTE_PATH_RE = /(?:\/Users\/|\/home\/|\/mnt\/|\/var\/|\/tmp\/)[^\s"'`]+/g
+const HEALTH_DETAIL_MAX_CHARS = 1000
 
 export type MagikaManagedPluginIntegrity = Readonly<Record<string, string>>
 
@@ -408,17 +412,11 @@ export async function runManagedMagikaPluginHealthCheck(input: Readonly<{
   registry.registerManifest(toManagedEnginePluginManifest(input.descriptor))
   registry.setVerificationStatus({ engineId: 'magika', verificationStatus: 'verified' })
 
-  const checked =
-    input.descriptor.manifest.healthcheck == null
-      ? registry.markEngineHealthy({
-          engineId: 'magika',
-          version: input.descriptor.manifest.pluginVersion,
-        })
-      : await runEngineHealthCheck({
-          registry,
-          engineId: 'magika',
-          runner: input.healthRunner,
-        })
+  const checked = await runEngineHealthCheck({
+    registry,
+    engineId: 'magika',
+    runner: input.healthRunner ?? createManagedMagikaRuntimeHealthRunner(input.descriptor),
+  })
   const availability = registry.getEngineAvailability()
   const healthy = checked.healthStatus === 'healthy'
 
@@ -459,8 +457,8 @@ export function createMagikaClassifyCallback(
     descriptor: MagikaManagedPluginDescriptor
   }>
 ) => Promise<MagikaRuntimeClassifyOutput | null> {
-  const modelDirPath = path.dirname(descriptor.modelFilePaths[0] ?? path.join(descriptor.pluginDir, 'model'))
-  const configDirPath = path.dirname(descriptor.configFilePaths[0] ?? path.join(descriptor.pluginDir, 'model'))
+  const modelDirPath = modelDirPathOf(descriptor)
+  const configDirPath = configDirPathOf(descriptor)
   return async ({ probe }) => {
     const result = await runMagikaClassify({
       inputBytes: probe.bytes,
@@ -468,9 +466,121 @@ export function createMagikaClassifyCallback(
       modelDirPath,
       configDirPath,
     })
-    if (!result.ok) return null
+    if (!result.ok) {
+      const reason = mapRunnerFailureToRuntimeReason(result)
+      throw new MagikaRuntimeClassificationError(reason, reason, result.detail)
+    }
     return { label: result.label, score: result.score, modelVersion: result.modelVersion }
   }
+}
+
+function createManagedMagikaRuntimeHealthRunner(
+  descriptor: MagikaManagedPluginDescriptor
+): EngineHealthRunner {
+  return async () => {
+    const healthcheck = descriptor.manifest.healthcheck ?? buildDefaultMagikaRuntimeHealthcheck(descriptor)
+    if (!healthcheck) {
+      return {
+        status: 'failed',
+        reason: 'engine_unavailable',
+        detail: 'healthcheck command not configured',
+      }
+    }
+    const result = await runExternalProcess({
+      command: healthcheck.command,
+      args: healthcheck.args,
+      cwd: healthcheck.cwd,
+      mode: 'health_check',
+      timeoutMs: 3000,
+      maxStdoutBytes: 16 * 1024,
+      maxStderrBytes: 16 * 1024,
+    })
+    if (result.timedOut || result.errorCode === 'process_timeout') {
+      return {
+        status: 'timeout',
+        reason: 'engine_timeout',
+        detail: sanitizeForDetails(result.stderr) ?? 'magika health check timed out',
+      }
+    }
+    if (result.exitCode === 0 && !result.errorCode && !result.outputLimited) {
+      return { status: 'healthy', reason: null, detail: null }
+    }
+    return {
+      status: 'failed',
+      reason: 'engine_failed',
+      detail: sanitizeForDetails(formatHealthFailureDetail(result.stderr, result.exitCode, result.errorCode)) ?? 'magika health check failed',
+    }
+  }
+}
+
+function buildDefaultMagikaRuntimeHealthcheck(
+  descriptor: MagikaManagedPluginDescriptor
+): ManagedEnginePluginManifest['healthcheck'] {
+  return {
+    command: 'node',
+    args: [
+      descriptor.runtimeEntryPath,
+      '--model-dir',
+      modelDirPathOf(descriptor),
+      '--config-dir',
+      configDirPathOf(descriptor),
+      '--healthcheck',
+    ],
+    cwd: null,
+  }
+}
+
+function modelDirPathOf(descriptor: MagikaManagedPluginDescriptor): string {
+  return path.dirname(descriptor.modelFilePaths[0] ?? path.join(descriptor.pluginDir, 'model'))
+}
+
+function configDirPathOf(descriptor: MagikaManagedPluginDescriptor): string {
+  return path.dirname(descriptor.configFilePaths[0] ?? path.join(descriptor.pluginDir, 'model'))
+}
+
+function mapRunnerFailureToRuntimeReason(
+  result: Extract<MagikaClassifyRunnerResult, { ok: false }>
+): MagikaRuntimeUnavailableReason {
+  switch (result.errorCode) {
+    case 'input_too_large':
+      return 'magika_input_too_large'
+    case 'spawn_failed':
+      return 'magika_spawn_failed'
+    case 'timeout':
+      return 'magika_timeout'
+    case 'output_limit':
+      return 'magika_output_limit'
+    case 'process_kill_failed':
+      return 'magika_process_kill_failed'
+    case 'process_exited_non_zero':
+      return 'magika_child_process_exit_nonzero'
+    case 'stdout_parse_failed':
+      return 'magika_stdout_parse_failed'
+    case 'missing_dependency':
+      return 'magika_runtime_missing_dependency'
+    case 'unknown_runtime_error':
+      return 'magika_unknown_runtime_error'
+    default:
+      return 'magika_unknown_runtime_error'
+  }
+}
+
+function formatHealthFailureDetail(
+  stderr: string,
+  exitCode: number | null,
+  errorCode: string | null
+): string {
+  const rootCause = /ERR_MODULE_NOT_FOUND/i.test(stderr)
+    ? 'ERR_MODULE_NOT_FOUND'
+    : /Cannot find package ['"]?magika['"]?/i.test(stderr)
+      ? 'Cannot find package magika'
+      : null
+  const parts: string[] = []
+  if (errorCode) parts.push(`errorCode=${errorCode}`)
+  if (exitCode !== null) parts.push(`exitCode=${exitCode}`)
+  if (rootCause) parts.push(`rootCause=${rootCause}`)
+  if (!rootCause && stderr.trim()) parts.push(truncateDiagnostic(stderr))
+  return parts.join('; ')
 }
 
 type ReadManifestSuccess = Readonly<{ ok: true; manifest: MagikaManagedPluginManifest }>
@@ -908,7 +1018,13 @@ function sanitizeForDetails(value: string | null): string | null {
   const normalized = value
     .replace(WINDOWS_ABSOLUTE_PATH_RE, '[redacted-path]')
     .replace(UNIX_ABSOLUTE_PATH_RE, '[redacted-path]')
-  return sanitizeEngineDetailForDiagnostics(normalized)
+  return sanitizeEngineDetailForDiagnostics(truncateDiagnostic(normalized))
+}
+
+function truncateDiagnostic(value: string): string {
+  return value.length > HEALTH_DETAIL_MAX_CHARS
+    ? `${value.slice(0, HEALTH_DETAIL_MAX_CHARS)}...[truncated]`
+    : value
 }
 
 async function dirExists(dirPath: string): Promise<boolean> {

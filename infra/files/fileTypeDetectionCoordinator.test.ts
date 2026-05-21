@@ -262,6 +262,39 @@ describe('FileTypeDetectionCoordinator', () => {
     })
   })
 
+  it('routes to basic when registry is healthy but loader reports missing dependency', async () => {
+    let loadCalls = 0
+    await withHarness({
+      loader: {
+        load: () => {
+          loadCalls += 1
+          return {
+            available: false,
+            runtimeKind: 'local_loader',
+            modelVersion: 'magika-v1',
+            reason: 'magika_runtime_missing_dependency',
+            detail: 'rootCause=ERR_MODULE_NOT_FOUND',
+          }
+        },
+      },
+    }, async (ctx) => {
+      await createStoredAsset(ctx, 'asset-missing-dep', '%PDF-1.7\nbody')
+      upsertMagikaRegistry(ctx.enginePluginRegistryRepo)
+
+      const result = await ctx.coordinator.ensureVerdictForAsset('asset-missing-dep', { detectionTrigger: 'upload' })
+
+      expect(loadCalls).toBe(1)
+      expect(result).toMatchObject({ status: 'ready', pipeline: 'basic', magikaState: 'failed' })
+      expect(result.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(false)
+      expect(result.verdict?.verdict.provenance).toMatchObject({
+        detectionLevel: 'basic',
+        engineMode: 'core_only',
+        usedMagika: false,
+        magikaState: 'failed',
+      })
+    })
+  })
+
   it('marks advanced detection failed when Magika fails after routing to detectFull', async () => {
     await withHarness({
       loader: createMockMagikaRuntimeLoader({

@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { mkdtemp, mkdir, rm, writeFile, readFile, readdir, stat } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { buildSendPlanCandidates } from './sendRouteMapping'
 import {
   createManagedPluginMagikaRuntimeLoader,
@@ -11,7 +11,6 @@ import {
   discoverMagikaManagedPlugin,
   evaluateMagikaManagedPluginAvailability,
   parseMagikaManagedPluginManifest,
-  runManagedMagikaPluginHealthCheck,
   toManagedEnginePluginManifest,
   validateMagikaPackageLayout,
   type MagikaManagedPluginManifest,
@@ -130,6 +129,24 @@ async function updateManifestObject(
   const manifest = await readManifestObject(manifestPath)
   update(manifest)
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2))
+}
+
+async function replaceRuntimeEntry(
+  fixture: PluginFixture,
+  input: Readonly<{ relativePath: string; code: string }>
+): Promise<string> {
+  const runtimeEntryPath = path.join(fixture.rootDir, ...input.relativePath.split('/'))
+  await mkdir(path.dirname(runtimeEntryPath), { recursive: true })
+  await writeFile(runtimeEntryPath, input.code)
+  await updateManifestObject(fixture.manifestPath, (manifest) => {
+    const integrity = { ...(manifest.integrity as Record<string, string>) }
+    const previousRuntimeEntry = String(manifest.runtimeEntry ?? '')
+    delete integrity[previousRuntimeEntry]
+    integrity[input.relativePath] = sha256(Buffer.from(input.code))
+    manifest.runtimeEntry = input.relativePath
+    manifest.integrity = integrity
+  })
+  return runtimeEntryPath
 }
 
 // eslint-disable-next-line max-lines-per-function
@@ -481,6 +498,64 @@ describe('magikaManagedPlugin', () => {
     )
   })
 
+  it('fails health check when default runtime import self-test cannot load magika dependency', async () => {
+    await withPluginFixture(async (fixture) => {
+      await replaceRuntimeEntry(fixture, {
+        relativePath: 'runtime/runner.mjs',
+        code: `import { Magika } from 'magika';\nvoid Magika;\n`,
+      })
+
+      const health = await evaluateMagikaManagedPluginAvailability({
+        pluginDirs: [fixture.rootDir],
+      })
+
+      expect(health.available).toBe(false)
+      expect(health.reason).toBe('engine_failed')
+      expect(health.detail).toContain('ERR_MODULE_NOT_FOUND')
+      expect(health.detail).not.toContain(fixture.rootDir)
+      expect(health.detail).not.toMatch(/[A-Za-z]:\\/u)
+
+      const loader = createManagedPluginMagikaRuntimeLoader({
+        pluginDirs: [fixture.rootDir],
+      })
+      const loaded = await loader.load()
+      expect(loaded.available).toBe(false)
+      if (loaded.available) return
+      expect(loaded.reason).toBe('runtime_unavailable')
+      expect(loaded.detail).toContain('ERR_MODULE_NOT_FOUND')
+    })
+  })
+
+  it('passes default runtime health check for a healthy fake runtime and remains available', async () => {
+    await withPluginFixture(async (fixture) => {
+      await replaceRuntimeEntry(fixture, {
+        relativePath: 'runtime/runner.js',
+        code: `
+if (process.argv.includes('--healthcheck')) process.exit(0);
+process.stdout.write(JSON.stringify({ label: 'json', score: 0.98, modelVersion: 'runner-health-v1' }));
+`,
+      })
+
+      const availability = await evaluateMagikaManagedPluginAvailability({
+        pluginDirs: [fixture.rootDir],
+      })
+      expect(availability.available).toBe(true)
+
+      const loader = createManagedPluginMagikaRuntimeLoader({
+        pluginDirs: [fixture.rootDir],
+        classify: async ({ probe, descriptor }) => {
+          const classify = createMagikaClassifyCallback(descriptor)
+          return await classify({ probe, descriptor })
+        },
+      })
+      const loaded = await loader.load()
+      expect(loaded.available).toBe(true)
+      if (!loaded.available) return
+      const output = await loaded.runtime.classify({ bytes: new Uint8Array([1]) })
+      expect(output).toMatchObject({ label: 'json', score: 0.98, modelVersion: 'runner-health-v1' })
+    })
+  })
+
   it('does not globally block send route mapping when magika engine is unavailable', () => {
     const candidates = buildSendPlanCandidates({
       verdict: {
@@ -648,23 +723,25 @@ describe('magikaManagedPlugin', () => {
   })
 
   it('propagates modelVersion from runner result through createMagikaClassifyCallback', async () => {
-    await withPluginFixture(async ({ rootDir, manifest }) => {
+    await withPluginFixture(async (fixture) => {
+      const runtimeEntryPath = await replaceRuntimeEntry(fixture, {
+        relativePath: 'runtime/runner.js',
+        code: `process.stdout.write(JSON.stringify({ label: 'json', score: 0.99, modelVersion: 'runner-v9' }));`,
+      })
       const descriptor = {
-        pluginDir: rootDir,
-        manifestPath: path.join(rootDir, 'manifest.json'),
-        runtimeEntryPath: path.join(rootDir, 'runtime', 'runner.js'),
-        modelFilePaths: [path.join(rootDir, 'model', 'model.bin')],
-        configFilePaths: [path.join(rootDir, 'model', 'config.json')],
-        manifest,
+        pluginDir: fixture.rootDir,
+        manifestPath: fixture.manifestPath,
+        runtimeEntryPath,
+        modelFilePaths: [fixture.modelPath],
+        configFilePaths: [fixture.configPath],
+        manifest: parseMagikaManagedPluginManifest(await readManifestObject(fixture.manifestPath)),
       }
       const classify = createMagikaClassifyCallback(descriptor)
       const result = await classify({
         probe: { bytes: new Uint8Array([0x7b, 0x7d]) },
         descriptor,
       })
-      // When the real runtime is not available, the callback returns null
-      // rather than throwing. This verifies graceful degradation.
-      expect(result).toBeNull()
+      expect(result).toMatchObject({ label: 'json', score: 0.99, modelVersion: 'runner-v9' })
     })
   })
 
@@ -691,20 +768,6 @@ describe('magikaManagedPlugin', () => {
 
 function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(Buffer.from(bytes)).digest('hex')
-}
-
-async function existsPath(value: string): Promise<boolean> {
-  try {
-    const entry = await stat(value)
-    if (entry.isFile()) return true
-    if (entry.isDirectory()) {
-      const files = await readdir(value)
-      return files.length > 0
-    }
-    return false
-  } catch {
-    return false
-  }
 }
 
 function hasGitTrackedFiles(dirPath: string, cwd: string): Promise<boolean> {
