@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import { inflateRawSync } from 'node:zlib'
 import {
   loadOfficialPluginCatalogFromFile,
@@ -30,6 +30,7 @@ import {
 } from '../../src/next/plugin-distribution/officialPackageRelease'
 import type { PackageDownloadTransport } from '../../src/next/plugin-distribution/packageDownloader'
 import { sanitizePluginDistributionText } from '../../src/next/plugin-distribution/sanitization'
+import { validatePluginPackageInventory } from '../../src/next/plugin-distribution/artifactInventory'
 import {
   isOfficialInstallOperationActive,
   isOfficialInstallOperationTerminal,
@@ -92,6 +93,10 @@ const FAILURE_REASON_SET = new Set([
   'signature_missing',
   'registration_failed',
   'health_failed',
+  'cleanup_failed',
+  'rollback_failed',
+  'dependency_missing',
+  'inventory_invalid',
   'operation_already_in_progress',
   'operation_stale',
 ])
@@ -546,6 +551,7 @@ export class EnginePluginLifecycleService {
       release,
       existing,
       installRootKind,
+      enabled: input.enabled === true,
     })
 
     return ok(toOfficialInstallOperationDto(operation)!)
@@ -606,6 +612,7 @@ export class EnginePluginLifecycleService {
     release: OfficialPackageReleaseMetadata
     existing: EnginePluginRegistryRecord | null
     installRootKind: EnginePluginInstallRootKind
+    enabled: boolean
   }>): Promise<void> {
     const operation = this.installOperations.get(input.operationId)
     if (!operation) return
@@ -629,6 +636,7 @@ export class EnginePluginLifecycleService {
       release: OfficialPackageReleaseMetadata
       existing: EnginePluginRegistryRecord | null
       installRootKind: EnginePluginInstallRootKind
+      enabled: boolean
     }>,
     operation: OfficialInstallOperationRecord,
     paths: Readonly<{ finalDir: string; installRef: string; stageDir: string }>
@@ -644,6 +652,11 @@ export class EnginePluginLifecycleService {
 
     if (!this.transitionCurrentOfficialInstallOperation(operation, 'verifying')) return
     if (!this.transitionCurrentOfficialInstallOperation(operation, 'staging')) return
+    const staleCleanup = await cleanupStaleMagikaManagedDirs(paths.finalDir)
+    if (!staleCleanup.ok) {
+      this.failOfficialInstallOperation(operation, 'cleanup_failed', staleCleanup.detail)
+      return
+    }
     const extracted = await this.extractAndValidateOfficialMagika({
       verified,
       release: input.release,
@@ -653,10 +666,23 @@ export class EnginePluginLifecycleService {
     })
     if (!this.isOfficialInstallOperationCurrent(operation)) return
     if (!extracted.ok) {
+      const failed = this.markOfficialInstallFailureRecord(input.pluginId, extracted.reason)
+      if (failed) operation.result = toOfficialInstallOperationResult(failed)
       this.failOfficialInstallOperation(operation, 'registration_failed', extracted.reason)
       return
     }
+    const stageHealth = await this.verifyOfficialMagikaCandidate({
+      descriptor: extracted.value.descriptor,
+      requireDeclaredRuntimeDependencies: true,
+    })
+    if (!stageHealth.ok) {
+      const failed = this.markOfficialInstallFailureRecord(input.pluginId, stageHealth.detail)
+      if (failed) operation.result = toOfficialInstallOperationResult(failed)
+      this.failOfficialInstallOperation(operation, stageHealth.reason, stageHealth.detail)
+      return
+    }
 
+    if (!this.transitionCurrentOfficialInstallOperation(operation, 'registering')) return
     const promoted = await this.promoteCurrentOfficialMagika({
       operation,
       stagedEngineDir: extracted.value.stagedEngineDir,
@@ -668,19 +694,48 @@ export class EnginePluginLifecycleService {
     }
     if (!promoted.value) return
 
-    if (!this.transitionCurrentOfficialInstallOperation(operation, 'registering')) return
+    if (!this.transitionCurrentOfficialInstallOperation(operation, 'health_checking')) return
+    const finalHealth = await this.verifyOfficialMagikaCandidate({
+      descriptor: promoted.value.descriptor,
+      requireDeclaredRuntimeDependencies: true,
+    })
+    if (!finalHealth.ok) {
+      const rollback = await rollbackOfficialMagikaPromote({
+        finalDir: paths.finalDir,
+        rollbackDir: promoted.value.rollbackDir,
+      })
+      if (!rollback.ok) {
+        this.markOfficialInstallFailureRecord(input.pluginId, rollback.detail)
+        this.failOfficialInstallOperation(operation, 'rollback_failed', rollback.detail)
+        return
+      }
+      if (!promoted.value.rollbackDir) {
+        const failed = this.markOfficialInstallFailureRecord(input.pluginId, finalHealth.detail)
+        if (failed) operation.result = toOfficialInstallOperationResult(failed)
+      }
+      this.failOfficialInstallOperation(operation, finalHealth.reason, finalHealth.detail)
+      return
+    }
+
     const upserted = this.upsertOfficialMagikaInstall({
-      descriptor: promoted.value,
+      descriptor: promoted.value.descriptor,
       manifestBytes: extracted.value.manifestBytes,
       existing: input.existing,
       installRootKind: input.installRootKind,
       installRef: paths.installRef,
       verified,
+      enabled: input.enabled,
     })
     operation.installedEngineId = upserted.engineId
     operation.result = toOfficialInstallOperationResult(upserted)
-    if (!this.transitionCurrentOfficialInstallOperation(operation, 'health_checking')) return
-    await this.recordOfficialInstallHealthResult(operation, promoted.value)
+    const cleanup = await cleanupPromotedOfficialMagika({
+      stageDir: paths.stageDir,
+      rollbackDir: promoted.value.rollbackDir,
+    })
+    if (!cleanup.ok) {
+      this.markOfficialInstallFailureRecord(upserted.engineId, cleanup.detail)
+      this.failOfficialInstallOperation(operation, 'cleanup_failed', cleanup.detail)
+    }
   }
 
   private async downloadAndVerifyOfficialInstall(input: Readonly<{
@@ -716,11 +771,18 @@ export class EnginePluginLifecycleService {
     operation: OfficialInstallOperationRecord,
     paths: Readonly<{ finalDir: string; stageDir: string }>
   ): Promise<void> {
-    await rm(paths.stageDir, { recursive: true, force: true }).catch(() => undefined)
+    const stageCleanup = await safeRemoveMagikaManagedPath(paths.stageDir, paths.finalDir, { allowMissing: true })
+    if (!stageCleanup.ok) {
+      this.failOfficialInstallOperation(operation, 'cleanup_failed', stageCleanup.detail)
+    }
     if (this.shouldCleanFailedOfficialInstallFinalDir(operation)) {
       await this.withOfficialInstallFinalDirLock(input.pluginId, async () => {
         if (this.shouldCleanFailedOfficialInstallFinalDir(operation)) {
-          await rm(paths.finalDir, { recursive: true, force: true }).catch(() => undefined)
+          const finalCleanup = await safeRemoveMagikaManagedPath(paths.finalDir, paths.finalDir, { allowMissing: true })
+          if (!finalCleanup.ok) {
+            this.markOfficialInstallFailureRecord(input.pluginId, finalCleanup.detail)
+            this.failOfficialInstallOperation(operation, 'cleanup_failed', finalCleanup.detail)
+          }
         }
       })
     }
@@ -741,9 +803,8 @@ export class EnginePluginLifecycleService {
   }
 
   private shouldCleanFailedOfficialInstallFinalDir(operation: OfficialInstallOperationRecord): boolean {
-    if (!operation.failureReason || operation.installedEngineId || operation.state === 'stale') return false
-    const operationKey = officialInstallOperationKey(operation.pluginId, operation.pluginVersion)
-    return this.inFlightOfficialInstalls.get(operationKey) === operation.operationId
+    void operation
+    return false
   }
 
   private transitionCurrentOfficialInstallOperation(
@@ -790,60 +851,32 @@ export class EnginePluginLifecycleService {
     this.transitionOfficialInstallOperation(operation, state)
   }
 
-  private async recordOfficialInstallHealthResult(
-    operation: OfficialInstallOperationRecord,
-    descriptor: MagikaManagedPluginDescriptor
-  ): Promise<void> {
-    if (!operation.installedEngineId || !this.isOfficialInstallOperationCurrent(operation)) return
-    try {
-      const health = await runManagedMagikaPluginHealthCheck({
-        descriptor,
-        healthRunner: this.deps.healthRunner,
-      })
-      if (!this.isOfficialInstallOperationCurrent(operation)) return
-      this.deps.registryRepo.updateHealth({
-        engineId: operation.installedEngineId,
-        healthStatus: health.healthy ? 'healthy' : 'unhealthy',
-        updatedAt: this.now(),
-        lastHealthCheckAt: this.now(),
-      })
-      const current = this.deps.registryRepo.getByEngineId(operation.installedEngineId)
-      if (current) operation.result = toOfficialInstallOperationResult(current)
-      if (!health.healthy) {
-        const failed = this.markOfficialInstallHealthFailed(operation.installedEngineId)
-        if (failed) operation.result = toOfficialInstallOperationResult(failed)
-        this.markOfficialInstallOperationHealthFailed(operation, health.reason ?? 'health_failed')
-      }
-    } catch (err: any) {
-      if (!this.isOfficialInstallOperationCurrent(operation)) return
-      const current = this.markOfficialInstallHealthFailed(operation.installedEngineId)
-      if (current) operation.result = toOfficialInstallOperationResult(current)
-      this.markOfficialInstallOperationHealthFailed(operation, err?.message ?? 'health_failed')
-    }
-  }
-
   private async promoteCurrentOfficialMagika(input: Readonly<{
     operation: OfficialInstallOperationRecord
     stagedEngineDir: string
     finalDir: string
-  }>): Promise<LifecycleActionResult<MagikaManagedPluginDescriptor | null>> {
+  }>): Promise<LifecycleActionResult<Readonly<{
+    descriptor: MagikaManagedPluginDescriptor
+    rollbackDir: string | null
+  }> | null>> {
     if (!this.isOfficialInstallOperationCurrent(input.operation)) return ok(null)
     return this.withOfficialInstallFinalDirLock(input.operation.pluginId, async () => {
       if (!this.isOfficialInstallOperationCurrent(input.operation)) return ok(null)
       try {
-        await promoteOfficialMagikaEngine({
+        const promoted = await promoteOfficialMagikaEngine({
+          operationId: input.operation.operationId,
           stagedEngineDir: input.stagedEngineDir,
           finalDir: input.finalDir,
         })
+        if (!promoted.ok) return fail('registration_failed', promoted.detail)
+        const installed = await discoverMagikaManagedPlugin({ pluginDirs: [input.finalDir] })
+        if (!installed.available) {
+          return fail('manifest_integrity_failed', 'managed plugin integrity verification failed')
+        }
+        return ok({ descriptor: installed.descriptor, rollbackDir: promoted.rollbackDir })
       } catch {
         return fail('official_package_extract_failed', 'official package extraction failed')
       }
-      if (!this.isOfficialInstallOperationCurrent(input.operation)) return ok(null)
-      const installed = await discoverMagikaManagedPlugin({ pluginDirs: [input.finalDir] })
-      if (!installed.available) {
-        return fail('manifest_integrity_failed', 'managed plugin integrity verification failed')
-      }
-      return ok(installed.descriptor)
     })
   }
 
@@ -868,10 +901,61 @@ export class EnginePluginLifecycleService {
     }
   }
 
-  private markOfficialInstallHealthFailed(engineId: string): EnginePluginRegistryRecord | null {
+  private async verifyOfficialMagikaCandidate(input: Readonly<{
+    descriptor: MagikaManagedPluginDescriptor
+    requireDeclaredRuntimeDependencies: boolean
+  }>): Promise<Readonly<{ ok: true } | { ok: false; reason: LifecycleFailureReason; detail: string }>> {
+    if (
+      input.requireDeclaredRuntimeDependencies &&
+      input.descriptor.manifest.requiredRuntimePaths.length === 0 &&
+      input.descriptor.manifest.dependencyRoots.length === 0
+    ) {
+      return {
+        ok: false,
+        reason: 'dependency_missing',
+        detail: 'official magika package does not declare required runtime dependencies',
+      }
+    }
+    const health = await runManagedMagikaPluginHealthCheck({
+      descriptor: input.descriptor,
+      healthRunner: this.deps.healthRunner,
+    })
+    if (!health.healthy) {
+      return {
+        ok: false,
+        reason: 'health_failed',
+        detail: health.detail ?? health.reason ?? 'magika health check failed',
+      }
+    }
+    return { ok: true }
+  }
+
+  private markOfficialInstallFailureRecord(engineId: string, diagnostic: string): EnginePluginRegistryRecord | null {
     const current = this.deps.registryRepo.getByEngineId(engineId)
-    if (!current || current.installState === 'uninstalled') return current
     const timestamp = this.now()
+    if (!current) {
+      return this.deps.registryRepo.upsert({
+        engineId,
+        displayName: 'Magika',
+        pluginVersion: '0.0.0',
+        manifestSchemaVersion: '1',
+        manifestHash: '0'.repeat(64),
+        runtimeKind: 'local_loader',
+        modelVersion: null,
+        installState: 'failed',
+        enabled: false,
+        healthStatus: 'unhealthy',
+        failureReason: safeFailureReason(diagnostic),
+        installSource: 'official_catalog',
+        installRootKind: 'managed_root',
+        installRef: 'magika',
+        installedAt: null,
+        updatedAt: timestamp,
+        lastVerifiedAt: null,
+        lastHealthCheckAt: timestamp,
+        metadataJson: null,
+      })
+    }
     return this.deps.registryRepo.upsert({
       engineId: current.engineId,
       displayName: current.displayName,
@@ -880,10 +964,10 @@ export class EnginePluginLifecycleService {
       manifestHash: current.manifestHash,
       runtimeKind: current.runtimeKind,
       modelVersion: current.modelVersion,
-      installState: 'installed',
+      installState: current.installState === 'uninstalled' ? 'failed' : current.installState,
       enabled: false,
       healthStatus: 'unhealthy',
-      failureReason: 'health_failed',
+      failureReason: safeFailureReason(diagnostic),
       installSource: current.installSource,
       installRootKind: current.installRootKind,
       installRef: current.installRef,
@@ -893,15 +977,6 @@ export class EnginePluginLifecycleService {
       lastHealthCheckAt: timestamp,
       metadataJson: current.metadataJson,
     })
-  }
-
-  private markOfficialInstallOperationHealthFailed(
-    operation: OfficialInstallOperationRecord,
-    diagnostic: string
-  ): void {
-    operation.failureReason = sanitizeOperationCode('health_failed')
-    operation.diagnosticCode = sanitizeOperationCode(diagnostic)
-    operation.sanitizedDiagnostics = appendSanitizedDiagnostic(operation.sanitizedDiagnostics, diagnostic)
   }
 
   private getActiveOfficialInstallOperation(operationKey: string): OfficialInstallOperationRecord | null {
@@ -1027,6 +1102,7 @@ export class EnginePluginLifecycleService {
   }>): Promise<LifecycleActionResult<Readonly<{
     stagedEngineDir: string
     manifestBytes: Uint8Array
+    descriptor: MagikaManagedPluginDescriptor
   }>>> {
     try {
       await extractOfficialMagikaPackage({
@@ -1056,7 +1132,7 @@ export class EnginePluginLifecycleService {
       return fail('local_package_manifest_hash_missing', 'cannot read installed package manifest for hash calculation')
     }
 
-    return ok({ stagedEngineDir, manifestBytes })
+    return ok({ stagedEngineDir, manifestBytes, descriptor })
   }
 
   private upsertOfficialMagikaInstall(input: Readonly<{
@@ -1066,6 +1142,7 @@ export class EnginePluginLifecycleService {
     installRootKind: EnginePluginInstallRootKind
     installRef: string
     verified: VerifiedOfficialPackageRelease
+    enabled: boolean
   }>): EnginePluginRegistryRecord {
     const timestamp = this.now()
     return this.deps.registryRepo.upsert({
@@ -1077,8 +1154,8 @@ export class EnginePluginLifecycleService {
       runtimeKind: input.descriptor.manifest.runtimeKind,
       modelVersion: input.descriptor.manifest.modelVersion,
       installState: 'installed',
-      enabled: false,
-      healthStatus: 'unknown',
+      enabled: input.enabled,
+      healthStatus: 'healthy',
       failureReason: null,
       installSource: 'official_catalog',
       installRootKind: input.installRootKind,
@@ -1086,7 +1163,7 @@ export class EnginePluginLifecycleService {
       installedAt: input.existing?.installedAt ?? timestamp,
       updatedAt: timestamp,
       lastVerifiedAt: timestamp,
-      lastHealthCheckAt: null,
+      lastHealthCheckAt: timestamp,
       metadataJson: {
         officialRelease: {
           pluginId: input.descriptor.manifest.engineId,
@@ -1130,12 +1207,41 @@ export class EnginePluginLifecycleService {
     return ok(toInstalledDto(disabled))
   }
 
-  uninstallPlugin(input: UninstallPluginInput): LifecycleActionResult<InstalledEnginePluginDto> {
+  async uninstallPlugin(input: UninstallPluginInput): Promise<LifecycleActionResult<InstalledEnginePluginDto>> {
     const engineId = requireNonEmpty(input.engineId, 'engineId')
     const record = this.deps.registryRepo.getByEngineId(engineId)
     if (!record) return fail('not_installed', 'plugin record is not found')
 
     const uninstalledAt = this.now()
+    this.deps.registryRepo.disable(engineId, uninstalledAt)
+    if (isOfficialManagedMagikaCleanupRecord(record)) {
+      const finalDir = this.deps.resolveInstallPluginDir({
+        installRootKind: record.installRootKind,
+        installRef: record.installRef,
+      })
+      const finalCleanup = await safeRemoveMagikaManagedPath(finalDir, finalDir, { allowMissing: true })
+      if (!finalCleanup.ok) {
+        this.deps.registryRepo.markFailed({
+          engineId,
+          failureReason: safeFailureReason(finalCleanup.detail),
+          updatedAt: this.now(),
+          lastHealthCheckAt: this.now(),
+        })
+        const failed = this.deps.registryRepo.getByEngineId(engineId)
+        return failed ? fail('cleanup_failed', toInstalledDto(failed)) : fail('cleanup_failed', finalCleanup.detail)
+      }
+      const staleCleanup = await cleanupStaleMagikaManagedDirs(finalDir)
+      if (!staleCleanup.ok) {
+        this.deps.registryRepo.markFailed({
+          engineId,
+          failureReason: safeFailureReason(staleCleanup.detail),
+          updatedAt: this.now(),
+          lastHealthCheckAt: this.now(),
+        })
+        const failed = this.deps.registryRepo.getByEngineId(engineId)
+        return failed ? fail('cleanup_failed', toInstalledDto(failed)) : fail('cleanup_failed', staleCleanup.detail)
+      }
+    }
     this.deps.registryRepo.markUninstalled({ engineId, updatedAt: uninstalledAt })
     const uninstalled = this.deps.registryRepo.getByEngineId(engineId)
     if (!uninstalled) return fail('not_installed', 'plugin record is not found after uninstall')
@@ -1394,6 +1500,15 @@ export class EnginePluginLifecycleService {
 
 function isActiveInstalledRecord(record: EnginePluginRegistryRecord | undefined): boolean {
   return record !== undefined && record.installState !== 'uninstalled'
+}
+
+function isOfficialManagedMagikaCleanupRecord(record: EnginePluginRegistryRecord): boolean {
+  return (
+    record.engineId === MAGIKA_OFFICIAL_PLUGIN_ID &&
+    record.installSource === 'official_catalog' &&
+    record.installRootKind === 'managed_root' &&
+    record.installRef === MAGIKA_OFFICIAL_PLUGIN_ID
+  )
 }
 
 function blockedPluginReinstallFailure(failureReason: string): LifecycleFailureReason | null {
@@ -1667,7 +1782,9 @@ async function extractOfficialMagikaPackage(input: Readonly<{
   release: OfficialPackageReleaseMetadata
 }>): Promise<void> {
   assertSafeInstallDir(input.stageDir)
-  await rm(input.stageDir, { recursive: true, force: true })
+  const finalDir = input.stageDir.replace(/\.stage-[^\\/]+$/u, '')
+  const stageCleanup = await safeRemoveMagikaManagedPath(input.stageDir, finalDir, { allowMissing: true })
+  if (!stageCleanup.ok) throw new Error(stageCleanup.detail)
   await mkdir(input.stageDir, { recursive: true })
   await extractZipToDirectory(input.bytes, input.stageDir)
 
@@ -1683,24 +1800,207 @@ async function extractOfficialMagikaPackage(input: Readonly<{
   if (buildSha256Hex(inventoryBytes) !== input.release.catalogEntry.inventorySha256) {
     throw new Error('official package inventory hash mismatch')
   }
+  await validateOfficialPackageInventoryFiles({
+    stageDir: input.stageDir,
+    inventoryBytes,
+    runtimeKind: input.release.catalogEntry.runtimeKind,
+  })
 
   const engineDir = path.join(input.stageDir, 'engine')
   if (!existsSync(engineDir)) throw new Error('official package engine directory missing')
 }
 
+async function validateOfficialPackageInventoryFiles(input: Readonly<{
+  stageDir: string
+  inventoryBytes: Uint8Array
+  runtimeKind: OfficialPackageReleaseMetadata['catalogEntry']['runtimeKind']
+}>): Promise<void> {
+  const parsed = JSON.parse(Buffer.from(input.inventoryBytes).toString('utf8')) as unknown
+  const validation = validatePluginPackageInventory(parsed, { runtimeKind: input.runtimeKind })
+  if (!validation.ok) {
+    throw new Error('official package inventory validation failed')
+  }
+  for (const artifact of validation.inventory.artifacts) {
+    const artifactPath = path.resolve(input.stageDir, artifact.relativePath)
+    const relative = path.relative(input.stageDir, artifactPath)
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new Error('official package inventory path escapes stage')
+    }
+    const bytes = await readFile(artifactPath)
+    if (bytes.byteLength !== artifact.sizeBytes) {
+      throw new Error('official package inventory size mismatch')
+    }
+    if (buildSha256Hex(bytes) !== artifact.sha256) {
+      throw new Error('official package inventory hash mismatch')
+    }
+  }
+}
+
 async function promoteOfficialMagikaEngine(input: Readonly<{
+  operationId: string
   stagedEngineDir: string
   finalDir: string
-}>): Promise<void> {
-  assertSafeInstallDir(input.finalDir)
-  await rm(input.finalDir, { recursive: true, force: true })
-  await mkdir(input.finalDir, { recursive: true })
-  await cp(input.stagedEngineDir, input.finalDir, {
-    recursive: true,
-    force: true,
-    errorOnExist: false,
-    verbatimSymlinks: false,
-  })
+}>): Promise<Readonly<{ ok: true; rollbackDir: string | null } | { ok: false; detail: string }>> {
+  const safety = assertSafeMagikaManagedPath(input.finalDir, input.finalDir)
+  if (!safety.ok) return { ok: false, detail: safety.detail }
+  const rollbackDir = `${input.finalDir}.rollback-${sanitizeOperationCode(input.operationId) ?? 'operation'}`
+  const rollbackSafety = assertSafeMagikaManagedPath(rollbackDir, input.finalDir)
+  if (!rollbackSafety.ok) return { ok: false, detail: rollbackSafety.detail }
+  let usedRollbackDir: string | null = null
+  try {
+    if (existsSync(rollbackDir)) {
+      const cleanup = await safeRemoveMagikaManagedPath(rollbackDir, input.finalDir, { allowMissing: true })
+      if (!cleanup.ok) return cleanup
+    }
+    if (existsSync(input.finalDir)) {
+      await rename(input.finalDir, rollbackDir)
+      usedRollbackDir = rollbackDir
+    }
+    await rename(input.stagedEngineDir, input.finalDir)
+    return { ok: true, rollbackDir: usedRollbackDir }
+  } catch (error) {
+    if (usedRollbackDir && !existsSync(input.finalDir) && existsSync(usedRollbackDir)) {
+      try {
+        await rename(usedRollbackDir, input.finalDir)
+      } catch (rollbackError) {
+        return {
+          ok: false,
+          detail: sanitizeMessage(
+            rollbackError instanceof Error ? rollbackError.message : 'official magika promote rollback failed'
+          ),
+        }
+      }
+    }
+    return { ok: false, detail: sanitizeMessage(error instanceof Error ? error.message : 'official magika promote failed') }
+  }
+}
+
+async function rollbackOfficialMagikaPromote(input: Readonly<{
+  finalDir: string
+  rollbackDir: string | null
+}>): Promise<Readonly<{ ok: true } | { ok: false; detail: string }>> {
+  const brokenCleanup = await safeRemoveMagikaManagedPath(input.finalDir, input.finalDir, { allowMissing: true })
+  if (!brokenCleanup.ok) return brokenCleanup
+  if (!input.rollbackDir) return { ok: true }
+  const safety = assertSafeMagikaManagedPath(input.rollbackDir, input.finalDir)
+  if (!safety.ok) return { ok: false, detail: safety.detail }
+  try {
+    await rename(input.rollbackDir, input.finalDir)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, detail: sanitizeMessage(error instanceof Error ? error.message : 'official magika rollback failed') }
+  }
+}
+
+async function cleanupPromotedOfficialMagika(input: Readonly<{
+  stageDir: string
+  rollbackDir: string | null
+}>): Promise<Readonly<{ ok: true } | { ok: false; detail: string }>> {
+  const finalDir = input.stageDir.replace(/\.stage-[^\\/]+$/u, '')
+  if (input.rollbackDir) {
+    const rollbackCleanup = await safeRemoveMagikaManagedPath(input.rollbackDir, finalDir, { allowMissing: true })
+    if (!rollbackCleanup.ok) return rollbackCleanup
+  }
+  const stageCleanup = await safeRemoveMagikaManagedPath(input.stageDir, finalDir, { allowMissing: true })
+  if (!stageCleanup.ok) return stageCleanup
+  return { ok: true }
+}
+
+async function cleanupStaleMagikaManagedDirs(
+  finalDir: string
+): Promise<Readonly<{ ok: true } | { ok: false; detail: string }>> {
+  const safety = assertSafeMagikaManagedPath(finalDir, finalDir)
+  if (!safety.ok) return { ok: false, detail: safety.detail }
+  const managedRoot = path.dirname(path.resolve(finalDir))
+  let entries: string[]
+  try {
+    entries = await readdir(managedRoot)
+  } catch (error) {
+    if (isNotFoundError(error)) return { ok: true }
+    return { ok: false, detail: sanitizeMessage(error instanceof Error ? error.message : 'managed root cleanup failed') }
+  }
+  for (const entry of entries) {
+    if (!/^magika\.(stage|tmp|rollback)-/u.test(entry)) continue
+    const target = path.join(managedRoot, entry)
+    const removed = await safeRemoveMagikaManagedPath(target, finalDir, { allowMissing: true })
+    if (!removed.ok) return removed
+  }
+  return { ok: true }
+}
+
+async function safeRemoveMagikaManagedPath(
+  targetPath: string,
+  finalDir: string,
+  options: Readonly<{ allowMissing?: boolean }> = {}
+): Promise<Readonly<{ ok: true } | { ok: false; detail: string }>> {
+  const safety = assertSafeMagikaManagedPath(targetPath, finalDir)
+  if (!safety.ok) return { ok: false, detail: safety.detail }
+  try {
+    if (existsSync(path.resolve(targetPath))) {
+      const managedRoot = path.dirname(path.resolve(finalDir))
+      const realTarget = await realpath(path.resolve(targetPath))
+      const realManagedRoot = await realpath(managedRoot)
+      const relativeReal = path.relative(realManagedRoot, realTarget)
+      if (!relativeReal || relativeReal.startsWith('..') || path.isAbsolute(relativeReal)) {
+        return { ok: false, detail: 'managed magika path resolves outside managed root' }
+      }
+    }
+    await rm(path.resolve(targetPath), {
+      recursive: true,
+      force: options.allowMissing === true,
+      maxRetries: 5,
+      retryDelay: 50,
+    })
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, detail: sanitizeMessage(error instanceof Error ? error.message : 'managed magika cleanup failed') }
+  }
+}
+
+function assertSafeMagikaManagedPath(
+  targetPath: string,
+  finalDir: string
+): Readonly<{ ok: true } | { ok: false; detail: string }> {
+  const target = String(targetPath ?? '').trim()
+  const final = String(finalDir ?? '').trim()
+  if (!target || !final) return { ok: false, detail: 'managed magika path is empty' }
+  if (target.includes('\u0000') || final.includes('\u0000')) {
+    return { ok: false, detail: 'managed magika path contains NUL' }
+  }
+  const resolvedTarget = path.resolve(target)
+  const resolvedFinal = path.resolve(final)
+  const parsed = path.parse(resolvedTarget)
+  if (resolvedTarget === parsed.root) return { ok: false, detail: 'managed magika path cannot be filesystem root' }
+  const home = process.env.USERPROFILE || process.env.HOME
+  if (home && path.resolve(home) === resolvedTarget) return { ok: false, detail: 'managed magika path cannot be user home' }
+  if (path.resolve(process.cwd()) === resolvedTarget) return { ok: false, detail: 'managed magika path cannot be repository root' }
+  const managedRoot = path.dirname(resolvedFinal)
+  const enginePluginsRoot = path.dirname(managedRoot)
+  const storageRoot = path.dirname(enginePluginsRoot)
+  if ([storageRoot, enginePluginsRoot, managedRoot].includes(resolvedTarget)) {
+    return { ok: false, detail: 'managed magika path cannot be a container root' }
+  }
+  const relative = path.relative(managedRoot, resolvedTarget)
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    return { ok: false, detail: 'managed magika path is outside managed root' }
+  }
+  if (relative.includes(path.sep)) {
+    return { ok: false, detail: 'managed magika cleanup only allows top-level owned directories' }
+  }
+  const base = path.basename(resolvedTarget)
+  if (base !== 'magika' && !/^magika\.(stage|tmp|rollback)-[a-z0-9._-]+$/iu.test(base)) {
+    return { ok: false, detail: 'managed magika path basename is not owned by magika' }
+  }
+  return { ok: true }
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'ENOENT'
+  )
 }
 
 function extractZipToDirectory(bytes: Uint8Array, targetDir: string): Promise<void> {
