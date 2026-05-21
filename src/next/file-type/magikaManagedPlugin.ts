@@ -10,6 +10,7 @@ import { MagikaRuntimeClassificationError } from './magikaRuntimeLoader'
 import type {
   EngineAvailability,
   EngineFailureReason,
+  EngineHealthProbeResult,
   EngineHealthRunner,
   EnginePlatform,
   ExternalEngineRecord,
@@ -89,9 +90,28 @@ export type MagikaManagedPluginHealthResult = Readonly<{
   healthy: boolean
   reason: EngineFailureReason | null
   detail: string | null
+  healthCheckOutcome: MagikaManagedHealthCheckOutcome | null
+  specificReason: MagikaManagedHealthSpecificReason | null
+  sanitizedRootCause: string | null
+  healthCheckStage: MagikaManagedHealthCheckStage | null
   record: ExternalEngineRecord
   availability: EngineAvailability
 }>
+
+export type MagikaManagedHealthCheckOutcome = 'unhealthy_result' | 'execution_failed'
+
+export type MagikaManagedHealthSpecificReason =
+  | 'magika_runtime_missing_dependency'
+  | 'magika_child_process_exit_nonzero'
+  | 'magika_stdout_parse_failed'
+  | 'magika_health_check_timeout'
+  | 'magika_health_check_execution_failed'
+  | 'unknown_runtime_error'
+
+export type MagikaManagedHealthCheckStage =
+  | 'custom_healthcheck'
+  | 'runtime_self_test'
+  | 'classify_self_test'
 
 export type MagikaManagedPluginAvailabilityResult = Readonly<{
   available: boolean
@@ -434,19 +454,45 @@ export async function runManagedMagikaPluginHealthCheck(input: Readonly<{
   registry.registerBuiltInEngineDefinitions()
   registry.registerManifest(toManagedEnginePluginManifest(input.descriptor))
   registry.setVerificationStatus({ engineId: 'magika', verificationStatus: 'verified' })
+  const stage: MagikaManagedHealthCheckStage = input.healthRunner ? 'custom_healthcheck' : 'runtime_self_test'
+  const baseRunner = input.healthRunner
+    ? wrapGenericMagikaHealthRunner(input.healthRunner, stage)
+    : createManagedMagikaRuntimeHealthRunner(input.descriptor)
+  let healthDiagnostic: MagikaManagedHealthDiagnostic | null = null
 
   const checked = await runEngineHealthCheck({
     registry,
     engineId: 'magika',
-    runner: input.healthRunner ?? createManagedMagikaRuntimeHealthRunner(input.descriptor),
+    runner: async (record) => {
+      try {
+        const probe = await baseRunner(record)
+        healthDiagnostic = extractHealthDiagnostic(probe)
+        return probe
+      } catch (error) {
+        healthDiagnostic = {
+          healthCheckOutcome: 'execution_failed',
+          specificReason: 'magika_health_check_execution_failed',
+          sanitizedRootCause: null,
+          healthCheckStage: stage,
+        }
+        throw error
+      }
+    },
   })
   const availability = registry.getEngineAvailability()
   const healthy = checked.healthStatus === 'healthy'
+  if (!healthy && !healthDiagnostic) {
+    healthDiagnostic = inferHealthDiagnosticFromDetail(checked.failureReason, checked.failureDetails, stage)
+  }
 
   return {
     healthy,
     reason: healthy ? null : checked.failureReason,
-    detail: checked.failureDetails,
+    detail: healthy ? null : formatMagikaHealthDiagnostic(healthDiagnostic, checked.failureDetails),
+    healthCheckOutcome: healthy ? null : healthDiagnostic?.healthCheckOutcome ?? 'execution_failed',
+    specificReason: healthy ? null : healthDiagnostic?.specificReason ?? 'unknown_runtime_error',
+    sanitizedRootCause: healthy ? null : healthDiagnostic?.sanitizedRootCause ?? null,
+    healthCheckStage: healthy ? null : healthDiagnostic?.healthCheckStage ?? stage,
     record: checked,
     availability,
   }
@@ -499,7 +545,7 @@ export function createMagikaClassifyCallback(
 
 function createManagedMagikaRuntimeHealthRunner(
   descriptor: MagikaManagedPluginDescriptor
-): EngineHealthRunner {
+): MagikaManagedHealthRunner {
   return async () => {
     const healthcheck = descriptor.manifest.healthcheck
     if (!healthcheck) return runDefaultMagikaRuntimeSelfTest(descriptor)
@@ -518,20 +564,40 @@ function createManagedMagikaRuntimeHealthRunner(
         status: 'timeout',
         reason: 'engine_timeout',
         detail: sanitizeForDetails(result.stderr) ?? 'magika health check timed out',
+        healthCheckOutcome: 'execution_failed',
+        specificReason: 'magika_health_check_timeout',
+        sanitizedRootCause: extractSanitizedRootCause(result.stderr),
+        healthCheckStage: 'custom_healthcheck',
       }
     }
     if (result.exitCode === 0 && !result.errorCode && !result.outputLimited) return runDefaultMagikaRuntimeSelfTest(descriptor)
+    const detail = formatHealthFailureDetail(result.stderr, result.exitCode, result.errorCode)
+    const diagnostic = inferHealthDiagnosticFromDetail('engine_failed', detail, 'custom_healthcheck')
     return {
       status: 'failed',
-      reason: 'engine_failed',
-      detail: sanitizeForDetails(formatHealthFailureDetail(result.stderr, result.exitCode, result.errorCode)) ?? 'magika health check failed',
+      reason: diagnostic.specificReason === 'magika_health_check_execution_failed' ? 'engine_unavailable' : 'engine_failed',
+      detail: sanitizeForDetails(detail) ?? 'magika health check failed',
+      ...diagnostic,
     }
   }
 }
 
+type MagikaManagedHealthDiagnostic = Readonly<{
+  healthCheckOutcome: MagikaManagedHealthCheckOutcome
+  specificReason: MagikaManagedHealthSpecificReason
+  sanitizedRootCause: string | null
+  healthCheckStage: MagikaManagedHealthCheckStage
+}>
+
+type MagikaManagedHealthProbeResult = EngineHealthProbeResult & Partial<MagikaManagedHealthDiagnostic>
+
+type MagikaManagedHealthRunner = (
+  record: ExternalEngineRecord
+) => Promise<MagikaManagedHealthProbeResult>
+
 async function runDefaultMagikaRuntimeSelfTest(
   descriptor: MagikaManagedPluginDescriptor
-): ReturnType<EngineHealthRunner> {
+): ReturnType<MagikaManagedHealthRunner> {
   const result = await runMagikaClassify({
     inputBytes: new Uint8Array([0x7b, 0x7d]),
     runtimeEntryPath: descriptor.runtimeEntryPath,
@@ -548,14 +614,20 @@ async function runDefaultMagikaRuntimeSelfTest(
       status: 'timeout',
       reason: 'engine_timeout',
       detail: sanitizeForDetails(`magika runtime self-test failed: ${result.errorCode}: ${result.detail}`) ?? 'magika runtime self-test timed out',
+      healthCheckOutcome: 'execution_failed',
+      specificReason: 'magika_health_check_timeout',
+      sanitizedRootCause: extractSanitizedRootCause(result.detail),
+      healthCheckStage: 'classify_self_test',
     }
   }
+  const diagnostic = healthDiagnosticFromRunnerFailure(result)
   return {
     status: 'failed',
     reason: result.errorCode === 'spawn_failed' || result.errorCode === 'missing_dependency'
       ? 'engine_unavailable'
       : 'engine_failed',
     detail: sanitizeForDetails(`magika runtime self-test failed: ${result.errorCode}: ${result.detail}`) ?? 'magika runtime self-test failed',
+    ...diagnostic,
   }
 }
 
@@ -592,6 +664,140 @@ function mapRunnerFailureToRuntimeReason(
     default:
       return 'magika_unknown_runtime_error'
   }
+}
+
+function healthDiagnosticFromRunnerFailure(
+  result: Extract<MagikaClassifyRunnerResult, { ok: false }>
+): MagikaManagedHealthDiagnostic {
+  const specificReason = mapRunnerFailureToHealthSpecificReason(result.errorCode)
+  return {
+    healthCheckOutcome: isRunnerExecutionFailure(result.errorCode) ? 'execution_failed' : 'unhealthy_result',
+    specificReason,
+    sanitizedRootCause: extractSanitizedRootCause(result.detail),
+    healthCheckStage: 'classify_self_test',
+  }
+}
+
+function mapRunnerFailureToHealthSpecificReason(
+  errorCode: Extract<MagikaClassifyRunnerResult, { ok: false }>['errorCode']
+): MagikaManagedHealthSpecificReason {
+  switch (errorCode) {
+    case 'missing_dependency':
+      return 'magika_runtime_missing_dependency'
+    case 'process_exited_non_zero':
+      return 'magika_child_process_exit_nonzero'
+    case 'stdout_parse_failed':
+      return 'magika_stdout_parse_failed'
+    case 'timeout':
+      return 'magika_health_check_timeout'
+    case 'spawn_failed':
+      return 'magika_health_check_execution_failed'
+    default:
+      return 'unknown_runtime_error'
+  }
+}
+
+function isRunnerExecutionFailure(
+  errorCode: Extract<MagikaClassifyRunnerResult, { ok: false }>['errorCode']
+): boolean {
+  return errorCode === 'spawn_failed' ||
+    errorCode === 'timeout' ||
+    errorCode === 'output_limit' ||
+    errorCode === 'process_kill_failed'
+}
+
+function wrapGenericMagikaHealthRunner(
+  runner: EngineHealthRunner,
+  stage: MagikaManagedHealthCheckStage
+): MagikaManagedHealthRunner {
+  return async (record) => {
+    const result = await runner(record)
+    if (result.status === 'healthy') return result
+    return {
+      ...result,
+      ...inferHealthDiagnosticFromDetail(result.reason, result.detail, stage),
+    }
+  }
+}
+
+function extractHealthDiagnostic(
+  probe: MagikaManagedHealthProbeResult
+): MagikaManagedHealthDiagnostic | null {
+  if (probe.status === 'healthy') return null
+  if (probe.healthCheckOutcome && probe.specificReason && probe.healthCheckStage) {
+    return {
+      healthCheckOutcome: probe.healthCheckOutcome,
+      specificReason: probe.specificReason,
+      sanitizedRootCause: probe.sanitizedRootCause ?? null,
+      healthCheckStage: probe.healthCheckStage,
+    }
+  }
+  return inferHealthDiagnosticFromDetail(probe.reason, probe.detail, 'runtime_self_test')
+}
+
+function inferHealthDiagnosticFromDetail(
+  reason: string | null | undefined,
+  detail: string | null | undefined,
+  stage: MagikaManagedHealthCheckStage
+): MagikaManagedHealthDiagnostic {
+  const source = `${reason ?? ''} ${detail ?? ''}`
+  const specificReason = inferSpecificHealthReason(source)
+  return {
+    healthCheckOutcome: isHealthCheckExecutionSpecificReason(specificReason) ? 'execution_failed' : 'unhealthy_result',
+    specificReason,
+    sanitizedRootCause: extractSanitizedRootCause(source),
+    healthCheckStage: stage,
+  }
+}
+
+function inferSpecificHealthReason(source: string): MagikaManagedHealthSpecificReason {
+  if (/ERR_MODULE_NOT_FOUND|Cannot find package ['"]?magika['"]?|missing_dependency/i.test(source)) {
+    return 'magika_runtime_missing_dependency'
+  }
+  if (/process_exited_non_zero|exitCode=\d+|exited non-zero/i.test(source)) {
+    return 'magika_child_process_exit_nonzero'
+  }
+  if (/stdout_parse_failed|not valid JSON|missing required label/i.test(source)) {
+    return 'magika_stdout_parse_failed'
+  }
+  if (/process_timeout|engine_timeout|timed out|timeout/i.test(source)) {
+    return 'magika_health_check_timeout'
+  }
+  if (/spawn_failed|command_not_found|not executable|ENOENT/i.test(source)) {
+    return 'magika_health_check_execution_failed'
+  }
+  if (/engine_unavailable/i.test(source)) return 'magika_health_check_execution_failed'
+  return 'unknown_runtime_error'
+}
+
+function isHealthCheckExecutionSpecificReason(reason: MagikaManagedHealthSpecificReason): boolean {
+  return reason === 'magika_health_check_execution_failed' || reason === 'magika_health_check_timeout'
+}
+
+function extractSanitizedRootCause(value: string | null | undefined): string | null {
+  if (!value) return null
+  return /ERR_MODULE_NOT_FOUND|Cannot find package ['"]?magika['"]?/i.test(value)
+    ? 'ERR_MODULE_NOT_FOUND'
+    : null
+}
+
+function formatMagikaHealthDiagnostic(
+  diagnostic: MagikaManagedHealthDiagnostic | null,
+  detail: string | null
+): string | null {
+  if (!diagnostic) return sanitizeForDetails(detail)
+  const outcome = diagnostic.healthCheckOutcome === 'unhealthy_result'
+    ? 'health_result_unhealthy'
+    : 'health_check_execution_failed'
+  const parts = [
+    `healthCheckOutcome=${diagnostic.healthCheckOutcome}`,
+    outcome,
+    `specificReason=${diagnostic.specificReason}`,
+    `healthCheckStage=${diagnostic.healthCheckStage}`,
+  ]
+  if (diagnostic.sanitizedRootCause) parts.push(`sanitizedRootCause=${diagnostic.sanitizedRootCause}`)
+  if (detail) parts.push(detail)
+  return sanitizeForDetails(parts.join('; '))
 }
 
 function formatHealthFailureDetail(

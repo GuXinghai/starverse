@@ -14,6 +14,7 @@ import { type EngineHealthRunner, type TrustedCatalogPublicKeyMap } from '../../
 import {
   discoverMagikaManagedPlugin,
   type MagikaManagedPluginDescriptor,
+  type MagikaManagedPluginHealthResult,
   parseMagikaManagedPluginManifest,
   runManagedMagikaPluginHealthCheck,
 } from '../../src/next/file-type/magikaManagedPlugin'
@@ -67,6 +68,14 @@ const FAILURE_REASON_SET = new Set([
   'plugin_failed_health_check_failed',
   'health_check_unavailable',
   'health_check_failed',
+  'health_check_execution_failed',
+  'health_result_unhealthy',
+  'magika_runtime_missing_dependency',
+  'magika_child_process_exit_nonzero',
+  'magika_stdout_parse_failed',
+  'magika_health_check_timeout',
+  'magika_health_check_execution_failed',
+  'unknown_runtime_error',
   'not_installed',
   'already_registered',
   'official_trusted_root_unconfigured',
@@ -676,7 +685,11 @@ export class EnginePluginLifecycleService {
       requireDeclaredRuntimeDependencies: true,
     })
     if (!stageHealth.ok) {
-      const failed = this.markOfficialInstallFailureRecord(input.pluginId, stageHealth.detail)
+      const failed = this.markOfficialInstallFailureRecord(
+        input.pluginId,
+        stageHealth.detail,
+        stageHealth.registryFailureReason
+      )
       if (failed) operation.result = toOfficialInstallOperationResult(failed)
       this.failOfficialInstallOperation(operation, stageHealth.reason, stageHealth.detail)
       return
@@ -710,7 +723,11 @@ export class EnginePluginLifecycleService {
         return
       }
       if (!promoted.value.rollbackDir) {
-        const failed = this.markOfficialInstallFailureRecord(input.pluginId, finalHealth.detail)
+        const failed = this.markOfficialInstallFailureRecord(
+          input.pluginId,
+          finalHealth.detail,
+          finalHealth.registryFailureReason
+        )
         if (failed) operation.result = toOfficialInstallOperationResult(failed)
       }
       this.failOfficialInstallOperation(operation, finalHealth.reason, finalHealth.detail)
@@ -904,7 +921,14 @@ export class EnginePluginLifecycleService {
   private async verifyOfficialMagikaCandidate(input: Readonly<{
     descriptor: MagikaManagedPluginDescriptor
     requireDeclaredRuntimeDependencies: boolean
-  }>): Promise<Readonly<{ ok: true } | { ok: false; reason: LifecycleFailureReason; detail: string }>> {
+  }>): Promise<Readonly<{
+    ok: true
+  } | {
+    ok: false
+    reason: LifecycleFailureReason
+    detail: string
+    registryFailureReason?: string | null
+  }>> {
     if (
       input.requireDeclaredRuntimeDependencies &&
       input.descriptor.manifest.requiredRuntimePaths.length === 0 &&
@@ -924,15 +948,21 @@ export class EnginePluginLifecycleService {
       return {
         ok: false,
         reason: 'health_failed',
-        detail: health.detail ?? health.reason ?? 'magika health check failed',
+        detail: buildMagikaHealthOperationDiagnostic(health),
+        registryFailureReason: health.specificReason,
       }
     }
     return { ok: true }
   }
 
-  private markOfficialInstallFailureRecord(engineId: string, diagnostic: string): EnginePluginRegistryRecord | null {
+  private markOfficialInstallFailureRecord(
+    engineId: string,
+    diagnostic: string,
+    registryFailureReason: string | null = null
+  ): EnginePluginRegistryRecord | null {
     const current = this.deps.registryRepo.getByEngineId(engineId)
     const timestamp = this.now()
+    const failureReason = safeFailureReason(registryFailureReason ?? diagnostic)
     if (!current) {
       return this.deps.registryRepo.upsert({
         engineId,
@@ -945,7 +975,7 @@ export class EnginePluginLifecycleService {
         installState: 'failed',
         enabled: false,
         healthStatus: 'unhealthy',
-        failureReason: safeFailureReason(diagnostic),
+        failureReason,
         installSource: 'official_catalog',
         installRootKind: 'managed_root',
         installRef: 'magika',
@@ -967,7 +997,7 @@ export class EnginePluginLifecycleService {
       installState: current.installState === 'uninstalled' ? 'failed' : current.installState,
       enabled: false,
       healthStatus: 'unhealthy',
-      failureReason: safeFailureReason(diagnostic),
+      failureReason,
       installSource: current.installSource,
       installRootKind: current.installRootKind,
       installRef: current.installRef,
@@ -1413,7 +1443,7 @@ export class EnginePluginLifecycleService {
     if (!health.healthy) {
       this.deps.registryRepo.markFailed({
         engineId,
-        failureReason: safeFailureReason(health.reason ?? 'engine_failed'),
+        failureReason: safeFailureReason(health.specificReason ?? health.reason ?? 'engine_failed'),
         updatedAt: this.now(),
         lastHealthCheckAt: this.now(),
       })
@@ -1738,6 +1768,21 @@ function safeFailureReason(input: string | null | undefined): string {
   const normalized = String(input ?? '').trim().toLowerCase()
   if (!normalized) return 'health_check_failed'
   if (FAILURE_REASON_SET.has(normalized)) return normalized
+  if (/ERR_MODULE_NOT_FOUND|Cannot find package ['"]?magika['"]?|missing_dependency/iu.test(input ?? '')) {
+    return 'magika_runtime_missing_dependency'
+  }
+  if (/process_exited_non_zero|exited non-zero|exitCode=\d+/iu.test(input ?? '')) {
+    return 'magika_child_process_exit_nonzero'
+  }
+  if (/stdout_parse_failed|not valid JSON|missing required label/iu.test(input ?? '')) {
+    return 'magika_stdout_parse_failed'
+  }
+  if (/process_timeout|engine_timeout|timed out|timeout/iu.test(input ?? '')) {
+    return 'magika_health_check_timeout'
+  }
+  if (/spawn_failed|command_not_found|not executable|ENOENT/iu.test(input ?? '')) {
+    return 'magika_health_check_execution_failed'
+  }
   if (/^[a-z0-9_]+$/u.test(normalized)) return normalized
   return 'health_check_failed'
 }
@@ -1748,6 +1793,19 @@ function sanitizeStoredFailureReason(input: string | null | undefined): string |
   if (FAILURE_REASON_SET.has(normalized)) return normalized
   if (/^[a-z0-9_]+$/u.test(normalized)) return normalized
   return 'health_check_failed'
+}
+
+function buildMagikaHealthOperationDiagnostic(health: MagikaManagedPluginHealthResult): string {
+  const parts: string[] = []
+  if (health.healthCheckOutcome === 'unhealthy_result') parts.push('health_result_unhealthy')
+  if (health.healthCheckOutcome === 'execution_failed') parts.push('health_check_execution_failed')
+  if (health.healthCheckOutcome) parts.push(`healthCheckOutcome=${health.healthCheckOutcome}`)
+  if (health.specificReason) parts.push(`specificReason=${health.specificReason}`)
+  if (health.healthCheckStage) parts.push(`healthCheckStage=${health.healthCheckStage}`)
+  if (health.sanitizedRootCause) parts.push(`sanitizedRootCause=${health.sanitizedRootCause}`)
+  if (health.detail) parts.push(health.detail)
+  if (health.reason) parts.push(`engineReason=${health.reason}`)
+  return sanitizeMessage(parts.join('; ') || 'magika health check failed')
 }
 
 function buildSha256Hex(bytes: Uint8Array): string {
