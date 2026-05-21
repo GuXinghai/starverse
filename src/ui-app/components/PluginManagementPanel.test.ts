@@ -660,11 +660,13 @@ describe('PluginManagementPanel', () => {
     expect(screen.getByRole('button', { name: 'Install official plugin' })).toBeEnabled()
     expect(screen.getByRole('button', { name: /^Enable/u })).toBeDisabled()
     expect(screen.getByRole('button', { name: /^Check health/u })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /^Uninstall metadata/u })).toBeDisabled()
+    expect(container.textContent).not.toContain('Uninstall metadata')
+    expect(screen.getByRole('button', { name: /^Uninstall plugin/u })).toBeDisabled()
   })
 
-  it('clears stale reconciling install state after uninstall metadata', async () => {
+  it('clears stale reconciling install state after uninstall plugin', async () => {
     const user = userEvent.setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     let uninstalled = false
     const bridge = createDbBridgeMock({
       listOfficialPlugins: {
@@ -742,7 +744,9 @@ describe('PluginManagementPanel', () => {
 
     const { container } = render(PluginManagementPanel)
 
-    await user.click(await screen.findByRole('button', { name: 'Uninstall metadata' }))
+    await user.click(await screen.findByRole('button', { name: 'Uninstall plugin' }))
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Starverse-managed Magika runtime'))
 
     await waitFor(() => expect(container.textContent).toContain('0 registered, 0 enabled, 0 healthy, 0 failed'))
     expect(container.textContent).not.toContain('Reconciling installed registry state')
@@ -751,6 +755,64 @@ describe('PluginManagementPanel', () => {
     expect(screen.getByRole('button', { name: /^Enable/u })).toBeDisabled()
     expect(screen.getByRole('button', { name: /^Disable/u })).toBeDisabled()
     expect(screen.getByRole('button', { name: /^Check health/u })).toBeDisabled()
+  })
+
+  it('shows remove registration for local package rows without promising file deletion', async () => {
+    const user = userEvent.setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const bridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [] },
+      listInstalledPlugins: [
+        installedPlugin({
+          engineId: 'local-magika',
+          displayName: 'Local Magika',
+          installSource: 'local_package',
+          installRootKind: 'external_path',
+          enabled: false,
+          healthStatus: 'unknown',
+        }),
+      ],
+    })
+    ;(globalThis as any).dbBridge = bridge
+
+    const { container } = render(PluginManagementPanel)
+
+    await user.click(await screen.findByRole('button', { name: 'Remove registration' }))
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('will not delete external files'))
+    await waitFor(() => {
+      expect(bridge.invoke).toHaveBeenCalledWith('enginePluginLifecycle.uninstallPlugin', {
+        engineId: 'local-magika',
+      })
+    })
+    expect(container.textContent).not.toContain('Uninstall metadata')
+    expect(container.textContent).not.toContain('delete Starverse-managed')
+  })
+
+  it('shows cleanup failure for managed uninstall instead of success', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const bridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [] },
+      listInstalledPlugins: [
+        installedPlugin({
+          engineId: 'magika',
+          displayName: 'Magika',
+          pluginVersion: '0.1.0',
+          enabled: false,
+          healthStatus: 'unhealthy',
+        }),
+      ],
+      uninstallPlugin: { ok: false, reason: 'cleanup_failed', message: 'cleanup_failed' },
+    })
+    ;(globalThis as any).dbBridge = bridge
+
+    const { container } = render(PluginManagementPanel)
+
+    await user.click(await screen.findByRole('button', { name: 'Uninstall plugin' }))
+
+    await waitFor(() => expect(container.textContent).toContain('cleanup_failed'))
+    expect(container.textContent).not.toContain('Uninstall plugin:')
   })
 
   it('keeps read-only catalog entries without release metadata unavailable for install', async () => {

@@ -144,23 +144,51 @@ async function doDisable(engineId: string) {
   }
 }
 
-async function doUninstall(engineId: string) {
+async function doUninstall(item: DecodedInstalledPlugin) {
+  const actionLabel = uninstallActionLabel(item)
+  if (!confirmUninstall(item)) return
+
   error.value = null
   statusMessage.value = null
   loading.value = true
   try {
-    const result = await uninstallPlugin({ engineId })
+    const result = await uninstallPlugin({ engineId: item.engineId })
     if (result.ok) {
-      statusMessage.value = `Uninstalled: ${engineId}`
+      statusMessage.value = `${actionLabel}: ${item.engineId}`
     } else {
-      error.value = result.reason ?? 'uninstall failed'
+      error.value = result.reason ?? `${actionLabel} failed`
     }
   } catch (err: any) {
     error.value = err?.message ?? String(err)
   } finally {
     loading.value = false
+    const preservedError = error.value
+    const preservedStatus = statusMessage.value
     await loadData()
+    if (preservedError) {
+      error.value = preservedError
+    } else if (preservedStatus) {
+      statusMessage.value = preservedStatus
+    }
   }
+}
+
+
+function isOfficialManagedMagika(item: DecodedInstalledPlugin): boolean {
+  return item.engineId === 'magika' &&
+    item.installSource === 'official_catalog' &&
+    item.installRootKind === 'managed_root'
+}
+
+function uninstallActionLabel(item: DecodedInstalledPlugin): string {
+  return isOfficialManagedMagika(item) ? 'Uninstall plugin' : 'Remove registration'
+}
+
+function confirmUninstall(item: DecodedInstalledPlugin): boolean {
+  if (isOfficialManagedMagika(item)) {
+    return window.confirm('Uninstall plugin? This will delete Starverse-managed Magika runtime, dependencies, and owned stage/tmp/rollback remnants. Detection will use basic detection until Magika is installed again.')
+  }
+  return window.confirm('Remove registration? This only removes the plugin registration from Starverse and will not delete external files.')
 }
 
 async function doHealthCheck(engineId: string) {
@@ -284,7 +312,7 @@ onMounted(() => {
           </div>
           <div class="mt-2 flex flex-wrap gap-1">
             <button
-              v-if="!item.enabled"
+              v-if="!item.enabled && item.installState !== 'uninstalled'"
               type="button"
               class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               :disabled="loading"
@@ -293,7 +321,7 @@ onMounted(() => {
               Enable
             </button>
             <button
-              v-if="item.enabled"
+              v-if="item.enabled && item.installState !== 'uninstalled'"
               type="button"
               class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               :disabled="loading"
@@ -302,6 +330,7 @@ onMounted(() => {
               Disable
             </button>
             <button
+              v-if="item.installState !== 'uninstalled'"
               type="button"
               class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               :disabled="loading"
@@ -310,12 +339,13 @@ onMounted(() => {
               Health Check
             </button>
             <button
+              v-if="item.installState !== 'uninstalled'"
               type="button"
               class="rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
               :disabled="loading"
-              @click="doUninstall(item.engineId)"
+              @click="doUninstall(item)"
             >
-              Uninstall
+              {{ uninstallActionLabel(item) }}
             </button>
           </div>
         </div>

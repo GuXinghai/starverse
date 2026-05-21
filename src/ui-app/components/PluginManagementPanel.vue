@@ -182,6 +182,9 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
   if (!action.clickable || !action.enabled) return
   if (action.id !== 'install_official_plugin' && !row.engineId) return
 
+  const actionLabel = displayActionLabel(row, action)
+  if (action.id === 'uninstall_metadata' && !confirmUninstallAction(row)) return
+
   loading.value = true
   error.value = null
   statusMessage.value = null
@@ -196,10 +199,10 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
         actionOptions: PANEL_ACTION_OPTIONS,
       })
       if (currentState.installOperation.active) {
-        statusMessage.value = `${action.label}: ${installOperationLabel('downloading')}`
+        statusMessage.value = `${actionLabel}: ${installOperationLabel('downloading')}`
         return
       }
-      statusMessage.value = `${action.label}: ${installOperationLabel('accepted')}`
+      statusMessage.value = `${actionLabel}: ${installOperationLabel('accepted')}`
       const result = await installOfficialPlugin({
         pluginId: row.plugin.id,
         pluginVersion: row.plugin.pluginVersion,
@@ -207,7 +210,7 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
       })
       if (result.ok) {
         upsertInstallOperation(result.value)
-        statusMessage.value = `${action.label}: ${installOperationSummary(result.value)}`
+        statusMessage.value = `${actionLabel}: ${installOperationSummary(result.value)}`
         if (buildPluginManagementStateFromSources({
           plugin: row.plugin,
           registryRecord: row.registryRecord,
@@ -218,19 +221,19 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
         }
       } else {
         removeInstallOperation(localInstallKey)
-        error.value = sanitizePdpManagementText(result.reason, `${action.label} failed`)
+        error.value = sanitizePdpManagementText(result.reason, `${actionLabel} failed`)
       }
       return
     }
     const result = await invokeLifecycleAction(action.id, row)
     if (result.ok) {
-      statusMessage.value = `${action.label}: ${sanitizePdpManagementText(result.value.engineId, 'plugin')}`
+      statusMessage.value = `${actionLabel}: ${sanitizePdpManagementText(result.value.engineId, 'plugin')}`
     } else {
-      error.value = sanitizePdpManagementText(result.reason, `${action.label} failed`)
+      error.value = sanitizePdpManagementText(result.reason, `${actionLabel} failed`)
     }
   } catch (err: any) {
     if (localInstallKey) removeInstallOperation(localInstallKey)
-    error.value = formatActionError(action, err)
+    error.value = formatActionError(actionLabel, err)
   } finally {
     loading.value = false
     await loadData({ preserveMessages: true })
@@ -315,6 +318,7 @@ function toRegistryRecord(item: DecodedInstalledPlugin): PdpManagementRegistryIn
     runtimeKind: item.runtimeKind,
     controlledRootKind: item.installRootKind === 'test_root' ? 'dev_only' : 'user_local',
     installSource: item.installSource,
+    installRootKind: item.installRootKind,
     registryState: mapRegistryState(item),
     installState: mapInstallState(item),
     verificationStatus: mapVerificationStatus(item),
@@ -368,6 +372,28 @@ function mapHealthStatus(item: DecodedInstalledPlugin): PluginHealthStatus {
 
 function actionReason(action: UiAction): string {
   return action.reasonCodes.join(', ')
+}
+
+function displayActionLabel(row: PluginPanelRow, action: UiAction): string {
+  if (action.id !== 'uninstall_metadata') return action.label
+  return isOfficialManagedMagikaRow(row) ? 'Uninstall plugin' : 'Remove registration'
+}
+
+function isOfficialManagedMagikaRow(row: PluginPanelRow): boolean {
+  return row.plugin.id === 'magika' &&
+    row.registryRecord?.installSource === 'official_catalog' &&
+    row.registryRecord.installRootKind === 'managed_root'
+}
+
+function confirmUninstallAction(row: PluginPanelRow): boolean {
+  return window.confirm(uninstallConfirmationMessage(row))
+}
+
+function uninstallConfirmationMessage(row: PluginPanelRow): string {
+  if (isOfficialManagedMagikaRow(row)) {
+    return 'Uninstall plugin? This will delete Starverse-managed Magika runtime, dependencies, and owned stage/tmp/rollback remnants. Detection will use basic detection until Magika is installed again.'
+  }
+  return 'Remove registration? This only removes the plugin registration from Starverse and will not delete external files.'
 }
 
 function installOperationKey(pluginId: string, pluginVersion: string): string {
@@ -499,8 +525,8 @@ function stopInstallPoller(): void {
   installPollTimer = null
 }
 
-function formatActionError(action: UiAction, err: any): string {
-  return formatLifecycleError(err, `${action.label} failed`, action.label)
+function formatActionError(actionLabel: string, err: any): string {
+  return formatLifecycleError(err, `${actionLabel} failed`, actionLabel)
 }
 
 function formatLifecycleError(err: any, fallback: string, actionLabel?: string): string {
@@ -602,10 +628,10 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             :disabled="loading || !action.enabled || !action.clickable || (action.id !== 'install_official_plugin' && !row.engineId)"
-            :title="action.enabled ? action.label : actionReason(action)"
+            :title="action.enabled ? displayActionLabel(row, action) : actionReason(action)"
             @click="runAction(row, action)"
           >
-            {{ action.label }}
+            {{ displayActionLabel(row, action) }}
             <span v-if="!action.enabled" class="ml-1 text-gray-400">({{ actionReason(action) }})</span>
           </button>
         </div>

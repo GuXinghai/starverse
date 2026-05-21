@@ -40,6 +40,7 @@ export type PdpManagementRegistryInput = Readonly<{
   runtimeKind: string
   controlledRootKind: string
   installSource: string
+  installRootKind?: string
   registryState: PdpPluginRegistryState
   installState: PluginInstallState
   verificationStatus: PluginVerificationStatus
