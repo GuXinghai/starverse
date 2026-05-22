@@ -23,6 +23,7 @@ import {
   MAGIKA_OFFICIAL_PLUGIN_ID,
   MAGIKA_OFFICIAL_PLUGIN_VERSION,
   MAGIKA_OFFICIAL_RELEASE_METADATA,
+  MAGIKA_OFFICIAL_MODEL_VERSION,
 } from '../../src/next/plugin-distribution/magikaOfficialRelease'
 import {
   verifyOfficialPackageReleaseDownload,
@@ -43,10 +44,15 @@ import type {
   ReadOnlyCatalogEntryDto,
 } from '../../src/next/plugin-distribution/catalogReadModel'
 import type { PluginPackageCapability } from '../../src/next/plugin-distribution/types'
+import {
+  PLUGIN_PACKAGE_INVENTORY_SCHEMA_VERSION,
+  PLUGIN_PACKAGE_MANIFEST_SCHEMA_VERSION,
+} from '../../src/next/plugin-distribution/types'
 import type { EnginePluginRegistryRepo } from '../db/repo/enginePluginRegistryRepo'
 import type {
   EnginePluginInstallRootKind,
   EnginePluginRegistryRecord,
+  JsonObject,
 } from '../db/types'
 
 type ReadBytes = (filePath: string) => Promise<Uint8Array>
@@ -116,8 +122,12 @@ export type InstalledEnginePluginDto = Readonly<{
   engineId: string
   displayName: string
   pluginVersion: string
+  installedVersion: string
+  availableVersion: string | null
+  packageVersion: string
   manifestSchemaVersion: string
   runtimeKind: string
+  runtimeVersion: string | null
   modelVersion: string | null
   installState: EnginePluginRegistryRecord['installState']
   enabled: boolean
@@ -129,6 +139,56 @@ export type InstalledEnginePluginDto = Readonly<{
   updatedAt: number
   lastVerifiedAt: number | null
   lastHealthCheckAt: number | null
+  errorChain: PluginLayeredErrorChainDto | null
+  releaseProvenance: OfficialReleaseProvenanceDto | null
+  previousKnownGood: PreviousKnownGoodDto | null
+}>
+
+export type PluginLayeredErrorChainDto = Readonly<{
+  operationLayer: Readonly<{
+    code: string | null
+  }>
+  healthLayer: Readonly<{
+    outcome: string | null
+    stage: string | null
+  }>
+  runtimeLayer: Readonly<{
+    reason: string | null
+  }>
+  rootCauseLayer: Readonly<{
+    sanitizedRootCause: string | null
+  }>
+}>
+
+export type OfficialReleaseProvenanceDto = Readonly<{
+  pluginId: string
+  packageVersion: string
+  runtimeVersion: string | null
+  modelVersion: string | null
+  packageFormatVersion: number
+  manifestSchemaVersion: string
+  inventorySchemaVersion: string
+  packageSha256: string
+  packageSizeBytes: number
+  manifestSha256: string
+  inventorySha256: string
+  releaseUrl: string
+  releaseTag: string | null
+  assetName: string | null
+  trustKeyId: string
+  signedAt: string
+  expiresAt: string
+  channel: string | null
+  platform: string
+  arch: string
+}>
+
+export type PreviousKnownGoodDto = Readonly<{
+  pluginId: string
+  pluginVersion: string
+  runtimeKind: string
+  installRef: string
+  packageRef: string | null
 }>
 
 export type OfficialPluginDto = Readonly<{
@@ -136,9 +196,23 @@ export type OfficialPluginDto = Readonly<{
   displayName: string
   publisher: string
   pluginVersion: string
+  availableVersion: string
   runtimeKind: string
   capabilities: readonly PluginPackageCapability[]
+  platformCompatibility: Readonly<{
+    declaredPlatform: string
+    compatible: boolean
+  }>
+  architectureCompatibility: Readonly<{
+    declaredArchitecture: string
+    compatible: boolean
+  }>
+  appVersionCompatibility: Readonly<{
+    declaredRange: string
+    compatible: boolean
+  }>
   modelVersion: string | null
+  packageSizeBytes: number
   catalogGeneratedAt: string | null
   installState: EnginePluginRegistryRecord['installState'] | 'not_installed'
   enabled: boolean
@@ -148,11 +222,12 @@ export type OfficialPluginDto = Readonly<{
   installabilityStatus: string
   reasons: readonly string[]
   warnings: readonly string[]
+  releaseProvenance: OfficialReleaseProvenanceDto | null
 }>
 
 export type LifecycleActionResult<T> =
   | Readonly<{ ok: true; value: T }>
-  | Readonly<{ ok: false; reason: LifecycleFailureReason; message: string }>
+  | Readonly<{ ok: false; reason: LifecycleFailureReason; message: string; errorChain: PluginLayeredErrorChainDto | null }>
 
 export type OfficialInstallOperationState = PdpOfficialInstallOperationState
 
@@ -173,6 +248,7 @@ export type OfficialInstallOperationDto = Readonly<{
   failureReason: string | null
   diagnosticCode: string | null
   sanitizedDiagnostics: readonly string[]
+  errorChain: PluginLayeredErrorChainDto | null
   installedEngineId: string | null
   result: Readonly<{
     engineId: string
@@ -196,6 +272,7 @@ type OfficialInstallOperationRecord = {
   failureReason: string | null
   diagnosticCode: string | null
   sanitizedDiagnostics: string[]
+  errorChain: PluginLayeredErrorChainDto | null
   installedEngineId: string | null
   result: {
     engineId: string
@@ -326,9 +403,23 @@ export class EnginePluginLifecycleService {
         displayName: entry.pluginId,
         publisher: 'Starverse',
         pluginVersion: entry.pluginVersion,
+        availableVersion: entry.pluginVersion,
         runtimeKind: 'managed',
         capabilities: [],
+        platformCompatibility: {
+          declaredPlatform: 'any',
+          compatible: true,
+        },
+        architectureCompatibility: {
+          declaredArchitecture: 'any',
+          compatible: true,
+        },
+        appVersionCompatibility: {
+          declaredRange: '>=0.0.0',
+          compatible: true,
+        },
         modelVersion: null,
+        packageSizeBytes: 0,
         catalogGeneratedAt: catalogResult.value.generatedAt,
         installState: installedRecord?.installState ?? 'not_installed',
         enabled: installedRecord?.enabled ?? false,
@@ -338,6 +429,7 @@ export class EnginePluginLifecycleService {
         installabilityStatus: activeInstalledRecord ? 'unavailable_read_only' : 'metadata_compatible_future_install',
         reasons: ['read_only_catalog_no_install_action'],
         warnings: [],
+        releaseProvenance: null,
       } as OfficialPluginDto
     })
 
@@ -390,9 +482,14 @@ export class EnginePluginLifecycleService {
       displayName: entry.displayName,
       publisher: entry.publisher,
       pluginVersion: entry.pluginVersion,
+      availableVersion: entry.pluginVersion,
       runtimeKind: entry.runtimeKind,
       capabilities: entry.capabilities,
+      platformCompatibility: entry.platformCompatibility,
+      architectureCompatibility: entry.architectureCompatibility,
+      appVersionCompatibility: entry.appVersionCompatibility,
       modelVersion: entry.modelVersion,
+      packageSizeBytes: entry.packageSizeBytes,
       catalogGeneratedAt,
       installState: installedRecord?.installState ?? 'not_installed',
       enabled: installedRecord?.enabled ?? false,
@@ -402,6 +499,7 @@ export class EnginePluginLifecycleService {
       installabilityStatus: isActiveInstalledRecord(installedRecord) ? 'unavailable_read_only' : entry.installabilityStatus,
       reasons: entry.reasons,
       warnings: entry.warnings,
+      releaseProvenance: officialReleaseProvenanceForEntry(entry.pluginId, entry.pluginVersion),
     }
   }
 
@@ -607,6 +705,7 @@ export class EnginePluginLifecycleService {
       failureReason: null,
       diagnosticCode: null,
       sanitizedDiagnostics: [],
+      errorChain: null,
       installedEngineId: null,
       result: null,
     }
@@ -688,10 +787,11 @@ export class EnginePluginLifecycleService {
       const failed = this.markOfficialInstallFailureRecord(
         input.pluginId,
         stageHealth.detail,
-        stageHealth.registryFailureReason
+        stageHealth.registryFailureReason,
+        stageHealth.errorChain
       )
       if (failed) operation.result = toOfficialInstallOperationResult(failed)
-      this.failOfficialInstallOperation(operation, stageHealth.reason, stageHealth.detail)
+      this.failOfficialInstallOperation(operation, stageHealth.reason, stageHealth.detail, 'failed', stageHealth.errorChain)
       return
     }
 
@@ -726,11 +826,12 @@ export class EnginePluginLifecycleService {
         const failed = this.markOfficialInstallFailureRecord(
           input.pluginId,
           finalHealth.detail,
-          finalHealth.registryFailureReason
+          finalHealth.registryFailureReason,
+          finalHealth.errorChain
         )
         if (failed) operation.result = toOfficialInstallOperationResult(failed)
       }
-      this.failOfficialInstallOperation(operation, finalHealth.reason, finalHealth.detail)
+      this.failOfficialInstallOperation(operation, finalHealth.reason, finalHealth.detail, 'failed', finalHealth.errorChain)
       return
     }
 
@@ -741,6 +842,7 @@ export class EnginePluginLifecycleService {
       installRootKind: input.installRootKind,
       installRef: paths.installRef,
       verified,
+      release: input.release,
       enabled: input.enabled,
     })
     operation.installedEngineId = upserted.engineId
@@ -857,10 +959,12 @@ export class EnginePluginLifecycleService {
     operation: OfficialInstallOperationRecord,
     failureReason: string,
     diagnosticCode: string,
-    state: Extract<OfficialInstallOperationState, 'failed' | 'cancelled'> = 'failed'
+    state: Extract<OfficialInstallOperationState, 'failed' | 'cancelled'> = 'failed',
+    errorChain: PluginLayeredErrorChainDto | null = null
   ): void {
     operation.failureReason = sanitizeOperationCode(failureReason)
     operation.diagnosticCode = sanitizeOperationCode(diagnosticCode)
+    operation.errorChain = errorChain
     operation.sanitizedDiagnostics = appendSanitizedDiagnostic(
       operation.sanitizedDiagnostics,
       diagnosticCode || failureReason
@@ -928,6 +1032,7 @@ export class EnginePluginLifecycleService {
     reason: LifecycleFailureReason
     detail: string
     registryFailureReason?: string | null
+    errorChain?: PluginLayeredErrorChainDto | null
   }>> {
     if (
       input.requireDeclaredRuntimeDependencies &&
@@ -945,11 +1050,13 @@ export class EnginePluginLifecycleService {
       healthRunner: this.deps.healthRunner,
     })
     if (!health.healthy) {
+      const errorChain = buildMagikaHealthErrorChain(health, 'health_check_failed')
       return {
         ok: false,
         reason: 'health_failed',
         detail: buildMagikaHealthOperationDiagnostic(health),
         registryFailureReason: health.specificReason,
+        errorChain,
       }
     }
     return { ok: true }
@@ -958,7 +1065,8 @@ export class EnginePluginLifecycleService {
   private markOfficialInstallFailureRecord(
     engineId: string,
     diagnostic: string,
-    registryFailureReason: string | null = null
+    registryFailureReason: string | null = null,
+    errorChain: PluginLayeredErrorChainDto | null = null
   ): EnginePluginRegistryRecord | null {
     const current = this.deps.registryRepo.getByEngineId(engineId)
     const timestamp = this.now()
@@ -983,7 +1091,7 @@ export class EnginePluginLifecycleService {
         updatedAt: timestamp,
         lastVerifiedAt: null,
         lastHealthCheckAt: timestamp,
-        metadataJson: null,
+        metadataJson: withLastHealthErrorChain(null, errorChain),
       })
     }
     return this.deps.registryRepo.upsert({
@@ -1005,7 +1113,7 @@ export class EnginePluginLifecycleService {
       updatedAt: timestamp,
       lastVerifiedAt: current.lastVerifiedAt,
       lastHealthCheckAt: timestamp,
-      metadataJson: current.metadataJson,
+      metadataJson: withLastHealthErrorChain(current.metadataJson, errorChain),
     })
   }
 
@@ -1172,6 +1280,7 @@ export class EnginePluginLifecycleService {
     installRootKind: EnginePluginInstallRootKind
     installRef: string
     verified: VerifiedOfficialPackageRelease
+    release: OfficialPackageReleaseMetadata
     enabled: boolean
   }>): EnginePluginRegistryRecord {
     const timestamp = this.now()
@@ -1194,13 +1303,10 @@ export class EnginePluginLifecycleService {
       updatedAt: timestamp,
       lastVerifiedAt: timestamp,
       lastHealthCheckAt: timestamp,
-      metadataJson: {
-        officialRelease: {
-          pluginId: input.descriptor.manifest.engineId,
-          pluginVersion: input.descriptor.manifest.pluginVersion,
-          status: input.verified.status,
-        },
-      },
+      metadataJson: withOfficialReleaseProvenance(
+        input.existing?.metadataJson,
+        buildOfficialReleaseProvenance(input.release, input.descriptor.manifest.modelVersion)
+      ),
     })
   }
 
@@ -1425,15 +1531,20 @@ export class EnginePluginLifecycleService {
     })
     const discovered = await discoverMagikaManagedPlugin({ pluginDirs: [pluginDir] })
     if (!discovered.available) {
+      const errorChain = buildHealthCheckExecutionErrorChain(
+        'health_check_failed',
+        safeFailureReason(discovered.reason)
+      )
       this.deps.registryRepo.markFailed({
         engineId,
         failureReason: safeFailureReason(discovered.reason),
         updatedAt: this.now(),
         lastHealthCheckAt: this.now(),
+        metadataJson: withLastHealthErrorChain(record.metadataJson, errorChain),
       })
       const failed = this.deps.registryRepo.getByEngineId(engineId)
       if (!failed) return fail('not_installed', 'plugin record is not found after health failure')
-      return fail('health_check_unavailable', toInstalledDto(failed))
+      return fail('health_check_unavailable', toInstalledDto(failed), errorChain)
     }
 
     const health = await runManagedMagikaPluginHealthCheck({
@@ -1441,15 +1552,17 @@ export class EnginePluginLifecycleService {
       healthRunner: this.deps.healthRunner,
     })
     if (!health.healthy) {
+      const errorChain = buildMagikaHealthErrorChain(health, 'health_check_failed')
       this.deps.registryRepo.markFailed({
         engineId,
         failureReason: safeFailureReason(health.specificReason ?? health.reason ?? 'engine_failed'),
         updatedAt: this.now(),
         lastHealthCheckAt: this.now(),
+        metadataJson: withLastHealthErrorChain(record.metadataJson, errorChain),
       })
       const failed = this.deps.registryRepo.getByEngineId(engineId)
       if (!failed) return fail('not_installed', 'plugin record is not found after health failure')
-      return fail('health_check_failed', toInstalledDto(failed))
+      return fail('health_check_failed', toInstalledDto(failed), errorChain)
     }
 
     this.deps.registryRepo.updateHealth({
@@ -1563,24 +1676,34 @@ function ok<T>(value: T): LifecycleActionResult<T> {
   return { ok: true, value }
 }
 
-function fail(reason: LifecycleFailureReason, message: string): LifecycleActionResult<never>
-function fail(reason: LifecycleFailureReason, message: InstalledEnginePluginDto): LifecycleActionResult<never>
-function fail(reason: LifecycleFailureReason, message: string | InstalledEnginePluginDto): LifecycleActionResult<never> {
+function fail(reason: LifecycleFailureReason, message: string, errorChain?: PluginLayeredErrorChainDto | null): LifecycleActionResult<never>
+function fail(reason: LifecycleFailureReason, message: InstalledEnginePluginDto, errorChain?: PluginLayeredErrorChainDto | null): LifecycleActionResult<never>
+function fail(
+  reason: LifecycleFailureReason,
+  message: string | InstalledEnginePluginDto,
+  errorChain: PluginLayeredErrorChainDto | null = null
+): LifecycleActionResult<never> {
   const details = typeof message === 'string' ? message : `state=${message.installState}`
   return {
     ok: false,
     reason,
     message: sanitizeMessage(details),
+    errorChain,
   }
 }
 
 function toInstalledDto(record: EnginePluginRegistryRecord): InstalledEnginePluginDto {
+  const releaseProvenance = readOfficialReleaseProvenance(record.metadataJson)
   return {
     engineId: record.engineId,
     displayName: record.displayName,
     pluginVersion: record.pluginVersion,
+    installedVersion: record.pluginVersion,
+    availableVersion: officialAvailableVersionForRecord(record),
+    packageVersion: releaseProvenance?.packageVersion ?? record.pluginVersion,
     manifestSchemaVersion: record.manifestSchemaVersion,
     runtimeKind: record.runtimeKind,
+    runtimeVersion: releaseProvenance?.runtimeVersion ?? null,
     modelVersion: record.modelVersion,
     installState: record.installState,
     enabled: record.enabled,
@@ -1592,6 +1715,9 @@ function toInstalledDto(record: EnginePluginRegistryRecord): InstalledEnginePlug
     updatedAt: record.updatedAt,
     lastVerifiedAt: record.lastVerifiedAt,
     lastHealthCheckAt: record.lastHealthCheckAt,
+    errorChain: buildRecordErrorChain(record),
+    releaseProvenance,
+    previousKnownGood: readPreviousKnownGood(record.metadataJson),
   }
 }
 
@@ -1618,6 +1744,7 @@ function toOfficialInstallOperationDto(
     sanitizedDiagnostics: operation.sanitizedDiagnostics
       .map((value) => sanitizePluginDistributionText(value))
       .filter((value): value is string => Boolean(value)),
+    errorChain: sanitizePluginErrorChain(operation.errorChain),
     installedEngineId: sanitizeOperationCode(operation.installedEngineId),
     result: operation.result
       ? {
@@ -1793,6 +1920,315 @@ function sanitizeStoredFailureReason(input: string | null | undefined): string |
   if (FAILURE_REASON_SET.has(normalized)) return normalized
   if (/^[a-z0-9_]+$/u.test(normalized)) return normalized
   return 'health_check_failed'
+}
+
+function buildOfficialReleaseProvenance(
+  release: OfficialPackageReleaseMetadata,
+  modelVersion: string | null
+): OfficialReleaseProvenanceDto {
+  const packageRef = splitPackageRef(release.catalogEntry.packageRef)
+  return {
+    pluginId: release.catalogEntry.pluginId,
+    packageVersion: release.catalogEntry.pluginVersion,
+    runtimeVersion: null,
+    modelVersion,
+    packageFormatVersion: 1,
+    manifestSchemaVersion: PLUGIN_PACKAGE_MANIFEST_SCHEMA_VERSION,
+    inventorySchemaVersion: PLUGIN_PACKAGE_INVENTORY_SCHEMA_VERSION,
+    packageSha256: release.catalogEntry.packageSha256,
+    packageSizeBytes: release.catalogEntry.packageSizeBytes,
+    manifestSha256: release.catalogEntry.manifestSha256,
+    inventorySha256: release.catalogEntry.inventorySha256,
+    releaseUrl: release.releaseUrl,
+    releaseTag: packageRef.releaseTag,
+    assetName: packageRef.assetName,
+    trustKeyId: release.signatureEnvelope.keyId,
+    signedAt: release.signatureEnvelope.signedAt,
+    expiresAt: release.signatureEnvelope.expiresAt,
+    channel: release.catalogEntry.channel ?? null,
+    platform: release.catalogEntry.platform,
+    arch: release.catalogEntry.arch,
+  }
+}
+
+function withOfficialReleaseProvenance(
+  metadataJson: JsonObject | null | undefined,
+  provenance: OfficialReleaseProvenanceDto
+): JsonObject {
+  return {
+    ...(metadataJson ?? {}),
+    officialRelease: provenance,
+    previousKnownGood: readPreviousKnownGood(metadataJson),
+  }
+}
+
+function officialReleaseProvenanceForEntry(
+  pluginId: string,
+  pluginVersion: string
+): OfficialReleaseProvenanceDto | null {
+  if (pluginId !== MAGIKA_OFFICIAL_PLUGIN_ID || pluginVersion !== MAGIKA_OFFICIAL_PLUGIN_VERSION) return null
+  return buildOfficialReleaseProvenance(MAGIKA_OFFICIAL_RELEASE_METADATA, MAGIKA_OFFICIAL_MODEL_VERSION)
+}
+
+function officialAvailableVersionForRecord(record: EnginePluginRegistryRecord): string | null {
+  if (record.engineId !== MAGIKA_OFFICIAL_PLUGIN_ID || record.installSource !== 'official_catalog') return null
+  return MAGIKA_OFFICIAL_PLUGIN_VERSION
+}
+
+function readOfficialReleaseProvenance(metadataJson: JsonObject | null | undefined): OfficialReleaseProvenanceDto | null {
+  const value = metadataJson?.officialRelease
+  if (!value || typeof value !== 'object') return null
+  const input = value as Record<string, unknown>
+  const pluginId = safeIdentifier(input.pluginId)
+  const packageVersion = safeIdentifier(input.packageVersion ?? input.pluginVersion)
+  const packageSha256 = safeSha256(input.packageSha256)
+  const manifestSha256 = safeSha256(input.manifestSha256)
+  const inventorySha256 = safeSha256(input.inventorySha256)
+  const packageSizeBytes = typeof input.packageSizeBytes === 'number' && Number.isFinite(input.packageSizeBytes)
+    ? input.packageSizeBytes
+    : null
+  const trustKeyId = safeIdentifier(input.trustKeyId)
+  const signedAt = safeTimestamp(input.signedAt)
+  const expiresAt = safeTimestamp(input.expiresAt)
+  const releaseUrl = safePublicUrl(input.releaseUrl)
+  const platform = safeIdentifier(input.platform)
+  const arch = safeIdentifier(input.arch)
+  if (
+    !pluginId ||
+    !packageVersion ||
+    !packageSha256 ||
+    !manifestSha256 ||
+    !inventorySha256 ||
+    packageSizeBytes === null ||
+    !trustKeyId ||
+    !signedAt ||
+    !expiresAt ||
+    !releaseUrl ||
+    !platform ||
+    !arch
+  ) {
+    return null
+  }
+  return {
+    pluginId,
+    packageVersion,
+    runtimeVersion: safeIdentifier(input.runtimeVersion),
+    modelVersion: safeIdentifier(input.modelVersion),
+    packageFormatVersion: typeof input.packageFormatVersion === 'number' && Number.isFinite(input.packageFormatVersion)
+      ? input.packageFormatVersion
+      : 1,
+    manifestSchemaVersion: safeIdentifier(input.manifestSchemaVersion) ?? PLUGIN_PACKAGE_MANIFEST_SCHEMA_VERSION,
+    inventorySchemaVersion: safeIdentifier(input.inventorySchemaVersion) ?? PLUGIN_PACKAGE_INVENTORY_SCHEMA_VERSION,
+    packageSha256,
+    packageSizeBytes,
+    manifestSha256,
+    inventorySha256,
+    releaseUrl,
+    releaseTag: safeIdentifier(input.releaseTag),
+    assetName: safeAssetName(input.assetName),
+    trustKeyId,
+    signedAt,
+    expiresAt,
+    channel: safeIdentifier(input.channel),
+    platform,
+    arch,
+  }
+}
+
+function readPreviousKnownGood(metadataJson: JsonObject | null | undefined): PreviousKnownGoodDto | null {
+  const value = metadataJson?.previousKnownGood
+  if (!value || typeof value !== 'object') return null
+  const input = value as Record<string, unknown>
+  const pluginId = safeIdentifier(input.pluginId)
+  const pluginVersion = safeIdentifier(input.pluginVersion)
+  const runtimeKind = safeIdentifier(input.runtimeKind)
+  const installRef = safeIdentifier(input.installRef)
+  if (!pluginId || !pluginVersion || !runtimeKind || !installRef) return null
+  return {
+    pluginId,
+    pluginVersion,
+    runtimeKind,
+    installRef,
+    packageRef: safeIdentifier(input.packageRef),
+  }
+}
+
+function splitPackageRef(packageRef: string): Readonly<{ releaseTag: string | null; assetName: string | null }> {
+  const parts = packageRef.split('/').filter(Boolean)
+  return {
+    releaseTag: safeIdentifier(parts[0]),
+    assetName: safeAssetName(parts[parts.length - 1]),
+  }
+}
+
+function safeIdentifier(value: unknown): string | null {
+  const normalized = String(value ?? '').trim()
+  if (!normalized) return null
+  if (/^[a-z0-9._:@+-]{1,160}$/iu.test(normalized)) return normalized
+  return null
+}
+
+function safeAssetName(value: unknown): string | null {
+  const normalized = String(value ?? '').trim()
+  if (!normalized) return null
+  if (/^[a-z0-9._@+-]{1,200}$/iu.test(normalized)) return normalized
+  return null
+}
+
+function safeSha256(value: unknown): string | null {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  return /^[a-f0-9]{64}$/u.test(normalized) ? normalized : null
+}
+
+function safeTimestamp(value: unknown): string | null {
+  const normalized = String(value ?? '').trim()
+  if (!normalized) return null
+  return /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/u.test(normalized) ? normalized : null
+}
+
+function safePublicUrl(value: unknown): string | null {
+  const normalized = String(value ?? '').trim()
+  if (!normalized) return null
+  return /^https:\/\/[a-z0-9.-]+\/[^\s"'`<>\\]{1,500}$/iu.test(normalized) ? normalized : null
+}
+
+function buildRecordErrorChain(record: EnginePluginRegistryRecord): PluginLayeredErrorChainDto | null {
+  if (!record.failureReason && record.healthStatus === 'healthy') return null
+  return readLastHealthErrorChain(record.metadataJson) ?? buildErrorChainFromFailureReason(record.failureReason)
+}
+
+function buildErrorChainFromFailureReason(failureReason: string | null | undefined): PluginLayeredErrorChainDto | null {
+  const reason = sanitizeLayerCode(failureReason)
+  if (!reason) return null
+  if (reason === 'health_check_failed' || reason === 'health_check_unavailable') {
+    return {
+      operationLayer: { code: 'health_check_failed' },
+      healthLayer: { outcome: null, stage: null },
+      runtimeLayer: { reason: null },
+      rootCauseLayer: { sanitizedRootCause: null },
+    }
+  }
+  if (isMagikaRuntimeFailureReason(reason)) {
+    return {
+      operationLayer: { code: null },
+      healthLayer: { outcome: null, stage: null },
+      runtimeLayer: { reason },
+      rootCauseLayer: { sanitizedRootCause: rootCauseForRuntimeReason(reason, null) },
+    }
+  }
+  return {
+    operationLayer: { code: reason },
+    healthLayer: { outcome: null, stage: null },
+    runtimeLayer: { reason: null },
+    rootCauseLayer: { sanitizedRootCause: null },
+  }
+}
+
+function buildHealthCheckExecutionErrorChain(
+  operationCode: string,
+  runtimeReason: string | null | undefined
+): PluginLayeredErrorChainDto {
+  const reason = sanitizeLayerCode(runtimeReason)
+  return {
+    operationLayer: { code: sanitizeLayerCode(operationCode) ?? 'health_check_failed' },
+    healthLayer: { outcome: 'execution_failed', stage: 'unknown_health_check_stage' },
+    runtimeLayer: { reason: reason && isMagikaRuntimeFailureReason(reason) ? reason : 'magika_health_check_execution_failed' },
+    rootCauseLayer: { sanitizedRootCause: rootCauseForRuntimeReason(reason, null) },
+  }
+}
+
+function buildMagikaHealthErrorChain(
+  health: MagikaManagedPluginHealthResult,
+  operationCode: string
+): PluginLayeredErrorChainDto {
+  const runtimeReason = sanitizeLayerCode(health.specificReason)
+  return {
+    operationLayer: { code: sanitizeLayerCode(operationCode) ?? 'health_check_failed' },
+    healthLayer: {
+      outcome: sanitizeLayerCode(health.healthCheckOutcome) ?? 'unknown_health_check_result',
+      stage: normalizeHealthCheckStage(health.healthCheckStage),
+    },
+    runtimeLayer: {
+      reason: runtimeReason,
+    },
+    rootCauseLayer: {
+      sanitizedRootCause: rootCauseForRuntimeReason(runtimeReason, health.sanitizedRootCause),
+    },
+  }
+}
+
+function normalizeHealthCheckStage(stage: string | null | undefined): string {
+  if (stage === 'classify_self_test') return 'runtime_self_test'
+  return sanitizeLayerCode(stage) ?? 'unknown_health_check_stage'
+}
+
+function withLastHealthErrorChain(
+  metadataJson: JsonObject | null | undefined,
+  errorChain: PluginLayeredErrorChainDto | null
+): JsonObject | null {
+  if (!errorChain) return metadataJson ?? null
+  return {
+    ...(metadataJson ?? {}),
+    lastHealthErrorChain: errorChain,
+  }
+}
+
+function readLastHealthErrorChain(metadataJson: JsonObject | null | undefined): PluginLayeredErrorChainDto | null {
+  if (!metadataJson) return null
+  const value = metadataJson.lastHealthErrorChain
+  if (!value || typeof value !== 'object') return null
+  return sanitizePluginErrorChain(value)
+}
+
+function sanitizePluginErrorChain(value: unknown): PluginLayeredErrorChainDto | null {
+  if (!value || typeof value !== 'object') return null
+  const chain = value as {
+    operationLayer?: { code?: unknown }
+    healthLayer?: { outcome?: unknown; stage?: unknown }
+    runtimeLayer?: { reason?: unknown }
+    rootCauseLayer?: { sanitizedRootCause?: unknown }
+  }
+  return {
+    operationLayer: { code: sanitizeLayerCode(chain.operationLayer?.code) },
+    healthLayer: {
+      outcome: sanitizeLayerCode(chain.healthLayer?.outcome),
+      stage: sanitizeLayerCode(chain.healthLayer?.stage),
+    },
+    runtimeLayer: { reason: sanitizeLayerCode(chain.runtimeLayer?.reason) },
+    rootCauseLayer: { sanitizedRootCause: sanitizeRootCauseCode(chain.rootCauseLayer?.sanitizedRootCause) },
+  }
+}
+
+function sanitizeLayerCode(input: unknown): string | null {
+  const normalized = String(input ?? '').trim()
+  if (!normalized) return null
+  if (/^[a-z0-9_:-]{1,128}$/iu.test(normalized)) return normalized
+  return null
+}
+
+function sanitizeRootCauseCode(input: unknown): string | null {
+  const normalized = String(input ?? '').trim()
+  if (!normalized) return null
+  if (/^[A-Z0-9_:-]{1,128}$/u.test(normalized)) return normalized
+  return null
+}
+
+function isMagikaRuntimeFailureReason(reason: string): boolean {
+  return reason === 'magika_runtime_missing_dependency' ||
+    reason === 'magika_child_process_exit_nonzero' ||
+    reason === 'magika_stdout_parse_failed' ||
+    reason === 'magika_health_check_timeout' ||
+    reason === 'magika_health_check_execution_failed' ||
+    reason === 'unknown_runtime_error'
+}
+
+function rootCauseForRuntimeReason(reason: string | null | undefined, rootCause: string | null | undefined): string | null {
+  const sanitized = sanitizeRootCauseCode(rootCause)
+  if (sanitized) return sanitized
+  if (reason === 'magika_child_process_exit_nonzero') return 'PROCESS_EXIT_NONZERO'
+  if (reason === 'magika_stdout_parse_failed') return 'STDOUT_PARSE_FAILED'
+  if (reason === 'magika_health_check_timeout') return 'TIMEOUT'
+  return null
 }
 
 function buildMagikaHealthOperationDiagnostic(health: MagikaManagedPluginHealthResult): string {
@@ -2006,8 +2442,8 @@ async function safeRemoveMagikaManagedPath(
     await rm(path.resolve(targetPath), {
       recursive: true,
       force: options.allowMissing === true,
-      maxRetries: 5,
-      retryDelay: 50,
+      maxRetries: 20,
+      retryDelay: 100,
     })
     return { ok: true }
   } catch (error) {

@@ -12,13 +12,85 @@ const pluginPackageCapabilitySchema = z.enum([
   'model_inference',
   'utility',
 ])
+const pluginPackagePlatformSchema = z.enum(['any', 'win32', 'darwin', 'linux'])
+const pluginPackageArchitectureSchema = z.enum(['any', 'x64', 'arm64'])
+const officialCatalogStatusSchema = z.enum(['valid_metadata_only', 'invalid'])
+const officialVerificationMetadataStatusSchema = z.enum([
+  'metadata_present_crypto_deferred',
+  'production_signature_available',
+  'metadata_missing',
+  'metadata_invalid',
+])
+const officialInstallabilityStatusSchema = z.enum([
+  'metadata_compatible_future_install',
+  'official_remote_install_available',
+  'unavailable_read_only',
+])
+
+const nullableCode = z.string().trim().nullable()
+
+const pluginErrorChainSchema = z.object({
+  operationLayer: z.object({
+    code: nullableCode,
+  }),
+  healthLayer: z.object({
+    outcome: nullableCode,
+    stage: nullableCode,
+  }),
+  runtimeLayer: z.object({
+    reason: nullableCode,
+  }),
+  rootCauseLayer: z.object({
+    sanitizedRootCause: nullableCode,
+  }),
+})
+
+const optionalPluginErrorChainSchema = pluginErrorChainSchema.nullable().optional().transform((value) => value ?? null)
+
+const releaseProvenanceSchema = z.object({
+  pluginId: nonEmpty,
+  packageVersion: nonEmpty,
+  runtimeVersion: z.string().trim().nullable(),
+  modelVersion: z.string().trim().nullable(),
+  packageFormatVersion: z.number().int().positive(),
+  manifestSchemaVersion: nonEmpty,
+  inventorySchemaVersion: nonEmpty,
+  packageSha256: z.string().trim().regex(/^[a-f0-9]{64}$/u),
+  packageSizeBytes: z.number().int().positive(),
+  manifestSha256: z.string().trim().regex(/^[a-f0-9]{64}$/u),
+  inventorySha256: z.string().trim().regex(/^[a-f0-9]{64}$/u),
+  releaseUrl: z.string().trim().url(),
+  releaseTag: z.string().trim().nullable(),
+  assetName: z.string().trim().nullable(),
+  trustKeyId: nonEmpty,
+  signedAt: nonEmpty,
+  expiresAt: nonEmpty,
+  channel: z.string().trim().nullable(),
+  platform: nonEmpty,
+  arch: nonEmpty,
+})
+
+const previousKnownGoodSchema = z.object({
+  pluginId: nonEmpty,
+  pluginVersion: nonEmpty,
+  runtimeKind: nonEmpty,
+  installRef: nonEmpty,
+  packageRef: z.string().trim().nullable(),
+})
+
+const optionalReleaseProvenanceSchema = releaseProvenanceSchema.nullable().optional().transform((value) => value ?? null)
+const optionalPreviousKnownGoodSchema = previousKnownGoodSchema.nullable().optional().transform((value) => value ?? null)
 
 const installedPluginSchema = z.object({
   engineId: nonEmpty,
   displayName: nonEmpty,
   pluginVersion: nonEmpty,
+  installedVersion: nonEmpty.optional(),
+  availableVersion: z.string().trim().nullable().optional(),
+  packageVersion: nonEmpty.optional(),
   manifestSchemaVersion: nonEmpty,
   runtimeKind: nonEmpty,
+  runtimeVersion: z.string().trim().nullable().optional(),
   modelVersion: z.string().trim().nullable(),
   installState: z.enum(['installed', 'failed', 'uninstalled', 'update_available']),
   enabled: z.boolean(),
@@ -30,6 +102,9 @@ const installedPluginSchema = z.object({
   updatedAt: z.number().finite(),
   lastVerifiedAt: z.number().finite().nullable(),
   lastHealthCheckAt: z.number().finite().nullable(),
+  errorChain: optionalPluginErrorChainSchema,
+  releaseProvenance: optionalReleaseProvenanceSchema,
+  previousKnownGood: optionalPreviousKnownGoodSchema,
 })
 
 const officialPluginSchema = z.object({
@@ -37,24 +112,40 @@ const officialPluginSchema = z.object({
   displayName: nonEmpty,
   publisher: nonEmpty,
   pluginVersion: nonEmpty,
+  availableVersion: nonEmpty.optional(),
   runtimeKind: nonEmpty,
   capabilities: z.array(pluginPackageCapabilitySchema),
+  platformCompatibility: z.object({
+    declaredPlatform: pluginPackagePlatformSchema,
+    compatible: z.boolean(),
+  }).optional().default({ declaredPlatform: 'any', compatible: true }),
+  architectureCompatibility: z.object({
+    declaredArchitecture: pluginPackageArchitectureSchema,
+    compatible: z.boolean(),
+  }).optional().default({ declaredArchitecture: 'any', compatible: true }),
+  appVersionCompatibility: z.object({
+    declaredRange: nonEmpty,
+    compatible: z.boolean(),
+  }).optional().default({ declaredRange: '>=0.0.0', compatible: true }),
   modelVersion: z.string().trim().nullable(),
+  packageSizeBytes: z.number().int().nonnegative().optional().default(0),
   catalogGeneratedAt: z.string().trim().nullable(),
   installState: z.enum(['installed', 'failed', 'uninstalled', 'update_available', 'not_installed']),
   enabled: z.boolean(),
   recommendedInstallRootKind: z.enum(['managed_root', 'test_root']),
-  catalogStatus: nonEmpty,
-  verificationMetadataStatus: nonEmpty,
-  installabilityStatus: nonEmpty,
+  catalogStatus: officialCatalogStatusSchema,
+  verificationMetadataStatus: officialVerificationMetadataStatusSchema,
+  installabilityStatus: officialInstallabilityStatusSchema,
   reasons: z.array(nonEmpty),
   warnings: z.array(nonEmpty),
+  releaseProvenance: optionalReleaseProvenanceSchema,
 })
 
 const lifecycleFailureSchema = z.object({
   ok: z.literal(false),
   reason: nonEmpty,
   message: nonEmpty,
+  errorChain: optionalPluginErrorChainSchema,
 })
 
 const officialInstallOperationStateSchema = z.enum([
@@ -88,6 +179,7 @@ const officialInstallOperationSchema = z.object({
   failureReason: z.string().trim().nullable(),
   diagnosticCode: z.string().trim().nullable(),
   sanitizedDiagnostics: z.array(z.string().trim()),
+  errorChain: optionalPluginErrorChainSchema,
   installedEngineId: z.string().trim().nullable(),
   result: z.object({
     engineId: nonEmpty,
@@ -148,6 +240,9 @@ const installOperationStatusResultSchema = z.union([
 ])
 
 export type DecodedInstalledPlugin = z.infer<typeof installedPluginSchema>
+export type DecodedPluginErrorChain = z.infer<typeof pluginErrorChainSchema>
+export type DecodedReleaseProvenance = z.infer<typeof releaseProvenanceSchema>
+export type DecodedPreviousKnownGood = z.infer<typeof previousKnownGoodSchema>
 export type DecodedOfficialPlugin = z.infer<typeof officialPluginSchema>
 export type DecodedOfficialInstallOperation = z.infer<typeof officialInstallOperationSchema>
 export type DecodedLifecycleInstalledResult = z.infer<typeof lifecycleInstalledResultSchema>

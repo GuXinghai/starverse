@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import EnginePluginSettingsPanel from './EnginePluginSettingsPanel.vue'
 
 function officialPlugin(overrides?: Record<string, unknown>) {
@@ -9,9 +9,14 @@ function officialPlugin(overrides?: Record<string, unknown>) {
     displayName: 'Magika',
     publisher: 'Google Magika',
     pluginVersion: '0.1.0',
+    availableVersion: '0.1.0',
     runtimeKind: 'managed',
     capabilities: ['file_identification'],
+    platformCompatibility: { declaredPlatform: 'win32', compatible: true },
+    architectureCompatibility: { declaredArchitecture: 'x64', compatible: true },
+    appVersionCompatibility: { declaredRange: '>=0.0.0', compatible: true },
     modelVersion: 'standard_v3_3',
+    packageSizeBytes: 1234,
     catalogGeneratedAt: '2026-05-08T00:00:00.000Z',
     installState: 'not_installed',
     enabled: false,
@@ -21,6 +26,33 @@ function officialPlugin(overrides?: Record<string, unknown>) {
     installabilityStatus: 'metadata_compatible_future_install',
     reasons: ['read_only_catalog_no_install_action'],
     warnings: [],
+    releaseProvenance: releaseProvenance(),
+    ...overrides,
+  }
+}
+
+function releaseProvenance(overrides?: Record<string, unknown>) {
+  return {
+    pluginId: 'magika',
+    packageVersion: '0.1.0',
+    runtimeVersion: null,
+    modelVersion: 'standard_v3_3',
+    packageFormatVersion: 1,
+    manifestSchemaVersion: '1',
+    inventorySchemaVersion: '1',
+    packageSha256: 'a'.repeat(64),
+    packageSizeBytes: 1234,
+    manifestSha256: 'b'.repeat(64),
+    inventorySha256: 'c'.repeat(64),
+    releaseUrl: 'https://github.com/GuXinghai/starverse/releases/download/starverse-plugin-magika-v0.1.0/test.zip',
+    releaseTag: 'starverse-plugin-magika-v0.1.0',
+    assetName: 'test.zip',
+    trustKeyId: 'starverse-test-key',
+    signedAt: '2026-05-14T00:00:00.000Z',
+    expiresAt: '2027-05-14T00:00:00.000Z',
+    channel: 'stable',
+    platform: 'win32',
+    arch: 'x64',
     ...overrides,
   }
 }
@@ -102,6 +134,35 @@ describe('EnginePluginSettingsPanel', () => {
     expect(screen.getByText(/not installed/)).toBeTruthy()
   })
 
+  it('displays official release provenance for catalog and installed plugins', async () => {
+    ;(globalThis as any).dbBridge = createDbBridgeMock({
+      listOfficialPlugins: {
+        ok: true,
+        value: [officialPlugin()],
+      },
+      listInstalledPlugins: [{
+        engineId: 'magika', displayName: 'Magika Plugin', pluginVersion: '0.1.0',
+        installedVersion: '0.1.0', availableVersion: '0.1.0', packageVersion: '0.1.0',
+        manifestSchemaVersion: '1', runtimeKind: 'local_loader', runtimeVersion: null, modelVersion: 'standard_v3_3',
+        installState: 'installed', enabled: true, healthStatus: 'healthy',
+        failureReason: null, installSource: 'official_catalog', installRootKind: 'managed_root',
+        installedAt: 1, updatedAt: 2, lastVerifiedAt: 2, lastHealthCheckAt: 3,
+        errorChain: null, releaseProvenance: releaseProvenance(), previousKnownGood: null,
+      }],
+    })
+
+    render(EnginePluginSettingsPanel)
+
+    expect((await screen.findAllByText('Available version: 0.1.0')).length).toBeGreaterThanOrEqual(1)
+    await waitFor(() => {
+      expect(screen.getByText('Installed version: 0.1.0')).toBeTruthy()
+    })
+    expect(screen.getAllByText('Model: standard_v3_3').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Signature key: starverse-test-key').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Package hash: aaaaaaaa...').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Status: Up to date')).toBeTruthy()
+  })
+
   it('shows installed plugin state with health status', async () => {
     ;(globalThis as any).dbBridge = createDbBridgeMock({
       listOfficialPlugins: { ok: true, value: [] },
@@ -123,14 +184,22 @@ describe('EnginePluginSettingsPanel', () => {
     expect(screen.getByText(/magika v1\.0\.0/)).toBeTruthy()
   })
 
-  it('shows failure reason for failed plugins', async () => {
+  it('shows layered failure chain with specific primary reason for failed plugins', async () => {
+    const user = userEvent.setup()
     ;(globalThis as any).dbBridge = createDbBridgeMock({
       listOfficialPlugins: { ok: true, value: [] },
       listInstalledPlugins: [{
         engineId: 'magika', displayName: 'Magika Plugin', pluginVersion: '1.0.0',
         manifestSchemaVersion: '1', runtimeKind: 'local_loader', modelVersion: null,
         installState: 'failed', enabled: false, healthStatus: 'unhealthy',
-        failureReason: 'health_check_failed', installSource: 'official_catalog',
+        failureReason: 'magika_runtime_missing_dependency',
+        errorChain: {
+          operationLayer: { code: 'health_check_failed' },
+          healthLayer: { outcome: 'unhealthy_result', stage: 'runtime_self_test' },
+          runtimeLayer: { reason: 'magika_runtime_missing_dependency' },
+          rootCauseLayer: { sanitizedRootCause: 'ERR_MODULE_NOT_FOUND' },
+        },
+        installSource: 'official_catalog',
         installRootKind: 'managed_root', installedAt: 1, updatedAt: 2,
         lastVerifiedAt: 2, lastHealthCheckAt: 3,
       }],
@@ -139,8 +208,101 @@ describe('EnginePluginSettingsPanel', () => {
     render(EnginePluginSettingsPanel)
 
     await waitFor(() => {
-      expect(screen.getByText('health_check_failed')).toBeTruthy()
+      expect(screen.getByText('magika_runtime_missing_dependency')).toBeTruthy()
     })
+    expect(screen.queryByText('Operation: health_check_failed')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Details' }))
+    expect(screen.getByText('Operation: health_check_failed')).toBeTruthy()
+    expect(screen.getByText('Health result: unhealthy_result')).toBeTruthy()
+    expect(screen.getByText('Health stage: runtime_self_test')).toBeTruthy()
+    expect(screen.getByText('Runtime reason: magika_runtime_missing_dependency')).toBeTruthy()
+    expect(screen.getByText('Root cause: ERR_MODULE_NOT_FOUND')).toBeTruthy()
+  })
+
+  it('does not show health_check_failed as the only visible error when specific layers are missing', async () => {
+    const user = userEvent.setup()
+    ;(globalThis as any).dbBridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [] },
+      listInstalledPlugins: [{
+        engineId: 'magika', displayName: 'Magika Plugin', pluginVersion: '1.0.0',
+        manifestSchemaVersion: '1', runtimeKind: 'local_loader', modelVersion: null,
+        installState: 'failed', enabled: false, healthStatus: 'unhealthy',
+        failureReason: 'health_check_failed',
+        errorChain: {
+          operationLayer: { code: 'health_check_failed' },
+          healthLayer: { outcome: null, stage: null },
+          runtimeLayer: { reason: null },
+          rootCauseLayer: { sanitizedRootCause: null },
+        },
+        installSource: 'official_catalog',
+        installRootKind: 'managed_root', installedAt: 1, updatedAt: 2,
+        lastVerifiedAt: 2, lastHealthCheckAt: 3,
+      }],
+    })
+
+    render(EnginePluginSettingsPanel)
+
+    await waitFor(() => {
+      expect(screen.getByText('Unknown Error')).toBeTruthy()
+    })
+    expect(screen.queryByText('Operation: health_check_failed')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Details' }))
+    expect(screen.getByText('Operation: health_check_failed')).toBeTruthy()
+    expect(screen.getByText('Health result: Unknown Error')).toBeTruthy()
+    expect(screen.getByText('Health stage: Unknown Error')).toBeTruthy()
+    expect(screen.getByText('Runtime reason: Unknown Error')).toBeTruthy()
+    expect(screen.getByText('Root cause: Unknown Error')).toBeTruthy()
+  })
+
+  it('uses a specific root cause as the primary error when runtime reason is missing', async () => {
+    ;(globalThis as any).dbBridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [] },
+      listInstalledPlugins: [{
+        engineId: 'magika', displayName: 'Magika Plugin', pluginVersion: '1.0.0',
+        manifestSchemaVersion: '1', runtimeKind: 'local_loader', modelVersion: null,
+        installState: 'failed', enabled: false, healthStatus: 'unhealthy',
+        failureReason: 'health_check_failed',
+        errorChain: {
+          operationLayer: { code: 'health_check_failed' },
+          healthLayer: { outcome: null, stage: null },
+          runtimeLayer: { reason: null },
+          rootCauseLayer: { sanitizedRootCause: 'ERR_MODULE_NOT_FOUND' },
+        },
+        installSource: 'official_catalog',
+        installRootKind: 'managed_root', installedAt: 1, updatedAt: 2,
+        lastVerifiedAt: 2, lastHealthCheckAt: 3,
+      }],
+    })
+
+    render(EnginePluginSettingsPanel)
+
+    await waitFor(() => {
+      expect(screen.getByText('ERR_MODULE_NOT_FOUND')).toBeTruthy()
+    })
+  })
+
+  it('does not render a Details entry when no layered error chain exists', async () => {
+    ;(globalThis as any).dbBridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [] },
+      listInstalledPlugins: [{
+        engineId: 'magika', displayName: 'Magika Plugin', pluginVersion: '1.0.0',
+        manifestSchemaVersion: '1', runtimeKind: 'local_loader', modelVersion: null,
+        installState: 'failed', enabled: false, healthStatus: 'unhealthy',
+        failureReason: 'magika_runtime_missing_dependency',
+        errorChain: null,
+        installSource: 'official_catalog',
+        installRootKind: 'managed_root', installedAt: 1, updatedAt: 2,
+        lastVerifiedAt: 2, lastHealthCheckAt: 3,
+      }],
+    })
+
+    render(EnginePluginSettingsPanel)
+
+    await waitFor(() => {
+      expect(screen.getByText('magika_runtime_missing_dependency')).toBeTruthy()
+    })
+    expect(screen.queryByRole('button', { name: 'Details' })).toBeNull()
+    expect(screen.queryByText('Operation: Unknown Error')).toBeNull()
   })
 
   it('does not render installRef in output', async () => {
@@ -217,7 +379,7 @@ describe('EnginePluginSettingsPanel', () => {
     })
   })
 
-  it('calls uninstallPlugin via dbBridge when managed Uninstall plugin is confirmed', async () => {
+  it('shows managed uninstall confirmation before calling uninstallPlugin', async () => {
     const user = userEvent.setup()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const bridge = createDbBridgeMock({
@@ -240,39 +402,44 @@ describe('EnginePluginSettingsPanel', () => {
 
     await user.click(screen.getByText('Uninstall plugin'))
 
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Starverse-managed Magika runtime'))
-
     await waitFor(() => {
       expect(bridge.invoke).toHaveBeenCalledWith('enginePluginLifecycle.uninstallPlugin', { engineId: 'magika' })
     })
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('delete Starverse-managed Magika plugin files'))
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('owned stage/tmp/rollback remnants'))
   })
 
-  it('shows Remove registration for local package rows without file deletion wording', async () => {
+  it('shows local package registration removal without promising file deletion', async () => {
     const user = userEvent.setup()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const bridge = createDbBridgeMock({
       listOfficialPlugins: { ok: true, value: [] },
       listInstalledPlugins: [{
-        engineId: 'local-magika', displayName: 'Local Magika', pluginVersion: '1.0.0',
+        engineId: 'magika-local', displayName: 'Magika Local', pluginVersion: '1.0.0',
         manifestSchemaVersion: '1', runtimeKind: 'local_loader', modelVersion: null,
-        installState: 'installed', enabled: false, healthStatus: 'unknown',
-        failureReason: null, installSource: 'local_package', installRootKind: 'external_path',
-        installedAt: 1, updatedAt: 2, lastVerifiedAt: 2, lastHealthCheckAt: null,
+        installState: 'installed', enabled: true, healthStatus: 'healthy',
+        failureReason: null, installSource: 'local_package', installRootKind: 'test_root',
+        installedAt: 1, updatedAt: 2, lastVerifiedAt: 2, lastHealthCheckAt: 3,
       }],
     })
     ;(globalThis as any).dbBridge = bridge
 
     render(EnginePluginSettingsPanel)
 
-    await user.click(await screen.findByText('Remove registration'))
-
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('will not delete external files'))
     await waitFor(() => {
-      expect(bridge.invoke).toHaveBeenCalledWith('enginePluginLifecycle.uninstallPlugin', { engineId: 'local-magika' })
+      expect(screen.getByText('Remove registration')).toBeTruthy()
     })
+
+    await user.click(screen.getByText('Remove registration'))
+
+    await waitFor(() => {
+      expect(bridge.invoke).toHaveBeenCalledWith('enginePluginLifecycle.uninstallPlugin', { engineId: 'magika-local' })
+    })
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('will not delete external plugin files'))
+    expect(confirm.mock.calls[0]?.[0]).not.toMatch(/delete Starverse-managed/u)
   })
 
-  it('shows cleanup_failed when managed uninstall cleanup fails', async () => {
+  it('shows specific uninstall failure reason from action error chain', async () => {
     const user = userEvent.setup()
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const bridge = createDbBridgeMock({
@@ -280,40 +447,32 @@ describe('EnginePluginSettingsPanel', () => {
       listInstalledPlugins: [{
         engineId: 'magika', displayName: 'Magika Plugin', pluginVersion: '1.0.0',
         manifestSchemaVersion: '1', runtimeKind: 'local_loader', modelVersion: null,
-        installState: 'installed', enabled: false, healthStatus: 'unhealthy',
+        installState: 'installed', enabled: true, healthStatus: 'healthy',
         failureReason: null, installSource: 'official_catalog', installRootKind: 'managed_root',
         installedAt: 1, updatedAt: 2, lastVerifiedAt: 2, lastHealthCheckAt: 3,
       }],
-      uninstallPlugin: { ok: false, reason: 'cleanup_failed', message: 'cleanup_failed' },
+      uninstallPlugin: {
+        ok: false,
+        reason: 'cleanup_failed',
+        message: 'state=failed',
+        errorChain: {
+          operationLayer: { code: 'cleanup_failed' },
+          healthLayer: { outcome: null, stage: null },
+          runtimeLayer: { reason: 'magika_runtime_missing_dependency' },
+          rootCauseLayer: { sanitizedRootCause: 'ERR_MODULE_NOT_FOUND' },
+        },
+      },
     })
     ;(globalThis as any).dbBridge = bridge
 
-    const { container } = render(EnginePluginSettingsPanel)
+    render(EnginePluginSettingsPanel)
 
     await user.click(await screen.findByText('Uninstall plugin'))
 
-    await waitFor(() => expect(container.textContent).toContain('cleanup_failed'))
-    expect(container.textContent).not.toContain('Uninstall plugin:')
-  })
-
-  it('does not expose plugin removal actions for uninstalled tombstones', async () => {
-    ;(globalThis as any).dbBridge = createDbBridgeMock({
-      listOfficialPlugins: { ok: true, value: [] },
-      listInstalledPlugins: [{
-        engineId: 'magika', displayName: 'Magika Plugin', pluginVersion: '1.0.0',
-        manifestSchemaVersion: '1', runtimeKind: 'local_loader', modelVersion: null,
-        installState: 'uninstalled', enabled: false, healthStatus: 'unknown',
-        failureReason: null, installSource: 'official_catalog', installRootKind: 'managed_root',
-        installedAt: 1, updatedAt: 2, lastVerifiedAt: 2, lastHealthCheckAt: null,
-      }],
+    await waitFor(() => {
+      expect(screen.getByText('magika_runtime_missing_dependency')).toBeTruthy()
     })
-
-    render(EnginePluginSettingsPanel)
-
-    await waitFor(() => expect(screen.getByText('Magika Plugin')).toBeTruthy())
-    expect(screen.queryByText('Uninstall plugin')).toBeNull()
-    expect(screen.queryByText('Remove registration')).toBeNull()
-    expect(screen.queryByText('Health Check')).toBeNull()
+    expect(screen.queryByText(/Uninstall plugin: magika/u)).toBeNull()
   })
 
   it('passes recommendedInstallRootKind from response to register request', async () => {
@@ -371,6 +530,44 @@ describe('EnginePluginSettingsPanel', () => {
 
     await waitFor(() => {
       expect(bridge.invoke).toHaveBeenCalledWith('enginePluginLifecycle.runHealthCheck', { engineId: 'magika' })
+    })
+  })
+
+  it('shows the runtime reason from failed health check action result', async () => {
+    const user = userEvent.setup()
+    const bridge = createDbBridgeMock({
+      listOfficialPlugins: { ok: true, value: [] },
+      listInstalledPlugins: [{
+        engineId: 'magika', displayName: 'Magika Plugin', pluginVersion: '1.0.0',
+        manifestSchemaVersion: '1', runtimeKind: 'local_loader', modelVersion: null,
+        installState: 'installed', enabled: true, healthStatus: 'healthy',
+        failureReason: null, installSource: 'official_catalog', installRootKind: 'managed_root',
+        installedAt: 1, updatedAt: 2, lastVerifiedAt: 2, lastHealthCheckAt: 3,
+      }],
+      runHealthCheck: {
+        ok: false,
+        reason: 'health_check_failed',
+        message: 'state=failed',
+        errorChain: {
+          operationLayer: { code: 'health_check_failed' },
+          healthLayer: { outcome: 'unhealthy_result', stage: 'runtime_self_test' },
+          runtimeLayer: { reason: 'magika_runtime_missing_dependency' },
+          rootCauseLayer: { sanitizedRootCause: 'ERR_MODULE_NOT_FOUND' },
+        },
+      },
+    })
+    ;(globalThis as any).dbBridge = bridge
+
+    render(EnginePluginSettingsPanel)
+
+    await waitFor(() => {
+      expect(screen.getByText('Health Check')).toBeTruthy()
+    })
+
+    await user.click(screen.getByText('Health Check'))
+
+    await waitFor(() => {
+      expect(screen.getByText('magika_runtime_missing_dependency')).toBeTruthy()
     })
   })
 })

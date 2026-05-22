@@ -541,6 +541,33 @@ describe('EnginePluginLifecycleService', () => {
         enabled: false,
         healthStatus: 'healthy',
       })
+      const registryRecord = repo.getByEngineId('magika')
+      expect(registryRecord?.metadataJson?.officialRelease).toMatchObject({
+        pluginId: 'magika',
+        packageVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION,
+        modelVersion: 'magika-v3',
+        packageFormatVersion: 1,
+        manifestSchemaVersion: '1',
+        inventorySchemaVersion: '1',
+        packageSha256: fixture.release.catalogEntry.packageSha256,
+        packageSizeBytes: fixture.release.catalogEntry.packageSizeBytes,
+        manifestSha256: fixture.release.catalogEntry.manifestSha256,
+        inventorySha256: fixture.release.catalogEntry.inventorySha256,
+        releaseUrl: fixture.release.releaseUrl,
+        releaseTag: `starverse-plugin-magika-v${MAGIKA_OFFICIAL_PLUGIN_VERSION}`,
+        assetName: 'test.zip',
+        trustKeyId: 'starverse-test-official-root',
+        signedAt: '2026-05-14T00:00:00.000Z',
+        expiresAt: '2027-05-14T00:00:00.000Z',
+        channel: 'stable',
+        platform: 'win32',
+        arch: 'x64',
+      })
+      expect(registryRecord?.metadataJson?.previousKnownGood).toBeNull()
+      const installedDto = service.getInstalledPlugins().find((item) => item.engineId === 'magika')
+      expect(installedDto?.installedVersion).toBe(MAGIKA_OFFICIAL_PLUGIN_VERSION)
+      expect(installedDto?.availableVersion).toBe(MAGIKA_OFFICIAL_PLUGIN_VERSION)
+      expect(installedDto?.releaseProvenance?.trustKeyId).toBe('starverse-test-official-root')
       expect(readFileSync(path.join(fixture.tempRoot, 'magika', 'manifest.json'), 'utf8')).toContain(
         'Magika managed plugin'
       )
@@ -555,6 +582,99 @@ describe('EnginePluginLifecycleService', () => {
     }
   })
 
+  it('merges official release provenance with existing registry metadata', async () => {
+    const fixture = await createOfficialRemoteInstallFixture()
+    const { db, service, repo } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      magikaOfficialRelease: fixture.release,
+      officialPackageBytes: fixture.bytes,
+    })
+    try {
+      repo.upsert({
+        engineId: 'magika',
+        displayName: 'Magika managed plugin',
+        pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION,
+        manifestSchemaVersion: '1',
+        manifestHash: '0'.repeat(64),
+        runtimeKind: 'local_loader',
+        modelVersion: 'magika-v3',
+        installState: 'uninstalled',
+        enabled: false,
+        healthStatus: 'unknown',
+        failureReason: null,
+        installSource: 'official_catalog',
+        installRootKind: 'managed_root',
+        installRef: 'magika',
+        installedAt: 1,
+        updatedAt: 2,
+        lastVerifiedAt: null,
+        lastHealthCheckAt: null,
+        metadataJson: {
+          ownerNote: 'keep',
+          previousKnownGood: {
+            pluginId: 'magika',
+            pluginVersion: '0.1.0',
+            runtimeKind: 'local_loader',
+            installRef: 'magika_previous',
+            packageRef: 'package_magika_previous',
+          },
+        },
+      })
+
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      await waitForInstallOperation(service, result.value.operationId)
+      const metadata = repo.getByEngineId('magika')?.metadataJson
+      expect(metadata?.ownerNote).toBe('keep')
+      expect(metadata?.previousKnownGood).toMatchObject({
+        pluginVersion: '0.1.0',
+        installRef: 'magika_previous',
+      })
+      expect(metadata?.officialRelease).toMatchObject({
+        packageVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION,
+        trustKeyId: 'starverse-test-official-root',
+      })
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('returns null release provenance for legacy or invalid registry metadata', async () => {
+    const fixture = await createOfficialRemoteInstallFixture()
+    const { db, service, repo } = createService(fixture.tempRoot, fixture.trustedRoots)
+    try {
+      repo.upsert(registryRecord({
+        engineId: 'legacy-magika',
+        installRef: 'legacy_magika',
+        metadataJson: {
+          officialCatalog: {
+            pluginId: 'legacy-magika',
+            pluginVersion: '0.1.0',
+          },
+        },
+      }))
+      repo.upsert(registryRecord({
+        engineId: 'invalid-magika',
+        installRef: 'invalid_magika',
+        metadataJson: {
+          officialRelease: {
+            pluginId: 'invalid-magika',
+            packageVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION,
+            packageSha256: 'not-a-sha',
+          },
+        },
+      }))
+
+      const installed = service.getInstalledPlugins()
+      expect(installed.find((item) => item.engineId === 'legacy-magika')?.releaseProvenance).toBeNull()
+      expect(installed.find((item) => item.engineId === 'invalid-magika')?.releaseProvenance).toBeNull()
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
 
   it('fails closed when official Magika engine manifest does not declare runtime dependencies', async () => {
     const fixture = await createOfficialRemoteInstallFixture({
@@ -1276,12 +1396,19 @@ describe('EnginePluginLifecycleService', () => {
       expect(failed.sanitizedDiagnostics.join('\n')).toContain('health_result_unhealthy')
       expect(failed.sanitizedDiagnostics.join('\n')).toContain('specificReason=magika_runtime_missing_dependency')
       expect(failed.sanitizedDiagnostics.join('\n')).toContain('sanitizedRootCause=ERR_MODULE_NOT_FOUND')
+      expect(failed.errorChain).toMatchObject({
+        operationLayer: { code: 'health_check_failed' },
+        healthLayer: { outcome: 'unhealthy_result', stage: 'runtime_self_test' },
+        runtimeLayer: { reason: 'magika_runtime_missing_dependency' },
+        rootCauseLayer: { sanitizedRootCause: 'ERR_MODULE_NOT_FOUND' },
+      })
       expect(repo.getByEngineId('magika')).toMatchObject({
         installState: 'failed',
         enabled: false,
         healthStatus: 'unhealthy',
         failureReason: 'magika_runtime_missing_dependency',
       })
+      await waitForPathToDisappear(path.join(fixture.tempRoot, `magika.stage-${failed.operationId}`))
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })
@@ -1466,7 +1593,15 @@ describe('EnginePluginLifecycleService', () => {
 
       const health = await service.runHealthCheck({ engineId: 'magika' })
       expect(health.ok).toBe(false)
-      if (!health.ok) expect(health.reason).toBe('health_check_failed')
+      if (!health.ok) {
+        expect(health.reason).toBe('health_check_failed')
+        expect(health.errorChain).toMatchObject({
+          operationLayer: { code: 'health_check_failed' },
+          healthLayer: { outcome: 'unhealthy_result', stage: 'runtime_self_test' },
+          runtimeLayer: { reason: 'magika_runtime_missing_dependency' },
+          rootCauseLayer: { sanitizedRootCause: 'ERR_MODULE_NOT_FOUND' },
+        })
+      }
       expect(repo.getByEngineId('magika')).toMatchObject({
         installState: 'failed',
         enabled: false,
@@ -1475,6 +1610,12 @@ describe('EnginePluginLifecycleService', () => {
       })
       expect(service.getInstalledPlugins()[0]).toMatchObject({
         failureReason: 'magika_runtime_missing_dependency',
+        errorChain: {
+          operationLayer: { code: 'health_check_failed' },
+          healthLayer: { outcome: 'unhealthy_result', stage: 'runtime_self_test' },
+          runtimeLayer: { reason: 'magika_runtime_missing_dependency' },
+          rootCauseLayer: { sanitizedRootCause: 'ERR_MODULE_NOT_FOUND' },
+        },
       })
     } finally {
       db.close()

@@ -60,9 +60,14 @@ describe('enginePluginLifecycleClient', () => {
               displayName: 'Magika',
               publisher: 'Google Magika',
               pluginVersion: '0.1.0',
+              availableVersion: '0.1.0',
               runtimeKind: 'managed',
               capabilities: ['file_identification'],
+              platformCompatibility: { declaredPlatform: 'win32', compatible: true },
+              architectureCompatibility: { declaredArchitecture: 'x64', compatible: true },
+              appVersionCompatibility: { declaredRange: '>=0.0.0', compatible: true },
               modelVersion: 'standard_v3_3',
+              packageSizeBytes: 1234,
               catalogGeneratedAt: '2026-05-08T00:00:00.000Z',
               installState: 'installed',
               enabled: true,
@@ -72,6 +77,7 @@ describe('enginePluginLifecycleClient', () => {
               installabilityStatus: 'official_remote_install_available',
               reasons: ['official_remote_install_available'],
               warnings: [],
+              releaseProvenance: null,
             },
           ],
         }
@@ -189,11 +195,22 @@ describe('enginePluginLifecycleClient', () => {
 
 describe('enginePluginLifecycleClient DTO safety', () => {
   it('decodes ok:false lifecycle result', () => {
-    const raw = { ok: false, reason: 'not_installed', message: 'plugin not found' }
+    const raw = {
+      ok: false,
+      reason: 'health_check_failed',
+      message: 'state=failed',
+      errorChain: {
+        operationLayer: { code: 'health_check_failed' },
+        healthLayer: { outcome: 'unhealthy_result', stage: 'runtime_self_test' },
+        runtimeLayer: { reason: 'magika_runtime_missing_dependency' },
+        rootCauseLayer: { sanitizedRootCause: 'ERR_MODULE_NOT_FOUND' },
+      },
+    }
     const result = decodeLifecycleInstalledResult(raw)
     expect(result.ok).toBe(false)
     if (!result.ok) {
-      expect(result.reason).toBe('not_installed')
+      expect(result.reason).toBe('health_check_failed')
+      expect(result.errorChain?.runtimeLayer.reason).toBe('magika_runtime_missing_dependency')
     }
   })
 
@@ -203,6 +220,39 @@ describe('enginePluginLifecycleClient DTO safety', () => {
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.reason).toBe('catalog_load_failed')
+    }
+  })
+
+  it('decodes legacy official plugin payloads without Batch B metadata fields', () => {
+    const raw = {
+      ok: true,
+      value: [{
+        pluginId: 'magika',
+        displayName: 'Magika',
+        publisher: 'Google Magika',
+        pluginVersion: '0.1.0',
+        runtimeKind: 'managed',
+        capabilities: ['file_identification'],
+        modelVersion: 'standard_v3_3',
+        catalogGeneratedAt: '2026-05-08T00:00:00.000Z',
+        installState: 'not_installed',
+        enabled: false,
+        recommendedInstallRootKind: 'managed_root',
+        catalogStatus: 'valid_metadata_only',
+        verificationMetadataStatus: 'metadata_present_crypto_deferred',
+        installabilityStatus: 'metadata_compatible_future_install',
+        reasons: ['read_only_catalog_no_install_action'],
+        warnings: [],
+      }],
+    }
+    const result = decodeListOfficialPluginsResponse(raw)
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value[0]?.platformCompatibility).toEqual({ declaredPlatform: 'any', compatible: true })
+      expect(result.value[0]?.architectureCompatibility).toEqual({ declaredArchitecture: 'any', compatible: true })
+      expect(result.value[0]?.appVersionCompatibility).toEqual({ declaredRange: '>=0.0.0', compatible: true })
+      expect(result.value[0]?.packageSizeBytes).toBe(0)
+      expect(result.value[0]?.releaseProvenance).toBeNull()
     }
   })
 
@@ -291,6 +341,65 @@ describe('enginePluginLifecycleClient DTO safety', () => {
     if (result[0]) {
       expect((result[0] as any).packageSha256).toBeUndefined()
     }
+  })
+
+  it('preserves official release provenance hash while stripping top-level packageSha256', () => {
+    const officialPackageHash = 'a'.repeat(64)
+    const raw = [{
+      engineId: 'magika',
+      displayName: 'Test',
+      pluginVersion: '1.0.0',
+      installedVersion: '1.0.0',
+      availableVersion: '1.0.0',
+      packageVersion: '1.0.0',
+      manifestSchemaVersion: '1',
+      runtimeKind: 'local_loader',
+      runtimeVersion: null,
+      modelVersion: 'standard_v3_3',
+      installState: 'installed',
+      enabled: true,
+      healthStatus: 'healthy',
+      failureReason: null,
+      installSource: 'official_catalog',
+      installRootKind: 'managed_root',
+      installedAt: 1,
+      updatedAt: 2,
+      lastVerifiedAt: 2,
+      lastHealthCheckAt: 3,
+      packageSha256: 'top-level-must-strip',
+      contentToken: 'secret',
+      releaseProvenance: {
+        pluginId: 'magika',
+        packageVersion: '1.0.0',
+        runtimeVersion: null,
+        modelVersion: 'standard_v3_3',
+        packageFormatVersion: 1,
+        manifestSchemaVersion: '1',
+        inventorySchemaVersion: '1',
+        packageSha256: officialPackageHash,
+        packageSizeBytes: 1234,
+        manifestSha256: 'b'.repeat(64),
+        inventorySha256: 'c'.repeat(64),
+        releaseUrl: 'https://github.com/GuXinghai/starverse/releases/download/starverse-plugin-magika-v1.0.0/test.zip',
+        releaseTag: 'starverse-plugin-magika-v1.0.0',
+        assetName: 'test.zip',
+        trustKeyId: 'starverse-test-key',
+        signedAt: '2026-05-14T00:00:00.000Z',
+        expiresAt: '2027-05-14T00:00:00.000Z',
+        channel: 'stable',
+        platform: 'win32',
+        arch: 'x64',
+      },
+      previousKnownGood: null,
+    }]
+    const result = decodeInstalledPluginsResponse(raw)
+    expect(result[0]?.releaseProvenance?.packageSha256).toBe(officialPackageHash)
+    expect(result[0]?.releaseProvenance?.inventorySha256).toBe('c'.repeat(64))
+    expect(result[0]?.releaseProvenance?.trustKeyId).toBe('starverse-test-key')
+    expect(result[0]?.releaseProvenance?.signedAt).toBe('2026-05-14T00:00:00.000Z')
+    expect(result[0]?.releaseProvenance?.expiresAt).toBe('2027-05-14T00:00:00.000Z')
+    expect((result[0] as any).packageSha256).toBeUndefined()
+    expect((result[0] as any).contentToken).toBeUndefined()
   })
 
   it('DTO does not expose contentToken field', () => {

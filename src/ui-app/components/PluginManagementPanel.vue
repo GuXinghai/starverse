@@ -12,7 +12,13 @@ import {
   uninstallPlugin,
 } from '@/next/files/enginePluginLifecycleClient'
 import {
+  pluginErrorChainDiagnosticLines,
+  pluginErrorChainDetailRows,
+  pluginPrimaryErrorDisplay,
+} from '@/next/files/enginePluginErrorChain'
+import {
   buildPluginManagementStateFromSources,
+  buildPdpManagementDetailModel,
   buildPdpManagementViewModel,
   labelOfficialInstallOperationPhase,
   labelPdpHealthStatus,
@@ -22,6 +28,7 @@ import {
   type PdpManagementAction,
   type PdpManagementActionId,
   type PdpManagementCatalogInput,
+  type PdpManagementDetailModel,
   type PdpManagementPluginViewModel,
   type PdpManagementRegistryInput,
   type PdpPluginManagementStateFromSources,
@@ -29,6 +36,7 @@ import {
 import type {
   DecodedDiagnosticsSummary,
   DecodedOfficialInstallOperation,
+  DecodedPluginErrorChain,
   DecodedInstalledPlugin,
   DecodedLifecycleInstalledResult,
   DecodedOfficialPlugin,
@@ -36,6 +44,7 @@ import type {
 import type {
   PluginHealthStatus,
   PluginInstallState,
+  PluginPackageCapability,
   PluginVerificationStatus,
 } from '@/next/plugin-distribution/browser'
 
@@ -49,12 +58,27 @@ type PluginPanelRow = Readonly<{
 
 type UiAction = PdpManagementAction & Readonly<{ clickable: boolean }>
 
+const DEFAULT_PLATFORM_COMPATIBILITY: PdpManagementCatalogInput['platformCompatibility'] = {
+  declaredPlatform: 'any',
+  compatible: false,
+}
+const DEFAULT_ARCHITECTURE_COMPATIBILITY: PdpManagementCatalogInput['architectureCompatibility'] = {
+  declaredArchitecture: 'any',
+  compatible: false,
+}
+const DEFAULT_APP_VERSION_COMPATIBILITY: PdpManagementCatalogInput['appVersionCompatibility'] = {
+  declaredRange: '*',
+  compatible: false,
+}
+
 const loading = ref(false)
 const error = ref<string | null>(null)
 const statusMessage = ref<string | null>(null)
 const rows = ref<PluginPanelRow[]>([])
 const diagnosticsSummary = ref<DecodedDiagnosticsSummary | null>(null)
 const installOperations = ref<Record<string, DecodedOfficialInstallOperation>>({})
+const selectedDetails = ref<PdpManagementDetailModel | null>(null)
+const expandedErrorChains = ref<Record<string, boolean>>({})
 let installPollTimer: ReturnType<typeof setInterval> | null = null
 
 const PANEL_ACTION_OPTIONS = {
@@ -123,23 +147,25 @@ async function loadData(options?: Readonly<{ preserveMessages?: boolean; silent?
       installOperationKey(record.pluginId, record.pluginVersion),
       record,
     ]))
+    const officialRegistryByPlugin = new Map(registryRecords
+      .filter((record) => record.installSource === 'official_catalog')
+      .map((record) => [record.pluginId, record]))
     rows.value = viewModel.plugins.map((plugin) => {
       const key = installOperationKey(plugin.id, plugin.pluginVersion)
       const operation = installOperations.value[key] ?? null
+      const registryRecord = registryByKey.get(key) ?? officialRegistryByPlugin.get(plugin.id) ?? null
       const managementState = buildPluginManagementStateFromSources({
         plugin,
         catalogEntry: catalogByKey.get(key) ?? null,
-        registryRecord: registryByKey.get(key) ?? null,
+        registryRecord,
         installOperation: operation,
         actionOptions: PANEL_ACTION_OPTIONS,
       })
       return {
         plugin,
-        engineId: installed.find((item) =>
-          item.engineId === plugin.id && item.pluginVersion === plugin.pluginVersion
-        )?.engineId ?? null,
+        engineId: registryRecord?.pluginId ?? null,
         installOperation: managementState.installOperation.visible ? operation : null,
-        registryRecord: registryByKey.get(key) ?? null,
+        registryRecord,
         managementState,
       }
     })
@@ -180,11 +206,14 @@ async function loadInstallOperationStatus(): Promise<DecodedOfficialInstallOpera
 
 async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
   if (!action.clickable || !action.enabled) return
+  if (action.id === 'view_details') {
+    selectedDetails.value = detailModelForRow(row)
+    return
+  }
   if (action.id !== 'install_official_plugin' && !row.engineId) return
-
-  const actionLabel = displayActionLabel(row, action)
   if (action.id === 'uninstall_metadata' && !confirmUninstallAction(row)) return
 
+  const actionLabel = displayActionLabel(row, action)
   loading.value = true
   error.value = null
   statusMessage.value = null
@@ -221,7 +250,7 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
         }
       } else {
         removeInstallOperation(localInstallKey)
-        error.value = sanitizePdpManagementText(result.reason, `${actionLabel} failed`)
+        error.value = pluginPrimaryErrorDisplay(result.errorChain, result.reason)
       }
       return
     }
@@ -229,7 +258,7 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
     if (result.ok) {
       statusMessage.value = `${actionLabel}: ${sanitizePdpManagementText(result.value.engineId, 'plugin')}`
     } else {
-      error.value = sanitizePdpManagementText(result.reason, `${actionLabel} failed`)
+      error.value = pluginPrimaryErrorDisplay(result.errorChain, result.reason)
     }
   } catch (err: any) {
     if (localInstallKey) removeInstallOperation(localInstallKey)
@@ -246,24 +275,27 @@ async function invokeLifecycleAction(
 ): Promise<DecodedLifecycleInstalledResult> {
   const engineId = row.engineId
   if (!engineId) {
-    return { ok: false, reason: 'settings_action_not_wired', message: 'registered plugin id unavailable' }
+    return { ok: false, reason: 'settings_action_not_wired', message: 'registered plugin id unavailable', errorChain: null }
   }
   if (actionId === 'enable') return enablePlugin({ engineId })
   if (actionId === 'disable') return disablePlugin({ engineId })
   if (actionId === 'uninstall_metadata') return uninstallPlugin({ engineId })
   if (actionId === 'check_health') return runPluginHealthCheck({ engineId })
-  return { ok: false, reason: 'settings_action_not_wired', message: 'action unavailable in settings' }
+  return { ok: false, reason: 'settings_action_not_wired', message: 'action unavailable in settings', errorChain: null }
 }
 
 function uiActions(row: PluginPanelRow): readonly UiAction[] {
   const clickable = new Set<PdpManagementActionId>([
+    'view_details',
     'enable',
     'disable',
     'uninstall_metadata',
     'check_health',
     'install_official_plugin',
   ])
-  return row.managementState.actions.actions.map((action) => {
+  return row.managementState.actions.actions.filter((action) =>
+    action.id !== 'rollback_metadata' || row.plugin.status.rollbackState === 'previous_known_good_metadata'
+  ).map((action) => {
     const isClickable = clickable.has(action.id)
     if (isClickable) {
       return {
@@ -293,29 +325,80 @@ function uiActions(row: PluginPanelRow): readonly UiAction[] {
   })
 }
 
+function displayActionLabel(row: PluginPanelRow, action: UiAction): string {
+  if (action.id === 'install_official_plugin') {
+    if (row.plugin.status.updateState === 'repair_available') return 'Repair / Reinstall'
+  }
+  if (action.id === 'stage_update_contract' && row.plugin.status.updateState === 'update_available') return 'Update'
+  if (action.id === 'rollback_metadata' && row.plugin.status.rollbackState !== 'previous_known_good_metadata') return 'Rollback unavailable'
+  if (action.id !== 'uninstall_metadata') return action.label
+  return isOfficialManagedMagikaRow(row) ? 'Uninstall plugin' : 'Remove registration'
+}
+
+function isOfficialManagedMagikaRow(row: PluginPanelRow): boolean {
+  return row.plugin.id === 'magika' &&
+    row.registryRecord?.installSource === 'official_catalog' &&
+    (row.registryRecord as PdpManagementRegistryInput & { installRootKind?: string }).installRootKind === 'managed_root'
+}
+
+function uninstallConfirmationMessage(row: PluginPanelRow): string {
+  if (isOfficialManagedMagikaRow(row)) {
+    return 'Uninstall plugin? This will delete Starverse-managed Magika plugin files, dependencies, and owned stage/tmp/rollback remnants. Detection will fall back to basic detection.'
+  }
+  return 'Remove registration? This only removes the plugin registration from Starverse. It will not delete external plugin files.'
+}
+
+function confirmUninstallAction(row: PluginPanelRow): boolean {
+  if (typeof window === 'undefined' || typeof window.confirm !== 'function') return false
+  return window.confirm(uninstallConfirmationMessage(row))
+}
+
 function toCatalogEntry(item: DecodedOfficialPlugin): PdpManagementCatalogInput {
+  const installabilityStatus: PdpManagementCatalogInput['installabilityStatus'] =
+    item.installState === 'not_installed' || item.installState === 'uninstalled'
+      ? item.installabilityStatus
+      : 'unavailable_read_only'
   return {
     pluginId: item.pluginId,
     displayName: item.displayName,
     publisher: item.publisher,
     pluginVersion: item.pluginVersion,
+    platformCompatibility: item.platformCompatibility ?? DEFAULT_PLATFORM_COMPATIBILITY,
+    architectureCompatibility: item.architectureCompatibility ?? DEFAULT_ARCHITECTURE_COMPATIBILITY,
+    appVersionCompatibility: item.appVersionCompatibility ?? DEFAULT_APP_VERSION_COMPATIBILITY,
+    modelVersion: item.modelVersion,
+    packageSizeBytes: item.packageSizeBytes,
     runtimeKind: item.runtimeKind,
-    capabilities: item.capabilities,
-    installabilityStatus: item.installState === 'not_installed' || item.installState === 'uninstalled'
-      ? item.installabilityStatus
-      : 'unavailable_read_only',
+    capabilities: item.capabilities as readonly PluginPackageCapability[],
+    installabilityStatus,
     reasons: item.reasons,
-    warnings: item.warnings,
+    warnings: visibleCatalogWarnings(item),
     catalogStatus: item.catalogStatus,
     verificationMetadataStatus: item.verificationMetadataStatus,
+    releaseProvenance: item.releaseProvenance,
   }
+}
+
+function visibleCatalogWarnings(item: DecodedOfficialPlugin): readonly string[] {
+  if (
+    item.verificationMetadataStatus === 'production_signature_available' ||
+    item.installState === 'installed'
+  ) {
+    return item.warnings.filter((warning) => warning !== 'cryptographic_verification_deferred')
+  }
+  return item.warnings
 }
 
 function toRegistryRecord(item: DecodedInstalledPlugin): PdpManagementRegistryInput {
   return {
     pluginId: item.engineId,
     pluginVersion: item.pluginVersion,
+    installedVersion: item.installedVersion ?? item.pluginVersion,
+    availableVersion: item.availableVersion ?? null,
+    packageVersion: item.packageVersion ?? item.pluginVersion,
     runtimeKind: item.runtimeKind,
+    runtimeVersion: item.runtimeVersion ?? null,
+    modelVersion: item.modelVersion,
     controlledRootKind: item.installRootKind === 'test_root' ? 'dev_only' : 'user_local',
     installSource: item.installSource,
     installRootKind: item.installRootKind,
@@ -325,6 +408,9 @@ function toRegistryRecord(item: DecodedInstalledPlugin): PdpManagementRegistryIn
     enabled: item.enabled,
     healthStatus: mapHealthStatus(item),
     failureReason: item.failureReason,
+    errorChain: item.errorChain,
+    releaseProvenance: item.releaseProvenance,
+    previousKnownGood: item.previousKnownGood,
     updatedAt: item.updatedAt,
     diagnostics: item.failureReason ? [item.failureReason] : [],
   }
@@ -374,26 +460,150 @@ function actionReason(action: UiAction): string {
   return action.reasonCodes.join(', ')
 }
 
-function displayActionLabel(row: PluginPanelRow, action: UiAction): string {
-  if (action.id !== 'uninstall_metadata') return action.label
-  return isOfficialManagedMagikaRow(row) ? 'Uninstall plugin' : 'Remove registration'
+function actionReasonText(action: UiAction): string {
+  const labels = action.reasonCodes.map((code) => ACTION_REASON_LABELS[code] ?? humanizeReasonCode(code))
+  return [...new Set(labels)].join('; ')
 }
 
-function isOfficialManagedMagikaRow(row: PluginPanelRow): boolean {
-  return row.plugin.id === 'magika' &&
-    row.registryRecord?.installSource === 'official_catalog' &&
-    row.registryRecord.installRootKind === 'managed_root'
+function registryFailurePrimary(row: PluginPanelRow): string | null {
+  const failureReason = row.registryRecord?.failureReason ?? null
+  if (!failureReason) return null
+  return pluginPrimaryErrorDisplay(registryErrorChain(row), failureReason)
 }
 
-function confirmUninstallAction(row: PluginPanelRow): boolean {
-  return window.confirm(uninstallConfirmationMessage(row))
+function registryErrorChain(row: PluginPanelRow): DecodedPluginErrorChain | null {
+  return (row.registryRecord?.errorChain as DecodedPluginErrorChain | null | undefined) ?? null
 }
 
-function uninstallConfirmationMessage(row: PluginPanelRow): string {
-  if (isOfficialManagedMagikaRow(row)) {
-    return 'Uninstall plugin? This will delete Starverse-managed Magika runtime, dependencies, and owned stage/tmp/rollback remnants. Detection will use basic detection until Magika is installed again.'
+function hasRegistryErrorChain(row: PluginPanelRow): boolean {
+  return registryErrorChain(row) !== null
+}
+
+function registryErrorChainKey(row: PluginPanelRow): string {
+  return installOperationKey(row.plugin.id, row.plugin.pluginVersion)
+}
+
+function isRegistryErrorChainExpanded(row: PluginPanelRow): boolean {
+  return expandedErrorChains.value[registryErrorChainKey(row)] === true
+}
+
+function toggleRegistryErrorChain(row: PluginPanelRow): void {
+  const key = registryErrorChainKey(row)
+  expandedErrorChains.value = {
+    ...expandedErrorChains.value,
+    [key]: !isRegistryErrorChainExpanded(row),
   }
-  return 'Remove registration? This only removes the plugin registration from Starverse and will not delete external files.'
+}
+
+function registryErrorDetailRows(row: PluginPanelRow) {
+  if (!row.registryRecord?.failureReason) return []
+  return pluginErrorChainDetailRows(registryErrorChain(row), row.registryRecord?.failureReason ?? null)
+}
+
+function catalogStatusText(row: PluginPanelRow): string {
+  if (!row.plugin.catalog.present) return 'Not present'
+  const status = row.plugin.catalog.installabilityStatus
+  if (status === 'unavailable_read_only') {
+    return row.registryRecord && row.plugin.status.installState !== 'uninstalled'
+      ? 'Remote install already used'
+      : 'Built-in official plugin'
+  }
+  if (status === 'metadata_compatible_future_install') return 'Built-in official plugin'
+  if (status === 'official_remote_install_available') return 'Built-in official plugin'
+  return humanizeReasonCode(status)
+}
+
+function detailModelForRow(row: PluginPanelRow): PdpManagementDetailModel {
+  return buildPdpManagementDetailModel({
+    plugin: row.plugin,
+    manifest: {
+      pluginId: row.plugin.id,
+      displayName: row.plugin.displayName,
+      publisher: row.plugin.publisher,
+      pluginVersion: row.plugin.pluginVersion,
+      runtimeKind: row.plugin.runtimeKind,
+      capabilities: row.plugin.capabilities as readonly PluginPackageCapability[],
+    },
+    catalog: {
+      pluginId: row.plugin.catalog.present ? row.plugin.id : null,
+      sourceKind: row.plugin.catalog.present ? 'official' : null,
+      status: row.plugin.catalog.status,
+    },
+    verification: {
+      status: row.plugin.status.verificationStatus,
+      cryptographicVerificationPerformed: row.registryRecord?.verificationStatus === 'verified',
+    },
+    health: {
+      status: row.plugin.status.healthStatus,
+    },
+    diagnostics: [
+      ...pluginErrorChainDiagnosticLines(registryErrorChain(row), row.registryRecord?.failureReason ?? null),
+      ...(row.installOperation?.sanitizedDiagnostics ?? []),
+      ...(row.installOperation?.diagnosticCode ? [row.installOperation.diagnosticCode] : []),
+    ],
+  })
+}
+
+function closeDetails(): void {
+  selectedDetails.value = null
+}
+
+const ACTION_REASON_LABELS: Readonly<Record<string, string>> = {
+  unsupported_action_contract_missing: 'Not available here',
+  local_registration_ui_not_wired: 'Local registration is not available here',
+  settings_action_not_wired: 'Not available here',
+  official_remote_install_unavailable: 'Install not available',
+  catalog_missing: 'Catalog metadata unavailable',
+  already_registered: 'Already installed',
+  not_registered: 'Not registered',
+  not_installed: 'Not installed',
+  uninstalled: 'Not installed',
+  already_uninstalled: 'Already uninstalled',
+  not_enabled: 'Not enabled',
+  already_enabled: 'Already enabled',
+  verification_required: 'Verification required',
+  signature_missing: 'Signature missing',
+  official_trusted_root_unconfigured: 'Trusted root unavailable',
+  quarantined: 'Quarantined',
+  revoked: 'Revoked',
+  manual_update_not_eligible: 'No update available',
+  previous_known_good_missing: 'No rollback point',
+  not_quarantined: 'Not quarantined',
+  install_in_progress: 'Install in progress',
+  install_reconciling: 'Finishing install',
+}
+
+function humanizeReasonCode(code: string): string {
+  return sanitizePdpManagementText(code, 'Unavailable')
+    .split(/[_:-]+/u)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function displayOptional(value: string | null | undefined): string {
+  return sanitizePdpManagementText(value, '') || 'Unknown'
+}
+
+function shortHash(value: string | null | undefined): string {
+  const normalized = String(value ?? '').trim()
+  return /^[a-f0-9]{64}$/iu.test(normalized) ? `${normalized.slice(0, 8)}...` : 'Unknown'
+}
+
+function displayDate(value: string | null | undefined): string {
+  const normalized = sanitizePdpManagementText(value, '')
+  return normalized ? normalized.slice(0, 10) : 'Unknown'
+}
+
+function updateStatusText(row: PluginPanelRow): string {
+  const state = row.plugin.status.updateState
+  if (state === 'up_to_date') return 'Up to date'
+  if (state === 'repair_available') return 'Repair available'
+  if (state === 'update_available') return 'Update available'
+  if (state === 'local_newer_than_catalog') return 'Local newer than catalog'
+  if (state === 'downgrade_blocked') return 'Downgrade blocked'
+  if (state === 'install_available') return 'Install available'
+  return humanizeReasonCode(state)
 }
 
 function installOperationKey(pluginId: string, pluginVersion: string): string {
@@ -551,7 +761,7 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
         type="button"
         class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
         :disabled="loading"
-        @click="loadData"
+        @click="() => loadData()"
       >
         {{ loading ? 'Loading...' : 'Refresh' }}
       </button>
@@ -584,6 +794,17 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
             <div class="text-[11px] text-gray-500">
               {{ row.plugin.id }} v{{ row.plugin.pluginVersion }} · official plugin
             </div>
+            <div class="mt-1 grid gap-x-3 gap-y-0.5 text-[11px] text-gray-500 sm:grid-cols-2">
+              <div>Installed version: {{ displayOptional(row.plugin.installedVersion) }}</div>
+              <div>Available version: {{ displayOptional(row.plugin.availableVersion) }}</div>
+              <div>Model: {{ displayOptional(row.plugin.modelVersion) }}</div>
+              <div>Runtime: {{ displayOptional(row.plugin.runtimeVersion) }}</div>
+              <div>Signature key: {{ displayOptional(row.plugin.releaseProvenance?.trustKeyId) }}</div>
+              <div>Package hash: {{ shortHash(row.plugin.releaseProvenance?.packageSha256) }}</div>
+              <div>Inventory hash: {{ shortHash(row.plugin.releaseProvenance?.inventorySha256) }}</div>
+              <div>Signed: {{ displayDate(row.plugin.releaseProvenance?.signedAt) }}</div>
+              <div>Expires: {{ displayDate(row.plugin.releaseProvenance?.expiresAt) }}</div>
+            </div>
           </div>
           <div class="flex flex-wrap gap-1">
             <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-700">
@@ -599,10 +820,29 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
         </div>
 
         <div class="mt-2 grid gap-1 text-[11px] text-gray-600 sm:grid-cols-2">
-          <div>Catalog: {{ row.plugin.catalog.present ? row.plugin.catalog.installabilityStatus : 'not_present' }}</div>
+          <div>Catalog: {{ catalogStatusText(row) }}</div>
           <div>Lifecycle: {{ row.plugin.status.lifecycle }}</div>
-          <div>Update: {{ row.plugin.status.updateState }}</div>
+          <div>Update: {{ updateStatusText(row) }}</div>
           <div>Rollback: {{ row.plugin.status.rollbackState }}</div>
+          <div v-if="registryFailurePrimary(row)" class="flex items-center gap-2">
+            <span>Failure: {{ registryFailurePrimary(row) }}</span>
+            <button
+              v-if="hasRegistryErrorChain(row)"
+              type="button"
+              class="text-[10px] font-medium text-red-700 underline decoration-red-300 underline-offset-2 hover:text-red-900"
+              @click="toggleRegistryErrorChain(row)"
+            >
+              {{ isRegistryErrorChainExpanded(row) ? 'Hide details' : 'Details' }}
+            </button>
+          </div>
+          <template v-if="hasRegistryErrorChain(row) && isRegistryErrorChainExpanded(row)">
+            <div
+              v-for="detail in registryErrorDetailRows(row)"
+              :key="detail.label"
+            >
+              {{ detail.label }}: {{ detail.value }}
+            </div>
+          </template>
           <div v-if="row.installOperation">
             Install: {{ installOperationSummary(row.installOperation) }}
           </div>
@@ -627,15 +867,81 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
             :key="action.id"
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="loading || !action.enabled || !action.clickable || (action.id !== 'install_official_plugin' && !row.engineId)"
-            :title="action.enabled ? displayActionLabel(row, action) : actionReason(action)"
+            :disabled="loading || !action.enabled || !action.clickable || (action.id !== 'install_official_plugin' && action.id !== 'view_details' && !row.engineId)"
+            :title="action.enabled ? displayActionLabel(row, action) : actionReasonText(action)"
+            :data-reason-codes="!action.enabled ? actionReason(action) : undefined"
             @click="runAction(row, action)"
           >
             {{ displayActionLabel(row, action) }}
-            <span v-if="!action.enabled" class="ml-1 text-gray-400">({{ actionReason(action) }})</span>
+            <span v-if="!action.enabled" class="ml-1 text-gray-400">({{ actionReasonText(action) }})</span>
           </button>
         </div>
       </article>
+    </div>
+
+    <div
+      v-if="selectedDetails"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="plugin-details-title"
+    >
+      <div class="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white p-4 shadow-lg">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h2 id="plugin-details-title" class="text-sm font-semibold text-gray-900">
+              {{ selectedDetails.identity.displayName }}
+            </h2>
+            <div class="mt-1 text-[11px] text-gray-500">
+              {{ selectedDetails.identity.pluginId }} v{{ selectedDetails.identity.pluginVersion }}
+            </div>
+          </div>
+          <button
+            type="button"
+            class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
+            @click="closeDetails"
+          >
+            Close
+          </button>
+        </div>
+
+        <div class="mt-4 grid gap-3 text-[11px] text-gray-700 sm:grid-cols-2">
+          <section>
+            <div class="font-semibold text-gray-900">Sanitized metadata</div>
+            <dl class="mt-1 space-y-1">
+              <div>Publisher: {{ selectedDetails.identity.publisher }}</div>
+              <div>Runtime: {{ selectedDetails.identity.runtimeKind }}</div>
+              <div>Capabilities: {{ selectedDetails.identity.capabilities.join(', ') || 'Unavailable' }}</div>
+              <div>Catalog: {{ selectedDetails.catalog.present ? selectedDetails.catalog.status : 'not_present' }}</div>
+            </dl>
+          </section>
+
+          <section>
+            <div class="font-semibold text-gray-900">Verification</div>
+            <dl class="mt-1 space-y-1">
+              <div>Status: {{ selectedDetails.verification.label.label }}</div>
+              <div>Cryptographic check: {{ selectedDetails.verification.cryptographicVerificationPerformed ? 'Completed' : 'Not completed' }}</div>
+              <div>Signature: {{ selectedDetails.verification.signatureAlgorithm.label }}</div>
+            </dl>
+          </section>
+
+          <section>
+            <div class="font-semibold text-gray-900">Health</div>
+            <dl class="mt-1 space-y-1">
+              <div>Status: {{ selectedDetails.health.label.label }}</div>
+              <div>Quarantine: {{ selectedDetails.quarantine.label }}</div>
+            </dl>
+          </section>
+
+          <section>
+            <div class="font-semibold text-gray-900">Diagnostics</div>
+            <div v-if="selectedDetails.diagnostics.length === 0" class="mt-1">No diagnostics.</div>
+            <ul v-else class="mt-1 space-y-1">
+              <li v-for="diagnostic in selectedDetails.diagnostics" :key="diagnostic">{{ diagnostic }}</li>
+            </ul>
+          </section>
+        </div>
+      </div>
     </div>
   </section>
 </template>
