@@ -254,6 +254,7 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
         const normalized = {
           providerKey: providerKey.trim(),
           searchText: typeof raw?.searchText === 'string' ? raw.searchText : undefined,
+          includeDescriptionInSearch: raw?.includeDescriptionInSearch === true,
           vendors: mergedVendors.length > 0 ? mergedVendors : undefined,
           modelIds: Array.isArray(raw?.modelIds)
             ? Array.from(
@@ -458,6 +459,19 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
           throw new DbWorkerError('ERR_VALIDATION', 'settings.setChatReasoningDisplayMode requires inline|rail value')
         }
         rt.settingsRepo.setChatReasoningDisplayMode(value)
+        return { ok: true }
+    })
+
+  register('settings.getChatReasoningPanelDefaultExpanded', () => {
+        return { value: rt.settingsRepo.getChatReasoningPanelDefaultExpanded() }
+    })
+
+  register('settings.setChatReasoningPanelDefaultExpanded', (raw) => {
+        const value = raw?.value
+        if (typeof value !== 'boolean') {
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.setChatReasoningPanelDefaultExpanded requires boolean value')
+        }
+        rt.settingsRepo.setChatReasoningPanelDefaultExpanded(value)
         return { ok: true }
     })
 

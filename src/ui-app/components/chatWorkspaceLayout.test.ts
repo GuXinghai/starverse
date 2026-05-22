@@ -11,7 +11,7 @@ import {
 describe('chatWorkspaceLayout', () => {
   const dockThresholdPx = CHAT_RIGHT_RAIL_DEFAULT_WIDTH_PX + CHAT_MAIN_MIN_READABLE_WIDTH_PX
 
-  it('keeps the right rail docked when the chat area remains at least as wide as the rail', () => {
+  it('keeps the right rail docked when the chat area preserves readable message space', () => {
     expect(resolveChatWorkspaceRightRailMode({
       isOpen: true,
       availableWidthPx: dockThresholdPx,
@@ -19,10 +19,18 @@ describe('chatWorkspaceLayout', () => {
     })).toBe('docked')
   })
 
-  it('switches the right rail to floating when the chat area would become narrower than the rail', () => {
+  it('switches the right rail to floating when the chat area would become narrower than readable message space', () => {
     expect(resolveChatWorkspaceRightRailMode({
       isOpen: true,
       availableWidthPx: dockThresholdPx - 1,
+      previousMode: 'docked',
+    })).toBe('floating')
+  })
+
+  it('uses floating mode for common widths that would otherwise squeeze the transcript', () => {
+    expect(resolveChatWorkspaceRightRailMode({
+      isOpen: true,
+      availableWidthPx: CHAT_RIGHT_RAIL_DEFAULT_WIDTH_PX + CHAT_MAIN_MIN_READABLE_WIDTH_PX - 64,
       previousMode: 'docked',
     })).toBe('floating')
   })

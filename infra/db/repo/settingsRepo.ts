@@ -1,5 +1,6 @@
 import BetterSqlite3 from 'better-sqlite3'
 import {
+  SETTINGS_KEY_CHAT_REASONING_PANEL_DEFAULT_EXPANDED,
   SETTINGS_KEY_CHAT_REASONING_DISPLAY_MODE,
   SETTINGS_KEY_IMAGE_GENERATION_DEFAULT,
   SETTINGS_KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS,
@@ -140,6 +141,16 @@ export class SettingsRepo {
   setChatReasoningDisplayMode(value: 'inline' | 'rail'): void {
     if (value !== 'inline' && value !== 'rail') throw new Error('value must be inline or rail')
     this.writeJson(SETTINGS_KEY_CHAT_REASONING_DISPLAY_MODE, value)
+  }
+
+  getChatReasoningPanelDefaultExpanded(): boolean {
+    const value = this.readJson(SETTINGS_KEY_CHAT_REASONING_PANEL_DEFAULT_EXPANDED)
+    return value === undefined ? true : value === true
+  }
+
+  setChatReasoningPanelDefaultExpanded(value: boolean): void {
+    if (typeof value !== 'boolean') throw new Error('value must be boolean')
+    this.writeJson(SETTINGS_KEY_CHAT_REASONING_PANEL_DEFAULT_EXPANDED, value)
   }
 
   getChatDraft(key: string): string | null {

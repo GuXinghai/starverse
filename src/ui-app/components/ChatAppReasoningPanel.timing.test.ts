@@ -16,7 +16,6 @@ describe('ChatAppReasoningPanel - 推理时间显示', () => {
       props: {
         messageId: 'test-msg-1',
         reasoningView: mockReasoningView,
-        panelState: 'expanded',
         localProcessingDurationMs: 2500
       }
     })
@@ -25,18 +24,16 @@ describe('ChatAppReasoningPanel - 推理时间显示', () => {
     expect(getByText('2.50s')).toBeTruthy()
   })
 
-  it('应该在折叠时不显示推理时间', () => {
-    const { queryByText } = render(ChatAppReasoningPanel, {
+  it('即使消息内联状态为折叠，右侧面板也显示推理时间', () => {
+    const { getByText } = render(ChatAppReasoningPanel, {
       props: {
         messageId: 'test-msg-1',
         reasoningView: { ...mockReasoningView, panelState: 'collapsed' },
-        panelState: 'collapsed',
         localProcessingDurationMs: 2500
       }
     })
 
-    // 折叠时不应该显示推理时间
-    expect(queryByText('2.50s')).toBeNull()
+    expect(getByText('2.50s')).toBeTruthy()
   })
 
   it('应该在没有推理时间数据时不显示', () => {
@@ -44,7 +41,6 @@ describe('ChatAppReasoningPanel - 推理时间显示', () => {
       props: {
         messageId: 'test-msg-1',
         reasoningView: mockReasoningView,
-        panelState: 'expanded',
         localProcessingDurationMs: undefined
       }
     })
@@ -66,7 +62,6 @@ describe('ChatAppReasoningPanel - 推理时间显示', () => {
         props: {
           messageId: 'test-msg-1',
           reasoningView: mockReasoningView,
-          panelState: 'expanded',
           localProcessingDurationMs: ms
         }
       })

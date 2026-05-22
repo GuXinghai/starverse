@@ -11,6 +11,7 @@ import {
   decodeBranchSwitchQuestionCandidateResponse,
   decodeBranchTruncateFromQuestionResponse,
   decodeChatDraftResponse,
+  decodeChatReasoningPanelDefaultExpandedResponse,
   decodeChatReasoningDisplayModeResponse,
   decodeConvoCreateResponse,
   decodeConvoDeleteManyResponse,
@@ -798,6 +799,13 @@ const cases: ContractCase[] = [
     wrongType: { value: 'nope' },
   },
   {
+    name: 'settings.getChatReasoningPanelDefaultExpanded',
+    decode: decodeChatReasoningPanelDefaultExpandedResponse,
+    valid: { value: true },
+    missing: {},
+    wrongType: { value: 'true' },
+  },
+  {
     name: 'settings.getChatDraft',
     decode: decodeChatDraftResponse,
     valid: { value: 'draft text' },
@@ -849,6 +857,50 @@ describe('db bridge contract decoders', () => {
       }
     })
   }
+
+  it('sendPlan.buildCurrent decodes an empty idle draft without SendPlan issues', () => {
+    const decoded = decodeBuildCurrentSendPlanResponse({
+      sendPlan: {
+        status: 'blocked',
+        warnings: [],
+        blockingReasons: [],
+        includedAttachments: [],
+        excludedAttachments: [],
+        attachmentPlans: [],
+        requiresModelChange: false,
+        canProceedAfterDroppingExcluded: false,
+        requiresUserConfirmation: false,
+        plannerVersion: 'phase-5/v1',
+      },
+      draftText: '',
+      assets: [],
+      storageRootDir: 'C:/tmp',
+    })
+
+    expect(decoded.sendPlan.status).toBe('blocked')
+    expect(decoded.sendPlan.blockingReasons).toEqual([])
+    expect(decoded.sendPlan.attachmentPlans).toEqual([])
+  })
+
+  it('sendPlan.buildCurrent rejects blank SendPlan issue messages', () => {
+    expect(() => decodeBuildCurrentSendPlanResponse({
+      sendPlan: {
+        status: 'blocked',
+        warnings: [],
+        blockingReasons: [{ code: 'blocked', message: '', assetId: null, source: 'request' }],
+        includedAttachments: [],
+        excludedAttachments: [],
+        attachmentPlans: [],
+        requiresModelChange: false,
+        canProceedAfterDroppingExcluded: false,
+        requiresUserConfirmation: false,
+        plannerVersion: 'phase-5/v1',
+      },
+      draftText: '',
+      assets: [],
+      storageRootDir: 'C:/tmp',
+    })).toThrowError(IpcContractDecodeError)
+  })
 })
 
 describe('draft attachment settings decoder', () => {

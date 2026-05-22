@@ -167,6 +167,8 @@ export const DB_METHODS = [
   { name: 'settings.setUserMessageRenderDefault', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.getChatReasoningDisplayMode', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.setChatReasoningDisplayMode', renderer: true, worker: true, domain: 'settings' },
+  { name: 'settings.getChatReasoningPanelDefaultExpanded', renderer: true, worker: true, domain: 'settings' },
+  { name: 'settings.setChatReasoningPanelDefaultExpanded', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.getChatDraft', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.setChatDraft', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.deleteChatDraft', renderer: true, worker: true, domain: 'settings' },

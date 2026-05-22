@@ -895,6 +895,10 @@ const chatReasoningDisplayModeSchema = z.object({
   value: z.enum(['inline', 'rail']),
 })
 
+const chatReasoningPanelDefaultExpandedSchema = z.object({
+  value: z.boolean(),
+})
+
 const chatDraftSchema = z.object({
   value: z.string().nullable(),
 })
@@ -1261,6 +1265,10 @@ export function decodeUserMessageRenderDefaultResponse(raw: unknown): boolean | 
 
 export function decodeChatReasoningDisplayModeResponse(raw: unknown): 'inline' | 'rail' {
   return decodeWithSchema('settings.getChatReasoningDisplayMode', chatReasoningDisplayModeSchema, raw).value
+}
+
+export function decodeChatReasoningPanelDefaultExpandedResponse(raw: unknown): boolean {
+  return decodeWithSchema('settings.getChatReasoningPanelDefaultExpanded', chatReasoningPanelDefaultExpandedSchema, raw).value
 }
 
 export function decodeChatDraftResponse(raw: unknown): string | null {

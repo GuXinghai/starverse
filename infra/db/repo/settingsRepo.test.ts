@@ -38,6 +38,20 @@ describe('SettingsRepo', () => {
     expect(repo.getUserMessageRenderDefault()).toBe(false)
   })
 
+  it('persists chat.reasoning_panel.default_expanded and defaults to true', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new SettingsRepo(db)
+
+    expect(repo.getChatReasoningPanelDefaultExpanded()).toBe(true)
+
+    repo.setChatReasoningPanelDefaultExpanded(false)
+    expect(repo.getChatReasoningPanelDefaultExpanded()).toBe(false)
+
+    repo.setChatReasoningPanelDefaultExpanded(true)
+    expect(repo.getChatReasoningPanelDefaultExpanded()).toBe(true)
+  })
+
   it('persists web_search.defaults and defaults to null', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)

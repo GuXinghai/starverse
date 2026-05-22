@@ -53,6 +53,19 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     expect(vm2?.reasoningView.visibility).toBe('excluded')
   })
 
+  it('uses requested initial reasoning panel presentation when starting a generation', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'test-model',
+      reasoningPanelDefaultExpanded: false,
+    })
+
+    const vm = selectMessage(s1, assistantMessageId)
+    expect(vm?.reasoningView.panelState).toBe('collapsed')
+  })
+
   it('returns "not_returned" when no exclude config and no reasoning returned', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {

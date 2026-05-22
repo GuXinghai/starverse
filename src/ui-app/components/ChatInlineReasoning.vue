@@ -1,12 +1,18 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { ReasoningView, ReasoningPiece } from '@/next/state/types'
 
-const props = defineProps<{
-  reasoningView: ReasoningView | null
-  reasoningPieces?: ReasoningPiece[] | null
-  collapsed: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    reasoningView: ReasoningView | null
+    reasoningPieces?: ReasoningPiece[] | null
+    collapsed: boolean
+    displayMode?: 'inline' | 'rail'
+  }>(),
+  {
+    displayMode: 'inline',
+  },
+)
 
 const emit = defineEmits<{
   (e: 'toggle'): void
@@ -30,6 +36,11 @@ function onPressEnd() {
 function onPressCancel() {
   pressStartedAt.value = null
 }
+
+const indicator = computed(() => {
+  if (props.displayMode === 'rail') return props.collapsed ? '<' : '>'
+  return props.collapsed ? 'v' : '^'
+})
 </script>
 
 <template>
@@ -45,10 +56,10 @@ function onPressCancel() {
       @touchcancel="onPressCancel"
     >
       <span>Reasoning</span>
-      <span aria-hidden="true">{{ props.collapsed ? '↓' : '↑' }}</span>
+      <span aria-hidden="true">{{ indicator }}</span>
     </button>
 
-    <div v-if="!props.collapsed" class="mt-2 space-y-2 text-xs text-gray-600">
+    <div v-if="props.displayMode === 'inline' && !props.collapsed" class="mt-2 space-y-2 text-xs text-gray-600">
       <div v-if="props.reasoningView?.summaryText">{{ props.reasoningView.summaryText }}</div>
       <div v-if="props.reasoningView?.reasoningText" class="whitespace-pre-wrap">{{ props.reasoningView.reasoningText }}</div>
       <div v-for="piece in props.reasoningPieces ?? []" :key="piece.id" class="whitespace-pre-wrap">{{ piece.text }}</div>
