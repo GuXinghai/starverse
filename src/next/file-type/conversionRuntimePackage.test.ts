@@ -24,13 +24,8 @@ function sha256(char: string): string {
   return char.repeat(64)
 }
 
-const HEX_A = sha256('a')
-const HEX_B = sha256('b')
-const HEX_3 = sha256('3')
-const HEX_4 = sha256('4')
 const HEX_5 = sha256('5')
 const HEX_6 = sha256('6')
-const HEX_9 = sha256('9')
 
 function pandocSeed(overrides?: Partial<ConversionPackageSeed>): ConversionPackageSeed {
   return {

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { APP_CSP_PLACEHOLDER, getAppCsp, injectAppCspIntoHtml } from './appCsp'
 
-const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 describe('appCsp', () => {
   it('builds production CSP with asset image support', () => {

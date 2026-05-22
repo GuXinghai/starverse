@@ -1,5 +1,5 @@
 import { FILE_FORMAT_DESCRIPTORS } from './taxonomy'
-import type { FileTypeConflict, FileTypeFlag, FileTypePrimary, FileTypeStaticPolicyResult } from './types'
+import type { FileTypeConflict, FileTypeFlag, FileTypePrimary, FileTypeStaticPolicyResult, SendRoute } from './types'
 
 export type FileTypeStaticPolicyInput = Readonly<{
   primary: FileTypePrimary

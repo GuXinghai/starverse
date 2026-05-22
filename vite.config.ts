@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import path from 'node:path'
 import electron from 'vite-plugin-electron/simple'
 import vue from '@vitejs/plugin-vue'
-import { getAppCsp, injectAppCspIntoHtml, normalizeAppCspEnv } from './src/shared/security/appCsp'
+import { getAppCsp, injectAppCspIntoHtml, normalizeAppCspEnv } from './config/appCsp'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -77,6 +77,7 @@ export default defineConfig({
             if (id.includes('vue') || id.includes('pinia')) return 'vue'
             return 'vendor'
           }
+          return undefined
         },
       },
     },
