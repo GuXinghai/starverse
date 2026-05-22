@@ -118,9 +118,13 @@ function buildWebSearchDetail(input: Readonly<{
   level: ChatSessionConfigWebSearchLevel
 }>): SearchSettingsLayer {
   const base = input.detail ? { ...input.detail } : {}
-  base.searchMode = input.enabled ? 'enable' : 'disable'
-  base.searchDepth = input.level
-  if ('maxResults' in base) delete base.maxResults
+  if (base.searchMode !== 'enable' && base.searchMode !== 'disable' && base.searchMode !== 'default') {
+    base.searchMode = input.enabled ? 'enable' : 'disable'
+  }
+  if (base.searchDepth !== 'custom' && base.searchDepth !== 'low' && base.searchDepth !== 'medium' && base.searchDepth !== 'high' && base.searchDepth !== 'default') {
+    base.searchDepth = input.level
+  }
+  if (base.searchDepth !== 'custom' && 'maxResults' in base) delete base.maxResults
   return base
 }
 
