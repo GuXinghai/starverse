@@ -99,7 +99,7 @@ npm run electron:dev
 | 全文搜索 | SQLite FTS5，中英文分词，实时索引，相关性排序 (< 10ms) | `src/next/search/` | — |
 | 智能增强 | 自定义指令，4 层生成参数覆盖，胶囊式输入，采样参数配置 | `src/next/settings/`, `src/ui-kit/chat/ChatComposer.vue` | — |
 | 用户体验 | Tailwind CSS v4 响应式 UI，智能菜单防溢出，性能优化 (Tab 切换 75%↑) | `src/ui-app/`, `src/ui-kit/` | [Tailwind v4](docs/tailwind/TAILWIND_V4_README.md) |
-| 文档与治理 | 70+ 文档，导航中心，ADR (5 个)，File Pipeline Phase 1-9 已完成 | `docs/` | [INDEX](docs/guides/INDEX.md), [ADR](docs/decisions/README.md), [维护者入口](docs/maintenance/maintainer-entry.md), [File Pipeline](docs/file-pipeline/README.md) |
+| 文档与治理 | 70+ 文档，导航中心，ADR (9 个)，File Pipeline Phase 1-9 已完成 | `docs/` | [INDEX](docs/guides/INDEX.md), [ADR 入口](docs/adr/README.md), [历史决策](docs/decisions/README.md), [维护者入口](docs/maintenance/maintainer-entry.md), [File Pipeline](docs/file-pipeline/README.md) |
 
 ---
 
@@ -282,7 +282,7 @@ Starverse/
 |------|------|
 | **架构总览** | [docs/architecture/OVERVIEW.md](docs/architecture/OVERVIEW.md) — 三层分离与项目结构 |
 | **文件管道** | [docs/file-pipeline/README.md](docs/file-pipeline/README.md) — File Pipeline Phase 1-9 |
-| **架构决策** | [docs/decisions/README.md](docs/decisions/README.md) — ADR 记录 |
+| **架构决策** | [docs/adr/README.md](docs/adr/README.md) — 新 ADR 入口，[docs/decisions/README.md](docs/decisions/README.md) — 历史基础决策 |
 | **治理护栏** | [docs/governance/app-chat-app-logic-boundary.md](docs/governance/app-chat-app-logic-boundary.md) |
 | **维护者接手** | [docs/maintenance/maintainer-entry.md](docs/maintenance/maintainer-entry.md) |
 
@@ -757,8 +757,9 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 | [File Pipeline 进度账本](docs/file-pipeline/progress-ledger.md) | 决策记录、冻结决策、未做清单 |
 | [格式转换与预览方案](docs/file-pipeline/format-conversion-preview-final.md) | 文档格式转换与预览 SSOT |
 | [维护者接手入口](docs/maintenance/maintainer-entry.md) | 接手项目时的优先阅读顺序与注意事项 |
-| [ADR 规则](docs/adr/README.md) | 架构决策记录编写规则 |
-| [ADR 索引](docs/decisions/README.md) | 架构决策记录列表 |
+| [ADR 规则](docs/adr/README.md) | 架构决策记录编写规则与模板 |
+| [ADR 工程决策](docs/adr/README.md) | 工程决策记录 (000-003，新 ADR 使用此目录) |
+| [ADR 历史基础决策](docs/decisions/README.md) | 项目基础决策 (001-005，仅历史参考) |
 | [归档中心](docs/archive/README.md) | 46 个已归档历史文档 |
 | [变更日志](CHANGELOG.md) | 版本更新历史 |
 

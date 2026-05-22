@@ -1,6 +1,6 @@
 # SSOT Compliance Checklist（硬约束与禁止事项）
 
-**SSOT（唯一真相源）**：`docs/open_router_流式回复与推理_ssot（v_2_）.md`
+**SSOT（唯一真相源）**：`docs/openrouter-streaming-reasoning-ssot-v2.md`
 
 > 说明：本文件用于 Code Review。所有条目均从 SSOT 逐条抄写（不改写），仅在每条前加了 checkbox 以便勾选。
 >

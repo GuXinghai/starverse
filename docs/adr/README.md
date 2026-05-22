@@ -20,7 +20,7 @@
 
 满足任一条件即 **必须** 新增 ADR（至少 `Proposed`）：
 
-1. 需要变更 SSOT 的硬约束/禁止事项（例如修改 `docs/open_router_流式回复与推理_ssot（v_2_）.md` 中的 invariants）。
+1. 需要变更 SSOT 的硬约束/禁止事项（例如修改 `docs/openrouter-streaming-reasoning-ssot-v2.md` 中的 invariants）。
 2. 需要调整层级边界/数据所有权（例如 Parser ↔ Reducer ↔ UI 的职责、single-writer 原则、Facade/Hook 边界）。
 3. 需要改变对外/对内契约（请求/响应结构、Domain Events、ViewModel、持久化 schema、IPC 协议）。
 4. 引入或替换关键依赖/基础设施（存储、网络栈、解析器、日志/观测体系）。
@@ -41,5 +41,5 @@
 
 ---
 
-> 另见 `docs/decisions/README.md` —— 另一份并存的架构决策索引入口（编号 001-005），两套入口当前仅做交叉引用，不迁移或合并。
+> **本目录是新 ADR 的标准入口**。历史基础决策 (001-005) 位于 `docs/decisions/`，仅供参考。
 

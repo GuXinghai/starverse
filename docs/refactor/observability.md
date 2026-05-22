@@ -1,6 +1,6 @@
 # Observability（字段与日志点建议）
 
-**SSOT（唯一真相源）**：`docs/open_router_流式回复与推理_ssot（v_2_）.md`
+**SSOT（唯一真相源）**：`docs/openrouter-streaming-reasoning-ssot-v2.md`
 
 > 目标：让“流式会话”在出现 mid-stream error、abort、usage 缺失、reasoning_details 异常时可追踪、可复现、可定位。
 

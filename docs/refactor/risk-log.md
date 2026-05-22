@@ -1,6 +1,6 @@
 # Risk Log（OpenRouter 流式回复与推理重构）
 
-**输入 SSOT**：`docs/open_router_流式回复与推理_ssot（v_2_）.md`  
+**输入 SSOT**：`docs/openrouter-streaming-reasoning-ssot-v2.md`
 **现状证据**：`docs/analysis/OPENROUTER_REASONING_REALITY_CHECK_2025_12.md`
 
 > 说明：风险日志不是 SSOT；用于规划与验收编排。每条风险给出触发条件与缓解策略，便于在 Gate 推进时做“前置拆雷”。

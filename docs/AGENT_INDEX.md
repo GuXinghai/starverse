@@ -19,7 +19,7 @@ Agent should read in this sequence:
 5. **[docs/architecture/OVERVIEW.md](architecture/OVERVIEW.md)** — System architecture (5 min)
 6. **Task-specific docs** — Based on task area (see routing table below)
 
-**Do not start with**: docs/archive/, docs/refactoring/ (historical only)
+**Do not start with**: docs/archive/, docs/ui-refactoring/ (historical only)
 
 ---
 

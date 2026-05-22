@@ -29,8 +29,8 @@
 4. **[docs/file-pipeline/README.md](../file-pipeline/README.md)** — 文件管道主线工作状态
 5. **[docs/file-pipeline/progress-ledger.md](../file-pipeline/progress-ledger.md)** — 冻结决策与未做事项
 6. **[docs/governance/app-chat-app-logic-boundary.md](../governance/app-chat-app-logic-boundary.md)** — 核心编排模块职责边界
-7. **[docs/adr/README.md](../adr/README.md)** — ADR 决策记录规则（新 ADR 使用此目录）
-8. **[docs/decisions/README.md](../decisions/README.md)** — 基础架构决策列表（历史参考）
+7. **[docs/adr/README.md](../adr/README.md)** — ADR 决策记录规则（**新 ADR 使用此目录**）
+8. **[docs/decisions/README.md](../decisions/README.md)** — 基础架构决策列表（**仅历史参考**）
 9. **[docs/maintenance/document-governance.md](document-governance.md)** — 文档治理规则（DGR-1）
 
 ---

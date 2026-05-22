@@ -4,7 +4,7 @@
 
 **Status**: active
 **Last updated**: 2026-05-22
-**Owner**: DGR-1
+**Owner**: DGR-2
 
 ---
 
@@ -49,33 +49,36 @@
 
 | Old Path | New Path | Action Type | Status | Notes |
 |----------|----------|-------------|--------|-------|
-| `docs/adr/` | `docs/adr/` | keep | pending | ADR process rules, templates, engineering decisions |
-| `docs/decisions/` | `docs/decisions/` | keep | pending | Project foundation decisions |
+| `docs/adr/` | `docs/adr/` | keep | completed | ADR process rules, templates, engineering decisions — **new ADR entry** |
+| `docs/decisions/` | `docs/decisions/` | keep | completed | Project foundation decisions — **historical reference only** |
 
-**Decision**: Due to different content and style, directories remain separate. Cross-references maintained.
+**Decision**: Due to different content and style, directories remain separate. Cross-references maintained. Routing clarified in guides/INDEX.md, README.md, and decisions/README.md. Merge deferred (64+ references, numbering overlap).
 
 ### Chinese Filename Rename
 
 | Old Path | New Path | Action Type | Status | Notes |
 |----------|----------|-------------|--------|-------|
-| `docs/open_router_流式回复与推理_ssot（v_2_）.md` | `docs/openrouter-streaming-reasoning-ssot-v2.md` | rename | pending | Requires owner approval, high reference impact |
+| `docs/open_router_流式回复与推理_ssot（v_2_）.md` | `docs/openrouter-streaming-reasoning-ssot-v2.md` | rename | completed | DGR-2, 9 references updated |
 
 **Impact Analysis**:
-- Referenced by `docs/refactor/plan.md`
-- Referenced by `docs/refactor/compliance-checklist.md`
-- Referenced by `docs/adr/README.md`
-- Referenced by `docs/maintenance/maintainer-entry.md`
-
-**Recommendation**: Defer to DGR-2 due to high reference impact. Create redirect if renamed.
+- Referenced by `docs/refactor/plan.md` ✓ updated
+- Referenced by `docs/refactor/compliance-checklist.md` ✓ updated
+- Referenced by `docs/refactor/risk-log.md` ✓ updated
+- Referenced by `docs/refactor/observability.md` ✓ updated
+- Referenced by `docs/refactor/CLEANUP_COMPLETION_REPORT.md` ✓ updated
+- Referenced by `docs/adr/README.md` ✓ updated
+- Referenced by `docs/maintenance/document-governance.md` ✓ updated
+- Referenced by `docs/maintenance/document-status-taxonomy.md` ✓ updated
+- Referenced by `docs/maintenance/document-redirect-map.md` ✓ updated
 
 ### refactor/ vs refactoring/ Clarification
 
 | Old Path | New Path | Action Type | Status | Notes |
 |----------|----------|-------------|--------|-------|
-| `docs/refactor/` | `docs/refactor/` | keep | pending | SSOT v2 refactor plans (OpenRouter) |
-| `docs/refactoring/` | `docs/ui-refactoring/` | rename | pending | UI component refactoring (ChatView, ConversationList) |
+| `docs/refactor/` | `docs/refactor/` | keep | completed | SSOT v2 refactor plans (OpenRouter) |
+| `docs/refactoring/` | `docs/ui-refactoring/` | rename | completed | UI component refactoring (ChatView, ConversationList), DGR-2 |
 
-**Decision**: Directories are for different projects. Rename `refactoring/` to `ui-refactoring/` for clarity.
+**Decision**: Directories are for different projects. Renamed `refactoring/` to `ui-refactoring/` for clarity. Redirect README placed at `docs/refactoring/README.md`.
 
 ---
 
@@ -170,6 +173,33 @@ to verify no stale references remain.
 - `docs/guides/INDEX.md`
 - `docs/maintenance/maintainer-entry.md`
 - `docs/archive/README.md`
+
+### DGR-2 (2026-05-22)
+
+**Renamed**:
+- `docs/refactoring/` → `docs/ui-refactoring/` (directory rename, redirect README placed)
+- `docs/open_router_流式回复与推理_ssot（v_2_）.md` → `docs/openrouter-streaming-reasoning-ssot-v2.md` (9 references updated)
+
+**Routing Clarified**:
+- `docs/adr/` confirmed as primary ADR entry (new ADRs)
+- `docs/decisions/` confirmed as historical reference only
+
+**Updated**:
+- `docs/AGENT_INDEX.md`
+- `docs/DOC_STATUS_INDEX.md`
+- `docs/guides/INDEX.md`
+- `docs/maintenance/maintainer-entry.md`
+- `docs/maintenance/document-governance.md`
+- `docs/maintenance/document-status-taxonomy.md`
+- `docs/maintenance/document-redirect-map.md`
+- `docs/adr/README.md`
+- `docs/decisions/README.md`
+- `README.md`
+- `docs/refactor/plan.md`
+- `docs/refactor/compliance-checklist.md`
+- `docs/refactor/risk-log.md`
+- `docs/refactor/observability.md`
+- `docs/refactor/CLEANUP_COMPLETION_REPORT.md`
 
 ---
 

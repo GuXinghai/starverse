@@ -1,7 +1,7 @@
 # SSOT v2 重构验收报告（完整合规版）
 
 **日期**: 2025-12-13  
-**SSOT 版本**: `docs/open_router_流式回复与推理_ssot（v_2_）.md` v2  
+**SSOT 版本**: `docs/openrouter-streaming-reasoning-ssot-v2.md` v2
 **验证方式**: 自动化测试 (61 tests) + Gate 脚本 (TC-10/TC-12) + 负例扫描
 
 ---

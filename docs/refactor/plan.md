@@ -1,6 +1,6 @@
 # TC-00 — Gate 0–5 任务树（SSOT 可执行化）
 
-**SSOT（唯一真相源）**：`docs/open_router_流式回复与推理_ssot（v_2_）.md`  
+**SSOT（唯一真相源）**：`docs/openrouter-streaming-reasoning-ssot-v2.md`
 **现状审计（非 SSOT，仅作风险输入）**：`docs/analysis/OPENROUTER_REASONING_REALITY_CHECK_2025_12.md`
 
 > 本计划将 SSOT “落地为可执行关卡（Gate）”，并明确每个 Gate 的目录范围、产物、测试与退出条件。  
