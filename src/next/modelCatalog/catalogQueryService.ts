@@ -49,6 +49,7 @@ export type CatalogQueryInput = Readonly<{
    */
   providerKey?: string
   searchText?: string
+  includeDescriptionInSearch?: boolean
   filter?: Readonly<{
     /**
      * Model vendor/author dimension. Mapped to models.vendor.
@@ -341,6 +342,7 @@ export class CatalogQueryService {
       limit,
       hasCursor: input.page?.cursor != null,
       searchTextLength: typeof input.searchText === 'string' ? input.searchText.trim().length : 0,
+      includeDescriptionInSearch: input.includeDescriptionInSearch === true,
       ...filterSummary,
     }
 
@@ -478,6 +480,7 @@ export class CatalogQueryService {
       const payload = {
         providerKey: sourceProviderKey,
         searchText: typeof input.searchText === 'string' ? input.searchText : undefined,
+        includeDescriptionInSearch: input.includeDescriptionInSearch === true,
         vendors: mergeUniqueStrings(input.filter?.vendors, input.filter?.providers),
         tags: normalizeStringArray(input.filter?.tags),
         modelIds: modelIdsByCategory,

@@ -596,6 +596,7 @@ export type MarkEnginePluginFailedInput = Readonly<{
   failureReason: string
   updatedAt?: number
   lastHealthCheckAt?: number | null
+  metadataJson?: JsonObject | null
 }>
 
 export type UpdateEnginePluginHealthInput = Readonly<{
@@ -1868,6 +1869,7 @@ export type ModelCatalogQueryCoreParams = Readonly<{
    */
   providerKey?: string
   searchText?: string
+  includeDescriptionInSearch?: boolean
   /**
    * Model vendor/author dimension. Mapped to models.vendor.
    */

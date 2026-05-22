@@ -260,7 +260,18 @@ describe('ModelPickerDialog', () => {
     await user.type(input, 'gpt')
 
     await waitFor(() => {
-      expect(queryFn).toHaveBeenLastCalledWith(expect.objectContaining({ searchText: 'gpt' }))
+      expect(queryFn).toHaveBeenLastCalledWith(expect.objectContaining({
+        searchText: 'gpt',
+        includeDescriptionInSearch: false,
+      }))
+    })
+
+    await user.click(screen.getByTestId('model-picker-include-description'))
+    await waitFor(() => {
+      expect(queryFn).toHaveBeenLastCalledWith(expect.objectContaining({
+        searchText: 'gpt',
+        includeDescriptionInSearch: true,
+      }))
     })
   })
 

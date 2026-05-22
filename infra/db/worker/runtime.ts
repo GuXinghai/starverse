@@ -610,6 +610,80 @@ export class DbWorkerRuntime {
         FOREIGN KEY(provider_key, model_id) REFERENCES models(provider_key, model_id) ON DELETE CASCADE
       )
     `)
+    this.ensureModelCatalogFtsPrefixSchema()
+  }
+
+  private ensureModelCatalogFtsPrefixSchema() {
+    const row = this.db
+      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'models_fts'")
+      .get() as { sql?: string } | undefined
+    const sql = String(row?.sql ?? '').toLowerCase()
+    const hasExpectedPrefixIndex = /prefix\s*=\s*'?1 2 3 4'?/.test(sql)
+    if (hasExpectedPrefixIndex && !sql.includes('model_id unindexed')) return
+
+    this.db.transaction(() => {
+      this.db.exec(`
+        DROP TRIGGER IF EXISTS trg_models_fts_ai;
+        DROP TRIGGER IF EXISTS trg_models_fts_au;
+        DROP TRIGGER IF EXISTS trg_models_fts_ad;
+        DROP TABLE IF EXISTS models_fts;
+
+        CREATE VIRTUAL TABLE models_fts USING fts5(
+          provider_key UNINDEXED,
+          model_id,
+          display_name,
+          canonical_slug,
+          description,
+          tokenize = 'unicode61',
+          prefix = '1 2 3 4'
+        );
+
+        CREATE TRIGGER trg_models_fts_ai
+        AFTER INSERT ON models
+        BEGIN
+          INSERT INTO models_fts(rowid, provider_key, model_id, display_name, canonical_slug, description)
+          VALUES (
+            new.rowid,
+            new.provider_key,
+            new.model_id,
+            coalesce(new.display_name, ''),
+            coalesce(new.canonical_slug, ''),
+            coalesce(new.description, '')
+          );
+        END;
+
+        CREATE TRIGGER trg_models_fts_au
+        AFTER UPDATE OF provider_key, model_id, display_name, canonical_slug, description ON models
+        BEGIN
+          DELETE FROM models_fts WHERE rowid = old.rowid;
+          INSERT INTO models_fts(rowid, provider_key, model_id, display_name, canonical_slug, description)
+          VALUES (
+            new.rowid,
+            new.provider_key,
+            new.model_id,
+            coalesce(new.display_name, ''),
+            coalesce(new.canonical_slug, ''),
+            coalesce(new.description, '')
+          );
+        END;
+
+        CREATE TRIGGER trg_models_fts_ad
+        AFTER DELETE ON models
+        BEGIN
+          DELETE FROM models_fts WHERE rowid = old.rowid;
+        END;
+
+        INSERT INTO models_fts(rowid, provider_key, model_id, display_name, canonical_slug, description)
+        SELECT
+          rowid,
+          provider_key,
+          model_id,
+          coalesce(display_name, ''),
+          coalesce(canonical_slug, ''),
+          coalesce(description, '')
+        FROM models;
+      `)
+    })()
   }
 
   /**

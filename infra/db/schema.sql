@@ -606,11 +606,12 @@ CREATE TABLE IF NOT EXISTS model_recents (
 -- FTS for catalog search (display_name/model_id/canonical_slug/description).
 CREATE VIRTUAL TABLE IF NOT EXISTS models_fts USING fts5(
   provider_key UNINDEXED,
-  model_id UNINDEXED,
+  model_id,
   display_name,
   canonical_slug,
   description,
-  tokenize = 'unicode61'
+  tokenize = 'unicode61',
+  prefix = '1 2 3 4'
 );
 
 CREATE TRIGGER IF NOT EXISTS trg_models_fts_ai
