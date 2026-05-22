@@ -161,13 +161,14 @@ function chipClass(active: boolean): string {
         />
       </section>
 
-      <section class="space-y-3 rounded-lg border border-gray-200 bg-gray-50/70 p-3">
+      <section class="min-w-0 space-y-3 overflow-hidden rounded-lg border border-gray-200 bg-gray-50/70 p-3">
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Sampling</div>
         <SamplingParamsSettingsEditor
           :model-value="props.sessionConfig.samplingParams.detail"
           :disabled="disabled"
           :resolved="props.samplingParamsResolved"
           :collapsible="false"
+          compact
           @update:model-value="emit('updateSamplingParamsLayer', $event)"
         />
       </section>
