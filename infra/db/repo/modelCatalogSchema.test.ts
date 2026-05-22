@@ -25,6 +25,13 @@ function assertCatalogCoreObjects(db: BetterSqlite3.Database) {
   expect(tables.has('catalog_meta')).toBe(true)
   expect(tables.has('endpoint_meta')).toBe(true)
   expect(tables.has('models_fts')).toBe(true)
+  const ftsSql = String(
+    (db
+      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'models_fts'")
+      .get() as { sql?: string } | undefined)?.sql ?? ''
+  ).toLowerCase()
+  expect(ftsSql).toMatch(/prefix\s*=\s*'?1 2 3 4'?/)
+  expect(ftsSql).not.toContain('model_id unindexed')
 
   expect(indexes.has('idx_models_context_length')).toBe(true)
   expect(indexes.has('idx_models_price_prompt')).toBe(true)

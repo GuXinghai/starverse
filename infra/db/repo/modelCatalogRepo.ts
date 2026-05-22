@@ -4,6 +4,8 @@ type SqlDatabase = BetterSqlite3.Database
 const MODEL_HIDE_GUARD_RATIO = 0.7
 const MODEL_HIDE_GUARD_MIN_BASELINE = 20
 const QUERY_MODEL_ID_IN_THRESHOLD = 800
+const MODEL_CATALOG_SEARCH_MAX_TOKENS = 8
+const MODEL_CATALOG_SEARCH_MAX_TOKEN_LENGTH = 64
 
 export type CatalogCoreQuerySortBy = 'name' | 'created_at' | 'context_length' | 'max_output_tokens'
 export type CatalogCoreQuerySortOrder = 'asc' | 'desc'
@@ -40,6 +42,7 @@ export type CatalogCoreQueryInput = Readonly<{
    */
   providerKey: string
   searchText?: string
+  includeDescriptionInSearch?: boolean
   /**
    * Model vendor/author dimension. Mapped to models.vendor.
    */
@@ -438,14 +441,34 @@ function pushRangeWhereClause(
   }
 }
 
-function toFtsMatchQuery(searchText: string): string | null {
-  const tokens = searchText
-    .split(/\s+/)
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0)
+function toSearchTokens(searchText: string): string[] {
+  const tokens = String(searchText ?? '')
+    .toLowerCase()
+    .match(/[\p{L}\p{N}_]+/gu) ?? []
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const rawToken of tokens) {
+    const token = rawToken.slice(0, MODEL_CATALOG_SEARCH_MAX_TOKEN_LENGTH)
+    if (!token || seen.has(token)) continue
+    seen.add(token)
+    out.push(token)
+    if (out.length >= MODEL_CATALOG_SEARCH_MAX_TOKENS) break
+  }
+  return out
+}
 
+function toFtsPrefixQuery(tokens: readonly string[], columnFilter: string): string | null {
   if (tokens.length === 0) return null
-  return tokens.map((token) => `"${token.replace(/"/g, '""')}"`).join(' ')
+  return `${columnFilter} : ${tokens.map((token) => `${token}*`).join(' ')}`
+}
+
+function buildFtsExistsSql(paramName: string): string {
+  return `EXISTS (
+    SELECT 1
+    FROM models_fts
+    WHERE models_fts.rowid = models.rowid
+      AND models_fts MATCH @${paramName}
+  )`
 }
 
 function toCursor(
@@ -1417,26 +1440,51 @@ export class ModelCatalogRepo {
     let useTempModelIdsFilter = false
 
     const searchText = String(input.searchText ?? '').trim()
+    const searchTokens = toSearchTokens(searchText)
+    const includeDescriptionInSearch = input.includeDescriptionInSearch === true
+    let searchRankSql: string | null = null
     if (searchText.length > 0) {
       params.searchExact = searchText.toLowerCase()
+      const displayNameFtsQuery = toFtsPrefixQuery(searchTokens, 'display_name')
+      const modelIdFtsQuery = toFtsPrefixQuery(searchTokens, 'model_id')
+      const canonicalSlugFtsQuery = toFtsPrefixQuery(searchTokens, 'canonical_slug')
+      const identityFtsQuery = toFtsPrefixQuery(searchTokens, '{display_name model_id canonical_slug}')
+      const descriptionFtsQuery = includeDescriptionInSearch
+        ? toFtsPrefixQuery(searchTokens, 'description')
+        : null
+      const displayNameFtsMatch = displayNameFtsQuery ? buildFtsExistsSql('displayNameSearchQuery') : null
+      const modelIdFtsMatch = modelIdFtsQuery ? buildFtsExistsSql('modelIdSearchQuery') : null
+      const canonicalSlugFtsMatch = canonicalSlugFtsQuery ? buildFtsExistsSql('canonicalSlugSearchQuery') : null
+      const identityFtsMatch = identityFtsQuery ? buildFtsExistsSql('identitySearchQuery') : null
+      const descriptionFtsMatch = descriptionFtsQuery ? buildFtsExistsSql('descriptionSearchQuery') : null
+      if (displayNameFtsQuery) params.displayNameSearchQuery = displayNameFtsQuery
+      if (modelIdFtsQuery) params.modelIdSearchQuery = modelIdFtsQuery
+      if (canonicalSlugFtsQuery) params.canonicalSlugSearchQuery = canonicalSlugFtsQuery
+      if (identityFtsQuery) params.identitySearchQuery = identityFtsQuery
+      if (descriptionFtsQuery) params.descriptionSearchQuery = descriptionFtsQuery
       const searchConditions: string[] = [
+        'LOWER(models.display_name) = @searchExact',
         'LOWER(models.model_id) = @searchExact',
         "LOWER(COALESCE(models.canonical_slug, '')) = @searchExact",
-        "LOWER(models.display_name) = @searchExact",
-        "LOWER(COALESCE(models.description, '')) = @searchExact",
       ]
-      const ftsQuery = toFtsMatchQuery(searchText)
-      if (ftsQuery) {
-        params.searchQuery = ftsQuery
-        searchConditions.push(`
-          EXISTS (
-            SELECT 1
-            FROM models_fts
-            WHERE models_fts.rowid = models.rowid
-              AND models_fts MATCH @searchQuery
-          )
-        `)
+      if (identityFtsMatch) searchConditions.push(identityFtsMatch)
+      if (includeDescriptionInSearch) {
+        searchConditions.push("LOWER(COALESCE(models.description, '')) = @searchExact")
+        if (descriptionFtsMatch) searchConditions.push(descriptionFtsMatch)
       }
+      searchRankSql = `
+        CASE
+          WHEN LOWER(models.display_name) = @searchExact THEN 0
+          WHEN ${displayNameFtsMatch ?? '0'} THEN 1
+          WHEN LOWER(models.model_id) = @searchExact THEN 2
+          WHEN ${modelIdFtsMatch ?? '0'} THEN 3
+          WHEN LOWER(COALESCE(models.canonical_slug, '')) = @searchExact THEN 4
+          WHEN ${canonicalSlugFtsMatch ?? '0'} THEN 5
+          ${includeDescriptionInSearch ? "WHEN LOWER(COALESCE(models.description, '')) = @searchExact THEN 6" : ''}
+          ${includeDescriptionInSearch && descriptionFtsMatch ? `WHEN ${descriptionFtsMatch} THEN 7` : ''}
+          ELSE 8
+        END
+      `
       where.push(`(${searchConditions.join('\n OR ')})`)
     }
 
@@ -1743,7 +1791,7 @@ export class ModelCatalogRepo {
       }
     }
 
-    const orderBy =
+    const baseOrderBy =
       sortBy === 'created_at'
         ? `COALESCE(models.created_at_sec, 0) ${orderSql}, models.model_key ${orderSql}`
         : sortBy === 'context_length'
@@ -1751,6 +1799,9 @@ export class ModelCatalogRepo {
           : sortBy === 'max_output_tokens'
             ? `COALESCE(models.max_output_tokens, 0) ${orderSql}, models.model_key ${orderSql}`
             : `models.display_name COLLATE NOCASE ${orderSql}, models.model_key ${orderSql}`
+    const orderBy = searchRankSql
+      ? `${searchRankSql} ASC, ${baseOrderBy}`
+      : baseOrderBy
 
     params.limitPlusOne = limit + 1
 

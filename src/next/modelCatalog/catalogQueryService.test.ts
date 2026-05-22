@@ -63,6 +63,7 @@ describe('CatalogQueryService.query', () => {
     const result = await CatalogQueryService.query({
       providerKey: 'openrouter',
       searchText: 'gpt omni',
+      includeDescriptionInSearch: true,
       filter: {
         vendors: ['openai', 'openai', ''],
         tags: ['capability:vision'],
@@ -84,6 +85,7 @@ describe('CatalogQueryService.query', () => {
       expect.objectContaining({
         providerKey: 'openrouter',
         searchText: 'gpt omni',
+        includeDescriptionInSearch: true,
         vendors: ['openai'],
         tags: ['capability:vision'],
         contextBuckets: ['xlarge'],

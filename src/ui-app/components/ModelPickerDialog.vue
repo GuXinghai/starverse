@@ -28,6 +28,7 @@ import ModelDetailPanel from './ModelDetailPanel.vue'
 
 type TriState = 'any' | 'yes' | 'no'
 type DetailTab = 'model' | 'endpoints'
+type PickerMode = 'all' | 'favorites' | 'recents'
 
 type QueryFn = (input: CatalogQueryInput) => Promise<CatalogQueryResult>
 type EndpointDetailFn = (input: GetModelEndpointDetailsInput) => Promise<ModelEndpointDetailsResult>
@@ -40,6 +41,7 @@ const props = withDefaults(
     isRunning?: boolean
     selectedModelId: string
     favoriteModelKeys?: readonly string[]
+    recentModelKeys?: readonly string[]
     fallbackModels?: readonly ModelCatalogItem[]
     notice?: string | null
     debounceMs?: number
@@ -52,6 +54,7 @@ const props = withDefaults(
     disabled: false,
     isRunning: false,
     favoriteModelKeys: () => [],
+    recentModelKeys: () => [],
     fallbackModels: () => [],
     notice: null,
     debounceMs: 250,
@@ -72,6 +75,7 @@ const emit = defineEmits<{
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const listScrollRef = ref<HTMLElement | null>(null)
 const searchText = ref('')
+const includeDescriptionInSearch = ref(false)
 const selectedVendors = ref<string[]>([])
 const selectedCategory = ref<OpenRouterModelCategory | 'all'>('all')
 const contextLengthMin = ref('')
@@ -103,6 +107,7 @@ const modelDetailError = ref<string | null>(null)
 const endpointDetails = ref<ModelEndpointDetailsResult | null>(null)
 const endpointLoading = ref(false)
 const activeDetailTab = ref<DetailTab>('model')
+const activePickerMode = ref<PickerMode>('all')
 const favoriteEditMode = ref(false)
 const editableFavoriteModelKeys = ref<string[]>([])
 const draggingFavoriteIndex = ref<number | null>(null)
@@ -210,6 +215,19 @@ const endpointFetchedAtMs = computed(() => endpointDetails.value?.fetchedAtMs ??
 const endpointError = computed(() => endpointDetails.value?.error ?? null)
 const favoriteModelKeySet = computed(() => new Set(props.favoriteModelKeys.map((value) => String(value ?? '').trim()).filter(Boolean)))
 const normalizedFavoriteModelKeys = computed(() => normalizeFavoriteModelKeys(props.favoriteModelKeys))
+const normalizedRecentModelKeys = computed(() => normalizeFavoriteModelKeys(props.recentModelKeys))
+const favoriteShortcutItems = computed(() => buildShortcutItems(normalizedFavoriteModelKeys.value))
+const recentShortcutItems = computed(() => buildShortcutItems(normalizedRecentModelKeys.value))
+const activeShortcutItems = computed(() => {
+  if (activePickerMode.value === 'favorites') return favoriteShortcutItems.value
+  if (activePickerMode.value === 'recents') return recentShortcutItems.value
+  return []
+})
+const activeDetailModelId = computed(() => {
+  const normalized = normalizeModelId(activeModelId.value)
+  if (normalized) return normalized
+  return selectedModelId.value
+})
 const favoriteOrderDirty = computed(() => {
   const next = editableFavoriteModelKeys.value
   const base = normalizedFavoriteModelKeys.value
@@ -222,6 +240,7 @@ const favoriteOrderDirty = computed(() => {
 const queryFilterSignature = computed(() =>
   JSON.stringify({
     searchText: searchText.value.trim(),
+    includeDescriptionInSearch: includeDescriptionInSearch.value,
     selectedVendors: [...selectedVendors.value].sort(),
     selectedCategory: selectedCategory.value,
     contextLengthMin: contextLengthMin.value,
@@ -303,6 +322,20 @@ function resolveFavoriteName(modelKey: string): string {
   const inFallback = props.fallbackModels.find((item) => item.modelId === modelId)
   if (inFallback) return inFallback.name
   return modelId || modelKey
+}
+
+function buildShortcutItems(modelKeys: readonly string[]): Array<Readonly<{ modelKey: string; modelId: string; name: string }>> {
+  return modelKeys
+    .map((modelKey) => {
+      const modelId = normalizeModelId(parseModelIdFromModelKey(modelKey))
+      if (!modelId) return null
+      return {
+        modelKey,
+        modelId,
+        name: resolveFavoriteName(modelKey),
+      }
+    })
+    .filter((item): item is Readonly<{ modelKey: string; modelId: string; name: string }> => item !== null)
 }
 
 function openFavoriteEditMode() {
@@ -467,6 +500,7 @@ function buildQueryInput(append: boolean): CatalogQueryInput {
   return {
     sourceProviderKey: 'openrouter',
     searchText: searchText.value.trim() || undefined,
+    includeDescriptionInSearch: includeDescriptionInSearch.value,
     ...(Object.keys(filter).length > 0 ? { filter } : {}),
     page: {
       limit: 60,
@@ -488,6 +522,18 @@ function mergeItems(previous: readonly CatalogQueryItem[], incoming: readonly Ca
 }
 
 function ensureActiveCandidate() {
+  if (activePickerMode.value !== 'all') {
+    const shortcutItems = activeShortcutItems.value
+    if (shortcutItems.length === 0) {
+      activeModelId.value = ''
+      return
+    }
+    if (activeModelId.value && shortcutItems.some((item) => normalizeModelId(item.modelId) === normalizeModelId(activeModelId.value))) return
+    const selected = selectedModelId.value
+    const selectedExists = selected && shortcutItems.some((item) => normalizeModelId(item.modelId) === selected)
+    activeModelId.value = selectedExists ? selected : shortcutItems[0].modelId
+    return
+  }
   if (items.value.length === 0) {
     activeModelId.value = ''
     return
@@ -551,7 +597,7 @@ async function fetchPage(append: boolean) {
 }
 
 async function fetchEndpointDetails(forceRefresh: boolean) {
-  const modelId = String(activeItem.value?.modelId ?? '').trim()
+  const modelId = String(activeDetailModelId.value ?? '').trim()
   if (!props.open || !modelId) {
     endpointDetails.value = null
     endpointLoading.value = false
@@ -586,7 +632,7 @@ async function fetchEndpointDetails(forceRefresh: boolean) {
 }
 
 async function fetchModelDetail() {
-  const modelId = String(activeItem.value?.modelId ?? '').trim()
+  const modelId = String(activeDetailModelId.value ?? '').trim()
   if (!props.open || !modelId) {
     modelDetail.value = null
     modelDetailError.value = null
@@ -636,6 +682,7 @@ function openDialogState() {
   endpointDetails.value = null
   endpointLoading.value = false
   activeDetailTab.value = 'model'
+  activePickerMode.value = 'all'
   queryNotice.value = null
   error.value = null
   resetFavoriteEditorState()
@@ -717,10 +764,12 @@ function onDialogKeydown(ev: KeyboardEvent) {
   }
 
   if (ev.key === 'Enter' && !isTypingElement) {
-    const active = activeItem.value
+    const active = activePickerMode.value === 'all'
+      ? activeItem.value?.modelId
+      : activeDetailModelId.value
     if (!active) return
     ev.preventDefault()
-    onSelectModel(active.modelId)
+    onSelectModel(active)
   }
 }
 
@@ -789,6 +838,15 @@ watch(
   () => {
     if (favoriteEditMode.value) return
     editableFavoriteModelKeys.value = normalizeFavoriteModelKeys(props.favoriteModelKeys)
+    if (props.open && activePickerMode.value === 'favorites') ensureActiveCandidate()
+  },
+  { deep: true },
+)
+
+watch(
+  () => props.recentModelKeys,
+  () => {
+    if (props.open && activePickerMode.value === 'recents') ensureActiveCandidate()
   },
   { deep: true },
 )
@@ -802,7 +860,7 @@ watch(
 )
 
 watch(
-  () => (props.open ? activeItem.value?.modelId ?? '' : ''),
+  () => (props.open ? activeDetailModelId.value : ''),
   (modelId, prevModelId) => {
     if (!props.open || !modelId) {
       modelDetail.value = null
@@ -882,6 +940,16 @@ onBeforeUnmount(() => {
                   :disabled="props.disabled"
                   data-testid="model-picker-search"
                 />
+                <label class="mt-2 flex items-center gap-2 text-[11px] text-gray-600">
+                  <input
+                    v-model="includeDescriptionInSearch"
+                    type="checkbox"
+                    class="h-3.5 w-3.5 rounded border-gray-300"
+                    :disabled="props.disabled"
+                    data-testid="model-picker-include-description"
+                  />
+                  <span>including description</span>
+                </label>
               </div>
               <div>
                 <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Category</label>
@@ -1294,34 +1362,95 @@ onBeforeUnmount(() => {
                 class="h-[60vh] overflow-auto px-2 py-2 xl:h-auto xl:flex-1"
                 data-testid="model-picker-list"
               >
-                <div v-if="loading && items.length === 0" class="px-2 py-4 text-sm text-gray-500">Loading models...</div>
-                <div v-else-if="!loading && items.length === 0" class="px-2 py-4 text-sm text-gray-500">
-                  No models found for current search/filter.
-                </div>
-                <template v-else>
-                  <div :style="{ height: `${topPaddingPx}px` }" />
-                  <button
-                    v-for="item in visibleItems"
-                    :key="item.modelId"
-                    type="button"
-                    class="mb-2 w-full rounded-lg border px-3 py-2 text-left shadow-sm transition"
-                    :class="
-                      isSelectedModel(item.modelId)
-                        ? 'border-blue-300 bg-blue-50'
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    "
-                    :data-testid="`model-picker-item-${item.modelId}`"
-                    @mouseenter="activeModelId = item.modelId"
-                    @focus="activeModelId = item.modelId"
-                    @click="onSelectModel(item.modelId)"
-                    :ref="(el) => onRowRef(item.modelId, el as Element | null)"
-                  >
-                    <div class="flex items-center justify-between gap-2">
-                      <div class="min-w-0">
-                        <div class="truncate text-sm font-semibold text-gray-900">{{ item.displayName }}</div>
-                        <div class="truncate text-[11px] text-gray-500">{{ item.modelId }}</div>
+                <template v-if="activePickerMode === 'all'">
+                  <div v-if="loading && items.length === 0" class="px-2 py-4 text-sm text-gray-500">Loading models...</div>
+                  <div v-else-if="!loading && items.length === 0" class="px-2 py-4 text-sm text-gray-500">
+                    No models found for current search/filter.
+                  </div>
+                  <template v-else>
+                    <div :style="{ height: `${topPaddingPx}px` }" />
+                    <button
+                      v-for="item in visibleItems"
+                      :key="item.modelId"
+                      type="button"
+                      class="mb-2 w-full rounded-lg border px-3 py-2 text-left shadow-sm transition"
+                      :class="
+                        isSelectedModel(item.modelId)
+                          ? 'border-blue-300 bg-blue-50'
+                          : 'border-gray-200 bg-white hover:bg-gray-50'
+                      "
+                      :data-testid="`model-picker-item-${item.modelId}`"
+                      @mouseenter="activeModelId = item.modelId"
+                      @focus="activeModelId = item.modelId"
+                      @click="onSelectModel(item.modelId)"
+                      :ref="(el) => onRowRef(item.modelId, el as Element | null)"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <div class="min-w-0">
+                          <div class="truncate text-sm font-semibold text-gray-900">{{ item.displayName }}</div>
+                          <div class="truncate text-[11px] text-gray-500">{{ item.modelId }}</div>
+                        </div>
+                        <div class="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            class="rounded border px-1.5 py-0.5 text-[11px] leading-none"
+                            :class="
+                              isFavoriteModel(item.modelId)
+                                ? 'border-amber-300 bg-amber-50 text-amber-700'
+                                : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-100'
+                            "
+                            :disabled="props.disabled || props.isRunning"
+                            :data-testid="`model-picker-favorite-${item.modelId}`"
+                            @click.stop="onToggleFavorite(item.modelId)"
+                          >
+                            {{ isFavoriteModel(item.modelId) ? '★' : '☆' }}
+                          </button>
+                          <div class="text-[11px] uppercase tracking-wide text-gray-500">
+                            {{ item.vendor || 'unknown' }}
+                          </div>
+                        </div>
                       </div>
-                      <div class="flex shrink-0 items-center gap-2">
+                      <div v-if="item.description" class="mt-1 text-[11px] text-gray-600">
+                        {{ item.description }}
+                      </div>
+                      <div class="mt-1 flex flex-wrap gap-1 text-[10px] text-gray-600">
+                        <span v-if="hasImageGenerationSignal(item)" class="rounded border border-green-200 bg-green-50 px-1.5 py-0.5 text-green-700">
+                          image_gen
+                        </span>
+                        <span v-if="item.capabilities.reasoning" class="rounded border border-gray-200 px-1.5 py-0.5">reasoning</span>
+                        <span v-if="item.capabilities.tools" class="rounded border border-gray-200 px-1.5 py-0.5">tools</span>
+                        <span v-if="item.capabilities.vision" class="rounded border border-gray-200 px-1.5 py-0.5">vision</span>
+                        <span v-if="item.capabilities.longContext" class="rounded border border-gray-200 px-1.5 py-0.5">long_context</span>
+                      </div>
+                    </button>
+                    <div :style="{ height: `${bottomPaddingPx}px` }" />
+                  </template>
+                </template>
+                <template v-else>
+                  <div v-if="activeShortcutItems.length === 0" class="px-2 py-4 text-sm text-gray-500">
+                    {{ activePickerMode === 'favorites' ? 'No favorite models yet.' : 'No recent models in this session yet.' }}
+                  </div>
+                  <template v-else>
+                    <button
+                      v-for="item in activeShortcutItems"
+                      :key="`${activePickerMode}-${item.modelKey}`"
+                      type="button"
+                      class="mb-2 w-full rounded-lg border px-3 py-2 text-left shadow-sm transition"
+                      :class="
+                        isSelectedModel(item.modelId)
+                          ? 'border-blue-300 bg-blue-50'
+                          : 'border-gray-200 bg-white hover:bg-gray-50'
+                      "
+                      :data-testid="`model-picker-${activePickerMode}-item-${item.modelId}`"
+                      @mouseenter="activeModelId = item.modelId"
+                      @focus="activeModelId = item.modelId"
+                      @click="onSelectModel(item.modelId)"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <div class="min-w-0">
+                          <div class="truncate text-sm font-semibold text-gray-900">{{ item.name }}</div>
+                          <div class="truncate text-[11px] text-gray-500">{{ item.modelId }}</div>
+                        </div>
                         <button
                           type="button"
                           class="rounded border px-1.5 py-0.5 text-[11px] leading-none"
@@ -1336,33 +1465,18 @@ onBeforeUnmount(() => {
                         >
                           {{ isFavoriteModel(item.modelId) ? '★' : '☆' }}
                         </button>
-                        <div class="text-[11px] uppercase tracking-wide text-gray-500">
-                          {{ item.vendor || 'unknown' }}
-                        </div>
                       </div>
-                    </div>
-                    <div v-if="item.description" class="mt-1 text-[11px] text-gray-600">
-                      {{ item.description }}
-                    </div>
-                    <div class="mt-1 flex flex-wrap gap-1 text-[10px] text-gray-600">
-                      <span v-if="hasImageGenerationSignal(item)" class="rounded border border-green-200 bg-green-50 px-1.5 py-0.5 text-green-700">
-                        image_gen
-                      </span>
-                      <span v-if="item.capabilities.reasoning" class="rounded border border-gray-200 px-1.5 py-0.5">reasoning</span>
-                      <span v-if="item.capabilities.tools" class="rounded border border-gray-200 px-1.5 py-0.5">tools</span>
-                      <span v-if="item.capabilities.vision" class="rounded border border-gray-200 px-1.5 py-0.5">vision</span>
-                      <span v-if="item.capabilities.longContext" class="rounded border border-gray-200 px-1.5 py-0.5">long_context</span>
-                    </div>
-                  </button>
-                  <div :style="{ height: `${bottomPaddingPx}px` }" />
+                    </button>
+                  </template>
                 </template>
               </div>
 
               <div class="flex items-center justify-between border-t border-gray-200 px-3 py-2 text-[11px] text-gray-500">
                 <div>
-                  {{ items.length }} result{{ items.length === 1 ? '' : 's' }}
+                  {{ activePickerMode === 'all' ? `${items.length} result${items.length === 1 ? '' : 's'}` : `${activeShortcutItems.length} model${activeShortcutItems.length === 1 ? '' : 's'}` }}
                 </div>
                 <button
+                  v-if="activePickerMode === 'all'"
                   type="button"
                   class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                   :disabled="!canLoadMore"
@@ -1406,20 +1520,20 @@ onBeforeUnmount(() => {
 
               <ModelDetailPanel
                 v-if="activeDetailTab === 'model'"
-                :modelId="activeItem?.modelId ?? props.selectedModelId"
+                :modelId="activeDetailModelId"
                 :loading="modelDetailLoading"
                 :detail="modelDetail"
                 :error="modelDetailError"
-                :disabled="props.disabled || !activeItem"
+                :disabled="props.disabled || !activeDetailModelId"
               />
               <EndpointDetailPanel
                 v-else
-                :modelId="activeItem?.modelId ?? props.selectedModelId"
+                :modelId="activeDetailModelId"
                 :loading="endpointLoading"
                 :fetchedAtMs="endpointFetchedAtMs"
                 :items="endpointItems"
                 :error="endpointError"
-                :disabled="props.disabled || !activeItem"
+                :disabled="props.disabled || !activeDetailModelId"
                 @refresh="onRefreshEndpointDetails"
               />
             </div>

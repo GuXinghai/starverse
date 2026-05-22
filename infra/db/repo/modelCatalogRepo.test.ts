@@ -867,6 +867,48 @@ describe('ModelCatalogRepo.getCoreModelDetail', () => {
 })
 
 describe('ModelCatalogRepo.queryCore', () => {
+  function queryFixtureModel(
+    nowMs: number,
+    input: Readonly<{
+      modelId: string
+      displayName: string
+      canonicalSlug?: string | null
+      description?: string | null
+      vendor?: string
+      createdAtSec?: number
+    }>
+  ) {
+    return {
+      providerKey: 'openrouter',
+      modelId: input.modelId,
+      modelKey: `openrouter::${input.modelId}`,
+      canonicalSlug: input.canonicalSlug ?? input.modelId,
+      displayName: input.displayName,
+      description: input.description ?? null,
+      vendor: input.vendor ?? input.modelId.split('/')[0] ?? 'unknown',
+      family: input.vendor ?? input.modelId.split('/')[0] ?? 'unknown',
+      status: 'active' as const,
+      visibility: 'visible' as const,
+      contextLength: 8192,
+      maxOutputTokens: 2048,
+      architectureModality: 'text->text',
+      inputModalitiesJson: '["text"]',
+      outputModalitiesJson: '["text"]',
+      supportedParametersJson: '[]',
+      capabilitiesJson: '{"reasoning":false,"tools":false,"structuredOutputs":false,"vision":false,"longContext":false}',
+      capReasoning: 0 as const,
+      capTools: 0 as const,
+      capStructuredOutputs: 0 as const,
+      capVision: 0 as const,
+      capLongContext: 0 as const,
+      createdAtSec: input.createdAtSec ?? 1700000000,
+      firstSeenAtMs: nowMs,
+      lastSeenAtMs: nowMs,
+      syncedAtMs: nowMs,
+      rawJson: '{}',
+    }
+  }
+
   function seedQueryFixture(repo: ModelCatalogRepo, nowMs: number) {
     const nowSec = Math.floor(nowMs / 1000)
     const betaExpirationAtSec = nowSec + 3 * 86400
@@ -1161,7 +1203,7 @@ describe('ModelCatalogRepo.queryCore', () => {
     })
   }
 
-  it('supports FTS + combined filters (tags/context/price/provider)', () => {
+  it('supports description search when explicitly enabled with combined filters', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
     const repo = new ModelCatalogRepo(db)
@@ -1171,6 +1213,7 @@ describe('ModelCatalogRepo.queryCore', () => {
     const result = repo.queryCore({
       providerKey: 'openrouter',
       searchText: 'vision model',
+      includeDescriptionInSearch: true,
       vendors: ['openai'],
       tags: ['capability:vision'],
       contextBuckets: ['xlarge'],
@@ -1182,6 +1225,107 @@ describe('ModelCatalogRepo.queryCore', () => {
 
     expect(result.items.map((row) => row.modelId)).toEqual(['openai/alpha'])
     expect(result.nextCursor).toBeNull()
+  })
+
+  it('excludes description from search by default', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    const nowMs = Date.now()
+    seedQueryFixture(repo, nowMs)
+
+    const withoutDescription = repo.queryCore({
+      providerKey: 'openrouter',
+      searchText: 'image understanding',
+      sortBy: 'name',
+      sortOrder: 'asc',
+      limit: 10,
+    })
+    expect(withoutDescription.items.map((row) => row.modelId)).toEqual([])
+
+    const withDescription = repo.queryCore({
+      providerKey: 'openrouter',
+      searchText: 'image understanding',
+      includeDescriptionInSearch: true,
+      sortBy: 'name',
+      sortOrder: 'asc',
+      limit: 10,
+    })
+    expect(withDescription.items.map((row) => row.modelId)).toEqual(['openai/alpha'])
+  })
+
+  it('supports token prefix matching for model picker autocomplete searches', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    const nowMs = Date.now()
+    repo.syncCoreSnapshot({
+      providerKey: 'openrouter',
+      snapshotId: 'prefix_s1',
+      providers: [{ providerKey: 'openrouter', displayName: 'OpenRouter', updatedAtMs: nowMs }],
+      models: [
+        queryFixtureModel(nowMs, {
+          modelId: 'deepseek/deepseek-chat',
+          canonicalSlug: 'deepseek/deepseek-chat-v4',
+          displayName: 'DeepSeek: DeepSeek V4',
+          vendor: 'deepseek',
+          createdAtSec: 1700000001,
+        }),
+        queryFixtureModel(nowMs, {
+          modelId: 'openai/gpt-4',
+          canonicalSlug: 'openai/gpt-4',
+          displayName: 'OpenAI: GPT-4',
+          vendor: 'openai',
+          createdAtSec: 1700000002,
+        }),
+        queryFixtureModel(nowMs, {
+          modelId: 'openai/gpt-4.1',
+          canonicalSlug: 'openai/gpt-4.1',
+          displayName: 'OpenAI: GPT-4.1',
+          vendor: 'openai',
+          createdAtSec: 1700000003,
+        }),
+      ],
+      tags: [],
+      meta: {
+        providerKey: 'openrouter',
+        schemaVersion: 1,
+        dataSource: 'models_user_primary',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        snapshotId: 'prefix_s1',
+        modelCount: 3,
+        visibleModelCount: 3,
+        hiddenModelCount: 0,
+        providerCount: 1,
+        lastCountProbe: null,
+        lastCountProbeAtMs: null,
+        lastSyncAtMs: nowMs,
+        ttlSeconds: 3600,
+        syncState: 'ok',
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        rawRetentionPolicyJson: '{}',
+      },
+    })
+
+    const searchIds = (searchText: string) =>
+      repo.queryCore({
+        providerKey: 'openrouter',
+        searchText,
+        sortBy: 'name',
+        sortOrder: 'asc',
+        limit: 10,
+      }).items.map((row) => row.modelId)
+
+    expect(searchIds('d')).toContain('deepseek/deepseek-chat')
+    expect(searchIds('de')).toContain('deepseek/deepseek-chat')
+    expect(searchIds('deepsee')).toContain('deepseek/deepseek-chat')
+    expect(searchIds('deepseek v')).toContain('deepseek/deepseek-chat')
+    expect(searchIds('deepseek v4')).toContain('deepseek/deepseek-chat')
+    expect(searchIds('gpt 4')).toEqual(['openai/gpt-4', 'openai/gpt-4.1'])
+    expect(searchIds('!!!')).toEqual([])
+    expect(searchIds('deepseek/deepseek-chat-v4')).toContain('deepseek/deepseek-chat')
+    expect(searchIds('gpt-4.1')).toContain('openai/gpt-4.1')
   })
 
   it('supports created_at sorting with stable order', () => {
