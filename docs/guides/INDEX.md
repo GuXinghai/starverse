@@ -106,19 +106,20 @@ Tailwind CSS v4 升级相关的所有文档。
 
 ---
 
-### 🎯 decisions/ - 架构决策记录
+### 🎯 ADR - 架构决策记录
 
-记录重大技术决策的 ADR（Architecture Decision Records）。
+ADR（Architecture Decision Records）用于记录影响架构/边界/契约的关键决策。
+
+**新 ADR 入口**: [adr/](../adr/) — 使用 [template.md](../adr/template.md) 和 `NNN-title.md` 编号
 
 | ADR | 标题 | 状态 |
 |-----|------|------|
-| [ADR-001](../decisions/001-why-electron.md) | 为什么选择 Electron | 已接受 |
-| [ADR-002](../decisions/002-why-vue3.md) | 为什么选择 Vue 3 | 已接受 |
-| [ADR-003](../decisions/003-sqlite-worker-thread.md) | 为什么使用 SQLite Worker 线程 | 已接受 |
-| [ADR-004](../decisions/004-tailwind-v4-upgrade.md) | 为什么升级 Tailwind v4 | 已接受 |
-| [ADR-005](../decisions/005-multi-provider-strategy.md) | 为什么采用多提供商架构 | 已接受 |
+| [ADR-000](../adr/000-record-architecture-decisions.md) | 记录架构决策 | 已接受 |
+| [ADR-001](../adr/001-generation-facade-single-switch.md) | GenerationFacade 单开关 | 已接受 |
+| [ADR-002](../adr/002-openrouter-request-builder-usage-reasoning-stream.md) | OpenRouter 请求构建器 | 已提议 |
+| [ADR-003](../adr/003-remove-generation-pipeline-switch.md) | 移除生成管线开关 | 已接受 |
 
-**查看索引**: [decisions/README.md](../decisions/README.md)
+**历史基础决策** (仅参考，新 ADR 不要放这里): [decisions/](../decisions/) — 5 个核心技术栈决策 (001-005)
 
 ---
 
@@ -164,7 +165,7 @@ Tailwind CSS v4 升级相关的所有文档。
 | **迁移指南** | [GENERATION_MIGRATION_GUIDE.md](GENERATION_MIGRATION_GUIDE.md), [PHASE_3_MIGRATION_GUIDE.md](PHASE_3_MIGRATION_GUIDE.md) |
 | **历史记录** | [../archive/README.md](../archive/README.md) — 46+ 个已归档文档 |
 | **文档治理** | [../maintenance/document-governance.md](../maintenance/document-governance.md), [../maintenance/document-status-taxonomy.md](../maintenance/document-status-taxonomy.md), [../maintenance/document-redirect-map.md](../maintenance/document-redirect-map.md) |
-| **ADR** | [../adr/README.md](../adr/README.md) — ADR 规则与模板，[../decisions/README.md](../decisions/README.md) — 基础决策记录 |
+| **ADR** | [../adr/README.md](../adr/README.md) — 新 ADR 入口 (规则与模板)，[../decisions/README.md](../decisions/README.md) — 历史基础决策 (仅参考) |
 
 ---
 
@@ -173,8 +174,8 @@ Tailwind CSS v4 升级相关的所有文档。
 主目录保留的核心活跃文档（约 80 个）：
 
 ### 📌 重构参考材料（历史阶段）
-- [REFACTOR_PROGRESS.md](../refactoring/REFACTOR_PROGRESS.md) — 重构进度跟踪（历史）
-- [CHATVIEW_REFACTOR_PLAN.md](../refactoring/CHATVIEW_REFACTOR_PLAN.md) — ChatView 重构计划（历史）
+- [REFACTOR_PROGRESS.md](../ui-refactoring/REFACTOR_PROGRESS.md) — 重构进度跟踪（历史）
+- [CHATVIEW_REFACTOR_PLAN.md](../ui-refactoring/CHATVIEW_REFACTOR_PLAN.md) — ChatView 重构计划（历史）
 - [UI_REFACTOR_PAUSED_STATE.md](UI_REFACTOR_PAUSED_STATE.md) — UI 重构策略暂停说明
 
 ### 📄 性能与优化指南
@@ -191,9 +192,10 @@ Tailwind CSS v4 升级相关的所有文档。
 2. **阶段2**: 删除 13 个重复/临时文档
 3. **阶段3**: 重组核心文档到子目录（architecture/, guides/, tailwind/）
 4. **阶段4**: 更新 INDEX.md 导航
-5. **阶段5**: 创建 ADR 架构决策记录（[decisions/](../decisions/README.md)，5 个核心决策已就绪）
+5. **阶段5**: 创建 ADR 架构决策记录（[adr/](../adr/) — 新 ADR 入口，[decisions/](../decisions/) — 5 个历史基础决策）
 6. **阶段6**: 建立文档维护原则（见本页 [文档维护原则](#%E6%96%87%E6%A1%A3%E7%BB%B4%E6%8A%A4%E5%8E%9F%E5%88%99)）
 7. **DGR-1**: 文档治理重构 — 双维度状态模型、DEBUG 归档、pending-classification 登记
+8. **DGR-2**: 结构性入口歧义治理 — ADR 入口去歧义、refactoring→ui-refactoring 重命名、中文文件名重命名
 
 ### 📈 整理成果
 

@@ -169,7 +169,7 @@ When two documents claim SSOT for the same domain:
 | Format conversion design | `docs/file-pipeline/format-conversion-preview-final.md` | ✅ Reference |
 | appChatApp boundaries | `docs/governance/app-chat-app-logic-boundary.md` | ✅ Active |
 | System architecture | `docs/architecture/OVERVIEW.md` | ✅ Active |
-| OpenRouter streaming | `docs/open_router_流式回复与推理_ssot（v_2_）.md` | ⚠️ Pending rename |
+| OpenRouter streaming | `docs/openrouter-streaming-reasoning-ssot-v2.md` | active SSOT |
 
 ---
 

@@ -55,8 +55,8 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 | [file-pipeline/README.md](file-pipeline/README.md) | active | entry | Feature track | File/conversion tasks | **Entry point**: routes to progress-ledger as SSOT |
 | [file-pipeline/progress-ledger.md](file-pipeline/progress-ledger.md) | active | ssot | File Pipeline | Current decisions & blockers | SSOT for file pipeline status |
 | [governance/app-chat-app-logic-boundary.md](governance/app-chat-app-logic-boundary.md) | active | ssot | Boundary | Send Plan, attachment tasks | Core app logic boundaries & code paths |
-| [adr/README.md](adr/README.md) | reference | decision | Decisions | Trace design decisions | ADR process rules, templates, engineering decisions (000-003) |
-| [decisions/README.md](decisions/README.md) | reference | decision | Decisions | Trace decisions | Project foundation decisions (001-005) |
+| [adr/README.md](adr/README.md) | reference | decision | Decisions | Trace design decisions | **新 ADR 入口**: ADR 规则、模板、工程决策 (000-003) |
+| [decisions/README.md](decisions/README.md) | reference | decision | Decisions | Trace decisions | **仅历史参考**: 项目基础决策 (001-005)，新 ADR 不要放这里 |
 | [architecture/UNIFIED_GENERATION_ARCHITECTURE.md](architecture/UNIFIED_GENERATION_ARCHITECTURE.md) | active | ssot | Architecture | Generation/streaming tasks | Current generation config architecture |
 | [architecture/OPENROUTER_INTEGRATION_SUMMARY.md](architecture/OPENROUTER_INTEGRATION_SUMMARY.md) | reference | implementation-note | Integration | OpenRouter tasks; legacy integration context | Multi-provider AI integration; current implementation may differ |
 | [tailwind/TAILWIND_V4_README.md](tailwind/TAILWIND_V4_README.md) | active | entry | Styling | UI/style tasks | Tailwind v4 migration & rules |
@@ -125,28 +125,28 @@ Examples in archive:
 | [decisions/](decisions/) | reference | decision | Decisions | Project foundation decisions (001-005) |
 | [bugfix/](bugfix/) | reference | implementation-note | Fixes | Complex historical fixes (not archived) |
 | [refactor/](refactor/) | reference | implementation-note | Refactor | SSOT v2 refactor plans (OpenRouter) |
-| [refactoring/](refactoring/) | reference | implementation-note | Refactor | UI component refactoring (ChatView, ConversationList) |
+| [ui-refactoring/](ui-refactoring/) | reference | implementation-note | Refactor | UI component refactoring (ChatView, ConversationList) |
 
-> **Note on dual entries**: `refactor/`, `refactoring/`, and `bugfix/` appear in both "Governance & Development" (directory-level role) and "Pending-Classification Directories" (individual files awaiting DGR-2 classification). This is intentional: the directory has a known role, but individual files within it have not yet received per-file lifecycle status.
+> **Note on dual entries**: `refactor/`, `ui-refactoring/`, and `bugfix/` appear in both "Governance & Development" (directory-level role) and "Pending-Classification Directories" (individual files awaiting DGR-3 classification). This is intentional: the directory has a known role, but individual files within it have not yet received per-file lifecycle status.
 
 ---
 
 ## Pending-Classification Directories
 
-The following directories contain documents that have not yet been classified with dual-dimension status. They are registered as `pending-classification` and will be classified in DGR-2.
+The following directories contain documents that have not yet been classified with dual-dimension status. They are registered as `pending-classification` and will be classified in DGR-3.
 
 | Directory | File Count | Likely Role | Status | Next Step |
 |-----------|------------|-------------|--------|-----------|
-| [features/](features/) | 31 | implementation-note | pending-classification | DGR-2: classify each file |
-| [spec/](spec/) | 17 | spec | pending-classification | DGR-2: classify each file |
-| [architecture/](architecture/) | 22 | various | pending-classification | DGR-2: classify each file |
-| [bugfix/](bugfix/) | 18+ | implementation-note | pending-classification | DGR-2: classify each file |
-| [i18n/](i18n/) | 5 | spec/guide | pending-classification | DGR-2: classify each file |
-| [rfc/](rfc/) | 1 | spec | pending-classification | DGR-2: classify each file |
-| [notes/](notes/) | 4 | implementation-note | pending-classification | DGR-2: classify each file |
-| [requirements/](requirements/) | 3 | spec | pending-classification | DGR-2: classify each file |
-| [refactor/](refactor/) | 10 | implementation-note | pending-classification | DGR-2: classify each file |
-| [refactoring/](refactoring/) | 9 | implementation-note | pending-classification | DGR-2: classify each file |
+| [features/](features/) | 31 | implementation-note | pending-classification | DGR-3: classify each file |
+| [spec/](spec/) | 17 | spec | pending-classification | DGR-3: classify each file |
+| [architecture/](architecture/) | 22 | various | pending-classification | DGR-3: classify each file |
+| [bugfix/](bugfix/) | 18+ | implementation-note | pending-classification | DGR-3: classify each file |
+| [i18n/](i18n/) | 5 | spec/guide | pending-classification | DGR-3: classify each file |
+| [rfc/](rfc/) | 1 | spec | pending-classification | DGR-3: classify each file |
+| [notes/](notes/) | 4 | implementation-note | pending-classification | DGR-3: classify each file |
+| [requirements/](requirements/) | 3 | spec | pending-classification | DGR-3: classify each file |
+| [refactor/](refactor/) | 10 | implementation-note | pending-classification | DGR-3: classify each file |
+| [ui-refactoring/](ui-refactoring/) | 9 | implementation-note | pending-classification | DGR-3: classify each file |
 
 **Note**: These directories are NOT individually modified in DGR-1. They are only registered here for tracking.
 
@@ -194,6 +194,6 @@ When adding new docs to docs/ or updating existing status:
 - `archive/architecture/README.md`
 
 **Pending**:
-- ADR directory restructuring (owner decision required)
-- Chinese filename rename (owner decision required)
-- refactor/ vs refactoring/ clarification (owner decision required)
+- ADR directory routing clarified (DGR-2, merge deferred)
+- Chinese filename rename completed (DGR-2)
+- refactor/ vs refactoring/ clarification completed (DGR-2)

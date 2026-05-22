@@ -95,7 +95,7 @@ Document Role indicates what responsibility the document carries. A document may
 | `docs/file-pipeline/format-conversion-preview-final.md` | Format conversion design | Conversion preview design |
 | `docs/governance/app-chat-app-logic-boundary.md` | appChatApp boundaries | Core app logic boundaries |
 | `docs/architecture/OVERVIEW.md` | System architecture | High-level architecture |
-| `docs/open_router_流式回复与推理_ssot（v_2_）.md` | OpenRouter streaming & reasoning | SSOT v2 implementation |
+| `docs/openrouter-streaming-reasoning-ssot-v2.md` | OpenRouter streaming & reasoning | SSOT v2 implementation |
 
 ---
 
@@ -105,16 +105,16 @@ The following directories contain documents that have not yet been classified:
 
 | Directory | File Count | Likely Role | Next Step |
 |-----------|------------|-------------|-----------|
-| `docs/features/` | 31 | implementation-note | DGR-2: classify each file |
-| `docs/spec/` | 17 | spec | DGR-2: classify each file |
-| `docs/architecture/` | 22 | various | DGR-2: classify each file |
-| `docs/bugfix/` | 18+ | implementation-note | DGR-2: classify each file |
-| `docs/i18n/` | 5 | spec/guide | DGR-2: classify each file |
-| `docs/rfc/` | 1 | spec | DGR-2: classify each file |
-| `docs/notes/` | 4 | implementation-note | DGR-2: classify each file |
-| `docs/requirements/` | 3 | spec | DGR-2: classify each file |
-| `docs/refactor/` | 10 | implementation-note | DGR-2: classify each file |
-| `docs/refactoring/` | 9 | implementation-note | DGR-2: classify each file |
+| `docs/features/` | 31 | implementation-note | DGR-3: classify each file |
+| `docs/spec/` | 17 | spec | DGR-3: classify each file |
+| `docs/architecture/` | 22 | various | DGR-3: classify each file |
+| `docs/bugfix/` | 18+ | implementation-note | DGR-3: classify each file |
+| `docs/i18n/` | 5 | spec/guide | DGR-3: classify each file |
+| `docs/rfc/` | 1 | spec | DGR-3: classify each file |
+| `docs/notes/` | 4 | implementation-note | DGR-3: classify each file |
+| `docs/requirements/` | 3 | spec | DGR-3: classify each file |
+| `docs/refactor/` | 10 | implementation-note | DGR-3: classify each file |
+| `docs/ui-refactoring/` | 9 | implementation-note | DGR-3: classify each file |
 
 ---
 
