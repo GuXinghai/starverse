@@ -276,15 +276,16 @@ export class SendPlanService {
     )
     const hasEffectiveCurrentInput = trimmedDraftText.length > 0 || includedDraftPlans.length > 0
     const blockingReasons = [...parsingGate.blockingReasons, ...draftBatch.blockingReasons, ...historyBatch.blockingReasons]
-    if (!parsingGate.blocked && !hasEffectiveCurrentInput) {
-      const currentModelBlocked = excludedDraftPlans.some((plan) => plan.exclusionReason === 'incompatible_with_current_model')
+    const currentModelBlocked =
+      !parsingGate.blocked &&
+      !hasEffectiveCurrentInput &&
+      excludedDraftPlans.some((plan) => plan.exclusionReason === 'incompatible_with_current_model')
+    if (currentModelBlocked) {
       blockingReasons.push(issue(
-        currentModelBlocked ? 'current_draft_incompatible_with_current_model' : 'no_sendable_current_input',
+        'current_draft_incompatible_with_current_model',
         null,
         'request',
-        currentModelBlocked
-          ? 'Current draft input is incompatible with the selected model.'
-          : 'Current draft has no sendable text or attachment input.'
+        'Current draft input is incompatible with the selected model.'
       ))
     }
 

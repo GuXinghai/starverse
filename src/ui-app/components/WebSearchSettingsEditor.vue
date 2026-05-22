@@ -192,11 +192,18 @@ function onDepthSelect(nextRaw: string) {
   }
 
   if (next === 'custom') {
-    const valid = parseValidCustomMaxResults(customInputText.value)
+    const inheritedMaxResults = props.resolved?.effectiveMaxResults
+    const valid =
+      parseValidCustomMaxResults(customInputText.value)
+      ?? lastValidCustomMaxResults.value
+      ?? (typeof inheritedMaxResults === 'number' ? clampMaxResults(inheritedMaxResults) : null)
+      ?? 5
+    customInputText.value = String(valid)
+    lastValidCustomMaxResults.value = valid
     emitLayer({
       ...normalizedLayer.value,
       searchDepth: 'custom',
-      ...(valid !== null ? { maxResults: valid } : {}),
+      maxResults: valid,
     })
     return
   }

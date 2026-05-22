@@ -580,6 +580,11 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     const hasExcluded = attachmentPlans.some((plan: any) => plan.eligibility === 'excluded')
     const hasWarnings = attachmentPlans.some((plan: any) => plan.eligibility === 'warning')
     const hasExcludedDraft = attachmentPlans.some((plan: any) => plan.eligibility === 'excluded' && plan.source === 'draft')
+    const hasEffectiveCurrentInput =
+      String(params?.draftText ?? draftResponse.draftText ?? '').trim().length > 0 ||
+      attachmentPlans.some((plan: any) =>
+        plan.source === 'draft' && (plan.eligibility === 'included' || plan.eligibility === 'warning')
+      )
 
     const status = hasBlocked
       ? 'blocked'
@@ -587,7 +592,9 @@ describe('ui-app AppChatApp attachment entry flow', () => {
         ? 'partially_sendable'
         : hasWarnings
           ? 'sendable_with_warnings'
-          : 'sendable'
+          : hasEffectiveCurrentInput
+            ? 'sendable'
+            : 'blocked'
 
     const canProceedAfterDroppingExcluded = hasExcluded && !hasExcludedDraft
 
@@ -1378,6 +1385,30 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     expect(screen.queryByTestId('composer-send-gate-block')).toBeNull()
   })
 
+  it('keeps an empty draft idle: send disabled, no banner, and no send-plan fallback', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    draftResponse = {
+      ...baseDraft(),
+      draftText: '',
+      attachments: [],
+      attachedAssetIds: [],
+    }
+
+    render(AppChatApp)
+
+    await waitFor(() => {
+      expect(invoke.mock.calls.some((call) => call[0] === 'sendPlan.buildCurrent')).toBe(true)
+    })
+    expect(screen.getByTestId('composer-send')).toBeDisabled()
+    expect(screen.queryByTestId('composer-send-gate-block')).toBeNull()
+    expect(screen.queryByTestId('composer-send-gate-warning')).toBeNull()
+    expect(
+      warnSpy.mock.calls.some((call) =>
+        String(call[0] ?? '').includes('refreshDraftAttachmentViewModels send-plan fallback')
+      ),
+    ).toBe(false)
+  })
+
   it('opens confirmation flow when attachment send plan has a blocking reason', async () => {
     draftResponse = {
       ...baseDraft(),
@@ -1483,7 +1514,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     await waitFor(() => {
       expect(screen.getByTestId('draft-attachment-preview')).toBeTruthy()
       expect(screen.getByTestId('composer-send')).toBeDisabled()
-      expect(screen.getByTestId('composer-send-gate-block').textContent).toContain('附件仍在解析中')
+      expect(screen.getByTestId('composer-send-gate-block').textContent).toContain('附件仍在解析')
     })
   })
 

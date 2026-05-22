@@ -148,6 +148,20 @@ describe('WebSearchSettingsEditor', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
   })
 
+  it('Depth custom remains selectable from a preset and enables the max results input', async () => {
+    const user = userEvent.setup()
+    render(createHarness({
+      convo: { searchDepth: 'medium' },
+    }))
+
+    await selectDepth(user, 'custom')
+
+    const input = screen.getByTestId('search-max-results-input') as HTMLInputElement
+    expect(input).not.toBeDisabled()
+    expect(input.value).toBe('5')
+    expect(readLayer()).toEqual({ searchDepth: 'custom', maxResults: 5 })
+  })
+
   it('Depth keeps last valid custom value and backfills on next expand', async () => {
     const user = userEvent.setup()
     render(createHarness({
