@@ -1,4 +1,11 @@
-import { spawn, type ChildProcessWithoutNullStreams, type SpawnOptionsWithoutStdio } from 'node:child_process'
+import {
+  spawn,
+  type ChildProcessByStdio,
+  type SpawnOptionsWithStdioTuple,
+  type StdioNull,
+  type StdioPipe,
+} from 'node:child_process'
+import type { Readable } from 'node:stream'
 import {
   evaluateExternalProcessPolicy,
   type ExternalProcessErrorCode,
@@ -8,11 +15,14 @@ import {
 const WINDOWS_PATH_RE = /\b[A-Za-z]:\\[^\s"'`]+/g
 const UNIX_PATH_RE = /(?:\/Users\/|\/home\/|\/mnt\/|\/var\/|\/tmp\/)[^\s"'`]+/g
 
+type ExternalProcessChild = ChildProcessByStdio<null, Readable, Readable>
+type ExternalProcessSpawnOptions = SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe>
+
 type SpawnImpl = (
   command: string,
   args: readonly string[],
-  options: SpawnOptionsWithoutStdio
-) => ChildProcessWithoutNullStreams
+  options: ExternalProcessSpawnOptions
+) => ExternalProcessChild
 
 type KillProcessTreeImpl = (pid: number | undefined, platform: NodeJS.Platform) => Promise<boolean>
 
@@ -63,7 +73,7 @@ export async function runExternalProcess(input: RunExternalProcessInput): Promis
 
   const policy = policyResult.policy
   const args = (input.args ?? []).map((value) => String(value))
-  const spawnImpl = input.spawnImpl ?? spawn
+  const spawnImpl: SpawnImpl = input.spawnImpl ?? spawn
   const platform = input.platform ?? process.platform
   const killProcessTreeImpl = input.killProcessTreeImpl ?? killProcessTreeBestEffort
 
@@ -82,7 +92,7 @@ export async function runExternalProcess(input: RunExternalProcessInput): Promis
   let spawnErrorDetail: string | null = null
   let terminationGraceHandle: ReturnType<typeof setTimeout> | null = null
 
-  let child: ChildProcessWithoutNullStreams
+  let child: ExternalProcessChild
   try {
     child = spawnImpl(policy.command, args, {
       cwd: input.cwd ?? undefined,

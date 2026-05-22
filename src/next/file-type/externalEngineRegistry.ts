@@ -1,11 +1,10 @@
-import { FILE_FORMAT_IDS, type FileFormatId } from './types'
+import { FILE_FORMAT_IDS } from './types'
 import { parseManagedEnginePluginManifest } from './externalEngineManifest'
 import { computeEngineAvailability } from './externalEngineAvailability'
 import type {
   EngineAvailability,
   EngineDiagnosticEvent,
   EngineFailureReason,
-  EngineHealthStatus,
   EngineId,
   ExternalEngineRecord,
   ManagedEnginePluginManifest,

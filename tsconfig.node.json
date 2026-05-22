@@ -17,5 +17,5 @@
     "forceConsistentCasingInFileNames": true,
     "noEmitOnError": true
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "config/appCsp.ts", "config/appCsp.test.ts"]
 }

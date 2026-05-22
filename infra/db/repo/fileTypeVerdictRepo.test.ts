@@ -5,7 +5,8 @@ import path from 'node:path'
 import { canOpenBetterSqliteForSuite } from '../../testUtils/betterSqliteGate'
 import { FileAssetRepo } from './fileAssetRepo'
 import { FileTypeVerdictRepo } from './fileTypeVerdictRepo'
-import type { FileTypeFingerprintJson, FileTypeVerdict } from '../types'
+import type { FileTypeFingerprintJson } from '../types'
+import type { FileTypeVerdict } from '../../../src/next/file-type'
 
 const describeIfBetterSqlite = canOpenBetterSqliteForSuite('fileTypeVerdictRepo') ? describe : describe.skip
 

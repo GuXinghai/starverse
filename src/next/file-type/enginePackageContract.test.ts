@@ -153,7 +153,6 @@ describe('validatePackageFilePath', () => {
   })
 
   it('rejects NUL byte in path', () => {
-    const result = validatePackageFilePath('runtime/file\x00.js')
     const nulPath = 'runtime/file\u0000.js'
     expect(validatePackageFilePath(nulPath).ok).toBe(false)
   })

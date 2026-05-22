@@ -78,6 +78,8 @@ type ManagerOptions = {
   maxPending?: number          // 允许的最大挂起请求数（超出时拒绝）
 }
 
+type WorkerInitFlags = Pick<WorkerInitConfig, 'stampSchemaVersion' | 'startupRebuildReason' | 'isProduction'>
+
 /**
  * 数据库 Worker 线程管理器
  * 
@@ -104,7 +106,7 @@ export class DbWorkerManager {
   private stopping = false                       // 标记是否为主动停止
   private defaultMaxPending = 400
   private eventListeners = new Set<(event: DbEvent) => void>()  // 事件监听器
-  private workerInitFlags: Pick<WorkerInitConfig, 'stampSchemaVersion' | 'startupRebuildReason'> = {}
+  private workerInitFlags: WorkerInitFlags = {}
 
   constructor(private options: ManagerOptions) {}
 
@@ -132,7 +134,7 @@ export class DbWorkerManager {
    * - 如果已启动，直接返回
    * - 如果正在启动，等待现有的 startPromise
    */
-  async start(dbPath: string, initFlags?: Pick<WorkerInitConfig, 'stampSchemaVersion' | 'startupRebuildReason' | 'isProduction'>) {
+  async start(dbPath: string, initFlags?: WorkerInitFlags) {
     if (this.worker) return
     this.workerInitFlags = initFlags ?? {}
     if (!this.startPromise) {

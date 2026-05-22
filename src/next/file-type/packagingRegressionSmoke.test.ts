@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   CONVERSION_RUNTIME_REQUIRED_ARTIFACT_CLASSES,
   createConversionRuntimeInventory,
-  type ConversionPackageSeed,
 } from './conversionRuntimePackage'
 import {
   createPackageFileEntry,
@@ -21,22 +20,16 @@ import { createExternalEngineRegistry } from './externalEngineRegistry'
 import { runEngineHealthCheck } from './externalEngineHealth'
 import { buildCapabilityAvailability } from './externalEngineAvailability'
 import { EXTERNAL_PROCESS_POLICY_DEFAULTS } from './externalProcessPolicy'
-import { isEngineTrustVerified } from './enginePluginTrustContracts'
-import type { ManagedEnginePluginManifest, TrustVerificationStatus } from './externalEngineTypes'
+import { isEngineTrustVerified, type TrustVerificationStatus } from './enginePluginTrustContracts'
+import type { ManagedEnginePluginManifest } from './externalEngineTypes'
 
 function sha256(char: string): string {
   return char.repeat(64)
 }
 
 const H_A = sha256('a')
-const H_B = sha256('b')
-const H_C = sha256('c')
-const H_D = sha256('d')
-const H_E = sha256('e')
-const H_F = sha256('f')
 const H_0 = sha256('0')
 const H_1 = sha256('1')
-const H_2 = sha256('2')
 
 function pandocInventory() {
   return createConversionRuntimeInventory(

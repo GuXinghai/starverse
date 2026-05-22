@@ -106,8 +106,6 @@ describe('pluginCatalogSignature', () => {
     })
 
     it('fails with trusted_root_missing when keyId not in trusted roots', () => {
-      const otherKeyPair = generateKeyPairSync('ed25519')
-      const otherKeyId = 'other-key'
       const otherPay = signPayload(samplePayload)
       const result = verifyCatalogSignature({
         signedPayload: samplePayload,
