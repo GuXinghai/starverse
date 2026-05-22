@@ -185,21 +185,21 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-1.5" data-testid="sampling-params-editor">
-    <div class="flex items-center justify-between gap-2">
+  <div class="min-w-0 space-y-1.5" data-testid="sampling-params-editor">
+    <div class="flex min-w-0 items-center justify-between gap-2">
       <button
         v-if="props.collapsible"
         type="button"
-        class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-600 shadow-sm hover:bg-gray-50"
+        class="inline-flex min-w-0 items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-600 shadow-sm hover:bg-gray-50"
         data-testid="sampling-params-toggle"
         @click="toggleExpanded"
       >
-        <span>{{ expanded ? 'Hide' : 'Show' }}</span>
+        <span class="shrink-0">{{ expanded ? 'Hide' : 'Show' }}</span>
         <span>Parameters</span>
-        <span class="text-[10px] text-gray-500">({{ customCount }})</span>
+        <span class="shrink-0 text-[10px] text-gray-500">({{ customCount }})</span>
       </button>
       <div v-else class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Parameters</div>
-      <div class="flex items-center gap-2">
+      <div class="flex shrink-0 items-center gap-2">
         <span v-if="!props.collapsible && customCount > 0" class="text-[10px] text-gray-500">{{ customCount }} custom</span>
         <button
           type="button"
@@ -213,19 +213,23 @@ watch(
       </div>
     </div>
 
-    <div v-if="expanded || !props.collapsible" class="grid grid-cols-1 gap-1.5 xl:grid-cols-2">
+    <div
+      v-if="expanded || !props.collapsible"
+      class="grid min-w-0 gap-1.5"
+      :class="props.compact ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-2'"
+    >
       <div
         v-for="spec in OPENROUTER_SAMPLING_PARAM_SPECS"
         :key="spec.key"
-        class="grid items-center gap-2 rounded-md border border-gray-100 bg-gray-50/70 px-2 py-1.5"
-        :class="props.compact ? 'grid-cols-[110px_80px_minmax(90px,1fr)]' : 'grid-cols-[140px_86px_minmax(120px,1fr)]'"
+        class="grid min-w-0 items-center gap-2 rounded-md border border-gray-100 bg-gray-50/70 px-2 py-1.5"
+        :class="props.compact ? 'grid-cols-[minmax(0,1fr)_82px]' : 'grid-cols-[140px_86px_minmax(120px,1fr)]'"
       >
         <div class="min-w-0">
           <div class="truncate text-[11px] font-semibold text-gray-700" :title="spec.label">{{ spec.label }}</div>
         </div>
 
         <select
-          class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm disabled:bg-gray-100"
+          class="min-w-0 w-full rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm disabled:bg-gray-100"
           :disabled="props.disabled"
           :value="modeForKey(spec.key)"
           :data-testid="`sampling-mode-${spec.key}`"
@@ -235,10 +239,10 @@ watch(
           <option value="custom">custom</option>
         </select>
 
-        <div class="min-w-0">
+        <div class="min-w-0" :class="props.compact ? 'col-span-2' : ''">
           <input
             type="number"
-            class="w-full rounded border bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm disabled:bg-gray-100"
+            class="min-w-0 w-full rounded border bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm disabled:bg-gray-100"
             :class="hasInputError(spec.key) ? 'border-red-300' : 'border-gray-200'"
             :disabled="props.disabled || modeForKey(spec.key) === 'default'"
             :value="inputTextByKey[spec.key]"
