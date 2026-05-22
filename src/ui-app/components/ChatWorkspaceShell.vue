@@ -19,6 +19,10 @@ const props = withDefaults(
   },
 )
 
+const emit = defineEmits<{
+  (e: 'closeRightRail'): void
+}>()
+
 const shellEl = ref<HTMLElement | null>(null)
 const sidebarEl = ref<HTMLElement | null>(null)
 const shellWidthPx = ref(CHAT_WORKSPACE_MIN_WINDOW_WIDTH_PX)
@@ -131,19 +135,23 @@ onUnmounted(() => {
       class="relative border-l border-gray-200 bg-white"
       :style="floatingRailStyle"
     >
-      <slot name="right-rail" />
+      <slot name="right-rail" :rightRailMode="rightRailMode" />
     </div>
 
     <div
       v-else-if="isRightRailFloating"
       class="fixed inset-0 z-40 flex items-center justify-center p-6"
     >
-      <div class="absolute inset-0 bg-black/20" />
+      <div
+        class="absolute inset-0 bg-black/20"
+        data-testid="right-rail-floating-backdrop"
+        @click="emit('closeRightRail')"
+      />
       <div
         class="relative max-h-[min(80vh,56rem)] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
         :style="floatingRailStyle"
       >
-        <slot name="right-rail" />
+        <slot name="right-rail" :rightRailMode="rightRailMode" />
       </div>
     </div>
   </div>

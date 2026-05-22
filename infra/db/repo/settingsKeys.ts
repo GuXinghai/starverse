@@ -5,6 +5,7 @@ export const SETTINGS_KEY_WEB_SEARCH_DEFAULTS = 'web_search.defaults' as const
 export const SETTINGS_KEY_IMAGE_GENERATION_DEFAULT = 'image_generation.default' as const
 export const SETTINGS_KEY_SAMPLING_PARAMS_DEFAULTS = 'sampling_params.defaults' as const
 export const SETTINGS_KEY_CHAT_REASONING_DISPLAY_MODE = 'chat.reasoning_display.mode' as const
+export const SETTINGS_KEY_CHAT_REASONING_PANEL_DEFAULT_EXPANDED = 'chat.reasoning_panel.default_expanded' as const
 export const SETTINGS_KEY_CHAT_DRAFT_PREFIX = 'chat.draft::' as const
 
 export function buildChatDraftSettingsKey(convoId: string, branchId: string): string {

@@ -8,11 +8,11 @@ const props = defineProps<{
   loadError?: string | null
   normalizedErrorSummary?: string | null
   normalizedErrorActionHint?: string | null
-  rightRailOpen: boolean
+  consolePanelOpen: boolean
 }>()
 
 const emit = defineEmits<{
-  (e: 'toggleRightRail'): void
+  (e: 'toggleConsolePanel'): void
   (e: 'openSettings'): void
 }>()
 </script>
@@ -41,10 +41,10 @@ const emit = defineEmits<{
         <button
           type="button"
           class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50"
-          @click="emit('toggleRightRail')"
+          @click="emit('toggleConsolePanel')"
         >
-          <span aria-hidden="true">{{ props.rightRailOpen ? '→' : '←' }}</span>
-          <span>{{ props.rightRailOpen ? 'Hide panel' : 'Show panel' }}</span>
+          <span aria-hidden="true">{{ props.consolePanelOpen ? '→' : '←' }}</span>
+          <span>{{ props.consolePanelOpen ? 'Hide Console' : 'Console' }}</span>
         </button>
       </div>
     </div>

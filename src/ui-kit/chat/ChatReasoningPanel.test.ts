@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/vue'
+import { render, screen } from '@testing-library/vue'
 import ChatReasoningPanel from './ChatReasoningPanel.vue'
 import type { ReasoningView } from './types'
 
@@ -27,11 +27,11 @@ describe('ChatReasoningPanel', () => {
 
     expect(screen.getByText('Summary')).toBeInTheDocument()
     expect(screen.getByText('S')).toBeInTheDocument()
-    expect(screen.getAllByText('Reasoning').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Reasoning')).toHaveLength(1)
     expect(screen.getByText('R')).toBeInTheDocument()
   })
 
-  it('keeps visibility (disclosure) independent from panelState (presentation)', () => {
+  it('renders content even when message panelState is collapsed', () => {
     const r1 = render(ChatReasoningPanel, {
       props: {
         reasoningView: view({
@@ -43,8 +43,9 @@ describe('ChatReasoningPanel', () => {
       },
     })
 
-    expect(screen.getByText('(collapsed)')).toBeInTheDocument()
-    expect(screen.queryByText('Summary')).not.toBeInTheDocument()
+    expect(screen.queryByText('(collapsed)')).not.toBeInTheDocument()
+    expect(screen.getByText('Summary')).toBeInTheDocument()
+    expect(screen.getByText('S')).toBeInTheDocument()
     r1.unmount()
 
     render(ChatReasoningPanel, {
@@ -58,10 +59,9 @@ describe('ChatReasoningPanel', () => {
       },
     })
 
-    expect(screen.queryByText('(collapsed)')).not.toBeInTheDocument()
     expect(screen.getByText('Summary')).toBeInTheDocument()
     expect(screen.getByText('S')).toBeInTheDocument()
-    expect(screen.getAllByText('Reasoning').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Reasoning')).toHaveLength(1)
     expect(screen.getByText('R')).toBeInTheDocument()
   })
 
@@ -102,16 +102,5 @@ describe('ChatReasoningPanel', () => {
     })
 
     expect(screen.getByText('encrypted')).toBeInTheDocument()
-  })
-
-  it('emits toggle-panel-state', async () => {
-    const r = render(ChatReasoningPanel, {
-      props: {
-        reasoningView: view({ visibility: 'shown', panelState: 'collapsed' }),
-      },
-    })
-
-    await fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
-    expect(r.emitted('toggle-panel-state')).toHaveLength(1)
   })
 })

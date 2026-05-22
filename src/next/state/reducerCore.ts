@@ -33,7 +33,8 @@ function createEmptyAssistantMessage(
     effort?: ReasoningEffort
     exclude: boolean
     imageGeneration: boolean
-  }>
+  }>,
+  reasoningPanelState: 'collapsed' | 'expanded' = 'expanded'
 ): MessageState {
   return {
     messageId,
@@ -46,7 +47,7 @@ function createEmptyAssistantMessage(
     reasoningSummaryText: undefined,
     reasoningPieces: [],
     reasoningLastPieceLen: 0,
-    reasoningPanelState: 'expanded',
+    reasoningPanelState,
     hasEncryptedReasoning: false,
     reasoningDurationMs: undefined,
     reasoningEndReason: undefined,
@@ -111,6 +112,7 @@ export function startGenerationCore(
   const requestedReasoningExclude =
     requestedReasoningMode === 'auto' || requestedReasoningEffort === 'none' ? false : (input.requestedReasoningExclude ?? false)
   const requestedImageGeneration = input.requestedImageGeneration === true
+  const reasoningPanelState = input.reasoningPanelDefaultExpanded === false ? 'collapsed' : 'expanded'
 
   const run: RunState = {
     runId: input.runId,
@@ -144,12 +146,17 @@ export function startGenerationCore(
           [userMessageId]: createUserMessage(userMessageId, input.userMessageText as string),
         }
       : {}),
-    [assistantMessageId]: createEmptyAssistantMessage(assistantMessageId, true, {
-      mode: requestedReasoningMode,
-      effort: requestedReasoningEffort,
-      exclude: requestedReasoningExclude,
-      imageGeneration: requestedImageGeneration,
-    }),
+    [assistantMessageId]: createEmptyAssistantMessage(
+      assistantMessageId,
+      true,
+      {
+        mode: requestedReasoningMode,
+        effort: requestedReasoningEffort,
+        exclude: requestedReasoningExclude,
+        imageGeneration: requestedImageGeneration,
+      },
+      reasoningPanelState
+    ),
   }
 
   const nextRunMessageIds = {

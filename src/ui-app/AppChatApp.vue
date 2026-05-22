@@ -19,6 +19,7 @@ import WebSearchSettingsEditor from './components/WebSearchSettingsEditor.vue'
 import SamplingParamsSettingsEditor from './components/SamplingParamsSettingsEditor.vue'
 import SearchModal from './components/SearchModal.vue'
 import { useAppChatAppLogic } from './app/appChatApp.logic'
+import { formatModelIndicatorName } from './components/modelIndicatorName'
 
 const {
   isReady,
@@ -54,10 +55,9 @@ const {
   reasoningDisplayMode,
   reasoningRailMode,
   rightRailOpen,
-  rightRailCanShowReasoning,
-  toggleRightRailOpen,
+  closeRightRailPanel,
+  toggleConsolePanel,
   effectiveRightRailView,
-  setRightRailView,
   normalizedErrorSummary,
   normalizedErrorActionHint,
   transcriptMessageIds,
@@ -97,7 +97,6 @@ const {
   questionIdForMessage,
   lastAssistantReasoningView,
   lastAssistantReasoningVersion,
-  lastAssistantPanelState,
   lastAssistantIsStreaming,
   lastAssistantReasoningPieces,
   lastAssistantMessage,
@@ -135,6 +134,8 @@ const {
   onNavigateHistoryIncompatibleAttachments,
   activeSessionConfig,
   modelCatalogForPicker,
+  modelCatalogNotice,
+  modelPrefsScopeForUi,
   activeSessionSamplingParamsResolved,
   activeSessionWebSearchResolved,
   onUpdateModel,
@@ -194,7 +195,6 @@ const {
   requestDeleteQuestion,
   cancelDeleteQuestion,
   confirmDeleteQuestion,
-  onToggleReasoningPanelState,
   onOpenReasoningDisplayForMessage,
 } = useAppChatAppLogic()
 
@@ -214,7 +214,7 @@ const runSummary = computed(() => {
 const modelSummary = computed(() => {
   const selected = activeSessionConfig.value.model.selectedModelKey ?? 'openrouter/auto'
   const match = modelCatalogForPicker.value.find((item) => item.modelId === selected)
-  return `Model · ${match?.name ?? selected}`
+  return `Model · ${formatModelIndicatorName(match?.name ?? selected)}`
 })
 
 const webSummary = computed(() => {
@@ -247,7 +247,10 @@ function shouldShowInlineReasoning(message: any): boolean {
       @select="onSelectSearchHit"
     />
 
-    <ChatWorkspaceShell :rightRailOpen="rightRailOpen">
+    <ChatWorkspaceShell
+      :rightRailOpen="rightRailOpen"
+      @closeRightRail="closeRightRailPanel"
+    >
       <template #sidebar>
         <ConversationList
           :items="convoListItems"
@@ -283,9 +286,9 @@ function shouldShowInlineReasoning(message: any): boolean {
           :loadError="loadError"
           :normalizedErrorSummary="normalizedErrorSummary"
           :normalizedErrorActionHint="normalizedErrorActionHint"
-          :rightRailOpen="rightRailOpen"
+          :consolePanelOpen="rightRailOpen && effectiveRightRailView === 'console'"
           @openSettings="openSettings"
-          @toggleRightRail="toggleRightRailOpen"
+          @toggleConsolePanel="toggleConsolePanel"
         />
       </template>
 
@@ -307,14 +310,6 @@ function shouldShowInlineReasoning(message: any): boolean {
               :data-testid="`msg-wrap-${message.messageId}`"
               @click="onSelectCursor(message.messageId, $event)"
             >
-              <ChatInlineReasoning
-                v-if="message.role === 'assistant' && shouldShowInlineReasoning(message)"
-                :reasoningView="message.reasoningView"
-                :reasoningPieces="message.messageId === lastAssistantMessageId ? lastAssistantReasoningPieces : null"
-                :collapsed="reasoningRailMode || message.reasoningView.panelState === 'collapsed'"
-                @toggle="onOpenReasoningDisplayForMessage(message.messageId)"
-              />
-
               <ChatMessageBubble
                 :message="message"
                 :renderUserMessageRichText="userMessageRenderPolicy.effective"
@@ -322,7 +317,18 @@ function shouldShowInlineReasoning(message: any): boolean {
                 :errorEnvelopeLoading="inFlightEnvelopeIds.has(message.messageId)"
                 :errorEnvelopeUnavailable="errorEnvelopeUnavailableIds.has(message.messageId)"
                 :onRequestErrorEnvelope="requestErrorEnvelope"
-              />
+              >
+                <template #before-content>
+                  <ChatInlineReasoning
+                    v-if="message.role === 'assistant' && shouldShowInlineReasoning(message)"
+                    :reasoningView="message.reasoningView"
+                    :reasoningPieces="message.messageId === lastAssistantMessageId ? lastAssistantReasoningPieces : null"
+                    :collapsed="reasoningRailMode ? !(rightRailOpen && effectiveRightRailView === 'reasoning') : message.reasoningView.panelState === 'collapsed'"
+                    :display-mode="reasoningRailMode ? 'rail' : 'inline'"
+                    @toggle="onOpenReasoningDisplayForMessage(message.messageId)"
+                  />
+                </template>
+              </ChatMessageBubble>
 
               <div
                 v-if="message.role === 'user' && (historyAttachmentViewModelsByMessageId[message.messageId]?.length ?? 0) > 0"
@@ -696,6 +702,8 @@ function shouldShowInlineReasoning(message: any): boolean {
             :isRunning="isRunning"
             :sessionConfig="activeSessionConfig"
             :modelCatalog="modelCatalogForPicker"
+            :modelCatalogNotice="modelCatalogNotice"
+            :modelPrefsScope="modelPrefsScopeForUi"
             :imageInputSupported="composerImageInputSupported"
             :imageInputDisabledReason="composerImageInputSupportReason"
             :attachmentFeedbackTone="attachmentFeedbackTone"
@@ -729,24 +737,19 @@ function shouldShowInlineReasoning(message: any): boolean {
         </div>
       </template>
 
-      <template #right-rail>
+      <template #right-rail="{ rightRailMode }">
         <ChatRightRail
-          :open="rightRailOpen"
-          :activeView="effectiveRightRailView"
-          :canShowReasoning="rightRailCanShowReasoning"
-          @toggleOpen="toggleRightRailOpen"
-          @setView="setRightRailView"
+          :floating="rightRailMode === 'floating'"
+          @close="closeRightRailPanel"
         >
           <ChatAppReasoningPanel
             v-if="effectiveRightRailView === 'reasoning'"
             :messageId="lastAssistantMessageId"
             :reasoningView="lastAssistantReasoningView"
             :reasoningVersion="lastAssistantReasoningVersion"
-            :panelState="lastAssistantPanelState"
             :isStreaming="lastAssistantIsStreaming"
             :reasoningPieces="lastAssistantReasoningPieces"
             :localProcessingDurationMs="lastAssistantMessage?.reasoningDurationMs ?? undefined"
-            @toggle-panel-state="onToggleReasoningPanelState"
           />
           <ChatSessionConsole
             v-else

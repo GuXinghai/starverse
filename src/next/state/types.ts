@@ -252,4 +252,5 @@ export type StartGenerationInput = Readonly<{
   requestedReasoningMode?: RequestedReasoningMode
   requestedReasoningEffort?: ReasoningEffort
   requestedReasoningExclude?: boolean
+  reasoningPanelDefaultExpanded?: boolean
 }>
