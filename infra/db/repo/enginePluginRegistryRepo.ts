@@ -209,6 +209,7 @@ export class EnginePluginRegistryRepo {
           health_status = 'unhealthy',
           failure_reason = @failureReason,
           last_health_check_at = @lastHealthCheckAt,
+          metadata_json = COALESCE(@metadataJson, metadata_json),
           updated_at = @updatedAt
       WHERE engine_id = @engineId
     `)
@@ -300,6 +301,7 @@ export class EnginePluginRegistryRepo {
       engineId,
       failureReason,
       lastHealthCheckAt: input.lastHealthCheckAt ?? Date.now(),
+      metadataJson: input.metadataJson ? JSON.stringify(input.metadataJson) : null,
       updatedAt: input.updatedAt ?? Date.now(),
     })
     return { ok: true, updated: Number(result.changes ?? 0) }
