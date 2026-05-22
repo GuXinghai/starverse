@@ -4,9 +4,9 @@ import type {
 import {
   buildReadOnlyCatalogDto,
   validateOfficialPluginCatalog,
-  type CatalogCompatibilityEnvironment,
   type ReadOnlyCatalogDto,
 } from './catalogReadModel'
+import type { CatalogCompatibilityEnvironment } from './catalogCompatibility'
 import { validatePluginTrustRootMetadata } from './trustPolicy'
 import type {
   PluginCatalogEntry,
