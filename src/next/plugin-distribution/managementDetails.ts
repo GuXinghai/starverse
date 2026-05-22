@@ -241,6 +241,12 @@ function describeSignatureAlgorithm(
 }
 
 function labelUpdateState(state: PdpManagementUpdateState): string {
+  if (state === 'install_available') return 'Install available'
+  if (state === 'up_to_date') return 'Up to date'
+  if (state === 'repair_available') return 'Repair available'
+  if (state === 'update_available') return 'Update available'
+  if (state === 'downgrade_blocked') return 'Downgrade blocked'
+  if (state === 'local_newer_than_catalog') return 'Local newer than catalog'
   if (state === 'eligible_manual') return 'Manual update eligibility'
   if (state === 'staged_contract') return 'Update contract staged'
   if (state === 'ineligible') return 'Update not eligible'

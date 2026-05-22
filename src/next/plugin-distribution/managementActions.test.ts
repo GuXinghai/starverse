@@ -1,8 +1,7 @@
 /* eslint-disable max-lines-per-function */
 import { describe, expect, it } from 'vitest'
 import { buildPdpManagementActions, findPdpManagementAction } from './managementActions'
-import { buildPdpManagementViewModel, type PdpManagementCatalogInput } from './managementViewModel'
-import type { PdpPluginRegistryRecord } from './registryModel'
+import { buildPdpManagementViewModel, type PdpManagementCatalogInput, type PdpManagementRegistryInput } from './managementViewModel'
 
 function catalogEntry(overrides?: Partial<PdpManagementCatalogInput>): PdpManagementCatalogInput {
   return {
@@ -11,6 +10,11 @@ function catalogEntry(overrides?: Partial<PdpManagementCatalogInput>): PdpManage
     publisher: 'Starverse',
     pluginVersion: '1.2.3',
     runtimeKind: 'managed',
+    platformCompatibility: { declaredPlatform: 'any', compatible: true },
+    architectureCompatibility: { declaredArchitecture: 'any', compatible: true },
+    appVersionCompatibility: { declaredRange: '*', compatible: true },
+    modelVersion: null,
+    packageSizeBytes: 1024,
     capabilities: ['file_identification'],
     installabilityStatus: 'metadata_compatible_future_install',
     reasons: ['read_only_catalog_no_install_action'],
@@ -21,15 +25,13 @@ function catalogEntry(overrides?: Partial<PdpManagementCatalogInput>): PdpManage
   }
 }
 
-function registryRecord(overrides?: Partial<PdpPluginRegistryRecord>): PdpPluginRegistryRecord {
+function registryRecord(overrides?: Partial<PdpManagementRegistryInput>): PdpManagementRegistryInput {
   return {
     pluginId: 'magika-managed',
     pluginVersion: '1.2.3',
     runtimeKind: 'managed',
     controlledRootKind: 'user_local',
     installSource: 'manual_local',
-    installRef: 'install_magika_1_2_3',
-    packageRef: 'package_magika_1_2_3',
     registryState: 'disabled',
     installState: 'disabled',
     verificationStatus: 'verified',

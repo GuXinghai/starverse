@@ -18,6 +18,11 @@ function catalogEntry(overrides?: Partial<PdpManagementCatalogInput>): PdpManage
     pluginVersion: '1.2.3',
     runtimeKind: 'managed',
     capabilities: ['file_identification'],
+    platformCompatibility: { declaredPlatform: 'win32', compatible: true },
+    architectureCompatibility: { declaredArchitecture: 'x64', compatible: true },
+    appVersionCompatibility: { declaredRange: '>=0.0.0', compatible: true },
+    modelVersion: 'standard_v3_3',
+    packageSizeBytes: 1234,
     installabilityStatus: 'metadata_compatible_future_install',
     reasons: ['read_only_catalog_no_install_action'],
     warnings: [],
@@ -177,6 +182,100 @@ describe('buildPdpManagementViewModel', () => {
     expect(vm.plugins[0]?.status.updateState).toBe('eligible_manual')
     expect(vm.plugins[0]?.reasonCodes).toContain('manual_update_eligible')
     expect(text).not.toMatch(/auto-update|auto update/iu)
+  })
+
+  it('reports official installed latest as up to date with installed and available versions', () => {
+    const vm = buildPdpManagementViewModel({
+      catalogEntries: [
+        catalogEntry({
+          pluginId: 'magika',
+          pluginVersion: '0.1.1',
+          installabilityStatus: 'official_remote_install_available',
+          verificationMetadataStatus: 'production_signature_available',
+        }),
+      ],
+      registryRecords: [
+        registryRecord({
+          pluginId: 'magika',
+          pluginVersion: '0.1.1',
+          installSource: 'official_catalog',
+          modelVersion: 'standard_v3_3',
+        }),
+      ],
+    })
+
+    expect(vm.plugins).toHaveLength(1)
+    expect(vm.plugins[0]?.installedVersion).toBe('0.1.1')
+    expect(vm.plugins[0]?.availableVersion).toBe('0.1.1')
+    expect(vm.plugins[0]?.modelVersion).toBe('standard_v3_3')
+    expect(vm.plugins[0]?.status.updateState).toBe('up_to_date')
+  })
+
+  it('reports official same version unhealthy as repair available', () => {
+    const vm = buildPdpManagementViewModel({
+      catalogEntries: [catalogEntry({ pluginId: 'magika', pluginVersion: '0.1.1' })],
+      registryRecords: [
+        registryRecord({
+          pluginId: 'magika',
+          pluginVersion: '0.1.1',
+          installSource: 'official_catalog',
+          installState: 'failed',
+          healthStatus: 'failed',
+          enabled: false,
+        }),
+      ],
+    })
+
+    expect(vm.plugins[0]?.status.updateState).toBe('repair_available')
+    expect(vm.plugins[0]?.reasonCodes).toContain('repair_available')
+  })
+
+  it('reports newer official catalog version as update available on the installed row', () => {
+    const vm = buildPdpManagementViewModel({
+      catalogEntries: [
+        catalogEntry({
+          pluginId: 'magika',
+          pluginVersion: '0.1.1',
+          verificationMetadataStatus: 'production_signature_available',
+        }),
+      ],
+      registryRecords: [
+        registryRecord({
+          pluginId: 'magika',
+          pluginVersion: '0.1.0',
+          installSource: 'official_catalog',
+        }),
+      ],
+    })
+
+    expect(vm.plugins).toHaveLength(1)
+    expect(vm.plugins[0]?.pluginVersion).toBe('0.1.1')
+    expect(vm.plugins[0]?.installedVersion).toBe('0.1.0')
+    expect(vm.plugins[0]?.availableVersion).toBe('0.1.1')
+    expect(vm.plugins[0]?.status.updateState).toBe('update_available')
+  })
+
+  it('reports catalog downgrade as local newer than catalog', () => {
+    const vm = buildPdpManagementViewModel({
+      catalogEntries: [
+        catalogEntry({
+          pluginId: 'magika',
+          pluginVersion: '0.1.0',
+          verificationMetadataStatus: 'production_signature_available',
+        }),
+      ],
+      registryRecords: [
+        registryRecord({
+          pluginId: 'magika',
+          pluginVersion: '0.1.1',
+          installSource: 'official_catalog',
+        }),
+      ],
+    })
+
+    expect(vm.plugins).toHaveLength(1)
+    expect(vm.plugins[0]?.status.updateState).toBe('local_newer_than_catalog')
+    expect(vm.plugins[0]?.reasonCodes).toContain('downgrade_blocked')
   })
 
   it('applies update state to the matching plugin version first', () => {
