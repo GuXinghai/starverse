@@ -178,14 +178,34 @@ Stop and report before proceeding if any of the following are required:
 
 ## Recommended next round
 
-DFC-7 should be an owner-approved DB binding migration and repository test round.
+## DFC-7 implementation recovery notes
 
-Recommended DFC-7 scope:
+- Owner approved a destructive dev migration for attachment-related data because Starverse has no published install package and historical attachment/draft/message attachment data does not need preservation.
+- DFC-7 adds explicit columns on existing attachment tables:
+  - `draft_attachments`: `dfc_managed`, `selected_option_id`, `selected_asset_refs_json`.
+  - `message_attachments`: `dfc_managed`, `used_option_id`, `used_asset_refs_json`, `target_kind`, `send_strategy`.
+- The destructive migration is attachment-table scoped. If a legacy table lacks DFC binding columns, only that table is cleared before its columns are added. Unrelated conversations, messages, file assets, and already-DFC-capable attachment tables are preserved.
+- The DFC schema upgrade is wrapped in a transaction so table clearing and column addition complete or roll back together.
+- Legacy columns such as `preferred_send_mode` and `url_retention_mode` remain physically present for now, but DFC-managed draft writes clear them and DFC-managed repo reads ignore them.
+- DFC-managed repo writes require at least one `SendAssetRef`. Empty, missing, malformed, or shape-invalid selected/used asset refs must throw rather than silently becoming an empty binding.
+- Legacy rows remain `dfc_managed = 0` and read DFC refs as empty/inert. They are not treated as DFC-managed unless explicitly created that way.
+- Draft-to-message persistence currently snapshots `dfcManaged`, `selectedOptionId` to `usedOptionId`, and selected refs to used refs. `targetKind` and `sendStrategy` remain nullable until the future Send Plan seam supplies the actual selected option snapshot.
+- DFC-7 does not wire production Send Plan, UI, conversion runtime, CSV/TSV parsing, Playwright harness, dependencies, external engines, a dedicated DerivedAsset table, or a legacy migration bridge.
+- Risk review during DFC-7 found and drove fixes for two classes of P1 risk:
+  - mixed-schema destructive migration originally cleared both attachment tables; fixed to clear only the affected table.
+  - malformed and empty DFC asset refs could silently collapse to empty bindings; fixed so DFC-managed rows fail instead.
+- Local targeted Vitest after these fixes passed for migration, repo, service, worker, and DFC contract tests. Project typecheck still fails in unrelated `src/ui-app/app/appChatApp.logic.ts` Vue named-export typings.
 
-- Add explicit DFC binding columns to `draft_attachments` and `message_attachments`.
-- Add migration tests and repository persistence tests.
-- Keep legacy rows quarantined with `dfc_managed = 0`.
-- Do not wire DFC into production Send Plan until binding persistence is verified.
-- Do not implement conversions in the migration round.
+## Recommended next round
 
-Do not wire DFC into production Send Plan until the Owner approves the DB/DTO/DerivedAsset decisions.
+DFC-8 should be an owner-approved, narrow selectedOptionId-driven Send Plan seam round.
+
+Recommended DFC-8 scope:
+
+- Read only DFC-managed persisted fields (`dfc_managed`, `selected_option_id`, `selected_asset_refs_json`) plus DFC `ConversionOption` data.
+- Resolve send decisions through the DFC resolver and selected `targetKind` / `SendAssetRef`.
+- Keep legacy Send Plan quarantined for non-DFC rows only.
+- Add no-silent-fallback tests around missing, failed, stale, incompatible, unavailable, and missing-asset selected options.
+- Do not implement UI, conversion runtime, new dependencies, external engines, Playwright harness creation, or legacy migration bridge in the Send Plan seam round unless separately approved.
+
+Do not wire broad Send Plan replacement, UI consumption, conversion runtime, dependencies, external engines, or legacy migration bridge without separate Owner approval.

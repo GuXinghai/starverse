@@ -9,6 +9,12 @@ import type {
   UpdateDraftAttachmentSettingsInput,
   UpdateConversationDraftTextInput,
 } from '../types'
+import {
+  assertDfcBindingRequiresManaged,
+  normalizeDfcBindingText,
+  parseRequiredDfcSendAssetRefsJson,
+  stringifyRequiredDfcSendAssetRefs,
+} from './dfcAttachmentBinding'
 
 type SqlDatabase = BetterSqlite3.Database
 
@@ -31,24 +37,33 @@ type DraftAttachmentRow = Readonly<{
   excluded_reason: string | null
   preferred_send_mode: DraftAttachmentRecord['preferredSendMode']
   url_retention_mode: DraftAttachmentRecord['urlRetentionMode']
+  dfc_managed: number
+  selected_option_id: string | null
+  selected_asset_refs_json: string | null
   created_at: number
   updated_at: number
 }>
 
-const mapAttachmentRow = (row: DraftAttachmentRow): DraftAttachmentRecord => ({
-  id: row.id,
-  conversationId: row.conversation_id,
-  assetId: row.asset_id,
-  attachmentOrder: row.attachment_order,
-  aiPayloadKind: row.ai_payload_kind,
-  processingStatus: row.processing_status,
-  includeInNextRequest: row.include_in_next_request === 1,
-  excludedReason: row.excluded_reason ?? null,
-  preferredSendMode: row.preferred_send_mode ?? null,
-  urlRetentionMode: row.url_retention_mode ?? null,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-})
+const mapAttachmentRow = (row: DraftAttachmentRow): DraftAttachmentRecord => {
+  const dfcManaged = row.dfc_managed === 1
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    assetId: row.asset_id,
+    attachmentOrder: row.attachment_order,
+    aiPayloadKind: row.ai_payload_kind,
+    processingStatus: row.processing_status,
+    includeInNextRequest: row.include_in_next_request === 1,
+    excludedReason: row.excluded_reason ?? null,
+    preferredSendMode: dfcManaged ? null : row.preferred_send_mode ?? null,
+    urlRetentionMode: dfcManaged ? null : row.url_retention_mode ?? null,
+    dfcManaged,
+    selectedOptionId: dfcManaged ? row.selected_option_id ?? null : null,
+    selectedAssetRefs: dfcManaged ? parseRequiredDfcSendAssetRefsJson(row.selected_asset_refs_json) : [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
 
 export class ConversationDraftRepo {
   private upsertDraftStmt: BetterSqlite3.Statement
@@ -115,6 +130,9 @@ export class ConversationDraftRepo {
         excluded_reason,
         preferred_send_mode,
         url_retention_mode,
+        dfc_managed,
+        selected_option_id,
+        selected_asset_refs_json,
         created_at,
         updated_at
       )
@@ -129,6 +147,9 @@ export class ConversationDraftRepo {
         @excludedReason,
         @preferredSendMode,
         @urlRetentionMode,
+        @dfcManaged,
+        @selectedOptionId,
+        @selectedAssetRefsJson,
         @createdAt,
         @updatedAt
       )
@@ -137,6 +158,9 @@ export class ConversationDraftRepo {
         excluded_reason = excluded.excluded_reason,
         preferred_send_mode = excluded.preferred_send_mode,
         url_retention_mode = excluded.url_retention_mode,
+        dfc_managed = excluded.dfc_managed,
+        selected_option_id = excluded.selected_option_id,
+        selected_asset_refs_json = excluded.selected_asset_refs_json,
         updated_at = excluded.updated_at
     `)
 
@@ -144,6 +168,9 @@ export class ConversationDraftRepo {
       UPDATE draft_attachments
       SET preferred_send_mode = @preferredSendMode,
           url_retention_mode = @urlRetentionMode,
+          dfc_managed = @dfcManaged,
+          selected_option_id = @selectedOptionId,
+          selected_asset_refs_json = @selectedAssetRefsJson,
           updated_at = @updatedAt
       WHERE conversation_id = @conversationId
         AND asset_id = @assetId
@@ -200,6 +227,11 @@ export class ConversationDraftRepo {
     const conversationId = requireNonEmpty(input.conversationId, 'conversationId')
     const now = input.updatedAt ?? input.createdAt ?? Date.now()
     const order = input.attachmentOrder ?? this.nextAttachmentOrder(conversationId)
+    const dfcManaged = input.dfcManaged === true
+    assertDfcBindingRequiresManaged(dfcManaged, {
+      selectedOptionId: input.selectedOptionId,
+      selectedAssetRefs: input.selectedAssetRefs,
+    }, 'draft')
     this.getOrCreate(conversationId, now)
     this.insertAttachmentStmt.run({
       id: randomUUID(),
@@ -210,8 +242,11 @@ export class ConversationDraftRepo {
       processingStatus: input.processingStatus,
       includeInNextRequest: (input.includeInNextRequest ?? true) ? 1 : 0,
       excludedReason: normalizeNullable(input.excludedReason),
-      preferredSendMode: normalizeNullable(input.preferredSendMode),
-      urlRetentionMode: normalizeNullable(input.urlRetentionMode),
+      preferredSendMode: dfcManaged ? null : normalizeNullable(input.preferredSendMode),
+      urlRetentionMode: dfcManaged ? null : normalizeNullable(input.urlRetentionMode),
+      dfcManaged: dfcManaged ? 1 : 0,
+      selectedOptionId: dfcManaged ? normalizeDfcBindingText(input.selectedOptionId) : null,
+      selectedAssetRefsJson: dfcManaged ? stringifyRequiredDfcSendAssetRefs(input.selectedAssetRefs) : null,
       createdAt: input.createdAt ?? now,
       updatedAt: now,
     })
@@ -224,15 +259,29 @@ export class ConversationDraftRepo {
     const existing = this.listAttachments(conversationId).find((attachment) => attachment.assetId === assetId)
     if (!existing) return null
     const updatedAt = input.updatedAt ?? Date.now()
+    const dfcManaged = input.dfcManaged !== undefined ? input.dfcManaged === true : existing.dfcManaged
+    assertDfcBindingRequiresManaged(dfcManaged, {
+      selectedOptionId: input.selectedOptionId,
+      selectedAssetRefs: input.selectedAssetRefs,
+    }, 'draft')
     const preferredSendMode =
-      input.preferredSendMode !== undefined ? normalizeNullable(input.preferredSendMode) : existing.preferredSendMode
+      dfcManaged ? null : input.preferredSendMode !== undefined ? normalizeNullable(input.preferredSendMode) : existing.preferredSendMode
     const urlRetentionMode =
-      input.urlRetentionMode !== undefined ? normalizeNullable(input.urlRetentionMode) : existing.urlRetentionMode
+      dfcManaged ? null : input.urlRetentionMode !== undefined ? normalizeNullable(input.urlRetentionMode) : existing.urlRetentionMode
+    const selectedOptionId = dfcManaged
+      ? input.selectedOptionId !== undefined ? normalizeDfcBindingText(input.selectedOptionId) : existing.selectedOptionId
+      : null
+    const selectedAssetRefsJson = dfcManaged
+      ? stringifyRequiredDfcSendAssetRefs(input.selectedAssetRefs !== undefined ? input.selectedAssetRefs : existing.selectedAssetRefs)
+      : null
     this.updateAttachmentSettingsStmt.run({
       conversationId,
       assetId,
       preferredSendMode,
       urlRetentionMode,
+      dfcManaged: dfcManaged ? 1 : 0,
+      selectedOptionId,
+      selectedAssetRefsJson,
       updatedAt,
     })
     return this.listAttachments(conversationId).find((attachment) => attachment.assetId === assetId) as DraftAttachmentRecord

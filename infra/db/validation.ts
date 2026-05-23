@@ -253,6 +253,18 @@ const AiPayloadKindSchema = z.enum(['image', 'pdf', 'text', 'audio', 'video', 'b
 const ProcessingStatusSchema = z.enum(['native_supported', 'convertible', 'local_only', 'unsupported'])
 const DraftAttachmentSendModePreferenceSchema = z.enum(['default', 'auto', 'url_ref', 'inline_base64'])
 const UrlRetentionModeSchema = z.enum(['link_only', 'link_and_file'])
+const DfcTargetKindSchema = z.enum(['original_file', 'plain_text', 'markdown', 'code', 'table_markdown', 'pdf_attachment'])
+const DfcSendStrategySchema = z.enum(['text_in_prompt', 'file_attachment'])
+const DfcSendAssetRefSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('raw_file'),
+    assetId: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal('derived_asset'),
+    assetId: z.string().min(1),
+  }),
+])
 
 export const CreateFileAssetSchema: ZodType<CreateFileAssetInput> = z.object({
   id: z.string().min(1).optional(),
@@ -378,6 +390,11 @@ export const CreateMessageAttachmentSchema: ZodType<CreateMessageAttachmentInput
   processingStatus: ProcessingStatusSchema,
   includeInNextRequest: z.boolean().optional(),
   excludedReason: z.string().nullable().optional(),
+  dfcManaged: z.boolean().optional(),
+  usedOptionId: z.string().nullable().optional(),
+  usedAssetRefs: z.array(DfcSendAssetRefSchema).optional(),
+  targetKind: DfcTargetKindSchema.nullable().optional(),
+  sendStrategy: DfcSendStrategySchema.nullable().optional(),
   createdAt: z.number().int().optional(),
   updatedAt: z.number().int().optional(),
 })
@@ -412,6 +429,9 @@ export const AddDraftAttachmentSchema: ZodType<AddDraftAttachmentInput> = z.obje
   excludedReason: z.string().nullable().optional(),
   preferredSendMode: DraftAttachmentSendModePreferenceSchema.nullable().optional(),
   urlRetentionMode: UrlRetentionModeSchema.nullable().optional(),
+  dfcManaged: z.boolean().optional(),
+  selectedOptionId: z.string().nullable().optional(),
+  selectedAssetRefs: z.array(DfcSendAssetRefSchema).optional(),
   createdAt: z.number().int().optional(),
   updatedAt: z.number().int().optional(),
 })
@@ -427,6 +447,9 @@ export const UpdateDraftAttachmentSettingsSchema: ZodType<UpdateDraftAttachmentS
   assetId: z.string().min(1),
   preferredSendMode: DraftAttachmentSendModePreferenceSchema.nullable().optional(),
   urlRetentionMode: UrlRetentionModeSchema.nullable().optional(),
+  dfcManaged: z.boolean().optional(),
+  selectedOptionId: z.string().nullable().optional(),
+  selectedAssetRefs: z.array(DfcSendAssetRefSchema).optional(),
   updatedAt: z.number().int().optional(),
 })
 
