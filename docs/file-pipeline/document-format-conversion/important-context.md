@@ -17,6 +17,9 @@ This file is the recovery entry point after context compression. The source of t
 - DFC docs foundation and design memo were committed in DFC-2A as `2176a2a` with message `docs(file-conversion): establish DFC foundation and design memo`.
 - DFC-3 scope: owner decision freeze before code. No production code, schema, Send Plan, UI, IPC, tests, package files, dependencies, or conversion logic changed.
 - DFC-3 freeze file: `dfc-3-owner-decision-freeze.md`.
+- DFC-3 was committed as `a52fc9c` with message `docs(file-conversion): freeze DFC implementation decisions`.
+- DFC-4 scope: first code slice only. Added shared DFC TypeScript contracts, an unintegrated pure resolver scaffold, sanitized renderer DTO draft, and targeted tests. No DB schema, production Send Plan behavior, UI, IPC runtime, package files, dependencies, conversion implementation, Playwright harness, or migration bridge changed.
+- DFC-4 files: `src/shared/files/documentFormatConversion.ts` and `src/shared/files/documentFormatConversion.test.ts`.
 
 ## North-star goal
 
@@ -115,10 +118,29 @@ Stop and report before proceeding if any of the following are required:
 - Minimum DB migration fields if durable storage is required: `dfc_managed`, `selected_option_id`, `selected_asset_refs_json`, `used_option_id`, `used_asset_refs_json`, `target_kind`, and `send_strategy`.
 - Ambiguous legacy records must become `needs_user_selection`, blocked, or legacy read-only. They must not be silently migrated.
 
+## DFC-4 implementation recovery notes
+
+- DFC contracts and scaffold live in `src/shared/files/documentFormatConversion.ts`.
+- `DfcTargetKind` includes only `original_file`, `plain_text`, `markdown`, `code`, `table_markdown`, and `pdf_attachment`.
+- `native_file`, `hybrid`, and `unsupported` are not DFC target kinds.
+- `createDfcOriginalFileOption` emits `targetKind: 'original_file'`, `sendStrategy: 'file_attachment'`, and `SendAssetRef.kind: 'raw_file'`.
+- `createDfcDerivedAssetOption` emits `SendAssetRef.kind: 'derived_asset'` for `plain_text`, `markdown`, `code`, `table_markdown`, and contract-only `pdf_attachment`.
+- `resolveDfcManagedAttachment` is pure and not wired into production Send Plan. It resolves only from `selectedOptionId`, selected option state, targetKind, and asset refs.
+- The resolver accepts legacy quarantine fields only as inert audit input and must not branch on `preferredSendMode`, `selectedSendMode`, `legacyTargetKind`, extension, or MIME.
+- Missing, failed, stale, incompatible, unavailable, or asset-missing selected options return non-ready statuses with empty send refs. They do not silently fallback.
+- `sanitizeDfcAttachmentForRenderer` is a DTO draft only. It omits path, fileUrl, full hash, contentToken, file body, and raw storage refs.
+- Targeted test file: `src/shared/files/documentFormatConversion.test.ts`.
+- DFC-4 validation: targeted Vitest passed. Repo-wide TypeScript check currently fails in unrelated UI Vue export typings at `src/ui-app/app/appChatApp.logic.ts:178-179`.
+- Risk review found no P0/P1 issues for DFC-4.
+
 ## Recommended next round
 
-DFC-4 should be the smallest approved code slice.
+DFC-5 should be an owner-approved runtime boundary round.
 
-Recommended first slice: add TypeScript DFC contract types, define sanitized DFC DTO boundary, and add tests proving DFC-managed attachments cannot use legacy send-mode fallback.
+Recommended DFC-5 options:
 
-If DFC-4 requires DB migration before contracts and DTOs can be defined, stop first for owner approval on the migration plan.
+- Option A: define the sanitized DTO runtime contract and tests without changing Send Plan.
+- Option B: finalize the DB binding migration plan for `dfcManaged`, selected refs, and used refs before implementation.
+- Option C: inspect whether existing derivative and preview lineage can satisfy the `DerivedAsset` facade fields.
+
+Do not wire DFC into production Send Plan until the Owner approves the DB/DTO/DerivedAsset decisions.
