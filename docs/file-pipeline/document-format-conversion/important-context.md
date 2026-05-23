@@ -14,6 +14,9 @@ This file is the recovery entry point after context compression. The source of t
 - DFC-2 scope: implementation design memo only. No production code, schema, Send Plan, UI, IPC, tests, package files, dependencies, or conversion logic changed.
 - DFC-2 memo file: `dfc-2-implementation-design-memo.md`.
 - DFC-2 HEAD during memo creation: `72cee48`.
+- DFC docs foundation and design memo were committed in DFC-2A as `2176a2a` with message `docs(file-conversion): establish DFC foundation and design memo`.
+- DFC-3 scope: owner decision freeze before code. No production code, schema, Send Plan, UI, IPC, tests, package files, dependencies, or conversion logic changed.
+- DFC-3 freeze file: `dfc-3-owner-decision-freeze.md`.
 
 ## North-star goal
 
@@ -56,6 +59,14 @@ The final goal includes:
 - `preferredSendMode`, `selectedSendMode`, `native_file`, `hybrid`, and `unsupported` are legacy quarantine vocabulary.
 - No silent fallback is allowed for DFC-managed attachments.
 - Any legacy bridge must be explicit, narrow, testable, removable, and must not act as invisible runtime fallback.
+- DFC-3 freezes Phase 1 `selectedOptionId` ownership as draft-local authority.
+- DFC-3 freezes `dfcManaged` as the boundary marker for new DFC attachments.
+- DFC-3 freezes `original_file` as a first-class targetKind; `native_file` is legacy vocabulary only.
+- DFC-3 freezes `hybrid` as deferred for the first version.
+- DFC-3 freezes `unsupported` as state, error code, diagnostic, or legacy status, not a new DFC targetKind.
+- DFC-3 freezes the Phase 1 binding requirement: draft attachments need `selectedOptionId`, `selectedAssetRefs`, and `dfcManaged`; message attachments need `usedOptionId`, `usedAssetRefs`, `targetKind`, and `sendStrategy` snapshot.
+- DFC-3 freezes the preferred DerivedAsset path: first evaluate a facade over existing derivative and preview lineage, and stop for owner approval if a dedicated table is needed.
+- DFC-3 freezes the privacy boundary: renderer DTOs must not expose real path, fileUrl, full hash, contentToken, file body, or raw storage refs.
 
 ## Stop conditions for future rounds
 
@@ -95,10 +106,19 @@ Stop and report before proceeding if any of the following are required:
 - DFC Send Plan integration should be a narrow DFC resolver seam for DFC-managed attachments, not a broad replacement of legacy send-plan behavior.
 - DFC-managed Send Plan must not call legacy selected-send-mode fallback when the selected DFC option is missing, stale, failed, incompatible, or unavailable.
 
+## DFC-3 decision freeze recovery notes
+
+- Phase 1 implementation order should be: TS contracts and DFC boundary types; sanitized DTO privacy boundary; DB migration or binding storage decision; Phase 1 option generation; DFC Send Plan resolver seam; preview/send same-source gate; targeted and no-silent-fallback tests; minimal Playwright smoke if an existing harness can support it.
+- Phase 1 option generation scope is limited to `original_file`, `plain_text`, markdown passthrough, `code`, and CSV/TSV `table_markdown`.
+- Explicitly deferred: XLSX/XLS, DOCX/DOC/RTF, PDF attachment implementation, HTML conversion, PS/EPS, external engines, and new dependencies unless the Owner approves them.
+- Required fields for a `DerivedAsset` facade are `sourceHash`, `contentHash`, `targetKind`, `conversionSettingsHash`, `usage`, `storageClass`, `sourceFileId`, converter identity, and binding refs.
+- Minimum DB migration fields if durable storage is required: `dfc_managed`, `selected_option_id`, `selected_asset_refs_json`, `used_option_id`, `used_asset_refs_json`, `target_kind`, and `send_strategy`.
+- Ambiguous legacy records must become `needs_user_selection`, blocked, or legacy read-only. They must not be silently migrated.
+
 ## Recommended next round
 
-DFC-3 should be an owner approval checkpoint plus the first approved implementation slice.
+DFC-4 should be the smallest approved code slice.
 
-Before code, confirm the DB migration shape, the DFC-managed marker, the privacy DTO behavior, whether Phase 1 uses a `DerivedAsset` facade over existing `file_derivatives`, and whether any legacy migration bridge is in scope.
+Recommended first slice: add TypeScript DFC contract types, define sanitized DFC DTO boundary, and add tests proving DFC-managed attachments cannot use legacy send-mode fallback.
 
-After approval, keep DFC-3 narrowly scoped to the first Phase 1 slice with targeted tests and no external engines.
+If DFC-4 requires DB migration before contracts and DTOs can be defined, stop first for owner approval on the migration plan.
