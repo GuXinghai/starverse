@@ -23,6 +23,10 @@ This file is the recovery entry point after context compression. The source of t
 - DFC-4 was committed as `8fdd187` with message `feat(file-conversion): add DFC contracts and fallback guards`.
 - DFC-5 scope: runtime boundary decision memo only. No production code, DB schema, Send Plan behavior, UI, IPC runtime, package files, dependencies, conversion implementation, Playwright harness, external engines, or migration bridge changed.
 - DFC-5 memo file: `dfc-5-runtime-boundary-decision.md`.
+- DFC-6 code commit: `985c53e` with message `feat(file-conversion): add DFC DTO boundary and asset facade`.
+- DFC-6 safe implementation scope: additive sanitized DFC renderer DTO decoders/tests and strict DerivedAsset facade helper/tests only.
+- DFC-6 owner blocker memo: `dfc-6-owner-memo-db-binding-migration.md`.
+- DFC-6 stopped before DB migration and production Send Plan wiring because durable draft/message DFC binding requires schema changes.
 
 ## North-star goal
 
@@ -151,17 +155,37 @@ Stop and report before proceeding if any of the following are required:
 - Legacy quarantine enforcement should be a narrow `SendPlanService` DFC branch before legacy mode selection. DFC-managed code must not call `selectAttachmentSendModeInternal`.
 - DFC-6 is ready only as an owner-approved narrow production slice for sanitized DFC runtime DTOs and privacy tests. DB migration and Send Plan wiring still require separate owner approval.
 
+## DFC-6 implementation and blocker recovery notes
+
+- DFC sanitized renderer decoders now exist in `src/next/ipc/contracts/dbBridgeContracts.ts`:
+  - `decodeDfcAttachmentDtoResponse`
+  - `decodeDfcAttachmentDtoListResponse`
+  - `decodeDfcFileAssetResponse`
+  - `decodeDfcFileAssetListResponse`
+  - `decodeDfcFileDerivativeResponse`
+  - `decodeDfcFileDerivativeListResponse`
+- These decoders are additive and not wired into UI, Send Plan, or DB runtime channels.
+- DFC DTO tests prove the sanitized DFC renderer surfaces omit path-like fields, `fileUrl`, full hash fields, `contentToken`, file body, storage refs, raw `sourceMetaJson`, raw derivative `metaJson`, `storageUri`, and raw generator fields.
+- `createDfcDerivedAssetFacade` now validates a `file_derivatives`-style record as a DFC DerivedAsset facade.
+- The facade requires ready status, storage ref, `sourceHash`, `contentHash`, DFC derived `targetKind`, `conversionSettingsHash`, `usage`, `storageClass`, and converter identity.
+- The facade rejects `original_file` because `original_file` must use `raw_file` and must not create `DerivedAsset`.
+- Risk review found no P0/P1 issues in the additive DFC DTO/facade diff.
+- Targeted Vitest passed for `src/shared/files/documentFormatConversion.test.ts` and `src/next/ipc/contracts/dbBridgeContracts.test.ts`.
+- Project typecheck still fails in unrelated UI Vue export typing at `src/ui-app/app/appChatApp.logic.ts:178-179`.
+- Durable Phase 1 cannot proceed into Send Plan wiring without a DB binding migration. Current draft/message attachment tables do not persist `dfcManaged`, `selectedOptionId`, `selectedAssetRefs`, `usedOptionId`, `usedAssetRefs`, `targetKind`, or `sendStrategy`.
+- Recommended DB binding path is explicit columns on existing `draft_attachments` and `message_attachments`, with legacy rows defaulting to `dfc_managed = 0`.
+- Do not emulate durable DFC binding in memory, in Send Plan metadata, or by reading legacy fields; that would violate draft-local selectedOptionId and no-silent-fallback requirements.
+
 ## Recommended next round
 
-DFC-6 should be an owner-approved sanitized DFC runtime DTO round.
+DFC-7 should be an owner-approved DB binding migration and repository test round.
 
-Recommended DFC-6 scope:
+Recommended DFC-7 scope:
 
-- Add sanitized DFC DTO runtime contract and decoder.
-- Add privacy tests proving no renderer DTO exposure of path, fileUrl, storage refs, contentToken, file body, or full hashes.
-- Keep the change additive and DFC-only.
-- Do not change DB schema.
-- Do not wire DFC into production Send Plan.
-- Do not implement conversions.
+- Add explicit DFC binding columns to `draft_attachments` and `message_attachments`.
+- Add migration tests and repository persistence tests.
+- Keep legacy rows quarantined with `dfc_managed = 0`.
+- Do not wire DFC into production Send Plan until binding persistence is verified.
+- Do not implement conversions in the migration round.
 
 Do not wire DFC into production Send Plan until the Owner approves the DB/DTO/DerivedAsset decisions.
