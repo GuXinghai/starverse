@@ -20,6 +20,9 @@ This file is the recovery entry point after context compression. The source of t
 - DFC-3 was committed as `a52fc9c` with message `docs(file-conversion): freeze DFC implementation decisions`.
 - DFC-4 scope: first code slice only. Added shared DFC TypeScript contracts, an unintegrated pure resolver scaffold, sanitized renderer DTO draft, and targeted tests. No DB schema, production Send Plan behavior, UI, IPC runtime, package files, dependencies, conversion implementation, Playwright harness, or migration bridge changed.
 - DFC-4 files: `src/shared/files/documentFormatConversion.ts` and `src/shared/files/documentFormatConversion.test.ts`.
+- DFC-4 was committed as `8fdd187` with message `feat(file-conversion): add DFC contracts and fallback guards`.
+- DFC-5 scope: runtime boundary decision memo only. No production code, DB schema, Send Plan behavior, UI, IPC runtime, package files, dependencies, conversion implementation, Playwright harness, external engines, or migration bridge changed.
+- DFC-5 memo file: `dfc-5-runtime-boundary-decision.md`.
 
 ## North-star goal
 
@@ -133,14 +136,32 @@ Stop and report before proceeding if any of the following are required:
 - DFC-4 validation: targeted Vitest passed. Repo-wide TypeScript check currently fails in unrelated UI Vue export typings at `src/ui-app/app/appChatApp.logic.ts:178-179`.
 - Risk review found no P0/P1 issues for DFC-4.
 
+## DFC-5 runtime boundary recovery notes
+
+- Sanitized DTO recommendation: add a DFC-specific sanitized runtime DTO before renderer/UI consumes production DFC attachment data. Keep existing legacy DTOs stable at first.
+- DFC renderer DTOs must omit `path`, `fileUrl`, `storageUri`, raw storage refs, `contentToken`, file body/body snippets, full `sha256`, full lineage hashes, and raw `sourceMetaJson` / derivative `metaJson`.
+- `DecodedFileAsset`, `DecodedFileDerivative`, `DecodedMessageAsset`, and Send Plan lineage decode surfaces currently expose sensitive or internal fields and must not become the DFC renderer DTO.
+- DerivedAsset recommendation: use a strict facade over `file_derivatives` for Phase 1 if DFC metadata is required and validated in `meta_json`.
+- DerivedAsset facade mapping: derivative id as asset id, `parent_asset_id` as source file id, `meta_json.targetKind`, `meta_json.contentHash`, `meta_json.sourceHash`, required `meta_json.conversionSettingsHash`, `meta_json.usage`, `meta_json.storageClass`, structured converter identity, and binding refs derived from draft/message binding rows.
+- Dedicated DerivedAsset table remains deferred and owner-approval-required unless the facade cannot prove same-source or durable binding semantics.
+- DB binding recommendation: explicit columns on existing attachment tables, not metadata-only or sidecar as the first choice.
+- Recommended draft fields: `dfc_managed`, `selected_option_id`, `selected_asset_refs_json`.
+- Recommended message fields: `used_option_id`, `used_asset_refs_json`, `target_kind`, `send_strategy`.
+- Legacy rows remain `dfc_managed = 0`; no automatic legacy migration bridge is included.
+- Legacy quarantine enforcement should be a narrow `SendPlanService` DFC branch before legacy mode selection. DFC-managed code must not call `selectAttachmentSendModeInternal`.
+- DFC-6 is ready only as an owner-approved narrow production slice for sanitized DFC runtime DTOs and privacy tests. DB migration and Send Plan wiring still require separate owner approval.
+
 ## Recommended next round
 
-DFC-5 should be an owner-approved runtime boundary round.
+DFC-6 should be an owner-approved sanitized DFC runtime DTO round.
 
-Recommended DFC-5 options:
+Recommended DFC-6 scope:
 
-- Option A: define the sanitized DTO runtime contract and tests without changing Send Plan.
-- Option B: finalize the DB binding migration plan for `dfcManaged`, selected refs, and used refs before implementation.
-- Option C: inspect whether existing derivative and preview lineage can satisfy the `DerivedAsset` facade fields.
+- Add sanitized DFC DTO runtime contract and decoder.
+- Add privacy tests proving no renderer DTO exposure of path, fileUrl, storage refs, contentToken, file body, or full hashes.
+- Keep the change additive and DFC-only.
+- Do not change DB schema.
+- Do not wire DFC into production Send Plan.
+- Do not implement conversions.
 
 Do not wire DFC into production Send Plan until the Owner approves the DB/DTO/DerivedAsset decisions.
