@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DFC_TARGET_KINDS,
+  createDfcDerivedAssetFacade,
   createDfcDerivedAssetOption,
   createDfcOriginalFileOption,
   resolveDfcManagedAttachment,
@@ -254,5 +255,94 @@ describe('sanitizeDfcAttachmentForRenderer', () => {
     expect('contentToken' in dto).toBe(false)
     expect('body' in dto).toBe(false)
     expect('storageRef' in dto).toBe(false)
+  })
+})
+
+describe('createDfcDerivedAssetFacade', () => {
+  it('maps a ready derivative record with DFC metadata into a DerivedAsset facade', () => {
+    const result = createDfcDerivedAssetFacade({
+      derivativeId: 'derivative-1',
+      sourceFileId: 'raw-1',
+      mime: 'text/markdown',
+      storageRef: 'assets/derived/raw-1/derivative-1.txt',
+      status: 'ready',
+      generator: 'dfc-text',
+      metaJson: {
+        targetKind: 'markdown',
+        sourceHash: 'source-hash',
+        contentHash: 'content-hash',
+        conversionSettingsHash: 'settings-hash',
+        usage: 'preview_and_send',
+        storageClass: 'draft_bound',
+        converterName: 'dfc-text',
+        converterVersion: '1',
+        warnings: ['large_text_warning'],
+        path: 'C:\\Users\\owner\\secret\\notes.md',
+        fileUrl: 'file:///C:/Users/owner/secret/notes.md',
+      },
+    })
+
+    expect(result).toEqual({
+      ok: true,
+      asset: {
+        assetId: 'derivative-1',
+        sourceFileId: 'raw-1',
+        targetKind: 'markdown',
+        mime: 'text/markdown',
+        storageRef: 'assets/derived/raw-1/derivative-1.txt',
+        usage: 'preview_and_send',
+        storageClass: 'draft_bound',
+        sourceHash: 'source-hash',
+        contentHash: 'content-hash',
+        conversionSettingsHash: 'settings-hash',
+        converter: {
+          name: 'dfc-text',
+          version: '1',
+        },
+        warnings: ['large_text_warning'],
+      },
+    })
+  })
+
+  it('rejects original_file because raw_file must not create DerivedAsset', () => {
+    const result = createDfcDerivedAssetFacade({
+      derivativeId: 'derivative-1',
+      sourceFileId: 'raw-1',
+      storageRef: 'assets/derived/raw-1/derivative-1.txt',
+      status: 'ready',
+      generator: 'dfc-text',
+      metaJson: {
+        targetKind: 'original_file',
+        sourceHash: 'source-hash',
+        contentHash: 'content-hash',
+        conversionSettingsHash: 'settings-hash',
+        usage: 'preview_and_send',
+        storageClass: 'draft_bound',
+        converterVersion: '1',
+      },
+    })
+
+    expect(result).toEqual({ ok: false, reasonCode: 'derived_asset_original_file_not_allowed' })
+  })
+
+  it('rejects derivatives missing same-source metadata instead of inferring from storage or MIME', () => {
+    const result = createDfcDerivedAssetFacade({
+      derivativeId: 'derivative-1',
+      sourceFileId: 'raw-1',
+      mime: 'text/plain',
+      storageRef: 'assets/derived/raw-1/derivative-1.txt',
+      status: 'ready',
+      generator: 'dfc-text',
+      metaJson: {
+        targetKind: 'plain_text',
+        sourceHash: 'source-hash',
+        usage: 'preview_and_send',
+        storageClass: 'draft_bound',
+        converterName: 'dfc-text',
+        converterVersion: '1',
+      },
+    })
+
+    expect(result).toEqual({ ok: false, reasonCode: 'derived_asset_missing_content_hash' })
   })
 })
