@@ -228,6 +228,63 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     })
   })
 
+  it('routes DFC binding fields through worker validation without legacy fallback', async () => {
+    const { handlers, message } = createWorkerHarness()
+    await createWorkerAsset(handlers)
+    const selectedAssetRefs = [{ kind: 'raw_file' as const, assetId: 'asset-1' }]
+
+    const draftAttachment = await dispatchWorkerMessage(handlers, {
+      id: 'req-dfc-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: {
+        conversationId: 'c1',
+        assetId: 'asset-1',
+        preferredSendMode: 'inline_base64',
+        dfcManaged: true,
+        selectedOptionId: 'option-original',
+        selectedAssetRefs,
+      },
+    })
+
+    expect(draftAttachment).toMatchObject({
+      ok: true,
+      result: expect.objectContaining({
+        dfcManaged: true,
+        selectedOptionId: 'option-original',
+        selectedAssetRefs,
+        preferredSendMode: null,
+      }),
+    })
+
+    const messageAttachment = await dispatchWorkerMessage(handlers, {
+      id: 'req-dfc-message-create',
+      method: 'messageAttachment.create',
+      params: {
+        id: 'attachment-dfc',
+        messageId: message.id,
+        assetId: 'asset-1',
+        aiPayloadKind: 'text',
+        processingStatus: 'native_supported',
+        dfcManaged: true,
+        usedOptionId: 'option-original',
+        usedAssetRefs: selectedAssetRefs,
+        targetKind: 'original_file',
+        sendStrategy: 'file_attachment',
+      },
+    })
+
+    expect(messageAttachment).toMatchObject({
+      ok: true,
+      result: expect.objectContaining({
+        dfcManaged: true,
+        usedOptionId: 'option-original',
+        usedAssetRefs: selectedAssetRefs,
+        targetKind: 'original_file',
+        sendStrategy: 'file_attachment',
+      }),
+    })
+  })
+
   it('routes send plan build and draft-to-existing-message migration methods', async () => {
     const { handlers, message, fileTypeDetectionCoordinator } = createWorkerHarness()
     await createWorkerAsset(handlers)

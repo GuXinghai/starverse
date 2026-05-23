@@ -196,6 +196,11 @@ CREATE TABLE IF NOT EXISTS message_attachments (
   processing_status TEXT NOT NULL CHECK (processing_status IN ('native_supported', 'convertible', 'local_only', 'unsupported')),
   include_in_next_request INTEGER NOT NULL DEFAULT 1 CHECK (include_in_next_request IN (0, 1)),
   excluded_reason TEXT,
+  dfc_managed INTEGER NOT NULL DEFAULT 0 CHECK (dfc_managed IN (0, 1)),
+  used_option_id TEXT,
+  used_asset_refs_json TEXT,
+  target_kind TEXT CHECK (target_kind IN ('original_file', 'plain_text', 'markdown', 'code', 'table_markdown', 'pdf_attachment')),
+  send_strategy TEXT CHECK (send_strategy IN ('text_in_prompt', 'file_attachment')),
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -219,6 +224,9 @@ CREATE TABLE IF NOT EXISTS draft_attachments (
   excluded_reason TEXT,
   preferred_send_mode TEXT CHECK (preferred_send_mode IN ('default', 'auto', 'url_ref', 'inline_base64')),
   url_retention_mode TEXT CHECK (url_retention_mode IN ('default', 'link_only', 'link_and_file')),
+  dfc_managed INTEGER NOT NULL DEFAULT 0 CHECK (dfc_managed IN (0, 1)),
+  selected_option_id TEXT,
+  selected_asset_refs_json TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   UNIQUE (conversation_id, asset_id),

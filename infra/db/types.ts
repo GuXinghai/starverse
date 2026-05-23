@@ -20,6 +20,11 @@ import type {
   FileKind,
   FileTypeVerdict,
 } from '../../src/next/file-type/types'
+import type {
+  DfcSendAssetRef,
+  DfcSendStrategy,
+  DfcTargetKind,
+} from '../../src/shared/files/documentFormatConversion'
 
 export type JsonObject = Record<string, unknown>
 
@@ -670,6 +675,11 @@ export type MessageAttachmentRecord = Readonly<{
   processingStatus: ProcessingStatus
   includeInNextRequest: boolean
   excludedReason: string | null
+  dfcManaged: boolean
+  usedOptionId: string | null
+  usedAssetRefs: DfcSendAssetRef[]
+  targetKind: DfcTargetKind | null
+  sendStrategy: DfcSendStrategy | null
   createdAt: number
   updatedAt: number
 }>
@@ -682,6 +692,11 @@ export type CreateMessageAttachmentInput = Readonly<{
   processingStatus: ProcessingStatus
   includeInNextRequest?: boolean
   excludedReason?: string | null
+  dfcManaged?: boolean
+  usedOptionId?: string | null
+  usedAssetRefs?: readonly DfcSendAssetRef[]
+  targetKind?: DfcTargetKind | null
+  sendStrategy?: DfcSendStrategy | null
   createdAt?: number
   updatedAt?: number
 }>
@@ -709,6 +724,9 @@ export type DraftAttachmentRecord = Readonly<{
   excludedReason: string | null
   preferredSendMode: DraftAttachmentSendModePreference | null
   urlRetentionMode: DraftAttachmentUrlRetentionPreference | null
+  dfcManaged: boolean
+  selectedOptionId: string | null
+  selectedAssetRefs: DfcSendAssetRef[]
   createdAt: number
   updatedAt: number
 }>
@@ -743,6 +761,9 @@ export type AddDraftAttachmentInput = Readonly<{
   excludedReason?: string | null
   preferredSendMode?: DraftAttachmentSendModePreference | null
   urlRetentionMode?: DraftAttachmentUrlRetentionPreference | null
+  dfcManaged?: boolean
+  selectedOptionId?: string | null
+  selectedAssetRefs?: readonly DfcSendAssetRef[]
   createdAt?: number
   updatedAt?: number
 }>
@@ -758,6 +779,9 @@ export type UpdateDraftAttachmentSettingsInput = Readonly<{
   assetId: string
   preferredSendMode?: DraftAttachmentSendModePreference | null
   urlRetentionMode?: DraftAttachmentUrlRetentionPreference | null
+  dfcManaged?: boolean
+  selectedOptionId?: string | null
+  selectedAssetRefs?: readonly DfcSendAssetRef[]
   updatedAt?: number
 }>
 

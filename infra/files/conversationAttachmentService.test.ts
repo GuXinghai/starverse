@@ -263,6 +263,71 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
     expect(result.attachments.find((row) => row.assetId === 'asset-preview-only')).toBeUndefined()
     expect(h.service.listMessageAttachments(targetMessage.id).map((row) => row.assetId)).toEqual(['asset-send'])
   })
+
+  it('snapshots DFC draft bindings into message rows without copying legacy send mode fields', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'asset-dfc')
+    const selectedAssetRefs = [{ kind: 'derived_asset' as const, assetId: 'derivative-plain-text' }]
+
+    h.service.addDraftAttachment({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      preferredSendMode: 'inline_base64',
+      dfcManaged: true,
+      selectedOptionId: 'option-plain-text',
+      selectedAssetRefs,
+    })
+
+    const draft = h.service.restoreDraft({ conversationId: 'c1' })
+    expect(draft.attachments[0]).toMatchObject({
+      dfcManaged: true,
+      selectedOptionId: 'option-plain-text',
+      selectedAssetRefs,
+      preferredSendMode: null,
+    })
+
+    const committed = h.service.commitDraftToUserMessage({ conversationId: 'c1' })
+    expect(committed.attachments).toEqual([
+      expect.objectContaining({
+        assetId: 'asset-dfc',
+        dfcManaged: true,
+        usedOptionId: 'option-plain-text',
+        usedAssetRefs: selectedAssetRefs,
+        targetKind: null,
+        sendStrategy: null,
+      }),
+    ])
+    const storedDraftRow = h.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM draft_attachments
+      WHERE preferred_send_mode IS NOT NULL
+    `).get() as { count: number }
+    const storedMessageRow = h.db.prepare(`
+      SELECT dfc_managed AS dfcManaged,
+             used_option_id AS usedOptionId,
+             used_asset_refs_json AS usedAssetRefsJson,
+             target_kind AS targetKind,
+             send_strategy AS sendStrategy
+      FROM message_attachments
+      WHERE asset_id = 'asset-dfc'
+      LIMIT 1
+    `).get() as {
+      dfcManaged: number
+      usedOptionId: string | null
+      usedAssetRefsJson: string | null
+      targetKind: string | null
+      sendStrategy: string | null
+    }
+    expect(storedDraftRow).toEqual({ count: 0 })
+    expect(storedMessageRow).toEqual({
+      dfcManaged: 1,
+      usedOptionId: 'option-plain-text',
+      usedAssetRefsJson: JSON.stringify(selectedAssetRefs),
+      targetKind: null,
+      sendStrategy: null,
+    })
+  })
 })
 
 describeIfBetterSqlite('ConversationAttachmentService candidate snapshots', () => {

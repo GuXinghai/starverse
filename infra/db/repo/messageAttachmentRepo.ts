@@ -6,6 +6,15 @@ import type {
   ListMessageAttachmentsByMessageIdInput,
   MessageAttachmentRecord,
 } from '../types'
+import {
+  assertDfcBindingRequiresManaged,
+  normalizeDfcBindingText,
+  normalizeRequiredDfcSendAssetRefs,
+  normalizeDfcSendStrategy,
+  normalizeDfcTargetKind,
+  parseRequiredDfcSendAssetRefsJson,
+  stringifyRequiredDfcSendAssetRefs,
+} from './dfcAttachmentBinding'
 
 type SqlDatabase = BetterSqlite3.Database
 
@@ -17,21 +26,34 @@ type MessageAttachmentRow = Readonly<{
   processing_status: MessageAttachmentRecord['processingStatus']
   include_in_next_request: number
   excluded_reason: string | null
+  dfc_managed: number
+  used_option_id: string | null
+  used_asset_refs_json: string | null
+  target_kind: string | null
+  send_strategy: string | null
   created_at: number
   updated_at: number
 }>
 
-const mapMessageAttachmentRow = (row: MessageAttachmentRow): MessageAttachmentRecord => ({
-  id: row.id,
-  messageId: row.message_id,
-  assetId: row.asset_id,
-  aiPayloadKind: row.ai_payload_kind,
-  processingStatus: row.processing_status,
-  includeInNextRequest: row.include_in_next_request === 1,
-  excludedReason: row.excluded_reason ?? null,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-})
+const mapMessageAttachmentRow = (row: MessageAttachmentRow): MessageAttachmentRecord => {
+  const dfcManaged = row.dfc_managed === 1
+  return {
+    id: row.id,
+    messageId: row.message_id,
+    assetId: row.asset_id,
+    aiPayloadKind: row.ai_payload_kind,
+    processingStatus: row.processing_status,
+    includeInNextRequest: row.include_in_next_request === 1,
+    excludedReason: row.excluded_reason ?? null,
+    dfcManaged,
+    usedOptionId: dfcManaged ? row.used_option_id ?? null : null,
+    usedAssetRefs: dfcManaged ? parseRequiredDfcSendAssetRefsJson(row.used_asset_refs_json) : [],
+    targetKind: dfcManaged ? normalizeDfcTargetKind(row.target_kind) : null,
+    sendStrategy: dfcManaged ? normalizeDfcSendStrategy(row.send_strategy) : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
 
 export class MessageAttachmentRepo {
   private insertStmt: BetterSqlite3.Statement
@@ -48,6 +70,11 @@ export class MessageAttachmentRepo {
         processing_status,
         include_in_next_request,
         excluded_reason,
+        dfc_managed,
+        used_option_id,
+        used_asset_refs_json,
+        target_kind,
+        send_strategy,
         created_at,
         updated_at
       )
@@ -59,6 +86,11 @@ export class MessageAttachmentRepo {
         @processingStatus,
         @includeInNextRequest,
         @excludedReason,
+        @dfcManaged,
+        @usedOptionId,
+        @usedAssetRefsJson,
+        @targetKind,
+        @sendStrategy,
         @createdAt,
         @updatedAt
       )
@@ -83,6 +115,13 @@ export class MessageAttachmentRepo {
     const now = Date.now()
     const createdAt = input.createdAt ?? now
     const updatedAt = input.updatedAt ?? createdAt
+    const dfcManaged = input.dfcManaged === true
+    assertDfcBindingRequiresManaged(dfcManaged, {
+      usedOptionId: input.usedOptionId,
+      usedAssetRefs: input.usedAssetRefs,
+      targetKind: input.targetKind,
+      sendStrategy: input.sendStrategy,
+    }, 'message')
     const row: MessageAttachmentRecord = {
       id: input.id ?? randomUUID(),
       messageId: requireNonEmpty(input.messageId, 'messageId'),
@@ -91,6 +130,11 @@ export class MessageAttachmentRepo {
       processingStatus: input.processingStatus,
       includeInNextRequest: input.includeInNextRequest ?? true,
       excludedReason: normalizeNullable(input.excludedReason),
+      dfcManaged,
+      usedOptionId: dfcManaged ? normalizeDfcBindingText(input.usedOptionId) : null,
+      usedAssetRefs: dfcManaged ? normalizeRequiredDfcSendAssetRefs(input.usedAssetRefs) : [],
+      targetKind: dfcManaged ? normalizeDfcTargetKind(input.targetKind) : null,
+      sendStrategy: dfcManaged ? normalizeDfcSendStrategy(input.sendStrategy) : null,
       createdAt,
       updatedAt,
     }
@@ -98,6 +142,8 @@ export class MessageAttachmentRepo {
     this.insertStmt.run({
       ...row,
       includeInNextRequest: row.includeInNextRequest ? 1 : 0,
+      dfcManaged: row.dfcManaged ? 1 : 0,
+      usedAssetRefsJson: row.dfcManaged ? stringifyRequiredDfcSendAssetRefs(row.usedAssetRefs) : null,
     })
     return row
   }

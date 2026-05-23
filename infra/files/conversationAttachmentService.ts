@@ -191,6 +191,9 @@ export class ConversationAttachmentService {
       excludedReason: attachment.excludedReason,
       aiPayloadKind: attachment.aiPayloadKind,
       processingStatus: attachment.processingStatus,
+      dfcManaged: attachment.dfcManaged,
+      selectedOptionId: attachment.dfcManaged ? attachment.usedOptionId : null,
+      selectedAssetRefs: attachment.dfcManaged ? attachment.usedAssetRefs : [],
     }))
     return this.draftRepo.replace({
       conversationId: input.conversationId,
@@ -272,6 +275,11 @@ export class ConversationAttachmentService {
       processingStatus: attachment.processingStatus,
       includeInNextRequest: attachment.includeInNextRequest,
       excludedReason: attachment.excludedReason,
+      dfcManaged: attachment.dfcManaged,
+      usedOptionId: attachment.dfcManaged ? attachment.selectedOptionId : null,
+      usedAssetRefs: attachment.dfcManaged ? attachment.selectedAssetRefs : [],
+      targetKind: null,
+      sendStrategy: null,
       createdAt: attachment.createdAt,
       updatedAt: this.now(),
     })
