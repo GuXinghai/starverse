@@ -1,6 +1,14 @@
 import { z } from 'zod'
 import { decodeWithSchema } from './decodeError'
 import type { SendPlan } from '@/shared/files/sendPlanTypes'
+import {
+  DFC_TARGET_KINDS,
+  sanitizeDfcAttachmentForRenderer,
+  type DfcDecisionStatus,
+  type DfcSanitizedAttachmentDto,
+  type DfcSanitizedDiagnostic,
+  type DfcTargetKind,
+} from '@/shared/files/documentFormatConversion'
 
 const nonEmpty = z.string().trim().min(1)
 
@@ -87,6 +95,34 @@ export type DecodedFileDerivative = Readonly<{
   metaJson: Record<string, unknown> | null
   createdAt: number
   updatedAt: number
+  deletedAt: number | null
+}>
+
+export type DecodedDfcFileAsset = Readonly<{
+  rawFileId: string
+  filename: string
+  extension: string | null
+  mime: string | null
+  sizeBytes: number
+  assetKind: string
+  sourceKind: string
+  ingestStatus: string
+  previewStatus: string
+  deletedAt: number | null
+}>
+
+export type DecodedDfcFileDerivative = Readonly<{
+  derivedAssetId: string
+  sourceFileId: string
+  derivedKind: string
+  mime: string | null
+  status: string
+  targetKind: string | null
+  usage: string | null
+  storageClass: string | null
+  converterName: string | null
+  converterVersion: string | null
+  warnings: string[]
   deletedAt: number | null
 }>
 
@@ -394,6 +430,57 @@ const fileDerivativeSchema = z.object({
   mime: row.mime ?? null,
   metaJson: row.metaJson ?? null,
   deletedAt: row.deletedAt ?? null,
+}))
+
+const dfcTargetKindSchema = z.enum(DFC_TARGET_KINDS)
+
+const dfcDecisionStatusSchema = z.enum([
+  'ready',
+  'needs_user_selection',
+  'pending',
+  'blocked',
+  'failed',
+  'stale',
+  'incompatible',
+])
+
+const dfcDiagnosticSchema = z.object({
+  code: nonEmpty,
+  message: z.string(),
+})
+
+const dfcAttachmentAuditSchema = z.object({
+  attachmentId: nonEmpty,
+  rawFileId: nonEmpty,
+  filename: nonEmpty,
+  sizeBytes: z.number().int().nonnegative(),
+  selectedOptionId: z.string().trim().nullable().optional(),
+  targetKind: dfcTargetKindSchema.nullable().optional(),
+  status: dfcDecisionStatusSchema,
+  warnings: z.array(z.string()).optional(),
+  diagnostics: z.array(dfcDiagnosticSchema).optional(),
+  path: z.string().nullable().optional(),
+  fileUrl: z.string().nullable().optional(),
+  hash: z.string().nullable().optional(),
+  contentToken: z.string().nullable().optional(),
+  body: z.string().nullable().optional(),
+  storageRef: z.string().nullable().optional(),
+}).transform((row): DfcSanitizedAttachmentDto => sanitizeDfcAttachmentForRenderer({
+  attachmentId: row.attachmentId,
+  rawFileId: row.rawFileId,
+  filename: row.filename,
+  sizeBytes: row.sizeBytes,
+  selectedOptionId: row.selectedOptionId ?? null,
+  targetKind: row.targetKind as DfcTargetKind | null | undefined,
+  status: row.status as DfcDecisionStatus,
+  warnings: row.warnings ?? [],
+  diagnostics: row.diagnostics as DfcSanitizedDiagnostic[] | undefined,
+  path: row.path ?? null,
+  fileUrl: row.fileUrl ?? null,
+  hash: row.hash ?? null,
+  contentToken: row.contentToken ?? null,
+  body: row.body ?? null,
+  storageRef: row.storageRef ?? null,
 }))
 
 const derivativeJobSchema = z.object({
@@ -1066,12 +1153,36 @@ export function decodeFileAssetListResponse(raw: unknown): DecodedFileAsset[] {
   return decodeWithSchema('fileAsset.listByIds', z.array(fileAssetSchema), raw)
 }
 
+export function decodeDfcFileAssetResponse(raw: unknown): DecodedDfcFileAsset {
+  return sanitizeDfcFileAsset(decodeFileAssetResponse(raw))
+}
+
+export function decodeDfcFileAssetListResponse(raw: unknown): DecodedDfcFileAsset[] {
+  return decodeFileAssetListResponse(raw).map(sanitizeDfcFileAsset)
+}
+
 export function decodeFileDerivativeResponse(raw: unknown): DecodedFileDerivative {
   return decodeWithSchema('fileDerivative', fileDerivativeSchema, raw)
 }
 
 export function decodeFileDerivativeListResponse(raw: unknown): DecodedFileDerivative[] {
   return decodeWithSchema('fileDerivative.listByParentAssetId', z.array(fileDerivativeSchema), raw)
+}
+
+export function decodeDfcFileDerivativeResponse(raw: unknown): DecodedDfcFileDerivative {
+  return sanitizeDfcFileDerivative(decodeFileDerivativeResponse(raw))
+}
+
+export function decodeDfcFileDerivativeListResponse(raw: unknown): DecodedDfcFileDerivative[] {
+  return decodeFileDerivativeListResponse(raw).map(sanitizeDfcFileDerivative)
+}
+
+export function decodeDfcAttachmentDtoResponse(raw: unknown): DfcSanitizedAttachmentDto {
+  return decodeWithSchema('dfcAttachment', dfcAttachmentAuditSchema, raw)
+}
+
+export function decodeDfcAttachmentDtoListResponse(raw: unknown): DfcSanitizedAttachmentDto[] {
+  return decodeWithSchema('dfcAttachment.list', z.array(dfcAttachmentAuditSchema), raw)
 }
 
 export function decodeDerivativeJobResponse(raw: unknown): DecodedDerivativeJob {
@@ -1081,6 +1192,52 @@ export function decodeDerivativeJobResponse(raw: unknown): DecodedDerivativeJob 
 export function decodeNullableDerivativeJobResponse(raw: unknown): DecodedDerivativeJob | null {
   if (raw === null || raw === undefined) return null
   return decodeDerivativeJobResponse(raw)
+}
+
+function sanitizeDfcFileAsset(asset: DecodedFileAsset): DecodedDfcFileAsset {
+  return {
+    rawFileId: asset.id,
+    filename: asset.filename,
+    extension: asset.extension,
+    mime: asset.mime,
+    sizeBytes: asset.sizeBytes,
+    assetKind: asset.assetKind,
+    sourceKind: asset.sourceKind,
+    ingestStatus: asset.ingestStatus,
+    previewStatus: asset.previewStatus,
+    deletedAt: asset.deletedAt,
+  }
+}
+
+function sanitizeDfcFileDerivative(derivative: DecodedFileDerivative): DecodedDfcFileDerivative {
+  const meta = derivative.metaJson ?? {}
+  return {
+    derivedAssetId: derivative.id,
+    sourceFileId: derivative.parentAssetId,
+    derivedKind: derivative.derivedKind,
+    mime: derivative.mime,
+    status: derivative.status,
+    targetKind: readStringMeta(meta, 'targetKind'),
+    usage: readStringMeta(meta, 'usage'),
+    storageClass: readStringMeta(meta, 'storageClass'),
+    converterName: readStringMeta(meta, 'converterName'),
+    converterVersion: readStringMeta(meta, 'converterVersion'),
+    warnings: readStringArrayMeta(meta, 'warnings'),
+    deletedAt: derivative.deletedAt,
+  }
+}
+
+function readStringMeta(meta: Readonly<Record<string, unknown>>, key: string): string | null {
+  const value = meta[key]
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed ? trimmed : null
+}
+
+function readStringArrayMeta(meta: Readonly<Record<string, unknown>>, key: string): string[] {
+  const value = meta[key]
+  if (!Array.isArray(value)) return []
+  return value.map((item) => typeof item === 'string' ? item.trim() : '').filter(Boolean)
 }
 
 export function decodeDerivativeJobListResponse(raw: unknown): DecodedDerivativeJob[] {

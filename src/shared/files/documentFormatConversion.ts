@@ -53,6 +53,73 @@ export type DfcConversionOption = Readonly<{
   warnings?: readonly string[]
 }>
 
+export type DfcDerivedAssetUsage =
+  | 'preview_and_send'
+  | 'preview_only'
+  | 'send_only'
+
+export type DfcDerivedAssetStorageClass =
+  | 'temporary'
+  | 'draft_bound'
+  | 'message_bound'
+
+export type DfcDerivedAssetConverterIdentity = Readonly<{
+  name: string
+  version: string
+}>
+
+export type DfcDerivedAssetFacade = Readonly<{
+  assetId: string
+  sourceFileId: string
+  targetKind: DfcDerivedTargetKind
+  mime: string | null
+  storageRef: string
+  usage: DfcDerivedAssetUsage
+  storageClass: DfcDerivedAssetStorageClass
+  sourceHash: string
+  contentHash: string
+  conversionSettingsHash: string
+  converter: DfcDerivedAssetConverterIdentity
+  warnings: readonly string[]
+}>
+
+export type DfcDerivedAssetFacadeFailureReason =
+  | 'derived_asset_not_ready'
+  | 'derived_asset_missing_storage_ref'
+  | 'derived_asset_missing_source_hash'
+  | 'derived_asset_missing_content_hash'
+  | 'derived_asset_missing_target_kind'
+  | 'derived_asset_original_file_not_allowed'
+  | 'derived_asset_invalid_target_kind'
+  | 'derived_asset_missing_conversion_settings_hash'
+  | 'derived_asset_missing_usage'
+  | 'derived_asset_invalid_usage'
+  | 'derived_asset_missing_storage_class'
+  | 'derived_asset_invalid_storage_class'
+  | 'derived_asset_missing_converter_identity'
+
+export type DfcDerivedAssetFacadeResult =
+  | Readonly<{
+    ok: true
+    asset: DfcDerivedAssetFacade
+  }>
+  | Readonly<{
+    ok: false
+    reasonCode: DfcDerivedAssetFacadeFailureReason
+  }>
+
+type DfcDerivedAssetFacadeFailure = Extract<DfcDerivedAssetFacadeResult, Readonly<{ ok: false }>>
+
+export type DfcDerivedAssetFacadeInput = Readonly<{
+  derivativeId: string
+  sourceFileId: string
+  mime?: string | null
+  storageRef?: string | null
+  status: string
+  generator?: string | null
+  metaJson?: Readonly<Record<string, unknown>> | null
+}>
+
 export type DfcLegacyQuarantineInput = Readonly<{
   preferredSendMode?: string | null
   selectedSendMode?: string | null
@@ -251,6 +318,59 @@ export function sanitizeDfcAttachmentForRenderer(input: DfcRendererAttachmentAud
   }
 }
 
+export function createDfcDerivedAssetFacade(input: DfcDerivedAssetFacadeInput): DfcDerivedAssetFacadeResult {
+  if (input.status !== 'ready') return { ok: false, reasonCode: 'derived_asset_not_ready' }
+
+  const storageRef = normalizeId(input.storageRef)
+  if (!storageRef) return { ok: false, reasonCode: 'derived_asset_missing_storage_ref' }
+
+  const meta = input.metaJson ?? {}
+  const sourceHash = readNonEmptyMetaString(meta, 'sourceHash')
+  if (!sourceHash) return { ok: false, reasonCode: 'derived_asset_missing_source_hash' }
+
+  const contentHash = readNonEmptyMetaString(meta, 'contentHash')
+  if (!contentHash) return { ok: false, reasonCode: 'derived_asset_missing_content_hash' }
+
+  const targetKind = readDfcDerivedTargetKind(meta)
+  if (!targetKind.ok) return targetKind
+
+  const conversionSettingsHash = readNonEmptyMetaString(meta, 'conversionSettingsHash')
+  if (!conversionSettingsHash) return { ok: false, reasonCode: 'derived_asset_missing_conversion_settings_hash' }
+
+  const usage = readDfcDerivedAssetUsage(meta)
+  if (!usage.ok) return usage
+
+  const storageClass = readDfcDerivedAssetStorageClass(meta)
+  if (!storageClass.ok) return storageClass
+
+  const converterName = readNonEmptyMetaString(meta, 'converterName') ?? normalizeId(input.generator)
+  const converterVersion = readNonEmptyMetaString(meta, 'converterVersion')
+  if (!converterName || !converterVersion) {
+    return { ok: false, reasonCode: 'derived_asset_missing_converter_identity' }
+  }
+
+  return {
+    ok: true,
+    asset: {
+      assetId: input.derivativeId,
+      sourceFileId: input.sourceFileId,
+      targetKind: targetKind.value,
+      mime: input.mime ?? null,
+      storageRef,
+      usage: usage.value,
+      storageClass: storageClass.value,
+      sourceHash,
+      contentHash,
+      conversionSettingsHash,
+      converter: {
+        name: converterName,
+        version: converterVersion,
+      },
+      warnings: readMetaStringArray(meta, 'warnings'),
+    },
+  }
+}
+
 function decisionForOptionState(
   option: DfcConversionOption,
   selectedOptionId: string,
@@ -340,6 +460,58 @@ function validateSendAssetRefs(
   }
 
   return null
+}
+
+function readDfcDerivedTargetKind(meta: Readonly<Record<string, unknown>>): DfcDerivedAssetFacadeFailure | Readonly<{
+  ok: true
+  value: DfcDerivedTargetKind
+}> {
+  const targetKind = readNonEmptyMetaString(meta, 'targetKind')
+  if (!targetKind) return { ok: false, reasonCode: 'derived_asset_missing_target_kind' }
+  if (targetKind === 'original_file') return { ok: false, reasonCode: 'derived_asset_original_file_not_allowed' }
+  if (!isDfcTargetKind(targetKind)) return { ok: false, reasonCode: 'derived_asset_invalid_target_kind' }
+  return { ok: true, value: targetKind }
+}
+
+function readDfcDerivedAssetUsage(meta: Readonly<Record<string, unknown>>): DfcDerivedAssetFacadeFailure | Readonly<{
+  ok: true
+  value: DfcDerivedAssetUsage
+}> {
+  const usage = readNonEmptyMetaString(meta, 'usage')
+  if (!usage) return { ok: false, reasonCode: 'derived_asset_missing_usage' }
+  if (usage === 'preview_and_send' || usage === 'preview_only' || usage === 'send_only') return { ok: true, value: usage }
+  return { ok: false, reasonCode: 'derived_asset_invalid_usage' }
+}
+
+function readDfcDerivedAssetStorageClass(meta: Readonly<Record<string, unknown>>): DfcDerivedAssetFacadeFailure | Readonly<{
+  ok: true
+  value: DfcDerivedAssetStorageClass
+}> {
+  const storageClass = readNonEmptyMetaString(meta, 'storageClass')
+  if (!storageClass) return { ok: false, reasonCode: 'derived_asset_missing_storage_class' }
+  if (storageClass === 'temporary' || storageClass === 'draft_bound' || storageClass === 'message_bound') {
+    return { ok: true, value: storageClass }
+  }
+  return { ok: false, reasonCode: 'derived_asset_invalid_storage_class' }
+}
+
+function isDfcTargetKind(value: string): value is DfcDerivedTargetKind {
+  return value === 'plain_text'
+    || value === 'markdown'
+    || value === 'code'
+    || value === 'table_markdown'
+    || value === 'pdf_attachment'
+}
+
+function readNonEmptyMetaString(meta: Readonly<Record<string, unknown>>, key: string): string | null {
+  const value = meta[key]
+  return typeof value === 'string' ? normalizeId(value) : null
+}
+
+function readMetaStringArray(meta: Readonly<Record<string, unknown>>, key: string): string[] {
+  const value = meta[key]
+  if (!Array.isArray(value)) return []
+  return value.map((item) => typeof item === 'string' ? item.trim() : '').filter(Boolean)
 }
 
 function blockedDecision(input: Readonly<{

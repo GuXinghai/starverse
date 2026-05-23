@@ -18,6 +18,12 @@ import {
   decodeConvoListResponse,
   decodeConvoSetProjectManyResponse,
   decodeDeletedCountResponse,
+  decodeDfcAttachmentDtoListResponse,
+  decodeDfcAttachmentDtoResponse,
+  decodeDfcFileAssetListResponse,
+  decodeDfcFileAssetResponse,
+  decodeDfcFileDerivativeListResponse,
+  decodeDfcFileDerivativeResponse,
   decodeFileAssetListResponse,
   decodeFileAssetPhysicalCleanupPlanResponse,
   decodeFileAssetResponse,
@@ -1070,5 +1076,193 @@ describe('BL-07 messageAsset renderer IPC sanitization', () => {
   it('decodeMessageAssetListResponse returns empty array for empty list', () => {
     const result = decodeMessageAssetListResponse([])
     expect(result).toEqual([])
+  })
+})
+
+describe('DFC renderer DTO sanitization', () => {
+  it('decodeDfcAttachmentDtoResponse strips path-like, token, body, and full hash fields', () => {
+    const result = decodeDfcAttachmentDtoResponse({
+      attachmentId: 'att-1',
+      rawFileId: 'raw-1',
+      filename: 'notes.txt',
+      sizeBytes: 42,
+      selectedOptionId: 'plain-text',
+      targetKind: 'plain_text',
+      status: 'ready',
+      warnings: ['large_text_warning'],
+      diagnostics: [{ code: 'ok', message: 'safe detail' }],
+      path: 'C:\\Users\\owner\\secret\\notes.txt',
+      fileUrl: 'file:///C:/Users/owner/secret/notes.txt',
+      hash: 'a'.repeat(64),
+      contentToken: 'content-token',
+      body: 'secret file body',
+      storageRef: 'assets/original/raw-1.txt',
+    })
+
+    expect(result).toEqual({
+      attachmentId: 'att-1',
+      rawFileId: 'raw-1',
+      filename: 'notes.txt',
+      sizeBytes: 42,
+      selectedOptionId: 'plain-text',
+      targetKind: 'plain_text',
+      status: 'ready',
+      warnings: ['large_text_warning'],
+      diagnostics: [{ code: 'ok', message: 'safe detail' }],
+    })
+    expect(result).not.toHaveProperty('path')
+    expect(result).not.toHaveProperty('fileUrl')
+    expect(result).not.toHaveProperty('hash')
+    expect(result).not.toHaveProperty('contentToken')
+    expect(result).not.toHaveProperty('body')
+    expect(result).not.toHaveProperty('storageRef')
+  })
+
+  it('decodeDfcAttachmentDtoListResponse rejects legacy target vocabulary', () => {
+    expect(() => decodeDfcAttachmentDtoListResponse([{
+      attachmentId: 'att-1',
+      rawFileId: 'raw-1',
+      filename: 'notes.txt',
+      sizeBytes: 42,
+      targetKind: 'native_file',
+      status: 'ready',
+    }])).toThrow()
+  })
+
+  it('decodeDfcFileAssetResponse strips storage and hash fields while preserving display metadata', () => {
+    const result = decodeDfcFileAssetResponse({
+      id: 'raw-1',
+      sha256: 'a'.repeat(64),
+      filename: 'notes.txt',
+      extension: 'txt',
+      mime: 'text/plain',
+      sizeBytes: 42,
+      assetKind: 'text',
+      sourceKind: 'local_upload',
+      storageBackend: 'local_fs',
+      storageUri: 'assets/original/raw-1.txt',
+      ingestStatus: 'stored',
+      previewStatus: 'not_requested',
+      sourceMetaJson: {
+        contentToken: 'secret-token',
+        storageRef: 'assets/original/raw-1.txt',
+      },
+      createdAt: 1,
+      updatedAt: 2,
+      deletedAt: null,
+    })
+
+    expect(result).toEqual({
+      rawFileId: 'raw-1',
+      filename: 'notes.txt',
+      extension: 'txt',
+      mime: 'text/plain',
+      sizeBytes: 42,
+      assetKind: 'text',
+      sourceKind: 'local_upload',
+      ingestStatus: 'stored',
+      previewStatus: 'not_requested',
+      deletedAt: null,
+    })
+    expect(result).not.toHaveProperty('sha256')
+    expect(result).not.toHaveProperty('storageBackend')
+    expect(result).not.toHaveProperty('storageUri')
+    expect(result).not.toHaveProperty('sourceMetaJson')
+  })
+
+  it('decodeDfcFileAssetListResponse sanitizes every raw asset row', () => {
+    const result = decodeDfcFileAssetListResponse([{
+      id: 'raw-1',
+      sha256: 'a'.repeat(64),
+      filename: 'notes.txt',
+      extension: 'txt',
+      mime: 'text/plain',
+      sizeBytes: 42,
+      assetKind: 'text',
+      sourceKind: 'local_upload',
+      storageBackend: 'local_fs',
+      storageUri: 'assets/original/raw-1.txt',
+      ingestStatus: 'stored',
+      previewStatus: 'not_requested',
+      sourceMetaJson: { contentToken: 'secret-token' },
+      createdAt: 1,
+      updatedAt: 2,
+      deletedAt: null,
+    }])
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).not.toHaveProperty('sha256')
+    expect(result[0]).not.toHaveProperty('storageUri')
+  })
+
+  it('decodeDfcFileDerivativeResponse strips storage refs, hashes, and raw derivative metadata', () => {
+    const result = decodeDfcFileDerivativeResponse({
+      id: 'derived-1',
+      parentAssetId: 'raw-1',
+      derivedKind: 'extracted_text',
+      mime: 'text/plain',
+      storageUri: 'assets/derived/raw-1/derived-1.txt',
+      generator: 'dfc-text',
+      status: 'ready',
+      metaJson: {
+        targetKind: 'plain_text',
+        usage: 'preview_and_send',
+        storageClass: 'draft_bound',
+        converterName: 'dfc-text',
+        converterVersion: '1',
+        sourceHash: 'a'.repeat(64),
+        contentHash: 'b'.repeat(64),
+        conversionSettingsHash: 'c'.repeat(64),
+        path: 'C:\\Users\\owner\\secret\\notes.txt',
+        warnings: ['large_text_warning'],
+      },
+      createdAt: 1,
+      updatedAt: 2,
+      deletedAt: null,
+    })
+
+    expect(result).toEqual({
+      derivedAssetId: 'derived-1',
+      sourceFileId: 'raw-1',
+      derivedKind: 'extracted_text',
+      mime: 'text/plain',
+      status: 'ready',
+      targetKind: 'plain_text',
+      usage: 'preview_and_send',
+      storageClass: 'draft_bound',
+      converterName: 'dfc-text',
+      converterVersion: '1',
+      warnings: ['large_text_warning'],
+      deletedAt: null,
+    })
+    expect(result).not.toHaveProperty('storageUri')
+    expect(result).not.toHaveProperty('generator')
+    expect(result).not.toHaveProperty('metaJson')
+    expect(result).not.toHaveProperty('sourceHash')
+    expect(result).not.toHaveProperty('contentHash')
+    expect(result).not.toHaveProperty('conversionSettingsHash')
+  })
+
+  it('decodeDfcFileDerivativeListResponse sanitizes each derivative row', () => {
+    const result = decodeDfcFileDerivativeListResponse([{
+      id: 'derived-1',
+      parentAssetId: 'raw-1',
+      derivedKind: 'extracted_text',
+      mime: 'text/plain',
+      storageUri: 'assets/derived/raw-1/derived-1.txt',
+      generator: 'dfc-text',
+      status: 'ready',
+      metaJson: {
+        targetKind: 'plain_text',
+        usage: 'preview_and_send',
+      },
+      createdAt: 1,
+      updatedAt: 2,
+      deletedAt: null,
+    }])
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).not.toHaveProperty('storageUri')
+    expect(result[0]).not.toHaveProperty('metaJson')
   })
 })
