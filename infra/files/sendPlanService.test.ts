@@ -1237,17 +1237,26 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
     })
   })
 
-  it('blocks failed and stale DFC selected derived assets without legacy fallback', () => {
-    const cases = [
-      { assetId: 'dfc-failed', derivativeId: 'derived-failed', status: 'failed' as const, reason: 'selected_option_failed' },
-      { assetId: 'dfc-stale', derivativeId: 'derived-stale', status: 'deleted' as const, reason: 'selected_option_stale' },
-      { assetId: 'dfc-source-mismatch', derivativeId: 'derived-source-mismatch', status: 'ready' as const, reason: 'selected_option_stale', sourceHash: 'old-source-sha' },
+  it('blocks failed, stale, and unverifiable DFC selected derived assets without legacy fallback', () => {
+    const cases: Array<{
+      assetId: string
+      derivativeId: string
+      status: 'failed' | 'deleted' | 'ready'
+      reason: string
+      sourceHash?: string
+      rawSha256?: string | null
+    }> = [
+      { assetId: 'dfc-failed', derivativeId: 'derived-failed', status: 'failed', reason: 'selected_option_failed' },
+      { assetId: 'dfc-stale', derivativeId: 'derived-stale', status: 'deleted', reason: 'selected_option_stale' },
+      { assetId: 'dfc-source-mismatch', derivativeId: 'derived-source-mismatch', status: 'ready', reason: 'selected_option_stale', sourceHash: 'old-source-sha' },
+      { assetId: 'dfc-source-unverifiable', derivativeId: 'derived-source-unverifiable', status: 'ready', reason: 'selected_option_blocked', rawSha256: null },
     ]
 
     for (const testCase of cases) {
       const h = createHarness()
       insertConvo(h.db, 'c1')
       createAsset(h.fileAssetRepo, testCase.assetId, {
+        sha256: testCase.rawSha256 === undefined ? `${testCase.assetId}-sha` : testCase.rawSha256,
         filename: `${testCase.assetId}.txt`,
         extension: 'txt',
         mime: 'text/plain',
