@@ -22,6 +22,7 @@ import {
   decodeDfcAttachmentDtoResponse,
   decodeDfcDraftAttachmentOptionsResponse,
   decodeDfcDraftAttachmentPreviewResponse,
+  decodeEnsureDfcDraftAttachmentOptionsResponse,
   decodeDfcFileAssetListResponse,
   decodeDfcFileAssetResponse,
   decodeDfcFileDerivativeListResponse,
@@ -425,6 +426,42 @@ const cases: ContractCase[] = [
         isAvailable: true,
         compatibilityStatus: 'compatible',
         sendAssetRefs: [{ kind: 'raw_file', assetId: 'asset-1' }],
+        warnings: [],
+        diagnostics: [],
+      }],
+    },
+    missing: { attachmentId: 'draft-attachment-1', conversationId: 'c1' },
+    wrongType: { attachmentId: 'draft-attachment-1', conversationId: 'c1', options: 'bad' },
+  },
+  {
+    name: 'conversationDraft.ensureDfcOptions',
+    decode: decodeEnsureDfcDraftAttachmentOptionsResponse,
+    valid: {
+      attachmentId: 'draft-attachment-1',
+      conversationId: 'c1',
+      rawFileId: 'asset-1',
+      filename: 'notes.csv',
+      sizeBytes: 12,
+      dfcManaged: false,
+      selectedOptionId: null,
+      selectedAssetRefs: [],
+      decision: {
+        status: 'needs_user_selection',
+        reasonCode: 'selected_option_missing',
+        selectedOptionId: null,
+        targetKind: null,
+        sendStrategy: null,
+        sendAssetRefs: [],
+        needsUserAction: true,
+      },
+      options: [{
+        optionId: 'dfc:asset-1:table_markdown:derived_asset:derivative-1',
+        targetKind: 'table_markdown',
+        sendStrategy: 'text_in_prompt',
+        status: 'ready',
+        isAvailable: true,
+        compatibilityStatus: 'compatible',
+        sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-1' }],
         warnings: [],
         diagnostics: [],
       }],
@@ -1347,6 +1384,66 @@ describe('DFC renderer DTO sanitization', () => {
     expect(decoded).not.toHaveProperty('sourceMetaJson')
     expect(decoded.decision).not.toHaveProperty('storageUri')
     expect(decoded.options[0]).not.toHaveProperty('sourceHash')
+    expect(decoded.options[0]).not.toHaveProperty('contentToken')
+    expect(decoded.options[0]).not.toHaveProperty('body')
+  })
+
+  it('decodeEnsureDfcDraftAttachmentOptionsResponse exposes generated options without private metadata', () => {
+    const decoded = decodeEnsureDfcDraftAttachmentOptionsResponse({
+      attachmentId: 'draft-attachment-1',
+      conversationId: 'c1',
+      rawFileId: 'raw-1',
+      filename: 'data.csv',
+      sizeBytes: 42,
+      dfcManaged: false,
+      selectedOptionId: null,
+      selectedAssetRefs: [],
+      decision: {
+        status: 'needs_user_selection',
+        reasonCode: 'selected_option_missing',
+        selectedOptionId: null,
+        targetKind: null,
+        sendStrategy: null,
+        sendAssetRefs: [],
+        needsUserAction: true,
+        storageUri: 'assets/derived/raw-1/derived-1.md',
+      },
+      options: [{
+        optionId: 'dfc:raw-1:table_markdown:derived_asset:derived-1',
+        targetKind: 'table_markdown',
+        sendStrategy: 'text_in_prompt',
+        status: 'ready',
+        isAvailable: true,
+        compatibilityStatus: 'compatible',
+        sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derived-1' }],
+        warnings: [],
+        diagnostics: [],
+        storageUri: 'assets/derived/raw-1/derived-1.md',
+        storageRef: 'assets/derived/raw-1/derived-1.md',
+        sourceHash: 'a'.repeat(64),
+        contentHash: 'b'.repeat(64),
+        contentToken: 'secret-token',
+        body: 'secret file body',
+      }],
+      sourceMetaJson: { contentToken: 'secret-token' },
+    })
+
+    expect(decoded.options[0]).toEqual({
+      optionId: 'dfc:raw-1:table_markdown:derived_asset:derived-1',
+      targetKind: 'table_markdown',
+      sendStrategy: 'text_in_prompt',
+      status: 'ready',
+      isAvailable: true,
+      compatibilityStatus: 'compatible',
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derived-1' }],
+      warnings: [],
+      diagnostics: [],
+    })
+    expect(decoded).not.toHaveProperty('sourceMetaJson')
+    expect(decoded.decision).not.toHaveProperty('storageUri')
+    expect(decoded.options[0]).not.toHaveProperty('storageRef')
+    expect(decoded.options[0]).not.toHaveProperty('sourceHash')
+    expect(decoded.options[0]).not.toHaveProperty('contentHash')
     expect(decoded.options[0]).not.toHaveProperty('contentToken')
     expect(decoded.options[0]).not.toHaveProperty('body')
   })

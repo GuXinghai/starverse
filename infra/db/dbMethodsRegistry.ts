@@ -73,6 +73,7 @@ export const DB_METHODS = [
   { name: 'conversationDraft.removeAttachment', renderer: true, worker: true, domain: 'conversationDraft' },
   { name: 'conversationDraft.updateAttachmentSettings', renderer: true, worker: true, domain: 'conversationDraft' },
   { name: 'conversationDraft.getDfcOptions', renderer: true, worker: true, domain: 'conversationDraft' },
+  { name: 'conversationDraft.ensureDfcOptions', renderer: true, worker: true, domain: 'conversationDraft' },
   { name: 'conversationDraft.getDfcPreview', renderer: true, worker: true, domain: 'conversationDraft' },
   { name: 'conversationDraft.commitToUserMessage', renderer: true, worker: true, domain: 'conversationDraft' },
   { name: 'conversationDraft.attachToMessage', renderer: true, worker: true, domain: 'conversationDraft' },
