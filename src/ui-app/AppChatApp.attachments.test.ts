@@ -112,6 +112,9 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     excludedReason: string | null
     preferredSendMode: string | null
     urlRetentionMode: string | null
+    dfcManaged: boolean
+    selectedOptionId: string | null
+    selectedAssetRefs: Array<{ kind: 'raw_file' | 'derived_asset'; assetId: string }>
     createdAt: number
     updatedAt: number
   }>
@@ -159,6 +162,9 @@ describe('ui-app AppChatApp attachment entry flow', () => {
       excludedReason: null,
       preferredSendMode: null,
       urlRetentionMode: null,
+      dfcManaged: false,
+      selectedOptionId: null,
+      selectedAssetRefs: [],
       createdAt: 1,
       updatedAt: 1,
       ...overrides,
@@ -917,6 +923,9 @@ describe('ui-app AppChatApp attachment entry flow', () => {
                   ...attachment,
                   ...(params?.preferredSendMode !== undefined ? { preferredSendMode: params.preferredSendMode } : {}),
                   ...(params?.urlRetentionMode !== undefined ? { urlRetentionMode: params.urlRetentionMode } : {}),
+                  ...(params?.dfcManaged !== undefined ? { dfcManaged: params.dfcManaged } : {}),
+                  ...(params?.selectedOptionId !== undefined ? { selectedOptionId: params.selectedOptionId } : {}),
+                  ...(params?.selectedAssetRefs !== undefined ? { selectedAssetRefs: params.selectedAssetRefs } : {}),
                   updatedAt: 1,
                 }
               : attachment
@@ -924,6 +933,67 @@ describe('ui-app AppChatApp attachment entry flow', () => {
           updatedAt: 1,
         }
         return draftResponse.attachments.find((attachment: any) => attachment.assetId === assetId) ?? null
+      }
+
+      if (method === 'conversationDraft.getDfcOptions') {
+        const assetId = String(params?.assetId ?? '')
+        const attachment = draftResponse.attachments.find((item: any) => item.assetId === assetId) ?? makeDraftAttachment(assetId)
+        const asset = makeFileAsset(assetId)
+        const rawOption = {
+          optionId: `dfc:${assetId}:original_file:raw_file:${assetId}`,
+          targetKind: 'original_file',
+          sendStrategy: 'file_attachment',
+          status: 'ready',
+          isAvailable: true,
+          compatibilityStatus: 'compatible',
+          sendAssetRefs: [{ kind: 'raw_file', assetId }],
+          warnings: [],
+          diagnostics: [],
+        }
+        const markdownOption = {
+          optionId: `dfc:${assetId}:markdown:derived_asset:derivative-markdown`,
+          targetKind: 'markdown',
+          sendStrategy: 'text_in_prompt',
+          status: 'ready',
+          isAvailable: true,
+          compatibilityStatus: 'compatible',
+          sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-markdown' }],
+          warnings: [],
+          diagnostics: [],
+        }
+        const options = assetId.includes('dfc') ? [rawOption, markdownOption] : [rawOption]
+        const selectedOptionId = String(attachment.selectedOptionId ?? '').trim() || null
+        const selectedOption = selectedOptionId ? options.find((option) => option.optionId === selectedOptionId) ?? null : null
+        return {
+          attachmentId: attachment.id,
+          conversationId: 'c1',
+          rawFileId: assetId,
+          filename: asset.filename,
+          sizeBytes: asset.sizeBytes,
+          dfcManaged: attachment.dfcManaged === true,
+          selectedOptionId,
+          selectedAssetRefs: attachment.selectedAssetRefs ?? [],
+          decision: selectedOption
+            ? {
+                status: 'ready',
+                reasonCode: null,
+                selectedOptionId,
+                targetKind: selectedOption.targetKind,
+                sendStrategy: selectedOption.sendStrategy,
+                sendAssetRefs: selectedOption.sendAssetRefs,
+                needsUserAction: false,
+              }
+            : {
+                status: 'needs_user_selection',
+                reasonCode: selectedOptionId ? 'selected_option_not_found' : 'selected_option_missing',
+                selectedOptionId,
+                targetKind: null,
+                sendStrategy: null,
+                sendAssetRefs: [],
+                needsUserAction: true,
+              },
+          options,
+        }
       }
 
       if (method === 'messageAttachment.listByMessageId') {
@@ -2068,6 +2138,38 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     expect(invoke.mock.calls.some((call) => call[0] === 'fileIngestion.ingestUrl' && String((call[1] as any)?.retentionMode ?? '') === 'link_and_file')).toBe(false)
     const sendPlanCalls = invoke.mock.calls.filter((call) => call[0] === 'sendPlan.buildCurrent')
     expect(sendPlanCalls.length).toBeGreaterThan(1)
+  })
+
+  it('loads backend DFC options and updates the selected option from attachment details', async () => {
+    const user = userEvent.setup()
+    draftResponse = {
+      ...baseDraft(),
+      attachments: [makeDraftAttachment('asset-dfc', { attachmentOrder: 0 })],
+      attachedAssetIds: ['asset-dfc'],
+    }
+
+    render(AppChatApp)
+
+    await user.click(await screen.findByTestId('draft-attachment-card-asset-dfc'))
+    await screen.findByTestId('draft-attachment-details-dialog')
+    await screen.findByTestId('draft-attachment-dfc-option-markdown')
+
+    expect(invoke).toHaveBeenCalledWith('conversationDraft.getDfcOptions', {
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+    })
+
+    await user.click(screen.getByTestId('draft-attachment-dfc-option-markdown'))
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith('conversationDraft.updateAttachmentSettings', expect.objectContaining({
+        conversationId: 'c1',
+        assetId: 'asset-dfc',
+        dfcManaged: true,
+        selectedOptionId: 'dfc:asset-dfc:markdown:derived_asset:derivative-markdown',
+        selectedAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-markdown' }],
+      }))
+    })
   })
 
   it('keeps URL retention hidden for non-URL attachments and disables audio link sending', async () => {
