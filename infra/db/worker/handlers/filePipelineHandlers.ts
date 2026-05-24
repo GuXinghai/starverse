@@ -591,7 +591,9 @@ async function ensureTextDerivativesForCollected(
     if (lineage?.sendAssetReady === true && typeof lineage?.sendTextStorageUri === 'string' && lineage.sendTextStorageUri.trim()) {
       continue
     }
-    const converted = await ensureTextDerivativeAsset(runtime, attachment.assetId, attachment.semantic?.targetKind ?? 'plain_text')
+    const converted = await ensureTextDerivativeAsset(runtime, attachment.assetId, attachment.semantic?.targetKind ?? 'plain_text', {
+      exposeDfcOption: false,
+    })
     if (converted.changed) updated = true
   }
   return updated
@@ -605,7 +607,9 @@ async function ensureDfcDraftAttachmentOptions(
   const asset = runtime.fileAssetRepo.getById(input.assetId)
   const targetKind = asset ? inferDfcPhase1EnsureTargetKind(asset) : null
   if (asset && targetKind && isDfcPhase1EnsureSourceAsset(asset)) {
-    await ensureTextDerivativeAsset(runtime, asset.id, targetKind)
+    await ensureTextDerivativeAsset(runtime, asset.id, targetKind, {
+      exposeDfcOption: true,
+    })
   }
   return runtime.conversationAttachmentService.getDfcDraftAttachmentOptions(input)
 }
@@ -624,7 +628,8 @@ function isDfcPhase1EnsureSourceAsset(asset: FileAssetRecord): boolean {
 async function ensureTextDerivativeAsset(
   runtime: DbWorkerRuntime,
   assetId: string,
-  targetKind: string
+  targetKind: string,
+  options: Readonly<{ exposeDfcOption: boolean }>
 ): Promise<Readonly<{ changed: boolean }>> {
   const asset = runtime.fileAssetRepo.getById(assetId)
   if (!asset) {
@@ -663,12 +668,14 @@ async function ensureTextDerivativeAsset(
   const derivativeMeta = normalizeObject(derivative.metaJson)
   const sourceHash = readStringMeta(derivativeMeta, 'sourceHash') ?? asset.sha256 ?? null
   const settingsHash = sha256Bytes(Buffer.from(JSON.stringify({ targetKind })))
-  const dfcMeta = buildDfcTextConversionMetadata(asset, targetKind, {
-    sourceHash,
-    contentHash,
-    conversionSettingsHash: settingsHash,
-    warnings: readStringArrayMeta(derivativeMeta, 'conversionWarnings'),
-  })
+  const dfcMeta = options.exposeDfcOption
+    ? buildDfcTextConversionMetadata(asset, targetKind, {
+      sourceHash,
+      contentHash,
+      conversionSettingsHash: settingsHash,
+      warnings: readStringArrayMeta(derivativeMeta, 'conversionWarnings'),
+    })
+    : null
   if (dfcMeta) {
     derivative = runtime.fileDerivativeRepo.update({
       id: derivative.id,
@@ -688,6 +695,7 @@ async function ensureTextDerivativeAsset(
     sourceHash,
     conversionSettingsHash: settingsHash,
     dfcMeta,
+    exposeDfcOption: options.exposeDfcOption,
   })
   return { changed: true }
 }
@@ -705,26 +713,33 @@ function writeAssetConversionReadyMeta(
     sourceHash: string | null
     conversionSettingsHash: string
     dfcMeta: Record<string, unknown> | null
+    exposeDfcOption: boolean
   }>
 ): void {
   const row = runtime.db.prepare('SELECT source_meta_json AS sourceMetaJson FROM file_assets WHERE id=@id LIMIT 1').get({ id: assetId }) as { sourceMetaJson?: string | null } | undefined
   const existing = row?.sourceMetaJson ? safeParseJson(row.sourceMetaJson) : null
+  const existingTextConversion = normalizeObject(existing?.textConversion)
+  const textConversion = input.exposeDfcOption
+    ? {
+        status: 'ready',
+        targetKind: input.targetKind,
+        derivedKind: 'extracted_text',
+        usage: 'preview_and_send',
+        derivativeId: input.derivativeId,
+        storageUri: input.storageUri,
+        mime: input.mime,
+        bytes: input.bytes,
+        contentHash: input.contentHash,
+        sourceHash: input.sourceHash,
+        conversionSettingsHash: input.conversionSettingsHash,
+        ...(input.dfcMeta ?? {}),
+      }
+    : isDfcReadyTextConversionMeta(existingTextConversion, input.derivativeId)
+      ? existingTextConversion
+      : undefined
   const next = {
     ...(existing ?? {}),
-    textConversion: {
-      status: 'ready',
-      targetKind: input.targetKind,
-      derivedKind: 'extracted_text',
-      usage: 'preview_and_send',
-      derivativeId: input.derivativeId,
-      storageUri: input.storageUri,
-      mime: input.mime,
-      bytes: input.bytes,
-      contentHash: input.contentHash,
-      sourceHash: input.sourceHash,
-      conversionSettingsHash: input.conversionSettingsHash,
-      ...(input.dfcMeta ?? {}),
-    },
+    textConversion,
     lineage: {
       ...(normalizeObject(existing?.lineage) ?? {}),
       stale: false,
@@ -750,6 +765,19 @@ function writeAssetConversionReadyMeta(
     sourceMetaJson: JSON.stringify(next),
     updatedAt: Date.now(),
   })
+}
+
+function isDfcReadyTextConversionMeta(value: Record<string, any> | null, derivativeId: string): boolean {
+  return value?.status === 'ready'
+    && typeof value?.targetKind === 'string'
+    && value?.derivativeId === derivativeId
+    && typeof value?.storageUri === 'string'
+    && typeof value?.sourceHash === 'string'
+    && typeof value?.contentHash === 'string'
+    && typeof value?.conversionSettingsHash === 'string'
+    && typeof value?.storageClass === 'string'
+    && typeof value?.converterName === 'string'
+    && typeof value?.converterVersion === 'string'
 }
 
 function writeAssetConversionFailureMeta(
