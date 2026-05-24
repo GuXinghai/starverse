@@ -572,6 +572,66 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
     }
   })
 
+  it('blocks stale DFC derived options when the source hash no longer matches the raw asset', async () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'asset-dfc', { sha256: 'asset-dfc-current-sha' })
+    insertDfcDerivative(h.db, {
+      id: 'derivative-markdown',
+      parentAssetId: 'asset-dfc',
+      targetKind: 'markdown',
+      metaJson: {
+        targetKind: 'markdown',
+        usage: 'preview_and_send',
+        storageClass: 'draft_bound',
+        sourceHash: 'asset-dfc-old-sha',
+        contentHash: 'derivative-markdown-content',
+        conversionSettingsHash: 'derivative-markdown-settings',
+        converterName: 'test-dfc-converter',
+        converterVersion: '1',
+      },
+    })
+    h.service.addDraftAttachment({ conversationId: 'c1', assetId: 'asset-dfc' })
+
+    const dto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+    const markdownOption = dto.options.find((option) => option.targetKind === 'markdown')!
+
+    expect(markdownOption).toMatchObject({
+      status: 'stale',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      diagnostics: [expect.objectContaining({ code: 'derived_asset_source_hash_mismatch' })],
+    })
+    expect(JSON.stringify(dto)).not.toContain('asset-dfc-old-sha')
+    expect(JSON.stringify(dto)).not.toContain('asset-dfc-current-sha')
+
+    h.service.updateDraftAttachmentSettings({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      dfcManaged: true,
+      selectedOptionId: markdownOption.optionId,
+      selectedAssetRefs: markdownOption.sendAssetRefs,
+    })
+
+    const preview = await h.service.getDfcDraftAttachmentPreview({ conversationId: 'c1', assetId: 'asset-dfc' })
+
+    expect(preview).toMatchObject({
+      selectedOptionId: markdownOption.optionId,
+      decision: expect.objectContaining({
+        status: 'stale',
+        reasonCode: 'selected_option_stale',
+      }),
+      preview: {
+        kind: 'none',
+        status: 'stale',
+        text: null,
+        diagnostics: [expect.objectContaining({ code: 'selected_option_stale' })],
+      },
+    })
+    expect(() => h.service.commitDraftToUserMessage({ conversationId: 'c1' }))
+      .toThrow('DFC-managed draft attachment selected option is not ready')
+  })
+
   it('blocks preview and message binding when persisted selected refs disagree with selectedOptionId', async () => {
     const storageRootDir = mkdtempSync(path.join(os.tmpdir(), 'starverse-dfc-preview-mismatch-'))
     try {

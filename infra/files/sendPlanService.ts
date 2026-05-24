@@ -720,10 +720,13 @@ function buildDfcOptionsForSelectedRefs(
   )
   const anyFailed = selectedDerivatives.some((derivative) => derivative?.status === 'failed')
   const anyStale = selectedDerivatives.some((derivative) => derivative?.status === 'deleted' || derivative?.deletedAt != null)
+  const anySourceMismatch = selectedDerivatives.some((derivative) =>
+    derivative ? dfcDerivedRefSourceHashMismatch(attachment, derivative) : false
+  )
   const anyPending = selectedDerivatives.some((derivative) => derivative?.status === 'pending')
   const status: DfcConversionOption['status'] =
     anyFailed ? 'failed'
-      : anyStale ? 'stale'
+      : anyStale || anySourceMismatch ? 'stale'
         : anyPending ? 'pending'
           : 'ready'
 
@@ -765,10 +768,19 @@ function isDfcDerivedRefAvailable(
   derivativeRepoAvailable: boolean
 ): boolean {
   if (derivative) {
-    return derivative.parentAssetId === attachment.assetId
-      && derivative.status === 'ready'
-      && derivative.deletedAt == null
-      && readDfcDerivedTargetKind(derivative.metaJson) !== null
+    if (derivative.parentAssetId !== attachment.assetId) return false
+    if (derivative.status !== 'ready' || derivative.deletedAt != null) return false
+    const facade = createDfcDerivedAssetFacade({
+      derivativeId: derivative.id,
+      sourceFileId: attachment.assetId,
+      mime: derivative.mime,
+      storageRef: derivative.storageUri,
+      status: derivative.status,
+      generator: derivative.generator,
+      metaJson: derivative.metaJson,
+    })
+    if (facade.ok && dfcDerivedAssetSourceHashMismatch(attachment.fileAsset, facade.asset)) return false
+    return readDfcDerivedTargetKind(derivative.metaJson) !== null
   }
   if (derivativeRepoAvailable) return false
   const textConversion = readSelectedTextConversionMeta(attachment.fileAsset, derivedAssetId)
@@ -847,6 +859,9 @@ function evaluateDfcSelectedAssetRefLineage(
     if (!facade.ok) {
       return dfcDerivedLineageSummary('send_asset_not_ready', facade.reasonCode)
     }
+    if (dfcDerivedAssetSourceHashMismatch(attachment.fileAsset, facade.asset)) {
+      return dfcDerivedLineageSummary('stale_derived_asset', 'selected_derived_asset_source_hash_mismatch')
+    }
     if (facade.asset.usage === 'preview_only') {
       return dfcDerivedLineageSummary('preview_only_asset_not_sendable', 'derived_asset_preview_only')
     }
@@ -884,6 +899,30 @@ function dfcDerivedLineageSummary(
     sendContentHash: null,
     conversionSettingsHash: null,
   }
+}
+
+function dfcDerivedRefSourceHashMismatch(
+  attachment: Omit<CollectedAttachmentInput, 'dfcDecision' | 'semantic'>,
+  derivative: FileDerivativeRecord
+): boolean {
+  const facade = createDfcDerivedAssetFacade({
+    derivativeId: derivative.id,
+    sourceFileId: attachment.assetId,
+    mime: derivative.mime,
+    storageRef: derivative.storageUri,
+    status: derivative.status,
+    generator: derivative.generator,
+    metaJson: derivative.metaJson,
+  })
+  return facade.ok && dfcDerivedAssetSourceHashMismatch(attachment.fileAsset, facade.asset)
+}
+
+function dfcDerivedAssetSourceHashMismatch(
+  rawAsset: FileAssetRecord | null,
+  facade: DfcDerivedAssetFacade
+): boolean {
+  const sourceHash = normalizeNullableText(rawAsset?.sha256 ?? null)
+  return sourceHash !== null && facade.sourceHash !== sourceHash
 }
 
 function normalizeModelDescriptor(model: SendPlanModelDescriptor): SendPlanModelDescriptor {
