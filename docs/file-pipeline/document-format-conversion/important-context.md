@@ -542,3 +542,16 @@ DFC-25 should continue non-Playwright Phase 1 hardening around pending/concurren
 ## Recommended next round
 
 DFC-26 should continue non-Playwright Phase 1 hardening around failed-generation/no-silent-fallback semantics. Browser Playwright smoke still requires separate owner approval if it needs new harness scaffolding, and durable job uniqueness still requires an owner-approved schema/repo plan.
+
+## DFC-26 implementation recovery notes
+
+- DFC-26 is a narrow backend failure-state slice; it does not add a DB schema change, IPC contract change, renderer option identity, Send Plan rewrite, conversion runtime family expansion, browser Playwright harness, UI redesign, new dependency, external engine, legacy bridge, durable `ConversionOption` rows, or durable async option-generation state.
+- Explicit `conversationDraft.ensureDfcOptions` failures now write a DFC-exposed symbolic failure marker for approved Phase 1 text-like targets. Backend option DTO generation can surface that marker as a deterministic unavailable `failed` option without exposing storage refs, hashes, paths, file body, or raw error text.
+- Synthetic failed options are gated by `dfcOptionExposed === true`, excluded for `pdf_attachment`, and use empty `sendAssetRefs`; the existing draft selection coherence check prevents persisting them as a selected option.
+- Existing selected derivatives whose storage is missing or unreadable during explicit ensure are marked `failed`, retain their backend-owned option id/refs, and resolve to `selected_option_failed` for preview/send decisions rather than falling back to legacy routing.
+- Legacy non-explicit failure metadata does not create synthetic failed DFC options. Ready DFC preview/send options still require a verified `file_derivatives` row.
+- Focused worker/service/shared tests, the broader backend/client/UI DFC suite, `vue-tsc`, `git diff --check`, diff privacy scans, code mapping, test-runner attribution, and risk review passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this infra diff.
+
+## Recommended next round
+
+DFC-27 should continue non-Playwright Phase 1 hardening around pending-state visibility and retry semantics if it can stay within existing storage. Durable option-generation storage, durable job uniqueness, browser Playwright harness scaffolding, and forbidden conversion families remain owner-gated.

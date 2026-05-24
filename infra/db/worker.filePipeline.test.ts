@@ -973,6 +973,206 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     expect(jobCount.count).toBe(0)
   })
 
+  it('returns sanitized failed DFC options when explicit ensure generation fails', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const assetId = 'asset-missing-text-dfc'
+    const storageUri = 'assets/original/mi/asset-missing-text-dfc.txt'
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-missing-text-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-missing-text-source-hash',
+        filename: 'missing.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 16,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageBackend: 'local_fs',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-missing-text-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-missing-text-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    expect(ensured).toMatchObject({
+      ok: true,
+      result: {
+        decision: expect.objectContaining({
+          status: 'needs_user_selection',
+          reasonCode: 'selected_option_missing',
+        }),
+      },
+    })
+    const failedOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'plain_text')
+    expect(failedOption).toMatchObject({
+      optionId: `dfc:${assetId}:plain_text:failed`,
+      status: 'failed',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: 'derivative_local_file_missing' })],
+    })
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-missing-text-source-hash')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('Asset local file copy is missing')
+
+    const derivativeCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId
+    `).get({ assetId }) as { count: number }
+    const failedJob = db.prepare(`
+      SELECT status, error_code AS errorCode
+      FROM derivative_jobs
+      WHERE asset_id=@assetId AND derivative_kind='extracted_text'
+      LIMIT 1
+    `).get({ assetId }) as { status: string; errorCode: string | null }
+    const assetRow = db.prepare(`
+      SELECT source_meta_json AS sourceMetaJson
+      FROM file_assets
+      WHERE id=@assetId
+      LIMIT 1
+    `).get({ assetId }) as { sourceMetaJson: string | null }
+    const assetMeta = assetRow.sourceMetaJson ? JSON.parse(assetRow.sourceMetaJson) : null
+    expect(derivativeCount.count).toBe(0)
+    expect(failedJob).toMatchObject({
+      status: 'failed',
+      errorCode: 'derivative_local_file_missing',
+    })
+    expect(assetMeta?.textConversion).toMatchObject({
+      status: 'failed',
+      dfcOptionExposed: true,
+      targetKind: 'plain_text',
+      converterName: 'starverse-text-derivative',
+    })
+
+    const selected = await dispatchWorkerMessage(handlers, {
+      id: 'req-missing-text-select-failed',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: failedOption.optionId,
+        selectedAssetRefs: failedOption.sendAssetRefs,
+      },
+    })
+    expect(selected).toMatchObject({
+      ok: false,
+      error: expect.objectContaining({
+        message: expect.stringContaining('DFC selectedOptionId requires selectedAssetRefs'),
+      }),
+    })
+  })
+
+  it('marks selected DFC derivatives failed when explicit ensure finds storage unreadable', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-csv-storage-failed-dfc'
+    const storageUri = 'assets/original/sf/asset-csv-storage-failed-dfc.csv'
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), 'name,age\nalice,30\n')
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-storage-failed-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-csv-storage-failed-source-hash',
+        filename: 'data.csv',
+        extension: 'csv',
+        mime: 'text/csv',
+        sizeBytes: 18,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-storage-failed-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+    const firstEnsure = await dispatchWorkerMessage(handlers, {
+      id: 'req-storage-failed-ensure-first',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const tableOption = (firstEnsure as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-storage-failed-select',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: tableOption.optionId,
+        selectedAssetRefs: tableOption.sendAssetRefs,
+      },
+    })
+    const derivativeId = tableOption.sendAssetRefs[0].assetId
+    const derivativeRow = db.prepare(`
+      SELECT storage_uri AS storageUri
+      FROM file_derivatives
+      WHERE id=@derivativeId
+      LIMIT 1
+    `).get({ derivativeId }) as { storageUri: string }
+    await rm(path.join(storageRootDir, ...derivativeRow.storageUri.split('/')), { force: true })
+
+    const secondEnsure = await dispatchWorkerMessage(handlers, {
+      id: 'req-storage-failed-ensure-second',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const failedOption = (secondEnsure as any).result.options.find((option: any) => option.optionId === tableOption.optionId)
+    const failedDerivative = db.prepare(`
+      SELECT status, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE id=@derivativeId
+      LIMIT 1
+    `).get({ derivativeId }) as { status: string; metaJson: string | null }
+    expect(secondEnsure).toMatchObject({
+      ok: true,
+      result: {
+        selectedOptionId: tableOption.optionId,
+        selectedAssetRefs: tableOption.sendAssetRefs,
+        decision: expect.objectContaining({
+          status: 'failed',
+          reasonCode: 'selected_option_failed',
+          targetKind: 'table_markdown',
+          sendAssetRefs: [],
+        }),
+      },
+    })
+    expect(failedOption).toMatchObject({
+      status: 'failed',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: tableOption.sendAssetRefs,
+      diagnostics: [expect.objectContaining({ code: 'derivative_local_file_read_failed' })],
+    })
+    expect(failedDerivative.status).toBe('failed')
+    expect(JSON.parse(failedDerivative.metaJson ?? '{}')).toMatchObject({
+      targetKind: 'table_markdown',
+      failureCode: 'derivative_local_file_read_failed',
+    })
+    expect(JSON.stringify((secondEnsure as any).result)).not.toContain(derivativeRow.storageUri)
+    expect(JSON.stringify((secondEnsure as any).result)).not.toContain('asset-csv-storage-failed-source-hash')
+  })
+
   it('keeps PDF direct send available when extracted text is unsupported', async () => {
     const { db, handlers } = createWorkerHarness()
     const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
