@@ -1,16 +1,18 @@
 import {
   decodeAttachDraftToMessageResponse,
   decodeConversationDraftResponse,
+  decodeDfcDraftAttachmentOptionsResponse,
   decodeDraftAttachmentResponse,
   decodeRemoveDraftAttachmentResponse,
   decodeUpdateDraftAttachmentSettingsResponse,
   type DecodedAssetAttachmentOwnership,
   type DecodedAttachDraftToMessageResult,
+  type DecodedDfcDraftAttachmentOptions,
   type DecodedDraftAttachment,
   type DecodedConversationDraft,
 } from '@/next/ipc/contracts/dbBridgeContracts'
 import type { DraftAttachmentSendModePreference, DraftAttachmentUrlRetentionPreference } from '@/shared/files/fileTypes'
-import type { DfcAttachmentSendSnapshot } from '@/shared/files/documentFormatConversion'
+import type { DfcAttachmentSendSnapshot, DfcSendAssetRef } from '@/shared/files/documentFormatConversion'
 
 type DbBridge = Readonly<{
   invoke: (method: string, params?: unknown) => Promise<unknown>
@@ -63,10 +65,21 @@ export async function updateConversationDraftAttachmentSettings(input: Readonly<
   assetId: string
   preferredSendMode?: DraftAttachmentSendModePreference | null
   urlRetentionMode?: DraftAttachmentUrlRetentionPreference | null
+  dfcManaged?: boolean
+  selectedOptionId?: string | null
+  selectedAssetRefs?: readonly DfcSendAssetRef[]
   updatedAt?: number
 }>): Promise<DecodedDraftAttachment> {
   const raw = await requireDbBridge().invoke('conversationDraft.updateAttachmentSettings', input)
   return decodeUpdateDraftAttachmentSettingsResponse(raw)
+}
+
+export async function getConversationDraftAttachmentDfcOptions(input: Readonly<{
+  conversationId: string
+  assetId: string
+}>): Promise<DecodedDfcDraftAttachmentOptions> {
+  const raw = await requireDbBridge().invoke('conversationDraft.getDfcOptions', input)
+  return decodeDfcDraftAttachmentOptionsResponse(raw)
 }
 
 export async function attachConversationDraftToMessage(input: Readonly<{

@@ -3,6 +3,7 @@ import {
   addConversationDraftAttachment,
   attachConversationDraftToMessage,
   cloneConversationDraftFromMessage,
+  getConversationDraftAttachmentDfcOptions,
   removeConversationDraftAttachment,
   restoreConversationDraft,
   updateConversationDraftAttachmentSettings,
@@ -73,6 +74,7 @@ describe('conversationDraftClient', () => {
   })
 
   it('calls conversationDraft.updateAttachmentSettings through dbBridge', async () => {
+    const selectedAssetRefs = [{ kind: 'raw_file' as const, assetId: 'asset-1' }]
     const invoke = vi.fn(async () => ({
       id: 'draft-attachment-1',
       conversationId: 'c1',
@@ -82,8 +84,11 @@ describe('conversationDraftClient', () => {
       processingStatus: 'native_supported',
       includeInNextRequest: true,
       excludedReason: null,
-      preferredSendMode: 'url_ref',
-      urlRetentionMode: 'link_only',
+      preferredSendMode: null,
+      urlRetentionMode: null,
+      dfcManaged: true,
+      selectedOptionId: 'dfc:asset-1:original_file:raw_file:asset-1',
+      selectedAssetRefs,
       createdAt: 1,
       updatedAt: 2,
     }))
@@ -92,18 +97,66 @@ describe('conversationDraftClient', () => {
     const result = await updateConversationDraftAttachmentSettings({
       conversationId: 'c1',
       assetId: 'asset-1',
-      preferredSendMode: 'url_ref',
-      urlRetentionMode: 'link_only',
+      dfcManaged: true,
+      selectedOptionId: 'dfc:asset-1:original_file:raw_file:asset-1',
+      selectedAssetRefs,
     })
 
     expect(invoke).toHaveBeenCalledWith('conversationDraft.updateAttachmentSettings', {
       conversationId: 'c1',
       assetId: 'asset-1',
-      preferredSendMode: 'url_ref',
-      urlRetentionMode: 'link_only',
+      dfcManaged: true,
+      selectedOptionId: 'dfc:asset-1:original_file:raw_file:asset-1',
+      selectedAssetRefs,
     })
-    expect(result.preferredSendMode).toBe('url_ref')
-    expect(result.urlRetentionMode).toBe('link_only')
+    expect(result.dfcManaged).toBe(true)
+    expect(result.selectedOptionId).toBe('dfc:asset-1:original_file:raw_file:asset-1')
+    expect(result.selectedAssetRefs).toEqual(selectedAssetRefs)
+  })
+
+  it('calls conversationDraft.getDfcOptions through dbBridge', async () => {
+    const invoke = vi.fn(async () => ({
+      attachmentId: 'draft-attachment-1',
+      conversationId: 'c1',
+      rawFileId: 'asset-1',
+      filename: 'asset-1.txt',
+      sizeBytes: 4,
+      dfcManaged: false,
+      selectedOptionId: null,
+      selectedAssetRefs: [],
+      decision: {
+        status: 'needs_user_selection',
+        reasonCode: 'selected_option_missing',
+        selectedOptionId: null,
+        targetKind: null,
+        sendStrategy: null,
+        sendAssetRefs: [],
+        needsUserAction: true,
+      },
+      options: [{
+        optionId: 'dfc:asset-1:original_file:raw_file:asset-1',
+        targetKind: 'original_file',
+        sendStrategy: 'file_attachment',
+        status: 'ready',
+        isAvailable: true,
+        compatibilityStatus: 'compatible',
+        sendAssetRefs: [{ kind: 'raw_file', assetId: 'asset-1' }],
+        warnings: [],
+        diagnostics: [],
+      }],
+    }))
+    ;(globalThis as any).dbBridge = { invoke }
+
+    const result = await getConversationDraftAttachmentDfcOptions({
+      conversationId: 'c1',
+      assetId: 'asset-1',
+    })
+
+    expect(invoke).toHaveBeenCalledWith('conversationDraft.getDfcOptions', {
+      conversationId: 'c1',
+      assetId: 'asset-1',
+    })
+    expect(result.options[0]?.targetKind).toBe('original_file')
   })
 
   it('still restores conversation drafts through dbBridge', async () => {

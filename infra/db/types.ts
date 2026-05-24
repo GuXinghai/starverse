@@ -22,6 +22,7 @@ import type {
 } from '../../src/next/file-type/types'
 import type {
   DfcAttachmentSendSnapshot,
+  DfcDraftAttachmentOptionsDto,
   DfcSendAssetRef,
   DfcSendStrategy,
   DfcTargetKind,
@@ -785,6 +786,13 @@ export type UpdateDraftAttachmentSettingsInput = Readonly<{
   selectedAssetRefs?: readonly DfcSendAssetRef[]
   updatedAt?: number
 }>
+
+export type GetDfcDraftAttachmentOptionsInput = Readonly<{
+  conversationId: string
+  assetId: string
+}>
+
+export type GetDfcDraftAttachmentOptionsResult = DfcDraftAttachmentOptionsDto
 
 export type CommitDraftToUserMessageInput = Readonly<{
   conversationId: string

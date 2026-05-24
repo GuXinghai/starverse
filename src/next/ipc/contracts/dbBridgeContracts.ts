@@ -4,7 +4,12 @@ import type { SendPlan } from '@/shared/files/sendPlanTypes'
 import {
   DFC_TARGET_KINDS,
   sanitizeDfcAttachmentForRenderer,
+  type DfcCompatibilityStatus,
+  type DfcConversionOptionStatus,
   type DfcDecisionStatus,
+  type DfcDraftAttachmentOptionsDto,
+  type DfcDraftOptionCandidateDto,
+  type DfcManagedAttachmentDecision,
   type DfcSanitizedAttachmentDto,
   type DfcSanitizedDiagnostic,
   type DfcSendAssetRef,
@@ -172,9 +177,14 @@ export type DecodedDraftAttachment = Readonly<{
   excludedReason: string | null
   preferredSendMode: 'default' | 'auto' | 'url_ref' | 'inline_base64' | null
   urlRetentionMode: 'default' | 'link_only' | 'link_and_file' | null
+  dfcManaged: boolean
+  selectedOptionId: string | null
+  selectedAssetRefs: DfcSendAssetRef[]
   createdAt: number
   updatedAt: number
 }>
+
+export type DecodedDfcDraftAttachmentOptions = DfcDraftAttachmentOptionsDto
 
 export type DecodedConversationDraft = Readonly<{
   conversationId: string
@@ -441,6 +451,31 @@ const fileDerivativeSchema = z.object({
 
 const dfcTargetKindSchema = z.enum(DFC_TARGET_KINDS)
 const dfcSendStrategySchema = z.enum(['text_in_prompt', 'file_attachment'])
+const dfcSendAssetRefSchema = z.union([
+  z.object({
+    kind: z.literal('raw_file'),
+    assetId: nonEmpty,
+  }),
+  z.object({
+    kind: z.literal('derived_asset'),
+    assetId: nonEmpty,
+  }),
+])
+const dfcConversionOptionStatusSchema = z.enum([
+  'candidate',
+  'pending',
+  'ready',
+  'failed',
+  'stale',
+  'blocked',
+])
+const dfcCompatibilityStatusSchema = z.enum([
+  'compatible',
+  'warning',
+  'incompatible',
+  'blocked',
+  'pending',
+])
 
 const dfcDecisionStatusSchema = z.enum([
   'ready',
@@ -451,6 +486,19 @@ const dfcDecisionStatusSchema = z.enum([
   'stale',
   'incompatible',
 ])
+const dfcDecisionReasonCodeSchema = z.enum([
+  'selected_option_missing',
+  'selected_option_pending',
+  'selected_option_not_found',
+  'selected_option_failed',
+  'selected_option_stale',
+  'selected_option_blocked',
+  'selected_option_unavailable',
+  'selected_option_incompatible',
+  'raw_file_ref_missing',
+  'derived_asset_ref_missing',
+  'send_asset_ref_kind_mismatch',
+]).nullable()
 
 const dfcDiagnosticSchema = z.object({
   code: nonEmpty,
@@ -489,6 +537,70 @@ const dfcAttachmentAuditSchema = z.object({
   contentToken: row.contentToken ?? null,
   body: row.body ?? null,
   storageRef: row.storageRef ?? null,
+}))
+
+const dfcManagedAttachmentDecisionSchema = z.object({
+  status: dfcDecisionStatusSchema,
+  reasonCode: dfcDecisionReasonCodeSchema,
+  selectedOptionId: z.string().trim().nullable().optional(),
+  targetKind: dfcTargetKindSchema.nullable().optional(),
+  sendStrategy: dfcSendStrategySchema.nullable().optional(),
+  sendAssetRefs: z.array(dfcSendAssetRefSchema),
+  needsUserAction: z.boolean(),
+}).transform((row): DfcManagedAttachmentDecision => ({
+  status: row.status as DfcDecisionStatus,
+  reasonCode: row.reasonCode,
+  selectedOptionId: row.selectedOptionId ?? null,
+  targetKind: (row.targetKind as DfcTargetKind | null | undefined) ?? null,
+  sendStrategy: (row.sendStrategy as DfcSendStrategy | null | undefined) ?? null,
+  sendAssetRefs: [...row.sendAssetRefs],
+  needsUserAction: row.needsUserAction,
+}))
+
+const dfcDraftOptionCandidateSchema = z.object({
+  optionId: nonEmpty,
+  targetKind: dfcTargetKindSchema,
+  sendStrategy: dfcSendStrategySchema,
+  status: dfcConversionOptionStatusSchema,
+  isAvailable: z.boolean(),
+  compatibilityStatus: dfcCompatibilityStatusSchema.nullable().optional(),
+  sendAssetRefs: z.array(dfcSendAssetRefSchema),
+  warnings: z.array(z.string()).optional(),
+  diagnostics: z.array(dfcDiagnosticSchema).optional(),
+}).transform((row): DfcDraftOptionCandidateDto => ({
+  optionId: row.optionId,
+  targetKind: row.targetKind as DfcTargetKind,
+  sendStrategy: row.sendStrategy as DfcSendStrategy,
+  status: row.status as DfcConversionOptionStatus,
+  isAvailable: row.isAvailable,
+  compatibilityStatus: (row.compatibilityStatus as DfcCompatibilityStatus | null | undefined) ?? null,
+  sendAssetRefs: [...row.sendAssetRefs],
+  warnings: [...(row.warnings ?? [])],
+  diagnostics: [...((row.diagnostics as DfcSanitizedDiagnostic[] | undefined) ?? [])],
+}))
+
+const dfcDraftAttachmentOptionsSchema = z.object({
+  attachmentId: nonEmpty,
+  conversationId: nonEmpty,
+  rawFileId: nonEmpty,
+  filename: nonEmpty,
+  sizeBytes: z.number().int().nonnegative(),
+  dfcManaged: z.boolean(),
+  selectedOptionId: z.string().trim().nullable().optional(),
+  selectedAssetRefs: z.array(dfcSendAssetRefSchema),
+  decision: dfcManagedAttachmentDecisionSchema,
+  options: z.array(dfcDraftOptionCandidateSchema),
+}).transform((row): DfcDraftAttachmentOptionsDto => ({
+  attachmentId: row.attachmentId,
+  conversationId: row.conversationId,
+  rawFileId: row.rawFileId,
+  filename: row.filename,
+  sizeBytes: row.sizeBytes,
+  dfcManaged: row.dfcManaged,
+  selectedOptionId: row.selectedOptionId ?? null,
+  selectedAssetRefs: [...row.selectedAssetRefs],
+  decision: row.decision,
+  options: [...row.options],
 }))
 
 const derivativeJobSchema = z.object({
@@ -549,6 +661,9 @@ const draftAttachmentSchema = z.object({
   excludedReason: z.string().nullable().optional(),
   preferredSendMode: z.enum(['default', 'auto', 'url_ref', 'inline_base64']).nullable().optional(),
   urlRetentionMode: z.enum(['link_only', 'link_and_file']).nullable().optional(),
+  dfcManaged: z.boolean().optional(),
+  selectedOptionId: z.string().trim().nullable().optional(),
+  selectedAssetRefs: z.array(dfcSendAssetRefSchema).optional(),
   createdAt: z.number().finite(),
   updatedAt: z.number().finite(),
 }).transform((row) => ({
@@ -556,6 +671,9 @@ const draftAttachmentSchema = z.object({
   excludedReason: row.excludedReason ?? null,
   preferredSendMode: row.preferredSendMode ?? null,
   urlRetentionMode: row.urlRetentionMode ?? null,
+  dfcManaged: row.dfcManaged ?? false,
+  selectedOptionId: row.dfcManaged ? row.selectedOptionId ?? null : null,
+  selectedAssetRefs: row.dfcManaged ? [...(row.selectedAssetRefs ?? [])] : [],
 }))
 
 const conversationDraftSchema = z.object({
@@ -584,17 +702,6 @@ const assetAttachmentOwnershipSchema = z.object({
   reason: row.reason ?? null,
   updatedAt: row.updatedAt ?? null,
 }))
-
-const dfcSendAssetRefSchema = z.union([
-  z.object({
-    kind: z.literal('raw_file'),
-    assetId: nonEmpty,
-  }),
-  z.object({
-    kind: z.literal('derived_asset'),
-    assetId: nonEmpty,
-  }),
-])
 
 const attachmentSnapshotItemSchema = z.object({
   attachmentId: nonEmpty,
@@ -1214,6 +1321,10 @@ export function decodeDfcAttachmentDtoResponse(raw: unknown): DfcSanitizedAttach
 
 export function decodeDfcAttachmentDtoListResponse(raw: unknown): DfcSanitizedAttachmentDto[] {
   return decodeWithSchema('dfcAttachment.list', z.array(dfcAttachmentAuditSchema), raw)
+}
+
+export function decodeDfcDraftAttachmentOptionsResponse(raw: unknown): DecodedDfcDraftAttachmentOptions {
+  return decodeWithSchema('conversationDraft.getDfcOptions', dfcDraftAttachmentOptionsSchema, raw)
 }
 
 export function decodeDerivativeJobResponse(raw: unknown): DecodedDerivativeJob {

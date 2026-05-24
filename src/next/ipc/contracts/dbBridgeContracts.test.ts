@@ -20,6 +20,7 @@ import {
   decodeDeletedCountResponse,
   decodeDfcAttachmentDtoListResponse,
   decodeDfcAttachmentDtoResponse,
+  decodeDfcDraftAttachmentOptionsResponse,
   decodeDfcFileAssetListResponse,
   decodeDfcFileAssetResponse,
   decodeDfcFileDerivativeListResponse,
@@ -393,6 +394,42 @@ const cases: ContractCase[] = [
     },
     missing: { id: 'draft-attachment-1', conversationId: 'c1' },
     wrongType: { id: 'draft-attachment-1', conversationId: 'c1', attachmentOrder: '0' },
+  },
+  {
+    name: 'conversationDraft.getDfcOptions',
+    decode: decodeDfcDraftAttachmentOptionsResponse,
+    valid: {
+      attachmentId: 'draft-attachment-1',
+      conversationId: 'c1',
+      rawFileId: 'asset-1',
+      filename: 'notes.txt',
+      sizeBytes: 12,
+      dfcManaged: false,
+      selectedOptionId: null,
+      selectedAssetRefs: [],
+      decision: {
+        status: 'needs_user_selection',
+        reasonCode: 'selected_option_missing',
+        selectedOptionId: null,
+        targetKind: null,
+        sendStrategy: null,
+        sendAssetRefs: [],
+        needsUserAction: true,
+      },
+      options: [{
+        optionId: 'dfc:asset-1:original_file:raw_file:asset-1',
+        targetKind: 'original_file',
+        sendStrategy: 'file_attachment',
+        status: 'ready',
+        isAvailable: true,
+        compatibilityStatus: 'compatible',
+        sendAssetRefs: [{ kind: 'raw_file', assetId: 'asset-1' }],
+        warnings: [],
+        diagnostics: [],
+      }],
+    },
+    missing: { attachmentId: 'draft-attachment-1', conversationId: 'c1' },
+    wrongType: { attachmentId: 'draft-attachment-1', conversationId: 'c1', options: 'bad' },
   },
   {
     name: 'conversationDraft.removeAttachment',
@@ -986,6 +1023,37 @@ describe('draft attachment settings decoder', () => {
 
     expect(decoded.preferredSendMode).toBe('url_ref')
     expect(decoded.urlRetentionMode).toBe('link_only')
+    expect(decoded.dfcManaged).toBe(false)
+    expect(decoded.selectedOptionId).toBeNull()
+    expect(decoded.selectedAssetRefs).toEqual([])
+  })
+
+  it('decodes DFC selected-option fields on draft attachment responses', () => {
+    const selectedAssetRefs = [{ kind: 'raw_file' as const, assetId: 'asset-1' }]
+    const decoded = decodeUpdateDraftAttachmentSettingsResponse({
+      id: 'draft-attachment-1',
+      conversationId: 'c1',
+      assetId: 'asset-1',
+      attachmentOrder: 0,
+      aiPayloadKind: 'text',
+      processingStatus: 'native_supported',
+      includeInNextRequest: true,
+      excludedReason: null,
+      preferredSendMode: null,
+      urlRetentionMode: null,
+      dfcManaged: true,
+      selectedOptionId: 'dfc:asset-1:original_file:raw_file:asset-1',
+      selectedAssetRefs,
+      createdAt: 1,
+      updatedAt: 2,
+    })
+
+    expect(decoded).toMatchObject({
+      dfcManaged: true,
+      selectedOptionId: 'dfc:asset-1:original_file:raw_file:asset-1',
+      selectedAssetRefs,
+      preferredSendMode: null,
+    })
   })
 })
 
@@ -1185,6 +1253,64 @@ describe('DFC renderer DTO sanitization', () => {
       targetKind: 'native_file',
       status: 'ready',
     }])).toThrow()
+  })
+
+  it('decodeDfcDraftAttachmentOptionsResponse exposes only backend-owned option DTO fields', () => {
+    const decoded = decodeDfcDraftAttachmentOptionsResponse({
+      attachmentId: 'draft-attachment-1',
+      conversationId: 'c1',
+      rawFileId: 'raw-1',
+      filename: 'notes.txt',
+      sizeBytes: 42,
+      dfcManaged: false,
+      selectedOptionId: null,
+      selectedAssetRefs: [],
+      decision: {
+        status: 'needs_user_selection',
+        reasonCode: 'selected_option_missing',
+        selectedOptionId: null,
+        targetKind: null,
+        sendStrategy: null,
+        sendAssetRefs: [],
+        needsUserAction: true,
+        storageUri: 'assets/original/raw-1.txt',
+      },
+      options: [{
+        optionId: 'dfc:raw-1:original_file:raw_file:raw-1',
+        targetKind: 'original_file',
+        sendStrategy: 'file_attachment',
+        status: 'ready',
+        isAvailable: true,
+        compatibilityStatus: 'compatible',
+        sendAssetRefs: [{ kind: 'raw_file', assetId: 'raw-1' }],
+        warnings: [],
+        diagnostics: [],
+        storageUri: 'assets/original/raw-1.txt',
+        sourceHash: 'a'.repeat(64),
+        contentToken: 'secret-token',
+        body: 'secret file body',
+      }],
+      storageUri: 'assets/original/raw-1.txt',
+      sourceMetaJson: { contentToken: 'secret-token' },
+    })
+
+    expect(decoded.options[0]).toEqual({
+      optionId: 'dfc:raw-1:original_file:raw_file:raw-1',
+      targetKind: 'original_file',
+      sendStrategy: 'file_attachment',
+      status: 'ready',
+      isAvailable: true,
+      compatibilityStatus: 'compatible',
+      sendAssetRefs: [{ kind: 'raw_file', assetId: 'raw-1' }],
+      warnings: [],
+      diagnostics: [],
+    })
+    expect(decoded).not.toHaveProperty('storageUri')
+    expect(decoded).not.toHaveProperty('sourceMetaJson')
+    expect(decoded.decision).not.toHaveProperty('storageUri')
+    expect(decoded.options[0]).not.toHaveProperty('sourceHash')
+    expect(decoded.options[0]).not.toHaveProperty('contentToken')
+    expect(decoded.options[0]).not.toHaveProperty('body')
   })
 
   it('decodeAttachmentCandidateSnapshotResponse preserves sanitized DFC history binding fields', () => {
