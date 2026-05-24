@@ -1,9 +1,11 @@
 import type { AiPayloadKind, DraftAttachmentSendModePreference, ModelCapability, SendMode } from '../../src/shared/files/fileTypes'
 import {
+  createDfcDerivedAssetFacade,
   resolveDfcManagedAttachment,
   type DfcConversionOption,
   type DfcDecisionReasonCode,
   type DfcDecisionStatus,
+  type DfcDerivedAssetFacade,
   type DfcDerivedTargetKind,
   type DfcManagedAttachmentDecision,
   type DfcSendAssetRef,
@@ -83,6 +85,7 @@ export type CollectedAttachmentInput = Readonly<{
   selectedTargetKind: DfcTargetKind | null
   selectedSendStrategy: DfcSendStrategy | null
   dfcDecision: DfcManagedAttachmentDecision | null
+  dfcLineage?: AttachmentLineageSummary | null
   fileAsset: FileAssetRecord | null
   fileTypeVerdict?: FileTypeVerdict | null
   semantic?: AttachmentSemanticSummary | null
@@ -201,11 +204,12 @@ export class SendPlanService {
           routeCandidates,
           detection: buildAttachmentDetectionSummary(verdict, fileAsset),
         } satisfies Omit<CollectedAttachmentInput, 'dfcDecision' | 'semantic'>
-        const dfcDecision = resolveDfcDecisionForCollectedAttachment(base, this.deps.fileDerivativeRepo)
+        const dfc = resolveDfcContextForCollectedAttachment(base, this.deps.fileDerivativeRepo)
         return {
           ...base,
-          dfcDecision,
-          semantic: semanticSummaryForCollectedAttachment(base, dfcDecision),
+          dfcDecision: dfc.decision,
+          dfcLineage: dfc.lineage,
+          semantic: semanticSummaryForCollectedAttachment(base, dfc.decision),
         }
       }),
       historySnapshot,
@@ -622,11 +626,12 @@ function mapHistoryAttachment(
     routeCandidates,
     detection: buildAttachmentDetectionSummary(verdict, fileAsset),
   } satisfies Omit<CollectedAttachmentInput, 'dfcDecision' | 'semantic'>
-  const dfcDecision = resolveDfcDecisionForCollectedAttachment(base, fileDerivativeRepo)
+  const dfc = resolveDfcContextForCollectedAttachment(base, fileDerivativeRepo)
   return {
     ...base,
-    dfcDecision,
-    semantic: semanticSummaryForCollectedAttachment(base, dfcDecision),
+    dfcDecision: dfc.decision,
+    dfcLineage: dfc.lineage,
+    semantic: semanticSummaryForCollectedAttachment(base, dfc.decision),
   }
 }
 
@@ -646,18 +651,18 @@ function semanticSummaryForCollectedAttachment(
   return semanticSummaryFromRouteCandidates(attachment.routeCandidates ?? null, attachment.aiPayloadKind)
 }
 
-function resolveDfcDecisionForCollectedAttachment(
+function resolveDfcContextForCollectedAttachment(
   attachment: Omit<CollectedAttachmentInput, 'dfcDecision' | 'semantic'>,
   fileDerivativeRepo: FileDerivativeLookupApi | undefined
-): DfcManagedAttachmentDecision | null {
-  if (!attachment.dfcManaged) return null
+): Readonly<{ decision: DfcManagedAttachmentDecision | null; lineage: AttachmentLineageSummary | null }> {
+  if (!attachment.dfcManaged) return { decision: null, lineage: null }
   const optionBundle = buildDfcOptionsForSelectedRefs(attachment, fileDerivativeRepo)
   const fileAvailable = Boolean(
     attachment.fileAsset &&
     attachment.fileAsset.deletedAt == null &&
     attachment.fileAsset.ingestStatus !== 'deleted'
   )
-  return resolveDfcManagedAttachment({
+  const decision = resolveDfcManagedAttachment({
     dfcManaged: true,
     rawFileId: attachment.assetId,
     selectedOptionId: attachment.selectedOptionId,
@@ -673,6 +678,10 @@ function resolveDfcDecisionForCollectedAttachment(
       mimeType: attachment.fileAsset?.mime ?? null,
     },
   })
+  return {
+    decision,
+    lineage: evaluateDfcSelectedAssetRefLineage(attachment, decision, fileDerivativeRepo),
+  }
 }
 
 function buildDfcOptionsForSelectedRefs(
@@ -790,6 +799,90 @@ function readDfcDerivedTargetKind(meta: Record<string, unknown> | null): DfcDeri
       return value
     default:
       return null
+  }
+}
+
+function evaluateDfcSelectedAssetRefLineage(
+  attachment: Omit<CollectedAttachmentInput, 'dfcDecision' | 'semantic'>,
+  decision: DfcManagedAttachmentDecision,
+  fileDerivativeRepo: FileDerivativeLookupApi | undefined
+): AttachmentLineageSummary | null {
+  if (decision.status !== 'ready') return null
+  const refs = decision.sendAssetRefs
+  if (refs.length === 1 && refs[0]?.kind === 'raw_file') {
+    return {
+      state: refs[0].assetId === attachment.assetId ? 'ok' : 'send_asset_not_ready',
+      stale: false,
+      staleReason: refs[0].assetId === attachment.assetId ? null : 'raw_file_ref_mismatch',
+      sourceHash: null,
+      previewContentHash: null,
+      sendContentHash: null,
+      conversionSettingsHash: null,
+    }
+  }
+  if (refs.length === 0 || refs.some((ref) => ref.kind !== 'derived_asset')) return null
+  if (!fileDerivativeRepo) return null
+
+  const facades: DfcDerivedAssetFacade[] = []
+  for (const ref of refs) {
+    const derivative = fileDerivativeRepo.getById(ref.assetId)
+    if (!derivative) {
+      return dfcDerivedLineageSummary('send_asset_not_ready', 'derived_asset_missing')
+    }
+    if (derivative.parentAssetId !== attachment.assetId) {
+      return dfcDerivedLineageSummary('preview_send_asset_mismatch', 'derived_asset_parent_mismatch')
+    }
+    if (derivative.deletedAt != null || derivative.status === 'deleted') {
+      return dfcDerivedLineageSummary('stale_derived_asset', 'derived_asset_deleted')
+    }
+    const facade = createDfcDerivedAssetFacade({
+      derivativeId: derivative.id,
+      sourceFileId: attachment.assetId,
+      mime: derivative.mime,
+      storageRef: derivative.storageUri,
+      status: derivative.status,
+      generator: derivative.generator,
+      metaJson: derivative.metaJson,
+    })
+    if (!facade.ok) {
+      return dfcDerivedLineageSummary('send_asset_not_ready', facade.reasonCode)
+    }
+    if (facade.asset.usage === 'preview_only') {
+      return dfcDerivedLineageSummary('preview_only_asset_not_sendable', 'derived_asset_preview_only')
+    }
+    facades.push(facade.asset)
+  }
+
+  if (facades.length === 0) return null
+  const first = facades[0]!
+  const mismatched = facades.some((facade) =>
+    facade.sourceHash !== first.sourceHash
+    || facade.contentHash !== first.contentHash
+    || facade.conversionSettingsHash !== first.conversionSettingsHash
+  )
+  return {
+    state: mismatched ? 'preview_send_asset_mismatch' : 'ok',
+    stale: false,
+    staleReason: mismatched ? 'selected_derived_asset_lineage_mismatch' : null,
+    sourceHash: null,
+    previewContentHash: null,
+    sendContentHash: null,
+    conversionSettingsHash: null,
+  }
+}
+
+function dfcDerivedLineageSummary(
+  state: Exclude<AttachmentLineageSummary['state'], 'ok' | 'unknown'>,
+  staleReason: string
+): AttachmentLineageSummary {
+  return {
+    state,
+    stale: state === 'stale_derived_asset',
+    staleReason,
+    sourceHash: null,
+    previewContentHash: null,
+    sendContentHash: null,
+    conversionSettingsHash: null,
   }
 }
 
@@ -1782,6 +1875,7 @@ function lineageBlockingMessage(
 }
 
 function evaluateAttachmentLineageSummary(attachment: CollectedAttachmentInput): AttachmentLineageSummary {
+  if (attachment.dfcManaged) return attachment.dfcLineage ?? redactedDfcLineageSummary()
   const asset = attachment.fileAsset
   if (!asset) {
     return {
@@ -1843,6 +1937,18 @@ function evaluateAttachmentLineageSummary(attachment: CollectedAttachmentInput):
     previewContentHash,
     sendContentHash,
     conversionSettingsHash,
+  }
+}
+
+function redactedDfcLineageSummary(): AttachmentLineageSummary {
+  return {
+    state: 'unknown',
+    stale: false,
+    staleReason: null,
+    sourceHash: null,
+    previewContentHash: null,
+    sendContentHash: null,
+    conversionSettingsHash: null,
   }
 }
 

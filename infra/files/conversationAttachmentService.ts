@@ -24,6 +24,7 @@ import type {
   DfcTargetKind,
 } from '../../src/shared/files/documentFormatConversion'
 import {
+  createDfcDerivedAssetFacade,
   createDfcDerivedAssetOption,
   createDfcOriginalFileOption,
   resolveDfcManagedAttachment,
@@ -435,15 +436,34 @@ export class ConversationAttachmentService {
       const targetKind = readDfcDerivedTargetKindFromMeta(derivative.metaJson)
       if (!targetKind) continue
       const refs: DfcSendAssetRef[] = [{ kind: 'derived_asset', assetId: derivative.id }]
-      options.push(createDfcDerivedAssetOption({
-        optionId: this.optionIdForCandidate(attachment, targetKind, refs),
-        rawFileId: asset.id,
-        derivedAssetId: derivative.id,
-        targetKind,
-        status: dfcOptionStatusFromDerivative(derivative),
-        isAvailable: derivative.status === 'ready' && derivative.deletedAt == null,
-        compatibilityStatus: derivative.status === 'ready' && derivative.deletedAt == null ? 'compatible' : derivative.status === 'pending' ? 'pending' : 'blocked',
-      }))
+      const status = dfcOptionStatusFromDerivative(derivative)
+      const facade = createDfcDerivedAssetFacade({
+        derivativeId: derivative.id,
+        sourceFileId: asset.id,
+        mime: derivative.mime,
+        storageRef: derivative.storageUri,
+        status: derivative.status,
+        generator: derivative.generator,
+        metaJson: derivative.metaJson,
+      })
+      const unavailableReason = status === 'ready'
+        ? dfcDerivativeUnavailableReason(facade)
+        : null
+      const candidateStatus = unavailableReason ? 'blocked' : status
+      const isAvailable = status === 'ready' && !unavailableReason
+      options.push({
+        ...createDfcDerivedAssetOption({
+          optionId: this.optionIdForCandidate(attachment, targetKind, refs),
+          rawFileId: asset.id,
+          derivedAssetId: derivative.id,
+          targetKind,
+          status: candidateStatus,
+          isAvailable,
+          compatibilityStatus: isAvailable ? 'compatible' : candidateStatus === 'pending' ? 'pending' : 'blocked',
+        }),
+        unavailableReason: unavailableReason ?? undefined,
+        warnings: facade.ok ? facade.asset.warnings : [],
+      })
     }
 
     const textConversionOption = this.textConversionOptionCandidate(attachment, asset)
@@ -473,17 +493,34 @@ export class ConversationAttachmentService {
     if (!derivativeId || !targetKind) return null
     const refs: DfcSendAssetRef[] = [{ kind: 'derived_asset', assetId: derivativeId }]
     const status = dfcOptionStatusFromTextConversion(textConversion)
-    const hasStorageRef = typeof textConversion?.storageUri === 'string' && textConversion.storageUri.trim().length > 0
-    const isAvailable = status === 'ready' && hasStorageRef
-    return createDfcDerivedAssetOption({
-      optionId: this.optionIdForCandidate(attachment, targetKind, refs),
-      rawFileId: asset.id,
-      derivedAssetId: derivativeId,
-      targetKind,
+    const facade = createDfcDerivedAssetFacade({
+      derivativeId,
+      sourceFileId: asset.id,
+      mime: typeof textConversion?.mime === 'string' ? textConversion.mime : null,
+      storageRef: typeof textConversion?.storageUri === 'string' ? textConversion.storageUri : null,
       status,
-      isAvailable,
-      compatibilityStatus: isAvailable ? 'compatible' : status === 'pending' || status === 'candidate' ? 'pending' : 'blocked',
+      generator: typeof textConversion?.converterName === 'string' ? textConversion.converterName : null,
+      metaJson: textConversion,
     })
+    const unavailableReason = status === 'ready'
+      ? dfcDerivativeUnavailableReason(facade)
+      : null
+    const candidateStatus = unavailableReason ? 'blocked' : status
+    const hasStorageRef = typeof textConversion?.storageUri === 'string' && textConversion.storageUri.trim().length > 0
+    const isAvailable = status === 'ready' && hasStorageRef && !unavailableReason
+    return {
+      ...createDfcDerivedAssetOption({
+        optionId: this.optionIdForCandidate(attachment, targetKind, refs),
+        rawFileId: asset.id,
+        derivedAssetId: derivativeId,
+        targetKind,
+        status: candidateStatus,
+        isAvailable,
+        compatibilityStatus: isAvailable ? 'compatible' : candidateStatus === 'pending' || candidateStatus === 'candidate' ? 'pending' : 'blocked',
+      }),
+      unavailableReason: unavailableReason ?? undefined,
+      warnings: facade.ok ? facade.asset.warnings : [],
+    }
   }
 
   private toDfcDraftOptionCandidateDto(option: DfcConversionOption): DfcDraftOptionCandidateDto {
@@ -496,7 +533,9 @@ export class ConversationAttachmentService {
       compatibilityStatus: option.compatibilityStatus ?? null,
       sendAssetRefs: [...option.sendAssetRefs],
       warnings: [...(option.warnings ?? [])],
-      diagnostics: [],
+      diagnostics: option.unavailableReason
+        ? [{ code: option.unavailableReason, message: `DFC option unavailable: ${option.unavailableReason}` }]
+        : [],
     }
   }
 
@@ -956,6 +995,14 @@ function dfcOptionStatusFromTextConversion(textConversion: Record<string, unknow
   if (status === 'blocked') return 'blocked'
   if (status === 'pending' || status === 'running' || status === 'candidate') return 'pending'
   return 'candidate'
+}
+
+function dfcDerivativeUnavailableReason(
+  facade: ReturnType<typeof createDfcDerivedAssetFacade>
+): string | null {
+  if (!facade.ok) return facade.reasonCode
+  if (facade.asset.usage === 'preview_only') return 'preview_only_asset_not_sendable'
+  return null
 }
 
 function dfcSendAssetRefsEqual(
