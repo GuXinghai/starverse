@@ -5,6 +5,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { resolveManagedStoragePath } from '../../../../src/shared/files/localStorageResolver'
 import type { SendPlan } from '../../../../src/shared/files/sendPlanTypes'
 import { serializeSendPlanForOpenRouter } from '../../../../src/next/openrouter/openRouterSendPlanSerializer'
+import type { FileAssetRecord } from '../../types'
 import {
   CreateFileAssetSchema,
   CreateFileDerivativeSchema,
@@ -595,6 +596,11 @@ async function ensureTextDerivativeAsset(
   assetId: string,
   targetKind: string
 ): Promise<Readonly<{ changed: boolean }>> {
+  const asset = runtime.fileAssetRepo.getById(assetId)
+  if (!asset) {
+    writeAssetConversionFailureMeta(runtime, assetId, 'derivative_asset_missing', 'Text conversion source asset is missing.')
+    return { changed: true }
+  }
   const existing = runtime.fileDerivativeRepo.getLatestReady({ parentAssetId: assetId, derivedKind: 'extracted_text' })
   let derivative = existing
   if (!derivative) {
@@ -625,8 +631,23 @@ async function ensureTextDerivativeAsset(
   const textBytes = new Uint8Array(await readFile(resolved.path))
   const contentHash = sha256Bytes(textBytes)
   const derivativeMeta = normalizeObject(derivative.metaJson)
-  const sourceHash = readStringMeta(derivativeMeta, 'sourceHash')
+  const sourceHash = readStringMeta(derivativeMeta, 'sourceHash') ?? asset.sha256 ?? null
   const settingsHash = sha256Bytes(Buffer.from(JSON.stringify({ targetKind })))
+  const dfcMeta = buildDfcTextConversionMetadata(asset, targetKind, {
+    sourceHash,
+    contentHash,
+    conversionSettingsHash: settingsHash,
+    warnings: readStringArrayMeta(derivativeMeta, 'conversionWarnings'),
+  })
+  if (dfcMeta) {
+    derivative = runtime.fileDerivativeRepo.update({
+      id: derivative.id,
+      metaJson: {
+        ...(derivativeMeta ?? {}),
+        ...dfcMeta,
+      },
+    })
+  }
   writeAssetConversionReadyMeta(runtime, assetId, {
     targetKind,
     derivativeId: derivative.id,
@@ -636,6 +657,7 @@ async function ensureTextDerivativeAsset(
     contentHash,
     sourceHash,
     conversionSettingsHash: settingsHash,
+    dfcMeta,
   })
   return { changed: true }
 }
@@ -652,6 +674,7 @@ function writeAssetConversionReadyMeta(
     contentHash: string
     sourceHash: string | null
     conversionSettingsHash: string
+    dfcMeta: Record<string, unknown> | null
   }>
 ): void {
   const row = runtime.db.prepare('SELECT source_meta_json AS sourceMetaJson FROM file_assets WHERE id=@id LIMIT 1').get({ id: assetId }) as { sourceMetaJson?: string | null } | undefined
@@ -670,6 +693,7 @@ function writeAssetConversionReadyMeta(
       contentHash: input.contentHash,
       sourceHash: input.sourceHash,
       conversionSettingsHash: input.conversionSettingsHash,
+      ...(input.dfcMeta ?? {}),
     },
     lineage: {
       ...(normalizeObject(existing?.lineage) ?? {}),
@@ -740,6 +764,61 @@ function isRouteLevelTextConversionFailure(errorCode: string): boolean {
   return errorCode === 'derivative_asset_not_supported'
 }
 
+const DFC_TEXT_CONVERTER_NAME = 'starverse-text-derivative'
+const DFC_TEXT_CONVERTER_VERSION = '1'
+const DFC_TEXT_CODE_EXTENSIONS = new Set([
+  'js', 'ts', 'jsx', 'tsx', 'py', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd',
+  'json', 'yaml', 'yml', 'xml', 'toml', 'ini', 'env', 'sql', 'go', 'rs',
+  'java', 'c', 'cc', 'cpp', 'h', 'hpp', 'cs', 'php', 'rb', 'swift', 'kt',
+  'scala', 'lua', 'dockerfile',
+])
+
+function buildDfcTextConversionMetadata(
+  asset: FileAssetRecord,
+  targetKind: string,
+  input: Readonly<{
+    sourceHash: string | null
+    contentHash: string
+    conversionSettingsHash: string
+    warnings: readonly string[]
+  }>
+): Record<string, unknown> | null {
+  if (!isDfcPhase1TextConversionAsset(asset, targetKind)) return null
+  if (!input.sourceHash) return null
+  return {
+    storageClass: 'draft_bound',
+    converterName: DFC_TEXT_CONVERTER_NAME,
+    converterVersion: DFC_TEXT_CONVERTER_VERSION,
+    sourceHash: input.sourceHash,
+    contentHash: input.contentHash,
+    conversionSettingsHash: input.conversionSettingsHash,
+    warnings: [...input.warnings],
+  }
+}
+
+function isDfcPhase1TextConversionAsset(asset: FileAssetRecord, targetKind: string): boolean {
+  const ext = String(asset.extension ?? '').trim().toLowerCase()
+  const mime = normalizeMime(asset.mime)
+  if (ext === 'html' || ext === 'htm' || mime === 'text/html') return false
+  if (ext === 'ps' || ext === 'eps' || mime === 'application/postscript') return false
+  if (ext === 'docx' || ext === 'doc' || ext === 'rtf' || ext === 'xlsx' || ext === 'xls') return false
+  if (ext === 'pdf' || mime === 'application/pdf') return false
+  if (targetKind === 'table_markdown') {
+    return ext === 'csv' || ext === 'tsv' || mime === 'text/csv' || mime === 'text/tab-separated-values'
+  }
+  if (targetKind === 'markdown') {
+    return ext === 'md' || ext === 'markdown' || mime === 'text/markdown' || mime === 'text/x-markdown'
+  }
+  if (targetKind === 'code') return DFC_TEXT_CODE_EXTENSIONS.has(ext)
+  return targetKind === 'plain_text'
+    && (ext === 'txt' || mime === 'text/plain' || (asset.assetKind === 'text' && !ext && !mime))
+}
+
+function normalizeMime(value: string | null): string | null {
+  const normalized = String(value ?? '').split(';', 1)[0]?.trim().toLowerCase()
+  return normalized || null
+}
+
 function clearRouteLevelTextConversionStale(lineage: Record<string, any>): Record<string, any> {
   const next = { ...lineage }
   if (next.staleReason === 'derivative_asset_not_supported') {
@@ -766,6 +845,12 @@ function safeParseJson(value: string): Record<string, any> | null {
 function readStringMeta(meta: Record<string, any> | null, key: string): string | null {
   const value = meta?.[key]
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+}
+
+function readStringArrayMeta(meta: Record<string, any> | null, key: string): string[] {
+  const value = meta?.[key]
+  if (!Array.isArray(value)) return []
+  return value.map((item) => typeof item === 'string' ? item.trim() : '').filter(Boolean)
 }
 
 function isTextSemanticTarget(targetKind: string | null): boolean {

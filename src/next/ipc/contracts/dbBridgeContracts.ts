@@ -407,7 +407,7 @@ const messageAssetRenderSchema = messageAssetObjectSchema.omit({
   assetUrl: row.assetUrl,
 }))
 
-const fileAssetSchema = z.object({
+const privateFileAssetSchema = z.object({
   id: nonEmpty,
   sha256: z.string().trim().nullable().optional(),
   filename: nonEmpty,
@@ -433,7 +433,13 @@ const fileAssetSchema = z.object({
   deletedAt: row.deletedAt ?? null,
 }))
 
-const fileDerivativeSchema = z.object({
+const fileAssetSchema = privateFileAssetSchema.transform((row) => ({
+  ...row,
+  sha256: null,
+  sourceMetaJson: sanitizeRendererFileAssetSourceMeta(row.sourceMetaJson),
+}))
+
+const privateFileDerivativeSchema = z.object({
   id: nonEmpty,
   parentAssetId: nonEmpty,
   derivedKind: nonEmpty,
@@ -450,6 +456,11 @@ const fileDerivativeSchema = z.object({
   mime: row.mime ?? null,
   metaJson: row.metaJson ?? null,
   deletedAt: row.deletedAt ?? null,
+}))
+
+const fileDerivativeSchema = privateFileDerivativeSchema.transform((row) => ({
+  ...row,
+  metaJson: sanitizeRendererFileDerivativeMeta(row.metaJson),
 }))
 
 const dfcTargetKindSchema = z.enum(DFC_TARGET_KINDS)
@@ -1343,11 +1354,11 @@ export function decodeFileAssetListResponse(raw: unknown): DecodedFileAsset[] {
 }
 
 export function decodeDfcFileAssetResponse(raw: unknown): DecodedDfcFileAsset {
-  return sanitizeDfcFileAsset(decodeFileAssetResponse(raw))
+  return sanitizeDfcFileAsset(decodeWithSchema('fileAsset', privateFileAssetSchema, raw))
 }
 
 export function decodeDfcFileAssetListResponse(raw: unknown): DecodedDfcFileAsset[] {
-  return decodeFileAssetListResponse(raw).map(sanitizeDfcFileAsset)
+  return decodeWithSchema('fileAsset.listByIds', z.array(privateFileAssetSchema), raw).map(sanitizeDfcFileAsset)
 }
 
 export function decodeFileDerivativeResponse(raw: unknown): DecodedFileDerivative {
@@ -1359,11 +1370,11 @@ export function decodeFileDerivativeListResponse(raw: unknown): DecodedFileDeriv
 }
 
 export function decodeDfcFileDerivativeResponse(raw: unknown): DecodedDfcFileDerivative {
-  return sanitizeDfcFileDerivative(decodeFileDerivativeResponse(raw))
+  return sanitizeDfcFileDerivative(decodeWithSchema('fileDerivative', privateFileDerivativeSchema, raw))
 }
 
 export function decodeDfcFileDerivativeListResponse(raw: unknown): DecodedDfcFileDerivative[] {
-  return decodeFileDerivativeListResponse(raw).map(sanitizeDfcFileDerivative)
+  return decodeWithSchema('fileDerivative.listByParentAssetId', z.array(privateFileDerivativeSchema), raw).map(sanitizeDfcFileDerivative)
 }
 
 export function decodeDfcAttachmentDtoResponse(raw: unknown): DfcSanitizedAttachmentDto {
@@ -1389,6 +1400,70 @@ export function decodeDerivativeJobResponse(raw: unknown): DecodedDerivativeJob 
 export function decodeNullableDerivativeJobResponse(raw: unknown): DecodedDerivativeJob | null {
   if (raw === null || raw === undefined) return null
   return decodeDerivativeJobResponse(raw)
+}
+
+const RENDERER_PRIVATE_META_KEYS = new Set([
+  'contentToken',
+  'storageRef',
+  'storageUri',
+  'sendTextStorageUri',
+  'fileUrl',
+  'path',
+  'filePath',
+  'rawPath',
+  'rawTempPath',
+  'body',
+  'fileBody',
+  'rawFileBody',
+  'sha256',
+  'hash',
+  'sourceHash',
+  'contentHash',
+  'previewHash',
+  'conversionSettingsHash',
+  'previewContentHash',
+  'sendContentHash',
+  'storageClass',
+  'converterName',
+  'converterVersion',
+])
+
+const RENDERER_FILE_ASSET_PRIVATE_CONTAINERS = new Set(['textConversion', 'lineage'])
+
+function sanitizeRendererFileAssetSourceMeta(meta: Record<string, unknown> | null): Record<string, unknown> | null {
+  return sanitizeRendererMeta(meta, RENDERER_FILE_ASSET_PRIVATE_CONTAINERS)
+}
+
+function sanitizeRendererFileDerivativeMeta(meta: Record<string, unknown> | null): Record<string, unknown> | null {
+  return sanitizeRendererMeta(meta)
+}
+
+function sanitizeRendererMeta(
+  meta: Record<string, unknown> | null,
+  privateContainers: ReadonlySet<string> = new Set(),
+): Record<string, unknown> | null {
+  if (!meta || typeof meta !== 'object') return null
+  const sanitized = sanitizeRendererMetaValue(meta, privateContainers)
+  if (!sanitized || typeof sanitized !== 'object' || Array.isArray(sanitized)) return null
+  return Object.keys(sanitized).length > 0 ? sanitized as Record<string, unknown> : null
+}
+
+function sanitizeRendererMetaValue(value: unknown, privateContainers: ReadonlySet<string>): unknown {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizeRendererMetaValue(item, privateContainers))
+      .filter((item) => item !== undefined)
+  }
+  if (!value || typeof value !== 'object') return value
+  const output: Record<string, unknown> = {}
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (RENDERER_PRIVATE_META_KEYS.has(key) || privateContainers.has(key)) continue
+    const sanitized = sanitizeRendererMetaValue(child, privateContainers)
+    if (sanitized === undefined) continue
+    if (sanitized && typeof sanitized === 'object' && !Array.isArray(sanitized) && Object.keys(sanitized).length === 0) continue
+    output[key] = sanitized
+  }
+  return output
 }
 
 function sanitizeDfcFileAsset(asset: DecodedFileAsset): DecodedDfcFileAsset {

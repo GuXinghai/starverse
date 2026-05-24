@@ -1449,6 +1449,97 @@ describe('DFC renderer DTO sanitization', () => {
     })
   })
 
+  it('decodeFileAssetResponse strips renderer-visible DFC private metadata and full hashes', () => {
+    const decoded = decodeFileAssetResponse({
+      id: 'raw-1',
+      sha256: 'a'.repeat(64),
+      filename: 'notes.csv',
+      extension: 'csv',
+      mime: 'text/csv',
+      sizeBytes: 42,
+      assetKind: 'text',
+      sourceKind: 'url_import',
+      storageBackend: 'local_fs',
+      storageUri: 'assets/original/raw-1.csv',
+      ingestStatus: 'stored',
+      previewStatus: 'not_requested',
+      sourceMetaJson: {
+        originalUrl: 'https://example.test/data.csv',
+        resolvedUrl: 'https://cdn.example.test/data.csv',
+        contentToken: 'secret-token',
+        textConversion: {
+          status: 'ready',
+          targetKind: 'table_markdown',
+          storageUri: 'assets/derived/raw-1/derived-1.md',
+          sourceHash: 'b'.repeat(64),
+          contentHash: 'c'.repeat(64),
+          conversionSettingsHash: 'd'.repeat(64),
+          storageClass: 'draft_bound',
+          converterName: 'starverse-text-derivative',
+          converterVersion: '1',
+        },
+        lineage: {
+          sourceHash: 'e'.repeat(64),
+          sendTextStorageUri: 'assets/derived/raw-1/derived-1.md',
+        },
+        nested: {
+          safeLabel: 'visible',
+          conversionSettingsHash: 'f'.repeat(64),
+        },
+      },
+      createdAt: 1,
+      updatedAt: 2,
+      deletedAt: null,
+    })
+
+    expect(decoded.sha256).toBeNull()
+    expect(decoded.sourceMetaJson).toEqual({
+      originalUrl: 'https://example.test/data.csv',
+      resolvedUrl: 'https://cdn.example.test/data.csv',
+      nested: { safeLabel: 'visible' },
+    })
+    expect(JSON.stringify(decoded)).not.toContain('secret-token')
+    expect(JSON.stringify(decoded)).not.toContain('starverse-text-derivative')
+    expect(JSON.stringify(decoded)).not.toContain('assets/derived/raw-1/derived-1.md')
+    expect(JSON.stringify(decoded)).not.toContain('bbbb')
+  })
+
+  it('decodeFileDerivativeListResponse strips renderer-visible raw DFC derivative metadata', () => {
+    const decoded = decodeFileDerivativeListResponse([{
+      id: 'derived-1',
+      parentAssetId: 'raw-1',
+      derivedKind: 'extracted_text',
+      mime: 'text/markdown',
+      storageUri: 'assets/derived/raw-1/derived-1.md',
+      generator: 'step3-text-structured-conversion',
+      status: 'ready',
+      metaJson: {
+        targetKind: 'table_markdown',
+        usage: 'preview_and_send',
+        width: 64,
+        storageClass: 'draft_bound',
+        converterName: 'starverse-text-derivative',
+        converterVersion: '1',
+        sourceHash: 'a'.repeat(64),
+        contentHash: 'b'.repeat(64),
+        conversionSettingsHash: 'c'.repeat(64),
+        path: 'private-test-path',
+      },
+      createdAt: 1,
+      updatedAt: 2,
+      deletedAt: null,
+    }])
+
+    expect(decoded[0]?.metaJson).toEqual({
+      targetKind: 'table_markdown',
+      usage: 'preview_and_send',
+      width: 64,
+    })
+    expect(JSON.stringify(decoded[0]?.metaJson)).not.toContain('starverse-text-derivative')
+    expect(JSON.stringify(decoded[0]?.metaJson)).not.toContain('private-test-path')
+    expect(JSON.stringify(decoded[0]?.metaJson)).not.toContain('aaaa')
+  })
+
   it('decodeDfcFileAssetResponse strips storage and hash fields while preserving display metadata', () => {
     const result = decodeDfcFileAssetResponse({
       id: 'raw-1',

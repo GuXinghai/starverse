@@ -381,9 +381,27 @@ DFC-15 should wire the existing attachment details dialog to display the selecte
 - Validation after `npm run rebuild:node` passed for the focused UI/client/IPC suite and the focused backend/send-plan/shared suite. Full project typecheck still fails only at the pre-existing Vue named-export issue in `src/ui-app/app/appChatApp.logic.ts`.
 - Risk review found no P0/P1 issues for DFC authority, stale preview state, privacy/log exposure, or missing targeted tests.
 
-## Recommended next round
+## Superseded DFC-16 recommendation
 
-DFC-16 should choose one of two owner-aligned paths:
+The following recommendation was the active next-step guidance after DFC-15 and was superseded by the DFC-16 implementation notes below:
 
 - Obtain owner approval for new browser Playwright harness scaffolding, then implement the required upload, shelf/chip, detail flow, option selection, preview visibility, removal, and send-gating smoke.
 - Or continue a non-harness backend conversion/runtime slice that remains within Phase 1 and avoids XLSX/Office/PDF/HTML/PS-EPS, new dependencies, external engines, legacy compatibility, broad UI redesign, and broad Send Plan replacement.
+
+## DFC-16 implementation recovery notes
+
+- DFC-16 is a backend/runtime and privacy-boundary slice; it does not add a browser Playwright harness, new dependency, external engine, UI redesign, legacy bridge, broad Send Plan replacement, or forbidden conversion family runtime.
+- The existing worker `sendPlan.buildCurrent` bridge now backfills DFC facade metadata onto ready `extracted_text` derivatives for allowed Phase 1 text-like assets: plain text, Markdown, source-code text, CSV, and TSV.
+- HTML, PS/EPS, PDF, Office, XLS, and XLSX assets are explicitly excluded from the new DFC metadata backfill. This keeps those families pending a separate owner-approved runtime plan.
+- The bridge writes DFC metadata only when a source hash is available and keeps using the existing `file_derivatives` facade; no DB schema or durable `ConversionOption` rows were added.
+- DFC options can now expose a generated CSV/TSV `table_markdown` derivative as an available backend-owned derived option after the existing send-plan worker path has generated or rechecked the `extracted_text` derivative.
+- A risk review found an initial P1: internal DFC metadata written into `file_derivatives.meta_json` and `file_assets.source_meta_json` could leak through generic renderer raw asset/derivative decoders.
+- The fix keeps private parser schemas for backend-owned DFC sanitizers, but public raw `fileAsset` / `fileDerivative` IPC decoders now redact top-level full hashes and private JSON metadata inside `sourceMetaJson` / `metaJson`, including `textConversion`, `lineage`, storage refs, content tokens, file bodies, hash fields, converter identity, and path-like metadata.
+- Follow-up risk review passed with no P0/P1 findings. Targeted worker, service, IPC contract, renderer client, shared contract, and attachment UI tests passed. Full project typecheck still fails only at the pre-existing Vue named-export issue in `src/ui-app/app/appChatApp.logic.ts`.
+
+## Recommended next round
+
+DFC-17 should choose one of two owner-level paths:
+
+- Obtain owner approval for new browser Playwright harness scaffolding, then implement the required upload, shelf/chip, detail flow, option selection, preview visibility, removal, and send-gating smoke.
+- Or make an explicit owner decision on conversion option generation timing before adding upload/open-triggered generation, because DFC-16 only makes derivatives DFC-ready after the existing send-plan worker path runs.
