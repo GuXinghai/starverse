@@ -267,6 +267,7 @@ export class DbWorkerRuntime {
       messageAttachmentRepo: this.messageAttachmentRepo,
       branchRepo: this.branchRepo,
       draftRepo: this.conversationDraftRepo,
+      storageRootDir: this.fileStorageRootDir,
     })
     this.sendPlanService = new SendPlanService({
       conversationAttachmentService: this.conversationAttachmentService,

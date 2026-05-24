@@ -28,6 +28,7 @@ import {
   GetAssetAttachmentOwnershipSchema,
   GetAttachmentCandidateSnapshotSchema,
   GetDfcDraftAttachmentOptionsSchema,
+  GetDfcDraftAttachmentPreviewSchema,
   MarkAttachmentAbandonedSchema,
   CapturePdfAnnotationDerivativeSchema,
   RemoveDraftAttachmentSchema,
@@ -232,6 +233,11 @@ function registerConversationAttachmentHandlers(register: RegisterHandler, runti
   register('conversationDraft.getDfcOptions', (raw) => {
     const input = GetDfcDraftAttachmentOptionsSchema.parse(raw)
     return runtime.conversationAttachmentService.getDfcDraftAttachmentOptions(input)
+  })
+
+  register('conversationDraft.getDfcPreview', async (raw) => {
+    const input = GetDfcDraftAttachmentPreviewSchema.parse(raw)
+    return await runtime.conversationAttachmentService.getDfcDraftAttachmentPreview(input)
   })
 
   register('conversationDraft.commitToUserMessage', (raw) => {

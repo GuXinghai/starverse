@@ -4,6 +4,7 @@ import {
   attachConversationDraftToMessage,
   cloneConversationDraftFromMessage,
   getConversationDraftAttachmentDfcOptions,
+  getConversationDraftAttachmentDfcPreview,
   removeConversationDraftAttachment,
   restoreConversationDraft,
   updateConversationDraftAttachmentSettings,
@@ -157,6 +158,55 @@ describe('conversationDraftClient', () => {
       assetId: 'asset-1',
     })
     expect(result.options[0]?.targetKind).toBe('original_file')
+  })
+
+  it('calls conversationDraft.getDfcPreview through dbBridge', async () => {
+    const invoke = vi.fn(async () => ({
+      attachmentId: 'draft-attachment-1',
+      conversationId: 'c1',
+      rawFileId: 'asset-1',
+      filename: 'asset-1.md',
+      sizeBytes: 16,
+      dfcManaged: true,
+      selectedOptionId: 'dfc:asset-1:markdown:derived_asset:derivative-1',
+      selectedAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-1' }],
+      targetKind: 'markdown',
+      sendStrategy: 'text_in_prompt',
+      decision: {
+        status: 'ready',
+        reasonCode: null,
+        selectedOptionId: 'dfc:asset-1:markdown:derived_asset:derivative-1',
+        targetKind: 'markdown',
+        sendStrategy: 'text_in_prompt',
+        sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-1' }],
+        needsUserAction: false,
+      },
+      preview: {
+        kind: 'text',
+        status: 'ready',
+        text: 'preview',
+        characterCount: 7,
+        byteLength: 7,
+        truncated: false,
+        maxCharacters: 128,
+        diagnostics: [],
+      },
+    }))
+    ;(globalThis as any).dbBridge = { invoke }
+
+    const result = await getConversationDraftAttachmentDfcPreview({
+      conversationId: 'c1',
+      assetId: 'asset-1',
+      maxCharacters: 128,
+    })
+
+    expect(invoke).toHaveBeenCalledWith('conversationDraft.getDfcPreview', {
+      conversationId: 'c1',
+      assetId: 'asset-1',
+      maxCharacters: 128,
+    })
+    expect(result.preview.text).toBe('preview')
+    expect(result.selectedAssetRefs).toEqual([{ kind: 'derived_asset', assetId: 'derivative-1' }])
   })
 
   it('still restores conversation drafts through dbBridge', async () => {

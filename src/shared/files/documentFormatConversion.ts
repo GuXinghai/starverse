@@ -227,6 +227,46 @@ export type DfcDraftAttachmentOptionsDto = Readonly<{
   options: readonly DfcDraftOptionCandidateDto[]
 }>
 
+export type DfcDraftAttachmentPreviewStatus =
+  | 'ready'
+  | 'needs_user_selection'
+  | 'pending'
+  | 'blocked'
+  | 'failed'
+  | 'stale'
+  | 'incompatible'
+
+export type DfcDraftAttachmentPreviewKind =
+  | 'none'
+  | 'raw_file'
+  | 'text'
+
+export type DfcDraftAttachmentPreviewPayloadDto = Readonly<{
+  kind: DfcDraftAttachmentPreviewKind
+  status: DfcDraftAttachmentPreviewStatus
+  text: string | null
+  characterCount: number | null
+  byteLength: number | null
+  truncated: boolean
+  maxCharacters: number
+  diagnostics: readonly DfcSanitizedDiagnostic[]
+}>
+
+export type DfcDraftAttachmentPreviewDto = Readonly<{
+  attachmentId: string
+  conversationId: string
+  rawFileId: string
+  filename: string
+  sizeBytes: number
+  dfcManaged: boolean
+  selectedOptionId: string | null
+  selectedAssetRefs: readonly DfcSendAssetRef[]
+  targetKind: DfcTargetKind | null
+  sendStrategy: DfcSendStrategy | null
+  decision: DfcManagedAttachmentDecision
+  preview: DfcDraftAttachmentPreviewPayloadDto
+}>
+
 export type DfcRendererAttachmentAuditInput = Readonly<{
   attachmentId: string
   rawFileId: string

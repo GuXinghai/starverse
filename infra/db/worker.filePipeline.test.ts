@@ -57,6 +57,7 @@ function createWorkerHarness() {
   const branchRepo = new BranchRepo(db)
   const modelCatalogRepo = new ModelCatalogRepo(db)
   const handlers = new Map<DbMethod, DbHandler>()
+  const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
   const conversationAttachmentService = new ConversationAttachmentService({
     db,
     fileAssetRepo,
@@ -64,9 +65,9 @@ function createWorkerHarness() {
     messageAttachmentRepo,
     branchRepo,
     draftRepo: new ConversationDraftRepo(db),
+    storageRootDir,
     now: () => 1000,
   })
-  const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
   const fileTypeDetectionService = new FileTypeDetectionService({
     db,
     fileAssetRepo,
@@ -291,6 +292,31 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
         selectedOptionId: originalOption.optionId,
         selectedAssetRefs,
         preferredSendMode: null,
+      }),
+    })
+
+    const preview = await dispatchWorkerMessage(handlers, {
+      id: 'req-dfc-preview',
+      method: 'conversationDraft.getDfcPreview',
+      params: {
+        conversationId: 'c1',
+        assetId: 'asset-1',
+        maxCharacters: 128,
+      },
+    })
+
+    expect(preview).toMatchObject({
+      ok: true,
+      result: expect.objectContaining({
+        selectedOptionId: originalOption.optionId,
+        selectedAssetRefs,
+        targetKind: 'original_file',
+        sendStrategy: 'file_attachment',
+        preview: expect.objectContaining({
+          kind: 'raw_file',
+          status: 'ready',
+          text: null,
+        }),
       }),
     })
 
