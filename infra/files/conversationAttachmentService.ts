@@ -620,22 +620,7 @@ export class ConversationAttachmentService {
         deletedAt: derivative.deletedAt,
       }
     }
-
-    const root = normalizeObject(rawAsset.sourceMetaJson)
-    const textConversion = normalizeObject(root?.textConversion)
-    const textConversionDerivativeId = typeof textConversion?.derivativeId === 'string' ? textConversion.derivativeId.trim() : ''
-    if (textConversionDerivativeId !== derivativeId) return null
-    const storageUri = typeof textConversion?.storageUri === 'string' ? textConversion.storageUri.trim() : ''
-    if (!storageUri) return null
-    return {
-      derivativeId,
-      storageUri,
-      mime: typeof textConversion?.mime === 'string' ? textConversion.mime : null,
-      status: dfcOptionStatusFromTextConversion(textConversion) === 'ready' ? 'ready' : 'pending',
-      generator: typeof textConversion?.converterName === 'string' ? textConversion.converterName : null,
-      metaJson: textConversion,
-      deletedAt: null,
-    }
+    return null
   }
 
   private getDfcDerivativeById(derivativeId: string): FileDerivativeRecord | null {
@@ -754,10 +739,6 @@ export class ConversationAttachmentService {
       })
     }
 
-    const textConversionOption = this.textConversionOptionCandidate(attachment, asset)
-    if (textConversionOption && !options.some((option) => dfcSendAssetRefsEqual(option.sendAssetRefs, textConversionOption.sendAssetRefs))) {
-      options.push(textConversionOption)
-    }
     return options
   }
 
@@ -768,50 +749,6 @@ export class ConversationAttachmentService {
   ): string {
     const refPart = refs.map((ref) => `${ref.kind}:${ref.assetId}`).sort().join(',')
     return `dfc:${attachment.assetId}:${targetKind}:${refPart}`
-  }
-
-  private textConversionOptionCandidate(
-    attachment: DraftAttachmentRecord,
-    asset: FileAssetRecord
-  ): DfcConversionOption | null {
-    const root = normalizeObject(asset.sourceMetaJson)
-    const textConversion = normalizeObject(root?.textConversion)
-    const derivativeId = typeof textConversion?.derivativeId === 'string' ? textConversion.derivativeId.trim() : ''
-    const targetKind = readDfcDerivedTargetKindFromMeta(textConversion)
-    if (!derivativeId || !targetKind) return null
-    const refs: DfcSendAssetRef[] = [{ kind: 'derived_asset', assetId: derivativeId }]
-    const status = dfcOptionStatusFromTextConversion(textConversion)
-    const facade = createDfcDerivedAssetFacade({
-      derivativeId,
-      sourceFileId: asset.id,
-      mime: typeof textConversion?.mime === 'string' ? textConversion.mime : null,
-      storageRef: typeof textConversion?.storageUri === 'string' ? textConversion.storageUri : null,
-      status,
-      generator: typeof textConversion?.converterName === 'string' ? textConversion.converterName : null,
-      metaJson: textConversion,
-    })
-    const sourceHashIssue = facade.ok ? dfcDerivedAssetSourceHashIssue(asset, facade.asset) : null
-    const unavailableReason = sourceHashIssue
-      ? sourceHashIssue
-      : status === 'ready'
-        ? dfcDerivativeUnavailableReason(facade)
-        : null
-    const candidateStatus = sourceHashIssue === 'derived_asset_source_hash_mismatch' ? 'stale' : unavailableReason ? 'blocked' : status
-    const hasStorageRef = typeof textConversion?.storageUri === 'string' && textConversion.storageUri.trim().length > 0
-    const isAvailable = status === 'ready' && hasStorageRef && !sourceHashIssue && !unavailableReason
-    return {
-      ...createDfcDerivedAssetOption({
-        optionId: this.optionIdForCandidate(attachment, targetKind, refs),
-        rawFileId: asset.id,
-        derivedAssetId: derivativeId,
-        targetKind,
-        status: candidateStatus,
-        isAvailable,
-        compatibilityStatus: isAvailable ? 'compatible' : candidateStatus === 'pending' || candidateStatus === 'candidate' ? 'pending' : 'blocked',
-      }),
-      unavailableReason: unavailableReason ?? undefined,
-      warnings: facade.ok ? facade.asset.warnings : [],
-    }
   }
 
   private toDfcDraftOptionCandidateDto(option: DfcConversionOption): DfcDraftOptionCandidateDto {
@@ -1204,10 +1141,6 @@ function normalizeDfcSendAssetRefsForUpdate(value: readonly DfcSendAssetRef[]): 
   return normalizeDfcSendAssetRefs(value)
 }
 
-function normalizeObject(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
-}
-
 function readDfcDerivedTargetKindFromMeta(meta: Record<string, unknown> | null): DfcDerivedTargetKind | null {
   const value = typeof meta?.targetKind === 'string' ? meta.targetKind.trim() : ''
   switch (value) {
@@ -1228,16 +1161,6 @@ function dfcOptionStatusFromDerivative(derivative: FileDerivativeRecord): DfcCon
   if (derivative.status === 'failed') return 'failed'
   if (derivative.status === 'pending') return 'pending'
   return 'blocked'
-}
-
-function dfcOptionStatusFromTextConversion(textConversion: Record<string, unknown> | null): DfcConversionOptionStatus {
-  const status = typeof textConversion?.status === 'string' ? textConversion.status.trim() : ''
-  if (status === 'ready') return 'ready'
-  if (status === 'failed') return 'failed'
-  if (status === 'stale') return 'stale'
-  if (status === 'blocked') return 'blocked'
-  if (status === 'pending' || status === 'running' || status === 'candidate') return 'pending'
-  return 'candidate'
 }
 
 function dfcDerivativeUnavailableReason(

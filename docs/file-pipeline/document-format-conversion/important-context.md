@@ -515,3 +515,16 @@ DFC-23 should continue non-Playwright Phase 1 hardening around pending/concurren
 ## Recommended next round
 
 DFC-24 should continue non-Playwright Phase 1 hardening around pending/concurrent generation semantics. Browser Playwright smoke still requires separate owner approval if it needs new harness scaffolding.
+
+## DFC-24 implementation recovery notes
+
+- DFC-24 is a narrow draft option/preview fail-closed slice; it does not add a DB schema change, IPC contract change, renderer option identity, conversion runtime family expansion, browser Playwright harness, UI redesign, new dependency, external engine, legacy bridge, broad Send Plan rewrite, durable `ConversionOption` rows, or async option-generation state.
+- Backend draft option generation now builds derived DFC options only from verified `file_derivatives` rows. Asset-level `sourceMetaJson.textConversion` no longer creates a DFC derived option by itself.
+- DFC preview source resolution now also requires a matching derivative row for selected `derived_asset` refs. Orphaned text-conversion metadata cannot cause preview to read or expose converted content.
+- The explicit `conversationDraft.ensureDfcOptions` path remains compatible because it writes the DFC facade metadata onto the derivative row; the asset-level metadata can remain as lineage/cache state but is no longer option/preview authority.
+- The regression test seeds a ready-looking orphaned text-conversion metadata object and a readable storage file, then proves options expose only `original_file`, stale selected derived refs become `selected_option_not_found`, preview stays empty, and storage/content/hash fixture values are not emitted.
+- Targeted DFC service/shared tests, the broader backend/client/UI DFC suite, `vue-tsc`, `git diff --check`, diff privacy scans, and risk review passed.
+
+## Recommended next round
+
+DFC-25 should continue non-Playwright Phase 1 hardening around pending/concurrent `conversationDraft.ensureDfcOptions` generation semantics. Browser Playwright smoke still requires separate owner approval if it needs new harness scaffolding.
