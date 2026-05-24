@@ -425,3 +425,12 @@ DFC-17 should choose one of two owner-level paths:
 - No `playwright.config.*` or `@playwright/test` browser harness exists; `tests/e2e` remains Vitest-based smoke coverage.
 - No safe next implementation slice was found that avoids choosing an owner-level option-generation trigger or adding new Playwright harness scaffolding.
 - Owner approval remains required for either explicit `conversationDraft.ensureDfcOptions` generation semantics or new browser Playwright harness scaffolding.
+
+## DFC-17R1 blocked audit closure notes
+
+- Worktree recovery revalidated a clean tree at `3d04d1e` on branch `docs/dfc-0-format-conversion-foundation`.
+- The same owner-level stop condition has now repeated across DFC-17, DFC-17R0, and DFC-17R1.
+- Current production state still has backend-owned `conversationDraft.getDfcOptions`, `conversationDraft.getDfcPreview`, and `conversationDraft.updateAttachmentSettings`, but no implemented `conversationDraft.ensureDfcOptions` generation contract.
+- DFC-ready text derivative generation is still triggered by `sendPlan.buildCurrent`; moving it to upload, attachment-detail open, or an explicit ensure endpoint would choose generation lifecycle semantics.
+- No browser Playwright harness exists to extend; adding one would create new harness scaffolding.
+- Continue only after owner approval for one of the two blocked paths: explicit `conversationDraft.ensureDfcOptions` generation semantics, or new browser Playwright harness scaffolding.
