@@ -15,6 +15,32 @@ type DraftAttachmentUrlRetentionOption = Readonly<{
   reason: string | null
 }>
 
+type DraftAttachmentDfcOption = Readonly<{
+  optionId: string
+  targetKind: string
+  sendStrategy: string
+  status: string
+  compatibilityStatus: string | null
+  isAvailable: boolean
+  selected: boolean
+  disabled: boolean
+  disabledReason: string | null
+  label: string
+  detail: string
+}>
+
+type DraftAttachmentDfcOptions = Readonly<{
+  loading: boolean
+  error: string | null
+  dfcManaged: boolean
+  selectedOptionId: string | null
+  decisionStatus: string | null
+  decisionReasonCode: string | null
+  targetKind: string | null
+  sendStrategy: string | null
+  options: readonly DraftAttachmentDfcOption[]
+}>
+
 type DraftAttachmentDetectionInfo = Readonly<{
   routeEligibility: 'verdict_ready' | 'detection_pending' | 'detection_failed' | 'detection_required'
   detectionLevel: 'basic' | 'advanced' | 'parser_validated' | null
@@ -66,6 +92,7 @@ type DraftAttachmentDetailsViewModel = Readonly<{
   retryPreviewAvailable: boolean
   retryPreviewReason: string | null
   detectionInfo: DraftAttachmentDetectionInfo | null
+  dfcOptions: DraftAttachmentDfcOptions
 }> 
 
 const props = defineProps<{
@@ -78,6 +105,7 @@ const emit = defineEmits<{
   (e: 'remove', assetId: string): void
   (e: 'update-send-mode', value: DraftAttachmentSendModePreference): void
   (e: 'update-url-retention', value: DraftAttachmentUrlRetentionPreference): void
+  (e: 'update-dfc-option', optionId: string): void
   (e: 'retry'): void
 }>()
 
@@ -104,6 +132,11 @@ function updateSendMode(value: DraftAttachmentSendModePreference) {
 
 function updateUrlRetention(value: DraftAttachmentUrlRetentionPreference) {
   emit('update-url-retention', value)
+}
+
+function updateDfcOption(option: DraftAttachmentDfcOption) {
+  if (option.disabled) return
+  emit('update-dfc-option', option.optionId)
 }
 
 function removeAttachment() {
@@ -202,6 +235,42 @@ function removeAttachment() {
       </div>
 
       <div class="mt-4 grid gap-4 md:grid-cols-2">
+        <section class="space-y-2 rounded border border-gray-200 p-3" data-testid="draft-attachment-dfc-options">
+          <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Format</div>
+          <div v-if="props.attachment.dfcOptions.loading" class="text-sm text-gray-500" data-testid="draft-attachment-dfc-options-loading">
+            Loading...
+          </div>
+          <div v-else-if="props.attachment.dfcOptions.error" class="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-800" data-testid="draft-attachment-dfc-options-error">
+            {{ props.attachment.dfcOptions.error }}
+          </div>
+          <div v-else-if="props.attachment.dfcOptions.options.length > 0" class="space-y-2">
+            <button
+              v-for="option in props.attachment.dfcOptions.options"
+              :key="option.optionId"
+              type="button"
+              class="w-full rounded border px-3 py-2 text-left text-sm"
+              :class="option.disabled ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400' : option.selected ? 'border-blue-300 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-800 hover:bg-gray-50'"
+              :disabled="option.disabled"
+              :data-testid="`draft-attachment-dfc-option-${option.targetKind}`"
+              @click="updateDfcOption(option)"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <span>{{ option.label }}</span>
+                <span v-if="option.selected" class="text-[11px] text-blue-700">selected</span>
+              </div>
+              <div class="mt-1 text-[11px] text-gray-500">{{ option.detail }}</div>
+              <div v-if="option.disabledReason" class="mt-1 text-[11px] text-gray-500">{{ option.disabledReason }}</div>
+            </button>
+          </div>
+          <div v-else class="text-sm text-gray-500" data-testid="draft-attachment-dfc-options-empty">
+            No format options.
+          </div>
+          <div v-if="props.attachment.dfcOptions.decisionStatus" class="text-[11px] text-gray-500">
+            {{ props.attachment.dfcOptions.decisionStatus }}
+            <span v-if="props.attachment.dfcOptions.decisionReasonCode"> · {{ props.attachment.dfcOptions.decisionReasonCode }}</span>
+          </div>
+        </section>
+
         <section class="space-y-2 rounded border border-gray-200 p-3">
           <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Send mode</div>
           <div class="text-[11px] text-gray-500">Defaults resolve in order: attachment, conversation, project, global.</div>

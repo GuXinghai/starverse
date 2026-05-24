@@ -160,6 +160,7 @@ const {
   closeDraftAttachmentDetails,
   updateSelectedDraftAttachmentSendMode,
   updateSelectedDraftAttachmentUrlRetentionMode,
+  updateSelectedDraftAttachmentDfcOption,
   retrySelectedDraftAttachmentPreview,
   attachmentFeedbackTone,
   attachmentFeedbackMessage,
@@ -785,6 +786,7 @@ function shouldShowInlineReasoning(message: any): boolean {
       @remove="handleRemoveDraftAttachment"
       @update-send-mode="updateSelectedDraftAttachmentSendMode"
       @update-url-retention="updateSelectedDraftAttachmentUrlRetentionMode"
+      @update-dfc-option="updateSelectedDraftAttachmentDfcOption"
       @retry="retrySelectedDraftAttachmentPreview"
     />
 

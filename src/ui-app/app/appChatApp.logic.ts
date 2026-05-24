@@ -95,6 +95,7 @@ import {
   addConversationDraftAttachment,
   attachConversationDraftToMessage,
   cloneConversationDraftFromMessage,
+  getConversationDraftAttachmentDfcOptions,
   removeConversationDraftAttachment,
   restoreConversationDraft,
   updateConversationDraftAttachmentSettings,
@@ -113,10 +114,11 @@ import type {
   SendPlanProviderContext,
 } from '@/shared/files/sendPlanTypes'
 import type { DraftAttachmentSendModePreference, DraftAttachmentUrlRetentionPreference, SendMode } from '@/shared/files/fileTypes'
-import type { DfcAttachmentSendSnapshot } from '@/shared/files/documentFormatConversion'
+import type { DfcAttachmentSendSnapshot, DfcSendAssetRef, DfcSendStrategy, DfcTargetKind } from '@/shared/files/documentFormatConversion'
 import type { MessageAttachmentDetectionInfo, MessageAttachmentDisplayStatus, MessageAttachmentFileTypeInfo, MessageAttachmentVM } from '@/ui-kit/chat/types'
 import type {
   DecodedConversationDraft,
+  DecodedDfcDraftAttachmentOptions,
   DecodedDraftAttachment,
   DecodedFileAsset,
   DecodedMessageAttachment,
@@ -288,6 +290,31 @@ export function useAppChatAppLogic() {
     disabled: boolean
     reason: string | null
   }>
+  type DraftAttachmentDfcOptionViewModel = Readonly<{
+    optionId: string
+    targetKind: DfcTargetKind
+    sendStrategy: DfcSendStrategy
+    status: string
+    compatibilityStatus: string | null
+    isAvailable: boolean
+    selected: boolean
+    disabled: boolean
+    disabledReason: string | null
+    label: string
+    detail: string
+    sendAssetRefs: readonly DfcSendAssetRef[]
+  }>
+  type DraftAttachmentDfcOptionsViewModel = Readonly<{
+    loading: boolean
+    error: string | null
+    dfcManaged: boolean
+    selectedOptionId: string | null
+    decisionStatus: string | null
+    decisionReasonCode: string | null
+    targetKind: DfcTargetKind | null
+    sendStrategy: DfcSendStrategy | null
+    options: DraftAttachmentDfcOptionViewModel[]
+  }>
   type DraftAttachmentViewModel = Readonly<{
     draftAttachmentId: string
     assetId: string
@@ -328,6 +355,7 @@ export function useAppChatAppLogic() {
     localCopyExists: boolean
     retryPreviewAvailable: boolean
     retryPreviewReason: string | null
+    dfcOptions: DraftAttachmentDfcOptionsViewModel
   }>
   type HistoryIncompatibleAttachmentDisplayStatus =
     | 'incompatible_with_current_model'
@@ -424,6 +452,9 @@ export function useAppChatAppLogic() {
   const composerSendPlanIsPartialAllowed = ref(false)
   const draftAttachmentPreviewCache = ref<Record<string, DecodedPreviewPayload | null>>({})
   const selectedDraftAttachmentAssetId = ref<string | null>(null)
+  const draftAttachmentDfcOptionsByAssetId = ref<Record<string, DecodedDfcDraftAttachmentOptions | null>>({})
+  const draftAttachmentDfcOptionsLoadingByAssetId = ref<Record<string, boolean>>({})
+  const draftAttachmentDfcOptionsErrorByAssetId = ref<Record<string, string | null>>({})
   const historyAttachmentViewModelsByMessageIdBase = ref<Record<string, MessageAttachmentVM[]>>({})
   const historyAttachmentPreviewCache = ref<Record<string, HistoryAttachmentPreviewState>>({})
   const historyAttachmentPreviewEnsuring = new Set<string>()
@@ -436,6 +467,7 @@ export function useAppChatAppLogic() {
   let historyIncompatibleRefreshSeq = 0
   let historyAttachmentRefreshSeq = 0
   let draftAttachmentRefreshSeq = 0
+  let draftAttachmentDfcOptionsSeq = 0
   const draftAttachmentPreviewEnsuring = new Set<string>()
   const selectedDraftAttachmentDetails = computed(() =>
     buildDraftAttachmentDetailsViewModel(selectedDraftAttachmentAssetId.value)
@@ -4544,6 +4576,75 @@ export function useAppChatAppLogic() {
     ]
   }
 
+  function formatDfcTargetKind(value: DfcTargetKind): string {
+    if (value === 'original_file') return 'Original file'
+    if (value === 'plain_text') return 'Plain text'
+    if (value === 'markdown') return 'Markdown'
+    if (value === 'code') return 'Code'
+    if (value === 'table_markdown') return 'Table markdown'
+    return 'PDF attachment'
+  }
+
+  function formatDfcSendStrategy(value: DfcSendStrategy): string {
+    return value === 'file_attachment' ? 'file attachment' : 'text in prompt'
+  }
+
+  function buildDfcOptionDisabledReason(option: DecodedDfcDraftAttachmentOptions['options'][number]): string | null {
+    if (option.status === 'pending' || option.status === 'candidate' || option.compatibilityStatus === 'pending') return 'pending'
+    if (option.status === 'failed') return 'failed'
+    if (option.status === 'stale') return 'stale'
+    if (option.status === 'blocked' || option.compatibilityStatus === 'blocked') return 'blocked'
+    if (option.compatibilityStatus === 'incompatible') return 'incompatible'
+    if (!option.isAvailable) return 'unavailable'
+    return null
+  }
+
+  function buildDfcOptionsViewModel(assetId: string): DraftAttachmentDfcOptionsViewModel {
+    const dto = draftAttachmentDfcOptionsByAssetId.value[assetId] ?? null
+    const loading = draftAttachmentDfcOptionsLoadingByAssetId.value[assetId] === true
+    const error = draftAttachmentDfcOptionsErrorByAssetId.value[assetId] ?? null
+    if (!dto) {
+      return {
+        loading,
+        error,
+        dfcManaged: false,
+        selectedOptionId: null,
+        decisionStatus: null,
+        decisionReasonCode: null,
+        targetKind: null,
+        sendStrategy: null,
+        options: [],
+      }
+    }
+    return {
+      loading,
+      error,
+      dfcManaged: dto.dfcManaged,
+      selectedOptionId: dto.selectedOptionId,
+      decisionStatus: dto.decision.status,
+      decisionReasonCode: dto.decision.reasonCode,
+      targetKind: dto.decision.targetKind,
+      sendStrategy: dto.decision.sendStrategy,
+      options: dto.options.map((option) => {
+        const disabledReason = buildDfcOptionDisabledReason(option)
+        return {
+          optionId: option.optionId,
+          targetKind: option.targetKind,
+          sendStrategy: option.sendStrategy,
+          status: option.status,
+          compatibilityStatus: option.compatibilityStatus,
+          isAvailable: option.isAvailable,
+          selected: option.optionId === dto.decision.selectedOptionId && dto.decision.status === 'ready',
+          disabled: disabledReason != null,
+          disabledReason,
+          label: formatDfcTargetKind(option.targetKind),
+          detail: `${formatDfcSendStrategy(option.sendStrategy)} · ${option.status}`,
+          sendAssetRefs: option.sendAssetRefs,
+        }
+      }),
+    }
+  }
+
   function buildDraftAttachmentDetailsViewModel(assetId: string | null): DraftAttachmentDetailsViewModel | null {
     const id = String(assetId ?? '').trim()
     if (!id) return null
@@ -4597,6 +4698,7 @@ export function useAppChatAppLogic() {
       localCopyExists: urlInfo?.localCopyExists ?? false,
       retryPreviewAvailable,
       retryPreviewReason,
+      dfcOptions: buildDfcOptionsViewModel(id),
     }
   }
 
@@ -4677,6 +4779,9 @@ export function useAppChatAppLogic() {
       draftAttachmentRecords.value = []
       draftAttachmentAssetsById.value = {}
       draftAttachmentPlansByAssetId.value = {}
+      draftAttachmentDfcOptionsByAssetId.value = {}
+      draftAttachmentDfcOptionsLoadingByAssetId.value = {}
+      draftAttachmentDfcOptionsErrorByAssetId.value = {}
       draftAttachmentSendPlanStatus.value = null
       selectedDraftAttachmentAssetId.value = null
       resetComposerSendPlanGateState()
@@ -4741,6 +4846,10 @@ export function useAppChatAppLogic() {
       draftAttachmentViewModels.value = next
       if (selectedDraftAttachmentAssetId.value && !next.some((item) => item.assetId === selectedDraftAttachmentAssetId.value)) {
         selectedDraftAttachmentAssetId.value = null
+      }
+      const selectedAssetId = String(selectedDraftAttachmentAssetId.value ?? '').trim()
+      if (selectedAssetId && next.some((item) => item.assetId === selectedAssetId)) {
+        void refreshDraftAttachmentDfcOptions(selectedAssetId)
       }
       scheduleDraftAttachmentParsingPoll()
       if (seq === draftAttachmentRefreshSeq && shouldToggleComposerSendPlanLoading) {
@@ -5048,15 +5157,58 @@ export function useAppChatAppLogic() {
     const id = String(assetId ?? '').trim()
     if (!id) return
     selectedDraftAttachmentAssetId.value = id
+    void refreshDraftAttachmentDfcOptions(id)
   }
 
   function closeDraftAttachmentDetails() {
     selectedDraftAttachmentAssetId.value = null
   }
 
+  async function refreshDraftAttachmentDfcOptions(assetId: string) {
+    const id = String(assetId ?? '').trim()
+    const scope = getActiveDraftScope()
+    if (!id || !scope) return
+    const seq = ++draftAttachmentDfcOptionsSeq
+    draftAttachmentDfcOptionsLoadingByAssetId.value = {
+      ...draftAttachmentDfcOptionsLoadingByAssetId.value,
+      [id]: true,
+    }
+    draftAttachmentDfcOptionsErrorByAssetId.value = {
+      ...draftAttachmentDfcOptionsErrorByAssetId.value,
+      [id]: null,
+    }
+    try {
+      const dto = await getConversationDraftAttachmentDfcOptions({
+        conversationId: scope.convoId,
+        assetId: id,
+      })
+      if (seq !== draftAttachmentDfcOptionsSeq) return
+      draftAttachmentDfcOptionsByAssetId.value = {
+        ...draftAttachmentDfcOptionsByAssetId.value,
+        [id]: dto,
+      }
+    } catch (error) {
+      if (seq !== draftAttachmentDfcOptionsSeq) return
+      draftAttachmentDfcOptionsErrorByAssetId.value = {
+        ...draftAttachmentDfcOptionsErrorByAssetId.value,
+        [id]: error instanceof Error ? error.message : 'Failed to load format options.',
+      }
+    } finally {
+      if (seq === draftAttachmentDfcOptionsSeq) {
+        draftAttachmentDfcOptionsLoadingByAssetId.value = {
+          ...draftAttachmentDfcOptionsLoadingByAssetId.value,
+          [id]: false,
+        }
+      }
+    }
+  }
+
   async function updateSelectedDraftAttachmentSettings(input: Readonly<{
     preferredSendMode?: DraftAttachmentSendModePreference | null
     urlRetentionMode?: DraftAttachmentUrlRetentionPreference | null
+    dfcManaged?: boolean
+    selectedOptionId?: string | null
+    selectedAssetRefs?: readonly DfcSendAssetRef[]
   }>) {
     if (isDraftInteractionLocked.value) return
     const convoId = String(activeConvoId.value ?? '').trim()
@@ -5081,6 +5233,29 @@ export function useAppChatAppLogic() {
 
   async function updateSelectedDraftAttachmentUrlRetentionMode(urlRetentionMode: DraftAttachmentUrlRetentionPreference) {
     await updateSelectedDraftAttachmentSettings({ urlRetentionMode })
+  }
+
+  async function updateSelectedDraftAttachmentDfcOption(optionId: string) {
+    const assetId = String(selectedDraftAttachmentAssetId.value ?? '').trim()
+    if (!assetId) return
+    const dto = draftAttachmentDfcOptionsByAssetId.value[assetId] ?? null
+    const option = dto?.options.find((item) => item.optionId === optionId) ?? null
+    if (!option) {
+      setAttachmentFeedback('error', 'Format option is no longer available.')
+      void refreshDraftAttachmentDfcOptions(assetId)
+      return
+    }
+    const disabledReason = buildDfcOptionDisabledReason(option)
+    if (disabledReason) {
+      setAttachmentFeedback('warning', `Format option is ${disabledReason}.`)
+      return
+    }
+    await updateSelectedDraftAttachmentSettings({
+      dfcManaged: true,
+      selectedOptionId: option.optionId,
+      selectedAssetRefs: option.sendAssetRefs,
+    })
+    void refreshDraftAttachmentDfcOptions(assetId)
   }
 
   async function retrySelectedDraftAttachmentPreview() {
@@ -8599,6 +8774,7 @@ export function useAppChatAppLogic() {
     closeDraftAttachmentDetails,
     updateSelectedDraftAttachmentSendMode,
     updateSelectedDraftAttachmentUrlRetentionMode,
+    updateSelectedDraftAttachmentDfcOption,
     retrySelectedDraftAttachmentPreview,
     openAttachmentUrlDialog,
     closeAttachmentUrlDialog,
