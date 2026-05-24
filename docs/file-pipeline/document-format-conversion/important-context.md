@@ -405,3 +405,13 @@ DFC-17 should choose one of two owner-level paths:
 
 - Obtain owner approval for new browser Playwright harness scaffolding, then implement the required upload, shelf/chip, detail flow, option selection, preview visibility, removal, and send-gating smoke.
 - Or make an explicit owner decision on conversion option generation timing before adding upload/open-triggered generation, because DFC-16 only makes derivatives DFC-ready after the existing send-plan worker path runs.
+
+## DFC-17 owner memo recovery notes
+
+- DFC-17 added `docs/file-pipeline/document-format-conversion/dfc-17-owner-memo-generation-trigger.md` and stopped before production implementation.
+- Current backend-owned DFC option and preview plumbing is live: `conversationDraft.getDfcOptions`, `conversationDraft.getDfcPreview`, and validated `conversationDraft.updateAttachmentSettings`.
+- Current UI plumbing is live in the existing draft attachment details dialog and does not infer option identity in the renderer.
+- Current DFC-ready derivative generation is still triggered by the worker `sendPlan.buildCurrent` path through `ensureTextDerivativesForCollected` / `ensureTextDerivativeAsset`, not upload or attachment details open.
+- No `playwright.config.*` or `@playwright/test` harness was found. Existing `tests/e2e` files are Vitest-based smoke tests.
+- Owner approval is required before implementing either a new explicit `conversationDraft.ensureDfcOptions` generation contract or browser Playwright harness scaffolding.
+- Recommended next implementation, if approved, is an explicit backend-owned `conversationDraft.ensureDfcOptions` endpoint limited to already-approved Phase 1 text-like conversions. Keep `getDfcOptions` read-only, keep renderer requests free of targetKind/refs/option ids, and keep HTML, PS/EPS, PDF, Office, XLS/XLSX, external engines, and new dependencies out of scope.
