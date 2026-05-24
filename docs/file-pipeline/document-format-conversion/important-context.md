@@ -555,3 +555,17 @@ DFC-26 should continue non-Playwright Phase 1 hardening around failed-generation
 ## Recommended next round
 
 DFC-27 should continue non-Playwright Phase 1 hardening around pending-state visibility and retry semantics if it can stay within existing storage. Durable option-generation storage, durable job uniqueness, browser Playwright harness scaffolding, and forbidden conversion families remain owner-gated.
+
+## DFC-27 implementation recovery notes
+
+- DFC-27 is a narrow pending-option DTO/decision slice; it does not add a DB schema change, IPC contract change, renderer option identity, Send Plan rewrite, conversion runtime family expansion, browser Playwright harness, UI redesign, new dependency, external engine, legacy bridge, durable `ConversionOption` rows, durable job-state linkage, or durable async option-generation state.
+- Backend draft option generation now surfaces existing DFC `file_derivatives` rows whose status is `pending` as deterministic, unavailable pending options.
+- Pending option DTOs use the symbolic diagnostic `derived_asset_pending` and do not expose storage refs, paths, hashes, content tokens, file body, or full storage metadata.
+- A backend-owned pending option can be persisted through the existing selected-option fields only when `selectedOptionId` and `selectedAssetRefs` match the generated option. Preview resolves to `selected_option_pending`, and commit/send remain blocked without legacy fallback.
+- The shared DFC resolver now has regression coverage for a selected pending option and for option-generation pending state with no selection, both without falling back to legacy send modes.
+- Code mapping found no safe durable pending/retry visibility path using only current `derivative_jobs`, `file_derivatives`, and source metadata while avoiding schema, IPC, renderer, or broad UI changes.
+- Targeted service/shared tests, the broader backend/client/UI DFC suite, `vue-tsc`, `git diff --check`, diff privacy scans, test-runner attribution, risk review, and doc consistency passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this DFC diff.
+
+## Recommended next round
+
+DFC-28 should either proceed with an owner-approved durable pending/retry/job-state design, or continue narrow backend hardening only where it can stay within existing storage. Browser Playwright harness scaffolding, durable option-generation storage, DB uniqueness/migration, external engines, new dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, and forbidden conversion families remain owner-gated.

@@ -1321,15 +1321,16 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
     })
   })
 
-  it('blocks failed, stale, and unverifiable DFC selected derived assets without legacy fallback', () => {
+  it('blocks pending, failed, stale, and unverifiable DFC selected derived assets without legacy fallback', () => {
     const cases: Array<{
       assetId: string
       derivativeId: string
-      status: 'failed' | 'deleted' | 'ready'
+      status: 'pending' | 'failed' | 'deleted' | 'ready'
       reason: string
       sourceHash?: string
       rawSha256?: string | null
     }> = [
+      { assetId: 'dfc-pending', derivativeId: 'derived-pending', status: 'pending', reason: 'selected_option_pending' },
       { assetId: 'dfc-failed', derivativeId: 'derived-failed', status: 'failed', reason: 'selected_option_failed' },
       { assetId: 'dfc-stale', derivativeId: 'derived-stale', status: 'deleted', reason: 'selected_option_stale' },
       { assetId: 'dfc-source-mismatch', derivativeId: 'derived-source-mismatch', status: 'ready', reason: 'selected_option_stale', sourceHash: 'old-source-sha' },

@@ -718,10 +718,13 @@ export class ConversationAttachmentService {
       const failedReason = status === 'failed'
         ? readStringMeta(derivative.metaJson, 'failureCode') ?? 'derived_asset_not_ready'
         : null
+      const pendingReason = status === 'pending' ? 'derived_asset_pending' : null
       const unavailableReason = sourceHashIssue
         ? sourceHashIssue
         : failedReason
           ? failedReason
+          : pendingReason
+            ? pendingReason
           : status === 'ready'
             ? dfcDerivativeUnavailableReason(facade)
             : null
@@ -729,6 +732,8 @@ export class ConversationAttachmentService {
         ? 'stale'
         : status === 'failed'
           ? 'failed'
+          : status === 'pending'
+            ? 'pending'
           : unavailableReason ? 'blocked' : status
       const isAvailable = status === 'ready' && !sourceHashIssue && !unavailableReason
       options.push({

@@ -721,6 +721,61 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
     })).toThrow('DFC selectedOptionId requires selectedAssetRefs')
   })
 
+  it('surfaces pending DFC derivative rows as non-sendable pending options', async () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'asset-dfc')
+    insertDfcDerivative(h.db, {
+      id: 'derivative-pending',
+      parentAssetId: 'asset-dfc',
+      targetKind: 'markdown',
+      status: 'pending',
+    })
+    h.service.addDraftAttachment({ conversationId: 'c1', assetId: 'asset-dfc' })
+
+    const dto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+    const pendingOption = dto.options.find((option) => option.targetKind === 'markdown')!
+
+    expect(pendingOption).toMatchObject({
+      optionId: 'dfc:asset-dfc:markdown:derived_asset:derivative-pending',
+      status: 'pending',
+      isAvailable: false,
+      compatibilityStatus: 'pending',
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-pending' }],
+      diagnostics: [expect.objectContaining({ code: 'derived_asset_pending' })],
+    })
+    expect(JSON.stringify(dto)).not.toContain('derivative-pending-content')
+    expect(JSON.stringify(dto)).not.toContain('derivative-pending-settings')
+    expect(JSON.stringify(dto)).not.toContain('storageUri')
+
+    h.service.updateDraftAttachmentSettings({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      dfcManaged: true,
+      selectedOptionId: pendingOption.optionId,
+      selectedAssetRefs: pendingOption.sendAssetRefs,
+    })
+    const preview = await h.service.getDfcDraftAttachmentPreview({ conversationId: 'c1', assetId: 'asset-dfc' })
+
+    expect(preview).toMatchObject({
+      selectedOptionId: pendingOption.optionId,
+      selectedAssetRefs: pendingOption.sendAssetRefs,
+      decision: expect.objectContaining({
+        status: 'pending',
+        reasonCode: 'selected_option_pending',
+        targetKind: 'markdown',
+      }),
+      preview: {
+        kind: 'none',
+        status: 'pending',
+        text: null,
+        diagnostics: [expect.objectContaining({ code: 'selected_option_pending' })],
+      },
+    })
+    expect(() => h.service.commitDraftToUserMessage({ conversationId: 'c1' }))
+      .toThrow('DFC-managed draft attachment selected option is not ready')
+  })
+
   it('blocks stale DFC derived options when the source hash no longer matches the raw asset', async () => {
     const h = createHarness()
     insertConvo(h.db, 'c1')

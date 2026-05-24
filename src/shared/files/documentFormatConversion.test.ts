@@ -111,6 +111,29 @@ describe('resolveDfcManagedAttachment no-silent-fallback scaffold', () => {
     })
   })
 
+  it('returns pending for a pending selected option and does not fall back to legacy selectedSendMode', () => {
+    const decision = resolveWith({
+      selectedOptionId: 'text',
+      options: [
+        createDfcDerivedAssetOption({
+          optionId: 'text',
+          rawFileId: 'raw-1',
+          derivedAssetId: 'derived-1',
+          targetKind: 'plain_text',
+          status: 'pending',
+        }),
+      ],
+    })
+
+    expect(decision).toMatchObject({
+      status: 'pending',
+      reasonCode: 'selected_option_pending',
+      targetKind: 'plain_text',
+      sendAssetRefs: [],
+      needsUserAction: false,
+    })
+  })
+
   it('returns stale for a stale selected option and does not fall back to legacy target kind', () => {
     const decision = resolveWith({
       selectedOptionId: 'markdown',
@@ -130,6 +153,27 @@ describe('resolveDfcManagedAttachment no-silent-fallback scaffold', () => {
       reasonCode: 'selected_option_stale',
       targetKind: 'markdown',
       sendAssetRefs: [],
+    })
+  })
+
+  it('returns pending while option generation is pending and no selected option exists', () => {
+    const decision = resolveDfcManagedAttachment({
+      dfcManaged: true,
+      rawFileId: 'raw-1',
+      selectedOptionId: null,
+      options: [createDfcOriginalFileOption({ optionId: 'original', rawFileId: 'raw-1' })],
+      availableRawFileIds: ['raw-1'],
+      availableDerivedAssetIds: [],
+      optionGenerationState: 'pending',
+      legacy: LEGACY_FALLBACK_TRAP,
+    })
+
+    expect(decision).toMatchObject({
+      status: 'pending',
+      reasonCode: 'selected_option_pending',
+      targetKind: null,
+      sendAssetRefs: [],
+      needsUserAction: false,
     })
   })
 
