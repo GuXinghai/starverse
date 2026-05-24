@@ -457,7 +457,7 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     })
   })
 
-  it('ensures DFC-ready table markdown metadata for CSV text derivatives', async () => {
+  it('keeps send plan lazy text derivatives out of DFC-ready option generation until explicit ensure', async () => {
     const { db, handlers } = createWorkerHarness()
     const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
     const assetId = 'asset-csv-dfc'
@@ -524,11 +524,10 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     expect(derivativeMeta).toMatchObject({
       targetKind: 'table_markdown',
       usage: 'preview_and_send',
-      storageClass: 'draft_bound',
-      sourceHash: 'asset-csv-dfc-source-hash',
-      converterName: 'starverse-text-derivative',
-      converterVersion: '1',
     })
+    expect(derivativeMeta?.storageClass).toBeUndefined()
+    expect(derivativeMeta?.converterName).toBeUndefined()
+    expect(derivativeMeta?.converterVersion).toBeUndefined()
     const assetRow = db.prepare(`
       SELECT source_meta_json AS sourceMetaJson
       FROM file_assets
@@ -536,20 +535,35 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       LIMIT 1
     `).get({ assetId }) as { sourceMetaJson: string | null }
     const assetMeta = assetRow.sourceMetaJson ? JSON.parse(assetRow.sourceMetaJson) : null
-    expect(assetMeta?.textConversion).toMatchObject({
-      status: 'ready',
-      targetKind: 'table_markdown',
-      derivativeId: derivativeRow?.id,
-      storageClass: 'draft_bound',
-      converterName: 'starverse-text-derivative',
-      converterVersion: '1',
+    expect(assetMeta?.textConversion).toBeUndefined()
+    expect(assetMeta?.lineage).toMatchObject({
+      sendAssetReady: true,
+      sendTextStorageUri: derivativeRow?.storageUri,
     })
     const options = await dispatchWorkerMessage(handlers, {
       id: 'req-csv-dfc-options',
       method: 'conversationDraft.getDfcOptions',
       params: { conversationId: 'c1', assetId },
     })
+    const tableOption = (options as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    expect(tableOption).toMatchObject({
+      targetKind: 'table_markdown',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: derivativeRow?.id }],
+    })
+    expect(JSON.stringify((options as any).result)).not.toContain(derivativeRow?.storageUri ?? 'assets/')
+    expect(JSON.stringify((options as any).result)).not.toContain('asset-csv-dfc-source-hash')
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-dfc-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
     expect(options).toMatchObject({
+      ok: true,
+    })
+    expect(ensured).toMatchObject({
       ok: true,
       result: {
         options: expect.arrayContaining([
@@ -561,8 +575,48 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
         ]),
       },
     })
-    expect(JSON.stringify((options as any).result)).not.toContain(derivativeRow?.storageUri ?? 'assets/')
-    expect(JSON.stringify((options as any).result)).not.toContain('asset-csv-dfc-source-hash')
+
+    const refreshedPlan = await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-send-plan-after-ensure',
+      method: 'sendPlan.buildCurrent',
+      params: {
+        conversationId: 'c1',
+        draftText: 'send table again',
+        model: {
+          providerKey: 'openrouter',
+          modelId: 'test/text',
+          modelKey: 'openrouter::test/text',
+          inputModalities: ['text'],
+          outputModalities: ['text'],
+        },
+        providerContext: {
+          providerKey: 'openrouter',
+          supportsInlineData: true,
+          supportsTextUrlRef: true,
+        },
+      },
+    })
+    expect(refreshedPlan).toMatchObject({
+      ok: true,
+      result: {
+        sendPlan: expect.objectContaining({ status: 'sendable' }),
+      },
+    })
+    const preservedAssetRow = db.prepare(`
+      SELECT source_meta_json AS sourceMetaJson
+      FROM file_assets
+      WHERE id=@assetId
+      LIMIT 1
+    `).get({ assetId }) as { sourceMetaJson: string | null }
+    const preservedAssetMeta = preservedAssetRow.sourceMetaJson ? JSON.parse(preservedAssetRow.sourceMetaJson) : null
+    expect(preservedAssetMeta?.textConversion).toMatchObject({
+      status: 'ready',
+      targetKind: 'table_markdown',
+      derivativeId: derivativeRow?.id,
+      storageClass: 'draft_bound',
+      converterName: 'starverse-text-derivative',
+      converterVersion: '1',
+    })
   })
 
   it('generates backend-owned DFC draft options through explicit ensure endpoint', async () => {

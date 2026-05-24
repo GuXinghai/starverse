@@ -458,3 +458,17 @@ DFC-17 should choose one of two owner-level paths:
 ## Recommended next round
 
 DFC-20 should close remaining non-Playwright Phase 1 generation gaps, likely by removing or quarantining the backend `sendPlan.buildCurrent` lazy DFC-generation fallback where explicit ensure-driven readiness can replace it safely. Browser Playwright smoke still requires separate owner approval if it needs new harness scaffolding.
+
+## DFC-20 implementation recovery notes
+
+- DFC-20 is a narrow worker quarantine slice; it does not add a DB schema change, IPC contract change, renderer option identity, browser Playwright harness, UI redesign, new dependency, external engine, legacy bridge, broad Send Plan rewrite, durable `ConversionOption` rows, async option-generation state, or forbidden conversion family runtime.
+- Worker Send Plan paths still call the existing text derivative job path for legacy/non-DFC text sendability, but they pass `exposeDfcOption: false`.
+- With `exposeDfcOption: false`, the worker preserves legacy lineage fields such as `sendAssetReady` and `sendTextStorageUri`, but does not stamp or replace the DFC `textConversion` facade metadata that backend option DTOs require before a derived option is available.
+- Existing coherent DFC-ready `textConversion` metadata for the same derivative is preserved if a later Send Plan build rechecks the asset, so explicit ensure results are not stripped by normal send-plan refresh.
+- The explicit `conversationDraft.ensureDfcOptions` path passes `exposeDfcOption: true` and remains the backend-owned path that makes approved Phase 1 text-like derivatives available as DFC options.
+- `infra/db/worker.filePipeline.test.ts` now proves that `sendPlan.buildCurrent` can create the CSV text derivative and legacy lineage without making the `table_markdown` DFC option available, that explicit `conversationDraft.ensureDfcOptions` then makes the same backend-owned option available, and that a later Send Plan refresh preserves the explicit DFC facade.
+- Targeted backend/client/UI tests and `vue-tsc` passed. Plain `tsc` still fails only on the pre-existing Vue SFC named-export mismatch in `src/ui-app/app/appChatApp.logic.ts`.
+
+## Recommended next round
+
+DFC-21 should continue closing Phase 1 gaps around explicit ensure state, stale selected refs, and preview/send coherence. Browser Playwright smoke still requires separate owner approval if it needs new harness scaffolding.
