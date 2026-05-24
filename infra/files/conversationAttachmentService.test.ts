@@ -927,6 +927,14 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
         selectedAssetRefsJson: JSON.stringify([{ kind: 'raw_file', assetId: 'asset-dfc' }]),
       })
 
+      const mismatchDto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+      const selectedMismatchOption = mismatchDto.options.find((option) => option.optionId === markdownOption.optionId)
+      expect(selectedMismatchOption).toMatchObject({
+        diagnostics: [expect.objectContaining({ code: 'dfc_selection_refs_mismatch' })],
+      })
+      expect(JSON.stringify(mismatchDto)).not.toContain('This selected derivative must not be previewed.')
+      expect(JSON.stringify(mismatchDto)).not.toContain(storageUri)
+
       const preview = await h.service.getDfcDraftAttachmentPreview({ conversationId: 'c1', assetId: 'asset-dfc' })
 
       expect(preview).toMatchObject({

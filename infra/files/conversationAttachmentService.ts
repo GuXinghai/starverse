@@ -420,6 +420,7 @@ export class ConversationAttachmentService {
     const asset = this.requireFileAssetRecord(attachment.assetId)
     const options = this.buildDfcOptionCandidates(attachment, asset)
     const decision = this.resolveDfcDraftDecision(attachment, asset, options)
+    const mismatchDiagnostic = this.dfcPersistedSelectionMismatchDiagnostic(attachment, decision)
     return {
       attachmentId: attachment.id,
       conversationId,
@@ -430,7 +431,10 @@ export class ConversationAttachmentService {
       selectedOptionId: attachment.dfcManaged ? attachment.selectedOptionId : null,
       selectedAssetRefs: attachment.dfcManaged ? [...attachment.selectedAssetRefs] : [],
       decision,
-      options: options.map((option) => this.toDfcDraftOptionCandidateDto(option)),
+      options: options.map((option) => this.toDfcDraftOptionCandidateDto(
+        option,
+        mismatchDiagnostic && option.optionId === decision.selectedOptionId ? [mismatchDiagnostic] : []
+      )),
     }
   }
 
@@ -797,7 +801,10 @@ export class ConversationAttachmentService {
     return `dfc:${attachment.assetId}:${targetKind}:failed`
   }
 
-  private toDfcDraftOptionCandidateDto(option: DfcConversionOption): DfcDraftOptionCandidateDto {
+  private toDfcDraftOptionCandidateDto(
+    option: DfcConversionOption,
+    extraDiagnostics: readonly DfcSanitizedDiagnostic[] = []
+  ): DfcDraftOptionCandidateDto {
     return {
       optionId: option.optionId,
       targetKind: option.targetKind,
@@ -807,9 +814,12 @@ export class ConversationAttachmentService {
       compatibilityStatus: option.compatibilityStatus ?? null,
       sendAssetRefs: [...option.sendAssetRefs],
       warnings: [...(option.warnings ?? [])],
-      diagnostics: option.unavailableReason
-        ? [{ code: option.unavailableReason, message: `DFC option unavailable: ${option.unavailableReason}` }]
-        : [],
+      diagnostics: [
+        ...(option.unavailableReason
+          ? [{ code: option.unavailableReason, message: `DFC option unavailable: ${option.unavailableReason}` }]
+          : []),
+        ...extraDiagnostics,
+      ],
     }
   }
 
