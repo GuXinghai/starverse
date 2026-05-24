@@ -69,6 +69,7 @@ function insertDfcDerivative(
     targetKind: string
     status?: string
     storageUri?: string
+    metaJson?: Record<string, unknown>
   }>
 ) {
   db.prepare(`
@@ -93,7 +94,7 @@ function insertDfcDerivative(
     parentAssetId: input.parentAssetId,
     storageUri: input.storageUri ?? `assets/derivatives/${input.parentAssetId}/${input.id}.md`,
     status: input.status ?? 'ready',
-    metaJson: JSON.stringify({
+    metaJson: JSON.stringify(input.metaJson ?? {
       targetKind: input.targetKind,
       usage: 'preview_and_send',
       storageClass: 'draft_bound',
@@ -491,6 +492,67 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
       sendStrategy: 'text_in_prompt',
       sendAssetRefs: markdownOption!.sendAssetRefs,
     })
+  })
+
+  it('marks malformed or preview-only DFC derived options unavailable without leaking lineage metadata', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'asset-dfc')
+    insertDfcDerivative(h.db, {
+      id: 'derivative-preview-only',
+      parentAssetId: 'asset-dfc',
+      targetKind: 'markdown',
+      metaJson: {
+        targetKind: 'markdown',
+        usage: 'preview_only',
+        storageClass: 'draft_bound',
+        sourceHash: 'asset-dfc-sha',
+        contentHash: 'derivative-preview-only-content',
+        conversionSettingsHash: 'derivative-preview-only-settings',
+        converterName: 'test-dfc-converter',
+        converterVersion: '1',
+      },
+    })
+    insertDfcDerivative(h.db, {
+      id: 'derivative-missing-lineage',
+      parentAssetId: 'asset-dfc',
+      targetKind: 'plain_text',
+      metaJson: {
+        targetKind: 'plain_text',
+        usage: 'preview_and_send',
+        storageClass: 'draft_bound',
+        contentHash: 'derivative-missing-lineage-content',
+        conversionSettingsHash: 'derivative-missing-lineage-settings',
+        converterName: 'test-dfc-converter',
+        converterVersion: '1',
+      },
+    })
+    h.service.addDraftAttachment({ conversationId: 'c1', assetId: 'asset-dfc' })
+
+    const dto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+    const previewOnly = dto.options.find((option) =>
+      option.sendAssetRefs.some((ref) => ref.kind === 'derived_asset' && ref.assetId === 'derivative-preview-only')
+    )
+    const missingLineage = dto.options.find((option) =>
+      option.sendAssetRefs.some((ref) => ref.kind === 'derived_asset' && ref.assetId === 'derivative-missing-lineage')
+    )
+
+    expect(previewOnly).toMatchObject({
+      status: 'blocked',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      diagnostics: [expect.objectContaining({ code: 'preview_only_asset_not_sendable' })],
+    })
+    expect(missingLineage).toMatchObject({
+      status: 'blocked',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      diagnostics: [expect.objectContaining({ code: 'derived_asset_missing_source_hash' })],
+    })
+    expect(JSON.stringify(dto)).not.toContain('sourceHash')
+    expect(JSON.stringify(dto)).not.toContain('contentHash')
+    expect(JSON.stringify(dto)).not.toContain('conversionSettingsHash')
+    expect(JSON.stringify(dto)).not.toContain('storageUri')
   })
 
   it('rejects renderer-invented DFC option ids and mismatched selected refs on update', () => {

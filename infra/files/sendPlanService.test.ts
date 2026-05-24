@@ -961,6 +961,180 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
     })
   })
 
+  it('uses selected DFC derived asset facade lineage instead of stale raw asset lineage metadata', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'csv-raw', {
+      filename: 'data.csv',
+      extension: 'csv',
+      mime: 'text/csv',
+      assetKind: 'text',
+      storageUri: 'assets/original/cs/csv-raw.csv',
+      sourceMetaJson: {
+        textConversion: {
+          status: 'ready',
+          targetKind: 'table_markdown',
+          derivativeId: 'derived-table',
+          storageUri: 'assets/derivatives/csv-raw/derived-table.md',
+          mime: 'text/markdown',
+        },
+        lineage: {
+          stale: false,
+          sendAssetReady: true,
+          previewContentHash: 'old-preview-content',
+          sendContentHash: 'old-send-content',
+          sendTextStorageUri: 'assets/derivatives/csv-raw/derived-table.md',
+          sendTextBytes: 32,
+        },
+      },
+    })
+    createDerivative(h.fileDerivativeRepo, 'derived-table', 'csv-raw', {
+      metaJson: {
+        targetKind: 'table_markdown',
+        usage: 'preview_and_send',
+        storageClass: 'draft_bound',
+        sourceHash: 'csv-raw-sha',
+        contentHash: 'derived-table-content',
+        conversionSettingsHash: 'derived-table-settings',
+        converterName: 'test-dfc-converter',
+        converterVersion: '1',
+      },
+    })
+    createVerdict(h, 'csv-raw', 'csv', 'text')
+    h.conversationAttachmentService.addDraftAttachment({
+      conversationId: 'c1',
+      assetId: 'csv-raw',
+      dfcManaged: true,
+      selectedOptionId: 'option-table',
+      selectedAssetRefs: [{ kind: 'derived_asset', assetId: 'derived-table' }],
+    })
+
+    const plan = h.sendPlanService.buildSendPlan(h.sendPlanService.collectCurrentSendInputs({
+      conversationId: 'c1',
+      model: model(['text']),
+      providerContext: providerContext(),
+    }))
+
+    expect(plan.status).toBe('sendable')
+    expect(plan.attachmentPlans[0]).toMatchObject({
+      assetId: 'csv-raw',
+      eligibility: 'included',
+      exclusionReason: null,
+      lineage: {
+        state: 'ok',
+        stale: false,
+        staleReason: null,
+        sourceHash: null,
+        previewContentHash: null,
+        sendContentHash: null,
+        conversionSettingsHash: null,
+      },
+    })
+    expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('derived-table-content')
+    expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('csv-raw-sha')
+  })
+
+  it('blocks preview-only or malformed DFC selected derived assets without legacy fallback', () => {
+    const cases = [
+      {
+        assetId: 'dfc-preview-only',
+        derivativeId: 'derived-preview-only',
+        metaJson: {
+          targetKind: 'markdown',
+          usage: 'preview_only',
+          storageClass: 'draft_bound',
+          sourceHash: 'dfc-preview-only-sha',
+          contentHash: 'derived-preview-only-content',
+          conversionSettingsHash: 'derived-preview-only-settings',
+          converterName: 'test-dfc-converter',
+          converterVersion: '1',
+        },
+        reason: 'preview_only_asset_not_sendable',
+        lineageState: 'preview_only_asset_not_sendable',
+      },
+      {
+        assetId: 'dfc-missing-lineage',
+        derivativeId: 'derived-missing-lineage',
+        metaJson: {
+          targetKind: 'markdown',
+          usage: 'preview_and_send',
+          storageClass: 'draft_bound',
+          contentHash: 'derived-missing-lineage-content',
+          conversionSettingsHash: 'derived-missing-lineage-settings',
+          converterName: 'test-dfc-converter',
+          converterVersion: '1',
+        },
+        reason: 'send_asset_not_ready',
+        lineageState: 'send_asset_not_ready',
+      },
+    ]
+
+    for (const testCase of cases) {
+      const h = createHarness()
+      insertConvo(h.db, 'c1')
+      createAsset(h.fileAssetRepo, testCase.assetId, {
+        filename: `${testCase.assetId}.txt`,
+        extension: 'txt',
+        mime: 'text/plain',
+        assetKind: 'text',
+        storageUri: `assets/original/df/${testCase.assetId}.txt`,
+        sourceMetaJson: {
+          textConversion: {
+            status: 'ready',
+            targetKind: 'markdown',
+            derivativeId: testCase.derivativeId,
+            storageUri: `assets/derivatives/${testCase.assetId}/${testCase.derivativeId}.md`,
+            mime: 'text/markdown',
+          },
+          lineage: {
+            stale: false,
+            sendAssetReady: true,
+            sourceHash: `${testCase.assetId}-sha`,
+            previewContentHash: `${testCase.derivativeId}-content`,
+            sendContentHash: `${testCase.derivativeId}-content`,
+            conversionSettingsHash: `${testCase.derivativeId}-settings`,
+            sendTextStorageUri: `assets/derivatives/${testCase.assetId}/${testCase.derivativeId}.md`,
+            sendTextBytes: 32,
+          },
+        },
+      })
+      createDerivative(h.fileDerivativeRepo, testCase.derivativeId, testCase.assetId, {
+        metaJson: testCase.metaJson,
+      })
+      createVerdict(h, testCase.assetId, 'markdown', 'text')
+      h.conversationAttachmentService.addDraftAttachment({
+        conversationId: 'c1',
+        assetId: testCase.assetId,
+        dfcManaged: true,
+        selectedOptionId: `option-${testCase.assetId}`,
+        selectedAssetRefs: [{ kind: 'derived_asset', assetId: testCase.derivativeId }],
+      })
+
+      const plan = h.sendPlanService.buildSendPlan(h.sendPlanService.collectCurrentSendInputs({
+        conversationId: 'c1',
+        model: model(['text']),
+        providerContext: providerContext(),
+      }))
+
+      expect(plan.status).toBe('blocked')
+      expect(plan.attachmentPlans[0]).toMatchObject({
+        assetId: testCase.assetId,
+        selectedSendMode: null,
+        eligibility: 'blocked',
+        exclusionReason: testCase.reason,
+        lineage: expect.objectContaining({
+          state: testCase.lineageState,
+          sourceHash: null,
+          previewContentHash: null,
+          sendContentHash: null,
+          conversionSettingsHash: null,
+        }),
+      })
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(`${testCase.derivativeId}-content`)
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(`${testCase.assetId}-sha`)
+    }
+  })
+
   it('blocks DFC-managed attachments without falling back to legacy routes when the selected option is missing', () => {
     const h = createHarness()
     insertConvo(h.db, 'c1')
@@ -970,6 +1144,14 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       mime: 'application/pdf',
       assetKind: 'document',
       storageUri: 'assets/original/pd/pdf-missing-option.pdf',
+      sourceMetaJson: {
+        lineage: {
+          sourceHash: 'pdf-missing-option-sha',
+          previewContentHash: 'pdf-missing-option-preview',
+          sendContentHash: 'pdf-missing-option-send',
+          conversionSettingsHash: 'pdf-missing-option-settings',
+        },
+      },
     })
     createVerdict(h, 'pdf-missing-option', 'pdf', 'document')
     h.conversationAttachmentService.addDraftAttachment({
@@ -996,7 +1178,18 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       selectedSendMode: null,
       eligibility: 'blocked',
       exclusionReason: 'selected_option_missing',
+      lineage: {
+        state: 'unknown',
+        stale: false,
+        staleReason: null,
+        sourceHash: null,
+        previewContentHash: null,
+        sendContentHash: null,
+        conversionSettingsHash: null,
+      },
     })
+    expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('pdf-missing-option-sha')
+    expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('pdf-missing-option-preview')
   })
 
   it('blocks a DFC selected original_file when the selected raw_file ref does not match the raw asset', () => {
@@ -1052,6 +1245,14 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
         mime: 'text/plain',
         assetKind: 'text',
         storageUri: `assets/original/df/${testCase.assetId}.txt`,
+        sourceMetaJson: {
+          lineage: {
+            sourceHash: `${testCase.assetId}-sha`,
+            previewContentHash: `${testCase.derivativeId}-content`,
+            sendContentHash: `${testCase.derivativeId}-content`,
+            conversionSettingsHash: `${testCase.derivativeId}-settings`,
+          },
+        },
       })
       createDerivative(h.fileDerivativeRepo, testCase.derivativeId, testCase.assetId, {
         status: testCase.status,
@@ -1091,7 +1292,18 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
         selectedSendMode: null,
         eligibility: 'blocked',
         exclusionReason: testCase.reason,
+        lineage: {
+          state: 'unknown',
+          stale: false,
+          staleReason: null,
+          sourceHash: null,
+          previewContentHash: null,
+          sendContentHash: null,
+          conversionSettingsHash: null,
+        },
       })
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(`${testCase.derivativeId}-content`)
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(`${testCase.assetId}-sha`)
     }
   })
 
