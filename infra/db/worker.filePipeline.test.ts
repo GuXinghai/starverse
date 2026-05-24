@@ -234,15 +234,52 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     await createWorkerAsset(handlers)
     const selectedAssetRefs = [{ kind: 'raw_file' as const, assetId: 'asset-1' }]
 
-    const draftAttachment = await dispatchWorkerMessage(handlers, {
+    const draftAdd = await dispatchWorkerMessage(handlers, {
       id: 'req-dfc-draft-add',
       method: 'conversationDraft.addAttachment',
       params: {
         conversationId: 'c1',
         assetId: 'asset-1',
         preferredSendMode: 'inline_base64',
+      },
+    })
+
+    expect(draftAdd).toMatchObject({
+      ok: true,
+      result: expect.objectContaining({
+        dfcManaged: false,
+        preferredSendMode: 'inline_base64',
+      }),
+    })
+
+    const options = await dispatchWorkerMessage(handlers, {
+      id: 'req-dfc-options',
+      method: 'conversationDraft.getDfcOptions',
+      params: {
+        conversationId: 'c1',
+        assetId: 'asset-1',
+      },
+    })
+    expect(options).toMatchObject({
+      ok: true,
+      result: expect.objectContaining({
+        decision: expect.objectContaining({ status: 'needs_user_selection' }),
+        options: [expect.objectContaining({
+          targetKind: 'original_file',
+          sendAssetRefs: selectedAssetRefs,
+        })],
+      }),
+    })
+    const originalOption = (options as any).result.options.find((option: any) => option.targetKind === 'original_file')
+
+    const draftAttachment = await dispatchWorkerMessage(handlers, {
+      id: 'req-dfc-draft-update',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId: 'asset-1',
         dfcManaged: true,
-        selectedOptionId: 'option-original',
+        selectedOptionId: originalOption.optionId,
         selectedAssetRefs,
       },
     })
@@ -251,7 +288,7 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       ok: true,
       result: expect.objectContaining({
         dfcManaged: true,
-        selectedOptionId: 'option-original',
+        selectedOptionId: originalOption.optionId,
         selectedAssetRefs,
         preferredSendMode: null,
       }),
@@ -280,7 +317,7 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
         attachments: [
           expect.objectContaining({
             dfcManaged: true,
-            usedOptionId: 'option-original',
+            usedOptionId: originalOption.optionId,
             usedAssetRefs: selectedAssetRefs,
             targetKind: 'original_file',
             sendStrategy: 'file_attachment',

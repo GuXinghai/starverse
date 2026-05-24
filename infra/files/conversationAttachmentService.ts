@@ -6,6 +6,7 @@ import type { BranchRepo } from '../db/repo/branchRepo'
 import { ConversationDraftRepo } from '../db/repo/conversationDraftRepo'
 import {
   normalizeDfcSendStrategy,
+  normalizeDfcSendAssetRefs,
   normalizeDfcTargetKind,
   parseDfcSendAssetRefsJson,
   parseRequiredDfcSendAssetRefsJson,
@@ -13,8 +14,19 @@ import {
 import { inferFileProfile } from '../../src/shared/files/fileRules'
 import type {
   DfcAttachmentSendSnapshot,
+  DfcConversionOption,
+  DfcConversionOptionStatus,
+  DfcDerivedTargetKind,
+  DfcDraftAttachmentOptionsDto,
+  DfcDraftOptionCandidateDto,
+  DfcSendAssetRef,
   DfcSendStrategy,
   DfcTargetKind,
+} from '../../src/shared/files/documentFormatConversion'
+import {
+  createDfcDerivedAssetOption,
+  createDfcOriginalFileOption,
+  resolveDfcManagedAttachment,
 } from '../../src/shared/files/documentFormatConversion'
 import type {
   AddDraftAttachmentInput,
@@ -31,8 +43,12 @@ import type {
   ConversationDraftRecord,
   DetachMessageAttachmentInput,
   DraftAttachmentRecord,
+  FileAssetRecord,
+  FileDerivativeRecord,
   GetAssetAttachmentOwnershipInput,
   GetAttachmentCandidateSnapshotInput,
+  GetDfcDraftAttachmentOptionsInput,
+  GetDfcDraftAttachmentOptionsResult,
   MarkAttachmentAbandonedInput,
   MessageAttachmentRecord,
   RemoveDraftAttachmentInput,
@@ -66,6 +82,20 @@ type LifecycleRow = Readonly<{
   lifecycle_status: AttachmentLifecycleStatus
   reason: string | null
   updated_at: number
+}>
+
+type FileDerivativeCandidateRow = Readonly<{
+  id: string
+  parentAssetId: string
+  derivedKind: FileDerivativeRecord['derivedKind']
+  mime: string | null
+  storageUri: string
+  generator: string
+  status: FileDerivativeRecord['status']
+  metaJson: string | null
+  createdAt: number
+  updatedAt: number
+  deletedAt: number | null
 }>
 
 export type ConversationAttachmentServiceDeps = Readonly<{
@@ -113,9 +143,20 @@ export class ConversationAttachmentService {
     return attachment
   }
 
+  getDfcDraftAttachmentOptions(input: GetDfcDraftAttachmentOptionsInput): GetDfcDraftAttachmentOptionsResult {
+    const conversationId = requireNonEmpty(input.conversationId, 'conversationId')
+    const assetId = requireNonEmpty(input.assetId, 'assetId')
+    const draft = this.draftRepo.getOrCreate(conversationId, this.now())
+    const attachment = draft.attachments.find((item) => item.assetId === assetId)
+    if (!attachment) throw new Error(`draft attachment not found: ${assetId}`)
+    return this.buildDfcDraftAttachmentOptions(conversationId, attachment)
+  }
+
   updateDraftAttachmentSettings(input: UpdateDraftAttachmentSettingsInput): DraftAttachmentRecord | null {
+    const normalized = this.normalizeDraftAttachmentSettingsUpdate(input)
+    if (!normalized) return null
     const updated = this.draftRepo.updateAttachmentSettings({
-      ...input,
+      ...normalized,
       updatedAt: input.updatedAt ?? this.now(),
     })
     return updated
@@ -282,6 +323,224 @@ export class ConversationAttachmentService {
       excluded: items.filter((item) => !item.included),
       items,
     }
+  }
+
+  private normalizeDraftAttachmentSettingsUpdate(input: UpdateDraftAttachmentSettingsInput): UpdateDraftAttachmentSettingsInput | null {
+    const conversationId = requireNonEmpty(input.conversationId, 'conversationId')
+    const assetId = requireNonEmpty(input.assetId, 'assetId')
+    const draft = this.draftRepo.getOrCreate(conversationId, this.now())
+    const attachment = draft.attachments.find((item) => item.assetId === assetId)
+    if (!attachment) return null
+    const dfcManaged = input.dfcManaged !== undefined ? input.dfcManaged === true : attachment.dfcManaged
+    const selectedOptionId = input.selectedOptionId !== undefined ? normalizeNullableText(input.selectedOptionId) : attachment.selectedOptionId
+    const selectedAssetRefs = input.selectedAssetRefs !== undefined ? normalizeDfcSendAssetRefsForUpdate(input.selectedAssetRefs) : attachment.selectedAssetRefs
+    if (!dfcManaged) return input
+    this.assertDfcDraftSelectionCoherent(attachment, selectedOptionId, selectedAssetRefs)
+    return {
+      ...input,
+      dfcManaged: true,
+      selectedOptionId,
+      selectedAssetRefs,
+    }
+  }
+
+  private assertDfcDraftSelectionCoherent(
+    attachment: DraftAttachmentRecord,
+    selectedOptionId: string | null,
+    selectedAssetRefs: readonly DfcSendAssetRef[]
+  ): void {
+    if (!selectedOptionId) {
+      if (selectedAssetRefs.length > 0) {
+        throw new Error(`DFC selectedAssetRefs require selectedOptionId for draft attachment: ${attachment.id}`)
+      }
+      return
+    }
+    if (selectedAssetRefs.length === 0) {
+      throw new Error(`DFC selectedOptionId requires selectedAssetRefs for draft attachment: ${attachment.id}`)
+    }
+    const asset = this.requireFileAssetRecord(attachment.assetId)
+    const options = this.buildDfcOptionCandidates(attachment, asset)
+    const option = options.find((item) => item.optionId === selectedOptionId)
+    if (!option) throw new Error(`DFC selected option is not available for draft attachment: ${attachment.id}`)
+    if (!dfcSendAssetRefsEqual(option.sendAssetRefs, selectedAssetRefs)) {
+      throw new Error(`DFC selected option refs do not match selectedAssetRefs for draft attachment: ${attachment.id}`)
+    }
+    const decision = resolveDfcManagedAttachment({
+      dfcManaged: true,
+      rawFileId: attachment.assetId,
+      selectedOptionId,
+      options,
+      availableRawFileIds: this.isDfcRawFileAvailable(asset) ? [asset.id] : [],
+      availableDerivedAssetIds: options.flatMap((candidate) =>
+        candidate.isAvailable ? candidate.sendAssetRefs.filter((ref) => ref.kind === 'derived_asset').map((ref) => ref.assetId) : []
+      ),
+      optionGenerationState: null,
+    })
+    if (decision.reasonCode === 'send_asset_ref_kind_mismatch'
+      || decision.reasonCode === 'raw_file_ref_missing'
+      || decision.reasonCode === 'derived_asset_ref_missing') {
+      throw new Error(`DFC selected option is not coherent for draft attachment: ${attachment.id}`)
+    }
+  }
+
+  private buildDfcDraftAttachmentOptions(
+    conversationId: string,
+    attachment: DraftAttachmentRecord
+  ): DfcDraftAttachmentOptionsDto {
+    const asset = this.requireFileAssetRecord(attachment.assetId)
+    const options = this.buildDfcOptionCandidates(attachment, asset)
+    const decision = resolveDfcManagedAttachment({
+      dfcManaged: true,
+      rawFileId: attachment.assetId,
+      selectedOptionId: attachment.dfcManaged ? attachment.selectedOptionId : null,
+      options,
+      availableRawFileIds: this.isDfcRawFileAvailable(asset) ? [asset.id] : [],
+      availableDerivedAssetIds: options.flatMap((candidate) =>
+        candidate.isAvailable ? candidate.sendAssetRefs.filter((ref) => ref.kind === 'derived_asset').map((ref) => ref.assetId) : []
+      ),
+      optionGenerationState: null,
+    })
+    return {
+      attachmentId: attachment.id,
+      conversationId,
+      rawFileId: attachment.assetId,
+      filename: asset.filename,
+      sizeBytes: asset.sizeBytes,
+      dfcManaged: attachment.dfcManaged,
+      selectedOptionId: attachment.dfcManaged ? attachment.selectedOptionId : null,
+      selectedAssetRefs: attachment.dfcManaged ? [...attachment.selectedAssetRefs] : [],
+      decision,
+      options: options.map((option) => this.toDfcDraftOptionCandidateDto(option)),
+    }
+  }
+
+  private buildDfcOptionCandidates(
+    attachment: DraftAttachmentRecord,
+    asset: FileAssetRecord
+  ): DfcConversionOption[] {
+    const options: DfcConversionOption[] = []
+    const rawRefs: DfcSendAssetRef[] = [{ kind: 'raw_file', assetId: asset.id }]
+    options.push({
+      ...createDfcOriginalFileOption({
+        optionId: this.optionIdForCandidate(attachment, 'original_file', rawRefs),
+        rawFileId: asset.id,
+        status: this.isDfcRawFileAvailable(asset) ? 'ready' : 'stale',
+        isAvailable: this.isDfcRawFileAvailable(asset),
+        compatibilityStatus: this.isDfcRawFileAvailable(asset) ? 'compatible' : 'blocked',
+      }),
+      sendAssetRefs: rawRefs,
+    })
+
+    for (const derivative of this.listDfcDerivativeCandidates(asset.id)) {
+      const targetKind = readDfcDerivedTargetKindFromMeta(derivative.metaJson)
+      if (!targetKind) continue
+      const refs: DfcSendAssetRef[] = [{ kind: 'derived_asset', assetId: derivative.id }]
+      options.push(createDfcDerivedAssetOption({
+        optionId: this.optionIdForCandidate(attachment, targetKind, refs),
+        rawFileId: asset.id,
+        derivedAssetId: derivative.id,
+        targetKind,
+        status: dfcOptionStatusFromDerivative(derivative),
+        isAvailable: derivative.status === 'ready' && derivative.deletedAt == null,
+        compatibilityStatus: derivative.status === 'ready' && derivative.deletedAt == null ? 'compatible' : derivative.status === 'pending' ? 'pending' : 'blocked',
+      }))
+    }
+
+    const textConversionOption = this.textConversionOptionCandidate(attachment, asset)
+    if (textConversionOption && !options.some((option) => dfcSendAssetRefsEqual(option.sendAssetRefs, textConversionOption.sendAssetRefs))) {
+      options.push(textConversionOption)
+    }
+    return options
+  }
+
+  private optionIdForCandidate(
+    attachment: DraftAttachmentRecord,
+    targetKind: DfcTargetKind,
+    refs: readonly DfcSendAssetRef[]
+  ): string {
+    const refPart = refs.map((ref) => `${ref.kind}:${ref.assetId}`).sort().join(',')
+    return `dfc:${attachment.assetId}:${targetKind}:${refPart}`
+  }
+
+  private textConversionOptionCandidate(
+    attachment: DraftAttachmentRecord,
+    asset: FileAssetRecord
+  ): DfcConversionOption | null {
+    const root = normalizeObject(asset.sourceMetaJson)
+    const textConversion = normalizeObject(root?.textConversion)
+    const derivativeId = typeof textConversion?.derivativeId === 'string' ? textConversion.derivativeId.trim() : ''
+    const targetKind = readDfcDerivedTargetKindFromMeta(textConversion)
+    if (!derivativeId || !targetKind) return null
+    const refs: DfcSendAssetRef[] = [{ kind: 'derived_asset', assetId: derivativeId }]
+    const status = dfcOptionStatusFromTextConversion(textConversion)
+    const hasStorageRef = typeof textConversion?.storageUri === 'string' && textConversion.storageUri.trim().length > 0
+    const isAvailable = status === 'ready' && hasStorageRef
+    return createDfcDerivedAssetOption({
+      optionId: this.optionIdForCandidate(attachment, targetKind, refs),
+      rawFileId: asset.id,
+      derivedAssetId: derivativeId,
+      targetKind,
+      status,
+      isAvailable,
+      compatibilityStatus: isAvailable ? 'compatible' : status === 'pending' || status === 'candidate' ? 'pending' : 'blocked',
+    })
+  }
+
+  private toDfcDraftOptionCandidateDto(option: DfcConversionOption): DfcDraftOptionCandidateDto {
+    return {
+      optionId: option.optionId,
+      targetKind: option.targetKind,
+      sendStrategy: option.sendStrategy,
+      status: option.status,
+      isAvailable: option.isAvailable,
+      compatibilityStatus: option.compatibilityStatus ?? null,
+      sendAssetRefs: [...option.sendAssetRefs],
+      warnings: [...(option.warnings ?? [])],
+      diagnostics: [],
+    }
+  }
+
+  private requireFileAssetRecord(assetId: string): FileAssetRecord {
+    const asset = this.deps.fileAssetRepo.getById(assetId)
+    if (!asset) throw new Error(`file asset not found: ${assetId}`)
+    return asset
+  }
+
+  private isDfcRawFileAvailable(asset: FileAssetRecord): boolean {
+    return asset.deletedAt == null && asset.ingestStatus !== 'deleted'
+  }
+
+  private listDfcDerivativeCandidates(parentAssetId: string): FileDerivativeRecord[] {
+    const rows = this.deps.db.prepare(`
+      SELECT
+        id,
+        parent_asset_id AS parentAssetId,
+        derived_kind AS derivedKind,
+        mime,
+        storage_uri AS storageUri,
+        generator,
+        status,
+        meta_json AS metaJson,
+        created_at AS createdAt,
+        updated_at AS updatedAt,
+        deleted_at AS deletedAt
+      FROM file_derivatives
+      WHERE parent_asset_id = @parentAssetId
+      ORDER BY created_at ASC, id ASC
+    `).all({ parentAssetId }) as FileDerivativeCandidateRow[]
+    return rows.map((row) => ({
+      id: row.id,
+      parentAssetId: row.parentAssetId,
+      derivedKind: row.derivedKind,
+      mime: row.mime ?? null,
+      storageUri: row.storageUri,
+      generator: row.generator,
+      status: row.status,
+      metaJson: parseJsonObject(row.metaJson),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      deletedAt: row.deletedAt ?? null,
+    }))
   }
 
   private createMessageAttachmentFromDraft(
@@ -652,6 +911,51 @@ function ownership(input: Readonly<{
 
 function normalizeIds(ids: ReadonlyArray<string>): string[] {
   return Array.from(new Set(ids.map((id) => String(id ?? '').trim()).filter(Boolean)))
+}
+
+function normalizeNullableText(value: string | null | undefined): string | null {
+  const normalized = String(value ?? '').trim()
+  return normalized || null
+}
+
+function normalizeDfcSendAssetRefsForUpdate(value: readonly DfcSendAssetRef[]): DfcSendAssetRef[] {
+  return normalizeDfcSendAssetRefs(value)
+}
+
+function normalizeObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
+function readDfcDerivedTargetKindFromMeta(meta: Record<string, unknown> | null): DfcDerivedTargetKind | null {
+  const value = typeof meta?.targetKind === 'string' ? meta.targetKind.trim() : ''
+  switch (value) {
+    case 'plain_text':
+    case 'markdown':
+    case 'code':
+    case 'table_markdown':
+    case 'pdf_attachment':
+      return value
+    default:
+      return null
+  }
+}
+
+function dfcOptionStatusFromDerivative(derivative: FileDerivativeRecord): DfcConversionOptionStatus {
+  if (derivative.deletedAt != null || derivative.status === 'deleted') return 'stale'
+  if (derivative.status === 'ready') return 'ready'
+  if (derivative.status === 'failed') return 'failed'
+  if (derivative.status === 'pending') return 'pending'
+  return 'blocked'
+}
+
+function dfcOptionStatusFromTextConversion(textConversion: Record<string, unknown> | null): DfcConversionOptionStatus {
+  const status = typeof textConversion?.status === 'string' ? textConversion.status.trim() : ''
+  if (status === 'ready') return 'ready'
+  if (status === 'failed') return 'failed'
+  if (status === 'stale') return 'stale'
+  if (status === 'blocked') return 'blocked'
+  if (status === 'pending' || status === 'running' || status === 'candidate') return 'pending'
+  return 'candidate'
 }
 
 function dfcSendAssetRefsEqual(

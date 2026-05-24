@@ -202,6 +202,31 @@ export type DfcSanitizedAttachmentDto = Readonly<{
   diagnostics: readonly DfcSanitizedDiagnostic[]
 }>
 
+export type DfcDraftOptionCandidateDto = Readonly<{
+  optionId: string
+  targetKind: DfcTargetKind
+  sendStrategy: DfcSendStrategy
+  status: DfcConversionOptionStatus
+  isAvailable: boolean
+  compatibilityStatus: DfcCompatibilityStatus | null
+  sendAssetRefs: readonly DfcSendAssetRef[]
+  warnings: readonly string[]
+  diagnostics: readonly DfcSanitizedDiagnostic[]
+}>
+
+export type DfcDraftAttachmentOptionsDto = Readonly<{
+  attachmentId: string
+  conversationId: string
+  rawFileId: string
+  filename: string
+  sizeBytes: number
+  dfcManaged: boolean
+  selectedOptionId: string | null
+  selectedAssetRefs: readonly DfcSendAssetRef[]
+  decision: DfcManagedAttachmentDecision
+  options: readonly DfcDraftOptionCandidateDto[]
+}>
+
 export type DfcRendererAttachmentAuditInput = Readonly<{
   attachmentId: string
   rawFileId: string

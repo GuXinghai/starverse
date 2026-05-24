@@ -39,6 +39,7 @@ import type {
   MarkAttachmentAbandonedInput,
   GetAssetAttachmentOwnershipInput,
   GetAttachmentCandidateSnapshotInput,
+  GetDfcDraftAttachmentOptionsInput,
   BuildCurrentSendPlanInput,
   PrepareOpenRouterReplayFromMessageInput,
   IngestLocalFileInput,
@@ -458,6 +459,11 @@ export const UpdateDraftAttachmentSettingsSchema: ZodType<UpdateDraftAttachmentS
   selectedOptionId: z.string().nullable().optional(),
   selectedAssetRefs: z.array(DfcSendAssetRefSchema).optional(),
   updatedAt: z.number().int().optional(),
+})
+
+export const GetDfcDraftAttachmentOptionsSchema: ZodType<GetDfcDraftAttachmentOptionsInput> = z.object({
+  conversationId: z.string().min(1),
+  assetId: z.string().min(1),
 })
 
 export const CommitDraftToUserMessageSchema: ZodType<CommitDraftToUserMessageInput> = z.object({

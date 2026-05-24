@@ -61,6 +61,51 @@ function createAsset(repo: FileAssetRepo, id: string, overrides: Partial<Paramet
   })
 }
 
+function insertDfcDerivative(
+  db: BetterSqlite3.Database,
+  input: Readonly<{
+    id: string
+    parentAssetId: string
+    targetKind: string
+    status?: string
+    storageUri?: string
+  }>
+) {
+  db.prepare(`
+    INSERT INTO file_derivatives(
+      id, parent_asset_id, derived_kind, mime, storage_uri, generator, status, meta_json, created_at, updated_at, deleted_at
+    )
+    VALUES (
+      @id,
+      @parentAssetId,
+      'extracted_text',
+      'text/markdown',
+      @storageUri,
+      'test-dfc-converter',
+      @status,
+      @metaJson,
+      1,
+      1,
+      NULL
+    )
+  `).run({
+    id: input.id,
+    parentAssetId: input.parentAssetId,
+    storageUri: input.storageUri ?? `assets/derivatives/${input.parentAssetId}/${input.id}.md`,
+    status: input.status ?? 'ready',
+    metaJson: JSON.stringify({
+      targetKind: input.targetKind,
+      usage: 'preview_and_send',
+      storageClass: 'draft_bound',
+      sourceHash: `${input.parentAssetId}-sha`,
+      contentHash: `${input.id}-content`,
+      conversionSettingsHash: `${input.id}-settings`,
+      converterName: 'test-dfc-converter',
+      converterVersion: '1',
+    }),
+  })
+}
+
 describeIfBetterSqlite('ConversationAttachmentService drafts', () => {
   it('restores draft text and attachments as one input snapshot', () => {
     const h = createHarness()
@@ -392,6 +437,131 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
         sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-other' }],
       }],
     })).toThrow('DFC send snapshot refs do not match selectedAssetRefs')
+  })
+
+  it('returns sanitized backend-owned DFC draft options and persists selected option refs', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'asset-dfc')
+    insertDfcDerivative(h.db, {
+      id: 'derivative-markdown',
+      parentAssetId: 'asset-dfc',
+      targetKind: 'markdown',
+    })
+    h.service.addDraftAttachment({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      preferredSendMode: 'inline_base64',
+    })
+
+    const dto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+    const markdownOption = dto.options.find((option) => option.targetKind === 'markdown')
+    expect(dto.decision).toMatchObject({
+      status: 'needs_user_selection',
+      reasonCode: 'selected_option_missing',
+    })
+    expect(dto.options.map((option) => option.targetKind).sort()).toEqual(['markdown', 'original_file'])
+    expect(markdownOption).toMatchObject({
+      sendStrategy: 'text_in_prompt',
+      status: 'ready',
+      isAvailable: true,
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-markdown' }],
+    })
+    expect(JSON.stringify(dto)).not.toContain('storageUri')
+    expect(JSON.stringify(dto)).not.toContain('sourceHash')
+    expect(JSON.stringify(dto)).not.toContain('contentHash')
+
+    const updated = h.service.updateDraftAttachmentSettings({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      dfcManaged: true,
+      selectedOptionId: markdownOption!.optionId,
+      selectedAssetRefs: markdownOption!.sendAssetRefs,
+    })
+
+    expect(updated).toMatchObject({
+      dfcManaged: true,
+      selectedOptionId: markdownOption!.optionId,
+      selectedAssetRefs: markdownOption!.sendAssetRefs,
+      preferredSendMode: null,
+    })
+    expect(h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' }).decision).toMatchObject({
+      status: 'ready',
+      targetKind: 'markdown',
+      sendStrategy: 'text_in_prompt',
+      sendAssetRefs: markdownOption!.sendAssetRefs,
+    })
+  })
+
+  it('rejects renderer-invented DFC option ids and mismatched selected refs on update', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'asset-dfc')
+    insertDfcDerivative(h.db, {
+      id: 'derivative-markdown',
+      parentAssetId: 'asset-dfc',
+      targetKind: 'markdown',
+    })
+    h.service.addDraftAttachment({ conversationId: 'c1', assetId: 'asset-dfc' })
+    const dto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+    const rawOption = dto.options.find((option) => option.targetKind === 'original_file')!
+    const markdownOption = dto.options.find((option) => option.targetKind === 'markdown')!
+
+    expect(() => h.service.updateDraftAttachmentSettings({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      dfcManaged: true,
+      selectedOptionId: 'renderer-invented-option',
+      selectedAssetRefs: markdownOption.sendAssetRefs,
+    })).toThrow('DFC selected option is not available')
+
+    expect(() => h.service.updateDraftAttachmentSettings({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      dfcManaged: true,
+      selectedOptionId: rawOption.optionId,
+      selectedAssetRefs: markdownOption.sendAssetRefs,
+    })).toThrow('DFC selected option refs do not match selectedAssetRefs')
+  })
+
+  it('does not preserve preexisting non-canonical selectedOptionId as backend option identity', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'asset-dfc')
+    h.service.addDraftAttachment({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      dfcManaged: true,
+      selectedOptionId: 'legacy-selected-option',
+      selectedAssetRefs: [{ kind: 'raw_file', assetId: 'asset-dfc' }],
+    })
+
+    const dto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+    const canonicalOption = dto.options.find((option) => option.targetKind === 'original_file')!
+
+    expect(canonicalOption.optionId).toBe('dfc:asset-dfc:original_file:raw_file:asset-dfc')
+    expect(dto.selectedOptionId).toBe('legacy-selected-option')
+    expect(dto.decision).toMatchObject({
+      status: 'needs_user_selection',
+      reasonCode: 'selected_option_not_found',
+      selectedOptionId: 'legacy-selected-option',
+    })
+    expect(() => h.service.updateDraftAttachmentSettings({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      dfcManaged: true,
+      selectedOptionId: 'legacy-selected-option',
+      selectedAssetRefs: canonicalOption.sendAssetRefs,
+    })).toThrow('DFC selected option is not available')
+
+    const updated = h.service.updateDraftAttachmentSettings({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      dfcManaged: true,
+      selectedOptionId: canonicalOption.optionId,
+      selectedAssetRefs: canonicalOption.sendAssetRefs,
+    })
+    expect(updated?.selectedOptionId).toBe(canonicalOption.optionId)
   })
 })
 
