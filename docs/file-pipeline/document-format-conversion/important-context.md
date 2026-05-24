@@ -569,3 +569,16 @@ DFC-27 should continue non-Playwright Phase 1 hardening around pending-state vis
 ## Recommended next round
 
 DFC-28 should either proceed with an owner-approved durable pending/retry/job-state design, or continue narrow backend hardening only where it can stay within existing storage. Browser Playwright harness scaffolding, durable option-generation storage, DB uniqueness/migration, external engines, new dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, and forbidden conversion families remain owner-gated.
+
+## DFC-28 implementation recovery notes
+
+- DFC-28 is a narrow backend-owned option DTO diagnostic parity slice; it does not add a DB schema change, IPC shape change, renderer option identity, Send Plan behavior change, browser Playwright harness, UI redesign, new dependency, external engine, legacy bridge, durable `ConversionOption` rows, durable job-state linkage, or durable async option-generation state.
+- `conversationDraft.getDfcOptions` now attaches the existing sanitized `dfc_selection_refs_mismatch` diagnostic to the selected option candidate when persisted `selectedAssetRefs` diverge from the refs generated for the selected backend option.
+- The mismatch diagnostic is added through the existing option candidate `diagnostics` array, so the renderer receives visibility without inventing option identity or requiring a DTO shape change.
+- Preview and commit/send behavior are unchanged: preview already blocks with `dfc_selection_refs_mismatch`, and message binding rejects mismatched selected refs before creating DFC send snapshots.
+- The regression test proves the options DTO exposes only the symbolic mismatch diagnostic and does not leak preview body text or storage URI.
+- Focused service tests, the broader backend/client/UI DFC suite, `vue-tsc`, `git diff --check`, diff privacy scans, test-runner attribution, risk review, and doc consistency passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this DFC diff.
+
+## Recommended next round
+
+DFC-29 should seek owner approval for durable pending/retry/job-state storage or browser Playwright harness scaffolding unless another concrete narrow backend gap is found that stays within existing storage and IPC shape. Browser Playwright harness scaffolding, durable option-generation storage, DB uniqueness/migration, external engines, new dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, and forbidden conversion families remain owner-gated.
