@@ -935,7 +935,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
         return draftResponse.attachments.find((attachment: any) => attachment.assetId === assetId) ?? null
       }
 
-      if (method === 'conversationDraft.getDfcOptions') {
+      if (method === 'conversationDraft.ensureDfcOptions' || method === 'conversationDraft.getDfcOptions') {
         const assetId = String(params?.assetId ?? '')
         const attachment = draftResponse.attachments.find((item: any) => item.assetId === assetId) ?? makeDraftAttachment(assetId)
         const asset = makeFileAsset(assetId)
@@ -2216,7 +2216,12 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     await screen.findByTestId('draft-attachment-details-dialog')
     await screen.findByTestId('draft-attachment-dfc-option-markdown')
 
-    expect(invoke).toHaveBeenCalledWith('conversationDraft.getDfcOptions', {
+    expect(invoke).toHaveBeenCalledWith('conversationDraft.ensureDfcOptions', {
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+    })
+    const ensureCall = invoke.mock.calls.find((call) => call[0] === 'conversationDraft.ensureDfcOptions')
+    expect(ensureCall?.[1]).toEqual({
       conversationId: 'c1',
       assetId: 'asset-dfc',
     })

@@ -95,7 +95,7 @@ import {
   addConversationDraftAttachment,
   attachConversationDraftToMessage,
   cloneConversationDraftFromMessage,
-  getConversationDraftAttachmentDfcOptions,
+  ensureConversationDraftAttachmentDfcOptions,
   getConversationDraftAttachmentDfcPreview,
   removeConversationDraftAttachment,
   restoreConversationDraft,
@@ -5241,10 +5241,11 @@ export function useAppChatAppLogic() {
       [id]: null,
     }
     try {
-      const dto = await getConversationDraftAttachmentDfcOptions({
+      const input = {
         conversationId: scope.convoId,
         assetId: id,
-      })
+      }
+      const dto = await ensureConversationDraftAttachmentDfcOptions(input)
       if (seq !== draftAttachmentDfcOptionsSeq) return
       draftAttachmentDfcOptionsByAssetId.value = {
         ...draftAttachmentDfcOptionsByAssetId.value,
