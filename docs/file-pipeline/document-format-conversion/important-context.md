@@ -487,3 +487,18 @@ DFC-21 should continue closing Phase 1 gaps around explicit ensure state, stale 
 ## Recommended next round
 
 DFC-22 should continue non-Playwright Phase 1 hardening around null-hash and pending-state semantics, or durable generated-option state if approved. Browser Playwright smoke still requires separate owner approval if it needs new harness scaffolding.
+
+## DFC-22 implementation recovery notes
+
+- DFC-22 is a narrow backend coherence slice; it does not add a DB schema change, IPC contract change, renderer option identity, conversion runtime family expansion, browser Playwright harness, UI redesign, new dependency, external engine, legacy bridge, broad Send Plan rewrite, durable `ConversionOption` rows, or async option-generation state.
+- Backend-owned DFC option DTO generation now treats a ready derived facade as unavailable `blocked` when the current raw asset `sha256` is null. The exposed diagnostic is symbolic: `raw_file_source_hash_missing`.
+- DFC preview and commit now reject a selected source-unverifiable derived option through the existing `selected_option_blocked` decision path instead of previewing or committing it.
+- Send Plan selected-ref synthesis and lineage validation now also block selected DFC derived refs when the raw source hash is missing, with no fallback to preferred/selected legacy send modes, extension, MIME, or route-derived behavior.
+- `original_file` remains unaffected: raw-file options still use `raw_file` refs and do not require derived lineage.
+- Explicit `conversationDraft.ensureDfcOptions` already avoids exposing DFC metadata when the raw source hash is null; this slice closes the hand-existing/legacy-metadata derived-facade availability case.
+- New tests cover null raw-hash derived option redaction, blocked preview, commit gating, and Send Plan no-fallback blocking for selected derived refs with unverifiable raw source lineage.
+- Targeted DFC service/shared tests, broader backend/client/UI DFC tests, `vue-tsc`, `git diff --check`, privacy scans, code_mapper, and risk_reviewer passed.
+
+## Recommended next round
+
+DFC-23 should continue non-Playwright Phase 1 hardening around pending/concurrent generation semantics. Browser Playwright smoke still requires separate owner approval if it needs new harness scaffolding.

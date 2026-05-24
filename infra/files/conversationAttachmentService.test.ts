@@ -632,6 +632,65 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
       .toThrow('DFC-managed draft attachment selected option is not ready')
   })
 
+  it('blocks DFC derived options when raw source hash lineage cannot be verified', async () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'asset-dfc', { sha256: null })
+    insertDfcDerivative(h.db, {
+      id: 'derivative-markdown',
+      parentAssetId: 'asset-dfc',
+      targetKind: 'markdown',
+      metaJson: {
+        targetKind: 'markdown',
+        usage: 'preview_and_send',
+        storageClass: 'draft_bound',
+        sourceHash: 'derived-source-sha',
+        contentHash: 'derivative-markdown-content',
+        conversionSettingsHash: 'derivative-markdown-settings',
+        converterName: 'test-dfc-converter',
+        converterVersion: '1',
+      },
+    })
+    h.service.addDraftAttachment({ conversationId: 'c1', assetId: 'asset-dfc' })
+
+    const dto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+    const markdownOption = dto.options.find((option) => option.targetKind === 'markdown')!
+
+    expect(markdownOption).toMatchObject({
+      status: 'blocked',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      diagnostics: [expect.objectContaining({ code: 'raw_file_source_hash_missing' })],
+    })
+    expect(JSON.stringify(dto)).not.toContain('derived-source-sha')
+
+    h.service.updateDraftAttachmentSettings({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      dfcManaged: true,
+      selectedOptionId: markdownOption.optionId,
+      selectedAssetRefs: markdownOption.sendAssetRefs,
+    })
+
+    const preview = await h.service.getDfcDraftAttachmentPreview({ conversationId: 'c1', assetId: 'asset-dfc' })
+
+    expect(preview).toMatchObject({
+      selectedOptionId: markdownOption.optionId,
+      decision: expect.objectContaining({
+        status: 'blocked',
+        reasonCode: 'selected_option_blocked',
+      }),
+      preview: {
+        kind: 'none',
+        status: 'blocked',
+        text: null,
+        diagnostics: [expect.objectContaining({ code: 'selected_option_blocked' })],
+      },
+    })
+    expect(() => h.service.commitDraftToUserMessage({ conversationId: 'c1' }))
+      .toThrow('DFC-managed draft attachment selected option is not ready')
+  })
+
   it('blocks preview and message binding when persisted selected refs disagree with selectedOptionId', async () => {
     const storageRootDir = mkdtempSync(path.join(os.tmpdir(), 'starverse-dfc-preview-mismatch-'))
     try {

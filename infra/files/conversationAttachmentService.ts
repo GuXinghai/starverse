@@ -729,16 +729,16 @@ export class ConversationAttachmentService {
         generator: derivative.generator,
         metaJson: derivative.metaJson,
       })
-      const sourceHashMismatch = facade.ok && dfcDerivedAssetSourceHashMismatch(asset, facade.asset)
-      const unavailableReason = sourceHashMismatch
-        ? 'derived_asset_source_hash_mismatch'
+      const sourceHashIssue = facade.ok ? dfcDerivedAssetSourceHashIssue(asset, facade.asset) : null
+      const unavailableReason = sourceHashIssue
+        ? sourceHashIssue
         : status === 'ready'
           ? dfcDerivativeUnavailableReason(facade)
           : null
-      const candidateStatus = sourceHashMismatch
+      const candidateStatus = sourceHashIssue === 'derived_asset_source_hash_mismatch'
         ? 'stale'
         : unavailableReason ? 'blocked' : status
-      const isAvailable = status === 'ready' && !sourceHashMismatch && !unavailableReason
+      const isAvailable = status === 'ready' && !sourceHashIssue && !unavailableReason
       options.push({
         ...createDfcDerivedAssetOption({
           optionId: this.optionIdForCandidate(attachment, targetKind, refs),
@@ -790,15 +790,15 @@ export class ConversationAttachmentService {
       generator: typeof textConversion?.converterName === 'string' ? textConversion.converterName : null,
       metaJson: textConversion,
     })
-    const sourceHashMismatch = facade.ok && dfcDerivedAssetSourceHashMismatch(asset, facade.asset)
-    const unavailableReason = sourceHashMismatch
-      ? 'derived_asset_source_hash_mismatch'
+    const sourceHashIssue = facade.ok ? dfcDerivedAssetSourceHashIssue(asset, facade.asset) : null
+    const unavailableReason = sourceHashIssue
+      ? sourceHashIssue
       : status === 'ready'
         ? dfcDerivativeUnavailableReason(facade)
         : null
-    const candidateStatus = sourceHashMismatch ? 'stale' : unavailableReason ? 'blocked' : status
+    const candidateStatus = sourceHashIssue === 'derived_asset_source_hash_mismatch' ? 'stale' : unavailableReason ? 'blocked' : status
     const hasStorageRef = typeof textConversion?.storageUri === 'string' && textConversion.storageUri.trim().length > 0
-    const isAvailable = status === 'ready' && hasStorageRef && !sourceHashMismatch && !unavailableReason
+    const isAvailable = status === 'ready' && hasStorageRef && !sourceHashIssue && !unavailableReason
     return {
       ...createDfcDerivedAssetOption({
         optionId: this.optionIdForCandidate(attachment, targetKind, refs),
@@ -1248,12 +1248,13 @@ function dfcDerivativeUnavailableReason(
   return null
 }
 
-function dfcDerivedAssetSourceHashMismatch(
+function dfcDerivedAssetSourceHashIssue(
   rawAsset: FileAssetRecord,
   facade: DfcDerivedAssetFacade
-): boolean {
+): 'raw_file_source_hash_missing' | 'derived_asset_source_hash_mismatch' | null {
   const sourceHash = normalizeNullableText(rawAsset.sha256)
-  return sourceHash !== null && facade.sourceHash !== sourceHash
+  if (sourceHash === null) return 'raw_file_source_hash_missing'
+  return facade.sourceHash === sourceHash ? null : 'derived_asset_source_hash_mismatch'
 }
 
 function dfcSendAssetRefsEqual(

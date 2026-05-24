@@ -720,15 +720,18 @@ function buildDfcOptionsForSelectedRefs(
   )
   const anyFailed = selectedDerivatives.some((derivative) => derivative?.status === 'failed')
   const anyStale = selectedDerivatives.some((derivative) => derivative?.status === 'deleted' || derivative?.deletedAt != null)
-  const anySourceMismatch = selectedDerivatives.some((derivative) =>
-    derivative ? dfcDerivedRefSourceHashMismatch(attachment, derivative) : false
+  const sourceHashIssues = selectedDerivatives.map((derivative) =>
+    derivative ? dfcDerivedRefSourceHashIssue(attachment, derivative) : null
   )
+  const anySourceMismatch = sourceHashIssues.includes('derived_asset_source_hash_mismatch')
+  const anySourceUnverifiable = sourceHashIssues.includes('raw_file_source_hash_missing')
   const anyPending = selectedDerivatives.some((derivative) => derivative?.status === 'pending')
   const status: DfcConversionOption['status'] =
     anyFailed ? 'failed'
       : anyStale || anySourceMismatch ? 'stale'
         : anyPending ? 'pending'
-          : 'ready'
+          : anySourceUnverifiable ? 'blocked'
+            : 'ready'
 
   return {
     options: [{
@@ -779,14 +782,23 @@ function isDfcDerivedRefAvailable(
       generator: derivative.generator,
       metaJson: derivative.metaJson,
     })
-    if (facade.ok && dfcDerivedAssetSourceHashMismatch(attachment.fileAsset, facade.asset)) return false
+    if (facade.ok && dfcDerivedAssetSourceHashIssue(attachment.fileAsset, facade.asset)) return false
     return readDfcDerivedTargetKind(derivative.metaJson) !== null
   }
   if (derivativeRepoAvailable) return false
   const textConversion = readSelectedTextConversionMeta(attachment.fileAsset, derivedAssetId)
-  return textConversion?.status === 'ready'
-    && typeof textConversion?.storageUri === 'string'
-    && textConversion.storageUri.trim().length > 0
+  const status = typeof textConversion?.status === 'string' ? textConversion.status.trim() : ''
+  const facade = createDfcDerivedAssetFacade({
+    derivativeId: derivedAssetId,
+    sourceFileId: attachment.assetId,
+    mime: typeof textConversion?.mime === 'string' ? textConversion.mime : null,
+    storageRef: typeof textConversion?.storageUri === 'string' ? textConversion.storageUri : null,
+    status,
+    generator: typeof textConversion?.converterName === 'string' ? textConversion.converterName : null,
+    metaJson: textConversion,
+  })
+  return facade.ok
+    && !dfcDerivedAssetSourceHashIssue(attachment.fileAsset, facade.asset)
     && readDfcDerivedTargetKind(textConversion) !== null
 }
 
@@ -859,8 +871,12 @@ function evaluateDfcSelectedAssetRefLineage(
     if (!facade.ok) {
       return dfcDerivedLineageSummary('send_asset_not_ready', facade.reasonCode)
     }
-    if (dfcDerivedAssetSourceHashMismatch(attachment.fileAsset, facade.asset)) {
+    const sourceHashIssue = dfcDerivedAssetSourceHashIssue(attachment.fileAsset, facade.asset)
+    if (sourceHashIssue === 'derived_asset_source_hash_mismatch') {
       return dfcDerivedLineageSummary('stale_derived_asset', 'selected_derived_asset_source_hash_mismatch')
+    }
+    if (sourceHashIssue === 'raw_file_source_hash_missing') {
+      return dfcDerivedLineageSummary('send_asset_not_ready', 'raw_file_source_hash_missing')
     }
     if (facade.asset.usage === 'preview_only') {
       return dfcDerivedLineageSummary('preview_only_asset_not_sendable', 'derived_asset_preview_only')
@@ -901,10 +917,10 @@ function dfcDerivedLineageSummary(
   }
 }
 
-function dfcDerivedRefSourceHashMismatch(
+function dfcDerivedRefSourceHashIssue(
   attachment: Omit<CollectedAttachmentInput, 'dfcDecision' | 'semantic'>,
   derivative: FileDerivativeRecord
-): boolean {
+): 'raw_file_source_hash_missing' | 'derived_asset_source_hash_mismatch' | null {
   const facade = createDfcDerivedAssetFacade({
     derivativeId: derivative.id,
     sourceFileId: attachment.assetId,
@@ -914,15 +930,16 @@ function dfcDerivedRefSourceHashMismatch(
     generator: derivative.generator,
     metaJson: derivative.metaJson,
   })
-  return facade.ok && dfcDerivedAssetSourceHashMismatch(attachment.fileAsset, facade.asset)
+  return facade.ok ? dfcDerivedAssetSourceHashIssue(attachment.fileAsset, facade.asset) : null
 }
 
-function dfcDerivedAssetSourceHashMismatch(
+function dfcDerivedAssetSourceHashIssue(
   rawAsset: FileAssetRecord | null,
   facade: DfcDerivedAssetFacade
-): boolean {
+): 'raw_file_source_hash_missing' | 'derived_asset_source_hash_mismatch' | null {
   const sourceHash = normalizeNullableText(rawAsset?.sha256 ?? null)
-  return sourceHash !== null && facade.sourceHash !== sourceHash
+  if (sourceHash === null) return 'raw_file_source_hash_missing'
+  return facade.sourceHash === sourceHash ? null : 'derived_asset_source_hash_mismatch'
 }
 
 function normalizeModelDescriptor(model: SendPlanModelDescriptor): SendPlanModelDescriptor {
