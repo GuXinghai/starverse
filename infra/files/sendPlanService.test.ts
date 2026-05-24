@@ -968,6 +968,90 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
     })
   })
 
+  it('blocks DFC selected derived assets when Send Plan cannot verify the derivative repository', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'csv-raw', {
+      filename: 'data.csv',
+      extension: 'csv',
+      mime: 'text/csv',
+      assetKind: 'text',
+      storageUri: 'assets/original/cs/csv-raw.csv',
+      sourceMetaJson: {
+        textConversion: {
+          status: 'ready',
+          targetKind: 'table_markdown',
+          derivativeId: 'derived-table',
+          storageUri: 'assets/derivatives/csv-raw/derived-table.md',
+          mime: 'text/markdown',
+          usage: 'preview_and_send',
+          storageClass: 'draft_bound',
+          sourceHash: 'csv-raw-sha',
+          contentHash: 'derived-table-content',
+          conversionSettingsHash: 'derived-table-settings',
+          converterName: 'test-dfc-converter',
+          converterVersion: '1',
+        },
+      },
+    })
+    createDerivative(h.fileDerivativeRepo, 'derived-table', 'csv-raw', {
+      metaJson: {
+        targetKind: 'table_markdown',
+        usage: 'preview_and_send',
+        storageClass: 'draft_bound',
+        sourceHash: 'csv-raw-sha',
+        contentHash: 'derived-table-content',
+        conversionSettingsHash: 'derived-table-settings',
+        converterName: 'test-dfc-converter',
+        converterVersion: '1',
+      },
+    })
+    createVerdict(h, 'csv-raw', 'csv', 'text')
+    h.conversationAttachmentService.addDraftAttachment({
+      conversationId: 'c1',
+      assetId: 'csv-raw',
+      dfcManaged: true,
+      selectedOptionId: 'option-table',
+      selectedAssetRefs: [{ kind: 'derived_asset', assetId: 'derived-table' }],
+    })
+    const sendPlanWithoutDerivativeRepo = new SendPlanService({
+      conversationAttachmentService: h.conversationAttachmentService,
+      fileAssetRepo: h.fileAssetRepo,
+      fileTypeVerdictRepo: h.fileTypeVerdictRepo,
+      now: () => 2_000,
+      parsingTimeoutMs: 100,
+    })
+
+    const plan = sendPlanWithoutDerivativeRepo.buildSendPlan(sendPlanWithoutDerivativeRepo.collectCurrentSendInputs({
+      conversationId: 'c1',
+      model: model(['text']),
+      providerContext: providerContext(),
+    }))
+
+    expect(plan.status).toBe('blocked')
+    expect(plan.attachmentPlans[0]).toMatchObject({
+      assetId: 'csv-raw',
+      semantic: {
+        targetKind: 'table_markdown',
+        sendStrategy: 'text_in_prompt',
+      },
+      selectedSendMode: null,
+      eligibility: 'blocked',
+      exclusionReason: 'selected_option_blocked',
+      lineage: {
+        state: 'unknown',
+        stale: false,
+        staleReason: null,
+        sourceHash: null,
+        previewContentHash: null,
+        sendContentHash: null,
+        conversionSettingsHash: null,
+      },
+    })
+    expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('derived-table-content')
+    expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('csv-raw-sha')
+  })
+
   it('uses selected DFC derived asset facade lineage instead of stale raw asset lineage metadata', () => {
     const h = createHarness()
     insertConvo(h.db, 'c1')

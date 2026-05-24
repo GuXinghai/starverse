@@ -502,3 +502,16 @@ DFC-22 should continue non-Playwright Phase 1 hardening around null-hash and pen
 ## Recommended next round
 
 DFC-23 should continue non-Playwright Phase 1 hardening around pending/concurrent generation semantics. Browser Playwright smoke still requires separate owner approval if it needs new harness scaffolding.
+
+## DFC-23 implementation recovery notes
+
+- DFC-23 is a narrow Send Plan fail-closed slice; it does not add a DB schema change, IPC contract change, renderer option identity, conversion runtime family expansion, browser Playwright harness, UI redesign, new dependency, external engine, legacy bridge, broad Send Plan rewrite, durable `ConversionOption` rows, or async option-generation state.
+- DFC selected derived refs now require `fileDerivativeRepo` verification before the Send Plan marks the selected option available.
+- If a Send Plan caller omits `fileDerivativeRepo`, selected `derived_asset` refs are blocked through the selected-option decision path with redacted lineage. The implementation no longer treats asset metadata as a stand-in for a verified `DerivedAsset`.
+- Production worker runtime still injects `fileDerivativeRepo`, so the normal backend path can verify ready derived refs while fail-closed behavior protects incomplete/test callers.
+- The regression test covers a DFC-managed selected derived ref with matching asset metadata and a real derivative row, then proves a Send Plan service constructed without the derivative repo blocks the send and does not expose internal derivative content or source hashes in the attachment plan.
+- Targeted Send Plan/shared tests, the broader backend/client/UI DFC suite, `vue-tsc`, `git diff --check`, diff privacy scans, and risk review passed.
+
+## Recommended next round
+
+DFC-24 should continue non-Playwright Phase 1 hardening around pending/concurrent generation semantics. Browser Playwright smoke still requires separate owner approval if it needs new harness scaffolding.
