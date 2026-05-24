@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { resolveManagedStoragePath } from '../../../../src/shared/files/localStorageResolver'
 import type { SendPlan } from '../../../../src/shared/files/sendPlanTypes'
 import { serializeSendPlanForOpenRouter } from '../../../../src/next/openrouter/openRouterSendPlanSerializer'
-import type { FileAssetRecord } from '../../types'
+import type { FileAssetRecord, FileDerivativeRecord } from '../../types'
 import {
   CreateFileAssetSchema,
   CreateFileDerivativeSchema,
@@ -661,7 +661,10 @@ async function ensureTextDerivativeAssetUncoalesced(
 ): Promise<Readonly<{ changed: boolean }>> {
   const asset = runtime.fileAssetRepo.getById(assetId)
   if (!asset) {
-    writeAssetConversionFailureMeta(runtime, assetId, 'derivative_asset_missing', 'Text conversion source asset is missing.')
+    writeAssetConversionFailureMeta(runtime, assetId, 'derivative_asset_missing', 'Text conversion source asset is missing.', {
+      exposeDfcOption: options.exposeDfcOption,
+      targetKind,
+    })
     return { changed: true }
   }
   const existing = runtime.fileDerivativeRepo.getLatestReady({ parentAssetId: assetId, derivedKind: 'extracted_text' })
@@ -677,7 +680,10 @@ async function ensureTextDerivativeAssetUncoalesced(
     })
     const ran = await runtime.derivativeJobService.runDerivativeJob({ jobId: job.id })
     if (ran.job.status !== 'ready' || !ran.derivative) {
-      writeAssetConversionFailureMeta(runtime, assetId, ran.job.errorCode ?? 'derivative_output_write_failed', ran.job.errorMessage ?? 'Text conversion failed.')
+      writeAssetConversionFailureMeta(runtime, assetId, ran.job.errorCode ?? 'derivative_output_write_failed', ran.job.errorMessage ?? 'Text conversion failed.', {
+        exposeDfcOption: options.exposeDfcOption,
+        targetKind,
+      })
       return { changed: true }
     }
     derivative = ran.derivative
@@ -688,10 +694,26 @@ async function ensureTextDerivativeAssetUncoalesced(
     deletedAt: derivative.deletedAt,
   })
   if (resolved.kind !== 'ok') {
-    writeAssetConversionFailureMeta(runtime, assetId, 'derivative_local_file_missing', 'Converted text derivative storage is unavailable.')
+    markDerivativeGenerationFailed(runtime, derivative, 'derivative_local_file_missing', targetKind)
+    writeAssetConversionFailureMeta(runtime, assetId, 'derivative_local_file_missing', 'Converted text derivative storage is unavailable.', {
+      exposeDfcOption: options.exposeDfcOption,
+      targetKind,
+      derivativeId: derivative.id,
+    })
     return { changed: true }
   }
-  const textBytes = new Uint8Array(await readFile(resolved.path))
+  let textBytes: Uint8Array
+  try {
+    textBytes = new Uint8Array(await readFile(resolved.path))
+  } catch {
+    markDerivativeGenerationFailed(runtime, derivative, 'derivative_local_file_read_failed', targetKind)
+    writeAssetConversionFailureMeta(runtime, assetId, 'derivative_local_file_read_failed', 'Converted text derivative storage could not be read.', {
+      exposeDfcOption: options.exposeDfcOption,
+      targetKind,
+      derivativeId: derivative.id,
+    })
+    return { changed: true }
+  }
   const contentHash = sha256Bytes(textBytes)
   const derivativeMeta = normalizeObject(derivative.metaJson)
   const sourceHash = readStringMeta(derivativeMeta, 'sourceHash') ?? asset.sha256 ?? null
@@ -824,7 +846,12 @@ function writeAssetConversionFailureMeta(
   runtime: DbWorkerRuntime,
   assetId: string,
   errorCode: string,
-  errorMessage: string
+  errorMessage: string,
+  options: Readonly<{
+    exposeDfcOption: boolean
+    targetKind?: string | null
+    derivativeId?: string | null
+  }>
 ): void {
   const row = runtime.db.prepare('SELECT source_meta_json AS sourceMetaJson FROM file_assets WHERE id=@id LIMIT 1').get({ id: assetId }) as { sourceMetaJson?: string | null } | undefined
   const existing = row?.sourceMetaJson ? safeParseJson(row.sourceMetaJson) : null
@@ -844,6 +871,18 @@ function writeAssetConversionFailureMeta(
       status: 'failed',
       errorCode,
       errorMessage,
+      ...(options.exposeDfcOption && options.targetKind
+        ? {
+            dfcOptionExposed: true,
+            targetKind: options.targetKind,
+            derivedKind: 'extracted_text',
+            usage: 'preview_and_send',
+            storageClass: 'draft_bound',
+            converterName: DFC_TEXT_CONVERTER_NAME,
+            converterVersion: DFC_TEXT_CONVERTER_VERSION,
+            ...(options.derivativeId ? { derivativeId: options.derivativeId } : {}),
+          }
+        : {}),
     },
     lineage: nextLineage,
   }
@@ -855,6 +894,23 @@ function writeAssetConversionFailureMeta(
     id: assetId,
     sourceMetaJson: JSON.stringify(next),
     updatedAt: Date.now(),
+  })
+}
+
+function markDerivativeGenerationFailed(
+  runtime: DbWorkerRuntime,
+  derivative: FileDerivativeRecord,
+  failureCode: string,
+  targetKind: string
+): void {
+  runtime.fileDerivativeRepo.update({
+    id: derivative.id,
+    status: 'failed',
+    metaJson: {
+      ...(normalizeObject(derivative.metaJson) ?? {}),
+      targetKind,
+      failureCode,
+    },
   })
 }
 

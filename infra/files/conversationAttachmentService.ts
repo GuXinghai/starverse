@@ -715,14 +715,21 @@ export class ConversationAttachmentService {
         metaJson: derivative.metaJson,
       })
       const sourceHashIssue = facade.ok ? dfcDerivedAssetSourceHashIssue(asset, facade.asset) : null
+      const failedReason = status === 'failed'
+        ? readStringMeta(derivative.metaJson, 'failureCode') ?? 'derived_asset_not_ready'
+        : null
       const unavailableReason = sourceHashIssue
         ? sourceHashIssue
-        : status === 'ready'
-          ? dfcDerivativeUnavailableReason(facade)
-          : null
+        : failedReason
+          ? failedReason
+          : status === 'ready'
+            ? dfcDerivativeUnavailableReason(facade)
+            : null
       const candidateStatus = sourceHashIssue === 'derived_asset_source_hash_mismatch'
         ? 'stale'
-        : unavailableReason ? 'blocked' : status
+        : status === 'failed'
+          ? 'failed'
+          : unavailableReason ? 'blocked' : status
       const isAvailable = status === 'ready' && !sourceHashIssue && !unavailableReason
       options.push({
         ...createDfcDerivedAssetOption({
@@ -739,7 +746,34 @@ export class ConversationAttachmentService {
       })
     }
 
+    const failedGenerationOption = this.failedDfcGenerationOptionCandidate(attachment, asset, options)
+    if (failedGenerationOption) options.push(failedGenerationOption)
+
     return options
+  }
+
+  private failedDfcGenerationOptionCandidate(
+    attachment: DraftAttachmentRecord,
+    asset: FileAssetRecord,
+    existingOptions: readonly DfcConversionOption[]
+  ): DfcConversionOption | null {
+    const textConversion = normalizeObject(asset.sourceMetaJson?.textConversion)
+    if (textConversion?.status !== 'failed' || textConversion?.dfcOptionExposed !== true) return null
+    const targetKind = readDfcDerivedTargetKindFromMeta(textConversion)
+    if (!targetKind || targetKind === 'pdf_attachment' || existingOptions.some((option) => option.targetKind === targetKind)) return null
+    const errorCode = normalizeNullableText(typeof textConversion.errorCode === 'string' ? textConversion.errorCode : null)
+      ?? 'conversion_failed'
+    return {
+      optionId: this.failedOptionIdForCandidate(attachment, targetKind),
+      rawFileId: asset.id,
+      targetKind,
+      sendStrategy: 'text_in_prompt',
+      status: 'failed',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      unavailableReason: errorCode,
+    }
   }
 
   private optionIdForCandidate(
@@ -749,6 +783,13 @@ export class ConversationAttachmentService {
   ): string {
     const refPart = refs.map((ref) => `${ref.kind}:${ref.assetId}`).sort().join(',')
     return `dfc:${attachment.assetId}:${targetKind}:${refPart}`
+  }
+
+  private failedOptionIdForCandidate(
+    attachment: DraftAttachmentRecord,
+    targetKind: DfcTargetKind
+  ): string {
+    return `dfc:${attachment.assetId}:${targetKind}:failed`
   }
 
   private toDfcDraftOptionCandidateDto(option: DfcConversionOption): DfcDraftOptionCandidateDto {
@@ -1272,6 +1313,15 @@ function parseJsonObject(json: string | null | undefined): Record<string, unknow
   } catch {
     return null
   }
+}
+
+function normalizeObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
+function readStringMeta(meta: Record<string, unknown> | null, key: string): string | null {
+  const value = meta?.[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
 function requireNonEmpty(value: string | null | undefined, field: string): string {

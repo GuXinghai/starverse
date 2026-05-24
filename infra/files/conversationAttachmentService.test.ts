@@ -644,6 +644,83 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
     }
   })
 
+  it('surfaces explicit DFC generation failures as sanitized unavailable backend options only', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'asset-dfc', {
+      sourceMetaJson: {
+        textConversion: {
+          status: 'failed',
+          dfcOptionExposed: true,
+          targetKind: 'plain_text',
+          errorCode: 'derivative_local_file_missing',
+          errorMessage: 'do not expose C:\\Users\\secret\\source.txt or file body',
+          sourceHash: 'asset-dfc-source-hash',
+          contentHash: 'failed-content-hash',
+          storageUri: 'assets/derived/df/failed.txt',
+        },
+      },
+    })
+    createAsset(h.fileAssetRepo, 'asset-legacy-failed', {
+      sourceMetaJson: {
+        textConversion: {
+          status: 'failed',
+          targetKind: 'plain_text',
+          errorCode: 'derivative_local_file_missing',
+        },
+      },
+    })
+    createAsset(h.fileAssetRepo, 'asset-pdf-failed', {
+      filename: 'manual.pdf',
+      extension: 'pdf',
+      mime: 'application/pdf',
+      assetKind: 'document',
+      sourceMetaJson: {
+        textConversion: {
+          status: 'failed',
+          dfcOptionExposed: true,
+          targetKind: 'pdf_attachment',
+          errorCode: 'conversion_not_implemented',
+        },
+      },
+    })
+    h.service.addDraftAttachment({ conversationId: 'c1', assetId: 'asset-dfc' })
+    h.service.addDraftAttachment({ conversationId: 'c1', assetId: 'asset-legacy-failed' })
+    h.service.addDraftAttachment({ conversationId: 'c1', assetId: 'asset-pdf-failed' })
+
+    const dto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+    const failedOption = dto.options.find((option) => option.targetKind === 'plain_text')
+    const legacyDto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-legacy-failed' })
+    const pdfDto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-pdf-failed' })
+
+    expect(dto.decision).toMatchObject({
+      status: 'needs_user_selection',
+      reasonCode: 'selected_option_missing',
+    })
+    expect(failedOption).toMatchObject({
+      optionId: 'dfc:asset-dfc:plain_text:failed',
+      status: 'failed',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: 'derivative_local_file_missing' })],
+    })
+    expect(legacyDto.options.map((option) => option.targetKind)).toEqual(['original_file'])
+    expect(pdfDto.options.map((option) => option.targetKind)).toEqual(['original_file'])
+    expect(JSON.stringify(dto)).not.toContain('C:\\Users\\secret')
+    expect(JSON.stringify(dto)).not.toContain('file body')
+    expect(JSON.stringify(dto)).not.toContain('asset-dfc-source-hash')
+    expect(JSON.stringify(dto)).not.toContain('failed-content-hash')
+    expect(JSON.stringify(dto)).not.toContain('storageUri')
+    expect(() => h.service.updateDraftAttachmentSettings({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      dfcManaged: true,
+      selectedOptionId: failedOption!.optionId,
+      selectedAssetRefs: failedOption!.sendAssetRefs,
+    })).toThrow('DFC selectedOptionId requires selectedAssetRefs')
+  })
+
   it('blocks stale DFC derived options when the source hash no longer matches the raw asset', async () => {
     const h = createHarness()
     insertConvo(h.db, 'c1')
