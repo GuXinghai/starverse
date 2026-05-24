@@ -4,7 +4,18 @@ import type { MessageRepo } from '../db/repo/messageRepo'
 import type { MessageAttachmentRepo } from '../db/repo/messageAttachmentRepo'
 import type { BranchRepo } from '../db/repo/branchRepo'
 import { ConversationDraftRepo } from '../db/repo/conversationDraftRepo'
+import {
+  normalizeDfcSendStrategy,
+  normalizeDfcTargetKind,
+  parseDfcSendAssetRefsJson,
+  parseRequiredDfcSendAssetRefsJson,
+} from '../db/repo/dfcAttachmentBinding'
 import { inferFileProfile } from '../../src/shared/files/fileRules'
+import type {
+  DfcAttachmentSendSnapshot,
+  DfcSendStrategy,
+  DfcTargetKind,
+} from '../../src/shared/files/documentFormatConversion'
 import type {
   AddDraftAttachmentInput,
   AssetAttachmentOwnership,
@@ -124,6 +135,7 @@ export class ConversationAttachmentService {
     const txn = this.deps.db.transaction(() => {
       const draft = this.draftRepo.getOrCreate(input.conversationId, input.createdAt ?? this.now())
       const migration = this.resolveDraftAttachmentMigration(draft.attachments, input.sentAssetIds)
+      const snapshotMap = this.createDfcSnapshotMap(input.dfcAttachmentSendSnapshots)
       const message = this.deps.messageRepo.append({
         convoId: input.conversationId,
         role: 'user',
@@ -131,7 +143,9 @@ export class ConversationAttachmentService {
         createdAt: input.createdAt,
         meta: input.meta ?? null,
       })
-      const attachments = migration.included.map((attachment) => this.createMessageAttachmentFromDraft(message.id, attachment))
+      const attachments = migration.included.map((attachment) =>
+        this.createMessageAttachmentFromDraft(message.id, attachment, snapshotMap.get(attachment.id), input.dfcAttachmentSendSnapshots !== undefined)
+      )
       const cleared = this.draftRepo.clear(input.conversationId, this.now())
       for (const attachment of attachments) this.clearLifecycleMark(attachment.assetId)
       for (const skippedAssetId of migration.skippedAssetIds) {
@@ -152,7 +166,10 @@ export class ConversationAttachmentService {
       }
       const draft = this.draftRepo.getOrCreate(conversationId, input.updatedAt ?? this.now())
       const migration = this.resolveDraftAttachmentMigration(draft.attachments, input.sentAssetIds)
-      const attachments = migration.included.map((attachment) => this.createMessageAttachmentFromDraft(messageId, attachment))
+      const snapshotMap = this.createDfcSnapshotMap(input.dfcAttachmentSendSnapshots)
+      const attachments = migration.included.map((attachment) =>
+        this.createMessageAttachmentFromDraft(messageId, attachment, snapshotMap.get(attachment.id), input.dfcAttachmentSendSnapshots !== undefined)
+      )
       const cleared = this.draftRepo.clear(conversationId, input.updatedAt ?? this.now())
       for (const attachment of attachments) this.clearLifecycleMark(attachment.assetId)
       for (const skippedAssetId of migration.skippedAssetIds) {
@@ -267,7 +284,13 @@ export class ConversationAttachmentService {
     }
   }
 
-  private createMessageAttachmentFromDraft(messageId: string, attachment: DraftAttachmentRecord): MessageAttachmentRecord {
+  private createMessageAttachmentFromDraft(
+    messageId: string,
+    attachment: DraftAttachmentRecord,
+    dfcSnapshot: DfcAttachmentSendSnapshot | undefined,
+    dfcSnapshotsProvided: boolean
+  ): MessageAttachmentRecord {
+    const normalizedDfcSnapshot = this.resolveDfcSendSnapshot(attachment, dfcSnapshot, dfcSnapshotsProvided)
     return this.deps.messageAttachmentRepo.create({
       messageId,
       assetId: attachment.assetId,
@@ -278,11 +301,121 @@ export class ConversationAttachmentService {
       dfcManaged: attachment.dfcManaged,
       usedOptionId: attachment.dfcManaged ? attachment.selectedOptionId : null,
       usedAssetRefs: attachment.dfcManaged ? attachment.selectedAssetRefs : [],
-      targetKind: null,
-      sendStrategy: null,
+      targetKind: normalizedDfcSnapshot?.targetKind ?? null,
+      sendStrategy: normalizedDfcSnapshot?.sendStrategy ?? null,
       createdAt: attachment.createdAt,
       updatedAt: this.now(),
     })
+  }
+
+  private createDfcSnapshotMap(
+    snapshots: readonly DfcAttachmentSendSnapshot[] | undefined
+  ): ReadonlyMap<string, DfcAttachmentSendSnapshot> {
+    const result = new Map<string, DfcAttachmentSendSnapshot>()
+    for (const snapshot of snapshots ?? []) {
+      const attachmentId = requireNonEmpty(snapshot.attachmentId, 'dfcAttachmentSendSnapshot.attachmentId')
+      if (result.has(attachmentId)) {
+        throw new Error(`duplicate DFC send snapshot for draft attachment: ${attachmentId}`)
+      }
+      result.set(attachmentId, snapshot)
+    }
+    return result
+  }
+
+  private resolveDfcSendSnapshot(
+    attachment: DraftAttachmentRecord,
+    snapshot: DfcAttachmentSendSnapshot | undefined,
+    snapshotsProvided: boolean
+  ): DfcAttachmentSendSnapshot | null {
+    if (!attachment.dfcManaged) return null
+    if (!snapshot) {
+      if (snapshotsProvided) throw new Error(`missing DFC send snapshot for draft attachment: ${attachment.id}`)
+      return this.deriveDfcSendSnapshotFromSelectedRefs(attachment)
+    }
+    if (snapshot.assetId !== attachment.assetId) {
+      throw new Error(`DFC send snapshot asset mismatch for draft attachment: ${attachment.id}`)
+    }
+    if (!dfcSendAssetRefsEqual(snapshot.sendAssetRefs, attachment.selectedAssetRefs)) {
+      throw new Error(`DFC send snapshot refs do not match selectedAssetRefs for draft attachment: ${attachment.id}`)
+    }
+    if (!dfcTargetAndRefsAreCoherent(snapshot, attachment.assetId)) {
+      throw new Error(`DFC send snapshot targetKind does not match sendAssetRefs for draft attachment: ${attachment.id}`)
+    }
+    const backendSnapshot = this.deriveDfcSendSnapshotFromSelectedRefs(attachment)
+    if (snapshot.targetKind !== backendSnapshot.targetKind || snapshot.sendStrategy !== backendSnapshot.sendStrategy) {
+      throw new Error(`DFC send snapshot targetKind/sendStrategy does not match backend-selected option for draft attachment: ${attachment.id}`)
+    }
+    return backendSnapshot
+  }
+
+  private deriveDfcSendSnapshotFromSelectedRefs(attachment: DraftAttachmentRecord): DfcAttachmentSendSnapshot {
+    if (!attachment.selectedOptionId) {
+      throw new Error(`DFC-managed draft attachment requires selectedOptionId before message binding: ${attachment.id}`)
+    }
+    const refs = attachment.selectedAssetRefs
+    if (refs.length === 1 && refs[0]?.kind === 'raw_file') {
+      if (refs[0].assetId !== attachment.assetId) {
+        throw new Error(`DFC selected raw_file ref does not match draft attachment asset: ${attachment.id}`)
+      }
+      return {
+        attachmentId: attachment.id,
+        assetId: attachment.assetId,
+        targetKind: 'original_file',
+        sendStrategy: 'file_attachment',
+        sendAssetRefs: refs,
+      }
+    }
+    if (refs.length === 0 || refs.some((ref) => ref.kind !== 'derived_asset')) {
+      throw new Error(`DFC-managed draft attachment selected refs are not coherent: ${attachment.id}`)
+    }
+
+    const targetKinds = new Set<DfcTargetKind>()
+    for (const ref of refs) {
+      const targetKind = this.readDfcDerivedTargetKind(attachment.assetId, ref.assetId)
+      if (!targetKind) {
+        throw new Error(`DFC selected derived_asset ref is missing backend targetKind: ${attachment.id}`)
+      }
+      targetKinds.add(targetKind)
+    }
+    if (targetKinds.size !== 1) {
+      throw new Error(`DFC selected derived_asset refs have mixed targetKinds: ${attachment.id}`)
+    }
+    const targetKind = Array.from(targetKinds)[0]!
+    if (targetKind === 'original_file') {
+      throw new Error(`DFC original_file must use raw_file refs: ${attachment.id}`)
+    }
+    return {
+      attachmentId: attachment.id,
+      assetId: attachment.assetId,
+      targetKind,
+      sendStrategy: expectedDfcSendStrategy(targetKind),
+      sendAssetRefs: refs,
+    }
+  }
+
+  private readDfcDerivedTargetKind(rawAssetId: string, derivedAssetId: string): DfcTargetKind | null {
+    const derivative = this.deps.db.prepare(`
+      SELECT parent_asset_id AS parentAssetId,
+             meta_json AS metaJson
+      FROM file_derivatives
+      WHERE id = @id
+      LIMIT 1
+    `).get({ id: derivedAssetId }) as { parentAssetId: string; metaJson: string | null } | undefined
+    if (derivative) {
+      if (derivative.parentAssetId !== rawAssetId) return null
+      return readDfcTargetKindFromJson(derivative.metaJson)
+    }
+
+    const asset = this.deps.db.prepare(`
+      SELECT source_meta_json AS sourceMetaJson
+      FROM file_assets
+      WHERE id = @id
+      LIMIT 1
+    `).get({ id: rawAssetId }) as { sourceMetaJson: string | null } | undefined
+    const sourceMeta = parseJsonObject(asset?.sourceMetaJson)
+    const textConversion = parseNestedObject(sourceMeta?.textConversion)
+    const textConversionDerivativeId = typeof textConversion?.derivativeId === 'string' ? textConversion.derivativeId.trim() : ''
+    return textConversionDerivativeId === derivedAssetId ? normalizeDfcTargetKind(textConversion?.targetKind as string | null | undefined) : null
   }
 
   private resolveDraftAttachmentMigration(
@@ -375,6 +508,11 @@ export class ConversationAttachmentService {
         ma.processing_status AS processingStatus,
         ma.include_in_next_request AS includeInNextRequest,
         ma.excluded_reason AS excludedReason,
+        ma.dfc_managed AS dfcManaged,
+        ma.used_option_id AS usedOptionId,
+        ma.used_asset_refs_json AS usedAssetRefsJson,
+        ma.target_kind AS targetKind,
+        ma.send_strategy AS sendStrategy,
         fa.source_kind AS sourceKind,
         fa.storage_backend AS storageBackend,
         fa.ingest_status AS ingestStatus,
@@ -453,6 +591,11 @@ type AttachmentSnapshotRow = Readonly<{
   processingStatus: AttachmentSnapshotItem['processingStatus']
   includeInNextRequest: number
   excludedReason: string | null
+  dfcManaged: number
+  usedOptionId: string | null
+  usedAssetRefsJson: string | null
+  targetKind: string | null
+  sendStrategy: string | null
   sourceKind: AttachmentSnapshotItem['sourceKind']
   storageBackend: AttachmentSnapshotItem['storageBackend']
   ingestStatus: string | null
@@ -461,6 +604,7 @@ type AttachmentSnapshotRow = Readonly<{
 
 function toSnapshotItem(row: AttachmentSnapshotRow): AttachmentSnapshotItem {
   const computedReason = computeExcludedReason(row)
+  const dfcManaged = row.dfcManaged === 1
   return {
     attachmentId: row.attachmentId,
     messageId: row.messageId,
@@ -471,6 +615,11 @@ function toSnapshotItem(row: AttachmentSnapshotRow): AttachmentSnapshotItem {
     excludedReason: computedReason,
     sourceKind: row.sourceKind ?? null,
     storageBackend: row.storageBackend ?? null,
+    dfcManaged,
+    usedOptionId: dfcManaged ? row.usedOptionId ?? null : null,
+    usedAssetRefs: dfcManaged ? parseRequiredDfcSendAssetRefsJson(row.usedAssetRefsJson) : parseDfcSendAssetRefsJson(null),
+    targetKind: dfcManaged ? normalizeDfcTargetKind(row.targetKind) : null,
+    sendStrategy: dfcManaged ? normalizeDfcSendStrategy(row.sendStrategy) : null,
   }
 }
 
@@ -503,6 +652,59 @@ function ownership(input: Readonly<{
 
 function normalizeIds(ids: ReadonlyArray<string>): string[] {
   return Array.from(new Set(ids.map((id) => String(id ?? '').trim()).filter(Boolean)))
+}
+
+function dfcSendAssetRefsEqual(
+  left: DfcAttachmentSendSnapshot['sendAssetRefs'],
+  right: DfcAttachmentSendSnapshot['sendAssetRefs']
+): boolean {
+  return canonicalDfcSendAssetRefs(left) === canonicalDfcSendAssetRefs(right)
+}
+
+function canonicalDfcSendAssetRefs(refs: DfcAttachmentSendSnapshot['sendAssetRefs']): string {
+  return refs
+    .map((ref) => `${ref.kind}:${String(ref.assetId ?? '').trim()}`)
+    .sort()
+    .join('|')
+}
+
+function dfcTargetAndRefsAreCoherent(snapshot: DfcAttachmentSendSnapshot, rawFileId: string): boolean {
+  const refs = snapshot.sendAssetRefs
+  if (refs.length === 0) return false
+  if (snapshot.targetKind === 'original_file') {
+    return snapshot.sendStrategy === 'file_attachment'
+      && refs.length === 1
+      && refs[0]?.kind === 'raw_file'
+      && refs[0].assetId === rawFileId
+  }
+  if (snapshot.targetKind === 'pdf_attachment') {
+    return snapshot.sendStrategy === 'file_attachment'
+      && refs.every((ref) => ref.kind === 'derived_asset')
+  }
+  return snapshot.sendStrategy === 'text_in_prompt'
+    && refs.every((ref) => ref.kind === 'derived_asset')
+}
+
+function expectedDfcSendStrategy(targetKind: DfcTargetKind): DfcSendStrategy {
+  return targetKind === 'pdf_attachment' || targetKind === 'original_file' ? 'file_attachment' : 'text_in_prompt'
+}
+
+function readDfcTargetKindFromJson(json: string | null | undefined): DfcTargetKind | null {
+  return normalizeDfcTargetKind(parseJsonObject(json)?.targetKind as string | null | undefined)
+}
+
+function parseJsonObject(json: string | null | undefined): Record<string, unknown> | null {
+  if (!json) return null
+  try {
+    const parsed = JSON.parse(json)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null
+  } catch {
+    return null
+  }
+}
+
+function parseNestedObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 }
 
 function requireNonEmpty(value: string | null | undefined, field: string): string {

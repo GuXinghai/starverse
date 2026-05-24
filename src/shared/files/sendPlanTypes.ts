@@ -1,4 +1,5 @@
 import type { AiPayloadKind, ModelCapability, SendMode } from './fileTypes'
+import type { DfcSendAssetRef } from './documentFormatConversion'
 
 export type SendPlanStatus =
   | 'sendable'
@@ -26,6 +27,7 @@ export type AttachmentPlanEligibility =
   | 'blocked'
 
 export type AttachmentTargetKind =
+  | 'original_file'
   | 'plain_text'
   | 'markdown'
   | 'code'
@@ -117,6 +119,7 @@ export type SendPlanAttachment = Readonly<{
   messageId: string | null
   aiPayloadKind: AiPayloadKind
   semantic: AttachmentSemanticSummary
+  sendAssetRefs: DfcSendAssetRef[]
   selectedSendMode: SendMode | null
   fallbackSendModes: SendMode[]
   eligibility: AttachmentPlanEligibility

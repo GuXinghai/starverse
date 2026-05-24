@@ -10,6 +10,7 @@ import {
   type DecodedConversationDraft,
 } from '@/next/ipc/contracts/dbBridgeContracts'
 import type { DraftAttachmentSendModePreference, DraftAttachmentUrlRetentionPreference } from '@/shared/files/fileTypes'
+import type { DfcAttachmentSendSnapshot } from '@/shared/files/documentFormatConversion'
 
 type DbBridge = Readonly<{
   invoke: (method: string, params?: unknown) => Promise<unknown>
@@ -73,6 +74,7 @@ export async function attachConversationDraftToMessage(input: Readonly<{
   messageId: string
   updatedAt?: number
   sentAssetIds?: string[]
+  dfcAttachmentSendSnapshots?: readonly DfcAttachmentSendSnapshot[]
 }>): Promise<DecodedAttachDraftToMessageResult> {
   const raw = await requireDbBridge().invoke('conversationDraft.attachToMessage', input)
   return decodeAttachDraftToMessageResponse(raw)

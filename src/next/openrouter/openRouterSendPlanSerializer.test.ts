@@ -55,6 +55,7 @@ function makeAttachmentPlan(
           : 'file_attachment',
       mappedFromLegacy: false,
     },
+    sendAssetRefs: overrides.sendAssetRefs ?? [],
     selectedSendMode: overrides.selectedSendMode,
     fallbackSendModes: overrides.fallbackSendModes ?? [],
     eligibility: overrides.eligibility ?? 'included',
@@ -701,6 +702,59 @@ describe('openRouterSendPlanSerializer', () => {
       {
         type: 'text',
         text: '[Attached text file: notes.md]\n# heading',
+      },
+    ])
+  })
+
+  it('does not use converted text payloads for DFC original_file text attachments', async () => {
+    const dir = await createRoot()
+    const convertedUri = 'assets/derived/as/notes-converted.md'
+    const convertedPath = path.join(dir, ...convertedUri.split('/'))
+    await mkdir(path.dirname(convertedPath), { recursive: true })
+    await writeFile(convertedPath, 'CONVERTED MARKDOWN')
+    const asset = makeAsset({
+      id: 'asset-original-text',
+      filename: 'notes.txt',
+      assetKind: 'text',
+      storageUri: 'assets/original/as/notes.txt',
+      sourceMetaJson: {
+        lineage: {
+          sendAssetReady: true,
+          sendTextStorageUri: convertedUri,
+        },
+        textConversion: {
+          storageUri: convertedUri,
+          mime: 'text/markdown',
+        },
+      },
+    })
+    await writeAssetFile(dir, asset, 'RAW TEXT')
+
+    const result = await serializeSendPlanForOpenRouter({
+      sendPlan: makeSendPlan([
+        makeAttachmentPlan({
+          assetId: asset.id,
+          attachmentId: 'att-original-text',
+          aiPayloadKind: 'text',
+          selectedSendMode: 'inline_base64',
+          semantic: {
+            targetKind: 'original_file',
+            sendStrategy: 'file_attachment',
+            mappedFromLegacy: false,
+          },
+          sendAssetRefs: [{ kind: 'raw_file', assetId: asset.id }],
+        }),
+      ]),
+      userText: 'summarize',
+      assetsById: { [asset.id]: asset },
+      storageRootDir: dir,
+    })
+
+    expect(result.contentParts).toEqual([
+      { type: 'text', text: 'summarize' },
+      {
+        type: 'text',
+        text: '[Attached text file: notes.txt]\nRAW TEXT',
       },
     ])
   })

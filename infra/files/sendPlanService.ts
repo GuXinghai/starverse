@@ -1,4 +1,15 @@
 import type { AiPayloadKind, DraftAttachmentSendModePreference, ModelCapability, SendMode } from '../../src/shared/files/fileTypes'
+import {
+  resolveDfcManagedAttachment,
+  type DfcConversionOption,
+  type DfcDecisionReasonCode,
+  type DfcDecisionStatus,
+  type DfcDerivedTargetKind,
+  type DfcManagedAttachmentDecision,
+  type DfcSendAssetRef,
+  type DfcSendStrategy,
+  type DfcTargetKind,
+} from '../../src/shared/files/documentFormatConversion'
 import type {
   AttachmentSemanticSummary,
   AttachmentLineageSummary,
@@ -17,10 +28,12 @@ import type {
   AttachmentSnapshotItem,
   ConversationDraftRecord,
   FileAssetRecord,
+  FileDerivativeRecord,
   FileTypeVerdictRecord,
   GetAttachmentCandidateSnapshotInput,
 } from '../db/types'
 import type { FileAssetRepo } from '../db/repo/fileAssetRepo'
+import type { FileDerivativeRepo } from '../db/repo/fileDerivativeRepo'
 import type { FileTypeVerdictRepo } from '../db/repo/fileTypeVerdictRepo'
 import type { ConversationAttachmentService } from './conversationAttachmentService'
 import {
@@ -43,6 +56,7 @@ type NormalizedProviderContext = Readonly<Required<Omit<SendPlanProviderContext,
 
 type DraftRestoreApi = Pick<ConversationAttachmentService, 'restoreDraft' | 'getCandidateAttachmentSnapshot'>
 type FileAssetLookupApi = Pick<FileAssetRepo, 'listByIds'>
+type FileDerivativeLookupApi = Pick<FileDerivativeRepo, 'getById'>
 type FileTypeVerdictLookupApi = Pick<FileTypeVerdictRepo, 'getCurrentByAssetId'>
 
 export type CollectCurrentSendInputsInput = Readonly<{
@@ -63,6 +77,12 @@ export type CollectedAttachmentInput = Readonly<{
   includeInNextRequest: boolean
   excludedReason: string | null
   preferredSendMode: DraftAttachmentSendModePreference | null
+  dfcManaged: boolean
+  selectedOptionId: string | null
+  selectedAssetRefs: DfcSendAssetRef[]
+  selectedTargetKind: DfcTargetKind | null
+  selectedSendStrategy: DfcSendStrategy | null
+  dfcDecision: DfcManagedAttachmentDecision | null
   fileAsset: FileAssetRecord | null
   fileTypeVerdict?: FileTypeVerdict | null
   semantic?: AttachmentSemanticSummary | null
@@ -111,6 +131,7 @@ type EligibilityEvaluationMode = 'semantic'
 export type SendPlanServiceDeps = Readonly<{
   conversationAttachmentService: DraftRestoreApi
   fileAssetRepo: FileAssetLookupApi
+  fileDerivativeRepo?: FileDerivativeLookupApi
   fileTypeVerdictRepo?: FileTypeVerdictLookupApi
   now?: () => number
   parsingTimeoutMs?: number
@@ -160,7 +181,7 @@ export class SendPlanService {
           ),
           fileAsset
         )
-        return {
+        const base = {
           attachmentId: attachment.id,
           assetId: attachment.assetId,
           source: 'draft',
@@ -170,11 +191,21 @@ export class SendPlanService {
           includeInNextRequest: attachment.includeInNextRequest,
           excludedReason: attachment.excludedReason,
           preferredSendMode: attachment.preferredSendMode ?? null,
+          dfcManaged: attachment.dfcManaged,
+          selectedOptionId: attachment.selectedOptionId,
+          selectedAssetRefs: attachment.selectedAssetRefs,
+          selectedTargetKind: null,
+          selectedSendStrategy: null,
           fileAsset,
           fileTypeVerdict: verdict,
           routeCandidates,
-          semantic: semanticSummaryFromRouteCandidates(routeCandidates, attachment.aiPayloadKind),
           detection: buildAttachmentDetectionSummary(verdict, fileAsset),
+        } satisfies Omit<CollectedAttachmentInput, 'dfcDecision' | 'semantic'>
+        const dfcDecision = resolveDfcDecisionForCollectedAttachment(base, this.deps.fileDerivativeRepo)
+        return {
+          ...base,
+          dfcDecision,
+          semantic: semanticSummaryForCollectedAttachment(base, dfcDecision),
         }
       }),
       historySnapshot,
@@ -183,7 +214,8 @@ export class SendPlanService {
           item,
           historyAssetMap.get(item.assetId) ?? null,
           verdictByAssetId.get(item.assetId)?.verdict ?? null,
-          modelCapabilities
+          modelCapabilities,
+          this.deps.fileDerivativeRepo
         ))
         : [],
       model: normalizedModel,
@@ -342,6 +374,10 @@ export class SendPlanService {
     if (attachment.fileAsset.deletedAt != null || attachment.fileAsset.ingestStatus === 'deleted') {
       return excludedPlan(attachment, 'asset_soft_deleted', 'failed', true, ['Attachment asset has been soft deleted.'], lineageGate.lineage)
     }
+    if (attachment.dfcManaged) {
+      const dfcBlocked = blockedPlanFromDfcDecision(attachment, lineageGate.lineage)
+      if (dfcBlocked) return dfcBlocked
+    }
     if (lineageGate.blocked) {
       return blockedPlan(
         attachment,
@@ -370,7 +406,9 @@ export class SendPlanService {
     if (hardGateReason) {
       return blockedPlan(attachment, 'failed', 'converted_text_hard_limit_exceeded', [hardGateReason], lineageGate.lineage)
     }
-    const modeSelection = selectAttachmentSendModeInternal(attachment, providerContext)
+    const modeSelection = attachment.dfcManaged
+      ? selectDfcAttachmentSendMode(attachment, providerContext)
+      : selectAttachmentSendModeInternal(attachment, providerContext)
     if (!modeSelection.selectedSendMode) {
       return excludedPlan(attachment, modeSelection.reasonCode ?? 'no_send_mode_available', deriveDisplayStatus(attachment, false, []), true, [
         ...modeSelection.notes,
@@ -414,6 +452,10 @@ export class SendPlanService {
     if (attachment.fileAsset.deletedAt != null || attachment.fileAsset.ingestStatus === 'deleted') {
       return excludedPlan(attachment, 'asset_soft_deleted', 'failed', true, ['History attachment asset has been soft deleted.'], lineageGate.lineage)
     }
+    if (attachment.dfcManaged) {
+      const dfcBlocked = blockedPlanFromDfcDecision(attachment, lineageGate.lineage)
+      if (dfcBlocked) return dfcBlocked
+    }
     if (lineageGate.blocked) {
       return blockedPlan(
         attachment,
@@ -442,7 +484,9 @@ export class SendPlanService {
     if (hardGateReason) {
       return blockedPlan(attachment, 'failed', 'converted_text_hard_limit_exceeded', [hardGateReason], lineageGate.lineage)
     }
-    const modeSelection = selectAttachmentSendModeInternal(attachment, providerContext)
+    const modeSelection = attachment.dfcManaged
+      ? selectDfcAttachmentSendMode(attachment, providerContext)
+      : selectAttachmentSendModeInternal(attachment, providerContext)
     if (!modeSelection.selectedSendMode) {
       return excludedPlan(attachment, modeSelection.reasonCode ?? 'no_send_mode_available', deriveDisplayStatus(attachment, false, []), true, [
         ...modeSelection.notes,
@@ -551,7 +595,8 @@ function mapHistoryAttachment(
   item: AttachmentSnapshotItem,
   fileAsset: FileAssetRecord | null,
   verdict: FileTypeVerdict | null,
-  modelCapabilities: ModelInputCapabilities
+  modelCapabilities: ModelInputCapabilities,
+  fileDerivativeRepo: FileDerivativeLookupApi | undefined
 ): CollectedAttachmentInput {
   const routeCandidates = applyRouteLevelDerivativeAvailability(
     buildRouteCandidatesFromVerdict(verdict, modelCapabilities),
@@ -567,14 +612,184 @@ function mapHistoryAttachment(
     includeInNextRequest: item.included,
     excludedReason: item.excludedReason,
     preferredSendMode: null,
+    dfcManaged: item.dfcManaged,
+    selectedOptionId: item.usedOptionId,
+    selectedAssetRefs: item.usedAssetRefs,
+    selectedTargetKind: item.targetKind,
+    selectedSendStrategy: item.sendStrategy,
     fileAsset,
     fileTypeVerdict: verdict,
     routeCandidates,
     detection: buildAttachmentDetectionSummary(verdict, fileAsset),
-  } satisfies Omit<CollectedAttachmentInput, 'semantic'>
+  } satisfies Omit<CollectedAttachmentInput, 'dfcDecision' | 'semantic'>
+  const dfcDecision = resolveDfcDecisionForCollectedAttachment(base, fileDerivativeRepo)
   return {
     ...base,
-    semantic: semanticSummaryFromRouteCandidates(routeCandidates, item.aiPayloadKind),
+    dfcDecision,
+    semantic: semanticSummaryForCollectedAttachment(base, dfcDecision),
+  }
+}
+
+function semanticSummaryForCollectedAttachment(
+  attachment: Omit<CollectedAttachmentInput, 'dfcDecision' | 'semantic'>,
+  dfcDecision: DfcManagedAttachmentDecision | null
+): AttachmentSemanticSummary | null {
+  if (attachment.dfcManaged) {
+    return dfcDecision?.targetKind && dfcDecision.sendStrategy
+      ? {
+          targetKind: dfcDecision.targetKind,
+          sendStrategy: dfcDecision.sendStrategy,
+          mappedFromLegacy: false,
+      }
+      : null
+  }
+  return semanticSummaryFromRouteCandidates(attachment.routeCandidates ?? null, attachment.aiPayloadKind)
+}
+
+function resolveDfcDecisionForCollectedAttachment(
+  attachment: Omit<CollectedAttachmentInput, 'dfcDecision' | 'semantic'>,
+  fileDerivativeRepo: FileDerivativeLookupApi | undefined
+): DfcManagedAttachmentDecision | null {
+  if (!attachment.dfcManaged) return null
+  const optionBundle = buildDfcOptionsForSelectedRefs(attachment, fileDerivativeRepo)
+  const fileAvailable = Boolean(
+    attachment.fileAsset &&
+    attachment.fileAsset.deletedAt == null &&
+    attachment.fileAsset.ingestStatus !== 'deleted'
+  )
+  return resolveDfcManagedAttachment({
+    dfcManaged: true,
+    rawFileId: attachment.assetId,
+    selectedOptionId: attachment.selectedOptionId,
+    options: optionBundle.options,
+    availableRawFileIds: fileAvailable ? [attachment.assetId] : [],
+    availableDerivedAssetIds: optionBundle.availableDerivedAssetIds,
+    optionGenerationState: null,
+    legacy: {
+      preferredSendMode: attachment.preferredSendMode,
+      selectedSendMode: null,
+      legacyTargetKind: semanticSummaryFromRouteCandidates(attachment.routeCandidates ?? null, attachment.aiPayloadKind)?.targetKind ?? null,
+      extension: attachment.fileAsset?.extension ?? null,
+      mimeType: attachment.fileAsset?.mime ?? null,
+    },
+  })
+}
+
+function buildDfcOptionsForSelectedRefs(
+  attachment: Omit<CollectedAttachmentInput, 'dfcDecision' | 'semantic'>,
+  fileDerivativeRepo: FileDerivativeLookupApi | undefined
+): Readonly<{ options: DfcConversionOption[]; availableDerivedAssetIds: string[] }> {
+  const selectedOptionId = normalizeNullableText(attachment.selectedOptionId)
+  if (!selectedOptionId) return { options: [], availableDerivedAssetIds: [] }
+  const refs = attachment.selectedAssetRefs
+  if (refs.length === 1 && refs[0]?.kind === 'raw_file') {
+    const targetKind = attachment.selectedTargetKind ?? 'original_file'
+    return {
+      options: [{
+        optionId: selectedOptionId,
+        rawFileId: attachment.assetId,
+        targetKind,
+        sendStrategy: attachment.selectedSendStrategy ?? expectedDfcSendStrategy(targetKind),
+        status: 'ready',
+        isAvailable: true,
+        compatibilityStatus: 'compatible',
+        sendAssetRefs: refs,
+      }],
+      availableDerivedAssetIds: [],
+    }
+  }
+
+  const derivedRefs = refs.filter((ref) => ref.kind === 'derived_asset')
+  if (derivedRefs.length !== refs.length || derivedRefs.length === 0) return { options: [], availableDerivedAssetIds: [] }
+
+  const targetKind = attachment.selectedTargetKind ?? resolveDfcDerivedTargetKind(attachment, derivedRefs[0]!.assetId, fileDerivativeRepo)
+  if (!targetKind) return { options: [], availableDerivedAssetIds: [] }
+
+  const selectedDerivatives = derivedRefs.map((ref) => fileDerivativeRepo?.getById(ref.assetId) ?? null)
+  const allReady = selectedDerivatives.every((derivative, index) =>
+    isDfcDerivedRefAvailable(attachment, derivedRefs[index]!.assetId, derivative, fileDerivativeRepo !== undefined)
+  )
+  const anyFailed = selectedDerivatives.some((derivative) => derivative?.status === 'failed')
+  const anyStale = selectedDerivatives.some((derivative) => derivative?.status === 'deleted' || derivative?.deletedAt != null)
+  const anyPending = selectedDerivatives.some((derivative) => derivative?.status === 'pending')
+  const status: DfcConversionOption['status'] =
+    anyFailed ? 'failed'
+      : anyStale ? 'stale'
+        : anyPending ? 'pending'
+          : 'ready'
+
+  return {
+    options: [{
+      optionId: selectedOptionId,
+      rawFileId: attachment.assetId,
+      targetKind,
+      sendStrategy: attachment.selectedSendStrategy ?? expectedDfcSendStrategy(targetKind),
+      status,
+      isAvailable: allReady,
+      compatibilityStatus: allReady ? 'compatible' : null,
+      sendAssetRefs: derivedRefs,
+    }],
+    availableDerivedAssetIds: allReady ? derivedRefs.map((ref) => ref.assetId) : [],
+  }
+}
+
+function resolveDfcDerivedTargetKind(
+  attachment: Omit<CollectedAttachmentInput, 'dfcDecision' | 'semantic'>,
+  derivedAssetId: string,
+  fileDerivativeRepo: FileDerivativeLookupApi | undefined
+): DfcDerivedTargetKind | null {
+  const derivative = fileDerivativeRepo?.getById(derivedAssetId) ?? null
+  const fromDerivative = readDfcDerivedTargetKind(derivative?.metaJson ?? null)
+  if (fromDerivative) return fromDerivative
+  const textConversion = readSelectedTextConversionMeta(attachment.fileAsset, derivedAssetId)
+  return readDfcDerivedTargetKind(textConversion)
+}
+
+function expectedDfcSendStrategy(targetKind: DfcTargetKind): DfcSendStrategy {
+  return targetKind === 'pdf_attachment' || targetKind === 'original_file' ? 'file_attachment' : 'text_in_prompt'
+}
+
+function isDfcDerivedRefAvailable(
+  attachment: Omit<CollectedAttachmentInput, 'dfcDecision' | 'semantic'>,
+  derivedAssetId: string,
+  derivative: FileDerivativeRecord | null,
+  derivativeRepoAvailable: boolean
+): boolean {
+  if (derivative) {
+    return derivative.parentAssetId === attachment.assetId
+      && derivative.status === 'ready'
+      && derivative.deletedAt == null
+      && readDfcDerivedTargetKind(derivative.metaJson) !== null
+  }
+  if (derivativeRepoAvailable) return false
+  const textConversion = readSelectedTextConversionMeta(attachment.fileAsset, derivedAssetId)
+  return textConversion?.status === 'ready'
+    && typeof textConversion?.storageUri === 'string'
+    && textConversion.storageUri.trim().length > 0
+    && readDfcDerivedTargetKind(textConversion) !== null
+}
+
+function readSelectedTextConversionMeta(
+  asset: FileAssetRecord | null,
+  derivedAssetId: string
+): Record<string, unknown> | null {
+  const root = normalizeObject(asset?.sourceMetaJson)
+  const textConversion = normalizeObject(root?.textConversion)
+  const derivativeId = typeof textConversion?.derivativeId === 'string' ? textConversion.derivativeId.trim() : ''
+  return derivativeId === derivedAssetId ? textConversion : null
+}
+
+function readDfcDerivedTargetKind(meta: Record<string, unknown> | null): DfcDerivedTargetKind | null {
+  const value = typeof meta?.targetKind === 'string' ? meta.targetKind.trim() : ''
+  switch (value) {
+    case 'plain_text':
+    case 'markdown':
+    case 'code':
+    case 'table_markdown':
+    case 'pdf_attachment':
+      return value
+    default:
+      return null
   }
 }
 
@@ -1005,6 +1220,10 @@ function capabilitySetsForSemantic(
     case 'text_in_prompt':
       return [['text_in']]
     case 'file_attachment':
+      if (semantic.targetKind === 'original_file') {
+        if (aiPayloadKind === 'pdf' && !providerContext.supportsPdfInputs) return []
+        return [['file_in']]
+      }
       if (semantic.targetKind === 'pdf_attachment') {
         if (!providerContext.supportsPdfInputs) return []
         return [['file_in']]
@@ -1044,8 +1263,116 @@ function semanticCompatibilityMissingReason(semantic: AttachmentSemanticSummary)
   if (semantic.sendStrategy === 'text_in_prompt') return 'missing_text_input_capability'
   if (semantic.sendStrategy === 'mixed') return 'missing_mixed_input_capability'
   if (semantic.targetKind === 'pdf_attachment') return 'missing_pdf_input_capability'
+  if (semantic.targetKind === 'original_file') return 'missing_file_input_capability'
   if (semantic.sendStrategy === 'file_attachment') return 'missing_file_input_capability'
   return 'unsupported_attachment_payload'
+}
+
+function blockedPlanFromDfcDecision(
+  attachment: CollectedAttachmentInput,
+  lineage: AttachmentLineageSummary
+): SendPlanAttachment | null {
+  if (!attachment.dfcDecision || attachment.dfcDecision.status === 'ready') return null
+  return blockedPlan(
+    attachment,
+    displayStatusFromDfcDecision(attachment.dfcDecision.status),
+    attachment.dfcDecision.reasonCode ?? 'dfc_selected_option_blocked',
+    [dfcDecisionMessage(attachment, attachment.dfcDecision.reasonCode, attachment.dfcDecision.status)],
+    lineage
+  )
+}
+
+function displayStatusFromDfcDecision(status: DfcDecisionStatus): AttachmentDisplayStatus {
+  switch (status) {
+    case 'pending':
+      return 'parsing'
+    case 'needs_user_selection':
+    case 'incompatible':
+      return 'incompatible_with_current_model'
+    case 'failed':
+    case 'stale':
+    case 'blocked':
+    default:
+      return 'failed'
+  }
+}
+
+function dfcDecisionMessage(
+  attachment: CollectedAttachmentInput,
+  reasonCode: DfcDecisionReasonCode,
+  status: DfcDecisionStatus
+): string {
+  switch (reasonCode) {
+    case 'selected_option_missing':
+      return `Attachment ${attachment.assetId} requires a selected conversion option before send planning.`
+    case 'selected_option_pending':
+      return `Attachment ${attachment.assetId} selected conversion option is still pending.`
+    case 'selected_option_not_found':
+      return `Attachment ${attachment.assetId} selected conversion option is unavailable.`
+    case 'selected_option_failed':
+      return `Attachment ${attachment.assetId} selected conversion option failed.`
+    case 'selected_option_stale':
+      return `Attachment ${attachment.assetId} selected conversion option is stale and must be regenerated.`
+    case 'selected_option_blocked':
+      return `Attachment ${attachment.assetId} selected conversion option is blocked.`
+    case 'selected_option_unavailable':
+      return `Attachment ${attachment.assetId} selected conversion option is not available.`
+    case 'selected_option_incompatible':
+      return `Attachment ${attachment.assetId} selected conversion option is incompatible with the current model.`
+    case 'raw_file_ref_missing':
+      return `Attachment ${attachment.assetId} selected original file reference is missing.`
+    case 'derived_asset_ref_missing':
+      return `Attachment ${attachment.assetId} selected derived asset reference is missing.`
+    case 'send_asset_ref_kind_mismatch':
+      return `Attachment ${attachment.assetId} selected send asset reference does not match its target kind.`
+    default:
+      return `Attachment ${attachment.assetId} selected conversion option is ${status}.`
+  }
+}
+
+function selectDfcAttachmentSendMode(
+  attachment: CollectedAttachmentInput,
+  providerContext: NormalizedProviderContext
+): AttachmentSendModeSelection {
+  const semantic = resolveAttachmentSemanticSummary(attachment)
+  if (!semantic) {
+    return noModeSelection(attachment, attachment.dfcDecision?.reasonCode ?? 'selected_option_missing', [
+      'DFC-managed attachment has no selected target kind.',
+    ])
+  }
+  const asset = attachment.fileAsset
+  if (!asset) return noModeSelection(attachment, 'asset_record_missing', ['Attachment asset metadata is missing.'])
+  const url = resolveUrlReference(asset)
+  const hasLocalCopy = hasStoredLocalCopy(asset)
+  const modesOrFailure = candidateModesForAttachment(
+    attachment.aiPayloadKind,
+    semantic,
+    url,
+    hasLocalCopy,
+    providerContext,
+    hasReadyTextConversionAsset(attachment, semantic),
+    hasReadyMixedConversionAssets(attachment, semantic)
+  )
+  if ('reasonCode' in modesOrFailure) {
+    return noModeSelection(attachment, modesOrFailure.reasonCode, modesOrFailure.notes)
+  }
+  const ordered = orderModes(
+    modesOrFailure.modes,
+    attachment.source,
+    providerContext.preferredDraftSendModes,
+    null
+  )
+  if (ordered.length === 0) {
+    return noModeSelection(attachment, noModeReason(attachment.aiPayloadKind, url !== null, hasLocalCopy), noModeNotes(attachment.aiPayloadKind, url !== null, hasLocalCopy))
+  }
+  return {
+    assetId: attachment.assetId,
+    source: attachment.source,
+    selectedSendMode: ordered[0],
+    fallbackSendModes: ordered.slice(1),
+    reasonCode: null,
+    notes: [],
+  }
 }
 
 function selectAttachmentSendModeInternal(
@@ -1152,6 +1479,14 @@ function candidateModesForAttachment(
     return {
       reasonCode: 'pdf_not_supported_by_provider',
       notes: ['Current provider context does not allow PDF inputs.'],
+    }
+  }
+
+  if (semantic.targetKind === 'original_file') {
+    return {
+      modes: aiPayloadKind === 'pdf'
+        ? pdfModes(url, hasLocalCopy, providerContext)
+        : nativeFileModes(url, hasLocalCopy, providerContext),
     }
   }
 
@@ -1288,6 +1623,7 @@ function includedPlan(
     messageId: attachment.messageId,
     aiPayloadKind: attachment.aiPayloadKind,
     semantic: resolveAttachmentSemanticSummary(attachment) ?? unsupportedSemanticSummary(),
+    sendAssetRefs: attachment.dfcDecision?.sendAssetRefs ? [...attachment.dfcDecision.sendAssetRefs] : [],
     selectedSendMode,
     fallbackSendModes,
     eligibility: notes.length > 0 ? 'warning' : 'included',
@@ -1316,6 +1652,7 @@ function excludedPlan(
     messageId: attachment.messageId,
     aiPayloadKind: attachment.aiPayloadKind,
     semantic: resolveAttachmentSemanticSummary(attachment) ?? unsupportedSemanticSummary(),
+    sendAssetRefs: attachment.dfcDecision?.sendAssetRefs ? [...attachment.dfcDecision.sendAssetRefs] : [],
     selectedSendMode: null,
     fallbackSendModes: [],
     eligibility: 'excluded',
@@ -1343,6 +1680,7 @@ function blockedPlan(
     messageId: attachment.messageId,
     aiPayloadKind: attachment.aiPayloadKind,
     semantic: resolveAttachmentSemanticSummary(attachment) ?? unsupportedSemanticSummary(),
+    sendAssetRefs: attachment.dfcDecision?.sendAssetRefs ? [...attachment.dfcDecision.sendAssetRefs] : [],
     selectedSendMode: null,
     fallbackSendModes: [],
     eligibility: 'blocked',
@@ -1760,7 +2098,15 @@ function hasReadyTextConversionAsset(
   const lineage = normalizeObject(root.lineage)
   if (lineage?.sendAssetReady !== true) return false
   const sendUri = lineage?.sendTextStorageUri
-  return typeof sendUri === 'string' && sendUri.trim().length > 0
+  if (typeof sendUri !== 'string' || sendUri.trim().length === 0) return false
+  if (!attachment.dfcManaged) return true
+  const selectedDerivedIds = attachment.dfcDecision?.sendAssetRefs
+    .filter((ref) => ref.kind === 'derived_asset')
+    .map((ref) => ref.assetId) ?? []
+  if (selectedDerivedIds.length === 0) return false
+  const textConversion = normalizeObject(root.textConversion)
+  const derivativeId = typeof textConversion?.derivativeId === 'string' ? textConversion.derivativeId.trim() : ''
+  return selectedDerivedIds.includes(derivativeId)
 }
 
 function hasReadyMixedConversionAssets(
@@ -1872,6 +2218,11 @@ function resolveEligibilityEvaluationMode(
 
 function normalizeStringArray(values: ReadonlyArray<string>): string[] {
   return Array.from(new Set(values.map((value) => String(value ?? '').trim().toLowerCase()).filter(Boolean)))
+}
+
+function normalizeNullableText(value: string | null | undefined): string | null {
+  const normalized = String(value ?? '').trim()
+  return normalized || null
 }
 
 function dedupeSendModes(modes: ReadonlyArray<SendMode>): SendMode[] {
