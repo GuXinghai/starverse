@@ -445,3 +445,16 @@ DFC-17 should choose one of two owner-level paths:
 - PDF, Office, XLS/XLSX, HTML, PS/EPS, non-local URL-backed assets, and unsupported assets do not get new Phase 1 derivatives from this endpoint.
 - Generated derived options use canonical backend option ids and exact backend-owned `derived_asset` refs; `original_file` remains a `raw_file` option and does not generate a `DerivedAsset`.
 - Targeted worker, IPC contract, client, DFC service, Send Plan, shared contract, and registry tests passed. Full repo typecheck still fails only at the pre-existing Vue named-export issue in `src/ui-app/app/appChatApp.logic.ts`.
+
+## DFC-19 implementation recovery notes
+
+- DFC-19 is a narrow existing-dialog plumbing slice; it does not add a browser Playwright harness, full Attachment Detail Inspector, broad UI redesign, DB schema, backend conversion runtime, new dependency, external engine, legacy bridge, broad Send Plan replacement, or forbidden conversion family runtime.
+- This UI plumbing builds on the already owner-approved DFC-18 `conversationDraft.ensureDfcOptions` endpoint; it does not create a new option-generation contract.
+- The existing draft attachment details option refresh now calls `conversationDraft.ensureDfcOptions` through `ensureConversationDraftAttachmentDfcOptions()` instead of calling the read-only `conversationDraft.getDfcOptions` path directly.
+- The renderer ensure request sends only `conversationId` and `assetId`. It still does not invent target kind, option ids, `selectedOptionId`, `selectedAssetRefs`, `SendAssetRef`, `raw_file`, or `derived_asset` semantics.
+- Backend-owned option identity and exact backend-provided asset refs remain authoritative. Selecting an option still persists the option id and refs from the sanitized backend DTO options already loaded into the details flow.
+- Targeted UI/client/IPC tests, combined DFC backend/client/UI tests, `vue-tsc`, `git diff --check`, privacy scans, and risk review passed. Browser Playwright/Electron smoke remains deferred because new harness scaffolding is outside this slice.
+
+## Recommended next round
+
+DFC-20 should close remaining non-Playwright Phase 1 generation gaps, likely by removing or quarantining the backend `sendPlan.buildCurrent` lazy DFC-generation fallback where explicit ensure-driven readiness can replace it safely. Browser Playwright smoke still requires separate owner approval if it needs new harness scaffolding.
