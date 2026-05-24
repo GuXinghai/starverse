@@ -996,6 +996,68 @@ describe('ui-app AppChatApp attachment entry flow', () => {
         }
       }
 
+      if (method === 'conversationDraft.getDfcPreview') {
+        const assetId = String(params?.assetId ?? '')
+        const attachment = draftResponse.attachments.find((item: any) => item.assetId === assetId) ?? makeDraftAttachment(assetId)
+        const asset = makeFileAsset(assetId)
+        const selectedOptionId = String(attachment.selectedOptionId ?? '').trim() || null
+        const isMarkdown = selectedOptionId === `dfc:${assetId}:markdown:derived_asset:derivative-markdown`
+        const isOriginal = selectedOptionId === `dfc:${assetId}:original_file:raw_file:${assetId}`
+        return {
+          attachmentId: attachment.id,
+          conversationId: 'c1',
+          rawFileId: assetId,
+          filename: asset.filename,
+          sizeBytes: asset.sizeBytes,
+          dfcManaged: attachment.dfcManaged === true,
+          selectedOptionId,
+          selectedAssetRefs: attachment.selectedAssetRefs ?? [],
+          targetKind: isMarkdown ? 'markdown' : isOriginal ? 'original_file' : null,
+          sendStrategy: isMarkdown ? 'text_in_prompt' : isOriginal ? 'file_attachment' : null,
+          decision: {
+            status: selectedOptionId ? 'ready' : 'needs_user_selection',
+            reasonCode: selectedOptionId ? null : 'selected_option_missing',
+            selectedOptionId,
+            targetKind: isMarkdown ? 'markdown' : isOriginal ? 'original_file' : null,
+            sendStrategy: isMarkdown ? 'text_in_prompt' : isOriginal ? 'file_attachment' : null,
+            sendAssetRefs: attachment.selectedAssetRefs ?? [],
+            needsUserAction: !selectedOptionId,
+          },
+          preview: isMarkdown
+            ? {
+                kind: 'text',
+                status: 'ready',
+                text: 'Markdown preview from selected option',
+                characterCount: 37,
+                byteLength: 37,
+                truncated: false,
+                maxCharacters: Number(params?.maxCharacters ?? 2048),
+                diagnostics: [],
+              }
+            : isOriginal
+              ? {
+                  kind: 'raw_file',
+                  status: 'ready',
+                  text: null,
+                  characterCount: null,
+                  byteLength: null,
+                  truncated: false,
+                  maxCharacters: Number(params?.maxCharacters ?? 2048),
+                  diagnostics: [{ code: 'dfc_preview_raw_file_metadata_only', message: 'metadata only' }],
+                }
+              : {
+                  kind: 'none',
+                  status: 'needs_user_selection',
+                  text: null,
+                  characterCount: null,
+                  byteLength: null,
+                  truncated: false,
+                  maxCharacters: Number(params?.maxCharacters ?? 2048),
+                  diagnostics: [{ code: 'selected_option_missing', message: 'missing' }],
+                },
+        }
+      }
+
       if (method === 'messageAttachment.listByMessageId') {
         const messageId = String(params?.messageId ?? '')
         return historyAttachmentRowsByMessageId[messageId] ?? []
@@ -2170,6 +2232,14 @@ describe('ui-app AppChatApp attachment entry flow', () => {
         selectedAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-markdown' }],
       }))
     })
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith('conversationDraft.getDfcPreview', {
+        conversationId: 'c1',
+        assetId: 'asset-dfc',
+        maxCharacters: 2048,
+      })
+    })
+    expect(await screen.findByTestId('draft-attachment-dfc-preview-text')).toHaveTextContent('Markdown preview from selected option')
   })
 
   it('keeps URL retention hidden for non-URL attachments and disables audio link sending', async () => {
