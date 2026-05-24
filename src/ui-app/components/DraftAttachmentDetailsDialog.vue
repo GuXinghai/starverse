@@ -41,6 +41,21 @@ type DraftAttachmentDfcOptions = Readonly<{
   options: readonly DraftAttachmentDfcOption[]
 }>
 
+type DraftAttachmentDfcPreview = Readonly<{
+  loading: boolean
+  error: string | null
+  kind: string
+  status: string | null
+  targetKind: string | null
+  sendStrategy: string | null
+  text: string | null
+  characterCount: number | null
+  byteLength: number | null
+  truncated: boolean
+  maxCharacters: number | null
+  diagnostics: readonly string[]
+}>
+
 type DraftAttachmentDetectionInfo = Readonly<{
   routeEligibility: 'verdict_ready' | 'detection_pending' | 'detection_failed' | 'detection_required'
   detectionLevel: 'basic' | 'advanced' | 'parser_validated' | null
@@ -93,6 +108,7 @@ type DraftAttachmentDetailsViewModel = Readonly<{
   retryPreviewReason: string | null
   detectionInfo: DraftAttachmentDetectionInfo | null
   dfcOptions: DraftAttachmentDfcOptions
+  dfcPreview: DraftAttachmentDfcPreview
 }> 
 
 const props = defineProps<{
@@ -268,6 +284,55 @@ function removeAttachment() {
           <div v-if="props.attachment.dfcOptions.decisionStatus" class="text-[11px] text-gray-500">
             {{ props.attachment.dfcOptions.decisionStatus }}
             <span v-if="props.attachment.dfcOptions.decisionReasonCode"> · {{ props.attachment.dfcOptions.decisionReasonCode }}</span>
+          </div>
+        </section>
+
+        <section class="space-y-2 rounded border border-gray-200 p-3" data-testid="draft-attachment-dfc-preview">
+          <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Preview</div>
+          <div v-if="props.attachment.dfcPreview.loading" class="text-sm text-gray-500" data-testid="draft-attachment-dfc-preview-loading">
+            Loading...
+          </div>
+          <div v-else-if="props.attachment.dfcPreview.error" class="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-800" data-testid="draft-attachment-dfc-preview-error">
+            {{ props.attachment.dfcPreview.error }}
+          </div>
+          <div v-else class="space-y-2">
+            <div class="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-2 gap-y-1 text-xs">
+              <span class="text-gray-500">Status</span>
+              <span class="min-w-0 break-words text-gray-900" data-testid="draft-attachment-dfc-preview-status">{{ props.attachment.dfcPreview.status ?? '-' }}</span>
+              <span class="text-gray-500">Target</span>
+              <span class="min-w-0 break-words text-gray-900">{{ props.attachment.dfcPreview.targetKind ?? '-' }}</span>
+              <span class="text-gray-500">Strategy</span>
+              <span class="min-w-0 break-words text-gray-900">{{ props.attachment.dfcPreview.sendStrategy ?? '-' }}</span>
+            </div>
+            <pre
+              v-if="props.attachment.dfcPreview.kind === 'text' && props.attachment.dfcPreview.text !== null"
+              class="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-900"
+              data-testid="draft-attachment-dfc-preview-text"
+            >{{ props.attachment.dfcPreview.text }}</pre>
+            <div
+              v-else-if="props.attachment.dfcPreview.kind === 'raw_file'"
+              class="rounded border border-gray-200 bg-gray-50 p-2 text-sm text-gray-700"
+              data-testid="draft-attachment-dfc-preview-raw"
+            >
+              Original file selected.
+            </div>
+            <div v-else class="text-sm text-gray-500" data-testid="draft-attachment-dfc-preview-empty">
+              No selected preview.
+            </div>
+            <div v-if="props.attachment.dfcPreview.kind === 'text'" class="text-[11px] text-gray-500">
+              {{ props.attachment.dfcPreview.characterCount ?? 0 }} chars
+              <span v-if="props.attachment.dfcPreview.byteLength !== null"> · {{ props.attachment.dfcPreview.byteLength }} bytes</span>
+              <span v-if="props.attachment.dfcPreview.truncated"> · truncated</span>
+            </div>
+            <div v-if="props.attachment.dfcPreview.diagnostics.length > 0" class="space-y-1">
+              <div
+                v-for="diagnostic in props.attachment.dfcPreview.diagnostics"
+                :key="diagnostic"
+                class="text-[11px] text-amber-700"
+              >
+                {{ diagnostic }}
+              </div>
+            </div>
           </div>
         </section>
 

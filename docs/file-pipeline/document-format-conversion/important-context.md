@@ -369,3 +369,21 @@ DFC-14 should decide between two owner-level paths:
 ## Recommended next round
 
 DFC-15 should wire the existing attachment details dialog to display the selected-option preview DTO if it remains a small local extension. Browser Playwright smoke still requires owner approval if it needs a new harness.
+
+## DFC-15 implementation recovery notes
+
+- DFC-15 is a narrow existing-dialog preview display slice; it does not add a full Attachment Detail Inspector, browser Playwright harness, broad UI redesign, backend conversion runtime, new dependency, external engine, legacy bridge, or broad Send Plan replacement.
+- `src/ui-app/app/appChatApp.logic.ts` now calls `conversationDraft.getDfcPreview` when the draft attachment details dialog opens, when the selected attachment survives a draft refresh, and after a backend-owned DFC option selection update.
+- DFC preview DTO state is cached separately from DFC option DTO state and composer Send Plan state.
+- The renderer sends only `conversationId`, `assetId`, and `maxCharacters` to the preview endpoint. It does not invent or persist `selectedOptionId`, target kind, `SendAssetRef`, `raw_file`, or `derived_asset` semantics for preview.
+- `DraftAttachmentDetailsDialog.vue` renders backend-provided preview status, target kind, send strategy, capped text preview, raw-file selected state, and diagnostic codes. It does not render backend option ids, selected asset refs, storage refs, storage URIs, file URLs, content tokens, raw file bodies, or full hashes.
+- The UI attachment test now mocks `conversationDraft.getDfcPreview` and verifies that selecting the backend-owned Markdown option also loads and displays the selected-option preview text.
+- Validation after `npm run rebuild:node` passed for the focused UI/client/IPC suite and the focused backend/send-plan/shared suite. Full project typecheck still fails only at the pre-existing Vue named-export issue in `src/ui-app/app/appChatApp.logic.ts`.
+- Risk review found no P0/P1 issues for DFC authority, stale preview state, privacy/log exposure, or missing targeted tests.
+
+## Recommended next round
+
+DFC-16 should choose one of two owner-aligned paths:
+
+- Obtain owner approval for new browser Playwright harness scaffolding, then implement the required upload, shelf/chip, detail flow, option selection, preview visibility, removal, and send-gating smoke.
+- Or continue a non-harness backend conversion/runtime slice that remains within Phase 1 and avoids XLSX/Office/PDF/HTML/PS-EPS, new dependencies, external engines, legacy compatibility, broad UI redesign, and broad Send Plan replacement.

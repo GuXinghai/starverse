@@ -96,6 +96,7 @@ import {
   attachConversationDraftToMessage,
   cloneConversationDraftFromMessage,
   getConversationDraftAttachmentDfcOptions,
+  getConversationDraftAttachmentDfcPreview,
   removeConversationDraftAttachment,
   restoreConversationDraft,
   updateConversationDraftAttachmentSettings,
@@ -119,6 +120,7 @@ import type { MessageAttachmentDetectionInfo, MessageAttachmentDisplayStatus, Me
 import type {
   DecodedConversationDraft,
   DecodedDfcDraftAttachmentOptions,
+  DecodedDfcDraftAttachmentPreview,
   DecodedDraftAttachment,
   DecodedFileAsset,
   DecodedMessageAttachment,
@@ -315,6 +317,20 @@ export function useAppChatAppLogic() {
     sendStrategy: DfcSendStrategy | null
     options: DraftAttachmentDfcOptionViewModel[]
   }>
+  type DraftAttachmentDfcPreviewViewModel = Readonly<{
+    loading: boolean
+    error: string | null
+    kind: string
+    status: string | null
+    targetKind: DfcTargetKind | null
+    sendStrategy: DfcSendStrategy | null
+    text: string | null
+    characterCount: number | null
+    byteLength: number | null
+    truncated: boolean
+    maxCharacters: number | null
+    diagnostics: string[]
+  }>
   type DraftAttachmentViewModel = Readonly<{
     draftAttachmentId: string
     assetId: string
@@ -356,6 +372,7 @@ export function useAppChatAppLogic() {
     retryPreviewAvailable: boolean
     retryPreviewReason: string | null
     dfcOptions: DraftAttachmentDfcOptionsViewModel
+    dfcPreview: DraftAttachmentDfcPreviewViewModel
   }>
   type HistoryIncompatibleAttachmentDisplayStatus =
     | 'incompatible_with_current_model'
@@ -455,6 +472,9 @@ export function useAppChatAppLogic() {
   const draftAttachmentDfcOptionsByAssetId = ref<Record<string, DecodedDfcDraftAttachmentOptions | null>>({})
   const draftAttachmentDfcOptionsLoadingByAssetId = ref<Record<string, boolean>>({})
   const draftAttachmentDfcOptionsErrorByAssetId = ref<Record<string, string | null>>({})
+  const draftAttachmentDfcPreviewByAssetId = ref<Record<string, DecodedDfcDraftAttachmentPreview | null>>({})
+  const draftAttachmentDfcPreviewLoadingByAssetId = ref<Record<string, boolean>>({})
+  const draftAttachmentDfcPreviewErrorByAssetId = ref<Record<string, string | null>>({})
   const historyAttachmentViewModelsByMessageIdBase = ref<Record<string, MessageAttachmentVM[]>>({})
   const historyAttachmentPreviewCache = ref<Record<string, HistoryAttachmentPreviewState>>({})
   const historyAttachmentPreviewEnsuring = new Set<string>()
@@ -468,6 +488,7 @@ export function useAppChatAppLogic() {
   let historyAttachmentRefreshSeq = 0
   let draftAttachmentRefreshSeq = 0
   let draftAttachmentDfcOptionsSeq = 0
+  let draftAttachmentDfcPreviewSeq = 0
   const draftAttachmentPreviewEnsuring = new Set<string>()
   const selectedDraftAttachmentDetails = computed(() =>
     buildDraftAttachmentDetailsViewModel(selectedDraftAttachmentAssetId.value)
@@ -4645,6 +4666,42 @@ export function useAppChatAppLogic() {
     }
   }
 
+  function buildDfcPreviewViewModel(assetId: string): DraftAttachmentDfcPreviewViewModel {
+    const dto = draftAttachmentDfcPreviewByAssetId.value[assetId] ?? null
+    const loading = draftAttachmentDfcPreviewLoadingByAssetId.value[assetId] === true
+    const error = draftAttachmentDfcPreviewErrorByAssetId.value[assetId] ?? null
+    if (!dto) {
+      return {
+        loading,
+        error,
+        kind: 'none',
+        status: null,
+        targetKind: null,
+        sendStrategy: null,
+        text: null,
+        characterCount: null,
+        byteLength: null,
+        truncated: false,
+        maxCharacters: null,
+        diagnostics: [],
+      }
+    }
+    return {
+      loading,
+      error,
+      kind: dto.preview.kind,
+      status: dto.preview.status,
+      targetKind: dto.targetKind,
+      sendStrategy: dto.sendStrategy,
+      text: dto.preview.text,
+      characterCount: dto.preview.characterCount,
+      byteLength: dto.preview.byteLength,
+      truncated: dto.preview.truncated,
+      maxCharacters: dto.preview.maxCharacters,
+      diagnostics: dto.preview.diagnostics.map((item) => item.code),
+    }
+  }
+
   function buildDraftAttachmentDetailsViewModel(assetId: string | null): DraftAttachmentDetailsViewModel | null {
     const id = String(assetId ?? '').trim()
     if (!id) return null
@@ -4699,6 +4756,7 @@ export function useAppChatAppLogic() {
       retryPreviewAvailable,
       retryPreviewReason,
       dfcOptions: buildDfcOptionsViewModel(id),
+      dfcPreview: buildDfcPreviewViewModel(id),
     }
   }
 
@@ -4782,6 +4840,9 @@ export function useAppChatAppLogic() {
       draftAttachmentDfcOptionsByAssetId.value = {}
       draftAttachmentDfcOptionsLoadingByAssetId.value = {}
       draftAttachmentDfcOptionsErrorByAssetId.value = {}
+      draftAttachmentDfcPreviewByAssetId.value = {}
+      draftAttachmentDfcPreviewLoadingByAssetId.value = {}
+      draftAttachmentDfcPreviewErrorByAssetId.value = {}
       draftAttachmentSendPlanStatus.value = null
       selectedDraftAttachmentAssetId.value = null
       resetComposerSendPlanGateState()
@@ -4850,6 +4911,7 @@ export function useAppChatAppLogic() {
       const selectedAssetId = String(selectedDraftAttachmentAssetId.value ?? '').trim()
       if (selectedAssetId && next.some((item) => item.assetId === selectedAssetId)) {
         void refreshDraftAttachmentDfcOptions(selectedAssetId)
+        void refreshDraftAttachmentDfcPreview(selectedAssetId)
       }
       scheduleDraftAttachmentParsingPoll()
       if (seq === draftAttachmentRefreshSeq && shouldToggleComposerSendPlanLoading) {
@@ -5158,6 +5220,7 @@ export function useAppChatAppLogic() {
     if (!id) return
     selectedDraftAttachmentAssetId.value = id
     void refreshDraftAttachmentDfcOptions(id)
+    void refreshDraftAttachmentDfcPreview(id)
   }
 
   function closeDraftAttachmentDetails() {
@@ -5197,6 +5260,46 @@ export function useAppChatAppLogic() {
       if (seq === draftAttachmentDfcOptionsSeq) {
         draftAttachmentDfcOptionsLoadingByAssetId.value = {
           ...draftAttachmentDfcOptionsLoadingByAssetId.value,
+          [id]: false,
+        }
+      }
+    }
+  }
+
+  async function refreshDraftAttachmentDfcPreview(assetId: string) {
+    const id = String(assetId ?? '').trim()
+    const scope = getActiveDraftScope()
+    if (!id || !scope) return
+    const seq = ++draftAttachmentDfcPreviewSeq
+    draftAttachmentDfcPreviewLoadingByAssetId.value = {
+      ...draftAttachmentDfcPreviewLoadingByAssetId.value,
+      [id]: true,
+    }
+    draftAttachmentDfcPreviewErrorByAssetId.value = {
+      ...draftAttachmentDfcPreviewErrorByAssetId.value,
+      [id]: null,
+    }
+    try {
+      const dto = await getConversationDraftAttachmentDfcPreview({
+        conversationId: scope.convoId,
+        assetId: id,
+        maxCharacters: 2048,
+      })
+      if (seq !== draftAttachmentDfcPreviewSeq) return
+      draftAttachmentDfcPreviewByAssetId.value = {
+        ...draftAttachmentDfcPreviewByAssetId.value,
+        [id]: dto,
+      }
+    } catch (error) {
+      if (seq !== draftAttachmentDfcPreviewSeq) return
+      draftAttachmentDfcPreviewErrorByAssetId.value = {
+        ...draftAttachmentDfcPreviewErrorByAssetId.value,
+        [id]: 'Failed to load selected preview.',
+      }
+    } finally {
+      if (seq === draftAttachmentDfcPreviewSeq) {
+        draftAttachmentDfcPreviewLoadingByAssetId.value = {
+          ...draftAttachmentDfcPreviewLoadingByAssetId.value,
           [id]: false,
         }
       }
@@ -5256,6 +5359,7 @@ export function useAppChatAppLogic() {
       selectedAssetRefs: option.sendAssetRefs,
     })
     void refreshDraftAttachmentDfcOptions(assetId)
+    void refreshDraftAttachmentDfcPreview(assetId)
   }
 
   async function retrySelectedDraftAttachmentPreview() {
