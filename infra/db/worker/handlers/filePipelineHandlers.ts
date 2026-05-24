@@ -51,6 +51,10 @@ import {
   MarkFileTypeVerdictStaleSchema,
 } from '../../validation'
 
+type TextDerivativeEnsureResult = Readonly<{ changed: boolean }>
+
+const textDerivativeEnsureInFlight = new WeakMap<DbWorkerRuntime, Map<string, Promise<TextDerivativeEnsureResult>>>()
+
 export function registerFilePipelineHandlers(register: RegisterHandler, runtime: DbWorkerRuntime) {
   register('fileAsset.create', (raw) => {
     const input = CreateFileAssetSchema.parse(raw)
@@ -630,6 +634,30 @@ async function ensureTextDerivativeAsset(
   assetId: string,
   targetKind: string,
   options: Readonly<{ exposeDfcOption: boolean }>
+): Promise<TextDerivativeEnsureResult> {
+  const key = textDerivativeEnsureKey(assetId, targetKind, options)
+  let runtimeInFlight = textDerivativeEnsureInFlight.get(runtime)
+  if (!runtimeInFlight) {
+    runtimeInFlight = new Map()
+    textDerivativeEnsureInFlight.set(runtime, runtimeInFlight)
+  }
+  const existing = runtimeInFlight.get(key)
+  if (existing) return existing
+  const ensure = ensureTextDerivativeAssetUncoalesced(runtime, assetId, targetKind, options)
+    .finally(() => {
+      const current = textDerivativeEnsureInFlight.get(runtime)
+      current?.delete(key)
+      if (current?.size === 0) textDerivativeEnsureInFlight.delete(runtime)
+    })
+  runtimeInFlight.set(key, ensure)
+  return ensure
+}
+
+async function ensureTextDerivativeAssetUncoalesced(
+  runtime: DbWorkerRuntime,
+  assetId: string,
+  targetKind: string,
+  options: Readonly<{ exposeDfcOption: boolean }>
 ): Promise<Readonly<{ changed: boolean }>> {
   const asset = runtime.fileAssetRepo.getById(assetId)
   if (!asset) {
@@ -698,6 +726,18 @@ async function ensureTextDerivativeAsset(
     exposeDfcOption: options.exposeDfcOption,
   })
   return { changed: true }
+}
+
+function textDerivativeEnsureKey(
+  assetId: string,
+  targetKind: string,
+  options: Readonly<{ exposeDfcOption: boolean }>
+): string {
+  return [
+    String(assetId ?? '').trim(),
+    String(targetKind ?? '').trim(),
+    options.exposeDfcOption ? 'dfc' : 'legacy',
+  ].join('\u001f')
 }
 
 function writeAssetConversionReadyMeta(

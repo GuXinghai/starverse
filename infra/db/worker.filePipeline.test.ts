@@ -735,6 +735,75 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     })
   })
 
+  it('coalesces concurrent explicit DFC ensure requests for the same text derivative', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-csv-concurrent-dfc'
+    const storageUri = 'assets/original/co/asset-csv-concurrent-dfc.csv'
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), 'name,age\nalice,30\n')
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-concurrent-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-csv-concurrent-source-hash',
+        filename: 'data.csv',
+        extension: 'csv',
+        mime: 'text/csv',
+        sizeBytes: 18,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-concurrent-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const [first, second] = await Promise.all([
+      dispatchWorkerMessage(handlers, {
+        id: 'req-csv-concurrent-ensure-a',
+        method: 'conversationDraft.ensureDfcOptions',
+        params: { conversationId: 'c1', assetId },
+      }),
+      dispatchWorkerMessage(handlers, {
+        id: 'req-csv-concurrent-ensure-b',
+        method: 'conversationDraft.ensureDfcOptions',
+        params: { conversationId: 'c1', assetId },
+      }),
+    ])
+
+    expect(first).toMatchObject({ ok: true })
+    expect(second).toMatchObject({ ok: true })
+    const firstTableOption = (first as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    const secondTableOption = (second as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    expect(firstTableOption).toMatchObject({
+      status: 'ready',
+      isAvailable: true,
+      sendAssetRefs: [expect.objectContaining({ kind: 'derived_asset' })],
+    })
+    expect(secondTableOption).toMatchObject({
+      optionId: firstTableOption.optionId,
+      sendAssetRefs: firstTableOption.sendAssetRefs,
+    })
+    const derivativeCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+    `).get({ assetId }) as { count: number }
+    const jobCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM derivative_jobs
+      WHERE asset_id=@assetId AND derivative_kind='extracted_text'
+    `).get({ assetId }) as { count: number }
+    expect(derivativeCount.count).toBe(1)
+    expect(jobCount.count).toBe(1)
+  })
+
   it('generates approved Phase 1 local text DFC target families through explicit ensure endpoint', async () => {
     const { db, handlers } = createWorkerHarness()
     const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
