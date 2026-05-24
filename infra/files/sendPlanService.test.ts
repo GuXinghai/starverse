@@ -1241,6 +1241,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
     const cases = [
       { assetId: 'dfc-failed', derivativeId: 'derived-failed', status: 'failed' as const, reason: 'selected_option_failed' },
       { assetId: 'dfc-stale', derivativeId: 'derived-stale', status: 'deleted' as const, reason: 'selected_option_stale' },
+      { assetId: 'dfc-source-mismatch', derivativeId: 'derived-source-mismatch', status: 'ready' as const, reason: 'selected_option_stale', sourceHash: 'old-source-sha' },
     ]
 
     for (const testCase of cases) {
@@ -1267,7 +1268,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
           targetKind: 'plain_text',
           usage: 'preview_and_send',
           storageClass: 'draft_bound',
-          sourceHash: `${testCase.assetId}-sha`,
+          sourceHash: testCase.sourceHash ?? `${testCase.assetId}-sha`,
           contentHash: `${testCase.derivativeId}-content`,
           conversionSettingsHash: `${testCase.derivativeId}-settings`,
           converterName: 'test-dfc-converter',

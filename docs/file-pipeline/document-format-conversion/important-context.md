@@ -472,3 +472,18 @@ DFC-20 should close remaining non-Playwright Phase 1 generation gaps, likely by 
 ## Recommended next round
 
 DFC-21 should continue closing Phase 1 gaps around explicit ensure state, stale selected refs, and preview/send coherence. Browser Playwright smoke still requires separate owner approval if it needs new harness scaffolding.
+
+## DFC-21 implementation recovery notes
+
+- DFC-21 is a narrow backend coherence slice; it does not add a DB schema change, IPC contract change, renderer option identity, conversion runtime family expansion, browser Playwright harness, UI redesign, new dependency, external engine, legacy bridge, broad Send Plan rewrite, durable `ConversionOption` rows, or async option-generation state.
+- Backend-owned DFC option DTO generation now compares a derived facade `sourceHash` with the current raw asset `sha256` when a hash is available. A mismatch marks the derived option `stale`, unavailable, and blocked with the sanitized diagnostic code `derived_asset_source_hash_mismatch`.
+- DFC preview and commit now reject a selected stale derived option with the existing `selected_option_stale` decision path instead of previewing or committing it.
+- Send Plan selected-ref synthesis and lineage validation now treat selected DFC derived refs with mismatched source hashes as stale, so DFC-managed sends remain blocked and do not fall back to preferred/selected legacy send modes, extension, MIME, or route-derived behavior.
+- The existing malformed-derivative lineage diagnostic path remains intact; the Send Plan availability check only blocks early for confirmed source-hash mismatch and leaves malformed facades to lineage validation.
+- New tests cover stale source-hash option DTO redaction, preview rejection, commit gating, and Send Plan no-fallback blocking for source-mismatched selected derived refs.
+- Targeted DFC service/shared tests, broader backend/client/UI DFC tests, `vue-tsc`, `git diff --check`, privacy scans, test_runner, and risk_reviewer passed.
+- Residual risk: source-hash mismatch detection cannot prove staleness when the raw asset `sha256` is null. Future `SendPlanService` consumers must provide `fileDerivativeRepo` for selected derived-ref source-hash gating.
+
+## Recommended next round
+
+DFC-22 should continue non-Playwright Phase 1 hardening around null-hash and pending-state semantics, or durable generated-option state if approved. Browser Playwright smoke still requires separate owner approval if it needs new harness scaffolding.

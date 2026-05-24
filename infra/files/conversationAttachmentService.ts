@@ -18,6 +18,7 @@ import type {
   DfcAttachmentSendSnapshot,
   DfcConversionOption,
   DfcConversionOptionStatus,
+  DfcDerivedAssetFacade,
   DfcDerivedTargetKind,
   DfcDraftAttachmentOptionsDto,
   DfcDraftAttachmentPreviewDto,
@@ -728,11 +729,16 @@ export class ConversationAttachmentService {
         generator: derivative.generator,
         metaJson: derivative.metaJson,
       })
-      const unavailableReason = status === 'ready'
-        ? dfcDerivativeUnavailableReason(facade)
-        : null
-      const candidateStatus = unavailableReason ? 'blocked' : status
-      const isAvailable = status === 'ready' && !unavailableReason
+      const sourceHashMismatch = facade.ok && dfcDerivedAssetSourceHashMismatch(asset, facade.asset)
+      const unavailableReason = sourceHashMismatch
+        ? 'derived_asset_source_hash_mismatch'
+        : status === 'ready'
+          ? dfcDerivativeUnavailableReason(facade)
+          : null
+      const candidateStatus = sourceHashMismatch
+        ? 'stale'
+        : unavailableReason ? 'blocked' : status
+      const isAvailable = status === 'ready' && !sourceHashMismatch && !unavailableReason
       options.push({
         ...createDfcDerivedAssetOption({
           optionId: this.optionIdForCandidate(attachment, targetKind, refs),
@@ -784,12 +790,15 @@ export class ConversationAttachmentService {
       generator: typeof textConversion?.converterName === 'string' ? textConversion.converterName : null,
       metaJson: textConversion,
     })
-    const unavailableReason = status === 'ready'
-      ? dfcDerivativeUnavailableReason(facade)
-      : null
-    const candidateStatus = unavailableReason ? 'blocked' : status
+    const sourceHashMismatch = facade.ok && dfcDerivedAssetSourceHashMismatch(asset, facade.asset)
+    const unavailableReason = sourceHashMismatch
+      ? 'derived_asset_source_hash_mismatch'
+      : status === 'ready'
+        ? dfcDerivativeUnavailableReason(facade)
+        : null
+    const candidateStatus = sourceHashMismatch ? 'stale' : unavailableReason ? 'blocked' : status
     const hasStorageRef = typeof textConversion?.storageUri === 'string' && textConversion.storageUri.trim().length > 0
-    const isAvailable = status === 'ready' && hasStorageRef && !unavailableReason
+    const isAvailable = status === 'ready' && hasStorageRef && !sourceHashMismatch && !unavailableReason
     return {
       ...createDfcDerivedAssetOption({
         optionId: this.optionIdForCandidate(attachment, targetKind, refs),
@@ -1237,6 +1246,14 @@ function dfcDerivativeUnavailableReason(
   if (!facade.ok) return facade.reasonCode
   if (facade.asset.usage === 'preview_only') return 'preview_only_asset_not_sendable'
   return null
+}
+
+function dfcDerivedAssetSourceHashMismatch(
+  rawAsset: FileAssetRecord,
+  facade: DfcDerivedAssetFacade
+): boolean {
+  const sourceHash = normalizeNullableText(rawAsset.sha256)
+  return sourceHash !== null && facade.sourceHash !== sourceHash
 }
 
 function dfcSendAssetRefsEqual(
