@@ -7,6 +7,8 @@ import {
   type DfcDecisionStatus,
   type DfcSanitizedAttachmentDto,
   type DfcSanitizedDiagnostic,
+  type DfcSendAssetRef,
+  type DfcSendStrategy,
   type DfcTargetKind,
 } from '@/shared/files/documentFormatConversion'
 
@@ -212,6 +214,11 @@ export type DecodedAttachmentSnapshotItem = Readonly<{
   excludedReason: string | null
   sourceKind: string | null
   storageBackend: string | null
+  dfcManaged: boolean
+  usedOptionId: string | null
+  usedAssetRefs: DfcSendAssetRef[]
+  targetKind: DfcTargetKind | null
+  sendStrategy: DfcSendStrategy | null
 }>
 
 export type DecodedCommitDraftToUserMessageResult = Readonly<{
@@ -433,6 +440,7 @@ const fileDerivativeSchema = z.object({
 }))
 
 const dfcTargetKindSchema = z.enum(DFC_TARGET_KINDS)
+const dfcSendStrategySchema = z.enum(['text_in_prompt', 'file_attachment'])
 
 const dfcDecisionStatusSchema = z.enum([
   'ready',
@@ -577,6 +585,17 @@ const assetAttachmentOwnershipSchema = z.object({
   updatedAt: row.updatedAt ?? null,
 }))
 
+const dfcSendAssetRefSchema = z.union([
+  z.object({
+    kind: z.literal('raw_file'),
+    assetId: nonEmpty,
+  }),
+  z.object({
+    kind: z.literal('derived_asset'),
+    assetId: nonEmpty,
+  }),
+])
+
 const attachmentSnapshotItemSchema = z.object({
   attachmentId: nonEmpty,
   messageId: nonEmpty,
@@ -587,11 +606,21 @@ const attachmentSnapshotItemSchema = z.object({
   excludedReason: z.string().nullable().optional(),
   sourceKind: z.string().nullable().optional(),
   storageBackend: z.string().nullable().optional(),
+  dfcManaged: z.boolean().optional(),
+  usedOptionId: z.string().trim().nullable().optional(),
+  usedAssetRefs: z.array(dfcSendAssetRefSchema).optional(),
+  targetKind: dfcTargetKindSchema.nullable().optional(),
+  sendStrategy: dfcSendStrategySchema.nullable().optional(),
 }).transform((row) => ({
   ...row,
   excludedReason: row.excludedReason ?? null,
   sourceKind: row.sourceKind ?? null,
   storageBackend: row.storageBackend ?? null,
+  dfcManaged: row.dfcManaged ?? false,
+  usedOptionId: row.dfcManaged ? row.usedOptionId ?? null : null,
+  usedAssetRefs: row.dfcManaged ? [...(row.usedAssetRefs ?? [])] : [],
+  targetKind: row.dfcManaged ? row.targetKind ?? null : null,
+  sendStrategy: row.dfcManaged ? row.sendStrategy ?? null : null,
 }))
 
 const attachmentCandidateSnapshotSchema = z.object({
@@ -734,10 +763,11 @@ const sendPlanAttachmentSchema = z.object({
   messageId: z.string().trim().nullable().optional(),
   aiPayloadKind: aiPayloadKindSchema,
   semantic: z.object({
-    targetKind: z.enum(['plain_text', 'markdown', 'code', 'table_markdown', 'pdf_attachment', 'native_file', 'hybrid', 'unsupported']),
+    targetKind: z.enum(['original_file', 'plain_text', 'markdown', 'code', 'table_markdown', 'pdf_attachment', 'native_file', 'hybrid', 'unsupported']),
     sendStrategy: z.enum(['text_in_prompt', 'file_attachment', 'mixed', 'unsupported']),
     mappedFromLegacy: z.boolean(),
   }).optional(),
+  sendAssetRefs: z.array(dfcSendAssetRefSchema).optional(),
   selectedSendMode: z.enum(['url_ref', 'inline_base64', 'provider_file_ref']).nullable().optional(),
   fallbackSendModes: z.array(z.enum(['url_ref', 'inline_base64', 'provider_file_ref'])),
   eligibility: z.enum(['included', 'warning', 'excluded', 'blocked']),
@@ -777,6 +807,7 @@ const sendPlanAttachmentSchema = z.object({
   selectedSendMode: row.selectedSendMode ?? null,
   exclusionReason: row.exclusionReason ?? null,
   semantic: row.semantic ?? inferMissingAttachmentSemantic(),
+  sendAssetRefs: [...(row.sendAssetRefs ?? [])] as DfcSendAssetRef[],
   lineage: row.lineage
     ? {
         state: row.lineage.state,

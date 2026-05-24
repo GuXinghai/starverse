@@ -118,6 +118,7 @@ function createWorkerHarness() {
     sendPlanService: new SendPlanService({
       conversationAttachmentService,
       fileAssetRepo,
+      fileDerivativeRepo,
       fileTypeVerdictRepo,
     }),
     fileTypeDetectionService,
@@ -256,18 +257,67 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       }),
     })
 
+    const attached = await dispatchWorkerMessage(handlers, {
+      id: 'req-dfc-attach',
+      method: 'conversationDraft.attachToMessage',
+      params: {
+        conversationId: 'c1',
+        messageId: message.id,
+        sentAssetIds: ['asset-1'],
+        dfcAttachmentSendSnapshots: [{
+          attachmentId: (draftAttachment as any).result.id,
+          assetId: 'asset-1',
+          targetKind: 'original_file',
+          sendStrategy: 'file_attachment',
+          sendAssetRefs: selectedAssetRefs,
+        }],
+      },
+    })
+
+    expect(attached).toMatchObject({
+      ok: true,
+      result: {
+        attachments: [
+          expect.objectContaining({
+            dfcManaged: true,
+            usedOptionId: 'option-original',
+            usedAssetRefs: selectedAssetRefs,
+            targetKind: 'original_file',
+            sendStrategy: 'file_attachment',
+          }),
+        ],
+      },
+    })
+
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-asset-dfc-direct',
+      method: 'fileAsset.create',
+      params: {
+        id: 'asset-dfc-direct',
+        sha256: 'sha-dfc-direct',
+        filename: 'direct.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 6,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri: 'assets/original/as/asset-dfc-direct.txt',
+        ingestStatus: 'stored',
+      },
+    })
+    const directAssetRefs = [{ kind: 'raw_file' as const, assetId: 'asset-dfc-direct' }]
     const messageAttachment = await dispatchWorkerMessage(handlers, {
       id: 'req-dfc-message-create',
       method: 'messageAttachment.create',
       params: {
         id: 'attachment-dfc',
         messageId: message.id,
-        assetId: 'asset-1',
+        assetId: 'asset-dfc-direct',
         aiPayloadKind: 'text',
         processingStatus: 'native_supported',
         dfcManaged: true,
         usedOptionId: 'option-original',
-        usedAssetRefs: selectedAssetRefs,
+        usedAssetRefs: directAssetRefs,
         targetKind: 'original_file',
         sendStrategy: 'file_attachment',
       },
@@ -278,7 +328,7 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       result: expect.objectContaining({
         dfcManaged: true,
         usedOptionId: 'option-original',
-        usedAssetRefs: selectedAssetRefs,
+        usedAssetRefs: directAssetRefs,
         targetKind: 'original_file',
         sendStrategy: 'file_attachment',
       }),

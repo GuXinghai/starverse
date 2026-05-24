@@ -123,6 +123,9 @@ export function registerBranchContextHandlers(register: RegisterHandler, runtime
             conversationId: latest.convoId,
             messageId: question.id,
             ...(input.sentAssetIds && input.sentAssetIds.length > 0 ? { sentAssetIds: input.sentAssetIds } : {}),
+            ...(input.dfcAttachmentSendSnapshots && input.dfcAttachmentSendSnapshots.length > 0
+              ? { dfcAttachmentSendSnapshots: input.dfcAttachmentSendSnapshots }
+              : {}),
           })
         }
 

@@ -386,13 +386,15 @@ export async function buildTextAttachmentContentPart(
   context: SerializeContext
 ): Promise<ReadonlyArray<OpenRouterTextContentPart>> {
   const asset = getAssetOrThrow(attachmentPlan, context.assetsById)
-  const converted = await readConvertedTextPayload(asset, context)
-  if (converted) {
-    const safeFilename = sanitizePromptEnvelopeMetadataText(asset.filename)
-    return [{
-      type: 'text',
-      text: `[Attached text file: ${safeFilename}]\n${converted}`,
-    }]
+  if (canUseConvertedTextPayload(attachmentPlan)) {
+    const converted = await readConvertedTextPayload(asset, context)
+    if (converted) {
+      const safeFilename = sanitizePromptEnvelopeMetadataText(asset.filename)
+      return [{
+        type: 'text',
+        text: `[Attached text file: ${safeFilename}]\n${converted}`,
+      }]
+    }
   }
   const source = await resolveAttachmentPayloadSource(attachmentPlan, sendMode, context)
   if (source.kind === 'url') {
@@ -451,7 +453,7 @@ export async function resolveAttachmentPayloadSource(
   const localPath = resolveLocalStoragePath(context.storageRootDir, asset)
   if (localPath.kind === 'missing') {
     const convertedPath = resolveConvertedTextStoragePath(context.storageRootDir, asset)
-    if (attachmentPlan.aiPayloadKind === 'text' && convertedPath?.kind === 'ok') {
+    if (canUseConvertedTextPayload(attachmentPlan) && convertedPath?.kind === 'ok') {
       const bytes = await context.readFileBytes(convertedPath.path)
       return {
         kind: 'bytes',
@@ -499,6 +501,11 @@ export async function resolveAttachmentPayloadSource(
     filename: asset.filename,
     extension: asset.extension,
   }
+}
+
+function canUseConvertedTextPayload(attachmentPlan: SendPlanAttachment): boolean {
+  return attachmentPlan.aiPayloadKind === 'text'
+    && attachmentPlan.semantic.targetKind !== 'original_file'
 }
 
 async function readConvertedTextPayload(

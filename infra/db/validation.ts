@@ -265,6 +265,13 @@ const DfcSendAssetRefSchema = z.discriminatedUnion('kind', [
     assetId: z.string().min(1),
   }),
 ])
+const DfcAttachmentSendSnapshotSchema = z.object({
+  attachmentId: z.string().min(1),
+  assetId: z.string().min(1),
+  targetKind: DfcTargetKindSchema,
+  sendStrategy: DfcSendStrategySchema,
+  sendAssetRefs: z.array(DfcSendAssetRefSchema).min(1),
+})
 
 export const CreateFileAssetSchema: ZodType<CreateFileAssetInput> = z.object({
   id: z.string().min(1).optional(),
@@ -459,6 +466,7 @@ export const CommitDraftToUserMessageSchema: ZodType<CommitDraftToUserMessageInp
   createdAt: z.number().int().optional(),
   meta: jsonSchema.optional().nullable(),
   sentAssetIds: z.array(z.string().min(1)).optional(),
+  dfcAttachmentSendSnapshots: z.array(DfcAttachmentSendSnapshotSchema).optional(),
 })
 
 export const AttachDraftToMessageSchema: ZodType<AttachDraftToMessageInput> = z.object({
@@ -466,6 +474,7 @@ export const AttachDraftToMessageSchema: ZodType<AttachDraftToMessageInput> = z.
   messageId: z.string().min(1),
   updatedAt: z.number().int().optional(),
   sentAssetIds: z.array(z.string().min(1)).optional(),
+  dfcAttachmentSendSnapshots: z.array(DfcAttachmentSendSnapshotSchema).optional(),
 })
 
 export const CloneMessageAttachmentsToDraftSchema: ZodType<CloneMessageAttachmentsToDraftInput> = z.object({
@@ -751,6 +760,7 @@ export const BeginTurnSchema: ZodType<BeginTurnInput> = z.object({
   userMeta: z.record(z.any()).nullable().optional(),
   attachConversationDraft: z.boolean().optional(),
   sentAssetIds: z.array(z.string().min(1)).optional(),
+  dfcAttachmentSendSnapshots: z.array(DfcAttachmentSendSnapshotSchema).optional(),
 })
 
 export const SetBranchHeadSchema: ZodType<SetBranchHeadInput> = z.object({

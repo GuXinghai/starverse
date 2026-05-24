@@ -113,6 +113,7 @@ import type {
   SendPlanProviderContext,
 } from '@/shared/files/sendPlanTypes'
 import type { DraftAttachmentSendModePreference, DraftAttachmentUrlRetentionPreference, SendMode } from '@/shared/files/fileTypes'
+import type { DfcAttachmentSendSnapshot } from '@/shared/files/documentFormatConversion'
 import type { MessageAttachmentDetectionInfo, MessageAttachmentDisplayStatus, MessageAttachmentFileTypeInfo, MessageAttachmentVM } from '@/ui-kit/chat/types'
 import type {
   DecodedConversationDraft,
@@ -7485,9 +7486,13 @@ export function useAppChatAppLogic() {
       return
     }
 
+    const dfcAttachmentSendSnapshots = preparedFileSend
+      ? collectDfcAttachmentSendSnapshots(preparedFileSend.sendPlan)
+      : []
     const begun = await beginTurn(branch.id, text, {
       ...(preparedFileSend?.hasDraftAttachmentPlans ? { attachConversationDraft: true } : {}),
       ...(preparedFileSend ? { sentAssetIds: collectSentAssetIds(preparedFileSend.sendPlan) } : {}),
+      ...(dfcAttachmentSendSnapshots.length > 0 ? { dfcAttachmentSendSnapshots } : {}),
     })
     draft.value = ''
     const cleared = await updateConversationDraftText({
@@ -7591,8 +7596,47 @@ export function useAppChatAppLogic() {
     )
   }
 
-  function collectSentAssetIds(sendPlan: PreparedOpenRouterSend['sendPlan']): string[] {
+  function collectSentAssetIds(sendPlan: SendPlan | null | undefined): string[] {
+    if (!sendPlan) return []
     return Array.from(new Set(sendPlan.includedAttachments.map((attachment) => attachment.assetId)))
+  }
+
+  function collectDfcAttachmentSendSnapshots(sendPlan: SendPlan | null | undefined): DfcAttachmentSendSnapshot[] {
+    if (!sendPlan) return []
+    const includedDraftAttachmentIds = new Set(
+      sendPlan.includedAttachments
+        .filter((attachment) => attachment.source === 'draft')
+        .map((attachment) => attachment.attachmentId)
+    )
+    return sendPlan.attachmentPlans
+      .filter((plan) => plan.source === 'draft' && includedDraftAttachmentIds.has(plan.attachmentId))
+      .filter((plan) => Array.isArray(plan.sendAssetRefs) && plan.sendAssetRefs.length > 0)
+      .filter((plan): plan is SendPlanAttachment & Readonly<{
+        semantic: Readonly<{
+          targetKind: DfcAttachmentSendSnapshot['targetKind']
+          sendStrategy: DfcAttachmentSendSnapshot['sendStrategy']
+        }>
+      }> => isDfcSnapshotTargetKind(plan.semantic.targetKind) && isDfcSnapshotSendStrategy(plan.semantic.sendStrategy))
+      .map((plan) => ({
+        attachmentId: plan.attachmentId,
+        assetId: plan.assetId,
+        targetKind: plan.semantic.targetKind,
+        sendStrategy: plan.semantic.sendStrategy,
+        sendAssetRefs: [...plan.sendAssetRefs],
+      }))
+  }
+
+  function isDfcSnapshotTargetKind(value: string): value is DfcAttachmentSendSnapshot['targetKind'] {
+    return value === 'original_file'
+      || value === 'plain_text'
+      || value === 'markdown'
+      || value === 'code'
+      || value === 'table_markdown'
+      || value === 'pdf_attachment'
+  }
+
+  function isDfcSnapshotSendStrategy(value: string): value is DfcAttachmentSendSnapshot['sendStrategy'] {
+    return value === 'text_in_prompt' || value === 'file_attachment'
   }
 
   async function onForkFromHead() {
@@ -7934,9 +7978,12 @@ export function useAppChatAppLogic() {
           : await forkQuestion(branch.id, oldQuestionId, newText)
 
       if (useDraftClone) {
+        const dfcAttachmentSendSnapshots = collectDfcAttachmentSendSnapshots(editGate.sendPlan)
         const attached = await attachConversationDraftToMessage({
           conversationId: convoId,
           messageId: res.newQuestionId,
+          sentAssetIds: collectSentAssetIds(editGate.sendPlan),
+          ...(dfcAttachmentSendSnapshots.length > 0 ? { dfcAttachmentSendSnapshots } : {}),
         })
         applyDraftPersistenceStateFromDraft(attached.draft)
         draft.value = attached.draft.draftText

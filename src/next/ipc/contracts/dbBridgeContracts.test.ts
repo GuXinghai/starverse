@@ -907,6 +907,64 @@ describe('db bridge contract decoders', () => {
       storageRootDir: 'C:/tmp',
     })).toThrowError(IpcContractDecodeError)
   })
+
+  it('sendPlan.buildCurrent accepts DFC original_file semantics and SendAssetRef refs', () => {
+    const decoded = decodeBuildCurrentSendPlanResponse({
+      sendPlan: {
+        status: 'sendable',
+        warnings: [],
+        blockingReasons: [],
+        includedAttachments: [{ assetId: 'raw-1', source: 'draft', attachmentId: 'att-1', messageId: null }],
+        excludedAttachments: [],
+        attachmentPlans: [{
+          assetId: 'raw-1',
+          attachmentId: 'att-1',
+          source: 'draft',
+          messageId: null,
+          aiPayloadKind: 'pdf',
+          semantic: {
+            targetKind: 'original_file',
+            sendStrategy: 'file_attachment',
+            mappedFromLegacy: false,
+          },
+          sendAssetRefs: [{ kind: 'raw_file', assetId: 'raw-1' }],
+          selectedSendMode: 'inline_base64',
+          fallbackSendModes: [],
+          eligibility: 'included',
+          exclusionReason: null,
+          displayStatus: 'ready',
+          needsUserAttention: false,
+          notes: [],
+          lineage: {
+            state: 'ok',
+            stale: false,
+            staleReason: null,
+            sourceHash: null,
+            previewContentHash: null,
+            sendContentHash: null,
+            conversionSettingsHash: null,
+          },
+          fileType: null,
+          detection: null,
+        }],
+        requiresModelChange: false,
+        canProceedAfterDroppingExcluded: false,
+        requiresUserConfirmation: false,
+        plannerVersion: 'phase-5/v1',
+      },
+      draftText: '',
+      assets: [],
+      storageRootDir: 'C:/tmp',
+    })
+
+    expect(decoded.sendPlan.attachmentPlans[0]).toMatchObject({
+      semantic: {
+        targetKind: 'original_file',
+        sendStrategy: 'file_attachment',
+      },
+      sendAssetRefs: [{ kind: 'raw_file', assetId: 'raw-1' }],
+    })
+  })
 })
 
 describe('draft attachment settings decoder', () => {
@@ -1127,6 +1185,39 @@ describe('DFC renderer DTO sanitization', () => {
       targetKind: 'native_file',
       status: 'ready',
     }])).toThrow()
+  })
+
+  it('decodeAttachmentCandidateSnapshotResponse preserves sanitized DFC history binding fields', () => {
+    const decoded = decodeAttachmentCandidateSnapshotResponse({
+      scope: 'messages',
+      messageIds: ['m1'],
+      included: [{
+        attachmentId: 'attachment-1',
+        messageId: 'm1',
+        assetId: 'asset-1',
+        aiPayloadKind: 'text',
+        processingStatus: 'ready',
+        included: true,
+        excludedReason: null,
+        sourceKind: 'local_upload',
+        storageBackend: 'local_fs',
+        dfcManaged: true,
+        usedOptionId: 'option-original',
+        usedAssetRefs: [{ kind: 'raw_file', assetId: 'asset-1' }],
+        targetKind: 'original_file',
+        sendStrategy: 'file_attachment',
+      }],
+      excluded: [],
+      items: [],
+    })
+
+    expect(decoded.included[0]).toMatchObject({
+      dfcManaged: true,
+      usedOptionId: 'option-original',
+      usedAssetRefs: [{ kind: 'raw_file', assetId: 'asset-1' }],
+      targetKind: 'original_file',
+      sendStrategy: 'file_attachment',
+    })
   })
 
   it('decodeDfcFileAssetResponse strips storage and hash fields while preserving display metadata', () => {

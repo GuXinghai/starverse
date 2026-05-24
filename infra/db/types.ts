@@ -21,6 +21,7 @@ import type {
   FileTypeVerdict,
 } from '../../src/next/file-type/types'
 import type {
+  DfcAttachmentSendSnapshot,
   DfcSendAssetRef,
   DfcSendStrategy,
   DfcTargetKind,
@@ -791,6 +792,7 @@ export type CommitDraftToUserMessageInput = Readonly<{
   createdAt?: number
   meta?: JsonObject | null
   sentAssetIds?: string[]
+  dfcAttachmentSendSnapshots?: readonly DfcAttachmentSendSnapshot[]
 }>
 
 export type CommitDraftToUserMessageResult = Readonly<{
@@ -804,6 +806,7 @@ export type AttachDraftToMessageInput = Readonly<{
   messageId: string
   updatedAt?: number
   sentAssetIds?: string[]
+  dfcAttachmentSendSnapshots?: readonly DfcAttachmentSendSnapshot[]
 }>
 
 export type AttachDraftToMessageResult = Readonly<{
@@ -855,6 +858,11 @@ export type AttachmentSnapshotItem = Readonly<{
   excludedReason: string | null
   sourceKind: SourceKind | null
   storageBackend: FileStorageBackend | null
+  dfcManaged: boolean
+  usedOptionId: string | null
+  usedAssetRefs: DfcSendAssetRef[]
+  targetKind: DfcTargetKind | null
+  sendStrategy: DfcSendStrategy | null
 }>
 
 export type AttachmentCandidateSnapshot = Readonly<{
@@ -1125,6 +1133,7 @@ export type BeginTurnInput = {
   userMeta?: JsonObject | null
   attachConversationDraft?: boolean
   sentAssetIds?: string[]
+  dfcAttachmentSendSnapshots?: DfcAttachmentSendSnapshot[]
 }
 
 export type BeginTurnResult = {

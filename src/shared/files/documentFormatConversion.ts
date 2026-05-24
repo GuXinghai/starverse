@@ -25,6 +25,14 @@ export type DfcSendAssetRef =
     assetId: string
   }>
 
+export type DfcAttachmentSendSnapshot = Readonly<{
+  attachmentId: string
+  assetId: string
+  targetKind: DfcTargetKind
+  sendStrategy: DfcSendStrategy
+  sendAssetRefs: readonly DfcSendAssetRef[]
+}>
+
 export type DfcConversionOptionStatus =
   | 'candidate'
   | 'pending'
@@ -453,6 +461,8 @@ function validateSendAssetRefs(
   }
 
   if (option.sendAssetRefs.length === 0) return 'derived_asset_ref_missing'
+  if (option.targetKind === 'pdf_attachment' && option.sendStrategy !== 'file_attachment') return 'send_asset_ref_kind_mismatch'
+  if (option.targetKind !== 'pdf_attachment' && option.sendStrategy !== 'text_in_prompt') return 'send_asset_ref_kind_mismatch'
 
   for (const ref of option.sendAssetRefs) {
     if (ref.kind !== 'derived_asset') return 'send_asset_ref_kind_mismatch'

@@ -264,11 +264,40 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
     expect(h.service.listMessageAttachments(targetMessage.id).map((row) => row.assetId)).toEqual(['asset-send'])
   })
 
-  it('snapshots DFC draft bindings into message rows without copying legacy send mode fields', () => {
+  it('snapshots DFC draft bindings and send plan semantics into message rows without copying legacy send mode fields', () => {
     const h = createHarness()
     insertConvo(h.db, 'c1')
     createAsset(h.fileAssetRepo, 'asset-dfc')
     const selectedAssetRefs = [{ kind: 'derived_asset' as const, assetId: 'derivative-plain-text' }]
+    h.db.prepare(`
+      INSERT INTO file_derivatives(
+        id, parent_asset_id, derived_kind, mime, storage_uri, generator, status, meta_json, created_at, updated_at, deleted_at
+      )
+      VALUES (
+        'derivative-plain-text',
+        'asset-dfc',
+        'extracted_text',
+        'text/plain',
+        'assets/derivatives/asset-dfc/plain.txt',
+        'test-dfc-converter',
+        'ready',
+        @metaJson,
+        1,
+        1,
+        NULL
+      )
+    `).run({
+      metaJson: JSON.stringify({
+        targetKind: 'plain_text',
+        usage: 'preview_and_send',
+        storageClass: 'message_bound',
+        sourceHash: 'asset-dfc-sha',
+        contentHash: 'derivative-plain-text-content',
+        conversionSettingsHash: 'derivative-plain-text-settings',
+        converterName: 'test-dfc-converter',
+        converterVersion: '1',
+      }),
+    })
 
     h.service.addDraftAttachment({
       conversationId: 'c1',
@@ -287,15 +316,24 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
       preferredSendMode: null,
     })
 
-    const committed = h.service.commitDraftToUserMessage({ conversationId: 'c1' })
+    const committed = h.service.commitDraftToUserMessage({
+      conversationId: 'c1',
+      dfcAttachmentSendSnapshots: [{
+        attachmentId: draft.attachments[0]!.id,
+        assetId: 'asset-dfc',
+        targetKind: 'plain_text',
+        sendStrategy: 'text_in_prompt',
+        sendAssetRefs: selectedAssetRefs,
+      }],
+    })
     expect(committed.attachments).toEqual([
       expect.objectContaining({
         assetId: 'asset-dfc',
         dfcManaged: true,
         usedOptionId: 'option-plain-text',
         usedAssetRefs: selectedAssetRefs,
-        targetKind: null,
-        sendStrategy: null,
+        targetKind: 'plain_text',
+        sendStrategy: 'text_in_prompt',
       }),
     ])
     const storedDraftRow = h.db.prepare(`
@@ -324,9 +362,36 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
       dfcManaged: 1,
       usedOptionId: 'option-plain-text',
       usedAssetRefsJson: JSON.stringify(selectedAssetRefs),
-      targetKind: null,
-      sendStrategy: null,
+      targetKind: 'plain_text',
+      sendStrategy: 'text_in_prompt',
     })
+  })
+
+  it('rejects DFC send snapshots that do not match the selected asset refs', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'asset-dfc')
+    const selectedAssetRefs = [{ kind: 'derived_asset' as const, assetId: 'derivative-plain-text' }]
+
+    h.service.addDraftAttachment({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      dfcManaged: true,
+      selectedOptionId: 'option-plain-text',
+      selectedAssetRefs,
+    })
+    const draft = h.service.restoreDraft({ conversationId: 'c1' })
+
+    expect(() => h.service.commitDraftToUserMessage({
+      conversationId: 'c1',
+      dfcAttachmentSendSnapshots: [{
+        attachmentId: draft.attachments[0]!.id,
+        assetId: 'asset-dfc',
+        targetKind: 'plain_text',
+        sendStrategy: 'text_in_prompt',
+        sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-other' }],
+      }],
+    })).toThrow('DFC send snapshot refs do not match selectedAssetRefs')
   })
 })
 
@@ -348,6 +413,43 @@ describeIfBetterSqlite('ConversationAttachmentService candidate snapshots', () =
       expect.objectContaining({ assetId: 'asset-2', excludedReason: 'unsupported_processing_status' }),
     ])
     expect(snapshot.items).toHaveLength(2)
+  })
+
+  it('surfaces persisted DFC message semantics in candidate snapshots', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'asset-dfc')
+    const selectedAssetRefs = [{ kind: 'raw_file' as const, assetId: 'asset-dfc' }]
+    const draftAttachment = h.service.addDraftAttachment({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      dfcManaged: true,
+      selectedOptionId: 'option-original',
+      selectedAssetRefs,
+    })
+    const message = h.service.commitDraftToUserMessage({
+      conversationId: 'c1',
+      dfcAttachmentSendSnapshots: [{
+        attachmentId: draftAttachment.id,
+        assetId: 'asset-dfc',
+        targetKind: 'original_file',
+        sendStrategy: 'file_attachment',
+        sendAssetRefs: selectedAssetRefs,
+      }],
+    }).message
+
+    const snapshot = h.service.getCandidateAttachmentSnapshot({ messageIds: [message.id] })
+
+    expect(snapshot.items).toEqual([
+      expect.objectContaining({
+        assetId: 'asset-dfc',
+        dfcManaged: true,
+        usedOptionId: 'option-original',
+        usedAssetRefs: selectedAssetRefs,
+        targetKind: 'original_file',
+        sendStrategy: 'file_attachment',
+      }),
+    ])
   })
 
   it('branch snapshots naturally follow user messages present on the branch path', () => {

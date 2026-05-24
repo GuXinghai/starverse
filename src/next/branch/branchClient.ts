@@ -8,6 +8,7 @@ import {
   decodeBranchSwitchQuestionCandidateResponse,
   decodeBranchTruncateFromQuestionResponse,
 } from '@/next/ipc/contracts/dbBridgeContracts'
+import type { DfcAttachmentSendSnapshot } from '@/shared/files/documentFormatConversion'
 
 export type BranchSummary = Readonly<{
   id: string
@@ -202,7 +203,12 @@ export async function deleteBranch(branchId: string): Promise<boolean> {
 export async function beginTurn(
   branchId: string,
   userBody: string,
-  params?: Readonly<{ userMeta?: unknown; attachConversationDraft?: boolean; sentAssetIds?: string[] }>
+  params?: Readonly<{
+    userMeta?: unknown
+    attachConversationDraft?: boolean
+    sentAssetIds?: string[]
+    dfcAttachmentSendSnapshots?: readonly DfcAttachmentSendSnapshot[]
+  }>
 ): Promise<BeginTurnResult> {
   const bridge = requireDbBridge()
   const bid = String(branchId ?? '').trim()
@@ -216,6 +222,9 @@ export async function beginTurn(
     ...(params?.userMeta !== undefined ? { userMeta: params.userMeta } : {}),
     ...(params?.attachConversationDraft === true ? { attachConversationDraft: true } : {}),
     ...(params?.sentAssetIds && params.sentAssetIds.length > 0 ? { sentAssetIds: params.sentAssetIds } : {}),
+    ...(params?.dfcAttachmentSendSnapshots && params.dfcAttachmentSendSnapshots.length > 0
+      ? { dfcAttachmentSendSnapshots: params.dfcAttachmentSendSnapshots }
+      : {}),
   })
   const decoded = decodeBranchBeginTurnResponse(raw)
   return {
