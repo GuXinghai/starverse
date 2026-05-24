@@ -3,6 +3,7 @@ import {
   addConversationDraftAttachment,
   attachConversationDraftToMessage,
   cloneConversationDraftFromMessage,
+  ensureConversationDraftAttachmentDfcOptions,
   getConversationDraftAttachmentDfcOptions,
   getConversationDraftAttachmentDfcPreview,
   removeConversationDraftAttachment,
@@ -158,6 +159,55 @@ describe('conversationDraftClient', () => {
       assetId: 'asset-1',
     })
     expect(result.options[0]?.targetKind).toBe('original_file')
+  })
+
+  it('calls conversationDraft.ensureDfcOptions through dbBridge', async () => {
+    const invoke = vi.fn(async () => ({
+      attachmentId: 'draft-attachment-1',
+      conversationId: 'c1',
+      rawFileId: 'asset-1',
+      filename: 'asset-1.csv',
+      sizeBytes: 18,
+      dfcManaged: false,
+      selectedOptionId: null,
+      selectedAssetRefs: [],
+      decision: {
+        status: 'needs_user_selection',
+        reasonCode: 'selected_option_missing',
+        selectedOptionId: null,
+        targetKind: null,
+        sendStrategy: null,
+        sendAssetRefs: [],
+        needsUserAction: true,
+      },
+      options: [{
+        optionId: 'dfc:asset-1:table_markdown:derived_asset:derivative-1',
+        targetKind: 'table_markdown',
+        sendStrategy: 'text_in_prompt',
+        status: 'ready',
+        isAvailable: true,
+        compatibilityStatus: 'compatible',
+        sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-1' }],
+        warnings: [],
+        diagnostics: [],
+      }],
+    }))
+    ;(globalThis as any).dbBridge = { invoke }
+
+    const result = await ensureConversationDraftAttachmentDfcOptions({
+      conversationId: 'c1',
+      assetId: 'asset-1',
+    })
+
+    expect(invoke).toHaveBeenCalledWith('conversationDraft.ensureDfcOptions', {
+      conversationId: 'c1',
+      assetId: 'asset-1',
+    })
+    expect(result.options[0]).toMatchObject({
+      optionId: 'dfc:asset-1:table_markdown:derived_asset:derivative-1',
+      targetKind: 'table_markdown',
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-1' }],
+    })
   })
 
   it('calls conversationDraft.getDfcPreview through dbBridge', async () => {

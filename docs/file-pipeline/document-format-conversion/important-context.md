@@ -434,3 +434,14 @@ DFC-17 should choose one of two owner-level paths:
 - DFC-ready text derivative generation is still triggered by `sendPlan.buildCurrent`; moving it to upload, attachment-detail open, or an explicit ensure endpoint would choose generation lifecycle semantics.
 - No browser Playwright harness exists to extend; adding one would create new harness scaffolding.
 - Continue only after owner approval for one of the two blocked paths: explicit `conversationDraft.ensureDfcOptions` generation semantics, or new browser Playwright harness scaffolding.
+
+## DFC-18 implementation recovery notes
+
+- Owner approval for the explicit backend-owned DFC option generation path was granted in-thread after the DFC-17 blocked audit closure.
+- `conversationDraft.ensureDfcOptions` is now registered in the DB method registry, validated in the worker, exposed through the renderer client, and decoded through the same sanitized DFC draft options DTO schema as `conversationDraft.getDfcOptions`.
+- The ensure request accepts only `conversationId` and `assetId`. The renderer cannot supply target kind, option id, `raw_file`, `derived_asset`, or `SendAssetRef` semantics.
+- The worker ensure handler verifies the draft attachment through the existing backend-owned option DTO seam, then generates DFC-ready text derivatives only for stored local Phase 1 text-like assets: plain text, Markdown, code, CSV, and TSV.
+- Explicit ensure generation reuses the existing DFC `file_derivatives` facade and source metadata backfill. It does not add a DB migration, durable `ConversionOption` rows, new dependencies, external engines, browser Playwright harness, UI redesign, broad Send Plan rewrite, or forbidden runtime families.
+- PDF, Office, XLS/XLSX, HTML, PS/EPS, non-local URL-backed assets, and unsupported assets do not get new Phase 1 derivatives from this endpoint.
+- Generated derived options use canonical backend option ids and exact backend-owned `derived_asset` refs; `original_file` remains a `raw_file` option and does not generate a `DerivedAsset`.
+- Targeted worker, IPC contract, client, DFC service, Send Plan, shared contract, and registry tests passed. Full repo typecheck still fails only at the pre-existing Vue named-export issue in `src/ui-app/app/appChatApp.logic.ts`.

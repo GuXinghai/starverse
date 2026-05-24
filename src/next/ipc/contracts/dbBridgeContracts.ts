@@ -1389,6 +1389,10 @@ export function decodeDfcDraftAttachmentOptionsResponse(raw: unknown): DecodedDf
   return decodeWithSchema('conversationDraft.getDfcOptions', dfcDraftAttachmentOptionsSchema, raw)
 }
 
+export function decodeEnsureDfcDraftAttachmentOptionsResponse(raw: unknown): DecodedDfcDraftAttachmentOptions {
+  return decodeWithSchema('conversationDraft.ensureDfcOptions', dfcDraftAttachmentOptionsSchema, raw)
+}
+
 export function decodeDfcDraftAttachmentPreviewResponse(raw: unknown): DecodedDfcDraftAttachmentPreview {
   return decodeWithSchema('conversationDraft.getDfcPreview', dfcDraftAttachmentPreviewSchema, raw)
 }

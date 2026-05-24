@@ -40,6 +40,7 @@ import type {
   GetAssetAttachmentOwnershipInput,
   GetAttachmentCandidateSnapshotInput,
   GetDfcDraftAttachmentOptionsInput,
+  EnsureDfcDraftAttachmentOptionsInput,
   GetDfcDraftAttachmentPreviewInput,
   BuildCurrentSendPlanInput,
   PrepareOpenRouterReplayFromMessageInput,
@@ -463,6 +464,11 @@ export const UpdateDraftAttachmentSettingsSchema: ZodType<UpdateDraftAttachmentS
 })
 
 export const GetDfcDraftAttachmentOptionsSchema: ZodType<GetDfcDraftAttachmentOptionsInput> = z.object({
+  conversationId: z.string().min(1),
+  assetId: z.string().min(1),
+})
+
+export const EnsureDfcDraftAttachmentOptionsSchema: ZodType<EnsureDfcDraftAttachmentOptionsInput> = z.object({
   conversationId: z.string().min(1),
   assetId: z.string().min(1),
 })

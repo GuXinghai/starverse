@@ -795,6 +795,13 @@ export type GetDfcDraftAttachmentOptionsInput = Readonly<{
 
 export type GetDfcDraftAttachmentOptionsResult = DfcDraftAttachmentOptionsDto
 
+export type EnsureDfcDraftAttachmentOptionsInput = Readonly<{
+  conversationId: string
+  assetId: string
+}>
+
+export type EnsureDfcDraftAttachmentOptionsResult = DfcDraftAttachmentOptionsDto
+
 export type GetDfcDraftAttachmentPreviewInput = Readonly<{
   conversationId: string
   assetId: string

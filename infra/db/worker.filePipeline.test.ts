@@ -565,6 +565,291 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     expect(JSON.stringify((options as any).result)).not.toContain('asset-csv-dfc-source-hash')
   })
 
+  it('generates backend-owned DFC draft options through explicit ensure endpoint', async () => {
+    const { db, handlers, fileTypeDetectionCoordinator } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-csv-explicit-dfc'
+    const storageUri = 'assets/original/cs/asset-csv-explicit-dfc.csv'
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), 'name,age\nalice,30\n')
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-explicit-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-csv-explicit-source-hash',
+        filename: 'data.csv',
+        extension: 'csv',
+        mime: 'text/csv',
+        sizeBytes: 18,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-explicit-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const before = await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-explicit-options-before',
+      method: 'conversationDraft.getDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    expect(before).toMatchObject({
+      ok: true,
+      result: {
+        options: [expect.objectContaining({ targetKind: 'original_file' })],
+      },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-explicit-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const derivativeRow = db.prepare(`
+      SELECT id, storage_uri AS storageUri, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+      LIMIT 1
+    `).get({ assetId }) as { id: string; storageUri: string; metaJson: string | null } | undefined
+    expect(derivativeRow).toBeTruthy()
+    const tableOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    expect(tableOption).toMatchObject({
+      optionId: `dfc:${assetId}:table_markdown:derived_asset:${derivativeRow?.id}`,
+      sendStrategy: 'text_in_prompt',
+      status: 'ready',
+      isAvailable: true,
+      compatibilityStatus: 'compatible',
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: derivativeRow?.id }],
+    })
+    expect(JSON.stringify((ensured as any).result)).not.toContain(derivativeRow?.storageUri ?? 'assets/')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-csv-explicit-source-hash')
+    expect(fileTypeDetectionCoordinator.ensureVerdictsForAssets).not.toHaveBeenCalled()
+
+    const selected = await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-explicit-select',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: tableOption.optionId,
+        selectedAssetRefs: tableOption.sendAssetRefs,
+      },
+    })
+    expect(selected).toMatchObject({
+      ok: true,
+      result: {
+        dfcManaged: true,
+        selectedOptionId: tableOption.optionId,
+        selectedAssetRefs: tableOption.sendAssetRefs,
+        preferredSendMode: null,
+      },
+    })
+
+    const secondEnsure = await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-explicit-ensure-again',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const derivativeCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+    `).get({ assetId }) as { count: number }
+    const jobCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM derivative_jobs
+      WHERE asset_id=@assetId AND derivative_kind='extracted_text'
+    `).get({ assetId }) as { count: number }
+    expect(derivativeCount.count).toBe(1)
+    expect(jobCount.count).toBe(1)
+    expect((secondEnsure as any).result).toMatchObject({
+      selectedOptionId: tableOption.optionId,
+      selectedAssetRefs: tableOption.sendAssetRefs,
+      decision: expect.objectContaining({
+        status: 'ready',
+        targetKind: 'table_markdown',
+        sendAssetRefs: tableOption.sendAssetRefs,
+      }),
+    })
+  })
+
+  it('generates approved Phase 1 local text DFC target families through explicit ensure endpoint', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const cases = [
+      { id: 'asset-dfc-txt', filename: 'note.txt', extension: 'txt', mime: 'text/plain', text: 'plain text\n', targetKind: 'plain_text' },
+      { id: 'asset-dfc-md', filename: 'note.md', extension: 'md', mime: 'text/markdown', text: '# Title\n', targetKind: 'markdown' },
+      { id: 'asset-dfc-js', filename: 'app.js', extension: 'js', mime: 'text/javascript', text: 'const answer = 42\n', targetKind: 'code' },
+      { id: 'asset-dfc-tsv', filename: 'data.tsv', extension: 'tsv', mime: 'text/tab-separated-values', text: 'name\tage\nalice\t30\n', targetKind: 'table_markdown' },
+    ] as const
+
+    for (const item of cases) {
+      const storageUri = `assets/original/${item.id.slice(-2)}/${item.filename}`
+      await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+      await writeFile(path.join(storageRootDir, ...storageUri.split('/')), item.text)
+      await dispatchWorkerMessage(handlers, {
+        id: `req-${item.id}-asset`,
+        method: 'fileAsset.create',
+        params: {
+          id: item.id,
+          sha256: `${item.id}-source-hash`,
+          filename: item.filename,
+          extension: item.extension,
+          mime: item.mime,
+          sizeBytes: Buffer.byteLength(item.text, 'utf8'),
+          assetKind: 'text',
+          sourceKind: 'local_upload',
+          storageUri,
+          ingestStatus: 'stored',
+        },
+      })
+      await dispatchWorkerMessage(handlers, {
+        id: `req-${item.id}-draft-add`,
+        method: 'conversationDraft.addAttachment',
+        params: { conversationId: 'c1', assetId: item.id },
+      })
+
+      const ensured = await dispatchWorkerMessage(handlers, {
+        id: `req-${item.id}-ensure`,
+        method: 'conversationDraft.ensureDfcOptions',
+        params: { conversationId: 'c1', assetId: item.id },
+      })
+      const derivative = db.prepare(`
+        SELECT id, meta_json AS metaJson
+        FROM file_derivatives
+        WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+        LIMIT 1
+      `).get({ assetId: item.id }) as { id: string; metaJson: string | null } | undefined
+      const option = (ensured as any).result.options.find((candidate: any) => candidate.targetKind === item.targetKind)
+      const derivativeMeta = derivative?.metaJson ? JSON.parse(derivative.metaJson) : null
+
+      expect(derivativeMeta).toMatchObject({
+        targetKind: item.targetKind,
+        usage: 'preview_and_send',
+        storageClass: 'draft_bound',
+        converterName: 'starverse-text-derivative',
+      })
+      expect(option).toMatchObject({
+        optionId: `dfc:${item.id}:${item.targetKind}:derived_asset:${derivative?.id}`,
+        status: 'ready',
+        isAvailable: true,
+        sendAssetRefs: [{ kind: 'derived_asset', assetId: derivative?.id }],
+      })
+    }
+  })
+
+  it('does not generate forbidden DFC runtime options through ensure endpoint', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const assetId = 'asset-pdf-explicit-dfc'
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-pdf-explicit-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-pdf-explicit-source-hash',
+        filename: 'manual.pdf',
+        extension: 'pdf',
+        mime: 'application/pdf',
+        sizeBytes: 32,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri: 'assets/original/pd/asset-pdf-explicit-dfc.pdf',
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-pdf-explicit-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-pdf-explicit-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    expect(ensured).toMatchObject({
+      ok: true,
+      result: {
+        options: [expect.objectContaining({
+          targetKind: 'original_file',
+          sendAssetRefs: [{ kind: 'raw_file', assetId }],
+        })],
+      },
+    })
+    const derivativeCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId
+    `).get({ assetId }) as { count: number }
+    expect(derivativeCount.count).toBe(0)
+  })
+
+  it('does not generate Phase 1 DFC derivatives for non-local source assets through ensure endpoint', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const assetId = 'asset-remote-text-dfc'
+    const created = await dispatchWorkerMessage(handlers, {
+      id: 'req-remote-text-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-remote-text-source-hash',
+        filename: 'remote.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 16,
+        assetKind: 'text',
+        sourceKind: 'url_import',
+        storageBackend: 'remote_url',
+        storageUri: 'https://example.invalid/remote.txt',
+        ingestStatus: 'stored',
+      },
+    })
+    expect(created.ok).toBe(true)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-remote-text-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-remote-text-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    expect(ensured).toMatchObject({
+      ok: true,
+      result: {
+        options: [expect.objectContaining({
+          targetKind: 'original_file',
+          sendAssetRefs: [{ kind: 'raw_file', assetId }],
+        })],
+      },
+    })
+    const derivativeCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId
+    `).get({ assetId }) as { count: number }
+    const jobCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM derivative_jobs
+      WHERE asset_id=@assetId
+    `).get({ assetId }) as { count: number }
+    expect(derivativeCount.count).toBe(0)
+    expect(jobCount.count).toBe(0)
+  })
+
   it('keeps PDF direct send available when extracted text is unsupported', async () => {
     const { db, handlers } = createWorkerHarness()
     const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')

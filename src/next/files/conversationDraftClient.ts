@@ -4,6 +4,7 @@ import {
   decodeDfcDraftAttachmentOptionsResponse,
   decodeDfcDraftAttachmentPreviewResponse,
   decodeDraftAttachmentResponse,
+  decodeEnsureDfcDraftAttachmentOptionsResponse,
   decodeRemoveDraftAttachmentResponse,
   decodeUpdateDraftAttachmentSettingsResponse,
   type DecodedAssetAttachmentOwnership,
@@ -82,6 +83,14 @@ export async function getConversationDraftAttachmentDfcOptions(input: Readonly<{
 }>): Promise<DecodedDfcDraftAttachmentOptions> {
   const raw = await requireDbBridge().invoke('conversationDraft.getDfcOptions', input)
   return decodeDfcDraftAttachmentOptionsResponse(raw)
+}
+
+export async function ensureConversationDraftAttachmentDfcOptions(input: Readonly<{
+  conversationId: string
+  assetId: string
+}>): Promise<DecodedDfcDraftAttachmentOptions> {
+  const raw = await requireDbBridge().invoke('conversationDraft.ensureDfcOptions', input)
+  return decodeEnsureDfcDraftAttachmentOptionsResponse(raw)
 }
 
 export async function getConversationDraftAttachmentDfcPreview(input: Readonly<{

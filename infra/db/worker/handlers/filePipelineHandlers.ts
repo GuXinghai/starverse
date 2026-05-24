@@ -26,6 +26,7 @@ import {
   CloneMessageAttachmentsToDraftSchema,
   CommitDraftToUserMessageSchema,
   DetachMessageAttachmentSchema,
+  EnsureDfcDraftAttachmentOptionsSchema,
   GetAssetAttachmentOwnershipSchema,
   GetAttachmentCandidateSnapshotSchema,
   GetDfcDraftAttachmentOptionsSchema,
@@ -234,6 +235,11 @@ function registerConversationAttachmentHandlers(register: RegisterHandler, runti
   register('conversationDraft.getDfcOptions', (raw) => {
     const input = GetDfcDraftAttachmentOptionsSchema.parse(raw)
     return runtime.conversationAttachmentService.getDfcDraftAttachmentOptions(input)
+  })
+
+  register('conversationDraft.ensureDfcOptions', async (raw) => {
+    const input = EnsureDfcDraftAttachmentOptionsSchema.parse(raw)
+    return await ensureDfcDraftAttachmentOptions(runtime, input)
   })
 
   register('conversationDraft.getDfcPreview', async (raw) => {
@@ -589,6 +595,30 @@ async function ensureTextDerivativesForCollected(
     if (converted.changed) updated = true
   }
   return updated
+}
+
+async function ensureDfcDraftAttachmentOptions(
+  runtime: DbWorkerRuntime,
+  input: Readonly<{ conversationId: string; assetId: string }>
+) {
+  runtime.conversationAttachmentService.getDfcDraftAttachmentOptions(input)
+  const asset = runtime.fileAssetRepo.getById(input.assetId)
+  const targetKind = asset ? inferDfcPhase1EnsureTargetKind(asset) : null
+  if (asset && targetKind && isDfcPhase1EnsureSourceAsset(asset)) {
+    await ensureTextDerivativeAsset(runtime, asset.id, targetKind)
+  }
+  return runtime.conversationAttachmentService.getDfcDraftAttachmentOptions(input)
+}
+
+function inferDfcPhase1EnsureTargetKind(asset: FileAssetRecord): 'plain_text' | 'markdown' | 'code' | 'table_markdown' | null {
+  const candidates = ['table_markdown', 'markdown', 'code', 'plain_text'] as const
+  return candidates.find((targetKind) => isDfcPhase1TextConversionAsset(asset, targetKind)) ?? null
+}
+
+function isDfcPhase1EnsureSourceAsset(asset: FileAssetRecord): boolean {
+  return asset.deletedAt == null
+    && asset.ingestStatus === 'stored'
+    && asset.storageBackend === 'local_fs'
 }
 
 async function ensureTextDerivativeAsset(
