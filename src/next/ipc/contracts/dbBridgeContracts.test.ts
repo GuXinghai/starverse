@@ -21,6 +21,7 @@ import {
   decodeDfcAttachmentDtoListResponse,
   decodeDfcAttachmentDtoResponse,
   decodeDfcDraftAttachmentOptionsResponse,
+  decodeDfcDraftAttachmentPreviewResponse,
   decodeDfcFileAssetListResponse,
   decodeDfcFileAssetResponse,
   decodeDfcFileDerivativeListResponse,
@@ -430,6 +431,43 @@ const cases: ContractCase[] = [
     },
     missing: { attachmentId: 'draft-attachment-1', conversationId: 'c1' },
     wrongType: { attachmentId: 'draft-attachment-1', conversationId: 'c1', options: 'bad' },
+  },
+  {
+    name: 'conversationDraft.getDfcPreview',
+    decode: decodeDfcDraftAttachmentPreviewResponse,
+    valid: {
+      attachmentId: 'draft-attachment-1',
+      conversationId: 'c1',
+      rawFileId: 'asset-1',
+      filename: 'notes.txt',
+      sizeBytes: 12,
+      dfcManaged: true,
+      selectedOptionId: 'dfc:asset-1:markdown:derived_asset:derivative-1',
+      selectedAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-1' }],
+      targetKind: 'markdown',
+      sendStrategy: 'text_in_prompt',
+      decision: {
+        status: 'ready',
+        reasonCode: null,
+        selectedOptionId: 'dfc:asset-1:markdown:derived_asset:derivative-1',
+        targetKind: 'markdown',
+        sendStrategy: 'text_in_prompt',
+        sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-1' }],
+        needsUserAction: false,
+      },
+      preview: {
+        kind: 'text',
+        status: 'ready',
+        text: 'preview',
+        characterCount: 7,
+        byteLength: 7,
+        truncated: false,
+        maxCharacters: 4096,
+        diagnostics: [],
+      },
+    },
+    missing: { attachmentId: 'draft-attachment-1', conversationId: 'c1' },
+    wrongType: { attachmentId: 'draft-attachment-1', conversationId: 'c1', preview: 'bad' },
   },
   {
     name: 'conversationDraft.removeAttachment',
@@ -1311,6 +1349,71 @@ describe('DFC renderer DTO sanitization', () => {
     expect(decoded.options[0]).not.toHaveProperty('sourceHash')
     expect(decoded.options[0]).not.toHaveProperty('contentToken')
     expect(decoded.options[0]).not.toHaveProperty('body')
+  })
+
+  it('decodeDfcDraftAttachmentPreviewResponse exposes selected preview text without storage refs or hashes', () => {
+    const decoded = decodeDfcDraftAttachmentPreviewResponse({
+      attachmentId: 'draft-attachment-1',
+      conversationId: 'c1',
+      rawFileId: 'raw-1',
+      filename: 'notes.md',
+      sizeBytes: 42,
+      dfcManaged: true,
+      selectedOptionId: 'dfc:raw-1:markdown:derived_asset:derived-1',
+      selectedAssetRefs: [{ kind: 'derived_asset', assetId: 'derived-1' }],
+      targetKind: 'markdown',
+      sendStrategy: 'text_in_prompt',
+      decision: {
+        status: 'ready',
+        reasonCode: null,
+        selectedOptionId: 'dfc:raw-1:markdown:derived_asset:derived-1',
+        targetKind: 'markdown',
+        sendStrategy: 'text_in_prompt',
+        sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derived-1' }],
+        needsUserAction: false,
+        storageUri: 'assets/derived/raw-1/derived-1.txt',
+      },
+      preview: {
+        kind: 'text',
+        status: 'ready',
+        text: 'safe preview',
+        characterCount: 12,
+        byteLength: 12,
+        truncated: false,
+        maxCharacters: 4096,
+        diagnostics: [],
+        storageUri: 'assets/derived/raw-1/derived-1.txt',
+        storageRef: 'assets/derived/raw-1/derived-1.txt',
+        sourceHash: 'a'.repeat(64),
+        contentHash: 'b'.repeat(64),
+        conversionSettingsHash: 'c'.repeat(64),
+        contentToken: 'secret-token',
+        path: 'C:\\Users\\owner\\secret\\notes.md',
+      },
+      storageUri: 'assets/derived/raw-1/derived-1.txt',
+      sourceMetaJson: { contentToken: 'secret-token' },
+    })
+
+    expect(decoded.preview).toEqual({
+      kind: 'text',
+      status: 'ready',
+      text: 'safe preview',
+      characterCount: 12,
+      byteLength: 12,
+      truncated: false,
+      maxCharacters: 4096,
+      diagnostics: [],
+    })
+    expect(decoded).not.toHaveProperty('storageUri')
+    expect(decoded).not.toHaveProperty('sourceMetaJson')
+    expect(decoded.decision).not.toHaveProperty('storageUri')
+    expect(decoded.preview).not.toHaveProperty('storageUri')
+    expect(decoded.preview).not.toHaveProperty('storageRef')
+    expect(decoded.preview).not.toHaveProperty('sourceHash')
+    expect(decoded.preview).not.toHaveProperty('contentHash')
+    expect(decoded.preview).not.toHaveProperty('conversionSettingsHash')
+    expect(decoded.preview).not.toHaveProperty('contentToken')
+    expect(decoded.preview).not.toHaveProperty('path')
   })
 
   it('decodeAttachmentCandidateSnapshotResponse preserves sanitized DFC history binding fields', () => {

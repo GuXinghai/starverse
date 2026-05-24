@@ -23,6 +23,7 @@ import type {
 import type {
   DfcAttachmentSendSnapshot,
   DfcDraftAttachmentOptionsDto,
+  DfcDraftAttachmentPreviewDto,
   DfcSendAssetRef,
   DfcSendStrategy,
   DfcTargetKind,
@@ -793,6 +794,14 @@ export type GetDfcDraftAttachmentOptionsInput = Readonly<{
 }>
 
 export type GetDfcDraftAttachmentOptionsResult = DfcDraftAttachmentOptionsDto
+
+export type GetDfcDraftAttachmentPreviewInput = Readonly<{
+  conversationId: string
+  assetId: string
+  maxCharacters?: number
+}>
+
+export type GetDfcDraftAttachmentPreviewResult = DfcDraftAttachmentPreviewDto
 
 export type CommitDraftToUserMessageInput = Readonly<{
   conversationId: string

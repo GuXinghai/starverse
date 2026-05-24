@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import BetterSqlite3 from 'better-sqlite3'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { ConversationAttachmentService } from './conversationAttachmentService'
 import { FileAssetRepo } from '../db/repo/fileAssetRepo'
@@ -24,7 +25,7 @@ function insertConvo(db: BetterSqlite3.Database, id: string) {
   `).run({ id, title: id })
 }
 
-function createHarness() {
+function createHarness(input: Readonly<{ storageRootDir?: string }> = {}) {
   const db = new BetterSqlite3(':memory:')
   loadSchema(db)
   const fileAssetRepo = new FileAssetRepo(db)
@@ -39,6 +40,7 @@ function createHarness() {
     messageAttachmentRepo,
     branchRepo,
     draftRepo,
+    storageRootDir: input.storageRootDir,
     now: () => 1000,
   })
   return { db, service, fileAssetRepo, messageRepo, messageAttachmentRepo, branchRepo }
@@ -105,6 +107,12 @@ function insertDfcDerivative(
       converterVersion: '1',
     }),
   })
+}
+
+function writeManagedFile(storageRootDir: string, storageUri: string, text: string) {
+  const filePath = path.resolve(storageRootDir, ...storageUri.split('/'))
+  mkdirSync(path.dirname(filePath), { recursive: true })
+  writeFileSync(filePath, text, 'utf8')
 }
 
 describeIfBetterSqlite('ConversationAttachmentService drafts', () => {
@@ -349,15 +357,22 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
       conversationId: 'c1',
       assetId: 'asset-dfc',
       preferredSendMode: 'inline_base64',
+    })
+    const plainTextOption = h.service
+      .getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+      .options.find((option) => option.targetKind === 'plain_text')!
+    h.service.updateDraftAttachmentSettings({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
       dfcManaged: true,
-      selectedOptionId: 'option-plain-text',
+      selectedOptionId: plainTextOption.optionId,
       selectedAssetRefs,
     })
 
     const draft = h.service.restoreDraft({ conversationId: 'c1' })
     expect(draft.attachments[0]).toMatchObject({
       dfcManaged: true,
-      selectedOptionId: 'option-plain-text',
+      selectedOptionId: plainTextOption.optionId,
       selectedAssetRefs,
       preferredSendMode: null,
     })
@@ -376,7 +391,7 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
       expect.objectContaining({
         assetId: 'asset-dfc',
         dfcManaged: true,
-        usedOptionId: 'option-plain-text',
+        usedOptionId: plainTextOption.optionId,
         usedAssetRefs: selectedAssetRefs,
         targetKind: 'plain_text',
         sendStrategy: 'text_in_prompt',
@@ -406,7 +421,7 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
     expect(storedDraftRow).toEqual({ count: 0 })
     expect(storedMessageRow).toEqual({
       dfcManaged: 1,
-      usedOptionId: 'option-plain-text',
+      usedOptionId: plainTextOption.optionId,
       usedAssetRefsJson: JSON.stringify(selectedAssetRefs),
       targetKind: 'plain_text',
       sendStrategy: 'text_in_prompt',
@@ -417,14 +432,16 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
     const h = createHarness()
     insertConvo(h.db, 'c1')
     createAsset(h.fileAssetRepo, 'asset-dfc')
-    const selectedAssetRefs = [{ kind: 'derived_asset' as const, assetId: 'derivative-plain-text' }]
-
-    h.service.addDraftAttachment({
+    h.service.addDraftAttachment({ conversationId: 'c1', assetId: 'asset-dfc' })
+    const originalOption = h.service
+      .getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+      .options.find((option) => option.targetKind === 'original_file')!
+    h.service.updateDraftAttachmentSettings({
       conversationId: 'c1',
       assetId: 'asset-dfc',
       dfcManaged: true,
-      selectedOptionId: 'option-plain-text',
-      selectedAssetRefs,
+      selectedOptionId: originalOption.optionId,
+      selectedAssetRefs: originalOption.sendAssetRefs,
     })
     const draft = h.service.restoreDraft({ conversationId: 'c1' })
 
@@ -492,6 +509,163 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
       sendStrategy: 'text_in_prompt',
       sendAssetRefs: markdownOption!.sendAssetRefs,
     })
+  })
+
+  it('returns selected-option text preview from the same backend derived ref without storage or hash leakage', async () => {
+    const storageRootDir = mkdtempSync(path.join(os.tmpdir(), 'starverse-dfc-preview-'))
+    try {
+      const h = createHarness({ storageRootDir })
+      insertConvo(h.db, 'c1')
+      createAsset(h.fileAssetRepo, 'asset-dfc')
+      const storageUri = 'assets/derived/as/derivative-markdown.txt'
+      writeManagedFile(storageRootDir, storageUri, 'Preview text rendered.')
+      insertDfcDerivative(h.db, {
+        id: 'derivative-markdown',
+        parentAssetId: 'asset-dfc',
+        targetKind: 'markdown',
+        storageUri,
+      })
+      h.service.addDraftAttachment({ conversationId: 'c1', assetId: 'asset-dfc' })
+      const dto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+      const markdownOption = dto.options.find((option) => option.targetKind === 'markdown')!
+      h.service.updateDraftAttachmentSettings({
+        conversationId: 'c1',
+        assetId: 'asset-dfc',
+        dfcManaged: true,
+        selectedOptionId: markdownOption.optionId,
+        selectedAssetRefs: markdownOption.sendAssetRefs,
+      })
+
+      const preview = await h.service.getDfcDraftAttachmentPreview({
+        conversationId: 'c1',
+        assetId: 'asset-dfc',
+        maxCharacters: 12,
+      })
+
+      expect(preview).toMatchObject({
+        selectedOptionId: markdownOption.optionId,
+        selectedAssetRefs: markdownOption.sendAssetRefs,
+        targetKind: 'markdown',
+        sendStrategy: 'text_in_prompt',
+        decision: expect.objectContaining({
+          status: 'ready',
+          sendAssetRefs: markdownOption.sendAssetRefs,
+        }),
+        preview: {
+          kind: 'text',
+          status: 'ready',
+          text: 'Preview text',
+          characterCount: 22,
+          truncated: true,
+          maxCharacters: 12,
+          diagnostics: [],
+        },
+      })
+      expect(preview.preview.byteLength).toBe(Buffer.byteLength('Preview text rendered.', 'utf8'))
+      expect(JSON.stringify(preview)).not.toContain(storageUri)
+      expect(JSON.stringify(preview)).not.toContain(storageRootDir)
+      expect(JSON.stringify(preview)).not.toContain('sourceHash')
+      expect(JSON.stringify(preview)).not.toContain('contentHash')
+      expect(JSON.stringify(preview)).not.toContain('conversionSettingsHash')
+    } finally {
+      rmSync(storageRootDir, { recursive: true, force: true })
+    }
+  })
+
+  it('blocks preview and message binding when persisted selected refs disagree with selectedOptionId', async () => {
+    const storageRootDir = mkdtempSync(path.join(os.tmpdir(), 'starverse-dfc-preview-mismatch-'))
+    try {
+      const h = createHarness({ storageRootDir })
+      insertConvo(h.db, 'c1')
+      createAsset(h.fileAssetRepo, 'asset-dfc')
+      const storageUri = 'assets/derived/as/derivative-markdown.txt'
+      writeManagedFile(storageRootDir, storageUri, 'This selected derivative must not be previewed.')
+      insertDfcDerivative(h.db, {
+        id: 'derivative-markdown',
+        parentAssetId: 'asset-dfc',
+        targetKind: 'markdown',
+        storageUri,
+      })
+      h.service.addDraftAttachment({ conversationId: 'c1', assetId: 'asset-dfc' })
+      const dto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+      const markdownOption = dto.options.find((option) => option.targetKind === 'markdown')!
+      h.service.updateDraftAttachmentSettings({
+        conversationId: 'c1',
+        assetId: 'asset-dfc',
+        dfcManaged: true,
+        selectedOptionId: markdownOption.optionId,
+        selectedAssetRefs: markdownOption.sendAssetRefs,
+      })
+      h.db.prepare(`
+        UPDATE draft_attachments
+        SET selected_asset_refs_json = @selectedAssetRefsJson
+        WHERE conversation_id = 'c1' AND asset_id = 'asset-dfc'
+      `).run({
+        selectedAssetRefsJson: JSON.stringify([{ kind: 'raw_file', assetId: 'asset-dfc' }]),
+      })
+
+      const preview = await h.service.getDfcDraftAttachmentPreview({ conversationId: 'c1', assetId: 'asset-dfc' })
+
+      expect(preview).toMatchObject({
+        selectedOptionId: markdownOption.optionId,
+        preview: {
+          kind: 'none',
+          status: 'blocked',
+          text: null,
+          diagnostics: [expect.objectContaining({ code: 'dfc_selection_refs_mismatch' })],
+        },
+      })
+      expect(JSON.stringify(preview)).not.toContain('This selected derivative must not be previewed.')
+      expect(() => h.service.commitDraftToUserMessage({ conversationId: 'c1' }))
+        .toThrow('DFC selected option refs do not match selectedAssetRefs')
+    } finally {
+      rmSync(storageRootDir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not fall back to raw file preview when selectedOptionId is missing or original_file is selected', async () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'asset-dfc')
+    h.service.addDraftAttachment({ conversationId: 'c1', assetId: 'asset-dfc' })
+
+    const missingSelection = await h.service.getDfcDraftAttachmentPreview({ conversationId: 'c1', assetId: 'asset-dfc' })
+    expect(missingSelection).toMatchObject({
+      selectedOptionId: null,
+      targetKind: null,
+      preview: {
+        kind: 'none',
+        status: 'needs_user_selection',
+        text: null,
+        diagnostics: [expect.objectContaining({ code: 'selected_option_missing' })],
+      },
+    })
+
+    const dto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+    const originalOption = dto.options.find((option) => option.targetKind === 'original_file')!
+    h.service.updateDraftAttachmentSettings({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      dfcManaged: true,
+      selectedOptionId: originalOption.optionId,
+      selectedAssetRefs: originalOption.sendAssetRefs,
+    })
+
+    const originalPreview = await h.service.getDfcDraftAttachmentPreview({ conversationId: 'c1', assetId: 'asset-dfc' })
+    expect(originalPreview).toMatchObject({
+      selectedOptionId: originalOption.optionId,
+      selectedAssetRefs: originalOption.sendAssetRefs,
+      targetKind: 'original_file',
+      sendStrategy: 'file_attachment',
+      preview: {
+        kind: 'raw_file',
+        status: 'ready',
+        text: null,
+        diagnostics: [expect.objectContaining({ code: 'dfc_preview_raw_file_metadata_only' })],
+      },
+    })
+    const derivativeCount = h.db.prepare('SELECT COUNT(*) AS count FROM file_derivatives').get() as { count: number }
+    expect(derivativeCount.count).toBe(0)
   })
 
   it('marks malformed or preview-only DFC derived options unavailable without leaking lineage metadata', () => {
@@ -651,13 +825,19 @@ describeIfBetterSqlite('ConversationAttachmentService candidate snapshots', () =
     const h = createHarness()
     insertConvo(h.db, 'c1')
     createAsset(h.fileAssetRepo, 'asset-dfc')
-    const selectedAssetRefs = [{ kind: 'raw_file' as const, assetId: 'asset-dfc' }]
     const draftAttachment = h.service.addDraftAttachment({
       conversationId: 'c1',
       assetId: 'asset-dfc',
+    })
+    const originalOption = h.service
+      .getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+      .options.find((option) => option.targetKind === 'original_file')!
+    h.service.updateDraftAttachmentSettings({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
       dfcManaged: true,
-      selectedOptionId: 'option-original',
-      selectedAssetRefs,
+      selectedOptionId: originalOption.optionId,
+      selectedAssetRefs: originalOption.sendAssetRefs,
     })
     const message = h.service.commitDraftToUserMessage({
       conversationId: 'c1',
@@ -666,7 +846,7 @@ describeIfBetterSqlite('ConversationAttachmentService candidate snapshots', () =
         assetId: 'asset-dfc',
         targetKind: 'original_file',
         sendStrategy: 'file_attachment',
-        sendAssetRefs: selectedAssetRefs,
+        sendAssetRefs: originalOption.sendAssetRefs,
       }],
     }).message
 
@@ -676,8 +856,8 @@ describeIfBetterSqlite('ConversationAttachmentService candidate snapshots', () =
       expect.objectContaining({
         assetId: 'asset-dfc',
         dfcManaged: true,
-        usedOptionId: 'option-original',
-        usedAssetRefs: selectedAssetRefs,
+        usedOptionId: originalOption.optionId,
+        usedAssetRefs: originalOption.sendAssetRefs,
         targetKind: 'original_file',
         sendStrategy: 'file_attachment',
       }),

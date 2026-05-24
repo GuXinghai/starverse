@@ -2,12 +2,14 @@ import {
   decodeAttachDraftToMessageResponse,
   decodeConversationDraftResponse,
   decodeDfcDraftAttachmentOptionsResponse,
+  decodeDfcDraftAttachmentPreviewResponse,
   decodeDraftAttachmentResponse,
   decodeRemoveDraftAttachmentResponse,
   decodeUpdateDraftAttachmentSettingsResponse,
   type DecodedAssetAttachmentOwnership,
   type DecodedAttachDraftToMessageResult,
   type DecodedDfcDraftAttachmentOptions,
+  type DecodedDfcDraftAttachmentPreview,
   type DecodedDraftAttachment,
   type DecodedConversationDraft,
 } from '@/next/ipc/contracts/dbBridgeContracts'
@@ -80,6 +82,15 @@ export async function getConversationDraftAttachmentDfcOptions(input: Readonly<{
 }>): Promise<DecodedDfcDraftAttachmentOptions> {
   const raw = await requireDbBridge().invoke('conversationDraft.getDfcOptions', input)
   return decodeDfcDraftAttachmentOptionsResponse(raw)
+}
+
+export async function getConversationDraftAttachmentDfcPreview(input: Readonly<{
+  conversationId: string
+  assetId: string
+  maxCharacters?: number
+}>): Promise<DecodedDfcDraftAttachmentPreview> {
+  const raw = await requireDbBridge().invoke('conversationDraft.getDfcPreview', input)
+  return decodeDfcDraftAttachmentPreviewResponse(raw)
 }
 
 export async function attachConversationDraftToMessage(input: Readonly<{

@@ -8,6 +8,8 @@ import {
   type DfcConversionOptionStatus,
   type DfcDecisionStatus,
   type DfcDraftAttachmentOptionsDto,
+  type DfcDraftAttachmentPreviewDto,
+  type DfcDraftAttachmentPreviewPayloadDto,
   type DfcDraftOptionCandidateDto,
   type DfcManagedAttachmentDecision,
   type DfcSanitizedAttachmentDto,
@@ -185,6 +187,7 @@ export type DecodedDraftAttachment = Readonly<{
 }>
 
 export type DecodedDfcDraftAttachmentOptions = DfcDraftAttachmentOptionsDto
+export type DecodedDfcDraftAttachmentPreview = DfcDraftAttachmentPreviewDto
 
 export type DecodedConversationDraft = Readonly<{
   conversationId: string
@@ -601,6 +604,54 @@ const dfcDraftAttachmentOptionsSchema = z.object({
   selectedAssetRefs: [...row.selectedAssetRefs],
   decision: row.decision,
   options: [...row.options],
+}))
+
+const dfcDraftAttachmentPreviewPayloadSchema = z.object({
+  kind: z.enum(['none', 'raw_file', 'text']),
+  status: dfcDecisionStatusSchema,
+  text: z.string().nullable().optional(),
+  characterCount: z.number().int().nonnegative().nullable().optional(),
+  byteLength: z.number().int().nonnegative().nullable().optional(),
+  truncated: z.boolean(),
+  maxCharacters: z.number().int().positive(),
+  diagnostics: z.array(dfcDiagnosticSchema).optional(),
+}).transform((row): DfcDraftAttachmentPreviewPayloadDto => ({
+  kind: row.kind,
+  status: row.status,
+  text: row.text ?? null,
+  characterCount: row.characterCount ?? null,
+  byteLength: row.byteLength ?? null,
+  truncated: row.truncated,
+  maxCharacters: row.maxCharacters,
+  diagnostics: [...((row.diagnostics as DfcSanitizedDiagnostic[] | undefined) ?? [])],
+}))
+
+const dfcDraftAttachmentPreviewSchema = z.object({
+  attachmentId: nonEmpty,
+  conversationId: nonEmpty,
+  rawFileId: nonEmpty,
+  filename: nonEmpty,
+  sizeBytes: z.number().int().nonnegative(),
+  dfcManaged: z.boolean(),
+  selectedOptionId: z.string().trim().nullable().optional(),
+  selectedAssetRefs: z.array(dfcSendAssetRefSchema),
+  targetKind: dfcTargetKindSchema.nullable().optional(),
+  sendStrategy: dfcSendStrategySchema.nullable().optional(),
+  decision: dfcManagedAttachmentDecisionSchema,
+  preview: dfcDraftAttachmentPreviewPayloadSchema,
+}).transform((row): DfcDraftAttachmentPreviewDto => ({
+  attachmentId: row.attachmentId,
+  conversationId: row.conversationId,
+  rawFileId: row.rawFileId,
+  filename: row.filename,
+  sizeBytes: row.sizeBytes,
+  dfcManaged: row.dfcManaged,
+  selectedOptionId: row.selectedOptionId ?? null,
+  selectedAssetRefs: [...row.selectedAssetRefs],
+  targetKind: (row.targetKind as DfcTargetKind | null | undefined) ?? null,
+  sendStrategy: (row.sendStrategy as DfcSendStrategy | null | undefined) ?? null,
+  decision: row.decision,
+  preview: row.preview,
 }))
 
 const derivativeJobSchema = z.object({
@@ -1325,6 +1376,10 @@ export function decodeDfcAttachmentDtoListResponse(raw: unknown): DfcSanitizedAt
 
 export function decodeDfcDraftAttachmentOptionsResponse(raw: unknown): DecodedDfcDraftAttachmentOptions {
   return decodeWithSchema('conversationDraft.getDfcOptions', dfcDraftAttachmentOptionsSchema, raw)
+}
+
+export function decodeDfcDraftAttachmentPreviewResponse(raw: unknown): DecodedDfcDraftAttachmentPreview {
+  return decodeWithSchema('conversationDraft.getDfcPreview', dfcDraftAttachmentPreviewSchema, raw)
 }
 
 export function decodeDerivativeJobResponse(raw: unknown): DecodedDerivativeJob {

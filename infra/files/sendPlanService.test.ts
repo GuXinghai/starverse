@@ -850,8 +850,15 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
     const draftAttachment = h.conversationAttachmentService.addDraftAttachment({
       conversationId: 'c1',
       assetId: 'history-pdf',
+    })
+    const originalOption = h.conversationAttachmentService
+      .getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'history-pdf' })
+      .options.find((option) => option.targetKind === 'original_file')!
+    h.conversationAttachmentService.updateDraftAttachmentSettings({
+      conversationId: 'c1',
+      assetId: 'history-pdf',
       dfcManaged: true,
-      selectedOptionId: 'option-original',
+      selectedOptionId: originalOption.optionId,
       selectedAssetRefs,
     })
     const message = h.conversationAttachmentService.commitDraftToUserMessage({

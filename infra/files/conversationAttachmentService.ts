@@ -1,9 +1,11 @@
 import type BetterSqlite3 from 'better-sqlite3'
+import { readFile } from 'node:fs/promises'
 import type { FileAssetRepo } from '../db/repo/fileAssetRepo'
 import type { MessageRepo } from '../db/repo/messageRepo'
 import type { MessageAttachmentRepo } from '../db/repo/messageAttachmentRepo'
 import type { BranchRepo } from '../db/repo/branchRepo'
 import { ConversationDraftRepo } from '../db/repo/conversationDraftRepo'
+import { resolveManagedStoragePath } from '../../src/shared/files/localStorageResolver'
 import {
   normalizeDfcSendStrategy,
   normalizeDfcSendAssetRefs,
@@ -18,9 +20,13 @@ import type {
   DfcConversionOptionStatus,
   DfcDerivedTargetKind,
   DfcDraftAttachmentOptionsDto,
+  DfcDraftAttachmentPreviewDto,
+  DfcDraftAttachmentPreviewPayloadDto,
+  DfcDraftAttachmentPreviewStatus,
   DfcDraftOptionCandidateDto,
+  DfcManagedAttachmentDecision,
+  DfcSanitizedDiagnostic,
   DfcSendAssetRef,
-  DfcSendStrategy,
   DfcTargetKind,
 } from '../../src/shared/files/documentFormatConversion'
 import {
@@ -50,6 +56,8 @@ import type {
   GetAttachmentCandidateSnapshotInput,
   GetDfcDraftAttachmentOptionsInput,
   GetDfcDraftAttachmentOptionsResult,
+  GetDfcDraftAttachmentPreviewInput,
+  GetDfcDraftAttachmentPreviewResult,
   MarkAttachmentAbandonedInput,
   MessageAttachmentRecord,
   RemoveDraftAttachmentInput,
@@ -99,6 +107,16 @@ type FileDerivativeCandidateRow = Readonly<{
   deletedAt: number | null
 }>
 
+type DfcPreviewSource = Readonly<{
+  derivativeId: string
+  storageUri: string
+  mime: string | null
+  status: FileDerivativeRecord['status']
+  generator: string | null
+  metaJson: Record<string, unknown> | null
+  deletedAt: number | null
+}>
+
 export type ConversationAttachmentServiceDeps = Readonly<{
   db: SqlDatabase
   fileAssetRepo: FileAssetRepo
@@ -106,6 +124,7 @@ export type ConversationAttachmentServiceDeps = Readonly<{
   messageAttachmentRepo: MessageAttachmentRepo
   branchRepo?: BranchRepo
   draftRepo?: ConversationDraftRepo
+  storageRootDir?: string
   now?: () => number
 }>
 
@@ -151,6 +170,15 @@ export class ConversationAttachmentService {
     const attachment = draft.attachments.find((item) => item.assetId === assetId)
     if (!attachment) throw new Error(`draft attachment not found: ${assetId}`)
     return this.buildDfcDraftAttachmentOptions(conversationId, attachment)
+  }
+
+  async getDfcDraftAttachmentPreview(input: GetDfcDraftAttachmentPreviewInput): Promise<GetDfcDraftAttachmentPreviewResult> {
+    const conversationId = requireNonEmpty(input.conversationId, 'conversationId')
+    const assetId = requireNonEmpty(input.assetId, 'assetId')
+    const draft = this.draftRepo.getOrCreate(conversationId, this.now())
+    const attachment = draft.attachments.find((item) => item.assetId === assetId)
+    if (!attachment) throw new Error(`draft attachment not found: ${assetId}`)
+    return await this.buildDfcDraftAttachmentPreview(conversationId, attachment, input.maxCharacters)
   }
 
   updateDraftAttachmentSettings(input: UpdateDraftAttachmentSettingsInput): DraftAttachmentRecord | null {
@@ -390,17 +418,7 @@ export class ConversationAttachmentService {
   ): DfcDraftAttachmentOptionsDto {
     const asset = this.requireFileAssetRecord(attachment.assetId)
     const options = this.buildDfcOptionCandidates(attachment, asset)
-    const decision = resolveDfcManagedAttachment({
-      dfcManaged: true,
-      rawFileId: attachment.assetId,
-      selectedOptionId: attachment.dfcManaged ? attachment.selectedOptionId : null,
-      options,
-      availableRawFileIds: this.isDfcRawFileAvailable(asset) ? [asset.id] : [],
-      availableDerivedAssetIds: options.flatMap((candidate) =>
-        candidate.isAvailable ? candidate.sendAssetRefs.filter((ref) => ref.kind === 'derived_asset').map((ref) => ref.assetId) : []
-      ),
-      optionGenerationState: null,
-    })
+    const decision = this.resolveDfcDraftDecision(attachment, asset, options)
     return {
       attachmentId: attachment.id,
       conversationId,
@@ -413,6 +431,270 @@ export class ConversationAttachmentService {
       decision,
       options: options.map((option) => this.toDfcDraftOptionCandidateDto(option)),
     }
+  }
+
+  private async buildDfcDraftAttachmentPreview(
+    conversationId: string,
+    attachment: DraftAttachmentRecord,
+    requestedMaxCharacters: number | undefined
+  ): Promise<DfcDraftAttachmentPreviewDto> {
+    const asset = this.requireFileAssetRecord(attachment.assetId)
+    const options = this.buildDfcOptionCandidates(attachment, asset)
+    const decision = this.resolveDfcDraftDecision(attachment, asset, options)
+    const maxCharacters = normalizeDfcPreviewMaxCharacters(requestedMaxCharacters)
+    const mismatchDiagnostic = this.dfcPersistedSelectionMismatchDiagnostic(attachment, decision)
+    const preview = mismatchDiagnostic
+      ? dfcPreviewPayload({
+        kind: 'none',
+        status: 'blocked',
+        maxCharacters,
+        diagnostics: [mismatchDiagnostic],
+      })
+      : await this.resolveSelectedDfcPreview({
+        attachment,
+        rawAsset: asset,
+        decision,
+        maxCharacters,
+      })
+    return {
+      attachmentId: attachment.id,
+      conversationId,
+      rawFileId: attachment.assetId,
+      filename: asset.filename,
+      sizeBytes: asset.sizeBytes,
+      dfcManaged: attachment.dfcManaged,
+      selectedOptionId: attachment.dfcManaged ? attachment.selectedOptionId : null,
+      selectedAssetRefs: attachment.dfcManaged ? [...attachment.selectedAssetRefs] : [],
+      targetKind: decision.targetKind,
+      sendStrategy: decision.sendStrategy,
+      decision,
+      preview,
+    }
+  }
+
+  private resolveDfcDraftDecision(
+    attachment: DraftAttachmentRecord,
+    asset: FileAssetRecord,
+    options: readonly DfcConversionOption[]
+  ): DfcManagedAttachmentDecision {
+    return resolveDfcManagedAttachment({
+      dfcManaged: true,
+      rawFileId: attachment.assetId,
+      selectedOptionId: attachment.dfcManaged ? attachment.selectedOptionId : null,
+      options,
+      availableRawFileIds: this.isDfcRawFileAvailable(asset) ? [asset.id] : [],
+      availableDerivedAssetIds: options.flatMap((candidate) =>
+        candidate.isAvailable ? candidate.sendAssetRefs.filter((ref) => ref.kind === 'derived_asset').map((ref) => ref.assetId) : []
+      ),
+      optionGenerationState: null,
+    })
+  }
+
+  private dfcPersistedSelectionMismatchDiagnostic(
+    attachment: DraftAttachmentRecord,
+    decision: DfcManagedAttachmentDecision
+  ): DfcSanitizedDiagnostic | null {
+    if (!attachment.dfcManaged || decision.status !== 'ready') return null
+    if (dfcSendAssetRefsEqual(attachment.selectedAssetRefs, decision.sendAssetRefs)) return null
+    return dfcDiagnostic('dfc_selection_refs_mismatch', 'Persisted DFC selectedAssetRefs do not match the backend-selected option.')
+  }
+
+  private async resolveSelectedDfcPreview(input: Readonly<{
+    attachment: DraftAttachmentRecord
+    rawAsset: FileAssetRecord
+    decision: DfcManagedAttachmentDecision
+    maxCharacters: number
+  }>): Promise<DfcDraftAttachmentPreviewPayloadDto> {
+    const { rawAsset, decision, maxCharacters } = input
+    if (decision.status !== 'ready') {
+      return dfcPreviewPayload({
+        kind: 'none',
+        status: dfcPreviewStatusFromDecision(decision.status),
+        maxCharacters,
+        diagnostics: decision.reasonCode
+          ? [dfcDiagnostic(decision.reasonCode, `DFC preview is unavailable: ${decision.reasonCode}`)]
+          : [],
+      })
+    }
+    if (decision.targetKind === 'original_file') {
+      return dfcPreviewPayload({
+        kind: 'raw_file',
+        status: 'ready',
+        maxCharacters,
+        diagnostics: [dfcDiagnostic('dfc_preview_raw_file_metadata_only', 'Original-file preview uses the selected raw_file ref and does not create a DerivedAsset.')],
+      })
+    }
+    if (!decision.targetKind || !isDfcTextPreviewTargetKind(decision.targetKind)) {
+      return dfcPreviewPayload({
+        kind: 'none',
+        status: 'blocked',
+        maxCharacters,
+        diagnostics: [dfcDiagnostic('dfc_preview_target_not_supported', 'Selected DFC target is not supported by the Phase 1 text preview endpoint.')],
+      })
+    }
+    if (decision.sendStrategy !== 'text_in_prompt') {
+      return dfcPreviewPayload({
+        kind: 'none',
+        status: 'blocked',
+        maxCharacters,
+        diagnostics: [dfcDiagnostic('dfc_preview_send_strategy_mismatch', 'Selected DFC target is not a text preview/send strategy.')],
+      })
+    }
+    const refs = decision.sendAssetRefs
+    if (refs.length !== 1 || refs[0]?.kind !== 'derived_asset') {
+      return dfcPreviewPayload({
+        kind: 'none',
+        status: 'blocked',
+        maxCharacters,
+        diagnostics: [dfcDiagnostic('dfc_preview_ref_malformed', 'Selected DFC preview requires exactly one derived_asset ref.')],
+      })
+    }
+
+    const source = this.resolveDfcPreviewSource(rawAsset, refs[0].assetId)
+    if (!source) {
+      return dfcPreviewPayload({
+        kind: 'none',
+        status: 'blocked',
+        maxCharacters,
+        diagnostics: [dfcDiagnostic('dfc_preview_source_not_found', 'Selected DFC derived asset is unavailable for preview.')],
+      })
+    }
+    const facade = createDfcDerivedAssetFacade({
+      derivativeId: source.derivativeId,
+      sourceFileId: rawAsset.id,
+      mime: source.mime,
+      storageRef: source.storageUri,
+      status: source.status,
+      generator: source.generator,
+      metaJson: source.metaJson,
+    })
+    if (!facade.ok) {
+      return dfcPreviewPayload({
+        kind: 'none',
+        status: 'blocked',
+        maxCharacters,
+        diagnostics: [dfcDiagnostic(facade.reasonCode, `Selected DFC preview asset is malformed: ${facade.reasonCode}`)],
+      })
+    }
+    if (facade.asset.targetKind !== decision.targetKind) {
+      return dfcPreviewPayload({
+        kind: 'none',
+        status: 'blocked',
+        maxCharacters,
+        diagnostics: [dfcDiagnostic('dfc_preview_target_mismatch', 'Selected DFC preview target does not match the selected option.')],
+      })
+    }
+    if (facade.asset.usage !== 'preview_and_send') {
+      return dfcPreviewPayload({
+        kind: 'none',
+        status: 'blocked',
+        maxCharacters,
+        diagnostics: [dfcDiagnostic('dfc_preview_usage_not_preview_and_send', 'Selected DFC asset is not marked preview_and_send.')],
+      })
+    }
+
+    const read = await this.readDfcPreviewTextSource(source)
+    if (!read.ok) {
+      return dfcPreviewPayload({
+        kind: 'none',
+        status: read.status,
+        maxCharacters,
+        diagnostics: [dfcDiagnostic(read.code, read.message)],
+      })
+    }
+    return dfcTextPreviewPayload(read.text, maxCharacters)
+  }
+
+  private resolveDfcPreviewSource(rawAsset: FileAssetRecord, derivativeId: string): DfcPreviewSource | null {
+    const derivative = this.getDfcDerivativeById(derivativeId)
+    if (derivative) {
+      if (derivative.parentAssetId !== rawAsset.id) return null
+      return {
+        derivativeId: derivative.id,
+        storageUri: derivative.storageUri,
+        mime: derivative.mime,
+        status: derivative.status,
+        generator: derivative.generator,
+        metaJson: derivative.metaJson,
+        deletedAt: derivative.deletedAt,
+      }
+    }
+
+    const root = normalizeObject(rawAsset.sourceMetaJson)
+    const textConversion = normalizeObject(root?.textConversion)
+    const textConversionDerivativeId = typeof textConversion?.derivativeId === 'string' ? textConversion.derivativeId.trim() : ''
+    if (textConversionDerivativeId !== derivativeId) return null
+    const storageUri = typeof textConversion?.storageUri === 'string' ? textConversion.storageUri.trim() : ''
+    if (!storageUri) return null
+    return {
+      derivativeId,
+      storageUri,
+      mime: typeof textConversion?.mime === 'string' ? textConversion.mime : null,
+      status: dfcOptionStatusFromTextConversion(textConversion) === 'ready' ? 'ready' : 'pending',
+      generator: typeof textConversion?.converterName === 'string' ? textConversion.converterName : null,
+      metaJson: textConversion,
+      deletedAt: null,
+    }
+  }
+
+  private getDfcDerivativeById(derivativeId: string): FileDerivativeRecord | null {
+    const id = requireNonEmpty(derivativeId, 'derivativeId')
+    const row = this.deps.db.prepare(`
+      SELECT
+        id,
+        parent_asset_id AS parentAssetId,
+        derived_kind AS derivedKind,
+        mime,
+        storage_uri AS storageUri,
+        generator,
+        status,
+        meta_json AS metaJson,
+        created_at AS createdAt,
+        updated_at AS updatedAt,
+        deleted_at AS deletedAt
+      FROM file_derivatives
+      WHERE id = @id
+      LIMIT 1
+    `).get({ id }) as FileDerivativeCandidateRow | undefined
+    if (!row) return null
+    return {
+      id: row.id,
+      parentAssetId: row.parentAssetId,
+      derivedKind: row.derivedKind,
+      mime: row.mime ?? null,
+      storageUri: row.storageUri,
+      generator: row.generator,
+      status: row.status,
+      metaJson: parseJsonObject(row.metaJson),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      deletedAt: row.deletedAt ?? null,
+    }
+  }
+
+  private async readDfcPreviewTextSource(source: DfcPreviewSource): Promise<
+    | Readonly<{ ok: true; text: string }>
+    | Readonly<{ ok: false; status: DfcDraftAttachmentPreviewStatus; code: string; message: string }>
+  > {
+    const storageRootDir = String(this.deps.storageRootDir ?? '').trim()
+    if (!storageRootDir) {
+      return { ok: false, status: 'blocked', code: 'dfc_preview_storage_root_missing', message: 'DFC preview storage root is not configured.' }
+    }
+    const resolved = resolveManagedStoragePath(storageRootDir, source.storageUri, {
+      backend: 'local_fs',
+      deletedAt: source.deletedAt,
+    })
+    if (resolved.kind === 'missing') {
+      return { ok: false, status: 'stale', code: 'dfc_preview_source_missing', message: 'Selected DFC preview asset is missing.' }
+    }
+    if (resolved.kind === 'invalid') {
+      return { ok: false, status: 'blocked', code: resolved.code, message: resolved.message }
+    }
+    const bytes = await readFile(resolved.path).catch(() => null)
+    if (!bytes) {
+      return { ok: false, status: 'failed', code: 'dfc_preview_read_failed', message: 'Selected DFC preview content could not be read.' }
+    }
+    return { ok: true, text: Buffer.from(bytes).toString('utf8') }
   }
 
   private buildDfcOptionCandidates(
@@ -598,7 +880,7 @@ export class ConversationAttachmentService {
       excludedReason: attachment.excludedReason,
       dfcManaged: attachment.dfcManaged,
       usedOptionId: attachment.dfcManaged ? attachment.selectedOptionId : null,
-      usedAssetRefs: attachment.dfcManaged ? attachment.selectedAssetRefs : [],
+      usedAssetRefs: attachment.dfcManaged ? normalizedDfcSnapshot?.sendAssetRefs ?? [] : [],
       targetKind: normalizedDfcSnapshot?.targetKind ?? null,
       sendStrategy: normalizedDfcSnapshot?.sendStrategy ?? null,
       createdAt: attachment.createdAt,
@@ -626,20 +908,20 @@ export class ConversationAttachmentService {
     snapshotsProvided: boolean
   ): DfcAttachmentSendSnapshot | null {
     if (!attachment.dfcManaged) return null
+    const backendSnapshot = this.deriveDfcSendSnapshotFromSelectedRefs(attachment)
     if (!snapshot) {
       if (snapshotsProvided) throw new Error(`missing DFC send snapshot for draft attachment: ${attachment.id}`)
-      return this.deriveDfcSendSnapshotFromSelectedRefs(attachment)
+      return backendSnapshot
     }
     if (snapshot.assetId !== attachment.assetId) {
       throw new Error(`DFC send snapshot asset mismatch for draft attachment: ${attachment.id}`)
     }
-    if (!dfcSendAssetRefsEqual(snapshot.sendAssetRefs, attachment.selectedAssetRefs)) {
+    if (!dfcSendAssetRefsEqual(snapshot.sendAssetRefs, backendSnapshot.sendAssetRefs)) {
       throw new Error(`DFC send snapshot refs do not match selectedAssetRefs for draft attachment: ${attachment.id}`)
     }
     if (!dfcTargetAndRefsAreCoherent(snapshot, attachment.assetId)) {
       throw new Error(`DFC send snapshot targetKind does not match sendAssetRefs for draft attachment: ${attachment.id}`)
     }
-    const backendSnapshot = this.deriveDfcSendSnapshotFromSelectedRefs(attachment)
     if (snapshot.targetKind !== backendSnapshot.targetKind || snapshot.sendStrategy !== backendSnapshot.sendStrategy) {
       throw new Error(`DFC send snapshot targetKind/sendStrategy does not match backend-selected option for draft attachment: ${attachment.id}`)
     }
@@ -650,70 +932,22 @@ export class ConversationAttachmentService {
     if (!attachment.selectedOptionId) {
       throw new Error(`DFC-managed draft attachment requires selectedOptionId before message binding: ${attachment.id}`)
     }
-    const refs = attachment.selectedAssetRefs
-    if (refs.length === 1 && refs[0]?.kind === 'raw_file') {
-      if (refs[0].assetId !== attachment.assetId) {
-        throw new Error(`DFC selected raw_file ref does not match draft attachment asset: ${attachment.id}`)
-      }
-      return {
-        attachmentId: attachment.id,
-        assetId: attachment.assetId,
-        targetKind: 'original_file',
-        sendStrategy: 'file_attachment',
-        sendAssetRefs: refs,
-      }
+    const asset = this.requireFileAssetRecord(attachment.assetId)
+    const options = this.buildDfcOptionCandidates(attachment, asset)
+    const decision = this.resolveDfcDraftDecision(attachment, asset, options)
+    if (decision.status !== 'ready' || !decision.targetKind || !decision.sendStrategy) {
+      throw new Error(`DFC-managed draft attachment selected option is not ready for message binding: ${attachment.id}`)
     }
-    if (refs.length === 0 || refs.some((ref) => ref.kind !== 'derived_asset')) {
-      throw new Error(`DFC-managed draft attachment selected refs are not coherent: ${attachment.id}`)
-    }
-
-    const targetKinds = new Set<DfcTargetKind>()
-    for (const ref of refs) {
-      const targetKind = this.readDfcDerivedTargetKind(attachment.assetId, ref.assetId)
-      if (!targetKind) {
-        throw new Error(`DFC selected derived_asset ref is missing backend targetKind: ${attachment.id}`)
-      }
-      targetKinds.add(targetKind)
-    }
-    if (targetKinds.size !== 1) {
-      throw new Error(`DFC selected derived_asset refs have mixed targetKinds: ${attachment.id}`)
-    }
-    const targetKind = Array.from(targetKinds)[0]!
-    if (targetKind === 'original_file') {
-      throw new Error(`DFC original_file must use raw_file refs: ${attachment.id}`)
+    if (!dfcSendAssetRefsEqual(attachment.selectedAssetRefs, decision.sendAssetRefs)) {
+      throw new Error(`DFC selected option refs do not match selectedAssetRefs for draft attachment: ${attachment.id}`)
     }
     return {
       attachmentId: attachment.id,
       assetId: attachment.assetId,
-      targetKind,
-      sendStrategy: expectedDfcSendStrategy(targetKind),
-      sendAssetRefs: refs,
+      targetKind: decision.targetKind,
+      sendStrategy: decision.sendStrategy,
+      sendAssetRefs: decision.sendAssetRefs,
     }
-  }
-
-  private readDfcDerivedTargetKind(rawAssetId: string, derivedAssetId: string): DfcTargetKind | null {
-    const derivative = this.deps.db.prepare(`
-      SELECT parent_asset_id AS parentAssetId,
-             meta_json AS metaJson
-      FROM file_derivatives
-      WHERE id = @id
-      LIMIT 1
-    `).get({ id: derivedAssetId }) as { parentAssetId: string; metaJson: string | null } | undefined
-    if (derivative) {
-      if (derivative.parentAssetId !== rawAssetId) return null
-      return readDfcTargetKindFromJson(derivative.metaJson)
-    }
-
-    const asset = this.deps.db.prepare(`
-      SELECT source_meta_json AS sourceMetaJson
-      FROM file_assets
-      WHERE id = @id
-      LIMIT 1
-    `).get({ id: rawAssetId }) as { sourceMetaJson: string | null } | undefined
-    const sourceMeta = parseJsonObject(asset?.sourceMetaJson)
-    const textConversion = parseNestedObject(sourceMeta?.textConversion)
-    const textConversionDerivativeId = typeof textConversion?.derivativeId === 'string' ? textConversion.derivativeId.trim() : ''
-    return textConversionDerivativeId === derivedAssetId ? normalizeDfcTargetKind(textConversion?.targetKind as string | null | undefined) : null
   }
 
   private resolveDraftAttachmentMigration(
@@ -1036,12 +1270,57 @@ function dfcTargetAndRefsAreCoherent(snapshot: DfcAttachmentSendSnapshot, rawFil
     && refs.every((ref) => ref.kind === 'derived_asset')
 }
 
-function expectedDfcSendStrategy(targetKind: DfcTargetKind): DfcSendStrategy {
-  return targetKind === 'pdf_attachment' || targetKind === 'original_file' ? 'file_attachment' : 'text_in_prompt'
+function normalizeDfcPreviewMaxCharacters(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 4096
+  return Math.max(1, Math.min(4096, Math.floor(value)))
 }
 
-function readDfcTargetKindFromJson(json: string | null | undefined): DfcTargetKind | null {
-  return normalizeDfcTargetKind(parseJsonObject(json)?.targetKind as string | null | undefined)
+function dfcPreviewStatusFromDecision(status: DfcManagedAttachmentDecision['status']): DfcDraftAttachmentPreviewStatus {
+  return status === 'ready' ? 'ready' : status
+}
+
+function isDfcTextPreviewTargetKind(targetKind: DfcTargetKind): targetKind is Exclude<DfcTargetKind, 'original_file' | 'pdf_attachment'> {
+  return targetKind === 'plain_text'
+    || targetKind === 'markdown'
+    || targetKind === 'code'
+    || targetKind === 'table_markdown'
+}
+
+function dfcPreviewPayload(input: Readonly<{
+  kind: DfcDraftAttachmentPreviewPayloadDto['kind']
+  status: DfcDraftAttachmentPreviewStatus
+  maxCharacters: number
+  diagnostics?: readonly DfcSanitizedDiagnostic[]
+}>): DfcDraftAttachmentPreviewPayloadDto {
+  return {
+    kind: input.kind,
+    status: input.status,
+    text: null,
+    characterCount: null,
+    byteLength: null,
+    truncated: false,
+    maxCharacters: input.maxCharacters,
+    diagnostics: [...(input.diagnostics ?? [])],
+  }
+}
+
+function dfcTextPreviewPayload(text: string, maxCharacters: number): DfcDraftAttachmentPreviewPayloadDto {
+  const characterCount = text.length
+  const previewText = characterCount > maxCharacters ? text.slice(0, maxCharacters) : text
+  return {
+    kind: 'text',
+    status: 'ready',
+    text: previewText,
+    characterCount,
+    byteLength: Buffer.byteLength(text, 'utf8'),
+    truncated: characterCount > maxCharacters,
+    maxCharacters,
+    diagnostics: [],
+  }
+}
+
+function dfcDiagnostic(code: string, message: string): DfcSanitizedDiagnostic {
+  return { code, message }
 }
 
 function parseJsonObject(json: string | null | undefined): Record<string, unknown> | null {
@@ -1052,10 +1331,6 @@ function parseJsonObject(json: string | null | undefined): Record<string, unknow
   } catch {
     return null
   }
-}
-
-function parseNestedObject(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 }
 
 function requireNonEmpty(value: string | null | undefined, field: string): string {
