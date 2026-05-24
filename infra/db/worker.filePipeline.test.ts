@@ -457,6 +457,114 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     })
   })
 
+  it('ensures DFC-ready table markdown metadata for CSV text derivatives', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-csv-dfc'
+    const storageUri = 'assets/original/cs/asset-csv-dfc.csv'
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), 'name,age\nalice,30\n')
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-csv-dfc-source-hash',
+        filename: 'data.csv',
+        extension: 'csv',
+        mime: 'text/csv',
+        sizeBytes: 18,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const planResult = await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-send-plan',
+      method: 'sendPlan.buildCurrent',
+      params: {
+        conversationId: 'c1',
+        draftText: 'send table',
+        model: {
+          providerKey: 'openrouter',
+          modelId: 'test/text',
+          modelKey: 'openrouter::test/text',
+          inputModalities: ['text'],
+          outputModalities: ['text'],
+        },
+        providerContext: {
+          providerKey: 'openrouter',
+          supportsInlineData: true,
+          supportsTextUrlRef: true,
+        },
+      },
+    })
+
+    expect(planResult).toMatchObject({
+      ok: true,
+      result: {
+        sendPlan: expect.objectContaining({ status: 'sendable' }),
+      },
+    })
+    const derivativeRow = db.prepare(`
+      SELECT id, storage_uri AS storageUri, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+      LIMIT 1
+    `).get({ assetId }) as { id: string; storageUri: string; metaJson: string | null } | undefined
+    expect(derivativeRow).toBeTruthy()
+    const derivativeMeta = derivativeRow?.metaJson ? JSON.parse(derivativeRow.metaJson) : null
+    expect(derivativeMeta).toMatchObject({
+      targetKind: 'table_markdown',
+      usage: 'preview_and_send',
+      storageClass: 'draft_bound',
+      sourceHash: 'asset-csv-dfc-source-hash',
+      converterName: 'starverse-text-derivative',
+      converterVersion: '1',
+    })
+    const assetRow = db.prepare(`
+      SELECT source_meta_json AS sourceMetaJson
+      FROM file_assets
+      WHERE id=@assetId
+      LIMIT 1
+    `).get({ assetId }) as { sourceMetaJson: string | null }
+    const assetMeta = assetRow.sourceMetaJson ? JSON.parse(assetRow.sourceMetaJson) : null
+    expect(assetMeta?.textConversion).toMatchObject({
+      status: 'ready',
+      targetKind: 'table_markdown',
+      derivativeId: derivativeRow?.id,
+      storageClass: 'draft_bound',
+      converterName: 'starverse-text-derivative',
+      converterVersion: '1',
+    })
+    const options = await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-dfc-options',
+      method: 'conversationDraft.getDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    expect(options).toMatchObject({
+      ok: true,
+      result: {
+        options: expect.arrayContaining([
+          expect.objectContaining({
+            targetKind: 'table_markdown',
+            isAvailable: true,
+            sendAssetRefs: [{ kind: 'derived_asset', assetId: derivativeRow?.id }],
+          }),
+        ]),
+      },
+    })
+    expect(JSON.stringify((options as any).result)).not.toContain(derivativeRow?.storageUri ?? 'assets/')
+    expect(JSON.stringify((options as any).result)).not.toContain('asset-csv-dfc-source-hash')
+  })
+
   it('keeps PDF direct send available when extracted text is unsupported', async () => {
     const { db, handlers } = createWorkerHarness()
     const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
