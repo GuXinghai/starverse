@@ -572,6 +572,78 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
     }
   })
 
+  it('does not treat orphaned asset text-conversion metadata as a DFC derived option or preview source', async () => {
+    const storageRootDir = mkdtempSync(path.join(os.tmpdir(), 'starverse-dfc-orphan-text-conversion-'))
+    try {
+      const h = createHarness({ storageRootDir })
+      insertConvo(h.db, 'c1')
+      const storageUri = 'assets/derivatives/asset-dfc/orphan-markdown.md'
+      writeManagedFile(storageRootDir, storageUri, 'Orphaned conversion content must not be previewed.')
+      createAsset(h.fileAssetRepo, 'asset-dfc', {
+        sourceMetaJson: {
+          textConversion: {
+            status: 'ready',
+            targetKind: 'markdown',
+            derivativeId: 'orphan-derivative',
+            storageUri,
+            mime: 'text/markdown',
+            usage: 'preview_and_send',
+            storageClass: 'draft_bound',
+            sourceHash: 'asset-dfc-sha',
+            contentHash: 'orphan-content-hash',
+            conversionSettingsHash: 'orphan-settings-hash',
+            converterName: 'test-dfc-converter',
+            converterVersion: '1',
+          },
+        },
+      })
+      h.service.addDraftAttachment({ conversationId: 'c1', assetId: 'asset-dfc' })
+
+      const dto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+
+      expect(dto.options.map((option) => option.targetKind)).toEqual(['original_file'])
+      expect(dto.options.some((option) =>
+        option.sendAssetRefs.some((ref) => ref.kind === 'derived_asset' && ref.assetId === 'orphan-derivative')
+      )).toBe(false)
+      expect(JSON.stringify(dto)).not.toContain(storageUri)
+      expect(JSON.stringify(dto)).not.toContain('orphan-content-hash')
+
+      h.db.prepare(`
+        UPDATE draft_attachments
+        SET dfc_managed = 1,
+            selected_option_id = @selectedOptionId,
+            selected_asset_refs_json = @selectedAssetRefsJson
+        WHERE conversation_id = 'c1' AND asset_id = 'asset-dfc'
+      `).run({
+        selectedOptionId: 'dfc:asset-dfc:markdown:derived_asset:orphan-derivative',
+        selectedAssetRefsJson: JSON.stringify([{ kind: 'derived_asset', assetId: 'orphan-derivative' }]),
+      })
+
+      const preview = await h.service.getDfcDraftAttachmentPreview({ conversationId: 'c1', assetId: 'asset-dfc' })
+
+      expect(preview).toMatchObject({
+        selectedOptionId: 'dfc:asset-dfc:markdown:derived_asset:orphan-derivative',
+        decision: expect.objectContaining({
+          status: 'needs_user_selection',
+          reasonCode: 'selected_option_not_found',
+        }),
+        preview: {
+          kind: 'none',
+          status: 'needs_user_selection',
+          text: null,
+          diagnostics: [expect.objectContaining({ code: 'selected_option_not_found' })],
+        },
+      })
+      expect(JSON.stringify(preview)).not.toContain('Orphaned conversion content')
+      expect(JSON.stringify(preview)).not.toContain(storageUri)
+      expect(JSON.stringify(preview)).not.toContain('orphan-content-hash')
+      expect(() => h.service.commitDraftToUserMessage({ conversationId: 'c1' }))
+        .toThrow('DFC-managed draft attachment selected option is not ready')
+    } finally {
+      rmSync(storageRootDir, { recursive: true, force: true })
+    }
+  })
+
   it('blocks stale DFC derived options when the source hash no longer matches the raw asset', async () => {
     const h = createHarness()
     insertConvo(h.db, 'c1')
