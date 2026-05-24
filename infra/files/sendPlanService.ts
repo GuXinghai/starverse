@@ -715,8 +715,8 @@ function buildDfcOptionsForSelectedRefs(
   if (!targetKind) return { options: [], availableDerivedAssetIds: [] }
 
   const selectedDerivatives = derivedRefs.map((ref) => fileDerivativeRepo?.getById(ref.assetId) ?? null)
-  const allReady = selectedDerivatives.every((derivative, index) =>
-    isDfcDerivedRefAvailable(attachment, derivedRefs[index]!.assetId, derivative, fileDerivativeRepo !== undefined)
+  const allReady = selectedDerivatives.every((derivative) =>
+    isDfcDerivedRefAvailable(attachment, derivative)
   )
   const anyFailed = selectedDerivatives.some((derivative) => derivative?.status === 'failed')
   const anyStale = selectedDerivatives.some((derivative) => derivative?.status === 'deleted' || derivative?.deletedAt != null)
@@ -727,7 +727,8 @@ function buildDfcOptionsForSelectedRefs(
   const anySourceUnverifiable = sourceHashIssues.includes('raw_file_source_hash_missing')
   const anyPending = selectedDerivatives.some((derivative) => derivative?.status === 'pending')
   const status: DfcConversionOption['status'] =
-    anyFailed ? 'failed'
+    !fileDerivativeRepo ? 'blocked'
+      : anyFailed ? 'failed'
       : anyStale || anySourceMismatch ? 'stale'
         : anyPending ? 'pending'
           : anySourceUnverifiable ? 'blocked'
@@ -766,9 +767,7 @@ function expectedDfcSendStrategy(targetKind: DfcTargetKind): DfcSendStrategy {
 
 function isDfcDerivedRefAvailable(
   attachment: Omit<CollectedAttachmentInput, 'dfcDecision' | 'semantic'>,
-  derivedAssetId: string,
-  derivative: FileDerivativeRecord | null,
-  derivativeRepoAvailable: boolean
+  derivative: FileDerivativeRecord | null
 ): boolean {
   if (derivative) {
     if (derivative.parentAssetId !== attachment.assetId) return false
@@ -785,21 +784,7 @@ function isDfcDerivedRefAvailable(
     if (facade.ok && dfcDerivedAssetSourceHashIssue(attachment.fileAsset, facade.asset)) return false
     return readDfcDerivedTargetKind(derivative.metaJson) !== null
   }
-  if (derivativeRepoAvailable) return false
-  const textConversion = readSelectedTextConversionMeta(attachment.fileAsset, derivedAssetId)
-  const status = typeof textConversion?.status === 'string' ? textConversion.status.trim() : ''
-  const facade = createDfcDerivedAssetFacade({
-    derivativeId: derivedAssetId,
-    sourceFileId: attachment.assetId,
-    mime: typeof textConversion?.mime === 'string' ? textConversion.mime : null,
-    storageRef: typeof textConversion?.storageUri === 'string' ? textConversion.storageUri : null,
-    status,
-    generator: typeof textConversion?.converterName === 'string' ? textConversion.converterName : null,
-    metaJson: textConversion,
-  })
-  return facade.ok
-    && !dfcDerivedAssetSourceHashIssue(attachment.fileAsset, facade.asset)
-    && readDfcDerivedTargetKind(textConversion) !== null
+  return false
 }
 
 function readSelectedTextConversionMeta(
