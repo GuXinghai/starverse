@@ -415,3 +415,13 @@ DFC-17 should choose one of two owner-level paths:
 - No `playwright.config.*` or `@playwright/test` harness was found. Existing `tests/e2e` files are Vitest-based smoke tests.
 - Owner approval is required before implementing either a new explicit `conversationDraft.ensureDfcOptions` generation contract or browser Playwright harness scaffolding.
 - Recommended next implementation, if approved, is an explicit backend-owned `conversationDraft.ensureDfcOptions` endpoint limited to already-approved Phase 1 text-like conversions. Keep `getDfcOptions` read-only, keep renderer requests free of targetKind/refs/option ids, and keep HTML, PS/EPS, PDF, Office, XLS/XLSX, external engines, and new dependencies out of scope.
+
+## DFC-17R0 blocked revalidation notes
+
+- Worktree recovery revalidated a clean tree at `26adca2` on branch `docs/dfc-0-format-conversion-foundation`.
+- A read-only `code_mapper` recheck confirmed `conversationDraft.getDfcOptions`, `conversationDraft.getDfcPreview`, and `conversationDraft.updateAttachmentSettings` remain the live backend-owned DFC DTO/update plumbing.
+- DFC-ready text derivative generation remains coupled to the worker `sendPlan.buildCurrent` path through `ensureTextDerivativesForCollected` / `ensureTextDerivativeAsset`.
+- `conversationDraft.ensureDfcOptions` is still only proposed in the DFC-17 memo; it is not implemented and repo docs do not record owner approval for Option D.
+- No `playwright.config.*` or `@playwright/test` browser harness exists; `tests/e2e` remains Vitest-based smoke coverage.
+- No safe next implementation slice was found that avoids choosing an owner-level option-generation trigger or adding new Playwright harness scaffolding.
+- Owner approval remains required for either explicit `conversationDraft.ensureDfcOptions` generation semantics or new browser Playwright harness scaffolding.
