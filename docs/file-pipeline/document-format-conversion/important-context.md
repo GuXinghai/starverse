@@ -528,3 +528,17 @@ DFC-24 should continue non-Playwright Phase 1 hardening around pending/concurren
 ## Recommended next round
 
 DFC-25 should continue non-Playwright Phase 1 hardening around pending/concurrent `conversationDraft.ensureDfcOptions` generation semantics. Browser Playwright smoke still requires separate owner approval if it needs new harness scaffolding.
+
+## DFC-25 implementation recovery notes
+
+- DFC-25 is a narrow worker in-flight coalescing slice; it does not add a DB schema change, IPC contract change, renderer option identity, Send Plan behavior change, browser Playwright harness, UI redesign, new dependency, external engine, legacy bridge, broad Send Plan rewrite, durable `ConversionOption` rows, or durable async option-generation state.
+- `ensureTextDerivativeAsset` now uses a runtime-local in-flight map keyed by source asset, target kind, and DFC-exposure mode. Concurrent identical explicit ensure requests await the same backend generation promise instead of creating duplicate text derivative jobs.
+- The in-flight entry is removed in a `finally` block, so success and failure paths can be retried by a later ensure call.
+- The coalescing key keeps explicit DFC exposure separate from legacy Send Plan derivative generation, preserving the DFC-20 boundary that only `conversationDraft.ensureDfcOptions` makes a derivative DFC-ready.
+- The regression test dispatches two concurrent `conversationDraft.ensureDfcOptions` calls for the same CSV draft attachment and verifies both responses return the same backend-owned `table_markdown` option while only one derivative row and one derivative job row are created.
+- This is not a durable cross-process uniqueness guarantee. A durable uniqueness boundary for derivative jobs would require owner approval for a schema/repo design change.
+- Targeted worker/shared tests, the broader backend/client/UI DFC suite, `vue-tsc`, `git diff --check`, diff privacy scans, code mapping, and risk review passed.
+
+## Recommended next round
+
+DFC-26 should continue non-Playwright Phase 1 hardening around failed-generation/no-silent-fallback semantics. Browser Playwright smoke still requires separate owner approval if it needs new harness scaffolding, and durable job uniqueness still requires an owner-approved schema/repo plan.
