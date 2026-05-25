@@ -7,6 +7,8 @@ This file is the recovery entry point after context compression. The source of t
 - Current branch: `docs/dfc-0-format-conversion-foundation`
 - Current topic directory: `docs/file-pipeline/document-format-conversion/`
 - Current SSOT file: `starverse_format_conversion_preview_v1_2.md`
+- Latest appended recovery state: DFC-29 tightens DFC Send Plan target reconstruction so selected derived refs require verified derivative target metadata when the derivative repo is available; missing or malformed derivative target metadata fails closed as `selected_option_not_found`.
+- The DFC-0 through DFC-6 bullets in this section are historical setup milestones; later DFC-7 through DFC-29 recovery notes are appended below and the full append-only sequence is in `progress-ledger.md`.
 - DFC-0 scope: docs-only foundation. Create the topic directory, place the v1.2 source contract there, and add only `progress-ledger.md` and `important-context.md`.
 - DFC-0 does not implement production behavior and does not modify schema, Send Plan, UI, dependencies, test configuration, external engines, or production code.
 - DFC-1 scope: read-only repository mapping against v1.2. No production code was changed.
@@ -582,3 +584,16 @@ DFC-28 should either proceed with an owner-approved durable pending/retry/job-st
 ## Recommended next round
 
 DFC-29 should seek owner approval for durable pending/retry/job-state storage or browser Playwright harness scaffolding unless another concrete narrow backend gap is found that stays within existing storage and IPC shape. Browser Playwright harness scaffolding, durable option-generation storage, DB uniqueness/migration, external engines, new dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, and forbidden conversion families remain owner-gated.
+
+## DFC-29 implementation recovery notes
+
+- DFC-29 is a narrow Send Plan fail-closed slice; it does not add a DB schema change, IPC shape change, renderer option identity, UI, browser Playwright harness, new dependency, external engine, legacy bridge, durable `ConversionOption` rows, durable job-state linkage, or durable async option-generation state.
+- When `fileDerivativeRepo` is available, DFC Send Plan selected-ref reconstruction now requires the selected derivative row metadata to provide the DFC target kind. It no longer falls back to `file_assets.sourceMetaJson.textConversion` for target-kind authority if the derivative row is missing or malformed.
+- Missing selected derivative rows, derivative rows without DFC `targetKind`, and malformed history snapshots without persisted target metadata now fail closed as `selected_option_not_found` with unsupported semantics, no selected send mode, and no legacy route fallback.
+- The no-derivative-repo path remains fail-closed for incomplete/test callers and can still preserve a redacted target diagnosis from asset metadata when no repository is available.
+- The regression tests seed draft and history source metadata that claims a ready markdown conversion, then prove the normal backend Send Plan path does not treat that asset metadata as target authority and does not emit storage URI, source hash, content hash, or conversion settings hash fixture values.
+- Focused Send Plan/shared tests passed at 2 files / 70 tests. The broader backend/client/UI DFC suite passed at 7 files / 364 tests. `vue-tsc`, `git diff --check`, diff privacy scans, test-runner attribution, risk review, and doc consistency passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this DFC diff.
+
+## Recommended next round
+
+DFC-30 should seek owner approval for durable pending/retry/job-state storage or browser Playwright harness scaffolding unless another concrete narrow backend gap remains outside owner-gated scope. Browser Playwright harness scaffolding, durable option-generation storage, DB uniqueness/migration, external engines, new dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, and forbidden conversion families remain owner-gated.

@@ -757,6 +757,7 @@ function resolveDfcDerivedTargetKind(
   const derivative = fileDerivativeRepo?.getById(derivedAssetId) ?? null
   const fromDerivative = readDfcDerivedTargetKind(derivative?.metaJson ?? null)
   if (fromDerivative) return fromDerivative
+  if (fileDerivativeRepo) return null
   const textConversion = readSelectedTextConversionMeta(attachment.fileAsset, derivedAssetId)
   return readDfcDerivedTargetKind(textConversion)
 }
