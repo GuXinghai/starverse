@@ -180,8 +180,8 @@ import { useDiagnostics } from './useDiagnostics'
 import { useLiveStreamController } from './useLiveStreamController'
 import { useSettingsBindings } from './useSettingsBindings'
 import { nextTriState, resolveUserMessageRenderPolicy, type UserMessageRenderMode } from '../prefs/userMessageRenderPolicy'
-import type { SearchConvoOption, SearchProjectOption } from '../components/SearchModal.vue'
-import type { ConversationListItem, ProjectListItem } from '../components/ConversationList.vue'
+import type { SearchConvoOption, SearchProjectOption } from '../components/SearchModal.types'
+import type { ConversationListItem, ProjectListItem } from '../components/ConversationList.types'
 import {
   deserializeChatSessionConfigFromConvoMeta,
   mergeChatSessionConfig,
@@ -304,6 +304,7 @@ export function useAppChatAppLogic() {
     disabledReason: string | null
     label: string
     detail: string
+    diagnostics: string[]
     sendAssetRefs: readonly DfcSendAssetRef[]
   }>
   type DraftAttachmentDfcOptionsViewModel = Readonly<{
@@ -4660,6 +4661,7 @@ export function useAppChatAppLogic() {
           disabledReason,
           label: formatDfcTargetKind(option.targetKind),
           detail: `${formatDfcSendStrategy(option.sendStrategy)} · ${option.status}`,
+          diagnostics: option.diagnostics.map((item) => item.code),
           sendAssetRefs: option.sendAssetRefs,
         }
       }),

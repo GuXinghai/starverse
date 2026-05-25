@@ -964,6 +964,13 @@ describe('ui-app AppChatApp attachment entry flow', () => {
         const options = assetId.includes('dfc') ? [rawOption, markdownOption] : [rawOption]
         const selectedOptionId = String(attachment.selectedOptionId ?? '').trim() || null
         const selectedOption = selectedOptionId ? options.find((option) => option.optionId === selectedOptionId) ?? null : null
+        const selectedRefs = Array.isArray(attachment.selectedAssetRefs) ? attachment.selectedAssetRefs : []
+        const refsMismatch = attachment.dfcManaged === true
+          && selectedOption != null
+          && JSON.stringify(selectedRefs) !== JSON.stringify(selectedOption.sendAssetRefs)
+        const mismatchDiagnostic = refsMismatch
+          ? [{ code: 'dfc_selection_refs_mismatch', message: 'Persisted DFC selectedAssetRefs do not match the backend-selected option.' }]
+          : []
         return {
           attachmentId: attachment.id,
           conversationId: 'c1',
@@ -992,7 +999,11 @@ describe('ui-app AppChatApp attachment entry flow', () => {
                 sendAssetRefs: [],
                 needsUserAction: true,
               },
-          options,
+          options: options.map((option) => (
+            refsMismatch && option.optionId === selectedOption?.optionId
+              ? { ...option, diagnostics: mismatchDiagnostic }
+              : option
+          )),
         }
       }
 
@@ -1003,6 +1014,16 @@ describe('ui-app AppChatApp attachment entry flow', () => {
         const selectedOptionId = String(attachment.selectedOptionId ?? '').trim() || null
         const isMarkdown = selectedOptionId === `dfc:${assetId}:markdown:derived_asset:derivative-markdown`
         const isOriginal = selectedOptionId === `dfc:${assetId}:original_file:raw_file:${assetId}`
+        const expectedRefs = isMarkdown
+          ? [{ kind: 'derived_asset', assetId: 'derivative-markdown' }]
+          : isOriginal
+            ? [{ kind: 'raw_file', assetId }]
+            : []
+        const selectedRefs = Array.isArray(attachment.selectedAssetRefs) ? attachment.selectedAssetRefs : []
+        const refsMismatch = attachment.dfcManaged === true
+          && selectedOptionId !== null
+          && expectedRefs.length > 0
+          && JSON.stringify(selectedRefs) !== JSON.stringify(expectedRefs)
         return {
           attachmentId: attachment.id,
           conversationId: 'c1',
@@ -1023,7 +1044,18 @@ describe('ui-app AppChatApp attachment entry flow', () => {
             sendAssetRefs: attachment.selectedAssetRefs ?? [],
             needsUserAction: !selectedOptionId,
           },
-          preview: isMarkdown
+          preview: refsMismatch
+            ? {
+                kind: 'none',
+                status: 'blocked',
+                text: null,
+                characterCount: null,
+                byteLength: null,
+                truncated: false,
+                maxCharacters: Number(params?.maxCharacters ?? 2048),
+                diagnostics: [{ code: 'dfc_selection_refs_mismatch', message: 'Persisted DFC selectedAssetRefs do not match the backend-selected option.' }],
+              }
+            : isMarkdown
             ? {
                 kind: 'text',
                 status: 'ready',
@@ -2281,6 +2313,36 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     expect(await screen.findByTestId('draft-attachment-dfc-preview-text')).toHaveTextContent('Markdown preview from selected option')
     expect(invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.updateAttachmentSettings')).toHaveLength(updateCallsAfterSelection)
     expect(invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.ensureDfcOptions').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('surfaces DFC selected-ref mismatches without rewriting the backend selection', async () => {
+    const user = userEvent.setup()
+    draftResponse = {
+      ...baseDraft(),
+      attachments: [
+        makeDraftAttachment('asset-dfc-mismatch', {
+          attachmentOrder: 0,
+          dfcManaged: true,
+          selectedOptionId: 'dfc:asset-dfc-mismatch:markdown:derived_asset:derivative-markdown',
+          selectedAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-stale' }],
+        }),
+      ],
+      attachedAssetIds: ['asset-dfc-mismatch'],
+    }
+
+    render(AppChatApp)
+
+    await user.click(await screen.findByTestId('draft-attachment-card-asset-dfc-mismatch'))
+    await screen.findByTestId('draft-attachment-details-dialog')
+
+    await waitFor(() => {
+      expect(screen.getByTestId('draft-attachment-dfc-option-markdown')).toHaveTextContent('selected')
+    })
+    expect(await screen.findByTestId('draft-attachment-dfc-option-markdown-diagnostic')).toHaveTextContent('dfc_selection_refs_mismatch')
+    expect(await screen.findByTestId('draft-attachment-dfc-preview-status')).toHaveTextContent('blocked')
+    expect(screen.getAllByText('dfc_selection_refs_mismatch').length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByTestId('draft-attachment-dfc-preview-text')).toBeNull()
+    expect(invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.updateAttachmentSettings')).toHaveLength(0)
   })
 
   it('keeps URL retention hidden for non-URL attachments and disables audio link sending', async () => {

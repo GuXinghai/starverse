@@ -1,19 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { t, tf } from '@/shared/i18n'
-
-export type ConversationListItem = Readonly<{
-  id: string
-  title: string
-  updatedAt: number
-}>
-
-export type ProjectListItem = Readonly<{
-  id: string
-  name: string
-  isSystem?: boolean
-  convoCount?: number
-}>
+import type { ConversationListItem, ProjectListItem } from './ConversationList.types'
 
 const props = defineProps<{
   items: readonly ConversationListItem[]
