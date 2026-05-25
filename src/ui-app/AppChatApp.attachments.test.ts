@@ -2247,6 +2247,42 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     expect(await screen.findByTestId('draft-attachment-dfc-preview-text')).toHaveTextContent('Markdown preview from selected option')
   })
 
+  it('rehydrates the selected backend DFC option when attachment details are reopened', async () => {
+    const user = userEvent.setup()
+    draftResponse = {
+      ...baseDraft(),
+      attachments: [makeDraftAttachment('asset-dfc', { attachmentOrder: 0 })],
+      attachedAssetIds: ['asset-dfc'],
+    }
+
+    render(AppChatApp)
+
+    await user.click(await screen.findByTestId('draft-attachment-card-asset-dfc'))
+    await screen.findByTestId('draft-attachment-details-dialog')
+    await screen.findByTestId('draft-attachment-dfc-option-markdown')
+    await user.click(screen.getByTestId('draft-attachment-dfc-option-markdown'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('draft-attachment-dfc-option-markdown')).toHaveTextContent('selected')
+    })
+    expect(await screen.findByTestId('draft-attachment-dfc-preview-text')).toHaveTextContent('Markdown preview from selected option')
+    const updateCallsAfterSelection = invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.updateAttachmentSettings').length
+
+    await user.click(screen.getByTestId('draft-attachment-details-close'))
+    await waitFor(() => {
+      expect(screen.queryByTestId('draft-attachment-details-dialog')).toBeNull()
+    })
+    await user.click(screen.getByTestId('draft-attachment-card-asset-dfc'))
+    await screen.findByTestId('draft-attachment-details-dialog')
+
+    await waitFor(() => {
+      expect(screen.getByTestId('draft-attachment-dfc-option-markdown')).toHaveTextContent('selected')
+    })
+    expect(await screen.findByTestId('draft-attachment-dfc-preview-text')).toHaveTextContent('Markdown preview from selected option')
+    expect(invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.updateAttachmentSettings')).toHaveLength(updateCallsAfterSelection)
+    expect(invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.ensureDfcOptions').length).toBeGreaterThanOrEqual(2)
+  })
+
   it('keeps URL retention hidden for non-URL attachments and disables audio link sending', async () => {
     const user = userEvent.setup()
     draftResponse = {

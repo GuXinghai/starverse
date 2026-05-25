@@ -7,8 +7,8 @@ This file is the recovery entry point after context compression. The source of t
 - Current branch: `docs/dfc-0-format-conversion-foundation`
 - Current topic directory: `docs/file-pipeline/document-format-conversion/`
 - Current SSOT file: `starverse_format_conversion_preview_v1_2.md`
-- Latest appended recovery state: DFC-29 tightens DFC Send Plan target reconstruction so selected derived refs require verified derivative target metadata when the derivative repo is available; missing or malformed derivative target metadata fails closed as `selected_option_not_found`.
-- The DFC-0 through DFC-6 bullets in this section are historical setup milestones; later DFC-7 through DFC-29 recovery notes are appended below and the full append-only sequence is in `progress-ledger.md`.
+- Latest appended recovery state: DFC-30 adds regression coverage proving persisted selected DFC options rehydrate through draft restore, preview, message binding, history snapshots, and the existing attachment details dialog without renderer-inferred option identity.
+- The DFC-0 through DFC-6 bullets in this section are historical setup milestones; later DFC-7 through DFC-30 recovery notes are appended below and the full append-only sequence is in `progress-ledger.md`.
 - DFC-0 scope: docs-only foundation. Create the topic directory, place the v1.2 source contract there, and add only `progress-ledger.md` and `important-context.md`.
 - DFC-0 does not implement production behavior and does not modify schema, Send Plan, UI, dependencies, test configuration, external engines, or production code.
 - DFC-1 scope: read-only repository mapping against v1.2. No production code was changed.
@@ -597,3 +597,14 @@ DFC-29 should seek owner approval for durable pending/retry/job-state storage or
 ## Recommended next round
 
 DFC-30 should seek owner approval for durable pending/retry/job-state storage or browser Playwright harness scaffolding unless another concrete narrow backend gap remains outside owner-gated scope. Browser Playwright harness scaffolding, durable option-generation storage, DB uniqueness/migration, external engines, new dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, and forbidden conversion families remain owner-gated.
+
+## DFC-30 implementation recovery notes
+
+- DFC-30 is a test-hardening slice only; it does not add production code, DB schema changes, IPC shape changes, renderer option identity, Send Plan behavior changes, browser Playwright harness, UI redesign, new dependencies, external engines, legacy bridge, durable `ConversionOption` rows, durable job-state linkage, or durable async option-generation state.
+- Backend service regression coverage now proves a selected backend-owned markdown `derived_asset` option persists through draft restore, rehydrates as a ready backend option DTO, previews from the same selected ref, commits to a message without renderer-supplied snapshot data, and surfaces the same `usedOptionId`, `usedAssetRefs`, `targetKind`, and `sendStrategy` in history candidate snapshots.
+- UI regression coverage now proves the existing attachment details dialog reloads backend DFC options and preview after close/reopen while preserving the selected option marker and avoiding any extra `conversationDraft.updateAttachmentSettings` call.
+- Focused backend/UI Vitest passed at 2 files / 73 tests. The broader backend/client/UI DFC suite passed at 7 files / 366 tests. `vue-tsc` passed. Production diff privacy scan found no hits; the only new privacy-pattern hits are test-only `storageUri` fixture inputs. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this DFC diff.
+
+## Recommended next round
+
+DFC-31 should continue only with a narrow non-gated coverage or contract gap, such as selected-option mismatch-state UI coverage, unless the Owner approves durable pending/retry/job-state storage, browser Playwright harness scaffolding, DB uniqueness/migration, external engines, new dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, or forbidden conversion families.
