@@ -608,3 +608,520 @@ DFC-30 should seek owner approval for durable pending/retry/job-state storage or
 ## Recommended next round
 
 DFC-31 should continue only with a narrow non-gated coverage or contract gap, such as selected-option mismatch-state UI coverage, unless the Owner approves durable pending/retry/job-state storage, browser Playwright harness scaffolding, DB uniqueness/migration, external engines, new dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, or forbidden conversion families.
+
+## DFC-31 implementation recovery notes
+
+- DFC-31 is a narrow renderer visibility and UI regression slice; it does not add a DB schema change, IPC shape change, renderer option identity, Send Plan behavior change, browser Playwright harness, new dependency, external engine, legacy bridge, durable `ConversionOption` rows, durable job-state linkage, durable async option-generation state, broad UI redesign, or conversion runtime family expansion.
+- Attachment details now carries backend-sanitized DFC option diagnostic codes into the existing option view model and displays them under the backend-owned option. The renderer still does not invent option ids, refs, target kinds, compatibility, or conversion identity.
+- UI regression coverage now seeds a persisted `selectedOptionId` whose `selectedAssetRefs` differ from the backend option refs, then proves the dialog shows the selected backend option diagnostic, preview is blocked with `dfc_selection_refs_mismatch`, no preview body is shown, and the renderer does not call `conversationDraft.updateAttachmentSettings` to rewrite the backend selection.
+- Focused UI Vitest, `vue-tsc`, `git diff --check`, and diff-only privacy/log scans passed. `git diff --check` reported only LF/CRLF working-copy warnings.
+
+## Recommended next round
+
+DFC-32 should seek owner approval for durable pending/retry/job-state storage or browser Playwright harness scaffolding unless another concrete narrow contract or coverage gap remains outside owner-gated scope. Browser Playwright harness scaffolding, durable option-generation storage, DB uniqueness/migration, external engines, new dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, and forbidden conversion families remain owner-gated.
+
+## DFC-32 implementation recovery notes
+
+- DFC-32 is an owner-level stop memo only; it does not add production code, DB schema changes, Send Plan behavior changes, UI behavior changes, conversion runtime changes, dependencies, external engines, browser Playwright harness scaffolding, durable option-generation storage, durable job-state storage, or a legacy bridge.
+- The memo records that known non-gated Phase 1 hardening has covered null-hash, verified derivative authority, failure, pending, mismatch visibility, Send Plan fail-closed behavior, rehydrate, same-source coverage, and UI diagnostic visibility.
+- The next meaningful production work now requires owner approval for either durable DFC option-generation/job-state storage or new browser Playwright harness scaffolding.
+- The memo recommends approving durable DFC generation state first because pending, retry, and cross-process idempotency are production semantics, while browser smoke should follow once the backend contract is stable.
+
+## Recommended next round
+
+DFC-33 should proceed only after owner approval for either durable DFC option-generation/job-state storage or new browser Playwright harness scaffolding. If Option A is approved, keep the implementation to the smallest durable-state design tied to existing `file_derivatives` and `derivative_jobs`; if Option B is approved, add only the minimal browser harness and one existing-flow DFC smoke.
+
+## DFC-33 implementation recovery notes
+
+- Owner approved DFC-32 Option A first: durable DFC option-generation/job-state storage. Browser Playwright harness remains deferred until durable state lifecycle stabilizes.
+- DFC-33 adds the narrow durable companion table `dfc_option_generation_states` rather than a broad Send Plan rewrite, broad UI redesign, new browser harness, new dependency, external engine, legacy bridge, or new conversion runtime family.
+- The durable state identity is backend-owned by raw asset, DFC target kind, exposure mode, generator, and conversion settings hash. It tracks pending/running/ready/failed/stale/blocked status, retryability, attempt count, linked derivative job, and output derivative id without exposing paths, storage refs, file bodies, full hashes, content tokens, command details, or temp paths through renderer DTOs.
+- Explicit `conversationDraft.ensureDfcOptions` now writes DFC durable generation state for approved Phase 1 local text-like targets and updates it on running, ready, and failed outcomes. A later explicit ensure can retry a failed durable state and keeps one generation-state row for the backend option identity.
+- `conversationDraft.getDfcOptions` can surface durable pending/running/failed generation states as sanitized non-sendable backend options when no verified derived option exists. Failed generation states keep the existing deterministic failed option id shape; pending/running states use backend-owned generation-state option ids and empty refs, so the renderer cannot select or persist them as sendable refs.
+- Ready preview/send authority remains verified `file_derivatives` plus DerivedAsset facade metadata. The new durable state table does not replace the DerivedAsset authority for ready options.
+- Targeted migration/repo/worker/service tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc`, `git diff --check`, and privacy/log scans passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this durable-state slice.
+
+## Recommended next round
+
+DFC-34 should continue durable lifecycle hardening around stale/cancellation/removal semantics or add a narrowly scoped retry-control endpoint only if it can preserve backend-owned identity and privacy boundaries. Browser Playwright harness scaffolding, external engines, new dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, and forbidden conversion families remain deferred unless separately owner-approved.
+
+## DFC-34 implementation recovery notes
+
+- DFC-34 is a narrow durable stale-source lifecycle slice; it does not add a DB schema change beyond the already-added DFC-33 durable state table, IPC shape change, renderer option identity, browser Playwright harness, new dependency, external engine, broad UI redesign, broad Send Plan rewrite, legacy bridge, or new conversion runtime family.
+- Explicit DFC ensure no longer reuses an existing ready text derivative when the derivative DFC `sourceHash` no longer matches the current raw asset `sha256`. It creates a fresh derivative/job and updates the durable generation state output to the new derivative id.
+- Backend DFC option candidate generation now reads derivative candidates latest-first and exposes at most one candidate per derived target kind. When a regenerated ready derivative exists, the older stale derivative is not exposed as a competing option for the same target.
+- `FileDerivativeRepo.getLatestReady` now uses insertion order as the final tie-breaker after `created_at`, so same-timestamp test and worker runs resolve the latest inserted derivative deterministically.
+- Regression coverage updates a source asset hash after first explicit ensure, then proves the second ensure generates a new `derived_asset`, updates durable state attempt/output, and does not expose old or new source hashes through the DTO.
+- Focused worker/service/repo tests, the broader backend/client/UI DFC suite, `vue-tsc`, `git diff --check`, and privacy/log scans passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this durable lifecycle slice.
+
+## Recommended next round
+
+DFC-35 should continue durable lifecycle hardening around cancellation/removal semantics, especially ensuring completed background generation cannot write back into removed draft UI state. Browser Playwright harness scaffolding, external engines, new dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, and forbidden conversion families remain deferred unless separately owner-approved.
+
+## DFC-35 implementation recovery notes
+
+- DFC-35 is a narrow durable attachment-removal lifecycle slice; it does not add a DB schema change, IPC shape change, renderer option identity, browser Playwright harness, external engine, new dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, or new conversion runtime family.
+- `DfcOptionGenerationStateRepo` now has an explicit blocked-state writer. Detached draft generation is recorded with the sanitized symbolic reason `draft_attachment_detached`, retryable false, no output derivative id, and no path, storage ref, file body, full hash, command detail, temp path, or content token exposure.
+- Explicit `conversationDraft.ensureDfcOptions` validates the draft attachment before generation as before, and now also passes a draft-attachment relevance guard into DFC derivative generation. If the attachment is removed before generation starts or after conversion completes but before DFC metadata/asset ready state is written, the durable generation state is blocked instead of being marked ready.
+- The completed-conversion removal regression forces the attachment to be removed after the derivative job succeeds, then proves the worker response is a closed `draft attachment not found` error, durable state is blocked with `draft_attachment_detached`, no DFC output derivative id is written, and the response does not expose storage URI or source hash fixture values.
+- Focused repo/worker/service tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this durable lifecycle slice.
+
+## Recommended next round
+
+DFC-36 can continue durable lifecycle hardening with a narrowly scoped retry-control or stale/blocked recovery behavior if it preserves backend-owned option identity and privacy boundaries. Browser Playwright harness scaffolding, external engines, new dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, and forbidden conversion families remain deferred unless separately owner-approved.
+
+## DFC-36 implementation recovery notes
+
+- DFC-36 is a narrow durable generation-state transition hardening slice; it does not add a DB schema change, IPC shape change, renderer option identity, browser Playwright harness, external engine, new dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, or new conversion runtime family.
+- `DfcOptionGenerationStateRepo.markRunning`, `markFailed`, and `markBlocked` now clear `output_derivative_id`. Only `ready` state retains the authoritative output pointer, so retries, failures, and detached/blocked states cannot retain a stale DerivedAsset output id in durable generation state.
+- Repo regression coverage now exercises ready -> running, ready -> failed, and ready -> blocked transitions and proves the old output derivative id is cleared while symbolic error/status fields remain available.
+- Focused repo/worker/service tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this durable lifecycle slice.
+
+## Recommended next round
+
+DFC-37 can continue within Owner-approved durable lifecycle work by adding a narrow retry-control/recovery behavior or by auditing remaining durable-state terminal conditions. Browser Playwright harness scaffolding, external engines, new dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, and forbidden conversion families remain deferred unless separately owner-approved.
+
+## DFC-37 implementation recovery notes
+
+- DFC-37 is a narrow durable retry lifecycle slice; it does not add a DB schema change, IPC shape change, renderer option identity, browser Playwright harness, external engine, new dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, or new conversion runtime family.
+- Explicit DFC ensure now honors durable failed generation states whose `retryable` flag is false. When no verified reusable derivative already exists for the same option identity, ensure returns the existing sanitized failed option instead of creating another derivative job for the same terminal failure.
+- Verified ready derivatives still take precedence as DerivedAsset authority. The non-retryable gate only suppresses repeated job creation when the durable failed state is the only authority for that DFC option identity.
+- Worker regression coverage seeds a non-retryable `conversion_not_implemented` durable state, calls `conversationDraft.ensureDfcOptions`, and proves no derivative job or derivative row is created, the failed option remains backend-owned and sanitized, and storage URI/source hash fixtures are not emitted.
+- Focused repo/worker/service tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this durable lifecycle slice.
+
+## Recommended next round
+
+DFC-38 can continue with narrow durable lifecycle hardening or stop for an owner decision before moving into browser Playwright harness scaffolding, external conversion engines/dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, or new runtime families.
+
+## DFC-38 implementation recovery notes
+
+- DFC-38 is a focused regression slice for durable blocked-state recovery; it does not add production code, DB schema changes, IPC shape changes, renderer option identity, browser Playwright harness, external engine, new dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, or new conversion runtime family.
+- Worker coverage now proves a `draft_attachment_detached` durable blocked state is recoverable after the user adds the same asset back to the draft. A later explicit ensure reuses the existing verified text derivative, marks the durable generation state ready, writes the output derivative id, and does not create a duplicate derivative job.
+- The same regression preserves the DFC privacy boundary by asserting neither the raw storage URI nor the raw source hash fixture appears in the detached error response or the recovered options DTO.
+- Focused repo/worker/service tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this durable lifecycle regression.
+
+## Recommended next round
+
+DFC-39 should either continue with a concrete narrow durable lifecycle gap, or pause for owner decision before browser Playwright harness scaffolding, external conversion engines/dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, or new runtime families.
+
+## DFC-39 implementation recovery notes
+
+- DFC-39 is a focused regression slice for durable failure recovery through verified DerivedAsset authority; it does not add production code, DB schema changes, IPC shape changes, renderer option identity, browser Playwright harness, external engine, new dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, or new conversion runtime family.
+- Worker coverage now proves a non-retryable durable `failed` generation state does not permanently suppress an already verified ready derivative for the same option identity. Explicit ensure reuses the verified derivative, recovers the durable state to `ready`, writes the output derivative id, and creates no new derivative job.
+- The regression preserves privacy assertions for both raw and derived storage/source metadata: raw storage URI, derived storage URI, raw source hash, and derived content hash fixtures are absent from the options DTO.
+- Focused repo/worker/service tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this durable lifecycle regression.
+
+## Recommended next round
+
+DFC-40 should either continue with a concrete narrow durable lifecycle or contract coverage gap, or pause for owner decision before browser Playwright harness scaffolding, external conversion engines/dependencies, broad UI redesign, broad Send Plan rewrite, legacy compatibility bridge, or new runtime families.
+
+## DFC-40 implementation recovery notes
+
+- DFC-40 is a focused worker regression slice for existing TSV/table_markdown conversion behavior; it does not add production code, DB schema changes, IPC shape changes, renderer option identity, browser Playwright harness, external engine, new dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, or new conversion runtime family.
+- Worker coverage now proves a TSV draft attachment explicitly ensures to a `table_markdown` `derived_asset`, writes the expected Markdown table output, persists the selected backend option/ref, previews from the same selected derived ref, and commits a message attachment with matching `usedOptionId`, `usedAssetRefs`, `targetKind`, and `sendStrategy`.
+- The regression preserves the DFC privacy boundary by asserting raw storage URI, derived storage URI, and raw source hash fixtures are absent from the options/preview DTOs.
+- Focused repo/worker/service tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this TSV same-source regression.
+
+## Recommended next round
+
+DFC-41 can continue with another concrete narrow contract/runtime coverage gap, or present an owner-decision memo for the next larger step such as browser Playwright harness scaffolding or an external conversion engine/dependency.
+
+## DFC-41 implementation recovery notes
+
+- DFC-41 is a focused worker regression slice for existing CSV/table_markdown conversion behavior; it does not add production code, DB schema changes, IPC shape changes, renderer option identity, browser Playwright harness, external engine, new dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, or new conversion runtime family.
+- Worker coverage now proves quoted CSV cells convert to `table_markdown` without splitting escaped commas, with Markdown pipe escaping preserved, and with quoted multiline cell content rendered as `<br>` inside the Markdown table.
+- The regression preserves backend-owned option identity and privacy assertions by checking the generated `derived_asset` option/ref while ensuring raw storage URI, derived storage URI, and raw source hash fixtures are absent from the options DTO.
+- Focused repo/worker/service tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this CSV conversion regression.
+
+## Recommended next round
+
+DFC-42 should either continue with another concrete narrow runtime/contract coverage gap, or present an owner-decision memo for the next larger step such as browser Playwright harness scaffolding or an external conversion engine/dependency.
+
+## DFC-42 implementation recovery notes
+
+- DFC-42 is a narrow built-in text decoding runtime slice; it does not add a DB schema change, IPC shape change, renderer option identity, browser Playwright harness, external engine, external dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, or new conversion runtime family.
+- `DerivativeJobService` now decodes text assets with explicit UTF-16LE/UTF-16BE BOMs before falling back to strict UTF-8. This is deterministic BOM handling only; it does not guess arbitrary encodings or relax binary detection.
+- Worker coverage now proves a UTF-16LE BOM TSV asset explicitly ensures to a `table_markdown` `derived_asset`, writes the expected Markdown table output, and records `sourceEncoding: utf-16le` in derivative metadata.
+- The regression preserves backend-owned option identity and privacy assertions by checking the generated `derived_asset` option/ref while ensuring raw storage URI, derived storage URI, and raw source hash fixtures are absent from the options DTO.
+- Focused repo/worker/service tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this encoding runtime slice.
+
+## Recommended next round
+
+DFC-43 can continue with another concrete narrow runtime/contract coverage gap, or present an owner-decision memo for the next larger step such as browser Playwright harness scaffolding or an external conversion engine/dependency.
+
+## DFC-43 implementation recovery notes
+
+- DFC-43 is a focused worker regression slice for the UTF-16BE half of the existing BOM-aware text decoder; it does not add production code, DB schema changes, IPC shape changes, renderer option identity, browser Playwright harness, external engine, external dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, or new conversion runtime family.
+- Worker coverage now proves a UTF-16BE BOM TSV asset explicitly ensures to a `table_markdown` `derived_asset`, writes expected Markdown table output, and records `sourceEncoding: utf-16be` in derivative metadata.
+- The regression preserves backend-owned option identity and privacy assertions by checking the generated `derived_asset` option/ref while ensuring raw storage URI, derived storage URI, and raw source hash fixtures are absent from the options DTO.
+- Focused repo/worker/service tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this encoding regression.
+
+## Recommended next round
+
+DFC-44 can continue with another concrete narrow runtime/contract coverage gap, or present an owner-decision memo for the next larger step such as browser Playwright harness scaffolding or an external conversion engine/dependency.
+
+## DFC-44 implementation recovery notes
+
+- DFC-44 is a focused worker regression slice for the deterministic BOM-only encoding boundary; it does not add production code, DB schema changes, IPC shape changes, renderer option identity, browser Playwright harness, external engine, external dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, heuristic encoding policy, or new conversion runtime family.
+- Worker coverage now proves a UTF-16LE TSV asset without an explicit BOM fails closed during explicit DFC `table_markdown` ensure instead of being guessed into a conversion path.
+- The regression verifies no `DerivedAsset` is written, the derivative job and durable generation state are marked failed with `derivative_input_missing`, and the exposed failed option remains backend-owned, unavailable, and sanitized.
+- Privacy assertions confirm the options DTO does not leak the raw storage URI, source hash fixture, or raw decoder detail.
+- Focused repo/worker/service tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this encoding boundary regression.
+
+## Recommended next round
+
+DFC-45 can continue with another concrete narrow runtime/contract coverage gap, or present an owner-decision memo for the next larger step such as browser Playwright harness scaffolding or an external conversion engine/dependency.
+
+## DFC-45 implementation recovery notes
+
+- DFC-45 is a focused built-in text derivative runtime hardening slice; it does not add DB schema changes, IPC shape changes, renderer option identity, browser Playwright harness, external engine, external dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, heuristic encoding policy, or new conversion runtime family.
+- `DerivativeJobService` now only trusts caught `error.code` values that are known `DerivativeErrorCode` members. Unknown Node/internal codes from APIs such as `TextDecoder` fall through to sanitized `derivative_input_missing` instead of being stored or surfaced as DFC state.
+- Worker coverage now proves an invalid UTF-8 CSV asset without a BOM fails closed during explicit DFC `table_markdown` ensure, writes no `DerivedAsset`, and records the derivative job and durable generation state as failed with `derivative_input_missing`.
+- Privacy assertions confirm the options DTO does not leak the raw storage URI, source hash fixture, or raw decoder wording such as encoded-data details.
+- Focused repo/worker/service tests passed after `npm run rebuild:node`. The broader backend/client/UI DFC suite passed after rebuild. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this decoder error-code sanitization slice.
+
+## Recommended next round
+
+DFC-46 can continue with another concrete narrow runtime/contract coverage gap, or present an owner-decision memo for the next larger step such as browser Playwright harness scaffolding or an external conversion engine/dependency.
+
+## DFC-46 implementation recovery notes
+
+- DFC-46 is a focused built-in text derivative runtime redaction slice; it does not add DB schema changes, IPC shape changes, renderer option identity, browser Playwright harness, external engine, external dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, heuristic encoding policy, or new conversion runtime family.
+- Unknown/internal errors normalized to `derivative_input_missing` now store the fixed safe message `Derivative input could not be decoded.` instead of retaining raw runtime or decoder wording. Known `DerivativeErrorCode` failures continue through the existing sanitized message path.
+- Worker coverage now proves invalid UTF-8 explicit DFC `table_markdown` ensure stores the safe message in derivative job state and asset `textConversion` metadata, writes no `DerivedAsset`, leaves durable generation state failed, and does not retain raw decoder wording.
+- Focused repo/worker/service tests passed after `npm run rebuild:node`. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this decoder message redaction slice.
+
+## Recommended next round
+
+DFC-47 can continue with another concrete narrow runtime/contract coverage gap, or present an owner-decision memo for browser Playwright harness scaffolding or an external conversion engine/dependency.
+
+## DFC-47 implementation recovery notes
+
+- DFC-47 is a focused derivative runtime failure-message privacy slice; it does not add DB schema changes, IPC shape changes, renderer option identity, DFC option identity, browser Playwright harness, external engine, external dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, heuristic encoding policy, HTML policy changes, or new conversion runtime family.
+- `sanitizeDerivativeErrorMessage` now redacts POSIX absolute paths in addition to storage-root, data URL, long base64, Windows drive, and UNC path redaction.
+- Focused service coverage proves a provider failure containing `/var/tmp/.../private-token/...` is stored as `[redacted-path]` in derivative job failure state.
+- Validation note: full `infra/files/derivativeJobService.test.ts` currently still has a pre-existing HTML expectation mismatch: HTML containing `<script>` is inferred as `code` by current runtime while the test expects safe markdown conversion. The DFC-47 focused redaction test passed, and the broader backend/client/UI DFC suite passed.
+- `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this path-redaction slice.
+
+## Recommended next round
+
+DFC-48 can either address the HTML runtime/test policy mismatch with an owner-aware memo if needed, continue with another narrow privacy/contract gap, or prepare an owner-decision memo for browser Playwright harness scaffolding or an external conversion engine/dependency.
+
+## DFC-48 implementation recovery notes
+
+- DFC-48 is a focused derivative runtime failure-message privacy slice; it does not add DB schema changes, IPC shape changes, renderer option identity, DFC option identity, browser Playwright harness, external engine, external dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, heuristic encoding policy, HTML policy changes, or new conversion runtime family.
+- `sanitizeDerivativeErrorMessage` now redacts `http://` and `https://` URLs before messages are persisted to derivative job failure state, reducing risk of signed URL, token, or remote storage details leaking through runtime diagnostics.
+- Focused service coverage proves a provider failure containing a URL with query token and fragment is stored as `[redacted-url]`.
+- Focused runtime redaction tests passed after `npm run rebuild:node`. Focused repo/worker/service DFC tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this URL-redaction slice.
+- HTML policy/test mismatch remains unresolved pending Owner decision: full `infra/files/derivativeJobService.test.ts` still expects safe markdown for script-bearing HTML while current runtime infers `code`.
+
+## Recommended next round
+
+DFC-49 can continue with another narrow privacy/contract gap, resume the HTML policy decision path if Owner approves Option A/B/C, or prepare an owner-decision memo for browser Playwright harness scaffolding or an external conversion engine/dependency.
+
+## DFC-49 implementation recovery notes
+
+- DFC-49 is a focused derivative runtime failure-message privacy slice; it does not add DB schema changes, IPC shape changes, renderer option identity, DFC option identity, browser Playwright harness, external engine, external dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, heuristic encoding policy, HTML policy changes, or new conversion runtime family.
+- `sanitizeDerivativeErrorMessage` now redacts `file://` URLs before messages are persisted to derivative job failure state, reducing risk of local file URL, username, and app-support path leakage.
+- Focused service coverage proves a provider failure containing a local `file:///Users/.../Application%20Support/...` URL is stored as `[redacted-url]`.
+- Focused runtime redaction tests passed after `npm run rebuild:node`. Focused repo/worker/service DFC tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this file-URL-redaction slice.
+- HTML policy/test mismatch remains unresolved pending Owner decision: full `infra/files/derivativeJobService.test.ts` still expects safe markdown for script-bearing HTML while current runtime infers `code`.
+
+## Recommended next round
+
+DFC-50 can continue with another narrow privacy/contract gap, resume the HTML policy decision path if Owner approves Option A/B/C, or prepare an owner-decision memo for browser Playwright harness scaffolding or an external conversion engine/dependency.
+
+## DFC-50 implementation recovery notes
+
+- DFC-50 is a focused derivative runtime failure-message privacy slice; it does not add DB schema changes, IPC shape changes, renderer option identity, DFC option identity, browser Playwright harness, external engine, external dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, heuristic encoding policy, HTML policy changes, or new conversion runtime family.
+- `sanitizeDerivativeErrorMessage` now redacts common secret-bearing fragments such as `Authorization: Bearer ...`, `api_key=...`, `token:...`, access/refresh/content token keys, and generic `secret` assignments before messages are persisted to derivative job failure state.
+- Focused service coverage proves provider failures containing bearer, API key, and token values are stored with `[redacted-secret]`.
+- Focused runtime redaction tests passed after `npm run rebuild:node`. Focused repo/worker/service DFC tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this secret-redaction slice.
+- HTML policy/test mismatch remains unresolved pending Owner decision: full `infra/files/derivativeJobService.test.ts` still expects safe markdown for script-bearing HTML while current runtime infers `code`.
+
+## Recommended next round
+
+DFC-51 can continue with another narrow privacy/contract gap, resume the HTML policy decision path if Owner approves Option A/B/C, or prepare an owner-decision memo for browser Playwright harness scaffolding or an external conversion engine/dependency.
+
+## DFC-51 implementation recovery notes
+
+- DFC-51 is a focused derivative runtime failure-message privacy slice; it does not add DB schema changes, IPC shape changes, renderer option identity, DFC option identity, browser Playwright harness, external engine, external dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, heuristic encoding policy, HTML policy changes, or new conversion runtime family.
+- `sanitizeDerivativeErrorMessage` now redacts email-like identifiers before messages are persisted to derivative job failure state, reducing risk of account/user identifiers leaking through provider/runtime diagnostics.
+- Focused service coverage proves a provider failure containing `alice.sensitive+dfc@example.test` is stored as `[redacted-email]`.
+- Focused runtime redaction tests passed after `npm run rebuild:node`. Focused repo/worker/service DFC tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this email-redaction slice.
+- HTML policy/test mismatch remains unresolved pending Owner decision: full `infra/files/derivativeJobService.test.ts` still expects safe markdown for script-bearing HTML while current runtime infers `code`.
+
+## Recommended next round
+
+DFC-52 can continue with another narrow privacy/contract gap, resume the HTML policy decision path if Owner approves Option A/B/C, or prepare an owner-decision memo for browser Playwright harness scaffolding or an external conversion engine/dependency.
+
+## DFC-52 implementation recovery notes
+
+- DFC-52 is a focused derivative runtime failure-message privacy slice; it does not add DB schema changes, IPC shape changes, renderer option identity, DFC option identity, browser Playwright harness, external engine, external dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, heuristic encoding policy, HTML policy changes, or new conversion runtime family.
+- `sanitizeDerivativeErrorMessage` now redacts JWT-like dotted token values before messages are persisted to derivative job failure state, covering shorter three-segment tokens that can bypass long-base64 and key-assignment redaction.
+- Focused service coverage proves a provider failure containing a dotted token is stored as `[redacted-token]`.
+- Focused runtime redaction tests passed after `npm run rebuild:node`. Focused repo/worker/service DFC tests passed. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this dotted-token-redaction slice.
+- HTML policy/test mismatch remains unresolved pending Owner decision: full `infra/files/derivativeJobService.test.ts` still expects safe markdown for script-bearing HTML while current runtime infers `code`.
+
+## Recommended next round
+
+DFC-53 can continue with another narrow privacy/contract gap, resume the HTML policy decision path if Owner approves Option A/B/C, or prepare an owner-decision memo for browser Playwright harness scaffolding or an external conversion engine/dependency.
+
+## DFC-53 implementation recovery notes
+
+- DFC-53 is a focused derivative runtime failure-message privacy slice; it does not add DB schema changes, IPC shape changes, renderer option identity, DFC option identity, browser Playwright harness, external engine, external dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, heuristic encoding policy, HTML policy changes, or new conversion runtime family.
+- `sanitizeDerivativeErrorMessage` now redacts uppercase environment-variable style secret assignments before messages are persisted to derivative job failure state, covering prefixed keys such as `OPENAI_API_KEY=...`, `AWS_SECRET_ACCESS_KEY=...`, and `STARVERSE_CONTENT_TOKEN=...`.
+- Focused service coverage proves a provider failure containing those env-style secret assignments is stored with `[redacted-secret]`.
+- The first focused DFC-53 redaction run exposed that `AWS_SECRET_ACCESS_KEY` was not covered; the same slice corrected the pattern and the focused runtime redaction tests then passed.
+- Focused repo/worker/service DFC tests passed after `npm run rebuild:node`. The broader backend/client/UI DFC suite passed. `vue-tsc` passed. Plain `tsc` still fails only in the pre-existing Vue SFC named-export mismatch at `src/ui-app/app/appChatApp.logic.ts:183-184`, unrelated to this env-secret-redaction slice.
+- HTML policy/test mismatch remains unresolved pending Owner decision: full `infra/files/derivativeJobService.test.ts` still expects safe markdown for script-bearing HTML while current runtime infers `code`.
+
+## Recommended next round
+
+DFC-54 can continue with another narrow privacy/contract gap, resume the HTML policy decision path if Owner approves Option A/B/C, or prepare an owner-decision memo for browser Playwright harness scaffolding or an external conversion engine/dependency.
+
+## DFC-54 implementation recovery notes
+
+- DFC-54 is a focused DFC validation-chain hardening slice; it does not change runtime DFC behavior, DB schema, IPC shape, renderer option identity, DFC option identity, browser Playwright harness, external engine, external dependency, broad UI redesign, broad Send Plan rewrite, legacy bridge, heuristic encoding policy, HTML policy changes, or conversion runtime families.
+- The repeated plain `tsc` blocker at `src/ui-app/app/appChatApp.logic.ts:183-184` is resolved by moving Search modal and Conversation list prop/list types from named `.vue` type exports into regular `.ts` type modules.
+- `SearchModal.vue`, `ConversationList.vue`, and `appChatApp.logic.ts` now import those types type-only from `SearchModal.types.ts` and `ConversationList.types.ts`, avoiding runtime changes while allowing plain TypeScript to typecheck without Vue SFC named exports.
+- Validation passed: plain `tsc`, `vue-tsc`, focused UI attachment Vitest, and the broader backend/client/UI DFC suite after `npm run rebuild:node`. Renderer diff privacy/log scan found no added DTO/log/path/token exposure. `git diff --check` passed with LF/CRLF warnings only.
+- HTML policy/test mismatch remains unresolved pending Owner decision: full `infra/files/derivativeJobService.test.ts` still expects safe markdown for script-bearing HTML while current runtime infers `code`.
+
+## Recommended next round
+
+DFC-55 can continue with a narrow contract/privacy gap, resume the HTML policy decision path if Owner approves Option A/B/C, or prepare an owner-decision memo for browser Playwright harness scaffolding or an external conversion engine/dependency.
+
+## DFC-55 implementation recovery notes
+
+- Owner approved HTML Option C with a corrected default policy: HTML may expose both `code` and safe `markdown`; default inference should prefer `markdown` for static/document-like HTML and `code` for template/source/script-heavy HTML.
+- DFC-55 is a focused HTML text-conversion and option-generation slice. It does not add HTML->PDF, Chromium/Puppeteer, external resource loading, external dependencies, browser Playwright harness, broad UI redesign, broad Send Plan rewrite, legacy bridge, external conversion engines, or additional preference UI.
+- `DerivativeJobService` now treats explicit `configJson.targetKind` as authoritative for text jobs and validates that the requested target is supported instead of silently falling back. HTML `code` preserves source text; HTML `markdown` uses safe string-based conversion that does not execute JavaScript or load externals, removes script/style execution semantics, preserves visible text, and emits HTML safety warnings.
+- The implicit HTML profile heuristic now keeps static/document-like HTML on `markdown`, while template/source/script-heavy HTML defaults to `code`.
+- `conversationDraft.ensureDfcOptions` now generates both HTML `markdown` and `code` DFC derived options when the raw HTML asset is eligible. The existing `original_file` option remains the raw_file option. Reuse now searches for a latest reusable derivative with matching target kind, avoiding repeat generation when both HTML targets exist.
+- Coverage proves static/document-like HTML defaults to safe markdown with warnings, script-heavy HTML defaults to code, explicit markdown on script-heavy HTML produces safe markdown, explicit code preserves source, HTML DFC option generation exposes `original_file`/`markdown`/`code`, and selected markdown preview uses the same derived_asset ref.
+- Validation passed after `npm run rebuild:node`: full `infra/files/derivativeJobService.test.ts`, focused worker HTML/DFC option tests, broader backend/client/UI DFC suite, plain `tsc`, and `vue-tsc`. `git diff --check` passed with LF/CRLF warnings only. Privacy/log scan found no production DTO/log/path/token exposure; broader hits were internal source-hash/settings-hash handling or test fixtures with explicit non-leak assertions.
+
+## Recommended next round
+
+DFC-56 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-56 implementation recovery notes
+
+- DFC-56 is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, conversion runtime, Send Plan policy, UI, browser Playwright harness, external engines/dependencies, or HTML->PDF behavior.
+- The HTML dual-option worker regression now proves that after `conversationDraft.ensureDfcOptions` exposes ready `original_file`, safe `markdown`, and `code` options, the backend still returns `selectedOptionId: null`, empty `selectedAssetRefs`, and a `needs_user_selection` / `selected_option_missing` decision until a backend-issued option is explicitly selected.
+- This locks the Owner-approved Option C behavior that HTML choices remain selectedOptionId-driven and that the backend/renderer must not silently default to either `code` or `markdown` when the draft has no selected option.
+- Validation passed after `npm run rebuild:node`: focused HTML worker regression and the broader backend/client/UI DFC suite. `git diff --check` passed with LF/CRLF warnings only. Privacy/log scan hit only test fixture storage/source-hash strings covered by explicit non-leak assertions; no production DTO/log code changed.
+
+## Recommended next round
+
+DFC-57 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-57 implementation recovery notes
+
+- DFC-57 is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, conversion runtime, Send Plan policy, UI, browser Playwright harness, external engines/dependencies, or HTML->PDF behavior.
+- The HTML dual-option worker regression now continues from selected safe `markdown` preview to selected `code` preview and message commit. It proves the `code` preview uses the same selected `derived_asset` ref and that commit persists matching `usedOptionId`, `usedAssetRefs`, `targetKind: code`, and `sendStrategy: text_in_prompt`.
+- This locks the Owner-approved Option C behavior for both HTML derived outputs: safe markdown preserves visible semantics without JS/external loading, while code preserves source text, and both remain selectedOptionId/selectedAssetRefs-driven rather than renderer-invented.
+- Validation passed after `npm run rebuild:node`: focused HTML worker regression and the broader backend/client/UI DFC suite. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit only test fixture raw/derived refs and explicit non-leak assertions; no production DTO/log code changed.
+
+## Recommended next round
+
+DFC-58 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-58 implementation recovery notes
+
+- DFC-58 is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, conversion runtime, Send Plan policy, UI, browser Playwright harness, external engines/dependencies, or HTML->PDF behavior.
+- The HTML dual-option worker regression now explicitly selects `original_file` before switching to derived `markdown` and `code`. It proves selected preview returns a `raw_file` metadata-only payload, preserves the selected raw_file ref, and reports `sendStrategy: file_attachment`.
+- The same regression asserts the raw-file preview DTO does not expose the raw storage URI, either HTML derived storage URI, or the HTML file body, keeping `original_file` preview metadata-only while still first-class in the HTML profile.
+- Validation passed after `npm run rebuild:node`: focused HTML worker regression and the broader backend/client/UI DFC suite. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit only test fixture storage refs and explicit non-leak assertions; no production DTO/log code changed.
+
+## Recommended next round
+
+DFC-59 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-59 implementation recovery notes
+
+- DFC-59 is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, conversion runtime, Send Plan policy, UI, browser Playwright harness, external engines/dependencies, or HTML->PDF behavior.
+- The HTML dual-option worker regression now attaches the same HTML asset to a second draft, selects the backend-issued `original_file` option, and commits it. The resulting MessageAttachment snapshot must persist matching `usedOptionId`, raw_file `usedAssetRefs`, `targetKind: original_file`, and `sendStrategy: file_attachment`.
+- This complements DFC-58 raw preview coverage and locks first-class HTML `original_file` send binding without creating a DerivedAsset, falling back to derived conversion identity, or relying on renderer-invented refs.
+- Validation passed after `npm run rebuild:node`: focused HTML worker regression and the broader backend/client/UI DFC suite. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit only test fixture raw/derived refs and explicit non-leak assertions; no production DTO/log code changed.
+
+## Recommended next round
+
+DFC-60 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-60 implementation recovery notes
+
+- DFC-60 is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, conversion runtime, Send Plan policy, UI, browser Playwright harness, external engines/dependencies, or HTML->PDF behavior.
+- The HTML dual-option worker regression now attaches the same HTML asset to a separate draft, selects the backend-issued safe `markdown` option, and commits it. The resulting MessageAttachment snapshot must persist matching `usedOptionId`, markdown `derived_asset` `usedAssetRefs`, `targetKind: markdown`, and `sendStrategy: text_in_prompt`.
+- This complements selected markdown preview coverage and locks HTML safe markdown preview/send same-source behavior without renderer-invented conversion identity or raw/derived storage detail leakage.
+- Validation passed after `npm run rebuild:node`: focused HTML worker regression and the broader backend/client/UI DFC suite. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit only test fixture raw/derived refs and explicit non-leak assertions; no production DTO/log code changed.
+
+## Recommended next round
+
+DFC-61 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-61 implementation recovery notes
+
+- DFC-61 is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, conversion runtime, UI, browser Playwright harness, external engines/dependencies, or HTML->PDF behavior.
+- Send Plan coverage now proves HTML raw assets with backend-selected safe `markdown` or `code` `derived_asset` refs are planned from DFC option/ref semantics as `text_in_prompt`, `mappedFromLegacy: false`, and `eligibility: included`, despite the raw asset extension/MIME being HTML.
+- The regression asserts Send Plan does not fall back to legacy `conversion_required_before_send` or `unsupported` routing and does not expose raw/derived storage URIs or lineage hashes in the plan DTO.
+- Validation passed after `npm run rebuild:node`: focused Send Plan regression and the broader backend/client/UI DFC suite. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit only test fixture storage/hash fields and explicit non-leak assertions; no production DTO/log code changed.
+
+## Recommended next round
+
+DFC-62 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-62 implementation recovery notes
+
+- DFC-62 is a narrow Send Plan contract-alignment fix plus regression coverage; it does not change DB schema, IPC shape, renderer option identity, DFC option identity, conversion runtime, UI, browser Playwright harness, external engines/dependencies, or HTML->PDF behavior.
+- The new Send Plan regression first exposed that an HTML raw asset with a backend-issued `original_file` raw_file selection was still blocked by `processingStatus: convertible` as `conversion_required_before_send`.
+- `compatibilityReasonFromProcessingStatusForSemantic` now treats `targetKind: original_file` with `sendStrategy: file_attachment` as a raw-file send semantic that does not require a ready text conversion before Send Plan mode selection. This keeps DFC-selected original files governed by selectedOptionId/selectedAssetRefs rather than legacy extension/MIME conversion routing.
+- Coverage now proves HTML `original_file`, safe `markdown`, and `code` selections all plan from selected DFC refs without legacy HTML fallback. Validation passed after `npm run rebuild:node`: focused Send Plan HTML DFC tests and the broader backend/client/UI DFC suite. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan found the production diff only changes a semantic gate condition; storage/hash hits are test fixtures with explicit non-leak assertions.
+
+## Recommended next round
+
+DFC-63 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-63 implementation recovery notes
+
+- DFC-63 is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, conversion runtime, UI, browser Playwright harness, external engines/dependencies, or HTML->PDF behavior.
+- The HTML `original_file` Send Plan regression now also evaluates the same backend-issued raw_file selection against a text-only model. The overall plan must be blocked by missing model capability, while the attachment remains DFC semantic `targetKind: original_file`, `sendStrategy: file_attachment`, and `mappedFromLegacy: false`.
+- The negative gate asserts the selected raw_file ref is preserved and the note names missing `file_in`; the plan must not fall back to legacy `conversion_required_before_send` or `unsupported` HTML routing.
+- Validation passed after `npm run rebuild:node`: focused Send Plan HTML original_file regression and the broader backend/client/UI DFC suite. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit only the existing DFC-62 production semantic gate plus test fixture storage/hash fields and explicit non-leak assertions.
+
+## Recommended next round
+
+DFC-64 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-64 implementation recovery notes
+
+- DFC-64 is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, conversion runtime, UI, browser Playwright harness, external engines/dependencies, or HTML->PDF behavior.
+- The HTML safe `markdown` and `code` Send Plan regression now also evaluates each backend-selected `derived_asset` option against a model without `text_in`. The overall plan must be blocked by missing model capability, while the attachment remains DFC semantic `targetKind: markdown` or `code`, `sendStrategy: text_in_prompt`, and `mappedFromLegacy: false`.
+- The negative gate asserts the selected derived_asset ref is preserved and the note names missing `text_in`; the plan must not fall back to legacy HTML `conversion_required_before_send` or `unsupported` routing.
+- Validation passed after `npm run rebuild:node`: focused Send Plan HTML DFC regressions and the broader backend/client/UI DFC suite. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit only the existing DFC-62 production semantic gate plus test fixture storage/hash fields and explicit non-leak assertions.
+
+## Recommended next round
+
+DFC-65 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-65 implementation recovery notes
+
+- DFC-65 is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, conversion runtime, UI, browser Playwright harness, external engines/dependencies, or HTML->PDF behavior.
+- Send Plan coverage now creates historical MessageAttachment snapshots for HTML `markdown` and `code` derived options, then plans them through `historyScope`. The history plan must preserve the message snapshot semantics: `targetKind`, `sendStrategy: text_in_prompt`, `mappedFromLegacy: false`, and the selected `derived_asset` refs.
+- The regression asserts historical HTML DFC attachments do not re-enter legacy HTML `conversion_required_before_send` or `unsupported` routing and do not expose raw/derived storage URIs or lineage hashes in the plan DTO.
+- Validation passed after `npm run rebuild:node`: focused history HTML DFC regression and the broader backend/client/UI DFC suite. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit test fixture storage/hash fields and explicit non-leak assertions; no production code changed in this round.
+
+## Recommended next round
+
+DFC-66 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-66 implementation recovery notes
+
+- DFC-66 is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, conversion runtime, Send Plan policy, UI, browser Playwright harness, external engines/dependencies, or HTML->PDF behavior.
+- The history `original_file` Send Plan regression now covers both PDF and HTML raw_file MessageAttachment snapshots. The history plan must preserve the snapshot semantics: `usedOptionId`, selected raw_file refs, `targetKind: original_file`, `sendStrategy: file_attachment`, and `mappedFromLegacy: false`.
+- The HTML branch asserts historical `original_file` does not re-enter legacy HTML `conversion_required_before_send` or `unsupported` routing and does not expose the raw storage URI in the plan DTO.
+- Validation passed after `npm run rebuild:node`: focused history original_file regression and the broader backend/client/UI DFC suite. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit test fixture storage/hash fields and explicit non-leak assertions; no production code changed.
+
+## Recommended next round
+
+DFC-67 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-67 implementation recovery notes
+
+- DFC-67 is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, Send Plan policy, UI, browser Playwright harness, external engines/dependencies, broad HTML runtime behavior, or HTML->PDF behavior.
+- The derivative runtime HTML default-code test now covers both script-heavy and template-like HTML. Template-like HTML using `<template>`, `{{ }}`, and `v-if` must default to `targetKind: code`, produce no conversion warnings, and write the exact original source text as the derived output.
+- This complements the existing static/document-like HTML default markdown test and explicit markdown/code HTML tests, keeping the owner-approved v1.2 HTML profile heuristic covered without adding Chromium/Puppeteer, external resource loading, external dependencies, or Playwright.
+- Validation passed after `npm run rebuild:node`: focused HTML runtime regression and the broader backend/client/UI DFC suite including full derivative runtime tests. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit cumulative test fixture storage URIs, template literals, and existing redaction-test secret samples; no production DTO/log code changed.
+
+## Recommended next round
+
+DFC-68 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-68 implementation recovery notes
+
+- DFC-68 is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, Send Plan policy, UI, browser Playwright harness, external engines/dependencies, broad HTML runtime behavior, or HTML->PDF behavior.
+- Worker-level option generation now covers template-like HTML. `conversationDraft.ensureDfcOptions` must keep `selectedOptionId` null and return `needs_user_selection`, while exposing backend-owned `original_file` raw_file, safe `markdown` derived_asset, and `code` derived_asset options.
+- The template-like HTML regression asserts the safe markdown derivative preserves visible template text without template tags/directives, the code derivative preserves the exact HTML source, markdown warnings include the safe HTML diagnostics, and the ensure DTO does not expose raw storage URI, source hash, or original HTML body.
+- Validation passed after `npm run rebuild:node`: focused worker regression and the broader backend/client/UI DFC suite including full derivative runtime tests. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit cumulative test fixture storage/hash fields, selected ref assertions, and explicit non-leak assertions; no production DTO/log code changed.
+
+## Recommended next round
+
+DFC-69 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-69 implementation recovery notes
+
+- DFC-69 is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, Send Plan policy, UI, browser Playwright harness, external engines/dependencies, broad HTML runtime behavior, or HTML->PDF behavior.
+- The template-like HTML worker regression now selects the backend-issued `code` option and verifies selected preview/send same-source behavior: preview returns the same selected `derived_asset` ref and exact code derivative text, and message commit snapshots matching `usedOptionId`, `usedAssetRefs`, `targetKind: code`, and `sendStrategy: text_in_prompt`.
+- The preview/commit DTO assertions ensure raw and derived storage URIs are not exposed while preserving backend-owned `selectedOptionId` / `selectedAssetRefs` and message `usedOptionId` / `usedAssetRefs`.
+- Validation passed after `npm run rebuild:node`: focused worker regression and the broader backend/client/UI DFC suite including full derivative runtime tests. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit cumulative test fixture storage/hash fields, selected/used ref assertions, and explicit non-leak assertions; no production DTO/log code changed.
+
+## Recommended next round
+
+DFC-70 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-70 implementation recovery notes
+
+- DFC-70 is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, Send Plan policy, UI, browser Playwright harness, external engines/dependencies, broad HTML runtime behavior, or HTML->PDF behavior.
+- The template-like HTML worker regression now also selects the backend-issued safe `markdown` option in a separate draft conversation and verifies selected preview/send same-source behavior: preview returns the same selected `derived_asset` ref and safe markdown derivative text, and message commit snapshots matching `usedOptionId`, `usedAssetRefs`, `targetKind: markdown`, and `sendStrategy: text_in_prompt`.
+- The preview/commit DTO assertions ensure raw and derived storage URIs and the original HTML body are not exposed while preserving backend-owned selected refs and message used refs.
+- Validation passed after `npm run rebuild:node`: focused worker regression and the broader backend/client/UI DFC suite including full derivative runtime tests. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit cumulative test fixture storage/hash fields, selected/used ref assertions, and explicit non-leak assertions; no production DTO/log code changed.
+
+## Pause note
+
+The owner requested pausing after DFC-70. Resume with DFC-71 when the owner asks to continue.
+
+## DFC-71 implementation recovery notes
+
+- DFC-71 resumed after the owner-requested DFC-70 pause. It is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, Send Plan policy, UI, browser Playwright harness, external engines/dependencies, broad HTML runtime behavior, or HTML->PDF behavior.
+- The template-like HTML worker regression now also selects the backend-issued `original_file` option in a separate draft conversation and verifies selected preview/send same-source behavior: preview returns the same selected `raw_file` ref with metadata-only raw preview diagnostics, and message commit snapshots matching `usedOptionId`, `usedAssetRefs`, `targetKind: original_file`, and `sendStrategy: file_attachment`.
+- The preview/commit DTO assertions ensure raw and derived storage URIs and the original HTML body are not exposed while preserving backend-owned selected refs and message used refs.
+- Validation passed after `npm run rebuild:node`: focused worker regression and the broader backend/client/UI DFC suite including full derivative runtime tests. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit cumulative test fixture storage/hash fields, selected/used ref assertions, and explicit non-leak assertions; no production DTO/log code changed.
+
+## Recommended next round
+
+DFC-72 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-72 implementation recovery notes
+
+- DFC-72 is a narrow safe HTML markdown runtime fix. It does not change DB schema, IPC shape, renderer option identity, DFC option identity, Send Plan policy, UI, browser Playwright harness, external engines/dependencies, broad HTML runtime behavior, external resource loading, or HTML->PDF behavior.
+- `htmlToMarkdownSafe` now rewrites `<img>` tags to their `alt` text only. This preserves visible/semantic image text while preventing external `src` URLs or domains from entering the derived markdown output.
+- The static/document-like HTML runtime regression now includes an external image URL and asserts the output keeps `Revenue chart`, removes the remote URL/domain, strips script/style semantics, and keeps safe HTML warnings including `html_external_resources_not_loaded`.
+- Validation passed after `npm run rebuild:node`: focused safe HTML runtime regression and the broader backend/client/UI DFC suite including full derivative runtime tests. `git diff --check` passed after docs with LF/CRLF warnings only. Privacy/log scan hit the intentional external URL fixture, explicit non-leak assertions, and cumulative redaction-test samples; no DTO/log code changed.
+
+## Recommended next round
+
+DFC-73 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-73 implementation recovery notes
+
+- DFC-73 is regression coverage only; it does not change production code, DB schema, IPC shape, renderer option identity, DFC option identity, Send Plan policy, UI, browser Playwright harness, external engines/dependencies, broad HTML runtime behavior, external resource loading, or HTML->PDF behavior.
+- The static/document-like HTML safe markdown runtime regression now includes an external `<a href>` URL with a token-like query value. The derived markdown must preserve visible link text (`Read report`) while dropping the URL, remote domain, and token.
+- This complements DFC-72 image-resource handling and keeps the no-JS/no-external-resource boundary covered for common link attributes without adding dependencies or loading external resources.
+- Validation passed after `npm run rebuild:node`: focused safe HTML runtime regression and the broader backend/client/UI DFC suite including full derivative runtime tests. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit the intentional external link/image URL fixtures, explicit non-leak assertions, and cumulative redaction-test samples; no production DTO/log code changed.
+
+## Recommended next round
+
+DFC-74 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-74 implementation recovery notes
+
+- DFC-74 is a narrow safe HTML markdown runtime fix. It does not change DB schema, IPC shape, renderer option identity, DFC option identity, Send Plan policy, UI, browser Playwright harness, external engines/dependencies, broad HTML runtime behavior, external resource loading, or HTML->PDF behavior.
+- `htmlToMarkdownSafe` now maps `<li>` to markdown bullet lines. This preserves basic visible list semantics while keeping the conversion string-level, dependency-free, and non-executing.
+- The static/document-like HTML runtime regression now includes a list and asserts the output contains `- First item` and `- Second item`, while still stripping script/style semantics and external URL attributes.
+- Validation passed after `npm run rebuild:node`: focused safe HTML runtime regression and the broader backend/client/UI DFC suite including full derivative runtime tests. `git diff --check` passed before docs with LF/CRLF warnings only. Privacy/log scan hit intentional safe markdown fixture text, external URL non-leak assertions, and cumulative redaction-test samples; no DTO/log code changed.
+
+## Recommended next round
+
+DFC-75 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-75 implementation recovery notes
+
+- DFC-75 is a narrow safe HTML markdown runtime fix. It does not change DB schema, IPC shape, renderer option identity, DFC option identity, Send Plan policy, UI, browser Playwright harness, external engines/dependencies, broad HTML runtime behavior, external resource loading, or HTML->PDF behavior.
+- `htmlToMarkdownSafe` now maps `<blockquote>` to markdown quote text. This preserves a basic visible document semantic while keeping conversion string-level, dependency-free, and non-executing.
+- The static/document-like HTML runtime regression now includes a blockquote and asserts the output contains `> Important note`, while retaining prior script/style stripping, external URL non-leak, image alt, link text, and list semantics checks.
+- Validation passed after `npm run rebuild:node`: focused safe HTML runtime regression and the broader backend/client/UI DFC suite including full derivative runtime tests. Privacy/log scan hit intentional safe markdown fixture text plus existing URL/token/storage/hash fixture assertions; no DTO/log code changed. `git diff --check` passed after docs with LF/CRLF warnings only.
+
+## Recommended next round
+
+DFC-76 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
