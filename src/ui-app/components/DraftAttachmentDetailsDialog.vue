@@ -27,6 +27,7 @@ type DraftAttachmentDfcOption = Readonly<{
   disabledReason: string | null
   label: string
   detail: string
+  diagnostics: readonly string[]
 }>
 
 type DraftAttachmentDfcOptions = Readonly<{
@@ -276,6 +277,14 @@ function removeAttachment() {
               </div>
               <div class="mt-1 text-[11px] text-gray-500">{{ option.detail }}</div>
               <div v-if="option.disabledReason" class="mt-1 text-[11px] text-gray-500">{{ option.disabledReason }}</div>
+              <div
+                v-for="diagnostic in option.diagnostics"
+                :key="diagnostic"
+                class="mt-1 text-[11px] text-amber-700"
+                :data-testid="`draft-attachment-dfc-option-${option.targetKind}-diagnostic`"
+              >
+                {{ diagnostic }}
+              </div>
             </button>
           </div>
           <div v-else class="text-sm text-gray-500" data-testid="draft-attachment-dfc-options-empty">

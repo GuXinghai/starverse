@@ -2,9 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { rebuildSearchIndex, runSearchQuery } from '@/next/search/searchClient'
 import type { SearchHit, SearchQueryParams, SearchScope } from '@/next/search/searchTypes'
-
-export type SearchProjectOption = Readonly<{ id: string; name: string }>
-export type SearchConvoOption = Readonly<{ id: string; title: string; projectId?: string | null }>
+import type { SearchConvoOption, SearchProjectOption } from './SearchModal.types'
 
 const props = defineProps<{
   open: boolean
