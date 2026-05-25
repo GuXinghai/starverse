@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { resolveManagedStoragePath } from '../../../../src/shared/files/localStorageResolver'
 import type { SendPlan } from '../../../../src/shared/files/sendPlanTypes'
 import { serializeSendPlanForOpenRouter } from '../../../../src/next/openrouter/openRouterSendPlanSerializer'
-import type { FileAssetRecord, FileDerivativeRecord } from '../../types'
+import type { DerivativeErrorCode, DfcOptionGenerationStateRecord, FileAssetRecord, FileDerivativeRecord } from '../../types'
 import {
   CreateFileAssetSchema,
   CreateFileDerivativeSchema,
@@ -609,18 +609,25 @@ async function ensureDfcDraftAttachmentOptions(
 ) {
   runtime.conversationAttachmentService.getDfcDraftAttachmentOptions(input)
   const asset = runtime.fileAssetRepo.getById(input.assetId)
-  const targetKind = asset ? inferDfcPhase1EnsureTargetKind(asset) : null
-  if (asset && targetKind && isDfcPhase1EnsureSourceAsset(asset)) {
-    await ensureTextDerivativeAsset(runtime, asset.id, targetKind, {
-      exposeDfcOption: true,
-    })
+  const targetKinds = asset ? inferDfcPhase1EnsureTargetKinds(asset) : []
+  if (asset && targetKinds.length > 0 && isDfcPhase1EnsureSourceAsset(asset)) {
+    for (const targetKind of targetKinds) {
+      await ensureTextDerivativeAsset(runtime, asset.id, targetKind, {
+        exposeDfcOption: true,
+        relevanceKey: `draft:${input.conversationId}:${input.assetId}`,
+        isStillRelevant: () => runtime.conversationAttachmentService.hasDraftAttachment(input),
+      })
+    }
   }
   return runtime.conversationAttachmentService.getDfcDraftAttachmentOptions(input)
 }
 
-function inferDfcPhase1EnsureTargetKind(asset: FileAssetRecord): 'plain_text' | 'markdown' | 'code' | 'table_markdown' | null {
+function inferDfcPhase1EnsureTargetKinds(asset: FileAssetRecord): readonly ('plain_text' | 'markdown' | 'code' | 'table_markdown')[] {
+  const ext = String(asset.extension ?? '').trim().toLowerCase()
+  const mime = normalizeMime(asset.mime)
+  if (ext === 'html' || ext === 'htm' || mime === 'text/html') return ['markdown', 'code']
   const candidates = ['table_markdown', 'markdown', 'code', 'plain_text'] as const
-  return candidates.find((targetKind) => isDfcPhase1TextConversionAsset(asset, targetKind)) ?? null
+  return candidates.filter((targetKind) => isDfcPhase1TextConversionAsset(asset, targetKind))
 }
 
 function isDfcPhase1EnsureSourceAsset(asset: FileAssetRecord): boolean {
@@ -633,7 +640,7 @@ async function ensureTextDerivativeAsset(
   runtime: DbWorkerRuntime,
   assetId: string,
   targetKind: string,
-  options: Readonly<{ exposeDfcOption: boolean }>
+  options: TextDerivativeEnsureOptions
 ): Promise<TextDerivativeEnsureResult> {
   const key = textDerivativeEnsureKey(assetId, targetKind, options)
   let runtimeInFlight = textDerivativeEnsureInFlight.get(runtime)
@@ -657,29 +664,72 @@ async function ensureTextDerivativeAssetUncoalesced(
   runtime: DbWorkerRuntime,
   assetId: string,
   targetKind: string,
-  options: Readonly<{ exposeDfcOption: boolean }>
+  options: TextDerivativeEnsureOptions
 ): Promise<Readonly<{ changed: boolean }>> {
   const asset = runtime.fileAssetRepo.getById(assetId)
+  const settingsHash = sha256Bytes(Buffer.from(JSON.stringify({ targetKind })))
+  const generationState = options.exposeDfcOption && isDfcPhase1DerivedTargetKind(targetKind)
+    ? runtime.dfcOptionGenerationStateRepo.ensure({
+      assetId,
+      targetKind,
+      derivedKind: 'extracted_text',
+      exposureMode: 'dfc',
+      generator: DFC_TEXT_DERIVATIVE_JOB_GENERATOR,
+      conversionSettingsHash: settingsHash,
+    })
+    : null
+  if (!isDfcOptionGenerationStillRelevant(options)) {
+    if (generationState) {
+      runtime.dfcOptionGenerationStateRepo.markBlocked({
+        id: generationState.id,
+        errorCode: 'draft_attachment_detached',
+      })
+    }
+    return { changed: false }
+  }
   if (!asset) {
     writeAssetConversionFailureMeta(runtime, assetId, 'derivative_asset_missing', 'Text conversion source asset is missing.', {
       exposeDfcOption: options.exposeDfcOption,
       targetKind,
     })
+    if (generationState) {
+      runtime.dfcOptionGenerationStateRepo.markFailed({
+        id: generationState.id,
+        errorCode: 'derivative_asset_missing',
+        retryable: false,
+      })
+    }
     return { changed: true }
   }
-  const existing = runtime.fileDerivativeRepo.getLatestReady({ parentAssetId: assetId, derivedKind: 'extracted_text' })
-  let derivative = existing
+  let derivative = findReusableTextDerivative(runtime, assetId, asset, targetKind, options)
+  if (!derivative && shouldSkipNonRetryableDfcGeneration(generationState)) {
+    return { changed: false }
+  }
   if (!derivative) {
     const job = runtime.derivativeJobService.createDerivativeJob({
       id: randomUUID(),
       assetId,
       derivativeKind: 'extracted_text',
       taskFamily: 'chat_context',
-      generator: 'step3-text-structured-conversion',
+      generator: DFC_TEXT_DERIVATIVE_JOB_GENERATOR,
       configJson: { targetKind },
     })
+    if (generationState) {
+      runtime.dfcOptionGenerationStateRepo.markRunning({
+        id: generationState.id,
+        derivativeJobId: job.id,
+        attemptCount: generationState.attemptCount + 1,
+      })
+    }
     const ran = await runtime.derivativeJobService.runDerivativeJob({ jobId: job.id })
     if (ran.job.status !== 'ready' || !ran.derivative) {
+      if (generationState) {
+        runtime.dfcOptionGenerationStateRepo.markFailed({
+          id: generationState.id,
+          errorCode: normalizeDerivativeErrorCode(ran.job.errorCode),
+          retryable: !NON_RETRYABLE_TEXT_CONVERSION_ERRORS.has(ran.job.errorCode ?? ''),
+        })
+      }
       writeAssetConversionFailureMeta(runtime, assetId, ran.job.errorCode ?? 'derivative_output_write_failed', ran.job.errorMessage ?? 'Text conversion failed.', {
         exposeDfcOption: options.exposeDfcOption,
         targetKind,
@@ -689,12 +739,27 @@ async function ensureTextDerivativeAssetUncoalesced(
     derivative = ran.derivative
   }
   if (!derivative) return { changed: false }
+  if (!isDfcOptionGenerationStillRelevant(options)) {
+    if (generationState) {
+      runtime.dfcOptionGenerationStateRepo.markBlocked({
+        id: generationState.id,
+        errorCode: 'draft_attachment_detached',
+      })
+    }
+    return { changed: true }
+  }
   const resolved = resolveManagedStoragePath(runtime.fileStorageRootDir, derivative.storageUri, {
     backend: 'local_fs',
     deletedAt: derivative.deletedAt,
   })
   if (resolved.kind !== 'ok') {
     markDerivativeGenerationFailed(runtime, derivative, 'derivative_local_file_missing', targetKind)
+    if (generationState) {
+      runtime.dfcOptionGenerationStateRepo.markFailed({
+        id: generationState.id,
+        errorCode: 'derivative_local_file_missing',
+      })
+    }
     writeAssetConversionFailureMeta(runtime, assetId, 'derivative_local_file_missing', 'Converted text derivative storage is unavailable.', {
       exposeDfcOption: options.exposeDfcOption,
       targetKind,
@@ -707,6 +772,12 @@ async function ensureTextDerivativeAssetUncoalesced(
     textBytes = new Uint8Array(await readFile(resolved.path))
   } catch {
     markDerivativeGenerationFailed(runtime, derivative, 'derivative_local_file_read_failed', targetKind)
+    if (generationState) {
+      runtime.dfcOptionGenerationStateRepo.markFailed({
+        id: generationState.id,
+        errorCode: 'derivative_local_file_read_failed',
+      })
+    }
     writeAssetConversionFailureMeta(runtime, assetId, 'derivative_local_file_read_failed', 'Converted text derivative storage could not be read.', {
       exposeDfcOption: options.exposeDfcOption,
       targetKind,
@@ -717,7 +788,6 @@ async function ensureTextDerivativeAssetUncoalesced(
   const contentHash = sha256Bytes(textBytes)
   const derivativeMeta = normalizeObject(derivative.metaJson)
   const sourceHash = readStringMeta(derivativeMeta, 'sourceHash') ?? asset.sha256 ?? null
-  const settingsHash = sha256Bytes(Buffer.from(JSON.stringify({ targetKind })))
   const dfcMeta = options.exposeDfcOption
     ? buildDfcTextConversionMetadata(asset, targetKind, {
       sourceHash,
@@ -747,19 +817,77 @@ async function ensureTextDerivativeAssetUncoalesced(
     dfcMeta,
     exposeDfcOption: options.exposeDfcOption,
   })
+  if (generationState) {
+    runtime.dfcOptionGenerationStateRepo.markReady({
+      id: generationState.id,
+      outputDerivativeId: derivative.id,
+    })
+  }
   return { changed: true }
 }
 
 function textDerivativeEnsureKey(
   assetId: string,
   targetKind: string,
-  options: Readonly<{ exposeDfcOption: boolean }>
+  options: TextDerivativeEnsureOptions
 ): string {
   return [
     String(assetId ?? '').trim(),
     String(targetKind ?? '').trim(),
     options.exposeDfcOption ? 'dfc' : 'legacy',
+    options.relevanceKey ? String(options.relevanceKey).trim() : '',
   ].join('\u001f')
+}
+
+function isDfcOptionGenerationStillRelevant(
+  options: Readonly<{ isStillRelevant?: () => boolean }>
+): boolean {
+  return options.isStillRelevant ? options.isStillRelevant() : true
+}
+
+function shouldSkipNonRetryableDfcGeneration(
+  generationState: DfcOptionGenerationStateRecord | null
+): boolean {
+  return generationState?.status === 'failed' && generationState.retryable === false
+}
+
+type TextDerivativeEnsureOptions = Readonly<{
+  exposeDfcOption: boolean
+  relevanceKey?: string
+  isStillRelevant?: () => boolean
+}>
+
+function findReusableTextDerivative(
+  runtime: DbWorkerRuntime,
+  assetId: string,
+  asset: FileAssetRecord,
+  targetKind: string,
+  options: Readonly<{ exposeDfcOption: boolean }>
+): FileDerivativeRecord | null {
+  const candidates = runtime.fileDerivativeRepo
+    .listByParentAssetId({ parentAssetId: assetId })
+    .filter((derivative) =>
+      derivative.derivedKind === 'extracted_text'
+      && derivative.status === 'ready'
+      && derivative.deletedAt == null
+    )
+    .sort((a, b) => b.createdAt - a.createdAt)
+  return candidates.find((derivative) => shouldReuseExistingTextDerivative(derivative, asset, targetKind, options)) ?? null
+}
+
+function shouldReuseExistingTextDerivative(
+  derivative: FileDerivativeRecord,
+  asset: FileAssetRecord,
+  targetKind: string,
+  options: Readonly<{ exposeDfcOption: boolean }>
+): boolean {
+  if (!options.exposeDfcOption) return true
+  const meta = normalizeObject(derivative.metaJson)
+  const existingTargetKind = readStringMeta(meta, 'targetKind')
+  if (existingTargetKind && existingTargetKind !== targetKind) return false
+  const rawSourceHash = normalizeNullableText(asset.sha256)
+  const derivativeSourceHash = readStringMeta(meta, 'sourceHash')
+  return !rawSourceHash || !derivativeSourceHash || rawSourceHash === derivativeSourceHash
 }
 
 function writeAssetConversionReadyMeta(
@@ -920,6 +1048,7 @@ function isRouteLevelTextConversionFailure(errorCode: string): boolean {
 
 const DFC_TEXT_CONVERTER_NAME = 'starverse-text-derivative'
 const DFC_TEXT_CONVERTER_VERSION = '1'
+const DFC_TEXT_DERIVATIVE_JOB_GENERATOR = 'step3-text-structured-conversion'
 const DFC_TEXT_CODE_EXTENSIONS = new Set([
   'js', 'ts', 'jsx', 'tsx', 'py', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd',
   'json', 'yaml', 'yml', 'xml', 'toml', 'ini', 'env', 'sql', 'go', 'rs',
@@ -950,10 +1079,56 @@ function buildDfcTextConversionMetadata(
   }
 }
 
+function isDfcPhase1DerivedTargetKind(value: string): value is 'plain_text' | 'markdown' | 'code' | 'table_markdown' {
+  return value === 'plain_text' || value === 'markdown' || value === 'code' || value === 'table_markdown'
+}
+
+function normalizeDerivativeErrorCode(value: string | null | undefined): DerivativeErrorCode {
+  const normalized = String(value ?? '').trim()
+  return isDerivativeErrorCode(normalized) ? normalized : 'derivative_output_write_failed'
+}
+
+function isDerivativeErrorCode(value: string): value is DerivativeErrorCode {
+  return DERIVATIVE_ERROR_CODES.has(value as DerivativeErrorCode)
+}
+
+const DERIVATIVE_ERROR_CODES = new Set<DerivativeErrorCode>([
+  'derivative_asset_missing',
+  'derivative_asset_not_supported',
+  'derivative_kind_not_implemented',
+  'conversion_not_implemented',
+  'derivative_input_missing',
+  'derivative_local_file_missing',
+  'derivative_local_file_read_failed',
+  'derivative_output_write_failed',
+  'derivative_task_timeout',
+  'derivative_task_cancelled',
+  'preview_asset_missing',
+  'preview_asset_not_image',
+  'preview_source_not_supported',
+  'preview_local_file_missing',
+  'preview_local_file_read_failed',
+  'preview_generation_failed',
+  'preview_output_write_failed',
+  'preview_output_invalid',
+  'extracted_text_empty',
+  'pdf_annotation_missing',
+  'pdf_annotation_parse_failed',
+  'transcript_model_missing',
+  'transcript_model_not_audio_capable',
+  'transcript_request_failed',
+  'audio_url_not_supported_for_transcript',
+  'embedding_model_missing',
+  'embedding_input_empty',
+  'embedding_request_failed',
+  'embedding_response_invalid',
+  'embedding_output_write_failed',
+])
+
 function isDfcPhase1TextConversionAsset(asset: FileAssetRecord, targetKind: string): boolean {
   const ext = String(asset.extension ?? '').trim().toLowerCase()
   const mime = normalizeMime(asset.mime)
-  if (ext === 'html' || ext === 'htm' || mime === 'text/html') return false
+  if (ext === 'html' || ext === 'htm' || mime === 'text/html') return targetKind === 'markdown' || targetKind === 'code'
   if (ext === 'ps' || ext === 'eps' || mime === 'application/postscript') return false
   if (ext === 'docx' || ext === 'doc' || ext === 'rtf' || ext === 'xlsx' || ext === 'xls') return false
   if (ext === 'pdf' || mime === 'application/pdf') return false
@@ -970,6 +1145,11 @@ function isDfcPhase1TextConversionAsset(asset: FileAssetRecord, targetKind: stri
 
 function normalizeMime(value: string | null): string | null {
   const normalized = String(value ?? '').split(';', 1)[0]?.trim().toLowerCase()
+  return normalized || null
+}
+
+function normalizeNullableText(value: string | null | undefined): string | null {
+  const normalized = String(value ?? '').trim()
   return normalized || null
 }
 

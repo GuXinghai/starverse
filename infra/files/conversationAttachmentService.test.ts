@@ -866,6 +866,92 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
       .toThrow('DFC-managed draft attachment selected option is not ready')
   })
 
+  it('surfaces durable DFC generation states as sanitized non-sendable options', async () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'asset-dfc')
+    h.service.addDraftAttachment({ conversationId: 'c1', assetId: 'asset-dfc' })
+    h.db.prepare(`
+      INSERT INTO dfc_option_generation_states(
+        id,
+        asset_id,
+        target_kind,
+        derived_kind,
+        exposure_mode,
+        generator,
+        conversion_settings_hash,
+        status,
+        retryable,
+        derivative_job_id,
+        output_derivative_id,
+        error_code,
+        attempt_count,
+        created_at,
+        updated_at,
+        started_at,
+        finished_at
+      )
+      VALUES (
+        'state-pending',
+        'asset-dfc',
+        'markdown',
+        'extracted_text',
+        'dfc',
+        'step3-text-structured-conversion',
+        'settings-hash',
+        'running',
+        1,
+        NULL,
+        NULL,
+        NULL,
+        1,
+        1,
+        2,
+        1,
+        NULL
+      )
+    `).run()
+
+    const pendingDto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+    const pendingOption = pendingDto.options.find((option) => option.targetKind === 'markdown')!
+    expect(pendingOption).toMatchObject({
+      optionId: 'dfc:asset-dfc:markdown:generation:state-pending',
+      status: 'pending',
+      isAvailable: false,
+      compatibilityStatus: 'pending',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: 'dfc_option_generation_pending' })],
+    })
+    expect(JSON.stringify(pendingDto)).not.toContain('settings-hash')
+
+    h.db.prepare(`
+      UPDATE dfc_option_generation_states
+      SET status = 'failed',
+          retryable = 1,
+          error_code = 'derivative_local_file_missing',
+          updated_at = 3,
+          finished_at = 3
+      WHERE id = 'state-pending'
+    `).run()
+    const failedDto = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+    const failedOption = failedDto.options.find((option) => option.targetKind === 'markdown')!
+    expect(failedOption).toMatchObject({
+      optionId: 'dfc:asset-dfc:markdown:failed',
+      status: 'failed',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: 'derivative_local_file_missing' })],
+    })
+    expect(() => h.service.updateDraftAttachmentSettings({
+      conversationId: 'c1',
+      assetId: 'asset-dfc',
+      dfcManaged: true,
+      selectedOptionId: failedOption.optionId,
+      selectedAssetRefs: failedOption.sendAssetRefs,
+    })).toThrow('DFC selectedOptionId requires selectedAssetRefs')
+  })
+
   it('blocks stale DFC derived options when the source hash no longer matches the raw asset', async () => {
     const h = createHarness()
     insertConvo(h.db, 'c1')
