@@ -1,6 +1,6 @@
 name = "test_runner"
 description = "Starverse validation runner for executing approved checks, summarizing failures, and attributing regressions without making code changes by default."
-model = "gpt-5.4-mini"
+model = "gpt-5.3-codex-spark"
 model_reasoning_effort = "medium"
 sandbox_mode = "workspace-write"
 developer_instructions = """
