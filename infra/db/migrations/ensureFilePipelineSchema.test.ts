@@ -84,6 +84,7 @@ describeIfBetterSqlite('ensureFilePipelineSchema', () => {
         AND name IN (
           'file_assets',
           'file_derivatives',
+          'dfc_option_generation_states',
           'message_attachments',
           'conversation_drafts',
           'draft_attachments',
@@ -95,6 +96,7 @@ describeIfBetterSqlite('ensureFilePipelineSchema', () => {
 
     expect(rows.map((row) => row.name)).toEqual([
       'conversation_drafts',
+      'dfc_option_generation_states',
       'draft_attachments',
       'file_assets',
       'file_attachment_lifecycle',
@@ -134,6 +136,26 @@ describeIfBetterSqlite('ensureFilePipelineSchema', () => {
       'idx_file_type_verdicts_primary_format_id',
       'idx_file_type_verdicts_confidence_level',
       'idx_file_type_verdicts_asset_current',
+    ]))
+
+    const generationColumns = db.prepare(`PRAGMA table_info(dfc_option_generation_states)`).all() as Array<{ name: string }>
+    expect(generationColumns.map((column) => column.name)).toEqual(expect.arrayContaining([
+      'asset_id',
+      'target_kind',
+      'derived_kind',
+      'exposure_mode',
+      'conversion_settings_hash',
+      'status',
+      'retryable',
+      'derivative_job_id',
+      'output_derivative_id',
+      'error_code',
+      'attempt_count',
+    ]))
+    const generationIndexes = db.prepare(`PRAGMA index_list(dfc_option_generation_states)`).all() as Array<{ name: string }>
+    expect(generationIndexes.map((row) => row.name)).toEqual(expect.arrayContaining([
+      'idx_dfc_option_generation_asset',
+      'idx_dfc_option_generation_status',
     ]))
   })
 

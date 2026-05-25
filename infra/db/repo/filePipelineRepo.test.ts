@@ -5,6 +5,7 @@ import path from 'node:path'
 import { FileAssetRepo } from './fileAssetRepo'
 import { FileDerivativeRepo } from './fileDerivativeRepo'
 import { DerivativeJobRepo } from './derivativeJobRepo'
+import { DfcOptionGenerationStateRepo } from './dfcOptionGenerationStateRepo'
 import { MessageAttachmentRepo } from './messageAttachmentRepo'
 import { MessageRepo } from './messageRepo'
 import { ConversationDraftRepo } from './conversationDraftRepo'
@@ -186,6 +187,155 @@ describeIfBetterSqlite('DerivativeJobRepo', () => {
 
     expect(repo.getById(created.id)).toMatchObject({ id: 'job-1' })
     expect(repo.listByAssetId({ assetId: 'asset-1' })).toHaveLength(1)
+  })
+})
+
+describeIfBetterSqlite('DfcOptionGenerationStateRepo', () => {
+  it('keeps one durable DFC generation state per backend option identity and tracks lifecycle', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const assetRepo = new FileAssetRepo(db)
+    const jobRepo = new DerivativeJobRepo(db)
+    const derivativeRepo = new FileDerivativeRepo(db)
+    const repo = new DfcOptionGenerationStateRepo(db)
+
+    assetRepo.create({
+      id: 'asset-dfc-state',
+      sha256: 'sha',
+      filename: 'data.csv',
+      extension: 'csv',
+      mime: 'text/csv',
+      sizeBytes: 12,
+      assetKind: 'text',
+      sourceKind: 'local_upload',
+      storageUri: 'assets/original/as/asset-dfc-state.csv',
+      ingestStatus: 'stored',
+    })
+
+    const created = repo.ensure({
+      id: 'state-1',
+      assetId: 'asset-dfc-state',
+      targetKind: 'table_markdown',
+      derivedKind: 'extracted_text',
+      generator: 'step3-text-structured-conversion',
+      conversionSettingsHash: 'settings-hash',
+      createdAt: 1,
+      updatedAt: 1,
+    })
+    const reused = repo.ensure({
+      id: 'state-ignored',
+      assetId: 'asset-dfc-state',
+      targetKind: 'table_markdown',
+      derivedKind: 'extracted_text',
+      generator: 'step3-text-structured-conversion',
+      conversionSettingsHash: 'settings-hash',
+      createdAt: 2,
+      updatedAt: 2,
+    })
+    expect(reused.id).toBe(created.id)
+    expect(repo.listByAsset({ assetId: 'asset-dfc-state' })).toHaveLength(1)
+
+    const job = jobRepo.create({
+      id: 'job-dfc-state',
+      assetId: 'asset-dfc-state',
+      derivativeKind: 'extracted_text',
+      taskFamily: 'chat_context',
+      generator: 'step3-text-structured-conversion',
+      configJson: { targetKind: 'table_markdown' },
+    })
+    expect(repo.markRunning({
+      id: created.id,
+      derivativeJobId: job.id,
+      attemptCount: 1,
+      startedAt: 10,
+    })).toMatchObject({
+      status: 'running',
+      derivativeJobId: job.id,
+      attemptCount: 1,
+      startedAt: 10,
+    })
+    expect(repo.markFailed({
+      id: created.id,
+      errorCode: 'derivative_local_file_missing',
+      retryable: true,
+      finishedAt: 20,
+    })).toMatchObject({
+      status: 'failed',
+      retryable: true,
+      errorCode: 'derivative_local_file_missing',
+      finishedAt: 20,
+    })
+    expect(repo.markBlocked({
+      id: created.id,
+      errorCode: 'draft_attachment_detached',
+      finishedAt: 25,
+    })).toMatchObject({
+      status: 'blocked',
+      retryable: false,
+      errorCode: 'draft_attachment_detached',
+      finishedAt: 25,
+    })
+
+    const derivative = derivativeRepo.create({
+      id: 'derivative-dfc-state',
+      parentAssetId: 'asset-dfc-state',
+      derivedKind: 'extracted_text',
+      mime: 'text/markdown',
+      storageUri: 'assets/derived/as/derivative-dfc-state.md',
+      generator: 'step3-text-structured-conversion',
+      status: 'ready',
+    })
+    expect(repo.markReady({
+      id: created.id,
+      outputDerivativeId: derivative.id,
+      finishedAt: 30,
+    })).toMatchObject({
+      status: 'ready',
+      retryable: false,
+      outputDerivativeId: derivative.id,
+      errorCode: null,
+      finishedAt: 30,
+    })
+    expect(repo.markRunning({
+      id: created.id,
+      derivativeJobId: job.id,
+      attemptCount: 2,
+      startedAt: 40,
+    })).toMatchObject({
+      status: 'running',
+      outputDerivativeId: null,
+      errorCode: null,
+      attemptCount: 2,
+      startedAt: 40,
+      finishedAt: null,
+    })
+    expect(repo.markFailed({
+      id: created.id,
+      errorCode: 'derivative_local_file_read_failed',
+      retryable: true,
+      finishedAt: 50,
+    })).toMatchObject({
+      status: 'failed',
+      outputDerivativeId: null,
+      errorCode: 'derivative_local_file_read_failed',
+      finishedAt: 50,
+    })
+    repo.markReady({
+      id: created.id,
+      outputDerivativeId: derivative.id,
+      finishedAt: 60,
+    })
+    expect(repo.markBlocked({
+      id: created.id,
+      errorCode: 'draft_attachment_detached',
+      finishedAt: 70,
+    })).toMatchObject({
+      status: 'blocked',
+      retryable: false,
+      outputDerivativeId: null,
+      errorCode: 'draft_attachment_detached',
+      finishedAt: 70,
+    })
   })
 })
 

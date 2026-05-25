@@ -1389,6 +1389,7 @@ function compatibilityReasonFromProcessingStatusForSemantic(
 ): string | null {
   if (attachment.processingStatus === 'unsupported') return 'unsupported_processing_status'
   if (attachment.processingStatus !== 'convertible') return null
+  if (semantic.targetKind === 'original_file' && semantic.sendStrategy === 'file_attachment') return null
   if (semantic.sendStrategy === 'text_in_prompt' && hasReadyTextConversionAsset(attachment, semantic)) return null
   if (semantic.sendStrategy === 'mixed' && hasReadyMixedConversionAssets(attachment, semantic)) return null
   return 'conversion_required_before_send'

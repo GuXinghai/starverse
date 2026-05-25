@@ -60,6 +60,27 @@ ${FILE_ASSETS_COLUMNS_SQL}
       finished_at INTEGER
     );
 
+    CREATE TABLE IF NOT EXISTS dfc_option_generation_states (
+      id TEXT PRIMARY KEY,
+      asset_id TEXT NOT NULL REFERENCES file_assets(id) ON DELETE CASCADE,
+      target_kind TEXT NOT NULL CHECK (target_kind IN ('plain_text', 'markdown', 'code', 'table_markdown', 'pdf_attachment')),
+      derived_kind TEXT NOT NULL CHECK (derived_kind IN ('extracted_text', 'converted_pdf', 'converted_markdown')),
+      exposure_mode TEXT NOT NULL CHECK (exposure_mode IN ('dfc')),
+      generator TEXT NOT NULL,
+      conversion_settings_hash TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'ready', 'failed', 'stale', 'blocked')),
+      retryable INTEGER NOT NULL DEFAULT 1 CHECK (retryable IN (0, 1)),
+      derivative_job_id TEXT REFERENCES derivative_jobs(id) ON DELETE SET NULL,
+      output_derivative_id TEXT REFERENCES file_derivatives(id) ON DELETE SET NULL,
+      error_code TEXT,
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      started_at INTEGER,
+      finished_at INTEGER,
+      UNIQUE (asset_id, target_kind, exposure_mode, conversion_settings_hash)
+    );
+
     CREATE TABLE IF NOT EXISTS message_attachments (
       id TEXT PRIMARY KEY,
       message_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
@@ -155,6 +176,7 @@ ${FILE_ASSETS_COLUMNS_SQL}
   ensureFileAssetsCompatibility(db)
   ensureDraftAttachmentsCompatibility(db)
   ensureDfcAttachmentBindingSchema(db)
+  ensureDfcOptionGenerationStateSchema(db)
   createFilePipelineIndexes(db)
 }
 
@@ -237,6 +259,31 @@ function tableColumnNames(db: BetterSqlite3.Database, tableName: string): Set<st
   return new Set(columns.map((column) => column.name))
 }
 
+function ensureDfcOptionGenerationStateSchema(db: BetterSqlite3.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS dfc_option_generation_states (
+      id TEXT PRIMARY KEY,
+      asset_id TEXT NOT NULL REFERENCES file_assets(id) ON DELETE CASCADE,
+      target_kind TEXT NOT NULL CHECK (target_kind IN ('plain_text', 'markdown', 'code', 'table_markdown', 'pdf_attachment')),
+      derived_kind TEXT NOT NULL CHECK (derived_kind IN ('extracted_text', 'converted_pdf', 'converted_markdown')),
+      exposure_mode TEXT NOT NULL CHECK (exposure_mode IN ('dfc')),
+      generator TEXT NOT NULL,
+      conversion_settings_hash TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'ready', 'failed', 'stale', 'blocked')),
+      retryable INTEGER NOT NULL DEFAULT 1 CHECK (retryable IN (0, 1)),
+      derivative_job_id TEXT REFERENCES derivative_jobs(id) ON DELETE SET NULL,
+      output_derivative_id TEXT REFERENCES file_derivatives(id) ON DELETE SET NULL,
+      error_code TEXT,
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      started_at INTEGER,
+      finished_at INTEGER,
+      UNIQUE (asset_id, target_kind, exposure_mode, conversion_settings_hash)
+    );
+  `)
+}
+
 function rebuildFileAssetsTable(db: BetterSqlite3.Database, hasSourceMetaJson: boolean): void {
   const sourceMetaSelect = hasSourceMetaJson ? 'source_meta_json' : 'NULL AS source_meta_json'
   db.exec(`
@@ -296,6 +343,8 @@ function createFilePipelineIndexes(db: BetterSqlite3.Database): void {
     CREATE INDEX IF NOT EXISTS idx_file_derivatives_parent ON file_derivatives(parent_asset_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_derivative_jobs_asset_created ON derivative_jobs(asset_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_derivative_jobs_status_updated ON derivative_jobs(status, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_dfc_option_generation_asset ON dfc_option_generation_states(asset_id, target_kind, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_dfc_option_generation_status ON dfc_option_generation_states(status, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_message_attachments_message ON message_attachments(message_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_message_attachments_asset ON message_attachments(asset_id, created_at);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_message_attachments_message_asset ON message_attachments(message_id, asset_id);

@@ -12,6 +12,7 @@ import { MessageAssetRepo } from '../repo/messageAssetRepo'
 import { FileAssetRepo } from '../repo/fileAssetRepo'
 import { FileDerivativeRepo } from '../repo/fileDerivativeRepo'
 import { DerivativeJobRepo } from '../repo/derivativeJobRepo'
+import { DfcOptionGenerationStateRepo } from '../repo/dfcOptionGenerationStateRepo'
 import { FileTypeVerdictRepo } from '../repo/fileTypeVerdictRepo'
 import { EnginePluginRegistryRepo } from '../repo/enginePluginRegistryRepo'
 import { MessageAttachmentRepo } from '../repo/messageAttachmentRepo'
@@ -149,6 +150,7 @@ export class DbWorkerRuntime {
   readonly fileAssetRepo: FileAssetRepo
   readonly fileDerivativeRepo: FileDerivativeRepo
   readonly derivativeJobRepo: DerivativeJobRepo
+  readonly dfcOptionGenerationStateRepo: DfcOptionGenerationStateRepo
   readonly fileTypeVerdictRepo: FileTypeVerdictRepo
   readonly enginePluginRegistryRepo: EnginePluginRegistryRepo
   readonly messageAttachmentRepo: MessageAttachmentRepo
@@ -255,6 +257,7 @@ export class DbWorkerRuntime {
     this.fileAssetRepo = new FileAssetRepo(this.db)
     this.fileDerivativeRepo = new FileDerivativeRepo(this.db)
     this.derivativeJobRepo = new DerivativeJobRepo(this.db)
+    this.dfcOptionGenerationStateRepo = new DfcOptionGenerationStateRepo(this.db)
     this.fileTypeVerdictRepo = new FileTypeVerdictRepo(this.db)
     this.enginePluginRegistryRepo = new EnginePluginRegistryRepo(this.db)
     this.messageAttachmentRepo = new MessageAttachmentRepo(this.db)

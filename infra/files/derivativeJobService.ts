@@ -215,7 +215,7 @@ export class DerivativeJobService {
           )
       }
     } catch (error) {
-      const mapped = normalizeDerivativeError(error, running, this.deps.storageRootDir)
+      const mapped = normalizeDerivativeError(error, this.deps.storageRootDir)
       const failed = this.deps.derivativeJobRepo.markFailed(running.id, mapped.code, mapped.message, this.now())
       const output = this.resolveOutputDerivative(failed.outputDerivativeId)
       return {
@@ -376,16 +376,7 @@ export class DerivativeJobService {
         })
         results.push(await this.runPdfAnnotationTextJob(job, asset, candidate))
       } catch (error) {
-        const mapped = normalizeDerivativeError(
-          error,
-          {
-            id: 'capture',
-            assetId: asset.id,
-            derivativeKind: 'extracted_text',
-            taskFamily: 'chat_context',
-          } as DerivativeJobRecord,
-          this.deps.storageRootDir
-        )
+        const mapped = normalizeDerivativeError(error, this.deps.storageRootDir)
         failures.push({ assetId: asset.id, errorCode: mapped.code, message: mapped.message })
       }
     }
@@ -439,7 +430,17 @@ export class DerivativeJobService {
     }
 
     const read = await this.readAssetText(asset)
-    const targetKind = inferTextTargetKind(asset, read.text)
+    const requestedTargetKind = readRequestedTextTargetKind(job.configJson)
+    if (requestedTargetKind && !isTextTargetKindSupportedForAsset(asset, read.text, requestedTargetKind)) {
+      throw derivativeError(
+        'conversion_not_implemented',
+        job.id,
+        asset.id,
+        job.derivativeKind,
+        `Text conversion target ${requestedTargetKind} is not supported for this asset.`
+      )
+    }
+    const targetKind = requestedTargetKind ?? inferTextTargetKind(asset, read.text)
     const convertedText = convertTextForTarget(read.text, targetKind)
     const conversionWarnings = collectTextConversionWarnings(asset, targetKind)
     if (!convertedText.trim()) {
@@ -656,13 +657,13 @@ export class DerivativeJobService {
 
   private async readAssetText(asset: FileAssetRecord): Promise<Readonly<{ text: string; encoding: string }>> {
     const source = await this.readLocalBytes(asset, null, 'derivative_input_missing')
-    const text = decodeUtf8Text(source.bytes)
-    if (looksBinaryText(text)) {
-      throw derivativeError('derivative_input_missing', 'unknown', asset.id, 'extracted_text', 'Input appears to be binary and cannot be decoded as UTF-8 text.')
+    const decoded = decodeTextWithBom(source.bytes)
+    if (looksBinaryText(decoded.text)) {
+      throw derivativeError('derivative_input_missing', 'unknown', asset.id, 'extracted_text', `Input appears to be binary and cannot be decoded as ${decoded.encoding} text.`)
     }
     return {
-      text,
-      encoding: 'utf-8',
+      text: decoded.text,
+      encoding: decoded.encoding,
     }
   }
 
@@ -915,6 +916,32 @@ function inferTextTargetKind(asset: FileAssetRecord, sourceText: string): 'plain
   return 'plain_text'
 }
 
+function readRequestedTextTargetKind(config: Record<string, unknown> | null): 'plain_text' | 'markdown' | 'code' | 'table_markdown' | null {
+  const value = typeof config?.targetKind === 'string' ? config.targetKind.trim() : ''
+  return isTextTargetKind(value) ? value : null
+}
+
+function isTextTargetKind(value: string): value is 'plain_text' | 'markdown' | 'code' | 'table_markdown' {
+  return value === 'plain_text' || value === 'markdown' || value === 'code' || value === 'table_markdown'
+}
+
+function isTextTargetKindSupportedForAsset(
+  asset: FileAssetRecord,
+  sourceText: string,
+  targetKind: 'plain_text' | 'markdown' | 'code' | 'table_markdown'
+): boolean {
+  const ext = String(asset.extension ?? '').trim().toLowerCase()
+  const mime = normalizeMime(asset.mime)
+  if (HTML_MARKDOWN_EXTENSIONS.has(ext) || mime === 'text/html' || looksLikeHtmlDocument(sourceText)) {
+    return targetKind === 'markdown' || targetKind === 'code'
+  }
+  if (ext === 'csv' || ext === 'tsv') return targetKind === 'table_markdown'
+  if (ext === 'md' || ext === 'markdown' || mime === 'text/markdown' || mime === 'text/x-markdown') return targetKind === 'markdown'
+  if (PS_CODE_EXTENSIONS.has(ext) || mime === 'application/postscript') return targetKind === 'code'
+  if (CODE_EXTENSIONS.has(ext)) return targetKind === 'code'
+  return targetKind === 'plain_text'
+}
+
 const CODE_EXTENSIONS = new Set([
   'js', 'ts', 'jsx', 'tsx', 'py', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd',
   'json', 'yaml', 'yml', 'xml', 'toml', 'ini', 'env', 'sql', 'go', 'rs',
@@ -971,7 +998,15 @@ function collectTextConversionWarnings(
 
 function inferHtmlTargetKind(source: string): 'markdown' | 'code' {
   const normalized = normalizeLineEndings(source)
-  if (/[{][{%#]/.test(normalized) || /{{|<script\b/i.test(normalized)) return 'code'
+  const withoutScripts = normalized.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+  const withoutScriptStyle = withoutScripts.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+  const visibleText = decodeBasicHtmlEntities(withoutScriptStyle.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()
+  const scriptStyleTextLength = normalized.length - withoutScriptStyle.length
+  const scriptCount = (normalized.match(/<script\b/gi) ?? []).length
+  const templateLike = /{{|{%|{#|<%|%>|<\?php\b|<\/?template\b|\bv-|@(?:if|foreach|for|each)\b/i.test(normalized)
+  const scriptHeavy = scriptCount >= 2 && visibleText.length < 120
+    || scriptStyleTextLength > Math.max(240, visibleText.length * 3)
+  if (templateLike || scriptHeavy) return 'code'
   return 'markdown'
 }
 
@@ -982,8 +1017,16 @@ function looksLikeHtmlDocument(value: string): boolean {
 function htmlToMarkdownSafe(input: string): string {
   const withoutScript = input.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
   const withoutStyle = withoutScript.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
-  const withBreaks = withoutStyle
+  const withImageAltText = withoutStyle.replace(/<img\b[^>]*>/gi, (tag) => {
+    const alt = readHtmlAttribute(tag, 'alt')
+    return alt ? ` ${alt} ` : ' '
+  })
+  const withBreaks = withImageAltText
     .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<\s*blockquote\b[^>]*>/gi, '\n> ')
+    .replace(/<\s*\/blockquote\s*>/gi, '\n\n')
+    .replace(/<\s*li\b[^>]*>/gi, '\n- ')
+    .replace(/<\s*\/li\s*>/gi, '\n')
     .replace(/<\s*\/p\s*>/gi, '\n\n')
     .replace(/<\s*\/div\s*>/gi, '\n')
     .replace(/<\s*\/h([1-6])\s*>/gi, '\n\n')
@@ -996,9 +1039,18 @@ function htmlToMarkdownSafe(input: string): string {
   const withoutTags = withBreaks.replace(/<[^>]+>/g, ' ')
   const decoded = decodeBasicHtmlEntities(withoutTags)
   return decoded
+    .replace(/[ \t]{2,}/g, ' ')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
+}
+
+function readHtmlAttribute(tag: string, name: string): string | null {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = new RegExp(`\\b${escapedName}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>]+))`, 'i')
+  const match = pattern.exec(tag)
+  const value = match?.[1] ?? match?.[2] ?? match?.[3] ?? null
+  return value ? value.trim() : null
 }
 
 function decodeBasicHtmlEntities(input: string): string {
@@ -1020,11 +1072,21 @@ function normalizeLineEndings(input: string): string {
   return input.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 }
 
-function decodeUtf8Text(bytes: Uint8Array): string {
-  const decoder = new TextDecoder('utf-8', { fatal: true })
+function decodeTextWithBom(bytes: Uint8Array): Readonly<{ text: string; encoding: string }> {
+  const encoding = detectTextBomEncoding(bytes)
+  const decoder = new TextDecoder(encoding, { fatal: true })
   let text = decoder.decode(bytes)
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1)
-  return normalizeLineEndings(text)
+  return {
+    text: normalizeLineEndings(text),
+    encoding,
+  }
+}
+
+function detectTextBomEncoding(bytes: Uint8Array): 'utf-8' | 'utf-16le' | 'utf-16be' {
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) return 'utf-16le'
+  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) return 'utf-16be'
+  return 'utf-8'
 }
 
 function looksBinaryText(text: string): boolean {
@@ -1289,25 +1351,60 @@ function derivativeError(
 
 function normalizeDerivativeError(
   error: unknown,
-  job: Pick<DerivativeJobRecord, 'id' | 'assetId' | 'derivativeKind'>,
   storageRootDir: string
 ): Readonly<{ code: DerivativeErrorCode; message: string }> {
   if (error && typeof error === 'object' && 'code' in error) {
-    const code = String((error as any).code) as DerivativeErrorCode
-    const message = sanitizeDerivativeErrorMessage(
-      error instanceof Error ? error.message : String((error as any).message ?? code),
-      storageRootDir
-    )
-    return { code, message }
+    const rawCode = String((error as any).code)
+    if (isDerivativeErrorCode(rawCode)) {
+      const message = sanitizeDerivativeErrorMessage(
+        error instanceof Error ? error.message : String((error as any).message ?? rawCode),
+        storageRootDir
+      )
+      return { code: rawCode, message }
+    }
   }
   return {
     code: 'derivative_input_missing',
-    message: sanitizeDerivativeErrorMessage(
-      error instanceof Error ? error.message : `Derivative job ${job.id} failed.`,
-      storageRootDir
-    ),
+    message: 'Derivative input could not be decoded.',
   }
 }
+
+function isDerivativeErrorCode(value: string): value is DerivativeErrorCode {
+  return DERIVATIVE_ERROR_CODES.has(value as DerivativeErrorCode)
+}
+
+const DERIVATIVE_ERROR_CODES = new Set<DerivativeErrorCode>([
+  'derivative_asset_missing',
+  'derivative_asset_not_supported',
+  'derivative_kind_not_implemented',
+  'conversion_not_implemented',
+  'derivative_input_missing',
+  'derivative_local_file_missing',
+  'derivative_local_file_read_failed',
+  'derivative_output_write_failed',
+  'derivative_task_timeout',
+  'derivative_task_cancelled',
+  'preview_asset_missing',
+  'preview_asset_not_image',
+  'preview_source_not_supported',
+  'preview_local_file_missing',
+  'preview_local_file_read_failed',
+  'preview_generation_failed',
+  'preview_output_write_failed',
+  'preview_output_invalid',
+  'extracted_text_empty',
+  'pdf_annotation_missing',
+  'pdf_annotation_parse_failed',
+  'transcript_model_missing',
+  'transcript_model_not_audio_capable',
+  'transcript_request_failed',
+  'audio_url_not_supported_for_transcript',
+  'embedding_model_missing',
+  'embedding_input_empty',
+  'embedding_request_failed',
+  'embedding_response_invalid',
+  'embedding_output_write_failed',
+])
 
 function mapProviderRequestError(
   error: unknown,
@@ -1356,8 +1453,16 @@ function sanitizeDerivativeErrorMessage(message: string, storageRootDir: string)
   }
   output = output
     .replace(/data:[^,\s]+;base64,[A-Za-z0-9+/=]+/gi, 'data:[redacted]')
+    .replace(/\b(authorization\s*:\s*bearer)\s+[^\s'"`)]+/gi, '$1 [redacted-secret]')
+    .replace(/\b([A-Z][A-Z0-9_]*(?:API_KEY|ACCESS_KEY|ACCESS_TOKEN|REFRESH_TOKEN|CONTENT_TOKEN|AUTH_TOKEN|ID_TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE_KEY))(\s*[:=]\s*)[^\s'"`)]+/g, '$1$2[redacted-secret]')
+    .replace(/\b(api[_-]?key|access[_-]?token|refresh[_-]?token|content[_-]?token|token|secret)(\s*[:=]\s*)[^\s'"`)]+/gi, '$1$2[redacted-secret]')
+    .replace(/\bfile:\/\/[^\s'"`)]+/gi, '[redacted-url]')
+    .replace(/\bhttps?:\/\/[^\s'"`)]+/gi, '[redacted-url]')
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[redacted-email]')
+    .replace(/\b[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, '[redacted-token]')
     .replace(/\b[A-Za-z0-9+/]{80,}={0,2}\b/g, '[redacted-base64]')
     .replace(/\b[A-Za-z]:\\[^\s'"`]+/g, '[redacted-path]')
     .replace(/\\\\[^\s'"`]+/g, '[redacted-path]')
+    .replace(/(^|[\s'"`(=])\/(?!\/)[^\s'"`)]+/g, '$1[redacted-path]')
   return output.length <= 800 ? output : `${output.slice(0, 800)}...`
 }

@@ -177,9 +177,11 @@ describeIfBetterSqlite('DerivativeJobService', () => {
     expect(fileAssetRepo.getById(asset.id)?.storageUri).toBe('assets/original/as/asset-txt.txt')
   })
 
-  it('converts html assets into safe markdown text without executing scripts or loading externals', async () => {
+  it('converts static document-like html assets into safe markdown text by default without executing scripts or loading externals', async () => {
     const { fileAssetRepo, service } = await createHarness()
-    const html = `<html><head><style>.x{color:red}</style><script>window.alert('x')</script></head><body><h1>Title</h1><p>Hello <b>world</b></p></body></html>`
+    const externalImageUrl = 'https://cdn.example.test/private/chart.png'
+    const externalLinkUrl = 'https://docs.example.test/private/report?token=link-secret'
+    const html = `<html><head><style>.x{color:red}</style><script>window.alert('x')</script></head><body><h1>Title</h1><p>Hello <b>world</b></p><img src="${externalImageUrl}" alt="Revenue chart"><p><a href="${externalLinkUrl}">Read report</a></p><ul><li>First item</li><li>Second item</li></ul><blockquote><p>Important note</p></blockquote></body></html>`
     const asset = fileAssetRepo.create({
       id: 'asset-html',
       filename: 'index.html',
@@ -214,8 +216,146 @@ describeIfBetterSqlite('DerivativeJobService', () => {
     const rendered = await readFile(derivativePath, 'utf8')
     expect(rendered).toContain('# Title')
     expect(rendered).toContain('Hello world')
+    expect(rendered).toContain('Revenue chart')
+    expect(rendered).toContain('Read report')
+    expect(rendered).toContain('- First item')
+    expect(rendered).toContain('- Second item')
+    expect(rendered).toContain('> Important note')
     expect(rendered).not.toContain('window.alert')
     expect(rendered).not.toContain('.x{color:red}')
+    expect(rendered).not.toContain(externalImageUrl)
+    expect(rendered).not.toContain('cdn.example.test')
+    expect(rendered).not.toContain(externalLinkUrl)
+    expect(rendered).not.toContain('docs.example.test')
+    expect(rendered).not.toContain('link-secret')
+  })
+
+  it.each([
+    {
+      label: 'script-heavy',
+      assetId: 'asset-html-app-code',
+      jobId: 'job-html-app-code',
+      filename: 'app.html',
+      storageUri: 'assets/original/as/asset-html-app-code.html',
+      html: `<html><body><div id="app"></div><script>${'const value = 1;\n'.repeat(80)}</script><script>window.bootstrap()</script></body></html>`,
+    },
+    {
+      label: 'template-like',
+      assetId: 'asset-html-template-code',
+      jobId: 'job-html-template-code',
+      filename: 'template.html',
+      storageUri: 'assets/original/as/asset-html-template-code.html',
+      html: `<template><article><h1>{{ title }}</h1><p v-if="visible">{{ body }}</p></article></template>`,
+    },
+  ])('preserves $label html assets as code by default', async ({ assetId, filename, html, jobId, storageUri }) => {
+    const { fileAssetRepo, service } = await createHarness()
+    const asset = fileAssetRepo.create({
+      id: assetId,
+      filename,
+      extension: 'html',
+      mime: 'text/html',
+      sizeBytes: Buffer.byteLength(html, 'utf8'),
+      assetKind: 'text',
+      sourceKind: 'local_upload',
+      storageUri,
+      ingestStatus: 'stored',
+    })
+    await writeAssetFile(rootDir, asset.storageUri, html)
+    const job = service.createDerivativeJob({
+      id: jobId,
+      assetId: asset.id,
+      derivativeKind: 'extracted_text',
+      taskFamily: 'chat_context',
+      generator: 'phase-9-test',
+    })
+
+    const result = await service.runDerivativeJob({ jobId: job.id })
+    expect(result.job).toMatchObject({ status: 'ready' })
+    expect(result.derivative?.metaJson).toMatchObject({
+      targetKind: 'code',
+      usage: 'preview_and_send',
+      conversionWarnings: [],
+    })
+    const derivativePath = path.join(rootDir, ...String(result.derivative?.storageUri).split('/'))
+    const rendered = await readFile(derivativePath, 'utf8')
+    expect(rendered).toBe(html)
+  })
+
+  it('converts explicit markdown html target into safe markdown even when default profile is code', async () => {
+    const { fileAssetRepo, service } = await createHarness()
+    const html = `<html><body><h1>App Help</h1><p>Visible docs</p><script>${'const value = 1;\n'.repeat(80)}</script></body></html>`
+    const asset = fileAssetRepo.create({
+      id: 'asset-html-explicit-markdown',
+      filename: 'app-help.html',
+      extension: 'html',
+      mime: 'text/html',
+      sizeBytes: Buffer.byteLength(html, 'utf8'),
+      assetKind: 'text',
+      sourceKind: 'local_upload',
+      storageUri: 'assets/original/as/asset-html-explicit-markdown.html',
+      ingestStatus: 'stored',
+    })
+    await writeAssetFile(rootDir, asset.storageUri, html)
+    const job = service.createDerivativeJob({
+      id: 'job-html-explicit-markdown',
+      assetId: asset.id,
+      derivativeKind: 'extracted_text',
+      taskFamily: 'chat_context',
+      generator: 'phase-9-test',
+      configJson: { targetKind: 'markdown' },
+    })
+
+    const result = await service.runDerivativeJob({ jobId: job.id })
+    expect(result.job).toMatchObject({ status: 'ready' })
+    expect(result.derivative?.metaJson).toMatchObject({
+      targetKind: 'markdown',
+      usage: 'preview_and_send',
+      conversionWarnings: expect.arrayContaining([
+        'html_javascript_not_executed',
+        'html_external_resources_not_loaded',
+      ]),
+    })
+    const derivativePath = path.join(rootDir, ...String(result.derivative?.storageUri).split('/'))
+    const rendered = await readFile(derivativePath, 'utf8')
+    expect(rendered).toContain('# App Help')
+    expect(rendered).toContain('Visible docs')
+    expect(rendered).not.toContain('const value')
+  })
+
+  it('preserves explicit code html target as source text without executing scripts or loading externals', async () => {
+    const { fileAssetRepo, service } = await createHarness()
+    const html = `<html><body><h1>Title</h1><script>window.alert('x')</script></body></html>`
+    const asset = fileAssetRepo.create({
+      id: 'asset-html-explicit-code',
+      filename: 'source.html',
+      extension: 'html',
+      mime: 'text/html',
+      sizeBytes: Buffer.byteLength(html, 'utf8'),
+      assetKind: 'text',
+      sourceKind: 'local_upload',
+      storageUri: 'assets/original/as/asset-html-explicit-code.html',
+      ingestStatus: 'stored',
+    })
+    await writeAssetFile(rootDir, asset.storageUri, html)
+    const job = service.createDerivativeJob({
+      id: 'job-html-explicit-code',
+      assetId: asset.id,
+      derivativeKind: 'extracted_text',
+      taskFamily: 'chat_context',
+      generator: 'phase-9-test',
+      configJson: { targetKind: 'code' },
+    })
+
+    const result = await service.runDerivativeJob({ jobId: job.id })
+    expect(result.job).toMatchObject({ status: 'ready' })
+    expect(result.derivative?.metaJson).toMatchObject({
+      targetKind: 'code',
+      usage: 'preview_and_send',
+      conversionWarnings: [],
+    })
+    const derivativePath = path.join(rootDir, ...String(result.derivative?.storageUri).split('/'))
+    const rendered = await readFile(derivativePath, 'utf8')
+    expect(rendered).toBe(html)
   })
 
   it('converts postscript-like assets to code target and preserves source text', async () => {
@@ -561,6 +701,284 @@ describeIfBetterSqlite('DerivativeJobService', () => {
     const retried = await service.retryDerivativeJob({ jobId: timeoutJob.id, apiKey: 'key', timeoutMs: 500 })
     expect(retried.job).toMatchObject({ status: 'ready', attemptCount: 2 })
     expect(retried.derivative?.derivedKind).toBe('transcript')
+  })
+
+  it('redacts POSIX absolute paths from provider failure messages', async () => {
+    const { db, fileAssetRepo, service } = await createHarness()
+    const modelId = insertAudioModel(db)
+    const localAudio = fileAssetRepo.create({
+      id: 'asset-audio-posix-path',
+      filename: 'local.wav',
+      extension: 'wav',
+      mime: 'audio/wav',
+      sizeBytes: 8,
+      assetKind: 'audio',
+      sourceKind: 'local_upload',
+      storageUri: 'assets/original/as/asset-audio-posix-path.wav',
+      ingestStatus: 'stored',
+    })
+    await writeAssetFile(rootDir, localAudio.storageUri, new Uint8Array([0, 1, 2, 3]))
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('provider failed while reading /var/tmp/starverse/private-token/audio.wav')
+    }))
+
+    const job = service.createDerivativeJob({
+      id: 'job-audio-posix-path',
+      assetId: localAudio.id,
+      derivativeKind: 'transcript',
+      taskFamily: 'transcription',
+      generator: 'phase-7-test',
+      modelId,
+      configJson: { modelId },
+    })
+    const result = await service.runDerivativeJob({ jobId: job.id, apiKey: 'key' })
+
+    expect(result.job).toMatchObject({
+      status: 'failed',
+      errorCode: 'transcript_request_failed',
+      errorMessage: 'provider failed while reading [redacted-path]',
+    })
+    expect(result.job.errorMessage).not.toContain('/var/tmp')
+    expect(result.job.errorMessage).not.toContain('private-token')
+  })
+
+  it('redacts http URLs from provider failure messages', async () => {
+    const { db, fileAssetRepo, service } = await createHarness()
+    const modelId = insertAudioModel(db)
+    const localAudio = fileAssetRepo.create({
+      id: 'asset-audio-url-token',
+      filename: 'local.wav',
+      extension: 'wav',
+      mime: 'audio/wav',
+      sizeBytes: 8,
+      assetKind: 'audio',
+      sourceKind: 'local_upload',
+      storageUri: 'assets/original/as/asset-audio-url-token.wav',
+      ingestStatus: 'stored',
+    })
+    await writeAssetFile(rootDir, localAudio.storageUri, new Uint8Array([0, 1, 2, 3]))
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('provider failed at https://storage.example.test/private/audio.wav?token=secret-token#frag')
+    }))
+
+    const job = service.createDerivativeJob({
+      id: 'job-audio-url-token',
+      assetId: localAudio.id,
+      derivativeKind: 'transcript',
+      taskFamily: 'transcription',
+      generator: 'phase-7-test',
+      modelId,
+      configJson: { modelId },
+    })
+    const result = await service.runDerivativeJob({ jobId: job.id, apiKey: 'key' })
+
+    expect(result.job).toMatchObject({
+      status: 'failed',
+      errorCode: 'transcript_request_failed',
+      errorMessage: 'provider failed at [redacted-url]',
+    })
+    expect(result.job.errorMessage).not.toContain('storage.example.test')
+    expect(result.job.errorMessage).not.toContain('secret-token')
+  })
+
+  it('redacts file URLs from provider failure messages', async () => {
+    const { db, fileAssetRepo, service } = await createHarness()
+    const modelId = insertAudioModel(db)
+    const localAudio = fileAssetRepo.create({
+      id: 'asset-audio-file-url',
+      filename: 'local.wav',
+      extension: 'wav',
+      mime: 'audio/wav',
+      sizeBytes: 8,
+      assetKind: 'audio',
+      sourceKind: 'local_upload',
+      storageUri: 'assets/original/as/asset-audio-file-url.wav',
+      ingestStatus: 'stored',
+    })
+    await writeAssetFile(rootDir, localAudio.storageUri, new Uint8Array([0, 1, 2, 3]))
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('provider failed at file:///Users/alice/Library/Application%20Support/Starverse/private.wav')
+    }))
+
+    const job = service.createDerivativeJob({
+      id: 'job-audio-file-url',
+      assetId: localAudio.id,
+      derivativeKind: 'transcript',
+      taskFamily: 'transcription',
+      generator: 'phase-7-test',
+      modelId,
+      configJson: { modelId },
+    })
+    const result = await service.runDerivativeJob({ jobId: job.id, apiKey: 'key' })
+
+    expect(result.job).toMatchObject({
+      status: 'failed',
+      errorCode: 'transcript_request_failed',
+      errorMessage: 'provider failed at [redacted-url]',
+    })
+    expect(result.job.errorMessage).not.toContain('Users')
+    expect(result.job.errorMessage).not.toContain('Application')
+  })
+
+  it('redacts common secret assignments from provider failure messages', async () => {
+    const { db, fileAssetRepo, service } = await createHarness()
+    const modelId = insertAudioModel(db)
+    const localAudio = fileAssetRepo.create({
+      id: 'asset-audio-secret-message',
+      filename: 'local.wav',
+      extension: 'wav',
+      mime: 'audio/wav',
+      sizeBytes: 8,
+      assetKind: 'audio',
+      sourceKind: 'local_upload',
+      storageUri: 'assets/original/as/asset-audio-secret-message.wav',
+      ingestStatus: 'stored',
+    })
+    await writeAssetFile(rootDir, localAudio.storageUri, new Uint8Array([0, 1, 2, 3]))
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('provider rejected Authorization: Bearer sk-live-secret api_key=api-secret token:token-secret')
+    }))
+
+    const job = service.createDerivativeJob({
+      id: 'job-audio-secret-message',
+      assetId: localAudio.id,
+      derivativeKind: 'transcript',
+      taskFamily: 'transcription',
+      generator: 'phase-7-test',
+      modelId,
+      configJson: { modelId },
+    })
+    const result = await service.runDerivativeJob({ jobId: job.id, apiKey: 'key' })
+
+    expect(result.job).toMatchObject({
+      status: 'failed',
+      errorCode: 'transcript_request_failed',
+      errorMessage: 'provider rejected Authorization: Bearer [redacted-secret] api_key=[redacted-secret] token:[redacted-secret]',
+    })
+    expect(result.job.errorMessage).not.toContain('sk-live-secret')
+    expect(result.job.errorMessage).not.toContain('api-secret')
+    expect(result.job.errorMessage).not.toContain('token-secret')
+  })
+
+  it('redacts environment secret assignments from provider failure messages', async () => {
+    const { db, fileAssetRepo, service } = await createHarness()
+    const modelId = insertAudioModel(db)
+    const localAudio = fileAssetRepo.create({
+      id: 'asset-audio-env-secret-message',
+      filename: 'local.wav',
+      extension: 'wav',
+      mime: 'audio/wav',
+      sizeBytes: 8,
+      assetKind: 'audio',
+      sourceKind: 'local_upload',
+      storageUri: 'assets/original/as/asset-audio-env-secret-message.wav',
+      ingestStatus: 'stored',
+    })
+    await writeAssetFile(rootDir, localAudio.storageUri, new Uint8Array([0, 1, 2, 3]))
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error(
+        'provider rejected OPENAI_API_KEY=sk-env-secret AWS_SECRET_ACCESS_KEY=aws-secret STARVERSE_CONTENT_TOKEN=content-secret',
+      )
+    }))
+
+    const job = service.createDerivativeJob({
+      id: 'job-audio-env-secret-message',
+      assetId: localAudio.id,
+      derivativeKind: 'transcript',
+      taskFamily: 'transcription',
+      generator: 'phase-7-test',
+      modelId,
+      configJson: { modelId },
+    })
+    const result = await service.runDerivativeJob({ jobId: job.id, apiKey: 'key' })
+
+    expect(result.job).toMatchObject({
+      status: 'failed',
+      errorCode: 'transcript_request_failed',
+      errorMessage:
+        'provider rejected OPENAI_API_KEY=[redacted-secret] AWS_SECRET_ACCESS_KEY=[redacted-secret] STARVERSE_CONTENT_TOKEN=[redacted-secret]',
+    })
+    expect(result.job.errorMessage).not.toContain('sk-env-secret')
+    expect(result.job.errorMessage).not.toContain('aws-secret')
+    expect(result.job.errorMessage).not.toContain('content-secret')
+  })
+
+  it('redacts email identifiers from provider failure messages', async () => {
+    const { db, fileAssetRepo, service } = await createHarness()
+    const modelId = insertAudioModel(db)
+    const localAudio = fileAssetRepo.create({
+      id: 'asset-audio-email-message',
+      filename: 'local.wav',
+      extension: 'wav',
+      mime: 'audio/wav',
+      sizeBytes: 8,
+      assetKind: 'audio',
+      sourceKind: 'local_upload',
+      storageUri: 'assets/original/as/asset-audio-email-message.wav',
+      ingestStatus: 'stored',
+    })
+    await writeAssetFile(rootDir, localAudio.storageUri, new Uint8Array([0, 1, 2, 3]))
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('provider rejected account alice.sensitive+dfc@example.test')
+    }))
+
+    const job = service.createDerivativeJob({
+      id: 'job-audio-email-message',
+      assetId: localAudio.id,
+      derivativeKind: 'transcript',
+      taskFamily: 'transcription',
+      generator: 'phase-7-test',
+      modelId,
+      configJson: { modelId },
+    })
+    const result = await service.runDerivativeJob({ jobId: job.id, apiKey: 'key' })
+
+    expect(result.job).toMatchObject({
+      status: 'failed',
+      errorCode: 'transcript_request_failed',
+      errorMessage: 'provider rejected account [redacted-email]',
+    })
+    expect(result.job.errorMessage).not.toContain('alice')
+    expect(result.job.errorMessage).not.toContain('example.test')
+  })
+
+  it('redacts dotted token values from provider failure messages', async () => {
+    const { db, fileAssetRepo, service } = await createHarness()
+    const modelId = insertAudioModel(db)
+    const localAudio = fileAssetRepo.create({
+      id: 'asset-audio-dotted-token',
+      filename: 'local.wav',
+      extension: 'wav',
+      mime: 'audio/wav',
+      sizeBytes: 8,
+      assetKind: 'audio',
+      sourceKind: 'local_upload',
+      storageUri: 'assets/original/as/asset-audio-dotted-token.wav',
+      ingestStatus: 'stored',
+    })
+    await writeAssetFile(rootDir, localAudio.storageUri, new Uint8Array([0, 1, 2, 3]))
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('provider rejected jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkZmMifQ.signatureSecret123')
+    }))
+
+    const job = service.createDerivativeJob({
+      id: 'job-audio-dotted-token',
+      assetId: localAudio.id,
+      derivativeKind: 'transcript',
+      taskFamily: 'transcription',
+      generator: 'phase-7-test',
+      modelId,
+      configJson: { modelId },
+    })
+    const result = await service.runDerivativeJob({ jobId: job.id, apiKey: 'key' })
+
+    expect(result.job).toMatchObject({
+      status: 'failed',
+      errorCode: 'transcript_request_failed',
+      errorMessage: 'provider rejected jwt [redacted-token]',
+    })
+    expect(result.job.errorMessage).not.toContain('eyJhbGci')
+    expect(result.job.errorMessage).not.toContain('signatureSecret')
   })
 
   it('retries failed embedding jobs, chunks long text, and writes embedding_vector derivatives as JSON', async () => {

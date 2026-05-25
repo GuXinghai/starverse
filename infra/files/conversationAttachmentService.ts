@@ -63,6 +63,7 @@ import type {
   MessageAttachmentRecord,
   RemoveDraftAttachmentInput,
   RestoreConversationDraftInput,
+  DfcOptionGenerationStateRecord,
   UpdateConversationDraftTextInput,
   UpdateDraftAttachmentSettingsInput,
 } from '../db/types'
@@ -171,6 +172,13 @@ export class ConversationAttachmentService {
     const attachment = draft.attachments.find((item) => item.assetId === assetId)
     if (!attachment) throw new Error(`draft attachment not found: ${assetId}`)
     return this.buildDfcDraftAttachmentOptions(conversationId, attachment)
+  }
+
+  hasDraftAttachment(input: Readonly<{ conversationId: string; assetId: string }>): boolean {
+    const conversationId = requireNonEmpty(input.conversationId, 'conversationId')
+    const assetId = requireNonEmpty(input.assetId, 'assetId')
+    const draft = this.draftRepo.get(conversationId)
+    return draft?.attachments.some((attachment) => attachment.assetId === assetId) === true
   }
 
   async getDfcDraftAttachmentPreview(input: GetDfcDraftAttachmentPreviewInput): Promise<GetDfcDraftAttachmentPreviewResult> {
@@ -704,9 +712,12 @@ export class ConversationAttachmentService {
       sendAssetRefs: rawRefs,
     })
 
+    const seenDerivedTargets = new Set<DfcDerivedTargetKind>()
     for (const derivative of this.listDfcDerivativeCandidates(asset.id)) {
       const targetKind = readDfcDerivedTargetKindFromMeta(derivative.metaJson)
       if (!targetKind) continue
+      if (seenDerivedTargets.has(targetKind)) continue
+      seenDerivedTargets.add(targetKind)
       const refs: DfcSendAssetRef[] = [{ kind: 'derived_asset', assetId: derivative.id }]
       const status = dfcOptionStatusFromDerivative(derivative)
       const facade = createDfcDerivedAssetFacade({
@@ -755,10 +766,38 @@ export class ConversationAttachmentService {
       })
     }
 
+    for (const generationState of this.listDfcOptionGenerationStates(asset.id)) {
+      if (options.some((option) => option.targetKind === generationState.targetKind)) continue
+      const generatedOption = this.dfcGenerationStateOptionCandidate(attachment, generationState)
+      if (generatedOption) options.push(generatedOption)
+    }
+
     const failedGenerationOption = this.failedDfcGenerationOptionCandidate(attachment, asset, options)
     if (failedGenerationOption) options.push(failedGenerationOption)
 
     return options
+  }
+
+  private dfcGenerationStateOptionCandidate(
+    attachment: DraftAttachmentRecord,
+    state: DfcOptionGenerationStateRecord
+  ): DfcConversionOption | null {
+    const targetKind = normalizeDfcTargetKind(state.targetKind)
+    if (!targetKind || targetKind === 'original_file') return null
+    const status = dfcOptionStatusFromGenerationState(state)
+    return {
+      optionId: status === 'failed'
+        ? this.failedOptionIdForCandidate(attachment, targetKind)
+        : this.generationStateOptionIdForCandidate(attachment, targetKind, state.id),
+      rawFileId: attachment.assetId,
+      targetKind,
+      sendStrategy: targetKind === 'pdf_attachment' ? 'file_attachment' : 'text_in_prompt',
+      status,
+      isAvailable: false,
+      compatibilityStatus: status === 'pending' ? 'pending' : 'blocked',
+      sendAssetRefs: [],
+      unavailableReason: dfcGenerationStateUnavailableReason(state),
+    }
   }
 
   private failedDfcGenerationOptionCandidate(
@@ -799,6 +838,14 @@ export class ConversationAttachmentService {
     targetKind: DfcTargetKind
   ): string {
     return `dfc:${attachment.assetId}:${targetKind}:failed`
+  }
+
+  private generationStateOptionIdForCandidate(
+    attachment: DraftAttachmentRecord,
+    targetKind: DfcTargetKind,
+    stateId: string
+  ): string {
+    return `dfc:${attachment.assetId}:${targetKind}:generation:${stateId}`
   }
 
   private toDfcDraftOptionCandidateDto(
@@ -849,7 +896,7 @@ export class ConversationAttachmentService {
         deleted_at AS deletedAt
       FROM file_derivatives
       WHERE parent_asset_id = @parentAssetId
-      ORDER BY created_at ASC, id ASC
+      ORDER BY created_at DESC, rowid DESC
     `).all({ parentAssetId }) as FileDerivativeCandidateRow[]
     return rows.map((row) => ({
       id: row.id,
@@ -863,6 +910,54 @@ export class ConversationAttachmentService {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       deletedAt: row.deletedAt ?? null,
+    }))
+  }
+
+  private listDfcOptionGenerationStates(assetId: string): DfcOptionGenerationStateRecord[] {
+    type Row = Readonly<{
+      id: string
+      asset_id: string
+      target_kind: DfcOptionGenerationStateRecord['targetKind']
+      derived_kind: DfcOptionGenerationStateRecord['derivedKind']
+      exposure_mode: DfcOptionGenerationStateRecord['exposureMode']
+      generator: string
+      conversion_settings_hash: string
+      status: DfcOptionGenerationStateRecord['status']
+      retryable: number
+      derivative_job_id: string | null
+      output_derivative_id: string | null
+      error_code: DfcOptionGenerationStateRecord['errorCode']
+      attempt_count: number
+      created_at: number
+      updated_at: number
+      started_at: number | null
+      finished_at: number | null
+    }>
+    const rows = this.deps.db.prepare(`
+      SELECT *
+      FROM dfc_option_generation_states
+      WHERE asset_id = @assetId
+        AND exposure_mode = 'dfc'
+      ORDER BY updated_at DESC, id DESC
+    `).all({ assetId }) as Row[]
+    return rows.map((row) => ({
+      id: row.id,
+      assetId: row.asset_id,
+      targetKind: row.target_kind,
+      derivedKind: row.derived_kind,
+      exposureMode: row.exposure_mode,
+      generator: row.generator,
+      conversionSettingsHash: row.conversion_settings_hash,
+      status: row.status,
+      retryable: row.retryable === 1,
+      derivativeJobId: row.derivative_job_id ?? null,
+      outputDerivativeId: row.output_derivative_id ?? null,
+      errorCode: row.error_code ?? null,
+      attemptCount: row.attempt_count,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      startedAt: row.started_at ?? null,
+      finishedAt: row.finished_at ?? null,
     }))
   }
 
@@ -1217,6 +1312,20 @@ function dfcOptionStatusFromDerivative(derivative: FileDerivativeRecord): DfcCon
   if (derivative.status === 'failed') return 'failed'
   if (derivative.status === 'pending') return 'pending'
   return 'blocked'
+}
+
+function dfcOptionStatusFromGenerationState(state: DfcOptionGenerationStateRecord): DfcConversionOptionStatus {
+  if (state.status === 'pending' || state.status === 'running') return 'pending'
+  if (state.status === 'failed') return 'failed'
+  if (state.status === 'stale') return 'stale'
+  if (state.status === 'blocked') return 'blocked'
+  return state.outputDerivativeId ? 'stale' : 'blocked'
+}
+
+function dfcGenerationStateUnavailableReason(state: DfcOptionGenerationStateRecord): string {
+  if (state.status === 'pending' || state.status === 'running') return 'dfc_option_generation_pending'
+  if (state.status === 'ready' && state.outputDerivativeId) return 'dfc_generation_output_not_available'
+  return state.errorCode ?? `dfc_option_generation_${state.status}`
 }
 
 function dfcDerivativeUnavailableReason(

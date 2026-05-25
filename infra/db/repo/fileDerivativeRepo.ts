@@ -96,7 +96,7 @@ export class FileDerivativeRepo {
         AND derived_kind = @derivedKind
         AND status = 'ready'
         AND deleted_at IS NULL
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, rowid DESC
       LIMIT 1
     `)
 

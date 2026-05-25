@@ -271,6 +271,10 @@ export type FileIngestStatus =
 export type FilePreviewStatus = 'not_requested' | 'pending' | 'ready' | 'failed'
 export type FileDerivativeStatus = 'pending' | 'ready' | 'failed' | 'deleted'
 export type DerivativeJobStatus = 'pending' | 'running' | 'ready' | 'failed' | 'cancelled'
+export type DfcOptionGenerationStatus = 'pending' | 'running' | 'ready' | 'failed' | 'stale' | 'blocked'
+export type DfcOptionGenerationTargetKind = 'plain_text' | 'markdown' | 'code' | 'table_markdown' | 'pdf_attachment'
+export type DfcOptionGenerationDerivedKind = 'extracted_text' | 'converted_pdf' | 'converted_markdown'
+export type DfcOptionGenerationExposureMode = 'dfc'
 
 export type DerivativeErrorCode =
   | 'derivative_asset_missing'
@@ -303,6 +307,8 @@ export type DerivativeErrorCode =
   | 'embedding_request_failed'
   | 'embedding_response_invalid'
   | 'embedding_output_write_failed'
+
+export type DfcOptionGenerationErrorCode = DerivativeErrorCode | 'draft_attachment_detached'
 
 export type FileAssetRecord = Readonly<{
   id: string
@@ -427,6 +433,75 @@ export type DerivativeJobRecord = Readonly<{
   updatedAt: number
   startedAt: number | null
   finishedAt: number | null
+}>
+
+export type DfcOptionGenerationStateRecord = Readonly<{
+  id: string
+  assetId: string
+  targetKind: DfcOptionGenerationTargetKind
+  derivedKind: DfcOptionGenerationDerivedKind
+  exposureMode: DfcOptionGenerationExposureMode
+  generator: string
+  conversionSettingsHash: string
+  status: DfcOptionGenerationStatus
+  retryable: boolean
+  derivativeJobId: string | null
+  outputDerivativeId: string | null
+  errorCode: DfcOptionGenerationErrorCode | null
+  attemptCount: number
+  createdAt: number
+  updatedAt: number
+  startedAt: number | null
+  finishedAt: number | null
+}>
+
+export type EnsureDfcOptionGenerationStateInput = Readonly<{
+  id?: string
+  assetId: string
+  targetKind: DfcOptionGenerationTargetKind
+  derivedKind: DfcOptionGenerationDerivedKind
+  exposureMode?: DfcOptionGenerationExposureMode
+  generator: string
+  conversionSettingsHash: string
+  createdAt?: number
+  updatedAt?: number
+}>
+
+export type GetDfcOptionGenerationStateByIdentityInput = Readonly<{
+  assetId: string
+  targetKind: DfcOptionGenerationTargetKind
+  exposureMode?: DfcOptionGenerationExposureMode
+  conversionSettingsHash: string
+}>
+
+export type ListDfcOptionGenerationStatesByAssetInput = Readonly<{
+  assetId: string
+}>
+
+export type MarkDfcOptionGenerationRunningInput = Readonly<{
+  id: string
+  derivativeJobId: string
+  attemptCount: number
+  startedAt?: number
+}>
+
+export type MarkDfcOptionGenerationReadyInput = Readonly<{
+  id: string
+  outputDerivativeId: string
+  finishedAt?: number
+}>
+
+export type MarkDfcOptionGenerationFailedInput = Readonly<{
+  id: string
+  errorCode: DerivativeErrorCode
+  retryable?: boolean
+  finishedAt?: number
+}>
+
+export type MarkDfcOptionGenerationBlockedInput = Readonly<{
+  id: string
+  errorCode: DfcOptionGenerationErrorCode
+  finishedAt?: number
 }>
 
 export type FileTypeFullHashStatus =

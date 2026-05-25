@@ -836,65 +836,202 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
   })
 
   it('preserves DFC-managed history original_file semantics without legacy remapping', () => {
-    const h = createHarness()
-    insertConvo(h.db, 'c1')
-    createAsset(h.fileAssetRepo, 'history-pdf', {
-      filename: 'history.pdf',
-      extension: 'pdf',
-      mime: 'application/pdf',
-      assetKind: 'document',
-      storageUri: 'assets/original/hi/history-pdf.pdf',
-    })
-    createVerdict(h, 'history-pdf', 'pdf', 'document')
-    const selectedAssetRefs = [{ kind: 'raw_file' as const, assetId: 'history-pdf' }]
-    const draftAttachment = h.conversationAttachmentService.addDraftAttachment({
-      conversationId: 'c1',
-      assetId: 'history-pdf',
-    })
-    const originalOption = h.conversationAttachmentService
-      .getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'history-pdf' })
-      .options.find((option) => option.targetKind === 'original_file')!
-    h.conversationAttachmentService.updateDraftAttachmentSettings({
-      conversationId: 'c1',
-      assetId: 'history-pdf',
-      dfcManaged: true,
-      selectedOptionId: originalOption.optionId,
-      selectedAssetRefs,
-    })
-    const message = h.conversationAttachmentService.commitDraftToUserMessage({
-      conversationId: 'c1',
-      dfcAttachmentSendSnapshots: [{
-        attachmentId: draftAttachment.id,
+    const cases = [
+      {
         assetId: 'history-pdf',
-        targetKind: 'original_file',
-        sendStrategy: 'file_attachment',
-        sendAssetRefs: selectedAssetRefs,
-      }],
-    }).message
-    h.conversationAttachmentService.updateDraftText({ conversationId: 'c1', draftText: 'new request' })
+        filename: 'history.pdf',
+        extension: 'pdf',
+        mime: 'application/pdf',
+        assetKind: 'document',
+        storageUri: 'assets/original/hi/history-pdf.pdf',
+        formatId: 'pdf',
+        kind: 'document',
+      },
+      {
+        assetId: 'history-html-original',
+        filename: 'index.html',
+        extension: 'html',
+        mime: 'text/html',
+        assetKind: 'text',
+        storageUri: 'assets/original/hh/history-html-original.html',
+        formatId: 'html',
+        kind: 'text',
+      },
+    ] as const
 
-    const plan = h.sendPlanService.buildSendPlan(h.sendPlanService.collectCurrentSendInputs({
-      conversationId: 'c1',
-      historyScope: { messageIds: [message.id] },
-      model: model(['text', 'file']),
-      providerContext: providerContext(),
-    }))
-
-    expect(plan.status).toBe('sendable')
-    expect(plan.attachmentPlans).toEqual([
-      expect.objectContaining({
-        assetId: 'history-pdf',
-        source: 'history',
-        semantic: {
+    for (const testCase of cases) {
+      const h = createHarness()
+      insertConvo(h.db, 'c1')
+      createAsset(h.fileAssetRepo, testCase.assetId, {
+        filename: testCase.filename,
+        extension: testCase.extension,
+        mime: testCase.mime,
+        assetKind: testCase.assetKind,
+        storageUri: testCase.storageUri,
+      })
+      createVerdict(h, testCase.assetId, testCase.formatId, testCase.kind)
+      const selectedAssetRefs = [{ kind: 'raw_file' as const, assetId: testCase.assetId }]
+      const draftAttachment = h.conversationAttachmentService.addDraftAttachment({
+        conversationId: 'c1',
+        assetId: testCase.assetId,
+      })
+      const originalOption = h.conversationAttachmentService
+        .getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: testCase.assetId })
+        .options.find((option) => option.targetKind === 'original_file')!
+      h.conversationAttachmentService.updateDraftAttachmentSettings({
+        conversationId: 'c1',
+        assetId: testCase.assetId,
+        dfcManaged: true,
+        selectedOptionId: originalOption.optionId,
+        selectedAssetRefs,
+      })
+      const message = h.conversationAttachmentService.commitDraftToUserMessage({
+        conversationId: 'c1',
+        dfcAttachmentSendSnapshots: [{
+          attachmentId: draftAttachment.id,
+          assetId: testCase.assetId,
           targetKind: 'original_file',
           sendStrategy: 'file_attachment',
-          mappedFromLegacy: false,
+          sendAssetRefs: selectedAssetRefs,
+        }],
+      }).message
+      h.conversationAttachmentService.updateDraftText({ conversationId: 'c1', draftText: 'new request' })
+
+      const plan = h.sendPlanService.buildSendPlan(h.sendPlanService.collectCurrentSendInputs({
+        conversationId: 'c1',
+        historyScope: { messageIds: [message.id] },
+        model: model(['text', 'file']),
+        providerContext: providerContext(),
+      }))
+
+      expect(plan.status).toBe('sendable')
+      expect(plan.attachmentPlans).toEqual([
+        expect.objectContaining({
+          assetId: testCase.assetId,
+          source: 'history',
+          semantic: {
+            targetKind: 'original_file',
+            sendStrategy: 'file_attachment',
+            mappedFromLegacy: false,
+          },
+          sendAssetRefs: selectedAssetRefs,
+          selectedSendMode: 'inline_base64',
+          eligibility: 'included',
+        }),
+      ])
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('conversion_required_before_send')
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('unsupported')
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(testCase.storageUri)
+    }
+  })
+
+  it('preserves DFC-managed history HTML derived semantics without legacy remapping', () => {
+    const cases = [
+      { assetId: 'history-html-markdown', derivativeId: 'history-html-markdown-derived', targetKind: 'markdown' },
+      { assetId: 'history-html-code', derivativeId: 'history-html-code-derived', targetKind: 'code' },
+    ] as const
+
+    for (const testCase of cases) {
+      const h = createHarness()
+      insertConvo(h.db, 'c1')
+      const rawStorageUri = `assets/original/hh/${testCase.assetId}.html`
+      const derivedStorageUri = `assets/derivatives/${testCase.assetId}/${testCase.derivativeId}.md`
+      createAsset(h.fileAssetRepo, testCase.assetId, {
+        filename: 'index.html',
+        extension: 'html',
+        mime: 'text/html',
+        assetKind: 'text',
+        storageUri: rawStorageUri,
+        sourceMetaJson: {
+          textConversion: {
+            status: 'ready',
+            targetKind: testCase.targetKind,
+            derivativeId: testCase.derivativeId,
+            storageUri: derivedStorageUri,
+            mime: 'text/markdown',
+          },
+          lineage: {
+            stale: false,
+            sendAssetReady: true,
+            sourceHash: `${testCase.assetId}-sha`,
+            previewContentHash: `${testCase.derivativeId}-content`,
+            sendContentHash: `${testCase.derivativeId}-content`,
+            conversionSettingsHash: `${testCase.derivativeId}-settings`,
+            sendTextStorageUri: derivedStorageUri,
+            sendTextBytes: 64,
+          },
         },
-        sendAssetRefs: selectedAssetRefs,
-        selectedSendMode: 'inline_base64',
-        eligibility: 'included',
-      }),
-    ])
+      })
+      createDerivative(h.fileDerivativeRepo, testCase.derivativeId, testCase.assetId, {
+        metaJson: {
+          targetKind: testCase.targetKind,
+          usage: 'preview_and_send',
+          storageClass: 'draft_bound',
+          sourceHash: `${testCase.assetId}-sha`,
+          contentHash: `${testCase.derivativeId}-content`,
+          conversionSettingsHash: `${testCase.derivativeId}-settings`,
+          converterName: 'test-dfc-converter',
+          converterVersion: '1',
+        },
+      })
+      createVerdict(h, testCase.assetId, 'html', 'text')
+      const draftAttachment = h.conversationAttachmentService.addDraftAttachment({
+        conversationId: 'c1',
+        assetId: testCase.assetId,
+      })
+      const option = h.conversationAttachmentService
+        .getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: testCase.assetId })
+        .options.find((candidate) => candidate.targetKind === testCase.targetKind)!
+      h.conversationAttachmentService.updateDraftAttachmentSettings({
+        conversationId: 'c1',
+        assetId: testCase.assetId,
+        dfcManaged: true,
+        selectedOptionId: option.optionId,
+        selectedAssetRefs: option.sendAssetRefs,
+      })
+      const message = h.conversationAttachmentService.commitDraftToUserMessage({
+        conversationId: 'c1',
+        dfcAttachmentSendSnapshots: [{
+          attachmentId: draftAttachment.id,
+          assetId: testCase.assetId,
+          targetKind: testCase.targetKind,
+          sendStrategy: 'text_in_prompt',
+          sendAssetRefs: option.sendAssetRefs,
+        }],
+      }).message
+      h.conversationAttachmentService.updateDraftText({ conversationId: 'c1', draftText: 'follow up' })
+
+      const plan = h.sendPlanService.buildSendPlan(h.sendPlanService.collectCurrentSendInputs({
+        conversationId: 'c1',
+        historyScope: { messageIds: [message.id] },
+        model: model(['text']),
+        providerContext: providerContext(),
+      }))
+
+      expect(plan.status).toBe('sendable')
+      expect(plan.attachmentPlans).toEqual([
+        expect.objectContaining({
+          assetId: testCase.assetId,
+          source: 'history',
+          semantic: {
+            targetKind: testCase.targetKind,
+            sendStrategy: 'text_in_prompt',
+            mappedFromLegacy: false,
+          },
+          sendAssetRefs: option.sendAssetRefs,
+          selectedSendMode: 'inline_base64',
+          eligibility: 'included',
+          exclusionReason: null,
+        }),
+      ])
+      expect(option.sendAssetRefs).toEqual([{ kind: 'derived_asset', assetId: testCase.derivativeId }])
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('conversion_required_before_send')
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('unsupported')
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(rawStorageUri)
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(derivedStorageUri)
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(`${testCase.assetId}-sha`)
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(`${testCase.derivativeId}-content`)
+    }
   })
 
   it('plans a DFC-managed text target from the selected derived_asset ref', () => {
@@ -966,6 +1103,207 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
       selectedSendMode: 'inline_base64',
       eligibility: 'included',
     })
+  })
+
+  it('plans DFC-managed HTML derived options from selected refs without legacy HTML fallback', () => {
+    const cases = [
+      { assetId: 'html-markdown-raw', derivativeId: 'html-markdown-derived', targetKind: 'markdown' },
+      { assetId: 'html-code-raw', derivativeId: 'html-code-derived', targetKind: 'code' },
+    ] as const
+
+    for (const testCase of cases) {
+      const h = createHarness()
+      insertConvo(h.db, 'c1')
+      const rawStorageUri = `assets/original/ht/${testCase.assetId}.html`
+      const derivedStorageUri = `assets/derivatives/${testCase.assetId}/${testCase.derivativeId}.md`
+      createAsset(h.fileAssetRepo, testCase.assetId, {
+        filename: 'index.html',
+        extension: 'html',
+        mime: 'text/html',
+        assetKind: 'text',
+        storageUri: rawStorageUri,
+        sourceMetaJson: {
+          textConversion: {
+            status: 'ready',
+            targetKind: testCase.targetKind,
+            derivativeId: testCase.derivativeId,
+            storageUri: derivedStorageUri,
+            mime: 'text/markdown',
+          },
+          lineage: {
+            stale: false,
+            sendAssetReady: true,
+            sourceHash: `${testCase.assetId}-sha`,
+            previewContentHash: `${testCase.derivativeId}-content`,
+            sendContentHash: `${testCase.derivativeId}-content`,
+            conversionSettingsHash: `${testCase.derivativeId}-settings`,
+            sendTextStorageUri: derivedStorageUri,
+            sendTextBytes: 64,
+          },
+        },
+      })
+      createDerivative(h.fileDerivativeRepo, testCase.derivativeId, testCase.assetId, {
+        metaJson: {
+          targetKind: testCase.targetKind,
+          usage: 'preview_and_send',
+          storageClass: 'draft_bound',
+          sourceHash: `${testCase.assetId}-sha`,
+          contentHash: `${testCase.derivativeId}-content`,
+          conversionSettingsHash: `${testCase.derivativeId}-settings`,
+          converterName: 'test-dfc-converter',
+          converterVersion: '1',
+        },
+      })
+      createVerdict(h, testCase.assetId, 'html', 'text')
+      h.conversationAttachmentService.addDraftAttachment({
+        conversationId: 'c1',
+        assetId: testCase.assetId,
+        dfcManaged: true,
+        selectedOptionId: `option-${testCase.targetKind}`,
+        selectedAssetRefs: [{ kind: 'derived_asset', assetId: testCase.derivativeId }],
+      })
+
+      const collected = h.sendPlanService.collectCurrentSendInputs({
+        conversationId: 'c1',
+        model: model(['text']),
+        providerContext: providerContext(),
+      })
+      const plan = h.sendPlanService.buildSendPlan(collected)
+
+      expect(plan.status).toBe('sendable')
+      expect(plan.attachmentPlans).toEqual([
+        expect.objectContaining({
+          assetId: testCase.assetId,
+          semantic: {
+            targetKind: testCase.targetKind,
+            sendStrategy: 'text_in_prompt',
+            mappedFromLegacy: false,
+          },
+          sendAssetRefs: [{ kind: 'derived_asset', assetId: testCase.derivativeId }],
+          selectedSendMode: 'inline_base64',
+          eligibility: 'included',
+          exclusionReason: null,
+        }),
+      ])
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('conversion_required_before_send')
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('unsupported')
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(rawStorageUri)
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(derivedStorageUri)
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(`${testCase.assetId}-sha`)
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(`${testCase.derivativeId}-content`)
+
+      const incompatiblePlan = h.sendPlanService.buildSendPlan(h.sendPlanService.collectCurrentSendInputs({
+        conversationId: 'c1',
+        model: model(['file']),
+        providerContext: providerContext(),
+      }))
+
+      expect(incompatiblePlan.status).toBe('blocked')
+      expect(incompatiblePlan.attachmentPlans).toEqual([
+        expect.objectContaining({
+          assetId: testCase.assetId,
+          semantic: {
+            targetKind: testCase.targetKind,
+            sendStrategy: 'text_in_prompt',
+            mappedFromLegacy: false,
+          },
+          sendAssetRefs: [{ kind: 'derived_asset', assetId: testCase.derivativeId }],
+          selectedSendMode: null,
+          eligibility: 'excluded',
+          exclusionReason: 'incompatible_with_current_model',
+          displayStatus: 'incompatible_with_current_model',
+          needsUserAttention: true,
+          notes: expect.arrayContaining([expect.stringContaining('text_in')]),
+        }),
+      ])
+      expect(JSON.stringify(incompatiblePlan.attachmentPlans[0])).not.toContain('conversion_required_before_send')
+      expect(JSON.stringify(incompatiblePlan.attachmentPlans[0])).not.toContain('unsupported')
+      expect(JSON.stringify(incompatiblePlan.attachmentPlans[0])).not.toContain(rawStorageUri)
+      expect(JSON.stringify(incompatiblePlan.attachmentPlans[0])).not.toContain(derivedStorageUri)
+      expect(JSON.stringify(incompatiblePlan.attachmentPlans[0])).not.toContain(`${testCase.assetId}-sha`)
+      expect(JSON.stringify(incompatiblePlan.attachmentPlans[0])).not.toContain(`${testCase.derivativeId}-content`)
+    }
+  })
+
+  it('plans a DFC-managed HTML original_file from the selected raw_file ref without legacy HTML fallback', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    const assetId = 'html-original-raw'
+    const storageUri = 'assets/original/ht/html-original-raw.html'
+    createAsset(h.fileAssetRepo, assetId, {
+      filename: 'index.html',
+      extension: 'html',
+      mime: 'text/html',
+      assetKind: 'text',
+      storageUri,
+    })
+    createVerdict(h, assetId, 'html', 'text')
+    h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId })
+    const originalOption = h.conversationAttachmentService
+      .getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId })
+      .options.find((option) => option.targetKind === 'original_file')!
+    h.conversationAttachmentService.updateDraftAttachmentSettings({
+      conversationId: 'c1',
+      assetId,
+      dfcManaged: true,
+      selectedOptionId: originalOption.optionId,
+      selectedAssetRefs: originalOption.sendAssetRefs,
+    })
+
+    const collected = h.sendPlanService.collectCurrentSendInputs({
+      conversationId: 'c1',
+      model: model(['text', 'file']),
+      providerContext: providerContext(),
+    })
+    const plan = h.sendPlanService.buildSendPlan(collected)
+
+    expect(plan.status).toBe('sendable')
+    expect(plan.attachmentPlans).toEqual([
+      expect.objectContaining({
+        assetId,
+        semantic: {
+          targetKind: 'original_file',
+          sendStrategy: 'file_attachment',
+          mappedFromLegacy: false,
+        },
+        sendAssetRefs: originalOption.sendAssetRefs,
+        selectedSendMode: 'inline_base64',
+        eligibility: 'included',
+        exclusionReason: null,
+      }),
+    ])
+    expect(originalOption.sendAssetRefs).toEqual([{ kind: 'raw_file', assetId }])
+    expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('conversion_required_before_send')
+    expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('unsupported')
+    expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(storageUri)
+
+    const incompatiblePlan = h.sendPlanService.buildSendPlan(h.sendPlanService.collectCurrentSendInputs({
+      conversationId: 'c1',
+      model: model(['text']),
+      providerContext: providerContext(),
+    }))
+
+    expect(incompatiblePlan.status).toBe('blocked')
+    expect(incompatiblePlan.attachmentPlans).toEqual([
+      expect.objectContaining({
+        assetId,
+        semantic: {
+          targetKind: 'original_file',
+          sendStrategy: 'file_attachment',
+          mappedFromLegacy: false,
+        },
+        sendAssetRefs: originalOption.sendAssetRefs,
+        selectedSendMode: null,
+        eligibility: 'excluded',
+        exclusionReason: 'incompatible_with_current_model',
+        displayStatus: 'incompatible_with_current_model',
+        needsUserAttention: true,
+        notes: expect.arrayContaining([expect.stringContaining('file_in')]),
+      }),
+    ])
+    expect(JSON.stringify(incompatiblePlan.attachmentPlans[0])).not.toContain('conversion_required_before_send')
+    expect(JSON.stringify(incompatiblePlan.attachmentPlans[0])).not.toContain('unsupported')
+    expect(JSON.stringify(incompatiblePlan.attachmentPlans[0])).not.toContain(storageUri)
   })
 
   it('blocks DFC selected derived assets when Send Plan cannot verify the derivative repository', () => {

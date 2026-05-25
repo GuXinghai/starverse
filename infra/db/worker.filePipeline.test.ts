@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import BetterSqlite3 from 'better-sqlite3'
 import { readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import type { DbHandler, DbMethod } from './types'
@@ -10,6 +11,7 @@ import { registerFilePipelineHandlers } from './worker/handlers/filePipelineHand
 import { FileAssetRepo } from './repo/fileAssetRepo'
 import { FileDerivativeRepo } from './repo/fileDerivativeRepo'
 import { DerivativeJobRepo } from './repo/derivativeJobRepo'
+import { DfcOptionGenerationStateRepo } from './repo/dfcOptionGenerationStateRepo'
 import { MessageAttachmentRepo } from './repo/messageAttachmentRepo'
 import { MessageRepo } from './repo/messageRepo'
 import { BranchRepo } from './repo/branchRepo'
@@ -51,6 +53,7 @@ function createWorkerHarness() {
   const fileAssetRepo = new FileAssetRepo(db)
   const fileDerivativeRepo = new FileDerivativeRepo(db)
   const derivativeJobRepo = new DerivativeJobRepo(db)
+  const dfcOptionGenerationStateRepo = new DfcOptionGenerationStateRepo(db)
   const fileTypeVerdictRepo = new FileTypeVerdictRepo(db)
   const messageAttachmentRepo = new MessageAttachmentRepo(db)
   const messageRepo = new MessageRepo(db)
@@ -105,6 +108,7 @@ function createWorkerHarness() {
     fileAssetRepo,
     fileDerivativeRepo,
     derivativeJobRepo,
+    dfcOptionGenerationStateRepo,
     messageAttachmentRepo,
     conversationAttachmentService,
     derivativeJobService: new DerivativeJobService({
@@ -130,7 +134,23 @@ function createWorkerHarness() {
     }),
     fileStorageRootDir: storageRootDir,
   } as any)
-  return { db, handlers, message, fileTypeDetectionCoordinator, fileTypeVerdictRepo }
+  return { db, handlers, message, conversationAttachmentService, fileTypeDetectionCoordinator, fileTypeVerdictRepo }
+}
+
+function dfcSettingsHash(targetKind: string): string {
+  return createHash('sha256').update(Buffer.from(JSON.stringify({ targetKind }))).digest('hex')
+}
+
+function utf16beWithBom(value: string): Buffer {
+  const out = Buffer.alloc(2 + value.length * 2)
+  out[0] = 0xfe
+  out[1] = 0xff
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    out[2 + index * 2] = (code >> 8) & 0xff
+    out[3 + index * 2] = code & 0xff
+  }
+  return out
 }
 
 async function createWorkerAsset(handlers: Map<DbMethod, DbHandler>) {
@@ -800,8 +820,607 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       FROM derivative_jobs
       WHERE asset_id=@assetId AND derivative_kind='extracted_text'
     `).get({ assetId }) as { count: number }
+    const generationStateCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='table_markdown'
+    `).get({ assetId }) as { count: number }
+    const generationState = db.prepare(`
+      SELECT status, output_derivative_id AS outputDerivativeId, attempt_count AS attemptCount
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='table_markdown'
+      LIMIT 1
+    `).get({ assetId }) as { status: string; outputDerivativeId: string | null; attemptCount: number }
     expect(derivativeCount.count).toBe(1)
     expect(jobCount.count).toBe(1)
+    expect(generationStateCount.count).toBe(1)
+    expect(generationState).toMatchObject({
+      status: 'ready',
+      outputDerivativeId: firstTableOption.sendAssetRefs[0].assetId,
+      attemptCount: 1,
+    })
+  })
+
+  it('blocks durable DFC option generation when a draft attachment is removed after conversion completes', async () => {
+    const { db, handlers, conversationAttachmentService } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-csv-detached-dfc'
+    const storageUri = 'assets/original/de/asset-csv-detached-dfc.csv'
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), 'name,age\nalice,30\n')
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-detached-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-csv-detached-source-hash',
+        filename: 'data.csv',
+        extension: 'csv',
+        mime: 'text/csv',
+        sizeBytes: 18,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-detached-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    let relevanceChecks = 0
+    const hasDraftAttachmentSpy = vi.spyOn(conversationAttachmentService, 'hasDraftAttachment').mockImplementation((input) => {
+      relevanceChecks += 1
+      if (relevanceChecks === 1) return true
+      conversationAttachmentService.removeDraftAttachment({ ...input, updatedAt: 1001 })
+      return false
+    })
+
+    const ensure = await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-detached-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const generationState = db.prepare(`
+      SELECT status,
+             retryable,
+             derivative_job_id AS derivativeJobId,
+             output_derivative_id AS outputDerivativeId,
+             error_code AS errorCode,
+             attempt_count AS attemptCount
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='table_markdown'
+      LIMIT 1
+    `).get({ assetId }) as {
+      status: string
+      retryable: number
+      derivativeJobId: string | null
+      outputDerivativeId: string | null
+      errorCode: string | null
+      attemptCount: number
+    }
+    const derivativeCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+    `).get({ assetId }) as { count: number }
+    const jobCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM derivative_jobs
+      WHERE asset_id=@assetId AND derivative_kind='extracted_text'
+    `).get({ assetId }) as { count: number }
+    const assetRow = db.prepare(`
+      SELECT source_meta_json AS sourceMetaJson
+      FROM file_assets
+      WHERE id=@assetId
+      LIMIT 1
+    `).get({ assetId }) as { sourceMetaJson: string | null }
+    const assetMeta = assetRow.sourceMetaJson ? JSON.parse(assetRow.sourceMetaJson) : null
+    expect(ensure).toMatchObject({
+      ok: false,
+      error: expect.objectContaining({
+        message: expect.stringContaining('draft attachment not found'),
+      }),
+    })
+    expect(generationState).toMatchObject({
+      status: 'blocked',
+      retryable: 0,
+      errorCode: 'draft_attachment_detached',
+      outputDerivativeId: null,
+      attemptCount: 1,
+    })
+    expect(generationState.derivativeJobId).toEqual(expect.any(String))
+    expect(derivativeCount.count).toBe(1)
+    expect(jobCount.count).toBe(1)
+    expect(assetMeta?.textConversion?.status).not.toBe('ready')
+    expect(JSON.stringify(ensure)).not.toContain(storageUri)
+    expect(JSON.stringify(ensure)).not.toContain('asset-csv-detached-source-hash')
+
+    hasDraftAttachmentSpy.mockRestore()
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-detached-draft-add-again',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+    const recovered = await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-detached-ensure-recovered',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const recoveredOption = (recovered as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    const recoveredState = db.prepare(`
+      SELECT status,
+             retryable,
+             output_derivative_id AS outputDerivativeId,
+             error_code AS errorCode,
+             attempt_count AS attemptCount
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='table_markdown'
+      LIMIT 1
+    `).get({ assetId }) as {
+      status: string
+      retryable: number
+      outputDerivativeId: string | null
+      errorCode: string | null
+      attemptCount: number
+    }
+    const recoveredJobCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM derivative_jobs
+      WHERE asset_id=@assetId AND derivative_kind='extracted_text'
+    `).get({ assetId }) as { count: number }
+    expect(recovered).toMatchObject({ ok: true })
+    expect(recoveredOption).toMatchObject({
+      status: 'ready',
+      isAvailable: true,
+      compatibilityStatus: 'compatible',
+      sendAssetRefs: [expect.objectContaining({ kind: 'derived_asset' })],
+    })
+    expect(recoveredState).toMatchObject({
+      status: 'ready',
+      retryable: 0,
+      outputDerivativeId: recoveredOption.sendAssetRefs[0].assetId,
+      errorCode: null,
+      attemptCount: 1,
+    })
+    expect(recoveredJobCount.count).toBe(1)
+    expect(JSON.stringify((recovered as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((recovered as any).result)).not.toContain('asset-csv-detached-source-hash')
+  })
+
+  it('retries durable DFC generation state on a later explicit ensure without creating duplicate state rows', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-dfc-durable-retry'
+    const storageUri = 'assets/original/dr/asset-dfc-durable-retry.txt'
+    await rm(path.join(storageRootDir, ...storageUri.split('/')), { force: true })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-durable-retry-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-dfc-durable-retry-source-hash',
+        filename: 'retry.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 12,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-durable-retry-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const first = await dispatchWorkerMessage(handlers, {
+      id: 'req-durable-retry-ensure-first',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const firstOption = (first as any).result.options.find((option: any) => option.targetKind === 'plain_text')
+    expect(firstOption).toMatchObject({
+      status: 'failed',
+      diagnostics: [expect.objectContaining({ code: 'derivative_local_file_missing' })],
+    })
+    const failedState = db.prepare(`
+      SELECT status, retryable, attempt_count AS attemptCount, error_code AS errorCode
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='plain_text'
+      LIMIT 1
+    `).get({ assetId }) as { status: string; retryable: number; attemptCount: number; errorCode: string | null }
+    expect(failedState).toMatchObject({
+      status: 'failed',
+      retryable: 1,
+      attemptCount: 1,
+      errorCode: 'derivative_local_file_missing',
+    })
+
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), 'retry works\n')
+    const second = await dispatchWorkerMessage(handlers, {
+      id: 'req-durable-retry-ensure-second',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const secondOption = (second as any).result.options.find((option: any) => option.targetKind === 'plain_text')
+    expect(secondOption).toMatchObject({
+      status: 'ready',
+      isAvailable: true,
+      sendAssetRefs: [expect.objectContaining({ kind: 'derived_asset' })],
+    })
+    const stateCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='plain_text'
+    `).get({ assetId }) as { count: number }
+    const readyState = db.prepare(`
+      SELECT status, retryable, attempt_count AS attemptCount, error_code AS errorCode, output_derivative_id AS outputDerivativeId
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='plain_text'
+      LIMIT 1
+    `).get({ assetId }) as { status: string; retryable: number; attemptCount: number; errorCode: string | null; outputDerivativeId: string | null }
+    const jobCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM derivative_jobs
+      WHERE asset_id=@assetId AND derivative_kind='extracted_text'
+    `).get({ assetId }) as { count: number }
+    expect(stateCount.count).toBe(1)
+    expect(jobCount.count).toBe(2)
+    expect(readyState).toMatchObject({
+      status: 'ready',
+      retryable: 0,
+      attemptCount: 2,
+      errorCode: null,
+      outputDerivativeId: secondOption.sendAssetRefs[0].assetId,
+    })
+    expect(JSON.stringify((second as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((second as any).result)).not.toContain('asset-dfc-durable-retry-source-hash')
+  })
+
+  it('does not retry non-retryable durable DFC generation failures for the same option identity', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-dfc-terminal-failure'
+    const storageUri = 'assets/original/tf/asset-dfc-terminal-failure.txt'
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), 'terminal failure should not retry\n')
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-terminal-failure-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-dfc-terminal-failure-source-hash',
+        filename: 'terminal.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 34,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-terminal-failure-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+    db.prepare(`
+      INSERT INTO dfc_option_generation_states(
+        id,
+        asset_id,
+        target_kind,
+        derived_kind,
+        exposure_mode,
+        generator,
+        conversion_settings_hash,
+        status,
+        retryable,
+        derivative_job_id,
+        output_derivative_id,
+        error_code,
+        attempt_count,
+        created_at,
+        updated_at,
+        started_at,
+        finished_at
+      )
+      VALUES (
+        'state-terminal-failure',
+        @assetId,
+        'plain_text',
+        'extracted_text',
+        'dfc',
+        'step3-text-structured-conversion',
+        @settingsHash,
+        'failed',
+        0,
+        NULL,
+        NULL,
+        'conversion_not_implemented',
+        1,
+        1,
+        1,
+        1,
+        1
+      )
+    `).run({ assetId, settingsHash: dfcSettingsHash('plain_text') })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-terminal-failure-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const failedOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'plain_text')
+    const generationState = db.prepare(`
+      SELECT status, retryable, attempt_count AS attemptCount, error_code AS errorCode, output_derivative_id AS outputDerivativeId
+      FROM dfc_option_generation_states
+      WHERE id='state-terminal-failure'
+      LIMIT 1
+    `).get() as { status: string; retryable: number; attemptCount: number; errorCode: string | null; outputDerivativeId: string | null }
+    const jobCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM derivative_jobs
+      WHERE asset_id=@assetId AND derivative_kind='extracted_text'
+    `).get({ assetId }) as { count: number }
+    const derivativeCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+    `).get({ assetId }) as { count: number }
+    expect(ensured).toMatchObject({ ok: true })
+    expect(failedOption).toMatchObject({
+      optionId: `dfc:${assetId}:plain_text:failed`,
+      status: 'failed',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: 'conversion_not_implemented' })],
+    })
+    expect(generationState).toMatchObject({
+      status: 'failed',
+      retryable: 0,
+      attemptCount: 1,
+      errorCode: 'conversion_not_implemented',
+      outputDerivativeId: null,
+    })
+    expect(jobCount.count).toBe(0)
+    expect(derivativeCount.count).toBe(0)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-dfc-terminal-failure-source-hash')
+  })
+
+  it('lets a verified derivative recover a non-retryable durable DFC failure without creating a new job', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-dfc-terminal-recovered'
+    const storageUri = 'assets/original/tr/asset-dfc-terminal-recovered.txt'
+    const derivativeId = 'derivative-terminal-recovered'
+    const derivativeStorageUri = 'assets/derived/tr/derivative-terminal-recovered.txt'
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await mkdir(path.dirname(path.join(storageRootDir, ...derivativeStorageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), 'source text\n')
+    await writeFile(path.join(storageRootDir, ...derivativeStorageUri.split('/')), 'verified derivative text\n')
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-terminal-recovered-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-dfc-terminal-recovered-source-hash',
+        filename: 'terminal-recovered.txt',
+        extension: 'txt',
+        mime: 'text/plain',
+        sizeBytes: 12,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-terminal-recovered-derivative',
+      method: 'fileDerivative.create',
+      params: {
+        id: derivativeId,
+        parentAssetId: assetId,
+        derivedKind: 'extracted_text',
+        mime: 'text/plain',
+        storageUri: derivativeStorageUri,
+        generator: 'step3-text-structured-conversion',
+        status: 'ready',
+        metaJson: {
+          targetKind: 'plain_text',
+          usage: 'preview_and_send',
+          sourceHash: 'asset-dfc-terminal-recovered-source-hash',
+          contentHash: 'derivative-terminal-recovered-content-hash',
+          conversionSettingsHash: dfcSettingsHash('plain_text'),
+        },
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-terminal-recovered-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+    db.prepare(`
+      INSERT INTO dfc_option_generation_states(
+        id,
+        asset_id,
+        target_kind,
+        derived_kind,
+        exposure_mode,
+        generator,
+        conversion_settings_hash,
+        status,
+        retryable,
+        derivative_job_id,
+        output_derivative_id,
+        error_code,
+        attempt_count,
+        created_at,
+        updated_at,
+        started_at,
+        finished_at
+      )
+      VALUES (
+        'state-terminal-recovered',
+        @assetId,
+        'plain_text',
+        'extracted_text',
+        'dfc',
+        'step3-text-structured-conversion',
+        @settingsHash,
+        'failed',
+        0,
+        NULL,
+        NULL,
+        'conversion_not_implemented',
+        1,
+        1,
+        1,
+        1,
+        1
+      )
+    `).run({ assetId, settingsHash: dfcSettingsHash('plain_text') })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-terminal-recovered-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const plainTextOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'plain_text')
+    const recoveredState = db.prepare(`
+      SELECT status, retryable, attempt_count AS attemptCount, error_code AS errorCode, output_derivative_id AS outputDerivativeId
+      FROM dfc_option_generation_states
+      WHERE id='state-terminal-recovered'
+      LIMIT 1
+    `).get() as { status: string; retryable: number; attemptCount: number; errorCode: string | null; outputDerivativeId: string | null }
+    const jobCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM derivative_jobs
+      WHERE asset_id=@assetId AND derivative_kind='extracted_text'
+    `).get({ assetId }) as { count: number }
+    expect(ensured).toMatchObject({ ok: true })
+    expect(plainTextOption).toMatchObject({
+      optionId: `dfc:${assetId}:plain_text:derived_asset:${derivativeId}`,
+      status: 'ready',
+      isAvailable: true,
+      compatibilityStatus: 'compatible',
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: derivativeId }],
+    })
+    expect(recoveredState).toMatchObject({
+      status: 'ready',
+      retryable: 0,
+      attemptCount: 1,
+      errorCode: null,
+      outputDerivativeId: derivativeId,
+    })
+    expect(jobCount.count).toBe(0)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(derivativeStorageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-dfc-terminal-recovered-source-hash')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('derivative-terminal-recovered-content-hash')
+  })
+
+  it('regenerates explicit DFC derivatives when the reusable output source hash is stale', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-dfc-stale-regenerate'
+    const storageUri = 'assets/original/sr/asset-dfc-stale-regenerate.csv'
+    await rm(path.join(storageRootDir, ...storageUri.split('/')), { force: true })
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), 'name,age\nalice,30\n')
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-stale-regenerate-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-dfc-stale-regenerate-source-v1',
+        filename: 'data.csv',
+        extension: 'csv',
+        mime: 'text/csv',
+        sizeBytes: 18,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-stale-regenerate-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const first = await dispatchWorkerMessage(handlers, {
+      id: 'req-stale-regenerate-ensure-first',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const firstOption = (first as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    const firstDerivativeId = firstOption.sendAssetRefs[0].assetId
+
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), 'name,age\nbob,41\n')
+    db.prepare(`
+      UPDATE file_assets
+      SET sha256 = 'asset-dfc-stale-regenerate-source-v2',
+          updated_at = 2000
+      WHERE id = @assetId
+    `).run({ assetId })
+
+    const second = await dispatchWorkerMessage(handlers, {
+      id: 'req-stale-regenerate-ensure-second',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const secondOption = (second as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    const secondDerivativeId = secondOption.sendAssetRefs[0].assetId
+    const derivativeCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+    `).get({ assetId }) as { count: number }
+    const generationState = db.prepare(`
+      SELECT status, attempt_count AS attemptCount, output_derivative_id AS outputDerivativeId
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='table_markdown'
+      LIMIT 1
+    `).get({ assetId }) as { status: string; attemptCount: number; outputDerivativeId: string | null }
+    const secondDerivativeMetaRow = db.prepare(`
+      SELECT meta_json AS metaJson
+      FROM file_derivatives
+      WHERE id=@derivativeId
+      LIMIT 1
+    `).get({ derivativeId: secondDerivativeId }) as { metaJson: string | null }
+    const secondDerivativeMeta = secondDerivativeMetaRow.metaJson ? JSON.parse(secondDerivativeMetaRow.metaJson) : null
+
+    expect(firstDerivativeId).not.toBe(secondDerivativeId)
+    expect(secondOption).toMatchObject({
+      status: 'ready',
+      isAvailable: true,
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: secondDerivativeId }],
+    })
+    expect(derivativeCount.count).toBe(2)
+    expect(generationState).toMatchObject({
+      status: 'ready',
+      attemptCount: 2,
+      outputDerivativeId: secondDerivativeId,
+    })
+    expect(secondDerivativeMeta).toMatchObject({
+      sourceHash: 'asset-dfc-stale-regenerate-source-v2',
+      targetKind: 'table_markdown',
+    })
+    expect(JSON.stringify((second as any).result)).not.toContain('asset-dfc-stale-regenerate-source-v1')
+    expect(JSON.stringify((second as any).result)).not.toContain('asset-dfc-stale-regenerate-source-v2')
   })
 
   it('generates approved Phase 1 local text DFC target families through explicit ensure endpoint', async () => {
@@ -867,6 +1486,1107 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
         sendAssetRefs: [{ kind: 'derived_asset', assetId: derivative?.id }],
       })
     }
+  })
+
+  it('previews and commits selected TSV table_markdown from the same derived asset ref', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-dfc-tsv-preview-send'
+    const storageUri = 'assets/original/tp/asset-dfc-tsv-preview-send.tsv'
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), 'name\tage\nalice\t30\nbob\t41\n')
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-tsv-preview-send-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-dfc-tsv-preview-send-source-hash',
+        filename: 'data.tsv',
+        extension: 'tsv',
+        mime: 'text/tab-separated-values',
+        sizeBytes: 25,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-tsv-preview-send-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-tsv-preview-send-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const tableOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    const derivativeRow = db.prepare(`
+      SELECT id, storage_uri AS storageUri
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+      LIMIT 1
+    `).get({ assetId }) as { id: string; storageUri: string }
+    const converted = await readFile(path.join(storageRootDir, ...derivativeRow.storageUri.split('/')), 'utf8')
+    expect(converted).toBe('| name | age |\n| --- | --- |\n| alice | 30 |\n| bob | 41 |')
+    expect(tableOption).toMatchObject({
+      optionId: `dfc:${assetId}:table_markdown:derived_asset:${derivativeRow.id}`,
+      status: 'ready',
+      isAvailable: true,
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: derivativeRow.id }],
+    })
+
+    const selected = await dispatchWorkerMessage(handlers, {
+      id: 'req-tsv-preview-send-select',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: tableOption.optionId,
+        selectedAssetRefs: tableOption.sendAssetRefs,
+      },
+    })
+    const preview = await dispatchWorkerMessage(handlers, {
+      id: 'req-tsv-preview-send-preview',
+      method: 'conversationDraft.getDfcPreview',
+      params: { conversationId: 'c1', assetId, maxCharacters: 256 },
+    })
+    const committed = await dispatchWorkerMessage(handlers, {
+      id: 'req-tsv-preview-send-commit',
+      method: 'conversationDraft.commitToUserMessage',
+      params: { conversationId: 'c1', body: 'send tsv as table markdown' },
+    })
+
+    expect(selected).toMatchObject({ ok: true })
+    expect(preview).toMatchObject({
+      ok: true,
+      result: {
+        selectedOptionId: tableOption.optionId,
+        selectedAssetRefs: tableOption.sendAssetRefs,
+        targetKind: 'table_markdown',
+        sendStrategy: 'text_in_prompt',
+        decision: expect.objectContaining({
+          status: 'ready',
+          sendAssetRefs: tableOption.sendAssetRefs,
+        }),
+        preview: expect.objectContaining({
+          kind: 'text',
+          status: 'ready',
+          text: converted,
+        }),
+      },
+    })
+    expect(committed).toMatchObject({
+      ok: true,
+      result: {
+        attachments: [
+          expect.objectContaining({
+            assetId,
+            dfcManaged: true,
+            usedOptionId: tableOption.optionId,
+            usedAssetRefs: tableOption.sendAssetRefs,
+            targetKind: 'table_markdown',
+            sendStrategy: 'text_in_prompt',
+          }),
+        ],
+      },
+    })
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((preview as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((preview as any).result)).not.toContain(derivativeRow.storageUri)
+    expect(JSON.stringify((preview as any).result)).not.toContain('asset-dfc-tsv-preview-send-source-hash')
+  })
+
+  it('generates HTML code and safe markdown DFC options with original_file raw ref', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-dfc-html-dual-options'
+    const storageUri = 'assets/original/ht/asset-dfc-html-dual-options.html'
+    const html = `<html><head><style>.hidden{display:none}</style><script>window.alert('x')</script></head><body><h1>Title</h1><p>Hello <b>world</b></p></body></html>`
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), html)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-dfc-html-dual-options-source-hash',
+        filename: 'index.html',
+        extension: 'html',
+        mime: 'text/html',
+        sizeBytes: Buffer.byteLength(html, 'utf8'),
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const options = (ensured as any).result.options as any[]
+    const originalOption = options.find((option) => option.targetKind === 'original_file')
+    const markdownOption = options.find((option) => option.targetKind === 'markdown')
+    const codeOption = options.find((option) => option.targetKind === 'code')
+    const derivativeRows = db.prepare(`
+      SELECT id, storage_uri AS storageUri, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+      ORDER BY created_at ASC, rowid ASC
+    `).all({ assetId }) as { id: string; storageUri: string; metaJson: string | null }[]
+    const derivatives = derivativeRows.map((row) => ({
+      ...row,
+      meta: row.metaJson ? JSON.parse(row.metaJson) : null,
+    }))
+    const markdownDerivative = derivatives.find((row) => row.meta?.targetKind === 'markdown')!
+    const codeDerivative = derivatives.find((row) => row.meta?.targetKind === 'code')!
+    const markdownText = await readFile(path.join(storageRootDir, ...markdownDerivative.storageUri.split('/')), 'utf8')
+    const codeText = await readFile(path.join(storageRootDir, ...codeDerivative.storageUri.split('/')), 'utf8')
+
+    expect((ensured as any).result.selectedOptionId).toBeNull()
+    expect((ensured as any).result.selectedAssetRefs).toEqual([])
+    expect((ensured as any).result.decision).toMatchObject({
+      status: 'needs_user_selection',
+      reasonCode: 'selected_option_missing',
+      selectedOptionId: null,
+      targetKind: null,
+      sendAssetRefs: [],
+    })
+    expect(originalOption).toMatchObject({
+      targetKind: 'original_file',
+      status: 'ready',
+      sendAssetRefs: [{ kind: 'raw_file', assetId }],
+    })
+    expect(markdownOption).toMatchObject({
+      targetKind: 'markdown',
+      status: 'ready',
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: markdownDerivative.id }],
+      warnings: expect.arrayContaining([
+        'html_javascript_not_executed',
+        'html_external_resources_not_loaded',
+      ]),
+    })
+    expect(codeOption).toMatchObject({
+      targetKind: 'code',
+      status: 'ready',
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: codeDerivative.id }],
+    })
+    expect(markdownText).toContain('# Title')
+    expect(markdownText).toContain('Hello world')
+    expect(markdownText).not.toContain('window.alert')
+    expect(markdownText).not.toContain('.hidden')
+    expect(codeText).toBe(html)
+
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-select-original',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: originalOption.optionId,
+        selectedAssetRefs: originalOption.sendAssetRefs,
+      },
+    })
+    const originalPreview = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-original-preview',
+      method: 'conversationDraft.getDfcPreview',
+      params: { conversationId: 'c1', assetId, maxCharacters: 256 },
+    })
+
+    expect(originalPreview).toMatchObject({
+      ok: true,
+      result: {
+        selectedOptionId: originalOption.optionId,
+        selectedAssetRefs: originalOption.sendAssetRefs,
+        targetKind: 'original_file',
+        sendStrategy: 'file_attachment',
+        decision: expect.objectContaining({
+          status: 'ready',
+          sendAssetRefs: originalOption.sendAssetRefs,
+        }),
+        preview: expect.objectContaining({
+          kind: 'raw_file',
+          status: 'ready',
+          text: null,
+          diagnostics: [expect.objectContaining({ code: 'dfc_preview_raw_file_metadata_only' })],
+        }),
+      },
+    })
+    expect(JSON.stringify((originalPreview as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((originalPreview as any).result)).not.toContain(markdownDerivative.storageUri)
+    expect(JSON.stringify((originalPreview as any).result)).not.toContain(codeDerivative.storageUri)
+    expect(JSON.stringify((originalPreview as any).result)).not.toContain(html)
+
+    insertConvo(db, 'c-html-original')
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-original-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c-html-original', assetId },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-original-select-for-commit',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c-html-original',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: originalOption.optionId,
+        selectedAssetRefs: originalOption.sendAssetRefs,
+      },
+    })
+    const originalCommitted = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-original-commit',
+      method: 'conversationDraft.commitToUserMessage',
+      params: { conversationId: 'c-html-original', body: 'send html as original file' },
+    })
+
+    expect(originalCommitted).toMatchObject({
+      ok: true,
+      result: {
+        attachments: [
+          expect.objectContaining({
+            assetId,
+            dfcManaged: true,
+            usedOptionId: originalOption.optionId,
+            usedAssetRefs: originalOption.sendAssetRefs,
+            targetKind: 'original_file',
+            sendStrategy: 'file_attachment',
+          }),
+        ],
+      },
+    })
+    expect(JSON.stringify((originalCommitted as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((originalCommitted as any).result)).not.toContain(markdownDerivative.storageUri)
+    expect(JSON.stringify((originalCommitted as any).result)).not.toContain(codeDerivative.storageUri)
+    expect(JSON.stringify((originalCommitted as any).result)).not.toContain(html)
+
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-select-markdown',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: markdownOption.optionId,
+        selectedAssetRefs: markdownOption.sendAssetRefs,
+      },
+    })
+    const preview = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-preview',
+      method: 'conversationDraft.getDfcPreview',
+      params: { conversationId: 'c1', assetId, maxCharacters: 256 },
+    })
+
+    expect(preview).toMatchObject({
+      ok: true,
+      result: {
+        selectedOptionId: markdownOption.optionId,
+        selectedAssetRefs: markdownOption.sendAssetRefs,
+        targetKind: 'markdown',
+        sendStrategy: 'text_in_prompt',
+        decision: expect.objectContaining({
+          status: 'ready',
+          sendAssetRefs: markdownOption.sendAssetRefs,
+        }),
+        preview: expect.objectContaining({
+          kind: 'text',
+          status: 'ready',
+          text: markdownText,
+        }),
+      },
+    })
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-dfc-html-dual-options-source-hash')
+    expect(JSON.stringify((preview as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((preview as any).result)).not.toContain(markdownDerivative.storageUri)
+
+    insertConvo(db, 'c-html-markdown')
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-markdown-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c-html-markdown', assetId },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-markdown-select-for-commit',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c-html-markdown',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: markdownOption.optionId,
+        selectedAssetRefs: markdownOption.sendAssetRefs,
+      },
+    })
+    const markdownCommitted = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-markdown-commit',
+      method: 'conversationDraft.commitToUserMessage',
+      params: { conversationId: 'c-html-markdown', body: 'send html as safe markdown' },
+    })
+
+    expect(markdownCommitted).toMatchObject({
+      ok: true,
+      result: {
+        attachments: [
+          expect.objectContaining({
+            assetId,
+            dfcManaged: true,
+            usedOptionId: markdownOption.optionId,
+            usedAssetRefs: markdownOption.sendAssetRefs,
+            targetKind: 'markdown',
+            sendStrategy: 'text_in_prompt',
+          }),
+        ],
+      },
+    })
+    expect(JSON.stringify((markdownCommitted as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((markdownCommitted as any).result)).not.toContain(markdownDerivative.storageUri)
+    expect(JSON.stringify((markdownCommitted as any).result)).not.toContain(codeDerivative.storageUri)
+    expect(JSON.stringify((markdownCommitted as any).result)).not.toContain(html)
+
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-select-code',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: codeOption.optionId,
+        selectedAssetRefs: codeOption.sendAssetRefs,
+      },
+    })
+    const codePreview = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-code-preview',
+      method: 'conversationDraft.getDfcPreview',
+      params: { conversationId: 'c1', assetId, maxCharacters: 512 },
+    })
+    const committed = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-commit-code',
+      method: 'conversationDraft.commitToUserMessage',
+      params: { conversationId: 'c1', body: 'send html as code' },
+    })
+
+    expect(codePreview).toMatchObject({
+      ok: true,
+      result: {
+        selectedOptionId: codeOption.optionId,
+        selectedAssetRefs: codeOption.sendAssetRefs,
+        targetKind: 'code',
+        sendStrategy: 'text_in_prompt',
+        decision: expect.objectContaining({
+          status: 'ready',
+          sendAssetRefs: codeOption.sendAssetRefs,
+        }),
+        preview: expect.objectContaining({
+          kind: 'text',
+          status: 'ready',
+          text: codeText,
+        }),
+      },
+    })
+    expect(committed).toMatchObject({
+      ok: true,
+      result: {
+        attachments: [
+          expect.objectContaining({
+            assetId,
+            dfcManaged: true,
+            usedOptionId: codeOption.optionId,
+            usedAssetRefs: codeOption.sendAssetRefs,
+            targetKind: 'code',
+            sendStrategy: 'text_in_prompt',
+          }),
+        ],
+      },
+    })
+    expect(JSON.stringify((codePreview as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((codePreview as any).result)).not.toContain(codeDerivative.storageUri)
+  })
+
+  it('generates template-like HTML DFC options while preserving code source and safe markdown output', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-dfc-html-template-options'
+    const storageUri = 'assets/original/ht/asset-dfc-html-template-options.html'
+    const html = `<template><article><h1>{{ title }}</h1><p v-if="visible">{{ body }}</p></article></template>`
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), html)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-template-options-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-dfc-html-template-options-source-hash',
+        filename: 'template.html',
+        extension: 'html',
+        mime: 'text/html',
+        sizeBytes: Buffer.byteLength(html, 'utf8'),
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-template-options-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-template-options-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const options = (ensured as any).result.options as any[]
+    const originalOption = options.find((option) => option.targetKind === 'original_file')
+    const markdownOption = options.find((option) => option.targetKind === 'markdown')
+    const codeOption = options.find((option) => option.targetKind === 'code')
+    const derivativeRows = db.prepare(`
+      SELECT id, storage_uri AS storageUri, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+      ORDER BY created_at ASC, rowid ASC
+    `).all({ assetId }) as { id: string; storageUri: string; metaJson: string | null }[]
+    const derivatives = derivativeRows.map((row) => ({
+      ...row,
+      meta: row.metaJson ? JSON.parse(row.metaJson) : null,
+    }))
+    const markdownDerivative = derivatives.find((row) => row.meta?.targetKind === 'markdown')!
+    const codeDerivative = derivatives.find((row) => row.meta?.targetKind === 'code')!
+    const markdownText = await readFile(path.join(storageRootDir, ...markdownDerivative.storageUri.split('/')), 'utf8')
+    const codeText = await readFile(path.join(storageRootDir, ...codeDerivative.storageUri.split('/')), 'utf8')
+
+    expect((ensured as any).result.selectedOptionId).toBeNull()
+    expect((ensured as any).result.selectedAssetRefs).toEqual([])
+    expect((ensured as any).result.decision).toMatchObject({
+      status: 'needs_user_selection',
+      reasonCode: 'selected_option_missing',
+      selectedOptionId: null,
+      targetKind: null,
+      sendAssetRefs: [],
+    })
+    expect(originalOption).toMatchObject({
+      targetKind: 'original_file',
+      status: 'ready',
+      sendAssetRefs: [{ kind: 'raw_file', assetId }],
+    })
+    expect(markdownOption).toMatchObject({
+      targetKind: 'markdown',
+      status: 'ready',
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: markdownDerivative.id }],
+      warnings: expect.arrayContaining([
+        'html_javascript_not_executed',
+        'html_external_resources_not_loaded',
+      ]),
+    })
+    expect(codeOption).toMatchObject({
+      targetKind: 'code',
+      status: 'ready',
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: codeDerivative.id }],
+      warnings: [],
+    })
+    expect(markdownText).toContain('{{ title }}')
+    expect(markdownText).toContain('{{ body }}')
+    expect(markdownText).not.toContain('<template')
+    expect(markdownText).not.toContain('v-if')
+    expect(codeText).toBe(html)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-dfc-html-template-options-source-hash')
+    expect(JSON.stringify((ensured as any).result)).not.toContain(html)
+
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-template-options-select-code',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: codeOption.optionId,
+        selectedAssetRefs: codeOption.sendAssetRefs,
+      },
+    })
+    const codePreview = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-template-options-code-preview',
+      method: 'conversationDraft.getDfcPreview',
+      params: { conversationId: 'c1', assetId, maxCharacters: 512 },
+    })
+    const committed = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-template-options-commit-code',
+      method: 'conversationDraft.commitToUserMessage',
+      params: { conversationId: 'c1', body: 'send template html as code' },
+    })
+
+    expect(codePreview).toMatchObject({
+      ok: true,
+      result: {
+        selectedOptionId: codeOption.optionId,
+        selectedAssetRefs: codeOption.sendAssetRefs,
+        targetKind: 'code',
+        sendStrategy: 'text_in_prompt',
+        decision: expect.objectContaining({
+          status: 'ready',
+          sendAssetRefs: codeOption.sendAssetRefs,
+        }),
+        preview: expect.objectContaining({
+          kind: 'text',
+          status: 'ready',
+          text: codeText,
+        }),
+      },
+    })
+    expect(committed).toMatchObject({
+      ok: true,
+      result: {
+        attachments: [
+          expect.objectContaining({
+            assetId,
+            dfcManaged: true,
+            usedOptionId: codeOption.optionId,
+            usedAssetRefs: codeOption.sendAssetRefs,
+            targetKind: 'code',
+            sendStrategy: 'text_in_prompt',
+          }),
+        ],
+      },
+    })
+    expect(JSON.stringify((codePreview as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((codePreview as any).result)).not.toContain(codeDerivative.storageUri)
+    expect(JSON.stringify((committed as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((committed as any).result)).not.toContain(markdownDerivative.storageUri)
+    expect(JSON.stringify((committed as any).result)).not.toContain(codeDerivative.storageUri)
+
+    insertConvo(db, 'c-html-template-markdown')
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-template-options-markdown-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c-html-template-markdown', assetId },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-template-options-select-markdown',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c-html-template-markdown',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: markdownOption.optionId,
+        selectedAssetRefs: markdownOption.sendAssetRefs,
+      },
+    })
+    const markdownPreview = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-template-options-markdown-preview',
+      method: 'conversationDraft.getDfcPreview',
+      params: { conversationId: 'c-html-template-markdown', assetId, maxCharacters: 512 },
+    })
+    const markdownCommitted = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-template-options-commit-markdown',
+      method: 'conversationDraft.commitToUserMessage',
+      params: { conversationId: 'c-html-template-markdown', body: 'send template html as safe markdown' },
+    })
+
+    expect(markdownPreview).toMatchObject({
+      ok: true,
+      result: {
+        selectedOptionId: markdownOption.optionId,
+        selectedAssetRefs: markdownOption.sendAssetRefs,
+        targetKind: 'markdown',
+        sendStrategy: 'text_in_prompt',
+        decision: expect.objectContaining({
+          status: 'ready',
+          sendAssetRefs: markdownOption.sendAssetRefs,
+        }),
+        preview: expect.objectContaining({
+          kind: 'text',
+          status: 'ready',
+          text: markdownText,
+        }),
+      },
+    })
+    expect(markdownCommitted).toMatchObject({
+      ok: true,
+      result: {
+        attachments: [
+          expect.objectContaining({
+            assetId,
+            dfcManaged: true,
+            usedOptionId: markdownOption.optionId,
+            usedAssetRefs: markdownOption.sendAssetRefs,
+            targetKind: 'markdown',
+            sendStrategy: 'text_in_prompt',
+          }),
+        ],
+      },
+    })
+    expect(JSON.stringify((markdownPreview as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((markdownPreview as any).result)).not.toContain(markdownDerivative.storageUri)
+    expect(JSON.stringify((markdownCommitted as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((markdownCommitted as any).result)).not.toContain(markdownDerivative.storageUri)
+    expect(JSON.stringify((markdownCommitted as any).result)).not.toContain(codeDerivative.storageUri)
+    expect(JSON.stringify((markdownCommitted as any).result)).not.toContain(html)
+
+    insertConvo(db, 'c-html-template-original')
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-template-options-original-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c-html-template-original', assetId },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-template-options-select-original',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c-html-template-original',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: originalOption.optionId,
+        selectedAssetRefs: originalOption.sendAssetRefs,
+      },
+    })
+    const originalPreview = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-template-options-original-preview',
+      method: 'conversationDraft.getDfcPreview',
+      params: { conversationId: 'c-html-template-original', assetId, maxCharacters: 512 },
+    })
+    const originalCommitted = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-template-options-commit-original',
+      method: 'conversationDraft.commitToUserMessage',
+      params: { conversationId: 'c-html-template-original', body: 'send template html as original file' },
+    })
+
+    expect(originalPreview).toMatchObject({
+      ok: true,
+      result: {
+        selectedOptionId: originalOption.optionId,
+        selectedAssetRefs: originalOption.sendAssetRefs,
+        targetKind: 'original_file',
+        sendStrategy: 'file_attachment',
+        decision: expect.objectContaining({
+          status: 'ready',
+          sendAssetRefs: originalOption.sendAssetRefs,
+        }),
+        preview: expect.objectContaining({
+          kind: 'raw_file',
+          status: 'ready',
+          text: null,
+          diagnostics: [expect.objectContaining({ code: 'dfc_preview_raw_file_metadata_only' })],
+        }),
+      },
+    })
+    expect(originalCommitted).toMatchObject({
+      ok: true,
+      result: {
+        attachments: [
+          expect.objectContaining({
+            assetId,
+            dfcManaged: true,
+            usedOptionId: originalOption.optionId,
+            usedAssetRefs: originalOption.sendAssetRefs,
+            targetKind: 'original_file',
+            sendStrategy: 'file_attachment',
+          }),
+        ],
+      },
+    })
+    expect(JSON.stringify((originalPreview as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((originalPreview as any).result)).not.toContain(markdownDerivative.storageUri)
+    expect(JSON.stringify((originalPreview as any).result)).not.toContain(codeDerivative.storageUri)
+    expect(JSON.stringify((originalPreview as any).result)).not.toContain(html)
+    expect(JSON.stringify((originalCommitted as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((originalCommitted as any).result)).not.toContain(markdownDerivative.storageUri)
+    expect(JSON.stringify((originalCommitted as any).result)).not.toContain(codeDerivative.storageUri)
+    expect(JSON.stringify((originalCommitted as any).result)).not.toContain(html)
+  })
+
+  it('converts quoted CSV cells into table_markdown without splitting escaped content', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-dfc-csv-quoted-table'
+    const storageUri = 'assets/original/cq/asset-dfc-csv-quoted-table.csv'
+    const csv = 'name,notes\n"Alice, A","uses | pipe"\n"Bob","line 1\nline 2"\n'
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), csv)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-quoted-table-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-dfc-csv-quoted-table-source-hash',
+        filename: 'quoted.csv',
+        extension: 'csv',
+        mime: 'text/csv',
+        sizeBytes: Buffer.byteLength(csv, 'utf8'),
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-quoted-table-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-quoted-table-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const tableOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    const derivativeRow = db.prepare(`
+      SELECT id, storage_uri AS storageUri, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+      LIMIT 1
+    `).get({ assetId }) as { id: string; storageUri: string; metaJson: string | null }
+    const converted = await readFile(path.join(storageRootDir, ...derivativeRow.storageUri.split('/')), 'utf8')
+    const derivativeMeta = derivativeRow.metaJson ? JSON.parse(derivativeRow.metaJson) : null
+
+    expect(converted).toBe('| name | notes |\n| --- | --- |\n| Alice, A | uses \\| pipe |\n| Bob | line 1<br>line 2 |')
+    expect(derivativeMeta).toMatchObject({
+      targetKind: 'table_markdown',
+      usage: 'preview_and_send',
+      storageClass: 'draft_bound',
+      converterName: 'starverse-text-derivative',
+    })
+    expect(tableOption).toMatchObject({
+      optionId: `dfc:${assetId}:table_markdown:derived_asset:${derivativeRow.id}`,
+      status: 'ready',
+      isAvailable: true,
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: derivativeRow.id }],
+    })
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(derivativeRow.storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-dfc-csv-quoted-table-source-hash')
+  })
+
+  it('converts UTF-16LE BOM TSV assets through explicit DFC table_markdown ensure', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-dfc-tsv-utf16le'
+    const storageUri = 'assets/original/u1/asset-dfc-tsv-utf16le.tsv'
+    const tsvText = 'name\tage\nalice\t30\n'
+    const tsvBytes = Buffer.from(`\ufeff${tsvText}`, 'utf16le')
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), tsvBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-tsv-utf16le-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-dfc-tsv-utf16le-source-hash',
+        filename: 'utf16.tsv',
+        extension: 'tsv',
+        mime: 'text/tab-separated-values',
+        sizeBytes: tsvBytes.byteLength,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-tsv-utf16le-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-tsv-utf16le-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const tableOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    const derivativeRow = db.prepare(`
+      SELECT id, storage_uri AS storageUri, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+      LIMIT 1
+    `).get({ assetId }) as { id: string; storageUri: string; metaJson: string | null }
+    const converted = await readFile(path.join(storageRootDir, ...derivativeRow.storageUri.split('/')), 'utf8')
+    const derivativeMeta = derivativeRow.metaJson ? JSON.parse(derivativeRow.metaJson) : null
+
+    expect(converted).toBe('| name | age |\n| --- | --- |\n| alice | 30 |')
+    expect(derivativeMeta).toMatchObject({
+      targetKind: 'table_markdown',
+      sourceEncoding: 'utf-16le',
+      usage: 'preview_and_send',
+      storageClass: 'draft_bound',
+    })
+    expect(tableOption).toMatchObject({
+      optionId: `dfc:${assetId}:table_markdown:derived_asset:${derivativeRow.id}`,
+      status: 'ready',
+      isAvailable: true,
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: derivativeRow.id }],
+    })
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(derivativeRow.storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-dfc-tsv-utf16le-source-hash')
+  })
+
+  it('converts UTF-16BE BOM TSV assets through explicit DFC table_markdown ensure', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-dfc-tsv-utf16be'
+    const storageUri = 'assets/original/u2/asset-dfc-tsv-utf16be.tsv'
+    const tsvText = 'name\tage\nbob\t41\n'
+    const tsvBytes = utf16beWithBom(tsvText)
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), tsvBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-tsv-utf16be-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-dfc-tsv-utf16be-source-hash',
+        filename: 'utf16be.tsv',
+        extension: 'tsv',
+        mime: 'text/tab-separated-values',
+        sizeBytes: tsvBytes.byteLength,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-tsv-utf16be-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-tsv-utf16be-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const tableOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    const derivativeRow = db.prepare(`
+      SELECT id, storage_uri AS storageUri, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+      LIMIT 1
+    `).get({ assetId }) as { id: string; storageUri: string; metaJson: string | null }
+    const converted = await readFile(path.join(storageRootDir, ...derivativeRow.storageUri.split('/')), 'utf8')
+    const derivativeMeta = derivativeRow.metaJson ? JSON.parse(derivativeRow.metaJson) : null
+
+    expect(converted).toBe('| name | age |\n| --- | --- |\n| bob | 41 |')
+    expect(derivativeMeta).toMatchObject({
+      targetKind: 'table_markdown',
+      sourceEncoding: 'utf-16be',
+      usage: 'preview_and_send',
+      storageClass: 'draft_bound',
+    })
+    expect(tableOption).toMatchObject({
+      optionId: `dfc:${assetId}:table_markdown:derived_asset:${derivativeRow.id}`,
+      status: 'ready',
+      isAvailable: true,
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: derivativeRow.id }],
+    })
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(derivativeRow.storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-dfc-tsv-utf16be-source-hash')
+  })
+
+  it('fails closed for UTF-16 TSV assets without an explicit BOM', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-dfc-tsv-utf16-no-bom'
+    const storageUri = 'assets/original/u3/asset-dfc-tsv-utf16-no-bom.tsv'
+    const tsvText = 'name\tage\nchris\t52\n'
+    const tsvBytes = Buffer.from(tsvText, 'utf16le')
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), tsvBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-tsv-utf16-no-bom-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-dfc-tsv-utf16-no-bom-source-hash',
+        filename: 'utf16-no-bom.tsv',
+        extension: 'tsv',
+        mime: 'text/tab-separated-values',
+        sizeBytes: tsvBytes.byteLength,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-tsv-utf16-no-bom-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-tsv-utf16-no-bom-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const failedOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    const derivativeCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId
+    `).get({ assetId }) as { count: number }
+    const failedJob = db.prepare(`
+      SELECT status, error_code AS errorCode, error_message AS errorMessage
+      FROM derivative_jobs
+      WHERE asset_id=@assetId AND derivative_kind='extracted_text'
+      LIMIT 1
+    `).get({ assetId }) as { status: string; errorCode: string | null; errorMessage: string | null }
+    const generationState = db.prepare(`
+      SELECT status, target_kind AS targetKind, output_derivative_id AS outputDerivativeId, error_code AS errorCode
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='table_markdown' AND conversion_settings_hash=@settingsHash
+      LIMIT 1
+    `).get({ assetId, settingsHash: dfcSettingsHash('table_markdown') }) as {
+      status: string
+      targetKind: string
+      outputDerivativeId: string | null
+      errorCode: string | null
+    }
+
+    expect(failedOption).toMatchObject({
+      optionId: `dfc:${assetId}:table_markdown:failed`,
+      status: 'failed',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: 'derivative_input_missing' })],
+    })
+    expect(derivativeCount.count).toBe(0)
+    expect(failedJob).toMatchObject({
+      status: 'failed',
+      errorCode: 'derivative_input_missing',
+    })
+    expect(generationState).toMatchObject({
+      status: 'failed',
+      targetKind: 'table_markdown',
+      outputDerivativeId: null,
+      errorCode: 'derivative_input_missing',
+    })
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-dfc-tsv-utf16-no-bom-source-hash')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('Input appears to be binary')
+  })
+
+  it('fails closed for invalid UTF-8 table assets without leaking decoder details', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-dfc-csv-invalid-utf8'
+    const storageUri = 'assets/original/u4/asset-dfc-csv-invalid-utf8.csv'
+    const csvBytes = Buffer.from([0x6e, 0x61, 0x6d, 0x65, 0x2c, 0x61, 0x67, 0x65, 0x0a, 0xc3, 0x28, 0x2c, 0x31, 0x0a])
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), csvBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-invalid-utf8-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-dfc-csv-invalid-utf8-source-hash',
+        filename: 'invalid-utf8.csv',
+        extension: 'csv',
+        mime: 'text/csv',
+        sizeBytes: csvBytes.byteLength,
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-invalid-utf8-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-csv-invalid-utf8-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const failedOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    const derivativeCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId
+    `).get({ assetId }) as { count: number }
+    const failedJob = db.prepare(`
+      SELECT status, error_code AS errorCode, error_message AS errorMessage
+      FROM derivative_jobs
+      WHERE asset_id=@assetId AND derivative_kind='extracted_text'
+      LIMIT 1
+    `).get({ assetId }) as { status: string; errorCode: string | null; errorMessage: string | null }
+    const generationState = db.prepare(`
+      SELECT status, target_kind AS targetKind, output_derivative_id AS outputDerivativeId, error_code AS errorCode
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='table_markdown' AND conversion_settings_hash=@settingsHash
+      LIMIT 1
+    `).get({ assetId, settingsHash: dfcSettingsHash('table_markdown') }) as {
+      status: string
+      targetKind: string
+      outputDerivativeId: string | null
+      errorCode: string | null
+    }
+    const assetRow = db.prepare(`
+      SELECT source_meta_json AS sourceMetaJson
+      FROM file_assets
+      WHERE id=@assetId
+      LIMIT 1
+    `).get({ assetId }) as { sourceMetaJson: string | null }
+    const assetMeta = assetRow.sourceMetaJson ? JSON.parse(assetRow.sourceMetaJson) : null
+    const dtoJson = JSON.stringify((ensured as any).result)
+
+    expect(failedOption).toMatchObject({
+      optionId: `dfc:${assetId}:table_markdown:failed`,
+      status: 'failed',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: 'derivative_input_missing' })],
+    })
+    expect(derivativeCount.count).toBe(0)
+    expect(failedJob).toMatchObject({
+      status: 'failed',
+      errorCode: 'derivative_input_missing',
+      errorMessage: 'Derivative input could not be decoded.',
+    })
+    expect(generationState).toMatchObject({
+      status: 'failed',
+      targetKind: 'table_markdown',
+      outputDerivativeId: null,
+      errorCode: 'derivative_input_missing',
+    })
+    expect(assetMeta?.textConversion).toMatchObject({
+      status: 'failed',
+      errorCode: 'derivative_input_missing',
+      errorMessage: 'Derivative input could not be decoded.',
+      dfcOptionExposed: true,
+      targetKind: 'table_markdown',
+    })
+    expect(JSON.stringify(assetMeta)).not.toContain('encoded data')
+    expect(JSON.stringify(assetMeta)).not.toContain('utf-8')
+    expect(dtoJson).not.toContain(storageUri)
+    expect(dtoJson).not.toContain('asset-dfc-csv-invalid-utf8-source-hash')
+    expect(dtoJson).not.toContain('encoded data')
+    expect(dtoJson).not.toContain('utf-8')
   })
 
   it('does not generate forbidden DFC runtime options through ensure endpoint', async () => {
