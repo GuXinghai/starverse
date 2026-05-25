@@ -1052,6 +1052,194 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
     expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('csv-raw-sha')
   })
 
+  it('does not infer a DFC selected derived target from asset metadata when derivative metadata is missing', () => {
+    const cases: Array<{
+      assetId: string
+      derivativeId: string
+      createDerivativeRow: boolean
+      derivativeMetaJson?: Record<string, unknown>
+    }> = [
+      {
+        assetId: 'dfc-missing-derivative-row',
+        derivativeId: 'derived-missing-row',
+        createDerivativeRow: false,
+      },
+      {
+        assetId: 'dfc-missing-derivative-target',
+        derivativeId: 'derived-missing-target',
+        createDerivativeRow: true,
+        derivativeMetaJson: {
+          usage: 'preview_and_send',
+          storageClass: 'draft_bound',
+          sourceHash: 'dfc-missing-derivative-target-sha',
+          contentHash: 'derived-missing-target-content',
+          conversionSettingsHash: 'derived-missing-target-settings',
+          converterName: 'test-dfc-converter',
+          converterVersion: '1',
+        },
+      },
+    ]
+
+    for (const testCase of cases) {
+      const h = createHarness()
+      insertConvo(h.db, 'c1')
+      createAsset(h.fileAssetRepo, testCase.assetId, {
+        filename: `${testCase.assetId}.txt`,
+        extension: 'txt',
+        mime: 'text/plain',
+        assetKind: 'text',
+        storageUri: `assets/original/df/${testCase.assetId}.txt`,
+        sourceMetaJson: {
+          textConversion: {
+            status: 'ready',
+            targetKind: 'markdown',
+            derivativeId: testCase.derivativeId,
+            storageUri: `assets/derivatives/${testCase.assetId}/${testCase.derivativeId}.md`,
+            sourceHash: `${testCase.assetId}-sha`,
+            contentHash: `${testCase.derivativeId}-content`,
+            conversionSettingsHash: `${testCase.derivativeId}-settings`,
+          },
+        },
+      })
+      if (testCase.createDerivativeRow) {
+        createDerivative(h.fileDerivativeRepo, testCase.derivativeId, testCase.assetId, {
+          metaJson: testCase.derivativeMetaJson,
+        })
+      }
+      createVerdict(h, testCase.assetId, 'markdown', 'text')
+      h.conversationAttachmentService.addDraftAttachment({
+        conversationId: 'c1',
+        assetId: testCase.assetId,
+        dfcManaged: true,
+        selectedOptionId: `option-${testCase.assetId}`,
+        selectedAssetRefs: [{ kind: 'derived_asset', assetId: testCase.derivativeId }],
+      })
+
+      const plan = h.sendPlanService.buildSendPlan(h.sendPlanService.collectCurrentSendInputs({
+        conversationId: 'c1',
+        model: model(['text']),
+        providerContext: providerContext(),
+      }))
+
+      expect(plan.status).toBe('blocked')
+      expect(plan.attachmentPlans[0]).toMatchObject({
+        assetId: testCase.assetId,
+        semantic: {
+          targetKind: 'unsupported',
+          sendStrategy: 'unsupported',
+        },
+        selectedSendMode: null,
+        eligibility: 'blocked',
+        exclusionReason: 'selected_option_not_found',
+      })
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(`${testCase.derivativeId}-content`)
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(`${testCase.assetId}-sha`)
+      expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain(`assets/derivatives/${testCase.assetId}/${testCase.derivativeId}.md`)
+    }
+  })
+
+  it('does not infer a DFC history derived target from asset metadata when the message snapshot lacks target metadata', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'history-dfc-missing-target', {
+      filename: 'history.txt',
+      extension: 'txt',
+      mime: 'text/plain',
+      assetKind: 'text',
+      storageUri: 'assets/original/hi/history-dfc-missing-target.txt',
+      sourceMetaJson: {
+        textConversion: {
+          status: 'ready',
+          targetKind: 'markdown',
+          derivativeId: 'history-derived-missing-target',
+          storageUri: 'assets/derivatives/history-dfc-missing-target/history-derived-missing-target.md',
+          sourceHash: 'history-dfc-missing-target-sha',
+          contentHash: 'history-derived-missing-target-content',
+          conversionSettingsHash: 'history-derived-missing-target-settings',
+        },
+      },
+    })
+    createDerivative(h.fileDerivativeRepo, 'history-derived-missing-target', 'history-dfc-missing-target', {
+      metaJson: {
+        usage: 'preview_and_send',
+        storageClass: 'draft_bound',
+        sourceHash: 'history-dfc-missing-target-sha',
+        contentHash: 'history-derived-missing-target-content',
+        conversionSettingsHash: 'history-derived-missing-target-settings',
+        converterName: 'test-dfc-converter',
+        converterVersion: '1',
+      },
+    })
+    createVerdict(h, 'history-dfc-missing-target', 'markdown', 'text')
+    const message = h.messageRepo.append({
+      convoId: 'c1',
+      role: 'user',
+      body: 'previous request',
+      createdAt: 1_000,
+    })
+    h.db.prepare(`
+      INSERT INTO message_attachments(
+        id,
+        message_id,
+        asset_id,
+        ai_payload_kind,
+        processing_status,
+        include_in_next_request,
+        excluded_reason,
+        dfc_managed,
+        used_option_id,
+        used_asset_refs_json,
+        target_kind,
+        send_strategy,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        'history-dfc-missing-target-attachment',
+        @messageId,
+        'history-dfc-missing-target',
+        'text',
+        'native_supported',
+        1,
+        NULL,
+        1,
+        'option-history-missing-target',
+        @usedAssetRefsJson,
+        NULL,
+        NULL,
+        1_000,
+        1_000
+      )
+    `).run({
+      messageId: message.id,
+      usedAssetRefsJson: JSON.stringify([{ kind: 'derived_asset', assetId: 'history-derived-missing-target' }]),
+    })
+    h.conversationAttachmentService.updateDraftText({ conversationId: 'c1', draftText: 'new request' })
+
+    const plan = h.sendPlanService.buildSendPlan(h.sendPlanService.collectCurrentSendInputs({
+      conversationId: 'c1',
+      historyScope: { messageIds: [message.id] },
+      model: model(['text']),
+      providerContext: providerContext(),
+    }))
+
+    expect(plan.status).toBe('blocked')
+    expect(plan.attachmentPlans[0]).toMatchObject({
+      assetId: 'history-dfc-missing-target',
+      source: 'history',
+      semantic: {
+        targetKind: 'unsupported',
+        sendStrategy: 'unsupported',
+      },
+      selectedSendMode: null,
+      eligibility: 'blocked',
+      exclusionReason: 'selected_option_not_found',
+    })
+    expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('history-derived-missing-target-content')
+    expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('history-dfc-missing-target-sha')
+    expect(JSON.stringify(plan.attachmentPlans[0])).not.toContain('assets/derivatives/history-dfc-missing-target/history-derived-missing-target.md')
+  })
+
   it('uses selected DFC derived asset facade lineage instead of stale raw asset lineage metadata', () => {
     const h = createHarness()
     insertConvo(h.db, 'c1')
