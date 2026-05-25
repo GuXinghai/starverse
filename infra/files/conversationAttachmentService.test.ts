@@ -572,6 +572,96 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
     }
   })
 
+  it('rehydrates a persisted selected DFC derived option through preview and message binding from the same ref', async () => {
+    const storageRootDir = mkdtempSync(path.join(os.tmpdir(), 'starverse-dfc-rehydrate-'))
+    try {
+      const h = createHarness({ storageRootDir })
+      insertConvo(h.db, 'c1')
+      createAsset(h.fileAssetRepo, 'asset-dfc')
+      const storageUri = 'assets/derived/as/derivative-markdown.txt'
+      writeManagedFile(storageRootDir, storageUri, 'Rehydrated selected preview.')
+      insertDfcDerivative(h.db, {
+        id: 'derivative-markdown',
+        parentAssetId: 'asset-dfc',
+        targetKind: 'markdown',
+        storageUri,
+      })
+      h.service.addDraftAttachment({ conversationId: 'c1', assetId: 'asset-dfc' })
+      const markdownOption = h.service
+        .getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+        .options.find((option) => option.targetKind === 'markdown')!
+
+      h.service.updateDraftAttachmentSettings({
+        conversationId: 'c1',
+        assetId: 'asset-dfc',
+        dfcManaged: true,
+        selectedOptionId: markdownOption.optionId,
+        selectedAssetRefs: markdownOption.sendAssetRefs,
+      })
+
+      const restored = h.service.restoreDraft({ conversationId: 'c1' })
+      expect(restored.attachments[0]).toMatchObject({
+        dfcManaged: true,
+        selectedOptionId: markdownOption.optionId,
+        selectedAssetRefs: markdownOption.sendAssetRefs,
+      })
+
+      const rehydratedOptions = h.service.getDfcDraftAttachmentOptions({ conversationId: 'c1', assetId: 'asset-dfc' })
+      expect(rehydratedOptions).toMatchObject({
+        selectedOptionId: markdownOption.optionId,
+        selectedAssetRefs: markdownOption.sendAssetRefs,
+        decision: {
+          status: 'ready',
+          selectedOptionId: markdownOption.optionId,
+          targetKind: 'markdown',
+          sendStrategy: 'text_in_prompt',
+          sendAssetRefs: markdownOption.sendAssetRefs,
+        },
+      })
+
+      const preview = await h.service.getDfcDraftAttachmentPreview({ conversationId: 'c1', assetId: 'asset-dfc' })
+      expect(preview).toMatchObject({
+        selectedOptionId: markdownOption.optionId,
+        selectedAssetRefs: markdownOption.sendAssetRefs,
+        targetKind: 'markdown',
+        sendStrategy: 'text_in_prompt',
+        decision: expect.objectContaining({
+          status: 'ready',
+          sendAssetRefs: markdownOption.sendAssetRefs,
+        }),
+        preview: expect.objectContaining({
+          kind: 'text',
+          status: 'ready',
+          text: 'Rehydrated selected preview.',
+        }),
+      })
+
+      const committed = h.service.commitDraftToUserMessage({ conversationId: 'c1' })
+      expect(committed.attachments).toEqual([
+        expect.objectContaining({
+          assetId: 'asset-dfc',
+          dfcManaged: true,
+          usedOptionId: markdownOption.optionId,
+          usedAssetRefs: markdownOption.sendAssetRefs,
+          targetKind: 'markdown',
+          sendStrategy: 'text_in_prompt',
+        }),
+      ])
+      expect(h.service.getCandidateAttachmentSnapshot({ messageIds: [committed.message.id] }).items).toEqual([
+        expect.objectContaining({
+          assetId: 'asset-dfc',
+          dfcManaged: true,
+          usedOptionId: markdownOption.optionId,
+          usedAssetRefs: markdownOption.sendAssetRefs,
+          targetKind: 'markdown',
+          sendStrategy: 'text_in_prompt',
+        }),
+      ])
+    } finally {
+      rmSync(storageRootDir, { recursive: true, force: true })
+    }
+  })
+
   it('does not treat orphaned asset text-conversion metadata as a DFC derived option or preview source', async () => {
     const storageRootDir = mkdtempSync(path.join(os.tmpdir(), 'starverse-dfc-orphan-text-conversion-'))
     try {
