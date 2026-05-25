@@ -1,6 +1,6 @@
 name = "code_mapper"
 description = "Read-only Starverse code mapper for locating relevant files, symbols, execution paths, and integration seams before implementation."
-model = "gpt-5.4-mini"
+model = "gpt-5.3-codex-spark"
 model_reasoning_effort = "low"
 sandbox_mode = "read-only"
 developer_instructions = """
