@@ -1125,3 +1125,15 @@ DFC-75 can continue with another narrow DFC contract/runtime gap, or prepare an 
 ## Recommended next round
 
 DFC-76 can continue with another narrow DFC contract/runtime gap, or prepare an owner-decision memo for browser Playwright harness scaffolding, external conversion engines, HTML->PDF, or the next larger runtime family.
+
+## DFC-M1 Phase 1 closeout recovery notes
+
+- DFC-M1 switches the DFC workstream from automatic small-gap progression into manual-supervision task packages.
+- Added `dfc-m1-phase-1-closeout-supported-matrix.md` as the current supported matrix and closeout baseline.
+- The Phase 1 baseline supports `original_file`, `plain_text`, `markdown`, `code`, `table_markdown`, plus HTML safe `markdown` and HTML `code` paths through backend-owned options and selected refs.
+- Phase 1 non-goals are XLSX/XLS runtime, DOCX/Office runtime, HTML->PDF, Office->PDF, PS/EPS production runtime, browser Playwright smoke, external engine sandbox, new dependencies, broad Send Plan rewrite, broad UI redesign, and legacy bridge work.
+- Existing `.codex/agents/*.toml` dirty files are unrelated to DFC-M1 and prevent a clean checkpoint commit in this worktree.
+
+## Recommended next round
+
+M2 should be the End-to-End confidence path owner decision. M3 can then choose the next runtime family pilot after the confidence path is scoped.

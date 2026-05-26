@@ -1,0 +1,120 @@
+# DFC-M1 Phase 1 Closeout and Supported Matrix
+
+Status: manual-supervision baseline closeout. This document summarizes the current DFC Phase 1 implemented capability surface and stops the prior automatic small-gap progression. It does not add runtime behavior, schema, IPC shape, Send Plan architecture, UI behavior, dependencies, Playwright harnesses, external engines, or legacy bridges.
+
+Date: 2026-05-26
+Branch: `docs/dfc-0-format-conversion-foundation`
+Baseline HEAD observed: `20e49e9`
+
+## 1. Baseline purpose
+
+DFC Phase 1 is now treated as an owner-supervised baseline rather than an open-ended `/goal` stream. Future work should start from an explicit task package and should not continue appending narrow DFC-76-style implementation gaps unless the owner reopens that mode.
+
+The Phase 1 invariants remain:
+
+- `original_file` is a first-class `targetKind` and uses `SendAssetRef.kind = 'raw_file'`.
+- Converted outputs use `SendAssetRef.kind = 'derived_asset'` and the Phase 1 `DerivedAsset` facade over existing derivative storage.
+- `selectedOptionId` plus `selectedAssetRefs` drive preview, send, and compatibility decisions for DFC-managed attachments.
+- Renderer code must not invent option identity, targetKind, SendAssetRef, or conversion identity.
+- Send Plan must not silently route DFC-managed attachments through legacy fallback.
+- Renderer DTOs and Send Plan outputs must not expose paths, storage refs, full hashes, content tokens, or file bodies.
+
+## 2. Phase 1 supported matrix
+
+| Target kind | Primary input family | SendAssetRef | DerivedAsset required | Preview semantics | Send Plan semantics | Current Phase 1 status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `original_file` | Raw file when policy/model allows file input | `raw_file` pointing at the original asset | No | Metadata-only raw-file preview diagnostics; no file body or storage URI exposure | `file_attachment`; validates the selected raw ref and model file/PDF capability; no legacy `native_file` fallback for DFC-managed rows | Supported as first-class DFC target |
+| `plain_text` | Plain text or extracted/converted text-like content | `derived_asset` | Yes | Text preview from selected derived asset; selected ref must match preview/send source | `text_in_prompt`; uses selected derived asset and blocks missing/stale/unavailable refs | Supported |
+| `markdown` | Markdown source or safe HTML markdown output | `derived_asset` | Yes | Markdown text preview from selected derived asset | `text_in_prompt`; uses selected derived asset and DFC lineage checks | Supported |
+| `code` | Source-code-like inputs and HTML/template-like code path | `derived_asset` | Yes | Code text preview from selected derived asset | `text_in_prompt`; selected option snapshots through draft/message attachment state | Supported |
+| `table_markdown` | CSV/TSV text tables | `derived_asset` | Yes | Markdown table preview from selected derived asset | `text_in_prompt`; selected table derivative is the send source | Supported for CSV/TSV text runtime only |
+| HTML safe `markdown` | Static/document-like HTML | `derived_asset` | Yes | Safe markdown preview; JavaScript is not executed, external resources are not loaded, script/style are removed, selected image alt/link/list/blockquote visible semantics are preserved where implemented | `text_in_prompt`; selected safe markdown derivative is authoritative | Supported as local string-level safe conversion |
+| HTML `code` | Template-like or script-heavy HTML | `derived_asset` | Yes | Exact or code-oriented derived text preview according to backend-owned option generation | `text_in_prompt`; selected code derivative is authoritative | Supported as local code-path conversion |
+
+## 3. Shared preview/send semantics
+
+- Draft option authority is backend-owned. UI may display and select options, but it must persist backend-issued `selectedOptionId` and `selectedAssetRefs`.
+- Preview reads the selected DFC option and selected refs; preview must not choose a different asset family than Send Plan.
+- Message commit snapshots `usedOptionId`, `usedAssetRefs`, `targetKind`, and `sendStrategy` so history send planning does not recompute through legacy routing.
+- For derived targets, same-source checks use the selected `derived_asset` facade and block stale, missing, preview-only, source-hash-mismatched, or unavailable derivatives.
+- DFC-managed Send Plan decisions produce blocked/pending/failed/incompatible states rather than falling back to `preferredSendMode`, `selectedSendMode`, `native_file`, `hybrid`, or `unsupported`.
+- Privacy boundary remains sanitized: renderer-visible DFC DTOs and Send Plan summaries expose opaque IDs and diagnostics, not local paths, storage refs, full hashes, content tokens, or file bodies.
+
+## 4. Phase 1 non-goals
+
+The following are explicitly outside the current Phase 1 baseline:
+
+- XLSX/XLS runtime.
+- DOCX/Office runtime.
+- HTML-to-PDF.
+- Office-to-PDF.
+- PS/EPS production runtime.
+- Browser Playwright smoke harness.
+- External engine sandbox.
+- New dependencies for conversion engines.
+- Broad Send Plan rewrite.
+- Broad UI redesign.
+- Legacy bridge for old records.
+- DB schema changes beyond the already-landed DFC binding columns.
+- IPC shape expansion beyond the already-landed DFC DTO surfaces.
+
+## 5. Known gaps and risks
+
+- End-to-end confidence is still mostly Vitest-backed. Browser/Electron smoke ownership remains undecided.
+- The supported matrix is stronger for text-like local runtimes than for office/runtime-family coverage.
+- `pdf_attachment` exists in the shared target vocabulary but is not a Phase 1 implemented runtime path.
+- XLSX/XLS and DOCX/Office require owner decisions before any parser/runtime/dependency choice.
+- HTML safe markdown is intentionally string-level and non-executing; it is not browser rendering and not HTML-to-PDF.
+- Legacy route summary code still exists for non-DFC rows; DFC correctness depends on the DFC-managed boundary staying strict.
+- Existing unrelated dirty `.codex/agents/*.toml` files prevent treating the current worktree as a clean checkpoint baseline.
+
+## 6. Next-decision map
+
+Only two main directions should remain open after M1.
+
+### Direction A: End-to-End confidence path
+
+Goal: decide and implement the smallest owner-approved confidence path that proves DFC option selection, preview, commit, and Send Plan behavior in an Electron/browser-like environment.
+
+Allowed next artifact:
+
+- Owner memo for minimal smoke ownership, or a narrowly approved harness task package.
+
+Forbidden until approved:
+
+- New Playwright harness.
+- Electron smoke automation.
+- Browser rendering engine use.
+- New dependencies.
+
+Stop condition:
+
+- If the task requires creating a harness, launching Electron, or adding dependencies without owner approval.
+
+### Direction B: Next runtime family pilot
+
+Goal: choose one runtime family to pilot next, with a written owner decision before implementation.
+
+Candidate pilots:
+
+- XLSX/XLS to `table_markdown`.
+- DOCX/Office to `markdown`.
+- HTML-to-PDF or Office-to-PDF only after sandbox and external-engine decisions.
+
+Forbidden until approved:
+
+- Runtime implementation.
+- Parser or office dependency.
+- External engine.
+- Sandbox implementation.
+- New storage/body exposure.
+
+Stop condition:
+
+- If the pilot cannot be described without choosing a new dependency, external engine, sandbox model, or expanded privacy surface.
+
+## 7. Recommended next task
+
+Prefer Direction A first: M2 End-to-End confidence path owner decision.
+
+Reason: Phase 1 now has enough local text-like coverage to benefit more from one owner-approved end-to-end confidence path than from another narrow runtime gap. Runtime-family expansion should wait until the baseline can be demonstrated through a representative user path.
