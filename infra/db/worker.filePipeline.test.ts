@@ -85,6 +85,130 @@ async function createFormulaMissingValueXlsxBuffer(): Promise<Buffer> {
   return Buffer.from(bytes)
 }
 
+function createMinimalDocxBuffer(): Buffer {
+  return createZipBuffer([
+    {
+      name: '[Content_Types].xml',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+</Types>`,
+    },
+    {
+      name: '_rels/.rels',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`,
+    },
+    {
+      name: 'word/styles.xml',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:style w:type="paragraph" w:styleId="Heading1">
+    <w:name w:val="heading 1"/>
+    <w:basedOn w:val="Normal"/>
+    <w:qFormat/>
+  </w:style>
+</w:styles>`,
+    },
+    {
+      name: 'word/_rels/document.xml.rels',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdLink1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com/private?token=secret" TargetMode="External"/>
+</Relationships>`,
+    },
+    {
+      name: 'word/document.xml',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>DOCX Pilot Title</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Plain paragraph for DOCX pilot.</w:t></w:r></w:p>
+    <w:p><w:hyperlink r:id="rIdLink1"><w:r><w:t>Project link</w:t></w:r></w:hyperlink></w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`,
+    },
+  ])
+}
+
+function createZipBuffer(files: readonly { name: string; content: string | Buffer }[]): Buffer {
+  const localParts: Buffer[] = []
+  const centralParts: Buffer[] = []
+  let offset = 0
+  for (const file of files) {
+    const name = Buffer.from(file.name, 'utf8')
+    const content = Buffer.isBuffer(file.content) ? file.content : Buffer.from(file.content, 'utf8')
+    const crc = crc32(content)
+    const local = Buffer.alloc(30)
+    local.writeUInt32LE(0x04034b50, 0)
+    local.writeUInt16LE(20, 4)
+    local.writeUInt16LE(0, 6)
+    local.writeUInt16LE(0, 8)
+    local.writeUInt16LE(0, 10)
+    local.writeUInt16LE(0, 12)
+    local.writeUInt32LE(crc, 14)
+    local.writeUInt32LE(content.length, 18)
+    local.writeUInt32LE(content.length, 22)
+    local.writeUInt16LE(name.length, 26)
+    local.writeUInt16LE(0, 28)
+    localParts.push(local, name, content)
+
+    const central = Buffer.alloc(46)
+    central.writeUInt32LE(0x02014b50, 0)
+    central.writeUInt16LE(20, 4)
+    central.writeUInt16LE(20, 6)
+    central.writeUInt16LE(0, 8)
+    central.writeUInt16LE(0, 10)
+    central.writeUInt16LE(0, 12)
+    central.writeUInt16LE(0, 14)
+    central.writeUInt32LE(crc, 16)
+    central.writeUInt32LE(content.length, 20)
+    central.writeUInt32LE(content.length, 24)
+    central.writeUInt16LE(name.length, 28)
+    central.writeUInt16LE(0, 30)
+    central.writeUInt16LE(0, 32)
+    central.writeUInt16LE(0, 34)
+    central.writeUInt16LE(0, 36)
+    central.writeUInt32LE(0, 38)
+    central.writeUInt32LE(offset, 42)
+    centralParts.push(central, name)
+    offset += local.length + name.length + content.length
+  }
+  const centralDirectory = Buffer.concat(centralParts)
+  const end = Buffer.alloc(22)
+  end.writeUInt32LE(0x06054b50, 0)
+  end.writeUInt16LE(0, 4)
+  end.writeUInt16LE(0, 6)
+  end.writeUInt16LE(files.length, 8)
+  end.writeUInt16LE(files.length, 10)
+  end.writeUInt32LE(centralDirectory.length, 12)
+  end.writeUInt32LE(offset, 16)
+  end.writeUInt16LE(0, 20)
+  return Buffer.concat([...localParts, centralDirectory, end])
+}
+
+function crc32(buffer: Buffer): number {
+  let crc = 0xffffffff
+  for (const byte of buffer) {
+    crc = CRC32_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8)
+  }
+  return (crc ^ 0xffffffff) >>> 0
+}
+
+const CRC32_TABLE = Array.from({ length: 256 }, (_, index) => {
+  let value = index
+  for (let bit = 0; bit < 8; bit += 1) {
+    value = (value & 1) !== 0 ? 0xedb88320 ^ (value >>> 1) : value >>> 1
+  }
+  return value >>> 0
+})
+
 function loadSchema(db: BetterSqlite3.Database) {
   const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
   db.exec(readFileSync(schemaPath, 'utf8'))
@@ -973,6 +1097,223 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     expect(planAttachmentPlansJson).not.toContain(storageUri)
     expect(planAttachmentPlansJson).not.toContain(derivativeRow?.storageUri ?? 'assets/')
     expect(planAttachmentPlansJson).not.toContain('asset-xlsx-explicit-source-hash')
+  })
+
+  it('generates DOCX markdown DFC options through explicit ensure endpoint', async () => {
+    const { db, handlers, fileTypeDetectionCoordinator } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-docx-explicit-dfc'
+    const storageUri = 'assets/original/do/asset-docx-explicit-dfc.docx'
+    const docxBytes = createMinimalDocxBuffer()
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), docxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-explicit-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-docx-explicit-source-hash',
+        filename: 'brief.docx',
+        extension: 'docx',
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        sizeBytes: docxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-explicit-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-explicit-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const derivativeRow = db.prepare(`
+      SELECT id, storage_uri AS storageUri, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+      LIMIT 1
+    `).get({ assetId }) as { id: string; storageUri: string; metaJson: string | null } | undefined
+    expect(derivativeRow).toBeTruthy()
+    const converted = await readFile(path.join(storageRootDir, ...String(derivativeRow?.storageUri ?? '').split('/')), 'utf8')
+    expect(converted).toContain('# DOCX Pilot Title')
+    expect(converted).toContain('Plain paragraph for DOCX pilot.')
+    expect(converted).toContain('Project link')
+    expect(converted).not.toContain('https://example.com')
+    expect(converted).not.toContain('token=secret')
+
+    const derivativeMeta = derivativeRow?.metaJson ? JSON.parse(derivativeRow.metaJson) : null
+    expect(derivativeMeta).toMatchObject({
+      targetKind: 'markdown',
+      usage: 'preview_and_send',
+      storageClass: 'draft_bound',
+      converterName: 'starverse-text-derivative',
+    })
+    expect(derivativeMeta?.conversionWarnings).toEqual(expect.arrayContaining([
+      'docx_visual_layout_not_preserved',
+      'docx_external_resources_not_loaded',
+      'docx_hyperlink_targets_omitted',
+    ]))
+
+    const markdownOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'markdown')
+    expect(markdownOption).toMatchObject({
+      optionId: `dfc:${assetId}:markdown:derived_asset:${derivativeRow?.id}`,
+      sendStrategy: 'text_in_prompt',
+      status: 'ready',
+      isAvailable: true,
+      compatibilityStatus: 'compatible',
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: derivativeRow?.id }],
+    })
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(derivativeRow?.storageUri ?? 'assets/')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-docx-explicit-source-hash')
+    expect(fileTypeDetectionCoordinator.ensureVerdictsForAssets).not.toHaveBeenCalled()
+
+    const selected = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-explicit-select',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: markdownOption.optionId,
+        selectedAssetRefs: markdownOption.sendAssetRefs,
+      },
+    })
+    const preview = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-explicit-preview',
+      method: 'conversationDraft.getDfcPreview',
+      params: { conversationId: 'c1', assetId, maxCharacters: 2048 },
+    })
+    const planResult = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-explicit-send-plan',
+      method: 'sendPlan.buildCurrent',
+      params: {
+        conversationId: 'c1',
+        draftText: 'send docx markdown',
+        model: {
+          providerKey: 'openrouter',
+          modelId: 'test/text',
+          modelKey: 'openrouter::test/text',
+          inputModalities: ['text'],
+          outputModalities: ['text'],
+        },
+        providerContext: {
+          providerKey: 'openrouter',
+          supportsInlineData: true,
+          supportsTextUrlRef: true,
+        },
+      },
+    })
+
+    expect(selected).toMatchObject({ ok: true })
+    expect(preview).toMatchObject({
+      ok: true,
+      result: {
+        selectedOptionId: markdownOption.optionId,
+        selectedAssetRefs: markdownOption.sendAssetRefs,
+        targetKind: 'markdown',
+        sendStrategy: 'text_in_prompt',
+        preview: expect.objectContaining({
+          kind: 'text',
+          status: 'ready',
+          text: converted,
+        }),
+      },
+    })
+    expect(planResult).toMatchObject({
+      ok: true,
+      result: {
+        sendPlan: expect.objectContaining({
+          status: 'sendable',
+          attachmentPlans: [
+            expect.objectContaining({
+              assetId,
+              semantic: {
+                targetKind: 'markdown',
+                sendStrategy: 'text_in_prompt',
+                mappedFromLegacy: false,
+              },
+              sendAssetRefs: markdownOption.sendAssetRefs,
+            }),
+          ],
+        }),
+      },
+    })
+    const previewJson = JSON.stringify((preview as any).result)
+    const planAttachmentPlansJson = JSON.stringify((planResult as any).result.sendPlan.attachmentPlans)
+    expect(previewJson).not.toContain(storageUri)
+    expect(previewJson).not.toContain(derivativeRow?.storageUri ?? 'assets/')
+    expect(previewJson).not.toContain('asset-docx-explicit-source-hash')
+    expect(planAttachmentPlansJson).not.toContain(storageUri)
+    expect(planAttachmentPlansJson).not.toContain(derivativeRow?.storageUri ?? 'assets/')
+    expect(planAttachmentPlansJson).not.toContain('asset-docx-explicit-source-hash')
+  })
+
+  it('keeps legacy DOC and RTF outside the DOCX-first markdown pilot', async () => {
+    const { db, handlers } = createWorkerHarness()
+    for (const legacy of [
+      {
+        assetId: 'asset-doc-explicit-dfc',
+        filename: 'legacy.doc',
+        extension: 'doc',
+        mime: 'application/msword',
+        storageUri: 'assets/original/do/asset-doc-explicit-dfc.doc',
+      },
+      {
+        assetId: 'asset-rtf-explicit-dfc',
+        filename: 'legacy.rtf',
+        extension: 'rtf',
+        mime: 'application/rtf',
+        storageUri: 'assets/original/rt/asset-rtf-explicit-dfc.rtf',
+      },
+    ]) {
+      await dispatchWorkerMessage(handlers, {
+        id: `req-${legacy.extension}-explicit-asset`,
+        method: 'fileAsset.create',
+        params: {
+          id: legacy.assetId,
+          sha256: `asset-${legacy.extension}-explicit-source-hash`,
+          filename: legacy.filename,
+          extension: legacy.extension,
+          mime: legacy.mime,
+          sizeBytes: 32,
+          assetKind: 'document',
+          sourceKind: 'local_upload',
+          storageUri: legacy.storageUri,
+          ingestStatus: 'stored',
+        },
+      })
+      await dispatchWorkerMessage(handlers, {
+        id: `req-${legacy.extension}-explicit-draft-add`,
+        method: 'conversationDraft.addAttachment',
+        params: { conversationId: 'c1', assetId: legacy.assetId },
+      })
+
+      const ensured = await dispatchWorkerMessage(handlers, {
+        id: `req-${legacy.extension}-explicit-ensure`,
+        method: 'conversationDraft.ensureDfcOptions',
+        params: { conversationId: 'c1', assetId: legacy.assetId },
+      })
+      const markdownOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'markdown')
+      const derivativeCount = db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM file_derivatives
+        WHERE parent_asset_id=@assetId
+      `).get({ assetId: legacy.assetId }) as { count: number }
+
+      expect(markdownOption).toBeUndefined()
+      expect(derivativeCount.count).toBe(0)
+      expect(JSON.stringify((ensured as any).result)).not.toContain(legacy.storageUri)
+      expect(JSON.stringify((ensured as any).result)).not.toContain(`asset-${legacy.extension}-explicit-source-hash`)
+    }
   })
 
   it('escapes XLSX sheet names and cell text in table_markdown output', async () => {
