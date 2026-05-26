@@ -1175,3 +1175,17 @@ DFC-M4 should be an XLSX/XLS parser dependency decision. If approved, implement 
 ## Recommended next round
 
 DFC-M5 should harden the XLSX pilot only if owner accepts the dependency footprint. Recommended next slices are targeted limits/warnings coverage, documented dependency/security review, or a commit checkpoint. Do not add `.xls`, DOCX/Office, HTML->PDF, Office->PDF, PS/EPS, UI sheet selection, pagination, formula evaluation, or external engines without a new owner decision.
+
+## DFC-M5 XLSX pilot hardening recovery notes
+
+- DFC-M5 keeps the M4 XLSX-first pilot as backend-only `table_markdown` support and does not add `.xls`, a second parser, DOCX/Office, HTML->PDF, Office->PDF, PS/EPS, UI, Playwright/Electron harness, external engines, DB schema changes, IPC changes, Send Plan main-flow changes, asset-model changes, formula evaluation, sheet picker, or pagination.
+- ExcelJS dependency footprint remains accepted for the pilot boundary: lockfile inspection found no ExcelJS native binary, browser rendering dependency, external engine, or ExcelJS postinstall hook. Residual dependency hygiene risk is limited to transitive package footprint and deprecated transitive packages inherited through the ExcelJS stack.
+- Parser boundary hardening added an XLSX worksheet-count guard on top of the existing size, row, and cell guards. Guard failures remain fail-closed with a blocked DFC option and no `derived_asset` output.
+- Markdown output hardening now escapes more worksheet-heading markdown syntax. Cell text continues to escape table pipes and line breaks before output.
+- Targeted worker coverage now includes XLSX heading/cell escaping, worksheet guard fail-closed behavior, malformed workbook fail-closed behavior, successful XLSX ensure/preview/selected refs/Send Plan path, and the existing `.xls` unsupported boundary.
+- Validation passed after `npm run rebuild:node`: `git diff --check`; `npx vue-tsc --noEmit --pretty false`; `npx vitest --run infra/db/worker.filePipeline.test.ts -t "XLSX|legacy XLS" --reporter=dot --silent`.
+- Current ABI target after validation: node.
+
+## Recommended next round
+
+Either continue spreadsheet hardening with similarly targeted XLSX guard/diagnostic tests, or switch to a DOCX/Office runtime owner-decision memo. Do not expand into `.xls`, formula calculation, workbook product UI, external engines, or browser rendering without a new owner decision.
