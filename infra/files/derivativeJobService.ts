@@ -1207,6 +1207,7 @@ function toMarkdownTable(rows: string[][]): string {
 }
 
 const XLSX_MAX_BYTES = 10 * 1024 * 1024
+const XLSX_MAX_WORKSHEETS = 20
 const XLSX_MAX_ROWS = 200
 const XLSX_MAX_CELLS = 2000
 
@@ -1224,6 +1225,10 @@ async function xlsxToTableMarkdown(
     await workbook.xlsx.load(Buffer.from(bytes) as any)
   } catch {
     throw derivativeError('derivative_input_missing', job.id, asset.id, job.derivativeKind, 'XLSX workbook could not be parsed.')
+  }
+
+  if (workbook.worksheets.length > XLSX_MAX_WORKSHEETS) {
+    throw derivativeError('conversion_not_implemented', job.id, asset.id, job.derivativeKind, 'XLSX workbook exceeds the pilot worksheet guard.')
   }
 
   const warnings = new Set<string>()
@@ -1342,7 +1347,24 @@ function xlsxValueToText(value: unknown, warnings: Set<string>): string {
 function escapeMarkdownHeading(value: string): string {
   return normalizeLineEndings(String(value ?? ''))
     .replace(/\r?\n/g, ' ')
+    .replace(/\\/g, '\\\\')
+    .replace(/`/g, '\\`')
+    .replace(/\*/g, '\\*')
+    .replace(/_/g, '\\_')
+    .replace(/\{/g, '\\{')
+    .replace(/\}/g, '\\}')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
     .replace(/#/g, '\\#')
+    .replace(/\+/g, '\\+')
+    .replace(/-/g, '\\-')
+    .replace(/\./g, '\\.')
+    .replace(/!/g, '\\!')
+    .replace(/\|/g, '\\|')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
     .trim() || 'Sheet'
 }
 

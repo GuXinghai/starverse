@@ -42,6 +42,25 @@ async function createMinimalXlsxBuffer(): Promise<Buffer> {
   return Buffer.from(bytes)
 }
 
+async function createEscapingXlsxBuffer(): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook()
+  const sheet = workbook.addWorksheet('# Sheet | One')
+  sheet.addRow(['name', 'note'])
+  sheet.addRow(['alice', 'uses | pipe\nline 2'])
+  const bytes = await workbook.xlsx.writeBuffer()
+  return Buffer.from(bytes)
+}
+
+async function createManyWorksheetXlsxBuffer(sheetCount: number): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook()
+  for (let index = 0; index < sheetCount; index += 1) {
+    const sheet = workbook.addWorksheet(`Sheet ${index + 1}`)
+    sheet.addRow(['value'])
+  }
+  const bytes = await workbook.xlsx.writeBuffer()
+  return Buffer.from(bytes)
+}
+
 function loadSchema(db: BetterSqlite3.Database) {
   const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
   db.exec(readFileSync(schemaPath, 'utf8'))
@@ -930,6 +949,166 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     expect(planAttachmentPlansJson).not.toContain(storageUri)
     expect(planAttachmentPlansJson).not.toContain(derivativeRow?.storageUri ?? 'assets/')
     expect(planAttachmentPlansJson).not.toContain('asset-xlsx-explicit-source-hash')
+  })
+
+  it('escapes XLSX sheet names and cell text in table_markdown output', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-xlsx-escaping-dfc'
+    const storageUri = 'assets/original/xl/asset-xlsx-escaping-dfc.xlsx'
+    const xlsxBytes = await createEscapingXlsxBuffer()
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), xlsxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-escaping-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-xlsx-escaping-source-hash',
+        filename: 'escaping.xlsx',
+        extension: 'xlsx',
+        mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        sizeBytes: xlsxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-escaping-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-escaping-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const tableOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    const derivativeRow = db.prepare(`
+      SELECT storage_uri AS storageUri
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+      LIMIT 1
+    `).get({ assetId }) as { storageUri: string } | undefined
+    const converted = await readFile(path.join(storageRootDir, ...String(derivativeRow?.storageUri ?? '').split('/')), 'utf8')
+
+    expect(tableOption.status).toBe('ready')
+    expect(converted).toContain('## \\# Sheet \\| One')
+    expect(converted).toContain('| alice | uses \\| pipe<br>line 2 |')
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(derivativeRow?.storageUri ?? 'assets/')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-xlsx-escaping-source-hash')
+  })
+
+  it('blocks XLSX workbooks that exceed the pilot worksheet guard', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-xlsx-too-many-sheets-dfc'
+    const storageUri = 'assets/original/xl/asset-xlsx-too-many-sheets-dfc.xlsx'
+    const xlsxBytes = await createManyWorksheetXlsxBuffer(21)
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), xlsxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-too-many-sheets-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-xlsx-too-many-sheets-source-hash',
+        filename: 'too-many-sheets.xlsx',
+        extension: 'xlsx',
+        mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        sizeBytes: xlsxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-too-many-sheets-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-too-many-sheets-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const tableOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    const derivativeCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId
+    `).get({ assetId }) as { count: number }
+
+    expect(tableOption).toMatchObject({
+      status: 'failed',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: 'conversion_not_implemented' })],
+    })
+    expect(derivativeCount.count).toBe(0)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-xlsx-too-many-sheets-source-hash')
+  })
+
+  it('fails closed for malformed XLSX workbooks', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-xlsx-malformed-dfc'
+    const storageUri = 'assets/original/xl/asset-xlsx-malformed-dfc.xlsx'
+    const xlsxBytes = Buffer.from('not a real xlsx workbook')
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), xlsxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-malformed-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-xlsx-malformed-source-hash',
+        filename: 'malformed.xlsx',
+        extension: 'xlsx',
+        mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        sizeBytes: xlsxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-malformed-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-malformed-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const tableOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    const derivativeCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId
+    `).get({ assetId }) as { count: number }
+
+    expect(tableOption).toMatchObject({
+      status: 'failed',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: 'derivative_input_missing' })],
+    })
+    expect(derivativeCount.count).toBe(0)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-xlsx-malformed-source-hash')
   })
 
   it('coalesces concurrent explicit DFC ensure requests for the same text derivative', async () => {
