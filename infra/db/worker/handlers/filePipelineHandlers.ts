@@ -1130,10 +1130,15 @@ function isDfcPhase1TextConversionAsset(asset: FileAssetRecord, targetKind: stri
   const mime = normalizeMime(asset.mime)
   if (ext === 'html' || ext === 'htm' || mime === 'text/html') return targetKind === 'markdown' || targetKind === 'code'
   if (ext === 'ps' || ext === 'eps' || mime === 'application/postscript') return false
-  if (ext === 'docx' || ext === 'doc' || ext === 'rtf' || ext === 'xlsx' || ext === 'xls') return false
+  if (ext === 'docx' || ext === 'doc' || ext === 'rtf' || ext === 'xls') return false
   if (ext === 'pdf' || mime === 'application/pdf') return false
   if (targetKind === 'table_markdown') {
-    return ext === 'csv' || ext === 'tsv' || mime === 'text/csv' || mime === 'text/tab-separated-values'
+    return ext === 'csv'
+      || ext === 'tsv'
+      || ext === 'xlsx'
+      || mime === 'text/csv'
+      || mime === 'text/tab-separated-values'
+      || mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   }
   if (targetKind === 'markdown') {
     return ext === 'md' || ext === 'markdown' || mime === 'text/markdown' || mime === 'text/x-markdown'

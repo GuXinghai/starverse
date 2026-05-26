@@ -66,6 +66,7 @@
     "better-sqlite3": "^12.4.1",
     "dompurify": "^3.3.0",
     "electron-store": "^11.0.2",
+    "exceljs": "^4.4.0",
     "jpeg-js": "^0.4.4",
     "katex": "^0.16.25",
     "markdown-it": "^14.1.1",

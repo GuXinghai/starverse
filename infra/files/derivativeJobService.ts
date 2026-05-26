@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type BetterSqlite3 from 'better-sqlite3'
+import ExcelJS from 'exceljs'
 import { resolveManagedStoragePath } from '../../src/shared/files/localStorageResolver'
 import type {
   CancelDerivativeJobInput,
@@ -416,6 +417,9 @@ export class DerivativeJobService {
   private async runExtractedTextJob(job: DerivativeJobRecord): Promise<DerivativeRunResult> {
     const asset = this.requireAsset(job.assetId)
     const ext = String(asset.extension ?? '').trim().toLowerCase()
+    if (ext === 'xlsx') {
+      return await this.runXlsxTableMarkdownJob(job, asset)
+    }
     if (OFFICE_TEXT_NOT_IMPLEMENTED_EXTENSIONS.has(ext)) {
       throw derivativeError(
         'conversion_not_implemented',
@@ -465,6 +469,45 @@ export class DerivativeJobService {
         byteLength: Buffer.byteLength(convertedText, 'utf8'),
         filename: asset.filename,
         conversionWarnings,
+      },
+    })
+    return this.markReady(job, derivative)
+  }
+
+  private async runXlsxTableMarkdownJob(job: DerivativeJobRecord, asset: FileAssetRecord): Promise<DerivativeRunResult> {
+    const requestedTargetKind = readRequestedTextTargetKind(job.configJson)
+    if (requestedTargetKind && requestedTargetKind !== 'table_markdown') {
+      throw derivativeError(
+        'conversion_not_implemented',
+        job.id,
+        asset.id,
+        job.derivativeKind,
+        `XLSX conversion target ${requestedTargetKind} is not supported.`
+      )
+    }
+    const source = await this.readLocalBytes(asset, job, 'derivative_input_missing')
+    const converted = await xlsxToTableMarkdown(source.bytes, job, asset)
+    if (!converted.text.trim()) {
+      throw derivativeError('extracted_text_empty', job.id, asset.id, job.derivativeKind, 'No table content could be extracted from the XLSX workbook.')
+    }
+    const contentHash = sha256(converted.text)
+    const derivative = await this.writeTextDerivative({
+      job,
+      asset,
+      text: converted.text,
+      mime: 'text/markdown',
+      metaJson: {
+        sourceMime: asset.mime ?? null,
+        sourceExtension: asset.extension ?? null,
+        sourceEncoding: null,
+        sourceHash: asset.sha256 ?? null,
+        contentHash,
+        targetKind: 'table_markdown',
+        usage: 'preview_and_send',
+        characterCount: converted.text.length,
+        byteLength: Buffer.byteLength(converted.text, 'utf8'),
+        filename: asset.filename,
+        conversionWarnings: converted.warnings,
       },
     })
     return this.markReady(job, derivative)
@@ -953,7 +996,6 @@ const OFFICE_TEXT_NOT_IMPLEMENTED_EXTENSIONS = new Set([
   'docx',
   'doc',
   'rtf',
-  'xlsx',
   'xls',
 ])
 
@@ -1162,6 +1204,146 @@ function toMarkdownTable(rows: string[][]): string {
   const separator = `| ${Array.from({ length: width }, () => '---').join(' | ')} |`
   const bodyLines = body.map((row) => `| ${row.map(escapeMarkdownCell).join(' | ')} |`)
   return [headerLine, separator, ...bodyLines].join('\n')
+}
+
+const XLSX_MAX_BYTES = 10 * 1024 * 1024
+const XLSX_MAX_ROWS = 200
+const XLSX_MAX_CELLS = 2000
+
+async function xlsxToTableMarkdown(
+  bytes: Uint8Array,
+  job: DerivativeJobRecord,
+  asset: FileAssetRecord
+): Promise<Readonly<{ text: string; warnings: string[] }>> {
+  if (bytes.byteLength > XLSX_MAX_BYTES) {
+    throw derivativeError('conversion_not_implemented', job.id, asset.id, job.derivativeKind, 'XLSX workbook exceeds the pilot size guard.')
+  }
+
+  const workbook = new ExcelJS.Workbook()
+  try {
+    await workbook.xlsx.load(Buffer.from(bytes) as any)
+  } catch {
+    throw derivativeError('derivative_input_missing', job.id, asset.id, job.derivativeKind, 'XLSX workbook could not be parsed.')
+  }
+
+  const warnings = new Set<string>()
+  const sections: string[] = []
+  const workbookModel = (workbook as any).model
+  if (Array.isArray(workbookModel?.media) && workbookModel.media.length > 0) {
+    warnings.add('xlsx_embedded_media_not_extracted')
+  }
+  if (workbookModel?.vbaProject) {
+    warnings.add('xlsx_macros_not_executed')
+  }
+
+  for (const worksheet of workbook.worksheets) {
+    const state = String((worksheet as any).state ?? 'visible').toLowerCase()
+    if (state !== 'visible') {
+      warnings.add('xlsx_hidden_sheets_skipped')
+      continue
+    }
+    const rows = collectXlsxWorksheetRows(worksheet, warnings, job, asset)
+    const title = escapeMarkdownHeading(worksheet.name || 'Sheet')
+    if (rows.length === 0) {
+      warnings.add('xlsx_empty_sheet')
+      sections.push(`## ${title}\n\n_Empty worksheet._`)
+      continue
+    }
+    sections.push(`## ${title}\n\n${toMarkdownTable(rows)}`)
+  }
+
+  if (sections.length === 0) {
+    throw derivativeError('extracted_text_empty', job.id, asset.id, job.derivativeKind, 'No visible XLSX worksheets could be extracted.')
+  }
+
+  return {
+    text: sections.join('\n\n'),
+    warnings: [...warnings],
+  }
+}
+
+function collectXlsxWorksheetRows(
+  worksheet: ExcelJS.Worksheet,
+  warnings: Set<string>,
+  job: DerivativeJobRecord,
+  asset: FileAssetRecord
+): string[][] {
+  const rows: string[][] = []
+  let cellCount = 0
+  const merges = (worksheet as any).model?.merges
+  if (Array.isArray(merges) && merges.length > 0) {
+    warnings.add('xlsx_merged_cells_flattened')
+  }
+  worksheet.eachRow({ includeEmpty: false }, (row) => {
+    if (row.hidden) {
+      warnings.add('xlsx_hidden_rows_skipped')
+      return
+    }
+    if (rows.length >= XLSX_MAX_ROWS) {
+      throw derivativeError('conversion_not_implemented', job.id, asset.id, job.derivativeKind, 'XLSX workbook exceeds the pilot row guard.')
+    }
+    const out: string[] = []
+    for (let col = 1; col <= row.cellCount; col += 1) {
+      const column = worksheet.getColumn(col)
+      if (column.hidden) {
+        warnings.add('xlsx_hidden_columns_skipped')
+        continue
+      }
+      cellCount += 1
+      if (cellCount > XLSX_MAX_CELLS) {
+        throw derivativeError('conversion_not_implemented', job.id, asset.id, job.derivativeKind, 'XLSX workbook exceeds the pilot cell guard.')
+      }
+      out.push(xlsxCellToText(row.getCell(col), warnings))
+    }
+    while (out.length > 0 && out[out.length - 1] === '') out.pop()
+    if (out.some((cell) => cell.trim().length > 0)) rows.push(out)
+  })
+  return rows
+}
+
+function xlsxCellToText(cell: ExcelJS.Cell, warnings: Set<string>): string {
+  const value = cell.value as any
+  if (value == null) return ''
+  if (value instanceof Date) return value.toISOString()
+  if (typeof value !== 'object') return String(value)
+  if ('formula' in value) {
+    if (value.result == null) {
+      warnings.add('xlsx_formula_cached_value_missing')
+      return ''
+    }
+    warnings.add('xlsx_formula_cached_value_used')
+    return xlsxValueToText(value.result, warnings)
+  }
+  if (Array.isArray(value.richText)) {
+    warnings.add('xlsx_rich_text_flattened')
+    return value.richText.map((part: any) => String(part?.text ?? '')).join('')
+  }
+  if (typeof value.text === 'string') {
+    if (typeof value.hyperlink === 'string') warnings.add('xlsx_hyperlinks_omitted')
+    return value.text
+  }
+  if (typeof value.result !== 'undefined') return xlsxValueToText(value.result, warnings)
+  return String(cell.text ?? '')
+}
+
+function xlsxValueToText(value: unknown, warnings: Set<string>): string {
+  if (value == null) return ''
+  if (value instanceof Date) return value.toISOString()
+  if (typeof value === 'object') {
+    if (Array.isArray((value as any).richText)) {
+      warnings.add('xlsx_rich_text_flattened')
+      return (value as any).richText.map((part: any) => String(part?.text ?? '')).join('')
+    }
+    if (typeof (value as any).text === 'string') return (value as any).text
+  }
+  return String(value)
+}
+
+function escapeMarkdownHeading(value: string): string {
+  return normalizeLineEndings(String(value ?? ''))
+    .replace(/\r?\n/g, ' ')
+    .replace(/#/g, '\\#')
+    .trim() || 'Sheet'
 }
 
 function escapeMarkdownCell(value: string): string {

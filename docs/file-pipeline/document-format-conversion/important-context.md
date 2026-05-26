@@ -1161,3 +1161,17 @@ Prefer M3 Next Runtime Family Pilot only after the owner accepts Vitest/jsdom as
 ## Recommended next round
 
 DFC-M4 should be an XLSX/XLS parser dependency decision. If approved, implement one backend-only XLSX-first `table_markdown` pilot with strict privacy and no broad architecture changes.
+
+## DFC-M4 XLSX-first table_markdown pilot recovery notes
+
+- DFC-M4 implements the owner-approved XLSX-first backend-only parser pilot using `exceljs`.
+- `.xlsx` local stored assets can now enter `conversationDraft.ensureDfcOptions` for `targetKind: table_markdown`; `.xls` remains unsupported and does not generate a `table_markdown` option in this round.
+- The parser runs only in `infra/files/derivativeJobService.ts`, reads bytes through the existing managed local storage path, and writes a `derived_asset` markdown table output through existing derivative storage.
+- Minimal XLSX semantics: visible worksheets become markdown sections, empty visible worksheets produce an `_Empty worksheet._` section and warning, formula cells use cached values when present, hyperlink targets are omitted, hidden sheets/rows/columns are skipped with warnings, and embedded media/macros/merged cells are warnings/flattened behavior only.
+- Existing DFC option, preview, selected refs, message/send semantics, DerivedAsset facade, and Send Plan selected-ref authority are reused. No DB schema, IPC shape, Send Plan main-flow, asset model, renderer UI, Playwright/Electron harness, external engine, or `.xls` support was added.
+- Validation passed after `npm run rebuild:node`: `git diff --check`; `npx vue-tsc --noEmit --pretty false`; targeted Vitest for worker/backend/client DFC files: 6 files, 340 tests.
+- Current ABI target after validation: node.
+
+## Recommended next round
+
+DFC-M5 should harden the XLSX pilot only if owner accepts the dependency footprint. Recommended next slices are targeted limits/warnings coverage, documented dependency/security review, or a commit checkpoint. Do not add `.xls`, DOCX/Office, HTML->PDF, Office->PDF, PS/EPS, UI sheet selection, pagination, formula evaluation, or external engines without a new owner decision.
