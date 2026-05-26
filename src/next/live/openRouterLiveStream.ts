@@ -166,9 +166,10 @@ type TimingState = {
 }
 
 type IpcRendererLike = Readonly<{
-  on: (channel: string, listener: (...args: any[]) => void) => unknown
-  off: (channel: string, listener: (...args: any[]) => void) => unknown
-  invoke: (channel: string, ...args: any[]) => Promise<any>
+  startOpenRouterStream: (payload: unknown) => Promise<any>
+  abortOpenRouterStream: (requestId: string) => Promise<any>
+  onOpenRouterChunk: (requestId: string, listener: (payload: unknown) => void) => () => void
+  onOpenRouterEnd: (requestId: string, listener: () => void) => () => void
 }>
 
 function isProtocolInvalidCode(value: unknown): boolean {
@@ -176,10 +177,13 @@ function isProtocolInvalidCode(value: unknown): boolean {
 }
 
 function getIpcRenderer(): IpcRendererLike | null {
-  const ipc = (globalThis as any).ipcRenderer as IpcRendererLike | undefined
-  if (!ipc) return null
-  if (typeof ipc.on !== 'function' || typeof ipc.off !== 'function' || typeof ipc.invoke !== 'function') return null
-  return ipc
+  const api = (globalThis as any).electronAPI as IpcRendererLike | undefined
+  if (!api) return null
+  if (typeof api.startOpenRouterStream !== 'function') return null
+  if (typeof api.abortOpenRouterStream !== 'function') return null
+  if (typeof api.onOpenRouterChunk !== 'function') return null
+  if (typeof api.onOpenRouterEnd !== 'function') return null
+  return api
 }
 
 /* eslint-disable max-lines-per-function, max-statements, complexity */
@@ -235,17 +239,17 @@ export const ipcTransportStrategy: OpenRouterTransportStrategy<OpenRouterIpcTran
     }
 
     const abortHandler = () => {
-      ipc.invoke('openrouter:abort', requestId).catch(() => { })
+      ipc.abortOpenRouterStream(requestId).catch(() => { })
     }
 
-    ipc.on(`openrouter:chunk:${requestId}`, onChunk)
-    ipc.on(`openrouter:end:${requestId}`, onEnd)
+    const unsubscribeChunk = ipc.onOpenRouterChunk(requestId, (payload) => onChunk(undefined, payload))
+    const unsubscribeEnd = ipc.onOpenRouterEnd(requestId, onEnd)
     if (signal) {
       signal.addEventListener('abort', abortHandler, { once: true })
     }
 
     try {
-      const result = await ipc.invoke('openrouter:stream-chat', {
+      const result = await ipc.startOpenRouterStream({
         requestId,
         wireVersion: OPENROUTER_STREAM_WIRE_VERSION,
         assistantMessageId,
@@ -298,8 +302,8 @@ export const ipcTransportStrategy: OpenRouterTransportStrategy<OpenRouterIpcTran
         buildStreamErrorFromAppError,
       })
     } finally {
-      ipc.off(`openrouter:chunk:${requestId}`, onChunk)
-      ipc.off(`openrouter:end:${requestId}`, onEnd)
+      unsubscribeChunk()
+      unsubscribeEnd()
       if (signal) {
         signal.removeEventListener('abort', abortHandler)
       }

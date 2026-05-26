@@ -31,18 +31,14 @@ type ResolvedImageSource = Readonly<{
   path?: string
 }>
 
-function decodeFileUrlPath(raw: string): string | null {
-  try {
-    const parsed = new URL(raw)
-    if (parsed.protocol !== 'file:') return null
-    let pathname = decodeURIComponent(parsed.pathname)
-    if (process.platform === 'win32' && pathname.startsWith('/')) {
-      pathname = pathname.slice(1)
-    }
-    return pathname
-  } catch {
-    return null
-  }
+function assertNoUnsafeLocalImageSource(raw: string): void {
+  if (raw.includes('\u0000')) throw new Error('Unsupported image source')
+  const trimmed = raw.trim()
+  if (!trimmed) throw new Error('Unsupported image source')
+  if (trimmed.startsWith('file://')) throw new Error('Unsupported image source')
+  if (/^\\\\/.test(trimmed) || /^\/\/[^/]/.test(trimmed)) throw new Error('Unsupported image source')
+  if (path.isAbsolute(trimmed)) throw new Error('Unsupported image source')
+  if (trimmed.split(/[\\/]+/).includes('..')) throw new Error('Unsupported image source')
 }
 
 function extensionFromMime(mime: string | null | undefined): string {
@@ -105,15 +101,7 @@ async function resolveImageSource(
   }
 
   if (imageUrl.startsWith('file://')) {
-    const filePath = decodeFileUrlPath(imageUrl)
-    if (!filePath) throw new Error(t('dialogs.errors.invalidFileUrl'))
-    const bytes = await readFile(filePath)
-    return {
-      bytes: Buffer.from(bytes),
-      mime: 'image/*',
-      ext: inferExtensionFromUrl(filePath),
-      path: filePath,
-    }
+    throw new Error('Unsupported image source')
   }
 
   if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
@@ -124,14 +112,8 @@ async function resolveImageSource(
     return { bytes, mime, ext: extensionFromMime(mime) }
   }
 
-  const localPath = path.resolve(imageUrl)
-  const bytes = await readFile(localPath)
-  return {
-    bytes: Buffer.from(bytes),
-    mime: 'image/*',
-    ext: inferExtensionFromUrl(localPath),
-    path: localPath,
-  }
+  assertNoUnsafeLocalImageSource(imageUrl)
+  throw new Error('Unsupported image source')
 }
 
 export function registerImageIpc(input: RegisterImageIpcInput): string[] {
@@ -190,11 +172,14 @@ export function registerImageIpc(input: RegisterImageIpcInput): string[] {
         return { success: true, path: resolved.path }
       }
       if (trimmed.startsWith('file://')) {
-        const filePath = decodeFileUrlPath(trimmed)
-        if (!filePath) return { success: false, error: t('dialogs.errors.invalidFileUrlShort') }
-        return { success: true, path: filePath }
+        return { success: false, error: 'Unsupported image source' }
       }
-      return { success: true, path: trimmed }
+      try {
+        assertNoUnsafeLocalImageSource(trimmed)
+      } catch {
+        return { success: false, error: 'Unsupported image source' }
+      }
+      return { success: false, error: 'Unsupported image source' }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) }
     }
@@ -287,14 +272,8 @@ export function registerImageIpc(input: RegisterImageIpcInput): string[] {
         return { success: true, path: resolved.path }
       }
 
-      const result = await shell.openPath(normalizedImageUrl)
-      if (result) {
-        const sanitized = redactSensitiveString(result)
-        console.error('[shell] open image failed:', sanitized)
-        return { success: false, error: sanitized }
-      }
-      console.log('[shell] opened local image:', { urlKind: 'local', file: basenameForLog(normalizedImageUrl) })
-      return { success: true, path: normalizedImageUrl }
+      assertNoUnsafeLocalImageSource(normalizedImageUrl)
+      return { success: false, error: 'Unsupported image source' }
     } catch (error) {
       console.error('[shell] open image error:', summarizeErrorForLog(error))
       return {

@@ -1,28 +1,5 @@
 import { ipcRenderer, contextBridge } from 'electron'
 
-// --------- Expose some API to the Renderer process ---------
-contextBridge.exposeInMainWorld('ipcRenderer', {
-  on(...args: Parameters<typeof ipcRenderer.on>) {
-    const [channel, listener] = args
-    return ipcRenderer.on(channel, (event, ...args) => listener(event, ...args))
-  },
-  off(...args: Parameters<typeof ipcRenderer.off>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.off(channel, ...omit)
-  },
-  send(...args: Parameters<typeof ipcRenderer.send>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.send(channel, ...omit)
-  },
-  invoke(...args: Parameters<typeof ipcRenderer.invoke>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.invoke(channel, ...omit)
-  },
-
-  // You can expose other APTs you need here.
-  // ...
-})
-
 // Expose electron-store API
 contextBridge.exposeInMainWorld('electronStore', {
   get: (key: string) => ipcRenderer.invoke('store-get', key),
@@ -72,6 +49,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * 获取网络实验运行时信息（开关注入/版本/argv）
    */
   getNetExpRuntimeInfo: () => ipcRenderer.invoke('netexp:get-runtime-info'),
+  onModelCatalogSynced: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('db:modelCatalogSynced', handler)
+    return () => {
+      ipcRenderer.removeListener('db:modelCatalogSynced', handler)
+    }
+  },
+  startOpenRouterStream: (payload: unknown) => ipcRenderer.invoke('openrouter:stream-chat', payload),
+  abortOpenRouterStream: (requestId: string) => ipcRenderer.invoke('openrouter:abort', requestId),
+  onOpenRouterChunk: (requestId: string, callback: (payload: unknown) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
+    ipcRenderer.on(`openrouter:chunk:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`openrouter:chunk:${requestId}`, handler)
+    }
+  },
+  onOpenRouterEnd: (requestId: string, callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on(`openrouter:end:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`openrouter:end:${requestId}`, handler)
+    }
+  },
 })
 
 // Expose DB bridge for renderer storage access

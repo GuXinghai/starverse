@@ -85,12 +85,6 @@ function getElectronApi():
   return api
 }
 
-function getIpcRenderer(): { invoke?: (channel: string, payload?: unknown) => Promise<unknown> } | null {
-  const ipc = (globalThis as any)?.ipcRenderer
-  if (!ipc || typeof ipc !== 'object') return null
-  return ipc
-}
-
 function sanitizeFileName(raw: string): string {
   const normalized = String(raw ?? '')
     .trim()
@@ -149,17 +143,6 @@ async function copyImageToClipboard(url: string) {
     const result = await electronApi.copyImageToClipboard(url)
     if (result?.success === true) return
   }
-  const ipcRenderer = getIpcRenderer()
-  if (ipcRenderer?.invoke) {
-    try {
-      const result = (await ipcRenderer.invoke('clipboard:write-image', { imageUrl: url })) as
-        | { success?: boolean }
-        | null
-      if (result?.success === true) return
-    } catch {
-      // no-op
-    }
-  }
 
   // Browser fallback: copy URL text when image clipboard API is unavailable.
   await writeClipboardText(url)
@@ -191,19 +174,6 @@ async function resolveImagePath(url: string): Promise<string> {
       return result.path.trim()
     }
   }
-  const ipcRenderer = getIpcRenderer()
-  if (ipcRenderer?.invoke) {
-    try {
-      const result = (await ipcRenderer.invoke('shell:resolve-image-path', { imageUrl: url })) as
-        | { success?: boolean; path?: string }
-        | null
-      if (result?.success && typeof result.path === 'string' && result.path.trim().length > 0) {
-        return result.path.trim()
-      }
-    } catch {
-      // no-op
-    }
-  }
   return url
 }
 
@@ -220,19 +190,6 @@ async function exportImage(url: string, index: number) {
   if (electronApi?.exportImage) {
     const result = await electronApi.exportImage(url, { suggestedName })
     if (result?.success === true) return
-  }
-
-  const ipcRenderer = getIpcRenderer()
-  if (ipcRenderer?.invoke) {
-    try {
-      const result = (await ipcRenderer.invoke('dialog:export-image', {
-        imageUrl: url,
-        suggestedName,
-      })) as { success?: boolean } | null
-      if (result?.success === true) return
-    } catch {
-      // no-op
-    }
   }
 
   // Browser fallback: trigger native download.

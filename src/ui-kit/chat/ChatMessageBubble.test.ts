@@ -20,6 +20,7 @@ function msg(partial: Partial<MessageVM> & Pick<MessageVM, 'messageId' | 'role'>
 describe('ChatMessageBubble', () => {
   const originalClipboard = globalThis.navigator.clipboard
   const originalIpcRenderer = (globalThis as any).ipcRenderer
+  const originalElectronApi = (globalThis as any).electronAPI
 
   beforeEach(() => {
     resetI18nForTests()
@@ -31,6 +32,7 @@ describe('ChatMessageBubble', () => {
       value: originalClipboard,
     })
     ;(globalThis as any).ipcRenderer = originalIpcRenderer
+    ;(globalThis as any).electronAPI = originalElectronApi
     vi.restoreAllMocks()
   })
 
@@ -266,8 +268,13 @@ describe('ChatMessageBubble', () => {
   })
 
   it('disables copy/path/export actions for transient data URLs before persistence', async () => {
-    ;(globalThis as any).ipcRenderer = {
-      invoke: vi.fn(async () => ({ success: true })),
+    const copyImageToClipboard = vi.fn(async () => ({ success: true }))
+    const resolveImagePath = vi.fn(async () => ({ success: true, path: 'C:\\assets\\image.png' }))
+    const exportImage = vi.fn(async () => ({ success: true }))
+    ;(globalThis as any).electronAPI = {
+      copyImageToClipboard,
+      resolveImagePath,
+      exportImage,
     }
 
     render(ChatMessageBubble, {
@@ -291,7 +298,9 @@ describe('ChatMessageBubble', () => {
     await fireEvent.click(copyBtn)
     await fireEvent.click(copyPathBtn)
     await fireEvent.click(exportBtn)
-    expect((globalThis as any).ipcRenderer.invoke).not.toHaveBeenCalled()
+    expect(copyImageToClipboard).not.toHaveBeenCalled()
+    expect(resolveImagePath).not.toHaveBeenCalled()
+    expect(exportImage).not.toHaveBeenCalled()
   })
 
   it('copies resolved local path for asset images', async () => {
@@ -300,13 +309,8 @@ describe('ChatMessageBubble', () => {
       configurable: true,
       value: { writeText },
     })
-    ;(globalThis as any).ipcRenderer = {
-      invoke: vi.fn(async (channel: string) => {
-        if (channel === 'shell:resolve-image-path') {
-          return { success: true, path: 'C:\\assets\\image-1.png' }
-        }
-        return { success: false }
-      }),
+    ;(globalThis as any).electronAPI = {
+      resolveImagePath: vi.fn(async () => ({ success: true, path: 'C:\\assets\\image-1.png' })),
     }
 
     render(ChatMessageBubble, {
@@ -326,8 +330,9 @@ describe('ChatMessageBubble', () => {
   })
 
   it('exports image through ipc when export action is clicked', async () => {
-    ;(globalThis as any).ipcRenderer = {
-      invoke: vi.fn(async () => ({ success: true })),
+    const exportImage = vi.fn(async () => ({ success: true }))
+    ;(globalThis as any).electronAPI = {
+      exportImage,
     }
 
     render(ChatMessageBubble, {
@@ -342,9 +347,9 @@ describe('ChatMessageBubble', () => {
 
     await fireEvent.click(screen.getByTestId('message-image-export-0'))
     await waitFor(() => {
-      expect((globalThis as any).ipcRenderer.invoke).toHaveBeenCalledWith(
-        'dialog:export-image',
-        expect.objectContaining({ imageUrl: 'asset://asset_2' }),
+      expect(exportImage).toHaveBeenCalledWith(
+        'asset://asset_2',
+        expect.objectContaining({ suggestedName: 'assistant-image-1.png' }),
       )
     })
   })
