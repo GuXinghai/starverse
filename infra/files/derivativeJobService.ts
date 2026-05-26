@@ -1271,32 +1271,37 @@ async function docxToMarkdown(
   }
 
   let result: Awaited<ReturnType<typeof mammoth.convertToHtml>>
+  let sawImage = false
   try {
     result = await mammoth.convertToHtml(
       { buffer: Buffer.from(bytes) },
       {
         externalFileAccess: false,
-        convertImage: mammoth.images.imgElement(async () => ({ src: '' })),
+        convertImage: mammoth.images.imgElement(async () => {
+          sawImage = true
+          return { src: '' }
+        }),
       }
     )
   } catch {
     throw derivativeError('derivative_input_missing', job.id, asset.id, job.derivativeKind, 'DOCX document could not be parsed.')
   }
 
-  const warnings = collectDocxConversionWarnings(result.value, result.messages)
+  const warnings = collectDocxConversionWarnings(result.value, result.messages, sawImage)
   const text = htmlToMarkdownSafe(result.value)
   return { text, warnings }
 }
 
 function collectDocxConversionWarnings(
   html: string,
-  messages: ReadonlyArray<{ type: string; message?: string }>
+  messages: ReadonlyArray<{ type: string; message?: string }>,
+  sawImage: boolean
 ): string[] {
   const warnings = new Set<string>()
   warnings.add('docx_visual_layout_not_preserved')
   warnings.add('docx_external_resources_not_loaded')
   if (/<a\b[^>]*\bhref\s*=/i.test(html)) warnings.add('docx_hyperlink_targets_omitted')
-  if (/<img\b/i.test(html)) warnings.add('docx_images_not_extracted')
+  if (sawImage || /<img\b/i.test(html)) warnings.add('docx_images_not_extracted')
   for (const message of messages) {
     if (message.type === 'warning') warnings.add('docx_parser_warning')
   }
