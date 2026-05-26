@@ -1189,3 +1189,15 @@ DFC-M5 should harden the XLSX pilot only if owner accepts the dependency footpri
 ## Recommended next round
 
 Either continue spreadsheet hardening with similarly targeted XLSX guard/diagnostic tests, or switch to a DOCX/Office runtime owner-decision memo. Do not expand into `.xls`, formula calculation, workbook product UI, external engines, or browser rendering without a new owner decision.
+
+## DFC-M6 DOCX/Office decision recovery notes
+
+- DFC-M6 is tests plus owner-decision documentation only. It does not implement DOCX runtime and does not add dependencies, DB schema, IPC shape, Send Plan main-flow, asset-model, UI, Playwright/Electron harness, external engine, `.doc`, `.rtf`, Office-to-PDF, HTML-to-PDF, PS/EPS, or legacy bridge work.
+- XLSX follow-up coverage adds regression tests for visible worksheet order with hidden-sheet warning stability and formula cells without cached values producing fail-safe empty output plus `xlsx_formula_cached_value_missing`.
+- Dependency scan found no Mammoth, Turndown, Pandoc, LibreOffice, `soffice`, or equivalent DOCX/Office conversion wrapper in `package.json` or `package-lock.json`.
+- Existing DFC seams can support a future DOCX-first `markdown` derived option: backend-owned ensure/options, existing `targetKind: markdown`, `derived_asset` preview/send, selected refs, Send Plan authority, and preserved `original_file` raw option.
+- Owner memo `dfc-m6-docx-office-markdown-runtime-owner-memo.md` recommends DOCX-first backend-only markdown only if owner approves a parser dependency, preferably Mammoth. `.doc`, `.rtf`, Office-to-PDF, HTML-to-PDF, PS/EPS, and external engines remain explicitly postposed.
+
+## Recommended next round
+
+Make the DOCX-first dependency decision. If Mammoth is approved, implement one backend-only `.docx -> markdown` pilot with strict DTO/privacy boundaries. If not approved, continue only targeted XLSX hardening.
