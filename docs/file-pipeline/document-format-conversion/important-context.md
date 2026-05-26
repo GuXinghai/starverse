@@ -1216,3 +1216,16 @@ Make the DOCX-first dependency decision. If Mammoth is approved, implement one b
 ## Recommended next round
 
 DFC-M8 should harden DOCX pilot boundaries with targeted tests for malformed DOCX, embedded media/resource omission, parser warnings, and dependency/privacy review. Do not add `.doc`, `.rtf`, Turndown, Pandoc, LibreOffice, Office-to-PDF, HTML-to-PDF, PS/EPS, UI, external engines, or browser rendering without a new owner decision.
+
+## DFC-M8 DOCX pilot hardening recovery notes
+
+- DFC-M8 keeps the M7 DOCX-first pilot as backend-only `markdown` support and does not add dependencies, `.doc`, `.rtf`, Turndown, Pandoc, LibreOffice, Office-to-PDF, HTML-to-PDF, PS/EPS, UI, Playwright/Electron harness, external engines, DB schema changes, IPC changes, Send Plan main-flow changes, asset-model changes, layout fidelity, image extraction, comment/revision productization, or legacy bridge work.
+- Malformed DOCX now has worker-level fail-closed coverage: invalid DOCX input yields a failed/blocked markdown DFC option, no ready `derived_asset`, and no legacy fallback.
+- Embedded media/resource coverage proves media bytes, media paths, storage refs, source hashes, and file bodies do not enter derived markdown or renderer-facing DTOs.
+- Hyperlink coverage remains in the successful DOCX path: visible link text is preserved while the target URL and token-like query content are omitted from markdown preview/send assets.
+- DOCX diagnostics stay symbolic and sanitized. The Mammoth image converter only records an internal `docx_images_not_extracted` warning; raw Mammoth warning text, XML fragments, paths, and internal parser details are not exposed.
+- Mammoth remains a backend library dependency only. The `mammoth` CLI bin is not invoked, and no shell process, external engine, browser rendering, or external resource loading path is introduced.
+
+## Recommended next round
+
+If validation passes, DOCX can remain a Phase 1 backend-only supported pilot. Next work should either add another narrow DOCX hardening slice or move to an owner decision for Office/PDF/external-engine boundaries; do not expand into `.doc`, `.rtf`, Turndown, Pandoc, LibreOffice, Office-to-PDF, HTML-to-PDF, PS/EPS, UI, or external engines without approval.

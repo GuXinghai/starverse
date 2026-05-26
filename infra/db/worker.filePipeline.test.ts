@@ -137,6 +137,69 @@ function createMinimalDocxBuffer(): Buffer {
   ])
 }
 
+function createDocxWithImageBuffer(): Buffer {
+  const imageBytes = Buffer.from('embedded-secret-media-bytes-private-token', 'utf8')
+  return createZipBuffer([
+    {
+      name: '[Content_Types].xml',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="png" ContentType="image/png"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`,
+    },
+    {
+      name: '_rels/.rels',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`,
+    },
+    {
+      name: 'word/_rels/document.xml.rels',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdImage1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/>
+</Relationships>`,
+    },
+    {
+      name: 'word/media/image1.png',
+      content: imageBytes,
+    },
+    {
+      name: 'word/document.xml',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+  <w:body>
+    <w:p><w:r><w:t>Paragraph before image.</w:t></w:r></w:p>
+    <w:p>
+      <w:r>
+        <w:drawing>
+          <wp:inline>
+            <wp:docPr id="1" name="Picture 1" descr="Visible image alt"/>
+            <a:graphic>
+              <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:pic>
+                  <pic:blipFill>
+                    <a:blip r:embed="rIdImage1"/>
+                  </pic:blipFill>
+                </pic:pic>
+              </a:graphicData>
+            </a:graphic>
+          </wp:inline>
+        </w:drawing>
+      </w:r>
+    </w:p>
+    <w:p><w:r><w:t>Paragraph after image.</w:t></w:r></w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`,
+    },
+  ])
+}
+
 function createZipBuffer(files: readonly { name: string; content: string | Buffer }[]): Buffer {
   const localParts: Buffer[] = []
   const centralParts: Buffer[] = []
@@ -1255,6 +1318,123 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     expect(planAttachmentPlansJson).not.toContain(storageUri)
     expect(planAttachmentPlansJson).not.toContain(derivativeRow?.storageUri ?? 'assets/')
     expect(planAttachmentPlansJson).not.toContain('asset-docx-explicit-source-hash')
+  })
+
+  it('fails closed for malformed DOCX documents without legacy fallback', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-docx-malformed-dfc'
+    const storageUri = 'assets/original/do/asset-docx-malformed-dfc.docx'
+    const docxBytes = Buffer.from('not a valid docx package')
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), docxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-malformed-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-docx-malformed-source-hash',
+        filename: 'malformed.docx',
+        extension: 'docx',
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        sizeBytes: docxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-malformed-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-malformed-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const failedOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'markdown')
+    const derivativeCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId
+    `).get({ assetId }) as { count: number }
+
+    expect(failedOption).toMatchObject({
+      optionId: `dfc:${assetId}:markdown:failed`,
+      status: 'failed',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: 'derivative_input_missing' })],
+    })
+    expect(derivativeCount.count).toBe(0)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-docx-malformed-source-hash')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('not a valid docx package')
+  })
+
+  it('omits DOCX embedded media bytes and storage details from derived markdown and DTOs', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-docx-image-dfc'
+    const storageUri = 'assets/original/do/asset-docx-image-dfc.docx'
+    const docxBytes = createDocxWithImageBuffer()
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), docxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-image-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-docx-image-source-hash',
+        filename: 'image.docx',
+        extension: 'docx',
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        sizeBytes: docxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-image-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-image-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const markdownOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'markdown')
+    const derivativeRow = db.prepare(`
+      SELECT storage_uri AS storageUri, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+      LIMIT 1
+    `).get({ assetId }) as { storageUri: string; metaJson: string | null } | undefined
+    const converted = await readFile(path.join(storageRootDir, ...String(derivativeRow?.storageUri ?? '').split('/')), 'utf8')
+    const derivativeMeta = derivativeRow?.metaJson ? JSON.parse(derivativeRow.metaJson) : null
+
+    expect(markdownOption.status).toBe('ready')
+    expect(converted).toContain('Paragraph before image.')
+    expect(converted).toContain('Paragraph after image.')
+    expect(converted).not.toContain('embedded-secret-media-bytes')
+    expect(converted).not.toContain('private-token')
+    expect(converted).not.toContain('word/media/image1.png')
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(derivativeRow?.storageUri ?? 'assets/')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-docx-image-source-hash')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('embedded-secret-media-bytes')
+    expect(derivativeMeta?.conversionWarnings).toEqual(expect.arrayContaining([
+      'docx_external_resources_not_loaded',
+      'docx_images_not_extracted',
+    ]))
   })
 
   it('keeps legacy DOC and RTF outside the DOCX-first markdown pilot', async () => {
