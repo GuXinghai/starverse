@@ -42,8 +42,8 @@ type ElectronStoreLike = Readonly<{
   set: (key: string, value: any) => Promise<any>
 }>
 
-type IpcRendererLike = Readonly<{
-  invoke: (channel: string, ...args: any[]) => Promise<any>
+type ElectronApiLike = Readonly<{
+  getNetExpRuntimeInfo?: () => Promise<any>
 }>
 
 function getElectronStore(): ElectronStoreLike | null {
@@ -53,10 +53,10 @@ function getElectronStore(): ElectronStoreLike | null {
   return store
 }
 
-function getIpcRenderer(): IpcRendererLike | null {
-  const ipc = (globalThis as any).ipcRenderer as IpcRendererLike | undefined
-  if (!ipc || typeof ipc.invoke !== 'function') return null
-  return ipc
+function getElectronApi(): ElectronApiLike | null {
+  const api = (globalThis as any).electronAPI as ElectronApiLike | undefined
+  if (!api || typeof api.getNetExpRuntimeInfo !== 'function') return null
+  return api
 }
 
 function coerceBoolean(value: unknown, fallback: boolean): boolean {
@@ -121,10 +121,10 @@ export async function setNetExpSettings(settings: NetExpSettings): Promise<void>
 }
 
 export async function getNetExpRuntimeInfo(): Promise<NetExpRuntimeInfo | null> {
-  const ipc = getIpcRenderer()
-  if (!ipc) return null
+  const api = getElectronApi()
+  if (!api?.getNetExpRuntimeInfo) return null
   try {
-    const result = await ipc.invoke('netexp:get-runtime-info')
+    const result = await api.getNetExpRuntimeInfo()
     return result ?? null
   } catch {
     return null

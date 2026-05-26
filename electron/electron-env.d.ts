@@ -23,5 +23,12 @@ declare namespace NodeJS {
 
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
-  ipcRenderer: import('electron').IpcRenderer
+  electronAPI?: {
+    getNetExpRuntimeInfo?: () => Promise<unknown>
+    onModelCatalogSynced?: (callback: () => void) => () => void
+    startOpenRouterStream?: (payload: unknown) => Promise<unknown>
+    abortOpenRouterStream?: (requestId: string) => Promise<unknown>
+    onOpenRouterChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
+    onOpenRouterEnd?: (requestId: string, callback: () => void) => () => void
+  }
 }

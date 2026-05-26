@@ -194,7 +194,7 @@ async function collectViaFetch(fixtureText: string, fixtureName: string): Promis
 
 async function collectViaIpc(fixtureText: string, fixtureName: string): Promise<DomainEvent[]> {
   const originalElectronStore = (globalThis as any).electronStore
-  const originalIpcRenderer = (globalThis as any).ipcRenderer
+  const originalElectronApi = (globalThis as any).electronAPI
   const listeners = new Map<string, Set<(...args: any[]) => void>>()
 
   const emitTo = (channel: string, ...args: any[]) => {
@@ -213,39 +213,42 @@ async function collectViaIpc(fixtureText: string, fixtureName: string): Promise<
       set: vi.fn(async () => undefined),
     }
 
-    ;(globalThis as any).ipcRenderer = {
-      on: vi.fn((channel: string, listener: (...args: any[]) => void) => {
+    ;(globalThis as any).electronAPI = {
+      onOpenRouterChunk: vi.fn((requestId: string, listener: (payload: unknown) => void) => {
+        const channel = `openrouter:chunk:${requestId}`
         if (!listeners.has(channel)) listeners.set(channel, new Set())
         listeners.get(channel)?.add(listener)
+        return () => listeners.get(channel)?.delete(listener)
       }),
-      off: vi.fn((channel: string, listener: (...args: any[]) => void) => {
-        listeners.get(channel)?.delete(listener)
+      onOpenRouterEnd: vi.fn((requestId: string, listener: () => void) => {
+        const channel = `openrouter:end:${requestId}`
+        if (!listeners.has(channel)) listeners.set(channel, new Set())
+        listeners.get(channel)?.add(listener)
+        return () => listeners.get(channel)?.delete(listener)
       }),
-      invoke: vi.fn(async (channel: string, payload?: any) => {
-        if (channel === 'openrouter:abort') return true
-        if (channel !== 'openrouter:stream-chat') return { ok: true }
-
+      abortOpenRouterStream: vi.fn(async () => true),
+      startOpenRouterStream: vi.fn(async (payload?: any) => {
         const requestId = String(payload?.requestId ?? '')
         const chunkChannel = `openrouter:chunk:${requestId}`
         const endChannel = `openrouter:end:${requestId}`
         const chunkParts = splitText(fixtureText, 23)
 
         queueMicrotask(() => {
-          emitTo(chunkChannel, {}, { type: 'responseMeta', status: 200, requestId, headers: {} })
+          emitTo(chunkChannel, { type: 'responseMeta', status: 200, requestId, headers: {} })
           for (const part of chunkParts) {
-            emitTo(chunkChannel, {}, { type: 'chunk', data: part })
+            emitTo(chunkChannel, { type: 'chunk', data: part })
           }
           if (fixtureName === 'wire_end_race.txt') {
-            emitTo(chunkChannel, {}, { type: 'end' })
-            emitTo(chunkChannel, {}, { type: 'end' })
-            emitTo(endChannel, {})
+            emitTo(chunkChannel, { type: 'end' })
+            emitTo(chunkChannel, { type: 'end' })
+            emitTo(endChannel)
             queueMicrotask(() => {
-              emitTo(chunkChannel, {}, { type: 'chunk', data: 'data: {"id":"late"}\n\n' })
+              emitTo(chunkChannel, { type: 'chunk', data: 'data: {"id":"late"}\n\n' })
             })
             return
           }
-          emitTo(chunkChannel, {}, { type: 'end' })
-          emitTo(endChannel, {})
+          emitTo(chunkChannel, { type: 'end' })
+          emitTo(endChannel)
         })
 
         return { ok: true }
@@ -264,7 +267,7 @@ async function collectViaIpc(fixtureText: string, fixtureName: string): Promise<
     return events
   } finally {
     ;(globalThis as any).electronStore = originalElectronStore
-    ;(globalThis as any).ipcRenderer = originalIpcRenderer
+    ;(globalThis as any).electronAPI = originalElectronApi
   }
 }
 

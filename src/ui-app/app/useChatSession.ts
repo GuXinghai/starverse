@@ -9,8 +9,15 @@ export function useChatSession() {
   }
 
   function getIpcRenderer(): IpcRendererLike | null {
-    const ipc = (globalThis as any).ipcRenderer as IpcRendererLike | undefined
-    return ipc && typeof ipc.on === 'function' ? ipc : null
+    const api = (globalThis as any).electronAPI as { onModelCatalogSynced?: (callback: () => void) => () => void } | undefined
+    if (!api || typeof api.onModelCatalogSynced !== 'function') return null
+    const onModelCatalogSynced = api.onModelCatalogSynced
+    return {
+      on(channel: string, listener: (...args: any[]) => void) {
+        if (channel !== 'db:modelCatalogSynced') return null
+        return onModelCatalogSynced(() => listener())
+      },
+    }
   }
 
   async function getOpenRouterApiKey(): Promise<string | null> {

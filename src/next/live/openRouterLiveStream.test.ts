@@ -379,7 +379,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
 
     it('IPC stream sends wireVersion and maps aborted wire event to StreamAbort', async () => {
         const originalElectronStore = (globalThis as any).electronStore
-        const originalIpcRenderer = (globalThis as any).ipcRenderer
+        const originalElectronApi = (globalThis as any).electronAPI
         const listeners = new Map<string, (...args: any[]) => void>()
         let startPayload: any = null
 
@@ -392,33 +392,32 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
             set: vi.fn(async () => undefined),
         }
 
-        ;(globalThis as any).ipcRenderer = {
-            on: vi.fn((channel: string, listener: (...args: any[]) => void) => {
-                listeners.set(channel, listener)
+        ;(globalThis as any).electronAPI = {
+            onOpenRouterChunk: vi.fn((requestId: string, listener: (payload: unknown) => void) => {
+                listeners.set(`openrouter:chunk:${requestId}`, listener)
+                return () => listeners.delete(`openrouter:chunk:${requestId}`)
             }),
-            off: vi.fn((channel: string) => {
-                listeners.delete(channel)
+            onOpenRouterEnd: vi.fn((requestId: string, listener: () => void) => {
+                listeners.set(`openrouter:end:${requestId}`, listener)
+                return () => listeners.delete(`openrouter:end:${requestId}`)
             }),
-            invoke: vi.fn(async (channel: string, ...args: any[]) => {
-                if (channel === 'openrouter:stream-chat') {
-                    startPayload = args[0]
-                    queueMicrotask(() => {
-                        listeners.get(`openrouter:chunk:${startPayload.requestId}`)?.({}, {
-                            type: 'responseMeta',
-                            status: 200,
-                            requestId: startPayload.requestId,
-                        })
-                        listeners.get(`openrouter:chunk:${startPayload.requestId}`)?.({}, {
-                            type: 'error',
-                            error: { kind: 'aborted', name: 'AbortError', code: 'ERR_ABORTED', message: 'aborted' },
-                        })
-                        listeners.get(`openrouter:end:${startPayload.requestId}`)?.({})
+            startOpenRouterStream: vi.fn(async (payload: any) => {
+                startPayload = payload
+                queueMicrotask(() => {
+                    listeners.get(`openrouter:chunk:${startPayload.requestId}`)?.({
+                        type: 'responseMeta',
+                        status: 200,
+                        requestId: startPayload.requestId,
                     })
-                    return { ok: true }
-                }
-                if (channel === 'openrouter:abort') return true
-                return undefined
+                    listeners.get(`openrouter:chunk:${startPayload.requestId}`)?.({
+                        type: 'error',
+                        error: { kind: 'aborted', name: 'AbortError', code: 'ERR_ABORTED', message: 'aborted' },
+                    })
+                    listeners.get(`openrouter:end:${startPayload.requestId}`)?.()
+                })
+                return { ok: true }
             }),
+            abortOpenRouterStream: vi.fn(async () => true),
         }
 
         try {
@@ -441,13 +440,13 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
             expect(end?.endReason).toBe('user_abort')
         } finally {
             ;(globalThis as any).electronStore = originalElectronStore
-            ;(globalThis as any).ipcRenderer = originalIpcRenderer
+            ;(globalThis as any).electronAPI = originalElectronApi
         }
     })
 
     it('IPC start protocol_invalid is normalized as local_protocol_error', async () => {
         const originalElectronStore = (globalThis as any).electronStore
-        const originalIpcRenderer = (globalThis as any).ipcRenderer
+        const originalElectronApi = (globalThis as any).electronAPI
 
         ;(globalThis as any).electronStore = {
             get: vi.fn(async (key: string) => {
@@ -458,20 +457,16 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
             set: vi.fn(async () => undefined),
         }
 
-        ;(globalThis as any).ipcRenderer = {
-            on: vi.fn(),
-            off: vi.fn(),
-            invoke: vi.fn(async (channel: string) => {
-                if (channel === 'openrouter:stream-chat') {
-                    return {
-                        ok: false,
-                        code: 'protocol_invalid',
-                        error: `Unsupported wireVersion=99; expected ${OPENROUTER_STREAM_WIRE_VERSION}`,
-                        supportedWireVersion: OPENROUTER_STREAM_WIRE_VERSION,
-                    }
-                }
-                return true
-            }),
+        ;(globalThis as any).electronAPI = {
+            onOpenRouterChunk: vi.fn(() => () => undefined),
+            onOpenRouterEnd: vi.fn(() => () => undefined),
+            startOpenRouterStream: vi.fn(async () => ({
+                ok: false,
+                code: 'protocol_invalid',
+                error: `Unsupported wireVersion=99; expected ${OPENROUTER_STREAM_WIRE_VERSION}`,
+                supportedWireVersion: OPENROUTER_STREAM_WIRE_VERSION,
+            })),
+            abortOpenRouterStream: vi.fn(async () => true),
         }
 
         try {
@@ -493,7 +488,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
             expect(events.some((e) => e.type === 'StreamAbort')).toBe(false)
         } finally {
             ;(globalThis as any).electronStore = originalElectronStore
-            ;(globalThis as any).ipcRenderer = originalIpcRenderer
+            ;(globalThis as any).electronAPI = originalElectronApi
         }
     })
 
