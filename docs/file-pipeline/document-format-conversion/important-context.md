@@ -1137,3 +1137,15 @@ DFC-76 can continue with another narrow DFC contract/runtime gap, or prepare an 
 ## Recommended next round
 
 M2 should be the End-to-End confidence path owner decision. M3 can then choose the next runtime family pilot after the confidence path is scoped.
+
+## DFC-M2 End-to-End confidence path recovery notes
+
+- DFC-M2 used the existing Vitest/jsdom UI smoke infrastructure instead of adding a new Playwright or Electron scaffold.
+- The strengthened confidence path is `src/ui-app/AppChatApp.attachments.test.ts` test `loads backend DFC options and updates the selected option from attachment details`.
+- Covered chain: attachment details open, backend-owned `conversationDraft.ensureDfcOptions`, backend-owned markdown option selection, `conversationDraft.updateAttachmentSettings` with `selectedOptionId` and `selectedAssetRefs`, selected-option preview through `conversationDraft.getDfcPreview`, and Send Plan mock visibility of `markdown` semantic plus selected `derived_asset` refs.
+- This does not prove a real browser/Electron launch, file upload, OS file picker, or production DB worker. It is the low-intrusion confidence path approved by the task package boundary.
+- Validation passed: `git diff --check`; `npx vue-tsc --noEmit --pretty false`; `npx vitest --run src/ui-app/AppChatApp.attachments.test.ts -t "loads backend DFC options and updates the selected option from attachment details" --reporter=dot --silent`.
+
+## Recommended next round
+
+Prefer M3 Next Runtime Family Pilot only after the owner accepts Vitest/jsdom as the M2 confidence path or separately approves a real Browser/Electron harness package.

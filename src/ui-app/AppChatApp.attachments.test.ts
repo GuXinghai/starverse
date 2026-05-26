@@ -80,6 +80,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
   let draftResponse: ReturnType<typeof baseDraft>
   let lastSendPlanModelInputModalities: string[] = ['text']
   let sendPlanBuildCallCount = 0
+  let lastSendPlanAttachmentPlans: any[] = []
   let forceBlockedOnSecondSendPlanBuild = false
   let contextMessages: Array<Record<string, unknown>> = []
   let convoRows: Array<Record<string, unknown>> = []
@@ -409,7 +410,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
         }
       }
     }
-    const attachmentPlans = draftResponse.attachments.map((attachment: any, index: number) => {
+    const attachmentPlans: any[] = draftResponse.attachments.map((attachment: any, index: number) => {
       const assetId = String(attachment.assetId ?? '')
       const normalizedAssetId = assetId.toLowerCase()
       const asset = assets[index]
@@ -505,6 +506,10 @@ describe('ui-app AppChatApp attachment entry flow', () => {
         displayStatus,
         needsUserAttention: eligibility !== 'included',
         notes,
+        semantic: attachment.dfcManaged === true && String(attachment.selectedOptionId ?? '').includes(':markdown:')
+          ? { targetKind: 'markdown', sendStrategy: 'text_in_prompt', mappedFromLegacy: false }
+          : null,
+        sendAssetRefs: attachment.dfcManaged === true ? [...(attachment.selectedAssetRefs ?? [])] : [],
       }
     })
 
@@ -603,6 +608,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
             : 'blocked'
 
     const canProceedAfterDroppingExcluded = hasExcluded && !hasExcludedDraft
+    lastSendPlanAttachmentPlans = attachmentPlans
 
     return {
       sendPlan: {
@@ -2277,6 +2283,20 @@ describe('ui-app AppChatApp attachment entry flow', () => {
       })
     })
     expect(await screen.findByTestId('draft-attachment-dfc-preview-text')).toHaveTextContent('Markdown preview from selected option')
+    await waitFor(() => {
+      expect(lastSendPlanAttachmentPlans).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          assetId: 'asset-dfc',
+          source: 'draft',
+          semantic: {
+            targetKind: 'markdown',
+            sendStrategy: 'text_in_prompt',
+            mappedFromLegacy: false,
+          },
+          sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-markdown' }],
+        }),
+      ]))
+    })
   })
 
   it('rehydrates the selected backend DFC option when attachment details are reopened', async () => {
