@@ -61,6 +61,30 @@ async function createManyWorksheetXlsxBuffer(sheetCount: number): Promise<Buffer
   return Buffer.from(bytes)
 }
 
+async function createOrderedWorksheetXlsxBuffer(): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook()
+  const first = workbook.addWorksheet('First Visible')
+  first.addRow(['sheet', 'value'])
+  first.addRow(['first', '1'])
+  const hidden = workbook.addWorksheet('Hidden Middle')
+  hidden.state = 'hidden'
+  hidden.addRow(['hidden-secret'])
+  const second = workbook.addWorksheet('Second Visible')
+  second.addRow(['sheet', 'value'])
+  second.addRow(['second', '2'])
+  const bytes = await workbook.xlsx.writeBuffer()
+  return Buffer.from(bytes)
+}
+
+async function createFormulaMissingValueXlsxBuffer(): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook()
+  const sheet = workbook.addWorksheet('Formula Missing Value')
+  sheet.addRow(['name', 'computed'])
+  sheet.addRow(['alice', { formula: 'SUM(1,2)' }])
+  const bytes = await workbook.xlsx.writeBuffer()
+  return Buffer.from(bytes)
+}
+
 function loadSchema(db: BetterSqlite3.Database) {
   const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
   db.exec(readFileSync(schemaPath, 'utf8'))
@@ -1109,6 +1133,113 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     expect(derivativeCount.count).toBe(0)
     expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
     expect(JSON.stringify((ensured as any).result)).not.toContain('asset-xlsx-malformed-source-hash')
+  })
+
+  it('keeps XLSX visible worksheet output order stable and hidden sheet warnings stable', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-xlsx-ordered-sheets-dfc'
+    const storageUri = 'assets/original/xl/asset-xlsx-ordered-sheets-dfc.xlsx'
+    const xlsxBytes = await createOrderedWorksheetXlsxBuffer()
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), xlsxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-ordered-sheets-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-xlsx-ordered-sheets-source-hash',
+        filename: 'ordered-sheets.xlsx',
+        extension: 'xlsx',
+        mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        sizeBytes: xlsxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-ordered-sheets-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-ordered-sheets-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const tableOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    const derivativeRow = db.prepare(`
+      SELECT storage_uri AS storageUri, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+      LIMIT 1
+    `).get({ assetId }) as { storageUri: string; metaJson: string | null } | undefined
+    const converted = await readFile(path.join(storageRootDir, ...String(derivativeRow?.storageUri ?? '').split('/')), 'utf8')
+    const derivativeMeta = derivativeRow?.metaJson ? JSON.parse(derivativeRow.metaJson) : null
+
+    expect(tableOption.status).toBe('ready')
+    expect(converted.indexOf('## First Visible')).toBeLessThan(converted.indexOf('## Second Visible'))
+    expect(converted).not.toContain('Hidden Middle')
+    expect(converted).not.toContain('hidden-secret')
+    expect(derivativeMeta?.conversionWarnings).toEqual(expect.arrayContaining([
+      'xlsx_hidden_sheets_skipped',
+    ]))
+  })
+
+  it('emits an empty XLSX table cell and warning when formula cached value is missing', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-xlsx-formula-missing-dfc'
+    const storageUri = 'assets/original/xl/asset-xlsx-formula-missing-dfc.xlsx'
+    const xlsxBytes = await createFormulaMissingValueXlsxBuffer()
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), xlsxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-formula-missing-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-xlsx-formula-missing-source-hash',
+        filename: 'formula-missing.xlsx',
+        extension: 'xlsx',
+        mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        sizeBytes: xlsxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-formula-missing-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-formula-missing-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const tableOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    const derivativeRow = db.prepare(`
+      SELECT storage_uri AS storageUri, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+      LIMIT 1
+    `).get({ assetId }) as { storageUri: string; metaJson: string | null } | undefined
+    const converted = await readFile(path.join(storageRootDir, ...String(derivativeRow?.storageUri ?? '').split('/')), 'utf8')
+    const derivativeMeta = derivativeRow?.metaJson ? JSON.parse(derivativeRow.metaJson) : null
+
+    expect(tableOption.status).toBe('ready')
+    expect(converted).toContain('| alice |  |')
+    expect(converted).not.toContain('SUM(1,2)')
+    expect(derivativeMeta?.conversionWarnings).toEqual(expect.arrayContaining([
+      'xlsx_formula_cached_value_missing',
+    ]))
   })
 
   it('coalesces concurrent explicit DFC ensure requests for the same text derivative', async () => {
