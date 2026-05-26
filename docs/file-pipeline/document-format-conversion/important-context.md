@@ -1149,3 +1149,15 @@ M2 should be the End-to-End confidence path owner decision. M3 can then choose t
 ## Recommended next round
 
 Prefer M3 Next Runtime Family Pilot only after the owner accepts Vitest/jsdom as the M2 confidence path or separately approves a real Browser/Electron harness package.
+
+## DFC-M3 next runtime family decision recovery notes
+
+- DFC-M3 selects XLSX/XLS -> `table_markdown` as the recommended next runtime family because it is closest to existing DFC `table_markdown`, DerivedAsset, preview, selected-ref, and Send Plan semantics.
+- DFC-M3 stops at owner memo instead of implementation because the repository has no XLSX/XLS parser dependency or wrapper. Existing CSV/TSV table support is text-delimiter based and cannot parse workbook formats.
+- `dfc-m3-next-runtime-family-owner-memo.md` records rejected alternatives: DOCX/Office -> markdown, HTML->PDF / Office->PDF, and PS/EPS -> PDF attachment.
+- No production code, DB schema, Send Plan flow, IPC shape, asset model, UI, dependency, Playwright/Electron harness, external engine, or runtime implementation changed in M3.
+- Next owner decision should approve or reject an XLSX/XLS parser strategy before any pilot implementation.
+
+## Recommended next round
+
+DFC-M4 should be an XLSX/XLS parser dependency decision. If approved, implement one backend-only XLSX-first `table_markdown` pilot with strict privacy and no broad architecture changes.
