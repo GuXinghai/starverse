@@ -1201,3 +1201,18 @@ Either continue spreadsheet hardening with similarly targeted XLSX guard/diagnos
 ## Recommended next round
 
 Make the DOCX-first dependency decision. If Mammoth is approved, implement one backend-only `.docx -> markdown` pilot with strict DTO/privacy boundaries. If not approved, continue only targeted XLSX hardening.
+
+## DFC-M7 DOCX-first markdown pilot recovery notes
+
+- DFC-M7 implements the owner-approved DOCX-first backend-only parser pilot using `mammoth`.
+- `.docx` local stored assets can now enter `conversationDraft.ensureDfcOptions` for `targetKind: markdown`; `.doc` and `.rtf` remain unsupported and do not generate markdown derived options in this round.
+- Mammoth runs only in `infra/files/derivativeJobService.ts`, reads bytes through the existing managed local storage path, converts DOCX to semantic HTML, then uses the existing internal safe HTML-to-markdown text path. No Turndown, Pandoc, LibreOffice, external engine, browser rendering, or Office-to-PDF path was added.
+- Minimal DOCX semantics: ordinary paragraphs, headings, and visible link text are preserved. Hyperlink targets are omitted from derived markdown. Visual layout, fonts, colors, pagination, images, comments, revisions, headers/footers, footnotes/endnotes, complex tables, macros, embedded objects, and external resources are not productized.
+- Existing DFC option, preview, selected refs, message/send semantics, DerivedAsset facade, and Send Plan selected-ref authority are reused. No DB schema, IPC shape, Send Plan main-flow, asset model, renderer UI, Playwright/Electron harness, or legacy bridge changed.
+- Mammoth dependency footprint: `mammoth@1.12.0`, BSD-2-Clause, adds transitive packages and a CLI bin entry, with no observed native binary, browser rendering dependency, external engine, or Mammoth postinstall hook in the lockfile entry.
+- Validation passed after `npm run rebuild:node`: `git diff --check`; `npx vue-tsc --noEmit --pretty false`; targeted Vitest for worker/backend/client DFC files: 6 files, 347 tests.
+- Current ABI target after validation: node.
+
+## Recommended next round
+
+DFC-M8 should harden DOCX pilot boundaries with targeted tests for malformed DOCX, embedded media/resource omission, parser warnings, and dependency/privacy review. Do not add `.doc`, `.rtf`, Turndown, Pandoc, LibreOffice, Office-to-PDF, HTML-to-PDF, PS/EPS, UI, external engines, or browser rendering without a new owner decision.

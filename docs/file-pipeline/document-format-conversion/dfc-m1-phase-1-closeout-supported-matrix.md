@@ -25,7 +25,7 @@ The Phase 1 invariants remain:
 | --- | --- | --- | --- | --- | --- | --- |
 | `original_file` | Raw file when policy/model allows file input | `raw_file` pointing at the original asset | No | Metadata-only raw-file preview diagnostics; no file body or storage URI exposure | `file_attachment`; validates the selected raw ref and model file/PDF capability; no legacy `native_file` fallback for DFC-managed rows | Supported as first-class DFC target |
 | `plain_text` | Plain text or extracted/converted text-like content | `derived_asset` | Yes | Text preview from selected derived asset; selected ref must match preview/send source | `text_in_prompt`; uses selected derived asset and blocks missing/stale/unavailable refs | Supported |
-| `markdown` | Markdown source or safe HTML markdown output | `derived_asset` | Yes | Markdown text preview from selected derived asset | `text_in_prompt`; uses selected derived asset and DFC lineage checks | Supported |
+| `markdown` | Markdown source, safe HTML markdown output, or DOCX-first backend-only pilot output | `derived_asset` | Yes | Markdown text preview from selected derived asset | `text_in_prompt`; uses selected derived asset and DFC lineage checks | Supported; DOCX is pilot-only and backend-owned |
 | `code` | Source-code-like inputs and HTML/template-like code path | `derived_asset` | Yes | Code text preview from selected derived asset | `text_in_prompt`; selected option snapshots through draft/message attachment state | Supported |
 | `table_markdown` | CSV/TSV text tables | `derived_asset` | Yes | Markdown table preview from selected derived asset | `text_in_prompt`; selected table derivative is the send source | Supported for CSV/TSV text runtime only |
 | HTML safe `markdown` | Static/document-like HTML | `derived_asset` | Yes | Safe markdown preview; JavaScript is not executed, external resources are not loaded, script/style are removed, selected image alt/link/list/blockquote visible semantics are preserved where implemented | `text_in_prompt`; selected safe markdown derivative is authoritative | Supported as local string-level safe conversion |
@@ -45,7 +45,7 @@ The Phase 1 invariants remain:
 The following are explicitly outside the current Phase 1 baseline:
 
 - XLSX/XLS runtime.
-- DOCX/Office runtime.
+- DOC/RTF runtime.
 - HTML-to-PDF.
 - Office-to-PDF.
 - PS/EPS production runtime.
@@ -63,7 +63,7 @@ The following are explicitly outside the current Phase 1 baseline:
 - End-to-end confidence is still mostly Vitest-backed. Browser/Electron smoke ownership remains undecided.
 - The supported matrix is stronger for text-like local runtimes than for office/runtime-family coverage.
 - `pdf_attachment` exists in the shared target vocabulary but is not a Phase 1 implemented runtime path.
-- XLSX/XLS and DOCX/Office require owner decisions before any parser/runtime/dependency choice.
+- XLS and DOC/RTF require owner decisions before any parser/runtime/dependency choice.
 - HTML safe markdown is intentionally string-level and non-executing; it is not browser rendering and not HTML-to-PDF.
 - Legacy route summary code still exists for non-DFC rows; DFC correctness depends on the DFC-managed boundary staying strict.
 - Existing unrelated dirty `.codex/agents/*.toml` files prevent treating the current worktree as a clean checkpoint baseline.

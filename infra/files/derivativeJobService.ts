@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type BetterSqlite3 from 'better-sqlite3'
 import ExcelJS from 'exceljs'
+import * as mammoth from 'mammoth'
 import { resolveManagedStoragePath } from '../../src/shared/files/localStorageResolver'
 import type {
   CancelDerivativeJobInput,
@@ -417,6 +418,9 @@ export class DerivativeJobService {
   private async runExtractedTextJob(job: DerivativeJobRecord): Promise<DerivativeRunResult> {
     const asset = this.requireAsset(job.assetId)
     const ext = String(asset.extension ?? '').trim().toLowerCase()
+    if (isDocxAsset(asset)) {
+      return await this.runDocxMarkdownJob(job, asset)
+    }
     if (ext === 'xlsx') {
       return await this.runXlsxTableMarkdownJob(job, asset)
     }
@@ -469,6 +473,45 @@ export class DerivativeJobService {
         byteLength: Buffer.byteLength(convertedText, 'utf8'),
         filename: asset.filename,
         conversionWarnings,
+      },
+    })
+    return this.markReady(job, derivative)
+  }
+
+  private async runDocxMarkdownJob(job: DerivativeJobRecord, asset: FileAssetRecord): Promise<DerivativeRunResult> {
+    const requestedTargetKind = readRequestedTextTargetKind(job.configJson)
+    if (requestedTargetKind && requestedTargetKind !== 'markdown') {
+      throw derivativeError(
+        'conversion_not_implemented',
+        job.id,
+        asset.id,
+        job.derivativeKind,
+        `DOCX conversion target ${requestedTargetKind} is not supported.`
+      )
+    }
+    const source = await this.readLocalBytes(asset, job, 'derivative_input_missing')
+    const converted = await docxToMarkdown(source.bytes, job, asset)
+    if (!converted.text.trim()) {
+      throw derivativeError('extracted_text_empty', job.id, asset.id, job.derivativeKind, 'No markdown content could be extracted from the DOCX document.')
+    }
+    const contentHash = sha256(converted.text)
+    const derivative = await this.writeTextDerivative({
+      job,
+      asset,
+      text: converted.text,
+      mime: 'text/markdown',
+      metaJson: {
+        sourceMime: asset.mime ?? null,
+        sourceExtension: asset.extension ?? null,
+        sourceEncoding: null,
+        sourceHash: asset.sha256 ?? null,
+        contentHash,
+        targetKind: 'markdown',
+        usage: 'preview_and_send',
+        characterCount: converted.text.length,
+        byteLength: Buffer.byteLength(converted.text, 'utf8'),
+        filename: asset.filename,
+        conversionWarnings: converted.warnings,
       },
     })
     return this.markReady(job, derivative)
@@ -959,6 +1002,13 @@ function inferTextTargetKind(asset: FileAssetRecord, sourceText: string): 'plain
   return 'plain_text'
 }
 
+function isDocxAsset(asset: FileAssetRecord): boolean {
+  const ext = String(asset.extension ?? '').trim().toLowerCase()
+  const mime = normalizeMime(asset.mime)
+  return ext === 'docx'
+    || mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+}
+
 function readRequestedTextTargetKind(config: Record<string, unknown> | null): 'plain_text' | 'markdown' | 'code' | 'table_markdown' | null {
   const value = typeof config?.targetKind === 'string' ? config.targetKind.trim() : ''
   return isTextTargetKind(value) ? value : null
@@ -993,7 +1043,6 @@ const CODE_EXTENSIONS = new Set([
 ])
 
 const OFFICE_TEXT_NOT_IMPLEMENTED_EXTENSIONS = new Set([
-  'docx',
   'doc',
   'rtf',
   'xls',
@@ -1210,6 +1259,49 @@ const XLSX_MAX_BYTES = 10 * 1024 * 1024
 const XLSX_MAX_WORKSHEETS = 20
 const XLSX_MAX_ROWS = 200
 const XLSX_MAX_CELLS = 2000
+const DOCX_MAX_BYTES = 10 * 1024 * 1024
+
+async function docxToMarkdown(
+  bytes: Uint8Array,
+  job: DerivativeJobRecord,
+  asset: FileAssetRecord
+): Promise<Readonly<{ text: string; warnings: string[] }>> {
+  if (bytes.byteLength > DOCX_MAX_BYTES) {
+    throw derivativeError('conversion_not_implemented', job.id, asset.id, job.derivativeKind, 'DOCX document exceeds the pilot size guard.')
+  }
+
+  let result: Awaited<ReturnType<typeof mammoth.convertToHtml>>
+  try {
+    result = await mammoth.convertToHtml(
+      { buffer: Buffer.from(bytes) },
+      {
+        externalFileAccess: false,
+        convertImage: mammoth.images.imgElement(async () => ({ src: '' })),
+      }
+    )
+  } catch {
+    throw derivativeError('derivative_input_missing', job.id, asset.id, job.derivativeKind, 'DOCX document could not be parsed.')
+  }
+
+  const warnings = collectDocxConversionWarnings(result.value, result.messages)
+  const text = htmlToMarkdownSafe(result.value)
+  return { text, warnings }
+}
+
+function collectDocxConversionWarnings(
+  html: string,
+  messages: ReadonlyArray<{ type: string; message?: string }>
+): string[] {
+  const warnings = new Set<string>()
+  warnings.add('docx_visual_layout_not_preserved')
+  warnings.add('docx_external_resources_not_loaded')
+  if (/<a\b[^>]*\bhref\s*=/i.test(html)) warnings.add('docx_hyperlink_targets_omitted')
+  if (/<img\b/i.test(html)) warnings.add('docx_images_not_extracted')
+  for (const message of messages) {
+    if (message.type === 'warning') warnings.add('docx_parser_warning')
+  }
+  return [...warnings]
+}
 
 async function xlsxToTableMarkdown(
   bytes: Uint8Array,

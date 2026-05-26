@@ -1130,7 +1130,8 @@ function isDfcPhase1TextConversionAsset(asset: FileAssetRecord, targetKind: stri
   const mime = normalizeMime(asset.mime)
   if (ext === 'html' || ext === 'htm' || mime === 'text/html') return targetKind === 'markdown' || targetKind === 'code'
   if (ext === 'ps' || ext === 'eps' || mime === 'application/postscript') return false
-  if (ext === 'docx' || ext === 'doc' || ext === 'rtf' || ext === 'xls') return false
+  if (ext === 'docx' || mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return targetKind === 'markdown'
+  if (ext === 'doc' || ext === 'rtf' || ext === 'xls') return false
   if (ext === 'pdf' || mime === 'application/pdf') return false
   if (targetKind === 'table_markdown') {
     return ext === 'csv'
