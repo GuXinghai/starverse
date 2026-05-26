@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import BetterSqlite3 from 'better-sqlite3'
+import ExcelJS from 'exceljs'
 import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
@@ -26,6 +27,20 @@ import { FileTypeDetectionService } from '../files/fileTypeDetectionService'
 import { canOpenBetterSqliteForSuite } from '../testUtils/betterSqliteGate'
 
 const describeIfBetterSqlite = canOpenBetterSqliteForSuite('file pipeline worker handlers') ? describe : describe.skip
+
+async function createMinimalXlsxBuffer(): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook()
+  const visible = workbook.addWorksheet('Visible Sheet')
+  visible.addRow(['name', 'amount', 'note'])
+  visible.addRow(['alice', { formula: 'SUM(10,20)', result: 30 }, { text: 'report', hyperlink: 'https://example.com/private?token=secret' }])
+  visible.addRow(['bob', 41, 'plain'])
+  const hidden = workbook.addWorksheet('Hidden Sheet')
+  hidden.state = 'hidden'
+  hidden.addRow(['hidden-secret'])
+  workbook.addWorksheet('Empty Sheet')
+  const bytes = await workbook.xlsx.writeBuffer()
+  return Buffer.from(bytes)
+}
 
 function loadSchema(db: BetterSqlite3.Database) {
   const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
@@ -753,6 +768,168 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
         sendAssetRefs: tableOption.sendAssetRefs,
       }),
     })
+  })
+
+  it('generates XLSX table_markdown DFC options through explicit ensure endpoint', async () => {
+    const { db, handlers, fileTypeDetectionCoordinator } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-xlsx-explicit-dfc'
+    const storageUri = 'assets/original/xl/asset-xlsx-explicit-dfc.xlsx'
+    const xlsxBytes = await createMinimalXlsxBuffer()
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), xlsxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-explicit-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-xlsx-explicit-source-hash',
+        filename: 'book.xlsx',
+        extension: 'xlsx',
+        mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        sizeBytes: xlsxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-explicit-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-explicit-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const derivativeRow = db.prepare(`
+      SELECT id, storage_uri AS storageUri, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='extracted_text'
+      LIMIT 1
+    `).get({ assetId }) as { id: string; storageUri: string; metaJson: string | null } | undefined
+    expect(derivativeRow).toBeTruthy()
+    const converted = await readFile(path.join(storageRootDir, ...String(derivativeRow?.storageUri ?? '').split('/')), 'utf8')
+    expect(converted).toContain('## Visible Sheet')
+    expect(converted).toContain('| name | amount | note |')
+    expect(converted).toContain('| alice | 30 | report |')
+    expect(converted).toContain('## Empty Sheet')
+    expect(converted).toContain('_Empty worksheet._')
+    expect(converted).not.toContain('hidden-secret')
+    expect(converted).not.toContain('https://example.com')
+    expect(converted).not.toContain('token=secret')
+
+    const derivativeMeta = derivativeRow?.metaJson ? JSON.parse(derivativeRow.metaJson) : null
+    expect(derivativeMeta).toMatchObject({
+      targetKind: 'table_markdown',
+      usage: 'preview_and_send',
+      storageClass: 'draft_bound',
+      converterName: 'starverse-text-derivative',
+    })
+    expect(derivativeMeta?.conversionWarnings).toEqual(expect.arrayContaining([
+      'xlsx_formula_cached_value_used',
+      'xlsx_hyperlinks_omitted',
+      'xlsx_hidden_sheets_skipped',
+      'xlsx_empty_sheet',
+    ]))
+
+    const tableOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'table_markdown')
+    expect(tableOption).toMatchObject({
+      optionId: `dfc:${assetId}:table_markdown:derived_asset:${derivativeRow?.id}`,
+      sendStrategy: 'text_in_prompt',
+      status: 'ready',
+      isAvailable: true,
+      compatibilityStatus: 'compatible',
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: derivativeRow?.id }],
+    })
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(derivativeRow?.storageUri ?? 'assets/')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-xlsx-explicit-source-hash')
+    expect(fileTypeDetectionCoordinator.ensureVerdictsForAssets).not.toHaveBeenCalled()
+
+    const selected = await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-explicit-select',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: tableOption.optionId,
+        selectedAssetRefs: tableOption.sendAssetRefs,
+      },
+    })
+    const preview = await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-explicit-preview',
+      method: 'conversationDraft.getDfcPreview',
+      params: { conversationId: 'c1', assetId, maxCharacters: 2048 },
+    })
+    const planResult = await dispatchWorkerMessage(handlers, {
+      id: 'req-xlsx-explicit-send-plan',
+      method: 'sendPlan.buildCurrent',
+      params: {
+        conversationId: 'c1',
+        draftText: 'send xlsx table',
+        model: {
+          providerKey: 'openrouter',
+          modelId: 'test/text',
+          modelKey: 'openrouter::test/text',
+          inputModalities: ['text'],
+          outputModalities: ['text'],
+        },
+        providerContext: {
+          providerKey: 'openrouter',
+          supportsInlineData: true,
+          supportsTextUrlRef: true,
+        },
+      },
+    })
+
+    expect(selected).toMatchObject({ ok: true })
+    expect(preview).toMatchObject({
+      ok: true,
+      result: {
+        selectedOptionId: tableOption.optionId,
+        selectedAssetRefs: tableOption.sendAssetRefs,
+        targetKind: 'table_markdown',
+        sendStrategy: 'text_in_prompt',
+        preview: expect.objectContaining({
+          kind: 'text',
+          status: 'ready',
+          text: converted,
+        }),
+      },
+    })
+    expect(planResult).toMatchObject({
+      ok: true,
+      result: {
+        sendPlan: expect.objectContaining({
+          status: 'sendable',
+          attachmentPlans: [
+            expect.objectContaining({
+              assetId,
+              semantic: {
+                targetKind: 'table_markdown',
+                sendStrategy: 'text_in_prompt',
+                mappedFromLegacy: false,
+              },
+              sendAssetRefs: tableOption.sendAssetRefs,
+            }),
+          ],
+        }),
+      },
+    })
+    const previewJson = JSON.stringify((preview as any).result)
+    const planAttachmentPlansJson = JSON.stringify((planResult as any).result.sendPlan.attachmentPlans)
+    expect(previewJson).not.toContain(storageUri)
+    expect(previewJson).not.toContain(derivativeRow?.storageUri ?? 'assets/')
+    expect(previewJson).not.toContain('asset-xlsx-explicit-source-hash')
+    expect(planAttachmentPlansJson).not.toContain(storageUri)
+    expect(planAttachmentPlansJson).not.toContain(derivativeRow?.storageUri ?? 'assets/')
+    expect(planAttachmentPlansJson).not.toContain('asset-xlsx-explicit-source-hash')
   })
 
   it('coalesces concurrent explicit DFC ensure requests for the same text derivative', async () => {
@@ -2635,6 +2812,57 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       WHERE parent_asset_id=@assetId
     `).get({ assetId }) as { count: number }
     expect(derivativeCount.count).toBe(0)
+  })
+
+  it('keeps legacy XLS outside the XLSX-first table_markdown pilot', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const assetId = 'asset-xls-explicit-dfc'
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-xls-explicit-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-xls-explicit-source-hash',
+        filename: 'legacy.xls',
+        extension: 'xls',
+        mime: 'application/vnd.ms-excel',
+        sizeBytes: 32,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri: 'assets/original/xl/asset-xls-explicit-dfc.xls',
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-xls-explicit-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-xls-explicit-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    expect(ensured).toMatchObject({
+      ok: true,
+      result: {
+        options: [expect.objectContaining({
+          targetKind: 'original_file',
+          sendAssetRefs: [{ kind: 'raw_file', assetId }],
+        })],
+      },
+    })
+    expect((ensured as any).result.options.some((option: any) => option.targetKind === 'table_markdown')).toBe(false)
+    const derivativeCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId
+    `).get({ assetId }) as { count: number }
+    expect(derivativeCount.count).toBe(0)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-xls-explicit-source-hash')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('assets/original/xl/asset-xls-explicit-dfc.xls')
   })
 
   it('does not generate Phase 1 DFC derivatives for non-local source assets through ensure endpoint', async () => {
