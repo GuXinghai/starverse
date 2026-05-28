@@ -1269,3 +1269,15 @@ DFC-M11 should be an owner-approved Electron smoke harness package. Keep it to o
 ## Recommended next round
 
 If M11 validation is stable, DFC-M12 can add one DFC attachment smoke seam on top of the harness. Keep it to one backend-owned option/preview/send-gate observation and stop if it requires app bootstrap, DB schema, Send Plan, asset model, IPC architecture, UI architecture, OS file picker, or packaged installer changes.
+
+## DFC-M12 Electron DFC attachment smoke seam recovery notes
+
+- DFC-M12 extends the M11 Electron smoke harness with one controlled DFC attachment UI seam. It remains a smoke-confidence package, not a production DFC runtime or upload feature.
+- The seam is gated to development mode and the `?sv-electron-smoke-dfc=1` URL query. It injects a deterministic draft attachment, backend-shaped markdown option DTO, selected derived-asset refs, and preview DTO into the existing attachment details UI path for smoke observation.
+- `npm run test:electron-smoke` now launches the app with that query and verifies app shell readiness, composer visibility, scoped preload objects, absence of raw `window.ipcRenderer`, the DFC attachment chip, attachment details dialog, markdown option, and selected-option preview text.
+- The seam intentionally does not use the OS file picker, real upload persistence, DB fixture setup, Send Plan service execution, package installer smoke, CI, runtime expansion, DB schema changes, IPC/preload architecture changes, asset model changes, or heavy runtime work.
+- Validation passed: `git diff --check`; `npx vue-tsc --noEmit --pretty false`; `npm run test:electron-smoke`. The smoke rebuilds to the Electron ABI target before launch.
+
+## Recommended next round
+
+DFC-M13 should only attempt a real backend-owned DFC attachment smoke if it can remain low-intrusion without app bootstrap, DB schema, Send Plan, asset model, IPC/preload, OS file picker, packaged installer, or CI changes. Otherwise stop smoke expansion and move to the heavy runtime owner-decision package.
