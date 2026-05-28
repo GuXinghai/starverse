@@ -476,6 +476,10 @@ export function useAppChatAppLogic() {
   const draftAttachmentDfcPreviewByAssetId = ref<Record<string, DecodedDfcDraftAttachmentPreview | null>>({})
   const draftAttachmentDfcPreviewLoadingByAssetId = ref<Record<string, boolean>>({})
   const draftAttachmentDfcPreviewErrorByAssetId = ref<Record<string, string | null>>({})
+  const ELECTRON_SMOKE_DFC_ASSET_ID = 'asset-dfc-smoke'
+  const ELECTRON_SMOKE_DFC_OPTION_ID = `dfc:${ELECTRON_SMOKE_DFC_ASSET_ID}:markdown:derived_asset:derived-dfc-smoke-markdown`
+  const ELECTRON_SMOKE_DFC_DERIVED_ASSET_ID = 'derived-dfc-smoke-markdown'
+  const ELECTRON_SMOKE_DFC_PREVIEW_TEXT = 'Electron smoke DFC markdown preview from selected option.'
   const historyAttachmentViewModelsByMessageIdBase = ref<Record<string, MessageAttachmentVM[]>>({})
   const historyAttachmentPreviewCache = ref<Record<string, HistoryAttachmentPreviewState>>({})
   const historyAttachmentPreviewEnsuring = new Set<string>()
@@ -4704,6 +4708,149 @@ export function useAppChatAppLogic() {
     }
   }
 
+  function isElectronSmokeDfcFixtureEnabled(): boolean {
+    if (!import.meta.env.DEV) return false
+    if (typeof window === 'undefined') return false
+    try {
+      const params = new URLSearchParams(window.location.search)
+      return params.get('sv-electron-smoke-dfc') === '1'
+    } catch {
+      return false
+    }
+  }
+
+  function applyElectronSmokeDfcAttachmentFixture() {
+    if (!isElectronSmokeDfcFixtureEnabled()) return
+
+    const now = Date.now()
+    const sendAssetRefs: DfcSendAssetRef[] = [
+      { kind: 'derived_asset', assetId: ELECTRON_SMOKE_DFC_DERIVED_ASSET_ID },
+    ]
+    const attachment = {
+      id: `draft-attachment-${ELECTRON_SMOKE_DFC_ASSET_ID}`,
+      conversationId: String(activeConvoId.value ?? 'electron-smoke'),
+      assetId: ELECTRON_SMOKE_DFC_ASSET_ID,
+      attachmentOrder: 0,
+      aiPayloadKind: 'text',
+      processingStatus: 'native_supported',
+      includeInNextRequest: true,
+      excludedReason: null,
+      preferredSendMode: null,
+      urlRetentionMode: null,
+      dfcManaged: true,
+      selectedOptionId: ELECTRON_SMOKE_DFC_OPTION_ID,
+      selectedAssetRefs: sendAssetRefs,
+      createdAt: now,
+      updatedAt: now,
+    } satisfies DecodedDraftAttachment
+    const view = {
+      draftAttachmentId: attachment.id,
+      assetId: attachment.assetId,
+      filename: 'electron-smoke-dfc.md',
+      extension: 'md',
+      assetKind: 'text',
+      aiPayloadKind: 'text',
+      sourceKind: 'electron_smoke_fixture',
+      displayStatus: 'ready',
+      borderTone: 'green',
+      isParsing: false,
+      warningReason: null,
+      blockingReason: null,
+      fileTypeInfo: null,
+      detectionInfo: null,
+      previewDataUrl: null,
+      canRemove: false,
+    } satisfies DraftAttachmentViewModel
+
+    draftAttachmentRecords.value = [attachment]
+    draftAttachmentAssetsById.value = { [ELECTRON_SMOKE_DFC_ASSET_ID]: null }
+    draftAttachmentPlansByAssetId.value = {}
+    draftAttachmentSendPlanStatus.value = 'sendable'
+    draftAttachmentViewModels.value = [view]
+    draftAttachmentDfcOptionsLoadingByAssetId.value = { [ELECTRON_SMOKE_DFC_ASSET_ID]: false }
+    draftAttachmentDfcOptionsErrorByAssetId.value = { [ELECTRON_SMOKE_DFC_ASSET_ID]: null }
+    draftAttachmentDfcPreviewLoadingByAssetId.value = { [ELECTRON_SMOKE_DFC_ASSET_ID]: false }
+    draftAttachmentDfcPreviewErrorByAssetId.value = { [ELECTRON_SMOKE_DFC_ASSET_ID]: null }
+    draftAttachmentDfcOptionsByAssetId.value = {
+      [ELECTRON_SMOKE_DFC_ASSET_ID]: {
+        attachmentId: attachment.id,
+        conversationId: attachment.conversationId,
+        rawFileId: attachment.assetId,
+        filename: view.filename,
+        sizeBytes: 64,
+        dfcManaged: true,
+        selectedOptionId: ELECTRON_SMOKE_DFC_OPTION_ID,
+        selectedAssetRefs: sendAssetRefs,
+        decision: {
+          status: 'ready',
+          reasonCode: null,
+          selectedOptionId: ELECTRON_SMOKE_DFC_OPTION_ID,
+          targetKind: 'markdown',
+          sendStrategy: 'text_in_prompt',
+          sendAssetRefs,
+          needsUserAction: false,
+        },
+        options: [
+          {
+            optionId: `dfc:${ELECTRON_SMOKE_DFC_ASSET_ID}:original_file:raw_file:${ELECTRON_SMOKE_DFC_ASSET_ID}`,
+            targetKind: 'original_file',
+            sendStrategy: 'file_attachment',
+            status: 'ready',
+            isAvailable: true,
+            compatibilityStatus: 'compatible',
+            sendAssetRefs: [{ kind: 'raw_file', assetId: ELECTRON_SMOKE_DFC_ASSET_ID }],
+            warnings: [],
+            diagnostics: [],
+          },
+          {
+            optionId: ELECTRON_SMOKE_DFC_OPTION_ID,
+            targetKind: 'markdown',
+            sendStrategy: 'text_in_prompt',
+            status: 'ready',
+            isAvailable: true,
+            compatibilityStatus: 'compatible',
+            sendAssetRefs,
+            warnings: [],
+            diagnostics: [],
+          },
+        ],
+      } as DecodedDfcDraftAttachmentOptions,
+    }
+    draftAttachmentDfcPreviewByAssetId.value = {
+      [ELECTRON_SMOKE_DFC_ASSET_ID]: {
+        attachmentId: attachment.id,
+        conversationId: attachment.conversationId,
+        rawFileId: attachment.assetId,
+        filename: view.filename,
+        sizeBytes: 64,
+        dfcManaged: true,
+        selectedOptionId: ELECTRON_SMOKE_DFC_OPTION_ID,
+        selectedAssetRefs: sendAssetRefs,
+        targetKind: 'markdown',
+        sendStrategy: 'text_in_prompt',
+        decision: {
+          status: 'ready',
+          reasonCode: null,
+          selectedOptionId: ELECTRON_SMOKE_DFC_OPTION_ID,
+          targetKind: 'markdown',
+          sendStrategy: 'text_in_prompt',
+          sendAssetRefs,
+          needsUserAction: false,
+        },
+        preview: {
+          kind: 'text',
+          status: 'ready',
+          text: ELECTRON_SMOKE_DFC_PREVIEW_TEXT,
+          characterCount: ELECTRON_SMOKE_DFC_PREVIEW_TEXT.length,
+          byteLength: new TextEncoder().encode(ELECTRON_SMOKE_DFC_PREVIEW_TEXT).byteLength,
+          truncated: false,
+          maxCharacters: 2048,
+          diagnostics: [],
+        },
+      } as DecodedDfcDraftAttachmentPreview,
+    }
+  }
+
   function buildDraftAttachmentDetailsViewModel(assetId: string | null): DraftAttachmentDetailsViewModel | null {
     const id = String(assetId ?? '').trim()
     if (!id) return null
@@ -5221,6 +5368,10 @@ export function useAppChatAppLogic() {
     const id = String(assetId ?? '').trim()
     if (!id) return
     selectedDraftAttachmentAssetId.value = id
+    if (isElectronSmokeDfcFixtureEnabled() && id === ELECTRON_SMOKE_DFC_ASSET_ID) {
+      applyElectronSmokeDfcAttachmentFixture()
+      return
+    }
     void refreshDraftAttachmentDfcOptions(id)
     void refreshDraftAttachmentDfcPreview(id)
   }
@@ -8487,6 +8638,10 @@ export function useAppChatAppLogic() {
       loadError.value = err?.message ? String(err.message) : String(err)
     } finally {
       isReady.value = true
+      if (isElectronSmokeDfcFixtureEnabled()) {
+        await nextTick()
+        applyElectronSmokeDfcAttachmentFixture()
+      }
     }
   })
 

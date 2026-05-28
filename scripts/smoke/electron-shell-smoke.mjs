@@ -13,9 +13,12 @@ const repoRoot = path.resolve(scriptDir, '..', '..')
 const port = Number.parseInt(process.env.SV_ELECTRON_SMOKE_PORT ?? '5177', 10)
 const host = process.env.SV_ELECTRON_SMOKE_HOST ?? '127.0.0.1'
 const viteUrl = `http://${host}:${port}/`
+const appUrl = `${viteUrl}?sv-electron-smoke-dfc=1`
 const mainPath = path.join(repoRoot, 'dist-electron', 'main.js')
 const viteConfigPath = path.join(repoRoot, 'scripts', 'smoke', 'vite.renderer-smoke.config.ts')
 const tmpRoot = path.join(os.tmpdir(), `starverse-electron-smoke-${process.pid}`)
+const dfcSmokeAssetId = 'asset-dfc-smoke'
+const dfcSmokePreviewText = 'Electron smoke DFC markdown preview from selected option.'
 
 function section(title) {
   process.stdout.write(`\n${'='.repeat(80)}\n${title}\n${'='.repeat(80)}\n`)
@@ -122,7 +125,7 @@ async function main() {
       env: {
         ...process.env,
         NODE_ENV: 'development',
-        VITE_DEV_SERVER_URL: viteUrl,
+        VITE_DEV_SERVER_URL: appUrl,
         SV_ELECTRON_SMOKE: '1',
         FORCE_COLOR: '0',
       },
@@ -164,7 +167,27 @@ async function main() {
     if (!result.electronStoreExposed) throw new Error('electronStore scoped preload object is missing')
     if (!result.dbBridgeExposed) throw new Error('dbBridge scoped preload object is missing')
 
-    console.log('\nPASS: Electron shell smoke completed')
+    section('Assert DFC attachment smoke seam')
+    await page.waitForSelector(`[data-testid="draft-attachment-card-${dfcSmokeAssetId}"]`, { timeout: 60_000 })
+    await page.click(`[data-testid="draft-attachment-card-${dfcSmokeAssetId}"]`)
+    await page.waitForSelector('[data-testid="draft-attachment-details-dialog"]', { timeout: 60_000 })
+    await page.waitForSelector('[data-testid="draft-attachment-dfc-option-markdown"]', { timeout: 60_000 })
+    await page.waitForSelector('[data-testid="draft-attachment-dfc-preview-text"]', { timeout: 60_000 })
+
+    const dfcResult = await page.evaluate(() => ({
+      attachmentVisible: Boolean(document.querySelector('[data-testid="draft-attachment-card-asset-dfc-smoke"]')),
+      detailsVisible: Boolean(document.querySelector('[data-testid="draft-attachment-details-dialog"]')),
+      markdownOptionText: document.querySelector('[data-testid="draft-attachment-dfc-option-markdown"]')?.textContent ?? '',
+      previewText: document.querySelector('[data-testid="draft-attachment-dfc-preview-text"]')?.textContent ?? '',
+    }))
+    console.log(JSON.stringify(dfcResult, null, 2))
+
+    if (!dfcResult.attachmentVisible) throw new Error('DFC smoke attachment card is missing')
+    if (!dfcResult.detailsVisible) throw new Error('DFC smoke attachment details dialog is missing')
+    if (!dfcResult.markdownOptionText.includes('Markdown')) throw new Error('DFC markdown option is missing')
+    if (!dfcResult.previewText.includes(dfcSmokePreviewText)) throw new Error('DFC preview text is missing')
+
+    console.log('\nPASS: Electron DFC attachment smoke completed')
   } catch (error) {
     if (viteOutput.trim()) {
       section('Vite output')
