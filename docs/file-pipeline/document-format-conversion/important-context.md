@@ -1242,3 +1242,18 @@ If validation passes, DOCX can remain a Phase 1 backend-only supported pilot. Ne
 ## Recommended next round
 
 Start a Packaging / smoke confidence owner package, or write a Heavy runtime owner-decision memo for Office-to-PDF, HTML-to-PDF, PS/EPS, or external engine sandbox. Do not add runtime formats, dependencies, DB schema, IPC shape, Send Plan main-flow changes, asset-model changes, UI, Playwright/Electron harness, or external engines without a new owner decision.
+
+## DFC-M10 packaging / smoke confidence recovery notes
+
+- DFC-M10 is documentation-only. It does not add a smoke harness, runtime, dependency, DB schema, IPC shape, Send Plan flow, asset model, UI, CI integration, packaged installer, external engine, npm audit work, ESLint work, or legacy bridge behavior.
+- Added `dfc-m10-packaging-smoke-confidence-owner-memo.md` after read-only inspection of package scripts, Vite/Vitest/Electron config, existing smoke scripts, Playwright dependency, e2e tests, preload tests, and DFC UI seams.
+- Existing `verify:live` / `gate:tc14` runs `scripts/gates/tc14-ui-live-smoke.mjs`, which is an OpenRouter chat/completions network smoke and does not launch Electron, browser UI, preload, composer, attachment details, preview, or Send Plan.
+- Existing `tests/e2e/*smoke.test.ts` are Vitest fixture replay tests, not real browser/Electron process smoke.
+- `playwright` and `@axe-core/playwright` are already present, but no Playwright config, Electron launch helper, packaged smoke runner, or app readiness helper was found.
+- M10 stops at owner memo because implementing a reliable real smoke requires a dedicated harness package: launch strategy, isolated `userData`, DB/config/log/temp cleanup, Electron ABI target, app readiness, Windows child-process cleanup, and a DFC fixture seam.
+- Recommended next package is an Electron smoke harness using Playwright `_electron` against development or built Electron output. Start with app shell plus scoped preload, then add DFC attachment UI seam only if it does not require app bootstrap, DB schema, Send Plan, asset model, IPC, or UI architecture changes.
+- Heavy runtime owner decisions for Office-to-PDF, HTML-to-PDF, PS/EPS, or external engine sandbox should wait until after at least one smoke confidence package lands.
+
+## Recommended next round
+
+DFC-M11 should be an owner-approved Electron smoke harness package. Keep it to one smoke path, no CI, no packaged installer, no OS file picker automation, no runtime expansion, and no broad E2E platform.
