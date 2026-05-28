@@ -17,8 +17,9 @@ const appUrl = `${viteUrl}?sv-electron-smoke-dfc=1`
 const mainPath = path.join(repoRoot, 'dist-electron', 'main.js')
 const viteConfigPath = path.join(repoRoot, 'scripts', 'smoke', 'vite.renderer-smoke.config.ts')
 const tmpRoot = path.join(os.tmpdir(), `starverse-electron-smoke-${process.pid}`)
-const dfcSmokeAssetId = 'asset-dfc-smoke'
-const dfcSmokePreviewText = 'Electron smoke DFC markdown preview from selected option.'
+const dfcSmokeFixtureFilename = 'electron-smoke-backend-dfc.md'
+const dfcSmokeFixturePreviewText = 'Backend-owned DFC markdown preview from smoke fixture.'
+const dfcSmokeFixturePath = path.join(tmpRoot, dfcSmokeFixtureFilename)
 
 function section(title) {
   process.stdout.write(`\n${'='.repeat(80)}\n${title}\n${'='.repeat(80)}\n`)
@@ -100,6 +101,16 @@ async function main() {
   }
 
   await fs.mkdir(tmpRoot, { recursive: true })
+  await fs.writeFile(
+    dfcSmokeFixturePath,
+    [
+      '# Electron Smoke Backend DFC',
+      '',
+      dfcSmokeFixturePreviewText,
+      '',
+    ].join('\n'),
+    'utf8',
+  )
 
   section('Start renderer dev server')
   const vite = spawnVite()
@@ -168,24 +179,40 @@ async function main() {
     if (!result.dbBridgeExposed) throw new Error('dbBridge scoped preload object is missing')
 
     section('Assert DFC attachment smoke seam')
-    await page.waitForSelector(`[data-testid="draft-attachment-card-${dfcSmokeAssetId}"]`, { timeout: 60_000 })
-    await page.click(`[data-testid="draft-attachment-card-${dfcSmokeAssetId}"]`)
+    await page.waitForFunction(
+      () => typeof window.__starverseElectronSmokeSeedDfcAttachment === 'function',
+      undefined,
+      { timeout: 60_000 },
+    )
+    const seedResult = await page.evaluate(async (filePath) => {
+      const seed = window.__starverseElectronSmokeSeedDfcAttachment
+      if (typeof seed !== 'function') throw new Error('DFC smoke backend seeder is missing')
+      return await seed(filePath)
+    }, dfcSmokeFixturePath)
+    console.log(JSON.stringify(seedResult, null, 2))
+
+    if (!seedResult.backendOwned) throw new Error('DFC smoke did not use backend-owned seeding')
+    if (!seedResult.assetId || seedResult.assetId === 'asset-dfc-smoke') throw new Error('DFC smoke asset id was not backend-created')
+    if (!seedResult.optionId || !seedResult.optionId.includes(':markdown:')) throw new Error('DFC smoke markdown option was not backend-owned')
+
+    await page.waitForSelector(`[data-testid="draft-attachment-card-${seedResult.assetId}"]`, { timeout: 60_000 })
+    await page.click(`[data-testid="draft-attachment-card-${seedResult.assetId}"]`)
     await page.waitForSelector('[data-testid="draft-attachment-details-dialog"]', { timeout: 60_000 })
     await page.waitForSelector('[data-testid="draft-attachment-dfc-option-markdown"]', { timeout: 60_000 })
     await page.waitForSelector('[data-testid="draft-attachment-dfc-preview-text"]', { timeout: 60_000 })
 
-    const dfcResult = await page.evaluate(() => ({
-      attachmentVisible: Boolean(document.querySelector('[data-testid="draft-attachment-card-asset-dfc-smoke"]')),
+    const dfcResult = await page.evaluate((assetId) => ({
+      attachmentVisible: Boolean(document.querySelector(`[data-testid="draft-attachment-card-${assetId}"]`)),
       detailsVisible: Boolean(document.querySelector('[data-testid="draft-attachment-details-dialog"]')),
       markdownOptionText: document.querySelector('[data-testid="draft-attachment-dfc-option-markdown"]')?.textContent ?? '',
       previewText: document.querySelector('[data-testid="draft-attachment-dfc-preview-text"]')?.textContent ?? '',
-    }))
+    }), seedResult.assetId)
     console.log(JSON.stringify(dfcResult, null, 2))
 
     if (!dfcResult.attachmentVisible) throw new Error('DFC smoke attachment card is missing')
     if (!dfcResult.detailsVisible) throw new Error('DFC smoke attachment details dialog is missing')
     if (!dfcResult.markdownOptionText.includes('Markdown')) throw new Error('DFC markdown option is missing')
-    if (!dfcResult.previewText.includes(dfcSmokePreviewText)) throw new Error('DFC preview text is missing')
+    if (!dfcResult.previewText.includes(dfcSmokeFixturePreviewText)) throw new Error('DFC preview text is missing')
 
     console.log('\nPASS: Electron DFC attachment smoke completed')
   } catch (error) {
