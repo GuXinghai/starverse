@@ -1281,3 +1281,16 @@ If M11 validation is stable, DFC-M12 can add one DFC attachment smoke seam on to
 ## Recommended next round
 
 DFC-M13 should only attempt a real backend-owned DFC attachment smoke if it can remain low-intrusion without app bootstrap, DB schema, Send Plan, asset model, IPC/preload, OS file picker, packaged installer, or CI changes. Otherwise stop smoke expansion and move to the heavy runtime owner-decision package.
+
+## DFC-M13 backend-owned attachment smoke recovery notes
+
+- DFC-M13 promotes the M12 controlled Electron smoke seam into a backend-owned DFC attachment smoke while keeping the same low-intrusion boundary.
+- The smoke runner creates a temporary markdown fixture under the smoke temp directory and calls a DEV/query-gated page seeder. The seeder uses existing backend APIs through `dbBridge`: `fileIngestion.ingestLocalFile`, `conversationDraft.addAttachment`, `conversationDraft.ensureDfcOptions`, `conversationDraft.updateAttachmentSettings`, and `conversationDraft.getDfcPreview`.
+- The smoke verifies app shell readiness, composer visibility, scoped preload objects, absence of raw `window.ipcRenderer`, backend-created `assetId` / `attachmentId`, backend-owned markdown `optionId`, attachment chip/details visibility, markdown option visibility, and selected-option preview text from the backend derived asset.
+- `npm run test:electron-smoke` now includes `npm run build:worker` after `npm run rebuild:electron`. M13 needed this because the backend-owned smoke touches current DB worker DFC methods; without building the worker, Electron used stale worker code and failed with `Unknown method: conversationDraft.ensureDfcOptions`.
+- M13 does not add OS file picker automation, packaged installer smoke, CI, full E2E framework, DB schema changes, Send Plan main-flow changes, asset model changes, DFC option semantic changes, runtime expansion, dependency changes, or external engines.
+- Validation passed: `git diff --check`; `npx vue-tsc --noEmit --pretty false`; `npm run test:electron-smoke`. The final ABI target is Electron because the smoke rebuilds `better-sqlite3` for Electron before launch.
+
+## Recommended next round
+
+Close the DFC smoke confidence path here unless a narrowly scoped Send Plan observation can be added without changing app bootstrap, DB schema, Send Plan main-flow, asset model, IPC/preload architecture, packaged installer, CI, or OS file picker behavior. The recommended next package is a heavy runtime owner decision memo for Office-to-PDF, HTML-to-PDF, PS/EPS, and external engine sandbox boundaries.

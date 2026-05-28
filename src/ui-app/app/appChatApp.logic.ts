@@ -4719,6 +4719,108 @@ export function useAppChatAppLogic() {
     }
   }
 
+  type ElectronSmokeDfcBackendSeedResult = Readonly<{
+    backendOwned: true
+    conversationId: string
+    assetId: string
+    attachmentId: string
+    optionId: string
+    targetKind: DfcTargetKind
+    sendStrategy: DfcSendStrategy
+    previewText: string | null
+  }>
+
+  type ElectronSmokeDfcWindow = Window & {
+    __starverseElectronSmokeSeedDfcAttachment?: (filePath: string) => Promise<ElectronSmokeDfcBackendSeedResult>
+  }
+
+  function installElectronSmokeDfcBackendSeeder() {
+    if (!isElectronSmokeDfcFixtureEnabled()) return
+    if (typeof window === 'undefined') return
+    const smokeWindow = window as ElectronSmokeDfcWindow
+    smokeWindow.__starverseElectronSmokeSeedDfcAttachment = seedElectronSmokeBackendDfcAttachment
+  }
+
+  async function seedElectronSmokeBackendDfcAttachment(filePath: string): Promise<ElectronSmokeDfcBackendSeedResult> {
+    if (!isElectronSmokeDfcFixtureEnabled()) throw new Error('Electron smoke DFC seam is disabled')
+    const normalizedFilePath = String(filePath ?? '').trim()
+    if (!normalizedFilePath) throw new Error('Electron smoke DFC fixture path is required')
+
+    const conversationId = await ensureActiveConvo()
+    const ingestion = await ingestLocalFile({
+      filePath: normalizedFilePath,
+      mimeType: 'text/markdown',
+      sourceKind: 'generated',
+    })
+    if (!ingestion.success || !ingestion.assetId) {
+      throw new Error('Electron smoke DFC fixture ingestion failed')
+    }
+
+    const attachment = await addConversationDraftAttachment({
+      conversationId,
+      assetId: ingestion.assetId,
+      attachmentOrder: 0,
+      includeInNextRequest: true,
+    })
+    await refreshDraftAttachmentViewModels()
+
+    const ensuredOptions = await ensureConversationDraftAttachmentDfcOptions({
+      conversationId,
+      assetId: ingestion.assetId,
+    })
+    const markdownOption = ensuredOptions.options.find((option) =>
+      option.targetKind === 'markdown'
+      && option.sendStrategy === 'text_in_prompt'
+      && option.isAvailable
+      && option.sendAssetRefs.some((ref) => ref.kind === 'derived_asset')
+    )
+    if (!markdownOption) {
+      draftAttachmentDfcOptionsByAssetId.value = {
+        ...draftAttachmentDfcOptionsByAssetId.value,
+        [ingestion.assetId]: ensuredOptions,
+      }
+      throw new Error('Electron smoke DFC backend markdown option is unavailable')
+    }
+
+    await updateConversationDraftAttachmentSettings({
+      conversationId,
+      assetId: ingestion.assetId,
+      dfcManaged: true,
+      selectedOptionId: markdownOption.optionId,
+      selectedAssetRefs: markdownOption.sendAssetRefs,
+    })
+    await refreshDraftAttachmentViewModels()
+
+    const selectedOptions = await ensureConversationDraftAttachmentDfcOptions({
+      conversationId,
+      assetId: ingestion.assetId,
+    })
+    const preview = await getConversationDraftAttachmentDfcPreview({
+      conversationId,
+      assetId: ingestion.assetId,
+      maxCharacters: 2048,
+    })
+    draftAttachmentDfcOptionsByAssetId.value = {
+      ...draftAttachmentDfcOptionsByAssetId.value,
+      [ingestion.assetId]: selectedOptions,
+    }
+    draftAttachmentDfcPreviewByAssetId.value = {
+      ...draftAttachmentDfcPreviewByAssetId.value,
+      [ingestion.assetId]: preview,
+    }
+
+    return {
+      backendOwned: true,
+      conversationId,
+      assetId: ingestion.assetId,
+      attachmentId: attachment.id,
+      optionId: markdownOption.optionId,
+      targetKind: markdownOption.targetKind,
+      sendStrategy: markdownOption.sendStrategy,
+      previewText: preview.preview.text,
+    }
+  }
+
   function applyElectronSmokeDfcAttachmentFixture() {
     if (!isElectronSmokeDfcFixtureEnabled()) return
 
@@ -8640,7 +8742,7 @@ export function useAppChatAppLogic() {
       isReady.value = true
       if (isElectronSmokeDfcFixtureEnabled()) {
         await nextTick()
-        applyElectronSmokeDfcAttachmentFixture()
+        installElectronSmokeDfcBackendSeeder()
       }
     }
   })
