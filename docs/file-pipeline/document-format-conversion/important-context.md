@@ -1229,3 +1229,16 @@ DFC-M8 should harden DOCX pilot boundaries with targeted tests for malformed DOC
 ## Recommended next round
 
 If validation passes, DOCX can remain a Phase 1 backend-only supported pilot. Next work should either add another narrow DOCX hardening slice or move to an owner decision for Office/PDF/external-engine boundaries; do not expand into `.doc`, `.rtf`, Turndown, Pandoc, LibreOffice, Office-to-PDF, HTML-to-PDF, PS/EPS, UI, or external engines without approval.
+## DFC-M9 runtime pilot closeout recovery notes
+
+- DFC-M9 is documentation-only. It closes the runtime pilot expansion stage without changing production code, tests, dependencies, DB schema, IPC shape, Send Plan flow, asset model, UI, Playwright/Electron harness, external engine, packaging, npm audit, ESLint, or legacy bridge behavior.
+- Added `dfc-m9-runtime-pilot-closeout.md` as the runtime pilot closeout. It records Phase 1 supported paths, backend-only pilot boundaries, dependency boundaries, Safety Gate conclusions, known risks, and next owner-gated directions.
+- Current Phase 1 supported/pilot matrix includes `original_file`, `plain_text`, `markdown`, `code`, CSV/TSV `table_markdown`, HTML safe `markdown`/`code`, XLSX-first backend-only `table_markdown`, and DOCX-first backend-only `markdown`.
+- XLSX remains `.xlsx` only via backend ExcelJS; `.xls`, formula evaluation, macros, images/charts extraction, hidden sheet UI, sheet picker UI, pagination UI, and workbook productization remain unsupported.
+- DOCX remains `.docx` only via backend Mammoth library usage plus the internal safe HTML-to-markdown text path. `.doc`, `.rtf`, Turndown, Pandoc, LibreOffice, Office-to-PDF, HTML-to-PDF, image extraction, layout fidelity, comments/revisions productization, external resources, embedded objects, macros, and shell/external process conversion remain unsupported.
+- Safety-Gate-1 removed raw renderer `ipcRenderer` exposure and sealed the identified image source arbitrary local-path-read entry. Safety-Gate-2 found no same-class P0/P1, no DFC renderer DTO privacy P0/P1, and made no code changes. Gate-3 is skipped.
+- The two remaining owner-gated directions are Packaging / smoke confidence and Heavy runtime owner decision. Packaging / smoke confidence is recommended first because it validates the existing Phase 1 and backend-only pilot paths before expanding into Office/PDF/PS-EPS/external-engine work.
+
+## Recommended next round
+
+Start a Packaging / smoke confidence owner package, or write a Heavy runtime owner-decision memo for Office-to-PDF, HTML-to-PDF, PS/EPS, or external engine sandbox. Do not add runtime formats, dependencies, DB schema, IPC shape, Send Plan main-flow changes, asset-model changes, UI, Playwright/Electron harness, or external engines without a new owner decision.
