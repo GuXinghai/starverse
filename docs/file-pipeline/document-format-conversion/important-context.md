@@ -1257,3 +1257,15 @@ Start a Packaging / smoke confidence owner package, or write a Heavy runtime own
 ## Recommended next round
 
 DFC-M11 should be an owner-approved Electron smoke harness package. Keep it to one smoke path, no CI, no packaged installer, no OS file picker automation, no runtime expansion, and no broad E2E platform.
+
+## DFC-M11 Electron smoke harness seed recovery notes
+
+- DFC-M11 adds the first real Electron smoke harness seed after Owner approval. It is limited to app shell plus scoped preload confidence and does not implement DFC attachment upload, OS file picker automation, attachment details, preview, selected refs, Send Plan, packaged installer, CI, runtime expansion, DB schema changes, IPC architecture changes, asset model changes, or heavy runtime work.
+- Added `npm run test:electron-smoke`, which runs `npm run rebuild:electron`, builds current Vite/Electron artifacts with the existing `vite.config.ts`, and then runs `scripts/smoke/electron-shell-smoke.mjs`.
+- Added `scripts/smoke/vite.renderer-smoke.config.ts` so the smoke can start a renderer-only Vite dev server without invoking the interactive Electron dev plugin startup path.
+- The smoke launches current `dist-electron/main.js` with Playwright `_electron`, points it at the renderer dev server through `VITE_DEV_SERVER_URL`, waits for `#app` / composer shell readiness, verifies `window.ipcRenderer` is not exposed, and verifies scoped `electronAPI`, `electronStore`, and `dbBridge` preload objects exist.
+- The smoke intentionally does not add a Playwright test platform, Playwright config, fixture framework, CI integration, packaged installer smoke, or true DFC attachment flow.
+
+## Recommended next round
+
+If M11 validation is stable, DFC-M12 can add one DFC attachment smoke seam on top of the harness. Keep it to one backend-owned option/preview/send-gate observation and stop if it requires app bootstrap, DB schema, Send Plan, asset model, IPC architecture, UI architecture, OS file picker, or packaged installer changes.

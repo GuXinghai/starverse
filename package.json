@@ -34,6 +34,7 @@
     "test": "npm run rebuild:node && vitest --run",
     "test:model-catalog:smoke": "vitest --run src/shared/modelCatalog/openRouterCatalogClient.test.ts src/shared/modelCatalog/modelTagger.test.ts src/next/modelCatalog/catalogQueryService.test.ts src/next/modelCatalog/catalogSyncJob.test.ts infra/db/repo/modelCatalogRepo.test.ts tests/integration/model-catalog-sync-query-smoke.test.ts tests/integration/model-catalog-stage4-smoke.test.ts",
     "test:model-picker:smoke": "vitest --run tests/integration/model-catalog-sync-query-smoke.test.ts tests/integration/model-catalog-stage4-smoke.test.ts src/next/modelCatalog/catalogQueryService.test.ts src/next/modelCatalog/modelEndpointDetailService.test.ts src/ui-app/components/EndpointDetailPanel.test.ts src/ui-app/components/ModelPickerDialog.test.ts src/ui-app/components/ChatAppComposer.modelPicker.test.ts src/ui-app/AppChatApp.send.test.ts src/next/modelPrefs/modelPrefsService.test.ts infra/db/repo/modelPreferencesRepo.test.ts",
+    "test:electron-smoke": "npm run rebuild:electron && npx vite build --mode development --config vite.config.ts && node scripts/smoke/electron-shell-smoke.mjs",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
