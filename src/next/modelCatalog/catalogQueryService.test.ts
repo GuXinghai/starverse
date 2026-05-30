@@ -373,7 +373,11 @@ describe('CatalogQueryService.query', () => {
 
     expect(fetchImpl).toHaveBeenCalledTimes(1)
     expect(fetchImpl).toHaveBeenCalledWith(
-      expect.stringContaining('https://eu.openrouter.ai/api/v1/models?category=programming')
+      expect.stringContaining('https://eu.openrouter.ai/api/v1/models?category=programming'),
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Authorization: 'Bearer sk-test' }),
+      }),
     )
     expect(invoke.mock.calls.filter((call) => call[0] === 'modelCatalog.queryCore')).toHaveLength(2)
     expect(invoke).toHaveBeenNthCalledWith(
@@ -508,7 +512,13 @@ describe('CatalogQueryService.query', () => {
     })
 
     expect(fetchImpl).toHaveBeenCalledTimes(1)
-    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('category=programming'))
+    expect(fetchImpl).toHaveBeenCalledWith(
+      expect.stringContaining('category=programming'),
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.any(Object),
+      }),
+    )
     expect(invoke).toHaveBeenCalledWith(
       'modelCatalog.queryCore',
       expect.objectContaining({
