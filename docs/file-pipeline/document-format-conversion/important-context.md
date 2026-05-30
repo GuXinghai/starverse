@@ -1334,3 +1334,16 @@ DFC-M16 should be an HTML-to-PDF Pilot Owner Decision. It must choose whether th
 ## Recommended next round
 
 DFC-M17 should implement a minimal HTML->PDF `pdf_attachment` pilot only after owner chooses Playwright Chromium production runtime or dedicated Electron/Chromium conversion window. Keep JS disabled by default, deny external resources/network/local files by default, isolate profile/session per job, validate PDF output, and bind preview/send to the same managed `derived_asset`.
+
+## DFC-M17 HTML-to-PDF browser runtime blocker recovery notes
+
+- DFC-M17 attempted a minimal HTML->PDF `pdf_attachment` backend pilot after Owner approved Playwright Chromium as the first conversion runtime strategy.
+- The attempt stopped before commit because Playwright Chromium could not launch: the executable was missing from the local Playwright cache at `C:\Users\m1389\AppData\Local\ms-playwright\chromium_headless_shell-1200\chrome-headless-shell-win64\chrome-headless-shell.exe`.
+- `npx playwright install chromium` was not run because adding or downloading a browser binary requires a fresh Owner browser runtime / packaging decision.
+- The uncommitted implementation and M17 test diff was reverted from `infra/files/derivativeJobService.ts`, `infra/db/worker/handlers/filePipelineHandlers.ts`, `infra/files/conversationAttachmentService.ts`, and `infra/db/worker.filePipeline.test.ts`.
+- No production HTML->PDF runtime is committed. HTML->PDF remains unimplemented; `pdf_attachment` remains vocabulary/contract plus future heavy-runtime target.
+- Validation before rollback: `npm run rebuild:node` passed, `git diff --check` passed, `npx vue-tsc --noEmit --pretty false` passed after a type narrowing, and targeted Vitest failed only in the new M17 HTML->PDF worker test due to the missing Chromium executable.
+
+## Recommended next round
+
+Do not resume HTML->PDF implementation until Owner decides Playwright Chromium binary installation and packaging policy. The next package should either approve the browser binary lifecycle and resume M17, or choose the M16 fallback strategy: isolated Electron/Chromium conversion window or managed external engine package.
