@@ -1443,3 +1443,17 @@ Run a focused Electron HTML-to-PDF hardening package before broad support claims
 ## Recommended next round
 
 Either close out the HTML-to-PDF pilot with a production-readiness owner decision, or open a separate Office->PDF owner memo. Do not add new heavy runtimes until the HTML-to-PDF pilot boundary and packaging/runtime expectations are accepted.
+
+## DFC-M20 HTML-to-PDF pilot closeout recovery notes
+
+- M20 is documentation-only and closes the current Electron-backed HTML-to-PDF pilot phase.
+- Current supported pilot scope: managed local `.html` / `.htm` assets can produce `converted_pdf` DerivedAssets exposed as DFC `pdf_attachment` options with `file_attachment` + `derived_asset` semantics.
+- PDF preview remains metadata-only; Send Plan remains selected-ref plus verified DerivedAsset authoritative; DFC-managed selected PDF options do not silently fall back to legacy routing.
+- Dedicated Electron conversion window policy remains: no app renderer reuse, no app preload, no user session reuse, per-job temporary session, JavaScript disabled, network/external resources blocked, local file access blocked, popups/downloads/arbitrary navigation blocked.
+- Failure, timeout, unavailable service, output escape, missing output, and invalid/non-PDF output remain fail-closed and create no ready DerivedAsset.
+- Production readiness decision: allow backend pilot support, but do not declare broad production readiness until a real Electron smoke or packaged/runtime confidence path exercises an actual HTML-to-PDF job.
+- Office->PDF and PS/EPS remain unsupported and require separate owner decisions.
+
+## Recommended next round
+
+Prefer M21 HTML-to-PDF packaged/electron smoke confidence before Office->PDF. Choose M21 Office->PDF owner decision first only if Owner explicitly prioritizes expanding runtime family over de-risking the existing HTML-to-PDF pilot.
