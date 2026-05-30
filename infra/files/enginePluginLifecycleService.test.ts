@@ -930,6 +930,7 @@ describe('EnginePluginLifecycleService', () => {
         enabled: false,
         healthStatus: 'unknown',
       })
+      await waitForPathToDisappear(path.join(fixture.tempRoot, `magika.stage-${result.value.operationId}`))
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })
