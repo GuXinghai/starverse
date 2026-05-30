@@ -1347,3 +1347,29 @@ DFC-M17 should implement a minimal HTML->PDF `pdf_attachment` pilot only after o
 ## Recommended next round
 
 Do not resume HTML->PDF implementation until Owner decides Playwright Chromium binary installation and packaging policy. The next package should either approve the browser binary lifecycle and resume M17, or choose the M16 fallback strategy: isolated Electron/Chromium conversion window or managed external engine package.
+
+## DFC-M17A Playwright Chromium runtime packaging decision recovery notes
+
+- DFC-M17A is documentation-only. It does not implement HTML->PDF, download Chromium, change `package-lock.json`, change runtime code, package the app, or wire CI.
+- Decision: Playwright Chromium can be the HTML->PDF rendering API, but production must not depend on the user's global Playwright cache, postinstall browser downloads, arbitrary system Chrome/Edge, or the app renderer/preload/session.
+- Recommended production packaging: Starverse managed engine/runtime package for Playwright Chromium, with per-platform manifest, pinned Playwright/browser revision, artifact hash, provenance/license metadata, executable discovery, and health checks.
+- Runtime auto-download remains disallowed by default. Missing or invalid browser runtime should fail closed with sanitized diagnostics such as `html_pdf_browser_runtime_missing` or `html_pdf_browser_runtime_invalid`, and must not create a ready DerivedAsset or silently fall back to legacy routing.
+- Base app size should not grow unless Owner explicitly approves bundling Chromium in the main installer. Preferred shape is optional managed engine package or offline-installable engine artifact.
+- M15 remains the sandbox boundary for controlled input copy, output directory/path validation, timeout/cleanup, sanitized diagnostics, and fail-closed result. Browser runtime discovery does not replace sandbox rules.
+
+## Recommended next round
+
+Resume HTML->PDF implementation as DFC-M17B only after Owner approves the managed browser runtime / packaging policy. If Owner rejects managed Playwright Chromium packaging, choose the M16 fallback: dedicated isolated Electron conversion window or managed external engine package.
+
+## DFC-M17B managed browser runtime gate recovery notes
+
+- M17B adds a backend-only managed Playwright Chromium availability gate for the future HTML->PDF `pdf_attachment` runtime.
+- The gate expects a Starverse-managed runtime manifest under the app-managed runtime root and validates runtime id, platform, executable path containment, executable existence, optional size, and optional SHA-256 metadata.
+- Rejected executable paths include absolute paths, UNC paths, Windows drive-qualified paths, traversal, and NUL bytes. The gate does not accept renderer-provided paths, arbitrary user paths, Playwright cache paths, system Chrome/Edge, or runtime auto-download.
+- HTML `conversationDraft.ensureDfcOptions` keeps ready `original_file`, safe `markdown`, and `code` options. It now also exposes a blocked `pdf_attachment` candidate when the managed browser runtime is missing or invalid.
+- Runtime missing/invalid states do not launch Playwright, do not generate PDFs, do not create ready `converted_pdf` DerivedAssets, and do not introduce legacy fallback.
+- Diagnostics remain symbolic: `html_pdf_runtime_missing`, `html_pdf_runtime_manifest_invalid`, `html_pdf_runtime_executable_missing`, `html_pdf_runtime_path_rejected`, and `html_pdf_runtime_platform_unsupported`.
+
+## Recommended next round
+
+Do not claim HTML->PDF support yet. M17C real PDF generation should start only after Owner provides an approved managed Chromium runtime artifact or test fixture path and accepts the browser binary packaging/update policy from M17A.

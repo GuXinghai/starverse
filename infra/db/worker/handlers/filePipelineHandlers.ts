@@ -7,6 +7,11 @@ import type { SendPlan } from '../../../../src/shared/files/sendPlanTypes'
 import { serializeSendPlanForOpenRouter } from '../../../../src/next/openrouter/openRouterSendPlanSerializer'
 import type { DerivativeErrorCode, DfcOptionGenerationStateRecord, FileAssetRecord, FileDerivativeRecord } from '../../types'
 import {
+  DFC_HTML_PDF_RUNTIME_ID,
+  checkDfcHtmlPdfRuntimeAvailability,
+  getDfcHtmlPdfManagedRuntimeRoot,
+} from '../../../files/dfcManagedBrowserRuntime'
+import {
   CreateFileAssetSchema,
   CreateFileDerivativeSchema,
   CreateDerivativeJobSchema,
@@ -612,20 +617,27 @@ async function ensureDfcDraftAttachmentOptions(
   const targetKinds = asset ? inferDfcPhase1EnsureTargetKinds(asset) : []
   if (asset && targetKinds.length > 0 && isDfcPhase1EnsureSourceAsset(asset)) {
     for (const targetKind of targetKinds) {
-      await ensureTextDerivativeAsset(runtime, asset.id, targetKind, {
-        exposeDfcOption: true,
-        relevanceKey: `draft:${input.conversationId}:${input.assetId}`,
-        isStillRelevant: () => runtime.conversationAttachmentService.hasDraftAttachment(input),
-      })
+      if (targetKind === 'pdf_attachment') {
+        await ensureHtmlPdfRuntimeGateOption(runtime, asset.id, {
+          relevanceKey: `draft:${input.conversationId}:${input.assetId}`,
+          isStillRelevant: () => runtime.conversationAttachmentService.hasDraftAttachment(input),
+        })
+      } else {
+        await ensureTextDerivativeAsset(runtime, asset.id, targetKind, {
+          exposeDfcOption: true,
+          relevanceKey: `draft:${input.conversationId}:${input.assetId}`,
+          isStillRelevant: () => runtime.conversationAttachmentService.hasDraftAttachment(input),
+        })
+      }
     }
   }
   return runtime.conversationAttachmentService.getDfcDraftAttachmentOptions(input)
 }
 
-function inferDfcPhase1EnsureTargetKinds(asset: FileAssetRecord): readonly ('plain_text' | 'markdown' | 'code' | 'table_markdown')[] {
+function inferDfcPhase1EnsureTargetKinds(asset: FileAssetRecord): readonly ('plain_text' | 'markdown' | 'code' | 'table_markdown' | 'pdf_attachment')[] {
   const ext = String(asset.extension ?? '').trim().toLowerCase()
   const mime = normalizeMime(asset.mime)
-  if (ext === 'html' || ext === 'htm' || mime === 'text/html') return ['markdown', 'code']
+  if (ext === 'html' || ext === 'htm' || mime === 'text/html') return ['markdown', 'code', 'pdf_attachment']
   const candidates = ['table_markdown', 'markdown', 'code', 'plain_text'] as const
   return candidates.filter((targetKind) => isDfcPhase1TextConversionAsset(asset, targetKind))
 }
@@ -634,6 +646,45 @@ function isDfcPhase1EnsureSourceAsset(asset: FileAssetRecord): boolean {
   return asset.deletedAt == null
     && asset.ingestStatus === 'stored'
     && asset.storageBackend === 'local_fs'
+}
+
+async function ensureHtmlPdfRuntimeGateOption(
+  runtime: DbWorkerRuntime,
+  assetId: string,
+  options: Readonly<{
+    relevanceKey?: string
+    isStillRelevant?: () => boolean
+  }>
+): Promise<TextDerivativeEnsureResult> {
+  const targetKind = 'pdf_attachment'
+  const settingsHash = sha256Bytes(Buffer.from(JSON.stringify({
+    targetKind,
+    runtimeId: DFC_HTML_PDF_RUNTIME_ID,
+    gate: 'availability_only',
+  })))
+  const generationState = runtime.dfcOptionGenerationStateRepo.ensure({
+    assetId,
+    targetKind,
+    derivedKind: 'converted_pdf',
+    exposureMode: 'dfc',
+    generator: DFC_HTML_PDF_RUNTIME_GATE_GENERATOR,
+    conversionSettingsHash: settingsHash,
+  })
+  if (!isDfcOptionGenerationStillRelevant(options)) {
+    runtime.dfcOptionGenerationStateRepo.markBlocked({
+      id: generationState.id,
+      errorCode: 'draft_attachment_detached',
+    })
+    return { changed: false }
+  }
+  const availability = await checkDfcHtmlPdfRuntimeAvailability({
+    managedRuntimeRootDir: getDfcHtmlPdfManagedRuntimeRoot(runtime.fileStorageRootDir),
+  })
+  runtime.dfcOptionGenerationStateRepo.markBlocked({
+    id: generationState.id,
+    errorCode: availability.ok ? 'conversion_not_implemented' : availability.diagnostics[0]?.code ?? 'html_pdf_runtime_missing',
+  })
+  return { changed: true }
 }
 
 async function ensureTextDerivativeAsset(
@@ -1049,6 +1100,7 @@ function isRouteLevelTextConversionFailure(errorCode: string): boolean {
 const DFC_TEXT_CONVERTER_NAME = 'starverse-text-derivative'
 const DFC_TEXT_CONVERTER_VERSION = '1'
 const DFC_TEXT_DERIVATIVE_JOB_GENERATOR = 'step3-text-structured-conversion'
+const DFC_HTML_PDF_RUNTIME_GATE_GENERATOR = 'dfc-html-pdf-runtime-gate'
 const DFC_TEXT_CODE_EXTENSIONS = new Set([
   'js', 'ts', 'jsx', 'tsx', 'py', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd',
   'json', 'yaml', 'yml', 'xml', 'toml', 'ini', 'env', 'sql', 'go', 'rs',
@@ -1079,8 +1131,8 @@ function buildDfcTextConversionMetadata(
   }
 }
 
-function isDfcPhase1DerivedTargetKind(value: string): value is 'plain_text' | 'markdown' | 'code' | 'table_markdown' {
-  return value === 'plain_text' || value === 'markdown' || value === 'code' || value === 'table_markdown'
+function isDfcPhase1DerivedTargetKind(value: string): value is 'plain_text' | 'markdown' | 'code' | 'table_markdown' | 'pdf_attachment' {
+  return value === 'plain_text' || value === 'markdown' || value === 'code' || value === 'table_markdown' || value === 'pdf_attachment'
 }
 
 function normalizeDerivativeErrorCode(value: string | null | undefined): DerivativeErrorCode {

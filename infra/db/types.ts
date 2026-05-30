@@ -309,6 +309,11 @@ export type DerivativeErrorCode =
   | 'embedding_output_write_failed'
 
 export type DfcOptionGenerationErrorCode = DerivativeErrorCode | 'draft_attachment_detached'
+  | 'html_pdf_runtime_missing'
+  | 'html_pdf_runtime_manifest_invalid'
+  | 'html_pdf_runtime_executable_missing'
+  | 'html_pdf_runtime_path_rejected'
+  | 'html_pdf_runtime_platform_unsupported'
 
 export type FileAssetRecord = Readonly<{
   id: string
