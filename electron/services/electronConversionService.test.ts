@@ -6,6 +6,7 @@ import {
   createMainProcessElectronConversionService,
   MainProcessElectronConversionService,
 } from './electronConversionService'
+import { successElectronConversionResponse } from '../../infra/files/electronConversionServiceContract'
 
 const root = path.join(os.tmpdir(), 'starverse-electron-conversion-main')
 
@@ -44,16 +45,26 @@ describe('main-process electron conversion service skeleton', () => {
     expect([...STARTUP_IPC_CHANNELS].some((channel) => channel.includes('html-pdf'))).toBe(false)
   })
 
-  it('fails closed for supported html_to_pdf until the dedicated window adapter exists', async () => {
-    const response = await createMainProcessElectronConversionService().convert(validRequest())
+  it('delegates supported html_to_pdf requests to the dedicated conversion adapter', async () => {
+    const service = createMainProcessElectronConversionService({
+      htmlToPdfAdapter: {
+        async convert(request) {
+          return successElectronConversionResponse({
+            request,
+            outputPath: request.resolvedOutputPath,
+          })
+        },
+      },
+    })
+
+    const response = await service.convert(validRequest())
 
     expect(response).toMatchObject({
       requestId: 'req-main-service-1',
       conversionKind: 'html_to_pdf',
-      status: 'unavailable',
-      output: null,
-      cleanupStatus: 'not_requested',
-      diagnostics: [expect.objectContaining({ code: 'electron_conversion_service_unavailable' })],
+      status: 'success',
+      output: { kind: 'controlled_output', mime: 'application/pdf', extension: 'pdf' },
+      cleanupStatus: 'attempted',
     })
   })
 
