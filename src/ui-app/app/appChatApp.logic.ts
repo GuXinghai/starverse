@@ -4730,8 +4730,23 @@ export function useAppChatAppLogic() {
     previewText: string | null
   }>
 
+  type ElectronSmokeDfcHtmlPdfSeedResult = Readonly<{
+    backendOwned: true
+    conversationId: string
+    assetId: string
+    attachmentId: string
+    optionId: string
+    targetKind: DfcTargetKind
+    sendStrategy: DfcSendStrategy
+    selectedAssetRefs: DfcSendAssetRef[]
+    previewKind: string
+    previewStatus: string | null
+    availableTargets: DfcTargetKind[]
+  }>
+
   type ElectronSmokeDfcWindow = Window & {
     __starverseElectronSmokeSeedDfcAttachment?: (filePath: string) => Promise<ElectronSmokeDfcBackendSeedResult>
+    __starverseElectronSmokeSeedHtmlPdfAttachment?: (filePath: string) => Promise<ElectronSmokeDfcHtmlPdfSeedResult>
   }
 
   function installElectronSmokeDfcBackendSeeder() {
@@ -4739,6 +4754,7 @@ export function useAppChatAppLogic() {
     if (typeof window === 'undefined') return
     const smokeWindow = window as ElectronSmokeDfcWindow
     smokeWindow.__starverseElectronSmokeSeedDfcAttachment = seedElectronSmokeBackendDfcAttachment
+    smokeWindow.__starverseElectronSmokeSeedHtmlPdfAttachment = seedElectronSmokeBackendHtmlPdfAttachment
   }
 
   async function seedElectronSmokeBackendDfcAttachment(filePath: string): Promise<ElectronSmokeDfcBackendSeedResult> {
@@ -4818,6 +4834,91 @@ export function useAppChatAppLogic() {
       targetKind: markdownOption.targetKind,
       sendStrategy: markdownOption.sendStrategy,
       previewText: preview.preview.text,
+    }
+  }
+
+  async function seedElectronSmokeBackendHtmlPdfAttachment(filePath: string): Promise<ElectronSmokeDfcHtmlPdfSeedResult> {
+    if (!isElectronSmokeDfcFixtureEnabled()) throw new Error('Electron smoke DFC seam is disabled')
+    const normalizedFilePath = String(filePath ?? '').trim()
+    if (!normalizedFilePath) throw new Error('Electron smoke HTML fixture path is required')
+
+    const conversationId = await ensureActiveConvo()
+    const ingestion = await ingestLocalFile({
+      filePath: normalizedFilePath,
+      mimeType: 'text/html',
+      sourceKind: 'generated',
+    })
+    if (!ingestion.success || !ingestion.assetId) {
+      throw new Error('Electron smoke HTML fixture ingestion failed')
+    }
+
+    const attachment = await addConversationDraftAttachment({
+      conversationId,
+      assetId: ingestion.assetId,
+      attachmentOrder: draftAttachmentRecords.value.length,
+      includeInNextRequest: true,
+    })
+    await refreshDraftAttachmentViewModels()
+
+    const ensuredOptions = await ensureConversationDraftAttachmentDfcOptions({
+      conversationId,
+      assetId: ingestion.assetId,
+    })
+    const pdfOption = ensuredOptions.options.find((option) =>
+      option.targetKind === 'pdf_attachment'
+      && option.sendStrategy === 'file_attachment'
+      && option.isAvailable
+      && option.sendAssetRefs.some((ref) => ref.kind === 'derived_asset')
+    )
+    if (!pdfOption) {
+      draftAttachmentDfcOptionsByAssetId.value = {
+        ...draftAttachmentDfcOptionsByAssetId.value,
+        [ingestion.assetId]: ensuredOptions,
+      }
+      throw new Error('Electron smoke HTML PDF option is unavailable')
+    }
+
+    await updateConversationDraftAttachmentSettings({
+      conversationId,
+      assetId: ingestion.assetId,
+      dfcManaged: true,
+      selectedOptionId: pdfOption.optionId,
+      selectedAssetRefs: [...pdfOption.sendAssetRefs],
+    })
+    await refreshDraftAttachmentViewModels()
+
+    const selectedOptions = await ensureConversationDraftAttachmentDfcOptions({
+      conversationId,
+      assetId: ingestion.assetId,
+    })
+    const preview = await getConversationDraftAttachmentDfcPreview({
+      conversationId,
+      assetId: ingestion.assetId,
+      maxCharacters: 2048,
+    })
+    draftAttachmentDfcOptionsByAssetId.value = {
+      ...draftAttachmentDfcOptionsByAssetId.value,
+      [ingestion.assetId]: selectedOptions,
+    }
+    draftAttachmentDfcPreviewByAssetId.value = {
+      ...draftAttachmentDfcPreviewByAssetId.value,
+      [ingestion.assetId]: preview,
+    }
+
+    return {
+      backendOwned: true,
+      conversationId,
+      assetId: ingestion.assetId,
+      attachmentId: attachment.id,
+      optionId: pdfOption.optionId,
+      targetKind: pdfOption.targetKind,
+      sendStrategy: pdfOption.sendStrategy,
+      selectedAssetRefs: [...pdfOption.sendAssetRefs],
+      previewKind: preview.preview.kind,
+      previewStatus: preview.preview.status,
+      availableTargets: selectedOptions.options
+        .filter((option) => option.isAvailable)
+        .map((option) => option.targetKind),
     }
   }
 
