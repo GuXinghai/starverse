@@ -10,6 +10,8 @@ import {
 } from './officialPluginTrustedRoots'
 import { createCatalogSigningPayload, verifyCatalogSignature } from './pluginCatalogSignature'
 
+const OFFICIAL_ROOT_ID = 'starverse-official-plugin-ed25519-2026-05'
+
 describe('officialPluginTrustedRoots', () => {
   it('returns official_trusted_root_unconfigured when no roots configured for production', () => {
     const result = getActiveTrustedRoots({})
@@ -91,7 +93,7 @@ describe('officialPluginTrustedRoots', () => {
     const roots = createOfficialTrustedRoots(
       '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAiaIm/edVF9H9tvP4dFVpw5XF+IMfnfvLwUxGNAc5MI0=\n-----END PUBLIC KEY-----'
     )
-    expect(roots['starverse-pdp-ed25519-prod-2026Q2']).toBeDefined()
+    expect(roots[OFFICIAL_ROOT_ID]).toBeDefined()
   })
 
   it('parseTrustedRootsJson rejects invalid input gracefully', () => {
@@ -157,7 +159,7 @@ describe('officialPluginTrustedRoots', () => {
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.source).toBe('official')
-      expect(result.trustedRoots['starverse-pdp-ed25519-prod-2026Q2']).toBeDefined()
+      expect(result.trustedRoots[OFFICIAL_ROOT_ID]).toBeDefined()
     }
   })
 
@@ -166,7 +168,7 @@ describe('officialPluginTrustedRoots', () => {
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.source).toBe('official')
-      expect(result.trustedRoots['starverse-pdp-ed25519-prod-2026Q2']).toBeDefined()
+      expect(result.trustedRoots[OFFICIAL_ROOT_ID]).toBeDefined()
     }
   })
 
@@ -220,7 +222,7 @@ describe('officialPluginTrustedRoots', () => {
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.source).toBe('official')
-      expect(result.trustedRoots['starverse-pdp-ed25519-prod-2026Q2']?.publicKeyPem).not.toBe(pem)
+      expect(result.trustedRoots[OFFICIAL_ROOT_ID]?.publicKeyPem).not.toBe(pem)
     }
   })
 
@@ -272,7 +274,7 @@ describe('officialPluginTrustedRoots', () => {
     expect(result.ok).toBe(true)
     if (result.ok) {
       expect(result.source).toBe('official')
-      expect(result.trustedRoots['starverse-pdp-ed25519-prod-2026Q2']?.publicKeyPem).not.toBe(pem)
+      expect(result.trustedRoots[OFFICIAL_ROOT_ID]?.publicKeyPem).not.toBe(pem)
     }
   })
 })

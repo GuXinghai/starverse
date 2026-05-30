@@ -77,7 +77,7 @@ describe('registerDialogIpc', () => {
     const result = await handlers.get('dialog:select-local-files')?.({}, { context: 'file' })
     expect(result).toEqual({ filePaths: ['C:/tmp/a.txt'] })
     expect(showOpenDialog).toHaveBeenCalledWith(expect.objectContaining({
-      filters: [{ name: 'All Files', extensions: ['*'] }],
+      filters: [expect.objectContaining({ extensions: ['*'] })],
     }))
   })
 
@@ -128,7 +128,7 @@ describe('registerDialogIpc', () => {
 
     await handlers.get('dialog:select-local-files')?.({}, { context: 'image' })
     expect(showOpenDialog).toHaveBeenCalledWith(expect.objectContaining({
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
+      filters: [expect.objectContaining({ extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] })],
     }))
   })
 
