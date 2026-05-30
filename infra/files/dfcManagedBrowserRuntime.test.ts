@@ -4,7 +4,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  DFC_HTML_PDF_RUNTIME_CAPABILITY,
   DFC_HTML_PDF_RUNTIME_ID,
+  DFC_HTML_PDF_RUNTIME_PACKAGE_ID,
   checkDfcHtmlPdfRuntimeAvailability,
 } from './dfcManagedBrowserRuntime'
 
@@ -38,9 +40,11 @@ describe('dfc managed browser runtime gate', () => {
     expect(result).toMatchObject({
       ok: true,
       runtime: expect.objectContaining({
+        packageId: DFC_HTML_PDF_RUNTIME_PACKAGE_ID,
         runtimeId: DFC_HTML_PDF_RUNTIME_ID,
         platform: process.platform,
         arch: process.arch,
+        capabilities: [DFC_HTML_PDF_RUNTIME_CAPABILITY],
         playwrightVersion: '1.57.0',
         browserRevision: '1200',
       }),
@@ -48,6 +52,24 @@ describe('dfc managed browser runtime gate', () => {
     })
     expect(JSON.stringify(result)).not.toContain(root)
     expect(JSON.stringify(result)).not.toContain('bin/chromium')
+  })
+
+  it('reports missing executable separately from metadata and path failures', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-runtime-exe-missing-'))
+    await writeManifest(root, {
+      executablePath: 'bin/missing-chromium',
+      sha256: 'a'.repeat(64),
+      sizeBytes: 123,
+    })
+
+    const result = await checkDfcHtmlPdfRuntimeAvailability({ managedRuntimeRootDir: root })
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostics: [expect.objectContaining({ code: 'html_pdf_runtime_executable_missing' })],
+    })
+    expect(JSON.stringify(result)).not.toContain('bin/missing-chromium')
+    expect(JSON.stringify(result)).not.toContain(root)
   })
 
   it.each([
@@ -94,6 +116,27 @@ describe('dfc managed browser runtime gate', () => {
       diagnostics: [expect.objectContaining({ code: 'html_pdf_runtime_platform_unsupported' })],
     })
   })
+
+  it('rejects otherwise valid fixture packages when hash, size, provenance, or license metadata is incomplete', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-runtime-metadata-'))
+    await mkdir(path.join(root, 'bin'), { recursive: true })
+    await writeFile(path.join(root, 'bin', 'chromium'), Buffer.from('fake chromium executable'))
+    await writeManifest(root, {
+      executablePath: 'bin/chromium',
+      sha256: null,
+      sizeBytes: null,
+      provenance: null,
+    })
+
+    const result = await checkDfcHtmlPdfRuntimeAvailability({ managedRuntimeRootDir: root })
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostics: [expect.objectContaining({ code: 'html_pdf_runtime_metadata_incomplete' })],
+    })
+    expect(JSON.stringify(result)).not.toContain(root)
+    expect(JSON.stringify(result)).not.toContain('fake chromium executable')
+  })
 })
 
 async function writeManifest(
@@ -101,9 +144,11 @@ async function writeManifest(
   overrides: Partial<Record<string, string | number | null>>
 ): Promise<void> {
   await writeFile(path.join(root, 'manifest.json'), JSON.stringify({
+    packageId: DFC_HTML_PDF_RUNTIME_PACKAGE_ID,
     runtimeId: DFC_HTML_PDF_RUNTIME_ID,
     platform: process.platform,
     arch: process.arch,
+    capabilities: [DFC_HTML_PDF_RUNTIME_CAPABILITY],
     executablePath: 'bin/chromium',
     playwrightVersion: '1.57.0',
     browserRevision: '1200',

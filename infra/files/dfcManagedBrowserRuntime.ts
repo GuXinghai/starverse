@@ -3,6 +3,8 @@ import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 
 export const DFC_HTML_PDF_RUNTIME_ID = 'playwright-chromium-html-pdf'
+export const DFC_HTML_PDF_RUNTIME_PACKAGE_ID = 'starverse.dfc.playwright-chromium'
+export const DFC_HTML_PDF_RUNTIME_CAPABILITY = 'html_to_pdf'
 export const DFC_HTML_PDF_RUNTIME_MANIFEST = 'manifest.json'
 
 export type DfcHtmlPdfRuntimeDiagnosticCode =
@@ -11,6 +13,7 @@ export type DfcHtmlPdfRuntimeDiagnosticCode =
   | 'html_pdf_runtime_executable_missing'
   | 'html_pdf_runtime_path_rejected'
   | 'html_pdf_runtime_platform_unsupported'
+  | 'html_pdf_runtime_metadata_incomplete'
 
 export type DfcHtmlPdfRuntimeDiagnostic = Readonly<{
   code: DfcHtmlPdfRuntimeDiagnosticCode
@@ -30,19 +33,23 @@ export type DfcHtmlPdfRuntimeAvailability =
     }>
 
 export type DfcHtmlPdfManagedRuntimeSummary = Readonly<{
+  packageId: string
   runtimeId: string
   platform: string
   arch: string | null
+  capabilities: readonly string[]
   playwrightVersion: string
   browserRevision: string
   provenance: string | null
   license: string | null
 }>
 
-type RuntimeManifest = Readonly<{
+export type DfcHtmlPdfRuntimeManifest = Readonly<{
+  packageId: string
   runtimeId: string
   platform: string
   arch?: string | null
+  capabilities?: readonly string[] | null
   executablePath: string
   playwrightVersion: string
   browserRevision: string
@@ -51,6 +58,10 @@ type RuntimeManifest = Readonly<{
   provenance?: string | null
   license?: string | null
 }>
+
+type RuntimeManifestParseResult =
+  | Readonly<{ ok: true; manifest: DfcHtmlPdfRuntimeManifest }>
+  | Readonly<{ ok: false; code: 'html_pdf_runtime_manifest_invalid' | 'html_pdf_runtime_metadata_incomplete' }>
 
 const NUL_RE = /\0/u
 const WINDOWS_DRIVE_RE = /^[A-Za-z]:[\\/]/u
@@ -81,10 +92,13 @@ export async function checkDfcHtmlPdfRuntimeAvailability(input: Readonly<{
     return unavailable('html_pdf_runtime_manifest_invalid', 'HTML PDF browser runtime manifest cannot be read.')
   }
 
-  const manifest = parseManifest(manifestText)
-  if (!manifest) {
-    return unavailable('html_pdf_runtime_manifest_invalid', 'HTML PDF browser runtime manifest is invalid.')
+  const parsed = parseManifest(manifestText)
+  if (!parsed.ok) {
+    return unavailable(parsed.code, parsed.code === 'html_pdf_runtime_metadata_incomplete'
+      ? 'HTML PDF browser runtime package metadata is incomplete.'
+      : 'HTML PDF browser runtime manifest is invalid.')
   }
+  const manifest = parsed.manifest
   const expectedPlatform = input.platform ?? process.platform
   const expectedArch = input.arch ?? process.arch
   if (manifest.platform !== expectedPlatform || (manifest.arch && manifest.arch !== expectedArch)) {
@@ -106,6 +120,9 @@ export async function checkDfcHtmlPdfRuntimeAvailability(input: Readonly<{
   if (!executableStat?.isFile()) {
     return unavailable('html_pdf_runtime_manifest_invalid', 'HTML PDF browser runtime executable metadata is invalid.')
   }
+  if (!hasCompletePackageMetadata(manifest)) {
+    return unavailable('html_pdf_runtime_metadata_incomplete', 'HTML PDF browser runtime package metadata is incomplete.')
+  }
   if (typeof manifest.sizeBytes === 'number' && manifest.sizeBytes !== executableStat.size) {
     return unavailable('html_pdf_runtime_manifest_invalid', 'HTML PDF browser runtime executable size does not match the manifest.')
   }
@@ -119,9 +136,11 @@ export async function checkDfcHtmlPdfRuntimeAvailability(input: Readonly<{
   return {
     ok: true,
     runtime: {
+      packageId: manifest.packageId,
       runtimeId: manifest.runtimeId,
       platform: manifest.platform,
       arch: manifest.arch ?? null,
+      capabilities: [...(manifest.capabilities ?? [])],
       playwrightVersion: manifest.playwrightVersion,
       browserRevision: manifest.browserRevision,
       provenance: manifest.provenance ?? null,
@@ -131,33 +150,44 @@ export async function checkDfcHtmlPdfRuntimeAvailability(input: Readonly<{
   }
 }
 
-function parseManifest(value: string): RuntimeManifest | null {
+function parseManifest(value: string): RuntimeManifestParseResult {
   try {
-    const parsed = JSON.parse(value) as Partial<RuntimeManifest> | null
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
-    if (parsed.runtimeId !== DFC_HTML_PDF_RUNTIME_ID) return null
-    if (!isNonEmpty(parsed.platform)) return null
-    if (!isNonEmpty(parsed.executablePath)) return null
-    if (!isNonEmpty(parsed.playwrightVersion)) return null
-    if (!isNonEmpty(parsed.browserRevision)) return null
-    if (parsed.arch != null && !isNonEmpty(parsed.arch)) return null
-    if (parsed.sha256 != null && (!isNonEmpty(parsed.sha256) || !FULL_SHA256_RE.test(parsed.sha256))) return null
-    if (parsed.sizeBytes != null && (!Number.isFinite(parsed.sizeBytes) || parsed.sizeBytes < 0)) return null
+    const parsed = JSON.parse(value) as Partial<DfcHtmlPdfRuntimeManifest> | null
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return invalidManifest()
+    if (parsed.packageId !== DFC_HTML_PDF_RUNTIME_PACKAGE_ID) return invalidManifest()
+    if (parsed.runtimeId !== DFC_HTML_PDF_RUNTIME_ID) return invalidManifest()
+    if (!isNonEmpty(parsed.platform)) return invalidManifest()
+    if (!isNonEmpty(parsed.executablePath)) return invalidManifest()
+    if (!isNonEmpty(parsed.playwrightVersion)) return invalidManifest()
+    if (!isNonEmpty(parsed.browserRevision)) return invalidManifest()
+    if (parsed.arch != null && !isNonEmpty(parsed.arch)) return invalidManifest()
+    if (parsed.capabilities != null && (!Array.isArray(parsed.capabilities) || parsed.capabilities.some((item) => !isNonEmpty(item)))) return invalidManifest()
+    if (parsed.sha256 != null && (!isNonEmpty(parsed.sha256) || !FULL_SHA256_RE.test(parsed.sha256))) return invalidManifest()
+    if (parsed.sizeBytes != null && (!Number.isFinite(parsed.sizeBytes) || parsed.sizeBytes < 0)) return invalidManifest()
     return {
-      runtimeId: parsed.runtimeId,
-      platform: parsed.platform,
-      arch: parsed.arch ?? null,
-      executablePath: parsed.executablePath,
-      playwrightVersion: parsed.playwrightVersion,
-      browserRevision: parsed.browserRevision,
-      sha256: parsed.sha256 ?? null,
-      sizeBytes: parsed.sizeBytes ?? null,
-      provenance: isNonEmpty(parsed.provenance) ? parsed.provenance : null,
-      license: isNonEmpty(parsed.license) ? parsed.license : null,
+      ok: true,
+      manifest: {
+        packageId: parsed.packageId,
+        runtimeId: parsed.runtimeId,
+        platform: parsed.platform,
+        arch: parsed.arch ?? null,
+        capabilities: parsed.capabilities ?? [],
+        executablePath: parsed.executablePath,
+        playwrightVersion: parsed.playwrightVersion,
+        browserRevision: parsed.browserRevision,
+        sha256: parsed.sha256 ?? null,
+        sizeBytes: parsed.sizeBytes ?? null,
+        provenance: isNonEmpty(parsed.provenance) ? parsed.provenance : null,
+        license: isNonEmpty(parsed.license) ? parsed.license : null,
+      },
     }
   } catch {
-    return null
+    return invalidManifest()
   }
+}
+
+function invalidManifest(): RuntimeManifestParseResult {
+  return { ok: false, code: 'html_pdf_runtime_manifest_invalid' }
 }
 
 function resolveManagedExecutable(root: string, executablePath: string): Readonly<{ ok: true; path: string } | { ok: false }> {
@@ -189,6 +219,20 @@ function isPathInside(root: string, candidate: string): boolean {
 
 function isNonEmpty(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function hasPackageMetadataShape(value: Partial<DfcHtmlPdfRuntimeManifest>): boolean {
+  return isNonEmpty(value.sha256)
+    && FULL_SHA256_RE.test(value.sha256)
+    && typeof value.sizeBytes === 'number'
+    && Number.isFinite(value.sizeBytes)
+    && value.sizeBytes >= 0
+    && isNonEmpty(value.provenance)
+    && isNonEmpty(value.license)
+}
+
+function hasCompletePackageMetadata(value: DfcHtmlPdfRuntimeManifest): boolean {
+  return hasPackageMetadataShape(value)
 }
 
 function sha256(bytes: Uint8Array): string {
