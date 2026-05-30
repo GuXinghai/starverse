@@ -1457,3 +1457,17 @@ Either close out the HTML-to-PDF pilot with a production-readiness owner decisio
 ## Recommended next round
 
 Prefer M21 HTML-to-PDF packaged/electron smoke confidence before Office->PDF. Choose M21 Office->PDF owner decision first only if Owner explicitly prioritizes expanding runtime family over de-risking the existing HTML-to-PDF pilot.
+
+## DFC-M21 HTML-to-PDF Electron smoke confidence recovery notes
+
+- M21 extends the existing `npm run test:electron-smoke` path with a real app-runtime HTML-to-PDF DFC smoke seam.
+- The smoke remains query-gated and does not add renderer IPC, packaged installer smoke, CI, OS file picker automation, or a full E2E platform.
+- The new seeder ingests a managed local HTML fixture, adds it to the active draft, runs `conversationDraft.ensureDfcOptions`, selects the backend-owned `pdf_attachment` option, requests metadata-only preview, and refreshes the attachment details state.
+- The smoke runner asserts the selected PDF option uses `file_attachment` with a `derived_asset`, preview is metadata-only, and `original_file`, safe `markdown`, and `code` options remain available.
+- Raw `window.ipcRenderer` remains absent in the smoke. Detailed JS/network/local-file blocking remains covered by M19R-D targeted tests rather than duplicated in the smoke.
+- Validation passed: `git diff --check`; `npx vue-tsc --noEmit --pretty false`; `npm run test:electron-smoke`. The smoke rebuilt to the Electron ABI, built the DB worker, generated a real PDF derived asset, and observed the metadata-only PDF preview.
+- Office->PDF and PS/EPS remain unsupported.
+
+## Recommended next round
+
+If Owner accepts this smoke confidence, proceed to an Office->PDF owner decision. If broader HTML-to-PDF exposure is desired first, run a production-readiness hardening package focused on packaged/runtime smoke and default exposure gates.

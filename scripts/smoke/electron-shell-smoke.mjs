@@ -20,6 +20,9 @@ const tmpRoot = path.join(os.tmpdir(), `starverse-electron-smoke-${process.pid}`
 const dfcSmokeFixtureFilename = 'electron-smoke-backend-dfc.md'
 const dfcSmokeFixturePreviewText = 'Backend-owned DFC markdown preview from smoke fixture.'
 const dfcSmokeFixturePath = path.join(tmpRoot, dfcSmokeFixtureFilename)
+const htmlPdfSmokeFixtureFilename = 'electron-smoke-html-pdf.html'
+const htmlPdfSmokeFixturePath = path.join(tmpRoot, htmlPdfSmokeFixtureFilename)
+const htmlPdfSmokeFixtureTitle = 'Electron Smoke HTML PDF'
 
 function section(title) {
   process.stdout.write(`\n${'='.repeat(80)}\n${title}\n${'='.repeat(80)}\n`)
@@ -107,6 +110,27 @@ async function main() {
       '# Electron Smoke Backend DFC',
       '',
       dfcSmokeFixturePreviewText,
+      '',
+    ].join('\n'),
+    'utf8',
+  )
+  await fs.writeFile(
+    htmlPdfSmokeFixturePath,
+    [
+      '<!doctype html>',
+      '<html>',
+      '<head>',
+      '<meta charset="utf-8">',
+      `<title>${htmlPdfSmokeFixtureTitle}</title>`,
+      '<script>window.__starverseSmokeShouldNotRun = true</script>',
+      '</head>',
+      '<body>',
+      `<h1>${htmlPdfSmokeFixtureTitle}</h1>`,
+      '<p>Managed local HTML fixture for DFC HTML-to-PDF smoke.</p>',
+      '<img src="https://example.invalid/blocked.png" alt="blocked remote image">',
+      '<iframe src="file:///C:/starverse-smoke-secret.txt"></iframe>',
+      '</body>',
+      '</html>',
       '',
     ].join('\n'),
     'utf8',
@@ -213,6 +237,67 @@ async function main() {
     if (!dfcResult.detailsVisible) throw new Error('DFC smoke attachment details dialog is missing')
     if (!dfcResult.markdownOptionText.includes('Markdown')) throw new Error('DFC markdown option is missing')
     if (!dfcResult.previewText.includes(dfcSmokeFixturePreviewText)) throw new Error('DFC preview text is missing')
+    await page.click('[data-testid="draft-attachment-details-close"]')
+    await page.waitForSelector('[data-testid="draft-attachment-details-dialog"]', { state: 'detached', timeout: 60_000 })
+
+    section('Assert HTML PDF Electron conversion smoke seam')
+    await page.waitForFunction(
+      () => typeof window.__starverseElectronSmokeSeedHtmlPdfAttachment === 'function',
+      undefined,
+      { timeout: 60_000 },
+    )
+    const htmlPdfSeedResult = await page.evaluate(async (filePath) => {
+      const seed = window.__starverseElectronSmokeSeedHtmlPdfAttachment
+      if (typeof seed !== 'function') throw new Error('HTML PDF smoke backend seeder is missing')
+      return await seed(filePath)
+    }, htmlPdfSmokeFixturePath)
+    console.log(JSON.stringify(htmlPdfSeedResult, null, 2))
+
+    if (!htmlPdfSeedResult.backendOwned) throw new Error('HTML PDF smoke did not use backend-owned seeding')
+    if (!htmlPdfSeedResult.assetId || htmlPdfSeedResult.assetId === 'asset-dfc-smoke') throw new Error('HTML PDF smoke asset id was not backend-created')
+    if (!htmlPdfSeedResult.optionId || !htmlPdfSeedResult.optionId.includes(':pdf_attachment:')) throw new Error('HTML PDF option was not backend-owned')
+    if (htmlPdfSeedResult.targetKind !== 'pdf_attachment') throw new Error(`Expected pdf_attachment target, got ${htmlPdfSeedResult.targetKind}`)
+    if (htmlPdfSeedResult.sendStrategy !== 'file_attachment') throw new Error(`Expected file_attachment send strategy, got ${htmlPdfSeedResult.sendStrategy}`)
+    if (!htmlPdfSeedResult.selectedAssetRefs?.some((ref) => ref.kind === 'derived_asset')) throw new Error('HTML PDF selected refs do not include a derived_asset')
+    if (htmlPdfSeedResult.previewKind !== 'raw_file' || htmlPdfSeedResult.previewStatus !== 'ready') throw new Error('HTML PDF preview is not metadata-only ready')
+    for (const requiredTarget of ['original_file', 'markdown', 'code', 'pdf_attachment']) {
+      if (!htmlPdfSeedResult.availableTargets.includes(requiredTarget)) {
+        throw new Error(`HTML PDF smoke missing available ${requiredTarget} option`)
+      }
+    }
+
+    await page.waitForSelector(`[data-testid="draft-attachment-card-${htmlPdfSeedResult.assetId}"]`, { timeout: 60_000 })
+    await page.click(`[data-testid="draft-attachment-card-${htmlPdfSeedResult.assetId}"]`)
+    await page.waitForSelector('[data-testid="draft-attachment-details-dialog"]', { timeout: 60_000 })
+    await page.waitForSelector('[data-testid="draft-attachment-dfc-option-pdf_attachment"]', { timeout: 60_000 })
+    await page.waitForSelector('[data-testid="draft-attachment-dfc-option-markdown"]', { timeout: 60_000 })
+    await page.waitForSelector('[data-testid="draft-attachment-dfc-option-code"]', { timeout: 60_000 })
+    await page.waitForSelector('[data-testid="draft-attachment-dfc-option-original_file"]', { timeout: 60_000 })
+    await page.waitForSelector('[data-testid="draft-attachment-dfc-preview-raw"]', { timeout: 60_000 })
+
+    const htmlPdfUiResult = await page.evaluate((assetId) => {
+      const preview = document.querySelector('[data-testid="draft-attachment-dfc-preview"]')?.textContent ?? ''
+      return {
+        attachmentVisible: Boolean(document.querySelector(`[data-testid="draft-attachment-card-${assetId}"]`)),
+        detailsVisible: Boolean(document.querySelector('[data-testid="draft-attachment-details-dialog"]')),
+        pdfOptionText: document.querySelector('[data-testid="draft-attachment-dfc-option-pdf_attachment"]')?.textContent ?? '',
+        markdownOptionVisible: Boolean(document.querySelector('[data-testid="draft-attachment-dfc-option-markdown"]')),
+        codeOptionVisible: Boolean(document.querySelector('[data-testid="draft-attachment-dfc-option-code"]')),
+        originalOptionVisible: Boolean(document.querySelector('[data-testid="draft-attachment-dfc-option-original_file"]')),
+        rawPreviewVisible: Boolean(document.querySelector('[data-testid="draft-attachment-dfc-preview-raw"]')),
+        previewContainsPath: /storage|file:\/\/|[A-Za-z]:\\|sha256|contentHash|storageUri|storageRef|<html/i.test(preview),
+      }
+    }, htmlPdfSeedResult.assetId)
+    console.log(JSON.stringify(htmlPdfUiResult, null, 2))
+
+    if (!htmlPdfUiResult.attachmentVisible) throw new Error('HTML PDF smoke attachment card is missing')
+    if (!htmlPdfUiResult.detailsVisible) throw new Error('HTML PDF smoke attachment details dialog is missing')
+    if (!htmlPdfUiResult.pdfOptionText.includes('PDF')) throw new Error('HTML PDF pdf_attachment option is missing')
+    if (!htmlPdfUiResult.markdownOptionVisible) throw new Error('HTML safe markdown option is missing')
+    if (!htmlPdfUiResult.codeOptionVisible) throw new Error('HTML code option is missing')
+    if (!htmlPdfUiResult.originalOptionVisible) throw new Error('HTML original_file option is missing')
+    if (!htmlPdfUiResult.rawPreviewVisible) throw new Error('HTML PDF metadata-only preview is missing')
+    if (htmlPdfUiResult.previewContainsPath) throw new Error('HTML PDF preview exposed path, storage, hash, or file body-like content')
 
     console.log('\nPASS: Electron DFC attachment smoke completed')
   } catch (error) {
