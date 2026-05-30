@@ -1294,3 +1294,43 @@ DFC-M13 should only attempt a real backend-owned DFC attachment smoke if it can 
 ## Recommended next round
 
 Close the DFC smoke confidence path here unless a narrowly scoped Send Plan observation can be added without changing app bootstrap, DB schema, Send Plan main-flow, asset model, IPC/preload architecture, packaged installer, CI, or OS file picker behavior. The recommended next package is a heavy runtime owner decision memo for Office-to-PDF, HTML-to-PDF, PS/EPS, and external engine sandbox boundaries.
+
+## DFC-M14 heavy runtime decision recovery notes
+
+- DFC-M14 is documentation-only. It does not implement heavy runtime conversion, add an external engine, add dependencies, change DB schema, change Send Plan main-flow, change asset model, change DFC option semantics, extend smoke coverage, add CI, or address broad code-health work.
+- Added `dfc-m14-heavy-runtime-decision-external-engine-boundary.md` as the unified owner decision for HTML->PDF, Office/DOCX->PDF, PS/EPS->PDF, and generic external engine sandbox foundation.
+- Read-only findings: `pdf_attachment` already exists as DFC target vocabulary and maps derived PDF outputs to `sendStrategy: file_attachment` plus `derived_asset` refs, but no HTML/Office/PS-EPS runtime currently writes a generated PDF `derived_asset`.
+- Existing `src/next/file-type` external process/engine code provides useful safety primitives (`externalProcessPolicy`, `externalProcessRunner`, engine registry, runtime package inventory), but it is currently file-type/plugin infrastructure, not a complete DFC conversion sandbox.
+- Dependency/engine inventory: Playwright exists for smoke; Puppeteer, Ghostscript, LibreOffice runtime, Pandoc runtime, and production Chromium conversion wiring are not approved or present for DFC heavy runtime use.
+- Recommendation order: first DFC external engine/rendered-output sandbox foundation; second HTML->PDF `pdf_attachment` pilot after engine choice approval; third Office/DOCX->PDF after LibreOffice/engine package approval; PS/EPS->PDF postposed behind Ghostscript/PS sandbox security decision.
+- Do not continue text parser-family expansion as the primary path; the remaining value is rendered-output/PDF attachment confidence and sandboxing.
+
+## Recommended next round
+
+DFC-M15 should implement or document the External Engine Sandbox Foundation. It should not add a real engine. Stop if it requires a new dependency, real conversion, DB schema, Send Plan main-flow, asset model, IPC shape, DFC option semantic change, broad file-type refactor, or renderer DTO expansion.
+
+## DFC-M15 external engine sandbox foundation recovery notes
+
+- DFC-M15 adds `infra/files/dfcConversionSandbox.ts` and `infra/files/dfcConversionSandbox.test.ts` as a backend-only DFC heavy-runtime sandbox foundation.
+- The helper defines controlled sandbox input path planning, controlled output path validation, engine working directory planning, conversion-mode external process policy mapping, sanitized diagnostics, fail-closed run outcomes, cleanup status, a future engine adapter request shape, and a renderer-safe summary shape.
+- M15 does not call a real converter and does not implement HTML-to-PDF, Office-to-PDF, PS/EPS-to-PDF, Chromium/Puppeteer/Playwright runtime conversion, LibreOffice, Ghostscript, Pandoc, DB schema, IPC shape, Send Plan main-flow, asset model, DFC target vocabulary, packaged smoke, CI, npm audit, ESLint, or full-suite failure work.
+- Targeted tests cover absolute output escape, path traversal, UNC/drive/NUL rejection, output containment, process policy mapping, fail-closed engine results, cleanup after success/failure, output escape blocking, diagnostics redaction, and renderer summary privacy.
+- Validation passed: `git diff --check`; `npx vue-tsc --noEmit --pretty false`; `npx vitest --run infra/files/dfcConversionSandbox.test.ts --reporter=dot --silent` with 1 file / 12 tests. No DB worker tests were touched, so no Node ABI rebuild was required.
+- M14 docs were already uncommitted when M15 started; do not confuse M15 helper scope with the pre-existing M14 owner decision diff.
+
+## Recommended next round
+
+DFC-M16 should be an HTML-to-PDF Pilot Owner Decision. It must choose whether the future engine is existing Electron/Chromium, Playwright/Chromium as production runtime, or a managed external engine. Do not proceed to implementation until owner approves the engine strategy, dependency/runtime boundary, sandbox policy, and PDF output validation path.
+
+## DFC-M16 HTML-to-PDF engine strategy recovery notes
+
+- DFC-M16 is documentation-only. It does not implement HTML-to-PDF, add an engine, add a dependency, alter packaging, change DB schema, change IPC shape, change Send Plan main-flow, change asset model, change DFC option semantics, extend smoke, or enter Office/PDF / PS-EPS.
+- Added `dfc-m16-html-to-pdf-engine-strategy-decision.md` as the owner decision for HTML->PDF `pdf_attachment` engine strategy.
+- Read-only findings: Electron is present as app runtime; Playwright is present and used only by the Electron smoke script; Puppeteer is not present; LibreOffice/Ghostscript/Pandoc are not present as DFC conversion runtimes; file-type engine scaffolds are not DFC HTML->PDF runtime implementations.
+- Main app BrowserWindow uses sandboxed Electron preferences, but app renderer/preload/session must not be reused for conversion. A future Electron strategy must use a dedicated hidden/offscreen conversion window or service with no app preload and a non-persistent isolated session.
+- Recommended order: Playwright Chromium production runtime if owner accepts browser binary/packaging policy; dedicated Electron/Chromium conversion window as fallback; managed external engine package for longer-term alignment; Puppeteer/bundled Chromium not recommended for first pilot; defer only if both browser runtime paths are rejected.
+- M17 may proceed only after owner explicitly chooses the engine strategy and approves JS/network/local-file policy, profile isolation, timeout/cleanup, output validation, and PDF `derived_asset` binding.
+
+## Recommended next round
+
+DFC-M17 should implement a minimal HTML->PDF `pdf_attachment` pilot only after owner chooses Playwright Chromium production runtime or dedicated Electron/Chromium conversion window. Keep JS disabled by default, deny external resources/network/local files by default, isolate profile/session per job, validate PDF output, and bind preview/send to the same managed `derived_asset`.
