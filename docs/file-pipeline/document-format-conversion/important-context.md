@@ -1373,3 +1373,15 @@ Resume HTML->PDF implementation as DFC-M17B only after Owner approves the manage
 ## Recommended next round
 
 Do not claim HTML->PDF support yet. M17C real PDF generation should start only after Owner provides an approved managed Chromium runtime artifact or test fixture path and accepts the browser binary packaging/update policy from M17A.
+
+## DFC-M18 managed browser runtime package scaffold recovery notes
+
+- M18 extends the M17B runtime gate into a managed Chromium runtime package scaffold. It does not download Chromium, run Playwright, generate PDFs, package the app, add CI, or implement HTML->PDF conversion.
+- The scaffold manifest requires `packageId: starverse.dfc.playwright-chromium`, `runtimeId: playwright-chromium-html-pdf`, platform, relative executable path, Playwright version, browser revision, SHA-256, size, provenance, and license metadata. Capabilities may include `html_to_pdf`.
+- The gate rejects absolute paths, UNC paths, Windows drive-qualified paths, traversal, NUL bytes, missing executables, unsupported platforms, invalid manifest shape, incomplete package metadata, size mismatch, and hash mismatch.
+- New symbolic diagnostic: `html_pdf_runtime_metadata_incomplete`. Existing runtime diagnostics remain symbolic and sanitized.
+- Tests use a temporary fake runtime package with a tiny stub executable and manifest metadata. No real Chromium binary, native artifact, Playwright cache, system browser, or package-lock change is introduced.
+
+## Recommended next round
+
+HTML->PDF remains runtime-gated unavailable. Next choose production package/installer policy for distributing the managed Chromium runtime, or approve a dev-only M19 generation pilot with an explicit managed runtime artifact for local tests.

@@ -314,6 +314,7 @@ export type DfcOptionGenerationErrorCode = DerivativeErrorCode | 'draft_attachme
   | 'html_pdf_runtime_executable_missing'
   | 'html_pdf_runtime_path_rejected'
   | 'html_pdf_runtime_platform_unsupported'
+  | 'html_pdf_runtime_metadata_incomplete'
 
 export type FileAssetRecord = Readonly<{
   id: string
