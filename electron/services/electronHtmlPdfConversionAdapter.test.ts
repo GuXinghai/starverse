@@ -35,6 +35,7 @@ function baseRequest(root: string, timeoutMs = 15000) {
 
 function createFakeElectronWindow(input: Readonly<{
   pdfBytes?: Buffer
+  loadError?: Error
   printError?: Error
   printNeverResolves?: boolean
   cleanupError?: Error
@@ -65,7 +66,9 @@ function createFakeElectronWindow(input: Readonly<{
     on: vi.fn((event: string, handler: (...args: any[]) => void) => {
       eventHandlers.set(event, handler)
     }),
-    loadURL: vi.fn(async () => {}),
+    loadURL: vi.fn(async () => {
+      if (input.loadError) throw input.loadError
+    }),
     printToPDF: vi.fn(async () => {
       if (input.printNeverResolves) return await new Promise<Buffer>(() => {})
       if (input.printError) throw input.printError
@@ -184,6 +187,88 @@ describe('electron HTML PDF conversion adapter', () => {
       expect(serialized).not.toContain('C:\\Users\\private')
       expect(serialized).not.toContain('secret')
       expect(serialized).not.toContain('<html>')
+    })
+  })
+
+  it('fails closed and destroys the window when loadURL fails', async () => {
+    await withFixture(async (root) => {
+      const fake = createFakeElectronWindow({ loadError: new Error('load failed at file:///C:/private/source.html token=secret file body: <html>') })
+      const adapter = createElectronHtmlPdfConversionAdapter({ createWindow: fake.createWindow })
+
+      const response = await adapter.convert(baseRequest(root))
+      const serialized = JSON.stringify(response)
+
+      expect(response).toMatchObject({
+        status: 'failed',
+        output: null,
+        cleanupStatus: 'attempted',
+        diagnostics: [expect.objectContaining({ code: 'electron_conversion_blocked' })],
+      })
+      expect(fake.window.destroy).toHaveBeenCalledTimes(1)
+      expect(serialized).not.toContain('C:/private')
+      expect(serialized).not.toContain('secret')
+      expect(serialized).not.toContain('<html>')
+    })
+  })
+
+  it('fails closed when BrowserWindow creation fails before output is produced', async () => {
+    await withFixture(async (root) => {
+      const createWindow = vi.fn(() => {
+        throw new Error('BrowserWindow failed at C:\\Users\\private\\source.html token=secret file body: <html>')
+      })
+      const adapter = createElectronHtmlPdfConversionAdapter({ createWindow })
+
+      const response = await adapter.convert(baseRequest(root))
+      const serialized = JSON.stringify(response)
+
+      expect(response).toMatchObject({
+        status: 'failed',
+        output: null,
+        cleanupStatus: 'not_requested',
+        diagnostics: [expect.objectContaining({ code: 'electron_conversion_blocked' })],
+      })
+      expect(serialized).not.toContain('C:\\Users\\private')
+      expect(serialized).not.toContain('secret')
+      expect(serialized).not.toContain('<html>')
+    })
+  })
+
+  it('fails closed when printToPDF returns non-PDF bytes and still cleans up', async () => {
+    await withFixture(async (root) => {
+      const fake = createFakeElectronWindow({ pdfBytes: Buffer.from('not a pdf') })
+      const adapter = createElectronHtmlPdfConversionAdapter({ createWindow: fake.createWindow })
+
+      const response = await adapter.convert(baseRequest(root))
+
+      expect(response).toMatchObject({
+        status: 'failed',
+        output: null,
+        cleanupStatus: 'attempted',
+        diagnostics: [expect.objectContaining({ code: 'electron_conversion_blocked' })],
+      })
+      expect(fake.window.destroy).toHaveBeenCalledTimes(1)
+      await expect(readFile(path.join(root, 'output/source.pdf'))).rejects.toThrow()
+    })
+  })
+
+  it('rejects a resolved output path that escapes the prepared output descriptor', async () => {
+    await withFixture(async (root) => {
+      const fake = createFakeElectronWindow()
+      const adapter = createElectronHtmlPdfConversionAdapter({ createWindow: fake.createWindow })
+      const request = {
+        ...baseRequest(root),
+        resolvedOutputPath: path.join(root, 'escaped.pdf'),
+      }
+
+      const response = await adapter.convert(request)
+
+      expect(response).toMatchObject({
+        status: 'blocked',
+        output: null,
+        cleanupStatus: 'not_requested',
+        diagnostics: [expect.objectContaining({ code: 'electron_conversion_request_invalid' })],
+      })
+      expect(fake.createWindow).not.toHaveBeenCalled()
     })
   })
 
