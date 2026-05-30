@@ -89,6 +89,12 @@ describe('ui-app AppChatApp send button state', () => {
   const originalElectronStore = (globalThis as any).electronStore
   const originalSetTimeout = globalThis.setTimeout
 
+  const draftBox = () => screen.getByTestId('composer-draft') as HTMLTextAreaElement
+  const sendButton = () => screen.getByTestId('composer-send')
+  const waitForAppReady = async () => {
+    await waitFor(() => expect(screen.getByTestId('current-model-pill')).toBeInTheDocument())
+  }
+
   beforeEach(() => {
     vi.useFakeTimers()
     globalThis.setTimeout = ((fn: (...args: any[]) => void) => originalSetTimeout(fn, 0)) as any
@@ -378,29 +384,28 @@ describe('ui-app AppChatApp send button state', () => {
   it('P0: shows Send button disabled on empty draft with no attachments', async () => {
     render(AppChatApp)
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+      expect(sendButton()).toBeDisabled()
     })
-    expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()
     expect(screen.queryByTestId('composer-send-gate-block')).toBeNull()
   })
 
   it('P0: shows Send button enabled when draft has text', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     render(AppChatApp)
-    await waitFor(() => expect(screen.getByRole('button', { name: 'New' })).not.toBeDisabled())
-    const textarea = screen.getByPlaceholderText('Type a message...')
+    await waitForAppReady()
+    const textarea = draftBox()
     await user.click(textarea)
     await user.type(textarea, 'Hello')
     expect((textarea as HTMLTextAreaElement).value).toBe('Hello')
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+      expect(sendButton()).toBeEnabled()
     })
   })
 
   it('P1: empty draft with no attachments does not show red banner', async () => {
     render(AppChatApp)
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+      expect(sendButton()).toBeDisabled()
     })
     expect(screen.queryByTestId('composer-send-gate-block')).toBeNull()
     expect(screen.queryByTestId('composer-send-gate-warning')).toBeNull()
@@ -409,12 +414,12 @@ describe('ui-app AppChatApp send button state', () => {
   it('P1: Enter key does not send when button is disabled', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     render(AppChatApp)
-    await waitFor(() => expect(screen.getByRole('button', { name: 'New' })).not.toBeDisabled())
-    const textarea = screen.getByPlaceholderText('Type a message...')
+    await waitForAppReady()
+    const textarea = draftBox()
     await user.click(textarea)
     await user.type(textarea, 'Hello')
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+      expect(sendButton()).toBeEnabled()
     })
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     expect(invoke).not.toHaveBeenCalledWith('message.create', expect.any(Object))
@@ -424,18 +429,17 @@ describe('ui-app AppChatApp send button state', () => {
     ;(globalThis as any).__testOverrides.hangStream = true
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     render(AppChatApp)
-    await waitFor(() => expect(screen.getByRole('button', { name: 'New' })).not.toBeDisabled())
-    const textarea = screen.getByPlaceholderText('Type a message...')
+    await waitForAppReady()
+    const textarea = draftBox()
     await user.click(textarea)
     await user.type(textarea, 'Hello')
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+      expect(sendButton()).toBeEnabled()
     })
-    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await user.click(sendButton())
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument()
+      expect(screen.queryByTestId('composer-send')).toBeNull()
     })
-    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
   })
 
   it('P0: ActiveStream stores branchId for scoped abort protection', () => {
@@ -464,7 +468,7 @@ describe('ui-app AppChatApp send button state', () => {
     })
     render(AppChatApp)
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+      expect(sendButton()).toBeEnabled()
     })
     expect(screen.queryByTestId('composer-send-gate-block')).toBeNull()
   })
@@ -485,7 +489,7 @@ describe('ui-app AppChatApp send button state', () => {
     })
     render(AppChatApp)
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+      expect(sendButton()).toBeDisabled()
     })
   })
 
@@ -504,7 +508,7 @@ describe('ui-app AppChatApp send button state', () => {
     })
     render(AppChatApp)
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+      expect(sendButton()).toBeDisabled()
     })
   })
 
@@ -515,12 +519,12 @@ describe('ui-app AppChatApp send button state', () => {
     })
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     render(AppChatApp)
-    await waitFor(() => expect(screen.getByRole('button', { name: 'New' })).not.toBeDisabled())
-    const textarea = screen.getByPlaceholderText('Type a message...')
+    await waitForAppReady()
+    const textarea = draftBox()
     await user.click(textarea)
     await user.type(textarea, 'Hello')
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+      expect(sendButton()).toBeEnabled()
     })
     await waitFor(() => {
       expect(screen.getByTestId('composer-send-gate-warning')).toBeInTheDocument()

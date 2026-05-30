@@ -1,15 +1,27 @@
 import { computed, defineComponent, ref } from 'vue'
-import { fireEvent, render, screen } from '@testing-library/vue'
+import { fireEvent, render, screen, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { __resetModelPrefsServiceCacheForTests } from '@/next/modelPrefs/modelPrefsService'
-import type { SamplingParamsLayer } from '@/next/openrouter/samplingParamsResolver'
-import type { SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import ChatAppComposer from './ChatAppComposer.vue'
 
 describe('ChatAppComposer web search send guard', () => {
   const originalDbBridge = (globalThis as any).dbBridge
+
+  type HarnessSessionConfig = {
+    model: { selectedModelKey: string }
+    reasoning: { enabled: boolean; effort: 'medium' }
+    webSearch: { enabled: boolean; level: 'low' | 'high'; detail: null }
+    imageGeneration: {
+      enabled: boolean
+      resolution: '1K' | '2K' | '4K'
+      aspectRatio: '16:9' | '3:4' | '1:1' | '4:3'
+      mode: 'default'
+      detail: null
+    }
+    samplingParams: { detail: null }
+  }
 
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
@@ -17,76 +29,81 @@ describe('ChatAppComposer web search send guard', () => {
     vi.restoreAllMocks()
   })
 
-function installDbBridgeStub(input?: Readonly<{ favorites?: unknown[]; recents?: unknown[] }>) {
-    const favorites = Array.isArray(input?.favorites) ? input?.favorites : []
-    const recents = Array.isArray(input?.recents) ? input?.recents : []
+  function installDbBridgeStub(input?: Readonly<{ favorites?: unknown[]; recents?: unknown[] }>) {
+    const favorites = Array.isArray(input?.favorites) ? input.favorites : []
+    const recents = Array.isArray(input?.recents) ? input.recents : []
     ;(globalThis as any).dbBridge = {
       invoke: vi.fn(async (method: string) => {
         if (method === 'modelPrefs.listFavorites') return favorites
         if (method === 'modelPrefs.listRecents') return recents
         return null
       }),
+    }
   }
-}
 
-function createSessionConfig() {
-  return {
-    model: { selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL },
-    reasoning: { enabled: true, effort: 'medium' as const },
-    webSearch: { enabled: true, level: 'low' as const, detail: null },
-    imageGeneration: {
-      enabled: true,
-      resolution: '1K' as const,
-      aspectRatio: '1:1' as const,
-      mode: 'default' as const,
-      detail: null,
-    },
-    samplingParams: { detail: null },
+  function createSessionConfig(): HarnessSessionConfig {
+    return {
+      model: { selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL },
+      reasoning: { enabled: true, effort: 'medium' as const },
+      webSearch: { enabled: true, level: 'low' as const, detail: null },
+      imageGeneration: {
+        enabled: true,
+        resolution: '1K' as const,
+        aspectRatio: '1:1' as const,
+        mode: 'default' as const,
+        detail: null,
+      },
+      samplingParams: { detail: null },
+    }
   }
-}
 
-  function renderHarness(initialLayer: SearchSettingsLayer | null, input?: Readonly<{ favorites?: unknown[]; recents?: unknown[] }>) {
+  function renderHarness(input?: Readonly<{ favorites?: unknown[]; recents?: unknown[]; disabled?: boolean }>) {
     installDbBridgeStub(input)
     const Wrapper = defineComponent({
       components: { ChatAppComposer },
       setup() {
         const draft = ref('hello')
         const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
-        const requestedReasoningEffort = ref<'auto'>('auto')
-        const requestedReasoningExclude = ref(false)
         const sessionConfig = ref(createSessionConfig())
-        const samplingParamsLayer = ref<SamplingParamsLayer | null>(null)
-        const imageGeneration = ref({
-          enabled: false,
-          outputMode: 'auto' as const,
-          aspectRatio: '',
-          imageSize: '',
-          advancedJson: '',
-        })
-        const imageGenerationSupported = ref(true)
-        const imageGenerationCapabilityClass = ref<'text_and_image' | 'image_only' | null>('text_and_image')
-        const imageGenerationSupportHint = ref('ok')
-        const webSearchLayer = ref<SearchSettingsLayer | null>(initialLayer)
-        const serializedLayer = computed(() => JSON.stringify(webSearchLayer.value))
-        const serializedSamplingLayer = computed(() => JSON.stringify(samplingParamsLayer.value))
-        const serializedImageGeneration = computed(() => JSON.stringify(imageGeneration.value))
+        const serializedSessionConfig = computed(() => JSON.stringify(sessionConfig.value))
         const sendCount = ref(0)
         return {
           draft,
           model,
-          requestedReasoningEffort,
-          requestedReasoningExclude,
           sessionConfig,
-          samplingParamsLayer,
-          imageGeneration,
-          imageGenerationSupported,
-          imageGenerationCapabilityClass,
-          imageGenerationSupportHint,
-          webSearchLayer,
-          serializedLayer,
-          serializedSamplingLayer,
-          serializedImageGeneration,
+          serializedSessionConfig,
           sendCount,
+          disabled: input?.disabled === true,
+          onUpdateWebSearchEnabled(value: boolean) {
+            sessionConfig.value = {
+              ...sessionConfig.value,
+              webSearch: { ...sessionConfig.value.webSearch, enabled: value },
+            }
+          },
+          onUpdateWebSearchLevel(value: 'low' | 'high') {
+            sessionConfig.value = {
+              ...sessionConfig.value,
+              webSearch: { ...sessionConfig.value.webSearch, enabled: true, level: value },
+            }
+          },
+          onUpdateImageGenerationEnabled(value: boolean) {
+            sessionConfig.value = {
+              ...sessionConfig.value,
+              imageGeneration: { ...sessionConfig.value.imageGeneration, enabled: value },
+            }
+          },
+          onUpdateImageGenerationResolution(value: '1K' | '2K' | '4K') {
+            sessionConfig.value = {
+              ...sessionConfig.value,
+              imageGeneration: { ...sessionConfig.value.imageGeneration, enabled: true, resolution: value },
+            }
+          },
+          onUpdateImageGenerationAspectRatio(value: '16:9' | '3:4' | '1:1' | '4:3') {
+            sessionConfig.value = {
+              ...sessionConfig.value,
+              imageGeneration: { ...sessionConfig.value.imageGeneration, enabled: true, aspectRatio: value },
+            }
+          },
         }
       },
       template: `
@@ -94,184 +111,97 @@ function createSessionConfig() {
           <ChatAppComposer
             v-model:draft="draft"
             v-model:model="model"
-            v-model:requestedReasoningEffort="requestedReasoningEffort"
-            v-model:requestedReasoningExclude="requestedReasoningExclude"
-            v-model:samplingParamsLayer="samplingParamsLayer"
-            v-model:webSearchLayer="webSearchLayer"
             :sessionConfig="sessionConfig"
-            :imageGeneration="imageGeneration"
-            :imageGenerationVisible="true"
-            :imageGenerationSupported="imageGenerationSupported"
-            :imageGenerationCapabilityClass="imageGenerationCapabilityClass"
-            :imageGenerationSupportHint="imageGenerationSupportHint"
-            :imageGenerationAdvancedError="null"
-            :disabled="false"
+            :disabled="disabled"
             :isRunning="false"
+            :canSend="!disabled"
             :modelCatalog="[]"
-            :showHiddenModelsInPickers="false"
             :modelCatalogNotice="null"
-            @update:imageGeneration="imageGeneration = $event"
+            @updateWebSearchEnabled="onUpdateWebSearchEnabled"
+            @updateWebSearchLevel="onUpdateWebSearchLevel"
+            @updateImageGenerationEnabled="onUpdateImageGenerationEnabled"
+            @updateImageGenerationResolution="onUpdateImageGenerationResolution"
+            @updateImageGenerationAspectRatio="onUpdateImageGenerationAspectRatio"
             @send="sendCount += 1"
           />
           <div data-testid="send-count">{{ sendCount }}</div>
-          <div data-testid="layer-json">{{ serializedLayer }}</div>
-          <div data-testid="sampling-layer-json">{{ serializedSamplingLayer }}</div>
-          <div data-testid="image-generation-json">{{ serializedImageGeneration }}</div>
+          <div data-testid="session-config-json">{{ serializedSessionConfig }}</div>
         </div>
       `,
     })
     return render(Wrapper)
   }
 
-  async function expandSamplingPanelIfNeeded(user: ReturnType<typeof userEvent.setup>) {
-    if (screen.queryByTestId('sampling-mode-temperature')) return
-    const toggle = screen.queryByTestId('sampling-params-toggle')
-    if (!toggle) return
-    await user.click(toggle)
+  function sessionConfig() {
+    return JSON.parse(screen.getByTestId('session-config-json').textContent ?? '{}')
   }
 
-  it('uses dropdown for custom maxResults and keeps send enabled', async () => {
+  async function chooseChipOption(chipTestId: string, optionText: string) {
     const user = userEvent.setup()
-    renderHarness({ searchDepth: 'custom' })
+    const chip = screen.getByTestId(chipTestId)
+    await user.click(within(chip).getByTestId('capability-chip-chevron'))
+    const menu = await screen.findByTestId('capability-chip-menu')
+    await user.click(within(menu).getByText(optionText))
+  }
 
-    const sendButton = screen.getByRole('button', { name: 'Send' })
-    const depthSelect = screen.getByTestId('composer-web-depth-select') as HTMLSelectElement
-    const customSelect = screen.getByTestId('composer-web-max-results') as HTMLSelectElement
-    const textarea = screen.getByPlaceholderText('Type a message...')
+  it('uses current localized send controls and keeps enabled send behavior', async () => {
+    const user = userEvent.setup()
+    renderHarness()
 
-    expect(customSelect.tagName).toBe('SELECT')
-    expect(customSelect.value).toBe('5')
-    expect(Array.from(customSelect.options).map((option) => option.value)).toEqual([
-      '10',
-      '9',
-      '8',
-      '7',
-      '6',
-      '5',
-      '4',
-      '3',
-      '2',
-      '1',
-    ])
+    const sendButton = screen.getByTestId('composer-send')
+    const textarea = screen.getByTestId('composer-draft')
+
     expect(sendButton).not.toBeDisabled()
+    expect(sendButton.textContent).toContain('发送')
 
     await user.click(sendButton)
     expect(screen.getByTestId('send-count').textContent).toBe('1')
 
     await fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter' })
     expect(screen.getByTestId('send-count').textContent).toBe('2')
-
-    await user.selectOptions(customSelect, '7')
-    expect(JSON.parse(screen.getByTestId('layer-json').textContent ?? 'null')).toEqual({
-      searchDepth: 'custom',
-      maxResults: 7,
-    })
-
-    await user.selectOptions(depthSelect, 'medium')
-    expect(JSON.parse(screen.getByTestId('layer-json').textContent ?? 'null')).toEqual({
-      searchDepth: 'medium',
-    })
-
-    await user.selectOptions(depthSelect, 'custom')
-    const customSelectAgain = screen.getByTestId('composer-web-max-results') as HTMLSelectElement
-    expect(customSelectAgain.value).toBe('7')
-    expect(JSON.parse(screen.getByTestId('layer-json').textContent ?? 'null')).toEqual({
-      searchDepth: 'custom',
-      maxResults: 7,
-    })
   })
 
-  it('updates image generation state through dedicated control row', async () => {
+  it('updates image generation state through the image capability chip', async () => {
     const user = userEvent.setup()
-    renderHarness(null)
+    renderHarness()
 
-    const enable = screen.getByTestId('composer-image-enable') as HTMLInputElement
-    const outputMode = screen.getByTestId('composer-image-output-mode') as HTMLSelectElement
-    const aspectRatio = screen.getByTestId('composer-image-aspect-ratio') as HTMLSelectElement
-    const size = screen.getByTestId('composer-image-size') as HTMLSelectElement
-    const advanced = screen.getByTestId('composer-image-advanced-json') as HTMLInputElement
-    const aspectOptions = Array.from(aspectRatio.options).map((option) => option.value)
-    expect(aspectOptions).toEqual([
-      'default',
-      '1:1',
-      '2:3',
-      '3:2',
-      '3:4',
-      '4:3',
-      '4:5',
-      '5:4',
-      '9:16',
-      '16:9',
-      '21:9',
-    ])
-    expect(Array.from(size.options).map((option) => option.value)).toEqual(['default', '1K', '2K', '4K'])
+    await user.click(within(screen.getByTestId('image-chip')).getByTestId('capability-chip-body'))
+    expect(sessionConfig().imageGeneration.enabled).toBe(false)
 
-    await user.click(enable)
-    await user.selectOptions(outputMode, 'image_only')
-    await user.selectOptions(aspectRatio, '16:9')
-    await user.selectOptions(size, '2K')
-    await fireEvent.update(advanced, '{"seed":42}')
+    await chooseChipOption('image-chip', '2K')
+    expect(sessionConfig().imageGeneration).toMatchObject({ enabled: true, resolution: '2K' })
 
-    expect(JSON.parse(screen.getByTestId('image-generation-json').textContent ?? 'null')).toEqual({
-      enabled: true,
-      outputMode: 'image_only',
-      aspectRatio: '16:9',
-      imageSize: '2K',
-      advancedJson: '{"seed":42}',
-    })
+    await chooseChipOption('image-chip', '16:9')
+    expect(sessionConfig().imageGeneration).toMatchObject({ enabled: true, aspectRatio: '16:9' })
   })
 
-  it('keeps image controls on an independent row between reasoning and web search', () => {
-    renderHarness(null)
+  it('keeps reasoning, web search, and image controls in the current capability-chip toolbar', () => {
+    renderHarness()
 
-    const reasoning = screen.getByTestId('reasoning-controls')
-    const reasoningRow = reasoning.parentElement as HTMLElement
-    const imageRow = screen.getByTestId('composer-image-generation-row')
-    const webSearchRow = screen.getByTestId('composer-web-search-row')
+    const reasoning = screen.getByTestId('reasoning-chip')
+    const webSearch = screen.getByTestId('web-search-chip')
+    const image = screen.getByTestId('image-chip')
 
-    expect(reasoningRow.className).toContain('min-h-[38px]')
-    expect(reasoningRow.parentElement).toBe(imageRow.parentElement)
-    expect(imageRow.parentElement).toBe(webSearchRow.parentElement)
-    expect(imageRow.className).toContain('min-h-[38px]')
-    expect(webSearchRow.className).toContain('min-h-[38px]')
-    expect(reasoning.compareDocumentPosition(imageRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(imageRow.compareDocumentPosition(webSearchRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(reasoning.parentElement).toBe(webSearch.parentElement)
+    expect(webSearch.parentElement).toBe(image.parentElement)
+    expect(reasoning.compareDocumentPosition(webSearch) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(webSearch.compareDocumentPosition(image) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('keeps sampling row anchor stable while toggling default/custom', async () => {
+  it('updates web search state through the web search capability chip', async () => {
     const user = userEvent.setup()
-    renderHarness(null)
-    await expandSamplingPanelIfNeeded(user)
+    renderHarness()
 
-    const samplingRow = screen.getByTestId('composer-sampling-params-row')
-    const reasoning = screen.getByTestId('reasoning-controls')
-    const beforeClass = samplingRow.className
-    const beforeParent = samplingRow.parentElement
+    await chooseChipOption('web-search-chip', 'high')
+    expect(sessionConfig().webSearch).toMatchObject({ enabled: true, level: 'high' })
 
-    const mode = screen.getByTestId('sampling-mode-temperature') as HTMLSelectElement
-    const value = screen.getByTestId('sampling-value-temperature') as HTMLInputElement
-
-    await user.selectOptions(mode, 'custom')
-    await fireEvent.update(value, '0.7')
-    await fireEvent.blur(value)
-
-    expect(JSON.parse(screen.getByTestId('sampling-layer-json').textContent ?? 'null')).toEqual({
-      temperature: { mode: 'custom', value: 0.7 },
-    })
-    expect(samplingRow.parentElement).toBe(beforeParent)
-    expect(samplingRow.className).toBe(beforeClass)
-    expect(samplingRow.compareDocumentPosition(reasoning) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-
-    await user.selectOptions(mode, 'default')
-    expect(JSON.parse(screen.getByTestId('sampling-layer-json').textContent ?? 'null')).toBeNull()
-    expect(samplingRow.parentElement).toBe(beforeParent)
-    expect(samplingRow.className).toBe(beforeClass)
-    expect(samplingRow.compareDocumentPosition(reasoning) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await user.click(within(screen.getByTestId('web-search-chip')).getByTestId('capability-chip-body'))
+    expect(sessionConfig().webSearch).toMatchObject({ enabled: false, level: 'high' })
   })
 
-  it('keeps image control row anchor and classes stable when favorites enters/exits edit mode', async () => {
+  it('keeps quick model strip anchored below current model controls', async () => {
     const user = userEvent.setup()
-    renderHarness(null, {
+    renderHarness({
       favorites: [
         {
           scopeType: 'global',
@@ -286,80 +216,21 @@ function createSessionConfig() {
       ],
     })
 
-    const reasoning = screen.getByTestId('reasoning-controls')
-    const imageRow = screen.getByTestId('composer-image-generation-row')
-    const webSearchRow = screen.getByTestId('composer-web-search-row')
-    const beforeImageClass = imageRow.className
-    const beforeWebClass = webSearchRow.className
-    const parent = imageRow.parentElement
+    const modelTabs = screen.getByTestId('model-quick-mode-tabs')
+    await user.click(screen.getByTestId('model-main-tab-favorites'))
+    const strip = await screen.findByTestId('favorites-strip')
 
-    await user.click(await screen.findByTestId('favorites-edit'))
-    await user.click(screen.getByTestId('favorites-cancel'))
-
-    expect(imageRow.parentElement).toBe(parent)
-    expect(webSearchRow.parentElement).toBe(parent)
-    expect(imageRow.className).toBe(beforeImageClass)
-    expect(webSearchRow.className).toBe(beforeWebClass)
-    expect(reasoning.compareDocumentPosition(imageRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(imageRow.compareDocumentPosition(webSearchRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(strip.parentElement).toBe(modelTabs.parentElement?.parentElement)
+    expect(modelTabs.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByTestId(`favorite-model-${DEFAULT_OPENROUTER_TEST_MODEL}`)).toBeInTheDocument()
   })
 
-  it('shows clear disabled state and explanation for unsupported models', async () => {
-    installDbBridgeStub()
-    const Wrapper = defineComponent({
-      components: { ChatAppComposer },
-      setup() {
-        const draft = ref('hello')
-        const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
-        const requestedReasoningEffort = ref<'auto'>('auto')
-        const requestedReasoningExclude = ref(false)
-        const imageGeneration = ref({
-          enabled: false,
-          outputMode: 'auto' as const,
-          aspectRatio: '',
-          imageSize: '',
-          advancedJson: '',
-        })
-        return {
-          draft,
-          model,
-          requestedReasoningEffort,
-          requestedReasoningExclude,
-          imageGeneration,
-        }
-      },
-      template: `
-        <ChatAppComposer
-          v-model:draft="draft"
-          v-model:model="model"
-          v-model:requestedReasoningEffort="requestedReasoningEffort"
-          v-model:requestedReasoningExclude="requestedReasoningExclude"
-          :imageGeneration="imageGeneration"
-          :imageGenerationVisible="true"
-          :imageGenerationSupported="false"
-          :imageGenerationCapabilityClass="null"
-          imageGenerationSupportHint="selected model cannot be used for image generation."
-          :imageGenerationAdvancedError="null"
-          :disabled="false"
-          :isRunning="false"
-          :modelCatalog="[]"
-          :showHiddenModelsInPickers="false"
-          :modelCatalogNotice="null"
-          @update:imageGeneration="imageGeneration = $event"
-        />
-      `,
-    })
-    render(Wrapper)
+  it('disables capability chips and send action when the composer is disabled', () => {
+    renderHarness({ disabled: true })
 
-    expect(screen.getByTestId('composer-image-enable')).toBeDisabled()
-    expect(screen.getByTestId('composer-image-output-mode')).toBeDisabled()
-    expect(screen.getByTestId('composer-image-aspect-ratio')).toBeDisabled()
-    expect(screen.getByTestId('composer-image-size')).toBeDisabled()
-    expect(screen.getByTestId('composer-image-advanced-json')).toBeDisabled()
-    expect(screen.getByTestId('composer-image-capability-badge').textContent).toContain('unsupported')
-    expect(screen.getByTestId('composer-image-support-hint').textContent).toContain(
-      'selected model cannot be used for image generation.'
-    )
+    expect(screen.getByTestId('composer-send')).toBeDisabled()
+    expect(within(screen.getByTestId('reasoning-chip')).getByTestId('capability-chip-body')).toBeDisabled()
+    expect(within(screen.getByTestId('web-search-chip')).getByTestId('capability-chip-body')).toBeDisabled()
+    expect(within(screen.getByTestId('image-chip')).getByTestId('capability-chip-body')).toBeDisabled()
   })
 })
-
