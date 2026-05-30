@@ -7,11 +7,6 @@ import type { SendPlan } from '../../../../src/shared/files/sendPlanTypes'
 import { serializeSendPlanForOpenRouter } from '../../../../src/next/openrouter/openRouterSendPlanSerializer'
 import type { DerivativeErrorCode, DfcOptionGenerationStateRecord, FileAssetRecord, FileDerivativeRecord } from '../../types'
 import {
-  DFC_HTML_PDF_RUNTIME_ID,
-  checkDfcHtmlPdfRuntimeAvailability,
-  getDfcHtmlPdfManagedRuntimeRoot,
-} from '../../../files/dfcManagedBrowserRuntime'
-import {
   CreateFileAssetSchema,
   CreateFileDerivativeSchema,
   CreateDerivativeJobSchema,
@@ -618,7 +613,7 @@ async function ensureDfcDraftAttachmentOptions(
   if (asset && targetKinds.length > 0 && isDfcPhase1EnsureSourceAsset(asset)) {
     for (const targetKind of targetKinds) {
       if (targetKind === 'pdf_attachment') {
-        await ensureHtmlPdfRuntimeGateOption(runtime, asset.id, {
+        await ensureHtmlPdfDerivativeAsset(runtime, asset.id, {
           relevanceKey: `draft:${input.conversationId}:${input.assetId}`,
           isStillRelevant: () => runtime.conversationAttachmentService.hasDraftAttachment(input),
         })
@@ -648,7 +643,7 @@ function isDfcPhase1EnsureSourceAsset(asset: FileAssetRecord): boolean {
     && asset.storageBackend === 'local_fs'
 }
 
-async function ensureHtmlPdfRuntimeGateOption(
+async function ensureHtmlPdfDerivativeAsset(
   runtime: DbWorkerRuntime,
   assetId: string,
   options: Readonly<{
@@ -659,15 +654,15 @@ async function ensureHtmlPdfRuntimeGateOption(
   const targetKind = 'pdf_attachment'
   const settingsHash = sha256Bytes(Buffer.from(JSON.stringify({
     targetKind,
-    runtimeId: DFC_HTML_PDF_RUNTIME_ID,
-    gate: 'availability_only',
+    runtime: 'electron-html-pdf',
+    policy: 'js-network-local-file-disabled',
   })))
   const generationState = runtime.dfcOptionGenerationStateRepo.ensure({
     assetId,
     targetKind,
     derivedKind: 'converted_pdf',
     exposureMode: 'dfc',
-    generator: DFC_HTML_PDF_RUNTIME_GATE_GENERATOR,
+    generator: DFC_HTML_PDF_DERIVATIVE_JOB_GENERATOR,
     conversionSettingsHash: settingsHash,
   })
   if (!isDfcOptionGenerationStillRelevant(options)) {
@@ -677,12 +672,59 @@ async function ensureHtmlPdfRuntimeGateOption(
     })
     return { changed: false }
   }
-  const availability = await checkDfcHtmlPdfRuntimeAvailability({
-    managedRuntimeRootDir: getDfcHtmlPdfManagedRuntimeRoot(runtime.fileStorageRootDir),
+  const asset = runtime.fileAssetRepo.getById(assetId)
+  if (!asset) {
+    runtime.dfcOptionGenerationStateRepo.markFailed({
+      id: generationState.id,
+      errorCode: 'derivative_asset_missing',
+      retryable: false,
+    })
+    return { changed: true }
+  }
+  const derivative = findReusablePdfDerivative(runtime, assetId, asset)
+  if (derivative) {
+    runtime.dfcOptionGenerationStateRepo.markReady({
+      id: generationState.id,
+      outputDerivativeId: derivative.id,
+    })
+    return { changed: false }
+  }
+  if (shouldSkipNonRetryableDfcGeneration(generationState)) return { changed: false }
+  const job = runtime.derivativeJobService.createDerivativeJob({
+    id: randomUUID(),
+    assetId,
+    derivativeKind: 'converted_pdf',
+    taskFamily: 'chat_context',
+    generator: DFC_HTML_PDF_DERIVATIVE_JOB_GENERATOR,
+    configJson: {
+      targetKind,
+      timeoutMs: 15_000,
+    },
   })
-  runtime.dfcOptionGenerationStateRepo.markBlocked({
+  runtime.dfcOptionGenerationStateRepo.markRunning({
     id: generationState.id,
-    errorCode: availability.ok ? 'conversion_not_implemented' : availability.diagnostics[0]?.code ?? 'html_pdf_runtime_missing',
+    derivativeJobId: job.id,
+    attemptCount: generationState.attemptCount + 1,
+  })
+  const ran = await runtime.derivativeJobService.runDerivativeJob({ jobId: job.id })
+  if (ran.job.status !== 'ready' || !ran.derivative) {
+    runtime.dfcOptionGenerationStateRepo.markFailed({
+      id: generationState.id,
+      errorCode: normalizeDerivativeErrorCode(ran.job.errorCode),
+      retryable: !NON_RETRYABLE_TEXT_CONVERSION_ERRORS.has(ran.job.errorCode ?? ''),
+    })
+    return { changed: true }
+  }
+  if (!isDfcOptionGenerationStillRelevant(options)) {
+    runtime.dfcOptionGenerationStateRepo.markBlocked({
+      id: generationState.id,
+      errorCode: 'draft_attachment_detached',
+    })
+    return { changed: true }
+  }
+  runtime.dfcOptionGenerationStateRepo.markReady({
+    id: generationState.id,
+    outputDerivativeId: ran.derivative.id,
   })
   return { changed: true }
 }
@@ -926,6 +968,28 @@ function findReusableTextDerivative(
   return candidates.find((derivative) => shouldReuseExistingTextDerivative(derivative, asset, targetKind, options)) ?? null
 }
 
+function findReusablePdfDerivative(
+  runtime: DbWorkerRuntime,
+  assetId: string,
+  asset: FileAssetRecord
+): FileDerivativeRecord | null {
+  const candidates = runtime.fileDerivativeRepo
+    .listByParentAssetId({ parentAssetId: assetId })
+    .filter((derivative) =>
+      derivative.derivedKind === 'converted_pdf'
+      && derivative.status === 'ready'
+      && derivative.deletedAt == null
+    )
+    .sort((a, b) => b.createdAt - a.createdAt)
+  return candidates.find((derivative) => {
+    const meta = normalizeObject(derivative.metaJson)
+    if (readStringMeta(meta, 'targetKind') !== 'pdf_attachment') return false
+    const sourceHash = normalizeNullableText(asset.sha256)
+    const derivativeSourceHash = readStringMeta(meta, 'sourceHash')
+    return !!sourceHash && derivativeSourceHash === sourceHash
+  }) ?? null
+}
+
 function shouldReuseExistingTextDerivative(
   derivative: FileDerivativeRecord,
   asset: FileAssetRecord,
@@ -1100,7 +1164,7 @@ function isRouteLevelTextConversionFailure(errorCode: string): boolean {
 const DFC_TEXT_CONVERTER_NAME = 'starverse-text-derivative'
 const DFC_TEXT_CONVERTER_VERSION = '1'
 const DFC_TEXT_DERIVATIVE_JOB_GENERATOR = 'step3-text-structured-conversion'
-const DFC_HTML_PDF_RUNTIME_GATE_GENERATOR = 'dfc-html-pdf-runtime-gate'
+const DFC_HTML_PDF_DERIVATIVE_JOB_GENERATOR = 'dfc-html-pdf-electron-service'
 const DFC_TEXT_CODE_EXTENSIONS = new Set([
   'js', 'ts', 'jsx', 'tsx', 'py', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd',
   'json', 'yaml', 'yml', 'xml', 'toml', 'ini', 'env', 'sql', 'go', 'rs',

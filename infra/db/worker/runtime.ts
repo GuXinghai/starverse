@@ -322,6 +322,7 @@ export class DbWorkerRuntime {
       derivativeJobRepo: this.derivativeJobRepo,
       modelCatalogRepo: this.modelCatalogRepo,
       storageRootDir: this.fileStorageRootDir,
+      electronConversionBridge: config.electronConversionBridge,
     })
     this.reasoningModelIndexRepo = new ReasoningModelIndexRepo(this.db)
     this.settingsRepo = new SettingsRepo(this.db)
