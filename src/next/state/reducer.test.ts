@@ -164,7 +164,7 @@ describe('next/state reducer', () => {
         "finishReason": undefined,
         "generationId": "gen_1",
         "localProcessingDurationMs": undefined,
-        "model": "deepseek/deepseek-v4-flash",
+        "model": "openrouter/auto",
         "nativeFinishReason": undefined,
         "provider": undefined,
         "requestId": "req1",
