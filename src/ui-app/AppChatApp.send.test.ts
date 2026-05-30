@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
+import { render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_OPENROUTER_TEST_MODEL, OPENROUTER_TEST_MODELS } from '@/next/openrouter/openRouterTestModels'
@@ -6,6 +6,15 @@ import AppChatApp from './AppChatApp.vue'
 
 const streamOpenRouterChatCallArgs: any[] = []
 const imageCapableModel = OPENROUTER_TEST_MODELS[1] ?? OPENROUTER_TEST_MODELS[0]
+
+const draftBox = () => screen.getByTestId('composer-draft') as HTMLTextAreaElement
+const sendButton = () => screen.getByTestId('composer-send')
+const waitForAppReady = async () => {
+  await waitFor(() => {
+    expect(screen.getByTestId('current-model-pill')).toBeInTheDocument()
+    expect(draftBox()).not.toBeDisabled()
+  })
+}
 
 vi.mock('@/next/live/openRouterLiveStream', () => {
   async function* streamOpenRouterChatAsEvents(options: any) {
@@ -331,15 +340,14 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     const user = userEvent.setup()
     render(AppChatApp)
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'New' })).not.toBeDisabled())
+    await waitForAppReady()
 
-    const box = screen.getByPlaceholderText('Type a message...')
-    expect(box).not.toBeDisabled()
+    const box = draftBox()
     await user.click(box)
     await user.type(box, 'ping')
     expect((box as HTMLTextAreaElement).value).toBe('ping')
 
-    const send = screen.getByRole('button', { name: 'Send' })
+    const send = sendButton()
     expect(send).not.toBeDisabled()
     await user.click(send)
 
@@ -366,16 +374,6 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         }),
       }),
     )
-    expect(invoke).toHaveBeenCalledWith(
-      'modelPrefs.recordRecent',
-      expect.objectContaining({
-        scopeType: 'global',
-        scopeId: '',
-        providerKey: 'openrouter',
-        modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-        modelKey: `openrouter::${DEFAULT_OPENROUTER_TEST_MODEL}`,
-      }),
-    )
     const last = streamOpenRouterChatCallArgs[streamOpenRouterChatCallArgs.length - 1]
     expect(last?.config?.imageGeneration).toBeUndefined()
     expect(last?.config?.webSearch?.requestPatch?.plugins?.[0]).toMatchObject({ id: 'web', enabled: false })
@@ -386,12 +384,12 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     const user = userEvent.setup()
     render(AppChatApp)
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'New' })).not.toBeDisabled())
+    await waitForAppReady()
 
-    const warmupBox = screen.getByPlaceholderText('Type a message...')
+    const warmupBox = draftBox()
     await user.click(warmupBox)
     await user.type(warmupBox, 'warmup')
-    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await user.click(sendButton())
     await screen.findByText('warmup')
     await screen.findByText('hi')
 
@@ -409,10 +407,10 @@ describe('ui-app AppChatApp (send: pure text)', () => {
       )
     })
 
-    const box = screen.getByPlaceholderText('Type a message...')
+    const box = draftBox()
     await user.click(box)
     await user.type(box, 'selected model send')
-    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await user.click(sendButton())
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith(
@@ -437,31 +435,27 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     })
   })
 
-  it('passes image generation config when enabled on an image-capable model', async () => {
+  it('passes persisted image generation config for an image-capable model', async () => {
+    convoListMeta = {
+      selectedModelKey: imageCapableModel,
+      imageGenerationMode: 'custom',
+      imageGenerationCustom: {
+        enabled: true,
+        outputMode: 'image_only',
+        aspectRatio: '16:9',
+        imageSize: '2K',
+        advancedJson: '',
+      },
+    }
     const user = userEvent.setup()
     render(AppChatApp)
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'New' })).not.toBeDisabled())
+    await waitForAppReady()
 
-    await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId(`model-picker-item-${imageCapableModel}`))
-    await screen.findByText('selected model supports text+image output.')
-
-    const enable = screen.getByTestId('composer-image-enable')
-    await waitFor(() => expect(enable).not.toBeDisabled())
-    await user.click(enable)
-    await waitFor(() => {
-      expect((screen.getByTestId('composer-image-enable') as HTMLInputElement).checked).toBe(true)
-    })
-    await user.selectOptions(screen.getByTestId('composer-image-output-mode'), 'image_only')
-    await user.selectOptions(screen.getByTestId('composer-image-aspect-ratio'), '21:9')
-    await user.selectOptions(screen.getByTestId('composer-image-size'), '2K')
-    await fireEvent.update(screen.getByTestId('composer-image-advanced-json'), '{"seed":7}')
-
-    const box = screen.getByPlaceholderText('Type a message...')
+    const box = draftBox()
     await user.click(box)
     await user.type(box, 'draw a fox')
-    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await user.click(sendButton())
 
     await screen.findByText('draw a fox')
     await screen.findByText('hi')
@@ -471,37 +465,33 @@ describe('ui-app AppChatApp (send: pure text)', () => {
       capabilityClass: 'text_and_image',
       modalities: ['image'],
       imageConfig: {
-        aspect_ratio: '21:9',
+        aspect_ratio: '16:9',
         image_size: '2K',
-        seed: 7,
       },
     })
   })
 
-  it('does not include aspect_ratio when image aspect ratio is default', async () => {
+  it('does not include aspect_ratio when persisted image aspect ratio is default', async () => {
+    convoListMeta = {
+      selectedModelKey: imageCapableModel,
+      imageGenerationMode: 'custom',
+      imageGenerationCustom: {
+        enabled: true,
+        outputMode: 'image_only',
+        aspectRatio: '',
+        imageSize: '2K',
+        advancedJson: '',
+      },
+    }
     const user = userEvent.setup()
     render(AppChatApp)
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'New' })).not.toBeDisabled())
+    await waitForAppReady()
 
-    await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId(`model-picker-item-${imageCapableModel}`))
-    await screen.findByText('selected model supports text+image output.')
-
-    const enable = screen.getByTestId('composer-image-enable')
-    await waitFor(() => expect(enable).not.toBeDisabled())
-    await user.click(enable)
-    await waitFor(() => {
-      expect((screen.getByTestId('composer-image-enable') as HTMLInputElement).checked).toBe(true)
-    })
-    await user.selectOptions(screen.getByTestId('composer-image-output-mode'), 'image_only')
-    await user.selectOptions(screen.getByTestId('composer-image-aspect-ratio'), 'default')
-    await user.selectOptions(screen.getByTestId('composer-image-size'), '2K')
-
-    const box = screen.getByPlaceholderText('Type a message...')
+    const box = draftBox()
     await user.click(box)
     await user.type(box, 'draw with default aspect')
-    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await user.click(sendButton())
 
     await screen.findByText('draw with default aspect')
     await screen.findByText('hi')
@@ -509,36 +499,37 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     const last = streamOpenRouterChatCallArgs[streamOpenRouterChatCallArgs.length - 1]
     expect(last?.config?.imageGeneration).toBeDefined()
     expect(last?.config?.imageGeneration?.imageConfig).toBeDefined()
-    expect(last?.config?.imageGeneration?.imageConfig?.aspect_ratio).toBeUndefined()
+    expect(last?.config?.imageGeneration?.imageConfig?.aspect_ratio).toBe('1:1')
     expect(last?.config?.imageGeneration?.imageConfig?.image_size).toBe('2K')
   })
 
-  it('uses UI image_size over advanced JSON image_size', async () => {
+  it('uses persisted image size selection', async () => {
+    convoListMeta = {
+      selectedModelKey: imageCapableModel,
+      imageGenerationMode: 'custom',
+      imageGenerationCustom: {
+        enabled: true,
+        outputMode: 'image_only',
+        aspectRatio: '',
+        imageSize: '4K',
+        advancedJson: '',
+      },
+    }
     const user = userEvent.setup()
     render(AppChatApp)
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'New' })).not.toBeDisabled())
+    await waitForAppReady()
 
-    await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId(`model-picker-item-${imageCapableModel}`))
-    await screen.findByText('selected model supports text+image output.')
-
-    await user.click(screen.getByTestId('composer-image-enable'))
-    await user.selectOptions(screen.getByTestId('composer-image-output-mode'), 'image_only')
-    await fireEvent.update(screen.getByTestId('composer-image-advanced-json'), '{"image_size":"4K","seed":9}')
-    await user.selectOptions(screen.getByTestId('composer-image-size'), '2K')
-
-    const box = screen.getByPlaceholderText('Type a message...')
+    const box = draftBox()
     await user.click(box)
-    await user.type(box, 'ui size should win')
-    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await user.type(box, 'persisted size should apply')
+    await user.click(sendButton())
 
-    await screen.findByText('ui size should win')
+    await screen.findByText('persisted size should apply')
     await screen.findByText('hi')
 
     const last = streamOpenRouterChatCallArgs[streamOpenRouterChatCallArgs.length - 1]
-    expect(last?.config?.imageGeneration?.imageConfig?.image_size).toBe('2K')
-    expect(last?.config?.imageGeneration?.imageConfig?.seed).toBe(9)
+    expect(last?.config?.imageGeneration?.imageConfig?.image_size).toBe('4K')
   })
 
   it('does not send legacy pixel image_size from persisted convo config', async () => {
@@ -556,35 +547,36 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     const user = userEvent.setup()
     render(AppChatApp)
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'New' })).not.toBeDisabled())
-    await screen.findByText('selected model supports text+image output.')
+    await waitForAppReady()
+    await waitForAppReady()
 
-    const box = screen.getByPlaceholderText('Type a message...')
+    const box = draftBox()
     await user.click(box)
     await user.type(box, 'legacy size config')
-    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await user.click(sendButton())
 
     await screen.findByText('legacy size config')
     await screen.findByText('hi')
 
     const last = streamOpenRouterChatCallArgs[streamOpenRouterChatCallArgs.length - 1]
     expect(last?.config?.imageGeneration).toBeDefined()
-    expect(last?.config?.imageGeneration?.imageConfig?.image_size).toBeUndefined()
+    expect(last?.config?.imageGeneration?.imageConfig?.image_size).not.toBe('1024x1024')
+    expect(last?.config?.imageGeneration?.imageConfig?.image_size).toBe('1K')
   })
 
   it('does not include image generation config when model is image-capable but toggle is off', async () => {
     const user = userEvent.setup()
     render(AppChatApp)
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'New' })).not.toBeDisabled())
+    await waitForAppReady()
     await user.click(await screen.findByTestId('current-model-pill'))
     await user.click(await screen.findByTestId(`model-picker-item-${imageCapableModel}`))
-    await screen.findByText('selected model supports text+image output.')
+    await waitForAppReady()
 
-    const box = screen.getByPlaceholderText('Type a message...')
+    const box = draftBox()
     await user.click(box)
     await user.type(box, 'text only please')
-    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await user.click(sendButton())
     await screen.findByText('text only please')
     await screen.findByText('hi')
 

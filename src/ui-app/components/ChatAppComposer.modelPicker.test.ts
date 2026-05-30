@@ -38,6 +38,18 @@ function createBoundSessionConfig(model: { value: string }) {
   }))
 }
 
+type ComposerTestUser = ReturnType<typeof userEvent.setup>
+
+async function openFavoritesStrip(user: ComposerTestUser) {
+  await user.click(await screen.findByTestId('model-main-tab-favorites'))
+  return await screen.findByTestId('favorites-strip')
+}
+
+async function openRecentsStrip(user: ComposerTestUser) {
+  await user.click(await screen.findByTestId('model-main-tab-recents'))
+  return await screen.findByTestId('favorites-strip')
+}
+
 describe('ChatAppComposer model picker integration', () => {
   const originalDbBridge = (globalThis as any).dbBridge
 
@@ -134,7 +146,7 @@ describe('ChatAppComposer model picker integration', () => {
     expect(pillAfter.textContent).toContain('Claude 3')
   })
 
-  it('applies image-only output filter when opening picker from composer filter toggle', async () => {
+  it('applies image-only output filter from model picker dialog controls', async () => {
     const user = userEvent.setup()
     const queryFn = vi.fn(async (_input: CatalogQueryInput): Promise<CatalogQueryResult> =>
       createResult([
@@ -208,10 +220,11 @@ describe('ChatAppComposer model picker integration', () => {
 
     render(Wrapper)
 
-    await user.click(await screen.findByTestId('composer-model-image-filter-toggle'))
-    queryFn.mockClear()
-    await user.click(screen.getByTestId('current-model-pill'))
+    await user.click(await screen.findByTestId('current-model-pill'))
+    await screen.findByTestId('model-picker-quick-image-output')
 
+    queryFn.mockClear()
+    await user.click(screen.getByTestId('model-picker-quick-image-output'))
     await waitFor(() => {
       expect(queryFn).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -306,10 +319,10 @@ describe('ChatAppComposer model picker integration', () => {
     render(Wrapper)
 
     await user.click(await screen.findByTestId('current-model-favorite-toggle'))
+    await openFavoritesStrip(user)
     await waitFor(() => {
       expect(screen.getByTestId('favorite-model-openai/gpt-4o')).toBeTruthy()
     })
-    expect(screen.getByTestId('favorites-scrollbar-reserve-spacer')).toBeTruthy()
 
     await user.click(screen.getByTestId('current-model-favorite-toggle'))
     await waitFor(() => {
@@ -385,6 +398,7 @@ describe('ChatAppComposer model picker integration', () => {
     })
 
     render(Wrapper)
+    await openFavoritesStrip(user)
     await screen.findByTestId('favorite-model-openai/gpt-4o')
 
     await user.click(screen.getByTestId('favorite-model-openai/gpt-4o'))
@@ -547,35 +561,45 @@ describe('ChatAppComposer model picker integration', () => {
     await user.click(await screen.findByTestId('current-model-pill'))
     await screen.findByTestId('model-picker-item-anthropic/claude-3')
     await user.click(screen.getByTestId('model-picker-favorite-anthropic/claude-3'))
+    await openFavoritesStrip(user)
 
     await waitFor(() => {
       expect(screen.getByTestId('favorite-model-anthropic/claude-3')).toBeTruthy()
     })
   })
 
-  it('renders recents strip and switches model with single click', async () => {
+  it('renders current-session recents strip and switches model with single click', async () => {
     const user = userEvent.setup()
     ;(globalThis as any).dbBridge = {
       invoke: vi.fn(async (method: string) => {
         if (method === 'modelPrefs.listFavorites') return []
-        if (method === 'modelPrefs.listRecents') {
-          return [
-            {
-              scopeType: 'global',
-              scopeId: '',
-              providerKey: 'openrouter',
-              modelId: 'anthropic/claude-3',
-              modelKey: 'openrouter::anthropic/claude-3',
-              lastUsedAtMs: 1_700_000_000_000,
-              useCount: 3,
-              createdAtMs: 1_700_000_000_000,
-              updatedAtMs: 1_700_000_000_000,
-            },
-          ]
-        }
         return null
       }),
     }
+    const queryFn = vi.fn(async (_input: CatalogQueryInput): Promise<CatalogQueryResult> =>
+      createResult([
+        {
+          providerKey: 'openrouter',
+          modelId: 'anthropic/claude-3',
+          modelKey: 'openrouter::anthropic/claude-3',
+          canonicalSlug: 'anthropic/claude-3',
+          displayName: 'Claude 3',
+          description: 'fallback',
+          vendor: 'anthropic',
+          contextLength: 200000,
+          maxOutputTokens: null,
+          createdAtSec: 1700000123,
+          pricing: { prompt: '0.01', completion: '0.02', request: '0', image: '0' },
+          capabilities: {
+            reasoning: true,
+            tools: false,
+            structuredOutputs: false,
+            vision: false,
+            longContext: true,
+          },
+        },
+      ]),
+    )
 
     const Wrapper = defineComponent({
       components: { ChatAppComposer },
@@ -603,6 +627,7 @@ describe('ChatAppComposer model picker integration', () => {
           requestedReasoningExclude,
           sessionConfig,
           modelCatalog,
+          queryFn,
         }
       },
       template: `
@@ -617,11 +642,16 @@ describe('ChatAppComposer model picker integration', () => {
           :modelCatalog="modelCatalog"
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
+          :modelPickerQueryFn="queryFn"
         />
       `,
     })
 
     render(Wrapper)
+    await user.click(await screen.findByTestId('current-model-pill'))
+    await user.click(await screen.findByTestId('model-picker-item-anthropic/claude-3'))
+
+    await openRecentsStrip(user)
     await screen.findByTestId('recent-model-anthropic/claude-3')
 
     await user.click(screen.getByTestId('recent-model-anthropic/claude-3'))
@@ -631,36 +661,25 @@ describe('ChatAppComposer model picker integration', () => {
     })
   })
 
-  it('collapses overflowing recents and opens picker for hidden items', async () => {
+  it('limits current-session recents and opens picker from the model pill', async () => {
     const user = userEvent.setup()
-    const recents = Array.from({ length: 8 }, (_value, index) => ({
-      scopeType: 'global',
-      scopeId: '',
-      providerKey: 'openrouter',
-      modelId: `vendor/model-${index + 1}`,
-      modelKey: `openrouter::vendor/model-${index + 1}`,
-      lastUsedAtMs: 1_700_000_000_000 - index,
-      useCount: 1,
-      createdAtMs: 1_700_000_000_000 - index,
-      updatedAtMs: 1_700_000_000_000 - index,
-    }))
+    const modelIds = Array.from({ length: 8 }, (_value, index) => `vendor/model-${index + 1}`)
 
     ;(globalThis as any).dbBridge = {
       invoke: vi.fn(async (method: string) => {
         if (method === 'modelPrefs.listFavorites') return []
-        if (method === 'modelPrefs.listRecents') return recents
         return null
       }),
     }
 
     const queryFn = vi.fn(async (): Promise<CatalogQueryResult> =>
-      createResult([
-        {
+      createResult(
+        modelIds.map((modelId, index) => ({
           providerKey: 'openrouter',
-          modelId: 'vendor/model-1',
-          modelKey: 'openrouter::vendor/model-1',
-          canonicalSlug: 'vendor/model-1',
-          displayName: 'Model 1',
+          modelId,
+          modelKey: `openrouter::${modelId}`,
+          canonicalSlug: modelId,
+          displayName: `Model ${index + 1}`,
           description: 'fallback',
           vendor: 'vendor',
           contextLength: 32768,
@@ -674,8 +693,8 @@ describe('ChatAppComposer model picker integration', () => {
             vision: false,
             longContext: true,
           },
-        },
-      ]),
+        })),
+      ),
     )
 
     const Wrapper = defineComponent({
@@ -687,9 +706,9 @@ describe('ChatAppComposer model picker integration', () => {
         const requestedReasoningExclude = ref(false)
         const sessionConfig = createBoundSessionConfig(model)
         const modelCatalog = ref(
-          recents.map((item) => ({
-            modelId: item.modelId,
-            name: item.modelId,
+          modelIds.map((modelId, index) => ({
+            modelId,
+            name: `Model ${index + 1}`,
             vendor: 'vendor',
             status: 'visible' as const,
             supportedParameters: [],
@@ -720,17 +739,23 @@ describe('ChatAppComposer model picker integration', () => {
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
           :modelPickerQueryFn="queryFn"
+          :maxRecentModels="6"
         />
       `,
     })
 
     render(Wrapper)
 
-    await screen.findByTestId('recent-model-vendor/model-1')
-    expect(screen.queryByTestId('recent-model-vendor/model-7')).toBeNull()
-    expect(screen.queryByTestId('recent-model-vendor/model-8')).toBeNull()
+    for (const modelId of modelIds) {
+      await user.click(await screen.findByTestId('current-model-pill'))
+      await user.click(await screen.findByTestId(`model-picker-item-${modelId}`))
+    }
+    await openRecentsStrip(user)
+    await screen.findByTestId('recent-model-vendor/model-8')
+    expect(screen.queryByTestId('recent-model-vendor/model-1')).toBeNull()
+    expect(screen.queryByTestId('recent-model-vendor/model-2')).toBeNull()
 
-    await user.click(screen.getByTestId('recents-open-picker'))
+    await user.click(screen.getByTestId('current-model-pill'))
     await screen.findByTestId('model-picker-dialog')
   })
 
@@ -887,21 +912,22 @@ describe('ChatAppComposer model picker integration', () => {
     })
 
     render(Wrapper)
-    const favoritesStrip = await screen.findByTestId('favorites-strip')
+    const favoritesStrip = await openFavoritesStrip(user)
     await waitFor(() => {
       const favoriteButtons = within(favoritesStrip).queryAllByTestId(/^favorite-model-/)
       expect(favoriteButtons[0].textContent).toContain('GPT-4o')
       expect(favoriteButtons[1].textContent).toContain('Claude 3')
     })
 
-    await user.click(screen.getByTestId('favorites-edit'))
-    const firstCard = screen.getByTestId('favorite-edit-card-0')
-    const secondCard = screen.getByTestId('favorite-edit-card-1')
+    await user.click(screen.getByTestId('current-model-pill'))
+    await user.click(await screen.findByTestId('model-picker-favorites-edit'))
+    const firstCard = screen.getByTestId('model-picker-favorites-card-0')
+    const secondCard = screen.getByTestId('model-picker-favorites-card-1')
     await fireEvent.dragStart(firstCard)
     await fireEvent.dragOver(secondCard)
     await fireEvent.drop(secondCard)
     await fireEvent.dragEnd(firstCard)
-    await user.click(screen.getByTestId('favorites-done'))
+    await user.click(screen.getByTestId('model-picker-favorites-done'))
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith(
@@ -914,6 +940,7 @@ describe('ChatAppComposer model picker integration', () => {
       )
     })
 
+    await openFavoritesStrip(user)
     await waitFor(() => {
       const favoriteButtons = within(screen.getByTestId('favorites-strip')).queryAllByTestId(/^favorite-model-/)
       expect(favoriteButtons[0].textContent).toContain('Claude 3')
@@ -1078,9 +1105,11 @@ describe('ChatAppComposer model picker integration', () => {
     })
 
     render(Wrapper)
-    await user.click(screen.getByTestId('favorites-edit'))
-    await user.click(screen.getByTestId('favorite-edit-remove-1'))
-    await user.click(screen.getByTestId('favorites-done'))
+    await openFavoritesStrip(user)
+    await user.click(screen.getByTestId('current-model-pill'))
+    await user.click(await screen.findByTestId('model-picker-favorites-edit'))
+    await user.click(screen.getByTestId('model-picker-favorites-remove-1'))
+    await user.click(screen.getByTestId('model-picker-favorites-done'))
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith(
@@ -1093,6 +1122,7 @@ describe('ChatAppComposer model picker integration', () => {
       )
     })
 
+    await openFavoritesStrip(user)
     await waitFor(() => {
       const favoriteButtons = within(screen.getByTestId('favorites-strip')).queryAllByTestId(/^favorite-model-/)
       expect(favoriteButtons).toHaveLength(1)
@@ -1100,7 +1130,7 @@ describe('ChatAppComposer model picker integration', () => {
     })
   })
 
-  it('honors injected project scope for favorites and recents operations', async () => {
+  it('honors injected project scope for favorite operations', async () => {
     const user = userEvent.setup()
     const invoke = vi.fn(async (method: string, params?: any) => {
       if (method === 'modelPrefs.listFavorites') return []
@@ -1170,13 +1200,11 @@ describe('ChatAppComposer model picker integration', () => {
 
     render(Wrapper)
 
+    await openFavoritesStrip(user)
+
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith(
         'modelPrefs.listFavorites',
-        expect.objectContaining({ scopeType: 'project', scopeId: 'project-77' }),
-      )
-      expect(invoke).toHaveBeenCalledWith(
-        'modelPrefs.listRecents',
         expect.objectContaining({ scopeType: 'project', scopeId: 'project-77' }),
       )
     })

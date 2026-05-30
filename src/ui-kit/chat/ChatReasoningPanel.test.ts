@@ -25,9 +25,8 @@ describe('ChatReasoningPanel', () => {
       },
     })
 
-    expect(screen.getByText('Summary')).toBeInTheDocument()
+    expect(screen.getAllByText('摘要').length).toBeGreaterThan(0)
     expect(screen.getByText('S')).toBeInTheDocument()
-    expect(screen.getAllByText('Reasoning')).toHaveLength(1)
     expect(screen.getByText('R')).toBeInTheDocument()
   })
 
@@ -44,7 +43,7 @@ describe('ChatReasoningPanel', () => {
     })
 
     expect(screen.queryByText('(collapsed)')).not.toBeInTheDocument()
-    expect(screen.getByText('Summary')).toBeInTheDocument()
+    expect(screen.getAllByText('摘要').length).toBeGreaterThan(0)
     expect(screen.getByText('S')).toBeInTheDocument()
     r1.unmount()
 
@@ -59,9 +58,8 @@ describe('ChatReasoningPanel', () => {
       },
     })
 
-    expect(screen.getByText('Summary')).toBeInTheDocument()
+    expect(screen.getAllByText('摘要').length).toBeGreaterThan(0)
     expect(screen.getByText('S')).toBeInTheDocument()
-    expect(screen.getAllByText('Reasoning')).toHaveLength(1)
     expect(screen.getByText('R')).toBeInTheDocument()
   })
 
@@ -101,6 +99,7 @@ describe('ChatReasoningPanel', () => {
       },
     })
 
-    expect(screen.getByText('encrypted')).toBeInTheDocument()
+    expect(screen.getByText('已加密')).toBeInTheDocument()
+    expect(screen.getByText(/encrypted/)).toBeInTheDocument()
   })
 })

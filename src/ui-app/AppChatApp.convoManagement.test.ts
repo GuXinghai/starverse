@@ -20,11 +20,26 @@ describe('ui-app AppChatApp (conversation management)', () => {
     ]
 
     const invoke = vi.fn(async (method: string, params?: any) => {
+      if (method === 'project.getInbox') return null
       if (method === 'project.list') return projects
+      if (method === 'project.countConversationsBatch') return { counts: {} }
+      if (method === 'settings.getImageGenerationDefault') return { value: null }
+      if (method === 'settings.getWebSearchDefaults') return { value: null }
+      if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+      if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
+      if (method === 'settings.getUserMessageRenderDefault') return { value: false }
+      if (method === 'settings.deleteChatDraftsByPrefix') return { deleted: 0 }
 
       if (method === 'convo.list') {
         const sorted = [...convos].sort((a, b) => b.updatedAt - a.updatedAt)
-        return sorted.map((c) => ({ id: c.id, title: c.title, createdAt: c.createdAt, updatedAt: c.updatedAt, projectId: c.projectId ?? null }))
+        return sorted.map((c) => ({
+          id: c.id,
+          title: c.title,
+          createdAt: c.createdAt,
+          updatedAt: c.updatedAt,
+          projectId: c.projectId ?? null,
+          meta: null,
+        }))
       }
 
       if (method === 'branch.ensureDefault') {
@@ -45,6 +60,25 @@ describe('ui-app AppChatApp (conversation management)', () => {
       if (method === 'context.buildForBranch') {
         return { messages: [], debug: { branchId: String(params?.branchId ?? ''), excludedQuestionIds: [], includedMessageIds: [], chosenAnswerRootByQuestionId: {} } }
       }
+
+      if (method === 'conversationDraft.restore' || method === 'conversationDraft.updateText') {
+        return {
+          conversationId: String(params?.conversationId ?? 'c1'),
+          draftText: '',
+          draftMode: 'compose',
+          editingSourceMessageId: null,
+          attachedAssetIds: [],
+          attachments: [],
+          updatedAt: Date.now(),
+        }
+      }
+
+      if (method === 'modelCatalog.list') return []
+      if (method === 'modelCatalog.queryCore') return { items: [], nextCursor: null }
+      if (method === 'modelCatalog.getCoreMeta') return { providerKey: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1' }
+      if (method === 'modelCatalog.listEndpointMeta') return []
+      if (method === 'modelCatalog.replaceEndpointMeta') return { ok: true }
+      if (method === 'reasoningIndex.list') return []
 
       if (method === 'convo.save') {
         const id = String(params?.id ?? '')
@@ -109,13 +143,14 @@ describe('ui-app AppChatApp (conversation management)', () => {
     await screen.findByTestId('convo-row-c1')
 
     const row = screen.getByTestId('convo-row-c1')
-    await user.click(within(row).getByRole('button', { name: 'Rename' }))
+    await user.click(within(row).getByTestId('convo-menu-c1'))
+    await user.click(within(row).getByRole('button', { name: '重命名' }))
 
     const dialog = screen.getByTestId('rename-dialog')
     const input = within(dialog).getByRole('textbox')
     await user.clear(input)
     await user.type(input, 'Renamed')
-    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await user.click(within(dialog).getByRole('button', { name: '保存' }))
 
     await waitFor(() => expect(within(screen.getByTestId('convo-row-c1')).getByText('Renamed')).toBeTruthy())
 
@@ -130,12 +165,13 @@ describe('ui-app AppChatApp (conversation management)', () => {
     await screen.findByTestId('convo-row-c1')
 
     const row = screen.getByTestId('convo-row-c1')
-    await user.click(within(row).getByRole('button', { name: 'Move' }))
+    await user.click(within(row).getByTestId('convo-menu-c1'))
+    await user.click(within(row).getByRole('button', { name: '移动' }))
 
     const dialog = screen.getByTestId('move-dialog')
     const select = within(dialog).getByRole('combobox')
     await user.selectOptions(select, 'p1')
-    await user.click(within(dialog).getByRole('button', { name: 'Move' }))
+    await user.click(within(dialog).getByRole('button', { name: '移动' }))
 
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     expect(invoke).toHaveBeenCalledWith('convo.setProject', expect.objectContaining({ id: 'c1', projectId: 'p1' }))
@@ -148,10 +184,11 @@ describe('ui-app AppChatApp (conversation management)', () => {
     await screen.findByTestId('convo-row-c1')
 
     const row = screen.getByTestId('convo-row-c1')
-    await user.click(within(row).getByRole('button', { name: 'Delete' }))
+    await user.click(within(row).getByTestId('convo-menu-c1'))
+    await user.click(within(row).getByRole('button', { name: '删除' }))
 
     const dialog = screen.getByTestId('delete-dialog')
-    await user.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    await user.click(within(dialog).getByRole('button', { name: '删除' }))
 
     await waitFor(() => expect(screen.queryByTestId('convo-row-c1')).toBeNull())
 
@@ -166,18 +203,18 @@ describe('ui-app AppChatApp (conversation management)', () => {
     await screen.findByTestId('convo-row-c1')
     await screen.findByTestId('convo-row-c2')
 
-    await user.click(screen.getByRole('button', { name: 'Select' }))
+    await user.click(screen.getByRole('button', { name: '选择' }))
 
     const row1 = screen.getByTestId('convo-row-c1')
     const row2 = screen.getByTestId('convo-row-c2')
-    await user.click(within(row1).getByRole('checkbox', { name: 'Select conversation' }))
-    await user.click(within(row2).getByRole('checkbox', { name: 'Select conversation' }))
+    await user.click(within(row1).getByRole('checkbox', { name: '选择' }))
+    await user.click(within(row2).getByRole('checkbox', { name: '选择' }))
 
     const bulkBar = screen.getByTestId('bulk-bar')
-    await user.click(within(bulkBar).getByRole('button', { name: 'Bulk delete' }))
+    await user.click(within(bulkBar).getByRole('button', { name: '批量删除' }))
 
     const dialog = screen.getByTestId('delete-dialog')
-    await user.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    await user.click(within(dialog).getByRole('button', { name: '删除' }))
 
     await waitFor(() => {
       expect(screen.queryByTestId('convo-row-c1')).toBeNull()
@@ -195,20 +232,20 @@ describe('ui-app AppChatApp (conversation management)', () => {
     await screen.findByTestId('convo-row-c1')
     await screen.findByTestId('convo-row-c2')
 
-    await user.click(screen.getByRole('button', { name: 'Select' }))
+    await user.click(screen.getByRole('button', { name: '选择' }))
 
     const row1 = screen.getByTestId('convo-row-c1')
     const row2 = screen.getByTestId('convo-row-c2')
-    await user.click(within(row1).getByRole('checkbox', { name: 'Select conversation' }))
-    await user.click(within(row2).getByRole('checkbox', { name: 'Select conversation' }))
+    await user.click(within(row1).getByRole('checkbox', { name: '选择' }))
+    await user.click(within(row2).getByRole('checkbox', { name: '选择' }))
 
     const bulkBar = screen.getByTestId('bulk-bar')
-    await user.click(within(bulkBar).getByRole('button', { name: 'Bulk move' }))
+    await user.click(within(bulkBar).getByRole('button', { name: '批量移动' }))
 
     const dialog = screen.getByTestId('move-dialog')
     const select = within(dialog).getByRole('combobox')
     await user.selectOptions(select, 'p2')
-    await user.click(within(dialog).getByRole('button', { name: 'Move' }))
+    await user.click(within(dialog).getByRole('button', { name: '移动' }))
 
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     expect(invoke).toHaveBeenCalledWith(
