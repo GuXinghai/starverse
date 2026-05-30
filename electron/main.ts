@@ -35,6 +35,7 @@ import { registerIpc, validateCoreIpcRegistration } from './ipc/registerIpc'
 import { validateStartupIpcRegistration } from './ipc/startupIpcAudit'
 import { runStartupBackgroundJobs, wireDbEventsToRenderer } from './jobs/startupBackgroundJobs'
 import { createInAppBrowserManager } from './services/inappBrowser'
+import { createMainProcessElectronConversionService } from './services/electronConversionService'
 import { createMainWindowLifecycle } from './windows/mainWindowLifecycle'
 import {
   CURRENT_CONFIG_VERSION,
@@ -592,7 +593,8 @@ const dbWorkerManager = new DbWorkerManager({
   callTimeoutMs: 20000,
   restartBackoffMs: 500,
   maxRestartAttempts: 5,
-  maxPending: 400
+  maxPending: 400,
+  electronConversionBridge: createMainProcessElectronConversionService(),
 })
 
 type DbExpConfig = {

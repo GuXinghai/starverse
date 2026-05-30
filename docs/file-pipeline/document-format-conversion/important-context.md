@@ -1413,3 +1413,19 @@ M19R-B may implement the dedicated hidden/offscreen Electron conversion window a
 
 M19R-C can wire DFC `converted_pdf` generation to the main-process service boundary if worker/main invocation can remain internal, fail-closed, sanitized, and non-renderer-exposed. Keep `original_file`, HTML safe markdown/code, selected refs, preview/send same-source, and no-legacy-fallback invariants intact.
 - M19R-B validation passed for scoped M19R-B files: diff check, service targeted Vitest, and adapter targeted Vitest passed. `vue-tsc` was attempted and failed only in parallel unrelated `src/ui-app/components/ChatAppComposer.webSearchSendGuard.test.ts` errors; no M19R-B TypeScript errors remain.
+
+## DFC-M19R-C DFC HTML-to-PDF generation wiring recovery notes
+
+- M19R-C wires DFC `converted_pdf` generation to the internal main-process Electron conversion service boundary.
+- The DB worker/backend path uses the internal electron conversion bridge and does not import `BrowserWindow`, `webContents`, or other Electron main-only APIs.
+- Eligible managed local `.html` / `.htm` assets can produce a ready `pdf_attachment` DerivedAsset when the main-process service succeeds.
+- Ready PDF options use `targetKind: pdf_attachment`, `sendStrategy: file_attachment`, and `sendAssetRefs: derived_asset`.
+- PDF preview is metadata-only and uses the same selected derived asset. It does not read or expose PDF body, storage path, sandbox path, storage ref, file URL, content token, full hash, or raw HTML body.
+- Conversion service unavailable, blocked, failed, or timed out remains fail-closed and creates no ready DerivedAsset. Unavailable/failed PDF candidates cannot become valid ready selected options.
+- `original_file`, HTML safe `markdown`, and HTML `code` options remain independent and available when their existing paths are valid.
+- Tests use a fake conversion bridge for backend integration. M19R-B remains the adapter-level coverage for hidden conversion window policy, `printToPDF`, network/local-file blocking, JavaScript disabled policy, and cleanup.
+- Known parallel dirty test files remain outside this package and must not be staged or committed with M19R-C.
+
+## Recommended next round
+
+Run a focused Electron HTML-to-PDF hardening package before broad support claims: more timeout/failure diagnostics, cleanup assertions, production runtime availability checks, and risk review. Do not add renderer conversion IPC or expand to Office->PDF / PS-EPS without a fresh owner decision.

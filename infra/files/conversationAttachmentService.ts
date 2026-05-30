@@ -537,6 +537,73 @@ export class ConversationAttachmentService {
         diagnostics: [dfcDiagnostic('dfc_preview_raw_file_metadata_only', 'Original-file preview uses the selected raw_file ref and does not create a DerivedAsset.')],
       })
     }
+    if (decision.targetKind === 'pdf_attachment') {
+      if (decision.sendStrategy !== 'file_attachment') {
+        return dfcPreviewPayload({
+          kind: 'none',
+          status: 'blocked',
+          maxCharacters,
+          diagnostics: [dfcDiagnostic('dfc_preview_send_strategy_mismatch', 'Selected PDF target is not a file attachment strategy.')],
+        })
+      }
+      const refs = decision.sendAssetRefs
+      if (refs.length !== 1 || refs[0]?.kind !== 'derived_asset') {
+        return dfcPreviewPayload({
+          kind: 'none',
+          status: 'blocked',
+          maxCharacters,
+          diagnostics: [dfcDiagnostic('dfc_preview_ref_malformed', 'Selected PDF preview requires exactly one derived_asset ref.')],
+        })
+      }
+      const source = this.resolveDfcPreviewSource(rawAsset, refs[0].assetId)
+      if (!source) {
+        return dfcPreviewPayload({
+          kind: 'none',
+          status: 'blocked',
+          maxCharacters,
+          diagnostics: [dfcDiagnostic('dfc_preview_source_not_found', 'Selected DFC PDF asset is unavailable for preview.')],
+        })
+      }
+      const facade = createDfcDerivedAssetFacade({
+        derivativeId: source.derivativeId,
+        sourceFileId: rawAsset.id,
+        mime: source.mime,
+        storageRef: source.storageUri,
+        status: source.status,
+        generator: source.generator,
+        metaJson: source.metaJson,
+      })
+      if (!facade.ok) {
+        return dfcPreviewPayload({
+          kind: 'none',
+          status: 'blocked',
+          maxCharacters,
+          diagnostics: [dfcDiagnostic(facade.reasonCode, `Selected DFC PDF asset is malformed: ${facade.reasonCode}`)],
+        })
+      }
+      if (facade.asset.targetKind !== 'pdf_attachment') {
+        return dfcPreviewPayload({
+          kind: 'none',
+          status: 'blocked',
+          maxCharacters,
+          diagnostics: [dfcDiagnostic('dfc_preview_target_mismatch', 'Selected PDF preview target does not match the selected option.')],
+        })
+      }
+      if (facade.asset.usage !== 'preview_and_send') {
+        return dfcPreviewPayload({
+          kind: 'none',
+          status: 'blocked',
+          maxCharacters,
+          diagnostics: [dfcDiagnostic('dfc_preview_usage_not_preview_and_send', 'Selected PDF asset is not marked preview_and_send.')],
+        })
+      }
+      return dfcPreviewPayload({
+        kind: 'raw_file',
+        status: 'ready',
+        maxCharacters,
+        diagnostics: [dfcDiagnostic('dfc_preview_pdf_metadata_only', 'PDF preview uses the selected derived_asset ref and does not expose file body or storage path.')],
+      })
+    }
     if (!decision.targetKind || !isDfcTextPreviewTargetKind(decision.targetKind)) {
       return dfcPreviewPayload({
         kind: 'none',

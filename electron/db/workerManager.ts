@@ -47,9 +47,12 @@ import type {
   DbErrorCode,
   DbEvent,
   WorkerEventMessage,
+  ElectronConversionWorkerRequestMessage,
   WorkerInitConfig,
 } from '../../infra/db/types'
 import { DbWorkerError } from '../../infra/db/errors'
+import { failClosedElectronConversionResponse } from '../../infra/files/electronConversionServiceContract'
+import type { ElectronConversionBridge } from '../../infra/files/electronConversionBridge'
 
 /**
  * 待处理的请求
@@ -76,6 +79,7 @@ type ManagerOptions = {
   maxRestartAttempts?: number  // 自动重启最大次数
   restartBackoffMs?: number    // 自动重启初始退避时间
   maxPending?: number          // 允许的最大挂起请求数（超出时拒绝）
+  electronConversionBridge?: ElectronConversionBridge
 }
 
 type WorkerInitFlags = Pick<WorkerInitConfig, 'stampSchemaVersion' | 'startupRebuildReason' | 'isProduction'>
@@ -184,7 +188,7 @@ export class DbWorkerManager {
             this.worker = undefined
             this.startPromise = undefined
           })
-          worker.on('message', (message: WorkerResponseMessage | WorkerEventMessage) => this.handleMessage(message))
+          worker.on('message', (message: WorkerResponseMessage | WorkerEventMessage | ElectronConversionWorkerRequestMessage) => this.handleMessage(message))
           worker.on('exit', (code) => {
             const wasStopping = this.stopping
             this.stopping = false
@@ -430,7 +434,11 @@ export class DbWorkerManager {
    * - Worker 返回的错误会被包装为 DbWorkerError
    * - 错误码 (errorCode) 用于区分错误类型
    */
-  private handleMessage(message: WorkerResponseMessage | WorkerEventMessage) {
+  private handleMessage(message: WorkerResponseMessage | WorkerEventMessage | ElectronConversionWorkerRequestMessage) {
+    if ('type' in message && message.type === 'electron-conversion-request') {
+      this.handleElectronConversionRequest(message)
+      return
+    }
     // 处理事件消息
     if ('type' in message && message.type === 'event') {
       const eventMessage = message as WorkerEventMessage
@@ -455,6 +463,39 @@ export class DbWorkerManager {
     const errorCode = (responseMessage.error?.code as DbErrorCode | undefined) ?? 'ERR_INTERNAL'
     const error = new DbWorkerError(errorCode, responseMessage.error?.message ?? 'DB worker error', responseMessage.error?.details)
     pending.reject(error)
+  }
+
+  private handleElectronConversionRequest(message: ElectronConversionWorkerRequestMessage) {
+    const worker = this.worker
+    const bridge = this.options.electronConversionBridge
+    const fallback = () => failClosedElectronConversionResponse({
+      requestId: message.request?.requestId ?? message.id,
+      conversionKind: message.request?.conversionKind ?? 'unknown-conversion',
+      status: 'unavailable',
+      code: 'electron_conversion_service_unavailable',
+      message: 'Electron conversion service is unavailable.',
+    })
+    Promise.resolve(bridge ? bridge.convert(message.request) : fallback())
+      .then((response) => {
+        worker?.postMessage({
+          type: 'electron-conversion-response',
+          id: message.id,
+          response,
+        })
+      })
+      .catch((error) => {
+        worker?.postMessage({
+          type: 'electron-conversion-response',
+          id: message.id,
+          response: failClosedElectronConversionResponse({
+            requestId: message.request?.requestId ?? message.id,
+            conversionKind: message.request?.conversionKind ?? 'unknown-conversion',
+            status: 'failed',
+            code: 'electron_conversion_blocked',
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        })
+      })
   }
 
   /**

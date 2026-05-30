@@ -25,6 +25,7 @@ import { FileIngestionService } from '../files/fileIngestionService'
 import { SendPlanService } from '../files/sendPlanService'
 import { FileTypeDetectionService } from '../files/fileTypeDetectionService'
 import { canOpenBetterSqliteForSuite } from '../testUtils/betterSqliteGate'
+import type { ElectronConversionBridge } from '../files/electronConversionBridge'
 
 const describeIfBetterSqlite = canOpenBetterSqliteForSuite('file pipeline worker handlers') ? describe : describe.skip
 
@@ -290,7 +291,7 @@ function insertConvo(db: BetterSqlite3.Database, id: string) {
   })
 }
 
-function createWorkerHarness() {
+function createWorkerHarness(options: Readonly<{ electronConversionBridge?: ElectronConversionBridge }> = {}) {
   const db = new BetterSqlite3(':memory:')
   loadSchema(db)
   insertConvo(db, 'c1')
@@ -363,6 +364,7 @@ function createWorkerHarness() {
       derivativeJobRepo,
       modelCatalogRepo,
       storageRootDir,
+      electronConversionBridge: options.electronConversionBridge,
       now: () => 1000,
     }),
     sendPlanService: new SendPlanService({
@@ -2705,17 +2707,17 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     expect(pdfOption).toMatchObject({
       targetKind: 'pdf_attachment',
       sendStrategy: 'file_attachment',
-      status: 'blocked',
+      status: 'failed',
       isAvailable: false,
       compatibilityStatus: 'blocked',
       sendAssetRefs: [],
-      diagnostics: [expect.objectContaining({ code: 'html_pdf_runtime_missing' })],
+      diagnostics: [expect.objectContaining({ code: 'conversion_not_implemented' })],
     })
     expect(pdfGenerationState).toMatchObject({
       targetKind: 'pdf_attachment',
       derivedKind: 'converted_pdf',
-      status: 'blocked',
-      errorCode: 'html_pdf_runtime_missing',
+      status: 'failed',
+      errorCode: 'conversion_not_implemented',
     })
     expect(convertedPdfCount).toBe(0)
     expect(markdownText).toContain('# Title')
@@ -3034,6 +3036,195 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     })
     expect(JSON.stringify((codePreview as any).result)).not.toContain(storageUri)
     expect(JSON.stringify((codePreview as any).result)).not.toContain(codeDerivative.storageUri)
+  })
+
+  it('wires HTML pdf_attachment generation through the Electron conversion bridge', async () => {
+    const pdfBytes = Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n', 'utf8')
+    const bridge: ElectronConversionBridge = {
+      async convert(request) {
+        const outputPath = path.join(request.output.rootDir, ...request.output.relativePath.split(/[\\/]+/))
+        await mkdir(path.dirname(outputPath), { recursive: true })
+        await writeFile(outputPath, pdfBytes)
+        return {
+          requestId: request.requestId,
+          conversionKind: request.conversionKind,
+          status: 'success',
+          output: {
+            kind: 'controlled_output',
+            outputPath,
+            mime: request.output.mime,
+            extension: request.output.extension,
+          },
+          diagnostics: [],
+          cleanupStatus: 'attempted',
+        }
+      },
+    }
+    const { db, handlers } = createWorkerHarness({ electronConversionBridge: bridge })
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = 'asset-dfc-html-pdf-success'
+    const storageUri = 'assets/original/ht/asset-dfc-html-pdf-success.html'
+    const html = '<html><body><h1>PDF source</h1><script>window.secret = true</script></body></html>'
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), html)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-pdf-success-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-dfc-html-pdf-success-source-hash',
+        filename: 'print.html',
+        extension: 'html',
+        mime: 'text/html',
+        sizeBytes: Buffer.byteLength(html, 'utf8'),
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageBackend: 'local_fs',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-html-pdf-success-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-pdf-success-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const pdfOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'pdf_attachment')
+    const markdownOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'markdown')
+    const codeOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'code')
+    const originalOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'original_file')
+    const derivativeId = pdfOption.sendAssetRefs[0].assetId
+    const derivativeRow = db.prepare(`
+      SELECT derived_kind AS derivedKind, mime, storage_uri AS storageUri, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE id=@derivativeId
+      LIMIT 1
+    `).get({ derivativeId }) as { derivedKind: string; mime: string | null; storageUri: string; metaJson: string | null }
+    const derivativeMeta = JSON.parse(derivativeRow.metaJson ?? '{}')
+    const pdfFileBytes = await readFile(path.join(storageRootDir, ...derivativeRow.storageUri.split('/')))
+
+    expect(originalOption).toMatchObject({
+      targetKind: 'original_file',
+      status: 'ready',
+      sendAssetRefs: [{ kind: 'raw_file', assetId }],
+    })
+    expect(markdownOption).toMatchObject({ targetKind: 'markdown', status: 'ready' })
+    expect(codeOption).toMatchObject({ targetKind: 'code', status: 'ready' })
+    expect(pdfOption).toMatchObject({
+      targetKind: 'pdf_attachment',
+      status: 'ready',
+      isAvailable: true,
+      compatibilityStatus: 'compatible',
+      sendStrategy: 'file_attachment',
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: derivativeId }],
+    })
+    expect(derivativeRow).toMatchObject({
+      derivedKind: 'converted_pdf',
+      mime: 'application/pdf',
+    })
+    expect(derivativeMeta).toMatchObject({
+      targetKind: 'pdf_attachment',
+      usage: 'preview_and_send',
+      storageClass: 'draft_bound',
+      sourceHash: 'asset-dfc-html-pdf-success-source-hash',
+      converterName: 'starverse-electron-html-pdf',
+      converterVersion: '1',
+    })
+    expect(derivativeMeta.contentHash).toBe(createHash('sha256').update(pdfBytes).digest('hex'))
+    expect(Buffer.from(pdfFileBytes).subarray(0, 5).toString('ascii')).toBe('%PDF-')
+
+    const selected = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-pdf-success-select',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: pdfOption.optionId,
+        selectedAssetRefs: pdfOption.sendAssetRefs,
+      },
+    })
+    const preview = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-pdf-success-preview',
+      method: 'conversationDraft.getDfcPreview',
+      params: { conversationId: 'c1', assetId, maxCharacters: 256 },
+    })
+    const sendPlan = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-pdf-success-send-plan',
+      method: 'sendPlan.buildCurrent',
+      params: {
+        conversationId: 'c1',
+        draftText: 'send html pdf',
+        model: {
+          providerKey: 'openrouter',
+          modelId: 'test/pdf',
+          modelKey: 'openrouter::test/pdf',
+          inputModalities: ['text', 'file'],
+          outputModalities: ['text'],
+        },
+        providerContext: {
+          providerKey: 'openrouter',
+          supportsInlineData: true,
+          supportsPdfInputs: true,
+          supportsPdfUrlRef: true,
+          supportsTextUrlRef: true,
+        },
+      },
+    })
+
+    expect(selected).toMatchObject({ ok: true })
+    expect(preview).toMatchObject({
+      ok: true,
+      result: {
+        selectedOptionId: pdfOption.optionId,
+        selectedAssetRefs: pdfOption.sendAssetRefs,
+        targetKind: 'pdf_attachment',
+        sendStrategy: 'file_attachment',
+        decision: expect.objectContaining({
+          status: 'ready',
+          sendAssetRefs: pdfOption.sendAssetRefs,
+        }),
+        preview: expect.objectContaining({
+          kind: 'raw_file',
+          status: 'ready',
+          text: null,
+          diagnostics: [expect.objectContaining({ code: 'dfc_preview_pdf_metadata_only' })],
+        }),
+      },
+    })
+    expect(sendPlan).toMatchObject({
+      ok: true,
+      result: {
+        sendPlan: expect.objectContaining({
+          status: 'partially_sendable',
+          attachmentPlans: [
+            expect.objectContaining({
+              assetId,
+              eligibility: 'excluded',
+              exclusionReason: 'incompatible_with_current_model',
+              sendAssetRefs: pdfOption.sendAssetRefs,
+              semantic: expect.objectContaining({
+                targetKind: 'pdf_attachment',
+                sendStrategy: 'file_attachment',
+                mappedFromLegacy: false,
+              }),
+            }),
+          ],
+        }),
+      },
+    })
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((preview as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((preview as any).result)).not.toContain(derivativeRow.storageUri)
+    expect(JSON.stringify((preview as any).result)).not.toContain(html)
+    expect(JSON.stringify((sendPlan as any).result)).not.toContain(derivativeRow.storageUri)
+    expect(JSON.stringify((sendPlan as any).result)).not.toContain(html)
   })
 
   it('generates template-like HTML DFC options while preserving code source and safe markdown output', async () => {

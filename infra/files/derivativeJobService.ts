@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type BetterSqlite3 from 'better-sqlite3'
 import ExcelJS from 'exceljs'
@@ -29,6 +29,11 @@ import {
   type OpenRouterDerivativeTransport,
 } from './openRouterDerivativeClient'
 import { chunkTextForEmbeddings } from './textChunking'
+import {
+  completeDfcSandboxRun,
+  createDfcConversionSandboxPlan,
+} from './dfcConversionSandbox'
+import { requestElectronConversion, type ElectronConversionBridge } from './electronConversionBridge'
 
 type SqlDatabase = BetterSqlite3.Database
 
@@ -82,6 +87,7 @@ export class DerivativeJobService {
       derivativeJobRepo: DerivativeJobRepo
       modelCatalogRepo: ModelCatalogRepo
       storageRootDir: string
+      electronConversionBridge?: ElectronConversionBridge
       now?: () => number
     }>
   ) {}
@@ -179,13 +185,7 @@ export class DerivativeJobService {
         case 'preview_optimized':
           return await this.runPreviewOptimizedJob(running)
         case 'converted_pdf':
-          throw derivativeError(
-            'conversion_not_implemented',
-            running.id,
-            running.assetId,
-            running.derivativeKind,
-            `Derivative kind ${running.derivativeKind} is reserved and intentionally not implemented in phase 8.`
-          )
+          return await this.runConvertedPdfJob(running)
         case 'converted_markdown':
         case 'rendered_images':
         case 'selected_frames':
@@ -473,6 +473,148 @@ export class DerivativeJobService {
         byteLength: Buffer.byteLength(convertedText, 'utf8'),
         filename: asset.filename,
         conversionWarnings,
+      },
+    })
+    return this.markReady(job, derivative)
+  }
+
+  private async runConvertedPdfJob(job: DerivativeJobRecord): Promise<DerivativeRunResult> {
+    const asset = this.requireAsset(job.assetId)
+    const targetKind = readNullableConfigString(job.configJson, 'targetKind')
+    if (targetKind !== 'pdf_attachment') {
+      throw derivativeError('conversion_not_implemented', job.id, asset.id, job.derivativeKind, 'Converted PDF jobs require pdf_attachment targetKind.')
+    }
+    const ext = String(asset.extension ?? '').trim().toLowerCase()
+    const mime = normalizeMime(asset.mime)
+    if (ext !== 'html' && ext !== 'htm' && mime !== 'text/html') {
+      throw derivativeError('derivative_asset_not_supported', job.id, asset.id, job.derivativeKind, 'HTML-to-PDF conversion only supports managed local HTML assets.')
+    }
+    if (asset.storageBackend !== 'local_fs') {
+      throw derivativeError('derivative_asset_not_supported', job.id, asset.id, job.derivativeKind, 'HTML-to-PDF conversion requires a managed local file asset.')
+    }
+    if (!asset.sha256) {
+      throw derivativeError('derivative_input_missing', job.id, asset.id, job.derivativeKind, 'HTML-to-PDF conversion requires source hash metadata.')
+    }
+
+    const source = await this.readLocalBytes(asset, job, 'derivative_local_file_missing', {
+      missingCode: 'derivative_local_file_missing',
+      invalidCode: 'derivative_input_missing',
+      readCode: 'derivative_local_file_read_failed',
+    })
+    const sandboxRootDir = path.join(this.deps.storageRootDir, '.dfc-sandbox', 'electron-html-pdf', safePathSegment(job.id))
+    const timeoutMs = readPositiveConfigNumber(job.configJson, 'timeoutMs') ?? 15_000
+    const plan = createDfcConversionSandboxPlan({
+      engineId: 'electron-html-pdf',
+      inputAssetId: asset.id,
+      targetKind: 'pdf_attachment',
+      sandboxRootDir,
+      sourceExtension: ext === 'htm' ? 'htm' : 'html',
+      expectedOutput: {
+        extension: 'pdf',
+        mime: 'application/pdf',
+      },
+      timeoutMs,
+    })
+    if (!plan.ok) {
+      throw derivativeError('conversion_not_implemented', job.id, asset.id, job.derivativeKind, plan.diagnostics[0]?.message ?? 'HTML-to-PDF sandbox plan was blocked.')
+    }
+
+    await mkdir(path.dirname(plan.request.sandboxInputPath), { recursive: true })
+    await mkdir(plan.request.sandboxOutputDir, { recursive: true })
+    await mkdir(plan.request.workingDir, { recursive: true })
+    await writeFile(plan.request.sandboxInputPath, Buffer.from(source.bytes)).catch((error) => {
+      throw derivativeError('derivative_output_write_failed', job.id, asset.id, job.derivativeKind, error instanceof Error ? error.message : 'Failed to copy sandbox input.')
+    })
+
+    const relativeInputPath = path.relative(plan.request.sandboxRootDir, plan.request.sandboxInputPath)
+    const relativeOutputPath = path.relative(plan.request.sandboxRootDir, plan.request.sandboxOutputPath)
+    const response = await requestElectronConversion(this.deps.electronConversionBridge, {
+      requestId: job.id,
+      conversionKind: 'html_to_pdf',
+      source: {
+        kind: 'sandbox_input',
+        rootDir: plan.request.sandboxRootDir,
+        relativePath: relativeInputPath,
+        mime: 'text/html',
+      },
+      output: {
+        kind: 'sandbox_output',
+        rootDir: plan.request.sandboxRootDir,
+        relativePath: relativeOutputPath,
+        mime: 'application/pdf',
+        extension: 'pdf',
+      },
+      timeoutMs,
+      policy: {
+        javascriptEnabled: false,
+        networkEnabled: false,
+        localFileAccessEnabled: false,
+      },
+    })
+    const outcome = await completeDfcSandboxRun({
+      plan: plan.request,
+      engineResult: response.status === 'success'
+        ? {
+            status: 'succeeded',
+            outputPath: response.output?.outputPath ?? null,
+          }
+        : {
+            status: response.status === 'timed_out' ? 'timeout' : 'failed',
+            errorCode: response.diagnostics[0]?.code ?? 'electron_conversion_blocked',
+            message: response.diagnostics[0]?.message ?? 'Electron HTML-to-PDF conversion failed.',
+          },
+    })
+    if (!outcome.ok || !outcome.derivedAsset) {
+      await rm(plan.request.sandboxRootDir, { recursive: true, force: true }).catch(() => undefined)
+      const code = response.status === 'timed_out'
+        ? 'derivative_task_timeout'
+        : response.status === 'unavailable' || response.status === 'blocked'
+          ? 'conversion_not_implemented'
+          : 'derivative_output_write_failed'
+      throw derivativeError(code, job.id, asset.id, job.derivativeKind, outcome.diagnostics[0]?.message ?? 'HTML-to-PDF conversion failed.')
+    }
+
+    const pdfBytes = await readFile(outcome.derivedAsset.outputPath).catch((error) => {
+      throw derivativeError('derivative_local_file_read_failed', job.id, asset.id, job.derivativeKind, error instanceof Error ? error.message : 'Converted PDF output could not be read.')
+    })
+    if (pdfBytes.byteLength === 0 || Buffer.from(pdfBytes).subarray(0, 5).toString('ascii') !== '%PDF-') {
+      throw derivativeError('derivative_output_write_failed', job.id, asset.id, job.derivativeKind, 'Converted PDF output is invalid.')
+    }
+    const cleanupStatus = await rm(plan.request.sandboxRootDir, { recursive: true, force: true })
+      .then(() => 'attempted' as const)
+      .catch(() => 'failed' as const)
+    const contentHash = sha256Bytes(pdfBytes)
+    const conversionSettingsHash = sha256(Buffer.from(JSON.stringify({
+      targetKind: 'pdf_attachment',
+      runtime: 'electron-html-pdf',
+      policy: 'js-network-local-file-disabled',
+    })).toString('utf8'))
+    const derivative = await this.writeBinaryDerivative({
+      job,
+      asset,
+      bytes: pdfBytes,
+      extension: 'pdf',
+      mime: 'application/pdf',
+      metaJson: {
+        sourceMime: asset.mime ?? null,
+        sourceExtension: asset.extension ?? null,
+        sourceBytes: asset.sizeBytes,
+        outputBytes: pdfBytes.byteLength,
+        generator: job.generator,
+        targetKind: 'pdf_attachment',
+        usage: 'preview_and_send',
+        storageClass: 'draft_bound',
+        sourceHash: asset.sha256,
+        contentHash,
+        conversionSettingsHash,
+        converterName: 'starverse-electron-html-pdf',
+        converterVersion: '1',
+        warnings: [
+          'html_pdf_javascript_disabled',
+          'html_pdf_network_blocked',
+          'html_pdf_local_file_access_blocked',
+        ],
+        cleanupStatus,
       },
     })
     return this.markReady(job, derivative)
@@ -835,6 +977,37 @@ export class DerivativeJobService {
     })
     await mkdir(path.dirname(filePath), { recursive: true })
     await writeFile(filePath, JSON.stringify(input.payload), 'utf8')
+    return this.createOrUpdateFileDerivative({
+      job: input.job,
+      asset: input.asset,
+      mime: input.mime,
+      storageUri: getDerivativeStorageUri({
+        parentAssetId: input.asset.id,
+        derivativeId: input.job.outputDerivativeId ?? input.job.id,
+        extension: input.extension,
+      }),
+      metaJson: input.metaJson,
+    })
+  }
+
+  private async writeBinaryDerivative(input: Readonly<{
+    job: DerivativeJobRecord
+    asset: FileAssetRecord
+    bytes: Uint8Array
+    mime: string
+    extension: string
+    metaJson: Record<string, unknown>
+  }>): Promise<FileDerivativeRecord> {
+    const filePath = getDerivativePath({
+      rootDir: this.deps.storageRootDir,
+      parentAssetId: input.asset.id,
+      derivativeId: input.job.outputDerivativeId ?? input.job.id,
+      extension: input.extension,
+    })
+    await mkdir(path.dirname(filePath), { recursive: true })
+    await writeFile(filePath, Buffer.from(input.bytes)).catch((error) => {
+      throw derivativeError('derivative_output_write_failed', input.job.id, input.asset.id, input.job.derivativeKind, error instanceof Error ? error.message : 'Failed to write derivative binary output.')
+    })
     return this.createOrUpdateFileDerivative({
       job: input.job,
       asset: input.asset,
@@ -1617,6 +1790,10 @@ function sha256(value: string): string {
 
 function sha256Bytes(value: Uint8Array): string {
   return createHash('sha256').update(Buffer.from(value)).digest('hex')
+}
+
+function safePathSegment(value: string): string {
+  return String(value ?? '').trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'job'
 }
 
 function safeParseStringArray(value: string): string[] {

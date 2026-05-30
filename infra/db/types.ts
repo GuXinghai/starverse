@@ -1741,6 +1741,7 @@ export type WorkerInitConfig = {
   stampSchemaVersion?: boolean
   startupRebuildReason?: string
   isProduction?: boolean
+  electronConversionBridge?: import('../files/electronConversionBridge').ElectronConversionBridge
 }
 
 export type { DbMethod } from './dbMethodsRegistry'
@@ -2208,6 +2209,18 @@ export type DbEvent =
 export type WorkerEventMessage = {
   type: 'event'
   event: DbEvent
+}
+
+export type ElectronConversionWorkerRequestMessage = {
+  type: 'electron-conversion-request'
+  id: string
+  request: import('../files/electronConversionServiceContract').ElectronConversionRequest
+}
+
+export type ElectronConversionWorkerResponseMessage = {
+  type: 'electron-conversion-response'
+  id: string
+  response: import('../files/electronConversionServiceContract').ElectronConversionResponse
 }
 
 // ========== Model Data Types ==========
