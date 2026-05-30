@@ -1398,3 +1398,18 @@ HTML->PDF remains runtime-gated unavailable. Next choose production package/inst
 ## Recommended next round
 
 M19R-B may implement the dedicated hidden/offscreen Electron conversion window adapter behind the M19R-A service boundary. It must keep app renderer, app preload, user session/cookies/storage, network, local-file access, downloads, popups, and extra navigation isolated or blocked by default.
+
+## DFC-M19R-B dedicated Electron conversion window adapter recovery notes
+
+- M19R-B implements the main-process Dedicated Electron HTML->PDF adapter behind the M19R-A service boundary.
+- The adapter creates a hidden BrowserWindow through an injected/default factory with `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, `webSecurity: true`, `allowRunningInsecureContent: false`, `javascript: false`, no preload, and a per-job non-persistent partition.
+- It reads controlled sandbox HTML, loads it as a data URL, blocks window open, arbitrary navigation, downloads, network/external resources, and local-file requests, then calls `webContents.printToPDF` and writes only to the validated controlled output path.
+- M15 sandbox output validation is used before writing output. Failed, blocked, unavailable, or timed-out conversions return no output descriptor.
+- Cleanup attempts to clear temporary session storage and destroy the conversion window after success and failure.
+- M19R-B does not wire DFC generation, does not modify `DerivativeJobService`, does not change `conversationDraft.ensureDfcOptions`, and does not create ready `converted_pdf` / `pdf_attachment` DerivedAssets.
+- Known unrelated dirty test files from parallel sessions remain outside this package and must not be staged or committed with M19R-B.
+
+## Recommended next round
+
+M19R-C can wire DFC `converted_pdf` generation to the main-process service boundary if worker/main invocation can remain internal, fail-closed, sanitized, and non-renderer-exposed. Keep `original_file`, HTML safe markdown/code, selected refs, preview/send same-source, and no-legacy-fallback invariants intact.
+- M19R-B validation passed for scoped M19R-B files: diff check, service targeted Vitest, and adapter targeted Vitest passed. `vue-tsc` was attempted and failed only in parallel unrelated `src/ui-app/components/ChatAppComposer.webSearchSendGuard.test.ts` errors; no M19R-B TypeScript errors remain.

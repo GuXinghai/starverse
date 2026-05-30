@@ -5,8 +5,22 @@ import {
   type ElectronConversionResponse,
 } from '../../infra/files/electronConversionServiceContract'
 import type { ElectronConversionBridge } from '../../infra/files/electronConversionBridge'
+import {
+  createElectronHtmlPdfConversionAdapter,
+  type ElectronHtmlPdfConversionAdapter,
+} from './electronHtmlPdfConversionAdapter'
+
+export type MainProcessElectronConversionServiceInput = Readonly<{
+  htmlToPdfAdapter?: ElectronHtmlPdfConversionAdapter
+}>
 
 export class MainProcessElectronConversionService implements ElectronConversionBridge {
+  private readonly htmlToPdfAdapter: ElectronHtmlPdfConversionAdapter
+
+  constructor(input: MainProcessElectronConversionServiceInput = {}) {
+    this.htmlToPdfAdapter = input.htmlToPdfAdapter ?? createElectronHtmlPdfConversionAdapter()
+  }
+
   async convert(rawRequest: ElectronConversionRequest): Promise<ElectronConversionResponse> {
     const prepared = prepareElectronConversionRequest(rawRequest)
     if (!prepared.ok) return prepared.response
@@ -21,16 +35,12 @@ export class MainProcessElectronConversionService implements ElectronConversionB
       })
     }
 
-    return failClosedElectronConversionResponse({
-      requestId: prepared.request.requestId,
-      conversionKind: prepared.request.conversionKind,
-      status: 'unavailable',
-      code: 'electron_conversion_service_unavailable',
-      message: 'Dedicated Electron conversion window adapter is not implemented.',
-    })
+    return await this.htmlToPdfAdapter.convert(prepared.request)
   }
 }
 
-export function createMainProcessElectronConversionService(): MainProcessElectronConversionService {
-  return new MainProcessElectronConversionService()
+export function createMainProcessElectronConversionService(
+  input: MainProcessElectronConversionServiceInput = {}
+): MainProcessElectronConversionService {
+  return new MainProcessElectronConversionService(input)
 }
