@@ -2647,6 +2647,7 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     const originalOption = options.find((option) => option.targetKind === 'original_file')
     const markdownOption = options.find((option) => option.targetKind === 'markdown')
     const codeOption = options.find((option) => option.targetKind === 'code')
+    const pdfOption = options.find((option) => option.targetKind === 'pdf_attachment')
     const derivativeRows = db.prepare(`
       SELECT id, storage_uri AS storageUri, meta_json AS metaJson
       FROM file_derivatives
@@ -2661,6 +2662,17 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     const codeDerivative = derivatives.find((row) => row.meta?.targetKind === 'code')!
     const markdownText = await readFile(path.join(storageRootDir, ...markdownDerivative.storageUri.split('/')), 'utf8')
     const codeText = await readFile(path.join(storageRootDir, ...codeDerivative.storageUri.split('/')), 'utf8')
+    const pdfGenerationState = db.prepare(`
+      SELECT target_kind AS targetKind, derived_kind AS derivedKind, status, error_code AS errorCode
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='pdf_attachment'
+      LIMIT 1
+    `).get({ assetId }) as { targetKind: string; derivedKind: string; status: string; errorCode: string | null }
+    const convertedPdfCount = (db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='converted_pdf'
+    `).get({ assetId }) as { count: number }).count
 
     expect((ensured as any).result.selectedOptionId).toBeNull()
     expect((ensured as any).result.selectedAssetRefs).toEqual([])
@@ -2690,11 +2702,113 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       status: 'ready',
       sendAssetRefs: [{ kind: 'derived_asset', assetId: codeDerivative.id }],
     })
+    expect(pdfOption).toMatchObject({
+      targetKind: 'pdf_attachment',
+      sendStrategy: 'file_attachment',
+      status: 'blocked',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: 'html_pdf_runtime_missing' })],
+    })
+    expect(pdfGenerationState).toMatchObject({
+      targetKind: 'pdf_attachment',
+      derivedKind: 'converted_pdf',
+      status: 'blocked',
+      errorCode: 'html_pdf_runtime_missing',
+    })
+    expect(convertedPdfCount).toBe(0)
     expect(markdownText).toContain('# Title')
     expect(markdownText).toContain('Hello world')
     expect(markdownText).not.toContain('window.alert')
     expect(markdownText).not.toContain('.hidden')
     expect(codeText).toBe(html)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('managed-runtimes')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('ms-playwright')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('C:\\')
+
+    const pdfSelect = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-select-pdf',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: pdfOption.optionId,
+        selectedAssetRefs: pdfOption.sendAssetRefs,
+      },
+    })
+    expect(pdfSelect).toMatchObject({
+      ok: false,
+    })
+    const pdfPreview = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-pdf-preview',
+      method: 'conversationDraft.getDfcPreview',
+      params: { conversationId: 'c1', assetId, maxCharacters: 256 },
+    })
+    const pdfSendPlan = await dispatchWorkerMessage(handlers, {
+      id: 'req-html-dual-options-pdf-send-plan',
+      method: 'sendPlan.buildCurrent',
+      params: {
+        conversationId: 'c1',
+        draftText: 'attempt html pdf',
+        model: {
+          providerKey: 'openrouter',
+          modelId: 'test/pdf',
+          modelKey: 'openrouter::test/pdf',
+          inputModalities: ['text', 'file'],
+          outputModalities: ['text'],
+        },
+        providerContext: {
+          providerKey: 'openrouter',
+          supportsInlineData: true,
+          supportsPdfInputs: true,
+          supportsPdfUrlRef: true,
+          supportsTextUrlRef: true,
+        },
+      },
+    })
+    expect(pdfPreview).toMatchObject({
+      ok: true,
+      result: {
+        selectedOptionId: null,
+        selectedAssetRefs: [],
+        targetKind: null,
+        sendStrategy: null,
+        decision: expect.objectContaining({
+          status: 'needs_user_selection',
+          reasonCode: 'selected_option_missing',
+        }),
+        preview: expect.objectContaining({
+          kind: 'none',
+          status: 'needs_user_selection',
+        }),
+      },
+    })
+    expect(pdfSendPlan).toMatchObject({
+      ok: true,
+      result: {
+        sendPlan: expect.objectContaining({
+          status: 'partially_sendable',
+          attachmentPlans: [
+            expect.objectContaining({
+              assetId,
+              eligibility: 'excluded',
+              sendAssetRefs: [],
+              semantic: expect.objectContaining({
+                targetKind: 'unsupported',
+                sendStrategy: 'unsupported',
+                mappedFromLegacy: false,
+              }),
+            }),
+          ],
+        }),
+      },
+    })
+    expect(JSON.stringify((pdfSendPlan as any).result)).not.toContain('pdf_attachment')
+    expect(JSON.stringify((pdfSendPlan as any).result)).not.toContain('converted_pdf')
+    expect(JSON.stringify((pdfPreview as any).result)).not.toContain('managed-runtimes')
+    expect(JSON.stringify((pdfPreview as any).result)).not.toContain('ms-playwright')
 
     await dispatchWorkerMessage(handlers, {
       id: 'req-html-dual-options-select-original',
