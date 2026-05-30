@@ -1385,3 +1385,16 @@ Do not claim HTML->PDF support yet. M17C real PDF generation should start only a
 ## Recommended next round
 
 HTML->PDF remains runtime-gated unavailable. Next choose production package/installer policy for distributing the managed Chromium runtime, or approve a dev-only M19 generation pilot with an explicit managed runtime artifact for local tests.
+
+## DFC-M19R-A main-process Electron conversion service boundary recovery notes
+
+- M19R-A switches away from the Playwright Chromium binary path and establishes only the internal boundary for a future Dedicated Electron HTML->PDF runtime.
+- Added a shared internal request/response contract for worker/backend to main-process conversion calls, with controlled sandbox input/output descriptors, timeout, disabled-by-default JavaScript/network/local-file policy flags, symbolic diagnostics, and renderer-safe summaries.
+- Added a backend bridge seam that fails closed when the main-process conversion service is unavailable. This is not a renderer IPC API.
+- Added a main-process service skeleton under `electron/services` that validates requests, blocks unsupported conversion kinds, and returns unavailable for `html_to_pdf` until a dedicated conversion window adapter is implemented.
+- M19R-A does not create BrowserWindow or webContents, does not call printToPDF, does not generate PDFs, and does not connect DFC `conversationDraft.ensureDfcOptions` or derivative jobs to the service.
+- The known unrelated dirty file `infra/files/enginePluginLifecycleService.test.ts` belongs to another session and must remain untouched/uncommitted for this package.
+
+## Recommended next round
+
+M19R-B may implement the dedicated hidden/offscreen Electron conversion window adapter behind the M19R-A service boundary. It must keep app renderer, app preload, user session/cookies/storage, network, local-file access, downloads, popups, and extra navigation isolated or blocked by default.
