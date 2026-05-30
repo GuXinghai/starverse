@@ -6,6 +6,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildSendPlanCandidates } from '../../src/next/file-type/sendRouteMapping'
 import { STAGE_I_FIXTURE_SAMPLES } from '../../src/next/file-type/fixtures/fixtureCorpus'
+import { createMockMagikaRuntimeLoader } from '../../src/next/file-type/magikaRuntimeLoader'
 import type { ModelInputCapabilities } from '../../src/next/file-type/types'
 import { FileAssetRepo } from '../db/repo/fileAssetRepo'
 import { FileTypeVerdictRepo } from '../db/repo/fileTypeVerdictRepo'
@@ -106,7 +107,7 @@ describe('FileTypeDetectionService fixture matrix (Stage I)', () => {
     })
   })
 
-  it('detectFull remains deterministic with noop magika adapter', async () => {
+  it('detectFull remains deterministic with mocked magika runtime', async () => {
     await withHarness(async ({ db, fileAssetRepo, fileTypeVerdictRepo, storageRootDir }) => {
       const sample = STAGE_I_FIXTURE_SAMPLES.find((item) => item.id === 'json')
       expect(sample).toBeTruthy()
@@ -132,11 +133,17 @@ describe('FileTypeDetectionService fixture matrix (Stage I)', () => {
         fileAssetRepo,
         fileTypeVerdictRepo,
         storageRootDir,
+        magikaRuntimeLoader: createMockMagikaRuntimeLoader({
+          modelVersion: 'stage-i-fixture-magika-v1',
+          runtimeKind: 'mock',
+          output: { label: 'json', score: 0.99 },
+        }),
       })
       const full = await service.detectFull({ assetId: 'json-full', forceRedetect: true })
       expect(full.job.status).toBe('ready')
       expect(full.verdict?.primaryFormatId).toBe('json')
       expect(full.verdict?.verdict.detectionCost).toBe('medium')
+      expect(full.verdict?.verdict.evidence.some((item) => item.source === 'magika')).toBe(true)
     })
   })
 })
