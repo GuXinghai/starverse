@@ -1429,3 +1429,17 @@ M19R-C can wire DFC `converted_pdf` generation to the main-process service bound
 ## Recommended next round
 
 Run a focused Electron HTML-to-PDF hardening package before broad support claims: more timeout/failure diagnostics, cleanup assertions, production runtime availability checks, and risk review. Do not add renderer conversion IPC or expand to Office->PDF / PS-EPS without a fresh owner decision.
+
+## DFC-M19R-D Electron HTML-to-PDF hardening recovery notes
+
+- M19R-D hardens the M19R-C DFC HTML-to-PDF generation path without expanding runtime scope.
+- Adapter tests now cover BrowserWindow creation failure, HTML load failure, `printToPDF` failure, timeout, non-PDF output, controlled output descriptor mismatch in adapter code, resource blocking, and cleanup.
+- Backend worker tests now cover conversion bridge `failed`, `timed_out`, and success-with-invalid-PDF output. These paths create no ready `converted_pdf` DerivedAsset and expose only failed/unavailable PDF candidates.
+- Backend sandbox cleanup now also runs when a conversion service returns success but the output is missing or not a PDF.
+- Ready PDF semantics remain `pdf_attachment` + `file_attachment` + `derived_asset`; preview remains metadata-only; Send Plan remains selected-ref/DerivedAsset-authoritative.
+- Renderer still has no conversion IPC, and the DB worker/backend still does not import Electron main-only APIs.
+- Office->PDF and PS/EPS remain unsupported.
+
+## Recommended next round
+
+Either close out the HTML-to-PDF pilot with a production-readiness owner decision, or open a separate Office->PDF owner memo. Do not add new heavy runtimes until the HTML-to-PDF pilot boundary and packaging/runtime expectations are accepted.

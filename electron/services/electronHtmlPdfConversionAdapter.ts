@@ -75,7 +75,11 @@ export function createElectronHtmlPdfConversionAdapter(deps: ElectronHtmlPdfConv
         })
       }
 
-      const outputValidation = resolveDfcSandboxOutputPath(path.dirname(request.resolvedOutputPath), path.basename(request.resolvedOutputPath))
+      const outputRelativeDir = path.dirname(request.output.relativePath)
+      const outputValidation = resolveDfcSandboxOutputPath(
+        path.resolve(request.output.rootDir, outputRelativeDir === '.' ? '' : outputRelativeDir),
+        path.basename(request.output.relativePath)
+      )
       if (!outputValidation.ok || path.resolve(outputValidation.path) !== path.resolve(request.resolvedOutputPath)) {
         return failClosedElectronConversionResponse({
           requestId: request.requestId,

@@ -3227,6 +3227,125 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     expect(JSON.stringify((sendPlan as any).result)).not.toContain(html)
   })
 
+  it.each([
+    ['failed service response', 'failed', 'derivative_output_write_failed'],
+    ['timed out service response', 'timed_out', 'derivative_task_timeout'],
+    ['invalid PDF output', 'success_invalid_pdf', 'derivative_output_write_failed'],
+  ] as const)('fails closed for HTML pdf_attachment generation when %s occurs', async (_label, bridgeMode, expectedErrorCode) => {
+    const bridge: ElectronConversionBridge = {
+      async convert(request) {
+        if (bridgeMode === 'success_invalid_pdf') {
+          const outputPath = path.join(request.output.rootDir, ...request.output.relativePath.split(/[\\/]+/))
+          await mkdir(path.dirname(outputPath), { recursive: true })
+          await writeFile(outputPath, Buffer.from('not a pdf'))
+          return {
+            requestId: request.requestId,
+            conversionKind: request.conversionKind,
+            status: 'success',
+            output: {
+              kind: 'controlled_output',
+              outputPath,
+              mime: request.output.mime,
+              extension: request.output.extension,
+            },
+            diagnostics: [],
+            cleanupStatus: 'attempted',
+          }
+        }
+        return {
+          requestId: request.requestId,
+          conversionKind: request.conversionKind,
+          status: bridgeMode,
+          output: null,
+          diagnostics: [{
+            code: bridgeMode === 'timed_out' ? 'electron_conversion_timeout' : 'electron_conversion_blocked',
+            message: 'conversion failed at C:\\Users\\private\\source.html token=secret file body: <html>',
+          }],
+          cleanupStatus: 'attempted',
+        }
+      },
+    }
+    const { db, handlers } = createWorkerHarness({ electronConversionBridge: bridge })
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = `asset-dfc-html-pdf-${bridgeMode.replace(/_/g, '-')}`
+    const storageUri = `assets/original/ht/${assetId}.html`
+    const html = '<html><body><h1>Blocked PDF source</h1></body></html>'
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), html)
+    await dispatchWorkerMessage(handlers, {
+      id: `req-${assetId}-asset`,
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: `${assetId}-source-hash`,
+        filename: 'blocked.html',
+        extension: 'html',
+        mime: 'text/html',
+        sizeBytes: Buffer.byteLength(html, 'utf8'),
+        assetKind: 'text',
+        sourceKind: 'local_upload',
+        storageBackend: 'local_fs',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: `req-${assetId}-draft-add`,
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: `req-${assetId}-ensure`,
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const pdfOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'pdf_attachment')
+    const readyPdfCount = (db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='converted_pdf' AND status='ready'
+    `).get({ assetId }) as { count: number }).count
+    const generationState = db.prepare(`
+      SELECT status, error_code AS errorCode
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='pdf_attachment'
+      LIMIT 1
+    `).get({ assetId }) as { status: string; errorCode: string | null }
+
+    expect(pdfOption).toMatchObject({
+      targetKind: 'pdf_attachment',
+      sendStrategy: 'file_attachment',
+      status: 'failed',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: expectedErrorCode })],
+    })
+    expect(readyPdfCount).toBe(0)
+    expect(generationState).toMatchObject({
+      status: 'failed',
+      errorCode: expectedErrorCode,
+    })
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('C:\\Users\\private')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('secret')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('<html>')
+
+    const selected = await dispatchWorkerMessage(handlers, {
+      id: `req-${assetId}-select`,
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: pdfOption.optionId,
+        selectedAssetRefs: pdfOption.sendAssetRefs,
+      },
+    })
+    expect(selected).toMatchObject({ ok: false })
+  })
+
   it('generates template-like HTML DFC options while preserving code source and safe markdown output', async () => {
     const { db, handlers } = createWorkerHarness()
     const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')

@@ -574,15 +574,20 @@ export class DerivativeJobService {
       throw derivativeError(code, job.id, asset.id, job.derivativeKind, outcome.diagnostics[0]?.message ?? 'HTML-to-PDF conversion failed.')
     }
 
-    const pdfBytes = await readFile(outcome.derivedAsset.outputPath).catch((error) => {
-      throw derivativeError('derivative_local_file_read_failed', job.id, asset.id, job.derivativeKind, error instanceof Error ? error.message : 'Converted PDF output could not be read.')
-    })
-    if (pdfBytes.byteLength === 0 || Buffer.from(pdfBytes).subarray(0, 5).toString('ascii') !== '%PDF-') {
-      throw derivativeError('derivative_output_write_failed', job.id, asset.id, job.derivativeKind, 'Converted PDF output is invalid.')
+    let cleanupStatus: 'attempted' | 'failed' = 'attempted'
+    let pdfBytes: Buffer
+    try {
+      pdfBytes = await readFile(outcome.derivedAsset.outputPath).catch((error) => {
+        throw derivativeError('derivative_local_file_read_failed', job.id, asset.id, job.derivativeKind, error instanceof Error ? error.message : 'Converted PDF output could not be read.')
+      })
+      if (pdfBytes.byteLength === 0 || Buffer.from(pdfBytes).subarray(0, 5).toString('ascii') !== '%PDF-') {
+        throw derivativeError('derivative_output_write_failed', job.id, asset.id, job.derivativeKind, 'Converted PDF output is invalid.')
+      }
+    } finally {
+      cleanupStatus = await rm(plan.request.sandboxRootDir, { recursive: true, force: true })
+        .then(() => 'attempted' as const)
+        .catch(() => 'failed' as const)
     }
-    const cleanupStatus = await rm(plan.request.sandboxRootDir, { recursive: true, force: true })
-      .then(() => 'attempted' as const)
-      .catch(() => 'failed' as const)
     const contentHash = sha256Bytes(pdfBytes)
     const conversionSettingsHash = sha256(Buffer.from(JSON.stringify({
       targetKind: 'pdf_attachment',
