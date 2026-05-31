@@ -789,9 +789,58 @@ async function ensureOfficePdfRuntimeGate(
     return { changed: true }
   }
 
-  runtime.dfcOptionGenerationStateRepo.markBlocked({
+  const derivative = findReusablePdfDerivative(runtime, assetId, asset)
+  if (derivative) {
+    runtime.dfcOptionGenerationStateRepo.markReady({
+      id: generationState.id,
+      outputDerivativeId: derivative.id,
+    })
+    return { changed: false }
+  }
+  if (!runtime.derivativeJobService.canRunOfficePdfFakeProcess()) {
+    runtime.dfcOptionGenerationStateRepo.markBlocked({
+      id: generationState.id,
+      errorCode: 'conversion_not_implemented',
+    })
+    return { changed: true }
+  }
+  if (shouldSkipNonRetryableDfcGeneration(generationState)) return { changed: false }
+  const job = runtime.derivativeJobService.createDerivativeJob({
+    id: randomUUID(),
+    assetId,
+    derivativeKind: 'converted_pdf',
+    taskFamily: 'chat_context',
+    generator: DFC_OFFICE_PDF_DERIVATIVE_JOB_GENERATOR,
+    configJson: {
+      targetKind,
+      runtime: 'libreoffice-fake-process-test-seam',
+      timeoutMs: 60_000,
+    },
+  })
+  runtime.dfcOptionGenerationStateRepo.markRunning({
     id: generationState.id,
-    errorCode: 'conversion_not_implemented',
+    derivativeJobId: job.id,
+    attemptCount: generationState.attemptCount + 1,
+  })
+  const ran = await runtime.derivativeJobService.runDerivativeJob({ jobId: job.id })
+  if (ran.job.status !== 'ready' || !ran.derivative) {
+    runtime.dfcOptionGenerationStateRepo.markFailed({
+      id: generationState.id,
+      errorCode: normalizeDerivativeErrorCode(ran.job.errorCode),
+      retryable: !NON_RETRYABLE_TEXT_CONVERSION_ERRORS.has(ran.job.errorCode ?? ''),
+    })
+    return { changed: true }
+  }
+  if (!isDfcOptionGenerationStillRelevant(options)) {
+    runtime.dfcOptionGenerationStateRepo.markBlocked({
+      id: generationState.id,
+      errorCode: 'draft_attachment_detached',
+    })
+    return { changed: true }
+  }
+  runtime.dfcOptionGenerationStateRepo.markReady({
+    id: generationState.id,
+    outputDerivativeId: ran.derivative.id,
   })
   return { changed: true }
 }

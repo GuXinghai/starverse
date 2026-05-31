@@ -1532,3 +1532,18 @@ M25 should decide whether to approve a dev-only real managed LibreOffice artifac
 ## Recommended next round
 
 Proceed to M26 fake-process DFC generation seam or continue managed package hardening. Do not run real LibreOffice or declare production Office-to-PDF support until managed artifact distribution, installer policy, real execution, output validation, no-fallback behavior, and smoke confidence are separately approved.
+
+## DFC-M26 Office PDF fake-process DFC seam recovery notes
+
+- M26 wires DOCX `pdf_attachment` generation into the backend DFC seam only when a valid managed LibreOffice runtime package is available and an internal fake process runner is injected.
+- Without the injected fake runner, DOCX Office PDF behavior remains M25: the managed runtime gate can be available, but the `pdf_attachment` candidate remains blocked with `conversion_not_implemented` and no ready DerivedAsset is generated.
+- The successful fake-process seam uses the M24 adapter skeleton and writes a verified `converted_pdf` DerivedAsset with `targetKind: pdf_attachment`, `sendStrategy: file_attachment`, `sendAssetRefs: derived_asset`, `usage: preview_and_send`, and converter identity `starverse-libreoffice-docx-pdf` / `skeleton-1`.
+- The converter metadata explicitly records `conversionMode: fake_process_test_seam`; this must not be interpreted as real LibreOffice production support.
+- Preview remains metadata-only and Send Plan remains selected-ref / verified-DerivedAsset authoritative. The seam must not infer Office PDF behavior from extension or MIME fallback.
+- Fake process failure, timeout, missing/invalid runtime, missing runner, missing output, non-PDF output, escaped output, and ambiguous output all fail closed with no ready DerivedAsset.
+- DOCX `markdown` and `original_file` remain unaffected. `.doc`, `.rtf`, and `.docm` remain unsupported.
+- M26 still does not run real `soffice`, use system LibreOffice or PATH fallback, submit a LibreOffice binary, change DB schema, expose renderer IPC, change Send Plan main-flow, change asset model, change DFC vocabulary, or alter HTML-to-PDF behavior.
+
+## Recommended next round
+
+Proceed to Office PDF fake-process hardening/smoke planning, or make an owner decision for a real managed LibreOffice artifact and dev-only `soffice` execution package. Do not run real LibreOffice or declare production Office-to-PDF support without separate approval for binary distribution, installer/update policy, real execution sandboxing, smoke confidence, and exposure gates.
