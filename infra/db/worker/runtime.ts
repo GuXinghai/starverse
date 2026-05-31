@@ -323,6 +323,7 @@ export class DbWorkerRuntime {
       modelCatalogRepo: this.modelCatalogRepo,
       storageRootDir: this.fileStorageRootDir,
       electronConversionBridge: config.electronConversionBridge,
+      officePdfProcessRunner: config.officePdfProcessRunner,
     })
     this.reasoningModelIndexRepo = new ReasoningModelIndexRepo(this.db)
     this.settingsRepo = new SettingsRepo(this.db)

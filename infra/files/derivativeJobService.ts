@@ -34,6 +34,16 @@ import {
   createDfcConversionSandboxPlan,
 } from './dfcConversionSandbox'
 import { requestElectronConversion, type ElectronConversionBridge } from './electronConversionBridge'
+import {
+  DFC_LIBREOFFICE_PDF_CONVERTER_NAME,
+  DFC_LIBREOFFICE_PDF_CONVERTER_VERSION,
+  runDfcLibreOfficeDocxToPdfAdapter,
+  type DfcLibreOfficePdfProcessRunner,
+} from './dfcLibreOfficePdfAdapter'
+import {
+  getDfcLibreOfficeManagedRuntimeRoot,
+  resolveDfcLibreOfficeRuntimeExecutionDescriptor,
+} from './dfcManagedLibreOfficeRuntime'
 
 type SqlDatabase = BetterSqlite3.Database
 
@@ -88,6 +98,7 @@ export class DerivativeJobService {
       modelCatalogRepo: ModelCatalogRepo
       storageRootDir: string
       electronConversionBridge?: ElectronConversionBridge
+      officePdfProcessRunner?: DfcLibreOfficePdfProcessRunner
       now?: () => number
     }>
   ) {}
@@ -113,6 +124,10 @@ export class DerivativeJobService {
       parentAssetId: String(assetId ?? '').trim(),
       derivedKind: 'preview_optimized',
     })
+  }
+
+  canRunOfficePdfFakeProcess(): boolean {
+    return typeof this.deps.officePdfProcessRunner === 'function'
   }
 
   cancelDerivativeJob(input: CancelDerivativeJobInput): DerivativeJobRecord {
@@ -486,6 +501,9 @@ export class DerivativeJobService {
     }
     const ext = String(asset.extension ?? '').trim().toLowerCase()
     const mime = normalizeMime(asset.mime)
+    if (isDocxAsset(asset)) {
+      return await this.runDocxConvertedPdfJob(job, asset)
+    }
     if (ext !== 'html' && ext !== 'htm' && mime !== 'text/html') {
       throw derivativeError('derivative_asset_not_supported', job.id, asset.id, job.derivativeKind, 'HTML-to-PDF conversion only supports managed local HTML assets.')
     }
@@ -618,6 +636,106 @@ export class DerivativeJobService {
           'html_pdf_javascript_disabled',
           'html_pdf_network_blocked',
           'html_pdf_local_file_access_blocked',
+        ],
+        cleanupStatus,
+      },
+    })
+    return this.markReady(job, derivative)
+  }
+
+  private async runDocxConvertedPdfJob(job: DerivativeJobRecord, asset: FileAssetRecord): Promise<DerivativeRunResult> {
+    if (asset.storageBackend !== 'local_fs') {
+      throw derivativeError('derivative_asset_not_supported', job.id, asset.id, job.derivativeKind, 'Office-to-PDF conversion requires a managed local DOCX asset.')
+    }
+    if (!asset.sha256) {
+      throw derivativeError('derivative_input_missing', job.id, asset.id, job.derivativeKind, 'Office-to-PDF conversion requires source hash metadata.')
+    }
+    if (!this.deps.officePdfProcessRunner) {
+      throw derivativeError('conversion_not_implemented', job.id, asset.id, job.derivativeKind, 'Office-to-PDF conversion requires an injected fake process runner in this pilot.')
+    }
+
+    const runtime = await resolveDfcLibreOfficeRuntimeExecutionDescriptor({
+      managedRuntimeRootDir: getDfcLibreOfficeManagedRuntimeRoot(this.deps.storageRootDir),
+    })
+    if (!runtime.ok) {
+      throw derivativeError('conversion_not_implemented', job.id, asset.id, job.derivativeKind, 'Office-to-PDF managed runtime is unavailable.')
+    }
+
+    const source = await this.readLocalBytes(asset, job, 'derivative_local_file_missing', {
+      missingCode: 'derivative_local_file_missing',
+      invalidCode: 'derivative_input_missing',
+      readCode: 'derivative_local_file_read_failed',
+    })
+    const sandboxRootDir = path.join(this.deps.storageRootDir, '.dfc-sandbox', 'libreoffice-office-pdf', safePathSegment(job.id))
+    const timeoutMs = readPositiveConfigNumber(job.configJson, 'timeoutMs') ?? 60_000
+    const result = await runDfcLibreOfficeDocxToPdfAdapter({
+      assetId: asset.id,
+      sourceBytes: source.bytes,
+      sourceExtension: 'docx',
+      sandboxRootDir,
+      runtime: runtime.runtime,
+      timeoutMs,
+      processRunner: this.deps.officePdfProcessRunner,
+      cleanupSandbox: false,
+    })
+    if (!result.ok || !result.output) {
+      await rm(sandboxRootDir, { recursive: true, force: true }).catch(() => undefined)
+      const code = result.status === 'timed_out'
+        ? 'derivative_task_timeout'
+        : result.status === 'blocked'
+          ? 'conversion_not_implemented'
+          : 'derivative_output_write_failed'
+      throw derivativeError(code, job.id, asset.id, job.derivativeKind, result.diagnostics[0]?.message ?? 'Office-to-PDF fake process conversion failed.')
+    }
+
+    let cleanupStatus: 'attempted' | 'failed' = 'attempted'
+    let pdfBytes: Buffer
+    try {
+      pdfBytes = await readFile(result.output.outputPath).catch((error) => {
+        throw derivativeError('derivative_local_file_read_failed', job.id, asset.id, job.derivativeKind, error instanceof Error ? error.message : 'Converted Office PDF output could not be read.')
+      })
+      if (pdfBytes.byteLength === 0 || pdfBytes.subarray(0, 5).toString('ascii') !== '%PDF-') {
+        throw derivativeError('derivative_output_write_failed', job.id, asset.id, job.derivativeKind, 'Converted Office PDF output is invalid.')
+      }
+    } finally {
+      cleanupStatus = await rm(sandboxRootDir, { recursive: true, force: true })
+        .then(() => 'attempted' as const)
+        .catch(() => 'failed' as const)
+    }
+
+    const contentHash = sha256Bytes(pdfBytes)
+    const conversionSettingsHash = sha256(Buffer.from(JSON.stringify({
+      targetKind: 'pdf_attachment',
+      runtime: 'libreoffice-fake-process-test-seam',
+      policy: 'macros-network-external-links-disabled',
+    })).toString('utf8'))
+    const derivative = await this.writeBinaryDerivative({
+      job,
+      asset,
+      bytes: pdfBytes,
+      extension: 'pdf',
+      mime: 'application/pdf',
+      metaJson: {
+        sourceMime: asset.mime ?? null,
+        sourceExtension: asset.extension ?? null,
+        sourceBytes: asset.sizeBytes,
+        outputBytes: pdfBytes.byteLength,
+        generator: job.generator,
+        targetKind: 'pdf_attachment',
+        usage: 'preview_and_send',
+        storageClass: 'draft_bound',
+        sourceHash: asset.sha256,
+        contentHash,
+        conversionSettingsHash,
+        converterName: DFC_LIBREOFFICE_PDF_CONVERTER_NAME,
+        converterVersion: DFC_LIBREOFFICE_PDF_CONVERTER_VERSION,
+        conversionMode: 'fake_process_test_seam',
+        warnings: [
+          'office_pdf_fake_process_test_seam',
+          'office_pdf_macros_disabled',
+          'office_pdf_network_blocked',
+          'office_pdf_external_links_blocked',
+          'office_pdf_embedded_objects_blocked',
         ],
         cleanupStatus,
       },

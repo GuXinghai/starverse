@@ -26,6 +26,7 @@ import { SendPlanService } from '../files/sendPlanService'
 import { FileTypeDetectionService } from '../files/fileTypeDetectionService'
 import { canOpenBetterSqliteForSuite } from '../testUtils/betterSqliteGate'
 import type { ElectronConversionBridge } from '../files/electronConversionBridge'
+import type { DfcLibreOfficePdfProcessRunner } from '../files/dfcLibreOfficePdfAdapter'
 import {
   DFC_OFFICE_PDF_CAPABILITIES,
   DFC_OFFICE_PDF_ENGINE_ID,
@@ -300,7 +301,10 @@ function insertConvo(db: BetterSqlite3.Database, id: string) {
   })
 }
 
-function createWorkerHarness(options: Readonly<{ electronConversionBridge?: ElectronConversionBridge }> = {}) {
+function createWorkerHarness(options: Readonly<{
+  electronConversionBridge?: ElectronConversionBridge
+  officePdfProcessRunner?: DfcLibreOfficePdfProcessRunner
+}> = {}) {
   const db = new BetterSqlite3(':memory:')
   loadSchema(db)
   insertConvo(db, 'c1')
@@ -374,6 +378,7 @@ function createWorkerHarness(options: Readonly<{ electronConversionBridge?: Elec
       modelCatalogRepo,
       storageRootDir,
       electronConversionBridge: options.electronConversionBridge,
+      officePdfProcessRunner: options.officePdfProcessRunner,
       now: () => 1000,
     }),
     sendPlanService: new SendPlanService({
@@ -391,6 +396,49 @@ function createWorkerHarness(options: Readonly<{ electronConversionBridge?: Elec
     fileStorageRootDir: storageRootDir,
   } as any)
   return { db, handlers, message, conversationAttachmentService, fileTypeDetectionCoordinator, fileTypeVerdictRepo }
+}
+
+function createFakeOfficePdfSuccessRunner(pdfBytes: Buffer): DfcLibreOfficePdfProcessRunner {
+  return async (input) => {
+    expect(input.shell).toBe(false)
+    expect(input.allowBatchEntrypoint).toBe(false)
+    const args = [...(input.args ?? [])]
+    const outdirIndex = args.indexOf('--outdir')
+    const outputDir = outdirIndex >= 0 ? args[outdirIndex + 1] : null
+    const sourcePath = args[args.length - 1]
+    expect(outputDir).toBeTruthy()
+    expect(sourcePath).toMatch(/\.docx$/i)
+    const outputPath = path.join(String(outputDir), `${path.basename(String(sourcePath), path.extname(String(sourcePath)))}.pdf`)
+    await mkdir(path.dirname(outputPath), { recursive: true })
+    await writeFile(outputPath, pdfBytes)
+    return {
+      exitCode: 0,
+      signal: null,
+      stdout: '',
+      stderr: '',
+      timedOut: false,
+      outputLimited: false,
+      terminationAttempted: false,
+      terminated: false,
+      errorCode: null,
+      elapsedMs: 12,
+    }
+  }
+}
+
+function createFakeOfficePdfFailureRunner(): DfcLibreOfficePdfProcessRunner {
+  return async () => ({
+    exitCode: 1,
+    signal: null,
+    stdout: '',
+    stderr: 'failed C:\\Users\\private\\source.docx token=secret file body',
+    timedOut: false,
+    outputLimited: false,
+    terminationAttempted: false,
+    terminated: false,
+    errorCode: 'process_exit_nonzero',
+    elapsedMs: 12,
+  })
 }
 
 function dfcSettingsHash(targetKind: string): string {
@@ -1558,6 +1606,267 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     expect(convertedPdfCount).toBe(0)
     expect(JSON.stringify((ensured as any).result)).not.toContain(runtimeRoot)
     expect(JSON.stringify((ensured as any).result)).not.toContain('soffice')
+  })
+
+  it('wires DOCX pdf_attachment generation through the LibreOffice fake process seam', async () => {
+    const pdfBytes = Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n', 'utf8')
+    const { db, handlers } = createWorkerHarness({
+      officePdfProcessRunner: createFakeOfficePdfSuccessRunner(pdfBytes),
+    })
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const runtimeRoot = getDfcLibreOfficeManagedRuntimeRoot(storageRootDir)
+    await writeLibreOfficeRuntimeFixture(runtimeRoot)
+    const assetId = 'asset-docx-office-pdf-fake-success'
+    const storageUri = 'assets/original/do/asset-docx-office-pdf-fake-success.docx'
+    const docxBytes = createMinimalDocxBuffer()
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), docxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-fake-success-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-docx-office-pdf-fake-success-source-hash',
+        filename: 'office-pdf-fake-success.docx',
+        extension: 'docx',
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        sizeBytes: docxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-fake-success-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-fake-success-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const pdfOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'pdf_attachment')
+    const markdownOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'markdown')
+    const originalOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'original_file')
+    const derivativeId = pdfOption.sendAssetRefs[0].assetId
+    const derivativeRow = db.prepare(`
+      SELECT derived_kind AS derivedKind, mime, storage_uri AS storageUri, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE id=@derivativeId
+      LIMIT 1
+    `).get({ derivativeId }) as { derivedKind: string; mime: string | null; storageUri: string; metaJson: string | null }
+    const derivativeMeta = JSON.parse(derivativeRow.metaJson ?? '{}')
+    const pdfFileBytes = await readFile(path.join(storageRootDir, ...derivativeRow.storageUri.split('/')))
+
+    expect(originalOption).toMatchObject({
+      targetKind: 'original_file',
+      status: 'ready',
+      sendAssetRefs: [{ kind: 'raw_file', assetId }],
+    })
+    expect(markdownOption).toMatchObject({ targetKind: 'markdown', status: 'ready' })
+    expect(pdfOption).toMatchObject({
+      targetKind: 'pdf_attachment',
+      status: 'ready',
+      isAvailable: true,
+      compatibilityStatus: 'compatible',
+      sendStrategy: 'file_attachment',
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: derivativeId }],
+    })
+    expect(derivativeRow).toMatchObject({
+      derivedKind: 'converted_pdf',
+      mime: 'application/pdf',
+    })
+    expect(derivativeMeta).toMatchObject({
+      targetKind: 'pdf_attachment',
+      usage: 'preview_and_send',
+      storageClass: 'draft_bound',
+      sourceHash: 'asset-docx-office-pdf-fake-success-source-hash',
+      converterName: 'starverse-libreoffice-docx-pdf',
+      converterVersion: 'skeleton-1',
+      conversionMode: 'fake_process_test_seam',
+    })
+    expect(derivativeMeta.contentHash).toBe(createHash('sha256').update(pdfBytes).digest('hex'))
+    expect(Buffer.from(pdfFileBytes).subarray(0, 5).toString('ascii')).toBe('%PDF-')
+
+    const selected = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-fake-success-select',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: pdfOption.optionId,
+        selectedAssetRefs: pdfOption.sendAssetRefs,
+      },
+    })
+    const preview = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-fake-success-preview',
+      method: 'conversationDraft.getDfcPreview',
+      params: { conversationId: 'c1', assetId, maxCharacters: 256 },
+    })
+    const sendPlan = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-fake-success-send-plan',
+      method: 'sendPlan.buildCurrent',
+      params: {
+        conversationId: 'c1',
+        draftText: 'send office pdf',
+        model: {
+          providerKey: 'openrouter',
+          modelId: 'test/pdf',
+          modelKey: 'openrouter::test/pdf',
+          inputModalities: ['text', 'file'],
+          outputModalities: ['text'],
+        },
+        providerContext: {
+          providerKey: 'openrouter',
+          supportsInlineData: true,
+          supportsPdfInputs: true,
+          supportsPdfUrlRef: true,
+          supportsTextUrlRef: true,
+        },
+      },
+    })
+
+    expect(selected).toMatchObject({ ok: true })
+    expect(preview).toMatchObject({
+      ok: true,
+      result: {
+        selectedOptionId: pdfOption.optionId,
+        selectedAssetRefs: pdfOption.sendAssetRefs,
+        targetKind: 'pdf_attachment',
+        sendStrategy: 'file_attachment',
+        decision: expect.objectContaining({
+          status: 'ready',
+          sendAssetRefs: pdfOption.sendAssetRefs,
+        }),
+        preview: expect.objectContaining({
+          kind: 'raw_file',
+          status: 'ready',
+          text: null,
+          diagnostics: [expect.objectContaining({ code: 'dfc_preview_pdf_metadata_only' })],
+        }),
+      },
+    })
+    expect(sendPlan).toMatchObject({
+      ok: true,
+      result: {
+        sendPlan: expect.objectContaining({
+          attachmentPlans: [
+            expect.objectContaining({
+              assetId,
+              sendAssetRefs: pdfOption.sendAssetRefs,
+              semantic: expect.objectContaining({
+                targetKind: 'pdf_attachment',
+                sendStrategy: 'file_attachment',
+                mappedFromLegacy: false,
+              }),
+            }),
+          ],
+        }),
+      },
+    })
+    const ensuredJson = JSON.stringify((ensured as any).result)
+    const previewJson = JSON.stringify((preview as any).result)
+    const sendPlanJson = JSON.stringify((sendPlan as any).result)
+    expect(ensuredJson).not.toContain(storageUri)
+    expect(ensuredJson).not.toContain(runtimeRoot)
+    expect(ensuredJson).not.toContain('soffice')
+    expect(previewJson).not.toContain(storageUri)
+    expect(previewJson).not.toContain(derivativeRow.storageUri)
+    expect(previewJson).not.toContain('asset-docx-office-pdf-fake-success-source-hash')
+    expect(previewJson).not.toContain('%PDF-')
+    expect(sendPlanJson).not.toContain(derivativeRow.storageUri)
+    expect(sendPlanJson).not.toContain('%PDF-')
+  })
+
+  it('fails closed for DOCX pdf_attachment fake process failure without exposing process diagnostics', async () => {
+    const { db, handlers } = createWorkerHarness({
+      officePdfProcessRunner: createFakeOfficePdfFailureRunner(),
+    })
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const runtimeRoot = getDfcLibreOfficeManagedRuntimeRoot(storageRootDir)
+    await writeLibreOfficeRuntimeFixture(runtimeRoot)
+    const assetId = 'asset-docx-office-pdf-fake-failure'
+    const storageUri = 'assets/original/do/asset-docx-office-pdf-fake-failure.docx'
+    const docxBytes = createMinimalDocxBuffer()
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), docxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-fake-failure-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-docx-office-pdf-fake-failure-source-hash',
+        filename: 'office-pdf-fake-failure.docx',
+        extension: 'docx',
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        sizeBytes: docxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-fake-failure-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-fake-failure-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const pdfOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'pdf_attachment')
+    const readyPdfCount = (db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='converted_pdf' AND status='ready'
+    `).get({ assetId }) as { count: number }).count
+    const generationState = db.prepare(`
+      SELECT status, error_code AS errorCode
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='pdf_attachment'
+      LIMIT 1
+    `).get({ assetId }) as { status: string; errorCode: string | null }
+
+    expect(pdfOption).toMatchObject({
+      targetKind: 'pdf_attachment',
+      sendStrategy: 'file_attachment',
+      status: 'failed',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: 'derivative_output_write_failed' })],
+    })
+    expect(generationState).toMatchObject({
+      status: 'failed',
+      errorCode: 'derivative_output_write_failed',
+    })
+    expect(readyPdfCount).toBe(0)
+    const ensuredJson = JSON.stringify((ensured as any).result)
+    expect(ensuredJson).not.toContain(storageUri)
+    expect(ensuredJson).not.toContain(runtimeRoot)
+    expect(ensuredJson).not.toContain('C:\\Users\\private')
+    expect(ensuredJson).not.toContain('secret')
+    expect(ensuredJson).not.toContain('file body')
+
+    const selected = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-fake-failure-select',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: pdfOption.optionId,
+        selectedAssetRefs: pdfOption.sendAssetRefs,
+      },
+    })
+    expect(selected).toMatchObject({ ok: false })
   })
 
   it.each([

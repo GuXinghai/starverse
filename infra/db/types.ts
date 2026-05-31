@@ -1749,6 +1749,7 @@ export type WorkerInitConfig = {
   startupRebuildReason?: string
   isProduction?: boolean
   electronConversionBridge?: import('../files/electronConversionBridge').ElectronConversionBridge
+  officePdfProcessRunner?: import('../files/dfcLibreOfficePdfAdapter').DfcLibreOfficePdfProcessRunner
 }
 
 export type { DbMethod } from './dbMethodsRegistry'
