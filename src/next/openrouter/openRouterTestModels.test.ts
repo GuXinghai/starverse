@@ -13,6 +13,11 @@ const TEST_FILE_PATTERN = /\.(test|spec)\.[cm]?[jt]sx?$/
 const GUARDRAIL_FILE = path.resolve(TEST_ROOT, 'next/openrouter/openRouterTestModels.test.ts')
 const NEGATIVE_CONTEXT_PATTERN = /Intentionally not from OPENROUTER_TEST_MODELS|validates rejection of non-test model/
 const OPENROUTER_LITERAL_PATTERN = /["'`]openrouter\/(?:auto|[^"'`]+)["'`]/
+const OPENROUTER_AUTO_SENTINEL_CONTEXTS = new Map<string, RegExp[]>([
+  ['next/state/reducer.test.ts', [/"model": "openrouter\/auto",/]],
+  ['ui-app/AppChatApp.modelSelectionRegression.test.ts', [/not\.toContain\('openrouter\/auto'\)/]],
+  ['ui-app/app/chatSessionConfig.test.ts', [/defaultModelKey: 'openrouter\/auto',/]],
+])
 
 function collectTestFiles(rootDir: string): string[] {
   const result: string[] = []
@@ -46,6 +51,13 @@ function isAllowedContext(lines: string[], lineIndex: number): boolean {
   return false
 }
 
+function isAllowedOpenRouterAutoSentinel(filePath: string, line: string): boolean {
+  if (!line.includes('openrouter/auto')) return false
+  const relativePath = path.relative(TEST_ROOT, filePath).split(path.sep).join('/')
+  const allowedPatterns = OPENROUTER_AUTO_SENTINEL_CONTEXTS.get(relativePath)
+  return allowedPatterns?.some((pattern) => pattern.test(line)) ?? false
+}
+
 describe('openRouterTestModels', () => {
   it('exposes a stable prioritized test model list', () => {
     expect(OPENROUTER_TEST_MODELS).toHaveLength(3)
@@ -76,6 +88,7 @@ describe('openRouterTestModels', () => {
         if (/^(import|export)\s/.test(trimmedLine)) return
         if (trimmedLine.includes('path.join(') || trimmedLine.includes('path.resolve(')) return
         if (isAllowedContext(lines, index)) return
+        if (isAllowedOpenRouterAutoSentinel(filePath, line)) return
 
         violations.push(`${path.relative(TEST_ROOT, filePath)}:${index + 1}: ${line.trim()}`)
       })
