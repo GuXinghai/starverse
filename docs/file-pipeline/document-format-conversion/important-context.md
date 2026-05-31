@@ -1496,6 +1496,8 @@ Proceed with M23 LibreOffice managed engine gate / package scaffold. Do not impl
 - DOCX `conversationDraft.ensureDfcOptions` can expose a blocked/unavailable `pdf_attachment` candidate through the existing DFC generation-state option path when LibreOffice runtime is missing or invalid.
 - DOCX `markdown` and `original_file` remain unaffected. `.doc`, `.rtf`, and `.docm` remain unsupported and do not expose Office-to-PDF candidates.
 - M23 does not bundle LibreOffice, does not run `soffice`, does not use system LibreOffice, does not generate PDF, does not create ready `converted_pdf` DerivedAssets, and does not change DB schema, renderer IPC shape, Send Plan main-flow, asset model, DFC vocabulary, or HTML-to-PDF behavior.
+- Validation passed: `git diff --check`; `npx vue-tsc --noEmit --pretty false`; `npx vitest --run infra/files/dfcManagedLibreOfficeRuntime.test.ts --reporter=dot --silent`; `npx vitest --run infra/db/worker.filePipeline.test.ts -t "LibreOffice|Office PDF|DOCX pdf_attachment|unsupported" --reporter=dot --silent`. `npm run rebuild:node` was run before DB worker targeted tests.
+- Risk review found one P1 symlink escape issue in executable path confinement; M23 fixed it by validating executable `realpath` remains inside the managed runtime root and adding a symlink escape regression test.
 
 ## Recommended next round
 
