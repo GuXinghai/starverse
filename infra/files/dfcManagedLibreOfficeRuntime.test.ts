@@ -6,9 +6,13 @@ import { describe, expect, it } from 'vitest'
 import {
   DFC_OFFICE_PDF_CAPABILITIES,
   DFC_OFFICE_PDF_ENGINE_ID,
+  DFC_OFFICE_PDF_PLUGIN_ID,
   DFC_OFFICE_PDF_RUNTIME_ID,
+  DFC_OFFICE_PDF_RUNTIME_KIND,
   DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
   checkDfcLibreOfficeRuntimeAvailability,
+  toDfcLibreOfficeManagedEnginePluginManifest,
+  type DfcOfficePdfRuntimeManifest,
 } from './dfcManagedLibreOfficeRuntime'
 
 describe('dfc managed LibreOffice runtime gate', () => {
@@ -42,8 +46,13 @@ describe('dfc managed LibreOffice runtime gate', () => {
       ok: true,
       runtime: expect.objectContaining({
         packageId: DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
+        pluginId: DFC_OFFICE_PDF_PLUGIN_ID,
+        runtimePackageId: DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
         engineId: DFC_OFFICE_PDF_ENGINE_ID,
         runtimeId: DFC_OFFICE_PDF_RUNTIME_ID,
+        displayName: 'LibreOffice Office PDF',
+        pluginVersion: '0.1.0',
+        runtimeKind: DFC_OFFICE_PDF_RUNTIME_KIND,
         platform: process.platform,
         arch: process.arch,
         capabilities: [...DFC_OFFICE_PDF_CAPABILITIES],
@@ -52,12 +61,72 @@ describe('dfc managed LibreOffice runtime gate', () => {
         minimumStarverseContractVersion: '1',
         provenance: 'starverse-test-fixture',
         licenseId: 'MPL-2.0',
+        attribution: 'The Document Foundation LibreOffice',
+        officialRelease: expect.objectContaining({
+          sourceKind: 'test_fixture',
+          packageRef: 'fixtures/libreoffice-test.zip',
+        }),
       }),
       diagnostics: [],
     })
     expect(JSON.stringify(result)).not.toContain(root)
     expect(JSON.stringify(result)).not.toContain('program/soffice')
     expect(JSON.stringify(result)).not.toContain('fake soffice executable')
+  })
+
+  it('maps a fake managed plugin runtime into the external engine registry manifest contract', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-runtime-registry-'))
+    const executable = Buffer.from('fake soffice executable')
+    await mkdir(path.join(root, 'program'), { recursive: true })
+    await writeFile(path.join(root, 'program', process.platform === 'win32' ? 'soffice.exe' : 'soffice'), executable)
+    await writeManifest(root, {
+      executablePath: process.platform === 'win32' ? 'program/soffice.exe' : 'program/soffice',
+      executableSha256: createHash('sha256').update(executable).digest('hex'),
+      executableSizeBytes: executable.byteLength,
+    })
+
+    const availability = await checkDfcLibreOfficeRuntimeAvailability({ managedRuntimeRootDir: root })
+    expect(availability.ok).toBe(true)
+    if (!availability.ok) return
+
+    const registryManifest = toDfcLibreOfficeManagedEnginePluginManifest(availability.runtime)
+
+    expect(registryManifest).toMatchObject({
+      id: DFC_OFFICE_PDF_ENGINE_ID,
+      displayName: 'LibreOffice Office PDF',
+      version: '0.1.0',
+      kind: 'plugin',
+      platform: process.platform,
+      capabilities: ['document_conversion'],
+      supportedFormatIds: ['docx'],
+      supportedMimeTypes: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      sandbox: { enabled: true },
+      network: { allowed: false },
+    })
+    expect(JSON.stringify(registryManifest)).not.toContain(root)
+    expect(JSON.stringify(registryManifest)).not.toContain('fake soffice executable')
+  })
+
+  it('fails closed when the managed plugin runtime is disabled', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-runtime-disabled-'))
+    await writeManifest(root, { enabled: false })
+
+    const byManifest = await checkDfcLibreOfficeRuntimeAvailability({ managedRuntimeRootDir: root })
+    expect(byManifest).toMatchObject({
+      ok: false,
+      diagnostics: [expect.objectContaining({ code: 'office_pdf_runtime_disabled' })],
+    })
+    expect(JSON.stringify(byManifest)).not.toContain(root)
+
+    const byRegistryState = await checkDfcLibreOfficeRuntimeAvailability({
+      managedRuntimeRootDir: root,
+      pluginEnabled: false,
+    })
+    expect(byRegistryState).toMatchObject({
+      ok: false,
+      diagnostics: [expect.objectContaining({ code: 'office_pdf_runtime_disabled' })],
+    })
+    expect(JSON.stringify(byRegistryState)).not.toContain(root)
   })
 
   it('reports missing executable separately from metadata and path failures', async () => {
@@ -169,6 +238,7 @@ describe('dfc managed LibreOffice runtime gate', () => {
         macrosDisabled: true,
         networkDisabled: false,
         externalLinksDisabled: true,
+        embeddedObjectExecutionDisabled: true,
         isolatedProfileRequired: true,
       },
     })
@@ -186,12 +256,19 @@ describe('dfc managed LibreOffice runtime gate', () => {
 
 async function writeManifest(
   root: string,
-  overrides: Partial<Record<string, string | number | null | string[] | Record<string, boolean>>>
+  overrides: Partial<DfcOfficePdfRuntimeManifest>
 ): Promise<void> {
   await writeFile(path.join(root, 'manifest.json'), JSON.stringify({
+    manifestSchemaVersion: '1',
+    pluginId: DFC_OFFICE_PDF_PLUGIN_ID,
     packageId: DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
+    runtimePackageId: DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
     engineId: DFC_OFFICE_PDF_ENGINE_ID,
     runtimeId: DFC_OFFICE_PDF_RUNTIME_ID,
+    displayName: 'LibreOffice Office PDF',
+    pluginVersion: '0.1.0',
+    runtimeKind: DFC_OFFICE_PDF_RUNTIME_KIND,
+    enabled: true,
     platform: process.platform,
     arch: process.arch,
     capabilities: [...DFC_OFFICE_PDF_CAPABILITIES],
@@ -203,12 +280,20 @@ async function writeManifest(
     executableSizeBytes: 123,
     provenance: 'starverse-test-fixture',
     licenseId: 'MPL-2.0',
+    attribution: 'The Document Foundation LibreOffice',
     notices: ['LibreOffice test fixture attribution'],
     minimumStarverseContractVersion: '1',
+    officialRelease: {
+      sourceKind: 'test_fixture',
+      packageRef: 'fixtures/libreoffice-test.zip',
+      releaseTag: 'test-libreoffice-fixture',
+      provenance: 'starverse-test-fixture',
+    },
     securityPolicy: {
       macrosDisabled: true,
       networkDisabled: true,
       externalLinksDisabled: true,
+      embeddedObjectExecutionDisabled: true,
       isolatedProfileRequired: true,
     },
     ...overrides,

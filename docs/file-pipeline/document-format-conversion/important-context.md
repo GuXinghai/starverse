@@ -1517,3 +1517,18 @@ Proceed to M24 Office-to-PDF conversion adapter only after Owner approves a real
 ## Recommended next round
 
 M25 should decide whether to approve a dev-only real managed LibreOffice artifact path for local conversion tests or continue fake-process hardening and DFC generation seam design. Do not claim production Office-to-PDF support until real managed runtime packaging, conversion output validation, no-fallback behavior, and smoke confidence are accepted.
+
+## DFC-M25 LibreOffice managed plugin/runtime integration recovery notes
+
+- M25 aligns the LibreOffice Office-to-PDF runtime gate with the Starverse managed plugin/runtime pattern used by Magika.
+- The LibreOffice manifest now carries plugin/runtime package identity (`libreoffice`, `libreoffice-office-pdf`, `starverse.dfc.libreoffice`), plugin version, runtime kind `managed_external_process`, official release/package reference metadata, attribution, required capabilities, and security policy metadata.
+- The gate can map a valid fake LibreOffice runtime summary into the external engine registry manifest contract with `kind: plugin`, `document_conversion`, DOCX input support, sandbox enabled, and network disabled.
+- Disabled plugin/runtime state fails closed with symbolic `office_pdf_runtime_disabled`.
+- The gate still rejects missing, invalid, unsupported-platform, missing-executable, path-escape, symlink-escape, and metadata-incomplete packages with sanitized diagnostics.
+- No real `soffice` runs, no system LibreOffice lookup or PATH fallback is used, no LibreOffice binary is submitted, and no real Office-to-PDF DerivedAsset is generated.
+- DOCX PDF candidate behavior remains blocked/unavailable only. DOCX `markdown` and `original_file` remain unaffected. `.doc`, `.rtf`, and `.docm` remain unsupported.
+- No DB schema, renderer IPC shape, Send Plan main-flow, asset model, DFC vocabulary, or HTML-to-PDF pipeline changed.
+
+## Recommended next round
+
+Proceed to M26 fake-process DFC generation seam or continue managed package hardening. Do not run real LibreOffice or declare production Office-to-PDF support until managed artifact distribution, installer policy, real execution, output validation, no-fallback behavior, and smoke confidence are separately approved.

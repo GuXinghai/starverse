@@ -1,16 +1,21 @@
 import { createHash } from 'node:crypto'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
+import { parseManagedEnginePluginManifest } from '../../src/next/file-type/externalEngineManifest'
+import type { EnginePlatform, ManagedEnginePluginManifest } from '../../src/next/file-type/externalEngineTypes'
 
 export const DFC_OFFICE_PDF_ENGINE_ID = 'libreoffice'
+export const DFC_OFFICE_PDF_PLUGIN_ID = 'libreoffice'
 export const DFC_OFFICE_PDF_RUNTIME_ID = 'libreoffice-office-pdf'
 export const DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID = 'starverse.dfc.libreoffice'
 export const DFC_OFFICE_PDF_CAPABILITIES = ['office_to_pdf', 'docx_to_pdf'] as const
 export const DFC_OFFICE_PDF_RUNTIME_MANIFEST = 'manifest.json'
 export const DFC_OFFICE_PDF_MIN_CONTRACT_VERSION = '1'
+export const DFC_OFFICE_PDF_RUNTIME_KIND = 'managed_external_process'
 
 export type DfcOfficePdfRuntimeDiagnosticCode =
   | 'office_pdf_runtime_missing'
+  | 'office_pdf_runtime_disabled'
   | 'office_pdf_runtime_manifest_invalid'
   | 'office_pdf_runtime_executable_missing'
   | 'office_pdf_runtime_path_rejected'
@@ -35,9 +40,14 @@ export type DfcOfficePdfRuntimeAvailability =
     }>
 
 export type DfcOfficePdfManagedRuntimeSummary = Readonly<{
+  pluginId: string
   packageId: string
+  runtimePackageId: string
   engineId: string
   runtimeId: string
+  displayName: string
+  pluginVersion: string
+  runtimeKind: string
   platform: string
   arch: string | null
   capabilities: readonly string[]
@@ -46,6 +56,8 @@ export type DfcOfficePdfManagedRuntimeSummary = Readonly<{
   minimumStarverseContractVersion: string
   provenance: string | null
   licenseId: string | null
+  attribution: string | null
+  officialRelease: DfcOfficePdfRuntimeOfficialRelease | null
 }>
 
 export type DfcOfficePdfManagedRuntimeExecutionDescriptor = DfcOfficePdfManagedRuntimeSummary & Readonly<{
@@ -66,9 +78,16 @@ export type DfcOfficePdfRuntimeExecutionAvailability =
     }>
 
 export type DfcOfficePdfRuntimeManifest = Readonly<{
+  manifestSchemaVersion?: string | null
+  pluginId?: string | null
   packageId: string
+  runtimePackageId?: string | null
   engineId: string
   runtimeId: string
+  displayName?: string | null
+  pluginVersion?: string | null
+  runtimeKind?: string | null
+  enabled?: boolean | null
   platform: string
   arch?: string | null
   executablePath: string
@@ -79,15 +98,25 @@ export type DfcOfficePdfRuntimeManifest = Readonly<{
   executableSizeBytes?: number | null
   provenance?: string | null
   licenseId?: string | null
+  attribution?: string | null
   notices?: readonly string[] | null
   capabilities?: readonly string[] | null
   minimumStarverseContractVersion: string
+  officialRelease?: DfcOfficePdfRuntimeOfficialRelease | null
   securityPolicy?: Readonly<{
     macrosDisabled?: boolean | null
     networkDisabled?: boolean | null
     externalLinksDisabled?: boolean | null
+    embeddedObjectExecutionDisabled?: boolean | null
     isolatedProfileRequired?: boolean | null
   }> | null
+}>
+
+export type DfcOfficePdfRuntimeOfficialRelease = Readonly<{
+  sourceKind: 'official' | 'development' | 'test_fixture'
+  packageRef: string
+  releaseTag?: string | null
+  provenance?: string | null
 }>
 
 type RuntimeManifestParseResult =
@@ -107,6 +136,7 @@ export async function checkDfcLibreOfficeRuntimeAvailability(input: Readonly<{
   managedRuntimeRootDir: string
   platform?: NodeJS.Platform
   arch?: string
+  pluginEnabled?: boolean | null
 }>): Promise<DfcOfficePdfRuntimeAvailability> {
   const result = await resolveDfcLibreOfficeRuntimeExecutionDescriptor(input)
   if (!result.ok) return result
@@ -122,9 +152,13 @@ export async function resolveDfcLibreOfficeRuntimeExecutionDescriptor(input: Rea
   managedRuntimeRootDir: string
   platform?: NodeJS.Platform
   arch?: string
+  pluginEnabled?: boolean | null
 }>): Promise<DfcOfficePdfRuntimeExecutionAvailability> {
   const root = normalizeAbsoluteDir(input.managedRuntimeRootDir)
   if (!root) return unavailable('office_pdf_runtime_manifest_invalid', 'Office PDF runtime root is invalid.')
+  if (input.pluginEnabled === false) {
+    return unavailable('office_pdf_runtime_disabled', 'Office PDF managed runtime is disabled.')
+  }
 
   const manifestPath = path.join(root, DFC_OFFICE_PDF_RUNTIME_MANIFEST)
   const manifestText = await readFile(manifestPath, 'utf8').catch((error) => {
@@ -146,6 +180,9 @@ export async function resolveDfcLibreOfficeRuntimeExecutionDescriptor(input: Rea
   }
 
   const manifest = parsed.manifest
+  if (manifest.enabled === false) {
+    return unavailable('office_pdf_runtime_disabled', 'Office PDF managed runtime is disabled.')
+  }
   const expectedPlatform = input.platform ?? process.platform
   const expectedArch = input.arch ?? process.arch
   if (manifest.platform !== expectedPlatform || (manifest.arch && manifest.arch !== expectedArch)) {
@@ -190,9 +227,14 @@ export async function resolveDfcLibreOfficeRuntimeExecutionDescriptor(input: Rea
     runtime: {
       managedRuntimeRootDir: root,
       executablePath: executable.path,
+      pluginId: manifest.pluginId ?? DFC_OFFICE_PDF_PLUGIN_ID,
       packageId: manifest.packageId,
+      runtimePackageId: manifest.runtimePackageId ?? manifest.packageId,
       engineId: manifest.engineId,
       runtimeId: manifest.runtimeId,
+      displayName: manifest.displayName ?? 'LibreOffice Office PDF',
+      pluginVersion: manifest.pluginVersion ?? manifest.packageVersion,
+      runtimeKind: manifest.runtimeKind ?? DFC_OFFICE_PDF_RUNTIME_KIND,
       platform: manifest.platform,
       arch: manifest.arch ?? null,
       capabilities: [...(manifest.capabilities ?? [])],
@@ -201,18 +243,56 @@ export async function resolveDfcLibreOfficeRuntimeExecutionDescriptor(input: Rea
       minimumStarverseContractVersion: manifest.minimumStarverseContractVersion,
       provenance: manifest.provenance ?? null,
       licenseId: manifest.licenseId ?? null,
+      attribution: manifest.attribution ?? null,
+      officialRelease: manifest.officialRelease ?? null,
     },
     diagnostics: [],
   }
+}
+
+export function toDfcLibreOfficeManagedEnginePluginManifest(
+  runtime: DfcOfficePdfManagedRuntimeSummary
+): ManagedEnginePluginManifest {
+  return parseManagedEnginePluginManifest({
+    id: runtime.engineId,
+    displayName: runtime.displayName,
+    version: runtime.pluginVersion,
+    kind: 'plugin',
+    platform: normalizeEnginePlatform(runtime.platform),
+    capabilities: ['document_conversion'],
+    supportedFormatIds: ['docx'],
+    supportedMimeTypes: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    supportedOutputRoutes: ['direct_file'],
+    resourceLimits: { maxInputBytes: null, maxDurationMs: 60000 },
+    sandbox: { enabled: true },
+    network: { allowed: false },
+    healthcheck: null,
+    metadataAllowlist: [
+      'pluginId',
+      'runtimePackageId',
+      'runtimeId',
+      'libreOfficeVersion',
+      'packageVersion',
+      'minimumStarverseContractVersion',
+      'capabilities',
+    ],
+  })
 }
 
 function parseManifest(value: string): RuntimeManifestParseResult {
   try {
     const parsed = JSON.parse(value) as Partial<DfcOfficePdfRuntimeManifest> | null
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return invalidManifest()
+    if (parsed.manifestSchemaVersion !== DFC_OFFICE_PDF_MIN_CONTRACT_VERSION) return invalidManifest()
+    if (parsed.pluginId !== DFC_OFFICE_PDF_PLUGIN_ID) return invalidManifest()
     if (parsed.packageId !== DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID) return invalidManifest()
+    if (parsed.runtimePackageId !== DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID) return invalidManifest()
     if (parsed.engineId !== DFC_OFFICE_PDF_ENGINE_ID) return invalidManifest()
     if (parsed.runtimeId !== DFC_OFFICE_PDF_RUNTIME_ID) return invalidManifest()
+    if (!isNonEmpty(parsed.displayName)) return invalidManifest()
+    if (!isNonEmpty(parsed.pluginVersion)) return invalidManifest()
+    if (parsed.runtimeKind !== DFC_OFFICE_PDF_RUNTIME_KIND) return invalidManifest()
+    if (parsed.enabled != null && typeof parsed.enabled !== 'boolean') return invalidManifest()
     if (!isNonEmpty(parsed.platform)) return invalidManifest()
     if (!isNonEmpty(parsed.executablePath)) return invalidManifest()
     if (!isNonEmpty(parsed.libreOfficeVersion)) return invalidManifest()
@@ -224,15 +304,23 @@ function parseManifest(value: string): RuntimeManifestParseResult {
     if (parsed.artifactSha256 != null && (!isNonEmpty(parsed.artifactSha256) || !FULL_SHA256_RE.test(parsed.artifactSha256))) return invalidManifest()
     if (parsed.executableSha256 != null && (!isNonEmpty(parsed.executableSha256) || !FULL_SHA256_RE.test(parsed.executableSha256))) return invalidManifest()
     if (parsed.executableSizeBytes != null && (!Number.isFinite(parsed.executableSizeBytes) || parsed.executableSizeBytes < 0)) return invalidManifest()
+    if (!isValidOfficialRelease(parsed.officialRelease ?? null)) return { ok: false, code: 'office_pdf_runtime_metadata_incomplete' }
     if (!hasMetadataShape(parsed)) return { ok: false, code: 'office_pdf_runtime_metadata_incomplete' }
     if (!hasRequiredCapabilities(parsed.capabilities ?? [])) return { ok: false, code: 'office_pdf_runtime_metadata_incomplete' }
     if (!hasRequiredSecurityPolicy(parsed.securityPolicy ?? null)) return { ok: false, code: 'office_pdf_runtime_metadata_incomplete' }
     return {
       ok: true,
       manifest: {
+        manifestSchemaVersion: parsed.manifestSchemaVersion,
+        pluginId: parsed.pluginId,
         packageId: parsed.packageId,
+        runtimePackageId: parsed.runtimePackageId,
         engineId: parsed.engineId,
         runtimeId: parsed.runtimeId,
+        displayName: parsed.displayName,
+        pluginVersion: parsed.pluginVersion,
+        runtimeKind: parsed.runtimeKind,
+        enabled: parsed.enabled ?? true,
         platform: parsed.platform,
         arch: parsed.arch ?? null,
         executablePath: parsed.executablePath,
@@ -243,13 +331,16 @@ function parseManifest(value: string): RuntimeManifestParseResult {
         executableSizeBytes: parsed.executableSizeBytes ?? null,
         provenance: parsed.provenance ?? null,
         licenseId: parsed.licenseId ?? null,
+        attribution: parsed.attribution ?? null,
         notices: parsed.notices ?? [],
         capabilities: parsed.capabilities ?? [],
         minimumStarverseContractVersion: parsed.minimumStarverseContractVersion,
+        officialRelease: parsed.officialRelease ?? null,
         securityPolicy: {
           macrosDisabled: true,
           networkDisabled: true,
           externalLinksDisabled: true,
+          embeddedObjectExecutionDisabled: true,
           isolatedProfileRequired: true,
         },
       },
@@ -271,6 +362,7 @@ function hasRequiredSecurityPolicy(policy: DfcOfficePdfRuntimeManifest['security
   return policy?.macrosDisabled === true
     && policy.networkDisabled === true
     && policy.externalLinksDisabled === true
+    && policy.embeddedObjectExecutionDisabled === true
     && policy.isolatedProfileRequired === true
 }
 
@@ -284,6 +376,7 @@ function hasMetadataShape(value: Partial<DfcOfficePdfRuntimeManifest>): boolean 
     && value.executableSizeBytes >= 0
     && isNonEmpty(value.provenance)
     && isNonEmpty(value.licenseId)
+    && isNonEmpty(value.attribution)
     && Array.isArray(value.notices)
     && value.notices.length > 0
 }
@@ -321,6 +414,19 @@ function isPathInside(root: string, candidate: string): boolean {
 
 function isNonEmpty(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function isValidOfficialRelease(value: DfcOfficePdfRuntimeOfficialRelease | null): boolean {
+  if (!value || typeof value !== 'object') return false
+  if (value.sourceKind !== 'official' && value.sourceKind !== 'development' && value.sourceKind !== 'test_fixture') return false
+  if (!isNonEmpty(value.packageRef)) return false
+  if (value.releaseTag != null && !isNonEmpty(value.releaseTag)) return false
+  if (value.provenance != null && !isNonEmpty(value.provenance)) return false
+  return true
+}
+
+function normalizeEnginePlatform(value: string): EnginePlatform {
+  return value === 'win32' || value === 'darwin' || value === 'linux' ? value : 'any'
 }
 
 function sha256(bytes: Uint8Array): string {
