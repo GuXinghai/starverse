@@ -48,6 +48,23 @@ export type DfcOfficePdfManagedRuntimeSummary = Readonly<{
   licenseId: string | null
 }>
 
+export type DfcOfficePdfManagedRuntimeExecutionDescriptor = DfcOfficePdfManagedRuntimeSummary & Readonly<{
+  managedRuntimeRootDir: string
+  executablePath: string
+}>
+
+export type DfcOfficePdfRuntimeExecutionAvailability =
+  | Readonly<{
+      ok: true
+      runtime: DfcOfficePdfManagedRuntimeExecutionDescriptor
+      diagnostics: readonly DfcOfficePdfRuntimeDiagnostic[]
+    }>
+  | Readonly<{
+      ok: false
+      runtime: null
+      diagnostics: readonly DfcOfficePdfRuntimeDiagnostic[]
+    }>
+
 export type DfcOfficePdfRuntimeManifest = Readonly<{
   packageId: string
   engineId: string
@@ -91,6 +108,21 @@ export async function checkDfcLibreOfficeRuntimeAvailability(input: Readonly<{
   platform?: NodeJS.Platform
   arch?: string
 }>): Promise<DfcOfficePdfRuntimeAvailability> {
+  const result = await resolveDfcLibreOfficeRuntimeExecutionDescriptor(input)
+  if (!result.ok) return result
+  const { managedRuntimeRootDir: _managedRuntimeRootDir, executablePath: _executablePath, ...runtime } = result.runtime
+  return {
+    ok: true,
+    runtime,
+    diagnostics: result.diagnostics,
+  }
+}
+
+export async function resolveDfcLibreOfficeRuntimeExecutionDescriptor(input: Readonly<{
+  managedRuntimeRootDir: string
+  platform?: NodeJS.Platform
+  arch?: string
+}>): Promise<DfcOfficePdfRuntimeExecutionAvailability> {
   const root = normalizeAbsoluteDir(input.managedRuntimeRootDir)
   if (!root) return unavailable('office_pdf_runtime_manifest_invalid', 'Office PDF runtime root is invalid.')
 
@@ -156,6 +188,8 @@ export async function checkDfcLibreOfficeRuntimeAvailability(input: Readonly<{
   return {
     ok: true,
     runtime: {
+      managedRuntimeRootDir: root,
+      executablePath: executable.path,
       packageId: manifest.packageId,
       engineId: manifest.engineId,
       runtimeId: manifest.runtimeId,
@@ -297,7 +331,11 @@ function isNotFound(error: unknown): boolean {
   return !!error && typeof error === 'object' && String((error as any).code ?? '').trim().toUpperCase() === 'ENOENT'
 }
 
-function unavailable(code: DfcOfficePdfRuntimeDiagnosticCode, message: string): DfcOfficePdfRuntimeAvailability {
+function unavailable(code: DfcOfficePdfRuntimeDiagnosticCode, message: string): Readonly<{
+  ok: false
+  runtime: null
+  diagnostics: readonly DfcOfficePdfRuntimeDiagnostic[]
+}> {
   return {
     ok: false,
     runtime: null,

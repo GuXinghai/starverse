@@ -7,8 +7,8 @@ This file is the recovery entry point after context compression. The source of t
 - Current branch: `docs/dfc-0-format-conversion-foundation`
 - Current topic directory: `docs/file-pipeline/document-format-conversion/`
 - Current SSOT file: `starverse_format_conversion_preview_v1_2.md`
-- Latest appended recovery state: DFC-M23 adds the LibreOffice managed engine gate/package scaffold and exposes DOCX Office-to-PDF only as a blocked/unavailable `pdf_attachment` candidate; real Office-to-PDF conversion remains unsupported.
-- The DFC-0 through DFC-6 bullets in this section are historical setup milestones; later DFC-7 through DFC-30 and DFC-M0 through DFC-M23 recovery notes are appended below and the full append-only sequence is in `progress-ledger.md`.
+- Latest appended recovery state: DFC-M24 adds the LibreOffice DOCX-to-PDF adapter skeleton with fake external process strategy, sandbox command planning, output validation, and sanitized fail-closed diagnostics; real Office-to-PDF conversion remains unsupported.
+- The DFC-0 through DFC-6 bullets in this section are historical setup milestones; later DFC-7 through DFC-30 and DFC-M0 through DFC-M24 recovery notes are appended below and the full append-only sequence is in `progress-ledger.md`.
 - DFC-0 scope: docs-only foundation. Create the topic directory, place the v1.2 source contract there, and add only `progress-ledger.md` and `important-context.md`.
 - DFC-0 does not implement production behavior and does not modify schema, Send Plan, UI, dependencies, test configuration, external engines, or production code.
 - DFC-1 scope: read-only repository mapping against v1.2. No production code was changed.
@@ -1502,3 +1502,18 @@ Proceed with M23 LibreOffice managed engine gate / package scaffold. Do not impl
 ## Recommended next round
 
 Proceed to M24 Office-to-PDF conversion adapter only after Owner approves a real managed LibreOffice runtime artifact or a fake-adapter strategy for tests. Do not run `soffice` or claim production Office-to-PDF support until package availability, process sandboxing, output validation, diagnostics, and smoke confidence are approved.
+
+## DFC-M24 Office-to-PDF conversion adapter skeleton recovery notes
+
+- M24 adds `infra/files/dfcLibreOfficePdfAdapter.ts` as a DOCX-first LibreOffice PDF adapter skeleton.
+- The adapter uses M15 sandbox planning and M23 managed LibreOffice execution descriptors to construct a controlled `shell: false` external process plan.
+- Tests use only an injected fake process runner. M24 does not run real `soffice`, does not use system LibreOffice, does not submit a LibreOffice binary, and does not generate production Office-to-PDF output.
+- Command planning uses the managed runtime executable only, controlled sandbox input/output directories, a controlled working directory, an isolated LibreOffice user profile under the sandbox, empty environment, and a configurable timeout.
+- Output validation requires the expected PDF path to remain under the controlled output directory, exactly one expected PDF output, and a minimal `%PDF-` signature. Missing, non-PDF, escaped, ambiguous, failed, or timed-out outputs fail closed with no output descriptor.
+- M24 does not wire the adapter into `conversationDraft.ensureDfcOptions`, `DerivativeJobService`, ready `converted_pdf` generation, preview, or Send Plan. DFC DOCX PDF candidate behavior remains the M23 blocked/unavailable gate behavior.
+- DOCX `markdown` and `original_file` remain unaffected. `.doc`, `.rtf`, and `.docm` remain unsupported. No DB schema, renderer IPC shape, Send Plan main-flow, asset model, DFC vocabulary, or HTML-to-PDF pipeline changed.
+- Validation passed: `git diff --check`; `npx vue-tsc --noEmit --pretty false`; `npm run rebuild:node`; runtime gate and adapter targeted Vitest passed with 18 tests; DB worker DOCX Office PDF candidate targeted Vitest passed with 6 tests and 44 skipped.
+
+## Recommended next round
+
+M25 should decide whether to approve a dev-only real managed LibreOffice artifact path for local conversion tests or continue fake-process hardening and DFC generation seam design. Do not claim production Office-to-PDF support until real managed runtime packaging, conversion output validation, no-fallback behavior, and smoke confidence are accepted.
