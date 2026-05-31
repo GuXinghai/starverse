@@ -90,11 +90,14 @@ Current semantics:
 
 ## Validation
 
-Required:
+Passed:
 
 - `git diff --check`
 - `npx vue-tsc --noEmit --pretty false`
-- targeted tests for LibreOffice managed runtime gate and DOCX PDF candidate behavior
+- `npx vitest --run infra/files/dfcManagedLibreOfficeRuntime.test.ts --reporter=dot --silent`
+- `npx vitest --run infra/db/worker.filePipeline.test.ts -t "LibreOffice|Office PDF|DOCX pdf_attachment|unsupported" --reporter=dot --silent`
+
+`npm run rebuild:node` was run before DB worker targeted tests. Risk review found one P1 symlink escape issue in the executable path gate; M23 fixed it by validating the executable realpath remains under the managed runtime root and adding a symlink escape regression test.
 
 No Electron smoke is required because no smoke files changed.
 
