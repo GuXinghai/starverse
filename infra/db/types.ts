@@ -315,6 +315,12 @@ export type DfcOptionGenerationErrorCode = DerivativeErrorCode | 'draft_attachme
   | 'html_pdf_runtime_path_rejected'
   | 'html_pdf_runtime_platform_unsupported'
   | 'html_pdf_runtime_metadata_incomplete'
+  | 'office_pdf_runtime_missing'
+  | 'office_pdf_runtime_manifest_invalid'
+  | 'office_pdf_runtime_executable_missing'
+  | 'office_pdf_runtime_path_rejected'
+  | 'office_pdf_runtime_platform_unsupported'
+  | 'office_pdf_runtime_metadata_incomplete'
 
 export type FileAssetRecord = Readonly<{
   id: string

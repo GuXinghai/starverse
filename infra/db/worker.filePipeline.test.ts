@@ -26,6 +26,13 @@ import { SendPlanService } from '../files/sendPlanService'
 import { FileTypeDetectionService } from '../files/fileTypeDetectionService'
 import { canOpenBetterSqliteForSuite } from '../testUtils/betterSqliteGate'
 import type { ElectronConversionBridge } from '../files/electronConversionBridge'
+import {
+  DFC_OFFICE_PDF_CAPABILITIES,
+  DFC_OFFICE_PDF_ENGINE_ID,
+  DFC_OFFICE_PDF_RUNTIME_ID,
+  DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
+  getDfcLibreOfficeManagedRuntimeRoot,
+} from '../files/dfcManagedLibreOfficeRuntime'
 
 const describeIfBetterSqlite = canOpenBetterSqliteForSuite('file pipeline worker handlers') ? describe : describe.skip
 
@@ -386,6 +393,37 @@ function createWorkerHarness(options: Readonly<{ electronConversionBridge?: Elec
 
 function dfcSettingsHash(targetKind: string): string {
   return createHash('sha256').update(Buffer.from(JSON.stringify({ targetKind }))).digest('hex')
+}
+
+async function writeLibreOfficeRuntimeFixture(root: string): Promise<void> {
+  const executablePath = process.platform === 'win32' ? 'program/soffice.exe' : 'program/soffice'
+  const executable = Buffer.from('fake soffice executable')
+  await mkdir(path.join(root, 'program'), { recursive: true })
+  await writeFile(path.join(root, ...executablePath.split('/')), executable)
+  await writeFile(path.join(root, 'manifest.json'), JSON.stringify({
+    packageId: DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
+    engineId: DFC_OFFICE_PDF_ENGINE_ID,
+    runtimeId: DFC_OFFICE_PDF_RUNTIME_ID,
+    platform: process.platform,
+    arch: process.arch,
+    capabilities: [...DFC_OFFICE_PDF_CAPABILITIES],
+    executablePath,
+    libreOfficeVersion: '24.8.0',
+    packageVersion: '2026.06.01',
+    artifactSha256: 'a'.repeat(64),
+    executableSha256: createHash('sha256').update(executable).digest('hex'),
+    executableSizeBytes: executable.byteLength,
+    provenance: 'starverse-test-fixture',
+    licenseId: 'MPL-2.0',
+    notices: ['LibreOffice test fixture attribution'],
+    minimumStarverseContractVersion: '1',
+    securityPolicy: {
+      macrosDisabled: true,
+      networkDisabled: true,
+      externalLinksDisabled: true,
+      isolatedProfileRequired: true,
+    },
+  }))
 }
 
 function utf16beWithBom(value: string): Buffer {
@@ -1320,6 +1358,244 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     expect(planAttachmentPlansJson).not.toContain(storageUri)
     expect(planAttachmentPlansJson).not.toContain(derivativeRow?.storageUri ?? 'assets/')
     expect(planAttachmentPlansJson).not.toContain('asset-docx-explicit-source-hash')
+  })
+
+  it('exposes DOCX pdf_attachment as unavailable when LibreOffice managed runtime is missing', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    await rm(getDfcLibreOfficeManagedRuntimeRoot(storageRootDir), { recursive: true, force: true })
+    const assetId = 'asset-docx-office-pdf-missing-runtime'
+    const storageUri = 'assets/original/do/asset-docx-office-pdf-missing-runtime.docx'
+    const docxBytes = createMinimalDocxBuffer()
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), docxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-missing-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-docx-office-pdf-missing-source-hash',
+        filename: 'office-pdf.docx',
+        extension: 'docx',
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        sizeBytes: docxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-missing-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-missing-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const options = (ensured as any).result.options as any[]
+    const originalOption = options.find((option) => option.targetKind === 'original_file')
+    const markdownOption = options.find((option) => option.targetKind === 'markdown')
+    const pdfOption = options.find((option) => option.targetKind === 'pdf_attachment')
+    const readyPdfCount = (db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='converted_pdf' AND status='ready'
+    `).get({ assetId }) as { count: number }).count
+    const generationState = db.prepare(`
+      SELECT target_kind AS targetKind, derived_kind AS derivedKind, status, error_code AS errorCode
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='pdf_attachment'
+      LIMIT 1
+    `).get({ assetId }) as { targetKind: string; derivedKind: string; status: string; errorCode: string | null }
+
+    expect(originalOption).toMatchObject({
+      targetKind: 'original_file',
+      status: 'ready',
+      sendAssetRefs: [{ kind: 'raw_file', assetId }],
+    })
+    expect(markdownOption).toMatchObject({
+      targetKind: 'markdown',
+      status: 'ready',
+      isAvailable: true,
+    })
+    expect(pdfOption).toMatchObject({
+      targetKind: 'pdf_attachment',
+      sendStrategy: 'file_attachment',
+      status: 'blocked',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: 'office_pdf_runtime_missing' })],
+    })
+    expect(generationState).toMatchObject({
+      targetKind: 'pdf_attachment',
+      derivedKind: 'converted_pdf',
+      status: 'blocked',
+      errorCode: 'office_pdf_runtime_missing',
+    })
+    expect(readyPdfCount).toBe(0)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('asset-docx-office-pdf-missing-source-hash')
+    expect(JSON.stringify((ensured as any).result)).not.toContain('managed-runtimes')
+
+    const pdfSelect = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-missing-select-pdf',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: pdfOption.optionId,
+        selectedAssetRefs: pdfOption.sendAssetRefs,
+      },
+    })
+    const preview = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-missing-preview',
+      method: 'conversationDraft.getDfcPreview',
+      params: { conversationId: 'c1', assetId, maxCharacters: 256 },
+    })
+
+    expect(pdfSelect).toMatchObject({ ok: false })
+    expect(preview).toMatchObject({
+      ok: true,
+      result: {
+        selectedOptionId: null,
+        selectedAssetRefs: [],
+        targetKind: null,
+        sendStrategy: null,
+        decision: expect.objectContaining({
+          status: 'needs_user_selection',
+          reasonCode: 'selected_option_missing',
+        }),
+      },
+    })
+  })
+
+  it('accepts a fake LibreOffice runtime gate fixture without running Office-to-PDF conversion', async () => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const runtimeRoot = getDfcLibreOfficeManagedRuntimeRoot(storageRootDir)
+    await writeLibreOfficeRuntimeFixture(runtimeRoot)
+    const assetId = 'asset-docx-office-pdf-valid-runtime'
+    const storageUri = 'assets/original/do/asset-docx-office-pdf-valid-runtime.docx'
+    const docxBytes = createMinimalDocxBuffer()
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), docxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-valid-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-docx-office-pdf-valid-source-hash',
+        filename: 'office-pdf-ready-runtime.docx',
+        extension: 'docx',
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        sizeBytes: docxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-valid-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-valid-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const pdfOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'pdf_attachment')
+    const convertedPdfCount = (db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='converted_pdf'
+    `).get({ assetId }) as { count: number }).count
+    const generationState = db.prepare(`
+      SELECT status, error_code AS errorCode
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='pdf_attachment'
+      LIMIT 1
+    `).get({ assetId }) as { status: string; errorCode: string | null }
+
+    expect(pdfOption).toMatchObject({
+      targetKind: 'pdf_attachment',
+      sendStrategy: 'file_attachment',
+      status: 'blocked',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: 'conversion_not_implemented' })],
+    })
+    expect(generationState).toMatchObject({
+      status: 'blocked',
+      errorCode: 'conversion_not_implemented',
+    })
+    expect(convertedPdfCount).toBe(0)
+    expect(JSON.stringify((ensured as any).result)).not.toContain(runtimeRoot)
+    expect(JSON.stringify((ensured as any).result)).not.toContain('soffice')
+  })
+
+  it.each([
+    ['doc', 'application/msword'],
+    ['rtf', 'application/rtf'],
+    ['docm', 'application/vnd.ms-word.document.macroenabled.12'],
+  ] as const)('does not expose Office PDF candidate for unsupported .%s assets', async (extension, mime) => {
+    const { db, handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const assetId = `asset-office-pdf-unsupported-${extension}`
+    const storageUri = `assets/original/of/${assetId}.${extension}`
+    const bytes = Buffer.from(`unsupported ${extension} body`)
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), bytes)
+    await dispatchWorkerMessage(handlers, {
+      id: `req-office-pdf-unsupported-${extension}-asset`,
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: `asset-office-pdf-unsupported-${extension}-source-hash`,
+        filename: `unsupported.${extension}`,
+        extension,
+        mime,
+        sizeBytes: bytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: `req-office-pdf-unsupported-${extension}-draft-add`,
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: `req-office-pdf-unsupported-${extension}-ensure`,
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const options = (ensured as any).result.options as any[]
+    const generationStateCount = (db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='pdf_attachment'
+    `).get({ assetId }) as { count: number }).count
+
+    expect(options.some((option) => option.targetKind === 'pdf_attachment')).toBe(false)
+    expect(options.some((option) => option.targetKind === 'markdown')).toBe(false)
+    expect(options.find((option) => option.targetKind === 'original_file')).toMatchObject({
+      targetKind: 'original_file',
+      status: 'ready',
+    })
+    expect(generationStateCount).toBe(0)
   })
 
   it('fails closed for malformed DOCX documents without legacy fallback', async () => {

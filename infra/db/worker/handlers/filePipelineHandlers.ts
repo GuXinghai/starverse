@@ -7,6 +7,11 @@ import type { SendPlan } from '../../../../src/shared/files/sendPlanTypes'
 import { serializeSendPlanForOpenRouter } from '../../../../src/next/openrouter/openRouterSendPlanSerializer'
 import type { DerivativeErrorCode, DfcOptionGenerationStateRecord, FileAssetRecord, FileDerivativeRecord } from '../../types'
 import {
+  checkDfcLibreOfficeRuntimeAvailability,
+  getDfcLibreOfficeManagedRuntimeRoot,
+  type DfcOfficePdfRuntimeDiagnosticCode,
+} from '../../../files/dfcManagedLibreOfficeRuntime'
+import {
   CreateFileAssetSchema,
   CreateFileDerivativeSchema,
   CreateDerivativeJobSchema,
@@ -612,8 +617,13 @@ async function ensureDfcDraftAttachmentOptions(
   const targetKinds = asset ? inferDfcPhase1EnsureTargetKinds(asset) : []
   if (asset && targetKinds.length > 0 && isDfcPhase1EnsureSourceAsset(asset)) {
     for (const targetKind of targetKinds) {
-      if (targetKind === 'pdf_attachment') {
+      if (targetKind === 'pdf_attachment' && isDfcHtmlPdfSourceAsset(asset)) {
         await ensureHtmlPdfDerivativeAsset(runtime, asset.id, {
+          relevanceKey: `draft:${input.conversationId}:${input.assetId}`,
+          isStillRelevant: () => runtime.conversationAttachmentService.hasDraftAttachment(input),
+        })
+      } else if (targetKind === 'pdf_attachment' && isDfcDocxOfficePdfSourceAsset(asset)) {
+        await ensureOfficePdfRuntimeGate(runtime, asset.id, {
           relevanceKey: `draft:${input.conversationId}:${input.assetId}`,
           isStillRelevant: () => runtime.conversationAttachmentService.hasDraftAttachment(input),
         })
@@ -633,6 +643,7 @@ function inferDfcPhase1EnsureTargetKinds(asset: FileAssetRecord): readonly ('pla
   const ext = String(asset.extension ?? '').trim().toLowerCase()
   const mime = normalizeMime(asset.mime)
   if (ext === 'html' || ext === 'htm' || mime === 'text/html') return ['markdown', 'code', 'pdf_attachment']
+  if (isDfcDocxOfficePdfSourceAsset(asset)) return ['markdown', 'pdf_attachment']
   const candidates = ['table_markdown', 'markdown', 'code', 'plain_text'] as const
   return candidates.filter((targetKind) => isDfcPhase1TextConversionAsset(asset, targetKind))
 }
@@ -725,6 +736,62 @@ async function ensureHtmlPdfDerivativeAsset(
   runtime.dfcOptionGenerationStateRepo.markReady({
     id: generationState.id,
     outputDerivativeId: ran.derivative.id,
+  })
+  return { changed: true }
+}
+
+async function ensureOfficePdfRuntimeGate(
+  runtime: DbWorkerRuntime,
+  assetId: string,
+  options: Readonly<{
+    relevanceKey?: string
+    isStillRelevant?: () => boolean
+  }>
+): Promise<TextDerivativeEnsureResult> {
+  const targetKind = 'pdf_attachment'
+  const settingsHash = sha256Bytes(Buffer.from(JSON.stringify({
+    targetKind,
+    runtime: 'libreoffice-managed-engine-gate',
+    policy: 'macros-network-external-links-disabled',
+  })))
+  const generationState = runtime.dfcOptionGenerationStateRepo.ensure({
+    assetId,
+    targetKind,
+    derivedKind: 'converted_pdf',
+    exposureMode: 'dfc',
+    generator: DFC_OFFICE_PDF_DERIVATIVE_JOB_GENERATOR,
+    conversionSettingsHash: settingsHash,
+  })
+  if (!isDfcOptionGenerationStillRelevant(options)) {
+    runtime.dfcOptionGenerationStateRepo.markBlocked({
+      id: generationState.id,
+      errorCode: 'draft_attachment_detached',
+    })
+    return { changed: false }
+  }
+  const asset = runtime.fileAssetRepo.getById(assetId)
+  if (!asset || !isDfcDocxOfficePdfSourceAsset(asset)) {
+    runtime.dfcOptionGenerationStateRepo.markBlocked({
+      id: generationState.id,
+      errorCode: 'conversion_not_implemented',
+    })
+    return { changed: true }
+  }
+
+  const availability = await checkDfcLibreOfficeRuntimeAvailability({
+    managedRuntimeRootDir: getDfcLibreOfficeManagedRuntimeRoot(runtime.fileStorageRootDir),
+  })
+  if (!availability.ok) {
+    runtime.dfcOptionGenerationStateRepo.markBlocked({
+      id: generationState.id,
+      errorCode: normalizeOfficePdfRuntimeDiagnosticCode(availability.diagnostics[0]?.code),
+    })
+    return { changed: true }
+  }
+
+  runtime.dfcOptionGenerationStateRepo.markBlocked({
+    id: generationState.id,
+    errorCode: 'conversion_not_implemented',
   })
   return { changed: true }
 }
@@ -1165,6 +1232,7 @@ const DFC_TEXT_CONVERTER_NAME = 'starverse-text-derivative'
 const DFC_TEXT_CONVERTER_VERSION = '1'
 const DFC_TEXT_DERIVATIVE_JOB_GENERATOR = 'step3-text-structured-conversion'
 const DFC_HTML_PDF_DERIVATIVE_JOB_GENERATOR = 'dfc-html-pdf-electron-service'
+const DFC_OFFICE_PDF_DERIVATIVE_JOB_GENERATOR = 'dfc-office-pdf-libreoffice-runtime-gate'
 const DFC_TEXT_CODE_EXTENSIONS = new Set([
   'js', 'ts', 'jsx', 'tsx', 'py', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd',
   'json', 'yaml', 'yml', 'xml', 'toml', 'ini', 'env', 'sql', 'go', 'rs',
@@ -1204,6 +1272,13 @@ function normalizeDerivativeErrorCode(value: string | null | undefined): Derivat
   return isDerivativeErrorCode(normalized) ? normalized : 'derivative_output_write_failed'
 }
 
+function normalizeOfficePdfRuntimeDiagnosticCode(value: string | null | undefined): DfcOfficePdfRuntimeDiagnosticCode {
+  const normalized = String(value ?? '').trim()
+  return OFFICE_PDF_RUNTIME_DIAGNOSTIC_CODES.has(normalized as DfcOfficePdfRuntimeDiagnosticCode)
+    ? normalized as DfcOfficePdfRuntimeDiagnosticCode
+    : 'office_pdf_runtime_manifest_invalid'
+}
+
 function isDerivativeErrorCode(value: string): value is DerivativeErrorCode {
   return DERIVATIVE_ERROR_CODES.has(value as DerivativeErrorCode)
 }
@@ -1240,6 +1315,27 @@ const DERIVATIVE_ERROR_CODES = new Set<DerivativeErrorCode>([
   'embedding_response_invalid',
   'embedding_output_write_failed',
 ])
+
+const OFFICE_PDF_RUNTIME_DIAGNOSTIC_CODES = new Set<DfcOfficePdfRuntimeDiagnosticCode>([
+  'office_pdf_runtime_missing',
+  'office_pdf_runtime_manifest_invalid',
+  'office_pdf_runtime_executable_missing',
+  'office_pdf_runtime_path_rejected',
+  'office_pdf_runtime_platform_unsupported',
+  'office_pdf_runtime_metadata_incomplete',
+])
+
+function isDfcHtmlPdfSourceAsset(asset: FileAssetRecord): boolean {
+  const ext = String(asset.extension ?? '').trim().toLowerCase()
+  const mime = normalizeMime(asset.mime)
+  return ext === 'html' || ext === 'htm' || mime === 'text/html'
+}
+
+function isDfcDocxOfficePdfSourceAsset(asset: FileAssetRecord): boolean {
+  const ext = String(asset.extension ?? '').trim().toLowerCase()
+  const mime = normalizeMime(asset.mime)
+  return ext === 'docx' || mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+}
 
 function isDfcPhase1TextConversionAsset(asset: FileAssetRecord, targetKind: string): boolean {
   const ext = String(asset.extension ?? '').trim().toLowerCase()
