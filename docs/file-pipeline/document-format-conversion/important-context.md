@@ -7,8 +7,8 @@ This file is the recovery entry point after context compression. The source of t
 - Current branch: `docs/dfc-0-format-conversion-foundation`
 - Current topic directory: `docs/file-pipeline/document-format-conversion/`
 - Current SSOT file: `starverse_format_conversion_preview_v1_2.md`
-- Latest appended recovery state: DFC-30 adds regression coverage proving persisted selected DFC options rehydrate through draft restore, preview, message binding, history snapshots, and the existing attachment details dialog without renderer-inferred option identity.
-- The DFC-0 through DFC-6 bullets in this section are historical setup milestones; later DFC-7 through DFC-30 recovery notes are appended below and the full append-only sequence is in `progress-ledger.md`.
+- Latest appended recovery state: DFC-M22 decides the Office-to-PDF route as DOCX-first LibreOffice headless through a managed external engine package gate; real Office-to-PDF conversion remains unsupported.
+- The DFC-0 through DFC-6 bullets in this section are historical setup milestones; later DFC-7 through DFC-30 and DFC-M0 through DFC-M22 recovery notes are appended below and the full append-only sequence is in `progress-ledger.md`.
 - DFC-0 scope: docs-only foundation. Create the topic directory, place the v1.2 source contract there, and add only `progress-ledger.md` and `important-context.md`.
 - DFC-0 does not implement production behavior and does not modify schema, Send Plan, UI, dependencies, test configuration, external engines, or production code.
 - DFC-1 scope: read-only repository mapping against v1.2. No production code was changed.
@@ -1471,3 +1471,18 @@ Prefer M21 HTML-to-PDF packaged/electron smoke confidence before Office->PDF. Ch
 ## Recommended next round
 
 If Owner accepts this smoke confidence, proceed to an Office->PDF owner decision. If broader HTML-to-PDF exposure is desired first, run a production-readiness hardening package focused on packaged/runtime smoke and default exposure gates.
+
+## DFC-M22 Office-to-PDF owner decision recovery notes
+
+- M22 is documentation-only and decides the next Office-to-PDF route after HTML-to-PDF backend pilot plus real Electron smoke confidence.
+- Recommended strategy: DOCX-first Office-to-PDF should use LibreOffice headless as a Starverse managed external engine package, gated by runtime/package availability before real conversion is enabled.
+- M15 `dfcConversionSandbox` should be reused for controlled input/output path planning, output validation, process policy mapping, cleanup status, fail-closed outcomes, and sanitized diagnostics.
+- The M19R Electron conversion service should not be reused directly for LibreOffice; it is a BrowserWindow/`printToPDF` main-process boundary. Office-to-PDF should use the external process policy/runner and managed engine package contracts instead.
+- Existing file-type layer LibreOffice traces (`libreOfficeRunner`, engine registry, runtime package inventory) are useful prior art and package-contract evidence, but they are not DFC Office-to-PDF support.
+- Recommended first support scope remains `.docx` -> `pdf_attachment` only. `.doc`, `.rtf`, macro-enabled Office formats, Office families beyond DOCX, PS/EPS, system LibreOffice production fallback, and real conversion are still unsupported.
+- Production policy should block macros, external links/resources, embedded object execution, network access, arbitrary renderer paths, and output path escapes by default. Diagnostics must remain symbolic/sanitized.
+- System LibreOffice is not approved as production fallback. A dev-only diagnostic fallback would need a separate owner-approved package.
+
+## Recommended next round
+
+Proceed with M23 LibreOffice managed engine gate / package scaffold. Do not implement real Office-to-PDF conversion until the managed engine availability, package metadata, path rejection, diagnostic redaction, and unavailable candidate behavior are tested.
