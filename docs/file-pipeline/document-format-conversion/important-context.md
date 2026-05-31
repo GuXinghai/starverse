@@ -7,8 +7,8 @@ This file is the recovery entry point after context compression. The source of t
 - Current branch: `docs/dfc-0-format-conversion-foundation`
 - Current topic directory: `docs/file-pipeline/document-format-conversion/`
 - Current SSOT file: `starverse_format_conversion_preview_v1_2.md`
-- Latest appended recovery state: DFC-M22 decides the Office-to-PDF route as DOCX-first LibreOffice headless through a managed external engine package gate; real Office-to-PDF conversion remains unsupported.
-- The DFC-0 through DFC-6 bullets in this section are historical setup milestones; later DFC-7 through DFC-30 and DFC-M0 through DFC-M22 recovery notes are appended below and the full append-only sequence is in `progress-ledger.md`.
+- Latest appended recovery state: DFC-M23 adds the LibreOffice managed engine gate/package scaffold and exposes DOCX Office-to-PDF only as a blocked/unavailable `pdf_attachment` candidate; real Office-to-PDF conversion remains unsupported.
+- The DFC-0 through DFC-6 bullets in this section are historical setup milestones; later DFC-7 through DFC-30 and DFC-M0 through DFC-M23 recovery notes are appended below and the full append-only sequence is in `progress-ledger.md`.
 - DFC-0 scope: docs-only foundation. Create the topic directory, place the v1.2 source contract there, and add only `progress-ledger.md` and `important-context.md`.
 - DFC-0 does not implement production behavior and does not modify schema, Send Plan, UI, dependencies, test configuration, external engines, or production code.
 - DFC-1 scope: read-only repository mapping against v1.2. No production code was changed.
@@ -1486,3 +1486,17 @@ If Owner accepts this smoke confidence, proceed to an Office->PDF owner decision
 ## Recommended next round
 
 Proceed with M23 LibreOffice managed engine gate / package scaffold. Do not implement real Office-to-PDF conversion until the managed engine availability, package metadata, path rejection, diagnostic redaction, and unavailable candidate behavior are tested.
+
+## DFC-M23 LibreOffice managed engine gate recovery notes
+
+- M23 adds a LibreOffice managed runtime gate/package scaffold for the future DOCX-first Office-to-PDF path.
+- New gate module: `infra/files/dfcManagedLibreOfficeRuntime.ts`.
+- The expected package contract is `starverse.dfc.libreoffice` / `libreoffice` / `libreoffice-office-pdf` with a managed executable relative path, LibreOffice/package versions, artifact and executable hash/size metadata, provenance, license, notices, capabilities `office_to_pdf` and `docx_to_pdf`, minimum contract version, and security policy metadata requiring macros/network/external links disabled plus isolated profile.
+- The availability gate returns only symbolic diagnostics: `office_pdf_runtime_missing`, `office_pdf_runtime_manifest_invalid`, `office_pdf_runtime_executable_missing`, `office_pdf_runtime_path_rejected`, `office_pdf_runtime_platform_unsupported`, and `office_pdf_runtime_metadata_incomplete`.
+- DOCX `conversationDraft.ensureDfcOptions` can expose a blocked/unavailable `pdf_attachment` candidate through the existing DFC generation-state option path when LibreOffice runtime is missing or invalid.
+- DOCX `markdown` and `original_file` remain unaffected. `.doc`, `.rtf`, and `.docm` remain unsupported and do not expose Office-to-PDF candidates.
+- M23 does not bundle LibreOffice, does not run `soffice`, does not use system LibreOffice, does not generate PDF, does not create ready `converted_pdf` DerivedAssets, and does not change DB schema, renderer IPC shape, Send Plan main-flow, asset model, DFC vocabulary, or HTML-to-PDF behavior.
+
+## Recommended next round
+
+Proceed to M24 Office-to-PDF conversion adapter only after Owner approves a real managed LibreOffice runtime artifact or a fake-adapter strategy for tests. Do not run `soffice` or claim production Office-to-PDF support until package availability, process sandboxing, output validation, diagnostics, and smoke confidence are approved.
