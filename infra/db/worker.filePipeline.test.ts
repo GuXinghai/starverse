@@ -29,7 +29,9 @@ import type { ElectronConversionBridge } from '../files/electronConversionBridge
 import {
   DFC_OFFICE_PDF_CAPABILITIES,
   DFC_OFFICE_PDF_ENGINE_ID,
+  DFC_OFFICE_PDF_PLUGIN_ID,
   DFC_OFFICE_PDF_RUNTIME_ID,
+  DFC_OFFICE_PDF_RUNTIME_KIND,
   DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
   getDfcLibreOfficeManagedRuntimeRoot,
 } from '../files/dfcManagedLibreOfficeRuntime'
@@ -401,9 +403,16 @@ async function writeLibreOfficeRuntimeFixture(root: string): Promise<void> {
   await mkdir(path.join(root, 'program'), { recursive: true })
   await writeFile(path.join(root, ...executablePath.split('/')), executable)
   await writeFile(path.join(root, 'manifest.json'), JSON.stringify({
+    manifestSchemaVersion: '1',
+    pluginId: DFC_OFFICE_PDF_PLUGIN_ID,
     packageId: DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
+    runtimePackageId: DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
     engineId: DFC_OFFICE_PDF_ENGINE_ID,
     runtimeId: DFC_OFFICE_PDF_RUNTIME_ID,
+    displayName: 'LibreOffice Office PDF',
+    pluginVersion: '0.1.0',
+    runtimeKind: DFC_OFFICE_PDF_RUNTIME_KIND,
+    enabled: true,
     platform: process.platform,
     arch: process.arch,
     capabilities: [...DFC_OFFICE_PDF_CAPABILITIES],
@@ -415,12 +424,20 @@ async function writeLibreOfficeRuntimeFixture(root: string): Promise<void> {
     executableSizeBytes: executable.byteLength,
     provenance: 'starverse-test-fixture',
     licenseId: 'MPL-2.0',
+    attribution: 'The Document Foundation LibreOffice',
     notices: ['LibreOffice test fixture attribution'],
     minimumStarverseContractVersion: '1',
+    officialRelease: {
+      sourceKind: 'test_fixture',
+      packageRef: 'fixtures/libreoffice-test.zip',
+      releaseTag: 'test-libreoffice-fixture',
+      provenance: 'starverse-test-fixture',
+    },
     securityPolicy: {
       macrosDisabled: true,
       networkDisabled: true,
       externalLinksDisabled: true,
+      embeddedObjectExecutionDisabled: true,
       isolatedProfileRequired: true,
     },
   }))

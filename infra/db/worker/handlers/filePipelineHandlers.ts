@@ -1318,6 +1318,7 @@ const DERIVATIVE_ERROR_CODES = new Set<DerivativeErrorCode>([
 
 const OFFICE_PDF_RUNTIME_DIAGNOSTIC_CODES = new Set<DfcOfficePdfRuntimeDiagnosticCode>([
   'office_pdf_runtime_missing',
+  'office_pdf_runtime_disabled',
   'office_pdf_runtime_manifest_invalid',
   'office_pdf_runtime_executable_missing',
   'office_pdf_runtime_path_rejected',

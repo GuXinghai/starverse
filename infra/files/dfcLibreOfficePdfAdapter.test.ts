@@ -11,7 +11,9 @@ import {
 import {
   DFC_OFFICE_PDF_CAPABILITIES,
   DFC_OFFICE_PDF_ENGINE_ID,
+  DFC_OFFICE_PDF_PLUGIN_ID,
   DFC_OFFICE_PDF_RUNTIME_ID,
+  DFC_OFFICE_PDF_RUNTIME_KIND,
   DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
   type DfcOfficePdfManagedRuntimeExecutionDescriptor,
 } from './dfcManagedLibreOfficeRuntime'
@@ -220,9 +222,14 @@ async function fakeRuntime(): Promise<DfcOfficePdfManagedRuntimeExecutionDescrip
   return {
     managedRuntimeRootDir: root,
     executablePath,
+    pluginId: DFC_OFFICE_PDF_PLUGIN_ID,
     packageId: DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
+    runtimePackageId: DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
     engineId: DFC_OFFICE_PDF_ENGINE_ID,
     runtimeId: DFC_OFFICE_PDF_RUNTIME_ID,
+    displayName: 'LibreOffice Office PDF',
+    pluginVersion: '0.1.0',
+    runtimeKind: DFC_OFFICE_PDF_RUNTIME_KIND,
     platform: process.platform,
     arch: process.arch,
     capabilities: [...DFC_OFFICE_PDF_CAPABILITIES],
@@ -231,6 +238,13 @@ async function fakeRuntime(): Promise<DfcOfficePdfManagedRuntimeExecutionDescrip
     minimumStarverseContractVersion: '1',
     provenance: 'starverse-test-fixture',
     licenseId: 'MPL-2.0',
+    attribution: 'The Document Foundation LibreOffice',
+    officialRelease: {
+      sourceKind: 'test_fixture',
+      packageRef: 'fixtures/libreoffice-test.zip',
+      releaseTag: 'test-libreoffice-fixture',
+      provenance: 'starverse-test-fixture',
+    },
   }
 }
 
