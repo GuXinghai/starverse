@@ -27,6 +27,7 @@ import { FileTypeDetectionService } from '../files/fileTypeDetectionService'
 import { canOpenBetterSqliteForSuite } from '../testUtils/betterSqliteGate'
 import type { ElectronConversionBridge } from '../files/electronConversionBridge'
 import type { DfcLibreOfficePdfProcessRunner } from '../files/dfcLibreOfficePdfAdapter'
+import { runExternalProcess } from '../../src/next/file-type/externalProcessRunner'
 import {
   DFC_OFFICE_PDF_CAPABILITIES,
   DFC_OFFICE_PDF_ENGINE_ID,
@@ -38,6 +39,7 @@ import {
 } from '../files/dfcManagedLibreOfficeRuntime'
 
 const describeIfBetterSqlite = canOpenBetterSqliteForSuite('file pipeline worker handlers') ? describe : describe.skip
+const itRealLibreOfficeSmoke = process.env.STARVERSE_DFC_LIBREOFFICE_REAL_SMOKE === '1' ? it : it.skip
 
 async function createMinimalXlsxBuffer(): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook()
@@ -304,6 +306,7 @@ function insertConvo(db: BetterSqlite3.Database, id: string) {
 function createWorkerHarness(options: Readonly<{
   electronConversionBridge?: ElectronConversionBridge
   officePdfProcessRunner?: DfcLibreOfficePdfProcessRunner
+  storageRootDir?: string
 }> = {}) {
   const db = new BetterSqlite3(':memory:')
   loadSchema(db)
@@ -319,7 +322,9 @@ function createWorkerHarness(options: Readonly<{
   const branchRepo = new BranchRepo(db)
   const modelCatalogRepo = new ModelCatalogRepo(db)
   const handlers = new Map<DbMethod, DbHandler>()
-  const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+  const storageRootDir = options.storageRootDir
+    ? path.resolve(options.storageRootDir)
+    : path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
   const conversationAttachmentService = new ConversationAttachmentService({
     db,
     fileAssetRepo,
@@ -2008,6 +2013,157 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     expect(ensuredJson).not.toContain('not a pdf body')
     expect(ensuredJson).not.toContain('%PDF-')
   })
+
+  itRealLibreOfficeSmoke('runs real managed LibreOffice through DFC DOCX pdf_attachment generation', async () => {
+    const runtimeRoot = String(process.env.STARVERSE_DFC_LIBREOFFICE_RUNTIME_ROOT ?? '').trim()
+    expect(runtimeRoot).toBeTruthy()
+    const storageRootDir = path.resolve(runtimeRoot, '..', '..', '..')
+    const { db, handlers } = createWorkerHarness({
+      officePdfProcessRunner: runExternalProcess,
+      storageRootDir,
+    })
+    const assetId = 'asset-docx-office-pdf-real-managed-smoke'
+    const storageUri = 'assets/original/do/asset-docx-office-pdf-real-managed-smoke.docx'
+    const docxBytes = createMinimalDocxBuffer()
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), docxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-real-managed-smoke-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: createHash('sha256').update(docxBytes).digest('hex'),
+        filename: 'office-pdf-real-managed-smoke.docx',
+        extension: 'docx',
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        sizeBytes: docxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-real-managed-smoke-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-real-managed-smoke-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const pdfOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'pdf_attachment')
+    const derivativeId = pdfOption.sendAssetRefs[0].assetId
+    const derivativeRow = db.prepare(`
+      SELECT derived_kind AS derivedKind, mime, storage_uri AS storageUri, meta_json AS metaJson
+      FROM file_derivatives
+      WHERE id=@derivativeId
+      LIMIT 1
+    `).get({ derivativeId }) as { derivedKind: string; mime: string | null; storageUri: string; metaJson: string | null }
+    const derivativeMeta = JSON.parse(derivativeRow.metaJson ?? '{}')
+
+    expect(pdfOption).toMatchObject({
+      targetKind: 'pdf_attachment',
+      status: 'ready',
+      sendStrategy: 'file_attachment',
+      sendAssetRefs: [{ kind: 'derived_asset', assetId: derivativeId }],
+    })
+    expect(derivativeRow).toMatchObject({
+      derivedKind: 'converted_pdf',
+      mime: 'application/pdf',
+    })
+    expect(derivativeMeta).toMatchObject({
+      targetKind: 'pdf_attachment',
+      usage: 'preview_and_send',
+      storageClass: 'draft_bound',
+      converterName: 'starverse-libreoffice-docx-pdf',
+      converterVersion: 'skeleton-1',
+      conversionMode: 'fake_process_test_seam',
+    })
+
+    const selected = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-real-managed-smoke-select',
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: pdfOption.optionId,
+        selectedAssetRefs: pdfOption.sendAssetRefs,
+      },
+    })
+    const preview = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-real-managed-smoke-preview',
+      method: 'conversationDraft.getDfcPreview',
+      params: { conversationId: 'c1', assetId, maxCharacters: 256 },
+    })
+    const sendPlan = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-real-managed-smoke-send-plan',
+      method: 'sendPlan.buildCurrent',
+      params: {
+        conversationId: 'c1',
+        draftText: 'send real office pdf smoke',
+        model: {
+          providerKey: 'openrouter',
+          modelId: 'test/pdf',
+          modelKey: 'openrouter::test/pdf',
+          inputModalities: ['text', 'file'],
+          outputModalities: ['text'],
+        },
+        providerContext: {
+          providerKey: 'openrouter',
+          supportsInlineData: true,
+          supportsPdfInputs: true,
+          supportsPdfUrlRef: true,
+          supportsTextUrlRef: true,
+        },
+      },
+    })
+
+    expect(selected).toMatchObject({ ok: true })
+    expect(preview).toMatchObject({
+      ok: true,
+      result: {
+        selectedOptionId: pdfOption.optionId,
+        selectedAssetRefs: pdfOption.sendAssetRefs,
+        targetKind: 'pdf_attachment',
+        sendStrategy: 'file_attachment',
+        preview: expect.objectContaining({
+          kind: 'raw_file',
+          status: 'ready',
+          text: null,
+          diagnostics: [expect.objectContaining({ code: 'dfc_preview_pdf_metadata_only' })],
+        }),
+      },
+    })
+    expect(sendPlan).toMatchObject({
+      ok: true,
+      result: {
+        sendPlan: expect.objectContaining({
+          attachmentPlans: [
+            expect.objectContaining({
+              assetId,
+              sendAssetRefs: pdfOption.sendAssetRefs,
+              semantic: expect.objectContaining({
+                targetKind: 'pdf_attachment',
+                sendStrategy: 'file_attachment',
+              }),
+            }),
+          ],
+        }),
+      },
+    })
+    const previewJson = JSON.stringify((preview as any).result)
+    const sendPlanJson = JSON.stringify((sendPlan as any).result)
+    expect(previewJson).not.toContain(storageUri)
+    expect(previewJson).not.toContain(runtimeRoot)
+    expect(previewJson).not.toContain(derivativeRow.storageUri)
+    expect(previewJson).not.toContain('%PDF-')
+    expect(sendPlanJson).not.toContain(derivativeRow.storageUri)
+    expect(sendPlanJson).not.toContain('%PDF-')
+  }, 180_000)
 
   it.each([
     ['doc', 'application/msword'],

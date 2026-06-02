@@ -1562,3 +1562,19 @@ Proceed to Office PDF fake-process hardening/smoke planning, or make an owner de
 ## Recommended next round
 
 Proceed to an M28 owner decision for a real managed LibreOffice artifact and dev-only `soffice` execution package, or continue package/install policy hardening. Do not enter `.doc`, `.rtf`, `.docm`, Office-family expansion, or production Office-to-PDF support claims before that decision.
+
+## DFC-M28 Managed LibreOffice artifact dev smoke recovery notes
+
+- M28 adds a dev-only managed LibreOffice artifact acquisition and smoke path for the DOCX-first Office-to-PDF line.
+- New script: `scripts/dfc/office-pdf-libreoffice-dev-smoke.mjs`; package script: `npm run test:office-pdf-libreoffice-dev-smoke`.
+- The default artifact source is the official Document Foundation LibreOffice 25.8.7 Windows x86_64 MSI. The script prepares the runtime under ignored `.external-runtime-work/libreoffice` and generates a managed runtime manifest.
+- The generated manifest records plugin/runtime/package identity, platform, executable relative path, LibreOffice/package version, artifact hash, executable hash/size, official provenance/source URL, MPL-2.0 license metadata, attribution/notices metadata, and security policy metadata.
+- The dev smoke uses the managed runtime executable descriptor only. It does not use system LibreOffice, PATH fallback, arbitrary user-selected paths, or production auto-download behavior.
+- Adapter-level real smoke runs managed `soffice` through the M24 LibreOffice adapter with M15 sandbox input/output/work dirs, isolated profile, `shell: false`, output validation, and cleanup.
+- Worker-level DFC real smoke can generate a DOCX `converted_pdf` / `pdf_attachment` DerivedAsset from the managed runtime in dev mode, then verifies metadata-only preview and selected-ref Send Plan authority.
+- The LibreOffice binary, MSI, extracted runtime, sandbox output, and temporary work directories must remain outside git. `.external-runtime-work/` remains ignored.
+- M28 does not declare production Office-to-PDF support, does not support `.doc`/`.rtf`/`.docm`, does not use system LibreOffice, does not modify DB schema, renderer IPC shape, Send Plan main-flow, asset model, DFC vocabulary, or HTML-to-PDF behavior.
+
+## Recommended next round
+
+Proceed to M29 production managed LibreOffice package/install/update policy and packaged smoke planning before any user-visible Office-to-PDF production claim. Do not expand to `.doc`, `.rtf`, `.docm`, system fallback, or broad production exposure before owner approval.
