@@ -119,3 +119,24 @@ Stop condition:
 Prefer Direction A first: M2 End-to-End confidence path owner decision.
 
 Reason: Phase 1 now has enough local text-like coverage to benefit more from one owner-approved end-to-end confidence path than from another narrow runtime gap. Runtime-family expansion should wait until the baseline can be demonstrated through a representative user path.
+
+## M32 deadline readiness matrix addendum
+
+As of M32 / HEAD `7040dc5`, the current DFC demo-readiness matrix is:
+
+| Capability | Level |
+| --- | --- |
+| `original_file` | supported |
+| `plain_text` | supported |
+| `markdown` | supported |
+| `code` | supported |
+| CSV/TSV `table_markdown` | supported |
+| HTML safe `markdown` / `code` | supported |
+| XLSX `table_markdown` | backend pilot |
+| DOCX `markdown` | backend pilot |
+| HTML -> PDF `pdf_attachment` | experimental-gated backend pilot with real Electron smoke |
+| DOCX -> PDF `pdf_attachment` | dev managed runtime smoke through imported LibreOffice runtime |
+| `.doc` / `.rtf` / `.docm` | unsupported |
+| PS/EPS | unsupported |
+
+The original M1 non-goals described the M1 baseline before later owner-approved pilots. M32 does not rewrite that history; this addendum records the current deadline closeout state after M21 HTML-to-PDF smoke and M31 Office-to-PDF imported-runtime smoke.
