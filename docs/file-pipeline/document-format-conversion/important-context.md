@@ -1593,3 +1593,19 @@ Proceed to M29 production managed LibreOffice package/install/update policy and 
 ## Recommended next round
 
 Proceed to M30-A LibreOffice managed package import/install scaffold. Do not run real `soffice`, add packaged smoke, enable user-visible Office-to-PDF, or expand to `.doc`, `.rtf`, `.docm` until the package lifecycle scaffold is implemented and reviewed.
+
+## DFC-M30 Managed LibreOffice import scaffold recovery notes
+
+- M30 adds `infra/files/dfcLibreOfficeManagedPackageInstaller.ts` as the DOCX-first Office-to-PDF managed LibreOffice import/install scaffold.
+- The helper imports an already prepared managed runtime directory; it does not download LibreOffice and does not discover system LibreOffice.
+- Import flow validates source existence, parses the manifest, optionally checks expected artifact SHA-256, rejects revoked packages, rejects symlinks, validates through the M23/M25 runtime gate before and after staging, copies into a controlled staging root, activates into the app-managed active runtime root, captures previous known-good metadata, and cleans failed staging installs.
+- Rollback is allowed only to a previous non-revoked known-good runtime that still validates through the runtime gate. Revoked or invalid rollback targets fail closed.
+- New dev smoke script: `scripts/dfc/office-pdf-libreoffice-import-dev-smoke.mjs`; package script: `npm run test:office-pdf-libreoffice-import-dev-smoke`.
+- The dev import smoke requires the M28 artifact under `.external-runtime-work/libreoffice/managed-runtimes/dfc-office-pdf/libreoffice-office-pdf`. If it is missing, M30 stops and does not auto-download LibreOffice.
+- The dev import smoke activates the M28 runtime under `.external-runtime-work/libreoffice/import-smoke-app-root/...` and runs real managed `soffice` through the M24 adapter. Imported-runtime DFC worker real smoke is deferred to M31 because it needs timeout/packaged-smoke tuning beyond the M30 scaffold boundary.
+- LibreOffice binaries, MSI files, extracted runtime files, staging output, sandbox output, and temp files remain under ignored `.external-runtime-work` or OS temp locations and must not be staged.
+- M30 continues to forbid system LibreOffice, PATH fallback, arbitrary user executable paths, renderer-provided paths, runtime auto-download, postinstall download, `.doc`/`.rtf`/`.docm`, production Office-to-PDF support claims, DB schema changes, renderer IPC changes, Send Plan main-flow changes, asset model changes, DFC vocabulary changes, and HTML-to-PDF changes.
+
+## Recommended next round
+
+Proceed to M31 packaged Office-to-PDF smoke confidence or user-visible experimental gate planning only after Owner accepts the M30 managed import boundary. Do not expand to `.doc`, `.rtf`, `.docm`, system fallback, or production Office-to-PDF claims before that acceptance.
