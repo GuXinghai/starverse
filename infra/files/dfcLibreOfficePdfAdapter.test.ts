@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -164,6 +164,56 @@ describe('DFC LibreOffice DOCX to PDF adapter skeleton', () => {
     expect(serialized).not.toContain('abcdef0123456789')
   })
 
+  it('attempts sandbox cleanup after fake success and fake failure when requested', async () => {
+    const runtime = await fakeRuntime()
+    const successRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-pdf-cleanup-success-'))
+    const failureRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-pdf-cleanup-failure-'))
+
+    const success = await runDfcLibreOfficeDocxToPdfAdapter({
+      assetId: 'asset-docx-pdf-cleanup-success',
+      sourceExtension: 'docx',
+      sourceBytes: Buffer.from('fake docx bytes'),
+      sandboxRootDir: successRoot,
+      runtime,
+      cleanupSandbox: true,
+      processRunner: async (input) => {
+        const outdir = String(input.args?.[(input.args ?? []).indexOf('--outdir') + 1] ?? '')
+        await writeFile(path.join(outdir, 'asset-docx-pdf-cleanup-success.pdf'), Buffer.from('%PDF-1.7\n%%EOF'))
+        return okProcess()
+      },
+    })
+    const failure = await runDfcLibreOfficeDocxToPdfAdapter({
+      assetId: 'asset-docx-pdf-cleanup-failure',
+      sourceExtension: 'docx',
+      sourceBytes: Buffer.from('fake docx bytes'),
+      sandboxRootDir: failureRoot,
+      runtime,
+      cleanupSandbox: true,
+      processRunner: async () => ({
+        ...okProcess(),
+        exitCode: 1,
+        errorCode: 'process_exit_nonzero',
+        stderr: 'cleanup failed source C:\\Users\\private\\source.docx token=secret',
+      }),
+    })
+
+    expect(success).toMatchObject({
+      ok: true,
+      status: 'succeeded',
+      cleanupStatus: 'attempted',
+    })
+    expect(failure).toMatchObject({
+      ok: false,
+      status: 'failed',
+      output: null,
+      cleanupStatus: 'attempted',
+    })
+    expect(await pathExists(successRoot)).toBe(false)
+    expect(await pathExists(failureRoot)).toBe(false)
+    expect(JSON.stringify([success, failure])).not.toContain('C:\\Users\\private')
+    expect(JSON.stringify([success, failure])).not.toContain('token=secret')
+  })
+
   it('validates output path, exact PDF name, missing output, ambiguous output, and PDF header', async () => {
     const outputDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-pdf-output-'))
     const expected = path.join(outputDir, 'asset.pdf')
@@ -261,4 +311,8 @@ function okProcess() {
     errorCode: null,
     elapsedMs: 10,
   } as const
+}
+
+async function pathExists(target: string): Promise<boolean> {
+  return stat(target).then(() => true).catch(() => false)
 }

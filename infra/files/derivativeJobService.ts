@@ -680,8 +680,11 @@ export class DerivativeJobService {
     })
     if (!result.ok || !result.output) {
       await rm(sandboxRootDir, { recursive: true, force: true }).catch(() => undefined)
+      const diagnosticCode = String(result.diagnostics[0]?.code ?? '')
       const code = result.status === 'timed_out'
         ? 'derivative_task_timeout'
+        : diagnosticCode.startsWith('office_pdf_output_')
+          ? 'derivative_output_write_failed'
         : result.status === 'blocked'
           ? 'conversion_not_implemented'
           : 'derivative_output_write_failed'

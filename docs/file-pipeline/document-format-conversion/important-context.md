@@ -1547,3 +1547,18 @@ Proceed to M26 fake-process DFC generation seam or continue managed package hard
 ## Recommended next round
 
 Proceed to Office PDF fake-process hardening/smoke planning, or make an owner decision for a real managed LibreOffice artifact and dev-only `soffice` execution package. Do not run real LibreOffice or declare production Office-to-PDF support without separate approval for binary distribution, installer/update policy, real execution sandboxing, smoke confidence, and exposure gates.
+
+## DFC-M27 Office PDF fake-process hardening recovery notes
+
+- M27 hardens the M26 fake-process DFC seam without moving to real LibreOffice execution.
+- Adapter coverage now asserts cleanup is attempted after fake success and fake failure when requested.
+- Worker coverage now asserts fake timeout, missing output, non-PDF output, and ambiguous output fail closed with no ready `converted_pdf` DerivedAsset and no valid ready selection.
+- Office PDF output-validation failures in the backend seam now map to `derivative_output_write_failed`; fake timeout maps to `derivative_task_timeout`.
+- Successful fake-process output still uses `derivedKind: converted_pdf`, `targetKind: pdf_attachment`, `sendStrategy: file_attachment`, `sendAssetRefs: derived_asset`, `usage: preview_and_send`, and metadata-only preview.
+- Send Plan continues to use selected refs plus verified DerivedAsset metadata and does not infer Office PDF behavior from extension or MIME fallback.
+- Managed runtime gate regressions from M23/M25 remain the authority for missing, disabled, invalid manifest, symlink/path escape, unsupported platform, and metadata-incomplete states.
+- M27 still does not run real LibreOffice, run `soffice`, discover system LibreOffice, use PATH fallback, submit a LibreOffice binary, support `.doc`/`.rtf`/`.docm`, alter HTML-to-PDF, or change DB schema, renderer IPC shape, Send Plan main-flow, asset model, or DFC vocabulary.
+
+## Recommended next round
+
+Proceed to an M28 owner decision for a real managed LibreOffice artifact and dev-only `soffice` execution package, or continue package/install policy hardening. Do not enter `.doc`, `.rtf`, `.docm`, Office-family expansion, or production Office-to-PDF support claims before that decision.
