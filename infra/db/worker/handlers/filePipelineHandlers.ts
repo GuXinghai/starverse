@@ -814,7 +814,7 @@ async function ensureOfficePdfRuntimeGate(
     configJson: {
       targetKind,
       runtime: 'libreoffice-fake-process-test-seam',
-      timeoutMs: 60_000,
+      timeoutMs: 300_000,
     },
   })
   runtime.dfcOptionGenerationStateRepo.markRunning({

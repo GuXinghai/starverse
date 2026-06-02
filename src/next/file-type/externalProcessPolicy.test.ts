@@ -181,6 +181,18 @@ describe('externalProcessPolicy', () => {
     )
   })
 
+  it('allows explicit long conversion jobs without changing the default timeout', () => {
+    const result = evaluateExternalProcessPolicy({
+      command: 'soffice',
+      mode: 'conversion',
+      timeoutMs: 300_000,
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(EXTERNAL_PROCESS_POLICY_DEFAULTS.conversionTimeoutMs).toBe(60_000)
+    expect(result.policy.timeoutMs).toBe(300_000)
+  })
+
   it('conversion mode retains shell:false and interpreter blocks', () => {
     const shellResult = evaluateExternalProcessPolicy({
       command: 'java',

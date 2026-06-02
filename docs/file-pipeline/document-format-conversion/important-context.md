@@ -1609,3 +1609,18 @@ Proceed to M30-A LibreOffice managed package import/install scaffold. Do not run
 ## Recommended next round
 
 Proceed to M31 packaged Office-to-PDF smoke confidence or user-visible experimental gate planning only after Owner accepts the M30 managed import boundary. Do not expand to `.doc`, `.rtf`, `.docm`, system fallback, or production Office-to-PDF claims before that acceptance.
+
+## DFC-M31 Office PDF imported runtime seam validation recovery notes
+
+- M31 validates the M30 imported active managed LibreOffice runtime through both adapter-level import smoke and DFC worker DOCX Office PDF smoke.
+- The timeout/ready-ref issue was resolved by allowing explicit long conversion jobs up to 300 seconds, setting the Office PDF DFC job/dev-smoke timeout to 300 seconds, and using an OS temp Starverse-controlled LibreOffice sandbox root for backend DOCX->PDF conversion jobs.
+- The default external conversion timeout remains 60 seconds; M31 only raises the maximum cap for explicitly requested long conversions.
+- The real DFC smoke uses a minimal DOCX fixture dedicated to Office PDF seam validation and verifies a ready `pdf_attachment` option backed by a `converted_pdf` DerivedAsset.
+- Preview remains metadata-only and Send Plan remains selected-ref / verified-DerivedAsset authoritative. The smoke must not infer Office PDF behavior from extension or MIME fallback.
+- The imported managed LibreOffice runtime is the only execution source. M31 still forbids system LibreOffice, PATH fallback, arbitrary executable paths, renderer-provided paths, runtime auto-download, postinstall download, and committing LibreOffice binaries or sandbox artifacts.
+- Office-to-PDF remains owner-gated / experimental, not production-ready. `.doc`, `.rtf`, and `.docm` remain unsupported.
+- M31 does not change DB schema, renderer IPC shape, Send Plan main-flow, asset model, DFC vocabulary, or HTML-to-PDF behavior.
+
+## Recommended next round
+
+Proceed to M32 packaged Office-to-PDF smoke confidence or user-visible experimental enablement gate planning. Do not expand to `.doc`, `.rtf`, `.docm`, system fallback, or production Office-to-PDF claims before owner approval.

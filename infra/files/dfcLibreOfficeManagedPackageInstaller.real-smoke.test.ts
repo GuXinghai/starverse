@@ -30,7 +30,7 @@ describeRealImportSmoke('DFC LibreOffice managed package import real smoke', () 
       sandboxRootDir,
       runtime: install.runtime,
       processRunner: runExternalProcess,
-      timeoutMs: 120_000,
+      timeoutMs: 300_000,
       cleanupSandbox: true,
     })
 
@@ -51,7 +51,7 @@ describeRealImportSmoke('DFC LibreOffice managed package import real smoke', () 
     expect(JSON.stringify(result.diagnostics)).not.toContain(sourceRuntimeRoot)
     expect(JSON.stringify(result.diagnostics)).not.toContain(install.activeRuntimeRootDir)
     expect(JSON.stringify(result.diagnostics)).not.toContain(install.runtime.executablePath)
-  }, 180_000)
+  }, 360_000)
 })
 
 function createMinimalDocxBuffer(): Buffer {
@@ -161,4 +161,3 @@ const CRC32_TABLE = Array.from({ length: 256 }, (_, index) => {
 async function pathExists(target: string): Promise<boolean> {
   return stat(target).then(() => true).catch(() => false)
 }
-

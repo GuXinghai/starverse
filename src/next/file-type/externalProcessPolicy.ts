@@ -27,7 +27,7 @@ export const EXTERNAL_PROCESS_POLICY_DEFAULTS = Object.freeze({
   healthCheckTimeoutMs: 3000,
   processTimeoutMs: 10000,
   conversionTimeoutMs: 60000,
-  maxTimeoutMs: 60000,
+  maxTimeoutMs: 300000,
   stdoutBytes: 1024 * 1024,
   stderrBytes: 256 * 1024,
   maxStdoutBytes: 10 * 1024 * 1024,
