@@ -1578,3 +1578,18 @@ Proceed to an M28 owner decision for a real managed LibreOffice artifact and dev
 ## Recommended next round
 
 Proceed to M29 production managed LibreOffice package/install/update policy and packaged smoke planning before any user-visible Office-to-PDF production claim. Do not expand to `.doc`, `.rtf`, `.docm`, system fallback, or broad production exposure before owner approval.
+
+## DFC-M29 LibreOffice production package policy recovery notes
+
+- M29 is documentation-only. It defines the production managed LibreOffice package, install/import, update, revocation, offline import, packaged smoke, and user-visible enablement policy after the M28 dev managed `soffice` smoke.
+- Production Office-to-PDF must trust only Starverse managed LibreOffice packages. System LibreOffice, PATH fallback, common install locations, arbitrary user executable paths, renderer-provided paths, default postinstall downloads, implicit runtime auto-download, and M28 `.external-runtime-work` dev artifacts are not production authority.
+- The production manifest must include package/plugin/runtime identity, platform/arch, executable relative path, LibreOffice version, package version, source/provenance URL, official release metadata, artifact hash, executable hash/size, package size, license/notices/attribution, capabilities `office_to_pdf` and `docx_to_pdf`, minimum Starverse/contract versions, platform support matrix, security policy metadata, and update/revocation metadata.
+- Install/import policy requires staged acquisition, artifact hash validation before extraction, manifest validation before activation, executable hash/size validation, realpath containment, symlink escape rejection, atomic activation, rollback to previous known-good when allowed, and cleanup of temp/staging directories.
+- Revoked, expired, incomplete, unsupported, invalid, disabled, or missing packages must keep DOCX PDF unavailable/blocked and must not run `soffice` or fall back to legacy routing.
+- Packaged smoke is required before user-visible production exposure. It must prove managed package discovery, hash validation, real DOCX-to-PDF conversion, controlled output, metadata-only preview, selected-ref Send Plan authority, missing-runtime fail-closed behavior, and no system fallback.
+- User-visible enablement should remain experimental until package policy, install/import scaffold, packaged smoke, focused security review, complete diagnostics, and fail-closed behavior are accepted.
+- M29 does not download a new artifact, run `soffice`, commit LibreOffice binaries, implement installer/revocation code, implement packaged smoke, support `.doc`/`.rtf`/`.docm`, declare production Office-to-PDF support, or change DB schema, renderer IPC, Send Plan main-flow, asset model, DFC vocabulary, or HTML-to-PDF behavior.
+
+## Recommended next round
+
+Proceed to M30-A LibreOffice managed package import/install scaffold. Do not run real `soffice`, add packaged smoke, enable user-visible Office-to-PDF, or expand to `.doc`, `.rtf`, `.docm` until the package lifecycle scaffold is implemented and reviewed.
