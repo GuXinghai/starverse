@@ -150,6 +150,38 @@ function createMinimalDocxBuffer(): Buffer {
   ])
 }
 
+function createMinimalOfficePdfDocxBuffer(): Buffer {
+  return createZipBuffer([
+    {
+      name: '[Content_Types].xml',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`,
+    },
+    {
+      name: '_rels/.rels',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`,
+    },
+    {
+      name: 'word/document.xml',
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>Starverse Office PDF imported runtime smoke</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Managed LibreOffice conversion through DFC.</w:t></w:r></w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`,
+    },
+  ])
+}
+
 function createDocxWithImageBuffer(): Buffer {
   const imageBytes = Buffer.from('embedded-secret-media-bytes-private-token', 'utf8')
   return createZipBuffer([
@@ -2024,7 +2056,7 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     })
     const assetId = 'asset-docx-office-pdf-real-managed-smoke'
     const storageUri = 'assets/original/do/asset-docx-office-pdf-real-managed-smoke.docx'
-    const docxBytes = createMinimalDocxBuffer()
+    const docxBytes = createMinimalOfficePdfDocxBuffer()
     await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
     await writeFile(path.join(storageRootDir, ...storageUri.split('/')), docxBytes)
     await dispatchWorkerMessage(handlers, {
@@ -2055,6 +2087,39 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       params: { conversationId: 'c1', assetId },
     })
     const pdfOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'pdf_attachment')
+    const generationState = db.prepare(`
+      SELECT status, error_code AS errorCode, derivative_job_id AS derivativeJobId
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='pdf_attachment'
+      LIMIT 1
+    `).get({ assetId }) as { status: string; errorCode: string | null; derivativeJobId: string | null } | undefined
+    const jobState = generationState?.derivativeJobId
+      ? db.prepare(`
+        SELECT status, error_code AS errorCode, error_message AS errorMessage, output_derivative_id AS outputDerivativeId
+        FROM derivative_jobs
+        WHERE id=@derivativeJobId
+        LIMIT 1
+      `).get({ derivativeJobId: generationState.derivativeJobId }) as { status: string; errorCode: string | null; errorMessage: string | null; outputDerivativeId: string | null } | undefined
+      : undefined
+    expect({
+      optionStatus: pdfOption?.status,
+      refCount: pdfOption?.sendAssetRefs?.length ?? 0,
+      generationStatus: generationState?.status,
+      generationErrorCode: generationState?.errorCode,
+      jobStatus: jobState?.status,
+      jobErrorCode: jobState?.errorCode,
+      jobErrorMessage: jobState?.errorMessage,
+      hasJobOutput: Boolean(jobState?.outputDerivativeId),
+    }).toMatchObject({
+      optionStatus: 'ready',
+      refCount: 1,
+      generationStatus: 'ready',
+      generationErrorCode: null,
+      jobStatus: 'ready',
+      jobErrorCode: null,
+      jobErrorMessage: null,
+      hasJobOutput: true,
+    })
     const derivativeId = pdfOption.sendAssetRefs[0].assetId
     const derivativeRow = db.prepare(`
       SELECT derived_kind AS derivedKind, mime, storage_uri AS storageUri, meta_json AS metaJson

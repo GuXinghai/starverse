@@ -24,7 +24,7 @@ async function main() {
     '--silent',
   ], {
     cwd: repoRoot,
-    timeoutMs: 3 * 60 * 1000,
+    timeoutMs: 7 * 60 * 1000,
     env: {
       ...process.env,
       STARVERSE_DFC_LIBREOFFICE_IMPORT_REAL_SMOKE: '1',
@@ -34,7 +34,26 @@ async function main() {
   })
 
   console.log('Imported managed LibreOffice runtime active root: [managed-runtime-root]')
-  console.log('M30 intentionally stops at adapter-level import smoke; DFC worker real smoke remains an M31 packaged-smoke item.')
+
+  await run(process.execPath, [
+    path.join(repoRoot, 'node_modules', 'vitest', 'vitest.mjs'),
+    '--run',
+    'infra/db/worker.filePipeline.test.ts',
+    '-t',
+    'real managed',
+    '--reporter=dot',
+    '--silent',
+  ], {
+    cwd: repoRoot,
+    timeoutMs: 7 * 60 * 1000,
+    env: {
+      ...process.env,
+      STARVERSE_DFC_LIBREOFFICE_REAL_SMOKE: '1',
+      STARVERSE_DFC_LIBREOFFICE_RUNTIME_ROOT: activeRuntimeRoot,
+    },
+  })
+
+  console.log('Imported managed LibreOffice DFC worker smoke completed through [managed-runtime-root].')
   console.log('M30 dev import smoke used only the managed artifact; no system LibreOffice or PATH fallback was used.')
 }
 

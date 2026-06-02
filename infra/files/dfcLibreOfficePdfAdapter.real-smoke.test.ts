@@ -26,7 +26,7 @@ describeRealLibreOffice('DFC LibreOffice DOCX to PDF real managed runtime smoke'
       sandboxRootDir,
       runtime: availability.runtime,
       processRunner: runExternalProcess,
-      timeoutMs: 120_000,
+      timeoutMs: 300_000,
       cleanupSandbox: true,
     })
 
@@ -46,7 +46,7 @@ describeRealLibreOffice('DFC LibreOffice DOCX to PDF real managed runtime smoke'
     expect(await pathExists(sandboxRootDir)).toBe(false)
     expect(JSON.stringify(result.diagnostics)).not.toContain(runtimeRoot)
     expect(JSON.stringify(result.diagnostics)).not.toContain(availability.runtime.executablePath)
-  }, 180_000)
+  }, 360_000)
 })
 
 function createMinimalDocxBuffer(): Buffer {

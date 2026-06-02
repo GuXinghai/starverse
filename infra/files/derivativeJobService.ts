@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import type BetterSqlite3 from 'better-sqlite3'
 import ExcelJS from 'exceljs'
@@ -666,7 +667,7 @@ export class DerivativeJobService {
       invalidCode: 'derivative_input_missing',
       readCode: 'derivative_local_file_read_failed',
     })
-    const sandboxRootDir = path.join(this.deps.storageRootDir, '.dfc-sandbox', 'libreoffice-office-pdf', safePathSegment(job.id))
+    const sandboxRootDir = path.join(os.tmpdir(), 'starverse-dfc-sandbox', 'libreoffice-office-pdf', shortSandboxJobSegment(job.id))
     const timeoutMs = readPositiveConfigNumber(job.configJson, 'timeoutMs') ?? 60_000
     const result = await runDfcLibreOfficeDocxToPdfAdapter({
       assetId: asset.id,
@@ -1920,6 +1921,10 @@ function sha256Bytes(value: Uint8Array): string {
 
 function safePathSegment(value: string): string {
   return String(value ?? '').trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'job'
+}
+
+function shortSandboxJobSegment(value: string): string {
+  return `job-${createHash('sha256').update(String(value ?? '')).digest('hex').slice(0, 16)}`
 }
 
 function safeParseStringArray(value: string): string[] {
