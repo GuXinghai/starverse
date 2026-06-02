@@ -1624,3 +1624,16 @@ Proceed to M31 packaged Office-to-PDF smoke confidence or user-visible experimen
 ## Recommended next round
 
 Proceed to M32 packaged Office-to-PDF smoke confidence or user-visible experimental enablement gate planning. Do not expand to `.doc`, `.rtf`, `.docm`, system fallback, or production Office-to-PDF claims before owner approval.
+
+## DFC-M32 Deadline closeout / demo readiness recovery notes
+
+- M32 is documentation-only and closes the deadline readiness push after M31.
+- Current demo-ready capabilities include: `original_file`, `plain_text`, `markdown`, `code`, CSV/TSV `table_markdown`, HTML safe markdown/code, XLSX `table_markdown` backend pilot, DOCX `markdown` backend pilot, HTML-to-PDF experimental-gated backend pilot with real Electron smoke, and DOCX-to-PDF dev managed-runtime smoke through imported LibreOffice.
+- Demo checklist: Electron shell smoke, backend-owned DFC attachment smoke, HTML-to-PDF Electron smoke, and Office-to-PDF imported runtime smoke.
+- Explicitly unsupported: `.doc`, `.rtf`, `.docm`, PS/EPS, broad production LibreOffice enablement, packaged installer support, CI runtime smoke, system LibreOffice/PATH fallback, and production Office-to-PDF claims.
+- Next-stage route: packaged smoke confidence, user-visible experimental gate, production package update/revocation/offline import implementation, then Office family expansion decision.
+- M32 does not change code, tests, DB schema, renderer IPC shape, Send Plan main-flow, asset model, DFC vocabulary, runtime behavior, dependencies, packaged installer, or CI.
+
+## Recommended next round
+
+Proceed to packaged smoke confidence first. If owner prioritizes exposure instead, open a user-visible experimental gate package with explicit diagnostics and fail-closed behavior. Do not expand to `.doc`, `.rtf`, `.docm`, PS/EPS, system fallback, or production Office-to-PDF claims before owner approval.
