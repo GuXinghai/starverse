@@ -441,6 +441,53 @@ function createFakeOfficePdfFailureRunner(): DfcLibreOfficePdfProcessRunner {
   })
 }
 
+type FakeOfficePdfRunnerMode = 'timeout' | 'missing_output' | 'invalid_pdf' | 'ambiguous_pdf'
+
+function createFakeOfficePdfModeRunner(mode: FakeOfficePdfRunnerMode): DfcLibreOfficePdfProcessRunner {
+  return async (input) => {
+    const args = [...(input.args ?? [])]
+    const outdirIndex = args.indexOf('--outdir')
+    const outputDir = outdirIndex >= 0 ? args[outdirIndex + 1] : null
+    const sourcePath = args[args.length - 1]
+    const outputPath = path.join(String(outputDir), `${path.basename(String(sourcePath), path.extname(String(sourcePath)))}.pdf`)
+    if (mode === 'timeout') {
+      return {
+        exitCode: null,
+        signal: null,
+        stdout: '',
+        stderr: 'timeout C:\\Users\\private\\source.docx token=secret file body',
+        timedOut: true,
+        outputLimited: false,
+        terminationAttempted: true,
+        terminated: true,
+        errorCode: 'process_timeout',
+        elapsedMs: 60_000,
+      }
+    }
+    if (mode === 'invalid_pdf') {
+      await mkdir(path.dirname(outputPath), { recursive: true })
+      await writeFile(outputPath, Buffer.from('not a pdf body token=secret'))
+    }
+    if (mode === 'ambiguous_pdf') {
+      await mkdir(path.dirname(outputPath), { recursive: true })
+      await writeFile(outputPath, Buffer.from('%PDF-1.7\n%%EOF'))
+      await writeFile(path.join(String(outputDir), 'extra.pdf'), Buffer.from('%PDF-1.7\n%%EOF'))
+    }
+    return {
+      exitCode: 0,
+      signal: null,
+      stdout: '',
+      stderr: '',
+      timedOut: false,
+      outputLimited: false,
+      terminationAttempted: false,
+      terminated: false,
+      errorCode: null,
+      elapsedMs: 12,
+    }
+  }
+}
+
 function dfcSettingsHash(targetKind: string): string {
   return createHash('sha256').update(Buffer.from(JSON.stringify({ targetKind }))).digest('hex')
 }
@@ -1867,6 +1914,99 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       },
     })
     expect(selected).toMatchObject({ ok: false })
+  })
+
+  it.each([
+    ['timeout', 'derivative_task_timeout'],
+    ['missing_output', 'derivative_output_write_failed'],
+    ['invalid_pdf', 'derivative_output_write_failed'],
+    ['ambiguous_pdf', 'derivative_output_write_failed'],
+  ] as const)('fails closed for DOCX pdf_attachment fake process %s without ready selection', async (mode, expectedErrorCode) => {
+    const { db, handlers } = createWorkerHarness({
+      officePdfProcessRunner: createFakeOfficePdfModeRunner(mode),
+    })
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const runtimeRoot = getDfcLibreOfficeManagedRuntimeRoot(storageRootDir)
+    await writeLibreOfficeRuntimeFixture(runtimeRoot)
+    const assetId = `asset-docx-office-pdf-fake-${mode.replace(/_/g, '-')}`
+    const storageUri = `assets/original/do/${assetId}.docx`
+    const docxBytes = createMinimalDocxBuffer()
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), docxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: `req-${assetId}-asset`,
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: `${assetId}-source-hash`,
+        filename: `${assetId}.docx`,
+        extension: 'docx',
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        sizeBytes: docxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: `req-${assetId}-draft-add`,
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: `req-${assetId}-ensure`,
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const pdfOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'pdf_attachment')
+    const readyPdfCount = (db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='converted_pdf' AND status='ready'
+    `).get({ assetId }) as { count: number }).count
+    const generationState = db.prepare(`
+      SELECT status, error_code AS errorCode
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='pdf_attachment'
+      LIMIT 1
+    `).get({ assetId }) as { status: string; errorCode: string | null }
+
+    expect(pdfOption).toMatchObject({
+      targetKind: 'pdf_attachment',
+      sendStrategy: 'file_attachment',
+      status: 'failed',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({ code: expectedErrorCode })],
+    })
+    expect(generationState).toMatchObject({
+      status: 'failed',
+      errorCode: expectedErrorCode,
+    })
+    expect(readyPdfCount).toBe(0)
+    const selected = await dispatchWorkerMessage(handlers, {
+      id: `req-${assetId}-select`,
+      method: 'conversationDraft.updateAttachmentSettings',
+      params: {
+        conversationId: 'c1',
+        assetId,
+        dfcManaged: true,
+        selectedOptionId: pdfOption.optionId,
+        selectedAssetRefs: pdfOption.sendAssetRefs,
+      },
+    })
+    const ensuredJson = JSON.stringify((ensured as any).result)
+    expect(selected).toMatchObject({ ok: false })
+    expect(ensuredJson).not.toContain(storageUri)
+    expect(ensuredJson).not.toContain(runtimeRoot)
+    expect(ensuredJson).not.toContain('C:\\Users\\private')
+    expect(ensuredJson).not.toContain('token=secret')
+    expect(ensuredJson).not.toContain('file body')
+    expect(ensuredJson).not.toContain('not a pdf body')
+    expect(ensuredJson).not.toContain('%PDF-')
   })
 
   it.each([
