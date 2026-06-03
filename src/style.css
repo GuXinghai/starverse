@@ -1,5 +1,10 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 @import "./assets/design-tokens.css";
+@source "../index.html";
+@source "./App.vue";
+@source "./ui-app/**/*.{vue,js,ts,jsx,tsx}";
+@source "./ui-kit/**/*.{vue,js,ts,jsx,tsx}";
+@source "../.storybook/**/*.{vue,js,ts,jsx,tsx}";
 
 /* ========================================
  * Tailwind CSS v4 主题配置

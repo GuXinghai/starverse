@@ -62,6 +62,23 @@ export default defineConfig({
       ],
     },
   },
+  optimizeDeps: {
+    // Vite's dependency discovery pass can deadlock this renderer graph on runtime
+    // non-relative specifiers (`@/...`, package imports, package CSS imports).
+    // Keep resolution request-driven so Vite's normal alias/package/CSS pipelines
+    // serve renderer modules deterministically in dev.
+    noDiscovery: true,
+    holdUntilCrawlEnd: false,
+    include: [
+      '@floating-ui/vue',
+      'dompurify',
+      'katex',
+      'markdown-it',
+      'shiki',
+      'vue',
+      'zod',
+    ],
+  },
   build: {
     rollupOptions: {
       external: [
