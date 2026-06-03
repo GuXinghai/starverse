@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import fs from 'node:fs/promises'
 import os from 'node:os'
@@ -88,7 +88,15 @@ async function closeVite(child) {
   if (!child || child.exitCode !== null) return
   await new Promise((resolve) => {
     child.once('exit', resolve)
-    child.kill()
+    try {
+      if (process.platform === 'win32') {
+        execFileSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+      } else {
+        child.kill()
+      }
+    } catch {
+      child.kill()
+    }
     setTimeout(resolve, 3000).unref()
   })
 }
@@ -168,17 +176,7 @@ async function main() {
     })
 
     const page = await waitForAppWindow(electronApp, 60_000)
-    await page.waitForLoadState('domcontentloaded', { timeout: 60_000 })
-    await page.waitForSelector('#app', { state: 'attached', timeout: 60_000 })
-    await page.waitForFunction(
-      () => {
-        const appRoot = document.querySelector('#app')
-        const composerDraft = document.querySelector('[data-testid="composer-draft"]')
-        return Boolean(composerDraft || (appRoot && (appRoot.children.length > 0 || appRoot.textContent?.trim())))
-      },
-      undefined,
-      { timeout: 60_000 },
-    )
+    await waitForMountedApp(page, 120_000)
 
     section('Assert shell and preload boundary')
     const result = await page.evaluate(() => {
@@ -320,7 +318,11 @@ async function waitForAppWindow(electronApp, timeoutMs) {
     const windows = electronApp.windows()
     for (const page of windows) {
       const diagnostics = await describePage(page)
-      if (diagnostics.hasAppRoot || diagnostics.url.startsWith(viteUrl)) return page
+      if (diagnostics.url.startsWith(viteUrl)) return page
+    }
+    for (const page of windows) {
+      const diagnostics = await describePage(page)
+      if (diagnostics.hasAppRoot && !diagnostics.url.startsWith('devtools://')) return page
     }
 
     lastDiagnostics = await Promise.all(windows.map((page) => describePage(page)))
@@ -328,13 +330,27 @@ async function waitForAppWindow(electronApp, timeoutMs) {
     try {
       const page = await electronApp.waitForEvent('window', { timeout: Math.min(1000, remaining) })
       const diagnostics = await describePage(page)
-      if (diagnostics.hasAppRoot || diagnostics.url.startsWith(viteUrl)) return page
+      if (diagnostics.url.startsWith(viteUrl)) return page
+      if (diagnostics.hasAppRoot && !diagnostics.url.startsWith('devtools://')) return page
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 250))
     }
   }
 
   throw new Error(`App window did not become ready. Windows: ${JSON.stringify(lastDiagnostics)}`)
+}
+
+async function waitForMountedApp(page, timeoutMs) {
+  await page.waitForSelector('#app', { state: 'attached', timeout: timeoutMs })
+  await page.waitForFunction(
+    () => {
+      const appRoot = document.querySelector('#app')
+      const composerDraft = document.querySelector('[data-testid="composer-draft"]')
+      return Boolean(composerDraft || (appRoot && (appRoot.children.length > 0 || appRoot.textContent?.trim())))
+    },
+    undefined,
+    { timeout: timeoutMs },
+  )
 }
 
 async function describePage(page) {
