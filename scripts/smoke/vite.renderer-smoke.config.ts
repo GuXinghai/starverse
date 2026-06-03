@@ -9,6 +9,19 @@ export default defineConfig({
       '@': path.resolve(__dirname, '../../src'),
     },
   },
+  optimizeDeps: {
+    noDiscovery: true,
+    holdUntilCrawlEnd: false,
+    include: [
+      '@floating-ui/vue',
+      'dompurify',
+      'katex',
+      'markdown-it',
+      'shiki',
+      'vue',
+      'zod',
+    ],
+  },
   plugins: [
     {
       name: 'app-csp-meta-inject-smoke',
