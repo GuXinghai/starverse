@@ -17,6 +17,15 @@ const appUrl = `${viteUrl}?sv-electron-smoke-dfc=1`
 const mainPath = path.join(repoRoot, 'dist-electron', 'main.js')
 const viteConfigPath = path.join(repoRoot, 'scripts', 'smoke', 'vite.renderer-smoke.config.ts')
 const tmpRoot = path.join(os.tmpdir(), `starverse-electron-smoke-${process.pid}`)
+const artifactRoot = path.join(repoRoot, '.artifacts', 'white-screen', 'electron-smoke')
+const screenshotPath = path.join(artifactRoot, 'screenshot.png')
+const domSnapshotPath = path.join(artifactRoot, 'dom-snapshot.html')
+const runtimeStatePath = path.join(artifactRoot, 'runtime-state.json')
+const consoleLogPath = path.join(artifactRoot, 'console.jsonl')
+const pageErrorLogPath = path.join(artifactRoot, 'pageerror.jsonl')
+const requestFailedLogPath = path.join(artifactRoot, 'requestfailed.jsonl')
+const responseErrorLogPath = path.join(artifactRoot, 'responses-4xx-5xx.jsonl')
+const runInfoPath = path.join(artifactRoot, 'run-info.json')
 const dfcSmokeFixtureFilename = 'electron-smoke-backend-dfc.md'
 const dfcSmokeFixturePreviewText = 'Backend-owned DFC markdown preview from smoke fixture.'
 const dfcSmokeFixturePath = path.join(tmpRoot, dfcSmokeFixtureFilename)
@@ -65,7 +74,7 @@ function spawnVite() {
     String(port),
     '--strictPort',
     '--logLevel',
-    'silent',
+    'info',
   ].join(' ')
   return spawn(command, {
     cwd: repoRoot,
@@ -82,6 +91,197 @@ function spawnVite() {
 
 function quoteForShell(value) {
   return `"${String(value).replace(/"/g, '\\"')}"`
+}
+
+function toJsonLine(value) {
+  return `${JSON.stringify(value)}\n`
+}
+
+function redactDiagnosticText(value) {
+  if (typeof value !== 'string') return value
+  return value
+    .replace(/file:\/\/\/?[^\s"'<>)]*/gi, '<file-url-redacted>')
+    .replace(/(^|[^A-Za-z])([A-Za-z]:[\\/][^\s"'<>)]*)/g, '$1<absolute-path-redacted>')
+}
+
+function redactDiagnosticValue(value) {
+  if (typeof value === 'string') return redactDiagnosticText(value)
+  if (!value || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map((item) => redactDiagnosticValue(item))
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactDiagnosticValue(item)]))
+}
+
+function summarizeError(error) {
+  if (!error) return null
+  return redactDiagnosticValue({
+    name: typeof error.name === 'string' ? error.name : undefined,
+    message: typeof error.message === 'string' ? error.message : String(error),
+    stack: typeof error.stack === 'string' ? error.stack : undefined,
+  })
+}
+
+function artifactLabel(filePath) {
+  return path.relative(repoRoot, filePath).replace(/\\/g, '/')
+}
+
+function buildRunInfoBase() {
+  return {
+    userData: {
+      mode: 'clean-temp',
+      explicitUserDataDir: true,
+      path: '<temp-clean-profile>',
+    },
+    artifactRoot: artifactLabel(artifactRoot),
+    viteUrl,
+    appUrl,
+    mainPath: artifactLabel(mainPath),
+    viteConfigPath: artifactLabel(viteConfigPath),
+  }
+}
+
+function createDiagnostics() {
+  const pageIds = new WeakMap()
+  let nextPageId = 1
+  const getPageId = (page) => {
+    if (!pageIds.has(page)) pageIds.set(page, nextPageId++)
+    return pageIds.get(page)
+  }
+  const appendJsonl = async (filePath, payload) => {
+    await fs.appendFile(filePath, toJsonLine({ timestamp: new Date().toISOString(), ...redactDiagnosticValue(payload) }), 'utf8').catch(() => undefined)
+  }
+  return {
+    getPageId,
+    appendConsole: (page, message) => appendJsonl(consoleLogPath, {
+      pageId: getPageId(page),
+      type: message.type(),
+      text: message.text(),
+      location: message.location(),
+    }),
+    appendPageError: (page, error) => appendJsonl(pageErrorLogPath, { pageId: getPageId(page), error: summarizeError(error) }),
+    appendRequestFailed: (page, request) => appendJsonl(requestFailedLogPath, {
+      pageId: getPageId(page),
+      url: request.url(),
+      method: request.method(),
+      resourceType: request.resourceType(),
+      failure: request.failure(),
+    }),
+    appendResponseError: (page, response) => appendJsonl(responseErrorLogPath, {
+      pageId: getPageId(page),
+      url: response.url(),
+      status: response.status(),
+      statusText: response.statusText(),
+      requestMethod: response.request().method(),
+      resourceType: response.request().resourceType(),
+    }),
+  }
+}
+
+async function prepareArtifactFiles() {
+  await fs.mkdir(artifactRoot, { recursive: true })
+  await Promise.all([screenshotPath, domSnapshotPath, runtimeStatePath, runInfoPath].map((filePath) => fs.rm(filePath, { force: true }).catch(() => undefined)))
+  await Promise.all([
+    fs.writeFile(consoleLogPath, '', 'utf8'),
+    fs.writeFile(pageErrorLogPath, '', 'utf8'),
+    fs.writeFile(requestFailedLogPath, '', 'utf8'),
+    fs.writeFile(responseErrorLogPath, '', 'utf8'),
+  ])
+  await writeRunInfo({ status: 'started', startedAt: new Date().toISOString(), ...buildRunInfoBase() })
+}
+
+async function writeRunInfo(payload) {
+  await fs.writeFile(runInfoPath, JSON.stringify(redactDiagnosticValue(payload), null, 2), 'utf8')
+}
+
+function installPageDiagnostics(page, diagnostics) {
+  diagnostics.getPageId(page)
+  page.on('console', (message) => void diagnostics.appendConsole(page, message))
+  page.on('pageerror', (error) => void diagnostics.appendPageError(page, error))
+  page.on('requestfailed', (request) => void diagnostics.appendRequestFailed(page, request))
+  page.on('response', (response) => {
+    if (response.status() >= 400) void diagnostics.appendResponseError(page, response)
+  })
+}
+
+function installElectronDiagnostics(electronApp, diagnostics) {
+  for (const page of electronApp.windows()) installPageDiagnostics(page, diagnostics)
+  electronApp.on('window', (page) => installPageDiagnostics(page, diagnostics))
+}
+
+async function captureVisualDiagnostics(page, phase) {
+  await fs.mkdir(artifactRoot, { recursive: true })
+  const runtimeState = await page.evaluate((capturePhase) => {
+    const styleProps = ['display', 'visibility', 'opacity', 'width', 'height', 'backgroundColor', 'color', 'position', 'zIndex', 'overflow']
+    const rectFor = (element) => {
+      if (!element) return null
+      const rect = element.getBoundingClientRect()
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left }
+    }
+    const styleFor = (element) => {
+      if (!element) return null
+      const style = window.getComputedStyle(element)
+      return Object.fromEntries(styleProps.map((prop) => [prop, style[prop]]))
+    }
+    const visibilityFor = (element) => {
+      if (!element) return null
+      const style = window.getComputedStyle(element)
+      const rect = element.getBoundingClientRect()
+      return { visible: style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0, display: style.display, visibility: style.visibility, opacity: style.opacity }
+    }
+    const selectorPresence = (selector) => {
+      const element = document.querySelector(selector)
+      return { selector, present: Boolean(element), rect: rectFor(element), visibility: visibilityFor(element), textSample: element?.textContent?.trim().slice(0, 300) ?? '' }
+    }
+    const describeElement = (element) => {
+      const style = window.getComputedStyle(element)
+      return { tag: element.tagName.toLowerCase(), id: element.id || '', className: typeof element.className === 'string' ? element.className : '', rect: rectFor(element), visibility: visibilityFor(element), opacity: style.opacity, zIndex: style.zIndex, backgroundColor: style.backgroundColor, position: style.position }
+    }
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+    const viewportArea = viewportWidth * viewportHeight
+    const appRoot = document.querySelector('#app')
+    const overlayCandidates = Array.from(document.body.querySelectorAll('*')).map((element) => {
+      const style = window.getComputedStyle(element)
+      const rect = element.getBoundingClientRect()
+      const zIndexNumber = Number.parseInt(style.zIndex, 10)
+      const area = rect.width * rect.height
+      const background = style.backgroundColor
+      const hasOpaqueBackground = background !== 'rgba(0, 0, 0, 0)' && background !== 'transparent'
+      const coversWindow = viewportArea > 0 && area / viewportArea >= 0.7
+      if (!coversWindow || !hasOpaqueBackground || Number.isNaN(zIndexNumber) || zIndexNumber < 10) return null
+      return describeElement(element)
+    }).filter(Boolean).slice(0, 20)
+    return {
+      phase: capturePhase,
+      capturedAt: new Date().toISOString(),
+      url: window.location.href,
+      readyState: document.readyState,
+      title: document.title,
+      viewport: { width: viewportWidth, height: viewportHeight },
+      hasAppRoot: Boolean(appRoot),
+      appInnerHtmlLength: appRoot?.innerHTML?.length ?? 0,
+      bodyInnerTextLength: document.body?.innerText?.length ?? 0,
+      visibleTextSample: document.body?.innerText?.trim().slice(0, 2000) ?? '',
+      appElementCount: appRoot ? appRoot.querySelectorAll('*').length : 0,
+      bounds: { html: rectFor(document.documentElement), body: rectFor(document.body), app: rectFor(appRoot) },
+      computedStyle: { html: styleFor(document.documentElement), body: styleFor(document.body), app: styleFor(appRoot) },
+      selectorPresence: ['#app', '[data-testid="composer-draft"]', '[data-testid="draft-attachment-details-dialog"]', '[data-testid="draft-attachment-dfc-option-markdown"]', '[data-testid="draft-attachment-dfc-option-pdf_attachment"]', '[data-testid="draft-attachment-card"]', '[data-testid^="draft-attachment-card-"]'].map(selectorPresence),
+      bodyChildren: Array.from(document.body.children).map(describeElement),
+      overlayCandidates,
+    }
+  }, phase)
+  await fs.writeFile(runtimeStatePath, JSON.stringify(runtimeState, null, 2), 'utf8')
+  await fs.writeFile(domSnapshotPath, await page.content(), 'utf8')
+  await page.screenshot({ path: screenshotPath, fullPage: true })
+  return runtimeState
+}
+
+async function captureVisualDiagnosticsBestEffort(page, phase) {
+  try {
+    return { ok: true, state: await captureVisualDiagnostics(page, phase), error: null }
+  } catch (error) {
+    await fs.writeFile(runtimeStatePath, JSON.stringify({ phase, capturedAt: new Date().toISOString(), diagnosticsCaptureFailed: true, error: summarizeError(error) }, null, 2), 'utf8').catch(() => undefined)
+    return { ok: false, state: null, error: summarizeError(error) }
+  }
 }
 
 async function closeVite(child) {
@@ -103,6 +303,7 @@ async function closeVite(child) {
 
 async function main() {
   section('DFC-M11 Electron shell smoke')
+  await prepareArtifactFiles()
 
   if (!(await pathExists(mainPath))) {
     throw new Error(`Missing ${path.relative(repoRoot, mainPath)}. Run an Electron dev/build step before this smoke.`)
@@ -155,6 +356,8 @@ async function main() {
   })
 
   let electronApp
+  let page
+  const diagnostics = createDiagnostics()
   try {
     await waitForHttp(viteUrl, 30_000)
     console.log(`renderer: ${viteUrl}`)
@@ -174,8 +377,9 @@ async function main() {
       },
       timeout: 60_000,
     })
+    installElectronDiagnostics(electronApp, diagnostics)
 
-    const page = await waitForAppWindow(electronApp, 60_000)
+    page = await waitForAppWindow(electronApp, 60_000)
     await waitForMountedApp(page, 120_000)
 
     section('Assert shell and preload boundary')
@@ -297,8 +501,55 @@ async function main() {
     if (!htmlPdfUiResult.rawPreviewVisible) throw new Error('HTML PDF metadata-only preview is missing')
     if (htmlPdfUiResult.previewContainsPath) throw new Error('HTML PDF preview exposed path, storage, hash, or file body-like content')
 
+    section('Capture visual diagnostics')
+    const visualDiagnostics = await captureVisualDiagnosticsBestEffort(page, 'post-assertions')
+    const runtimeState = visualDiagnostics.state
+    console.log(JSON.stringify({
+      artifactRoot: artifactLabel(artifactRoot),
+      screenshotPath: artifactLabel(screenshotPath),
+      runtimeStatePath: artifactLabel(runtimeStatePath),
+      domSnapshotPath: artifactLabel(domSnapshotPath),
+      diagnosticsCaptureOk: visualDiagnostics.ok,
+      diagnosticsCaptureError: visualDiagnostics.error?.message ?? null,
+      bodyInnerTextLength: runtimeState?.bodyInnerTextLength ?? null,
+      appElementCount: runtimeState?.appElementCount ?? null,
+      overlayCandidates: runtimeState?.overlayCandidates?.length ?? null,
+    }, null, 2))
+
+    await writeRunInfo({
+      status: 'passed',
+      completedAt: new Date().toISOString(),
+      ...buildRunInfoBase(),
+      selectedPage: await describePage(page),
+      selectedPageIsAppPage: page.url().startsWith(viteUrl),
+      pages: await Promise.all(electronApp.windows().map((openPage) => describePage(openPage))),
+      viteOutputTail: viteOutput.trim().slice(-4000),
+      visualDiagnostics: {
+        ok: visualDiagnostics.ok,
+        error: visualDiagnostics.error,
+      },
+      artifacts: {
+        screenshot: artifactLabel(screenshotPath),
+        domSnapshot: artifactLabel(domSnapshotPath),
+        runtimeState: artifactLabel(runtimeStatePath),
+        console: artifactLabel(consoleLogPath),
+        pageerror: artifactLabel(pageErrorLogPath),
+        requestfailed: artifactLabel(requestFailedLogPath),
+        responses4xx5xx: artifactLabel(responseErrorLogPath),
+      },
+    })
+
     console.log('\nPASS: Electron DFC attachment smoke completed')
   } catch (error) {
+    if (page) await captureVisualDiagnosticsBestEffort(page, 'failure')
+    await writeRunInfo({
+      status: 'failed',
+      completedAt: new Date().toISOString(),
+      ...buildRunInfoBase(),
+      viteOutputTail: viteOutput.trim().slice(-4000),
+      error: summarizeError(error),
+      selectedPage: page ? await describePage(page).catch(() => null) : null,
+    }).catch(() => undefined)
     if (viteOutput.trim()) {
       section('Vite output')
       console.error(viteOutput.trim().slice(-4000))
