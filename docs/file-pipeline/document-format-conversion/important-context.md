@@ -1637,3 +1637,10 @@ Proceed to M32 packaged Office-to-PDF smoke confidence or user-visible experimen
 ## Recommended next round
 
 Proceed to packaged smoke confidence first. If owner prioritizes exposure instead, open a user-visible experimental gate package with explicit diagnostics and fail-closed behavior. Do not expand to `.doc`, `.rtf`, `.docm`, PS/EPS, system fallback, or production Office-to-PDF claims before owner approval.
+
+## Local runtime workdir watcher boundary note
+
+- LibreOffice / external runtime preparation created `.external-runtime-work/` under the repo root.
+- Git ignored it, but Vite watcher still scanned it and caused dev renderer white-screen via event-loop stalls.
+- Permanent guard: `.external-runtime-work/` must remain in Vite `server.watch.ignored`.
+- Future runtime workdirs must follow `docs/maintenance/local-runtime-workdirs.md`.
