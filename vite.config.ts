@@ -58,6 +58,7 @@ export default defineConfig({
   server: {
     watch: {
       ignored: [
+        '**/.external-runtime-work/**',
         '**/.artifacts/netlog/**',
       ],
     },
