@@ -1,0 +1,188 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { syncOpenRouterModelCatalog } from '../modelCatalog/catalogSyncJob'
+import { resolveCurrentOpenRouterCatalogScope, runCatalogSyncAtStartup } from './catalogSyncStartup'
+
+vi.mock('../modelCatalog/catalogSyncJob', () => ({
+  syncOpenRouterModelCatalog: vi.fn(),
+}))
+
+function createStore(initial: Record<string, unknown>) {
+  const data = new Map<string, unknown>(Object.entries(initial))
+  return {
+    get: vi.fn((key: string) => data.get(key)),
+    set: vi.fn((key: string, value: unknown) => {
+      data.set(key, value)
+    }),
+  } as any
+}
+
+function makeScopedMeta(partial: Record<string, unknown> = {}) {
+  return {
+    providerKey: 'openrouter',
+    catalogScopeKey: 'scope-a',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    dataSource: 'models_user_primary',
+    activeSnapshotId: 'snap-a',
+    syncState: 'ok',
+    lastSyncAtMs: Date.now(),
+    lastUsedAtMs: Date.now(),
+    modelCount: 1,
+    visibleModelCount: 1,
+    hiddenModelCount: 0,
+    schemaVersion: 1,
+    ...partial,
+  }
+}
+
+function makeModel() {
+  return {
+    modelId: 'openai/a',
+    modelKey: 'openrouter::openai/a',
+    displayName: 'A',
+    status: 'active' as const,
+    visibility: 'visible' as const,
+    inputModalitiesJson: '["text"]',
+    outputModalitiesJson: '["text"]',
+    supportedParametersJson: '["temperature"]',
+    capabilitiesJson: '{}',
+    firstSeenAtMs: Date.now(),
+    lastSeenAtMs: Date.now(),
+    syncedAtMs: Date.now(),
+  }
+}
+
+describe('runCatalogSyncAtStartup scoped catalog path', () => {
+  beforeEach(() => {
+    vi.mocked(syncOpenRouterModelCatalog).mockReset()
+  })
+
+  it('returns missing_api_key without reading legacy or scoped DB state', async () => {
+    const store = createStore({})
+    const dbWorkerManager = { call: vi.fn() } as any
+
+    const result = await runCatalogSyncAtStartup({ store, dbWorkerManager, force: true })
+
+    expect(result).toMatchObject({
+      syncAttempted: true,
+      syncSucceeded: false,
+      reason: 'missing_api_key_no_cache',
+      failureMessage: 'missing_api_key',
+    })
+    expect(dbWorkerManager.call).not.toHaveBeenCalled()
+    expect(syncOpenRouterModelCatalog).not.toHaveBeenCalled()
+  })
+
+  it('writes remote sync results to current scoped snapshot only', async () => {
+    const rawApiKey = 'sk-startup-secret-a'
+    const store = createStore({
+      openRouterApiKey: rawApiKey,
+      openRouterBaseUrl: 'https://openrouter.ai/api/v1/',
+      openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
+    })
+    const scope = resolveCurrentOpenRouterCatalogScope(store)!
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string, params: any) => {
+        if (method === 'modelCatalog.getScopedMeta') return null
+        if (method === 'modelCatalog.writeScopedSnapshot') return { ok: true, modelCount: 1, ...params }
+        throw new Error(`unexpected method ${method}`)
+      }),
+    } as any
+    vi.mocked(syncOpenRouterModelCatalog).mockImplementation(async (options: any) => {
+      await options.writer.writeScopedSnapshot({
+        providerKey: 'openrouter',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        dataSource: 'models_user_primary',
+        snapshotId: 'snap-scoped',
+        snapshotChecksum: 'checksum-scoped',
+        models: [makeModel()],
+        syncedAtMs: 123,
+        schemaVersion: 1,
+      })
+      return {
+        ok: true,
+        snapshotId: 'snap-scoped',
+        modelCount: 1,
+        dataSource: 'models_user_primary',
+        baseUrl: 'https://openrouter.ai/api/v1',
+      }
+    })
+
+    const result = await runCatalogSyncAtStartup({ store, dbWorkerManager, force: true })
+
+    expect(result).toMatchObject({
+      syncAttempted: true,
+      syncSucceeded: true,
+      syncSnapshotId: 'snap-scoped',
+      modelCountAfter: 1,
+    })
+    expect(dbWorkerManager.call).toHaveBeenCalledWith('modelCatalog.writeScopedSnapshot', expect.objectContaining({
+      providerKey: 'openrouter',
+      catalogScopeKey: scope.catalogScopeKey,
+      baseUrl: 'https://openrouter.ai/api/v1',
+      dataSource: 'models_user_primary',
+      snapshotId: 'snap-scoped',
+    }))
+    expect(dbWorkerManager.call).not.toHaveBeenCalledWith('modelCatalog.syncSnapshot', expect.anything())
+    expect(dbWorkerManager.call).not.toHaveBeenCalledWith('modelCatalog.syncCoreSnapshot', expect.anything())
+    expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain(rawApiKey)
+  })
+
+  it('returns cache_fresh for current scoped meta without remote sync', async () => {
+    const store = createStore({
+      openRouterApiKey: 'sk-startup-secret-a',
+      openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
+    })
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string) => {
+        if (method === 'modelCatalog.getScopedMeta') return makeScopedMeta()
+        if (method === 'modelCatalog.validateActiveScopedSnapshot') return { ok: true, modelCount: 1 }
+        throw new Error(`unexpected method ${method}`)
+      }),
+    } as any
+
+    const result = await runCatalogSyncAtStartup({ store, dbWorkerManager, force: false })
+
+    expect(result).toMatchObject({
+      reason: 'cache_fresh',
+      syncAttempted: false,
+      modelCountAfter: 1,
+    })
+    expect(syncOpenRouterModelCatalog).not.toHaveBeenCalled()
+  })
+
+  it('force=true bypasses current scoped cache freshness', async () => {
+    const store = createStore({
+      openRouterApiKey: 'sk-startup-secret-a',
+      openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
+    })
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string, params: any) => {
+        if (method === 'modelCatalog.getScopedMeta') return makeScopedMeta()
+        if (method === 'modelCatalog.validateActiveScopedSnapshot') return { ok: true, modelCount: 1 }
+        if (method === 'modelCatalog.writeScopedSnapshot') return { ok: true, ...params }
+        throw new Error(`unexpected method ${method}`)
+      }),
+    } as any
+    vi.mocked(syncOpenRouterModelCatalog).mockImplementation(async (options: any) => {
+      await options.writer.writeScopedSnapshot({
+        providerKey: 'openrouter',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        dataSource: 'models_user_primary',
+        snapshotId: 'snap-force',
+        models: [makeModel()],
+        syncedAtMs: 123,
+        schemaVersion: 1,
+      })
+      return { ok: true, snapshotId: 'snap-force', modelCount: 1, dataSource: 'models_user_primary', baseUrl: 'https://openrouter.ai/api/v1' }
+    })
+
+    const result = await runCatalogSyncAtStartup({ store, dbWorkerManager, force: true })
+
+    expect(result).toMatchObject({
+      reason: 'synced',
+      syncAttempted: true,
+      syncSnapshotId: 'snap-force',
+    })
+    expect(syncOpenRouterModelCatalog).toHaveBeenCalledTimes(1)
+  })
+})

@@ -124,5 +124,120 @@ describe('CatalogSyncRunner', () => {
       modelCountAfter: 50,
     })
   })
+
+  it('force=true bypasses cache_fresh and performs sync', async () => {
+    const readMeta = vi.fn(async () => buildMeta({ lastSyncAtMs: 1_900_000 }))
+    const runSync = vi.fn(async () => ({ ok: true as const, snapshotId: 'snap_force', modelCount: 200 }))
+    const runner = new CatalogSyncRunner({
+      providerKey: 'openrouter',
+      expectedSchemaVersion: 1,
+      fixedTtlMs: 3600_000,
+      readMeta,
+      runSync,
+      now: () => 2_000_000,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      force: true,
+    })
+
+    const result = await runner.run()
+    expect(result).toMatchObject({
+      hadCache: true,
+      staleCache: false,
+      syncAttempted: true,
+      syncSucceeded: true,
+      force: true,
+      reason: 'synced',
+      modelCountBefore: 100,
+      modelCountAfter: 200,
+    })
+    expect(runSync).toHaveBeenCalledTimes(1)
+  })
+
+  it('force=false with fresh cache skips sync (default behavior)', async () => {
+    const readMeta = vi.fn(async () => buildMeta({ lastSyncAtMs: 1_900_000 }))
+    const runSync = vi.fn(async () => ({ ok: true as const, snapshotId: 'snap_unused', modelCount: 123 }))
+    const runner = new CatalogSyncRunner({
+      providerKey: 'openrouter',
+      expectedSchemaVersion: 1,
+      fixedTtlMs: 3600_000,
+      readMeta,
+      runSync,
+      now: () => 2_000_000,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    })
+
+    const result = await runner.run()
+    expect(result).toMatchObject({
+      force: false,
+      reason: 'cache_fresh',
+    })
+    expect(runSync).not.toHaveBeenCalled()
+  })
+
+  it('treats an explicit fresh empty catalog meta as cache_fresh', async () => {
+    const readMeta = vi.fn(async () => buildMeta({ modelCount: 0, visibleModelCount: 0, hiddenModelCount: 0, lastSyncAtMs: 1_900_000 }))
+    const runSync = vi.fn(async () => ({ ok: true as const, snapshotId: 'snap_unused', modelCount: 123 }))
+    const runner = new CatalogSyncRunner({
+      providerKey: 'openrouter',
+      expectedSchemaVersion: 1,
+      fixedTtlMs: 3600_000,
+      readMeta,
+      runSync,
+      now: () => 2_000_000,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    })
+
+    const result = await runner.run()
+    expect(result).toMatchObject({
+      hadCache: false,
+      syncAttempted: false,
+      reason: 'cache_fresh',
+      modelCountBefore: 0,
+      modelCountAfter: 0,
+    })
+    expect(runSync).not.toHaveBeenCalled()
+  })
+
+  it('treats error meta as stale and retries sync', async () => {
+    const readMeta = vi.fn(async () => buildMeta({ syncState: 'error', lastSyncAtMs: 1_900_000 }))
+    const runSync = vi.fn(async () => ({ ok: true as const, snapshotId: 'snap_retry', modelCount: 123 }))
+    const runner = new CatalogSyncRunner({
+      providerKey: 'openrouter',
+      expectedSchemaVersion: 1,
+      fixedTtlMs: 3600_000,
+      readMeta,
+      runSync,
+      now: () => 2_000_000,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    })
+
+    const result = await runner.run()
+    expect(result).toMatchObject({
+      staleCache: true,
+      syncAttempted: true,
+      reason: 'synced',
+    })
+    expect(runSync).toHaveBeenCalledTimes(1)
+  })
+
+  it('can propagate meta read failures for scoped DB unavailable handling', async () => {
+    const readMeta = vi.fn(async () => {
+      throw Object.assign(new Error('DB worker not initialized'), { code: 'ERR_UNAVAILABLE' })
+    })
+    const runSync = vi.fn(async () => ({ ok: true as const, snapshotId: 'snap_unused', modelCount: 123 }))
+    const runner = new CatalogSyncRunner({
+      providerKey: 'openrouter',
+      expectedSchemaVersion: 1,
+      fixedTtlMs: 3600_000,
+      readMeta,
+      runSync,
+      now: () => 2_000_000,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      proceedOnMetaReadFailure: false,
+    })
+
+    await expect(runner.run()).rejects.toThrow('DB worker not initialized')
+    expect(runSync).not.toHaveBeenCalled()
+  })
 })
 

@@ -27,6 +27,8 @@ export type CatalogSyncRunnerInput = Readonly<{
   onSyncSuccess?: (result: Readonly<{ snapshotId: string; modelCount: number }>) => Promise<void> | void
   now?: () => number
   logger?: RunnerLogger
+  force?: boolean
+  proceedOnMetaReadFailure?: boolean
 }>
 
 export type CatalogSyncRunnerResult = Readonly<{
@@ -39,6 +41,7 @@ export type CatalogSyncRunnerResult = Readonly<{
   syncAttempted: boolean
   syncSucceeded: boolean
   usedCacheFallback: boolean
+  force: boolean
   reason:
     | 'cache_fresh'
     | 'synced'
@@ -49,6 +52,7 @@ export type CatalogSyncRunnerResult = Readonly<{
   source: 'models_user_primary' | 'models_fallback' | 'mixed' | 'none'
   modelCountBefore: number
   modelCountAfter: number
+  lastSyncAtMs: number
   syncSnapshotId?: string
   failureMessage?: string
 }>
@@ -77,6 +81,8 @@ export class CatalogSyncRunner {
   private onSyncSuccess?: (result: Readonly<{ snapshotId: string; modelCount: number }>) => Promise<void> | void
   private now: () => number
   private logger: RunnerLogger
+  private force: boolean
+  private proceedOnMetaReadFailure: boolean
 
   constructor(input: CatalogSyncRunnerInput) {
     this.providerKey = input.providerKey
@@ -87,6 +93,8 @@ export class CatalogSyncRunner {
     this.onSyncSuccess = input.onSyncSuccess
     this.now = input.now ?? Date.now
     this.logger = input.logger ?? console
+    this.force = input.force === true
+    this.proceedOnMetaReadFailure = input.proceedOnMetaReadFailure !== false
   }
 
   async run(): Promise<CatalogSyncRunnerResult> {
@@ -95,6 +103,9 @@ export class CatalogSyncRunner {
     try {
       meta = await this.readMeta(this.providerKey)
     } catch (error) {
+      if (!this.proceedOnMetaReadFailure) {
+        throw error
+      }
       this.logger.warn('[CatalogSyncRunner] readMeta failed, proceed as no-cache', {
         providerKey: this.providerKey,
         error: toErrorMessage(error),
@@ -103,18 +114,20 @@ export class CatalogSyncRunner {
     }
 
     const modelCountBefore = Number(meta?.modelCount ?? 0)
+    const hasMeta = meta != null
     const hadCache = modelCountBefore > 0
     const source = meta?.dataSource ?? 'none'
     const schemaMismatch = meta != null && meta.schemaVersion !== this.expectedSchemaVersion
+    const syncStateMismatch = meta != null && meta.syncState !== 'ok'
     const ttlExpired =
       meta == null
         ? true
         : this.fixedTtlMs === 0
           ? true
           : this.now() - Number(meta.lastSyncAtMs ?? 0) >= this.fixedTtlMs
-    const staleCache = hadCache && (schemaMismatch || ttlExpired)
+    const staleCache = hasMeta && (syncStateMismatch || schemaMismatch || ttlExpired)
 
-    const shouldSync = !hadCache || staleCache
+    const shouldSync = this.force || !hasMeta || staleCache
     if (!shouldSync) {
       const finishedAtMs = this.now()
       return {
@@ -127,10 +140,12 @@ export class CatalogSyncRunner {
         syncAttempted: false,
         syncSucceeded: false,
         usedCacheFallback: false,
+        force: this.force,
         reason: 'cache_fresh',
         source,
         modelCountBefore,
         modelCountAfter: modelCountBefore,
+        lastSyncAtMs: Number(meta?.lastSyncAtMs ?? 0),
       }
     }
 
@@ -156,10 +171,12 @@ export class CatalogSyncRunner {
           syncAttempted: true,
           syncSucceeded: false,
           usedCacheFallback: hadCache,
+          force: this.force,
           reason,
           source,
           modelCountBefore,
           modelCountAfter: modelCountBefore,
+          lastSyncAtMs: Number(meta?.lastSyncAtMs ?? 0),
           failureMessage: sync.reason,
         }
       }
@@ -187,10 +204,12 @@ export class CatalogSyncRunner {
         syncAttempted: true,
         syncSucceeded: true,
         usedCacheFallback: false,
+        force: this.force,
         reason: 'synced',
         source,
         modelCountBefore,
         modelCountAfter: sync.modelCount,
+        lastSyncAtMs: finishedAtMs,
         syncSnapshotId: sync.snapshotId,
       }
     } catch (error) {
@@ -214,10 +233,12 @@ export class CatalogSyncRunner {
         syncAttempted: true,
         syncSucceeded: false,
         usedCacheFallback: hadCache,
+        force: this.force,
         reason,
         source,
         modelCountBefore,
         modelCountAfter: modelCountBefore,
+        lastSyncAtMs: Number(meta?.lastSyncAtMs ?? 0),
         failureMessage,
       }
     }

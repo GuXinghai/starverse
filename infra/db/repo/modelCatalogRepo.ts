@@ -385,6 +385,17 @@ export type CatalogScopedSnapshotWriteInput = Readonly<{
   pruneOldSnapshots?: boolean
 }>
 
+export type CatalogScopedMetaErrorInput = Readonly<{
+  providerKey: string
+  catalogScopeKey: string
+  baseUrl: string
+  dataSource: 'models_user_primary' | 'models_fallback' | 'mixed'
+  lastErrorCode: string
+  lastErrorMessage: string
+  atMs: number
+  schemaVersion: number
+}>
+
 export type CatalogScopedSnapshotWriteResult = Readonly<{
   providerKey: string
   catalogScopeKey: string
@@ -2067,6 +2078,40 @@ export class ModelCatalogRepo {
       throw error
     }
     return { ok: true, meta, modelCount: rows.length }
+  }
+
+  updateScopedMetaSyncError(input: CatalogScopedMetaErrorInput): void {
+    const providerKey = String(input.providerKey ?? '').trim()
+    const catalogScopeKey = String(input.catalogScopeKey ?? '').trim()
+    const baseUrl = String(input.baseUrl ?? '').trim()
+    const lastErrorCode = String(input.lastErrorCode ?? '').trim()
+    const lastErrorMessage = String(input.lastErrorMessage ?? '').trim()
+    const atMs = Math.floor(Number(input.atMs))
+    const schemaVersion = Math.floor(Number(input.schemaVersion))
+    if (!providerKey || !catalogScopeKey || !baseUrl || !lastErrorCode || !Number.isFinite(atMs) || !Number.isFinite(schemaVersion)) {
+      throw new Error('updateScopedMetaSyncError requires providerKey/catalogScopeKey/baseUrl/errorCode/atMs/schemaVersion')
+    }
+    const existingMeta = this.getScopedMeta(providerKey, catalogScopeKey)
+    this.upsertScopedMeta({
+      providerKey,
+      catalogScopeKey,
+      baseUrl,
+      dataSource: input.dataSource,
+      activeSnapshotId: existingMeta?.activeSnapshotId ?? null,
+      syncState: 'error',
+      lastSyncAtMs: existingMeta?.lastSyncAtMs ?? 0,
+      lastUsedAtMs: atMs,
+      modelCount: existingMeta?.modelCount ?? 0,
+      visibleModelCount: existingMeta?.visibleModelCount ?? 0,
+      hiddenModelCount: existingMeta?.hiddenModelCount ?? 0,
+      lastErrorCode,
+      lastErrorMessage,
+      lastValidatedAtMs: existingMeta?.lastValidatedAtMs ?? null,
+      lastRepairAttemptAtMs: existingMeta?.lastRepairAttemptAtMs ?? null,
+      repairAttemptCount: existingMeta?.repairAttemptCount ?? 0,
+      snapshotChecksum: existingMeta?.snapshotChecksum ?? null,
+      schemaVersion,
+    })
   }
 
   private selectScopedSnapshotRows(providerKey: string, catalogScopeKey: string, snapshotId: string): CatalogScopedModelRecord[] {
