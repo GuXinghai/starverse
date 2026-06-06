@@ -2268,6 +2268,33 @@ describe('ModelCatalogRepo scoped catalog foundation', () => {
     })
   })
 
+  it('updateScopedMetaSyncError marks current scope failed without replacing active snapshot', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    writeScopedSnapshot(repo, 'scope-error-preserve', 'snapshot-ok', [makeScopedModel('openai/a')])
+
+    repo.updateScopedMetaSyncError({
+      providerKey: 'openrouter',
+      catalogScopeKey: 'scope-error-preserve',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      dataSource: 'models_user_primary',
+      lastErrorCode: 'network_unreachable',
+      lastErrorMessage: '网络不可达',
+      atMs: Date.now(),
+      schemaVersion: 1,
+    })
+
+    expect(repo.getScopedMeta('openrouter', 'scope-error-preserve')).toMatchObject({
+      activeSnapshotId: 'snapshot-ok',
+      syncState: 'error',
+      modelCount: 1,
+      lastErrorCode: 'network_unreachable',
+      lastErrorMessage: '网络不可达',
+    })
+    expect(scopedModelIds(repo, 'scope-error-preserve')).toEqual(['openai/a'])
+  })
+
   it('writeScopedSnapshot validates row counts before replacing active snapshot', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)

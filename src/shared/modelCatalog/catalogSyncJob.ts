@@ -128,13 +128,50 @@ export type CatalogCoreSyncWriterInput = Readonly<{
   meta: CatalogCoreMetaUpsertInput
 }>
 
+export type CatalogScopedModelUpsertInput = Readonly<{
+  modelId: string
+  modelKey: string
+  canonicalSlug?: string | null
+  displayName: string
+  description?: string | null
+  vendor?: string | null
+  family?: string | null
+  status: 'active' | 'deprecated' | 'archived'
+  visibility: 'visible' | 'hidden'
+  contextLength?: number | null
+  maxOutputTokens?: number | null
+  inputModalitiesJson?: string
+  outputModalitiesJson?: string
+  supportedParametersJson?: string
+  capabilitiesJson?: string
+  pricingJson?: string | null
+  rawJson?: string | null
+  createdAtSec?: number | null
+  firstSeenAtMs: number
+  lastSeenAtMs: number
+  syncedAtMs: number
+}>
+
+export type CatalogScopedSnapshotWriterInput = Readonly<{
+  providerKey: string
+  catalogScopeKey?: string
+  baseUrl: string
+  dataSource: 'models_user_primary' | 'models_fallback' | 'mixed'
+  snapshotId: string
+  snapshotChecksum?: string | null
+  models: CatalogScopedModelUpsertInput[]
+  syncedAtMs: number
+  schemaVersion: number
+}>
+
 export type CatalogSyncWriter = Readonly<{
   syncSnapshot: (input: CatalogSyncWriterInput) => Promise<void> | void
   syncCoreSnapshot?: (input: CatalogCoreSyncWriterInput) => Promise<void> | void
+  writeScopedSnapshot?: (input: CatalogScopedSnapshotWriterInput) => Promise<void> | void
 }>
 
 export type CatalogSyncJobResult =
-  | Readonly<{ ok: true; snapshotId: string; modelCount: number }>
+  | Readonly<{ ok: true; snapshotId: string; modelCount: number; dataSource: CatalogCoreMetaUpsertInput['dataSource']; baseUrl: string }>
   | Readonly<{ ok: false; skipped: true; reason: 'missing_api_key' }>
 
 type CatalogSyncLogger = Pick<Console, 'info' | 'warn' | 'error'>
@@ -142,6 +179,7 @@ const CATALOG_SYNC_STAGE = {
   FETCH_MODELS: 'fetch_models',
   FETCH_PROVIDERS: 'fetch_providers',
   PROBE_COUNT: 'probe_count',
+  WRITE_SCOPED: 'write_scoped',
   WRITE_LEGACY: 'write_legacy',
   WRITE_CORE: 'write_core',
   VALIDATE_META: 'validate_meta',
@@ -322,6 +360,33 @@ function toCoreModelRow(model: CatalogModel): CatalogCoreModelUpsertInput {
   }
 }
 
+function toScopedModelRow(model: CatalogModel): CatalogScopedModelUpsertInput {
+  const core = toCoreModelRow(model)
+  return {
+    modelId: core.modelId,
+    modelKey: core.modelKey,
+    canonicalSlug: core.canonicalSlug,
+    displayName: core.displayName,
+    description: core.description,
+    vendor: core.vendor,
+    family: core.family,
+    status: core.status,
+    visibility: core.visibility,
+    contextLength: core.contextLength,
+    maxOutputTokens: core.maxOutputTokens,
+    inputModalitiesJson: core.inputModalitiesJson,
+    outputModalitiesJson: core.outputModalitiesJson,
+    supportedParametersJson: core.supportedParametersJson,
+    capabilitiesJson: core.capabilitiesJson,
+    pricingJson: core.pricingJson,
+    rawJson: core.rawJson,
+    createdAtSec: core.createdAtSec,
+    firstSeenAtMs: core.firstSeenAtMs,
+    lastSeenAtMs: core.lastSeenAtMs,
+    syncedAtMs: core.syncedAtMs,
+  }
+}
+
 function toCoreTagRows(providerKey: string, modelId: string, tags: ReadonlyArray<CatalogModelTag>): CatalogCoreTagUpsertInput[] {
   return tags.map((tag) => ({
     providerKey,
@@ -484,6 +549,32 @@ export async function syncOpenRouterModelCatalog(options: Readonly<{
     }
 
     const nowMs = Date.now()
+    const dataSource = resolveDataSource(modelResult.meta)
+    if (options.writer.writeScopedSnapshot) {
+      const scopedStageStart = Date.now()
+      const scopedRows = modelResult.models.map(toScopedModelRow)
+      try {
+        await options.writer.writeScopedSnapshot({
+          providerKey: PROVIDERS.OPENROUTER,
+          baseUrl,
+          dataSource,
+          snapshotId,
+          snapshotChecksum: snapshotId,
+          models: scopedRows,
+          syncedAtMs: nowMs,
+          schemaVersion: CATALOG_META_SCHEMA_VERSION,
+        })
+        logger.info('[CatalogSyncJob] stage end', {
+          stage: CATALOG_SYNC_STAGE.WRITE_SCOPED,
+          durationMs: Date.now() - scopedStageStart,
+          scopedModelRows: scopedRows.length,
+          dataSource,
+        })
+      } catch (error) {
+        throw toStageError(CATALOG_SYNC_STAGE.WRITE_SCOPED, error)
+      }
+    }
+
     const legacyRows = modelResult.models.map(toLegacyCatalogRow)
     const legacyStageStart = Date.now()
     try {
@@ -532,7 +623,7 @@ export async function syncOpenRouterModelCatalog(options: Readonly<{
           meta: {
             providerKey,
             schemaVersion: CATALOG_META_SCHEMA_VERSION,
-            dataSource: resolveDataSource(modelResult.meta),
+            dataSource,
             baseUrl,
             snapshotId,
             modelCount: coreModels.length,
@@ -576,7 +667,7 @@ export async function syncOpenRouterModelCatalog(options: Readonly<{
       durationMs: Date.now() - startedAtMs,
       snapshotId,
       providerKey: PROVIDERS.OPENROUTER,
-      dataSource: resolveDataSource(modelResult.meta),
+      dataSource,
       modelCount: modelResult.models.length,
       legacyModelRows: legacyRows.length,
       coreProviderRows: coreStats?.coreProviderRows ?? 0,
@@ -586,7 +677,7 @@ export async function syncOpenRouterModelCatalog(options: Readonly<{
       ftsBuildStatus: coreStats?.ftsBuildStatus ?? CATALOG_FTS_NOT_APPLICABLE,
     })
 
-    return { ok: true, snapshotId, modelCount: modelResult.models.length }
+    return { ok: true, snapshotId, modelCount: modelResult.models.length, dataSource, baseUrl }
   } catch (error) {
     const stage = error instanceof CatalogSyncStageError ? error.stage : CATALOG_SYNC_STAGE.UNKNOWN
     logger.error('[CatalogSyncJob] sync end', {

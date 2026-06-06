@@ -151,6 +151,112 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
         return rt.modelCatalogRepo.getCoreMeta(providerKey)
     })
 
+  register('modelCatalog.updateMetaSyncError', (raw) => {
+        const providerKey = raw?.providerKey
+        const lastErrorCode = raw?.lastErrorCode
+        const lastErrorMessage = raw?.lastErrorMessage
+        if (!providerKey || typeof providerKey !== 'string') {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.updateMetaSyncError requires providerKey')
+        }
+        if (!lastErrorCode || typeof lastErrorCode !== 'string') {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.updateMetaSyncError requires lastErrorCode')
+        }
+        rt.modelCatalogRepo.updateMetaSyncError(
+          providerKey,
+          'error',
+          lastErrorCode,
+          typeof lastErrorMessage === 'string' ? lastErrorMessage : '',
+        )
+        return { ok: true }
+    })
+
+  register('modelCatalog.getScopedMeta', (raw) => {
+        const providerKey = String(raw?.providerKey ?? '').trim()
+        const catalogScopeKey = String(raw?.catalogScopeKey ?? '').trim()
+        if (!providerKey || !catalogScopeKey) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.getScopedMeta requires providerKey/catalogScopeKey')
+        }
+        return rt.modelCatalogRepo.getScopedMeta(providerKey, catalogScopeKey)
+    })
+
+  register('modelCatalog.writeScopedSnapshot', (raw) => {
+        if (raw && typeof raw === 'object' && 'apiKey' in raw) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.writeScopedSnapshot must not receive apiKey')
+        }
+        const providerKey = String(raw?.providerKey ?? '').trim()
+        const catalogScopeKey = String(raw?.catalogScopeKey ?? '').trim()
+        const baseUrl = String(raw?.baseUrl ?? '').trim()
+        const dataSource = String(raw?.dataSource ?? '').trim()
+        const snapshotId = String(raw?.snapshotId ?? '').trim()
+        const syncedAtMs = Number(raw?.syncedAtMs)
+        const schemaVersion = Number(raw?.schemaVersion)
+        const models = Array.isArray(raw?.models) ? raw.models : null
+        if (!providerKey || !catalogScopeKey || !baseUrl || !snapshotId) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.writeScopedSnapshot requires providerKey/catalogScopeKey/baseUrl/snapshotId')
+        }
+        if (dataSource !== 'models_user_primary' && dataSource !== 'models_fallback' && dataSource !== 'mixed') {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.writeScopedSnapshot requires valid dataSource')
+        }
+        if (!Number.isFinite(syncedAtMs) || !Number.isFinite(schemaVersion) || !models) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.writeScopedSnapshot requires syncedAtMs/schemaVersion/models')
+        }
+        return rt.modelCatalogRepo.writeScopedSnapshot({
+          providerKey,
+          catalogScopeKey,
+          baseUrl,
+          dataSource,
+          snapshotId,
+          snapshotChecksum: typeof raw?.snapshotChecksum === 'string' ? raw.snapshotChecksum : null,
+          models,
+          syncedAtMs,
+          schemaVersion,
+          pruneOldSnapshots: raw?.pruneOldSnapshots === true,
+        })
+    })
+
+  register('modelCatalog.validateActiveScopedSnapshot', (raw) => {
+        const providerKey = String(raw?.providerKey ?? '').trim()
+        const catalogScopeKey = String(raw?.catalogScopeKey ?? '').trim()
+        if (!providerKey || !catalogScopeKey) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.validateActiveScopedSnapshot requires providerKey/catalogScopeKey')
+        }
+        return rt.modelCatalogRepo.validateActiveScopedSnapshot(providerKey, catalogScopeKey)
+    })
+
+  register('modelCatalog.updateScopedMetaSyncError', (raw) => {
+        if (raw && typeof raw === 'object' && 'apiKey' in raw) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.updateScopedMetaSyncError must not receive apiKey')
+        }
+        const providerKey = String(raw?.providerKey ?? '').trim()
+        const catalogScopeKey = String(raw?.catalogScopeKey ?? '').trim()
+        const baseUrl = String(raw?.baseUrl ?? '').trim()
+        const dataSource = String(raw?.dataSource ?? '').trim()
+        const lastErrorCode = String(raw?.lastErrorCode ?? '').trim()
+        const lastErrorMessage = String(raw?.lastErrorMessage ?? '').trim()
+        const atMs = Number(raw?.atMs)
+        const schemaVersion = Number(raw?.schemaVersion)
+        if (!providerKey || !catalogScopeKey || !baseUrl || !lastErrorCode) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.updateScopedMetaSyncError requires providerKey/catalogScopeKey/baseUrl/lastErrorCode')
+        }
+        if (dataSource !== 'models_user_primary' && dataSource !== 'models_fallback' && dataSource !== 'mixed') {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.updateScopedMetaSyncError requires valid dataSource')
+        }
+        if (!Number.isFinite(atMs) || !Number.isFinite(schemaVersion)) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.updateScopedMetaSyncError requires atMs/schemaVersion')
+        }
+        rt.modelCatalogRepo.updateScopedMetaSyncError({
+          providerKey,
+          catalogScopeKey,
+          baseUrl,
+          dataSource,
+          lastErrorCode,
+          lastErrorMessage,
+          atMs,
+          schemaVersion,
+        })
+        return { ok: true }
+    })
+
   register('modelCatalog.getModelDetail', (raw) => {
         const providerKey = String(raw?.providerKey ?? '').trim()
         const modelId = String(raw?.modelId ?? '').trim()
