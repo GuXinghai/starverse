@@ -30,6 +30,9 @@ Starverse repair policy:
 - Do not refactor tests unless explicitly requested.
 - Do not continue style/highlight work when the task is about state flow, persistence, or runtime behavior.
 
+External runtime / large local workdir rule:
+- Do not place large runtime, engine, plugin, model, extracted package, diagnostic profile, CPU profile, netlog, or generated artifact directories under the Vite watch scope unless they are explicitly ignored by both Git and Vite. Prefer repo-external runtime workdirs. If a local runtime workdir must live under the repo, update `.gitignore` and `vite.config.ts` `server.watch.ignored` together. See `docs/maintenance/local-runtime-workdirs.md`.
+
 ## better-sqlite3 ABI rebuild policy
 
 Why this policy exists:
