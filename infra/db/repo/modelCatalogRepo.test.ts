@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import BetterSqlite3 from 'better-sqlite3'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { ModelCatalogRepo } from './modelCatalogRepo'
+import {
+  CatalogScopedSnapshotValidationError,
+  ModelCatalogRepo,
+  type CatalogScopedModelUpsertInput,
+} from './modelCatalogRepo'
 
 function loadSchema(db: BetterSqlite3.Database) {
   const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
@@ -2012,5 +2016,522 @@ describe('ModelCatalogRepo.endpointMeta', () => {
     const beta = repo.listEndpointMetaByModel('openrouter', 'https://openrouter.ai/api/v1', 'openai/beta')
     expect(alpha.map((row) => row.endpointKey)).toEqual(['ok'])
     expect(beta).toEqual([])
+  })
+})
+
+describe('ModelCatalogRepo scoped catalog foundation', () => {
+  function seedScopedMeta(repo: ModelCatalogRepo, scope: string, snapshotId: string, providerKey = 'openrouter') {
+    const nowMs = Date.now()
+    repo.upsertScopedMeta({
+      providerKey,
+      catalogScopeKey: scope,
+      baseUrl: 'https://openrouter.ai/api/v1',
+      dataSource: 'models_user_primary',
+      activeSnapshotId: snapshotId,
+      syncState: 'ok',
+      lastSyncAtMs: nowMs,
+      lastUsedAtMs: nowMs,
+      modelCount: 1,
+      visibleModelCount: 1,
+      hiddenModelCount: 0,
+      snapshotChecksum: `checksum-${scope}`,
+      schemaVersion: 1,
+    })
+  }
+
+  function makeScopedModel(modelId: string, overrides: Partial<CatalogScopedModelUpsertInput> = {}): CatalogScopedModelUpsertInput {
+    const nowMs = Date.now()
+    return {
+      modelId,
+      modelKey: overrides.modelKey ?? `openrouter::${modelId}`,
+      canonicalSlug: overrides.canonicalSlug ?? modelId,
+      displayName: overrides.displayName ?? modelId,
+      description: overrides.description ?? `Description for ${modelId}`,
+      vendor: overrides.vendor ?? modelId.split('/')[0] ?? 'vendor',
+      family: overrides.family ?? 'family',
+      status: overrides.status ?? 'active',
+      visibility: overrides.visibility ?? 'visible',
+      contextLength: overrides.contextLength ?? 8192,
+      maxOutputTokens: overrides.maxOutputTokens ?? 4096,
+      inputModalitiesJson: overrides.inputModalitiesJson ?? '["text"]',
+      outputModalitiesJson: overrides.outputModalitiesJson ?? '["text"]',
+      supportedParametersJson: overrides.supportedParametersJson ?? '["temperature"]',
+      capabilitiesJson: overrides.capabilitiesJson ?? '{"reasoning":false}',
+      pricingJson: overrides.pricingJson ?? '{"prompt":"0"}',
+      rawJson: overrides.rawJson ?? '{"source":"fixture"}',
+      createdAtSec: overrides.createdAtSec ?? 1700000000,
+      firstSeenAtMs: overrides.firstSeenAtMs ?? nowMs,
+      lastSeenAtMs: overrides.lastSeenAtMs ?? nowMs,
+      syncedAtMs: overrides.syncedAtMs ?? nowMs,
+    }
+  }
+
+  function seedScopedModel(repo: ModelCatalogRepo, scope: string, snapshotId: string, modelId: string, providerKey = 'openrouter') {
+    repo.insertScopedModelRows({
+      providerKey,
+      catalogScopeKey: scope,
+      snapshotId,
+      models: [
+        makeScopedModel(modelId, { modelKey: `${providerKey}::${modelId}` }),
+      ],
+    })
+  }
+
+  function writeScopedSnapshot(
+    repo: ModelCatalogRepo,
+    scope: string,
+    snapshotId: string,
+    models: readonly CatalogScopedModelUpsertInput[],
+    providerKey = 'openrouter'
+  ) {
+    return repo.writeScopedSnapshot({
+      providerKey,
+      catalogScopeKey: scope,
+      baseUrl: 'https://openrouter.ai/api/v1',
+      dataSource: 'models_user_primary',
+      snapshotId,
+      snapshotChecksum: `checksum-${snapshotId}`,
+      models,
+      syncedAtMs: Date.now(),
+      schemaVersion: 1,
+    })
+  }
+
+  function scopedModelIds(repo: ModelCatalogRepo, scope: string, providerKey = 'openrouter') {
+    return repo.queryScopedActiveModels({ providerKey, catalogScopeKey: scope }).items.map((row) => row.modelId)
+  }
+
+  function countScopedRows(db: BetterSqlite3.Database, scope: string, snapshotId: string) {
+    const row = db.prepare(`
+      SELECT COUNT(1) AS count
+      FROM catalog_models
+      WHERE provider_key = 'openrouter'
+        AND catalog_scope_key = @scope
+        AND snapshot_id = @snapshotId
+    `).get({ scope, snapshotId }) as { count?: number } | undefined
+    return Number(row?.count ?? 0)
+  }
+
+  function seedLegacyOnlyModel(db: BetterSqlite3.Database) {
+    const nowMs = Date.now()
+    db.prepare("INSERT OR IGNORE INTO providers(provider_key, display_name, updated_at_ms) VALUES('openrouter', 'OpenRouter', @nowMs)").run({ nowMs })
+    db.prepare(`
+      INSERT INTO model_catalog(model_id, router_source, vendor, name, last_seen_snapshot_id, created_at_ms, updated_at_ms)
+      VALUES('legacy/only-model', 'openrouter', 'legacy', 'Legacy Only', 'legacy-snapshot', @nowMs, @nowMs)
+    `).run({ nowMs })
+    db.prepare(`
+      INSERT INTO models(provider_key, model_id, model_key, display_name, first_seen_at_ms, last_seen_at_ms, synced_at_ms)
+      VALUES('openrouter', 'legacy/only-model', 'openrouter::legacy/only-model', 'Legacy Only', @nowMs, @nowMs, @nowMs)
+    `).run({ nowMs })
+  }
+
+  it('writes and reads scoped meta', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+
+    seedScopedMeta(repo, 'scope-a', 'snapshot-a')
+
+    expect(repo.getScopedMeta('openrouter', 'scope-a')).toMatchObject({
+      providerKey: 'openrouter',
+      catalogScopeKey: 'scope-a',
+      activeSnapshotId: 'snapshot-a',
+      syncState: 'ok',
+      modelCount: 1,
+    })
+  })
+
+  it('writes scoped model rows and queries only the active snapshot for that scope', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+
+    seedScopedMeta(repo, 'scope-a', 'snapshot-a')
+    seedScopedMeta(repo, 'scope-b', 'snapshot-b')
+    seedScopedModel(repo, 'scope-a', 'snapshot-a', 'openai/a')
+    seedScopedModel(repo, 'scope-a', 'snapshot-old', 'openai/old')
+    seedScopedModel(repo, 'scope-b', 'snapshot-b', 'openai/b')
+
+    expect(repo.queryScopedActiveModels({ providerKey: 'openrouter', catalogScopeKey: 'scope-a' }).items.map((row) => row.modelId)).toEqual(['openai/a'])
+    expect(repo.queryScopedActiveModels({ providerKey: 'openrouter', catalogScopeKey: 'scope-b' }).items.map((row) => row.modelId)).toEqual(['openai/b'])
+  })
+
+  it('does not persist raw API keys in scoped tables', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    const rawApiKey = 'sk-phase1-repo-secret'
+
+    seedScopedMeta(repo, 'scope-without-raw-key', 'snapshot-a')
+    seedScopedModel(repo, 'scope-without-raw-key', 'snapshot-a', 'openai/a')
+
+    const persisted = JSON.stringify({
+      meta: db.prepare('SELECT * FROM catalog_scope_meta').all(),
+      models: db.prepare('SELECT * FROM catalog_models').all(),
+    })
+    expect(persisted).not.toContain(rawApiKey)
+  })
+
+  it('clearScopedCatalog only clears the requested scope', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+
+    seedScopedMeta(repo, 'scope-a', 'snapshot-a')
+    seedScopedMeta(repo, 'scope-b', 'snapshot-b')
+    seedScopedModel(repo, 'scope-a', 'snapshot-a', 'openai/a')
+    seedScopedModel(repo, 'scope-b', 'snapshot-b', 'openai/b')
+
+    const result = repo.clearScopedCatalog('openrouter', 'scope-a')
+
+    expect(result.deleted.catalog_models).toBe(1)
+    expect(result.deleted.catalog_scope_meta).toBe(1)
+    expect(repo.getScopedMeta('openrouter', 'scope-a')).toBeNull()
+    expect(repo.getScopedMeta('openrouter', 'scope-b')).not.toBeNull()
+    expect(repo.queryScopedActiveModels({ providerKey: 'openrouter', catalogScopeKey: 'scope-b' }).items.map((row) => row.modelId)).toEqual(['openai/b'])
+  })
+
+  it('clearAllProviderScopedCatalog clears only that provider scoped catalog', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+
+    seedScopedMeta(repo, 'scope-openrouter', 'snapshot-openrouter', 'openrouter')
+    seedScopedMeta(repo, 'scope-other', 'snapshot-other', 'other-provider')
+    seedScopedModel(repo, 'scope-openrouter', 'snapshot-openrouter', 'openai/a', 'openrouter')
+    seedScopedModel(repo, 'scope-other', 'snapshot-other', 'other/a', 'other-provider')
+
+    repo.clearAllProviderScopedCatalog('openrouter')
+
+    expect(repo.getScopedMeta('openrouter', 'scope-openrouter')).toBeNull()
+    expect(repo.getScopedMeta('other-provider', 'scope-other')).not.toBeNull()
+    expect(repo.queryScopedActiveModels({ providerKey: 'other-provider', catalogScopeKey: 'scope-other' }).items).toHaveLength(1)
+  })
+
+  it('writeScopedSnapshot writes rows and updates activeSnapshotId', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+
+    const result = writeScopedSnapshot(repo, 'scope-a', 'snapshot-a', [
+      makeScopedModel('openai/a', { displayName: 'Alpha' }),
+      makeScopedModel('openai/hidden', { displayName: 'Hidden', visibility: 'hidden' }),
+    ])
+
+    expect(result).toMatchObject({
+      activeSnapshotId: 'snapshot-a',
+      modelCount: 2,
+      visibleModelCount: 1,
+      hiddenModelCount: 1,
+    })
+    expect(repo.getScopedMeta('openrouter', 'scope-a')).toMatchObject({
+      activeSnapshotId: 'snapshot-a',
+      syncState: 'ok',
+      modelCount: 2,
+      visibleModelCount: 1,
+      hiddenModelCount: 1,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+    })
+    expect(scopedModelIds(repo, 'scope-a')).toEqual(['openai/a'])
+  })
+
+  it('writeScopedSnapshot success clears lastErrorCode and lastErrorMessage', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+
+    repo.upsertScopedMeta({
+      providerKey: 'openrouter',
+      catalogScopeKey: 'scope-error',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      dataSource: 'models_user_primary',
+      activeSnapshotId: null,
+      syncState: 'error',
+      lastSyncAtMs: 0,
+      lastUsedAtMs: 1,
+      modelCount: 0,
+      visibleModelCount: 0,
+      hiddenModelCount: 0,
+      lastErrorCode: 'cache_corrupted',
+      lastErrorMessage: 'previous failure',
+      schemaVersion: 1,
+    })
+
+    writeScopedSnapshot(repo, 'scope-error', 'snapshot-ok', [makeScopedModel('openai/a')])
+
+    expect(repo.getScopedMeta('openrouter', 'scope-error')).toMatchObject({
+      syncState: 'ok',
+      activeSnapshotId: 'snapshot-ok',
+      lastErrorCode: null,
+      lastErrorMessage: null,
+    })
+  })
+
+  it('writeScopedSnapshot validates row counts before replacing active snapshot', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    writeScopedSnapshot(repo, 'scope-a', 'snapshot-old', [makeScopedModel('openai/old')])
+
+    expect(() => writeScopedSnapshot(repo, 'scope-a', 'snapshot-new', [
+      makeScopedModel('openai/dupe'),
+      makeScopedModel('openai/dupe', { displayName: 'Duplicate' }),
+    ])).toThrow(CatalogScopedSnapshotValidationError)
+
+    expect(repo.getScopedMeta('openrouter', 'scope-a')?.activeSnapshotId).toBe('snapshot-old')
+    expect(countScopedRows(db, 'scope-a', 'snapshot-new')).toBe(0)
+    expect(scopedModelIds(repo, 'scope-a')).toEqual(['openai/old'])
+  })
+
+  it('writeScopedSnapshot DB failure rolls back all new rows', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    writeScopedSnapshot(repo, 'scope-a', 'snapshot-old', [makeScopedModel('openai/old')])
+
+    expect(() => repo.writeScopedSnapshot({
+      providerKey: 'openrouter',
+      catalogScopeKey: 'scope-a',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      dataSource: 'models_user_primary',
+      snapshotId: 'snapshot-new',
+      snapshotChecksum: 'checksum-new',
+      models: [
+        makeScopedModel('openai/valid'),
+        makeScopedModel('openai/invalid-status', { status: 'invalid' as CatalogScopedModelUpsertInput['status'] }),
+      ],
+      syncedAtMs: Date.now(),
+      schemaVersion: 1,
+    })).toThrow()
+
+    expect(repo.getScopedMeta('openrouter', 'scope-a')?.activeSnapshotId).toBe('snapshot-old')
+    expect(countScopedRows(db, 'scope-a', 'snapshot-new')).toBe(0)
+    expect(scopedModelIds(repo, 'scope-a')).toEqual(['openai/old'])
+  })
+
+  it('writeScopedSnapshot allows explicit empty successful snapshot', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+
+    writeScopedSnapshot(repo, 'scope-empty', 'snapshot-empty', [])
+
+    expect(repo.getScopedMeta('openrouter', 'scope-empty')).toMatchObject({
+      activeSnapshotId: 'snapshot-empty',
+      syncState: 'ok',
+      modelCount: 0,
+      visibleModelCount: 0,
+      hiddenModelCount: 0,
+    })
+    expect(repo.validateActiveScopedSnapshot('openrouter', 'scope-empty')).toMatchObject({ ok: true, modelCount: 0 })
+    expect(scopedModelIds(repo, 'scope-empty')).toEqual([])
+  })
+
+  it('queryScopedActiveModels keeps different credential scopes isolated', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+
+    writeScopedSnapshot(repo, 'scope-api-key-a', 'snapshot-a', [makeScopedModel('a/model')])
+    writeScopedSnapshot(repo, 'scope-api-key-b', 'snapshot-b', [makeScopedModel('b/model')])
+
+    expect(scopedModelIds(repo, 'scope-api-key-a')).toEqual(['a/model'])
+    expect(scopedModelIds(repo, 'scope-api-key-b')).toEqual(['b/model'])
+    expect(repo.queryScopedActiveModels({ providerKey: 'openrouter', catalogScopeKey: 'scope-unknown' }).items).toEqual([])
+  })
+
+  it('queryScopedActiveModels supports minimum search sorting and cursor pagination', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+
+    writeScopedSnapshot(repo, 'scope-a', 'snapshot-a', [
+      makeScopedModel('vendor/bravo', { displayName: 'Bravo', contextLength: 4096 }),
+      makeScopedModel('vendor/alpha', { displayName: 'Alpha', contextLength: 32768 }),
+      makeScopedModel('vendor/charlie', { displayName: 'Charlie', contextLength: 8192 }),
+    ])
+
+    expect(repo.queryScopedActiveModels({ providerKey: 'openrouter', catalogScopeKey: 'scope-a', searchText: 'alp' }).items.map((row) => row.modelId)).toEqual(['vendor/alpha'])
+    const firstPage = repo.queryScopedActiveModels({ providerKey: 'openrouter', catalogScopeKey: 'scope-a', sortBy: 'name', limit: 2 })
+    expect(firstPage.items.map((row) => row.modelId)).toEqual(['vendor/alpha', 'vendor/bravo'])
+    expect(firstPage.nextCursor).not.toBeNull()
+    const secondPage = repo.queryScopedActiveModels({
+      providerKey: 'openrouter',
+      catalogScopeKey: 'scope-a',
+      sortBy: 'name',
+      limit: 2,
+      cursor: firstPage.nextCursor,
+    })
+    expect(secondPage.items.map((row) => row.modelId)).toEqual(['vendor/charlie'])
+  })
+
+  it('scoped query does not read legacy-only models', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    seedLegacyOnlyModel(db)
+    writeScopedSnapshot(repo, 'scope-a', 'snapshot-a', [makeScopedModel('scoped/only-model')])
+
+    expect(scopedModelIds(repo, 'scope-a')).toEqual(['scoped/only-model'])
+    expect(scopedModelIds(repo, 'scope-a')).not.toContain('legacy/only-model')
+  })
+
+  it('scoped query does not fallback to legacy tables when scoped active snapshot is empty or missing', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    seedLegacyOnlyModel(db)
+
+    expect(repo.queryScopedActiveModels({ providerKey: 'openrouter', catalogScopeKey: 'scope-missing' }).items).toEqual([])
+    writeScopedSnapshot(repo, 'scope-empty', 'snapshot-empty', [])
+    expect(repo.queryScopedActiveModels({ providerKey: 'openrouter', catalogScopeKey: 'scope-empty' }).items).toEqual([])
+  })
+
+  it('validateActiveScopedSnapshot reports cache_corrupted when active rows are missing for non-empty meta', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    seedScopedMeta(repo, 'scope-corrupt', 'missing-snapshot')
+
+    expect(repo.validateActiveScopedSnapshot('openrouter', 'scope-corrupt')).toMatchObject({
+      ok: false,
+      code: 'cache_corrupted',
+    })
+    expect(() => repo.queryScopedActiveModels({ providerKey: 'openrouter', catalogScopeKey: 'scope-corrupt' })).toThrow(CatalogScopedSnapshotValidationError)
+  })
+
+  it('validateActiveScopedSnapshot reports cache_corrupted for invalid JSON rows', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    seedScopedMeta(repo, 'scope-corrupt-json', 'snapshot-corrupt')
+    seedScopedModel(repo, 'scope-corrupt-json', 'snapshot-corrupt', 'openai/a')
+    db.prepare(`
+      UPDATE catalog_models
+      SET capabilities_json = '{bad json'
+      WHERE provider_key = 'openrouter'
+        AND catalog_scope_key = 'scope-corrupt-json'
+    `).run()
+
+    expect(repo.validateActiveScopedSnapshot('openrouter', 'scope-corrupt-json')).toMatchObject({
+      ok: false,
+      code: 'cache_corrupted',
+    })
+  })
+
+  it('validateActiveScopedSnapshot reports cache_corrupted for malformed critical rows', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    seedScopedMeta(repo, 'scope-corrupt-row', 'snapshot-corrupt')
+    seedScopedModel(repo, 'scope-corrupt-row', 'snapshot-corrupt', 'openai/a')
+    db.exec('PRAGMA ignore_check_constraints = ON')
+    db.prepare(`
+      UPDATE catalog_models
+      SET display_name = ''
+      WHERE provider_key = 'openrouter'
+        AND catalog_scope_key = 'scope-corrupt-row'
+    `).run()
+    db.exec('PRAGMA ignore_check_constraints = OFF')
+
+    expect(repo.validateActiveScopedSnapshot('openrouter', 'scope-corrupt-row')).toMatchObject({
+      ok: false,
+      code: 'cache_corrupted',
+    })
+  })
+
+  it('writeScopedSnapshot does not persist raw API keys or derive reversible scope contents', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    const rawApiKey = 'sk-phase2-writer-secret'
+    const catalogScopeKey = 'scope-without-api-key-text'
+
+    writeScopedSnapshot(repo, catalogScopeKey, 'snapshot-private', [makeScopedModel('openai/private')])
+
+    const persisted = JSON.stringify({
+      meta: db.prepare('SELECT * FROM catalog_scope_meta').all(),
+      models: db.prepare('SELECT * FROM catalog_models').all(),
+    })
+    expect(persisted).not.toContain(rawApiKey)
+    expect(catalogScopeKey).not.toContain(rawApiKey)
+  })
+})
+
+describe('ModelCatalogRepo deprecated OpenRouter catalog cache cleanup', () => {
+  function count(db: BetterSqlite3.Database, sql: string): number {
+    const row = db.prepare(sql).get() as { count?: number } | undefined
+    return Number(row?.count ?? 0)
+  }
+
+  function seedDeprecatedCatalogAndCoreSentinels(db: BetterSqlite3.Database) {
+    const nowMs = Date.now()
+    db.prepare("INSERT INTO project(id, name, created_at, updated_at) VALUES('project-1', 'Project', @nowMs, @nowMs)").run({ nowMs })
+    db.prepare("INSERT INTO settings_kv(key, value_json, created_at_ms, updated_at_ms) VALUES('setting-1', '{\"ok\":true}', @nowMs, @nowMs)").run({ nowMs })
+    db.prepare(`
+      INSERT INTO usage_log(id, provider, model, tokens_input, tokens_output, duration_ms, timestamp)
+      VALUES('usage-1', 'openrouter', 'openai/a', 1, 2, 3, @nowMs)
+    `).run({ nowMs })
+    db.prepare(`
+      INSERT INTO model_favorites(scope_type, scope_id, provider_key, model_id, model_key, sort_rank, created_at_ms, updated_at_ms)
+      VALUES('global', '', 'openrouter', 'openai/a', 'openrouter::openai/a', 0, @nowMs, @nowMs)
+    `).run({ nowMs })
+    db.prepare(`
+      INSERT INTO model_recents(scope_type, scope_id, provider_key, model_id, model_key, last_used_at_ms, use_count, created_at_ms, updated_at_ms)
+      VALUES('global', '', 'openrouter', 'openai/a', 'openrouter::openai/a', @nowMs, 1, @nowMs, @nowMs)
+    `).run({ nowMs })
+
+    db.prepare(`
+      INSERT INTO model_catalog(model_id, router_source, vendor, name, last_seen_snapshot_id, created_at_ms, updated_at_ms)
+      VALUES('openai/a', 'openrouter', 'openai', 'A', 'legacy-snapshot', @nowMs, @nowMs)
+    `).run({ nowMs })
+    db.prepare("INSERT INTO providers(provider_key, display_name, updated_at_ms) VALUES('openrouter', 'OpenRouter', @nowMs)").run({ nowMs })
+    db.prepare(`
+      INSERT INTO models(provider_key, model_id, model_key, display_name, first_seen_at_ms, last_seen_at_ms, synced_at_ms)
+      VALUES('openrouter', 'openai/a', 'openrouter::openai/a', 'A', @nowMs, @nowMs, @nowMs)
+    `).run({ nowMs })
+    db.prepare(`
+      INSERT INTO model_tags(provider_key, model_id, tag_key, tag_label, tag_type, confidence, source, updated_at_ms)
+      VALUES('openrouter', 'openai/a', 'tag-a', 'Tag A', 'custom', 1, 'manual', @nowMs)
+    `).run({ nowMs })
+    db.prepare(`
+      INSERT INTO catalog_meta(provider_key, schema_version, data_source, base_url, snapshot_id, last_sync_at_ms, ttl_seconds, sync_state)
+      VALUES('openrouter', 1, 'models_user_primary', 'https://openrouter.ai/api/v1', 'legacy-snapshot', @nowMs, 3600, 'ok')
+    `).run({ nowMs })
+    db.prepare(`
+      INSERT INTO endpoint_meta(provider_key, base_url, model_id, endpoint_key, fetched_at_ms, updated_at_ms)
+      VALUES('openrouter', 'https://openrouter.ai/api/v1', 'openai/a', 'endpoint-a', @nowMs, @nowMs)
+    `).run({ nowMs })
+    db.prepare(`
+      INSERT INTO reasoning_model_index(model_id, name, status, last_synced_snapshot, created_at_ms, updated_at_ms)
+      VALUES('openai/a', 'A', 'visible', 'legacy-snapshot', @nowMs, @nowMs)
+    `).run({ nowMs })
+  }
+
+  it('clears only deprecated OpenRouter catalog cache tables and preserves core user data', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    seedDeprecatedCatalogAndCoreSentinels(db)
+
+    const result = repo.clearDeprecatedOpenRouterCatalogCache()
+
+    expect(result.deleted).toMatchObject({
+      endpoint_meta: 1,
+      model_tags: 1,
+      models: 1,
+      catalog_meta: 1,
+      model_catalog: 1,
+      reasoning_model_index: 1,
+      providers: 1,
+    })
+    expect(count(db, "SELECT COUNT(1) AS count FROM model_catalog WHERE router_source = 'openrouter'")).toBe(0)
+    expect(count(db, "SELECT COUNT(1) AS count FROM models WHERE provider_key = 'openrouter'")).toBe(0)
+    expect(count(db, "SELECT COUNT(1) AS count FROM project WHERE id = 'project-1'")).toBe(1)
+    expect(count(db, "SELECT COUNT(1) AS count FROM settings_kv WHERE key = 'setting-1'")).toBe(1)
+    expect(count(db, "SELECT COUNT(1) AS count FROM model_favorites WHERE model_key = 'openrouter::openai/a'")).toBe(1)
+    expect(count(db, "SELECT COUNT(1) AS count FROM model_recents WHERE model_key = 'openrouter::openai/a'")).toBe(1)
+    expect(count(db, "SELECT COUNT(1) AS count FROM usage_log WHERE id = 'usage-1'")).toBe(1)
   })
 })

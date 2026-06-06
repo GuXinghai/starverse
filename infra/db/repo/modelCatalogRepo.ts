@@ -240,6 +240,181 @@ export type CatalogCoreMetaRecord = Readonly<{
   lastErrorMessage: string | null
 }>
 
+export type CatalogScopedMetaUpsertInput = Readonly<{
+  providerKey: string
+  catalogScopeKey: string
+  baseUrl: string
+  dataSource: 'models_user_primary' | 'models_fallback' | 'mixed'
+  activeSnapshotId?: string | null
+  syncState: 'idle' | 'syncing' | 'ok' | 'error'
+  lastSyncAtMs?: number
+  lastUsedAtMs: number
+  modelCount?: number
+  visibleModelCount?: number
+  hiddenModelCount?: number
+  lastErrorCode?: string | null
+  lastErrorMessage?: string | null
+  lastValidatedAtMs?: number | null
+  lastRepairAttemptAtMs?: number | null
+  repairAttemptCount?: number
+  snapshotChecksum?: string | null
+  schemaVersion: number
+}>
+
+export type CatalogScopedMetaRecord = Readonly<{
+  providerKey: string
+  catalogScopeKey: string
+  baseUrl: string
+  dataSource: 'models_user_primary' | 'models_fallback' | 'mixed'
+  activeSnapshotId: string | null
+  syncState: 'idle' | 'syncing' | 'ok' | 'error'
+  lastSyncAtMs: number
+  lastUsedAtMs: number
+  modelCount: number
+  visibleModelCount: number
+  hiddenModelCount: number
+  lastErrorCode: string | null
+  lastErrorMessage: string | null
+  lastValidatedAtMs: number | null
+  lastRepairAttemptAtMs: number | null
+  repairAttemptCount: number
+  snapshotChecksum: string | null
+  schemaVersion: number
+}>
+
+export type CatalogScopedModelUpsertInput = Readonly<{
+  modelId: string
+  modelKey: string
+  canonicalSlug?: string | null
+  displayName: string
+  description?: string | null
+  vendor?: string | null
+  family?: string | null
+  status: 'active' | 'deprecated' | 'archived'
+  visibility: 'visible' | 'hidden'
+  contextLength?: number | null
+  maxOutputTokens?: number | null
+  inputModalitiesJson?: string
+  outputModalitiesJson?: string
+  supportedParametersJson?: string
+  capabilitiesJson?: string
+  pricingJson?: string | null
+  rawJson?: string | null
+  createdAtSec?: number | null
+  firstSeenAtMs: number
+  lastSeenAtMs: number
+  syncedAtMs: number
+}>
+
+export type CatalogScopedModelRecord = Readonly<{
+  providerKey: string
+  catalogScopeKey: string
+  snapshotId: string
+  modelId: string
+  modelKey: string
+  canonicalSlug: string | null
+  displayName: string
+  description: string | null
+  vendor: string | null
+  family: string | null
+  status: 'active' | 'deprecated' | 'archived'
+  visibility: 'visible' | 'hidden'
+  contextLength: number | null
+  maxOutputTokens: number | null
+  inputModalitiesJson: string
+  outputModalitiesJson: string
+  supportedParametersJson: string
+  capabilitiesJson: string
+  pricingJson: string | null
+  rawJson: string | null
+  createdAtSec: number | null
+  firstSeenAtMs: number
+  lastSeenAtMs: number
+  syncedAtMs: number
+}>
+
+export type CatalogScopedClearResult = Readonly<{
+  deleted: Record<string, number>
+}>
+
+export type CatalogScopedQueryCursor = Readonly<{
+  sortBy: CatalogCoreQuerySortBy
+  sortOrder: CatalogCoreQuerySortOrder
+  name?: string
+  createdAtSec?: number
+  contextLength?: number
+  maxOutputTokens?: number
+  modelKey: string
+}>
+
+export type CatalogScopedQueryInput = Readonly<{
+  providerKey: string
+  catalogScopeKey: string
+  searchText?: string
+  includeDescriptionInSearch?: boolean
+  vendors?: string[]
+  providers?: string[]
+  modelIds?: string[]
+  contextLength?: CatalogCoreQueryNumberRange
+  maxOutputTokens?: CatalogCoreQueryNumberRange
+  modalities?: CatalogCoreQueryModality[]
+  inputModalities?: CatalogCoreQueryModality[]
+  outputModalities?: CatalogCoreQueryModality[]
+  supportedParameters?: string[]
+  sortBy?: CatalogCoreQuerySortBy
+  sortOrder?: CatalogCoreQuerySortOrder
+  limit?: number
+  cursor?: CatalogScopedQueryCursor | null
+}>
+
+export type CatalogScopedQueryResult = Readonly<{
+  items: CatalogScopedModelRecord[]
+  nextCursor: CatalogScopedQueryCursor | null
+}>
+
+export type CatalogScopedSnapshotWriteInput = Readonly<{
+  providerKey: string
+  catalogScopeKey: string
+  baseUrl: string
+  dataSource: 'models_user_primary' | 'models_fallback' | 'mixed'
+  snapshotId: string
+  snapshotChecksum?: string | null
+  models: readonly CatalogScopedModelUpsertInput[]
+  syncedAtMs: number
+  schemaVersion: number
+  pruneOldSnapshots?: boolean
+}>
+
+export type CatalogScopedSnapshotWriteResult = Readonly<{
+  providerKey: string
+  catalogScopeKey: string
+  activeSnapshotId: string
+  modelCount: number
+  visibleModelCount: number
+  hiddenModelCount: number
+}>
+
+export type CatalogScopedSnapshotValidationResult =
+  | Readonly<{
+      ok: true
+      meta: CatalogScopedMetaRecord | null
+      modelCount: number
+    }>
+  | Readonly<{
+      ok: false
+      code: 'cache_corrupted'
+      message: string
+    }>
+
+export class CatalogScopedSnapshotValidationError extends Error {
+  readonly code = 'cache_corrupted'
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'CatalogScopedSnapshotValidationError'
+  }
+}
+
 export type CatalogCoreModelDetailRecord = Readonly<{
   providerKey: string
   modelId: string
@@ -495,6 +670,109 @@ function toCursor(
   }
 }
 
+function toScopedCursor(
+  row: CatalogScopedModelRecord,
+  sortBy: CatalogCoreQuerySortBy,
+  sortOrder: CatalogCoreQuerySortOrder
+): CatalogScopedQueryCursor {
+  const sortCursorField =
+    sortBy === 'name'
+      ? { name: row.displayName }
+      : sortBy === 'created_at'
+        ? { createdAtSec: Number(row.createdAtSec ?? 0) }
+        : sortBy === 'context_length'
+          ? { contextLength: Number(row.contextLength ?? 0) }
+          : { maxOutputTokens: Number(row.maxOutputTokens ?? 0) }
+
+  return {
+    sortBy,
+    sortOrder,
+    ...sortCursorField,
+    modelKey: row.modelKey,
+  }
+}
+
+function escapeSqlLike(input: string): string {
+  return input.replace(/[\\%_]/g, (value) => `\\${value}`)
+}
+
+function requireScopedText(value: unknown, fieldName: string): string {
+  const text = String(value ?? '').trim()
+  if (!text) {
+    throw new CatalogScopedSnapshotValidationError(`cache_corrupted: scoped snapshot ${fieldName} is required`)
+  }
+  return text
+}
+
+function parseScopedJsonField(value: unknown, fieldName: string, required: boolean): void {
+  if (value == null || value === '') {
+    if (required) {
+      throw new CatalogScopedSnapshotValidationError(`cache_corrupted: scoped snapshot ${fieldName} is required`)
+    }
+    return
+  }
+  try {
+    JSON.parse(String(value))
+  } catch {
+    throw new CatalogScopedSnapshotValidationError(`cache_corrupted: scoped snapshot ${fieldName} is invalid JSON`)
+  }
+}
+
+export function validateScopedSnapshotRows(input: Readonly<{
+  providerKey: string
+  catalogScopeKey: string
+  snapshotId: string
+  modelCount: number
+  visibleModelCount: number
+  hiddenModelCount: number
+  rows: readonly Partial<CatalogScopedModelRecord>[]
+}>): void {
+  requireScopedText(input.providerKey, 'providerKey')
+  requireScopedText(input.catalogScopeKey, 'catalogScopeKey')
+  requireScopedText(input.snapshotId, 'snapshotId')
+
+  const modelCount = Math.max(0, Math.floor(Number(input.modelCount)))
+  const visibleModelCount = Math.max(0, Math.floor(Number(input.visibleModelCount)))
+  const hiddenModelCount = Math.max(0, Math.floor(Number(input.hiddenModelCount)))
+  if (input.rows.length !== modelCount) {
+    throw new CatalogScopedSnapshotValidationError('cache_corrupted: scoped snapshot model count mismatch')
+  }
+  if (visibleModelCount + hiddenModelCount !== modelCount) {
+    throw new CatalogScopedSnapshotValidationError('cache_corrupted: scoped snapshot visibility count mismatch')
+  }
+
+  const seenModelIds = new Set<string>()
+  let actualVisibleCount = 0
+  let actualHiddenCount = 0
+  for (const row of input.rows) {
+    const rowProviderKey = requireScopedText(row.providerKey ?? input.providerKey, 'row providerKey')
+    const rowScopeKey = requireScopedText(row.catalogScopeKey ?? input.catalogScopeKey, 'row catalogScopeKey')
+    const rowSnapshotId = requireScopedText(row.snapshotId ?? input.snapshotId, 'row snapshotId')
+    const modelId = requireScopedText(row.modelId, 'row modelId')
+    requireScopedText(row.modelKey, 'row modelKey')
+    requireScopedText(row.displayName, 'row displayName')
+    if (rowProviderKey !== input.providerKey || rowScopeKey !== input.catalogScopeKey || rowSnapshotId !== input.snapshotId) {
+      throw new CatalogScopedSnapshotValidationError('cache_corrupted: scoped snapshot row scope mismatch')
+    }
+    if (seenModelIds.has(modelId)) {
+      throw new CatalogScopedSnapshotValidationError('cache_corrupted: scoped snapshot duplicate modelId')
+    }
+    seenModelIds.add(modelId)
+    if (row.visibility === 'visible') actualVisibleCount += 1
+    if (row.visibility === 'hidden') actualHiddenCount += 1
+    parseScopedJsonField(row.inputModalitiesJson ?? '[]', 'inputModalitiesJson', true)
+    parseScopedJsonField(row.outputModalitiesJson ?? '[]', 'outputModalitiesJson', true)
+    parseScopedJsonField(row.supportedParametersJson ?? '[]', 'supportedParametersJson', true)
+    parseScopedJsonField(row.capabilitiesJson ?? '{}', 'capabilitiesJson', true)
+    parseScopedJsonField(row.pricingJson, 'pricingJson', false)
+    parseScopedJsonField(row.rawJson, 'rawJson', false)
+  }
+
+  if (actualVisibleCount !== visibleModelCount || actualHiddenCount !== hiddenModelCount) {
+    throw new CatalogScopedSnapshotValidationError('cache_corrupted: scoped snapshot row visibility mismatch')
+  }
+}
+
 export class ModelCatalogRepo {
   private upsertStmt: BetterSqlite3.Statement
   private hideMissingStmt: BetterSqlite3.Statement
@@ -518,6 +796,7 @@ export class ModelCatalogRepo {
   private endpointMetaDeleteByModelStmt: BetterSqlite3.Statement
   private endpointMetaUpsertStmt: BetterSqlite3.Statement
   private endpointMetaListByModelStmt: BetterSqlite3.Statement
+  private coreUpdateSyncErrorStmt: BetterSqlite3.Statement
 
   constructor(private db: SqlDatabase) {
     this.upsertStmt = this.db.prepare(`
@@ -1110,6 +1389,15 @@ export class ModelCatalogRepo {
         AND model_id = @modelId
       ORDER BY endpoint_key ASC
     `)
+
+    this.coreUpdateSyncErrorStmt = this.db.prepare(`
+      UPDATE catalog_meta
+      SET
+        sync_state = @syncState,
+        last_error_code = @lastErrorCode,
+        last_error_message = @lastErrorMessage
+      WHERE provider_key = @providerKey
+    `)
   }
 
   /**
@@ -1334,6 +1622,800 @@ export class ModelCatalogRepo {
   getCoreMeta(providerKey: string): CatalogCoreMetaRecord | null {
     const row = this.coreGetMetaStmt.get({ providerKey }) as CatalogCoreMetaRecord | undefined
     return row ?? null
+  }
+
+  updateMetaSyncError(providerKey: string, syncState: 'error', lastErrorCode: string, lastErrorMessage: string): void {
+    this.coreUpdateSyncErrorStmt.run({
+      providerKey,
+      syncState,
+      lastErrorCode,
+      lastErrorMessage,
+    })
+  }
+
+  getScopedMeta(providerKey: string, catalogScopeKey: string): CatalogScopedMetaRecord | null {
+    const row = this.db.prepare(`
+      SELECT
+        provider_key AS providerKey,
+        catalog_scope_key AS catalogScopeKey,
+        base_url AS baseUrl,
+        data_source AS dataSource,
+        active_snapshot_id AS activeSnapshotId,
+        sync_state AS syncState,
+        last_sync_at_ms AS lastSyncAtMs,
+        last_used_at_ms AS lastUsedAtMs,
+        model_count AS modelCount,
+        visible_model_count AS visibleModelCount,
+        hidden_model_count AS hiddenModelCount,
+        last_error_code AS lastErrorCode,
+        last_error_message AS lastErrorMessage,
+        last_validated_at_ms AS lastValidatedAtMs,
+        last_repair_attempt_at_ms AS lastRepairAttemptAtMs,
+        repair_attempt_count AS repairAttemptCount,
+        snapshot_checksum AS snapshotChecksum,
+        schema_version AS schemaVersion
+      FROM catalog_scope_meta
+      WHERE provider_key = @providerKey
+        AND catalog_scope_key = @catalogScopeKey
+      LIMIT 1
+    `).get({ providerKey, catalogScopeKey }) as CatalogScopedMetaRecord | undefined
+    return row ?? null
+  }
+
+  upsertScopedMeta(input: CatalogScopedMetaUpsertInput): void {
+    this.db.prepare(`
+      INSERT INTO catalog_scope_meta(
+        provider_key,
+        catalog_scope_key,
+        base_url,
+        data_source,
+        active_snapshot_id,
+        sync_state,
+        last_sync_at_ms,
+        last_used_at_ms,
+        model_count,
+        visible_model_count,
+        hidden_model_count,
+        last_error_code,
+        last_error_message,
+        last_validated_at_ms,
+        last_repair_attempt_at_ms,
+        repair_attempt_count,
+        snapshot_checksum,
+        schema_version
+      )
+      VALUES(
+        @providerKey,
+        @catalogScopeKey,
+        @baseUrl,
+        @dataSource,
+        @activeSnapshotId,
+        @syncState,
+        @lastSyncAtMs,
+        @lastUsedAtMs,
+        @modelCount,
+        @visibleModelCount,
+        @hiddenModelCount,
+        @lastErrorCode,
+        @lastErrorMessage,
+        @lastValidatedAtMs,
+        @lastRepairAttemptAtMs,
+        @repairAttemptCount,
+        @snapshotChecksum,
+        @schemaVersion
+      )
+      ON CONFLICT(provider_key, catalog_scope_key) DO UPDATE SET
+        base_url = excluded.base_url,
+        data_source = excluded.data_source,
+        active_snapshot_id = excluded.active_snapshot_id,
+        sync_state = excluded.sync_state,
+        last_sync_at_ms = excluded.last_sync_at_ms,
+        last_used_at_ms = excluded.last_used_at_ms,
+        model_count = excluded.model_count,
+        visible_model_count = excluded.visible_model_count,
+        hidden_model_count = excluded.hidden_model_count,
+        last_error_code = excluded.last_error_code,
+        last_error_message = excluded.last_error_message,
+        last_validated_at_ms = excluded.last_validated_at_ms,
+        last_repair_attempt_at_ms = excluded.last_repair_attempt_at_ms,
+        repair_attempt_count = excluded.repair_attempt_count,
+        snapshot_checksum = excluded.snapshot_checksum,
+        schema_version = excluded.schema_version
+    `).run({
+      providerKey: input.providerKey,
+      catalogScopeKey: input.catalogScopeKey,
+      baseUrl: input.baseUrl,
+      dataSource: input.dataSource,
+      activeSnapshotId: input.activeSnapshotId ?? null,
+      syncState: input.syncState,
+      lastSyncAtMs: input.lastSyncAtMs ?? 0,
+      lastUsedAtMs: input.lastUsedAtMs,
+      modelCount: input.modelCount ?? 0,
+      visibleModelCount: input.visibleModelCount ?? 0,
+      hiddenModelCount: input.hiddenModelCount ?? 0,
+      lastErrorCode: input.lastErrorCode ?? null,
+      lastErrorMessage: input.lastErrorMessage ?? null,
+      lastValidatedAtMs: input.lastValidatedAtMs ?? null,
+      lastRepairAttemptAtMs: input.lastRepairAttemptAtMs ?? null,
+      repairAttemptCount: input.repairAttemptCount ?? 0,
+      snapshotChecksum: input.snapshotChecksum ?? null,
+      schemaVersion: input.schemaVersion,
+    })
+  }
+
+  insertScopedModelRows(input: Readonly<{
+    providerKey: string
+    catalogScopeKey: string
+    snapshotId: string
+    models: readonly CatalogScopedModelUpsertInput[]
+  }>): void {
+    validateScopedSnapshotRows({
+      providerKey: input.providerKey,
+      catalogScopeKey: input.catalogScopeKey,
+      snapshotId: input.snapshotId,
+      modelCount: input.models.length,
+      visibleModelCount: input.models.filter((model) => model.visibility === 'visible').length,
+      hiddenModelCount: input.models.filter((model) => model.visibility === 'hidden').length,
+      rows: input.models.map((model) => ({
+        providerKey: input.providerKey,
+        catalogScopeKey: input.catalogScopeKey,
+        snapshotId: input.snapshotId,
+        ...model,
+        inputModalitiesJson: model.inputModalitiesJson ?? '[]',
+        outputModalitiesJson: model.outputModalitiesJson ?? '[]',
+        supportedParametersJson: model.supportedParametersJson ?? '[]',
+        capabilitiesJson: model.capabilitiesJson ?? '{}',
+        pricingJson: model.pricingJson ?? null,
+        rawJson: model.rawJson ?? null,
+      })),
+    })
+    const tx = this.db.transaction(() => {
+      this.insertScopedModelRowsUnchecked(input)
+    })
+    tx()
+  }
+
+  private insertScopedModelRowsUnchecked(input: Readonly<{
+    providerKey: string
+    catalogScopeKey: string
+    snapshotId: string
+    models: readonly CatalogScopedModelUpsertInput[]
+  }>): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO catalog_models(
+        provider_key,
+        catalog_scope_key,
+        snapshot_id,
+        model_id,
+        model_key,
+        canonical_slug,
+        display_name,
+        description,
+        vendor,
+        family,
+        status,
+        visibility,
+        context_length,
+        max_output_tokens,
+        input_modalities_json,
+        output_modalities_json,
+        supported_parameters_json,
+        capabilities_json,
+        pricing_json,
+        raw_json,
+        created_at_sec,
+        first_seen_at_ms,
+        last_seen_at_ms,
+        synced_at_ms
+      )
+      VALUES(
+        @providerKey,
+        @catalogScopeKey,
+        @snapshotId,
+        @modelId,
+        @modelKey,
+        @canonicalSlug,
+        @displayName,
+        @description,
+        @vendor,
+        @family,
+        @status,
+        @visibility,
+        @contextLength,
+        @maxOutputTokens,
+        @inputModalitiesJson,
+        @outputModalitiesJson,
+        @supportedParametersJson,
+        @capabilitiesJson,
+        @pricingJson,
+        @rawJson,
+        @createdAtSec,
+        @firstSeenAtMs,
+        @lastSeenAtMs,
+        @syncedAtMs
+      )
+      ON CONFLICT(provider_key, catalog_scope_key, snapshot_id, model_id) DO UPDATE SET
+        model_key = excluded.model_key,
+        canonical_slug = excluded.canonical_slug,
+        display_name = excluded.display_name,
+        description = excluded.description,
+        vendor = excluded.vendor,
+        family = excluded.family,
+        status = excluded.status,
+        visibility = excluded.visibility,
+        context_length = excluded.context_length,
+        max_output_tokens = excluded.max_output_tokens,
+        input_modalities_json = excluded.input_modalities_json,
+        output_modalities_json = excluded.output_modalities_json,
+        supported_parameters_json = excluded.supported_parameters_json,
+        capabilities_json = excluded.capabilities_json,
+        pricing_json = excluded.pricing_json,
+        raw_json = excluded.raw_json,
+        created_at_sec = excluded.created_at_sec,
+        first_seen_at_ms = excluded.first_seen_at_ms,
+        last_seen_at_ms = excluded.last_seen_at_ms,
+        synced_at_ms = excluded.synced_at_ms
+    `)
+
+    for (const model of input.models) {
+      stmt.run({
+        providerKey: input.providerKey,
+        catalogScopeKey: input.catalogScopeKey,
+        snapshotId: input.snapshotId,
+        modelId: model.modelId,
+        modelKey: model.modelKey,
+        canonicalSlug: model.canonicalSlug ?? null,
+        displayName: model.displayName,
+        description: model.description ?? null,
+        vendor: model.vendor ?? null,
+        family: model.family ?? null,
+        status: model.status,
+        visibility: model.visibility,
+        contextLength: model.contextLength ?? null,
+        maxOutputTokens: model.maxOutputTokens ?? null,
+        inputModalitiesJson: model.inputModalitiesJson ?? '[]',
+        outputModalitiesJson: model.outputModalitiesJson ?? '[]',
+        supportedParametersJson: model.supportedParametersJson ?? '[]',
+        capabilitiesJson: model.capabilitiesJson ?? '{}',
+        pricingJson: model.pricingJson ?? null,
+        rawJson: model.rawJson ?? null,
+        createdAtSec: model.createdAtSec ?? null,
+        firstSeenAtMs: model.firstSeenAtMs,
+        lastSeenAtMs: model.lastSeenAtMs,
+        syncedAtMs: model.syncedAtMs,
+      })
+    }
+  }
+
+  writeScopedSnapshot(input: CatalogScopedSnapshotWriteInput): CatalogScopedSnapshotWriteResult {
+    const providerKey = String(input.providerKey ?? '').trim()
+    const catalogScopeKey = String(input.catalogScopeKey ?? '').trim()
+    const baseUrl = String(input.baseUrl ?? '').trim()
+    const dataSource = input.dataSource
+    const snapshotId = String(input.snapshotId ?? '').trim()
+    const syncedAtMs = Math.floor(Number(input.syncedAtMs))
+    const schemaVersion = Math.floor(Number(input.schemaVersion))
+    if (!providerKey || !catalogScopeKey || !baseUrl || !snapshotId || !Number.isFinite(syncedAtMs) || !Number.isFinite(schemaVersion)) {
+      throw new CatalogScopedSnapshotValidationError('cache_corrupted: scoped snapshot write input is invalid')
+    }
+
+    const modelCount = input.models.length
+    const visibleModelCount = input.models.filter((model) => model.visibility === 'visible').length
+    const hiddenModelCount = input.models.filter((model) => model.visibility === 'hidden').length
+    validateScopedSnapshotRows({
+      providerKey,
+      catalogScopeKey,
+      snapshotId,
+      modelCount,
+      visibleModelCount,
+      hiddenModelCount,
+      rows: input.models.map((model) => ({
+        providerKey,
+        catalogScopeKey,
+        snapshotId,
+        ...model,
+        inputModalitiesJson: model.inputModalitiesJson ?? '[]',
+        outputModalitiesJson: model.outputModalitiesJson ?? '[]',
+        supportedParametersJson: model.supportedParametersJson ?? '[]',
+        capabilitiesJson: model.capabilitiesJson ?? '{}',
+        pricingJson: model.pricingJson ?? null,
+        rawJson: model.rawJson ?? null,
+      })),
+    })
+
+    const tx = this.db.transaction(() => {
+      const existingMeta = this.getScopedMeta(providerKey, catalogScopeKey)
+      this.upsertScopedMeta({
+        providerKey,
+        catalogScopeKey,
+        baseUrl,
+        dataSource,
+        activeSnapshotId: existingMeta?.activeSnapshotId ?? null,
+        syncState: existingMeta?.syncState ?? 'idle',
+        lastSyncAtMs: existingMeta?.lastSyncAtMs ?? 0,
+        lastUsedAtMs: syncedAtMs,
+        modelCount: existingMeta?.modelCount ?? 0,
+        visibleModelCount: existingMeta?.visibleModelCount ?? 0,
+        hiddenModelCount: existingMeta?.hiddenModelCount ?? 0,
+        lastErrorCode: existingMeta?.lastErrorCode ?? null,
+        lastErrorMessage: existingMeta?.lastErrorMessage ?? null,
+        lastValidatedAtMs: existingMeta?.lastValidatedAtMs ?? null,
+        lastRepairAttemptAtMs: existingMeta?.lastRepairAttemptAtMs ?? null,
+        repairAttemptCount: existingMeta?.repairAttemptCount ?? 0,
+        snapshotChecksum: existingMeta?.snapshotChecksum ?? null,
+        schemaVersion,
+      })
+
+      this.db.prepare(`
+        DELETE FROM catalog_models
+        WHERE provider_key = @providerKey
+          AND catalog_scope_key = @catalogScopeKey
+          AND snapshot_id = @snapshotId
+      `).run({ providerKey, catalogScopeKey, snapshotId })
+
+      this.insertScopedModelRowsUnchecked({
+        providerKey,
+        catalogScopeKey,
+        snapshotId,
+        models: input.models,
+      })
+
+      const rows = this.selectScopedSnapshotRows(providerKey, catalogScopeKey, snapshotId)
+      validateScopedSnapshotRows({
+        providerKey,
+        catalogScopeKey,
+        snapshotId,
+        modelCount,
+        visibleModelCount,
+        hiddenModelCount,
+        rows,
+      })
+
+      this.db.prepare(`
+        UPDATE catalog_scope_meta
+        SET
+          base_url = @baseUrl,
+          data_source = @dataSource,
+          active_snapshot_id = @snapshotId,
+          sync_state = 'ok',
+          last_sync_at_ms = @syncedAtMs,
+          last_used_at_ms = @syncedAtMs,
+          model_count = @modelCount,
+          visible_model_count = @visibleModelCount,
+          hidden_model_count = @hiddenModelCount,
+          last_error_code = NULL,
+          last_error_message = NULL,
+          last_validated_at_ms = @syncedAtMs,
+          snapshot_checksum = @snapshotChecksum,
+          schema_version = @schemaVersion
+        WHERE provider_key = @providerKey
+          AND catalog_scope_key = @catalogScopeKey
+      `).run({
+        providerKey,
+        catalogScopeKey,
+        baseUrl,
+        dataSource,
+        snapshotId,
+        syncedAtMs,
+        modelCount,
+        visibleModelCount,
+        hiddenModelCount,
+        snapshotChecksum: input.snapshotChecksum ?? null,
+        schemaVersion,
+      })
+
+      if (input.pruneOldSnapshots === true) {
+        this.db.prepare(`
+          DELETE FROM catalog_models
+          WHERE provider_key = @providerKey
+            AND catalog_scope_key = @catalogScopeKey
+            AND snapshot_id <> @snapshotId
+        `).run({ providerKey, catalogScopeKey, snapshotId })
+      }
+    })
+    tx()
+    return {
+      providerKey,
+      catalogScopeKey,
+      activeSnapshotId: snapshotId,
+      modelCount,
+      visibleModelCount,
+      hiddenModelCount,
+    }
+  }
+
+  validateActiveScopedSnapshot(providerKey: string, catalogScopeKey: string): CatalogScopedSnapshotValidationResult {
+    const normalizedProviderKey = String(providerKey ?? '').trim()
+    const normalizedScopeKey = String(catalogScopeKey ?? '').trim()
+    if (!normalizedProviderKey || !normalizedScopeKey) {
+      throw new Error('validateActiveScopedSnapshot requires providerKey/catalogScopeKey')
+    }
+    const meta = this.getScopedMeta(normalizedProviderKey, normalizedScopeKey)
+    if (!meta) {
+      return { ok: true, meta: null, modelCount: 0 }
+    }
+    const activeSnapshotId = String(meta.activeSnapshotId ?? '').trim()
+    if (!activeSnapshotId) {
+      if (meta.modelCount > 0) {
+        return {
+          ok: false,
+          code: 'cache_corrupted',
+          message: 'cache_corrupted: scoped active snapshot is missing',
+        }
+      }
+      return { ok: true, meta, modelCount: 0 }
+    }
+    const rows = this.selectScopedSnapshotRows(normalizedProviderKey, normalizedScopeKey, activeSnapshotId)
+    try {
+      validateScopedSnapshotRows({
+        providerKey: normalizedProviderKey,
+        catalogScopeKey: normalizedScopeKey,
+        snapshotId: activeSnapshotId,
+        modelCount: meta.modelCount,
+        visibleModelCount: meta.visibleModelCount,
+        hiddenModelCount: meta.hiddenModelCount,
+        rows,
+      })
+    } catch (error) {
+      if (error instanceof CatalogScopedSnapshotValidationError) {
+        return {
+          ok: false,
+          code: 'cache_corrupted',
+          message: error.message,
+        }
+      }
+      throw error
+    }
+    return { ok: true, meta, modelCount: rows.length }
+  }
+
+  private selectScopedSnapshotRows(providerKey: string, catalogScopeKey: string, snapshotId: string): CatalogScopedModelRecord[] {
+    return this.db.prepare(`
+      SELECT
+        provider_key AS providerKey,
+        catalog_scope_key AS catalogScopeKey,
+        snapshot_id AS snapshotId,
+        model_id AS modelId,
+        model_key AS modelKey,
+        canonical_slug AS canonicalSlug,
+        display_name AS displayName,
+        description AS description,
+        vendor AS vendor,
+        family AS family,
+        status AS status,
+        visibility AS visibility,
+        context_length AS contextLength,
+        max_output_tokens AS maxOutputTokens,
+        input_modalities_json AS inputModalitiesJson,
+        output_modalities_json AS outputModalitiesJson,
+        supported_parameters_json AS supportedParametersJson,
+        capabilities_json AS capabilitiesJson,
+        pricing_json AS pricingJson,
+        raw_json AS rawJson,
+        created_at_sec AS createdAtSec,
+        first_seen_at_ms AS firstSeenAtMs,
+        last_seen_at_ms AS lastSeenAtMs,
+        synced_at_ms AS syncedAtMs
+      FROM catalog_models
+      WHERE provider_key = @providerKey
+        AND catalog_scope_key = @catalogScopeKey
+        AND snapshot_id = @snapshotId
+      ORDER BY model_id ASC
+    `).all({ providerKey, catalogScopeKey, snapshotId }) as CatalogScopedModelRecord[]
+  }
+
+  queryScopedActiveModels(input: CatalogScopedQueryInput): CatalogScopedQueryResult {
+    const providerKey = String(input.providerKey ?? '').trim()
+    const catalogScopeKey = String(input.catalogScopeKey ?? '').trim()
+    if (!providerKey || !catalogScopeKey) {
+      throw new Error('queryScopedActiveModels requires providerKey/catalogScopeKey')
+    }
+
+    const validation = this.validateActiveScopedSnapshot(providerKey, catalogScopeKey)
+    if (!validation.ok) {
+      throw new CatalogScopedSnapshotValidationError(validation.message)
+    }
+    const activeSnapshotId = validation.meta?.activeSnapshotId ?? null
+    if (!validation.meta || !activeSnapshotId) {
+      return { items: [], nextCursor: null }
+    }
+
+    const sortBy: CatalogCoreQuerySortBy =
+      input.sortBy === 'created_at' ||
+      input.sortBy === 'context_length' ||
+      input.sortBy === 'max_output_tokens'
+        ? input.sortBy
+        : 'name'
+    const sortOrder: CatalogCoreQuerySortOrder = input.sortOrder === 'desc' ? 'desc' : 'asc'
+    const orderSql = sortOrder === 'desc' ? 'DESC' : 'ASC'
+    const limit = Math.max(1, Math.min(100, Math.floor(Number(input.limit ?? 20))))
+    const cursor = input.cursor ?? null
+    const where: string[] = [
+      'models.provider_key = @providerKey',
+      'models.catalog_scope_key = @catalogScopeKey',
+      'models.snapshot_id = @activeSnapshotId',
+      "models.visibility = 'visible'",
+      "models.status = 'active'",
+    ]
+    const params: Record<string, unknown> = {
+      providerKey,
+      catalogScopeKey,
+      activeSnapshotId,
+    }
+
+    const searchText = String(input.searchText ?? '').trim()
+    let searchRankSql: string | null = null
+    if (searchText.length > 0) {
+      params.searchExact = searchText.toLowerCase()
+      params.searchLike = `%${escapeSqlLike(searchText.toLowerCase())}%`
+      const searchConditions = [
+        'LOWER(models.display_name) = @searchExact',
+        'LOWER(models.model_id) = @searchExact',
+        "LOWER(COALESCE(models.canonical_slug, '')) = @searchExact",
+        "LOWER(models.display_name) LIKE @searchLike ESCAPE '\\'",
+        "LOWER(models.model_id) LIKE @searchLike ESCAPE '\\'",
+        "LOWER(COALESCE(models.canonical_slug, '')) LIKE @searchLike ESCAPE '\\'",
+      ]
+      if (input.includeDescriptionInSearch === true) {
+        searchConditions.push("LOWER(COALESCE(models.description, '')) LIKE @searchLike ESCAPE '\\'")
+      }
+      searchRankSql = `
+        CASE
+          WHEN LOWER(models.display_name) = @searchExact THEN 0
+          WHEN LOWER(models.model_id) = @searchExact THEN 1
+          WHEN LOWER(COALESCE(models.canonical_slug, '')) = @searchExact THEN 2
+          ELSE 3
+        END
+      `
+      where.push(`(${searchConditions.join('\n OR ')})`)
+    }
+
+    const vendorFilters = normalizeLowercaseArray([
+      ...(Array.isArray(input.vendors) ? input.vendors : []),
+      ...(Array.isArray(input.providers) ? input.providers : []),
+    ])
+    if (vendorFilters.length > 0) {
+      const placeholders: string[] = []
+      vendorFilters.forEach((vendor, index) => {
+        const key = `vendorFilter${index}`
+        placeholders.push(`@${key}`)
+        params[key] = vendor
+      })
+      where.push(`LOWER(COALESCE(models.vendor, '')) IN (${placeholders.join(', ')})`)
+    }
+
+    const modelIdFilters = normalizeStringArray(input.modelIds)
+    if (modelIdFilters.length > 0) {
+      const placeholders: string[] = []
+      modelIdFilters.slice(0, QUERY_MODEL_ID_IN_THRESHOLD).forEach((modelId, index) => {
+        const key = `modelIdFilter${index}`
+        placeholders.push(`@${key}`)
+        params[key] = modelId
+      })
+      where.push(`models.model_id IN (${placeholders.join(', ')})`)
+    }
+
+    pushRangeWhereClause(where, params, 'COALESCE(models.context_length, 0)', input.contextLength, 'scopedContextLength')
+    pushRangeWhereClause(where, params, 'COALESCE(models.max_output_tokens, 0)', input.maxOutputTokens, 'scopedMaxOutputTokens')
+
+    const anyModalityFilters = normalizeLowercaseArray(input.modalities)
+    anyModalityFilters.forEach((modality, index) => {
+      const key = `scopedAnyModality${index}`
+      params[key] = modality
+      where.push(`
+        (
+          EXISTS (
+            SELECT 1
+            FROM json_each(models.input_modalities_json) im_any_${index}
+            WHERE LOWER(TRIM(CAST(im_any_${index}.value AS TEXT))) = @${key}
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM json_each(models.output_modalities_json) om_any_${index}
+            WHERE LOWER(TRIM(CAST(om_any_${index}.value AS TEXT))) = @${key}
+          )
+        )
+      `)
+    })
+
+    const inputModalityFilters = normalizeLowercaseArray(input.inputModalities)
+    inputModalityFilters.forEach((modality, index) => {
+      const key = `scopedInputModality${index}`
+      params[key] = modality
+      where.push(`
+        EXISTS (
+          SELECT 1
+          FROM json_each(models.input_modalities_json) im_only_${index}
+          WHERE LOWER(TRIM(CAST(im_only_${index}.value AS TEXT))) = @${key}
+        )
+      `)
+    })
+
+    const outputModalityFilters = normalizeLowercaseArray(input.outputModalities)
+    outputModalityFilters.forEach((modality, index) => {
+      const key = `scopedOutputModality${index}`
+      params[key] = modality
+      where.push(`
+        EXISTS (
+          SELECT 1
+          FROM json_each(models.output_modalities_json) om_only_${index}
+          WHERE LOWER(TRIM(CAST(om_only_${index}.value AS TEXT))) = @${key}
+        )
+      `)
+    })
+
+    const supportedParameters = normalizeLowercaseArray(input.supportedParameters)
+    supportedParameters.forEach((parameter, index) => {
+      const key = `scopedSupportedParameter${index}`
+      params[key] = parameter
+      where.push(`
+        EXISTS (
+          SELECT 1
+          FROM json_each(models.supported_parameters_json) sp_${index}
+          WHERE LOWER(TRIM(CAST(sp_${index}.value AS TEXT))) = @${key}
+        )
+      `)
+    })
+
+    if (cursor) {
+      if (cursor.sortBy !== sortBy || cursor.sortOrder !== sortOrder) {
+        throw new Error('Scoped catalog query cursor mismatch with current sort')
+      }
+      const cursorModelKey = String(cursor.modelKey ?? '').trim()
+      if (!cursorModelKey) {
+        throw new Error('Scoped catalog query cursor requires modelKey')
+      }
+      params.cursorModelKey = cursorModelKey
+      const op = sortOrder === 'desc' ? '<' : '>'
+      if (sortBy === 'name') {
+        params.cursorName = String(cursor.name ?? '')
+        where.push(`
+          (
+            models.display_name COLLATE NOCASE ${op} @cursorName COLLATE NOCASE
+            OR (
+              models.display_name COLLATE NOCASE = @cursorName COLLATE NOCASE
+              AND models.model_key ${op} @cursorModelKey
+            )
+          )
+        `)
+      } else if (sortBy === 'created_at') {
+        params.cursorCreatedAtSec = Number(cursor.createdAtSec ?? 0)
+        where.push(`
+          (
+            COALESCE(models.created_at_sec, 0) ${op} @cursorCreatedAtSec
+            OR (
+              COALESCE(models.created_at_sec, 0) = @cursorCreatedAtSec
+              AND models.model_key ${op} @cursorModelKey
+            )
+          )
+        `)
+      } else if (sortBy === 'context_length') {
+        params.cursorContextLength = Number(cursor.contextLength ?? 0)
+        where.push(`
+          (
+            COALESCE(models.context_length, 0) ${op} @cursorContextLength
+            OR (
+              COALESCE(models.context_length, 0) = @cursorContextLength
+              AND models.model_key ${op} @cursorModelKey
+            )
+          )
+        `)
+      } else {
+        params.cursorMaxOutputTokens = Number(cursor.maxOutputTokens ?? 0)
+        where.push(`
+          (
+            COALESCE(models.max_output_tokens, 0) ${op} @cursorMaxOutputTokens
+            OR (
+              COALESCE(models.max_output_tokens, 0) = @cursorMaxOutputTokens
+              AND models.model_key ${op} @cursorModelKey
+            )
+          )
+        `)
+      }
+    }
+
+    const baseOrderBy =
+      sortBy === 'created_at'
+        ? `COALESCE(models.created_at_sec, 0) ${orderSql}, models.model_key ${orderSql}`
+        : sortBy === 'context_length'
+          ? `COALESCE(models.context_length, 0) ${orderSql}, models.model_key ${orderSql}`
+          : sortBy === 'max_output_tokens'
+            ? `COALESCE(models.max_output_tokens, 0) ${orderSql}, models.model_key ${orderSql}`
+            : `models.display_name COLLATE NOCASE ${orderSql}, models.model_key ${orderSql}`
+    const orderBy = searchRankSql ? `${searchRankSql} ASC, ${baseOrderBy}` : baseOrderBy
+    params.limitPlusOne = limit + 1
+
+    const rows = this.db.prepare(`
+      SELECT
+        models.provider_key AS providerKey,
+        models.catalog_scope_key AS catalogScopeKey,
+        models.snapshot_id AS snapshotId,
+        models.model_id AS modelId,
+        models.model_key AS modelKey,
+        models.canonical_slug AS canonicalSlug,
+        models.display_name AS displayName,
+        models.description AS description,
+        models.vendor AS vendor,
+        models.family AS family,
+        models.status AS status,
+        models.visibility AS visibility,
+        models.context_length AS contextLength,
+        models.max_output_tokens AS maxOutputTokens,
+        models.input_modalities_json AS inputModalitiesJson,
+        models.output_modalities_json AS outputModalitiesJson,
+        models.supported_parameters_json AS supportedParametersJson,
+        models.capabilities_json AS capabilitiesJson,
+        models.pricing_json AS pricingJson,
+        models.raw_json AS rawJson,
+        models.created_at_sec AS createdAtSec,
+        models.first_seen_at_ms AS firstSeenAtMs,
+        models.last_seen_at_ms AS lastSeenAtMs,
+        models.synced_at_ms AS syncedAtMs
+      FROM catalog_models models
+      WHERE ${where.join('\n        AND ')}
+      ORDER BY ${orderBy}
+      LIMIT @limitPlusOne
+    `).all(params) as CatalogScopedModelRecord[]
+    const items = rows.slice(0, limit)
+    return {
+      items,
+      nextCursor: rows.length > limit && items.length > 0 ? toScopedCursor(items[items.length - 1], sortBy, sortOrder) : null,
+    }
+  }
+
+  clearScopedCatalog(providerKey: string, catalogScopeKey: string): CatalogScopedClearResult {
+    const deleted: Record<string, number> = {}
+    const tx = this.db.transaction(() => {
+      deleted.catalog_models = Number(this.db.prepare(`
+        DELETE FROM catalog_models
+        WHERE provider_key = @providerKey
+          AND catalog_scope_key = @catalogScopeKey
+      `).run({ providerKey, catalogScopeKey }).changes ?? 0)
+      deleted.catalog_scope_meta = Number(this.db.prepare(`
+        DELETE FROM catalog_scope_meta
+        WHERE provider_key = @providerKey
+          AND catalog_scope_key = @catalogScopeKey
+      `).run({ providerKey, catalogScopeKey }).changes ?? 0)
+    })
+    tx()
+    return { deleted }
+  }
+
+  clearAllProviderScopedCatalog(providerKey: string): CatalogScopedClearResult {
+    const deleted: Record<string, number> = {}
+    const tx = this.db.transaction(() => {
+      deleted.catalog_models = Number(this.db.prepare(`
+        DELETE FROM catalog_models
+        WHERE provider_key = @providerKey
+      `).run({ providerKey }).changes ?? 0)
+      deleted.catalog_scope_meta = Number(this.db.prepare(`
+        DELETE FROM catalog_scope_meta
+        WHERE provider_key = @providerKey
+      `).run({ providerKey }).changes ?? 0)
+    })
+    tx()
+    return { deleted }
+  }
+
+  clearDeprecatedOpenRouterCatalogCache(): CatalogScopedClearResult {
+    const providerKey = 'openrouter'
+    const deleted: Record<string, number> = {}
+    const runDelete = (name: string, sql: string, params: Record<string, unknown> = { providerKey }) => {
+      deleted[name] = Number(this.db.prepare(sql).run(params).changes ?? 0)
+    }
+
+    const tx = this.db.transaction(() => {
+      runDelete('endpoint_meta', 'DELETE FROM endpoint_meta WHERE provider_key = @providerKey')
+      runDelete('model_tags', 'DELETE FROM model_tags WHERE provider_key = @providerKey')
+      runDelete('models_fts', 'DELETE FROM models_fts WHERE provider_key = @providerKey')
+      runDelete('models', 'DELETE FROM models WHERE provider_key = @providerKey')
+      runDelete('catalog_meta', 'DELETE FROM catalog_meta WHERE provider_key = @providerKey')
+      runDelete('model_catalog', 'DELETE FROM model_catalog WHERE router_source = @providerKey')
+      runDelete('reasoning_model_index', 'DELETE FROM reasoning_model_index', {})
+      runDelete('providers', 'DELETE FROM providers WHERE provider_key = @providerKey')
+    })
+    tx()
+    return { deleted }
   }
 
   getCoreModelDetail(providerKey: string, modelId: string): CatalogCoreModelDetailRecord | null {
