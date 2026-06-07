@@ -150,6 +150,52 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
     expect(syncOpenRouterModelCatalog).not.toHaveBeenCalled()
   })
 
+  it('uses configured freshness to decide whether current scoped meta is stale', async () => {
+    const store = createStore({
+      openRouterApiKey: 'sk-startup-secret-a',
+      openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
+    })
+    const staleAtMs = Date.now() - 16 * 60 * 1000
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string, params: any) => {
+        if (method === 'modelCatalog.getScopedMeta') return makeScopedMeta({ lastSyncAtMs: staleAtMs })
+        if (method === 'modelCatalog.validateActiveScopedSnapshot') return { ok: true, modelCount: 1 }
+        if (method === 'modelCatalog.writeScopedSnapshot') return { ok: true, ...params }
+        throw new Error(`unexpected method ${method}`)
+      }),
+    } as any
+    vi.mocked(syncOpenRouterModelCatalog).mockImplementation(async (options: any) => {
+      await options.writer.writeScopedSnapshot({
+        providerKey: 'openrouter',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        dataSource: 'models_user_primary',
+        snapshotId: 'snap-stale',
+        models: [makeModel()],
+        syncedAtMs: 123,
+        schemaVersion: 1,
+      })
+      return { ok: true, snapshotId: 'snap-stale', modelCount: 1, dataSource: 'models_user_primary', baseUrl: 'https://openrouter.ai/api/v1' }
+    })
+
+    const freshResult = await runCatalogSyncAtStartup({
+      store,
+      dbWorkerManager,
+      force: false,
+      freshnessMs: 24 * 60 * 60 * 1000,
+    })
+    expect(freshResult.reason).toBe('cache_fresh')
+    expect(syncOpenRouterModelCatalog).not.toHaveBeenCalled()
+
+    const staleResult = await runCatalogSyncAtStartup({
+      store,
+      dbWorkerManager,
+      force: false,
+      freshnessMs: 15 * 60 * 1000,
+    })
+    expect(staleResult.reason).toBe('synced')
+    expect(syncOpenRouterModelCatalog).toHaveBeenCalledTimes(1)
+  })
+
   it('force=true bypasses current scoped cache freshness', async () => {
     const store = createStore({
       openRouterApiKey: 'sk-startup-secret-a',

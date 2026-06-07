@@ -25,6 +25,21 @@ import SamplingParamsSettingsEditor from './SamplingParamsSettingsEditor.vue'
 import PluginManagementPanel from './PluginManagementPanel.vue'
 import { t, useLanguagePrefs, LOCALE_DISPLAY_NAMES, type SupportedLocale, type LocaleMode } from '@/shared/i18n'
 import { saveLanguagePref, saveLanguagePrefSystem, getSystemLocale } from '@/next/settings/languagePrefs'
+import {
+  CATALOG_FRESHNESS_PRESETS_MS,
+  DEFAULT_CATALOG_AUTO_SYNC_POLICY,
+  DEFAULT_CATALOG_FRESHNESS_MS,
+  DEFAULT_CATALOG_LIST_UPDATE_MODE,
+  OPENROUTER_CATALOG_FRESHNESS_MS_KEY,
+  OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY,
+  OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY,
+  OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY,
+  normalizeCatalogAutoSyncPolicy,
+  normalizeCatalogFreshnessMs,
+  normalizeCatalogListUpdateMode,
+  type CatalogAutoSyncPolicy,
+  type CatalogListUpdateMode,
+} from '@/shared/modelCatalog/catalogSyncSettings'
 
 const props = defineProps<{
   disabled: boolean
@@ -52,6 +67,10 @@ const MAX_RECENT_MODELS_KEY = 'maxRecentModels'
 
 const apiKey = ref('')
 const baseUrl = ref('')
+const catalogStartupSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
+const catalogPickerOpenSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
+const catalogListUpdateMode = ref<CatalogListUpdateMode>(DEFAULT_CATALOG_LIST_UPDATE_MODE)
+const catalogFreshnessMs = ref(DEFAULT_CATALOG_FRESHNESS_MS)
 const requireParameters = ref(false)
 const debugEchoUpstreamBody = ref(false)
 const showApiKey = ref(false)
@@ -79,6 +98,8 @@ const loading = ref(false)
 const saving = ref(false)
 const error = ref<string | null>(null)
 const savedMessage = ref<string | null>(null)
+const verifySyncLoading = ref(false)
+const verifySyncResult = ref<string | null>(null)
 
 watch(requestedReasoningEffort, (value) => {
   if (value === 'auto' || value === 'none') {
@@ -121,6 +142,22 @@ const baseUrlValid = computed(() => isValidUrlOrEmpty(baseUrl.value))
 
 const DEFAULT_REASONING_PREFS: ReasoningPrefs = { mode: 'auto', effort: 'auto', exclude: false }
 const REASONING_EFFORTS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
+const catalogAutoSyncPolicyOptions: ReadonlyArray<Readonly<{ value: CatalogAutoSyncPolicy; labelKey: string }>> = [
+  { value: 'always', labelKey: 'settings.openrouter.catalogSyncPolicyAlways' },
+  { value: 'stale_only', labelKey: 'settings.openrouter.catalogSyncPolicyStaleOnly' },
+  { value: 'never', labelKey: 'settings.openrouter.catalogSyncPolicyNever' },
+]
+const catalogListUpdateModeOptions: ReadonlyArray<Readonly<{ value: CatalogListUpdateMode; labelKey: string }>> = [
+  { value: 'automatic', labelKey: 'settings.openrouter.catalogListUpdateAutomatic' },
+  { value: 'manual', labelKey: 'settings.openrouter.catalogListUpdateManual' },
+]
+const catalogFreshnessOptions: ReadonlyArray<Readonly<{ value: number; labelKey: string }>> = [
+  { value: CATALOG_FRESHNESS_PRESETS_MS[0], labelKey: 'settings.openrouter.catalogFreshness15m' },
+  { value: CATALOG_FRESHNESS_PRESETS_MS[1], labelKey: 'settings.openrouter.catalogFreshness1h' },
+  { value: CATALOG_FRESHNESS_PRESETS_MS[2], labelKey: 'settings.openrouter.catalogFreshness6h' },
+  { value: CATALOG_FRESHNESS_PRESETS_MS[3], labelKey: 'settings.openrouter.catalogFreshness24h' },
+  { value: CATALOG_FRESHNESS_PRESETS_MS[4], labelKey: 'settings.openrouter.catalogFreshness7d' },
+]
 
 function isReasoningEffort(value: unknown): value is ReasoningEffort {
   return typeof value === 'string' && (REASONING_EFFORTS as string[]).includes(value)
@@ -181,6 +218,10 @@ async function load() {
   try {
     apiKey.value = String((await store.get(OPENROUTER_API_KEY_KEY)) ?? '').trim()
     baseUrl.value = String((await store.get(OPENROUTER_BASE_URL_KEY)) ?? '').trim()
+    catalogStartupSyncPolicy.value = normalizeCatalogAutoSyncPolicy(await store.get(OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY))
+    catalogPickerOpenSyncPolicy.value = normalizeCatalogAutoSyncPolicy(await store.get(OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY))
+    catalogListUpdateMode.value = normalizeCatalogListUpdateMode(await store.get(OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY))
+    catalogFreshnessMs.value = normalizeCatalogFreshnessMs(await store.get(OPENROUTER_CATALOG_FRESHNESS_MS_KEY))
     const storedMaxRecentModels = parsePositiveIntegerText(String((await store.get(MAX_RECENT_MODELS_KEY)) ?? ''))
     maxRecentModelsDraft.value = String(storedMaxRecentModels ?? 8)
     requireParameters.value = await getOpenRouterProviderRequireParameters()
@@ -255,6 +296,10 @@ async function save() {
   try {
     await store.set(OPENROUTER_API_KEY_KEY, apiKey.value.trim())
     await store.set(OPENROUTER_BASE_URL_KEY, baseUrl.value.trim())
+    await store.set(OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY, normalizeCatalogAutoSyncPolicy(catalogStartupSyncPolicy.value))
+    await store.set(OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY, normalizeCatalogAutoSyncPolicy(catalogPickerOpenSyncPolicy.value))
+    await store.set(OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY, normalizeCatalogListUpdateMode(catalogListUpdateMode.value))
+    await store.set(OPENROUTER_CATALOG_FRESHNESS_MS_KEY, normalizeCatalogFreshnessMs(catalogFreshnessMs.value))
     await store.set(MAX_RECENT_MODELS_KEY, nextMaxRecentModels)
     await setOpenRouterProviderRequireParameters(requireParameters.value === true)
     await setNetExpSettings({
@@ -297,6 +342,13 @@ async function save() {
       window.dispatchEvent(new CustomEvent('settings:webSearchDefaultsUpdated', { detail: normalizedWebSearchDefaults }))
       window.dispatchEvent(new CustomEvent('settings:samplingParamsDefaultsUpdated', { detail: normalizedSamplingParamsDefaults }))
       window.dispatchEvent(new CustomEvent('settings:maxRecentModelsUpdated', { detail: nextMaxRecentModels }))
+      window.dispatchEvent(new CustomEvent('settings:openRouterConnectionUpdated', {
+        detail: {
+          hasApiKey: apiKey.value.trim().length > 0,
+          baseUrlChanged: false,
+          reason: 'settings_saved',
+        },
+      }))
     } catch {
       // no-op
     }
@@ -334,6 +386,17 @@ async function clearApiKey() {
     await store.delete(OPENROUTER_API_KEY_KEY)
     apiKey.value = ''
     savedMessage.value = t('settings.openrouter.apiKeyCleared')
+    try {
+      window.dispatchEvent(new CustomEvent('settings:openRouterConnectionUpdated', {
+        detail: {
+          hasApiKey: false,
+          baseUrlChanged: false,
+          reason: 'api_key_cleared',
+        },
+      }))
+    } catch {
+      // no-op
+    }
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
@@ -354,10 +417,70 @@ async function clearBaseUrl() {
     await store.delete(OPENROUTER_BASE_URL_KEY)
     baseUrl.value = ''
     savedMessage.value = t('settings.openrouter.baseUrlCleared')
+    try {
+      window.dispatchEvent(new CustomEvent('settings:openRouterConnectionUpdated', {
+        detail: {
+          hasApiKey: apiKey.value.trim().length > 0,
+          baseUrlChanged: true,
+          reason: 'base_url_cleared',
+        },
+      }))
+    } catch {
+      // no-op
+    }
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
     saving.value = false
+  }
+}
+
+async function verifyAndSync() {
+  error.value = null
+  savedMessage.value = null
+  verifySyncResult.value = null
+
+  const store = getElectronStore()
+  if (!store) {
+    error.value = 'Missing electronStore (run in Electron).'
+    return
+  }
+
+  if (!baseUrlValid.value) {
+    error.value = t('settings.openrouter.baseUrlInvalid')
+    return
+  }
+
+  verifySyncLoading.value = true
+  try {
+    await store.set(OPENROUTER_API_KEY_KEY, apiKey.value.trim())
+    await store.set(OPENROUTER_BASE_URL_KEY, baseUrl.value.trim())
+
+    const electronAPI = (globalThis as any).electronAPI
+    if (!electronAPI?.modelCatalogSyncNow) {
+      error.value = 'modelCatalogSyncNow unavailable.'
+      return
+    }
+
+    const result = await electronAPI.modelCatalogSyncNow({
+      providerKey: 'openrouter',
+      force: true,
+      reason: 'settings_validate_button',
+    })
+
+    if (result?.ok) {
+      const modelCount = result.modelCount ?? 0
+      verifySyncResult.value = `${t('settings.openrouter.verifySyncSuccess')} (${modelCount})`
+    } else {
+      const reasonCode = result?.errorCode ?? 'unknown_error'
+      const reasonKey = `errors.modelCatalog.syncFail${reasonCode.charAt(0).toUpperCase()}${reasonCode.slice(1).replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase())}`
+      const reasonText = t(reasonKey)
+      verifySyncResult.value = `${t('settings.openrouter.verifySyncFailed')}：${reasonText}`
+    }
+  } catch (err: any) {
+    error.value = err?.message ? String(err.message) : String(err)
+  } finally {
+    verifySyncLoading.value = false
   }
 }
 
@@ -525,6 +648,64 @@ onMounted(() => {
         </div>
         <div v-if="!baseUrlValid" class="mt-1 text-[11px] text-red-700">{{ t('settings.openrouter.baseUrlInvalid') }}</div>
 
+        <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label class="block">
+            <span class="text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.catalogStartupSyncPolicy') }}</span>
+            <select
+              v-model="catalogStartupSyncPolicy"
+              class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+              :disabled="!canEdit || loading || saving"
+              data-testid="settings-catalog-startup-sync-policy"
+            >
+              <option v-for="option in catalogAutoSyncPolicyOptions" :key="`startup-${option.value}`" :value="option.value">
+                {{ t(option.labelKey) }}
+              </option>
+            </select>
+          </label>
+
+          <label class="block">
+            <span class="text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.catalogPickerOpenSyncPolicy') }}</span>
+            <select
+              v-model="catalogPickerOpenSyncPolicy"
+              class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+              :disabled="!canEdit || loading || saving"
+              data-testid="settings-catalog-picker-open-sync-policy"
+            >
+              <option v-for="option in catalogAutoSyncPolicyOptions" :key="`picker-${option.value}`" :value="option.value">
+                {{ t(option.labelKey) }}
+              </option>
+            </select>
+          </label>
+
+          <label class="block">
+            <span class="text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.catalogListUpdateMode') }}</span>
+            <select
+              v-model="catalogListUpdateMode"
+              class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+              :disabled="!canEdit || loading || saving"
+              data-testid="settings-catalog-list-update-mode"
+            >
+              <option v-for="option in catalogListUpdateModeOptions" :key="option.value" :value="option.value">
+                {{ t(option.labelKey) }}
+              </option>
+            </select>
+          </label>
+
+          <label class="block">
+            <span class="text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.catalogFreshness') }}</span>
+            <select
+              v-model.number="catalogFreshnessMs"
+              class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+              :disabled="!canEdit || loading || saving"
+              data-testid="settings-catalog-freshness"
+            >
+              <option v-for="option in catalogFreshnessOptions" :key="option.value" :value="option.value">
+                {{ t(option.labelKey) }}
+              </option>
+            </select>
+          </label>
+        </div>
+
         <div class="mt-4 flex items-center justify-between gap-2">
           <div class="min-w-0">
             <div class="text-[11px] font-semibold text-gray-700">provider.require_parameters</div>
@@ -557,15 +738,30 @@ onMounted(() => {
           </label>
         </div>
 
-        <div class="mt-4 flex justify-end">
-          <button
-            type="button"
-            class="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving"
-            @click="save"
-          >
-            {{ t('common.save') }}
-          </button>
+        <div class="mt-4 flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div v-if="verifySyncResult" class="text-[11px]" :class="verifySyncResult.startsWith(t('settings.openrouter.verifySyncSuccess')) ? 'text-green-700' : 'text-red-700'">
+              {{ verifySyncResult }}
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="rounded-md border border-blue-600 bg-white px-3 py-2 text-sm font-semibold text-blue-600 shadow-sm hover:bg-blue-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || verifySyncLoading"
+              @click="verifyAndSync"
+            >
+              {{ verifySyncLoading ? t('settings.openrouter.verifySyncLoading') : t('settings.openrouter.verifyAndSync') }}
+            </button>
+            <button
+              type="button"
+              class="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving"
+              @click="save"
+            >
+              {{ t('common.save') }}
+            </button>
+          </div>
         </div>
       </div>
 

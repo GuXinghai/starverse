@@ -66,6 +66,9 @@ describe('CatalogQueryService.query', () => {
         name: 'GPT-4o',
         modelKey: 'openrouter::openai/gpt-4o',
       },
+      catalogRevision: 'checksum-a',
+      modelCount: 1,
+      lastSyncAtMs: 123,
     }))
     ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
     ;(globalThis as any).dbBridge = {
@@ -136,6 +139,12 @@ describe('CatalogQueryService.query', () => {
       modelKey: 'openrouter::openai/gpt-4o',
       sortBy: 'name',
       sortOrder: 'asc',
+    })
+    expect(result).toMatchObject({
+      status: 'synced',
+      catalogRevision: 'checksum-a',
+      modelCount: 1,
+      lastSyncAtMs: 123,
     })
   })
 
@@ -345,15 +354,19 @@ describe('CatalogQueryService.query', () => {
     const notSynced = await CatalogQueryService.query()
     const failed = await CatalogQueryService.query()
 
-    expect(notSynced).toEqual({
+    expect(notSynced).toMatchObject({
       items: [],
       nextCursor: null,
       notice: 'Model list is not synced.',
+      status: 'not_synced',
+      catalogRevision: null,
     })
-    expect(failed).toEqual({
+    expect(failed).toMatchObject({
       items: [],
       nextCursor: null,
       notice: 'Model list is unavailable.',
+      status: 'failed',
+      catalogRevision: null,
     })
   })
 })

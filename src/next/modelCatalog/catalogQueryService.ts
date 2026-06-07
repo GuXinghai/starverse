@@ -121,6 +121,10 @@ export type CatalogQueryResult = Readonly<{
   items: CatalogQueryItem[]
   nextCursor: CatalogQueryCursor | null
   notice?: string | null
+  status?: 'not_synced' | 'syncing' | 'synced' | 'failed'
+  catalogRevision?: string | null
+  modelCount?: number
+  lastSyncAtMs?: number
 }>
 
 function getElectronCatalogApi(): ElectronCatalogApi | null {
@@ -416,6 +420,19 @@ export class CatalogQueryService {
         .filter((row: CatalogQueryItem | null): row is CatalogQueryItem => row !== null)
       const nextCursor = normalizeCursor(raw?.nextCursor)
       const status = String(raw?.status ?? '')
+      const normalizedStatus =
+        status === 'not_synced' || status === 'syncing' || status === 'synced' || status === 'failed'
+          ? status
+          : undefined
+      const catalogRevision = typeof raw?.catalogRevision === 'string' && raw.catalogRevision.trim()
+        ? raw.catalogRevision.trim()
+        : null
+      const modelCount = typeof raw?.modelCount === 'number' && Number.isFinite(raw.modelCount)
+        ? raw.modelCount
+        : undefined
+      const lastSyncAtMs = typeof raw?.lastSyncAtMs === 'number' && Number.isFinite(raw.lastSyncAtMs)
+        ? raw.lastSyncAtMs
+        : undefined
       const finalNotice =
         status === 'not_synced'
           ? 'Model list is not synced.'
@@ -433,6 +450,10 @@ export class CatalogQueryService {
         items,
         nextCursor,
         notice: finalNotice,
+        status: normalizedStatus,
+        catalogRevision,
+        ...(modelCount !== undefined ? { modelCount } : {}),
+        ...(lastSyncAtMs !== undefined ? { lastSyncAtMs } : {}),
       }
     } catch (error: any) {
       logModelCatalogEvent('query', 'query_fail', {

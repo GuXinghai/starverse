@@ -53,6 +53,8 @@
       "syncSyncing": "正在同步 OpenRouter 模型目录……",
       "synced": "已同步 · {count} 个模型 · 上次同步：{time}",
       "syncFailedReason": "同步失败：{reason}",
+      "updateAvailable": "模型列表有更新",
+      "applyUpdate": "立即更新",
       "syncFailMissingApiKey": "未设置 API Key",
       "syncFailInvalidApiKey": "API Key 无效",
       "syncFailInsufficientCredits": "余额不足",
