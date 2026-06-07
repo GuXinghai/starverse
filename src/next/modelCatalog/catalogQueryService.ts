@@ -1,13 +1,12 @@
 import { PROVIDERS } from '../../constants/providers'
 import {
   OPENROUTER_MODEL_CATEGORIES,
-  resolveOpenRouterCategoryMembership,
   type OpenRouterModelCategory,
 } from './openRouterCategoryCache'
 import { logModelCatalogEvent } from './modelCatalogObservability'
 
-type DbBridge = Readonly<{
-  invoke: (method: string, params?: unknown) => Promise<any>
+type ElectronCatalogApi = Readonly<{
+  modelCatalogQueryScopedCurrent?: (options?: unknown) => Promise<any>
 }>
 
 export type CatalogQuerySortBy = 'name' | 'created_at' | 'context_length' | 'max_output_tokens'
@@ -124,19 +123,9 @@ export type CatalogQueryResult = Readonly<{
   notice?: string | null
 }>
 
-function getDbBridge(): DbBridge | null {
-  const bridge = (globalThis as any).dbBridge as DbBridge | undefined
-  return bridge && typeof bridge.invoke === 'function' ? bridge : null
-}
-
-function getElectronStoreBridge():
-  | Readonly<{ get?: (key: string) => Promise<unknown> }>
-  | null {
-  const store = (globalThis as any).electronStore as
-    | Readonly<{ get?: (key: string) => Promise<unknown> }>
-    | undefined
-  if (!store || typeof store !== 'object') return null
-  return store
+function getElectronCatalogApi(): ElectronCatalogApi | null {
+  const api = (globalThis as any).electronAPI as ElectronCatalogApi | undefined
+  return api && typeof api.modelCatalogQueryScopedCurrent === 'function' ? api : null
 }
 
 function normalizeStringArray(input: unknown): string[] | undefined {
@@ -186,10 +175,6 @@ function normalizeSingleCategory(input: unknown): OpenRouterModelCategory | unde
   const allowed = new Set<string>(OPENROUTER_MODEL_CATEGORIES)
   if (!allowed.has(value)) return undefined
   return value as OpenRouterModelCategory
-}
-
-function appendNotice(current: string | null, next: string): string {
-  return current ? `${current} ${next}` : next
 }
 
 function mergeUniqueStrings(...inputs: unknown[]): string[] | undefined {
@@ -293,6 +278,8 @@ function normalizeItem(input: unknown): CatalogQueryItem | null {
     if (typeof value !== 'number') return null
     return Number.isFinite(value) ? value : null
   }
+  const pricing = row.pricing && typeof row.pricing === 'object' ? row.pricing as Record<string, unknown> : null
+  const capabilities = row.capabilities && typeof row.capabilities === 'object' ? row.capabilities as Record<string, unknown> : null
 
   return {
     providerKey,
@@ -306,17 +293,17 @@ function normalizeItem(input: unknown): CatalogQueryItem | null {
     maxOutputTokens: numberOrNull(row.maxOutputTokens),
     createdAtSec: numberOrNull(row.createdAtSec),
     pricing: {
-      prompt: typeof row.pricePrompt === 'string' ? row.pricePrompt : null,
-      completion: typeof row.priceCompletion === 'string' ? row.priceCompletion : null,
-      request: typeof row.priceRequest === 'string' ? row.priceRequest : null,
-      image: typeof row.priceImage === 'string' ? row.priceImage : null,
+      prompt: typeof pricing?.prompt === 'string' ? pricing.prompt : typeof row.pricePrompt === 'string' ? row.pricePrompt : null,
+      completion: typeof pricing?.completion === 'string' ? pricing.completion : typeof row.priceCompletion === 'string' ? row.priceCompletion : null,
+      request: typeof pricing?.request === 'string' ? pricing.request : typeof row.priceRequest === 'string' ? row.priceRequest : null,
+      image: typeof pricing?.image === 'string' ? pricing.image : typeof row.priceImage === 'string' ? row.priceImage : null,
     },
     capabilities: {
-      reasoning: row.capReasoning === 1,
-      tools: row.capTools === 1,
-      structuredOutputs: row.capStructuredOutputs === 1,
-      vision: row.capVision === 1,
-      longContext: row.capLongContext === 1,
+      reasoning: capabilities?.reasoning === true || row.capReasoning === 1,
+      tools: capabilities?.tools === true || row.capTools === 1,
+      structuredOutputs: capabilities?.structuredOutputs === true || row.capStructuredOutputs === 1,
+      vision: capabilities?.vision === true || row.capVision === 1,
+      longContext: capabilities?.longContext === true || row.capLongContext === 1,
     },
   }
 }
@@ -346,134 +333,62 @@ export class CatalogQueryService {
       ...filterSummary,
     }
 
-    const bridge = getDbBridge()
-    if (!bridge) {
+    const catalogApi = getElectronCatalogApi()
+    if (!catalogApi?.modelCatalogQueryScopedCurrent) {
       logModelCatalogEvent('query', 'query_degraded', {
         ...querySummary,
         stage: 'precondition',
-        reason: 'missing_dbBridge',
+        reason: 'missing_scoped_query_ipc',
         durationMs: Date.now() - startedAtMs,
       })
       return { items: [], nextCursor: null, notice: null }
     }
 
     try {
-      let categoryNotice: string | null = null
-      let modelIdsByCategory: string[] | undefined
-      let categoryCacheState: 'none' | 'hit' | 'miss' | 'stale' | 'unresolved' = 'none'
       const legacyCategories = normalizeCategoryArray(input.filter?.categories)
       const singleCategory = normalizeSingleCategory(input.filter?.category)
       const effectiveCategory = singleCategory ?? legacyCategories?.[0]
-      if (Array.isArray(input.filter?.categories)) {
-        categoryNotice = appendNotice(
-          categoryNotice,
-          'Deprecated filter.categories detected; category filter is single-select and uses the first category.'
-        )
+      if (effectiveCategory) {
+        const notice = 'Category filter is unavailable for the current catalog.'
+        logModelCatalogEvent('query', 'query_degraded', {
+          ...querySummary,
+          stage: 'category_resolution',
+          reason: 'category_filter_not_scoped',
+          category: effectiveCategory,
+          durationMs: Date.now() - startedAtMs,
+        })
+        return {
+          items: [],
+          nextCursor: null,
+          notice,
+        }
       }
 
-      if (effectiveCategory) {
-        if (sourceProviderKey !== PROVIDERS.OPENROUTER) {
-          const notice = appendNotice(
-            categoryNotice,
-            'Category filter currently supports openrouter source only.'
-          )
-          logModelCatalogEvent('query', 'query_degraded', {
-            ...querySummary,
-            stage: 'category_resolution',
-            reason: 'unsupported_source_provider_for_category',
-            category: effectiveCategory,
-            notice,
-            durationMs: Date.now() - startedAtMs,
-          })
-          return {
-            items: [],
-            nextCursor: null,
-            notice,
-          }
-        }
-
-        const store = getElectronStoreBridge()
-        const apiKey =
-          store?.get && typeof store.get === 'function'
-            ? String((await store.get('openRouterApiKey')) ?? '').trim()
-            : ''
-        const baseUrlFromStore =
-          store?.get && typeof store.get === 'function'
-            ? String((await store.get('openRouterBaseUrl')) ?? '').trim()
-            : ''
-        let baseUrlFromMeta = ''
-        try {
-          const rawMeta = await bridge.invoke('modelCatalog.getCoreMeta', {
-            providerKey: sourceProviderKey,
-          })
-          baseUrlFromMeta = String(rawMeta?.baseUrl ?? '').trim()
-        } catch {
-          // ignore meta read failure and fallback to settings value
-        }
-        const baseUrl = baseUrlFromMeta.length > 0 ? baseUrlFromMeta : baseUrlFromStore
-
-        const categoryResult = await resolveOpenRouterCategoryMembership({
-          category: effectiveCategory,
-          apiKey: apiKey.length > 0 ? apiKey : null,
-          baseUrl: baseUrl.length > 0 ? baseUrl : null,
+      const unsupportedFilters = [
+        ...(normalizeStringArray(input.filter?.tags)?.length ? ['tags'] : []),
+        ...(normalizeStringArray(input.filter?.contextBuckets)?.length ? ['contextBuckets'] : []),
+        ...(typeof input.filter?.expiringWithinDays === 'number' ? ['expiringWithinDays'] : []),
+        ...(normalizeStringArray(input.filter?.priceBuckets)?.length ? ['priceBuckets'] : []),
+        ...(typeof input.filter?.hasPerRequestLimits === 'boolean' ? ['hasPerRequestLimits'] : []),
+        ...(typeof input.filter?.hasDefaultParameters === 'boolean' ? ['hasDefaultParameters'] : []),
+        ...(typeof input.filter?.topProviderIsModerated === 'boolean' ? ['topProviderIsModerated'] : []),
+        ...(normalizeStringArray(input.filter?.architectureModalities)?.length ? ['architectureModalities'] : []),
+        ...(normalizeStringArray(input.filter?.tokenizers)?.length ? ['tokenizers'] : []),
+        ...(normalizeStringArray(input.filter?.instructTypes)?.length ? ['instructTypes'] : []),
+      ]
+      if (unsupportedFilters.length > 0) {
+        const notice = 'Some filters are unavailable for the current catalog.'
+        logModelCatalogEvent('query', 'query_degraded', {
+          ...querySummary,
+          stage: 'filter_normalization',
+          reason: 'unsupported_scoped_filters',
+          unsupportedFilters,
+          durationMs: Date.now() - startedAtMs,
         })
-        categoryCacheState = categoryResult.cacheHit
-          ? 'hit'
-          : categoryResult.usedStaleCache
-            ? 'stale'
-            : categoryResult.unresolved
-              ? 'unresolved'
-              : 'miss'
-
-        if (categoryResult.unresolved) {
-          const notice = appendNotice(
-            categoryNotice,
-            'Category filter requires online refresh. Please reconnect and retry.'
-          )
-          logModelCatalogEvent('query', 'query_degraded', {
-            ...querySummary,
-            stage: 'category_resolution',
-            reason: 'category_membership_unresolved',
-            category: effectiveCategory,
-            categoryCacheState,
-            baseUrl: baseUrl.length > 0 ? baseUrl : null,
-            notice,
-            durationMs: Date.now() - startedAtMs,
-          })
-          return {
-            items: [],
-            nextCursor: null,
-            notice,
-          }
-        }
-
-        modelIdsByCategory = Array.from(categoryResult.modelIds)
-        if (modelIdsByCategory.length === 0) {
-          const notice = appendNotice(
-            categoryNotice,
-            `No models are currently available for category "${effectiveCategory}" on the selected source/base URL.`
-          )
-          logModelCatalogEvent('query', 'query_degraded', {
-            ...querySummary,
-            stage: 'category_resolution',
-            reason: 'empty_category_membership',
-            category: effectiveCategory,
-            categoryCacheState,
-            baseUrl: baseUrl.length > 0 ? baseUrl : null,
-            notice,
-            durationMs: Date.now() - startedAtMs,
-          })
-          return {
-            items: [],
-            nextCursor: null,
-            notice,
-          }
-        }
-        if (categoryResult.usedStaleCache) {
-          categoryNotice = appendNotice(
-            categoryNotice,
-            'Category filter is using stale cache due to network failure.'
-          )
+        return {
+          items: [],
+          nextCursor: null,
+          notice,
         }
       }
 
@@ -482,31 +397,8 @@ export class CatalogQueryService {
         searchText: typeof input.searchText === 'string' ? input.searchText : undefined,
         includeDescriptionInSearch: input.includeDescriptionInSearch === true,
         vendors: mergeUniqueStrings(input.filter?.vendors, input.filter?.providers),
-        tags: normalizeStringArray(input.filter?.tags),
-        modelIds: modelIdsByCategory,
-        contextBuckets: normalizeStringArray(input.filter?.contextBuckets),
         contextLength: normalizeNumberRange(input.filter?.contextLength),
         maxOutputTokens: normalizeNumberRange(input.filter?.maxOutputTokens),
-        expiringWithinDays:
-          typeof input.filter?.expiringWithinDays === 'number' && Number.isFinite(input.filter.expiringWithinDays)
-            ? Math.max(0, Math.floor(input.filter.expiringWithinDays))
-            : undefined,
-        priceBuckets: normalizeStringArray(input.filter?.priceBuckets),
-        hasPerRequestLimits:
-          typeof input.filter?.hasPerRequestLimits === 'boolean'
-            ? input.filter.hasPerRequestLimits
-            : undefined,
-        hasDefaultParameters:
-          typeof input.filter?.hasDefaultParameters === 'boolean'
-            ? input.filter.hasDefaultParameters
-            : undefined,
-        topProviderIsModerated:
-          typeof input.filter?.topProviderIsModerated === 'boolean'
-            ? input.filter.topProviderIsModerated
-            : undefined,
-        architectureModalities: normalizeStringArray(input.filter?.architectureModalities),
-        tokenizers: normalizeStringArray(input.filter?.tokenizers),
-        instructTypes: normalizeStringArray(input.filter?.instructTypes),
         modalities: normalizeStringArray(input.filter?.modalities),
         inputModalities: normalizeStringArray(input.filter?.inputModalities),
         outputModalities: normalizeStringArray(input.filter?.outputModalities),
@@ -517,24 +409,21 @@ export class CatalogQueryService {
         cursor: normalizeCursor(input.page?.cursor),
       }
 
-      const raw = await bridge.invoke('modelCatalog.queryCore', payload)
+      const raw = await catalogApi.modelCatalogQueryScopedCurrent(payload)
       const rawItems = Array.isArray(raw?.items) ? raw.items : []
       const items = rawItems
         .map((row: unknown) => normalizeItem(row))
         .filter((row: CatalogQueryItem | null): row is CatalogQueryItem => row !== null)
       const nextCursor = normalizeCursor(raw?.nextCursor)
-      let finalNotice = categoryNotice
-      if (effectiveCategory && items.length === 0) {
-        finalNotice = appendNotice(
-          finalNotice,
-          `No models matched category "${effectiveCategory}" with current local filters.`
-        )
-      }
+      const status = String(raw?.status ?? '')
+      const finalNotice =
+        status === 'not_synced'
+          ? 'Model list is not synced.'
+          : status === 'failed'
+            ? 'Model list is unavailable.'
+            : null
       logModelCatalogEvent('query', 'query_success', {
         ...querySummary,
-        category: effectiveCategory ?? null,
-        categoryMembershipCount: modelIdsByCategory?.length ?? null,
-        categoryCacheState,
         resultCount: items.length,
         hasNextCursor: nextCursor !== null,
         hasNotice: !!finalNotice,

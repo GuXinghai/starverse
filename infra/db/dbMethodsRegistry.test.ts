@@ -22,6 +22,7 @@ describe('dbMethodsRegistry', () => {
 
     expect(DB_RENDERER_METHOD_SET.has('db.reset')).toBe(false)
     expect(DB_RENDERER_METHOD_SET.has('health.stats')).toBe(true)
+    expect(DB_RENDERER_METHOD_SET.has('modelCatalog.queryScopedActive')).toBe(false)
   })
 
   it('derives worker method set from registry flags', () => {
@@ -30,6 +31,7 @@ describe('dbMethodsRegistry', () => {
     expect(actual).toEqual(expected)
 
     expect(DB_WORKER_METHOD_SET.has('sendPlan.prepareOpenRouterReplayFromMessage')).toBe(true)
+    expect(DB_WORKER_METHOD_SET.has('modelCatalog.queryScopedActive')).toBe(true)
     expect(DB_WORKER_METHOD_SET.has('health.stats')).toBe(false)
     expect(DB_WORKER_METHOD_SET.has('health.ping')).toBe(true)
   })

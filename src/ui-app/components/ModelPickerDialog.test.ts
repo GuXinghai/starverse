@@ -14,8 +14,12 @@ function createResult(items: CatalogQueryResult['items'], nextCursor: CatalogQue
 }
 
 describe('ModelPickerDialog', () => {
+  const originalDbBridge = (globalThis as any).dbBridge
+
   afterEach(() => {
     vi.restoreAllMocks()
+    ;(globalThis as any).dbBridge = originalDbBridge
+    delete (globalThis as any).electronAPI
   })
 
   it('loads first page and emits select+close on single click', async () => {
@@ -70,6 +74,88 @@ describe('ModelPickerDialog', () => {
     expect(events.select).toBeTruthy()
     expect(events.select?.[0]).toEqual(['openai/gpt-4o', 'GPT-4o'])
     expect(events.close).toBeTruthy()
+  })
+
+  it('uses scoped current query API as the default model list source', async () => {
+    const scopedQuery = vi.fn(async () => ({
+      providerKey: 'openrouter',
+      status: 'synced',
+      syncState: 'ok',
+      failureReasonCode: null,
+      items: [
+        {
+          providerKey: 'openrouter',
+          modelId: 'scoped/current-model',
+          modelKey: 'openrouter::scoped/current-model',
+          canonicalSlug: 'scoped/current-model',
+          displayName: 'Scoped Current Model',
+          description: null,
+          vendor: 'scoped',
+          contextLength: 8192,
+          maxOutputTokens: 4096,
+          createdAtSec: 1700000123,
+          pricing: { prompt: null, completion: null, request: null, image: null },
+          capabilities: {
+            reasoning: false,
+            tools: false,
+            structuredOutputs: false,
+            vision: false,
+            longContext: false,
+          },
+        },
+      ],
+      nextCursor: null,
+    }))
+    const legacyInvoke = vi.fn(async () => {
+      throw new Error('legacy modelCatalog query should not be called')
+    })
+    ;(globalThis as any).dbBridge = { invoke: legacyInvoke }
+    ;(globalThis as any).electronAPI = {
+      modelCatalogQueryScopedCurrent: scopedQuery,
+      modelCatalogSyncNow: vi.fn(async () => ({
+        ok: true,
+        syncAttempted: false,
+        syncSucceeded: true,
+        providerKey: 'openrouter',
+        modelCount: 1,
+        lastSyncAtMs: Date.now(),
+        errorCode: null,
+        errorMessage: null,
+      })),
+      modelCatalogGetSyncStatus: vi.fn(async () => ({
+        providerKey: 'openrouter',
+        syncState: 'ok',
+        lastSyncAtMs: Date.now(),
+        modelCount: 1,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      })),
+    }
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedModelId: 'scoped/current-model',
+        modelDetailFn: vi.fn(async () => ({
+          providerKey: 'openrouter',
+          modelId: 'scoped/current-model',
+          error: null,
+          item: null,
+        })),
+        debounceMs: 0,
+      },
+    })
+
+    await screen.findByTestId('model-picker-item-scoped/current-model')
+
+    expect(scopedQuery).toHaveBeenCalledWith(expect.objectContaining({
+      providerKey: 'openrouter',
+      limit: 60,
+    }))
+    expect(legacyInvoke).not.toHaveBeenCalled()
+    const payload = JSON.stringify(scopedQuery.mock.calls)
+    expect(payload).not.toContain('sk-')
+    expect(payload).not.toContain('catalogScopeKey')
   })
 
   it('emits toggleFavorite from row star button without selecting row', async () => {
@@ -207,6 +293,92 @@ describe('ModelPickerDialog', () => {
     expect(events.reorderFavorites?.[0]).toEqual([
       ['openrouter::anthropic/claude-3', 'openrouter::openai/gpt-4o'],
     ])
+  })
+
+  it('does not use fallbackModels to populate current scoped picker details', async () => {
+    const queryFn = vi.fn(async () => createResult([]))
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedModelId: 'legacy/only-model',
+        notice: 'Model catalog is empty. Fell back to reasoning model index cache.',
+        favoriteModelKeys: ['openrouter::legacy/only-model'],
+        fallbackModels: [
+          {
+            modelId: 'legacy/only-model',
+            name: 'Legacy Pretty Name',
+            vendor: 'legacy-vendor',
+            status: 'visible',
+            supportedParameters: [],
+            lastSeenSnapshotId: 'legacy-snapshot',
+          },
+        ],
+        queryFn,
+        debounceMs: 0,
+      },
+    })
+
+    await waitFor(() => {
+      expect(queryFn).toHaveBeenCalled()
+    })
+
+    expect(screen.getAllByText('legacy/only-model').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Legacy Pretty Name')).toBeNull()
+    expect(screen.queryByText(/fallback/i)).toBeNull()
+    expect(screen.queryByText(/cache/i)).toBeNull()
+    expect(screen.queryByTestId('model-picker-vendor-legacy-vendor')).toBeNull()
+    expect(screen.queryByTestId('model-picker-item-legacy/only-model')).toBeNull()
+  })
+
+  it('does not auto-select the first scoped model when the selected model is missing', async () => {
+    const modelDetailFn = vi.fn(async () => ({
+      providerKey: 'openrouter',
+      modelId: 'openai/gpt-4o',
+      error: null,
+      item: null,
+    }))
+    const queryFn = vi.fn(async () =>
+      createResult([
+        {
+          providerKey: 'openrouter',
+          modelId: 'openai/gpt-4o',
+          modelKey: 'openrouter::openai/gpt-4o',
+          canonicalSlug: 'openai/gpt-4o',
+          displayName: 'GPT-4o',
+          description: null,
+          vendor: 'openai',
+          contextLength: 128000,
+          maxOutputTokens: 8192,
+          createdAtSec: 1700000123,
+          pricing: { prompt: null, completion: null, request: null, image: null },
+          capabilities: {
+            reasoning: false,
+            tools: false,
+            structuredOutputs: false,
+            vision: false,
+            longContext: false,
+          },
+        },
+      ]),
+    )
+
+    const view = render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedModelId: 'missing/current-model',
+        queryFn,
+        modelDetailFn,
+        debounceMs: 0,
+      },
+    })
+
+    await screen.findByTestId('model-picker-item-openai/gpt-4o')
+    await fireEvent.keyDown(screen.getByTestId('model-picker-dialog'), { key: 'Enter' })
+
+    expect(modelDetailFn).not.toHaveBeenCalled()
+    expect(view.emitted().select).toBeFalsy()
+    expect(screen.getByText('missing/current-model')).toBeTruthy()
   })
 
   it('applies search debounce and forwards latest search text only', async () => {
@@ -633,7 +805,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
-        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        selectedModelId: 'openai/gpt-4o',
         queryFn,
         endpointDetailFn,
         modelDetailFn,
@@ -668,6 +840,350 @@ describe('ModelPickerDialog', () => {
       )
     })
     expect(endpointDetailFn).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows synced status with model count and time', async () => {
+    const now = Date.now()
+    ;(globalThis as any).electronAPI = {
+      modelCatalogSyncNow: vi.fn(async () => ({
+        ok: true,
+        syncAttempted: true,
+        syncSucceeded: true,
+        providerKey: 'openrouter',
+        modelCount: 150,
+        lastSyncAtMs: now,
+        errorCode: null,
+        errorMessage: null,
+      })),
+      modelCatalogGetSyncStatus: vi.fn(async () => ({
+        providerKey: 'openrouter',
+        syncState: 'ok',
+        lastSyncAtMs: now,
+        modelCount: 150,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      })),
+    }
+    const queryFn = vi.fn(async () => createResult([]))
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText(/已同步/)).toBeTruthy()
+      expect(screen.getByText(/150/)).toBeTruthy()
+    })
+  })
+
+  it('shows failed status with error reason', async () => {
+    ;(globalThis as any).electronAPI = {
+      modelCatalogSyncNow: vi.fn(async () => ({
+        ok: false,
+        syncAttempted: true,
+        syncSucceeded: false,
+        providerKey: 'openrouter',
+        modelCount: 0,
+        lastSyncAtMs: Date.now(),
+        errorCode: 'invalid_api_key',
+        errorMessage: 'API Key 无效',
+      })),
+      modelCatalogGetSyncStatus: vi.fn(async () => ({
+        providerKey: 'openrouter',
+        syncState: 'error',
+        lastSyncAtMs: 0,
+        modelCount: 0,
+        lastErrorCode: 'invalid_api_key',
+        lastErrorMessage: 'API Key 无效',
+      })),
+    }
+    const queryFn = vi.fn(async () => createResult([]))
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText(/同步失败/)).toBeTruthy()
+      expect(screen.getByText(/API Key 无效/)).toBeTruthy()
+    })
+  })
+
+  it('does not show cache or fallback text in sync status', async () => {
+    ;(globalThis as any).electronAPI = {
+      modelCatalogSyncNow: vi.fn(async () => ({
+        ok: false,
+        syncAttempted: true,
+        syncSucceeded: false,
+        providerKey: 'openrouter',
+        modelCount: 50,
+        lastSyncAtMs: Date.now(),
+        errorCode: 'network_unreachable',
+        errorMessage: '网络不可达',
+      })),
+      modelCatalogGetSyncStatus: vi.fn(async () => ({
+        providerKey: 'openrouter',
+        syncState: 'error',
+        lastSyncAtMs: Date.now(),
+        modelCount: 50,
+        lastErrorCode: 'network_unreachable',
+        lastErrorMessage: '网络不可达',
+      })),
+    }
+    const queryFn = vi.fn(async () => createResult([]))
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+      },
+    })
+
+    await waitFor(() => {
+      const syncRefresh = screen.getByTestId('model-picker-sync-refresh')
+      expect(syncRefresh).toBeTruthy()
+    })
+
+    const statusBar = screen.getByTestId('model-picker-sync-refresh').closest('[class*="border-t"]')
+    expect(statusBar).toBeTruthy()
+    const text = statusBar!.textContent!.toLowerCase()
+    expect(text).not.toContain('缓存')
+    expect(text).not.toContain('cache')
+    expect(text).not.toContain('fallback')
+  })
+
+  it('manual refresh button triggers force sync', async () => {
+    const syncNow = vi.fn(async () => ({
+      ok: true,
+      syncAttempted: true,
+      syncSucceeded: true,
+      providerKey: 'openrouter',
+      modelCount: 100,
+      lastSyncAtMs: Date.now(),
+      errorCode: null,
+      errorMessage: null,
+    }))
+    ;(globalThis as any).electronAPI = {
+      modelCatalogSyncNow: syncNow,
+      modelCatalogGetSyncStatus: vi.fn(async () => ({
+        providerKey: 'openrouter',
+        syncState: 'ok',
+        lastSyncAtMs: Date.now(),
+        modelCount: 100,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      })),
+    }
+    const user = userEvent.setup()
+    const queryFn = vi.fn(async () => createResult([]))
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-picker-sync-refresh')).toBeTruthy()
+    })
+
+    syncNow.mockClear()
+    await user.click(screen.getByTestId('model-picker-sync-refresh'))
+
+    await waitFor(() => {
+      expect(syncNow).toHaveBeenCalledWith(expect.objectContaining({
+        force: true,
+        reason: 'manual_refresh',
+      }))
+    })
+  })
+
+  it('auto-sync cache-fresh returns ok=true shows synced not failed', async () => {
+    const now = Date.now()
+    ;(globalThis as any).electronAPI = {
+      modelCatalogSyncNow: vi.fn(async () => ({
+        ok: true,
+        syncAttempted: false,
+        syncSucceeded: true,
+        providerKey: 'openrouter',
+        modelCount: 200,
+        lastSyncAtMs: now,
+        errorCode: null,
+        errorMessage: null,
+      })),
+      modelCatalogGetSyncStatus: vi.fn(async () => ({
+        providerKey: 'openrouter',
+        syncState: 'ok',
+        lastSyncAtMs: now,
+        modelCount: 200,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      })),
+    }
+    const queryFn = vi.fn(async () => createResult([]))
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-picker-sync-refresh')).toBeTruthy()
+    })
+
+    const statusBar = screen.getByTestId('model-picker-sync-refresh').closest('[class*="border-t"]')
+    expect(statusBar).toBeTruthy()
+    const text = statusBar!.textContent!.toLowerCase()
+    expect(text).not.toContain('失败')
+    expect(text).not.toContain('failed')
+    expect(text).not.toContain('缓存')
+    expect(text).not.toContain('cache')
+  })
+
+  it('after manual sync success, reopening shows synced via getSyncStatus', async () => {
+    const now = Date.now()
+    const getSyncStatus = vi.fn(async () => ({
+      providerKey: 'openrouter',
+      syncState: 'ok',
+      lastSyncAtMs: now,
+      modelCount: 300,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+    }))
+    ;(globalThis as any).electronAPI = {
+      modelCatalogSyncNow: vi.fn(async () => ({
+        ok: true,
+        syncAttempted: false,
+        syncSucceeded: true,
+        providerKey: 'openrouter',
+        modelCount: 300,
+        lastSyncAtMs: now,
+        errorCode: null,
+        errorMessage: null,
+      })),
+      modelCatalogGetSyncStatus: getSyncStatus,
+    }
+    const queryFn = vi.fn(async () => createResult([]))
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+      },
+    })
+
+    await waitFor(() => {
+      expect(getSyncStatus).toHaveBeenCalled()
+      expect(screen.getByText(/已同步/)).toBeTruthy()
+      expect(screen.getByText(/300/)).toBeTruthy()
+    })
+  })
+
+  it('syncState=ok with lastErrorCode residue still shows synced', async () => {
+    const now = Date.now()
+    ;(globalThis as any).electronAPI = {
+      modelCatalogSyncNow: vi.fn(async () => ({
+        ok: true,
+        syncAttempted: false,
+        syncSucceeded: true,
+        providerKey: 'openrouter',
+        modelCount: 50,
+        lastSyncAtMs: now,
+        errorCode: null,
+        errorMessage: null,
+      })),
+      modelCatalogGetSyncStatus: vi.fn(async () => ({
+        providerKey: 'openrouter',
+        syncState: 'ok',
+        lastSyncAtMs: now,
+        modelCount: 50,
+        lastErrorCode: 'network_unreachable',
+        lastErrorMessage: 'stale error from previous failed sync',
+      })),
+    }
+    const queryFn = vi.fn(async () => createResult([]))
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-picker-sync-refresh')).toBeTruthy()
+    })
+
+    const statusBar = screen.getByTestId('model-picker-sync-refresh').closest('[class*="border-t"]')
+    expect(statusBar).toBeTruthy()
+    const text = statusBar!.textContent!.toLowerCase()
+    expect(text).not.toContain('失败')
+    expect(text).not.toContain('failed')
+  })
+
+  it('auto-sync sends providerKey, force=false, reason=model_picker_opened', async () => {
+    const syncNow = vi.fn(async () => ({
+      ok: true,
+      syncAttempted: true,
+      syncSucceeded: true,
+      providerKey: 'openrouter',
+      modelCount: 100,
+      lastSyncAtMs: Date.now(),
+      errorCode: null,
+      errorMessage: null,
+    }))
+    ;(globalThis as any).electronAPI = {
+      modelCatalogSyncNow: syncNow,
+      modelCatalogGetSyncStatus: vi.fn(async () => ({
+        providerKey: 'openrouter',
+        syncState: 'idle',
+        lastSyncAtMs: 0,
+        modelCount: 0,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      })),
+    }
+    const queryFn = vi.fn(async () => createResult([]))
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+      },
+    })
+
+    await waitFor(() => {
+      expect(syncNow).toHaveBeenCalledWith(expect.objectContaining({
+        providerKey: 'openrouter',
+        force: false,
+        reason: 'model_picker_opened',
+      }))
+    })
   })
 })
 

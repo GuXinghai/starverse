@@ -48,7 +48,23 @@
       "notSynced": "模型目录尚未同步，稍后自动刷新。",
       "empty": "模型目录为空，已回退到推理模型索引。",
       "indexNotSynced": "推理模型索引尚未同步，仅显示目录。",
-      "syncFailed": "模型目录不可用（同步失败）。"
-    }
+      "syncFailed": "模型目录不可用（同步失败）。",
+      "syncNotSynced": "未同步",
+      "syncSyncing": "正在同步 OpenRouter 模型目录……",
+      "synced": "已同步 · {count} 个模型 · 上次同步：{time}",
+      "syncFailedReason": "同步失败：{reason}",
+      "syncFailMissingApiKey": "未设置 API Key",
+      "syncFailInvalidApiKey": "API Key 无效",
+      "syncFailInsufficientCredits": "余额不足",
+      "syncFailForbidden": "权限受限",
+      "syncFailRateLimited": "请求过于频繁",
+      "syncFailTimeout": "请求超时",
+        "syncFailNetworkUnreachable": "网络不可达",
+        "syncFailServiceUnavailable": "OpenRouter 服务暂不可用",
+        "syncFailBadResponse": "响应格式异常",
+        "syncFailCacheCorrupted": "模型目录数据异常",
+        "syncFailDbUnavailable": "数据库不可用",
+        "syncFailUnknownError": "未知错误"
+      }
   }
 }

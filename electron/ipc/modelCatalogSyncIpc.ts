@@ -7,6 +7,7 @@ import type { RegisterInvoke } from './types'
 export const MODEL_CATALOG_SYNC_IPC_CHANNELS = [
   'modelCatalog.syncNow',
   'modelCatalog.getSyncStatus',
+  'modelCatalog.queryScopedCurrent',
 ] as const
 
 type SyncNowInput = Readonly<{
@@ -38,7 +39,75 @@ type SyncNowResult = Readonly<{
   failureReasonCode: string | null
 }>
 
+type ScopedQueryInput = Readonly<{
+  providerKey?: string
+  searchText?: string
+  includeDescriptionInSearch?: boolean
+  vendors?: string[]
+  providers?: string[]
+  modelIds?: string[]
+  contextLength?: { min?: number; max?: number }
+  maxOutputTokens?: { min?: number; max?: number }
+  modalities?: string[]
+  inputModalities?: string[]
+  outputModalities?: string[]
+  supportedParameters?: string[]
+  sortBy?: string
+  sortOrder?: string
+  limit?: number
+  cursor?: unknown
+}>
+
+type ScopedQueryResult = Readonly<{
+  providerKey: string
+  status: 'not_synced' | 'syncing' | 'synced' | 'failed'
+  syncState: string
+  failureReasonCode: string | null
+  items: unknown[]
+  nextCursor: unknown | null
+}>
+
 const syncPromisesByScope = new Map<string, Promise<SyncNowResult>>()
+
+function parseJsonObject(value: unknown): Record<string, unknown> | null {
+  if (value == null || value === '') return null
+  try {
+    const parsed = JSON.parse(String(value))
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null
+  } catch {
+    return null
+  }
+}
+
+function mapScopedQueryItem(row: Record<string, unknown>): Record<string, unknown> {
+  const pricing = parseJsonObject(row.pricingJson)
+  const capabilities = parseJsonObject(row.capabilitiesJson)
+  return {
+    providerKey: row.providerKey,
+    modelId: row.modelId,
+    modelKey: row.modelKey,
+    canonicalSlug: row.canonicalSlug ?? null,
+    displayName: row.displayName,
+    description: row.description ?? null,
+    vendor: row.vendor ?? null,
+    contextLength: row.contextLength ?? null,
+    maxOutputTokens: row.maxOutputTokens ?? null,
+    createdAtSec: row.createdAtSec ?? null,
+    pricing: {
+      prompt: typeof pricing?.prompt === 'string' ? pricing.prompt : null,
+      completion: typeof pricing?.completion === 'string' ? pricing.completion : null,
+      request: typeof pricing?.request === 'string' ? pricing.request : null,
+      image: typeof pricing?.image === 'string' ? pricing.image : null,
+    },
+    capabilities: {
+      reasoning: capabilities?.reasoning === true,
+      tools: capabilities?.tools === true,
+      structuredOutputs: capabilities?.structuredOutputs === true,
+      vision: capabilities?.vision === true,
+      longContext: capabilities?.longContext === true,
+    },
+  }
+}
 
 export function registerModelCatalogSyncIpc(input: Readonly<{
   registerInvoke: RegisterInvoke
@@ -254,6 +323,131 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
         lastErrorCode: mapped.code,
         lastErrorMessage: mapped.message,
         failureReasonCode: mapped.code,
+      }
+    }
+  })
+
+  registerInvoke('modelCatalog.queryScopedCurrent', async (_event: unknown, options?: unknown): Promise<ScopedQueryResult> => {
+    const opts = (options ?? {}) as ScopedQueryInput
+    const providerKey = typeof opts.providerKey === 'string' && opts.providerKey.trim()
+      ? opts.providerKey.trim()
+      : 'openrouter'
+    const scope = resolveCurrentOpenRouterCatalogScope(store)
+    if (!scope) {
+      const mapped = mapMissingApiKeyToCode()
+      return {
+        providerKey,
+        status: 'failed',
+        syncState: 'error',
+        failureReasonCode: mapped.code,
+        items: [],
+        nextCursor: null,
+      }
+    }
+
+    try {
+      const meta = await dbWorkerManager.call('modelCatalog.getScopedMeta', {
+        providerKey,
+        catalogScopeKey: scope.catalogScopeKey,
+      }) as Record<string, unknown> | null
+      if (!meta || typeof meta !== 'object') {
+        return {
+          providerKey,
+          status: 'not_synced',
+          syncState: 'idle',
+          failureReasonCode: null,
+          items: [],
+          nextCursor: null,
+        }
+      }
+
+      const syncState = String(meta.syncState ?? 'idle')
+      if (syncState === 'error') {
+        return {
+          providerKey,
+          status: 'failed',
+          syncState: 'error',
+          failureReasonCode: meta.lastErrorCode != null ? String(meta.lastErrorCode) : 'unknown_error',
+          items: [],
+          nextCursor: null,
+        }
+      }
+      if (syncState === 'syncing') {
+        return {
+          providerKey,
+          status: 'syncing',
+          syncState: 'syncing',
+          failureReasonCode: null,
+          items: [],
+          nextCursor: null,
+        }
+      }
+      if (syncState !== 'ok' || !String(meta.activeSnapshotId ?? '').trim()) {
+        return {
+          providerKey,
+          status: 'not_synced',
+          syncState,
+          failureReasonCode: null,
+          items: [],
+          nextCursor: null,
+        }
+      }
+
+      const validation = await dbWorkerManager.call('modelCatalog.validateActiveScopedSnapshot', {
+        providerKey,
+        catalogScopeKey: scope.catalogScopeKey,
+      }) as { ok?: boolean }
+      if (validation?.ok !== true) {
+        const mapped = mapCacheCorruptedToCode()
+        return {
+          providerKey,
+          status: 'failed',
+          syncState: 'error',
+          failureReasonCode: mapped.code,
+          items: [],
+          nextCursor: null,
+        }
+      }
+
+      const raw = await dbWorkerManager.call('modelCatalog.queryScopedActive', {
+        providerKey,
+        catalogScopeKey: scope.catalogScopeKey,
+        searchText: typeof opts.searchText === 'string' ? opts.searchText : undefined,
+        includeDescriptionInSearch: opts.includeDescriptionInSearch === true,
+        vendors: Array.isArray(opts.vendors) ? opts.vendors.map((item) => String(item)) : undefined,
+        providers: Array.isArray(opts.providers) ? opts.providers.map((item) => String(item)) : undefined,
+        modelIds: Array.isArray(opts.modelIds) ? opts.modelIds.map((item) => String(item)) : undefined,
+        contextLength: opts.contextLength,
+        maxOutputTokens: opts.maxOutputTokens,
+        modalities: Array.isArray(opts.modalities) ? opts.modalities.map((item) => String(item)) : undefined,
+        inputModalities: Array.isArray(opts.inputModalities) ? opts.inputModalities.map((item) => String(item)) : undefined,
+        outputModalities: Array.isArray(opts.outputModalities) ? opts.outputModalities.map((item) => String(item)) : undefined,
+        supportedParameters: Array.isArray(opts.supportedParameters) ? opts.supportedParameters.map((item) => String(item)) : undefined,
+        sortBy: opts.sortBy,
+        sortOrder: opts.sortOrder,
+        limit: opts.limit,
+        cursor: opts.cursor ?? null,
+      }) as { items?: unknown[]; nextCursor?: unknown | null }
+      const rows = Array.isArray(raw?.items) ? raw.items : []
+      return {
+        providerKey,
+        status: 'synced',
+        syncState: 'ok',
+        failureReasonCode: null,
+        items: rows
+          .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
+          .map((row) => mapScopedQueryItem(row)),
+        nextCursor: raw?.nextCursor ?? null,
+      }
+    } catch {
+      const mapped = mapDbUnavailableToCode()
+      return {
+        providerKey,
+        status: 'failed',
+        syncState: 'error',
+        failureReasonCode: mapped.code,
+        items: [],
+        nextCursor: null,
       }
     }
   })

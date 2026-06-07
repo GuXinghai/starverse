@@ -43,6 +43,7 @@ function createRepresentativeRuntime() {
     projectList: vi.fn(() => [{ id: 'p1', name: 'default' }]),
     usageAggregate: vi.fn((input: { days?: number }) => ({ total: input.days ?? 0 })),
     modelCatalogQuery: vi.fn(() => ({ items: [], nextCursor: null })),
+    modelCatalogQueryScopedActive: vi.fn(() => ({ items: [], nextCursor: null })),
     modelCatalogGetModelDetail: vi.fn(() => null),
     modelCatalogReplaceEndpointMeta: vi.fn(() => undefined),
     modelCatalogListEndpointMeta: vi.fn(() => []),
@@ -58,6 +59,7 @@ function createRepresentativeRuntime() {
     usageRepo: { aggregateUsage: spies.usageAggregate },
     modelCatalogRepo: {
       queryCore: spies.modelCatalogQuery,
+      queryScopedActiveModels: spies.modelCatalogQueryScopedActive,
       getCoreModelDetail: spies.modelCatalogGetModelDetail,
       replaceEndpointMetaByModel: spies.modelCatalogReplaceEndpointMeta,
       listEndpointMetaByModel: spies.modelCatalogListEndpointMeta,
@@ -167,6 +169,11 @@ describe('DbWorker handler registration modules', () => {
     expect(spies.usageAggregate).toHaveBeenCalledWith({})
     expect(spies.modelCatalogQuery).toHaveBeenCalledWith(expect.objectContaining({ sortBy: 'created_at' }))
     expect(spies.modelCatalogQuery).toHaveBeenCalledWith(expect.objectContaining({ sortBy: 'context_length' }))
+    expect(spies.modelCatalogQueryScopedActive).toHaveBeenCalledWith(expect.objectContaining({
+      providerKey: 'openrouter',
+      catalogScopeKey: 'scope-worker-test',
+      sortBy: 'name',
+    }))
     expect(spies.modelCatalogGetModelDetail).toHaveBeenCalledWith('openrouter', 'openai/gpt-4')
     expect(spies.modelCatalogReplaceEndpointMeta).toHaveBeenCalledWith(expect.objectContaining({ modelId: 'openai/gpt-4' }))
     expect(spies.modelCatalogListEndpointMeta).toHaveBeenCalledWith('openrouter', 'https://openrouter.ai/api/v1', 'openai/gpt-4')
@@ -218,6 +225,7 @@ describe('DbWorker handler registration modules', () => {
 const representativeMethods = [
   'project.list',
   'usage.aggregate',
+  'modelCatalog.queryScopedActive',
   'modelCatalog.queryCore',
   'modelCatalog.getModelDetail',
   'modelCatalog.replaceEndpointMeta',
@@ -247,6 +255,11 @@ const lifecycleMethods = [
 function exerciseRepresentativeHandlers(handlers: ReadonlyMap<DbMethod, DbHandler>) {
   expect(handlers.get('project.list')!({ includeSystem: true })).toEqual([{ id: 'p1', name: 'default' }])
   expect(handlers.get('usage.aggregate')!({ days: 7 })).toEqual({ total: 0 })
+  expect(handlers.get('modelCatalog.queryScopedActive')!({
+    providerKey: 'openrouter',
+    catalogScopeKey: 'scope-worker-test',
+    sortBy: 'name',
+  })).toEqual({ items: [], nextCursor: null })
   expect(handlers.get('modelCatalog.queryCore')!({ providerKey: 'openrouter', sortBy: 'created_at' })).toEqual({ items: [], nextCursor: null })
   expect(handlers.get('modelCatalog.queryCore')!({ providerKey: 'openrouter', sortBy: 'context_length' })).toEqual({ items: [], nextCursor: null })
   expect(handlers.get('modelCatalog.getModelDetail')!({ providerKey: 'openrouter', modelId: 'openai/gpt-4' })).toBeNull()

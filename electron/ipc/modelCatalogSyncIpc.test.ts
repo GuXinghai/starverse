@@ -289,4 +289,218 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
     await expect(sameScope).resolves.toMatchObject({ ok: true })
     await expect(otherScope).resolves.toMatchObject({ ok: true })
   })
+
+  it('queryScopedCurrent returns missing_api_key without DB or legacy fallback', async () => {
+    const dbWorkerManager = { call: vi.fn() }
+    const { handlers } = registerHandlers({
+      store: createStore({ openRouterCatalogLocalSecret: 'local-secret-for-ipc-tests-1234567890' }),
+      dbWorkerManager,
+    })
+
+    const result = await handlers.get('modelCatalog.queryScopedCurrent')?.({}, {
+      providerKey: 'openrouter',
+      searchText: 'gpt',
+    }) as any
+
+    expect(result).toMatchObject({
+      providerKey: 'openrouter',
+      status: 'failed',
+      syncState: 'error',
+      failureReasonCode: 'missing_api_key',
+      items: [],
+      nextCursor: null,
+    })
+    expect(dbWorkerManager.call).not.toHaveBeenCalled()
+  })
+
+  it('queryScopedCurrent reads current scoped active snapshot and strips scope fields from renderer payload', async () => {
+    const rawApiKey = 'sk-query-a'
+    const store = createStore({
+      openRouterApiKey: rawApiKey,
+      openRouterCatalogLocalSecret: 'local-secret-for-ipc-tests-1234567890',
+    })
+    const scope = getScope(store)
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string, params: any) => {
+        if (method === 'modelCatalog.getScopedMeta') {
+          expect(params).toMatchObject({ providerKey: 'openrouter', catalogScopeKey: scope })
+          return makeScopedMeta(scope)
+        }
+        if (method === 'modelCatalog.validateActiveScopedSnapshot') {
+          expect(params).toMatchObject({ providerKey: 'openrouter', catalogScopeKey: scope })
+          return { ok: true, modelCount: 1 }
+        }
+        if (method === 'modelCatalog.queryScopedActive') {
+          expect(params).toMatchObject({
+            providerKey: 'openrouter',
+            catalogScopeKey: scope,
+            searchText: 'gpt',
+            vendors: ['openai'],
+            sortBy: 'name',
+            sortOrder: 'asc',
+            limit: 25,
+          })
+          expect(JSON.stringify(params)).not.toContain(rawApiKey)
+          return {
+            items: [
+              {
+                providerKey: 'openrouter',
+                catalogScopeKey: scope,
+                snapshotId: 'snap-ipc',
+                modelId: 'openai/gpt-4o',
+                modelKey: 'openrouter::openai/gpt-4o',
+                canonicalSlug: 'openai/gpt-4o',
+                displayName: 'GPT-4o',
+                description: 'omni',
+                vendor: 'openai',
+                contextLength: 128000,
+                maxOutputTokens: 8192,
+                createdAtSec: 1700000123,
+                pricingJson: '{"prompt":"0.1"}',
+                capabilitiesJson: '{"reasoning":true,"tools":true}',
+                rawJson: `{"apiKey":"${rawApiKey}"}`,
+              },
+            ],
+            nextCursor: { sortBy: 'name', sortOrder: 'asc', modelKey: 'openrouter::openai/gpt-4o' },
+          }
+        }
+        throw new Error(`unexpected method ${method}`)
+      }),
+    }
+    const { handlers } = registerHandlers({ store, dbWorkerManager })
+
+    const result = await handlers.get('modelCatalog.queryScopedCurrent')?.({}, {
+      providerKey: 'openrouter',
+      apiKey: rawApiKey,
+      searchText: 'gpt',
+      vendors: ['openai'],
+      sortBy: 'name',
+      sortOrder: 'asc',
+      limit: 25,
+    } as any) as any
+
+    expect(result).toMatchObject({
+      providerKey: 'openrouter',
+      status: 'synced',
+      syncState: 'ok',
+      failureReasonCode: null,
+      nextCursor: { sortBy: 'name', sortOrder: 'asc', modelKey: 'openrouter::openai/gpt-4o' },
+    })
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        providerKey: 'openrouter',
+        modelId: 'openai/gpt-4o',
+        modelKey: 'openrouter::openai/gpt-4o',
+        displayName: 'GPT-4o',
+        pricing: expect.objectContaining({ prompt: '0.1' }),
+        capabilities: expect.objectContaining({ reasoning: true, tools: true }),
+      }),
+    ])
+    expect(JSON.stringify(result)).not.toContain(rawApiKey)
+    expect(JSON.stringify(result)).not.toContain(scope)
+    expect(JSON.stringify(result)).not.toContain('snapshotId')
+    expect(dbWorkerManager.call).not.toHaveBeenCalledWith('modelCatalog.queryCore', expect.anything())
+    expect(dbWorkerManager.call).not.toHaveBeenCalledWith('modelCatalog.list', expect.anything())
+  })
+
+  it('queryScopedCurrent isolates API keys and base URLs by current scope', async () => {
+    const store = createStore({
+      openRouterApiKey: 'sk-query-a',
+      openRouterBaseUrl: 'https://openrouter.ai/api/v1',
+      openRouterCatalogLocalSecret: 'local-secret-for-ipc-tests-1234567890',
+    })
+    const scopeA = getScope(store)
+    store.setValue('openRouterApiKey', 'sk-query-b')
+    const scopeB = getScope(store)
+    store.setValue('openRouterApiKey', 'sk-query-a')
+    store.setValue('openRouterBaseUrl', 'https://alt.openrouter.test/api/v1')
+    const scopeAltBaseUrl = getScope(store)
+    store.setValue('openRouterApiKey', 'sk-query-a')
+    store.setValue('openRouterBaseUrl', 'https://openrouter.ai/api/v1')
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string, params: any) => {
+        if (method === 'modelCatalog.getScopedMeta') {
+          if (params.catalogScopeKey === scopeA || params.catalogScopeKey === scopeB) {
+            return makeScopedMeta(params.catalogScopeKey)
+          }
+          return null
+        }
+        if (method === 'modelCatalog.validateActiveScopedSnapshot') return { ok: true }
+        if (method === 'modelCatalog.queryScopedActive') {
+          const modelId = params.catalogScopeKey === scopeA ? 'scope-a/model' : 'scope-b/model'
+          return {
+            items: [{
+              providerKey: 'openrouter',
+              modelId,
+              modelKey: `openrouter::${modelId}`,
+              displayName: modelId,
+              pricingJson: null,
+              capabilitiesJson: '{}',
+            }],
+            nextCursor: null,
+          }
+        }
+        throw new Error(`unexpected method ${method}`)
+      }),
+    }
+    const { handlers } = registerHandlers({ store, dbWorkerManager })
+
+    const resultA = await handlers.get('modelCatalog.queryScopedCurrent')?.({}, { providerKey: 'openrouter' }) as any
+    store.setValue('openRouterApiKey', 'sk-query-b')
+    const resultB = await handlers.get('modelCatalog.queryScopedCurrent')?.({}, { providerKey: 'openrouter' }) as any
+    store.setValue('openRouterApiKey', 'sk-query-a')
+    store.setValue('openRouterBaseUrl', 'https://alt.openrouter.test/api/v1')
+    const resultAltBaseUrl = await handlers.get('modelCatalog.queryScopedCurrent')?.({}, { providerKey: 'openrouter' }) as any
+
+    expect(scopeA).not.toBe(scopeB)
+    expect(scopeA).not.toBe(scopeAltBaseUrl)
+    expect(resultA.items.map((item: any) => item.modelId)).toEqual(['scope-a/model'])
+    expect(resultB.items.map((item: any) => item.modelId)).toEqual(['scope-b/model'])
+    expect(resultAltBaseUrl).toMatchObject({
+      status: 'not_synced',
+      syncState: 'idle',
+      items: [],
+    })
+  })
+
+  it('queryScopedCurrent returns cache_corrupted and db_unavailable without legacy fallback', async () => {
+    const store = createStore({
+      openRouterApiKey: 'sk-query-a',
+      openRouterCatalogLocalSecret: 'local-secret-for-ipc-tests-1234567890',
+    })
+    const scope = getScope(store)
+    const dbWorkerManager = {
+      call: vi
+        .fn()
+        .mockImplementationOnce(async (method: string) => {
+          if (method === 'modelCatalog.getScopedMeta') return makeScopedMeta(scope)
+          throw new Error(`unexpected method ${method}`)
+        })
+        .mockImplementationOnce(async (method: string) => {
+          if (method === 'modelCatalog.validateActiveScopedSnapshot') return { ok: false, code: 'cache_corrupted' }
+          throw new Error(`unexpected method ${method}`)
+        })
+        .mockImplementationOnce(async () => {
+          throw Object.assign(new Error('DB worker unavailable'), { code: 'ERR_UNAVAILABLE' })
+        }),
+    }
+    const { handlers } = registerHandlers({ store, dbWorkerManager })
+
+    const corrupted = await handlers.get('modelCatalog.queryScopedCurrent')?.({}, { providerKey: 'openrouter' }) as any
+    const unavailable = await handlers.get('modelCatalog.queryScopedCurrent')?.({}, { providerKey: 'openrouter' }) as any
+
+    expect(corrupted).toMatchObject({
+      status: 'failed',
+      syncState: 'error',
+      failureReasonCode: 'cache_corrupted',
+      items: [],
+    })
+    expect(unavailable).toMatchObject({
+      status: 'failed',
+      syncState: 'error',
+      failureReasonCode: 'db_unavailable',
+      items: [],
+    })
+    expect(dbWorkerManager.call).not.toHaveBeenCalledWith('modelCatalog.queryCore', expect.anything())
+  })
 })
