@@ -86,6 +86,7 @@ vi.mock('@/next/live/openRouterLiveStream', () => {
 
 describe('ui-app AppChatApp send button state', () => {
   const originalDbBridge = (globalThis as any).dbBridge
+  const originalElectronAPI = (globalThis as any).electronAPI
   const originalElectronStore = (globalThis as any).electronStore
   const originalSetTimeout = globalThis.setTimeout
 
@@ -112,9 +113,85 @@ describe('ui-app AppChatApp send button state', () => {
       },
     ]
 
+    ;(globalThis as any).electronAPI = {
+      modelCatalogQueryScopedCurrent: vi.fn(async (options?: any) => {
+        const requestedIds = Array.isArray(options?.modelIds)
+          ? new Set(options.modelIds.map((id: unknown) => String(id)))
+          : null
+        return {
+          status: 'synced',
+          catalogRevision: 'checksum-button',
+          modelCount: catalogRows.length,
+          lastSyncAtMs: 123,
+          items: catalogRows
+            .filter((row) => !requestedIds || requestedIds.has(String(row.modelId)))
+            .map((row) => ({
+              providerKey: 'openrouter',
+              modelId: String(row.modelId),
+              modelKey: `openrouter::${String(row.modelId)}`,
+              canonicalSlug: String(row.modelId),
+              displayName: String(row.name),
+              description: null,
+              vendor: String(row.vendor),
+              family: null,
+              status: 'active',
+              visibility: row.status === 'hidden' ? 'hidden' : 'visible',
+              contextLength: 128000,
+              maxOutputTokens: 16384,
+              inputModalities: ['text'],
+              outputModalities: ['text'],
+              supportedParameters: [...row.supportedParameters],
+              pricing: {
+                prompt: null,
+                completion: null,
+                request: null,
+                image: null,
+              },
+              capabilities: {
+                reasoning: true,
+                tools: true,
+                structuredOutputs: true,
+                vision: false,
+                longContext: true,
+              },
+              createdAtSec: 1,
+              firstSeenAtMs: 1,
+              lastSeenAtMs: 1,
+              syncedAtMs: 1,
+              raw: {
+                inputModalitiesJson: '["text"]',
+                outputModalitiesJson: '["text"]',
+                supportedParametersJson: JSON.stringify(row.supportedParameters),
+                capabilitiesJson: '{"reasoning":true,"tools":true,"structuredOutputs":true,"vision":false,"longContext":true}',
+                pricingJson: null,
+              },
+            })),
+          nextCursor: null,
+        }
+      }),
+      modelCatalogGetSyncStatus: vi.fn(async () => ({
+        ok: true,
+        providerKey: 'openrouter',
+        status: 'synced',
+        syncState: 'ok',
+        failureReasonCode: null,
+        lastSyncedAtMs: 123,
+        modelCount: catalogRows.length,
+      })),
+      modelCatalogSyncNow: vi.fn(async () => ({
+        ok: true,
+        providerKey: 'openrouter',
+        status: 'synced',
+        syncState: 'ok',
+        syncAttempted: false,
+        modelCount: catalogRows.length,
+        lastSyncedAtMs: 123,
+      })),
+    }
+
     ;(globalThis as any).electronStore = {
       get: vi.fn(async (key: string) => {
-        if (key === 'openRouterApiKey') return 'sk-test'
+        if (key === 'openRouterApiKey') return 'redacted-test-key'
         if (key === 'openRouterBaseUrl') return 'https://openrouter.ai/api/v1'
         return undefined
       }),
@@ -376,6 +453,7 @@ describe('ui-app AppChatApp send button state', () => {
     ;(globalThis as any).__testOverrides = {}
     vi.useRealTimers()
     ;(globalThis as any).dbBridge = originalDbBridge
+    ;(globalThis as any).electronAPI = originalElectronAPI
     ;(globalThis as any).electronStore = originalElectronStore
     globalThis.setTimeout = originalSetTimeout
     try { localStorage.removeItem('sv_event_scheduler') } catch { /* no-op */ }
