@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { t, tf } from '@/shared/i18n'
 import {
   CatalogQueryService,
   type CatalogQueryCursor,
@@ -29,6 +30,7 @@ import ModelDetailPanel from './ModelDetailPanel.vue'
 type TriState = 'any' | 'yes' | 'no'
 type DetailTab = 'model' | 'endpoints'
 type PickerMode = 'all' | 'favorites' | 'recents'
+type ShortcutItem = Readonly<{ modelKey: string; modelId: string; name: string; available: boolean }>
 
 type QueryFn = (input: CatalogQueryInput) => Promise<CatalogQueryResult>
 type EndpointDetailFn = (input: GetModelEndpointDetailsInput) => Promise<ModelEndpointDetailsResult>
@@ -112,6 +114,17 @@ const favoriteEditMode = ref(false)
 const editableFavoriteModelKeys = ref<string[]>([])
 const draggingFavoriteIndex = ref<number | null>(null)
 
+type SyncStatus = 'not_synced' | 'syncing' | 'synced' | 'failed'
+const syncStatus = ref<SyncStatus>('not_synced')
+const syncModelCount = ref(0)
+const syncLastSyncedAtMs = ref<number | null>(null)
+const syncErrorCode = ref<string | null>(null)
+const syncErrorMessage = ref<string | null>(null)
+let lastAutoSyncAtMs = 0
+let lastManualRefreshAtMs = 0
+const AUTO_SYNC_COOLDOWN_MS = 10_000
+const MANUAL_REFRESH_COOLDOWN_MS = 3_000
+
 const architectureModalityOptions = [
   'text->text',
   'text->image',
@@ -173,10 +186,6 @@ const vendorOptions = computed(() => {
     const vendor = String(item.vendor ?? '').trim()
     if (vendor) vendorSet.add(vendor)
   }
-  for (const item of props.fallbackModels) {
-    const vendor = String(item.vendor ?? '').trim()
-    if (vendor) vendorSet.add(vendor)
-  }
   for (const vendor of selectedVendors.value) {
     const normalized = String(vendor ?? '').trim()
     if (normalized) vendorSet.add(normalized)
@@ -199,13 +208,11 @@ const selectedModelLabel = computed(() => {
   const selected = selectedModelId.value
   const inResults = items.value.find((item) => normalizeModelId(item.modelId) === selected)
   if (inResults) return inResults.displayName
-  const inFallback = props.fallbackModels.find((item) => normalizeModelId(item.modelId) === selected)
-  if (inFallback) return inFallback.name
   return selected || 'openrouter/auto'
 })
 
 const effectiveNotice = computed(() => {
-  const noticeParts = [props.notice, queryNotice.value].map((value) => String(value ?? '').trim()).filter(Boolean)
+  const noticeParts = [queryNotice.value].map((value) => String(value ?? '').trim()).filter(Boolean)
   return noticeParts.length > 0 ? noticeParts.join(' ') : null
 })
 
@@ -225,8 +232,10 @@ const activeShortcutItems = computed(() => {
 })
 const activeDetailModelId = computed(() => {
   const normalized = normalizeModelId(activeModelId.value)
-  if (normalized) return normalized
-  return selectedModelId.value
+  if (normalized && items.value.some((item) => normalizeModelId(item.modelId) === normalized)) return normalized
+  const selected = selectedModelId.value
+  if (selected && items.value.some((item) => normalizeModelId(item.modelId) === selected)) return selected
+  return ''
 })
 const favoriteOrderDirty = computed(() => {
   const next = editableFavoriteModelKeys.value
@@ -262,6 +271,38 @@ const queryFilterSignature = computed(() =>
     sortOrder: sortOrder.value,
   })
 )
+
+const SYNC_FAILURE_REASON_MAP: Record<string, string> = {
+  missing_api_key: 'errors.modelCatalog.syncFailMissingApiKey',
+  invalid_api_key: 'errors.modelCatalog.syncFailInvalidApiKey',
+  insufficient_credits: 'errors.modelCatalog.syncFailInsufficientCredits',
+  forbidden: 'errors.modelCatalog.syncFailForbidden',
+  rate_limited: 'errors.modelCatalog.syncFailRateLimited',
+  timeout: 'errors.modelCatalog.syncFailTimeout',
+  network_unreachable: 'errors.modelCatalog.syncFailNetworkUnreachable',
+  service_unavailable: 'errors.modelCatalog.syncFailServiceUnavailable',
+  bad_response: 'errors.modelCatalog.syncFailBadResponse',
+  cache_corrupted: 'errors.modelCatalog.syncFailCacheCorrupted',
+  db_unavailable: 'errors.modelCatalog.syncFailDbUnavailable',
+  unknown_error: 'errors.modelCatalog.syncFailUnknownError',
+}
+
+const syncFailureReasonText = computed(() => {
+  const code = syncErrorCode.value ?? 'unknown_error'
+  const key = SYNC_FAILURE_REASON_MAP[code] ?? SYNC_FAILURE_REASON_MAP.unknown_error
+  return t(key)
+})
+
+function formatSyncTime(ms: number | null): string {
+  if (!ms || ms <= 0) return '—'
+  try {
+    const d = new Date(ms)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  } catch {
+    return '—'
+  }
+}
 
 function resolveQueryFn(): QueryFn {
   return props.queryFn ?? ((input) => CatalogQueryService.query(input))
@@ -319,23 +360,23 @@ function resolveFavoriteName(modelKey: string): string {
   const modelId = parseModelIdFromModelKey(modelKey)
   const inResults = items.value.find((item) => item.modelId === modelId)
   if (inResults) return inResults.displayName
-  const inFallback = props.fallbackModels.find((item) => item.modelId === modelId)
-  if (inFallback) return inFallback.name
   return modelId || modelKey
 }
 
-function buildShortcutItems(modelKeys: readonly string[]): Array<Readonly<{ modelKey: string; modelId: string; name: string }>> {
+function buildShortcutItems(modelKeys: readonly string[]): ShortcutItem[] {
   return modelKeys
     .map((modelKey) => {
       const modelId = normalizeModelId(parseModelIdFromModelKey(modelKey))
       if (!modelId) return null
+      const available = items.value.some((item) => normalizeModelId(item.modelId) === modelId)
       return {
         modelKey,
         modelId,
         name: resolveFavoriteName(modelKey),
+        available,
       }
     })
-    .filter((item): item is Readonly<{ modelKey: string; modelId: string; name: string }> => item !== null)
+    .filter((item): item is ShortcutItem => item !== null)
 }
 
 function openFavoriteEditMode() {
@@ -524,14 +565,15 @@ function mergeItems(previous: readonly CatalogQueryItem[], incoming: readonly Ca
 function ensureActiveCandidate() {
   if (activePickerMode.value !== 'all') {
     const shortcutItems = activeShortcutItems.value
-    if (shortcutItems.length === 0) {
+    const availableShortcutItems = shortcutItems.filter((item) => item.available)
+    if (availableShortcutItems.length === 0) {
       activeModelId.value = ''
       return
     }
-    if (activeModelId.value && shortcutItems.some((item) => normalizeModelId(item.modelId) === normalizeModelId(activeModelId.value))) return
+    if (activeModelId.value && availableShortcutItems.some((item) => normalizeModelId(item.modelId) === normalizeModelId(activeModelId.value))) return
     const selected = selectedModelId.value
-    const selectedExists = selected && shortcutItems.some((item) => normalizeModelId(item.modelId) === selected)
-    activeModelId.value = selectedExists ? selected : shortcutItems[0].modelId
+    const selectedExists = selected && availableShortcutItems.some((item) => normalizeModelId(item.modelId) === selected)
+    activeModelId.value = selectedExists ? selected : availableShortcutItems[0].modelId
     return
   }
   if (items.value.length === 0) {
@@ -541,7 +583,7 @@ function ensureActiveCandidate() {
   if (activeModelId.value && items.value.some((item) => normalizeModelId(item.modelId) === normalizeModelId(activeModelId.value))) return
   const selected = selectedModelId.value
   const selectedExists = selected && items.value.some((item) => normalizeModelId(item.modelId) === selected)
-  activeModelId.value = selectedExists ? selected : items.value[0].modelId
+  activeModelId.value = selectedExists ? selected : ''
 }
 
 function ensureActiveVisible(index: number) {
@@ -693,6 +735,105 @@ function openDialogState() {
     searchInputRef.value?.focus()
     refresh()
   })
+  void triggerAutoSync()
+}
+
+async function triggerAutoSync() {
+  const now = Date.now()
+  if (now - lastAutoSyncAtMs < AUTO_SYNC_COOLDOWN_MS) return
+  lastAutoSyncAtMs = now
+  await fetchSyncStatus()
+  if (syncStatus.value === 'syncing') return
+  await runSync(false)
+}
+
+async function runSync(force: boolean) {
+  const electronAPI = (globalThis as any).electronAPI
+  if (!electronAPI?.modelCatalogSyncNow) {
+    syncStatus.value = 'failed'
+    syncErrorCode.value = 'unknown_error'
+    syncErrorMessage.value = 'renderer_bridge'
+    return
+  }
+
+  syncStatus.value = 'syncing'
+  syncErrorCode.value = null
+  syncErrorMessage.value = null
+
+  try {
+    const result = await electronAPI.modelCatalogSyncNow({
+      providerKey: 'openrouter',
+      force,
+      reason: force ? 'manual_refresh' : 'model_picker_opened',
+    })
+
+    if (!result) {
+      syncStatus.value = 'failed'
+      syncErrorCode.value = 'unknown_error'
+      syncErrorMessage.value = 'null_result'
+      return
+    }
+
+    const attempted = result.syncAttempted === true
+    const succeeded = result.ok === true
+
+    if (succeeded) {
+      syncStatus.value = 'synced'
+      syncModelCount.value = result.modelCount ?? 0
+      syncLastSyncedAtMs.value = result.lastSyncAtMs ?? Date.now()
+      syncErrorCode.value = null
+      syncErrorMessage.value = null
+    } else if (!attempted) {
+      // Defensive: IPC returned ok=false with syncAttempted=false.
+      // Under current contract this should not fire (cache-fresh returns ok=true).
+      // Preserve existing synced state from fetchSyncStatus.
+      syncStatus.value = 'synced'
+      syncModelCount.value = result.modelCount ?? 0
+      if (result.lastSyncAtMs) syncLastSyncedAtMs.value = result.lastSyncAtMs
+    } else {
+      syncStatus.value = 'failed'
+      syncErrorCode.value = result.errorCode ?? 'unknown_error'
+      syncErrorMessage.value = result.errorMessage ?? null
+    }
+  } catch (err) {
+    syncStatus.value = 'failed'
+    syncErrorCode.value = 'unknown_error'
+    syncErrorMessage.value = err instanceof Error ? err.name : String(err)
+  }
+}
+
+async function fetchSyncStatus() {
+  const electronAPI = (globalThis as any).electronAPI
+  if (!electronAPI?.modelCatalogGetSyncStatus) return
+
+  try {
+    const status = await electronAPI.modelCatalogGetSyncStatus({ providerKey: 'openrouter' })
+    if (!status) return
+
+    const state = String(status.syncState ?? 'idle')
+    if (state === 'syncing') {
+      syncStatus.value = 'syncing'
+    } else if (state === 'ok') {
+      syncStatus.value = 'synced'
+      syncModelCount.value = Number(status.modelCount ?? 0)
+      syncLastSyncedAtMs.value = Number(status.lastSyncAtMs ?? 0)
+    } else if (state === 'error') {
+      syncStatus.value = 'failed'
+      syncErrorCode.value = status.lastErrorCode ?? 'unknown_error'
+      syncErrorMessage.value = status.lastErrorMessage ?? null
+    } else {
+      syncStatus.value = 'not_synced'
+    }
+  } catch {
+    // keep current state
+  }
+}
+
+function onManualRefresh() {
+  const now = Date.now()
+  if (now - lastManualRefreshAtMs < MANUAL_REFRESH_COOLDOWN_MS) return
+  lastManualRefreshAtMs = now
+  void runSync(true)
 }
 
 function restoreFocusAfterClose() {
@@ -711,11 +852,9 @@ function onSelectModel(modelId: string) {
   if (props.disabled || props.isRunning) return
   const normalized = String(modelId ?? '').trim()
   if (!normalized) return
-  const displayName =
-    items.value.find((item) => item.modelId === normalized)?.displayName ??
-    props.fallbackModels.find((item) => item.modelId === normalized)?.name ??
-    normalized
-  emit('select', normalized, displayName)
+  const scopedItem = items.value.find((item) => item.modelId === normalized)
+  if (!scopedItem) return
+  emit('select', normalized, scopedItem.displayName)
   emit('close')
 }
 
@@ -1437,11 +1576,14 @@ onBeforeUnmount(() => {
                       type="button"
                       class="mb-2 w-full rounded-lg border px-3 py-2 text-left shadow-sm transition"
                       :class="
-                        isSelectedModel(item.modelId)
+                        !item.available
+                          ? 'border-gray-200 bg-gray-50 text-gray-400 opacity-70'
+                          : isSelectedModel(item.modelId)
                           ? 'border-blue-300 bg-blue-50'
                           : 'border-gray-200 bg-white hover:bg-gray-50'
                       "
                       :data-testid="`model-picker-${activePickerMode}-item-${item.modelId}`"
+                      :disabled="props.disabled || props.isRunning || !item.available"
                       @mouseenter="activeModelId = item.modelId"
                       @focus="activeModelId = item.modelId"
                       @click="onSelectModel(item.modelId)"
@@ -1454,11 +1596,11 @@ onBeforeUnmount(() => {
                         <button
                           type="button"
                           class="rounded border px-1.5 py-0.5 text-[11px] leading-none"
-                          :class="
-                            isFavoriteModel(item.modelId)
-                              ? 'border-amber-300 bg-amber-50 text-amber-700'
-                              : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-100'
-                          "
+                            :class="
+                              isFavoriteModel(item.modelId)
+                                ? 'border-amber-300 bg-amber-50 text-amber-700'
+                                : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-100'
+                            "
                           :disabled="props.disabled || props.isRunning"
                           :data-testid="`model-picker-favorite-${item.modelId}`"
                           @click.stop="onToggleFavorite(item.modelId)"
@@ -1539,6 +1681,32 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </section>
+      </div>
+
+      <div class="flex items-center justify-between border-t border-gray-200 px-4 py-2 text-[11px]">
+        <div class="flex items-center gap-2">
+          <span v-if="syncStatus === 'not_synced'" class="text-gray-400">
+            {{ t('errors.modelCatalog.syncNotSynced') }}
+          </span>
+          <span v-else-if="syncStatus === 'syncing'" class="text-blue-600">
+            {{ t('errors.modelCatalog.syncSyncing') }}
+          </span>
+          <span v-else-if="syncStatus === 'synced'" class="text-green-700">
+            {{ tf('errors.modelCatalog.synced', { count: syncModelCount, time: formatSyncTime(syncLastSyncedAtMs) }) }}
+          </span>
+          <span v-else-if="syncStatus === 'failed'" class="text-red-600">
+            {{ tf('errors.modelCatalog.syncFailedReason', { reason: syncFailureReasonText }) }}
+          </span>
+        </div>
+        <button
+          type="button"
+          class="rounded border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          :disabled="syncStatus === 'syncing' || props.disabled"
+          data-testid="model-picker-sync-refresh"
+          @click="onManualRefresh"
+        >
+          {{ syncStatus === 'syncing' ? '…' : '↻' }}
+        </button>
       </div>
     </div>
   </div>

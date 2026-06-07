@@ -180,7 +180,7 @@ const filteredAndSortedItems = computed(() => {
       <div class="truncate" :title="props.modelId">{{ props.modelId }}</div>
       <div data-testid="endpoint-detail-fetched-at">fetchedAt: {{ fetchedAtLabel }}</div>
       <div class="text-[10px] text-blue-700">Endpoint filters/sort are observation-only and do not change routing behavior.</div>
-      <div class="text-[10px]">perf metrics are volatile (memory cache only)</div>
+      <div class="text-[10px]">perf metrics are volatile and in-memory only</div>
     </div>
 
     <div class="mt-2 rounded border border-gray-200 bg-white p-2 text-[11px]">
@@ -208,7 +208,7 @@ const filteredAndSortedItems = computed(() => {
           </select>
         </label>
         <label class="flex flex-col gap-1">
-          <span class="text-[10px] text-gray-500">supports_implicit_caching</span>
+          <span class="text-[10px] text-gray-500">supports_implicit_reuse</span>
           <select v-model="supportsCachingFilter" class="rounded border border-gray-200 px-2 py-1" data-testid="endpoint-filter-supports-caching">
             <option value="any">any</option>
             <option value="yes">yes</option>
@@ -278,7 +278,7 @@ const filteredAndSortedItems = computed(() => {
     </div>
 
     <div v-if="!props.loading && props.items.length === 0" class="mt-3 text-[11px] text-gray-500">
-      No endpoint details cached yet.
+      No endpoint details available yet.
     </div>
     <div v-else-if="!props.loading && filteredAndSortedItems.length === 0" class="mt-3 text-[11px] text-gray-500">
       No endpoints match current endpoint filters.

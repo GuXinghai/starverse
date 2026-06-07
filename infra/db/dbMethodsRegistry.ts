@@ -155,6 +155,7 @@ export const DB_METHODS = [
   { name: 'modelCatalog.writeScopedSnapshot', renderer: false, worker: true, domain: 'modelCatalog' },
   { name: 'modelCatalog.validateActiveScopedSnapshot', renderer: false, worker: true, domain: 'modelCatalog' },
   { name: 'modelCatalog.updateScopedMetaSyncError', renderer: false, worker: true, domain: 'modelCatalog' },
+  { name: 'modelCatalog.queryScopedActive', renderer: false, worker: true, domain: 'modelCatalog' },
   { name: 'modelCatalog.getModelDetail', renderer: true, worker: true, domain: 'modelCatalog' },
   { name: 'modelCatalog.replaceEndpointMeta', renderer: true, worker: true, domain: 'modelCatalog' },
   { name: 'modelCatalog.listEndpointMeta', renderer: true, worker: true, domain: 'modelCatalog' },

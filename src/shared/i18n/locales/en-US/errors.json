@@ -48,7 +48,23 @@
       "notSynced": "Model catalog has not synced yet. Will auto-refresh shortly.",
       "empty": "Model catalog is empty. Fell back to reasoning model index.",
       "indexNotSynced": "Reasoning model index has not synced. Showing catalog only.",
-      "syncFailed": "Model catalog is unavailable (sync failed)."
-    }
+      "syncFailed": "Model catalog is unavailable (sync failed).",
+      "syncNotSynced": "Not synced",
+      "syncSyncing": "Syncing OpenRouter model catalog…",
+      "synced": "Synced · {count} models · Last sync: {time}",
+      "syncFailedReason": "Sync failed: {reason}",
+      "syncFailMissingApiKey": "API key not set",
+      "syncFailInvalidApiKey": "Invalid API key",
+      "syncFailInsufficientCredits": "Insufficient credits",
+      "syncFailForbidden": "Access denied",
+      "syncFailRateLimited": "Rate limited",
+      "syncFailTimeout": "Request timed out",
+        "syncFailNetworkUnreachable": "Network unreachable",
+        "syncFailServiceUnavailable": "OpenRouter service unavailable",
+        "syncFailBadResponse": "Invalid response format",
+        "syncFailCacheCorrupted": "Model catalog data is invalid",
+        "syncFailDbUnavailable": "Database unavailable",
+        "syncFailUnknownError": "Unknown error"
+      }
   }
 }

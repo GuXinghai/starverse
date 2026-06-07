@@ -257,6 +257,36 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
         return { ok: true }
     })
 
+  register('modelCatalog.queryScopedActive', (raw) => {
+        if (raw && typeof raw === 'object' && 'apiKey' in raw) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.queryScopedActive must not receive apiKey')
+        }
+        const providerKey = String(raw?.providerKey ?? '').trim()
+        const catalogScopeKey = String(raw?.catalogScopeKey ?? '').trim()
+        if (!providerKey || !catalogScopeKey) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.queryScopedActive requires providerKey/catalogScopeKey')
+        }
+        return rt.modelCatalogRepo.queryScopedActiveModels({
+          providerKey,
+          catalogScopeKey,
+          searchText: typeof raw?.searchText === 'string' ? raw.searchText : undefined,
+          includeDescriptionInSearch: raw?.includeDescriptionInSearch === true,
+          vendors: Array.isArray(raw?.vendors) ? raw.vendors.map((item: unknown) => String(item)) : undefined,
+          providers: Array.isArray(raw?.providers) ? raw.providers.map((item: unknown) => String(item)) : undefined,
+          modelIds: Array.isArray(raw?.modelIds) ? raw.modelIds.map((item: unknown) => String(item)) : undefined,
+          contextLength: raw?.contextLength && typeof raw.contextLength === 'object' ? raw.contextLength : undefined,
+          maxOutputTokens: raw?.maxOutputTokens && typeof raw.maxOutputTokens === 'object' ? raw.maxOutputTokens : undefined,
+          modalities: Array.isArray(raw?.modalities) ? raw.modalities.map((item: unknown) => String(item)) : undefined,
+          inputModalities: Array.isArray(raw?.inputModalities) ? raw.inputModalities.map((item: unknown) => String(item)) : undefined,
+          outputModalities: Array.isArray(raw?.outputModalities) ? raw.outputModalities.map((item: unknown) => String(item)) : undefined,
+          supportedParameters: Array.isArray(raw?.supportedParameters) ? raw.supportedParameters.map((item: unknown) => String(item)) : undefined,
+          sortBy: raw?.sortBy,
+          sortOrder: raw?.sortOrder,
+          limit: Number(raw?.limit),
+          cursor: raw?.cursor ?? null,
+        })
+    })
+
   register('modelCatalog.getModelDetail', (raw) => {
         const providerKey = String(raw?.providerKey ?? '').trim()
         const modelId = String(raw?.modelId ?? '').trim()

@@ -64,7 +64,7 @@ const hasDetail = computed(() => detail.value !== null)
       {{ props.error }}
     </div>
     <div v-else-if="props.loading" class="mt-2 text-[11px] text-gray-500">Loading model details...</div>
-    <div v-else-if="!hasDetail" class="mt-2 text-[11px] text-gray-500">No local model details cached yet.</div>
+    <div v-else-if="!hasDetail" class="mt-2 text-[11px] text-gray-500">No model details available yet.</div>
 
     <div v-if="detail" class="mt-3 space-y-3 text-[11px] text-gray-700">
       <section class="rounded border border-gray-200 bg-white p-2" data-testid="model-detail-basic">
@@ -119,8 +119,8 @@ const hasDetail = computed(() => detail.value !== null)
           <div class="text-gray-500">image</div><div>{{ detail.pricing.image || 'n/a' }}</div>
           <div class="text-gray-500">web_search</div><div>{{ detail.pricing.webSearch || 'n/a' }}</div>
           <div class="text-gray-500">internal_reasoning</div><div>{{ detail.pricing.internalReasoning || 'n/a' }}</div>
-          <div class="text-gray-500">input_cache_read</div><div>{{ detail.pricing.inputCacheRead || 'n/a' }}</div>
-          <div class="text-gray-500">input_cache_write</div><div>{{ detail.pricing.inputCacheWrite || 'n/a' }}</div>
+          <div class="text-gray-500">input_reuse_read</div><div>{{ detail.pricing.inputCacheRead || 'n/a' }}</div>
+          <div class="text-gray-500">input_reuse_write</div><div>{{ detail.pricing.inputCacheWrite || 'n/a' }}</div>
         </div>
       </section>
 
