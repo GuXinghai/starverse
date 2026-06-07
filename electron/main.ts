@@ -31,9 +31,10 @@ import { DbWorkerManager } from './db/workerManager'
 import { registerDbBridge } from './ipc/dbBridge'
 import { registerOpenRouterStreamBridge, cleanupOpenRouterStreams } from './ipc/openRouterStreamBridge'
 import { registerInAppBrowserIpc } from './ipc/inappBrowserIpc'
+import { registerModelCatalogSyncIpc } from './ipc/modelCatalogSyncIpc'
 import { registerIpc, validateCoreIpcRegistration } from './ipc/registerIpc'
 import { validateStartupIpcRegistration } from './ipc/startupIpcAudit'
-import { runStartupBackgroundJobs, wireDbEventsToRenderer } from './jobs/startupBackgroundJobs'
+import { startStartupBackgroundJobs, wireDbEventsToRenderer } from './jobs/startupBackgroundJobs'
 import { createInAppBrowserManager } from './services/inappBrowser'
 import { createMainProcessElectronConversionService } from './services/electronConversionService'
 import { createMainWindowLifecycle } from './windows/mainWindowLifecycle'
@@ -798,6 +799,14 @@ function registerAllIpcHandlers(): string[] {
       },
       manager: inAppBrowserManager,
     }),
+    ...registerModelCatalogSyncIpc({
+      registerInvoke: (channel, handler) => {
+        ipcMain.handle(channel, handler as (...args: any[]) => unknown)
+      },
+      store,
+      dbWorkerManager,
+      notifyRenderer: notifyMainWindow,
+    }),
   ]
 
   const validation = validateStartupIpcRegistration(channels)
@@ -869,7 +878,6 @@ app.whenReady()
     await ensureDbReady()
     await registerAssetProtocol()
     registerAllIpcHandlers()
-    const startupJobsResult = await runStartupBackgroundJobs({ store, dbWorkerManager })
 
     // 注册事件转发：Worker 事件 → Renderer
     wireDbEventsToRenderer({
@@ -879,13 +887,11 @@ app.whenReady()
 
     mainWindowLifecycle.createWindow()
 
-    for (const notification of startupJobsResult.postWindowNotifications) {
-      try {
-        notifyMainWindow(notification.channel, notification.payload)
-      } catch (error) {
-        console.warn('[startup-jobs] failed to notify renderer (non-fatal):', error)
-      }
-    }
+    startStartupBackgroundJobs({
+      store,
+      dbWorkerManager,
+      notifyRenderer: notifyMainWindow,
+    })
   })
   .catch((error) => {
     console.error('[main] failed to initialize application', error)

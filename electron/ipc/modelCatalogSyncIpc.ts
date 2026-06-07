@@ -2,6 +2,11 @@ import type Store from 'electron-store'
 import type { DbWorkerManager } from '../db/workerManager'
 import { resolveCurrentOpenRouterCatalogScope, runCatalogSyncAtStartup } from '../jobs/catalogSyncStartup'
 import { mapCacheCorruptedToCode, mapDbUnavailableToCode, mapErrorToSyncCode, mapMissingApiKeyToCode } from '../../src/shared/modelCatalog/catalogSyncErrorMapper'
+import {
+  OPENROUTER_CATALOG_FRESHNESS_MS_KEY,
+  isCatalogStatusStale,
+  normalizeCatalogFreshnessMs,
+} from '../../src/shared/modelCatalog/catalogSyncSettings'
 import type { RegisterInvoke } from './types'
 
 export const MODEL_CATALOG_SYNC_IPC_CHANNELS = [
@@ -25,6 +30,8 @@ type SyncStatusResult = Readonly<{
   lastErrorCode: string | null
   lastErrorMessage: string | null
   failureReasonCode: string | null
+  isStale: boolean
+  catalogRevision: string | null
 }>
 
 type SyncNowResult = Readonly<{
@@ -37,6 +44,7 @@ type SyncNowResult = Readonly<{
   errorCode: string | null
   errorMessage: string | null
   failureReasonCode: string | null
+  catalogRevision: string | null
 }>
 
 type ScopedQueryInput = Readonly<{
@@ -63,6 +71,9 @@ type ScopedQueryResult = Readonly<{
   status: 'not_synced' | 'syncing' | 'synced' | 'failed'
   syncState: string
   failureReasonCode: string | null
+  catalogRevision: string | null
+  modelCount: number
+  lastSyncAtMs: number
   items: unknown[]
   nextCursor: unknown | null
 }>
@@ -109,6 +120,21 @@ function mapScopedQueryItem(row: Record<string, unknown>): Record<string, unknow
   }
 }
 
+function catalogRevisionFromMeta(meta: Record<string, unknown> | null | undefined): string | null {
+  if (!meta || typeof meta !== 'object') return null
+  const checksum = String(meta.snapshotChecksum ?? '').trim()
+  if (checksum) return checksum
+  const activeSnapshotId = String(meta.activeSnapshotId ?? '').trim()
+  const modelCount = Number(meta.modelCount ?? 0)
+  const lastSyncAtMs = Number(meta.lastSyncAtMs ?? 0)
+  if (!activeSnapshotId && (!Number.isFinite(lastSyncAtMs) || lastSyncAtMs <= 0)) return null
+  return `${modelCount}:${Number.isFinite(lastSyncAtMs) ? lastSyncAtMs : 0}`
+}
+
+function freshnessMsFromStore(store: Store): number {
+  return normalizeCatalogFreshnessMs(store.get(OPENROUTER_CATALOG_FRESHNESS_MS_KEY))
+}
+
 export function registerModelCatalogSyncIpc(input: Readonly<{
   registerInvoke: RegisterInvoke
   store: Store
@@ -134,6 +160,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
         errorCode: mapped.code,
         errorMessage: mapped.message,
         failureReasonCode: mapped.code,
+        catalogRevision: null,
       }
     }
     const lockKey = `${providerKey}:${scope.catalogScopeKey}`
@@ -146,13 +173,26 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           store,
           dbWorkerManager,
           force,
+          freshnessMs: freshnessMsFromStore(store),
         })
+
+        let currentMeta: Record<string, unknown> | null = null
+        try {
+          const rawMeta = await dbWorkerManager.call('modelCatalog.getScopedMeta', {
+            providerKey,
+            catalogScopeKey: scope.catalogScopeKey,
+          })
+          currentMeta = rawMeta && typeof rawMeta === 'object' ? rawMeta as Record<string, unknown> : null
+        } catch {
+          currentMeta = null
+        }
+        const catalogRevision = catalogRevisionFromMeta(currentMeta)
 
         if (result.syncSucceeded && result.syncAttempted && result.syncSnapshotId) {
           notifyRenderer('db:modelCatalogSynced', {
             routerSource: providerKey,
-            snapshotId: result.syncSnapshotId,
             modelCount: result.modelCountAfter,
+            lastSyncAtMs: result.lastSyncAtMs,
           })
         }
 
@@ -169,6 +209,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
             errorCode: null,
             errorMessage: null,
             failureReasonCode: null,
+            catalogRevision,
           }
         }
 
@@ -196,6 +237,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           errorCode,
           errorMessage,
           failureReasonCode: errorCode,
+          catalogRevision,
         }
       } catch (error) {
         const mapped = mapErrorToSyncCode(error)
@@ -219,6 +261,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           errorCode: mapped.code,
           errorMessage: safeErrorMessage,
           failureReasonCode: mapped.code,
+          catalogRevision: null,
         }
       }
     }
@@ -248,6 +291,8 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
         lastErrorCode: mapped.code,
         lastErrorMessage: mapped.message,
         failureReasonCode: mapped.code,
+        isStale: true,
+        catalogRevision: null,
       }
     }
 
@@ -266,10 +311,16 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           lastErrorCode: null,
           lastErrorMessage: null,
           failureReasonCode: null,
+          isStale: true,
+          catalogRevision: null,
         }
       }
       const row = raw as Record<string, unknown>
       const syncState = String(row.syncState ?? 'idle')
+      const freshnessMs = freshnessMsFromStore(store)
+      const lastSyncAtMs = Number(row.lastSyncAtMs ?? 0)
+      const modelCount = Number(row.modelCount ?? 0)
+      const catalogRevision = catalogRevisionFromMeta(row)
       if (syncState === 'ok') {
         const validation = await dbWorkerManager.call('modelCatalog.validateActiveScopedSnapshot', {
           providerKey,
@@ -281,11 +332,13 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
             providerKey,
             syncState: 'error',
             status: 'failed',
-            lastSyncAtMs: Number(row.lastSyncAtMs ?? 0),
-            modelCount: Number(row.modelCount ?? 0),
+            lastSyncAtMs,
+            modelCount,
             lastErrorCode: mapped.code,
             lastErrorMessage: mapped.message,
             failureReasonCode: mapped.code,
+            isStale: true,
+            catalogRevision,
           }
         }
       }
@@ -295,22 +348,27 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           providerKey,
           syncState: 'error',
           status: 'failed',
-          lastSyncAtMs: Number(row.lastSyncAtMs ?? 0),
-          modelCount: Number(row.modelCount ?? 0),
+          lastSyncAtMs,
+          modelCount,
           lastErrorCode: code,
           lastErrorMessage: row.lastErrorMessage != null ? String(row.lastErrorMessage) : null,
           failureReasonCode: code,
+          isStale: true,
+          catalogRevision,
         }
       }
+      const status = syncState === 'ok' ? 'synced' : syncState === 'syncing' ? 'syncing' : 'not_synced'
       return {
         providerKey,
         syncState,
-        status: syncState === 'ok' ? 'synced' : syncState === 'syncing' ? 'syncing' : 'not_synced',
-        lastSyncAtMs: Number(row.lastSyncAtMs ?? 0),
-        modelCount: Number(row.modelCount ?? 0),
+        status,
+        lastSyncAtMs,
+        modelCount,
         lastErrorCode: row.lastErrorCode != null ? String(row.lastErrorCode) : null,
         lastErrorMessage: row.lastErrorMessage != null ? String(row.lastErrorMessage) : null,
         failureReasonCode: null,
+        isStale: isCatalogStatusStale({ status, lastSyncAtMs, freshnessMs }),
+        catalogRevision,
       }
     } catch {
       const mapped = mapDbUnavailableToCode()
@@ -323,6 +381,8 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
         lastErrorCode: mapped.code,
         lastErrorMessage: mapped.message,
         failureReasonCode: mapped.code,
+        isStale: true,
+        catalogRevision: null,
       }
     }
   })
@@ -340,6 +400,9 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
         status: 'failed',
         syncState: 'error',
         failureReasonCode: mapped.code,
+        catalogRevision: null,
+        modelCount: 0,
+        lastSyncAtMs: 0,
         items: [],
         nextCursor: null,
       }
@@ -356,18 +419,27 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           status: 'not_synced',
           syncState: 'idle',
           failureReasonCode: null,
+          catalogRevision: null,
+          modelCount: 0,
+          lastSyncAtMs: 0,
           items: [],
           nextCursor: null,
         }
       }
 
       const syncState = String(meta.syncState ?? 'idle')
+      const catalogRevision = catalogRevisionFromMeta(meta)
+      const modelCount = Number(meta.modelCount ?? 0)
+      const lastSyncAtMs = Number(meta.lastSyncAtMs ?? 0)
       if (syncState === 'error') {
         return {
           providerKey,
           status: 'failed',
           syncState: 'error',
           failureReasonCode: meta.lastErrorCode != null ? String(meta.lastErrorCode) : 'unknown_error',
+          catalogRevision,
+          modelCount,
+          lastSyncAtMs,
           items: [],
           nextCursor: null,
         }
@@ -378,6 +450,9 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           status: 'syncing',
           syncState: 'syncing',
           failureReasonCode: null,
+          catalogRevision,
+          modelCount,
+          lastSyncAtMs,
           items: [],
           nextCursor: null,
         }
@@ -388,6 +463,9 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           status: 'not_synced',
           syncState,
           failureReasonCode: null,
+          catalogRevision,
+          modelCount,
+          lastSyncAtMs,
           items: [],
           nextCursor: null,
         }
@@ -404,6 +482,9 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           status: 'failed',
           syncState: 'error',
           failureReasonCode: mapped.code,
+          catalogRevision,
+          modelCount,
+          lastSyncAtMs,
           items: [],
           nextCursor: null,
         }
@@ -434,6 +515,9 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
         status: 'synced',
         syncState: 'ok',
         failureReasonCode: null,
+        catalogRevision,
+        modelCount,
+        lastSyncAtMs,
         items: rows
           .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
           .map((row) => mapScopedQueryItem(row)),
@@ -446,6 +530,9 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
         status: 'failed',
         syncState: 'error',
         failureReasonCode: mapped.code,
+        catalogRevision: null,
+        modelCount: 0,
+        lastSyncAtMs: 0,
         items: [],
         nextCursor: null,
       }

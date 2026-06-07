@@ -237,6 +237,28 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
     })
   })
 
+  it('syncNow passes normalized catalog freshness to scoped runner', async () => {
+    vi.mocked(runCatalogSyncAtStartup).mockResolvedValue(makeRunnerResult())
+    const { handlers } = registerHandlers({
+      store: createStore({
+        openRouterApiKey: 'sk-ipc-a',
+        openRouterCatalogLocalSecret: 'local-secret-for-ipc-tests-1234567890',
+        openRouterCatalogFreshnessMs: 15 * 60 * 1000,
+      }),
+    })
+
+    await handlers.get('modelCatalog.syncNow')?.({}, {
+      providerKey: 'openrouter',
+      force: false,
+      reason: 'model_picker_opened',
+    })
+
+    expect(runCatalogSyncAtStartup).toHaveBeenCalledWith(expect.objectContaining({
+      force: false,
+      freshnessMs: 15 * 60 * 1000,
+    }))
+  })
+
   it('syncNow emits sanitized sync event payload on scoped success', async () => {
     const rawApiKey = 'sk-ipc-a'
     vi.mocked(runCatalogSyncAtStartup).mockResolvedValue(makeRunnerResult())
@@ -253,9 +275,10 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
 
     expect(notifyRenderer).toHaveBeenCalledWith('db:modelCatalogSynced', {
       routerSource: 'openrouter',
-      snapshotId: 'snap-ipc',
       modelCount: 1,
+      lastSyncAtMs: 2,
     })
+    expect(JSON.stringify(notifyRenderer.mock.calls)).not.toContain('snap-ipc')
     expect(JSON.stringify(notifyRenderer.mock.calls)).not.toContain(rawApiKey)
   })
 

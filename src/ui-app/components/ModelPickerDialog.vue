@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t, tf } from '@/shared/i18n'
 import {
   CatalogQueryService,
@@ -26,6 +26,20 @@ import { OPENROUTER_MODEL_CATEGORIES, type OpenRouterModelCategory } from '@/nex
 import { useVirtualWindow } from '@/ui-kit/chat/useVirtualWindow'
 import EndpointDetailPanel from './EndpointDetailPanel.vue'
 import ModelDetailPanel from './ModelDetailPanel.vue'
+import {
+  DEFAULT_CATALOG_AUTO_SYNC_POLICY,
+  DEFAULT_CATALOG_FRESHNESS_MS,
+  DEFAULT_CATALOG_LIST_UPDATE_MODE,
+  OPENROUTER_CATALOG_FRESHNESS_MS_KEY,
+  OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY,
+  OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY,
+  isCatalogStatusStale,
+  normalizeCatalogAutoSyncPolicy,
+  normalizeCatalogFreshnessMs,
+  normalizeCatalogListUpdateMode,
+  type CatalogAutoSyncPolicy,
+  type CatalogListUpdateMode,
+} from '@/shared/modelCatalog/catalogSyncSettings'
 
 type TriState = 'any' | 'yes' | 'no'
 type DetailTab = 'model' | 'endpoints'
@@ -120,10 +134,19 @@ const syncModelCount = ref(0)
 const syncLastSyncedAtMs = ref<number | null>(null)
 const syncErrorCode = ref<string | null>(null)
 const syncErrorMessage = ref<string | null>(null)
+const syncIsStale = ref(true)
+const latestCatalogRevision = ref<string | null>(null)
+const appliedCatalogRevision = ref<string | null>(null)
+const pendingCatalogUpdateAvailable = ref(false)
+const pendingCatalogRevision = ref<string | null>(null)
+const pickerOpenSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
+const catalogListUpdateMode = ref<CatalogListUpdateMode>(DEFAULT_CATALOG_LIST_UPDATE_MODE)
+const catalogFreshnessMs = ref(DEFAULT_CATALOG_FRESHNESS_MS)
 let lastAutoSyncAtMs = 0
 let lastManualRefreshAtMs = 0
 const AUTO_SYNC_COOLDOWN_MS = 10_000
 const MANUAL_REFRESH_COOLDOWN_MS = 3_000
+let unsubscribeModelCatalogSynced: (() => void) | null = null
 
 const architectureModalityOptions = [
   'text->text',
@@ -302,6 +325,56 @@ function formatSyncTime(ms: number | null): string {
   } catch {
     return '—'
   }
+}
+
+function getElectronStore(): { get?: (key: string) => Promise<unknown> } | null {
+  const store = (globalThis as any).electronStore as { get?: (key: string) => Promise<unknown> } | undefined
+  return store && typeof store.get === 'function' ? store : null
+}
+
+async function loadCatalogSyncSettings() {
+  const store = getElectronStore()
+  if (!store?.get) {
+    pickerOpenSyncPolicy.value = DEFAULT_CATALOG_AUTO_SYNC_POLICY
+    catalogListUpdateMode.value = DEFAULT_CATALOG_LIST_UPDATE_MODE
+    catalogFreshnessMs.value = DEFAULT_CATALOG_FRESHNESS_MS
+    return
+  }
+  const [pickerPolicy, updateMode, freshness] = await Promise.all([
+    store.get(OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY),
+    store.get(OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY),
+    store.get(OPENROUTER_CATALOG_FRESHNESS_MS_KEY),
+  ])
+  pickerOpenSyncPolicy.value = normalizeCatalogAutoSyncPolicy(pickerPolicy)
+  catalogListUpdateMode.value = normalizeCatalogListUpdateMode(updateMode)
+  catalogFreshnessMs.value = normalizeCatalogFreshnessMs(freshness)
+}
+
+function normalizeCatalogRevision(value: unknown, modelCount?: unknown, lastSyncAtMs?: unknown): string | null {
+  const revision = String(value ?? '').trim()
+  if (revision) return revision
+  const count = Number(modelCount ?? 0)
+  const syncedAt = Number(lastSyncAtMs ?? 0)
+  if (!Number.isFinite(syncedAt) || syncedAt <= 0) return null
+  return `${Number.isFinite(count) ? count : 0}:${syncedAt}`
+}
+
+function shouldSyncOnPickerOpen(): boolean {
+  if (syncStatus.value === 'syncing') return false
+  if (pickerOpenSyncPolicy.value === 'never') return false
+  if (pickerOpenSyncPolicy.value === 'always') return true
+  if (syncStatus.value === 'not_synced') return true
+  if (syncStatus.value === 'synced') {
+    return syncIsStale.value || isCatalogStatusStale({
+      status: 'synced',
+      lastSyncAtMs: syncLastSyncedAtMs.value,
+      freshnessMs: catalogFreshnessMs.value,
+    })
+  }
+  if (syncStatus.value === 'failed') {
+    return syncErrorCode.value === 'cache_corrupted'
+  }
+  return false
 }
 
 function resolveQueryFn(): QueryFn {
@@ -601,10 +674,40 @@ function ensureActiveVisible(index: number) {
   }
 }
 
-async function fetchPage(append: boolean) {
+type PickerUiSnapshot = Readonly<{
+  activeModelId: string
+  scrollTop: number
+}>
+
+function capturePickerUiSnapshot(): PickerUiSnapshot {
+  return {
+    activeModelId: activeModelId.value,
+    scrollTop: listScrollRef.value?.scrollTop ?? 0,
+  }
+}
+
+async function restorePickerUiSnapshot(snapshot: PickerUiSnapshot) {
+  await nextTick()
+  const active = normalizeModelId(snapshot.activeModelId)
+  if (active && items.value.some((item) => normalizeModelId(item.modelId) === active)) {
+    activeModelId.value = active
+  } else if (selectedModelId.value && items.value.some((item) => normalizeModelId(item.modelId) === selectedModelId.value)) {
+    activeModelId.value = selectedModelId.value
+  } else {
+    activeModelId.value = ''
+  }
+  await nextTick()
+  refresh()
+  if (listScrollRef.value) {
+    listScrollRef.value.scrollTop = Math.max(0, snapshot.scrollTop)
+  }
+}
+
+async function fetchPage(append: boolean, options: Readonly<{ preserveUiState?: boolean }> = {}) {
   const cursor = nextCursor.value
   if (append && !cursor) return
 
+  const uiSnapshot = options.preserveUiState ? capturePickerUiSnapshot() : null
   const currentSeq = ++querySeq
   loading.value = true
   error.value = null
@@ -620,9 +723,19 @@ async function fetchPage(append: boolean) {
     items.value = append ? mergeItems(items.value, incoming) : [...incoming]
     nextCursor.value = result.nextCursor ?? null
     queryNotice.value = result.notice ?? null
+    if (!append) {
+      const revision = normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs)
+      appliedCatalogRevision.value = revision
+      latestCatalogRevision.value = revision ?? latestCatalogRevision.value
+      pendingCatalogUpdateAvailable.value = false
+      pendingCatalogRevision.value = null
+    }
     ensureActiveCandidate()
     await nextTick()
     refresh()
+    if (uiSnapshot) {
+      await restorePickerUiSnapshot(uiSnapshot)
+    }
   } catch (err: any) {
     if (currentSeq !== querySeq) return
     if (!append) {
@@ -727,6 +840,10 @@ function openDialogState() {
   activePickerMode.value = 'all'
   queryNotice.value = null
   error.value = null
+  pendingCatalogUpdateAvailable.value = false
+  pendingCatalogRevision.value = null
+  appliedCatalogRevision.value = null
+  latestCatalogRevision.value = null
   resetFavoriteEditorState()
   skipAutoQuery = false
   querySeq += 1
@@ -735,19 +852,43 @@ function openDialogState() {
     searchInputRef.value?.focus()
     refresh()
   })
-  void triggerAutoSync()
+  void triggerPickerOpenSync()
 }
 
-async function triggerAutoSync() {
+async function triggerPickerOpenSync() {
   const now = Date.now()
   if (now - lastAutoSyncAtMs < AUTO_SYNC_COOLDOWN_MS) return
   lastAutoSyncAtMs = now
+  await loadCatalogSyncSettings()
   await fetchSyncStatus()
   if (syncStatus.value === 'syncing') return
-  await runSync(false)
+  if (!shouldSyncOnPickerOpen()) return
+  await runSync(false, 'model_picker_opened')
 }
 
-async function runSync(force: boolean) {
+async function applyLatestCatalogList() {
+  pendingCatalogUpdateAvailable.value = false
+  pendingCatalogRevision.value = null
+  await fetchPage(false, { preserveUiState: true })
+}
+
+async function handleSyncedCatalogRevision(nextRevision: string | null, syncAttempted: boolean) {
+  if (!props.open || !syncAttempted || !nextRevision) return
+  latestCatalogRevision.value = nextRevision
+  if (nextRevision === appliedCatalogRevision.value) {
+    pendingCatalogUpdateAvailable.value = false
+    pendingCatalogRevision.value = null
+    return
+  }
+  if (catalogListUpdateMode.value === 'automatic') {
+    await applyLatestCatalogList()
+    return
+  }
+  pendingCatalogUpdateAvailable.value = true
+  pendingCatalogRevision.value = nextRevision
+}
+
+async function runSync(force: boolean, reason: 'model_picker_opened' | 'manual_refresh' = force ? 'manual_refresh' : 'model_picker_opened') {
   const electronAPI = (globalThis as any).electronAPI
   if (!electronAPI?.modelCatalogSyncNow) {
     syncStatus.value = 'failed'
@@ -764,7 +905,7 @@ async function runSync(force: boolean) {
     const result = await electronAPI.modelCatalogSyncNow({
       providerKey: 'openrouter',
       force,
-      reason: force ? 'manual_refresh' : 'model_picker_opened',
+      reason,
     })
 
     if (!result) {
@@ -778,11 +919,15 @@ async function runSync(force: boolean) {
     const succeeded = result.ok === true
 
     if (succeeded) {
+      const revision = normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs)
       syncStatus.value = 'synced'
       syncModelCount.value = result.modelCount ?? 0
       syncLastSyncedAtMs.value = result.lastSyncAtMs ?? Date.now()
       syncErrorCode.value = null
       syncErrorMessage.value = null
+      syncIsStale.value = false
+      latestCatalogRevision.value = revision
+      await handleSyncedCatalogRevision(revision, attempted)
     } else if (!attempted) {
       // Defensive: IPC returned ok=false with syncAttempted=false.
       // Under current contract this should not fire (cache-fresh returns ok=true).
@@ -790,15 +935,19 @@ async function runSync(force: boolean) {
       syncStatus.value = 'synced'
       syncModelCount.value = result.modelCount ?? 0
       if (result.lastSyncAtMs) syncLastSyncedAtMs.value = result.lastSyncAtMs
+      syncIsStale.value = false
+      latestCatalogRevision.value = normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs)
     } else {
       syncStatus.value = 'failed'
       syncErrorCode.value = result.errorCode ?? 'unknown_error'
       syncErrorMessage.value = result.errorMessage ?? null
+      syncIsStale.value = true
     }
   } catch (err) {
     syncStatus.value = 'failed'
     syncErrorCode.value = 'unknown_error'
     syncErrorMessage.value = err instanceof Error ? err.name : String(err)
+    syncIsStale.value = true
   }
 }
 
@@ -817,12 +966,22 @@ async function fetchSyncStatus() {
       syncStatus.value = 'synced'
       syncModelCount.value = Number(status.modelCount ?? 0)
       syncLastSyncedAtMs.value = Number(status.lastSyncAtMs ?? 0)
+      syncIsStale.value = status.isStale === true || isCatalogStatusStale({
+        status: 'synced',
+        lastSyncAtMs: syncLastSyncedAtMs.value,
+        freshnessMs: catalogFreshnessMs.value,
+      })
+      latestCatalogRevision.value = normalizeCatalogRevision(status.catalogRevision, status.modelCount, status.lastSyncAtMs)
     } else if (state === 'error') {
       syncStatus.value = 'failed'
       syncErrorCode.value = status.lastErrorCode ?? 'unknown_error'
       syncErrorMessage.value = status.lastErrorMessage ?? null
+      syncIsStale.value = true
+      latestCatalogRevision.value = normalizeCatalogRevision(status.catalogRevision, status.modelCount, status.lastSyncAtMs)
     } else {
       syncStatus.value = 'not_synced'
+      syncIsStale.value = true
+      latestCatalogRevision.value = normalizeCatalogRevision(status.catalogRevision, status.modelCount, status.lastSyncAtMs)
     }
   } catch {
     // keep current state
@@ -833,7 +992,18 @@ function onManualRefresh() {
   const now = Date.now()
   if (now - lastManualRefreshAtMs < MANUAL_REFRESH_COOLDOWN_MS) return
   lastManualRefreshAtMs = now
-  void runSync(true)
+  void loadCatalogSyncSettings().then(() => runSync(true, 'manual_refresh'))
+}
+
+function onApplyCatalogUpdate() {
+  void applyLatestCatalogList()
+}
+
+async function onExternalCatalogSynced() {
+  if (!props.open) return
+  await loadCatalogSyncSettings()
+  await fetchSyncStatus()
+  await handleSyncedCatalogRevision(latestCatalogRevision.value, true)
 }
 
 function restoreFocusAfterClose() {
@@ -1032,10 +1202,23 @@ watch(
   },
 )
 
+onMounted(() => {
+  const electronAPI = (globalThis as any).electronAPI
+  if (electronAPI && typeof electronAPI.onModelCatalogSynced === 'function') {
+    unsubscribeModelCatalogSynced = electronAPI.onModelCatalogSynced(() => {
+      void onExternalCatalogSynced()
+    })
+  }
+})
+
 onBeforeUnmount(() => {
   clearDebounceTimer()
   modelDetailSeq += 1
   endpointSeq += 1
+  if (unsubscribeModelCatalogSynced) {
+    unsubscribeModelCatalogSynced()
+    unsubscribeModelCatalogSynced = null
+  }
 })
 </script>
 
@@ -1685,6 +1868,20 @@ onBeforeUnmount(() => {
 
       <div class="flex items-center justify-between border-t border-gray-200 px-4 py-2 text-[11px]">
         <div class="flex items-center gap-2">
+          <template v-if="pendingCatalogUpdateAvailable">
+            <span class="text-blue-700" data-testid="model-picker-update-available">
+              {{ t('errors.modelCatalog.updateAvailable') }}
+            </span>
+            <button
+              type="button"
+              class="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+              :disabled="props.disabled || loading"
+              data-testid="model-picker-apply-update"
+              @click="onApplyCatalogUpdate"
+            >
+              {{ t('errors.modelCatalog.applyUpdate') }}
+            </button>
+          </template>
           <span v-if="syncStatus === 'not_synced'" class="text-gray-400">
             {{ t('errors.modelCatalog.syncNotSynced') }}
           </span>

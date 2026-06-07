@@ -4,9 +4,12 @@ import { CatalogSyncRunner, type CatalogSyncRunnerMeta, type CatalogSyncRunnerRe
 import type { DbWorkerManager } from '../db/workerManager'
 import { mapErrorToSyncCode, mapMissingApiKeyToCode } from '../../src/shared/modelCatalog/catalogSyncErrorMapper'
 import { deriveCatalogScopeFromStore, type CatalogScopeDataSource } from '../modelCatalog/catalogScope'
+import {
+  DEFAULT_CATALOG_FRESHNESS_MS,
+  normalizeCatalogFreshnessMs,
+} from '../../src/shared/modelCatalog/catalogSyncSettings'
 
 const CATALOG_META_SCHEMA_VERSION = 1
-const CATALOG_SYNC_FIXED_TTL_MS = 60 * 60 * 1000
 const OPENROUTER_CURRENT_SCOPE_SOURCE: CatalogScopeDataSource = 'models_user_primary'
 
 export type OpenRouterCatalogScopeContext = Readonly<{
@@ -17,7 +20,7 @@ export type OpenRouterCatalogScopeContext = Readonly<{
   scopeDataSource: CatalogScopeDataSource
 }>
 
-function normalizeScopedMeta(raw: unknown): CatalogSyncRunnerMeta | null {
+function normalizeScopedMeta(raw: unknown, freshnessMs: number): CatalogSyncRunnerMeta | null {
   if (!raw || typeof raw !== 'object') return null
   const row = raw as Record<string, unknown>
   const modelCount = Number(row.modelCount ?? 0)
@@ -25,7 +28,7 @@ function normalizeScopedMeta(raw: unknown): CatalogSyncRunnerMeta | null {
   const hiddenModelCount = Number(row.hiddenModelCount ?? 0)
   const lastSyncAtMs = Number(row.lastSyncAtMs ?? 0)
   const schemaVersion = Number(row.schemaVersion ?? 0)
-  const ttlSeconds = Math.floor(CATALOG_SYNC_FIXED_TTL_MS / 1000)
+  const ttlSeconds = Math.floor(freshnessMs / 1000)
   const providerKey = String(row.providerKey ?? '').trim()
   const dataSource = String(row.dataSource ?? '').trim()
   const syncState = String(row.syncState ?? '').trim()
@@ -100,23 +103,25 @@ export async function runCatalogSyncAtStartup(input: Readonly<{
   store: Store
   dbWorkerManager: DbWorkerManager
   force?: boolean
+  freshnessMs?: number
 }>): Promise<CatalogSyncRunnerResult> {
   const providerKey = 'openrouter'
   const scope = resolveCurrentOpenRouterCatalogScope(input.store)
   if (!scope) {
     return buildMissingApiKeyResult(providerKey)
   }
+  const freshnessMs = normalizeCatalogFreshnessMs(input.freshnessMs ?? DEFAULT_CATALOG_FRESHNESS_MS)
 
   const runner = new CatalogSyncRunner({
     providerKey,
     expectedSchemaVersion: CATALOG_META_SCHEMA_VERSION,
-    fixedTtlMs: CATALOG_SYNC_FIXED_TTL_MS,
+    fixedTtlMs: freshnessMs,
     readMeta: async (targetProviderKey) => {
       const raw = await input.dbWorkerManager.call('modelCatalog.getScopedMeta', {
         providerKey: targetProviderKey,
         catalogScopeKey: scope.catalogScopeKey,
       })
-      const meta = normalizeScopedMeta(raw)
+      const meta = normalizeScopedMeta(raw, freshnessMs)
       if (!meta) return null
       if (meta.syncState === 'ok') {
         const validation = await input.dbWorkerManager.call('modelCatalog.validateActiveScopedSnapshot', {
