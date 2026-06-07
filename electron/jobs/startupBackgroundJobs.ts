@@ -2,6 +2,10 @@ import type Store from 'electron-store'
 import type { DbWorkerManager } from '../db/workerManager'
 import { runCatalogSyncAtStartup } from './catalogSyncStartup'
 import {
+  cleanupExpiredOpenRouterScopedCatalogCaches,
+  clearDeprecatedOpenRouterCatalogCacheOnce,
+} from './catalogCacheCleanup'
+import {
   OPENROUTER_CATALOG_FRESHNESS_MS_KEY,
   OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY,
   normalizeCatalogAutoSyncPolicy,
@@ -27,29 +31,47 @@ export async function runStartupBackgroundJobs(input: Readonly<{
   store: Store
   dbWorkerManager: DbWorkerManager
   runCatalogSync?: typeof runCatalogSyncAtStartup
+  cleanupExpiredScopedCaches?: typeof cleanupExpiredOpenRouterScopedCatalogCaches
+  clearDeprecatedCatalogCacheOnce?: typeof clearDeprecatedOpenRouterCatalogCacheOnce
 }>): Promise<StartupJobResult> {
   const postWindowNotifications: Array<Readonly<{ channel: string; payload: unknown }>> = []
   const policy = normalizeCatalogAutoSyncPolicy(input.store.get(OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY))
-  if (policy === 'never') {
-    return { postWindowNotifications }
+  if (policy !== 'never') {
+    const catalogSyncResult = await (input.runCatalogSync ?? runCatalogSyncAtStartup)({
+      store: input.store,
+      dbWorkerManager: input.dbWorkerManager,
+      force: policy === 'always',
+      freshnessMs: normalizeCatalogFreshnessMs(input.store.get(OPENROUTER_CATALOG_FRESHNESS_MS_KEY)),
+    })
+
+    if (catalogSyncResult.syncSucceeded && catalogSyncResult.syncAttempted) {
+      postWindowNotifications.push({
+        channel: 'db:modelCatalogSynced',
+        payload: {
+          routerSource: 'openrouter',
+          modelCount: catalogSyncResult.modelCountAfter,
+          lastSyncAtMs: catalogSyncResult.lastSyncAtMs,
+        },
+      })
+    }
   }
 
-  const catalogSyncResult = await (input.runCatalogSync ?? runCatalogSyncAtStartup)({
-    store: input.store,
-    dbWorkerManager: input.dbWorkerManager,
-    force: policy === 'always',
-    freshnessMs: normalizeCatalogFreshnessMs(input.store.get(OPENROUTER_CATALOG_FRESHNESS_MS_KEY)),
-  })
-
-  if (catalogSyncResult.syncSucceeded && catalogSyncResult.syncAttempted) {
-    postWindowNotifications.push({
-      channel: 'db:modelCatalogSynced',
-      payload: {
-        routerSource: 'openrouter',
-        modelCount: catalogSyncResult.modelCountAfter,
-        lastSyncAtMs: catalogSyncResult.lastSyncAtMs,
-      },
+  try {
+    await (input.cleanupExpiredScopedCaches ?? cleanupExpiredOpenRouterScopedCatalogCaches)({
+      store: input.store,
+      dbWorkerManager: input.dbWorkerManager,
     })
+  } catch (error) {
+    console.warn('[startup-jobs] catalog cleanup failed (non-fatal):', error)
+  }
+
+  try {
+    await (input.clearDeprecatedCatalogCacheOnce ?? clearDeprecatedOpenRouterCatalogCacheOnce)({
+      store: input.store,
+      dbWorkerManager: input.dbWorkerManager,
+    })
+  } catch (error) {
+    console.warn('[startup-jobs] deprecated catalog cleanup failed (non-fatal):', error)
   }
 
   return { postWindowNotifications }

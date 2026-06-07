@@ -71,10 +71,13 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   'geminiApiKey',         // Google Gemini API Key
   'openRouterApiKey',     // OpenRouter API Key
   'openRouterBaseUrl',    // OpenRouter Base URL（自定义端点）
+  'openRouterCatalogLocalSecret', // Internal: OpenRouter catalog scope HMAC secret（禁止 renderer 读取）
   'openRouterCatalogStartupSyncPolicy', // OpenRouter 模型目录启动同步策略
   'openRouterCatalogPickerOpenSyncPolicy', // OpenRouter 模型选择器打开同步策略
   'openRouterCatalogListUpdateMode', // OpenRouter 模型目录列表更新应用方式
   'openRouterCatalogFreshnessMs', // OpenRouter 模型目录新鲜度
+  'openRouterCatalogRetentionMs', // OpenRouter 模型目录缓存保留期
+  'openRouterDeprecatedCatalogCacheClearedAtMs', // Internal: deprecated OpenRouter catalog cleanup marker
   'apiKey',               // 向后兼容：旧版 API Key 字段
   
   // ========== Provider & Model ==========

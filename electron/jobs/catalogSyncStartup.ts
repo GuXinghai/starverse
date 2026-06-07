@@ -137,7 +137,6 @@ export async function runCatalogSyncAtStartup(input: Readonly<{
         apiKey: scope.apiKey,
         baseUrl: scope.normalizedBaseUrl,
         writer: {
-          syncSnapshot: async () => { },
           writeScopedSnapshot: (params) => input.dbWorkerManager.call('modelCatalog.writeScopedSnapshot', {
             ...params,
             providerKey,

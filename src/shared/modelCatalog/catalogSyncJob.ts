@@ -165,7 +165,7 @@ export type CatalogScopedSnapshotWriterInput = Readonly<{
 }>
 
 export type CatalogSyncWriter = Readonly<{
-  syncSnapshot: (input: CatalogSyncWriterInput) => Promise<void> | void
+  syncSnapshot?: (input: CatalogSyncWriterInput) => Promise<void> | void
   syncCoreSnapshot?: (input: CatalogCoreSyncWriterInput) => Promise<void> | void
   writeScopedSnapshot?: (input: CatalogScopedSnapshotWriterInput) => Promise<void> | void
 }>
@@ -575,21 +575,25 @@ export async function syncOpenRouterModelCatalog(options: Readonly<{
       }
     }
 
-    const legacyRows = modelResult.models.map(toLegacyCatalogRow)
-    const legacyStageStart = Date.now()
-    try {
-      await options.writer.syncSnapshot({
-        snapshotId,
-        routerSource: PROVIDERS.OPENROUTER,
-        models: legacyRows,
-      })
-      logger.info('[CatalogSyncJob] stage end', {
-        stage: CATALOG_SYNC_STAGE.WRITE_LEGACY,
-        durationMs: Date.now() - legacyStageStart,
-        legacyModelRows: legacyRows.length,
-      })
-    } catch (error) {
-      throw toStageError(CATALOG_SYNC_STAGE.WRITE_LEGACY, error)
+    let legacyModelRows = 0
+    if (options.writer.syncSnapshot) {
+      const legacyRows = modelResult.models.map(toLegacyCatalogRow)
+      legacyModelRows = legacyRows.length
+      const legacyStageStart = Date.now()
+      try {
+        await options.writer.syncSnapshot({
+          snapshotId,
+          routerSource: PROVIDERS.OPENROUTER,
+          models: legacyRows,
+        })
+        logger.info('[CatalogSyncJob] stage end', {
+          stage: CATALOG_SYNC_STAGE.WRITE_LEGACY,
+          durationMs: Date.now() - legacyStageStart,
+          legacyModelRows: legacyRows.length,
+        })
+      } catch (error) {
+        throw toStageError(CATALOG_SYNC_STAGE.WRITE_LEGACY, error)
+      }
     }
 
     let coreStats: Readonly<{
@@ -669,7 +673,7 @@ export async function syncOpenRouterModelCatalog(options: Readonly<{
       providerKey: PROVIDERS.OPENROUTER,
       dataSource,
       modelCount: modelResult.models.length,
-      legacyModelRows: legacyRows.length,
+      legacyModelRows,
       coreProviderRows: coreStats?.coreProviderRows ?? 0,
       coreModelRows: coreStats?.coreModelRows ?? 0,
       coreTagRows: coreStats?.coreTagRows ?? 0,

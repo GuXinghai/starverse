@@ -142,6 +142,10 @@ describeIfBetterSqlite('DerivativeJobService', () => {
     return modelId
   }
 
+  function audioModelConfig(modelId: string, extra: Record<string, unknown> = {}) {
+    return { modelId, inputModalities: ['text', 'audio'], ...extra }
+  }
+
   it('runs txt extracted_text jobs and writes a derivative file without touching the original asset', async () => {
     const { fileAssetRepo, service } = await createHarness()
     const asset = fileAssetRepo.create({
@@ -594,7 +598,7 @@ describeIfBetterSqlite('DerivativeJobService', () => {
       taskFamily: 'transcription',
       generator: 'phase-7-test',
       modelId,
-      configJson: { modelId, language: 'en' },
+      configJson: audioModelConfig(modelId, { language: 'en' }),
     })
     const transcript = await service.runDerivativeJob({ jobId: localJob.id, apiKey: 'key' })
     expect(transcript.job.status).toBe('ready')
@@ -633,6 +637,19 @@ describeIfBetterSqlite('DerivativeJobService', () => {
     expect(missing.job).toMatchObject({ status: 'failed', errorCode: 'transcript_model_missing' })
     expect(fileAssetRepo.getById(localAudio.id)?.storageUri).toBe('assets/original/as/asset-audio-model-check.wav')
 
+    const legacyAudioModelId = insertAudioModel(db, 'openrouter/legacy-audio-model')
+    const legacyOnlyJob = service.createDerivativeJob({
+      id: 'job-audio-legacy-only',
+      assetId: localAudio.id,
+      derivativeKind: 'transcript',
+      taskFamily: 'transcription',
+      generator: 'phase-9-test',
+      modelId: legacyAudioModelId,
+      configJson: { modelId: legacyAudioModelId },
+    })
+    const legacyOnly = await service.runDerivativeJob({ jobId: legacyOnlyJob.id, apiKey: 'key' })
+    expect(legacyOnly.job).toMatchObject({ status: 'failed', errorCode: 'transcript_model_missing' })
+
     const textOnlyModelId = insertTextOnlyModel(db)
     const notAudioJob = service.createDerivativeJob({
       id: 'job-audio-model-not-capable',
@@ -641,7 +658,7 @@ describeIfBetterSqlite('DerivativeJobService', () => {
       taskFamily: 'transcription',
       generator: 'phase-7-test',
       modelId: textOnlyModelId,
-      configJson: { modelId: textOnlyModelId },
+      configJson: { modelId: textOnlyModelId, inputModalities: ['text'] },
     })
     const notAudio = await service.runDerivativeJob({ jobId: notAudioJob.id, apiKey: 'key' })
     expect(notAudio.job).toMatchObject({ status: 'failed', errorCode: 'transcript_model_not_audio_capable' })
@@ -686,7 +703,7 @@ describeIfBetterSqlite('DerivativeJobService', () => {
       taskFamily: 'transcription',
       generator: 'phase-7-test',
       modelId,
-      configJson: { modelId },
+      configJson: audioModelConfig(modelId),
     })
     const timedOut = await service.runDerivativeJob({ jobId: timeoutJob.id, apiKey: 'key', timeoutMs: 5 })
     expect(timedOut.job).toMatchObject({ status: 'failed', errorCode: 'derivative_task_timeout', attemptCount: 1 })
@@ -729,7 +746,7 @@ describeIfBetterSqlite('DerivativeJobService', () => {
       taskFamily: 'transcription',
       generator: 'phase-7-test',
       modelId,
-      configJson: { modelId },
+      configJson: audioModelConfig(modelId),
     })
     const result = await service.runDerivativeJob({ jobId: job.id, apiKey: 'key' })
 
@@ -768,7 +785,7 @@ describeIfBetterSqlite('DerivativeJobService', () => {
       taskFamily: 'transcription',
       generator: 'phase-7-test',
       modelId,
-      configJson: { modelId },
+      configJson: audioModelConfig(modelId),
     })
     const result = await service.runDerivativeJob({ jobId: job.id, apiKey: 'key' })
 
@@ -807,7 +824,7 @@ describeIfBetterSqlite('DerivativeJobService', () => {
       taskFamily: 'transcription',
       generator: 'phase-7-test',
       modelId,
-      configJson: { modelId },
+      configJson: audioModelConfig(modelId),
     })
     const result = await service.runDerivativeJob({ jobId: job.id, apiKey: 'key' })
 
@@ -846,7 +863,7 @@ describeIfBetterSqlite('DerivativeJobService', () => {
       taskFamily: 'transcription',
       generator: 'phase-7-test',
       modelId,
-      configJson: { modelId },
+      configJson: audioModelConfig(modelId),
     })
     const result = await service.runDerivativeJob({ jobId: job.id, apiKey: 'key' })
 
@@ -888,7 +905,7 @@ describeIfBetterSqlite('DerivativeJobService', () => {
       taskFamily: 'transcription',
       generator: 'phase-7-test',
       modelId,
-      configJson: { modelId },
+      configJson: audioModelConfig(modelId),
     })
     const result = await service.runDerivativeJob({ jobId: job.id, apiKey: 'key' })
 
@@ -929,7 +946,7 @@ describeIfBetterSqlite('DerivativeJobService', () => {
       taskFamily: 'transcription',
       generator: 'phase-7-test',
       modelId,
-      configJson: { modelId },
+      configJson: audioModelConfig(modelId),
     })
     const result = await service.runDerivativeJob({ jobId: job.id, apiKey: 'key' })
 
@@ -968,7 +985,7 @@ describeIfBetterSqlite('DerivativeJobService', () => {
       taskFamily: 'transcription',
       generator: 'phase-7-test',
       modelId,
-      configJson: { modelId },
+      configJson: audioModelConfig(modelId),
     })
     const result = await service.runDerivativeJob({ jobId: job.id, apiKey: 'key' })
 

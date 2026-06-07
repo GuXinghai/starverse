@@ -214,6 +214,8 @@ export class DbWorkerRuntime {
     ensureEnginePluginRegistrySchema(this.db)
     console.log('[DbWorkerRuntime] 确保 Model Catalog Schema...')
     this.ensureModelCatalogSchema()
+    console.log('[DbWorkerRuntime] 确保 Scoped Model Catalog Schema...')
+    this.ensureScopedModelCatalogSchema()
     console.log('[DbWorkerRuntime] 确保 Reasoning Model Index Schema...')
     this.ensureReasoningModelIndexSchema()
     console.log('[DbWorkerRuntime] 确保 Branching Schema...')
@@ -691,6 +693,72 @@ export class DbWorkerRuntime {
         FROM models;
       `)
     })()
+  }
+
+  private ensureScopedModelCatalogSchema() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS catalog_scope_meta (
+        provider_key TEXT NOT NULL CHECK (length(provider_key) > 0),
+        catalog_scope_key TEXT NOT NULL CHECK (length(catalog_scope_key) > 0),
+        base_url TEXT NOT NULL,
+        data_source TEXT NOT NULL CHECK (data_source IN ('models_user_primary', 'models_fallback', 'mixed')),
+        active_snapshot_id TEXT,
+        sync_state TEXT NOT NULL CHECK (sync_state IN ('idle', 'syncing', 'ok', 'error')),
+        last_sync_at_ms INTEGER NOT NULL DEFAULT 0,
+        last_used_at_ms INTEGER NOT NULL DEFAULT 0,
+        model_count INTEGER NOT NULL DEFAULT 0,
+        visible_model_count INTEGER NOT NULL DEFAULT 0,
+        hidden_model_count INTEGER NOT NULL DEFAULT 0,
+        last_error_code TEXT,
+        last_error_message TEXT,
+        last_validated_at_ms INTEGER,
+        last_repair_attempt_at_ms INTEGER,
+        repair_attempt_count INTEGER NOT NULL DEFAULT 0,
+        snapshot_checksum TEXT,
+        schema_version INTEGER NOT NULL,
+        PRIMARY KEY(provider_key, catalog_scope_key)
+      );
+
+      CREATE TABLE IF NOT EXISTS catalog_models (
+        provider_key TEXT NOT NULL CHECK (length(provider_key) > 0),
+        catalog_scope_key TEXT NOT NULL CHECK (length(catalog_scope_key) > 0),
+        snapshot_id TEXT NOT NULL CHECK (length(snapshot_id) > 0),
+        model_id TEXT NOT NULL CHECK (length(model_id) > 0),
+        model_key TEXT NOT NULL CHECK (length(model_key) > 0),
+        canonical_slug TEXT,
+        display_name TEXT NOT NULL CHECK (length(display_name) > 0),
+        description TEXT,
+        vendor TEXT,
+        family TEXT,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'deprecated', 'archived')),
+        visibility TEXT NOT NULL DEFAULT 'visible' CHECK (visibility IN ('visible', 'hidden')),
+        context_length INTEGER,
+        max_output_tokens INTEGER,
+        input_modalities_json TEXT NOT NULL DEFAULT '[]',
+        output_modalities_json TEXT NOT NULL DEFAULT '[]',
+        supported_parameters_json TEXT NOT NULL DEFAULT '[]',
+        capabilities_json TEXT NOT NULL DEFAULT '{}',
+        pricing_json TEXT,
+        raw_json TEXT,
+        created_at_sec INTEGER,
+        first_seen_at_ms INTEGER NOT NULL,
+        last_seen_at_ms INTEGER NOT NULL,
+        synced_at_ms INTEGER NOT NULL,
+        PRIMARY KEY(provider_key, catalog_scope_key, snapshot_id, model_id),
+        FOREIGN KEY(provider_key, catalog_scope_key)
+          REFERENCES catalog_scope_meta(provider_key, catalog_scope_key)
+          ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_catalog_scope_meta_state
+        ON catalog_scope_meta(provider_key, sync_state, last_sync_at_ms DESC);
+      CREATE INDEX IF NOT EXISTS idx_catalog_scope_meta_used
+        ON catalog_scope_meta(provider_key, last_used_at_ms DESC);
+      CREATE INDEX IF NOT EXISTS idx_catalog_models_active_lookup
+        ON catalog_models(provider_key, catalog_scope_key, snapshot_id, visibility, status, display_name COLLATE NOCASE, model_id);
+      CREATE INDEX IF NOT EXISTS idx_catalog_models_model_lookup
+        ON catalog_models(provider_key, catalog_scope_key, model_id);
+    `)
   }
 
   /**

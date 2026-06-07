@@ -2186,6 +2186,7 @@ describe('ModelCatalogRepo scoped catalog foundation', () => {
 
     expect(result.deleted.catalog_models).toBe(1)
     expect(result.deleted.catalog_scope_meta).toBe(1)
+    expect(result.deletedScopeCount).toBe(1)
     expect(repo.getScopedMeta('openrouter', 'scope-a')).toBeNull()
     expect(repo.getScopedMeta('openrouter', 'scope-b')).not.toBeNull()
     expect(repo.queryScopedActiveModels({ providerKey: 'openrouter', catalogScopeKey: 'scope-b' }).items.map((row) => row.modelId)).toEqual(['openai/b'])
@@ -2201,11 +2202,78 @@ describe('ModelCatalogRepo scoped catalog foundation', () => {
     seedScopedModel(repo, 'scope-openrouter', 'snapshot-openrouter', 'openai/a', 'openrouter')
     seedScopedModel(repo, 'scope-other', 'snapshot-other', 'other/a', 'other-provider')
 
-    repo.clearAllProviderScopedCatalog('openrouter')
+    const result = repo.clearAllProviderScopedCatalog('openrouter')
 
+    expect(result.deletedScopeCount).toBe(1)
     expect(repo.getScopedMeta('openrouter', 'scope-openrouter')).toBeNull()
     expect(repo.getScopedMeta('other-provider', 'scope-other')).not.toBeNull()
     expect(repo.queryScopedActiveModels({ providerKey: 'other-provider', catalogScopeKey: 'scope-other' }).items).toHaveLength(1)
+  })
+
+  it('clearAllProviderScopedCatalog preserves user settings, preferences, usage, and project data', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    const nowMs = Date.now()
+
+    writeScopedSnapshot(repo, 'scope-openrouter', 'snapshot-openrouter', [makeScopedModel('openai/a')])
+    db.prepare("INSERT INTO project(id, name, created_at, updated_at) VALUES('project-1', 'Project', @nowMs, @nowMs)").run({ nowMs })
+    db.prepare("INSERT INTO settings_kv(key, value_json, created_at_ms, updated_at_ms) VALUES('setting-1', '{\"ok\":true}', @nowMs, @nowMs)").run({ nowMs })
+    db.prepare(`
+      INSERT INTO usage_log(id, provider, model, tokens_input, tokens_output, duration_ms, timestamp)
+      VALUES('usage-1', 'openrouter', 'openai/a', 1, 2, 3, @nowMs)
+    `).run({ nowMs })
+    db.prepare(`
+      INSERT INTO model_favorites(scope_type, scope_id, provider_key, model_id, model_key, sort_rank, created_at_ms, updated_at_ms)
+      VALUES('global', '', 'openrouter', 'openai/a', 'openrouter::openai/a', 0, @nowMs, @nowMs)
+    `).run({ nowMs })
+    db.prepare(`
+      INSERT INTO model_recents(scope_type, scope_id, provider_key, model_id, model_key, last_used_at_ms, use_count, created_at_ms, updated_at_ms)
+      VALUES('global', '', 'openrouter', 'openai/a', 'openrouter::openai/a', @nowMs, 1, @nowMs, @nowMs)
+    `).run({ nowMs })
+
+    repo.clearAllProviderScopedCatalog('openrouter')
+
+    expect(repo.getScopedMeta('openrouter', 'scope-openrouter')).toBeNull()
+    expect(db.prepare("SELECT COUNT(1) AS count FROM project WHERE id = 'project-1'").get()).toMatchObject({ count: 1 })
+    expect(db.prepare("SELECT COUNT(1) AS count FROM settings_kv WHERE key = 'setting-1'").get()).toMatchObject({ count: 1 })
+    expect(db.prepare("SELECT COUNT(1) AS count FROM usage_log WHERE id = 'usage-1'").get()).toMatchObject({ count: 1 })
+    expect(db.prepare("SELECT COUNT(1) AS count FROM model_favorites WHERE model_key = 'openrouter::openai/a'").get()).toMatchObject({ count: 1 })
+    expect(db.prepare("SELECT COUNT(1) AS count FROM model_recents WHERE model_key = 'openrouter::openai/a'").get()).toMatchObject({ count: 1 })
+  })
+
+  it('cleanupExpiredScopedCatalogCaches deletes only expired scopes for the requested provider', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    const nowMs = 10_000
+
+    writeScopedSnapshot(repo, 'scope-expired', 'snapshot-expired', [makeScopedModel('openai/expired')])
+    writeScopedSnapshot(repo, 'scope-fresh', 'snapshot-fresh', [makeScopedModel('openai/fresh')])
+    writeScopedSnapshot(repo, 'scope-other', 'snapshot-other', [makeScopedModel('other/fresh')], 'other-provider')
+    db.prepare(`
+      UPDATE catalog_scope_meta
+      SET last_used_at_ms = @lastUsedAtMs
+      WHERE catalog_scope_key = @catalogScopeKey
+    `).run({ catalogScopeKey: 'scope-expired', lastUsedAtMs: nowMs - 8_000 })
+    db.prepare(`
+      UPDATE catalog_scope_meta
+      SET last_used_at_ms = @lastUsedAtMs
+      WHERE catalog_scope_key = @catalogScopeKey
+    `).run({ catalogScopeKey: 'scope-fresh', lastUsedAtMs: nowMs - 500 })
+    db.prepare(`
+      UPDATE catalog_scope_meta
+      SET last_used_at_ms = @lastUsedAtMs
+      WHERE catalog_scope_key = @catalogScopeKey
+    `).run({ catalogScopeKey: 'scope-other', lastUsedAtMs: nowMs - 8_000 })
+
+    const result = repo.cleanupExpiredScopedCatalogCaches('openrouter', nowMs, 7_000)
+
+    expect(result.deletedScopeCount).toBe(1)
+    expect(result.deleted.catalog_scope_meta).toBe(1)
+    expect(repo.getScopedMeta('openrouter', 'scope-expired')).toBeNull()
+    expect(repo.getScopedMeta('openrouter', 'scope-fresh')).not.toBeNull()
+    expect(repo.getScopedMeta('other-provider', 'scope-other')).not.toBeNull()
   })
 
   it('writeScopedSnapshot writes rows and updates activeSnapshotId', () => {
@@ -2619,17 +2687,20 @@ describe('ModelCatalogRepo deprecated OpenRouter catalog cache cleanup', () => {
 
     const result = repo.clearDeprecatedOpenRouterCatalogCache()
 
+    expect(result.deletedScopeCount).toBe(0)
     expect(result.deleted).toMatchObject({
       endpoint_meta: 1,
       model_tags: 1,
       models: 1,
-      catalog_meta: 1,
+      providers: 1,
       model_catalog: 1,
       reasoning_model_index: 1,
-      providers: 1,
     })
     expect(count(db, "SELECT COUNT(1) AS count FROM model_catalog WHERE router_source = 'openrouter'")).toBe(0)
     expect(count(db, "SELECT COUNT(1) AS count FROM models WHERE provider_key = 'openrouter'")).toBe(0)
+    expect(count(db, "SELECT COUNT(1) AS count FROM catalog_meta WHERE provider_key = 'openrouter'")).toBe(0)
+    expect(count(db, "SELECT COUNT(1) AS count FROM providers WHERE provider_key = 'openrouter'")).toBe(0)
+    expect(count(db, "SELECT COUNT(1) AS count FROM reasoning_model_index WHERE model_id = 'openai/a'")).toBe(0)
     expect(count(db, "SELECT COUNT(1) AS count FROM project WHERE id = 'project-1'")).toBe(1)
     expect(count(db, "SELECT COUNT(1) AS count FROM settings_kv WHERE key = 'setting-1'")).toBe(1)
     expect(count(db, "SELECT COUNT(1) AS count FROM model_favorites WHERE model_key = 'openrouter::openai/a'")).toBe(1)

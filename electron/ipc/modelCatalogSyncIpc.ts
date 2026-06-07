@@ -1,6 +1,7 @@
 import type Store from 'electron-store'
 import type { DbWorkerManager } from '../db/workerManager'
 import { resolveCurrentOpenRouterCatalogScope, runCatalogSyncAtStartup } from '../jobs/catalogSyncStartup'
+import { cleanupExpiredOpenRouterScopedCatalogCaches } from '../jobs/catalogCacheCleanup'
 import { mapCacheCorruptedToCode, mapDbUnavailableToCode, mapErrorToSyncCode, mapMissingApiKeyToCode } from '../../src/shared/modelCatalog/catalogSyncErrorMapper'
 import {
   OPENROUTER_CATALOG_FRESHNESS_MS_KEY,
@@ -13,6 +14,10 @@ export const MODEL_CATALOG_SYNC_IPC_CHANNELS = [
   'modelCatalog.syncNow',
   'modelCatalog.getSyncStatus',
   'modelCatalog.queryScopedCurrent',
+  'modelCatalog.repairCurrentScopedCache',
+  'modelCatalog.clearCurrentScopedCache',
+  'modelCatalog.clearAllOpenRouterScopedCaches',
+  'modelCatalog.clearDeprecatedOpenRouterCatalogCache',
 ] as const
 
 type SyncNowInput = Readonly<{
@@ -84,6 +89,15 @@ type ScopedQueryResult = Readonly<{
   lastSyncAtMs: number
   items: unknown[]
   nextCursor: unknown | null
+}>
+
+type CatalogClearResult = Readonly<{
+  ok: boolean
+  providerKey: string
+  deleted: Record<string, number>
+  deletedScopeCount: number
+  errorCode: string | null
+  errorMessage: string | null
 }>
 
 const syncPromisesByScope = new Map<string, Promise<SyncNowResult>>()
@@ -178,6 +192,21 @@ function freshnessMsFromStore(store: Store): number {
   return normalizeCatalogFreshnessMs(store.get(OPENROUTER_CATALOG_FRESHNESS_MS_KEY))
 }
 
+async function runScopedCleanupAfterCatalogChange(input: Readonly<{
+  store: Store
+  dbWorkerManager: DbWorkerManager
+}>): Promise<void> {
+  try {
+    await cleanupExpiredOpenRouterScopedCatalogCaches(input)
+  } catch (error) {
+    console.warn('[modelCatalog.syncNow] scoped cleanup failed after sync (non-fatal)', {
+      providerKey: 'openrouter',
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorCode: (error as any)?.code ?? null,
+    })
+  }
+}
+
 export function registerModelCatalogSyncIpc(input: Readonly<{
   registerInvoke: RegisterInvoke
   store: Store
@@ -186,7 +215,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
 }>): string[] {
   const { registerInvoke, store, dbWorkerManager, notifyRenderer } = input
 
-  registerInvoke('modelCatalog.syncNow', async (_event: unknown, options?: unknown): Promise<SyncNowResult> => {
+  const syncNowHandler = async (_event: unknown, options?: unknown): Promise<SyncNowResult> => {
     const opts = (options ?? {}) as SyncNowInput
     const providerKey = opts.providerKey ?? 'openrouter'
     const force = opts.force === true
@@ -237,6 +266,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
             modelCount: result.modelCountAfter,
             lastSyncAtMs: result.lastSyncAtMs,
           })
+          await runScopedCleanupAfterCatalogChange({ store, dbWorkerManager })
         }
 
         const isCacheFresh = !result.syncAttempted && !result.syncSucceeded && result.reason === 'cache_fresh'
@@ -316,7 +346,13 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
     } finally {
       syncPromisesByScope.delete(lockKey)
     }
-  })
+  }
+
+  registerInvoke('modelCatalog.syncNow', syncNowHandler)
+
+  registerInvoke('modelCatalog.repairCurrentScopedCache', async (event: unknown): Promise<SyncNowResult> =>
+    syncNowHandler(event, { providerKey: 'openrouter', force: true, reason: 'manual_refresh' })
+  )
 
   registerInvoke('modelCatalog.getSyncStatus', async (_event: unknown, options?: unknown): Promise<SyncStatusResult> => {
     const opts = (options ?? {}) as { providerKey?: string }
@@ -588,6 +624,109 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
         lastSyncAtMs: 0,
         items: [],
         nextCursor: null,
+      }
+    }
+  })
+
+  registerInvoke('modelCatalog.clearCurrentScopedCache', async (): Promise<CatalogClearResult> => {
+    const providerKey = 'openrouter'
+    const scope = resolveCurrentOpenRouterCatalogScope(store)
+    if (!scope) {
+      const mapped = mapMissingApiKeyToCode()
+      return {
+        ok: false,
+        providerKey,
+        deleted: {},
+        deletedScopeCount: 0,
+        errorCode: mapped.code,
+        errorMessage: mapped.message,
+      }
+    }
+
+    try {
+      const result = await dbWorkerManager.call('modelCatalog.clearScopedCatalog', {
+        providerKey,
+        catalogScopeKey: scope.catalogScopeKey,
+      }) as { deleted?: Record<string, number>; deletedScopeCount?: number } | null
+      notifyRenderer('db:modelCatalogSynced', {
+        routerSource: providerKey,
+        modelCount: 0,
+        lastSyncAtMs: 0,
+      })
+      return {
+        ok: true,
+        providerKey,
+        deleted: result?.deleted && typeof result.deleted === 'object' ? result.deleted : {},
+        deletedScopeCount: Number(result?.deletedScopeCount ?? 0),
+        errorCode: null,
+        errorMessage: null,
+      }
+    } catch {
+      const mapped = mapDbUnavailableToCode()
+      return {
+        ok: false,
+        providerKey,
+        deleted: {},
+        deletedScopeCount: 0,
+        errorCode: mapped.code,
+        errorMessage: mapped.message,
+      }
+    }
+  })
+
+  registerInvoke('modelCatalog.clearAllOpenRouterScopedCaches', async (): Promise<CatalogClearResult> => {
+    const providerKey = 'openrouter'
+    try {
+      const result = await dbWorkerManager.call('modelCatalog.clearAllProviderScopedCatalog', {
+        providerKey,
+      }) as { deleted?: Record<string, number>; deletedScopeCount?: number } | null
+      notifyRenderer('db:modelCatalogSynced', {
+        routerSource: providerKey,
+        modelCount: 0,
+        lastSyncAtMs: 0,
+      })
+      return {
+        ok: true,
+        providerKey,
+        deleted: result?.deleted && typeof result.deleted === 'object' ? result.deleted : {},
+        deletedScopeCount: Number(result?.deletedScopeCount ?? 0),
+        errorCode: null,
+        errorMessage: null,
+      }
+    } catch {
+      const mapped = mapDbUnavailableToCode()
+      return {
+        ok: false,
+        providerKey,
+        deleted: {},
+        deletedScopeCount: 0,
+        errorCode: mapped.code,
+        errorMessage: mapped.message,
+      }
+    }
+  })
+
+  registerInvoke('modelCatalog.clearDeprecatedOpenRouterCatalogCache', async (): Promise<CatalogClearResult> => {
+    const providerKey = 'openrouter'
+    try {
+      const result = await dbWorkerManager.call('modelCatalog.clearDeprecatedOpenRouterCatalogCache', {}) as { deleted?: Record<string, number>; deletedScopeCount?: number } | null
+      return {
+        ok: true,
+        providerKey,
+        deleted: result?.deleted && typeof result.deleted === 'object' ? result.deleted : {},
+        deletedScopeCount: Number(result?.deletedScopeCount ?? 0),
+        errorCode: null,
+        errorMessage: null,
+      }
+    } catch {
+      const mapped = mapDbUnavailableToCode()
+      return {
+        ok: false,
+        providerKey,
+        deleted: {},
+        deletedScopeCount: 0,
+        errorCode: mapped.code,
+        errorMessage: mapped.message,
       }
     }
   })

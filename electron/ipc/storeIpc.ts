@@ -5,6 +5,7 @@ import {
   checkFieldSize,
   safeClearConfig,
 } from '../config/configSchema'
+import { isSensitiveCatalogStoreKey, OPENROUTER_CATALOG_LOCAL_SECRET_KEY } from '../modelCatalog/catalogScope'
 import type { RegisterInvoke } from './types'
 
 export const STORE_IPC_CHANNELS = [
@@ -32,11 +33,14 @@ export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
   const { registerInvoke, store, isDev, performConfigSizeCheck, migrateAndCleanupConfig, refreshMainLocale } = input
 
   registerInvoke('store-get', (_event: unknown, key: unknown) => {
-    return store.get(String(key ?? ''))
+    const keyText = String(key ?? '')
+    if (isSensitiveCatalogStoreKey(keyText)) return undefined
+    return store.get(keyText)
   })
 
   registerInvoke('store-set', (_event: unknown, key: unknown, value: unknown) => {
     const keyText = String(key ?? '')
+    if (isSensitiveCatalogStoreKey(keyText)) return false
 
     const sizeCheck = checkFieldSize(keyText, value, isDev)
     if (!sizeCheck.ok) {
@@ -67,6 +71,7 @@ export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
 
   registerInvoke('store-delete', (_event: unknown, key: unknown) => {
     const keyText = String(key ?? '')
+    if (isSensitiveCatalogStoreKey(keyText)) return false
     store.delete(keyText)
     if (isLocaleConfigKey(keyText)) {
       refreshMainLocale?.()
@@ -77,6 +82,9 @@ export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
   registerInvoke('store-clear-safe', (_event: unknown, keepKeys: unknown = []) => {
     try {
       const safeKeepKeys = Array.isArray(keepKeys) ? keepKeys.map((item) => String(item)) : []
+      if (!safeKeepKeys.includes(OPENROUTER_CATALOG_LOCAL_SECRET_KEY)) {
+        safeKeepKeys.push(OPENROUTER_CATALOG_LOCAL_SECRET_KEY)
+      }
       const backupPath = safeClearConfig(store, safeKeepKeys)
       migrateAndCleanupConfig()
       performConfigSizeCheck('startup')
