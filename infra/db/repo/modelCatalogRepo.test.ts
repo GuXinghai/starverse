@@ -2393,6 +2393,81 @@ describe('ModelCatalogRepo scoped catalog foundation', () => {
     expect(secondPage.items.map((row) => row.modelId)).toEqual(['vendor/charlie'])
   })
 
+  it('queryScopedActiveModels applies category filters only to current scoped rows', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    seedLegacyOnlyModel(db)
+
+    writeScopedSnapshot(repo, 'scope-a', 'snapshot-a', [
+      makeScopedModel('scope-a/code-model', {
+        displayName: 'Code Assistant',
+        description: 'Programming helper',
+        rawJson: '{"categories":["programming"]}',
+      }),
+      makeScopedModel('scope-a/legal-model', {
+        displayName: 'Legal Assistant',
+        description: 'Legal helper',
+        rawJson: '{"categories":["legal"]}',
+      }),
+    ])
+    writeScopedSnapshot(repo, 'scope-b', 'snapshot-b', [
+      makeScopedModel('scope-b/legal-model', {
+        displayName: 'Legal Assistant',
+        description: 'Legal helper',
+        rawJson: '{"categories":["legal"]}',
+      }),
+    ])
+
+    expect(repo.queryScopedActiveModels({
+      providerKey: 'openrouter',
+      catalogScopeKey: 'scope-a',
+      category: 'programming',
+    }).items.map((row) => row.modelId)).toEqual(['scope-a/code-model'])
+    expect(repo.queryScopedActiveModels({
+      providerKey: 'openrouter',
+      catalogScopeKey: 'scope-b',
+      category: 'programming',
+    }).items).toEqual([])
+  })
+
+  it('queryScopedActiveModels applies capability filters from scoped capabilities_json', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+    db.prepare(`
+      INSERT INTO reasoning_model_index(model_id, name, status, last_synced_snapshot, created_at_ms, updated_at_ms)
+      VALUES('scope-a/plain-model', 'Old Reasoning Index', 'visible', 'legacy-snapshot', 1, 1)
+    `).run()
+
+    writeScopedSnapshot(repo, 'scope-a', 'snapshot-a', [
+      makeScopedModel('scope-a/reasoning-model', {
+        capabilitiesJson: '{"reasoning":true,"tools":true,"vision":false,"longContext":true}',
+        supportedParametersJson: '["reasoning","tools"]',
+      }),
+      makeScopedModel('scope-a/plain-model', {
+        capabilitiesJson: '{"reasoning":false,"tools":false,"vision":true,"longContext":false}',
+        supportedParametersJson: '["temperature"]',
+      }),
+    ])
+
+    expect(repo.queryScopedActiveModels({
+      providerKey: 'openrouter',
+      catalogScopeKey: 'scope-a',
+      capabilities: { reasoning: true },
+    }).items.map((row) => row.modelId)).toEqual(['scope-a/reasoning-model'])
+    expect(repo.queryScopedActiveModels({
+      providerKey: 'openrouter',
+      catalogScopeKey: 'scope-a',
+      capabilities: { vision: true },
+    }).items.map((row) => row.modelId)).toEqual(['scope-a/plain-model'])
+    expect(repo.queryScopedActiveModels({
+      providerKey: 'openrouter',
+      catalogScopeKey: 'scope-a',
+      supportedParameters: ['reasoning'],
+    }).items.map((row) => row.modelId)).toEqual(['scope-a/reasoning-model'])
+  })
+
   it('scoped query does not read legacy-only models', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)

@@ -18,6 +18,13 @@ export type CatalogQueryNumberRange = Readonly<{
   min?: number
   max?: number
 }>
+export type CatalogQueryCapabilitiesFilter = Readonly<{
+  reasoning?: boolean
+  tools?: boolean
+  structuredOutputs?: boolean
+  vision?: boolean
+  longContext?: boolean
+}>
 
 export type CatalogQueryCursor = Readonly<{
   sortBy: CatalogQuerySortBy
@@ -80,6 +87,7 @@ export type CatalogQueryInput = Readonly<{
     inputModalities?: CatalogQueryModality[]
     outputModalities?: CatalogQueryModality[]
     supportedParameters?: string[]
+    capabilities?: CatalogQueryCapabilitiesFilter
   }>
   sort?: Readonly<{
     by?: CatalogQuerySortBy
@@ -107,6 +115,10 @@ export type CatalogQueryItem = Readonly<{
     completion: string | null
     request: string | null
     image: string | null
+    webSearch?: string | null
+    internalReasoning?: string | null
+    inputCacheRead?: string | null
+    inputCacheWrite?: string | null
   }>
   capabilities: Readonly<{
     reasoning: boolean
@@ -114,6 +126,23 @@ export type CatalogQueryItem = Readonly<{
     structuredOutputs: boolean
     vision: boolean
     longContext: boolean
+  }>
+  family?: string | null
+  status?: string | null
+  visibility?: string | null
+  inputModalities?: string[]
+  outputModalities?: string[]
+  supportedParameters?: string[]
+  firstSeenAtMs?: number | null
+  lastSeenAtMs?: number | null
+  syncedAtMs?: number | null
+  raw?: Readonly<{
+    rawJson?: string | null
+    inputModalitiesJson?: string | null
+    outputModalitiesJson?: string | null
+    supportedParametersJson?: string | null
+    capabilitiesJson?: string | null
+    pricingJson?: string | null
   }>
 }>
 
@@ -191,6 +220,21 @@ function mergeUniqueStrings(...inputs: unknown[]): string[] | undefined {
   return Array.from(new Set(merged))
 }
 
+function normalizeBooleanCapabilityFilters(input: unknown): CatalogQueryCapabilitiesFilter | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const raw = input as Record<string, unknown>
+  const out: Partial<Record<keyof CatalogQueryCapabilitiesFilter, boolean>> = {}
+  for (const key of ['reasoning', 'tools', 'structuredOutputs', 'vision', 'longContext']) {
+    if (typeof raw[key] === 'boolean') out[key as keyof CatalogQueryCapabilitiesFilter] = raw[key]
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+function normalizeDirectStringArray(input: unknown): string[] {
+  if (!Array.isArray(input)) return []
+  return input.map((value) => String(value ?? '').trim()).filter(Boolean)
+}
+
 function summarizeFilter(input: CatalogQueryInput['filter']): Record<string, unknown> {
   const vendors = mergeUniqueStrings(input?.vendors, input?.providers)
   const tags = normalizeStringArray(input?.tags)
@@ -217,6 +261,7 @@ function summarizeFilter(input: CatalogQueryInput['filter']): Record<string, unk
     inputModalitiesCount: inputModalities?.length ?? 0,
     outputModalitiesCount: outputModalities?.length ?? 0,
     supportedParametersCount: supportedParameters?.length ?? 0,
+    capabilityFilterCount: Object.keys(normalizeBooleanCapabilityFilters(input?.capabilities) ?? {}).length,
     hasContextLengthRange: !!normalizeNumberRange(input?.contextLength),
     hasMaxOutputTokensRange: !!normalizeNumberRange(input?.maxOutputTokens),
     hasPerRequestLimits: typeof input?.hasPerRequestLimits === 'boolean',
@@ -284,6 +329,7 @@ function normalizeItem(input: unknown): CatalogQueryItem | null {
   }
   const pricing = row.pricing && typeof row.pricing === 'object' ? row.pricing as Record<string, unknown> : null
   const capabilities = row.capabilities && typeof row.capabilities === 'object' ? row.capabilities as Record<string, unknown> : null
+  const raw = row.raw && typeof row.raw === 'object' ? row.raw as Record<string, unknown> : null
 
   return {
     providerKey,
@@ -293,14 +339,24 @@ function normalizeItem(input: unknown): CatalogQueryItem | null {
     displayName,
     description: typeof row.description === 'string' ? row.description : null,
     vendor: typeof row.vendor === 'string' ? row.vendor : null,
+    family: typeof row.family === 'string' ? row.family : null,
+    status: typeof row.status === 'string' ? row.status : null,
+    visibility: typeof row.visibility === 'string' ? row.visibility : null,
     contextLength: numberOrNull(row.contextLength),
     maxOutputTokens: numberOrNull(row.maxOutputTokens),
     createdAtSec: numberOrNull(row.createdAtSec),
+    inputModalities: normalizeDirectStringArray(row.inputModalities),
+    outputModalities: normalizeDirectStringArray(row.outputModalities),
+    supportedParameters: normalizeDirectStringArray(row.supportedParameters),
     pricing: {
       prompt: typeof pricing?.prompt === 'string' ? pricing.prompt : typeof row.pricePrompt === 'string' ? row.pricePrompt : null,
       completion: typeof pricing?.completion === 'string' ? pricing.completion : typeof row.priceCompletion === 'string' ? row.priceCompletion : null,
       request: typeof pricing?.request === 'string' ? pricing.request : typeof row.priceRequest === 'string' ? row.priceRequest : null,
       image: typeof pricing?.image === 'string' ? pricing.image : typeof row.priceImage === 'string' ? row.priceImage : null,
+      webSearch: typeof pricing?.webSearch === 'string' ? pricing.webSearch : null,
+      internalReasoning: typeof pricing?.internalReasoning === 'string' ? pricing.internalReasoning : null,
+      inputCacheRead: typeof pricing?.inputCacheRead === 'string' ? pricing.inputCacheRead : null,
+      inputCacheWrite: typeof pricing?.inputCacheWrite === 'string' ? pricing.inputCacheWrite : null,
     },
     capabilities: {
       reasoning: capabilities?.reasoning === true || row.capReasoning === 1,
@@ -309,6 +365,19 @@ function normalizeItem(input: unknown): CatalogQueryItem | null {
       vision: capabilities?.vision === true || row.capVision === 1,
       longContext: capabilities?.longContext === true || row.capLongContext === 1,
     },
+    firstSeenAtMs: numberOrNull(row.firstSeenAtMs),
+    lastSeenAtMs: numberOrNull(row.lastSeenAtMs),
+    syncedAtMs: numberOrNull(row.syncedAtMs),
+    raw: raw
+      ? {
+          rawJson: typeof raw.rawJson === 'string' ? raw.rawJson : null,
+          inputModalitiesJson: typeof raw.inputModalitiesJson === 'string' ? raw.inputModalitiesJson : null,
+          outputModalitiesJson: typeof raw.outputModalitiesJson === 'string' ? raw.outputModalitiesJson : null,
+          supportedParametersJson: typeof raw.supportedParametersJson === 'string' ? raw.supportedParametersJson : null,
+          capabilitiesJson: typeof raw.capabilitiesJson === 'string' ? raw.capabilitiesJson : null,
+          pricingJson: typeof raw.pricingJson === 'string' ? raw.pricingJson : null,
+        }
+      : undefined,
   }
 }
 
@@ -352,21 +421,6 @@ export class CatalogQueryService {
       const legacyCategories = normalizeCategoryArray(input.filter?.categories)
       const singleCategory = normalizeSingleCategory(input.filter?.category)
       const effectiveCategory = singleCategory ?? legacyCategories?.[0]
-      if (effectiveCategory) {
-        const notice = 'Category filter is unavailable for the current catalog.'
-        logModelCatalogEvent('query', 'query_degraded', {
-          ...querySummary,
-          stage: 'category_resolution',
-          reason: 'category_filter_not_scoped',
-          category: effectiveCategory,
-          durationMs: Date.now() - startedAtMs,
-        })
-        return {
-          items: [],
-          nextCursor: null,
-          notice,
-        }
-      }
 
       const unsupportedFilters = [
         ...(normalizeStringArray(input.filter?.tags)?.length ? ['tags'] : []),
@@ -400,7 +454,9 @@ export class CatalogQueryService {
         providerKey: sourceProviderKey,
         searchText: typeof input.searchText === 'string' ? input.searchText : undefined,
         includeDescriptionInSearch: input.includeDescriptionInSearch === true,
+        category: effectiveCategory,
         vendors: mergeUniqueStrings(input.filter?.vendors, input.filter?.providers),
+        capabilities: normalizeBooleanCapabilityFilters(input.filter?.capabilities),
         contextLength: normalizeNumberRange(input.filter?.contextLength),
         maxOutputTokens: normalizeNumberRange(input.filter?.maxOutputTokens),
         modalities: normalizeStringArray(input.filter?.modalities),

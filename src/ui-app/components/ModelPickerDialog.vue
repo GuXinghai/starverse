@@ -775,7 +775,7 @@ async function fetchEndpointDetails(forceRefresh: boolean) {
       providerKey: 'openrouter',
       modelId,
       fetchedAtMs: null,
-      source: 'cache',
+      source: 'scoped_catalog',
       items: [],
       error: err?.message ? String(err.message) : 'Failed to load endpoint details.',
     }

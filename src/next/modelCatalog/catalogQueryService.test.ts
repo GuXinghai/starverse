@@ -89,6 +89,10 @@ describe('CatalogQueryService.query', () => {
         inputModalities: ['text', 'image'],
         outputModalities: ['text'],
         supportedParameters: ['reasoning', 'tools'],
+        capabilities: {
+          reasoning: true,
+          vision: true,
+        },
       },
       sort: {
         by: 'name',
@@ -111,6 +115,10 @@ describe('CatalogQueryService.query', () => {
       inputModalities: ['text', 'image'],
       outputModalities: ['text'],
       supportedParameters: ['reasoning', 'tools'],
+      capabilities: {
+        reasoning: true,
+        vision: true,
+      },
       sortBy: 'name',
       sortOrder: 'asc',
       limit: 25,
@@ -272,9 +280,21 @@ describe('CatalogQueryService.query', () => {
     expect(result.nextCursor).toBeNull()
   })
 
-  it('does not use renderer category API key fetch or legacy queryCore for category filters', async () => {
+  it('routes category filters through scoped current query without renderer fetch or legacy queryCore', async () => {
     const modelCatalogQueryScopedCurrent = vi.fn(async () => ({
-      items: [{ modelId: 'legacy/should-not-appear' }],
+      items: [{
+        providerKey: 'openrouter',
+        modelId: 'scoped/programming-model',
+        modelKey: 'openrouter::scoped/programming-model',
+        displayName: 'Scoped Programming Model',
+        capabilities: {
+          reasoning: false,
+          tools: false,
+          structuredOutputs: false,
+          vision: false,
+          longContext: false,
+        },
+      }],
       nextCursor: null,
       status: 'synced',
     }))
@@ -298,11 +318,15 @@ describe('CatalogQueryService.query', () => {
       },
     })
 
-    expect(modelCatalogQueryScopedCurrent).not.toHaveBeenCalled()
+    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith(expect.objectContaining({
+      providerKey: 'openrouter',
+      category: 'programming',
+    }))
     expect(legacyInvoke).not.toHaveBeenCalled()
     expect(fetchImpl).not.toHaveBeenCalled()
-    expect(result.items).toHaveLength(0)
-    expect(result.notice).toBe('Category filter is unavailable for the current catalog.')
+    expect(JSON.stringify(modelCatalogQueryScopedCurrent.mock.calls)).not.toContain('sk-test-should-not-be-read')
+    expect(result.items.map((item) => item.modelId)).toEqual(['scoped/programming-model'])
+    expect(result.notice).toBeNull()
   })
 
   it('does not fallback to legacy queryCore for unsupported scoped filters', async () => {

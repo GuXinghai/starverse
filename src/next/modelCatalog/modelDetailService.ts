@@ -1,8 +1,8 @@
 import { PROVIDERS } from '../../constants/providers'
 import { buildModelKeyForLog, logModelCatalogEvent } from './modelCatalogObservability'
 
-type DbBridge = Readonly<{
-  invoke: (method: string, params?: unknown) => Promise<any>
+type ElectronCatalogApi = Readonly<{
+  modelCatalogQueryScopedCurrent?: (options?: unknown) => Promise<any>
 }>
 
 type PricingFieldKey =
@@ -88,9 +88,9 @@ export type ModelCatalogModelDetailResult = Readonly<{
   error: string | null
 }>
 
-function getDbBridge(): DbBridge | null {
-  const bridge = (globalThis as any).dbBridge as DbBridge | undefined
-  return bridge && typeof bridge.invoke === 'function' ? bridge : null
+function getElectronCatalogApi(): ElectronCatalogApi | null {
+  const api = (globalThis as any).electronAPI as ElectronCatalogApi | undefined
+  return api && typeof api.modelCatalogQueryScopedCurrent === 'function' ? api : null
 }
 
 function parseJsonValue(raw: string | null | undefined): unknown | null {
@@ -102,8 +102,8 @@ function parseJsonValue(raw: string | null | undefined): unknown | null {
   }
 }
 
-function parseStringArray(raw: string | null | undefined): string[] {
-  const parsed = parseJsonValue(raw)
+function parseStringArray(raw: unknown): string[] {
+  const parsed = Array.isArray(raw) ? raw : parseJsonValue(typeof raw === 'string' ? raw : null)
   if (!Array.isArray(parsed)) return []
   const out: string[] = []
   const seen = new Set<string>()
@@ -128,15 +128,16 @@ function parseBooleanOrNull(value: unknown): boolean | null {
 }
 
 function parsePricing(row: Record<string, unknown>): ModelCatalogModelDetail['pricing'] {
+  const directPricing = row.pricing && typeof row.pricing === 'object' ? row.pricing as Record<string, unknown> : null
   const fromColumns: Record<PricingFieldKey, string | null> = {
-    prompt: typeof row.pricePrompt === 'string' ? row.pricePrompt : null,
-    completion: typeof row.priceCompletion === 'string' ? row.priceCompletion : null,
-    request: typeof row.priceRequest === 'string' ? row.priceRequest : null,
-    image: typeof row.priceImage === 'string' ? row.priceImage : null,
-    webSearch: typeof row.priceWebSearch === 'string' ? row.priceWebSearch : null,
-    internalReasoning: typeof row.priceInternalReasoning === 'string' ? row.priceInternalReasoning : null,
-    inputCacheRead: typeof row.priceInputCacheRead === 'string' ? row.priceInputCacheRead : null,
-    inputCacheWrite: typeof row.priceInputCacheWrite === 'string' ? row.priceInputCacheWrite : null,
+    prompt: typeof directPricing?.prompt === 'string' ? directPricing.prompt : typeof row.pricePrompt === 'string' ? row.pricePrompt : null,
+    completion: typeof directPricing?.completion === 'string' ? directPricing.completion : typeof row.priceCompletion === 'string' ? row.priceCompletion : null,
+    request: typeof directPricing?.request === 'string' ? directPricing.request : typeof row.priceRequest === 'string' ? row.priceRequest : null,
+    image: typeof directPricing?.image === 'string' ? directPricing.image : typeof row.priceImage === 'string' ? row.priceImage : null,
+    webSearch: typeof directPricing?.webSearch === 'string' ? directPricing.webSearch : typeof row.priceWebSearch === 'string' ? row.priceWebSearch : null,
+    internalReasoning: typeof directPricing?.internalReasoning === 'string' ? directPricing.internalReasoning : typeof row.priceInternalReasoning === 'string' ? row.priceInternalReasoning : null,
+    inputCacheRead: typeof directPricing?.inputCacheRead === 'string' ? directPricing.inputCacheRead : typeof row.priceInputCacheRead === 'string' ? row.priceInputCacheRead : null,
+    inputCacheWrite: typeof directPricing?.inputCacheWrite === 'string' ? directPricing.inputCacheWrite : typeof row.priceInputCacheWrite === 'string' ? row.priceInputCacheWrite : null,
   }
   const parsedPricing = parseJsonValue(typeof row.pricingJson === 'string' ? row.pricingJson : null)
   if (!parsedPricing || typeof parsedPricing !== 'object') {
@@ -164,9 +165,11 @@ function parsePricing(row: Record<string, unknown>): ModelCatalogModelDetail['pr
 }
 
 function parseCapabilities(row: Record<string, unknown>): ModelCatalogModelDetail['capabilities'] {
+  const direct = row.capabilities && typeof row.capabilities === 'object' ? row.capabilities as Record<string, unknown> : null
   const parsedJson = parseJsonValue(typeof row.capabilitiesJson === 'string' ? row.capabilitiesJson : null)
   const parsedObject = parsedJson && typeof parsedJson === 'object' ? (parsedJson as Record<string, unknown>) : null
   const fromJsonOrFlag = (jsonKey: string, flagValue: unknown): boolean => {
+    if (direct && typeof direct[jsonKey] === 'boolean') return direct[jsonKey] as boolean
     if (parsedObject && typeof parsedObject[jsonKey] === 'boolean') return parsedObject[jsonKey] as boolean
     return flagValue === 1
   }
@@ -206,11 +209,11 @@ function normalizeDetailRow(
     contextLength: parseNumberOrNull(raw.contextLength),
     maxOutputTokens: parseNumberOrNull(raw.maxOutputTokens),
     architectureModality: typeof raw.architectureModality === 'string' ? raw.architectureModality : null,
-    inputModalities: parseStringArray(typeof raw.inputModalitiesJson === 'string' ? raw.inputModalitiesJson : null),
-    outputModalities: parseStringArray(typeof raw.outputModalitiesJson === 'string' ? raw.outputModalitiesJson : null),
+    inputModalities: parseStringArray(raw.inputModalities ?? (typeof raw.inputModalitiesJson === 'string' ? raw.inputModalitiesJson : null)),
+    outputModalities: parseStringArray(raw.outputModalities ?? (typeof raw.outputModalitiesJson === 'string' ? raw.outputModalitiesJson : null)),
     tokenizer: typeof raw.tokenizer === 'string' ? raw.tokenizer : null,
     instructType: typeof raw.instructType === 'string' ? raw.instructType : null,
-    supportedParameters: parseStringArray(typeof raw.supportedParametersJson === 'string' ? raw.supportedParametersJson : null),
+    supportedParameters: parseStringArray(raw.supportedParameters ?? (typeof raw.supportedParametersJson === 'string' ? raw.supportedParametersJson : null)),
     capabilities: parseCapabilities(raw),
     pricing: parsePricing(raw),
     createdAtSec: parseNumberOrNull(raw.createdAtSec),
@@ -236,14 +239,14 @@ function normalizeDetailRow(
         ? raw.syncedAtMs
         : 0,
     raw: {
-      inputModalitiesJson: typeof raw.inputModalitiesJson === 'string' ? raw.inputModalitiesJson : '[]',
-      outputModalitiesJson: typeof raw.outputModalitiesJson === 'string' ? raw.outputModalitiesJson : '[]',
-      supportedParametersJson: typeof raw.supportedParametersJson === 'string' ? raw.supportedParametersJson : '[]',
-      capabilitiesJson: typeof raw.capabilitiesJson === 'string' ? raw.capabilitiesJson : '{}',
-      pricingJson: typeof raw.pricingJson === 'string' ? raw.pricingJson : null,
+      inputModalitiesJson: typeof raw.inputModalitiesJson === 'string' ? raw.inputModalitiesJson : typeof (raw.raw as any)?.inputModalitiesJson === 'string' ? (raw.raw as any).inputModalitiesJson : '[]',
+      outputModalitiesJson: typeof raw.outputModalitiesJson === 'string' ? raw.outputModalitiesJson : typeof (raw.raw as any)?.outputModalitiesJson === 'string' ? (raw.raw as any).outputModalitiesJson : '[]',
+      supportedParametersJson: typeof raw.supportedParametersJson === 'string' ? raw.supportedParametersJson : typeof (raw.raw as any)?.supportedParametersJson === 'string' ? (raw.raw as any).supportedParametersJson : '[]',
+      capabilitiesJson: typeof raw.capabilitiesJson === 'string' ? raw.capabilitiesJson : typeof (raw.raw as any)?.capabilitiesJson === 'string' ? (raw.raw as any).capabilitiesJson : '{}',
+      pricingJson: typeof raw.pricingJson === 'string' ? raw.pricingJson : typeof (raw.raw as any)?.pricingJson === 'string' ? (raw.raw as any).pricingJson : null,
       perRequestLimitsJson: typeof raw.perRequestLimitsJson === 'string' ? raw.perRequestLimitsJson : null,
       defaultParametersJson: typeof raw.defaultParametersJson === 'string' ? raw.defaultParametersJson : null,
-      rawJson: typeof raw.rawJson === 'string' ? raw.rawJson : null,
+      rawJson: typeof raw.rawJson === 'string' ? raw.rawJson : typeof (raw.raw as any)?.rawJson === 'string' ? (raw.raw as any).rawJson : null,
     },
   }
 }
@@ -255,31 +258,33 @@ export async function getModelCatalogModelDetail(
   const providerKey = String(input.providerKey ?? PROVIDERS.OPENROUTER).trim() || PROVIDERS.OPENROUTER
   const modelId = String(input.modelId ?? '').trim()
   const modelKey = buildModelKeyForLog(providerKey, modelId)
-  const bridge = getDbBridge()
-  if (!bridge || !modelId) {
+  const catalogApi = getElectronCatalogApi()
+  if (!catalogApi?.modelCatalogQueryScopedCurrent || !modelId) {
     logModelCatalogEvent('detail', 'fetch_fail', {
       stage: 'input_validation',
       providerKey,
       modelId,
       modelKey,
       durationMs: Date.now() - startedAtMs,
-      reason: 'missing_dbBridge_or_modelId',
+      reason: 'missing_scoped_query_ipc_or_modelId',
     })
     return {
       providerKey,
       modelId,
       item: null,
-      error: 'Model detail unavailable (dbBridge/modelId missing).',
+      error: 'Model detail unavailable.',
     }
   }
   try {
-    const raw = await bridge.invoke('modelCatalog.getModelDetail', {
+    const raw = await catalogApi.modelCatalogQueryScopedCurrent({
       providerKey,
-      modelId,
+      modelIds: [modelId],
+      limit: 1,
     })
-    const item = normalizeDetailRow(raw)
+    const firstRow = Array.isArray(raw?.items) ? raw.items[0] : null
+    const item = normalizeDetailRow(firstRow)
     if (!item) {
-      logModelCatalogEvent('detail', 'cache_miss', {
+      logModelCatalogEvent('detail', 'scoped_miss', {
         providerKey,
         modelId,
         modelKey,
@@ -293,7 +298,7 @@ export async function getModelCatalogModelDetail(
         error: null,
       }
     }
-    logModelCatalogEvent('detail', 'cache_hit', {
+    logModelCatalogEvent('detail', 'scoped_hit', {
       providerKey,
       modelId,
       modelKey,
