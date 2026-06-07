@@ -122,54 +122,7 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
         return rt.modelPreferencesRepo.recordRecent(input)
     })
 
-    // ========== Model Catalog (Snapshot Sync) ==========
-  register('modelCatalog.syncSnapshot', (raw) => {
-        // Intentionally keep this as a single-writer DB entrypoint.
-        // Validation is performed in the caller/job layer for this stage.
-        rt.modelCatalogRepo.syncSnapshot(raw)
-        return { ok: true }
-    })
-
-  register('modelCatalog.syncCoreSnapshot', (raw) => {
-        rt.modelCatalogRepo.syncCoreSnapshot(raw)
-        return { ok: true }
-    })
-
-  register('modelCatalog.list', (raw) => {
-        const routerSource = raw?.routerSource
-        if (!routerSource || typeof routerSource !== 'string') {
-          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.list requires routerSource')
-        }
-        return rt.modelCatalogRepo.listByRouterSource(routerSource)
-    })
-
-  register('modelCatalog.getCoreMeta', (raw) => {
-        const providerKey = raw?.providerKey
-        if (!providerKey || typeof providerKey !== 'string') {
-          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.getCoreMeta requires providerKey')
-        }
-        return rt.modelCatalogRepo.getCoreMeta(providerKey)
-    })
-
-  register('modelCatalog.updateMetaSyncError', (raw) => {
-        const providerKey = raw?.providerKey
-        const lastErrorCode = raw?.lastErrorCode
-        const lastErrorMessage = raw?.lastErrorMessage
-        if (!providerKey || typeof providerKey !== 'string') {
-          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.updateMetaSyncError requires providerKey')
-        }
-        if (!lastErrorCode || typeof lastErrorCode !== 'string') {
-          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.updateMetaSyncError requires lastErrorCode')
-        }
-        rt.modelCatalogRepo.updateMetaSyncError(
-          providerKey,
-          'error',
-          lastErrorCode,
-          typeof lastErrorMessage === 'string' ? lastErrorMessage : '',
-        )
-        return { ok: true }
-    })
-
+    // ========== Scoped Model Catalog ==========
   register('modelCatalog.getScopedMeta', (raw) => {
         const providerKey = String(raw?.providerKey ?? '').trim()
         const catalogScopeKey = String(raw?.catalogScopeKey ?? '').trim()
@@ -297,226 +250,47 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
         })
     })
 
-  register('modelCatalog.getModelDetail', (raw) => {
+  register('modelCatalog.clearScopedCatalog', (raw) => {
+        if (raw && typeof raw === 'object' && 'apiKey' in raw) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.clearScopedCatalog must not receive apiKey')
+        }
         const providerKey = String(raw?.providerKey ?? '').trim()
-        const modelId = String(raw?.modelId ?? '').trim()
-        if (!providerKey || !modelId) {
-          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.getModelDetail requires providerKey/modelId')
+        const catalogScopeKey = String(raw?.catalogScopeKey ?? '').trim()
+        if (!providerKey || !catalogScopeKey) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.clearScopedCatalog requires providerKey/catalogScopeKey')
         }
-        return rt.modelCatalogRepo.getCoreModelDetail(providerKey, modelId)
+        return rt.modelCatalogRepo.clearScopedCatalog(providerKey, catalogScopeKey)
     })
 
-  register('modelCatalog.replaceEndpointMeta', (raw) => {
+  register('modelCatalog.clearAllProviderScopedCatalog', (raw) => {
+        if (raw && typeof raw === 'object' && 'apiKey' in raw) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.clearAllProviderScopedCatalog must not receive apiKey')
+        }
         const providerKey = String(raw?.providerKey ?? '').trim()
-        const baseUrl = String(raw?.baseUrl ?? '').trim()
-        const modelId = String(raw?.modelId ?? '').trim()
-        const fetchedAtMs = Number(raw?.fetchedAtMs)
-        const endpoints = Array.isArray(raw?.endpoints) ? raw.endpoints : null
-        if (!providerKey || !baseUrl || !modelId) {
-          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.replaceEndpointMeta requires providerKey/baseUrl/modelId')
+        if (!providerKey) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.clearAllProviderScopedCatalog requires providerKey')
         }
-        if (!Number.isFinite(fetchedAtMs)) {
-          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.replaceEndpointMeta requires fetchedAtMs')
-        }
-        if (!endpoints) {
-          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.replaceEndpointMeta requires endpoints[]')
-        }
-        const normalizedEndpoints = endpoints
-          .map((row: any) => ({
-            providerKey,
-            baseUrl,
-            modelId,
-            endpointKey: String(row?.endpointKey ?? '').trim(),
-            providerName: typeof row?.providerName === 'string' ? row.providerName : null,
-            tag: typeof row?.tag === 'string' ? row.tag : null,
-            quantization: typeof row?.quantization === 'string' ? row.quantization : null,
-            contextLength:
-              Number.isFinite(row?.contextLength) ? Number(row.contextLength) : null,
-            maxCompletionTokens:
-              Number.isFinite(row?.maxCompletionTokens) ? Number(row.maxCompletionTokens) : null,
-            maxPromptTokens:
-              Number.isFinite(row?.maxPromptTokens) ? Number(row.maxPromptTokens) : null,
-            supportedParametersJson:
-              typeof row?.supportedParametersJson === 'string' ? row.supportedParametersJson : null,
-            supportsImplicitCaching:
-              row?.supportsImplicitCaching === 0 || row?.supportsImplicitCaching === 1
-                ? row.supportsImplicitCaching
-                : null,
-            status: null,
-            rawJson: typeof row?.rawJson === 'string' ? row.rawJson : null,
-          }))
-          .filter((row: { endpointKey: string }) => row.endpointKey.length > 0)
-
-        rt.modelCatalogRepo.replaceEndpointMetaByModel({
-          providerKey,
-          baseUrl,
-          modelId,
-          fetchedAtMs,
-          endpoints: normalizedEndpoints,
-        })
-        return { ok: true }
+        return rt.modelCatalogRepo.clearAllProviderScopedCatalog(providerKey)
     })
 
-  register('modelCatalog.listEndpointMeta', (raw) => {
+  register('modelCatalog.cleanupExpiredScopedCatalogCaches', (raw) => {
+        if (raw && typeof raw === 'object' && 'apiKey' in raw) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.cleanupExpiredScopedCatalogCaches must not receive apiKey')
+        }
         const providerKey = String(raw?.providerKey ?? '').trim()
-        const baseUrl = String(raw?.baseUrl ?? '').trim()
-        const modelId = String(raw?.modelId ?? '').trim()
-        if (!providerKey || !baseUrl || !modelId) {
-          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.listEndpointMeta requires providerKey/baseUrl/modelId')
+        const nowMs = Number(raw?.nowMs)
+        const retentionMs = Number(raw?.retentionMs)
+        if (!providerKey || !Number.isFinite(nowMs) || !Number.isFinite(retentionMs)) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.cleanupExpiredScopedCatalogCaches requires providerKey/nowMs/retentionMs')
         }
-        return rt.modelCatalogRepo.listEndpointMetaByModel(providerKey, baseUrl, modelId)
+        return rt.modelCatalogRepo.cleanupExpiredScopedCatalogCaches(providerKey, nowMs, retentionMs)
     })
 
-  register('modelCatalog.queryCore', (raw) => {
-        const providerKey = raw?.sourceProviderKey ?? raw?.providerKey
-        if (!providerKey || typeof providerKey !== 'string') {
-          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.queryCore requires providerKey/sourceProviderKey')
+  register('modelCatalog.clearDeprecatedOpenRouterCatalogCache', (raw) => {
+        if (raw && typeof raw === 'object' && 'apiKey' in raw) {
+          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.clearDeprecatedOpenRouterCatalogCache must not receive apiKey')
         }
-        const parseNumberRange = (
-          value: unknown
-        ): Readonly<{ min?: number; max?: number }> | undefined => {
-          if (!value || typeof value !== 'object') return undefined
-          const rawRange = value as { min?: unknown; max?: unknown }
-          const min =
-            typeof rawRange.min === 'number' && Number.isFinite(rawRange.min)
-              ? rawRange.min
-              : undefined
-          const max =
-            typeof rawRange.max === 'number' && Number.isFinite(rawRange.max)
-              ? rawRange.max
-              : undefined
-          if (min === undefined && max === undefined) return undefined
-          return { min, max }
-        }
-        const vendors = Array.isArray(raw?.vendors)
-          ? raw.vendors.map((v: unknown) => String(v ?? '')).filter((v: string) => v.trim().length > 0)
-          : []
-        const providersAlias = Array.isArray(raw?.providers)
-          ? raw.providers.map((v: unknown) => String(v ?? '')).filter((v: string) => v.trim().length > 0)
-          : []
-        const mergedVendors = Array.from(new Set([...vendors, ...providersAlias]))
-        const allowedModalities = ['text', 'image', 'audio', 'video', 'file']
-
-        const normalized = {
-          providerKey: providerKey.trim(),
-          searchText: typeof raw?.searchText === 'string' ? raw.searchText : undefined,
-          includeDescriptionInSearch: raw?.includeDescriptionInSearch === true,
-          vendors: mergedVendors.length > 0 ? mergedVendors : undefined,
-          modelIds: Array.isArray(raw?.modelIds)
-            ? Array.from(
-                new Set(
-                  raw.modelIds
-                    .map((v: unknown) => String(v ?? '').trim())
-                    .filter((v: string) => v.length > 0)
-                )
-              )
-            : undefined,
-          tags: Array.isArray(raw?.tags)
-            ? raw.tags.map((v: unknown) => String(v ?? '')).filter((v: string) => v.trim().length > 0)
-            : undefined,
-          contextBuckets: Array.isArray(raw?.contextBuckets)
-            ? raw.contextBuckets
-                .map((v: unknown) => String(v ?? ''))
-                .filter((v: string) => ['small', 'medium', 'large', 'xlarge', 'unknown'].includes(v))
-            : undefined,
-          contextLength: parseNumberRange(raw?.contextLength),
-          maxOutputTokens: parseNumberRange(raw?.maxOutputTokens),
-          expiringWithinDays:
-            typeof raw?.expiringWithinDays === 'number' && Number.isFinite(raw.expiringWithinDays)
-              ? Math.max(0, Math.floor(raw.expiringWithinDays))
-              : undefined,
-          priceBuckets: Array.isArray(raw?.priceBuckets)
-            ? raw.priceBuckets
-                .map((v: unknown) => String(v ?? ''))
-                .filter((v: string) => ['cheap', 'standard', 'expensive', 'unknown'].includes(v))
-            : undefined,
-          hasPerRequestLimits:
-            typeof raw?.hasPerRequestLimits === 'boolean'
-              ? raw.hasPerRequestLimits
-              : undefined,
-          hasDefaultParameters:
-            typeof raw?.hasDefaultParameters === 'boolean'
-              ? raw.hasDefaultParameters
-              : undefined,
-          topProviderIsModerated:
-            typeof raw?.topProviderIsModerated === 'boolean'
-              ? raw.topProviderIsModerated
-              : undefined,
-          architectureModalities: Array.isArray(raw?.architectureModalities)
-            ? raw.architectureModalities
-                .map((v: unknown) => String(v ?? '').trim().toLowerCase())
-                .filter((v: string) => v.length > 0)
-            : undefined,
-          tokenizers: Array.isArray(raw?.tokenizers)
-            ? raw.tokenizers.map((v: unknown) => String(v ?? '')).filter((v: string) => v.trim().length > 0)
-            : undefined,
-          instructTypes: Array.isArray(raw?.instructTypes)
-            ? raw.instructTypes.map((v: unknown) => String(v ?? '')).filter((v: string) => v.trim().length > 0)
-            : undefined,
-          modalities: Array.isArray(raw?.modalities)
-            ? raw.modalities
-                .map((v: unknown) => String(v ?? '').toLowerCase())
-                .filter((v: string) => allowedModalities.includes(v))
-            : undefined,
-          inputModalities: Array.isArray(raw?.inputModalities)
-            ? raw.inputModalities
-                .map((v: unknown) => String(v ?? '').toLowerCase())
-                .filter((v: string) => allowedModalities.includes(v))
-            : undefined,
-          outputModalities: Array.isArray(raw?.outputModalities)
-            ? raw.outputModalities
-                .map((v: unknown) => String(v ?? '').toLowerCase())
-                .filter((v: string) => allowedModalities.includes(v))
-            : undefined,
-          supportedParameters: Array.isArray(raw?.supportedParameters)
-            ? raw.supportedParameters
-                .map((v: unknown) => String(v ?? '').trim())
-                .filter((v: string) => v.length > 0)
-            : undefined,
-          sortBy:
-            raw?.sortBy === 'created_at' ||
-            raw?.sortBy === 'context_length' ||
-            raw?.sortBy === 'max_output_tokens'
-              ? raw.sortBy
-              : 'name',
-          sortOrder: raw?.sortOrder === 'desc' ? 'desc' : 'asc',
-          limit: Number.isFinite(raw?.limit) ? Number(raw.limit) : undefined,
-          cursor: raw?.cursor && typeof raw.cursor === 'object'
-            ? {
-                sortBy:
-                  raw.cursor.sortBy === 'created_at' ||
-                  raw.cursor.sortBy === 'context_length' ||
-                  raw.cursor.sortBy === 'max_output_tokens'
-                    ? raw.cursor.sortBy
-                    : 'name',
-                sortOrder: raw.cursor.sortOrder === 'desc' ? 'desc' : 'asc',
-                name: typeof raw.cursor.name === 'string' ? raw.cursor.name : undefined,
-                createdAtSec: Number.isFinite(raw.cursor.createdAtSec) ? Number(raw.cursor.createdAtSec) : undefined,
-                contextLength: Number.isFinite(raw.cursor.contextLength) ? Number(raw.cursor.contextLength) : undefined,
-                maxOutputTokens: Number.isFinite(raw.cursor.maxOutputTokens) ? Number(raw.cursor.maxOutputTokens) : undefined,
-                modelKey: String(raw.cursor.modelKey ?? ''),
-                providerKey: String(raw.cursor.providerKey ?? ''),
-                modelId: String(raw.cursor.modelId ?? ''),
-              }
-            : undefined,
-        }
-        if (normalized.providerKey.length === 0) {
-          throw new DbWorkerError('ERR_VALIDATION', 'modelCatalog.queryCore requires non-empty providerKey/sourceProviderKey')
-        }
-        return rt.modelCatalogRepo.queryCore(normalized)
-    })
-
-    // ========== Reasoning Model Index ==========
-  register('reasoningIndex.syncFromCatalog', (raw) => {
-        const routerSource = raw?.routerSource
-        if (!routerSource || typeof routerSource !== 'string') {
-          throw new DbWorkerError('ERR_VALIDATION', 'reasoningIndex.syncFromCatalog requires routerSource')
-        }
-        return rt.reasoningModelIndexRepo.syncFromCatalog(routerSource)
-    })
-
-  register('reasoningIndex.list', () => {
-        return rt.reasoningModelIndexRepo.listAll()
+        return rt.modelCatalogRepo.clearDeprecatedOpenRouterCatalogCache()
     })
 
     // ========== Settings ==========

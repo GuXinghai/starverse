@@ -52,6 +52,7 @@ type OpenRouterHttpError = Readonly<{
   statusText: string
   message: string
   code?: number | null
+  retryAfter?: string | null
 }>
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -251,11 +252,14 @@ function parseHttpError(response: Response, bodyText: string): OpenRouterHttpErr
     // ignore parse error, keep fallback message
   }
 
+  const retryAfter = response.headers?.get('retry-after') ?? null
+
   return {
     status: response.status,
     statusText: response.statusText,
     code,
     message: message ?? `OpenRouter request failed: HTTP ${response.status} ${response.statusText}`.trim(),
+    retryAfter,
   }
 }
 

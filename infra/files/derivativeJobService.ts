@@ -1211,11 +1211,10 @@ export class DerivativeJobService {
   }
 
   private assertAudioModelCapability(modelId: string, job: DerivativeJobRecord): void {
-    const detail = this.deps.modelCatalogRepo.getCoreModelDetail('openrouter', modelId)
-    if (!detail) {
-      throw derivativeError('transcript_model_missing', job.id, job.assetId, job.derivativeKind, `Transcript model ${modelId} is not available in the model catalog.`)
+    const modalities = safeParseStringArray(readConfigValue(job.configJson, 'inputModalities'))
+    if (modalities.length === 0) {
+      throw derivativeError('transcript_model_missing', job.id, job.assetId, job.derivativeKind, `Transcript model ${modelId} is not available in the current scoped model catalog.`)
     }
-    const modalities = safeParseStringArray(detail.inputModalitiesJson)
     if (!modalities.includes('audio')) {
       throw derivativeError('transcript_model_not_audio_capable', job.id, job.assetId, job.derivativeKind, `Transcript model ${modelId} does not support audio input.`)
     }
@@ -1892,6 +1891,10 @@ function readNullableConfigString(configJson: Record<string, unknown> | null, ke
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
+function readConfigValue(configJson: Record<string, unknown> | null, key: string): unknown {
+  return configJson?.[key]
+}
+
 function readPositiveConfigNumber(configJson: Record<string, unknown> | null, key: string): number | null {
   const value = Number(configJson?.[key])
   return Number.isFinite(value) && value > 0 ? value : null
@@ -1927,7 +1930,11 @@ function shortSandboxJobSegment(value: string): string {
   return `job-${createHash('sha256').update(String(value ?? '')).digest('hex').slice(0, 16)}`
 }
 
-function safeParseStringArray(value: string): string[] {
+function safeParseStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item ?? '').trim().toLowerCase()).filter(Boolean)
+  }
+  if (typeof value !== 'string') return []
   try {
     const parsed = JSON.parse(value)
     return Array.isArray(parsed) ? parsed.map((item) => String(item ?? '').trim().toLowerCase()).filter(Boolean) : []

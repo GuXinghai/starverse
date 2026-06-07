@@ -42,11 +42,11 @@ function createRepresentativeRuntime() {
   const spies = {
     projectList: vi.fn(() => [{ id: 'p1', name: 'default' }]),
     usageAggregate: vi.fn((input: { days?: number }) => ({ total: input.days ?? 0 })),
-    modelCatalogQuery: vi.fn(() => ({ items: [], nextCursor: null })),
     modelCatalogQueryScopedActive: vi.fn(() => ({ items: [], nextCursor: null })),
-    modelCatalogGetModelDetail: vi.fn(() => null),
-    modelCatalogReplaceEndpointMeta: vi.fn(() => undefined),
-    modelCatalogListEndpointMeta: vi.fn(() => []),
+    modelCatalogClearScopedCatalog: vi.fn(() => ({ deleted: {}, deletedScopeCount: 1 })),
+    modelCatalogClearAllProviderScopedCatalog: vi.fn(() => ({ deleted: {}, deletedScopeCount: 2 })),
+    modelCatalogCleanupExpiredScopedCatalogCaches: vi.fn(() => ({ deleted: {}, deletedScopeCount: 1 })),
+    modelCatalogClearDeprecatedOpenRouterCatalogCache: vi.fn(() => ({ deleted: {}, deletedScopeCount: 0 })),
     modelPrefsListFavorites: vi.fn(() => []),
     modelPrefsAddFavorite: vi.fn(() => ({ modelKey: 'openrouter::openai/gpt-4o', sortRank: 0 })),
     modelPrefsRemoveFavorite: vi.fn(() => ({ removed: 1 })),
@@ -58,11 +58,11 @@ function createRepresentativeRuntime() {
     projectRepo: { list: spies.projectList },
     usageRepo: { aggregateUsage: spies.usageAggregate },
     modelCatalogRepo: {
-      queryCore: spies.modelCatalogQuery,
       queryScopedActiveModels: spies.modelCatalogQueryScopedActive,
-      getCoreModelDetail: spies.modelCatalogGetModelDetail,
-      replaceEndpointMetaByModel: spies.modelCatalogReplaceEndpointMeta,
-      listEndpointMetaByModel: spies.modelCatalogListEndpointMeta,
+      clearScopedCatalog: spies.modelCatalogClearScopedCatalog,
+      clearAllProviderScopedCatalog: spies.modelCatalogClearAllProviderScopedCatalog,
+      cleanupExpiredScopedCatalogCaches: spies.modelCatalogCleanupExpiredScopedCatalogCaches,
+      clearDeprecatedOpenRouterCatalogCache: spies.modelCatalogClearDeprecatedOpenRouterCatalogCache,
     },
     modelPreferencesRepo: {
       listFavorites: spies.modelPrefsListFavorites,
@@ -167,16 +167,15 @@ describe('DbWorker handler registration modules', () => {
 
     expect(spies.projectList).toHaveBeenCalledWith({})
     expect(spies.usageAggregate).toHaveBeenCalledWith({})
-    expect(spies.modelCatalogQuery).toHaveBeenCalledWith(expect.objectContaining({ sortBy: 'created_at' }))
-    expect(spies.modelCatalogQuery).toHaveBeenCalledWith(expect.objectContaining({ sortBy: 'context_length' }))
     expect(spies.modelCatalogQueryScopedActive).toHaveBeenCalledWith(expect.objectContaining({
       providerKey: 'openrouter',
       catalogScopeKey: 'scope-worker-test',
       sortBy: 'name',
     }))
-    expect(spies.modelCatalogGetModelDetail).toHaveBeenCalledWith('openrouter', 'openai/gpt-4')
-    expect(spies.modelCatalogReplaceEndpointMeta).toHaveBeenCalledWith(expect.objectContaining({ modelId: 'openai/gpt-4' }))
-    expect(spies.modelCatalogListEndpointMeta).toHaveBeenCalledWith('openrouter', 'https://openrouter.ai/api/v1', 'openai/gpt-4')
+    expect(spies.modelCatalogClearScopedCatalog).toHaveBeenCalledWith('openrouter', 'scope-worker-test')
+    expect(spies.modelCatalogClearAllProviderScopedCatalog).toHaveBeenCalledWith('openrouter')
+    expect(spies.modelCatalogCleanupExpiredScopedCatalogCaches).toHaveBeenCalledWith('openrouter', 2000, 1000)
+    expect(spies.modelCatalogClearDeprecatedOpenRouterCatalogCache).toHaveBeenCalledWith()
     expect(spies.modelPrefsRecordRecent).toHaveBeenCalledWith(expect.objectContaining({ modelKey: 'openrouter::openai/gpt-4o' }))
   })
 
@@ -226,10 +225,10 @@ const representativeMethods = [
   'project.list',
   'usage.aggregate',
   'modelCatalog.queryScopedActive',
-  'modelCatalog.queryCore',
-  'modelCatalog.getModelDetail',
-  'modelCatalog.replaceEndpointMeta',
-  'modelCatalog.listEndpointMeta',
+  'modelCatalog.clearScopedCatalog',
+  'modelCatalog.clearAllProviderScopedCatalog',
+  'modelCatalog.cleanupExpiredScopedCatalogCaches',
+  'modelCatalog.clearDeprecatedOpenRouterCatalogCache',
   'modelPrefs.listFavorites',
   'modelPrefs.addFavorite',
   'modelPrefs.removeFavorite',
@@ -260,15 +259,17 @@ function exerciseRepresentativeHandlers(handlers: ReadonlyMap<DbMethod, DbHandle
     catalogScopeKey: 'scope-worker-test',
     sortBy: 'name',
   })).toEqual({ items: [], nextCursor: null })
-  expect(handlers.get('modelCatalog.queryCore')!({ providerKey: 'openrouter', sortBy: 'created_at' })).toEqual({ items: [], nextCursor: null })
-  expect(handlers.get('modelCatalog.queryCore')!({ providerKey: 'openrouter', sortBy: 'context_length' })).toEqual({ items: [], nextCursor: null })
-  expect(handlers.get('modelCatalog.getModelDetail')!({ providerKey: 'openrouter', modelId: 'openai/gpt-4' })).toBeNull()
-  expect(handlers.get('modelCatalog.replaceEndpointMeta')!(endpointMetaInput)).toEqual({ ok: true })
-  expect(handlers.get('modelCatalog.listEndpointMeta')!({
+  expect(handlers.get('modelCatalog.clearScopedCatalog')!({
     providerKey: 'openrouter',
-    baseUrl: 'https://openrouter.ai/api/v1',
-    modelId: 'openai/gpt-4',
-  })).toEqual([])
+    catalogScopeKey: 'scope-worker-test',
+  })).toEqual({ deleted: {}, deletedScopeCount: 1 })
+  expect(handlers.get('modelCatalog.clearAllProviderScopedCatalog')!({ providerKey: 'openrouter' })).toEqual({ deleted: {}, deletedScopeCount: 2 })
+  expect(handlers.get('modelCatalog.cleanupExpiredScopedCatalogCaches')!({
+    providerKey: 'openrouter',
+    nowMs: 2000,
+    retentionMs: 1000,
+  })).toEqual({ deleted: {}, deletedScopeCount: 1 })
+  expect(handlers.get('modelCatalog.clearDeprecatedOpenRouterCatalogCache')!({})).toEqual({ deleted: {}, deletedScopeCount: 0 })
   expect(handlers.get('modelPrefs.listFavorites')!({ scopeType: 'global', scopeId: '' })).toEqual([])
   expect(handlers.get('modelPrefs.addFavorite')!(modelPrefInput)).toEqual({ modelKey: 'openrouter::openai/gpt-4o', sortRank: 0 })
   expect(handlers.get('modelPrefs.removeFavorite')!(modelPrefInput)).toEqual({ removed: 1 })
@@ -353,14 +354,6 @@ async function exerciseLifecycleHandlers(handlers: ReadonlyMap<DbMethod, DbHandl
     reason: 'already_registered',
     message: 'plugin is already registered',
   })
-}
-
-const endpointMetaInput = {
-  providerKey: 'openrouter',
-  baseUrl: 'https://openrouter.ai/api/v1',
-  modelId: 'openai/gpt-4',
-  fetchedAtMs: 1,
-  endpoints: [{ endpointKey: 'k1' }],
 }
 
 const modelPrefInput = {

@@ -124,6 +124,44 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
     expect(runCatalogSyncAtStartup).not.toHaveBeenCalled()
   })
 
+  it('repairCurrentScopedCache reuses forced scoped sync without renderer API key payload', async () => {
+    const store = createStore({
+      openRouterApiKey: 'sk-ipc-a',
+      openRouterCatalogLocalSecret: 'local-secret-for-ipc-tests-1234567890',
+    })
+    const scope = getScope(store)
+    vi.mocked(runCatalogSyncAtStartup).mockResolvedValue(makeRunnerResult({ modelCountAfter: 3 }))
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string) => {
+        if (method === 'modelCatalog.getScopedMeta') {
+          return makeScopedMeta(scope, {
+            snapshotChecksum: 'repair-checksum',
+            modelCount: 3,
+            lastSyncAtMs: 222,
+          })
+        }
+        return {}
+      }),
+    }
+    const notifyRenderer = vi.fn()
+    const { handlers } = registerHandlers({ store, dbWorkerManager, notifyRenderer })
+
+    const result = await handlers.get('modelCatalog.repairCurrentScopedCache')?.({}) as any
+
+    expect(result).toMatchObject({
+      ok: true,
+      syncAttempted: true,
+      syncSucceeded: true,
+      modelCount: 3,
+      catalogRevision: 'repair-checksum',
+    })
+    expect(runCatalogSyncAtStartup).toHaveBeenCalledWith(expect.objectContaining({
+      force: true,
+    }))
+    expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain('sk-ipc-a')
+    expect(JSON.stringify(notifyRenderer.mock.calls)).not.toContain('sk-ipc-a')
+  })
+
   it('getSyncStatus reads only current credential scope and does not reuse key A for key B', async () => {
     const store = createStore({
       openRouterApiKey: 'sk-ipc-a',
@@ -263,7 +301,7 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
     const rawApiKey = 'sk-ipc-a'
     vi.mocked(runCatalogSyncAtStartup).mockResolvedValue(makeRunnerResult())
     const notifyRenderer = vi.fn()
-    const { handlers } = registerHandlers({
+    const { handlers, dbWorkerManager } = registerHandlers({
       store: createStore({
         openRouterApiKey: rawApiKey,
         openRouterCatalogLocalSecret: 'local-secret-for-ipc-tests-1234567890',
@@ -280,6 +318,11 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
     })
     expect(JSON.stringify(notifyRenderer.mock.calls)).not.toContain('snap-ipc')
     expect(JSON.stringify(notifyRenderer.mock.calls)).not.toContain(rawApiKey)
+    expect(dbWorkerManager.call).toHaveBeenCalledWith('modelCatalog.cleanupExpiredScopedCatalogCaches', expect.objectContaining({
+      providerKey: 'openrouter',
+      retentionMs: 90 * 24 * 60 * 60 * 1000,
+    }))
+    expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain(rawApiKey)
   })
 
   it('uses one lock per current scope and does not serialize different credential scopes together', async () => {
@@ -529,5 +572,99 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
       items: [],
     })
     expect(dbWorkerManager.call).not.toHaveBeenCalledWith('modelCatalog.queryCore', expect.anything())
+  })
+
+  it('clearCurrentScopedCache derives current scope in main process and returns sanitized payload', async () => {
+    const rawApiKey = 'sk-clear-current'
+    const store = createStore({
+      openRouterApiKey: rawApiKey,
+      openRouterCatalogLocalSecret: 'local-secret-for-ipc-tests-1234567890',
+    })
+    const scope = getScope(store)
+    const notifyRenderer = vi.fn()
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string, params: any) => {
+        expect(method).toBe('modelCatalog.clearScopedCatalog')
+        expect(params).toMatchObject({ providerKey: 'openrouter', catalogScopeKey: scope })
+        expect(JSON.stringify(params)).not.toContain(rawApiKey)
+        return { deleted: { catalog_scope_meta: 1, catalog_models: 2 }, deletedScopeCount: 1 }
+      }),
+    }
+    const { handlers } = registerHandlers({ store, dbWorkerManager, notifyRenderer })
+
+    const result = await handlers.get('modelCatalog.clearCurrentScopedCache')?.({}) as any
+
+    expect(result).toMatchObject({
+      ok: true,
+      providerKey: 'openrouter',
+      deletedScopeCount: 1,
+      errorCode: null,
+    })
+    expect(JSON.stringify(result)).not.toContain(rawApiKey)
+    expect(JSON.stringify(result)).not.toContain(scope)
+    expect(notifyRenderer).toHaveBeenCalledWith('db:modelCatalogSynced', {
+      routerSource: 'openrouter',
+      modelCount: 0,
+      lastSyncAtMs: 0,
+    })
+    expect(JSON.stringify(notifyRenderer.mock.calls)).not.toContain(rawApiKey)
+    expect(JSON.stringify(notifyRenderer.mock.calls)).not.toContain(scope)
+  })
+
+  it('clearCurrentScopedCache returns missing_api_key without DB fallback when key is absent', async () => {
+    const dbWorkerManager = { call: vi.fn() }
+    const { handlers } = registerHandlers({
+      store: createStore({ openRouterCatalogLocalSecret: 'local-secret-for-ipc-tests-1234567890' }),
+      dbWorkerManager,
+    })
+
+    const result = await handlers.get('modelCatalog.clearCurrentScopedCache')?.({}) as any
+
+    expect(result).toMatchObject({
+      ok: false,
+      errorCode: 'missing_api_key',
+      deletedScopeCount: 0,
+    })
+    expect(dbWorkerManager.call).not.toHaveBeenCalled()
+  })
+
+  it('clearAllOpenRouterScopedCaches clears only provider scoped cache through worker without API key payload', async () => {
+    const notifyRenderer = vi.fn()
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string, params: any) => {
+        expect(method).toBe('modelCatalog.clearAllProviderScopedCatalog')
+        expect(params).toEqual({ providerKey: 'openrouter' })
+        return { deleted: { catalog_scope_meta: 2, catalog_models: 3 }, deletedScopeCount: 2 }
+      }),
+    }
+    const { handlers } = registerHandlers({ dbWorkerManager, notifyRenderer })
+
+    const result = await handlers.get('modelCatalog.clearAllOpenRouterScopedCaches')?.({}) as any
+
+    expect(result).toMatchObject({ ok: true, deletedScopeCount: 2, errorCode: null })
+    expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain('sk-')
+    expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain('catalogScopeKey')
+    expect(notifyRenderer).toHaveBeenCalledWith('db:modelCatalogSynced', {
+      routerSource: 'openrouter',
+      modelCount: 0,
+      lastSyncAtMs: 0,
+    })
+  })
+
+  it('clearDeprecatedOpenRouterCatalogCache uses explicit worker method without deleting via renderer-provided table names', async () => {
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string, params: any) => {
+        expect(method).toBe('modelCatalog.clearDeprecatedOpenRouterCatalogCache')
+        expect(params).toEqual({})
+        return { deleted: { model_catalog: 1 }, deletedScopeCount: 0 }
+      }),
+    }
+    const { handlers } = registerHandlers({ dbWorkerManager })
+
+    const result = await handlers.get('modelCatalog.clearDeprecatedOpenRouterCatalogCache')?.({}) as any
+
+    expect(result).toMatchObject({ ok: true, providerKey: 'openrouter', deleted: { model_catalog: 1 } })
+    expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain('sk-')
+    expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain('table')
   })
 })

@@ -62,6 +62,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('modelCatalog.getSyncStatus', options),
   modelCatalogQueryScopedCurrent: (options?: unknown) =>
     ipcRenderer.invoke('modelCatalog.queryScopedCurrent', options),
+  modelCatalogRepairCurrentScopedCache: () =>
+    ipcRenderer.invoke('modelCatalog.repairCurrentScopedCache'),
+  modelCatalogClearCurrentScopedCache: () =>
+    ipcRenderer.invoke('modelCatalog.clearCurrentScopedCache'),
+  modelCatalogClearAllOpenRouterScopedCaches: () =>
+    ipcRenderer.invoke('modelCatalog.clearAllOpenRouterScopedCaches'),
   startOpenRouterStream: (payload: unknown) => ipcRenderer.invoke('openrouter:stream-chat', payload),
   abortOpenRouterStream: (requestId: string) => ipcRenderer.invoke('openrouter:abort', requestId),
   onOpenRouterChunk: (requestId: string, callback: (payload: unknown) => void) => {

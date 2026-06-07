@@ -66,6 +66,22 @@ function createElectronAPIMock() {
       lastErrorCode: null,
       lastErrorMessage: null,
     })),
+    modelCatalogClearCurrentScopedCache: vi.fn(async () => ({
+      ok: true,
+      providerKey: 'openrouter',
+      deleted: { catalog_scope_meta: 1, catalog_models: 2 },
+      deletedScopeCount: 1,
+      errorCode: null,
+      errorMessage: null,
+    })),
+    modelCatalogClearAllOpenRouterScopedCaches: vi.fn(async () => ({
+      ok: true,
+      providerKey: 'openrouter',
+      deleted: { catalog_scope_meta: 2, catalog_models: 4 },
+      deletedScopeCount: 2,
+      errorCode: null,
+      errorMessage: null,
+    })),
   }
 }
 
@@ -117,6 +133,7 @@ describe('ui-app SettingsPanel', () => {
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogPickerOpenSyncPolicy', 'stale_only')
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogListUpdateMode', 'manual')
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogFreshnessMs', 24 * 60 * 60 * 1000)
+    expect(storeSet).toHaveBeenCalledWith('openRouterCatalogRetentionMs', 90 * 24 * 60 * 60 * 1000)
 
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     expect(invoke).toHaveBeenCalledWith('settings.setOpenRouterProviderRequireParameters', { value: true })
@@ -137,6 +154,23 @@ describe('ui-app SettingsPanel', () => {
     expect(screen.getByTestId('settings-catalog-picker-open-sync-policy')).toHaveValue('stale_only')
     expect(screen.getByTestId('settings-catalog-list-update-mode')).toHaveValue('manual')
     expect(screen.getByTestId('settings-catalog-freshness')).toHaveValue(String(24 * 60 * 60 * 1000))
+    expect(screen.getByTestId('settings-catalog-retention')).toHaveValue(String(90 * 24 * 60 * 60 * 1000))
+  })
+
+  it('shows all catalog retention presets', async () => {
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('设置')
+    await waitFor(() => expect((globalThis as any).electronStore.get).toHaveBeenCalled())
+
+    const retention = screen.getByTestId('settings-catalog-retention') as HTMLSelectElement
+    expect(Array.from(retention.options).map((option) => option.textContent)).toEqual([
+      '7 天',
+      '30 天',
+      '90 天',
+      '180 天',
+      '永不自动清理',
+    ])
   })
 
   it('normalizes invalid catalog sync settings to defaults', async () => {
@@ -145,6 +179,7 @@ describe('ui-app SettingsPanel', () => {
       openRouterCatalogPickerOpenSyncPolicy: 'bad',
       openRouterCatalogListUpdateMode: 'bad',
       openRouterCatalogFreshnessMs: 12345,
+      openRouterCatalogRetentionMs: 12345,
     })
 
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
@@ -156,6 +191,7 @@ describe('ui-app SettingsPanel', () => {
     expect(screen.getByTestId('settings-catalog-picker-open-sync-policy')).toHaveValue('stale_only')
     expect(screen.getByTestId('settings-catalog-list-update-mode')).toHaveValue('manual')
     expect(screen.getByTestId('settings-catalog-freshness')).toHaveValue(String(24 * 60 * 60 * 1000))
+    expect(screen.getByTestId('settings-catalog-retention')).toHaveValue(String(90 * 24 * 60 * 60 * 1000))
   })
 
   it('persists selected catalog sync settings without API key payload events', async () => {
@@ -170,6 +206,7 @@ describe('ui-app SettingsPanel', () => {
     await fireEvent.update(screen.getByTestId('settings-catalog-picker-open-sync-policy'), 'never')
     await fireEvent.update(screen.getByTestId('settings-catalog-list-update-mode'), 'automatic')
     await fireEvent.update(screen.getByTestId('settings-catalog-freshness'), String(15 * 60 * 1000))
+    await fireEvent.update(screen.getByTestId('settings-catalog-retention'), 'never')
     await user.click(screen.getByRole('button', { name: '保存' }))
 
     const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
@@ -177,6 +214,7 @@ describe('ui-app SettingsPanel', () => {
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogPickerOpenSyncPolicy', 'never')
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogListUpdateMode', 'automatic')
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogFreshnessMs', 15 * 60 * 1000)
+    expect(storeSet).toHaveBeenCalledWith('openRouterCatalogRetentionMs', 'never')
     expect(JSON.stringify(storeSet.mock.calls.filter(([key]) => String(key).startsWith('openRouterCatalog')))).not.toContain('sk-')
   })
 
@@ -294,6 +332,70 @@ describe('ui-app SettingsPanel', () => {
     await waitFor(() => {
       expect(screen.getByText(/验证并同步失败/)).toBeTruthy()
     })
+  })
+
+  it('clears current API Key catalog cache via main IPC without API key payload', async () => {
+    const user = userEvent.setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('设置')
+    await waitFor(() => expect(screen.getByTestId('settings-clear-current-catalog-cache')).not.toBeDisabled())
+    await user.click(screen.getByTestId('settings-clear-current-catalog-cache'))
+
+    const clearCurrent = (globalThis as any).electronAPI.modelCatalogClearCurrentScopedCache as ReturnType<typeof vi.fn>
+    await waitFor(() => expect(clearCurrent).toHaveBeenCalledTimes(1))
+    expect(clearCurrent).toHaveBeenCalledWith()
+    expect(confirm.mock.calls[0]?.[0]).toContain('不会删除 API Key')
+    expect(confirm.mock.calls[0]?.[0]).toContain('不会删除聊天记录')
+    expect(confirm.mock.calls[0]?.[0]).toContain('下次打开模型选择器需要重新同步模型目录')
+    expect(JSON.stringify(clearCurrent.mock.calls)).not.toContain('sk-')
+    expect(JSON.stringify(clearCurrent.mock.calls)).not.toContain('catalogScopeKey')
+    await screen.findByText('已清除当前 API Key 的模型缓存。')
+    confirm.mockRestore()
+  })
+
+  it('clears all OpenRouter scoped catalog caches via main IPC without API key payload', async () => {
+    const user = userEvent.setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('设置')
+    await waitFor(() => expect(screen.getByTestId('settings-clear-all-catalog-caches')).not.toBeDisabled())
+    await user.click(screen.getByTestId('settings-clear-all-catalog-caches'))
+
+    const clearAll = (globalThis as any).electronAPI.modelCatalogClearAllOpenRouterScopedCaches as ReturnType<typeof vi.fn>
+    await waitFor(() => expect(clearAll).toHaveBeenCalledTimes(1))
+    expect(clearAll).toHaveBeenCalledWith()
+    expect(confirm.mock.calls[0]?.[0]).toContain('不会删除 API Key')
+    expect(confirm.mock.calls[0]?.[0]).toContain('不会删除聊天记录')
+    expect(confirm.mock.calls[0]?.[0]).toContain('下次打开模型选择器需要重新同步模型目录')
+    expect(JSON.stringify(clearAll.mock.calls)).not.toContain('sk-')
+    expect(JSON.stringify(clearAll.mock.calls)).not.toContain('catalogScopeKey')
+    await screen.findByText('已清除全部 OpenRouter 模型缓存。')
+    confirm.mockRestore()
+  })
+
+  it('shows cleanup failure from catalog cleanup IPC', async () => {
+    const user = userEvent.setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    ;(globalThis as any).electronAPI.modelCatalogClearAllOpenRouterScopedCaches = vi.fn(async () => ({
+      ok: false,
+      providerKey: 'openrouter',
+      deleted: {},
+      deletedScopeCount: 0,
+      errorCode: 'db_unavailable',
+      errorMessage: 'DB unavailable',
+    }))
+
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('设置')
+    await waitFor(() => expect(screen.getByTestId('settings-clear-all-catalog-caches')).not.toBeDisabled())
+    await user.click(screen.getByTestId('settings-clear-all-catalog-caches'))
+
+    await screen.findByText(/清理失败：db_unavailable/)
+    confirm.mockRestore()
   })
 
   it('clears via electronStore.delete', async () => {

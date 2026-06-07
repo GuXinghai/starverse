@@ -24,6 +24,8 @@ function assertCatalogCoreObjects(db: BetterSqlite3.Database) {
   expect(tables.has('model_tags')).toBe(true)
   expect(tables.has('catalog_meta')).toBe(true)
   expect(tables.has('endpoint_meta')).toBe(true)
+  expect(tables.has('catalog_scope_meta')).toBe(true)
+  expect(tables.has('catalog_models')).toBe(true)
   expect(tables.has('models_fts')).toBe(true)
   const ftsSql = String(
     (db
@@ -51,6 +53,10 @@ function assertCatalogCoreObjects(db: BetterSqlite3.Database) {
   expect(indexes.has('idx_models_price_input_cache_write')).toBe(true)
   expect(indexes.has('idx_model_tags_type_key')).toBe(true)
   expect(indexes.has('idx_endpoint_meta_model')).toBe(true)
+  expect(indexes.has('idx_catalog_scope_meta_state')).toBe(true)
+  expect(indexes.has('idx_catalog_scope_meta_used')).toBe(true)
+  expect(indexes.has('idx_catalog_models_active_lookup')).toBe(true)
+  expect(indexes.has('idx_catalog_models_model_lookup')).toBe(true)
 
   expect(triggers.has('trg_models_fts_ai')).toBe(true)
   expect(triggers.has('trg_models_fts_au')).toBe(true)

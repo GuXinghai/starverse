@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
+import { safeClearConfig } from '../config/configSchema'
+import { OPENROUTER_CATALOG_LOCAL_SECRET_KEY } from '../modelCatalog/catalogScope'
 import { registerStoreIpc } from './storeIpc'
 
 vi.mock('../config/configSchema', async (importOriginal) => {
@@ -90,5 +92,31 @@ describe('registerStoreIpc', () => {
     await handlers.get('store-set')?.({}, 'theme', 'dark')
 
     expect(refreshMainLocale).not.toHaveBeenCalled()
+  })
+
+  it('blocks renderer access to catalog local secret through generic store IPC', async () => {
+    const { handlers, store } = registerHandlers()
+
+    const getResult = await handlers.get('store-get')?.({}, OPENROUTER_CATALOG_LOCAL_SECRET_KEY)
+    const setResult = await handlers.get('store-set')?.({}, OPENROUTER_CATALOG_LOCAL_SECRET_KEY, 'secret')
+    const deleteResult = await handlers.get('store-delete')?.({}, OPENROUTER_CATALOG_LOCAL_SECRET_KEY)
+
+    expect(getResult).toBeUndefined()
+    expect(setResult).toBe(false)
+    expect(deleteResult).toBe(false)
+    expect(store.get).not.toHaveBeenCalledWith(OPENROUTER_CATALOG_LOCAL_SECRET_KEY)
+    expect(store.set).not.toHaveBeenCalledWith(OPENROUTER_CATALOG_LOCAL_SECRET_KEY, 'secret')
+    expect(store.delete).not.toHaveBeenCalledWith(OPENROUTER_CATALOG_LOCAL_SECRET_KEY)
+  })
+
+  it('preserves catalog local secret during renderer safe clear', async () => {
+    const { handlers } = registerHandlers()
+
+    await handlers.get('store-clear-safe')?.({}, ['language'])
+
+    expect(vi.mocked(safeClearConfig)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.arrayContaining(['language', OPENROUTER_CATALOG_LOCAL_SECRET_KEY])
+    )
   })
 })

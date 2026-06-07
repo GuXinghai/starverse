@@ -335,6 +335,7 @@ export type CatalogScopedModelRecord = Readonly<{
 
 export type CatalogScopedClearResult = Readonly<{
   deleted: Record<string, number>
+  deletedScopeCount: number
 }>
 
 export type CatalogScopedQueryCursor = Readonly<{
@@ -2525,16 +2526,23 @@ export class ModelCatalogRepo {
       deleted.catalog_scope_meta = Number(this.db.prepare(`
         DELETE FROM catalog_scope_meta
         WHERE provider_key = @providerKey
-          AND catalog_scope_key = @catalogScopeKey
+        AND catalog_scope_key = @catalogScopeKey
       `).run({ providerKey, catalogScopeKey }).changes ?? 0)
     })
     tx()
-    return { deleted }
+    return { deleted, deletedScopeCount: deleted.catalog_scope_meta > 0 ? 1 : 0 }
   }
 
   clearAllProviderScopedCatalog(providerKey: string): CatalogScopedClearResult {
     const deleted: Record<string, number> = {}
+    let deletedScopeCount = 0
     const tx = this.db.transaction(() => {
+      const countRow = this.db.prepare(`
+        SELECT COUNT(1) AS count
+        FROM catalog_scope_meta
+        WHERE provider_key = @providerKey
+      `).get({ providerKey }) as { count?: number } | undefined
+      deletedScopeCount = Number(countRow?.count ?? 0)
       deleted.catalog_models = Number(this.db.prepare(`
         DELETE FROM catalog_models
         WHERE provider_key = @providerKey
@@ -2545,7 +2553,44 @@ export class ModelCatalogRepo {
       `).run({ providerKey }).changes ?? 0)
     })
     tx()
-    return { deleted }
+    return { deleted, deletedScopeCount }
+  }
+
+  cleanupExpiredScopedCatalogCaches(providerKey: string, nowMs: number, retentionMs: number): CatalogScopedClearResult {
+    const normalizedNowMs = Math.floor(Number(nowMs))
+    const normalizedRetentionMs = Math.floor(Number(retentionMs))
+    if (!Number.isFinite(normalizedNowMs) || !Number.isFinite(normalizedRetentionMs) || normalizedRetentionMs < 0) {
+      throw new Error('cleanupExpiredScopedCatalogCaches requires valid nowMs/retentionMs')
+    }
+
+    const cutoffMs = normalizedNowMs - normalizedRetentionMs
+    const expired = this.db.prepare(`
+      SELECT catalog_scope_key AS catalogScopeKey
+      FROM catalog_scope_meta
+      WHERE provider_key = @providerKey
+        AND last_used_at_ms < @cutoffMs
+      ORDER BY last_used_at_ms ASC
+    `).all({ providerKey, cutoffMs }) as Array<{ catalogScopeKey: string }>
+
+    const deleted: Record<string, number> = { catalog_models: 0, catalog_scope_meta: 0 }
+    const tx = this.db.transaction(() => {
+      for (const row of expired) {
+        const catalogScopeKey = String(row.catalogScopeKey ?? '').trim()
+        if (!catalogScopeKey) continue
+        deleted.catalog_models += Number(this.db.prepare(`
+          DELETE FROM catalog_models
+          WHERE provider_key = @providerKey
+            AND catalog_scope_key = @catalogScopeKey
+        `).run({ providerKey, catalogScopeKey }).changes ?? 0)
+        deleted.catalog_scope_meta += Number(this.db.prepare(`
+          DELETE FROM catalog_scope_meta
+          WHERE provider_key = @providerKey
+            AND catalog_scope_key = @catalogScopeKey
+        `).run({ providerKey, catalogScopeKey }).changes ?? 0)
+      }
+    })
+    tx()
+    return { deleted, deletedScopeCount: deleted.catalog_scope_meta }
   }
 
   clearDeprecatedOpenRouterCatalogCache(): CatalogScopedClearResult {
@@ -2560,13 +2605,13 @@ export class ModelCatalogRepo {
       runDelete('model_tags', 'DELETE FROM model_tags WHERE provider_key = @providerKey')
       runDelete('models_fts', 'DELETE FROM models_fts WHERE provider_key = @providerKey')
       runDelete('models', 'DELETE FROM models WHERE provider_key = @providerKey')
+      runDelete('providers', 'DELETE FROM providers WHERE provider_key = @providerKey')
       runDelete('catalog_meta', 'DELETE FROM catalog_meta WHERE provider_key = @providerKey')
       runDelete('model_catalog', 'DELETE FROM model_catalog WHERE router_source = @providerKey')
       runDelete('reasoning_model_index', 'DELETE FROM reasoning_model_index', {})
-      runDelete('providers', 'DELETE FROM providers WHERE provider_key = @providerKey')
     })
     tx()
-    return { deleted }
+    return { deleted, deletedScopeCount: 0 }
   }
 
   getCoreModelDetail(providerKey: string, modelId: string): CatalogCoreModelDetailRecord | null {

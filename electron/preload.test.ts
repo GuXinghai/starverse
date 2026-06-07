@@ -39,6 +39,9 @@ describe('preload scoped API exposure', () => {
       onOpenRouterChunk: expect.any(Function),
       onOpenRouterEnd: expect.any(Function),
       onModelCatalogSynced: expect.any(Function),
+      modelCatalogRepairCurrentScopedCache: expect.any(Function),
+      modelCatalogClearCurrentScopedCache: expect.any(Function),
+      modelCatalogClearAllOpenRouterScopedCaches: expect.any(Function),
     }))
   })
 })

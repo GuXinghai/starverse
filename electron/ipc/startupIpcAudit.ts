@@ -1,5 +1,6 @@
 import { DB_BRIDGE_IPC_CHANNELS } from './dbBridge'
 import { INAPP_BROWSER_IPC_CHANNELS } from './inappBrowserIpc'
+import { MODEL_CATALOG_SYNC_IPC_CHANNELS } from './modelCatalogSyncIpc'
 import { OPENROUTER_STREAM_IPC_CHANNELS } from './openRouterStreamBridge'
 import { CORE_IPC_CHANNELS, CORE_IPC_CRITICAL_CHANNELS } from './registerIpc'
 
@@ -8,6 +9,7 @@ export const STARTUP_IPC_CHANNELS = [
   ...DB_BRIDGE_IPC_CHANNELS,
   ...OPENROUTER_STREAM_IPC_CHANNELS,
   ...INAPP_BROWSER_IPC_CHANNELS,
+  ...MODEL_CATALOG_SYNC_IPC_CHANNELS,
 ] as const
 
 export const STARTUP_IPC_CRITICAL_CHANNELS = [

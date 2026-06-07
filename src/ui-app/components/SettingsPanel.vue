@@ -27,18 +27,23 @@ import { t, useLanguagePrefs, LOCALE_DISPLAY_NAMES, type SupportedLocale, type L
 import { saveLanguagePref, saveLanguagePrefSystem, getSystemLocale } from '@/next/settings/languagePrefs'
 import {
   CATALOG_FRESHNESS_PRESETS_MS,
+  CATALOG_RETENTION_PRESETS_MS,
   DEFAULT_CATALOG_AUTO_SYNC_POLICY,
   DEFAULT_CATALOG_FRESHNESS_MS,
   DEFAULT_CATALOG_LIST_UPDATE_MODE,
+  DEFAULT_CATALOG_RETENTION_MS,
   OPENROUTER_CATALOG_FRESHNESS_MS_KEY,
   OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY,
   OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY,
+  OPENROUTER_CATALOG_RETENTION_MS_KEY,
   OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY,
   normalizeCatalogAutoSyncPolicy,
   normalizeCatalogFreshnessMs,
   normalizeCatalogListUpdateMode,
+  normalizeCatalogRetentionMs,
   type CatalogAutoSyncPolicy,
   type CatalogListUpdateMode,
+  type CatalogRetentionMs,
 } from '@/shared/modelCatalog/catalogSyncSettings'
 
 const props = defineProps<{
@@ -71,6 +76,7 @@ const catalogStartupSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO
 const catalogPickerOpenSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
 const catalogListUpdateMode = ref<CatalogListUpdateMode>(DEFAULT_CATALOG_LIST_UPDATE_MODE)
 const catalogFreshnessMs = ref(DEFAULT_CATALOG_FRESHNESS_MS)
+const catalogRetentionMs = ref<CatalogRetentionMs>(DEFAULT_CATALOG_RETENTION_MS)
 const requireParameters = ref(false)
 const debugEchoUpstreamBody = ref(false)
 const showApiKey = ref(false)
@@ -100,6 +106,7 @@ const error = ref<string | null>(null)
 const savedMessage = ref<string | null>(null)
 const verifySyncLoading = ref(false)
 const verifySyncResult = ref<string | null>(null)
+const catalogClearLoading = ref<'current' | 'all' | null>(null)
 
 watch(requestedReasoningEffort, (value) => {
   if (value === 'auto' || value === 'none') {
@@ -157,6 +164,13 @@ const catalogFreshnessOptions: ReadonlyArray<Readonly<{ value: number; labelKey:
   { value: CATALOG_FRESHNESS_PRESETS_MS[2], labelKey: 'settings.openrouter.catalogFreshness6h' },
   { value: CATALOG_FRESHNESS_PRESETS_MS[3], labelKey: 'settings.openrouter.catalogFreshness24h' },
   { value: CATALOG_FRESHNESS_PRESETS_MS[4], labelKey: 'settings.openrouter.catalogFreshness7d' },
+]
+const catalogRetentionOptions: ReadonlyArray<Readonly<{ value: CatalogRetentionMs; labelKey: string }>> = [
+  { value: CATALOG_RETENTION_PRESETS_MS[0], labelKey: 'settings.openrouter.catalogRetention7d' },
+  { value: CATALOG_RETENTION_PRESETS_MS[1], labelKey: 'settings.openrouter.catalogRetention30d' },
+  { value: CATALOG_RETENTION_PRESETS_MS[2], labelKey: 'settings.openrouter.catalogRetention90d' },
+  { value: CATALOG_RETENTION_PRESETS_MS[3], labelKey: 'settings.openrouter.catalogRetention180d' },
+  { value: 'never', labelKey: 'settings.openrouter.catalogRetentionNever' },
 ]
 
 function isReasoningEffort(value: unknown): value is ReasoningEffort {
@@ -222,6 +236,7 @@ async function load() {
     catalogPickerOpenSyncPolicy.value = normalizeCatalogAutoSyncPolicy(await store.get(OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY))
     catalogListUpdateMode.value = normalizeCatalogListUpdateMode(await store.get(OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY))
     catalogFreshnessMs.value = normalizeCatalogFreshnessMs(await store.get(OPENROUTER_CATALOG_FRESHNESS_MS_KEY))
+    catalogRetentionMs.value = normalizeCatalogRetentionMs(await store.get(OPENROUTER_CATALOG_RETENTION_MS_KEY))
     const storedMaxRecentModels = parsePositiveIntegerText(String((await store.get(MAX_RECENT_MODELS_KEY)) ?? ''))
     maxRecentModelsDraft.value = String(storedMaxRecentModels ?? 8)
     requireParameters.value = await getOpenRouterProviderRequireParameters()
@@ -300,6 +315,7 @@ async function save() {
     await store.set(OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY, normalizeCatalogAutoSyncPolicy(catalogPickerOpenSyncPolicy.value))
     await store.set(OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY, normalizeCatalogListUpdateMode(catalogListUpdateMode.value))
     await store.set(OPENROUTER_CATALOG_FRESHNESS_MS_KEY, normalizeCatalogFreshnessMs(catalogFreshnessMs.value))
+    await store.set(OPENROUTER_CATALOG_RETENTION_MS_KEY, normalizeCatalogRetentionMs(catalogRetentionMs.value))
     await store.set(MAX_RECENT_MODELS_KEY, nextMaxRecentModels)
     await setOpenRouterProviderRequireParameters(requireParameters.value === true)
     await setNetExpSettings({
@@ -481,6 +497,69 @@ async function verifyAndSync() {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
     verifySyncLoading.value = false
+  }
+}
+
+function confirmCatalogClear(message: string): boolean {
+  if (typeof window === 'undefined' || typeof window.confirm !== 'function') return false
+  return window.confirm(message)
+}
+
+async function clearCurrentCatalogCache() {
+  error.value = null
+  savedMessage.value = null
+  verifySyncResult.value = null
+  if (!apiKey.value.trim()) {
+    error.value = t('settings.openrouter.catalogCacheNoApiKey')
+    return
+  }
+  if (!confirmCatalogClear(t('settings.openrouter.catalogCacheClearCurrentConfirm'))) return
+
+  const electronAPI = (globalThis as any).electronAPI
+  if (!electronAPI?.modelCatalogClearCurrentScopedCache) {
+    error.value = 'modelCatalogClearCurrentScopedCache unavailable.'
+    return
+  }
+
+  catalogClearLoading.value = 'current'
+  try {
+    const result = await electronAPI.modelCatalogClearCurrentScopedCache()
+    if (result?.ok) {
+      savedMessage.value = t('settings.openrouter.catalogCacheClearCurrentSuccess')
+    } else {
+      error.value = `${t('settings.openrouter.catalogCacheClearFailed')}：${String(result?.errorCode ?? 'unknown_error')}`
+    }
+  } catch (err: any) {
+    error.value = err?.message ? String(err.message) : String(err)
+  } finally {
+    catalogClearLoading.value = null
+  }
+}
+
+async function clearAllOpenRouterCatalogCaches() {
+  error.value = null
+  savedMessage.value = null
+  verifySyncResult.value = null
+  if (!confirmCatalogClear(t('settings.openrouter.catalogCacheClearAllConfirm'))) return
+
+  const electronAPI = (globalThis as any).electronAPI
+  if (!electronAPI?.modelCatalogClearAllOpenRouterScopedCaches) {
+    error.value = 'modelCatalogClearAllOpenRouterScopedCaches unavailable.'
+    return
+  }
+
+  catalogClearLoading.value = 'all'
+  try {
+    const result = await electronAPI.modelCatalogClearAllOpenRouterScopedCaches()
+    if (result?.ok) {
+      savedMessage.value = t('settings.openrouter.catalogCacheClearAllSuccess')
+    } else {
+      error.value = `${t('settings.openrouter.catalogCacheClearFailed')}：${String(result?.errorCode ?? 'unknown_error')}`
+    }
+  } catch (err: any) {
+    error.value = err?.message ? String(err.message) : String(err)
+  } finally {
+    catalogClearLoading.value = null
   }
 }
 
@@ -704,6 +783,45 @@ onMounted(() => {
               </option>
             </select>
           </label>
+
+          <label class="block">
+            <span class="text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.catalogRetention') }}</span>
+            <select
+              v-model="catalogRetentionMs"
+              class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+              :disabled="!canEdit || loading || saving"
+              data-testid="settings-catalog-retention"
+            >
+              <option v-for="option in catalogRetentionOptions" :key="String(option.value)" :value="option.value">
+                {{ t(option.labelKey) }}
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <div class="mt-4 rounded-md border border-gray-100 bg-gray-50/60 px-3 py-2">
+          <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.catalogCacheTitle') }}</div>
+          <div class="mt-1 text-[11px] text-gray-500">{{ t('settings.openrouter.catalogCacheDesc') }}</div>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || catalogClearLoading !== null || !apiKey.trim()"
+              data-testid="settings-clear-current-catalog-cache"
+              @click="clearCurrentCatalogCache"
+            >
+              {{ catalogClearLoading === 'current' ? t('common.loading') : t('settings.openrouter.catalogCacheClearCurrent') }}
+            </button>
+            <button
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || catalogClearLoading !== null"
+              data-testid="settings-clear-all-catalog-caches"
+              @click="clearAllOpenRouterCatalogCaches"
+            >
+              {{ catalogClearLoading === 'all' ? t('common.loading') : t('settings.openrouter.catalogCacheClearAll') }}
+            </button>
+          </div>
         </div>
 
         <div class="mt-4 flex items-center justify-between gap-2">

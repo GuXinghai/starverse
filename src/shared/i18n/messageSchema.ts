@@ -92,6 +92,40 @@ export interface SettingsMessages {
       readonly requireParametersDesc: string
       readonly debugEcho: string
       readonly debugEchoDesc: string
+      readonly verifyAndSync: string
+      readonly verifySyncSuccess: string
+      readonly verifySyncFailed: string
+      readonly verifySyncLoading: string
+      readonly catalogStartupSyncPolicy: string
+      readonly catalogPickerOpenSyncPolicy: string
+      readonly catalogListUpdateMode: string
+      readonly catalogFreshness: string
+      readonly catalogRetention: string
+      readonly catalogSyncPolicyAlways: string
+      readonly catalogSyncPolicyStaleOnly: string
+      readonly catalogSyncPolicyNever: string
+      readonly catalogListUpdateAutomatic: string
+      readonly catalogListUpdateManual: string
+      readonly catalogFreshness15m: string
+      readonly catalogFreshness1h: string
+      readonly catalogFreshness6h: string
+      readonly catalogFreshness24h: string
+      readonly catalogFreshness7d: string
+      readonly catalogRetention7d: string
+      readonly catalogRetention30d: string
+      readonly catalogRetention90d: string
+      readonly catalogRetention180d: string
+      readonly catalogRetentionNever: string
+      readonly catalogCacheTitle: string
+      readonly catalogCacheDesc: string
+      readonly catalogCacheClearCurrent: string
+      readonly catalogCacheClearAll: string
+      readonly catalogCacheClearCurrentConfirm: string
+      readonly catalogCacheClearAllConfirm: string
+      readonly catalogCacheClearCurrentSuccess: string
+      readonly catalogCacheClearAllSuccess: string
+      readonly catalogCacheClearFailed: string
+      readonly catalogCacheNoApiKey: string
     }
     readonly network: {
       readonly title: string
