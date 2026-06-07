@@ -8,12 +8,14 @@ import AppChatApp from './AppChatApp.vue'
 
 describe('ui-app AppChatApp model selection regression', () => {
   const originalDbBridge = (globalThis as any).dbBridge
+  const originalElectronAPI = (globalThis as any).electronAPI
+  let invoke: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     const convo = { id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 10, meta: null as Record<string, unknown> | null }
     const branch = { id: 'b1', convoId: 'c1', headMessageId: null, name: 'Main', createdAt: 1, updatedAt: 10, deletedAt: null }
 
-    const invoke = vi.fn(async (method: string, params?: any) => {
+    invoke = vi.fn(async (method: string, params?: any) => {
       if (method === 'convo.list') return [convo]
       if (method === 'convo.save') {
         convo.meta = (params?.meta ?? null) as Record<string, unknown> | null
@@ -56,19 +58,21 @@ describe('ui-app AppChatApp model selection regression', () => {
           updatedAt: 0,
         }
       }
-      if (method === 'modelCatalog.list') return []
+      if (method === 'modelCatalog.list') {
+        return [{ modelId: 'legacy/only-model', name: 'Legacy Only', vendor: 'legacy', status: 'visible' }]
+      }
       if (method === 'modelCatalog.getCoreMeta') return { baseUrl: 'https://openrouter.ai/api/v1' }
       if (method === 'modelCatalog.queryCore') {
         return {
           items: [
             {
               providerKey: 'openrouter',
-              modelId: 'anthropic/claude-3',
-              modelKey: 'openrouter::anthropic/claude-3',
-              displayName: 'Claude 3',
-              canonicalSlug: 'anthropic/claude-3',
-              vendor: 'anthropic',
-              description: 'fallback',
+              modelId: 'legacy/only-model',
+              modelKey: 'openrouter::legacy/only-model',
+              displayName: 'Legacy Only',
+              canonicalSlug: 'legacy/only-model',
+              vendor: 'legacy',
+              description: 'legacy',
               contextLength: 200000,
               createdAtSec: 1700000123,
               pricePrompt: '0.01',
@@ -92,10 +96,68 @@ describe('ui-app AppChatApp model selection regression', () => {
     })
 
     ;(globalThis as any).dbBridge = { invoke }
+    ;(globalThis as any).electronAPI = {
+      modelCatalogQueryScopedCurrent: vi.fn(async () => ({
+        status: 'synced',
+        catalogRevision: 'checksum-a',
+        modelCount: 1,
+        lastSyncAtMs: 123,
+        items: [
+          {
+            providerKey: 'openrouter',
+            modelId: 'anthropic/claude-3',
+            modelKey: 'openrouter::anthropic/claude-3',
+            canonicalSlug: 'anthropic/claude-3',
+            displayName: 'Claude 3',
+            description: 'scoped',
+            vendor: 'anthropic',
+            contextLength: 200000,
+            maxOutputTokens: 8192,
+            pricing: {
+              prompt: '0.01',
+              completion: '0.02',
+              request: '0',
+              image: '0',
+            },
+            capabilities: {
+              reasoning: true,
+              tools: false,
+              structuredOutputs: false,
+              vision: false,
+              longContext: true,
+            },
+            visibility: 'visible',
+            supportedParameters: ['reasoning'],
+            inputModalities: ['text'],
+            outputModalities: ['text'],
+          },
+        ],
+        nextCursor: null,
+      })),
+      modelCatalogGetSyncStatus: vi.fn(async () => ({
+        ok: true,
+        providerKey: 'openrouter',
+        status: 'synced',
+        syncState: 'ok',
+        failureReasonCode: null,
+        lastSyncedAtMs: 123,
+        modelCount: 1,
+      })),
+      modelCatalogSyncNow: vi.fn(async () => ({
+        ok: true,
+        providerKey: 'openrouter',
+        status: 'synced',
+        syncState: 'ok',
+        syncAttempted: false,
+        modelCount: 1,
+        lastSyncedAtMs: 123,
+      })),
+    }
   })
 
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
+    ;(globalThis as any).electronAPI = originalElectronAPI
   })
 
   it('keeps a manual model selection after async flush', async () => {
@@ -109,14 +171,18 @@ describe('ui-app AppChatApp model selection regression', () => {
     await user.click(selectedItem)
 
     await waitFor(() => {
-      expect(screen.getByTestId('current-model-pill').textContent).toContain('anthropic/claude-3')
+      expect(screen.getByTestId('current-model-pill').textContent).toContain('Claude 3')
     })
 
     await Promise.resolve()
     await nextTick()
 
-    expect(screen.getByTestId('current-model-pill').textContent).toContain('anthropic/claude-3')
+    expect(screen.getByTestId('current-model-pill').textContent).toContain('Claude 3')
     expect(screen.getByTestId('current-model-pill').textContent).not.toContain('openrouter/auto')
+    expect(screen.queryByTestId('model-picker-item-legacy/only-model')).toBeNull()
+    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelCatalog.list')
+    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelCatalog.queryCore')
+    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('reasoningIndex.list')
   })
 
   it('does not rehydrate the selection path with stale session state', () => {

@@ -61,6 +61,7 @@ vi.mock('@/next/live/openRouterLiveStream', () => {
 
 describe('ui-app AppChatApp (send: pure text)', () => {
   const originalDbBridge = (globalThis as any).dbBridge
+  const originalElectronAPI = (globalThis as any).electronAPI
   const originalElectronStore = (globalThis as any).electronStore
   const originalSetTimeout = globalThis.setTimeout
   let convoListMeta: Record<string, unknown> | null = null
@@ -83,9 +84,85 @@ describe('ui-app AppChatApp (send: pure text)', () => {
       },
     ]
 
+    ;(globalThis as any).electronAPI = {
+      modelCatalogQueryScopedCurrent: vi.fn(async (options?: any) => {
+        const requestedIds = Array.isArray(options?.modelIds)
+          ? new Set(options.modelIds.map((id: unknown) => String(id)))
+          : null
+        return {
+          status: 'synced',
+          catalogRevision: 'checksum-send',
+          modelCount: catalogRows.length,
+          lastSyncAtMs: 123,
+          items: catalogRows
+            .filter((row) => !requestedIds || requestedIds.has(String(row.modelId)))
+            .map((row) => ({
+              providerKey: 'openrouter',
+              modelId: String(row.modelId),
+              modelKey: `openrouter::${String(row.modelId)}`,
+              canonicalSlug: String(row.modelId),
+              displayName: String(row.name),
+              description: null,
+              vendor: String(row.vendor),
+              family: null,
+              status: 'active',
+              visibility: row.status === 'hidden' ? 'hidden' : 'visible',
+              contextLength: 200000,
+              maxOutputTokens: 8192,
+              inputModalities: ['text'],
+              outputModalities: ['text', 'image'],
+              supportedParameters: [...row.supportedParameters],
+              pricing: {
+                prompt: '0.01',
+                completion: '0.02',
+                request: '0',
+                image: '0.04',
+              },
+              capabilities: {
+                reasoning: true,
+                tools: false,
+                structuredOutputs: false,
+                vision: false,
+                longContext: true,
+              },
+              createdAtSec: 1700000123,
+              firstSeenAtMs: 1700000000000,
+              lastSeenAtMs: 1700000000000,
+              syncedAtMs: 1700000000000,
+              raw: {
+                inputModalitiesJson: '["text"]',
+                outputModalitiesJson: '["text","image"]',
+                supportedParametersJson: JSON.stringify(row.supportedParameters),
+                capabilitiesJson: '{"reasoning":true,"tools":false,"structuredOutputs":false,"vision":false,"longContext":true}',
+                pricingJson: '{"prompt":"0.01","completion":"0.02","request":"0","image":"0.04"}',
+              },
+            })),
+          nextCursor: null,
+        }
+      }),
+      modelCatalogGetSyncStatus: vi.fn(async () => ({
+        ok: true,
+        providerKey: 'openrouter',
+        status: 'synced',
+        syncState: 'ok',
+        failureReasonCode: null,
+        lastSyncedAtMs: 123,
+        modelCount: catalogRows.length,
+      })),
+      modelCatalogSyncNow: vi.fn(async () => ({
+        ok: true,
+        providerKey: 'openrouter',
+        status: 'synced',
+        syncState: 'ok',
+        syncAttempted: false,
+        modelCount: catalogRows.length,
+        lastSyncedAtMs: 123,
+      })),
+    }
+
     ;(globalThis as any).electronStore = {
       get: vi.fn(async (key: string) => {
-        if (key === 'openRouterApiKey') return 'sk-test'
+        if (key === 'openRouterApiKey') return 'redacted-test-key'
         if (key === 'openRouterBaseUrl') return 'https://openrouter.ai/api/v1'
         return undefined
       }),
@@ -331,6 +408,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
 
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
+    ;(globalThis as any).electronAPI = originalElectronAPI
     ;(globalThis as any).electronStore = originalElectronStore
     globalThis.setTimeout = originalSetTimeout
     vi.useRealTimers()
@@ -378,6 +456,9 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(last?.config?.imageGeneration).toBeUndefined()
     expect(last?.config?.webSearch?.requestPatch?.plugins?.[0]).toMatchObject({ id: 'web', enabled: false })
     expect(invoke.mock.calls.filter((c) => c[0] === 'message.appendDelta').length).toBeGreaterThanOrEqual(1)
+    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelCatalog.list')
+    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelCatalog.queryCore')
+    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('reasoningIndex.list')
   })
 
   it('uses selected model for next send and persists convo.meta.selectedModelKey', async () => {

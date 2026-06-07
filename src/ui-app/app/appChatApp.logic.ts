@@ -63,13 +63,10 @@ import {
   setChatReasoningDisplayMode,
 } from '@/next/settings/chatDisplayPrefsClient'
 import { getChatReasoningPanelDefaultExpanded } from '@/next/settings/reasoningPanelDefaultClient'
-import { listModelCatalog } from '@/next/modelCatalog/modelCatalogClient'
+import { listScopedCurrentModelCatalog } from '@/next/modelCatalog/modelCatalogClient'
 import { selectModelCatalogAll, selectModelCatalogVisible } from '@/next/modelCatalog/modelCatalogSelectors'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
 import { getModelCatalogModelDetail } from '@/next/modelCatalog/modelDetailService'
-import { listReasoningModelIndex } from '@/next/modelIndex/reasoningModelIndexClient'
-import { selectReasoningModelIndexAll, selectReasoningModelIndexVisible } from '@/next/modelIndex/reasoningModelIndexSelectors'
-import type { ReasoningModelIndexItem } from '@/next/modelIndex/reasoningModelIndexTypes'
 import type { OpenRouterImageConfig, OpenRouterOutputModality } from '@/next/openrouter/buildRequest'
 import { evaluateImageGenerationModel, type ImageCapabilityClass, type ImageModelFilterReason } from '@/next/openrouter/imageGenerationContract'
 import {
@@ -243,7 +240,7 @@ export function useAppChatAppLogic() {
   const sessionWebSearchSettingsStatus = ref<string | null>(null)
   const projectWebSearchSettingsStatus = ref<string | null>(null)
   const modelCatalogItems = ref<ModelCatalogItem[]>([])
-  const reasoningModelIndexItems = ref<ReasoningModelIndexItem[]>([])
+  const modelCatalogListStatus = ref<'unknown' | 'not_synced' | 'syncing' | 'synced' | 'failed'>('unknown')
   const showHiddenModelsInPickers = ref(false)
   const modelCatalogNotice = ref<string | null>(null)
   const modelPrefsScopeForUi = computed(() => ({ scopeType: 'global' as const, scopeId: '' as const }))
@@ -1048,24 +1045,9 @@ export function useAppChatAppLogic() {
   })
 
   const modelCatalogForPicker = computed<readonly ModelCatalogItem[]>(() => {
-    const catalog = showHiddenModelsInPickers.value
+    return showHiddenModelsInPickers.value
       ? selectModelCatalogAll(modelCatalogItems.value)
       : selectModelCatalogVisible(modelCatalogItems.value)
-
-    if (catalog.length > 0) return catalog
-
-    const fallback = showHiddenModelsInPickers.value
-      ? selectReasoningModelIndexAll(reasoningModelIndexItems.value)
-      : selectReasoningModelIndexVisible(reasoningModelIndexItems.value)
-
-    return fallback.map((item): ModelCatalogItem => ({
-      modelId: item.modelId,
-      name: item.name,
-      vendor: 'openrouter',
-      status: item.status === 'hidden' ? 'hidden' : 'visible',
-      supportedParameters: ['reasoning'],
-      lastSeenSnapshotId: item.lastSyncedSnapshot,
-    }))
   })
 
   function getNormalizedErrorEnvelope(error: unknown): NormalizedErrorEnvelope | null {
@@ -1872,26 +1854,17 @@ export function useAppChatAppLogic() {
   }
 
   async function refreshModelLists() {
-    if (!hasDbBridge()) {
-      modelCatalogItems.value = []
-      reasoningModelIndexItems.value = []
-      modelCatalogNotice.value = t('errors.modelCatalog.unavailable')
-      selectedModelImageCapabilityClass.value = null
-      selectedModelImageCapabilityReason.value = 'dbBridge unavailable.'
-      return
-    }
-
     try {
-      const [catalog, reasoningIndex] = await Promise.all([listModelCatalog('openrouter'), listReasoningModelIndex()])
-      modelCatalogItems.value = catalog
-      reasoningModelIndexItems.value = reasoningIndex
+      const catalog = await listScopedCurrentModelCatalog('openrouter')
+      modelCatalogItems.value = catalog.items
+      modelCatalogListStatus.value = catalog.status ?? 'unknown'
 
-      if (catalog.length === 0 && reasoningIndex.length === 0) {
+      if (!catalog.status && catalog.items.length === 0) {
+        modelCatalogNotice.value = t('errors.modelCatalog.unavailable')
+      } else if (catalog.status === 'not_synced' || (catalog.status === 'synced' && catalog.items.length === 0)) {
         modelCatalogNotice.value = t('errors.modelCatalog.notSynced')
-      } else if (catalog.length === 0 && reasoningIndex.length > 0) {
-        modelCatalogNotice.value = t('errors.modelCatalog.empty')
-      } else if (reasoningIndex.length === 0) {
-        modelCatalogNotice.value = t('errors.modelCatalog.indexNotSynced')
+      } else if (catalog.status === 'failed') {
+        modelCatalogNotice.value = t('errors.modelCatalog.syncFailed')
       } else {
         modelCatalogNotice.value = null
       }
@@ -1899,7 +1872,7 @@ export function useAppChatAppLogic() {
       await refreshSelectedModelImageCapability()
     } catch (err) {
       modelCatalogItems.value = []
-      reasoningModelIndexItems.value = []
+      modelCatalogListStatus.value = 'failed'
       modelCatalogNotice.value = t('errors.modelCatalog.syncFailed')
       selectedModelImageCapabilityClass.value = null
       selectedModelImageCapabilityReason.value = 'model catalog sync failed.'
@@ -6496,16 +6469,18 @@ export function useAppChatAppLogic() {
     const normalized = normalizeModelKey(modelKey)
     if (!normalized) return 'unknown'
 
-    const hasCatalogSignals = modelCatalogItems.value.length > 0 || reasoningModelIndexItems.value.length > 0
-    if (!hasCatalogSignals) return 'unknown'
+    if (modelCatalogItems.value.length === 0) {
+      return modelCatalogListStatus.value === 'unknown' || modelCatalogListStatus.value === 'syncing'
+        ? 'unknown'
+        : 'missing'
+    }
 
     const inCatalog = modelCatalogItems.value.find((item) => item.modelId === normalized) ?? null
     if (inCatalog) {
       return inCatalog.status === 'hidden' ? 'hidden' : 'available'
     }
 
-    const inReasoningIndex = reasoningModelIndexItems.value.some((item) => item.modelId === normalized)
-    return inReasoningIndex ? 'available' : 'missing'
+    return 'missing'
   }
 
   function applySelectedModelOverrideForActiveConvo() {
