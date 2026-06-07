@@ -352,9 +352,17 @@ export type CatalogScopedQueryInput = Readonly<{
   catalogScopeKey: string
   searchText?: string
   includeDescriptionInSearch?: boolean
+  category?: string
   vendors?: string[]
   providers?: string[]
   modelIds?: string[]
+  capabilities?: Readonly<{
+    reasoning?: boolean
+    tools?: boolean
+    structuredOutputs?: boolean
+    vision?: boolean
+    longContext?: boolean
+  }>
   contextLength?: CatalogCoreQueryNumberRange
   maxOutputTokens?: CatalogCoreQueryNumberRange
   modalities?: CatalogCoreQueryModality[]
@@ -568,6 +576,80 @@ function normalizeLowercaseArray(input: readonly string[] | undefined): string[]
     out.push(normalized)
   }
   return out
+}
+
+const SCOPED_CATEGORY_TERMS: Record<string, readonly string[]> = {
+  programming: ['programming', 'coding', 'code', 'developer', 'software'],
+  roleplay: ['roleplay', 'role play', 'character', 'storytelling'],
+  marketing: ['marketing', 'copywriting', 'advertising'],
+  'marketing/seo': ['seo', 'search engine optimization'],
+  technology: ['technology', 'tech'],
+  science: ['science', 'scientific', 'research'],
+  translation: ['translation', 'translate', 'translator'],
+  legal: ['legal', 'law', 'lawyer'],
+  finance: ['finance', 'financial', 'accounting'],
+  health: ['health', 'medical', 'medicine'],
+  trivia: ['trivia', 'quiz'],
+  academia: ['academia', 'academic', 'scholar', 'research'],
+}
+
+function normalizeScopedCategory(input: unknown): string | null {
+  const normalized = String(input ?? '').trim().toLowerCase()
+  return Object.prototype.hasOwnProperty.call(SCOPED_CATEGORY_TERMS, normalized) ? normalized : null
+}
+
+function pushScopedTextDerivedCategoryWhere(
+  where: string[],
+  params: Record<string, unknown>,
+  category: string,
+) {
+  const terms = SCOPED_CATEGORY_TERMS[category] ?? [category]
+  const termConditions: string[] = []
+  terms.forEach((term, index) => {
+    const key = `scopedCategoryTerm${index}`
+    params[key] = `%${escapeSqlLike(term.toLowerCase())}%`
+    termConditions.push(`
+      (
+        LOWER(models.model_id) LIKE @${key} ESCAPE '\\'
+        OR LOWER(models.model_key) LIKE @${key} ESCAPE '\\'
+        OR LOWER(COALESCE(models.canonical_slug, '')) LIKE @${key} ESCAPE '\\'
+        OR LOWER(models.display_name) LIKE @${key} ESCAPE '\\'
+        OR LOWER(COALESCE(models.description, '')) LIKE @${key} ESCAPE '\\'
+        OR LOWER(COALESCE(models.vendor, '')) LIKE @${key} ESCAPE '\\'
+        OR LOWER(COALESCE(models.family, '')) LIKE @${key} ESCAPE '\\'
+        OR LOWER(COALESCE(models.raw_json, '')) LIKE @${key} ESCAPE '\\'
+        OR EXISTS (
+          SELECT 1
+          FROM json_each(models.supported_parameters_json) scoped_category_param_${index}
+          WHERE LOWER(TRIM(CAST(scoped_category_param_${index}.value AS TEXT))) LIKE @${key} ESCAPE '\\'
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM json_each(models.input_modalities_json) scoped_category_input_${index}
+          WHERE LOWER(TRIM(CAST(scoped_category_input_${index}.value AS TEXT))) LIKE @${key} ESCAPE '\\'
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM json_each(models.output_modalities_json) scoped_category_output_${index}
+          WHERE LOWER(TRIM(CAST(scoped_category_output_${index}.value AS TEXT))) LIKE @${key} ESCAPE '\\'
+        )
+      )
+    `)
+  })
+  where.push(`(${termConditions.join('\n OR ')})`)
+}
+
+function pushScopedCapabilityWhere(
+  where: string[],
+  capability: 'reasoning' | 'tools' | 'structuredOutputs' | 'vision' | 'longContext',
+  expected: boolean,
+) {
+  const jsonPath = `$.${capability}`
+  if (expected) {
+    where.push(`json_extract(models.capabilities_json, '${jsonPath}') = 1`)
+    return
+  }
+  where.push(`COALESCE(json_extract(models.capabilities_json, '${jsonPath}'), 0) != 1`)
 }
 
 type ParsedArchitectureModalityFilter = Readonly<{
@@ -2238,6 +2320,30 @@ export class ModelCatalogRepo {
         params[key] = modelId
       })
       where.push(`models.model_id IN (${placeholders.join(', ')})`)
+    }
+
+    const scopedCategory = normalizeScopedCategory(input.category)
+    if (scopedCategory) {
+      pushScopedTextDerivedCategoryWhere(where, params, scopedCategory)
+    }
+
+    const capabilityFilters = input.capabilities && typeof input.capabilities === 'object' ? input.capabilities : null
+    if (capabilityFilters) {
+      if (typeof capabilityFilters.reasoning === 'boolean') {
+        pushScopedCapabilityWhere(where, 'reasoning', capabilityFilters.reasoning)
+      }
+      if (typeof capabilityFilters.tools === 'boolean') {
+        pushScopedCapabilityWhere(where, 'tools', capabilityFilters.tools)
+      }
+      if (typeof capabilityFilters.structuredOutputs === 'boolean') {
+        pushScopedCapabilityWhere(where, 'structuredOutputs', capabilityFilters.structuredOutputs)
+      }
+      if (typeof capabilityFilters.vision === 'boolean') {
+        pushScopedCapabilityWhere(where, 'vision', capabilityFilters.vision)
+      }
+      if (typeof capabilityFilters.longContext === 'boolean') {
+        pushScopedCapabilityWhere(where, 'longContext', capabilityFilters.longContext)
+      }
     }
 
     pushRangeWhereClause(where, params, 'COALESCE(models.context_length, 0)', input.contextLength, 'scopedContextLength')

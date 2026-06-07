@@ -271,9 +271,19 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
           catalogScopeKey,
           searchText: typeof raw?.searchText === 'string' ? raw.searchText : undefined,
           includeDescriptionInSearch: raw?.includeDescriptionInSearch === true,
+          category: typeof raw?.category === 'string' ? raw.category : undefined,
           vendors: Array.isArray(raw?.vendors) ? raw.vendors.map((item: unknown) => String(item)) : undefined,
           providers: Array.isArray(raw?.providers) ? raw.providers.map((item: unknown) => String(item)) : undefined,
           modelIds: Array.isArray(raw?.modelIds) ? raw.modelIds.map((item: unknown) => String(item)) : undefined,
+          capabilities: raw?.capabilities && typeof raw.capabilities === 'object'
+            ? {
+                ...(typeof raw.capabilities.reasoning === 'boolean' ? { reasoning: raw.capabilities.reasoning } : {}),
+                ...(typeof raw.capabilities.tools === 'boolean' ? { tools: raw.capabilities.tools } : {}),
+                ...(typeof raw.capabilities.structuredOutputs === 'boolean' ? { structuredOutputs: raw.capabilities.structuredOutputs } : {}),
+                ...(typeof raw.capabilities.vision === 'boolean' ? { vision: raw.capabilities.vision } : {}),
+                ...(typeof raw.capabilities.longContext === 'boolean' ? { longContext: raw.capabilities.longContext } : {}),
+              }
+            : undefined,
           contextLength: raw?.contextLength && typeof raw.contextLength === 'object' ? raw.contextLength : undefined,
           maxOutputTokens: raw?.maxOutputTokens && typeof raw.maxOutputTokens === 'object' ? raw.maxOutputTokens : undefined,
           modalities: Array.isArray(raw?.modalities) ? raw.modalities.map((item: unknown) => String(item)) : undefined,

@@ -51,9 +51,17 @@ type ScopedQueryInput = Readonly<{
   providerKey?: string
   searchText?: string
   includeDescriptionInSearch?: boolean
+  category?: string
   vendors?: string[]
   providers?: string[]
   modelIds?: string[]
+  capabilities?: {
+    reasoning?: boolean
+    tools?: boolean
+    structuredOutputs?: boolean
+    vision?: boolean
+    longContext?: boolean
+  }
   contextLength?: { min?: number; max?: number }
   maxOutputTokens?: { min?: number; max?: number }
   modalities?: string[]
@@ -90,6 +98,20 @@ function parseJsonObject(value: unknown): Record<string, unknown> | null {
   }
 }
 
+function parseJsonStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item ?? '').trim()).filter((item) => item.length > 0)
+  }
+  if (value == null || value === '') return []
+  try {
+    const parsed = JSON.parse(String(value))
+    if (!Array.isArray(parsed)) return []
+    return parsed.map((item) => String(item ?? '').trim()).filter((item) => item.length > 0)
+  } catch {
+    return []
+  }
+}
+
 function mapScopedQueryItem(row: Record<string, unknown>): Record<string, unknown> {
   const pricing = parseJsonObject(row.pricingJson)
   const capabilities = parseJsonObject(row.capabilitiesJson)
@@ -101,14 +123,24 @@ function mapScopedQueryItem(row: Record<string, unknown>): Record<string, unknow
     displayName: row.displayName,
     description: row.description ?? null,
     vendor: row.vendor ?? null,
+    family: row.family ?? null,
+    status: row.status ?? null,
+    visibility: row.visibility ?? null,
     contextLength: row.contextLength ?? null,
     maxOutputTokens: row.maxOutputTokens ?? null,
     createdAtSec: row.createdAtSec ?? null,
+    inputModalities: parseJsonStringArray(row.inputModalitiesJson),
+    outputModalities: parseJsonStringArray(row.outputModalitiesJson),
+    supportedParameters: parseJsonStringArray(row.supportedParametersJson),
     pricing: {
       prompt: typeof pricing?.prompt === 'string' ? pricing.prompt : null,
       completion: typeof pricing?.completion === 'string' ? pricing.completion : null,
       request: typeof pricing?.request === 'string' ? pricing.request : null,
       image: typeof pricing?.image === 'string' ? pricing.image : null,
+      webSearch: typeof pricing?.web_search === 'string' ? pricing.web_search : typeof pricing?.webSearch === 'string' ? pricing.webSearch : null,
+      internalReasoning: typeof pricing?.internal_reasoning === 'string' ? pricing.internal_reasoning : typeof pricing?.internalReasoning === 'string' ? pricing.internalReasoning : null,
+      inputCacheRead: typeof pricing?.input_cache_read === 'string' ? pricing.input_cache_read : typeof pricing?.inputCacheRead === 'string' ? pricing.inputCacheRead : null,
+      inputCacheWrite: typeof pricing?.input_cache_write === 'string' ? pricing.input_cache_write : typeof pricing?.inputCacheWrite === 'string' ? pricing.inputCacheWrite : null,
     },
     capabilities: {
       reasoning: capabilities?.reasoning === true,
@@ -116,6 +148,17 @@ function mapScopedQueryItem(row: Record<string, unknown>): Record<string, unknow
       structuredOutputs: capabilities?.structuredOutputs === true,
       vision: capabilities?.vision === true,
       longContext: capabilities?.longContext === true,
+    },
+    firstSeenAtMs: row.firstSeenAtMs ?? null,
+    lastSeenAtMs: row.lastSeenAtMs ?? null,
+    syncedAtMs: row.syncedAtMs ?? null,
+    raw: {
+      rawJson: null,
+      inputModalitiesJson: row.inputModalitiesJson ?? '[]',
+      outputModalitiesJson: row.outputModalitiesJson ?? '[]',
+      supportedParametersJson: row.supportedParametersJson ?? '[]',
+      capabilitiesJson: row.capabilitiesJson ?? '{}',
+      pricingJson: row.pricingJson ?? null,
     },
   }
 }
@@ -495,9 +538,19 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
         catalogScopeKey: scope.catalogScopeKey,
         searchText: typeof opts.searchText === 'string' ? opts.searchText : undefined,
         includeDescriptionInSearch: opts.includeDescriptionInSearch === true,
+        category: typeof opts.category === 'string' ? opts.category : undefined,
         vendors: Array.isArray(opts.vendors) ? opts.vendors.map((item) => String(item)) : undefined,
         providers: Array.isArray(opts.providers) ? opts.providers.map((item) => String(item)) : undefined,
         modelIds: Array.isArray(opts.modelIds) ? opts.modelIds.map((item) => String(item)) : undefined,
+        capabilities: opts.capabilities && typeof opts.capabilities === 'object'
+          ? {
+              ...(typeof opts.capabilities.reasoning === 'boolean' ? { reasoning: opts.capabilities.reasoning } : {}),
+              ...(typeof opts.capabilities.tools === 'boolean' ? { tools: opts.capabilities.tools } : {}),
+              ...(typeof opts.capabilities.structuredOutputs === 'boolean' ? { structuredOutputs: opts.capabilities.structuredOutputs } : {}),
+              ...(typeof opts.capabilities.vision === 'boolean' ? { vision: opts.capabilities.vision } : {}),
+              ...(typeof opts.capabilities.longContext === 'boolean' ? { longContext: opts.capabilities.longContext } : {}),
+            }
+          : undefined,
         contextLength: opts.contextLength,
         maxOutputTokens: opts.maxOutputTokens,
         modalities: Array.isArray(opts.modalities) ? opts.modalities.map((item) => String(item)) : undefined,
