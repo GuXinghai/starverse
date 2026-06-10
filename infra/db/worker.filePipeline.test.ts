@@ -1578,13 +1578,13 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       isAvailable: false,
       compatibilityStatus: 'blocked',
       sendAssetRefs: [],
-      diagnostics: [expect.objectContaining({ code: 'office_pdf_runtime_missing' })],
+      diagnostics: [expect.objectContaining({ code: 'conversion_engine_missing' })],
     })
     expect(generationState).toMatchObject({
       targetKind: 'pdf_attachment',
       derivedKind: 'converted_pdf',
       status: 'blocked',
-      errorCode: 'office_pdf_runtime_missing',
+      errorCode: 'conversion_engine_missing',
     })
     expect(readyPdfCount).toBe(0)
     expect(JSON.stringify((ensured as any).result)).not.toContain(storageUri)
@@ -1681,11 +1681,11 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       isAvailable: false,
       compatibilityStatus: 'blocked',
       sendAssetRefs: [],
-      diagnostics: [expect.objectContaining({ code: 'conversion_not_implemented' })],
+      diagnostics: [expect.objectContaining({ code: 'conversion_engine_unhealthy' })],
     })
     expect(generationState).toMatchObject({
       status: 'blocked',
-      errorCode: 'conversion_not_implemented',
+      errorCode: 'conversion_engine_unhealthy',
     })
     expect(convertedPdfCount).toBe(0)
     expect(JSON.stringify((ensured as any).result)).not.toContain(runtimeRoot)
@@ -1925,11 +1925,11 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       isAvailable: false,
       compatibilityStatus: 'blocked',
       sendAssetRefs: [],
-      diagnostics: [expect.objectContaining({ code: 'derivative_output_write_failed' })],
+      diagnostics: [expect.objectContaining({ code: 'conversion_engine_failed' })],
     })
     expect(generationState).toMatchObject({
       status: 'failed',
-      errorCode: 'derivative_output_write_failed',
+      errorCode: 'conversion_engine_failed',
     })
     expect(readyPdfCount).toBe(0)
     const ensuredJson = JSON.stringify((ensured as any).result)
@@ -1954,10 +1954,10 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
   })
 
   it.each([
-    ['timeout', 'derivative_task_timeout'],
-    ['missing_output', 'derivative_output_write_failed'],
-    ['invalid_pdf', 'derivative_output_write_failed'],
-    ['ambiguous_pdf', 'derivative_output_write_failed'],
+    ['timeout', 'conversion_engine_timeout'],
+    ['missing_output', 'conversion_engine_failed'],
+    ['invalid_pdf', 'conversion_engine_failed'],
+    ['ambiguous_pdf', 'conversion_engine_failed'],
   ] as const)('fails closed for DOCX pdf_attachment fake process %s without ready selection', async (mode, expectedErrorCode) => {
     const { db, handlers } = createWorkerHarness({
       officePdfProcessRunner: createFakeOfficePdfModeRunner(mode),
