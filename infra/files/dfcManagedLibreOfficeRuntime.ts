@@ -17,6 +17,9 @@ export const DFC_OFFICE_PDF_MIN_CONTRACT_VERSION = '1'
 export const DFC_OFFICE_PDF_RUNTIME_KIND = 'managed_external_process'
 export const DFC_OFFICE_PDF_DISPLAY_NAME = 'LibreOffice Office PDF'
 export const DFC_OFFICE_PDF_CATALOG_VERSION = '0.1.0'
+export const DFC_OFFICE_PDF_PACKAGE_LAYOUT_VERSION = '1'
+
+export type DfcLibreOfficeRuntimePlatformId = 'win32' | 'darwin' | 'linux'
 
 export type DfcOfficePdfRuntimeDiagnosticCode =
   | 'office_pdf_runtime_missing'
@@ -114,6 +117,44 @@ export type DfcLibreOfficePluginLifecycleBridge = Readonly<{
   runtime: DfcOfficePdfRuntimeIdentitySummary | null
 }>
 
+export type DfcLibreOfficeRuntimePackageLayoutContract = Readonly<{
+  layoutVersion: typeof DFC_OFFICE_PDF_PACKAGE_LAYOUT_VERSION
+  packageRootRef: 'managed_runtime_package_root'
+  manifestRelativePath: typeof DFC_OFFICE_PDF_RUNTIME_MANIFEST
+  executablePathPolicy: Readonly<{
+    mustBeManifestRelative: true
+    absolutePathAllowed: false
+    parentTraversalAllowed: false
+    nulByteAllowed: false
+    symlinkEscapeAllowed: false
+    platformRules: Readonly<Record<DfcLibreOfficeRuntimePlatformId, Readonly<{
+      supported: true
+      executablePathDescription: string
+    }>>>
+  }>
+  requiredManifestFields: readonly string[]
+  requiredCapabilities: typeof DFC_OFFICE_PDF_CAPABILITIES
+  requiredSecurityPolicy: readonly [
+    'macrosDisabled',
+    'networkDisabled',
+    'externalLinksDisabled',
+    'embeddedObjectExecutionDisabled',
+    'isolatedProfileRequired',
+  ]
+  hashAndSizePolicy: Readonly<{
+    artifactSha256Required: true
+    executableSha256Required: true
+    executableSizeBytesRequired: true
+  }>
+  sourcePolicy: Readonly<{
+    officialPackageAllowed: true
+    importedDevArtifactAllowed: true
+    fakeSeamAllowedForTests: true
+    systemPathFallbackAllowed: false
+  }>
+  productionApproved: false
+}>
+
 export type DfcLibreOfficeFirstPartyRuntimeCatalogEntry = Readonly<{
   pluginId: typeof DFC_OFFICE_PDF_PLUGIN_ID
   runtimeId: typeof DFC_OFFICE_PDF_RUNTIME_ID
@@ -124,6 +165,7 @@ export type DfcLibreOfficeFirstPartyRuntimeCatalogEntry = Readonly<{
   capabilityIds: readonly ['document_conversion', 'office_to_pdf', 'docx_to_pdf']
   supportedPlatforms: readonly ['win32', 'darwin', 'linux']
   supportedFormats: readonly ['docx']
+  layoutContract: DfcLibreOfficeRuntimePackageLayoutContract
   artifactSourcePolicy: Readonly<{
     officialCatalogCandidate: true
     importedDevArtifactAllowed: true
@@ -316,8 +358,11 @@ export async function resolveDfcLibreOfficeRuntimeExecutionDescriptor(input: Rea
   }
   const expectedPlatform = input.platform ?? process.platform
   const expectedArch = input.arch ?? process.arch
-  if (manifest.platform !== expectedPlatform || (manifest.arch && manifest.arch !== expectedArch)) {
+  if (!isSupportedRuntimePlatform(manifest.platform) || manifest.platform !== expectedPlatform || (manifest.arch && manifest.arch !== expectedArch)) {
     return unavailable('office_pdf_runtime_platform_unsupported', 'Office PDF runtime does not support this platform.')
+  }
+  if (!isExecutablePathAllowedForPlatform(manifest.platform, manifest.executablePath)) {
+    return unavailable('office_pdf_runtime_path_rejected', 'Office PDF runtime executable path is not allowed for this platform.')
   }
 
   const executable = resolveManagedExecutable(root, manifest.executablePath)
@@ -424,6 +469,7 @@ export function getDfcLibreOfficeFirstPartyRuntimeCatalogEntry(): DfcLibreOffice
     ],
     supportedPlatforms: ['win32', 'darwin', 'linux'],
     supportedFormats: ['docx'],
+    layoutContract: getDfcLibreOfficeRuntimePackageLayoutContract(),
     artifactSourcePolicy: {
       officialCatalogCandidate: true,
       importedDevArtifactAllowed: true,
@@ -447,6 +493,81 @@ export function getDfcLibreOfficeFirstPartyRuntimeCatalogEntry(): DfcLibreOffice
     },
     productionApproved: false,
     experimental: true,
+  }
+}
+
+export function getDfcLibreOfficeRuntimePackageLayoutContract(): DfcLibreOfficeRuntimePackageLayoutContract {
+  return {
+    layoutVersion: DFC_OFFICE_PDF_PACKAGE_LAYOUT_VERSION,
+    packageRootRef: 'managed_runtime_package_root',
+    manifestRelativePath: DFC_OFFICE_PDF_RUNTIME_MANIFEST,
+    executablePathPolicy: {
+      mustBeManifestRelative: true,
+      absolutePathAllowed: false,
+      parentTraversalAllowed: false,
+      nulByteAllowed: false,
+      symlinkEscapeAllowed: false,
+      platformRules: {
+        win32: {
+          supported: true,
+          executablePathDescription: 'manifest-relative LibreOffice executable ending in .exe',
+        },
+        darwin: {
+          supported: true,
+          executablePathDescription: 'manifest-relative LibreOffice executable inside the package, typically soffice or an app bundle Contents/MacOS entry',
+        },
+        linux: {
+          supported: true,
+          executablePathDescription: 'manifest-relative LibreOffice executable inside the package, typically program/soffice',
+        },
+      },
+    },
+    requiredManifestFields: [
+      'manifestSchemaVersion',
+      'pluginId',
+      'packageId',
+      'runtimePackageId',
+      'engineId',
+      'runtimeId',
+      'displayName',
+      'pluginVersion',
+      'runtimeKind',
+      'platform',
+      'executablePath',
+      'libreOfficeVersion',
+      'packageVersion',
+      'artifactSha256',
+      'executableSha256',
+      'executableSizeBytes',
+      'provenance',
+      'licenseId',
+      'attribution',
+      'notices',
+      'capabilities',
+      'minimumStarverseContractVersion',
+      'officialRelease',
+      'securityPolicy',
+    ],
+    requiredCapabilities: DFC_OFFICE_PDF_CAPABILITIES,
+    requiredSecurityPolicy: [
+      'macrosDisabled',
+      'networkDisabled',
+      'externalLinksDisabled',
+      'embeddedObjectExecutionDisabled',
+      'isolatedProfileRequired',
+    ],
+    hashAndSizePolicy: {
+      artifactSha256Required: true,
+      executableSha256Required: true,
+      executableSizeBytesRequired: true,
+    },
+    sourcePolicy: {
+      officialPackageAllowed: true,
+      importedDevArtifactAllowed: true,
+      fakeSeamAllowedForTests: true,
+      systemPathFallbackAllowed: false,
+    },
+    productionApproved: false,
   }
 }
 
@@ -514,8 +635,11 @@ function resolveDfcLibreOfficeRuntimeExecutionDescriptorSync(input: Readonly<{
   }
   const expectedPlatform = input.platform ?? process.platform
   const expectedArch = input.arch ?? process.arch
-  if (manifest.platform !== expectedPlatform || (manifest.arch && manifest.arch !== expectedArch)) {
+  if (!isSupportedRuntimePlatform(manifest.platform) || manifest.platform !== expectedPlatform || (manifest.arch && manifest.arch !== expectedArch)) {
     return unavailable('office_pdf_runtime_platform_unsupported', 'Office PDF runtime does not support this platform.')
+  }
+  if (!isExecutablePathAllowedForPlatform(manifest.platform, manifest.executablePath)) {
+    return unavailable('office_pdf_runtime_path_rejected', 'Office PDF runtime executable path is not allowed for this platform.')
   }
 
   const executable = resolveManagedExecutable(root, manifest.executablePath)
@@ -694,6 +818,23 @@ function resolveManagedExecutable(root: string, executablePath: string): Readonl
   const resolved = path.resolve(root, requested)
   if (!isPathInside(root, resolved)) return { ok: false }
   return { ok: true, path: resolved }
+}
+
+function isSupportedRuntimePlatform(value: string): value is DfcLibreOfficeRuntimePlatformId {
+  return value === 'win32' || value === 'darwin' || value === 'linux'
+}
+
+function isExecutablePathAllowedForPlatform(
+  platform: DfcLibreOfficeRuntimePlatformId,
+  executablePath: string
+): boolean {
+  const normalized = executablePath.replace(/\\/gu, '/')
+  const basename = normalized.split('/').pop()?.toLowerCase() ?? ''
+  if (platform === 'win32') return basename.endsWith('.exe')
+  if (platform === 'darwin') {
+    return basename === 'soffice' || normalized.includes('.app/Contents/MacOS/')
+  }
+  return basename === 'soffice'
 }
 
 function normalizeAbsoluteDir(value: string): string | null {

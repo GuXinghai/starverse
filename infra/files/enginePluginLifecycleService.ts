@@ -1893,6 +1893,7 @@ function toLibreOfficeCatalogReasons(
 ): readonly string[] {
   const reasons = [
     entry.provider,
+    `layout_contract_v${entry.layoutContract.layoutVersion}`,
     'owner_gated_experimental',
     'production_approval_missing',
     'packaged_binary_not_included',

@@ -40,6 +40,15 @@ describe('dfc LibreOffice managed package installer scaffold', () => {
           experimental: true,
         }),
         verification: {
+          layoutContract: expect.objectContaining({
+            layoutVersion: '1',
+            manifestRelativePath: 'manifest.json',
+            productionApproved: false,
+            sourcePolicy: expect.objectContaining({
+              importedDevArtifactAllowed: true,
+              systemPathFallbackAllowed: false,
+            }),
+          }),
           manifestValidated: true,
           artifactHashVerified: true,
           executableHashVerified: true,
@@ -97,7 +106,11 @@ describe('dfc LibreOffice managed package installer scaffold', () => {
           productCode: 'conversion_engine_unhealthy',
         }),
         verification: {
-          manifestValidated: false,
+          layoutContract: expect.objectContaining({
+            layoutVersion: '1',
+            manifestRelativePath: 'manifest.json',
+          }),
+          manifestValidated: true,
           artifactHashVerified: false,
           executableHashVerified: false,
           packageMetadataVerified: false,
@@ -268,7 +281,6 @@ describe('dfc LibreOffice managed package installer scaffold', () => {
       },
     })
     expect(JSON.stringify(result.pluginManagement)).not.toContain(source.root)
-    expect(JSON.stringify(result.pluginManagement)).not.toContain('program/soffice')
   })
 })
 

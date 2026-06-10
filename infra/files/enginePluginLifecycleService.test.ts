@@ -2618,6 +2618,7 @@ describe('EnginePluginLifecycleService', () => {
       })
       expect(libreOffice?.reasons).toEqual(expect.arrayContaining([
         'first_party_managed_runtime',
+        'layout_contract_v1',
         'owner_gated_experimental',
         'production_approval_missing',
         'packaged_binary_not_included',
