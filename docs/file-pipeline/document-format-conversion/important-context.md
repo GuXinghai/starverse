@@ -4,11 +4,12 @@ This file is the recovery entry point after context compression. The source of t
 
 ## Current status
 
-- Current branch: `docs/dfc-0-format-conversion-foundation`
+- Current branch at latest documented DFC closeout: `docs/dfc-0-format-conversion-foundation`
 - Current topic directory: `docs/file-pipeline/document-format-conversion/`
 - Current SSOT file: `starverse_format_conversion_preview_v1_2.md`
-- Latest appended recovery state: DFC-M24 adds the LibreOffice DOCX-to-PDF adapter skeleton with fake external process strategy, sandbox command planning, output validation, and sanitized fail-closed diagnostics; real Office-to-PDF conversion remains unsupported.
-- The DFC-0 through DFC-6 bullets in this section are historical setup milestones; later DFC-7 through DFC-30 and DFC-M0 through DFC-M24 recovery notes are appended below and the full append-only sequence is in `progress-ledger.md`.
+- Latest appended recovery state: DFC-M32 closes the deadline/demo-readiness package after DFC-M31 imported managed LibreOffice runtime seam validation. Current demo-ready surface includes supported text-like DFC paths, backend pilots for XLSX/DOCX text conversions, experimental-gated HTML-to-PDF, and DOCX-to-PDF dev managed-runtime smoke. Production Office-to-PDF, packaged installer support, CI runtime smoke, `.doc` / `.rtf` / `.docm`, PS/EPS, system LibreOffice/PATH fallback, and production Office-to-PDF claims remain unsupported.
+- Current navigation note: the old root-level `format-conversion-preview-*` v1.0 files are historical only under `docs/file-pipeline/document-format-conversion/archive/v1.0-superseded/`; do not use them as implementation authority.
+- The DFC-0 through DFC-6 bullets in this section are historical setup milestones; later DFC-7 through DFC-30 and DFC-M0 through DFC-M32 recovery notes are appended below and the full append-only sequence is in `progress-ledger.md`.
 - DFC-0 scope: docs-only foundation. Create the topic directory, place the v1.2 source contract there, and add only `progress-ledger.md` and `important-context.md`.
 - DFC-0 does not implement production behavior and does not modify schema, Send Plan, UI, dependencies, test configuration, external engines, or production code.
 - DFC-1 scope: read-only repository mapping against v1.2. No production code was changed.

@@ -166,7 +166,7 @@ When two documents claim SSOT for the same domain:
 | Domain | SSOT Document | Status |
 |--------|---------------|--------|
 | File pipeline decisions | `docs/file-pipeline/progress-ledger.md` | ✅ Active |
-| Format conversion design | `docs/file-pipeline/format-conversion-preview-final.md` | ✅ Reference |
+| Format conversion design / DFC | `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md` | ✅ Active |
 | appChatApp boundaries | `docs/governance/app-chat-app-logic-boundary.md` | ✅ Active |
 | System architecture | `docs/architecture/OVERVIEW.md` | ✅ Active |
 | OpenRouter streaming | `docs/openrouter-streaming-reasoning-ssot-v2.md` | active SSOT |

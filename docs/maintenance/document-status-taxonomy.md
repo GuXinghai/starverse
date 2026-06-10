@@ -92,7 +92,7 @@ Document Role indicates what responsibility the document carries. A document may
 | Document | Domain | Coverage |
 |----------|--------|----------|
 | `docs/file-pipeline/progress-ledger.md` | File pipeline decisions & frozen items | All file pipeline decisions |
-| `docs/file-pipeline/format-conversion-preview-final.md` | Format conversion design | Conversion preview design |
+| `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md` | Format conversion design / DFC | Document conversion, preview, Send Plan, compatibility, and safety boundaries |
 | `docs/governance/app-chat-app-logic-boundary.md` | appChatApp boundaries | Core app logic boundaries |
 | `docs/architecture/OVERVIEW.md` | System architecture | High-level architecture |
 | `docs/openrouter-streaming-reasoning-ssot-v2.md` | OpenRouter streaming & reasoning | SSOT v2 implementation |
