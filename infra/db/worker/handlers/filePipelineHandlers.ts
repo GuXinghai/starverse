@@ -7,8 +7,8 @@ import type { SendPlan } from '../../../../src/shared/files/sendPlanTypes'
 import { serializeSendPlanForOpenRouter } from '../../../../src/next/openrouter/openRouterSendPlanSerializer'
 import type { DerivativeErrorCode, DfcOptionGenerationErrorCode, DfcOptionGenerationStateRecord, FileAssetRecord, FileDerivativeRecord } from '../../types'
 import {
-  checkDfcLibreOfficeRuntimeAvailability,
   getDfcLibreOfficeManagedRuntimeRoot,
+  resolveDfcLibreOfficePluginManagedRuntimeHandle,
 } from '../../../files/dfcManagedLibreOfficeRuntime'
 import {
   CreateFileAssetSchema,
@@ -750,7 +750,7 @@ async function ensureOfficePdfRuntimeGate(
   const targetKind = 'pdf_attachment'
   const settingsHash = sha256Bytes(Buffer.from(JSON.stringify({
     targetKind,
-    runtime: 'libreoffice-managed-engine-gate',
+    runtime: 'libreoffice-plugin-managed-runtime',
     policy: 'macros-network-external-links-disabled',
   })))
   const generationState = runtime.dfcOptionGenerationStateRepo.ensure({
@@ -777,8 +777,11 @@ async function ensureOfficePdfRuntimeGate(
     return { changed: true }
   }
 
-  const availability = await checkDfcLibreOfficeRuntimeAvailability({
+  const availability = await resolveDfcLibreOfficePluginManagedRuntimeHandle({
     managedRuntimeRootDir: getDfcLibreOfficeManagedRuntimeRoot(runtime.fileStorageRootDir),
+    capabilityId: 'docx_to_pdf',
+    allowExperimental: true,
+    productionOnly: false,
   })
   if (!availability.ok) {
     runtime.dfcOptionGenerationStateRepo.markBlocked({
@@ -812,7 +815,8 @@ async function ensureOfficePdfRuntimeGate(
     generator: DFC_OFFICE_PDF_DERIVATIVE_JOB_GENERATOR,
     configJson: {
       targetKind,
-      runtime: 'libreoffice-fake-process-test-seam',
+      runtime: 'libreoffice-plugin-managed-runtime',
+      runtimeSource: availability.handle.source,
       timeoutMs: 300_000,
     },
   })

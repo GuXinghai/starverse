@@ -1770,7 +1770,10 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       sourceHash: 'asset-docx-office-pdf-fake-success-source-hash',
       converterName: 'starverse-libreoffice-docx-pdf',
       converterVersion: 'skeleton-1',
-      conversionMode: 'fake_process_test_seam',
+      conversionMode: 'plugin_managed_runtime',
+      runtimeSource: 'fake_seam',
+      runtimeVersion: '24.8.0',
+      runtimePackageVersion: '2026.06.01',
     })
     expect(derivativeMeta.contentHash).toBe(createHash('sha256').update(pdfBytes).digest('hex'))
     expect(Buffer.from(pdfFileBytes).subarray(0, 5).toString('ascii')).toBe('%PDF-')
@@ -2145,7 +2148,7 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       storageClass: 'draft_bound',
       converterName: 'starverse-libreoffice-docx-pdf',
       converterVersion: 'skeleton-1',
-      conversionMode: 'fake_process_test_seam',
+      conversionMode: 'plugin_managed_runtime',
     })
 
     const selected = await dispatchWorkerMessage(handlers, {

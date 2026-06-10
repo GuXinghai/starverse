@@ -96,6 +96,43 @@ export type DfcOfficePdfRuntimeAvailability =
       diagnostics: readonly DfcOfficePdfRuntimeDiagnostic[]
     }>
 
+export type DfcLibreOfficePluginManagedRuntimeCapabilityId = 'office_to_pdf' | 'docx_to_pdf'
+
+export type DfcLibreOfficePluginManagedRuntimeHandle = Readonly<{
+  pluginId: typeof DFC_OFFICE_PDF_PLUGIN_ID
+  runtimeId: typeof DFC_OFFICE_PDF_RUNTIME_ID
+  capabilityId: DfcLibreOfficePluginManagedRuntimeCapabilityId
+  executablePath: string
+  executableRelativePath: string
+  platform: string
+  arch: string | null
+  runtimeVersion: string
+  packageVersion: string
+  source: DfcOfficePdfRuntimeSource
+  healthStatus: DfcOfficePdfRuntimeHealthStatus
+  productionApproved: false
+  experimental: boolean
+  degraded: boolean
+  productCode: DfcOfficePdfRuntimeProductCode | null
+  internalCode: DfcOfficePdfRuntimeDiagnosticCode | null
+  diagnostics: readonly DfcOfficePdfRuntimeDiagnostic[]
+  runtime: DfcOfficePdfManagedRuntimeExecutionDescriptor
+}>
+
+export type DfcLibreOfficePluginManagedRuntimeHandleAvailability =
+  | Readonly<{
+      ok: true
+      handle: DfcLibreOfficePluginManagedRuntimeHandle
+      summary: DfcOfficePdfRuntimeAvailabilitySummary
+      diagnostics: readonly DfcOfficePdfRuntimeDiagnostic[]
+    }>
+  | Readonly<{
+      ok: false
+      handle: null
+      summary: DfcOfficePdfRuntimeAvailabilitySummary
+      diagnostics: readonly DfcOfficePdfRuntimeDiagnostic[]
+    }>
+
 export type DfcLibreOfficePluginLifecycleStatus = 'installed' | 'missing' | 'unhealthy' | 'blocked' | 'experimental'
 
 export type DfcLibreOfficePluginLifecycleBridge = Readonly<{
@@ -495,6 +532,67 @@ export function getDfcLibreOfficeFirstPartyRuntimeCatalogEntry(): DfcLibreOffice
     },
     productionApproved: false,
     experimental: true,
+  }
+}
+
+export async function resolveDfcLibreOfficePluginManagedRuntimeHandle(input: Readonly<{
+  managedRuntimeRootDir: string
+  capabilityId?: DfcLibreOfficePluginManagedRuntimeCapabilityId
+  platform?: NodeJS.Platform
+  arch?: string
+  pluginEnabled?: boolean | null
+  lifecycleSummary?: DfcOfficePdfRuntimeAvailabilitySummary | null
+  allowExperimental?: boolean | null
+  productionOnly?: boolean | null
+}>): Promise<DfcLibreOfficePluginManagedRuntimeHandleAvailability> {
+  const capabilityId = input.capabilityId ?? 'docx_to_pdf'
+  const lifecycleSummary = input.lifecycleSummary ?? null
+  if (lifecycleSummary && !isRuntimeSummaryUsableForAdapter(lifecycleSummary, input)) {
+    return unavailableHandle(lifecycleSummary)
+  }
+
+  const availability = await resolveDfcLibreOfficeRuntimeExecutionDescriptor({
+    managedRuntimeRootDir: input.managedRuntimeRootDir,
+    platform: input.platform,
+    arch: input.arch,
+    pluginEnabled: input.pluginEnabled,
+  })
+  if (!availability.ok) return unavailableHandle(availability.summary, availability.diagnostics)
+
+  const summary = lifecycleSummary ?? availability.summary
+  if (!isRuntimeSummaryUsableForAdapter(summary, input)) {
+    return unavailableHandle(summary)
+  }
+  const bridge = toDfcLibreOfficePluginLifecycleBridge(summary)
+  const executableRelativePath = toManagedRelativePath(availability.runtime.managedRuntimeRootDir, availability.runtime.executablePath)
+  if (!executableRelativePath) {
+    return unavailableHandle(unavailableSummary('office_pdf_runtime_path_rejected', 'Office PDF runtime executable path is outside the managed runtime root.'))
+  }
+
+  return {
+    ok: true,
+    handle: {
+      pluginId: DFC_OFFICE_PDF_PLUGIN_ID,
+      runtimeId: DFC_OFFICE_PDF_RUNTIME_ID,
+      capabilityId,
+      executablePath: availability.runtime.executablePath,
+      executableRelativePath,
+      platform: availability.runtime.platform,
+      arch: availability.runtime.arch,
+      runtimeVersion: availability.runtime.libreOfficeVersion,
+      packageVersion: availability.runtime.packageVersion,
+      source: summary.source,
+      healthStatus: summary.healthStatus,
+      productionApproved: false,
+      experimental: bridge.experimental,
+      degraded: bridge.experimental || !bridge.productionApproved || summary.source !== 'managed_manifest',
+      productCode: summary.productCode,
+      internalCode: summary.internalCode,
+      diagnostics: availability.diagnostics,
+      runtime: availability.runtime,
+    },
+    summary,
+    diagnostics: availability.diagnostics,
   }
 }
 
@@ -1016,6 +1114,43 @@ function runtimeSourceFromManifest(manifest: DfcOfficePdfRuntimeManifest): DfcOf
     return 'imported_dev_artifact'
   }
   return 'managed_manifest'
+}
+
+function isRuntimeSummaryUsableForAdapter(
+  summary: DfcOfficePdfRuntimeAvailabilitySummary,
+  input: Readonly<{
+    allowExperimental?: boolean | null
+    productionOnly?: boolean | null
+  }>
+): boolean {
+  if (summary.status !== 'available' && summary.status !== 'experimental') return false
+  if (summary.healthStatus !== 'healthy') return false
+  if (!summary.runtime) return false
+  if (input.productionOnly === true && (summary.source === 'fake_seam' || summary.source === 'imported_dev_artifact')) {
+    return false
+  }
+  if (input.allowExperimental === false && summary.status === 'experimental') return false
+  return true
+}
+
+function unavailableHandle(
+  summary: DfcOfficePdfRuntimeAvailabilitySummary,
+  diagnostics?: readonly DfcOfficePdfRuntimeDiagnostic[]
+): DfcLibreOfficePluginManagedRuntimeHandleAvailability {
+  return {
+    ok: false,
+    handle: null,
+    summary,
+    diagnostics: diagnostics ?? (summary.internalCode ? [{ code: summary.internalCode, message: summary.message }] : []),
+  }
+}
+
+function toManagedRelativePath(root: string, candidate: string): string | null {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate)).replace(/\\/gu, '/')
+  if (!relative || relative.startsWith('../') || relative === '..' || path.isAbsolute(relative) || NUL_RE.test(relative)) {
+    return null
+  }
+  return relative
 }
 
 function lifecycleStatusFromAvailability(

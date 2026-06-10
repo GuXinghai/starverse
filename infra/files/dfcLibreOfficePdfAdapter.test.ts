@@ -15,7 +15,7 @@ import {
   DFC_OFFICE_PDF_RUNTIME_ID,
   DFC_OFFICE_PDF_RUNTIME_KIND,
   DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
-  type DfcOfficePdfManagedRuntimeExecutionDescriptor,
+  type DfcLibreOfficePluginManagedRuntimeHandle,
 } from './dfcManagedLibreOfficeRuntime'
 
 describe('DFC LibreOffice DOCX to PDF adapter skeleton', () => {
@@ -67,7 +67,7 @@ describe('DFC LibreOffice DOCX to PDF adapter skeleton', () => {
       expect.stringMatching(/^-env:UserInstallation=file:/),
       expect.stringContaining(`${path.sep}input${path.sep}asset-docx-pdf-success.docx`),
     ]))
-    expect(JSON.stringify(result.diagnostics)).not.toContain(runtime.managedRuntimeRootDir)
+    expect(JSON.stringify(result.diagnostics)).not.toContain(runtime.runtime.managedRuntimeRootDir)
     expect(JSON.stringify(result.diagnostics)).not.toContain(runtime.executablePath)
   })
 
@@ -264,12 +264,12 @@ describe('DFC LibreOffice DOCX to PDF adapter skeleton', () => {
   })
 })
 
-async function fakeRuntime(): Promise<DfcOfficePdfManagedRuntimeExecutionDescriptor> {
+async function fakeRuntime(): Promise<DfcLibreOfficePluginManagedRuntimeHandle> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-runtime-adapter-'))
   const executablePath = path.join(root, 'program', process.platform === 'win32' ? 'soffice.exe' : 'soffice')
   await mkdir(path.dirname(executablePath), { recursive: true })
   await writeFile(executablePath, Buffer.from('fake managed soffice executable'))
-  return {
+  const runtime = {
     managedRuntimeRootDir: root,
     executablePath,
     pluginId: DFC_OFFICE_PDF_PLUGIN_ID,
@@ -295,6 +295,26 @@ async function fakeRuntime(): Promise<DfcOfficePdfManagedRuntimeExecutionDescrip
       releaseTag: 'test-libreoffice-fixture',
       provenance: 'starverse-test-fixture',
     },
+  } as const
+  return {
+    pluginId: DFC_OFFICE_PDF_PLUGIN_ID,
+    runtimeId: DFC_OFFICE_PDF_RUNTIME_ID,
+    capabilityId: 'docx_to_pdf',
+    executablePath,
+    executableRelativePath: `program/${process.platform === 'win32' ? 'soffice.exe' : 'soffice'}`,
+    platform: process.platform,
+    arch: process.arch,
+    runtimeVersion: '24.8.0',
+    packageVersion: '2026.06.01',
+    source: 'fake_seam',
+    healthStatus: 'healthy',
+    productionApproved: false,
+    experimental: true,
+    degraded: true,
+    productCode: null,
+    internalCode: null,
+    diagnostics: [],
+    runtime,
   }
 }
 
