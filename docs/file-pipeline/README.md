@@ -109,11 +109,11 @@ Current DFC implementation and planning must use the v1.2 topic directory:
 - `document-format-conversion/progress-ledger.md`: append-only DFC implementation ledger.
 - `document-format-conversion/important-context.md`: context recovery entry point for current DFC work.
 - `document-format-conversion/dfc-m32-deadline-closeout-demo-readiness.md`: latest supported/pilot/unsupported matrix at the DFC-M32 closeout.
-- `document-format-conversion/dfc-libreoffice-plugin-management-closeout.md`: Task 8 closeout for the LibreOffice Plugin Management integration route, Owner gate, verification matrix, and production-claim boundary.
+- `document-format-conversion/dfc-libreoffice-plugin-management-closeout.md`: Task 10 closeout for the LibreOffice Plugin Management integration route, acquisition/download pipeline, release/upload blockers, Owner gate, verification matrix, and production-claim boundary.
 
 Current DFC work must not follow the superseded v1.0 Hybrid / mixed send strategy route. `original_file` is a first-class target, `SendAssetRef` distinguishes `raw_file` and `derived_asset`, and Attachment Shelf + Attachment Detail Inspector is the current UI direction.
 
-LibreOffice Office-to-PDF is currently owner-gated and experimental. The current product path is DOCX-only `pdf_attachment` through the managed runtime handle; imported dev artifacts and fake seams are not production package authority, no LibreOffice binary is committed, and system LibreOffice/PATH fallback remains disallowed.
+LibreOffice Office-to-PDF is currently owner-gated and experimental. The current product path is DOCX-only `pdf_attachment` through the managed runtime handle; imported dev artifacts and fake seams are not production package authority, no LibreOffice binary is committed, no GitHub release asset has been uploaded, and system LibreOffice/PATH fallback remains disallowed.
 
 ### Historical Reference
 
