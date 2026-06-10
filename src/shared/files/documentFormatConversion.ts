@@ -188,6 +188,16 @@ export type DfcManagedAttachmentDecision = Readonly<{
 export type DfcSanitizedDiagnostic = Readonly<{
   code: string
   message: string
+  severity?: 'info' | 'warning' | 'error'
+  productCode?: string | null
+  internalCode?: string | null
+  runtimeStatus?: string | null
+  runtimeSource?: string | null
+  productionApproved?: boolean | null
+  ownerGated?: boolean | null
+  experimental?: boolean | null
+  degraded?: boolean | null
+  fallbackTargetKinds?: readonly DfcTargetKind[]
 }>
 
 export type DfcSanitizedAttachmentDto = Readonly<{

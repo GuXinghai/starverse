@@ -36,6 +36,7 @@ import {
   DFC_OFFICE_PDF_RUNTIME_KIND,
   DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
   getDfcLibreOfficeManagedRuntimeRoot,
+  type DfcOfficePdfRuntimeManifest,
 } from '../files/dfcManagedLibreOfficeRuntime'
 
 const describeIfBetterSqlite = canOpenBetterSqliteForSuite('file pipeline worker handlers') ? describe : describe.skip
@@ -529,7 +530,7 @@ function dfcSettingsHash(targetKind: string): string {
   return createHash('sha256').update(Buffer.from(JSON.stringify({ targetKind }))).digest('hex')
 }
 
-async function writeLibreOfficeRuntimeFixture(root: string): Promise<void> {
+async function writeLibreOfficeRuntimeFixture(root: string, overrides: Partial<DfcOfficePdfRuntimeManifest> = {}): Promise<void> {
   const executablePath = process.platform === 'win32' ? 'program/soffice.exe' : 'program/soffice'
   const executable = Buffer.from('fake soffice executable')
   await mkdir(path.join(root, 'program'), { recursive: true })
@@ -572,6 +573,7 @@ async function writeLibreOfficeRuntimeFixture(root: string): Promise<void> {
       embeddedObjectExecutionDisabled: true,
       isolatedProfileRequired: true,
     },
+    ...overrides,
   }))
 }
 
@@ -1578,7 +1580,16 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       isAvailable: false,
       compatibilityStatus: 'blocked',
       sendAssetRefs: [],
-      diagnostics: [expect.objectContaining({ code: 'conversion_engine_missing' })],
+      diagnostics: [expect.objectContaining({
+        code: 'conversion_engine_missing',
+        productCode: 'conversion_engine_missing',
+        internalCode: 'office_pdf_runtime_missing',
+        runtimeStatus: 'missing',
+        productionApproved: false,
+        ownerGated: true,
+        experimental: true,
+        fallbackTargetKinds: ['markdown', 'original_file'],
+      })],
     })
     expect(generationState).toMatchObject({
       targetKind: 'pdf_attachment',
@@ -1622,6 +1633,71 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
         }),
       },
     })
+  })
+
+  it('exposes DOCX pdf_attachment product diagnostics when LibreOffice runtime is policy blocked', async () => {
+    const { handlers } = createWorkerHarness()
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const runtimeRoot = getDfcLibreOfficeManagedRuntimeRoot(storageRootDir)
+    await writeLibreOfficeRuntimeFixture(runtimeRoot, { enabled: false })
+    const assetId = 'asset-docx-office-pdf-policy-blocked-runtime'
+    const storageUri = 'assets/original/do/asset-docx-office-pdf-policy-blocked-runtime.docx'
+    const docxBytes = createMinimalDocxBuffer()
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), docxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-policy-blocked-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-docx-office-pdf-policy-blocked-source-hash',
+        filename: 'office-pdf-policy-blocked.docx',
+        extension: 'docx',
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        sizeBytes: docxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-policy-blocked-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-policy-blocked-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const options = (ensured as any).result.options as any[]
+    const pdfOption = options.find((option) => option.targetKind === 'pdf_attachment')
+    const markdownOption = options.find((option) => option.targetKind === 'markdown')
+    const originalOption = options.find((option) => option.targetKind === 'original_file')
+
+    expect(pdfOption).toMatchObject({
+      targetKind: 'pdf_attachment',
+      status: 'blocked',
+      isAvailable: false,
+      diagnostics: [expect.objectContaining({
+        code: 'conversion_sandbox_denied',
+        productCode: 'conversion_sandbox_denied',
+        internalCode: 'office_pdf_runtime_quarantined',
+        runtimeStatus: 'blocked',
+        productionApproved: false,
+        ownerGated: true,
+        experimental: true,
+        degraded: true,
+        fallbackTargetKinds: ['markdown', 'original_file'],
+      })],
+    })
+    expect(markdownOption).toMatchObject({ targetKind: 'markdown', status: 'ready', isAvailable: true })
+    expect(originalOption).toMatchObject({ targetKind: 'original_file', status: 'ready', isAvailable: true })
+    const ensuredJson = JSON.stringify((ensured as any).result)
+    expect(ensuredJson).not.toContain(runtimeRoot)
+    expect(ensuredJson).not.toContain(storageUri)
   })
 
   it('accepts a fake LibreOffice runtime gate fixture without running Office-to-PDF conversion', async () => {
@@ -1681,7 +1757,15 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       isAvailable: false,
       compatibilityStatus: 'blocked',
       sendAssetRefs: [],
-      diagnostics: [expect.objectContaining({ code: 'conversion_engine_unhealthy' })],
+      diagnostics: [expect.objectContaining({
+        code: 'conversion_engine_unhealthy',
+        productCode: 'conversion_engine_unhealthy',
+        internalCode: 'office_pdf_runtime_manifest_invalid',
+        runtimeStatus: 'unhealthy',
+        productionApproved: false,
+        ownerGated: true,
+        fallbackTargetKinds: ['markdown', 'original_file'],
+      })],
     })
     expect(generationState).toMatchObject({
       status: 'blocked',

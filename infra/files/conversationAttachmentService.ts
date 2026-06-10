@@ -930,7 +930,7 @@ export class ConversationAttachmentService {
       warnings: [...(option.warnings ?? [])],
       diagnostics: [
         ...(option.unavailableReason
-          ? [{ code: option.unavailableReason, message: `DFC option unavailable: ${option.unavailableReason}` }]
+          ? [dfcUnavailableDiagnostic(option)]
           : []),
         ...extraDiagnostics,
       ],
@@ -1494,6 +1494,73 @@ function dfcTextPreviewPayload(text: string, maxCharacters: number): DfcDraftAtt
 
 function dfcDiagnostic(code: string, message: string): DfcSanitizedDiagnostic {
   return { code, message }
+}
+
+function dfcUnavailableDiagnostic(option: DfcConversionOption): DfcSanitizedDiagnostic {
+  const code = option.unavailableReason ?? 'dfc_option_unavailable'
+  if (option.targetKind !== 'pdf_attachment' || !isOfficePdfProductCode(code)) {
+    return dfcDiagnostic(code, `DFC option unavailable: ${code}`)
+  }
+  return {
+    code,
+    message: officePdfProductGateMessage(code),
+    severity: 'warning',
+    productCode: code,
+    internalCode: officePdfInternalCodeFromProductCode(code),
+    runtimeStatus: officePdfRuntimeStatusFromProductCode(code),
+    runtimeSource: null,
+    productionApproved: false,
+    ownerGated: true,
+    experimental: true,
+    degraded: code !== 'conversion_engine_missing',
+    fallbackTargetKinds: ['markdown', 'original_file'],
+  }
+}
+
+function isOfficePdfProductCode(code: string): boolean {
+  return code === 'conversion_engine_missing'
+    || code === 'conversion_engine_unhealthy'
+    || code === 'conversion_engine_timeout'
+    || code === 'conversion_engine_failed'
+    || code === 'conversion_sandbox_denied'
+}
+
+function officePdfProductGateMessage(code: string): string {
+  switch (code) {
+    case 'conversion_engine_missing':
+      return 'Office PDF conversion is unavailable because the LibreOffice managed runtime is missing. Use Markdown or the original file instead.'
+    case 'conversion_sandbox_denied':
+      return 'Office PDF conversion is blocked by LibreOffice runtime policy or quarantine. Use Markdown or the original file instead.'
+    case 'conversion_engine_timeout':
+      return 'Office PDF conversion timed out in the experimental LibreOffice runtime. Use Markdown or the original file instead.'
+    case 'conversion_engine_failed':
+      return 'Office PDF conversion failed in the experimental LibreOffice runtime. Use Markdown or the original file instead.'
+    default:
+      return 'Office PDF conversion is unavailable because the experimental LibreOffice managed runtime is unhealthy. Use Markdown or the original file instead.'
+  }
+}
+
+function officePdfInternalCodeFromProductCode(code: string): string | null {
+  switch (code) {
+    case 'conversion_engine_missing':
+      return 'office_pdf_runtime_missing'
+    case 'conversion_engine_unhealthy':
+      return 'office_pdf_runtime_manifest_invalid'
+    case 'conversion_sandbox_denied':
+      return 'office_pdf_runtime_quarantined'
+    case 'conversion_engine_timeout':
+      return 'office_pdf_runtime_timeout'
+    case 'conversion_engine_failed':
+      return 'office_pdf_runtime_failed'
+    default:
+      return null
+  }
+}
+
+function officePdfRuntimeStatusFromProductCode(code: string): string {
+  if (code === 'conversion_engine_missing') return 'missing'
+  if (code === 'conversion_sandbox_denied') return 'blocked'
+  return 'unhealthy'
 }
 
 function parseJsonObject(json: string | null | undefined): Record<string, unknown> | null {

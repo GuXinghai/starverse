@@ -517,6 +517,16 @@ const dfcDecisionReasonCodeSchema = z.enum([
 const dfcDiagnosticSchema = z.object({
   code: nonEmpty,
   message: z.string(),
+  severity: z.enum(['info', 'warning', 'error']).optional(),
+  productCode: z.string().trim().nullable().optional(),
+  internalCode: z.string().trim().nullable().optional(),
+  runtimeStatus: z.string().trim().nullable().optional(),
+  runtimeSource: z.string().trim().nullable().optional(),
+  productionApproved: z.boolean().nullable().optional(),
+  ownerGated: z.boolean().nullable().optional(),
+  experimental: z.boolean().nullable().optional(),
+  degraded: z.boolean().nullable().optional(),
+  fallbackTargetKinds: z.array(dfcTargetKindSchema).optional(),
 })
 
 const dfcAttachmentAuditSchema = z.object({
