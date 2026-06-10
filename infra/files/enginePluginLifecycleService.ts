@@ -153,6 +153,21 @@ export type InstalledEnginePluginDto = Readonly<{
   errorChain: PluginLayeredErrorChainDto | null
   releaseProvenance: OfficialReleaseProvenanceDto | null
   previousKnownGood: PreviousKnownGoodDto | null
+  productGate?: EnginePluginProductGateDto | null
+}>
+
+export type EnginePluginProductGateDto = Readonly<{
+  status: 'available' | 'unavailable' | 'blocked' | 'experimental' | 'degraded' | 'quarantined' | 'missing' | 'unhealthy'
+  productCode: string | null
+  internalCode: string | null
+  productionApproved: boolean
+  ownerGated: boolean
+  experimental: boolean
+  degraded: boolean
+  quarantined: boolean
+  source: string | null
+  fallbackTargetKinds: readonly string[]
+  message: string
 }>
 
 export type PluginLayeredErrorChainDto = Readonly<{
@@ -382,6 +397,7 @@ export type EngineDiagnosticsEntry = Readonly<{
   modelVersion: string | null
   failureReason: string | null
   installSource: string | null
+  productGate?: EnginePluginProductGateDto | null
 }>
 
 export class EnginePluginLifecycleService {
@@ -1858,6 +1874,7 @@ function toLibreOfficeInstalledDto(
     errorChain: failureReason ? buildErrorChainFromFailureReason(failureReason) : null,
     releaseProvenance: null,
     previousKnownGood: null,
+    productGate: toLibreOfficeProductGate(bridge, healthStatus),
   }
 }
 
@@ -1875,6 +1892,7 @@ function toLibreOfficeDiagnosticsEntry(bridge: DfcLibreOfficePluginLifecycleBrid
     modelVersion: null,
     failureReason: toLibreOfficeFailureReason(bridge, healthStatus),
     installSource: libreOfficeInstallSource(bridge),
+    productGate: toLibreOfficeProductGate(bridge, healthStatus),
   }
 }
 
@@ -1941,6 +1959,38 @@ function toLibreOfficeFailureReason(
     ? 'owner_gate_not_production_approved'
     : `${bridge.source}_not_production_approved`
   return null
+}
+
+function toLibreOfficeProductGate(
+  bridge: DfcLibreOfficePluginLifecycleBridge,
+  healthStatus: EnginePluginRegistryRecord['healthStatus']
+): EnginePluginProductGateDto {
+  const quarantined = bridge.internalCode === 'office_pdf_runtime_quarantined' || bridge.source === 'quarantined_runtime'
+  return {
+    status: quarantined
+      ? 'quarantined'
+      : bridge.healthStatus === 'missing'
+        ? 'missing'
+        : bridge.lifecycleStatus === 'blocked'
+          ? 'blocked'
+          : healthStatus === 'degraded'
+            ? 'degraded'
+            : bridge.lifecycleStatus === 'experimental'
+              ? 'experimental'
+              : bridge.installed
+                ? 'available'
+                : 'unhealthy',
+    productCode: bridge.productCode,
+    internalCode: bridge.internalCode,
+    productionApproved: bridge.productionApproved,
+    ownerGated: !bridge.productionApproved,
+    experimental: bridge.experimental || !bridge.productionApproved,
+    degraded: healthStatus === 'degraded',
+    quarantined,
+    source: bridge.source,
+    fallbackTargetKinds: ['markdown', 'original_file'],
+    message: sanitizePluginDistributionText(bridge.message) ?? 'LibreOffice Office PDF runtime status is unavailable.',
+  }
 }
 
 function libreOfficeInstallSource(

@@ -1448,6 +1448,71 @@ describe('DFC renderer DTO sanitization', () => {
     expect(decoded.options[0]).not.toHaveProperty('body')
   })
 
+  it('decodeEnsureDfcDraftAttachmentOptionsResponse preserves Office PDF product gate diagnostics', () => {
+    const decoded = decodeEnsureDfcDraftAttachmentOptionsResponse({
+      attachmentId: 'draft-attachment-1',
+      conversationId: 'c1',
+      rawFileId: 'raw-1',
+      filename: 'office.docx',
+      sizeBytes: 42,
+      dfcManaged: false,
+      selectedOptionId: null,
+      selectedAssetRefs: [],
+      decision: {
+        status: 'needs_user_selection',
+        reasonCode: 'selected_option_missing',
+        selectedOptionId: null,
+        targetKind: null,
+        sendStrategy: null,
+        sendAssetRefs: [],
+        needsUserAction: true,
+      },
+      options: [{
+        optionId: 'dfc:raw-1:pdf_attachment:generation:state-1',
+        targetKind: 'pdf_attachment',
+        sendStrategy: 'file_attachment',
+        status: 'blocked',
+        isAvailable: false,
+        compatibilityStatus: 'blocked',
+        sendAssetRefs: [],
+        warnings: [],
+        diagnostics: [{
+          code: 'conversion_sandbox_denied',
+          message: 'Office PDF conversion is blocked.',
+          severity: 'warning',
+          productCode: 'conversion_sandbox_denied',
+          internalCode: 'office_pdf_runtime_quarantined',
+          runtimeStatus: 'blocked',
+          runtimeSource: 'quarantined_runtime',
+          productionApproved: false,
+          ownerGated: true,
+          experimental: true,
+          degraded: true,
+          fallbackTargetKinds: ['markdown', 'original_file'],
+          path: 'C:\\Users\\owner\\secret\\soffice.exe',
+        }],
+        storageUri: 'assets/derived/raw-1/secret.pdf',
+      }],
+    })
+
+    expect(decoded.options[0]?.diagnostics[0]).toEqual({
+      code: 'conversion_sandbox_denied',
+      message: 'Office PDF conversion is blocked.',
+      severity: 'warning',
+      productCode: 'conversion_sandbox_denied',
+      internalCode: 'office_pdf_runtime_quarantined',
+      runtimeStatus: 'blocked',
+      runtimeSource: 'quarantined_runtime',
+      productionApproved: false,
+      ownerGated: true,
+      experimental: true,
+      degraded: true,
+      fallbackTargetKinds: ['markdown', 'original_file'],
+    })
+    expect(decoded.options[0]).not.toHaveProperty('storageUri')
+    expect(decoded.options[0]?.diagnostics[0]).not.toHaveProperty('path')
+  })
+
   it('decodeDfcDraftAttachmentPreviewResponse exposes selected preview text without storage refs or hashes', () => {
     const decoded = decodeDfcDraftAttachmentPreviewResponse({
       attachmentId: 'draft-attachment-1',

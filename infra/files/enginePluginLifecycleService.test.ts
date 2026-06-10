@@ -2437,6 +2437,16 @@ describe('EnginePluginLifecycleService', () => {
         installRootKind: 'test_root',
         modelVersion: null,
         releaseProvenance: null,
+        productGate: {
+          status: 'degraded',
+          productionApproved: false,
+          ownerGated: true,
+          experimental: true,
+          degraded: true,
+          quarantined: false,
+          source: 'fake_seam',
+          fallbackTargetKinds: ['markdown', 'original_file'],
+        },
       })
 
       const diagnostics = service.getDiagnosticsSummary()
@@ -2450,6 +2460,12 @@ describe('EnginePluginLifecycleService', () => {
         pluginVersion: '0.1.0',
         failureReason: 'fake_seam_not_production_approved',
         installSource: 'local_package',
+        productGate: expect.objectContaining({
+          status: 'degraded',
+          productionApproved: false,
+          ownerGated: true,
+          source: 'fake_seam',
+        }),
       })
       expect(diagnostics.counts.installed).toBe(1)
       expect(diagnostics.counts.failed).toBe(1)
@@ -2485,6 +2501,14 @@ describe('EnginePluginLifecycleService', () => {
         failureReason: 'conversion_engine_missing',
         installSource: 'official_catalog',
         installRootKind: 'managed_root',
+        productGate: expect.objectContaining({
+          status: 'missing',
+          productCode: 'conversion_engine_missing',
+          internalCode: 'office_pdf_runtime_missing',
+          productionApproved: false,
+          ownerGated: true,
+          fallbackTargetKinds: ['markdown', 'original_file'],
+        }),
       })
       expect(repo.getByEngineId('libreoffice')).toBeNull()
 
@@ -2496,6 +2520,10 @@ describe('EnginePluginLifecycleService', () => {
         enabled: false,
         healthStatus: 'unhealthy',
         failureReason: 'conversion_engine_missing',
+        productGate: expect.objectContaining({
+          status: 'missing',
+          productCode: 'conversion_engine_missing',
+        }),
       })
       expect(diagnostics.counts.installed).toBe(0)
     } finally {
@@ -2529,6 +2557,14 @@ describe('EnginePluginLifecycleService', () => {
         failureReason: 'conversion_sandbox_denied',
         installSource: 'official_catalog',
         installRootKind: 'managed_root',
+        productGate: expect.objectContaining({
+          status: 'quarantined',
+          productCode: 'conversion_sandbox_denied',
+          internalCode: 'office_pdf_runtime_quarantined',
+          quarantined: true,
+          productionApproved: false,
+          ownerGated: true,
+        }),
       })
 
       const diagnostics = service.getDiagnosticsSummary()
@@ -2539,6 +2575,10 @@ describe('EnginePluginLifecycleService', () => {
         enabled: false,
         healthStatus: 'unhealthy',
         failureReason: 'conversion_sandbox_denied',
+        productGate: expect.objectContaining({
+          status: 'quarantined',
+          quarantined: true,
+        }),
       })
       expect(diagnostics.counts.installed).toBe(0)
     } finally {
@@ -2564,6 +2604,14 @@ describe('EnginePluginLifecycleService', () => {
         failureReason: 'imported_dev_artifact_not_production_approved',
         installSource: 'local_package',
         installRootKind: 'test_root',
+        productGate: expect.objectContaining({
+          status: 'degraded',
+          source: 'imported_dev_artifact',
+          productionApproved: false,
+          ownerGated: true,
+          experimental: true,
+          degraded: true,
+        }),
       })
     } finally {
       db.close()
