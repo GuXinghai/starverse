@@ -2581,7 +2581,7 @@ describe('EnginePluginLifecycleService', () => {
     }
   })
 
-  it('lists embedded official Magika when the production trusted root is configured', async () => {
+  it('lists embedded official Magika and LibreOffice catalog contracts when the production trusted root is configured', async () => {
     const fixture = await createFixture()
     const officialRoots = createOfficialTrustedRoots(MAGIKA_OFFICIAL_PUBLIC_KEY_PEM)
     const { db, service } = createService(fixture.tempRoot, officialRoots, { trustedRootSource: 'official' })
@@ -2589,8 +2589,10 @@ describe('EnginePluginLifecycleService', () => {
       const result = await service.listOfficialPlugins()
       expect(result.ok).toBe(true)
       if (!result.ok) return
-      expect(result.value).toHaveLength(1)
-      expect(result.value[0]).toMatchObject({
+      expect(result.value).toHaveLength(2)
+      const magika = result.value.find((entry) => entry.pluginId === 'magika')
+      const libreOffice = result.value.find((entry) => entry.pluginId === 'libreoffice')
+      expect(magika).toMatchObject({
         pluginId: 'magika',
         displayName: 'Magika',
         pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION,
@@ -2600,6 +2602,64 @@ describe('EnginePluginLifecycleService', () => {
         verificationMetadataStatus: 'production_signature_available',
         recommendedInstallRootKind: 'managed_root',
       })
+      expect(libreOffice).toMatchObject({
+        pluginId: 'libreoffice',
+        displayName: 'LibreOffice Office PDF',
+        publisher: 'Starverse',
+        pluginVersion: '0.1.0',
+        runtimeKind: 'managed',
+        capabilities: ['document_conversion'],
+        installState: 'not_installed',
+        enabled: false,
+        installabilityStatus: 'unavailable_read_only',
+        verificationMetadataStatus: 'metadata_present_crypto_deferred',
+        recommendedInstallRootKind: 'managed_root',
+        releaseProvenance: null,
+      })
+      expect(libreOffice?.reasons).toEqual(expect.arrayContaining([
+        'first_party_managed_runtime',
+        'owner_gated_experimental',
+        'production_approval_missing',
+        'packaged_binary_not_included',
+        'system_path_fallback_disabled',
+      ]))
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('reflects imported LibreOffice runtime state in the embedded catalog contract', async () => {
+    const fixture = await createFixture()
+    const officialRoots = createOfficialTrustedRoots(MAGIKA_OFFICIAL_PUBLIC_KEY_PEM)
+    const { db, service } = createService(fixture.tempRoot, officialRoots, {
+      trustedRootSource: 'official',
+      dfcLibreOfficeRuntimeSummary: () => dfcLibreOfficeSummary({
+        source: 'imported_dev_artifact',
+        message: 'LibreOffice imported dev artifact is available for owner-gated Office PDF conversion.',
+      }),
+    })
+    try {
+      const result = await service.listOfficialPlugins()
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      const libreOffice = result.value.find((entry) => entry.pluginId === 'libreoffice')
+      expect(libreOffice).toMatchObject({
+        pluginId: 'libreoffice',
+        installState: 'installed',
+        enabled: true,
+        installabilityStatus: 'unavailable_read_only',
+        verificationMetadataStatus: 'metadata_present_crypto_deferred',
+      })
+      expect(libreOffice?.reasons).toEqual(expect.arrayContaining([
+        'runtime_source_imported_dev_artifact',
+        'runtime_lifecycle_experimental',
+        'production_approval_missing',
+      ]))
+      expect(libreOffice?.warnings).toEqual(expect.arrayContaining([
+        'libreoffice_catalog_contract_only',
+        'not_production_supported_runtime',
+      ]))
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })

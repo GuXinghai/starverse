@@ -6,7 +6,10 @@ import {
   DFC_OFFICE_PDF_RUNTIME_MANIFEST,
   getDfcLibreOfficeManagedRuntimeRoot,
   resolveDfcLibreOfficeRuntimeExecutionDescriptor,
+  toDfcLibreOfficePluginLifecycleBridge,
+  type DfcLibreOfficePluginLifecycleBridge,
   type DfcOfficePdfManagedRuntimeExecutionDescriptor,
+  type DfcOfficePdfRuntimeAvailabilitySummary,
 } from './dfcManagedLibreOfficeRuntime'
 
 export type DfcLibreOfficeManagedPackageInstallDiagnosticCode =
@@ -38,12 +41,28 @@ export type DfcLibreOfficePreviousKnownGoodRuntime = Readonly<{
   revoked: boolean
 }>
 
+export type DfcLibreOfficeManagedPackagePluginImportContract = Readonly<{
+  operation: 'import'
+  installKind: 'imported_dev_artifact'
+  productionApproved: false
+  activeRuntimeRef: 'managed_runtime_root'
+  bridge: DfcLibreOfficePluginLifecycleBridge
+  verification: Readonly<{
+    manifestValidated: boolean
+    artifactHashVerified: boolean
+    executableHashVerified: boolean
+    packageMetadataVerified: boolean
+    securityPolicyVerified: boolean
+  }>
+}>
+
 export type DfcLibreOfficeManagedPackageInstallResult =
   | Readonly<{
       ok: true
       activeRuntimeRootDir: string
       runtime: DfcOfficePdfManagedRuntimeExecutionDescriptor
       previousKnownGood: DfcLibreOfficePreviousKnownGoodRuntime | null
+      pluginManagement: DfcLibreOfficeManagedPackagePluginImportContract
       cleanupStatus: 'attempted' | 'not_needed' | 'failed'
       diagnostics: readonly DfcLibreOfficeManagedPackageDiagnostic[]
     }>
@@ -52,6 +71,7 @@ export type DfcLibreOfficeManagedPackageInstallResult =
       activeRuntimeRootDir: null
       runtime: null
       previousKnownGood: null
+      pluginManagement: DfcLibreOfficeManagedPackagePluginImportContract
       cleanupStatus: 'attempted' | 'not_needed' | 'failed'
       diagnostics: readonly DfcLibreOfficeManagedPackageDiagnostic[]
     }>
@@ -191,6 +211,7 @@ export async function importDfcLibreOfficeManagedRuntimePackage(
       activeRuntimeRootDir: activeRoot,
       runtime: activeAvailability.runtime,
       previousKnownGood,
+      pluginManagement: toPluginImportContract(activeAvailability.summary, true),
       cleanupStatus,
       diagnostics: [],
     }
@@ -334,6 +355,7 @@ function failed(
     activeRuntimeRootDir: null,
     runtime: null,
     previousKnownGood: null,
+    pluginManagement: toPluginImportContract(failedSummary(code, message), false),
     cleanupStatus,
     diagnostics: [diagnostic(code, message)],
   }
@@ -365,4 +387,57 @@ function diagnostic(
 
 export function sha256ForDfcLibreOfficeManagedPackageInstaller(bytes: Uint8Array): string {
   return createHash('sha256').update(Buffer.from(bytes)).digest('hex')
+}
+
+function toPluginImportContract(
+  summary: DfcOfficePdfRuntimeAvailabilitySummary,
+  verified: boolean
+): DfcLibreOfficeManagedPackagePluginImportContract {
+  const importSummary: DfcOfficePdfRuntimeAvailabilitySummary = summary.status === 'experimental' || summary.status === 'available'
+    ? {
+        ...summary,
+        source: summary.source === 'fake_seam' ? 'fake_seam' : 'imported_dev_artifact',
+      }
+    : summary
+  return {
+    operation: 'import',
+    installKind: 'imported_dev_artifact',
+    productionApproved: false,
+    activeRuntimeRef: 'managed_runtime_root',
+    bridge: toDfcLibreOfficePluginLifecycleBridge(importSummary),
+    verification: {
+      manifestValidated: verified,
+      artifactHashVerified: verified,
+      executableHashVerified: verified,
+      packageMetadataVerified: verified,
+      securityPolicyVerified: verified,
+    },
+  }
+}
+
+function failedSummary(
+  code: DfcLibreOfficeManagedPackageInstallDiagnosticCode,
+  message: string
+): DfcOfficePdfRuntimeAvailabilitySummary {
+  return {
+    status: code === 'office_pdf_install_revoked' || code === 'office_pdf_install_path_rejected'
+      ? 'blocked'
+      : 'unavailable',
+    healthStatus: code === 'office_pdf_install_source_missing' ? 'missing' : 'unhealthy',
+    productCode: code === 'office_pdf_install_source_missing'
+      ? 'conversion_engine_missing'
+      : code === 'office_pdf_install_path_rejected' || code === 'office_pdf_install_revoked'
+        ? 'conversion_sandbox_denied'
+        : 'conversion_engine_unhealthy',
+    internalCode: code === 'office_pdf_install_source_missing'
+      ? 'office_pdf_runtime_missing'
+      : code === 'office_pdf_install_path_rejected'
+        ? 'office_pdf_runtime_path_rejected'
+        : 'office_pdf_runtime_manifest_invalid',
+    message: sanitizePluginDistributionText(message) ?? 'Office PDF managed package import failed.',
+    retryable: code === 'office_pdf_install_source_missing',
+    recoverable: code !== 'office_pdf_install_revoked',
+    source: code === 'office_pdf_install_source_missing' ? 'missing_manifest' : 'managed_manifest',
+    runtime: null,
+  }
 }
