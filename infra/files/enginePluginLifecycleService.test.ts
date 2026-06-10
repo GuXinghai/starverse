@@ -2504,6 +2504,49 @@ describe('EnginePluginLifecycleService', () => {
     }
   })
 
+  it('maps quarantined LibreOffice runtime to blocked unhealthy plugin inventory', async () => {
+    const fixture = await createFixture()
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'test',
+      dfcLibreOfficeRuntimeSummary: () => dfcLibreOfficeSummary({
+        status: 'blocked',
+        healthStatus: 'blocked',
+        productCode: 'conversion_sandbox_denied',
+        internalCode: 'office_pdf_runtime_quarantined',
+        message: 'LibreOffice managed runtime is quarantined.',
+        retryable: false,
+        recoverable: true,
+        source: 'quarantined_runtime',
+        runtime: null,
+      }),
+    })
+    try {
+      const installed = service.getInstalledPlugins().find((entry) => entry.engineId === 'libreoffice')
+      expect(installed).toMatchObject({
+        installState: 'failed',
+        enabled: false,
+        healthStatus: 'unhealthy',
+        failureReason: 'conversion_sandbox_denied',
+        installSource: 'official_catalog',
+        installRootKind: 'managed_root',
+      })
+
+      const diagnostics = service.getDiagnosticsSummary()
+      const libreOffice = diagnostics.engines.find((entry) => entry.engineId === 'libreoffice')
+      expect(libreOffice).toMatchObject({
+        kind: 'plugin',
+        installed: false,
+        enabled: false,
+        healthStatus: 'unhealthy',
+        failureReason: 'conversion_sandbox_denied',
+      })
+      expect(diagnostics.counts.installed).toBe(0)
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
   it('does not declare imported LibreOffice dev artifacts as production healthy', async () => {
     const fixture = await createFixture()
     const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
@@ -2623,6 +2666,7 @@ describe('EnginePluginLifecycleService', () => {
         'production_approval_missing',
         'packaged_binary_not_included',
         'system_path_fallback_disabled',
+        'file_scoped_update_rollback_quarantine_repair_available',
       ]))
     } finally {
       db.close()
