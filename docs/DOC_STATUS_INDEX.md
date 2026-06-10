@@ -86,9 +86,13 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 | [file-pipeline/phase-7-derived-tasks-and-embeddings.md](file-pipeline/phase-7-derived-tasks-and-embeddings.md) | historical | closeout | Design | Phase 7 process record |
 | [file-pipeline/phase-8-preview-derivatives.md](file-pipeline/phase-8-preview-derivatives.md) | historical | closeout | Design | Phase 8 process record |
 | [file-pipeline/phase-9-frontend-ui-mvp.md](file-pipeline/phase-9-frontend-ui-mvp.md) | historical | closeout | Design | Phase 9 process record |
-| [file-pipeline/format-conversion-preview-progress.md](file-pipeline/format-conversion-preview-progress.md) | historical | closeout | Progress | Format conversion project log |
-| [file-pipeline/format-conversion-preview-implementation-plan.md](file-pipeline/format-conversion-preview-implementation-plan.md) | historical | closeout | Plan | Format conversion plan (reference) |
-| [file-pipeline/format-conversion-preview-final.md](file-pipeline/format-conversion-preview-final.md) | reference | ssot | Design | Format conversion final design — **SSOT for conversion design** |
+| [file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md](file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md) | active | ssot | DFC Design | Current document format conversion / preview SSOT |
+| [file-pipeline/document-format-conversion/progress-ledger.md](file-pipeline/document-format-conversion/progress-ledger.md) | active | ssot | DFC Progress | Append-only DFC implementation ledger |
+| [file-pipeline/document-format-conversion/important-context.md](file-pipeline/document-format-conversion/important-context.md) | active | entry | DFC Context | Recovery entry point for current DFC work |
+| [file-pipeline/document-format-conversion/dfc-m32-deadline-closeout-demo-readiness.md](file-pipeline/document-format-conversion/dfc-m32-deadline-closeout-demo-readiness.md) | reference | closeout | DFC Readiness | Latest supported/pilot/unsupported matrix |
+| [file-pipeline/document-format-conversion/archive/v1.0-superseded/format-conversion-preview-progress.md](file-pipeline/document-format-conversion/archive/v1.0-superseded/format-conversion-preview-progress.md) | archived | closeout | DFC History | Superseded v1.0 progress log; do not use as current implementation guidance |
+| [file-pipeline/document-format-conversion/archive/v1.0-superseded/format-conversion-preview-implementation-plan.md](file-pipeline/document-format-conversion/archive/v1.0-superseded/format-conversion-preview-implementation-plan.md) | archived | closeout | DFC History | Superseded v1.0 execution plan; contains old Hybrid route |
+| [file-pipeline/document-format-conversion/archive/v1.0-superseded/format-conversion-preview-final.md](file-pipeline/document-format-conversion/archive/v1.0-superseded/format-conversion-preview-final.md) | archived | spec | DFC History | Superseded v1.0 design; v1.2 is current SSOT |
 
 ---
 

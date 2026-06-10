@@ -638,7 +638,7 @@ Global stop rules:
 - `docs/file-pipeline/file-type-detection-implementation/51-phase6-user-level-magika-runtime-pilot-closeout.md`
 - `docs/file-pipeline/file-type-detection-implementation/53-phase6-magika-lifecycle-integration.md`
 - `docs/file-pipeline/progress-ledger.md`
-- `docs/file-pipeline/format-conversion-preview-final.md`
+- `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md`
 - `src/next/file-type/externalEngineManifest.ts`
 - `src/next/file-type/externalEngineRegistry.ts`
 - `src/next/file-type/externalEngineAvailability.ts`

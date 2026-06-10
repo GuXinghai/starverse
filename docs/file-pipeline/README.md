@@ -100,8 +100,24 @@ Phase 9 Step 8 is also complete and adds only closeout work:
 - `phase-8-preview-derivatives.md`: `preview_optimized` derivative responsibilities, generation boundaries, error semantics, and reserved conversion interfaces.
 - `phase-9-frontend-ui-mvp.md`: frontend MVP scope and Step 0-Step 8 status.
 - `progress-ledger.md`: completed work, frozen decisions, explicit non-goals, and phase dependencies.
-- `format-conversion-preview-final.md`: 文档格式转换、预览、发送计划、模型兼容性与安全治理的设计信源（非执行计划）。
-- `format-conversion-preview-implementation-plan.md`: 文档格式转换与预览的当前执行计划主文件（阶段、提交组织、验收与回滚依据）。
-- `format-conversion-preview-progress.md`: 文档格式转换与预览专项进度账本（调研、阶段进展、风险与决策记录）。
 
-注：`format-conversion-preview-final.md` 中的 Phase 1-6 仅保留为历史设计脉络，不是当前执行计划；当前执行与收官只看 `format-conversion-preview-implementation-plan.md` 和 `format-conversion-preview-progress.md`。
+## Document Format Conversion / DFC
+
+Current DFC implementation and planning must use the v1.2 topic directory:
+
+- `document-format-conversion/starverse_format_conversion_preview_v1_2.md`: current DFC SSOT for document format conversion, preview, Send Plan, compatibility, and safety boundaries.
+- `document-format-conversion/progress-ledger.md`: append-only DFC implementation ledger.
+- `document-format-conversion/important-context.md`: context recovery entry point for current DFC work.
+- `document-format-conversion/dfc-m32-deadline-closeout-demo-readiness.md`: latest supported/pilot/unsupported matrix at the DFC-M32 closeout.
+
+Current DFC work must not follow the superseded v1.0 Hybrid / mixed send strategy route. `original_file` is a first-class target, `SendAssetRef` distinguishes `raw_file` and `derived_asset`, and Attachment Shelf + Attachment Detail Inspector is the current UI direction.
+
+### Historical Reference
+
+The old root-level v1.0 files were moved to `document-format-conversion/archive/v1.0-superseded/`:
+
+- `document-format-conversion/archive/v1.0-superseded/format-conversion-preview-final.md`
+- `document-format-conversion/archive/v1.0-superseded/format-conversion-preview-implementation-plan.md`
+- `document-format-conversion/archive/v1.0-superseded/format-conversion-preview-progress.md`
+
+These archive files are historical reference only. Do not implement Hybrid, mixed send strategy, or old file-card modal UI from them.

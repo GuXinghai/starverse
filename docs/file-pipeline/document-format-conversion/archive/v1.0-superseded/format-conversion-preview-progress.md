@@ -1,3 +1,7 @@
+> Status: historical reference only.
+> Superseded by: `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md`
+> Do not implement Hybrid / mixed send strategy / old file-card modal UI from this document.
+
 # Starverse 文档格式转换与预览执行进度
 
 ## 0. 当前权威状态快照

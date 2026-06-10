@@ -396,11 +396,11 @@ The following work is explicitly **not part of the file identification roadmap**
 **Prerequisites from identification roadmap**: Phase 10 (trust gate for engine verification), Phase 11-A (encoding detection), Phase 11-B (FileAccessRef abstraction), Phase 11-D (parser validation seam).
 
 **Relevant existing documents**:
-- `docs/file-pipeline/format-conversion-preview-final.md` — conversion architecture and preview policies
+- `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md` — current conversion architecture and preview policies
 - `docs/file-pipeline/file-type-detection-implementation/48-phase5-p5e3-first-runtime-pilot-closeout.md` — Pandoc scaffold
 - `docs/file-pipeline/file-type-detection-implementation/34-p4c-external-conversion-engines-closeout.md` — conversion contract closeout
 
-**Status**: Not started. No conversion roadmap document exists. Fake scaffolds only.
+**Status**: Separate DFC roadmap exists under `docs/file-pipeline/document-format-conversion/`; this identification roadmap must not implement it. Existing scaffolds remain only supporting context unless activated by the DFC v1.2 plan.
 
 ### 10.2 Provider File Lifecycle Roadmap
 
@@ -524,7 +524,7 @@ None. Read-only document revision — all evidence from prior reads and audit co
 | `56-post-v1-future-phase-roadmap.md` (prior revision) | Baseline for correction |
 | `55-final-spec-coverage-audit.md` §6–§7 | Gap mapping reference |
 | `54-file-content-identification-v1-roadmap.md` | Scope boundaries |
-| `format-conversion-preview-final.md` | Conversion architecture reference |
+| `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md` | Current conversion architecture reference |
 | `progress-ledger.md` | File pipeline progress (separate domain) |
 
 ### 14.5 Files Changed
