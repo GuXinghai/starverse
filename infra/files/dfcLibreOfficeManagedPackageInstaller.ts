@@ -4,10 +4,12 @@ import path from 'node:path'
 import { sanitizePluginDistributionText } from '../../src/next/plugin-distribution/sanitization'
 import {
   DFC_OFFICE_PDF_RUNTIME_MANIFEST,
+  getDfcLibreOfficeRuntimePackageLayoutContract,
   getDfcLibreOfficeManagedRuntimeRoot,
   resolveDfcLibreOfficeRuntimeExecutionDescriptor,
   toDfcLibreOfficePluginLifecycleBridge,
   type DfcLibreOfficePluginLifecycleBridge,
+  type DfcLibreOfficeRuntimePackageLayoutContract,
   type DfcOfficePdfManagedRuntimeExecutionDescriptor,
   type DfcOfficePdfRuntimeAvailabilitySummary,
 } from './dfcManagedLibreOfficeRuntime'
@@ -48,6 +50,7 @@ export type DfcLibreOfficeManagedPackagePluginImportContract = Readonly<{
   activeRuntimeRef: 'managed_runtime_root'
   bridge: DfcLibreOfficePluginLifecycleBridge
   verification: Readonly<{
+    layoutContract: DfcLibreOfficeRuntimePackageLayoutContract
     manifestValidated: boolean
     artifactHashVerified: boolean
     executableHashVerified: boolean
@@ -55,6 +58,8 @@ export type DfcLibreOfficeManagedPackagePluginImportContract = Readonly<{
     securityPolicyVerified: boolean
   }>
 }>
+
+type DfcLibreOfficeManagedPackageVerificationFlags = DfcLibreOfficeManagedPackagePluginImportContract['verification']
 
 export type DfcLibreOfficeManagedPackageInstallResult =
   | Readonly<{
@@ -134,7 +139,10 @@ export async function importDfcLibreOfficeManagedRuntimePackage(
     return failed('office_pdf_install_manifest_invalid', 'Office PDF managed package manifest is invalid.', 'not_needed')
   }
   if (input.expectedArtifactSha256 && !isExpectedArtifactHash(manifest.artifactSha256, input.expectedArtifactSha256)) {
-    return failed('office_pdf_install_artifact_hash_mismatch', 'Office PDF managed package artifact hash does not match.', 'not_needed')
+    return failed('office_pdf_install_artifact_hash_mismatch', 'Office PDF managed package artifact hash does not match.', 'not_needed', {
+      manifestValidated: true,
+      artifactHashVerified: false,
+    })
   }
 
   const sourceAvailability = await resolveDfcLibreOfficeRuntimeExecutionDescriptor({
@@ -143,7 +151,10 @@ export async function importDfcLibreOfficeManagedRuntimePackage(
     arch: input.arch,
   })
   if (!sourceAvailability.ok) {
-    return failed('office_pdf_install_runtime_unavailable', 'Office PDF managed package runtime is unavailable.', 'not_needed')
+    return failed('office_pdf_install_runtime_unavailable', 'Office PDF managed package runtime is unavailable.', 'not_needed', {
+      manifestValidated: true,
+      artifactHashVerified: true,
+    })
   }
 
   const activeRoot = getDfcLibreOfficeManagedRuntimeRoot(appRoot)
@@ -348,14 +359,21 @@ function isExpectedArtifactHash(actual: string | null, expected: string): boolea
 function failed(
   code: DfcLibreOfficeManagedPackageInstallDiagnosticCode,
   message: string,
-  cleanupStatus: 'attempted' | 'not_needed' | 'failed'
+  cleanupStatus: 'attempted' | 'not_needed' | 'failed',
+  verification?: Partial<Omit<DfcLibreOfficeManagedPackageVerificationFlags, 'layoutContract'>>
 ): DfcLibreOfficeManagedPackageInstallResult {
   return {
     ok: false,
     activeRuntimeRootDir: null,
     runtime: null,
     previousKnownGood: null,
-    pluginManagement: toPluginImportContract(failedSummary(code, message), false),
+    pluginManagement: toPluginImportContract(failedSummary(code, message), {
+      manifestValidated: verification?.manifestValidated ?? false,
+      artifactHashVerified: verification?.artifactHashVerified ?? false,
+      executableHashVerified: verification?.executableHashVerified ?? false,
+      packageMetadataVerified: verification?.packageMetadataVerified ?? false,
+      securityPolicyVerified: verification?.securityPolicyVerified ?? false,
+    }),
     cleanupStatus,
     diagnostics: [diagnostic(code, message)],
   }
@@ -391,7 +409,7 @@ export function sha256ForDfcLibreOfficeManagedPackageInstaller(bytes: Uint8Array
 
 function toPluginImportContract(
   summary: DfcOfficePdfRuntimeAvailabilitySummary,
-  verified: boolean
+  verification: boolean | Omit<DfcLibreOfficeManagedPackageVerificationFlags, 'layoutContract'>
 ): DfcLibreOfficeManagedPackagePluginImportContract {
   const importSummary: DfcOfficePdfRuntimeAvailabilitySummary = summary.status === 'experimental' || summary.status === 'available'
     ? {
@@ -406,12 +424,22 @@ function toPluginImportContract(
     activeRuntimeRef: 'managed_runtime_root',
     bridge: toDfcLibreOfficePluginLifecycleBridge(importSummary),
     verification: {
-      manifestValidated: verified,
-      artifactHashVerified: verified,
-      executableHashVerified: verified,
-      packageMetadataVerified: verified,
-      securityPolicyVerified: verified,
+      layoutContract: getDfcLibreOfficeRuntimePackageLayoutContract(),
+      ...normalizeVerificationFlags(verification),
     },
+  }
+}
+
+function normalizeVerificationFlags(
+  verification: boolean | Omit<DfcLibreOfficeManagedPackageVerificationFlags, 'layoutContract'>
+): Omit<DfcLibreOfficeManagedPackageVerificationFlags, 'layoutContract'> {
+  if (typeof verification !== 'boolean') return verification
+  return {
+    manifestValidated: verification,
+    artifactHashVerified: verification,
+    executableHashVerified: verification,
+    packageMetadataVerified: verification,
+    securityPolicyVerified: verification,
   }
 }
 

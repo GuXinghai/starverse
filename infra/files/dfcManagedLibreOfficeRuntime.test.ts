@@ -15,6 +15,7 @@ import {
   checkDfcLibreOfficeRuntimeAvailability,
   checkDfcLibreOfficeRuntimeAvailabilitySync,
   getDfcLibreOfficeFirstPartyRuntimeCatalogEntry,
+  getDfcLibreOfficeRuntimePackageLayoutContract,
   toDfcLibreOfficeManagedEnginePluginManifest,
   toDfcLibreOfficePluginLifecycleBridge,
   type DfcOfficePdfRuntimeManifest,
@@ -170,7 +171,7 @@ describe('dfc managed LibreOffice runtime gate', () => {
   it('reports missing executable separately from metadata and path failures', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-runtime-exe-missing-'))
     await writeManifest(root, {
-      executablePath: 'program/missing-soffice',
+      executablePath: process.platform === 'win32' ? 'program/missing-soffice.exe' : 'program/missing-soffice',
       executableSha256: 'b'.repeat(64),
       executableSizeBytes: 123,
     })
@@ -276,6 +277,48 @@ describe('dfc managed LibreOffice runtime gate', () => {
       }),
       diagnostics: [expect.objectContaining({ code: 'office_pdf_runtime_platform_unsupported' })],
     })
+  })
+
+  it('enforces platform-specific executable path policy without requiring real platform binaries', async () => {
+    const winRoot = await runtimeWithExecutableForPlatform('win32', 'program/soffice.exe')
+    const win = await checkDfcLibreOfficeRuntimeAvailability({
+      managedRuntimeRootDir: winRoot.root,
+      platform: 'win32',
+      arch: process.arch,
+    })
+    expect(win.ok).toBe(true)
+
+    const darwinRoot = await runtimeWithExecutableForPlatform('darwin', 'LibreOffice.app/Contents/MacOS/soffice')
+    const darwin = await checkDfcLibreOfficeRuntimeAvailability({
+      managedRuntimeRootDir: darwinRoot.root,
+      platform: 'darwin',
+      arch: process.arch,
+    })
+    expect(darwin.ok).toBe(true)
+
+    const linuxRoot = await runtimeWithExecutableForPlatform('linux', 'program/soffice')
+    const linux = await checkDfcLibreOfficeRuntimeAvailability({
+      managedRuntimeRootDir: linuxRoot.root,
+      platform: 'linux',
+      arch: process.arch,
+    })
+    expect(linux.ok).toBe(true)
+
+    const invalidWinRoot = await runtimeWithExecutableForPlatform('win32', 'program/soffice')
+    const invalidWin = await checkDfcLibreOfficeRuntimeAvailability({
+      managedRuntimeRootDir: invalidWinRoot.root,
+      platform: 'win32',
+      arch: process.arch,
+    })
+    expect(invalidWin).toMatchObject({
+      ok: false,
+      summary: expect.objectContaining({
+        productCode: 'conversion_sandbox_denied',
+        internalCode: 'office_pdf_runtime_path_rejected',
+      }),
+    })
+    expect(JSON.stringify(invalidWin)).not.toContain(invalidWinRoot.root)
+    expect(JSON.stringify(invalidWin)).not.toContain('program/soffice')
   })
 
   it('rejects packages with incomplete provenance, license, capability, or security policy metadata', async () => {
@@ -387,6 +430,22 @@ describe('dfc managed LibreOffice runtime gate', () => {
         packagedBinaryIncluded: false,
         systemPathFallbackAllowed: false,
       },
+      layoutContract: expect.objectContaining({
+        layoutVersion: '1',
+        packageRootRef: 'managed_runtime_package_root',
+        manifestRelativePath: 'manifest.json',
+        executablePathPolicy: expect.objectContaining({
+          mustBeManifestRelative: true,
+          absolutePathAllowed: false,
+          parentTraversalAllowed: false,
+        }),
+        hashAndSizePolicy: {
+          artifactSha256Required: true,
+          executableSha256Required: true,
+          executableSizeBytesRequired: true,
+        },
+        productionApproved: false,
+      }),
       requirements: {
         manifestHashRequired: true,
         executableHashRequired: true,
@@ -403,7 +462,67 @@ describe('dfc managed LibreOffice runtime gate', () => {
     expect(entry.supportedPlatforms).toEqual(['win32', 'darwin', 'linux'])
     expect(entry.supportedFormats).toEqual(['docx'])
   })
+
+  it('exposes the shared LibreOffice package layout verification contract', () => {
+    const contract = getDfcLibreOfficeRuntimePackageLayoutContract()
+
+    expect(contract).toMatchObject({
+      layoutVersion: '1',
+      packageRootRef: 'managed_runtime_package_root',
+      manifestRelativePath: 'manifest.json',
+      executablePathPolicy: {
+        mustBeManifestRelative: true,
+        absolutePathAllowed: false,
+        parentTraversalAllowed: false,
+        nulByteAllowed: false,
+        symlinkEscapeAllowed: false,
+      },
+      hashAndSizePolicy: {
+        artifactSha256Required: true,
+        executableSha256Required: true,
+        executableSizeBytesRequired: true,
+      },
+      sourcePolicy: {
+        officialPackageAllowed: true,
+        importedDevArtifactAllowed: true,
+        fakeSeamAllowedForTests: true,
+        systemPathFallbackAllowed: false,
+      },
+      productionApproved: false,
+    })
+    expect(contract.requiredCapabilities).toEqual([...DFC_OFFICE_PDF_CAPABILITIES])
+    expect(contract.requiredManifestFields).toEqual(expect.arrayContaining([
+      'pluginId',
+      'runtimeId',
+      'executablePath',
+      'artifactSha256',
+      'executableSha256',
+      'executableSizeBytes',
+      'provenance',
+      'licenseId',
+      'securityPolicy',
+    ]))
+    expect(contract.executablePathPolicy.platformRules.win32.executablePathDescription).toContain('.exe')
+    expect(contract.executablePathPolicy.platformRules.linux.executablePathDescription).toContain('program/soffice')
+  })
 })
+
+async function runtimeWithExecutableForPlatform(
+  platform: NodeJS.Platform,
+  executablePath: string
+): Promise<Readonly<{ root: string }>> {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-runtime-platform-policy-'))
+  const executable = Buffer.from(`fake soffice executable for ${platform}`)
+  await mkdir(path.dirname(path.join(root, executablePath)), { recursive: true })
+  await writeFile(path.join(root, executablePath), executable)
+  await writeManifest(root, {
+    platform,
+    executablePath,
+    executableSha256: createHash('sha256').update(executable).digest('hex'),
+    executableSizeBytes: executable.byteLength,
+  })
+  return { root }
+}
 
 async function writeManifest(
   root: string,
