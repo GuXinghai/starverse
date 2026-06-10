@@ -12,7 +12,7 @@ import {
 } from './dfcConversionSandbox'
 import {
   DFC_OFFICE_PDF_ENGINE_ID,
-  type DfcOfficePdfManagedRuntimeExecutionDescriptor,
+  type DfcLibreOfficePluginManagedRuntimeHandle,
 } from './dfcManagedLibreOfficeRuntime'
 
 export const DFC_LIBREOFFICE_PDF_ADAPTER_ID = 'libreoffice-docx-pdf-adapter'
@@ -26,7 +26,7 @@ export type DfcLibreOfficePdfAdapterInput = Readonly<{
   sourceBytes: Uint8Array
   sourceExtension: string
   sandboxRootDir: string
-  runtime: DfcOfficePdfManagedRuntimeExecutionDescriptor
+  runtime: DfcLibreOfficePluginManagedRuntimeHandle
   timeoutMs?: number | null
   processRunner?: DfcLibreOfficePdfProcessRunner | null
   cleanupSandbox?: boolean | null

@@ -14,8 +14,10 @@ import {
   DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
   checkDfcLibreOfficeRuntimeAvailability,
   checkDfcLibreOfficeRuntimeAvailabilitySync,
+  createDfcLibreOfficeQuarantinedAvailabilitySummary,
   getDfcLibreOfficeFirstPartyRuntimeCatalogEntry,
   getDfcLibreOfficeRuntimePackageLayoutContract,
+  resolveDfcLibreOfficePluginManagedRuntimeHandle,
   toDfcLibreOfficeManagedEnginePluginManifest,
   toDfcLibreOfficePluginLifecycleBridge,
   type DfcOfficePdfRuntimeManifest,
@@ -386,6 +388,96 @@ describe('dfc managed LibreOffice runtime gate', () => {
     ])
     expect(JSON.stringify(bridge)).not.toContain(root)
     expect(JSON.stringify(bridge)).not.toContain('program/soffice')
+  })
+
+  it('resolves a plugin-managed runtime handle for the DFC adapter without exposing absolute paths in diagnostics', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-runtime-handle-'))
+    const executable = Buffer.from('fake soffice executable')
+    const executablePath = process.platform === 'win32' ? 'program/soffice.exe' : 'program/soffice'
+    await mkdir(path.join(root, 'program'), { recursive: true })
+    await writeFile(path.join(root, executablePath), executable)
+    await writeManifest(root, {
+      executablePath,
+      executableSha256: createHash('sha256').update(executable).digest('hex'),
+      executableSizeBytes: executable.byteLength,
+    })
+
+    const result = await resolveDfcLibreOfficePluginManagedRuntimeHandle({
+      managedRuntimeRootDir: root,
+      capabilityId: 'docx_to_pdf',
+      allowExperimental: true,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      handle: expect.objectContaining({
+        pluginId: DFC_OFFICE_PDF_PLUGIN_ID,
+        runtimeId: DFC_OFFICE_PDF_RUNTIME_ID,
+        capabilityId: 'docx_to_pdf',
+        executablePath: path.join(root, executablePath),
+        executableRelativePath: executablePath,
+        source: 'fake_seam',
+        healthStatus: 'healthy',
+        productionApproved: false,
+        experimental: true,
+        degraded: true,
+        runtimeVersion: '24.8.0',
+        packageVersion: '2026.06.01',
+      }),
+      summary: expect.objectContaining({
+        status: 'experimental',
+        healthStatus: 'healthy',
+      }),
+      diagnostics: [],
+    })
+    expect(JSON.stringify(result.summary)).not.toContain(root)
+    expect(JSON.stringify(result.summary)).not.toContain(executablePath)
+    expect(JSON.stringify(result.diagnostics)).not.toContain(root)
+  })
+
+  it('blocks plugin-managed runtime handles for quarantine and production-only fake seams', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-runtime-handle-blocked-'))
+    const executable = Buffer.from('fake soffice executable')
+    const executablePath = process.platform === 'win32' ? 'program/soffice.exe' : 'program/soffice'
+    await mkdir(path.join(root, 'program'), { recursive: true })
+    await writeFile(path.join(root, executablePath), executable)
+    await writeManifest(root, {
+      executablePath,
+      executableSha256: createHash('sha256').update(executable).digest('hex'),
+      executableSizeBytes: executable.byteLength,
+    })
+
+    const quarantined = await resolveDfcLibreOfficePluginManagedRuntimeHandle({
+      managedRuntimeRootDir: root,
+      lifecycleSummary: createDfcLibreOfficeQuarantinedAvailabilitySummary({
+        message: `quarantined at ${root}`,
+      }),
+    })
+    expect(quarantined).toMatchObject({
+      ok: false,
+      handle: null,
+      summary: expect.objectContaining({
+        status: 'blocked',
+        healthStatus: 'blocked',
+        productCode: 'conversion_sandbox_denied',
+        internalCode: 'office_pdf_runtime_quarantined',
+        source: 'quarantined_runtime',
+      }),
+    })
+    expect(JSON.stringify(quarantined)).not.toContain(root)
+
+    const productionOnly = await resolveDfcLibreOfficePluginManagedRuntimeHandle({
+      managedRuntimeRootDir: root,
+      productionOnly: true,
+    })
+    expect(productionOnly).toMatchObject({
+      ok: false,
+      handle: null,
+      summary: expect.objectContaining({
+        source: 'fake_seam',
+      }),
+    })
+    expect(JSON.stringify(productionOnly.summary)).not.toContain(root)
   })
 
   it('maps missing runtime into a missing Plugin Management lifecycle status without local paths', async () => {

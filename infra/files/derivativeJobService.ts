@@ -43,7 +43,8 @@ import {
 } from './dfcLibreOfficePdfAdapter'
 import {
   getDfcLibreOfficeManagedRuntimeRoot,
-  resolveDfcLibreOfficeRuntimeExecutionDescriptor,
+  resolveDfcLibreOfficePluginManagedRuntimeHandle,
+  type DfcOfficePdfRuntimeAvailabilitySummary,
 } from './dfcManagedLibreOfficeRuntime'
 
 type SqlDatabase = BetterSqlite3.Database
@@ -100,6 +101,7 @@ export class DerivativeJobService {
       storageRootDir: string
       electronConversionBridge?: ElectronConversionBridge
       officePdfProcessRunner?: DfcLibreOfficePdfProcessRunner
+      officePdfRuntimeSummary?: () => DfcOfficePdfRuntimeAvailabilitySummary | null
       now?: () => number
     }>
   ) {}
@@ -655,11 +657,21 @@ export class DerivativeJobService {
       throw derivativeError('conversion_not_implemented', job.id, asset.id, job.derivativeKind, 'Office-to-PDF conversion requires an injected fake process runner in this pilot.')
     }
 
-    const runtime = await resolveDfcLibreOfficeRuntimeExecutionDescriptor({
+    const runtime = await resolveDfcLibreOfficePluginManagedRuntimeHandle({
       managedRuntimeRootDir: getDfcLibreOfficeManagedRuntimeRoot(this.deps.storageRootDir),
+      capabilityId: 'docx_to_pdf',
+      lifecycleSummary: this.deps.officePdfRuntimeSummary?.() ?? null,
+      allowExperimental: true,
+      productionOnly: false,
     })
     if (!runtime.ok) {
-      throw derivativeError('conversion_not_implemented', job.id, asset.id, job.derivativeKind, 'Office-to-PDF managed runtime is unavailable.')
+      throw derivativeError(
+        'conversion_not_implemented',
+        job.id,
+        asset.id,
+        job.derivativeKind,
+        runtime.summary.message
+      )
     }
 
     const source = await this.readLocalBytes(asset, job, 'derivative_local_file_missing', {
@@ -674,7 +686,7 @@ export class DerivativeJobService {
       sourceBytes: source.bytes,
       sourceExtension: 'docx',
       sandboxRootDir,
-      runtime: runtime.runtime,
+      runtime: runtime.handle,
       timeoutMs,
       processRunner: this.deps.officePdfProcessRunner,
       cleanupSandbox: false,
@@ -710,7 +722,10 @@ export class DerivativeJobService {
     const contentHash = sha256Bytes(pdfBytes)
     const conversionSettingsHash = sha256(Buffer.from(JSON.stringify({
       targetKind: 'pdf_attachment',
-      runtime: 'libreoffice-fake-process-test-seam',
+      runtime: 'libreoffice-plugin-managed-runtime',
+      runtimeSource: runtime.handle.source,
+      runtimeVersion: runtime.handle.runtimeVersion,
+      runtimePackageVersion: runtime.handle.packageVersion,
       policy: 'macros-network-external-links-disabled',
     })).toString('utf8'))
     const derivative = await this.writeBinaryDerivative({
@@ -733,9 +748,12 @@ export class DerivativeJobService {
         conversionSettingsHash,
         converterName: DFC_LIBREOFFICE_PDF_CONVERTER_NAME,
         converterVersion: DFC_LIBREOFFICE_PDF_CONVERTER_VERSION,
-        conversionMode: 'fake_process_test_seam',
+        conversionMode: 'plugin_managed_runtime',
+        runtimeSource: runtime.handle.source,
+        runtimeVersion: runtime.handle.runtimeVersion,
+        runtimePackageVersion: runtime.handle.packageVersion,
         warnings: [
-          'office_pdf_fake_process_test_seam',
+          'office_pdf_runtime_owner_gated_experimental',
           'office_pdf_macros_disabled',
           'office_pdf_network_blocked',
           'office_pdf_external_links_blocked',
