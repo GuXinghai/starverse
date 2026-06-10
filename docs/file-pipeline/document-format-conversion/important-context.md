@@ -4,10 +4,14 @@ This file is the recovery entry point after context compression. The source of t
 
 ## Current status
 
-- Current branch at latest documented DFC closeout: `docs/dfc-0-format-conversion-foundation`
+- Current branch at latest documented DFC closeout: `main`
 - Current topic directory: `docs/file-pipeline/document-format-conversion/`
 - Current SSOT file: `starverse_format_conversion_preview_v1_2.md`
-- Latest appended recovery state: DFC-M32 closes the deadline/demo-readiness package after DFC-M31 imported managed LibreOffice runtime seam validation. Current demo-ready surface includes supported text-like DFC paths, backend pilots for XLSX/DOCX text conversions, experimental-gated HTML-to-PDF, and DOCX-to-PDF dev managed-runtime smoke. Production Office-to-PDF, packaged installer support, CI runtime smoke, `.doc` / `.rtf` / `.docm`, PS/EPS, system LibreOffice/PATH fallback, and production Office-to-PDF claims remain unsupported.
+- Latest closeout: `dfc-libreoffice-plugin-management-closeout.md` records the Task 0-7 LibreOffice Plugin Management integration chain through runtime diagnostics, lifecycle inventory, catalog/import contract, package verification, lifecycle controls, adapter switch-over, and product gate diagnostics.
+- Current recovery state: LibreOffice Office-to-PDF remains owner-gated and experimental with `productionApproved=false`. The current path is DOCX-only `pdf_attachment` through the managed runtime handle, with `markdown` and `original_file` fallbacks unchanged. Imported dev artifacts provide local smoke confidence only; fake seams are not production runtime authority. No LibreOffice binary, remote download, system LibreOffice/PATH fallback, `.doc` / `.rtf` / `.docm`, PS/EPS, or PDF OCR/local parsing support is approved.
+- Task 0-7 commit chain for this route: `b50ce13`, `a506258`, `462a259`, `677328f`, `67b2bf5`, `ea33a9a`, `4e11d00`, `7c20e21`.
+- Next DFC work should not expand Office formats or flip production approval until Owner explicitly accepts the package source, license/provenance/security review, platform layout review, packaged smoke policy, user-facing wording, and lifecycle policy.
+- Local worktree note at this closeout: `public/build-id.json` and `.artifacts/**` may be unrelated dirty local items and must not be staged as part of DFC documentation or runtime work.
 - Current navigation note: the old root-level `format-conversion-preview-*` v1.0 files are historical only under `docs/file-pipeline/document-format-conversion/archive/v1.0-superseded/`; do not use them as implementation authority.
 - The DFC-0 through DFC-6 bullets in this section are historical setup milestones; later DFC-7 through DFC-30 and DFC-M0 through DFC-M32 recovery notes are appended below and the full append-only sequence is in `progress-ledger.md`.
 - DFC-0 scope: docs-only foundation. Create the topic directory, place the v1.2 source contract there, and add only `progress-ledger.md` and `important-context.md`.
