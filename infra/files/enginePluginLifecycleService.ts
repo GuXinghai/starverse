@@ -48,6 +48,14 @@ import {
   PLUGIN_PACKAGE_INVENTORY_SCHEMA_VERSION,
   PLUGIN_PACKAGE_MANIFEST_SCHEMA_VERSION,
 } from '../../src/next/plugin-distribution/types'
+import {
+  DFC_OFFICE_PDF_ENGINE_ID,
+  DFC_OFFICE_PDF_RUNTIME_KIND,
+  checkDfcLibreOfficeRuntimeAvailabilitySync,
+  toDfcLibreOfficePluginLifecycleBridge,
+  type DfcLibreOfficePluginLifecycleBridge,
+  type DfcOfficePdfRuntimeAvailabilitySummary,
+} from './dfcManagedLibreOfficeRuntime'
 import type { EnginePluginRegistryRepo } from '../db/repo/enginePluginRegistryRepo'
 import type {
   EnginePluginInstallRootKind,
@@ -306,6 +314,8 @@ export type EnginePluginLifecycleServiceDeps = Readonly<{
   healthRunner?: EngineHealthRunner
   officialPackageTransport?: PackageDownloadTransport
   magikaOfficialRelease?: OfficialPackageReleaseMetadata
+  dfcLibreOfficeManagedRuntimeRootDir?: string
+  dfcLibreOfficeRuntimeSummary?: () => DfcOfficePdfRuntimeAvailabilitySummary | null
 }>
 
 export type RegisterLocalOfficialPluginInput = Readonly<{
@@ -437,7 +447,13 @@ export class EnginePluginLifecycleService {
   }
 
   getInstalledPlugins(): InstalledEnginePluginDto[] {
-    return this.deps.registryRepo.list().map(toInstalledDto)
+    const installed = this.deps.registryRepo.list().map(toInstalledDto)
+    const libreOffice = this.getDfcLibreOfficeInstalledDto()
+    if (!libreOffice) return installed
+    return [
+      libreOffice,
+      ...installed.filter((item) => item.engineId !== DFC_OFFICE_PDF_ENGINE_ID),
+    ]
   }
 
   private listEmbeddedOfficialPlugins(): LifecycleActionResult<OfficialPluginDto[]> {
@@ -1458,7 +1474,8 @@ export class EnginePluginLifecycleService {
     const records = this.deps.registryRepo.list({ includeUninstalled: true })
     const entries: EngineDiagnosticsEntry[] = []
 
-    const builtinIds = new Set(['tika', 'libreoffice', 'ffprobe', 'pandoc'])
+    const libreOffice = this.getDfcLibreOfficeLifecycleBridge()
+    const builtinIds = new Set(['tika', 'ffprobe', 'pandoc'])
     for (const builtinId of builtinIds) {
       const installed = records.find((r) => r.engineId === builtinId && r.installState !== 'uninstalled')
       entries.push({
@@ -1476,8 +1493,27 @@ export class EnginePluginLifecycleService {
       })
     }
 
+    if (libreOffice) {
+      entries.push(toLibreOfficeDiagnosticsEntry(libreOffice))
+    } else {
+      const installed = records.find((r) => r.engineId === DFC_OFFICE_PDF_ENGINE_ID && r.installState !== 'uninstalled')
+      entries.push({
+        engineId: DFC_OFFICE_PDF_ENGINE_ID,
+        displayName: installed?.displayName ?? `${DFC_OFFICE_PDF_ENGINE_ID} (builtin)`,
+        kind: 'builtin',
+        installed: !!installed,
+        enabled: installed?.enabled ?? false,
+        healthStatus: installed?.healthStatus ?? 'unknown',
+        verificationStatus: null,
+        pluginVersion: installed?.pluginVersion ?? null,
+        modelVersion: installed?.modelVersion ?? null,
+        failureReason: sanitizeStoredFailureReason(installed?.failureReason),
+        installSource: installed?.installSource ?? null,
+      })
+    }
+
     for (const record of records) {
-      if (builtinIds.has(record.engineId)) continue
+      if (builtinIds.has(record.engineId) || record.engineId === DFC_OFFICE_PDF_ENGINE_ID) continue
       entries.push({
         engineId: record.engineId,
         displayName: record.displayName,
@@ -1515,6 +1551,25 @@ export class EnginePluginLifecycleService {
         unverified: unverifiedCount,
       },
     }
+  }
+
+  private getDfcLibreOfficeLifecycleBridge(): DfcLibreOfficePluginLifecycleBridge | null {
+    const injectedSummary = this.deps.dfcLibreOfficeRuntimeSummary?.() ?? null
+    if (injectedSummary) return toDfcLibreOfficePluginLifecycleBridge(injectedSummary)
+
+    const rootDir = this.deps.dfcLibreOfficeManagedRuntimeRootDir
+    if (!rootDir) return null
+
+    const availability = checkDfcLibreOfficeRuntimeAvailabilitySync({
+      managedRuntimeRootDir: rootDir,
+    })
+    return toDfcLibreOfficePluginLifecycleBridge(availability.summary)
+  }
+
+  private getDfcLibreOfficeInstalledDto(): InstalledEnginePluginDto | null {
+    const bridge = this.getDfcLibreOfficeLifecycleBridge()
+    if (!bridge) return null
+    return toLibreOfficeInstalledDto(bridge, this.now())
   }
 
   async runHealthCheck(input: RunHealthCheckInput): Promise<LifecycleActionResult<InstalledEnginePluginDto>> {
@@ -1719,6 +1774,94 @@ function toInstalledDto(record: EnginePluginRegistryRecord): InstalledEnginePlug
     releaseProvenance,
     previousKnownGood: readPreviousKnownGood(record.metadataJson),
   }
+}
+
+function toLibreOfficeInstalledDto(
+  bridge: DfcLibreOfficePluginLifecycleBridge,
+  timestamp: number
+): InstalledEnginePluginDto {
+  const healthStatus = toLibreOfficePluginHealthStatus(bridge)
+  const failureReason = toLibreOfficeFailureReason(bridge, healthStatus)
+  return {
+    engineId: DFC_OFFICE_PDF_ENGINE_ID,
+    displayName: 'LibreOffice Office PDF',
+    pluginVersion: bridge.runtime?.pluginVersion ?? '0.0.0',
+    installedVersion: bridge.runtime?.pluginVersion ?? '0.0.0',
+    availableVersion: null,
+    packageVersion: bridge.runtime?.packageVersion ?? '0.0.0',
+    manifestSchemaVersion: '1',
+    runtimeKind: DFC_OFFICE_PDF_RUNTIME_KIND,
+    runtimeVersion: bridge.runtime?.libreOfficeVersion ?? null,
+    modelVersion: null,
+    installState: bridge.installed ? 'installed' : 'failed',
+    enabled: bridge.enabled,
+    healthStatus,
+    failureReason,
+    installSource: libreOfficeInstallSource(bridge),
+    installRootKind: libreOfficeInstallRootKind(bridge),
+    installedAt: bridge.installed ? timestamp : null,
+    updatedAt: timestamp,
+    lastVerifiedAt: bridge.installed ? timestamp : null,
+    lastHealthCheckAt: timestamp,
+    errorChain: failureReason ? buildErrorChainFromFailureReason(failureReason) : null,
+    releaseProvenance: null,
+    previousKnownGood: null,
+  }
+}
+
+function toLibreOfficeDiagnosticsEntry(bridge: DfcLibreOfficePluginLifecycleBridge): EngineDiagnosticsEntry {
+  const healthStatus = toLibreOfficePluginHealthStatus(bridge)
+  return {
+    engineId: DFC_OFFICE_PDF_ENGINE_ID,
+    displayName: 'LibreOffice Office PDF',
+    kind: 'plugin',
+    installed: bridge.installed,
+    enabled: bridge.enabled,
+    healthStatus,
+    verificationStatus: bridge.installed ? 'verified' : null,
+    pluginVersion: bridge.runtime?.pluginVersion ?? null,
+    modelVersion: null,
+    failureReason: toLibreOfficeFailureReason(bridge, healthStatus),
+    installSource: libreOfficeInstallSource(bridge),
+  }
+}
+
+function toLibreOfficePluginHealthStatus(
+  bridge: DfcLibreOfficePluginLifecycleBridge
+): EnginePluginRegistryRecord['healthStatus'] {
+  if (!bridge.installed) return 'unhealthy'
+  if (bridge.source === 'fake_seam' || bridge.source === 'imported_dev_artifact' || !bridge.productionApproved) return 'degraded'
+  if (bridge.healthStatus === 'healthy') return 'healthy'
+  if (bridge.healthStatus === 'unknown') return 'unknown'
+  return 'unhealthy'
+}
+
+function toLibreOfficeFailureReason(
+  bridge: DfcLibreOfficePluginLifecycleBridge,
+  healthStatus: EnginePluginRegistryRecord['healthStatus']
+): string | null {
+  if (bridge.productCode) return bridge.productCode
+  if (bridge.internalCode) return bridge.internalCode
+  if (healthStatus === 'degraded') return bridge.source === 'managed_manifest'
+    ? 'owner_gate_not_production_approved'
+    : `${bridge.source}_not_production_approved`
+  return null
+}
+
+function libreOfficeInstallSource(
+  bridge: DfcLibreOfficePluginLifecycleBridge
+): EnginePluginRegistryRecord['installSource'] {
+  return bridge.source === 'fake_seam' || bridge.source === 'imported_dev_artifact'
+    ? 'local_package'
+    : 'official_catalog'
+}
+
+function libreOfficeInstallRootKind(
+  bridge: DfcLibreOfficePluginLifecycleBridge
+): EnginePluginRegistryRecord['installRootKind'] {
+  return bridge.source === 'fake_seam' || bridge.source === 'imported_dev_artifact'
+    ? 'test_root'
+    : 'managed_root'
 }
 
 function toOfficialInstallOperationDto(

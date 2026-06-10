@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { parseManagedEnginePluginManifest } from '../../src/next/file-type/externalEngineManifest'
@@ -9,6 +10,8 @@ export const DFC_OFFICE_PDF_PLUGIN_ID = 'libreoffice'
 export const DFC_OFFICE_PDF_RUNTIME_ID = 'libreoffice-office-pdf'
 export const DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID = 'starverse.dfc.libreoffice'
 export const DFC_OFFICE_PDF_CAPABILITIES = ['office_to_pdf', 'docx_to_pdf'] as const
+export const DFC_OFFICE_PDF_PLUGIN_MANAGEMENT_CAPABILITY_ID = 'document_conversion'
+export const DFC_OFFICE_PDF_PLUGIN_PROVIDER = 'first_party_managed_runtime'
 export const DFC_OFFICE_PDF_RUNTIME_MANIFEST = 'manifest.json'
 export const DFC_OFFICE_PDF_MIN_CONTRACT_VERSION = '1'
 export const DFC_OFFICE_PDF_RUNTIME_KIND = 'managed_external_process'
@@ -85,6 +88,29 @@ export type DfcOfficePdfRuntimeAvailability =
       summary: DfcOfficePdfRuntimeAvailabilitySummary
       diagnostics: readonly DfcOfficePdfRuntimeDiagnostic[]
     }>
+
+export type DfcLibreOfficePluginLifecycleStatus = 'installed' | 'missing' | 'unhealthy' | 'blocked' | 'experimental'
+
+export type DfcLibreOfficePluginLifecycleBridge = Readonly<{
+  pluginId: string
+  engineId: string
+  runtimeId: string
+  capabilityIds: readonly string[]
+  provider: typeof DFC_OFFICE_PDF_PLUGIN_PROVIDER
+  lifecycleStatus: DfcLibreOfficePluginLifecycleStatus
+  healthStatus: DfcOfficePdfRuntimeHealthStatus
+  productCode: DfcOfficePdfRuntimeProductCode | null
+  internalCode: DfcOfficePdfRuntimeDiagnosticCode | null
+  source: DfcOfficePdfRuntimeSource
+  productionApproved: false
+  experimental: boolean
+  installed: boolean
+  enabled: boolean
+  retryable: boolean
+  recoverable: boolean
+  message: string
+  runtime: DfcOfficePdfRuntimeIdentitySummary | null
+}>
 
 export type DfcOfficePdfManagedRuntimeSummary = Readonly<{
   pluginId: string
@@ -188,6 +214,23 @@ export async function checkDfcLibreOfficeRuntimeAvailability(input: Readonly<{
   pluginEnabled?: boolean | null
 }>): Promise<DfcOfficePdfRuntimeAvailability> {
   const result = await resolveDfcLibreOfficeRuntimeExecutionDescriptor(input)
+  if (!result.ok) return result
+  const { managedRuntimeRootDir: _managedRuntimeRootDir, executablePath: _executablePath, ...runtime } = result.runtime
+  return {
+    ok: true,
+    runtime,
+    summary: result.summary,
+    diagnostics: result.diagnostics,
+  }
+}
+
+export function checkDfcLibreOfficeRuntimeAvailabilitySync(input: Readonly<{
+  managedRuntimeRootDir: string
+  platform?: NodeJS.Platform
+  arch?: string
+  pluginEnabled?: boolean | null
+}>): DfcOfficePdfRuntimeAvailability {
+  const result = resolveDfcLibreOfficeRuntimeExecutionDescriptorSync(input)
   if (!result.ok) return result
   const { managedRuntimeRootDir: _managedRuntimeRootDir, executablePath: _executablePath, ...runtime } = result.runtime
   return {
@@ -302,6 +345,34 @@ export async function resolveDfcLibreOfficeRuntimeExecutionDescriptor(input: Rea
   }
 }
 
+export function toDfcLibreOfficePluginLifecycleBridge(
+  summary: DfcOfficePdfRuntimeAvailabilitySummary
+): DfcLibreOfficePluginLifecycleBridge {
+  return {
+    pluginId: summary.runtime?.pluginId ?? DFC_OFFICE_PDF_PLUGIN_ID,
+    engineId: summary.runtime?.engineId ?? DFC_OFFICE_PDF_ENGINE_ID,
+    runtimeId: summary.runtime?.runtimeId ?? DFC_OFFICE_PDF_RUNTIME_ID,
+    capabilityIds: [
+      DFC_OFFICE_PDF_PLUGIN_MANAGEMENT_CAPABILITY_ID,
+      ...DFC_OFFICE_PDF_CAPABILITIES,
+    ],
+    provider: DFC_OFFICE_PDF_PLUGIN_PROVIDER,
+    lifecycleStatus: lifecycleStatusFromAvailability(summary),
+    healthStatus: summary.healthStatus,
+    productCode: summary.productCode,
+    internalCode: summary.internalCode,
+    source: summary.source,
+    productionApproved: false,
+    experimental: summary.status === 'experimental' || summary.source !== 'managed_manifest',
+    installed: summary.status === 'available' || summary.status === 'experimental',
+    enabled: summary.status === 'available' || summary.status === 'experimental',
+    retryable: summary.retryable,
+    recoverable: summary.recoverable,
+    message: summary.message,
+    runtime: summary.runtime,
+  }
+}
+
 export function toDfcLibreOfficeManagedEnginePluginManifest(
   runtime: DfcOfficePdfManagedRuntimeSummary
 ): ManagedEnginePluginManifest {
@@ -329,6 +400,104 @@ export function toDfcLibreOfficeManagedEnginePluginManifest(
       'capabilities',
     ],
   })
+}
+
+function resolveDfcLibreOfficeRuntimeExecutionDescriptorSync(input: Readonly<{
+  managedRuntimeRootDir: string
+  platform?: NodeJS.Platform
+  arch?: string
+  pluginEnabled?: boolean | null
+}>): DfcOfficePdfRuntimeExecutionAvailability {
+  const root = normalizeAbsoluteDir(input.managedRuntimeRootDir)
+  if (!root) return unavailable('office_pdf_runtime_manifest_invalid', 'Office PDF runtime root is invalid.')
+  if (input.pluginEnabled === false) {
+    return unavailable('office_pdf_runtime_disabled', 'Office PDF managed runtime is disabled.')
+  }
+
+  const manifestPath = path.join(root, DFC_OFFICE_PDF_RUNTIME_MANIFEST)
+  const manifestText = readFileSyncIfAvailable(manifestPath)
+  if (manifestText === null) {
+    return unavailable('office_pdf_runtime_missing', 'Office PDF runtime manifest is missing.')
+  }
+  if (!manifestText) {
+    return unavailable('office_pdf_runtime_manifest_invalid', 'Office PDF runtime manifest cannot be read.')
+  }
+
+  const parsed = parseManifest(manifestText)
+  if (!parsed.ok) {
+    return unavailable(parsed.code, parsed.code === 'office_pdf_runtime_metadata_incomplete'
+      ? 'Office PDF runtime package metadata is incomplete.'
+      : 'Office PDF runtime manifest is invalid.')
+  }
+
+  const manifest = parsed.manifest
+  const manifestHashPrefix = sha256(Buffer.from(manifestText)).slice(0, 12)
+  if (manifest.enabled === false) {
+    return unavailable('office_pdf_runtime_disabled', 'Office PDF managed runtime is disabled.')
+  }
+  const expectedPlatform = input.platform ?? process.platform
+  const expectedArch = input.arch ?? process.arch
+  if (manifest.platform !== expectedPlatform || (manifest.arch && manifest.arch !== expectedArch)) {
+    return unavailable('office_pdf_runtime_platform_unsupported', 'Office PDF runtime does not support this platform.')
+  }
+
+  const executable = resolveManagedExecutable(root, manifest.executablePath)
+  if (!executable.ok) {
+    return unavailable('office_pdf_runtime_path_rejected', 'Office PDF runtime executable path is outside the managed runtime root.')
+  }
+
+  const executableStat = statSyncIfAvailable(executable.path)
+  if (executableStat === null) {
+    return unavailable('office_pdf_runtime_executable_missing', 'Office PDF runtime executable is missing.')
+  }
+  if (!executableStat?.isFile()) {
+    return unavailable('office_pdf_runtime_manifest_invalid', 'Office PDF runtime executable metadata is invalid.')
+  }
+  const realRoot = realpathSyncIfAvailable(root)
+  const realExecutable = realpathSyncIfAvailable(executable.path)
+  if (!realRoot || !realExecutable || !isPathInside(realRoot, realExecutable)) {
+    return unavailable('office_pdf_runtime_path_rejected', 'Office PDF runtime executable path is outside the managed runtime root.')
+  }
+  if (!hasCompletePackageMetadata(manifest)) {
+    return unavailable('office_pdf_runtime_metadata_incomplete', 'Office PDF runtime package metadata is incomplete.')
+  }
+  if (typeof manifest.executableSizeBytes === 'number' && manifest.executableSizeBytes !== executableStat.size) {
+    return unavailable('office_pdf_runtime_manifest_invalid', 'Office PDF runtime executable size does not match the manifest.')
+  }
+  if (manifest.executableSha256) {
+    const bytes = readFileBytesSyncIfAvailable(executable.path)
+    if (!bytes || sha256(bytes) !== manifest.executableSha256.toLowerCase()) {
+      return unavailable('office_pdf_runtime_manifest_invalid', 'Office PDF runtime executable hash does not match the manifest.')
+    }
+  }
+
+  return {
+    ok: true,
+    runtime: {
+      managedRuntimeRootDir: root,
+      executablePath: executable.path,
+      pluginId: manifest.pluginId ?? DFC_OFFICE_PDF_PLUGIN_ID,
+      packageId: manifest.packageId,
+      runtimePackageId: manifest.runtimePackageId ?? manifest.packageId,
+      engineId: manifest.engineId,
+      runtimeId: manifest.runtimeId,
+      displayName: manifest.displayName ?? 'LibreOffice Office PDF',
+      pluginVersion: manifest.pluginVersion ?? manifest.packageVersion,
+      runtimeKind: manifest.runtimeKind ?? DFC_OFFICE_PDF_RUNTIME_KIND,
+      platform: manifest.platform,
+      arch: manifest.arch ?? null,
+      capabilities: [...(manifest.capabilities ?? [])],
+      libreOfficeVersion: manifest.libreOfficeVersion,
+      packageVersion: manifest.packageVersion,
+      minimumStarverseContractVersion: manifest.minimumStarverseContractVersion,
+      provenance: manifest.provenance ?? null,
+      licenseId: manifest.licenseId ?? null,
+      attribution: manifest.attribution ?? null,
+      officialRelease: manifest.officialRelease ?? null,
+    },
+    summary: availableSummary(manifest, manifestHashPrefix),
+    diagnostics: [],
+  }
 }
 
 function parseManifest(value: string): RuntimeManifestParseResult {
@@ -602,4 +771,48 @@ function runtimeSourceFromManifest(manifest: DfcOfficePdfRuntimeManifest): DfcOf
     return 'imported_dev_artifact'
   }
   return 'managed_manifest'
+}
+
+function lifecycleStatusFromAvailability(
+  summary: DfcOfficePdfRuntimeAvailabilitySummary
+): DfcLibreOfficePluginLifecycleStatus {
+  if (summary.status === 'experimental') return 'experimental'
+  if (summary.status === 'available') return 'installed'
+  if (summary.healthStatus === 'missing') return 'missing'
+  if (summary.healthStatus === 'blocked') return 'blocked'
+  return 'unhealthy'
+}
+
+function readFileSyncIfAvailable(filePath: string): string | null | undefined {
+  try {
+    return readFileSync(filePath, 'utf8')
+  } catch (error) {
+    if (isNotFound(error)) return null
+    return undefined
+  }
+}
+
+function readFileBytesSyncIfAvailable(filePath: string): Buffer | null {
+  try {
+    return readFileSync(filePath)
+  } catch {
+    return null
+  }
+}
+
+function statSyncIfAvailable(filePath: string): ReturnType<typeof statSync> | null | undefined {
+  try {
+    return statSync(filePath)
+  } catch (error) {
+    if (isNotFound(error)) return null
+    return undefined
+  }
+}
+
+function realpathSyncIfAvailable(filePath: string): string | null {
+  try {
+    return realpathSync(filePath)
+  } catch {
+    return null
+  }
 }
