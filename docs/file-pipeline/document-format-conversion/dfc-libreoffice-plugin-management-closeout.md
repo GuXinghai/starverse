@@ -1,16 +1,16 @@
 # DFC LibreOffice Plugin Management Closeout
 
-Status: Task 8 closeout for the LibreOffice Plugin Management integration route.
+Status: Task 8 pre-acquisition closeout for the LibreOffice Plugin Management integration route.
 
 Date: 2026-06-11
 
-Authority: `starverse_format_conversion_preview_v1_2.md` remains the DFC SSOT. This closeout records implementation status, verification confidence, and Owner gate boundaries after Tasks 0-7.
+Authority: `starverse_format_conversion_preview_v1_2.md` remains the DFC SSOT. This closeout records implementation status, verification confidence, and Owner gate boundaries after Tasks 0-7. Task 9 extends this route with an owner-gated acquisition/download pipeline; Task 10 remains the release/upload and final Owner gate closeout step.
 
 ## Summary
 
-LibreOffice Office-to-PDF is now wired as a first-party managed runtime plugin path for the DFC DOCX `pdf_attachment` pilot. The chain covers runtime availability diagnostics, plugin lifecycle inventory, catalog/import contract, package layout verification, lifecycle controls, adapter switch-over to the plugin-managed runtime handle, and product-facing diagnostics.
+LibreOffice Office-to-PDF is wired as a first-party managed runtime plugin path for the DFC DOCX `pdf_attachment` pilot when a managed runtime already exists or has been imported. The Task 0-7 chain covers runtime availability diagnostics, plugin lifecycle inventory, catalog/import contract, package layout verification, lifecycle controls, adapter switch-over to the plugin-managed runtime handle, and product-facing diagnostics.
 
-The current product status remains owner-gated and experimental. `productionApproved=false` is still the correct state. No LibreOffice binary is committed, no remote download path is part of product behavior, and no system LibreOffice or PATH fallback is allowed.
+The current product status remains owner-gated and experimental. `productionApproved=false` is still the correct state. No LibreOffice binary is committed, acquisition remains disabled unless an owner-gated policy explicitly permits it, and no system LibreOffice or PATH fallback is allowed.
 
 ## Task 0-7 Commit List
 
@@ -50,11 +50,17 @@ Implemented:
 
 Not implemented in this closeout:
 
-- Remote package download.
+- Remote package download. Task 9 adds the disabled-by-default acquisition contract and controlled cache/staging downloader, but not production approval or release upload.
 - Bundled LibreOffice binary.
 - DB-persisted full lifecycle registry.
 - Full Plugin Management UI.
 - Production approval flip.
+
+## Task 9 Acquisition Addendum
+
+Task 9 adds a first-party LibreOffice runtime acquisition/download pipeline that is disabled by default and owner-gated. The acquisition source is represented in the LibreOffice catalog entry with package source type, expected hash and size, package/runtime version, platform/arch, license/provenance/security requirements, and `productionApproved=false`.
+
+The downloader writes only to a caller-provided controlled cache/staging root, rejects repo-local and `.artifacts/**` roots when the repo boundary is supplied, verifies hash and size before returning an internal staging path, and returns sanitized diagnostics. Downloaded candidates are not production-approved and still need the existing import/install verification contract before they can become an active runtime. GitHub Release upload remains Task 10.
 
 ## DFC Adapter Switch-over Status
 
@@ -108,6 +114,7 @@ Out of scope:
 | Worker tests | DFC worker file pipeline tests | DOCX `pdf_attachment` option and generation semantics under scoped fixtures | Full app UI or packaged app behavior |
 | IPC contract tests | DB bridge contract tests | Client schema can carry product gate diagnostics | Visual UI wording or layout quality |
 | Dev/import smoke | `test:office-pdf-libreoffice-import-dev-smoke` when the ignored M28 artifact exists | Imported managed runtime can run real `soffice` through adapter and worker paths | Production package source, CI policy, or bundled runtime behavior |
+| Acquisition unit tests | `dfcLibreOfficeRuntimeAcquisition.test.ts` | Owner-gated download policy, controlled cache/staging, hash/size checks, failure diagnostics, and disabled default source | Real LibreOffice package download, release upload, or production approval |
 | Packaged smoke | Not present in this closeout | None | Packaged app runtime distribution confidence |
 
 ## Tests Run
