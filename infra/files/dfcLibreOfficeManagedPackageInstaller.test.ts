@@ -6,7 +6,10 @@ import { describe, expect, it } from 'vitest'
 import { getDfcLibreOfficeManagedRuntimeRoot, type DfcOfficePdfRuntimeManifest } from './dfcManagedLibreOfficeRuntime'
 import {
   importDfcLibreOfficeManagedRuntimePackage,
+  quarantineDfcLibreOfficeManagedRuntimePackage,
+  repairDfcLibreOfficeManagedRuntimePackage,
   rollbackDfcLibreOfficeManagedRuntimePackage,
+  updateDfcLibreOfficeManagedRuntimePackage,
 } from './dfcLibreOfficeManagedPackageInstaller'
 
 describe('dfc LibreOffice managed package installer scaffold', () => {
@@ -217,6 +220,248 @@ describe('dfc LibreOffice managed package installer scaffold', () => {
       }),
       diagnostics: [],
     })
+  })
+
+  it('updates only to a verified existing runtime package', async () => {
+    const appRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-update-'))
+    const first = await createRuntime('24.8.0')
+    const second = await createRuntime('25.8.7')
+    await importDfcLibreOfficeManagedRuntimePackage({ appManagedRootDir: appRoot, sourceRuntimeRootDir: first.root })
+
+    const update = await updateDfcLibreOfficeManagedRuntimePackage({
+      appManagedRootDir: appRoot,
+      targetRuntimeRootDir: second.root,
+      expectedArtifactSha256: second.artifactSha256,
+    })
+
+    expect(update).toMatchObject({
+      ok: true,
+      operation: 'update',
+      activeRuntimeRootDir: getDfcLibreOfficeManagedRuntimeRoot(appRoot),
+      runtime: expect.objectContaining({ libreOfficeVersion: '25.8.7' }),
+      previousKnownGood: expect.objectContaining({ libreOfficeVersion: '24.8.0' }),
+      lifecycleState: expect.objectContaining({
+        quarantine: null,
+      }),
+      pluginManagement: {
+        productionApproved: false,
+        bridge: expect.objectContaining({
+          installed: true,
+          enabled: true,
+          productionApproved: false,
+        }),
+      },
+      diagnostics: [],
+    })
+    expect(JSON.stringify(update)).not.toContain(appRoot)
+    expect(JSON.stringify(update)).not.toContain(second.root)
+  })
+
+  it('rejects update targets that are missing, invalid, or quarantined', async () => {
+    const appRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-update-reject-'))
+    const missing = path.join(appRoot, 'missing-target')
+    const invalid = await createRuntime('25.8.7', { licenseId: null })
+
+    const missingResult = await updateDfcLibreOfficeManagedRuntimePackage({
+      appManagedRootDir: appRoot,
+      targetRuntimeRootDir: missing,
+    })
+    expect(missingResult).toMatchObject({
+      ok: false,
+      diagnostics: [expect.objectContaining({ code: 'office_pdf_update_target_missing' })],
+      pluginManagement: {
+        bridge: expect.objectContaining({
+          lifecycleStatus: 'missing',
+          productCode: 'conversion_engine_missing',
+        }),
+      },
+    })
+
+    const invalidResult = await updateDfcLibreOfficeManagedRuntimePackage({
+      appManagedRootDir: appRoot,
+      targetRuntimeRootDir: invalid.root,
+    })
+    expect(invalidResult).toMatchObject({
+      ok: false,
+      diagnostics: [expect.objectContaining({ code: 'office_pdf_update_target_invalid' })],
+      pluginManagement: {
+        bridge: expect.objectContaining({
+          lifecycleStatus: 'unhealthy',
+          productCode: 'conversion_engine_unhealthy',
+        }),
+      },
+    })
+
+    const quarantinedResult = await updateDfcLibreOfficeManagedRuntimePackage({
+      appManagedRootDir: appRoot,
+      targetRuntimeRootDir: invalid.root,
+      targetQuarantined: true,
+    })
+    expect(quarantinedResult).toMatchObject({
+      ok: false,
+      lifecycleState: {
+        quarantine: expect.objectContaining({
+          quarantined: true,
+          internalCode: 'office_pdf_runtime_quarantined',
+        }),
+      },
+      diagnostics: [expect.objectContaining({ code: 'office_pdf_update_target_quarantined' })],
+      pluginManagement: {
+        bridge: expect.objectContaining({
+          lifecycleStatus: 'blocked',
+          healthStatus: 'blocked',
+          productCode: 'conversion_sandbox_denied',
+          internalCode: 'office_pdf_runtime_quarantined',
+          installed: false,
+          enabled: false,
+          productionApproved: false,
+        }),
+      },
+    })
+    expect(JSON.stringify(quarantinedResult)).not.toContain(invalid.root)
+  })
+
+  it('rejects rollback without a known-good target or with a quarantined target', async () => {
+    const appRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-rollback-reject-'))
+    const previous = await createRuntime('24.8.0')
+
+    const missing = await rollbackDfcLibreOfficeManagedRuntimePackage({
+      appManagedRootDir: appRoot,
+      previousKnownGood: null,
+    })
+    expect(missing).toMatchObject({
+      ok: false,
+      diagnostics: [expect.objectContaining({ code: 'office_pdf_rollback_target_missing' })],
+    })
+
+    const quarantined = await rollbackDfcLibreOfficeManagedRuntimePackage({
+      appManagedRootDir: appRoot,
+      previousKnownGood: {
+        managedRuntimeRootDir: previous.root,
+        packageVersion: '24.8.0-test',
+        libreOfficeVersion: '24.8.0',
+        revoked: false,
+      },
+      previousKnownGoodQuarantined: true,
+    })
+    expect(quarantined).toMatchObject({
+      ok: false,
+      diagnostics: [expect.objectContaining({ code: 'office_pdf_rollback_target_quarantined' })],
+    })
+    expect(JSON.stringify(quarantined)).not.toContain(previous.root)
+  })
+
+  it('quarantines active runtime as blocked and not production healthy', async () => {
+    const appRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-quarantine-'))
+    const source = await createRuntime('25.8.7')
+    await importDfcLibreOfficeManagedRuntimePackage({ appManagedRootDir: appRoot, sourceRuntimeRootDir: source.root })
+
+    const result = await quarantineDfcLibreOfficeManagedRuntimePackage({
+      appManagedRootDir: appRoot,
+      reason: `owner policy denied ${appRoot}`,
+      actor: 'owner',
+      now: '2026-06-11T00:00:00.000Z',
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      operation: 'quarantine',
+      lifecycleState: {
+        activeRuntimeRootDir: getDfcLibreOfficeManagedRuntimeRoot(appRoot),
+        quarantine: expect.objectContaining({
+          quarantined: true,
+          productCode: 'conversion_sandbox_denied',
+          internalCode: 'office_pdf_runtime_quarantined',
+          quarantinedAt: '2026-06-11T00:00:00.000Z',
+          actor: 'owner',
+        }),
+      },
+      pluginManagement: {
+        bridge: expect.objectContaining({
+          lifecycleStatus: 'blocked',
+          healthStatus: 'blocked',
+          source: 'quarantined_runtime',
+          installed: false,
+          enabled: false,
+          productionApproved: false,
+        }),
+      },
+      diagnostics: [expect.objectContaining({ code: 'office_pdf_quarantine_applied' })],
+    })
+    expect(JSON.stringify(result)).not.toContain(appRoot)
+    expect(JSON.stringify(result)).not.toContain(source.root)
+  })
+
+  it('repairs by revalidating layout without bypassing active quarantine', async () => {
+    const appRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-repair-'))
+    const source = await createRuntime('25.8.7')
+    await importDfcLibreOfficeManagedRuntimePackage({ appManagedRootDir: appRoot, sourceRuntimeRootDir: source.root })
+    const quarantine = await quarantineDfcLibreOfficeManagedRuntimePackage({
+      appManagedRootDir: appRoot,
+      reason: 'owner quarantine',
+    })
+
+    const retained = await repairDfcLibreOfficeManagedRuntimePackage({
+      appManagedRootDir: appRoot,
+      quarantine: quarantine.lifecycleState.quarantine,
+    })
+    expect(retained).toMatchObject({
+      ok: true,
+      operation: 'repair',
+      repairStatus: 'quarantine_retained',
+      lifecycleState: {
+        quarantine: expect.objectContaining({
+          quarantined: true,
+        }),
+      },
+      pluginManagement: {
+        bridge: expect.objectContaining({
+          lifecycleStatus: 'blocked',
+          healthStatus: 'blocked',
+          internalCode: 'office_pdf_runtime_quarantined',
+          productionApproved: false,
+        }),
+      },
+      diagnostics: [expect.objectContaining({ code: 'office_pdf_repair_quarantine_retained' })],
+    })
+
+    const repaired = await repairDfcLibreOfficeManagedRuntimePackage({ appManagedRootDir: appRoot })
+    expect(repaired).toMatchObject({
+      ok: true,
+      repairStatus: 'repaired',
+      pluginManagement: {
+        bridge: expect.objectContaining({
+          lifecycleStatus: 'experimental',
+          installed: true,
+          enabled: true,
+          productionApproved: false,
+        }),
+      },
+      diagnostics: [expect.objectContaining({ code: 'office_pdf_repair_verified' })],
+    })
+    expect(JSON.stringify(retained)).not.toContain(appRoot)
+    expect(JSON.stringify(repaired)).not.toContain(source.root)
+  })
+
+  it('reports repair failures without activating or inventing a runtime', async () => {
+    const appRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-repair-missing-'))
+
+    const result = await repairDfcLibreOfficeManagedRuntimePackage({ appManagedRootDir: appRoot })
+
+    expect(result).toMatchObject({
+      ok: false,
+      repairStatus: 'missing_runtime',
+      pluginManagement: {
+        bridge: expect.objectContaining({
+          lifecycleStatus: 'missing',
+          productCode: 'conversion_engine_missing',
+          installed: false,
+          enabled: false,
+        }),
+      },
+      diagnostics: [expect.objectContaining({ code: 'office_pdf_repair_missing_runtime' })],
+    })
+    expect(JSON.stringify(result)).not.toContain(appRoot)
   })
 
   it('rejects symlink escape content during import', async () => {

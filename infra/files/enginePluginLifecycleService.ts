@@ -1898,7 +1898,7 @@ function toLibreOfficeCatalogReasons(
     'production_approval_missing',
     'packaged_binary_not_included',
     'system_path_fallback_disabled',
-    'update_rollback_quarantine_deferred',
+    'file_scoped_update_rollback_quarantine_repair_available',
   ]
   if (!bridge) {
     reasons.push('runtime_status_not_checked')

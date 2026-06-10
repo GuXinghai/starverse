@@ -24,6 +24,7 @@ export type DfcLibreOfficeRuntimePlatformId = 'win32' | 'darwin' | 'linux'
 export type DfcOfficePdfRuntimeDiagnosticCode =
   | 'office_pdf_runtime_missing'
   | 'office_pdf_runtime_disabled'
+  | 'office_pdf_runtime_quarantined'
   | 'office_pdf_runtime_manifest_invalid'
   | 'office_pdf_runtime_executable_missing'
   | 'office_pdf_runtime_path_rejected'
@@ -51,6 +52,7 @@ export type DfcOfficePdfRuntimeSource =
   | 'imported_dev_artifact'
   | 'fake_seam'
   | 'disabled_policy'
+  | 'quarantined_runtime'
   | 'missing_manifest'
 
 export type DfcOfficePdfRuntimeIdentitySummary = Readonly<{
@@ -493,6 +495,23 @@ export function getDfcLibreOfficeFirstPartyRuntimeCatalogEntry(): DfcLibreOffice
     },
     productionApproved: false,
     experimental: true,
+  }
+}
+
+export function createDfcLibreOfficeQuarantinedAvailabilitySummary(input?: Readonly<{
+  message?: string | null
+  runtime?: DfcOfficePdfRuntimeIdentitySummary | null
+}>): DfcOfficePdfRuntimeAvailabilitySummary {
+  return {
+    status: 'blocked',
+    healthStatus: 'blocked',
+    productCode: 'conversion_sandbox_denied',
+    internalCode: 'office_pdf_runtime_quarantined',
+    message: sanitizeRuntimeMessage(input?.message, 'LibreOffice managed runtime is quarantined.'),
+    retryable: false,
+    recoverable: true,
+    source: 'quarantined_runtime',
+    runtime: input?.runtime ?? null,
   }
 }
 
@@ -946,6 +965,7 @@ function runtimeProductCodeFromInternalCode(
     case 'office_pdf_runtime_missing':
       return 'conversion_engine_missing'
     case 'office_pdf_runtime_disabled':
+    case 'office_pdf_runtime_quarantined':
     case 'office_pdf_runtime_path_rejected':
     case 'office_pdf_runtime_platform_unsupported':
       return 'conversion_sandbox_denied'
@@ -963,6 +983,7 @@ function runtimeHealthStatusFromInternalCode(
     case 'office_pdf_runtime_missing':
       return 'missing'
     case 'office_pdf_runtime_disabled':
+    case 'office_pdf_runtime_quarantined':
     case 'office_pdf_runtime_path_rejected':
     case 'office_pdf_runtime_platform_unsupported':
       return 'blocked'
@@ -976,7 +997,13 @@ function runtimeHealthStatusFromInternalCode(
 function runtimeSourceFromInternalCode(code: DfcOfficePdfRuntimeDiagnosticCode): DfcOfficePdfRuntimeSource {
   if (code === 'office_pdf_runtime_missing') return 'missing_manifest'
   if (code === 'office_pdf_runtime_disabled') return 'disabled_policy'
+  if (code === 'office_pdf_runtime_quarantined') return 'quarantined_runtime'
   return 'managed_manifest'
+}
+
+function sanitizeRuntimeMessage(value: string | null | undefined, fallback: string): string {
+  const normalized = String(value ?? '').replace(/[A-Za-z]:[\\/][^\s]+|\/[^\s]+/gu, '[redacted-path]').trim()
+  return normalized || fallback
 }
 
 function runtimeSourceFromManifest(manifest: DfcOfficePdfRuntimeManifest): DfcOfficePdfRuntimeSource {
