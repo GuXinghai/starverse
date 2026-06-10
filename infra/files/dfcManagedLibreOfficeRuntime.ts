@@ -194,6 +194,31 @@ export type DfcLibreOfficeRuntimePackageLayoutContract = Readonly<{
   productionApproved: false
 }>
 
+export type DfcLibreOfficeRuntimeAcquisitionSourceKind =
+  | 'disabled'
+  | 'manual_import'
+  | 'github_release_asset'
+  | 'https_asset'
+
+export type DfcLibreOfficeRuntimeAcquisitionSource = Readonly<{
+  sourceKind: DfcLibreOfficeRuntimeAcquisitionSourceKind
+  downloadEnabled: boolean
+  packageRef: string | null
+  sourceUrl: string | null
+  expectedSha256: string | null
+  expectedSizeBytes: number | null
+  packageVersion: string | null
+  runtimeVersion: string | null
+  platform: DfcLibreOfficeRuntimePlatformId | 'any'
+  arch: string | 'any'
+  licenseRequired: true
+  provenanceRequired: true
+  securityPolicyRequired: true
+  productionApproved: false
+  ownerGated: true
+  experimental: true
+}>
+
 export type DfcLibreOfficeFirstPartyRuntimeCatalogEntry = Readonly<{
   pluginId: typeof DFC_OFFICE_PDF_PLUGIN_ID
   runtimeId: typeof DFC_OFFICE_PDF_RUNTIME_ID
@@ -211,6 +236,7 @@ export type DfcLibreOfficeFirstPartyRuntimeCatalogEntry = Readonly<{
     packagedBinaryIncluded: false
     systemPathFallbackAllowed: false
   }>
+  acquisitionSource: DfcLibreOfficeRuntimeAcquisitionSource
   requirements: Readonly<{
     manifestHashRequired: true
     executableHashRequired: true
@@ -514,6 +540,24 @@ export function getDfcLibreOfficeFirstPartyRuntimeCatalogEntry(): DfcLibreOffice
       importedDevArtifactAllowed: true,
       packagedBinaryIncluded: false,
       systemPathFallbackAllowed: false,
+    },
+    acquisitionSource: {
+      sourceKind: 'disabled',
+      downloadEnabled: false,
+      packageRef: null,
+      sourceUrl: null,
+      expectedSha256: null,
+      expectedSizeBytes: null,
+      packageVersion: null,
+      runtimeVersion: null,
+      platform: 'any',
+      arch: 'any',
+      licenseRequired: true,
+      provenanceRequired: true,
+      securityPolicyRequired: true,
+      productionApproved: false,
+      ownerGated: true,
+      experimental: true,
     },
     requirements: {
       manifestHashRequired: true,
