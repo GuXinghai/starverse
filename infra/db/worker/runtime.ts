@@ -38,6 +38,7 @@ import { SendPlanService } from '../../files/sendPlanService'
 import { FileTypeDetectionService } from '../../files/fileTypeDetectionService'
 import { FileTypeDetectionCoordinator } from '../../files/fileTypeDetectionCoordinator'
 import { EnginePluginLifecycleService } from '../../files/enginePluginLifecycleService'
+import { getDfcLibreOfficeManagedRuntimeRoot } from '../../files/dfcManagedLibreOfficeRuntime'
 import { getActiveTrustedRoots } from '../../../src/next/file-type/officialPluginTrustedRoots'
 import {
   createManagedPluginMagikaRuntimeLoader,
@@ -310,6 +311,7 @@ export class DbWorkerRuntime {
         const safeRef = installRef.replace(/[^a-zA-Z0-9._-]+/g, '_')
         return path.join(this.fileStorageRootDir, 'engine-plugins', installRootKind, safeRef)
       },
+      dfcLibreOfficeManagedRuntimeRootDir: getDfcLibreOfficeManagedRuntimeRoot(this.fileStorageRootDir),
     })
     this.contextRepo = new ContextRepo(this.db, this.branchRepo)
     this.searchRepo = new SearchRepo(this.db)

@@ -6,12 +6,16 @@ import { describe, expect, it } from 'vitest'
 import {
   DFC_OFFICE_PDF_CAPABILITIES,
   DFC_OFFICE_PDF_ENGINE_ID,
+  DFC_OFFICE_PDF_PLUGIN_MANAGEMENT_CAPABILITY_ID,
   DFC_OFFICE_PDF_PLUGIN_ID,
+  DFC_OFFICE_PDF_PLUGIN_PROVIDER,
   DFC_OFFICE_PDF_RUNTIME_ID,
   DFC_OFFICE_PDF_RUNTIME_KIND,
   DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
   checkDfcLibreOfficeRuntimeAvailability,
+  checkDfcLibreOfficeRuntimeAvailabilitySync,
   toDfcLibreOfficeManagedEnginePluginManifest,
+  toDfcLibreOfficePluginLifecycleBridge,
   type DfcOfficePdfRuntimeManifest,
 } from './dfcManagedLibreOfficeRuntime'
 
@@ -304,6 +308,65 @@ describe('dfc managed LibreOffice runtime gate', () => {
     })
     expect(JSON.stringify(result)).not.toContain(root)
     expect(JSON.stringify(result)).not.toContain('fake soffice executable')
+  })
+
+  it('exposes a stable Plugin Management identity bridge from the runtime summary', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-runtime-plugin-id-'))
+    const executable = Buffer.from('fake soffice executable')
+    await mkdir(path.join(root, 'program'), { recursive: true })
+    await writeFile(path.join(root, 'program', process.platform === 'win32' ? 'soffice.exe' : 'soffice'), executable)
+    await writeManifest(root, {
+      executablePath: process.platform === 'win32' ? 'program/soffice.exe' : 'program/soffice',
+      executableSha256: createHash('sha256').update(executable).digest('hex'),
+      executableSizeBytes: executable.byteLength,
+    })
+
+    const availability = checkDfcLibreOfficeRuntimeAvailabilitySync({ managedRuntimeRootDir: root })
+    const bridge = toDfcLibreOfficePluginLifecycleBridge(availability.summary)
+
+    expect(bridge).toMatchObject({
+      pluginId: DFC_OFFICE_PDF_PLUGIN_ID,
+      engineId: DFC_OFFICE_PDF_ENGINE_ID,
+      runtimeId: DFC_OFFICE_PDF_RUNTIME_ID,
+      provider: DFC_OFFICE_PDF_PLUGIN_PROVIDER,
+      lifecycleStatus: 'experimental',
+      source: 'fake_seam',
+      productionApproved: false,
+      experimental: true,
+      installed: true,
+      enabled: true,
+    })
+    expect(bridge.capabilityIds).toEqual([
+      DFC_OFFICE_PDF_PLUGIN_MANAGEMENT_CAPABILITY_ID,
+      ...DFC_OFFICE_PDF_CAPABILITIES,
+    ])
+    expect(JSON.stringify(bridge)).not.toContain(root)
+    expect(JSON.stringify(bridge)).not.toContain('program/soffice')
+  })
+
+  it('maps missing runtime into a missing Plugin Management lifecycle status without local paths', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-runtime-plugin-missing-'))
+
+    const availability = checkDfcLibreOfficeRuntimeAvailabilitySync({ managedRuntimeRootDir: root })
+    const bridge = toDfcLibreOfficePluginLifecycleBridge(availability.summary)
+
+    expect(bridge).toMatchObject({
+      pluginId: DFC_OFFICE_PDF_PLUGIN_ID,
+      engineId: DFC_OFFICE_PDF_ENGINE_ID,
+      runtimeId: DFC_OFFICE_PDF_RUNTIME_ID,
+      lifecycleStatus: 'missing',
+      healthStatus: 'missing',
+      productCode: 'conversion_engine_missing',
+      internalCode: 'office_pdf_runtime_missing',
+      source: 'missing_manifest',
+      productionApproved: false,
+      installed: false,
+      enabled: false,
+      retryable: true,
+      recoverable: true,
+      runtime: null,
+    })
+    expect(JSON.stringify(bridge)).not.toContain(root)
   })
 })
 

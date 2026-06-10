@@ -19,6 +19,7 @@ import type { OfficialPackageReleaseMetadata } from '../../src/next/plugin-distr
 import type { PackageDownloadTransport } from '../../src/next/plugin-distribution/packageDownloader'
 import { ensureEnginePluginRegistrySchema } from '../db/migrations/ensureEnginePluginRegistrySchema'
 import { EnginePluginRegistryRepo } from '../db/repo/enginePluginRegistryRepo'
+import type { DfcOfficePdfRuntimeAvailabilitySummary } from './dfcManagedLibreOfficeRuntime'
 import { EnginePluginLifecycleService } from './enginePluginLifecycleService'
 
 function loadSchema(db: BetterSqlite3.Database) {
@@ -147,6 +148,7 @@ function createService(
     officialPackageTransport?: PackageDownloadTransport
     readBytes?: (filePath: string) => Promise<Uint8Array>
     healthRunner?: EngineHealthRunner
+    dfcLibreOfficeRuntimeSummary?: () => DfcOfficePdfRuntimeAvailabilitySummary | null
   }> = {}
 ) {
   const db = new BetterSqlite3(':memory:')
@@ -160,6 +162,7 @@ function createService(
     resolveInstallPluginDir: ({ installRef }) => path.join(tempRoot, installRef),
     readBytes: opts.readBytes,
     healthRunner: opts.healthRunner,
+    dfcLibreOfficeRuntimeSummary: opts.dfcLibreOfficeRuntimeSummary,
     magikaOfficialRelease: opts.magikaOfficialRelease,
     officialPackageTransport: opts.officialPackageTransport ?? (opts.officialPackageBytes
       ? {
@@ -199,6 +202,37 @@ function registryRecord(overrides?: Record<string, unknown>) {
     metadataJson: null,
     ...overrides,
   } as const
+}
+
+function dfcLibreOfficeSummary(
+  overrides: Partial<DfcOfficePdfRuntimeAvailabilitySummary> = {}
+): DfcOfficePdfRuntimeAvailabilitySummary {
+  const runtime = {
+    pluginId: 'libreoffice',
+    engineId: 'libreoffice',
+    runtimeId: 'libreoffice-office-pdf',
+    pluginVersion: '0.1.0',
+    packageVersion: '2026.06.01',
+    libreOfficeVersion: '24.8.0',
+    runtimeKind: 'managed_external_process',
+    platform: process.platform,
+    arch: process.arch,
+    capabilities: ['office_to_pdf', 'docx_to_pdf'],
+    manifestHashPrefix: 'abc123def456',
+    executableRef: 'managed_relative_executable',
+  } as const
+  return {
+    status: 'experimental',
+    healthStatus: 'healthy',
+    productCode: null,
+    internalCode: null,
+    message: 'LibreOffice managed runtime is available for owner-gated Office PDF conversion.',
+    retryable: false,
+    recoverable: false,
+    source: 'fake_seam',
+    runtime,
+    ...overrides,
+  }
 }
 
 async function waitForInstallOperation(
@@ -2374,6 +2408,148 @@ describe('EnginePluginLifecycleService', () => {
       expect(diagnostics.counts.total).toBeGreaterThanOrEqual(4)
       expect(diagnostics.counts.installed).toBe(0)
       expect(diagnostics.counts.enabled).toBe(0)
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('exposes LibreOffice as a read-only managed runtime plugin when DFC summary is configured', async () => {
+    const fixture = await createFixture()
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'test',
+      dfcLibreOfficeRuntimeSummary: () => dfcLibreOfficeSummary(),
+    })
+    try {
+      const installed = service.getInstalledPlugins().find((entry) => entry.engineId === 'libreoffice')
+      expect(installed).toMatchObject({
+        engineId: 'libreoffice',
+        displayName: 'LibreOffice Office PDF',
+        pluginVersion: '0.1.0',
+        packageVersion: '2026.06.01',
+        runtimeKind: 'managed_external_process',
+        runtimeVersion: '24.8.0',
+        installState: 'installed',
+        enabled: true,
+        healthStatus: 'degraded',
+        failureReason: 'fake_seam_not_production_approved',
+        installSource: 'local_package',
+        installRootKind: 'test_root',
+        modelVersion: null,
+        releaseProvenance: null,
+      })
+
+      const diagnostics = service.getDiagnosticsSummary()
+      const libreOffice = diagnostics.engines.find((entry) => entry.engineId === 'libreoffice')
+      expect(libreOffice).toMatchObject({
+        kind: 'plugin',
+        installed: true,
+        enabled: true,
+        healthStatus: 'degraded',
+        verificationStatus: 'verified',
+        pluginVersion: '0.1.0',
+        failureReason: 'fake_seam_not_production_approved',
+        installSource: 'local_package',
+      })
+      expect(diagnostics.counts.installed).toBe(1)
+      expect(diagnostics.counts.failed).toBe(1)
+      expect(diagnostics.counts.healthy).toBe(0)
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('maps missing LibreOffice runtime to plugin unhealthy without creating a registry row', async () => {
+    const fixture = await createFixture()
+    const { db, repo, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'test',
+      dfcLibreOfficeRuntimeSummary: () => dfcLibreOfficeSummary({
+        status: 'unavailable',
+        healthStatus: 'missing',
+        productCode: 'conversion_engine_missing',
+        internalCode: 'office_pdf_runtime_missing',
+        message: 'Office PDF runtime manifest is missing.',
+        retryable: true,
+        recoverable: true,
+        source: 'missing_manifest',
+        runtime: null,
+      }),
+    })
+    try {
+      const installed = service.getInstalledPlugins().find((entry) => entry.engineId === 'libreoffice')
+      expect(installed).toMatchObject({
+        installState: 'failed',
+        enabled: false,
+        healthStatus: 'unhealthy',
+        failureReason: 'conversion_engine_missing',
+        installSource: 'official_catalog',
+        installRootKind: 'managed_root',
+      })
+      expect(repo.getByEngineId('libreoffice')).toBeNull()
+
+      const diagnostics = service.getDiagnosticsSummary()
+      const libreOffice = diagnostics.engines.find((entry) => entry.engineId === 'libreoffice')
+      expect(libreOffice).toMatchObject({
+        kind: 'plugin',
+        installed: false,
+        enabled: false,
+        healthStatus: 'unhealthy',
+        failureReason: 'conversion_engine_missing',
+      })
+      expect(diagnostics.counts.installed).toBe(0)
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('does not declare imported LibreOffice dev artifacts as production healthy', async () => {
+    const fixture = await createFixture()
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'test',
+      dfcLibreOfficeRuntimeSummary: () => dfcLibreOfficeSummary({
+        source: 'imported_dev_artifact',
+        message: 'LibreOffice imported dev artifact is available for owner-gated Office PDF conversion.',
+      }),
+    })
+    try {
+      const installed = service.getInstalledPlugins().find((entry) => entry.engineId === 'libreoffice')
+      expect(installed).toMatchObject({
+        installState: 'installed',
+        healthStatus: 'degraded',
+        failureReason: 'imported_dev_artifact_not_production_approved',
+        installSource: 'local_package',
+        installRootKind: 'test_root',
+      })
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('sanitizes LibreOffice lifecycle diagnostics before exposing plugin inventory', async () => {
+    const fixture = await createFixture()
+    const privatePath = 'C:\\Users\\owner\\LibreOffice\\program\\soffice.exe'
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'test',
+      dfcLibreOfficeRuntimeSummary: () => dfcLibreOfficeSummary({
+        status: 'unavailable',
+        healthStatus: 'unhealthy',
+        productCode: 'conversion_engine_unhealthy',
+        internalCode: 'office_pdf_runtime_manifest_invalid',
+        message: `Office PDF runtime manifest is invalid: ${privatePath}`,
+        source: 'managed_manifest',
+        runtime: null,
+      }),
+    })
+    try {
+      const text = JSON.stringify({
+        installed: service.getInstalledPlugins(),
+        diagnostics: service.getDiagnosticsSummary(),
+      })
+      expect(text).not.toContain('C:\\Users\\owner')
+      expect(text).not.toContain('soffice.exe')
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })
