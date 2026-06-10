@@ -309,6 +309,13 @@ export type DerivativeErrorCode =
   | 'embedding_output_write_failed'
 
 export type DfcOptionGenerationErrorCode = DerivativeErrorCode | 'draft_attachment_detached'
+  | 'conversion_engine_missing'
+  | 'conversion_engine_unhealthy'
+  | 'conversion_engine_timeout'
+  | 'conversion_engine_failed'
+  | 'conversion_sandbox_denied'
+  | 'conversion_output_missing'
+  | 'conversion_output_too_large'
   | 'html_pdf_runtime_missing'
   | 'html_pdf_runtime_manifest_invalid'
   | 'html_pdf_runtime_executable_missing'
@@ -506,7 +513,7 @@ export type MarkDfcOptionGenerationReadyInput = Readonly<{
 
 export type MarkDfcOptionGenerationFailedInput = Readonly<{
   id: string
-  errorCode: DerivativeErrorCode
+  errorCode: DfcOptionGenerationErrorCode
   retryable?: boolean
   finishedAt?: number
 }>

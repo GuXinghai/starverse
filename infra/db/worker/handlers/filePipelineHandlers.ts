@@ -5,11 +5,10 @@ import { createHash, randomUUID } from 'node:crypto'
 import { resolveManagedStoragePath } from '../../../../src/shared/files/localStorageResolver'
 import type { SendPlan } from '../../../../src/shared/files/sendPlanTypes'
 import { serializeSendPlanForOpenRouter } from '../../../../src/next/openrouter/openRouterSendPlanSerializer'
-import type { DerivativeErrorCode, DfcOptionGenerationStateRecord, FileAssetRecord, FileDerivativeRecord } from '../../types'
+import type { DerivativeErrorCode, DfcOptionGenerationErrorCode, DfcOptionGenerationStateRecord, FileAssetRecord, FileDerivativeRecord } from '../../types'
 import {
   checkDfcLibreOfficeRuntimeAvailability,
   getDfcLibreOfficeManagedRuntimeRoot,
-  type DfcOfficePdfRuntimeDiagnosticCode,
 } from '../../../files/dfcManagedLibreOfficeRuntime'
 import {
   CreateFileAssetSchema,
@@ -784,7 +783,7 @@ async function ensureOfficePdfRuntimeGate(
   if (!availability.ok) {
     runtime.dfcOptionGenerationStateRepo.markBlocked({
       id: generationState.id,
-      errorCode: normalizeOfficePdfRuntimeDiagnosticCode(availability.diagnostics[0]?.code),
+      errorCode: availability.summary.productCode ?? 'conversion_engine_unhealthy',
     })
     return { changed: true }
   }
@@ -800,7 +799,7 @@ async function ensureOfficePdfRuntimeGate(
   if (!runtime.derivativeJobService.canRunOfficePdfFakeProcess()) {
     runtime.dfcOptionGenerationStateRepo.markBlocked({
       id: generationState.id,
-      errorCode: 'conversion_not_implemented',
+      errorCode: 'conversion_engine_unhealthy',
     })
     return { changed: true }
   }
@@ -826,7 +825,7 @@ async function ensureOfficePdfRuntimeGate(
   if (ran.job.status !== 'ready' || !ran.derivative) {
     runtime.dfcOptionGenerationStateRepo.markFailed({
       id: generationState.id,
-      errorCode: normalizeDerivativeErrorCode(ran.job.errorCode),
+      errorCode: normalizeOfficePdfGenerationErrorCode(ran.job.errorCode),
       retryable: !NON_RETRYABLE_TEXT_CONVERSION_ERRORS.has(ran.job.errorCode ?? ''),
     })
     return { changed: true }
@@ -1321,11 +1320,18 @@ function normalizeDerivativeErrorCode(value: string | null | undefined): Derivat
   return isDerivativeErrorCode(normalized) ? normalized : 'derivative_output_write_failed'
 }
 
-function normalizeOfficePdfRuntimeDiagnosticCode(value: string | null | undefined): DfcOfficePdfRuntimeDiagnosticCode {
+function normalizeOfficePdfGenerationErrorCode(value: string | null | undefined): DfcOptionGenerationErrorCode {
   const normalized = String(value ?? '').trim()
-  return OFFICE_PDF_RUNTIME_DIAGNOSTIC_CODES.has(normalized as DfcOfficePdfRuntimeDiagnosticCode)
-    ? normalized as DfcOfficePdfRuntimeDiagnosticCode
-    : 'office_pdf_runtime_manifest_invalid'
+  switch (normalized) {
+    case 'derivative_task_timeout':
+      return 'conversion_engine_timeout'
+    case 'derivative_output_write_failed':
+      return 'conversion_engine_failed'
+    case 'conversion_not_implemented':
+      return 'conversion_engine_unhealthy'
+    default:
+      return isDerivativeErrorCode(normalized) ? normalized : 'conversion_engine_failed'
+  }
 }
 
 function isDerivativeErrorCode(value: string): value is DerivativeErrorCode {
@@ -1363,16 +1369,6 @@ const DERIVATIVE_ERROR_CODES = new Set<DerivativeErrorCode>([
   'embedding_request_failed',
   'embedding_response_invalid',
   'embedding_output_write_failed',
-])
-
-const OFFICE_PDF_RUNTIME_DIAGNOSTIC_CODES = new Set<DfcOfficePdfRuntimeDiagnosticCode>([
-  'office_pdf_runtime_missing',
-  'office_pdf_runtime_disabled',
-  'office_pdf_runtime_manifest_invalid',
-  'office_pdf_runtime_executable_missing',
-  'office_pdf_runtime_path_rejected',
-  'office_pdf_runtime_platform_unsupported',
-  'office_pdf_runtime_metadata_incomplete',
 ])
 
 function isDfcHtmlPdfSourceAsset(asset: FileAssetRecord): boolean {

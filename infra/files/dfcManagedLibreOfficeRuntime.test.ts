@@ -24,6 +24,16 @@ describe('dfc managed LibreOffice runtime gate', () => {
     expect(result).toMatchObject({
       ok: false,
       runtime: null,
+      summary: expect.objectContaining({
+        status: 'unavailable',
+        healthStatus: 'missing',
+        productCode: 'conversion_engine_missing',
+        internalCode: 'office_pdf_runtime_missing',
+        retryable: true,
+        recoverable: true,
+        source: 'missing_manifest',
+        runtime: null,
+      }),
       diagnostics: [expect.objectContaining({ code: 'office_pdf_runtime_missing' })],
     })
     expect(JSON.stringify(result)).not.toContain(root)
@@ -44,6 +54,21 @@ describe('dfc managed LibreOffice runtime gate', () => {
 
     expect(result).toMatchObject({
       ok: true,
+      summary: expect.objectContaining({
+        status: 'experimental',
+        healthStatus: 'healthy',
+        productCode: null,
+        internalCode: null,
+        source: 'fake_seam',
+        runtime: expect.objectContaining({
+          pluginId: DFC_OFFICE_PDF_PLUGIN_ID,
+          engineId: DFC_OFFICE_PDF_ENGINE_ID,
+          runtimeId: DFC_OFFICE_PDF_RUNTIME_ID,
+          packageVersion: '2026.06.01',
+          libreOfficeVersion: '24.8.0',
+          executableRef: 'managed_relative_executable',
+        }),
+      }),
       runtime: expect.objectContaining({
         packageId: DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
         pluginId: DFC_OFFICE_PDF_PLUGIN_ID,
@@ -69,6 +94,7 @@ describe('dfc managed LibreOffice runtime gate', () => {
       }),
       diagnostics: [],
     })
+    expect(result.summary.runtime?.manifestHashPrefix).toMatch(/^[a-f0-9]{12}$/)
     expect(JSON.stringify(result)).not.toContain(root)
     expect(JSON.stringify(result)).not.toContain('program/soffice')
     expect(JSON.stringify(result)).not.toContain('fake soffice executable')
@@ -114,6 +140,13 @@ describe('dfc managed LibreOffice runtime gate', () => {
     const byManifest = await checkDfcLibreOfficeRuntimeAvailability({ managedRuntimeRootDir: root })
     expect(byManifest).toMatchObject({
       ok: false,
+      summary: expect.objectContaining({
+        status: 'blocked',
+        healthStatus: 'blocked',
+        productCode: 'conversion_sandbox_denied',
+        internalCode: 'office_pdf_runtime_disabled',
+        source: 'disabled_policy',
+      }),
       diagnostics: [expect.objectContaining({ code: 'office_pdf_runtime_disabled' })],
     })
     expect(JSON.stringify(byManifest)).not.toContain(root)
@@ -141,6 +174,12 @@ describe('dfc managed LibreOffice runtime gate', () => {
 
     expect(result).toMatchObject({
       ok: false,
+      summary: expect.objectContaining({
+        status: 'unavailable',
+        healthStatus: 'unhealthy',
+        productCode: 'conversion_engine_unhealthy',
+        internalCode: 'office_pdf_runtime_executable_missing',
+      }),
       diagnostics: [expect.objectContaining({ code: 'office_pdf_runtime_executable_missing' })],
     })
     expect(JSON.stringify(result)).not.toContain('program/missing-soffice')
@@ -211,6 +250,10 @@ describe('dfc managed LibreOffice runtime gate', () => {
     const invalid = await checkDfcLibreOfficeRuntimeAvailability({ managedRuntimeRootDir: root })
     expect(invalid).toMatchObject({
       ok: false,
+      summary: expect.objectContaining({
+        productCode: 'conversion_engine_unhealthy',
+        internalCode: 'office_pdf_runtime_manifest_invalid',
+      }),
       diagnostics: [expect.objectContaining({ code: 'office_pdf_runtime_manifest_invalid' })],
     })
     expect(JSON.stringify(invalid)).not.toContain('not-a-full-hash')
@@ -220,6 +263,12 @@ describe('dfc managed LibreOffice runtime gate', () => {
     const unsupported = await checkDfcLibreOfficeRuntimeAvailability({ managedRuntimeRootDir: root })
     expect(unsupported).toMatchObject({
       ok: false,
+      summary: expect.objectContaining({
+        status: 'blocked',
+        productCode: 'conversion_sandbox_denied',
+        internalCode: 'office_pdf_runtime_platform_unsupported',
+        recoverable: false,
+      }),
       diagnostics: [expect.objectContaining({ code: 'office_pdf_runtime_platform_unsupported' })],
     })
   })
@@ -247,6 +296,10 @@ describe('dfc managed LibreOffice runtime gate', () => {
 
     expect(result).toMatchObject({
       ok: false,
+      summary: expect.objectContaining({
+        productCode: 'conversion_engine_unhealthy',
+        internalCode: 'office_pdf_runtime_metadata_incomplete',
+      }),
       diagnostics: [expect.objectContaining({ code: 'office_pdf_runtime_metadata_incomplete' })],
     })
     expect(JSON.stringify(result)).not.toContain(root)

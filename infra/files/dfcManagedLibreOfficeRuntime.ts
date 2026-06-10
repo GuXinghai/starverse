@@ -27,15 +27,62 @@ export type DfcOfficePdfRuntimeDiagnostic = Readonly<{
   message: string
 }>
 
+export type DfcOfficePdfRuntimeAvailabilityState = 'available' | 'unavailable' | 'blocked' | 'experimental'
+export type DfcOfficePdfRuntimeHealthStatus = 'healthy' | 'missing' | 'unhealthy' | 'blocked' | 'unknown'
+export type DfcOfficePdfRuntimeProductCode =
+  | 'conversion_engine_missing'
+  | 'conversion_engine_unhealthy'
+  | 'conversion_engine_timeout'
+  | 'conversion_engine_failed'
+  | 'conversion_sandbox_denied'
+  | 'conversion_output_missing'
+  | 'conversion_output_too_large'
+
+export type DfcOfficePdfRuntimeSource =
+  | 'managed_manifest'
+  | 'imported_dev_artifact'
+  | 'fake_seam'
+  | 'disabled_policy'
+  | 'missing_manifest'
+
+export type DfcOfficePdfRuntimeIdentitySummary = Readonly<{
+  pluginId: string
+  engineId: string
+  runtimeId: string
+  pluginVersion: string
+  packageVersion: string
+  libreOfficeVersion: string
+  runtimeKind: string
+  platform: string
+  arch: string | null
+  capabilities: readonly string[]
+  manifestHashPrefix: string
+  executableRef: 'managed_relative_executable'
+}>
+
+export type DfcOfficePdfRuntimeAvailabilitySummary = Readonly<{
+  status: DfcOfficePdfRuntimeAvailabilityState
+  healthStatus: DfcOfficePdfRuntimeHealthStatus
+  productCode: DfcOfficePdfRuntimeProductCode | null
+  internalCode: DfcOfficePdfRuntimeDiagnosticCode | null
+  message: string
+  retryable: boolean
+  recoverable: boolean
+  source: DfcOfficePdfRuntimeSource
+  runtime: DfcOfficePdfRuntimeIdentitySummary | null
+}>
+
 export type DfcOfficePdfRuntimeAvailability =
   | Readonly<{
       ok: true
       runtime: DfcOfficePdfManagedRuntimeSummary
+      summary: DfcOfficePdfRuntimeAvailabilitySummary
       diagnostics: readonly DfcOfficePdfRuntimeDiagnostic[]
     }>
   | Readonly<{
       ok: false
       runtime: null
+      summary: DfcOfficePdfRuntimeAvailabilitySummary
       diagnostics: readonly DfcOfficePdfRuntimeDiagnostic[]
     }>
 
@@ -69,11 +116,13 @@ export type DfcOfficePdfRuntimeExecutionAvailability =
   | Readonly<{
       ok: true
       runtime: DfcOfficePdfManagedRuntimeExecutionDescriptor
+      summary: DfcOfficePdfRuntimeAvailabilitySummary
       diagnostics: readonly DfcOfficePdfRuntimeDiagnostic[]
     }>
   | Readonly<{
       ok: false
       runtime: null
+      summary: DfcOfficePdfRuntimeAvailabilitySummary
       diagnostics: readonly DfcOfficePdfRuntimeDiagnostic[]
     }>
 
@@ -144,6 +193,7 @@ export async function checkDfcLibreOfficeRuntimeAvailability(input: Readonly<{
   return {
     ok: true,
     runtime,
+    summary: result.summary,
     diagnostics: result.diagnostics,
   }
 }
@@ -180,6 +230,7 @@ export async function resolveDfcLibreOfficeRuntimeExecutionDescriptor(input: Rea
   }
 
   const manifest = parsed.manifest
+  const manifestHashPrefix = sha256(Buffer.from(manifestText)).slice(0, 12)
   if (manifest.enabled === false) {
     return unavailable('office_pdf_runtime_disabled', 'Office PDF managed runtime is disabled.')
   }
@@ -246,6 +297,7 @@ export async function resolveDfcLibreOfficeRuntimeExecutionDescriptor(input: Rea
       attribution: manifest.attribution ?? null,
       officialRelease: manifest.officialRelease ?? null,
     },
+    summary: availableSummary(manifest, manifestHashPrefix),
     diagnostics: [],
   }
 }
@@ -440,11 +492,114 @@ function isNotFound(error: unknown): boolean {
 function unavailable(code: DfcOfficePdfRuntimeDiagnosticCode, message: string): Readonly<{
   ok: false
   runtime: null
+  summary: DfcOfficePdfRuntimeAvailabilitySummary
   diagnostics: readonly DfcOfficePdfRuntimeDiagnostic[]
 }> {
   return {
     ok: false,
     runtime: null,
+    summary: unavailableSummary(code, message),
     diagnostics: [{ code, message }],
   }
+}
+
+function availableSummary(
+  manifest: DfcOfficePdfRuntimeManifest,
+  manifestHashPrefix: string
+): DfcOfficePdfRuntimeAvailabilitySummary {
+  return {
+    status: 'experimental',
+    healthStatus: 'healthy',
+    productCode: null,
+    internalCode: null,
+    message: 'LibreOffice managed runtime is available for owner-gated Office PDF conversion.',
+    retryable: false,
+    recoverable: false,
+    source: runtimeSourceFromManifest(manifest),
+    runtime: {
+      pluginId: manifest.pluginId ?? DFC_OFFICE_PDF_PLUGIN_ID,
+      engineId: manifest.engineId,
+      runtimeId: manifest.runtimeId,
+      pluginVersion: manifest.pluginVersion ?? manifest.packageVersion,
+      packageVersion: manifest.packageVersion,
+      libreOfficeVersion: manifest.libreOfficeVersion,
+      runtimeKind: manifest.runtimeKind ?? DFC_OFFICE_PDF_RUNTIME_KIND,
+      platform: manifest.platform,
+      arch: manifest.arch ?? null,
+      capabilities: [...(manifest.capabilities ?? [])],
+      manifestHashPrefix,
+      executableRef: 'managed_relative_executable',
+    },
+  }
+}
+
+function unavailableSummary(
+  code: DfcOfficePdfRuntimeDiagnosticCode,
+  message: string
+): DfcOfficePdfRuntimeAvailabilitySummary {
+  return {
+    status: code === 'office_pdf_runtime_disabled' || code === 'office_pdf_runtime_path_rejected' || code === 'office_pdf_runtime_platform_unsupported'
+      ? 'blocked'
+      : 'unavailable',
+    healthStatus: runtimeHealthStatusFromInternalCode(code),
+    productCode: runtimeProductCodeFromInternalCode(code),
+    internalCode: code,
+    message,
+    retryable: code === 'office_pdf_runtime_missing' || code === 'office_pdf_runtime_executable_missing',
+    recoverable: code !== 'office_pdf_runtime_platform_unsupported',
+    source: runtimeSourceFromInternalCode(code),
+    runtime: null,
+  }
+}
+
+function runtimeProductCodeFromInternalCode(
+  code: DfcOfficePdfRuntimeDiagnosticCode
+): DfcOfficePdfRuntimeProductCode {
+  switch (code) {
+    case 'office_pdf_runtime_missing':
+      return 'conversion_engine_missing'
+    case 'office_pdf_runtime_disabled':
+    case 'office_pdf_runtime_path_rejected':
+    case 'office_pdf_runtime_platform_unsupported':
+      return 'conversion_sandbox_denied'
+    case 'office_pdf_runtime_manifest_invalid':
+    case 'office_pdf_runtime_executable_missing':
+    case 'office_pdf_runtime_metadata_incomplete':
+      return 'conversion_engine_unhealthy'
+  }
+}
+
+function runtimeHealthStatusFromInternalCode(
+  code: DfcOfficePdfRuntimeDiagnosticCode
+): DfcOfficePdfRuntimeHealthStatus {
+  switch (code) {
+    case 'office_pdf_runtime_missing':
+      return 'missing'
+    case 'office_pdf_runtime_disabled':
+    case 'office_pdf_runtime_path_rejected':
+    case 'office_pdf_runtime_platform_unsupported':
+      return 'blocked'
+    case 'office_pdf_runtime_manifest_invalid':
+    case 'office_pdf_runtime_executable_missing':
+    case 'office_pdf_runtime_metadata_incomplete':
+      return 'unhealthy'
+  }
+}
+
+function runtimeSourceFromInternalCode(code: DfcOfficePdfRuntimeDiagnosticCode): DfcOfficePdfRuntimeSource {
+  if (code === 'office_pdf_runtime_missing') return 'missing_manifest'
+  if (code === 'office_pdf_runtime_disabled') return 'disabled_policy'
+  return 'managed_manifest'
+}
+
+function runtimeSourceFromManifest(manifest: DfcOfficePdfRuntimeManifest): DfcOfficePdfRuntimeSource {
+  if (manifest.officialRelease?.sourceKind === 'test_fixture') return 'fake_seam'
+  if (
+    manifest.officialRelease?.sourceKind === 'development' ||
+    /\bdev\b|dev-managed/u.test(manifest.packageVersion) ||
+    /\bdev\b/u.test(manifest.pluginVersion ?? '')
+  ) {
+    return 'imported_dev_artifact'
+  }
+  return 'managed_manifest'
 }
