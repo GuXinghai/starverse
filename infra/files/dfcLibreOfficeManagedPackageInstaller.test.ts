@@ -24,6 +24,29 @@ describe('dfc LibreOffice managed package installer scaffold', () => {
     expect(firstResult).toMatchObject({
       activeRuntimeRootDir: getDfcLibreOfficeManagedRuntimeRoot(appRoot),
       previousKnownGood: null,
+      pluginManagement: {
+        operation: 'import',
+        installKind: 'imported_dev_artifact',
+        productionApproved: false,
+        activeRuntimeRef: 'managed_runtime_root',
+        bridge: expect.objectContaining({
+          pluginId: 'libreoffice',
+          engineId: 'libreoffice',
+          runtimeId: 'libreoffice-office-pdf',
+          installed: true,
+          enabled: true,
+          source: 'fake_seam',
+          productionApproved: false,
+          experimental: true,
+        }),
+        verification: {
+          manifestValidated: true,
+          artifactHashVerified: true,
+          executableHashVerified: true,
+          packageMetadataVerified: true,
+          securityPolicyVerified: true,
+        },
+      },
       diagnostics: [],
     })
 
@@ -47,6 +70,8 @@ describe('dfc LibreOffice managed package installer scaffold', () => {
     expect(JSON.stringify(secondResult.diagnostics)).not.toContain(appRoot)
     expect(JSON.stringify(secondResult.diagnostics)).not.toContain(first.root)
     expect(JSON.stringify(secondResult.diagnostics)).not.toContain(second.root)
+    expect(JSON.stringify(secondResult.pluginManagement)).not.toContain(appRoot)
+    expect(JSON.stringify(secondResult.pluginManagement)).not.toContain(second.root)
   })
 
   it('rejects artifact hash mismatch and cleans failed staging without activating a runtime', async () => {
@@ -62,6 +87,23 @@ describe('dfc LibreOffice managed package installer scaffold', () => {
     expect(result).toMatchObject({
       ok: false,
       activeRuntimeRootDir: null,
+      pluginManagement: {
+        operation: 'import',
+        installKind: 'imported_dev_artifact',
+        productionApproved: false,
+        bridge: expect.objectContaining({
+          installed: false,
+          enabled: false,
+          productCode: 'conversion_engine_unhealthy',
+        }),
+        verification: {
+          manifestValidated: false,
+          artifactHashVerified: false,
+          executableHashVerified: false,
+          packageMetadataVerified: false,
+          securityPolicyVerified: false,
+        },
+      },
       diagnostics: [expect.objectContaining({ code: 'office_pdf_install_artifact_hash_mismatch' })],
     })
     expect(JSON.stringify(result)).not.toContain(source.root)
@@ -185,6 +227,48 @@ describe('dfc LibreOffice managed package installer scaffold', () => {
       diagnostics: [expect.objectContaining({ code: 'office_pdf_install_path_rejected' })],
     })
     expect(JSON.stringify(result)).not.toContain(outside)
+  })
+
+  it('maps imported development artifacts into Plugin Management import semantics without production approval', async () => {
+    const appRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-install-dev-import-'))
+    const source = await createRuntime('25.8.7', {
+      pluginVersion: '25.8.7-dev',
+      packageVersion: '25.8.7-dev-package',
+      officialRelease: {
+        sourceKind: 'development',
+        packageRef: 'dev/libreoffice-dev.zip',
+        releaseTag: 'dev-libreoffice',
+        provenance: 'starverse-dev-import',
+      },
+    })
+
+    const result = await importDfcLibreOfficeManagedRuntimePackage({
+      appManagedRootDir: appRoot,
+      sourceRuntimeRootDir: source.root,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      pluginManagement: {
+        installKind: 'imported_dev_artifact',
+        productionApproved: false,
+        bridge: expect.objectContaining({
+          source: 'imported_dev_artifact',
+          lifecycleStatus: 'experimental',
+          installed: true,
+          enabled: true,
+          productionApproved: false,
+          runtime: expect.objectContaining({
+            pluginId: 'libreoffice',
+            runtimeId: 'libreoffice-office-pdf',
+            manifestHashPrefix: expect.stringMatching(/^[a-f0-9]{12}$/u),
+            executableRef: 'managed_relative_executable',
+          }),
+        }),
+      },
+    })
+    expect(JSON.stringify(result.pluginManagement)).not.toContain(source.root)
+    expect(JSON.stringify(result.pluginManagement)).not.toContain('program/soffice')
   })
 })
 

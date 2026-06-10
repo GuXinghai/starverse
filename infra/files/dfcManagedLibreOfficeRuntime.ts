@@ -15,6 +15,8 @@ export const DFC_OFFICE_PDF_PLUGIN_PROVIDER = 'first_party_managed_runtime'
 export const DFC_OFFICE_PDF_RUNTIME_MANIFEST = 'manifest.json'
 export const DFC_OFFICE_PDF_MIN_CONTRACT_VERSION = '1'
 export const DFC_OFFICE_PDF_RUNTIME_KIND = 'managed_external_process'
+export const DFC_OFFICE_PDF_DISPLAY_NAME = 'LibreOffice Office PDF'
+export const DFC_OFFICE_PDF_CATALOG_VERSION = '0.1.0'
 
 export type DfcOfficePdfRuntimeDiagnosticCode =
   | 'office_pdf_runtime_missing'
@@ -110,6 +112,41 @@ export type DfcLibreOfficePluginLifecycleBridge = Readonly<{
   recoverable: boolean
   message: string
   runtime: DfcOfficePdfRuntimeIdentitySummary | null
+}>
+
+export type DfcLibreOfficeFirstPartyRuntimeCatalogEntry = Readonly<{
+  pluginId: typeof DFC_OFFICE_PDF_PLUGIN_ID
+  runtimeId: typeof DFC_OFFICE_PDF_RUNTIME_ID
+  displayName: typeof DFC_OFFICE_PDF_DISPLAY_NAME
+  provider: typeof DFC_OFFICE_PDF_PLUGIN_PROVIDER
+  pluginVersion: typeof DFC_OFFICE_PDF_CATALOG_VERSION
+  runtimeKind: 'managed'
+  capabilityIds: readonly ['document_conversion', 'office_to_pdf', 'docx_to_pdf']
+  supportedPlatforms: readonly ['win32', 'darwin', 'linux']
+  supportedFormats: readonly ['docx']
+  artifactSourcePolicy: Readonly<{
+    officialCatalogCandidate: true
+    importedDevArtifactAllowed: true
+    packagedBinaryIncluded: false
+    systemPathFallbackAllowed: false
+  }>
+  requirements: Readonly<{
+    manifestHashRequired: true
+    executableHashRequired: true
+    executableSizeRequired: true
+    provenanceRequired: true
+    licenseRequired: true
+    attributionRequired: true
+    securityPolicyRequired: readonly [
+      'macros_disabled',
+      'network_disabled',
+      'external_links_disabled',
+      'embedded_object_execution_disabled',
+      'isolated_profile_required',
+    ]
+  }>
+  productionApproved: false
+  experimental: true
 }>
 
 export type DfcOfficePdfManagedRuntimeSummary = Readonly<{
@@ -370,6 +407,46 @@ export function toDfcLibreOfficePluginLifecycleBridge(
     recoverable: summary.recoverable,
     message: summary.message,
     runtime: summary.runtime,
+  }
+}
+
+export function getDfcLibreOfficeFirstPartyRuntimeCatalogEntry(): DfcLibreOfficeFirstPartyRuntimeCatalogEntry {
+  return {
+    pluginId: DFC_OFFICE_PDF_PLUGIN_ID,
+    runtimeId: DFC_OFFICE_PDF_RUNTIME_ID,
+    displayName: DFC_OFFICE_PDF_DISPLAY_NAME,
+    provider: DFC_OFFICE_PDF_PLUGIN_PROVIDER,
+    pluginVersion: DFC_OFFICE_PDF_CATALOG_VERSION,
+    runtimeKind: 'managed',
+    capabilityIds: [
+      DFC_OFFICE_PDF_PLUGIN_MANAGEMENT_CAPABILITY_ID,
+      ...DFC_OFFICE_PDF_CAPABILITIES,
+    ],
+    supportedPlatforms: ['win32', 'darwin', 'linux'],
+    supportedFormats: ['docx'],
+    artifactSourcePolicy: {
+      officialCatalogCandidate: true,
+      importedDevArtifactAllowed: true,
+      packagedBinaryIncluded: false,
+      systemPathFallbackAllowed: false,
+    },
+    requirements: {
+      manifestHashRequired: true,
+      executableHashRequired: true,
+      executableSizeRequired: true,
+      provenanceRequired: true,
+      licenseRequired: true,
+      attributionRequired: true,
+      securityPolicyRequired: [
+        'macros_disabled',
+        'network_disabled',
+        'external_links_disabled',
+        'embedded_object_execution_disabled',
+        'isolated_profile_required',
+      ],
+    },
+    productionApproved: false,
+    experimental: true,
   }
 }
 

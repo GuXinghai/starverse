@@ -14,6 +14,7 @@ import {
   DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
   checkDfcLibreOfficeRuntimeAvailability,
   checkDfcLibreOfficeRuntimeAvailabilitySync,
+  getDfcLibreOfficeFirstPartyRuntimeCatalogEntry,
   toDfcLibreOfficeManagedEnginePluginManifest,
   toDfcLibreOfficePluginLifecycleBridge,
   type DfcOfficePdfRuntimeManifest,
@@ -367,6 +368,40 @@ describe('dfc managed LibreOffice runtime gate', () => {
       runtime: null,
     })
     expect(JSON.stringify(bridge)).not.toContain(root)
+  })
+
+  it('defines a stable first-party Plugin Management catalog contract', () => {
+    const entry = getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()
+
+    expect(entry).toMatchObject({
+      pluginId: DFC_OFFICE_PDF_PLUGIN_ID,
+      runtimeId: DFC_OFFICE_PDF_RUNTIME_ID,
+      displayName: 'LibreOffice Office PDF',
+      provider: DFC_OFFICE_PDF_PLUGIN_PROVIDER,
+      runtimeKind: 'managed',
+      productionApproved: false,
+      experimental: true,
+      artifactSourcePolicy: {
+        officialCatalogCandidate: true,
+        importedDevArtifactAllowed: true,
+        packagedBinaryIncluded: false,
+        systemPathFallbackAllowed: false,
+      },
+      requirements: {
+        manifestHashRequired: true,
+        executableHashRequired: true,
+        executableSizeRequired: true,
+        provenanceRequired: true,
+        licenseRequired: true,
+        attributionRequired: true,
+      },
+    })
+    expect(entry.capabilityIds).toEqual([
+      DFC_OFFICE_PDF_PLUGIN_MANAGEMENT_CAPABILITY_ID,
+      ...DFC_OFFICE_PDF_CAPABILITIES,
+    ])
+    expect(entry.supportedPlatforms).toEqual(['win32', 'darwin', 'linux'])
+    expect(entry.supportedFormats).toEqual(['docx'])
   })
 })
 

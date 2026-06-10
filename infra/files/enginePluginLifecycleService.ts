@@ -50,10 +50,13 @@ import {
 } from '../../src/next/plugin-distribution/types'
 import {
   DFC_OFFICE_PDF_ENGINE_ID,
+  DFC_OFFICE_PDF_DISPLAY_NAME,
   DFC_OFFICE_PDF_RUNTIME_KIND,
   checkDfcLibreOfficeRuntimeAvailabilitySync,
+  getDfcLibreOfficeFirstPartyRuntimeCatalogEntry,
   toDfcLibreOfficePluginLifecycleBridge,
   type DfcLibreOfficePluginLifecycleBridge,
+  type DfcLibreOfficeFirstPartyRuntimeCatalogEntry,
   type DfcOfficePdfRuntimeAvailabilitySummary,
 } from './dfcManagedLibreOfficeRuntime'
 import type { EnginePluginRegistryRepo } from '../db/repo/enginePluginRegistryRepo'
@@ -477,14 +480,22 @@ export class EnginePluginLifecycleService {
     const installed = this.deps.registryRepo.list()
     const installedById = new Map(installed.map((item) => [item.engineId, item]))
     const recommendedInstallRootKind = this.getRecommendedInstallRootKind()
-    return ok(catalogResult.catalog.entries.map((entry) =>
+    const entries = catalogResult.catalog.entries.map((entry) =>
       this.toOfficialPluginDto(
         entry,
         installedById.get(entry.pluginId),
         recommendedInstallRootKind,
         catalogResult.catalog.generatedAt
       )
-    ))
+    )
+    return ok([
+      ...entries,
+      this.toLibreOfficeOfficialPluginDto(
+        getDfcLibreOfficeFirstPartyRuntimeCatalogEntry(),
+        recommendedInstallRootKind,
+        catalogResult.catalog.generatedAt
+      ),
+    ])
   }
 
   private toOfficialPluginDto(
@@ -1572,6 +1583,47 @@ export class EnginePluginLifecycleService {
     return toLibreOfficeInstalledDto(bridge, this.now())
   }
 
+  private toLibreOfficeOfficialPluginDto(
+    entry: DfcLibreOfficeFirstPartyRuntimeCatalogEntry,
+    recommendedInstallRootKind: 'managed_root' | 'test_root',
+    catalogGeneratedAt: string | null
+  ): OfficialPluginDto {
+    const bridge = this.getDfcLibreOfficeLifecycleBridge()
+    return {
+      pluginId: entry.pluginId,
+      displayName: entry.displayName,
+      publisher: 'Starverse',
+      pluginVersion: bridge?.runtime?.pluginVersion ?? entry.pluginVersion,
+      availableVersion: entry.pluginVersion,
+      runtimeKind: entry.runtimeKind,
+      capabilities: ['document_conversion'],
+      platformCompatibility: {
+        declaredPlatform: 'any',
+        compatible: true,
+      },
+      architectureCompatibility: {
+        declaredArchitecture: 'any',
+        compatible: true,
+      },
+      appVersionCompatibility: {
+        declaredRange: '>=0.0.0',
+        compatible: true,
+      },
+      modelVersion: null,
+      packageSizeBytes: 0,
+      catalogGeneratedAt,
+      installState: toLibreOfficeCatalogInstallState(bridge),
+      enabled: bridge?.enabled ?? false,
+      recommendedInstallRootKind,
+      catalogStatus: 'valid_metadata_only',
+      verificationMetadataStatus: 'metadata_present_crypto_deferred',
+      installabilityStatus: 'unavailable_read_only',
+      reasons: toLibreOfficeCatalogReasons(entry, bridge),
+      warnings: toLibreOfficeCatalogWarnings(bridge),
+      releaseProvenance: null,
+    }
+  }
+
   async runHealthCheck(input: RunHealthCheckInput): Promise<LifecycleActionResult<InstalledEnginePluginDto>> {
     const engineId = requireNonEmpty(input.engineId, 'engineId')
     const record = this.deps.registryRepo.getByEngineId(engineId)
@@ -1784,7 +1836,7 @@ function toLibreOfficeInstalledDto(
   const failureReason = toLibreOfficeFailureReason(bridge, healthStatus)
   return {
     engineId: DFC_OFFICE_PDF_ENGINE_ID,
-    displayName: 'LibreOffice Office PDF',
+    displayName: DFC_OFFICE_PDF_DISPLAY_NAME,
     pluginVersion: bridge.runtime?.pluginVersion ?? '0.0.0',
     installedVersion: bridge.runtime?.pluginVersion ?? '0.0.0',
     availableVersion: null,
@@ -1813,7 +1865,7 @@ function toLibreOfficeDiagnosticsEntry(bridge: DfcLibreOfficePluginLifecycleBrid
   const healthStatus = toLibreOfficePluginHealthStatus(bridge)
   return {
     engineId: DFC_OFFICE_PDF_ENGINE_ID,
-    displayName: 'LibreOffice Office PDF',
+    displayName: DFC_OFFICE_PDF_DISPLAY_NAME,
     kind: 'plugin',
     installed: bridge.installed,
     enabled: bridge.enabled,
@@ -1824,6 +1876,48 @@ function toLibreOfficeDiagnosticsEntry(bridge: DfcLibreOfficePluginLifecycleBrid
     failureReason: toLibreOfficeFailureReason(bridge, healthStatus),
     installSource: libreOfficeInstallSource(bridge),
   }
+}
+
+function toLibreOfficeCatalogInstallState(
+  bridge: DfcLibreOfficePluginLifecycleBridge | null
+): OfficialPluginDto['installState'] {
+  if (!bridge) return 'not_installed'
+  if (bridge.installed) return 'installed'
+  if (bridge.lifecycleStatus === 'missing') return 'not_installed'
+  return 'failed'
+}
+
+function toLibreOfficeCatalogReasons(
+  entry: DfcLibreOfficeFirstPartyRuntimeCatalogEntry,
+  bridge: DfcLibreOfficePluginLifecycleBridge | null
+): readonly string[] {
+  const reasons = [
+    entry.provider,
+    'owner_gated_experimental',
+    'production_approval_missing',
+    'packaged_binary_not_included',
+    'system_path_fallback_disabled',
+    'update_rollback_quarantine_deferred',
+  ]
+  if (!bridge) {
+    reasons.push('runtime_status_not_checked')
+  } else {
+    reasons.push(`runtime_source_${bridge.source}`)
+    reasons.push(`runtime_lifecycle_${bridge.lifecycleStatus}`)
+    if (bridge.productCode) reasons.push(bridge.productCode)
+    if (bridge.internalCode) reasons.push(bridge.internalCode)
+  }
+  return reasons.map((reason) => sanitizePluginDistributionText(reason) ?? 'runtime_contract_reason')
+}
+
+function toLibreOfficeCatalogWarnings(
+  bridge: DfcLibreOfficePluginLifecycleBridge | null
+): readonly string[] {
+  const warnings = ['libreoffice_catalog_contract_only']
+  if (bridge?.source === 'fake_seam' || bridge?.source === 'imported_dev_artifact') {
+    warnings.push('not_production_supported_runtime')
+  }
+  return warnings
 }
 
 function toLibreOfficePluginHealthStatus(
