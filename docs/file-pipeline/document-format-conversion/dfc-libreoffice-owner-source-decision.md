@@ -63,6 +63,49 @@ https://download.documentfoundation.org/libreoffice/stable/<runtimeVersion>/win/
 
 The final package record must also capture the official info page, mirror page, checksum, and signature references when available.
 
+## Official Download and Package Preparation Result
+
+Task: Official LibreOffice download plus real `.svpkg` preparation and local verification.
+
+Result date: 2026-06-11.
+
+Owner-approved source:
+
+- upstream authority: The Document Foundation
+- upstream URL: `https://download.documentfoundation.org/libreoffice/stable/26.2.4/win/x86_64/LibreOffice_26.2.4_Win_x86-64.msi`
+- observed official MirrorBrain final URL host: `www.mirrorservice.org`
+- runtime version: `26.2.4`
+- platform: `win32`
+- arch: `x64`
+- MSI sha256: `202f26cda071c5aa4996a5a28412fddceb3891dceb0366982c62650456c0730f`
+- MSI sizeBytes: `372539392`
+- official `.meta4` checksum and signature metadata were fetched from `download.documentfoundation.org`
+
+Package candidate prepared in a repo-external workdir:
+
+- packageVersion: `0.1.0`
+- package sha256: `ce012cf1215f958286be29462d1ae8c122bdc6a779ac84076388de9875487f6e`
+- package sizeBytes: `518907010`
+- executable relative path: `program/soffice.exe`
+- executable sha256: `3c24436274cb9b5ccd363a517b377d07991eae82072690227e41c62ca9ca718b`
+- executable sizeBytes: `523688`
+- inventory artifact count: `19492`
+- productionApproved: `false`
+- ownerGated: `true`
+- experimental: `true`
+
+The MSI was extracted with Windows `msiexec /a` administrative extraction into a repo-external staging directory. The Starverse `.svpkg` was generated into a repo-external package directory and was not committed to git.
+
+License, notices, attribution, and provenance inputs used for this experimental package candidate:
+
+- `license.txt`
+- `LICENSE.html`
+- `NOTICE`
+- `CREDITS.fodt`
+- generated provenance JSON recording TDF authority, upstream URL, observed final URL, MSI checksum, size, platform, arch, and extraction method
+
+This result provides local packaging and verification confidence only. It does not approve GitHub release upload, bundled runtime distribution, or production support.
+
 ## Required Metadata
 
 Each Starverse `.svpkg` package candidate must record:

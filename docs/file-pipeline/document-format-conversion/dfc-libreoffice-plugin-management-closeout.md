@@ -1,6 +1,6 @@
 # DFC LibreOffice Plugin Management Closeout
 
-Status: Task 10 final owner-gate closeout for the LibreOffice Plugin Management integration route. Release upload remains blocked until Owner approves a package asset and release target.
+Status: LibreOffice Plugin Management closeout plus post-closeout package preparation evidence. Release upload remains blocked until Owner approves the release target, tag, and asset naming convention.
 
 Date: 2026-06-11
 
@@ -10,7 +10,9 @@ Authority: `starverse_format_conversion_preview_v1_2.md` remains the DFC SSOT. T
 
 LibreOffice Office-to-PDF is wired as a first-party managed runtime plugin path for the DFC DOCX `pdf_attachment` pilot when a managed runtime already exists or has been imported. The Task 0-9 chain covers runtime availability diagnostics, plugin lifecycle inventory, catalog/import contract, package layout verification, lifecycle controls, adapter switch-over to the plugin-managed runtime handle, product-facing diagnostics, docs closeout, and a disabled-by-default owner-gated acquisition/download pipeline.
 
-Task 10 performed the GitHub/release readiness audit and stopped before upload. The current product status remains owner-gated and experimental. `productionApproved=false` is still the correct state. No LibreOffice binary is committed, no release asset was uploaded, acquisition remains disabled unless an owner-gated policy explicitly permits it, and no system LibreOffice or PATH fallback is allowed.
+Task 10 performed the GitHub/release readiness audit and stopped before upload. Task 10R added the `.svpkg` archive import bridge and dry-run preparation script. The follow-up official-source preparation round downloaded LibreOffice 26.2.4 Windows x86_64 from The Document Foundation infrastructure, prepared a real Starverse `.svpkg` package candidate outside the repo, verified it with the archive/import bridge, and ran the real managed DOCX-to-PDF worker smoke from the imported runtime.
+
+The current product status remains owner-gated and experimental. `productionApproved=false` is still the correct state. No LibreOffice binary is committed, no release asset was uploaded, acquisition remains disabled unless an owner-gated policy explicitly permits it, and no system LibreOffice or PATH fallback is allowed.
 
 ## Task 0-10 Commit List
 
@@ -93,6 +95,44 @@ Result:
 - No binary or generated runtime artifact was committed.
 - The next release task must first define the package archive format, release tag/asset naming convention, and import-from-downloaded-package bridge.
 
+## Official Source Package Preparation Addendum
+
+After Task 10 and Task 10R, Owner allowed a real official-source local package preparation round without GitHub upload or production approval.
+
+Official source:
+
+- authority: The Document Foundation
+- upstream URL: `https://download.documentfoundation.org/libreoffice/stable/26.2.4/win/x86_64/LibreOffice_26.2.4_Win_x86-64.msi`
+- observed official MirrorBrain final URL host: `www.mirrorservice.org`
+- MSI sha256: `202f26cda071c5aa4996a5a28412fddceb3891dceb0366982c62650456c0730f`
+- MSI sizeBytes: `372539392`
+- official `.meta4` metadata from `download.documentfoundation.org` supplied the expected size, sha256, and embedded signature metadata
+
+Package preparation result:
+
+- MSI extraction tool: Windows `msiexec /a` administrative extraction
+- packageVersion: `0.1.0`
+- runtimeVersion: `26.2.4`
+- platform / arch: `win32` / `x64`
+- package sha256: `ce012cf1215f958286be29462d1ae8c122bdc6a779ac84076388de9875487f6e`
+- package sizeBytes: `518907010`
+- executable relative path: `program/soffice.exe`
+- inventory artifact count: `19492`
+- productionApproved: `false`
+- ownerGated: `true`
+- experimental: `true`
+
+The MSI, extracted runtime, and `.svpkg` package were kept in repo-external runtime workdirs. No runtime binary, MSI, generated `.svpkg`, or extracted package artifact was committed.
+
+Local verification result:
+
+- `.svpkg` archive bridge verification: passed with the real package candidate.
+- import helper verification: passed by importing the package into a repo-external managed runtime app root.
+- runtime gate verification: passed through the existing managed runtime import/install contract.
+- real DOCX-to-PDF smoke: passed through the DFC worker `pdf_attachment` path using the imported runtime's `program/soffice.exe`.
+
+This addendum increases local packaging confidence but does not complete release distribution. GitHub release tag naming, asset naming, release upload, release re-download verification, legal/license/provenance review, and Owner production approval remain open.
+
 ## DFC Adapter Switch-over Status
 
 The DOCX Office-to-PDF adapter now receives a plugin-managed runtime handle instead of independently interpreting runtime internals. The handle must be resolved, verified, and allowed before conversion execution.
@@ -147,6 +187,8 @@ Out of scope:
 | Dev/import smoke | `test:office-pdf-libreoffice-import-dev-smoke` when the ignored M28 artifact exists | Imported managed runtime can run real `soffice` through adapter and worker paths | Production package source, CI policy, or bundled runtime behavior |
 | Acquisition unit tests | `dfcLibreOfficeRuntimeAcquisition.test.ts` | Owner-gated download policy, controlled cache/staging, hash/size checks, failure diagnostics, and disabled default source | Real LibreOffice package download, release upload, or production approval |
 | Release readiness audit | Task 10 GitHub and package-source audit | Repository permissions are sufficient, and upload blockers are explicit | Release asset integrity or download-back smoke |
+| Real `.svpkg` local verification | Env-gated `dfcLibreOfficeRuntimePackageArchive.test.ts` real package test | Official-source `.svpkg` can be extracted, verified, and imported locally | GitHub release distribution or production approval |
+| Real managed DOCX-to-PDF smoke | Env-gated `infra/db/worker.filePipeline.test.ts` real managed smoke | The imported `.svpkg` runtime can run `soffice` through the DFC worker `pdf_attachment` path | Packaged app distribution or release re-download confidence |
 | Packaged smoke | Not present in this closeout | None | Packaged app runtime distribution confidence |
 
 ## Tests Run
@@ -187,6 +229,31 @@ npx vitest --run infra/files/dfcLibreOfficeRuntimeAcquisition.test.ts --reporter
 Result: passed. No real download ran; acquisition tests used a mocked transport.
 
 Task 10 validation reran the targeted acquisition/runtime/installer/lifecycle tests and the import-dev smoke where available. Release download-back verification was skipped because no release asset was uploaded.
+
+Official-source package preparation validation completed with Node ABI rebuilt:
+
+```powershell
+npm run rebuild:node
+npx vitest --run infra/files/dfcLibreOfficeRuntimePackageArchive.test.ts infra/files/dfcLibreOfficeRuntimeAcquisition.test.ts infra/files/dfcLibreOfficeManagedPackageInstaller.test.ts infra/files/dfcManagedLibreOfficeRuntime.test.ts --reporter=dot --silent
+```
+
+Result: passed.
+
+The real `.svpkg` candidate was verified with the env-gated archive/import test:
+
+```powershell
+npx vitest --run infra/files/dfcLibreOfficeRuntimePackageArchive.test.ts -t "real owner-approved" --reporter=dot --silent
+```
+
+Result: passed using the repo-external package candidate.
+
+The imported runtime from that package was then used for the real managed worker smoke:
+
+```powershell
+npx vitest --run infra/db/worker.filePipeline.test.ts -t "real managed" --reporter=dot --silent
+```
+
+Result: passed. This smoke used the repo-external imported runtime and did not use PATH discovery or a system LibreOffice fallback.
 
 ## Owner Gate Checklist
 
@@ -233,6 +300,7 @@ Disallowed wording:
 - Lifecycle controls are file-scoped and not a full DB-persisted lifecycle platform.
 - Packaged or near-packaged smoke is not yet established.
 - GitHub release upload and acquisition re-download smoke are blocked until the package archive and release convention are approved.
+- The official-source `.svpkg` package can be prepared and locally verified, but release distribution has not been exercised.
 - Imported dev artifacts live outside git and are not product package authority.
 - UI remains minimal; the current work surfaces diagnostics data without building a full Plugin Management UI.
 - Cross-platform package layout policy exists, but real package confidence is still platform-dependent and Owner-gated.
@@ -251,8 +319,7 @@ Fallback behavior should continue to expose `markdown` and `original_file` optio
 ## Next Possible Tasks
 
 - Define packaged or near-packaged smoke policy without committing binaries.
-- Add Owner-approved first-party package source metadata.
-- Define the `.svpkg` archive/extraction/import bridge and release asset naming convention.
+- Define GitHub release tag and asset naming convention for the verified `.svpkg` candidate.
 - After Owner approval, upload a draft/prerelease package asset and run acquisition download-back verification from that asset.
 - Decide CI gating for real runtime smoke.
 - Review user-facing wording before wider exposure.

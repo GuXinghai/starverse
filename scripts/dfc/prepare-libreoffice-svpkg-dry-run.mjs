@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto'
-import { readdir, readFile, writeFile } from 'node:fs/promises'
+import { createWriteStream } from 'node:fs'
+import { readdir, readFile, stat } from 'node:fs/promises'
+import { deflateRawSync } from 'node:zlib'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -55,7 +57,12 @@ async function main() {
     packagePreview = prepared.preview
     blockers.push(...prepared.blockers)
     if (allowWrite && blockers.length === 0 && outPath) {
-      await writeFile(outPath, prepared.bytes, { flag: 'wx' })
+      const written = await writeZipFile(prepared.files, outPath)
+      packagePreview = {
+        ...packagePreview,
+        packageSha256: written.sha256,
+        packageSizeBytes: written.sizeBytes,
+      }
     }
   }
 
@@ -94,10 +101,13 @@ async function preparePackage(input) {
   const metadata = await collectMetadata(input.sourceRoot)
   blockers.push(...metadata.blockers)
 
-  const executableBytes = executable ? await readFile(executable.absolutePath) : Buffer.alloc(0)
-  const executableSha256 = sha256(executableBytes)
-  const executableSizeBytes = executableBytes.byteLength
-  const artifactSha256 = sha256(Buffer.concat(await Promise.all(files.map((file) => readFile(file.absolutePath)))))
+  const executableSha256 = executable ? await hashFile(executable.absolutePath) : sha256(Buffer.alloc(0))
+  const executableSizeBytes = executable ? (await stat(executable.absolutePath)).size : 0
+  const artifactHasher = createHash('sha256')
+  for (const file of files) {
+    artifactHasher.update(await readFile(file.absolutePath))
+  }
+  const artifactSha256 = artifactHasher.digest('hex')
 
   const runtimeManifest = {
     manifestSchemaVersion: '1',
@@ -178,15 +188,20 @@ async function preparePackage(input) {
     { relativePath: 'runtime/manifest.json', bytes: Buffer.from(json(runtimeManifest)) },
     ...files.map((file) => ({
       relativePath: `runtime/${file.relativePath}`,
-      bytesPromise: readFile(file.absolutePath),
+      filePath: file.absolutePath,
     })),
     ...metadata.files,
   ]
   const materialized = []
   for (const file of packageFiles) {
+    const sizeBytes = file.bytes ? file.bytes.byteLength : (await stat(file.filePath)).size
+    const fileSha256 = file.bytes ? sha256(file.bytes) : await hashFile(file.filePath)
     materialized.push({
       relativePath: file.relativePath,
-      bytes: file.bytes ?? await file.bytesPromise,
+      bytes: file.bytes,
+      filePath: file.filePath,
+      sha256: fileSha256,
+      sizeBytes,
     })
   }
 
@@ -198,17 +213,19 @@ async function preparePackage(input) {
       artifactId: `artifact-${index}`,
       relativePath: file.relativePath,
       artifactClass: artifactClassForPath(file.relativePath),
-      sha256: sha256(file.bytes),
-      sizeBytes: file.bytes.byteLength,
+      sha256: file.sha256,
+      sizeBytes: file.sizeBytes,
       required: true,
     })),
   }
+  const inventoryBytes = Buffer.from(json(inventory))
   materialized.push({
     relativePath: 'inventory.json',
-    bytes: Buffer.from(json(inventory)),
+    bytes: inventoryBytes,
+    sha256: sha256(inventoryBytes),
+    sizeBytes: inventoryBytes.byteLength,
   })
 
-  const bytes = createZip(materialized)
   const preview = {
     archiveFormat: 'svpkg-zip-compatible',
     layout: [
@@ -221,15 +238,15 @@ async function preparePackage(input) {
       'attribution/**',
       'provenance/**',
     ],
-    packageSha256: sha256(bytes),
-    packageSizeBytes: bytes.byteLength,
+    packageSha256: null,
+    packageSizeBytes: null,
     manifestSha256: sha256(Buffer.from(json(packageManifest))),
     runtimeManifestSha256: sha256(Buffer.from(json(runtimeManifest))),
     inventoryArtifactCount: inventory.artifacts.length,
     packageManifest,
     runtimeManifest,
   }
-  return { blockers, preview, bytes }
+  return { blockers, preview, files: materialized }
 }
 
 async function collectRuntimeFiles(sourceRoot) {
@@ -285,37 +302,47 @@ async function collectMetadata(sourceRoot) {
   }
 }
 
-function createZip(entries) {
-  const localParts = []
+async function hashFile(filePath) {
+  return sha256(await readFile(filePath))
+}
+
+async function writeZipFile(entries, outPath) {
+  const stream = createWriteStream(outPath, { flags: 'wx' })
+  const outputHash = createHash('sha256')
   const centralParts = []
   let offset = 0
+  let written = 0
   for (const entry of entries) {
     const name = Buffer.from(entry.relativePath, 'utf8')
-    const content = Buffer.from(entry.bytes)
+    const content = entry.bytes ? Buffer.from(entry.bytes) : await readFile(entry.filePath)
+    const compressed = deflateRawSync(content, { level: 6 })
+    const crc = crc32(content)
     const local = Buffer.alloc(30)
     local.writeUInt32LE(0x04034b50, 0)
     local.writeUInt16LE(20, 4)
     local.writeUInt16LE(0, 6)
-    local.writeUInt16LE(0, 8)
+    local.writeUInt16LE(8, 8)
     local.writeUInt16LE(0, 10)
     local.writeUInt16LE(0, 12)
-    local.writeUInt32LE(0, 14)
-    local.writeUInt32LE(content.byteLength, 18)
+    local.writeUInt32LE(crc, 14)
+    local.writeUInt32LE(compressed.byteLength, 18)
     local.writeUInt32LE(content.byteLength, 22)
     local.writeUInt16LE(name.byteLength, 26)
     local.writeUInt16LE(0, 28)
-    localParts.push(local, name, content)
+    await writeStreamChunk(stream, outputHash, local)
+    await writeStreamChunk(stream, outputHash, name)
+    await writeStreamChunk(stream, outputHash, compressed)
 
     const central = Buffer.alloc(46)
     central.writeUInt32LE(0x02014b50, 0)
     central.writeUInt16LE(0x031e, 4)
     central.writeUInt16LE(20, 6)
     central.writeUInt16LE(0, 8)
-    central.writeUInt16LE(0, 10)
+    central.writeUInt16LE(8, 10)
     central.writeUInt16LE(0, 12)
     central.writeUInt16LE(0, 14)
-    central.writeUInt32LE(0, 16)
-    central.writeUInt32LE(content.byteLength, 20)
+    central.writeUInt32LE(crc, 16)
+    central.writeUInt32LE(compressed.byteLength, 20)
     central.writeUInt32LE(content.byteLength, 24)
     central.writeUInt16LE(name.byteLength, 28)
     central.writeUInt16LE(0, 30)
@@ -325,9 +352,11 @@ function createZip(entries) {
     central.writeUInt32LE(0, 38)
     central.writeUInt32LE(offset, 42)
     centralParts.push(central, name)
-    offset += local.byteLength + name.byteLength + content.byteLength
+    offset += local.byteLength + name.byteLength + compressed.byteLength
+    written = offset
   }
   const centralDirectory = Buffer.concat(centralParts)
+  await writeStreamChunk(stream, outputHash, centralDirectory)
   const eocd = Buffer.alloc(22)
   eocd.writeUInt32LE(0x06054b50, 0)
   eocd.writeUInt16LE(0, 4)
@@ -337,8 +366,49 @@ function createZip(entries) {
   eocd.writeUInt32LE(centralDirectory.byteLength, 12)
   eocd.writeUInt32LE(offset, 16)
   eocd.writeUInt16LE(0, 20)
-  return Buffer.concat([...localParts, centralDirectory, eocd])
+  await writeStreamChunk(stream, outputHash, eocd)
+  await endStream(stream)
+  written += centralDirectory.byteLength + eocd.byteLength
+  return {
+    sha256: outputHash.digest('hex'),
+    sizeBytes: written,
+  }
 }
+
+function crc32(buffer) {
+  let crc = 0xffffffff
+  for (const byte of buffer) {
+    crc = CRC32_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8)
+  }
+  return (crc ^ 0xffffffff) >>> 0
+}
+
+async function writeStreamChunk(stream, hash, chunk) {
+  hash.update(chunk)
+  await new Promise((resolve, reject) => {
+    stream.write(chunk, (error) => {
+      if (error) reject(error)
+      else resolve()
+    })
+  })
+}
+
+async function endStream(stream) {
+  await new Promise((resolve, reject) => {
+    stream.end((error) => {
+      if (error) reject(error)
+      else resolve()
+    })
+  })
+}
+
+const CRC32_TABLE = Array.from({ length: 256 }, (_, index) => {
+  let crc = index
+  for (let bit = 0; bit < 8; bit += 1) {
+    crc = (crc & 1) ? (0xedb88320 ^ (crc >>> 1)) : (crc >>> 1)
+  }
+  return crc >>> 0
+})
 
 function validateSourcePath(sourceRoot) {
   if (!sourceRoot || sourceRoot.includes('\0')) return { ok: false, message: 'invalid source path' }
