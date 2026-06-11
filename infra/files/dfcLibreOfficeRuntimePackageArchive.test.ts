@@ -511,6 +511,52 @@ describe('LibreOffice svpkg runtime package archive bridge', () => {
     })
     expect(JSON.stringify(verification)).not.toContain(sourceRoot)
   })
+
+  const realSvpkgPath = process.env.STARVERSE_DFC_LIBREOFFICE_REAL_SVPKG
+  const runRealSvpkgTest = realSvpkgPath ? it : it.skip
+
+  runRealSvpkgTest('verifies and imports a real owner-approved LibreOffice svpkg candidate', async () => {
+    const packagePath = String(realSvpkgPath)
+    const packageBytes = await readFile(packagePath)
+    const appRoot = process.env.STARVERSE_DFC_LIBREOFFICE_REAL_SVPKG_APP_ROOT
+      ? path.resolve(process.env.STARVERSE_DFC_LIBREOFFICE_REAL_SVPKG_APP_ROOT)
+      : await tempRoot('real-app')
+    const result = await importDfcLibreOfficeRuntimePackageArchive({
+      packageBytes,
+      extractionRootDir: await tempRoot('real-extract'),
+      appManagedRootDir: appRoot,
+      repoRootDir: process.cwd(),
+      expectedPackageSha256: sha256(packageBytes),
+      expectedPackageSizeBytes: packageBytes.byteLength,
+      platform: 'win32',
+      arch: 'x64',
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      verification: expect.objectContaining({
+        pluginId: 'libreoffice',
+        runtimeId: 'libreoffice-office-pdf',
+        runtimeVersion: '26.2.4',
+        platform: 'win32',
+        arch: 'x64',
+        productionApproved: false,
+        ownerGated: true,
+        experimental: true,
+        source: 'downloaded_candidate',
+      }),
+      install: expect.objectContaining({
+        ok: true,
+        activeRuntimeRootDir: getDfcLibreOfficeManagedRuntimeRoot(appRoot),
+        pluginManagement: expect.objectContaining({
+          productionApproved: false,
+        }),
+      }),
+      diagnostics: [],
+    })
+    expect(JSON.stringify(result.diagnostics)).not.toContain(packagePath)
+    expect(JSON.stringify(result.install?.diagnostics ?? [])).not.toContain(packagePath)
+  }, 30 * 60 * 1000)
 })
 
 async function createScriptSourceFixture(): Promise<string> {
