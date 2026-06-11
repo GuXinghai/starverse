@@ -1,8 +1,8 @@
 /**
  * Runtime provider stream adapter contract.
  *
- * This is the minimal shared callable shape extracted from the three
- * integrated remote provider adapters (DeepSeek, OpenAI Responses, Anthropic).
+ * This is the minimal shared callable shape extracted from the four
+ * integrated remote provider adapters (DeepSeek, OpenAI Responses, Anthropic, Gemini).
  *
  * OpenRouter is NOT included yet because the current app path uses the
  * OpenRouter facade with a DomainEvent bridge, not this contract.
@@ -20,8 +20,8 @@ import type { ProviderStreamRequest, StarverseStreamEvent } from '@/next/provide
  * Injectable transport for remote provider adapters.
  *
  * All remote adapters need: fetch function, base URL, API key.
- * Provider-specific extra headers (e.g. anthropic-version) are allowed
- * via the open-ended `headers` field or by extending this type.
+ * Provider-specific adapters may extend this type with extra fields
+ * (e.g. Anthropic adds `anthropicVersion`).
  */
 export type ProviderStreamTransport = Readonly<{
   fetch: (url: string, init: RequestInit) => Promise<Response>
@@ -39,7 +39,7 @@ export type ProviderStreamTransport = Readonly<{
  * Accepts a provider-neutral request and an injectable transport.
  * Yields provider-neutral stream events.
  *
- * Implemented by: DeepSeek, OpenAI Responses, Anthropic.
+ * Implemented by: DeepSeek, OpenAI Responses, Anthropic, Gemini.
  * NOT implemented by: OpenRouter (uses DomainEvent bridge path).
  */
 export type RuntimeProviderStreamAdapter = (
