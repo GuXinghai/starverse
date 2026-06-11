@@ -61,9 +61,18 @@ export type GeminiUsageMetadata = Readonly<{
   cachedContentTokenCount?: number
 }>
 
+export type GeminiPromptFeedback = Readonly<{
+  blockReason?: string
+  safetyRatings?: ReadonlyArray<Readonly<{
+    category: string
+    probability: string
+  }>>
+}>
+
 export type GeminiStreamChunk = Readonly<{
   candidates?: ReadonlyArray<GeminiCandidate>
   usageMetadata?: GeminiUsageMetadata
+  promptFeedback?: GeminiPromptFeedback
   modelVersion?: string
   error?: Readonly<{ code: number; message: string; status?: string }>
 }>
@@ -130,6 +139,16 @@ export function mapGeminiStreamChunkToStarverse(
   // Usage metadata
   if (chunk.usageMetadata) {
     events.push({ type: 'usage.delta', usage: chunk.usageMetadata })
+  }
+
+  // Prompt feedback / block reason — does not become visible text
+  if (chunk.promptFeedback?.blockReason) {
+    events.push({
+      type: 'meta.delta',
+      meta: {
+        native_finish_reason: `BLOCKED:${chunk.promptFeedback.blockReason}`,
+      },
+    })
   }
 
   // Process candidates (prefer index 0)

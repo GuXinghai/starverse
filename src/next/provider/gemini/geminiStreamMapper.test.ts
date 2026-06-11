@@ -159,7 +159,7 @@ describe('mapGeminiStreamChunkToStarverse', () => {
   // =========================================================================
 
   describe('candidate handling', () => {
-    it('prefers candidate index 0', () => {
+    it('uses first candidate (candidates[0])', () => {
       const chunk: GeminiStreamChunk = {
         candidates: [
           { content: { parts: [{ text: 'first' }] }, index: 0 },
@@ -304,6 +304,38 @@ describe('mapGeminiStreamChunkToStarverse', () => {
 
       // Safety ratings are not mapped to events (no safety policy system)
       const metaEvents = events.filter((e) => e.type === 'meta.delta' && (e.meta as any).safetyRatings)
+      expect(metaEvents).toHaveLength(0)
+    })
+
+    it('promptFeedback blockReason emits meta.delta and does not become visible text', () => {
+      const chunk: GeminiStreamChunk = {
+        promptFeedback: {
+          blockReason: 'SAFETY',
+          safetyRatings: [{ category: 'HARM_CATEGORY_HARASSMENT', probability: 'HIGH' }],
+        },
+      }
+      const events = mapGeminiStreamChunkToStarverse(chunk, msgId)
+
+      // No visible text
+      const textEvents = events.filter((e) => e.type === 'message.text_delta')
+      expect(textEvents).toHaveLength(0)
+
+      // Meta with block reason
+      const metaEvents = events.filter((e) => e.type === 'meta.delta')
+      expect(metaEvents).toHaveLength(1)
+      if (metaEvents[0].type === 'meta.delta') {
+        expect(metaEvents[0].meta.native_finish_reason).toBe('BLOCKED:SAFETY')
+      }
+    })
+
+    it('promptFeedback without blockReason emits no meta', () => {
+      const chunk: GeminiStreamChunk = {
+        promptFeedback: {
+          safetyRatings: [{ category: 'HARM_CATEGORY_HARASSMENT', probability: 'NEGLIGIBLE' }],
+        },
+      }
+      const events = mapGeminiStreamChunkToStarverse(chunk, msgId)
+      const metaEvents = events.filter((e) => e.type === 'meta.delta')
       expect(metaEvents).toHaveLength(0)
     })
   })
