@@ -1,6 +1,6 @@
 # DFC LibreOffice Plugin Management Closeout
 
-Status: LibreOffice Plugin Management closeout plus post-closeout package preparation and draft release verification evidence. Production approval remains blocked until Owner approves legal/license/provenance, signing, distribution, and product support gates.
+Status: LibreOffice Plugin Management closeout plus post-closeout package preparation, prerelease asset, and redownload verification evidence. Production approval remains blocked until Owner approves legal/license/provenance, signing, distribution, and product support gates.
 
 Date: 2026-06-11
 
@@ -10,9 +10,9 @@ Authority: `starverse_format_conversion_preview_v1_2.md` remains the DFC SSOT. T
 
 LibreOffice Office-to-PDF is wired as a first-party managed runtime plugin path for the DFC DOCX `pdf_attachment` pilot when a managed runtime already exists or has been imported. The Task 0-9 chain covers runtime availability diagnostics, plugin lifecycle inventory, catalog/import contract, package layout verification, lifecycle controls, adapter switch-over to the plugin-managed runtime handle, product-facing diagnostics, docs closeout, and a disabled-by-default owner-gated acquisition/download pipeline.
 
-Task 10 performed the GitHub/release readiness audit and stopped before upload. Task 10R added the `.svpkg` archive import bridge and dry-run preparation script. The follow-up official-source preparation round downloaded LibreOffice 26.2.4 Windows x86_64 from The Document Foundation infrastructure, prepared a real Starverse `.svpkg` package candidate outside the repo, verified it with the archive/import bridge, and ran the real managed DOCX-to-PDF worker smoke from the imported runtime. The draft release verification round uploaded that package candidate to a GitHub draft release, redownloaded the release asset, verified hash/size, re-ran archive/import verification, and re-ran the real managed worker smoke from the redownloaded package import.
+Task 10 performed the GitHub/release readiness audit and stopped before upload. Task 10R added the `.svpkg` archive import bridge and dry-run preparation script. The follow-up official-source preparation round downloaded LibreOffice 26.2.4 Windows x86_64 from The Document Foundation infrastructure, prepared a real Starverse `.svpkg` package candidate outside the repo, verified it with the archive/import bridge, and ran the real managed DOCX-to-PDF worker smoke from the imported runtime. The draft release verification round uploaded that package candidate to a GitHub draft release, redownloaded the release asset, verified hash/size, re-ran archive/import verification, and re-ran the real managed worker smoke from the redownloaded package import. The prerelease promotion round published the same asset as an owner-gated prerelease, pointed the LibreOffice catalog acquisition source at the prerelease asset with downloads still disabled by default, redownloaded the prerelease asset, and re-ran archive/import/runtime/smoke verification.
 
-The current product status remains owner-gated and experimental. `productionApproved=false` is still the correct state. No LibreOffice binary is committed to git, the GitHub asset is a draft release candidate only, acquisition remains disabled unless an owner-gated policy explicitly permits it, and no system LibreOffice or PATH fallback is allowed.
+The current product status remains owner-gated and experimental. `productionApproved=false` is still the correct state. No LibreOffice binary is committed to git, the GitHub asset is a prerelease candidate only, catalog acquisition points to the asset but download remains disabled unless an owner-gated policy explicitly permits it, and no system LibreOffice or PATH fallback is allowed.
 
 ## Task 0-10 Commit List
 
@@ -167,6 +167,51 @@ Upload and redownload verification:
 
 This draft release asset is now suitable for owner-gated acquisition testing. It is not production support, not a bundled runtime claim, and not approval for broad Office format support.
 
+## Prerelease Acquisition Source Addendum
+
+Owner authorized promotion of the verified draft release asset to an owner-gated prerelease acquisition source. The release was not promoted to a normal production release.
+
+Prerelease metadata:
+
+- repository: `GuXinghai/starverse`
+- release tag: `starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64`
+- release URL: `https://github.com/GuXinghai/starverse/releases/tag/starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64`
+- release type: prerelease
+- publishedAt: `2026-06-11T07:54:18Z`
+- title: `Starverse LibreOffice Runtime 0.1.0 / LibreOffice 26.2.4 / Windows x64`
+- asset name: `starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg`
+- asset state: uploaded
+- asset sizeBytes: `518907010`
+- asset digest: `sha256:ce012cf1215f958286be29462d1ae8c122bdc6a779ac84076388de9875487f6e`
+
+Catalog acquisition source:
+
+- sourceKind: `github_release_asset`
+- downloadEnabled: `false`
+- packageRef: `GuXinghai/starverse@starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64/starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg`
+- sourceUrl: `https://github.com/GuXinghai/starverse/releases/download/starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64/starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg`
+- expectedSha256: `ce012cf1215f958286be29462d1ae8c122bdc6a779ac84076388de9875487f6e`
+- expectedSizeBytes: `518907010`
+- packageVersion: `0.1.0`
+- runtimeVersion: `26.2.4`
+- platform / arch: `win32` / `x64`
+- productionApproved: `false`
+- ownerGated: `true`
+- experimental: `true`
+
+Prerelease redownload verification:
+
+- redownload target: repo-external cache
+- redownload method: BITS from GitHub prerelease asset URL after `gh release download` and `curl` were unreliable in the local network environment
+- redownload sha256: `ce012cf1215f958286be29462d1ae8c122bdc6a779ac84076388de9875487f6e`
+- redownload sizeBytes: `518907010`
+- archive bridge verification from redownloaded prerelease package: passed
+- import helper verification from redownloaded prerelease package: passed
+- managed runtime gate verification from redownloaded prerelease package: passed
+- real managed DOCX-to-PDF worker smoke from redownloaded prerelease package import: passed after importing to a short repo-external runtime root
+
+The first worker smoke attempt from a very deep repo-external import root failed at process conversion, while the same redownloaded package passed from a short root. Keep runtime workdir path length under review before production approval.
+
 ## DFC Adapter Switch-over Status
 
 The DOCX Office-to-PDF adapter now receives a plugin-managed runtime handle instead of independently interpreting runtime internals. The handle must be resolved, verified, and allowed before conversion execution.
@@ -224,6 +269,7 @@ Out of scope:
 | Real `.svpkg` local verification | Env-gated `dfcLibreOfficeRuntimePackageArchive.test.ts` real package test | Official-source `.svpkg` can be extracted, verified, and imported locally | GitHub release distribution or production approval |
 | Real managed DOCX-to-PDF smoke | Env-gated `infra/db/worker.filePipeline.test.ts` real managed smoke | The imported `.svpkg` runtime can run `soffice` through the DFC worker `pdf_attachment` path | Packaged app distribution or release re-download confidence |
 | Draft release redownload verification | `gh release download` plus env-gated real package tests | GitHub draft release asset can be redownloaded and verified through archive/import/runtime/smoke path | Production approval, signing, or multi-platform support |
+| Prerelease acquisition source verification | GitHub prerelease asset metadata, BITS redownload, env-gated package tests | Owner-gated prerelease source metadata can point to the verified asset and pass archive/import/runtime/smoke verification | Production approval, automatic download policy, signing, or multi-platform support |
 | Packaged smoke | Not present in this closeout | None | Packaged app runtime distribution confidence |
 
 ## Tests Run
@@ -323,6 +369,39 @@ npx vitest --run infra/db/worker.filePipeline.test.ts -t "real managed" --report
 
 Result: passed. This smoke used the redownloaded package import and did not use PATH discovery or a system LibreOffice fallback.
 
+Prerelease promotion validation completed with Node ABI rebuilt:
+
+```powershell
+npm run rebuild:node
+npx vitest --run infra/files/dfcLibreOfficeRuntimePackageArchive.test.ts infra/files/dfcLibreOfficeRuntimeAcquisition.test.ts infra/files/dfcLibreOfficeManagedPackageInstaller.test.ts infra/files/dfcManagedLibreOfficeRuntime.test.ts infra/files/enginePluginLifecycleService.test.ts --reporter=dot --silent
+```
+
+Result: passed.
+
+The prerelease asset was redownloaded to a repo-external cache and verified:
+
+```powershell
+Start-BitsTransfer -Source https://github.com/GuXinghai/starverse/releases/download/starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64/starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg -Destination <repo-external-cache>
+```
+
+Redownload sha256 and sizeBytes matched `ce012cf1215f958286be29462d1ae8c122bdc6a779ac84076388de9875487f6e` and `518907010`.
+
+The redownloaded prerelease `.svpkg` candidate was verified with the env-gated archive/import test:
+
+```powershell
+npx vitest --run infra/files/dfcLibreOfficeRuntimePackageArchive.test.ts -t "real owner-approved" --reporter=dot --silent
+```
+
+Result: passed using the redownloaded prerelease package.
+
+The imported runtime from the redownloaded prerelease package was then used for the real managed worker smoke:
+
+```powershell
+npx vitest --run infra/db/worker.filePipeline.test.ts -t "real managed" --reporter=dot --silent
+```
+
+Result: passed from a short repo-external runtime root. No PATH discovery or system LibreOffice fallback was used.
+
 ## Owner Gate Checklist
 
 Before `productionApproved` can change, the Owner must approve:
@@ -330,7 +409,7 @@ Before `productionApproved` can change, the Owner must approve:
 - First-party LibreOffice runtime package source.
 - Package archive format and import-from-downloaded-package bridge.
 - GitHub release tag and asset naming convention.
-- Approval to upload a specific package asset to a draft or prerelease.
+- Approval to keep, replace, or further distribute the verified prerelease asset.
 - License, provenance, and security review.
 - Platform package layout review for Windows, macOS, and Linux.
 - Packaged or near-packaged smoke confidence.
@@ -367,8 +446,8 @@ Disallowed wording:
 
 - Lifecycle controls are file-scoped and not a full DB-persisted lifecycle platform.
 - Packaged or near-packaged smoke is not yet established.
-- GitHub draft release upload and redownload verification have passed for Windows x64 LibreOffice 26.2.4, but production release distribution is not approved.
-- The official-source `.svpkg` package can be prepared, uploaded to a draft release, redownloaded, and locally verified, but production distribution has not been approved.
+- GitHub prerelease promotion and redownload verification have passed for Windows x64 LibreOffice 26.2.4, but production release distribution is not approved.
+- The official-source `.svpkg` package can be prepared, uploaded to a prerelease, redownloaded, and locally verified, but production distribution has not been approved.
 - Imported dev artifacts live outside git and are not product package authority.
 - UI remains minimal; the current work surfaces diagnostics data without building a full Plugin Management UI.
 - Cross-platform package layout policy exists, but real package confidence is still platform-dependent and Owner-gated.
@@ -387,8 +466,8 @@ Fallback behavior should continue to expose `markdown` and `original_file` optio
 ## Next Possible Tasks
 
 - Define packaged or near-packaged smoke policy without committing binaries.
-- Decide whether the draft release asset should remain draft, become prerelease, or move to another controlled distribution channel.
-- Add owner-gated acquisition source metadata pointing at the verified draft/prerelease asset only after Owner approves the acquisition policy switch.
+- Decide whether to enable owner-gated runtime acquisition downloads for the verified prerelease asset.
+- Complete legal/license/provenance review and package signing policy before production approval.
 - Decide CI gating for real runtime smoke.
 - Review user-facing wording before wider exposure.
 - Consider DB-persisted lifecycle registry only if Owner approves the platform scope.
