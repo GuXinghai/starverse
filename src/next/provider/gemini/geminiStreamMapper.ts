@@ -151,7 +151,7 @@ export function mapGeminiStreamChunkToStarverse(
     })
   }
 
-  // Process candidates (prefer index 0)
+  // Process candidates (uses candidates[0])
   const candidates = chunk.candidates
   if (!candidates || candidates.length === 0) return events
 
