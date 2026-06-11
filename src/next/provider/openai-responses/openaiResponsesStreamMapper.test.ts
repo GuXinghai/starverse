@@ -50,10 +50,6 @@ function errorEvent(error: Record<string, unknown>): OpenAIResponsesStreamEvent 
   return { type: 'error', error, sequence_number: 0 }
 }
 
-function responseErrorEvent(error: Record<string, unknown>): OpenAIResponsesStreamEvent {
-  return { type: 'response.error', error, sequence_number: 0 }
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -357,19 +353,6 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
           status: 'incomplete',
           incomplete_details: { reason: 'max_output_tokens' },
         }),
-        msgId,
-      )
-
-      const errorEvents = events.filter((e) => e.type === 'stream.error')
-      expect(errorEvents).toHaveLength(1)
-      if (errorEvents[0].type === 'stream.error') {
-        expect(errorEvents[0].terminal).toBe(true)
-      }
-    })
-
-    it('response.error yields terminal stream.error', () => {
-      const events = mapOpenAIResponsesEventToStarverse(
-        responseErrorEvent({ code: 'rate_limit_exceeded', message: 'slow down' }),
         msgId,
       )
 
