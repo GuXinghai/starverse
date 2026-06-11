@@ -136,6 +136,35 @@ Verification:
 
 This draft release asset remains owner-gated and experimental. It does not change `productionApproved=false` and does not authorize normal production release, bundled runtime support, or broader Office format support.
 
+## Prerelease Acquisition Source Result
+
+Task: promote the verified draft release asset to an owner-gated prerelease acquisition source.
+
+Result date: 2026-06-11.
+
+Prerelease target:
+
+- repository: `GuXinghai/starverse`
+- release tag: `starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64`
+- release type: prerelease
+- publishedAt: `2026-06-11T07:54:18Z`
+- release URL: `https://github.com/GuXinghai/starverse/releases/tag/starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64`
+- asset name: `starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg`
+- asset sha256: `ce012cf1215f958286be29462d1ae8c122bdc6a779ac84076388de9875487f6e`
+- asset sizeBytes: `518907010`
+
+Catalog acquisition source:
+
+- source type: `github_release_asset`
+- packageRef: `GuXinghai/starverse@starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64/starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg`
+- sourceUrl: `https://github.com/GuXinghai/starverse/releases/download/starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64/starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg`
+- downloadEnabled: `false`
+- productionApproved: `false`
+- ownerGated: `true`
+- experimental: `true`
+
+The prerelease asset was redownloaded to a repo-external cache, hash/size verified, archive/import verified, and smoke-tested through the real managed DOCX-to-PDF worker path using a short repo-external runtime root. This still does not authorize production support or automatic product download.
+
 ## Required Metadata
 
 Each Starverse `.svpkg` package candidate must record:
@@ -192,7 +221,7 @@ The runtime executable path must be manifest-relative. Absolute paths, parent tr
 
 - Final release tag naming convention.
 - Final asset naming convention.
-- Whether GitHub Release should be draft, prerelease, or another controlled distribution channel.
+- Whether the verified prerelease asset should remain prerelease, move to another controlled distribution channel, or later become a production-approved release after Owner approval.
 - Legal/license review for repackaging and notices.
 - Package signing policy and production trust root.
 - Whether Owner approves flipping `productionApproved` after release redownload smoke and platform review.

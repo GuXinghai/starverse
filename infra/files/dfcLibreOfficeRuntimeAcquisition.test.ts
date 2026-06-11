@@ -20,12 +20,12 @@ function source(overrides: Partial<DfcLibreOfficeRuntimeAcquisitionSource> = {})
   return {
     sourceKind: 'github_release_asset',
     downloadEnabled: true,
-    packageRef: 'starverse-libreoffice-25.8.7-win32-x64.svpkg',
-    sourceUrl: 'https://github.com/GuXinghai/starverse/releases/download/libreoffice-runtime/starverse-libreoffice-25.8.7-win32-x64.svpkg',
+    packageRef: 'GuXinghai/starverse@starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64/starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg',
+    sourceUrl: 'https://github.com/GuXinghai/starverse/releases/download/starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64/starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg',
     expectedSha256: SHA,
     expectedSizeBytes: BYTES.byteLength,
-    packageVersion: '25.8.7-starverse.1',
-    runtimeVersion: '25.8.7',
+    packageVersion: '0.1.0',
+    runtimeVersion: '26.2.4',
     platform: 'win32',
     arch: 'x64',
     licenseRequired: true,
@@ -57,12 +57,20 @@ async function tempCache(): Promise<string> {
 }
 
 describe('DFC LibreOffice runtime acquisition pipeline', () => {
-  it('keeps the catalog acquisition source disabled by default', () => {
+  it('points the catalog acquisition source at the owner-gated prerelease asset', () => {
     const entry = getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()
 
     expect(entry.acquisitionSource).toMatchObject({
-      sourceKind: 'disabled',
+      sourceKind: 'github_release_asset',
       downloadEnabled: false,
+      packageRef: 'GuXinghai/starverse@starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64/starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg',
+      sourceUrl: 'https://github.com/GuXinghai/starverse/releases/download/starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64/starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg',
+      expectedSha256: 'ce012cf1215f958286be29462d1ae8c122bdc6a779ac84076388de9875487f6e',
+      expectedSizeBytes: 518907010,
+      packageVersion: '0.1.0',
+      runtimeVersion: '26.2.4',
+      platform: 'win32',
+      arch: 'x64',
       productionApproved: false,
       ownerGated: true,
       experimental: true,
@@ -111,8 +119,8 @@ describe('DFC LibreOffice runtime acquisition pipeline', () => {
     if (!result.ok) return
     expect(result).toMatchObject({
       acquisitionStatus: 'downloaded',
-      packageVersion: '25.8.7-starverse.1',
-      runtimeVersion: '25.8.7',
+      packageVersion: '0.1.0',
+      runtimeVersion: '26.2.4',
       platform: 'win32',
       arch: 'x64',
       sha256: SHA,
