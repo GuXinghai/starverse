@@ -369,6 +369,7 @@ describe('streamViaDeepSeek', () => {
     // Exact counts
     expect(reasoningEvents).toHaveLength(2)
     expect(textEvents).toHaveLength(1)
+    expect(metaEvents.length).toBeGreaterThanOrEqual(1)
     expect(usageEvents).toHaveLength(1)
     expect(doneEvents).toHaveLength(1)
     expect(errorEvents).toHaveLength(0)
