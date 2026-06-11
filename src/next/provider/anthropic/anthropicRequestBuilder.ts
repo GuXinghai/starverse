@@ -74,7 +74,11 @@ export function buildAnthropicRequest(input: AnthropicRequestInput): AnthropicRe
     }
   }
 
-  // Compute max_tokens: must exceed thinking.budget_tokens when thinking is enabled
+  // Compute max_tokens.
+  // Anthropic-specific invariant: max_tokens > thinking.budget_tokens
+  // (required by Anthropic extended-thinking API).
+  // If thinking is enabled and the effective max_tokens is not already
+  // greater than the budget, raise it to budget + 1.
   const defaultMaxTokens = maxTokens ?? 4096
   const effectiveMaxTokens = thinkingConfig
     ? Math.max(defaultMaxTokens, thinkingConfig.budget_tokens + 1)
