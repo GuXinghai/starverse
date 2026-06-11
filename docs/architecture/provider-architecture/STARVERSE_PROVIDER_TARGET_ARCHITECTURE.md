@@ -15,6 +15,18 @@
 
 本版本把契约转化为目标模块结构和数据流，明确 legacy path removal 是目标架构输入过滤规则；开放生态经验已映射为 Starverse 专属 landing objects；placeholder abstraction prohibition 已加入风险控制；被 Owner 排除的网关对象已从目标范围移除；Starverse chat-app boundary 已强化，不引入 Agent/RAG/coding workflow runtime。
 
+## Fixture foundation closeout (added 2026-06-12)
+
+All five target provider paths now have fixture-integrated adapter foundations:
+
+- **OpenRouter**: backed by existing active runtime through provider core slice. OpenRouter behavior preserved unchanged.
+- **DeepSeek**: native mapper + request builder + SSE decoder + adapter. `reasoning_content` separated from visible text. Terminal coordination proven.
+- **OpenAI Responses**: native mapper + request builder + SSE decoder + adapter. `response.output_text.delta` / `response.reasoning_summary_text.delta` / `response.reasoning_text.delta` separated. `response.completed` / `response.failed` / `response.incomplete` terminal coordination proven.
+- **Anthropic**: native mapper + request builder + SSE decoder + adapter. `thinking_delta` / `signature_delta` / `text_delta` separated. `thinking.budget_tokens < max_tokens` invariant enforced. `message_stop` / `error` terminal coordination proven.
+- **Gemini API / Google AI Studio**: native mapper + request builder + SSE decoder + adapter. `thought` parts separated from visible text. `functionCall` / `functionResponse` ignored (no tool delta shape). `promptFeedback.blockReason` mapped to meta. `finishReason` / `error` terminal coordination proven. Gemini path is native Gemini API / Google AI Studio architecture, NOT legacy Gemini runtime remnants.
+
+Deferred: live API calls, UI/provider picker, credentials/secure store, provider registry, Send Plan RuntimeCapability integration, OpenRouter conformance to RuntimeProviderStreamAdapter, LocalEndpoint, ManagedLocalRuntime.
+
 ---
 
 ## 1. 架构目标

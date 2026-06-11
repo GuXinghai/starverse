@@ -15,6 +15,22 @@
 
 本版本把目标架构转化为治理路径、阶段门和 Agent 工作边界。主要变化：legacy removal schedule 已绑定阶段；开放生态派生要求已进入 Phase 1 / 3 / 6 验收；placeholder abstraction prohibition 已成为阶段性硬规则；被 Owner 排除的网关对象已从 roadmap 与暂不实施范围移除；Starverse chat-app boundary 已强化，不引入 Agent/RAG/coding workflow 平台。
 
+## Fixture foundation status (added 2026-06-12)
+
+Phase 0–9 provider fixture foundations are complete:
+
+| Provider | Mapper proof | Adapter fixture integration | Status |
+|---|---|---|---|
+| OpenRouter | Phase 1 (provider core slice) | Backed by existing active runtime | ✅ complete |
+| DeepSeek | Phase 2 | Phase 3 | ✅ complete |
+| OpenAI Responses | Phase 4 | Phase 5 | ✅ complete |
+| Anthropic | Phase 6 | Phase 7 | ✅ complete |
+| Gemini API / Google AI Studio | Phase 8b | Phase 9 | ✅ complete |
+
+Shared contract: `RuntimeProviderStreamAdapter` extracted for DeepSeek, OpenAI Responses, Anthropic, Gemini. OpenRouter does not yet conform (uses DomainEvent bridge path).
+
+This status reflects fixture-integrated adapter foundations only. No provider has live API support, UI exposure, credential integration, or production send path in this closeout.
+
 ---
 
 ## 1. 演进原则
