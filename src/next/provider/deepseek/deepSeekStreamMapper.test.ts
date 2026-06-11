@@ -135,7 +135,7 @@ describe('mapDeepSeekChunkToEvents', () => {
     expect(lastReasoningIdx).toBeLessThan(firstTextIdx)
   })
 
-  it('maps finish_reason to meta.delta with normalized finish_reason', () => {
+  it('maps finish_reason to meta.delta + stream.done', () => {
     const events = mapDeepSeekChunkToEvents({
       chunk: finishChunk('gen_1', 'deepseek-chat', 'stop'),
       messageId: msgId,
@@ -148,9 +148,10 @@ describe('mapDeepSeekChunkToEvents', () => {
     if (finishMeta?.type === 'meta.delta') {
       expect(finishMeta.meta.native_finish_reason).toBe('stop')
     }
+    expect(events.some((e) => e.type === 'stream.done')).toBe(true)
   })
 
-  it('normalizes unknown finish_reason to unknown', () => {
+  it('normalizes unknown finish_reason to unknown and emits stream.done', () => {
     const events = mapDeepSeekChunkToEvents({
       chunk: finishChunk('gen_1', 'deepseek-chat', 'some_new_reason'),
       messageId: msgId,
@@ -163,9 +164,10 @@ describe('mapDeepSeekChunkToEvents', () => {
       expect(finishMeta.meta.finish_reason).toBe('unknown')
       expect(finishMeta.meta.native_finish_reason).toBe('some_new_reason')
     }
+    expect(events.some((e) => e.type === 'stream.done')).toBe(true)
   })
 
-  it('maps finish_reason=tool_calls correctly', () => {
+  it('maps finish_reason=tool_calls correctly and emits stream.done', () => {
     const events = mapDeepSeekChunkToEvents({
       chunk: finishChunk('gen_1', 'deepseek-chat', 'tool_calls'),
       messageId: msgId,
@@ -174,6 +176,7 @@ describe('mapDeepSeekChunkToEvents', () => {
     const metaEvents = events.filter((e) => e.type === 'meta.delta')
     const finishMeta = metaEvents.find((e) => e.type === 'meta.delta' && e.meta.finish_reason === 'tool_calls')
     expect(finishMeta).toBeTruthy()
+    expect(events.some((e) => e.type === 'stream.done')).toBe(true)
   })
 
   it('maps usage chunk to usage.delta', () => {
@@ -337,5 +340,9 @@ describe('mapDeepSeekChunkToEvents', () => {
     // Finish meta present
     const finishMeta = metaEvents.find((e) => e.type === 'meta.delta' && e.meta.finish_reason === 'stop')
     expect(finishMeta).toBeTruthy()
+
+    // stream.done emitted after finish
+    const doneEvents = allEvents.filter((e) => e.type === 'stream.done')
+    expect(doneEvents).toHaveLength(1)
   })
 })

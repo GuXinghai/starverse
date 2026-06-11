@@ -171,7 +171,7 @@ export function mapDeepSeekChunkToEvents(input: DeepSeekChunkInput): StarverseSt
     })
   }
 
-  // Finish reason → meta
+  // Finish reason → meta + done
   if (choice.finish_reason) {
     const normalized = normalizeFinishReason(choice.finish_reason)
     events.push({
@@ -183,6 +183,7 @@ export function mapDeepSeekChunkToEvents(input: DeepSeekChunkInput): StarverseSt
         native_finish_reason: choice.finish_reason,
       },
     })
+    events.push({ type: 'stream.done' })
   }
 
   return events
