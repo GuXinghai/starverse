@@ -65,10 +65,25 @@ export type AnthropicRequestInput = Readonly<{
 export function buildAnthropicRequest(input: AnthropicRequestInput): AnthropicRequest {
   const { model, messages, config, system, maxTokens } = input
 
+  // Resolve thinking budget first (may affect max_tokens)
+  let thinkingConfig: AnthropicThinkingConfig | undefined
+  if (config.requestedReasoningMode === 'effort') {
+    const budgetTokens = resolveThinkingBudget(config.requestedReasoningEffort)
+    if (budgetTokens !== undefined) {
+      thinkingConfig = { type: 'enabled', budget_tokens: budgetTokens }
+    }
+  }
+
+  // Compute max_tokens: must exceed thinking.budget_tokens when thinking is enabled
+  const defaultMaxTokens = maxTokens ?? 4096
+  const effectiveMaxTokens = thinkingConfig
+    ? Math.max(defaultMaxTokens, thinkingConfig.budget_tokens + 1)
+    : defaultMaxTokens
+
   const request: Record<string, unknown> = {
     model,
     messages,
-    max_tokens: maxTokens ?? 4096,
+    max_tokens: effectiveMaxTokens,
     stream: true,
   }
 
@@ -89,12 +104,9 @@ export function buildAnthropicRequest(input: AnthropicRequestInput): AnthropicRe
     request.tools = config.tools
   }
 
-  // Thinking config — only when mode is 'effort'
-  if (config.requestedReasoningMode === 'effort') {
-    const budgetTokens = resolveThinkingBudget(config.requestedReasoningEffort)
-    if (budgetTokens !== undefined) {
-      request.thinking = { type: 'enabled', budget_tokens: budgetTokens }
-    }
+  // Thinking config
+  if (thinkingConfig) {
+    request.thinking = thinkingConfig
   }
 
   return request as AnthropicRequest
