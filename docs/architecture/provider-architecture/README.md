@@ -5,6 +5,10 @@
 
 This directory contains the authoritative governance documents for Starverse multi-provider architecture.
 
+## Current Status (added 2026-06-12)
+
+Phase 0–9 fixture foundations complete. Five provider adapter proofs exist (OpenRouter, DeepSeek, OpenAI Responses, Anthropic, Gemini API / Google AI Studio). `RuntimeProviderStreamAdapter` contract extracted for non-OpenRouter remote adapters. OpenRouter remains active runtime. No live API, UI/provider picker, credentials, registry, or production send path for non-OpenRouter providers.
+
 ## Document Order
 
 1. [STARVERSE_PROVIDER_ARCHITECTURE_CONTRACT.md](STARVERSE_PROVIDER_ARCHITECTURE_CONTRACT.md)
