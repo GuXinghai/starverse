@@ -213,9 +213,8 @@ export function mapOpenAIResponsesEventToStarverse(
     }
 
     // -----------------------------------------------------------------------
-    // Error event (top-level)
+    // Error event (top-level, official SDK type)
     // -----------------------------------------------------------------------
-    case 'response.error':
     case 'error': {
       const error = event.error as Record<string, unknown> | undefined
       const code = typeof error?.code === 'string' ? error.code : 'error'
