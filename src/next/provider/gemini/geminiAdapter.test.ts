@@ -300,6 +300,28 @@ describe('streamViaGemini', () => {
     }
   })
 
+  it('error followed by later finish/data produces no later events', async () => {
+    const response = makeSseResponse(
+      errorChunkSse(429, 'Too many requests'),
+      textChunkSse('should not appear'),
+      finishChunkSse('STOP'),
+    )
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaGemini(makeRequest(), {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: 'test-key',
+      fetch,
+    }))
+
+    // Only the error event, nothing after
+    expect(events).toHaveLength(1)
+    expect(events[0].type).toBe('stream.error')
+    // No stream.done after terminal error
+    const doneEvents = events.filter((e) => e.type === 'stream.done')
+    expect(doneEvents).toHaveLength(0)
+  })
+
   it('abort signal yields stream.abort', async () => {
     const controller = new AbortController()
     controller.abort()

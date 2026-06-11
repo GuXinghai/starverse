@@ -392,6 +392,29 @@ describe('mapGeminiStreamChunkToStarverse', () => {
       const nonUsageEvents = events.filter((e) => e.type !== 'usage.delta')
       expect(nonUsageEvents).toHaveLength(0)
     })
+
+    it('functionResponse part does not become visible text', () => {
+      const chunk: GeminiStreamChunk = {
+        candidates: [{
+          content: { parts: [{ functionResponse: { name: 'get_weather', response: { temp: 72 } } }], role: 'model' },
+          index: 0,
+        }],
+      }
+      const events = mapGeminiStreamChunkToStarverse(chunk, msgId)
+      const textEvents = events.filter((e) => e.type === 'message.text_delta')
+      expect(textEvents).toHaveLength(0)
+    })
+
+    it('functionResponse part produces no events', () => {
+      const chunk: GeminiStreamChunk = {
+        candidates: [{
+          content: { parts: [{ functionResponse: { name: 'get_weather', response: { temp: 72 } } }], role: 'model' },
+          index: 0,
+        }],
+      }
+      const events = mapGeminiStreamChunkToStarverse(chunk, msgId)
+      expect(events).toHaveLength(0)
+    })
   })
 
   // =========================================================================
