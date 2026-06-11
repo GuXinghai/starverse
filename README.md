@@ -16,7 +16,7 @@
 </p>
 
 <p>
-  一个功能强大的多提供商 AI 聊天客户端，支持 Google Gemini 和 OpenRouter，提供分支化对话、多模态交互、智能搜索等企业级功能
+  一个功能强大的 OpenRouter-first AI 聊天客户端，提供分支化对话、多模态交互、智能搜索等企业级功能；多提供商演进由 docs/architecture/provider-architecture/ 治理，旧 Gemini 路径仅为 legacy remnants
 </p>
 
 ### 🎯 核心特色
@@ -26,7 +26,7 @@
 | 🌳 分支化对话 | ✅ 完整树形结构 | ❌ 线性对话 |
 | 🔍 全文搜索 | ✅ SQLite FTS5 | ⚠️ 基础搜索 |
 | 🎨 多模态支持 | ✅ 图片+文本混合 | ⚠️ 仅文本 |
-| 🤖 多提供商 | ✅ Gemini + OpenRouter | ⚠️ 单一提供商 |
+| 🤖 提供商架构 | ✅ OpenRouter-first active runtime + Owner-confirmed multi-provider roadmap | ⚠️ 单一提供商 |
 | 💾 数据存储 | ✅ SQLite + Web Worker | ⚠️ JSON 文件 |
 | ⚡ 性能优化 | ✅ 75% 提升 | - |
 | 📁 项目管理 | ✅ 完整分类系统 | ❌ 无 |
@@ -90,7 +90,7 @@ npm run electron:dev
 
 | 模块 | 说明 | 代码入口 | 文档入口 |
 |------|------|---------|---------|
-| AI 对话 | 多提供商 (Gemini + OpenRouter)，200+ 模型同步 (AppModel)，流式响应，多模态，推理 (4 级)，网络搜索，用量统计 | `src/next/openrouter/`, `src/ui-app/app/` | [OVERVIEW](docs/architecture/OVERVIEW.md), [OpenRouter 集成](docs/architecture/OPENROUTER_INTEGRATION_SUMMARY.md) |
+| AI 对话 | OpenRouter-first active runtime，200+ 模型同步 (AppModel)，流式响应，多模态，推理 (4 级)，网络搜索，用量统计；多提供商目标架构见 [Provider Architecture](docs/architecture/provider-architecture/README.md) | `src/next/openrouter/`, `src/ui-app/app/` | [OVERVIEW](docs/architecture/OVERVIEW.md), [OpenRouter 集成历史](docs/architecture/OPENROUTER_INTEGRATION_SUMMARY.md) |
 | 富文本渲染 | GFM Markdown, Shiki 语法高亮 (200+ 语言), KaTeX LaTeX 公式, 流式/完成态智能切换 | `src/ui-kit/chat/richtext/` | — |
 | 会话与分支 | 树形分支对话，多会话管理，项目分类，标签页，消息编辑与重新生成 | `src/next/convo/`, `src/next/branch/` | [OVERVIEW](docs/architecture/OVERVIEW.md) |
 | 模型选择器 | 收藏模型，多维筛选 (系列/能力/上下文/价格)，实时搜索 | `src/ui-app/components/ModelPickerDialog.vue` | — |
@@ -134,8 +134,8 @@ npm run electron:dev
 ### AI 服务
 | 技术 | 版本 | 用途 |
 |------|------|------|
-| **@google/generative-ai** | 0.24.1 | Google Gemini AI SDK |
-| **Fetch API** | - | OpenRouter API 调用（SSE） |
+| **Fetch API** | - | OpenRouter API 调用（SSE），当前 active runtime |
+| **@google/generative-ai** | 0.24.1 | Legacy Gemini remnant only；不是 active runtime support，后续 Gemini 必须经 confirmed provider architecture native rebuild |
 
 ### 工具库
 | 技术 | 版本 | 用途 |
@@ -339,29 +339,10 @@ npm ci
 
 **步骤 3: 配置 API Key**
 
-启动应用后，点击右上角设置图标 ⚙️，选择您的 AI 提供商：
+启动应用后，点击右上角设置图标 ⚙️，配置 OpenRouter API Key。当前 active runtime 是 OpenRouter-first；旧 Gemini 配置和 SDK 仅是 legacy remnants，不代表 active runtime support。未来 Gemini support 如实施，必须通过 [Provider Architecture](docs/architecture/provider-architecture/README.md) 中确认的 Gemini API / Google AI Studio native adapter 重建。
 
 <details>
-<summary><b>选项 A: Google Gemini（免费配额）</b></summary>
-
-1. 访问 [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. 登录您的 Google 账号
-3. 点击 "Create API Key"
-4. 复制 API Key
-5. 在 Starverse 设置中：
-   - 选择 "Google Gemini"
-   - 粘贴 API Key
-   - 点击保存
-
-**优势**: 
-- 免费配额充足
-- 官方 SDK 支持
-- 低延迟
-
-</details>
-
-<details>
-<summary><b>选项 B: OpenRouter（访问上百种模型）</b></summary>
+<summary><b>OpenRouter（访问上百种模型）</b></summary>
 
 1. 访问 [OpenRouter](https://openrouter.ai/keys)
 2. 注册账号（支持 Google/GitHub 登录）
@@ -373,7 +354,7 @@ npm ci
    - 点击保存
 
 **优势**: 
-- 访问 GPT-4, Claude, Gemini, Llama 等 100+ 模型
+- 访问 GPT-4, Claude, Gemini, Llama 等 100+ 模型（经 OpenRouter）
 - 按需付费，价格透明
 - 支持网络搜索插件
 
@@ -620,7 +601,7 @@ npm run build
 - **分支化对话树**：`Map<string, Branch>` O(1) 查找，JSON 序列化存储在 `convo.meta`
 - **Web Worker 数据库**：better-sqlite3 在独立 Worker 线程执行，IPC + MessagePort 通信，30s 超时保护
 - **FTS5 全文搜索**：message_fts 虚拟表，BM25 排序，unicode61 中英文分词，触发器同步索引
-- **多提供商策略**：`next/openrouter/` 封装 OpenRouter SDK + SSE 解析，Gemini 通过 `@google/generative-ai` SDK
+- **Provider runtime strategy**：当前 active runtime 是 OpenRouter-first，`next/openrouter/` 封装 OpenRouter request / SSE 解析；旧 Gemini SDK 路径是 legacy remnant，不作为 active runtime support。多提供商演进以 [Provider Architecture](docs/architecture/provider-architecture/README.md) 为准，未来 Gemini support 必须 native rebuild。
 - **Vue Proxy 边界防御**：`deepToRaw()` 深度去除 Proxy 后再经 IPC 传递，消除 structuredClone 错误
 - **Send Plan + 文件管道**：`src/shared/files/` + `infra/files/` 实现 attachment 语义、send preflight、兼容性门禁（详见 [file-pipeline](docs/file-pipeline/README.md)）
 
@@ -753,6 +734,7 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 | [文档导航中心](docs/guides/INDEX.md) | 按场景查找所有文档 |
 | [文档状态索引](docs/DOC_STATUS_INDEX.md) | 文档活跃度与优先级判断 |
 | [架构总览](docs/architecture/OVERVIEW.md) | 系统架构设计 |
+| [Provider Architecture](docs/architecture/provider-architecture/README.md) | Owner-confirmed multi-provider architecture SSOT |
 | [文件管道入口](docs/file-pipeline/README.md) | File Pipeline Phase 1-9 状态与文档映射 |
 | [File Pipeline 进度账本](docs/file-pipeline/progress-ledger.md) | 决策记录、冻结决策、未做清单 |
 | [格式转换与预览方案](docs/file-pipeline/format-conversion-preview-final.md) | 文档格式转换与预览 SSOT |
@@ -820,7 +802,7 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 - [Electron](https://www.electronjs.org/) - 跨平台桌面应用框架
 - [Vue.js](https://vuejs.org/) - 渐进式 JavaScript 框架
 - [Tailwind CSS](https://tailwindcss.com/) - 原子化 CSS 框架
-- [Google Gemini](https://ai.google.dev/) - 强大的 AI 能力支持
+- [Google Gemini](https://ai.google.dev/) - Future native rebuild reference；当前旧 Gemini 路径不是 active runtime support
 - [OpenRouter](https://openrouter.ai/) - 统一的多模型 API 网关
 - [Vite](https://vitejs.dev/) - 极速的前端构建工具
 - [Pinia](https://pinia.vuejs.org/) - Vue 3 状态管理
@@ -843,7 +825,7 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 
 - [Electron 官方文档](https://www.electronjs.org/docs)
 - [Vue.js 官方文档](https://vuejs.org/)
-- [Google Gemini API](https://ai.google.dev/)
+- [Google Gemini API](https://ai.google.dev/) - future native rebuild reference
 - [OpenRouter API](https://openrouter.ai/docs)
 - [Tailwind CSS 文档](https://tailwindcss.com/docs)
 
