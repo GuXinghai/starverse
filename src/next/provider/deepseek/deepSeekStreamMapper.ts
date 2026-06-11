@@ -107,14 +107,12 @@ export function mapDeepSeekChunkToEvents(input: DeepSeekChunkInput): StarverseSt
     events.push({
       type: 'stream.error',
       error: {
-        phase: 'mid_stream',
-        completionClass: 'error',
-        openrouter: {
-          code: String(chunk.error.code ?? 'error'),
-          message: chunk.error.message,
-        },
-        truncated: false,
-      } as any,
+        phase: 'stream',
+        provider: 'deepseek',
+        category: 'provider_error',
+        message: chunk.error.message ?? 'DeepSeek error',
+        code: String(chunk.error.code ?? 'error'),
+      },
       terminal: true,
     })
     return events

@@ -185,11 +185,12 @@ export function mapAnthropicStreamEventToStarverse(
       events.push({
         type: 'stream.error',
         error: {
-          phase: 'mid_stream',
-          completionClass: 'error',
-          openrouter: { code, message },
-          truncated: false,
-        } as any,
+          phase: 'provider',
+          provider: 'anthropic',
+          category: 'provider_error',
+          message,
+          code,
+        },
         terminal: true,
       })
       break

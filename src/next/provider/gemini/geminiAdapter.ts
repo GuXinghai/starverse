@@ -14,7 +14,7 @@
  * @see https://ai.google.dev/api/generate-content
  */
 
-import type { ProviderStreamRequest, StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { ProviderStreamRequest, StarverseStreamEvent, StarverseProviderError } from '@/next/provider/providerTypes'
 import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProviderAdapter'
 import { buildGeminiRequest, type GeminiContent } from '@/next/provider/gemini/geminiRequestBuilder'
 import { decodeGeminiSSE } from '@/next/provider/gemini/geminiSseDecoder'
@@ -98,11 +98,11 @@ export const streamViaGemini: RuntimeProviderStreamAdapter = async function* str
     yield {
       type: 'stream.error',
       error: {
-        phase: 'mid_stream',
-        completionClass: 'error',
-        openrouter: { code: 'no_body', message: 'Response body is null' },
-        truncated: false,
-      } as any,
+        phase: 'stream',
+        provider: 'gemini',
+        category: 'protocol',
+        message: 'Response body is null',
+      },
       terminal: true,
     }
     return
@@ -137,11 +137,11 @@ export const streamViaGemini: RuntimeProviderStreamAdapter = async function* str
       yield {
         type: 'stream.error',
         error: {
-          phase: 'mid_stream',
-          completionClass: 'error',
-          openrouter: { code: 'protocol_invalid', message: sseEvent.message },
-          truncated: false,
-        } as any,
+          phase: 'stream',
+          provider: 'gemini',
+          category: 'protocol',
+          message: sseEvent.message,
+        },
         terminal: true,
       }
       terminalEmitted = true
@@ -151,7 +151,16 @@ export const streamViaGemini: RuntimeProviderStreamAdapter = async function* str
 
   // Fallback: if stream ended without terminal
   if (!terminalEmitted) {
-    yield { type: 'stream.done' }
+    yield {
+      type: 'stream.error',
+      error: {
+        phase: 'stream',
+        provider: 'gemini',
+        category: 'protocol',
+        message: 'Unexpected end of stream',
+      },
+      terminal: true,
+    }
   }
 }
 
@@ -208,13 +217,12 @@ async function* mapTransportError(err: any): AsyncGenerator<StarverseStreamEvent
     yield {
       type: 'stream.abort',
       reason: 'aborted',
-      envelope: {
-        phase: 'pre_stream',
-        completionClass: 'aborted',
-        openrouter: { code: 'aborted' },
-        truncated: false,
-        kind: 'aborted',
-      } as any,
+      error: {
+        phase: 'abort',
+        provider: 'gemini',
+        category: 'aborted',
+        message: err?.message ?? 'Request aborted',
+      },
     }
     return
   }
@@ -222,14 +230,11 @@ async function* mapTransportError(err: any): AsyncGenerator<StarverseStreamEvent
   yield {
     type: 'stream.error',
     error: {
-      phase: 'pre_stream',
-      completionClass: 'error',
-      openrouter: {
-        code: 'network_unreachable',
-        message: err?.message ?? 'Network error',
-      },
-      truncated: false,
-    } as any,
+      phase: 'transport',
+      provider: 'gemini',
+      category: 'network',
+      message: err?.message ?? 'Network error',
+    },
     terminal: true,
   }
 }
@@ -246,18 +251,26 @@ async function* mapHttpError(response: Response): AsyncGenerator<StarverseStream
   const code = error?.code ?? `http_${response.status}`
   const message = error?.message ?? response.statusText
 
+  const category: StarverseProviderError['category'] =
+    response.status === 401 || response.status === 403
+      ? 'auth'
+      : response.status === 429
+        ? 'rate_limit'
+        : response.status >= 400 && response.status < 500
+          ? 'bad_request'
+          : 'http'
+
   yield {
     type: 'stream.error',
     error: {
-      phase: 'pre_stream',
-      completionClass: 'error',
-      openrouter: {
-        code: String(code),
-        message: String(message),
-      },
-      http: { status: response.status, statusText: response.statusText },
-      truncated: false,
-    } as any,
+      phase: 'http',
+      provider: 'gemini',
+      category,
+      message: String(message),
+      code: String(code),
+      httpStatus: response.status,
+      raw: errorBody,
+    },
     terminal: true,
   }
 }

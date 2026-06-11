@@ -9,7 +9,6 @@
  * @see docs/architecture/provider-architecture/STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md
  */
 
-import type { ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import type {
   ContentBlock,
   MessageAnnotation,
@@ -17,6 +16,35 @@ import type {
   RequestedReasoningMode,
   ToolCallDelta,
 } from '@/next/state/types'
+
+// ---------------------------------------------------------------------------
+// StarverseProviderError — provider-neutral error shape
+//
+// Replaces the OpenRouter-shaped ErrorEnvelope in provider-neutral contexts.
+// OpenRouter adapter constructs this from ErrorEnvelope internally;
+// non-OpenRouter adapters construct it directly from provider-native errors.
+// ---------------------------------------------------------------------------
+
+export type StarverseProviderError = Readonly<{
+  phase: 'request_build' | 'transport' | 'http' | 'sse_decode' | 'stream' | 'provider' | 'abort'
+  provider: string
+  category:
+    | 'auth'
+    | 'rate_limit'
+    | 'bad_request'
+    | 'network'
+    | 'http'
+    | 'provider_error'
+    | 'protocol'
+    | 'aborted'
+    | 'unknown'
+  message: string
+  retryable?: boolean
+  httpStatus?: number
+  code?: string
+  requestId?: string
+  raw?: unknown
+}>
 
 // ---------------------------------------------------------------------------
 // StarverseStreamEvent — provider-neutral stream IR
@@ -33,9 +61,9 @@ import type {
 
 export type StarverseStreamEvent =
   | Readonly<{ type: 'stream.comment'; text: string }>
-  | Readonly<{ type: 'stream.error'; error: ErrorEnvelope; terminal: true }>
+  | Readonly<{ type: 'stream.error'; error: StarverseProviderError; terminal: true }>
   | Readonly<{ type: 'stream.done' }>
-  | Readonly<{ type: 'stream.abort'; reason?: string; envelope: ErrorEnvelope }>
+  | Readonly<{ type: 'stream.abort'; reason?: string; error: StarverseProviderError }>
   | Readonly<{
       type: 'stream.timing'
       tRequestStart?: number

@@ -9,7 +9,41 @@
  */
 
 import type { DomainEvent } from '@/next/state/types'
-import type { StarverseStreamEvent } from './providerTypes'
+import type { StarverseStreamEvent, StarverseProviderError } from './providerTypes'
+import type { ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
+
+/**
+ * Convert an OpenRouter ErrorEnvelope to a StarverseProviderError.
+ * Used when bridging OpenRouter DomainEvent errors to the provider-neutral shape.
+ */
+function errorEnvelopeToProviderError(env: ErrorEnvelope): StarverseProviderError {
+  return {
+    phase: env.phase === 'pre_stream' ? 'transport' : env.phase === 'mid_stream' ? 'stream' : 'provider',
+    provider: 'openrouter',
+    category: env.completionClass === 'aborted' ? 'aborted' : 'unknown',
+    message: env.openrouter.message ?? 'error',
+    code: env.openrouter.code,
+    ...(env.http?.status ? { httpStatus: env.http.status } : {}),
+    raw: env,
+  }
+}
+
+/**
+ * Convert a StarverseProviderError back to an OpenRouter ErrorEnvelope.
+ * Used when bridging provider-neutral errors back to the DomainEvent path.
+ */
+function providerErrorToErrorEnvelope(err: StarverseProviderError): ErrorEnvelope {
+  return {
+    phase: err.phase === 'transport' ? 'pre_stream' : err.phase === 'stream' ? 'mid_stream' : 'post_stream',
+    completionClass: err.category === 'aborted' ? 'aborted' : 'error',
+    openrouter: {
+      code: err.code ?? 'error',
+      message: err.message,
+    },
+    truncated: false,
+    raw: err.raw ? { raw_error: err.raw } : undefined,
+  } as ErrorEnvelope
+}
 
 /**
  * Convert a StarverseStreamEvent into a DomainEvent for consumption
@@ -23,11 +57,11 @@ export function streamEventToDomainEvent(event: StarverseStreamEvent): DomainEve
     case 'stream.comment':
       return { type: 'StreamComment', text: event.text }
     case 'stream.error':
-      return { type: 'StreamError', error: event.error, terminal: true }
+      return { type: 'StreamError', error: providerErrorToErrorEnvelope(event.error), terminal: true }
     case 'stream.done':
       return { type: 'StreamDone' }
     case 'stream.abort':
-      return { type: 'StreamAbort', reason: event.reason, envelope: event.envelope }
+      return { type: 'StreamAbort', reason: event.reason, envelope: providerErrorToErrorEnvelope(event.error) }
     case 'stream.timing':
       return {
         type: 'TimingSnapshot',
@@ -79,11 +113,11 @@ export function domainEventToStreamEvent(event: DomainEvent): StarverseStreamEve
     case 'StreamComment':
       return { type: 'stream.comment', text: event.text }
     case 'StreamError':
-      return { type: 'stream.error', error: event.error, terminal: true }
+      return { type: 'stream.error', error: errorEnvelopeToProviderError(event.error), terminal: true }
     case 'StreamDone':
       return { type: 'stream.done' }
     case 'StreamAbort':
-      return { type: 'stream.abort', reason: event.reason, envelope: event.envelope }
+      return { type: 'stream.abort', reason: event.reason, error: errorEnvelopeToProviderError(event.envelope) }
     case 'TimingSnapshot':
       return {
         type: 'stream.timing',

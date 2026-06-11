@@ -14,7 +14,7 @@
  * @see docs/architecture/provider-architecture/STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md §4.4
  */
 
-import type { ProviderStreamRequest, StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '@/next/provider/providerTypes'
 import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProviderAdapter'
 import { buildAnthropicRequest, type AnthropicMessage } from '@/next/provider/anthropic/anthropicRequestBuilder'
 import { decodeAnthropicSSE } from '@/next/provider/anthropic/anthropicSseDecoder'
@@ -97,11 +97,11 @@ export const streamViaAnthropic: RuntimeProviderStreamAdapter = async function* 
     yield {
       type: 'stream.error',
       error: {
-        phase: 'mid_stream',
-        completionClass: 'error',
-        openrouter: { code: 'no_body', message: 'Response body is null' },
-        truncated: false,
-      } as any,
+        phase: 'transport',
+        provider: 'anthropic',
+        category: 'network',
+        message: 'Response body is null',
+      } satisfies StarverseProviderError,
       terminal: true,
     }
     return
@@ -136,11 +136,11 @@ export const streamViaAnthropic: RuntimeProviderStreamAdapter = async function* 
       yield {
         type: 'stream.error',
         error: {
-          phase: 'mid_stream',
-          completionClass: 'error',
-          openrouter: { code: 'protocol_invalid', message: sseEvent.message },
-          truncated: false,
-        } as any,
+          phase: 'sse_decode',
+          provider: 'anthropic',
+          category: 'protocol',
+          message: sseEvent.message,
+        } satisfies StarverseProviderError,
         terminal: true,
       }
       terminalEmitted = true
@@ -150,7 +150,16 @@ export const streamViaAnthropic: RuntimeProviderStreamAdapter = async function* 
 
   // Fallback: if stream ended without terminal
   if (!terminalEmitted) {
-    yield { type: 'stream.done' }
+    yield {
+      type: 'stream.error',
+      error: {
+        phase: 'stream',
+        provider: 'anthropic',
+        category: 'protocol',
+        message: 'Unexpected end of stream',
+      } satisfies StarverseProviderError,
+      terminal: true,
+    }
   }
 }
 
@@ -207,13 +216,12 @@ async function* mapTransportError(err: any): AsyncGenerator<StarverseStreamEvent
     yield {
       type: 'stream.abort',
       reason: 'aborted',
-      envelope: {
-        phase: 'pre_stream',
-        completionClass: 'aborted',
-        openrouter: { code: 'aborted' },
-        truncated: false,
-        kind: 'aborted',
-      } as any,
+      error: {
+        phase: 'abort',
+        provider: 'anthropic',
+        category: 'aborted',
+        message: err?.message ?? 'Request aborted',
+      } satisfies StarverseProviderError,
     }
     return
   }
@@ -221,14 +229,11 @@ async function* mapTransportError(err: any): AsyncGenerator<StarverseStreamEvent
   yield {
     type: 'stream.error',
     error: {
-      phase: 'pre_stream',
-      completionClass: 'error',
-      openrouter: {
-        code: 'network_unreachable',
-        message: err?.message ?? 'Network error',
-      },
-      truncated: false,
-    } as any,
+      phase: 'transport',
+      provider: 'anthropic',
+      category: 'network',
+      message: err?.message ?? 'Network error',
+    } satisfies StarverseProviderError,
     terminal: true,
   }
 }
@@ -248,15 +253,17 @@ async function* mapHttpError(response: Response): AsyncGenerator<StarverseStream
   yield {
     type: 'stream.error',
     error: {
-      phase: 'pre_stream',
-      completionClass: 'error',
-      openrouter: {
-        code: String(code),
-        message: String(message),
-      },
-      http: { status: response.status, statusText: response.statusText },
-      truncated: false,
-    } as any,
+      phase: 'http',
+      provider: 'anthropic',
+      category: response.status === 401 ? 'auth'
+        : response.status === 429 ? 'rate_limit'
+        : response.status === 400 ? 'bad_request'
+        : 'http',
+      message: String(message),
+      code: String(code),
+      httpStatus: response.status,
+      raw: errorBody,
+    } satisfies StarverseProviderError,
     terminal: true,
   }
 }
