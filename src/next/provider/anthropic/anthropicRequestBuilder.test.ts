@@ -120,6 +120,8 @@ describe('buildAnthropicRequest', () => {
     })
 
     expect(req.thinking).toEqual({ type: 'enabled', budget_tokens: 16384 })
+    // max_tokens must exceed budget_tokens
+    expect(req.max_tokens).toBeGreaterThan((req.thinking as any).budget_tokens)
   })
 
   it('maps thinking budget levels correctly', () => {
@@ -131,6 +133,64 @@ describe('buildAnthropicRequest', () => {
       })
       expect((req.thinking as any).budget_tokens).toBe(budget)
     }
+  })
+
+  it('default max_tokens always exceeds thinking budget for all effort levels', () => {
+    for (const effort of ['low', 'minimal', 'medium', 'high', 'xhigh'] as const) {
+      const req = buildAnthropicRequest({
+        model: 'claude-sonnet-4-5',
+        messages: baseMessages,
+        config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: effort }),
+      })
+      expect(req.max_tokens).toBeGreaterThan((req.thinking as any).budget_tokens)
+    }
+  })
+
+  it('medium effort raises max_tokens above budget (no longer equal)', () => {
+    const req = buildAnthropicRequest({
+      model: 'claude-sonnet-4-5',
+      messages: baseMessages,
+      config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: 'medium' }),
+    })
+
+    expect((req.thinking as any).budget_tokens).toBe(4096)
+    expect(req.max_tokens).toBe(4097) // budget + 1
+  })
+
+  it('explicit max_tokens greater than budget_tokens is preserved', () => {
+    const req = buildAnthropicRequest({
+      model: 'claude-sonnet-4-5',
+      messages: baseMessages,
+      config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: 'high' }),
+      maxTokens: 32768,
+    })
+
+    expect((req.thinking as any).budget_tokens).toBe(16384)
+    expect(req.max_tokens).toBe(32768)
+  })
+
+  it('explicit max_tokens lower than budget is adjusted to budget + 1', () => {
+    const req = buildAnthropicRequest({
+      model: 'claude-sonnet-4-5',
+      messages: baseMessages,
+      config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: 'high' }),
+      maxTokens: 1000,
+    })
+
+    expect((req.thinking as any).budget_tokens).toBe(16384)
+    expect(req.max_tokens).toBe(16385)
+  })
+
+  it('explicit max_tokens equal to budget is adjusted to budget + 1', () => {
+    const req = buildAnthropicRequest({
+      model: 'claude-sonnet-4-5',
+      messages: baseMessages,
+      config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: 'high' }),
+      maxTokens: 16384,
+    })
+
+    expect((req.thinking as any).budget_tokens).toBe(16384)
+    expect(req.max_tokens).toBe(16385)
   })
 
   it('does not include thinking when mode is auto', () => {
