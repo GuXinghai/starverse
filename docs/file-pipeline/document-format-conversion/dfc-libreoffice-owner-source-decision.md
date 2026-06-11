@@ -106,6 +106,36 @@ License, notices, attribution, and provenance inputs used for this experimental 
 
 This result provides local packaging and verification confidence only. It does not approve GitHub release upload, bundled runtime distribution, or production support.
 
+## Draft Release Asset Verification Result
+
+Task: GitHub draft release upload plus release-asset redownload verification.
+
+Result date: 2026-06-11.
+
+Release target:
+
+- repository: `GuXinghai/starverse`
+- release tag: `starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64`
+- release type: draft
+- release URL: `https://github.com/GuXinghai/starverse/releases/tag/untagged-455b5afc040fff36e435`
+- asset name: `starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg`
+- asset sha256: `ce012cf1215f958286be29462d1ae8c122bdc6a779ac84076388de9875487f6e`
+- asset sizeBytes: `518907010`
+- GitHub asset digest: `sha256:ce012cf1215f958286be29462d1ae8c122bdc6a779ac84076388de9875487f6e`
+
+Verification:
+
+- upload used only the repo-external `.svpkg` package candidate
+- redownload wrote only to a repo-external cache
+- redownload sha256 matched
+- redownload sizeBytes matched
+- archive bridge verification passed
+- import helper verification passed
+- managed runtime gate verification passed
+- real managed DOCX-to-PDF worker smoke passed from the redownloaded package import
+
+This draft release asset remains owner-gated and experimental. It does not change `productionApproved=false` and does not authorize normal production release, bundled runtime support, or broader Office format support.
+
 ## Required Metadata
 
 Each Starverse `.svpkg` package candidate must record:
