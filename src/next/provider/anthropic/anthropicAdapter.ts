@@ -15,6 +15,7 @@
  */
 
 import type { ProviderStreamRequest, StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProviderAdapter'
 import { buildAnthropicRequest, type AnthropicMessage } from '@/next/provider/anthropic/anthropicRequestBuilder'
 import { decodeAnthropicSSE } from '@/next/provider/anthropic/anthropicSseDecoder'
 import { mapAnthropicStreamEventToStarverse } from '@/next/provider/anthropic/anthropicStreamMapper'
@@ -46,7 +47,7 @@ export type AnthropicFetchFn = (
  * @param transport - Transport options and injectable fetch function
  * @yields StarverseStreamEvent — provider-neutral stream events
  */
-export async function* streamViaAnthropic(
+export const streamViaAnthropic: RuntimeProviderStreamAdapter = async function* streamViaAnthropic(
   request: ProviderStreamRequest,
   transport: AnthropicTransportOptions & { fetch: AnthropicFetchFn },
 ): AsyncGenerator<StarverseStreamEvent> {
