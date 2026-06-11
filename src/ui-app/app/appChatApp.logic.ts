@@ -80,7 +80,7 @@ import { getNetExpSettings } from '@/next/netExp/netExpClient'
 import { startNetExpRunReport } from '@/next/netExp/netExpRunReport'
 import { applyEventsBatch, createInitialState, startGeneration, toggleReasoningPanelState } from '@/next/state/reducer'
 import { selectMessage, selectRun } from '@/next/state/selectors'
-import { streamOpenRouterChatAsEvents } from '@/next/live/openRouterLiveStream'
+import { streamViaOpenRouterAsDomainEvents } from '@/next/provider/openrouter/openRouterAdapter'
 import {
   prepareOpenRouterReplayFromMessage,
   prepareOpenRouterSendFromDraft,
@@ -7535,7 +7535,7 @@ export function useAppChatAppLogic() {
       assistantSeq,
       modelId,
       replayManifestDraft: replayPrepared?.manifestDraft ?? null,
-      createEvents: (signal) => streamOpenRouterChatAsEvents({
+      createEvents: (signal) => streamViaOpenRouterAsDomainEvents({
         requestId,
         assistantMessageId,
         userText: questionText,
@@ -7543,7 +7543,6 @@ export function useAppChatAppLogic() {
         ...(replayPrepared?.currentUserContentBlocks.length ? { currentUserContentBlocks: replayPrepared.currentUserContentBlocks } : {}),
         signal,
         config: {
-          apiKey,
           model: modelId,
           requestedReasoningMode,
           webSearch: webSearchConfig,
@@ -7553,7 +7552,7 @@ export function useAppChatAppLogic() {
           ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
           ...(baseUrl ? { baseUrl } : {}),
         },
-      }),
+      }, { apiKey }),
       telemetry: {
         onEvent: (event) => netExpRunTracker.onEvent(event),
         onEnd: (status, error) => netExpRunTracker.onEnd(status, error),
@@ -8174,7 +8173,7 @@ export function useAppChatAppLogic() {
       assistantSeq,
       modelId,
       ...(preparedFileSend ? { pdfAnnotationCaptureAssetIds: getPreparedPdfAssetIds(preparedFileSend) } : {}),
-      createEvents: (signal) => streamOpenRouterChatAsEvents({
+      createEvents: (signal) => streamViaOpenRouterAsDomainEvents({
         requestId,
         assistantMessageId,
         userText: text,
@@ -8182,7 +8181,6 @@ export function useAppChatAppLogic() {
         ...(preparedFileSend?.contentParts.length ? { currentUserContentBlocks: preparedFileSend.contentParts } : {}),
         signal,
         config: {
-          apiKey,
           model: modelId,
           requestedReasoningMode,
           webSearch: webSearchConfig,
@@ -8190,10 +8188,10 @@ export function useAppChatAppLogic() {
           ...(imageGenerationConfig ? { imageGeneration: imageGenerationConfig } : {}),
           ...(requestedReasoningEffortValue ? { requestedReasoningEffort: requestedReasoningEffortValue } : {}),
           ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
-          ...(preparedFileSend?.additionalPlugins.length ? { openRouterAdditionalPlugins: preparedFileSend.additionalPlugins } : {}),
+          ...(preparedFileSend?.additionalPlugins.length ? { additionalPlugins: preparedFileSend.additionalPlugins } : {}),
           ...(baseUrl ? { baseUrl } : {}),
         },
-      }),
+      }, { apiKey }),
     })
   }
 
