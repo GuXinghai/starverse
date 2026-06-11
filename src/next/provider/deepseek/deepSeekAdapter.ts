@@ -14,6 +14,7 @@
  */
 
 import type { ProviderStreamRequest, StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProviderAdapter'
 import { buildDeepSeekRequest, type DeepSeekMessage } from '@/next/provider/deepseek/deepSeekRequestBuilder'
 import { decodeDeepSeekSSE } from '@/next/provider/deepseek/deepSeekSseDecoder'
 import { mapDeepSeekChunkToEvents } from '@/next/provider/deepseek/deepSeekStreamMapper'
@@ -44,7 +45,7 @@ export type DeepSeekFetchFn = (
  * @param transport - Transport options and injectable fetch function
  * @yields StarverseStreamEvent — provider-neutral stream events
  */
-export async function* streamViaDeepSeek(
+export const streamViaDeepSeek: RuntimeProviderStreamAdapter = async function* streamViaDeepSeek(
   request: ProviderStreamRequest,
   transport: DeepSeekTransportOptions & { fetch: DeepSeekFetchFn },
 ): AsyncGenerator<StarverseStreamEvent> {

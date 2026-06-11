@@ -15,6 +15,7 @@
  */
 
 import type { ProviderStreamRequest, StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProviderAdapter'
 import { buildResponsesRequest, type ResponsesInputMessage } from '@/next/provider/openai-responses/openaiResponsesRequestBuilder'
 import { decodeResponsesSSE } from '@/next/provider/openai-responses/openaiResponsesSseDecoder'
 import { mapOpenAIResponsesEventToStarverse } from '@/next/provider/openai-responses/openaiResponsesStreamMapper'
@@ -45,7 +46,7 @@ export type ResponsesFetchFn = (
  * @param transport - Transport options and injectable fetch function
  * @yields StarverseStreamEvent — provider-neutral stream events
  */
-export async function* streamViaOpenAIResponses(
+export const streamViaOpenAIResponses: RuntimeProviderStreamAdapter = async function* streamViaOpenAIResponses(
   request: ProviderStreamRequest,
   transport: ResponsesTransportOptions & { fetch: ResponsesFetchFn },
 ): AsyncGenerator<StarverseStreamEvent> {
