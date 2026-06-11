@@ -32,6 +32,7 @@
 | 功能 | 文档 |
 |------|------|
 | 分支化对话系统（历史实现） | [../archive/completed-features/BRANCH_CHAT_SYSTEM_COMPLETE.md](../archive/completed-features/BRANCH_CHAT_SYSTEM_COMPLETE.md) |
+| Provider Architecture | [../architecture/provider-architecture/README.md](../architecture/provider-architecture/README.md) |
 | 多提供商 AI 集成 | [../architecture/OPENROUTER_INTEGRATION_SUMMARY.md](../architecture/OPENROUTER_INTEGRATION_SUMMARY.md) |
 | 生成配置架构 | [../architecture/UNIFIED_GENERATION_ARCHITECTURE.md](../architecture/UNIFIED_GENERATION_ARCHITECTURE.md) |
 | Tailwind V4 升级 | [../tailwind/TAILWIND_V4_README.md](../tailwind/TAILWIND_V4_README.md) |
@@ -48,13 +49,14 @@
 
 ## 📂 文档目录结构
 
-### 📐 architecture/ - 核心架构设计 (4 个文档)
+### 📐 architecture/ - 核心架构设计 (5 个文档)
 
 系统架构、设计决策和技术方案。
 
 | 文档 | 说明 |
 |------|------|
 | [OVERVIEW.md](../architecture/OVERVIEW.md) | 架构总览 - 理解项目结构的第一步 |
+| [provider-architecture/README.md](../architecture/provider-architecture/README.md) | Owner-confirmed multi-provider architecture SSOT |
 | [ARCHITECTURE_REVIEW.md](../architecture/ARCHITECTURE_REVIEW.md) | 架构审查报告 |
 | [OPENROUTER_INTEGRATION_SUMMARY.md](../architecture/OPENROUTER_INTEGRATION_SUMMARY.md) | AI 多提供商集成架构 |
 | [UNIFIED_GENERATION_ARCHITECTURE.md](../architecture/UNIFIED_GENERATION_ARCHITECTURE.md) | 统一生成配置架构 |

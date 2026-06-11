@@ -59,6 +59,7 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 | **File conversion & preview / DFC** | `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md` → `docs/file-pipeline/document-format-conversion/important-context.md` → `docs/file-pipeline/document-format-conversion/dfc-libreoffice-plugin-management-closeout.md` → `docs/file-pipeline/document-format-conversion/dfc-m32-deadline-closeout-demo-readiness.md` | `src/shared/files/`, `infra/files/`, check DFC topic ledger before coding | v1.2 is authoritative. LibreOffice Office-to-PDF remains owner-gated/experimental; do not follow archived v1.0 Hybrid / mixed send strategy or old file-card modal UI docs |
 | **Send Plan** | `docs/governance/app-chat-app-logic-boundary.md` | `infra/files/sendPlanService.ts`, `src/next/openrouter/openRouterSendPlanSerializer.ts` | Keep preflight + serializer path intact; run related tests if modified |
 | **OpenRouter request builder** | `docs/architecture/OPENROUTER_INTEGRATION_SUMMARY.md` | `src/next/openrouter/buildRequest.ts`, `src/next/openrouter/sse/decoder.ts` | Use only after Send Plan and serializer boundaries are confirmed; validate request payload and SSE parsing tests when touched |
+| **Provider architecture** | `docs/architecture/provider-architecture/README.md` → `docs/architecture/provider-architecture/STARVERSE_PROVIDER_ARCHITECTURE_CONTRACT.md` | Docs-only unless Owner explicitly starts a phase | Owner-confirmed multi-provider architecture SSOT; do not create placeholder abstractions or provider runtime code from docs organization tasks |
 | **Historical message attachments** | `docs/governance/app-chat-app-logic-boundary.md` | `src/ui-app/app/appChatApp.logic.ts`, `infra/db/repo/messageRepo.ts` | Prioritize targeted checks in these two files for attachment/history handling before edits |
 | **Electron IPC** | `docs/architecture/OVERVIEW.md` | `electron/ipc/`, `electron/db/worker.ts`, `src/shared/ipc/openRouterStreamWire.ts` | Confirm IPC handler names and bridge wiring remain consistent |
 | **DB & settings** | `docs/maintenance/maintainer-entry.md` (see "活跃代码") | `infra/db/`, `electron-store` config in `electron/main.ts` | Run db/repo and settings-related tests if database/settings paths change |
@@ -114,6 +115,7 @@ After modifying docs or code paths, prefer the narrowest checks for the touched 
 - [guides/INDEX.md](guides/INDEX.md) — Full doc navigation hub
 - [maintenance/maintainer-entry.md](maintenance/maintainer-entry.md) — Code boundaries & high-risk zones
 - [architecture/OVERVIEW.md](architecture/OVERVIEW.md) — Architecture layers & naming conventions
+- [architecture/provider-architecture/README.md](architecture/provider-architecture/README.md) — Owner-confirmed multi-provider architecture SSOT
 - [maintenance/document-status-taxonomy.md](maintenance/document-status-taxonomy.md) — Dual-dimension status model
 - [maintenance/document-governance.md](maintenance/document-governance.md) — Documentation governance rules
 - [maintenance/document-redirect-map.md](maintenance/document-redirect-map.md) — Redirect map for moved/renamed docs

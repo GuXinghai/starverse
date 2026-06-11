@@ -2,15 +2,16 @@
 
 > **Status**: reference
 > **Agent use**: read for OpenRouter integration history, architecture intent, and migration context
-> **Do not use as**: current request-builder truth or send-plan policy source
+> **Do not use as**: current request-builder truth, send-plan policy source, or multi-provider architecture SSOT
 
 > **📌 文档状态**：本文档记录了 OpenRouter 接入的架构设计，但部分实现细节已演进。  
+> **Provider architecture status**：本文档是历史 OpenRouter integration documentation，早于 Owner-confirmed provider architecture SSOT。当前 multi-provider 架构以 [provider-architecture/](provider-architecture/README.md) 为准；当前 active runtime 是 OpenRouter-first，旧 Gemini runtime path 是 runtime-dead remnants / migration-only / deprecated-for-removal。未来 Gemini support 如实施，必须通过 Gemini API / Google AI Studio native adapter 重建。
 > **最新现状审计**：[OPENROUTER_REASONING_REALITY_CHECK_2025_12.md](../analysis/OPENROUTER_REASONING_REALITY_CHECK_2025_12.md)  
 > **更新日期**：2025年12月13日
 
 ## 📋 重构概述
 
-本次重构成功将 Starverse 项目从单一 Gemini AI 提供商扩展为支持多提供商架构（Gemini + OpenRouter），采用策略模式实现服务层抽象和解耦。
+本文记录一次历史 OpenRouter 接入重构，当时曾把 Starverse 从单一 Gemini 路径扩展为 Gemini + OpenRouter 多提供商结构来描述。该描述不代表当前 runtime 事实；当前 active runtime 是 OpenRouter-first，旧 Gemini runtime path 是 legacy remnants，不是 active runtime support。
 
 ---
 
@@ -305,12 +306,12 @@ for await (const token of aiChatService.streamChatResponse(
 
 本次重构成功实现了：
 ✅ 从单一提供商到多提供商架构的平滑过渡
-✅ 完全向后兼容（保留 Gemini 原有功能）
+✅ 历史目标中曾包含 Gemini 向后兼容；该表述现已被 provider architecture SSOT 取代，旧 Gemini 路径仅按 migration-only / deprecated-for-removal 处理
 ✅ 服务层解耦，易于扩展
 ✅ 统一的用户体验
 ✅ 清晰的代码组织结构
 
-项目现在可以同时支持 Google Gemini 和 OpenRouter，用户可以自由选择使用的 AI 服务提供商，为未来接入更多 AI 服务奠定了坚实的基础。
+该历史文档当时声称项目可同时支持 Google Gemini 和 OpenRouter。当前 Owner-confirmed baseline 已取代该结论：Starverse active runtime 是 OpenRouter-first；旧 Gemini runtime path 是 runtime-dead remnants；未来 Gemini support 如实施，必须通过 confirmed provider architecture 的 Gemini API / Google AI Studio native adapter 重建。
 
 ---
 
