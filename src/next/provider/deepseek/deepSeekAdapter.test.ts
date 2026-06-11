@@ -169,7 +169,7 @@ describe('streamViaDeepSeek', () => {
     expect(reasoningIdx).toBeLessThan(textIdx)
   })
 
-  it('finish_reason yields meta.delta + stream.done', async () => {
+  it('finish_reason yields meta.delta + exactly one stream.done (last event)', async () => {
     const response = makeSseResponse(
       textSseChunk('gen_1', 'deepseek-chat', 'answer'),
       finishSseChunk('gen_1', 'deepseek-chat', 'stop'),
@@ -185,12 +185,55 @@ describe('streamViaDeepSeek', () => {
     const metaEvents = events.filter((e) => e.type === 'meta.delta')
     const doneEvents = events.filter((e) => e.type === 'stream.done')
 
-    expect(metaEvents.length).toBeGreaterThanOrEqual(1)
     const finishMeta = metaEvents.find((e) => e.type === 'meta.delta' && e.meta.finish_reason === 'stop')
     expect(finishMeta).toBeTruthy()
 
-    // stream.done comes from both the finish chunk mapper AND the [DONE] SSE event
-    expect(doneEvents.length).toBeGreaterThanOrEqual(1)
+    // Exactly one stream.done, and it is the last event
+    expect(doneEvents).toHaveLength(1)
+    expect(events[events.length - 1].type).toBe('stream.done')
+  })
+
+  it('finish without later usage emits exactly one stream.done', async () => {
+    const response = makeSseResponse(
+      textSseChunk('gen_1', 'deepseek-chat', 'answer'),
+      finishSseChunk('gen_1', 'deepseek-chat', 'stop'),
+    )
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaDeepSeek(makeRequest(), {
+      baseUrl: 'https://api.deepseek.com/v1',
+      apiKey: 'sk-test',
+      fetch,
+    }))
+
+    const doneEvents = events.filter((e) => e.type === 'stream.done')
+    expect(doneEvents).toHaveLength(1)
+    expect(events[events.length - 1].type).toBe('stream.done')
+  })
+
+  it('terminal error chunk does not emit stream.done even if [DONE] follows', async () => {
+    const response = makeSseResponse(
+      errorSseChunk('rate_limited', 'Too many requests'),
+    )
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaDeepSeek(makeRequest(), {
+      baseUrl: 'https://api.deepseek.com/v1',
+      apiKey: 'sk-test',
+      fetch,
+    }))
+
+    const errorEvents = events.filter((e) => e.type === 'stream.error')
+    const doneEvents = events.filter((e) => e.type === 'stream.done')
+
+    expect(errorEvents).toHaveLength(1)
+    if (errorEvents[0].type === 'stream.error') {
+      expect(errorEvents[0].terminal).toBe(true)
+    }
+    // No stream.done after terminal error
+    expect(doneEvents).toHaveLength(0)
+    // Last event is the error
+    expect(events[events.length - 1].type).toBe('stream.error')
   })
 
   it('usage fixture yields usage.delta', async () => {
@@ -231,7 +274,9 @@ describe('streamViaDeepSeek', () => {
     }))
 
     const errorEvents = events.filter((e) => e.type === 'stream.error')
+    const doneEvents = events.filter((e) => e.type === 'stream.done')
     expect(errorEvents).toHaveLength(1)
+    expect(doneEvents).toHaveLength(0)
     if (errorEvents[0].type === 'stream.error') {
       expect(errorEvents[0].terminal).toBe(true)
     }
@@ -294,7 +339,7 @@ describe('streamViaDeepSeek', () => {
     expect(events.some((e) => e.type === 'stream.abort')).toBe(true)
   })
 
-  it('full DeepSeek R1 flow: reasoning → text → finish → usage → done', async () => {
+  it('full DeepSeek R1 flow: reasoning → text → finish → usage → exactly one done', async () => {
     const response = makeSseResponse(
       reasoningSseChunk('gen_1', 'deepseek-r1', 'Let me analyze...'),
       reasoningSseChunk('gen_1', 'deepseek-r1', ' The answer is 42.'),
@@ -319,12 +364,25 @@ describe('streamViaDeepSeek', () => {
     const metaEvents = events.filter((e) => e.type === 'meta.delta')
     const usageEvents = events.filter((e) => e.type === 'usage.delta')
     const doneEvents = events.filter((e) => e.type === 'stream.done')
+    const errorEvents = events.filter((e) => e.type === 'stream.error')
 
+    // Exact counts
     expect(reasoningEvents).toHaveLength(2)
     expect(textEvents).toHaveLength(1)
-    expect(metaEvents.length).toBeGreaterThanOrEqual(1)
     expect(usageEvents).toHaveLength(1)
-    expect(doneEvents.length).toBeGreaterThanOrEqual(1)
+    expect(doneEvents).toHaveLength(1)
+    expect(errorEvents).toHaveLength(0)
+
+    // Exactly one stream.done, and it is the very last event
+    expect(events[events.length - 1].type).toBe('stream.done')
+
+    // Usage arrives after finish metadata (order preserved)
+    const finishMetaIdx = events.findIndex((e) => e.type === 'meta.delta' && e.meta.finish_reason === 'stop')
+    const usageIdx = events.findIndex((e) => e.type === 'usage.delta')
+    const doneIdx = events.findIndex((e) => e.type === 'stream.done')
+    expect(finishMetaIdx).toBeGreaterThanOrEqual(0)
+    expect(usageIdx).toBeGreaterThan(finishMetaIdx)
+    expect(doneIdx).toBeGreaterThan(usageIdx)
 
     // Reasoning never leaks into text
     if (textEvents[0].type === 'message.text_delta') {
