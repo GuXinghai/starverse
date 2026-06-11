@@ -102,8 +102,18 @@ export async function* streamViaDeepSeek(
   }
 
   // Stream SSE → chunks → events
+  // Terminal coordination:
+  // - Mapper may emit stream.done on finish_reason (pendingDone marker)
+  // - SSE [DONE] is the actual stream end signal
+  // - We emit exactly one terminal: either stream.done or stream.error
+  // - After any terminal, no further events are yielded
   let chunkNo = 0
+  let terminalEmitted = false
+  let pendingDone = false
+
   for await (const sseEvent of decodeDeepSeekSSE(sseStream)) {
+    if (terminalEmitted) break
+
     if (sseEvent.type === 'json') {
       const events = mapDeepSeekChunkToEvents({
         chunk: sseEvent.value,
@@ -111,11 +121,26 @@ export async function* streamViaDeepSeek(
         chunkNo,
       })
       for (const event of events) {
-        yield event
+        if (terminalEmitted) break
+
+        if (event.type === 'stream.done') {
+          // Defer: don't yield yet, mark as pending
+          pendingDone = true
+        } else if (event.type === 'stream.error') {
+          // Terminal error: yield and stop
+          yield event
+          terminalEmitted = true
+        } else {
+          yield event
+        }
       }
       chunkNo++
     } else if (sseEvent.type === 'done') {
-      yield { type: 'stream.done' }
+      // SSE [DONE]: emit stream.done if no terminal error occurred
+      if (!terminalEmitted) {
+        yield { type: 'stream.done' }
+        terminalEmitted = true
+      }
     } else if (sseEvent.type === 'parse_error') {
       yield {
         type: 'stream.error',
@@ -127,9 +152,14 @@ export async function* streamViaDeepSeek(
         } as any,
         terminal: true,
       }
-      return
+      terminalEmitted = true
     }
     // comment events are ignored
+  }
+
+  // If stream ended without [DONE] but we had a pending completion, emit it
+  if (!terminalEmitted && pendingDone) {
+    yield { type: 'stream.done' }
   }
 }
 
