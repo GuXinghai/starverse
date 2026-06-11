@@ -177,14 +177,12 @@ export function mapOpenAIResponsesEventToStarverse(
       events.push({
         type: 'stream.error',
         error: {
-          phase: 'mid_stream',
-          completionClass: 'truncated',
-          openrouter: {
-            code: reason,
-            message: `Response incomplete${reason !== 'unknown' ? `: ${reason}` : ''}`,
-          },
-          truncated: false,
-        } as any,
+          phase: 'provider',
+          provider: 'openai-responses',
+          category: 'provider_error',
+          message: `Response incomplete${reason !== 'unknown' ? `: ${reason}` : ''}`,
+          code: reason,
+        },
         terminal: true,
       })
       break
@@ -202,11 +200,12 @@ export function mapOpenAIResponsesEventToStarverse(
       events.push({
         type: 'stream.error',
         error: {
-          phase: 'mid_stream',
-          completionClass: 'error',
-          openrouter: { code, message },
-          truncated: false,
-        } as any,
+          phase: 'provider',
+          provider: 'openai-responses',
+          category: 'provider_error',
+          message,
+          code,
+        },
         terminal: true,
       })
       break
@@ -223,11 +222,12 @@ export function mapOpenAIResponsesEventToStarverse(
       events.push({
         type: 'stream.error',
         error: {
-          phase: 'mid_stream',
-          completionClass: 'error',
-          openrouter: { code, message },
-          truncated: false,
-        } as any,
+          phase: 'provider',
+          provider: 'openai-responses',
+          category: 'provider_error',
+          message,
+          code,
+        },
         terminal: true,
       })
       break

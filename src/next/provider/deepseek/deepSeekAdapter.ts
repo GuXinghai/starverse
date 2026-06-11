@@ -13,7 +13,7 @@
  * @see docs/architecture/provider-architecture/STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md §4.5
  */
 
-import type { ProviderStreamRequest, StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '@/next/provider/providerTypes'
 import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProviderAdapter'
 import { buildDeepSeekRequest, type DeepSeekMessage } from '@/next/provider/deepseek/deepSeekRequestBuilder'
 import { decodeDeepSeekSSE } from '@/next/provider/deepseek/deepSeekSseDecoder'
@@ -92,11 +92,11 @@ export const streamViaDeepSeek: RuntimeProviderStreamAdapter = async function* s
     yield {
       type: 'stream.error',
       error: {
-        phase: 'mid_stream',
-        completionClass: 'error',
-        openrouter: { code: 'no_body', message: 'Response body is null' },
-        truncated: false,
-      } as any,
+        phase: 'transport',
+        provider: 'deepseek',
+        category: 'network',
+        message: 'Response body is null',
+      } satisfies StarverseProviderError,
       terminal: true,
     }
     return
@@ -104,13 +104,11 @@ export const streamViaDeepSeek: RuntimeProviderStreamAdapter = async function* s
 
   // Stream SSE → chunks → events
   // Terminal coordination:
-  // - Mapper may emit stream.done on finish_reason (pendingDone marker)
-  // - SSE [DONE] is the actual stream end signal
+  // - SSE [DONE] is the normal stream end signal
   // - We emit exactly one terminal: either stream.done or stream.error
   // - After any terminal, no further events are yielded
   let chunkNo = 0
   let terminalEmitted = false
-  let pendingDone = false
 
   for await (const sseEvent of decodeDeepSeekSSE(sseStream)) {
     if (terminalEmitted) break
@@ -125,8 +123,7 @@ export const streamViaDeepSeek: RuntimeProviderStreamAdapter = async function* s
         if (terminalEmitted) break
 
         if (event.type === 'stream.done') {
-          // Defer: don't yield yet, mark as pending
-          pendingDone = true
+          // Defer: yield stream.done only on SSE [DONE]
         } else if (event.type === 'stream.error') {
           // Terminal error: yield and stop
           yield event
@@ -146,11 +143,11 @@ export const streamViaDeepSeek: RuntimeProviderStreamAdapter = async function* s
       yield {
         type: 'stream.error',
         error: {
-          phase: 'mid_stream',
-          completionClass: 'error',
-          openrouter: { code: 'protocol_invalid', message: sseEvent.message },
-          truncated: false,
-        } as any,
+          phase: 'sse_decode',
+          provider: 'deepseek',
+          category: 'protocol',
+          message: sseEvent.message,
+        } satisfies StarverseProviderError,
         terminal: true,
       }
       terminalEmitted = true
@@ -158,9 +155,18 @@ export const streamViaDeepSeek: RuntimeProviderStreamAdapter = async function* s
     // comment events are ignored
   }
 
-  // If stream ended without [DONE] but we had a pending completion, emit it
-  if (!terminalEmitted && pendingDone) {
-    yield { type: 'stream.done' }
+  // EOF hardening: if stream ended without any terminal event, emit protocol error
+  if (!terminalEmitted) {
+    yield {
+      type: 'stream.error',
+      error: {
+        phase: 'stream',
+        provider: 'deepseek',
+        category: 'protocol',
+        message: 'Unexpected EOF — no terminal event observed',
+      } satisfies StarverseProviderError,
+      terminal: true,
+    }
   }
 }
 
@@ -206,13 +212,12 @@ async function* mapTransportError(err: any, _messageId: string): AsyncGenerator<
     yield {
       type: 'stream.abort',
       reason: 'aborted',
-      envelope: {
-        phase: 'pre_stream',
-        completionClass: 'aborted',
-        openrouter: { code: 'aborted' },
-        truncated: false,
-        kind: 'aborted',
-      } as any,
+      error: {
+        phase: 'abort',
+        provider: 'deepseek',
+        category: 'aborted',
+        message: err?.message ?? 'Request aborted',
+      } satisfies StarverseProviderError,
     }
     return
   }
@@ -220,14 +225,11 @@ async function* mapTransportError(err: any, _messageId: string): AsyncGenerator<
   yield {
     type: 'stream.error',
     error: {
-      phase: 'pre_stream',
-      completionClass: 'error',
-      openrouter: {
-        code: 'network_unreachable',
-        message: err?.message ?? 'Network error',
-      },
-      truncated: false,
-    } as any,
+      phase: 'transport',
+      provider: 'deepseek',
+      category: 'network',
+      message: err?.message ?? 'Network error',
+    } satisfies StarverseProviderError,
     terminal: true,
   }
 }
@@ -243,18 +245,21 @@ async function* mapHttpError(response: Response, _messageId: string): AsyncGener
   const code = (errorBody as any)?.error?.code ?? `http_${response.status}`
   const message = (errorBody as any)?.error?.message ?? response.statusText
 
+  let category: StarverseProviderError['category'] = 'http'
+  if (response.status === 401 || response.status === 403) category = 'auth'
+  else if (response.status === 429) category = 'rate_limit'
+  else if (response.status === 400) category = 'bad_request'
+
   yield {
     type: 'stream.error',
     error: {
-      phase: 'pre_stream',
-      completionClass: 'error',
-      openrouter: {
-        code: String(code),
-        message: String(message),
-      },
-      http: { status: response.status, statusText: response.statusText },
-      truncated: false,
-    } as any,
+      phase: 'http',
+      provider: 'deepseek',
+      category,
+      message: String(message),
+      code: String(code),
+      httpStatus: response.status,
+    } satisfies StarverseProviderError,
     terminal: true,
   }
 }

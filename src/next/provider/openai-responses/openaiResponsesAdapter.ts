@@ -14,7 +14,7 @@
  * @see docs/architecture/provider-architecture/STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md §4.2
  */
 
-import type { ProviderStreamRequest, StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '@/next/provider/providerTypes'
 import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProviderAdapter'
 import { buildResponsesRequest, type ResponsesInputMessage } from '@/next/provider/openai-responses/openaiResponsesRequestBuilder'
 import { decodeResponsesSSE } from '@/next/provider/openai-responses/openaiResponsesSseDecoder'
@@ -93,11 +93,11 @@ export const streamViaOpenAIResponses: RuntimeProviderStreamAdapter = async func
     yield {
       type: 'stream.error',
       error: {
-        phase: 'mid_stream',
-        completionClass: 'error',
-        openrouter: { code: 'no_body', message: 'Response body is null' },
-        truncated: false,
-      } as any,
+        phase: 'transport',
+        provider: 'openai-responses',
+        category: 'protocol',
+        message: 'Response body is null',
+      } satisfies StarverseProviderError,
       terminal: true,
     }
     return
@@ -132,11 +132,11 @@ export const streamViaOpenAIResponses: RuntimeProviderStreamAdapter = async func
       yield {
         type: 'stream.error',
         error: {
-          phase: 'mid_stream',
-          completionClass: 'error',
-          openrouter: { code: 'protocol_invalid', message: sseEvent.message },
-          truncated: false,
-        } as any,
+          phase: 'stream',
+          provider: 'openai-responses',
+          category: 'protocol',
+          message: sseEvent.message,
+        } satisfies StarverseProviderError,
         terminal: true,
       }
       terminalEmitted = true
@@ -146,7 +146,16 @@ export const streamViaOpenAIResponses: RuntimeProviderStreamAdapter = async func
 
   // Fallback: if stream ended without [DONE] and no terminal was emitted
   if (!terminalEmitted) {
-    yield { type: 'stream.done' }
+    yield {
+      type: 'stream.error',
+      error: {
+        phase: 'stream',
+        provider: 'openai-responses',
+        category: 'protocol',
+        message: 'Unexpected end of stream',
+      } satisfies StarverseProviderError,
+      terminal: true,
+    }
   }
 }
 
@@ -191,13 +200,12 @@ async function* mapTransportError(err: any): AsyncGenerator<StarverseStreamEvent
     yield {
       type: 'stream.abort',
       reason: 'aborted',
-      envelope: {
-        phase: 'pre_stream',
-        completionClass: 'aborted',
-        openrouter: { code: 'aborted' },
-        truncated: false,
-        kind: 'aborted',
-      } as any,
+      error: {
+        phase: 'abort',
+        provider: 'openai-responses',
+        category: 'aborted',
+        message: err?.message ?? 'Request aborted',
+      } satisfies StarverseProviderError,
     }
     return
   }
@@ -205,14 +213,11 @@ async function* mapTransportError(err: any): AsyncGenerator<StarverseStreamEvent
   yield {
     type: 'stream.error',
     error: {
-      phase: 'pre_stream',
-      completionClass: 'error',
-      openrouter: {
-        code: 'network_unreachable',
-        message: err?.message ?? 'Network error',
-      },
-      truncated: false,
-    } as any,
+      phase: 'transport',
+      provider: 'openai-responses',
+      category: 'network',
+      message: err?.message ?? 'Network error',
+    } satisfies StarverseProviderError,
     terminal: true,
   }
 }
@@ -228,18 +233,23 @@ async function* mapHttpError(response: Response): AsyncGenerator<StarverseStream
   const code = (errorBody as any)?.error?.code ?? `http_${response.status}`
   const message = (errorBody as any)?.error?.message ?? response.statusText
 
+  const category: StarverseProviderError['category'] =
+    response.status === 401 ? 'auth' :
+    response.status === 429 ? 'rate_limit' :
+    response.status >= 400 && response.status < 500 ? 'bad_request' :
+    'http'
+
   yield {
     type: 'stream.error',
     error: {
-      phase: 'pre_stream',
-      completionClass: 'error',
-      openrouter: {
-        code: String(code),
-        message: String(message),
-      },
-      http: { status: response.status, statusText: response.statusText },
-      truncated: false,
-    } as any,
+      phase: 'http',
+      provider: 'openai-responses',
+      category,
+      message: String(message),
+      code: String(code),
+      httpStatus: response.status,
+      raw: errorBody,
+    } satisfies StarverseProviderError,
     terminal: true,
   }
 }

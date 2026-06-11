@@ -328,7 +328,7 @@ describe('mapAnthropicStreamEventToStarverse', () => {
 
       const errorEvents = events.filter((e) => e.type === 'stream.error')
       if (errorEvents[0].type === 'stream.error') {
-        expect((errorEvents[0].error as any).openrouter.code).toBe('overloaded_error')
+        expect((errorEvents[0].error as any).code).toBe('overloaded_error')
       }
     })
 
@@ -340,7 +340,7 @@ describe('mapAnthropicStreamEventToStarverse', () => {
 
       const errorEvents = events.filter((e) => e.type === 'stream.error')
       if (errorEvents[0].type === 'stream.error') {
-        expect((errorEvents[0].error as any).openrouter.code).toBe('rate_limited')
+        expect((errorEvents[0].error as any).code).toBe('rate_limited')
       }
     })
   })

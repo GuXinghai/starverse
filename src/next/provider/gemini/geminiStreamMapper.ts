@@ -123,14 +123,13 @@ export function mapGeminiStreamChunkToStarverse(
     events.push({
       type: 'stream.error',
       error: {
-        phase: 'mid_stream',
-        completionClass: 'error',
-        openrouter: {
-          code: String(chunk.error.code ?? 'error'),
-          message: chunk.error.message ?? 'Gemini error',
-        },
-        truncated: false,
-      } as any,
+        phase: 'stream',
+        provider: 'gemini',
+        category: 'provider_error',
+        message: chunk.error.message ?? 'Gemini error',
+        code: String(chunk.error.code ?? 'error'),
+        ...(chunk.error.status ? { raw: { status: chunk.error.status } } : {}),
+      },
       terminal: true,
     })
     return events

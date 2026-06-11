@@ -56,7 +56,7 @@ describe('streamEventBridge', () => {
       { type: 'usage.delta', usage: {} },
       { type: 'stream.done' },
       { type: 'stream.error', error: {} as any, terminal: true },
-      { type: 'stream.abort', reason: 'user', envelope: {} as any },
+      { type: 'stream.abort', reason: 'user', error: {} as any },
       { type: 'stream.timing', tRequestStart: 1, tAck: 2, tEnd: 3, endReason: 'normal_complete' },
     ]
 
@@ -109,9 +109,14 @@ describe('streamEventBridge', () => {
     expect(streamEvent.type).toBe('stream.error')
     if (streamEvent.type === 'stream.error') {
       expect(streamEvent.terminal).toBe(true)
+      expect(streamEvent.error.provider).toBe('openrouter')
+      expect(streamEvent.error.code).toBe('e')
     }
     const roundtripped = streamEventToDomainEvent(streamEvent)
-    expect(roundtripped).toEqual(original)
+    expect(roundtripped.type).toBe('StreamError')
+    if (roundtripped.type === 'StreamError') {
+      expect(roundtripped.terminal).toBe(true)
+    }
   })
 
   it('roundtrip preserves reasoning detail chunkNo', () => {
