@@ -79,7 +79,31 @@ async function collectEvents(gen: AsyncGenerator<StarverseStreamEvent>): Promise
   return events
 }
 
-describe('streamViaGeneric', () => {
+function visibleText(events: StarverseStreamEvent[]): string {
+  return events
+    .filter((e): e is Extract<StarverseStreamEvent, { type: 'message.text_delta' }> => e.type === 'message.text_delta')
+    .map((e) => e.text)
+    .join('')
+}
+
+function eventTypes(events: StarverseStreamEvent[]): string[] {
+  return events.map((e) => e.type)
+}
+
+function expectTerminalErrorWithoutDone(events: StarverseStreamEvent[]): void {
+  const errorEvents = events.filter((e) => e.type === 'stream.error')
+  const doneEvents = events.filter((e) => e.type === 'stream.done')
+  expect(errorEvents).toHaveLength(1)
+  expect(doneEvents).toHaveLength(0)
+  expect(events[events.length - 1].type).toBe('stream.error')
+  if (errorEvents[0].type === 'stream.error') {
+    expect(errorEvents[0].terminal).toBe(true)
+  }
+}
+
+// Low-level raw transport fixture compatibility path. Representative Generic
+// credential/config behavior should prefer streamViaGenericConfig below.
+describe('streamViaGeneric raw transport compatibility fixture', () => {
   it('mocked fetch receives correct endpoint/method/headers/body', async () => {
     const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
     const fetch = mockFetch(response)
@@ -1413,7 +1437,8 @@ describe('streamViaGeneric', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Config-based adapter tests (streamViaGenericConfig)
+// Preferred Generic fixture path: non-secret config + credentialRef + injected resolver.
+// This remains fixture-only and does not imply non-OpenRouter live support.
 // ---------------------------------------------------------------------------
 
 const VALID_CREDENTIAL_REF: GenericCredentialRef = { kind: 'credential_ref', id: 'default' }
@@ -1459,6 +1484,68 @@ describe('streamViaGenericConfig', () => {
     expect(textEvents).toHaveLength(1)
     expect(doneEvents).toHaveLength(1)
     expect(events[events.length - 1].type).toBe('stream.done')
+  })
+
+  it('config path and raw transport path share equivalent visible text and done behavior', async () => {
+    const configFetch = mockFetch(makeSseResponseWithDone(
+      textChunkJson('Hello '),
+      textChunkJson('world'),
+      finishChunkJson('stop'),
+    ))
+    const rawFetch = mockFetch(makeSseResponseWithDone(
+      textChunkJson('Hello '),
+      textChunkJson('world'),
+      finishChunkJson('stop'),
+    ))
+
+    const configEvents = await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig(),
+      VALID_RESOLVER,
+      configFetch,
+    ))
+    const rawEvents = await collectEvents(streamViaGeneric(makeRequest(), {
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-config-test',
+      fetch: rawFetch,
+    }))
+
+    expect(visibleText(configEvents)).toBe('Hello world')
+    expect(visibleText(rawEvents)).toBe('Hello world')
+    expect(eventTypes(configEvents)).toEqual(eventTypes(rawEvents))
+    expect(configEvents[configEvents.length - 1].type).toBe('stream.done')
+    expect(rawEvents[rawEvents.length - 1].type).toBe('stream.done')
+  })
+
+  it('config path and raw transport path share terminal provider error semantics', async () => {
+    const configFetch = mockFetch(makeSseResponseWithDone(
+      errorChunkJson('invalid_api_key', 'Bad key'),
+      textChunkJson('must not emit'),
+      finishChunkJson('stop'),
+    ))
+    const rawFetch = mockFetch(makeSseResponseWithDone(
+      errorChunkJson('invalid_api_key', 'Bad key'),
+      textChunkJson('must not emit'),
+      finishChunkJson('stop'),
+    ))
+
+    const configEvents = await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig(),
+      VALID_RESOLVER,
+      configFetch,
+    ))
+    const rawEvents = await collectEvents(streamViaGeneric(makeRequest(), {
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-config-test',
+      fetch: rawFetch,
+    }))
+
+    expectTerminalErrorWithoutDone(configEvents)
+    expectTerminalErrorWithoutDone(rawEvents)
+    expect(visibleText(configEvents)).toBe('')
+    expect(visibleText(rawEvents)).toBe('')
+    expect(eventTypes(configEvents)).toEqual(eventTypes(rawEvents))
   })
 
   it('config uses resolved credential for Authorization header', async () => {
@@ -1547,6 +1634,30 @@ describe('streamViaGenericConfig', () => {
     }
   })
 
+  it('invalid resolved credential fails before fetch', async () => {
+    const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+    const events = await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig(),
+      () => providerCredentialResolutionSuccess(createBearerCredential('') as any),
+      fetch,
+    ))
+
+    expect(fetch).toHaveBeenCalledTimes(0)
+    expectTerminalErrorWithoutDone(events)
+    const serialized = JSON.stringify(events)
+    expect(serialized).not.toContain('Authorization')
+    expect(serialized).not.toContain('Bearer')
+    expect(serialized).not.toContain('headers')
+    const errorEvents = events.filter((e) => e.type === 'stream.error')
+    if (errorEvents[0].type === 'stream.error') {
+      expect(errorEvents[0].error.code).toBe('credential_resolution_failed')
+      expect(errorEvents[0].error.category).toBe('auth')
+      expect(errorEvents[0].error.message).toBe('Credential material is invalid.')
+    }
+  })
+
   it('unsupported capability override fails before fetch', async () => {
     const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
 
@@ -1575,14 +1686,10 @@ describe('streamViaGenericConfig', () => {
       fetch,
     ))
 
-    const errorEvents = events.filter((e) => e.type === 'stream.error')
-    const doneEvents = events.filter((e) => e.type === 'stream.done')
-    expect(errorEvents).toHaveLength(1)
-    expect(doneEvents).toHaveLength(0)
-    expect(events[events.length - 1].type).toBe('stream.error')
+    expectTerminalErrorWithoutDone(events)
   })
 
-  it('config validation failure does not leak raw token', async () => {
+  it('config validation failure does not leak resolver credential material', async () => {
     const secretToken = 'sk-config-leak-test'
     const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
 
@@ -1595,6 +1702,9 @@ describe('streamViaGenericConfig', () => {
 
     const serialized = JSON.stringify(events)
     expect(serialized).not.toContain(secretToken)
+    expect(serialized).not.toContain('Bearer')
+    expect(serialized).not.toContain('Authorization')
+    expect(serialized).not.toContain('headers')
   })
 
   it('unresolved credential error does not leak resolver internals', async () => {
@@ -1615,5 +1725,8 @@ describe('streamViaGenericConfig', () => {
 
     const serialized = JSON.stringify(events)
     expect(serialized).not.toContain('sk-secret-not-found')
+    expect(serialized).not.toContain('Bearer')
+    expect(serialized).not.toContain('Authorization')
+    expect(serialized).not.toContain('headers')
   })
 })

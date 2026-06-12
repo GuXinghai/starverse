@@ -51,11 +51,11 @@ function descriptorErrorToStreamEvent(err: DescriptorValidationError | ConfigVal
 }
 
 /**
- * Config-based adapter entrypoint — resolves GenericEndpointConfig through
- * an injected credential resolver into a GenericEndpointDescriptor, then
+ * Config-based fixture entrypoint — resolves non-secret GenericEndpointConfig
+ * through an injected provider credential resolver into a descriptor, then
  * delegates to the same core streaming implementation as streamViaGeneric.
  *
- * This is the tested config → descriptor → adapter path.
+ * This is the preferred Generic fixture path. It is not live provider support.
  */
 export async function* streamViaGenericConfig(
   request: ProviderStreamRequest,
@@ -92,7 +92,8 @@ export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* st
     return
   }
 
-  // Delegate to core streaming
+  // Lower-level transport fixture compatibility path. Keep this raw apiKey
+  // boundary narrow and delegate behavior to the shared core implementation.
   yield* streamGenericCore(request, descriptor, transport.fetch)
 }
 
