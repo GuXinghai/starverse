@@ -37,17 +37,17 @@
 
 | From | To | Allowed | Conditions |
 |------|----|---------|------------|
-| active | reference | ✅ | Content becomes stable background |
-| active | historical | ✅ | Work completed, process record |
-| active | archived | ✅ | With archive trigger condition |
-| reference | active | ✅ | Content becomes current fact |
-| reference | historical | ✅ | Content becomes process record |
-| historical | archived | ✅ | With archive trigger condition |
-| planned | active | ⚠️ | Only after implementation verified |
-| scaffold | active | ⚠️ | Only after content completed |
-| pilot | active | ⚠️ | Only after pilot verified |
-| pending-classification | any | ✅ | After classification |
-| archived | any | ❌ | Archive is terminal |
+| active | reference | complete | Content becomes stable background |
+| active | historical | complete | Work completed, process record |
+| active | archived | complete | With archive trigger condition |
+| reference | active | complete | Content becomes current fact |
+| reference | historical | complete | Content becomes process record |
+| historical | archived | complete | With archive trigger condition |
+| planned | active | warning | Only after implementation verified |
+| scaffold | active | warning | Only after content completed |
+| pilot | active | warning | Only after pilot verified |
+| pending-classification | any | complete | After classification |
+| archived | any | blocked | Archive is terminal |
 
 ### Prohibited Transitions
 
@@ -63,11 +63,11 @@
 
 A document should be archived when:
 
-1. ✅ Title contains "COMPLETE", "已完成" and completion date > 30 days
-2. ✅ Content declares "Status: 已完成" and date > 30 days
-3. ✅ Problem resolved and verified stable
-4. ✅ Analysis completed and produced follow-up actions
-5. ✅ Phase closeout completed
+1. complete: Title contains "COMPLETE", "已完成" and completion date > 30 days
+2. complete: Content declares "Status: 已完成" and date > 30 days
+3. complete: Problem resolved and verified stable
+4. complete: Analysis completed and produced follow-up actions
+5. complete: Phase closeout completed
 
 ### Archive Process
 
@@ -165,10 +165,10 @@ When two documents claim SSOT for the same domain:
 
 | Domain | SSOT Document | Status |
 |--------|---------------|--------|
-| File pipeline decisions | `docs/file-pipeline/progress-ledger.md` | ✅ Active |
-| Format conversion design / DFC | `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md` | ✅ Active |
-| appChatApp boundaries | `docs/governance/app-chat-app-logic-boundary.md` | ✅ Active |
-| System architecture | `docs/architecture/OVERVIEW.md` | ✅ Active |
+| File pipeline decisions | `docs/file-pipeline/progress-ledger.md` | active |
+| Format conversion design / DFC | `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md` | active |
+| appChatApp boundaries | `docs/governance/app-chat-app-logic-boundary.md` | active |
+| System architecture | `docs/architecture/OVERVIEW.md` | active |
 | OpenRouter streaming | `docs/openrouter-streaming-reasoning-ssot-v2.md` | active SSOT |
 
 ---

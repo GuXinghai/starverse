@@ -1,6 +1,6 @@
 ﻿<div align="center">
 
-# ✨ Starverse
+# Starverse
 
 <p>
   <strong>基于 Electron + Vue 3 的新一代跨平台 AI 对话桌面应用</strong>
@@ -19,47 +19,47 @@
   一个功能强大的 OpenRouter-first AI 聊天客户端，提供分支化对话、多模态交互、智能搜索等企业级功能；多提供商演进由 docs/architecture/provider-architecture/ 治理，旧 Gemini 路径仅为 legacy remnants，未来 Gemini 必须经 Gemini API / Google AI Studio native adapter 重建
 </p>
 
-### 🎯 核心特色
+### 核心特色
 
 | 特性 | Starverse | 其他客户端 |
 |------|-----------|-----------|
-| 🌳 分支化对话 | ✅ 完整树形结构 | ❌ 线性对话 |
-| 🔍 全文搜索 | ✅ SQLite FTS5 | ⚠️ 基础搜索 |
-| 🎨 多模态支持 | ✅ 图片+文本混合 | ⚠️ 仅文本 |
-| 🤖 提供商架构 | ✅ OpenRouter-first active runtime + 六个 provider fixture foundations (DeepSeek, OpenAI Responses, Anthropic, Gemini API / Google AI Studio, Generic OpenAI-compatible) | ⚠️ 单一提供商 |
-| 💾 数据存储 | ✅ SQLite + Web Worker | ⚠️ JSON 文件 |
-| ⚡ 性能优化 | ✅ 75% 提升 | - |
-| 📁 项目管理 | ✅ 完整分类系统 | ❌ 无 |
-| 🔐 隐私保护 | ✅ 本地存储 | ⚠️ 云端同步 |
+| 分支化对话 | 完整树形结构 | 线性对话 |
+| 全文搜索 | SQLite FTS5 | 基础搜索 |
+| 多模态支持 | 图片+文本混合 | 仅文本 |
+| 提供商架构 | OpenRouter-first active runtime + 六个 provider fixture foundations (DeepSeek, OpenAI Responses, Anthropic, Gemini API / Google AI Studio, Generic OpenAI-compatible) | 单一提供商 |
+| 数据存储 | SQLite + Web Worker | JSON 文件 |
+| 性能优化 | 75% 提升 | - |
+| 项目管理 | 完整分类系统 | 无 |
+| 隐私保护 | 本地存储 | 云端同步 |
 
 </div>
 
 ---
 
-## 📖 目录
+## 目录
 
-- [功能特性](#-功能特性)
-- [技术栈](#-技术栈)
-- [项目架构](#-项目架构)
-- [快速开始](#-快速开始)
-- [开发指南](#-开发指南)
-- [构建部署](#-构建部署)
-- [数据清理](#-数据清理)
-- [核心架构](#-核心架构)
-- [安全性](#-安全性)
-- [性能优化](#-性能优化)
-- [文档导航](#-文档导航)
-- [最近更新和路线图](#-最近更新和路线图)
-- [常见问题](#-常见问题faq)
-- [许可证](#-许可证)
-- [贡献指南](#-贡献)
+- [功能特性](#功能特性)
+- [技术栈](#技术栈)
+- [项目架构](#项目架构)
+- [快速开始](#快速开始)
+- [开发指南](#开发指南)
+- [构建部署](#构建部署)
+- [数据清理](#数据清理)
+- [核心架构](#核心架构)
+- [安全性](#安全性)
+- [性能优化](#性能优化)
+- [文档导航](#文档导航)
+- [最近更新和路线图](#最近更新和路线图)
+- [常见问题](#常见问题)
+- [许可证](#许可证)
+- [贡献指南](#贡献)
 
 ---
 
-## 🚀 快速预览
+## 快速预览
 
 <details>
-<summary><b>📸 点击查看功能截图（即将添加）</b></summary>
+<summary><b>点击查看功能截图（即将添加）</b></summary>
 
 <!-- 未来可以在这里添加应用截图 -->
 - 主界面
@@ -70,7 +70,7 @@
 
 </details>
 
-### ⚡ 快速体验
+### 快速体验
 
 ```bash
 # 1. 克隆项目
@@ -86,7 +86,7 @@ npm run electron:dev
 
 ---
 
-## ✨ 功能特性
+## 功能特性
 
 | 模块 | 说明 | 代码入口 | 文档入口 |
 |------|------|---------|---------|
@@ -103,7 +103,7 @@ npm run electron:dev
 
 ---
 
-## 🛠 技术栈
+## 技术栈
 
 ### 核心框架
 | 技术 | 版本 | 用途 |
@@ -112,7 +112,7 @@ npm run electron:dev
 | **Vue.js** | 3.4.21 | 渐进式前端框架（Composition API） |
 | **TypeScript** | 5.2.2 | 类型安全的 JavaScript 超集 |
 | **Vite** | 5.1.6 | 新一代前端构建工具 |
-| **Pinia** | 3.0.3 | Vue 3 官方状态管理库（11个模块化 Store） ⭐ |
+| **Pinia** | 3.0.3 | Vue 3 官方状态管理库（11个模块化 Store） |
 
 ### 数据存储
 | 技术 | 版本 | 用途 |
@@ -124,8 +124,8 @@ npm run electron:dev
 ### UI 和渲染
 | 技术 | 版本 | 用途 |
 |------|------|------|
-| **Tailwind CSS** | 4.1.16 ⭐ | 原子化 CSS 框架（v4 CSS 优先配置） |
-| **@tailwindcss/postcss** | 4.1.16 ⭐ | Tailwind v4 PostCSS 引擎 |
+| **Tailwind CSS** | 4.1.16 | 原子化 CSS 框架（v4 CSS 优先配置） |
+| **@tailwindcss/postcss** | 4.1.16 | Tailwind v4 PostCSS 引擎 |
 | **markdown-it** | 14.1.1 | Markdown 解析和渲染 |
 | **KaTeX** | 0.16.25 | LaTeX 数学公式渲染 |
 | **Shiki** | 3.22.0 | 代码语法高亮（TextMate Grammars） |
@@ -152,7 +152,7 @@ npm run electron:dev
 
 ---
 
-## 📁 项目架构
+## 项目架构
 
 ### 目录结构
 
@@ -262,7 +262,7 @@ Starverse/
 └── dist/                       # 构建输出
 ```
 
-### 代码统计 📊
+### 代码统计
 
 | 模块 | 说明 |
 |------|------|
@@ -306,9 +306,9 @@ Starverse/
 
 ---
 
-## 🚀 快速开始
+## 快速开始
 
-### 📋 前置要求
+### 前置要求
 
 确保您的开发环境满足以下要求：
 
@@ -318,7 +318,7 @@ Starverse/
 | **npm** | 10.x | `npm --version` |
 | **操作系统** | Windows 10+, macOS 10.13+, Ubuntu 18.04+ | - |
 
-### 📥 安装步骤
+### 安装步骤
 
 **步骤 1: 克隆项目**
 
@@ -333,13 +333,13 @@ cd starverse
 npm ci
 ```
 
-> ⚠️ **better-sqlite3 注意**: 如果遇到原生模块/ABI 不匹配：跑测试用 `npm run rebuild:node`；跑 Electron 用 `npm run rebuild:electron`
+> **Warning - better-sqlite3 注意**: 如果遇到原生模块/ABI 不匹配：跑测试用 `npm run rebuild:node`；跑 Electron 用 `npm run rebuild:electron`
 >
-> ✅ **CI 约束**: CI 必须使用与 `.nvmrc` 一致的 Node 版本，并确保 `better-sqlite3` 成功编译（`npm run rebuild:node`）。SQLite repo 测试不可跳过。
+> **CI 约束**: CI 必须使用与 `.nvmrc` 一致的 Node 版本，并确保 `better-sqlite3` 成功编译（`npm run rebuild:node`）。SQLite repo 测试不可跳过。
 
 **步骤 3: 配置 API Key**
 
-启动应用后，点击右上角设置图标 ⚙️，配置 OpenRouter API Key。当前 active runtime 是 OpenRouter-first；旧 Gemini 配置和 SDK 仅是 legacy remnants，不代表 active runtime support。六个 provider fixture foundations 已完成（DeepSeek, OpenAI Responses, Anthropic, Gemini API / Google AI Studio, Generic OpenAI-compatible），但这些仅是 fixture 级别的 adapter 基础，不是 live API support。未来 Gemini support 如实施，必须通过 [Provider Architecture](docs/architecture/provider-architecture/README.md) 中确认的 Gemini API / Google AI Studio native adapter 重建。
+启动应用后，点击右上角设置图标，配置 OpenRouter API Key。当前 active runtime 是 OpenRouter-first；旧 Gemini 配置和 SDK 仅是 legacy remnants，不代表 active runtime support。六个 provider fixture foundations 已完成（DeepSeek, OpenAI Responses, Anthropic, Gemini API / Google AI Studio, Generic OpenAI-compatible），但这些仅是 fixture 级别的 adapter 基础，不是 live API support。未来 Gemini support 如实施，必须通过 [Provider Architecture](docs/architecture/provider-architecture/README.md) 中确认的 Gemini API / Google AI Studio native adapter 重建。
 
 <details>
 <summary><b>OpenRouter（访问上百种模型）</b></summary>
@@ -366,9 +366,9 @@ npm ci
 npm run electron:dev
 ```
 
-✅ 应用将自动启动，Vite 开发服务器运行在 `http://localhost:5173`
+应用将自动启动，Vite 开发服务器运行在 `http://localhost:5173`
 
-### 🎉 开始使用
+### 开始使用
 
 1. **创建第一个对话**: 点击左侧边栏 "新对话" 按钮
 2. **选择 AI 模型**: 点击顶部模型选择器，选择您想要的模型
@@ -381,7 +381,7 @@ npm run electron:dev
 
 ---
 
-## 💻 开发指南
+## 开发指南
 
 ### 可用脚本
 
@@ -463,13 +463,13 @@ import { useChatStore } from '@/stores/chatStore'
 
 const chatStore = useChatStore()
 
-// ✅ 推荐：使用带 conversationId 的异步安全 API
+// Recommended: 使用带 conversationId 的异步安全 API
 chatStore.addMessageToConversation(conversationId, {
   role: 'user',
   text: userInput
 })
 
-// ❌ 避免：依赖全局状态的旧 API（已弃用）
+// Avoid: 依赖全局状态的旧 API（已弃用）
 chatStore.addMessageToActiveConversation(message)
 ```
 
@@ -477,10 +477,10 @@ chatStore.addMessageToActiveConversation(message)
 
 1. **优先使用 Tailwind 工具类**
 ```vue
-<!-- ✅ 推荐 -->
+<!-- Recommended -->
 <div class="flex items-center justify-between p-4 bg-gray-100 rounded-lg">
 
-<!-- ❌ 避免自定义 CSS -->
+<!-- Avoid custom CSS -->
 <div class="custom-container"></div>
 ```
 
@@ -523,7 +523,7 @@ chatStore.addMessageToActiveConversation(message)
 
 ---
 
-## 📦 构建部署
+## 构建部署
 
 ### 构建应用
 
@@ -571,7 +571,7 @@ npm run build
 
 ---
 
-## 🧹 数据清理
+## 数据清理
 
 如需要重置应用或清理全部聊天记录：
 
@@ -582,7 +582,7 @@ npm run build
 
 ---
 
-## 🔑 核心架构
+## 核心架构
 
 ### 模块职责
 
@@ -620,11 +620,11 @@ npm run build
 
 ---
 
-## 🔒 安全性
+## 安全性
 
 ### Electron 安全最佳实践
 
-1. **Context Isolation**: ✅ 已启用
+1. **Context Isolation**: enabled
 ```typescript
 // electron/main.ts
 webPreferences: {
@@ -663,9 +663,9 @@ contextBridge.exposeInMainWorld('electronStore', {
 
 ---
 
-## 🎯 性能优化
+## 性能优化
 
-### 1. 标签页切换优化 ⚡
+### 1. 标签页切换优化
 - **性能提升 75%**: 从 40-50ms 降至 10ms
 - **优化措施**:
   - 移除非关键 console.log（-15-25ms）
@@ -673,26 +673,26 @@ contextBridge.exposeInMainWorld('electronStore', {
   - O(1) conversationsMap 查找（-2-3ms）
 - **用户体验**: 流畅的 60fps 切换体验
 
-### 2. 数据持久化优化 💾
+### 2. 数据持久化优化
 - **UI 状态保存速度提升 40 倍**: 从 0.8ms 降至 0.02ms
 - **智能增量保存策略**:
   - `saveTabState()`: 仅保存标签状态（0.02ms，50ms 防抖）
   - `saveConversations()`: 完整数据保存（0.8ms，按需触发）
 - **减少 I/O 开销**: 智能判断保存时机
 
-### 3. 渲染优化 🎨
+### 3. 渲染优化
 - **虚拟滚动**: 大量消息列表使用虚拟滚动
 - **防抖输入**: 草稿保存使用防抖避免频繁写入
 - **条件渲染**: 流式传输时显示纯文本，完成后渲染 Markdown
 - **Vue 3 响应式**: 利用 Proxy 提升性能
 
-### 4. 内存管理 🧹
+### 4. 内存管理
 - **流式处理**: 不缓存完整响应，逐块处理
 - **AbortController 清理**: 及时释放未完成的请求
 - **组件卸载清理**: 防止内存泄漏
 - **Web Worker 隔离**: 数据库操作不阻塞主线程
 
-### 5. 启动优化 🚀
+### 5. 启动优化
 - **并行加载配置**: 使用 `Promise.all()` 同时加载多个配置项
 - **懒加载组件**: 按需加载设置页面等非核心组件
 - **启动速度**: < 2 秒（优化后提升 60%）
@@ -710,14 +710,14 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 
 ---
 
-## 🛡️ 错误处理策略
+## 错误处理策略
 
 ### 用户友好的错误提示
 
 | 错误类型 | 检测方式 | 提示信息 |
 |---------|---------|---------|
 | API Key 未配置 | `!apiKey` | "错误：未设置 {Provider} API Key，请先在设置页面配置。" |
-| API Key 格式错误 | 正则验证 | "⚠️ API Key 格式可能不正确，Gemini Key 通常以 AIza 开头且长度为 39 位" |
+| API Key 格式错误 | 正则验证 | "Warning: API Key 格式可能不正确，Gemini Key 通常以 AIza 开头且长度为 39 位" |
 | 认证失败 | HTTP 401/403 | "{Provider} 认证失败：API Key 无效或已过期，请检查设置" |
 | 速率限制 | HTTP 429 | "{Provider} 速率限制：请求过于频繁，请等待 X 秒后重试" |
 | 网络错误 | Fetch 失败 | "网络连接失败，请检查网络设置" |
@@ -725,12 +725,12 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 
 ---
 
-## 📚 文档导航
+## 文档导航
 
 ### 快速入口
 | 文档 | 说明 |
 |------|------|
-| 🤖 **[Agent 入口](docs/AGENT_INDEX.md)** | **编程 Agent 首读** — 快速路由表、文档状态规则、任务映射 |
+| **[Agent 入口](docs/AGENT_INDEX.md)** | **编程 Agent 首读** — 快速路由表、文档状态规则、任务映射 |
 | [文档导航中心](docs/guides/INDEX.md) | 按场景查找所有文档 |
 | [文档状态索引](docs/DOC_STATUS_INDEX.md) | 文档活跃度与优先级判断 |
 | [架构总览](docs/architecture/OVERVIEW.md) | 系统架构设计 |
@@ -747,19 +747,19 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 
 ---
 
-## 🚧 最近更新和路线图
+## 最近更新和路线图
 
 ### 关键里程碑
 
 | 时间 | 主题 | 状态 | 详情 |
 |------|------|------|------|
-| 2024-11 | SQLite 数据库迁移 + 边界防御 + 性能优化 | ✅ 完成 | [SQLite 实现](docs/features/SQLITE_ENHANCEMENT_IMPLEMENTATION.md), [边界防御](docs/archive/ui-implementations/BOUNDARY_DEFENSE_IMPLEMENTATION.md) |
-| 2024-11 | 问题修复与代码质量提升（组件归档、注释完善） | ✅ 完成 | [修复记录](docs/bugfix/RECENT_FIXES_2025_11.md), [归档中心](docs/archive/completed-features/CHATVIEW_OPTIMIZATION_SUMMARY.md) |
-| 2025-01 | 用户体验优化（收藏模型滚动动画、会话复用） | ✅ 完成 | [归档中心](docs/archive/completed-features/CHATVIEW_COMMENTS_IMPROVEMENT.md) |
-| 2025-12 | 重大架构重构：DDD 分层（AppChatApp 取代 ChatView.vue）、富文本引擎 (markdown-it+Shiki)、Reasoning、IPC 多模块 | ✅ 完成 | [架构总览](docs/architecture/OVERVIEW.md), [CHANGELOG](CHANGELOG.md) |
-| 2026-04 | 文件管道 Phase 1-9：文件资产 Schema、Send Plan 三层门禁、preview_optimized 衍生物、前端 UI MVP | ✅ 完成 | [File Pipeline](docs/file-pipeline/README.md), [进度台账](docs/file-pipeline/progress-ledger.md) |
-| 2026-04 | 格式转换与预览方案（PDF/音频/文本嵌入）通过治理 | 📐 方案阶段 | [格式转换](docs/file-pipeline/format-conversion-preview-final.md) |
-| 2026-04 | 文档治理 G1a-G1e：链接修复、语义校准、Feature/Roadmap 节精简 | ✅ 完成 | [导航中心](docs/guides/INDEX.md), [维护者入口](docs/maintenance/maintainer-entry.md) |
+| 2024-11 | SQLite 数据库迁移 + 边界防御 + 性能优化 | complete | [SQLite 实现](docs/features/SQLITE_ENHANCEMENT_IMPLEMENTATION.md), [边界防御](docs/archive/ui-implementations/BOUNDARY_DEFENSE_IMPLEMENTATION.md) |
+| 2024-11 | 问题修复与代码质量提升（组件归档、注释完善） | complete | [修复记录](docs/bugfix/RECENT_FIXES_2025_11.md), [归档中心](docs/archive/completed-features/CHATVIEW_OPTIMIZATION_SUMMARY.md) |
+| 2025-01 | 用户体验优化（收藏模型滚动动画、会话复用） | complete | [归档中心](docs/archive/completed-features/CHATVIEW_COMMENTS_IMPROVEMENT.md) |
+| 2025-12 | 重大架构重构：DDD 分层（AppChatApp 取代 ChatView.vue）、富文本引擎 (markdown-it+Shiki)、Reasoning、IPC 多模块 | complete | [架构总览](docs/architecture/OVERVIEW.md), [CHANGELOG](CHANGELOG.md) |
+| 2026-04 | 文件管道 Phase 1-9：文件资产 Schema、Send Plan 三层门禁、preview_optimized 衍生物、前端 UI MVP | complete | [File Pipeline](docs/file-pipeline/README.md), [进度台账](docs/file-pipeline/progress-ledger.md) |
+| 2026-04 | 格式转换与预览方案（PDF/音频/文本嵌入）通过治理 | design phase | [格式转换](docs/file-pipeline/format-conversion-preview-final.md) |
+| 2026-04 | 文档治理 G1a-G1e：链接修复、语义校准、Feature/Roadmap 节精简 | complete | [导航中心](docs/guides/INDEX.md), [维护者入口](docs/maintenance/maintainer-entry.md) |
 
 ### 当前方向
 - 持续归档已完成功能，建立每月文档审查机制
@@ -767,7 +767,7 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 
 ---
 
-## ❓ 常见问题
+## 常见问题
 
 | 问题 | 说明 |
 |------|------|
@@ -779,13 +779,13 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 
 ---
 
-## 📄 许可证
+## 许可证
 
 本项目采用 MIT License。详见 [LICENSE](LICENSE)。
 
 ---
 
-## 🤝 贡献
+## 贡献
 
 欢迎提交 Issue 和 Pull Request！
 
@@ -797,7 +797,7 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 5. 开启 Pull Request
 6. **统一编码**：所有文件（含 README、日志、源码）必须使用 UTF-8（无 BOM）保存。请在编辑器设置中显式启用 UTF-8，并避免切换到 ANSI/GBK 以免 emoji 和中文说明被破坏。
 
-## 🙏 致谢
+## 致谢
 
 - [Electron](https://www.electronjs.org/) - 跨平台桌面应用框架
 - [Vue.js](https://vuejs.org/) - 渐进式 JavaScript 框架
@@ -812,16 +812,16 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 
 <div align="center">
 
-## 🌟 Star History
+## Star History
 
-如果您觉得这个项目有帮助，请考虑给它一个 ⭐ Star！
+如果您觉得这个项目有帮助，请考虑给它一个 Star。
 
-## 📮 联系方式
+## 联系方式
 
 - **GitHub Issues**: [提交问题或建议](https://github.com/GuXinghai/starverse/issues)
 - **GitHub Discussions**: [参与讨论](https://github.com/GuXinghai/starverse/discussions)
 
-## 🔗 相关链接
+## 相关链接
 
 - [Electron 官方文档](https://www.electronjs.org/docs)
 - [Vue.js 官方文档](https://vuejs.org/)
@@ -831,7 +831,7 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 
 ---
 
-<p>用 ❤️ 和 ☕ 制作</p>
+<p>Made for Starverse.</p>
 <p>© 2025 Starverse. All rights reserved.</p>
 
 </div>

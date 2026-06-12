@@ -1,7 +1,7 @@
 # Starverse File Pipeline
 
-> 📌 **Status**: Phases 1-9 completed. Read [../progress-ledger.md](../progress-ledger.md) for current decisions and blockers.
-> 💡 **For agents**: Phase docs are historical process records. Check [../DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md) for each doc's status (active/reference/historical).
+> **Status**: Phases 1-9 completed. Read [../progress-ledger.md](../progress-ledger.md) for current decisions and blockers.
+> **For agents**: Phase docs are historical process records. Check [../DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md) for each doc's status (active/reference/historical).
 
 This directory is the documentation entry point for the Starverse complete file pipeline. It defines the shared vocabulary, phase boundaries, and decision ledger used by later persistence, import, attachment, provider adaptation, conversion, transcription, and embeddings work.
 

@@ -4,7 +4,7 @@
 **用途**: 新维护者接手项目时的优先阅读顺序与注意事项
 **治理**: DGR-1 双维度状态模型
 
-> 💡 **编程 Agent 注意**: 如果你是自动化编程 Agent，请先读 [../AGENT_INDEX.md](../AGENT_INDEX.md) 和 [../DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md)，会更快地定位任务。
+> **编程 Agent 注意**: 如果你是自动化编程 Agent，请先读 [../AGENT_INDEX.md](../AGENT_INDEX.md) 和 [../DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md)，会更快地定位任务。
 
 ---
 

@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2025-12-11
 
-### ✨ Added
-- **🆕 使用统计分析系统（Usage Statistics）**
+### Added
+- **使用统计分析系统（Usage Statistics）**
   - 完整的 OpenRouter 使用数据追踪和可视化
   - 新增 `AnalyticsView.vue` 和 `UsageStatistics.vue` 组件
   - SQLite 数据库层新增 `usage` 和 `dashboard_prefs` 表
@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 提供使用趋势图表和统计卡片
   - 参考文档：`docs/USAGE_STATISTICS_IMPLEMENTATION_PLAN.md`, `docs/USAGE_STATISTICS_PHASE2_COMPLETE.md`
 
-- **🆕 推理功能标准化（Reasoning）**
+- **推理功能标准化（Reasoning）**
   - 完整支持 OpenRouter Reasoning API（4 个推理级别）
   - 新增 `openrouterReasoningAdapter.ts` 适配器
   - 推理级别：minimal, low, medium, high
@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 智能成本预估和延迟提示
   - 参考文档：`docs/REASONING_IMPLEMENTATION_SUMMARY.md`, `docs/REASONING_TIERS_4_LEVELS.md`
 
-- **🆕 现代化聊天输入组件（ModernChatInput）**
+- **现代化聊天输入组件（ModernChatInput）**
   - 胶囊式浮动设计，类似 Perplexity/ChatGPT
   - 集成工具栏按钮（附件、搜索、推理、图像生成、参数）
   - 自适应多行输入（1-10 行自动扩展）
@@ -34,21 +34,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 完整的附件预览系统
   - 参考文档：`docs/MODERN_CHAT_INPUT_IMPLEMENTATION.md`, `src/components/chat/input/README.md`
 
-- **🆕 统一生成参数架构（Unified Generation Architecture）**
+- **统一生成参数架构（Unified Generation Architecture）**
   - 标准化所有 AI 参数处理（采样、推理、长度控制）
   - 新增 `generationAdapter.ts` 统一适配器
   - 模型能力自动检测系统（`modelCapability.ts`）
   - 4 层配置覆盖系统（默认值 → 全局 → 对话 → 消息级）
   - 参考文档：`docs/GENERATION_ARCHITECTURE_INDEX.md`, `docs/GENERATION_ARCHITECTURE_SUMMARY.md`
 
-- **🆕 文档重组与归档系统**
+- **文档重组与归档系统**
   - 四象限文档分类体系（架构/特性/指南/决策）
   - 新增文档导航中心 `docs/INDEX.md`
   - 自动归档脚本 `scripts/archive-documents.ps1`
   - 90+ 个文档重新分类和组织
   - 过时文档归档到 `docs/archive/`
 
-### 🔄 Changed
+### Changed
 - **重大架构升级：Tailwind CSS v4**
   - 从 v3.4 升级到 v4.1.16
   - 采用 CSS 优先配置策略（`@theme` 指令）
@@ -78,7 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 优化 `modelStore`（集成能力检测）
   - Store 总数增至 11 个模块
 
-### 🐛 Fixed
+### Fixed
 - **[Critical] 修复消息发送幽灵任务 Bug**
   - 修复并发状态管理导致的"伪发送"问题（UI 显示气泡但无实际网络请求）
   - 实施 4 层防御机制：
@@ -87,7 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     3. 60 秒超时自动重置机制
     4. finally 块强化状态清理
   - 新增 `forceResetSendingState()` 紧急恢复方法
-  - 详细日志追踪（🚨 错误、⚠️ 警告、✅ 信息）
+  - 详细日志追踪（错误、警告、信息）
   - 参考文档：`docs/bugfix/FIX_GHOST_TASK_BUG.md`, `docs/bugfix/FIX_GHOST_TASK_COMPLETE.md`
 
 - **修复模型数据字段不匹配问题**
@@ -102,7 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 参考文档：`docs/bugfix/BUGFIX_STREAM_IDLE_TIMEOUT_TIMER_LEAK.md`
 
 
-### 📚 Documentation
+### Documentation
 - **文档重组完成**
   - 删除 60+ 个过时文档（已归档到 `docs/archive/`）
   - 新增 40+ 个分类文档（按架构/特性/指南/决策分类）
@@ -124,7 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 更新诊断指南 (`docs/DEBUG_MESSAGE_SENDING_STALL.md`)
   - 流式超时泄漏修复 (`docs/bugfix/BUGFIX_STREAM_IDLE_TIMEOUT_TIMER_LEAK.md`)
 
-### 🧪 Tests
+### Tests
 - **新增测试套件**
   - 使用统计测试 (`tests/unit/analyticsStore.test.ts`, `tests/unit/usage-aggregation.test.ts`)
   - 幽灵任务测试 (`tests/unit/composables/useMessageSending.ghostTask.test.ts`)
@@ -132,7 +132,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 仪表板偏好测试 (`tests/unit/dashboard-prefs.test.ts`)
   - 图表卡片测试 (`tests/unit/chart-card.test.ts`)
 
-### 🔧 Infrastructure
+### Infrastructure
 - **构建系统优化**
   - Worker 线程独立构建脚本 (`scripts/build-db-worker.cjs`)
   - Watch 模式支持开发环境热更新
@@ -143,7 +143,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `scripts/verify-model-field-mapping.js` - 模型字段验证
   - `scripts/archive-completed-docs.ps1` - 完成文档归档
 
-### 🎨 UI/UX Improvements
+### UI/UX Improvements
 - **ChatToolbarButton 组件**
   - 统一工具栏按钮设计规范
   - 支持 Tooltip 提示
@@ -156,13 +156,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Markdown 渲染性能提升
   - 附件预览网格布局
 
-### 🔐 Security
+### Security
 - **IPC 通信安全**
   - 优化 `ipcSanitizer` 清理逻辑
   - 新增类型定义文件 (`ipcSanitizer.d.ts`)
   - 请求守卫机制 (`requestGuard.ts`)
 
-### ⚡ Performance
+### Performance
 - **数据库性能优化**
   - Worker 线程隔离所有 SQLite 操作
   - 批量操作事务优化
