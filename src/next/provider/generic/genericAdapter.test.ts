@@ -538,6 +538,132 @@ describe('streamViaGeneric', () => {
       expect(serialized).not.toContain(rawToken)
     })
 
+    it('text block without text field fails before fetch', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        currentUserContentBlocks: [
+          { type: 'text', text: 'valid part' },
+          { type: 'text' } as any,
+        ],
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('malformed_text_block')
+      }
+    })
+
+    it('text block with non-string text fails before fetch', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        currentUserContentBlocks: [
+          { type: 'text', text: 'valid part' },
+          { type: 'text', text: 123 },
+        ],
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('malformed_text_block')
+      }
+    })
+
+    it('text block with null text fails before fetch', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        currentUserContentBlocks: [
+          { type: 'text', text: null },
+        ],
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('malformed_text_block')
+      }
+    })
+
+    it('all-malformed text blocks fail and do not send empty user message', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        currentUserContentBlocks: [
+          { type: 'text' } as any,
+          { type: 'text', text: 42 },
+        ],
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      const doneEvents = events.filter((e) => e.type === 'stream.done')
+      expect(errorEvents).toHaveLength(1)
+      expect(doneEvents).toHaveLength(0)
+    })
+
+    it('malformed text block validation emits stream.error and no stream.done', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        currentUserContentBlocks: [{ type: 'text', text: {} }],
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      const doneEvents = events.filter((e) => e.type === 'stream.done')
+      expect(errorEvents).toHaveLength(1)
+      expect(doneEvents).toHaveLength(0)
+      expect(events[events.length - 1].type).toBe('stream.error')
+    })
+
+    it('malformed text block validation does not leak raw token', async () => {
+      const rawToken = 'sk-malformed-block-leak-test'
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        currentUserContentBlocks: [{ type: 'text', text: null }],
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: rawToken,
+        fetch,
+      }))
+
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain(rawToken)
+    })
+
     it('valid contextMessages are accepted', async () => {
       const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
       const fetch = mockFetch(response)

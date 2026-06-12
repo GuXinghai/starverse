@@ -241,7 +241,7 @@ function buildMessages(request: ProviderStreamRequest): ValidationResult {
     }
   }
 
-  // currentUserContentBlocks: reject non-text blocks, reject empty result
+  // currentUserContentBlocks: reject non-text blocks, reject malformed text blocks, reject empty result
   if (request.currentUserContentBlocks && request.currentUserContentBlocks.length > 0) {
     const textParts: string[] = []
     for (const block of request.currentUserContentBlocks) {
@@ -257,9 +257,20 @@ function buildMessages(request: ProviderStreamRequest): ValidationResult {
           },
         }
       }
-      if (typeof block.text === 'string') {
-        textParts.push(block.text)
+      // Reject text blocks with missing or non-string text field
+      if (typeof block.text !== 'string') {
+        return {
+          ok: false,
+          error: {
+            phase: 'request_build',
+            provider: 'generic',
+            category: 'bad_request',
+            message: 'Generic adapter requires text blocks to have a string "text" field.',
+            code: 'malformed_text_block',
+          },
+        }
       }
+      textParts.push(block.text)
     }
     const combined = textParts.join('\n')
     if (combined.length === 0) {
