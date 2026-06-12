@@ -350,6 +350,76 @@ describe('streamViaOpenRouter', () => {
     }
   })
 
+  it('preserves legacy Authorization header behavior through adapter facade', async () => {
+    const originalFetch = globalThis.fetch
+    const calls: any[] = []
+    const rawKey = 'sk-or-adapter-legacy-secret'
+    globalThis.fetch = vi.fn(async (url: any, init: any) => {
+      calls.push({ url, init })
+      const body = streamFromText(fixture)
+      return new Response(body as any, { status: 200, headers: { 'x-openrouter-generation-id': 'gen_header' } })
+    }) as any
+
+    try {
+      const request: ProviderStreamRequest = {
+        requestId: 'rid',
+        assistantMessageId: 'assistant_1',
+        userText: 'hello',
+        config: {
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
+          requestedReasoningMode: 'auto',
+        },
+      }
+
+      const events: StarverseStreamEvent[] = []
+      for await (const event of streamViaOpenRouter(request, { apiKey: rawKey })) {
+        events.push(event)
+      }
+
+      expect(calls).toHaveLength(1)
+      expect(calls[0]?.init?.headers?.Authorization).toBe(`Bearer ${rawKey}`)
+      const serializedEvents = JSON.stringify(events)
+      expect(serializedEvents).not.toContain(rawKey)
+      expect(serializedEvents).not.toContain(`Bearer ${rawKey}`)
+      expect(serializedEvents).not.toContain('Authorization')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('preserves legacy empty-key Authorization behavior through adapter facade', async () => {
+    const originalFetch = globalThis.fetch
+    const calls: any[] = []
+    globalThis.fetch = vi.fn(async (url: any, init: any) => {
+      calls.push({ url, init })
+      const body = streamFromText(fixture)
+      return new Response(body as any, { status: 200, headers: { 'x-openrouter-generation-id': 'gen_header' } })
+    }) as any
+
+    try {
+      const request: ProviderStreamRequest = {
+        requestId: 'rid',
+        assistantMessageId: 'assistant_1',
+        userText: 'hello',
+        config: {
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
+          requestedReasoningMode: 'auto',
+        },
+      }
+
+      const events: StarverseStreamEvent[] = []
+      for await (const event of streamViaOpenRouter(request, { apiKey: '' })) {
+        events.push(event)
+      }
+
+      expect(calls).toHaveLength(1)
+      expect(calls[0]?.init?.headers?.Authorization).toBe('Bearer ')
+      expect(events.some((event) => event.type === 'stream.done')).toBe(true)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   it('preserves request body semantics (mode=auto omits reasoning)', async () => {
     const originalFetch = globalThis.fetch
     const calls: any[] = []

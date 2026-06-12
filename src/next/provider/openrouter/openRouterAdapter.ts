@@ -23,6 +23,7 @@ import type { LiveStreamOptions, LiveRequestConfig } from '@/next/live/openRoute
 import type { DomainEvent } from '@/next/state/types'
 import type { ProviderStreamRequest, StarverseStreamEvent } from '@/next/provider/providerTypes'
 import { domainEventToStreamEvent, streamEventToDomainEvent } from '@/next/provider/streamEventBridge'
+import { openRouterLegacyCredentialFromRaw } from '@/next/provider/openrouter/openRouterLegacyCredential'
 
 /**
  * Execute a chat completion stream via the OpenRouter provider adapter.
@@ -39,8 +40,12 @@ export async function* streamViaOpenRouter(
   credentials: Readonly<{ apiKey: string }>,
 ): AsyncGenerator<StarverseStreamEvent> {
   const c = request.config
-  const liveConfig = {
+  const legacyCredential = openRouterLegacyCredentialFromRaw({
     apiKey: credentials.apiKey,
+    ...(c.baseUrl !== undefined ? { baseUrl: c.baseUrl } : {}),
+  })
+  const liveConfig = {
+    apiKey: legacyCredential.apiKey,
     model: c.model,
     requestedReasoningMode: c.requestedReasoningMode,
     ...(c.requestedReasoningEffort !== undefined ? { requestedReasoningEffort: c.requestedReasoningEffort } : {}),
@@ -51,7 +56,7 @@ export async function* streamViaOpenRouter(
     ...(c.imageGeneration !== undefined ? { imageGeneration: c.imageGeneration } : {}),
     ...(c.additionalPlugins !== undefined ? { openRouterAdditionalPlugins: c.additionalPlugins } : {}),
     ...(c.timeoutMs !== undefined ? { timeoutMs: c.timeoutMs } : {}),
-    ...(c.baseUrl !== undefined ? { baseUrl: c.baseUrl } : {}),
+    ...(legacyCredential.baseUrl !== undefined ? { baseUrl: legacyCredential.baseUrl } : {}),
   } as LiveRequestConfig
 
   const options: LiveStreamOptions = {
