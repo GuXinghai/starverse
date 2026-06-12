@@ -79,7 +79,6 @@ describe('GenericEndpointConfig', () => {
     const config = validConfig()
     expect(config.credentialRef.kind).toBe('credential_ref')
     expect(typeof config.credentialRef.id).toBe('string')
-    // credentialRef must not have token/secret/password fields
     expect('token' in config.credentialRef).toBe(false)
     expect('secret' in config.credentialRef).toBe(false)
     expect('password' in config.credentialRef).toBe(false)
@@ -87,30 +86,72 @@ describe('GenericEndpointConfig', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Secret-like field rejection
+// Secret-like field rejection (case-insensitive)
 // ---------------------------------------------------------------------------
 
 describe('secret-like field rejection', () => {
-  const secretFieldNames = [
+  // Original fields (lowercase canonical form)
+  const baseSecretFields = [
     'apiKey', 'api_key', 'token', 'accessToken', 'access_token',
     'bearerToken', 'bearer_token', 'authToken', 'auth_token',
     'authorization', 'secret', 'secretKey', 'secret_key',
     'password', 'privateKey', 'private_key',
   ]
 
-  for (const fieldName of secretFieldNames) {
+  // New header/container fields
+  const headerFields = [
+    'headers', 'customHeaders', 'authHeaders',
+    'authorizationHeader', 'proxyAuthorization',
+  ]
+
+  const allFields = [...baseSecretFields, ...headerFields]
+
+  for (const fieldName of allFields) {
     it(`rejects config with "${fieldName}" field`, () => {
       const configWithSecret = { ...validConfig(), [fieldName]: 'sk-leaked-key' } as any
       const result = resolveGenericEndpointDescriptor(configWithSecret, validResolver())
       expect(isError(result)).toBe(true)
       if (isError(result)) {
         expect(result.code).toBe('secret_like_field_rejected')
-        expect(result.message).toContain(fieldName)
-        // Must not echo the secret value
         expect(result.message).not.toContain('sk-leaked-key')
       }
     })
   }
+
+  // Case-insensitive variants
+  const caseVariants = [
+    'APIKEY', 'ApiKey', 'API_Key',
+    'AUTHORIZATION', 'Authorization', 'Authorization',
+    'TOKEN', 'Token',
+    'HEADERS', 'Headers',
+    'CUSTOMHEADERS', 'CustomHeaders',
+    'AUTHHEADERS', 'AuthHeaders',
+  ]
+
+  for (const fieldName of caseVariants) {
+    it(`rejects case-insensitive variant "${fieldName}"`, () => {
+      const configWithSecret = { ...validConfig(), [fieldName]: 'sk-leaked-key' } as any
+      const result = resolveGenericEndpointDescriptor(configWithSecret, validResolver())
+      expect(isError(result)).toBe(true)
+      if (isError(result)) {
+        expect(result.code).toBe('secret_like_field_rejected')
+      }
+    })
+  }
+
+  it('rejected field error does not echo the field name (static safe message)', () => {
+    const result = resolveGenericEndpointDescriptor(
+      { ...validConfig(), Authorization: 'Bearer sk-secret' } as any,
+      validResolver(),
+    )
+    expect(isError(result)).toBe(true)
+    if (isError(result)) {
+      expect(result.message).toBe('Config must not contain secret-like field. Use credentialRef instead.')
+      expect(result.message).not.toContain('Authorization')
+      expect(result.message).not.toContain('Bearer')
+      expect(result.message).not.toContain('sk-secret')
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -298,7 +339,6 @@ describe('resolveGenericEndpointDescriptor', () => {
     expect(isError(result)).toBe(true)
     if (isError(result)) {
       expect(result.code).toBe('credential_resolution_failed')
-      // Must not echo resolver internals
       expect(result.message).not.toContain('sk-')
     }
   })
@@ -316,7 +356,6 @@ describe('resolveGenericEndpointDescriptor', () => {
     const secretToken = 'sk-super-secret-resolver-token'
     const resolver: ResolveGenericCredential = () => createBearerCredential(secretToken)
 
-    // Use an invalid config that triggers validation after credential resolution
     const result = resolveGenericEndpointDescriptor(
       validConfig({ baseUrl: 'file:///etc/passwd' }),
       resolver,
@@ -327,32 +366,57 @@ describe('resolveGenericEndpointDescriptor', () => {
   })
 
   // -----------------------------------------------------------------------
-  // Capability override
+  // Capability override — fail-closed
   // -----------------------------------------------------------------------
 
-  it('unsupported capability override fails', () => {
+  it('blocked feature with true fails', () => {
     const result = resolveGenericEndpointDescriptor(
-      validConfig({ capabilityOverride: { tools: true } as any }),
-      validResolver(),
-    )
-    expect(isError(result)).toBe(true)
-    if (isError(result)) {
-      expect(result.code).toBe('blocked_capability_override')
-    }
-  })
-
-  it('unsupported vision override fails', () => {
-    const result = resolveGenericEndpointDescriptor(
-      validConfig({ capabilityOverride: { vision: true } as any }),
+      validConfig({ capabilityOverride: { tools: true } }),
       validResolver(),
     )
     expect(isError(result)).toBe(true)
     if (isError(result)) expect(result.code).toBe('blocked_capability_override')
   })
 
-  it('unsupported reasoning override fails', () => {
+  it('blocked feature with string "true" fails', () => {
     const result = resolveGenericEndpointDescriptor(
-      validConfig({ capabilityOverride: { reasoning: true } as any }),
+      validConfig({ capabilityOverride: { tools: 'true' } as any }),
+      validResolver(),
+    )
+    expect(isError(result)).toBe(true)
+    if (isError(result)) expect(result.code).toBe('blocked_capability_override')
+  })
+
+  it('blocked feature with number 1 fails', () => {
+    const result = resolveGenericEndpointDescriptor(
+      validConfig({ capabilityOverride: { reasoning: 1 } as any }),
+      validResolver(),
+    )
+    expect(isError(result)).toBe(true)
+    if (isError(result)) expect(result.code).toBe('blocked_capability_override')
+  })
+
+  it('blocked feature with object fails', () => {
+    const result = resolveGenericEndpointDescriptor(
+      validConfig({ capabilityOverride: { webSearch: {} } as any }),
+      validResolver(),
+    )
+    expect(isError(result)).toBe(true)
+    if (isError(result)) expect(result.code).toBe('blocked_capability_override')
+  })
+
+  it('blocked feature with array fails', () => {
+    const result = resolveGenericEndpointDescriptor(
+      validConfig({ capabilityOverride: { imageGeneration: [] } as any }),
+      validResolver(),
+    )
+    expect(isError(result)).toBe(true)
+    if (isError(result)) expect(result.code).toBe('blocked_capability_override')
+  })
+
+  it('supported feature with non-boolean fails', () => {
+    const result = resolveGenericEndpointDescriptor(
+      validConfig({ capabilityOverride: { textChat: 'false' } as any }),
       validResolver(),
     )
     expect(isError(result)).toBe(true)
@@ -367,7 +431,7 @@ describe('resolveGenericEndpointDescriptor', () => {
     expect(isDescriptor(result)).toBe(true)
   })
 
-  it('disabling a conservative feature is allowed', () => {
+  it('disabling a supported feature is allowed', () => {
     const result = resolveGenericEndpointDescriptor(
       validConfig({ capabilityOverride: { samplingParams: false } }),
       validResolver(),
@@ -375,6 +439,17 @@ describe('resolveGenericEndpointDescriptor', () => {
     expect(isDescriptor(result)).toBe(true)
     if (isDescriptor(result)) {
       expect(result.capability.samplingParams).toBe(false)
+    }
+  })
+
+  it('disabling a blocked feature is allowed', () => {
+    const result = resolveGenericEndpointDescriptor(
+      validConfig({ capabilityOverride: { tools: false } }),
+      validResolver(),
+    )
+    expect(isDescriptor(result)).toBe(true)
+    if (isDescriptor(result)) {
+      expect(result.capability.tools).toBe(false)
     }
   })
 
@@ -386,7 +461,6 @@ describe('resolveGenericEndpointDescriptor', () => {
     const secretToken = 'sk-error-leak-test-token'
     const resolver: ResolveGenericCredential = () => createBearerCredential(secretToken)
 
-    // Trigger an error by using invalid profile
     const result = resolveGenericEndpointDescriptor(
       validConfig({ profileId: 'invalid_profile' as any }),
       resolver,
@@ -433,7 +507,6 @@ describe('toSafeGenericEndpointMetadata', () => {
     expect(meta.profileId).toBe(GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID)
     expect(meta.model).toBe('gpt-4o-mini')
     expect(meta.credentialPresent).toBe(true)
-    // Masked URL should not contain full hostname
     expect(meta.maskedBaseUrl).not.toContain('api.example.com')
     expect(meta.maskedBaseUrl).toContain('***')
   })
@@ -455,19 +528,40 @@ describe('toSafeGenericEndpointMetadata', () => {
     expect(serialized).not.toContain('admin')
   })
 
-  it('metadata reflects capability override', () => {
+  it('metadata reflects valid capability override', () => {
     const meta = toSafeGenericEndpointMetadata(
       validConfig({ capabilityOverride: { samplingParams: false } }),
     )
     expect(meta.capability.samplingParams).toBe(false)
-    expect(meta.capability.tools).toBe(false) // conservative default preserved
+    expect(meta.capability.tools).toBe(false)
+  })
+
+  it('metadata does NOT show unsupported capability from malformed override', () => {
+    const meta = toSafeGenericEndpointMetadata(
+      validConfig({ capabilityOverride: { tools: 'true' } as any }),
+    )
+    // Malformed override ignored — tools remains false (conservative default)
+    expect(meta.capability.tools).toBe(false)
+  })
+
+  it('metadata does NOT show unsupported capability from truthy malformed override', () => {
+    const meta = toSafeGenericEndpointMetadata(
+      validConfig({ capabilityOverride: { reasoning: 1 } as any }),
+    )
+    expect(meta.capability.reasoning).toBe(false)
+  })
+
+  it('metadata does NOT show unsupported capability from object malformed override', () => {
+    const meta = toSafeGenericEndpointMetadata(
+      validConfig({ capabilityOverride: { webSearch: {} } as any }),
+    )
+    expect(meta.capability.webSearch).toBe(false)
   })
 
   it('metadata credentialPresent is false when ref is null/undefined', () => {
     const meta = toSafeGenericEndpointMetadata(
       { ...validConfig(), credentialRef: undefined as any },
     )
-    // credentialRef is undefined, but config shape still works
     expect(meta.endpointId).toBe('ep-1')
   })
 

@@ -238,13 +238,27 @@ export function validateGenericEndpointDescriptor(input: {
 
 /**
  * Check if a capability override attempt is valid for Generic.
- * Returns an error if any blocked feature is being enabled.
+ *
+ * Fail-closed policy:
+ * - Blocked features: reject any truthy, non-false, malformed, or non-boolean enabling value.
+ * - All features (blocked and supported): require boolean values if present.
+ * - Missing or `false` blocked fields pass.
+ * - `false` supported fields pass (disabling a supported feature).
  */
 export function validateCapabilityOverride(
   overrides: Record<string, unknown>,
 ): DescriptorValidationError | null {
-  for (const key of BLOCKED_FEATURES) {
-    if (key in overrides && overrides[key] === true) {
+  for (const [key, value] of Object.entries(overrides)) {
+    // All capability override values must be boolean
+    if (typeof value !== 'boolean') {
+      return {
+        code: 'blocked_capability_override',
+        message: `Capability override "${key}" must be a boolean value. Received ${typeof value}.`,
+      }
+    }
+
+    // Blocked features must not be enabled (truthy boolean)
+    if (BLOCKED_FEATURES.has(key) && value === true) {
       return {
         code: 'blocked_capability_override',
         message: `Cannot enable "${key}" in Generic conservative fixture. This feature is not supported.`,
