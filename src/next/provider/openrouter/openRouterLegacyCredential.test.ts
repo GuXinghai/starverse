@@ -15,6 +15,16 @@ function expectNoSecretLeak(value: unknown): void {
 }
 
 describe('openRouterLegacyCredential facade', () => {
+  it('is explicitly scoped to the OpenRouter legacy exception', () => {
+    const material = openRouterLegacyCredentialFromRaw({ apiKey: RAW_KEY })
+    const diagnostics = toSafeOpenRouterLegacyCredentialDiagnostics(material)
+
+    expect(material.kind).toBe('openrouter_legacy_api_key')
+    expect(diagnostics.kind).toBe('openrouter_legacy_credential')
+    expect(JSON.stringify({ material, diagnostics })).not.toContain('credential_ref')
+    expect(JSON.stringify({ material, diagnostics })).not.toContain('provider_credential')
+  })
+
   it('accepts valid raw key and creates adapter-side legacy credential material', () => {
     const material = openRouterLegacyCredentialFromRaw({
       apiKey: RAW_KEY,

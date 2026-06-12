@@ -382,6 +382,8 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
         const originalElectronApi = (globalThis as any).electronAPI
         const listeners = new Map<string, (...args: any[]) => void>()
         let startPayload: any = null
+        const rawKey = 'sk-or-live-ipc-legacy-secret'
+        const baseUrl = 'https://openrouter-proxy.example.test/custom/v1/'
 
         ;(globalThis as any).electronStore = {
             get: vi.fn(async (key: string) => {
@@ -426,14 +428,21 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
                 requestId: 'ipc_rid',
                 assistantMessageId: 'assistant_1',
                 userText: 'hello',
-                config: { apiKey: 'k', model: DEFAULT_OPENROUTER_TEST_MODEL, requestedReasoningMode: 'auto' },
+                config: { apiKey: rawKey, baseUrl, model: DEFAULT_OPENROUTER_TEST_MODEL, requestedReasoningMode: 'auto' },
             })) {
                 events.push(ev)
             }
 
             expect(startPayload?.wireVersion).toBe(OPENROUTER_STREAM_WIRE_VERSION)
+            expect(startPayload?.config?.apiKey).toBe(rawKey)
+            expect(startPayload?.config?.baseUrl).toBe(baseUrl)
             expect(startPayload?.requestBody).toBeTruthy()
             expect(startPayload?.userText).toBe('hello')
+            expect(JSON.stringify(startPayload?.requestBody)).not.toContain(rawKey)
+            const serializedEvents = JSON.stringify(events)
+            expect(serializedEvents).not.toContain(rawKey)
+            expect(serializedEvents).not.toContain(`Bearer ${rawKey}`)
+            expect(serializedEvents).not.toContain('Authorization')
             expect(events.some((e) => e.type === 'StreamAbort')).toBe(true)
             expect(events.some((e) => e.type === 'StreamError')).toBe(false)
             const end = events.find((e) => e.type === 'TimingSnapshot' && (e as any).endReason) as any
