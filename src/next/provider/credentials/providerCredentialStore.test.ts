@@ -270,6 +270,49 @@ describe('providerCredentialStore boundary', () => {
     expectCredentialFailureBeforeFetch(events, fetch)
   })
 
+  it('store-backed invalid credential fails Generic config path before fetch and no done', async () => {
+    const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('must not fetch'), finishChunkJson('stop')))
+
+    const events = await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig(),
+      providerCredentialResolverFromStore(fixedStore(providerCredentialStoreInvalid())),
+      fetch,
+    ))
+
+    expectCredentialFailureBeforeFetch(events, fetch)
+    const serialized = JSON.stringify(events)
+    expect(serialized).not.toContain('Authorization')
+    expect(serialized).not.toContain('Bearer')
+    expect(serialized).not.toContain('headers')
+  })
+
+  it('store-backed unavailable credential store fails Generic config path before fetch and no done', async () => {
+    const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('must not fetch'), finishChunkJson('stop')))
+
+    const events = await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig(),
+      providerCredentialResolverFromStore(fixedStore(providerCredentialStoreUnavailable())),
+      fetch,
+    ))
+
+    expectCredentialFailureBeforeFetch(events, fetch)
+  })
+
+  it('store-backed internal credential store error fails Generic config path before fetch and no done', async () => {
+    const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('must not fetch'), finishChunkJson('stop')))
+
+    const events = await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig(),
+      providerCredentialResolverFromStore(fixedStore(providerCredentialStoreError())),
+      fetch,
+    ))
+
+    expectCredentialFailureBeforeFetch(events, fetch)
+  })
+
   it('store-backed failure in Generic config path does not leak credential internals', async () => {
     const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('must not fetch'), finishChunkJson('stop')))
 
