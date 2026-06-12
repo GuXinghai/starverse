@@ -292,8 +292,44 @@ describe('validateCapabilityOverride', () => {
     expect(result?.code).toBe('blocked_capability_override')
   })
 
+  // Fail-closed: malformed values
+  it('blocks tools with string "true"', () => {
+    const result = validateCapabilityOverride({ tools: 'true' } as any)
+    expect(result).not.toBeNull()
+    expect(result?.code).toBe('blocked_capability_override')
+  })
+
+  it('blocks reasoning with number 1', () => {
+    const result = validateCapabilityOverride({ reasoning: 1 } as any)
+    expect(result).not.toBeNull()
+    expect(result?.code).toBe('blocked_capability_override')
+  })
+
+  it('blocks webSearch with object', () => {
+    const result = validateCapabilityOverride({ webSearch: {} } as any)
+    expect(result).not.toBeNull()
+    expect(result?.code).toBe('blocked_capability_override')
+  })
+
+  it('blocks imageGeneration with array', () => {
+    const result = validateCapabilityOverride({ imageGeneration: [] } as any)
+    expect(result).not.toBeNull()
+    expect(result?.code).toBe('blocked_capability_override')
+  })
+
+  it('rejects non-boolean supported feature value', () => {
+    const result = validateCapabilityOverride({ textChat: 'false' } as any)
+    expect(result).not.toBeNull()
+    expect(result?.code).toBe('blocked_capability_override')
+  })
+
+  it('rejects non-boolean samplingParams value', () => {
+    const result = validateCapabilityOverride({ samplingParams: 1 } as any)
+    expect(result).not.toBeNull()
+    expect(result?.code).toBe('blocked_capability_override')
+  })
+
   it('allows disabling a supported feature', () => {
-    // Disabling samplingParams is allowed — it's a conservative supported feature
     expect(validateCapabilityOverride({ samplingParams: false })).toBeNull()
   })
 

@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { streamViaGeneric, type GenericFetchFn } from '@/next/provider/generic/genericAdapter'
+import { streamViaGeneric, streamViaGenericConfig, type GenericFetchFn } from '@/next/provider/generic/genericAdapter'
 import type { ProviderStreamRequest, StarverseStreamEvent } from '@/next/provider/providerTypes'
+import { GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID } from '@/next/provider/generic/genericEndpointDescriptor'
+import { createBearerCredential } from '@/next/provider/credentials/providerCredential'
+import type { GenericEndpointConfig, GenericCredentialRef, ResolveGenericCredential } from '@/next/provider/generic/genericEndpointConfig'
 
 function sseFixture(...lines: string[]): string {
   return lines.join('\n') + '\n'
@@ -1405,5 +1408,198 @@ describe('streamViaGeneric', () => {
         expect(errorEvents[0].error.code).toBe('invalid_api_key')
       }
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Config-based adapter tests (streamViaGenericConfig)
+// ---------------------------------------------------------------------------
+
+const VALID_CREDENTIAL_REF: GenericCredentialRef = { kind: 'credential_ref', id: 'default' }
+const VALID_RESOLVER: ResolveGenericCredential = () => createBearerCredential('sk-config-test')
+
+function failingResolver(message?: string): ResolveGenericCredential {
+  return () => ({ code: 'missing_token', message: message ?? 'Credential not found' } as any)
+}
+
+function validEndpointConfig(overrides?: Partial<GenericEndpointConfig>): GenericEndpointConfig {
+  return {
+    endpointId: 'ep-test',
+    displayName: 'Test Endpoint',
+    profileId: GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID,
+    baseUrl: 'https://api.example.com/v1',
+    model: 'gpt-4o-mini',
+    credentialRef: VALID_CREDENTIAL_REF,
+    ...overrides,
+  }
+}
+
+describe('streamViaGenericConfig', () => {
+  it('config → resolver → descriptor → adapter happy path streams text and done', async () => {
+    const response = makeSseResponseWithDone(textChunkJson('Hello'), finishChunkJson('stop'))
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig(),
+      VALID_RESOLVER,
+      fetch,
+    ))
+
+    const textEvents = events.filter((e) => e.type === 'message.text_delta')
+    const doneEvents = events.filter((e) => e.type === 'stream.done')
+    expect(textEvents).toHaveLength(1)
+    expect(doneEvents).toHaveLength(1)
+    expect(events[events.length - 1].type).toBe('stream.done')
+  })
+
+  it('config uses resolved credential for Authorization header', async () => {
+    const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
+    const fetch = mockFetch(response)
+
+    await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig(),
+      () => createBearerCredential('sk-from-resolver'),
+      fetch,
+    ))
+
+    const [, init] = (fetch as any).mock.calls[0]
+    expect(init.headers['Authorization']).toBe('Bearer sk-from-resolver')
+  })
+
+  it('config uses descriptor-normalized URL', async () => {
+    const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
+    const fetch = mockFetch(response)
+
+    await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig({ baseUrl: 'https://custom.api.com/v1/' }),
+      VALID_RESOLVER,
+      fetch,
+    ))
+
+    const [url] = (fetch as any).mock.calls[0]
+    expect(url).toBe('https://custom.api.com/v1/chat/completions')
+  })
+
+  it('config uses descriptor model in request body', async () => {
+    const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
+    const fetch = mockFetch(response)
+
+    await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig({ model: 'custom-model-7b' }),
+      VALID_RESOLVER,
+      fetch,
+    ))
+
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body)
+    expect(body.model).toBe('custom-model-7b')
+  })
+
+  it('invalid config fails before fetch', async () => {
+    const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+    const events = await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig({ baseUrl: 'file:///etc/passwd' }),
+      VALID_RESOLVER,
+      fetch,
+    ))
+
+    expect(fetch).toHaveBeenCalledTimes(0)
+    const errorEvents = events.filter((e) => e.type === 'stream.error')
+    expect(errorEvents).toHaveLength(1)
+    const doneEvents = events.filter((e) => e.type === 'stream.done')
+    expect(doneEvents).toHaveLength(0)
+    if (errorEvents[0].type === 'stream.error') {
+      expect(errorEvents[0].error.code).toBe('url_scheme_not_allowed')
+    }
+  })
+
+  it('unresolved credential fails before fetch', async () => {
+    const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+    const events = await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig(),
+      failingResolver('not found'),
+      fetch,
+    ))
+
+    expect(fetch).toHaveBeenCalledTimes(0)
+    const errorEvents = events.filter((e) => e.type === 'stream.error')
+    expect(errorEvents).toHaveLength(1)
+    const doneEvents = events.filter((e) => e.type === 'stream.done')
+    expect(doneEvents).toHaveLength(0)
+    if (errorEvents[0].type === 'stream.error') {
+      expect(errorEvents[0].error.code).toBe('credential_resolution_failed')
+      expect(errorEvents[0].error.category).toBe('auth')
+    }
+  })
+
+  it('unsupported capability override fails before fetch', async () => {
+    const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+    const events = await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig({ capabilityOverride: { tools: true } }),
+      VALID_RESOLVER,
+      fetch,
+    ))
+
+    expect(fetch).toHaveBeenCalledTimes(0)
+    const errorEvents = events.filter((e) => e.type === 'stream.error')
+    expect(errorEvents).toHaveLength(1)
+    if (errorEvents[0].type === 'stream.error') {
+      expect(errorEvents[0].error.code).toBe('blocked_capability_override')
+    }
+  })
+
+  it('validation failure emits stream.error and no stream.done', async () => {
+    const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+    const events = await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig({ model: '' }),
+      VALID_RESOLVER,
+      fetch,
+    ))
+
+    const errorEvents = events.filter((e) => e.type === 'stream.error')
+    const doneEvents = events.filter((e) => e.type === 'stream.done')
+    expect(errorEvents).toHaveLength(1)
+    expect(doneEvents).toHaveLength(0)
+    expect(events[events.length - 1].type).toBe('stream.error')
+  })
+
+  it('config validation failure does not leak raw token', async () => {
+    const secretToken = 'sk-config-leak-test'
+    const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+    const events = await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig({ baseUrl: '' }),
+      () => createBearerCredential(secretToken),
+      fetch,
+    ))
+
+    const serialized = JSON.stringify(events)
+    expect(serialized).not.toContain(secretToken)
+  })
+
+  it('unresolved credential error does not leak resolver internals', async () => {
+    const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+    const events = await collectEvents(streamViaGenericConfig(
+      makeRequest(),
+      validEndpointConfig(),
+      () => ({ code: 'missing_token', message: 'Credential sk-secret-not-found' } as any),
+      fetch,
+    ))
+
+    const serialized = JSON.stringify(events)
+    expect(serialized).not.toContain('sk-secret-not-found')
   })
 })

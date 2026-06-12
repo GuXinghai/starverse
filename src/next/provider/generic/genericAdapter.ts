@@ -20,14 +20,23 @@ import {
   validateGenericEndpointDescriptor,
   validateGenericRequestedCapabilities,
   GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID,
+  type GenericEndpointDescriptor,
   type DescriptorValidationError,
 } from '@/next/provider/generic/genericEndpointDescriptor'
+import {
+  resolveGenericEndpointDescriptor as resolveConfigToDescriptor,
+  type GenericEndpointConfig,
+  type ResolveGenericCredential,
+  type ConfigValidationError,
+} from '@/next/provider/generic/genericEndpointConfig'
 
 export type GenericFetchFn = (url: string, init: RequestInit) => Promise<Response>
 
-function descriptorErrorToStreamEvent(err: DescriptorValidationError): StarverseStreamEvent {
+function descriptorErrorToStreamEvent(err: DescriptorValidationError | ConfigValidationError): StarverseStreamEvent {
   // Map credential errors to auth category, others to bad_request
-  const category = err.code === 'invalid_credential' ? 'auth' as const : 'bad_request' as const
+  const category = err.code === 'invalid_credential' || err.code === 'credential_resolution_failed'
+    ? 'auth' as const
+    : 'bad_request' as const
   return {
     type: 'stream.error',
     error: {
@@ -41,11 +50,35 @@ function descriptorErrorToStreamEvent(err: DescriptorValidationError): Starverse
   }
 }
 
+/**
+ * Config-based adapter entrypoint — resolves GenericEndpointConfig through
+ * an injected credential resolver into a GenericEndpointDescriptor, then
+ * delegates to the same core streaming implementation as streamViaGeneric.
+ *
+ * This is the tested config → descriptor → adapter path.
+ */
+export async function* streamViaGenericConfig(
+  request: ProviderStreamRequest,
+  config: GenericEndpointConfig,
+  resolveCredential: ResolveGenericCredential,
+  fetchFn: GenericFetchFn,
+): AsyncGenerator<StarverseStreamEvent> {
+  // Resolve config → descriptor (validates endpointId, profileId, baseUrl, model, credentialRef, capability override)
+  const descriptor = resolveConfigToDescriptor(config, resolveCredential)
+  if ('code' in descriptor) {
+    yield descriptorErrorToStreamEvent(descriptor)
+    return
+  }
+
+  // Delegate to core streaming
+  yield* streamGenericCore(request, descriptor, fetchFn)
+}
+
 export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* streamViaGeneric(
   request: ProviderStreamRequest,
   transport: ProviderStreamTransport,
 ): AsyncGenerator<StarverseStreamEvent> {
-  const { assistantMessageId, config, signal } = request
+  const { config } = request
 
   // Descriptor boundary: validate endpoint, URL, model, credential
   const descriptor = validateGenericEndpointDescriptor({
@@ -58,6 +91,21 @@ export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* st
     yield descriptorErrorToStreamEvent(descriptor)
     return
   }
+
+  // Delegate to core streaming
+  yield* streamGenericCore(request, descriptor, transport.fetch)
+}
+
+// ---------------------------------------------------------------------------
+// Core streaming implementation — shared by streamViaGeneric and streamViaGenericConfig
+// ---------------------------------------------------------------------------
+
+async function* streamGenericCore(
+  request: ProviderStreamRequest,
+  descriptor: GenericEndpointDescriptor,
+  fetchFn: GenericFetchFn,
+): AsyncGenerator<StarverseStreamEvent> {
+  const { assistantMessageId, config, signal } = request
 
   // Capability gate: reject unsupported feature intents before fetch
   const capabilityError = validateGenericRequestedCapabilities(config)
@@ -106,7 +154,7 @@ export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* st
 
   let response: Response
   try {
-    response = await transport.fetch(url, {
+    response = await fetchFn(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),

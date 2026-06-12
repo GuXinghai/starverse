@@ -100,36 +100,51 @@ export type SafeGenericEndpointMetadata = Readonly<{
 }>
 
 // ---------------------------------------------------------------------------
-// Secret-like field detection
+// Secret-like field detection (case-insensitive)
 // ---------------------------------------------------------------------------
 
 const SECRET_LIKE_FIELDS: ReadonlySet<string> = new Set([
-  'apiKey',
+  // API key variants
+  'apikey',
   'api_key',
+  // Token variants
   'token',
-  'accessToken',
+  'accesstoken',
   'access_token',
-  'bearerToken',
+  'bearertoken',
   'bearer_token',
-  'authToken',
+  'authtoken',
   'auth_token',
+  // Authorization / auth
   'authorization',
+  'auth',
+  // Secret / password
   'secret',
-  'secretKey',
+  'secretkey',
   'secret_key',
   'password',
-  'privateKey',
+  'privatekey',
   'private_key',
+  // Header containers
+  'headers',
+  'customheaders',
+  'custom_headers',
+  'authheaders',
+  'auth_headers',
+  'authorizationheader',
+  'authorization_header',
+  'proxyauthorization',
+  'proxy_authorization',
 ])
 
 function rejectSecretLikeFields(
   input: Record<string, unknown>,
 ): ConfigValidationError | null {
-  for (const key of SECRET_LIKE_FIELDS) {
-    if (key in input) {
+  for (const key of Object.keys(input)) {
+    if (SECRET_LIKE_FIELDS.has(key.toLowerCase())) {
       return {
         code: 'secret_like_field_rejected',
-        message: `Config must not contain secret-like field "${key}". Use credentialRef instead.`,
+        message: `Config must not contain secret-like field. Use credentialRef instead.`,
       }
     }
   }
@@ -218,11 +233,17 @@ export function resolveGenericEndpointDescriptor(
     return mapDescriptorError(descriptor)
   }
 
-  // Apply capability override if provided
+  // Apply capability override if provided (already validated above)
   if (config.capabilityOverride) {
+    const merged = { ...descriptor.capability } as Record<string, boolean>
+    for (const [key, value] of Object.entries(config.capabilityOverride)) {
+      if (typeof value === 'boolean' && key in merged) {
+        merged[key] = value
+      }
+    }
     return {
       ...descriptor,
-      capability: { ...descriptor.capability, ...config.capabilityOverride } as GenericRuntimeCapability,
+      capability: merged as GenericRuntimeCapability,
     }
   }
 
@@ -242,13 +263,16 @@ function mapDescriptorError(err: DescriptorValidationError): ConfigValidationErr
  *
  * Never exposes raw tokens, bearer values, Authorization strings,
  * URL userinfo, or raw credential material.
+ *
+ * Only applies validated capability overrides. Malformed overrides
+ * are silently ignored to prevent unsafe metadata claims.
  */
 export function toSafeGenericEndpointMetadata(
   config: GenericEndpointConfig,
   _validationState?: 'valid' | 'invalid',
 ): SafeGenericEndpointMetadata {
-  // Use descriptor capability if available, otherwise conservative default
-  let capability: GenericRuntimeCapability = {
+  // Conservative default
+  const capability: GenericRuntimeCapability = {
     textChat: true,
     basicMessages: true,
     streamingText: true,
@@ -271,8 +295,17 @@ export function toSafeGenericEndpointMetadata(
     usageFinalGuaranteed: false,
   }
 
+  // Only apply override if it passes validation (fail-closed)
   if (config.capabilityOverride) {
-    capability = { ...capability, ...config.capabilityOverride } as GenericRuntimeCapability
+    const capError = validateCapabilityOverride(config.capabilityOverride as Record<string, unknown>)
+    if (!capError) {
+      for (const [key, value] of Object.entries(config.capabilityOverride)) {
+        if (typeof value === 'boolean' && key in capability) {
+          ;(capability as Record<string, boolean>)[key] = value
+        }
+      }
+    }
+    // Malformed overrides are silently ignored — conservative defaults remain
   }
 
   return {
