@@ -7,10 +7,7 @@
  * no secure-store implementation, and no provider/endpoint registry.
  */
 
-import {
-  type CredentialError,
-  type ProviderCredential,
-} from '@/next/provider/credentials/providerCredential'
+import type { ProviderCredential } from '@/next/provider/credentials/providerCredential'
 import {
   providerCredentialResolutionFailure,
   providerCredentialResolutionSuccess,
@@ -26,7 +23,7 @@ export type ProviderCredentialStoreFailureCode =
   | 'store_error'
 
 export type ProviderCredentialStoreResult =
-  | Readonly<{ ok: true; credential: ProviderCredential | CredentialError }>
+  | Readonly<{ ok: true; credential: ProviderCredential }>
   | Readonly<{
     ok: false
     code: ProviderCredentialStoreFailureCode
@@ -38,7 +35,7 @@ export type ProviderCredentialStore = Readonly<{
 }>
 
 export function providerCredentialStoreCredential(
-  credential: ProviderCredential | CredentialError,
+  credential: ProviderCredential,
 ): ProviderCredentialStoreResult {
   return { ok: true, credential }
 }

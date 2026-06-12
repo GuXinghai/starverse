@@ -8,6 +8,9 @@
  */
 
 import {
+  isSecretLikeCredentialFieldName,
+} from '@/next/provider/credentials/providerCredential'
+import {
   resolveProviderCredential,
   type ProviderCredentialRef,
   type ProviderCredentialResolver,
@@ -94,49 +97,11 @@ export type SafeGenericEndpointMetadata = Readonly<{
   capability: GenericRuntimeCapability
 }>
 
-// ---------------------------------------------------------------------------
-// Secret-like field detection (case-insensitive)
-// ---------------------------------------------------------------------------
-
-const SECRET_LIKE_FIELDS: ReadonlySet<string> = new Set([
-  // API key variants
-  'apikey',
-  'api_key',
-  // Token variants
-  'token',
-  'accesstoken',
-  'access_token',
-  'bearertoken',
-  'bearer_token',
-  'authtoken',
-  'auth_token',
-  // Authorization / auth
-  'authorization',
-  'auth',
-  // Secret / password
-  'secret',
-  'secretkey',
-  'secret_key',
-  'password',
-  'privatekey',
-  'private_key',
-  // Header containers
-  'headers',
-  'customheaders',
-  'custom_headers',
-  'authheaders',
-  'auth_headers',
-  'authorizationheader',
-  'authorization_header',
-  'proxyauthorization',
-  'proxy_authorization',
-])
-
 function rejectSecretLikeFields(
   input: Record<string, unknown>,
 ): ConfigValidationError | null {
   for (const key of Object.keys(input)) {
-    if (SECRET_LIKE_FIELDS.has(key.toLowerCase())) {
+    if (isSecretLikeCredentialFieldName(key)) {
       return {
         code: 'secret_like_field_rejected',
         message: `Config must not contain secret-like field. Use credentialRef instead.`,

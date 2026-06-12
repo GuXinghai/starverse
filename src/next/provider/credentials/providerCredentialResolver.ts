@@ -9,6 +9,7 @@
 import {
   type CredentialError,
   type ProviderCredential,
+  isSecretLikeCredentialFieldName,
   isCredentialError,
 } from '@/next/provider/credentials/providerCredential'
 
@@ -38,39 +39,6 @@ export type ProviderCredentialResolver = (
   ref: ProviderCredentialRef,
 ) => ProviderCredentialResolution
 
-// ---------------------------------------------------------------------------
-// Secret-like field detection
-// ---------------------------------------------------------------------------
-
-const SECRET_LIKE_REF_FIELDS: ReadonlySet<string> = new Set([
-  'apikey',
-  'api_key',
-  'token',
-  'accesstoken',
-  'access_token',
-  'bearertoken',
-  'bearer_token',
-  'authtoken',
-  'auth_token',
-  'authorization',
-  'auth',
-  'secret',
-  'secretkey',
-  'secret_key',
-  'password',
-  'privatekey',
-  'private_key',
-  'headers',
-  'customheaders',
-  'custom_headers',
-  'authheaders',
-  'auth_headers',
-  'authorizationheader',
-  'authorization_header',
-  'proxyauthorization',
-  'proxy_authorization',
-])
-
 function credentialRefError(message: string): ProviderCredentialResolutionError {
   return { code: 'invalid_credential_ref', message }
 }
@@ -90,7 +58,7 @@ export function validateProviderCredentialRef(
 
   const input = value as Record<string, unknown>
   for (const key of Object.keys(input)) {
-    if (SECRET_LIKE_REF_FIELDS.has(key.toLowerCase())) {
+    if (isSecretLikeCredentialFieldName(key)) {
       return credentialRefError('Credential reference must not contain secret-like fields.')
     }
   }
@@ -106,12 +74,18 @@ export function validateProviderCredentialRef(
 }
 
 export function providerCredentialResolutionSuccess(
+  credential: ProviderCredential,
+): ProviderCredentialResolution {
+  return { ok: true, credential }
+}
+
+export function providerCredentialResolutionFromCredential(
   credential: ProviderCredential | CredentialError,
 ): ProviderCredentialResolution {
   if (isCredentialError(credential)) {
     return providerCredentialResolutionFailure('credential_invalid')
   }
-  return { ok: true, credential }
+  return providerCredentialResolutionSuccess(credential)
 }
 
 export function providerCredentialResolutionFailure(
@@ -148,7 +122,7 @@ export function resolveProviderCredential(
   try {
     const result = resolver(validatedRef)
     if (result.ok === true) {
-      return providerCredentialResolutionSuccess(result.credential)
+      return providerCredentialResolutionFromCredential(result.credential as ProviderCredential | CredentialError)
     }
     if (result.error.code === 'credential_invalid') {
       return providerCredentialResolutionFailure('credential_invalid')

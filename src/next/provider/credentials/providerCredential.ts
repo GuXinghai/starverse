@@ -38,6 +38,49 @@ export type CredentialError = Readonly<{
 }>
 
 // ---------------------------------------------------------------------------
+// Secret-like field detection
+// ---------------------------------------------------------------------------
+
+export const SECRET_LIKE_CREDENTIAL_FIELD_NAMES = [
+  'apikey',
+  'api_key',
+  'token',
+  'accesstoken',
+  'access_token',
+  'bearertoken',
+  'bearer_token',
+  'authtoken',
+  'auth_token',
+  'authorization',
+  'auth',
+  'secret',
+  'secretkey',
+  'secret_key',
+  'password',
+  'privatekey',
+  'private_key',
+  'headers',
+  'customheaders',
+  'custom_headers',
+  'authheaders',
+  'auth_headers',
+  'authorizationheader',
+  'authorization_header',
+  'proxyauthorization',
+  'proxy_authorization',
+] as const
+
+const SECRET_LIKE_CREDENTIAL_FIELD_SET: ReadonlySet<string> = new Set(SECRET_LIKE_CREDENTIAL_FIELD_NAMES)
+
+export function normalizeCredentialFieldName(fieldName: string): string {
+  return fieldName.toLowerCase()
+}
+
+export function isSecretLikeCredentialFieldName(fieldName: string): boolean {
+  return SECRET_LIKE_CREDENTIAL_FIELD_SET.has(normalizeCredentialFieldName(fieldName))
+}
+
+// ---------------------------------------------------------------------------
 // Construction
 // ---------------------------------------------------------------------------
 
