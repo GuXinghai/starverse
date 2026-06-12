@@ -39,7 +39,7 @@ export type ProviderStreamTransport = Readonly<{
  * Accepts a provider-neutral request and an injectable transport.
  * Yields provider-neutral stream events.
  *
- * Implemented by: DeepSeek, OpenAI Responses, Anthropic, Gemini.
+ * Implemented by: DeepSeek, OpenAI Responses, Anthropic, Gemini, Generic.
  * NOT implemented by: OpenRouter (uses DomainEvent bridge path).
  */
 export type RuntimeProviderStreamAdapter = (
