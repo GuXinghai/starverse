@@ -11,7 +11,7 @@
  * OpenRouter preservation checks remain separate in openRouterAdapter.test.ts.
  */
 
-import { describe, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 // — Generic —
 import { streamViaGeneric, streamViaGenericConfig, type GenericFetchFn } from '@/next/provider/generic/genericAdapter'
@@ -92,6 +92,10 @@ function genericErrorChunk(code: string, message: string): string {
 
 function genericToolCallChunk(): string {
   return `data: ${JSON.stringify({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { name: 'fn', arguments: '{}' } }] } }] })}`
+}
+
+function genericFunctionCallChunk(): string {
+  return `data: ${JSON.stringify({ choices: [{ index: 0, delta: { function_call: { name: 'legacy_fn', arguments: '{}' } } }] })}`
 }
 
 function genericReasoningChunk(): string {
@@ -182,6 +186,24 @@ function openaiReasoningSummaryDelta(delta: string, seq = 1): string {
   return `event: response.reasoning_summary_text.delta\ndata: ${JSON.stringify({ type: 'response.reasoning_summary_text.delta', delta, item_id: 'i0', output_index: 0, summary_index: 0, sequence_number: seq })}`
 }
 
+function openaiReasoningTextDelta(delta: string, seq = 1): string {
+  return `event: response.reasoning_text.delta\ndata: ${JSON.stringify({ type: 'response.reasoning_text.delta', delta, item_id: 'i0', content_index: 0, output_index: 0, sequence_number: seq })}`
+}
+
+function openaiReasoningItemDone(summaryText: string, seq = 1): string {
+  return `event: response.output_item.done\ndata: ${JSON.stringify({
+    type: 'response.output_item.done',
+    item: {
+      type: 'reasoning',
+      id: 'rs_1',
+      summary: [{ type: 'summary_text', text: summaryText }],
+      encrypted_content: 'opaque_reasoning_ciphertext',
+      status: 'completed',
+    },
+    sequence_number: seq,
+  })}`
+}
+
 function openaiCompletedSse(response: Record<string, unknown>, seq = 10): string {
   return `event: response.completed\ndata: ${JSON.stringify({ type: 'response.completed', response, sequence_number: seq })}`
 }
@@ -231,6 +253,10 @@ function anthropicSignatureDelta(signature: string, index = 0): string {
   return `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index, delta: { type: 'signature_delta', signature } })}`
 }
 
+function anthropicInputJsonDelta(partialJson: string, index = 2): string {
+  return `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index, delta: { type: 'input_json_delta', partial_json: partialJson } })}`
+}
+
 function anthropicMessageStart(message: Record<string, unknown>): string {
   return `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message })}`
 }
@@ -276,6 +302,10 @@ function geminiFunctionCallChunk(name: string): string {
   return `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ functionCall: { name, args: {} } }], role: 'model' } }] })}`
 }
 
+function geminiFunctionResponseChunk(name: string): string {
+  return `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ functionResponse: { name, response: { result: 'secret tool result' } } }], role: 'model' } }] })}`
+}
+
 function geminiFinishChunk(finishReason: string): string {
   return `data: ${JSON.stringify({ candidates: [{ content: { parts: [] }, finishReason }] })}`
 }
@@ -306,6 +336,42 @@ function mockGeminiFetch(response: Response): GeminiFetchFn {
 // ===========================================================================
 
 describe('provider fixture invariants', () => {
+  describe('terminal helper guardrails', () => {
+    function terminalErrorEvent(): StarverseStreamEvent {
+      return {
+        type: 'stream.error',
+        terminal: true,
+        error: {
+          phase: 'stream',
+          provider: 'test',
+          category: 'protocol',
+          message: 'boom',
+        },
+      }
+    }
+
+    it('rejects multiple terminal errors', () => {
+      expect(() => assertErrorPathTerminal([terminalErrorEvent(), terminalErrorEvent()]))
+        .toThrowError(/exactly one stream\.error/)
+    })
+
+    it('rejects stream.done after terminal error', () => {
+      expect(() => assertErrorPathTerminal([terminalErrorEvent(), { type: 'stream.done' }]))
+        .toThrowError(/only terminal outcome|stream\.done must not appear/)
+    })
+
+    it('rejects visible or accounting output after terminal error', () => {
+      expect(() => assertErrorPathTerminal([
+        terminalErrorEvent(),
+        { type: 'message.text_delta', messageId: 'assistant_1', choiceIndex: 0, text: 'late text' },
+      ])).toThrowError(/must not be followed by output event message\.text_delta/)
+
+      expect(() => assertEofPathTerminal([
+        terminalErrorEvent(),
+        { type: 'usage.delta', usage: { output_tokens: 1 } },
+      ])).toThrowError(/must not be followed by output event usage\.delta/)
+    })
+  })
 
   // =========================================================================
   // Generic OpenAI-compatible
@@ -352,12 +418,23 @@ describe('provider fixture invariants', () => {
     })
 
     describe('content leakage invariants', () => {
+      // This cross-provider gate samples recurring leakage shapes. It is not a
+      // full provider semantic matrix; provider-local tests keep exhaustive
+      // mapper/request coverage.
       it('tool_calls do not become visible text', async () => {
         const response = genericSseWithDone(genericToolCallChunk(), genericFinishChunk('stop'))
         const events = await collectEvents(streamViaGeneric(genericRequest(), {
           baseUrl: 'https://api.example.com/v1', apiKey: GENERIC_VALID_API_KEY, fetch: mockGenericFetch(response),
         }))
         assertNoVisibleTextContains(events, ['tool_calls', 'function'])
+      })
+
+      it('legacy function_call does not become visible text', async () => {
+        const response = genericSseWithDone(genericFunctionCallChunk(), genericFinishChunk('function_call'))
+        const events = await collectEvents(streamViaGeneric(genericRequest(), {
+          baseUrl: 'https://api.example.com/v1', apiKey: GENERIC_VALID_API_KEY, fetch: mockGenericFetch(response),
+        }))
+        assertNoVisibleTextContains(events, ['legacy_fn', 'function_call'])
       })
 
       it('reasoning_content does not become visible text', async () => {
@@ -511,6 +588,31 @@ describe('provider fixture invariants', () => {
         }))
         assertNoVisibleTextContains(events, ['Let me reason...'])
       })
+
+      it('reasoning_text delta does not become visible text', async () => {
+        const response = openaiSseWithDone(
+          openaiReasoningTextDelta('Private reasoning text'),
+          openaiTextDelta('The answer'),
+          openaiCompletedSse({ id: 'r', status: 'completed', output: [] }),
+        )
+        const events = await collectEvents(streamViaOpenAIResponses(openaiRequest(), {
+          baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-test', fetch: mockOpenAIFetch(response),
+        }))
+        assertNoVisibleTextContains(events, ['Private reasoning text'])
+        assertReasoningNotInVisibleText(events)
+      })
+
+      it('reasoning output item does not become visible text', async () => {
+        const response = openaiSseWithDone(
+          openaiReasoningItemDone('Hidden item summary'),
+          openaiTextDelta('The answer'),
+          openaiCompletedSse({ id: 'r', status: 'completed', output: [] }),
+        )
+        const events = await collectEvents(streamViaOpenAIResponses(openaiRequest(), {
+          baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-test', fetch: mockOpenAIFetch(response),
+        }))
+        assertNoVisibleTextContains(events, ['Hidden item summary', 'opaque_reasoning_ciphertext'])
+      })
     })
   })
 
@@ -584,6 +686,19 @@ describe('provider fixture invariants', () => {
         }))
         assertNoVisibleTextContains(events, ['sig_abc123', 'thinking...'])
       })
+
+      it('input_json_delta does not become visible text', async () => {
+        const response = anthropicSse(
+          anthropicMessageStart({ id: 'msg_1', model: 'claude-sonnet-4-5', usage: { input_tokens: 10, output_tokens: 0 } }),
+          anthropicInputJsonDelta('{"city":'),
+          anthropicInputJsonDelta('"NYC"}'),
+          anthropicMessageStop(),
+        )
+        const events = await collectEvents(streamViaAnthropic(anthropicRequest(), {
+          baseUrl: 'https://api.anthropic.com/v1', apiKey: 'sk-ant-test', fetch: mockAnthropicFetch(response),
+        }))
+        assertNoVisibleTextContains(events, ['"city"', 'NYC'])
+      })
     })
   })
 
@@ -638,6 +753,14 @@ describe('provider fixture invariants', () => {
           baseUrl: 'https://generativelanguage.googleapis.com', apiKey: 'test-key', fetch: mockGeminiFetch(response),
         }))
         assertNoVisibleTextContains(events, ['search', 'functionCall'])
+      })
+
+      it('functionResponse does not become visible text', async () => {
+        const response = geminiSse(geminiFunctionResponseChunk('get_weather'), geminiFinishChunk('STOP'))
+        const events = await collectEvents(streamViaGemini(geminiRequest(), {
+          baseUrl: 'https://generativelanguage.googleapis.com', apiKey: 'test-key', fetch: mockGeminiFetch(response),
+        }))
+        assertNoVisibleTextContains(events, ['get_weather', 'secret tool result', 'functionResponse'])
       })
     })
   })
