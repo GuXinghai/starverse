@@ -26,13 +26,13 @@ Phase 0–9 provider fixture foundations are complete:
 | OpenAI Responses | Phase 4 | Phase 5 | ✅ complete |
 | Anthropic | Phase 6 | Phase 7 | ✅ complete |
 | Gemini API / Google AI Studio | Phase 8b | Phase 9 | ✅ complete |
-| Generic OpenAI-compatible | Phase 3b | Phase 3b | ✅ complete |
+| Generic OpenAI-compatible | Phase 3b | Phase 3b (endpoint descriptor/profile-lite/capability-lite fixture boundary) | ✅ complete |
 
 Shared contract: `RuntimeProviderStreamAdapter` extracted for DeepSeek, OpenAI Responses, Anthropic, Gemini, Generic. OpenRouter does not yet conform (uses DomainEvent bridge path).
 
 Adapter-side credential boundary seed exists (bearer credential construction, auth header building, credential masking, credential-aware error redaction). This is pure adapter/test boundary only — not secure store, not renderer/settings/IPC, not live enablement.
 
-Generic adapter conservative policy: text chat + basic streaming + basic error only. Rejects unsupported outbound content (non-generic context messages, non-text content blocks, malformed text blocks) before fetch. Sanitizes credential-bearing messages and provider-controlled error codes. No tools/files/vision/reasoning/web search/structured output by default.
+Generic adapter conservative policy: text chat + basic streaming + basic error only. Endpoint descriptor/profile-lite/capability-lite fixture boundary. Rejects unsupported requested high-risk features (tools, web search, image generation, plugins, reasoning) before fetch. Rejects unsupported outbound content (non-generic context messages, non-text content blocks, malformed text blocks) before fetch. Sanitizes credential-bearing messages and provider-controlled error codes. No tools/files/vision/reasoning/web search/structured output by default. This remains fixture-only and does not exit Phase 3 live/custom endpoint requirements.
 
 This status reflects fixture-integrated adapter foundations only. No provider has live API support, UI exposure, settings integration, secure credential store, registry support, or production send path in this closeout.
 
