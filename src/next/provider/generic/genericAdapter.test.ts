@@ -408,4 +408,245 @@ describe('streamViaGeneric', () => {
       expect(init.headers['Authorization']).toBe('Bearer sk-my-token-123')
     })
   })
+
+  // ---------------------------------------------------------------------------
+  // Unsupported outbound content tests
+  // ---------------------------------------------------------------------------
+
+  describe('unsupported outbound content', () => {
+    it('non-empty unsupported contextMessages fails before fetch', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        contextMessages: [{ role: 'tool', content: 'tool result' }],
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].terminal).toBe(true)
+        expect(errorEvents[0].error.phase).toBe('request_build')
+        expect(errorEvents[0].error.code).toBe('unsupported_context_message')
+      }
+    })
+
+    it('unsupported currentUserContentBlocks fails before fetch', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        currentUserContentBlocks: [{ type: 'image_url', url: 'https://example.com/img.png' }],
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.phase).toBe('request_build')
+        expect(errorEvents[0].error.code).toBe('unsupported_content_block')
+      }
+    })
+
+    it('mixed text + unsupported block fails before fetch', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        currentUserContentBlocks: [
+          { type: 'text', text: 'hello' },
+          { type: 'file', url: 'https://example.com/doc.pdf' },
+        ],
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('unsupported_content_block')
+      }
+    })
+
+    it('all-unsupported blocks fails and does not send empty user message', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        currentUserContentBlocks: [
+          { type: 'image_url', url: 'a.png' },
+          { type: 'file', url: 'b.pdf' },
+        ],
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      const doneEvents = events.filter((e) => e.type === 'stream.done')
+      expect(doneEvents).toHaveLength(0)
+    })
+
+    it('unsupported content emits stream.error and no stream.done', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        contextMessages: [{ role: 'function', content: 'result' }],
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      const doneEvents = events.filter((e) => e.type === 'stream.done')
+      expect(errorEvents).toHaveLength(1)
+      expect(doneEvents).toHaveLength(0)
+      expect(events[events.length - 1].type).toBe('stream.error')
+    })
+
+    it('unsupported content error does not leak raw token', async () => {
+      const rawToken = 'sk-secret-leak-test'
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        currentUserContentBlocks: [{ type: 'image_url', url: 'img.png' }],
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: rawToken,
+        fetch,
+      }))
+
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain(rawToken)
+    })
+
+    it('valid contextMessages are accepted', async () => {
+      const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
+      const fetch = mockFetch(response)
+
+      await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        contextMessages: [
+          { role: 'system', content: 'You are helpful.' },
+          { role: 'user', content: 'Hello' },
+          { role: 'assistant', content: 'Hi there!' },
+        ],
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(1)
+      const body = JSON.parse((fetch as any).mock.calls[0][1].body)
+      expect(body.messages).toHaveLength(4) // 3 context + 1 user
+      expect(body.messages[0].role).toBe('system')
+      expect(body.messages[3].role).toBe('user')
+    })
+
+    it('text-only currentUserContentBlocks are accepted', async () => {
+      const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
+      const fetch = mockFetch(response)
+
+      await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        currentUserContentBlocks: [
+          { type: 'text', text: 'part 1' },
+          { type: 'text', text: 'part 2' },
+        ],
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(1)
+      const body = JSON.parse((fetch as any).mock.calls[0][1].body)
+      expect(body.messages[0].content).toBe('part 1\npart 2')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Additional error category tests (Codex minors)
+  // ---------------------------------------------------------------------------
+
+  describe('error categories', () => {
+    it('HTTP 500 yields terminal stream.error with http category', async () => {
+      const response = new Response(null, { status: 500, statusText: 'Internal Server Error' })
+      const fetch = mockFetch(response)
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.category).toBe('http')
+        expect(errorEvents[0].error.httpStatus).toBe(500)
+      }
+    })
+
+    it('HTTP 403 yields terminal stream.error with bad_request category', async () => {
+      const response = new Response(
+        JSON.stringify({ error: { message: 'Forbidden' } }),
+        { status: 403, statusText: 'Forbidden' },
+      )
+      const fetch = mockFetch(response)
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.category).toBe('bad_request')
+        expect(errorEvents[0].error.httpStatus).toBe(403)
+      }
+    })
+
+    it('malformed JSON in SSE yields parse_error and no stream.done', async () => {
+      const body = sseFixture('data: {invalid json}\n\n', 'data: [DONE]\n\n')
+      const response = makeResponseFromText(body)
+      const fetch = mockFetch(response)
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      const doneEvents = events.filter((e) => e.type === 'stream.done')
+      expect(errorEvents).toHaveLength(1)
+      expect(doneEvents).toHaveLength(0)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.phase).toBe('sse_decode')
+        expect(errorEvents[0].error.category).toBe('protocol')
+      }
+    })
+  })
 })

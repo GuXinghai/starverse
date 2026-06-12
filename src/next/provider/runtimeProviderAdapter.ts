@@ -1,8 +1,8 @@
 /**
  * Runtime provider stream adapter contract.
  *
- * This is the minimal shared callable shape extracted from the four
- * integrated remote provider adapters (DeepSeek, OpenAI Responses, Anthropic, Gemini).
+ * This is the minimal shared callable shape extracted from the five
+ * integrated provider adapters (DeepSeek, OpenAI Responses, Anthropic, Gemini, Generic).
  *
  * OpenRouter is NOT included yet because the current app path uses the
  * OpenRouter facade with a DomainEvent bridge, not this contract.
