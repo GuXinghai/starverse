@@ -427,6 +427,27 @@ describe('streamViaAnthropic', () => {
     }
   })
 
+  it('unexpected EOF yields terminal stream.error with category protocol', async () => {
+    const response = makeSseResponse(textDeltaSse('some text'))
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaAnthropic(makeRequest(), {
+      baseUrl: 'https://api.anthropic.com/v1',
+      apiKey: 'sk-ant-test',
+      fetch,
+    }))
+
+    const errorEvents = events.filter((e) => e.type === 'stream.error')
+    const doneEvents = events.filter((e) => e.type === 'stream.done')
+    expect(errorEvents).toHaveLength(1)
+    expect(doneEvents).toHaveLength(0)
+    if (errorEvents[0].type === 'stream.error') {
+      expect(errorEvents[0].terminal).toBe(true)
+      expect(errorEvents[0].error.category).toBe('protocol')
+    }
+    expect(events[events.length - 1].type).toBe('stream.error')
+  })
+
   it('full Claude thinking flow: thinking → signature → text → stop_reason → usage → done', async () => {
     const response = makeSseResponse(
       messageStartSse({ id: 'msg_1', model: 'claude-sonnet-4-5', usage: { input_tokens: 50, output_tokens: 0 } }),

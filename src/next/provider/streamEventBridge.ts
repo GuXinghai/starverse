@@ -15,6 +15,8 @@ import type { ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 /**
  * Convert an OpenRouter ErrorEnvelope to a StarverseProviderError.
  * Used when bridging OpenRouter DomainEvent errors to the provider-neutral shape.
+ *
+ * The original ErrorEnvelope is preserved in `raw` for lossless roundtrip.
  */
 function errorEnvelopeToProviderError(env: ErrorEnvelope): StarverseProviderError {
   return {
@@ -29,10 +31,38 @@ function errorEnvelopeToProviderError(env: ErrorEnvelope): StarverseProviderErro
 }
 
 /**
+ * Shape guard: check if a value looks like a valid OpenRouter ErrorEnvelope.
+ * Narrow check — only verifies the discriminator fields that current consumers depend on.
+ */
+function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
+  if (!value || typeof value !== 'object') return false
+  const obj = value as Record<string, unknown>
+  return (
+    typeof obj.completionClass === 'string' &&
+    typeof obj.phase === 'string' &&
+    obj.openrouter != null &&
+    typeof obj.openrouter === 'object' &&
+    typeof (obj.openrouter as Record<string, unknown>).code === 'string' &&
+    typeof obj.truncated === 'boolean'
+  )
+}
+
+/**
  * Convert a StarverseProviderError back to an OpenRouter ErrorEnvelope.
- * Used when bridging provider-neutral errors back to the DomainEvent path.
+ *
+ * If the StarverseProviderError was created from an OpenRouter ErrorEnvelope
+ * (i.e. raw contains a valid ErrorEnvelope), return the original unchanged
+ * to preserve all fields losslessly.
+ *
+ * Otherwise construct a minimal ErrorEnvelope for non-OpenRouter bridge fallback.
  */
 function providerErrorToErrorEnvelope(err: StarverseProviderError): ErrorEnvelope {
+  // Lossless path: raw contains the original ErrorEnvelope
+  if (isErrorEnvelope(err.raw)) {
+    return err.raw
+  }
+
+  // Fallback path: non-OpenRouter errors get a minimal ErrorEnvelope
   return {
     phase: err.phase === 'transport' ? 'pre_stream' : err.phase === 'stream' ? 'mid_stream' : 'post_stream',
     completionClass: err.category === 'aborted' ? 'aborted' : 'error',
@@ -41,7 +71,6 @@ function providerErrorToErrorEnvelope(err: StarverseProviderError): ErrorEnvelop
       message: err.message,
     },
     truncated: false,
-    raw: err.raw ? { raw_error: err.raw } : undefined,
   } as ErrorEnvelope
 }
 

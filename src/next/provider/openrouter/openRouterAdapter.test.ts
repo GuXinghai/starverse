@@ -119,6 +119,79 @@ describe('streamEventBridge', () => {
     }
   })
 
+  it('roundtrip losslessly preserves full ErrorEnvelope with truncated completionClass', () => {
+    const envelope = {
+      phase: 'mid_stream' as const,
+      completionClass: 'truncated' as const,
+      openrouter: { code: 'length', message: 'max tokens exceeded', metadata: { retry: true }, provider: 'openai' },
+      http: { status: 200, statusText: 'OK', headers: { 'x-request-id': 'req_1' } },
+      stream: { generation_id: 'gen_1', model: 'gpt-4', provider: 'openai', finish_reason: 'length', chunk_no: 42 },
+      context: { model: 'gpt-4', stream: true },
+      truncated: true,
+      kind: 'mid_stream_sse' as const,
+    }
+    const original: DomainEvent = { type: 'StreamError', error: envelope as any, terminal: true }
+    const streamEvent = domainEventToStreamEvent(original)
+    const roundtripped = streamEventToDomainEvent(streamEvent)
+    expect(roundtripped.type).toBe('StreamError')
+    if (roundtripped.type === 'StreamError') {
+      const rt = roundtripped.error as any
+      expect(rt.completionClass).toBe('truncated')
+      expect(rt.phase).toBe('mid_stream')
+      expect(rt.openrouter.code).toBe('length')
+      expect(rt.openrouter.message).toBe('max tokens exceeded')
+      expect(rt.openrouter.metadata).toEqual({ retry: true })
+      expect(rt.openrouter.provider).toBe('openai')
+      expect(rt.http.status).toBe(200)
+      expect(rt.http.statusText).toBe('OK')
+      expect(rt.http.headers['x-request-id']).toBe('req_1')
+      expect(rt.stream.generation_id).toBe('gen_1')
+      expect(rt.stream.model).toBe('gpt-4')
+      expect(rt.context.model).toBe('gpt-4')
+      expect(rt.truncated).toBe(true)
+      expect(rt.kind).toBe('mid_stream_sse')
+    }
+  })
+
+  it('roundtrip losslessly preserves ErrorEnvelope with completionClass ok', () => {
+    const envelope = {
+      phase: 'pre_stream' as const,
+      completionClass: 'ok' as const,
+      openrouter: { code: '200' },
+      truncated: false,
+      kind: 'pre_stream_http' as const,
+    }
+    const original: DomainEvent = { type: 'StreamError', error: envelope as any, terminal: true }
+    const roundtripped = streamEventToDomainEvent(domainEventToStreamEvent(original))
+    if (roundtripped.type === 'StreamError') {
+      const rt = roundtripped.error as any
+      expect(rt.completionClass).toBe('ok')
+      expect(rt.kind).toBe('pre_stream_http')
+      expect(rt.truncated).toBe(false)
+    }
+  })
+
+  it('roundtrip losslessly preserves abort ErrorEnvelope', () => {
+    const envelope = {
+      phase: 'pre_stream' as const,
+      completionClass: 'aborted' as const,
+      openrouter: { code: 'aborted', message: 'aborted: user' },
+      truncated: false,
+      kind: 'aborted' as const,
+    }
+    const original: DomainEvent = { type: 'StreamAbort', reason: 'user', envelope: envelope as any }
+    const streamEvent = domainEventToStreamEvent(original)
+    expect(streamEvent.type).toBe('stream.abort')
+    const roundtripped = streamEventToDomainEvent(streamEvent)
+    expect(roundtripped.type).toBe('StreamAbort')
+    if (roundtripped.type === 'StreamAbort') {
+      const rt = roundtripped.envelope as any
+      expect(rt.completionClass).toBe('aborted')
+      expect(rt.kind).toBe('aborted')
+      expect(rt.openrouter.code).toBe('aborted')
+    }
+  })
+
   it('roundtrip preserves reasoning detail chunkNo', () => {
     const original: DomainEvent = { type: 'MessageDeltaReasoningDetail', messageId: 'm', choiceIndex: 0, detail: { text: 't' }, chunkNo: 7 }
     const streamEvent = domainEventToStreamEvent(original)

@@ -398,6 +398,27 @@ describe('streamViaGemini', () => {
     }
   })
 
+  it('unexpected EOF yields terminal stream.error with category protocol', async () => {
+    const response = makeSseResponse(textChunkSse('some text'))
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaGemini(makeRequest(), {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: 'test-key',
+      fetch,
+    }))
+
+    const errorEvents = events.filter((e) => e.type === 'stream.error')
+    const doneEvents = events.filter((e) => e.type === 'stream.done')
+    expect(errorEvents).toHaveLength(1)
+    expect(doneEvents).toHaveLength(0)
+    if (errorEvents[0].type === 'stream.error') {
+      expect(errorEvents[0].terminal).toBe(true)
+      expect(errorEvents[0].error.category).toBe('protocol')
+    }
+    expect(events[events.length - 1].type).toBe('stream.error')
+  })
+
   it('satisfies RuntimeProviderStreamAdapter interface', async () => {
     // Type-level check: streamViaGemini is annotated as RuntimeProviderStreamAdapter
     // This test verifies the function exists and is callable with the expected signature
