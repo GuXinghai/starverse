@@ -649,4 +649,164 @@ describe('streamViaGeneric', () => {
       }
     })
   })
+
+  // ---------------------------------------------------------------------------
+  // Credential redaction tests
+  // ---------------------------------------------------------------------------
+
+  describe('credential redaction', () => {
+    const SECRET_TOKEN = 'sk-super-secret-token-12345'
+
+    it('provider SSE error echoing exact token is redacted', async () => {
+      const response = makeSseResponseWithDone(
+        errorChunkJson('invalid_key', `Invalid key: ${SECRET_TOKEN}`),
+      )
+      const fetch = mockFetch(response)
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: SECRET_TOKEN,
+        fetch,
+      }))
+
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain(SECRET_TOKEN)
+      expect(serialized).toContain('[REDACTED_CREDENTIAL]')
+    })
+
+    it('provider SSE error echoing Bearer <token> is redacted', async () => {
+      const response = makeSseResponseWithDone(
+        errorChunkJson('auth_error', `Bad Authorization: Bearer ${SECRET_TOKEN}`),
+      )
+      const fetch = mockFetch(response)
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: SECRET_TOKEN,
+        fetch,
+      }))
+
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain(SECRET_TOKEN)
+      expect(serialized).not.toContain('Bearer sk-')
+    })
+
+    it('HTTP error body echoing exact token is redacted', async () => {
+      const response = new Response(
+        JSON.stringify({ error: { message: `Invalid token: ${SECRET_TOKEN}` } }),
+        { status: 401, statusText: 'Unauthorized' },
+      )
+      const fetch = mockFetch(response)
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: SECRET_TOKEN,
+        fetch,
+      }))
+
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain(SECRET_TOKEN)
+      expect(serialized).toContain('[REDACTED_CREDENTIAL]')
+    })
+
+    it('HTTP error body echoing Authorization: Bearer <token> is redacted', async () => {
+      const response = new Response(
+        JSON.stringify({ error: { message: `Rejected: Authorization: Bearer ${SECRET_TOKEN}` } }),
+        { status: 403, statusText: 'Forbidden' },
+      )
+      const fetch = mockFetch(response)
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: SECRET_TOKEN,
+        fetch,
+      }))
+
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain(SECRET_TOKEN)
+      expect(serialized).not.toContain('Bearer sk-')
+    })
+
+    it('thrown fetch/network error echoing token is redacted', async () => {
+      const fetch: GenericFetchFn = vi.fn(async () => {
+        throw new TypeError(`Connection failed for token ${SECRET_TOKEN}`)
+      })
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: SECRET_TOKEN,
+        fetch,
+      }))
+
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain(SECRET_TOKEN)
+      expect(serialized).toContain('[REDACTED_CREDENTIAL]')
+    })
+
+    it('abort reason echoing token is redacted', async () => {
+      const controller = new AbortController()
+      controller.abort()
+
+      const fetch: GenericFetchFn = vi.fn(async (_url, init) => {
+        if (init.signal?.aborted) {
+          throw new DOMException(`Aborted with token ${SECRET_TOKEN}`, 'AbortError')
+        }
+        return makeSseResponseWithDone(textChunkJson('Hi'))
+      })
+
+      const events = await collectEvents(streamViaGeneric(
+        { ...makeRequest(), signal: controller.signal },
+        { baseUrl: 'https://api.example.com/v1', apiKey: SECRET_TOKEN, fetch },
+      ))
+
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain(SECRET_TOKEN)
+    })
+
+    it('unsupported content validation error contains no raw token', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        contextMessages: [{ role: 'tool', content: SECRET_TOKEN }],
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: SECRET_TOKEN,
+        fetch,
+      }))
+
+      const serialized = JSON.stringify(events)
+      // Validation error is a static message, should not contain token
+      expect(serialized).not.toContain(SECRET_TOKEN)
+    })
+
+    it('all emitted events/errors/snapshots contain no raw token on any path', async () => {
+      // Test multiple error paths with the same secret token
+      const paths = [
+        // Provider SSE error
+        makeSseResponseWithDone(errorChunkJson('error', `Echo: ${SECRET_TOKEN}`)),
+        // HTTP error
+        new Response(JSON.stringify({ error: { message: `Echo: ${SECRET_TOKEN}` } }), { status: 401 }),
+        // Network error
+        (() => { const f: GenericFetchFn = vi.fn(async () => { throw new TypeError(`Echo: ${SECRET_TOKEN}`) }); return f })(),
+      ]
+
+      for (const pathOrResponse of paths) {
+        const fetch = typeof pathOrResponse === 'function'
+          ? pathOrResponse
+          : mockFetch(pathOrResponse as Response)
+
+        const events = await collectEvents(streamViaGeneric(makeRequest(), {
+          baseUrl: 'https://api.example.com/v1',
+          apiKey: SECRET_TOKEN,
+          fetch,
+        }))
+
+        const serialized = JSON.stringify(events)
+        expect(serialized).not.toContain(SECRET_TOKEN)
+      }
+    })
+  })
 })

@@ -14,6 +14,7 @@ import {
   createBearerCredential,
   buildAuthHeader,
   isCredentialError,
+  redactCredentialFromMessage,
 } from '@/next/provider/credentials/providerCredential'
 
 export type GenericFetchFn = (url: string, init: RequestInit) => Promise<Response>
@@ -25,7 +26,8 @@ export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* st
   const { assistantMessageId, config, signal } = request
 
   // Credential boundary: create and validate credential from transport
-  const cred = createBearerCredential(transport.apiKey)
+  const token = transport.apiKey
+  const cred = createBearerCredential(token)
   if (isCredentialError(cred)) {
     yield {
       type: 'stream.error',
@@ -86,12 +88,12 @@ export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* st
       signal: signal ?? undefined,
     })
   } catch (err: any) {
-    yield* mapTransportError(err)
+    yield* mapTransportError(err, token)
     return
   }
 
   if (!response.ok) {
-    yield* mapHttpError(response)
+    yield* mapHttpError(response, token)
     return
   }
 
@@ -126,7 +128,7 @@ export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* st
             phase: 'provider',
             provider: 'generic',
             category: 'provider_error',
-            message: chunk.error.message ?? 'Provider error',
+            message: redactCredentialFromMessage(chunk.error.message ?? 'Provider error', token),
             code: String(chunk.error.code ?? chunk.error.type ?? 'error'),
           } satisfies StarverseProviderError,
           terminal: true,
@@ -182,7 +184,7 @@ export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* st
           phase: 'sse_decode',
           provider: 'generic',
           category: 'protocol',
-          message: sseEvent.message,
+          message: redactCredentialFromMessage(sseEvent.message, token),
         } satisfies StarverseProviderError,
         terminal: true,
       }
@@ -293,7 +295,7 @@ function normalizeFinishReason(native: string): string {
   return KNOWN_FINISH_REASONS.has(native) ? native : 'unknown'
 }
 
-async function* mapTransportError(err: any): AsyncGenerator<StarverseStreamEvent> {
+async function* mapTransportError(err: any, token: string): AsyncGenerator<StarverseStreamEvent> {
   if (err?.name === 'AbortError') {
     yield {
       type: 'stream.abort',
@@ -302,7 +304,7 @@ async function* mapTransportError(err: any): AsyncGenerator<StarverseStreamEvent
         phase: 'abort',
         provider: 'generic',
         category: 'aborted',
-        message: err?.reason?.toString() ?? 'aborted',
+        message: redactCredentialFromMessage(err?.reason?.toString() ?? 'aborted', token),
       } satisfies StarverseProviderError,
     }
     return
@@ -314,13 +316,13 @@ async function* mapTransportError(err: any): AsyncGenerator<StarverseStreamEvent
       phase: 'transport',
       provider: 'generic',
       category: 'network',
-      message: err?.message ?? 'Network error',
+      message: redactCredentialFromMessage(err?.message ?? 'Network error', token),
     } satisfies StarverseProviderError,
     terminal: true,
   }
 }
 
-async function* mapHttpError(response: Response): AsyncGenerator<StarverseStreamEvent> {
+async function* mapHttpError(response: Response, token: string): AsyncGenerator<StarverseStreamEvent> {
   let errorBody: unknown
   try {
     errorBody = await response.json()
@@ -330,7 +332,8 @@ async function* mapHttpError(response: Response): AsyncGenerator<StarverseStream
 
   const errorObj = (errorBody as any)?.error
   const code = typeof errorObj?.code === 'string' ? errorObj.code : String(response.status)
-  const message = typeof errorObj?.message === 'string' ? errorObj.message : response.statusText
+  const rawMessage = typeof errorObj?.message === 'string' ? errorObj.message : response.statusText
+  const message = redactCredentialFromMessage(rawMessage, token)
 
   const category = response.status === 401
     ? 'auth' as const
