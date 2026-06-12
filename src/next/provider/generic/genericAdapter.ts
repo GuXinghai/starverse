@@ -57,7 +57,18 @@ export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* st
     return
   }
 
-  const messages = buildMessages(request)
+  // Validate outbound content before fetch — reject unsupported input deterministically
+  const validation = buildMessages(request)
+  if (!validation.ok) {
+    yield {
+      type: 'stream.error',
+      error: validation.error,
+      terminal: true,
+    }
+    return
+  }
+
+  const messages = validation.messages
   const body = buildGenericRequest({ model: config.model, messages, config })
 
   const url = `${transport.baseUrl.replace(/\/$/, '')}/chat/completions`
@@ -198,28 +209,76 @@ export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* st
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function buildMessages(request: ProviderStreamRequest): GenericMessage[] {
+type ValidationResult =
+  | { ok: true; messages: GenericMessage[] }
+  | { ok: false; error: StarverseProviderError }
+
+/**
+ * Validate and build messages for Generic adapter.
+ * Rejects unsupported content deterministically before fetch.
+ */
+function buildMessages(request: ProviderStreamRequest): ValidationResult {
   const messages: GenericMessage[] = []
 
-  if (request.contextMessages) {
+  // contextMessages: all must be generic-compatible, none silently dropped
+  if (request.contextMessages && request.contextMessages.length > 0) {
     for (const msg of request.contextMessages) {
-      if (isGenericMessage(msg)) {
-        messages.push(msg)
+      if (!isGenericMessage(msg)) {
+        return {
+          ok: false,
+          error: {
+            phase: 'request_build',
+            provider: 'generic',
+            category: 'bad_request',
+            message: 'Generic adapter does not support this context message type. Only system/user/assistant string messages are supported.',
+            code: 'unsupported_context_message',
+          },
+        }
       }
+      messages.push(msg)
     }
   }
 
+  // currentUserContentBlocks: reject non-text blocks, reject empty result
   if (request.currentUserContentBlocks && request.currentUserContentBlocks.length > 0) {
-    const textParts = request.currentUserContentBlocks
-      .filter((b) => b.type === 'text')
-      .map((b) => (b as any).text)
-      .filter((t): t is string => typeof t === 'string')
-    messages.push({ role: 'user', content: textParts.join('\n') })
+    const textParts: string[] = []
+    for (const block of request.currentUserContentBlocks) {
+      if (block.type !== 'text') {
+        return {
+          ok: false,
+          error: {
+            phase: 'request_build',
+            provider: 'generic',
+            category: 'bad_request',
+            message: `Generic adapter does not support content block type "${block.type}". Only text blocks are supported.`,
+            code: 'unsupported_content_block',
+          },
+        }
+      }
+      if (typeof block.text === 'string') {
+        textParts.push(block.text)
+      }
+    }
+    const combined = textParts.join('\n')
+    if (combined.length === 0) {
+      return {
+        ok: false,
+        error: {
+          phase: 'request_build',
+          provider: 'generic',
+          category: 'bad_request',
+          message: 'User content blocks produced empty message after text extraction.',
+          code: 'empty_user_content',
+        },
+      }
+    }
+    messages.push({ role: 'user', content: combined })
   } else {
+    // Direct userText — always accepted (string content)
     messages.push({ role: 'user', content: request.userText })
   }
 
-  return messages
+  return { ok: true, messages }
 }
 
 function isGenericMessage(msg: unknown): msg is GenericMessage {
