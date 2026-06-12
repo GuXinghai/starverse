@@ -34,6 +34,47 @@ export async function collectStreamEvents(
 // Terminal event invariants
 // ---------------------------------------------------------------------------
 
+type StreamEventType = StarverseStreamEvent['type']
+
+const TERMINAL_OUTCOME_EVENT_TYPES = new Set<StreamEventType>([
+  'stream.error',
+  'stream.done',
+  'stream.abort',
+])
+
+const POST_ERROR_OUTPUT_EVENT_TYPES = new Set<StreamEventType>([
+  'stream.done',
+  'stream.abort',
+  'message.text_delta',
+  'message.content_block_append',
+  'message.tool_call_delta',
+  'message.annotation_batch',
+  'message.reasoning_detail',
+  'message.reasoning_detail_batch',
+  'usage.delta',
+  'meta.delta',
+])
+
+function eventTypes(events: StarverseStreamEvent[]): string {
+  return events.map((event) => event.type).join(' -> ')
+}
+
+function indexesOfType(events: StarverseStreamEvent[], type: StreamEventType): number[] {
+  const indexes: number[] = []
+  events.forEach((event, index) => {
+    if (event.type === type) indexes.push(index)
+  })
+  return indexes
+}
+
+function terminalOutcomeIndexes(events: StarverseStreamEvent[]): number[] {
+  const indexes: number[] = []
+  events.forEach((event, index) => {
+    if (TERMINAL_OUTCOME_EVENT_TYPES.has(event.type)) indexes.push(index)
+  })
+  return indexes
+}
+
 /**
  * Assert that events contain exactly one terminal event (stream.done or stream.error)
  * and that it is the last event.
@@ -75,20 +116,56 @@ export function assertHappyPathTerminal(events: StarverseStreamEvent[]): void {
 }
 
 /**
- * Assert error path: stream.error present, no stream.done.
+ * Assert that terminal stream.error is the only terminal outcome.
+ *
+ * Allows provider metadata/usage before the error, but rejects any terminal
+ * done/abort, second error, or post-error output event. This helper is
+ * intentionally test-only; it is not the production stream contract.
  */
 export function assertErrorPathTerminal(events: StarverseStreamEvent[]): void {
-  const errorEvents = events.filter((e) => e.type === 'stream.error')
-  expect(errorEvents.length).toBeGreaterThan(0)
+  const errorIndexes = indexesOfType(events, 'stream.error')
+  expect(errorIndexes, `error path must emit exactly one stream.error; saw [${eventTypes(events)}]`).toHaveLength(1)
 
-  const doneEvents = events.filter((e) => e.type === 'stream.done')
-  expect(doneEvents).toHaveLength(0)
+  const errorIndex = errorIndexes[0]
+  const errorEvent = events[errorIndex]
+  if (errorEvent.type !== 'stream.error') {
+    expect.fail(`error path invariant internal mismatch at index ${errorIndex}; saw ${errorEvent.type}`)
+  }
+  expect(errorEvent.terminal, 'stream.error must be marked terminal').toBe(true)
+
+  const terminalIndexes = terminalOutcomeIndexes(events)
+  expect(
+    terminalIndexes,
+    `error path must have stream.error as its only terminal outcome; saw terminal indexes ${terminalIndexes.join(', ')} in [${eventTypes(events)}]`,
+  ).toEqual([errorIndex])
 
   assertNoDoneAfterError(events)
+  assertNoOutputAfterTerminalError(events, errorIndex)
 }
 
 /**
- * Assert EOF path: protocol error, no stream.done.
+ * Assert that output-producing events do not appear after terminal stream.error.
+ */
+export function assertNoOutputAfterTerminalError(
+  events: StarverseStreamEvent[],
+  errorIndex?: number,
+): void {
+  const resolvedErrorIndex = errorIndex ?? indexesOfType(events, 'stream.error')[0]
+  expect(resolvedErrorIndex, `post-error output check requires a stream.error; saw [${eventTypes(events)}]`).toBeGreaterThanOrEqual(0)
+
+  for (let index = resolvedErrorIndex + 1; index < events.length; index += 1) {
+    const event = events[index]
+    if (POST_ERROR_OUTPUT_EVENT_TYPES.has(event.type)) {
+      expect.fail(
+        `terminal stream.error at index ${resolvedErrorIndex} must not be followed by output event ${event.type} at index ${index}; saw [${eventTypes(events)}]`,
+      )
+    }
+  }
+}
+
+/**
+ * Assert EOF path: exactly one terminal protocol error, no stream.done, and
+ * no post-error output.
  */
 export function assertEofPathTerminal(events: StarverseStreamEvent[]): void {
   assertErrorPathTerminal(events)
@@ -97,7 +174,7 @@ export function assertEofPathTerminal(events: StarverseStreamEvent[]): void {
   const protocolErrors = errorEvents.filter(
     (e) => e.type === 'stream.error' && e.error.category === 'protocol',
   )
-  expect(protocolErrors.length).toBeGreaterThan(0)
+  expect(protocolErrors, `EOF path must terminate with exactly one protocol stream.error; saw [${eventTypes(events)}]`).toHaveLength(1)
 }
 
 /**
