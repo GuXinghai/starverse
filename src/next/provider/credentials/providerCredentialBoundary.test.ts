@@ -9,10 +9,15 @@ import {
 } from '@/next/provider/generic/genericEndpointConfig'
 import {
   validateProviderCredentialRef,
-  providerCredentialResolutionSuccess,
+  providerCredentialResolutionFromCredential,
   type ProviderCredentialResolver,
 } from '@/next/provider/credentials/providerCredentialResolver'
-import { createBearerCredential } from '@/next/provider/credentials/providerCredential'
+import {
+  SECRET_LIKE_CREDENTIAL_FIELD_NAMES,
+  createBearerCredential,
+  isSecretLikeCredentialFieldName,
+  normalizeCredentialFieldName,
+} from '@/next/provider/credentials/providerCredential'
 import {
   providerCredentialResolverFromStore,
   providerCredentialStoreError,
@@ -116,7 +121,7 @@ function validConfig(overrides?: Partial<GenericEndpointConfig>): GenericEndpoin
 }
 
 function validResolver(): ProviderCredentialResolver {
-  return () => providerCredentialResolutionSuccess(createBearerCredential('sk-resolved-secret-token'))
+  return () => providerCredentialResolutionFromCredential(createBearerCredential('sk-resolved-secret-token'))
 }
 
 function expectNoSecretShapes(serialized: string): void {
@@ -149,6 +154,17 @@ describe('provider credential boundary safety gates', () => {
   })
 
   describe('secret-shape boundary gate', () => {
+    it('credential secret-like field helper is the shared case-insensitive SSOT', () => {
+      expect(SECRET_LIKE_CREDENTIAL_FIELD_NAMES).toContain('authorization')
+      expect(SECRET_LIKE_CREDENTIAL_FIELD_NAMES).toContain('customheaders')
+      expect(SECRET_LIKE_CREDENTIAL_FIELD_NAMES).toContain('proxy_authorization')
+      expect(normalizeCredentialFieldName('APIKey')).toBe('apikey')
+      expect(isSecretLikeCredentialFieldName('APIKey')).toBe(true)
+      expect(isSecretLikeCredentialFieldName('Authorization')).toBe(true)
+      expect(isSecretLikeCredentialFieldName('customHeaders')).toBe(true)
+      expect(isSecretLikeCredentialFieldName('safeDisplayName')).toBe(false)
+    })
+
     it('ProviderCredentialRef rejects common secret-like fields case-insensitively with safe errors', () => {
       for (const field of secretLikeFields) {
         const result = validateProviderCredentialRef({

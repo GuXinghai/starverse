@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createBearerCredential } from '@/next/provider/credentials/providerCredential'
 import {
+  providerCredentialResolutionFromCredential,
   providerCredentialResolutionFailure,
   providerCredentialResolutionSuccess,
   resolveProviderCredential,
@@ -61,7 +62,7 @@ describe('providerCredentialResolver', () => {
 
     it('returns credential material from an injected resolver', () => {
       const resolver: ProviderCredentialResolver = () =>
-        providerCredentialResolutionSuccess(createBearerCredential('sk-resolved-token'))
+        providerCredentialResolutionFromCredential(createBearerCredential('sk-resolved-token'))
 
       const result = resolveProviderCredential(ref, resolver)
 
@@ -96,7 +97,7 @@ describe('providerCredentialResolver', () => {
 
     it('normalizes invalid credential material before adapter fetch', () => {
       const resolver: ProviderCredentialResolver = () =>
-        providerCredentialResolutionSuccess(createBearerCredential('') as any)
+        providerCredentialResolutionFromCredential(createBearerCredential(''))
 
       const result = resolveProviderCredential(ref, resolver)
 
@@ -133,6 +134,16 @@ describe('providerCredentialResolver', () => {
         ok: false,
         error: { code: 'credential_invalid', message: 'Credential material is invalid.' },
       })
+    })
+
+    it('providerCredentialResolutionSuccess only represents valid credential success', () => {
+      const credential = createBearerCredential('sk-valid-success')
+      const result = providerCredentialResolutionFromCredential(credential)
+
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(providerCredentialResolutionSuccess(result.credential)).toEqual(result)
+      }
     })
   })
 })

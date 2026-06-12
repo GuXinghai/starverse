@@ -3,7 +3,7 @@ import { streamViaGeneric, streamViaGenericConfig, type GenericFetchFn } from '@
 import type { ProviderStreamRequest, StarverseStreamEvent } from '@/next/provider/providerTypes'
 import { GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID } from '@/next/provider/generic/genericEndpointDescriptor'
 import { createBearerCredential } from '@/next/provider/credentials/providerCredential'
-import { providerCredentialResolutionSuccess } from '@/next/provider/credentials/providerCredentialResolver'
+import { providerCredentialResolutionFromCredential } from '@/next/provider/credentials/providerCredentialResolver'
 import type { GenericEndpointConfig, GenericCredentialRef, ResolveGenericCredential } from '@/next/provider/generic/genericEndpointConfig'
 
 function sseFixture(...lines: string[]): string {
@@ -1443,7 +1443,7 @@ describe('streamViaGeneric raw transport compatibility fixture', () => {
 
 const VALID_CREDENTIAL_REF: GenericCredentialRef = { kind: 'credential_ref', id: 'default' }
 const VALID_RESOLVER: ResolveGenericCredential = () =>
-  providerCredentialResolutionSuccess(createBearerCredential('sk-config-test'))
+  providerCredentialResolutionFromCredential(createBearerCredential('sk-config-test'))
 
 function failingResolver(message?: string): ResolveGenericCredential {
   return () => ({
@@ -1555,7 +1555,7 @@ describe('streamViaGenericConfig', () => {
     await collectEvents(streamViaGenericConfig(
       makeRequest(),
       validEndpointConfig(),
-      () => providerCredentialResolutionSuccess(createBearerCredential('sk-from-resolver')),
+      () => providerCredentialResolutionFromCredential(createBearerCredential('sk-from-resolver')),
       fetch,
     ))
 
@@ -1640,7 +1640,7 @@ describe('streamViaGenericConfig', () => {
     const events = await collectEvents(streamViaGenericConfig(
       makeRequest(),
       validEndpointConfig(),
-      () => providerCredentialResolutionSuccess(createBearerCredential('') as any),
+      () => providerCredentialResolutionFromCredential(createBearerCredential('')),
       fetch,
     ))
 
@@ -1696,7 +1696,7 @@ describe('streamViaGenericConfig', () => {
     const events = await collectEvents(streamViaGenericConfig(
       makeRequest(),
       validEndpointConfig({ baseUrl: '' }),
-      () => providerCredentialResolutionSuccess(createBearerCredential(secretToken)),
+      () => providerCredentialResolutionFromCredential(createBearerCredential(secretToken)),
       fetch,
     ))
 

@@ -16,7 +16,7 @@ import {
   isCredentialValid,
 } from '@/next/provider/credentials/providerCredential'
 import {
-  providerCredentialResolutionSuccess,
+  providerCredentialResolutionFromCredential,
   type ProviderCredentialRef,
   type ProviderCredentialResolver,
 } from '@/next/provider/credentials/providerCredentialResolver'
@@ -40,7 +40,7 @@ function validConfig(overrides?: Partial<GenericEndpointConfig>): GenericEndpoin
 }
 
 function validResolver(): ResolveGenericCredential {
-  return () => providerCredentialResolutionSuccess(createBearerCredential('sk-test-key'))
+  return () => providerCredentialResolutionFromCredential(createBearerCredential('sk-test-key'))
 }
 
 function failingResolver(message?: string): ResolveGenericCredential {
@@ -379,7 +379,7 @@ describe('resolveGenericEndpointDescriptor', () => {
 
   it('resolver empty token credential fails safely', () => {
     const resolver: ResolveGenericCredential = () =>
-      providerCredentialResolutionSuccess(createBearerCredential('') as any)
+      providerCredentialResolutionFromCredential(createBearerCredential(''))
     const result = resolveGenericEndpointDescriptor(validConfig(), resolver)
     expect(isError(result)).toBe(true)
     if (isError(result)) {
@@ -391,7 +391,7 @@ describe('resolveGenericEndpointDescriptor', () => {
   it('token-bearing credential resolver output does not leak through validation errors', () => {
     const secretToken = 'sk-super-secret-resolver-token'
     const resolver: ResolveGenericCredential = () =>
-      providerCredentialResolutionSuccess(createBearerCredential(secretToken))
+      providerCredentialResolutionFromCredential(createBearerCredential(secretToken))
 
     const result = resolveGenericEndpointDescriptor(
       validConfig({ baseUrl: 'file:///etc/passwd' }),
@@ -497,7 +497,7 @@ describe('resolveGenericEndpointDescriptor', () => {
   it('validation errors do not expose raw token from resolver', () => {
     const secretToken = 'sk-error-leak-test-token'
     const resolver: ResolveGenericCredential = () =>
-      providerCredentialResolutionSuccess(createBearerCredential(secretToken))
+      providerCredentialResolutionFromCredential(createBearerCredential(secretToken))
 
     const result = resolveGenericEndpointDescriptor(
       validConfig({ profileId: 'invalid_profile' as any }),
@@ -523,7 +523,7 @@ describe('resolveGenericEndpointDescriptor', () => {
   it('serialized error result contains no raw token', () => {
     const secretToken = 'sk-serialized-leak-test'
     const resolver: ResolveGenericCredential = () =>
-      providerCredentialResolutionSuccess(createBearerCredential(secretToken))
+      providerCredentialResolutionFromCredential(createBearerCredential(secretToken))
 
     const result = resolveGenericEndpointDescriptor(
       validConfig({ baseUrl: '' }),

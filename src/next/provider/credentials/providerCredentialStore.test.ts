@@ -3,7 +3,11 @@ import { streamViaGenericConfig, type GenericFetchFn } from '@/next/provider/gen
 import type { ProviderStreamRequest, StarverseStreamEvent } from '@/next/provider/providerTypes'
 import { GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID } from '@/next/provider/generic/genericEndpointDescriptor'
 import type { GenericEndpointConfig } from '@/next/provider/generic/genericEndpointConfig'
-import { createBearerCredential, type CredentialError, type ProviderCredential } from '@/next/provider/credentials/providerCredential'
+import {
+  createBearerCredential,
+  isCredentialValid,
+  type ProviderCredential,
+} from '@/next/provider/credentials/providerCredential'
 import type { ProviderCredentialRef } from '@/next/provider/credentials/providerCredentialResolver'
 import {
   providerCredentialResolverFromStore,
@@ -19,7 +23,7 @@ import {
 const VALID_REF: ProviderCredentialRef = { kind: 'credential_ref', id: 'generic-default' }
 
 function inMemoryCredentialStore(
-  entries: Readonly<Record<string, ProviderCredential | CredentialError>>,
+  entries: Readonly<Record<string, ProviderCredential>>,
 ): ProviderCredentialStore {
   const credentials = new Map(Object.entries(entries))
   return {
@@ -161,9 +165,7 @@ describe('providerCredentialStore boundary', () => {
   })
 
   it('invalid credential material becomes safe invalid failure', () => {
-    const resolver = providerCredentialResolverFromStore(inMemoryCredentialStore({
-      [VALID_REF.id]: createBearerCredential('') as CredentialError,
-    }))
+    const resolver = providerCredentialResolverFromStore(fixedStore(providerCredentialStoreInvalid()))
 
     const result = resolver(VALID_REF)
 
@@ -182,6 +184,31 @@ describe('providerCredentialStore boundary', () => {
       ok: false,
       error: { code: 'credential_invalid', message: 'Credential material is invalid.' },
     })
+  })
+
+  it('store success helper accepts only valid ProviderCredential material', () => {
+    const credential = createBearerCredential('sk-store-valid-token')
+    expect(isCredentialValid(credential)).toBe(true)
+    if (!isCredentialValid(credential)) {
+      throw new Error('Expected valid credential in test setup')
+    }
+
+    const result = providerCredentialStoreCredential(credential)
+
+    expect(result).toEqual({ ok: true, credential })
+  })
+
+  it('store success helper rejects CredentialError at type level', () => {
+    type StoreCredentialInput = Parameters<typeof providerCredentialStoreCredential>[0]
+
+    const invalidCredential = createBearerCredential('')
+    expect(isCredentialValid(invalidCredential)).toBe(false)
+    if (!isCredentialValid(invalidCredential)) {
+      type CredentialErrorAssignableToStoreSuccess =
+        typeof invalidCredential extends StoreCredentialInput ? true : false
+      const assignable: CredentialErrorAssignableToStoreSuccess = false
+      expect(assignable).toBe(false)
+    }
   })
 
   it('store unavailable and internal errors become safe unresolved failures', () => {

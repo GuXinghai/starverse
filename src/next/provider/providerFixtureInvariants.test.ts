@@ -17,7 +17,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { streamViaGeneric, streamViaGenericConfig, type GenericFetchFn } from '@/next/provider/generic/genericAdapter'
 import { GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID } from '@/next/provider/generic/genericEndpointDescriptor'
 import { createBearerCredential } from '@/next/provider/credentials/providerCredential'
-import { providerCredentialResolutionSuccess } from '@/next/provider/credentials/providerCredentialResolver'
+import { providerCredentialResolutionFromCredential } from '@/next/provider/credentials/providerCredentialResolver'
 import type { GenericEndpointConfig } from '@/next/provider/generic/genericEndpointConfig'
 
 // — DeepSeek —
@@ -469,7 +469,7 @@ describe('provider fixture invariants', () => {
         const events = await collectEvents(streamViaGenericConfig(
           genericRequest(),
           { ...VALID_GENERIC_CONFIG, baseUrl: '' },
-          () => providerCredentialResolutionSuccess(createBearerCredential(SECRET)),
+          () => providerCredentialResolutionFromCredential(createBearerCredential(SECRET)),
           mockGenericFetch(genericSseWithDone(genericTextChunk('Hi'))),
         ))
         assertNoCredentialLeakage(events, SECRET)
