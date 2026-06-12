@@ -11,14 +11,34 @@ import type { RuntimeProviderStreamAdapter, ProviderStreamTransport } from '@/ne
 import { buildGenericRequest, type GenericMessage } from '@/next/provider/generic/genericRequestBuilder'
 import { decodeGenericSSE } from '@/next/provider/generic/genericSseDecoder'
 import {
-  createBearerCredential,
   buildAuthHeader,
   isCredentialError,
   redactCredentialFromMessage,
   sanitizeErrorCode,
 } from '@/next/provider/credentials/providerCredential'
+import {
+  validateGenericEndpointDescriptor,
+  GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID,
+  type DescriptorValidationError,
+} from '@/next/provider/generic/genericEndpointDescriptor'
 
 export type GenericFetchFn = (url: string, init: RequestInit) => Promise<Response>
+
+function descriptorErrorToStreamEvent(err: DescriptorValidationError): StarverseStreamEvent {
+  // Map credential errors to auth category, others to bad_request
+  const category = err.code === 'invalid_credential' ? 'auth' as const : 'bad_request' as const
+  return {
+    type: 'stream.error',
+    error: {
+      phase: 'request_build',
+      provider: 'generic',
+      category,
+      message: err.message,
+      code: err.code,
+    } satisfies StarverseProviderError,
+    terminal: true,
+  }
+}
 
 export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* streamViaGeneric(
   request: ProviderStreamRequest,
@@ -26,25 +46,20 @@ export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* st
 ): AsyncGenerator<StarverseStreamEvent> {
   const { assistantMessageId, config, signal } = request
 
-  // Credential boundary: create and validate credential from transport
-  const token = transport.apiKey
-  const cred = createBearerCredential(token)
-  if (isCredentialError(cred)) {
-    yield {
-      type: 'stream.error',
-      error: {
-        phase: 'transport',
-        provider: 'generic',
-        category: 'auth',
-        message: cred.message,
-        code: cred.code,
-      } satisfies StarverseProviderError,
-      terminal: true,
-    }
+  // Descriptor boundary: validate endpoint, URL, model, credential
+  const descriptor = validateGenericEndpointDescriptor({
+    profileId: GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID,
+    baseUrl: transport.baseUrl,
+    model: config.model,
+    apiKey: transport.apiKey,
+  })
+  if ('code' in descriptor) {
+    yield descriptorErrorToStreamEvent(descriptor)
     return
   }
 
-  const authHeader = buildAuthHeader(cred)
+  // Build auth header from validated credential
+  const authHeader = buildAuthHeader(descriptor.credential)
   if (isCredentialError(authHeader)) {
     yield {
       type: 'stream.error',
@@ -72,9 +87,10 @@ export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* st
   }
 
   const messages = validation.messages
-  const body = buildGenericRequest({ model: config.model, messages, config })
+  const body = buildGenericRequest({ model: descriptor.model, messages, config })
 
-  const url = `${transport.baseUrl.replace(/\/$/, '')}/chat/completions`
+  const url = descriptor.baseUrl
+  const token = descriptor.credential.token
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...authHeader,
