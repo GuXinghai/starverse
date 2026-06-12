@@ -204,9 +204,9 @@ export function validateGenericEndpointDescriptor(input: {
   model: string
   apiKey: string
 }): GenericEndpointDescriptor | DescriptorValidationError {
-  // Profile
+  // Profile — static safe message, never echoes the input
   if (input.profileId !== GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID) {
-    return { code: 'invalid_profile', message: `Unknown profile "${input.profileId}". Only "${GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID}" is supported.` }
+    return { code: 'invalid_profile', message: 'Unsupported Generic endpoint profile id.' }
   }
 
   // URL
@@ -251,5 +251,53 @@ export function validateCapabilityOverride(
       }
     }
   }
+  return null
+}
+
+/**
+ * Validate that the incoming request/config does not request unsupported
+ * high-risk feature intents. This is the adapter-facing gate that inspects
+ * the actual ProviderStreamConfig fields before fetch.
+ *
+ * Returns null if valid, or a DescriptorValidationError if unsupported
+ * intents are detected.
+ */
+export function validateGenericRequestedCapabilities(
+  config: Readonly<{
+    tools?: unknown
+    webSearch?: unknown
+    imageGeneration?: unknown
+    additionalPlugins?: unknown
+    requestedReasoningMode?: string
+    requestedReasoningEffort?: string
+    requestedReasoningExclude?: unknown
+    [key: string]: unknown
+  }>,
+): DescriptorValidationError | null {
+  // Tools
+  if (config.tools && Array.isArray(config.tools) && config.tools.length > 0) {
+    return { code: 'blocked_capability_override', message: 'Generic adapter does not support tools.' }
+  }
+
+  // Web search
+  if (config.webSearch != null && typeof config.webSearch === 'object') {
+    return { code: 'blocked_capability_override', message: 'Generic adapter does not support web search.' }
+  }
+
+  // Image generation
+  if (config.imageGeneration != null && typeof config.imageGeneration === 'object') {
+    return { code: 'blocked_capability_override', message: 'Generic adapter does not support image generation.' }
+  }
+
+  // Additional plugins
+  if (config.additionalPlugins && Array.isArray(config.additionalPlugins) && config.additionalPlugins.length > 0) {
+    return { code: 'blocked_capability_override', message: 'Generic adapter does not support additional plugins.' }
+  }
+
+  // Reasoning mode (only 'auto' is allowed — 'effort' enables reasoning)
+  if (config.requestedReasoningMode && config.requestedReasoningMode !== 'auto') {
+    return { code: 'blocked_capability_override', message: 'Generic adapter does not support reasoning mode.' }
+  }
+
   return null
 }
