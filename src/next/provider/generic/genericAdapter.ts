@@ -15,6 +15,7 @@ import {
   buildAuthHeader,
   isCredentialError,
   redactCredentialFromMessage,
+  sanitizeErrorCode,
 } from '@/next/provider/credentials/providerCredential'
 
 export type GenericFetchFn = (url: string, init: RequestInit) => Promise<Response>
@@ -129,7 +130,7 @@ export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* st
             provider: 'generic',
             category: 'provider_error',
             message: redactCredentialFromMessage(chunk.error.message ?? 'Provider error', token),
-            code: String(chunk.error.code ?? chunk.error.type ?? 'error'),
+            code: sanitizeErrorCode(chunk.error.code ?? chunk.error.type, token, 'generic_provider_error'),
           } satisfies StarverseProviderError,
           terminal: true,
         }
@@ -342,7 +343,8 @@ async function* mapHttpError(response: Response, token: string): AsyncGenerator<
   }
 
   const errorObj = (errorBody as any)?.error
-  const code = typeof errorObj?.code === 'string' ? errorObj.code : String(response.status)
+  const rawCode = typeof errorObj?.code === 'string' ? errorObj.code : String(response.status)
+  const code = sanitizeErrorCode(rawCode, token, 'generic_http_error')
   const rawMessage = typeof errorObj?.message === 'string' ? errorObj.message : response.statusText
   const message = redactCredentialFromMessage(rawMessage, token)
 

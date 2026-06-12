@@ -934,5 +934,136 @@ describe('streamViaGeneric', () => {
         expect(serialized).not.toContain(SECRET_TOKEN)
       }
     })
+
+    it('provider SSE error code equal to raw token uses safe fallback', async () => {
+      const response = makeSseResponseWithDone(
+        `data: ${JSON.stringify({ error: { code: SECRET_TOKEN, message: 'bad key' } })}\n\n`,
+      )
+      const fetch = mockFetch(response)
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: SECRET_TOKEN,
+        fetch,
+      }))
+
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('generic_provider_error')
+        expect(errorEvents[0].error.code).not.toContain(SECRET_TOKEN)
+      }
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain(SECRET_TOKEN)
+    })
+
+    it('provider SSE error type containing Bearer <token> uses safe fallback', async () => {
+      const response = makeSseResponseWithDone(
+        `data: ${JSON.stringify({ error: { type: `Bearer ${SECRET_TOKEN}`, message: 'auth failed' } })}\n\n`,
+      )
+      const fetch = mockFetch(response)
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: SECRET_TOKEN,
+        fetch,
+      }))
+
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('generic_provider_error')
+        expect(errorEvents[0].error.code).not.toContain(SECRET_TOKEN)
+      }
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain(SECRET_TOKEN)
+      expect(serialized).not.toContain('Bearer sk-')
+    })
+
+    it('HTTP error code equal to raw token uses safe fallback', async () => {
+      const response = new Response(
+        JSON.stringify({ error: { code: SECRET_TOKEN, message: 'bad' } }),
+        { status: 401, statusText: 'Unauthorized' },
+      )
+      const fetch = mockFetch(response)
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: SECRET_TOKEN,
+        fetch,
+      }))
+
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('generic_http_error')
+        expect(errorEvents[0].error.code).not.toContain(SECRET_TOKEN)
+      }
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain(SECRET_TOKEN)
+    })
+
+    it('HTTP error code containing Authorization: Bearer <token> uses safe fallback', async () => {
+      const response = new Response(
+        JSON.stringify({ error: { code: `Authorization: Bearer ${SECRET_TOKEN}`, message: 'rejected' } }),
+        { status: 403, statusText: 'Forbidden' },
+      )
+      const fetch = mockFetch(response)
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: SECRET_TOKEN,
+        fetch,
+      }))
+
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('generic_http_error')
+      }
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain(SECRET_TOKEN)
+      expect(serialized).not.toContain('Bearer sk-')
+      expect(serialized).not.toContain('Authorization:')
+    })
+
+    it('safe provider error code is preserved', async () => {
+      const response = makeSseResponseWithDone(
+        errorChunkJson('rate_limit_exceeded', 'Too many requests'),
+      )
+      const fetch = mockFetch(response)
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: SECRET_TOKEN,
+        fetch,
+      }))
+
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('rate_limit_exceeded')
+      }
+    })
+
+    it('safe HTTP error code is preserved', async () => {
+      const response = new Response(
+        JSON.stringify({ error: { code: 'invalid_api_key', message: 'Bad key' } }),
+        { status: 401, statusText: 'Unauthorized' },
+      )
+      const fetch = mockFetch(response)
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: SECRET_TOKEN,
+        fetch,
+      }))
+
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('invalid_api_key')
+      }
+    })
   })
 })
