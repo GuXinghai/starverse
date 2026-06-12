@@ -19,6 +19,10 @@ import {
   type ProviderCredentialStore,
   type ProviderCredentialStoreResult,
 } from '@/next/provider/credentials/providerCredentialStore'
+import {
+  safeProviderCredentialMetadataForStoreError,
+  safeProviderCredentialMetadataFromStoreResult,
+} from '@/next/provider/credentials/providerCredentialMetadata'
 
 const VALID_REF: ProviderCredentialRef = { kind: 'credential_ref', id: 'generic-default' }
 
@@ -223,6 +227,39 @@ describe('providerCredentialStore boundary', () => {
       ok: false,
       error: { code: 'credential_unresolved', message: 'Credential could not be resolved.' },
     })
+  })
+
+  it('store results map to safe metadata without raw store messages', () => {
+    const cases = [
+      { result: providerCredentialStoreMissing(), status: 'missing', code: 'credential_missing' },
+      { result: providerCredentialStoreInvalid(), status: 'invalid', code: 'credential_invalid' },
+      { result: providerCredentialStoreUnavailable(), status: 'unavailable', code: 'credential_unavailable' },
+      { result: providerCredentialStoreError(), status: 'error', code: 'credential_error' },
+      {
+        result: {
+          ok: false,
+          code: 'store_error',
+          message: 'Authorization: Bearer sk-store-metadata-leak headers userinfo',
+        } as ProviderCredentialStoreResult,
+        status: 'error',
+        code: 'credential_error',
+      },
+    ] as const
+
+    for (const { result, status, code } of cases) {
+      const metadata = safeProviderCredentialMetadataFromStoreResult(VALID_REF, result)
+      const serialized = JSON.stringify(metadata)
+
+      expect(metadata.status).toBe(status)
+      expect(metadata.code).toBe(code)
+      expect(serialized).not.toContain('sk-store-metadata-leak')
+      expect(serialized).not.toContain('Authorization')
+      expect(serialized).not.toContain('Bearer')
+      expect(serialized).not.toContain('headers')
+      expect(serialized).not.toContain('userinfo')
+    }
+
+    expect(safeProviderCredentialMetadataForStoreError(VALID_REF).code).toBe('credential_error')
   })
 
   it('thrown store error does not leak raw token, Authorization, Bearer, or headers', () => {

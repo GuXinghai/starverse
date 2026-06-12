@@ -20,6 +20,14 @@ import {
   type ProviderCredentialRef,
   type ProviderCredentialResolver,
 } from '@/next/provider/credentials/providerCredentialResolver'
+import {
+  safeProviderCredentialMetadataFromStoreResult,
+} from '@/next/provider/credentials/providerCredentialMetadata'
+import {
+  providerCredentialStoreInvalid,
+  providerCredentialStoreMissing,
+  providerCredentialStoreUnavailable,
+} from '@/next/provider/credentials/providerCredentialStore'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -568,6 +576,12 @@ describe('toSafeGenericEndpointMetadata', () => {
     expect(meta.profileId).toBe(GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID)
     expect(meta.model).toBe('gpt-4o-mini')
     expect(meta.credentialPresent).toBe(true)
+    expect(meta.credential).toMatchObject({
+      credentialRefId: '***',
+      present: true,
+      status: 'configured',
+      code: 'credential_configured',
+    })
     expect(meta.maskedBaseUrl).not.toContain('api.example.com')
     expect(meta.maskedBaseUrl).toContain('***')
   })
@@ -624,6 +638,41 @@ describe('toSafeGenericEndpointMetadata', () => {
       { ...validConfig(), credentialRef: undefined as any },
     )
     expect(meta.endpointId).toBe('ep-1')
+    expect(meta.credentialPresent).toBe(false)
+    expect(meta.credential.status).toBe('missing')
+    expect(meta.credential.code).toBe('credential_missing')
+  })
+
+  it('metadata can consume provider credential metadata status for missing, invalid, and unavailable credentials', () => {
+    const cases = [
+      {
+        metadata: safeProviderCredentialMetadataFromStoreResult(VALID_CREDENTIAL_REF, providerCredentialStoreMissing()),
+        status: 'missing',
+        code: 'credential_missing',
+      },
+      {
+        metadata: safeProviderCredentialMetadataFromStoreResult(VALID_CREDENTIAL_REF, providerCredentialStoreInvalid()),
+        status: 'invalid',
+        code: 'credential_invalid',
+      },
+      {
+        metadata: safeProviderCredentialMetadataFromStoreResult(VALID_CREDENTIAL_REF, providerCredentialStoreUnavailable()),
+        status: 'unavailable',
+        code: 'credential_unavailable',
+      },
+    ] as const
+
+    for (const { metadata, status, code } of cases) {
+      const meta = toSafeGenericEndpointMetadata(validConfig(), { credential: metadata })
+
+      expect(meta.credentialPresent).toBe(false)
+      expect(meta.credential.status).toBe(status)
+      expect(meta.credential.code).toBe(code)
+      expect(JSON.stringify(meta)).not.toContain('sk-')
+      expect(JSON.stringify(meta)).not.toContain('Bearer')
+      expect(JSON.stringify(meta)).not.toContain('Authorization')
+      expect(JSON.stringify(meta)).not.toContain('headers')
+    }
   })
 
   it('maskedBaseUrl handles invalid URL gracefully', () => {

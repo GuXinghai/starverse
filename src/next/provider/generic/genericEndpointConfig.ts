@@ -16,6 +16,10 @@ import {
   type ProviderCredentialResolver,
 } from '@/next/provider/credentials/providerCredentialResolver'
 import {
+  safeProviderCredentialMetadataFromRef,
+  type SafeProviderCredentialMetadata,
+} from '@/next/provider/credentials/providerCredentialMetadata'
+import {
   GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID,
   validateGenericEndpointDescriptor,
   validateCapabilityOverride,
@@ -94,7 +98,12 @@ export type SafeGenericEndpointMetadata = Readonly<{
   maskedBaseUrl: string
   model: string
   credentialPresent: boolean
+  credential: SafeProviderCredentialMetadata
   capability: GenericRuntimeCapability
+}>
+
+export type SafeGenericEndpointMetadataOptions = Readonly<{
+  credential?: SafeProviderCredentialMetadata
 }>
 
 function rejectSecretLikeFields(
@@ -225,7 +234,7 @@ function mapDescriptorError(err: DescriptorValidationError): ConfigValidationErr
  */
 export function toSafeGenericEndpointMetadata(
   config: GenericEndpointConfig,
-  _validationState?: 'valid' | 'invalid',
+  options?: SafeGenericEndpointMetadataOptions,
 ): SafeGenericEndpointMetadata {
   // Conservative default
   const capability: GenericRuntimeCapability = {
@@ -264,13 +273,16 @@ export function toSafeGenericEndpointMetadata(
     // Malformed overrides are silently ignored — conservative defaults remain
   }
 
+  const credential = options?.credential ?? safeProviderCredentialMetadataFromRef(config.credentialRef)
+
   return {
     endpointId: config.endpointId,
     displayName: config.displayName,
     profileId: config.profileId,
     maskedBaseUrl: maskUrlHost(config.baseUrl),
     model: config.model,
-    credentialPresent: config.credentialRef != null,
+    credentialPresent: credential.present,
+    credential,
     capability,
   }
 }

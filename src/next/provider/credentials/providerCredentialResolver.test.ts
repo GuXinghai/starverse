@@ -9,6 +9,9 @@ import {
   type ProviderCredentialRef,
   type ProviderCredentialResolver,
 } from '@/next/provider/credentials/providerCredentialResolver'
+import {
+  safeProviderCredentialMetadataFromResolution,
+} from '@/next/provider/credentials/providerCredentialMetadata'
 
 describe('providerCredentialResolver', () => {
   describe('ProviderCredentialRef', () => {
@@ -134,6 +137,29 @@ describe('providerCredentialResolver', () => {
         ok: false,
         error: { code: 'credential_invalid', message: 'Credential material is invalid.' },
       })
+    })
+
+    it('safe metadata consumes resolver success and failure without leaking raw messages', () => {
+      const success = providerCredentialResolutionFromCredential(createBearerCredential('sk-metadata-token'))
+      const unresolved = {
+        ok: false,
+        error: {
+          code: 'credential_unresolved',
+          message: 'raw resolver message Authorization: Bearer sk-metadata-token',
+        },
+      } as const
+
+      const successMetadata = safeProviderCredentialMetadataFromResolution(ref, success)
+      const failureMetadata = safeProviderCredentialMetadataFromResolution(ref, unresolved)
+
+      expect(successMetadata.status).toBe('configured')
+      expect(successMetadata.code).toBe('credential_configured')
+      expect(failureMetadata.status).toBe('missing')
+      expect(failureMetadata.code).toBe('credential_missing')
+      const serialized = JSON.stringify([successMetadata, failureMetadata])
+      expect(serialized).not.toContain('sk-metadata-token')
+      expect(serialized).not.toContain('Authorization')
+      expect(serialized).not.toContain('Bearer')
     })
 
     it('providerCredentialResolutionSuccess only represents valid credential success', () => {
