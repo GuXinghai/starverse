@@ -155,3 +155,33 @@ export function redactCredentialFromMessage(message: string, token: string): str
 
   return result
 }
+
+/**
+ * Sanitize a provider-controlled error code for safe use in
+ * renderer-visible `StarverseProviderError.code`.
+ *
+ * - Applies credential redaction.
+ * - If the result is empty, contains `[REDACTED_CREDENTIAL]`,
+ *   or is otherwise unsafe, returns the provided fallback.
+ * - If the result is a short safe string, returns it after redaction.
+ */
+export function sanitizeErrorCode(
+  rawCode: unknown,
+  token: string,
+  fallback: string,
+): string {
+  if (typeof rawCode !== 'string' || rawCode.length === 0) return fallback
+
+  const sanitized = redactCredentialFromMessage(rawCode, token)
+
+  // If redaction changed the value, the code contained credential material
+  if (sanitized !== rawCode) return fallback
+
+  // If result contains the redaction marker, it's unsafe
+  if (sanitized.includes(REDACTED)) return fallback
+
+  // Cap length to avoid absurd values
+  if (sanitized.length > 128) return fallback
+
+  return sanitized
+}

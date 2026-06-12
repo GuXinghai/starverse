@@ -7,6 +7,7 @@ import {
   isCredentialValid,
   isCredentialError,
   redactCredentialFromMessage,
+  sanitizeErrorCode,
 } from '@/next/provider/credentials/providerCredential'
 
 describe('providerCredential', () => {
@@ -180,6 +181,56 @@ describe('providerCredential', () => {
     it('preserves non-credential text', () => {
       const result = redactCredentialFromMessage('Rate limit exceeded', token)
       expect(result).toBe('Rate limit exceeded')
+    })
+  })
+
+  describe('sanitizeErrorCode', () => {
+    const token = 'sk-secret-12345'
+
+    it('preserves short safe code', () => {
+      expect(sanitizeErrorCode('rate_limit_exceeded', token, 'fallback')).toBe('rate_limit_exceeded')
+    })
+
+    it('falls back for missing code', () => {
+      expect(sanitizeErrorCode(undefined, token, 'fallback')).toBe('fallback')
+    })
+
+    it('falls back for non-string code', () => {
+      expect(sanitizeErrorCode(123, token, 'fallback')).toBe('fallback')
+    })
+
+    it('falls back for empty string code', () => {
+      expect(sanitizeErrorCode('', token, 'fallback')).toBe('fallback')
+    })
+
+    it('falls back when code is exact token', () => {
+      expect(sanitizeErrorCode(token, token, 'fallback')).toBe('fallback')
+    })
+
+    it('falls back when code contains Bearer <token>', () => {
+      expect(sanitizeErrorCode(`Bearer ${token}`, token, 'fallback')).toBe('fallback')
+    })
+
+    it('falls back when code contains Authorization: Bearer <token>', () => {
+      expect(sanitizeErrorCode(`Authorization: Bearer ${token}`, token, 'fallback')).toBe('fallback')
+    })
+
+    it('falls back for very long code', () => {
+      const longCode = 'a'.repeat(200)
+      expect(sanitizeErrorCode(longCode, token, 'fallback')).toBe('fallback')
+    })
+
+    it('redacts token from code and falls back if changed', () => {
+      const code = `error_${token}_something`
+      expect(sanitizeErrorCode(code, token, 'fallback')).toBe('fallback')
+    })
+
+    it('uses provider fallback for SSE errors', () => {
+      expect(sanitizeErrorCode(token, token, 'generic_provider_error')).toBe('generic_provider_error')
+    })
+
+    it('uses HTTP fallback for HTTP errors', () => {
+      expect(sanitizeErrorCode(token, token, 'generic_http_error')).toBe('generic_http_error')
     })
   })
 })
