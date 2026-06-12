@@ -7,7 +7,7 @@ This directory contains the authoritative governance documents for Starverse mul
 
 ## Current Status (added 2026-06-12)
 
-Phase 0–9 fixture foundations complete. Five provider adapter proofs exist (OpenRouter, DeepSeek, OpenAI Responses, Anthropic, Gemini API / Google AI Studio). `RuntimeProviderStreamAdapter` contract extracted for non-OpenRouter remote adapters. OpenRouter remains active runtime. No live API, UI/provider picker, credentials, registry, or production send path for non-OpenRouter providers.
+Phase 0–9 fixture foundations complete. Six provider adapter paths exist (OpenRouter, DeepSeek, OpenAI Responses, Anthropic, Gemini API / Google AI Studio, Generic OpenAI-compatible). `RuntimeProviderStreamAdapter` contract extracted for non-OpenRouter remote adapters. Adapter-side credential boundary seed exists (pure adapter/test boundary; not secure store, not renderer/settings/IPC). OpenRouter remains active runtime. No live API, UI/provider picker, settings, secure credential store, registry, or production send path for non-OpenRouter providers.
 
 ## Document Order
 
