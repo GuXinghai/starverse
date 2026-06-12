@@ -360,7 +360,7 @@ describe('streamViaGeneric', () => {
       expect(errorEvents).toHaveLength(1)
       if (errorEvents[0].type === 'stream.error') {
         expect(errorEvents[0].error.category).toBe('auth')
-        expect(errorEvents[0].error.code).toBe('empty_token')
+        expect(errorEvents[0].error.code).toBe('invalid_credential')
       }
     })
 
@@ -406,6 +406,166 @@ describe('streamViaGeneric', () => {
 
       const [, init] = (fetch as any).mock.calls[0]
       expect(init.headers['Authorization']).toBe('Bearer sk-my-token-123')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Descriptor integration tests
+  // ---------------------------------------------------------------------------
+
+  describe('endpoint descriptor', () => {
+    it('adapter consumes descriptor-derived URL for fetch', async () => {
+      const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
+      const fetch = mockFetch(response)
+
+      await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://custom.api.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      const [url] = (fetch as any).mock.calls[0]
+      expect(url).toBe('https://custom.api.com/v1/chat/completions')
+    })
+
+    it('adapter uses descriptor model in request body', async () => {
+      const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
+      const fetch = mockFetch(response)
+
+      await collectEvents(streamViaGeneric(makeRequest({ model: 'custom-model-7b' }), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      const body = JSON.parse((fetch as any).mock.calls[0][1].body)
+      expect(body.model).toBe('custom-model-7b')
+    })
+
+    it('adapter normalizes trailing slash in baseUrl', async () => {
+      const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
+      const fetch = mockFetch(response)
+
+      await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1/',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      const [url] = (fetch as any).mock.calls[0]
+      expect(url).toBe('https://api.example.com/v1/chat/completions')
+    })
+
+    it('adapter does not double-append /chat/completions', async () => {
+      const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
+      const fetch = mockFetch(response)
+
+      await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1/chat/completions',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      const [url] = (fetch as any).mock.calls[0]
+      expect(url).toBe('https://api.example.com/v1/chat/completions')
+    })
+
+    it('invalid baseUrl fails before fetch', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'file:///etc/passwd',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('url_scheme_not_allowed')
+      }
+    })
+
+    it('empty baseUrl fails before fetch', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: '',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('invalid_base_url')
+      }
+    })
+
+    it('invalid model fails before fetch', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest({ model: '  ' }), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('invalid_model')
+      }
+    })
+
+    it('URL with userinfo fails before fetch and does not leak credentials', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://admin:secretpass@api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain('secretpass')
+      expect(serialized).not.toContain('admin')
+    })
+
+    it('descriptor validation failure emits stream.error and no stream.done', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'data:text/html,<h1>hi</h1>',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      const doneEvents = events.filter((e) => e.type === 'stream.done')
+      expect(errorEvents).toHaveLength(1)
+      expect(doneEvents).toHaveLength(0)
+      expect(events[events.length - 1].type).toBe('stream.error')
+    })
+
+    it('descriptor validation failure does not leak raw token', async () => {
+      const rawToken = 'sk-descriptor-leak-test'
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: '',
+        apiKey: rawToken,
+        fetch,
+      }))
+
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain(rawToken)
     })
   })
 
