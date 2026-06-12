@@ -1,7 +1,72 @@
-import { describe, expect, it } from 'vitest'
-import { forwardOpenRouterResponseAsWireEvents, validateOpenRouterStreamRequest } from './openRouterStreamBridge'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { OPENROUTER_STREAM_WIRE_VERSION } from '../../src/shared/ipc/openRouterStreamWire'
 import type { OpenRouterStreamWireEvent } from '../../src/shared/ipc/openRouterStreamWire'
+
+const electronMock = vi.hoisted(() => {
+  const handlers = new Map<string, (event: unknown, payload: unknown) => Promise<unknown> | unknown>()
+  const requestCalls: Array<{
+    options: unknown
+    headers: Record<string, string>
+    body: string[]
+  }> = []
+
+  const ipcMain = {
+    handle: vi.fn((channel: string, handler: (event: unknown, payload: unknown) => Promise<unknown> | unknown) => {
+      handlers.set(channel, handler)
+    }),
+  }
+
+  const net = {
+    request: vi.fn((options: unknown) => {
+      const listeners = new Map<string, (payload: unknown) => void>()
+      const call = {
+        options,
+        headers: {} as Record<string, string>,
+        body: [] as string[],
+      }
+      requestCalls.push(call)
+
+      return {
+        setHeader: vi.fn((key: string, value: string) => {
+          call.headers[key] = value
+        }),
+        once: vi.fn((eventName: string, listener: (payload: unknown) => void) => {
+          listeners.set(eventName, listener)
+        }),
+        write: vi.fn((chunk: string) => {
+          call.body.push(chunk)
+        }),
+        end: vi.fn(() => {
+          queueMicrotask(() => {
+            listeners.get('response')?.({
+              statusCode: 200,
+              headers: {},
+              async *[Symbol.asyncIterator]() {
+                // Empty successful stream preserves bridge request behavior without
+                // asserting SSE semantics in this credential characterization gate.
+              },
+            })
+          })
+        }),
+        abort: vi.fn(),
+      }
+    }),
+  }
+
+  return { handlers, ipcMain, net, requestCalls }
+})
+
+vi.mock('electron', () => ({
+  ipcMain: electronMock.ipcMain,
+  net: electronMock.net,
+}))
+
+import {
+  cleanupOpenRouterStreams,
+  forwardOpenRouterResponseAsWireEvents,
+  registerOpenRouterStreamBridge,
+  validateOpenRouterStreamRequest,
+} from './openRouterStreamBridge'
 
 type TestResponseLike = AsyncIterable<Uint8Array> & {
   statusCode?: number
@@ -72,6 +137,14 @@ function simulateRendererWireDrain(steps: RendererDrainStep[]): string[] {
 
 /* eslint-disable max-lines-per-function */
 describe('forwardOpenRouterResponseAsWireEvents', () => {
+  beforeEach(() => {
+    electronMock.handlers.clear()
+    electronMock.requestCalls.length = 0
+    electronMock.ipcMain.handle.mockClear()
+    electronMock.net.request.mockClear()
+    cleanupOpenRouterStreams()
+  })
+
   it('emits responseMeta -> chunk(s) -> end for successful stream', async () => {
     const encoder = new TextEncoder()
     const response = responseFromChunks({
@@ -231,6 +304,59 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
       { type: 'wire', event: { type: 'end' } },
     ]
     expect(simulateRendererWireDrain(steps)).toEqual(['responseMeta', 'chunk'])
+  })
+
+  it('characterizes main IPC bridge legacy Authorization and baseUrl request behavior', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const rawKey = 'sk-or-ipc-bridge-legacy-secret'
+    const baseUrl = 'https://openrouter-proxy.example.test/custom/v1/'
+    const sender = { send: vi.fn() }
+
+    try {
+      expect(registerOpenRouterStreamBridge()).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
+      const handler = electronMock.handlers.get('openrouter:stream-chat')
+      expect(handler).toBeTruthy()
+
+      const result = await handler?.({ sender }, {
+        requestId: 'rid_ipc_bridge_legacy',
+        wireVersion: OPENROUTER_STREAM_WIRE_VERSION,
+        userText: 'hello',
+        requestBody: {
+          model: 'openrouter/test-model',
+          stream: true,
+          messages: [{ role: 'user', content: 'hello' }],
+        },
+        config: {
+          apiKey: rawKey,
+          baseUrl,
+          model: 'openrouter/test-model',
+          requestedReasoningMode: 'auto',
+        },
+      })
+
+      expect(result).toEqual({ ok: true })
+      expect(electronMock.requestCalls).toHaveLength(1)
+      expect((electronMock.requestCalls[0]?.options as any)?.url).toBe(
+        'https://openrouter-proxy.example.test/custom/v1/chat/completions'
+      )
+      expect(electronMock.requestCalls[0]?.headers.Authorization).toBe(`Bearer ${rawKey}`)
+      expect(electronMock.requestCalls[0]?.headers['Content-Type']).toBe('application/json')
+      expect(electronMock.requestCalls[0]?.headers['HTTP-Referer']).toBe('https://github.com/GuXinghai/starverse')
+      expect(electronMock.requestCalls[0]?.headers['X-Title']).toBe('Starverse')
+
+      await vi.waitFor(() => expect(sender.send).toHaveBeenCalled())
+      const serializedWireEvents = JSON.stringify(sender.send.mock.calls)
+      expect(serializedWireEvents).not.toContain(rawKey)
+      expect(serializedWireEvents).not.toContain(`Bearer ${rawKey}`)
+      expect(serializedWireEvents).not.toContain('Authorization')
+
+      const serializedLogs = warnSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
+      expect(serializedLogs).not.toContain(rawKey)
+      expect(serializedLogs).not.toContain(`Bearer ${rawKey}`)
+    } finally {
+      warnSpy.mockRestore()
+      cleanupOpenRouterStreams()
+    }
   })
 })
 /* eslint-enable max-lines-per-function */

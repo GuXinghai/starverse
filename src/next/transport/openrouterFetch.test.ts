@@ -84,6 +84,34 @@ describe('openrouterFetch (transport)', () => {
     await assertion
   })
 
+  it('preserves legacy renderer fetch Authorization and baseUrl behavior', async () => {
+    const secretKey = 'sk-or-fetch-legacy-secret'
+    const calls: any[] = []
+    globalThis.fetch = vi.fn(async (url: string, init: any) => {
+      calls.push({ url, init })
+      return new Response('ok', {
+        status: 200,
+        headers: { 'x-openrouter-generation-id': 'gen_fetch_legacy' },
+      })
+    }) as any
+
+    const result = await openrouterFetch({
+      apiKey: secretKey,
+      baseUrl: 'https://openrouter-proxy.example.test/custom/v1/',
+      body: { model: testModel },
+      requestId: 'rid_fetch_legacy',
+    })
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.url).toBe('https://openrouter-proxy.example.test/custom/v1/chat/completions')
+    expect(calls[0]?.init?.headers?.Authorization).toBe(`Bearer ${secretKey}`)
+    expect(result.generationId).toBe('gen_fetch_legacy')
+    const serializedResult = JSON.stringify(result)
+    expect(serializedResult).not.toContain(secretKey)
+    expect(serializedResult).not.toContain(`Bearer ${secretKey}`)
+    expect(serializedResult).not.toContain('Authorization')
+  })
+
   it('logs only sanitized multimodal request summaries when verbose logging is enabled', async () => {
     ;(globalThis as any).__SV_TEST_VERBOSE_OPENROUTER = '1'
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
