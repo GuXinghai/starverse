@@ -8,10 +8,10 @@
  */
 
 import {
-  type ProviderCredential,
-  type CredentialError,
-  isCredentialError,
-} from '@/next/provider/credentials/providerCredential'
+  resolveProviderCredential,
+  type ProviderCredentialRef,
+  type ProviderCredentialResolver,
+} from '@/next/provider/credentials/providerCredentialResolver'
 import {
   GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID,
   validateGenericEndpointDescriptor,
@@ -25,10 +25,7 @@ import {
 // Credential reference — non-secret pointer
 // ---------------------------------------------------------------------------
 
-export type GenericCredentialRef = Readonly<{
-  kind: 'credential_ref'
-  id: string
-}>
+export type GenericCredentialRef = ProviderCredentialRef
 
 // ---------------------------------------------------------------------------
 // Capability override — optional conservative override
@@ -60,9 +57,7 @@ export type GenericEndpointConfig = Readonly<{
 // Credential resolver — injected externally
 // ---------------------------------------------------------------------------
 
-export type ResolveGenericCredential = (
-  ref: GenericCredentialRef,
-) => ProviderCredential | CredentialError
+export type ResolveGenericCredential = ProviderCredentialResolver
 
 // ---------------------------------------------------------------------------
 // Config validation errors
@@ -209,17 +204,13 @@ export function resolveGenericEndpointDescriptor(
     }
   }
 
-  // 4. Resolve credential through injected resolver
-  if (!config.credentialRef || config.credentialRef.kind !== 'credential_ref') {
-    return { code: 'invalid_credential_ref', message: 'Credential reference is required and must be a credential_ref.' }
-  }
-  if (typeof config.credentialRef.id !== 'string' || config.credentialRef.id.trim().length === 0) {
-    return { code: 'invalid_credential_ref', message: 'Credential reference id must be a non-empty string.' }
-  }
-
-  const credential = resolveCredential(config.credentialRef)
-  if (isCredentialError(credential)) {
-    return { code: 'credential_resolution_failed', message: 'Credential could not be resolved.' }
+  // 4. Resolve credential through injected provider-layer resolver
+  const credentialResolution = resolveProviderCredential(config.credentialRef, resolveCredential)
+  if (!credentialResolution.ok) {
+    const code = credentialResolution.error.code === 'invalid_credential_ref'
+      ? 'invalid_credential_ref'
+      : 'credential_resolution_failed'
+    return { code, message: credentialResolution.error.message }
   }
 
   // 5. Reuse existing descriptor validation (profileId, baseUrl, model, credential)
@@ -227,7 +218,7 @@ export function resolveGenericEndpointDescriptor(
     profileId: config.profileId,
     baseUrl: config.baseUrl,
     model: config.model,
-    apiKey: credential.token,
+    apiKey: credentialResolution.credential.token,
   })
   if ('code' in descriptor) {
     return mapDescriptorError(descriptor)
