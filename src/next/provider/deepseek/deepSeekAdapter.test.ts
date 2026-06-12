@@ -48,6 +48,24 @@ function makeSseResponse(...lines: string[]): Response {
   return new Response(stream as any, { status: 200 })
 }
 
+function makeRawSseResponse(...lines: string[]): Response {
+  const body = sseFixture(...lines)
+  const bytes = new TextEncoder().encode(body)
+  let offset = 0
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (offset >= bytes.length) {
+        controller.close()
+        return
+      }
+      const next = bytes.slice(offset, offset + 50)
+      offset += 50
+      controller.enqueue(next)
+    },
+  })
+  return new Response(stream as any, { status: 200 })
+}
+
 function makeRequest(overrides?: Partial<ProviderStreamRequest['config']>): ProviderStreamRequest {
   return {
     requestId: 'req_1',
@@ -389,6 +407,27 @@ describe('streamViaDeepSeek', () => {
     if (textEvents[0].type === 'message.text_delta') {
       expect(textEvents[0].text).toBe('The answer is 42.')
     }
+  })
+
+  it('unexpected EOF yields terminal stream.error with category protocol', async () => {
+    const response = makeRawSseResponse(textSseChunk('gen_1', 'deepseek-chat', 'some text'))
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaDeepSeek(makeRequest(), {
+      baseUrl: 'https://api.deepseek.com/v1',
+      apiKey: 'sk-test',
+      fetch,
+    }))
+
+    const errorEvents = events.filter((e) => e.type === 'stream.error')
+    const doneEvents = events.filter((e) => e.type === 'stream.done')
+    expect(errorEvents).toHaveLength(1)
+    expect(doneEvents).toHaveLength(0)
+    if (errorEvents[0].type === 'stream.error') {
+      expect(errorEvents[0].terminal).toBe(true)
+      expect(errorEvents[0].error.category).toBe('protocol')
+    }
+    expect(events[events.length - 1].type).toBe('stream.error')
   })
 
   it('does not make live API calls (uses injected fetch)', async () => {
