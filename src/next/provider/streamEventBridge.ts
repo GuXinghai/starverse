@@ -32,14 +32,17 @@ function errorEnvelopeToProviderError(env: ErrorEnvelope): StarverseProviderErro
 
 /**
  * Shape guard: check if a value looks like a valid OpenRouter ErrorEnvelope.
- * Narrow check — only verifies the discriminator fields that current consumers depend on.
+ * Narrow check — verifies discriminator fields including enum values
+ * from ErrorEnvelope's CompletionClass and ErrorPhase types.
  */
 function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
   if (!value || typeof value !== 'object') return false
   const obj = value as Record<string, unknown>
+  const cc = obj.completionClass
+  const ph = obj.phase
   return (
-    typeof obj.completionClass === 'string' &&
-    typeof obj.phase === 'string' &&
+    (cc === 'ok' || cc === 'truncated' || cc === 'error' || cc === 'aborted') &&
+    (ph === 'pre_stream' || ph === 'mid_stream' || ph === 'post_stream' || ph === 'responses') &&
     obj.openrouter != null &&
     typeof obj.openrouter === 'object' &&
     typeof (obj.openrouter as Record<string, unknown>).code === 'string' &&

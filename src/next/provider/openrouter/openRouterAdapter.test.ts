@@ -153,6 +153,33 @@ describe('streamEventBridge', () => {
     }
   })
 
+  it('roundtrip is exact toEqual for full envelope with normalized', () => {
+    const envelope = {
+      phase: 'mid_stream' as const,
+      completionClass: 'error' as const,
+      openrouter: { code: 'rate_limit', message: 'slow down', provider: 'openai' },
+      http: { status: 429, statusText: 'Too Many Requests' },
+      truncated: false,
+      kind: 'mid_stream_sse' as const,
+      normalized: {
+        normalized: {
+          endpoint: 'openrouter',
+          transport: 'sse',
+          phase: 'mid_stream',
+          httpStatus: 429,
+          code: 'rate_limit',
+          message: 'slow down',
+          retryable: true,
+          category: 'rate_limit',
+          grade: 'error',
+        },
+      },
+    }
+    const original: DomainEvent = { type: 'StreamError', error: envelope as any, terminal: true }
+    const roundtripped = streamEventToDomainEvent(domainEventToStreamEvent(original))
+    expect(roundtripped).toEqual(original)
+  })
+
   it('roundtrip losslessly preserves ErrorEnvelope with completionClass ok', () => {
     const envelope = {
       phase: 'pre_stream' as const,
