@@ -117,3 +117,41 @@ export function isCredentialError(value: unknown): value is CredentialError {
     ((value as any).code === 'missing_token' || (value as any).code === 'empty_token')
   )
 }
+
+// ---------------------------------------------------------------------------
+// Credential-aware message redaction
+// ---------------------------------------------------------------------------
+
+const REDACTED = '[REDACTED_CREDENTIAL]'
+
+/**
+ * Redact credential material from an external error message.
+ *
+ * Strips:
+ * - the exact bearer token
+ * - `Bearer <token>` patterns
+ * - `Authorization: Bearer <token>` patterns
+ *
+ * Safe to call with any message. If token is empty, only pattern-based
+ * redaction is applied.
+ */
+export function redactCredentialFromMessage(message: string, token: string): string {
+  if (!message) return message
+
+  let result = message
+
+  // Strip Authorization: Bearer <token-like> patterns first (case-insensitive)
+  result = result.replace(/Authorization:\s*Bearer\s+[A-Za-z0-9\-._~+/]+=*/gi, REDACTED)
+
+  // Strip standalone Bearer <token-like> patterns
+  result = result.replace(/Bearer\s+[A-Za-z0-9\-._~+/]+=*/g, REDACTED)
+
+  // Strip exact token occurrence (catches any remaining token references)
+  if (token && token.length > 0) {
+    // Escape token for use in regex, then replace globally
+    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    result = result.replace(new RegExp(escaped, 'g'), REDACTED)
+  }
+
+  return result
+}

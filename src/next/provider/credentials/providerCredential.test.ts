@@ -6,6 +6,7 @@ import {
   maskCredential,
   isCredentialValid,
   isCredentialError,
+  redactCredentialFromMessage,
 } from '@/next/provider/credentials/providerCredential'
 
 describe('providerCredential', () => {
@@ -135,6 +136,50 @@ describe('providerCredential', () => {
       const serialized = JSON.stringify(cred)
       // Error has no token at all
       expect(serialized).not.toContain('sk-')
+    })
+  })
+
+  describe('redactCredentialFromMessage', () => {
+    const token = 'sk-secret-12345'
+
+    it('redacts exact token occurrence', () => {
+      const result = redactCredentialFromMessage(`Invalid key: ${token}`, token)
+      expect(result).not.toContain(token)
+      expect(result).toContain('[REDACTED_CREDENTIAL]')
+    })
+
+    it('redacts Bearer <token> pattern', () => {
+      const result = redactCredentialFromMessage(`Bad Authorization: Bearer ${token}`, token)
+      expect(result).not.toContain(token)
+      expect(result).not.toContain('Bearer sk-')
+      expect(result).toContain('[REDACTED_CREDENTIAL]')
+    })
+
+    it('redacts Authorization: Bearer <token> pattern', () => {
+      const result = redactCredentialFromMessage(`Rejected: Authorization: Bearer ${token}`, token)
+      expect(result).not.toContain(token)
+      expect(result).not.toContain('Authorization:')
+    })
+
+    it('handles empty message', () => {
+      const result = redactCredentialFromMessage('', token)
+      expect(result).toBe('')
+    })
+
+    it('handles empty token gracefully', () => {
+      const result = redactCredentialFromMessage('Bearer abc123', '')
+      // Pattern-based redaction still applies
+      expect(result).not.toContain('Bearer abc123')
+    })
+
+    it('redacts multiple occurrences', () => {
+      const result = redactCredentialFromMessage(`${token} and Bearer ${token}`, token)
+      expect(result).not.toContain(token)
+    })
+
+    it('preserves non-credential text', () => {
+      const result = redactCredentialFromMessage('Rate limit exceeded', token)
+      expect(result).toBe('Rate limit exceeded')
     })
   })
 })
