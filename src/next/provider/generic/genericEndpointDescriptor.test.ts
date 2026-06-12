@@ -4,6 +4,7 @@ import {
   buildChatCompletionsUrl,
   validateGenericEndpointDescriptor,
   validateCapabilityOverride,
+  validateGenericRequestedCapabilities,
   type GenericEndpointDescriptor,
   type DescriptorValidationError,
 } from '@/next/provider/generic/genericEndpointDescriptor'
@@ -298,5 +299,147 @@ describe('validateCapabilityOverride', () => {
 
   it('allows setting blocked feature to false', () => {
     expect(validateCapabilityOverride({ tools: false })).toBeNull()
+  })
+})
+
+describe('profileId safety', () => {
+  const secretToken = 'sk-super-secret-token-12345'
+
+  it('token-bearing profileId fails with static safe message', () => {
+    const result = validateGenericEndpointDescriptor({
+      profileId: secretToken,
+      baseUrl: 'https://api.example.com/v1',
+      model: 'gpt-4o-mini',
+      apiKey: 'sk-test',
+    })
+    expect(isError(result)).toBe(true)
+    if (isError(result)) {
+      expect(result.code).toBe('invalid_profile')
+      expect(result.message).not.toContain(secretToken)
+      expect(result.message).toBe('Unsupported Generic endpoint profile id.')
+    }
+  })
+
+  it('Bearer-token profileId fails with static safe message', () => {
+    const bearerProfileId = `Bearer ${secretToken}`
+    const result = validateGenericEndpointDescriptor({
+      profileId: bearerProfileId,
+      baseUrl: 'https://api.example.com/v1',
+      model: 'gpt-4o-mini',
+      apiKey: 'sk-test',
+    })
+    expect(isError(result)).toBe(true)
+    if (isError(result)) {
+      expect(result.message).not.toContain(secretToken)
+      expect(result.message).not.toContain('Bearer')
+      expect(result.message).toBe('Unsupported Generic endpoint profile id.')
+    }
+  })
+
+  it('serialized descriptor validation result does not contain raw token', () => {
+    const result = validateGenericEndpointDescriptor({
+      profileId: secretToken,
+      baseUrl: 'https://api.example.com/v1',
+      model: 'gpt-4o-mini',
+      apiKey: 'sk-test',
+    })
+    const serialized = JSON.stringify(result)
+    expect(serialized).not.toContain(secretToken)
+  })
+})
+
+describe('validateGenericRequestedCapabilities', () => {
+  const baseConfig = {
+    model: 'gpt-4o-mini',
+    requestedReasoningMode: 'auto' as const,
+  }
+
+  it('accepts empty config', () => {
+    expect(validateGenericRequestedCapabilities(baseConfig)).toBeNull()
+  })
+
+  it('accepts sampling params', () => {
+    expect(validateGenericRequestedCapabilities({
+      ...baseConfig,
+      samplingParams: { temperature: 0.7, top_p: 0.9, max_tokens: 1024 },
+    })).toBeNull()
+  })
+
+  it('rejects tools', () => {
+    const result = validateGenericRequestedCapabilities({
+      ...baseConfig,
+      tools: [{ type: 'function', function: { name: 'fn' } }],
+    })
+    expect(result).not.toBeNull()
+    expect(result?.code).toBe('blocked_capability_override')
+  })
+
+  it('rejects webSearch', () => {
+    const result = validateGenericRequestedCapabilities({
+      ...baseConfig,
+      webSearch: { requestPatch: {}, resolvedMode: 'enable' },
+    })
+    expect(result).not.toBeNull()
+    expect(result?.code).toBe('blocked_capability_override')
+  })
+
+  it('rejects imageGeneration', () => {
+    const result = validateGenericRequestedCapabilities({
+      ...baseConfig,
+      imageGeneration: { capabilityClass: 'text-to-image' },
+    })
+    expect(result).not.toBeNull()
+    expect(result?.code).toBe('blocked_capability_override')
+  })
+
+  it('rejects additionalPlugins', () => {
+    const result = validateGenericRequestedCapabilities({
+      ...baseConfig,
+      additionalPlugins: [{ id: 'file-parser' }],
+    })
+    expect(result).not.toBeNull()
+    expect(result?.code).toBe('blocked_capability_override')
+  })
+
+  it('rejects reasoning mode effort', () => {
+    const result = validateGenericRequestedCapabilities({
+      ...baseConfig,
+      requestedReasoningMode: 'effort',
+      requestedReasoningEffort: 'high',
+    })
+    expect(result).not.toBeNull()
+    expect(result?.code).toBe('blocked_capability_override')
+  })
+
+  it('accepts reasoning mode auto', () => {
+    expect(validateGenericRequestedCapabilities({
+      ...baseConfig,
+      requestedReasoningMode: 'auto',
+    })).toBeNull()
+  })
+
+  it('accepts empty tools array', () => {
+    expect(validateGenericRequestedCapabilities({
+      ...baseConfig,
+      tools: [],
+    })).toBeNull()
+  })
+
+  it('accepts empty additionalPlugins array', () => {
+    expect(validateGenericRequestedCapabilities({
+      ...baseConfig,
+      additionalPlugins: [],
+    })).toBeNull()
+  })
+
+  it('error messages do not expose raw token', () => {
+    const result = validateGenericRequestedCapabilities({
+      ...baseConfig,
+      tools: ['sk-secret-token-12345'],
+    })
+    expect(result).not.toBeNull()
+    if (result) {
+      expect(result.message).not.toContain('sk-secret-token-12345')
+    }
   })
 })

@@ -18,6 +18,7 @@ import {
 } from '@/next/provider/credentials/providerCredential'
 import {
   validateGenericEndpointDescriptor,
+  validateGenericRequestedCapabilities,
   GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID,
   type DescriptorValidationError,
 } from '@/next/provider/generic/genericEndpointDescriptor'
@@ -55,6 +56,13 @@ export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* st
   })
   if ('code' in descriptor) {
     yield descriptorErrorToStreamEvent(descriptor)
+    return
+  }
+
+  // Capability gate: reject unsupported feature intents before fetch
+  const capabilityError = validateGenericRequestedCapabilities(config)
+  if (capabilityError) {
+    yield descriptorErrorToStreamEvent(capabilityError)
     return
   }
 

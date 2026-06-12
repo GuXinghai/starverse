@@ -570,6 +570,186 @@ describe('streamViaGeneric', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // Capability gate tests
+  // ---------------------------------------------------------------------------
+
+  describe('capability gate', () => {
+    it('request with tools fails before fetch', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest({
+        tools: [{ type: 'function', function: { name: 'fn' } }],
+      }), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('blocked_capability_override')
+      }
+    })
+
+    it('request with webSearch fails before fetch', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest({
+        webSearch: { requestPatch: {}, resolvedMode: 'enable' },
+      }), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('blocked_capability_override')
+      }
+    })
+
+    it('request with imageGeneration fails before fetch', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest({
+        imageGeneration: { capabilityClass: 'text-to-image' },
+      }), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('blocked_capability_override')
+      }
+    })
+
+    it('request with additionalPlugins fails before fetch', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest({
+        additionalPlugins: [{ id: 'file-parser' }],
+      }), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('blocked_capability_override')
+      }
+    })
+
+    it('request with reasoning mode effort fails before fetch', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest({
+        requestedReasoningMode: 'effort',
+        requestedReasoningEffort: 'high',
+      }), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.code).toBe('blocked_capability_override')
+      }
+    })
+
+    it('mixed valid text request plus unsupported feature fails before fetch', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric({
+        ...makeRequest(),
+        contextMessages: [
+          { role: 'system', content: 'You are helpful.' },
+          { role: 'user', content: 'Hello' },
+        ],
+        config: {
+          model: 'gpt-4o-mini',
+          requestedReasoningMode: 'auto',
+          tools: [{ type: 'function', function: { name: 'fn' } }],
+        },
+      }, {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      const doneEvents = events.filter((e) => e.type === 'stream.done')
+      expect(doneEvents).toHaveLength(0)
+    })
+
+    it('capability failure emits stream.error and no stream.done', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest({
+        tools: [{ type: 'function', function: { name: 'fn' } }],
+      }), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      const doneEvents = events.filter((e) => e.type === 'stream.done')
+      expect(errorEvents).toHaveLength(1)
+      expect(doneEvents).toHaveLength(0)
+      expect(events[events.length - 1].type).toBe('stream.error')
+    })
+
+    it('capability failure does not leak raw token', async () => {
+      const rawToken = 'sk-capability-leak-test'
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest({
+        tools: [{ type: 'function', function: { name: 'fn' } }],
+      }), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: rawToken,
+        fetch,
+      }))
+
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain(rawToken)
+    })
+
+    it('valid text-only request with sampling params passes capability gate', async () => {
+      const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
+      const fetch = mockFetch(response)
+
+      const events = await collectEvents(streamViaGeneric(makeRequest({
+        samplingParams: { temperature: 0.7, max_tokens: 1024 },
+      }), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: VALID_API_KEY,
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(1)
+      const textEvents = events.filter((e) => e.type === 'message.text_delta')
+      expect(textEvents).toHaveLength(1)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // Unsupported outbound content tests
   // ---------------------------------------------------------------------------
 
