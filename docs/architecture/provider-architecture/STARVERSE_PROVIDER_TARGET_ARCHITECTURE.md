@@ -17,15 +17,18 @@
 
 ## Fixture foundation closeout (added 2026-06-12)
 
-All five target provider paths now have fixture-integrated adapter foundations:
+All six target provider paths now have fixture-integrated adapter foundations:
 
 - **OpenRouter**: backed by existing active runtime through provider core slice. OpenRouter behavior preserved unchanged.
 - **DeepSeek**: native mapper + request builder + SSE decoder + adapter. `reasoning_content` separated from visible text. Terminal coordination proven.
 - **OpenAI Responses**: native mapper + request builder + SSE decoder + adapter. `response.output_text.delta` / `response.reasoning_summary_text.delta` / `response.reasoning_text.delta` separated. `response.completed` / `response.failed` / `response.incomplete` terminal coordination proven.
 - **Anthropic**: native mapper + request builder + SSE decoder + adapter. `thinking_delta` / `signature_delta` / `text_delta` separated. `thinking.budget_tokens < max_tokens` invariant enforced. `message_stop` / `error` terminal coordination proven.
 - **Gemini API / Google AI Studio**: native mapper + request builder + SSE decoder + adapter. `thought` parts separated from visible text. `functionCall` / `functionResponse` ignored (no tool delta shape). `promptFeedback.blockReason` mapped to meta. `finishReason` / `error` terminal coordination proven. Gemini path is native Gemini API / Google AI Studio architecture, NOT legacy Gemini runtime remnants.
+- **Generic OpenAI-compatible**: native mapper + request builder + SSE decoder + adapter. Conservative Chat Completions text/basic streaming/basic error. Rejects unsupported outbound content (non-generic context messages, non-text content blocks, malformed text blocks) deterministically before fetch rather than silently flattening or dropping. Sanitizes credential-bearing messages and provider-controlled error code/type metadata. No tools/files/vision/reasoning/web search/structured output by default.
 
-Deferred: live API calls, UI/provider picker, credentials/secure store, provider registry, Send Plan RuntimeCapability integration, OpenRouter conformance to RuntimeProviderStreamAdapter, LocalEndpoint, ManagedLocalRuntime.
+Adapter-side credential boundary seed exists: pure adapter/test boundary for bearer credential construction, auth header building, credential masking, and credential-aware error message/code redaction. This is not secure store, not renderer/settings/IPC, not live enablement.
+
+Deferred: live API calls, UI/provider picker, settings, secure credential store, provider registry, Send Plan RuntimeCapability integration, OpenRouter conformance to RuntimeProviderStreamAdapter, LocalEndpoint, ManagedLocalRuntime.
 
 ---
 
