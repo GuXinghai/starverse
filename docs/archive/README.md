@@ -1,18 +1,18 @@
-# 📦 Starverse 文档归档中心
+# Starverse 文档归档中心
 
 > **Status**: `archived`
-> ⚠️ **Read-only historical records**. Default: skip unless tasked with history tracing, regression check, or migration audit.
-> 💡 **For agents**: Use [../DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md) to find active/reference docs instead.
+> **Warning**: Read-only historical records. Default: skip unless tasked with history tracing, regression check, or migration audit.
+> **For agents**: Use [../DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md) to find active/reference docs instead.
 
 本目录存储已完成项目的历史文档，保持主文档目录清晰简洁。
 
-## 📊 归档统计
+## 归档统计
 
 **归档日期**: 2025年12月6日（初始），2026年5月22日（DGR-1 更新）
 **总文档数**: 53+ 个
 **涵盖时间**: 2024年 - 2026年
 
-## 📂 归档目录
+## 归档目录
 
 ### [refactoring/](refactoring/) - 重构项目 (5 个文档)
 Phase 0-3 的重构项目记录，包括基础设施、按钮组件、Store 集成等重构工作。
@@ -115,7 +115,7 @@ Debug 调查和调试记录，由 DGR-1 归档。
 
 **归档原因**: 与 UNIFIED_GENERATION_ARCHITECTURE.md 内容重复，后者为 SSOT
 
-## 🔍 如何使用归档
+## 如何使用归档
 
 ### 查找历史信息
 1. 根据问题类型选择对应目录（重构/修复/优化/分析）
@@ -139,23 +139,23 @@ grep -r "关键词" .
 find . -name "*关键词*.md"
 ```
 
-## 📋 归档原则
+## 归档原则
 
 ### 归档触发条件
 文档满足以下任一条件即归档：
-- ✅ 标题含 "COMPLETE"、"已完成"
-- ✅ 完成日期距今 > 30 天
-- ✅ 内容标注 "状态：已完成"
-- ✅ 问题已解决且验证稳定
-- ✅ 分析已完成并产生后续行动
+- complete: 标题含 "COMPLETE"、"已完成"
+- complete: 完成日期距今 > 30 天
+- complete: 内容标注 "状态：已完成"
+- complete: 问题已解决且验证稳定
+- complete: 分析已完成并产生后续行动
 
 ### 不归档的文档
-- ❌ 核心架构文档（长期有效）
-- ❌ 开发指南和规范
-- ❌ 当前活跃的实现计划
-- ❌ 待办事项和正在进行的工作
+- blocked: 核心架构文档（长期有效）
+- blocked: 开发指南和规范
+- blocked: 当前活跃的实现计划
+- blocked: 待办事项和正在进行的工作
 
-## 🔗 相关链接
+## 相关链接
 
 - [../guides/INDEX.md](../guides/INDEX.md) - 文档导航中心
 - [../architecture/](../architecture/) - 核心架构文档（活跃）
@@ -164,7 +164,7 @@ find . -name "*关键词*.md"
 - [../maintenance/document-governance.md](../maintenance/document-governance.md) - 文档治理规则
 - [../maintenance/document-redirect-map.md](../maintenance/document-redirect-map.md) - 重定向映射
 
-## 📌 维护说明
+## 维护说明
 
 归档目录每月审查一次：
 - 识别新完成的文档

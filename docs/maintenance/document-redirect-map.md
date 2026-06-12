@@ -61,15 +61,15 @@
 | `docs/open_router_流式回复与推理_ssot（v_2_）.md` | `docs/openrouter-streaming-reasoning-ssot-v2.md` | rename | completed | DGR-2, 9 references updated |
 
 **Impact Analysis**:
-- Referenced by `docs/refactor/plan.md` ✓ updated
-- Referenced by `docs/refactor/compliance-checklist.md` ✓ updated
-- Referenced by `docs/refactor/risk-log.md` ✓ updated
-- Referenced by `docs/refactor/observability.md` ✓ updated
-- Referenced by `docs/refactor/CLEANUP_COMPLETION_REPORT.md` ✓ updated
-- Referenced by `docs/adr/README.md` ✓ updated
-- Referenced by `docs/maintenance/document-governance.md` ✓ updated
-- Referenced by `docs/maintenance/document-status-taxonomy.md` ✓ updated
-- Referenced by `docs/maintenance/document-redirect-map.md` ✓ updated
+- Referenced by `docs/refactor/plan.md` updated
+- Referenced by `docs/refactor/compliance-checklist.md` updated
+- Referenced by `docs/refactor/risk-log.md` updated
+- Referenced by `docs/refactor/observability.md` updated
+- Referenced by `docs/refactor/CLEANUP_COMPLETION_REPORT.md` updated
+- Referenced by `docs/adr/README.md` updated
+- Referenced by `docs/maintenance/document-governance.md` updated
+- Referenced by `docs/maintenance/document-status-taxonomy.md` updated
+- Referenced by `docs/maintenance/document-redirect-map.md` updated
 
 ### refactor/ vs refactoring/ Clarification
 

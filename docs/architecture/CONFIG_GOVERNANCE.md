@@ -19,32 +19,32 @@
 - **历史遗留**: 旧版本可能包含 `modelCapabilities`、`modelsCache` 等大字段
 
 ### 1.3 影响范围
-- ✅ 配置文件已清理并重置（62.6 MB → 0.01 KB）
-- ✅ 备份已保存: `config.json.bak_20251205_140021`
-- ✅ 代码中已无 `conversations-meta` 引用
+- complete: 配置文件已清理并重置（62.6 MB → 0.01 KB）
+- complete: 备份已保存: `config.json.bak_20251205_140021`
+- complete: 代码中已无 `conversations-meta` 引用
 
 ---
 
 ## 二、实施的治理方案
 
-### 2.1 短期急救 ✅
+### 2.1 短期急救 - complete
 1. **备份原配置**: `config.json.bak_20251205_140021` (62.59 MB)
 2. **重置配置文件**: 删除并重建为空对象 `{}`
 3. **验证效果**: 配置文件恢复到 10 字节，应用可正常启动
 
-### 2.2 中期治理架构 ✅
+### 2.2 中期治理架构 - complete
 
-#### 📦 新增模块：`electron/config/configSchema.ts`
+#### 新增模块：`electron/config/configSchema.ts`
 集中管理配置 schema、白名单和验证逻辑。
 
 **核心功能**:
-- ✅ 配置版本化管理 (当前 v2)
-- ✅ 字段白名单定义 (33 个允许字段)
-- ✅ 配置迁移逻辑 (`migrateConfig`)
-- ✅ 体积检测工具 (`checkFieldSize`, `checkTotalSize`)
-- ✅ 自动清理遗留大字段
+- complete: 配置版本化管理 (当前 v2)
+- complete: 字段白名单定义 (33 个允许字段)
+- complete: 配置迁移逻辑 (`migrateConfig`)
+- complete: 体积检测工具 (`checkFieldSize`, `checkTotalSize`)
+- complete: 自动清理遗留大字段
 
-#### 🔧 重构模块：`electron/main.ts`
+#### 重构模块：`electron/main.ts`
 使用 `configSchema` 模块实现智能配置管理。
 
 **关键改进**:
@@ -83,7 +83,7 @@
 | **项目管理** | `projects`, `activeProjectId`, `recentProjectIds` | 项目元数据（仅 ID） |
 | **模型配置** | `favoriteModels`, `modelConfigs`, `conversationModelConfigs` | 参数配置（仅元数据） |
 
-### 3.2 禁止的字段类型 ❌
+### 3.2 禁止的字段类型 - blocked
 - **模型列表**: 使用 API 动态获取或 SQLite 缓存
 - **会话内容**: 必须存储在 SQLite (`convo`, `message` 表)
 - **API 响应缓存**: 使用独立缓存文件 (`cache/*.json`)
@@ -178,8 +178,8 @@ export const CONFIG_SIZE_LIMITS = {
 
 | 环境 | 启动时 | 每次写入 | 定期检查 |
 |------|-------|---------|---------|
-| **开发** | ✅ 详细 | ✅ 完整 | 可选 |
-| **生产** | ✅ 简化 | ⚠️ 仅大字段 | ❌ 禁用 |
+| **开发** | 详细 | 完整 | 可选 |
+| **生产** | 简化 | warning: 仅大字段 | blocked: 禁用 |
 
 **设计原因**:
 - 避免频繁 `JSON.stringify(config)` 造成 CPU 开销
@@ -193,16 +193,16 @@ export const CONFIG_SIZE_LIMITS = {
 [Config] 开始配置迁移: v1 → v2
 [Config] v1→v2: 迁移 apiKey → geminiApiKey
 [Config] v1→v2: 移除遗留大字段 conversations-meta (60.5 MB)
-[Config] ✅ 配置已迁移到 v2
+[Config] complete: 配置已迁移到 v2
 [Config] 清理 1 个非法字段，减少 60.50 MB
   - conversations-meta: 60500.00 KB
-[Config] ✓ 配置文件大小正常: 0.50 KB
+[Config] ok: 配置文件大小正常: 0.50 KB
 ```
 
 **生产环境** (简化):
 ```
-[Config] ✅ 配置已迁移到 v2
-[Config] ⚠️ 配置文件体积偏大: 250.00 KB
+[Config] complete: 配置已迁移到 v2
+[Config] warning: 配置文件体积偏大: 250.00 KB
 ```
 
 ---
@@ -223,9 +223,9 @@ Get-Content $path -Head 20
 ### 6.2 启动日志检查
 
 重启应用后，观察控制台输出：
-- ✅ 应看到: `[Config] ✓ 配置文件大小正常: XX KB`
-- ⚠️ 如看到警告: 检查是否有大字段误写入
-- ❌ 如看到错误: 立即检查 `config.json` 内容
+- complete: 应看到: `[Config] ok: 配置文件大小正常: XX KB`
+- warning: 如看到警告: 检查是否有大字段误写入
+- blocked: 如看到错误: 立即检查 `config.json` 内容
 
 ### 6.3 健康检查脚本
 
@@ -234,9 +234,9 @@ Get-Content $path -Head 20
 .\scripts\check-config-health.ps1
 
 # 输出示例：
-# ✅ 状态: 健康 (< 50 KB)
-# 📊 配置字段统计: 总字段数 12
-# 📈 最大的 10 个字段: ...
+# Status: healthy (< 50 KB)
+# 配置字段统计: 总字段数 12
+# 最大的 10 个字段: ...
 ```
 
 ---
@@ -277,14 +277,14 @@ Get-Content $path -Head 20
 
 ## 八、未来优化建议
 
-### 8.1 已完成 ✅
+### 8.1 已完成 - complete
 - [x] 配置版本化和迁移机制
 - [x] 字段白名单验证
 - [x] 体积检测和告警
 - [x] 环境感知日志分级
 - [x] 自动清理遗留大字段
 
-### 8.2 待实施 🔄
+### 8.2 待实施 - deferred
 - [ ] **配置加密**: 敏感字段（API Keys）加密存储
 - [ ] **配置导入/导出**: 用户数据迁移功能
 - [ ] **配置备份**: 定期自动备份（保留最近 5 个）
@@ -336,9 +336,9 @@ Get-Content $path -Head 20
 
 ### 解决方案
 通过**版本化 + 白名单 + 自动化**三位一体：
-- ✅ 版本化管理：平滑迁移和向后兼容
-- ✅ 白名单机制：主动防御非法字段
-- ✅ 自动化清理：启动时自动修复历史问题
+- complete: 版本化管理：平滑迁移和向后兼容
+- complete: 白名单机制：主动防御非法字段
+- complete: 自动化清理：启动时自动修复历史问题
 
 ### 预期效果
 - **短期**: 配置文件从 62.6 MB 降至 < 50 KB
