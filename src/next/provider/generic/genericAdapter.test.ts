@@ -67,6 +67,8 @@ function mockFetch(response: Response): GenericFetchFn {
   return vi.fn(async () => response)
 }
 
+const VALID_API_KEY = 'sk-test'
+
 async function collectEvents(gen: AsyncGenerator<StarverseStreamEvent>): Promise<StarverseStreamEvent[]> {
   const events: StarverseStreamEvent[] = []
   for await (const ev of gen) { events.push(ev) }
@@ -105,7 +107,7 @@ describe('streamViaGeneric', () => {
     const fetch = mockFetch(response)
 
     const events = await collectEvents(streamViaGeneric(makeRequest(), {
-      baseUrl: 'https://api.example.com/v1', apiKey: 'sk-test', fetch,
+      baseUrl: 'https://api.example.com/v1', apiKey: VALID_API_KEY, fetch,
     }))
 
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
@@ -119,7 +121,7 @@ describe('streamViaGeneric', () => {
     const fetch = mockFetch(response)
 
     const events = await collectEvents(streamViaGeneric(makeRequest(), {
-      baseUrl: 'https://api.example.com/v1', apiKey: 'sk-test', fetch,
+      baseUrl: 'https://api.example.com/v1', apiKey: VALID_API_KEY, fetch,
     }))
 
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
@@ -131,7 +133,7 @@ describe('streamViaGeneric', () => {
     const fetch = mockFetch(response)
 
     const events = await collectEvents(streamViaGeneric(makeRequest(), {
-      baseUrl: 'https://api.example.com/v1', apiKey: 'sk-test', fetch,
+      baseUrl: 'https://api.example.com/v1', apiKey: VALID_API_KEY, fetch,
     }))
 
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
@@ -143,7 +145,7 @@ describe('streamViaGeneric', () => {
     const fetch = mockFetch(response)
 
     const events = await collectEvents(streamViaGeneric(makeRequest(), {
-      baseUrl: 'https://api.example.com/v1', apiKey: 'sk-test', fetch,
+      baseUrl: 'https://api.example.com/v1', apiKey: VALID_API_KEY, fetch,
     }))
 
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
@@ -158,7 +160,7 @@ describe('streamViaGeneric', () => {
     const fetch = mockFetch(response)
 
     const events = await collectEvents(streamViaGeneric(makeRequest(), {
-      baseUrl: 'https://api.example.com/v1', apiKey: 'sk-test', fetch,
+      baseUrl: 'https://api.example.com/v1', apiKey: VALID_API_KEY, fetch,
     }))
 
     const doneEvents = events.filter((e) => e.type === 'stream.done')
@@ -174,7 +176,7 @@ describe('streamViaGeneric', () => {
     const fetch = mockFetch(response)
 
     const events = await collectEvents(streamViaGeneric(makeRequest(), {
-      baseUrl: 'https://api.example.com/v1', apiKey: 'sk-test', fetch,
+      baseUrl: 'https://api.example.com/v1', apiKey: VALID_API_KEY, fetch,
     }))
 
     const usageEvents = events.filter((e) => e.type === 'usage.delta')
@@ -189,7 +191,7 @@ describe('streamViaGeneric', () => {
     const fetch = mockFetch(response)
 
     const events = await collectEvents(streamViaGeneric(makeRequest(), {
-      baseUrl: 'https://api.example.com/v1', apiKey: 'bad', fetch,
+      baseUrl: 'https://api.example.com/v1', apiKey: 'sk-bad', fetch,
     }))
 
     const errorEvents = events.filter((e) => e.type === 'stream.error')
@@ -208,7 +210,7 @@ describe('streamViaGeneric', () => {
     const fetch = mockFetch(response)
 
     const events = await collectEvents(streamViaGeneric(makeRequest(), {
-      baseUrl: 'https://api.example.com/v1', apiKey: 'bad', fetch,
+      baseUrl: 'https://api.example.com/v1', apiKey: 'sk-bad', fetch,
     }))
 
     const errorEvents = events.filter((e) => e.type === 'stream.error')
@@ -224,7 +226,7 @@ describe('streamViaGeneric', () => {
     const fetch = mockFetch(response)
 
     const events = await collectEvents(streamViaGeneric(makeRequest(), {
-      baseUrl: 'https://api.example.com/v1', apiKey: 'sk-test', fetch,
+      baseUrl: 'https://api.example.com/v1', apiKey: VALID_API_KEY, fetch,
     }))
 
     const errorEvents = events.filter((e) => e.type === 'stream.error')
@@ -238,7 +240,7 @@ describe('streamViaGeneric', () => {
     const fetch: GenericFetchFn = vi.fn(async () => { throw new TypeError('fetch failed') })
 
     const events = await collectEvents(streamViaGeneric(makeRequest(), {
-      baseUrl: 'https://api.example.com/v1', apiKey: 'sk-test', fetch,
+      baseUrl: 'https://api.example.com/v1', apiKey: VALID_API_KEY, fetch,
     }))
 
     const errorEvents = events.filter((e) => e.type === 'stream.error')
@@ -253,7 +255,7 @@ describe('streamViaGeneric', () => {
     const fetch = mockFetch(response)
 
     const events = await collectEvents(streamViaGeneric(makeRequest(), {
-      baseUrl: 'https://api.example.com/v1', apiKey: 'sk-test', fetch,
+      baseUrl: 'https://api.example.com/v1', apiKey: VALID_API_KEY, fetch,
     }))
 
     const errorEvents = events.filter((e) => e.type === 'stream.error')
@@ -278,7 +280,7 @@ describe('streamViaGeneric', () => {
 
     const events = await collectEvents(streamViaGeneric(
       { ...makeRequest(), signal: controller.signal },
-      { baseUrl: 'https://api.example.com/v1', apiKey: 'sk-test', fetch },
+      { baseUrl: 'https://api.example.com/v1', apiKey: VALID_API_KEY, fetch },
     ))
 
     expect(events.some((e) => e.type === 'stream.abort')).toBe(true)
@@ -289,12 +291,12 @@ describe('streamViaGeneric', () => {
     const fetch = mockFetch(response)
 
     await collectEvents(streamViaGeneric(makeRequest(), {
-      baseUrl: 'https://api.example.com/v1', apiKey: 'sk-test', fetch,
+      baseUrl: 'https://api.example.com/v1', apiKey: VALID_API_KEY, fetch,
     }))
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  it('full text flow: text → finish → usage → done', async () => {
+  it('full text flow: text �?finish �?usage �?done', async () => {
     const response = makeSseResponseWithDone(
       textChunkJson('The answer is '),
       textChunkJson('42.'),
@@ -303,7 +305,7 @@ describe('streamViaGeneric', () => {
     const fetch = mockFetch(response)
 
     const events = await collectEvents(streamViaGeneric(makeRequest(), {
-      baseUrl: 'https://api.example.com/v1', apiKey: 'sk-test', fetch,
+      baseUrl: 'https://api.example.com/v1', apiKey: VALID_API_KEY, fetch,
     }))
 
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
@@ -316,5 +318,94 @@ describe('streamViaGeneric', () => {
     expect(doneEvents).toHaveLength(1)
     expect(metaEvents.some((e) => e.type === 'meta.delta' && e.meta.finish_reason === 'stop')).toBe(true)
     expect(events[events.length - 1].type).toBe('stream.done')
+  })
+
+  // ---------------------------------------------------------------------------
+  // Credential boundary tests
+  // ---------------------------------------------------------------------------
+
+  describe('credential boundary', () => {
+    it('empty apiKey yields auth stream.error and no fetch call', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: '',
+        fetch,
+      }))
+
+      // No fetch call should be made
+      expect(fetch).toHaveBeenCalledTimes(0)
+
+      // Should emit auth error
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].terminal).toBe(true)
+        expect(errorEvents[0].error.category).toBe('auth')
+      }
+    })
+
+    it('whitespace apiKey yields auth stream.error', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: '   ',
+        fetch,
+      }))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].error.category).toBe('auth')
+        expect(errorEvents[0].error.code).toBe('empty_token')
+      }
+    })
+
+    it('raw token does not appear in emitted error events', async () => {
+      const rawToken = 'sk-super-secret-key-never-leak'
+
+      // With valid cred, if fetch fails we should not leak the token
+      const failingFetch: GenericFetchFn = vi.fn(async () => { throw new TypeError('connection refused') })
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: rawToken,
+        fetch: failingFetch,
+      }))
+
+      const serialized = JSON.stringify(events)
+      expect(serialized).not.toContain(rawToken)
+    })
+
+    it('raw token does not appear in auth error events', async () => {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: '',
+        fetch,
+      }))
+
+      const serialized = JSON.stringify(events)
+      // Error events should not contain raw key material
+      expect(serialized).not.toContain('sk-')
+    })
+
+    it('Authorization header uses Bearer format from apiKey', async () => {
+      const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
+      const fetch = mockFetch(response)
+
+      await collectEvents(streamViaGeneric(makeRequest(), {
+        baseUrl: 'https://api.example.com/v1',
+        apiKey: 'sk-my-token-123',
+        fetch,
+      }))
+
+      const [, init] = (fetch as any).mock.calls[0]
+      expect(init.headers['Authorization']).toBe('Bearer sk-my-token-123')
+    })
   })
 })

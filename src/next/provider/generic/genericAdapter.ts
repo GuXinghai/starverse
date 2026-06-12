@@ -7,23 +7,55 @@
  */
 
 import type { ProviderStreamRequest, StarverseStreamEvent, StarverseProviderError } from '@/next/provider/providerTypes'
-import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProviderAdapter'
+import type { RuntimeProviderStreamAdapter, ProviderStreamTransport } from '@/next/provider/runtimeProviderAdapter'
 import { buildGenericRequest, type GenericMessage } from '@/next/provider/generic/genericRequestBuilder'
 import { decodeGenericSSE } from '@/next/provider/generic/genericSseDecoder'
-
-export type GenericTransportOptions = Readonly<{
-  baseUrl: string
-  apiKey: string
-  timeoutMs?: number
-}>
+import {
+  createBearerCredential,
+  buildAuthHeader,
+  isCredentialError,
+} from '@/next/provider/credentials/providerCredential'
 
 export type GenericFetchFn = (url: string, init: RequestInit) => Promise<Response>
 
 export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* streamViaGeneric(
   request: ProviderStreamRequest,
-  transport: GenericTransportOptions & { fetch: GenericFetchFn },
+  transport: ProviderStreamTransport,
 ): AsyncGenerator<StarverseStreamEvent> {
   const { assistantMessageId, config, signal } = request
+
+  // Credential boundary: create and validate credential from transport
+  const cred = createBearerCredential(transport.apiKey)
+  if (isCredentialError(cred)) {
+    yield {
+      type: 'stream.error',
+      error: {
+        phase: 'transport',
+        provider: 'generic',
+        category: 'auth',
+        message: cred.message,
+        code: cred.code,
+      } satisfies StarverseProviderError,
+      terminal: true,
+    }
+    return
+  }
+
+  const authHeader = buildAuthHeader(cred)
+  if (isCredentialError(authHeader)) {
+    yield {
+      type: 'stream.error',
+      error: {
+        phase: 'transport',
+        provider: 'generic',
+        category: 'auth',
+        message: authHeader.message,
+        code: authHeader.code,
+      } satisfies StarverseProviderError,
+      terminal: true,
+    }
+    return
+  }
 
   const messages = buildMessages(request)
   const body = buildGenericRequest({ model: config.model, messages, config })
@@ -31,7 +63,7 @@ export const streamViaGeneric: RuntimeProviderStreamAdapter = async function* st
   const url = `${transport.baseUrl.replace(/\/$/, '')}/chat/completions`
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${transport.apiKey}`,
+    ...authHeader,
   }
 
   let response: Response
