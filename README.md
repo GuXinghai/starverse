@@ -16,7 +16,7 @@
 </p>
 
 <p>
-  一个功能强大的 OpenRouter-first AI 聊天客户端，提供分支化对话、多模态交互、智能搜索等企业级功能；多提供商演进由 docs/architecture/provider-architecture/ 治理，旧 Gemini 路径仅为 legacy remnants
+  一个功能强大的 OpenRouter-first AI 聊天客户端，提供分支化对话、多模态交互、智能搜索等企业级功能；多提供商演进由 docs/architecture/provider-architecture/ 治理，旧 Gemini 路径仅为 legacy remnants，未来 Gemini 必须经 Gemini API / Google AI Studio native adapter 重建
 </p>
 
 ### 🎯 核心特色
@@ -26,7 +26,7 @@
 | 🌳 分支化对话 | ✅ 完整树形结构 | ❌ 线性对话 |
 | 🔍 全文搜索 | ✅ SQLite FTS5 | ⚠️ 基础搜索 |
 | 🎨 多模态支持 | ✅ 图片+文本混合 | ⚠️ 仅文本 |
-| 🤖 提供商架构 | ✅ OpenRouter-first active runtime + Owner-confirmed multi-provider roadmap | ⚠️ 单一提供商 |
+| 🤖 提供商架构 | ✅ OpenRouter-first active runtime + 六个 provider fixture foundations (DeepSeek, OpenAI Responses, Anthropic, Gemini API / Google AI Studio, Generic OpenAI-compatible) | ⚠️ 单一提供商 |
 | 💾 数据存储 | ✅ SQLite + Web Worker | ⚠️ JSON 文件 |
 | ⚡ 性能优化 | ✅ 75% 提升 | - |
 | 📁 项目管理 | ✅ 完整分类系统 | ❌ 无 |
@@ -339,7 +339,7 @@ npm ci
 
 **步骤 3: 配置 API Key**
 
-启动应用后，点击右上角设置图标 ⚙️，配置 OpenRouter API Key。当前 active runtime 是 OpenRouter-first；旧 Gemini 配置和 SDK 仅是 legacy remnants，不代表 active runtime support。未来 Gemini support 如实施，必须通过 [Provider Architecture](docs/architecture/provider-architecture/README.md) 中确认的 Gemini API / Google AI Studio native adapter 重建。
+启动应用后，点击右上角设置图标 ⚙️，配置 OpenRouter API Key。当前 active runtime 是 OpenRouter-first；旧 Gemini 配置和 SDK 仅是 legacy remnants，不代表 active runtime support。六个 provider fixture foundations 已完成（DeepSeek, OpenAI Responses, Anthropic, Gemini API / Google AI Studio, Generic OpenAI-compatible），但这些仅是 fixture 级别的 adapter 基础，不是 live API support。未来 Gemini support 如实施，必须通过 [Provider Architecture](docs/architecture/provider-architecture/README.md) 中确认的 Gemini API / Google AI Studio native adapter 重建。
 
 <details>
 <summary><b>OpenRouter（访问上百种模型）</b></summary>
@@ -601,7 +601,7 @@ npm run build
 - **分支化对话树**：`Map<string, Branch>` O(1) 查找，JSON 序列化存储在 `convo.meta`
 - **Web Worker 数据库**：better-sqlite3 在独立 Worker 线程执行，IPC + MessagePort 通信，30s 超时保护
 - **FTS5 全文搜索**：message_fts 虚拟表，BM25 排序，unicode61 中英文分词，触发器同步索引
-- **Provider runtime strategy**：当前 active runtime 是 OpenRouter-first，`next/openrouter/` 封装 OpenRouter request / SSE 解析；旧 Gemini SDK 路径是 legacy remnant，不作为 active runtime support。多提供商演进以 [Provider Architecture](docs/architecture/provider-architecture/README.md) 为准，未来 Gemini support 必须 native rebuild。
+- **Provider runtime strategy**：当前 active runtime 是 OpenRouter-first，`next/openrouter/` 封装 OpenRouter request / SSE 解析；旧 Gemini SDK 路径是 legacy remnant，不作为 active runtime support。六个 provider fixture foundations 已完成（OpenRouter, DeepSeek, OpenAI Responses, Anthropic, Gemini API / Google AI Studio, Generic OpenAI-compatible），但非 OpenRouter providers 仅是 fixture 级别，没有 live API / UI / settings / credential / production send path。多提供商演进以 [Provider Architecture](docs/architecture/provider-architecture/README.md) 为准，未来 Gemini support 必须 native rebuild。
 - **Vue Proxy 边界防御**：`deepToRaw()` 深度去除 Proxy 后再经 IPC 传递，消除 structuredClone 错误
 - **Send Plan + 文件管道**：`src/shared/files/` + `infra/files/` 实现 attachment 语义、send preflight、兼容性门禁（详见 [file-pipeline](docs/file-pipeline/README.md)）
 
@@ -802,7 +802,7 @@ console.log(`标签切换耗时: ${duration.toFixed(2)}ms`)
 - [Electron](https://www.electronjs.org/) - 跨平台桌面应用框架
 - [Vue.js](https://vuejs.org/) - 渐进式 JavaScript 框架
 - [Tailwind CSS](https://tailwindcss.com/) - 原子化 CSS 框架
-- [Google Gemini](https://ai.google.dev/) - Future native rebuild reference；当前旧 Gemini 路径不是 active runtime support
+- [Google Gemini](https://ai.google.dev/) - Future native rebuild reference；当前旧 Gemini 路径不是 active runtime support；Gemini API / Google AI Studio fixture foundation 已完成但不是 live support
 - [OpenRouter](https://openrouter.ai/) - 统一的多模型 API 网关
 - [Vite](https://vitejs.dev/) - 极速的前端构建工具
 - [Pinia](https://pinia.vuejs.org/) - Vue 3 状态管理
