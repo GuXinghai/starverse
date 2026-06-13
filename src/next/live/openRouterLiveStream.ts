@@ -176,6 +176,27 @@ function isProtocolInvalidCode(value: unknown): boolean {
   return value === 'protocol_invalid' || value === 'INVALID_WIRE_EVENT'
 }
 
+function sanitizeIpcStartFailure(result: unknown): unknown {
+  if (!result || typeof result !== 'object') return result
+  const record = result as Record<string, unknown>
+  const code = typeof record.code === 'string' ? record.code : ''
+  if (
+    code === 'credential_unresolved' ||
+    code === 'credential_invalid' ||
+    code === 'invalid_credential_ref'
+  ) {
+    return {
+      ...record,
+      error: code === 'credential_invalid'
+        ? 'Credential material is invalid.'
+        : code === 'invalid_credential_ref'
+          ? 'Credential reference is invalid.'
+          : 'Credential could not be resolved.',
+    }
+  }
+  return result
+}
+
 function getIpcRenderer(): IpcRendererLike | null {
   const api = (globalThis as any).electronAPI as IpcRendererLike | undefined
   if (!api) return null
@@ -260,7 +281,8 @@ export const ipcTransportStrategy: OpenRouterTransportStrategy<OpenRouterIpcTran
         config: options.config,
       })
       if (result && result.ok === false) {
-        yield* semanticMapIpcStartInvokeError(result, isProtocolInvalidCode(result.code), requestContext)
+        const safeResult = sanitizeIpcStartFailure(result)
+        yield* semanticMapIpcStartInvokeError(safeResult, isProtocolInvalidCode(result.code), requestContext)
         return
       }
     } catch (err) {
@@ -313,7 +335,8 @@ export const ipcTransportStrategy: OpenRouterTransportStrategy<OpenRouterIpcTran
 /* eslint-enable max-lines-per-function, max-statements, complexity */
 
 export type LiveRequestConfig = Readonly<{
-  apiKey: string
+  apiKey?: string
+  credentialSource?: 'legacy_store'
   model: string
   requestedReasoningMode: RequestedReasoningMode
   requestedReasoningEffort?: ReasoningEffort
@@ -436,7 +459,7 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
     return
   }
 
-  const { apiKey, model } = options.config
+  const { apiKey, credentialSource, model } = options.config
   const providerRequireParameters = await getOpenRouterProviderRequireParameters()
   const netExp = await getNetExpSettings()
 
@@ -491,14 +514,14 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
     signal,
   }
 
-  if (netExp.streamInMainProcess === true) {
+  if (netExp.streamInMainProcess === true || credentialSource === 'legacy_store') {
     const ipcOptions: OpenRouterIpcTransportOptions = {
       userText: options.userText,
       contextMessages: options.contextMessages ?? [],
       contextMode: options.contextMode ?? 'default',
       requestBody: body,
       config: {
-        apiKey,
+        ...(credentialSource ? { credentialSource } : { apiKey: apiKey ?? '' }),
         model,
         requestedReasoningMode: options.config.requestedReasoningMode,
         ...(options.config.requestedReasoningEffort ? { requestedReasoningEffort: options.config.requestedReasoningEffort } : {}),
@@ -506,7 +529,7 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
         ...(imageGenerationPatch.modalities ? { modalities: imageGenerationPatch.modalities } : {}),
         ...(imageGenerationPatch.imageConfig ? { imageConfig: imageGenerationPatch.imageConfig } : {}),
         ...(options.config.timeoutMs ? { timeoutMs: options.config.timeoutMs } : {}),
-        ...(options.config.baseUrl ? { baseUrl: options.config.baseUrl } : {}),
+        ...(credentialSource ? {} : options.config.baseUrl ? { baseUrl: options.config.baseUrl } : {}),
         ...(options.config.tools ? { tools: options.config.tools } : {}),
         ...(options.config.openRouterAdditionalPlugins ? { openRouterAdditionalPlugins: options.config.openRouterAdditionalPlugins } : {}),
         providerRequireParameters,
@@ -520,7 +543,7 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
   }
 
   const fetchOptions: OpenRouterFetchTransportOptions = {
-    apiKey,
+    apiKey: apiKey ?? '',
     body,
     timeoutMs: options.config.timeoutMs,
     baseUrl: options.config.baseUrl,

@@ -6,13 +6,25 @@ import {
   type ProviderCredentialRef,
 } from '@/next/provider/credentials/providerCredentialResolver'
 import {
+  createOpenRouterChatLegacyStoreCredentialResolver,
+  OPENROUTER_CHAT_LEGACY_CREDENTIAL_REF,
+  OPENROUTER_CHAT_LEGACY_API_KEY_STORE_KEY,
+  OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY,
   openRouterLegacyCredentialFromRaw,
+  resolveOpenRouterChatCredentialFromLegacyStore,
   resolveOpenRouterLegacyCredential,
   toSafeOpenRouterLegacyCredentialDiagnostics,
 } from '@/next/provider/openrouter/openRouterLegacyCredential'
 
 const RAW_KEY = 'sk-or-openrouter-legacy-secret'
 const CREDENTIAL_REF: ProviderCredentialRef = { kind: 'credential_ref', id: 'openrouter-default' }
+
+function createStore(initial: Record<string, unknown>) {
+  const data = new Map<string, unknown>(Object.entries(initial))
+  return {
+    get: (key: string) => data.get(key),
+  }
+}
 
 function expectNoSecretLeak(value: unknown): void {
   const serialized = JSON.stringify(value)
@@ -160,5 +172,82 @@ describe('openRouterLegacyCredential facade', () => {
       expect(result).toEqual(expected.error)
     }
     expectNoSecretLeak(result)
+  })
+
+  it('defines the canonical C3 chat/send legacy_store credential ref without secret material', () => {
+    expect(OPENROUTER_CHAT_LEGACY_CREDENTIAL_REF).toEqual({
+      kind: 'credential_ref',
+      id: 'openrouter-chat-legacy-store',
+    })
+    expectNoSecretLeak(OPENROUTER_CHAT_LEGACY_CREDENTIAL_REF)
+  })
+
+  it('resolver-backed legacy_store chat source reads current legacy key and baseUrl unchanged apart from existing trim behavior', () => {
+    const result = resolveOpenRouterChatCredentialFromLegacyStore(createStore({
+      [OPENROUTER_CHAT_LEGACY_API_KEY_STORE_KEY]: `  ${RAW_KEY}  `,
+      [OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY]: ' https://openrouter-proxy.example.test/custom/v1/ ',
+    }))
+
+    expect(result).toEqual({
+      ok: true,
+      source: 'legacy_store',
+      credential: {
+        kind: 'openrouter_legacy_api_key',
+        apiKey: RAW_KEY,
+        baseUrl: 'https://openrouter-proxy.example.test/custom/v1/',
+      },
+      diagnostics: {
+        kind: 'openrouter_legacy_credential',
+        status: 'configured',
+        code: 'credential_configured',
+        maskedApiKey: '***',
+        baseUrlConfigured: true,
+        maskedBaseUrl: 'https://o***t',
+      },
+    })
+    expectNoSecretLeak(result.diagnostics)
+  })
+
+  it('resolver-backed legacy_store chat source preserves missing-key behavior as safe unresolved failure', () => {
+    const result = resolveOpenRouterChatCredentialFromLegacyStore(createStore({
+      [OPENROUTER_CHAT_LEGACY_API_KEY_STORE_KEY]: '   ',
+      [OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY]: 'https://openrouter-proxy.example.test/custom/v1/',
+    }))
+
+    expect(result).toEqual({
+      ok: false,
+      source: 'legacy_store',
+      failure: {
+        kind: 'openrouter_chat_credential_resolution_error',
+        code: 'credential_unresolved',
+        status: 'missing',
+        message: 'Credential could not be resolved.',
+      },
+      diagnostics: {
+        kind: 'openrouter_legacy_credential',
+        status: 'missing',
+        code: 'credential_missing',
+        maskedApiKey: '***',
+        baseUrlConfigured: false,
+      },
+    })
+    expectNoSecretLeak(result)
+  })
+
+  it('resolver-backed legacy_store chat source has no direct raw-key fallback for other refs', () => {
+    const store = createStore({
+      [OPENROUTER_CHAT_LEGACY_API_KEY_STORE_KEY]: RAW_KEY,
+    })
+    const resolver = createOpenRouterChatLegacyStoreCredentialResolver(store)
+
+    const result = resolver({ kind: 'credential_ref', id: 'different-openrouter-ref' })
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'credential_unresolved',
+        message: 'Credential could not be resolved.',
+      },
+    })
   })
 })

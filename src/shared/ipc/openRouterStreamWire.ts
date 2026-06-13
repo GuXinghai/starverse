@@ -1,7 +1,8 @@
 export const OPENROUTER_STREAM_WIRE_VERSION = 1
 
 export type OpenRouterStreamWireRequestConfig = Readonly<{
-  apiKey: string
+  apiKey?: string
+  credentialSource?: 'legacy_store'
   model?: string
   requestedReasoningMode?: string
   requestedReasoningEffort?: string
@@ -81,7 +82,9 @@ export function isOpenRouterStreamWireRequest(value: unknown): value is OpenRout
   if (typeof v.requestId !== 'string' || v.requestId.trim().length === 0) return false
   if (!v.config || typeof v.config !== 'object') return false
   const config = v.config as Record<string, unknown>
-  if (typeof config.apiKey !== 'string' || config.apiKey.trim().length === 0) return false
+  const hasLegacyApiKey = typeof config.apiKey === 'string' && config.apiKey.trim().length > 0
+  const hasResolverBackedSource = config.credentialSource === 'legacy_store'
+  if (!hasLegacyApiKey && !hasResolverBackedSource) return false
   if ('wireVersion' in v && typeof v.wireVersion !== 'number') return false
   return true
 }
