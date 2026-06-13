@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { safeClearConfig } from '../config/configSchema'
 import { OPENROUTER_CATALOG_LOCAL_SECRET_KEY } from '../modelCatalog/catalogScope'
@@ -11,13 +13,18 @@ vi.mock('../config/configSchema', async (importOriginal) => {
   }
 })
 
-function registerHandlers(input?: { refreshMainLocale?: () => void }) {
+function registerHandlers(input?: { refreshMainLocale?: () => void; initialStore?: Record<string, unknown> }) {
   const registerInvoke = vi.fn()
+  const values = new Map<string, unknown>(Object.entries(input?.initialStore ?? {}))
   const store = {
     store: { language: 'en-US', languageManual: 'en-US' },
-    get: vi.fn(),
-    set: vi.fn(),
-    delete: vi.fn(),
+    get: vi.fn((key: string) => values.get(key)),
+    set: vi.fn((key: string, value: unknown) => {
+      values.set(key, value)
+    }),
+    delete: vi.fn((key: string) => {
+      values.delete(key)
+    }),
     clear: vi.fn(),
     has: vi.fn(() => true),
   } as any
@@ -107,6 +114,42 @@ describe('registerStoreIpc', () => {
     expect(store.get).not.toHaveBeenCalledWith(OPENROUTER_CATALOG_LOCAL_SECRET_KEY)
     expect(store.set).not.toHaveBeenCalledWith(OPENROUTER_CATALOG_LOCAL_SECRET_KEY, 'secret')
     expect(store.delete).not.toHaveBeenCalledWith(OPENROUTER_CATALOG_LOCAL_SECRET_KEY)
+  })
+
+  it('characterizes legacy credential settings as still renderer-accessible before migration', async () => {
+    const legacyKeys = [
+      'openRouterApiKey',
+      'openRouterBaseUrl',
+      'geminiApiKey',
+      'apiKey',
+      'activeProvider',
+    ] as const
+    const { handlers, store } = registerHandlers({
+      initialStore: Object.fromEntries(legacyKeys.map((key) => [key, `legacy-${key}`])),
+    })
+
+    for (const key of legacyKeys) {
+      const value = await handlers.get('store-get')?.({}, key)
+      const setResult = await handlers.get('store-set')?.({}, key, `updated-${key}`)
+      const deleteResult = await handlers.get('store-delete')?.({}, key)
+
+      expect(value).toBe(`legacy-${key}`)
+      expect(setResult).toBe(true)
+      expect(deleteResult).toBe(true)
+      expect(store.get).toHaveBeenCalledWith(key)
+      expect(store.set).toHaveBeenCalledWith(key, `updated-${key}`)
+      expect(store.delete).toHaveBeenCalledWith(key)
+    }
+  })
+
+  it('characterizes preload as still exposing generic renderer store bridge methods', () => {
+    const preloadSource = readFileSync(join(process.cwd(), 'electron', 'preload.ts'), 'utf8')
+
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('electronStore'")
+    expect(preloadSource).toContain("get: (key: string) => ipcRenderer.invoke('store-get', key)")
+    expect(preloadSource).toContain("set: (key: string, value: any) => ipcRenderer.invoke('store-set', key, value)")
+    expect(preloadSource).toContain("delete: (key: string) => ipcRenderer.invoke('store-delete', key)")
+    expect(preloadSource).not.toContain('credentialRef')
   })
 
   it('preserves catalog local secret during renderer safe clear', async () => {
