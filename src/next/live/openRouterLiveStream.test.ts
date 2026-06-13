@@ -453,6 +453,79 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
         }
     })
 
+    it('C3 legacy_store credential source forces IPC payload without raw apiKey or renderer baseUrl', async () => {
+        const originalElectronStore = (globalThis as any).electronStore
+        const originalElectronApi = (globalThis as any).electronAPI
+        const listeners = new Map<string, (...args: any[]) => void>()
+        let startPayload: any = null
+        const rawKey = 'sk-or-live-ipc-c3-source-secret'
+
+        ;(globalThis as any).electronStore = {
+            get: vi.fn(async (key: string) => {
+                if (key === 'netExp.streamInMainProcess') return false
+                if (key === 'netExp.tcpKeepAliveIdleMs') return 60000
+                return false
+            }),
+            set: vi.fn(async () => undefined),
+        }
+
+        ;(globalThis as any).electronAPI = {
+            onOpenRouterChunk: vi.fn((requestId: string, listener: (payload: unknown) => void) => {
+                listeners.set(`openrouter:chunk:${requestId}`, listener)
+                return () => listeners.delete(`openrouter:chunk:${requestId}`)
+            }),
+            onOpenRouterEnd: vi.fn((requestId: string, listener: () => void) => {
+                listeners.set(`openrouter:end:${requestId}`, listener)
+                return () => listeners.delete(`openrouter:end:${requestId}`)
+            }),
+            startOpenRouterStream: vi.fn(async (payload: any) => {
+                startPayload = payload
+                queueMicrotask(() => {
+                    listeners.get(`openrouter:chunk:${startPayload.requestId}`)?.({
+                        type: 'responseMeta',
+                        status: 200,
+                        requestId: startPayload.requestId,
+                    })
+                    listeners.get(`openrouter:chunk:${startPayload.requestId}`)?.({
+                        type: 'chunk',
+                        data: 'data: [DONE]\n\n',
+                    })
+                    listeners.get(`openrouter:end:${startPayload.requestId}`)?.()
+                })
+                return { ok: true }
+            }),
+            abortOpenRouterStream: vi.fn(async () => true),
+        }
+
+        try {
+            const events = []
+            for await (const ev of streamOpenRouterChatAsEvents({
+                requestId: 'ipc_c3_source_rid',
+                assistantMessageId: 'assistant_1',
+                userText: 'hello',
+                config: {
+                    credentialSource: 'legacy_store',
+                    baseUrl: 'https://renderer-openrouter-proxy.example.test/custom/v1/',
+                    model: DEFAULT_OPENROUTER_TEST_MODEL,
+                    requestedReasoningMode: 'auto',
+                },
+            })) {
+                events.push(ev)
+            }
+
+            expect(startPayload?.wireVersion).toBe(OPENROUTER_STREAM_WIRE_VERSION)
+            expect(startPayload?.config?.credentialSource).toBe('legacy_store')
+            expect(startPayload?.config).not.toHaveProperty('apiKey')
+            expect(startPayload?.config).not.toHaveProperty('baseUrl')
+            expect(JSON.stringify(startPayload)).not.toContain(rawKey)
+            expect(JSON.stringify(startPayload)).not.toContain('Authorization')
+            expect(events.some((e) => e.type === 'StreamDone')).toBe(true)
+        } finally {
+            ;(globalThis as any).electronStore = originalElectronStore
+            ;(globalThis as any).electronAPI = originalElectronApi
+        }
+    })
+
     it('IPC start protocol_invalid is normalized as local_protocol_error', async () => {
         const originalElectronStore = (globalThis as any).electronStore
         const originalElectronApi = (globalThis as any).electronAPI

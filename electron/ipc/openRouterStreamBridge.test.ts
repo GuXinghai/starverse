@@ -110,6 +110,13 @@ function responseFromChunks(input: Readonly<{
   return response
 }
 
+function createStore(initial: Record<string, unknown>) {
+  const data = new Map<string, unknown>(Object.entries(initial))
+  return {
+    get: vi.fn((key: string) => data.get(key)),
+  } as any
+}
+
 /**
  * Simulates renderer-side drain behavior in openRouterLiveStream:
  * - consume wire queue in-order
@@ -246,6 +253,16 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
     expect(result.ok).toBe(true)
   })
 
+  it('accepts resolver-backed legacy_store payload without raw apiKey', () => {
+    const result = validateOpenRouterStreamRequest({
+      requestId: 'rid_legacy_store',
+      wireVersion: OPENROUTER_STREAM_WIRE_VERSION,
+      config: { credentialSource: 'legacy_store' },
+    })
+
+    expect(result.ok).toBe(true)
+  })
+
   it('rejects unsupported wireVersion as protocol_invalid', () => {
     const result = validateOpenRouterStreamRequest({
       requestId: 'rid_v2',
@@ -367,6 +384,108 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
       expect(serializedLogs).toContain('Authorization: [REDACTED]')
     } finally {
       warnSpy.mockRestore()
+      cleanupOpenRouterStreams()
+    }
+  })
+
+  it('routes main IPC bridge C3 legacy_store credential source through injected store resolver', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const rawKey = 'sk-or-ipc-bridge-c3-resolved-secret'
+    const store = createStore({
+      openRouterApiKey: `  ${rawKey}  `,
+      openRouterBaseUrl: ' https://openrouter-proxy.example.test/custom/v1/ ',
+    })
+    const sender = { send: vi.fn() }
+
+    try {
+      expect(registerOpenRouterStreamBridge({ store })).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
+      const handler = electronMock.handlers.get('openrouter:stream-chat')
+      expect(handler).toBeTruthy()
+
+      const result = await handler?.({ sender }, {
+        requestId: 'rid_ipc_bridge_c3_resolved',
+        wireVersion: OPENROUTER_STREAM_WIRE_VERSION,
+        userText: 'hello',
+        requestBody: {
+          model: 'openrouter/test-model',
+          stream: true,
+          messages: [{ role: 'user', content: 'hello' }],
+        },
+        config: {
+          credentialSource: 'legacy_store',
+          baseUrl: 'https://ignored-renderer-base.example.test/v1',
+          model: 'openrouter/test-model',
+          requestedReasoningMode: 'auto',
+        },
+      })
+
+      expect(result).toEqual({ ok: true })
+      expect(store.get).toHaveBeenCalledWith('openRouterApiKey')
+      expect(store.get).toHaveBeenCalledWith('openRouterBaseUrl')
+      expect(electronMock.requestCalls).toHaveLength(1)
+      expect((electronMock.requestCalls[0]?.options as any)?.url).toBe(
+        'https://openrouter-proxy.example.test/custom/v1/chat/completions'
+      )
+      expect(electronMock.requestCalls[0]?.headers.Authorization).toBe(`Bearer ${rawKey}`)
+
+      const serializedWireEvents = JSON.stringify(sender.send.mock.calls)
+      expect(serializedWireEvents).not.toContain(rawKey)
+      expect(serializedWireEvents).not.toContain(`Bearer ${rawKey}`)
+      expect(serializedWireEvents).not.toContain('Authorization')
+
+      const serializedLogs = warnSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
+      expect(serializedLogs).not.toContain(rawKey)
+      expect(serializedLogs).not.toContain(`Bearer ${rawKey}`)
+      expect(serializedLogs).toContain('API Key (REDACTED): sk-o...cret')
+      expect(serializedLogs).toContain('Authorization: [REDACTED]')
+    } finally {
+      warnSpy.mockRestore()
+      cleanupOpenRouterStreams()
+    }
+  })
+
+  it('fails resolver-backed main IPC credential resolution before net.request without leaking raw store values', async () => {
+    const rawKey = 'sk-or-ipc-bridge-missing-should-not-leak'
+    const store = createStore({
+      openRouterApiKey: '   ',
+      openRouterBaseUrl: `https://user:pass@example.test/${rawKey}`,
+    })
+    const sender = { send: vi.fn() }
+
+    try {
+      expect(registerOpenRouterStreamBridge({ store })).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
+      const handler = electronMock.handlers.get('openrouter:stream-chat')
+      expect(handler).toBeTruthy()
+
+      const result = await handler?.({ sender }, {
+        requestId: 'rid_ipc_bridge_c3_missing',
+        wireVersion: OPENROUTER_STREAM_WIRE_VERSION,
+        requestBody: {
+          model: 'openrouter/test-model',
+          stream: true,
+          messages: [{ role: 'user', content: 'hello' }],
+        },
+        config: {
+          credentialSource: 'legacy_store',
+          model: 'openrouter/test-model',
+          requestedReasoningMode: 'auto',
+        },
+      })
+
+      expect(result).toEqual({
+        ok: false,
+        code: 'credential_unresolved',
+        error: 'Credential could not be resolved.',
+        supportedWireVersion: OPENROUTER_STREAM_WIRE_VERSION,
+      })
+      expect(electronMock.requestCalls).toHaveLength(0)
+      expect(sender.send).not.toHaveBeenCalled()
+      const serialized = JSON.stringify(result)
+      expect(serialized).not.toContain(rawKey)
+      expect(serialized).not.toContain(`Bearer ${rawKey}`)
+      expect(serialized).not.toContain('Authorization')
+      expect(serialized).not.toContain('user:pass')
+    } finally {
       cleanupOpenRouterStreams()
     }
   })

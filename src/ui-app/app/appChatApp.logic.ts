@@ -80,7 +80,7 @@ import { getNetExpSettings } from '@/next/netExp/netExpClient'
 import { startNetExpRunReport } from '@/next/netExp/netExpRunReport'
 import { applyEventsBatch, createInitialState, startGeneration, toggleReasoningPanelState } from '@/next/state/reducer'
 import { selectMessage, selectRun } from '@/next/state/selectors'
-import { streamViaOpenRouterAsDomainEvents } from '@/next/provider/openrouter/openRouterAdapter'
+import { streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource } from '@/next/provider/openrouter/openRouterAdapter'
 import {
   prepareOpenRouterReplayFromMessage,
   prepareOpenRouterSendFromDraft,
@@ -742,7 +742,7 @@ export function useAppChatAppLogic() {
     shouldLogReasoningDebug,
     isEventSchedulerEnabled,
   } = useDiagnostics()
-  const { hasDbBridge, getIpcRenderer, getOpenRouterApiKey, getOpenRouterBaseUrl, randomId } = useChatSession()
+  const { hasDbBridge, getIpcRenderer, getOpenRouterBaseUrl, randomId } = useChatSession()
   const { activeStream, activeAssistantMessageId, createActiveStream } = useLiveStreamController()
   const { settingsOpen, openSettings, closeSettings } = useSettingsBindings({ isReady })
 
@@ -7462,18 +7462,6 @@ export function useAppChatAppLogic() {
       }
     }
 
-    const apiKey = await getOpenRouterApiKey()
-    if (!apiKey) {
-      loadError.value = 'Missing OpenRouter API key (set electron-store openRouterApiKey or VITE_OPENROUTER_API_KEY)'
-      try {
-        await setMessageStatus({ messageId: assistantMessageId, status: 'error', ...getMessageTimingForPersist(assistantMessageId) })
-      } catch {
-        // no-op
-      }
-      await refreshTranscriptLatestOnly()
-      return
-    }
-
     const baseUrl = await getOpenRouterBaseUrl()
     const modelId = normalizeModelKey(model.value)
 
@@ -7487,7 +7475,7 @@ export function useAppChatAppLogic() {
     const netExpRunTracker = startNetExpRunReport({
       runId: branchId,
       requestId,
-      streamMode: netExpSettings.streamInMainProcess ? 'main' : 'renderer',
+      streamMode: 'main',
       model: modelId,
       baseUrl: baseUrl ?? undefined,
       settings: netExpSettings,
@@ -7535,7 +7523,7 @@ export function useAppChatAppLogic() {
       assistantSeq,
       modelId,
       replayManifestDraft: replayPrepared?.manifestDraft ?? null,
-      createEvents: (signal) => streamViaOpenRouterAsDomainEvents({
+      createEvents: (signal) => streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource({
         requestId,
         assistantMessageId,
         userText: questionText,
@@ -7552,7 +7540,7 @@ export function useAppChatAppLogic() {
           ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
           ...(baseUrl ? { baseUrl } : {}),
         },
-      }, { apiKey }),
+      }),
       telemetry: {
         onEvent: (event) => netExpRunTracker.onEvent(event),
         onEnd: (status, error) => netExpRunTracker.onEnd(status, error),
@@ -8009,12 +7997,6 @@ export function useAppChatAppLogic() {
     const branch = await ensureActiveBranch(convoId)
     loadError.value = null
 
-    const apiKey = await getOpenRouterApiKey()
-    if (!apiKey) {
-      loadError.value = 'Missing OpenRouter API key (set electron-store openRouterApiKey or VITE_OPENROUTER_API_KEY)'
-      return
-    }
-
     const baseUrl = await getOpenRouterBaseUrl()
     const modelId = normalizeModelKey(model.value)
 
@@ -8173,7 +8155,7 @@ export function useAppChatAppLogic() {
       assistantSeq,
       modelId,
       ...(preparedFileSend ? { pdfAnnotationCaptureAssetIds: getPreparedPdfAssetIds(preparedFileSend) } : {}),
-      createEvents: (signal) => streamViaOpenRouterAsDomainEvents({
+      createEvents: (signal) => streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource({
         requestId,
         assistantMessageId,
         userText: text,
@@ -8191,7 +8173,7 @@ export function useAppChatAppLogic() {
           ...(preparedFileSend?.additionalPlugins.length ? { additionalPlugins: preparedFileSend.additionalPlugins } : {}),
           ...(baseUrl ? { baseUrl } : {}),
         },
-      }, { apiKey }),
+      }),
     })
   }
 

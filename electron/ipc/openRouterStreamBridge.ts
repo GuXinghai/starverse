@@ -1,4 +1,5 @@
 import { ipcMain, net, type WebContents } from 'electron'
+import type Store from 'electron-store'
 import {
   OPENROUTER_STREAM_WIRE_VERSION,
   isOpenRouterStreamWireRequest,
@@ -6,6 +7,11 @@ import {
   type OpenRouterStreamWireEvent,
   type OpenRouterStreamWireRequest,
 } from '../../src/shared/ipc/openRouterStreamWire'
+import {
+  openRouterLegacyCredentialFromRaw,
+  resolveOpenRouterChatCredentialFromLegacyStore,
+  type OpenRouterLegacyCredentialMaterial,
+} from '../../src/next/provider/openrouter/openRouterLegacyCredential'
 
 /**
  * Narrow interface for HTTP response objects.
@@ -25,6 +31,10 @@ export const OPENROUTER_STREAM_IPC_CHANNELS = ['openrouter:stream-chat', 'openro
 type StreamRequestValidationResult =
   | Readonly<{ ok: true; payload: OpenRouterStreamWireRequest }>
   | Readonly<{ ok: false; code: 'protocol_invalid'; error: string }>
+
+type OpenRouterStreamCredentialResolution =
+  | Readonly<{ ok: true; credential: OpenRouterLegacyCredentialMaterial }>
+  | Readonly<{ ok: false; code: string; error: string }>
 
 export function validateOpenRouterStreamRequest(payload: unknown): StreamRequestValidationResult {
   if (!isOpenRouterStreamWireRequest(payload)) {
@@ -156,6 +166,39 @@ function buildFallbackRequestBody(payload: OpenRouterStreamWireRequest): Record<
     body.provider = { require_parameters: true }
   }
   return body
+}
+
+function resolveOpenRouterStreamCredential(
+  payload: OpenRouterStreamWireRequest,
+  store: Store | undefined,
+): OpenRouterStreamCredentialResolution {
+  if (payload.config.credentialSource === 'legacy_store') {
+    if (!store) {
+      return {
+        ok: false,
+        code: 'credential_unresolved',
+        error: 'Credential could not be resolved.',
+      }
+    }
+
+    const result = resolveOpenRouterChatCredentialFromLegacyStore(store)
+    if (!result.ok) {
+      return {
+        ok: false,
+        code: result.failure.code,
+        error: result.failure.message,
+      }
+    }
+    return { ok: true, credential: result.credential }
+  }
+
+  return {
+    ok: true,
+    credential: openRouterLegacyCredentialFromRaw({
+      apiKey: String(payload.config.apiKey ?? ''),
+      ...(payload.config.baseUrl ? { baseUrl: payload.config.baseUrl } : {}),
+    }),
+  }
 }
 
 async function readResponseBody(response: ResponseLike): Promise<string> {
@@ -292,7 +335,11 @@ export async function forwardOpenRouterResponseAsWireEvents(input: Readonly<{
   }
 }
 
-async function startStream(sender: WebContents, payload: OpenRouterStreamWireRequest): Promise<void> {
+async function startStream(
+  sender: WebContents,
+  payload: OpenRouterStreamWireRequest,
+  credential: OpenRouterLegacyCredentialMaterial,
+): Promise<void> {
   const controller = new AbortController()
   activeControllers.set(payload.requestId, controller)
 
@@ -303,7 +350,7 @@ async function startStream(sender: WebContents, payload: OpenRouterStreamWireReq
   try {
     const body = payload.requestBody ?? buildFallbackRequestBody(payload)
     const requestBody = JSON.stringify(body)
-    const baseUrl = (payload.config.baseUrl || 'https://openrouter.ai/api/v1').replace(/\/+$/, '')
+    const baseUrl = (credential.baseUrl || 'https://openrouter.ai/api/v1').replace(/\/+$/, '')
     const url = new URL(baseUrl)
     const origin = `${url.protocol}//${url.host}`
     const basePath = url.pathname.replace(/\/+$/, '')
@@ -323,7 +370,7 @@ async function startStream(sender: WebContents, payload: OpenRouterStreamWireReq
     console.warn(`OPENROUTER_REQUEST_BEGIN ${payload.requestId} ${isoTime}`)
     console.warn(`${'='.repeat(80)}`)
     console.warn(`Endpoint: ${origin}${requestPath}`)
-    console.warn(`API Key (REDACTED): ${maskApiKey(payload.config.apiKey)}`)
+    console.warn(`API Key (REDACTED): ${maskApiKey(credential.apiKey)}`)
     console.warn('Headers (sanitized):')
     console.warn('  Authorization: [REDACTED]')
     console.warn('  HTTP-Referer: https://github.com/GuXinghai/starverse')
@@ -343,7 +390,7 @@ async function startStream(sender: WebContents, payload: OpenRouterStreamWireReq
       url: requestUrl,
     })
 
-    request.setHeader('Authorization', `Bearer ${payload.config.apiKey}`)
+    request.setHeader('Authorization', `Bearer ${credential.apiKey}`)
     request.setHeader('Content-Type', 'application/json')
     request.setHeader('HTTP-Referer', 'https://github.com/GuXinghai/starverse')
     request.setHeader('X-Title', 'Starverse')
@@ -424,7 +471,7 @@ async function startStream(sender: WebContents, payload: OpenRouterStreamWireReq
   }
 }
 
-export function registerOpenRouterStreamBridge(): string[] {
+export function registerOpenRouterStreamBridge(input?: Readonly<{ store?: Store }>): string[] {
   ipcMain.handle('openrouter:stream-chat', async (event, payload: unknown) => {
     const validated = validateOpenRouterStreamRequest(payload)
     if (!validated.ok) {
@@ -435,7 +482,16 @@ export function registerOpenRouterStreamBridge(): string[] {
         supportedWireVersion: OPENROUTER_STREAM_WIRE_VERSION,
       }
     }
-    void startStream(event.sender, validated.payload)
+    const credential = resolveOpenRouterStreamCredential(validated.payload, input?.store)
+    if (!credential.ok) {
+      return {
+        ok: false,
+        code: credential.code,
+        error: credential.error,
+        supportedWireVersion: OPENROUTER_STREAM_WIRE_VERSION,
+      }
+    }
+    void startStream(event.sender, validated.payload, credential.credential)
     return { ok: true }
   })
 

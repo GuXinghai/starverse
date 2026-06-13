@@ -791,7 +791,7 @@ function registerCoreIpcHandlers(): string[] {
 function registerAllIpcHandlers(): string[] {
   const channels = [
     ...registerDbBridge(dbWorkerManager),
-    ...registerOpenRouterStreamBridge(),
+    ...registerOpenRouterStreamBridge({ store }),
     ...registerCoreIpcHandlers(),
     ...registerInAppBrowserIpc({
       registerInvoke: (channel, handler) => {

@@ -2,7 +2,11 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import type { DomainEvent } from '@/next/state/types'
 import type { StarverseStreamEvent, ProviderStreamRequest } from '@/next/provider/providerTypes'
 import { domainEventToStreamEvent, streamEventToDomainEvent } from '@/next/provider/streamEventBridge'
-import { streamViaOpenRouter, streamViaOpenRouterWithCredentialResolver } from '@/next/provider/openrouter/openRouterAdapter'
+import {
+  streamViaOpenRouter,
+  streamViaOpenRouterWithCredentialResolver,
+  streamViaOpenRouterWithLegacyStoreCredentialSource,
+} from '@/next/provider/openrouter/openRouterAdapter'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import { createBearerCredential } from '@/next/provider/credentials/providerCredential'
 import {
@@ -541,6 +545,124 @@ describe('streamViaOpenRouter', () => {
       expect(serializedEvents).not.toContain('Authorization')
     } finally {
       globalThis.fetch = originalFetch
+    }
+  })
+
+  it('active C3 legacy_store source uses IPC credentialSource without raw apiKey or renderer baseUrl transport', async () => {
+    const originalElectronStore = (globalThis as any).electronStore
+    const originalElectronApi = (globalThis as any).electronAPI
+    const listeners = new Map<string, (...args: any[]) => void>()
+    const rawKey = 'sk-or-active-c3-chat-secret'
+    const rendererBaseUrl = 'https://renderer-openrouter-proxy.example.test/custom/v1/'
+    let startPayload: any = null
+
+    ;(globalThis as any).electronStore = {
+      get: vi.fn(async (key: string) => {
+        if (key === 'netExp.streamInMainProcess') return false
+        if (key === 'netExp.tcpKeepAliveIdleMs') return 60000
+        return false
+      }),
+      set: vi.fn(async () => undefined),
+    }
+    ;(globalThis as any).electronAPI = {
+      onOpenRouterChunk: vi.fn((requestId: string, listener: (payload: unknown) => void) => {
+        listeners.set(`openrouter:chunk:${requestId}`, listener)
+        return () => listeners.delete(`openrouter:chunk:${requestId}`)
+      }),
+      onOpenRouterEnd: vi.fn((requestId: string, listener: () => void) => {
+        listeners.set(`openrouter:end:${requestId}`, listener)
+        return () => listeners.delete(`openrouter:end:${requestId}`)
+      }),
+      startOpenRouterStream: vi.fn(async (payload: any) => {
+        startPayload = payload
+        queueMicrotask(() => {
+          listeners.get(`openrouter:chunk:${payload.requestId}`)?.({
+            type: 'responseMeta',
+            status: 200,
+            requestId: payload.requestId,
+          })
+          listeners.get(`openrouter:chunk:${payload.requestId}`)?.({
+            type: 'chunk',
+            data: `data: {"id":"gen_active_c3","model":"${DEFAULT_OPENROUTER_TEST_MODEL}","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}\n\n`,
+          })
+          listeners.get(`openrouter:chunk:${payload.requestId}`)?.({
+            type: 'chunk',
+            data: 'data: [DONE]\n\n',
+          })
+          listeners.get(`openrouter:end:${payload.requestId}`)?.()
+        })
+        return { ok: true }
+      }),
+      abortOpenRouterStream: vi.fn(async () => true),
+    }
+
+    try {
+      const events: StarverseStreamEvent[] = []
+      for await (const event of streamViaOpenRouterWithLegacyStoreCredentialSource(makeRequest({ baseUrl: rendererBaseUrl }))) {
+        events.push(event)
+      }
+
+      expect(startPayload?.config?.credentialSource).toBe('legacy_store')
+      expect(startPayload?.config).not.toHaveProperty('apiKey')
+      expect(startPayload?.config).not.toHaveProperty('baseUrl')
+      expect(JSON.stringify(startPayload)).not.toContain(rawKey)
+      expect(JSON.stringify(startPayload)).not.toContain('Authorization')
+      expect(events.some((event) => event.type === 'message.text_delta')).toBe(true)
+      expect(events.some((event) => event.type === 'stream.done')).toBe(true)
+      const serializedEvents = JSON.stringify(events)
+      expect(serializedEvents).not.toContain(rawKey)
+      expect(serializedEvents).not.toContain(`Bearer ${rawKey}`)
+      expect(serializedEvents).not.toContain('Authorization')
+    } finally {
+      ;(globalThis as any).electronStore = originalElectronStore
+      ;(globalThis as any).electronAPI = originalElectronApi
+    }
+  })
+
+  it('active C3 legacy_store source credential failure emits terminal error and no done before fetch', async () => {
+    const originalElectronStore = (globalThis as any).electronStore
+    const originalElectronApi = (globalThis as any).electronAPI
+    const rawKey = 'sk-or-active-c3-failure-secret'
+
+    ;(globalThis as any).electronStore = {
+      get: vi.fn(async (key: string) => {
+        if (key === 'netExp.streamInMainProcess') return false
+        if (key === 'netExp.tcpKeepAliveIdleMs') return 60000
+        return false
+      }),
+      set: vi.fn(async () => undefined),
+    }
+    ;(globalThis as any).electronAPI = {
+      onOpenRouterChunk: vi.fn(() => () => {}),
+      onOpenRouterEnd: vi.fn(() => () => {}),
+      startOpenRouterStream: vi.fn(async () => ({
+        ok: false,
+        code: 'credential_unresolved',
+        error: `Credential could not be resolved. ${rawKey} Bearer ${rawKey} Authorization`,
+      })),
+      abortOpenRouterStream: vi.fn(async () => true),
+    }
+
+    try {
+      const events: StarverseStreamEvent[] = []
+      for await (const event of streamViaOpenRouterWithLegacyStoreCredentialSource(makeRequest())) {
+        events.push(event)
+      }
+
+      expect((globalThis as any).electronAPI.startOpenRouterStream).toHaveBeenCalledTimes(1)
+      expect(events.some((event) => event.type === 'stream.done')).toBe(false)
+      const lastEvent = events[events.length - 1]
+      expect(lastEvent?.type).toBe('stream.error')
+      if (lastEvent?.type === 'stream.error') {
+        expect(lastEvent.terminal).toBe(true)
+      }
+      const serializedEvents = JSON.stringify(events)
+      expect(serializedEvents).not.toContain(rawKey)
+      expect(serializedEvents).not.toContain(`Bearer ${rawKey}`)
+      expect(serializedEvents).not.toContain('Authorization')
+    } finally {
+      ;(globalThis as any).electronStore = originalElectronStore
+      ;(globalThis as any).electronAPI = originalElectronApi
     }
   })
 

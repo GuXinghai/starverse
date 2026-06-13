@@ -24,6 +24,7 @@ import type { DomainEvent } from '@/next/state/types'
 import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '@/next/provider/providerTypes'
 import { domainEventToStreamEvent, streamEventToDomainEvent } from '@/next/provider/streamEventBridge'
 import {
+  OPENROUTER_CHAT_LEGACY_CREDENTIAL_REF,
   openRouterLegacyCredentialFromRaw,
   resolveOpenRouterLegacyCredential,
   type OpenRouterLegacyCredentialMaterial,
@@ -83,6 +84,20 @@ export async function* streamViaOpenRouterWithCredentialResolver(
   yield* streamViaOpenRouterLegacyCredential(request, legacyCredential)
 }
 
+/**
+ * Active C3c OpenRouter chat/send credential source.
+ *
+ * Uses the main-process IPC bridge with the resolver-backed legacy_store
+ * source. This keeps legacy store backing while avoiding raw apiKey transport
+ * from the renderer stream call. The raw streamViaOpenRouter helper remains a
+ * low-level compatibility/characterization path only.
+ */
+export async function* streamViaOpenRouterWithLegacyStoreCredentialSource(
+  request: ProviderStreamRequest,
+): AsyncGenerator<StarverseStreamEvent> {
+  yield* streamViaOpenRouterLegacyStoreCredential(request)
+}
+
 async function* streamViaOpenRouterLegacyCredential(
   request: ProviderStreamRequest,
   legacyCredential: OpenRouterLegacyCredentialMaterial,
@@ -101,6 +116,38 @@ async function* streamViaOpenRouterLegacyCredential(
     ...(c.additionalPlugins !== undefined ? { openRouterAdditionalPlugins: c.additionalPlugins } : {}),
     ...(c.timeoutMs !== undefined ? { timeoutMs: c.timeoutMs } : {}),
     ...(legacyCredential.baseUrl !== undefined ? { baseUrl: legacyCredential.baseUrl } : {}),
+  } as LiveRequestConfig
+
+  const options: LiveStreamOptions = {
+    requestId: request.requestId,
+    assistantMessageId: request.assistantMessageId,
+    userText: request.userText,
+    ...(request.contextMessages !== undefined ? { contextMessages: request.contextMessages as LiveStreamOptions['contextMessages'] } : {}),
+    ...(request.currentUserContentBlocks !== undefined ? { currentUserContentBlocks: request.currentUserContentBlocks } : {}),
+    ...(request.contextMode !== undefined ? { contextMode: request.contextMode } : {}),
+    ...(request.signal !== undefined ? { signal: request.signal } : {}),
+    config: liveConfig,
+  }
+
+  yield* mapDomainStreamToProviderStream(streamOpenRouterChatAsEvents(options))
+}
+
+async function* streamViaOpenRouterLegacyStoreCredential(
+  request: ProviderStreamRequest,
+): AsyncGenerator<StarverseStreamEvent> {
+  const c = request.config
+  const liveConfig = {
+    credentialSource: 'legacy_store' as const,
+    model: c.model,
+    requestedReasoningMode: c.requestedReasoningMode,
+    ...(c.requestedReasoningEffort !== undefined ? { requestedReasoningEffort: c.requestedReasoningEffort } : {}),
+    ...(c.requestedReasoningExclude === true ? { requestedReasoningExclude: true as const } : {}),
+    ...(c.tools !== undefined ? { tools: c.tools } : {}),
+    ...(c.webSearch !== undefined ? { webSearch: c.webSearch } : {}),
+    ...(c.samplingParams !== undefined ? { samplingParams: c.samplingParams } : {}),
+    ...(c.imageGeneration !== undefined ? { imageGeneration: c.imageGeneration } : {}),
+    ...(c.additionalPlugins !== undefined ? { openRouterAdditionalPlugins: c.additionalPlugins } : {}),
+    ...(c.timeoutMs !== undefined ? { timeoutMs: c.timeoutMs } : {}),
   } as LiveRequestConfig
 
   const options: LiveStreamOptions = {
@@ -174,3 +221,13 @@ export async function* streamViaOpenRouterAsDomainEvents(
     yield streamEventToDomainEvent(event)
   }
 }
+
+export async function* streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource(
+  request: ProviderStreamRequest,
+): AsyncGenerator<DomainEvent> {
+  for await (const event of streamViaOpenRouterWithLegacyStoreCredentialSource(request)) {
+    yield streamEventToDomainEvent(event)
+  }
+}
+
+export { OPENROUTER_CHAT_LEGACY_CREDENTIAL_REF }
