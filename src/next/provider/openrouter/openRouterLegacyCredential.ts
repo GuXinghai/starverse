@@ -9,6 +9,13 @@
  * not a provider/endpoint registry.
  */
 
+import {
+  resolveProviderCredential,
+  type ProviderCredentialRef,
+  type ProviderCredentialResolutionError,
+  type ProviderCredentialResolver,
+} from '@/next/provider/credentials/providerCredentialResolver'
+
 export type OpenRouterLegacyCredentialMaterial = Readonly<{
   kind: 'openrouter_legacy_api_key'
   apiKey: string
@@ -32,6 +39,32 @@ export function openRouterLegacyCredentialFromRaw(
     apiKey: input.apiKey,
     ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
   }
+}
+
+export type OpenRouterLegacyCredentialResolutionInput = Readonly<{
+  credentialRef: ProviderCredentialRef
+  resolveCredential: ProviderCredentialResolver
+  baseUrl?: string
+}>
+
+/**
+ * OpenRouter C3 migration seam fixture.
+ *
+ * Resolves a provider credential ref through the shared provider credential
+ * resolver boundary, then adapts the bearer credential to the existing
+ * OpenRouter legacy facade material. This does not read store/env/IPC and does
+ * not migrate the active OpenRouter renderer/settings path.
+ */
+export function resolveOpenRouterLegacyCredential(
+  input: OpenRouterLegacyCredentialResolutionInput,
+): OpenRouterLegacyCredentialMaterial | ProviderCredentialResolutionError {
+  const resolution = resolveProviderCredential(input.credentialRef, input.resolveCredential)
+  if (!resolution.ok) return resolution.error
+
+  return openRouterLegacyCredentialFromRaw({
+    apiKey: resolution.credential.token,
+    ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
+  })
 }
 
 function maskOpenRouterLegacyBaseUrl(baseUrl: string): string {
