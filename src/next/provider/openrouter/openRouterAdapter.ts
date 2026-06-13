@@ -21,9 +21,18 @@
 import { streamOpenRouterChatAsEvents } from '@/next/live/openRouterLiveStream'
 import type { LiveStreamOptions, LiveRequestConfig } from '@/next/live/openRouterLiveStream'
 import type { DomainEvent } from '@/next/state/types'
-import type { ProviderStreamRequest, StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '@/next/provider/providerTypes'
 import { domainEventToStreamEvent, streamEventToDomainEvent } from '@/next/provider/streamEventBridge'
-import { openRouterLegacyCredentialFromRaw } from '@/next/provider/openrouter/openRouterLegacyCredential'
+import {
+  openRouterLegacyCredentialFromRaw,
+  resolveOpenRouterLegacyCredential,
+  type OpenRouterLegacyCredentialMaterial,
+} from '@/next/provider/openrouter/openRouterLegacyCredential'
+import type {
+  ProviderCredentialRef,
+  ProviderCredentialResolutionError,
+  ProviderCredentialResolver,
+} from '@/next/provider/credentials/providerCredentialResolver'
 
 /**
  * Execute a chat completion stream via the OpenRouter provider adapter.
@@ -39,11 +48,46 @@ export async function* streamViaOpenRouter(
   request: ProviderStreamRequest,
   credentials: Readonly<{ apiKey: string }>,
 ): AsyncGenerator<StarverseStreamEvent> {
-  const c = request.config
   const legacyCredential = openRouterLegacyCredentialFromRaw({
     apiKey: credentials.apiKey,
-    ...(c.baseUrl !== undefined ? { baseUrl: c.baseUrl } : {}),
+    ...(request.config.baseUrl !== undefined ? { baseUrl: request.config.baseUrl } : {}),
   })
+
+  yield* streamViaOpenRouterLegacyCredential(request, legacyCredential)
+}
+
+/**
+ * Fixture-only OpenRouter C3 migration seam.
+ *
+ * Proves that a future main-process ProviderCredentialRef/resolver can feed
+ * the existing OpenRouter legacy facade without changing active runtime
+ * behavior. This is not secure store, not Generic, not renderer/preload/IPC,
+ * and not OpenRouter credential migration.
+ */
+export async function* streamViaOpenRouterWithCredentialResolver(
+  request: ProviderStreamRequest,
+  credentialRef: ProviderCredentialRef,
+  resolveCredential: ProviderCredentialResolver,
+): AsyncGenerator<StarverseStreamEvent> {
+  const legacyCredential = resolveOpenRouterLegacyCredential({
+    credentialRef,
+    resolveCredential,
+    ...(request.config.baseUrl !== undefined ? { baseUrl: request.config.baseUrl } : {}),
+  })
+
+  if ('code' in legacyCredential) {
+    yield credentialResolutionErrorToStreamEvent(legacyCredential, request.requestId)
+    return
+  }
+
+  yield* streamViaOpenRouterLegacyCredential(request, legacyCredential)
+}
+
+async function* streamViaOpenRouterLegacyCredential(
+  request: ProviderStreamRequest,
+  legacyCredential: OpenRouterLegacyCredentialMaterial,
+): AsyncGenerator<StarverseStreamEvent> {
+  const c = request.config
   const liveConfig = {
     apiKey: legacyCredential.apiKey,
     model: c.model,
@@ -71,6 +115,24 @@ export async function* streamViaOpenRouter(
   }
 
   yield* mapDomainStreamToProviderStream(streamOpenRouterChatAsEvents(options))
+}
+
+function credentialResolutionErrorToStreamEvent(
+  err: ProviderCredentialResolutionError,
+  requestId: string,
+): StarverseStreamEvent {
+  return {
+    type: 'stream.error',
+    error: {
+      phase: 'request_build',
+      provider: 'openrouter',
+      category: 'auth',
+      message: err.message,
+      code: err.code,
+      requestId,
+    } satisfies StarverseProviderError,
+    terminal: true,
+  }
 }
 
 /**

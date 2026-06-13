@@ -2,8 +2,18 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import type { DomainEvent } from '@/next/state/types'
 import type { StarverseStreamEvent, ProviderStreamRequest } from '@/next/provider/providerTypes'
 import { domainEventToStreamEvent, streamEventToDomainEvent } from '@/next/provider/streamEventBridge'
-import { streamViaOpenRouter } from '@/next/provider/openrouter/openRouterAdapter'
+import { streamViaOpenRouter, streamViaOpenRouterWithCredentialResolver } from '@/next/provider/openrouter/openRouterAdapter'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
+import { createBearerCredential } from '@/next/provider/credentials/providerCredential'
+import {
+  providerCredentialResolutionFromCredential,
+  type ProviderCredentialRef,
+  type ProviderCredentialResolver,
+} from '@/next/provider/credentials/providerCredentialResolver'
+import {
+  providerCredentialResolverFromStore,
+  providerCredentialStoreUnavailable,
+} from '@/next/provider/credentials/providerCredentialStore'
 
 // ---------------------------------------------------------------------------
 // streamEventBridge — bidirectional mapping
@@ -233,6 +243,7 @@ describe('streamEventBridge', () => {
 
 describe('streamViaOpenRouter', () => {
   const originalDbBridge = (globalThis as any).dbBridge
+  const credentialRef: ProviderCredentialRef = { kind: 'credential_ref', id: 'openrouter-default' }
 
   beforeEach(() => {
     globalThis.localStorage?.removeItem('sv_debug_openrouter_echo_upstream_body')
@@ -263,6 +274,35 @@ describe('streamViaOpenRouter', () => {
         controller.enqueue(next)
       },
     })
+  }
+
+  function makeRequest(overrides?: Partial<ProviderStreamRequest['config']>): ProviderStreamRequest {
+    return {
+      requestId: 'rid',
+      assistantMessageId: 'assistant_1',
+      userText: 'hello',
+      config: {
+        model: DEFAULT_OPENROUTER_TEST_MODEL,
+        requestedReasoningMode: 'auto',
+        ...overrides,
+      },
+    }
+  }
+
+  function assertTerminalCredentialFailure(
+    events: StarverseStreamEvent[],
+    code: string,
+  ): void {
+    expect(events).toHaveLength(1)
+    expect(events[0]?.type).toBe('stream.error')
+    expect(events.some((event) => event.type === 'stream.done')).toBe(false)
+    if (events[0]?.type === 'stream.error') {
+      expect(events[0].terminal).toBe(true)
+      expect(events[0].error.provider).toBe('openrouter')
+      expect(events[0].error.category).toBe('auth')
+      expect(events[0].error.phase).toBe('request_build')
+      expect(events[0].error.code).toBe(code)
+    }
   }
 
   const fixture = [
@@ -451,6 +491,151 @@ describe('streamViaOpenRouter', () => {
       expect(calls).toHaveLength(1)
       expect(calls[0]?.url).toBe('https://openrouter-proxy.example.test/custom/v1/chat/completions')
       expect(calls[0]?.init?.headers?.Authorization).toBe(`Bearer ${rawKey}`)
+      const serializedEvents = JSON.stringify(events)
+      expect(serializedEvents).not.toContain(rawKey)
+      expect(serializedEvents).not.toContain(`Bearer ${rawKey}`)
+      expect(serializedEvents).not.toContain('Authorization')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('resolver seam sends the same legacy Authorization and baseUrl behavior as raw path', async () => {
+    const originalFetch = globalThis.fetch
+    const calls: any[] = []
+    const rawKey = 'sk-or-openrouter-resolved-secret'
+    const baseUrl = 'https://openrouter-proxy.example.test/custom/v1/'
+    const resolver: ProviderCredentialResolver = () =>
+      providerCredentialResolutionFromCredential(createBearerCredential(rawKey))
+    globalThis.fetch = vi.fn(async (url: any, init: any) => {
+      calls.push({ url, init })
+      const body = streamFromText(fixture)
+      return new Response(body as any, { status: 200, headers: { 'x-openrouter-generation-id': 'gen_header' } })
+    }) as any
+
+    try {
+      const request = makeRequest({ baseUrl })
+      const rawEvents: StarverseStreamEvent[] = []
+      for await (const event of streamViaOpenRouter(request, { apiKey: rawKey })) {
+        rawEvents.push(event)
+      }
+
+      const resolvedEvents: StarverseStreamEvent[] = []
+      for await (const event of streamViaOpenRouterWithCredentialResolver(request, credentialRef, resolver)) {
+        resolvedEvents.push(event)
+      }
+
+      expect(calls).toHaveLength(2)
+      expect(calls[0]?.url).toBe('https://openrouter-proxy.example.test/custom/v1/chat/completions')
+      expect(calls[1]?.url).toBe(calls[0]?.url)
+      expect(calls[0]?.init?.headers?.Authorization).toBe(`Bearer ${rawKey}`)
+      expect(calls[1]?.init?.headers?.Authorization).toBe(calls[0]?.init?.headers?.Authorization)
+      expect(rawEvents.filter((event) => event.type === 'message.text_delta')).toEqual(
+        resolvedEvents.filter((event) => event.type === 'message.text_delta'),
+      )
+      expect(rawEvents.some((event) => event.type === 'stream.done')).toBe(true)
+      expect(resolvedEvents.some((event) => event.type === 'stream.done')).toBe(true)
+      const serializedEvents = JSON.stringify([rawEvents, resolvedEvents])
+      expect(serializedEvents).not.toContain(rawKey)
+      expect(serializedEvents).not.toContain(`Bearer ${rawKey}`)
+      expect(serializedEvents).not.toContain('Authorization')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('resolver seam unresolved credential fails before fetch and emits no done', async () => {
+    const originalFetch = globalThis.fetch
+    const rawKey = 'sk-or-unresolved-openrouter-secret'
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error('fetch should not be called')
+    }) as any
+
+    try {
+      const resolver: ProviderCredentialResolver = () => ({
+        ok: false,
+        error: {
+          code: 'credential_unresolved',
+          message: `missing token Authorization: Bearer ${rawKey}`,
+        },
+      })
+      const events: StarverseStreamEvent[] = []
+      for await (const event of streamViaOpenRouterWithCredentialResolver(makeRequest(), credentialRef, resolver)) {
+        events.push(event)
+      }
+
+      expect(globalThis.fetch).not.toHaveBeenCalled()
+      assertTerminalCredentialFailure(events, 'credential_unresolved')
+      const serializedEvents = JSON.stringify(events)
+      expect(serializedEvents).not.toContain(rawKey)
+      expect(serializedEvents).not.toContain(`Bearer ${rawKey}`)
+      expect(serializedEvents).not.toContain('Authorization')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('resolver seam invalid credential fails before fetch and emits no done', async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error('fetch should not be called')
+    }) as any
+
+    try {
+      const resolver: ProviderCredentialResolver = () =>
+        providerCredentialResolutionFromCredential(createBearerCredential(''))
+      const events: StarverseStreamEvent[] = []
+      for await (const event of streamViaOpenRouterWithCredentialResolver(makeRequest(), credentialRef, resolver)) {
+        events.push(event)
+      }
+
+      expect(globalThis.fetch).not.toHaveBeenCalled()
+      assertTerminalCredentialFailure(events, 'credential_invalid')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('resolver seam store unavailable fails safely before fetch and emits no done', async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error('fetch should not be called')
+    }) as any
+
+    try {
+      const resolver = providerCredentialResolverFromStore({
+        getCredential: () => providerCredentialStoreUnavailable(),
+      })
+      const events: StarverseStreamEvent[] = []
+      for await (const event of streamViaOpenRouterWithCredentialResolver(makeRequest(), credentialRef, resolver)) {
+        events.push(event)
+      }
+
+      expect(globalThis.fetch).not.toHaveBeenCalled()
+      assertTerminalCredentialFailure(events, 'credential_unresolved')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('resolver seam thrown resolver errors fail safely before fetch and emit no done', async () => {
+    const originalFetch = globalThis.fetch
+    const rawKey = 'sk-or-thrown-openrouter-secret'
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error('fetch should not be called')
+    }) as any
+
+    try {
+      const resolver: ProviderCredentialResolver = () => {
+        throw new Error(`resolver exploded with ${rawKey}`)
+      }
+      const events: StarverseStreamEvent[] = []
+      for await (const event of streamViaOpenRouterWithCredentialResolver(makeRequest(), credentialRef, resolver)) {
+        events.push(event)
+      }
+
+      expect(globalThis.fetch).not.toHaveBeenCalled()
+      assertTerminalCredentialFailure(events, 'credential_unresolved')
       const serializedEvents = JSON.stringify(events)
       expect(serializedEvents).not.toContain(rawKey)
       expect(serializedEvents).not.toContain(`Bearer ${rawKey}`)
