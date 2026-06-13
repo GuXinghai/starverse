@@ -2,7 +2,7 @@
 
 版本：v1.0.0
 状态：Planning document — not yet Owner-confirmed
-最后更新：2026-06-13
+最后更新：2026-06-14
 
 关联文档：
 - STARVERSE_PROVIDER_ARCHITECTURE_CONTRACT.md §9, §10
@@ -90,7 +90,10 @@ The renderer has full read/write access to `openRouterApiKey` and `openRouterBas
 - Line 102: `sanitizeRequestBodyForLog` redacts `apiKey` in log output
 
 **Catalog sync (`electron/jobs/catalogSyncStartup.ts`):**
-- Line 61: `const apiKey = String(store.get('openRouterApiKey') ?? '').trim()` — reads key directly from store in main process
+- `catalogSyncStartup.ts` now calls the behavior-preserving OpenRouter catalog credential wrapper.
+- The wrapper still reads the legacy `openRouterApiKey` / `openRouterBaseUrl` values from the main-process store and passes the same values to the catalog sync job.
+- This is not a secure-store migration and does not change OpenRouter chat/send credentials.
+- `openRouterCatalogLocalSecret` remains blocked from generic renderer store IPC and remains a catalog local secret / HMAC key, not a provider credential.
 
 ### 1.4 Gemini legacy credential remnants
 
@@ -104,26 +107,47 @@ The renderer has full read/write access to `openRouterApiKey` and `openRouterBas
 
 These are runtime-dead (no active Gemini send chain) but config-live (stored values exist, migration logic runs).
 
-### 1.5 Generic fixture credential seed today
+### 1.5 Generic fixture credential boundary today
 
-Verified in `src/next/provider/credentials/providerCredential.ts`:
-- `BearerCredential`: `{ kind: 'bearer', token: string }`
-- `createBearerCredential(token)`: Validates non-empty, returns credential
-- `buildAuthHeader(cred)`: Returns `{ Authorization: 'Bearer <token>' }`
-- `maskCredential(cred)`: Returns `{ maskedToken: '***' }` — raw token NEVER in output
-- `redactCredentialFromMessage(message, token)`: Strips bearer tokens from error messages
-- `sanitizeErrorCode(rawCode, token, fallback)`: Prevents token leakage in error codes
+Verified in `src/next/provider/credentials/**`:
+- Provider-level `ProviderCredentialRef` exists as a non-secret pointer with `kind` / `id`.
+- `ProviderCredentialResolver` and `ProviderCredentialResolution` define an injected resolver boundary. They do not read store, env, renderer, preload, or IPC.
+- `ProviderCredentialStore` exists as a pure provider-layer contract with in-memory test implementation and a resolver factory. It is not a global singleton and does not read electron-store.
+- `ProviderCredentialStoreResult` has an explicit invalid branch; the success branch carries valid `ProviderCredential` only.
+- Secret-like field detection is a provider credential layer SSOT and is reused by `ProviderCredentialRef` validation and Generic endpoint config validation.
+- Safe credential metadata / diagnostic helpers exist for configured, missing, invalid, unavailable, and error states. They do not expose raw token, bearer value, Authorization, headers, URL userinfo, raw resolver output, or raw store error messages.
 
-Verified in `src/next/provider/generic/genericEndpointConfig.ts`:
-- `GenericCredentialRef`: `{ kind: 'credential_ref', id: string }` — non-secret pointer
-- `GenericEndpointConfig`: Contains `credentialRef` but NO raw API key
-- `resolveGenericEndpointDescriptor(config, resolveCredential)`: Resolves credential through injected resolver
-- `toSafeGenericEndpointMetadata(config)`: Exposes `credentialPresent: boolean` but never raw token
-- Secret-like field detection: 27 field names rejected case-insensitively
+Verified in `src/next/provider/generic/**`:
+- `GenericEndpointConfig` contains `credentialRef` but no raw API key.
+- `streamViaGenericConfig` exercises config -> provider resolver/store -> descriptor -> adapter in tests.
+- Resolver missing / invalid / unavailable / thrown-error paths fail before fetch, emit `stream.error`, and emit no `stream.done`.
+- Generic remains fixture-only and conservative: text chat/basic streaming/basic error only, no live runtime enablement, no endpoint registry, and no provider registry.
 
-This is pure adapter/test boundary — not secure store, not renderer/settings/IPC.
+This is provider fixture/boundary progress only. It is not secure store, not renderer/settings/preload/IPC migration, not live Generic support, and not production-ready multi-provider credential storage.
 
-### 1.6 Distinguishing verified facts from assumptions
+### 1.6 OpenRouter credential migration checkpoint
+
+Completed as behavior-preserving or fixture-only work:
+- OpenRouter legacy credential facade exists. It wraps current raw key/baseURL material for OpenRouter adapter fixtures and safe diagnostics, but it is explicitly a legacy exception facade.
+- OpenRouter credential resolver seam exists at provider fixture level. It proves `ProviderCredentialRef` / resolver output can map to the OpenRouter legacy facade and then to the current adapter fixture path. It is not connected to the active renderer/settings/preload/IPC send path.
+- OpenRouter legacy credential behavior characterization gates cover adapter Authorization behavior, baseURL preservation, safe diagnostics, error/envelope behavior, request builder/SSE/live-stream fixture behavior, and no raw key in provider fixture events.
+- OpenRouter migration surface characterization gates cover store IPC legacy credential access, preload generic store bridge exposure, catalog sync direct-read surface, catalog local secret / HMAC scope behavior, bridge mask/log behavior, and non-empty IPC SSE handling.
+- OpenRouter catalog credential read wrapper exists and is connected to `catalogSyncStartup`. It still performs the same legacy main-process store read and passes the same `apiKey` / `baseUrl` values to the sync job.
+- OpenRouter credential migration gates have been hardened so the resolver seam does not trust dynamic resolver messages, preload scanning in tests is path-stable, `clearSafe` legacy credential behavior is characterized, and bridge mask/log tests prove the current mask pattern is applied.
+
+Not completed:
+- No secure store implementation.
+- No OS keychain or encrypted credential store.
+- No renderer/settings/preload/IPC raw key exposure reduction.
+- No OpenRouter chat/send credential source migration.
+- No endpoint registry or provider registry.
+- No non-OpenRouter live runtime.
+- No Send Plan runtime capability integration.
+- No DB schema or durable multi-provider usage migration.
+- No OpenRouter catalog credential resolver integration beyond the behavior-preserving wrapper seed.
+- `openRouterCatalogLocalSecret` remains a catalog local secret / HMAC key, not a provider credential.
+
+### 1.7 Distinguishing verified facts from assumptions
 
 | Fact | Source |
 |------|--------|
@@ -154,7 +178,7 @@ This is pure adapter/test boundary — not secure store, not renderer/settings/I
 
 **Risk:** The `maskApiKey` function exposes the first 4 and last 4 characters of the API key. While not a full leak, it reduces the entropy of the key significantly for short keys. Provider error messages may echo credential material.
 
-**Mitigation status:** Generic adapter has `redactCredentialFromMessage` and `sanitizeErrorCode`. OpenRouter bridge has partial redaction. Other adapters have no explicit credential redaction in their error paths.
+**Mitigation status:** Generic adapter has credential redaction and error-code sanitization. Provider credential metadata helpers provide renderer-safe diagnostics. OpenRouter bridge mask/log behavior is characterized, and the OpenRouter resolver seam normalizes credential failure messages to static safe strings. This is still defensive gating, not secure migration.
 
 ### 2.3 OpenRouter behavior regression risk
 
@@ -162,7 +186,7 @@ This is pure adapter/test boundary — not secure store, not renderer/settings/I
 
 **Risk:** Any migration that changes the credential flow must not break this path. The IPC bridge receives the raw API key in the payload — changing this requires coordinating preload, IPC, adapter, and app logic.
 
-**Mitigation:** The adapter already receives credentials as parameters (not from store). The migration boundary is at the store-to-adapter handoff in `appChatApp.logic.ts`.
+**Mitigation:** The adapter already receives credentials as parameters (not from store). The OpenRouter legacy facade, resolver seam fixture, behavior characterization, and catalog credential read wrapper provide migration preparation while preserving behavior. The chat/send migration boundary remains at the store-to-adapter handoff in `appChatApp.logic.ts`.
 
 ### 2.4 Migration compatibility risk for existing users
 
@@ -178,24 +202,32 @@ This is pure adapter/test boundary — not secure store, not renderer/settings/I
 
 **Risk:** If the credential boundary moves to main process, the settings panel must be updated to show masked metadata instead of raw keys. If the panel is updated before the boundary is ready, it may break. If the panel is not updated after the boundary, it becomes inconsistent.
 
-**Mitigation:** Phase the migration: first establish the secure store, then update the UI. Do not change the UI until the secure path is validated.
+**Mitigation:** Phase the migration: keep renderer exposure characterized while the main-process boundary is prepared, then update the active credential source and UI only under an explicit migration task. Do not change the UI until the replacement path is validated.
 
 ### 2.6 Endpoint registry / credentialRef mismatch risk
 
-**Current state:** `GenericCredentialRef` exists as a type (`{ kind: 'credential_ref', id: string }`) but no endpoint registry or credential store consumes it. The resolver is injected per-test.
+**Current state:** `ProviderCredentialRef`, injected resolver, provider credential store boundary seed, and safe metadata helpers exist. Generic fixture tests consume the config -> resolver/store -> descriptor -> adapter path. There is still no endpoint registry, provider registry, or live production resolver wiring.
 
 **Risk:** If the endpoint registry and credential store are designed independently, the `credentialRef` may not match the store's key format. If the resolver is not the same function used in production, fixture tests may not catch integration bugs.
 
-**Mitigation:** Design the credential store key format before implementing the endpoint registry. Ensure the resolver used in tests matches the production resolver's contract.
+**Mitigation:** Keep the provider credential resolver/store contract as the SSOT for future endpoint registry work. Do not introduce endpoint/provider registry until the credentialRef shape and migration behavior are explicitly accepted.
 
 ### 2.7 Test coverage gaps
 
 **Current gaps:**
-- No tests for the store-to-adapter handoff in `appChatApp.logic.ts` (it's UI orchestration)
-- No tests for the IPC bridge credential flow end-to-end
-- No tests for SettingsPanel credential display after migration
-- No tests for credential migration logic (old key → new format)
-- No tests for multi-endpoint credential resolution
+- No migration of the OpenRouter chat/send active credential source.
+- No tests for the final migrated store-to-adapter handoff in `appChatApp.logic.ts`.
+- No tests for SettingsPanel masked credential display after migration.
+- No tests for durable legacy key -> secure credential migration logic.
+- No tests for endpoint/provider registry credential resolution.
+
+**Recently covered gates:**
+- Provider credential boundary import/safety gates.
+- Generic config -> resolver/store -> descriptor -> adapter fixture path.
+- OpenRouter legacy adapter facade and resolver seam fixture.
+- Store IPC/preload legacy exposure characterization.
+- OpenRouter catalog credential read wrapper characterization.
+- OpenRouter bridge mask/log and non-empty IPC SSE credential-safety characterization.
 
 ---
 
@@ -329,179 +361,43 @@ Stored in config schema. Prevents re-migration on app restart.
 
 ## 5. Phased Migration Plan
 
-### Phase C0: Tests and inventory gates
+This checkpoint records current progress. Status terms are intentionally conservative:
 
-**Goal:** Establish test coverage for current credential flows and document the exact surfaces that need migration.
+- **complete** means the stated test/boundary work exists and is covered.
+- **fixture-only** means it is exercised by provider fixtures/tests, not active runtime.
+- **behavior-preserving wrapper** means it wraps the existing legacy path without reducing the legacy exposure.
+- **partial** means useful preparation exists, but the migration phase has not exited.
+- **not started** means no implementation should be inferred from target architecture language.
 
-**Files likely touched:**
-- `src/next/provider/credentials/providerCredential.test.ts` (expand)
-- `src/next/provider/providerFixtureInvariants.test.ts` (add credential leakage invariant for all adapters)
-- `docs/architecture/provider-architecture/PROVIDER_CREDENTIAL_BOUNDARY_PLAN.md` (this document)
+### Current phase status
 
-**Forbidden changes:**
-- No source code changes
-- No store schema changes
-- No UI changes
-- No adapter behavior changes
+| Phase | Status | Completed checkpoint | Still not complete |
+|---|---|---|---|
+| C0 characterization / safety gates | substantially complete | Provider fixture invariant gate, provider credential boundary safety gates, OpenRouter legacy behavior gates, migration surface gates, catalog wrapper tests, bridge mask/log gates, and hardening gates exist. | Future migrated UI/settings tests and final secure-store migration tests do not exist. Characterization tests intentionally lock current legacy behavior and must be updated during migration. |
+| C1 credential store boundary | partial | Provider-layer credential store contract, in-memory test store, store -> resolver factory, explicit missing/invalid/unavailable/error mapping, and safe metadata boundary exist. | No secure store implementation, no OS keychain, no encrypted store, no electron-store migration, no renderer/settings/preload/IPC integration. |
+| C2 Generic fixture credentialRef consumption | fixture-level complete | Generic config -> ProviderCredentialRef -> resolver/store -> descriptor -> adapter path is covered. Resolver failure fails before fetch, emits `stream.error`, and emits no `stream.done`. Secret-like field detection is shared provider SSOT. | Generic remains fixture-only. No live Generic API, no endpoint registry, no provider registry, no production credential source. |
+| C3 OpenRouter legacy read wrapping | partial / in preparation | OpenRouter legacy credential facade done. Resolver seam fixture done. OpenRouter behavior characterization done. Migration surface characterization done. Catalog credential read wrapper done. Resolver seam hardening done. | OpenRouter chat/send active credential source is not migrated. Renderer/settings/preload/IPC raw key exposure remains. Catalog wrapper still reads legacy store values and is not secure store. Catalog credential resolver integration beyond wrapper seed is not done. |
+| C4 settings/preload exposure reduction | not started | Current raw-key exposure is characterized. `openRouterCatalogLocalSecret` remains blocked from generic store IPC. | No reduction of renderer/settings/preload/IPC raw key exposure. Settings panel still reads/writes raw legacy key. Generic store bridge remains legacy exposure. |
+| C5 endpoint registry / provider settings | not started | CredentialRef and non-secret Generic config fixtures establish shape pressure for future endpoint registry. | No endpoint registry, no provider registry, no provider settings integration, no multi-endpoint credential routing. |
+| C6 production non-OpenRouter live gate | not started | Non-OpenRouter providers have fixture foundations and credential boundaries where applicable. | No non-OpenRouter live runtime. No Send Plan runtime capability integration. No DB schema or durable multi-provider usage migration. OpenRouter remains the only active runtime. |
 
-**Validation checks:**
-- All existing provider tests pass
-- Invariant tests cover credential leakage for all adapters
-- Inventory document is complete and verified
+### Recommended next engineering steps
 
-**Rollback condition:** N/A — docs and tests only
+1. Mimo review `c0ba6eb2 fix(provider): harden OpenRouter credential migration gates`.
+2. Consider catalog credential resolver integration only after the catalog wrapper review is accepted.
+3. Start C3 OpenRouter chat/send credential migration only after explicit Owner approval.
+4. Defer C4 settings/preload raw-key exposure reduction until the C3 active credential path is stable.
+5. Keep endpoint/provider registry work deferred until the credential migration boundary is accepted.
 
----
+### Current risks
 
-### Phase C1: Secure-store abstraction seed in main process
-
-**Goal:** Create a minimal secure-store abstraction in the main process that can store and retrieve credential material. No UI migration, no adapter changes.
-
-**Files likely touched:**
-- `electron/credentials/secureCredentialStore.ts` (new)
-- `electron/credentials/secureCredentialStore.test.ts` (new)
-- `electron/config/configSchema.ts` (add new store keys for credential metadata)
-
-**Forbidden changes:**
-- No renderer exposure of new keys
-- No preload/IPC changes
-- No adapter changes
-- No UI changes
-- No OpenRouter behavior changes
-
-**Validation checks:**
-- Secure store can store/retrieve/mask credentials
-- Secure store does not expose raw credentials through any IPC channel
-- Existing OpenRouter path unchanged
-- All existing tests pass
-
-**Rollback condition:** If the secure store abstraction cannot be contained to main process only, revert and redesign.
-
----
-
-### Phase C2: Generic fixture consumes credentialRef through resolver
-
-**Goal:** Wire the Generic adapter's `streamViaGenericConfig` entrypoint to use the secure store resolver in tests, proving the config → resolver → descriptor → adapter path works with real credential resolution.
-
-**Files likely touched:**
-- `src/next/provider/generic/genericAdapter.ts` (no changes — already has `streamViaGenericConfig`)
-- `src/next/provider/generic/genericAdapter.test.ts` (add tests using secure store resolver)
-- `electron/credentials/secureCredentialStore.ts` (expose resolver function)
-
-**Forbidden changes:**
-- No production adapter changes
-- No UI changes
-- No preload/IPC changes
-- No OpenRouter changes
-
-**Validation checks:**
-- Config → resolver → descriptor → adapter happy path works
-- Invalid credential fails before fetch
-- No raw token in emitted events
-- All existing tests pass
-
-**Rollback condition:** If the resolver integration requires changes to the adapter contract, revert and redesign the resolver interface.
-
----
-
-### Phase C3: OpenRouter legacy read path wrapped, behavior unchanged
-
-**Goal:** Wrap the OpenRouter credential read path (`useChatSession.ts` → `electronStore.get('openRouterApiKey')`) behind a main-process credential boundary. The behavior must be identical — the renderer still reads the key, but through a new IPC channel that returns masked metadata for display and passes the raw key only to the adapter in the main process.
-
-**Files likely touched:**
-- `electron/ipc/credentialIpc.ts` (new)
-- `electron/preload.ts` (add new credential IPC channel)
-- `src/ui-app/app/useChatSession.ts` (switch to new IPC channel)
-- `electron/credentials/secureCredentialStore.ts` (add OpenRouter migration logic)
-
-**Forbidden changes:**
-- OpenRouter request/stream/reasoning/tool/usage behavior must not change
-- Existing stored `openRouterApiKey` must remain readable
-- Settings panel must continue to work (may show masked key instead of raw)
-- No other provider changes
-
-**Validation checks:**
-- OpenRouter happy path unchanged (same requests, same responses)
-- Settings panel shows masked key or existing behavior
-- Existing stored keys are not lost
-- All existing tests pass
-
-**Rollback condition:** If OpenRouter behavior changes at all, revert immediately. The legacy path must remain functional until the migration is confirmed safe.
-
----
-
-### Phase C4: Settings/preload renderer exposure reduced to masked metadata
-
-**Goal:** The renderer no longer receives raw API keys. The settings panel shows masked metadata. The renderer can configure endpoints (non-secret fields) and trigger credential entry (which goes directly to main process).
-
-**Files likely touched:**
-- `src/ui-app/components/SettingsPanel.vue` (show masked key, add credential entry flow)
-- `electron/preload.ts` (remove raw key access from `electronStore` API, or add key-level filtering)
-- `electron/ipc/storeIpc.ts` (block `openRouterApiKey` from renderer reads)
-- `electron/ipc/credentialIpc.ts` (add masked metadata endpoint)
-
-**Forbidden changes:**
-- No new provider live support
-- No endpoint registry
-- No Send Plan changes
-- No DB schema changes
-
-**Validation checks:**
-- Renderer cannot read raw `openRouterApiKey` through any IPC channel
-- Settings panel shows masked key and allows credential entry
-- OpenRouter behavior unchanged
-- All existing tests pass
-
-**Rollback condition:** If the settings panel breaks or OpenRouter behavior changes, revert and keep the legacy renderer access.
-
----
-
-### Phase C5: Endpoint registry / provider settings integration
-
-**Goal:** Introduce a minimal endpoint registry that stores non-secret endpoint config with credentialRef pointers. The credential store resolves credentialRef to actual credentials. Multiple endpoints can be configured (OpenRouter official, custom OpenAI-compatible, future providers).
-
-**Files likely touched:**
-- `electron/endpoints/endpointRegistry.ts` (new)
-- `electron/endpoints/endpointRegistry.test.ts` (new)
-- `electron/credentials/secureCredentialStore.ts` (extend for multi-endpoint)
-- `src/ui-app/components/SettingsPanel.vue` (endpoint management UI)
-
-**Forbidden changes:**
-- No live non-OpenRouter provider enablement
-- No Send Plan integration
-- No DB schema changes for endpoints (use electron-store)
-
-**Validation checks:**
-- Endpoint registry can store/retrieve non-secret config
-- CredentialRef resolves to correct credential
-- OpenRouter official endpoint works through new path
-- All existing tests pass
-
-**Rollback condition:** If the endpoint registry introduces complexity that cannot be contained, revert and keep the single-endpoint path.
-
----
-
-### Phase C6: Production non-OpenRouter live enablement gate
-
-**Goal:** Enable live non-OpenRouter provider calls through the secure credential boundary. The first provider to go live is Generic OpenAI-compatible, followed by DeepSeek, then native providers.
-
-**Files likely touched:**
-- `src/ui-app/app/appChatApp.logic.ts` (add provider dispatch based on endpoint registry)
-- `src/next/provider/generic/genericAdapter.ts` (wire to secure store resolver)
-- Endpoint-specific adapter files (wire to secure store resolver)
-
-**Forbidden changes:**
-- OpenRouter behavior must not change
-- No Send Plan integration until RuntimeCapability phase
-- No DB schema changes
-
-**Validation checks:**
-- Generic endpoint can make live API calls with credentials from secure store
-- OpenRouter still works unchanged
-- Error messages do not leak credentials
-- All existing tests pass
-
-**Rollback condition:** If live non-OpenRouter calls fail or leak credentials, disable the provider dispatch and revert to OpenRouter-only.
+| Risk | Current control |
+|---|---|
+| Renderer store bridge still exposes raw legacy keys. | Characterization gates document current exposure. No reduction has happened. |
+| OpenRouter chat send path still receives raw key from renderer/store flow. | OpenRouter behavior characterization and facade/seam tests protect current behavior. |
+| Catalog wrapper is behavior-preserving, not secure. | Wrapper tests prove same `apiKey` / `baseUrl` behavior and no raw key in diagnostics/scope output. |
+| Characterization tests can block intentional migration changes. | Future migration tasks must update these tests deliberately with Owner-approved behavior changes. |
+| Safe metadata could be mistaken for secure migration. | This document labels it as provider boundary progress only, not secure store or renderer migration. |
 
 ---
 
@@ -538,7 +434,7 @@ Stored in config schema. Prevents re-migration on app restart.
 |----------|--------|
 | UI implementation | Not in this task. Settings panel changes are Phase C4. |
 | Settings implementation | Not in this task. Settings IPC changes are Phase C4. |
-| Secure store implementation | Not in this task. Secure store is Phase C1. |
+| Secure store implementation | Not in this task. Only provider credential store boundary seed exists; OS keychain / encrypted store remains future work. |
 | Live provider enablement | Not in this task. Live non-OpenRouter is Phase C6. |
 | Endpoint/provider registry implementation | Not in this task. Registry is Phase C5. |
 | Send Plan integration | Not in this task. Send Plan integration is deferred to RuntimeCapability phase. |
