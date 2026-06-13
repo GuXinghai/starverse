@@ -181,6 +181,7 @@ C3 should not be considered complete unless all applicable criteria are met:
 - Resolver-backed credential failures emit terminal `stream.error` and no `stream.done` where stream events are emitted.
 - Existing OpenRouter tests are updated intentionally, not accidentally broken.
 - Store IPC and preload exposure changes are deferred to C4 unless separately approved.
+- Existing renderer-visible store IPC / preload / settings raw-key exposure remains unchanged in C3 unless C4 is separately approved.
 - `openRouterCatalogLocalSecret` remains catalog local secret / HMAC material, not provider credential material.
 - Generic remains fixture-only.
 - Live runtime for non-OpenRouter providers remains disabled.
@@ -214,7 +215,7 @@ Rollback should restore current OpenRouter behavior without requiring DB schema 
 | Catalog local secret could be confused with provider credential. | It is HMAC/scope material, not API auth material. | Keep `openRouterCatalogLocalSecret` separate in code, tests, and docs. |
 | Resolver seam can be mistaken for secure store. | Resolver seams currently prove wiring only. | Label resolver-backed legacy reads as legacy-backed unless secure store is actually implemented. |
 | Characterization tests can block intentional migration. | They lock current behavior by design. | Update them deliberately in the same migration commit that changes behavior. |
-| Dual-read migration can create drift. | Two credential sources may disagree. | Define source precedence and fallback rules before implementation. |
+| Dual-read migration can create drift. | Two credential sources may disagree. | Define source precedence and fallback rules before implementation. If legacy store and resolver-backed reads coexist during transition, C3 must define which source wins and whether fallback is allowed when one source is missing or invalid. |
 | BaseURL normalization drift can break custom endpoint users. | Current baseURL behavior is user-visible. | Preserve current semantics unless explicitly approved. |
 
 ---
