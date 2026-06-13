@@ -556,7 +556,7 @@ describe('streamViaOpenRouter', () => {
         ok: false,
         error: {
           code: 'credential_unresolved',
-          message: `missing token Authorization: Bearer ${rawKey}`,
+          message: `missing token Authorization: Bearer ${rawKey} headers userinfo https://user:pass@example.test`,
         },
       })
       const events: StarverseStreamEvent[] = []
@@ -566,10 +566,15 @@ describe('streamViaOpenRouter', () => {
 
       expect(globalThis.fetch).not.toHaveBeenCalled()
       assertTerminalCredentialFailure(events, 'credential_unresolved')
+      expect(events[0]?.type).toBe('stream.error')
+      expect(events[0]?.type === 'stream.error' ? events[0].error.message : '').toBe('Credential could not be resolved.')
       const serializedEvents = JSON.stringify(events)
       expect(serializedEvents).not.toContain(rawKey)
       expect(serializedEvents).not.toContain(`Bearer ${rawKey}`)
       expect(serializedEvents).not.toContain('Authorization')
+      expect(serializedEvents).not.toContain('headers')
+      expect(serializedEvents).not.toContain('userinfo')
+      expect(serializedEvents).not.toContain('user:pass')
     } finally {
       globalThis.fetch = originalFetch
     }

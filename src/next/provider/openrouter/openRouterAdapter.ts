@@ -127,12 +127,22 @@ function credentialResolutionErrorToStreamEvent(
       phase: 'request_build',
       provider: 'openrouter',
       category: 'auth',
-      message: err.message,
+      message: safeCredentialResolutionMessage(err.code),
       code: err.code,
       requestId,
     } satisfies StarverseProviderError,
     terminal: true,
   }
+}
+
+function safeCredentialResolutionMessage(code: ProviderCredentialResolutionError['code']): string {
+  if (code === 'credential_invalid') {
+    return 'Credential material is invalid.'
+  }
+  if (code === 'invalid_credential_ref') {
+    return 'Credential reference is invalid.'
+  }
+  return 'Credential could not be resolved.'
 }
 
 /**
