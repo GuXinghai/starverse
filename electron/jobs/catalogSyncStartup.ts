@@ -10,7 +10,7 @@ import {
 } from '../../src/shared/modelCatalog/catalogSyncSettings'
 import {
   type OpenRouterCatalogLegacyCredential,
-  readOpenRouterCatalogLegacyCredentialFromStore,
+  resolveOpenRouterCatalogCredentialFromLegacyStore,
 } from './openRouterCatalogCredential'
 
 const CATALOG_META_SCHEMA_VERSION = 1
@@ -80,9 +80,9 @@ function resolveOpenRouterCatalogScopeFromCredential(
 }
 
 export function resolveCurrentOpenRouterCatalogScope(store: Store): OpenRouterCatalogScopeContext | null {
-  const credential = readOpenRouterCatalogLegacyCredentialFromStore(store)
-  if (!credential) return null
-  return resolveOpenRouterCatalogScopeFromCredential(store, credential)
+  const credentialResult = resolveOpenRouterCatalogCredentialFromLegacyStore(store)
+  if (!credentialResult.ok) return null
+  return resolveOpenRouterCatalogScopeFromCredential(store, credentialResult.credential)
 }
 
 function buildMissingApiKeyResult(providerKey: 'openrouter'): CatalogSyncRunnerResult {
@@ -114,10 +114,11 @@ export async function runCatalogSyncAtStartup(input: Readonly<{
   freshnessMs?: number
 }>): Promise<CatalogSyncRunnerResult> {
   const providerKey = 'openrouter'
-  const credential = readOpenRouterCatalogLegacyCredentialFromStore(input.store)
-  if (!credential) {
+  const credentialResult = resolveOpenRouterCatalogCredentialFromLegacyStore(input.store)
+  if (!credentialResult.ok) {
     return buildMissingApiKeyResult(providerKey)
   }
+  const credential = credentialResult.credential
   const scope = resolveOpenRouterCatalogScopeFromCredential(input.store, credential)
   const freshnessMs = normalizeCatalogFreshnessMs(input.freshnessMs ?? DEFAULT_CATALOG_FRESHNESS_MS)
 

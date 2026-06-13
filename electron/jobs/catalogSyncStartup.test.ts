@@ -56,7 +56,7 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
     vi.mocked(syncOpenRouterModelCatalog).mockReset()
   })
 
-  it('characterizes current startup scope as direct legacy openRouterApiKey/openRouterBaseUrl reads', () => {
+  it('characterizes current startup scope as resolver-backed legacy openRouterApiKey/openRouterBaseUrl reads', () => {
     const rawApiKey = 'sk-startup-direct-read-secret'
     const store = createStore({
       openRouterApiKey: `  ${rawApiKey}  `,
@@ -150,7 +150,7 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
     expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain(rawApiKey)
   })
 
-  it('passes the direct legacy OpenRouter key/baseUrl to the current catalog sync job only', async () => {
+  it('passes the resolver-backed legacy OpenRouter key/baseUrl to the current catalog sync job only', async () => {
     const rawApiKey = 'sk-startup-sync-job-secret'
     const store = createStore({
       openRouterApiKey: rawApiKey,

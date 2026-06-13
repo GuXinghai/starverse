@@ -9,9 +9,12 @@ import {
 } from '@/next/provider/credentials/providerCredentialResolver'
 import { providerCredentialResolverFromStore } from '@/next/provider/credentials/providerCredentialStore'
 import {
+  createOpenRouterCatalogLegacyStoreCredentialResolver,
+  OPENROUTER_CATALOG_LEGACY_CREDENTIAL_REF,
   OPENROUTER_CATALOG_LEGACY_API_KEY_STORE_KEY,
   OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY,
   readOpenRouterCatalogLegacyCredentialFromStore,
+  resolveOpenRouterCatalogCredentialFromLegacyStore,
   resolveOpenRouterCatalogLegacyCredential,
   toSafeOpenRouterCatalogCredentialDiagnostics,
 } from './openRouterCatalogCredential'
@@ -171,6 +174,89 @@ describe('OpenRouter catalog legacy credential read wrapper', () => {
       apiKey: RAW_KEY,
       baseUrl: null,
     })
+  })
+
+  it('resolver-backed legacy_store source reads the current catalog apiKey and baseUrl unchanged apart from existing trim behavior', () => {
+    const store = createStore({
+      [OPENROUTER_CATALOG_LEGACY_API_KEY_STORE_KEY]: `  ${RAW_KEY}  `,
+      [OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY]: ' https://openrouter-proxy.example.test/custom/v1/ ',
+    })
+
+    const result = resolveOpenRouterCatalogCredentialFromLegacyStore(store)
+
+    expect(result).toEqual({
+      ok: true,
+      source: 'legacy_store',
+      credential: {
+        kind: 'openrouter_catalog_legacy_credential',
+        apiKey: RAW_KEY,
+        baseUrl: 'https://openrouter-proxy.example.test/custom/v1/',
+      },
+      diagnostics: {
+        kind: 'openrouter_catalog_legacy_credential',
+        status: 'configured',
+        code: 'credential_configured',
+        baseUrlConfigured: true,
+      },
+    })
+    expect(store.get).toHaveBeenCalledWith('openRouterApiKey')
+    expect(store.get).toHaveBeenCalledWith('openRouterBaseUrl')
+  })
+
+  it('resolver-backed legacy_store source preserves empty-key behavior without baseUrl fallback reads', () => {
+    const store = createStore({
+      [OPENROUTER_CATALOG_LEGACY_API_KEY_STORE_KEY]: '   ',
+      [OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY]: 'https://openrouter-proxy.example.test/custom/v1/',
+    })
+
+    const result = resolveOpenRouterCatalogCredentialFromLegacyStore(store)
+
+    expect(result).toEqual({
+      ok: false,
+      source: 'legacy_store',
+      failure: {
+        kind: 'openrouter_catalog_credential_resolution_error',
+        code: 'credential_unresolved',
+        status: 'missing',
+        message: 'Credential could not be resolved.',
+      },
+      diagnostics: {
+        kind: 'openrouter_catalog_legacy_credential',
+        status: 'missing',
+        code: 'credential_missing',
+        baseUrlConfigured: false,
+      },
+    })
+    expect(store.get).toHaveBeenCalledWith('openRouterApiKey')
+    expect(store.get).not.toHaveBeenCalledWith('openRouterBaseUrl')
+    expectNoSecretLeak(result)
+  })
+
+  it('resolver-backed legacy_store source has no direct-read fallback for unknown credential refs', () => {
+    const store = createStore({
+      [OPENROUTER_CATALOG_LEGACY_API_KEY_STORE_KEY]: RAW_KEY,
+      [OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY]: 'https://openrouter-proxy.example.test/custom/v1/',
+    })
+    const resolver = createOpenRouterCatalogLegacyStoreCredentialResolver(store)
+
+    const result = resolver({ kind: 'credential_ref', id: 'different-openrouter-ref' })
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'credential_unresolved',
+        message: 'Credential could not be resolved.',
+      },
+    })
+    expect(store.get).not.toHaveBeenCalled()
+  })
+
+  it('documents the canonical C3 catalog source ref used by the legacy_store resolver', () => {
+    expect(OPENROUTER_CATALOG_LEGACY_CREDENTIAL_REF).toEqual({
+      kind: 'credential_ref',
+      id: 'openrouter-catalog-legacy-store',
+    })
+    expectNoSecretLeak(OPENROUTER_CATALOG_LEGACY_CREDENTIAL_REF)
   })
 
   it('resolver seam unresolved failure is static, safe, and does not call a catalog sync job', () => {
@@ -341,5 +427,12 @@ describe('OpenRouter catalog legacy credential read wrapper', () => {
     expect(offenders).toEqual([])
     expect(readFileSync(join(repoRoot, 'electron', 'jobs', 'catalogSyncStartup.ts'), 'utf8'))
       .not.toContain(resolverSeamName)
+  })
+
+  it('routes active catalog startup through the resolver-backed source instead of the direct wrapper', () => {
+    const startupSource = readFileSync(join(repoRoot, 'electron', 'jobs', 'catalogSyncStartup.ts'), 'utf8')
+
+    expect(startupSource).toContain('resolveOpenRouterCatalogCredentialFromLegacyStore')
+    expect(startupSource).not.toContain('readOpenRouterCatalogLegacyCredentialFromStore')
   })
 })

@@ -7,6 +7,11 @@
  */
 
 import {
+  createBearerCredential,
+} from '@/next/provider/credentials/providerCredential'
+import {
+  providerCredentialResolutionFailure,
+  providerCredentialResolutionFromCredential,
   resolveProviderCredential,
   type ProviderCredentialRef,
   type ProviderCredentialResolutionError,
@@ -15,6 +20,10 @@ import {
 
 export const OPENROUTER_CATALOG_LEGACY_API_KEY_STORE_KEY = 'openRouterApiKey'
 export const OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY = 'openRouterBaseUrl'
+export const OPENROUTER_CATALOG_LEGACY_CREDENTIAL_REF: ProviderCredentialRef = {
+  kind: 'credential_ref',
+  id: 'openrouter-catalog-legacy-store',
+}
 
 export type OpenRouterCatalogCredentialStoreReader = Readonly<{
   get: (key: string) => unknown
@@ -44,6 +53,22 @@ export type OpenRouterCatalogCredentialResolution =
   | OpenRouterCatalogLegacyCredential
   | OpenRouterCatalogCredentialResolutionFailure
 
+export type OpenRouterCatalogCredentialSource = 'legacy_store'
+
+export type OpenRouterCatalogCredentialSourceResult =
+  | Readonly<{
+    ok: true
+    source: OpenRouterCatalogCredentialSource
+    credential: OpenRouterCatalogLegacyCredential
+    diagnostics: SafeOpenRouterCatalogCredentialDiagnostics
+  }>
+  | Readonly<{
+    ok: false
+    source: OpenRouterCatalogCredentialSource
+    failure: OpenRouterCatalogCredentialResolutionFailure
+    diagnostics: SafeOpenRouterCatalogCredentialDiagnostics
+  }>
+
 export type OpenRouterCatalogCredentialResolutionInput = Readonly<{
   credentialRef: ProviderCredentialRef
   resolveCredential: ProviderCredentialResolver
@@ -62,6 +87,12 @@ export function readOpenRouterCatalogLegacyCredentialFromStore(
     apiKey,
     baseUrl,
   }
+}
+
+function readOpenRouterCatalogLegacyBaseUrlFromStore(
+  store: OpenRouterCatalogCredentialStoreReader,
+): string | null {
+  return String(store.get(OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY) ?? '').trim() || null
 }
 
 function openRouterCatalogCredentialResolutionFailure(
@@ -123,6 +154,63 @@ export function resolveOpenRouterCatalogLegacyCredential(
     kind: 'openrouter_catalog_legacy_credential',
     apiKey: resolution.credential.token,
     baseUrl: input.baseUrl ?? null,
+  }
+}
+
+/**
+ * C3a main-process OpenRouter credential resolver source with legacy backing.
+ *
+ * The resolver is canonical for the C3 catalog path, but the backing store key
+ * remains the existing legacy `openRouterApiKey`. There is no dual-read
+ * fallback: catalog sync uses this resolver-backed legacy_store source, while
+ * the direct wrapper remains only as a compatibility/characterization helper.
+ */
+export function createOpenRouterCatalogLegacyStoreCredentialResolver(
+  store: OpenRouterCatalogCredentialStoreReader,
+): ProviderCredentialResolver {
+  return (ref) => {
+    if (
+      ref.kind !== OPENROUTER_CATALOG_LEGACY_CREDENTIAL_REF.kind ||
+      ref.id !== OPENROUTER_CATALOG_LEGACY_CREDENTIAL_REF.id
+    ) {
+      return providerCredentialResolutionFailure('credential_unresolved')
+    }
+
+    const apiKey = String(store.get(OPENROUTER_CATALOG_LEGACY_API_KEY_STORE_KEY) ?? '').trim()
+    if (!apiKey) {
+      return providerCredentialResolutionFailure('credential_unresolved')
+    }
+
+    return providerCredentialResolutionFromCredential(createBearerCredential(apiKey))
+  }
+}
+
+export function resolveOpenRouterCatalogCredentialFromLegacyStore(
+  store: OpenRouterCatalogCredentialStoreReader,
+): OpenRouterCatalogCredentialSourceResult {
+  const resolved = resolveOpenRouterCatalogLegacyCredential({
+    credentialRef: OPENROUTER_CATALOG_LEGACY_CREDENTIAL_REF,
+    resolveCredential: createOpenRouterCatalogLegacyStoreCredentialResolver(store),
+  })
+
+  if (resolved.kind === 'openrouter_catalog_credential_resolution_error') {
+    return {
+      ok: false,
+      source: 'legacy_store',
+      failure: resolved,
+      diagnostics: toSafeOpenRouterCatalogCredentialDiagnostics(resolved),
+    }
+  }
+
+  const credential = {
+    ...resolved,
+    baseUrl: readOpenRouterCatalogLegacyBaseUrlFromStore(store),
+  }
+  return {
+    ok: true,
+    source: 'legacy_store',
+    credential,
+    diagnostics: toSafeOpenRouterCatalogCredentialDiagnostics(credential),
   }
 }
 
