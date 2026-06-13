@@ -363,6 +363,8 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
       const serializedLogs = warnSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
       expect(serializedLogs).not.toContain(rawKey)
       expect(serializedLogs).not.toContain(`Bearer ${rawKey}`)
+      expect(serializedLogs).toContain('API Key (REDACTED): sk-o...cret')
+      expect(serializedLogs).toContain('Authorization: [REDACTED]')
     } finally {
       warnSpy.mockRestore()
       cleanupOpenRouterStreams()
@@ -424,7 +426,7 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
       const serializedLogs = warnSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
       expect(serializedLogs).not.toContain(rawKey)
       expect(serializedLogs).not.toContain(`Bearer ${rawKey}`)
-      expect(serializedLogs).toContain('API Key (REDACTED):')
+      expect(serializedLogs).toContain('API Key (REDACTED): sk-o...cret')
       expect(serializedLogs).toContain('Authorization: [REDACTED]')
     } finally {
       warnSpy.mockRestore()

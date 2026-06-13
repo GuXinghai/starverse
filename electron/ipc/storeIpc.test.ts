@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { safeClearConfig } from '../config/configSchema'
 import { OPENROUTER_CATALOG_LOCAL_SECRET_KEY } from '../modelCatalog/catalogScope'
@@ -12,6 +13,8 @@ vi.mock('../config/configSchema', async (importOriginal) => {
     safeClearConfig: vi.fn(() => 'config.backup.json'),
   }
 })
+
+const testDir = dirname(fileURLToPath(import.meta.url))
 
 function registerHandlers(input?: { refreshMainLocale?: () => void; initialStore?: Record<string, unknown> }) {
   const registerInvoke = vi.fn()
@@ -143,7 +146,7 @@ describe('registerStoreIpc', () => {
   })
 
   it('characterizes preload as still exposing generic renderer store bridge methods', () => {
-    const preloadSource = readFileSync(join(process.cwd(), 'electron', 'preload.ts'), 'utf8')
+    const preloadSource = readFileSync(resolve(testDir, '..', 'preload.ts'), 'utf8')
 
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('electronStore'")
     expect(preloadSource).toContain("get: (key: string) => ipcRenderer.invoke('store-get', key)")
@@ -161,5 +164,33 @@ describe('registerStoreIpc', () => {
       expect.anything(),
       expect.arrayContaining(['language', OPENROUTER_CATALOG_LOCAL_SECRET_KEY])
     )
+  })
+
+  it('characterizes renderer safe clear as clearing legacy credential keys unless explicitly kept', async () => {
+    vi.mocked(safeClearConfig).mockClear()
+    const { handlers } = registerHandlers()
+
+    await handlers.get('store-clear-safe')?.({}, ['language'])
+
+    const keepKeys = vi.mocked(safeClearConfig).mock.calls.at(-1)?.[1] ?? []
+    expect(keepKeys).toEqual(expect.arrayContaining(['language', OPENROUTER_CATALOG_LOCAL_SECRET_KEY]))
+    expect(keepKeys).not.toContain('openRouterApiKey')
+    expect(keepKeys).not.toContain('openRouterBaseUrl')
+    expect(keepKeys).not.toContain('geminiApiKey')
+    expect(keepKeys).not.toContain('apiKey')
+  })
+
+  it('characterizes renderer safe clear as preserving explicit legacy credential keep keys', async () => {
+    vi.mocked(safeClearConfig).mockClear()
+    const { handlers } = registerHandlers()
+
+    await handlers.get('store-clear-safe')?.({}, ['openRouterApiKey', 'openRouterBaseUrl'])
+
+    const keepKeys = vi.mocked(safeClearConfig).mock.calls.at(-1)?.[1] ?? []
+    expect(keepKeys).toEqual(expect.arrayContaining([
+      'openRouterApiKey',
+      'openRouterBaseUrl',
+      OPENROUTER_CATALOG_LOCAL_SECRET_KEY,
+    ]))
   })
 })
