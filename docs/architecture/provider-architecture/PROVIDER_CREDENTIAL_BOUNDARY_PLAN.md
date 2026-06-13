@@ -79,7 +79,7 @@ The renderer has full read/write access to `openRouterApiKey` and `openRouterBas
 **Config schema (`electron/config/configSchema.ts`):**
 - Line 71: `'geminiApiKey'` in `ALLOWED_CONFIG_KEYS`
 - Line 72: `'openRouterApiKey'` in `ALLOWED_CONFIG_KEYS`
-- Line 73: `'openRouterBaseUrl'` in `OPENROUTER_CATALOG_LOCAL_SECRET_KEY`
+- Line 73: `'openRouterBaseUrl'` in `ALLOWED_CONFIG_KEYS`
 - Line 74: `'openRouterCatalogLocalSecret'` in `ALLOWED_CONFIG_KEYS`
 - Line 81: `'apiKey'` (legacy) in `ALLOWED_CONFIG_KEYS`
 - Line 84: `'activeProvider'` in `ALLOWED_CONFIG_KEYS`
@@ -286,6 +286,10 @@ The current renderer access to `openRouterApiKey` is a legacy exception. It must
 
 ### 4.1 CredentialRef
 
+The following shape is a target proposal, not the current implementation.
+Current implementation currently uses `{ kind: 'credential_ref', id: string }`.
+A provider/account dimension remains future work and must not be assumed by current code.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `kind` | `'credential_ref'` | Discriminator |
@@ -364,9 +368,12 @@ Stored in config schema. Prevents re-migration on app restart.
 This checkpoint records current progress. Status terms are intentionally conservative:
 
 - **complete** means the stated test/boundary work exists and is covered.
+- **substantially complete** means completed for the current characterization/safety-gate scope, with explicit migration caveats.
 - **fixture-only** means it is exercised by provider fixtures/tests, not active runtime.
+- **fixture-level complete** means complete only for fixture/test-path consumption, not a production/live runtime claim.
 - **behavior-preserving wrapper** means it wraps the existing legacy path without reducing the legacy exposure.
 - **partial** means useful preparation exists, but the migration phase has not exited.
+- **partial / in preparation** means some prerequisites exist, but active migration is not complete.
 - **not started** means no implementation should be inferred from target architecture language.
 
 ### Current phase status
