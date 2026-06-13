@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { createBearerCredential } from '@/next/provider/credentials/providerCredential'
 import {
@@ -16,6 +18,8 @@ import {
 
 const RAW_KEY = 'sk-openrouter-catalog-wrapper-secret'
 const REF: ProviderCredentialRef = { kind: 'credential_ref', id: 'openrouter-catalog-default' }
+const repoRoot = process.cwd()
+const resolverSeamName = 'resolveOpenRouterCatalogLegacyCredential'
 
 function createStore(initial: Record<string, unknown>) {
   const data = new Map<string, unknown>(Object.entries(initial))
@@ -30,6 +34,35 @@ function expectNoSecretLeak(value: unknown): void {
   expect(serialized).not.toContain(`Bearer ${RAW_KEY}`)
   expect(serialized).not.toContain('Bearer')
   expect(serialized).not.toContain('Authorization')
+  expect(serialized).not.toContain('headers')
+  expect(serialized).not.toContain('userinfo')
+  expect(serialized).not.toContain('user:pass')
+}
+
+function collectSourceFiles(root: string): string[] {
+  const files: string[] = []
+  const stack = [root]
+
+  while (stack.length > 0) {
+    const current = stack.pop()!
+    for (const entry of readdirSync(current)) {
+      const fullPath = join(current, entry)
+      const stats = statSync(fullPath)
+      if (stats.isDirectory()) {
+        stack.push(fullPath)
+        continue
+      }
+      if (!/\.(?:ts|vue)$/i.test(entry)) continue
+      if (/\.test\.ts$/i.test(entry)) continue
+      files.push(fullPath)
+    }
+  }
+
+  return files
+}
+
+function relativePath(file: string): string {
+  return relative(repoRoot, file).split('\\').join('/')
 }
 
 describe('OpenRouter catalog legacy credential read wrapper', () => {
@@ -261,5 +294,52 @@ describe('OpenRouter catalog legacy credential read wrapper', () => {
     expect(serialized).not.toContain('Authorization')
     expect(serialized).not.toContain('headers')
     expect(serialized).not.toContain('userinfo')
+  })
+
+  it('resolver seam invalid credential ref failure is static, safe, and never returns catalog legacy material', () => {
+    const resolver = vi.fn<ProviderCredentialResolver>(() =>
+      providerCredentialResolutionFromCredential(createBearerCredential(RAW_KEY)))
+
+    const result = resolveOpenRouterCatalogLegacyCredential({
+      credentialRef: { kind: 'wrong_ref', id: '  ' } as unknown as ProviderCredentialRef,
+      resolveCredential: resolver,
+      baseUrl: 'https://user:pass@openrouter.example.test/custom/v1',
+    })
+    const diagnostics = toSafeOpenRouterCatalogCredentialDiagnostics(result)
+
+    expect(resolver).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      kind: 'openrouter_catalog_credential_resolution_error',
+      code: 'invalid_credential_ref',
+      status: 'error',
+      message: 'Credential reference is invalid.',
+    })
+    expect(diagnostics).toEqual({
+      kind: 'openrouter_catalog_legacy_credential',
+      status: 'error',
+      code: 'credential_error',
+      baseUrlConfigured: false,
+    })
+    expect(result.kind).not.toBe('openrouter_catalog_legacy_credential')
+    expect('apiKey' in result).toBe(false)
+    expectNoSecretLeak({ result, diagnostics })
+  })
+
+  it('keeps the catalog resolver seam fixture-only and out of active startup, UI, preload, IPC, and chat paths', () => {
+    // This is a fixture-only C3 seam hardening gate. Future C3/C4 migration
+    // tasks may intentionally update it with Owner-approved behavior changes.
+    const allowedProductionFile = join(repoRoot, 'electron', 'jobs', 'openRouterCatalogCredential.ts')
+    const checkedFiles = [
+      ...collectSourceFiles(join(repoRoot, 'electron')),
+      ...collectSourceFiles(join(repoRoot, 'src')),
+    ]
+    const offenders = checkedFiles
+      .filter((file) => file !== allowedProductionFile)
+      .filter((file) => readFileSync(file, 'utf8').includes(resolverSeamName))
+      .map(relativePath)
+
+    expect(offenders).toEqual([])
+    expect(readFileSync(join(repoRoot, 'electron', 'jobs', 'catalogSyncStartup.ts'), 'utf8'))
+      .not.toContain(resolverSeamName)
   })
 })
