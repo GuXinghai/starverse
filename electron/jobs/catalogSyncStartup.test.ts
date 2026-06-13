@@ -57,8 +57,9 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
   })
 
   it('characterizes current startup scope as direct legacy openRouterApiKey/openRouterBaseUrl reads', () => {
+    const rawApiKey = 'sk-startup-direct-read-secret'
     const store = createStore({
-      openRouterApiKey: '  sk-startup-direct-read-secret  ',
+      openRouterApiKey: `  ${rawApiKey}  `,
       openRouterBaseUrl: ' https://openrouter-proxy.example.test/custom/v1/ ',
       openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
     })
@@ -67,13 +68,13 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
 
     expect(scope).toMatchObject({
       providerKey: 'openrouter',
-      apiKey: 'sk-startup-direct-read-secret',
       normalizedBaseUrl: 'https://openrouter-proxy.example.test/custom/v1',
       scopeDataSource: 'models_user_primary',
     })
     expect(store.get).toHaveBeenCalledWith('openRouterApiKey')
     expect(store.get).toHaveBeenCalledWith('openRouterBaseUrl')
     expect(store.get).toHaveBeenCalledWith('openRouterCatalogLocalSecret')
+    expect(JSON.stringify(scope)).not.toContain(rawApiKey)
     expect(JSON.stringify(scope)).not.toContain('local-secret-for-startup-tests-1234567890')
   })
 
@@ -145,6 +146,7 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
     }))
     expect(dbWorkerManager.call).not.toHaveBeenCalledWith('modelCatalog.syncSnapshot', expect.anything())
     expect(dbWorkerManager.call).not.toHaveBeenCalledWith('modelCatalog.syncCoreSnapshot', expect.anything())
+    expect(JSON.stringify(scope)).not.toContain(rawApiKey)
     expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain(rawApiKey)
   })
 
@@ -178,6 +180,44 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
       baseUrl: 'https://openrouter-proxy.example.test/custom/v1',
     }))
     expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain(rawApiKey)
+  })
+
+  it('keeps startup catalog sync failure logs and diagnostics free of raw key material', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const rawApiKey = 'sk-startup-failure-log-secret'
+    const store = createStore({
+      openRouterApiKey: rawApiKey,
+      openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
+    })
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string, params: any) => {
+        if (method === 'modelCatalog.getScopedMeta') return null
+        if (method === 'modelCatalog.updateScopedMetaSyncError') return { ok: true, ...params }
+        throw new Error(`unexpected method ${method}`)
+      }),
+    } as any
+    vi.mocked(syncOpenRouterModelCatalog).mockRejectedValue(new Error('remote catalog unavailable'))
+
+    try {
+      const result = await runCatalogSyncAtStartup({ store, dbWorkerManager, force: true })
+
+      expect(result).toMatchObject({
+        syncAttempted: true,
+        syncSucceeded: false,
+        reason: 'sync_failed_no_cache',
+      })
+      const serializedDbCalls = JSON.stringify(dbWorkerManager.call.mock.calls)
+      expect(serializedDbCalls).not.toContain(rawApiKey)
+      expect(serializedDbCalls).not.toContain(`Bearer ${rawApiKey}`)
+      expect(serializedDbCalls).not.toContain('Authorization')
+
+      const serializedLogs = warnSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
+      expect(serializedLogs).not.toContain(rawApiKey)
+      expect(serializedLogs).not.toContain(`Bearer ${rawApiKey}`)
+      expect(serializedLogs).not.toContain('Authorization')
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it('returns cache_fresh for current scoped meta without remote sync', async () => {

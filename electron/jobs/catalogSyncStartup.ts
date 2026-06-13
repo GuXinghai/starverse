@@ -8,13 +8,16 @@ import {
   DEFAULT_CATALOG_FRESHNESS_MS,
   normalizeCatalogFreshnessMs,
 } from '../../src/shared/modelCatalog/catalogSyncSettings'
+import {
+  type OpenRouterCatalogLegacyCredential,
+  readOpenRouterCatalogLegacyCredentialFromStore,
+} from './openRouterCatalogCredential'
 
 const CATALOG_META_SCHEMA_VERSION = 1
 const OPENROUTER_CURRENT_SCOPE_SOURCE: CatalogScopeDataSource = 'models_user_primary'
 
 export type OpenRouterCatalogScopeContext = Readonly<{
   providerKey: 'openrouter'
-  apiKey: string
   normalizedBaseUrl: string
   catalogScopeKey: string
   scopeDataSource: CatalogScopeDataSource
@@ -56,25 +59,30 @@ function normalizeScopedMeta(raw: unknown, freshnessMs: number): CatalogSyncRunn
   }
 }
 
-export function resolveCurrentOpenRouterCatalogScope(store: Store): OpenRouterCatalogScopeContext | null {
+function resolveOpenRouterCatalogScopeFromCredential(
+  store: Store,
+  credential: OpenRouterCatalogLegacyCredential,
+): OpenRouterCatalogScopeContext {
   const providerKey = 'openrouter'
-  const apiKey = String(store.get('openRouterApiKey') ?? '').trim()
-  if (!apiKey) return null
-  const baseUrl = String(store.get('openRouterBaseUrl') ?? '').trim() || null
   const scope = deriveCatalogScopeFromStore({
     store,
     providerKey,
-    apiKey,
-    baseUrl,
+    apiKey: credential.apiKey,
+    baseUrl: credential.baseUrl,
     dataSource: OPENROUTER_CURRENT_SCOPE_SOURCE,
   })
   return {
     providerKey,
-    apiKey,
     normalizedBaseUrl: scope.normalizedBaseUrl,
     catalogScopeKey: scope.catalogScopeKey,
     scopeDataSource: scope.dataSource,
   }
+}
+
+export function resolveCurrentOpenRouterCatalogScope(store: Store): OpenRouterCatalogScopeContext | null {
+  const credential = readOpenRouterCatalogLegacyCredentialFromStore(store)
+  if (!credential) return null
+  return resolveOpenRouterCatalogScopeFromCredential(store, credential)
 }
 
 function buildMissingApiKeyResult(providerKey: 'openrouter'): CatalogSyncRunnerResult {
@@ -106,10 +114,11 @@ export async function runCatalogSyncAtStartup(input: Readonly<{
   freshnessMs?: number
 }>): Promise<CatalogSyncRunnerResult> {
   const providerKey = 'openrouter'
-  const scope = resolveCurrentOpenRouterCatalogScope(input.store)
-  if (!scope) {
+  const credential = readOpenRouterCatalogLegacyCredentialFromStore(input.store)
+  if (!credential) {
     return buildMissingApiKeyResult(providerKey)
   }
+  const scope = resolveOpenRouterCatalogScopeFromCredential(input.store, credential)
   const freshnessMs = normalizeCatalogFreshnessMs(input.freshnessMs ?? DEFAULT_CATALOG_FRESHNESS_MS)
 
   const runner = new CatalogSyncRunner({
@@ -134,7 +143,7 @@ export async function runCatalogSyncAtStartup(input: Readonly<{
     },
     runSync: async () =>
       syncOpenRouterModelCatalog({
-        apiKey: scope.apiKey,
+        apiKey: credential.apiKey,
         baseUrl: scope.normalizedBaseUrl,
         writer: {
           writeScopedSnapshot: (params) => input.dbWorkerManager.call('modelCatalog.writeScopedSnapshot', {
