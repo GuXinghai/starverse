@@ -3,6 +3,7 @@ import {
   deriveCatalogScopeFromStore,
   deriveCatalogScopeKey,
   getOrCreateCatalogLocalSecret,
+  isSensitiveCatalogStoreKey,
   normalizeCatalogBaseUrl,
   OPENROUTER_CATALOG_LOCAL_SECRET_KEY,
 } from './catalogScope'
@@ -73,6 +74,15 @@ describe('catalogScope', () => {
     expect(first.length).toBeGreaterThanOrEqual(32)
     expect(store.set).toHaveBeenCalledTimes(1)
     expect(store.set).toHaveBeenCalledWith(OPENROUTER_CATALOG_LOCAL_SECRET_KEY, first)
+  })
+
+  it('characterizes catalog local secret as the only catalog store key blocked from renderer store IPC', () => {
+    expect(isSensitiveCatalogStoreKey(OPENROUTER_CATALOG_LOCAL_SECRET_KEY)).toBe(true)
+    expect(isSensitiveCatalogStoreKey('openRouterApiKey')).toBe(false)
+    expect(isSensitiveCatalogStoreKey('openRouterBaseUrl')).toBe(false)
+    expect(isSensitiveCatalogStoreKey('geminiApiKey')).toBe(false)
+    expect(isSensitiveCatalogStoreKey('apiKey')).toBe(false)
+    expect(isSensitiveCatalogStoreKey('activeProvider')).toBe(false)
   })
 
   it('derives current scope from store without exposing local secret in result', () => {

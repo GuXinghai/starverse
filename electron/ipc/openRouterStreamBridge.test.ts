@@ -9,6 +9,12 @@ const electronMock = vi.hoisted(() => {
     headers: Record<string, string>
     body: string[]
   }> = []
+  const responseQueue: Array<{
+    statusCode?: number
+    statusMessage?: string
+    headers?: Record<string, string | string[] | undefined>
+    chunks?: Uint8Array[]
+  }> = []
 
   const ipcMain = {
     handle: vi.fn((channel: string, handler: (event: unknown, payload: unknown) => Promise<unknown> | unknown) => {
@@ -38,12 +44,15 @@ const electronMock = vi.hoisted(() => {
         }),
         end: vi.fn(() => {
           queueMicrotask(() => {
+            const queuedResponse = responseQueue.shift()
             listeners.get('response')?.({
-              statusCode: 200,
-              headers: {},
+              statusCode: queuedResponse?.statusCode ?? 200,
+              statusMessage: queuedResponse?.statusMessage,
+              headers: queuedResponse?.headers ?? {},
               async *[Symbol.asyncIterator]() {
-                // Empty successful stream preserves bridge request behavior without
-                // asserting SSE semantics in this credential characterization gate.
+                for (const chunk of queuedResponse?.chunks ?? []) {
+                  yield chunk
+                }
               },
             })
           })
@@ -53,7 +62,7 @@ const electronMock = vi.hoisted(() => {
     }),
   }
 
-  return { handlers, ipcMain, net, requestCalls }
+  return { handlers, ipcMain, net, requestCalls, responseQueue }
 })
 
 vi.mock('electron', () => ({
@@ -140,6 +149,7 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
   beforeEach(() => {
     electronMock.handlers.clear()
     electronMock.requestCalls.length = 0
+    electronMock.responseQueue.length = 0
     electronMock.ipcMain.handle.mockClear()
     electronMock.net.request.mockClear()
     cleanupOpenRouterStreams()
@@ -353,6 +363,69 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
       const serializedLogs = warnSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
       expect(serializedLogs).not.toContain(rawKey)
       expect(serializedLogs).not.toContain(`Bearer ${rawKey}`)
+    } finally {
+      warnSpy.mockRestore()
+      cleanupOpenRouterStreams()
+    }
+  })
+
+  it('keeps non-empty IPC SSE wire chunks and bridge logs free of raw credential material', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const encoder = new TextEncoder()
+    const rawKey = 'sk-or-ipc-bridge-nonempty-secret'
+    const sender = { send: vi.fn() }
+    electronMock.responseQueue.push({
+      statusCode: 200,
+      headers: { 'x-openrouter-generation-id': 'gen_nonempty' },
+      chunks: [
+        encoder.encode('data: {"id":"gen_nonempty","choices":[{"delta":{"content":"hi"}}]}\n\n'),
+        encoder.encode('data: [DONE]\n\n'),
+      ],
+    })
+
+    try {
+      expect(registerOpenRouterStreamBridge()).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
+      const handler = electronMock.handlers.get('openrouter:stream-chat')
+      expect(handler).toBeTruthy()
+
+      const result = await handler?.({ sender }, {
+        requestId: 'rid_ipc_bridge_nonempty',
+        wireVersion: OPENROUTER_STREAM_WIRE_VERSION,
+        userText: 'hello',
+        requestBody: {
+          model: 'openrouter/test-model',
+          stream: true,
+          messages: [{ role: 'user', content: 'hello' }],
+        },
+        config: {
+          apiKey: rawKey,
+          model: 'openrouter/test-model',
+          requestedReasoningMode: 'auto',
+        },
+      })
+
+      expect(result).toEqual({ ok: true })
+      await vi.waitFor(() => {
+        expect(sender.send.mock.calls.some((call) => JSON.stringify(call).includes('gen_nonempty'))).toBe(true)
+      })
+
+      const chunkCalls = sender.send.mock.calls.filter((call) => {
+        const event = call[1] as OpenRouterStreamWireEvent | undefined
+        return event?.type === 'chunk'
+      })
+      expect(chunkCalls.length).toBeGreaterThanOrEqual(1)
+      expect(JSON.stringify(chunkCalls)).toContain('gen_nonempty')
+
+      const serializedWireEvents = JSON.stringify(sender.send.mock.calls)
+      expect(serializedWireEvents).not.toContain(rawKey)
+      expect(serializedWireEvents).not.toContain(`Bearer ${rawKey}`)
+      expect(serializedWireEvents).not.toContain('Authorization')
+
+      const serializedLogs = warnSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
+      expect(serializedLogs).not.toContain(rawKey)
+      expect(serializedLogs).not.toContain(`Bearer ${rawKey}`)
+      expect(serializedLogs).toContain('API Key (REDACTED):')
+      expect(serializedLogs).toContain('Authorization: [REDACTED]')
     } finally {
       warnSpy.mockRestore()
       cleanupOpenRouterStreams()
