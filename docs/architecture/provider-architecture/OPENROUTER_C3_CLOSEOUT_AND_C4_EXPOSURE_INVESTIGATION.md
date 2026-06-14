@@ -1,11 +1,11 @@
-# OpenRouter C3 Closeout And C4 Exposure Investigation
+# OpenRouter C3 Closeout And C4 Exposure Reduction Closeout
 
-Date: 2026-06-14
-Task status: C3 closeout plus C4 investigation, documentation only
-Current HEAD reviewed: `bb83a70e feat(provider): route OpenRouter chat credentials through resolver`
-Scope: close out accepted OpenRouter C3 credential-source migration and investigate C4 renderer/settings/preload/store IPC raw-key exposure reduction.
+Date: 2026-06-15
+Task status: C3 closeout plus C4a-C4d renderer credential exposure reduction closeout
+Current HEAD reviewed: `282876cd fix(provider): harden OpenRouter credential compatibility cleanup`
+Scope: close out accepted OpenRouter C3 credential-source migration, record C4 renderer/settings/preload/store IPC raw-key exposure reduction, and define residual credential migration boundaries.
 
-This document does not implement C4. It does not change runtime behavior, settings UI behavior, preload exposure, store IPC behavior, secure storage, registries, Send Plan, DB schema, or non-OpenRouter runtime support.
+This document records C4 status. It does not claim secure storage, OS keychain, endpoint/provider registry, Send Plan, DB schema, Generic live runtime, or non-OpenRouter runtime support.
 
 Related accepted C3 commits:
 
@@ -21,6 +21,7 @@ Latest C4 implementation checkpoint:
 - OpenRouter settings use safe metadata plus one-way update/clear through an OpenRouter-specific credential IPC/preload bridge.
 - Existing electron-store values remain the backing storage. This is still not secure store, not OS keychain, not endpoint/provider registry, and not non-OpenRouter live runtime.
 - C4d compatibility hardening is implemented by `fix(provider): harden OpenRouter credential compatibility cleanup`.
+- C4 residual credential exposure audit is covered by `test(provider): audit residual credential exposure after C4`.
 - Deferred: secure-store/OS-keychain migration, C5 endpoint/provider registry, Generic live runtime, and non-OpenRouter live runtime.
 
 ---
@@ -35,7 +36,7 @@ Latest C4 implementation checkpoint:
 | C3b: catalog sync uses resolver-backed credential source | Done | `runCatalogSyncAtStartup` uses `resolveOpenRouterCatalogCredentialFromLegacyStore`. |
 | C3c: chat/send credential source switch | Done | Active OpenRouter chat/send uses a main-process resolver-backed `legacy_store` source. |
 | C3e: deliberate characterization test updates | Done | OpenRouter adapter, live stream, bridge, credential facade, catalog, and provider credential gates were updated deliberately around the new source. |
-| C3d/C4: renderer/settings/preload/store raw-key exposure reduction | Deferred | Current renderer raw-key exposure remains unchanged until C4 is separately approved. |
+| C3d/C4: renderer/settings/preload/store raw-key exposure reduction | Done for C4a-C4d | Generic store access to credential-bearing keys is blocked, SettingsPanel uses masked metadata plus one-way update/clear, and residual exposure guards exist. |
 | C5: endpoint/provider registry | Deferred | No endpoint registry or provider registry exists. |
 
 ### 1.2 What changed
@@ -65,9 +66,9 @@ Chat/send path after C3:
 - Existing legacy store keys remain the backing source:
   - `openRouterApiKey`
   - `openRouterBaseUrl`
-- Settings UI still reads and writes the raw OpenRouter API key.
-- Preload still exposes the generic `electronStore` bridge.
-- Store IPC still permits generic access to legacy credential keys except `openRouterCatalogLocalSecret`.
+- Settings UI can still submit new OpenRouter credential material one-way, but it no longer reads raw OpenRouter API key/base URL through generic store IPC.
+- Preload still exposes the generic `electronStore` bridge for non-sensitive settings, but store IPC filters credential-bearing keys.
+- Store IPC still permits generic access to representative non-sensitive keys, including `activeProvider` as legacy provider state.
 - No secure store, OS keychain, encrypted credential store, endpoint registry, provider registry, DB schema migration, Send Plan RuntimeCapability integration, Generic live runtime, or non-OpenRouter live runtime was introduced.
 
 ### 1.4 Validation summary from accepted C3 commits
@@ -199,13 +200,63 @@ The following raw paths remain for compatibility, fixture coverage, or character
 - `useChatSession.getOpenRouterBaseUrl()` reads the safe OpenRouter credential metadata display URL, not the generic store raw key path.
 - SettingsPanel no longer reads raw OpenRouter credential values back into the renderer.
 
-C4d should narrow or retire remaining raw compatibility/helper paths only after rollback needs are resolved.
+Remaining raw compatibility/helper paths should only be narrowed or retired after rollback needs are resolved.
 
 ---
 
-## 3. C4 Problem Statement
+## 3. C4 Residual Exposure Audit Closeout
 
-C4 should reduce renderer/settings/preload/store IPC raw-key exposure without changing OpenRouter request semantics. C4b/C4c now covers the primary renderer settings/store reduction; C4d remains for compatibility cleanup.
+### 3.1 Audit result
+
+C4 substantially reduced renderer raw credential exposure for the current OpenRouter legacy credential path:
+
+- generic renderer `store-get`, `store-set`, and `store-delete` are blocked for `openRouterApiKey`, `openRouterBaseUrl`, `geminiApiKey`, legacy `apiKey`, and `openRouterCatalogLocalSecret`;
+- renderer-triggered `store-clear-safe` preserves those credential-bearing keys by default and with custom keep-lists;
+- SettingsPanel no longer reads existing raw OpenRouter API key/base URL through generic `electronStore`;
+- SettingsPanel receives safe OpenRouter credential metadata and sends replacement API key/base URL values one-way through `window.openRouterCredential`;
+- active OpenRouter chat/send and catalog paths resolve credentials in the main process through resolver-backed `legacy_store` sources;
+- legacy Gemini credential keys remain blocked from generic renderer store access, and no Gemini active send path is revived.
+
+### 3.2 Remaining known legacy surfaces
+
+The following surfaces intentionally remain after C4:
+
+- legacy electron-store remains the backing storage for `openRouterApiKey` and `openRouterBaseUrl`;
+- OpenRouter-specific settings IPC accepts new raw credential material one-way from the renderer so users can update credentials;
+- the OpenRouter IPC bridge still sets `Authorization: Bearer <apiKey>` inside the main process after resolving `legacy_store`;
+- low-level OpenRouter fixture/compatibility paths still accept raw adapter-side material for rollback and characterization tests;
+- `activeProvider` remains generic-store-visible as legacy provider state, not raw credential material;
+- `geminiApiKey` and legacy `apiKey` remain config-live but generic renderer store access is blocked.
+
+### 3.3 Why C4 is not secure store
+
+C4 reduced renderer exposure but did not move credential material out of legacy electron-store. A future secure-store / OS-keychain phase would need:
+
+- a selected storage mechanism and migration/rollback plan;
+- durable migration from legacy electron-store keys to secure credential records;
+- renderer-safe metadata sourced from the secure store boundary;
+- tests proving old keys remain readable during migration and raw material never returns to renderer-readable IPC.
+
+### 3.4 What C5 would handle later
+
+C5 endpoint/provider registry work remains separate. It would define endpoint records, provider records, credential refs, profile/capability binding, and provider settings ownership. C4 does not create an endpoint registry, provider registry, or Generic live runtime.
+
+### 3.5 Recommended next phase
+
+Recommended next step: stop OpenRouter credential exposure reduction here unless review finds a regression, then choose one explicit Owner-approved path:
+
+1. start a secure store / OS keychain decision package;
+2. start C5 endpoint/provider registry investigation;
+3. start old Gemini legacy removal inventory;
+4. switch to another provider architecture slice.
+
+Do not mix these phases into additional C4 cleanup without a concrete regression or Owner decision.
+
+---
+
+## 4. C4 Problem Statement
+
+C4 reduces renderer/settings/preload/store IPC raw-key exposure without changing OpenRouter request semantics. C4b/C4c cover the primary renderer settings/store reduction; C4d covers compatibility cleanup and hardening.
 
 C4 should reduce:
 
@@ -229,7 +280,7 @@ C4 is higher risk than C3 because it changes renderer-visible store behavior and
 
 ---
 
-## 4. C4 Candidate Migration Approaches
+## 5. C4 Candidate Migration Approaches
 
 ### 4.1 Approach A: Key-Level Store IPC Filtering Plus Provider-Specific Credential IPC
 
@@ -329,7 +380,7 @@ This reduces renderer exposure without requiring secure-store, endpoint registry
 
 ---
 
-## 5. Recommended C4 Phased Plan
+## 6. Recommended C4 Phased Plan
 
 ### C4a: Investigation gates / characterization
 
@@ -369,7 +420,7 @@ Owner checkpoint: decide whether legacy raw compatibility paths remain until C5 
 
 ---
 
-## 6. C4 Acceptance Criteria
+## 7. C4 Acceptance Criteria
 
 C4 should not be considered complete unless:
 
@@ -388,7 +439,7 @@ C4 should not be considered complete unless:
 
 ---
 
-## 7. Future C4 Test And Validation Plan
+## 8. Future C4 Test And Validation Plan
 
 Likely tests to add or update:
 
@@ -432,7 +483,7 @@ Known unrelated `infra/files/**` LibreOffice/DFC typecheck failures may remain i
 
 ---
 
-## 8. Out Of Scope / Deferred
+## 9. Out Of Scope / Deferred
 
 - Secure store / OS keychain unless separately approved.
 - Encrypted credential store unless separately approved.
@@ -449,7 +500,7 @@ Known unrelated `infra/files/**` LibreOffice/DFC typecheck failures may remain i
 
 ---
 
-## 9. Proposed Next Implementation Task Package
+## 10. Proposed Next Implementation Task Package
 
 After C4d, the next task should not be another exposure-reduction cleanup unless review finds a regression. Recommended options:
 
@@ -460,7 +511,7 @@ After C4d, the next task should not be another exposure-reduction cleanup unless
 
 ---
 
-## 10. Closeout Summary
+## 11. Closeout Summary
 
 OpenRouter C3 is closed out through accepted catalog and chat/send credential-source migration commits. The active OpenRouter runtime now resolves catalog and chat/send credentials in the main process through resolver-backed `legacy_store` sources while keeping legacy electron-store backing and preserving OpenRouter behavior.
 
