@@ -23,6 +23,11 @@ declare namespace NodeJS {
 
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
+  openRouterCredential?: {
+    getStatus?: () => Promise<unknown>
+    update?: (payload: unknown) => Promise<unknown>
+    clear?: () => Promise<unknown>
+  }
   electronAPI?: {
     getNetExpRuntimeInfo?: () => Promise<unknown>
     onModelCatalogSynced?: (callback: () => void) => () => void

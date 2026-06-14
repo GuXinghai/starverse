@@ -58,6 +58,27 @@ type ElectronStoreLike = Readonly<{
   delete: (key: string) => Promise<any>
 }>
 
+type OpenRouterCredentialStatus = Readonly<{
+  source: 'legacy_store'
+  apiKeyConfigured: boolean
+  maskedApiKey?: string
+  baseUrlConfigured: boolean
+  displayBaseUrl?: string
+  defaultBaseUrl?: string
+}>
+
+type OpenRouterCredentialResult = Readonly<{
+  ok: boolean
+  status?: OpenRouterCredentialStatus
+  message?: string
+}>
+
+type OpenRouterCredentialBridge = Readonly<{
+  getStatus: () => Promise<OpenRouterCredentialResult>
+  update: (payload: Readonly<{ apiKey?: string; baseUrl?: string | null }>) => Promise<OpenRouterCredentialResult>
+  clear: () => Promise<OpenRouterCredentialResult>
+}>
+
 function getElectronStore(): ElectronStoreLike | null {
   const store = (globalThis as any).electronStore as ElectronStoreLike | undefined
   if (!store) return null
@@ -65,13 +86,25 @@ function getElectronStore(): ElectronStoreLike | null {
   return store
 }
 
-const OPENROUTER_API_KEY_KEY = 'openRouterApiKey'
-const OPENROUTER_BASE_URL_KEY = 'openRouterBaseUrl'
+function getOpenRouterCredentialBridge(): OpenRouterCredentialBridge | null {
+  const bridge = (globalThis as any).openRouterCredential as OpenRouterCredentialBridge | undefined
+  if (!bridge) return null
+  if (
+    typeof bridge.getStatus !== 'function' ||
+    typeof bridge.update !== 'function' ||
+    typeof bridge.clear !== 'function'
+  ) return null
+  return bridge
+}
+
 const OPENROUTER_DEBUG_ECHO_UPSTREAM_BODY_KEY = 'sv_debug_openrouter_echo_upstream_body'
 const MAX_RECENT_MODELS_KEY = 'maxRecentModels'
 
 const apiKey = ref('')
 const baseUrl = ref('')
+const loadedBaseUrl = ref('')
+const apiKeyConfigured = ref(false)
+const maskedApiKey = ref('')
 const catalogStartupSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
 const catalogPickerOpenSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
 const catalogListUpdateMode = ref<CatalogListUpdateMode>(DEFAULT_CATALOG_LIST_UPDATE_MODE)
@@ -218,6 +251,27 @@ function parsePositiveIntegerText(value: string): number | null {
   return parsed
 }
 
+function applyOpenRouterCredentialStatus(status: OpenRouterCredentialStatus) {
+  apiKey.value = ''
+  apiKeyConfigured.value = status.apiKeyConfigured === true
+  maskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
+  baseUrl.value = String(status.displayBaseUrl ?? '').trim()
+  loadedBaseUrl.value = baseUrl.value
+}
+
+async function loadOpenRouterCredentialStatus() {
+  const credentialBridge = getOpenRouterCredentialBridge()
+  if (!credentialBridge) {
+    throw new Error('Missing openRouterCredential bridge (run in Electron).')
+  }
+
+  const result = await credentialBridge.getStatus()
+  if (!result?.ok || !result.status) {
+    throw new Error(result?.message || 'OpenRouter credential status unavailable.')
+  }
+  applyOpenRouterCredentialStatus(result.status)
+}
+
 async function load() {
   error.value = null
   savedMessage.value = null
@@ -230,8 +284,7 @@ async function load() {
 
   loading.value = true
   try {
-    apiKey.value = String((await store.get(OPENROUTER_API_KEY_KEY)) ?? '').trim()
-    baseUrl.value = String((await store.get(OPENROUTER_BASE_URL_KEY)) ?? '').trim()
+    await loadOpenRouterCredentialStatus()
     catalogStartupSyncPolicy.value = normalizeCatalogAutoSyncPolicy(await store.get(OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY))
     catalogPickerOpenSyncPolicy.value = normalizeCatalogAutoSyncPolicy(await store.get(OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY))
     catalogListUpdateMode.value = normalizeCatalogListUpdateMode(await store.get(OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY))
@@ -309,8 +362,20 @@ async function save() {
 
   saving.value = true
   try {
-    await store.set(OPENROUTER_API_KEY_KEY, apiKey.value.trim())
-    await store.set(OPENROUTER_BASE_URL_KEY, baseUrl.value.trim())
+    const credentialBridge = getOpenRouterCredentialBridge()
+    if (!credentialBridge) {
+      throw new Error('Missing openRouterCredential bridge (run in Electron).')
+    }
+    const credentialPayload: { apiKey?: string; baseUrl?: string } = {}
+    const nextApiKey = apiKey.value.trim()
+    if (nextApiKey) credentialPayload.apiKey = nextApiKey
+    const nextBaseUrl = baseUrl.value.trim()
+    if (nextBaseUrl !== loadedBaseUrl.value.trim()) credentialPayload.baseUrl = nextBaseUrl
+    const credentialResult = await credentialBridge.update(credentialPayload)
+    if (!credentialResult?.ok || !credentialResult.status) {
+      throw new Error(credentialResult?.message || 'OpenRouter credential update failed.')
+    }
+    applyOpenRouterCredentialStatus(credentialResult.status)
     await store.set(OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY, normalizeCatalogAutoSyncPolicy(catalogStartupSyncPolicy.value))
     await store.set(OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY, normalizeCatalogAutoSyncPolicy(catalogPickerOpenSyncPolicy.value))
     await store.set(OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY, normalizeCatalogListUpdateMode(catalogListUpdateMode.value))
@@ -360,7 +425,7 @@ async function save() {
       window.dispatchEvent(new CustomEvent('settings:maxRecentModelsUpdated', { detail: nextMaxRecentModels }))
       window.dispatchEvent(new CustomEvent('settings:openRouterConnectionUpdated', {
         detail: {
-          hasApiKey: apiKey.value.trim().length > 0,
+          hasApiKey: apiKeyConfigured.value,
           baseUrlChanged: false,
           reason: 'settings_saved',
         },
@@ -392,15 +457,18 @@ async function copyRunReport() {
 async function clearApiKey() {
   error.value = null
   savedMessage.value = null
-  const store = getElectronStore()
-  if (!store) {
-    error.value = 'Missing electronStore (run in Electron).'
+  const credentialBridge = getOpenRouterCredentialBridge()
+  if (!credentialBridge) {
+    error.value = 'Missing openRouterCredential bridge (run in Electron).'
     return
   }
   saving.value = true
   try {
-    await store.delete(OPENROUTER_API_KEY_KEY)
-    apiKey.value = ''
+    const result = await credentialBridge.clear()
+    if (!result?.ok || !result.status) {
+      throw new Error(result?.message || 'OpenRouter credential clear failed.')
+    }
+    applyOpenRouterCredentialStatus(result.status)
     savedMessage.value = t('settings.openrouter.apiKeyCleared')
     try {
       window.dispatchEvent(new CustomEvent('settings:openRouterConnectionUpdated', {
@@ -423,20 +491,23 @@ async function clearApiKey() {
 async function clearBaseUrl() {
   error.value = null
   savedMessage.value = null
-  const store = getElectronStore()
-  if (!store) {
-    error.value = 'Missing electronStore (run in Electron).'
+  const credentialBridge = getOpenRouterCredentialBridge()
+  if (!credentialBridge) {
+    error.value = 'Missing openRouterCredential bridge (run in Electron).'
     return
   }
   saving.value = true
   try {
-    await store.delete(OPENROUTER_BASE_URL_KEY)
-    baseUrl.value = ''
+    const result = await credentialBridge.update({ baseUrl: null })
+    if (!result?.ok || !result.status) {
+      throw new Error(result?.message || 'OpenRouter base URL clear failed.')
+    }
+    applyOpenRouterCredentialStatus(result.status)
     savedMessage.value = t('settings.openrouter.baseUrlCleared')
     try {
       window.dispatchEvent(new CustomEvent('settings:openRouterConnectionUpdated', {
         detail: {
-          hasApiKey: apiKey.value.trim().length > 0,
+          hasApiKey: apiKeyConfigured.value,
           baseUrlChanged: true,
           reason: 'base_url_cleared',
         },
@@ -469,8 +540,21 @@ async function verifyAndSync() {
 
   verifySyncLoading.value = true
   try {
-    await store.set(OPENROUTER_API_KEY_KEY, apiKey.value.trim())
-    await store.set(OPENROUTER_BASE_URL_KEY, baseUrl.value.trim())
+    const credentialBridge = getOpenRouterCredentialBridge()
+    if (!credentialBridge) {
+      error.value = 'Missing openRouterCredential bridge (run in Electron).'
+      return
+    }
+    const credentialPayload: { apiKey?: string; baseUrl?: string } = {}
+    const nextApiKey = apiKey.value.trim()
+    if (nextApiKey) credentialPayload.apiKey = nextApiKey
+    const nextBaseUrl = baseUrl.value.trim()
+    if (nextBaseUrl !== loadedBaseUrl.value.trim()) credentialPayload.baseUrl = nextBaseUrl
+    const credentialResult = await credentialBridge.update(credentialPayload)
+    if (!credentialResult?.ok || !credentialResult.status) {
+      throw new Error(credentialResult?.message || 'OpenRouter credential update failed.')
+    }
+    applyOpenRouterCredentialStatus(credentialResult.status)
 
     const electronAPI = (globalThis as any).electronAPI
     if (!electronAPI?.modelCatalogSyncNow) {
@@ -509,7 +593,7 @@ async function clearCurrentCatalogCache() {
   error.value = null
   savedMessage.value = null
   verifySyncResult.value = null
-  if (!apiKey.value.trim()) {
+  if (!apiKeyConfigured.value && !apiKey.value.trim()) {
     error.value = t('settings.openrouter.catalogCacheNoApiKey')
     return
   }
@@ -706,6 +790,9 @@ onMounted(() => {
             {{ t('common.clear') }}
           </button>
         </div>
+        <div class="mt-1 text-[11px] text-gray-500">
+          {{ apiKeyConfigured ? `已配置：${maskedApiKey || '***'}` : '未配置' }}
+        </div>
 
         <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.baseUrl') }}</label>
         <div class="mt-1 flex items-center gap-2">
@@ -806,7 +893,7 @@ onMounted(() => {
             <button
               type="button"
               class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-              :disabled="!canEdit || loading || saving || catalogClearLoading !== null || !apiKey.trim()"
+              :disabled="!canEdit || loading || saving || catalogClearLoading !== null || (!apiKeyConfigured && !apiKey.trim())"
               data-testid="settings-clear-current-catalog-cache"
               @click="clearCurrentCatalogCache"
             >

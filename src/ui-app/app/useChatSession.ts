@@ -20,20 +20,16 @@ export function useChatSession() {
     }
   }
 
-  async function getOpenRouterApiKey(): Promise<string | null> {
-    const store = (globalThis as any).electronStore as { get?: (key: string) => Promise<any> } | undefined
-    if (store?.get) {
-      const key = String((await store.get('openRouterApiKey')) ?? '').trim()
-      if (key) return key
-    }
-    return null
-  }
-
   async function getOpenRouterBaseUrl(): Promise<string | null> {
-    const store = (globalThis as any).electronStore as { get?: (key: string) => Promise<any> } | undefined
-    if (store?.get) {
-      const url = String((await store.get('openRouterBaseUrl')) ?? '').trim()
-      if (url) return url
+    const bridge = (globalThis as any).openRouterCredential as
+      | { getStatus?: () => Promise<{ ok?: boolean; status?: { displayBaseUrl?: unknown } }> }
+      | undefined
+    if (typeof bridge?.getStatus === 'function') {
+      const result = await bridge.getStatus()
+      if (result?.ok && result.status) {
+        const url = String(result.status.displayBaseUrl ?? '').trim()
+        if (url) return url
+      }
     }
     return null
   }
@@ -47,7 +43,6 @@ export function useChatSession() {
   return {
     hasDbBridge,
     getIpcRenderer,
-    getOpenRouterApiKey,
     getOpenRouterBaseUrl,
     randomId,
   }

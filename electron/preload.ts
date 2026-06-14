@@ -9,6 +9,12 @@ contextBridge.exposeInMainWorld('electronStore', {
   checkIntegrity: () => ipcRenderer.invoke('store-check-integrity'),
 })
 
+contextBridge.exposeInMainWorld('openRouterCredential', {
+  getStatus: () => ipcRenderer.invoke('openrouter-credential:get-status'),
+  update: (payload: unknown) => ipcRenderer.invoke('openrouter-credential:update', payload),
+  clear: () => ipcRenderer.invoke('openrouter-credential:clear'),
+})
+
 // Expose file dialog API for image selection
 contextBridge.exposeInMainWorld('electronAPI', {
   /**
