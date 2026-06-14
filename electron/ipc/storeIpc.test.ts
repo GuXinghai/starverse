@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { safeClearConfig } from '../config/configSchema'
 import { OPENROUTER_CATALOG_LOCAL_SECRET_KEY } from '../modelCatalog/catalogScope'
-import { registerStoreIpc } from './storeIpc'
+import { registerStoreIpc, RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS } from './storeIpc'
 
 vi.mock('../config/configSchema', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../config/configSchema')>()
@@ -175,42 +175,41 @@ describe('registerStoreIpc', () => {
     expect(preloadSource).not.toContain('credentialRef')
   })
 
-  it('preserves catalog local secret during renderer safe clear', async () => {
+  it('preserves credential-bearing keys during renderer safe clear by default', async () => {
     const { handlers } = registerHandlers()
 
-    await handlers.get('store-clear-safe')?.({}, ['language'])
+    await handlers.get('store-clear-safe')?.({}, [])
 
     expect(vi.mocked(safeClearConfig)).toHaveBeenCalledWith(
       expect.anything(),
-      expect.arrayContaining(['language', OPENROUTER_CATALOG_LOCAL_SECRET_KEY])
+      expect.arrayContaining([...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS])
     )
   })
 
-  it('characterizes renderer safe clear as clearing legacy credential keys unless explicitly kept', async () => {
+  it('preserves credential-bearing keys during renderer safe clear with a narrow keep list', async () => {
     vi.mocked(safeClearConfig).mockClear()
     const { handlers } = registerHandlers()
 
     await handlers.get('store-clear-safe')?.({}, ['language'])
 
     const keepKeys = vi.mocked(safeClearConfig).mock.calls.at(-1)?.[1] ?? []
-    expect(keepKeys).toEqual(expect.arrayContaining(['language', OPENROUTER_CATALOG_LOCAL_SECRET_KEY]))
-    expect(keepKeys).not.toContain('openRouterApiKey')
-    expect(keepKeys).not.toContain('openRouterBaseUrl')
-    expect(keepKeys).not.toContain('geminiApiKey')
-    expect(keepKeys).not.toContain('apiKey')
+    expect(keepKeys).toEqual(expect.arrayContaining([
+      'language',
+      ...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS,
+    ]))
+    expect(keepKeys).not.toContain('theme')
+    expect(keepKeys).not.toContain('activeProvider')
   })
 
-  it('characterizes renderer safe clear as preserving explicit legacy credential keep keys', async () => {
+  it('keeps explicit credential keep keys deduplicated while preserving all blocked credential keys', async () => {
     vi.mocked(safeClearConfig).mockClear()
     const { handlers } = registerHandlers()
 
     await handlers.get('store-clear-safe')?.({}, ['openRouterApiKey', 'openRouterBaseUrl'])
 
     const keepKeys = vi.mocked(safeClearConfig).mock.calls.at(-1)?.[1] ?? []
-    expect(keepKeys).toEqual(expect.arrayContaining([
-      'openRouterApiKey',
-      'openRouterBaseUrl',
-      OPENROUTER_CATALOG_LOCAL_SECRET_KEY,
-    ]))
+    expect(keepKeys).toEqual(expect.arrayContaining([...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS]))
+    expect(keepKeys.filter((key) => key === 'openRouterApiKey')).toHaveLength(1)
+    expect(keepKeys.filter((key) => key === 'openRouterBaseUrl')).toHaveLength(1)
   })
 })

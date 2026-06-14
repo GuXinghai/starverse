@@ -16,6 +16,7 @@ export type OpenRouterCredentialSettingsStatus = Readonly<{
   apiKeyConfigured: boolean
   maskedApiKey?: '***'
   baseUrlConfigured: boolean
+  baseUrlInvalid?: boolean
   displayBaseUrl?: string
   defaultBaseUrl: string
 }>
@@ -36,9 +37,14 @@ type RegisterOpenRouterCredentialSettingsIpcInput = Readonly<{
 
 const DEFAULT_OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 
-function sanitizeDisplayBaseUrl(raw: unknown): string | undefined {
+type SafeDisplayBaseUrl = Readonly<{
+  displayBaseUrl?: string
+  invalid: boolean
+}>
+
+function sanitizeDisplayBaseUrl(raw: unknown): SafeDisplayBaseUrl {
   const value = String(raw ?? '').trim()
-  if (!value) return undefined
+  if (!value) return { invalid: false }
 
   try {
     const url = new URL(value)
@@ -46,23 +52,24 @@ function sanitizeDisplayBaseUrl(raw: unknown): string | undefined {
     url.password = ''
     url.search = ''
     url.hash = ''
-    return url.toString()
+    return { displayBaseUrl: url.toString(), invalid: false }
   } catch {
-    return '[invalid-url]'
+    return { invalid: true }
   }
 }
 
 function readStatus(store: Store): OpenRouterCredentialSettingsStatus {
   const apiKey = String(store.get(OPENROUTER_CHAT_LEGACY_API_KEY_STORE_KEY) ?? '').trim()
   const baseUrl = String(store.get(OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY) ?? '').trim()
-  const displayBaseUrl = sanitizeDisplayBaseUrl(baseUrl)
+  const safeBaseUrl = sanitizeDisplayBaseUrl(baseUrl)
 
   return {
     source: 'legacy_store',
     apiKeyConfigured: apiKey.length > 0,
     ...(apiKey.length > 0 ? { maskedApiKey: '***' as const } : {}),
     baseUrlConfigured: baseUrl.length > 0,
-    ...(displayBaseUrl ? { displayBaseUrl } : {}),
+    ...(safeBaseUrl.invalid ? { baseUrlInvalid: true } : {}),
+    ...(safeBaseUrl.displayBaseUrl ? { displayBaseUrl: safeBaseUrl.displayBaseUrl } : {}),
     defaultBaseUrl: DEFAULT_OPENROUTER_BASE_URL,
   }
 }
@@ -121,6 +128,8 @@ export function registerOpenRouterCredentialSettingsIpc(
 
   registerInvoke('openrouter-credential:clear', () => {
     try {
+      // Clear only API key credential material. Custom base URL endpoint material is
+      // preserved here and cleared explicitly through update({ baseUrl: null }).
       store.delete(OPENROUTER_CHAT_LEGACY_API_KEY_STORE_KEY)
       return { ok: true, status: readStatus(store) } satisfies OpenRouterCredentialSettingsResult
     } catch {
