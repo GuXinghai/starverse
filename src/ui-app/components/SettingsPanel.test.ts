@@ -144,6 +144,36 @@ describe('ui-app SettingsPanel', () => {
     expect(invoke).toHaveBeenCalledWith('settings.setSamplingParamsDefaults', { value: null })
   })
 
+  it('characterizes current C4 baseline: raw OpenRouter key and baseUrl are read back and written by settings', async () => {
+    const user = userEvent.setup()
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('设置')
+
+    const storeGet = (globalThis as any).electronStore.get as ReturnType<typeof vi.fn>
+    await waitFor(() => {
+      expect(storeGet).toHaveBeenCalledWith('openRouterApiKey')
+      expect(storeGet).toHaveBeenCalledWith('openRouterBaseUrl')
+    })
+
+    const keyInput = screen.getByPlaceholderText('sk-…') as HTMLInputElement
+    await waitFor(() => expect(keyInput).not.toBeDisabled())
+    expect(keyInput).toHaveValue('sk-old')
+    expect(screen.getByDisplayValue('https://openrouter.ai/api/v1')).toBeTruthy()
+
+    await user.clear(keyInput)
+    await user.type(keyInput, 'sk-c4a-raw-key')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
+    expect(storeSet).toHaveBeenCalledWith('openRouterApiKey', 'sk-c4a-raw-key')
+    expect(storeSet).toHaveBeenCalledWith('openRouterBaseUrl', 'https://openrouter.ai/api/v1')
+
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+    expect(invoke.mock.calls.map(([method]) => method)).not.toContain('openrouterCredential.getMetadata')
+    expect((globalThis as any).electronAPI.openRouterCredentialGetMetadata).toBeUndefined()
+  })
+
   it('loads catalog sync settings defaults', async () => {
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
 
