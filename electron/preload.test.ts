@@ -1,4 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+const testDir = dirname(fileURLToPath(import.meta.url))
 
 describe('preload scoped API exposure', () => {
   afterEach(() => {
@@ -95,5 +100,18 @@ describe('preload scoped API exposure', () => {
       baseUrl: 'https://openrouter.ai/api/v1',
     })
     expect(invoke).toHaveBeenCalledWith('openrouter-credential:clear')
+  })
+
+  it('does not expose generic credential resolver or raw Authorization/Bearer helpers', () => {
+    const preloadSource = readFileSync(resolve(testDir, 'preload.ts'), 'utf8')
+
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openRouterCredential'")
+    expect(preloadSource).not.toContain('credentialRef')
+    expect(preloadSource).not.toContain('credentialResolver')
+    expect(preloadSource).not.toContain('secretStore')
+    expect(preloadSource).not.toContain('Authorization')
+    expect(preloadSource).not.toContain('Bearer')
+    expect(preloadSource).not.toContain('openRouterApiKey')
+    expect(preloadSource).not.toContain('openRouterBaseUrl')
   })
 })
