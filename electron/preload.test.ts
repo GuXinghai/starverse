@@ -44,4 +44,40 @@ describe('preload scoped API exposure', () => {
       modelCatalogClearAllOpenRouterScopedCaches: expect.any(Function),
     }))
   })
+
+  it('characterizes electronStore as a generic legacy store bridge before C4 filtering', async () => {
+    const invoke = vi.fn()
+    const exposeInMainWorld = vi.fn()
+    vi.doMock('electron', () => ({
+      contextBridge: { exposeInMainWorld },
+      ipcRenderer: {
+        invoke,
+        on: vi.fn(),
+        removeListener: vi.fn(),
+      },
+    }))
+
+    await import('./preload')
+
+    const electronStore = exposeInMainWorld.mock.calls.find(([name]) => name === 'electronStore')?.[1]
+    expect(electronStore).toEqual(expect.objectContaining({
+      get: expect.any(Function),
+      set: expect.any(Function),
+      delete: expect.any(Function),
+      clearSafe: expect.any(Function),
+      checkIntegrity: expect.any(Function),
+    }))
+
+    await electronStore.get('openRouterApiKey')
+    await electronStore.set('openRouterApiKey', 'raw-openrouter-key')
+    await electronStore.delete('openRouterApiKey')
+    await electronStore.clearSafe(['language'])
+    await electronStore.checkIntegrity()
+
+    expect(invoke).toHaveBeenCalledWith('store-get', 'openRouterApiKey')
+    expect(invoke).toHaveBeenCalledWith('store-set', 'openRouterApiKey', 'raw-openrouter-key')
+    expect(invoke).toHaveBeenCalledWith('store-delete', 'openRouterApiKey')
+    expect(invoke).toHaveBeenCalledWith('store-clear-safe', ['language'])
+    expect(invoke).toHaveBeenCalledWith('store-check-integrity')
+  })
 })
