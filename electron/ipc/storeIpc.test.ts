@@ -119,30 +119,49 @@ describe('registerStoreIpc', () => {
     expect(store.delete).not.toHaveBeenCalledWith(OPENROUTER_CATALOG_LOCAL_SECRET_KEY)
   })
 
-  it('characterizes legacy credential settings as still renderer-accessible before migration', async () => {
-    const legacyKeys = [
+  it('blocks renderer generic store access to legacy credential-bearing keys after C4 filtering', async () => {
+    const blockedKeys = [
       'openRouterApiKey',
       'openRouterBaseUrl',
       'geminiApiKey',
       'apiKey',
-      'activeProvider',
+      OPENROUTER_CATALOG_LOCAL_SECRET_KEY,
     ] as const
     const { handlers, store } = registerHandlers({
-      initialStore: Object.fromEntries(legacyKeys.map((key) => [key, `legacy-${key}`])),
+      initialStore: Object.fromEntries(blockedKeys.map((key) => [key, `legacy-${key}`])),
     })
 
-    for (const key of legacyKeys) {
+    for (const key of blockedKeys) {
       const value = await handlers.get('store-get')?.({}, key)
       const setResult = await handlers.get('store-set')?.({}, key, `updated-${key}`)
       const deleteResult = await handlers.get('store-delete')?.({}, key)
 
-      expect(value).toBe(`legacy-${key}`)
-      expect(setResult).toBe(true)
-      expect(deleteResult).toBe(true)
-      expect(store.get).toHaveBeenCalledWith(key)
-      expect(store.set).toHaveBeenCalledWith(key, `updated-${key}`)
-      expect(store.delete).toHaveBeenCalledWith(key)
+      expect(value).toBeUndefined()
+      expect(setResult).toBe(false)
+      expect(deleteResult).toBe(false)
+      expect(store.get).not.toHaveBeenCalledWith(key)
+      expect(store.set).not.toHaveBeenCalledWith(key, `updated-${key}`)
+      expect(store.delete).not.toHaveBeenCalledWith(key)
     }
+  })
+
+  it('keeps activeProvider and non-sensitive settings available through generic store IPC', async () => {
+    const { handlers, store } = registerHandlers({
+      initialStore: {
+        activeProvider: 'OpenRouter',
+        theme: 'dark',
+      },
+    })
+
+    expect(await handlers.get('store-get')?.({}, 'activeProvider')).toBe('OpenRouter')
+    expect(await handlers.get('store-set')?.({}, 'activeProvider', 'OpenRouter')).toBe(true)
+    expect(await handlers.get('store-delete')?.({}, 'activeProvider')).toBe(true)
+    expect(await handlers.get('store-get')?.({}, 'theme')).toBe('dark')
+    expect(await handlers.get('store-set')?.({}, 'theme', 'light')).toBe(true)
+    expect(await handlers.get('store-delete')?.({}, 'theme')).toBe(true)
+    expect(store.get).toHaveBeenCalledWith('activeProvider')
+    expect(store.set).toHaveBeenCalledWith('activeProvider', 'OpenRouter')
+    expect(store.delete).toHaveBeenCalledWith('activeProvider')
   })
 
   it('characterizes preload as still exposing generic renderer store bridge methods', () => {
@@ -152,6 +171,7 @@ describe('registerStoreIpc', () => {
     expect(preloadSource).toContain("get: (key: string) => ipcRenderer.invoke('store-get', key)")
     expect(preloadSource).toContain("set: (key: string, value: any) => ipcRenderer.invoke('store-set', key, value)")
     expect(preloadSource).toContain("delete: (key: string) => ipcRenderer.invoke('store-delete', key)")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openRouterCredential'")
     expect(preloadSource).not.toContain('credentialRef')
   })
 

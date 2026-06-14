@@ -4,10 +4,15 @@ import { registerImageIpc, IMAGE_IPC_CHANNELS, type ResolvedAssetFile } from './
 import { registerNetExpIpc, NETEXP_IPC_CHANNELS } from './netExpIpc'
 import { registerShellIpc, SHELL_IPC_CHANNELS } from './shellIpc'
 import { registerStoreIpc, STORE_IPC_CHANNELS } from './storeIpc'
+import {
+  registerOpenRouterCredentialSettingsIpc,
+  OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS,
+} from './openRouterCredentialSettingsIpc'
 import type { RegisterInvoke } from './types'
 
 export const CORE_IPC_CHANNELS = [
   ...STORE_IPC_CHANNELS,
+  ...OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS,
   ...NETEXP_IPC_CHANNELS,
   ...DIALOG_IPC_CHANNELS,
   ...SHELL_IPC_CHANNELS,
@@ -57,6 +62,10 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
       migrateAndCleanupConfig: input.migrateAndCleanupConfig,
       performConfigSizeCheck: input.performConfigSizeCheck,
       refreshMainLocale: input.refreshMainLocale,
+    }),
+    ...registerOpenRouterCredentialSettingsIpc({
+      registerInvoke: input.registerInvoke,
+      store: input.store,
     }),
     ...registerNetExpIpc({
       registerInvoke: input.registerInvoke,

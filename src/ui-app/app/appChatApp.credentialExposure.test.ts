@@ -15,4 +15,13 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
     expect(source).not.toMatch(/\bstreamViaOpenRouterAsDomainEvents\s*\(/)
     expect(source).not.toMatch(/\bapiKey\b/)
   })
+
+  it('uses safe OpenRouter credential metadata for renderer baseUrl helper instead of raw store keys', () => {
+    const source = readFileSync(resolve(testDir, 'useChatSession.ts'), 'utf8')
+
+    expect(source).toContain('openRouterCredential')
+    expect(source).toContain('displayBaseUrl')
+    expect(source).not.toContain('openRouterApiKey')
+    expect(source).not.toContain('openRouterBaseUrl')
+  })
 })

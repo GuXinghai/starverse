@@ -24,6 +24,7 @@ describe('preload scoped API exposure', () => {
     expect(exposedNames).not.toContain('ipcRenderer')
     expect(exposedNames).toEqual(expect.arrayContaining([
       'electronStore',
+      'openRouterCredential',
       'electronAPI',
       'dbBridge',
     ]))
@@ -45,7 +46,7 @@ describe('preload scoped API exposure', () => {
     }))
   })
 
-  it('characterizes electronStore as a generic legacy store bridge before C4 filtering', async () => {
+  it('exposes generic store bridge for non-sensitive settings and narrow OpenRouter credential bridge', async () => {
     const invoke = vi.fn()
     const exposeInMainWorld = vi.fn()
     vi.doMock('electron', () => ({
@@ -60,6 +61,7 @@ describe('preload scoped API exposure', () => {
     await import('./preload')
 
     const electronStore = exposeInMainWorld.mock.calls.find(([name]) => name === 'electronStore')?.[1]
+    const openRouterCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'openRouterCredential')?.[1]
     expect(electronStore).toEqual(expect.objectContaining({
       get: expect.any(Function),
       set: expect.any(Function),
@@ -67,17 +69,31 @@ describe('preload scoped API exposure', () => {
       clearSafe: expect.any(Function),
       checkIntegrity: expect.any(Function),
     }))
+    expect(openRouterCredential).toEqual({
+      getStatus: expect.any(Function),
+      update: expect.any(Function),
+      clear: expect.any(Function),
+    })
 
-    await electronStore.get('openRouterApiKey')
-    await electronStore.set('openRouterApiKey', 'raw-openrouter-key')
-    await electronStore.delete('openRouterApiKey')
+    await electronStore.get('theme')
+    await electronStore.set('theme', 'dark')
+    await electronStore.delete('theme')
     await electronStore.clearSafe(['language'])
     await electronStore.checkIntegrity()
+    await openRouterCredential.getStatus()
+    await openRouterCredential.update({ apiKey: 'raw-openrouter-key', baseUrl: 'https://openrouter.ai/api/v1' })
+    await openRouterCredential.clear()
 
-    expect(invoke).toHaveBeenCalledWith('store-get', 'openRouterApiKey')
-    expect(invoke).toHaveBeenCalledWith('store-set', 'openRouterApiKey', 'raw-openrouter-key')
-    expect(invoke).toHaveBeenCalledWith('store-delete', 'openRouterApiKey')
+    expect(invoke).toHaveBeenCalledWith('store-get', 'theme')
+    expect(invoke).toHaveBeenCalledWith('store-set', 'theme', 'dark')
+    expect(invoke).toHaveBeenCalledWith('store-delete', 'theme')
     expect(invoke).toHaveBeenCalledWith('store-clear-safe', ['language'])
     expect(invoke).toHaveBeenCalledWith('store-check-integrity')
+    expect(invoke).toHaveBeenCalledWith('openrouter-credential:get-status')
+    expect(invoke).toHaveBeenCalledWith('openrouter-credential:update', {
+      apiKey: 'raw-openrouter-key',
+      baseUrl: 'https://openrouter.ai/api/v1',
+    })
+    expect(invoke).toHaveBeenCalledWith('openrouter-credential:clear')
   })
 })

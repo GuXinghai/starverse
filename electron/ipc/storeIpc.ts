@@ -5,7 +5,7 @@ import {
   checkFieldSize,
   safeClearConfig,
 } from '../config/configSchema'
-import { isSensitiveCatalogStoreKey, OPENROUTER_CATALOG_LOCAL_SECRET_KEY } from '../modelCatalog/catalogScope'
+import { OPENROUTER_CATALOG_LOCAL_SECRET_KEY } from '../modelCatalog/catalogScope'
 import type { RegisterInvoke } from './types'
 
 export const STORE_IPC_CHANNELS = [
@@ -15,6 +15,14 @@ export const STORE_IPC_CHANNELS = [
   'store-clear-safe',
   'store-check-integrity',
 ] as const
+
+export const RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS = new Set([
+  'openRouterApiKey',
+  'openRouterBaseUrl',
+  'geminiApiKey',
+  'apiKey',
+  OPENROUTER_CATALOG_LOCAL_SECRET_KEY,
+])
 
 type RegisterStoreIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
@@ -29,18 +37,22 @@ function isLocaleConfigKey(key: string): boolean {
   return key === 'language' || key === 'languageManual'
 }
 
+function isRendererBlockedCredentialStoreKey(key: string): boolean {
+  return RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS.has(key)
+}
+
 export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
   const { registerInvoke, store, isDev, performConfigSizeCheck, migrateAndCleanupConfig, refreshMainLocale } = input
 
   registerInvoke('store-get', (_event: unknown, key: unknown) => {
     const keyText = String(key ?? '')
-    if (isSensitiveCatalogStoreKey(keyText)) return undefined
+    if (isRendererBlockedCredentialStoreKey(keyText)) return undefined
     return store.get(keyText)
   })
 
   registerInvoke('store-set', (_event: unknown, key: unknown, value: unknown) => {
     const keyText = String(key ?? '')
-    if (isSensitiveCatalogStoreKey(keyText)) return false
+    if (isRendererBlockedCredentialStoreKey(keyText)) return false
 
     const sizeCheck = checkFieldSize(keyText, value, isDev)
     if (!sizeCheck.ok) {
@@ -71,7 +83,7 @@ export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
 
   registerInvoke('store-delete', (_event: unknown, key: unknown) => {
     const keyText = String(key ?? '')
-    if (isSensitiveCatalogStoreKey(keyText)) return false
+    if (isRendererBlockedCredentialStoreKey(keyText)) return false
     store.delete(keyText)
     if (isLocaleConfigKey(keyText)) {
       refreshMainLocale?.()
