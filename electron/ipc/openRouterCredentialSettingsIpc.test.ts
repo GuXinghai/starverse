@@ -61,6 +61,35 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
     expect(serialized).not.toContain('?token=')
   })
 
+  it('marks invalid stored base URL without returning it as editable display metadata', async () => {
+    const rawKey = 'sk-openrouter-settings-secret'
+    const rawBaseUrl = `https://user:pass@?token=${rawKey}`
+    const { handlers } = registerHandlers({
+      openRouterApiKey: rawKey,
+      openRouterBaseUrl: rawBaseUrl,
+    })
+
+    const result = await handlers.get('openrouter-credential:get-status')?.({})
+
+    expect(result).toEqual({
+      ok: true,
+      status: {
+        source: 'legacy_store',
+        apiKeyConfigured: true,
+        maskedApiKey: '***',
+        baseUrlConfigured: true,
+        baseUrlInvalid: true,
+        defaultBaseUrl: 'https://openrouter.ai/api/v1',
+      },
+    })
+    const serialized = JSON.stringify(result)
+    expect(serialized).not.toContain(rawBaseUrl)
+    expect(serialized).not.toContain(rawKey)
+    expect(serialized).not.toContain('[invalid-url]')
+    expect(serialized).not.toContain('user:pass')
+    expect(serialized).not.toContain('?token=')
+  })
+
   it('updates API key and base URL one-way through legacy store backing', async () => {
     const { handlers, store } = registerHandlers({
       openRouterApiKey: 'sk-old',
@@ -107,7 +136,7 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
     expect(JSON.stringify(result)).not.toContain('sk-replacement')
   })
 
-  it('clears API key while preserving existing base URL semantics', async () => {
+  it('clear removes only the API key and preserves existing base URL semantics', async () => {
     const { handlers, store, values } = registerHandlers({
       openRouterApiKey: 'sk-existing',
       openRouterBaseUrl: 'https://openrouter.ai/api/v1',

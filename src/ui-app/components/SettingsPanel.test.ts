@@ -23,25 +23,41 @@ function createElectronStoreMockWith(values: Record<string, unknown>) {
   return { get, set, delete: del }
 }
 
-function createOpenRouterCredentialMock(input?: { apiKeyConfigured?: boolean; displayBaseUrl?: string }) {
+function createOpenRouterCredentialMock(input?: {
+  apiKeyConfigured?: boolean
+  baseUrlConfigured?: boolean
+  baseUrlInvalid?: boolean
+  displayBaseUrl?: string
+}) {
   const state = {
     apiKeyConfigured: input?.apiKeyConfigured ?? true,
+    baseUrlConfigured: input?.baseUrlConfigured ?? true,
+    baseUrlInvalid: input?.baseUrlInvalid ?? false,
     displayBaseUrl: input?.displayBaseUrl ?? 'https://openrouter.ai/api/v1',
   }
   const buildStatus = () => ({
     source: 'legacy_store',
     apiKeyConfigured: state.apiKeyConfigured,
     ...(state.apiKeyConfigured ? { maskedApiKey: '***' } : {}),
-    baseUrlConfigured: state.displayBaseUrl.trim().length > 0,
-    ...(state.displayBaseUrl.trim().length > 0 ? { displayBaseUrl: state.displayBaseUrl } : {}),
+    baseUrlConfigured: state.baseUrlConfigured,
+    ...(state.baseUrlInvalid ? { baseUrlInvalid: true } : {}),
+    ...(!state.baseUrlInvalid && state.displayBaseUrl.trim().length > 0 ? { displayBaseUrl: state.displayBaseUrl } : {}),
     defaultBaseUrl: 'https://openrouter.ai/api/v1',
   })
   return {
     getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
     update: vi.fn(async (payload: { apiKey?: string; baseUrl?: string | null }) => {
       if (payload.apiKey && payload.apiKey.trim()) state.apiKeyConfigured = true
-      if (payload.baseUrl === null) state.displayBaseUrl = ''
-      if (typeof payload.baseUrl === 'string') state.displayBaseUrl = payload.baseUrl.trim()
+      if (payload.baseUrl === null) {
+        state.displayBaseUrl = ''
+        state.baseUrlConfigured = false
+        state.baseUrlInvalid = false
+      }
+      if (typeof payload.baseUrl === 'string') {
+        state.displayBaseUrl = payload.baseUrl.trim()
+        state.baseUrlConfigured = state.displayBaseUrl.length > 0
+        state.baseUrlInvalid = false
+      }
       return { ok: true, status: buildStatus() }
     }),
     clear: vi.fn(async () => {
@@ -303,6 +319,36 @@ describe('ui-app SettingsPanel', () => {
     expect(storeSet).not.toHaveBeenCalledWith('openRouterApiKey', expect.anything())
   })
 
+  it('does not place invalid stored base URL metadata into the editable input', async () => {
+    const user = userEvent.setup()
+    ;(globalThis as any).openRouterCredential = createOpenRouterCredentialMock({
+      apiKeyConfigured: true,
+      baseUrlConfigured: true,
+      baseUrlInvalid: true,
+      displayBaseUrl: 'https://user:pass@?token=sk-hidden',
+    })
+
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('设置')
+    await waitFor(() => expect((globalThis as any).openRouterCredential.getStatus).toHaveBeenCalled())
+
+    const baseUrlInput = screen.getByPlaceholderText('https://openrouter.ai/api/v1') as HTMLInputElement
+    await waitFor(() => expect(baseUrlInput).not.toBeDisabled())
+    expect(baseUrlInput).toHaveValue('')
+    expect(screen.queryByDisplayValue('[invalid-url]')).toBeNull()
+    expect(screen.queryByDisplayValue('https://user:pass@?token=sk-hidden')).toBeNull()
+
+    await fireEvent.update(baseUrlInput, 'https://openrouter-proxy.example.test/api/v1')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    expect((globalThis as any).openRouterCredential.update).toHaveBeenCalledWith({
+      baseUrl: 'https://openrouter-proxy.example.test/api/v1',
+    })
+    expect(JSON.stringify(document.body.textContent)).not.toContain('user:pass')
+    expect(JSON.stringify(document.body.textContent)).not.toContain('sk-hidden')
+  })
+
   it('emits settings:openRouterConnectionUpdated after save without API key in payload', async () => {
     const user = userEvent.setup()
     const events: Array<{ type: string; detail: any }> = []
@@ -498,6 +544,7 @@ describe('ui-app SettingsPanel', () => {
     expect(storeDelete).not.toHaveBeenCalledWith('openRouterApiKey')
     expect((globalThis as any).openRouterCredential.clear).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(screen.getByText('未配置')).toBeTruthy())
+    expect(screen.getByDisplayValue('https://openrouter.ai/api/v1')).toBeTruthy()
   })
 
   it('persists debug echo toggle in localStorage (dev-only control)', async () => {

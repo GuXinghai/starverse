@@ -21,12 +21,33 @@ declare namespace NodeJS {
   }
 }
 
+type OpenRouterCredentialSource = 'legacy_store'
+
+interface OpenRouterCredentialStatus {
+  source: OpenRouterCredentialSource
+  apiKeyConfigured: boolean
+  maskedApiKey?: '***'
+  baseUrlConfigured: boolean
+  baseUrlInvalid?: boolean
+  displayBaseUrl?: string
+  defaultBaseUrl: string
+}
+
+interface OpenRouterCredentialUpdatePayload {
+  apiKey?: string
+  baseUrl?: string | null
+}
+
+type OpenRouterCredentialResult =
+  | { ok: true; status: OpenRouterCredentialStatus }
+  | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
+
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   openRouterCredential?: {
-    getStatus?: () => Promise<unknown>
-    update?: (payload: unknown) => Promise<unknown>
-    clear?: () => Promise<unknown>
+    getStatus?: () => Promise<OpenRouterCredentialResult>
+    update?: (payload: OpenRouterCredentialUpdatePayload) => Promise<OpenRouterCredentialResult>
+    clear?: () => Promise<OpenRouterCredentialResult>
   }
   electronAPI?: {
     getNetExpRuntimeInfo?: () => Promise<unknown>

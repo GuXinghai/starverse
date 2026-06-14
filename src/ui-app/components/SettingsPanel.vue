@@ -63,6 +63,7 @@ type OpenRouterCredentialStatus = Readonly<{
   apiKeyConfigured: boolean
   maskedApiKey?: string
   baseUrlConfigured: boolean
+  baseUrlInvalid?: boolean
   displayBaseUrl?: string
   defaultBaseUrl?: string
 }>

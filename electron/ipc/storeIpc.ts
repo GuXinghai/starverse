@@ -41,6 +41,16 @@ function isRendererBlockedCredentialStoreKey(key: string): boolean {
   return RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS.has(key)
 }
 
+function buildRendererSafeClearKeepKeys(keepKeys: unknown): string[] {
+  const safeKeepKeys = Array.isArray(keepKeys) ? keepKeys.map((item) => String(item)) : []
+  for (const key of RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS) {
+    if (!safeKeepKeys.includes(key)) {
+      safeKeepKeys.push(key)
+    }
+  }
+  return safeKeepKeys
+}
+
 export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
   const { registerInvoke, store, isDev, performConfigSizeCheck, migrateAndCleanupConfig, refreshMainLocale } = input
 
@@ -93,10 +103,7 @@ export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
 
   registerInvoke('store-clear-safe', (_event: unknown, keepKeys: unknown = []) => {
     try {
-      const safeKeepKeys = Array.isArray(keepKeys) ? keepKeys.map((item) => String(item)) : []
-      if (!safeKeepKeys.includes(OPENROUTER_CATALOG_LOCAL_SECRET_KEY)) {
-        safeKeepKeys.push(OPENROUTER_CATALOG_LOCAL_SECRET_KEY)
-      }
+      const safeKeepKeys = buildRendererSafeClearKeepKeys(keepKeys)
       const backupPath = safeClearConfig(store, safeKeepKeys)
       migrateAndCleanupConfig()
       performConfigSizeCheck('startup')
