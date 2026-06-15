@@ -751,7 +751,33 @@ Next likely step depends on Owner priority: C5d Generic registry preparation whi
 
 ---
 
-## 13. Risks
+## 13. C5d Generic Fixture Endpoint Boundary Checkpoint
+
+C5d has prepared Generic endpoint registry shape pressure at fixture level only.
+
+Implemented facts:
+
+- Generic has a fixture-only endpoint metadata projection with `kind: 'generic_endpoint_fixture'`.
+- The fixture metadata keeps endpoint id, display name, profile id, base URL, model id, non-secret `credentialRef`, and conservative capability flags together in one tested shape.
+- Generic endpoint-like config rejects raw secret-bearing fields, URL userinfo, query secrets, malformed credential refs, and high-risk capability enablement before producing fixture metadata.
+- Generic adapter fixture tests continue to fail before fetch for unsupported high-risk runtime feature requests.
+- Source guards keep Generic fixture metadata out of SettingsPanel, preload, OpenRouter active runtime, catalog startup, and active send routing.
+- C5 baseline guards still reject production `EndpointRegistry`, `ProviderRegistry`, and `RuntimeProviderRegistry` source shells.
+
+Still not implemented:
+
+- no production endpoint registry;
+- no RuntimeProviderRegistry or ProviderRegistry;
+- no endpoint CRUD, endpoint picker, or profile picker;
+- no Generic live runtime or UI/settings exposure;
+- no secure store, OS keychain, or encrypted credential store;
+- no non-OpenRouter live runtime.
+
+Next possible steps are C5e rollback/closeout gates, a separate secure-store decision package, stopping C5 and switching to another provider architecture slice, or a later Owner-approved Generic live gate. Generic live activation remains out of scope until explicitly approved.
+
+---
+
+## 14. Risks
 
 | Risk | Why it matters | Control |
 |---|---|---|
@@ -766,7 +792,7 @@ Next likely step depends on Owner priority: C5d Generic registry preparation whi
 
 ---
 
-## 14. Recommended Next Implementation Prompt
+## 15. Recommended Next Implementation Prompt
 
 Suggested next task:
 
@@ -807,6 +833,6 @@ C5a should remain characterization/inventory work. Registry implementation shoul
 
 ---
 
-## 15. Summary
+## 16. Summary
 
 C5 should begin with OpenRouter-only endpoint metadata investigation, not a source-level placeholder registry. The recommended path is Option A: OpenRouter endpoint record first, with Generic endpoint config used only as fixture shape pressure. Secure store, endpoint/provider registry source implementation, Generic live runtime, non-OpenRouter live runtime, Send Plan capability integration, old Gemini revival, LiteLLM, and Agent/RAG/coding workflow scope remain out of scope.

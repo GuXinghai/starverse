@@ -47,6 +47,7 @@ export const SECRET_LIKE_CREDENTIAL_FIELD_NAMES = [
   'token',
   'accesstoken',
   'access_token',
+  'bearer',
   'bearertoken',
   'bearer_token',
   'authtoken',
