@@ -679,7 +679,27 @@ Known unrelated `infra/files/**` LibreOffice/DFC typecheck failures may remain d
 
 ---
 
-## 10. Risks
+## 10. C5a Characterization Checkpoint
+
+C5a characterization gates have been added. They record the current pre-registry baseline without introducing endpoint/provider registry source code or changing production behavior.
+
+Covered baseline:
+
+- production source has no `EndpointRegistry`, `ProviderRegistry`, or `RuntimeProviderRegistry` implementation or placeholder shell;
+- active OpenRouter chat/send remains on the first-class OpenRouter path with `credentialSource: 'legacy_store'`;
+- OpenRouter active send is not routed through Generic or a registry route;
+- OpenRouter catalog sync still uses the resolver-backed legacy-store credential source;
+- SettingsPanel still uses the OpenRouter credential metadata bridge and has no endpoint record / endpointId / profileId selection UI;
+- `openRouterBaseUrl` remains credential-bound endpoint material in the current C4 bridge, not a registry endpoint record;
+- Generic endpoint config remains fixture-only and is not consumed by active production routing;
+- provider credential boundary pieces remain non-secret and do not introduce secure-store / OS-keychain production implementation;
+- old Gemini remains runtime-dead, while `geminiApiKey` and legacy `apiKey` stay blocked from generic renderer store access.
+
+Next recommended step: C5b OpenRouter-only non-secret endpoint metadata model, if Owner approves. C5b should introduce source only when the metadata is consumed by a real OpenRouter settings or runtime-adjacent path and must continue to avoid Generic live activation.
+
+---
+
+## 11. Risks
 
 | Risk | Why it matters | Control |
 |---|---|---|
@@ -694,7 +714,7 @@ Known unrelated `infra/files/**` LibreOffice/DFC typecheck failures may remain d
 
 ---
 
-## 11. Recommended Next Implementation Prompt
+## 12. Recommended Next Implementation Prompt
 
 Suggested next task:
 
@@ -735,6 +755,6 @@ C5a should remain characterization/inventory work. Registry implementation shoul
 
 ---
 
-## 12. Summary
+## 13. Summary
 
 C5 should begin with OpenRouter-only endpoint metadata investigation, not a source-level placeholder registry. The recommended path is Option A: OpenRouter endpoint record first, with Generic endpoint config used only as fixture shape pressure. Secure store, endpoint/provider registry source implementation, Generic live runtime, non-OpenRouter live runtime, Send Plan capability integration, old Gemini revival, LiteLLM, and Agent/RAG/coding workflow scope remain out of scope.
