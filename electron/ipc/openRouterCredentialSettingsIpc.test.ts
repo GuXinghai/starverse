@@ -29,6 +29,7 @@ function registerHandlers(initialStore: Record<string, unknown> = {}) {
 function openRouterEndpointMetadata(
   overrides: Partial<{
     endpointId: 'openrouter-official' | 'openrouter-custom-legacy-store'
+    endpointStatus: 'official' | 'custom' | 'invalid_custom'
     displayName: string
     baseUrlConfigured: boolean
     baseUrlInvalid: boolean
@@ -39,6 +40,7 @@ function openRouterEndpointMetadata(
   const endpoint = {
     kind: 'openrouter_endpoint',
     endpointId: overrides.endpointId ?? (baseUrlConfigured ? 'openrouter-custom-legacy-store' : 'openrouter-official'),
+    endpointStatus: overrides.endpointStatus ?? (baseUrlConfigured ? (overrides.baseUrlInvalid ? 'invalid_custom' : 'custom') : 'official'),
     providerId: 'openrouter',
     profileId: 'openrouter_v1_chat',
     displayName: overrides.displayName ?? (baseUrlConfigured ? 'OpenRouter custom endpoint' : 'OpenRouter official endpoint'),
@@ -86,6 +88,7 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
         defaultBaseUrl: 'https://openrouter.ai/api/v1',
         endpoint: openRouterEndpointMetadata({
           endpointId: 'openrouter-custom-legacy-store',
+          endpointStatus: 'custom',
           displayName: 'OpenRouter custom endpoint',
           baseUrlConfigured: true,
           displayBaseUrl: 'https://openrouter.example.test/api/v1',
@@ -98,6 +101,14 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
     expect(serialized).not.toContain('Authorization')
     expect(serialized).not.toContain('user:pass')
     expect(serialized).not.toContain('?token=')
+    expect((result as any).status.endpoint.credentialRef).toEqual({
+      kind: 'credential_ref',
+      id: 'openrouter-chat-legacy-store',
+    })
+    expect((result as any).status.endpoint.catalogCredentialRef).toEqual({
+      kind: 'credential_ref',
+      id: 'openrouter-catalog-legacy-store',
+    })
   })
 
   it('marks invalid stored base URL without returning it as editable display metadata', async () => {
@@ -121,6 +132,7 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
         defaultBaseUrl: 'https://openrouter.ai/api/v1',
         endpoint: openRouterEndpointMetadata({
           endpointId: 'openrouter-custom-legacy-store',
+          endpointStatus: 'invalid_custom',
           displayName: 'OpenRouter custom endpoint',
           baseUrlConfigured: true,
           baseUrlInvalid: true,
@@ -133,6 +145,7 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
     expect(serialized).not.toContain('[invalid-url]')
     expect(serialized).not.toContain('user:pass')
     expect(serialized).not.toContain('?token=')
+    expect((result as any).status.endpoint).not.toHaveProperty('displayBaseUrl')
   })
 
   it('returns official endpoint metadata when no custom base URL is configured', async () => {
@@ -152,6 +165,13 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
       },
     })
     expect(JSON.stringify(result)).not.toContain('sk-openrouter-settings-secret')
+    expect((result as any).status.endpoint).toEqual(openRouterEndpointMetadata({
+      endpointId: 'openrouter-official',
+      endpointStatus: 'official',
+      displayName: 'OpenRouter official endpoint',
+      baseUrlConfigured: false,
+      displayBaseUrl: 'https://openrouter.ai/api/v1',
+    }))
   })
 
   it('updates API key and base URL one-way through legacy store backing', async () => {

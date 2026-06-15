@@ -23,21 +23,45 @@ declare namespace NodeJS {
 
 type OpenRouterCredentialSource = 'legacy_store'
 
-interface OpenRouterEndpointMetadata {
+type OpenRouterEndpointCredentialRef = Readonly<{ kind: 'credential_ref'; id: 'openrouter-chat-legacy-store' }>
+type OpenRouterCatalogCredentialRef = Readonly<{ kind: 'credential_ref'; id: 'openrouter-catalog-legacy-store' }>
+
+interface OpenRouterEndpointMetadataBase {
   kind: 'openrouter_endpoint'
-  endpointId: 'openrouter-official' | 'openrouter-custom-legacy-store'
   providerId: 'openrouter'
   profileId: 'openrouter_v1_chat'
-  displayName: string
   source: OpenRouterCredentialSource
-  baseUrlConfigured: boolean
-  baseUrlInvalid?: boolean
-  displayBaseUrl?: string
   defaultBaseUrl: string
-  credentialRef: { kind: 'credential_ref'; id: 'openrouter-chat-legacy-store' }
-  catalogCredentialRef: { kind: 'credential_ref'; id: 'openrouter-catalog-legacy-store' }
+  credentialRef: OpenRouterEndpointCredentialRef
+  catalogCredentialRef: OpenRouterCatalogCredentialRef
   rendererVisible: true
 }
+
+type OpenRouterEndpointMetadata =
+  | Readonly<OpenRouterEndpointMetadataBase & {
+    endpointId: 'openrouter-official'
+    endpointStatus: 'official'
+    displayName: 'OpenRouter official endpoint'
+    baseUrlConfigured: false
+    baseUrlInvalid?: false
+    displayBaseUrl: 'https://openrouter.ai/api/v1'
+  }>
+  | Readonly<OpenRouterEndpointMetadataBase & {
+    endpointId: 'openrouter-custom-legacy-store'
+    endpointStatus: 'custom'
+    displayName: 'OpenRouter custom endpoint'
+    baseUrlConfigured: true
+    baseUrlInvalid?: false
+    displayBaseUrl: string
+  }>
+  | Readonly<OpenRouterEndpointMetadataBase & {
+    endpointId: 'openrouter-custom-legacy-store'
+    endpointStatus: 'invalid_custom'
+    displayName: 'OpenRouter custom endpoint'
+    baseUrlConfigured: true
+    baseUrlInvalid: true
+    displayBaseUrl?: never
+  }>
 
 interface OpenRouterCredentialStatus {
   source: OpenRouterCredentialSource

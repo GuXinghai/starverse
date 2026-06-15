@@ -129,11 +129,13 @@ describe('C5 endpoint registry baseline characterization', () => {
     expect(settings).toContain('settings-openrouter-endpoint-metadata')
     expect(credentialIpc).toContain("source: 'legacy_store'")
     expect(credentialIpc).toContain("kind: 'openrouter_endpoint'")
+    expect(credentialIpc).toContain('buildOpenRouterEndpointMetadataFromLegacyStoreState')
+    expect(credentialIpc).toContain('endpointStatus')
     expect(credentialIpc).toContain("'openrouter-official'")
     expect(credentialIpc).toContain("'openrouter-custom-legacy-store'")
     expect(credentialIpc).toContain("'openrouter_v1_chat'")
-    expect(credentialIpc).toContain('OPENROUTER_CHAT_LEGACY_CREDENTIAL_REF')
-    expect(credentialIpc).toContain('OPENROUTER_CATALOG_LEGACY_CREDENTIAL_REF')
+    expect(credentialIpc).toContain('OPENROUTER_CHAT_LEGACY_CREDENTIAL_METADATA_REF')
+    expect(credentialIpc).toContain('OPENROUTER_CATALOG_LEGACY_CREDENTIAL_METADATA_REF')
     expect(credentialIpc).toContain('OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY')
 
     for (const source of [settings, credentialIpc]) {

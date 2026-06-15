@@ -722,7 +722,36 @@ Next likely step: C5c SettingsPanel endpoint metadata split if Owner wants clear
 
 ---
 
-## 12. Risks
+## 12. C5c Endpoint Metadata Settings Integration Checkpoint
+
+C5c has hardened the OpenRouter-only endpoint metadata integration without adding a generic registry.
+
+Implemented facts:
+
+- OpenRouter endpoint metadata now uses an explicit renderer-safe status shape for:
+  - official endpoint;
+  - custom legacy-store endpoint;
+  - invalid custom legacy-store endpoint.
+- The metadata keeps literal non-secret credential refs for chat and catalog credential sources.
+- SettingsPanel displays official, custom, and invalid custom endpoint status more explicitly while keeping the API key input empty for existing credentials.
+- Invalid custom base URL metadata is shown as a safe warning and is not copied into the editable base URL input.
+- OpenRouter credential update, API-key clear, and base-URL clear behavior remain one-way through the OpenRouter credential settings bridge.
+- C5 baseline guards still allow only this behavior-backed OpenRouter-specific metadata and continue to reject generic `EndpointRegistry`, `ProviderRegistry`, and `RuntimeProviderRegistry` source shells.
+
+Still not implemented:
+
+- no generic endpoint registry;
+- no RuntimeProviderRegistry or ProviderRegistry;
+- no endpoint CRUD, endpoint picker, or profile picker;
+- no secure store, OS keychain, or encrypted credential store;
+- no Generic live runtime;
+- no non-OpenRouter live runtime.
+
+Next likely step depends on Owner priority: C5d Generic registry preparation while remaining fixture-only, a separate secure-store decision package, or stopping provider architecture work here and switching to another slice.
+
+---
+
+## 13. Risks
 
 | Risk | Why it matters | Control |
 |---|---|---|
@@ -737,7 +766,7 @@ Next likely step: C5c SettingsPanel endpoint metadata split if Owner wants clear
 
 ---
 
-## 13. Recommended Next Implementation Prompt
+## 14. Recommended Next Implementation Prompt
 
 Suggested next task:
 
@@ -778,6 +807,6 @@ C5a should remain characterization/inventory work. Registry implementation shoul
 
 ---
 
-## 14. Summary
+## 15. Summary
 
 C5 should begin with OpenRouter-only endpoint metadata investigation, not a source-level placeholder registry. The recommended path is Option A: OpenRouter endpoint record first, with Generic endpoint config used only as fixture shape pressure. Secure store, endpoint/provider registry source implementation, Generic live runtime, non-OpenRouter live runtime, Send Plan capability integration, old Gemini revival, LiteLLM, and Agent/RAG/coding workflow scope remain out of scope.

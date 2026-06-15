@@ -79,6 +79,8 @@ describe('preload scoped API exposure', () => {
       update: expect.any(Function),
       clear: expect.any(Function),
     })
+    expect(openRouterCredential.getEndpointMetadata).toBeUndefined()
+    expect(openRouterCredential.endpointRegistry).toBeUndefined()
 
     await electronStore.get('theme')
     await electronStore.set('theme', 'dark')
