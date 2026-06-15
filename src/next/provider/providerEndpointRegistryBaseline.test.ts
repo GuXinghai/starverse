@@ -15,9 +15,19 @@ const registryPlaceholderNames = [
   'EndpointRegistry',
   'ProviderRegistry',
   'RuntimeProviderRegistry',
+  'EndpointRegistryService',
+  'ProviderRegistryService',
+  'RuntimeProviderRegistryService',
+  'EndpointManager',
+  'ProviderManager',
   'endpointRegistry',
   'providerRegistry',
   'runtimeProviderRegistry',
+  'endpointRegistryService',
+  'providerRegistryService',
+  'runtimeProviderRegistryService',
+  'endpointManager',
+  'providerManager',
 ] as const
 
 function readRepoFile(...segments: string[]): string {
@@ -59,7 +69,7 @@ function stripComments(source: string): string {
 function productionOccurrences(pattern: RegExp): string[] {
   const matches: string[] = []
   for (const file of collectProductionSourceFiles()) {
-    const source = readFileSync(file, 'utf8')
+    const source = stripComments(readFileSync(file, 'utf8'))
     if (pattern.test(source)) {
       matches.push(repoRelative(file))
     }
@@ -124,6 +134,9 @@ describe('C5 endpoint registry baseline characterization', () => {
     expect(settings).not.toContain("electronStore.get('openRouterBaseUrl')")
     expect(settings).not.toMatch(/endpointId\s*=/)
     expect(settings).not.toMatch(/profileId\s*=/)
+    expect(settings).not.toMatch(/\{\s*endpointId\s*\}/)
+    expect(settings).not.toMatch(/\{\s*profileId\s*\}/)
+    expect(settings).not.toMatch(/v-model\s*=\s*["'][^"']*(?:endpoint|profile)[^"']*["']/i)
     expect(settings).not.toContain('EndpointRegistry')
     expect(settings).not.toContain('ProviderRegistry')
     expect(settings).toContain('settings-openrouter-endpoint-metadata')
@@ -176,6 +189,48 @@ describe('C5 endpoint registry baseline characterization', () => {
       expect(source).not.toContain('toGenericEndpointFixtureMetadata')
       expect(source).not.toContain('generic_endpoint_fixture')
     }
+  })
+
+  it('locks C5 closeout readiness without endpoint registry routing or exposed secret surfaces', () => {
+    const appChat = readRepoFile('src', 'ui-app', 'app', 'appChatApp.logic.ts')
+    const settings = readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue')
+    const preload = readRepoFile('electron', 'preload.ts')
+    const storeIpc = readRepoFile('electron', 'ipc', 'storeIpc.ts')
+    const credentialIpc = readRepoFile('electron', 'ipc', 'openRouterCredentialSettingsIpc.ts')
+    const genericConfig = readRepoFile('src', 'next', 'provider', 'generic', 'genericEndpointConfig.ts')
+
+    expect(appChat).toContain('streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource')
+    expect(appChat).not.toMatch(/GenericEndpoint(?:Config|FixtureMetadata)/)
+    expect(appChat).not.toMatch(/\b(?:EndpointRegistry|ProviderRegistry|RuntimeProviderRegistry)\b/)
+
+    expect(settings).toContain('settings-openrouter-endpoint-metadata')
+    expect(settings).toContain('openRouterCredential')
+    expect(settings).not.toContain('GenericEndpointFixtureMetadata')
+    expect(settings).not.toContain('generic_endpoint_fixture')
+    expect(settings).not.toMatch(/\b(?:endpointRegistry|providerRegistry|runtimeProviderRegistry)\b/)
+
+    expect(preload).toContain("contextBridge.exposeInMainWorld('openRouterCredential'")
+    expect(preload).not.toContain('getEndpointMetadata')
+    expect(preload).not.toContain('credentialResolver')
+    expect(preload).not.toContain('secretStore')
+    expect(preload).not.toMatch(/\b(?:EndpointRegistry|ProviderRegistry|RuntimeProviderRegistry)\b/)
+
+    expect(storeIpc).toContain('RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS')
+    expect(storeIpc).toContain('store-clear-safe')
+    expect(storeIpc).toContain("'openRouterApiKey'")
+    expect(storeIpc).toContain("'openRouterBaseUrl'")
+    expect(storeIpc).toContain("'geminiApiKey'")
+
+    expect(credentialIpc).toContain("kind: 'openrouter_endpoint'")
+    expect(credentialIpc).toContain("rendererVisible: true")
+    expect(credentialIpc).toContain("source: 'legacy_store'")
+    expect(credentialIpc).toContain('credentialRef')
+    expect(credentialIpc).toContain('catalogCredentialRef')
+    expect(credentialIpc).not.toMatch(/\b(?:EndpointRegistry|ProviderRegistry|RuntimeProviderRegistry)\b/)
+
+    expect(genericConfig).toContain("kind: 'generic_endpoint_fixture'")
+    expect(genericConfig).toContain('fixtureOnly: true')
+    expect(genericConfig).toContain('rendererVisible: false')
   })
 
   it('keeps provider credential boundary as non-secret boundary pieces without secure-store production implementation', () => {

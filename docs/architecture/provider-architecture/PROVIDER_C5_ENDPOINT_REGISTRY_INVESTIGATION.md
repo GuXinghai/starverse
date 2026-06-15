@@ -1,12 +1,12 @@
-# Provider C5 Endpoint Registry Investigation
+# Provider C5 Endpoint Registry Investigation And Readiness Closeout
 
-Date: 2026-06-15
-Task status: investigation and decision package only
-Current HEAD reviewed: `70a7d8df test(provider): audit residual credential exposure after C4`
-Scope: C5 endpoint/provider registry investigation only
-Explicit non-goal: no implementation, no source-level registry shell, no production behavior change
+Date: 2026-06-16
+Task status: C5 investigation + implementation checkpoints; production registry not implemented
+Current HEAD reviewed: `271262fc test(provider): prepare Generic endpoint registry fixture boundary`
+Scope: C5 endpoint/provider registry investigation, OpenRouter endpoint metadata checkpoints, Generic fixture-only preparation, and C5 readiness closeout
+Explicit non-goal: no production registry implementation, no source-level registry shell, no production behavior change
 
-This document scopes C5 after the OpenRouter C3 credential-source migration and C4 renderer credential exposure reduction. It does not implement endpoint registry, provider registry, secure store, Generic live runtime, non-OpenRouter live runtime, DB migration, Send Plan integration, or settings behavior changes.
+This document scopes and closes out C5 readiness work after the OpenRouter C3 credential-source migration and C4 renderer credential exposure reduction. It records completed OpenRouter-only endpoint metadata and Generic fixture-only boundary preparation, but it does not claim endpoint registry, provider registry, secure store, Generic live runtime, non-OpenRouter live runtime, DB migration, Send Plan integration, or endpoint picker support.
 
 Related:
 
@@ -16,6 +16,30 @@ Related:
 - `OPENROUTER_C3_CREDENTIAL_MIGRATION_DECISION_PACKAGE.md`
 - `PROVIDER_CREDENTIAL_BOUNDARY_PLAN.md`
 - `OPENROUTER_C3_CLOSEOUT_AND_C4_EXPOSURE_INVESTIGATION.md`
+
+---
+
+## 0. C5 Closeout Status
+
+| C5 item | Status | Closeout note |
+|---|---|---|
+| C5 investigation | Done | C5 purpose, current surfaces, registry boundary definitions, scope options, migration strategy, risks, and non-goals are documented. |
+| C5a baseline characterization | Done | Tests prove the pre-registry baseline, OpenRouter-first active runtime, Generic fixture-only state, legacy Gemini runtime-dead state, and no production registry shell. |
+| C5b OpenRouter-only endpoint metadata model | Done | `openrouter-credential:get-status` returns renderer-safe OpenRouter endpoint metadata backed by legacy-store state. |
+| C5c OpenRouter endpoint metadata settings integration hardening | Done | SettingsPanel displays official/custom/invalid endpoint metadata safely without endpoint picker/profile picker or runtime routing changes. |
+| C5d Generic fixture-only endpoint registry preparation | Done | Generic fixture metadata shape pressure exists only in Generic config/test paths and remains outside UI/settings/active runtime. |
+| C5e closeout/readiness gates | This task | Final guards and this closeout record keep production registry, Generic live runtime, secure store, and non-OpenRouter live runtime deferred. |
+
+Closeout facts:
+
+- OpenRouter has renderer-safe endpoint metadata, not a generic endpoint registry.
+- Generic has fixture-only endpoint shape pressure, not live runtime.
+- No production `EndpointRegistry`, `ProviderRegistry`, or `RuntimeProviderRegistry` exists.
+- No endpoint CRUD, endpoint picker, or profile picker exists.
+- No secure store, OS keychain, or encrypted credential store exists.
+- No Send Plan `RuntimeCapability` integration exists.
+- No LocalEndpoint support exists.
+- No old Gemini runtime revival occurred.
 
 ---
 
@@ -777,7 +801,31 @@ Next possible steps are C5e rollback/closeout gates, a separate secure-store dec
 
 ---
 
-## 14. Risks
+## 14. C5e Readiness Closeout Checkpoint
+
+C5e closes C5 as readiness work without introducing a production registry.
+
+Readiness gates:
+
+- production source guards reject endpoint/provider/runtime registry shells, including obvious registry service or manager names;
+- registry placeholder scanning ignores comments so explanatory comments do not create false positives;
+- OpenRouter active chat/send remains first-class OpenRouter with `credentialSource: 'legacy_store'`;
+- OpenRouter catalog sync remains resolver-backed through the legacy-store source;
+- OpenRouter endpoint metadata remains descriptive and renderer-safe, not a runtime routing layer;
+- Generic fixture metadata remains confined to Generic config/adapter fixture paths and is not imported by SettingsPanel, preload, OpenRouter runtime, catalog startup, or active send;
+- C4 credential boundary tests continue to block generic renderer store access to credential-bearing keys and preserve those keys during renderer-triggered `clearSafe`;
+- legacy Gemini remains runtime-dead and its credential key remains blocked from generic renderer store access.
+
+Rollback posture:
+
+- OpenRouter endpoint metadata can be reverted independently because active runtime routing does not depend on it.
+- Generic fixture metadata can be reverted independently because it is not consumed by UI/settings/active send.
+- C4 credential filtering and C3 main-process credential resolution remain the safety baseline.
+- Legacy electron-store backing remains intact until a separate secure-store migration is approved.
+
+---
+
+## 15. Risks
 
 | Risk | Why it matters | Control |
 |---|---|---|
@@ -792,47 +840,50 @@ Next possible steps are C5e rollback/closeout gates, a separate secure-store dec
 
 ---
 
-## 15. Recommended Next Implementation Prompt
+## 16. Next-Phase Decision Matrix
 
-Suggested next task:
+| Option | Why it is next | What it unlocks | Main risks | Runtime behavior change? | Recommended first task type |
+|---|---|---|---|---|---|
+| Stop provider architecture work temporarily and switch slice | C3/C4/C5 readiness gates are now coherent, and no production registry is required for current OpenRouter behavior. | Lets Owner invest in another product or reliability slice without leaving unclear provider status. | Provider registry and secure-store work remain deferred. | No. | Docs-only handoff or backlog checkpoint. |
+| Secure store / OS keychain decision package | C4 reduced renderer exposure but legacy electron-store remains the backing store. | Defines migration, rollback, platform support, and secret lifecycle before any durable credential move. | Larger migration risk; dependency/platform behavior choices need Owner approval. | Not in decision package; later implementation would. | Docs-only decision package, then scoped implementation if approved. |
+| C6 LocalEndpoint investigation | Endpoint vocabulary is now clearer, but local endpoint behavior remains undefined. | Scopes LM Studio/Ollama/LocalAI/custom local OpenAI-compatible connection without managed runtime. | Could accidentally expand into managed runtime, endpoint registry, or Generic live support. | No for investigation. | Docs/source-inventory investigation. |
+| Old Gemini legacy removal inventory | Gemini remains runtime-dead but config-live. | Identifies which legacy keys/constants/docs can be removed or migration-read-only. | Removing fields too early could affect existing config migration. | No for inventory; later removal might. | Characterization/source inventory tests. |
+| Future Owner-approved Generic live gate | Generic fixture boundaries are prepared and conservative. | Could eventually enable custom OpenAI-compatible endpoints under explicit scope. | High risk of overclaiming tools/files/reasoning/web/search and bypassing endpoint/credential governance. | Yes, if implemented. | Owner decision package before implementation. |
+| Send Plan RuntimeCapability integration investigation | Provider capability boundaries exist, but Send Plan still has OpenRouter-coupled behavior. | Clarifies attachment/file capability gating across providers. | Broad cross-cutting behavior; can drift into runtime activation. | No for investigation. | Docs/source-inventory investigation. |
 
-```text
-Task title:
-test(provider): characterize C5 endpoint registry baseline
-
-Goal:
-Add C5a characterization/inventory gates only. Do not implement endpoint registry, provider registry, secure store, Generic live runtime, non-OpenRouter live runtime, or settings behavior changes.
-
-Required checks:
-1. Prove no production EndpointRegistry / ProviderRegistry source exists.
-2. Prove current catalog ProviderAdapter is catalog-source only, not runtime registry.
-3. Prove active OpenRouter send still uses the legacy-store credential source.
-4. Prove OpenRouter catalog sync still uses resolver-backed legacy-store source.
-5. Prove SettingsPanel uses OpenRouter credential metadata bridge and not generic store reads for OpenRouter credential/base URL keys.
-6. Prove GenericEndpointConfig remains fixture-only and no active send path consumes it.
-7. Prove Generic and non-OpenRouter providers remain live-disabled.
-8. Prove old Gemini remains runtime-dead and legacy `geminiApiKey` / `apiKey` are not active runtime inputs.
-9. Preserve C4 store IPC/preload credential exposure reduction tests.
-
-Preferred files:
-- src/ui-app/app/appChatApp.credentialExposure.test.ts
-- electron/ipc/storeIpc.test.ts
-- src/next/provider/credentials/providerCredentialBoundary.test.ts
-- src/next/provider/generic/genericEndpointConfig.test.ts
-
-Validation:
-- npm run rebuild:node
-- targeted C4/OpenRouter/provider boundary tests
-- git diff --check
-
-Commit message:
-test(provider): characterize C5 endpoint registry baseline
-```
-
-C5a should remain characterization/inventory work. Registry implementation should wait until the Owner approves the C5 option and a consumed OpenRouter endpoint metadata path is defined.
+Recommended default: stop C5 implementation here and ask Owner to choose between a secure-store decision package, a C6 LocalEndpoint investigation, old Gemini legacy removal inventory, or another product slice. Do not implement a production endpoint/provider registry until a real behavior path needs it and Owner approves the runtime impact.
 
 ---
 
-## 16. Summary
+## 17. Recommended Next Task Package
 
-C5 should begin with OpenRouter-only endpoint metadata investigation, not a source-level placeholder registry. The recommended path is Option A: OpenRouter endpoint record first, with Generic endpoint config used only as fixture shape pressure. Secure store, endpoint/provider registry source implementation, Generic live runtime, non-OpenRouter live runtime, Send Plan capability integration, old Gemini revival, LiteLLM, and Agent/RAG/coding workflow scope remain out of scope.
+Conservative suggested next task if Owner wants to continue provider architecture work:
+
+```text
+Task title:
+docs(provider): prepare secure credential store decision package
+
+Goal:
+Investigate secure store / OS keychain options after C4 renderer exposure reduction and C5 endpoint readiness closeout. Do not implement secure store, endpoint registry, provider registry, Generic live runtime, or non-OpenRouter live runtime.
+
+Required output:
+1. Current credential storage facts after C3/C4/C5.
+2. Candidate secure-store mechanisms and platform tradeoffs.
+3. Migration and rollback strategy for legacy OpenRouter electron-store keys.
+4. Renderer-safe metadata requirements.
+5. Acceptance criteria and test plan for a later implementation.
+
+Validation:
+- git diff --check
+
+Commit message:
+docs(provider): prepare secure credential store decision package
+```
+
+If Owner chooses not to pursue secure storage next, the safer alternatives are C6 LocalEndpoint investigation or old Gemini legacy removal inventory. Generic live activation and production registry implementation should remain blocked until explicitly approved.
+
+---
+
+## 18. Summary
+
+C5 is closed out as readiness work, not production registry implementation. OpenRouter has behavior-backed, renderer-safe endpoint metadata. Generic has fixture-only endpoint shape pressure. Source guards and regression tests continue to reject production endpoint/provider registry shells, Generic live activation, non-OpenRouter live runtime activation, secure-store overclaims, old Gemini runtime revival, LiteLLM, and Agent/RAG/coding workflow scope.
