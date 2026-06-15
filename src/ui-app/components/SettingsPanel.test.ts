@@ -35,6 +35,25 @@ function createOpenRouterCredentialMock(input?: {
     baseUrlInvalid: input?.baseUrlInvalid ?? false,
     displayBaseUrl: input?.displayBaseUrl ?? 'https://openrouter.ai/api/v1',
   }
+  const buildEndpoint = () => {
+    const hasSafeCustomBaseUrl = !state.baseUrlInvalid && state.baseUrlConfigured && state.displayBaseUrl.trim().length > 0
+    return {
+      kind: 'openrouter_endpoint',
+      endpointId: state.baseUrlConfigured ? 'openrouter-custom-legacy-store' : 'openrouter-official',
+      providerId: 'openrouter',
+      profileId: 'openrouter_v1_chat',
+      displayName: state.baseUrlConfigured ? 'OpenRouter custom endpoint' : 'OpenRouter official endpoint',
+      source: 'legacy_store',
+      baseUrlConfigured: state.baseUrlConfigured,
+      ...(state.baseUrlInvalid ? { baseUrlInvalid: true } : {}),
+      ...(hasSafeCustomBaseUrl ? { displayBaseUrl: state.displayBaseUrl } : {}),
+      ...(!state.baseUrlConfigured ? { displayBaseUrl: 'https://openrouter.ai/api/v1' } : {}),
+      defaultBaseUrl: 'https://openrouter.ai/api/v1',
+      credentialRef: { kind: 'credential_ref', id: 'openrouter-chat-legacy-store' },
+      catalogCredentialRef: { kind: 'credential_ref', id: 'openrouter-catalog-legacy-store' },
+      rendererVisible: true,
+    }
+  }
   const buildStatus = () => ({
     source: 'legacy_store',
     apiKeyConfigured: state.apiKeyConfigured,
@@ -43,6 +62,7 @@ function createOpenRouterCredentialMock(input?: {
     ...(state.baseUrlInvalid ? { baseUrlInvalid: true } : {}),
     ...(!state.baseUrlInvalid && state.displayBaseUrl.trim().length > 0 ? { displayBaseUrl: state.displayBaseUrl } : {}),
     defaultBaseUrl: 'https://openrouter.ai/api/v1',
+    endpoint: buildEndpoint(),
   })
   return {
     getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
@@ -226,6 +246,46 @@ describe('ui-app SettingsPanel', () => {
     expect((globalThis as any).electronAPI.openRouterCredentialGetMetadata).toBeUndefined()
   })
 
+  it('shows OpenRouter endpoint metadata without adding endpoint registry controls', async () => {
+    ;(globalThis as any).openRouterCredential = createOpenRouterCredentialMock({
+      apiKeyConfigured: true,
+      baseUrlConfigured: true,
+      displayBaseUrl: 'https://openrouter-proxy.example.test/api/v1',
+    })
+
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('设置')
+
+    const endpointMetadata = await screen.findByTestId('settings-openrouter-endpoint-metadata')
+    expect(endpointMetadata.textContent).toContain('OpenRouter custom endpoint')
+    expect(endpointMetadata.textContent).toContain('https://openrouter-proxy.example.test/api/v1')
+    expect(endpointMetadata.textContent).not.toContain('Authorization')
+    expect(endpointMetadata.textContent).not.toContain('Bearer')
+    expect(endpointMetadata.textContent).not.toContain('sk-')
+    expect(screen.queryByLabelText(/endpoint/i)).toBeNull()
+    expect(screen.queryByLabelText(/profile/i)).toBeNull()
+  })
+
+  it('shows official endpoint metadata while leaving custom base URL input empty', async () => {
+    ;(globalThis as any).openRouterCredential = createOpenRouterCredentialMock({
+      apiKeyConfigured: true,
+      baseUrlConfigured: false,
+      displayBaseUrl: '',
+    })
+
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('设置')
+    const endpointMetadata = await screen.findByTestId('settings-openrouter-endpoint-metadata')
+    const baseUrlInput = screen.getByPlaceholderText('https://openrouter.ai/api/v1') as HTMLInputElement
+
+    expect(endpointMetadata.textContent).toContain('OpenRouter official endpoint')
+    expect(endpointMetadata.textContent).toContain('https://openrouter.ai/api/v1')
+    expect(baseUrlInput).toHaveValue('')
+  })
+
+
   it('loads catalog sync settings defaults', async () => {
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
 
@@ -336,6 +396,7 @@ describe('ui-app SettingsPanel', () => {
     const baseUrlInput = screen.getByPlaceholderText('https://openrouter.ai/api/v1') as HTMLInputElement
     await waitFor(() => expect(baseUrlInput).not.toBeDisabled())
     expect(baseUrlInput).toHaveValue('')
+    expect(screen.getByTestId('settings-openrouter-endpoint-metadata').textContent).toContain('URL invalid')
     expect(screen.queryByDisplayValue('[invalid-url]')).toBeNull()
     expect(screen.queryByDisplayValue('https://user:pass@?token=sk-hidden')).toBeNull()
 
