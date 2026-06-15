@@ -1,5 +1,9 @@
 import type Store from 'electron-store'
 import {
+  OPENROUTER_CATALOG_LEGACY_CREDENTIAL_REF,
+} from '../jobs/openRouterCatalogCredential'
+import {
+  OPENROUTER_CHAT_LEGACY_CREDENTIAL_REF,
   OPENROUTER_CHAT_LEGACY_API_KEY_STORE_KEY,
   OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY,
 } from '../../src/next/provider/openrouter/openRouterLegacyCredential'
@@ -19,6 +23,7 @@ export type OpenRouterCredentialSettingsStatus = Readonly<{
   baseUrlInvalid?: boolean
   displayBaseUrl?: string
   defaultBaseUrl: string
+  endpoint: OpenRouterEndpointMetadata
 }>
 
 export type OpenRouterCredentialSettingsUpdatePayload = Readonly<{
@@ -36,6 +41,25 @@ type RegisterOpenRouterCredentialSettingsIpcInput = Readonly<{
 }>
 
 const DEFAULT_OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+const OPENROUTER_OFFICIAL_ENDPOINT_ID = 'openrouter-official'
+const OPENROUTER_CUSTOM_LEGACY_ENDPOINT_ID = 'openrouter-custom-legacy-store'
+const OPENROUTER_PROFILE_ID = 'openrouter_v1_chat'
+
+export type OpenRouterEndpointMetadata = Readonly<{
+  kind: 'openrouter_endpoint'
+  endpointId: typeof OPENROUTER_OFFICIAL_ENDPOINT_ID | typeof OPENROUTER_CUSTOM_LEGACY_ENDPOINT_ID
+  providerId: 'openrouter'
+  profileId: typeof OPENROUTER_PROFILE_ID
+  displayName: string
+  source: 'legacy_store'
+  baseUrlConfigured: boolean
+  baseUrlInvalid?: boolean
+  displayBaseUrl?: string
+  defaultBaseUrl: string
+  credentialRef: typeof OPENROUTER_CHAT_LEGACY_CREDENTIAL_REF
+  catalogCredentialRef: typeof OPENROUTER_CATALOG_LEGACY_CREDENTIAL_REF
+  rendererVisible: true
+}>
 
 type SafeDisplayBaseUrl = Readonly<{
   displayBaseUrl?: string
@@ -58,19 +82,45 @@ function sanitizeDisplayBaseUrl(raw: unknown): SafeDisplayBaseUrl {
   }
 }
 
+function buildOpenRouterEndpointMetadata(input: Readonly<{
+  baseUrlConfigured: boolean
+  safeBaseUrl: SafeDisplayBaseUrl
+}>): OpenRouterEndpointMetadata {
+  const customEndpoint = input.baseUrlConfigured
+  const displayBaseUrl = input.safeBaseUrl.displayBaseUrl ?? (customEndpoint ? undefined : DEFAULT_OPENROUTER_BASE_URL)
+
+  return {
+    kind: 'openrouter_endpoint',
+    endpointId: customEndpoint ? OPENROUTER_CUSTOM_LEGACY_ENDPOINT_ID : OPENROUTER_OFFICIAL_ENDPOINT_ID,
+    providerId: 'openrouter',
+    profileId: OPENROUTER_PROFILE_ID,
+    displayName: customEndpoint ? 'OpenRouter custom endpoint' : 'OpenRouter official endpoint',
+    source: 'legacy_store',
+    baseUrlConfigured: customEndpoint,
+    ...(input.safeBaseUrl.invalid ? { baseUrlInvalid: true } : {}),
+    ...(displayBaseUrl ? { displayBaseUrl } : {}),
+    defaultBaseUrl: DEFAULT_OPENROUTER_BASE_URL,
+    credentialRef: OPENROUTER_CHAT_LEGACY_CREDENTIAL_REF,
+    catalogCredentialRef: OPENROUTER_CATALOG_LEGACY_CREDENTIAL_REF,
+    rendererVisible: true,
+  }
+}
+
 function readStatus(store: Store): OpenRouterCredentialSettingsStatus {
   const apiKey = String(store.get(OPENROUTER_CHAT_LEGACY_API_KEY_STORE_KEY) ?? '').trim()
   const baseUrl = String(store.get(OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY) ?? '').trim()
   const safeBaseUrl = sanitizeDisplayBaseUrl(baseUrl)
+  const baseUrlConfigured = baseUrl.length > 0
 
   return {
     source: 'legacy_store',
     apiKeyConfigured: apiKey.length > 0,
     ...(apiKey.length > 0 ? { maskedApiKey: '***' as const } : {}),
-    baseUrlConfigured: baseUrl.length > 0,
+    baseUrlConfigured,
     ...(safeBaseUrl.invalid ? { baseUrlInvalid: true } : {}),
     ...(safeBaseUrl.displayBaseUrl ? { displayBaseUrl: safeBaseUrl.displayBaseUrl } : {}),
     defaultBaseUrl: DEFAULT_OPENROUTER_BASE_URL,
+    endpoint: buildOpenRouterEndpointMetadata({ baseUrlConfigured, safeBaseUrl }),
   }
 }
 

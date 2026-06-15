@@ -112,7 +112,7 @@ describe('C5 endpoint registry baseline characterization', () => {
     }
   })
 
-  it('keeps SettingsPanel on OpenRouter credential metadata bridge with no endpoint record UI', () => {
+  it('allows only behavior-backed OpenRouter endpoint metadata, not a generic registry UI', () => {
     const settings = readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue')
     const credentialIpc = readRepoFile('electron', 'ipc', 'openRouterCredentialSettingsIpc.ts')
 
@@ -122,9 +122,18 @@ describe('C5 endpoint registry baseline characterization', () => {
     expect(settings).toContain('clear')
     expect(settings).not.toContain("electronStore.get('openRouterApiKey')")
     expect(settings).not.toContain("electronStore.get('openRouterBaseUrl')")
-    expect(settings).not.toContain('endpointId')
-    expect(settings).not.toContain('profileId')
+    expect(settings).not.toMatch(/endpointId\s*=/)
+    expect(settings).not.toMatch(/profileId\s*=/)
+    expect(settings).not.toContain('EndpointRegistry')
+    expect(settings).not.toContain('ProviderRegistry')
+    expect(settings).toContain('settings-openrouter-endpoint-metadata')
     expect(credentialIpc).toContain("source: 'legacy_store'")
+    expect(credentialIpc).toContain("kind: 'openrouter_endpoint'")
+    expect(credentialIpc).toContain("'openrouter-official'")
+    expect(credentialIpc).toContain("'openrouter-custom-legacy-store'")
+    expect(credentialIpc).toContain("'openrouter_v1_chat'")
+    expect(credentialIpc).toContain('OPENROUTER_CHAT_LEGACY_CREDENTIAL_REF')
+    expect(credentialIpc).toContain('OPENROUTER_CATALOG_LEGACY_CREDENTIAL_REF')
     expect(credentialIpc).toContain('OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY')
 
     for (const source of [settings, credentialIpc]) {

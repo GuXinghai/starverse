@@ -23,6 +23,22 @@ declare namespace NodeJS {
 
 type OpenRouterCredentialSource = 'legacy_store'
 
+interface OpenRouterEndpointMetadata {
+  kind: 'openrouter_endpoint'
+  endpointId: 'openrouter-official' | 'openrouter-custom-legacy-store'
+  providerId: 'openrouter'
+  profileId: 'openrouter_v1_chat'
+  displayName: string
+  source: OpenRouterCredentialSource
+  baseUrlConfigured: boolean
+  baseUrlInvalid?: boolean
+  displayBaseUrl?: string
+  defaultBaseUrl: string
+  credentialRef: { kind: 'credential_ref'; id: 'openrouter-chat-legacy-store' }
+  catalogCredentialRef: { kind: 'credential_ref'; id: 'openrouter-catalog-legacy-store' }
+  rendererVisible: true
+}
+
 interface OpenRouterCredentialStatus {
   source: OpenRouterCredentialSource
   apiKeyConfigured: boolean
@@ -31,6 +47,7 @@ interface OpenRouterCredentialStatus {
   baseUrlInvalid?: boolean
   displayBaseUrl?: string
   defaultBaseUrl: string
+  endpoint: OpenRouterEndpointMetadata
 }
 
 interface OpenRouterCredentialUpdatePayload {

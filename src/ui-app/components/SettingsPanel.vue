@@ -58,6 +58,22 @@ type ElectronStoreLike = Readonly<{
   delete: (key: string) => Promise<any>
 }>
 
+type OpenRouterEndpointMetadata = Readonly<{
+  kind: 'openrouter_endpoint'
+  endpointId: 'openrouter-official' | 'openrouter-custom-legacy-store'
+  providerId: 'openrouter'
+  profileId: 'openrouter_v1_chat'
+  displayName: string
+  source: 'legacy_store'
+  baseUrlConfigured: boolean
+  baseUrlInvalid?: boolean
+  displayBaseUrl?: string
+  defaultBaseUrl: string
+  credentialRef: Readonly<{ kind: 'credential_ref'; id: 'openrouter-chat-legacy-store' }>
+  catalogCredentialRef: Readonly<{ kind: 'credential_ref'; id: 'openrouter-catalog-legacy-store' }>
+  rendererVisible: true
+}>
+
 type OpenRouterCredentialStatus = Readonly<{
   source: 'legacy_store'
   apiKeyConfigured: boolean
@@ -66,6 +82,7 @@ type OpenRouterCredentialStatus = Readonly<{
   baseUrlInvalid?: boolean
   displayBaseUrl?: string
   defaultBaseUrl?: string
+  endpoint?: OpenRouterEndpointMetadata
 }>
 
 type OpenRouterCredentialResult = Readonly<{
@@ -106,6 +123,9 @@ const baseUrl = ref('')
 const loadedBaseUrl = ref('')
 const apiKeyConfigured = ref(false)
 const maskedApiKey = ref('')
+const endpointDisplayName = ref('OpenRouter official endpoint')
+const endpointDisplayBaseUrl = ref('')
+const endpointBaseUrlInvalid = ref(false)
 const catalogStartupSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
 const catalogPickerOpenSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
 const catalogListUpdateMode = ref<CatalogListUpdateMode>(DEFAULT_CATALOG_LIST_UPDATE_MODE)
@@ -253,10 +273,19 @@ function parsePositiveIntegerText(value: string): number | null {
 }
 
 function applyOpenRouterCredentialStatus(status: OpenRouterCredentialStatus) {
+  const endpoint = status.endpoint
+  const safeDisplayBaseUrl = String(status.displayBaseUrl ?? '').trim()
+  const endpointSafeDisplayBaseUrl = endpoint?.displayBaseUrl ?? (
+    endpoint?.baseUrlConfigured === false ? status.defaultBaseUrl : undefined
+  )
+
   apiKey.value = ''
   apiKeyConfigured.value = status.apiKeyConfigured === true
   maskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
-  baseUrl.value = String(status.displayBaseUrl ?? '').trim()
+  endpointDisplayName.value = endpoint?.displayName || 'OpenRouter official endpoint'
+  endpointDisplayBaseUrl.value = String(endpointSafeDisplayBaseUrl ?? '').trim()
+  endpointBaseUrlInvalid.value = endpoint?.baseUrlInvalid === true || status.baseUrlInvalid === true
+  baseUrl.value = safeDisplayBaseUrl
   loadedBaseUrl.value = baseUrl.value
 }
 
@@ -814,6 +843,14 @@ onMounted(() => {
           </button>
         </div>
         <div v-if="!baseUrlValid" class="mt-1 text-[11px] text-red-700">{{ t('settings.openrouter.baseUrlInvalid') }}</div>
+        <div
+          class="mt-1 text-[11px] text-gray-500"
+          data-testid="settings-openrouter-endpoint-metadata"
+        >
+          {{ endpointDisplayName }}
+          <span v-if="endpointDisplayBaseUrl"> · {{ endpointDisplayBaseUrl }}</span>
+          <span v-if="endpointBaseUrlInvalid"> · URL invalid</span>
+        </div>
 
         <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
           <label class="block">
