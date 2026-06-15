@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   resolveGenericEndpointDescriptor,
+  toGenericEndpointFixtureMetadata,
   toSafeGenericEndpointMetadata,
   type GenericEndpointConfig,
   type GenericCredentialRef,
@@ -65,8 +66,8 @@ function isDescriptor(result: GenericEndpointDescriptor | ConfigValidationError)
   return 'profileId' in result && 'credential' in result
 }
 
-function isError(result: GenericEndpointDescriptor | ConfigValidationError): result is ConfigValidationError {
-  return 'code' in result && 'message' in result && !('profileId' in result)
+function isError(result: unknown): result is ConfigValidationError {
+  return !!result && typeof result === 'object' && 'code' in result && 'message' in result && !('profileId' in result)
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +112,145 @@ describe('GenericEndpointConfig', () => {
 
     expect(result.ok).toBe(true)
     expect(ref).toEqual(validConfig().credentialRef)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fixture-only endpoint shape pressure for future C5 work
+// ---------------------------------------------------------------------------
+
+describe('Generic endpoint fixture metadata boundary', () => {
+  it('projects config into a non-secret fixture-only endpoint metadata shape', () => {
+    const meta = toGenericEndpointFixtureMetadata(validConfig())
+
+    expect(meta).toEqual({
+      kind: 'generic_endpoint_fixture',
+      fixtureOnly: true,
+      rendererSafe: true,
+      rendererVisible: false,
+      providerId: 'generic',
+      endpointKind: 'remote_openai_compatible',
+      locality: 'remote',
+      endpointId: 'ep-1',
+      displayName: 'My Endpoint',
+      profileId: GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID,
+      baseUrl: 'https://api.example.com/v1',
+      model: 'gpt-4o-mini',
+      credentialRef: { kind: 'credential_ref', id: 'default' },
+      capability: expect.objectContaining({
+        textChat: true,
+        streamingText: true,
+        samplingParams: true,
+        tools: false,
+        reasoning: false,
+        webSearch: false,
+        imageGeneration: false,
+      }),
+    })
+    const serialized = JSON.stringify(meta)
+    expect(serialized).not.toContain('sk-')
+    expect(serialized).not.toContain('Bearer')
+    expect(serialized).not.toContain('Authorization')
+  })
+
+  it('trims endpoint id, model, and credential ref without adding secret material', () => {
+    const meta = toGenericEndpointFixtureMetadata(validConfig({
+      endpointId: '  custom-ep  ',
+      model: '  custom-model  ',
+      credentialRef: { kind: 'credential_ref', id: '  generic-ref  ' },
+    }))
+
+    expect(isError(meta)).toBe(false)
+    if (!isError(meta)) {
+      expect(meta.endpointId).toBe('custom-ep')
+      expect(meta.model).toBe('custom-model')
+      expect(meta.credentialRef).toEqual({ kind: 'credential_ref', id: 'generic-ref' })
+    }
+  })
+
+  it('preserves conservative capability shape pressure and only allows disabling supported fields', () => {
+    const meta = toGenericEndpointFixtureMetadata(validConfig({
+      capabilityOverride: { samplingParams: false, tools: false },
+    }))
+
+    expect(isError(meta)).toBe(false)
+    if (!isError(meta)) {
+      expect(meta.capability.samplingParams).toBe(false)
+      expect(meta.capability.tools).toBe(false)
+      expect(meta.capability.reasoning).toBe(false)
+      expect(meta.capability.webSearch).toBe(false)
+      expect(meta.capability.imageGeneration).toBe(false)
+    }
+  })
+
+  it('rejects raw secret-like endpoint fields including bearer and secret headers', () => {
+    const secretFields = [
+      'apiKey',
+      'token',
+      'bearer',
+      'Authorization',
+      'authorization',
+      'headers',
+      'customHeaders',
+      'authHeaders',
+      'password',
+      'secret',
+    ] as const
+
+    for (const fieldName of secretFields) {
+      const result = toGenericEndpointFixtureMetadata({
+        ...validConfig(),
+        [fieldName]: 'Bearer sk-generic-fixture-secret',
+      } as any)
+
+      expect(isError(result)).toBe(true)
+      if (isError(result)) {
+        expect(result.code).toBe('secret_like_field_rejected')
+        expect(result.message).not.toContain('sk-generic-fixture-secret')
+        expect(result.message).not.toContain('Bearer')
+      }
+    }
+  })
+
+  it('rejects URL userinfo and query secrets before producing metadata', () => {
+    const userinfo = toGenericEndpointFixtureMetadata(
+      validConfig({ baseUrl: 'https://user:pass@api.example.com/v1' }),
+    )
+    const query = toGenericEndpointFixtureMetadata(
+      validConfig({ baseUrl: 'https://api.example.com/v1?token=sk-query-secret' }),
+    )
+
+    expect(isError(userinfo)).toBe(true)
+    expect(isError(query)).toBe(true)
+    if (isError(userinfo)) {
+      expect(userinfo.code).toBe('url_has_userinfo')
+      expect(userinfo.message).not.toContain('user:pass')
+      expect(userinfo.message).not.toContain('api.example.com')
+    }
+    if (isError(query)) {
+      expect(query.code).toBe('url_has_query')
+      expect(JSON.stringify(query)).not.toContain('sk-query-secret')
+    }
+  })
+
+  it('rejects secret-like credentialRef fields and high-risk capability enablement', () => {
+    const credentialRef = toGenericEndpointFixtureMetadata(validConfig({
+      credentialRef: { kind: 'credential_ref', id: 'generic-ref', token: 'sk-ref-secret' } as any,
+    }))
+    const capabilities = toGenericEndpointFixtureMetadata(validConfig({
+      capabilityOverride: { tools: true, reasoning: true },
+    }))
+
+    expect(isError(credentialRef)).toBe(true)
+    if (isError(credentialRef)) {
+      expect(credentialRef.code).toBe('invalid_credential_ref')
+      expect(JSON.stringify(credentialRef)).not.toContain('sk-ref-secret')
+      expect(JSON.stringify(credentialRef)).not.toContain('token')
+    }
+    expect(isError(capabilities)).toBe(true)
+    if (isError(capabilities)) {
+      expect(capabilities.code).toBe('blocked_capability_override')
+    }
   })
 })
 

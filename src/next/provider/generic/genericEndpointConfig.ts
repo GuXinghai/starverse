@@ -12,6 +12,7 @@ import {
 } from '@/next/provider/credentials/providerCredential'
 import {
   resolveProviderCredential,
+  validateProviderCredentialRef,
   type ProviderCredentialRef,
   type ProviderCredentialResolver,
 } from '@/next/provider/credentials/providerCredentialResolver'
@@ -21,6 +22,7 @@ import {
 } from '@/next/provider/credentials/providerCredentialMetadata'
 import {
   GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID,
+  buildChatCompletionsUrl,
   validateGenericEndpointDescriptor,
   validateCapabilityOverride,
   type GenericEndpointDescriptor,
@@ -58,6 +60,23 @@ export type GenericEndpointConfig = Readonly<{
   model: string
   credentialRef: GenericCredentialRef
   capabilityOverride?: GenericCapabilityOverride
+}>
+
+export type GenericEndpointFixtureMetadata = Readonly<{
+  kind: 'generic_endpoint_fixture'
+  fixtureOnly: true
+  rendererSafe: true
+  rendererVisible: false
+  providerId: 'generic'
+  endpointKind: 'remote_openai_compatible'
+  locality: 'remote'
+  endpointId: string
+  displayName: string | undefined
+  profileId: typeof GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID
+  baseUrl: string
+  model: string
+  credentialRef: GenericCredentialRef
+  capability: GenericRuntimeCapability
 }>
 
 // ---------------------------------------------------------------------------
@@ -118,6 +137,111 @@ function rejectSecretLikeFields(
     }
   }
   return null
+}
+
+function genericConservativeCapability(): GenericRuntimeCapability {
+  return {
+    textChat: true,
+    basicMessages: true,
+    streamingText: true,
+    basicHttpError: true,
+    samplingParams: true,
+    tools: false,
+    functionCalling: false,
+    files: false,
+    pdf: false,
+    vision: false,
+    multimodal: false,
+    reasoning: false,
+    webSearch: false,
+    structuredOutput: false,
+    imageGeneration: false,
+    audio: false,
+    video: false,
+    parallelToolCalls: false,
+    providerHostedTools: false,
+    usageFinalGuaranteed: false,
+  }
+}
+
+function applyValidatedCapabilityOverride(
+  capability: GenericRuntimeCapability,
+  override: GenericCapabilityOverride | undefined,
+): GenericRuntimeCapability {
+  if (!override) return capability
+
+  const merged = { ...capability } as Record<string, boolean>
+  for (const [key, value] of Object.entries(override)) {
+    if (typeof value === 'boolean' && key in merged) {
+      merged[key] = value
+    }
+  }
+  return merged as GenericRuntimeCapability
+}
+
+/**
+ * Fixture-only endpoint metadata shape pressure for future C5 work.
+ *
+ * This is not a production endpoint registry record and is not exposed to UI.
+ * It validates the same non-secret config boundary Generic fixtures already
+ * consume: endpoint id, profile id, non-secret base URL, model, credentialRef,
+ * and conservative capabilities.
+ */
+export function toGenericEndpointFixtureMetadata(
+  config: GenericEndpointConfig,
+): GenericEndpointFixtureMetadata | ConfigValidationError {
+  if (!config || typeof config !== 'object') {
+    return { code: 'invalid_endpoint_id', message: 'Endpoint ID must be a non-empty string.' }
+  }
+
+  const secretError = rejectSecretLikeFields(config as Record<string, unknown>)
+  if (secretError) return secretError
+
+  if (typeof config.endpointId !== 'string' || config.endpointId.trim().length === 0) {
+    return { code: 'invalid_endpoint_id', message: 'Endpoint ID must be a non-empty string.' }
+  }
+
+  if (config.profileId !== GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID) {
+    return { code: 'invalid_profile', message: 'Unsupported Generic endpoint profile id.' }
+  }
+
+  const urlOrError = buildChatCompletionsUrl(config.baseUrl)
+  if (typeof urlOrError !== 'string') {
+    return mapDescriptorError(urlOrError)
+  }
+
+  if (typeof config.model !== 'string' || config.model.trim().length === 0) {
+    return { code: 'invalid_model', message: 'Model must be a non-empty string' }
+  }
+
+  const credentialRef = validateProviderCredentialRef(config.credentialRef)
+  if ('code' in credentialRef) {
+    return { code: 'invalid_credential_ref', message: credentialRef.message }
+  }
+
+  if (config.capabilityOverride) {
+    const capError = validateCapabilityOverride(config.capabilityOverride as Record<string, unknown>)
+    if (capError) {
+      return { code: 'blocked_capability_override', message: capError.message }
+    }
+  }
+
+  return {
+    kind: 'generic_endpoint_fixture',
+    fixtureOnly: true,
+    rendererSafe: true,
+    rendererVisible: false,
+    providerId: 'generic',
+    endpointKind: 'remote_openai_compatible',
+    locality: 'remote',
+    endpointId: config.endpointId.trim(),
+    displayName: config.displayName,
+    profileId: GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID,
+    baseUrl: config.baseUrl.trim(),
+    model: config.model.trim(),
+    credentialRef,
+    capability: applyValidatedCapabilityOverride(genericConservativeCapability(), config.capabilityOverride),
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -237,38 +361,13 @@ export function toSafeGenericEndpointMetadata(
   options?: SafeGenericEndpointMetadataOptions,
 ): SafeGenericEndpointMetadata {
   // Conservative default
-  const capability: GenericRuntimeCapability = {
-    textChat: true,
-    basicMessages: true,
-    streamingText: true,
-    basicHttpError: true,
-    samplingParams: true,
-    tools: false,
-    functionCalling: false,
-    files: false,
-    pdf: false,
-    vision: false,
-    multimodal: false,
-    reasoning: false,
-    webSearch: false,
-    structuredOutput: false,
-    imageGeneration: false,
-    audio: false,
-    video: false,
-    parallelToolCalls: false,
-    providerHostedTools: false,
-    usageFinalGuaranteed: false,
-  }
+  let capability = genericConservativeCapability()
 
   // Only apply override if it passes validation (fail-closed)
   if (config.capabilityOverride) {
     const capError = validateCapabilityOverride(config.capabilityOverride as Record<string, unknown>)
     if (!capError) {
-      for (const [key, value] of Object.entries(config.capabilityOverride)) {
-        if (typeof value === 'boolean' && key in capability) {
-          ;(capability as Record<string, boolean>)[key] = value
-        }
-      }
+      capability = applyValidatedCapabilityOverride(capability, config.capabilityOverride)
     }
     // Malformed overrides are silently ignored — conservative defaults remain
   }

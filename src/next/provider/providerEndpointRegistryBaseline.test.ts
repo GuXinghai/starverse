@@ -143,8 +143,8 @@ describe('C5 endpoint registry baseline characterization', () => {
     }
   })
 
-  it('keeps Generic endpoint config fixture-only and out of active production routing', () => {
-    const genericPattern = /\b(?:GenericEndpointConfig|streamViaGenericConfig|streamViaGeneric)\b/
+  it('keeps Generic endpoint config and fixture metadata out of active production routing', () => {
+    const genericPattern = /\b(?:GenericEndpointConfig|GenericEndpointFixtureMetadata|toGenericEndpointFixtureMetadata|streamViaGenericConfig|streamViaGeneric)\b/
     const occurrences = productionOccurrences(genericPattern)
 
     expect(occurrences).toEqual([
@@ -157,7 +157,25 @@ describe('C5 endpoint registry baseline characterization', () => {
     expect(genericAdapter).toContain('Config-based fixture entrypoint')
     expect(genericAdapter).toContain('Core streaming implementation')
     expect(genericConfig).toContain('GenericEndpointConfig')
+    expect(genericConfig).toContain('GenericEndpointFixtureMetadata')
+    expect(genericConfig).toContain('toGenericEndpointFixtureMetadata')
+    expect(genericConfig).toContain("kind: 'generic_endpoint_fixture'")
+    expect(genericConfig).toContain('fixtureOnly: true')
+    expect(genericConfig).toContain('rendererVisible: false')
     expect(genericConfig).toContain('credentialRef')
+
+    const appChat = readRepoFile('src', 'ui-app', 'app', 'appChatApp.logic.ts')
+    const settings = readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue')
+    const preload = readRepoFile('electron', 'preload.ts')
+    const liveStream = readRepoFile('src', 'next', 'live', 'openRouterLiveStream.ts')
+    const bridge = readRepoFile('electron', 'ipc', 'openRouterStreamBridge.ts')
+    const catalogStartup = readRepoFile('electron', 'jobs', 'catalogSyncStartup.ts')
+
+    for (const source of [appChat, settings, preload, liveStream, bridge, catalogStartup]) {
+      expect(source).not.toContain('GenericEndpointFixtureMetadata')
+      expect(source).not.toContain('toGenericEndpointFixtureMetadata')
+      expect(source).not.toContain('generic_endpoint_fixture')
+    }
   })
 
   it('keeps provider credential boundary as non-secret boundary pieces without secure-store production implementation', () => {

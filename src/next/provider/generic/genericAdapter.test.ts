@@ -1676,6 +1676,32 @@ describe('streamViaGenericConfig', () => {
     }
   })
 
+  it('fixture config path rejects high-risk runtime feature requests before fetch', async () => {
+    const cases = [
+      { tools: [{ type: 'function', function: { name: 'tool' } }] },
+      { webSearch: { enabled: true } },
+      { imageGeneration: { enabled: true } },
+      { additionalPlugins: ['plugin-a'] },
+      { requestedReasoningMode: 'effort' },
+    ]
+
+    for (const configOverride of cases) {
+      const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+      const events = await collectEvents(streamViaGenericConfig(
+        makeRequest(configOverride as any),
+        validEndpointConfig(),
+        VALID_RESOLVER,
+        fetch,
+      ))
+
+      expect(fetch).toHaveBeenCalledTimes(0)
+      expectTerminalErrorWithoutDone(events)
+      expect(JSON.stringify(events)).not.toContain('sk-')
+      expect(JSON.stringify(events)).not.toContain('Authorization')
+    }
+  })
+
   it('validation failure emits stream.error and no stream.done', async () => {
     const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
 
