@@ -58,21 +58,42 @@ type ElectronStoreLike = Readonly<{
   delete: (key: string) => Promise<any>
 }>
 
-type OpenRouterEndpointMetadata = Readonly<{
+type OpenRouterEndpointMetadataBase = Readonly<{
   kind: 'openrouter_endpoint'
-  endpointId: 'openrouter-official' | 'openrouter-custom-legacy-store'
   providerId: 'openrouter'
   profileId: 'openrouter_v1_chat'
-  displayName: string
   source: 'legacy_store'
-  baseUrlConfigured: boolean
-  baseUrlInvalid?: boolean
-  displayBaseUrl?: string
   defaultBaseUrl: string
   credentialRef: Readonly<{ kind: 'credential_ref'; id: 'openrouter-chat-legacy-store' }>
   catalogCredentialRef: Readonly<{ kind: 'credential_ref'; id: 'openrouter-catalog-legacy-store' }>
   rendererVisible: true
 }>
+
+type OpenRouterEndpointMetadata =
+  | Readonly<OpenRouterEndpointMetadataBase & {
+    endpointId: 'openrouter-official'
+    endpointStatus: 'official'
+    displayName: 'OpenRouter official endpoint'
+    baseUrlConfigured: false
+    baseUrlInvalid?: false
+    displayBaseUrl: 'https://openrouter.ai/api/v1'
+  }>
+  | Readonly<OpenRouterEndpointMetadataBase & {
+    endpointId: 'openrouter-custom-legacy-store'
+    endpointStatus: 'custom'
+    displayName: 'OpenRouter custom endpoint'
+    baseUrlConfigured: true
+    baseUrlInvalid?: false
+    displayBaseUrl: string
+  }>
+  | Readonly<OpenRouterEndpointMetadataBase & {
+    endpointId: 'openrouter-custom-legacy-store'
+    endpointStatus: 'invalid_custom'
+    displayName: 'OpenRouter custom endpoint'
+    baseUrlConfigured: true
+    baseUrlInvalid: true
+    displayBaseUrl?: never
+  }>
 
 type OpenRouterCredentialStatus = Readonly<{
   source: 'legacy_store'
@@ -124,6 +145,7 @@ const loadedBaseUrl = ref('')
 const apiKeyConfigured = ref(false)
 const maskedApiKey = ref('')
 const endpointDisplayName = ref('OpenRouter official endpoint')
+const endpointDisplayStatus = ref('Official endpoint')
 const endpointDisplayBaseUrl = ref('')
 const endpointBaseUrlInvalid = ref(false)
 const catalogStartupSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
@@ -275,14 +297,22 @@ function parsePositiveIntegerText(value: string): number | null {
 function applyOpenRouterCredentialStatus(status: OpenRouterCredentialStatus) {
   const endpoint = status.endpoint
   const safeDisplayBaseUrl = String(status.displayBaseUrl ?? '').trim()
-  const endpointSafeDisplayBaseUrl = endpoint?.displayBaseUrl ?? (
-    endpoint?.baseUrlConfigured === false ? status.defaultBaseUrl : undefined
-  )
+  let endpointSafeDisplayBaseUrl: string | undefined
+  if (endpoint?.endpointStatus === 'official' || endpoint?.endpointStatus === 'custom') {
+    endpointSafeDisplayBaseUrl = endpoint.displayBaseUrl
+  } else if (!endpoint && status.baseUrlConfigured === false) {
+    endpointSafeDisplayBaseUrl = status.defaultBaseUrl
+  }
 
   apiKey.value = ''
   apiKeyConfigured.value = status.apiKeyConfigured === true
   maskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
   endpointDisplayName.value = endpoint?.displayName || 'OpenRouter official endpoint'
+  endpointDisplayStatus.value = endpoint?.endpointStatus === 'invalid_custom'
+    ? 'Invalid custom endpoint'
+    : endpoint?.endpointStatus === 'custom'
+      ? 'Custom endpoint'
+      : 'Official endpoint'
   endpointDisplayBaseUrl.value = String(endpointSafeDisplayBaseUrl ?? '').trim()
   endpointBaseUrlInvalid.value = endpoint?.baseUrlInvalid === true || status.baseUrlInvalid === true
   baseUrl.value = safeDisplayBaseUrl
@@ -847,9 +877,10 @@ onMounted(() => {
           class="mt-1 text-[11px] text-gray-500"
           data-testid="settings-openrouter-endpoint-metadata"
         >
-          {{ endpointDisplayName }}
+          <span data-testid="settings-openrouter-endpoint-status">{{ endpointDisplayStatus }}</span>
+          <span> · {{ endpointDisplayName }}</span>
           <span v-if="endpointDisplayBaseUrl"> · {{ endpointDisplayBaseUrl }}</span>
-          <span v-if="endpointBaseUrlInvalid"> · URL invalid</span>
+          <span v-if="endpointBaseUrlInvalid" data-testid="settings-openrouter-endpoint-warning"> · Invalid custom base URL</span>
         </div>
 
         <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
