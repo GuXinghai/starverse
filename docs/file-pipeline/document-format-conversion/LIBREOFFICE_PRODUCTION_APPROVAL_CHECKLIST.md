@@ -201,6 +201,14 @@ Distribution options to decide:
 | Offline import by Owner/admin | Best for controlled environments; requires import UX and validation | Scaffold exists; production UX not approved |
 | User-installed system LibreOffice | Avoids package size; weak provenance and inconsistent behavior | Disallowed |
 
+Current policy:
+
+- No production distribution mode is approved.
+- Bundled LibreOffice runtime is not approved.
+- On-demand production download is not approved and remains blocked by `downloadEnabled=false`.
+- User/admin `.svpkg` import remains owner-gated and experimental.
+- User-installed system LibreOffice remains disallowed as a production acquisition source.
+
 Production packaging concerns:
 
 - App package size and installer performance.
@@ -210,11 +218,33 @@ Production packaging concerns:
 - User consent and owner gate wording.
 - Product gate diagnostics before enabling conversion.
 
+Approval gates by distribution option:
+
+- Bundled runtime:
+  - quantify app installer size impact and update cadence,
+  - define whether runtime updates require app updates or separable asset updates,
+  - verify bundled package hash/signature/provenance during build and at runtime activation,
+  - define rollback/removal behavior for a bundled but revoked runtime,
+  - document user consent and Owner gate wording before enabling Office-to-PDF.
+- On-demand download:
+  - require explicit user or Owner install/repair action,
+  - keep conversion-time automatic download disabled,
+  - define offline behavior, network failure behavior, retry policy, cache policy, and telemetry/diagnostic wording,
+  - verify downloaded package hash/signature/provenance before extraction,
+  - keep `downloadEnabled=false` until production acquisition and trust policies are approved.
+- User/admin `.svpkg` import:
+  - require the same hash/signature/provenance/license/security checks as online acquisition,
+  - define import UX, replacement/update behavior, and rollback/removal behavior,
+  - reject packages with unsupported platform, architecture, layout, executable path, or policy metadata,
+  - keep the path owner-gated until Owner approves production import UX.
+
 ## 7. Multi-Platform Plan
 
 Current verified asset:
 
 - Windows x64 only: `win32` / `x64`.
+- Current production package coverage is Windows x64 only; macOS and Linux production assets do not exist yet.
+- Current asset naming pattern: `starverse-runtime-libreoffice-<packageVersion>-<runtimeVersion>-<platform>-<arch>.svpkg`.
 
 Future platform requirements:
 
@@ -223,13 +253,16 @@ Future platform requirements:
   - define extracted package layout,
   - verify executable relative path,
   - validate codesigning/notarization implications,
+  - define package naming for `darwin` and each supported architecture,
   - run archive/import/runtime/smoke validation.
 - Linux:
   - decide package source format and distro assumptions,
   - avoid system package manager dependence as production authority unless Owner approves,
   - validate package layout and executable path,
+  - define package naming for `linux` and each supported architecture,
   - run archive/import/runtime/smoke validation.
 - Architecture naming must stay consistent across package metadata, catalog entries, release asset names, and runtime manifests.
+- Package layout must keep a stable executable relative path, manifest schema, inventory format, security policy, license inputs, and provenance JSON across platforms.
 
 Per-platform production approval requires:
 
@@ -239,6 +272,9 @@ Per-platform production approval requires:
 - Runtime gate verification.
 - Real DOCX-to-PDF managed worker smoke.
 - Path-depth / sandbox / cleanup confidence.
+- Package import verification from the exact platform `.svpkg`.
+- Redownload or offline-import verification, depending on the approved distribution mode.
+- Explicit Owner approval that the platform asset is production-supported.
 
 ## 8. Path-Depth / Sandbox / Output Risk
 
