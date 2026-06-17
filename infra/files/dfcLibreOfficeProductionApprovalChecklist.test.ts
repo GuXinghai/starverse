@@ -164,6 +164,38 @@ describe('LibreOffice production approval checklist audit', () => {
     expect(accidentalEnabledDownloads).toEqual([])
   })
 
+  it('keeps the production readiness closeout index explicit and non-approving', () => {
+    const checklist = readChecklist()
+
+    expect(checklist).toContain('## 12. Production Readiness Closeout And Owner Decision Index')
+    expect(checklist).toContain('- Current verified asset remains the Windows x64 prerelease `.svpkg`: `starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg`.')
+    expect(checklist).toContain('- Current package sha256 remains `ce012cf1215f958286be29462d1ae8c122bdc6a779ac84076388de9875487f6e`.')
+    expect(checklist).toContain('- Current package sizeBytes remains `518907010`.')
+    expect(checklist).toContain('- Current product scope remains DOCX-to-PDF only, owner-gated, and experimental.')
+    expect(checklist).toContain('- Blocker gates are now documented and test-locked for production approval state, DOCX-only scope, release trust/acquisition, packaged distribution, multi-platform requirements, runtime security, and path-depth risk.')
+    expect(checklist).toContain('- The path-depth smoke matrix harness exists and is default-off, but real path-depth evidence is still pending.')
+    expect(checklist).toContain('- Release trust, acquisition, distribution, and multi-platform gates are defined, but none are Owner-approved for production.')
+    expect(checklist).toContain('- `productionApproved=false` remains the only allowed production state until every required gate below is complete.')
+
+    expect(checklist).toContain('| Gate | Current state | Evidence present | Evidence missing | Next executable task | Owner decision required |')
+    expect(checklist).toContain('| Verified Windows x64 asset | Draft/prerelease evidence present |')
+    expect(checklist).toContain('| Runtime security | Partial readiness |')
+    expect(checklist).toContain('| Path-depth / sandbox output | Blocked |')
+    expect(checklist).toContain('| Release trust / legal provenance | Blocked |')
+    expect(checklist).toContain('| Signing / trust policy | Blocked |')
+    expect(checklist).toContain('| Production acquisition | Blocked |')
+    expect(checklist).toContain('| Packaged distribution | Blocked |')
+    expect(checklist).toContain('| Multi-platform assets | Blocked |')
+    expect(checklist).toContain('| Typecheck/regression | Partial readiness |')
+
+    expect(checklist).toContain('`test(file-conversion): run LibreOffice path-depth smoke evidence matrix`')
+    expect(checklist).toContain('`docs(file-conversion): assemble LibreOffice legal provenance review package`')
+    expect(checklist).toContain('`docs(file-conversion): define LibreOffice signing trust and distribution approval policy`')
+    expect(checklist).toContain('Keep `downloadEnabled=false` until this policy is approved.')
+    expect(checklist).not.toContain('productionApproved=true remains allowed')
+    expect(checklist).not.toContain('production-ready LibreOffice')
+  })
+
   it('keeps DOCX-only scope explicit and records non-goal format expansion blockers', () => {
     const checklist = readChecklist()
 
