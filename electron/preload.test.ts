@@ -31,6 +31,7 @@ describe('preload scoped API exposure', () => {
       'electronStore',
       'openRouterCredential',
       'localEndpointDiagnostics',
+      'localEndpointChat',
       'electronAPI',
       'dbBridge',
     ]))
@@ -69,6 +70,7 @@ describe('preload scoped API exposure', () => {
     const electronStore = exposeInMainWorld.mock.calls.find(([name]) => name === 'electronStore')?.[1]
     const openRouterCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'openRouterCredential')?.[1]
     const localEndpointDiagnostics = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointDiagnostics')?.[1]
+    const localEndpointChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointChat')?.[1]
     expect(electronStore).toEqual(expect.objectContaining({
       get: expect.any(Function),
       set: expect.any(Function),
@@ -85,9 +87,18 @@ describe('preload scoped API exposure', () => {
       probe: expect.any(Function),
       streamProbe: expect.any(Function),
     })
+    expect(localEndpointChat).toEqual({
+      startTextChat: expect.any(Function),
+      abortTextChat: expect.any(Function),
+      onTextChatChunk: expect.any(Function),
+      onTextChatEnd: expect.any(Function),
+    })
     expect(localEndpointDiagnostics.getStatus).toBeUndefined()
     expect(localEndpointDiagnostics.update).toBeUndefined()
     expect(localEndpointDiagnostics.endpointRegistry).toBeUndefined()
+    expect(localEndpointChat.getStatus).toBeUndefined()
+    expect(localEndpointChat.update).toBeUndefined()
+    expect(localEndpointChat.endpointRegistry).toBeUndefined()
     expect(openRouterCredential.getEndpointMetadata).toBeUndefined()
     expect(openRouterCredential.endpointRegistry).toBeUndefined()
 
@@ -101,6 +112,15 @@ describe('preload scoped API exposure', () => {
     await openRouterCredential.clear()
     await localEndpointDiagnostics.probe({ url: 'http://localhost:1234', timeoutMs: 5000 })
     await localEndpointDiagnostics.streamProbe({ url: 'http://localhost:1234', timeoutMs: 5000 })
+    await localEndpointChat.startTextChat({
+      requestId: 'local_req_preload',
+      url: 'http://localhost:1234/v1',
+      model: 'local-model',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    await localEndpointChat.abortTextChat('local_req_preload')
+    localEndpointChat.onTextChatChunk('local_req_preload', () => {})
+    localEndpointChat.onTextChatEnd('local_req_preload', () => {})
 
     expect(invoke).toHaveBeenCalledWith('store-get', 'theme')
     expect(invoke).toHaveBeenCalledWith('store-set', 'theme', 'dark')
@@ -121,6 +141,13 @@ describe('preload scoped API exposure', () => {
       url: 'http://localhost:1234',
       timeoutMs: 5000,
     })
+    expect(invoke).toHaveBeenCalledWith('local-endpoint-chat:stream-text', {
+      requestId: 'local_req_preload',
+      url: 'http://localhost:1234/v1',
+      model: 'local-model',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(invoke).toHaveBeenCalledWith('local-endpoint-chat:abort', 'local_req_preload')
   })
 
   it('does not expose generic credential resolver or raw Authorization/Bearer helpers', () => {
@@ -128,6 +155,7 @@ describe('preload scoped API exposure', () => {
 
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openRouterCredential'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointDiagnostics'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointChat'")
     expect(preloadSource).not.toContain('credentialRef')
     expect(preloadSource).not.toContain('credentialResolver')
     expect(preloadSource).not.toContain('secretStore')

@@ -1186,7 +1186,7 @@ onMounted(() => {
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Local Endpoint Diagnostics</div>
-            <div class="mt-1 text-[11px] text-gray-500">Experimental diagnostics only. Local endpoints are unavailable for chat send.</div>
+            <div class="mt-1 text-[11px] text-gray-500">Experimental diagnostics only. Text chat requires the explicit LocalEndpoint console mode.</div>
           </div>
           <span class="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
             Diagnostics-only
@@ -1247,7 +1247,7 @@ onMounted(() => {
               </span>
             </div>
             <div class="mt-1" data-testid="settings-local-endpoint-probe-capabilities">
-              Capability summary: text diagnostics only; chat send unavailable; tools/files/reasoning/web disabled.
+              Capability summary: text diagnostics only; diagnostics do not activate chat send; tools/files/reasoning/web disabled.
             </div>
           </template>
           <template v-else>
@@ -1277,7 +1277,7 @@ onMounted(() => {
               </span>
             </div>
             <div class="mt-1" data-testid="settings-local-endpoint-stream-capabilities">
-              Capability summary: streaming diagnostics only; chat send unavailable; tools/files/reasoning/web disabled.
+              Capability summary: streaming diagnostics only; diagnostics do not activate chat send; tools/files/reasoning/web disabled.
             </div>
           </template>
           <template v-else>

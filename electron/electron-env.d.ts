@@ -150,6 +150,20 @@ type LocalEndpointStreamProbeResult =
     safeUrl?: string
   }
 
+type LocalEndpointTextChatMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+type LocalEndpointTextChatStartResult =
+  | { ok: true }
+  | {
+    ok: false
+    code: 'invalid_payload' | 'invalid_url' | 'remote_host_rejected' | 'embedded_credentials_rejected'
+    error: string
+    safeUrl?: string
+  }
+
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   openRouterCredential?: {
@@ -160,6 +174,18 @@ interface Window {
   localEndpointDiagnostics?: {
     probe?: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointProbeResult>
     streamProbe?: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointStreamProbeResult>
+  }
+  localEndpointChat?: {
+    startTextChat?: (payload: {
+      requestId: string
+      url: string
+      model: string
+      messages: LocalEndpointTextChatMessage[]
+      timeoutMs?: number
+    }) => Promise<LocalEndpointTextChatStartResult>
+    abortTextChat?: (requestId: string) => Promise<{ ok: true }>
+    onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
+    onTextChatEnd?: (requestId: string, callback: () => void) => () => void
   }
   electronAPI?: {
     getNetExpRuntimeInfo?: () => Promise<unknown>

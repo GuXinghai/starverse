@@ -13,6 +13,12 @@ const props = defineProps<{
   disabled: boolean
   isRunning: boolean
   sessionConfig: ChatSessionConfig
+  localEndpointChat?: Readonly<{
+    enabled: boolean
+    endpointUrl: string
+    model: string
+    experimentalLabel: string
+  }> | null
   reasoningDisplayMode: 'inline' | 'rail'
   modelCatalog: readonly ModelCatalogItem[]
   webSearchResolved: ResolvedSearchSettings | null
@@ -31,12 +37,21 @@ const emit = defineEmits<{
   (e: 'updateImageGenerationResolution', value: '1K' | '2K' | '4K'): void
   (e: 'updateImageGenerationAspectRatio', value: '16:9' | '3:4' | '1:1' | '4:3'): void
   (e: 'updateImageGeneration', value: ImageGenerationUserConfig): void
+  (e: 'updateLocalEndpointChatEnabled', enabled: boolean): void
+  (e: 'updateLocalEndpointChatUrl', value: string): void
+  (e: 'updateLocalEndpointChatModel', value: string): void
   (e: 'updateReasoningDisplayMode', mode: 'inline' | 'rail'): void
   (e: 'openSettings'): void
 }>()
 
 const disabled = computed(() => props.disabled || props.isRunning)
 const modelValue = computed(() => props.sessionConfig.model.selectedModelKey ?? 'openrouter/auto')
+const localEndpointChat = computed(() => props.localEndpointChat ?? {
+  enabled: false,
+  endpointUrl: 'http://localhost:1234/v1',
+  model: '',
+  experimentalLabel: 'Experimental · LocalEndpoint text-only',
+})
 const imageValue = computed<ImageGenerationUserConfig>(() => ({
   enabled: props.sessionConfig.imageGeneration.enabled,
   outputMode: props.sessionConfig.imageGeneration.detail?.outputMode ?? 'auto',
@@ -90,6 +105,50 @@ function chipClass(active: boolean): string {
             {{ item.name }}
           </option>
         </select>
+      </section>
+
+      <section class="space-y-3 rounded-lg border border-amber-200 bg-amber-50/70 p-3" data-testid="local-endpoint-chat-controls">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-amber-800">LocalEndpoint Chat</div>
+            <div class="mt-1 text-[11px] text-amber-700">{{ localEndpointChat.experimentalLabel }}</div>
+          </div>
+          <label class="flex items-center gap-2 text-sm text-amber-900">
+            <input
+              type="checkbox"
+              :checked="localEndpointChat.enabled"
+              :disabled="disabled"
+              data-testid="local-endpoint-chat-enabled"
+              @change="emit('updateLocalEndpointChatEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            enabled
+          </label>
+        </div>
+        <div class="space-y-2">
+          <label class="block text-[11px] font-semibold text-amber-900">Loopback endpoint URL</label>
+          <input
+            class="w-full rounded border border-amber-200 bg-white px-2 py-1.5 text-sm disabled:bg-amber-50"
+            :value="localEndpointChat.endpointUrl"
+            :disabled="disabled || !localEndpointChat.enabled"
+            placeholder="http://localhost:1234/v1"
+            data-testid="local-endpoint-chat-url"
+            @input="emit('updateLocalEndpointChatUrl', ($event.target as HTMLInputElement).value)"
+          />
+        </div>
+        <div class="space-y-2">
+          <label class="block text-[11px] font-semibold text-amber-900">Manual model id</label>
+          <input
+            class="w-full rounded border border-amber-200 bg-white px-2 py-1.5 text-sm disabled:bg-amber-50"
+            :value="localEndpointChat.model"
+            :disabled="disabled || !localEndpointChat.enabled"
+            placeholder="local-model"
+            data-testid="local-endpoint-chat-model"
+            @input="emit('updateLocalEndpointChatModel', ($event.target as HTMLInputElement).value)"
+          />
+        </div>
+        <div class="text-[11px] text-amber-800" data-testid="local-endpoint-chat-warning">
+          Text-only loopback OpenAI-compatible streaming. Attachments, web, tools, image generation, reasoning, secrets, and model-picker publication are disabled.
+        </div>
       </section>
 
       <section class="space-y-3 rounded-lg border border-gray-200 bg-gray-50/70 p-3">

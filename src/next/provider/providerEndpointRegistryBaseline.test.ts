@@ -31,8 +31,6 @@ const registryPlaceholderNames = [
 ] as const
 
 const localEndpointRuntimeNames = [
-  'LocalEndpoint',
-  'localEndpoint',
   'LocalEndpointRuntime',
   'LocalEndpointSettings',
   'LocalEndpointCredential',
@@ -44,10 +42,6 @@ const localEndpointRuntimeNames = [
   'customHeaders',
   'secretHeader',
   'secretHeaders',
-  'lmStudio',
-  'ollama',
-  'localAi',
-  'llamaCpp',
 ] as const
 
 function readRepoFile(...segments: string[]): string {
@@ -296,19 +290,21 @@ describe('C5 endpoint registry baseline characterization', () => {
 })
 
 describe('C6 local endpoint baseline characterization', () => {
-  it('keeps OpenRouter as the only active send runtime before LocalEndpoint implementation', () => {
+  it('keeps OpenRouter as the default active send runtime while LocalEndpoint text chat remains explicit experimental routing', () => {
     const appChat = readRepoFile('src', 'ui-app', 'app', 'appChatApp.logic.ts')
     const openRouterAdapter = readRepoFile('src', 'next', 'provider', 'openrouter', 'openRouterAdapter.ts')
     const liveStream = readRepoFile('src', 'next', 'live', 'openRouterLiveStream.ts')
     const bridge = readRepoFile('electron', 'ipc', 'openRouterStreamBridge.ts')
 
     expect(appChat).toContain('streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource')
+    expect(appChat).toContain('streamLocalEndpointTextChatAsDomainEvents')
+    expect(appChat).toContain('localEndpointChatEnabled')
     expect(openRouterAdapter).toContain("credentialSource: 'legacy_store' as const")
     expect(liveStream).toContain("credentialSource === 'legacy_store'")
     expect(bridge).toContain('resolveOpenRouterChatCredentialFromLegacyStore')
 
-    expect(appChat).not.toMatch(/\bstreamVia(?:Generic|DeepSeek|OpenAIResponses|Anthropic|Gemini|Local)\b/)
-    expect(appChat).not.toMatch(/\b(?:LocalEndpoint|localEndpoint|RuntimeProviderRegistry|ProviderRegistry|EndpointRegistry)\b/)
+    expect(appChat).not.toMatch(/\bstreamVia(?:Generic|DeepSeek|OpenAIResponses|Anthropic|Gemini)\b/)
+    expect(appChat).not.toMatch(/\b(?:RuntimeProviderRegistry|ProviderRegistry|EndpointRegistry)\b/)
   })
 
   it('keeps Generic OpenAI-compatible confined to fixture/provider tests and out of live surfaces', () => {
@@ -337,17 +333,12 @@ describe('C6 local endpoint baseline characterization', () => {
     }
   })
 
-  it('allows only diagnostics-only LocalEndpoint surfaces, not runtime routing or catalog source', () => {
+  it('allows only diagnostics and explicit experimental text chat LocalEndpoint surfaces, not registry, catalog, or Send Plan routing', () => {
     const localPattern = new RegExp(`\\b(?:${localEndpointRuntimeNames.join('|')})\\b`)
 
-    expect(productionOccurrences(localPattern)).toEqual([
-      'electron/electron-env.d.ts',
-      'electron/ipc/localEndpointDiagnosticsIpc.ts',
-      'src/ui-app/components/SettingsPanel.vue',
-    ])
+    expect(productionOccurrences(localPattern)).toEqual([])
 
     const activeSurfaces = [
-      readRepoFile('src', 'ui-app', 'app', 'appChatApp.logic.ts'),
       readRepoFile('src', 'ui-app', 'app', 'useChatSession.ts'),
       readRepoFile('electron', 'ipc', 'storeIpc.ts'),
       readRepoFile('src', 'shared', 'modelCatalog', 'internalSchema.ts'),
@@ -361,14 +352,25 @@ describe('C6 local endpoint baseline characterization', () => {
     }
 
     const diagnosticsIpc = readRepoFile('electron', 'ipc', 'localEndpointDiagnosticsIpc.ts')
+    const textChatIpc = readRepoFile('electron', 'ipc', 'localEndpointTextChatIpc.ts')
+    const textChatLive = readRepoFile('src', 'next', 'live', 'localEndpointTextChat.ts')
     const settings = readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue')
+    const console = readRepoFile('src', 'ui-app', 'components', 'ChatSessionConsole.vue')
     const preload = readRepoFile('electron', 'preload.ts')
 
     expect(diagnosticsIpc).toContain('local-endpoint-diagnostics:probe')
     expect(diagnosticsIpc).toContain("chatSendAvailable: false")
+    expect(textChatIpc).toContain('local-endpoint-chat:stream-text')
+    expect(textChatIpc).toContain('validateLocalEndpointProbeUrl')
+    expect(textChatIpc).not.toMatch(/\b(?:Authorization|Bearer|customHeader|localAdminToken)\b/)
+    expect(textChatLive).toContain('streamLocalEndpointTextChatAsDomainEvents')
+    expect(textChatLive).not.toContain('GenericEndpoint')
     expect(settings).toContain('settings-local-endpoint-diagnostics')
-    expect(settings).toContain('Local endpoints are unavailable for chat send')
+    expect(settings).toContain('Text chat requires the explicit LocalEndpoint console mode')
+    expect(console).toContain('local-endpoint-chat-controls')
+    expect(console).not.toContain('ModelPickerDialog')
     expect(preload).toContain("contextBridge.exposeInMainWorld('localEndpointDiagnostics'")
+    expect(preload).toContain("contextBridge.exposeInMainWorld('localEndpointChat'")
     expect(preload).not.toContain('localAdminToken')
     expect(preload).not.toContain('customHeader')
   })

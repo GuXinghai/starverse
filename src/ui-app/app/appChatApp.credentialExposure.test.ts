@@ -61,6 +61,21 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
     }
   })
 
+  it('keeps experimental LocalEndpoint chat text-only and blocks high-risk send options before streaming', () => {
+    const source = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
+
+    expect(source).toContain('getLocalEndpointTextChatBlockReason')
+    expect(source).toContain('LocalEndpoint text chat is text-only. Remove attachments before sending.')
+    expect(source).toContain('config.webSearch.enabled')
+    expect(source).toContain('config.reasoning.enabled')
+    expect(source).toContain('config.imageGeneration.enabled')
+    expect(source).toContain('sendLocalEndpointTextChat')
+    expect(source).toContain('streamLocalEndpointTextChatAsDomainEvents')
+    expect(source).not.toContain('localEndpointApiKey')
+    expect(source).not.toContain('localEndpointAuthorization')
+    expect(source).not.toContain('localEndpointCustomHeader')
+  })
+
   it('audits OpenRouter catalog as resolver-backed and separate from renderer credential exposure', () => {
     const catalogStartup = readRepoFile('electron', 'jobs', 'catalogSyncStartup.ts')
 

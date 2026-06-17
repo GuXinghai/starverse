@@ -507,6 +507,16 @@ C6b diagnostics MVP checkpoint:
 - renderer-visible diagnostics are redacted and include only reachability, inferred endpoint family, safe base URL, model-list summary, safe error text, and conservative capability summary;
 - LocalEndpoint remains unavailable for chat send, discovered models are not added to the main model picker, Generic live runtime remains disabled, and no provider/runtime registry source abstraction has been introduced.
 
+C6c experimental text chat checkpoint:
+
+- an explicit experimental LocalEndpoint text chat mode exists in the normal chat UI controls;
+- the mode is loopback-only and accepts localhost / 127.0.0.1 / ::1 / accepted loopback IPv6-mapped forms through the same local endpoint URL validation boundary used by diagnostics;
+- the first chat path supports only OpenAI-compatible `/v1/chat/completions` with manual endpoint URL, manual model id, text-only user/assistant messages, and basic streaming text deltas;
+- the main-process chat IPC sends no API key, Authorization header, custom header, enterprise token, or local admin token, and it rejects public remote hosts and embedded URL credentials before fetch;
+- renderer-visible errors and IPC diagnostics remain static/redacted and must not include raw secret material, Bearer values, Authorization values, URL userinfo, or query secrets;
+- attachments, web search, tools, image generation, reasoning controls, structured output, and Send Plan capability expansion remain unsupported for LocalEndpoint text chat and must be blocked or ignored conservatively;
+- LocalEndpoint models are not added to the main model picker, Generic live runtime remains disabled, OpenRouter remains the default unchanged runtime, and no ProviderRegistry / EndpointRegistry / RuntimeProviderRegistry source abstraction has been introduced.
+
 ### C6c: Main-Process Probe Harness, Default-Off
 
 Goal:

@@ -20,6 +20,25 @@ contextBridge.exposeInMainWorld('localEndpointDiagnostics', {
   streamProbe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:stream-probe', payload),
 })
 
+contextBridge.exposeInMainWorld('localEndpointChat', {
+  startTextChat: (payload: unknown) => ipcRenderer.invoke('local-endpoint-chat:stream-text', payload),
+  abortTextChat: (requestId: string) => ipcRenderer.invoke('local-endpoint-chat:abort', requestId),
+  onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
+    ipcRenderer.on(`local-endpoint-chat:chunk:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`local-endpoint-chat:chunk:${requestId}`, handler)
+    }
+  },
+  onTextChatEnd: (requestId: string, callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on(`local-endpoint-chat:end:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`local-endpoint-chat:end:${requestId}`, handler)
+    }
+  },
+})
+
 // Expose file dialog API for image selection
 contextBridge.exposeInMainWorld('electronAPI', {
   /**

@@ -222,7 +222,7 @@ function ollamaTagsUrl(base: URL): string {
   return url.toString()
 }
 
-function openAiChatCompletionsUrl(base: URL): string {
+export function openAiChatCompletionsUrl(base: URL): string {
   const url = new URL(base.toString())
   url.search = ''
   url.hash = ''
