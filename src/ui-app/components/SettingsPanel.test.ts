@@ -146,11 +146,42 @@ function createElectronAPIMock() {
   }
 }
 
+function createLocalEndpointDiagnosticsMock(result?: any) {
+  return {
+    probe: vi.fn(async () => result ?? ({
+      ok: true,
+      diagnostics: {
+        kind: 'local_endpoint_diagnostics',
+        status: 'reachable',
+        endpointFamily: 'openai_compatible',
+        safeBaseUrl: 'http://localhost:1234/v1',
+        modelList: {
+          ok: true,
+          source: 'openai_v1_models',
+          models: ['local-model-a', 'local-model-b'],
+          truncated: false,
+        },
+        capabilitySummary: {
+          chatSendAvailable: false,
+          textChat: 'diagnostics_only',
+          streaming: 'not_probed',
+          tools: false,
+          files: false,
+          reasoning: false,
+          webSearch: false,
+        },
+        message: 'Local endpoint is reachable through OpenAI-compatible model listing.',
+      },
+    })),
+  }
+}
+
 describe('ui-app SettingsPanel', () => {
   const originalElectronStore = (globalThis as any).electronStore
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronAPI = (globalThis as any).electronAPI
   const originalOpenRouterCredential = (globalThis as any).openRouterCredential
+  const originalLocalEndpointDiagnostics = (globalThis as any).localEndpointDiagnostics
 
   beforeEach(() => {
     resetI18nForTests()
@@ -159,6 +190,7 @@ describe('ui-app SettingsPanel', () => {
     ;(globalThis as any).dbBridge = createDbBridgeMock()
     ;(globalThis as any).electronAPI = createElectronAPIMock()
     ;(globalThis as any).openRouterCredential = createOpenRouterCredentialMock()
+    ;(globalThis as any).localEndpointDiagnostics = createLocalEndpointDiagnosticsMock()
   })
 
   afterEach(() => {
@@ -167,6 +199,7 @@ describe('ui-app SettingsPanel', () => {
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronAPI = originalElectronAPI
     ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
+    ;(globalThis as any).localEndpointDiagnostics = originalLocalEndpointDiagnostics
   })
 
   it('loads values and saves updates', async () => {
@@ -594,6 +627,41 @@ describe('ui-app SettingsPanel', () => {
 
     await screen.findByText(/清理失败：db_unavailable/)
     confirm.mockRestore()
+  })
+
+  it('runs LocalEndpoint diagnostics through the safe probe bridge without enabling chat send', async () => {
+    const user = userEvent.setup()
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('设置')
+
+    const urlInput = await screen.findByTestId('settings-local-endpoint-url') as HTMLInputElement
+    await waitFor(() => expect(urlInput).not.toBeDisabled())
+    await user.clear(urlInput)
+    await user.type(urlInput, 'http://localhost:1234/v1?token=sk-hidden')
+    await user.click(screen.getByTestId('settings-local-endpoint-probe'))
+
+    const probe = (globalThis as any).localEndpointDiagnostics.probe as ReturnType<typeof vi.fn>
+    await waitFor(() => expect(probe).toHaveBeenCalledWith({
+      url: 'http://localhost:1234/v1?token=sk-hidden',
+      timeoutMs: 5000,
+    }))
+
+    const result = await screen.findByTestId('settings-local-endpoint-probe-result')
+    expect(screen.getByTestId('settings-local-endpoint-probe-status').textContent).toContain('reachable')
+    expect(screen.getByTestId('settings-local-endpoint-probe-family').textContent).toContain('openai_compatible')
+    expect(screen.getByTestId('settings-local-endpoint-probe-models').textContent).toContain('local-model-a')
+    expect(screen.getByTestId('settings-local-endpoint-probe-capabilities').textContent).toContain('chat send unavailable')
+    expect(result.textContent).not.toContain('sk-hidden')
+    expect(result.textContent).not.toContain('Authorization')
+    expect(result.textContent).not.toContain('Bearer')
+    expect(document.body.textContent).toContain('Experimental diagnostics only')
+    expect(document.body.textContent).toContain('Local endpoints are unavailable for chat send')
+
+    expect((globalThis as any).electronAPI.startOpenRouterStream).toBeUndefined()
+    expect((globalThis as any).openRouterCredential.update).not.toHaveBeenCalledWith(expect.objectContaining({
+      baseUrl: expect.stringContaining('localhost'),
+    }))
   })
 
   it('clears OpenRouter API key through the credential bridge', async () => {
