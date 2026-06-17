@@ -173,6 +173,26 @@ function createLocalEndpointDiagnosticsMock(result?: any) {
         message: 'Local endpoint is reachable through OpenAI-compatible model listing.',
       },
     })),
+    streamProbe: vi.fn(async () => ({
+      ok: true,
+      diagnostics: {
+        kind: 'local_endpoint_stream_diagnostics',
+        status: 'supported',
+        endpointFamily: 'openai_compatible',
+        safeBaseUrl: 'http://localhost:1234/v1',
+        textDeltaPreview: 'pong',
+        evidence: 'text_delta_observed',
+        capabilitySummary: {
+          chatSendAvailable: false,
+          streaming: 'diagnostics_only_supported',
+          tools: false,
+          files: false,
+          reasoning: false,
+          webSearch: false,
+        },
+        message: 'Local endpoint produced text delta evidence in diagnostics-only stream probe.',
+      },
+    })),
   }
 }
 
@@ -657,6 +677,40 @@ describe('ui-app SettingsPanel', () => {
     expect(result.textContent).not.toContain('Bearer')
     expect(document.body.textContent).toContain('Experimental diagnostics only')
     expect(document.body.textContent).toContain('Local endpoints are unavailable for chat send')
+
+    expect((globalThis as any).electronAPI.startOpenRouterStream).toBeUndefined()
+    expect((globalThis as any).openRouterCredential.update).not.toHaveBeenCalledWith(expect.objectContaining({
+      baseUrl: expect.stringContaining('localhost'),
+    }))
+  })
+
+  it('runs LocalEndpoint stream diagnostics manually without enabling chat send', async () => {
+    const user = userEvent.setup()
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('设置')
+
+    const urlInput = await screen.findByTestId('settings-local-endpoint-url') as HTMLInputElement
+    await waitFor(() => expect(urlInput).not.toBeDisabled())
+    await user.clear(urlInput)
+    await user.type(urlInput, 'http://localhost:1234/v1?token=sk-hidden')
+    await user.click(screen.getByTestId('settings-local-endpoint-stream-probe'))
+
+    const streamProbe = (globalThis as any).localEndpointDiagnostics.streamProbe as ReturnType<typeof vi.fn>
+    await waitFor(() => expect(streamProbe).toHaveBeenCalledWith({
+      url: 'http://localhost:1234/v1?token=sk-hidden',
+      timeoutMs: 5000,
+    }))
+
+    const result = await screen.findByTestId('settings-local-endpoint-stream-probe-result')
+    expect(screen.getByTestId('settings-local-endpoint-stream-status').textContent).toContain('supported')
+    expect(screen.getByTestId('settings-local-endpoint-stream-family').textContent).toContain('openai_compatible')
+    expect(screen.getByTestId('settings-local-endpoint-stream-evidence').textContent).toContain('text_delta_observed')
+    expect(screen.getByTestId('settings-local-endpoint-stream-evidence').textContent).toContain('pong')
+    expect(screen.getByTestId('settings-local-endpoint-stream-capabilities').textContent).toContain('chat send unavailable')
+    expect(result.textContent).not.toContain('sk-hidden')
+    expect(result.textContent).not.toContain('Authorization')
+    expect(result.textContent).not.toContain('Bearer')
 
     expect((globalThis as any).electronAPI.startOpenRouterStream).toBeUndefined()
     expect((globalThis as any).openRouterCredential.update).not.toHaveBeenCalledWith(expect.objectContaining({

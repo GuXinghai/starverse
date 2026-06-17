@@ -123,6 +123,33 @@ type LocalEndpointProbeResult =
     safeUrl?: string
   }
 
+interface LocalEndpointStreamProbeDiagnostics {
+  kind: 'local_endpoint_stream_diagnostics'
+  status: 'supported' | 'failed'
+  endpointFamily: 'openai_compatible' | 'ollama' | 'unknown'
+  safeBaseUrl: string
+  textDeltaPreview?: string
+  evidence: 'text_delta_observed' | 'no_text_delta' | 'model_unavailable'
+  capabilitySummary: {
+    chatSendAvailable: false
+    streaming: 'diagnostics_only_supported' | 'diagnostics_only_failed'
+    tools: false
+    files: false
+    reasoning: false
+    webSearch: false
+  }
+  message: string
+}
+
+type LocalEndpointStreamProbeResult =
+  | { ok: true; diagnostics: LocalEndpointStreamProbeDiagnostics }
+  | {
+    ok: false
+    code: 'invalid_url' | 'remote_host_rejected' | 'embedded_credentials_rejected' | 'timeout' | 'network_error' | 'invalid_response'
+    message: string
+    safeUrl?: string
+  }
+
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   openRouterCredential?: {
@@ -132,6 +159,7 @@ interface Window {
   }
   localEndpointDiagnostics?: {
     probe?: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointProbeResult>
+    streamProbe?: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointStreamProbeResult>
   }
   electronAPI?: {
     getNetExpRuntimeInfo?: () => Promise<unknown>

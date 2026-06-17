@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('openRouterCredential', {
 
 contextBridge.exposeInMainWorld('localEndpointDiagnostics', {
   probe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:probe', payload),
+  streamProbe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:stream-probe', payload),
 })
 
 // Expose file dialog API for image selection

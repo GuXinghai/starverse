@@ -500,9 +500,10 @@ Acceptance pressure:
 C6b diagnostics MVP checkpoint:
 
 - a user-visible LocalEndpoint diagnostics-only surface exists in SettingsPanel;
-- users can enter a localhost URL and manually run a probe;
-- the main-process probe accepts only localhost / loopback URLs, rejects public remote hosts, rejects embedded URL credentials, and sends no API key, Authorization header, custom header, enterprise token, or local admin token;
+- users can enter a localhost URL and manually run model-list and basic stream diagnostics probes;
+- the main-process probes accept only localhost / loopback URLs, reject public remote hosts, reject embedded URL credentials, do not follow redirects to public remote targets, and send no API key, Authorization header, custom header, enterprise token, or local admin token;
 - probe diagnostics can classify OpenAI-compatible `/v1/models` and Ollama `/api/tags` model-list responses when available;
+- stream diagnostics can classify minimal OpenAI-compatible SSE text delta evidence and Ollama NDJSON text delta evidence when a model is available from model listing;
 - renderer-visible diagnostics are redacted and include only reachability, inferred endpoint family, safe base URL, model-list summary, safe error text, and conservative capability summary;
 - LocalEndpoint remains unavailable for chat send, discovered models are not added to the main model picker, Generic live runtime remains disabled, and no provider/runtime registry source abstraction has been introduced.
 
