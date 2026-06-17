@@ -118,11 +118,14 @@ Required evidence:
   - `CREDITS.fodt`
 - Legal review of LibreOffice license obligations, redistribution rights, attribution, NOTICE requirements, and bundled third-party materials.
 - Decision on whether GitHub-hosted prerelease distribution is acceptable for production or only for owner-gated testing.
+- Reviewer names or approval references for source provenance, license obligations, NOTICE/attribution handling, and redistribution terms.
+- A final approved production asset record that ties the TDF upstream artifact, MSI hash/size, Starverse `.svpkg` hash/size, package manifest, runtime manifest, inventory, license files, notices, attribution, and provenance JSON together.
 
 Approval gate:
 
 - Owner must have a signed-off legal/provenance checklist before the package can be marked production-approved.
 - Production documentation must include the approved source URL, package hash, package size, license references, notice references, attribution references, and review date.
+- Production approval must not proceed from the current GitHub prerelease asset alone; the approval record must explicitly state whether the current prerelease asset is promoted, replaced by a production release asset, mirrored, bundled, or rejected.
 
 ## 4. Package Signing And Trust Checklist
 
@@ -150,6 +153,11 @@ Minimum production trust gate:
 - Verify package size and sha256 before extraction.
 - Verify manifest identity, runtime identity, package version, runtime version, platform, arch, executable path, executable hash/size, provenance, license, and security policy before activation.
 - Reject absolute paths, traversal, UNC paths, drive escapes, NUL bytes, symlink/reparse-point escapes, missing executable, hash mismatch, unsupported platform, revoked package, expired package, and incomplete metadata.
+- Define the exact checksum/signature verification order for downloaded, offline-imported, bundled, and cached packages.
+- Define the package rollback policy, including which previous package can be a rollback target and when rollback is forbidden.
+- Define the revocation policy, including local cached package handling, catalog state handling, user diagnostics, and whether a revoked package must be deleted or quarantined.
+- Define how signature key rotation or trust-root replacement is handled.
+- Production approval must not proceed until unsigned package handling is explicit. If unsigned packages remain allowed, the Owner must explicitly accept the risk and the package must remain hash-pinned and owner-gated.
 
 ## 5. Production Acquisition Policy
 
@@ -158,6 +166,7 @@ Current acquisition state:
 - Catalog source points to a GitHub prerelease asset.
 - `downloadEnabled=false`.
 - The asset is owner-gated, experimental, and not production-approved.
+- `downloadEnabled=false` must remain the default until Owner approves production acquisition policy, release trust policy, and user-facing install/repair UX.
 
 Production questions:
 
@@ -175,6 +184,11 @@ Required production behavior:
 - No default postinstall download without Owner-approved UX and policy.
 - No system LibreOffice fallback if acquisition fails.
 - Failed/missing acquisition keeps DOCX `pdf_attachment` unavailable or blocked with safe diagnostics.
+- Production acquisition must use a version-pinned source URL, expected sha256, expected size, package version, runtime version, platform, arch, and trust policy reference.
+- GitHub prerelease assets are acceptable only for owner-gated testing unless the Owner explicitly approves prerelease-as-production policy.
+- A production asset must have a rollback/revocation plan before `downloadEnabled` can change.
+- Cache and retry behavior must not create silent background downloads during conversion.
+- Offline import must run the same hash/signature/provenance/license/security policy checks as online acquisition.
 
 ## 6. Packaged Distribution Policy
 

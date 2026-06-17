@@ -78,6 +78,48 @@ describe('LibreOffice production approval checklist audit', () => {
     expect(checklist).toContain('| Catalog download state | `downloadEnabled=false` |')
   })
 
+  it('keeps release trust, legal provenance, and production acquisition gates explicit', () => {
+    const checklist = readChecklist()
+
+    expect(checklist).toContain('Reviewer names or approval references for source provenance, license obligations, NOTICE/attribution handling, and redistribution terms.')
+    expect(checklist).toContain('A final approved production asset record that ties the TDF upstream artifact, MSI hash/size, Starverse `.svpkg` hash/size, package manifest, runtime manifest, inventory, license files, notices, attribution, and provenance JSON together.')
+    expect(checklist).toContain('Production approval must not proceed from the current GitHub prerelease asset alone')
+    expect(checklist).toContain('Define the exact checksum/signature verification order for downloaded, offline-imported, bundled, and cached packages.')
+    expect(checklist).toContain('Define the package rollback policy, including which previous package can be a rollback target and when rollback is forbidden.')
+    expect(checklist).toContain('Define the revocation policy, including local cached package handling, catalog state handling, user diagnostics, and whether a revoked package must be deleted or quarantined.')
+    expect(checklist).toContain('Define how signature key rotation or trust-root replacement is handled.')
+    expect(checklist).toContain('Production approval must not proceed until unsigned package handling is explicit.')
+    expect(checklist).toContain('`downloadEnabled=false` must remain the default until Owner approves production acquisition policy, release trust policy, and user-facing install/repair UX.')
+    expect(checklist).toContain('Production acquisition must use a version-pinned source URL, expected sha256, expected size, package version, runtime version, platform, arch, and trust policy reference.')
+    expect(checklist).toContain('GitHub prerelease assets are acceptable only for owner-gated testing unless the Owner explicitly approves prerelease-as-production policy.')
+    expect(checklist).toContain('A production asset must have a rollback/revocation plan before `downloadEnabled` can change.')
+    expect(checklist).toContain('Cache and retry behavior must not create silent background downloads during conversion.')
+    expect(checklist).toContain('Offline import must run the same hash/signature/provenance/license/security policy checks as online acquisition.')
+  })
+
+  it('keeps the current catalog acquisition source explicit, hash-pinned, and disabled by default', () => {
+    const runtimeGate = readRepoFile('infra', 'files', 'dfcManagedLibreOfficeRuntime.ts')
+    const acquisition = readRepoFile('infra', 'files', 'dfcLibreOfficeRuntimeAcquisition.ts')
+
+    expect(runtimeGate).toContain("sourceKind: 'github_release_asset'")
+    expect(runtimeGate).toContain('downloadEnabled: false')
+    expect(runtimeGate).toContain("sourceUrl: 'https://github.com/GuXinghai/starverse/releases/download/starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64/starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg'")
+    expect(runtimeGate).toContain("expectedSha256: 'ce012cf1215f958286be29462d1ae8c122bdc6a779ac84076388de9875487f6e'")
+    expect(runtimeGate).toContain('expectedSizeBytes: 518907010')
+    expect(runtimeGate).toContain('productionApproved: false')
+
+    expect(acquisition).toContain('if (!source.downloadEnabled || source.sourceKind === \'disabled\')')
+    expect(acquisition).toContain('source.expectedSha256')
+    expect(acquisition).toContain('source.expectedSizeBytes')
+    expect(acquisition).toContain('verifyWrittenPackage')
+
+    const accidentalEnabledDownloads = collectProductionFiles()
+      .filter((file) => /downloadEnabled\s*:\s*true/.test(readFileSync(file, 'utf8')))
+      .map(repoRelative)
+
+    expect(accidentalEnabledDownloads).toEqual([])
+  })
+
   it('keeps DOCX-only scope explicit and records non-goal format expansion blockers', () => {
     const checklist = readChecklist()
 
