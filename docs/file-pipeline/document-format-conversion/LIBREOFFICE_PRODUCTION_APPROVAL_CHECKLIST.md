@@ -261,6 +261,32 @@ Approval gate:
 - Record failure diagnostics and ensure they are symbolic/sanitized.
 - Production approval must not proceed until the chosen maximum path-length policy or controlled short-path policy is written down and verified against the reproduction matrix above.
 
+Default-off harness:
+
+```powershell
+npm run rebuild:node
+npx vitest --run infra/files/dfcLibreOfficePathDepthSmokeMatrix.test.ts --reporter=dot --silent
+```
+
+The default command validates the matrix definition and sanitized evidence shape only. It does not run real LibreOffice.
+
+Real path-depth smoke requires explicit Owner/engineer opt-in and two already prepared managed runtime roots:
+
+```powershell
+$env:STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_SMOKE = '1'
+$env:STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_SHORT_RUNTIME_ROOT = '<short-managed-runtime-root>'
+$env:STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_DEEP_RUNTIME_ROOT = '<deep-managed-runtime-root>'
+npx vitest --run infra/files/dfcLibreOfficePathDepthSmokeMatrix.test.ts --reporter=dot --silent
+```
+
+Required evidence from the real harness:
+
+- short runtime root with short sandbox/input/output/profile paths succeeds or fails with sanitized diagnostic codes only.
+- short runtime root with deep sandbox/input/output/profile paths succeeds or fails with sanitized diagnostic codes only.
+- deep runtime root with short sandbox/input/output/profile paths succeeds or fails with sanitized diagnostic codes only.
+- deep runtime root with deep sandbox/input/output/profile paths succeeds or fails with sanitized diagnostic codes only.
+- harness output records only case ids, path classes, path lengths, cleanup status, and diagnostic codes; it must not print raw runtime roots, sandbox roots, executable paths, input paths, output paths, user names, or package paths.
+
 ## 9. Runtime Security Checklist
 
 The current design requires:

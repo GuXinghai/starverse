@@ -103,6 +103,12 @@ describe('LibreOffice production approval checklist audit', () => {
     expect(checklist).toContain('| Runtime root depth | short, medium, deep |')
     expect(checklist).toContain('Define a maximum supported runtime root/output path length or harden the sandbox/runtime root selection to enforce short controlled paths.')
     expect(checklist).toContain('Production approval must not proceed until the chosen maximum path-length policy or controlled short-path policy is written down and verified against the reproduction matrix above.')
+    expect(checklist).toContain('npx vitest --run infra/files/dfcLibreOfficePathDepthSmokeMatrix.test.ts --reporter=dot --silent')
+    expect(checklist).toContain('The default command validates the matrix definition and sanitized evidence shape only. It does not run real LibreOffice.')
+    expect(checklist).toContain('STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_SMOKE')
+    expect(checklist).toContain('STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_SHORT_RUNTIME_ROOT')
+    expect(checklist).toContain('STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_DEEP_RUNTIME_ROOT')
+    expect(checklist).toContain('harness output records only case ids, path classes, path lengths, cleanup status, and diagnostic codes')
   })
 
   it('keeps runtime security approval gates present before production approval', () => {
