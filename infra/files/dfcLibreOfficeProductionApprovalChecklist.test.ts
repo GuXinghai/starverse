@@ -17,6 +17,10 @@ function readChecklist(): string {
   return readFileSync(checklistPath, 'utf8')
 }
 
+function readRepoFile(...segments: string[]): string {
+  return readFileSync(join(repoRoot, ...segments), 'utf8')
+}
+
 function collectProductionFiles(): string[] {
   const roots = ['infra', 'src', 'electron'].map((segment) => join(repoRoot, segment))
   const files: string[] = []
@@ -98,9 +102,10 @@ describe('LibreOffice production approval checklist audit', () => {
     expect(checklist).toContain('## 8. Path-Depth / Sandbox / Output Risk')
     expect(checklist).toContain('| Runtime root depth | short, medium, deep |')
     expect(checklist).toContain('Define a maximum supported runtime root/output path length or harden the sandbox/runtime root selection to enforce short controlled paths.')
+    expect(checklist).toContain('Production approval must not proceed until the chosen maximum path-length policy or controlled short-path policy is written down and verified against the reproduction matrix above.')
   })
 
-  it('keeps runtime security and approval gates present before production approval', () => {
+  it('keeps runtime security approval gates present before production approval', () => {
     const checklist = readChecklist()
 
     expect(checklist).toContain('## 9. Runtime Security Checklist')
@@ -115,10 +120,55 @@ describe('LibreOffice production approval checklist audit', () => {
     expect(checklist).toContain('- Macro execution disabled or not triggered.')
     expect(checklist).toContain('- External links are not refreshed.')
     expect(checklist).toContain('- Network is disabled or blocked according to policy.')
+    expect(checklist).toContain('- Embedded object execution is disabled.')
+    expect(checklist).toContain('- Temporary profile cleanup occurs on success and failure.')
+    expect(checklist).toContain('- Sandbox input/output/work dirs are cleaned up.')
+    expect(checklist).toContain('- Process timeout kills child process tree.')
+    expect(checklist).toContain('- Logs do not include sensitive absolute paths.')
+    expect(checklist).toContain('Production approval must not proceed until runtime security evidence proves the manifest policy and actual LibreOffice process invocation agree')
+    expect(checklist).toContain('If any of these controls are only declared in manifest metadata rather than enforced by invocation or sandbox policy')
     expect(checklist).toContain('| Legal/license/provenance | Owner/legal | Blocked |')
     expect(checklist).toContain('## 4. Package Signing And Trust Checklist')
     expect(checklist).toContain('| Signing/trust |')
     expect(checklist).toContain('| Production acquisition |')
     expect(checklist).toContain('| Windows path-depth |')
+  })
+
+  it('locks current runtime security seams to manifest policy, sandboxed invocation, redaction, timeout, and cleanup evidence', () => {
+    const runtimeGate = readRepoFile('infra', 'files', 'dfcManagedLibreOfficeRuntime.ts')
+    const adapter = readRepoFile('infra', 'files', 'dfcLibreOfficePdfAdapter.ts')
+    const adapterTest = readRepoFile('infra', 'files', 'dfcLibreOfficePdfAdapter.test.ts')
+
+    expect(runtimeGate).toContain('requiredSecurityPolicy')
+    expect(runtimeGate).toContain("'macrosDisabled'")
+    expect(runtimeGate).toContain("'networkDisabled'")
+    expect(runtimeGate).toContain("'externalLinksDisabled'")
+    expect(runtimeGate).toContain("'embeddedObjectExecutionDisabled'")
+    expect(runtimeGate).toContain("'isolatedProfileRequired'")
+    expect(runtimeGate).toContain('policy?.macrosDisabled === true')
+    expect(runtimeGate).toContain('policy.networkDisabled === true')
+    expect(runtimeGate).toContain('policy.externalLinksDisabled === true')
+    expect(runtimeGate).toContain('policy.embeddedObjectExecutionDisabled === true')
+    expect(runtimeGate).toContain('policy.isolatedProfileRequired === true')
+
+    expect(adapter).toContain("sourceExtension: 'docx'")
+    expect(adapter).toContain('const profileDir = path.join(plan.request.workingDir, \'libreoffice-profile\')')
+    expect(adapter).toContain('env: {} as NodeJS.ProcessEnv')
+    expect(adapter).toContain('maxStdoutBytes: processPolicy.policy.maxStdoutBytes')
+    expect(adapter).toContain('maxStderrBytes: processPolicy.policy.maxStderrBytes')
+    expect(adapter).toContain('terminationGraceMs: processPolicy.policy.terminationGraceMs')
+    expect(adapter).toContain('shell: false')
+    expect(adapter).toContain('allowBatchEntrypoint: false')
+    expect(adapter).toContain('`-env:UserInstallation=${pathToFileURL(input.profileDir).href}`')
+    expect(adapter).toContain('sanitizeDfcSandboxDiagnostic')
+    expect(adapter).toContain("buildDiagnostic('office_pdf_process_timeout'")
+    expect(adapter).toContain('rm(sandboxRootDir, { recursive: true, force: true })')
+
+    expect(adapterTest).toContain('fails closed for fake process failure and timeout with sanitized diagnostics')
+    expect(adapterTest).toContain('attempts sandbox cleanup after fake success and fake failure when requested')
+    expect(adapterTest).toContain('builds args without shell fragments and with an isolated profile descriptor')
+    expect(adapterTest).toContain('expect(serialized).not.toContain')
+    expect(adapterTest).toContain("expect(recordedProcessInput).toMatchObject")
+    expect(adapterTest).toContain('expect(args.some((arg) => arg.startsWith(\'-env:UserInstallation=file:\'))).toBe(true)')
   })
 })

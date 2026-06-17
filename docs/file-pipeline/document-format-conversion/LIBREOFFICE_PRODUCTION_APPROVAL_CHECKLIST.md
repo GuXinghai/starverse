@@ -259,6 +259,7 @@ Approval gate:
 - Define a maximum supported runtime root/output path length or harden the sandbox/runtime root selection to enforce short controlled paths.
 - Add targeted regression tests or documented smoke steps for the chosen policy.
 - Record failure diagnostics and ensure they are symbolic/sanitized.
+- Production approval must not proceed until the chosen maximum path-length policy or controlled short-path policy is written down and verified against the reproduction matrix above.
 
 ## 9. Runtime Security Checklist
 
@@ -289,6 +290,11 @@ Before production approval, verify or complete:
 - Process timeout kills child process tree.
 - Logs do not include sensitive absolute paths.
 - Conversion failure remains fail-closed with no ready DerivedAsset and no legacy fallback.
+
+Approval gate:
+
+- Production approval must not proceed until runtime security evidence proves the manifest policy and actual LibreOffice process invocation agree: macros are not executed, network and external refresh behavior are blocked, the profile is isolated, stdout/stderr are bounded and redacted, timeout cleanup reaches the process tree, and sandbox/profile/temp cleanup is verified for success and failure.
+- If any of these controls are only declared in manifest metadata rather than enforced by invocation or sandbox policy, the approval record must explicitly identify the gap and assign a follow-up task before `productionApproved` can change.
 
 ## 10. Product Gate / UX Checklist
 
