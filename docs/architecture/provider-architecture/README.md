@@ -18,6 +18,11 @@ Phase 0–9 fixture foundations complete. Six provider adapter paths exist (Open
 3. [STARVERSE_PROVIDER_EVOLUTION_PATH.md](STARVERSE_PROVIDER_EVOLUTION_PATH.md)
    Phase gates, legacy removal schedule, Agent working boundary, validation expectations.
 
+## Decision And Phase Packages
+
+- [PROVIDER_C6_LOCAL_ENDPOINT_INVESTIGATION.md](PROVIDER_C6_LOCAL_ENDPOINT_INVESTIGATION.md)
+  C6 investigation package for external LocalEndpoint support. Planning only; no LocalEndpoint live runtime, Generic live activation, managed local runtime, or production endpoint/provider registry implementation.
+
 ## Usage Rule For Future Agents
 
 - Read the contract first.
