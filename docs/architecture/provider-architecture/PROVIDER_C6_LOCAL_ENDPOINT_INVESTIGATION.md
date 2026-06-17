@@ -475,6 +475,14 @@ Expected changes:
 - tests/source guards and a docs checkpoint only;
 - no production behavior change.
 
+C6a checkpoint:
+
+- source guards lock the current baseline that OpenRouter is the only active runtime;
+- Generic OpenAI-compatible remains fixture-only and outside live/UI/preload/catalog startup surfaces;
+- no LocalEndpoint runtime, settings bridge, health probe, listModels probe, basic stream probe, or Send Plan integration exists yet;
+- renderer-visible surfaces do not expose local admin tokens, enterprise tokens, custom secret headers, generic credential resolver, or generic secret store;
+- no production endpoint/provider/runtime registry placeholder has been introduced.
+
 ### C6b: LocalEndpoint Non-Secret Metadata Shape
 
 Goal:

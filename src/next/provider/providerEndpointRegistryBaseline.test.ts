@@ -30,6 +30,26 @@ const registryPlaceholderNames = [
   'providerManager',
 ] as const
 
+const localEndpointRuntimeNames = [
+  'LocalEndpoint',
+  'localEndpoint',
+  'LocalEndpointRuntime',
+  'LocalEndpointSettings',
+  'LocalEndpointCredential',
+  'localEndpointCredential',
+  'localAdminToken',
+  'enterpriseToken',
+  'enterpriseGateway',
+  'customHeader',
+  'customHeaders',
+  'secretHeader',
+  'secretHeaders',
+  'lmStudio',
+  'ollama',
+  'localAi',
+  'llamaCpp',
+] as const
+
 function readRepoFile(...segments: string[]): string {
   return readFileSync(join(repoRoot, ...segments), 'utf8')
 }
@@ -79,6 +99,12 @@ function productionOccurrences(pattern: RegExp): string[] {
 
 function expectNoRegistryPlaceholder(source: string): void {
   for (const name of registryPlaceholderNames) {
+    expect(source).not.toContain(name)
+  }
+}
+
+function expectNoLocalEndpointRuntimeIdentifier(source: string): void {
+  for (const name of localEndpointRuntimeNames) {
     expect(source).not.toContain(name)
   }
 }
@@ -266,5 +292,106 @@ describe('C5 endpoint registry baseline characterization', () => {
     expect(storeIpc).toContain("'geminiApiKey'")
     expect(storeIpc).toContain("'apiKey'")
     expect(storeIpc).toContain('RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS')
+  })
+})
+
+describe('C6 local endpoint baseline characterization', () => {
+  it('keeps OpenRouter as the only active send runtime before LocalEndpoint implementation', () => {
+    const appChat = readRepoFile('src', 'ui-app', 'app', 'appChatApp.logic.ts')
+    const openRouterAdapter = readRepoFile('src', 'next', 'provider', 'openrouter', 'openRouterAdapter.ts')
+    const liveStream = readRepoFile('src', 'next', 'live', 'openRouterLiveStream.ts')
+    const bridge = readRepoFile('electron', 'ipc', 'openRouterStreamBridge.ts')
+
+    expect(appChat).toContain('streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource')
+    expect(openRouterAdapter).toContain("credentialSource: 'legacy_store' as const")
+    expect(liveStream).toContain("credentialSource === 'legacy_store'")
+    expect(bridge).toContain('resolveOpenRouterChatCredentialFromLegacyStore')
+
+    expect(appChat).not.toMatch(/\bstreamVia(?:Generic|DeepSeek|OpenAIResponses|Anthropic|Gemini|Local)\b/)
+    expect(appChat).not.toMatch(/\b(?:LocalEndpoint|localEndpoint|RuntimeProviderRegistry|ProviderRegistry|EndpointRegistry)\b/)
+  })
+
+  it('keeps Generic OpenAI-compatible confined to fixture/provider tests and out of live surfaces', () => {
+    const genericPattern = /\b(?:GenericEndpointConfig|GenericEndpointFixtureMetadata|toGenericEndpointFixtureMetadata|streamViaGenericConfig|streamViaGeneric)\b/
+    const occurrences = productionOccurrences(genericPattern)
+
+    expect(occurrences).toEqual([
+      'src/next/provider/generic/genericAdapter.ts',
+      'src/next/provider/generic/genericEndpointConfig.ts',
+    ])
+
+    const liveSurfaces = [
+      readRepoFile('src', 'ui-app', 'app', 'appChatApp.logic.ts'),
+      readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue'),
+      readRepoFile('electron', 'preload.ts'),
+      readRepoFile('electron', 'ipc', 'registerIpc.ts'),
+      readRepoFile('electron', 'ipc', 'openRouterStreamBridge.ts'),
+      readRepoFile('electron', 'jobs', 'catalogSyncStartup.ts'),
+    ]
+
+    for (const source of liveSurfaces) {
+      expect(source).not.toContain('GenericEndpointFixtureMetadata')
+      expect(source).not.toContain('toGenericEndpointFixtureMetadata')
+      expect(source).not.toContain('generic_endpoint_fixture')
+      expect(source).not.toMatch(/\bstreamViaGeneric(?:Config)?\b/)
+    }
+  })
+
+  it('has no LocalEndpoint runtime, settings bridge, probe, or catalog source in production code yet', () => {
+    const localPattern = new RegExp(`\\b(?:${localEndpointRuntimeNames.join('|')})\\b`)
+
+    expect(productionOccurrences(localPattern)).toEqual([])
+
+    const activeSurfaces = [
+      readRepoFile('src', 'ui-app', 'app', 'appChatApp.logic.ts'),
+      readRepoFile('src', 'ui-app', 'app', 'useChatSession.ts'),
+      readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue'),
+      readRepoFile('electron', 'preload.ts'),
+      readRepoFile('electron', 'ipc', 'registerIpc.ts'),
+      readRepoFile('electron', 'ipc', 'storeIpc.ts'),
+      readRepoFile('src', 'shared', 'modelCatalog', 'internalSchema.ts'),
+      readRepoFile('src', 'shared', 'modelCatalog', 'catalogSyncJob.ts'),
+      readRepoFile('src', 'next', 'files', 'sendPlanClient.ts'),
+    ]
+
+    for (const source of activeSurfaces) {
+      expectNoLocalEndpointRuntimeIdentifier(source)
+      expect(source).not.toMatch(/\b(?:healthProbe|basicStreamProbe|listModelsProbe)\b/)
+    }
+  })
+
+  it('does not expose local, enterprise, custom-header, or generic secret surfaces to renderer', () => {
+    const rendererSurfaces = [
+      readRepoFile('electron', 'preload.ts'),
+      readRepoFile('electron', 'electron-env.d.ts'),
+      readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue'),
+      readRepoFile('src', 'ui-app', 'app', 'useChatSession.ts'),
+    ].join('\n')
+
+    expect(rendererSurfaces).toContain('openRouterCredential')
+    expect(rendererSurfaces).not.toMatch(/\b(?:localAdminToken|enterpriseToken|customHeaders?|secretHeaders?)\b/)
+    expect(rendererSurfaces).not.toMatch(/\b(?:Authorization|Bearer)\b/)
+    expect(rendererSurfaces).not.toMatch(/\b(?:credentialResolver|secretStore|genericSecretStore)\b/)
+    expect(rendererSurfaces).not.toMatch(/\b(?:localEndpoint|LocalEndpoint|endpointRegistry|providerRegistry|runtimeProviderRegistry)\b/)
+  })
+
+  it('keeps model catalog/listModels and Send Plan touchpoints OpenRouter-scoped before C6 implementation', () => {
+    const catalogSchema = readRepoFile('src', 'shared', 'modelCatalog', 'internalSchema.ts')
+    const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'openRouterCatalogClient.ts')
+    const catalogSync = readRepoFile('src', 'shared', 'modelCatalog', 'catalogSyncJob.ts')
+    const sendPlanClient = readRepoFile('src', 'next', 'files', 'sendPlanClient.ts')
+    const openRouterSendPlan = readRepoFile('src', 'next', 'openrouter', 'openRouterSendPlanSerializer.ts')
+
+    expect(catalogSchema).toContain('export interface ProviderAdapter')
+    expect(openRouterCatalog).toContain('class OpenRouterCatalogClient implements ProviderAdapter')
+    expect(openRouterCatalog).toContain('async listModels')
+    expect(catalogSync).toContain('OpenRouterCatalogClient')
+    expect(sendPlanClient).toContain('SendPlanProviderContext')
+    expect(openRouterSendPlan).toContain('serializeSendPlanForOpenRouter')
+
+    for (const source of [catalogSchema, openRouterCatalog, catalogSync, sendPlanClient, openRouterSendPlan]) {
+      expectNoRegistryPlaceholder(source)
+      expectNoLocalEndpointRuntimeIdentifier(source)
+    }
   })
 })
