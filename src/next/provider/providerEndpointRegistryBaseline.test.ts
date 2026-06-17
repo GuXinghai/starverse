@@ -162,7 +162,7 @@ describe('C5 endpoint registry baseline characterization', () => {
     expect(settings).not.toMatch(/profileId\s*=/)
     expect(settings).not.toMatch(/\{\s*endpointId\s*\}/)
     expect(settings).not.toMatch(/\{\s*profileId\s*\}/)
-    expect(settings).not.toMatch(/v-model\s*=\s*["'][^"']*(?:endpoint|profile)[^"']*["']/i)
+    expect(settings).not.toMatch(/v-model\s*=\s*["'](?:endpointId|profileId)[^"']*["']/i)
     expect(settings).not.toContain('EndpointRegistry')
     expect(settings).not.toContain('ProviderRegistry')
     expect(settings).toContain('settings-openrouter-endpoint-metadata')
@@ -337,17 +337,18 @@ describe('C6 local endpoint baseline characterization', () => {
     }
   })
 
-  it('has no LocalEndpoint runtime, settings bridge, probe, or catalog source in production code yet', () => {
+  it('allows only diagnostics-only LocalEndpoint surfaces, not runtime routing or catalog source', () => {
     const localPattern = new RegExp(`\\b(?:${localEndpointRuntimeNames.join('|')})\\b`)
 
-    expect(productionOccurrences(localPattern)).toEqual([])
+    expect(productionOccurrences(localPattern)).toEqual([
+      'electron/electron-env.d.ts',
+      'electron/ipc/localEndpointDiagnosticsIpc.ts',
+      'src/ui-app/components/SettingsPanel.vue',
+    ])
 
     const activeSurfaces = [
       readRepoFile('src', 'ui-app', 'app', 'appChatApp.logic.ts'),
       readRepoFile('src', 'ui-app', 'app', 'useChatSession.ts'),
-      readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue'),
-      readRepoFile('electron', 'preload.ts'),
-      readRepoFile('electron', 'ipc', 'registerIpc.ts'),
       readRepoFile('electron', 'ipc', 'storeIpc.ts'),
       readRepoFile('src', 'shared', 'modelCatalog', 'internalSchema.ts'),
       readRepoFile('src', 'shared', 'modelCatalog', 'catalogSyncJob.ts'),
@@ -358,6 +359,18 @@ describe('C6 local endpoint baseline characterization', () => {
       expectNoLocalEndpointRuntimeIdentifier(source)
       expect(source).not.toMatch(/\b(?:healthProbe|basicStreamProbe|listModelsProbe)\b/)
     }
+
+    const diagnosticsIpc = readRepoFile('electron', 'ipc', 'localEndpointDiagnosticsIpc.ts')
+    const settings = readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue')
+    const preload = readRepoFile('electron', 'preload.ts')
+
+    expect(diagnosticsIpc).toContain('local-endpoint-diagnostics:probe')
+    expect(diagnosticsIpc).toContain("chatSendAvailable: false")
+    expect(settings).toContain('settings-local-endpoint-diagnostics')
+    expect(settings).toContain('Local endpoints are unavailable for chat send')
+    expect(preload).toContain("contextBridge.exposeInMainWorld('localEndpointDiagnostics'")
+    expect(preload).not.toContain('localAdminToken')
+    expect(preload).not.toContain('customHeader')
   })
 
   it('does not expose local, enterprise, custom-header, or generic secret surfaces to renderer', () => {
@@ -369,10 +382,11 @@ describe('C6 local endpoint baseline characterization', () => {
     ].join('\n')
 
     expect(rendererSurfaces).toContain('openRouterCredential')
+    expect(rendererSurfaces).toContain('localEndpointDiagnostics')
     expect(rendererSurfaces).not.toMatch(/\b(?:localAdminToken|enterpriseToken|customHeaders?|secretHeaders?)\b/)
     expect(rendererSurfaces).not.toMatch(/\b(?:Authorization|Bearer)\b/)
     expect(rendererSurfaces).not.toMatch(/\b(?:credentialResolver|secretStore|genericSecretStore)\b/)
-    expect(rendererSurfaces).not.toMatch(/\b(?:localEndpoint|LocalEndpoint|endpointRegistry|providerRegistry|runtimeProviderRegistry)\b/)
+    expect(rendererSurfaces).not.toMatch(/\b(?:endpointRegistry|providerRegistry|runtimeProviderRegistry)\b/)
   })
 
   it('keeps model catalog/listModels and Send Plan touchpoints OpenRouter-scoped before C6 implementation', () => {

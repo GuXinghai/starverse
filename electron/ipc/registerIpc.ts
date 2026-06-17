@@ -8,11 +8,16 @@ import {
   registerOpenRouterCredentialSettingsIpc,
   OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS,
 } from './openRouterCredentialSettingsIpc'
+import {
+  registerLocalEndpointDiagnosticsIpc,
+  LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS,
+} from './localEndpointDiagnosticsIpc'
 import type { RegisterInvoke } from './types'
 
 export const CORE_IPC_CHANNELS = [
   ...STORE_IPC_CHANNELS,
   ...OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS,
+  ...LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS,
   ...NETEXP_IPC_CHANNELS,
   ...DIALOG_IPC_CHANNELS,
   ...SHELL_IPC_CHANNELS,
@@ -66,6 +71,9 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
     ...registerOpenRouterCredentialSettingsIpc({
       registerInvoke: input.registerInvoke,
       store: input.store,
+    }),
+    ...registerLocalEndpointDiagnosticsIpc({
+      registerInvoke: input.registerInvoke,
     }),
     ...registerNetExpIpc({
       registerInvoke: input.registerInvoke,

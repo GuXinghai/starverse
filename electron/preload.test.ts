@@ -30,6 +30,7 @@ describe('preload scoped API exposure', () => {
     expect(exposedNames).toEqual(expect.arrayContaining([
       'electronStore',
       'openRouterCredential',
+      'localEndpointDiagnostics',
       'electronAPI',
       'dbBridge',
     ]))
@@ -67,6 +68,7 @@ describe('preload scoped API exposure', () => {
 
     const electronStore = exposeInMainWorld.mock.calls.find(([name]) => name === 'electronStore')?.[1]
     const openRouterCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'openRouterCredential')?.[1]
+    const localEndpointDiagnostics = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointDiagnostics')?.[1]
     expect(electronStore).toEqual(expect.objectContaining({
       get: expect.any(Function),
       set: expect.any(Function),
@@ -79,6 +81,12 @@ describe('preload scoped API exposure', () => {
       update: expect.any(Function),
       clear: expect.any(Function),
     })
+    expect(localEndpointDiagnostics).toEqual({
+      probe: expect.any(Function),
+    })
+    expect(localEndpointDiagnostics.getStatus).toBeUndefined()
+    expect(localEndpointDiagnostics.update).toBeUndefined()
+    expect(localEndpointDiagnostics.endpointRegistry).toBeUndefined()
     expect(openRouterCredential.getEndpointMetadata).toBeUndefined()
     expect(openRouterCredential.endpointRegistry).toBeUndefined()
 
@@ -90,6 +98,7 @@ describe('preload scoped API exposure', () => {
     await openRouterCredential.getStatus()
     await openRouterCredential.update({ apiKey: 'raw-openrouter-key', baseUrl: 'https://openrouter.ai/api/v1' })
     await openRouterCredential.clear()
+    await localEndpointDiagnostics.probe({ url: 'http://localhost:1234', timeoutMs: 5000 })
 
     expect(invoke).toHaveBeenCalledWith('store-get', 'theme')
     expect(invoke).toHaveBeenCalledWith('store-set', 'theme', 'dark')
@@ -102,12 +111,17 @@ describe('preload scoped API exposure', () => {
       baseUrl: 'https://openrouter.ai/api/v1',
     })
     expect(invoke).toHaveBeenCalledWith('openrouter-credential:clear')
+    expect(invoke).toHaveBeenCalledWith('local-endpoint-diagnostics:probe', {
+      url: 'http://localhost:1234',
+      timeoutMs: 5000,
+    })
   })
 
   it('does not expose generic credential resolver or raw Authorization/Bearer helpers', () => {
     const preloadSource = readFileSync(resolve(testDir, 'preload.ts'), 'utf8')
 
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openRouterCredential'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointDiagnostics'")
     expect(preloadSource).not.toContain('credentialRef')
     expect(preloadSource).not.toContain('credentialResolver')
     expect(preloadSource).not.toContain('secretStore')

@@ -83,12 +83,55 @@ type OpenRouterCredentialResult =
   | { ok: true; status: OpenRouterCredentialStatus }
   | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
 
+type LocalEndpointProbeModelList =
+  | {
+    ok: true
+    source: 'openai_v1_models' | 'ollama_api_tags'
+    models: string[]
+    truncated: boolean
+  }
+  | {
+    ok: false
+    code: 'unavailable' | 'invalid_response' | 'timeout' | 'network_error'
+    message: string
+  }
+
+interface LocalEndpointProbeDiagnostics {
+  kind: 'local_endpoint_diagnostics'
+  status: 'reachable' | 'unreachable'
+  endpointFamily: 'openai_compatible' | 'ollama' | 'unknown'
+  safeBaseUrl: string
+  modelList: LocalEndpointProbeModelList
+  capabilitySummary: {
+    chatSendAvailable: false
+    textChat: 'diagnostics_only'
+    streaming: 'not_probed'
+    tools: false
+    files: false
+    reasoning: false
+    webSearch: false
+  }
+  message: string
+}
+
+type LocalEndpointProbeResult =
+  | { ok: true; diagnostics: LocalEndpointProbeDiagnostics }
+  | {
+    ok: false
+    code: 'invalid_url' | 'remote_host_rejected' | 'embedded_credentials_rejected' | 'timeout' | 'network_error' | 'invalid_response'
+    message: string
+    safeUrl?: string
+  }
+
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   openRouterCredential?: {
     getStatus?: () => Promise<OpenRouterCredentialResult>
     update?: (payload: OpenRouterCredentialUpdatePayload) => Promise<OpenRouterCredentialResult>
     clear?: () => Promise<OpenRouterCredentialResult>
+  }
+  localEndpointDiagnostics?: {
+    probe?: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointProbeResult>
   }
   electronAPI?: {
     getNetExpRuntimeInfo?: () => Promise<unknown>

@@ -15,6 +15,10 @@ contextBridge.exposeInMainWorld('openRouterCredential', {
   clear: () => ipcRenderer.invoke('openrouter-credential:clear'),
 })
 
+contextBridge.exposeInMainWorld('localEndpointDiagnostics', {
+  probe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:probe', payload),
+})
+
 // Expose file dialog API for image selection
 contextBridge.exposeInMainWorld('electronAPI', {
   /**

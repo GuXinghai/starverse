@@ -118,6 +118,41 @@ type OpenRouterCredentialBridge = Readonly<{
   clear: () => Promise<OpenRouterCredentialResult>
 }>
 
+type LocalEndpointProbeResult = Readonly<
+  | {
+    ok: true
+    diagnostics: Readonly<{
+      kind: 'local_endpoint_diagnostics'
+      status: 'reachable' | 'unreachable'
+      endpointFamily: 'openai_compatible' | 'ollama' | 'unknown'
+      safeBaseUrl: string
+      modelList:
+        | Readonly<{ ok: true; source: 'openai_v1_models' | 'ollama_api_tags'; models: string[]; truncated: boolean }>
+        | Readonly<{ ok: false; code: string; message: string }>
+      capabilitySummary: Readonly<{
+        chatSendAvailable: false
+        textChat: 'diagnostics_only'
+        streaming: 'not_probed'
+        tools: false
+        files: false
+        reasoning: false
+        webSearch: false
+      }>
+      message: string
+    }>
+  }
+  | {
+    ok: false
+    code: string
+    message: string
+    safeUrl?: string
+  }
+>
+
+type LocalEndpointDiagnosticsBridge = Readonly<{
+  probe: (payload: Readonly<{ url?: string; timeoutMs?: number }>) => Promise<LocalEndpointProbeResult>
+}>
+
 function getElectronStore(): ElectronStoreLike | null {
   const store = (globalThis as any).electronStore as ElectronStoreLike | undefined
   if (!store) return null
@@ -133,6 +168,12 @@ function getOpenRouterCredentialBridge(): OpenRouterCredentialBridge | null {
     typeof bridge.update !== 'function' ||
     typeof bridge.clear !== 'function'
   ) return null
+  return bridge
+}
+
+function getLocalEndpointDiagnosticsBridge(): LocalEndpointDiagnosticsBridge | null {
+  const bridge = (globalThis as any).localEndpointDiagnostics as LocalEndpointDiagnosticsBridge | undefined
+  if (!bridge || typeof bridge.probe !== 'function') return null
   return bridge
 }
 
@@ -171,6 +212,9 @@ const netExpKeepAliveEnable = ref(DEFAULT_NETEXP_SETTINGS.tcpKeepAliveEnable)
 const netExpKeepAliveIdleMs = ref(DEFAULT_NETEXP_SETTINGS.tcpKeepAliveIdleMs)
 const netExpInitial = ref<NetExpSettings>(DEFAULT_NETEXP_SETTINGS)
 const netExpRuntime = ref<NetExpRuntimeInfo | null>(null)
+const localEndpointUrl = ref('http://localhost:1234')
+const localEndpointProbeLoading = ref(false)
+const localEndpointProbeResult = ref<LocalEndpointProbeResult | null>(null)
 
 const langPrefs = useLanguagePrefs()
 const langMode = ref<LocaleMode>('manual')
@@ -192,6 +236,8 @@ watch(requestedReasoningEffort, (value) => {
 
 const storeAvailable = computed(() => !!getElectronStore())
 const canEdit = computed(() => !props.disabled && !props.isRunning && storeAvailable.value)
+const localEndpointDiagnosticsAvailable = computed(() => !!getLocalEndpointDiagnosticsBridge())
+const canProbeLocalEndpoint = computed(() => !props.disabled && !props.isRunning && localEndpointDiagnosticsAvailable.value)
 const globalWebSearchResolved = computed(() =>
   resolveSearchSettings(
     { global: webSearchDefaults.value },
@@ -707,6 +753,38 @@ async function clearAllOpenRouterCatalogCaches() {
   }
 }
 
+async function probeLocalEndpoint() {
+  error.value = null
+  savedMessage.value = null
+  localEndpointProbeResult.value = null
+
+  const bridge = getLocalEndpointDiagnosticsBridge()
+  if (!bridge) {
+    localEndpointProbeResult.value = {
+      ok: false,
+      code: 'bridge_unavailable',
+      message: 'Local endpoint diagnostics bridge unavailable.',
+    }
+    return
+  }
+
+  localEndpointProbeLoading.value = true
+  try {
+    localEndpointProbeResult.value = await bridge.probe({
+      url: localEndpointUrl.value,
+      timeoutMs: 5000,
+    })
+  } catch {
+    localEndpointProbeResult.value = {
+      ok: false,
+      code: 'probe_failed',
+      message: 'Local endpoint probe failed safely.',
+    }
+  } finally {
+    localEndpointProbeLoading.value = false
+  }
+}
+
 async function applyLanguageMode(mode: LocaleMode) {
   error.value = null
   savedMessage.value = null
@@ -1036,6 +1114,73 @@ onMounted(() => {
               {{ t('common.save') }}
             </button>
           </div>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-gray-200 bg-white p-3" data-testid="settings-local-endpoint-diagnostics">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Local Endpoint Diagnostics</div>
+            <div class="mt-1 text-[11px] text-gray-500">Experimental diagnostics only. Local endpoints are unavailable for chat send.</div>
+          </div>
+          <span class="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
+            Diagnostics-only
+          </span>
+        </div>
+
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">Localhost endpoint URL</label>
+        <div class="mt-1 flex items-center gap-2">
+          <input
+            v-model="localEndpointUrl"
+            type="url"
+            placeholder="http://localhost:1234"
+            class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
+            :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading"
+            data-testid="settings-local-endpoint-url"
+          />
+          <button
+            type="button"
+            class="rounded-md border border-blue-600 bg-white px-3 py-2 text-sm font-semibold text-blue-600 shadow-sm hover:bg-blue-50 disabled:opacity-50"
+            :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading"
+            data-testid="settings-local-endpoint-probe"
+            @click="probeLocalEndpoint"
+          >
+            {{ localEndpointProbeLoading ? 'Probing...' : 'Test / Probe' }}
+          </button>
+        </div>
+
+        <div
+          v-if="localEndpointProbeResult"
+          class="mt-3 rounded-md border border-gray-100 bg-gray-50 px-3 py-2 text-[11px] text-gray-700"
+          data-testid="settings-local-endpoint-probe-result"
+        >
+          <template v-if="localEndpointProbeResult.ok">
+            <div>
+              Status:
+              <span data-testid="settings-local-endpoint-probe-status">{{ localEndpointProbeResult.diagnostics.status }}</span>
+              · Family:
+              <span data-testid="settings-local-endpoint-probe-family">{{ localEndpointProbeResult.diagnostics.endpointFamily }}</span>
+            </div>
+            <div class="mt-1">Endpoint: {{ localEndpointProbeResult.diagnostics.safeBaseUrl }}</div>
+            <div class="mt-1">
+              Models:
+              <span v-if="localEndpointProbeResult.diagnostics.modelList.ok" data-testid="settings-local-endpoint-probe-models">
+                {{ localEndpointProbeResult.diagnostics.modelList.models.length ? localEndpointProbeResult.diagnostics.modelList.models.join(', ') : 'none reported' }}
+                <span v-if="localEndpointProbeResult.diagnostics.modelList.truncated"> (truncated)</span>
+              </span>
+              <span v-else data-testid="settings-local-endpoint-probe-models">
+                {{ localEndpointProbeResult.diagnostics.modelList.message }}
+              </span>
+            </div>
+            <div class="mt-1" data-testid="settings-local-endpoint-probe-capabilities">
+              Capability summary: text diagnostics only; chat send unavailable; tools/files/reasoning/web disabled.
+            </div>
+          </template>
+          <template v-else>
+            <div data-testid="settings-local-endpoint-probe-error">
+              {{ localEndpointProbeResult.message }}
+            </div>
+          </template>
         </div>
       </div>
 
