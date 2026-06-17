@@ -120,6 +120,50 @@ describe('LibreOffice production approval checklist audit', () => {
     expect(accidentalEnabledDownloads).toEqual([])
   })
 
+  it('keeps packaged distribution and multi-platform approval gates explicit before production', () => {
+    const checklist = readChecklist()
+    const runtimeGate = readRepoFile('infra', 'files', 'dfcManagedLibreOfficeRuntime.ts')
+
+    expect(checklist).toContain('## 6. Packaged Distribution Policy')
+    expect(checklist).toContain('| Bundle LibreOffice runtime with app |')
+    expect(checklist).toContain('| Download on demand through explicit install/repair |')
+    expect(checklist).toContain('| Offline import by Owner/admin |')
+    expect(checklist).toContain('| User-installed system LibreOffice |')
+    expect(checklist).toContain('- No production distribution mode is approved.')
+    expect(checklist).toContain('- Bundled LibreOffice runtime is not approved.')
+    expect(checklist).toContain('- On-demand production download is not approved and remains blocked by `downloadEnabled=false`.')
+    expect(checklist).toContain('- User/admin `.svpkg` import remains owner-gated and experimental.')
+    expect(checklist).toContain('- User-installed system LibreOffice remains disallowed as a production acquisition source.')
+    expect(checklist).toContain('- quantify app installer size impact and update cadence,')
+    expect(checklist).toContain('- keep conversion-time automatic download disabled,')
+    expect(checklist).toContain('- define offline behavior, network failure behavior, retry policy, cache policy, and telemetry/diagnostic wording,')
+    expect(checklist).toContain('- define import UX, replacement/update behavior, and rollback/removal behavior,')
+
+    expect(checklist).toContain('## 7. Multi-Platform Plan')
+    expect(checklist).toContain('- Windows x64 only: `win32` / `x64`.')
+    expect(checklist).toContain('- Current production package coverage is Windows x64 only; macOS and Linux production assets do not exist yet.')
+    expect(checklist).toContain('- Current asset naming pattern: `starverse-runtime-libreoffice-<packageVersion>-<runtimeVersion>-<platform>-<arch>.svpkg`.')
+    expect(checklist).toContain('- define package naming for `darwin` and each supported architecture,')
+    expect(checklist).toContain('- define package naming for `linux` and each supported architecture,')
+    expect(checklist).toContain('- Package import verification from the exact platform `.svpkg`.')
+    expect(checklist).toContain('- Explicit Owner approval that the platform asset is production-supported.')
+
+    expect(runtimeGate).toContain("platform: 'win32'")
+    expect(runtimeGate).toContain("arch: 'x64'")
+    expect(runtimeGate).toContain('downloadEnabled: false')
+    expect(runtimeGate).toContain('productionApproved: false')
+
+    const accidentalApprovals = collectProductionFiles()
+      .filter((file) => /productionApproved\s*[:=]\s*true|productionApproved=true/.test(readFileSync(file, 'utf8')))
+      .map(repoRelative)
+    const accidentalEnabledDownloads = collectProductionFiles()
+      .filter((file) => /downloadEnabled\s*:\s*true/.test(readFileSync(file, 'utf8')))
+      .map(repoRelative)
+
+    expect(accidentalApprovals).toEqual([])
+    expect(accidentalEnabledDownloads).toEqual([])
+  })
+
   it('keeps DOCX-only scope explicit and records non-goal format expansion blockers', () => {
     const checklist = readChecklist()
 
