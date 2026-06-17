@@ -149,8 +149,38 @@ type LocalEndpointProbeResult = Readonly<
   }
 >
 
+type LocalEndpointStreamProbeResult = Readonly<
+  | {
+    ok: true
+    diagnostics: Readonly<{
+      kind: 'local_endpoint_stream_diagnostics'
+      status: 'supported' | 'failed'
+      endpointFamily: 'openai_compatible' | 'ollama' | 'unknown'
+      safeBaseUrl: string
+      textDeltaPreview?: string
+      evidence: 'text_delta_observed' | 'no_text_delta' | 'model_unavailable'
+      capabilitySummary: Readonly<{
+        chatSendAvailable: false
+        streaming: 'diagnostics_only_supported' | 'diagnostics_only_failed'
+        tools: false
+        files: false
+        reasoning: false
+        webSearch: false
+      }>
+      message: string
+    }>
+  }
+  | {
+    ok: false
+    code: string
+    message: string
+    safeUrl?: string
+  }
+>
+
 type LocalEndpointDiagnosticsBridge = Readonly<{
   probe: (payload: Readonly<{ url?: string; timeoutMs?: number }>) => Promise<LocalEndpointProbeResult>
+  streamProbe: (payload: Readonly<{ url?: string; timeoutMs?: number }>) => Promise<LocalEndpointStreamProbeResult>
 }>
 
 function getElectronStore(): ElectronStoreLike | null {
@@ -173,7 +203,7 @@ function getOpenRouterCredentialBridge(): OpenRouterCredentialBridge | null {
 
 function getLocalEndpointDiagnosticsBridge(): LocalEndpointDiagnosticsBridge | null {
   const bridge = (globalThis as any).localEndpointDiagnostics as LocalEndpointDiagnosticsBridge | undefined
-  if (!bridge || typeof bridge.probe !== 'function') return null
+  if (!bridge || typeof bridge.probe !== 'function' || typeof bridge.streamProbe !== 'function') return null
   return bridge
 }
 
@@ -215,6 +245,8 @@ const netExpRuntime = ref<NetExpRuntimeInfo | null>(null)
 const localEndpointUrl = ref('http://localhost:1234')
 const localEndpointProbeLoading = ref(false)
 const localEndpointProbeResult = ref<LocalEndpointProbeResult | null>(null)
+const localEndpointStreamProbeLoading = ref(false)
+const localEndpointStreamProbeResult = ref<LocalEndpointStreamProbeResult | null>(null)
 
 const langPrefs = useLanguagePrefs()
 const langMode = ref<LocaleMode>('manual')
@@ -757,6 +789,7 @@ async function probeLocalEndpoint() {
   error.value = null
   savedMessage.value = null
   localEndpointProbeResult.value = null
+  localEndpointStreamProbeResult.value = null
 
   const bridge = getLocalEndpointDiagnosticsBridge()
   if (!bridge) {
@@ -782,6 +815,38 @@ async function probeLocalEndpoint() {
     }
   } finally {
     localEndpointProbeLoading.value = false
+  }
+}
+
+async function streamProbeLocalEndpoint() {
+  error.value = null
+  savedMessage.value = null
+  localEndpointStreamProbeResult.value = null
+
+  const bridge = getLocalEndpointDiagnosticsBridge()
+  if (!bridge) {
+    localEndpointStreamProbeResult.value = {
+      ok: false,
+      code: 'bridge_unavailable',
+      message: 'Local endpoint diagnostics bridge unavailable.',
+    }
+    return
+  }
+
+  localEndpointStreamProbeLoading.value = true
+  try {
+    localEndpointStreamProbeResult.value = await bridge.streamProbe({
+      url: localEndpointUrl.value,
+      timeoutMs: 5000,
+    })
+  } catch {
+    localEndpointStreamProbeResult.value = {
+      ok: false,
+      code: 'stream_probe_failed',
+      message: 'Local endpoint stream probe failed safely.',
+    }
+  } finally {
+    localEndpointStreamProbeLoading.value = false
   }
 }
 
@@ -1135,17 +1200,26 @@ onMounted(() => {
             type="url"
             placeholder="http://localhost:1234"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
-            :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading"
+            :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading || localEndpointStreamProbeLoading"
             data-testid="settings-local-endpoint-url"
           />
           <button
             type="button"
             class="rounded-md border border-blue-600 bg-white px-3 py-2 text-sm font-semibold text-blue-600 shadow-sm hover:bg-blue-50 disabled:opacity-50"
-            :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading"
+            :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading || localEndpointStreamProbeLoading"
             data-testid="settings-local-endpoint-probe"
             @click="probeLocalEndpoint"
           >
             {{ localEndpointProbeLoading ? 'Probing...' : 'Test / Probe' }}
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-blue-600 bg-white px-3 py-2 text-sm font-semibold text-blue-600 shadow-sm hover:bg-blue-50 disabled:opacity-50"
+            :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading || localEndpointStreamProbeLoading"
+            data-testid="settings-local-endpoint-stream-probe"
+            @click="streamProbeLocalEndpoint"
+          >
+            {{ localEndpointStreamProbeLoading ? 'Testing...' : 'Test Streaming' }}
           </button>
         </div>
 
@@ -1179,6 +1253,36 @@ onMounted(() => {
           <template v-else>
             <div data-testid="settings-local-endpoint-probe-error">
               {{ localEndpointProbeResult.message }}
+            </div>
+          </template>
+        </div>
+
+        <div
+          v-if="localEndpointStreamProbeResult"
+          class="mt-3 rounded-md border border-gray-100 bg-gray-50 px-3 py-2 text-[11px] text-gray-700"
+          data-testid="settings-local-endpoint-stream-probe-result"
+        >
+          <template v-if="localEndpointStreamProbeResult.ok">
+            <div>
+              Stream:
+              <span data-testid="settings-local-endpoint-stream-status">{{ localEndpointStreamProbeResult.diagnostics.status }}</span>
+              · Family:
+              <span data-testid="settings-local-endpoint-stream-family">{{ localEndpointStreamProbeResult.diagnostics.endpointFamily }}</span>
+            </div>
+            <div class="mt-1">Endpoint: {{ localEndpointStreamProbeResult.diagnostics.safeBaseUrl }}</div>
+            <div class="mt-1" data-testid="settings-local-endpoint-stream-evidence">
+              Evidence: {{ localEndpointStreamProbeResult.diagnostics.evidence }}
+              <span v-if="localEndpointStreamProbeResult.diagnostics.textDeltaPreview">
+                · {{ localEndpointStreamProbeResult.diagnostics.textDeltaPreview }}
+              </span>
+            </div>
+            <div class="mt-1" data-testid="settings-local-endpoint-stream-capabilities">
+              Capability summary: streaming diagnostics only; chat send unavailable; tools/files/reasoning/web disabled.
+            </div>
+          </template>
+          <template v-else>
+            <div data-testid="settings-local-endpoint-stream-error">
+              {{ localEndpointStreamProbeResult.message }}
             </div>
           </template>
         </div>

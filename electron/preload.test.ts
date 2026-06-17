@@ -83,6 +83,7 @@ describe('preload scoped API exposure', () => {
     })
     expect(localEndpointDiagnostics).toEqual({
       probe: expect.any(Function),
+      streamProbe: expect.any(Function),
     })
     expect(localEndpointDiagnostics.getStatus).toBeUndefined()
     expect(localEndpointDiagnostics.update).toBeUndefined()
@@ -99,6 +100,7 @@ describe('preload scoped API exposure', () => {
     await openRouterCredential.update({ apiKey: 'raw-openrouter-key', baseUrl: 'https://openrouter.ai/api/v1' })
     await openRouterCredential.clear()
     await localEndpointDiagnostics.probe({ url: 'http://localhost:1234', timeoutMs: 5000 })
+    await localEndpointDiagnostics.streamProbe({ url: 'http://localhost:1234', timeoutMs: 5000 })
 
     expect(invoke).toHaveBeenCalledWith('store-get', 'theme')
     expect(invoke).toHaveBeenCalledWith('store-set', 'theme', 'dark')
@@ -112,6 +114,10 @@ describe('preload scoped API exposure', () => {
     })
     expect(invoke).toHaveBeenCalledWith('openrouter-credential:clear')
     expect(invoke).toHaveBeenCalledWith('local-endpoint-diagnostics:probe', {
+      url: 'http://localhost:1234',
+      timeoutMs: 5000,
+    })
+    expect(invoke).toHaveBeenCalledWith('local-endpoint-diagnostics:stream-probe', {
       url: 'http://localhost:1234',
       timeoutMs: 5000,
     })
