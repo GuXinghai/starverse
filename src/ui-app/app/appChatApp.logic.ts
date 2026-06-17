@@ -81,6 +81,7 @@ import { startNetExpRunReport } from '@/next/netExp/netExpRunReport'
 import { applyEventsBatch, createInitialState, startGeneration, toggleReasoningPanelState } from '@/next/state/reducer'
 import { selectMessage, selectRun } from '@/next/state/selectors'
 import { streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource } from '@/next/provider/openrouter/openRouterAdapter'
+import { streamLocalEndpointTextChatAsDomainEvents } from '@/next/live/localEndpointTextChat'
 import {
   prepareOpenRouterReplayFromMessage,
   prepareOpenRouterSendFromDraft,
@@ -218,6 +219,12 @@ export function useAppChatAppLogic() {
   const model = ref(DEFAULT_CHAT_MODEL_ID)
   const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('auto')
   const requestedReasoningExclude = ref(false)
+  const LOCAL_ENDPOINT_CHAT_ENABLED_KEY = 'starverse.localEndpointTextChat.enabled'
+  const LOCAL_ENDPOINT_CHAT_URL_KEY = 'starverse.localEndpointTextChat.url'
+  const LOCAL_ENDPOINT_CHAT_MODEL_KEY = 'starverse.localEndpointTextChat.model'
+  const localEndpointChatEnabled = ref(false)
+  const localEndpointChatUrl = ref('http://localhost:1234/v1')
+  const localEndpointChatModel = ref('')
   type ImageGenerationUiState = ImageGenerationUserConfig
   const imageGenerationState = ref<ImageGenerationUiState>(DEFAULT_IMAGE_GENERATION_USER_CONFIG)
   const imageGenerationConvoMode = ref<ConvoImageGenerationMode>('default')
@@ -3565,6 +3572,51 @@ export function useAppChatAppLogic() {
   }
 
   const activeSessionConfig = computed(() => getChatSessionConfigForConvo(getActiveConvoRecord()))
+  const localEndpointChatConfig = computed(() => ({
+    enabled: localEndpointChatEnabled.value,
+    endpointUrl: localEndpointChatUrl.value,
+    model: localEndpointChatModel.value,
+    experimentalLabel: 'Experimental · LocalEndpoint text-only',
+  }))
+
+  function readLocalEndpointChatStorage() {
+    try {
+      const enabled = String(globalThis.localStorage?.getItem(LOCAL_ENDPOINT_CHAT_ENABLED_KEY) ?? '').trim() === '1'
+      const endpointUrl = String(globalThis.localStorage?.getItem(LOCAL_ENDPOINT_CHAT_URL_KEY) ?? '').trim()
+      const modelId = String(globalThis.localStorage?.getItem(LOCAL_ENDPOINT_CHAT_MODEL_KEY) ?? '').trim()
+      localEndpointChatEnabled.value = enabled
+      if (endpointUrl) localEndpointChatUrl.value = endpointUrl
+      if (modelId) localEndpointChatModel.value = modelId
+    } catch {
+      // LocalEndpoint chat settings are non-secret renderer preferences; failure keeps defaults.
+    }
+  }
+
+  function persistLocalEndpointChatStorage() {
+    try {
+      globalThis.localStorage?.setItem(LOCAL_ENDPOINT_CHAT_ENABLED_KEY, localEndpointChatEnabled.value ? '1' : '0')
+      globalThis.localStorage?.setItem(LOCAL_ENDPOINT_CHAT_URL_KEY, localEndpointChatUrl.value)
+      globalThis.localStorage?.setItem(LOCAL_ENDPOINT_CHAT_MODEL_KEY, localEndpointChatModel.value)
+    } catch {
+      // Non-fatal: the user can still use the current in-memory settings.
+    }
+  }
+
+  function onUpdateLocalEndpointChatEnabled(enabled: boolean) {
+    if (isDraftInteractionLocked.value || isRunning.value) return
+    localEndpointChatEnabled.value = enabled
+    persistLocalEndpointChatStorage()
+  }
+
+  function onUpdateLocalEndpointChatUrl(endpointUrl: string) {
+    localEndpointChatUrl.value = String(endpointUrl ?? '')
+    persistLocalEndpointChatStorage()
+  }
+
+  function onUpdateLocalEndpointChatModel(modelId: string) {
+    localEndpointChatModel.value = String(modelId ?? '')
+    persistLocalEndpointChatStorage()
+  }
 
   async function updateActiveConvoSessionConfig(patch: ChatSessionConfigPatch): Promise<ChatSessionConfig | null> {
     const convo = getActiveConvoRecord()
@@ -7986,6 +8038,91 @@ export function useAppChatAppLogic() {
     return prepared
   }
 
+  function getLocalEndpointTextChatBlockReason(input: Readonly<{
+    text: string
+    hasDraftAttachments: boolean
+  }>): string | null {
+    if (!input.text.trim()) return 'LocalEndpoint text chat requires a plain text message.'
+    if (!localEndpointChatUrl.value.trim()) return 'LocalEndpoint text chat requires a localhost endpoint URL.'
+    if (!localEndpointChatModel.value.trim()) return 'LocalEndpoint text chat requires a manual model id.'
+    if (input.hasDraftAttachments) return 'LocalEndpoint text chat is text-only. Remove attachments before sending.'
+    const config = activeSessionConfig.value
+    if (config.webSearch.enabled) return 'LocalEndpoint text chat does not support web search. Disable web search before sending.'
+    if (config.reasoning.enabled) return 'LocalEndpoint text chat does not support reasoning controls. Disable reasoning before sending.'
+    if (config.imageGeneration.enabled) return 'LocalEndpoint text chat does not support image generation. Disable image generation before sending.'
+    return null
+  }
+
+  async function sendLocalEndpointTextChat(input: Readonly<{
+    convoId: string
+    branch: BranchSummary
+    text: string
+    contextMessages: any[]
+  }>) {
+    const endpointUrl = localEndpointChatUrl.value.trim()
+    const modelId = localEndpointChatModel.value.trim()
+
+    const begun = await beginTurn(input.branch.id, input.text)
+    draft.value = ''
+    const cleared = await updateConversationDraftText({
+      conversationId: input.convoId,
+      draftText: '',
+      draftMode: 'compose',
+      editingSourceMessageId: null,
+    })
+    applyDraftPersistenceStateFromDraft(cleared)
+    void refreshDraftAttachmentViewModels()
+
+    patchBranch(input.branch.id, { headMessageId: begun.assistantId, updatedAt: Date.now() })
+
+    const userMessageId = begun.questionId
+    const assistantMessageId = begun.assistantId
+    const assistantSeq = begun.assistantSeq
+    const requestId = randomId('local_req')
+
+    messageSeqById.value.set(userMessageId, begun.questionSeq)
+    messageSeqById.value.set(assistantMessageId, assistantSeq)
+
+    ensureMessageMetaEntry(userMessageId, { role: 'user', status: 'final' })
+    ensureMessageMetaEntry(assistantMessageId, {
+      parentId: userMessageId,
+      questionId: userMessageId,
+      answerRootId: assistantMessageId,
+      role: 'assistant',
+      status: 'streaming',
+    })
+
+    const started = startGeneration(state.value, {
+      runId: input.branch.id,
+      requestId,
+      model: modelId,
+      userMessageId,
+      userMessageText: input.text,
+      assistantMessageId,
+      reasoningPanelDefaultExpanded: false,
+      requestedReasoningMode: 'auto',
+    })
+    state.value = started.state
+
+    await runAssistantStreamSession({
+      convoId: input.convoId,
+      branchId: input.branch.id,
+      requestId,
+      assistantMessageId,
+      assistantSeq,
+      modelId,
+      createEvents: (signal) => streamLocalEndpointTextChatAsDomainEvents({
+        requestId,
+        assistantMessageId,
+        endpointUrl,
+        model: modelId,
+        userText: input.text,
+        contextMessages: input.contextMessages,
+        signal,
+      }),
+    })
+  }
+
   async function onSend() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
@@ -7997,9 +8134,6 @@ export function useAppChatAppLogic() {
     const branch = await ensureActiveBranch(convoId)
     loadError.value = null
 
-    const baseUrl = await getOpenRouterBaseUrl()
-    const modelId = normalizeModelKey(model.value)
-
     let contextMessages: any[] = []
     let contextMessageIds: string[] = []
     try {
@@ -8009,6 +8143,19 @@ export function useAppChatAppLogic() {
     } catch (err) {
       if (import.meta.env?.DEV) console.warn('[ui-app] context.buildForBranch failed; using empty context', err)
     }
+
+    if (localEndpointChatEnabled.value) {
+      const blockReason = getLocalEndpointTextChatBlockReason({ text, hasDraftAttachments })
+      if (blockReason) {
+        setAttachmentFeedback('error', blockReason)
+        return
+      }
+      await sendLocalEndpointTextChat({ convoId, branch, text, contextMessages })
+      return
+    }
+
+    const baseUrl = await getOpenRouterBaseUrl()
+    const modelId = normalizeModelKey(model.value)
 
     composerSendPlanLoading.value = true
     let gate: Readonly<{
@@ -8764,6 +8911,7 @@ export function useAppChatAppLogic() {
   onMounted(async () => {
     isReady.value = false
     loadError.value = null
+    readLocalEndpointChatStorage()
 
     if (!hasDbBridge()) {
       isReady.value = true
@@ -9150,6 +9298,7 @@ export function useAppChatAppLogic() {
     composerImageInputSupported,
     composerImageInputSupportReason,
     activeSessionConfig,
+    localEndpointChatConfig,
     model,
     requestedReasoningEffort,
     requestedReasoningExclude,
@@ -9183,6 +9332,9 @@ export function useAppChatAppLogic() {
     onComposerUpdateWebSearchLayer,
     onUpdateImageGeneration,
     onUpdateImageGenerationFollowDefault,
+    onUpdateLocalEndpointChatEnabled,
+    onUpdateLocalEndpointChatUrl,
+    onUpdateLocalEndpointChatModel,
     onComposerOpenWebSearchSettings,
     onAttachFilesRequested,
     onAttachImagesRequested,

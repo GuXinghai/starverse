@@ -671,12 +671,12 @@ describe('ui-app SettingsPanel', () => {
     expect(screen.getByTestId('settings-local-endpoint-probe-status').textContent).toContain('reachable')
     expect(screen.getByTestId('settings-local-endpoint-probe-family').textContent).toContain('openai_compatible')
     expect(screen.getByTestId('settings-local-endpoint-probe-models').textContent).toContain('local-model-a')
-    expect(screen.getByTestId('settings-local-endpoint-probe-capabilities').textContent).toContain('chat send unavailable')
+    expect(screen.getByTestId('settings-local-endpoint-probe-capabilities').textContent).toContain('diagnostics do not activate chat send')
     expect(result.textContent).not.toContain('sk-hidden')
     expect(result.textContent).not.toContain('Authorization')
     expect(result.textContent).not.toContain('Bearer')
     expect(document.body.textContent).toContain('Experimental diagnostics only')
-    expect(document.body.textContent).toContain('Local endpoints are unavailable for chat send')
+    expect(document.body.textContent).toContain('Text chat requires the explicit LocalEndpoint console mode')
 
     expect((globalThis as any).electronAPI.startOpenRouterStream).toBeUndefined()
     expect((globalThis as any).openRouterCredential.update).not.toHaveBeenCalledWith(expect.objectContaining({
@@ -707,7 +707,7 @@ describe('ui-app SettingsPanel', () => {
     expect(screen.getByTestId('settings-local-endpoint-stream-family').textContent).toContain('openai_compatible')
     expect(screen.getByTestId('settings-local-endpoint-stream-evidence').textContent).toContain('text_delta_observed')
     expect(screen.getByTestId('settings-local-endpoint-stream-evidence').textContent).toContain('pong')
-    expect(screen.getByTestId('settings-local-endpoint-stream-capabilities').textContent).toContain('chat send unavailable')
+    expect(screen.getByTestId('settings-local-endpoint-stream-capabilities').textContent).toContain('diagnostics do not activate chat send')
     expect(result.textContent).not.toContain('sk-hidden')
     expect(result.textContent).not.toContain('Authorization')
     expect(result.textContent).not.toContain('Bearer')

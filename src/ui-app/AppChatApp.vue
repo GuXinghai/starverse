@@ -133,6 +133,7 @@ const {
   onReviewHistoryIncompatibleAttachments,
   onNavigateHistoryIncompatibleAttachments,
   activeSessionConfig,
+  localEndpointChatConfig,
   modelCatalogForPicker,
   modelCatalogNotice,
   modelPrefsScopeForUi,
@@ -150,6 +151,9 @@ const {
   onComposerUpdateSamplingParamsLayer,
   onComposerUpdateWebSearchLayer,
   onUpdateImageGeneration,
+  onUpdateLocalEndpointChatEnabled,
+  onUpdateLocalEndpointChatUrl,
+  onUpdateLocalEndpointChatModel,
   onAttachFilesRequested,
   onAttachImagesRequested,
   onAttachUrlRequested,
@@ -213,6 +217,10 @@ const runSummary = computed(() => {
 })
 
 const modelSummary = computed(() => {
+  if (localEndpointChatConfig.value.enabled) {
+    const model = localEndpointChatConfig.value.model.trim() || 'manual model required'
+    return `LocalEndpoint · ${model}`
+  }
   const selected = activeSessionConfig.value.model.selectedModelKey ?? 'openrouter/auto'
   const match = modelCatalogForPicker.value.find((item) => item.modelId === selected)
   return `Model · ${formatModelIndicatorName(match?.name ?? selected)}`
@@ -757,6 +765,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             :disabled="!isReady || isDraftInteractionLocked"
             :isRunning="isRunning"
             :sessionConfig="activeSessionConfig"
+            :localEndpointChat="localEndpointChatConfig"
             :reasoningDisplayMode="reasoningDisplayMode"
             :modelCatalog="modelCatalogForPicker"
             :webSearchResolved="activeSessionWebSearchResolved"
@@ -772,6 +781,9 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateImageGenerationResolution="onUpdateImageGenerationResolution"
             @updateImageGenerationAspectRatio="onUpdateImageGenerationAspectRatio"
             @updateImageGeneration="onUpdateImageGeneration"
+            @updateLocalEndpointChatEnabled="onUpdateLocalEndpointChatEnabled"
+            @updateLocalEndpointChatUrl="onUpdateLocalEndpointChatUrl"
+            @updateLocalEndpointChatModel="onUpdateLocalEndpointChatModel"
             @updateReasoningDisplayMode="onUpdateReasoningDisplayMode"
             @openSettings="openSettings"
           />

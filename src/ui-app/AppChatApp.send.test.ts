@@ -5,6 +5,7 @@ import { DEFAULT_OPENROUTER_TEST_MODEL, OPENROUTER_TEST_MODELS } from '@/next/op
 import AppChatApp from './AppChatApp.vue'
 
 const streamOpenRouterChatCallArgs: any[] = []
+const localEndpointTextChatCallArgs: any[] = []
 const imageCapableModel = OPENROUTER_TEST_MODELS[1] ?? OPENROUTER_TEST_MODELS[0]
 
 const draftBox = () => screen.getByTestId('composer-draft') as HTMLTextAreaElement
@@ -59,6 +60,18 @@ vi.mock('@/next/live/openRouterLiveStream', () => {
   return { streamOpenRouterChatAsEvents }
 })
 
+vi.mock('@/next/live/localEndpointTextChat', () => {
+  async function* streamLocalEndpointTextChatAsDomainEvents(options: any) {
+    localEndpointTextChatCallArgs.push(options)
+    const assistantMessageId = String(options?.assistantMessageId ?? 'a1')
+    yield { type: 'MetaDelta', meta: { id: 'local_gen_1', model: String(options?.model ?? 'local-model'), provider: 'local_endpoint' } }
+    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'local ' }
+    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'hi' }
+    yield { type: 'StreamDone' }
+  }
+  return { streamLocalEndpointTextChatAsDomainEvents }
+})
+
 describe('ui-app AppChatApp (send: pure text)', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronAPI = (globalThis as any).electronAPI
@@ -69,6 +82,10 @@ describe('ui-app AppChatApp (send: pure text)', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     streamOpenRouterChatCallArgs.length = 0
+    localEndpointTextChatCallArgs.length = 0
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
     convoListMeta = null
     // Make throttle immediate in tests (while still exercising scheduling code paths).
     globalThis.setTimeout = ((fn: (...args: any[]) => void) => originalSetTimeout(fn, 0)) as any
@@ -459,6 +476,38 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelCatalog.list')
     expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelCatalog.queryCore')
     expect(invoke.mock.calls.map((call) => call[0])).not.toContain('reasoningIndex.list')
+  })
+
+  it('routes experimental LocalEndpoint text chat through the normal transcript without OpenRouter send', async () => {
+    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.enabled', '1')
+    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.url', 'http://localhost:1234/v1')
+    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.model', 'local-model')
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'local ping')
+    await user.click(sendButton())
+
+    await screen.findByText('local ping')
+    await screen.findByText('local hi')
+    await vi.runAllTimersAsync()
+
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
+    expect(localEndpointTextChatCallArgs).toHaveLength(1)
+    expect(localEndpointTextChatCallArgs[0]).toMatchObject({
+      endpointUrl: 'http://localhost:1234/v1',
+      model: 'local-model',
+      userText: 'local ping',
+    })
+    expect(localEndpointTextChatCallArgs[0].currentUserContentBlocks).toBeUndefined()
+    expect(invoke).toHaveBeenCalledWith('branch.beginTurn', expect.objectContaining({ branchId: 'b1', userBody: 'local ping' }))
+    expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 2 }))
+    expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a1', status: 'final' }))
+    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
   })
 
   it('uses selected model for next send and persists convo.meta.selectedModelKey', async () => {
