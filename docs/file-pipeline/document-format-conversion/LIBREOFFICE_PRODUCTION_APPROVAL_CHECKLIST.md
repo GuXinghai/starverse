@@ -442,7 +442,49 @@ Typecheck note:
 
 - Recent validation in this repository has observed unresolved `infra/files/**` LibreOffice/DFC typecheck failures in real-smoke/package archive files. Before production approval, rerun `npx vue-tsc --noEmit --pretty false`, confirm whether those failures still exist, and either fix them or explicitly document why they are unrelated to production approval.
 
-## 12. Approval Decision Table
+## 12. Production Readiness Closeout And Owner Decision Index
+
+Closeout status:
+
+- Current verified asset remains the Windows x64 prerelease `.svpkg`: `starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg`.
+- Current package sha256 remains `ce012cf1215f958286be29462d1ae8c122bdc6a779ac84076388de9875487f6e`.
+- Current package sizeBytes remains `518907010`.
+- Current product scope remains DOCX-to-PDF only, owner-gated, and experimental.
+- Blocker gates are now documented and test-locked for production approval state, DOCX-only scope, release trust/acquisition, packaged distribution, multi-platform requirements, runtime security, and path-depth risk.
+- The path-depth smoke matrix harness exists and is default-off, but real path-depth evidence is still pending.
+- Release trust, acquisition, distribution, and multi-platform gates are defined, but none are Owner-approved for production.
+- `productionApproved=false` remains the only allowed production state until every required gate below is complete.
+
+Readiness index:
+
+| Gate | Current state | Evidence present | Evidence missing | Next executable task | Owner decision required |
+| --- | --- | --- | --- | --- | --- |
+| Verified Windows x64 asset | Draft/prerelease evidence present | TDF MSI URL/hash/size, `.svpkg` hash/size, GitHub prerelease asset, redownload/import/smoke evidence | Production asset promotion/replacement decision | Legal/provenance review package | Yes |
+| Production approval state | Not approved | `productionApproved=false` documented and source-guarded | Final Owner approval and implementation commit | Owner approval checkpoint after all blockers close | Yes |
+| DOCX-only product scope | Owner-gated experimental | DOCX-only scope and non-goal formats documented/test-locked | Product approval for broader exposure, if ever desired | Keep scope unchanged during approval work | No |
+| Runtime security | Partial readiness | Manifest policy, sandboxed invocation, timeout/redaction/cleanup seams, checklist gate | Final runtime security audit evidence against real managed smoke | Runtime security evidence package | Yes |
+| Path-depth / sandbox output | Blocked | Deep failure and short success recorded; default-off smoke matrix harness documented | Real matrix run evidence and selected max-path or controlled short-path policy | Real path-depth smoke evidence run | Yes |
+| Release trust / legal provenance | Blocked | TDF source, MSI/package hashes, license/NOTICE inputs, required evidence list | Legal/license/NOTICE/redistribution approval record | Legal/provenance review package | Yes |
+| Signing / trust policy | Blocked | Checksum, signature, rollback, revocation, unsigned-package expectations documented | Selected signature format, trust root, revocation/rollback implementation policy | Signing/trust policy package | Yes |
+| Production acquisition | Blocked | `downloadEnabled=false`, hash-pinned prerelease source, no implicit conversion-time download gate | Approved production source, install/repair UX, offline/network/cache/update policy | Distribution/acquisition approval package | Yes |
+| Packaged distribution | Blocked | Bundled/download/import options and approval gates documented | Chosen distribution mode, app size impact, update/removal policy, user consent wording | Distribution/acquisition approval package | Yes |
+| Multi-platform assets | Blocked | Windows x64 current status and macOS/Linux requirements documented | macOS/Linux `.svpkg` assets, per-platform import/runtime/smoke evidence | Platform asset preparation task after Owner approval | Yes |
+| Typecheck/regression | Partial readiness | Targeted checklist tests and previous DFC validations | Current full typecheck triage for known `infra/files/**` failures | Validation cleanup task before final approval | No, unless accepting failures |
+
+Recommended next executable tasks:
+
+1. `test(file-conversion): run LibreOffice path-depth smoke evidence matrix`
+   - Run the default-off matrix with explicit environment variables and repo-external runtime roots.
+   - Capture sanitized evidence for short/deep runtime and input/output paths.
+   - Select either a max supported path policy or a controlled short-path runtime policy.
+2. `docs(file-conversion): assemble LibreOffice legal provenance review package`
+   - Attach TDF source provenance, MSI hash/size, `.svpkg` hash/size, package/runtime manifests, inventory, license/NOTICE/attribution inputs, and redistribution review notes.
+   - Record whether the current GitHub prerelease asset can be promoted, replaced, mirrored, bundled, or rejected for production.
+3. `docs(file-conversion): define LibreOffice signing trust and distribution approval policy`
+   - Decide signature/checksum trust policy, rollback/revocation handling, unsigned package policy, production acquisition source, download/import/bundling mode, and user consent wording.
+   - Keep `downloadEnabled=false` until this policy is approved.
+
+## 13. Approval Decision Table
 
 | Gate | Owner | Current status | Required evidence | Pass/fail criteria | Target follow-up task |
 | --- | --- | --- | --- | --- | --- |
@@ -457,41 +499,38 @@ Typecheck note:
 | Typecheck/regression | Engineering | Partial | current typecheck and targeted test results | No relevant DFC errors or accepted unrelated failures only | Validation cleanup |
 | Final production approval | Owner | Not approved | all prior gates complete | Owner explicitly approves `productionApproved=true` change | Production approval implementation |
 
-## 13. Recommended Next Tasks
+## 14. Recommended Next Tasks
 
 Recommended Codex implementation/audit task:
 
-- Task: `test(file-conversion): audit LibreOffice production approval blockers`
+- Task: `test(file-conversion): run LibreOffice path-depth smoke evidence matrix`
 - Scope:
-  - Add or update docs/tests only where useful to lock current blocker state.
-  - Rerun targeted LibreOffice package/runtime/acquisition tests.
-  - Rerun typecheck and classify any `infra/files/**` failures.
+  - Execute the default-off path-depth smoke matrix with explicit runtime roots.
+  - Record sanitized evidence and selected path policy.
+  - Keep DOCX-to-PDF only and owner-gated.
   - Do not change runtime behavior or flip `productionApproved`.
 
 Recommended DeepSeek review/hardening task:
 
-- Task: `review(file-conversion): LibreOffice runtime security and path-depth gate`
+- Task: `review(file-conversion): LibreOffice path-depth and runtime security evidence`
 - Scope:
-  - Review sandbox/profile/network/macro/output/logging policy.
-  - Review path-depth failure evidence and suggest minimum reproduction matrix.
+  - Review real matrix evidence, sandbox/profile/network/macro/output/logging policy, and failure diagnostics.
   - Identify P0/P1 blockers before production approval.
 
 Recommended Owner checkpoint:
 
-- Decision: approve or reject moving from owner-gated experimental to a specific next gate:
-  - legal/provenance review,
-  - signing/trust policy,
-  - production acquisition policy,
-  - packaged distribution policy,
-  - or path-depth smoke matrix.
+- Decision: choose the next approval package after path-depth evidence:
+  - legal/provenance review package,
+  - signing/trust policy package,
+  - or distribution/acquisition approval package.
 
 Task sizing guidance:
 
 - Keep each next task medium-sized.
 - Do not split into single-field doc patches.
-- Do not combine production approval, signing, acquisition, packaged distribution, and multi-platform support into one implementation commit.
+- Do not combine production approval, signing, acquisition, packaged distribution, multi-platform support, and `productionApproved=true` into one implementation commit.
 
-## 14. Explicit Non-Goals
+## 15. Explicit Non-Goals
 
 This approval checklist does not:
 
