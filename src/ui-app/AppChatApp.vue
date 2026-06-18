@@ -134,6 +134,7 @@ const {
   onNavigateHistoryIncompatibleAttachments,
   activeSessionConfig,
   localEndpointChatConfig,
+  openAIResponsesChatConfig,
   modelCatalogForPicker,
   modelCatalogNotice,
   modelPrefsScopeForUi,
@@ -155,6 +156,9 @@ const {
   onUpdateLocalEndpointChatUrl,
   onUpdateLocalEndpointChatModel,
   onClearLocalEndpointChat,
+  onUpdateOpenAIResponsesChatEnabled,
+  onUpdateOpenAIResponsesChatModel,
+  onClearOpenAIResponsesChat,
   onAttachFilesRequested,
   onAttachImagesRequested,
   onAttachUrlRequested,
@@ -218,6 +222,10 @@ const runSummary = computed(() => {
 })
 
 const modelSummary = computed(() => {
+  if (openAIResponsesChatConfig.value.enabled) {
+    const model = openAIResponsesChatConfig.value.model.trim() || 'manual model required'
+    return `OpenAI Responses · ${model}`
+  }
   if (localEndpointChatConfig.value.enabled) {
     const model = localEndpointChatConfig.value.model.trim() || 'manual model required'
     return `LocalEndpoint · ${model}`
@@ -767,6 +775,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             :isRunning="isRunning"
             :sessionConfig="activeSessionConfig"
             :localEndpointChat="localEndpointChatConfig"
+            :openAIResponsesChat="openAIResponsesChatConfig"
             :reasoningDisplayMode="reasoningDisplayMode"
             :modelCatalog="modelCatalogForPicker"
             :webSearchResolved="activeSessionWebSearchResolved"
@@ -786,6 +795,9 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateLocalEndpointChatUrl="onUpdateLocalEndpointChatUrl"
             @updateLocalEndpointChatModel="onUpdateLocalEndpointChatModel"
             @clearLocalEndpointChat="onClearLocalEndpointChat"
+            @updateOpenAIResponsesChatEnabled="onUpdateOpenAIResponsesChatEnabled"
+            @updateOpenAIResponsesChatModel="onUpdateOpenAIResponsesChatModel"
+            @clearOpenAIResponsesChat="onClearOpenAIResponsesChat"
             @updateReasoningDisplayMode="onUpdateReasoningDisplayMode"
             @openSettings="openSettings"
           />

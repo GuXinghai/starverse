@@ -6,6 +6,7 @@ import AppChatApp from './AppChatApp.vue'
 
 const streamOpenRouterChatCallArgs: any[] = []
 const localEndpointTextChatCallArgs: any[] = []
+const openAIResponsesTextChatCallArgs: any[] = []
 const imageCapableModel = OPENROUTER_TEST_MODELS[1] ?? OPENROUTER_TEST_MODELS[0]
 
 const draftBox = () => screen.getByTestId('composer-draft') as HTMLTextAreaElement
@@ -72,6 +73,18 @@ vi.mock('@/next/live/localEndpointTextChat', () => {
   return { streamLocalEndpointTextChatAsDomainEvents }
 })
 
+vi.mock('@/next/live/openAIResponsesTextChat', () => {
+  async function* streamOpenAIResponsesTextChatAsDomainEvents(options: any) {
+    openAIResponsesTextChatCallArgs.push(options)
+    const assistantMessageId = String(options?.assistantMessageId ?? 'a1')
+    yield { type: 'MetaDelta', meta: { id: 'openai_responses_gen_1', model: String(options?.model ?? 'gpt-4.1-mini'), provider: 'openai-responses' } }
+    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'openai ' }
+    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'hi' }
+    yield { type: 'StreamDone' }
+  }
+  return { streamOpenAIResponsesTextChatAsDomainEvents }
+})
+
 describe('ui-app AppChatApp (send: pure text)', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronAPI = (globalThis as any).electronAPI
@@ -83,9 +96,12 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     vi.useFakeTimers()
     streamOpenRouterChatCallArgs.length = 0
     localEndpointTextChatCallArgs.length = 0
+    openAIResponsesTextChatCallArgs.length = 0
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
     convoListMeta = null
     // Make throttle immediate in tests (while still exercising scheduling code paths).
     globalThis.setTimeout = ((fn: (...args: any[]) => void) => originalSetTimeout(fn, 0)) as any
@@ -428,6 +444,11 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     ;(globalThis as any).electronAPI = originalElectronAPI
     ;(globalThis as any).electronStore = originalElectronStore
     globalThis.setTimeout = originalSetTimeout
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
     vi.useRealTimers()
   })
 
@@ -556,6 +577,78 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('hi')
 
     expect(localEndpointTextChatCallArgs).toHaveLength(0)
+    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+  })
+
+  it('routes explicit OpenAI Responses text chat through the normal transcript without OpenRouter or Generic send', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'openai ping')
+    await user.click(sendButton())
+
+    await screen.findByText('openai ping')
+    await screen.findByText('openai hi')
+    await vi.runAllTimersAsync()
+
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
+    expect(localEndpointTextChatCallArgs).toHaveLength(0)
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
+      model: 'gpt-4.1-mini',
+      userText: 'openai ping',
+    })
+    expect(openAIResponsesTextChatCallArgs[0].currentUserContentBlocks).toBeUndefined()
+    expect(invoke).toHaveBeenCalledWith('branch.beginTurn', expect.objectContaining({ branchId: 'b1', userBody: 'openai ping' }))
+    expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 2 }))
+    expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a1', status: 'final' }))
+    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
+  })
+
+  it('keeps OpenAI Responses default-off when SettingsPanel only applies a model default', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'openai default off ping')
+    await user.click(sendButton())
+
+    await screen.findByText('openai default off ping')
+    await screen.findByText('hi')
+
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
+    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+  })
+
+  it('returns to the OpenRouter path when OpenAI Responses chat is disabled or cleared', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
+    window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.openAIResponsesTextChat.enabled' }))
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'cleared openai responses ping')
+    await user.click(sendButton())
+
+    await screen.findByText('cleared openai responses ping')
+    await screen.findByText('hi')
+
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
     expect(streamOpenRouterChatCallArgs).toHaveLength(1)
   })
 

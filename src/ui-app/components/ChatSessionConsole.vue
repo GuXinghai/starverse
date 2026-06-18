@@ -19,6 +19,11 @@ const props = defineProps<{
     model: string
     experimentalLabel: string
   }> | null
+  openAIResponsesChat?: Readonly<{
+    enabled: boolean
+    model: string
+    experimentalLabel: string
+  }> | null
   reasoningDisplayMode: 'inline' | 'rail'
   modelCatalog: readonly ModelCatalogItem[]
   webSearchResolved: ResolvedSearchSettings | null
@@ -41,6 +46,9 @@ const emit = defineEmits<{
   (e: 'updateLocalEndpointChatUrl', value: string): void
   (e: 'updateLocalEndpointChatModel', value: string): void
   (e: 'clearLocalEndpointChat'): void
+  (e: 'updateOpenAIResponsesChatEnabled', enabled: boolean): void
+  (e: 'updateOpenAIResponsesChatModel', value: string): void
+  (e: 'clearOpenAIResponsesChat'): void
   (e: 'updateReasoningDisplayMode', mode: 'inline' | 'rail'): void
   (e: 'openSettings'): void
 }>()
@@ -54,6 +62,12 @@ const localEndpointChat = computed(() => props.localEndpointChat ?? {
   experimentalLabel: 'Experimental · LocalEndpoint text-only · not OpenRouter',
 })
 const localEndpointChatStatusLabel = computed(() => localEndpointChat.value.enabled ? 'active' : 'inactive')
+const openAIResponsesChat = computed(() => props.openAIResponsesChat ?? {
+  enabled: false,
+  model: '',
+  experimentalLabel: 'Experimental · OpenAI Responses text-only · not OpenRouter',
+})
+const openAIResponsesChatStatusLabel = computed(() => openAIResponsesChat.value.enabled ? 'active' : 'inactive')
 const imageValue = computed<ImageGenerationUserConfig>(() => ({
   enabled: props.sessionConfig.imageGeneration.enabled,
   outputMode: props.sessionConfig.imageGeneration.detail?.outputMode ?? 'auto',
@@ -107,6 +121,64 @@ function chipClass(active: boolean): string {
             {{ item.name }}
           </option>
         </select>
+      </section>
+
+      <section class="space-y-3 rounded-lg border border-blue-200 bg-blue-50/70 p-3" data-testid="openai-responses-chat-controls">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-blue-800">OpenAI Responses Chat</div>
+            <div class="mt-1 text-[11px] text-blue-700">{{ openAIResponsesChat.experimentalLabel }}</div>
+          </div>
+          <label class="flex items-center gap-2 text-sm text-blue-900">
+            <input
+              type="checkbox"
+              :checked="openAIResponsesChat.enabled"
+              :disabled="disabled"
+              data-testid="openai-responses-chat-enabled"
+              @change="emit('updateOpenAIResponsesChatEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            enabled
+          </label>
+        </div>
+        <div class="space-y-2">
+          <label class="block text-[11px] font-semibold text-blue-900">Manual Responses model id</label>
+          <input
+            class="w-full rounded border border-blue-200 bg-white px-2 py-1.5 text-sm disabled:bg-blue-50"
+            :value="openAIResponsesChat.model"
+            :disabled="disabled || !openAIResponsesChat.enabled"
+            placeholder="gpt-4.1-mini"
+            data-testid="openai-responses-chat-model"
+            @input="emit('updateOpenAIResponsesChatModel', ($event.target as HTMLInputElement).value)"
+          />
+        </div>
+        <div class="text-[11px] text-blue-800" data-testid="openai-responses-chat-warning">
+          Native OpenAI Responses API text-only streaming. Attachments, web, tools, image generation, reasoning, and Generic compatibility routing are disabled.
+        </div>
+        <div class="rounded border border-blue-100 bg-white px-2 py-1.5 text-[11px] text-blue-900" data-testid="openai-responses-chat-selected-status">
+          <div>Experimental OpenAI Responses chat is {{ openAIResponsesChatStatusLabel }}.</div>
+          <div>Selected Responses model: {{ openAIResponsesChat.model || 'none' }}</div>
+          <div>OpenAI Responses chat uses a main-process credential bridge and does not expose API keys to this console.</div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-900 hover:bg-blue-100 disabled:opacity-50"
+            :disabled="disabled || !openAIResponsesChat.enabled"
+            data-testid="openai-responses-chat-disable"
+            @click="emit('updateOpenAIResponsesChatEnabled', false)"
+          >
+            Disable OpenAI Responses chat
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-900 hover:bg-blue-100 disabled:opacity-50"
+            :disabled="disabled"
+            data-testid="openai-responses-chat-clear"
+            @click="emit('clearOpenAIResponsesChat')"
+          >
+            Clear OpenAI Responses chat settings
+          </button>
+        </div>
       </section>
 
       <section class="space-y-3 rounded-lg border border-amber-200 bg-amber-50/70 p-3" data-testid="local-endpoint-chat-controls">

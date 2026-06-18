@@ -9,6 +9,10 @@ import {
   OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS,
 } from './openRouterCredentialSettingsIpc'
 import {
+  registerOpenAIResponsesCredentialSettingsIpc,
+  OPENAI_RESPONSES_CREDENTIAL_SETTINGS_IPC_CHANNELS,
+} from './openAIResponsesCredentialSettingsIpc'
+import {
   registerLocalEndpointDiagnosticsIpc,
   LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS,
 } from './localEndpointDiagnosticsIpc'
@@ -16,13 +20,19 @@ import {
   registerLocalEndpointTextChatIpc,
   LOCAL_ENDPOINT_TEXT_CHAT_IPC_CHANNELS,
 } from './localEndpointTextChatIpc'
+import {
+  registerOpenAIResponsesTextChatIpc,
+  OPENAI_RESPONSES_TEXT_CHAT_IPC_CHANNELS,
+} from './openAIResponsesTextChatIpc'
 import type { RegisterInvoke } from './types'
 
 export const CORE_IPC_CHANNELS = [
   ...STORE_IPC_CHANNELS,
   ...OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS,
+  ...OPENAI_RESPONSES_CREDENTIAL_SETTINGS_IPC_CHANNELS,
   ...LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS,
   ...LOCAL_ENDPOINT_TEXT_CHAT_IPC_CHANNELS,
+  ...OPENAI_RESPONSES_TEXT_CHAT_IPC_CHANNELS,
   ...NETEXP_IPC_CHANNELS,
   ...DIALOG_IPC_CHANNELS,
   ...SHELL_IPC_CHANNELS,
@@ -77,11 +87,19 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
       registerInvoke: input.registerInvoke,
       store: input.store,
     }),
+    ...registerOpenAIResponsesCredentialSettingsIpc({
+      registerInvoke: input.registerInvoke,
+      store: input.store,
+    }),
     ...registerLocalEndpointDiagnosticsIpc({
       registerInvoke: input.registerInvoke,
     }),
     ...registerLocalEndpointTextChatIpc({
       registerInvoke: input.registerInvoke,
+    }),
+    ...registerOpenAIResponsesTextChatIpc({
+      registerInvoke: input.registerInvoke,
+      store: input.store,
     }),
     ...registerNetExpIpc({
       registerInvoke: input.registerInvoke,

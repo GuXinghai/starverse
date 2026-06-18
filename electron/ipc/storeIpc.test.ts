@@ -123,6 +123,7 @@ describe('registerStoreIpc', () => {
     const blockedKeys = [
       'openRouterApiKey',
       'openRouterBaseUrl',
+      'openAIResponsesApiKey',
       'geminiApiKey',
       'apiKey',
       OPENROUTER_CATALOG_LOCAL_SECRET_KEY,

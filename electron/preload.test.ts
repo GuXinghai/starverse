@@ -30,8 +30,10 @@ describe('preload scoped API exposure', () => {
     expect(exposedNames).toEqual(expect.arrayContaining([
       'electronStore',
       'openRouterCredential',
+      'openAIResponsesCredential',
       'localEndpointDiagnostics',
       'localEndpointChat',
+      'openAIResponsesChat',
       'electronAPI',
       'dbBridge',
     ]))
@@ -69,8 +71,10 @@ describe('preload scoped API exposure', () => {
 
     const electronStore = exposeInMainWorld.mock.calls.find(([name]) => name === 'electronStore')?.[1]
     const openRouterCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'openRouterCredential')?.[1]
+    const openAIResponsesCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'openAIResponsesCredential')?.[1]
     const localEndpointDiagnostics = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointDiagnostics')?.[1]
     const localEndpointChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointChat')?.[1]
+    const openAIResponsesChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'openAIResponsesChat')?.[1]
     expect(electronStore).toEqual(expect.objectContaining({
       get: expect.any(Function),
       set: expect.any(Function),
@@ -79,6 +83,11 @@ describe('preload scoped API exposure', () => {
       checkIntegrity: expect.any(Function),
     }))
     expect(openRouterCredential).toEqual({
+      getStatus: expect.any(Function),
+      update: expect.any(Function),
+      clear: expect.any(Function),
+    })
+    expect(openAIResponsesCredential).toEqual({
       getStatus: expect.any(Function),
       update: expect.any(Function),
       clear: expect.any(Function),
@@ -93,12 +102,23 @@ describe('preload scoped API exposure', () => {
       onTextChatChunk: expect.any(Function),
       onTextChatEnd: expect.any(Function),
     })
+    expect(openAIResponsesChat).toEqual({
+      startTextChat: expect.any(Function),
+      abortTextChat: expect.any(Function),
+      onTextChatChunk: expect.any(Function),
+      onTextChatEnd: expect.any(Function),
+    })
     expect(localEndpointDiagnostics.getStatus).toBeUndefined()
     expect(localEndpointDiagnostics.update).toBeUndefined()
     expect(localEndpointDiagnostics.endpointRegistry).toBeUndefined()
     expect(localEndpointChat.getStatus).toBeUndefined()
     expect(localEndpointChat.update).toBeUndefined()
     expect(localEndpointChat.endpointRegistry).toBeUndefined()
+    expect(openAIResponsesCredential.apiKey).toBeUndefined()
+    expect(openAIResponsesCredential.endpointRegistry).toBeUndefined()
+    expect(openAIResponsesChat.getStatus).toBeUndefined()
+    expect(openAIResponsesChat.update).toBeUndefined()
+    expect(openAIResponsesChat.endpointRegistry).toBeUndefined()
     expect(openRouterCredential.getEndpointMetadata).toBeUndefined()
     expect(openRouterCredential.endpointRegistry).toBeUndefined()
 
@@ -110,6 +130,9 @@ describe('preload scoped API exposure', () => {
     await openRouterCredential.getStatus()
     await openRouterCredential.update({ apiKey: 'raw-openrouter-key', baseUrl: 'https://openrouter.ai/api/v1' })
     await openRouterCredential.clear()
+    await openAIResponsesCredential.getStatus()
+    await openAIResponsesCredential.update({ apiKey: 'raw-openai-key' })
+    await openAIResponsesCredential.clear()
     await localEndpointDiagnostics.probe({ url: 'http://localhost:1234', timeoutMs: 5000 })
     await localEndpointDiagnostics.streamProbe({ url: 'http://localhost:1234', timeoutMs: 5000 })
     await localEndpointChat.startTextChat({
@@ -121,6 +144,15 @@ describe('preload scoped API exposure', () => {
     await localEndpointChat.abortTextChat('local_req_preload')
     localEndpointChat.onTextChatChunk('local_req_preload', () => {})
     localEndpointChat.onTextChatEnd('local_req_preload', () => {})
+    await openAIResponsesChat.startTextChat({
+      requestId: 'openai_responses_req_preload',
+      assistantMessageId: 'assistant_1',
+      model: 'gpt-4.1-mini',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    await openAIResponsesChat.abortTextChat('openai_responses_req_preload')
+    openAIResponsesChat.onTextChatChunk('openai_responses_req_preload', () => {})
+    openAIResponsesChat.onTextChatEnd('openai_responses_req_preload', () => {})
 
     expect(invoke).toHaveBeenCalledWith('store-get', 'theme')
     expect(invoke).toHaveBeenCalledWith('store-set', 'theme', 'dark')
@@ -133,6 +165,11 @@ describe('preload scoped API exposure', () => {
       baseUrl: 'https://openrouter.ai/api/v1',
     })
     expect(invoke).toHaveBeenCalledWith('openrouter-credential:clear')
+    expect(invoke).toHaveBeenCalledWith('openai-responses-credential:get-status')
+    expect(invoke).toHaveBeenCalledWith('openai-responses-credential:update', {
+      apiKey: 'raw-openai-key',
+    })
+    expect(invoke).toHaveBeenCalledWith('openai-responses-credential:clear')
     expect(invoke).toHaveBeenCalledWith('local-endpoint-diagnostics:probe', {
       url: 'http://localhost:1234',
       timeoutMs: 5000,
@@ -148,14 +185,23 @@ describe('preload scoped API exposure', () => {
       messages: [{ role: 'user', content: 'hello' }],
     })
     expect(invoke).toHaveBeenCalledWith('local-endpoint-chat:abort', 'local_req_preload')
+    expect(invoke).toHaveBeenCalledWith('openai-responses-chat:stream-text', {
+      requestId: 'openai_responses_req_preload',
+      assistantMessageId: 'assistant_1',
+      model: 'gpt-4.1-mini',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(invoke).toHaveBeenCalledWith('openai-responses-chat:abort', 'openai_responses_req_preload')
   })
 
   it('does not expose generic credential resolver or raw Authorization/Bearer helpers', () => {
     const preloadSource = readFileSync(resolve(testDir, 'preload.ts'), 'utf8')
 
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openRouterCredential'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openAIResponsesCredential'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointDiagnostics'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointChat'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openAIResponsesChat'")
     expect(preloadSource).not.toContain('credentialRef')
     expect(preloadSource).not.toContain('credentialResolver')
     expect(preloadSource).not.toContain('secretStore')

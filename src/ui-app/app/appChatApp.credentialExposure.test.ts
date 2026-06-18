@@ -29,6 +29,20 @@ function expectNoGenericStoreOpenRouterCredentialAccess(source: string) {
   }
 }
 
+function expectNoGenericStoreOpenAIResponsesCredentialAccess(source: string) {
+  const blockedPatterns = [
+    /electronStore\s*\.\s*get\s*\(\s*['"]openAIResponsesApiKey['"]/,
+    /electronStore\s*\.\s*set\s*\(\s*['"]openAIResponsesApiKey['"]/,
+    /electronStore\s*\.\s*delete\s*\(\s*['"]openAIResponsesApiKey['"]/,
+    /store\s*\.\s*get\s*\(\s*['"]openAIResponsesApiKey['"]/,
+    /store\s*\.\s*set\s*\(\s*['"]openAIResponsesApiKey['"]/,
+    /store\s*\.\s*delete\s*\(\s*['"]openAIResponsesApiKey['"]/,
+  ]
+  for (const pattern of blockedPatterns) {
+    expect(source).not.toMatch(pattern)
+  }
+}
+
 describe('appChatApp OpenRouter C4 exposure baseline', () => {
   it('characterizes active C3 chat/send as using legacy_store credential source without renderer raw apiKey handoff', () => {
     const source = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
@@ -58,7 +72,26 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
 
     for (const source of rendererFiles) {
       expectNoGenericStoreOpenRouterCredentialAccess(source)
+      expectNoGenericStoreOpenAIResponsesCredentialAccess(source)
     }
+  })
+
+  it('keeps OpenAI Responses experimental send native, explicit, text-only, and renderer-secret-free', () => {
+    const appChatSource = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
+    const settingsSource = readFileSync(resolve(testDir, '..', 'components', 'SettingsPanel.vue'), 'utf8')
+
+    expect(appChatSource).toContain('streamOpenAIResponsesTextChatAsDomainEvents')
+    expect(appChatSource).toContain('openAIResponsesChatEnabled')
+    expect(appChatSource).toContain('getOpenAIResponsesTextChatBlockReason')
+    expect(appChatSource).toContain('OpenAI Responses experimental text chat is text-only. Remove attachments before sending.')
+    expect(appChatSource).toContain('config.webSearch.enabled')
+    expect(appChatSource).toContain('config.reasoning.enabled')
+    expect(appChatSource).toContain('config.imageGeneration.enabled')
+    expect(settingsSource).toContain('openAIResponsesCredential')
+    expect(settingsSource).not.toContain("electronStore.get('openAIResponsesApiKey')")
+    expect(settingsSource).not.toContain("electronStore.set('openAIResponsesApiKey'")
+    expect(settingsSource).not.toContain('Authorization')
+    expect(settingsSource).not.toContain('Bearer')
   })
 
   it('keeps experimental LocalEndpoint chat text-only and blocks high-risk send options before streaming', () => {

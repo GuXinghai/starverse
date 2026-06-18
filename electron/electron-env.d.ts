@@ -83,6 +83,24 @@ type OpenRouterCredentialResult =
   | { ok: true; status: OpenRouterCredentialStatus }
   | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
 
+interface OpenAIResponsesCredentialStatus {
+  source: 'legacy_store'
+  providerId: 'openai'
+  profileId: 'openai_responses_v1'
+  apiKeyConfigured: boolean
+  maskedApiKey?: '***'
+  defaultBaseUrl: 'https://api.openai.com/v1'
+  rendererVisible: true
+}
+
+interface OpenAIResponsesCredentialUpdatePayload {
+  apiKey?: string
+}
+
+type OpenAIResponsesCredentialResult =
+  | { ok: true; status: OpenAIResponsesCredentialStatus }
+  | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
+
 type LocalEndpointProbeModelList =
   | {
     ok: true
@@ -164,12 +182,30 @@ type LocalEndpointTextChatStartResult =
     safeUrl?: string
   }
 
+type OpenAIResponsesTextChatMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+type OpenAIResponsesTextChatStartResult =
+  | { ok: true }
+  | {
+    ok: false
+    code: 'invalid_payload' | 'credential_missing' | 'store_unavailable'
+    error: string
+  }
+
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   openRouterCredential?: {
     getStatus?: () => Promise<OpenRouterCredentialResult>
     update?: (payload: OpenRouterCredentialUpdatePayload) => Promise<OpenRouterCredentialResult>
     clear?: () => Promise<OpenRouterCredentialResult>
+  }
+  openAIResponsesCredential?: {
+    getStatus?: () => Promise<OpenAIResponsesCredentialResult>
+    update?: (payload: OpenAIResponsesCredentialUpdatePayload) => Promise<OpenAIResponsesCredentialResult>
+    clear?: () => Promise<OpenAIResponsesCredentialResult>
   }
   localEndpointDiagnostics?: {
     probe?: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointProbeResult>
@@ -183,6 +219,18 @@ interface Window {
       messages: LocalEndpointTextChatMessage[]
       timeoutMs?: number
     }) => Promise<LocalEndpointTextChatStartResult>
+    abortTextChat?: (requestId: string) => Promise<{ ok: true }>
+    onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
+    onTextChatEnd?: (requestId: string, callback: () => void) => () => void
+  }
+  openAIResponsesChat?: {
+    startTextChat?: (payload: {
+      requestId: string
+      assistantMessageId: string
+      model: string
+      messages: OpenAIResponsesTextChatMessage[]
+      timeoutMs?: number
+    }) => Promise<OpenAIResponsesTextChatStartResult>
     abortTextChat?: (requestId: string) => Promise<{ ok: true }>
     onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
     onTextChatEnd?: (requestId: string, callback: () => void) => () => void
