@@ -1,10 +1,13 @@
 # STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md
 
-版本：v1.0.0
+版本：v1.1.0
 状态：Owner-confirmed architecture SSOT
-最后更新：2026-06-11
+最后更新：2026-06-18
 上游证据来源：provider-architecture-gpt55-transfer.zip
 取代：previous unversioned provider architecture drafts
+
+修订记录：
+- v1.1.0 (2026-06-18): Added Experimental live paths closeout section reflecting C6 LocalEndpoint, C7a OpenAI Responses, and C7b Google AI Studio experimental text chat status. No contract term changes.
 关联文档：
 - STARVERSE_PROVIDER_ARCHITECTURE_CONTRACT.md
 - STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md
@@ -29,6 +32,37 @@ All six target provider paths now have fixture-integrated adapter foundations:
 Adapter-side credential boundary seed exists: pure adapter/test boundary for bearer credential construction, auth header building, credential masking, and credential-aware error message/code redaction. This is not secure store, not renderer/settings/IPC, not live enablement.
 
 Deferred: live API calls, UI/provider picker, settings, secure credential store, provider registry, Send Plan RuntimeCapability integration, OpenRouter conformance to RuntimeProviderStreamAdapter, LocalEndpoint, ManagedLocalRuntime.
+
+## Experimental live paths closeout (added 2026-06-18)
+
+Three experimental, default-off, text-only live chat paths are implemented with renderer raw credential read-back blocked. These are not production provider surfaces — they are gated behind explicit localStorage flags, mutually exclusive, and reversible to OpenRouter.
+
+| Provider | Adapter | Credential store key | IPC channels | Gating key | Scope |
+|---|---|---|---|---|---|
+| **OpenRouter** | existing active runtime (`streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource`) | `openRouterApiKey` (legacy backing) | `openrouter-credential:*` | (default, always active) | Production runtime — unchanged |
+| **LocalEndpoint (C6)** | OpenAI-compatible fetch (loopback only) | (none — no credentials) | `local-endpoint-chat:*` | `starverse.localEndpointTextChat.enabled` | Experimental text-only local chat |
+| **OpenAI Responses (C7a)** | `streamViaOpenAIResponses` (native) | `openAIResponsesApiKey` | `openai-responses-credential:*` `openai-responses-chat:*` | `starverse.openAIResponsesTextChat.enabled` | Experimental text-only native chat |
+| **Google AI Studio (C7b)** | `streamViaGemini` (native Gemini API) | `googleAIStudioApiKey` (NOT `geminiApiKey`) | `google-ai-studio-credential:*` `google-ai-studio-chat:*` | `starverse.googleAIStudioTextChat.enabled` | Experimental text-only native chat |
+
+Shared properties of experimental paths:
+
+- **Default-off**: enabled flag must be explicitly set to `'1'` in localStorage via Console checkbox
+- **Two-step gating**: Settings Panel applies model/URL defaults to localStorage — never writes `enabled` key; Console checkbox is the only way to enable send
+- **Text-only**: `getXxxTextChatBlockReason()` checks attachments, web search, reasoning, and image generation before any IPC invocation; returns user-facing message if blocked
+- **Mutually exclusive**: enabling one experimental mode clears the other two via `enforceExperimentalChatMutualExclusion()` / symmetric `onUpdateXxxEnabled()` handlers
+- **Reversible**: Disable sets enabled=false (keeps settings); Clear removes all localStorage keys; both return send to OpenRouter
+- **Credential-isolated**: renderer may transiently send user-entered API keys through provider-specific one-way update IPC; all responses return only masked status (`apiKeyConfigured: true, maskedApiKey: '***'`); store IPC blocks all raw key access (`RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS`)
+- **No model picker integration**: experimental models are never published to the main model picker
+- **No Send Plan / DB schema / DFC changes**: experimental send paths use existing `beginTurn` / `runAssistantStreamSession` / `message.appendDelta` patterns
+
+Google AI Studio legacy isolation:
+
+- Uses `googleAIStudioApiKey` store key — NOT the old `geminiApiKey`
+- Imports `streamViaGemini` from the native Gemini adapter foundation — NOT the old `@google/generative-ai` SDK
+- `profileId: 'gemini_api_v1'` identifies native Gemini API architecture
+- Old `geminiApiKey`, `PROVIDERS.GEMINI`, and `@google/generative-ai` remain `deprecated-for-removal` / `migration-read-only`; the new path does not reuse them
+
+Deferred from experimental live paths: `RuntimeProviderRegistry`, `EndpointRegistry`, provider registry dispatch routing, model picker integration, capability resolver, formal `RuntimeCapability`-driven Send Plan, and OpenRouter conformance to `RuntimeProviderStreamAdapter`.
 
 ---
 
@@ -225,7 +259,7 @@ Feature capability：tool、reasoning、web search、structured output、image g
 | custom headers | secret ref 存 secure store，renderer 只见是否配置。 |
 | local endpoint health | 可见健康摘要，不暴露 admin secret 或敏感本地路径。 |
 | Gemini legacy migration | read-only migration；不进入 runtime selection。 |
-| OpenRouter legacy exception | 当前 renderer key/baseURL access 是 legacy issue，后续迁移到 main/secure boundary。 |
+| OpenRouter legacy backing | 当前仍使用 legacy store backing；renderer raw key/baseURL read-back 已被 C4 屏蔽，settings 通过 provider-specific masked metadata + one-way update/clear bridge。后续 secure store 仍需单独推进。 |
 
 ---
 
@@ -301,7 +335,7 @@ Long-tail provider support must minimize maintenance pressure. Starverse should 
 | `activeProvider: 'Gemini'` | migration-only; not runtime selection input。 |
 | `geminiApiKey` | migration-read-only; no runtime role。 |
 | Gemini constants/dependencies/remnants | inventory as deprecated-for-removal; remove when migration safety confirmed or native adapter replaces them。 |
-| OpenRouter renderer key/baseURL access | legacy exception; migrate to main/secure credential boundary。 |
+| OpenRouter legacy store backing | renderer raw key/baseURL read-back blocked; migrate legacy backing to secure credential boundary in a separate phase。 |
 | OpenRouter raw schema as app-wide schema | contain inside OpenRouter adapter/facade; expose Starverse IR externally。 |
 
 Gemini future support must be rebuilt through Gemini API / Google AI Studio native adapter. Old Gemini path must not be revived.

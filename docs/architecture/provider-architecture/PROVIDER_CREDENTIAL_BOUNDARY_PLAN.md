@@ -1,8 +1,8 @@
 # PROVIDER_CREDENTIAL_BOUNDARY_PLAN.md
 
-版本：v1.0.0
+版本：v1.1.0
 状态：Planning document — not yet Owner-confirmed
-最后更新：2026-06-14
+最后更新：2026-06-18
 
 关联文档：
 - STARVERSE_PROVIDER_ARCHITECTURE_CONTRACT.md §9, §10
@@ -21,60 +21,45 @@ Verified flow:
 [Electron Store]
   openRouterApiKey, openRouterBaseUrl
         │
-        │ window.electronStore.get()
+        │ main-process legacy_store resolver
         v
-[useChatSession.ts]  (lines 23-39)
-  getOpenRouterApiKey()  →  string | null
-  getOpenRouterBaseUrl() →  string | null
+[appChatApp.logic.ts]
+  streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource()
         │
-        │ await calls
+        │ credentialSource: 'legacy_store'
         v
-[appChatApp.logic.ts]  (lines 7465, 7477, 8012, 8018)
-  apiKey  = await getOpenRouterApiKey()
-  baseUrl = await getOpenRouterBaseUrl()
-        │
-        │ apiKey  → credentials parameter: { apiKey }
-        │ baseUrl → request.config.baseUrl
-        v
-[openRouterAdapter.ts]  (lines 37-69)
-  streamViaOpenRouter(request, { apiKey })
+[openRouterAdapter.ts] / [openRouterLiveStream.ts]
+  no renderer-provided raw apiKey/baseUrl in active send payload
         │
         v
-[openRouterLiveStream.ts]  (lines 429-529)
-  options.config.apiKey  →  fetch/apiKey
-        │
-        v
-[openRouterStreamBridge.ts]  (line 346)
-  request.setHeader('Authorization', `Bearer ${payload.config.apiKey}`)
+[openRouterStreamBridge.ts]
+  resolves apiKey/baseUrl from legacy store and sets Authorization in main process
 ```
 
-The adapter receives credentials as explicit parameters — it does not read from the store. The store-to-adapter boundary is in `appChatApp.logic.ts`.
+The active OpenRouter chat/send path is resolver-backed with legacy store backing. This is not secure store completion, but renderer generic store raw key/baseURL read-back is blocked and the active send payload no longer carries raw OpenRouter credential material.
 
 ### 1.2 Renderer exposure today
 
-| Surface | File | What renderer reads |
-|---------|------|-------------------|
-| `getOpenRouterApiKey()` | `src/ui-app/app/useChatSession.ts:23-30` | Raw API key string from `electronStore.get('openRouterApiKey')` |
-| `getOpenRouterBaseUrl()` | `src/ui-app/app/useChatSession.ts:32-39` | Raw base URL string from `electronStore.get('openRouterBaseUrl')` |
-| Settings panel input | `src/ui-app/components/SettingsPanel.vue:68-690` | Raw API key in `<input v-model="apiKey">`, reads/writes via `store.get`/`store.set` |
-| Settings panel save | `SettingsPanel.vue:312,472` | Writes raw key via `store.set('openRouterApiKey', ...)` |
-| Settings panel clear | `SettingsPanel.vue:403` | Clears local ref, writes empty via `store.set` |
+| Surface | File | What renderer can see |
+|---------|------|----------------------|
+| OpenRouter credential status | `electron/ipc/openRouterCredentialSettingsIpc.ts` via preload bridge | Masked status and sanitized endpoint metadata only |
+| Settings panel input | `src/ui-app/components/SettingsPanel.vue` | Empty replacement key input plus masked configured status; stored raw key is not read back |
+| Settings panel save | `src/ui-app/components/SettingsPanel.vue` | User-entered key is sent one-way through `openRouterCredential.update(...)` |
+| Settings panel clear | `src/ui-app/components/SettingsPanel.vue` | Clear uses provider-specific credential bridge |
 
-The renderer has full read/write access to `openRouterApiKey` and `openRouterBaseUrl` through the preload bridge.
+The renderer may transiently hold user-entered API keys before save. It must not read stored raw `openRouterApiKey` / `openRouterBaseUrl` back through generic store IPC, preload, diagnostics, logs, or stream events.
 
 ### 1.3 Store/Preload/IPC surfaces today
 
 **Preload (`electron/preload.ts`):**
 - Lines 1-10: Exposes `electronStore` with `get`, `set`, `delete`, `clearSafe`, `checkIntegrity`
-- Line 71: Exposes `startOpenRouterStream(payload)` — sends full payload including `config.apiKey`
-- No key-level filtering in preload itself
+- Exposes provider-specific credential bridges such as `openRouterCredential.getStatus/update/clear`
+- Key-level filtering is enforced in main-process `storeIpc.ts`; preload does not expose a generic credential resolver or generic secret store
 
 **Store IPC (`electron/ipc/storeIpc.ts`):**
-- `store-get` (line 35): Returns any store key to renderer, except `openRouterCatalogLocalSecret`
-- `store-set` (line 41): Writes any store key from renderer, except `openRouterCatalogLocalSecret`
-- `store-delete` (line 72): Deletes any store key, except `openRouterCatalogLocalSecret`
-- Only `openRouterCatalogLocalSecret` is blocked by `isSensitiveCatalogStoreKey`
-- `openRouterApiKey`, `geminiApiKey`, `apiKey`, `activeProvider` are NOT blocked
+- `store-get`, `store-set`, and `store-delete` block renderer generic access for credential-bearing keys, including `openRouterApiKey`, `openRouterBaseUrl`, `openAIResponsesApiKey`, `googleAIStudioApiKey`, `geminiApiKey`, legacy `apiKey`, and `openRouterCatalogLocalSecret`.
+- `store-clear-safe` preserves credential-bearing keys by default.
+- `activeProvider` remains renderer-visible legacy provider state, not raw credential material.
 
 **Config schema (`electron/config/configSchema.ts`):**
 - Line 71: `'geminiApiKey'` in `ALLOWED_CONFIG_KEYS`
@@ -85,13 +70,14 @@ The renderer has full read/write access to `openRouterApiKey` and `openRouterBas
 - Line 84: `'activeProvider'` in `ALLOWED_CONFIG_KEYS`
 
 **OpenRouter IPC bridge (`electron/ipc/openRouterStreamBridge.ts`):**
-- Line 326: Logs `maskApiKey(payload.config.apiKey)` — redacted, first 4 + last 4 chars
-- Line 346: `request.setHeader('Authorization', `Bearer ${payload.config.apiKey}`)` — uses raw key
+- The bridge resolves legacy-store credential material in main process for the active C3 chat/send path.
+- Logs use masked/sanitized credential values; renderer-visible events must not expose raw key, `Bearer`, or `Authorization` values.
+- The bridge sets `Authorization: Bearer <key>` in main process only.
 - Line 102: `sanitizeRequestBodyForLog` redacts `apiKey` in log output
 
 **Catalog sync (`electron/jobs/catalogSyncStartup.ts`):**
-- `catalogSyncStartup.ts` now calls the behavior-preserving OpenRouter catalog credential wrapper.
-- The wrapper still reads the legacy `openRouterApiKey` / `openRouterBaseUrl` values from the main-process store and passes the same values to the catalog sync job.
+- `catalogSyncStartup.ts` uses the OpenRouter catalog credential resolver-backed source with legacy store backing.
+- The resolver reads legacy `openRouterApiKey` / `openRouterBaseUrl` values in main process and passes behavior-preserving values to the catalog sync job.
 - This is not a secure-store migration and does not change OpenRouter chat/send credentials.
 - `openRouterCatalogLocalSecret` remains blocked from generic renderer store IPC and remains a catalog local secret / HMAC key, not a provider credential.
 
@@ -99,7 +85,7 @@ The renderer has full read/write access to `openRouterApiKey` and `openRouterBas
 
 | Surface | File:Line | Status |
 |---------|-----------|--------|
-| `'geminiApiKey'` in whitelist | `configSchema.ts:71` | Active — renderer can read/write |
+| `'geminiApiKey'` in whitelist | `configSchema.ts` | Config-live legacy key; generic renderer store access is blocked |
 | `'activeProvider'` field | `configSchema.ts:84` | Active — allows `'Gemini'` value |
 | `apiKey` → `geminiApiKey` migration | `configSchema.ts:198-200` | Active migration logic |
 | `PROVIDERS.GEMINI` constant | `src/constants/providers.ts:21` | Active — not deprecated |
@@ -182,11 +168,11 @@ Not completed:
 
 ### 2.3 OpenRouter behavior regression risk
 
-**Current state:** OpenRouter is the only active runtime. Its credential path is: renderer reads from store → passes to adapter via function parameter → adapter passes to IPC bridge → bridge sets Authorization header.
+**Current state:** OpenRouter remains the default production runtime. Its active chat/send credential path is resolver-backed with legacy store backing: renderer send path selects `credentialSource: 'legacy_store'`, main process reads `openRouterApiKey` / `openRouterBaseUrl`, and the IPC bridge sets the `Authorization` header.
 
-**Risk:** Any migration that changes the credential flow must not break this path. The IPC bridge receives the raw API key in the payload — changing this requires coordinating preload, IPC, adapter, and app logic.
+**Risk:** Any migration that changes the legacy-store backing or future secure-store backing must not break OpenRouter request/baseURL/Authorization behavior. The remaining risk is legacy store backing and compatibility cleanup, not renderer raw read-back in the active send payload.
 
-**Mitigation:** The adapter already receives credentials as parameters (not from store). The OpenRouter legacy facade, resolver seam fixture, behavior characterization, and catalog credential read wrapper provide migration preparation while preserving behavior. The chat/send migration boundary remains at the store-to-adapter handoff in `appChatApp.logic.ts`.
+**Mitigation:** OpenRouter catalog and chat/send paths now use resolver-backed legacy-store sources. Store IPC blocks generic renderer access to credential-bearing keys. Provider-specific settings IPC returns masked metadata and accepts one-way updates. This is still not secure store completion.
 
 ### 2.4 Migration compatibility risk for existing users
 
@@ -383,10 +369,10 @@ This checkpoint records current progress. Status terms are intentionally conserv
 | C0 characterization / safety gates | substantially complete | Provider fixture invariant gate, provider credential boundary safety gates, OpenRouter legacy behavior gates, migration surface gates, catalog wrapper tests, bridge mask/log gates, and hardening gates exist. | Future migrated UI/settings tests and final secure-store migration tests do not exist. Characterization tests intentionally lock current legacy behavior and must be updated during migration. |
 | C1 credential store boundary | partial | Provider-layer credential store contract, in-memory test store, store -> resolver factory, explicit missing/invalid/unavailable/error mapping, and safe metadata boundary exist. | No secure store implementation, no OS keychain, no encrypted store, no electron-store migration, no renderer/settings/preload/IPC integration. |
 | C2 Generic fixture credentialRef consumption | fixture-level complete | Generic config -> ProviderCredentialRef -> resolver/store -> descriptor -> adapter path is covered. Resolver failure fails before fetch, emits `stream.error`, and emits no `stream.done`. Secret-like field detection is shared provider SSOT. | Generic remains fixture-only. No live Generic API, no endpoint registry, no provider registry, no production credential source. |
-| C3 OpenRouter legacy read wrapping | partial / in preparation | OpenRouter legacy credential facade done. Resolver seam fixture done. OpenRouter behavior characterization done. Migration surface characterization done. Catalog credential read wrapper done. Resolver seam hardening done. | OpenRouter chat/send active credential source is not migrated. Renderer/settings/preload/IPC raw key exposure remains. Catalog wrapper still reads legacy store values and is not secure store. Catalog credential resolver integration beyond wrapper seed is not done. |
-| C4 settings/preload exposure reduction | not started | Current raw-key exposure is characterized. `openRouterCatalogLocalSecret` remains blocked from generic store IPC. | No reduction of renderer/settings/preload/IPC raw key exposure. Settings panel still reads/writes raw legacy key. Generic store bridge remains legacy exposure. |
-| C5 endpoint registry / provider settings | not started | CredentialRef and non-secret Generic config fixtures establish shape pressure for future endpoint registry. | No endpoint registry, no provider registry, no provider settings integration, no multi-endpoint credential routing. |
-| C6 production non-OpenRouter live gate | not started | Non-OpenRouter providers have fixture foundations and credential boundaries where applicable. | No non-OpenRouter live runtime. No Send Plan runtime capability integration. No DB schema or durable multi-provider usage migration. OpenRouter remains the only active runtime. |
+| C3 OpenRouter legacy read wrapping | complete for legacy-store resolver migration | OpenRouter legacy credential facade, catalog resolver-backed source, and chat/send resolver-backed source are done. OpenRouter behavior characterization and migration hardening gates exist. | Still legacy store backing, not secure store. OpenRouter active behavior remains preservation-gated. |
+| C4 settings/preload exposure reduction | complete for renderer raw read-back reduction | Generic store IPC blocks credential-bearing keys. OpenRouter settings use masked metadata plus one-way update/clear. `clearSafe` preserves credential-bearing keys. | Not secure store. Renderer may still transiently submit user-entered keys through provider-specific update IPC. |
+| C5 endpoint registry / provider settings | readiness complete; production registry deferred | OpenRouter endpoint metadata is renderer-safe. Generic endpoint shape pressure remains fixture-only. Source guards reject production EndpointRegistry / ProviderRegistry / RuntimeProviderRegistry placeholders. | No production endpoint registry, no provider registry, no endpoint picker, no Generic live runtime. |
+| C6/C7 experimental non-OpenRouter text chat | partial / experimental | LocalEndpoint, OpenAI Responses, and Google AI Studio have explicit default-off text-only chat paths with provider-specific credential boundaries where applicable. Modes are mutually exclusive and reversible. | Not production runtime. No Generic live runtime. No Send Plan RuntimeCapability integration. No DB schema or durable multi-provider usage migration. OpenRouter remains the default production runtime. |
 
 ### Recommended next engineering steps
 
