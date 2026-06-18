@@ -1,10 +1,13 @@
 # STARVERSE_PROVIDER_ARCHITECTURE_CONTRACT.md
 
-版本：v1.0.0
+版本：v1.1.0
 状态：Owner-confirmed architecture SSOT
-最后更新：2026-06-11
+最后更新：2026-06-18
 上游证据来源：provider-architecture-gpt55-transfer.zip
 取代：previous unversioned provider architecture drafts
+
+修订记录：
+- v1.1.0 (2026-06-18): Added implementation status checkpoint and credential boundary clarification. No contract term changes.
 关联文档：
 - STARVERSE_PROVIDER_ARCHITECTURE_CONTRACT.md
 - STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md
@@ -14,6 +17,20 @@
 ## Version notes
 
 本版本将三轮架构评审收束为 provider architecture governance contract。主要变化：legacy path removal schedule 已进入治理要求；开放生态经验已映射为 Starverse 专属架构要求；placeholder abstraction prohibition 已加入禁止事项；被 Owner 排除的网关对象已从当前目标范围移除；Starverse chat-app boundary 已强化，明确 Starverse 不转型为 Agent、RAG 或 coding workflow platform。
+
+---
+
+## Implementation Status Checkpoint (added 2026-06-18)
+
+This checkpoint records current implementation status after C6/C7 experimental slices. It does not change the target architecture and does not mark experimental paths as production runtime.
+
+- OpenRouter remains the default production runtime.
+- LocalEndpoint has explicit experimental text-only local chat. It is default-off, loopback-only, reversible, and separate from managed local runtime, model download, process lifecycle, GPU/CPU/offload controls, remote custom endpoint, and enterprise gateway support.
+- OpenAI Responses has explicit experimental text-only native chat. It is default-off, reversible, and uses the native Responses path, not Generic OpenAI-compatible routing.
+- Google AI Studio has explicit experimental text-only native chat. It is default-off, reversible, and uses the native Gemini / Google AI Studio path, not old Gemini runtime remnants.
+- LocalEndpoint, OpenAI Responses, and Google AI Studio experimental modes are mutually exclusive in the current UI flow.
+- Generic OpenAI-compatible remains fixture-only and is not a live runtime.
+- No production `EndpointRegistry`, `ProviderRegistry`, or `RuntimeProviderRegistry` source abstraction has been introduced.
 
 ---
 
@@ -186,13 +203,17 @@ Conflict policy：observed/probed capability 与 endpoint-native data 优先；p
 
 ## 9. Settings / credential 契约
 
-新 provider credential 不得进入 renderer。secret / API key / custom header / enterprise token / local admin token 只在 main process / secure store 边界使用。
+新 provider credential 不得通过 renderer-readable state、generic store IPC、diagnostics、logs 或 stream events 暴露。secret / API key / custom header / enterprise token / local admin token 只在 main process / secure store 边界使用。
+
+One-way credential update pattern：renderer 可临时传递用户输入的 API key 通过 provider-specific one-way update IPC channel（如 `openai-responses-credential:update`、`google-ai-studio-credential:update`）。key 到达 main process 后立即存储，renderer 不可通过任何 IPC、store IPC、preload bridge 或 diagnostic channel 读回 raw key。所有 credential IPC 只返回 masked status（如 `apiKeyConfigured: true, maskedApiKey: '***'`）。
 
 renderer 只能看到：provider display name、endpoint id、profile id、modelKey、masked credential status、health、capability summary、safe error message、诊断摘要。
 
+store IPC、preload bridge、diagnostics 不得暴露 raw API key、Authorization、Bearer 或 secret headers。
+
 Endpoint settings 必须与 provider-native settings 分离。custom endpoint 不得污染 OpenRouter native settings。OpenRouter official endpoint、OpenRouter mirror/custom endpoint、enterprise OpenAI-compatible gateway、local endpoint 必须是不同 Endpoint record。
 
-OpenRouter 当前 renderer key/baseURL access 是 legacy exception。它不得作为新 provider 模板，必须在演进路径中逐步迁移到 main process / secure credential boundary。
+OpenRouter 当前仍使用 legacy store backing，但 renderer generic store raw key/baseURL read-back 已被 C4 屏蔽，并通过 provider-specific settings IPC 暴露 masked metadata 与 one-way update/clear。它仍不是 secure store completion，不得作为新 provider secret read-back 模板，后续 secure credential boundary 仍需单独推进。
 
 Gemini legacy remnants 的处理原则：`geminiApiKey`、`activeProvider: 'Gemini'`、旧 provider constants、旧 README 说法只允许 migration-read-only 或 deprecated-for-removal。未来如果支持 Gemini，必须基于 Gemini API / Google AI Studio native adapter 重建，不复活旧 Gemini path。
 

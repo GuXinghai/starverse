@@ -5,9 +5,9 @@
 
 This directory contains the authoritative governance documents for Starverse multi-provider architecture.
 
-## Current Status (added 2026-06-12)
+## Current Status (updated 2026-06-18)
 
-Phase 0–9 fixture foundations complete. Six provider adapter paths exist (OpenRouter, DeepSeek, OpenAI Responses, Anthropic, Gemini API / Google AI Studio, Generic OpenAI-compatible). `RuntimeProviderStreamAdapter` contract extracted for non-OpenRouter remote adapters. Generic has a fixture endpoint descriptor/profile-lite/capability-lite boundary that rejects unsupported requested high-risk features before fetch. Adapter-side credential boundary seed exists (pure adapter/test boundary; not secure store, not renderer/settings/IPC). OpenRouter remains active runtime. No live API, UI/provider picker, settings, secure credential store, registry, or production send path for non-OpenRouter providers.
+Phase 0–9 fixture foundations remain complete. OpenRouter remains the default production runtime. LocalEndpoint, OpenAI Responses, and Google AI Studio now have explicit, default-off, reversible experimental text-only chat paths. They are not production defaults, are mutually exclusive in the current UI flow, and do not activate Generic OpenAI-compatible runtime. Generic remains fixture-only. No secure store, production endpoint/provider registry, RuntimeProviderRegistry, Send Plan RuntimeCapability integration, managed local runtime, or non-OpenRouter production runtime is implemented.
 
 ## Document Order
 
@@ -21,7 +21,7 @@ Phase 0–9 fixture foundations complete. Six provider adapter paths exist (Open
 ## Decision And Phase Packages
 
 - [PROVIDER_C6_LOCAL_ENDPOINT_INVESTIGATION.md](PROVIDER_C6_LOCAL_ENDPOINT_INVESTIGATION.md)
-  C6 investigation package for external LocalEndpoint support. Planning only; no LocalEndpoint live runtime, Generic live activation, managed local runtime, or production endpoint/provider registry implementation.
+  C6 investigation plus implementation checkpoints for external LocalEndpoint support. LocalEndpoint has an explicit loopback-only experimental text chat path; no Generic live activation, managed local runtime, remote custom endpoint, enterprise gateway, or production endpoint/provider registry implementation.
 
 ## Usage Rule For Future Agents
 

@@ -1,10 +1,13 @@
 # STARVERSE_PROVIDER_EVOLUTION_PATH.md
 
-版本：v1.0.0
+版本：v1.1.0
 状态：Owner-confirmed architecture SSOT
-最后更新：2026-06-11
+最后更新：2026-06-18
 上游证据来源：provider-architecture-gpt55-transfer.zip
 取代：previous unversioned provider architecture drafts
+
+修订记录：
+- v1.1.0 (2026-06-18): Added Experimental live paths status section reflecting C6 LocalEndpoint, C7a OpenAI Responses, and C7b Google AI Studio experimental text chat status with credential isolation and phase alignment detail. No contract term changes.
 关联文档：
 - STARVERSE_PROVIDER_ARCHITECTURE_CONTRACT.md
 - STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md
@@ -35,6 +38,60 @@ Adapter-side credential boundary seed exists (bearer credential construction, au
 Generic adapter conservative policy: text chat + basic streaming + basic error only. Endpoint descriptor/profile-lite/capability-lite fixture boundary. Rejects unsupported requested high-risk features (tools, web search, image generation, plugins, reasoning) before fetch. Rejects unsupported outbound content (non-generic context messages, non-text content blocks, malformed text blocks) before fetch. Sanitizes credential-bearing messages and provider-controlled error codes. No tools/files/vision/reasoning/web search/structured output by default. This remains fixture-only and does not exit Phase 3 live/custom endpoint requirements.
 
 This status reflects fixture-integrated adapter foundations only. No provider has live API support, UI exposure, settings integration, secure credential store, registry support, or production send path in this closeout.
+
+## Experimental live paths status (added 2026-06-18)
+
+Three experimental, default-off, text-only live chat paths are implemented using the fixture-adapter foundations. These are NOT production provider surfaces and are gated behind explicit localStorage flags.
+
+| Provider | Adapter foundation | Experimental live path | Credential boundary | Send gating | Status |
+|---|---|---|---|---|---|
+| OpenRouter | Phase 1 (active runtime) | Production (unchanged) | Legacy store backing with renderer raw read-back blocked | Always active via `onSend()` fallthrough | ✅ default production runtime |
+| LocalEndpoint | C6 diagnostics → experimental chat | `localEndpointTextChat` IPC + renderer bridge | No credentials — loopback-only, `redirect:'error'` | `starverse.localEndpointTextChat.enabled === '1'` | ✅ experimental default-off |
+| OpenAI Responses | Phase 4/5 (native adapter fixture) | `openAIResponsesTextChat` IPC + renderer bridge | Main-process credential bridge — one-way update IPC, masked status only | `starverse.openAIResponsesTextChat.enabled === '1'` | ✅ experimental default-off |
+| Google AI Studio | Phase 8b/9 (native Gemini API fixture) | `googleAIStudioTextChat` IPC + renderer bridge | Main-process credential bridge — one-way update IPC, masked status only; uses `googleAIStudioApiKey` NOT `geminiApiKey` | `starverse.googleAIStudioTextChat.enabled === '1'` | ✅ experimental default-off |
+| DeepSeek | Phase 2/3 (adapter fixture) | (none) | (none) | (none) | ❌ not started |
+| Anthropic | Phase 6/7 (adapter fixture) | (none) | (none) | (none) | ❌ not started |
+| Generic OpenAI-compatible | Phase 3b (adapter fixture) | (none) | (none) | (none) | ❌ not started — fixture-only |
+
+### Phase alignment
+
+Current implementation spans partial Phase 5 (OpenAI Responses native, Gemini API / AI Studio native) and partial Phase 6 (LocalEndpoint), but all paths remain experimental and do not complete their respective phases:
+
+| Phase | Provider | Phase requirements met | Phase requirements deferred |
+|---|---|---|---|
+| Phase 5 (Native providers) | OpenAI Responses, Google AI Studio | Native adapter used (not OpenAI-compatible); native reasoning/tool/usage architecture present in adapter fixture; credential boundary enforced; text-only send gated | `RuntimeProviderRegistry` dispatch; model picker integration; capability resolver; reasoning roundtrip; tool execution; usage accounting; non-text streaming |
+| Phase 6 (Local endpoint) | LocalEndpoint | External local service only; conservative capability; probe/health; redirect blocking; no process management | Endpoint registry; `ModelAvailability`/`RuntimeCapability` integration; non-localhost endpoints; full probe matrix |
+
+### Credential boundary detail
+
+All three credential-bearing providers enforce the one-way update pattern:
+
+```
+Renderer (SettingsPanel)
+  → preload bridge update({apiKey})
+    → Main IPC credential:update
+      → store.set(key, apiKey) [main process only]
+      → Return masked status {apiKeyConfigured:true, maskedApiKey:'***'}
+      → Renderer reads masked status only — never raw key
+
+Renderer (send)
+  → preload bridge startTextChat(payload) [no credentials in payload]
+    → Main IPC chat:stream-text
+      → store.get(key) [main process only]
+      → fetch(provider API, {Authorization:'Bearer <key>', redirect:'error'})
+      → Stream events (error-redacted) → renderer
+```
+
+After settings save, raw API keys, Authorization headers, Bearer tokens, custom headers, and enterprise tokens must not enter renderer memory through any read-back, diagnostic, log, or stream-event path. Renderer may only transiently hold user-entered API keys before submitting them through provider-specific one-way update IPC.
+
+### Gemini legacy isolation
+
+The Google AI Studio experimental path explicitly isolates from old Gemini remnants:
+- New credential store key: `googleAIStudioApiKey` (NOT `geminiApiKey`)
+- Native adapter: `streamViaGemini` from Phase 9 fixture (NOT `@google/generative-ai` SDK)
+- Native API endpoint: `https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent` (NOT old Gemini REST)
+- Old `geminiApiKey` remains blocked in `storeIpc.ts` (`RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS`) and classified as `deprecated-for-removal / migration-read-only`
+- `PROVIDERS.GEMINI` constant, `@google/generative-ai` dependency, and old `activeProvider: 'Gemini'` are untouched and remain `runtime-dead remnants`
 
 ---
 

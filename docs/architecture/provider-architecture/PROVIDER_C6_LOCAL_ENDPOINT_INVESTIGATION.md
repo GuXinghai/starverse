@@ -1,12 +1,12 @@
 # Provider C6 LocalEndpoint Investigation
 
-Date: 2026-06-17
-Task status: C6 investigation/planning only; LocalEndpoint live runtime not implemented
-Current HEAD reviewed: `5c87e76d docs(file-conversion): close out LibreOffice production readiness gates`
-Scope: external LocalEndpoint support investigation for LM Studio, Ollama, LocalAI, llama.cpp server, custom local OpenAI-compatible endpoint, and enterprise OpenAI-compatible gateway
-Explicit non-goal: no live runtime activation, no managed local runtime, no production endpoint/provider registry implementation
+Date: 2026-06-18
+Task status: C6 investigation plus implementation checkpoints; experimental LocalEndpoint text-only chat exists
+Current HEAD reviewed: `cb74afc15f4edaf9da3ff9de6cd15b42342fe77b`
+Scope: external LocalEndpoint support investigation and checkpoints for LM Studio, Ollama, LocalAI, llama.cpp server, and custom local OpenAI-compatible endpoint
+Explicit non-goal: no production LocalEndpoint runtime, no remote custom endpoint activation, no enterprise gateway activation, no managed local runtime, no production endpoint/provider registry implementation
 
-This document scopes C6 after the C3/C4/C5 provider architecture work. It is a decision and planning package, not an implementation record. It must not be read as proof that LocalEndpoint support, Generic live runtime, endpoint registry, provider registry, secure store, DB migration, Send Plan `RuntimeCapability` integration, or local model process management exists.
+This document originally scoped C6 after the C3/C4/C5 provider architecture work. It now also records accepted C6 checkpoints. It must not be read as proof that LocalEndpoint is a production runtime, Generic live runtime, endpoint registry, provider registry, secure store, DB migration, Send Plan `RuntimeCapability` integration, remote custom endpoint support, enterprise gateway support, or local model process management exists.
 
 Related:
 
@@ -461,11 +461,11 @@ Disable behavior:
 
 ## 10. Recommended C6 Implementation Slices
 
-### C6a: LocalEndpoint Baseline Characterization
+### C6a: LocalEndpoint Baseline Characterization (completed before implementation)
 
 Goal:
 
-- prove no LocalEndpoint live runtime exists;
+- prove no LocalEndpoint production runtime exists before implementation;
 - prove Generic remains fixture-only;
 - prove no endpoint/provider/runtime registry placeholder is introduced;
 - inventory current OpenRouter, Generic, catalog, SettingsPanel, preload, and Send Plan touchpoints.
@@ -475,11 +475,11 @@ Expected changes:
 - tests/source guards and a docs checkpoint only;
 - no production behavior change.
 
-C6a checkpoint:
+C6a historical checkpoint:
 
-- source guards lock the current baseline that OpenRouter is the only active runtime;
+- source guards locked the pre-implementation baseline that OpenRouter was the only active runtime at that time;
 - Generic OpenAI-compatible remains fixture-only and outside live/UI/preload/catalog startup surfaces;
-- no LocalEndpoint runtime, settings bridge, health probe, listModels probe, basic stream probe, or Send Plan integration exists yet;
+- no LocalEndpoint runtime, settings bridge, health probe, listModels probe, basic stream probe, or Send Plan integration existed yet at the C6a baseline;
 - renderer-visible surfaces do not expose local admin tokens, enterprise tokens, custom secret headers, generic credential resolver, or generic secret store;
 - no production endpoint/provider/runtime registry placeholder has been introduced.
 
@@ -544,11 +544,11 @@ Acceptance pressure:
 - no endpoint picker/profile picker that can route active send unless Owner approves live gate;
 - no broad settings redesign.
 
-### C6e: Owner-Approved Live Gate
+### C6e: Production LocalEndpoint Gate
 
 Goal:
 
-- activate one narrow local/custom endpoint path only after probes, capability policy, rollback, and Send Plan implications are accepted.
+- decide whether the experimental LocalEndpoint text-only path can advance beyond default-off experimental status after probes, capability policy, rollback, and Send Plan implications are accepted.
 
 Acceptance pressure:
 
@@ -582,10 +582,10 @@ C6 investigation does not include:
 
 ## 12. Owner Decisions Needed
 
-Before C6 implementation starts, Owner should decide:
+Before C6 production expansion starts, Owner should decide:
 
 1. Which endpoint kinds are in the first product slice: local only, remote custom, enterprise gateway, or a narrower subset.
-2. Whether LocalEndpoint settings can be shown before any live send activation.
+2. Whether the existing LocalEndpoint settings and experimental text chat controls can be promoted beyond default-off experimental status.
 3. Whether credentials/admin tokens are allowed for local endpoints in the first slice.
 4. Whether endpoint-native `listModels` can populate model picker results or must remain a diagnostics-only probe initially.
 5. Whether manual model ids are allowed before health/listModels success.
@@ -595,10 +595,9 @@ Before C6 implementation starts, Owner should decide:
 
 Recommended default:
 
-- start with C6a characterization/inventory gates;
-- then C6b metadata shape only;
-- then C6c default-off probe harness;
-- do not expose LocalEndpoint as a live send target until a separate Owner-approved C6e gate.
+- keep the current experimental LocalEndpoint text-only path default-off and reversible;
+- keep model picker, Send Plan, remote custom endpoints, enterprise gateways, credentials, and managed runtime out of scope until separately approved;
+- treat any production LocalEndpoint promotion as a separate Owner-approved gate.
 
 ---
 
@@ -606,7 +605,7 @@ Recommended default:
 
 Likely future targeted tests:
 
-- no LocalEndpoint live runtime baseline guard;
+- no production LocalEndpoint runtime baseline guard;
 - no Generic live activation guard;
 - no production registry placeholder guard;
 - endpoint metadata redaction tests;
@@ -640,14 +639,14 @@ Known unrelated `infra/files/**` LibreOffice/DFC typecheck failures may remain d
 
 ## 14. Recommended Next Task Package
 
-Suggested next task if Owner wants to proceed:
+Suggested next task if Owner wants to proceed beyond the current experimental text-only path:
 
 ```text
 Task title:
-test(provider): characterize C6 local endpoint baseline
+test(provider): audit LocalEndpoint production gate readiness
 
 Goal:
-Add C6a characterization/source guards proving no LocalEndpoint live runtime exists, Generic remains fixture-only, OpenRouter remains the only active runtime, no production endpoint/provider/runtime registry placeholder exists, and Send Plan remains unchanged.
+Add readiness/source guards proving LocalEndpoint remains default-off experimental, Generic remains fixture-only, OpenRouter remains the default production runtime, no production endpoint/provider/runtime registry placeholder exists, model picker and Send Plan remain unchanged, and production promotion gates are explicit.
 
 Allowed scope:
 - provider architecture tests/source guards;
@@ -660,7 +659,7 @@ Validation:
 - git diff --check
 
 Commit message:
-test(provider): characterize C6 local endpoint baseline
+test(provider): audit LocalEndpoint production gate readiness
 ```
 
-Do not start LocalEndpoint implementation until C6a passes and Owner approves the first implementation slice.
+Do not promote LocalEndpoint beyond the current default-off experimental text-only path until Owner approves a production gate.
