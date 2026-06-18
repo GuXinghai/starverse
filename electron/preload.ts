@@ -27,6 +27,12 @@ contextBridge.exposeInMainWorld('googleAIStudioCredential', {
   clear: () => ipcRenderer.invoke('google-ai-studio-credential:clear'),
 })
 
+contextBridge.exposeInMainWorld('anthropicCredential', {
+  getStatus: () => ipcRenderer.invoke('anthropic-credential:get-status'),
+  update: (payload: unknown) => ipcRenderer.invoke('anthropic-credential:update', payload),
+  clear: () => ipcRenderer.invoke('anthropic-credential:clear'),
+})
+
 contextBridge.exposeInMainWorld('localEndpointDiagnostics', {
   probe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:probe', payload),
   streamProbe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:stream-probe', payload),
@@ -85,6 +91,25 @@ contextBridge.exposeInMainWorld('googleAIStudioChat', {
     ipcRenderer.on(`google-ai-studio-chat:end:${requestId}`, handler)
     return () => {
       ipcRenderer.removeListener(`google-ai-studio-chat:end:${requestId}`, handler)
+    }
+  },
+})
+
+contextBridge.exposeInMainWorld('anthropicChat', {
+  startTextChat: (payload: unknown) => ipcRenderer.invoke('anthropic-chat:stream-text', payload),
+  abortTextChat: (requestId: string) => ipcRenderer.invoke('anthropic-chat:abort', requestId),
+  onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
+    ipcRenderer.on(`anthropic-chat:chunk:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`anthropic-chat:chunk:${requestId}`, handler)
+    }
+  },
+  onTextChatEnd: (requestId: string, callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on(`anthropic-chat:end:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`anthropic-chat:end:${requestId}`, handler)
     }
   },
 })

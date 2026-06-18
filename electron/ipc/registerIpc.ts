@@ -17,6 +17,10 @@ import {
   GOOGLE_AI_STUDIO_CREDENTIAL_SETTINGS_IPC_CHANNELS,
 } from './googleAIStudioCredentialSettingsIpc'
 import {
+  registerAnthropicCredentialSettingsIpc,
+  ANTHROPIC_CREDENTIAL_SETTINGS_IPC_CHANNELS,
+} from './anthropicCredentialSettingsIpc'
+import {
   registerLocalEndpointDiagnosticsIpc,
   LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS,
 } from './localEndpointDiagnosticsIpc'
@@ -32,6 +36,10 @@ import {
   registerGoogleAIStudioTextChatIpc,
   GOOGLE_AI_STUDIO_TEXT_CHAT_IPC_CHANNELS,
 } from './googleAIStudioTextChatIpc'
+import {
+  registerAnthropicTextChatIpc,
+  ANTHROPIC_TEXT_CHAT_IPC_CHANNELS,
+} from './anthropicTextChatIpc'
 import type { RegisterInvoke } from './types'
 
 export const CORE_IPC_CHANNELS = [
@@ -39,10 +47,12 @@ export const CORE_IPC_CHANNELS = [
   ...OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS,
   ...OPENAI_RESPONSES_CREDENTIAL_SETTINGS_IPC_CHANNELS,
   ...GOOGLE_AI_STUDIO_CREDENTIAL_SETTINGS_IPC_CHANNELS,
+  ...ANTHROPIC_CREDENTIAL_SETTINGS_IPC_CHANNELS,
   ...LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS,
   ...LOCAL_ENDPOINT_TEXT_CHAT_IPC_CHANNELS,
   ...OPENAI_RESPONSES_TEXT_CHAT_IPC_CHANNELS,
   ...GOOGLE_AI_STUDIO_TEXT_CHAT_IPC_CHANNELS,
+  ...ANTHROPIC_TEXT_CHAT_IPC_CHANNELS,
   ...NETEXP_IPC_CHANNELS,
   ...DIALOG_IPC_CHANNELS,
   ...SHELL_IPC_CHANNELS,
@@ -105,6 +115,10 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
       registerInvoke: input.registerInvoke,
       store: input.store,
     }),
+    ...registerAnthropicCredentialSettingsIpc({
+      registerInvoke: input.registerInvoke,
+      store: input.store,
+    }),
     ...registerLocalEndpointDiagnosticsIpc({
       registerInvoke: input.registerInvoke,
     }),
@@ -116,6 +130,10 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
       store: input.store,
     }),
     ...registerGoogleAIStudioTextChatIpc({
+      registerInvoke: input.registerInvoke,
+      store: input.store,
+    }),
+    ...registerAnthropicTextChatIpc({
       registerInvoke: input.registerInvoke,
       store: input.store,
     }),

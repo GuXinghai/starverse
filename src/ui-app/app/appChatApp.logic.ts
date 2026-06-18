@@ -84,6 +84,7 @@ import { streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource } from
 import { streamLocalEndpointTextChatAsDomainEvents } from '@/next/live/localEndpointTextChat'
 import { streamOpenAIResponsesTextChatAsDomainEvents } from '@/next/live/openAIResponsesTextChat'
 import { streamGoogleAIStudioTextChatAsDomainEvents } from '@/next/live/googleAIStudioTextChat'
+import { streamAnthropicTextChatAsDomainEvents } from '@/next/live/anthropicTextChat'
 import {
   prepareOpenRouterReplayFromMessage,
   prepareOpenRouterSendFromDraft,
@@ -232,6 +233,9 @@ export function useAppChatAppLogic() {
   const GOOGLE_AI_STUDIO_CHAT_ENABLED_KEY = 'starverse.googleAIStudioTextChat.enabled'
   const GOOGLE_AI_STUDIO_CHAT_MODEL_KEY = 'starverse.googleAIStudioTextChat.model'
   const GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT = 'settings:googleAIStudioTextChatUpdated'
+  const ANTHROPIC_CHAT_ENABLED_KEY = 'starverse.anthropicMessagesTextChat.enabled'
+  const ANTHROPIC_CHAT_MODEL_KEY = 'starverse.anthropicMessagesTextChat.model'
+  const ANTHROPIC_CHAT_SETTINGS_EVENT = 'settings:anthropicMessagesTextChatUpdated'
   const localEndpointChatEnabled = ref(false)
   const localEndpointChatUrl = ref(DEFAULT_LOCAL_ENDPOINT_CHAT_URL)
   const localEndpointChatModel = ref('')
@@ -239,6 +243,8 @@ export function useAppChatAppLogic() {
   const openAIResponsesChatModel = ref('')
   const googleAIStudioChatEnabled = ref(false)
   const googleAIStudioChatModel = ref('')
+  const anthropicChatEnabled = ref(false)
+  const anthropicChatModel = ref('')
   type ImageGenerationUiState = ImageGenerationUserConfig
   const imageGenerationState = ref<ImageGenerationUiState>(DEFAULT_IMAGE_GENERATION_USER_CONFIG)
   const imageGenerationConvoMode = ref<ConvoImageGenerationMode>('default')
@@ -3602,6 +3608,11 @@ export function useAppChatAppLogic() {
     model: googleAIStudioChatModel.value,
     experimentalLabel: 'Experimental · Google AI Studio Gemini text-only · not OpenRouter',
   }))
+  const anthropicChatConfig = computed(() => ({
+    enabled: anthropicChatEnabled.value,
+    model: anthropicChatModel.value,
+    experimentalLabel: 'Experimental · Anthropic Messages text-only · not OpenRouter',
+  }))
 
   function applyLocalEndpointChatStorageValues(input: Readonly<{ endpointUrl?: unknown; model?: unknown }>) {
     const endpointUrl = String(input.endpointUrl ?? '').trim()
@@ -3645,6 +3656,17 @@ export function useAppChatAppLogic() {
     }
   }
 
+  function readAnthropicChatStorage() {
+    try {
+      anthropicChatEnabled.value =
+        String(globalThis.localStorage?.getItem(ANTHROPIC_CHAT_ENABLED_KEY) ?? '').trim() === '1'
+      const modelId = String(globalThis.localStorage?.getItem(ANTHROPIC_CHAT_MODEL_KEY) ?? '').trim()
+      if (modelId) anthropicChatModel.value = modelId
+    } catch {
+      // Anthropic chat settings are non-secret renderer preferences; failure keeps defaults.
+    }
+  }
+
   function handleLocalEndpointChatSettingsUpdated(event: Event) {
     const detail = (event as CustomEvent).detail
     if (!detail || typeof detail !== 'object') return
@@ -3663,6 +3685,13 @@ export function useAppChatAppLogic() {
     if (!detail || typeof detail !== 'object') return
     const modelId = String((detail as { model?: unknown }).model ?? '').trim()
     if (modelId) googleAIStudioChatModel.value = modelId
+  }
+
+  function handleAnthropicChatSettingsUpdated(event: Event) {
+    const detail = (event as CustomEvent).detail
+    if (!detail || typeof detail !== 'object') return
+    const modelId = String((detail as { model?: unknown }).model ?? '').trim()
+    if (modelId) anthropicChatModel.value = modelId
   }
 
   function handleLocalEndpointChatStorage(event: StorageEvent) {
@@ -3690,6 +3719,15 @@ export function useAppChatAppLogic() {
       event.key !== GOOGLE_AI_STUDIO_CHAT_MODEL_KEY
     ) return
     readGoogleAIStudioChatStorage()
+    enforceExperimentalChatMutualExclusion()
+  }
+
+  function handleAnthropicChatStorage(event: StorageEvent) {
+    if (
+      event.key !== ANTHROPIC_CHAT_ENABLED_KEY &&
+      event.key !== ANTHROPIC_CHAT_MODEL_KEY
+    ) return
+    readAnthropicChatStorage()
     enforceExperimentalChatMutualExclusion()
   }
 
@@ -3721,17 +3759,50 @@ export function useAppChatAppLogic() {
     }
   }
 
+  function persistAnthropicChatStorage() {
+    try {
+      globalThis.localStorage?.setItem(ANTHROPIC_CHAT_ENABLED_KEY, anthropicChatEnabled.value ? '1' : '0')
+      globalThis.localStorage?.setItem(ANTHROPIC_CHAT_MODEL_KEY, anthropicChatModel.value)
+    } catch {
+      // Non-fatal: the user can still use the current in-memory settings.
+    }
+  }
+
   function enforceExperimentalChatMutualExclusion() {
+    if (anthropicChatEnabled.value) {
+      localEndpointChatEnabled.value = false
+      openAIResponsesChatEnabled.value = false
+      googleAIStudioChatEnabled.value = false
+      persistLocalEndpointChatStorage()
+      persistOpenAIResponsesChatStorage()
+      persistGoogleAIStudioChatStorage()
+      return
+    }
     if (googleAIStudioChatEnabled.value) {
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
+      anthropicChatEnabled.value = false
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
+      persistAnthropicChatStorage()
       return
     }
     if (openAIResponsesChatEnabled.value) {
       localEndpointChatEnabled.value = false
+      googleAIStudioChatEnabled.value = false
+      anthropicChatEnabled.value = false
       persistLocalEndpointChatStorage()
+      persistGoogleAIStudioChatStorage()
+      persistAnthropicChatStorage()
+      return
+    }
+    if (localEndpointChatEnabled.value) {
+      openAIResponsesChatEnabled.value = false
+      googleAIStudioChatEnabled.value = false
+      anthropicChatEnabled.value = false
+      persistOpenAIResponsesChatStorage()
+      persistGoogleAIStudioChatStorage()
+      persistAnthropicChatStorage()
     }
   }
 
@@ -3741,8 +3812,10 @@ export function useAppChatAppLogic() {
     if (enabled) {
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
+      anthropicChatEnabled.value = false
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
+      persistAnthropicChatStorage()
     }
     persistLocalEndpointChatStorage()
   }
@@ -3777,8 +3850,10 @@ export function useAppChatAppLogic() {
     if (enabled) {
       localEndpointChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
+      anthropicChatEnabled.value = false
       persistLocalEndpointChatStorage()
       persistGoogleAIStudioChatStorage()
+      persistAnthropicChatStorage()
     }
     persistOpenAIResponsesChatStorage()
   }
@@ -3806,8 +3881,10 @@ export function useAppChatAppLogic() {
     if (enabled) {
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
+      anthropicChatEnabled.value = false
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
+      persistAnthropicChatStorage()
     }
     persistGoogleAIStudioChatStorage()
   }
@@ -3824,6 +3901,37 @@ export function useAppChatAppLogic() {
     try {
       globalThis.localStorage?.removeItem(GOOGLE_AI_STUDIO_CHAT_ENABLED_KEY)
       globalThis.localStorage?.removeItem(GOOGLE_AI_STUDIO_CHAT_MODEL_KEY)
+    } catch {
+      // Non-fatal: in-memory state still returns the session to the OpenRouter path.
+    }
+  }
+
+  function onUpdateAnthropicChatEnabled(enabled: boolean) {
+    if (isDraftInteractionLocked.value || isRunning.value) return
+    anthropicChatEnabled.value = enabled
+    if (enabled) {
+      localEndpointChatEnabled.value = false
+      openAIResponsesChatEnabled.value = false
+      googleAIStudioChatEnabled.value = false
+      persistLocalEndpointChatStorage()
+      persistOpenAIResponsesChatStorage()
+      persistGoogleAIStudioChatStorage()
+    }
+    persistAnthropicChatStorage()
+  }
+
+  function onUpdateAnthropicChatModel(modelId: string) {
+    anthropicChatModel.value = String(modelId ?? '')
+    persistAnthropicChatStorage()
+  }
+
+  function onClearAnthropicChat() {
+    if (isDraftInteractionLocked.value || isRunning.value) return
+    anthropicChatEnabled.value = false
+    anthropicChatModel.value = ''
+    try {
+      globalThis.localStorage?.removeItem(ANTHROPIC_CHAT_ENABLED_KEY)
+      globalThis.localStorage?.removeItem(ANTHROPIC_CHAT_MODEL_KEY)
     } catch {
       // Non-fatal: in-memory state still returns the session to the OpenRouter path.
     }
@@ -8292,6 +8400,20 @@ export function useAppChatAppLogic() {
     return null
   }
 
+  function getAnthropicTextChatBlockReason(input: Readonly<{
+    text: string
+    hasDraftAttachments: boolean
+  }>): string | null {
+    if (!input.text.trim()) return 'Anthropic Messages experimental text chat requires a plain text message.'
+    if (!anthropicChatModel.value.trim()) return 'Anthropic Messages experimental text chat requires a Claude model id.'
+    if (input.hasDraftAttachments) return 'Anthropic Messages experimental text chat is text-only. Remove attachments before sending.'
+    const config = activeSessionConfig.value
+    if (config.webSearch.enabled) return 'Anthropic Messages experimental text chat does not support web search. Disable web search before sending.'
+    if (config.reasoning.enabled) return 'Anthropic Messages experimental text chat does not support reasoning or thinking controls. Disable reasoning before sending.'
+    if (config.imageGeneration.enabled) return 'Anthropic Messages experimental text chat does not support image generation. Disable image generation before sending.'
+    return null
+  }
+
   async function sendLocalEndpointTextChat(input: Readonly<{
     convoId: string
     branch: BranchSummary
@@ -8498,6 +8620,74 @@ export function useAppChatAppLogic() {
     })
   }
 
+  async function sendAnthropicTextChat(input: Readonly<{
+    convoId: string
+    branch: BranchSummary
+    text: string
+    contextMessages: any[]
+  }>) {
+    const modelId = anthropicChatModel.value.trim()
+
+    const begun = await beginTurn(input.branch.id, input.text)
+    draft.value = ''
+    const cleared = await updateConversationDraftText({
+      conversationId: input.convoId,
+      draftText: '',
+      draftMode: 'compose',
+      editingSourceMessageId: null,
+    })
+    applyDraftPersistenceStateFromDraft(cleared)
+    void refreshDraftAttachmentViewModels()
+
+    patchBranch(input.branch.id, { headMessageId: begun.assistantId, updatedAt: Date.now() })
+
+    const userMessageId = begun.questionId
+    const assistantMessageId = begun.assistantId
+    const assistantSeq = begun.assistantSeq
+    const requestId = randomId('anthropic_req')
+
+    messageSeqById.value.set(userMessageId, begun.questionSeq)
+    messageSeqById.value.set(assistantMessageId, assistantSeq)
+
+    ensureMessageMetaEntry(userMessageId, { role: 'user', status: 'final' })
+    ensureMessageMetaEntry(assistantMessageId, {
+      parentId: userMessageId,
+      questionId: userMessageId,
+      answerRootId: assistantMessageId,
+      role: 'assistant',
+      status: 'streaming',
+    })
+
+    const started = startGeneration(state.value, {
+      runId: input.branch.id,
+      requestId,
+      model: modelId,
+      userMessageId,
+      userMessageText: input.text,
+      assistantMessageId,
+      reasoningPanelDefaultExpanded: false,
+      requestedReasoningMode: 'auto',
+    })
+    state.value = started.state
+
+    await runAssistantStreamSession({
+      convoId: input.convoId,
+      branchId: input.branch.id,
+      requestId,
+      assistantMessageId,
+      assistantSeq,
+      modelId,
+      createEvents: (signal) => streamAnthropicTextChatAsDomainEvents({
+        requestId,
+        assistantMessageId,
+        model: modelId,
+        userText: input.text,
+        contextMessages: input.contextMessages,
+        signal,
+      }),
+    })
+  }
+
   async function onSend() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
@@ -8517,6 +8707,16 @@ export function useAppChatAppLogic() {
       contextMessageIds = built.rawMessages.map((message) => message.id)
     } catch (err) {
       if (import.meta.env?.DEV) console.warn('[ui-app] context.buildForBranch failed; using empty context', err)
+    }
+
+    if (anthropicChatEnabled.value) {
+      const blockReason = getAnthropicTextChatBlockReason({ text, hasDraftAttachments })
+      if (blockReason) {
+        setAttachmentFeedback('error', blockReason)
+        return
+      }
+      await sendAnthropicTextChat({ convoId, branch, text, contextMessages })
+      return
     }
 
     if (googleAIStudioChatEnabled.value) {
@@ -9309,6 +9509,7 @@ export function useAppChatAppLogic() {
     readLocalEndpointChatStorage()
     readOpenAIResponsesChatStorage()
     readGoogleAIStudioChatStorage()
+    readAnthropicChatStorage()
     enforceExperimentalChatMutualExclusion()
 
     if (!hasDbBridge()) {
@@ -9359,9 +9560,11 @@ export function useAppChatAppLogic() {
     window.addEventListener(LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT, handleLocalEndpointChatSettingsUpdated)
     window.addEventListener(OPENAI_RESPONSES_CHAT_SETTINGS_EVENT, handleOpenAIResponsesChatSettingsUpdated)
     window.addEventListener(GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT, handleGoogleAIStudioChatSettingsUpdated)
+    window.addEventListener(ANTHROPIC_CHAT_SETTINGS_EVENT, handleAnthropicChatSettingsUpdated)
     window.addEventListener('storage', handleLocalEndpointChatStorage)
     window.addEventListener('storage', handleOpenAIResponsesChatStorage)
     window.addEventListener('storage', handleGoogleAIStudioChatStorage)
+    window.addEventListener('storage', handleAnthropicChatStorage)
     window.addEventListener('pagehide', handlePageHide)
     window.addEventListener('beforeunload', handlePageHide)
   })
@@ -9495,9 +9698,11 @@ export function useAppChatAppLogic() {
     window.removeEventListener(LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT, handleLocalEndpointChatSettingsUpdated)
     window.removeEventListener(OPENAI_RESPONSES_CHAT_SETTINGS_EVENT, handleOpenAIResponsesChatSettingsUpdated)
     window.removeEventListener(GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT, handleGoogleAIStudioChatSettingsUpdated)
+    window.removeEventListener(ANTHROPIC_CHAT_SETTINGS_EVENT, handleAnthropicChatSettingsUpdated)
     window.removeEventListener('storage', handleLocalEndpointChatStorage)
     window.removeEventListener('storage', handleOpenAIResponsesChatStorage)
     window.removeEventListener('storage', handleGoogleAIStudioChatStorage)
+    window.removeEventListener('storage', handleAnthropicChatStorage)
     window.removeEventListener('pagehide', handlePageHide)
     window.removeEventListener('beforeunload', handlePageHide)
     // 清理 DB 事件订阅
@@ -9711,6 +9916,7 @@ export function useAppChatAppLogic() {
     localEndpointChatConfig,
     openAIResponsesChatConfig,
     googleAIStudioChatConfig,
+    anthropicChatConfig,
     model,
     requestedReasoningEffort,
     requestedReasoningExclude,
@@ -9754,6 +9960,9 @@ export function useAppChatAppLogic() {
     onUpdateGoogleAIStudioChatEnabled,
     onUpdateGoogleAIStudioChatModel,
     onClearGoogleAIStudioChat,
+    onUpdateAnthropicChatEnabled,
+    onUpdateAnthropicChatModel,
+    onClearAnthropicChat,
     onComposerOpenWebSearchSettings,
     onAttachFilesRequested,
     onAttachImagesRequested,
