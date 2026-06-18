@@ -563,10 +563,31 @@ async function runUiSmoke(input) {
     await page.getByRole('button', { name: /Console/ }).click()
     await page.waitForSelector('[data-testid="local-endpoint-chat-controls"]', { timeout: 60000 })
     await page.locator('[data-testid="local-endpoint-chat-controls"]').scrollIntoViewIfNeeded()
+    await page.getByRole('button', { name: /Open global settings/ }).click()
+    await page.waitForSelector('[data-testid="settings-local-endpoint-url"]', { timeout: 30000 })
+    await page.fill('[data-testid="settings-local-endpoint-url"]', `${mock.baseUrl}/v1`)
+    await page.click('[data-testid="settings-local-endpoint-probe"]')
+    await page.waitForSelector('[data-testid="settings-local-endpoint-probed-model-select"]', { timeout: 30000 })
+    await page.selectOption('[data-testid="settings-local-endpoint-probed-model-select"]', mock.modelId)
+    await page.click('[data-testid="settings-local-endpoint-apply-chat"]')
+    await page.waitForFunction(
+      ([endpointUrl, modelId]) =>
+        window.localStorage.getItem('starverse.localEndpointTextChat.url') === endpointUrl &&
+        window.localStorage.getItem('starverse.localEndpointTextChat.model') === modelId &&
+        window.localStorage.getItem('starverse.localEndpointTextChat.enabled') !== '1',
+      [`${mock.baseUrl}/v1`, mock.modelId],
+      { timeout: 10000 },
+    )
+    await page.getByRole('button', { name: /Close|关闭/ }).click()
+    await page.waitForSelector('[data-testid="settings-local-endpoint-url"]', { state: 'detached', timeout: 10000 }).catch(() => undefined)
     const checkbox = page.locator('[data-testid="local-endpoint-chat-enabled"]')
     if (!(await checkbox.isChecked())) await checkbox.click()
-    await page.fill('[data-testid="local-endpoint-chat-url"]', `${mock.baseUrl}/v1`)
-    await page.fill('[data-testid="local-endpoint-chat-model"]', mock.modelId)
+    if ((await page.inputValue('[data-testid="local-endpoint-chat-url"]')) !== `${mock.baseUrl}/v1`) {
+      await page.fill('[data-testid="local-endpoint-chat-url"]', `${mock.baseUrl}/v1`)
+    }
+    if ((await page.inputValue('[data-testid="local-endpoint-chat-model"]')) !== mock.modelId) {
+      await page.fill('[data-testid="local-endpoint-chat-model"]', mock.modelId)
+    }
     const floatingCloseHandle = page.locator('[data-testid="right-rail-floating-close-handle"]')
     if (await floatingCloseHandle.count()) {
       await floatingCloseHandle.click()

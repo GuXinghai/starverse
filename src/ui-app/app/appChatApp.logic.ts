@@ -222,6 +222,7 @@ export function useAppChatAppLogic() {
   const LOCAL_ENDPOINT_CHAT_ENABLED_KEY = 'starverse.localEndpointTextChat.enabled'
   const LOCAL_ENDPOINT_CHAT_URL_KEY = 'starverse.localEndpointTextChat.url'
   const LOCAL_ENDPOINT_CHAT_MODEL_KEY = 'starverse.localEndpointTextChat.model'
+  const LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT = 'settings:localEndpointTextChatUpdated'
   const localEndpointChatEnabled = ref(false)
   const localEndpointChatUrl = ref('http://localhost:1234/v1')
   const localEndpointChatModel = ref('')
@@ -3576,20 +3577,38 @@ export function useAppChatAppLogic() {
     enabled: localEndpointChatEnabled.value,
     endpointUrl: localEndpointChatUrl.value,
     model: localEndpointChatModel.value,
-    experimentalLabel: 'Experimental · LocalEndpoint text-only',
+    experimentalLabel: 'Experimental · LocalEndpoint text-only · not OpenRouter',
   }))
+
+  function applyLocalEndpointChatStorageValues(input: Readonly<{ endpointUrl?: unknown; model?: unknown }>) {
+    const endpointUrl = String(input.endpointUrl ?? '').trim()
+    const modelId = String(input.model ?? '').trim()
+    if (endpointUrl) localEndpointChatUrl.value = endpointUrl
+    if (modelId) localEndpointChatModel.value = modelId
+  }
 
   function readLocalEndpointChatStorage() {
     try {
       const enabled = String(globalThis.localStorage?.getItem(LOCAL_ENDPOINT_CHAT_ENABLED_KEY) ?? '').trim() === '1'
-      const endpointUrl = String(globalThis.localStorage?.getItem(LOCAL_ENDPOINT_CHAT_URL_KEY) ?? '').trim()
-      const modelId = String(globalThis.localStorage?.getItem(LOCAL_ENDPOINT_CHAT_MODEL_KEY) ?? '').trim()
       localEndpointChatEnabled.value = enabled
-      if (endpointUrl) localEndpointChatUrl.value = endpointUrl
-      if (modelId) localEndpointChatModel.value = modelId
+      applyLocalEndpointChatStorageValues({
+        endpointUrl: globalThis.localStorage?.getItem(LOCAL_ENDPOINT_CHAT_URL_KEY),
+        model: globalThis.localStorage?.getItem(LOCAL_ENDPOINT_CHAT_MODEL_KEY),
+      })
     } catch {
       // LocalEndpoint chat settings are non-secret renderer preferences; failure keeps defaults.
     }
+  }
+
+  function handleLocalEndpointChatSettingsUpdated(event: Event) {
+    const detail = (event as CustomEvent).detail
+    if (!detail || typeof detail !== 'object') return
+    applyLocalEndpointChatStorageValues(detail as { endpointUrl?: unknown; model?: unknown })
+  }
+
+  function handleLocalEndpointChatStorage(event: StorageEvent) {
+    if (event.key !== LOCAL_ENDPOINT_CHAT_URL_KEY && event.key !== LOCAL_ENDPOINT_CHAT_MODEL_KEY) return
+    readLocalEndpointChatStorage()
   }
 
   function persistLocalEndpointChatStorage() {
@@ -8958,6 +8977,8 @@ export function useAppChatAppLogic() {
     window.addEventListener('settings:webSearchDefaultsUpdated', handleGlobalWebSearchDefaultsUpdated)
     window.addEventListener('settings:samplingParamsDefaultsUpdated', handleGlobalSamplingParamsDefaultsUpdated)
     window.addEventListener('settings:imageGenerationDefaultUpdated', handleGlobalImageGenerationDefaultUpdated)
+    window.addEventListener(LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT, handleLocalEndpointChatSettingsUpdated)
+    window.addEventListener('storage', handleLocalEndpointChatStorage)
     window.addEventListener('pagehide', handlePageHide)
     window.addEventListener('beforeunload', handlePageHide)
   })
@@ -9088,6 +9109,8 @@ export function useAppChatAppLogic() {
     window.removeEventListener('settings:webSearchDefaultsUpdated', handleGlobalWebSearchDefaultsUpdated)
     window.removeEventListener('settings:samplingParamsDefaultsUpdated', handleGlobalSamplingParamsDefaultsUpdated)
     window.removeEventListener('settings:imageGenerationDefaultUpdated', handleGlobalImageGenerationDefaultUpdated)
+    window.removeEventListener(LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT, handleLocalEndpointChatSettingsUpdated)
+    window.removeEventListener('storage', handleLocalEndpointChatStorage)
     window.removeEventListener('pagehide', handlePageHide)
     window.removeEventListener('beforeunload', handlePageHide)
     // 清理 DB 事件订阅

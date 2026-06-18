@@ -50,7 +50,7 @@ const localEndpointChat = computed(() => props.localEndpointChat ?? {
   enabled: false,
   endpointUrl: 'http://localhost:1234/v1',
   model: '',
-  experimentalLabel: 'Experimental · LocalEndpoint text-only',
+  experimentalLabel: 'Experimental · LocalEndpoint text-only · not OpenRouter',
 })
 const imageValue = computed<ImageGenerationUserConfig>(() => ({
   enabled: props.sessionConfig.imageGeneration.enabled,
@@ -148,6 +148,10 @@ function chipClass(active: boolean): string {
         </div>
         <div class="text-[11px] text-amber-800" data-testid="local-endpoint-chat-warning">
           Text-only loopback OpenAI-compatible streaming. Attachments, web, tools, image generation, reasoning, secrets, and model-picker publication are disabled.
+        </div>
+        <div class="rounded border border-amber-100 bg-white px-2 py-1.5 text-[11px] text-amber-900" data-testid="local-endpoint-chat-selected-status">
+          <div>Selected local model: {{ localEndpointChat.model || 'none' }}</div>
+          <div>Experimental local chat is separate from OpenRouter and does not use API keys or custom headers.</div>
         </div>
       </section>
 

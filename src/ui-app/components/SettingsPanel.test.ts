@@ -206,6 +206,9 @@ describe('ui-app SettingsPanel', () => {
   beforeEach(() => {
     resetI18nForTests()
     globalThis.localStorage?.removeItem('sv_debug_openrouter_echo_upstream_body')
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
     ;(globalThis as any).electronStore = createElectronStoreMock()
     ;(globalThis as any).dbBridge = createDbBridgeMock()
     ;(globalThis as any).electronAPI = createElectronAPIMock()
@@ -215,6 +218,9 @@ describe('ui-app SettingsPanel', () => {
 
   afterEach(() => {
     globalThis.localStorage?.removeItem('sv_debug_openrouter_echo_upstream_body')
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
     ;(globalThis as any).electronStore = originalElectronStore
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronAPI = originalElectronAPI
@@ -651,6 +657,69 @@ describe('ui-app SettingsPanel', () => {
 
   it('runs LocalEndpoint diagnostics through the safe probe bridge without enabling chat send', async () => {
     const user = userEvent.setup()
+    const settingsUpdated = vi.fn()
+    window.addEventListener('settings:localEndpointTextChatUpdated', settingsUpdated)
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    try {
+      await screen.findByText('设置')
+
+      const urlInput = await screen.findByTestId('settings-local-endpoint-url') as HTMLInputElement
+      await waitFor(() => expect(urlInput).not.toBeDisabled())
+      await user.clear(urlInput)
+      await user.type(urlInput, 'http://localhost:1234/v1?token=sk-hidden')
+      await user.click(screen.getByTestId('settings-local-endpoint-probe'))
+
+      const probe = (globalThis as any).localEndpointDiagnostics.probe as ReturnType<typeof vi.fn>
+      await waitFor(() => expect(probe).toHaveBeenCalledWith({
+        url: 'http://localhost:1234/v1?token=sk-hidden',
+        timeoutMs: 5000,
+      }))
+
+      const result = await screen.findByTestId('settings-local-endpoint-probe-result')
+      expect(screen.getByTestId('settings-local-endpoint-probe-status').textContent).toContain('reachable')
+      expect(screen.getByTestId('settings-local-endpoint-probe-family').textContent).toContain('openai_compatible')
+      expect(screen.getByTestId('settings-local-endpoint-probe-models').textContent).toContain('local-model-a')
+      expect(screen.getByTestId('settings-local-endpoint-probe-capabilities').textContent).toContain('diagnostics do not activate chat send')
+      expect(result.textContent).not.toContain('sk-hidden')
+      expect(result.textContent).not.toContain('Authorization')
+      expect(result.textContent).not.toContain('Bearer')
+      expect(document.body.textContent).toContain('Experimental diagnostics only')
+      expect(document.body.textContent).toContain('Text chat requires the explicit LocalEndpoint console mode')
+
+      const select = screen.getByTestId('settings-local-endpoint-probed-model-select') as HTMLSelectElement
+      await waitFor(() => expect(select.value).toBe('local-model-a'))
+      await user.selectOptions(select, 'local-model-b')
+      await user.click(screen.getByTestId('settings-local-endpoint-apply-chat'))
+
+      expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.url')).toBe('http://localhost:1234/v1')
+      expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.model')).toBe('local-model-b')
+      expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.enabled')).toBeNull()
+      expect(screen.getByTestId('settings-local-endpoint-chat-note').textContent).toContain('does not enable chat by itself')
+      expect(settingsUpdated).toHaveBeenCalledTimes(1)
+      expect((settingsUpdated.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({
+        endpointUrl: 'http://localhost:1234/v1',
+        model: 'local-model-b',
+      })
+
+      expect((globalThis as any).electronAPI.startOpenRouterStream).toBeUndefined()
+      expect((globalThis as any).openRouterCredential.update).not.toHaveBeenCalledWith(expect.objectContaining({
+        baseUrl: expect.stringContaining('localhost'),
+      }))
+    } finally {
+      window.removeEventListener('settings:localEndpointTextChatUpdated', settingsUpdated)
+    }
+  })
+
+  it('preserves manual LocalEndpoint model override when model listing is unavailable', async () => {
+    const user = userEvent.setup()
+    ;(globalThis as any).localEndpointDiagnostics = createLocalEndpointDiagnosticsMock({
+      ok: false,
+      code: 'network_error',
+      message: 'Local endpoint is unreachable.',
+      safeUrl: 'http://localhost:4321/v1',
+    })
+
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
 
     await screen.findByText('设置')
@@ -658,30 +727,20 @@ describe('ui-app SettingsPanel', () => {
     const urlInput = await screen.findByTestId('settings-local-endpoint-url') as HTMLInputElement
     await waitFor(() => expect(urlInput).not.toBeDisabled())
     await user.clear(urlInput)
-    await user.type(urlInput, 'http://localhost:1234/v1?token=sk-hidden')
+    await user.type(urlInput, 'http://localhost:4321/v1')
     await user.click(screen.getByTestId('settings-local-endpoint-probe'))
 
-    const probe = (globalThis as any).localEndpointDiagnostics.probe as ReturnType<typeof vi.fn>
-    await waitFor(() => expect(probe).toHaveBeenCalledWith({
-      url: 'http://localhost:1234/v1?token=sk-hidden',
-      timeoutMs: 5000,
-    }))
+    await screen.findByTestId('settings-local-endpoint-probe-error')
+    const manualInput = screen.getByTestId('settings-local-endpoint-manual-model') as HTMLInputElement
+    await user.type(manualInput, 'manual-local-model')
+    await user.click(screen.getByTestId('settings-local-endpoint-apply-chat'))
 
-    const result = await screen.findByTestId('settings-local-endpoint-probe-result')
-    expect(screen.getByTestId('settings-local-endpoint-probe-status').textContent).toContain('reachable')
-    expect(screen.getByTestId('settings-local-endpoint-probe-family').textContent).toContain('openai_compatible')
-    expect(screen.getByTestId('settings-local-endpoint-probe-models').textContent).toContain('local-model-a')
-    expect(screen.getByTestId('settings-local-endpoint-probe-capabilities').textContent).toContain('diagnostics do not activate chat send')
-    expect(result.textContent).not.toContain('sk-hidden')
-    expect(result.textContent).not.toContain('Authorization')
-    expect(result.textContent).not.toContain('Bearer')
-    expect(document.body.textContent).toContain('Experimental diagnostics only')
-    expect(document.body.textContent).toContain('Text chat requires the explicit LocalEndpoint console mode')
-
-    expect((globalThis as any).electronAPI.startOpenRouterStream).toBeUndefined()
-    expect((globalThis as any).openRouterCredential.update).not.toHaveBeenCalledWith(expect.objectContaining({
-      baseUrl: expect.stringContaining('localhost'),
-    }))
+    expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.url')).toBe('http://localhost:4321/v1')
+    expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.model')).toBe('manual-local-model')
+    expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.enabled')).toBeNull()
+    expect(screen.getByTestId('settings-local-endpoint-chat-note').textContent).toContain('default-off')
+    expect(document.body.textContent).not.toContain('Authorization')
+    expect(document.body.textContent).not.toContain('Bearer')
   })
 
   it('runs LocalEndpoint stream diagnostics manually without enabling chat send', async () => {
