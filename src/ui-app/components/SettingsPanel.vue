@@ -118,6 +118,28 @@ type OpenRouterCredentialBridge = Readonly<{
   clear: () => Promise<OpenRouterCredentialResult>
 }>
 
+type OpenAIResponsesCredentialStatus = Readonly<{
+  source: 'legacy_store'
+  providerId: 'openai'
+  profileId: 'openai_responses_v1'
+  apiKeyConfigured: boolean
+  maskedApiKey?: string
+  defaultBaseUrl: string
+  rendererVisible: true
+}>
+
+type OpenAIResponsesCredentialResult = Readonly<{
+  ok: boolean
+  status?: OpenAIResponsesCredentialStatus
+  message?: string
+}>
+
+type OpenAIResponsesCredentialBridge = Readonly<{
+  getStatus: () => Promise<OpenAIResponsesCredentialResult>
+  update: (payload: Readonly<{ apiKey?: string }>) => Promise<OpenAIResponsesCredentialResult>
+  clear: () => Promise<OpenAIResponsesCredentialResult>
+}>
+
 type LocalEndpointProbeResult = Readonly<
   | {
     ok: true
@@ -186,6 +208,8 @@ type LocalEndpointDiagnosticsBridge = Readonly<{
 const LOCAL_ENDPOINT_CHAT_URL_KEY = 'starverse.localEndpointTextChat.url'
 const LOCAL_ENDPOINT_CHAT_MODEL_KEY = 'starverse.localEndpointTextChat.model'
 const LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT = 'settings:localEndpointTextChatUpdated'
+const OPENAI_RESPONSES_CHAT_MODEL_KEY = 'starverse.openAIResponsesTextChat.model'
+const OPENAI_RESPONSES_CHAT_SETTINGS_EVENT = 'settings:openAIResponsesTextChatUpdated'
 
 function getElectronStore(): ElectronStoreLike | null {
   const store = (globalThis as any).electronStore as ElectronStoreLike | undefined
@@ -196,6 +220,17 @@ function getElectronStore(): ElectronStoreLike | null {
 
 function getOpenRouterCredentialBridge(): OpenRouterCredentialBridge | null {
   const bridge = (globalThis as any).openRouterCredential as OpenRouterCredentialBridge | undefined
+  if (!bridge) return null
+  if (
+    typeof bridge.getStatus !== 'function' ||
+    typeof bridge.update !== 'function' ||
+    typeof bridge.clear !== 'function'
+  ) return null
+  return bridge
+}
+
+function getOpenAIResponsesCredentialBridge(): OpenAIResponsesCredentialBridge | null {
+  const bridge = (globalThis as any).openAIResponsesCredential as OpenAIResponsesCredentialBridge | undefined
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
@@ -219,6 +254,11 @@ const baseUrl = ref('')
 const loadedBaseUrl = ref('')
 const apiKeyConfigured = ref(false)
 const maskedApiKey = ref('')
+const openAIResponsesApiKey = ref('')
+const openAIResponsesApiKeyConfigured = ref(false)
+const openAIResponsesMaskedApiKey = ref('')
+const openAIResponsesModel = ref('')
+const openAIResponsesChatApplyMessage = ref<string | null>(null)
 const endpointDisplayName = ref('OpenRouter official endpoint')
 const endpointDisplayStatus = ref('Official endpoint')
 const endpointDisplayBaseUrl = ref('')
@@ -277,6 +317,12 @@ const storeAvailable = computed(() => !!getElectronStore())
 const canEdit = computed(() => !props.disabled && !props.isRunning && storeAvailable.value)
 const localEndpointDiagnosticsAvailable = computed(() => !!getLocalEndpointDiagnosticsBridge())
 const canProbeLocalEndpoint = computed(() => !props.disabled && !props.isRunning && localEndpointDiagnosticsAvailable.value)
+const openAIResponsesCredentialAvailable = computed(() => !!getOpenAIResponsesCredentialBridge())
+const canApplyOpenAIResponsesChatSettings = computed(() =>
+  !props.disabled &&
+  !props.isRunning &&
+  openAIResponsesModel.value.trim().length > 0
+)
 const localEndpointProbedModels = computed(() => {
   const result = localEndpointProbeResult.value
   if (!result?.ok || !result.diagnostics.modelList.ok) return []
@@ -435,6 +481,35 @@ async function loadOpenRouterCredentialStatus() {
   applyOpenRouterCredentialStatus(result.status)
 }
 
+function applyOpenAIResponsesCredentialStatus(status: OpenAIResponsesCredentialStatus) {
+  openAIResponsesApiKey.value = ''
+  openAIResponsesApiKeyConfigured.value = status.apiKeyConfigured === true
+  openAIResponsesMaskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
+}
+
+async function loadOpenAIResponsesCredentialStatus() {
+  const credentialBridge = getOpenAIResponsesCredentialBridge()
+  if (!credentialBridge) {
+    openAIResponsesApiKeyConfigured.value = false
+    openAIResponsesMaskedApiKey.value = ''
+    return
+  }
+
+  const result = await credentialBridge.getStatus()
+  if (!result?.ok || !result.status) {
+    throw new Error(result?.message || 'OpenAI Responses credential status unavailable.')
+  }
+  applyOpenAIResponsesCredentialStatus(result.status)
+}
+
+function loadOpenAIResponsesChatModelPreference() {
+  try {
+    openAIResponsesModel.value = String(globalThis.localStorage?.getItem(OPENAI_RESPONSES_CHAT_MODEL_KEY) ?? '').trim()
+  } catch {
+    openAIResponsesModel.value = ''
+  }
+}
+
 async function load() {
   error.value = null
   savedMessage.value = null
@@ -448,6 +523,8 @@ async function load() {
   loading.value = true
   try {
     await loadOpenRouterCredentialStatus()
+    await loadOpenAIResponsesCredentialStatus()
+    loadOpenAIResponsesChatModelPreference()
     catalogStartupSyncPolicy.value = normalizeCatalogAutoSyncPolicy(await store.get(OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY))
     catalogPickerOpenSyncPolicy.value = normalizeCatalogAutoSyncPolicy(await store.get(OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY))
     catalogListUpdateMode.value = normalizeCatalogListUpdateMode(await store.get(OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY))
@@ -539,6 +616,21 @@ async function save() {
       throw new Error(credentialResult?.message || 'OpenRouter credential update failed.')
     }
     applyOpenRouterCredentialStatus(credentialResult.status)
+
+    const openAIResponsesCredentialBridge = getOpenAIResponsesCredentialBridge()
+    const nextOpenAIResponsesApiKey = openAIResponsesApiKey.value.trim()
+    if (nextOpenAIResponsesApiKey) {
+      if (!openAIResponsesCredentialBridge) {
+        throw new Error('Missing openAIResponsesCredential bridge (run in Electron).')
+      }
+      const openAIResponsesCredentialResult = await openAIResponsesCredentialBridge.update({
+        apiKey: nextOpenAIResponsesApiKey,
+      })
+      if (!openAIResponsesCredentialResult?.ok || !openAIResponsesCredentialResult.status) {
+        throw new Error(openAIResponsesCredentialResult?.message || 'OpenAI Responses credential update failed.')
+      }
+      applyOpenAIResponsesCredentialStatus(openAIResponsesCredentialResult.status)
+    }
     await store.set(OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY, normalizeCatalogAutoSyncPolicy(catalogStartupSyncPolicy.value))
     await store.set(OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY, normalizeCatalogAutoSyncPolicy(catalogPickerOpenSyncPolicy.value))
     await store.set(OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY, normalizeCatalogListUpdateMode(catalogListUpdateMode.value))
@@ -682,6 +774,46 @@ async function clearBaseUrl() {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
     saving.value = false
+  }
+}
+
+async function clearOpenAIResponsesApiKey() {
+  error.value = null
+  savedMessage.value = null
+  const credentialBridge = getOpenAIResponsesCredentialBridge()
+  if (!credentialBridge) {
+    error.value = 'Missing openAIResponsesCredential bridge (run in Electron).'
+    return
+  }
+  saving.value = true
+  try {
+    const result = await credentialBridge.clear()
+    if (!result?.ok || !result.status) {
+      throw new Error(result?.message || 'OpenAI Responses credential clear failed.')
+    }
+    applyOpenAIResponsesCredentialStatus(result.status)
+    savedMessage.value = 'OpenAI Responses API key cleared.'
+  } catch (err: any) {
+    error.value = err?.message ? String(err.message) : String(err)
+  } finally {
+    saving.value = false
+  }
+}
+
+function applyOpenAIResponsesChatSettings() {
+  const model = openAIResponsesModel.value.trim()
+  if (!model) return
+
+  try {
+    globalThis.localStorage?.setItem(OPENAI_RESPONSES_CHAT_MODEL_KEY, model)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(OPENAI_RESPONSES_CHAT_SETTINGS_EVENT, {
+        detail: { model },
+      }))
+    }
+    openAIResponsesChatApplyMessage.value = 'Applied to experimental OpenAI Responses chat. Enable it explicitly in Console to send.'
+  } catch {
+    openAIResponsesChatApplyMessage.value = 'OpenAI Responses chat settings could not be saved locally.'
   }
 }
 
@@ -1259,6 +1391,71 @@ onMounted(() => {
               {{ t('common.save') }}
             </button>
           </div>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-blue-200 bg-white p-3" data-testid="settings-openai-responses-experimental">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-xs font-semibold uppercase tracking-wide text-blue-800">OpenAI Responses Experimental Chat</div>
+            <div class="mt-1 text-[11px] text-gray-500">
+              Native OpenAI Responses text-only path. It is separate from OpenRouter, default-off, and uses a main-process credential bridge.
+            </div>
+          </div>
+          <span class="shrink-0 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-800">
+            Experimental
+          </span>
+        </div>
+
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">OpenAI API key</label>
+        <div class="mt-1 flex items-center gap-2">
+          <input
+            v-model="openAIResponsesApiKey"
+            type="password"
+            placeholder="sk-..."
+            class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
+            :disabled="!canEdit || loading || saving || !openAIResponsesCredentialAvailable"
+            data-testid="settings-openai-responses-api-key"
+          />
+          <button
+            type="button"
+            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!canEdit || loading || saving || !openAIResponsesCredentialAvailable || !openAIResponsesApiKeyConfigured"
+            data-testid="settings-openai-responses-clear-key"
+            @click="clearOpenAIResponsesApiKey"
+          >
+            Clear key
+          </button>
+        </div>
+        <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-openai-responses-key-status">
+          {{ openAIResponsesApiKeyConfigured ? `Configured: ${openAIResponsesMaskedApiKey || '***'}` : 'Not configured' }}
+        </div>
+
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">Manual Responses model id</label>
+        <div class="mt-1 flex items-center gap-2">
+          <input
+            v-model="openAIResponsesModel"
+            type="text"
+            placeholder="gpt-4.1-mini"
+            class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
+            :disabled="props.disabled || props.isRunning || loading || saving"
+            data-testid="settings-openai-responses-model"
+          />
+          <button
+            type="button"
+            class="rounded-md border border-blue-700 bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+            :disabled="!canApplyOpenAIResponsesChatSettings"
+            data-testid="settings-openai-responses-apply-chat"
+            @click="applyOpenAIResponsesChatSettings"
+          >
+            Use model for experimental chat
+          </button>
+        </div>
+        <div class="mt-1 text-[11px] text-blue-800" data-testid="settings-openai-responses-chat-note">
+          This only updates the experimental OpenAI Responses Console default. It does not publish models to the main picker and does not enable chat by itself.
+        </div>
+        <div v-if="openAIResponsesChatApplyMessage" class="mt-1 text-[11px] text-blue-900" data-testid="settings-openai-responses-chat-apply-result">
+          {{ openAIResponsesChatApplyMessage }}
         </div>
       </div>
 

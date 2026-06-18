@@ -88,6 +88,32 @@ function createOpenRouterCredentialMock(input?: {
   }
 }
 
+function createOpenAIResponsesCredentialMock(input?: { apiKeyConfigured?: boolean }) {
+  const state = {
+    apiKeyConfigured: input?.apiKeyConfigured ?? true,
+  }
+  const buildStatus = () => ({
+    source: 'legacy_store',
+    providerId: 'openai',
+    profileId: 'openai_responses_v1',
+    apiKeyConfigured: state.apiKeyConfigured,
+    ...(state.apiKeyConfigured ? { maskedApiKey: '***' } : {}),
+    defaultBaseUrl: 'https://api.openai.com/v1',
+    rendererVisible: true,
+  })
+  return {
+    getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
+    update: vi.fn(async (payload: { apiKey?: string }) => {
+      if (payload.apiKey && payload.apiKey.trim()) state.apiKeyConfigured = true
+      return { ok: true, status: buildStatus() }
+    }),
+    clear: vi.fn(async () => {
+      state.apiKeyConfigured = false
+      return { ok: true, status: buildStatus() }
+    }),
+  }
+}
+
 function createDbBridgeMock() {
   const invoke = vi.fn(async (method: string, _params?: any) => {
     if (method === 'settings.getOpenRouterProviderRequireParameters') return { value: false }
@@ -201,6 +227,7 @@ describe('ui-app SettingsPanel', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronAPI = (globalThis as any).electronAPI
   const originalOpenRouterCredential = (globalThis as any).openRouterCredential
+  const originalOpenAIResponsesCredential = (globalThis as any).openAIResponsesCredential
   const originalLocalEndpointDiagnostics = (globalThis as any).localEndpointDiagnostics
 
   beforeEach(() => {
@@ -209,10 +236,12 @@ describe('ui-app SettingsPanel', () => {
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
     ;(globalThis as any).electronStore = createElectronStoreMock()
     ;(globalThis as any).dbBridge = createDbBridgeMock()
     ;(globalThis as any).electronAPI = createElectronAPIMock()
     ;(globalThis as any).openRouterCredential = createOpenRouterCredentialMock()
+    ;(globalThis as any).openAIResponsesCredential = createOpenAIResponsesCredentialMock()
     ;(globalThis as any).localEndpointDiagnostics = createLocalEndpointDiagnosticsMock()
   })
 
@@ -221,10 +250,12 @@ describe('ui-app SettingsPanel', () => {
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
     ;(globalThis as any).electronStore = originalElectronStore
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronAPI = originalElectronAPI
     ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
+    ;(globalThis as any).openAIResponsesCredential = originalOpenAIResponsesCredential
     ;(globalThis as any).localEndpointDiagnostics = originalLocalEndpointDiagnostics
   })
 
@@ -304,6 +335,63 @@ describe('ui-app SettingsPanel', () => {
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     expect(invoke.mock.calls.map(([method]) => method)).not.toContain('openrouterCredential.getMetadata')
     expect((globalThis as any).electronAPI.openRouterCredentialGetMetadata).toBeUndefined()
+  })
+
+  it('uses safe OpenAI Responses credential metadata and one-way update instead of generic store credentials', async () => {
+    const user = userEvent.setup()
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('设置')
+    await waitFor(() => expect((globalThis as any).openAIResponsesCredential.getStatus).toHaveBeenCalled())
+
+    const storeGet = (globalThis as any).electronStore.get as ReturnType<typeof vi.fn>
+    expect(storeGet).not.toHaveBeenCalledWith('openAIResponsesApiKey')
+
+    const panel = await screen.findByTestId('settings-openai-responses-experimental')
+    const openAIKeyInput = screen.getByTestId('settings-openai-responses-api-key') as HTMLInputElement
+    await waitFor(() => expect(openAIKeyInput).not.toBeDisabled())
+    expect(panel.textContent).toContain('Native OpenAI Responses text-only path')
+    expect(screen.getByTestId('settings-openai-responses-key-status').textContent).toContain('Configured: ***')
+    expect(openAIKeyInput).toHaveValue('')
+    expect(screen.queryByDisplayValue('sk-openai-old')).toBeNull()
+
+    await user.type(openAIKeyInput, 'sk-openai-replacement')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    expect((globalThis as any).openAIResponsesCredential.update).toHaveBeenCalledWith({
+      apiKey: 'sk-openai-replacement',
+    })
+    const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
+    expect(storeSet).not.toHaveBeenCalledWith('openAIResponsesApiKey', expect.anything())
+  })
+
+  it('applies OpenAI Responses model defaults without enabling chat or publishing models to the main picker', async () => {
+    const user = userEvent.setup()
+    const dispatched: Event[] = []
+    const originalDispatch = window.dispatchEvent
+    window.dispatchEvent = ((event: Event) => {
+      dispatched.push(event)
+      return originalDispatch.call(window, event)
+    }) as typeof window.dispatchEvent
+    try {
+      render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+      await screen.findByText('设置')
+      const modelInput = await screen.findByTestId('settings-openai-responses-model')
+      await waitFor(() => expect(modelInput).not.toBeDisabled())
+      await user.type(modelInput, 'gpt-4.1-mini')
+      await waitFor(() => expect(screen.getByTestId('settings-openai-responses-apply-chat')).not.toBeDisabled())
+      await user.click(screen.getByTestId('settings-openai-responses-apply-chat'))
+
+      expect(globalThis.localStorage?.getItem('starverse.openAIResponsesTextChat.model')).toBe('gpt-4.1-mini')
+      expect(globalThis.localStorage?.getItem('starverse.openAIResponsesTextChat.enabled')).toBeNull()
+      expect(screen.getByTestId('settings-openai-responses-chat-apply-result').textContent).toContain('Enable it explicitly in Console')
+      const customEvents = dispatched.filter((event) => event.type === 'settings:openAIResponsesTextChatUpdated') as CustomEvent[]
+      expect(customEvents.at(-1)?.detail).toEqual({ model: 'gpt-4.1-mini' })
+      expect(document.body.textContent).not.toContain('endpoint picker')
+    } finally {
+      window.dispatchEvent = originalDispatch
+    }
   })
 
   it('shows OpenRouter endpoint metadata without adding endpoint registry controls', async () => {

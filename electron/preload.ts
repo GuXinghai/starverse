@@ -15,6 +15,12 @@ contextBridge.exposeInMainWorld('openRouterCredential', {
   clear: () => ipcRenderer.invoke('openrouter-credential:clear'),
 })
 
+contextBridge.exposeInMainWorld('openAIResponsesCredential', {
+  getStatus: () => ipcRenderer.invoke('openai-responses-credential:get-status'),
+  update: (payload: unknown) => ipcRenderer.invoke('openai-responses-credential:update', payload),
+  clear: () => ipcRenderer.invoke('openai-responses-credential:clear'),
+})
+
 contextBridge.exposeInMainWorld('localEndpointDiagnostics', {
   probe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:probe', payload),
   streamProbe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:stream-probe', payload),
@@ -35,6 +41,25 @@ contextBridge.exposeInMainWorld('localEndpointChat', {
     ipcRenderer.on(`local-endpoint-chat:end:${requestId}`, handler)
     return () => {
       ipcRenderer.removeListener(`local-endpoint-chat:end:${requestId}`, handler)
+    }
+  },
+})
+
+contextBridge.exposeInMainWorld('openAIResponsesChat', {
+  startTextChat: (payload: unknown) => ipcRenderer.invoke('openai-responses-chat:stream-text', payload),
+  abortTextChat: (requestId: string) => ipcRenderer.invoke('openai-responses-chat:abort', requestId),
+  onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
+    ipcRenderer.on(`openai-responses-chat:chunk:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`openai-responses-chat:chunk:${requestId}`, handler)
+    }
+  },
+  onTextChatEnd: (requestId: string, callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on(`openai-responses-chat:end:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`openai-responses-chat:end:${requestId}`, handler)
     }
   },
 })
