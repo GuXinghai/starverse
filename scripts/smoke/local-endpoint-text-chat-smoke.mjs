@@ -578,7 +578,7 @@ async function runUiSmoke(input) {
       [`${mock.baseUrl}/v1`, mock.modelId],
       { timeout: 10000 },
     )
-    await page.getByRole('button', { name: /Close|关闭/ }).click()
+    await page.getByRole('button', { name: /^(Close|关闭)$/ }).click()
     await page.waitForSelector('[data-testid="settings-local-endpoint-url"]', { state: 'detached', timeout: 10000 }).catch(() => undefined)
     const checkbox = page.locator('[data-testid="local-endpoint-chat-enabled"]')
     if (!(await checkbox.isChecked())) await checkbox.click()
@@ -636,6 +636,17 @@ async function runUiSmoke(input) {
     await page.click('[data-testid="composer-stop"]')
     const abortDeadline = Date.now() + 5000
     while (!mock.state.abortObserved && Date.now() < abortDeadline) await sleep(100)
+    await page.getByRole('button', { name: /Console/ }).click()
+    await page.waitForSelector('[data-testid="local-endpoint-chat-controls"]', { timeout: 30000 })
+    await page.locator('[data-testid="local-endpoint-chat-controls"]').scrollIntoViewIfNeeded()
+    await page.click('[data-testid="local-endpoint-chat-clear"]')
+    const clearedLocalEndpointPrefs = await page.evaluate(() => ({
+      enabled: window.localStorage.getItem('starverse.localEndpointTextChat.enabled'),
+      endpointUrl: window.localStorage.getItem('starverse.localEndpointTextChat.url'),
+      model: window.localStorage.getItem('starverse.localEndpointTextChat.model'),
+      checkboxChecked: document.querySelector('[data-testid="local-endpoint-chat-enabled"]')?.checked === true,
+      statusText: document.querySelector('[data-testid="local-endpoint-chat-selected-status"]')?.textContent ?? '',
+    }))
 
     const summary = {
       ok: true,
@@ -645,6 +656,7 @@ async function runUiSmoke(input) {
       messagesPersistedViaDbBridge: persisted,
       persistenceEvidence,
       abortObserved: mock.state.abortObserved,
+      clearedLocalEndpointPrefs,
       authHeaderSeen: mock.state.authHeaderSeen,
       artifact: path.relative(repoRoot, summaryPath).replace(/\\/g, '/'),
     }
@@ -652,6 +664,9 @@ async function runUiSmoke(input) {
     console.log(JSON.stringify(summary, null, 2))
     if (!streamedIntoTranscript) throw new Error('LocalEndpoint text did not appear in normal transcript')
     if (!persisted) throw new Error('LocalEndpoint transcript was not persisted through dbBridge message.list')
+    if (clearedLocalEndpointPrefs.enabled !== null || clearedLocalEndpointPrefs.endpointUrl !== null || clearedLocalEndpointPrefs.model !== null || clearedLocalEndpointPrefs.checkboxChecked) {
+      throw new Error(`LocalEndpoint settings were not cleared after UI smoke: ${JSON.stringify(clearedLocalEndpointPrefs)}`)
+    }
     if (mock.state.authHeaderSeen) throw new Error('UI smoke mock observed a secret header')
     return summary
   } catch (error) {

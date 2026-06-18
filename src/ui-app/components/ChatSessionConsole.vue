@@ -40,6 +40,7 @@ const emit = defineEmits<{
   (e: 'updateLocalEndpointChatEnabled', enabled: boolean): void
   (e: 'updateLocalEndpointChatUrl', value: string): void
   (e: 'updateLocalEndpointChatModel', value: string): void
+  (e: 'clearLocalEndpointChat'): void
   (e: 'updateReasoningDisplayMode', mode: 'inline' | 'rail'): void
   (e: 'openSettings'): void
 }>()
@@ -52,6 +53,7 @@ const localEndpointChat = computed(() => props.localEndpointChat ?? {
   model: '',
   experimentalLabel: 'Experimental · LocalEndpoint text-only · not OpenRouter',
 })
+const localEndpointChatStatusLabel = computed(() => localEndpointChat.value.enabled ? 'active' : 'inactive')
 const imageValue = computed<ImageGenerationUserConfig>(() => ({
   enabled: props.sessionConfig.imageGeneration.enabled,
   outputMode: props.sessionConfig.imageGeneration.detail?.outputMode ?? 'auto',
@@ -150,8 +152,30 @@ function chipClass(active: boolean): string {
           Text-only loopback OpenAI-compatible streaming. Attachments, web, tools, image generation, reasoning, secrets, and model-picker publication are disabled.
         </div>
         <div class="rounded border border-amber-100 bg-white px-2 py-1.5 text-[11px] text-amber-900" data-testid="local-endpoint-chat-selected-status">
+          <div>Experimental LocalEndpoint chat is {{ localEndpointChatStatusLabel }}.</div>
+          <div>Selected endpoint: {{ localEndpointChat.endpointUrl || 'none' }}</div>
           <div>Selected local model: {{ localEndpointChat.model || 'none' }}</div>
           <div>Experimental local chat is separate from OpenRouter and does not use API keys or custom headers.</div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+            :disabled="disabled || !localEndpointChat.enabled"
+            data-testid="local-endpoint-chat-disable"
+            @click="emit('updateLocalEndpointChatEnabled', false)"
+          >
+            Disable LocalEndpoint chat
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+            :disabled="disabled"
+            data-testid="local-endpoint-chat-clear"
+            @click="emit('clearLocalEndpointChat')"
+          >
+            Clear LocalEndpoint chat settings
+          </button>
         </div>
       </section>
 

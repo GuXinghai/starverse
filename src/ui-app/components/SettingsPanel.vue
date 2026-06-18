@@ -1319,11 +1319,11 @@ onMounted(() => {
             <div class="mt-1">
               Models:
               <span v-if="localEndpointProbeResult.diagnostics.modelList.ok" data-testid="settings-local-endpoint-probe-models">
-                {{ localEndpointProbeResult.diagnostics.modelList.models.length ? localEndpointProbeResult.diagnostics.modelList.models.join(', ') : 'none reported' }}
+                {{ localEndpointProbeResult.diagnostics.modelList.models.length ? localEndpointProbeResult.diagnostics.modelList.models.join(', ') : 'no models found; enter a manual model id below' }}
                 <span v-if="localEndpointProbeResult.diagnostics.modelList.truncated"> (truncated)</span>
               </span>
               <span v-else data-testid="settings-local-endpoint-probe-models">
-                {{ localEndpointProbeResult.diagnostics.modelList.message }}
+                Model list failed: {{ localEndpointProbeResult.diagnostics.modelList.message }}
               </span>
             </div>
             <div class="mt-1" data-testid="settings-local-endpoint-probe-capabilities">

@@ -559,6 +559,31 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(streamOpenRouterChatCallArgs).toHaveLength(1)
   })
 
+  it('returns to the OpenRouter path when LocalEndpoint chat is disabled or cleared', async () => {
+    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.enabled', '1')
+    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.url', 'http://localhost:4321/v1')
+    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.model', 'settings-selected-model')
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
+    window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.localEndpointTextChat.enabled' }))
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'cleared local endpoint ping')
+    await user.click(sendButton())
+
+    await screen.findByText('cleared local endpoint ping')
+    await screen.findByText('hi')
+
+    expect(localEndpointTextChatCallArgs).toHaveLength(0)
+    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+  })
+
   it('uses selected model for next send and persists convo.meta.selectedModelKey', async () => {
     const user = userEvent.setup()
     render(AppChatApp)

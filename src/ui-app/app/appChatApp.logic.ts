@@ -223,8 +223,9 @@ export function useAppChatAppLogic() {
   const LOCAL_ENDPOINT_CHAT_URL_KEY = 'starverse.localEndpointTextChat.url'
   const LOCAL_ENDPOINT_CHAT_MODEL_KEY = 'starverse.localEndpointTextChat.model'
   const LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT = 'settings:localEndpointTextChatUpdated'
+  const DEFAULT_LOCAL_ENDPOINT_CHAT_URL = 'http://localhost:1234/v1'
   const localEndpointChatEnabled = ref(false)
-  const localEndpointChatUrl = ref('http://localhost:1234/v1')
+  const localEndpointChatUrl = ref(DEFAULT_LOCAL_ENDPOINT_CHAT_URL)
   const localEndpointChatModel = ref('')
   type ImageGenerationUiState = ImageGenerationUserConfig
   const imageGenerationState = ref<ImageGenerationUiState>(DEFAULT_IMAGE_GENERATION_USER_CONFIG)
@@ -3607,7 +3608,11 @@ export function useAppChatAppLogic() {
   }
 
   function handleLocalEndpointChatStorage(event: StorageEvent) {
-    if (event.key !== LOCAL_ENDPOINT_CHAT_URL_KEY && event.key !== LOCAL_ENDPOINT_CHAT_MODEL_KEY) return
+    if (
+      event.key !== LOCAL_ENDPOINT_CHAT_ENABLED_KEY &&
+      event.key !== LOCAL_ENDPOINT_CHAT_URL_KEY &&
+      event.key !== LOCAL_ENDPOINT_CHAT_MODEL_KEY
+    ) return
     readLocalEndpointChatStorage()
   }
 
@@ -3635,6 +3640,20 @@ export function useAppChatAppLogic() {
   function onUpdateLocalEndpointChatModel(modelId: string) {
     localEndpointChatModel.value = String(modelId ?? '')
     persistLocalEndpointChatStorage()
+  }
+
+  function onClearLocalEndpointChat() {
+    if (isDraftInteractionLocked.value || isRunning.value) return
+    localEndpointChatEnabled.value = false
+    localEndpointChatUrl.value = DEFAULT_LOCAL_ENDPOINT_CHAT_URL
+    localEndpointChatModel.value = ''
+    try {
+      globalThis.localStorage?.removeItem(LOCAL_ENDPOINT_CHAT_ENABLED_KEY)
+      globalThis.localStorage?.removeItem(LOCAL_ENDPOINT_CHAT_URL_KEY)
+      globalThis.localStorage?.removeItem(LOCAL_ENDPOINT_CHAT_MODEL_KEY)
+    } catch {
+      // Non-fatal: in-memory state still returns the session to the OpenRouter path.
+    }
   }
 
   async function updateActiveConvoSessionConfig(patch: ChatSessionConfigPatch): Promise<ChatSessionConfig | null> {
@@ -8063,7 +8082,7 @@ export function useAppChatAppLogic() {
   }>): string | null {
     if (!input.text.trim()) return 'LocalEndpoint text chat requires a plain text message.'
     if (!localEndpointChatUrl.value.trim()) return 'LocalEndpoint text chat requires a localhost endpoint URL.'
-    if (!localEndpointChatModel.value.trim()) return 'LocalEndpoint text chat requires a manual model id.'
+    if (!localEndpointChatModel.value.trim()) return 'LocalEndpoint text chat requires a selected or manual model id.'
     if (input.hasDraftAttachments) return 'LocalEndpoint text chat is text-only. Remove attachments before sending.'
     const config = activeSessionConfig.value
     if (config.webSearch.enabled) return 'LocalEndpoint text chat does not support web search. Disable web search before sending.'
@@ -9358,6 +9377,7 @@ export function useAppChatAppLogic() {
     onUpdateLocalEndpointChatEnabled,
     onUpdateLocalEndpointChatUrl,
     onUpdateLocalEndpointChatModel,
+    onClearLocalEndpointChat,
     onComposerOpenWebSearchSettings,
     onAttachFilesRequested,
     onAttachImagesRequested,
