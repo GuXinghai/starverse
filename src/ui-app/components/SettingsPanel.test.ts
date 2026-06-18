@@ -743,6 +743,49 @@ describe('ui-app SettingsPanel', () => {
     expect(document.body.textContent).not.toContain('Bearer')
   })
 
+  it('shows safe model-list failure status while preserving manual LocalEndpoint model entry', async () => {
+    const user = userEvent.setup()
+    ;(globalThis as any).localEndpointDiagnostics = createLocalEndpointDiagnosticsMock({
+      ok: true,
+      diagnostics: {
+        kind: 'local_endpoint_diagnostics',
+        status: 'reachable',
+        endpointFamily: 'openai_compatible',
+        safeBaseUrl: 'http://localhost:1234/v1',
+        modelList: {
+          ok: false,
+          source: 'openai_v1_models',
+          code: 'invalid_response',
+          message: 'Model list failed safely.',
+        },
+        capabilitySummary: {
+          chatSendAvailable: false,
+          textChat: 'diagnostics_only',
+          streaming: 'not_probed',
+          tools: false,
+          files: false,
+          reasoning: false,
+          webSearch: false,
+        },
+        message: 'Local endpoint is reachable but model listing failed.',
+      },
+    })
+
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('设置')
+    await user.click(screen.getByTestId('settings-local-endpoint-probe'))
+
+    expect(await screen.findByTestId('settings-local-endpoint-probe-models')).toHaveTextContent('Model list failed')
+    const manualInput = screen.getByTestId('settings-local-endpoint-manual-model') as HTMLInputElement
+    await user.type(manualInput, 'manual-after-list-failure')
+    await user.click(screen.getByTestId('settings-local-endpoint-apply-chat'))
+
+    expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.model')).toBe('manual-after-list-failure')
+    expect(document.body.textContent).not.toContain('Authorization')
+    expect(document.body.textContent).not.toContain('Bearer')
+  })
+
   it('runs LocalEndpoint stream diagnostics manually without enabling chat send', async () => {
     const user = userEvent.setup()
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })

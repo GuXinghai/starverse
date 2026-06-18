@@ -154,6 +154,7 @@ const {
   onUpdateLocalEndpointChatEnabled,
   onUpdateLocalEndpointChatUrl,
   onUpdateLocalEndpointChatModel,
+  onClearLocalEndpointChat,
   onAttachFilesRequested,
   onAttachImagesRequested,
   onAttachUrlRequested,
@@ -784,6 +785,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateLocalEndpointChatEnabled="onUpdateLocalEndpointChatEnabled"
             @updateLocalEndpointChatUrl="onUpdateLocalEndpointChatUrl"
             @updateLocalEndpointChatModel="onUpdateLocalEndpointChatModel"
+            @clearLocalEndpointChat="onClearLocalEndpointChat"
             @updateReasoningDisplayMode="onUpdateReasoningDisplayMode"
             @openSettings="openSettings"
           />
