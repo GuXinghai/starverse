@@ -119,6 +119,24 @@ type GoogleAIStudioCredentialResult =
   | { ok: true; status: GoogleAIStudioCredentialStatus }
   | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
 
+interface AnthropicCredentialStatus {
+  source: 'legacy_store'
+  providerId: 'anthropic'
+  profileId: 'anthropic_messages_v1'
+  apiKeyConfigured: boolean
+  maskedApiKey?: '***'
+  defaultBaseUrl: 'https://api.anthropic.com/v1'
+  rendererVisible: true
+}
+
+interface AnthropicCredentialUpdatePayload {
+  apiKey?: string
+}
+
+type AnthropicCredentialResult =
+  | { ok: true; status: AnthropicCredentialStatus }
+  | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
+
 type LocalEndpointProbeModelList =
   | {
     ok: true
@@ -226,6 +244,19 @@ type GoogleAIStudioTextChatStartResult =
     error: string
   }
 
+type AnthropicTextChatMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+type AnthropicTextChatStartResult =
+  | { ok: true }
+  | {
+    ok: false
+    code: 'invalid_payload' | 'credential_missing' | 'store_unavailable'
+    error: string
+  }
+
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   openRouterCredential?: {
@@ -242,6 +273,11 @@ interface Window {
     getStatus?: () => Promise<GoogleAIStudioCredentialResult>
     update?: (payload: GoogleAIStudioCredentialUpdatePayload) => Promise<GoogleAIStudioCredentialResult>
     clear?: () => Promise<GoogleAIStudioCredentialResult>
+  }
+  anthropicCredential?: {
+    getStatus?: () => Promise<AnthropicCredentialResult>
+    update?: (payload: AnthropicCredentialUpdatePayload) => Promise<AnthropicCredentialResult>
+    clear?: () => Promise<AnthropicCredentialResult>
   }
   localEndpointDiagnostics?: {
     probe?: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointProbeResult>
@@ -279,6 +315,18 @@ interface Window {
       messages: GoogleAIStudioTextChatMessage[]
       timeoutMs?: number
     }) => Promise<GoogleAIStudioTextChatStartResult>
+    abortTextChat?: (requestId: string) => Promise<{ ok: true }>
+    onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
+    onTextChatEnd?: (requestId: string, callback: () => void) => () => void
+  }
+  anthropicChat?: {
+    startTextChat?: (payload: {
+      requestId: string
+      assistantMessageId: string
+      model: string
+      messages: AnthropicTextChatMessage[]
+      timeoutMs?: number
+    }) => Promise<AnthropicTextChatStartResult>
     abortTextChat?: (requestId: string) => Promise<{ ok: true }>
     onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
     onTextChatEnd?: (requestId: string, callback: () => void) => () => void

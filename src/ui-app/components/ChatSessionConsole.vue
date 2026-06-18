@@ -29,6 +29,11 @@ const props = defineProps<{
     model: string
     experimentalLabel: string
   }> | null
+  anthropicChat?: Readonly<{
+    enabled: boolean
+    model: string
+    experimentalLabel: string
+  }> | null
   reasoningDisplayMode: 'inline' | 'rail'
   modelCatalog: readonly ModelCatalogItem[]
   webSearchResolved: ResolvedSearchSettings | null
@@ -57,6 +62,9 @@ const emit = defineEmits<{
   (e: 'updateGoogleAIStudioChatEnabled', enabled: boolean): void
   (e: 'updateGoogleAIStudioChatModel', value: string): void
   (e: 'clearGoogleAIStudioChat'): void
+  (e: 'updateAnthropicChatEnabled', enabled: boolean): void
+  (e: 'updateAnthropicChatModel', value: string): void
+  (e: 'clearAnthropicChat'): void
   (e: 'updateReasoningDisplayMode', mode: 'inline' | 'rail'): void
   (e: 'openSettings'): void
 }>()
@@ -82,6 +90,12 @@ const googleAIStudioChat = computed(() => props.googleAIStudioChat ?? {
   experimentalLabel: 'Experimental · Google AI Studio Gemini text-only · not OpenRouter',
 })
 const googleAIStudioChatStatusLabel = computed(() => googleAIStudioChat.value.enabled ? 'active' : 'inactive')
+const anthropicChat = computed(() => props.anthropicChat ?? {
+  enabled: false,
+  model: '',
+  experimentalLabel: 'Experimental · Anthropic Messages text-only · not OpenRouter',
+})
+const anthropicChatStatusLabel = computed(() => anthropicChat.value.enabled ? 'active' : 'inactive')
 const imageValue = computed<ImageGenerationUserConfig>(() => ({
   enabled: props.sessionConfig.imageGeneration.enabled,
   outputMode: props.sessionConfig.imageGeneration.detail?.outputMode ?? 'auto',
@@ -191,6 +205,64 @@ function chipClass(active: boolean): string {
             @click="emit('clearOpenAIResponsesChat')"
           >
             Clear OpenAI Responses chat settings
+          </button>
+        </div>
+      </section>
+
+      <section class="space-y-3 rounded-lg border border-rose-200 bg-rose-50/70 p-3" data-testid="anthropic-chat-controls">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-rose-800">Anthropic Messages Chat</div>
+            <div class="mt-1 text-[11px] text-rose-700">{{ anthropicChat.experimentalLabel }}</div>
+          </div>
+          <label class="flex items-center gap-2 text-sm text-rose-900">
+            <input
+              type="checkbox"
+              :checked="anthropicChat.enabled"
+              :disabled="disabled"
+              data-testid="anthropic-chat-enabled"
+              @change="emit('updateAnthropicChatEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            enabled
+          </label>
+        </div>
+        <div class="space-y-2">
+          <label class="block text-[11px] font-semibold text-rose-900">Manual Claude model id</label>
+          <input
+            class="w-full rounded border border-rose-200 bg-white px-2 py-1.5 text-sm disabled:bg-rose-50"
+            :value="anthropicChat.model"
+            :disabled="disabled || !anthropicChat.enabled"
+            placeholder="claude-sonnet-4-5"
+            data-testid="anthropic-chat-model"
+            @input="emit('updateAnthropicChatModel', ($event.target as HTMLInputElement).value)"
+          />
+        </div>
+        <div class="text-[11px] text-rose-800" data-testid="anthropic-chat-warning">
+          Native Anthropic Messages API text-only streaming. Attachments, web, tools, image generation, reasoning/thinking, signatures, and Generic compatibility routing are disabled.
+        </div>
+        <div class="rounded border border-rose-100 bg-white px-2 py-1.5 text-[11px] text-rose-900" data-testid="anthropic-chat-selected-status">
+          <div>Experimental Anthropic Messages chat is {{ anthropicChatStatusLabel }}.</div>
+          <div>Selected Claude model: {{ anthropicChat.model || 'none' }}</div>
+          <div>Anthropic chat uses a main-process credential bridge and does not expose API keys to this console.</div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-900 hover:bg-rose-100 disabled:opacity-50"
+            :disabled="disabled || !anthropicChat.enabled"
+            data-testid="anthropic-chat-disable"
+            @click="emit('updateAnthropicChatEnabled', false)"
+          >
+            Disable Anthropic Messages chat
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-900 hover:bg-rose-100 disabled:opacity-50"
+            :disabled="disabled"
+            data-testid="anthropic-chat-clear"
+            @click="emit('clearAnthropicChat')"
+          >
+            Clear Anthropic Messages chat settings
           </button>
         </div>
       </section>

@@ -28,7 +28,8 @@ This checkpoint records current implementation status after C6/C7 experimental s
 - LocalEndpoint has explicit experimental text-only local chat. It is default-off, loopback-only, reversible, and separate from managed local runtime, model download, process lifecycle, GPU/CPU/offload controls, remote custom endpoint, and enterprise gateway support.
 - OpenAI Responses has explicit experimental text-only native chat. It is default-off, reversible, and uses the native Responses path, not Generic OpenAI-compatible routing.
 - Google AI Studio has explicit experimental text-only native chat. It is default-off, reversible, and uses the native Gemini / Google AI Studio path, not old Gemini runtime remnants.
-- LocalEndpoint, OpenAI Responses, and Google AI Studio experimental modes are mutually exclusive in the current UI flow.
+- Anthropic Messages has explicit experimental text-only native chat. It is default-off, reversible, and uses the native Anthropic Messages path, not Generic OpenAI-compatible routing. Thinking/signature/tool-use persistence remains out of scope for the text-only live slice.
+- LocalEndpoint, OpenAI Responses, Google AI Studio, and Anthropic Messages experimental modes are mutually exclusive in the current UI flow.
 - Generic OpenAI-compatible remains fixture-only and is not a live runtime.
 - No production `EndpointRegistry`, `ProviderRegistry`, or `RuntimeProviderRegistry` source abstraction has been introduced.
 

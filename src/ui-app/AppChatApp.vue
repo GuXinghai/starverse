@@ -136,6 +136,7 @@ const {
   localEndpointChatConfig,
   openAIResponsesChatConfig,
   googleAIStudioChatConfig,
+  anthropicChatConfig,
   modelCatalogForPicker,
   modelCatalogNotice,
   modelPrefsScopeForUi,
@@ -163,6 +164,9 @@ const {
   onUpdateGoogleAIStudioChatEnabled,
   onUpdateGoogleAIStudioChatModel,
   onClearGoogleAIStudioChat,
+  onUpdateAnthropicChatEnabled,
+  onUpdateAnthropicChatModel,
+  onClearAnthropicChat,
   onAttachFilesRequested,
   onAttachImagesRequested,
   onAttachUrlRequested,
@@ -226,6 +230,10 @@ const runSummary = computed(() => {
 })
 
 const modelSummary = computed(() => {
+  if (anthropicChatConfig.value.enabled) {
+    const model = anthropicChatConfig.value.model.trim() || 'manual model required'
+    return `Anthropic Messages · ${model}`
+  }
   if (googleAIStudioChatConfig.value.enabled) {
     const model = googleAIStudioChatConfig.value.model.trim() || 'manual model required'
     return `Google AI Studio · ${model}`
@@ -785,6 +793,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             :localEndpointChat="localEndpointChatConfig"
             :openAIResponsesChat="openAIResponsesChatConfig"
             :googleAIStudioChat="googleAIStudioChatConfig"
+            :anthropicChat="anthropicChatConfig"
             :reasoningDisplayMode="reasoningDisplayMode"
             :modelCatalog="modelCatalogForPicker"
             :webSearchResolved="activeSessionWebSearchResolved"
@@ -810,6 +819,9 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateGoogleAIStudioChatEnabled="onUpdateGoogleAIStudioChatEnabled"
             @updateGoogleAIStudioChatModel="onUpdateGoogleAIStudioChatModel"
             @clearGoogleAIStudioChat="onClearGoogleAIStudioChat"
+            @updateAnthropicChatEnabled="onUpdateAnthropicChatEnabled"
+            @updateAnthropicChatModel="onUpdateAnthropicChatModel"
+            @clearAnthropicChat="onClearAnthropicChat"
             @updateReasoningDisplayMode="onUpdateReasoningDisplayMode"
             @openSettings="openSettings"
           />

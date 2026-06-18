@@ -7,7 +7,7 @@
 取代：previous unversioned provider architecture drafts
 
 修订记录：
-- v1.1.0 (2026-06-18): Added Experimental live paths closeout section reflecting C6 LocalEndpoint, C7a OpenAI Responses, and C7b Google AI Studio experimental text chat status. No contract term changes.
+- v1.1.0 (2026-06-18): Added Experimental live paths closeout section reflecting C6 LocalEndpoint, C7a OpenAI Responses, C7b Google AI Studio, and C7c Anthropic Messages experimental text chat status. No contract term changes.
 关联文档：
 - STARVERSE_PROVIDER_ARCHITECTURE_CONTRACT.md
 - STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md
@@ -35,7 +35,7 @@ Deferred: live API calls, UI/provider picker, settings, secure credential store,
 
 ## Experimental live paths closeout (added 2026-06-18)
 
-Three experimental, default-off, text-only live chat paths are implemented with renderer raw credential read-back blocked. These are not production provider surfaces — they are gated behind explicit localStorage flags, mutually exclusive, and reversible to OpenRouter.
+Four experimental, default-off, text-only live chat paths are implemented with renderer raw credential read-back blocked. These are not production provider surfaces — they are gated behind explicit localStorage flags, mutually exclusive, and reversible to OpenRouter.
 
 | Provider | Adapter | Credential store key | IPC channels | Gating key | Scope |
 |---|---|---|---|---|---|
@@ -43,13 +43,14 @@ Three experimental, default-off, text-only live chat paths are implemented with 
 | **LocalEndpoint (C6)** | OpenAI-compatible fetch (loopback only) | (none — no credentials) | `local-endpoint-chat:*` | `starverse.localEndpointTextChat.enabled` | Experimental text-only local chat |
 | **OpenAI Responses (C7a)** | `streamViaOpenAIResponses` (native) | `openAIResponsesApiKey` | `openai-responses-credential:*` `openai-responses-chat:*` | `starverse.openAIResponsesTextChat.enabled` | Experimental text-only native chat |
 | **Google AI Studio (C7b)** | `streamViaGemini` (native Gemini API) | `googleAIStudioApiKey` (NOT `geminiApiKey`) | `google-ai-studio-credential:*` `google-ai-studio-chat:*` | `starverse.googleAIStudioTextChat.enabled` | Experimental text-only native chat |
+| **Anthropic Messages (C7c)** | `streamViaAnthropic` (native Messages API) | `anthropicApiKey` | `anthropic-credential:*` `anthropic-chat:*` | `starverse.anthropicMessagesTextChat.enabled` | Experimental text-only native chat |
 
 Shared properties of experimental paths:
 
 - **Default-off**: enabled flag must be explicitly set to `'1'` in localStorage via Console checkbox
 - **Two-step gating**: Settings Panel applies model/URL defaults to localStorage — never writes `enabled` key; Console checkbox is the only way to enable send
 - **Text-only**: `getXxxTextChatBlockReason()` checks attachments, web search, reasoning, and image generation before any IPC invocation; returns user-facing message if blocked
-- **Mutually exclusive**: enabling one experimental mode clears the other two via `enforceExperimentalChatMutualExclusion()` / symmetric `onUpdateXxxEnabled()` handlers
+- **Mutually exclusive**: enabling one experimental mode clears the other experimental modes via `enforceExperimentalChatMutualExclusion()` / symmetric `onUpdateXxxEnabled()` handlers
 - **Reversible**: Disable sets enabled=false (keeps settings); Clear removes all localStorage keys; both return send to OpenRouter
 - **Credential-isolated**: renderer may transiently send user-entered API keys through provider-specific one-way update IPC; all responses return only masked status (`apiKeyConfigured: true, maskedApiKey: '***'`); store IPC blocks all raw key access (`RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS`)
 - **No model picker integration**: experimental models are never published to the main model picker
@@ -61,6 +62,13 @@ Google AI Studio legacy isolation:
 - Imports `streamViaGemini` from the native Gemini adapter foundation — NOT the old `@google/generative-ai` SDK
 - `profileId: 'gemini_api_v1'` identifies native Gemini API architecture
 - Old `geminiApiKey`, `PROVIDERS.GEMINI`, and `@google/generative-ai` remain `deprecated-for-removal` / `migration-read-only`; the new path does not reuse them
+
+Anthropic Messages text-only slice:
+
+- Uses `anthropicApiKey` store key and provider-specific credential IPC only
+- Imports `streamViaAnthropic` from the native Anthropic Messages adapter foundation — NOT Generic OpenAI-compatible
+- Uses `https://api.anthropic.com/v1/messages` with `x-api-key` in the main process; renderer never receives raw key material
+- Thinking/signature/tool-use continuation remains native adapter semantic space, but is not surfaced or persisted in this experimental text-only live path
 
 Deferred from experimental live paths: `RuntimeProviderRegistry`, `EndpointRegistry`, provider registry dispatch routing, model picker integration, capability resolver, formal `RuntimeCapability`-driven Send Plan, and OpenRouter conformance to `RuntimeProviderStreamAdapter`.
 

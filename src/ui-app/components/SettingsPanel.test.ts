@@ -140,6 +140,32 @@ function createGoogleAIStudioCredentialMock(input?: { apiKeyConfigured?: boolean
   }
 }
 
+function createAnthropicCredentialMock(input?: { apiKeyConfigured?: boolean }) {
+  const state = {
+    apiKeyConfigured: input?.apiKeyConfigured ?? true,
+  }
+  const buildStatus = () => ({
+    source: 'legacy_store',
+    providerId: 'anthropic',
+    profileId: 'anthropic_messages_v1',
+    apiKeyConfigured: state.apiKeyConfigured,
+    ...(state.apiKeyConfigured ? { maskedApiKey: '***' } : {}),
+    defaultBaseUrl: 'https://api.anthropic.com/v1',
+    rendererVisible: true,
+  })
+  return {
+    getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
+    update: vi.fn(async (payload: { apiKey?: string }) => {
+      if (payload.apiKey && payload.apiKey.trim()) state.apiKeyConfigured = true
+      return { ok: true, status: buildStatus() }
+    }),
+    clear: vi.fn(async () => {
+      state.apiKeyConfigured = false
+      return { ok: true, status: buildStatus() }
+    }),
+  }
+}
+
 function createDbBridgeMock() {
   const invoke = vi.fn(async (method: string, _params?: any) => {
     if (method === 'settings.getOpenRouterProviderRequireParameters') return { value: false }
@@ -255,6 +281,7 @@ describe('ui-app SettingsPanel', () => {
   const originalOpenRouterCredential = (globalThis as any).openRouterCredential
   const originalOpenAIResponsesCredential = (globalThis as any).openAIResponsesCredential
   const originalGoogleAIStudioCredential = (globalThis as any).googleAIStudioCredential
+  const originalAnthropicCredential = (globalThis as any).anthropicCredential
   const originalLocalEndpointDiagnostics = (globalThis as any).localEndpointDiagnostics
 
   beforeEach(() => {
@@ -265,12 +292,15 @@ describe('ui-app SettingsPanel', () => {
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
     globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
     globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.model')
     ;(globalThis as any).electronStore = createElectronStoreMock()
     ;(globalThis as any).dbBridge = createDbBridgeMock()
     ;(globalThis as any).electronAPI = createElectronAPIMock()
     ;(globalThis as any).openRouterCredential = createOpenRouterCredentialMock()
     ;(globalThis as any).openAIResponsesCredential = createOpenAIResponsesCredentialMock()
     ;(globalThis as any).googleAIStudioCredential = createGoogleAIStudioCredentialMock()
+    ;(globalThis as any).anthropicCredential = createAnthropicCredentialMock()
     ;(globalThis as any).localEndpointDiagnostics = createLocalEndpointDiagnosticsMock()
   })
 
@@ -281,12 +311,15 @@ describe('ui-app SettingsPanel', () => {
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
     globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
     globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.model')
     ;(globalThis as any).electronStore = originalElectronStore
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronAPI = originalElectronAPI
     ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
     ;(globalThis as any).openAIResponsesCredential = originalOpenAIResponsesCredential
     ;(globalThis as any).googleAIStudioCredential = originalGoogleAIStudioCredential
+    ;(globalThis as any).anthropicCredential = originalAnthropicCredential
     ;(globalThis as any).localEndpointDiagnostics = originalLocalEndpointDiagnostics
   })
 
@@ -427,6 +460,35 @@ describe('ui-app SettingsPanel', () => {
     expect(storeSet).not.toHaveBeenCalledWith('geminiApiKey', expect.anything())
   })
 
+  it('uses safe Anthropic credential metadata and one-way update instead of generic store credentials', async () => {
+    const user = userEvent.setup()
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('设置')
+    await waitFor(() => expect((globalThis as any).anthropicCredential.getStatus).toHaveBeenCalled())
+
+    const storeGet = (globalThis as any).electronStore.get as ReturnType<typeof vi.fn>
+    expect(storeGet).not.toHaveBeenCalledWith('anthropicApiKey')
+
+    const panel = await screen.findByTestId('settings-anthropic-experimental')
+    const anthropicKeyInput = screen.getByTestId('settings-anthropic-api-key') as HTMLInputElement
+    await waitFor(() => expect(anthropicKeyInput).not.toBeDisabled())
+    expect(panel.textContent).toContain('Native Anthropic Messages text-only path')
+    expect(panel.textContent).toContain('main-process credential bridge')
+    expect(screen.getByTestId('settings-anthropic-key-status').textContent).toContain('Configured: ***')
+    expect(anthropicKeyInput).toHaveValue('')
+    expect(screen.queryByDisplayValue('sk-ant-old-key')).toBeNull()
+
+    await user.type(anthropicKeyInput, 'sk-ant-replacement')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    expect((globalThis as any).anthropicCredential.update).toHaveBeenCalledWith({
+      apiKey: 'sk-ant-replacement',
+    })
+    const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
+    expect(storeSet).not.toHaveBeenCalledWith('anthropicApiKey', expect.anything())
+  })
+
   it('applies OpenAI Responses model defaults without enabling chat or publishing models to the main picker', async () => {
     const user = userEvent.setup()
     const dispatched: Event[] = []
@@ -479,6 +541,35 @@ describe('ui-app SettingsPanel', () => {
       expect(screen.getByTestId('settings-google-ai-studio-chat-apply-result').textContent).toContain('Enable it explicitly in Console')
       const customEvents = dispatched.filter((event) => event.type === 'settings:googleAIStudioTextChatUpdated') as CustomEvent[]
       expect(customEvents.at(-1)?.detail).toEqual({ model: 'gemini-2.5-flash' })
+      expect(document.body.textContent).not.toContain('endpoint picker')
+    } finally {
+      window.dispatchEvent = originalDispatch
+    }
+  })
+
+  it('applies Anthropic model defaults without enabling chat or publishing models to the main picker', async () => {
+    const user = userEvent.setup()
+    const dispatched: Event[] = []
+    const originalDispatch = window.dispatchEvent
+    window.dispatchEvent = ((event: Event) => {
+      dispatched.push(event)
+      return originalDispatch.call(window, event)
+    }) as typeof window.dispatchEvent
+    try {
+      render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+      await screen.findByText('设置')
+      const modelInput = await screen.findByTestId('settings-anthropic-model')
+      await waitFor(() => expect(modelInput).not.toBeDisabled())
+      await user.type(modelInput, 'claude-sonnet-4-5')
+      await waitFor(() => expect(screen.getByTestId('settings-anthropic-apply-chat')).not.toBeDisabled())
+      await user.click(screen.getByTestId('settings-anthropic-apply-chat'))
+
+      expect(globalThis.localStorage?.getItem('starverse.anthropicMessagesTextChat.model')).toBe('claude-sonnet-4-5')
+      expect(globalThis.localStorage?.getItem('starverse.anthropicMessagesTextChat.enabled')).toBeNull()
+      expect(screen.getByTestId('settings-anthropic-chat-apply-result').textContent).toContain('Enable it explicitly in Console')
+      const customEvents = dispatched.filter((event) => event.type === 'settings:anthropicMessagesTextChatUpdated') as CustomEvent[]
+      expect(customEvents.at(-1)?.detail).toEqual({ model: 'claude-sonnet-4-5' })
       expect(document.body.textContent).not.toContain('endpoint picker')
     } finally {
       window.dispatchEvent = originalDispatch

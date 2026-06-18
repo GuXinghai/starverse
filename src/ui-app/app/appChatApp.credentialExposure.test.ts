@@ -63,6 +63,20 @@ function expectNoGenericStoreGoogleAIStudioCredentialAccess(source: string) {
   }
 }
 
+function expectNoGenericStoreAnthropicCredentialAccess(source: string) {
+  const blockedPatterns = [
+    /electronStore\s*\.\s*get\s*\(\s*['"]anthropicApiKey['"]/,
+    /electronStore\s*\.\s*set\s*\(\s*['"]anthropicApiKey['"]/,
+    /electronStore\s*\.\s*delete\s*\(\s*['"]anthropicApiKey['"]/,
+    /store\s*\.\s*get\s*\(\s*['"]anthropicApiKey['"]/,
+    /store\s*\.\s*set\s*\(\s*['"]anthropicApiKey['"]/,
+    /store\s*\.\s*delete\s*\(\s*['"]anthropicApiKey['"]/,
+  ]
+  for (const pattern of blockedPatterns) {
+    expect(source).not.toMatch(pattern)
+  }
+}
+
 describe('appChatApp OpenRouter C4 exposure baseline', () => {
   it('characterizes active C3 chat/send as using legacy_store credential source without renderer raw apiKey handoff', () => {
     const source = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
@@ -94,6 +108,7 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
       expectNoGenericStoreOpenRouterCredentialAccess(source)
       expectNoGenericStoreOpenAIResponsesCredentialAccess(source)
       expectNoGenericStoreGoogleAIStudioCredentialAccess(source)
+      expectNoGenericStoreAnthropicCredentialAccess(source)
     }
   })
 
@@ -151,6 +166,40 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
     expect(settingsSource).not.toContain("electronStore.get('geminiApiKey')")
     expect(settingsSource).not.toContain('Authorization')
     expect(settingsSource).not.toContain('Bearer')
+  })
+
+  it('keeps Anthropic Messages experimental send native, explicit, text-only, and renderer-secret-free', () => {
+    const appChatSource = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
+    const settingsSource = readFileSync(resolve(testDir, '..', 'components', 'SettingsPanel.vue'), 'utf8')
+
+    expect(appChatSource).toContain('streamAnthropicTextChatAsDomainEvents')
+    expect(appChatSource).toContain('anthropicChatEnabled')
+    expect(appChatSource).toContain('getAnthropicTextChatBlockReason')
+    expect(appChatSource).toContain('Anthropic Messages experimental text chat is text-only. Remove attachments before sending.')
+    expect(appChatSource).toContain('config.webSearch.enabled')
+    expect(appChatSource).toContain('config.reasoning.enabled')
+    expect(appChatSource).toContain('config.imageGeneration.enabled')
+    expect(appChatSource).not.toMatch(/streamViaAnthropic\s*\(/)
+    expect(appChatSource).not.toContain('anthropicApiKey')
+    expect(settingsSource).toContain('anthropicCredential')
+    expect(settingsSource).toContain('Native Anthropic Messages text-only path')
+    expect(settingsSource).not.toContain("electronStore.get('anthropicApiKey')")
+    expect(settingsSource).not.toContain("electronStore.set('anthropicApiKey'")
+    expect(settingsSource).not.toContain('Authorization')
+    expect(settingsSource).not.toContain('Bearer')
+  })
+
+  it('keeps Anthropic mutually exclusive with Google AI Studio, OpenAI Responses, and LocalEndpoint modes', () => {
+    const appChatSource = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
+
+    expect(appChatSource).toContain('if (anthropicChatEnabled.value)')
+    expect(appChatSource).toContain('openAIResponsesChatEnabled.value = false')
+    expect(appChatSource).toContain('googleAIStudioChatEnabled.value = false')
+    expect(appChatSource).toContain('localEndpointChatEnabled.value = false')
+    expect(appChatSource).toContain('persistAnthropicChatStorage')
+    expect(appChatSource).toContain('onUpdateAnthropicChatEnabled')
+    expect(appChatSource).toContain('onClearAnthropicChat')
+    expect(appChatSource).toContain('settings:anthropicMessagesTextChatUpdated')
   })
 
   it('audits OpenRouter catalog as resolver-backed and separate from renderer credential exposure', () => {
