@@ -83,6 +83,7 @@ import { selectMessage, selectRun } from '@/next/state/selectors'
 import { streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource } from '@/next/provider/openrouter/openRouterAdapter'
 import { streamLocalEndpointTextChatAsDomainEvents } from '@/next/live/localEndpointTextChat'
 import { streamOpenAIResponsesTextChatAsDomainEvents } from '@/next/live/openAIResponsesTextChat'
+import { streamGoogleAIStudioTextChatAsDomainEvents } from '@/next/live/googleAIStudioTextChat'
 import {
   prepareOpenRouterReplayFromMessage,
   prepareOpenRouterSendFromDraft,
@@ -228,11 +229,16 @@ export function useAppChatAppLogic() {
   const OPENAI_RESPONSES_CHAT_ENABLED_KEY = 'starverse.openAIResponsesTextChat.enabled'
   const OPENAI_RESPONSES_CHAT_MODEL_KEY = 'starverse.openAIResponsesTextChat.model'
   const OPENAI_RESPONSES_CHAT_SETTINGS_EVENT = 'settings:openAIResponsesTextChatUpdated'
+  const GOOGLE_AI_STUDIO_CHAT_ENABLED_KEY = 'starverse.googleAIStudioTextChat.enabled'
+  const GOOGLE_AI_STUDIO_CHAT_MODEL_KEY = 'starverse.googleAIStudioTextChat.model'
+  const GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT = 'settings:googleAIStudioTextChatUpdated'
   const localEndpointChatEnabled = ref(false)
   const localEndpointChatUrl = ref(DEFAULT_LOCAL_ENDPOINT_CHAT_URL)
   const localEndpointChatModel = ref('')
   const openAIResponsesChatEnabled = ref(false)
   const openAIResponsesChatModel = ref('')
+  const googleAIStudioChatEnabled = ref(false)
+  const googleAIStudioChatModel = ref('')
   type ImageGenerationUiState = ImageGenerationUserConfig
   const imageGenerationState = ref<ImageGenerationUiState>(DEFAULT_IMAGE_GENERATION_USER_CONFIG)
   const imageGenerationConvoMode = ref<ConvoImageGenerationMode>('default')
@@ -3591,6 +3597,11 @@ export function useAppChatAppLogic() {
     model: openAIResponsesChatModel.value,
     experimentalLabel: 'Experimental · OpenAI Responses text-only · not OpenRouter',
   }))
+  const googleAIStudioChatConfig = computed(() => ({
+    enabled: googleAIStudioChatEnabled.value,
+    model: googleAIStudioChatModel.value,
+    experimentalLabel: 'Experimental · Google AI Studio Gemini text-only · not OpenRouter',
+  }))
 
   function applyLocalEndpointChatStorageValues(input: Readonly<{ endpointUrl?: unknown; model?: unknown }>) {
     const endpointUrl = String(input.endpointUrl ?? '').trim()
@@ -3623,6 +3634,17 @@ export function useAppChatAppLogic() {
     }
   }
 
+  function readGoogleAIStudioChatStorage() {
+    try {
+      googleAIStudioChatEnabled.value =
+        String(globalThis.localStorage?.getItem(GOOGLE_AI_STUDIO_CHAT_ENABLED_KEY) ?? '').trim() === '1'
+      const modelId = String(globalThis.localStorage?.getItem(GOOGLE_AI_STUDIO_CHAT_MODEL_KEY) ?? '').trim()
+      if (modelId) googleAIStudioChatModel.value = modelId
+    } catch {
+      // Google AI Studio chat settings are non-secret renderer preferences; failure keeps defaults.
+    }
+  }
+
   function handleLocalEndpointChatSettingsUpdated(event: Event) {
     const detail = (event as CustomEvent).detail
     if (!detail || typeof detail !== 'object') return
@@ -3636,6 +3658,13 @@ export function useAppChatAppLogic() {
     if (modelId) openAIResponsesChatModel.value = modelId
   }
 
+  function handleGoogleAIStudioChatSettingsUpdated(event: Event) {
+    const detail = (event as CustomEvent).detail
+    if (!detail || typeof detail !== 'object') return
+    const modelId = String((detail as { model?: unknown }).model ?? '').trim()
+    if (modelId) googleAIStudioChatModel.value = modelId
+  }
+
   function handleLocalEndpointChatStorage(event: StorageEvent) {
     if (
       event.key !== LOCAL_ENDPOINT_CHAT_ENABLED_KEY &&
@@ -3643,6 +3672,7 @@ export function useAppChatAppLogic() {
       event.key !== LOCAL_ENDPOINT_CHAT_MODEL_KEY
     ) return
     readLocalEndpointChatStorage()
+    enforceExperimentalChatMutualExclusion()
   }
 
   function handleOpenAIResponsesChatStorage(event: StorageEvent) {
@@ -3651,6 +3681,16 @@ export function useAppChatAppLogic() {
       event.key !== OPENAI_RESPONSES_CHAT_MODEL_KEY
     ) return
     readOpenAIResponsesChatStorage()
+    enforceExperimentalChatMutualExclusion()
+  }
+
+  function handleGoogleAIStudioChatStorage(event: StorageEvent) {
+    if (
+      event.key !== GOOGLE_AI_STUDIO_CHAT_ENABLED_KEY &&
+      event.key !== GOOGLE_AI_STUDIO_CHAT_MODEL_KEY
+    ) return
+    readGoogleAIStudioChatStorage()
+    enforceExperimentalChatMutualExclusion()
   }
 
   function persistLocalEndpointChatStorage() {
@@ -3672,12 +3712,37 @@ export function useAppChatAppLogic() {
     }
   }
 
+  function persistGoogleAIStudioChatStorage() {
+    try {
+      globalThis.localStorage?.setItem(GOOGLE_AI_STUDIO_CHAT_ENABLED_KEY, googleAIStudioChatEnabled.value ? '1' : '0')
+      globalThis.localStorage?.setItem(GOOGLE_AI_STUDIO_CHAT_MODEL_KEY, googleAIStudioChatModel.value)
+    } catch {
+      // Non-fatal: the user can still use the current in-memory settings.
+    }
+  }
+
+  function enforceExperimentalChatMutualExclusion() {
+    if (googleAIStudioChatEnabled.value) {
+      localEndpointChatEnabled.value = false
+      openAIResponsesChatEnabled.value = false
+      persistLocalEndpointChatStorage()
+      persistOpenAIResponsesChatStorage()
+      return
+    }
+    if (openAIResponsesChatEnabled.value) {
+      localEndpointChatEnabled.value = false
+      persistLocalEndpointChatStorage()
+    }
+  }
+
   function onUpdateLocalEndpointChatEnabled(enabled: boolean) {
     if (isDraftInteractionLocked.value || isRunning.value) return
     localEndpointChatEnabled.value = enabled
     if (enabled) {
       openAIResponsesChatEnabled.value = false
+      googleAIStudioChatEnabled.value = false
       persistOpenAIResponsesChatStorage()
+      persistGoogleAIStudioChatStorage()
     }
     persistLocalEndpointChatStorage()
   }
@@ -3711,7 +3776,9 @@ export function useAppChatAppLogic() {
     openAIResponsesChatEnabled.value = enabled
     if (enabled) {
       localEndpointChatEnabled.value = false
+      googleAIStudioChatEnabled.value = false
       persistLocalEndpointChatStorage()
+      persistGoogleAIStudioChatStorage()
     }
     persistOpenAIResponsesChatStorage()
   }
@@ -3728,6 +3795,35 @@ export function useAppChatAppLogic() {
     try {
       globalThis.localStorage?.removeItem(OPENAI_RESPONSES_CHAT_ENABLED_KEY)
       globalThis.localStorage?.removeItem(OPENAI_RESPONSES_CHAT_MODEL_KEY)
+    } catch {
+      // Non-fatal: in-memory state still returns the session to the OpenRouter path.
+    }
+  }
+
+  function onUpdateGoogleAIStudioChatEnabled(enabled: boolean) {
+    if (isDraftInteractionLocked.value || isRunning.value) return
+    googleAIStudioChatEnabled.value = enabled
+    if (enabled) {
+      localEndpointChatEnabled.value = false
+      openAIResponsesChatEnabled.value = false
+      persistLocalEndpointChatStorage()
+      persistOpenAIResponsesChatStorage()
+    }
+    persistGoogleAIStudioChatStorage()
+  }
+
+  function onUpdateGoogleAIStudioChatModel(modelId: string) {
+    googleAIStudioChatModel.value = String(modelId ?? '')
+    persistGoogleAIStudioChatStorage()
+  }
+
+  function onClearGoogleAIStudioChat() {
+    if (isDraftInteractionLocked.value || isRunning.value) return
+    googleAIStudioChatEnabled.value = false
+    googleAIStudioChatModel.value = ''
+    try {
+      globalThis.localStorage?.removeItem(GOOGLE_AI_STUDIO_CHAT_ENABLED_KEY)
+      globalThis.localStorage?.removeItem(GOOGLE_AI_STUDIO_CHAT_MODEL_KEY)
     } catch {
       // Non-fatal: in-memory state still returns the session to the OpenRouter path.
     }
@@ -8182,6 +8278,20 @@ export function useAppChatAppLogic() {
     return null
   }
 
+  function getGoogleAIStudioTextChatBlockReason(input: Readonly<{
+    text: string
+    hasDraftAttachments: boolean
+  }>): string | null {
+    if (!input.text.trim()) return 'Google AI Studio experimental text chat requires a plain text message.'
+    if (!googleAIStudioChatModel.value.trim()) return 'Google AI Studio experimental text chat requires a Gemini model id.'
+    if (input.hasDraftAttachments) return 'Google AI Studio experimental text chat is text-only. Remove attachments before sending.'
+    const config = activeSessionConfig.value
+    if (config.webSearch.enabled) return 'Google AI Studio experimental text chat does not support web search. Disable web search before sending.'
+    if (config.reasoning.enabled) return 'Google AI Studio experimental text chat does not support reasoning controls. Disable reasoning before sending.'
+    if (config.imageGeneration.enabled) return 'Google AI Studio experimental text chat does not support image generation. Disable image generation before sending.'
+    return null
+  }
+
   async function sendLocalEndpointTextChat(input: Readonly<{
     convoId: string
     branch: BranchSummary
@@ -8320,6 +8430,74 @@ export function useAppChatAppLogic() {
     })
   }
 
+  async function sendGoogleAIStudioTextChat(input: Readonly<{
+    convoId: string
+    branch: BranchSummary
+    text: string
+    contextMessages: any[]
+  }>) {
+    const modelId = googleAIStudioChatModel.value.trim()
+
+    const begun = await beginTurn(input.branch.id, input.text)
+    draft.value = ''
+    const cleared = await updateConversationDraftText({
+      conversationId: input.convoId,
+      draftText: '',
+      draftMode: 'compose',
+      editingSourceMessageId: null,
+    })
+    applyDraftPersistenceStateFromDraft(cleared)
+    void refreshDraftAttachmentViewModels()
+
+    patchBranch(input.branch.id, { headMessageId: begun.assistantId, updatedAt: Date.now() })
+
+    const userMessageId = begun.questionId
+    const assistantMessageId = begun.assistantId
+    const assistantSeq = begun.assistantSeq
+    const requestId = randomId('google_ai_studio_req')
+
+    messageSeqById.value.set(userMessageId, begun.questionSeq)
+    messageSeqById.value.set(assistantMessageId, assistantSeq)
+
+    ensureMessageMetaEntry(userMessageId, { role: 'user', status: 'final' })
+    ensureMessageMetaEntry(assistantMessageId, {
+      parentId: userMessageId,
+      questionId: userMessageId,
+      answerRootId: assistantMessageId,
+      role: 'assistant',
+      status: 'streaming',
+    })
+
+    const started = startGeneration(state.value, {
+      runId: input.branch.id,
+      requestId,
+      model: modelId,
+      userMessageId,
+      userMessageText: input.text,
+      assistantMessageId,
+      reasoningPanelDefaultExpanded: false,
+      requestedReasoningMode: 'auto',
+    })
+    state.value = started.state
+
+    await runAssistantStreamSession({
+      convoId: input.convoId,
+      branchId: input.branch.id,
+      requestId,
+      assistantMessageId,
+      assistantSeq,
+      modelId,
+      createEvents: (signal) => streamGoogleAIStudioTextChatAsDomainEvents({
+        requestId,
+        assistantMessageId,
+        model: modelId,
+        userText: input.text,
+        contextMessages: input.contextMessages,
+        signal,
+      }),
+    })
+  }
+
   async function onSend() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
@@ -8339,6 +8517,16 @@ export function useAppChatAppLogic() {
       contextMessageIds = built.rawMessages.map((message) => message.id)
     } catch (err) {
       if (import.meta.env?.DEV) console.warn('[ui-app] context.buildForBranch failed; using empty context', err)
+    }
+
+    if (googleAIStudioChatEnabled.value) {
+      const blockReason = getGoogleAIStudioTextChatBlockReason({ text, hasDraftAttachments })
+      if (blockReason) {
+        setAttachmentFeedback('error', blockReason)
+        return
+      }
+      await sendGoogleAIStudioTextChat({ convoId, branch, text, contextMessages })
+      return
     }
 
     if (openAIResponsesChatEnabled.value) {
@@ -9120,6 +9308,8 @@ export function useAppChatAppLogic() {
     loadError.value = null
     readLocalEndpointChatStorage()
     readOpenAIResponsesChatStorage()
+    readGoogleAIStudioChatStorage()
+    enforceExperimentalChatMutualExclusion()
 
     if (!hasDbBridge()) {
       isReady.value = true
@@ -9168,8 +9358,10 @@ export function useAppChatAppLogic() {
     window.addEventListener('settings:imageGenerationDefaultUpdated', handleGlobalImageGenerationDefaultUpdated)
     window.addEventListener(LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT, handleLocalEndpointChatSettingsUpdated)
     window.addEventListener(OPENAI_RESPONSES_CHAT_SETTINGS_EVENT, handleOpenAIResponsesChatSettingsUpdated)
+    window.addEventListener(GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT, handleGoogleAIStudioChatSettingsUpdated)
     window.addEventListener('storage', handleLocalEndpointChatStorage)
     window.addEventListener('storage', handleOpenAIResponsesChatStorage)
+    window.addEventListener('storage', handleGoogleAIStudioChatStorage)
     window.addEventListener('pagehide', handlePageHide)
     window.addEventListener('beforeunload', handlePageHide)
   })
@@ -9302,8 +9494,10 @@ export function useAppChatAppLogic() {
     window.removeEventListener('settings:imageGenerationDefaultUpdated', handleGlobalImageGenerationDefaultUpdated)
     window.removeEventListener(LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT, handleLocalEndpointChatSettingsUpdated)
     window.removeEventListener(OPENAI_RESPONSES_CHAT_SETTINGS_EVENT, handleOpenAIResponsesChatSettingsUpdated)
+    window.removeEventListener(GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT, handleGoogleAIStudioChatSettingsUpdated)
     window.removeEventListener('storage', handleLocalEndpointChatStorage)
     window.removeEventListener('storage', handleOpenAIResponsesChatStorage)
+    window.removeEventListener('storage', handleGoogleAIStudioChatStorage)
     window.removeEventListener('pagehide', handlePageHide)
     window.removeEventListener('beforeunload', handlePageHide)
     // 清理 DB 事件订阅
@@ -9516,6 +9710,7 @@ export function useAppChatAppLogic() {
     activeSessionConfig,
     localEndpointChatConfig,
     openAIResponsesChatConfig,
+    googleAIStudioChatConfig,
     model,
     requestedReasoningEffort,
     requestedReasoningExclude,
@@ -9556,6 +9751,9 @@ export function useAppChatAppLogic() {
     onUpdateOpenAIResponsesChatEnabled,
     onUpdateOpenAIResponsesChatModel,
     onClearOpenAIResponsesChat,
+    onUpdateGoogleAIStudioChatEnabled,
+    onUpdateGoogleAIStudioChatModel,
+    onClearGoogleAIStudioChat,
     onComposerOpenWebSearchSettings,
     onAttachFilesRequested,
     onAttachImagesRequested,

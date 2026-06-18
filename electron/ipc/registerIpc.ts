@@ -13,6 +13,10 @@ import {
   OPENAI_RESPONSES_CREDENTIAL_SETTINGS_IPC_CHANNELS,
 } from './openAIResponsesCredentialSettingsIpc'
 import {
+  registerGoogleAIStudioCredentialSettingsIpc,
+  GOOGLE_AI_STUDIO_CREDENTIAL_SETTINGS_IPC_CHANNELS,
+} from './googleAIStudioCredentialSettingsIpc'
+import {
   registerLocalEndpointDiagnosticsIpc,
   LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS,
 } from './localEndpointDiagnosticsIpc'
@@ -24,15 +28,21 @@ import {
   registerOpenAIResponsesTextChatIpc,
   OPENAI_RESPONSES_TEXT_CHAT_IPC_CHANNELS,
 } from './openAIResponsesTextChatIpc'
+import {
+  registerGoogleAIStudioTextChatIpc,
+  GOOGLE_AI_STUDIO_TEXT_CHAT_IPC_CHANNELS,
+} from './googleAIStudioTextChatIpc'
 import type { RegisterInvoke } from './types'
 
 export const CORE_IPC_CHANNELS = [
   ...STORE_IPC_CHANNELS,
   ...OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS,
   ...OPENAI_RESPONSES_CREDENTIAL_SETTINGS_IPC_CHANNELS,
+  ...GOOGLE_AI_STUDIO_CREDENTIAL_SETTINGS_IPC_CHANNELS,
   ...LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS,
   ...LOCAL_ENDPOINT_TEXT_CHAT_IPC_CHANNELS,
   ...OPENAI_RESPONSES_TEXT_CHAT_IPC_CHANNELS,
+  ...GOOGLE_AI_STUDIO_TEXT_CHAT_IPC_CHANNELS,
   ...NETEXP_IPC_CHANNELS,
   ...DIALOG_IPC_CHANNELS,
   ...SHELL_IPC_CHANNELS,
@@ -91,6 +101,10 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
       registerInvoke: input.registerInvoke,
       store: input.store,
     }),
+    ...registerGoogleAIStudioCredentialSettingsIpc({
+      registerInvoke: input.registerInvoke,
+      store: input.store,
+    }),
     ...registerLocalEndpointDiagnosticsIpc({
       registerInvoke: input.registerInvoke,
     }),
@@ -98,6 +112,10 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
       registerInvoke: input.registerInvoke,
     }),
     ...registerOpenAIResponsesTextChatIpc({
+      registerInvoke: input.registerInvoke,
+      store: input.store,
+    }),
+    ...registerGoogleAIStudioTextChatIpc({
       registerInvoke: input.registerInvoke,
       store: input.store,
     }),

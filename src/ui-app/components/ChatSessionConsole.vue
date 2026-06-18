@@ -24,6 +24,11 @@ const props = defineProps<{
     model: string
     experimentalLabel: string
   }> | null
+  googleAIStudioChat?: Readonly<{
+    enabled: boolean
+    model: string
+    experimentalLabel: string
+  }> | null
   reasoningDisplayMode: 'inline' | 'rail'
   modelCatalog: readonly ModelCatalogItem[]
   webSearchResolved: ResolvedSearchSettings | null
@@ -49,6 +54,9 @@ const emit = defineEmits<{
   (e: 'updateOpenAIResponsesChatEnabled', enabled: boolean): void
   (e: 'updateOpenAIResponsesChatModel', value: string): void
   (e: 'clearOpenAIResponsesChat'): void
+  (e: 'updateGoogleAIStudioChatEnabled', enabled: boolean): void
+  (e: 'updateGoogleAIStudioChatModel', value: string): void
+  (e: 'clearGoogleAIStudioChat'): void
   (e: 'updateReasoningDisplayMode', mode: 'inline' | 'rail'): void
   (e: 'openSettings'): void
 }>()
@@ -68,6 +76,12 @@ const openAIResponsesChat = computed(() => props.openAIResponsesChat ?? {
   experimentalLabel: 'Experimental · OpenAI Responses text-only · not OpenRouter',
 })
 const openAIResponsesChatStatusLabel = computed(() => openAIResponsesChat.value.enabled ? 'active' : 'inactive')
+const googleAIStudioChat = computed(() => props.googleAIStudioChat ?? {
+  enabled: false,
+  model: '',
+  experimentalLabel: 'Experimental · Google AI Studio Gemini text-only · not OpenRouter',
+})
+const googleAIStudioChatStatusLabel = computed(() => googleAIStudioChat.value.enabled ? 'active' : 'inactive')
 const imageValue = computed<ImageGenerationUserConfig>(() => ({
   enabled: props.sessionConfig.imageGeneration.enabled,
   outputMode: props.sessionConfig.imageGeneration.detail?.outputMode ?? 'auto',
@@ -177,6 +191,64 @@ function chipClass(active: boolean): string {
             @click="emit('clearOpenAIResponsesChat')"
           >
             Clear OpenAI Responses chat settings
+          </button>
+        </div>
+      </section>
+
+      <section class="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3" data-testid="google-ai-studio-chat-controls">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Google AI Studio Chat</div>
+            <div class="mt-1 text-[11px] text-emerald-700">{{ googleAIStudioChat.experimentalLabel }}</div>
+          </div>
+          <label class="flex items-center gap-2 text-sm text-emerald-900">
+            <input
+              type="checkbox"
+              :checked="googleAIStudioChat.enabled"
+              :disabled="disabled"
+              data-testid="google-ai-studio-chat-enabled"
+              @change="emit('updateGoogleAIStudioChatEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            enabled
+          </label>
+        </div>
+        <div class="space-y-2">
+          <label class="block text-[11px] font-semibold text-emerald-900">Manual Gemini model id</label>
+          <input
+            class="w-full rounded border border-emerald-200 bg-white px-2 py-1.5 text-sm disabled:bg-emerald-50"
+            :value="googleAIStudioChat.model"
+            :disabled="disabled || !googleAIStudioChat.enabled"
+            placeholder="gemini-2.5-flash"
+            data-testid="google-ai-studio-chat-model"
+            @input="emit('updateGoogleAIStudioChatModel', ($event.target as HTMLInputElement).value)"
+          />
+        </div>
+        <div class="text-[11px] text-emerald-800" data-testid="google-ai-studio-chat-warning">
+          Native Google AI Studio Gemini text-only streaming. Attachments, web, tools, image generation, reasoning, legacy Gemini runtime, and Generic compatibility routing are disabled.
+        </div>
+        <div class="rounded border border-emerald-100 bg-white px-2 py-1.5 text-[11px] text-emerald-900" data-testid="google-ai-studio-chat-selected-status">
+          <div>Experimental Google AI Studio chat is {{ googleAIStudioChatStatusLabel }}.</div>
+          <div>Selected Gemini model: {{ googleAIStudioChat.model || 'none' }}</div>
+          <div>Google AI Studio chat uses a main-process credential bridge and does not expose API keys to this console.</div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
+            :disabled="disabled || !googleAIStudioChat.enabled"
+            data-testid="google-ai-studio-chat-disable"
+            @click="emit('updateGoogleAIStudioChatEnabled', false)"
+          >
+            Disable Google AI Studio chat
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
+            :disabled="disabled"
+            data-testid="google-ai-studio-chat-clear"
+            @click="emit('clearGoogleAIStudioChat')"
+          >
+            Clear Google AI Studio chat settings
           </button>
         </div>
       </section>

@@ -114,6 +114,32 @@ function createOpenAIResponsesCredentialMock(input?: { apiKeyConfigured?: boolea
   }
 }
 
+function createGoogleAIStudioCredentialMock(input?: { apiKeyConfigured?: boolean }) {
+  const state = {
+    apiKeyConfigured: input?.apiKeyConfigured ?? true,
+  }
+  const buildStatus = () => ({
+    source: 'legacy_store',
+    providerId: 'google-ai-studio',
+    profileId: 'gemini_api_v1',
+    apiKeyConfigured: state.apiKeyConfigured,
+    ...(state.apiKeyConfigured ? { maskedApiKey: '***' } : {}),
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com',
+    rendererVisible: true,
+  })
+  return {
+    getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
+    update: vi.fn(async (payload: { apiKey?: string }) => {
+      if (payload.apiKey && payload.apiKey.trim()) state.apiKeyConfigured = true
+      return { ok: true, status: buildStatus() }
+    }),
+    clear: vi.fn(async () => {
+      state.apiKeyConfigured = false
+      return { ok: true, status: buildStatus() }
+    }),
+  }
+}
+
 function createDbBridgeMock() {
   const invoke = vi.fn(async (method: string, _params?: any) => {
     if (method === 'settings.getOpenRouterProviderRequireParameters') return { value: false }
@@ -228,6 +254,7 @@ describe('ui-app SettingsPanel', () => {
   const originalElectronAPI = (globalThis as any).electronAPI
   const originalOpenRouterCredential = (globalThis as any).openRouterCredential
   const originalOpenAIResponsesCredential = (globalThis as any).openAIResponsesCredential
+  const originalGoogleAIStudioCredential = (globalThis as any).googleAIStudioCredential
   const originalLocalEndpointDiagnostics = (globalThis as any).localEndpointDiagnostics
 
   beforeEach(() => {
@@ -237,11 +264,13 @@ describe('ui-app SettingsPanel', () => {
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
     globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.model')
     ;(globalThis as any).electronStore = createElectronStoreMock()
     ;(globalThis as any).dbBridge = createDbBridgeMock()
     ;(globalThis as any).electronAPI = createElectronAPIMock()
     ;(globalThis as any).openRouterCredential = createOpenRouterCredentialMock()
     ;(globalThis as any).openAIResponsesCredential = createOpenAIResponsesCredentialMock()
+    ;(globalThis as any).googleAIStudioCredential = createGoogleAIStudioCredentialMock()
     ;(globalThis as any).localEndpointDiagnostics = createLocalEndpointDiagnosticsMock()
   })
 
@@ -251,11 +280,13 @@ describe('ui-app SettingsPanel', () => {
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
     globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.model')
     ;(globalThis as any).electronStore = originalElectronStore
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronAPI = originalElectronAPI
     ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
     ;(globalThis as any).openAIResponsesCredential = originalOpenAIResponsesCredential
+    ;(globalThis as any).googleAIStudioCredential = originalGoogleAIStudioCredential
     ;(globalThis as any).localEndpointDiagnostics = originalLocalEndpointDiagnostics
   })
 
@@ -365,6 +396,37 @@ describe('ui-app SettingsPanel', () => {
     expect(storeSet).not.toHaveBeenCalledWith('openAIResponsesApiKey', expect.anything())
   })
 
+  it('uses safe Google AI Studio credential metadata and one-way update instead of legacy Gemini or generic store credentials', async () => {
+    const user = userEvent.setup()
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('设置')
+    await waitFor(() => expect((globalThis as any).googleAIStudioCredential.getStatus).toHaveBeenCalled())
+
+    const storeGet = (globalThis as any).electronStore.get as ReturnType<typeof vi.fn>
+    expect(storeGet).not.toHaveBeenCalledWith('googleAIStudioApiKey')
+    expect(storeGet).not.toHaveBeenCalledWith('geminiApiKey')
+
+    const panel = await screen.findByTestId('settings-google-ai-studio-experimental')
+    const googleKeyInput = screen.getByTestId('settings-google-ai-studio-api-key') as HTMLInputElement
+    await waitFor(() => expect(googleKeyInput).not.toBeDisabled())
+    expect(panel.textContent).toContain('Native Gemini API text-only path')
+    expect(panel.textContent).toContain('does not use legacy Gemini runtime')
+    expect(screen.getByTestId('settings-google-ai-studio-key-status').textContent).toContain('Configured: ***')
+    expect(googleKeyInput).toHaveValue('')
+    expect(screen.queryByDisplayValue('AIza-old-google-key')).toBeNull()
+
+    await user.type(googleKeyInput, 'AIza-google-replacement')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    expect((globalThis as any).googleAIStudioCredential.update).toHaveBeenCalledWith({
+      apiKey: 'AIza-google-replacement',
+    })
+    const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
+    expect(storeSet).not.toHaveBeenCalledWith('googleAIStudioApiKey', expect.anything())
+    expect(storeSet).not.toHaveBeenCalledWith('geminiApiKey', expect.anything())
+  })
+
   it('applies OpenAI Responses model defaults without enabling chat or publishing models to the main picker', async () => {
     const user = userEvent.setup()
     const dispatched: Event[] = []
@@ -388,6 +450,35 @@ describe('ui-app SettingsPanel', () => {
       expect(screen.getByTestId('settings-openai-responses-chat-apply-result').textContent).toContain('Enable it explicitly in Console')
       const customEvents = dispatched.filter((event) => event.type === 'settings:openAIResponsesTextChatUpdated') as CustomEvent[]
       expect(customEvents.at(-1)?.detail).toEqual({ model: 'gpt-4.1-mini' })
+      expect(document.body.textContent).not.toContain('endpoint picker')
+    } finally {
+      window.dispatchEvent = originalDispatch
+    }
+  })
+
+  it('applies Google AI Studio model defaults without enabling chat or publishing models to the main picker', async () => {
+    const user = userEvent.setup()
+    const dispatched: Event[] = []
+    const originalDispatch = window.dispatchEvent
+    window.dispatchEvent = ((event: Event) => {
+      dispatched.push(event)
+      return originalDispatch.call(window, event)
+    }) as typeof window.dispatchEvent
+    try {
+      render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+      await screen.findByText('设置')
+      const modelInput = await screen.findByTestId('settings-google-ai-studio-model')
+      await waitFor(() => expect(modelInput).not.toBeDisabled())
+      await user.type(modelInput, 'gemini-2.5-flash')
+      await waitFor(() => expect(screen.getByTestId('settings-google-ai-studio-apply-chat')).not.toBeDisabled())
+      await user.click(screen.getByTestId('settings-google-ai-studio-apply-chat'))
+
+      expect(globalThis.localStorage?.getItem('starverse.googleAIStudioTextChat.model')).toBe('gemini-2.5-flash')
+      expect(globalThis.localStorage?.getItem('starverse.googleAIStudioTextChat.enabled')).toBeNull()
+      expect(screen.getByTestId('settings-google-ai-studio-chat-apply-result').textContent).toContain('Enable it explicitly in Console')
+      const customEvents = dispatched.filter((event) => event.type === 'settings:googleAIStudioTextChatUpdated') as CustomEvent[]
+      expect(customEvents.at(-1)?.detail).toEqual({ model: 'gemini-2.5-flash' })
       expect(document.body.textContent).not.toContain('endpoint picker')
     } finally {
       window.dispatchEvent = originalDispatch

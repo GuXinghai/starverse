@@ -7,6 +7,7 @@ import AppChatApp from './AppChatApp.vue'
 const streamOpenRouterChatCallArgs: any[] = []
 const localEndpointTextChatCallArgs: any[] = []
 const openAIResponsesTextChatCallArgs: any[] = []
+const googleAIStudioTextChatCallArgs: any[] = []
 const imageCapableModel = OPENROUTER_TEST_MODELS[1] ?? OPENROUTER_TEST_MODELS[0]
 
 const draftBox = () => screen.getByTestId('composer-draft') as HTMLTextAreaElement
@@ -85,6 +86,18 @@ vi.mock('@/next/live/openAIResponsesTextChat', () => {
   return { streamOpenAIResponsesTextChatAsDomainEvents }
 })
 
+vi.mock('@/next/live/googleAIStudioTextChat', () => {
+  async function* streamGoogleAIStudioTextChatAsDomainEvents(options: any) {
+    googleAIStudioTextChatCallArgs.push(options)
+    const assistantMessageId = String(options?.assistantMessageId ?? 'a1')
+    yield { type: 'MetaDelta', meta: { id: 'google_ai_studio_gen_1', model: String(options?.model ?? 'gemini-2.5-flash'), provider: 'google-ai-studio' } }
+    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'gemini ' }
+    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'hi' }
+    yield { type: 'StreamDone' }
+  }
+  return { streamGoogleAIStudioTextChatAsDomainEvents }
+})
+
 describe('ui-app AppChatApp (send: pure text)', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronAPI = (globalThis as any).electronAPI
@@ -97,11 +110,14 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     streamOpenRouterChatCallArgs.length = 0
     localEndpointTextChatCallArgs.length = 0
     openAIResponsesTextChatCallArgs.length = 0
+    googleAIStudioTextChatCallArgs.length = 0
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
     globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.model')
     convoListMeta = null
     // Make throttle immediate in tests (while still exercising scheduling code paths).
     globalThis.setTimeout = ((fn: (...args: any[]) => void) => originalSetTimeout(fn, 0)) as any
@@ -449,6 +465,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
     globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.model')
     vi.useRealTimers()
   })
 
@@ -611,6 +629,38 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
   })
 
+  it('routes explicit Google AI Studio text chat through the normal transcript without OpenRouter, old Gemini, or Generic send', async () => {
+    globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.enabled', '1')
+    globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.model', 'gemini-2.5-flash')
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'gemini ping')
+    await user.click(sendButton())
+
+    await screen.findByText('gemini ping')
+    await screen.findByText('gemini hi')
+    await vi.runAllTimersAsync()
+
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
+    expect(localEndpointTextChatCallArgs).toHaveLength(0)
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
+    expect(googleAIStudioTextChatCallArgs).toHaveLength(1)
+    expect(googleAIStudioTextChatCallArgs[0]).toMatchObject({
+      model: 'gemini-2.5-flash',
+      userText: 'gemini ping',
+    })
+    expect(googleAIStudioTextChatCallArgs[0].currentUserContentBlocks).toBeUndefined()
+    expect(invoke).toHaveBeenCalledWith('branch.beginTurn', expect.objectContaining({ branchId: 'b1', userBody: 'gemini ping' }))
+    expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 2 }))
+    expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a1', status: 'final' }))
+    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
+  })
+
   it('keeps OpenAI Responses default-off when SettingsPanel only applies a model default', async () => {
     globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
     const user = userEvent.setup()
@@ -627,6 +677,52 @@ describe('ui-app AppChatApp (send: pure text)', () => {
 
     expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
     expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+  })
+
+  it('keeps Google AI Studio default-off when SettingsPanel only applies a model default', async () => {
+    globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.model', 'gemini-2.5-flash')
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'google default off ping')
+    await user.click(sendButton())
+
+    await screen.findByText('google default off ping')
+    await screen.findByText('hi')
+
+    expect(googleAIStudioTextChatCallArgs).toHaveLength(0)
+    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+  })
+
+  it('keeps Google AI Studio, OpenAI Responses, and LocalEndpoint experimental modes mutually exclusive', async () => {
+    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.enabled', '1')
+    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.url', 'http://localhost:1234/v1')
+    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.model', 'local-model')
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
+    globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.enabled', '1')
+    globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.model', 'gemini-2.5-flash')
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'mutual exclusion ping')
+    await user.click(sendButton())
+
+    await screen.findByText('mutual exclusion ping')
+    await screen.findByText('gemini hi')
+
+    expect(googleAIStudioTextChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
+    expect(localEndpointTextChatCallArgs).toHaveLength(0)
+    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
+    expect(globalThis.localStorage?.getItem('starverse.openAIResponsesTextChat.enabled')).toBe('0')
+    expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.enabled')).toBe('0')
   })
 
   it('returns to the OpenRouter path when OpenAI Responses chat is disabled or cleared', async () => {
@@ -649,6 +745,29 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('hi')
 
     expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
+    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+  })
+
+  it('returns to the OpenRouter path when Google AI Studio chat is disabled or cleared', async () => {
+    globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.enabled', '1')
+    globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.model', 'gemini-2.5-flash')
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.model')
+    window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.googleAIStudioTextChat.enabled' }))
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'cleared google ai studio ping')
+    await user.click(sendButton())
+
+    await screen.findByText('cleared google ai studio ping')
+    await screen.findByText('hi')
+
+    expect(googleAIStudioTextChatCallArgs).toHaveLength(0)
     expect(streamOpenRouterChatCallArgs).toHaveLength(1)
   })
 

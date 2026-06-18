@@ -135,6 +135,7 @@ const {
   activeSessionConfig,
   localEndpointChatConfig,
   openAIResponsesChatConfig,
+  googleAIStudioChatConfig,
   modelCatalogForPicker,
   modelCatalogNotice,
   modelPrefsScopeForUi,
@@ -159,6 +160,9 @@ const {
   onUpdateOpenAIResponsesChatEnabled,
   onUpdateOpenAIResponsesChatModel,
   onClearOpenAIResponsesChat,
+  onUpdateGoogleAIStudioChatEnabled,
+  onUpdateGoogleAIStudioChatModel,
+  onClearGoogleAIStudioChat,
   onAttachFilesRequested,
   onAttachImagesRequested,
   onAttachUrlRequested,
@@ -222,6 +226,10 @@ const runSummary = computed(() => {
 })
 
 const modelSummary = computed(() => {
+  if (googleAIStudioChatConfig.value.enabled) {
+    const model = googleAIStudioChatConfig.value.model.trim() || 'manual model required'
+    return `Google AI Studio · ${model}`
+  }
   if (openAIResponsesChatConfig.value.enabled) {
     const model = openAIResponsesChatConfig.value.model.trim() || 'manual model required'
     return `OpenAI Responses · ${model}`
@@ -776,6 +784,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             :sessionConfig="activeSessionConfig"
             :localEndpointChat="localEndpointChatConfig"
             :openAIResponsesChat="openAIResponsesChatConfig"
+            :googleAIStudioChat="googleAIStudioChatConfig"
             :reasoningDisplayMode="reasoningDisplayMode"
             :modelCatalog="modelCatalogForPicker"
             :webSearchResolved="activeSessionWebSearchResolved"
@@ -798,6 +807,9 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateOpenAIResponsesChatEnabled="onUpdateOpenAIResponsesChatEnabled"
             @updateOpenAIResponsesChatModel="onUpdateOpenAIResponsesChatModel"
             @clearOpenAIResponsesChat="onClearOpenAIResponsesChat"
+            @updateGoogleAIStudioChatEnabled="onUpdateGoogleAIStudioChatEnabled"
+            @updateGoogleAIStudioChatModel="onUpdateGoogleAIStudioChatModel"
+            @clearGoogleAIStudioChat="onClearGoogleAIStudioChat"
             @updateReasoningDisplayMode="onUpdateReasoningDisplayMode"
             @openSettings="openSettings"
           />
