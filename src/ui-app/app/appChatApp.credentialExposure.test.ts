@@ -43,6 +43,26 @@ function expectNoGenericStoreOpenAIResponsesCredentialAccess(source: string) {
   }
 }
 
+function expectNoGenericStoreGoogleAIStudioCredentialAccess(source: string) {
+  const blockedPatterns = [
+    /electronStore\s*\.\s*get\s*\(\s*['"]googleAIStudioApiKey['"]/,
+    /electronStore\s*\.\s*set\s*\(\s*['"]googleAIStudioApiKey['"]/,
+    /electronStore\s*\.\s*delete\s*\(\s*['"]googleAIStudioApiKey['"]/,
+    /electronStore\s*\.\s*get\s*\(\s*['"]geminiApiKey['"]/,
+    /electronStore\s*\.\s*set\s*\(\s*['"]geminiApiKey['"]/,
+    /electronStore\s*\.\s*delete\s*\(\s*['"]geminiApiKey['"]/,
+    /store\s*\.\s*get\s*\(\s*['"]googleAIStudioApiKey['"]/,
+    /store\s*\.\s*set\s*\(\s*['"]googleAIStudioApiKey['"]/,
+    /store\s*\.\s*delete\s*\(\s*['"]googleAIStudioApiKey['"]/,
+    /store\s*\.\s*get\s*\(\s*['"]geminiApiKey['"]/,
+    /store\s*\.\s*set\s*\(\s*['"]geminiApiKey['"]/,
+    /store\s*\.\s*delete\s*\(\s*['"]geminiApiKey['"]/,
+  ]
+  for (const pattern of blockedPatterns) {
+    expect(source).not.toMatch(pattern)
+  }
+}
+
 describe('appChatApp OpenRouter C4 exposure baseline', () => {
   it('characterizes active C3 chat/send as using legacy_store credential source without renderer raw apiKey handoff', () => {
     const source = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
@@ -73,6 +93,7 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
     for (const source of rendererFiles) {
       expectNoGenericStoreOpenRouterCredentialAccess(source)
       expectNoGenericStoreOpenAIResponsesCredentialAccess(source)
+      expectNoGenericStoreGoogleAIStudioCredentialAccess(source)
     }
   })
 
@@ -107,6 +128,29 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
     expect(source).not.toContain('localEndpointApiKey')
     expect(source).not.toContain('localEndpointAuthorization')
     expect(source).not.toContain('localEndpointCustomHeader')
+  })
+
+  it('keeps Google AI Studio experimental send native, explicit, text-only, and old-Gemini-runtime-free', () => {
+    const appChatSource = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
+    const settingsSource = readFileSync(resolve(testDir, '..', 'components', 'SettingsPanel.vue'), 'utf8')
+
+    expect(appChatSource).toContain('streamGoogleAIStudioTextChatAsDomainEvents')
+    expect(appChatSource).toContain('googleAIStudioChatEnabled')
+    expect(appChatSource).toContain('getGoogleAIStudioTextChatBlockReason')
+    expect(appChatSource).toContain('Google AI Studio experimental text chat is text-only. Remove attachments before sending.')
+    expect(appChatSource).toContain('config.webSearch.enabled')
+    expect(appChatSource).toContain('config.reasoning.enabled')
+    expect(appChatSource).toContain('config.imageGeneration.enabled')
+    expect(appChatSource).not.toContain('PROVIDERS.GEMINI')
+    expect(appChatSource).not.toMatch(/streamVia\w*Gemini/)
+    expect(appChatSource).not.toContain('geminiApiKey')
+    expect(settingsSource).toContain('googleAIStudioCredential')
+    expect(settingsSource).toContain('does not use legacy Gemini runtime')
+    expect(settingsSource).not.toContain("electronStore.get('googleAIStudioApiKey')")
+    expect(settingsSource).not.toContain("electronStore.set('googleAIStudioApiKey'")
+    expect(settingsSource).not.toContain("electronStore.get('geminiApiKey')")
+    expect(settingsSource).not.toContain('Authorization')
+    expect(settingsSource).not.toContain('Bearer')
   })
 
   it('audits OpenRouter catalog as resolver-backed and separate from renderer credential exposure', () => {

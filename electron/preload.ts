@@ -21,6 +21,12 @@ contextBridge.exposeInMainWorld('openAIResponsesCredential', {
   clear: () => ipcRenderer.invoke('openai-responses-credential:clear'),
 })
 
+contextBridge.exposeInMainWorld('googleAIStudioCredential', {
+  getStatus: () => ipcRenderer.invoke('google-ai-studio-credential:get-status'),
+  update: (payload: unknown) => ipcRenderer.invoke('google-ai-studio-credential:update', payload),
+  clear: () => ipcRenderer.invoke('google-ai-studio-credential:clear'),
+})
+
 contextBridge.exposeInMainWorld('localEndpointDiagnostics', {
   probe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:probe', payload),
   streamProbe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:stream-probe', payload),
@@ -60,6 +66,25 @@ contextBridge.exposeInMainWorld('openAIResponsesChat', {
     ipcRenderer.on(`openai-responses-chat:end:${requestId}`, handler)
     return () => {
       ipcRenderer.removeListener(`openai-responses-chat:end:${requestId}`, handler)
+    }
+  },
+})
+
+contextBridge.exposeInMainWorld('googleAIStudioChat', {
+  startTextChat: (payload: unknown) => ipcRenderer.invoke('google-ai-studio-chat:stream-text', payload),
+  abortTextChat: (requestId: string) => ipcRenderer.invoke('google-ai-studio-chat:abort', requestId),
+  onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
+    ipcRenderer.on(`google-ai-studio-chat:chunk:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`google-ai-studio-chat:chunk:${requestId}`, handler)
+    }
+  },
+  onTextChatEnd: (requestId: string, callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on(`google-ai-studio-chat:end:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`google-ai-studio-chat:end:${requestId}`, handler)
     }
   },
 })

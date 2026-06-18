@@ -124,6 +124,7 @@ describe('registerStoreIpc', () => {
       'openRouterApiKey',
       'openRouterBaseUrl',
       'openAIResponsesApiKey',
+      'googleAIStudioApiKey',
       'geminiApiKey',
       'apiKey',
       OPENROUTER_CATALOG_LOCAL_SECRET_KEY,

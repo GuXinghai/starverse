@@ -101,6 +101,24 @@ type OpenAIResponsesCredentialResult =
   | { ok: true; status: OpenAIResponsesCredentialStatus }
   | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
 
+interface GoogleAIStudioCredentialStatus {
+  source: 'legacy_store'
+  providerId: 'google-ai-studio'
+  profileId: 'gemini_api_v1'
+  apiKeyConfigured: boolean
+  maskedApiKey?: '***'
+  defaultBaseUrl: 'https://generativelanguage.googleapis.com'
+  rendererVisible: true
+}
+
+interface GoogleAIStudioCredentialUpdatePayload {
+  apiKey?: string
+}
+
+type GoogleAIStudioCredentialResult =
+  | { ok: true; status: GoogleAIStudioCredentialStatus }
+  | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
+
 type LocalEndpointProbeModelList =
   | {
     ok: true
@@ -195,6 +213,19 @@ type OpenAIResponsesTextChatStartResult =
     error: string
   }
 
+type GoogleAIStudioTextChatMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+type GoogleAIStudioTextChatStartResult =
+  | { ok: true }
+  | {
+    ok: false
+    code: 'invalid_payload' | 'credential_missing' | 'store_unavailable'
+    error: string
+  }
+
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   openRouterCredential?: {
@@ -206,6 +237,11 @@ interface Window {
     getStatus?: () => Promise<OpenAIResponsesCredentialResult>
     update?: (payload: OpenAIResponsesCredentialUpdatePayload) => Promise<OpenAIResponsesCredentialResult>
     clear?: () => Promise<OpenAIResponsesCredentialResult>
+  }
+  googleAIStudioCredential?: {
+    getStatus?: () => Promise<GoogleAIStudioCredentialResult>
+    update?: (payload: GoogleAIStudioCredentialUpdatePayload) => Promise<GoogleAIStudioCredentialResult>
+    clear?: () => Promise<GoogleAIStudioCredentialResult>
   }
   localEndpointDiagnostics?: {
     probe?: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointProbeResult>
@@ -231,6 +267,18 @@ interface Window {
       messages: OpenAIResponsesTextChatMessage[]
       timeoutMs?: number
     }) => Promise<OpenAIResponsesTextChatStartResult>
+    abortTextChat?: (requestId: string) => Promise<{ ok: true }>
+    onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
+    onTextChatEnd?: (requestId: string, callback: () => void) => () => void
+  }
+  googleAIStudioChat?: {
+    startTextChat?: (payload: {
+      requestId: string
+      assistantMessageId: string
+      model: string
+      messages: GoogleAIStudioTextChatMessage[]
+      timeoutMs?: number
+    }) => Promise<GoogleAIStudioTextChatStartResult>
     abortTextChat?: (requestId: string) => Promise<{ ok: true }>
     onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
     onTextChatEnd?: (requestId: string, callback: () => void) => () => void

@@ -140,6 +140,28 @@ type OpenAIResponsesCredentialBridge = Readonly<{
   clear: () => Promise<OpenAIResponsesCredentialResult>
 }>
 
+type GoogleAIStudioCredentialStatus = Readonly<{
+  source: 'legacy_store'
+  providerId: 'google-ai-studio'
+  profileId: 'gemini_api_v1'
+  apiKeyConfigured: boolean
+  maskedApiKey?: string
+  defaultBaseUrl: string
+  rendererVisible: true
+}>
+
+type GoogleAIStudioCredentialResult = Readonly<{
+  ok: boolean
+  status?: GoogleAIStudioCredentialStatus
+  message?: string
+}>
+
+type GoogleAIStudioCredentialBridge = Readonly<{
+  getStatus: () => Promise<GoogleAIStudioCredentialResult>
+  update: (payload: Readonly<{ apiKey?: string }>) => Promise<GoogleAIStudioCredentialResult>
+  clear: () => Promise<GoogleAIStudioCredentialResult>
+}>
+
 type LocalEndpointProbeResult = Readonly<
   | {
     ok: true
@@ -210,6 +232,8 @@ const LOCAL_ENDPOINT_CHAT_MODEL_KEY = 'starverse.localEndpointTextChat.model'
 const LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT = 'settings:localEndpointTextChatUpdated'
 const OPENAI_RESPONSES_CHAT_MODEL_KEY = 'starverse.openAIResponsesTextChat.model'
 const OPENAI_RESPONSES_CHAT_SETTINGS_EVENT = 'settings:openAIResponsesTextChatUpdated'
+const GOOGLE_AI_STUDIO_CHAT_MODEL_KEY = 'starverse.googleAIStudioTextChat.model'
+const GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT = 'settings:googleAIStudioTextChatUpdated'
 
 function getElectronStore(): ElectronStoreLike | null {
   const store = (globalThis as any).electronStore as ElectronStoreLike | undefined
@@ -240,6 +264,17 @@ function getOpenAIResponsesCredentialBridge(): OpenAIResponsesCredentialBridge |
   return bridge
 }
 
+function getGoogleAIStudioCredentialBridge(): GoogleAIStudioCredentialBridge | null {
+  const bridge = (globalThis as any).googleAIStudioCredential as GoogleAIStudioCredentialBridge | undefined
+  if (!bridge) return null
+  if (
+    typeof bridge.getStatus !== 'function' ||
+    typeof bridge.update !== 'function' ||
+    typeof bridge.clear !== 'function'
+  ) return null
+  return bridge
+}
+
 function getLocalEndpointDiagnosticsBridge(): LocalEndpointDiagnosticsBridge | null {
   const bridge = (globalThis as any).localEndpointDiagnostics as LocalEndpointDiagnosticsBridge | undefined
   if (!bridge || typeof bridge.probe !== 'function' || typeof bridge.streamProbe !== 'function') return null
@@ -259,6 +294,11 @@ const openAIResponsesApiKeyConfigured = ref(false)
 const openAIResponsesMaskedApiKey = ref('')
 const openAIResponsesModel = ref('')
 const openAIResponsesChatApplyMessage = ref<string | null>(null)
+const googleAIStudioApiKey = ref('')
+const googleAIStudioApiKeyConfigured = ref(false)
+const googleAIStudioMaskedApiKey = ref('')
+const googleAIStudioModel = ref('')
+const googleAIStudioChatApplyMessage = ref<string | null>(null)
 const endpointDisplayName = ref('OpenRouter official endpoint')
 const endpointDisplayStatus = ref('Official endpoint')
 const endpointDisplayBaseUrl = ref('')
@@ -322,6 +362,12 @@ const canApplyOpenAIResponsesChatSettings = computed(() =>
   !props.disabled &&
   !props.isRunning &&
   openAIResponsesModel.value.trim().length > 0
+)
+const googleAIStudioCredentialAvailable = computed(() => !!getGoogleAIStudioCredentialBridge())
+const canApplyGoogleAIStudioChatSettings = computed(() =>
+  !props.disabled &&
+  !props.isRunning &&
+  googleAIStudioModel.value.trim().length > 0
 )
 const localEndpointProbedModels = computed(() => {
   const result = localEndpointProbeResult.value
@@ -487,6 +533,12 @@ function applyOpenAIResponsesCredentialStatus(status: OpenAIResponsesCredentialS
   openAIResponsesMaskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
 }
 
+function applyGoogleAIStudioCredentialStatus(status: GoogleAIStudioCredentialStatus) {
+  googleAIStudioApiKey.value = ''
+  googleAIStudioApiKeyConfigured.value = status.apiKeyConfigured === true
+  googleAIStudioMaskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
+}
+
 async function loadOpenAIResponsesCredentialStatus() {
   const credentialBridge = getOpenAIResponsesCredentialBridge()
   if (!credentialBridge) {
@@ -502,11 +554,34 @@ async function loadOpenAIResponsesCredentialStatus() {
   applyOpenAIResponsesCredentialStatus(result.status)
 }
 
+async function loadGoogleAIStudioCredentialStatus() {
+  const credentialBridge = getGoogleAIStudioCredentialBridge()
+  if (!credentialBridge) {
+    googleAIStudioApiKeyConfigured.value = false
+    googleAIStudioMaskedApiKey.value = ''
+    return
+  }
+
+  const result = await credentialBridge.getStatus()
+  if (!result?.ok || !result.status) {
+    throw new Error(result?.message || 'Google AI Studio credential status unavailable.')
+  }
+  applyGoogleAIStudioCredentialStatus(result.status)
+}
+
 function loadOpenAIResponsesChatModelPreference() {
   try {
     openAIResponsesModel.value = String(globalThis.localStorage?.getItem(OPENAI_RESPONSES_CHAT_MODEL_KEY) ?? '').trim()
   } catch {
     openAIResponsesModel.value = ''
+  }
+}
+
+function loadGoogleAIStudioChatModelPreference() {
+  try {
+    googleAIStudioModel.value = String(globalThis.localStorage?.getItem(GOOGLE_AI_STUDIO_CHAT_MODEL_KEY) ?? '').trim()
+  } catch {
+    googleAIStudioModel.value = ''
   }
 }
 
@@ -524,7 +599,9 @@ async function load() {
   try {
     await loadOpenRouterCredentialStatus()
     await loadOpenAIResponsesCredentialStatus()
+    await loadGoogleAIStudioCredentialStatus()
     loadOpenAIResponsesChatModelPreference()
+    loadGoogleAIStudioChatModelPreference()
     catalogStartupSyncPolicy.value = normalizeCatalogAutoSyncPolicy(await store.get(OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY))
     catalogPickerOpenSyncPolicy.value = normalizeCatalogAutoSyncPolicy(await store.get(OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY))
     catalogListUpdateMode.value = normalizeCatalogListUpdateMode(await store.get(OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY))
@@ -630,6 +707,20 @@ async function save() {
         throw new Error(openAIResponsesCredentialResult?.message || 'OpenAI Responses credential update failed.')
       }
       applyOpenAIResponsesCredentialStatus(openAIResponsesCredentialResult.status)
+    }
+    const googleAIStudioCredentialBridge = getGoogleAIStudioCredentialBridge()
+    const nextGoogleAIStudioApiKey = googleAIStudioApiKey.value.trim()
+    if (nextGoogleAIStudioApiKey) {
+      if (!googleAIStudioCredentialBridge) {
+        throw new Error('Missing googleAIStudioCredential bridge (run in Electron).')
+      }
+      const googleAIStudioCredentialResult = await googleAIStudioCredentialBridge.update({
+        apiKey: nextGoogleAIStudioApiKey,
+      })
+      if (!googleAIStudioCredentialResult?.ok || !googleAIStudioCredentialResult.status) {
+        throw new Error(googleAIStudioCredentialResult?.message || 'Google AI Studio credential update failed.')
+      }
+      applyGoogleAIStudioCredentialStatus(googleAIStudioCredentialResult.status)
     }
     await store.set(OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY, normalizeCatalogAutoSyncPolicy(catalogStartupSyncPolicy.value))
     await store.set(OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY, normalizeCatalogAutoSyncPolicy(catalogPickerOpenSyncPolicy.value))
@@ -800,6 +891,29 @@ async function clearOpenAIResponsesApiKey() {
   }
 }
 
+async function clearGoogleAIStudioApiKey() {
+  error.value = null
+  savedMessage.value = null
+  const credentialBridge = getGoogleAIStudioCredentialBridge()
+  if (!credentialBridge) {
+    error.value = 'Missing googleAIStudioCredential bridge (run in Electron).'
+    return
+  }
+  saving.value = true
+  try {
+    const result = await credentialBridge.clear()
+    if (!result?.ok || !result.status) {
+      throw new Error(result?.message || 'Google AI Studio credential clear failed.')
+    }
+    applyGoogleAIStudioCredentialStatus(result.status)
+    savedMessage.value = 'Google AI Studio API key cleared.'
+  } catch (err: any) {
+    error.value = err?.message ? String(err.message) : String(err)
+  } finally {
+    saving.value = false
+  }
+}
+
 function applyOpenAIResponsesChatSettings() {
   const model = openAIResponsesModel.value.trim()
   if (!model) return
@@ -814,6 +928,23 @@ function applyOpenAIResponsesChatSettings() {
     openAIResponsesChatApplyMessage.value = 'Applied to experimental OpenAI Responses chat. Enable it explicitly in Console to send.'
   } catch {
     openAIResponsesChatApplyMessage.value = 'OpenAI Responses chat settings could not be saved locally.'
+  }
+}
+
+function applyGoogleAIStudioChatSettings() {
+  const model = googleAIStudioModel.value.trim()
+  if (!model) return
+
+  try {
+    globalThis.localStorage?.setItem(GOOGLE_AI_STUDIO_CHAT_MODEL_KEY, model)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT, {
+        detail: { model },
+      }))
+    }
+    googleAIStudioChatApplyMessage.value = 'Applied to experimental Google AI Studio chat. Enable it explicitly in Console to send.'
+  } catch {
+    googleAIStudioChatApplyMessage.value = 'Google AI Studio chat settings could not be saved locally.'
   }
 }
 
@@ -1456,6 +1587,71 @@ onMounted(() => {
         </div>
         <div v-if="openAIResponsesChatApplyMessage" class="mt-1 text-[11px] text-blue-900" data-testid="settings-openai-responses-chat-apply-result">
           {{ openAIResponsesChatApplyMessage }}
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-emerald-200 bg-white p-3" data-testid="settings-google-ai-studio-experimental">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Google AI Studio Experimental Chat</div>
+            <div class="mt-1 text-[11px] text-gray-500">
+              Native Gemini API text-only path. It is separate from OpenRouter, default-off, and uses a main-process credential bridge.
+            </div>
+          </div>
+          <span class="shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-800">
+            Experimental
+          </span>
+        </div>
+
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">Google AI Studio API key</label>
+        <div class="mt-1 flex items-center gap-2">
+          <input
+            v-model="googleAIStudioApiKey"
+            type="password"
+            placeholder="AIza..."
+            class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:bg-gray-50"
+            :disabled="!canEdit || loading || saving || !googleAIStudioCredentialAvailable"
+            data-testid="settings-google-ai-studio-api-key"
+          />
+          <button
+            type="button"
+            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!canEdit || loading || saving || !googleAIStudioCredentialAvailable || !googleAIStudioApiKeyConfigured"
+            data-testid="settings-google-ai-studio-clear-key"
+            @click="clearGoogleAIStudioApiKey"
+          >
+            Clear key
+          </button>
+        </div>
+        <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-google-ai-studio-key-status">
+          {{ googleAIStudioApiKeyConfigured ? `Configured: ${googleAIStudioMaskedApiKey || '***'}` : 'Not configured' }}
+        </div>
+
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">Manual Gemini model id</label>
+        <div class="mt-1 flex items-center gap-2">
+          <input
+            v-model="googleAIStudioModel"
+            type="text"
+            placeholder="gemini-2.5-flash"
+            class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:bg-gray-50"
+            :disabled="props.disabled || props.isRunning || loading || saving"
+            data-testid="settings-google-ai-studio-model"
+          />
+          <button
+            type="button"
+            class="rounded-md border border-emerald-700 bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+            :disabled="!canApplyGoogleAIStudioChatSettings"
+            data-testid="settings-google-ai-studio-apply-chat"
+            @click="applyGoogleAIStudioChatSettings"
+          >
+            Use model for experimental chat
+          </button>
+        </div>
+        <div class="mt-1 text-[11px] text-emerald-800" data-testid="settings-google-ai-studio-chat-note">
+          This only updates the experimental Google AI Studio Console default. It does not publish models to the main picker, does not enable chat by itself, and does not use legacy Gemini runtime.
+        </div>
+        <div v-if="googleAIStudioChatApplyMessage" class="mt-1 text-[11px] text-emerald-900" data-testid="settings-google-ai-studio-chat-apply-result">
+          {{ googleAIStudioChatApplyMessage }}
         </div>
       </div>
 

@@ -31,9 +31,11 @@ describe('preload scoped API exposure', () => {
       'electronStore',
       'openRouterCredential',
       'openAIResponsesCredential',
+      'googleAIStudioCredential',
       'localEndpointDiagnostics',
       'localEndpointChat',
       'openAIResponsesChat',
+      'googleAIStudioChat',
       'electronAPI',
       'dbBridge',
     ]))
@@ -72,9 +74,11 @@ describe('preload scoped API exposure', () => {
     const electronStore = exposeInMainWorld.mock.calls.find(([name]) => name === 'electronStore')?.[1]
     const openRouterCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'openRouterCredential')?.[1]
     const openAIResponsesCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'openAIResponsesCredential')?.[1]
+    const googleAIStudioCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'googleAIStudioCredential')?.[1]
     const localEndpointDiagnostics = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointDiagnostics')?.[1]
     const localEndpointChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointChat')?.[1]
     const openAIResponsesChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'openAIResponsesChat')?.[1]
+    const googleAIStudioChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'googleAIStudioChat')?.[1]
     expect(electronStore).toEqual(expect.objectContaining({
       get: expect.any(Function),
       set: expect.any(Function),
@@ -88,6 +92,11 @@ describe('preload scoped API exposure', () => {
       clear: expect.any(Function),
     })
     expect(openAIResponsesCredential).toEqual({
+      getStatus: expect.any(Function),
+      update: expect.any(Function),
+      clear: expect.any(Function),
+    })
+    expect(googleAIStudioCredential).toEqual({
       getStatus: expect.any(Function),
       update: expect.any(Function),
       clear: expect.any(Function),
@@ -108,6 +117,12 @@ describe('preload scoped API exposure', () => {
       onTextChatChunk: expect.any(Function),
       onTextChatEnd: expect.any(Function),
     })
+    expect(googleAIStudioChat).toEqual({
+      startTextChat: expect.any(Function),
+      abortTextChat: expect.any(Function),
+      onTextChatChunk: expect.any(Function),
+      onTextChatEnd: expect.any(Function),
+    })
     expect(localEndpointDiagnostics.getStatus).toBeUndefined()
     expect(localEndpointDiagnostics.update).toBeUndefined()
     expect(localEndpointDiagnostics.endpointRegistry).toBeUndefined()
@@ -116,9 +131,14 @@ describe('preload scoped API exposure', () => {
     expect(localEndpointChat.endpointRegistry).toBeUndefined()
     expect(openAIResponsesCredential.apiKey).toBeUndefined()
     expect(openAIResponsesCredential.endpointRegistry).toBeUndefined()
+    expect(googleAIStudioCredential.apiKey).toBeUndefined()
+    expect(googleAIStudioCredential.endpointRegistry).toBeUndefined()
     expect(openAIResponsesChat.getStatus).toBeUndefined()
     expect(openAIResponsesChat.update).toBeUndefined()
     expect(openAIResponsesChat.endpointRegistry).toBeUndefined()
+    expect(googleAIStudioChat.getStatus).toBeUndefined()
+    expect(googleAIStudioChat.update).toBeUndefined()
+    expect(googleAIStudioChat.endpointRegistry).toBeUndefined()
     expect(openRouterCredential.getEndpointMetadata).toBeUndefined()
     expect(openRouterCredential.endpointRegistry).toBeUndefined()
 
@@ -133,6 +153,9 @@ describe('preload scoped API exposure', () => {
     await openAIResponsesCredential.getStatus()
     await openAIResponsesCredential.update({ apiKey: 'raw-openai-key' })
     await openAIResponsesCredential.clear()
+    await googleAIStudioCredential.getStatus()
+    await googleAIStudioCredential.update({ apiKey: 'raw-google-key' })
+    await googleAIStudioCredential.clear()
     await localEndpointDiagnostics.probe({ url: 'http://localhost:1234', timeoutMs: 5000 })
     await localEndpointDiagnostics.streamProbe({ url: 'http://localhost:1234', timeoutMs: 5000 })
     await localEndpointChat.startTextChat({
@@ -153,6 +176,15 @@ describe('preload scoped API exposure', () => {
     await openAIResponsesChat.abortTextChat('openai_responses_req_preload')
     openAIResponsesChat.onTextChatChunk('openai_responses_req_preload', () => {})
     openAIResponsesChat.onTextChatEnd('openai_responses_req_preload', () => {})
+    await googleAIStudioChat.startTextChat({
+      requestId: 'google_ai_studio_req_preload',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-2.5-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    await googleAIStudioChat.abortTextChat('google_ai_studio_req_preload')
+    googleAIStudioChat.onTextChatChunk('google_ai_studio_req_preload', () => {})
+    googleAIStudioChat.onTextChatEnd('google_ai_studio_req_preload', () => {})
 
     expect(invoke).toHaveBeenCalledWith('store-get', 'theme')
     expect(invoke).toHaveBeenCalledWith('store-set', 'theme', 'dark')
@@ -170,6 +202,11 @@ describe('preload scoped API exposure', () => {
       apiKey: 'raw-openai-key',
     })
     expect(invoke).toHaveBeenCalledWith('openai-responses-credential:clear')
+    expect(invoke).toHaveBeenCalledWith('google-ai-studio-credential:get-status')
+    expect(invoke).toHaveBeenCalledWith('google-ai-studio-credential:update', {
+      apiKey: 'raw-google-key',
+    })
+    expect(invoke).toHaveBeenCalledWith('google-ai-studio-credential:clear')
     expect(invoke).toHaveBeenCalledWith('local-endpoint-diagnostics:probe', {
       url: 'http://localhost:1234',
       timeoutMs: 5000,
@@ -192,6 +229,13 @@ describe('preload scoped API exposure', () => {
       messages: [{ role: 'user', content: 'hello' }],
     })
     expect(invoke).toHaveBeenCalledWith('openai-responses-chat:abort', 'openai_responses_req_preload')
+    expect(invoke).toHaveBeenCalledWith('google-ai-studio-chat:stream-text', {
+      requestId: 'google_ai_studio_req_preload',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-2.5-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(invoke).toHaveBeenCalledWith('google-ai-studio-chat:abort', 'google_ai_studio_req_preload')
   })
 
   it('does not expose generic credential resolver or raw Authorization/Bearer helpers', () => {
@@ -199,9 +243,11 @@ describe('preload scoped API exposure', () => {
 
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openRouterCredential'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openAIResponsesCredential'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('googleAIStudioCredential'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointDiagnostics'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointChat'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openAIResponsesChat'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('googleAIStudioChat'")
     expect(preloadSource).not.toContain('credentialRef')
     expect(preloadSource).not.toContain('credentialResolver')
     expect(preloadSource).not.toContain('secretStore')
