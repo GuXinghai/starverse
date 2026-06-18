@@ -510,6 +510,55 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
   })
 
+  it('syncs SettingsPanel-selected LocalEndpoint model for explicitly enabled chat only', async () => {
+    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.enabled', '1')
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    window.dispatchEvent(new CustomEvent('settings:localEndpointTextChatUpdated', {
+      detail: {
+        endpointUrl: 'http://localhost:4321/v1',
+        model: 'settings-selected-model',
+      },
+    }))
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'settings local ping')
+    await user.click(sendButton())
+
+    await screen.findByText('settings local ping')
+    await screen.findByText('local hi')
+
+    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
+    expect(localEndpointTextChatCallArgs).toHaveLength(1)
+    expect(localEndpointTextChatCallArgs[0]).toMatchObject({
+      endpointUrl: 'http://localhost:4321/v1',
+      model: 'settings-selected-model',
+      userText: 'settings local ping',
+    })
+  })
+
+  it('keeps LocalEndpoint chat default-off when SettingsPanel only applies endpoint and model defaults', async () => {
+    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.url', 'http://localhost:4321/v1')
+    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.model', 'settings-selected-model')
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'default off ping')
+    await user.click(sendButton())
+
+    await screen.findByText('default off ping')
+    await screen.findByText('hi')
+
+    expect(localEndpointTextChatCallArgs).toHaveLength(0)
+    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+  })
+
   it('uses selected model for next send and persists convo.meta.selectedModelKey', async () => {
     const user = userEvent.setup()
     render(AppChatApp)

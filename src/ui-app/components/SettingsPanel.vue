@@ -183,6 +183,10 @@ type LocalEndpointDiagnosticsBridge = Readonly<{
   streamProbe: (payload: Readonly<{ url?: string; timeoutMs?: number }>) => Promise<LocalEndpointStreamProbeResult>
 }>
 
+const LOCAL_ENDPOINT_CHAT_URL_KEY = 'starverse.localEndpointTextChat.url'
+const LOCAL_ENDPOINT_CHAT_MODEL_KEY = 'starverse.localEndpointTextChat.model'
+const LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT = 'settings:localEndpointTextChatUpdated'
+
 function getElectronStore(): ElectronStoreLike | null {
   const store = (globalThis as any).electronStore as ElectronStoreLike | undefined
   if (!store) return null
@@ -243,6 +247,9 @@ const netExpKeepAliveIdleMs = ref(DEFAULT_NETEXP_SETTINGS.tcpKeepAliveIdleMs)
 const netExpInitial = ref<NetExpSettings>(DEFAULT_NETEXP_SETTINGS)
 const netExpRuntime = ref<NetExpRuntimeInfo | null>(null)
 const localEndpointUrl = ref('http://localhost:1234')
+const localEndpointSelectedModel = ref('')
+const localEndpointManualModel = ref('')
+const localEndpointChatApplyMessage = ref<string | null>(null)
 const localEndpointProbeLoading = ref(false)
 const localEndpointProbeResult = ref<LocalEndpointProbeResult | null>(null)
 const localEndpointStreamProbeLoading = ref(false)
@@ -270,6 +277,24 @@ const storeAvailable = computed(() => !!getElectronStore())
 const canEdit = computed(() => !props.disabled && !props.isRunning && storeAvailable.value)
 const localEndpointDiagnosticsAvailable = computed(() => !!getLocalEndpointDiagnosticsBridge())
 const canProbeLocalEndpoint = computed(() => !props.disabled && !props.isRunning && localEndpointDiagnosticsAvailable.value)
+const localEndpointProbedModels = computed(() => {
+  const result = localEndpointProbeResult.value
+  if (!result?.ok || !result.diagnostics.modelList.ok) return []
+  return result.diagnostics.modelList.models
+})
+const localEndpointModelForChat = computed(() => {
+  const selected = localEndpointSelectedModel.value.trim()
+  if (selected) return selected
+  return localEndpointManualModel.value.trim()
+})
+const canApplyLocalEndpointChatSettings = computed(() =>
+  !props.disabled &&
+  !props.isRunning &&
+  localEndpointUrl.value.trim().length > 0 &&
+  localEndpointModelForChat.value.length > 0 &&
+  !localEndpointProbeLoading.value &&
+  !localEndpointStreamProbeLoading.value
+)
 const globalWebSearchResolved = computed(() =>
   resolveSearchSettings(
     { global: webSearchDefaults.value },
@@ -785,11 +810,61 @@ async function clearAllOpenRouterCatalogCaches() {
   }
 }
 
+function safeLocalEndpointChatUrlForStorage(): string {
+  const value = localEndpointUrl.value.trim()
+  if (!value) return ''
+  const probeResult = localEndpointProbeResult.value
+  if (probeResult?.ok) return probeResult.diagnostics.safeBaseUrl
+  if (probeResult && !probeResult.ok && probeResult.safeUrl) return probeResult.safeUrl
+  try {
+    const url = new URL(value)
+    url.username = ''
+    url.password = ''
+    url.search = ''
+    url.hash = ''
+    return url.toString()
+  } catch {
+    return value
+  }
+}
+
+function chooseLocalEndpointProbeModel(modelId: string) {
+  localEndpointSelectedModel.value = modelId
+  if (modelId) localEndpointManualModel.value = ''
+  localEndpointChatApplyMessage.value = null
+}
+
+function updateLocalEndpointManualModel(modelId: string) {
+  localEndpointManualModel.value = modelId
+  if (modelId.trim()) localEndpointSelectedModel.value = ''
+  localEndpointChatApplyMessage.value = null
+}
+
+function applyLocalEndpointChatSettings() {
+  const endpointUrl = safeLocalEndpointChatUrlForStorage()
+  const model = localEndpointModelForChat.value
+  if (!endpointUrl || !model) return
+
+  try {
+    globalThis.localStorage?.setItem(LOCAL_ENDPOINT_CHAT_URL_KEY, endpointUrl)
+    globalThis.localStorage?.setItem(LOCAL_ENDPOINT_CHAT_MODEL_KEY, model)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT, {
+        detail: { endpointUrl, model },
+      }))
+    }
+    localEndpointChatApplyMessage.value = 'Applied to experimental LocalEndpoint chat. Enable it explicitly in Console to send.'
+  } catch {
+    localEndpointChatApplyMessage.value = 'LocalEndpoint chat settings could not be saved locally.'
+  }
+}
+
 async function probeLocalEndpoint() {
   error.value = null
   savedMessage.value = null
   localEndpointProbeResult.value = null
   localEndpointStreamProbeResult.value = null
+  localEndpointChatApplyMessage.value = null
 
   const bridge = getLocalEndpointDiagnosticsBridge()
   if (!bridge) {
@@ -807,6 +882,10 @@ async function probeLocalEndpoint() {
       url: localEndpointUrl.value,
       timeoutMs: 5000,
     })
+    const models = localEndpointProbedModels.value
+    if (models.length > 0 && !localEndpointSelectedModel.value && !localEndpointManualModel.value.trim()) {
+      localEndpointSelectedModel.value = models[0] ?? ''
+    }
   } catch {
     localEndpointProbeResult.value = {
       ok: false,
@@ -822,6 +901,7 @@ async function streamProbeLocalEndpoint() {
   error.value = null
   savedMessage.value = null
   localEndpointStreamProbeResult.value = null
+  localEndpointChatApplyMessage.value = null
 
   const bridge = getLocalEndpointDiagnosticsBridge()
   if (!bridge) {
@@ -1249,10 +1329,73 @@ onMounted(() => {
             <div class="mt-1" data-testid="settings-local-endpoint-probe-capabilities">
               Capability summary: text diagnostics only; diagnostics do not activate chat send; tools/files/reasoning/web disabled.
             </div>
+            <div class="mt-3 grid gap-2 rounded-md border border-amber-100 bg-white px-3 py-2">
+              <label class="block text-[11px] font-semibold text-amber-900">Choose probed model for experimental chat</label>
+              <select
+                class="w-full rounded border border-amber-200 bg-white px-2 py-1.5 text-sm disabled:bg-amber-50"
+                :disabled="localEndpointProbedModels.length === 0"
+                :value="localEndpointSelectedModel"
+                data-testid="settings-local-endpoint-probed-model-select"
+                @change="chooseLocalEndpointProbeModel(($event.target as HTMLSelectElement).value)"
+              >
+                <option value="">Select a probed model...</option>
+                <option v-for="modelId in localEndpointProbedModels" :key="modelId" :value="modelId">
+                  {{ modelId }}
+                </option>
+              </select>
+              <label class="block text-[11px] font-semibold text-amber-900">Manual model id override</label>
+              <input
+                class="w-full rounded border border-amber-200 bg-white px-2 py-1.5 text-sm"
+                :value="localEndpointManualModel"
+                placeholder="local-model"
+                data-testid="settings-local-endpoint-manual-model"
+                @input="updateLocalEndpointManualModel(($event.target as HTMLInputElement).value)"
+              />
+              <button
+                type="button"
+                class="w-fit rounded-md border border-amber-700 bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-800 disabled:opacity-50"
+                :disabled="!canApplyLocalEndpointChatSettings"
+                data-testid="settings-local-endpoint-apply-chat"
+                @click="applyLocalEndpointChatSettings"
+              >
+                Use endpoint and model for experimental chat
+              </button>
+              <div class="text-[11px] text-amber-800" data-testid="settings-local-endpoint-chat-note">
+                This only updates the experimental LocalEndpoint Console defaults. It does not publish models to the main picker and does not enable chat by itself.
+              </div>
+              <div v-if="localEndpointChatApplyMessage" class="text-[11px] text-amber-900" data-testid="settings-local-endpoint-chat-apply-result">
+                {{ localEndpointChatApplyMessage }}
+              </div>
+            </div>
           </template>
           <template v-else>
             <div data-testid="settings-local-endpoint-probe-error">
               {{ localEndpointProbeResult.message }}
+            </div>
+            <div class="mt-3 grid gap-2 rounded-md border border-amber-100 bg-white px-3 py-2">
+              <label class="block text-[11px] font-semibold text-amber-900">Manual model id for experimental chat</label>
+              <input
+                class="w-full rounded border border-amber-200 bg-white px-2 py-1.5 text-sm"
+                :value="localEndpointManualModel"
+                placeholder="local-model"
+                data-testid="settings-local-endpoint-manual-model"
+                @input="updateLocalEndpointManualModel(($event.target as HTMLInputElement).value)"
+              />
+              <button
+                type="button"
+                class="w-fit rounded-md border border-amber-700 bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-800 disabled:opacity-50"
+                :disabled="!canApplyLocalEndpointChatSettings"
+                data-testid="settings-local-endpoint-apply-chat"
+                @click="applyLocalEndpointChatSettings"
+              >
+                Use manual endpoint and model for experimental chat
+              </button>
+              <div class="text-[11px] text-amber-800" data-testid="settings-local-endpoint-chat-note">
+                Manual override is kept for servers that do not expose a model list. LocalEndpoint remains experimental and default-off.
+              </div>
+              <div v-if="localEndpointChatApplyMessage" class="text-[11px] text-amber-900" data-testid="settings-local-endpoint-chat-apply-result">
+                {{ localEndpointChatApplyMessage }}
+              </div>
             </div>
           </template>
         </div>

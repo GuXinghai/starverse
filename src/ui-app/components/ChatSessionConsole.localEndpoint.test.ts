@@ -30,8 +30,8 @@ describe('ChatSessionConsole LocalEndpoint chat controls', () => {
         localEndpointChat: {
           enabled: true,
           endpointUrl: 'http://localhost:1234/v1',
-          model: '',
-          experimentalLabel: 'Experimental · LocalEndpoint text-only',
+          model: 'local-model-a',
+          experimentalLabel: 'Experimental · LocalEndpoint text-only · not OpenRouter',
         },
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
@@ -41,7 +41,10 @@ describe('ChatSessionConsole LocalEndpoint chat controls', () => {
     })
 
     expect(screen.getByTestId('local-endpoint-chat-controls').textContent).toContain('Experimental')
+    expect(screen.getByTestId('local-endpoint-chat-controls').textContent).toContain('not OpenRouter')
     expect(screen.getByTestId('local-endpoint-chat-warning').textContent).toContain('Text-only loopback')
+    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('Selected local model: local-model-a')
+    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('does not use API keys or custom headers')
     expect(screen.queryByText(/endpoint picker/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/profile picker/i)).not.toBeInTheDocument()
 
