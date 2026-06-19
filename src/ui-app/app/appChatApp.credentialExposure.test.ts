@@ -77,6 +77,20 @@ function expectNoGenericStoreAnthropicCredentialAccess(source: string) {
   }
 }
 
+function expectNoGenericStoreDeepSeekCredentialAccess(source: string) {
+  const blockedPatterns = [
+    /electronStore\s*\.\s*get\s*\(\s*['"]deepSeekApiKey['"]/,
+    /electronStore\s*\.\s*set\s*\(\s*['"]deepSeekApiKey['"]/,
+    /electronStore\s*\.\s*delete\s*\(\s*['"]deepSeekApiKey['"]/,
+    /store\s*\.\s*get\s*\(\s*['"]deepSeekApiKey['"]/,
+    /store\s*\.\s*set\s*\(\s*['"]deepSeekApiKey['"]/,
+    /store\s*\.\s*delete\s*\(\s*['"]deepSeekApiKey['"]/,
+  ]
+  for (const pattern of blockedPatterns) {
+    expect(source).not.toMatch(pattern)
+  }
+}
+
 describe('appChatApp OpenRouter C4 exposure baseline', () => {
   it('characterizes active C3 chat/send as using legacy_store credential source without renderer raw apiKey handoff', () => {
     const source = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
@@ -109,6 +123,7 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
       expectNoGenericStoreOpenAIResponsesCredentialAccess(source)
       expectNoGenericStoreGoogleAIStudioCredentialAccess(source)
       expectNoGenericStoreAnthropicCredentialAccess(source)
+      expectNoGenericStoreDeepSeekCredentialAccess(source)
     }
   })
 
@@ -189,9 +204,38 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
     expect(settingsSource).not.toContain('Bearer')
   })
 
-  it('keeps Anthropic mutually exclusive with Google AI Studio, OpenAI Responses, and LocalEndpoint modes', () => {
+  it('keeps DeepSeek official experimental send native/profile-specific, explicit, text-only, and renderer-secret-free', () => {
+    const appChatSource = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
+    const settingsSource = readFileSync(resolve(testDir, '..', 'components', 'SettingsPanel.vue'), 'utf8')
+
+    expect(appChatSource).toContain('streamDeepSeekTextChatAsDomainEvents')
+    expect(appChatSource).toContain('deepSeekChatEnabled')
+    expect(appChatSource).toContain('getDeepSeekTextChatBlockReason')
+    expect(appChatSource).toContain('DeepSeek official experimental text chat is text-only. Remove attachments before sending.')
+    expect(appChatSource).toContain('config.webSearch.enabled')
+    expect(appChatSource).toContain('config.reasoning.enabled')
+    expect(appChatSource).toContain('config.imageGeneration.enabled')
+    expect(appChatSource).toContain('does not support reasoning or thinking controls')
+    expect(appChatSource).not.toMatch(/streamViaDeepSeek\s*\(/)
+    expect(appChatSource).not.toContain('deepSeekApiKey')
+    expect(appChatSource).not.toContain('streamViaGenericConfig')
+    expect(settingsSource).toContain('deepSeekCredential')
+    expect(settingsSource).toContain('Native DeepSeek official profile')
+    expect(settingsSource).toContain('does not persist reasoning_content')
+    expect(settingsSource).not.toContain("electronStore.get('deepSeekApiKey')")
+    expect(settingsSource).not.toContain("electronStore.set('deepSeekApiKey'")
+    expect(settingsSource).not.toContain('Authorization')
+    expect(settingsSource).not.toContain('Bearer')
+  })
+
+  it('keeps Anthropic and DeepSeek mutually exclusive with Google AI Studio, OpenAI Responses, and LocalEndpoint modes', () => {
     const appChatSource = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
 
+    expect(appChatSource).toContain('if (deepSeekChatEnabled.value)')
+    expect(appChatSource).toContain('persistDeepSeekChatStorage')
+    expect(appChatSource).toContain('onUpdateDeepSeekChatEnabled')
+    expect(appChatSource).toContain('onClearDeepSeekChat')
+    expect(appChatSource).toContain('settings:deepSeekTextChatUpdated')
     expect(appChatSource).toContain('if (anthropicChatEnabled.value)')
     expect(appChatSource).toContain('openAIResponsesChatEnabled.value = false')
     expect(appChatSource).toContain('googleAIStudioChatEnabled.value = false')

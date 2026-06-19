@@ -137,6 +137,7 @@ const {
   openAIResponsesChatConfig,
   googleAIStudioChatConfig,
   anthropicChatConfig,
+  deepSeekChatConfig,
   modelCatalogForPicker,
   modelCatalogNotice,
   modelPrefsScopeForUi,
@@ -167,6 +168,9 @@ const {
   onUpdateAnthropicChatEnabled,
   onUpdateAnthropicChatModel,
   onClearAnthropicChat,
+  onUpdateDeepSeekChatEnabled,
+  onUpdateDeepSeekChatModel,
+  onClearDeepSeekChat,
   onAttachFilesRequested,
   onAttachImagesRequested,
   onAttachUrlRequested,
@@ -230,6 +234,10 @@ const runSummary = computed(() => {
 })
 
 const modelSummary = computed(() => {
+  if (deepSeekChatConfig.value.enabled) {
+    const model = deepSeekChatConfig.value.model.trim() || 'manual model required'
+    return `DeepSeek official · ${model}`
+  }
   if (anthropicChatConfig.value.enabled) {
     const model = anthropicChatConfig.value.model.trim() || 'manual model required'
     return `Anthropic Messages · ${model}`
@@ -794,6 +802,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             :openAIResponsesChat="openAIResponsesChatConfig"
             :googleAIStudioChat="googleAIStudioChatConfig"
             :anthropicChat="anthropicChatConfig"
+            :deepSeekChat="deepSeekChatConfig"
             :reasoningDisplayMode="reasoningDisplayMode"
             :modelCatalog="modelCatalogForPicker"
             :webSearchResolved="activeSessionWebSearchResolved"
@@ -822,6 +831,9 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateAnthropicChatEnabled="onUpdateAnthropicChatEnabled"
             @updateAnthropicChatModel="onUpdateAnthropicChatModel"
             @clearAnthropicChat="onClearAnthropicChat"
+            @updateDeepSeekChatEnabled="onUpdateDeepSeekChatEnabled"
+            @updateDeepSeekChatModel="onUpdateDeepSeekChatModel"
+            @clearDeepSeekChat="onClearDeepSeekChat"
             @updateReasoningDisplayMode="onUpdateReasoningDisplayMode"
             @openSettings="openSettings"
           />

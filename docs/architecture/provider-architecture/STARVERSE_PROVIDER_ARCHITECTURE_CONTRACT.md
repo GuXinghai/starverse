@@ -29,7 +29,8 @@ This checkpoint records current implementation status after C6/C7 experimental s
 - OpenAI Responses has explicit experimental text-only native chat. It is default-off, reversible, and uses the native Responses path, not Generic OpenAI-compatible routing.
 - Google AI Studio has explicit experimental text-only native chat. It is default-off, reversible, and uses the native Gemini / Google AI Studio path, not old Gemini runtime remnants.
 - Anthropic Messages has explicit experimental text-only native chat. It is default-off, reversible, and uses the native Anthropic Messages path, not Generic OpenAI-compatible routing. Thinking/signature/tool-use persistence remains out of scope for the text-only live slice.
-- LocalEndpoint, OpenAI Responses, Google AI Studio, and Anthropic Messages experimental modes are mutually exclusive in the current UI flow.
+- DeepSeek official has explicit experimental text-only native/profile chat. It is default-off, reversible, and uses the DeepSeek official profile over OpenAI-compatible transport, not Generic OpenAI-compatible live routing. `reasoning_content` is not surfaced or persisted in this text-only live slice.
+- LocalEndpoint, OpenAI Responses, Google AI Studio, Anthropic Messages, and DeepSeek official experimental modes are mutually exclusive in the current UI flow.
 - Generic OpenAI-compatible remains fixture-only and is not a live runtime.
 - No production `EndpointRegistry`, `ProviderRegistry`, or `RuntimeProviderRegistry` source abstraction has been introduced.
 

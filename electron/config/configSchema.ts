@@ -73,6 +73,7 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   'openAIResponsesApiKey', // Experimental OpenAI Responses API Key（main-process only）
   'googleAIStudioApiKey', // Experimental Google AI Studio API Key（main-process only）
   'anthropicApiKey',      // Experimental Anthropic Messages API Key（main-process only）
+  'deepSeekApiKey',       // Experimental DeepSeek official API Key（main-process only）
   'openRouterBaseUrl',    // OpenRouter Base URL（自定义端点）
   'openRouterCatalogLocalSecret', // Internal: OpenRouter catalog scope HMAC secret（禁止 renderer 读取）
   'openRouterCatalogStartupSyncPolicy', // OpenRouter 模型目录启动同步策略

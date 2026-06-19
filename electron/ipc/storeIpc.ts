@@ -22,6 +22,7 @@ export const RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS = new Set([
   'openAIResponsesApiKey',
   'googleAIStudioApiKey',
   'anthropicApiKey',
+  'deepSeekApiKey',
   'geminiApiKey',
   'apiKey',
   OPENROUTER_CATALOG_LOCAL_SECRET_KEY,

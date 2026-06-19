@@ -7,7 +7,7 @@
 取代：previous unversioned provider architecture drafts
 
 修订记录：
-- v1.1.0 (2026-06-18): Added Experimental live paths status section reflecting C6 LocalEndpoint, C7a OpenAI Responses, C7b Google AI Studio, and C7c Anthropic Messages experimental text chat status with credential isolation and phase alignment detail. No contract term changes.
+- v1.1.0 (2026-06-18): Added Experimental live paths status section reflecting C6 LocalEndpoint, C7a OpenAI Responses, C7b Google AI Studio, C7c Anthropic Messages, and C7d DeepSeek official experimental text chat status with credential isolation and phase alignment detail. No contract term changes.
 关联文档：
 - STARVERSE_PROVIDER_ARCHITECTURE_CONTRACT.md
 - STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md
@@ -41,7 +41,7 @@ This status reflects fixture-integrated adapter foundations only. No provider ha
 
 ## Experimental live paths status (added 2026-06-18)
 
-Four experimental, default-off, text-only live chat paths are implemented using the fixture-adapter foundations. These are NOT production provider surfaces and are gated behind explicit localStorage flags.
+Five experimental, default-off, text-only live chat paths are implemented using the fixture-adapter foundations. These are NOT production provider surfaces and are gated behind explicit localStorage flags.
 
 | Provider | Adapter foundation | Experimental live path | Credential boundary | Send gating | Status |
 |---|---|---|---|---|---|
@@ -49,16 +49,17 @@ Four experimental, default-off, text-only live chat paths are implemented using 
 | LocalEndpoint | C6 diagnostics → experimental chat | `localEndpointTextChat` IPC + renderer bridge | No credentials — loopback-only, `redirect:'error'` | `starverse.localEndpointTextChat.enabled === '1'` | ✅ experimental default-off |
 | OpenAI Responses | Phase 4/5 (native adapter fixture) | `openAIResponsesTextChat` IPC + renderer bridge | Main-process credential bridge — one-way update IPC, masked status only | `starverse.openAIResponsesTextChat.enabled === '1'` | ✅ experimental default-off |
 | Google AI Studio | Phase 8b/9 (native Gemini API fixture) | `googleAIStudioTextChat` IPC + renderer bridge | Main-process credential bridge — one-way update IPC, masked status only; uses `googleAIStudioApiKey` NOT `geminiApiKey` | `starverse.googleAIStudioTextChat.enabled === '1'` | ✅ experimental default-off |
-| DeepSeek | Phase 2/3 (adapter fixture) | (none) | (none) | (none) | ❌ not started |
 | Anthropic | Phase 6/7 (native Messages adapter fixture) | `anthropicTextChat` IPC + renderer bridge | Main-process credential bridge — one-way update IPC, masked status only | `starverse.anthropicMessagesTextChat.enabled === '1'` | ✅ experimental default-off |
+| DeepSeek | Phase 2/3 (official profile fixture) | `deepSeekTextChat` IPC + renderer bridge | Main-process credential bridge — one-way update IPC, masked status only | `starverse.deepSeekTextChat.enabled === '1'` | ✅ experimental default-off |
 | Generic OpenAI-compatible | Phase 3b (adapter fixture) | (none) | (none) | (none) | ❌ not started — fixture-only |
 
 ### Phase alignment
 
-Current implementation spans partial Phase 5 (OpenAI Responses native, Anthropic Messages native, Gemini API / AI Studio native) and partial Phase 6 (LocalEndpoint), but all paths remain experimental and do not complete their respective phases:
+Current implementation spans partial Phase 4 (DeepSeek official profile), partial Phase 5 (OpenAI Responses native, Anthropic Messages native, Gemini API / AI Studio native), and partial Phase 6 (LocalEndpoint), but all paths remain experimental and do not complete their respective phases:
 
 | Phase | Provider | Phase requirements met | Phase requirements deferred |
 |---|---|---|---|
+| Phase 4 (DeepSeek official profile) | DeepSeek | Official DeepSeek profile used instead of Generic; `reasoning_content` is not mixed into visible text in the live slice; credential boundary enforced; text-only send gated | reasoning roundtrip/persistence; parameter warning policy; tool-call continuation policy; model picker integration; capability resolver |
 | Phase 5 (Native providers) | OpenAI Responses, Anthropic Messages, Google AI Studio | Native adapter used (not OpenAI-compatible); native reasoning/tool/usage architecture present in adapter fixture; credential boundary enforced; text-only send gated | `RuntimeProviderRegistry` dispatch; model picker integration; capability resolver; reasoning roundtrip; tool execution; usage accounting; non-text streaming; Anthropic thinking/signature persistence |
 | Phase 6 (Local endpoint) | LocalEndpoint | External local service only; conservative capability; probe/health; redirect blocking; no process management | Endpoint registry; `ModelAvailability`/`RuntimeCapability` integration; non-localhost endpoints; full probe matrix |
 
@@ -101,6 +102,15 @@ The Anthropic experimental path is native Anthropic Messages, not Generic OpenAI
 - Native API endpoint: `https://api.anthropic.com/v1/messages`
 - Main process sends `x-api-key`; renderer sees only masked status and never receives raw key material
 - Thinking/signature/tool-use semantics remain native Anthropic adapter responsibilities, but this live slice does not surface or persist them
+
+### DeepSeek official profile isolation
+
+The DeepSeek experimental path is the official DeepSeek profile over OpenAI-compatible transport, not Generic OpenAI-compatible live runtime:
+- Credential store key: `deepSeekApiKey`
+- Profile adapter: `streamViaDeepSeek` from Phase 2/3 fixture
+- API endpoint: `https://api.deepseek.com/v1/chat/completions`
+- Main process sends provider-native `Authorization: Bearer`; renderer sees only masked status and never receives raw key material
+- `reasoning_content` is filtered from the renderer text-only live slice and is not persisted as visible assistant text
 
 ---
 

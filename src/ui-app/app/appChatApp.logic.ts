@@ -85,6 +85,7 @@ import { streamLocalEndpointTextChatAsDomainEvents } from '@/next/live/localEndp
 import { streamOpenAIResponsesTextChatAsDomainEvents } from '@/next/live/openAIResponsesTextChat'
 import { streamGoogleAIStudioTextChatAsDomainEvents } from '@/next/live/googleAIStudioTextChat'
 import { streamAnthropicTextChatAsDomainEvents } from '@/next/live/anthropicTextChat'
+import { streamDeepSeekTextChatAsDomainEvents } from '@/next/live/deepSeekTextChat'
 import {
   prepareOpenRouterReplayFromMessage,
   prepareOpenRouterSendFromDraft,
@@ -236,6 +237,9 @@ export function useAppChatAppLogic() {
   const ANTHROPIC_CHAT_ENABLED_KEY = 'starverse.anthropicMessagesTextChat.enabled'
   const ANTHROPIC_CHAT_MODEL_KEY = 'starverse.anthropicMessagesTextChat.model'
   const ANTHROPIC_CHAT_SETTINGS_EVENT = 'settings:anthropicMessagesTextChatUpdated'
+  const DEEPSEEK_CHAT_ENABLED_KEY = 'starverse.deepSeekTextChat.enabled'
+  const DEEPSEEK_CHAT_MODEL_KEY = 'starverse.deepSeekTextChat.model'
+  const DEEPSEEK_CHAT_SETTINGS_EVENT = 'settings:deepSeekTextChatUpdated'
   const localEndpointChatEnabled = ref(false)
   const localEndpointChatUrl = ref(DEFAULT_LOCAL_ENDPOINT_CHAT_URL)
   const localEndpointChatModel = ref('')
@@ -245,6 +249,8 @@ export function useAppChatAppLogic() {
   const googleAIStudioChatModel = ref('')
   const anthropicChatEnabled = ref(false)
   const anthropicChatModel = ref('')
+  const deepSeekChatEnabled = ref(false)
+  const deepSeekChatModel = ref('')
   type ImageGenerationUiState = ImageGenerationUserConfig
   const imageGenerationState = ref<ImageGenerationUiState>(DEFAULT_IMAGE_GENERATION_USER_CONFIG)
   const imageGenerationConvoMode = ref<ConvoImageGenerationMode>('default')
@@ -3613,6 +3619,11 @@ export function useAppChatAppLogic() {
     model: anthropicChatModel.value,
     experimentalLabel: 'Experimental · Anthropic Messages text-only · not OpenRouter',
   }))
+  const deepSeekChatConfig = computed(() => ({
+    enabled: deepSeekChatEnabled.value,
+    model: deepSeekChatModel.value,
+    experimentalLabel: 'Experimental · DeepSeek official text-only · not OpenRouter',
+  }))
 
   function applyLocalEndpointChatStorageValues(input: Readonly<{ endpointUrl?: unknown; model?: unknown }>) {
     const endpointUrl = String(input.endpointUrl ?? '').trim()
@@ -3667,6 +3678,17 @@ export function useAppChatAppLogic() {
     }
   }
 
+  function readDeepSeekChatStorage() {
+    try {
+      deepSeekChatEnabled.value =
+        String(globalThis.localStorage?.getItem(DEEPSEEK_CHAT_ENABLED_KEY) ?? '').trim() === '1'
+      const modelId = String(globalThis.localStorage?.getItem(DEEPSEEK_CHAT_MODEL_KEY) ?? '').trim()
+      if (modelId) deepSeekChatModel.value = modelId
+    } catch {
+      // DeepSeek chat settings are non-secret renderer preferences; failure keeps defaults.
+    }
+  }
+
   function handleLocalEndpointChatSettingsUpdated(event: Event) {
     const detail = (event as CustomEvent).detail
     if (!detail || typeof detail !== 'object') return
@@ -3692,6 +3714,13 @@ export function useAppChatAppLogic() {
     if (!detail || typeof detail !== 'object') return
     const modelId = String((detail as { model?: unknown }).model ?? '').trim()
     if (modelId) anthropicChatModel.value = modelId
+  }
+
+  function handleDeepSeekChatSettingsUpdated(event: Event) {
+    const detail = (event as CustomEvent).detail
+    if (!detail || typeof detail !== 'object') return
+    const modelId = String((detail as { model?: unknown }).model ?? '').trim()
+    if (modelId) deepSeekChatModel.value = modelId
   }
 
   function handleLocalEndpointChatStorage(event: StorageEvent) {
@@ -3728,6 +3757,15 @@ export function useAppChatAppLogic() {
       event.key !== ANTHROPIC_CHAT_MODEL_KEY
     ) return
     readAnthropicChatStorage()
+    enforceExperimentalChatMutualExclusion()
+  }
+
+  function handleDeepSeekChatStorage(event: StorageEvent) {
+    if (
+      event.key !== DEEPSEEK_CHAT_ENABLED_KEY &&
+      event.key !== DEEPSEEK_CHAT_MODEL_KEY
+    ) return
+    readDeepSeekChatStorage()
     enforceExperimentalChatMutualExclusion()
   }
 
@@ -3768,41 +3806,69 @@ export function useAppChatAppLogic() {
     }
   }
 
+  function persistDeepSeekChatStorage() {
+    try {
+      globalThis.localStorage?.setItem(DEEPSEEK_CHAT_ENABLED_KEY, deepSeekChatEnabled.value ? '1' : '0')
+      globalThis.localStorage?.setItem(DEEPSEEK_CHAT_MODEL_KEY, deepSeekChatModel.value)
+    } catch {
+      // Non-fatal: the user can still use the current in-memory settings.
+    }
+  }
+
   function enforceExperimentalChatMutualExclusion() {
+    if (deepSeekChatEnabled.value) {
+      localEndpointChatEnabled.value = false
+      openAIResponsesChatEnabled.value = false
+      googleAIStudioChatEnabled.value = false
+      anthropicChatEnabled.value = false
+      persistLocalEndpointChatStorage()
+      persistOpenAIResponsesChatStorage()
+      persistGoogleAIStudioChatStorage()
+      persistAnthropicChatStorage()
+      return
+    }
     if (anthropicChatEnabled.value) {
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
+      deepSeekChatEnabled.value = false
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
+      persistDeepSeekChatStorage()
       return
     }
     if (googleAIStudioChatEnabled.value) {
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       anthropicChatEnabled.value = false
+      deepSeekChatEnabled.value = false
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistAnthropicChatStorage()
+      persistDeepSeekChatStorage()
       return
     }
     if (openAIResponsesChatEnabled.value) {
       localEndpointChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
+      deepSeekChatEnabled.value = false
       persistLocalEndpointChatStorage()
       persistGoogleAIStudioChatStorage()
       persistAnthropicChatStorage()
+      persistDeepSeekChatStorage()
       return
     }
     if (localEndpointChatEnabled.value) {
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
+      deepSeekChatEnabled.value = false
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
       persistAnthropicChatStorage()
+      persistDeepSeekChatStorage()
     }
   }
 
@@ -3813,9 +3879,11 @@ export function useAppChatAppLogic() {
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
+      deepSeekChatEnabled.value = false
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
       persistAnthropicChatStorage()
+      persistDeepSeekChatStorage()
     }
     persistLocalEndpointChatStorage()
   }
@@ -3851,9 +3919,11 @@ export function useAppChatAppLogic() {
       localEndpointChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
+      deepSeekChatEnabled.value = false
       persistLocalEndpointChatStorage()
       persistGoogleAIStudioChatStorage()
       persistAnthropicChatStorage()
+      persistDeepSeekChatStorage()
     }
     persistOpenAIResponsesChatStorage()
   }
@@ -3882,9 +3952,11 @@ export function useAppChatAppLogic() {
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       anthropicChatEnabled.value = false
+      deepSeekChatEnabled.value = false
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistAnthropicChatStorage()
+      persistDeepSeekChatStorage()
     }
     persistGoogleAIStudioChatStorage()
   }
@@ -3913,9 +3985,11 @@ export function useAppChatAppLogic() {
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
+      deepSeekChatEnabled.value = false
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
+      persistDeepSeekChatStorage()
     }
     persistAnthropicChatStorage()
   }
@@ -3932,6 +4006,39 @@ export function useAppChatAppLogic() {
     try {
       globalThis.localStorage?.removeItem(ANTHROPIC_CHAT_ENABLED_KEY)
       globalThis.localStorage?.removeItem(ANTHROPIC_CHAT_MODEL_KEY)
+    } catch {
+      // Non-fatal: in-memory state still returns the session to the OpenRouter path.
+    }
+  }
+
+  function onUpdateDeepSeekChatEnabled(enabled: boolean) {
+    if (isDraftInteractionLocked.value || isRunning.value) return
+    deepSeekChatEnabled.value = enabled
+    if (enabled) {
+      localEndpointChatEnabled.value = false
+      openAIResponsesChatEnabled.value = false
+      googleAIStudioChatEnabled.value = false
+      anthropicChatEnabled.value = false
+      persistLocalEndpointChatStorage()
+      persistOpenAIResponsesChatStorage()
+      persistGoogleAIStudioChatStorage()
+      persistAnthropicChatStorage()
+    }
+    persistDeepSeekChatStorage()
+  }
+
+  function onUpdateDeepSeekChatModel(modelId: string) {
+    deepSeekChatModel.value = String(modelId ?? '')
+    persistDeepSeekChatStorage()
+  }
+
+  function onClearDeepSeekChat() {
+    if (isDraftInteractionLocked.value || isRunning.value) return
+    deepSeekChatEnabled.value = false
+    deepSeekChatModel.value = ''
+    try {
+      globalThis.localStorage?.removeItem(DEEPSEEK_CHAT_ENABLED_KEY)
+      globalThis.localStorage?.removeItem(DEEPSEEK_CHAT_MODEL_KEY)
     } catch {
       // Non-fatal: in-memory state still returns the session to the OpenRouter path.
     }
@@ -8414,6 +8521,20 @@ export function useAppChatAppLogic() {
     return null
   }
 
+  function getDeepSeekTextChatBlockReason(input: Readonly<{
+    text: string
+    hasDraftAttachments: boolean
+  }>): string | null {
+    if (!input.text.trim()) return 'DeepSeek official experimental text chat requires a plain text message.'
+    if (!deepSeekChatModel.value.trim()) return 'DeepSeek official experimental text chat requires a DeepSeek model id.'
+    if (input.hasDraftAttachments) return 'DeepSeek official experimental text chat is text-only. Remove attachments before sending.'
+    const config = activeSessionConfig.value
+    if (config.webSearch.enabled) return 'DeepSeek official experimental text chat does not support web search. Disable web search before sending.'
+    if (config.reasoning.enabled) return 'DeepSeek official experimental text chat does not support reasoning or thinking controls. Disable reasoning before sending.'
+    if (config.imageGeneration.enabled) return 'DeepSeek official experimental text chat does not support image generation. Disable image generation before sending.'
+    return null
+  }
+
   async function sendLocalEndpointTextChat(input: Readonly<{
     convoId: string
     branch: BranchSummary
@@ -8688,6 +8809,74 @@ export function useAppChatAppLogic() {
     })
   }
 
+  async function sendDeepSeekTextChat(input: Readonly<{
+    convoId: string
+    branch: BranchSummary
+    text: string
+    contextMessages: any[]
+  }>) {
+    const modelId = deepSeekChatModel.value.trim()
+
+    const begun = await beginTurn(input.branch.id, input.text)
+    draft.value = ''
+    const cleared = await updateConversationDraftText({
+      conversationId: input.convoId,
+      draftText: '',
+      draftMode: 'compose',
+      editingSourceMessageId: null,
+    })
+    applyDraftPersistenceStateFromDraft(cleared)
+    void refreshDraftAttachmentViewModels()
+
+    patchBranch(input.branch.id, { headMessageId: begun.assistantId, updatedAt: Date.now() })
+
+    const userMessageId = begun.questionId
+    const assistantMessageId = begun.assistantId
+    const assistantSeq = begun.assistantSeq
+    const requestId = randomId('deepseek_req')
+
+    messageSeqById.value.set(userMessageId, begun.questionSeq)
+    messageSeqById.value.set(assistantMessageId, assistantSeq)
+
+    ensureMessageMetaEntry(userMessageId, { role: 'user', status: 'final' })
+    ensureMessageMetaEntry(assistantMessageId, {
+      parentId: userMessageId,
+      questionId: userMessageId,
+      answerRootId: assistantMessageId,
+      role: 'assistant',
+      status: 'streaming',
+    })
+
+    const started = startGeneration(state.value, {
+      runId: input.branch.id,
+      requestId,
+      model: modelId,
+      userMessageId,
+      userMessageText: input.text,
+      assistantMessageId,
+      reasoningPanelDefaultExpanded: false,
+      requestedReasoningMode: 'auto',
+    })
+    state.value = started.state
+
+    await runAssistantStreamSession({
+      convoId: input.convoId,
+      branchId: input.branch.id,
+      requestId,
+      assistantMessageId,
+      assistantSeq,
+      modelId,
+      createEvents: (signal) => streamDeepSeekTextChatAsDomainEvents({
+        requestId,
+        assistantMessageId,
+        model: modelId,
+        userText: input.text,
+        contextMessages: input.contextMessages,
+        signal,
+      }),
+    })
+  }
+
   async function onSend() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
@@ -8707,6 +8896,16 @@ export function useAppChatAppLogic() {
       contextMessageIds = built.rawMessages.map((message) => message.id)
     } catch (err) {
       if (import.meta.env?.DEV) console.warn('[ui-app] context.buildForBranch failed; using empty context', err)
+    }
+
+    if (deepSeekChatEnabled.value) {
+      const blockReason = getDeepSeekTextChatBlockReason({ text, hasDraftAttachments })
+      if (blockReason) {
+        setAttachmentFeedback('error', blockReason)
+        return
+      }
+      await sendDeepSeekTextChat({ convoId, branch, text, contextMessages })
+      return
     }
 
     if (anthropicChatEnabled.value) {
@@ -9510,6 +9709,7 @@ export function useAppChatAppLogic() {
     readOpenAIResponsesChatStorage()
     readGoogleAIStudioChatStorage()
     readAnthropicChatStorage()
+    readDeepSeekChatStorage()
     enforceExperimentalChatMutualExclusion()
 
     if (!hasDbBridge()) {
@@ -9561,10 +9761,12 @@ export function useAppChatAppLogic() {
     window.addEventListener(OPENAI_RESPONSES_CHAT_SETTINGS_EVENT, handleOpenAIResponsesChatSettingsUpdated)
     window.addEventListener(GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT, handleGoogleAIStudioChatSettingsUpdated)
     window.addEventListener(ANTHROPIC_CHAT_SETTINGS_EVENT, handleAnthropicChatSettingsUpdated)
+    window.addEventListener(DEEPSEEK_CHAT_SETTINGS_EVENT, handleDeepSeekChatSettingsUpdated)
     window.addEventListener('storage', handleLocalEndpointChatStorage)
     window.addEventListener('storage', handleOpenAIResponsesChatStorage)
     window.addEventListener('storage', handleGoogleAIStudioChatStorage)
     window.addEventListener('storage', handleAnthropicChatStorage)
+    window.addEventListener('storage', handleDeepSeekChatStorage)
     window.addEventListener('pagehide', handlePageHide)
     window.addEventListener('beforeunload', handlePageHide)
   })
@@ -9699,10 +9901,12 @@ export function useAppChatAppLogic() {
     window.removeEventListener(OPENAI_RESPONSES_CHAT_SETTINGS_EVENT, handleOpenAIResponsesChatSettingsUpdated)
     window.removeEventListener(GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT, handleGoogleAIStudioChatSettingsUpdated)
     window.removeEventListener(ANTHROPIC_CHAT_SETTINGS_EVENT, handleAnthropicChatSettingsUpdated)
+    window.removeEventListener(DEEPSEEK_CHAT_SETTINGS_EVENT, handleDeepSeekChatSettingsUpdated)
     window.removeEventListener('storage', handleLocalEndpointChatStorage)
     window.removeEventListener('storage', handleOpenAIResponsesChatStorage)
     window.removeEventListener('storage', handleGoogleAIStudioChatStorage)
     window.removeEventListener('storage', handleAnthropicChatStorage)
+    window.removeEventListener('storage', handleDeepSeekChatStorage)
     window.removeEventListener('pagehide', handlePageHide)
     window.removeEventListener('beforeunload', handlePageHide)
     // 清理 DB 事件订阅
@@ -9917,6 +10121,7 @@ export function useAppChatAppLogic() {
     openAIResponsesChatConfig,
     googleAIStudioChatConfig,
     anthropicChatConfig,
+    deepSeekChatConfig,
     model,
     requestedReasoningEffort,
     requestedReasoningExclude,
@@ -9963,6 +10168,9 @@ export function useAppChatAppLogic() {
     onUpdateAnthropicChatEnabled,
     onUpdateAnthropicChatModel,
     onClearAnthropicChat,
+    onUpdateDeepSeekChatEnabled,
+    onUpdateDeepSeekChatModel,
+    onClearDeepSeekChat,
     onComposerOpenWebSearchSettings,
     onAttachFilesRequested,
     onAttachImagesRequested,

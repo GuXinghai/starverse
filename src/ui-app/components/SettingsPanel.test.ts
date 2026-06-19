@@ -166,6 +166,32 @@ function createAnthropicCredentialMock(input?: { apiKeyConfigured?: boolean }) {
   }
 }
 
+function createDeepSeekCredentialMock(input?: { apiKeyConfigured?: boolean }) {
+  const state = {
+    apiKeyConfigured: input?.apiKeyConfigured ?? true,
+  }
+  const buildStatus = () => ({
+    source: 'legacy_store',
+    providerId: 'deepseek',
+    profileId: 'deepseek_official_openai_compat',
+    apiKeyConfigured: state.apiKeyConfigured,
+    ...(state.apiKeyConfigured ? { maskedApiKey: '***' } : {}),
+    defaultBaseUrl: 'https://api.deepseek.com/v1',
+    rendererVisible: true,
+  })
+  return {
+    getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
+    update: vi.fn(async (payload: { apiKey?: string }) => {
+      if (payload.apiKey && payload.apiKey.trim()) state.apiKeyConfigured = true
+      return { ok: true, status: buildStatus() }
+    }),
+    clear: vi.fn(async () => {
+      state.apiKeyConfigured = false
+      return { ok: true, status: buildStatus() }
+    }),
+  }
+}
+
 function createDbBridgeMock() {
   const invoke = vi.fn(async (method: string, _params?: any) => {
     if (method === 'settings.getOpenRouterProviderRequireParameters') return { value: false }
@@ -282,6 +308,7 @@ describe('ui-app SettingsPanel', () => {
   const originalOpenAIResponsesCredential = (globalThis as any).openAIResponsesCredential
   const originalGoogleAIStudioCredential = (globalThis as any).googleAIStudioCredential
   const originalAnthropicCredential = (globalThis as any).anthropicCredential
+  const originalDeepSeekCredential = (globalThis as any).deepSeekCredential
   const originalLocalEndpointDiagnostics = (globalThis as any).localEndpointDiagnostics
 
   beforeEach(() => {
@@ -294,6 +321,8 @@ describe('ui-app SettingsPanel', () => {
     globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.model')
     globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.model')
     ;(globalThis as any).electronStore = createElectronStoreMock()
     ;(globalThis as any).dbBridge = createDbBridgeMock()
     ;(globalThis as any).electronAPI = createElectronAPIMock()
@@ -301,6 +330,7 @@ describe('ui-app SettingsPanel', () => {
     ;(globalThis as any).openAIResponsesCredential = createOpenAIResponsesCredentialMock()
     ;(globalThis as any).googleAIStudioCredential = createGoogleAIStudioCredentialMock()
     ;(globalThis as any).anthropicCredential = createAnthropicCredentialMock()
+    ;(globalThis as any).deepSeekCredential = createDeepSeekCredentialMock()
     ;(globalThis as any).localEndpointDiagnostics = createLocalEndpointDiagnosticsMock()
   })
 
@@ -313,6 +343,8 @@ describe('ui-app SettingsPanel', () => {
     globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.model')
     globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.model')
     ;(globalThis as any).electronStore = originalElectronStore
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronAPI = originalElectronAPI
@@ -320,6 +352,7 @@ describe('ui-app SettingsPanel', () => {
     ;(globalThis as any).openAIResponsesCredential = originalOpenAIResponsesCredential
     ;(globalThis as any).googleAIStudioCredential = originalGoogleAIStudioCredential
     ;(globalThis as any).anthropicCredential = originalAnthropicCredential
+    ;(globalThis as any).deepSeekCredential = originalDeepSeekCredential
     ;(globalThis as any).localEndpointDiagnostics = originalLocalEndpointDiagnostics
   })
 
@@ -489,6 +522,35 @@ describe('ui-app SettingsPanel', () => {
     expect(storeSet).not.toHaveBeenCalledWith('anthropicApiKey', expect.anything())
   })
 
+  it('uses safe DeepSeek credential metadata and one-way update instead of generic store credentials', async () => {
+    const user = userEvent.setup()
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await screen.findByText('设置')
+    await waitFor(() => expect((globalThis as any).deepSeekCredential.getStatus).toHaveBeenCalled())
+
+    const storeGet = (globalThis as any).electronStore.get as ReturnType<typeof vi.fn>
+    expect(storeGet).not.toHaveBeenCalledWith('deepSeekApiKey')
+
+    const panel = await screen.findByTestId('settings-deepseek-experimental')
+    const deepSeekKeyInput = screen.getByTestId('settings-deepseek-api-key') as HTMLInputElement
+    await waitFor(() => expect(deepSeekKeyInput).not.toBeDisabled())
+    expect(panel.textContent).toContain('DeepSeek official profile')
+    expect(panel.textContent).toContain('main-process credential bridge')
+    expect(screen.getByTestId('settings-deepseek-key-status').textContent).toContain('Configured: ***')
+    expect(deepSeekKeyInput).toHaveValue('')
+    expect(screen.queryByDisplayValue('sk-deepseek-old-key')).toBeNull()
+
+    await user.type(deepSeekKeyInput, 'sk-deepseek-replacement')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    expect((globalThis as any).deepSeekCredential.update).toHaveBeenCalledWith({
+      apiKey: 'sk-deepseek-replacement',
+    })
+    const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
+    expect(storeSet).not.toHaveBeenCalledWith('deepSeekApiKey', expect.anything())
+  })
+
   it('applies OpenAI Responses model defaults without enabling chat or publishing models to the main picker', async () => {
     const user = userEvent.setup()
     const dispatched: Event[] = []
@@ -571,6 +633,36 @@ describe('ui-app SettingsPanel', () => {
       const customEvents = dispatched.filter((event) => event.type === 'settings:anthropicMessagesTextChatUpdated') as CustomEvent[]
       expect(customEvents.at(-1)?.detail).toEqual({ model: 'claude-sonnet-4-5' })
       expect(document.body.textContent).not.toContain('endpoint picker')
+    } finally {
+      window.dispatchEvent = originalDispatch
+    }
+  })
+
+  it('applies DeepSeek model defaults without enabling chat or publishing models to the main picker', async () => {
+    const user = userEvent.setup()
+    const dispatched: Event[] = []
+    const originalDispatch = window.dispatchEvent
+    window.dispatchEvent = ((event: Event) => {
+      dispatched.push(event)
+      return originalDispatch.call(window, event)
+    }) as typeof window.dispatchEvent
+    try {
+      render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+      await screen.findByText('设置')
+      const modelInput = await screen.findByTestId('settings-deepseek-model')
+      await waitFor(() => expect(modelInput).not.toBeDisabled())
+      await user.type(modelInput, 'deepseek-chat')
+      await waitFor(() => expect(screen.getByTestId('settings-deepseek-apply-chat')).not.toBeDisabled())
+      await user.click(screen.getByTestId('settings-deepseek-apply-chat'))
+
+      expect(globalThis.localStorage?.getItem('starverse.deepSeekTextChat.model')).toBe('deepseek-chat')
+      expect(globalThis.localStorage?.getItem('starverse.deepSeekTextChat.enabled')).toBeNull()
+      expect(screen.getByTestId('settings-deepseek-chat-apply-result').textContent).toContain('Enable it explicitly in Console')
+      const customEvents = dispatched.filter((event) => event.type === 'settings:deepSeekTextChatUpdated') as CustomEvent[]
+      expect(customEvents.at(-1)?.detail).toEqual({ model: 'deepseek-chat' })
+      expect(document.body.textContent).not.toContain('endpoint picker')
+      expect(document.body.textContent).toContain('does not persist reasoning_content')
     } finally {
       window.dispatchEvent = originalDispatch
     }

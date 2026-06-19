@@ -137,6 +137,24 @@ type AnthropicCredentialResult =
   | { ok: true; status: AnthropicCredentialStatus }
   | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
 
+interface DeepSeekCredentialStatus {
+  source: 'legacy_store'
+  providerId: 'deepseek'
+  profileId: 'deepseek_official_openai_compat'
+  apiKeyConfigured: boolean
+  maskedApiKey?: '***'
+  defaultBaseUrl: 'https://api.deepseek.com/v1'
+  rendererVisible: true
+}
+
+interface DeepSeekCredentialUpdatePayload {
+  apiKey?: string
+}
+
+type DeepSeekCredentialResult =
+  | { ok: true; status: DeepSeekCredentialStatus }
+  | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
+
 type LocalEndpointProbeModelList =
   | {
     ok: true
@@ -257,6 +275,19 @@ type AnthropicTextChatStartResult =
     error: string
   }
 
+type DeepSeekTextChatMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+type DeepSeekTextChatStartResult =
+  | { ok: true }
+  | {
+    ok: false
+    code: 'invalid_payload' | 'credential_missing' | 'store_unavailable'
+    error: string
+  }
+
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   openRouterCredential?: {
@@ -278,6 +309,11 @@ interface Window {
     getStatus?: () => Promise<AnthropicCredentialResult>
     update?: (payload: AnthropicCredentialUpdatePayload) => Promise<AnthropicCredentialResult>
     clear?: () => Promise<AnthropicCredentialResult>
+  }
+  deepSeekCredential?: {
+    getStatus?: () => Promise<DeepSeekCredentialResult>
+    update?: (payload: DeepSeekCredentialUpdatePayload) => Promise<DeepSeekCredentialResult>
+    clear?: () => Promise<DeepSeekCredentialResult>
   }
   localEndpointDiagnostics?: {
     probe?: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointProbeResult>
@@ -327,6 +363,18 @@ interface Window {
       messages: AnthropicTextChatMessage[]
       timeoutMs?: number
     }) => Promise<AnthropicTextChatStartResult>
+    abortTextChat?: (requestId: string) => Promise<{ ok: true }>
+    onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
+    onTextChatEnd?: (requestId: string, callback: () => void) => () => void
+  }
+  deepSeekChat?: {
+    startTextChat?: (payload: {
+      requestId: string
+      assistantMessageId: string
+      model: string
+      messages: DeepSeekTextChatMessage[]
+      timeoutMs?: number
+    }) => Promise<DeepSeekTextChatStartResult>
     abortTextChat?: (requestId: string) => Promise<{ ok: true }>
     onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
     onTextChatEnd?: (requestId: string, callback: () => void) => () => void

@@ -33,6 +33,12 @@ contextBridge.exposeInMainWorld('anthropicCredential', {
   clear: () => ipcRenderer.invoke('anthropic-credential:clear'),
 })
 
+contextBridge.exposeInMainWorld('deepSeekCredential', {
+  getStatus: () => ipcRenderer.invoke('deepseek-credential:get-status'),
+  update: (payload: unknown) => ipcRenderer.invoke('deepseek-credential:update', payload),
+  clear: () => ipcRenderer.invoke('deepseek-credential:clear'),
+})
+
 contextBridge.exposeInMainWorld('localEndpointDiagnostics', {
   probe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:probe', payload),
   streamProbe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:stream-probe', payload),
@@ -110,6 +116,25 @@ contextBridge.exposeInMainWorld('anthropicChat', {
     ipcRenderer.on(`anthropic-chat:end:${requestId}`, handler)
     return () => {
       ipcRenderer.removeListener(`anthropic-chat:end:${requestId}`, handler)
+    }
+  },
+})
+
+contextBridge.exposeInMainWorld('deepSeekChat', {
+  startTextChat: (payload: unknown) => ipcRenderer.invoke('deepseek-chat:stream-text', payload),
+  abortTextChat: (requestId: string) => ipcRenderer.invoke('deepseek-chat:abort', requestId),
+  onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
+    ipcRenderer.on(`deepseek-chat:chunk:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`deepseek-chat:chunk:${requestId}`, handler)
+    }
+  },
+  onTextChatEnd: (requestId: string, callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on(`deepseek-chat:end:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`deepseek-chat:end:${requestId}`, handler)
     }
   },
 })
