@@ -7,7 +7,7 @@
 取代：previous unversioned provider architecture drafts
 
 修订记录：
-- v1.1.0 (2026-06-18): Added Experimental live paths closeout section reflecting C6 LocalEndpoint, C7a OpenAI Responses, C7b Google AI Studio, and C7c Anthropic Messages experimental text chat status. No contract term changes.
+- v1.1.0 (2026-06-18): Added Experimental live paths closeout section reflecting C6 LocalEndpoint, C7a OpenAI Responses, C7b Google AI Studio, C7c Anthropic Messages, and C7d DeepSeek official experimental text chat status. No contract term changes.
 关联文档：
 - STARVERSE_PROVIDER_ARCHITECTURE_CONTRACT.md
 - STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md
@@ -35,7 +35,7 @@ Deferred: live API calls, UI/provider picker, settings, secure credential store,
 
 ## Experimental live paths closeout (added 2026-06-18)
 
-Four experimental, default-off, text-only live chat paths are implemented with renderer raw credential read-back blocked. These are not production provider surfaces — they are gated behind explicit localStorage flags, mutually exclusive, and reversible to OpenRouter.
+Five experimental, default-off, text-only live chat paths are implemented with renderer raw credential read-back blocked. These are not production provider surfaces — they are gated behind explicit localStorage flags, mutually exclusive, and reversible to OpenRouter.
 
 | Provider | Adapter | Credential store key | IPC channels | Gating key | Scope |
 |---|---|---|---|---|---|
@@ -44,6 +44,7 @@ Four experimental, default-off, text-only live chat paths are implemented with r
 | **OpenAI Responses (C7a)** | `streamViaOpenAIResponses` (native) | `openAIResponsesApiKey` | `openai-responses-credential:*` `openai-responses-chat:*` | `starverse.openAIResponsesTextChat.enabled` | Experimental text-only native chat |
 | **Google AI Studio (C7b)** | `streamViaGemini` (native Gemini API) | `googleAIStudioApiKey` (NOT `geminiApiKey`) | `google-ai-studio-credential:*` `google-ai-studio-chat:*` | `starverse.googleAIStudioTextChat.enabled` | Experimental text-only native chat |
 | **Anthropic Messages (C7c)** | `streamViaAnthropic` (native Messages API) | `anthropicApiKey` | `anthropic-credential:*` `anthropic-chat:*` | `starverse.anthropicMessagesTextChat.enabled` | Experimental text-only native chat |
+| **DeepSeek official (C7d)** | `streamViaDeepSeek` (DeepSeek official profile) | `deepSeekApiKey` | `deepseek-credential:*` `deepseek-chat:*` | `starverse.deepSeekTextChat.enabled` | Experimental text-only official profile chat |
 
 Shared properties of experimental paths:
 
@@ -69,6 +70,13 @@ Anthropic Messages text-only slice:
 - Imports `streamViaAnthropic` from the native Anthropic Messages adapter foundation — NOT Generic OpenAI-compatible
 - Uses `https://api.anthropic.com/v1/messages` with `x-api-key` in the main process; renderer never receives raw key material
 - Thinking/signature/tool-use continuation remains native adapter semantic space, but is not surfaced or persisted in this experimental text-only live path
+
+DeepSeek official text-only slice:
+
+- Uses `deepSeekApiKey` store key and provider-specific credential IPC only
+- Imports `streamViaDeepSeek` from the DeepSeek official profile fixture foundation — NOT Generic OpenAI-compatible live routing
+- Uses `https://api.deepseek.com/v1/chat/completions` with `Authorization: Bearer` in the main process; renderer never receives raw key material
+- `reasoning_content` remains DeepSeek profile semantic space, but is not surfaced or persisted in this experimental text-only live path
 
 Deferred from experimental live paths: `RuntimeProviderRegistry`, `EndpointRegistry`, provider registry dispatch routing, model picker integration, capability resolver, formal `RuntimeCapability`-driven Send Plan, and OpenRouter conformance to `RuntimeProviderStreamAdapter`.
 

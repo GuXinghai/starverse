@@ -126,6 +126,7 @@ describe('registerStoreIpc', () => {
       'openAIResponsesApiKey',
       'googleAIStudioApiKey',
       'anthropicApiKey',
+      'deepSeekApiKey',
       'geminiApiKey',
       'apiKey',
       OPENROUTER_CATALOG_LOCAL_SECRET_KEY,

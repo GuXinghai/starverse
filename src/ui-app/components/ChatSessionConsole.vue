@@ -34,6 +34,11 @@ const props = defineProps<{
     model: string
     experimentalLabel: string
   }> | null
+  deepSeekChat?: Readonly<{
+    enabled: boolean
+    model: string
+    experimentalLabel: string
+  }> | null
   reasoningDisplayMode: 'inline' | 'rail'
   modelCatalog: readonly ModelCatalogItem[]
   webSearchResolved: ResolvedSearchSettings | null
@@ -65,6 +70,9 @@ const emit = defineEmits<{
   (e: 'updateAnthropicChatEnabled', enabled: boolean): void
   (e: 'updateAnthropicChatModel', value: string): void
   (e: 'clearAnthropicChat'): void
+  (e: 'updateDeepSeekChatEnabled', enabled: boolean): void
+  (e: 'updateDeepSeekChatModel', value: string): void
+  (e: 'clearDeepSeekChat'): void
   (e: 'updateReasoningDisplayMode', mode: 'inline' | 'rail'): void
   (e: 'openSettings'): void
 }>()
@@ -96,6 +104,12 @@ const anthropicChat = computed(() => props.anthropicChat ?? {
   experimentalLabel: 'Experimental · Anthropic Messages text-only · not OpenRouter',
 })
 const anthropicChatStatusLabel = computed(() => anthropicChat.value.enabled ? 'active' : 'inactive')
+const deepSeekChat = computed(() => props.deepSeekChat ?? {
+  enabled: false,
+  model: '',
+  experimentalLabel: 'Experimental · DeepSeek official text-only · not OpenRouter',
+})
+const deepSeekChatStatusLabel = computed(() => deepSeekChat.value.enabled ? 'active' : 'inactive')
 const imageValue = computed<ImageGenerationUserConfig>(() => ({
   enabled: props.sessionConfig.imageGeneration.enabled,
   outputMode: props.sessionConfig.imageGeneration.detail?.outputMode ?? 'auto',
@@ -263,6 +277,65 @@ function chipClass(active: boolean): string {
             @click="emit('clearAnthropicChat')"
           >
             Clear Anthropic Messages chat settings
+          </button>
+        </div>
+      </section>
+
+      <section class="space-y-3 rounded-lg border border-cyan-200 bg-cyan-50/70 p-3" data-testid="deepseek-chat-controls">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-xs font-semibold uppercase tracking-wide text-cyan-800">DeepSeek Official Chat</div>
+            <div class="mt-1 text-[11px] text-cyan-700">{{ deepSeekChat.experimentalLabel }}</div>
+          </div>
+          <label class="flex shrink-0 items-center gap-2 text-xs font-medium text-cyan-900">
+            <input
+              type="checkbox"
+              class="size-4"
+              :checked="deepSeekChat.enabled"
+              :disabled="disabled"
+              data-testid="deepseek-chat-enabled"
+              @change="emit('updateDeepSeekChatEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            Use
+          </label>
+        </div>
+        <div>
+          <label class="block text-[11px] font-semibold text-cyan-900">Manual DeepSeek model id</label>
+          <input
+            type="text"
+            :value="deepSeekChat.model"
+            :disabled="disabled || !deepSeekChat.enabled"
+            class="mt-1 w-full rounded-md border border-cyan-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-300 disabled:bg-white/60"
+            data-testid="deepseek-chat-model"
+            @input="emit('updateDeepSeekChatModel', ($event.target as HTMLInputElement).value)"
+          />
+        </div>
+        <div class="text-[11px] text-cyan-800" data-testid="deepseek-chat-warning">
+          DeepSeek official API text-only streaming. Attachments, web, tools, image generation, reasoning/thinking, reasoning_content display, and Generic compatibility routing are disabled.
+        </div>
+        <div class="rounded border border-cyan-100 bg-white px-2 py-1.5 text-[11px] text-cyan-900" data-testid="deepseek-chat-selected-status">
+          <div>Experimental DeepSeek official chat is {{ deepSeekChatStatusLabel }}.</div>
+          <div>Selected DeepSeek model: {{ deepSeekChat.model || 'none' }}</div>
+          <div>DeepSeek chat uses a main-process credential bridge and does not expose API keys to this console.</div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-cyan-300 bg-white px-2 py-1.5 text-[11px] font-medium text-cyan-800 hover:bg-cyan-100 disabled:opacity-50"
+            :disabled="disabled || !deepSeekChat.enabled"
+            data-testid="deepseek-chat-disable"
+            @click="emit('updateDeepSeekChatEnabled', false)"
+          >
+            Disable DeepSeek official chat
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-cyan-200 bg-white px-2 py-1.5 text-[11px] font-medium text-cyan-800 hover:bg-cyan-100 disabled:opacity-50"
+            :disabled="disabled"
+            data-testid="deepseek-chat-clear"
+            @click="emit('clearDeepSeekChat')"
+          >
+            Clear DeepSeek chat settings
           </button>
         </div>
       </section>

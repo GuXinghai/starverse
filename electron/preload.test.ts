@@ -33,11 +33,13 @@ describe('preload scoped API exposure', () => {
       'openAIResponsesCredential',
       'googleAIStudioCredential',
       'anthropicCredential',
+      'deepSeekCredential',
       'localEndpointDiagnostics',
       'localEndpointChat',
       'openAIResponsesChat',
       'googleAIStudioChat',
       'anthropicChat',
+      'deepSeekChat',
       'electronAPI',
       'dbBridge',
     ]))
@@ -78,11 +80,13 @@ describe('preload scoped API exposure', () => {
     const openAIResponsesCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'openAIResponsesCredential')?.[1]
     const googleAIStudioCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'googleAIStudioCredential')?.[1]
     const anthropicCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'anthropicCredential')?.[1]
+    const deepSeekCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'deepSeekCredential')?.[1]
     const localEndpointDiagnostics = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointDiagnostics')?.[1]
     const localEndpointChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointChat')?.[1]
     const openAIResponsesChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'openAIResponsesChat')?.[1]
     const googleAIStudioChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'googleAIStudioChat')?.[1]
     const anthropicChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'anthropicChat')?.[1]
+    const deepSeekChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'deepSeekChat')?.[1]
     expect(electronStore).toEqual(expect.objectContaining({
       get: expect.any(Function),
       set: expect.any(Function),
@@ -106,6 +110,11 @@ describe('preload scoped API exposure', () => {
       clear: expect.any(Function),
     })
     expect(anthropicCredential).toEqual({
+      getStatus: expect.any(Function),
+      update: expect.any(Function),
+      clear: expect.any(Function),
+    })
+    expect(deepSeekCredential).toEqual({
       getStatus: expect.any(Function),
       update: expect.any(Function),
       clear: expect.any(Function),
@@ -138,6 +147,12 @@ describe('preload scoped API exposure', () => {
       onTextChatChunk: expect.any(Function),
       onTextChatEnd: expect.any(Function),
     })
+    expect(deepSeekChat).toEqual({
+      startTextChat: expect.any(Function),
+      abortTextChat: expect.any(Function),
+      onTextChatChunk: expect.any(Function),
+      onTextChatEnd: expect.any(Function),
+    })
     expect(localEndpointDiagnostics.getStatus).toBeUndefined()
     expect(localEndpointDiagnostics.update).toBeUndefined()
     expect(localEndpointDiagnostics.endpointRegistry).toBeUndefined()
@@ -150,6 +165,8 @@ describe('preload scoped API exposure', () => {
     expect(googleAIStudioCredential.endpointRegistry).toBeUndefined()
     expect(anthropicCredential.apiKey).toBeUndefined()
     expect(anthropicCredential.endpointRegistry).toBeUndefined()
+    expect(deepSeekCredential.apiKey).toBeUndefined()
+    expect(deepSeekCredential.endpointRegistry).toBeUndefined()
     expect(openAIResponsesChat.getStatus).toBeUndefined()
     expect(openAIResponsesChat.update).toBeUndefined()
     expect(openAIResponsesChat.endpointRegistry).toBeUndefined()
@@ -159,6 +176,9 @@ describe('preload scoped API exposure', () => {
     expect(anthropicChat.getStatus).toBeUndefined()
     expect(anthropicChat.update).toBeUndefined()
     expect(anthropicChat.endpointRegistry).toBeUndefined()
+    expect(deepSeekChat.getStatus).toBeUndefined()
+    expect(deepSeekChat.update).toBeUndefined()
+    expect(deepSeekChat.endpointRegistry).toBeUndefined()
     expect(openRouterCredential.getEndpointMetadata).toBeUndefined()
     expect(openRouterCredential.endpointRegistry).toBeUndefined()
 
@@ -179,6 +199,9 @@ describe('preload scoped API exposure', () => {
     await anthropicCredential.getStatus()
     await anthropicCredential.update({ apiKey: 'raw-anthropic-key' })
     await anthropicCredential.clear()
+    await deepSeekCredential.getStatus()
+    await deepSeekCredential.update({ apiKey: 'raw-deepseek-key' })
+    await deepSeekCredential.clear()
     await localEndpointDiagnostics.probe({ url: 'http://localhost:1234', timeoutMs: 5000 })
     await localEndpointDiagnostics.streamProbe({ url: 'http://localhost:1234', timeoutMs: 5000 })
     await localEndpointChat.startTextChat({
@@ -217,6 +240,15 @@ describe('preload scoped API exposure', () => {
     await anthropicChat.abortTextChat('anthropic_req_preload')
     anthropicChat.onTextChatChunk('anthropic_req_preload', () => {})
     anthropicChat.onTextChatEnd('anthropic_req_preload', () => {})
+    await deepSeekChat.startTextChat({
+      requestId: 'deepseek_req_preload',
+      assistantMessageId: 'assistant_1',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    await deepSeekChat.abortTextChat('deepseek_req_preload')
+    deepSeekChat.onTextChatChunk('deepseek_req_preload', () => {})
+    deepSeekChat.onTextChatEnd('deepseek_req_preload', () => {})
 
     expect(invoke).toHaveBeenCalledWith('store-get', 'theme')
     expect(invoke).toHaveBeenCalledWith('store-set', 'theme', 'dark')
@@ -244,6 +276,11 @@ describe('preload scoped API exposure', () => {
       apiKey: 'raw-anthropic-key',
     })
     expect(invoke).toHaveBeenCalledWith('anthropic-credential:clear')
+    expect(invoke).toHaveBeenCalledWith('deepseek-credential:get-status')
+    expect(invoke).toHaveBeenCalledWith('deepseek-credential:update', {
+      apiKey: 'raw-deepseek-key',
+    })
+    expect(invoke).toHaveBeenCalledWith('deepseek-credential:clear')
     expect(invoke).toHaveBeenCalledWith('local-endpoint-diagnostics:probe', {
       url: 'http://localhost:1234',
       timeoutMs: 5000,
@@ -280,6 +317,13 @@ describe('preload scoped API exposure', () => {
       messages: [{ role: 'user', content: 'hello' }],
     })
     expect(invoke).toHaveBeenCalledWith('anthropic-chat:abort', 'anthropic_req_preload')
+    expect(invoke).toHaveBeenCalledWith('deepseek-chat:stream-text', {
+      requestId: 'deepseek_req_preload',
+      assistantMessageId: 'assistant_1',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(invoke).toHaveBeenCalledWith('deepseek-chat:abort', 'deepseek_req_preload')
   })
 
   it('does not expose generic credential resolver or raw Authorization/Bearer helpers', () => {
@@ -289,11 +333,13 @@ describe('preload scoped API exposure', () => {
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openAIResponsesCredential'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('googleAIStudioCredential'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('anthropicCredential'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('deepSeekCredential'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointDiagnostics'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointChat'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openAIResponsesChat'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('googleAIStudioChat'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('anthropicChat'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('deepSeekChat'")
     expect(preloadSource).not.toContain('credentialRef')
     expect(preloadSource).not.toContain('credentialResolver')
     expect(preloadSource).not.toContain('secretStore')
