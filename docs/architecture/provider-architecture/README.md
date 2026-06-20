@@ -7,7 +7,7 @@ This directory contains the authoritative governance documents for Starverse mul
 
 ## Current Status (updated 2026-06-18)
 
-Phase 0–9 fixture foundations remain complete. OpenRouter remains the default production runtime. LocalEndpoint, OpenAI Responses, and Google AI Studio now have explicit, default-off, reversible experimental text-only chat paths. They are not production defaults, are mutually exclusive in the current UI flow, and do not activate Generic OpenAI-compatible runtime. Generic remains fixture-only. No secure store, production endpoint/provider registry, RuntimeProviderRegistry, Send Plan RuntimeCapability integration, managed local runtime, or non-OpenRouter production runtime is implemented.
+Phase 0–9 fixture foundations remain complete. OpenRouter remains the default production runtime. LocalEndpoint, OpenAI Responses, Google AI Studio, Anthropic Messages, and DeepSeek official now have explicit, default-off, reversible experimental text-only chat paths. They are not production defaults, are mutually exclusive in the current UI flow, and do not activate Generic OpenAI-compatible runtime. Generic remains fixture-only. No secure store, production endpoint/provider registry, RuntimeProviderRegistry, Send Plan RuntimeCapability integration, managed local runtime, or non-OpenRouter production runtime is implemented.
 
 ## Document Order
 
@@ -22,6 +22,8 @@ Phase 0–9 fixture foundations remain complete. OpenRouter remains the default 
 
 - [PROVIDER_C6_LOCAL_ENDPOINT_INVESTIGATION.md](PROVIDER_C6_LOCAL_ENDPOINT_INVESTIGATION.md)
   C6 investigation plus implementation checkpoints for external LocalEndpoint support. LocalEndpoint has an explicit loopback-only experimental text chat path; no Generic live activation, managed local runtime, remote custom endpoint, enterprise gateway, or production endpoint/provider registry implementation.
+- [PROVIDER_EXPERIMENTAL_TEXT_CHAT_CLOSEOUT.md](PROVIDER_EXPERIMENTAL_TEXT_CHAT_CLOSEOUT.md)
+  Closeout for the current OpenRouter production plus LocalEndpoint/OpenAI Responses/Google AI Studio/Anthropic Messages/DeepSeek official experimental text-chat phase, including smoke evidence, known debt, graduation blockers, and next options.
 
 ## Usage Rule For Future Agents
 
