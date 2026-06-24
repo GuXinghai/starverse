@@ -7,6 +7,18 @@ import { getChatReasoningPanelDefaultExpanded, setChatReasoningPanelDefaultExpan
 import { getWebSearchDefaults, setWebSearchDefaults } from '@/next/settings/webSearchDefaultsClient'
 import { getSamplingParamsDefaults, setSamplingParamsDefaults } from '@/next/settings/samplingParamsDefaultsClient'
 import {
+  getNetworkProxySettings,
+  probeLibreOfficeOfficialDownloadNetwork,
+  setNetworkProxySettings,
+  type LibreOfficeProxyProbeResult,
+} from '@/next/settings/networkProxySettingsClient'
+import {
+  DEFAULT_NETWORK_PROXY_SETTINGS,
+  normalizeNetworkProxySettings,
+  proxyModeLabel,
+  type NetworkProxyMode,
+} from '@/next/plugin-distribution/networkProxyShared'
+import {
   DEFAULT_NETEXP_SETTINGS,
   getNetExpRuntimeInfo,
   getNetExpSettings,
@@ -406,6 +418,12 @@ const netExpKeepAliveEnable = ref(DEFAULT_NETEXP_SETTINGS.tcpKeepAliveEnable)
 const netExpKeepAliveIdleMs = ref(DEFAULT_NETEXP_SETTINGS.tcpKeepAliveIdleMs)
 const netExpInitial = ref<NetExpSettings>(DEFAULT_NETEXP_SETTINGS)
 const netExpRuntime = ref<NetExpRuntimeInfo | null>(null)
+const networkProxyMode = ref<NetworkProxyMode>(DEFAULT_NETWORK_PROXY_SETTINGS.proxyMode)
+const networkProxyManualUrl = ref(DEFAULT_NETWORK_PROXY_SETTINGS.manualProxyUrl)
+const networkProxyNoProxy = ref(DEFAULT_NETWORK_PROXY_SETTINGS.noProxy)
+const networkProxyStrictSsl = ref(DEFAULT_NETWORK_PROXY_SETTINGS.strictSSL)
+const networkProxyProbeLoading = ref(false)
+const networkProxyProbeResult = ref<LibreOfficeProxyProbeResult | null>(null)
 const localEndpointUrl = ref('http://localhost:1234')
 const localEndpointSelectedModel = ref('')
 const localEndpointManualModel = ref('')
@@ -773,6 +791,11 @@ async function load() {
     netExpKeepAliveIdleMs.value = netExp.tcpKeepAliveIdleMs
     netExpInitial.value = netExp
     netExpRuntime.value = await getNetExpRuntimeInfo()
+    const proxySettings = await getNetworkProxySettings()
+    networkProxyMode.value = proxySettings.proxyMode
+    networkProxyManualUrl.value = proxySettings.manualProxyUrl
+    networkProxyNoProxy.value = proxySettings.noProxy
+    networkProxyStrictSsl.value = true
     langMode.value = langPrefs.mode
     langManualLocale.value = langPrefs.mode === 'manual' ? langPrefs.uiLocale : getSystemLocale()
     const prefs = await getReasoningPrefs()
@@ -919,6 +942,12 @@ async function save() {
       tcpKeepAliveEnable: netExpKeepAliveEnable.value,
       tcpKeepAliveIdleMs: netExpKeepAliveIdleMs.value,
     })
+    await setNetworkProxySettings(normalizeNetworkProxySettings({
+      proxyMode: networkProxyMode.value,
+      manualProxyUrl: networkProxyManualUrl.value,
+      noProxy: networkProxyNoProxy.value,
+      strictSSL: true,
+    }))
     const nextReasoningPrefs = buildReasoningPrefs()
     await setReasoningPrefs(nextReasoningPrefs)
     await setChatReasoningPanelDefaultExpanded(reasoningPanelDefaultExpanded.value === true)
@@ -1047,6 +1076,30 @@ async function clearBaseUrl() {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
     saving.value = false
+  }
+}
+
+async function testNetworkProxyConnection() {
+  error.value = null
+  savedMessage.value = null
+  networkProxyProbeResult.value = null
+  networkProxyProbeLoading.value = true
+  try {
+    await setNetworkProxySettings(normalizeNetworkProxySettings({
+      proxyMode: networkProxyMode.value,
+      manualProxyUrl: networkProxyManualUrl.value,
+      noProxy: networkProxyNoProxy.value,
+      strictSSL: true,
+    }))
+    networkProxyProbeResult.value = await probeLibreOfficeOfficialDownloadNetwork()
+    savedMessage.value = networkProxyProbeResult.value.ok ? 'Proxy probe passed.' : null
+    if (!networkProxyProbeResult.value.ok) {
+      error.value = `Proxy probe failed: ${networkProxyProbeResult.value.terminalDiagnostic}`
+    }
+  } catch (err: any) {
+    error.value = err?.message ? String(err.message) : 'Proxy probe failed.'
+  } finally {
+    networkProxyProbeLoading.value = false
   }
 }
 
@@ -2220,6 +2273,77 @@ onMounted(() => {
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.network.title') }}</div>
 
         <div class="mt-3 space-y-3">
+          <div class="rounded-md border border-gray-100 bg-gray-50 p-3">
+            <div class="text-[11px] font-semibold text-gray-700">Network Proxy</div>
+            <div class="mt-1 text-[11px] text-gray-500">
+              Plugin downloads use this policy. Automatic and conversion-time downloads remain disabled.
+            </div>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2">
+              <label class="block text-[11px] text-gray-700">
+                <span class="font-semibold">Proxy mode</span>
+                <select
+                  class="mt-1 w-full rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700 disabled:bg-gray-50"
+                  :disabled="!canEdit || loading || saving"
+                  v-model="networkProxyMode"
+                >
+                  <option value="environment">Environment variables</option>
+                  <option value="manual">Manual</option>
+                  <option value="direct">Direct</option>
+                  <option value="system">System</option>
+                </select>
+              </label>
+              <label class="block text-[11px] text-gray-700">
+                <span class="font-semibold">Manual proxy URL</span>
+                <input
+                  type="text"
+                  class="mt-1 w-full rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700 disabled:bg-gray-50"
+                  placeholder="http://127.0.0.1:7890"
+                  :disabled="!canEdit || loading || saving || networkProxyMode !== 'manual'"
+                  v-model="networkProxyManualUrl"
+                />
+              </label>
+              <label class="block text-[11px] text-gray-700 sm:col-span-2">
+                <span class="font-semibold">No proxy / bypass list</span>
+                <input
+                  type="text"
+                  class="mt-1 w-full rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700 disabled:bg-gray-50"
+                  placeholder="localhost,127.0.0.1,.example.com"
+                  :disabled="!canEdit || loading || saving"
+                  v-model="networkProxyNoProxy"
+                />
+              </label>
+            </div>
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <label class="inline-flex items-center gap-2 text-[11px] text-gray-700">
+                <input
+                  type="checkbox"
+                  disabled
+                  v-model="networkProxyStrictSsl"
+                />
+                <span>Strict SSL required for plugin downloads</span>
+              </label>
+              <button
+                type="button"
+                class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                :disabled="!canEdit || loading || saving || networkProxyProbeLoading"
+                @click="testNetworkProxyConnection"
+              >
+                {{ networkProxyProbeLoading ? 'Testing...' : 'Test connection' }}
+              </button>
+            </div>
+            <div class="mt-2 text-[11px] text-gray-500">
+              Current mode: {{ proxyModeLabel(networkProxyMode) }}. Probe checks metadata, HEAD and a 1 KB Range request only.
+            </div>
+            <div v-if="networkProxyProbeResult" class="mt-2 rounded-md border border-gray-100 bg-white px-2 py-1 text-[11px] text-gray-600">
+              <div>Probe: {{ networkProxyProbeResult.ok ? 'passed' : 'failed' }}</div>
+              <div>Metadata: {{ networkProxyProbeResult.metadataReachable ? 'reachable' : 'unreachable' }}</div>
+              <div>HEAD: {{ networkProxyProbeResult.headPassed ? 'passed' : 'failed' }}</div>
+              <div>Content length: {{ networkProxyProbeResult.contentLength }}</div>
+              <div>Range: {{ networkProxyProbeResult.rangePassed ? 'passed' : 'failed' }}</div>
+              <div>Diagnostic: {{ networkProxyProbeResult.terminalDiagnostic }}</div>
+            </div>
+          </div>
+
           <div class="flex items-center justify-between gap-2">
             <div class="min-w-0">
               <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.network.disableHttp2') }}</div>

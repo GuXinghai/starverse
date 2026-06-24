@@ -7,6 +7,7 @@ export const SETTINGS_KEY_SAMPLING_PARAMS_DEFAULTS = 'sampling_params.defaults' 
 export const SETTINGS_KEY_CHAT_REASONING_DISPLAY_MODE = 'chat.reasoning_display.mode' as const
 export const SETTINGS_KEY_CHAT_REASONING_PANEL_DEFAULT_EXPANDED = 'chat.reasoning_panel.default_expanded' as const
 export const SETTINGS_KEY_CHAT_DRAFT_PREFIX = 'chat.draft::' as const
+export const SETTINGS_KEY_NETWORK_PROXY = 'network.proxy' as const
 
 export function buildChatDraftSettingsKey(convoId: string, branchId: string): string {
   const convo = String(convoId ?? '').trim()

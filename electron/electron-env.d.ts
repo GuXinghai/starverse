@@ -388,6 +388,9 @@ interface Window {
     modelCatalogRepairCurrentScopedCache?: () => Promise<unknown>
     modelCatalogClearCurrentScopedCache?: () => Promise<unknown>
     modelCatalogClearAllOpenRouterScopedCaches?: () => Promise<unknown>
+    importLibreOfficeSvpkg?: () => Promise<unknown>
+    quarantineLibreOfficeRuntime?: () => Promise<unknown>
+    probeLibreOfficeSystemProxyDownloadNetwork?: () => Promise<unknown>
     startOpenRouterStream?: (payload: unknown) => Promise<unknown>
     abortOpenRouterStream?: (requestId: string) => Promise<unknown>
     onOpenRouterChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void

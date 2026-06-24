@@ -1,5 +1,5 @@
 /* eslint-disable max-lines-per-function */
-import { render, screen, waitFor } from '@testing-library/vue'
+import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import PluginManagementPanel from './PluginManagementPanel.vue'
@@ -8,9 +8,10 @@ function createDbBridgeMock(outputs?: {
   listOfficialPlugins?: unknown
   listInstalledPlugins?: unknown
   getDiagnosticsSummary?: unknown
-  installOfficialPlugin?: unknown
-  getInstallOperationStatus?: unknown
-  enablePlugin?: unknown
+    installOfficialPlugin?: unknown
+    getInstallOperationStatus?: unknown
+    cancelInstallOperation?: unknown
+    enablePlugin?: unknown
   disablePlugin?: unknown
   uninstallPlugin?: unknown
   runHealthCheck?: unknown
@@ -41,6 +42,18 @@ function createDbBridgeMock(outputs?: {
     }
     if (method === 'enginePluginLifecycle.getInstallOperationStatus') {
       return outputs?.getInstallOperationStatus ?? { ok: true, value: null }
+    }
+    if (method === 'enginePluginLifecycle.cancelInstallOperation') {
+      return outputs?.cancelInstallOperation ?? {
+        ok: true,
+        value: installOperation({
+          operationId: 'official-install-magika-0.1.0-1',
+          pluginId: 'magika',
+          pluginVersion: '0.1.0',
+          state: 'cancelled',
+          terminalAt: 2,
+        }),
+      }
     }
     if (method === 'enginePluginLifecycle.enablePlugin') {
       return outputs?.enablePlugin ?? {
@@ -187,6 +200,8 @@ function installPhaseLabel(state: string): string {
   if (state === 'registering') return 'Registering plugin'
   if (state === 'health_checking') return 'Checking health'
   if (state === 'installed') return 'Installed'
+  if (state === 'retrying') return 'Retrying official package download'
+  if (state === 'paused_retryable') return 'Download paused'
   if (state === 'failed') return 'Install failed'
   if (state === 'stale') return 'Install status stale'
   return 'Cancelled'
@@ -204,9 +219,13 @@ function deferred<T>() {
 
 describe('PluginManagementPanel', () => {
   const originalDbBridge = (globalThis as any).dbBridge
+  const originalElectronApi = (globalThis as any).electronAPI
+  const originalConfirm = globalThis.confirm
 
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
+    ;(globalThis as any).electronAPI = originalElectronApi
+    globalThis.confirm = originalConfirm
     vi.restoreAllMocks()
   })
 
@@ -242,6 +261,346 @@ describe('PluginManagementPanel', () => {
     expect(screen.getByText('Verification')).toBeTruthy()
     expect(screen.getByText('Health')).toBeTruthy()
     expect(screen.getByText('Cryptographic check: Completed')).toBeTruthy()
+  })
+
+  it('renders LibreOffice Office-to-PDF as Windows x64 production-approved plugin with bounded lifecycle controls', async () => {
+    const user = userEvent.setup()
+    const libreOfficeGate = {
+      status: 'available',
+      productCode: null,
+      internalCode: null,
+      productionApproved: true,
+      ownerGated: false,
+      experimental: false,
+      degraded: false,
+      quarantined: false,
+      source: 'managed_manifest',
+      trustModel: 'owner_gated_hash_pinned_signed_catalog_required_for_production',
+      trustStates: [
+        'owner_approved_hash_pinned',
+        'hash_pinned',
+        'signature_missing',
+        'catalog_untrusted',
+      ],
+      distributionStates: [
+        'windows_x64_production_approved',
+        'manual_github_release_allowed',
+        'verified_offline_import_allowed',
+        'offline_import_allowed',
+        'download_disabled_by_policy',
+        'bundled_runtime_not_approved',
+        'system_libreoffice_disallowed',
+      ],
+      packageDecision: 'approved_windows_x64_docx_to_pdf_production_asset',
+      signatureCatalogStatus: 'signature_missing_catalog_unsigned',
+      catalogSignatureStatus: 'missing',
+      keyIdStatus: 'not_checked',
+      revocationStatus: 'not_checked',
+      expirationStatus: 'not_checked',
+      rollbackEligibility: 'not_evaluated',
+      productionTrustReadiness: 'ready',
+      ownerGatedCandidateReadiness: 'owner_gated_hash_pinned_ready',
+      lastVerificationResult: 'hash_pin_matched',
+      downloadEnabled: false,
+      approvedPlatform: 'win32',
+      approvedArch: 'x64',
+      approvedInput: 'docx',
+      approvedOutput: 'pdf_attachment',
+      approvedAcquisitionModes: ['manual_github_release', 'offline_import'],
+      automaticDownloadEnabled: false,
+      postinstallDownloadEnabled: false,
+      conversionTimeDownloadEnabled: false,
+      platformPackageStatus: 'windows_x64_approved_mac_linux_deferred',
+      fallbackTargetKinds: ['markdown', 'original_file'],
+      message: 'LibreOffice Office PDF is production-approved for Windows x64 DOCX-to-PDF.',
+    }
+    const dbBridge = createDbBridgeMock({
+      listOfficialPlugins: {
+        ok: true,
+        value: [
+          officialPlugin({
+            pluginId: 'libreoffice',
+            displayName: 'LibreOffice Office PDF',
+            pluginVersion: '0.1.0',
+            runtimeKind: 'managed_external_process',
+            runtimeVersion: '24.8.0',
+            capabilities: ['document_conversion'],
+            installabilityStatus: 'unavailable_read_only',
+            reasons: ['download_disabled_by_policy'],
+            warnings: ['libreoffice_catalog_contract_only'],
+            releaseProvenance: null,
+          }),
+        ],
+      },
+      listInstalledPlugins: [
+        installedPlugin({
+          engineId: 'libreoffice',
+          displayName: 'LibreOffice Office PDF',
+          pluginVersion: '0.1.0',
+          installedVersion: '0.1.0',
+          packageVersion: '2026.06.01',
+          runtimeKind: 'managed_external_process',
+          runtimeVersion: '24.8.0',
+          healthStatus: 'healthy',
+          failureReason: null,
+          releaseProvenance: null,
+          productGate: libreOfficeGate,
+        }),
+      ],
+      runHealthCheck: {
+        ok: true,
+        value: installedPlugin({
+          engineId: 'libreoffice',
+          displayName: 'LibreOffice Office PDF',
+          pluginVersion: '0.1.0',
+          runtimeKind: 'managed_external_process',
+          runtimeVersion: '24.8.0',
+          healthStatus: 'healthy',
+          failureReason: null,
+          releaseProvenance: null,
+          productGate: libreOfficeGate,
+        }),
+      },
+    })
+    ;(globalThis as any).dbBridge = dbBridge
+    const importLibreOfficeSvpkg = vi.fn(async () => ({
+      ok: true,
+      value: installedPlugin({
+        engineId: 'libreoffice',
+        displayName: 'LibreOffice Office PDF',
+        pluginVersion: '0.1.0',
+        runtimeKind: 'managed_external_process',
+        runtimeVersion: '24.8.0',
+        healthStatus: 'healthy',
+        failureReason: null,
+        releaseProvenance: null,
+        productGate: libreOfficeGate,
+      }),
+    }))
+    const quarantineLibreOfficeRuntime = vi.fn(async () => ({
+      ok: true,
+      value: installedPlugin({
+        engineId: 'libreoffice',
+        displayName: 'LibreOffice Office PDF',
+        pluginVersion: '0.1.0',
+        runtimeKind: 'managed_external_process',
+        runtimeVersion: '24.8.0',
+        healthStatus: 'unhealthy',
+        failureReason: 'conversion_sandbox_denied',
+        releaseProvenance: null,
+        productGate: {
+          ...libreOfficeGate,
+          status: 'quarantined',
+          productCode: 'conversion_sandbox_denied',
+          internalCode: 'office_pdf_runtime_quarantined',
+          quarantined: true,
+        },
+      }),
+    }))
+    ;(globalThis as any).electronAPI = {
+      importLibreOfficeSvpkg,
+      quarantineLibreOfficeRuntime,
+    }
+    globalThis.confirm = vi.fn(() => true)
+
+    const { container } = render(PluginManagementPanel)
+
+    await screen.findByText('LibreOffice Office PDF')
+    expect(screen.getByText('Product gate: Available')).toBeTruthy()
+    expect(screen.getByText('Approval: Production approved')).toBeTruthy()
+    expect(screen.getByText('Download: Disabled by policy')).toBeTruthy()
+    expect(screen.getByText('Trust: owner_approved_hash_pinned, hash_pinned, signature_missing, catalog_untrusted')).toBeTruthy()
+    expect(screen.getByText('Distribution: windows_x64_production_approved, manual_github_release_allowed, verified_offline_import_allowed, offline_import_allowed, download_disabled_by_policy, bundled_runtime_not_approved, system_libreoffice_disallowed')).toBeTruthy()
+    expect(screen.getByText('Signature/catalog: signature_missing_catalog_unsigned')).toBeTruthy()
+    expect(screen.getByText('Catalog signature: missing')).toBeTruthy()
+    expect(screen.getByText('Key: not_checked')).toBeTruthy()
+    expect(screen.getByText('Revocation: not_checked')).toBeTruthy()
+    expect(screen.getByText('Expiration: not_checked')).toBeTruthy()
+    expect(screen.getByText('Rollback: not_evaluated')).toBeTruthy()
+    expect(screen.getByText('Production trust: ready')).toBeTruthy()
+    expect(screen.getByText('Owner candidate: owner_gated_hash_pinned_ready')).toBeTruthy()
+    expect(screen.getByText('Package decision: approved_windows_x64_docx_to_pdf_production_asset')).toBeTruthy()
+    expect(screen.getByText('Approved platform: win32 / x64')).toBeTruthy()
+    expect(screen.getByText('Approved route: docx to pdf_attachment')).toBeTruthy()
+    expect(screen.getByText('Approved acquisition: manual_github_release, offline_import')).toBeTruthy()
+    expect(screen.getByText('Automatic download: Disabled')).toBeTruthy()
+    expect(screen.getByText('Postinstall download: Disabled')).toBeTruthy()
+    expect(screen.getByText('Conversion-time download: Disabled')).toBeTruthy()
+    expect(screen.getByText('Platform packages: windows_x64_approved_mac_linux_deferred')).toBeTruthy()
+    expect(screen.getByText('Owner gate: Not required')).toBeTruthy()
+    expect(screen.getByText('Experimental: Disabled')).toBeTruthy()
+    expect(screen.getByText('Fallback targets: markdown, original_file')).toBeTruthy()
+    expect(screen.getByText('Manual install: Downloads LibreOffice runtime package from GitHub')).toBeTruthy()
+    expect(screen.getByText('Download trigger: User-initiated only')).toBeTruthy()
+    expect(screen.getByText('Conversion download: Disabled')).toBeTruthy()
+    expect(screen.getByText('Runtime scope: Windows x64 DOCX-to-PDF production approved when package gate is valid; macOS/Linux package pending')).toBeTruthy()
+    expect(screen.getByText('Activation: Package is verified before activation')).toBeTruthy()
+    expect(container.textContent).not.toContain('owner_gate_not_production_approved')
+    expect(container.textContent).not.toMatch(/[A-Za-z]:\\|file:\/\/|soffice\.exe|sha256|contentToken|storageRef/iu)
+
+    const installButton = screen.queryByRole('button', { name: /Download \/ Install/iu })
+    expect(installButton?.getAttribute('disabled')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Import .svpkg' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Disable runtime' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Clear runtime' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Quarantine runtime' })).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: 'Import .svpkg' }))
+    await waitFor(() => {
+      expect(importLibreOfficeSvpkg).toHaveBeenCalledWith()
+    })
+    await user.click(screen.getByRole('button', { name: 'Recheck runtime' }))
+    await waitFor(() => {
+      expect(dbBridge.invoke).toHaveBeenCalledWith('enginePluginLifecycle.runHealthCheck', { engineId: 'libreoffice' })
+    })
+    await user.click(screen.getByRole('button', { name: 'Disable runtime' }))
+    await waitFor(() => {
+      expect(dbBridge.invoke).toHaveBeenCalledWith('enginePluginLifecycle.disablePlugin', { engineId: 'libreoffice' })
+    })
+    await user.click(screen.getByRole('button', { name: 'Clear runtime' }))
+    await waitFor(() => {
+      expect(dbBridge.invoke).toHaveBeenCalledWith('enginePluginLifecycle.uninstallPlugin', { engineId: 'libreoffice' })
+    })
+    await user.click(screen.getByRole('button', { name: 'Quarantine runtime' }))
+    await waitFor(() => {
+      expect(quarantineLibreOfficeRuntime).toHaveBeenCalledWith()
+    })
+    expect(dbBridge.invoke).not.toHaveBeenCalledWith('enginePluginLifecycle.importLibreOfficeSvpkgFromPath', expect.anything())
+    expect(container.textContent).not.toMatch(/[A-Za-z]:\\|file:\/\/|soffice\.exe|sha256|contentToken|storageRef/iu)
+  })
+
+  it('starts LibreOffice official install only after the Download / Install user gesture', async () => {
+    const user = userEvent.setup()
+    const dbBridge = createDbBridgeMock({
+      listOfficialPlugins: {
+        ok: true,
+        value: [
+          officialPlugin({
+            pluginId: 'libreoffice',
+            displayName: 'LibreOffice Office PDF',
+            pluginVersion: '0.1.0',
+            availableVersion: '0.1.0',
+            runtimeKind: 'managed_external_process',
+            capabilities: ['document_conversion'],
+            installabilityStatus: 'official_remote_install_available',
+            reasons: [
+              'manual_github_install_available',
+              'automatic_download_disabled_by_policy',
+              'conversion_time_download_disabled_by_policy',
+              'requires_user_gesture',
+              'verify_before_activation',
+              'docx_only',
+            ],
+            warnings: ['libreoffice_catalog_contract_only'],
+            releaseProvenance: null,
+          }),
+        ],
+      },
+      listInstalledPlugins: [],
+      installOfficialPlugin: {
+        ok: true,
+        value: installOperation({
+          operationId: 'official-install-libreoffice-0.1.0-1',
+          pluginId: 'libreoffice',
+          pluginVersion: '0.1.0',
+          state: 'downloading',
+        }),
+      },
+    })
+    ;(globalThis as any).dbBridge = dbBridge
+
+    const { container } = render(PluginManagementPanel)
+
+    await screen.findByText('LibreOffice Office PDF')
+    expect(dbBridge.invoke.mock.calls.filter(([method]) => method === 'enginePluginLifecycle.installOfficialPlugin')).toHaveLength(0)
+    expect(screen.getByText('Manual install: Downloads LibreOffice runtime package from GitHub')).toBeTruthy()
+    expect(screen.getByText('Download trigger: User-initiated only')).toBeTruthy()
+    expect(screen.getByText('Conversion download: Disabled')).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: 'Download / Install' }))
+    await waitFor(() => {
+      expect(dbBridge.invoke).toHaveBeenCalledWith('enginePluginLifecycle.installOfficialPlugin', {
+        pluginId: 'libreoffice',
+        pluginVersion: '0.1.0',
+        enabled: false,
+      })
+    })
+    expect(container.textContent).toContain('Install: Downloading official package')
+    expect(screen.getByRole('button', { name: /Download \/ Install/iu })).toBeTruthy()
+    expect(container.textContent).not.toMatch(/[A-Za-z]:\\|file:\/\/|soffice\.exe|sha256|contentToken|storageRef/iu)
+  })
+
+  it('cancels a paused LibreOffice resumable install without exposing local artifacts', async () => {
+    const dbBridge = createDbBridgeMock({
+      listOfficialPlugins: {
+        ok: true,
+        value: [
+          officialPlugin({
+            pluginId: 'libreoffice',
+            displayName: 'LibreOffice Office PDF',
+            pluginVersion: '0.1.0',
+            availableVersion: '0.1.0',
+            runtimeKind: 'managed_external_process',
+            capabilities: ['document_conversion'],
+            installabilityStatus: 'official_remote_install_available',
+            reasons: [
+              'manual_github_install_available',
+              'automatic_download_disabled_by_policy',
+              'conversion_time_download_disabled_by_policy',
+              'requires_user_gesture',
+              'verify_before_activation',
+              'docx_only',
+            ],
+            releaseProvenance: null,
+          }),
+        ],
+      },
+      listInstalledPlugins: [],
+      getInstallOperationStatus: {
+        ok: true,
+        value: installOperation({
+          operationId: 'official-install-libreoffice-0.1.0-1',
+          pluginId: 'libreoffice',
+          pluginVersion: '0.1.0',
+          state: 'paused_retryable',
+          progressSummary: 'Download paused',
+          failureReason: 'resume_retries_exhausted',
+          diagnosticCode: 'resume_retries_exhausted',
+          terminalAt: 2,
+        }),
+      },
+      cancelInstallOperation: {
+        ok: true,
+        value: installOperation({
+          operationId: 'official-install-libreoffice-0.1.0-1',
+          pluginId: 'libreoffice',
+          pluginVersion: '0.1.0',
+          state: 'cancelled',
+          terminalAt: 3,
+        }),
+      },
+    })
+    ;(globalThis as any).dbBridge = dbBridge
+
+    const { container } = render(PluginManagementPanel)
+
+    await screen.findByText('LibreOffice Office PDF')
+    await waitFor(() => {
+      expect(container.textContent).toContain('Install: Download paused')
+    })
+    const cancelButton = screen.getByRole('button', { name: 'Cancel install' }) as HTMLButtonElement
+    await waitFor(() => {
+      expect(cancelButton.disabled).toBe(false)
+    })
+    await fireEvent.click(cancelButton)
+    await waitFor(() => {
+      expect(dbBridge.invoke).toHaveBeenCalledWith('enginePluginLifecycle.cancelInstallOperation', {
+        operationId: 'official-install-libreoffice-0.1.0-1',
+        pluginId: 'libreoffice',
+        pluginVersion: '0.1.0',
+      })
+    })
+    expect(container.textContent).not.toMatch(/[A-Za-z]:\\|file:\/\/|soffice\.exe|sha256|contentToken|storageRef/iu)
   })
 
   it('renders disabled and quarantined states safely', async () => {

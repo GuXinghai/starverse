@@ -18,8 +18,21 @@ import {
 export const DFC_LIBREOFFICE_PDF_ADAPTER_ID = 'libreoffice-docx-pdf-adapter'
 export const DFC_LIBREOFFICE_PDF_CONVERTER_NAME = 'starverse-libreoffice-docx-pdf'
 export const DFC_LIBREOFFICE_PDF_CONVERTER_VERSION = 'skeleton-1'
+export const DFC_LIBREOFFICE_PDF_PATH_POLICY_EXCEEDED = 'office_pdf_path_policy_exceeded'
+export const DFC_LIBREOFFICE_WINDOWS_X64_PATH_CAPS = Object.freeze({
+  runtimeRoot: 120,
+  sandboxRoot: 80,
+  inputPath: 130,
+  outputDir: 90,
+  profileDir: 110,
+})
 
 export type DfcLibreOfficePdfProcessRunner = (input: RunExternalProcessInput) => Promise<ExternalProcessRunResult>
+export type DfcLibreOfficePdfPathPolicyKey = keyof typeof DFC_LIBREOFFICE_WINDOWS_X64_PATH_CAPS
+export type DfcLibreOfficePdfPathLengths = Readonly<Record<DfcLibreOfficePdfPathPolicyKey, number>>
+export type DfcLibreOfficePdfPathPolicyResult =
+  | Readonly<{ ok: true; active: boolean; pathLengths: DfcLibreOfficePdfPathLengths; exceeded: readonly DfcLibreOfficePdfPathPolicyKey[]; diagnosticCode: null }>
+  | Readonly<{ ok: false; active: true; pathLengths: DfcLibreOfficePdfPathLengths; exceeded: readonly DfcLibreOfficePdfPathPolicyKey[]; diagnosticCode: typeof DFC_LIBREOFFICE_PDF_PATH_POLICY_EXCEEDED }>
 
 export type DfcLibreOfficePdfAdapterInput = Readonly<{
   assetId: string
@@ -94,10 +107,24 @@ export async function runDfcLibreOfficeDocxToPdfAdapter(
     return failClosed('blocked', processPolicy.diagnostics[0]?.code ?? 'office_pdf_process_policy_blocked', processPolicy.diagnostics[0]?.message ?? 'Office PDF process policy was blocked.', 'not_requested')
   }
 
+  const profileDir = path.join(plan.request.workingDir, 'libreoffice-profile')
+  const pathPolicy = evaluateDfcLibreOfficePdfPathPolicy({
+    runtimeRoot: input.runtime.runtime.managedRuntimeRootDir,
+    sandboxRoot: plan.request.sandboxRootDir,
+    inputPath: plan.request.sandboxInputPath,
+    outputDir: plan.request.sandboxOutputDir,
+    profileDir,
+    platform: input.runtime.platform,
+    arch: input.runtime.arch,
+    runtimeSource: input.runtime.source,
+  })
+  if (!pathPolicy.ok) {
+    return failClosed('blocked', pathPolicy.diagnosticCode, 'Office PDF conversion is blocked by the controlled short-path policy.', 'not_requested')
+  }
+
   await mkdir(path.dirname(plan.request.sandboxInputPath), { recursive: true })
   await mkdir(plan.request.sandboxOutputDir, { recursive: true })
   await mkdir(plan.request.workingDir, { recursive: true })
-  const profileDir = path.join(plan.request.workingDir, 'libreoffice-profile')
   await mkdir(profileDir, { recursive: true })
   await writeFile(plan.request.sandboxInputPath, Buffer.from(input.sourceBytes))
 
@@ -196,6 +223,37 @@ export function buildLibreOfficePdfArgs(input: Readonly<{
     `-env:UserInstallation=${pathToFileURL(input.profileDir).href}`,
     input.inputPath,
   ]
+}
+
+export function evaluateDfcLibreOfficePdfPathPolicy(input: Readonly<{
+  runtimeRoot: string
+  sandboxRoot: string
+  inputPath: string
+  outputDir: string
+  profileDir: string
+  platform?: string | null
+  arch?: string | null
+  runtimeSource?: string | null
+}>): DfcLibreOfficePdfPathPolicyResult {
+  const pathLengths: DfcLibreOfficePdfPathLengths = {
+    runtimeRoot: String(input.runtimeRoot ?? '').length,
+    sandboxRoot: String(input.sandboxRoot ?? '').length,
+    inputPath: String(input.inputPath ?? '').length,
+    outputDir: String(input.outputDir ?? '').length,
+    profileDir: String(input.profileDir ?? '').length,
+  }
+  const active = input.platform === 'win32'
+    && (input.arch === 'x64' || input.arch === null || input.arch === undefined)
+    && input.runtimeSource !== 'fake_seam'
+  if (!active) {
+    return { ok: true, active: false, pathLengths, exceeded: [], diagnosticCode: null }
+  }
+  const exceeded = (Object.keys(DFC_LIBREOFFICE_WINDOWS_X64_PATH_CAPS) as DfcLibreOfficePdfPathPolicyKey[])
+    .filter((key) => pathLengths[key] > DFC_LIBREOFFICE_WINDOWS_X64_PATH_CAPS[key])
+  if (exceeded.length === 0) {
+    return { ok: true, active: true, pathLengths, exceeded, diagnosticCode: null }
+  }
+  return { ok: false, active: true, pathLengths, exceeded, diagnosticCode: DFC_LIBREOFFICE_PDF_PATH_POLICY_EXCEEDED }
 }
 
 export async function validateDfcLibreOfficePdfOutput(input: Readonly<{

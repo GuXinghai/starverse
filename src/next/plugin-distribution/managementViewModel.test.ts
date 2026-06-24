@@ -230,6 +230,107 @@ describe('buildPdpManagementViewModel', () => {
     expect(vm.plugins[0]?.reasonCodes).toContain('repair_available')
   })
 
+  it('carries LibreOffice scoped production-approved product gate', () => {
+    const vm = buildPdpManagementViewModel({
+      registryRecords: [
+        registryRecord({
+          pluginId: 'libreoffice',
+          pluginVersion: '0.1.0',
+          installSource: 'official_catalog',
+          runtimeKind: 'managed_external_process',
+          healthStatus: 'healthy',
+          failureReason: null,
+          productGate: {
+            status: 'available',
+            productCode: null,
+            internalCode: null,
+            productionApproved: true,
+            ownerGated: false,
+            experimental: false,
+            degraded: false,
+            quarantined: false,
+            source: 'managed_manifest',
+            approvedPlatform: 'win32',
+            approvedArch: 'x64',
+            approvedInput: 'docx',
+            approvedOutput: 'pdf_attachment',
+            approvedAcquisitionModes: ['manual_github_release', 'offline_import'],
+            automaticDownloadEnabled: false,
+            postinstallDownloadEnabled: false,
+            conversionTimeDownloadEnabled: false,
+            platformPackageStatus: 'windows_x64_approved_mac_linux_deferred',
+            fallbackTargetKinds: ['markdown', 'original_file'],
+            message: 'LibreOffice Office PDF is production-approved for Windows x64 DOCX-to-PDF.',
+          },
+        }),
+      ],
+    })
+
+    expect(vm.plugins[0]?.id).toBe('libreoffice')
+    expect(vm.plugins[0]?.productGate).toMatchObject({
+      status: 'available',
+      productionApproved: true,
+      ownerGated: false,
+      experimental: false,
+      source: 'managed_manifest',
+      approvedPlatform: 'win32',
+      approvedArch: 'x64',
+      approvedInput: 'docx',
+      approvedOutput: 'pdf_attachment',
+      approvedAcquisitionModes: ['manual_github_release', 'offline_import'],
+      automaticDownloadEnabled: false,
+      conversionTimeDownloadEnabled: false,
+      fallbackTargetKinds: ['markdown', 'original_file'],
+    })
+    expect(vm.plugins[0]?.reasonCodes).not.toContain('owner_gated_experimental')
+    expect(vm.plugins[0]?.reasonCodes).not.toContain('production_approval_missing')
+    expect(JSON.stringify(vm)).not.toMatch(/[A-Za-z]:\\|file:\/\/|soffice\.exe|sha256/iu)
+  })
+
+  it('surfaces retryable official install pause with a cancel action', () => {
+    const vm = buildPdpManagementViewModel({
+      catalogEntries: [
+        catalogEntry({
+          pluginId: 'libreoffice',
+          displayName: 'LibreOffice Office PDF',
+          pluginVersion: '0.1.0',
+          runtimeKind: 'managed_external_process',
+          installabilityStatus: 'official_remote_install_available',
+          reasons: ['manual_github_install_available', 'requires_user_gesture'],
+        }),
+      ],
+    })
+
+    const managementState = buildPluginManagementStateFromSources({
+      plugin: vm.plugins[0],
+      installOperation: installOperation({
+        operationId: 'official-install-libreoffice-0.1.0-1',
+        pluginId: 'libreoffice',
+        pluginVersion: '0.1.0',
+        state: 'paused_retryable',
+        progressSummary: 'Download paused',
+        failureReason: 'resume_retries_exhausted',
+        diagnosticCode: 'resume_retries_exhausted',
+        terminalAt: 120,
+      }),
+      actionOptions: { hasOfficialRemoteInstallContract: true },
+    })
+    const actions = managementState.actions.actions
+    expect(managementState.installOperation).toMatchObject({
+      visible: true,
+      active: false,
+      terminal: true,
+      failureDisplay: 'resume_retries_exhausted',
+      rowSummary: 'Download paused',
+    })
+    expect(actions.find((action) => action.id === 'cancel_official_install')).toMatchObject({
+      enabled: true,
+      reasonCodes: [],
+    })
+    expect(actions.find((action) => action.id === 'install_official_plugin')?.enabled).toBe(true)
+    expect(JSON.stringify(vm)).not.toMatch(/[A-Za-z]:\\|file:\/\/|soffice\.exe|contentToken|storageRef/iu)
+  })
+
   it('reports newer official catalog version as update available on the installed row', () => {
     const vm = buildPdpManagementViewModel({
       catalogEntries: [

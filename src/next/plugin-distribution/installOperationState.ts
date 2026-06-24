@@ -2,6 +2,8 @@ export const PDP_OFFICIAL_INSTALL_OPERATION_STATES = [
   'accepted',
   'pending',
   'downloading',
+  'retrying',
+  'paused_retryable',
   'verifying',
   'staging',
   'registering',
@@ -22,6 +24,7 @@ const TERMINAL_STATES = new Set<PdpOfficialInstallOperationState>([
   'installed',
   'failed',
   'cancelled',
+  'paused_retryable',
   'stale',
 ])
 
@@ -29,6 +32,7 @@ const ACTIVE_STATES = new Set<PdpOfficialInstallOperationState>([
   'accepted',
   'pending',
   'downloading',
+  'retrying',
   'verifying',
   'staging',
   'registering',
@@ -36,9 +40,11 @@ const ACTIVE_STATES = new Set<PdpOfficialInstallOperationState>([
 ])
 
 const ALLOWED_TRANSITIONS: Record<PdpOfficialInstallOperationState, readonly PdpOfficialInstallOperationState[]> = {
-  accepted: ['pending', 'downloading', 'failed', 'cancelled', 'stale', 'installed'],
-  pending: ['downloading', 'failed', 'cancelled', 'stale', 'installed'],
-  downloading: ['verifying', 'failed', 'cancelled', 'stale', 'installed'],
+  accepted: ['pending', 'downloading', 'retrying', 'paused_retryable', 'failed', 'cancelled', 'stale', 'installed'],
+  pending: ['downloading', 'retrying', 'paused_retryable', 'failed', 'cancelled', 'stale', 'installed'],
+  downloading: ['retrying', 'verifying', 'paused_retryable', 'failed', 'cancelled', 'stale', 'installed'],
+  retrying: ['downloading', 'verifying', 'paused_retryable', 'failed', 'cancelled', 'stale', 'installed'],
+  paused_retryable: [],
   verifying: ['staging', 'failed', 'cancelled', 'stale', 'installed'],
   staging: ['registering', 'failed', 'cancelled', 'stale', 'installed'],
   registering: ['health_checking', 'installed', 'failed', 'cancelled', 'stale'],
@@ -62,6 +68,7 @@ export function validateOfficialInstallOperationTransition(
   to: PdpOfficialInstallOperationState
 ): Readonly<{ ok: true } | { ok: false; reason: PdpOfficialInstallOperationTransitionFailure }> {
   if (from === to) return { ok: true }
+  if (from === 'paused_retryable' && to === 'cancelled') return { ok: true }
   if (isOfficialInstallOperationTerminal(from)) {
     return { ok: false, reason: 'terminal_state' }
   }
@@ -73,6 +80,8 @@ export function validateOfficialInstallOperationTransition(
 export function labelOfficialInstallOperationPhase(state: PdpOfficialInstallOperationState): string {
   if (state === 'accepted' || state === 'pending') return 'Preparing install'
   if (state === 'downloading') return 'Downloading official package'
+  if (state === 'retrying') return 'Retrying official package download'
+  if (state === 'paused_retryable') return 'Download paused'
   if (state === 'verifying') return 'Verifying signature'
   if (state === 'staging') return 'Staging plugin'
   if (state === 'registering') return 'Registering plugin'

@@ -26,7 +26,10 @@ import { SendPlanService } from '../files/sendPlanService'
 import { FileTypeDetectionService } from '../files/fileTypeDetectionService'
 import { canOpenBetterSqliteForSuite } from '../testUtils/betterSqliteGate'
 import type { ElectronConversionBridge } from '../files/electronConversionBridge'
-import type { DfcLibreOfficePdfProcessRunner } from '../files/dfcLibreOfficePdfAdapter'
+import {
+  DFC_LIBREOFFICE_PDF_PATH_POLICY_EXCEEDED,
+  type DfcLibreOfficePdfProcessRunner,
+} from '../files/dfcLibreOfficePdfAdapter'
 import { runExternalProcess } from '../../src/next/file-type/externalProcessRunner'
 import {
   DFC_OFFICE_PDF_CAPABILITIES,
@@ -35,7 +38,9 @@ import {
   DFC_OFFICE_PDF_RUNTIME_ID,
   DFC_OFFICE_PDF_RUNTIME_KIND,
   DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
+  createDfcLibreOfficeTrustBlockedAvailabilitySummary,
   getDfcLibreOfficeManagedRuntimeRoot,
+  type DfcOfficePdfRuntimeAvailabilitySummary,
   type DfcOfficePdfRuntimeManifest,
 } from '../files/dfcManagedLibreOfficeRuntime'
 
@@ -339,6 +344,7 @@ function insertConvo(db: BetterSqlite3.Database, id: string) {
 function createWorkerHarness(options: Readonly<{
   electronConversionBridge?: ElectronConversionBridge
   officePdfProcessRunner?: DfcLibreOfficePdfProcessRunner
+  officePdfRuntimeSummary?: () => DfcOfficePdfRuntimeAvailabilitySummary | null
   storageRootDir?: string
 }> = {}) {
   const db = new BetterSqlite3(':memory:')
@@ -417,6 +423,7 @@ function createWorkerHarness(options: Readonly<{
       storageRootDir,
       electronConversionBridge: options.electronConversionBridge,
       officePdfProcessRunner: options.officePdfProcessRunner,
+      officePdfRuntimeSummary: options.officePdfRuntimeSummary,
       now: () => 1000,
     }),
     sendPlanService: new SendPlanService({
@@ -432,6 +439,7 @@ function createWorkerHarness(options: Readonly<{
       storageRootDir,
     }),
     fileStorageRootDir: storageRootDir,
+    officePdfRuntimeSummary: options.officePdfRuntimeSummary,
   } as any)
   return { db, handlers, message, conversationAttachmentService, fileTypeDetectionCoordinator, fileTypeVerdictRepo }
 }
@@ -1700,6 +1708,86 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     expect(ensuredJson).not.toContain(storageUri)
   })
 
+  it('blocks DOCX pdf_attachment for trust-blocked LibreOffice packages before process launch', async () => {
+    let processLaunches = 0
+    const { handlers } = createWorkerHarness({
+      officePdfRuntimeSummary: () => createDfcLibreOfficeTrustBlockedAvailabilitySummary({
+        message: 'signature invalid for managed package',
+        trustStates: ['signature_invalid'],
+        distributionStates: ['distribution_mode_unapproved', 'download_disabled_by_policy'],
+        diagnosticCode: 'signature_invalid',
+      }),
+      officePdfProcessRunner: async () => {
+        processLaunches += 1
+        throw new Error('process runner must not be reached')
+      },
+    })
+    const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
+    const runtimeRoot = getDfcLibreOfficeManagedRuntimeRoot(storageRootDir)
+    await writeLibreOfficeRuntimeFixture(runtimeRoot)
+    const assetId = 'asset-docx-office-pdf-trust-blocked-runtime'
+    const storageUri = 'assets/original/dt/asset-docx-office-pdf-trust-blocked-runtime.docx'
+    const docxBytes = createMinimalDocxBuffer()
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), docxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-trust-blocked-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-docx-office-pdf-trust-blocked-source-hash',
+        filename: 'office-pdf-trust-blocked.docx',
+        extension: 'docx',
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        sizeBytes: docxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-trust-blocked-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-trust-blocked-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const options = (ensured as any).result.options as any[]
+    const pdfOption = options.find((option) => option.targetKind === 'pdf_attachment')
+    const markdownOption = options.find((option) => option.targetKind === 'markdown')
+    const originalOption = options.find((option) => option.targetKind === 'original_file')
+
+    expect(processLaunches).toBe(0)
+    expect(pdfOption).toMatchObject({
+      targetKind: 'pdf_attachment',
+      status: 'blocked',
+      isAvailable: false,
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({
+        code: 'conversion_sandbox_denied',
+        productCode: 'conversion_sandbox_denied',
+        internalCode: 'office_pdf_runtime_quarantined',
+        runtimeStatus: 'blocked',
+        productionApproved: false,
+        ownerGated: true,
+        experimental: true,
+        degraded: true,
+        fallbackTargetKinds: ['markdown', 'original_file'],
+      })],
+    })
+    expect(markdownOption).toMatchObject({ targetKind: 'markdown', status: 'ready', isAvailable: true })
+    expect(originalOption).toMatchObject({ targetKind: 'original_file', status: 'ready', isAvailable: true })
+    const ensuredJson = JSON.stringify((ensured as any).result)
+    expect(ensuredJson).not.toContain(runtimeRoot)
+    expect(ensuredJson).not.toContain(storageUri)
+    expect(ensuredJson).not.toContain('signature invalid for managed package')
+  })
+
   it('accepts a fake LibreOffice runtime gate fixture without running Office-to-PDF conversion', async () => {
     const { db, handlers } = createWorkerHarness()
     const storageRootDir = path.resolve(process.cwd(), '.tmp-file-pipeline-worker-tests')
@@ -1951,6 +2039,112 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
     expect(previewJson).not.toContain('%PDF-')
     expect(sendPlanJson).not.toContain(derivativeRow.storageUri)
     expect(sendPlanJson).not.toContain('%PDF-')
+  })
+
+  it('blocks DOCX pdf_attachment before process launch when the LibreOffice path policy is exceeded', async () => {
+    let processLaunches = 0
+    const { db, handlers } = createWorkerHarness({
+      storageRootDir: path.join(os.tmpdir(), 'm36lo-worker-storage', 'r'.repeat(90)),
+      officePdfProcessRunner: async () => {
+        processLaunches += 1
+        return {
+          exitCode: 0,
+          signal: null,
+          stdout: '',
+          stderr: '',
+          timedOut: false,
+          outputLimited: false,
+          terminationAttempted: false,
+          terminated: true,
+          errorCode: null,
+          elapsedMs: 10,
+        }
+      },
+    })
+    const storageRootDir = path.join(os.tmpdir(), 'm36lo-worker-storage', 'r'.repeat(90))
+    const runtimeRoot = getDfcLibreOfficeManagedRuntimeRoot(storageRootDir)
+    await writeLibreOfficeRuntimeFixture(runtimeRoot, {
+      officialRelease: {
+        sourceKind: 'official',
+        packageRef: 'fixtures/libreoffice-official-test.zip',
+        releaseTag: 'test-libreoffice-official-fixture',
+        provenance: 'starverse-test-fixture',
+      },
+    })
+    const assetId = 'asset-docx-office-pdf-path-policy'
+    const storageUri = 'assets/original/do/asset-docx-office-pdf-path-policy.docx'
+    const docxBytes = createMinimalDocxBuffer()
+    await mkdir(path.dirname(path.join(storageRootDir, ...storageUri.split('/'))), { recursive: true })
+    await writeFile(path.join(storageRootDir, ...storageUri.split('/')), docxBytes)
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-path-policy-asset',
+      method: 'fileAsset.create',
+      params: {
+        id: assetId,
+        sha256: 'asset-docx-office-pdf-path-policy-source-hash',
+        filename: 'office-pdf-path-policy.docx',
+        extension: 'docx',
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        sizeBytes: docxBytes.byteLength,
+        assetKind: 'document',
+        sourceKind: 'local_upload',
+        storageUri,
+        ingestStatus: 'stored',
+      },
+    })
+    await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-path-policy-draft-add',
+      method: 'conversationDraft.addAttachment',
+      params: { conversationId: 'c1', assetId },
+    })
+
+    const ensured = await dispatchWorkerMessage(handlers, {
+      id: 'req-docx-office-pdf-path-policy-ensure',
+      method: 'conversationDraft.ensureDfcOptions',
+      params: { conversationId: 'c1', assetId },
+    })
+    const pdfOption = (ensured as any).result.options.find((option: any) => option.targetKind === 'pdf_attachment')
+    const readyPdfCount = (db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM file_derivatives
+      WHERE parent_asset_id=@assetId AND derived_kind='converted_pdf' AND status='ready'
+    `).get({ assetId }) as { count: number }).count
+    const generationState = db.prepare(`
+      SELECT status, error_code AS errorCode
+      FROM dfc_option_generation_states
+      WHERE asset_id=@assetId AND target_kind='pdf_attachment'
+      LIMIT 1
+    `).get({ assetId }) as { status: string; errorCode: string | null }
+
+    expect(processLaunches).toBe(0)
+    expect(pdfOption).toMatchObject({
+      targetKind: 'pdf_attachment',
+      sendStrategy: 'file_attachment',
+      status: 'blocked',
+      isAvailable: false,
+      compatibilityStatus: 'blocked',
+      sendAssetRefs: [],
+      diagnostics: [expect.objectContaining({
+        code: 'conversion_sandbox_denied',
+        productCode: 'conversion_sandbox_denied',
+        internalCode: 'office_pdf_runtime_quarantined',
+        runtimeStatus: 'blocked',
+        productionApproved: false,
+        ownerGated: true,
+        experimental: true,
+        fallbackTargetKinds: ['markdown', 'original_file'],
+      })],
+    })
+    expect(generationState).toMatchObject({
+      status: 'blocked',
+      errorCode: 'conversion_sandbox_denied',
+    })
+    expect(readyPdfCount).toBe(0)
+    const ensuredJson = JSON.stringify((ensured as any).result)
+    expect(ensuredJson).not.toContain(storageUri)
+    expect(ensuredJson).not.toContain(runtimeRoot)
+    expect(ensuredJson).not.toContain('soffice')
+    expect(ensuredJson).not.toContain(DFC_LIBREOFFICE_PDF_PATH_POLICY_EXCEEDED)
   })
 
   it('fails closed for DOCX pdf_attachment fake process failure without exposing process diagnostics', async () => {

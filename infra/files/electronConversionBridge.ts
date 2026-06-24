@@ -5,9 +5,14 @@ import {
   type ElectronConversionRequest,
   type ElectronConversionResponse,
 } from './electronConversionServiceContract'
+import type {
+  PackageDownloadFileTransportRequest,
+  PackageDownloadFileTransportResult,
+} from '../../src/next/plugin-distribution/packageDownloader'
 
 export type ElectronConversionBridge = Readonly<{
   convert: (request: ElectronConversionRequest) => Promise<ElectronConversionResponse>
+  fetchPackageToFile?: (request: PackageDownloadFileTransportRequest) => Promise<PackageDownloadFileTransportResult>
 }>
 
 type WorkerConversionPort = Readonly<{
@@ -26,6 +31,13 @@ export function createUnavailableElectronConversionBridge(): ElectronConversionB
         message: 'Electron conversion service is unavailable.',
       })
     },
+    async fetchPackageToFile() {
+      return {
+        ok: false,
+        code: 'download_failed',
+        detail: 'electron_package_download_service_unavailable',
+      }
+    },
   }
 }
 
@@ -34,15 +46,38 @@ export function createWorkerThreadElectronConversionBridge(port: WorkerConversio
     resolve: (response: ElectronConversionResponse) => void
     timer: NodeJS.Timeout
   }>()
+  const packageDownloads = new Map<string, {
+    resolve: (response: PackageDownloadFileTransportResult) => void
+    timer: NodeJS.Timeout
+    onProgress?: PackageDownloadFileTransportRequest['onProgress']
+  }>()
 
   port.on('message', (message: any) => {
-    if (!message || message.type !== 'electron-conversion-response') return
-    const id = typeof message.id === 'string' ? message.id : ''
-    const entry = pending.get(id)
-    if (!entry) return
-    pending.delete(id)
-    clearTimeout(entry.timer)
-    entry.resolve(message.response as ElectronConversionResponse)
+    if (!message) return
+    if (message.type === 'electron-conversion-response') {
+      const id = typeof message.id === 'string' ? message.id : ''
+      const entry = pending.get(id)
+      if (!entry) return
+      pending.delete(id)
+      clearTimeout(entry.timer)
+      entry.resolve(message.response as ElectronConversionResponse)
+      return
+    }
+    if (message.type === 'electron-package-download-progress') {
+      const id = typeof message.id === 'string' ? message.id : ''
+      const entry = packageDownloads.get(id)
+      if (!entry) return
+      entry.onProgress?.(message.progress)
+      return
+    }
+    if (message.type === 'electron-package-download-response') {
+      const id = typeof message.id === 'string' ? message.id : ''
+      const entry = packageDownloads.get(id)
+      if (!entry) return
+      packageDownloads.delete(id)
+      clearTimeout(entry.timer)
+      entry.resolve(message.response as PackageDownloadFileTransportResult)
+    }
   })
 
   return {
@@ -64,6 +99,31 @@ export function createWorkerThreadElectronConversionBridge(port: WorkerConversio
           type: 'electron-conversion-request',
           id,
           request,
+        })
+      })
+    },
+    async fetchPackageToFile(request) {
+      return await new Promise<PackageDownloadFileTransportResult>((resolve) => {
+        const id = `package-download:${Date.now()}:${Math.random().toString(36).slice(2)}`
+        const timer = setTimeout(() => {
+          packageDownloads.delete(id)
+          resolve({
+            ok: false,
+            code: 'download_failed',
+            detail: 'electron_package_download_timeout',
+          })
+        }, 6 * 60 * 60 * 1000)
+        packageDownloads.set(id, { resolve, timer, onProgress: request.onProgress })
+        port.postMessage({
+          type: 'electron-package-download-request',
+          id,
+          request: {
+            transportRef: request.transportRef,
+            maxBytes: request.maxBytes,
+            outputPath: request.outputPath,
+            resume: request.resume,
+            proxy: request.proxy,
+          },
         })
       })
     },

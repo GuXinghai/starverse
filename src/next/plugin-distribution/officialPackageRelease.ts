@@ -3,8 +3,9 @@ import {
   type DownloadOfficialPackageInput,
   type PackageDownloadFailureReason,
   type PackageDownloadTransport,
-  type StagedDownloadedPackage,
+  type StagedDownloadedMemoryPackage,
 } from './packageDownloader'
+import type { NetworkProxySettings } from './networkProxy'
 import {
   verifyPluginPackageCryptographicTrust,
   type CryptoVerificationEnvironment,
@@ -41,7 +42,7 @@ export type OfficialPackageReleaseVerificationResult =
   | Readonly<{
       ok: true
       status: 'downloaded_verified_trusted'
-      stagedPackage: StagedDownloadedPackage
+      stagedPackage: StagedDownloadedMemoryPackage
       crypto: PluginCryptoVerificationResult
     }>
   | Readonly<{
@@ -59,6 +60,7 @@ export type VerifyOfficialPackageReleaseInput = Readonly<{
   now?: Date
   previousTrustedVersion?: string | null
   signal?: AbortSignal
+  proxy?: NetworkProxySettings
 }>
 
 export async function verifyOfficialPackageReleaseDownload(
@@ -82,6 +84,7 @@ export async function verifyOfficialPackageReleaseDownload(
     policy: input.release.downloadPolicy,
     transport: input.transport,
     signal: input.signal,
+    proxy: input.proxy,
   })
   if (!download.ok) {
     return fail(

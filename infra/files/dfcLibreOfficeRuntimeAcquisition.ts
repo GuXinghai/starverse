@@ -4,7 +4,7 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
   downloadOfficialPackageToMemory,
-  type PackageDownloadResult,
+  type PackageDownloadMemoryResult,
   type PackageDownloadTransport,
 } from '../../src/next/plugin-distribution/packageDownloader'
 import type { DownloadPolicyCatalogPackageRef } from '../../src/next/plugin-distribution/downloadPolicy'
@@ -293,10 +293,10 @@ function mapDownloadFailure(reasons: readonly string[]): DfcLibreOfficeRuntimeAc
 }
 
 function withDownloadTimeout(
-  download: Promise<PackageDownloadResult>,
+  download: Promise<PackageDownloadMemoryResult>,
   timeoutMs: number,
   controller: AbortController
-): Promise<PackageDownloadResult> {
+): Promise<PackageDownloadMemoryResult> {
   return new Promise((resolve) => {
     let settled = false
     const timeout = setTimeout(() => {

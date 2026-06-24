@@ -2,6 +2,7 @@ import BetterSqlite3 from 'better-sqlite3'
 import {
   SETTINGS_KEY_CHAT_REASONING_PANEL_DEFAULT_EXPANDED,
   SETTINGS_KEY_CHAT_REASONING_DISPLAY_MODE,
+  SETTINGS_KEY_NETWORK_PROXY,
   SETTINGS_KEY_IMAGE_GENERATION_DEFAULT,
   SETTINGS_KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS,
   SETTINGS_KEY_REASONING_PREFS,
@@ -9,6 +10,11 @@ import {
   SETTINGS_KEY_USER_MESSAGE_RENDER_DEFAULT,
   SETTINGS_KEY_WEB_SEARCH_DEFAULTS,
 } from './settingsKeys'
+import {
+  normalizeNetworkProxySettings,
+  proxyUrlContainsCredentials,
+  type NetworkProxySettings,
+} from '../../../src/next/plugin-distribution/networkProxy'
 
 type SqlDatabase = BetterSqlite3.Database
 
@@ -151,6 +157,18 @@ export class SettingsRepo {
   setChatReasoningPanelDefaultExpanded(value: boolean): void {
     if (typeof value !== 'boolean') throw new Error('value must be boolean')
     this.writeJson(SETTINGS_KEY_CHAT_REASONING_PANEL_DEFAULT_EXPANDED, value)
+  }
+
+  getNetworkProxySettings(): NetworkProxySettings {
+    return normalizeNetworkProxySettings(this.readJson(SETTINGS_KEY_NETWORK_PROXY))
+  }
+
+  setNetworkProxySettings(value: unknown): void {
+    const normalized = normalizeNetworkProxySettings(value)
+    if (proxyUrlContainsCredentials(normalized.manualProxyUrl)) {
+      throw new Error('proxy credentials require secure storage and are not accepted in the proxy URL')
+    }
+    this.writeJson(SETTINGS_KEY_NETWORK_PROXY, normalized)
   }
 
   getChatDraft(key: string): string | null {

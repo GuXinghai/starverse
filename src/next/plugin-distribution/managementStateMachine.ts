@@ -272,14 +272,17 @@ function applyInstallOperationActionOverlay(
   projection: PdpManagementInstallOperationProjection
 ): PdpManagementActionSet {
   const installBlockReason = projection.installBlockReason
-  if (!installBlockReason) return actionSet
+  if (!installBlockReason && projection.failureDisplay !== 'resume_retries_exhausted') return actionSet
   return {
     ...actionSet,
-    actions: actionSet.actions.map((action) =>
-      action.id === 'install_official_plugin'
+    actions: actionSet.actions.map((action) => {
+      if (action.id === 'cancel_official_install' && projection.failureDisplay === 'resume_retries_exhausted') {
+        return { ...action, enabled: true, reasonCodes: [] }
+      }
+      return action.id === 'install_official_plugin' && installBlockReason
         ? disableAction(action, installBlockReason)
         : action
-    ),
+    }),
   }
 }
 

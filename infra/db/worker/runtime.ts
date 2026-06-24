@@ -38,7 +38,12 @@ import { SendPlanService } from '../../files/sendPlanService'
 import { FileTypeDetectionService } from '../../files/fileTypeDetectionService'
 import { FileTypeDetectionCoordinator } from '../../files/fileTypeDetectionCoordinator'
 import { EnginePluginLifecycleService } from '../../files/enginePluginLifecycleService'
-import { getDfcLibreOfficeManagedRuntimeRoot } from '../../files/dfcManagedLibreOfficeRuntime'
+import { createDfcLibreOfficeOfficialAssetBodyInterceptFromEnv } from '../../files/dfcLibreOfficeOfficialAssetBodyIntercept'
+import { fetchPackageToFileWithFetch, type PackageDownloadTransport } from '../../../src/next/plugin-distribution/packageDownloader'
+import {
+  getDfcLibreOfficeManagedRuntimeRoot,
+  type DfcOfficePdfRuntimeAvailabilitySummary,
+} from '../../files/dfcManagedLibreOfficeRuntime'
 import { getActiveTrustedRoots } from '../../../src/next/file-type/officialPluginTrustedRoots'
 import {
   createManagedPluginMagikaRuntimeLoader,
@@ -82,6 +87,33 @@ export function collectActiveMagikaRuntimePluginDirs(input: {
   )
   if (!activeMagika) return []
   return [resolveEnginePluginDir(input.storageRootDir, activeMagika.installRootKind, activeMagika.installRef)]
+}
+
+function createElectronSystemAwareOfficialPackageTransport(
+  bridge: WorkerInitConfig['electronConversionBridge']
+): PackageDownloadTransport {
+  return {
+    async fetchPackage() {
+      return {
+        ok: false,
+        code: 'download_failed',
+        detail: 'memory_fetch_unavailable_for_large_official_package',
+      }
+    },
+    async fetchPackageToFile(request) {
+      if (request.proxy?.proxyMode === 'system') {
+        if (!bridge?.fetchPackageToFile) {
+          return {
+            ok: false,
+            code: 'download_failed',
+            detail: 'electron_package_download_service_unavailable',
+          }
+        }
+        return bridge.fetchPackageToFile(request)
+      }
+      return fetchPackageToFileWithFetch(request)
+    },
+  }
 }
 
 export function createRegistryGatedMagikaRuntimeLoader(input: Readonly<{
@@ -173,6 +205,7 @@ export class DbWorkerRuntime {
   readonly modelCatalogRepo: ModelCatalogRepo
   readonly reasoningModelIndexRepo: ReasoningModelIndexRepo
   readonly settingsRepo: SettingsRepo
+  readonly officePdfRuntimeSummary?: () => DfcOfficePdfRuntimeAvailabilitySummary | null
   private handlers: WorkerHandlerMap = new Map()
   inboxId: string = ''
   private activityThrottle = new Map<string, { timer: ReturnType<typeof setTimeout>; updatedAt: number }>()
@@ -183,6 +216,7 @@ export class DbWorkerRuntime {
   // eslint-disable-next-line max-lines-per-function, max-statements
   constructor(config: WorkerInitConfig) {
     console.log('[DbWorkerRuntime] 开始初始化, config:', config)
+    this.officePdfRuntimeSummary = config.officePdfRuntimeSummary
     
     if (!config.dbPath) {
       throw new DbWorkerError('ERR_INTERNAL', 'dbPath missing for worker initialization')
@@ -265,6 +299,7 @@ export class DbWorkerRuntime {
     this.enginePluginRegistryRepo = new EnginePluginRegistryRepo(this.db)
     this.messageAttachmentRepo = new MessageAttachmentRepo(this.db)
     this.conversationDraftRepo = new ConversationDraftRepo(this.db)
+    this.settingsRepo = new SettingsRepo(this.db)
     this.branchRepo = new BranchRepo(this.db)
     this.conversationAttachmentService = new ConversationAttachmentService({
       db: this.db,
@@ -303,6 +338,8 @@ export class DbWorkerRuntime {
       isProduction: config.isProduction,
       includeEmbeddedOfficialRoot: true,
     })
+    const officialPackageTransport = createDfcLibreOfficeOfficialAssetBodyInterceptFromEnv() ??
+      createElectronSystemAwareOfficialPackageTransport(config.electronConversionBridge)
     this.enginePluginLifecycleService = new EnginePluginLifecycleService({
       registryRepo: this.enginePluginRegistryRepo,
       trustedRoots: activeTrustedRoots.ok ? activeTrustedRoots.trustedRoots : {},
@@ -311,7 +348,10 @@ export class DbWorkerRuntime {
         const safeRef = installRef.replace(/[^a-zA-Z0-9._-]+/g, '_')
         return path.join(this.fileStorageRootDir, 'engine-plugins', installRootKind, safeRef)
       },
+      dfcLibreOfficeAppManagedRootDir: this.fileStorageRootDir,
       dfcLibreOfficeManagedRuntimeRootDir: getDfcLibreOfficeManagedRuntimeRoot(this.fileStorageRootDir),
+      officialPackageTransport,
+      networkProxySettingsProvider: () => this.settingsRepo.getNetworkProxySettings(),
     })
     this.contextRepo = new ContextRepo(this.db, this.branchRepo)
     this.searchRepo = new SearchRepo(this.db)
@@ -328,9 +368,9 @@ export class DbWorkerRuntime {
       storageRootDir: this.fileStorageRootDir,
       electronConversionBridge: config.electronConversionBridge,
       officePdfProcessRunner: config.officePdfProcessRunner,
+      officePdfRuntimeSummary: config.officePdfRuntimeSummary,
     })
     this.reasoningModelIndexRepo = new ReasoningModelIndexRepo(this.db)
-    this.settingsRepo = new SettingsRepo(this.db)
     this.handlers = createWorkerHandlerContainer(this).handlers
   }
 

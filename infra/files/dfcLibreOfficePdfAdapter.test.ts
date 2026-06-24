@@ -4,7 +4,10 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { RunExternalProcessInput } from '../../src/next/file-type/externalProcessRunner'
 import {
+  DFC_LIBREOFFICE_PDF_PATH_POLICY_EXCEEDED,
+  DFC_LIBREOFFICE_WINDOWS_X64_PATH_CAPS,
   buildLibreOfficePdfArgs,
+  evaluateDfcLibreOfficePdfPathPolicy,
   runDfcLibreOfficeDocxToPdfAdapter,
   validateDfcLibreOfficePdfOutput,
 } from './dfcLibreOfficePdfAdapter'
@@ -86,6 +89,65 @@ describe('DFC LibreOffice DOCX to PDF adapter skeleton', () => {
       output: null,
       diagnostics: [expect.objectContaining({ code: 'office_pdf_process_runner_unavailable' })],
     })
+  })
+
+  it('fails closed before process launch when the Windows x64 short-path policy is exceeded', async () => {
+    const runtime = await fakeRuntime()
+    const longRuntimeRoot = path.join(os.tmpdir(), `starverse-dfc-office-runtime-${'r'.repeat(DFC_LIBREOFFICE_WINDOWS_X64_PATH_CAPS.runtimeRoot)}`)
+    let called = false
+
+    const policy = evaluateDfcLibreOfficePdfPathPolicy({
+      runtimeRoot: longRuntimeRoot,
+      sandboxRoot: path.join(os.tmpdir(), 'm36lo-s'),
+      inputPath: path.join(os.tmpdir(), 'm36lo-s', 'input', 'asset-docx-pdf-path-policy.docx'),
+      outputDir: path.join(os.tmpdir(), 'm36lo-s', 'output'),
+      profileDir: path.join(os.tmpdir(), 'm36lo-s', 'work', 'libreoffice-profile'),
+      platform: 'win32',
+      arch: 'x64',
+      runtimeSource: 'managed_manifest',
+    })
+
+    const result = await runDfcLibreOfficeDocxToPdfAdapter({
+      assetId: 'asset-docx-pdf-path-policy',
+      sourceExtension: 'docx',
+      sourceBytes: Buffer.from('fake docx bytes'),
+      sandboxRootDir: path.join(os.tmpdir(), 'm36lo-s'),
+      runtime: {
+        ...runtime,
+        platform: 'win32',
+        arch: 'x64',
+        source: 'managed_manifest',
+        executablePath: path.join(longRuntimeRoot, 'program', 'soffice.exe'),
+        runtime: {
+          ...runtime.runtime,
+          platform: 'win32',
+          arch: 'x64',
+          managedRuntimeRootDir: longRuntimeRoot,
+        },
+      },
+      processRunner: async () => {
+        called = true
+        return okProcess()
+      },
+    })
+
+    expect(policy).toMatchObject({
+      ok: false,
+      active: true,
+      diagnosticCode: DFC_LIBREOFFICE_PDF_PATH_POLICY_EXCEEDED,
+    })
+    expect(called).toBe(false)
+    expect(result).toMatchObject({
+      ok: false,
+      status: 'blocked',
+      output: null,
+      diagnostics: [expect.objectContaining({ code: DFC_LIBREOFFICE_PDF_PATH_POLICY_EXCEEDED })],
+      cleanupStatus: 'not_requested',
+    })
+    const serialized = JSON.stringify(result)
+    expect(serialized).not.toContain(longRuntimeRoot)
+    expect(serialized).not.toContain('soffice')
+    expect(serialized).not.toContain(os.tmpdir())
   })
 
   it.each([

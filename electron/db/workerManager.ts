@@ -48,6 +48,7 @@ import type {
   DbEvent,
   WorkerEventMessage,
   ElectronConversionWorkerRequestMessage,
+  ElectronPackageDownloadWorkerRequestMessage,
   WorkerInitConfig,
 } from '../../infra/db/types'
 import { DbWorkerError } from '../../infra/db/errors'
@@ -188,7 +189,7 @@ export class DbWorkerManager {
             this.worker = undefined
             this.startPromise = undefined
           })
-          worker.on('message', (message: WorkerResponseMessage | WorkerEventMessage | ElectronConversionWorkerRequestMessage) => this.handleMessage(message))
+          worker.on('message', (message: WorkerResponseMessage | WorkerEventMessage | ElectronConversionWorkerRequestMessage | ElectronPackageDownloadWorkerRequestMessage) => this.handleMessage(message))
           worker.on('exit', (code) => {
             const wasStopping = this.stopping
             this.stopping = false
@@ -434,9 +435,13 @@ export class DbWorkerManager {
    * - Worker 返回的错误会被包装为 DbWorkerError
    * - 错误码 (errorCode) 用于区分错误类型
    */
-  private handleMessage(message: WorkerResponseMessage | WorkerEventMessage | ElectronConversionWorkerRequestMessage) {
+  private handleMessage(message: WorkerResponseMessage | WorkerEventMessage | ElectronConversionWorkerRequestMessage | ElectronPackageDownloadWorkerRequestMessage) {
     if ('type' in message && message.type === 'electron-conversion-request') {
       this.handleElectronConversionRequest(message)
+      return
+    }
+    if ('type' in message && message.type === 'electron-package-download-request') {
+      this.handleElectronPackageDownloadRequest(message)
       return
     }
     // 处理事件消息
@@ -494,6 +499,51 @@ export class DbWorkerManager {
             code: 'electron_conversion_blocked',
             message: error instanceof Error ? error.message : String(error),
           }),
+        })
+      })
+  }
+
+  private handleElectronPackageDownloadRequest(message: ElectronPackageDownloadWorkerRequestMessage) {
+    const worker = this.worker
+    const bridge = this.options.electronConversionBridge
+    if (!bridge?.fetchPackageToFile) {
+      worker?.postMessage({
+        type: 'electron-package-download-response',
+        id: message.id,
+        response: {
+          ok: false,
+          code: 'download_failed',
+          detail: 'electron_package_download_service_unavailable',
+        },
+      })
+      return
+    }
+    Promise.resolve(bridge.fetchPackageToFile({
+      ...message.request,
+      onProgress: (progress) => {
+        worker?.postMessage({
+          type: 'electron-package-download-progress',
+          id: message.id,
+          progress,
+        })
+      },
+    }))
+      .then((response) => {
+        worker?.postMessage({
+          type: 'electron-package-download-response',
+          id: message.id,
+          response,
+        })
+      })
+      .catch((error) => {
+        worker?.postMessage({
+          type: 'electron-package-download-response',
+          id: message.id,
+          response: {
+            ok: false,
+            code: 'download_failed',
+            detail: error instanceof Error ? error.message : String(error),
+          },
         })
       })
   }

@@ -1,7 +1,9 @@
 import os from 'node:os'
 import path from 'node:path'
+import { EventEmitter } from 'node:events'
 import { describe, expect, it } from 'vitest'
 import {
+  createWorkerThreadElectronConversionBridge,
   createUnavailableElectronConversionBridge,
   requestElectronConversion,
 } from './electronConversionBridge'
@@ -43,6 +45,52 @@ function validRequest(overrides: Partial<ElectronConversionRequest> = {}): Elect
 }
 
 describe('electron conversion bridge boundary', () => {
+  it('forwards official package file downloads over the worker/main bridge with progress', async () => {
+    const workerSide = new EventEmitter() as EventEmitter & {
+      postMessage: (message: unknown) => void
+    }
+    const mainSide = new EventEmitter() as EventEmitter & {
+      postMessage: (message: unknown) => void
+    }
+    workerSide.postMessage = (message: unknown) => {
+      setImmediate(() => mainSide.emit('message', message))
+    }
+    mainSide.postMessage = (message: unknown) => {
+      setImmediate(() => workerSide.emit('message', message))
+    }
+    mainSide.on('message', (message: any) => {
+      if (message?.type !== 'electron-package-download-request') return
+      mainSide.postMessage({
+        type: 'electron-package-download-progress',
+        id: message.id,
+        progress: { bytesReceived: 10, totalBytes: 20, phase: 'downloading' },
+      })
+      mainSide.postMessage({
+        type: 'electron-package-download-response',
+        id: message.id,
+        response: {
+          ok: true,
+          filePath: message.request.outputPath,
+          sizeBytes: 20,
+          sha256: 'a'.repeat(64),
+          finalRef: 'https://release-assets.githubusercontent.com/github-production-release-asset/test/pkg.svpkg',
+        },
+      })
+    })
+
+    const progress: unknown[] = []
+    const result = await createWorkerThreadElectronConversionBridge(workerSide).fetchPackageToFile?.({
+      transportRef: 'https://github.com/GuXinghai/starverse/releases/download/test/pkg.svpkg',
+      maxBytes: 1024,
+      outputPath: path.join(root, 'download', 'pkg.svpkg'),
+      onProgress: (value) => progress.push(value),
+      proxy: { proxyMode: 'system', manualProxyUrl: '', noProxy: '', strictSSL: true },
+    })
+
+    expect(result).toMatchObject({ ok: true, sizeBytes: 20 })
+    expect(progress).toEqual([expect.objectContaining({ phase: 'downloading', bytesReceived: 10 })])
+  })
+
   it('fails closed when the worker/main conversion bridge is unavailable', async () => {
     const response = await requestElectronConversion(null, validRequest())
 

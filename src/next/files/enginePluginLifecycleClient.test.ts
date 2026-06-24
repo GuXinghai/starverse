@@ -4,9 +4,11 @@ import {
   disablePlugin,
   enablePlugin,
   getInstallOperationStatus,
+  importLibreOfficeSvpkg,
   installOfficialPlugin,
   listInstalledPlugins,
   listOfficialPlugins,
+  quarantineLibreOfficeRuntime,
   registerLocalOfficialPlugin,
   runPluginHealthCheck,
   uninstallPlugin,
@@ -20,9 +22,11 @@ import {
 // eslint-disable-next-line max-lines-per-function
 describe('enginePluginLifecycleClient', () => {
   const originalDbBridge = (globalThis as any).dbBridge
+  const originalElectronApi = (globalThis as any).electronAPI
 
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
+    ;(globalThis as any).electronAPI = originalElectronApi
     vi.restoreAllMocks()
   })
 
@@ -48,6 +52,19 @@ describe('enginePluginLifecycleClient', () => {
             updatedAt: 2,
             lastVerifiedAt: 2,
             lastHealthCheckAt: 3,
+            productGate: {
+              status: 'degraded',
+              productCode: 'owner_gate_not_production_approved',
+              internalCode: 'office_pdf_runtime_experimental',
+              productionApproved: false,
+              ownerGated: true,
+              experimental: true,
+              degraded: true,
+              quarantined: false,
+              source: 'managed_manifest',
+              fallbackTargetKinds: ['markdown', 'original_file'],
+              message: 'LibreOffice Office PDF is owner-gated and experimental.',
+            },
           },
         ]
       }
@@ -182,6 +199,8 @@ describe('enginePluginLifecycleClient', () => {
 
     expect(official.ok).toBe(true)
     expect(installed[0]?.engineId).toBe('magika')
+    expect(installed[0]?.productGate?.productionApproved).toBe(false)
+    expect(installed[0]?.productGate?.fallbackTargetKinds).toEqual(['markdown', 'original_file'])
     expect(registered.ok).toBe(true)
     expect(installedOfficial.ok).toBe(true)
     expect(installStatus.ok).toBe(true)
@@ -190,6 +209,66 @@ describe('enginePluginLifecycleClient', () => {
     expect(disabled.ok).toBe(true)
     expect(uninstalled.ok).toBe(true)
     expect(health.ok).toBe(true)
+  })
+
+  it('routes LibreOffice package import and quarantine through narrow electronAPI methods', async () => {
+    const dbInvoke = vi.fn()
+    const importLibreOffice = vi.fn(async () => ({
+      ok: true,
+      value: {
+        engineId: 'libreoffice',
+        displayName: 'LibreOffice Office PDF',
+        pluginVersion: '0.1.0',
+        manifestSchemaVersion: '1',
+        runtimeKind: 'managed_external_process',
+        runtimeVersion: '24.8.0',
+        modelVersion: null,
+        installState: 'installed',
+        enabled: true,
+        healthStatus: 'degraded',
+        failureReason: 'owner_gate_not_production_approved',
+        installSource: 'local_package',
+        installRootKind: 'managed_root',
+        installedAt: 1,
+        updatedAt: 1,
+        lastVerifiedAt: 1,
+        lastHealthCheckAt: null,
+        productGate: {
+          status: 'degraded',
+          productCode: 'owner_gate_not_production_approved',
+          internalCode: 'office_pdf_runtime_experimental',
+          productionApproved: false,
+          ownerGated: true,
+          experimental: true,
+          degraded: true,
+          quarantined: false,
+          source: 'managed_manifest',
+          fallbackTargetKinds: ['markdown', 'original_file'],
+          message: 'LibreOffice Office PDF is owner-gated and experimental.',
+        },
+      },
+    }))
+    const quarantineRuntime = vi.fn(async () => ({
+      ok: false,
+      reason: 'not_installed',
+      message: 'LibreOffice managed runtime root is not configured',
+      errorChain: null,
+    }))
+    ;(globalThis as any).dbBridge = { invoke: dbInvoke }
+    ;(globalThis as any).electronAPI = {
+      importLibreOfficeSvpkg: importLibreOffice,
+      quarantineLibreOfficeRuntime: quarantineRuntime,
+    }
+
+    const imported = await importLibreOfficeSvpkg()
+    const quarantined = await quarantineLibreOfficeRuntime()
+
+    expect(imported.ok).toBe(true)
+    expect(quarantined.ok).toBe(false)
+    expect(importLibreOffice).toHaveBeenCalledWith()
+    expect(quarantineRuntime).toHaveBeenCalledWith()
+    expect(dbInvoke).not.toHaveBeenCalledWith('enginePluginLifecycle.importLibreOfficeSvpkgFromPath', expect.anything())
+    expect(dbInvoke).not.toHaveBeenCalledWith('enginePluginLifecycle.quarantineLibreOfficeRuntime', expect.anything())
   })
 })
 

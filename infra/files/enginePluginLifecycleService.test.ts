@@ -19,7 +19,22 @@ import type { OfficialPackageReleaseMetadata } from '../../src/next/plugin-distr
 import type { PackageDownloadTransport } from '../../src/next/plugin-distribution/packageDownloader'
 import { ensureEnginePluginRegistrySchema } from '../db/migrations/ensureEnginePluginRegistrySchema'
 import { EnginePluginRegistryRepo } from '../db/repo/enginePluginRegistryRepo'
-import type { DfcOfficePdfRuntimeAvailabilitySummary } from './dfcManagedLibreOfficeRuntime'
+import {
+  DFC_OFFICE_PDF_CAPABILITIES,
+  DFC_OFFICE_PDF_ENGINE_ID,
+  DFC_OFFICE_PDF_PLUGIN_ID,
+  DFC_OFFICE_PDF_QUARANTINE_MARKER,
+  DFC_OFFICE_PDF_RUNTIME_ID,
+  DFC_OFFICE_PDF_RUNTIME_KIND,
+  DFC_OFFICE_PDF_RUNTIME_MANIFEST,
+  DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
+  createDfcLibreOfficeTrustDistributionStatus,
+  getDfcLibreOfficeFirstPartyRuntimeCatalogEntry,
+  getDfcLibreOfficeManagedRuntimeRoot,
+  type DfcLibreOfficeFirstPartyRuntimeCatalogEntry,
+  type DfcOfficePdfRuntimeAvailabilitySummary,
+  type DfcOfficePdfRuntimeManifest,
+} from './dfcManagedLibreOfficeRuntime'
 import { EnginePluginLifecycleService } from './enginePluginLifecycleService'
 
 function loadSchema(db: BetterSqlite3.Database) {
@@ -148,7 +163,18 @@ function createService(
     officialPackageTransport?: PackageDownloadTransport
     readBytes?: (filePath: string) => Promise<Uint8Array>
     healthRunner?: EngineHealthRunner
+    dfcLibreOfficeOfficialRuntimeCatalogEntry?: DfcLibreOfficeFirstPartyRuntimeCatalogEntry
+    dfcLibreOfficeOfficialPackageImporter?: (input: Readonly<{
+      packageBytes: Uint8Array
+      catalog: DfcLibreOfficeFirstPartyRuntimeCatalogEntry
+    }>) => Promise<Awaited<ReturnType<EnginePluginLifecycleService['importDfcLibreOfficeSvpkg']>>>
+    dfcLibreOfficeOfficialPackageFileImporter?: (input: Readonly<{
+      packagePath: string
+      catalog: DfcLibreOfficeFirstPartyRuntimeCatalogEntry
+    }>) => Promise<Awaited<ReturnType<EnginePluginLifecycleService['importDfcLibreOfficeSvpkg']>>>
     dfcLibreOfficeRuntimeSummary?: () => DfcOfficePdfRuntimeAvailabilitySummary | null
+    dfcLibreOfficeAppManagedRootDir?: string
+    dfcLibreOfficeManagedRuntimeRootDir?: string
   }> = {}
 ) {
   const db = new BetterSqlite3(':memory:')
@@ -163,6 +189,11 @@ function createService(
     readBytes: opts.readBytes,
     healthRunner: opts.healthRunner,
     dfcLibreOfficeRuntimeSummary: opts.dfcLibreOfficeRuntimeSummary,
+    dfcLibreOfficeOfficialRuntimeCatalogEntry: opts.dfcLibreOfficeOfficialRuntimeCatalogEntry,
+    dfcLibreOfficeOfficialPackageImporter: opts.dfcLibreOfficeOfficialPackageImporter,
+    dfcLibreOfficeOfficialPackageFileImporter: opts.dfcLibreOfficeOfficialPackageFileImporter,
+    dfcLibreOfficeAppManagedRootDir: opts.dfcLibreOfficeAppManagedRootDir,
+    dfcLibreOfficeManagedRuntimeRootDir: opts.dfcLibreOfficeManagedRuntimeRootDir,
     magikaOfficialRelease: opts.magikaOfficialRelease,
     officialPackageTransport: opts.officialPackageTransport ?? (opts.officialPackageBytes
       ? {
@@ -204,6 +235,35 @@ function registryRecord(overrides?: Record<string, unknown>) {
   } as const
 }
 
+function libreOfficeInstalledDto(overrides?: Record<string, unknown>) {
+  return {
+    engineId: 'libreoffice',
+    displayName: 'LibreOffice Office PDF',
+    pluginVersion: '0.1.0',
+    installedVersion: '0.1.0',
+    availableVersion: '0.1.0',
+    packageVersion: '0.1.0',
+    manifestSchemaVersion: '1',
+    runtimeKind: 'managed_external_process',
+    runtimeVersion: '26.2.4',
+    modelVersion: null,
+    installState: 'installed',
+    enabled: true,
+    healthStatus: 'degraded',
+    failureReason: 'owner_gate_not_production_approved',
+    installSource: 'official_catalog',
+    installRootKind: 'managed_root',
+    installedAt: 1,
+    updatedAt: 2,
+    lastVerifiedAt: 2,
+    lastHealthCheckAt: null,
+    errorChain: null,
+    releaseProvenance: null,
+    previousKnownGood: null,
+    ...overrides,
+  } as const
+}
+
 function dfcLibreOfficeSummary(
   overrides: Partial<DfcOfficePdfRuntimeAvailabilitySummary> = {}
 ): DfcOfficePdfRuntimeAvailabilitySummary {
@@ -231,8 +291,119 @@ function dfcLibreOfficeSummary(
     recoverable: false,
     source: 'fake_seam',
     runtime,
+    trust: createDfcLibreOfficeTrustDistributionStatus(),
     ...overrides,
   }
+}
+
+function dfcLibreOfficeOfficialCatalogForBytes(
+  bytes: Uint8Array,
+  overrides: Partial<DfcLibreOfficeFirstPartyRuntimeCatalogEntry['acquisitionSource']> = {}
+): DfcLibreOfficeFirstPartyRuntimeCatalogEntry {
+  const catalog = getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()
+  return {
+    ...catalog,
+    acquisitionSource: {
+      ...catalog.acquisitionSource,
+      sourceUrl: 'https://github.com/GuXinghai/starverse/releases/download/test-libreoffice/test.svpkg',
+      expectedSha256: sha256(bytes),
+      expectedSizeBytes: bytes.byteLength,
+      ...overrides,
+    },
+  }
+}
+
+function streamingLibreOfficeTransportForBytes(
+  bytes: Uint8Array,
+  finalRef = 'https://github.com/GuXinghai/starverse/releases/download/test-libreoffice/test.svpkg'
+): PackageDownloadTransport & { fileCalls: number } {
+  return {
+    fileCalls: 0,
+    async fetchPackage() {
+      throw new Error('LibreOffice official install should use streaming file transport')
+    },
+    async fetchPackageToFile(request) {
+      this.fileCalls += 1
+      await mkdir(path.dirname(request.outputPath), { recursive: true })
+      await writeFileAsync(request.outputPath, bytes)
+      request.onProgress?.({ bytesReceived: bytes.byteLength, totalBytes: bytes.byteLength })
+      return {
+        ok: true,
+        filePath: request.outputPath,
+        sizeBytes: bytes.byteLength,
+        sha256: sha256(bytes),
+        finalRef,
+      }
+    },
+  }
+}
+
+async function writeDfcLibreOfficeRuntimeFixture(appManagedRootDir: string): Promise<Readonly<{
+  runtimeRoot: string
+  manifestPath: string
+  quarantineMarkerPath: string
+}>> {
+  const runtimeRoot = getDfcLibreOfficeManagedRuntimeRoot(appManagedRootDir)
+  const executableRelativePath = process.platform === 'win32' ? 'program/soffice.exe' : 'program/soffice'
+  const executableBytes = Buffer.from('fake soffice executable')
+  await mkdir(path.dirname(path.join(runtimeRoot, executableRelativePath)), { recursive: true })
+  await writeFileAsync(path.join(runtimeRoot, executableRelativePath), executableBytes)
+  await writeDfcLibreOfficeRuntimeManifest(runtimeRoot, {
+    executablePath: executableRelativePath,
+    executableSha256: sha256(executableBytes),
+    executableSizeBytes: executableBytes.byteLength,
+  })
+  return {
+    runtimeRoot,
+    manifestPath: path.join(runtimeRoot, DFC_OFFICE_PDF_RUNTIME_MANIFEST),
+    quarantineMarkerPath: path.join(runtimeRoot, DFC_OFFICE_PDF_QUARANTINE_MARKER),
+  }
+}
+
+async function writeDfcLibreOfficeRuntimeManifest(
+  runtimeRoot: string,
+  overrides: Partial<DfcOfficePdfRuntimeManifest>
+): Promise<void> {
+  await writeFileAsync(path.join(runtimeRoot, DFC_OFFICE_PDF_RUNTIME_MANIFEST), JSON.stringify({
+    manifestSchemaVersion: '1',
+    pluginId: DFC_OFFICE_PDF_PLUGIN_ID,
+    packageId: DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
+    runtimePackageId: DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
+    engineId: DFC_OFFICE_PDF_ENGINE_ID,
+    runtimeId: DFC_OFFICE_PDF_RUNTIME_ID,
+    displayName: 'LibreOffice Office PDF',
+    pluginVersion: '0.1.0',
+    runtimeKind: DFC_OFFICE_PDF_RUNTIME_KIND,
+    enabled: true,
+    platform: process.platform,
+    arch: process.arch,
+    capabilities: [...DFC_OFFICE_PDF_CAPABILITIES],
+    executablePath: process.platform === 'win32' ? 'program/soffice.exe' : 'program/soffice',
+    libreOfficeVersion: '24.8.0',
+    packageVersion: '2026.06.01',
+    artifactSha256: 'a'.repeat(64),
+    executableSha256: 'b'.repeat(64),
+    executableSizeBytes: 123,
+    provenance: 'starverse-test-fixture',
+    licenseId: 'MPL-2.0',
+    attribution: 'The Document Foundation LibreOffice',
+    notices: ['LibreOffice test fixture attribution'],
+    minimumStarverseContractVersion: '1',
+    officialRelease: {
+      sourceKind: 'test_fixture',
+      packageRef: 'fixtures/libreoffice-test.zip',
+      releaseTag: 'test-libreoffice-fixture',
+      provenance: 'starverse-test-fixture',
+    },
+    securityPolicy: {
+      macrosDisabled: true,
+      networkDisabled: true,
+      externalLinksDisabled: true,
+      embeddedObjectExecutionDisabled: true,
+      isolatedProfileRequired: true,
+    },
+    ...overrides,
+  }))
 }
 
 async function waitForInstallOperation(
@@ -241,14 +412,16 @@ async function waitForInstallOperation(
   predicate: (state: string) => boolean = (state) => state === 'installed' || state === 'failed'
 ) {
   const deadline = Date.now() + 3000
+  let lastState = 'missing'
   while (Date.now() < deadline) {
     const status = service.getInstallOperationStatus({ operationId })
+    lastState = status.ok && status.value?.state ? status.value.state : (status.ok ? 'null' : status.reason)
     if (status.ok && status.value && predicate(status.value.state)) {
       return status.value
     }
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
-  throw new Error(`install operation did not reach expected state: ${operationId}`)
+  throw new Error(`install operation did not reach expected state: ${operationId}; lastState=${lastState}`)
 }
 
 async function waitForPathToDisappear(filePath: string) {
@@ -2470,6 +2643,180 @@ describe('EnginePluginLifecycleService', () => {
       expect(diagnostics.counts.installed).toBe(1)
       expect(diagnostics.counts.failed).toBe(1)
       expect(diagnostics.counts.healthy).toBe(0)
+
+      const health = await service.runHealthCheck({ engineId: 'libreoffice' })
+      expect(health).toMatchObject({
+        ok: true,
+        value: expect.objectContaining({
+          engineId: 'libreoffice',
+          healthStatus: 'degraded',
+          productGate: expect.objectContaining({
+            productionApproved: false,
+            ownerGated: true,
+          }),
+        }),
+      })
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('surfaces the approved installed LibreOffice runtime as ready through Plugin Management product gate', async () => {
+    const fixture = await createFixture()
+    const appManagedRoot = path.join(fixture.tempRoot, 'app-managed-approved')
+    const runtime = await writeDfcLibreOfficeRuntimeFixture(appManagedRoot)
+    const catalog = getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()
+    const executable = Buffer.from('fake soffice executable')
+    await writeDfcLibreOfficeRuntimeManifest(runtime.runtimeRoot, {
+      platform: 'win32',
+      arch: 'x64',
+      executablePath: 'program/soffice.exe',
+      libreOfficeVersion: catalog.acquisitionSource.runtimeVersion ?? '26.2.4',
+      packageVersion: catalog.acquisitionSource.packageVersion ?? '0.1.0',
+      artifactSha256: '120932ed0010000000000000000000000000000000000000000000000000000',
+      executableSha256: sha256(executable),
+      executableSizeBytes: executable.byteLength,
+      officialRelease: {
+        sourceKind: 'official',
+        packageRef: 'https://download.documentfoundation.org/libreoffice/stable/26.2.4/win/x86_64/LibreOffice_26.2.4_Win_x86-64.msi',
+        releaseTag: 'starverse-runtime-libreoffice-v0.1.0-win32-x64',
+        provenance: 'The Document Foundation official download infrastructure',
+      },
+    })
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'test',
+      dfcLibreOfficeAppManagedRootDir: appManagedRoot,
+    })
+    try {
+      const installed = service.getInstalledPlugins().find((entry) => entry.engineId === 'libreoffice')
+
+      expect(installed).toMatchObject({
+        engineId: 'libreoffice',
+        installState: 'installed',
+        enabled: true,
+        healthStatus: 'healthy',
+        failureReason: null,
+        installSource: 'official_catalog',
+        installRootKind: 'managed_root',
+        productGate: expect.objectContaining({
+          status: 'available',
+          productionApproved: true,
+          ownerGated: false,
+          experimental: false,
+          degraded: false,
+          approvedPlatform: 'win32',
+          approvedArch: 'x64',
+          approvedInput: 'docx',
+          approvedOutput: 'pdf_attachment',
+          automaticDownloadEnabled: false,
+          conversionTimeDownloadEnabled: false,
+          platformPackageStatus: 'windows_x64_approved_mac_linux_deferred',
+        }),
+      })
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('runs bounded LibreOffice import through managed package validation and returns sanitized failure for invalid svpkg', async () => {
+    const fixture = await createFixture()
+    const appManagedRoot = path.join(fixture.tempRoot, 'app-managed')
+    const rawPrivatePackagePath = path.join(fixture.tempRoot, 'owner-private-runtime.svpkg')
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'test',
+      dfcLibreOfficeAppManagedRootDir: appManagedRoot,
+      readBytes: async (filePath) => {
+        expect(filePath).toBe(rawPrivatePackagePath)
+        return Buffer.from('not-a-valid-svpkg')
+      },
+    })
+    try {
+      const result = await service.importDfcLibreOfficeSvpkg({ packagePath: rawPrivatePackagePath })
+
+      expect(result).toMatchObject({
+        ok: false,
+        reason: 'local_package_unavailable',
+      })
+      expect(JSON.stringify(result)).not.toContain(rawPrivatePackagePath)
+      expect(JSON.stringify(result)).not.toMatch(/[A-Za-z]:\\|file:\/\/|soffice\.exe|sha256/iu)
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('disables, quarantines, and clears LibreOffice runtime through bounded lifecycle controls', async () => {
+    const fixture = await createFixture()
+    const appManagedRoot = path.join(fixture.tempRoot, 'app-managed')
+    const runtime = await writeDfcLibreOfficeRuntimeFixture(appManagedRoot)
+    const { db, repo, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'test',
+      dfcLibreOfficeAppManagedRootDir: appManagedRoot,
+    })
+    try {
+      const before = service.getInstalledPlugins().find((entry) => entry.engineId === 'libreoffice')
+      expect(before).toMatchObject({
+        installState: 'installed',
+        enabled: true,
+        productGate: expect.objectContaining({
+          source: 'fake_seam',
+          productionApproved: false,
+        }),
+      })
+
+      const disabled = await service.disablePlugin({ engineId: 'libreoffice' })
+      expect(disabled).toMatchObject({
+        ok: true,
+        value: expect.objectContaining({
+          engineId: 'libreoffice',
+          enabled: false,
+          healthStatus: 'unhealthy',
+          productGate: expect.objectContaining({
+            internalCode: 'office_pdf_runtime_disabled',
+            productionApproved: false,
+          }),
+        }),
+      })
+      expect(JSON.parse(readFileSync(runtime.manifestPath, 'utf8')).enabled).toBe(false)
+
+      await writeDfcLibreOfficeRuntimeManifest(runtime.runtimeRoot, { enabled: true })
+      const quarantined = await service.quarantineDfcLibreOfficeRuntime()
+      expect(quarantined).toMatchObject({
+        ok: true,
+        value: expect.objectContaining({
+          engineId: 'libreoffice',
+          enabled: false,
+          healthStatus: 'unhealthy',
+          productGate: expect.objectContaining({
+            status: 'quarantined',
+            internalCode: 'office_pdf_runtime_quarantined',
+            quarantined: true,
+            productionApproved: false,
+          }),
+        }),
+      })
+      expect(existsSync(runtime.quarantineMarkerPath)).toBe(true)
+
+      const cleared = await service.uninstallPlugin({ engineId: 'libreoffice' })
+      expect(cleared).toMatchObject({
+        ok: true,
+        value: expect.objectContaining({
+          engineId: 'libreoffice',
+          installState: 'failed',
+          enabled: false,
+          healthStatus: 'unhealthy',
+          productGate: expect.objectContaining({
+            status: 'missing',
+            internalCode: 'office_pdf_runtime_missing',
+            productionApproved: false,
+          }),
+        }),
+      })
+      expect(existsSync(runtime.runtimeRoot)).toBe(false)
+      expect(repo.getByEngineId('libreoffice')).toBeNull()
+      expect(JSON.stringify([disabled, quarantined, cleared])).not.toMatch(/[A-Za-z]:\\|file:\/\/|soffice\.exe|sha256/iu)
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })
@@ -2702,7 +3049,7 @@ describe('EnginePluginLifecycleService', () => {
         capabilities: ['document_conversion'],
         installState: 'not_installed',
         enabled: false,
-        installabilityStatus: 'unavailable_read_only',
+        installabilityStatus: 'official_remote_install_available',
         verificationMetadataStatus: 'metadata_present_crypto_deferred',
         recommendedInstallRootKind: 'managed_root',
         releaseProvenance: null,
@@ -2712,10 +3059,488 @@ describe('EnginePluginLifecycleService', () => {
         'layout_contract_v1',
         'owner_gated_experimental',
         'production_approval_missing',
+        'manual_github_install_available',
+        'automatic_download_disabled_by_policy',
+        'conversion_time_download_disabled_by_policy',
+        'requires_user_gesture',
+        'source_kind_github_release_asset',
+        'github_release_asset_fixed_catalog_entry',
+        'verify_before_activation',
+        'docx_only',
         'packaged_binary_not_included',
         'system_path_fallback_disabled',
         'file_scoped_update_rollback_quarantine_repair_available',
       ]))
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('starts LibreOffice GitHub official install only from explicit install operation', async () => {
+    const fixture = await createFixture()
+    const bytes = Buffer.from('valid-downloaded-svpkg-placeholder')
+    const catalog = dfcLibreOfficeOfficialCatalogForBytes(bytes)
+    const appManagedRoot = path.join(fixture.tempRoot, 'app-managed')
+    const transport = streamingLibreOfficeTransportForBytes(bytes)
+    const importer = vi.fn(async () => ({
+      ok: true as const,
+      value: libreOfficeInstalledDto(),
+    }))
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      dfcLibreOfficeAppManagedRootDir: appManagedRoot,
+      dfcLibreOfficeOfficialRuntimeCatalogEntry: catalog,
+      dfcLibreOfficeOfficialPackageFileImporter: importer,
+      officialPackageTransport: transport,
+    })
+    try {
+      await service.listOfficialPlugins()
+      service.getInstalledPlugins()
+      service.getInstallOperationStatus({ pluginId: 'libreoffice', pluginVersion: '0.1.0' })
+      expect(transport.fileCalls).toBe(0)
+      expect(importer).not.toHaveBeenCalled()
+
+      const started = await service.installOfficialPlugin({ pluginId: 'libreoffice', pluginVersion: '0.1.0' })
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      expect(started.value).toMatchObject({
+        pluginId: 'libreoffice',
+        pluginVersion: '0.1.0',
+        source: 'official_builtin',
+      })
+      expect(['accepted', 'pending', 'downloading', 'verifying', 'staging', 'registering', 'health_checking']).toContain(started.value.state)
+      const completed = await waitForInstallOperation(service, started.value.operationId)
+      expect(completed).toMatchObject({
+        pluginId: 'libreoffice',
+        state: 'installed',
+        installedEngineId: 'libreoffice',
+        result: expect.objectContaining({
+          engineId: 'libreoffice',
+          installState: 'installed',
+        }),
+      })
+      expect(completed.stateHistory).toEqual(expect.arrayContaining([
+        'accepted',
+        'pending',
+        'downloading',
+        'verifying',
+        'staging',
+        'registering',
+        'health_checking',
+        'installed',
+      ]))
+      expect(transport.fileCalls).toBe(1)
+      expect(importer).toHaveBeenCalledTimes(1)
+      expect(importer).toHaveBeenCalledWith(expect.objectContaining({ catalog }))
+      const importedArg = (importer.mock.calls as unknown as Array<[{ packagePath?: string }]>)[0]?.[0]
+      expect(importedArg?.packagePath).toMatch(/\.svpkg$/u)
+      expect(JSON.stringify(completed)).not.toMatch(/[A-Za-z]:\\|file:\/\/|soffice\.exe|contentToken|storageRef/iu)
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps LibreOffice official install status polling responsive during a long-running download', async () => {
+    const fixture = await createFixture()
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, { trustedRootSource: 'official' })
+    try {
+      const timestamp = Date.now()
+      const operation = {
+        operationId: `official-install-libreoffice-0.1.0-${timestamp}-m48`,
+        pluginId: 'libreoffice',
+        pluginVersion: '0.1.0',
+        operationType: 'official_install',
+        source: 'official_builtin',
+        state: 'downloading',
+        stateHistory: ['accepted', 'pending', 'downloading'],
+        startedAt: timestamp,
+        updatedAt: timestamp,
+        terminalAt: null,
+        failureReason: null,
+        diagnosticCode: null,
+        sanitizedDiagnostics: [],
+        errorChain: null,
+        installedEngineId: null,
+        result: null,
+      }
+      const internals = service as any
+      internals.installOperations.set(operation.operationId, operation)
+      internals.inFlightOfficialInstalls.set('libreoffice:0.1.0', operation.operationId)
+
+      const pollStartedAt = Date.now()
+      for (let index = 0; index < 5; index += 1) {
+        const status = service.getInstallOperationStatus({ operationId: operation.operationId })
+        expect(status.ok).toBe(true)
+        expect(status.ok ? status.value?.state : null).toBe('downloading')
+        expect(status.ok ? status.value?.stateHistory : []).toEqual(['accepted', 'pending', 'downloading'])
+      }
+      expect(Date.now() - pollStartedAt).toBeLessThan(100)
+
+      const latest = service.getInstallOperationStatus({ pluginId: 'libreoffice', pluginVersion: '0.1.0' })
+      expect(latest.ok ? latest.value?.operationId : null).toBe(operation.operationId)
+      expect(JSON.stringify(latest)).not.toMatch(/[A-Za-z]:\\|file:\/\/|soffice\.exe|contentToken|storageRef/iu)
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps LibreOffice official install status observable during streaming acquisition', async () => {
+    const fixture = await createFixture()
+    const bytes = Buffer.from('streamed-libreoffice-svpkg-placeholder')
+    const catalog = dfcLibreOfficeOfficialCatalogForBytes(bytes)
+    let releaseDownload: (value: void) => void = () => undefined
+    const downloadGate = new Promise<void>((resolve) => {
+      releaseDownload = resolve
+    })
+    const transport: PackageDownloadTransport & { fileCalls: number } = {
+      fileCalls: 0,
+      async fetchPackage() {
+        throw new Error('LibreOffice official install should not use memory fetchPackage')
+      },
+      async fetchPackageToFile(request) {
+        this.fileCalls += 1
+        await downloadGate
+        await mkdir(path.dirname(request.outputPath), { recursive: true })
+        await writeFileAsync(request.outputPath, bytes)
+        request.onProgress?.({ bytesReceived: bytes.byteLength, totalBytes: bytes.byteLength })
+        return {
+          ok: true,
+          filePath: request.outputPath,
+          sizeBytes: bytes.byteLength,
+          sha256: sha256(bytes),
+          finalRef: 'https://github.com/GuXinghai/starverse/releases/download/test-libreoffice/test.svpkg',
+        }
+      },
+    }
+    const importer = vi.fn(async () => ({
+      ok: true as const,
+      value: libreOfficeInstalledDto(),
+    }))
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      dfcLibreOfficeAppManagedRootDir: path.join(fixture.tempRoot, 'app-managed-stream'),
+      dfcLibreOfficeOfficialRuntimeCatalogEntry: catalog,
+      dfcLibreOfficeOfficialPackageFileImporter: importer,
+      officialPackageTransport: transport,
+    })
+    try {
+      const started = await service.installOfficialPlugin({ pluginId: 'libreoffice', pluginVersion: '0.1.0' })
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+
+      const downloading = await waitForInstallOperation(
+        service,
+        started.value.operationId,
+        (state) => state === 'downloading'
+      )
+      expect(downloading.state).toBe('downloading')
+
+      const pollStartedAt = Date.now()
+      for (let index = 0; index < 5; index += 1) {
+        const status = service.getInstallOperationStatus({ operationId: started.value.operationId })
+        expect(status.ok).toBe(true)
+        expect(status.ok ? status.value?.state : null).toBe('downloading')
+      }
+      expect(Date.now() - pollStartedAt).toBeLessThan(100)
+
+      releaseDownload()
+      const completed = await waitForInstallOperation(service, started.value.operationId)
+      expect(completed.state).toBe('installed')
+      expect(completed.stateHistory).toEqual(expect.arrayContaining([
+        'accepted',
+        'pending',
+        'downloading',
+        'verifying',
+        'staging',
+        'registering',
+        'health_checking',
+        'installed',
+      ]))
+      expect(transport.fileCalls).toBe(1)
+      expect(importer).toHaveBeenCalledTimes(1)
+      const importedArg = (importer.mock.calls as unknown as Array<[{ packagePath?: string }]>)[0]?.[0]
+      const importedPath = importedArg?.packagePath
+      expect(typeof importedPath).toBe('string')
+      expect(importedPath ? existsSync(importedPath) : true).toBe(false)
+      expect(JSON.stringify(completed)).not.toMatch(/[A-Za-z]:\\|file:\/\/|soffice\.exe|contentToken|storageRef/iu)
+    } finally {
+      releaseDownload()
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps LibreOffice official install status observable during simulated long staging', async () => {
+    const fixture = await createFixture()
+    const bytes = Buffer.from('streamed-libreoffice-svpkg-placeholder')
+    const catalog = dfcLibreOfficeOfficialCatalogForBytes(bytes)
+    let releaseImport: (value: Awaited<ReturnType<EnginePluginLifecycleService['importDfcLibreOfficeSvpkg']>>) => void = () => undefined
+    const importGate = new Promise<Awaited<ReturnType<EnginePluginLifecycleService['importDfcLibreOfficeSvpkg']>>>((resolve) => {
+      releaseImport = resolve
+    })
+    const transport = streamingLibreOfficeTransportForBytes(bytes)
+    const importer = vi.fn(async () => importGate)
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      dfcLibreOfficeAppManagedRootDir: path.join(fixture.tempRoot, 'app-managed-staging'),
+      dfcLibreOfficeOfficialRuntimeCatalogEntry: catalog,
+      dfcLibreOfficeOfficialPackageFileImporter: importer,
+      officialPackageTransport: transport,
+    })
+    try {
+      const started = await service.installOfficialPlugin({ pluginId: 'libreoffice', pluginVersion: '0.1.0' })
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+
+      const staging = await waitForInstallOperation(
+        service,
+        started.value.operationId,
+        (state) => state === 'staging'
+      )
+      expect(staging.state).toBe('staging')
+      expect(importer).toHaveBeenCalledTimes(1)
+
+      const pollStartedAt = Date.now()
+      for (let index = 0; index < 5; index += 1) {
+        const status = service.getInstallOperationStatus({ operationId: started.value.operationId })
+        expect(status.ok).toBe(true)
+        expect(status.ok ? status.value?.state : null).toBe('staging')
+        expect(status.ok ? status.value?.stateHistory : []).toEqual(expect.arrayContaining([
+          'accepted',
+          'pending',
+          'downloading',
+          'verifying',
+          'staging',
+        ]))
+      }
+      expect(Date.now() - pollStartedAt).toBeLessThan(100)
+      expect(JSON.stringify(staging)).not.toMatch(/[A-Za-z]:\\|file:\/\/|soffice\.exe|contentToken|storageRef/iu)
+
+      releaseImport({
+        ok: true,
+        value: libreOfficeInstalledDto(),
+      })
+      const completed = await waitForInstallOperation(service, started.value.operationId)
+      expect(completed.state).toBe('installed')
+      expect(completed.stateHistory).toEqual(expect.arrayContaining([
+        'staging',
+        'registering',
+        'health_checking',
+        'installed',
+      ]))
+    } finally {
+      releaseImport({
+        ok: false,
+        reason: 'cancelled',
+        message: 'cancelled',
+        errorChain: null,
+      })
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('surfaces LibreOffice resumable download retry and paused states without activation', async () => {
+    const fixture = await createFixture()
+    const bytes = Buffer.from('streamed-libreoffice-svpkg-placeholder')
+    const catalog = dfcLibreOfficeOfficialCatalogForBytes(bytes)
+    const importer = vi.fn()
+    const transport: PackageDownloadTransport = {
+      async fetchPackage() {
+        throw new Error('LibreOffice official install should not use memory fetchPackage')
+      },
+      async fetchPackageToFile(request) {
+        await mkdir(path.dirname(request.outputPath), { recursive: true })
+        await writeFileAsync(`${request.outputPath}.partial`, Buffer.from('partial'))
+        await writeFileAsync(`${request.outputPath}.partial.json`, '{"currentBytesWritten":7}')
+        request.onProgress?.({
+          bytesReceived: 8,
+          totalBytes: bytes.byteLength,
+          retryCount: 1,
+          phase: 'retrying',
+        })
+        request.onProgress?.({
+          bytesReceived: 8,
+          totalBytes: bytes.byteLength,
+          retryCount: 4,
+          phase: 'paused_retryable',
+        })
+        return { ok: false, code: 'resume_retries_exhausted', detail: 'resume retries exhausted' }
+      },
+    }
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      dfcLibreOfficeAppManagedRootDir: path.join(fixture.tempRoot, 'app-managed-resume'),
+      dfcLibreOfficeOfficialRuntimeCatalogEntry: catalog,
+      dfcLibreOfficeOfficialPackageFileImporter: importer,
+      officialPackageTransport: transport,
+    })
+    try {
+      const started = await service.installOfficialPlugin({ pluginId: 'libreoffice', pluginVersion: '0.1.0' })
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      const retrying = await waitForInstallOperation(
+        service,
+        started.value.operationId,
+        (state) => state === 'retrying' || state === 'paused_retryable'
+      )
+      expect(['retrying', 'paused_retryable']).toContain(retrying.state)
+      const paused = await waitForInstallOperation(
+        service,
+        started.value.operationId,
+        (state) => state === 'paused_retryable'
+      )
+      expect(paused).toMatchObject({
+        state: 'paused_retryable',
+        failureReason: 'resume_retries_exhausted',
+        diagnosticCode: 'resume_retries_exhausted',
+        installedEngineId: null,
+        result: null,
+      })
+      expect(paused.stateHistory).toEqual(expect.arrayContaining([
+        'accepted',
+        'pending',
+        'downloading',
+        'retrying',
+        'paused_retryable',
+      ]))
+      expect(importer).not.toHaveBeenCalled()
+      const partialPath = path.join(
+        fixture.tempRoot,
+        'app-managed-resume',
+        'official-downloads',
+        'libreoffice-official-win32-x64.svpkg.partial'
+      )
+      const metadataPath = `${partialPath.slice(0, -'.partial'.length)}.partial.json`
+      const cancelled = await service.cancelInstallOperation({ operationId: paused.operationId })
+      expect(cancelled.ok).toBe(true)
+      expect(cancelled.ok ? cancelled.value?.state : null).toBe('cancelled')
+      expect(existsSync(partialPath)).toBe(false)
+      expect(existsSync(metadataPath)).toBe(false)
+      expect(JSON.stringify(paused)).not.toMatch(/[A-Za-z]:\\|file:\/\/|soffice\.exe|contentToken|storageRef/iu)
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps Magika official install on the existing bytes path without resumable file transport', async () => {
+    const fixture = await createOfficialRemoteInstallFixture()
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      magikaOfficialRelease: fixture.release,
+      officialPackageTransport: {
+        async fetchPackage() {
+          return {
+            ok: true,
+            bytes: fixture.bytes,
+            finalRef: 'https://release-assets.githubusercontent.com/github-production-release-asset/1/pkg.zip',
+          }
+        },
+        async fetchPackageToFile() {
+          throw new Error('Magika official install should not use file transport')
+        },
+      },
+    })
+    try {
+      const result = await service.installOfficialPlugin({ pluginId: 'magika', pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      const completed = await waitForInstallOperation(service, result.value.operationId)
+      expect(completed.state).toBe('installed')
+    } finally {
+      db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('fails LibreOffice official install before activation on size and hash mismatch', async () => {
+    const fixture = await createFixture()
+    const validBytes = Buffer.from('valid-official-svpkg')
+    const catalog = dfcLibreOfficeOfficialCatalogForBytes(validBytes)
+    const importer = vi.fn()
+    const sizeMismatch = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      dfcLibreOfficeAppManagedRootDir: path.join(fixture.tempRoot, 'app-managed-size'),
+      dfcLibreOfficeOfficialRuntimeCatalogEntry: catalog,
+      dfcLibreOfficeOfficialPackageFileImporter: importer,
+      officialPackageTransport: streamingLibreOfficeTransportForBytes(Buffer.from('wrong-size')),
+    })
+    const hashMismatch = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      dfcLibreOfficeAppManagedRootDir: path.join(fixture.tempRoot, 'app-managed-hash'),
+      dfcLibreOfficeOfficialRuntimeCatalogEntry: dfcLibreOfficeOfficialCatalogForBytes(validBytes, {
+        expectedSha256: 'f'.repeat(64),
+      }),
+      dfcLibreOfficeOfficialPackageFileImporter: importer,
+      officialPackageTransport: streamingLibreOfficeTransportForBytes(validBytes),
+    })
+    try {
+      const sizeStarted = await sizeMismatch.service.installOfficialPlugin({ pluginId: 'libreoffice', pluginVersion: '0.1.0' })
+      expect(sizeStarted.ok).toBe(true)
+      if (sizeStarted.ok) {
+        const failed = await waitForInstallOperation(sizeMismatch.service, sizeStarted.value.operationId)
+        expect(failed).toMatchObject({
+          state: 'failed',
+          failureReason: 'size_mismatch',
+          diagnosticCode: 'size_mismatch',
+          installedEngineId: null,
+          result: null,
+        })
+      }
+
+      const hashStarted = await hashMismatch.service.installOfficialPlugin({ pluginId: 'libreoffice', pluginVersion: '0.1.0' })
+      expect(hashStarted.ok).toBe(true)
+      if (hashStarted.ok) {
+        const failed = await waitForInstallOperation(hashMismatch.service, hashStarted.value.operationId)
+        expect(failed).toMatchObject({
+          state: 'failed',
+          failureReason: 'hash_mismatch',
+          diagnosticCode: 'hash_mismatch',
+          installedEngineId: null,
+          result: null,
+        })
+      }
+      expect(importer).not.toHaveBeenCalled()
+    } finally {
+      sizeMismatch.db.close()
+      hashMismatch.db.close()
+      await rmAsync(fixture.tempRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps LibreOffice official install failed and sanitized when svpkg activation rejects', async () => {
+    const fixture = await createFixture()
+    const bytes = Buffer.from('downloaded-but-invalid-svpkg')
+    const catalog = dfcLibreOfficeOfficialCatalogForBytes(bytes)
+    const { db, service } = createService(fixture.tempRoot, fixture.trustedRoots, {
+      trustedRootSource: 'official',
+      dfcLibreOfficeAppManagedRootDir: path.join(fixture.tempRoot, 'app-managed-invalid'),
+      dfcLibreOfficeOfficialRuntimeCatalogEntry: catalog,
+      dfcLibreOfficeOfficialPackageFileImporter: async () => ({
+        ok: false,
+        reason: 'local_package_unavailable',
+        message: 'LibreOffice svpkg manifest invalid',
+        errorChain: null,
+      }),
+      officialPackageTransport: streamingLibreOfficeTransportForBytes(bytes),
+    })
+    try {
+      const started = await service.installOfficialPlugin({ pluginId: 'libreoffice', pluginVersion: '0.1.0' })
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      const failed = await waitForInstallOperation(service, started.value.operationId)
+      expect(failed).toMatchObject({
+        state: 'failed',
+        failureReason: 'local_package_unavailable',
+        diagnosticCode: 'LibreOffice_svpkg_manifest_invalid',
+        installedEngineId: null,
+        result: null,
+      })
+      expect(JSON.stringify(failed)).not.toMatch(/[A-Za-z]:\\|file:\/\/|soffice\.exe|sha256|contentToken|storageRef/iu)
     } finally {
       db.close()
       await rmAsync(fixture.tempRoot, { recursive: true, force: true })

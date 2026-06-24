@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto'
-import { cp, lstat, mkdir, readdir, readFile, rename, rm } from 'node:fs/promises'
+import { cp, lstat, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { sanitizePluginDistributionText } from '../../src/next/plugin-distribution/sanitization'
 import {
   DFC_OFFICE_PDF_RUNTIME_MANIFEST,
   createDfcLibreOfficeQuarantinedAvailabilitySummary,
+  createDfcLibreOfficeTrustDistributionStatus,
   getDfcLibreOfficeRuntimePackageLayoutContract,
   getDfcLibreOfficeManagedRuntimeRoot,
   resolveDfcLibreOfficeRuntimeExecutionDescriptor,
@@ -13,8 +14,10 @@ import {
   type DfcLibreOfficeRuntimePackageLayoutContract,
   type DfcOfficePdfManagedRuntimeExecutionDescriptor,
   type DfcOfficePdfRuntimeAvailabilitySummary,
+  type DfcOfficePdfRuntimeOfficialRelease,
   type DfcOfficePdfRuntimeProductCode,
 } from './dfcManagedLibreOfficeRuntime'
+import type { DfcLibreOfficeCatalogVerificationResult } from './dfcLibreOfficeSignedCatalog'
 
 export type DfcLibreOfficeManagedPackageInstallDiagnosticCode =
   | 'office_pdf_install_source_missing'
@@ -152,6 +155,10 @@ export type DfcLibreOfficeManagedPackageInstallInput = Readonly<{
   appManagedRootDir: string
   sourceRuntimeRootDir: string
   expectedArtifactSha256?: string | null
+  activationMetadata?: Readonly<{
+    artifactSha256?: string | null
+    officialRelease?: DfcOfficePdfRuntimeOfficialRelease | null
+  }> | null
   packageRevoked?: boolean | null
   platform?: NodeJS.Platform
   arch?: string
@@ -161,6 +168,7 @@ export type DfcLibreOfficeManagedPackageRollbackInput = Readonly<{
   appManagedRootDir: string
   previousKnownGood: DfcLibreOfficePreviousKnownGoodRuntime | null
   previousKnownGoodQuarantined?: boolean | null
+  previousKnownGoodCatalogVerification?: DfcLibreOfficeCatalogVerificationResult | null
   platform?: NodeJS.Platform
   arch?: string
 }>
@@ -252,6 +260,11 @@ export async function importDfcLibreOfficeManagedRuntimePackage(
       cleanupStatus = await cleanup(stagingRoot)
       return failed('office_pdf_install_path_rejected', 'Office PDF managed package staging contains unsafe links.', cleanupStatus)
     }
+    const metadataStamped = await writeActivationMetadata(stagingRoot, input.activationMetadata ?? null)
+    if (!metadataStamped.ok) {
+      cleanupStatus = await cleanup(stagingRoot)
+      return failed('office_pdf_install_manifest_invalid', 'Office PDF managed package activation metadata is invalid.', cleanupStatus)
+    }
     const stagedAvailability = await resolveDfcLibreOfficeRuntimeExecutionDescriptor({
       managedRuntimeRootDir: stagingRoot,
       platform: input.platform,
@@ -327,6 +340,10 @@ export async function rollbackDfcLibreOfficeManagedRuntimePackage(
   }
   if (input.previousKnownGoodQuarantined === true) {
     return rollbackFailed('office_pdf_rollback_target_quarantined', 'Office PDF rollback target is quarantined.', 'not_needed')
+  }
+  const catalogRollbackBlock = catalogRollbackDiagnostic(input.previousKnownGoodCatalogVerification ?? null)
+  if (catalogRollbackBlock) {
+    return rollbackFailed(catalogRollbackBlock, 'Office PDF rollback target failed catalog trust verification.', 'not_needed')
   }
   const previousRoot = normalizeAbsoluteDir(previous.managedRuntimeRootDir)
   if (!previousRoot || !await directoryExists(previousRoot)) {
@@ -557,6 +574,24 @@ async function readInstallManifest(root: string): Promise<Readonly<{ ok: true; a
   }
 }
 
+async function writeActivationMetadata(
+  root: string,
+  metadata: DfcLibreOfficeManagedPackageInstallInput['activationMetadata']
+): Promise<Readonly<{ ok: true } | { ok: false }>> {
+  if (!metadata?.artifactSha256 && !metadata?.officialRelease) return { ok: true }
+  try {
+    const manifestPath = path.join(root, DFC_OFFICE_PDF_RUNTIME_MANIFEST)
+    const parsed = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown> | null
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { ok: false }
+    if (metadata.artifactSha256) parsed.artifactSha256 = metadata.artifactSha256.toLowerCase()
+    if (metadata.officialRelease) parsed.officialRelease = metadata.officialRelease
+    await writeFile(manifestPath, JSON.stringify(parsed, null, 2), 'utf8')
+    return { ok: true }
+  } catch {
+    return { ok: false }
+  }
+}
+
 async function containsSymlink(root: string): Promise<boolean> {
   const pending = [root]
   while (pending.length > 0) {
@@ -634,6 +669,16 @@ function rollbackFailed(
     cleanupStatus,
     diagnostics: [diagnostic(code, message)],
   }
+}
+
+function catalogRollbackDiagnostic(
+  result: DfcLibreOfficeCatalogVerificationResult | null
+): DfcLibreOfficeManagedPackageRollbackDiagnosticCode | null {
+  if (!result) return null
+  if (result.ok) return result.entry.rollbackAllowed ? null : 'office_pdf_rollback_target_invalid'
+  if (result.diagnosticCode === 'office_pdf_catalog_package_revoked') return 'office_pdf_rollback_target_revoked'
+  if (result.diagnosticCode === 'office_pdf_catalog_package_expired') return 'office_pdf_rollback_target_invalid'
+  return 'office_pdf_rollback_target_invalid'
 }
 
 function lifecycleFailed(
@@ -764,6 +809,18 @@ function failedSummary(
     recoverable: code !== 'office_pdf_install_revoked',
     source: code === 'office_pdf_install_source_missing' ? 'missing_manifest' : 'managed_manifest',
     runtime: null,
+    trust: createDfcLibreOfficeTrustDistributionStatus({
+      lastVerificationResult: 'not_reached',
+      diagnosticCode: code,
+      ...(code === 'office_pdf_install_revoked'
+        ? {
+            trustStates: ['revoked'],
+            packageDecision: 'rejected',
+            signatureCatalogStatus: 'signature_invalid_or_catalog_untrusted',
+            lastVerificationResult: 'blocked',
+          } as const
+        : {}),
+    }),
   }
 }
 
@@ -792,5 +849,9 @@ function lifecycleFailedSummary(
       ? 'missing_manifest'
       : 'managed_manifest',
     runtime: null,
+    trust: createDfcLibreOfficeTrustDistributionStatus({
+      lastVerificationResult: 'not_reached',
+      diagnosticCode: code,
+    }),
   }
 }

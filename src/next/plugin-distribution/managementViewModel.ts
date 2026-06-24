@@ -75,6 +75,43 @@ export type PdpReleaseProvenanceInput = Readonly<{
   arch: string
 }>
 
+export type PdpProductGateInput = Readonly<{
+  status: string
+  productCode: string | null
+  internalCode: string | null
+  productionApproved: boolean
+  ownerGated: boolean
+  experimental: boolean
+  degraded: boolean
+  quarantined: boolean
+  source: string | null
+  trustModel?: string | null
+  trustStates?: readonly string[]
+  distributionStates?: readonly string[]
+  packageDecision?: string | null
+  signatureCatalogStatus?: string | null
+  catalogSignatureStatus?: string | null
+  keyIdStatus?: string | null
+  revocationStatus?: string | null
+  expirationStatus?: string | null
+  rollbackEligibility?: string | null
+  productionTrustReadiness?: string | null
+  ownerGatedCandidateReadiness?: string | null
+  lastVerificationResult?: string | null
+  downloadEnabled?: boolean
+  approvedPlatform?: string | null
+  approvedArch?: string | null
+  approvedInput?: string | null
+  approvedOutput?: string | null
+  approvedAcquisitionModes?: readonly string[]
+  automaticDownloadEnabled?: boolean
+  postinstallDownloadEnabled?: boolean
+  conversionTimeDownloadEnabled?: boolean
+  platformPackageStatus?: string | null
+  fallbackTargetKinds: readonly string[]
+  message: string
+}>
+
 export type PdpManagementRegistryInput = Readonly<{
   pluginId: string
   pluginVersion: string
@@ -96,6 +133,7 @@ export type PdpManagementRegistryInput = Readonly<{
   errorChain?: unknown
   releaseProvenance?: PdpReleaseProvenanceInput | null
   previousKnownGood?: PdpPreviousKnownGoodRef | null
+  productGate?: PdpProductGateInput | null
   updatedAt?: number
   diagnostics?: readonly string[]
 }>
@@ -156,6 +194,7 @@ export type PdpManagementPluginViewModel = Readonly<{
   runtimeVersion: string | null
   releaseProvenance: PdpReleaseProvenanceInput | null
   previousKnownGood: PdpPreviousKnownGoodRef | null
+  productGate: PdpProductGateInput | null
   runtimeKind: string
   capabilities: readonly string[]
   catalog: Readonly<{
@@ -269,6 +308,7 @@ function buildPluginViewModel(
   const availableVersion = sanitizeNullableText(record?.availableVersion ?? catalogEntry?.pluginVersion)
   const releaseProvenance = record?.releaseProvenance ?? catalogEntry?.releaseProvenance ?? null
   const previousKnownGood = rollback?.previousKnownGood ?? record?.previousKnownGood ?? null
+  const productGate = sanitizeProductGate(record?.productGate)
   const reasonCodes = uniqueCodes([
     ...(catalogEntry?.reasons ?? []),
     ...visibleCatalogWarnings(catalogEntry, verificationStatus),
@@ -283,6 +323,10 @@ function buildPluginViewModel(
     ...(updateState === 'update_available' ? ['update_available'] : []),
     ...(updateState === 'downgrade_blocked' || updateState === 'local_newer_than_catalog' ? ['downgrade_blocked'] : []),
     ...(rollbackState === 'previous_known_good_metadata' ? ['previous_known_good_metadata'] : []),
+    ...(productGate?.ownerGated ? ['owner_gated_experimental'] : []),
+    ...(productGate && !productGate.productionApproved ? ['production_approval_missing'] : []),
+    ...(productGate?.productCode ? [productGate.productCode] : []),
+    ...(productGate?.internalCode ? [productGate.internalCode] : []),
   ])
 
   return {
@@ -297,6 +341,7 @@ function buildPluginViewModel(
     runtimeVersion: sanitizeNullableText(record?.runtimeVersion ?? releaseProvenance?.runtimeVersion),
     releaseProvenance,
     previousKnownGood,
+    productGate,
     runtimeKind: sanitizePdpManagementText(record?.runtimeKind ?? catalogEntry?.runtimeKind, 'unknown'),
     capabilities: (catalogEntry?.capabilities ?? []).map((capability) =>
       sanitizePdpManagementText(capability, 'unknown')
@@ -332,6 +377,46 @@ function buildPluginViewModel(
     labels: reasonCodes.map(labelPdpReasonCode),
     reasonCodes,
     diagnostics: sanitizeDiagnostics(record?.diagnostics ?? []),
+  }
+}
+
+function sanitizeProductGate(input: PdpProductGateInput | null | undefined): PdpProductGateInput | null {
+  if (!input) return null
+  return {
+    status: sanitizePdpManagementText(input.status, 'unavailable'),
+    productCode: sanitizeNullableText(input.productCode),
+    internalCode: sanitizeNullableText(input.internalCode),
+    productionApproved: input.productionApproved === true,
+    ownerGated: input.ownerGated === true,
+    experimental: input.experimental === true,
+    degraded: input.degraded === true,
+    quarantined: input.quarantined === true,
+    source: sanitizeNullableText(input.source),
+    trustModel: sanitizeNullableText(input.trustModel),
+    trustStates: (input.trustStates ?? []).map((state) => sanitizePdpManagementText(state, 'unknown')),
+    distributionStates: (input.distributionStates ?? []).map((state) => sanitizePdpManagementText(state, 'unknown')),
+    packageDecision: sanitizeNullableText(input.packageDecision),
+    signatureCatalogStatus: sanitizeNullableText(input.signatureCatalogStatus),
+    catalogSignatureStatus: sanitizeNullableText(input.catalogSignatureStatus),
+    keyIdStatus: sanitizeNullableText(input.keyIdStatus),
+    revocationStatus: sanitizeNullableText(input.revocationStatus),
+    expirationStatus: sanitizeNullableText(input.expirationStatus),
+    rollbackEligibility: sanitizeNullableText(input.rollbackEligibility),
+    productionTrustReadiness: sanitizeNullableText(input.productionTrustReadiness),
+    ownerGatedCandidateReadiness: sanitizeNullableText(input.ownerGatedCandidateReadiness),
+    lastVerificationResult: sanitizeNullableText(input.lastVerificationResult),
+    downloadEnabled: input.downloadEnabled === true,
+    approvedPlatform: sanitizeNullableText(input.approvedPlatform),
+    approvedArch: sanitizeNullableText(input.approvedArch),
+    approvedInput: sanitizeNullableText(input.approvedInput),
+    approvedOutput: sanitizeNullableText(input.approvedOutput),
+    approvedAcquisitionModes: (input.approvedAcquisitionModes ?? []).map((mode) => sanitizePdpManagementText(mode, 'unknown')),
+    automaticDownloadEnabled: input.automaticDownloadEnabled === true,
+    postinstallDownloadEnabled: input.postinstallDownloadEnabled === true,
+    conversionTimeDownloadEnabled: input.conversionTimeDownloadEnabled === true,
+    platformPackageStatus: sanitizeNullableText(input.platformPackageStatus),
+    fallbackTargetKinds: input.fallbackTargetKinds.map((kind) => sanitizePdpManagementText(kind, 'unknown')),
+    message: sanitizePdpManagementText(input.message, 'Runtime status unavailable.'),
   }
 }
 

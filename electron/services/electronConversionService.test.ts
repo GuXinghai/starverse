@@ -1,5 +1,8 @@
 import os from 'node:os'
 import path from 'node:path'
+import { EventEmitter } from 'node:events'
+import { Readable } from 'node:stream'
+import { mkdir, rm, stat } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import { STARTUP_IPC_CHANNELS } from '../ipc/startupIpcAudit'
 import {
@@ -90,5 +93,51 @@ describe('main-process electron conversion service skeleton', () => {
       output: null,
       diagnostics: [expect.objectContaining({ code: 'electron_conversion_request_invalid' })],
     })
+  })
+
+  it('streams official package downloads through the injected Electron net request', async () => {
+    const tempRoot = path.join(root, `package-download-${Date.now()}`)
+    const outputPath = path.join(tempRoot, 'official.svpkg')
+    await mkdir(tempRoot, { recursive: true })
+    try {
+      const fakeRequest = ((options: any) => {
+        const request = new EventEmitter() as EventEmitter & {
+          setHeader: (name: string, value: string) => void
+          end: () => void
+          abort: () => void
+        }
+        request.setHeader = () => undefined
+        request.abort = () => undefined
+        request.end = () => {
+          const response = Readable.from([Buffer.from('package-bytes')]) as Readable & {
+            statusCode?: number
+            headers?: Record<string, string>
+            url?: string
+          }
+          response.statusCode = 200
+          response.headers = { 'content-length': '13' }
+          response.url = options.url
+          setImmediate(() => request.emit('response', response))
+        }
+        return request
+      }) as any
+      const service = createMainProcessElectronConversionService({ officialPackageRequest: fakeRequest })
+
+      const result = await service.fetchPackageToFile?.({
+        transportRef: 'https://github.com/GuXinghai/starverse/releases/download/test/pkg.svpkg',
+        maxBytes: 1024,
+        outputPath,
+        proxy: { proxyMode: 'system', manualProxyUrl: '', noProxy: '', strictSSL: true },
+      })
+
+      expect(result).toMatchObject({
+        ok: true,
+        filePath: outputPath,
+        sizeBytes: 13,
+      })
+      expect((await stat(outputPath)).size).toBe(13)
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true })
+    }
   })
 })

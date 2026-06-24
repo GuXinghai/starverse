@@ -4,7 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { runExternalProcess } from '../../src/next/file-type/externalProcessRunner'
 import { runDfcLibreOfficeDocxToPdfAdapter } from './dfcLibreOfficePdfAdapter'
-import { resolveDfcLibreOfficeRuntimeExecutionDescriptor } from './dfcManagedLibreOfficeRuntime'
+import { resolveDfcLibreOfficePluginManagedRuntimeHandle } from './dfcManagedLibreOfficeRuntime'
 
 const describeRealLibreOffice = process.env.STARVERSE_DFC_LIBREOFFICE_REAL_SMOKE === '1' ? describe : describe.skip
 
@@ -12,7 +12,7 @@ describeRealLibreOffice('DFC LibreOffice DOCX to PDF real managed runtime smoke'
   it('runs managed soffice through the adapter and validates controlled PDF output', async () => {
     const runtimeRoot = String(process.env.STARVERSE_DFC_LIBREOFFICE_RUNTIME_ROOT ?? '').trim()
     expect(runtimeRoot).toBeTruthy()
-    const availability = await resolveDfcLibreOfficeRuntimeExecutionDescriptor({
+    const availability = await resolveDfcLibreOfficePluginManagedRuntimeHandle({
       managedRuntimeRootDir: runtimeRoot,
     })
     expect(availability.ok).toBe(true)
@@ -24,7 +24,7 @@ describeRealLibreOffice('DFC LibreOffice DOCX to PDF real managed runtime smoke'
       sourceExtension: 'docx',
       sourceBytes: createMinimalDocxBuffer(),
       sandboxRootDir,
-      runtime: availability.runtime,
+      runtime: availability.handle,
       processRunner: runExternalProcess,
       timeoutMs: 300_000,
       cleanupSandbox: true,
@@ -45,7 +45,7 @@ describeRealLibreOffice('DFC LibreOffice DOCX to PDF real managed runtime smoke'
     expect(result.output.bytes).toBeGreaterThan(0)
     expect(await pathExists(sandboxRootDir)).toBe(false)
     expect(JSON.stringify(result.diagnostics)).not.toContain(runtimeRoot)
-    expect(JSON.stringify(result.diagnostics)).not.toContain(availability.runtime.executablePath)
+    expect(JSON.stringify(result.diagnostics)).not.toContain(availability.handle.executablePath)
   }, 360_000)
 })
 

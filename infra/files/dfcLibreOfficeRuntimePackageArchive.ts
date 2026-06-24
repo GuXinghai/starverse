@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import { inflateRawSync } from 'node:zlib'
+import { promisify } from 'node:util'
+import { inflateRaw } from 'node:zlib'
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { validatePluginPackageInventory } from '../../src/next/plugin-distribution/artifactInventory'
@@ -14,11 +15,14 @@ import {
   DFC_OFFICE_PDF_RUNTIME_ID,
   DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
   type DfcOfficePdfRuntimeManifest,
+  type DfcOfficePdfRuntimeOfficialRelease,
 } from './dfcManagedLibreOfficeRuntime'
 import {
   importDfcLibreOfficeManagedRuntimePackage,
   type DfcLibreOfficeManagedPackageInstallResult,
 } from './dfcLibreOfficeManagedPackageInstaller'
+
+const inflateRawAsync = promisify(inflateRaw)
 
 export const DFC_LIBREOFFICE_SVPKG_MANIFEST = 'manifest.json'
 export const DFC_LIBREOFFICE_SVPKG_INVENTORY = 'inventory.json'
@@ -113,6 +117,7 @@ export type DfcLibreOfficeRuntimePackageArchiveExtractionInput = Readonly<{
 export type DfcLibreOfficeRuntimePackageArchiveImportInput =
   DfcLibreOfficeRuntimePackageArchiveExtractionInput & Readonly<{
     appManagedRootDir: string
+    officialRelease?: DfcOfficePdfRuntimeOfficialRelease | null
   }>
 
 type ZipEntry = Readonly<{
@@ -124,7 +129,6 @@ type ZipEntry = Readonly<{
   externalAttributes: number
 }>
 
-const FULL_SHA256_RE = /^[a-f0-9]{64}$/u
 const NUL_RE = /\0/u
 const UNIX_SYMLINK_FILE_TYPE = 0o120000
 const UNIX_FILE_TYPE_MASK = 0o170000
@@ -192,6 +196,11 @@ export async function importDfcLibreOfficeRuntimePackageArchive(
     const install = await importDfcLibreOfficeManagedRuntimePackage({
       appManagedRootDir: input.appManagedRootDir,
       sourceRuntimeRootDir: extracted.runtimeRootDir,
+      expectedArtifactSha256: input.expectedPackageSha256,
+      activationMetadata: {
+        artifactSha256: input.expectedPackageSha256,
+        officialRelease: input.officialRelease ?? null,
+      },
       platform: input.platform ?? undefined,
       arch: input.arch ?? undefined,
     })
@@ -469,7 +478,8 @@ async function extractZipCompatibleArchive(bytes: Uint8Array, targetDir: string)
   const buffer = Buffer.from(bytes)
   const entries = readZipCentralDirectory(buffer)
   const seen = new Set<string>()
-  for (const entry of entries) {
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index]!
     if (isZipSymlink(entry)) throw new Error('zip symlink entries are not allowed')
     const normalized = normalizeArchiveEntryName(entry.fileName)
     if (!normalized) {
@@ -480,6 +490,7 @@ async function extractZipCompatibleArchive(bytes: Uint8Array, targetDir: string)
     if (seen.has(duplicateKey)) throw new Error('zip duplicate entry path')
     seen.add(duplicateKey)
     await writeZipEntry(buffer, entry, targetDir, normalized)
+    if (index % 8 === 7) await yieldToEventLoop()
   }
 }
 
@@ -540,7 +551,7 @@ async function writeZipEntry(buffer: Buffer, entry: ZipEntry, targetDir: string,
   const content = entry.compressionMethod === 0
     ? compressed
     : entry.compressionMethod === 8
-      ? inflateRawSync(compressed)
+      ? await inflateRawAsync(compressed)
       : null
   if (!content) throw new Error('zip compression method unsupported')
   if (content.byteLength !== entry.uncompressedSize) throw new Error('zip entry size mismatch')
@@ -548,6 +559,10 @@ async function writeZipEntry(buffer: Buffer, entry: ZipEntry, targetDir: string,
   if (!targetPath) throw new Error('zip entry escapes target directory')
   await mkdir(path.dirname(targetPath), { recursive: true })
   await writeFile(targetPath, content, { flag: 'wx' })
+}
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve))
 }
 
 function normalizeArchiveEntryName(input: string): string | null {

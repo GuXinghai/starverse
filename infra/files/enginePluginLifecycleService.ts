@@ -1,7 +1,8 @@
 import path from 'node:path'
+import os from 'node:os'
 import { createHash } from 'node:crypto'
-import { existsSync } from 'node:fs'
-import { mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import { inflateRawSync } from 'node:zlib'
 import {
   loadOfficialPluginCatalogFromFile,
@@ -30,7 +31,20 @@ import {
   type OfficialPackageReleaseMetadata,
   type OfficialPackageReleaseVerificationResult,
 } from '../../src/next/plugin-distribution/officialPackageRelease'
-import type { PackageDownloadTransport } from '../../src/next/plugin-distribution/packageDownloader'
+import {
+  downloadOfficialPackageToFile,
+  fetchPackageToFileWithFetch,
+  type PackageDownloadFailureReason,
+  type PackageDownloadProgress,
+  type PackageDownloadResumeOptions,
+  type PackageDownloadTransport,
+} from '../../src/next/plugin-distribution/packageDownloader'
+import {
+  buildProxyFetchInit,
+  isProxyFetchInitFailure,
+  normalizeNetworkProxySettings,
+  type NetworkProxySettings,
+} from '../../src/next/plugin-distribution/networkProxy'
 import { sanitizePluginDistributionText } from '../../src/next/plugin-distribution/sanitization'
 import { validatePluginPackageInventory } from '../../src/next/plugin-distribution/artifactInventory'
 import {
@@ -51,14 +65,22 @@ import {
 import {
   DFC_OFFICE_PDF_ENGINE_ID,
   DFC_OFFICE_PDF_DISPLAY_NAME,
+  DFC_OFFICE_PDF_PLUGIN_ID,
   DFC_OFFICE_PDF_RUNTIME_KIND,
+  DFC_OFFICE_PDF_RUNTIME_ID,
+  DFC_OFFICE_PDF_QUARANTINE_MARKER,
+  DFC_OFFICE_PDF_RUNTIME_MANIFEST,
+  DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL,
   checkDfcLibreOfficeRuntimeAvailabilitySync,
   getDfcLibreOfficeFirstPartyRuntimeCatalogEntry,
+  getDfcLibreOfficeManagedRuntimeRoot,
   toDfcLibreOfficePluginLifecycleBridge,
   type DfcLibreOfficePluginLifecycleBridge,
   type DfcLibreOfficeFirstPartyRuntimeCatalogEntry,
   type DfcOfficePdfRuntimeAvailabilitySummary,
+  type DfcOfficePdfRuntimeOfficialRelease,
 } from './dfcManagedLibreOfficeRuntime'
+import { importDfcLibreOfficeRuntimePackageArchive } from './dfcLibreOfficeRuntimePackageArchive'
 import type { EnginePluginRegistryRepo } from '../db/repo/enginePluginRegistryRepo'
 import type {
   EnginePluginInstallRootKind,
@@ -166,6 +188,29 @@ export type EnginePluginProductGateDto = Readonly<{
   degraded: boolean
   quarantined: boolean
   source: string | null
+  trustModel?: string | null
+  trustStates?: readonly string[]
+  distributionStates?: readonly string[]
+  packageDecision?: string | null
+  signatureCatalogStatus?: string | null
+  catalogSignatureStatus?: string | null
+  keyIdStatus?: string | null
+  revocationStatus?: string | null
+  expirationStatus?: string | null
+  rollbackEligibility?: string | null
+  productionTrustReadiness?: string | null
+  ownerGatedCandidateReadiness?: string | null
+  lastVerificationResult?: string | null
+  downloadEnabled?: boolean
+  approvedPlatform?: string | null
+  approvedArch?: string | null
+  approvedInput?: string | null
+  approvedOutput?: string | null
+  approvedAcquisitionModes?: readonly string[]
+  automaticDownloadEnabled?: boolean
+  postinstallDownloadEnabled?: boolean
+  conversionTimeDownloadEnabled?: boolean
+  platformPackageStatus?: string | null
   fallbackTargetKinds: readonly string[]
   message: string
 }>
@@ -332,8 +377,45 @@ export type EnginePluginLifecycleServiceDeps = Readonly<{
   healthRunner?: EngineHealthRunner
   officialPackageTransport?: PackageDownloadTransport
   magikaOfficialRelease?: OfficialPackageReleaseMetadata
+  dfcLibreOfficeOfficialRuntimeCatalogEntry?: DfcLibreOfficeFirstPartyRuntimeCatalogEntry
+  dfcLibreOfficeOfficialPackageImporter?: (input: Readonly<{
+    packageBytes: Uint8Array
+    catalog: DfcLibreOfficeFirstPartyRuntimeCatalogEntry
+  }>) => Promise<LifecycleActionResult<InstalledEnginePluginDto>>
+  dfcLibreOfficeOfficialPackageFileImporter?: (input: Readonly<{
+    packagePath: string
+    catalog: DfcLibreOfficeFirstPartyRuntimeCatalogEntry
+  }>) => Promise<LifecycleActionResult<InstalledEnginePluginDto>>
   dfcLibreOfficeManagedRuntimeRootDir?: string
+  dfcLibreOfficeAppManagedRootDir?: string
   dfcLibreOfficeRuntimeSummary?: () => DfcOfficePdfRuntimeAvailabilitySummary | null
+  networkProxySettingsProvider?: () => NetworkProxySettings | unknown
+}>
+
+export type LibreOfficeNetworkProxyProbeResult = Readonly<{
+  ok: boolean
+  proxyMode: NetworkProxySettings['proxyMode']
+  metadataReachable: boolean
+  assetFound: boolean
+  headPassed: boolean
+  contentLength: 'match' | 'mismatch' | 'unavailable'
+  redirectHostAllowed: boolean
+  rangePassed: boolean
+  terminalDiagnostic:
+    | 'proxy_probe_passed'
+    | 'proxy_direct_failed'
+    | 'proxy_environment_failed'
+    | 'proxy_manual_failed'
+    | 'proxy_system_unavailable'
+    | 'system_proxy_probe_failed'
+    | 'electron_net_transport_blocked'
+    | 'proxy_auth_required'
+    | 'proxy_connection_timeout'
+    | 'asset_host_blocked'
+    | 'range_supported'
+    | 'range_failed'
+    | 'metadata_reachable_head_failed'
+    | 'proxy_strict_ssl_unsupported'
 }>
 
 export type RegisterLocalOfficialPluginInput = Readonly<{
@@ -353,6 +435,7 @@ export type EnablePluginInput = Readonly<{ engineId: string }>
 export type DisablePluginInput = Readonly<{ engineId: string }>
 export type UninstallPluginInput = Readonly<{ engineId: string }>
 export type RunHealthCheckInput = Readonly<{ engineId: string }>
+export type ImportLibreOfficeSvpkgInput = Readonly<{ packagePath: string }>
 
 export type RegisterLocalPackageInput = Readonly<{
   packageDir: string
@@ -368,6 +451,11 @@ export type InstallOfficialPluginInput = Readonly<{
 }>
 
 export type GetInstallOperationStatusInput = Readonly<{
+  operationId?: string
+  pluginId?: string
+  pluginVersion?: string
+}>
+export type CancelInstallOperationInput = Readonly<{
   operationId?: string
   pluginId?: string
   pluginVersion?: string
@@ -658,7 +746,14 @@ export class EnginePluginLifecycleService {
     input: InstallOfficialPluginInput
   ): Promise<LifecycleActionResult<OfficialInstallOperationDto>> {
     const pluginId = requireNonEmpty(input.pluginId, 'pluginId')
-    const pluginVersion = String(input.pluginVersion ?? MAGIKA_OFFICIAL_PLUGIN_VERSION).trim()
+    const libreOfficeCatalog = this.getDfcLibreOfficeOfficialCatalogEntry()
+    const defaultPluginVersion = pluginId === DFC_OFFICE_PDF_PLUGIN_ID
+      ? libreOfficeCatalog.pluginVersion
+      : MAGIKA_OFFICIAL_PLUGIN_VERSION
+    const pluginVersion = String(input.pluginVersion ?? defaultPluginVersion).trim()
+    if (pluginId === DFC_OFFICE_PDF_PLUGIN_ID) {
+      return this.installOfficialLibreOfficePlugin({ pluginId, pluginVersion, enabled: input.enabled })
+    }
     if (pluginId !== MAGIKA_OFFICIAL_PLUGIN_ID || pluginVersion !== MAGIKA_OFFICIAL_PLUGIN_VERSION) {
       return fail('catalog_entry_not_found', 'official plugin entry is not found in bundled release metadata')
     }
@@ -707,6 +802,54 @@ export class EnginePluginLifecycleService {
     return ok(toOfficialInstallOperationDto(operation)!)
   }
 
+  private async installOfficialLibreOfficePlugin(
+    input: Readonly<{ pluginId: string; pluginVersion: string; enabled?: boolean }>
+  ): Promise<LifecycleActionResult<OfficialInstallOperationDto>> {
+    const catalog = this.getDfcLibreOfficeOfficialCatalogEntry()
+    if (input.pluginId !== catalog.pluginId || input.pluginVersion !== catalog.pluginVersion) {
+      return fail('catalog_entry_not_found', 'LibreOffice official runtime package is not found in bundled metadata')
+    }
+    const source = catalog.acquisitionSource
+    if (
+      source.sourceKind !== 'github_release_asset' ||
+      !source.sourceUrl ||
+      !source.expectedSha256 ||
+      !source.expectedSizeBytes
+    ) {
+      return fail('official_release_metadata_invalid', 'LibreOffice official GitHub asset metadata is incomplete')
+    }
+
+    const operationKey = officialInstallOperationKey(input.pluginId, input.pluginVersion)
+    const existingOperation = this.getActiveOfficialInstallOperation(operationKey)
+    if (existingOperation) {
+      return ok(toOfficialInstallOperationDto(existingOperation)!)
+    }
+
+    const installed = this.getDfcLibreOfficeInstalledDto()
+    if (installed?.installState === 'installed') {
+      return fail('already_registered', 'LibreOffice official runtime is already active')
+    }
+
+    const installRootKind = this.getRecommendedInstallRootKind()
+    if (installRootKind !== 'managed_root') {
+      return fail('install_root_kind_mismatch', 'LibreOffice official install requires the managed root')
+    }
+    if (!this.getDfcLibreOfficeAppManagedRootDir()) {
+      return fail('local_package_unavailable', 'LibreOffice managed runtime root is not configured')
+    }
+
+    const operation = this.createOfficialInstallOperation(input.pluginId, input.pluginVersion)
+    this.inFlightOfficialInstalls.set(operationKey, operation.operationId)
+    void this.runOfficialLibreOfficeInstallOperation({
+      operationId: operation.operationId,
+      pluginId: input.pluginId,
+      pluginVersion: input.pluginVersion,
+      catalog,
+    })
+
+    return ok(toOfficialInstallOperationDto(operation)!)
+  }
+
   getInstallOperationStatus(
     input: GetInstallOperationStatusInput = {}
   ): LifecycleActionResult<OfficialInstallOperationDto | null> {
@@ -727,6 +870,19 @@ export class EnginePluginLifecycleService {
       .filter((operation) => operation.pluginId === pluginId && operation.pluginVersion === pluginVersion)
       .sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null
     return ok(toOfficialInstallOperationDto(this.reconcileOfficialInstallOperation(latest)))
+  }
+
+  async cancelInstallOperation(
+    input: CancelInstallOperationInput = {}
+  ): Promise<LifecycleActionResult<OfficialInstallOperationDto | null>> {
+    const operation = this.findOfficialInstallOperation(input)
+    if (!operation) return ok(null)
+    await this.cleanupOfficialInstallPartialArtifacts(operation)
+    if (operation.state !== 'cancelled') {
+      this.failOfficialInstallOperation(operation, 'cancelled', 'download_cancelled', 'cancelled')
+    }
+    this.clearInFlightOfficialInstall(operation)
+    return ok(toOfficialInstallOperationDto(operation))
   }
 
   private createOfficialInstallOperation(
@@ -907,6 +1063,7 @@ export class EnginePluginLifecycleService {
     return verifyOfficialPackageReleaseDownload({
       release: input.release,
       transport: this.deps.officialPackageTransport ?? defaultOfficialPackageTransport,
+      proxy: this.getNetworkProxySettings(),
       now: new Date(this.now()),
       previousTrustedVersion: input.existing?.lastVerifiedAt ? input.existing.pluginVersion : null,
       environment: {
@@ -915,6 +1072,262 @@ export class EnginePluginLifecycleService {
         appVersion: '0.0.0',
       },
     })
+  }
+
+  private async runOfficialLibreOfficeInstallOperation(input: Readonly<{
+    operationId: string
+    pluginId: string
+    pluginVersion: string
+    catalog: DfcLibreOfficeFirstPartyRuntimeCatalogEntry
+  }>): Promise<void> {
+    const operation = this.installOperations.get(input.operationId)
+    if (!operation) return
+    try {
+      await this.executeOfficialLibreOfficeInstallOperation(input, operation)
+    } catch (err: any) {
+      this.failOfficialInstallOperation(operation, 'registration_failed', err?.message ?? 'LibreOffice official install failed')
+    } finally {
+      this.markOfficialInstallOperationTerminal(operation)
+      this.clearInFlightOfficialInstall(operation)
+    }
+  }
+
+  private async executeOfficialLibreOfficeInstallOperation(
+    input: Readonly<{
+      pluginId: string
+      pluginVersion: string
+      catalog: DfcLibreOfficeFirstPartyRuntimeCatalogEntry
+    }>,
+    operation: OfficialInstallOperationRecord
+  ): Promise<void> {
+    if (!this.transitionCurrentOfficialInstallOperation(operation, 'pending')) return
+    if (!this.transitionCurrentOfficialInstallOperation(operation, 'downloading')) return
+    const downloadPath = this.createOfficialLibreOfficeDownloadPath(operation)
+    if (!downloadPath) {
+      this.failOfficialInstallOperation(
+        operation,
+        'local_package_unavailable',
+        'libreoffice_managed_root_unavailable'
+      )
+      return
+    }
+    const downloaded = await this.downloadOfficialLibreOfficeRuntimePackage(input.catalog, {
+      outputPath: downloadPath,
+      operation,
+    })
+    if (!this.isOfficialInstallOperationCurrent(operation)) return
+    if (!downloaded.ok) {
+      const failure = mapLibreOfficeOfficialDownloadFailure(downloaded.failureReasons)
+      this.failOfficialInstallOperation(
+        operation,
+        failure.reason,
+        failure.diagnostic,
+        failure.state
+      )
+      return
+    }
+
+    if (!this.transitionCurrentOfficialInstallOperation(operation, 'verifying')) return
+    if (!this.transitionCurrentOfficialInstallOperation(operation, 'staging')) return
+    if (downloaded.stagedPackage.stageKind !== 'file') {
+      this.failOfficialInstallOperation(operation, 'download_failed', 'download_staging_invalid')
+      return
+    }
+    const imported = await this.importDfcLibreOfficeOfficialPackageFile({
+      packagePath: downloaded.stagedPackage.filePath,
+      catalog: input.catalog,
+    }).finally(() => rm(downloaded.stagedPackage.filePath, { force: true }).catch(() => undefined))
+    if (!this.isOfficialInstallOperationCurrent(operation)) return
+    if (!imported.ok) {
+      this.failOfficialInstallOperation(operation, imported.reason, imported.message)
+      return
+    }
+
+    if (!this.transitionCurrentOfficialInstallOperation(operation, 'registering')) return
+    operation.installedEngineId = imported.value.engineId
+    operation.result = {
+      engineId: imported.value.engineId,
+      pluginVersion: imported.value.pluginVersion,
+      installState: imported.value.installState,
+      healthStatus: imported.value.healthStatus,
+    }
+    if (!this.transitionCurrentOfficialInstallOperation(operation, 'health_checking')) return
+  }
+
+  private async downloadOfficialLibreOfficeRuntimePackage(
+    catalog: DfcLibreOfficeFirstPartyRuntimeCatalogEntry,
+    options: Readonly<{
+      outputPath: string
+      operation: OfficialInstallOperationRecord
+    }>
+  ): ReturnType<typeof downloadOfficialPackageToFile> {
+    const source = catalog.acquisitionSource
+    return downloadOfficialPackageToFile({
+      packageRef: {
+        pluginId: catalog.pluginId,
+        pluginVersion: catalog.pluginVersion,
+        packageRef: source.sourceUrl ?? '',
+        sourceKind: 'catalog_official',
+        catalogStatus: 'valid_metadata_only',
+        installabilityStatus: 'verified_future_install',
+        packageSha256: source.expectedSha256 ?? '',
+        packageSizeBytes: source.expectedSizeBytes ?? 0,
+      },
+      policy: {
+        maxBytes: Math.max(1024 * 1024 * 1024, (source.expectedSizeBytes ?? 0) + 64 * 1024 * 1024),
+        allowedOfficialHosts: ['github.com', 'release-assets.githubusercontent.com'],
+      },
+      transport: this.deps.officialPackageTransport ?? defaultOfficialPackageTransport,
+      outputPath: options.outputPath,
+      onProgress: (progress) => this.handleOfficialLibreOfficeDownloadProgress(options.operation, progress),
+      resume: createLibreOfficeOfficialResumeOptions(catalog),
+      proxy: this.getNetworkProxySettings(),
+    })
+  }
+
+  async probeLibreOfficeOfficialDownloadNetwork(): Promise<LibreOfficeNetworkProxyProbeResult> {
+    const catalog = this.getDfcLibreOfficeOfficialCatalogEntry()
+    const source = catalog.acquisitionSource
+    const sourceUrl = source.sourceUrl ?? ''
+    const expectedSize = source.expectedSizeBytes ?? 0
+    if (!sourceUrl || expectedSize <= 0) {
+      return {
+        ok: false,
+        proxyMode: this.getNetworkProxySettings().proxyMode,
+        metadataReachable: false,
+        assetFound: false,
+        headPassed: false,
+        contentLength: 'unavailable',
+        redirectHostAllowed: false,
+        rangePassed: false,
+        terminalDiagnostic: 'metadata_reachable_head_failed',
+      }
+    }
+    const proxy = this.getNetworkProxySettings()
+    const init = buildProxyFetchInit(proxy, sourceUrl, {
+      method: 'HEAD',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
+    })
+    if (isProxyFetchInitFailure(init)) {
+      return {
+        ok: false,
+        proxyMode: proxy.proxyMode,
+        metadataReachable: true,
+        assetFound: true,
+        headPassed: false,
+        contentLength: 'unavailable',
+        redirectHostAllowed: false,
+        rangePassed: false,
+        terminalDiagnostic: init.diagnosticCode,
+      }
+    }
+
+    let head: Response
+    try {
+      head = await fetch(sourceUrl, init)
+    } catch (err: any) {
+      return failedLibreOfficeNetworkProbe(proxy, 'metadata_reachable_head_failed', sanitizeNetworkErrorCode(err))
+    }
+    const headAllowed = isAllowedLibreOfficeOfficialDownloadHost(head.url)
+    const contentLength = Number(head.headers.get('content-length') ?? NaN)
+    const contentLengthMatches = Number.isFinite(contentLength) && contentLength === expectedSize
+    if (!head.ok || !headAllowed || !contentLengthMatches) {
+      return {
+        ok: false,
+        proxyMode: proxy.proxyMode,
+        metadataReachable: true,
+        assetFound: true,
+        headPassed: head.ok,
+        contentLength: Number.isFinite(contentLength)
+          ? (contentLengthMatches ? 'match' : 'mismatch')
+          : 'unavailable',
+        redirectHostAllowed: headAllowed,
+        rangePassed: false,
+        terminalDiagnostic: headAllowed ? 'metadata_reachable_head_failed' : 'asset_host_blocked',
+      }
+    }
+
+    const rangeInit = buildProxyFetchInit(proxy, sourceUrl, {
+      headers: { Range: 'bytes=0-1023' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
+    })
+    if (isProxyFetchInitFailure(rangeInit)) {
+      return {
+        ok: false,
+        proxyMode: proxy.proxyMode,
+        metadataReachable: true,
+        assetFound: true,
+        headPassed: true,
+        contentLength: 'match',
+        redirectHostAllowed: headAllowed,
+        rangePassed: false,
+        terminalDiagnostic: rangeInit.diagnosticCode,
+      }
+    }
+    try {
+      const range = await fetch(sourceUrl, rangeInit)
+      const rangeAllowed = isAllowedLibreOfficeOfficialDownloadHost(range.url)
+      const body = new Uint8Array(await range.arrayBuffer())
+      const rangePassed = range.status === 206 && rangeAllowed && body.byteLength === 1024
+      return {
+        ok: rangePassed,
+        proxyMode: proxy.proxyMode,
+        metadataReachable: true,
+        assetFound: true,
+        headPassed: true,
+        contentLength: 'match',
+        redirectHostAllowed: rangeAllowed,
+        rangePassed,
+        terminalDiagnostic: rangePassed ? 'proxy_probe_passed' : 'range_failed',
+      }
+    } catch (err: any) {
+      return failedLibreOfficeNetworkProbe(proxy, 'range_failed', sanitizeNetworkErrorCode(err), {
+        headPassed: true,
+        contentLength: 'match',
+        redirectHostAllowed: true,
+      })
+    }
+  }
+
+  private createOfficialLibreOfficeDownloadPath(operation: OfficialInstallOperationRecord): string | null {
+    const appRoot = this.getDfcLibreOfficeAppManagedRootDir()
+    if (!appRoot) return null
+    void operation
+    return path.join(appRoot, 'official-downloads', 'libreoffice-official-win32-x64.svpkg')
+  }
+
+  private handleOfficialLibreOfficeDownloadProgress(
+    operation: OfficialInstallOperationRecord,
+    progress: PackageDownloadProgress
+  ): void {
+    if (!this.isOfficialInstallOperationCurrent(operation)) return
+    if (progress.phase === 'retrying') {
+      this.transitionCurrentOfficialInstallOperation(operation, 'retrying')
+    } else if (progress.phase === 'downloading' && operation.state === 'retrying') {
+      this.transitionCurrentOfficialInstallOperation(operation, 'downloading')
+    }
+    this.touchOfficialInstallOperation(operation)
+  }
+
+  private getNetworkProxySettings(): NetworkProxySettings {
+    return normalizeNetworkProxySettings(this.deps.networkProxySettingsProvider?.())
+  }
+
+  private touchOfficialInstallOperation(operation: OfficialInstallOperationRecord): void {
+    if (!this.isOfficialInstallOperationCurrent(operation)) return
+    operation.updatedAt = this.now()
+  }
+
+  private async importDfcLibreOfficeOfficialPackageFile(input: Readonly<{
+    packagePath: string
+    catalog: DfcLibreOfficeFirstPartyRuntimeCatalogEntry
+  }>): Promise<LifecycleActionResult<InstalledEnginePluginDto>> {
+    if (this.deps.dfcLibreOfficeOfficialPackageFileImporter) {
+      return this.deps.dfcLibreOfficeOfficialPackageFileImporter(input)
+    }
+    return this.importDfcLibreOfficeSvpkg(input)
   }
 
   private failOfficialInstallFromVerification(
@@ -1002,7 +1415,7 @@ export class EnginePluginLifecycleService {
     operation: OfficialInstallOperationRecord,
     failureReason: string,
     diagnosticCode: string,
-    state: Extract<OfficialInstallOperationState, 'failed' | 'cancelled'> = 'failed',
+    state: Extract<OfficialInstallOperationState, 'failed' | 'cancelled' | 'paused_retryable'> = 'failed',
     errorChain: PluginLayeredErrorChainDto | null = null
   ): void {
     operation.failureReason = sanitizeOperationCode(failureReason)
@@ -1169,6 +1582,32 @@ export class EnginePluginLifecycleService {
       return null
     }
     return operation
+  }
+
+  private findOfficialInstallOperation(input: CancelInstallOperationInput): OfficialInstallOperationRecord | null {
+    const operationId = String(input.operationId ?? '').trim()
+    if (operationId) return this.installOperations.get(operationId) ?? null
+
+    const pluginId = String(input.pluginId ?? '').trim()
+    const pluginVersion = String(input.pluginVersion ?? '').trim()
+    if (!pluginId || !pluginVersion) return null
+    const operationKey = officialInstallOperationKey(pluginId, pluginVersion)
+    const active = this.getActiveOfficialInstallOperation(operationKey)
+    if (active) return active
+    return Array.from(this.installOperations.values())
+      .filter((operation) => operation.pluginId === pluginId && operation.pluginVersion === pluginVersion)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null
+  }
+
+  private async cleanupOfficialInstallPartialArtifacts(operation: OfficialInstallOperationRecord): Promise<void> {
+    if (operation.pluginId !== DFC_OFFICE_PDF_PLUGIN_ID) return
+    const downloadPath = this.createOfficialLibreOfficeDownloadPath(operation)
+    if (!downloadPath) return
+    await Promise.all([
+      rm(downloadPath, { force: true }).catch(() => undefined),
+      rm(`${downloadPath}.partial`, { force: true }).catch(() => undefined),
+      rm(`${downloadPath}.partial.json`, { force: true }).catch(() => undefined),
+    ])
   }
 
   private getBlockedTerminalOfficialInstallOperation(
@@ -1377,6 +1816,9 @@ export class EnginePluginLifecycleService {
 
   disablePlugin(input: DisablePluginInput): LifecycleActionResult<InstalledEnginePluginDto> {
     const engineId = requireNonEmpty(input.engineId, 'engineId')
+    if (engineId === DFC_OFFICE_PDF_ENGINE_ID) {
+      return this.disableDfcLibreOfficeRuntime()
+    }
     const record = this.deps.registryRepo.getByEngineId(engineId)
     if (!record) return fail('not_installed', 'plugin record is not found')
 
@@ -1388,6 +1830,9 @@ export class EnginePluginLifecycleService {
 
   async uninstallPlugin(input: UninstallPluginInput): Promise<LifecycleActionResult<InstalledEnginePluginDto>> {
     const engineId = requireNonEmpty(input.engineId, 'engineId')
+    if (engineId === DFC_OFFICE_PDF_ENGINE_ID) {
+      return this.clearDfcLibreOfficeRuntime()
+    }
     const record = this.deps.registryRepo.getByEngineId(engineId)
     if (!record) return fail('not_installed', 'plugin record is not found')
 
@@ -1497,6 +1942,91 @@ export class EnginePluginLifecycleService {
     return ok(toInstalledDto(upserted))
   }
 
+  async importDfcLibreOfficeSvpkg(
+    input: ImportLibreOfficeSvpkgInput
+  ): Promise<LifecycleActionResult<InstalledEnginePluginDto>> {
+    const packagePath = requireNonEmpty(input.packagePath, 'packagePath')
+    const packageBytes = await this.readBytes(packagePath).catch(() => null)
+    if (!packageBytes) return fail('local_package_unavailable', 'LibreOffice svpkg package could not be read')
+
+    return this.importDfcLibreOfficeSvpkgBytes({
+      packageBytes,
+      catalog: this.getDfcLibreOfficeOfficialCatalogEntry(),
+    })
+  }
+
+  private async importDfcLibreOfficeSvpkgBytes(input: Readonly<{
+    packageBytes: Uint8Array
+    catalog: DfcLibreOfficeFirstPartyRuntimeCatalogEntry
+  }>): Promise<LifecycleActionResult<InstalledEnginePluginDto>> {
+    const appRoot = this.getDfcLibreOfficeAppManagedRootDir()
+    if (!appRoot) return fail('local_package_unavailable', 'LibreOffice managed runtime root is not configured')
+    const extractionRoot = await mkdtemp(path.join(os.tmpdir(), 'svlo-import-'))
+    const imported = await importDfcLibreOfficeRuntimePackageArchive({
+      packageBytes: input.packageBytes,
+      extractionRootDir: extractionRoot,
+      appManagedRootDir: appRoot,
+      repoRootDir: process.cwd(),
+      expectedPackageSha256: input.catalog.acquisitionSource.expectedSha256,
+      expectedPackageSizeBytes: input.catalog.acquisitionSource.expectedSizeBytes,
+      officialRelease: libreOfficeRuntimeOfficialReleaseForCatalog(input.catalog),
+      platform: process.platform,
+      arch: process.arch,
+    }).finally(() => rm(extractionRoot, { recursive: true, force: true }).catch(() => undefined))
+
+    if (!imported.ok || !imported.install.ok) {
+      return fail(
+        'local_package_unavailable',
+        firstLibreOfficeDiagnosticMessage(imported.diagnostics, 'LibreOffice svpkg import failed')
+      )
+    }
+    const installed = this.getDfcLibreOfficeInstalledDto()
+    if (!installed) return fail('local_package_unavailable', 'LibreOffice svpkg import did not activate a managed runtime')
+    return ok(installed)
+  }
+
+  async quarantineDfcLibreOfficeRuntime(): Promise<LifecycleActionResult<InstalledEnginePluginDto>> {
+    const activeRoot = this.getDfcLibreOfficeActiveRuntimeRootDir()
+    if (!activeRoot) return fail('not_installed', 'LibreOffice managed runtime root is not configured')
+    await mkdir(activeRoot, { recursive: true })
+    await writeFile(path.join(activeRoot, DFC_OFFICE_PDF_QUARANTINE_MARKER), JSON.stringify({
+      reason: 'owner_gated_quarantine',
+      internalCode: 'office_pdf_runtime_quarantined',
+      quarantinedAt: new Date(this.now()).toISOString(),
+    }), 'utf8')
+    const installed = this.getDfcLibreOfficeInstalledDto()
+    if (!installed) return fail('not_installed', 'LibreOffice managed runtime is not configured after quarantine')
+    return ok(installed)
+  }
+
+  private disableDfcLibreOfficeRuntime(): LifecycleActionResult<InstalledEnginePluginDto> {
+    const activeRoot = this.getDfcLibreOfficeActiveRuntimeRootDir()
+    if (!activeRoot) return fail('not_installed', 'LibreOffice managed runtime root is not configured')
+    const manifestPath = path.join(activeRoot, DFC_OFFICE_PDF_RUNTIME_MANIFEST)
+    try {
+      const raw = existsSync(manifestPath) ? JSON.parse(readFileSyncUtf8(manifestPath)) as Record<string, unknown> : null
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return fail('local_package_unavailable', 'LibreOffice runtime manifest is not available for disable')
+      }
+      raw.enabled = false
+      writeFileSyncUtf8(manifestPath, JSON.stringify(raw, null, 2))
+      const installed = this.getDfcLibreOfficeInstalledDto()
+      if (!installed) return fail('not_installed', 'LibreOffice managed runtime is not configured after disable')
+      return ok(installed)
+    } catch {
+      return fail('local_package_unavailable', 'LibreOffice runtime disable failed')
+    }
+  }
+
+  private async clearDfcLibreOfficeRuntime(): Promise<LifecycleActionResult<InstalledEnginePluginDto>> {
+    const activeRoot = this.getDfcLibreOfficeActiveRuntimeRootDir()
+    if (!activeRoot) return fail('not_installed', 'LibreOffice managed runtime root is not configured')
+    await rm(activeRoot, { recursive: true, force: true })
+    const installed = this.getDfcLibreOfficeInstalledDto()
+    if (!installed) return fail('not_installed', 'LibreOffice managed runtime is not configured after clear')
+    return ok(installed)
+  }
+
   getDiagnosticsSummary(): EngineDiagnosticsSummary {
     const records = this.deps.registryRepo.list({ includeUninstalled: true })
     const entries: EngineDiagnosticsEntry[] = []
@@ -1584,7 +2114,7 @@ export class EnginePluginLifecycleService {
     const injectedSummary = this.deps.dfcLibreOfficeRuntimeSummary?.() ?? null
     if (injectedSummary) return toDfcLibreOfficePluginLifecycleBridge(injectedSummary)
 
-    const rootDir = this.deps.dfcLibreOfficeManagedRuntimeRootDir
+    const rootDir = this.getDfcLibreOfficeActiveRuntimeRootDir()
     if (!rootDir) return null
 
     const availability = checkDfcLibreOfficeRuntimeAvailabilitySync({
@@ -1593,10 +2123,29 @@ export class EnginePluginLifecycleService {
     return toDfcLibreOfficePluginLifecycleBridge(availability.summary)
   }
 
+  private getDfcLibreOfficeAppManagedRootDir(): string | null {
+    if (this.deps.dfcLibreOfficeAppManagedRootDir) return this.deps.dfcLibreOfficeAppManagedRootDir
+    const activeRoot = this.deps.dfcLibreOfficeManagedRuntimeRootDir
+    if (!activeRoot) return null
+    const expectedSuffix = path.join('managed-runtimes', 'dfc-office-pdf', DFC_OFFICE_PDF_RUNTIME_ID)
+    if (!activeRoot.endsWith(expectedSuffix)) return null
+    return path.resolve(activeRoot, '..', '..', '..')
+  }
+
+  private getDfcLibreOfficeActiveRuntimeRootDir(): string | null {
+    const appRoot = this.getDfcLibreOfficeAppManagedRootDir()
+    if (appRoot) return getDfcLibreOfficeManagedRuntimeRoot(appRoot)
+    return this.deps.dfcLibreOfficeManagedRuntimeRootDir ?? null
+  }
+
   private getDfcLibreOfficeInstalledDto(): InstalledEnginePluginDto | null {
     const bridge = this.getDfcLibreOfficeLifecycleBridge()
     if (!bridge) return null
     return toLibreOfficeInstalledDto(bridge, this.now())
+  }
+
+  private getDfcLibreOfficeOfficialCatalogEntry(): DfcLibreOfficeFirstPartyRuntimeCatalogEntry {
+    return this.deps.dfcLibreOfficeOfficialRuntimeCatalogEntry ?? getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()
   }
 
   private toLibreOfficeOfficialPluginDto(
@@ -1626,14 +2175,14 @@ export class EnginePluginLifecycleService {
         compatible: true,
       },
       modelVersion: null,
-      packageSizeBytes: 0,
+      packageSizeBytes: entry.acquisitionSource.expectedSizeBytes ?? 0,
       catalogGeneratedAt,
       installState: toLibreOfficeCatalogInstallState(bridge),
       enabled: bridge?.enabled ?? false,
       recommendedInstallRootKind,
       catalogStatus: 'valid_metadata_only',
       verificationMetadataStatus: 'metadata_present_crypto_deferred',
-      installabilityStatus: 'unavailable_read_only',
+      installabilityStatus: toLibreOfficeCatalogInstallabilityStatus(bridge),
       reasons: toLibreOfficeCatalogReasons(entry, bridge),
       warnings: toLibreOfficeCatalogWarnings(bridge),
       releaseProvenance: null,
@@ -1642,6 +2191,11 @@ export class EnginePluginLifecycleService {
 
   async runHealthCheck(input: RunHealthCheckInput): Promise<LifecycleActionResult<InstalledEnginePluginDto>> {
     const engineId = requireNonEmpty(input.engineId, 'engineId')
+    if (engineId === DFC_OFFICE_PDF_ENGINE_ID) {
+      const libreOffice = this.getDfcLibreOfficeInstalledDto()
+      if (!libreOffice) return fail('not_installed', 'LibreOffice Office PDF managed runtime is not configured')
+      return ok(libreOffice)
+    }
     const record = this.deps.registryRepo.getByEngineId(engineId)
     if (!record) return fail('not_installed', 'plugin record is not found')
     if (record.installState === 'uninstalled') {
@@ -1815,6 +2369,21 @@ function fail(
   }
 }
 
+function firstLibreOfficeDiagnosticMessage(
+  diagnostics: readonly { message?: string | null }[],
+  fallback: string
+): string {
+  return sanitizeMessage(diagnostics[0]?.message ?? fallback)
+}
+
+function readFileSyncUtf8(filePath: string): string {
+  return readFileSync(filePath, 'utf8')
+}
+
+function writeFileSyncUtf8(filePath: string, value: string): void {
+  writeFileSync(filePath, value, 'utf8')
+}
+
 function toInstalledDto(record: EnginePluginRegistryRecord): InstalledEnginePluginDto {
   const releaseProvenance = readOfficialReleaseProvenance(record.metadataJson)
   return {
@@ -1905,6 +2474,15 @@ function toLibreOfficeCatalogInstallState(
   return 'failed'
 }
 
+function toLibreOfficeCatalogInstallabilityStatus(
+  bridge: DfcLibreOfficePluginLifecycleBridge | null
+): OfficialPluginDto['installabilityStatus'] {
+  if (!bridge || bridge.lifecycleStatus === 'missing') return 'official_remote_install_available'
+  if (bridge.installed) return 'unavailable_read_only'
+  if (bridge.lifecycleStatus === 'blocked' || bridge.source === 'quarantined_runtime') return 'unavailable_read_only'
+  return 'official_remote_install_available'
+}
+
 function toLibreOfficeCatalogReasons(
   entry: DfcLibreOfficeFirstPartyRuntimeCatalogEntry,
   bridge: DfcLibreOfficePluginLifecycleBridge | null
@@ -1914,6 +2492,14 @@ function toLibreOfficeCatalogReasons(
     `layout_contract_v${entry.layoutContract.layoutVersion}`,
     'owner_gated_experimental',
     'production_approval_missing',
+    'manual_github_install_available',
+    'automatic_download_disabled_by_policy',
+    'conversion_time_download_disabled_by_policy',
+    'requires_user_gesture',
+    `source_kind_${entry.acquisitionSource.sourceKind}`,
+    'github_release_asset_fixed_catalog_entry',
+    'verify_before_activation',
+    'docx_only',
     'packaged_binary_not_included',
     'system_path_fallback_disabled',
     'file_scoped_update_rollback_quarantine_repair_available',
@@ -1923,6 +2509,17 @@ function toLibreOfficeCatalogReasons(
   } else {
     reasons.push(`runtime_source_${bridge.source}`)
     reasons.push(`runtime_lifecycle_${bridge.lifecycleStatus}`)
+    reasons.push(...bridge.trust.trustStates)
+    reasons.push(...bridge.trust.distributionStates)
+    reasons.push(bridge.trust.signatureCatalogStatus)
+    reasons.push(bridge.trust.catalogSignatureStatus)
+    reasons.push(bridge.trust.keyIdStatus)
+    reasons.push(bridge.trust.revocationStatus)
+    reasons.push(bridge.trust.expirationStatus)
+    reasons.push(bridge.trust.rollbackEligibility)
+    reasons.push(bridge.trust.productionTrustReadiness)
+    reasons.push(bridge.trust.ownerGatedCandidateReadiness)
+    reasons.push(bridge.trust.packageDecision)
     if (bridge.productCode) reasons.push(bridge.productCode)
     if (bridge.internalCode) reasons.push(bridge.internalCode)
   }
@@ -1988,6 +2585,33 @@ function toLibreOfficeProductGate(
     degraded: healthStatus === 'degraded',
     quarantined,
     source: bridge.source,
+    trustModel: bridge.trust.trustModel,
+    trustStates: bridge.trust.trustStates,
+    distributionStates: bridge.trust.distributionStates,
+    packageDecision: bridge.trust.packageDecision,
+    signatureCatalogStatus: bridge.trust.signatureCatalogStatus,
+    catalogSignatureStatus: bridge.trust.catalogSignatureStatus,
+    keyIdStatus: bridge.trust.keyIdStatus,
+    revocationStatus: bridge.trust.revocationStatus,
+    expirationStatus: bridge.trust.expirationStatus,
+    rollbackEligibility: bridge.trust.rollbackEligibility,
+    productionTrustReadiness: bridge.trust.productionTrustReadiness,
+    ownerGatedCandidateReadiness: bridge.trust.ownerGatedCandidateReadiness,
+    lastVerificationResult: bridge.trust.lastVerificationResult,
+    downloadEnabled: bridge.trust.downloadEnabled,
+    approvedPlatform: bridge.productionApproved ? DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.approvedPlatform : null,
+    approvedArch: bridge.productionApproved ? DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.approvedArch : null,
+    approvedInput: bridge.productionApproved ? DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.approvedInput : null,
+    approvedOutput: bridge.productionApproved ? DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.approvedOutput : null,
+    approvedAcquisitionModes: bridge.productionApproved
+      ? DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.approvedAcquisitionModes
+      : [],
+    automaticDownloadEnabled: DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.automaticDownloadEnabled,
+    postinstallDownloadEnabled: DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.postinstallDownloadEnabled,
+    conversionTimeDownloadEnabled: DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.conversionTimeDownloadEnabled,
+    platformPackageStatus: bridge.productionApproved
+      ? 'windows_x64_approved_mac_linux_deferred'
+      : 'platform_package_pending_or_not_approved',
     fallbackTargetKinds: ['markdown', 'original_file'],
     message: sanitizePluginDistributionText(bridge.message) ?? 'LibreOffice Office PDF runtime status is unavailable.',
   }
@@ -2097,6 +2721,74 @@ function mapOfficialReleaseFailure(
     return { state: 'failed', reason: 'download_failed', diagnostic: firstReason }
   }
   return { state: 'failed', reason: 'verification_failed', diagnostic: firstReason }
+}
+
+function mapLibreOfficeOfficialDownloadFailure(
+  reasons: readonly PackageDownloadFailureReason[]
+): Readonly<{
+  state: Extract<OfficialInstallOperationState, 'failed' | 'cancelled' | 'paused_retryable'>
+  reason: string
+  diagnostic: string
+}> {
+  const firstReason = reasons[0] ?? 'download_failed'
+  if (firstReason === 'download_cancelled') {
+    return { state: 'cancelled', reason: 'cancelled', diagnostic: 'download_cancelled' }
+  }
+  if (firstReason === 'hash_mismatch') {
+    return { state: 'failed', reason: 'hash_mismatch', diagnostic: 'hash_mismatch' }
+  }
+  if (firstReason === 'size_mismatch') {
+    return { state: 'failed', reason: 'size_mismatch', diagnostic: 'size_mismatch' }
+  }
+  if (firstReason === 'download_failed') {
+    return { state: 'failed', reason: 'download_failed', diagnostic: 'download_failed' }
+  }
+  if (firstReason === 'resume_retries_exhausted') {
+    return { state: 'paused_retryable', reason: 'resume_retries_exhausted', diagnostic: 'resume_retries_exhausted' }
+  }
+  if (
+    firstReason === 'resume_range_ignored' ||
+    firstReason === 'resume_range_rejected' ||
+    firstReason === 'resume_content_range_invalid'
+  ) {
+    return { state: 'failed', reason: firstReason, diagnostic: firstReason }
+  }
+  if (firstReason === 'download_too_large' || firstReason === 'package_too_large') {
+    return { state: 'failed', reason: 'size_mismatch', diagnostic: firstReason }
+  }
+  return { state: 'failed', reason: 'verification_failed', diagnostic: firstReason }
+}
+
+function createLibreOfficeOfficialResumeOptions(
+  catalog: DfcLibreOfficeFirstPartyRuntimeCatalogEntry
+): PackageDownloadResumeOptions {
+  const source = catalog.acquisitionSource
+  const ref = parseLibreOfficePackageRef(source.packageRef ?? '')
+  return {
+    enabled: true,
+    maxRetries: 3,
+    retryDelayMs: 3_000,
+    descriptor: {
+      pluginId: catalog.pluginId,
+      runtimeId: catalog.runtimeId,
+      packageId: 'starverse-runtime-libreoffice',
+      releaseTag: ref.releaseTag,
+      assetName: ref.assetName,
+      sourceKind: 'github_release_asset',
+      expectedSizeBytes: source.expectedSizeBytes ?? 0,
+      expectedSha256: source.expectedSha256 ?? '',
+      tempArtifactId: 'libreoffice-official-win32-x64',
+      rangeSupportMode: 'direct_browser_download_url',
+    },
+  }
+}
+
+function parseLibreOfficePackageRef(packageRef: string): Readonly<{ releaseTag: string; assetName: string }> {
+  const parts = packageRef.split('@')[1]?.split('/') ?? []
+  return {
+    releaseTag: safeIdentifier(parts[0]) ?? 'unknown-release',
+    assetName: safeAssetName(parts.at(-1)) ?? 'unknown.svpkg',
+  }
 }
 
 function appendSanitizedDiagnostic(values: readonly string[], value: string | null | undefined): string[] {
@@ -2256,6 +2948,22 @@ function officialReleaseProvenanceForEntry(
 ): OfficialReleaseProvenanceDto | null {
   if (pluginId !== MAGIKA_OFFICIAL_PLUGIN_ID || pluginVersion !== MAGIKA_OFFICIAL_PLUGIN_VERSION) return null
   return buildOfficialReleaseProvenance(MAGIKA_OFFICIAL_RELEASE_METADATA, MAGIKA_OFFICIAL_MODEL_VERSION)
+}
+
+function libreOfficeRuntimeOfficialReleaseForCatalog(
+  catalog: DfcLibreOfficeFirstPartyRuntimeCatalogEntry
+): DfcOfficePdfRuntimeOfficialRelease | null {
+  const source = catalog.acquisitionSource
+  const releaseTag = source.sourceUrl?.match(/\/releases\/download\/([^/]+)\//u)?.[1] ??
+    source.packageRef?.match(/@([^/]+)\//u)?.[1] ??
+    null
+  if (!source.packageRef || !releaseTag) return null
+  return {
+    sourceKind: 'official',
+    packageRef: source.packageRef,
+    releaseTag,
+    provenance: source.sourceKind,
+  }
 }
 
 function officialAvailableVersionForRecord(record: EnginePluginRegistryRecord): string | null {
@@ -2540,9 +3248,58 @@ async function defaultReadBytes(filePath: string): Promise<Uint8Array> {
   return new Uint8Array(await readFile(filePath))
 }
 
+function failedLibreOfficeNetworkProbe(
+  proxy: NetworkProxySettings,
+  diagnostic: LibreOfficeNetworkProxyProbeResult['terminalDiagnostic'],
+  detail: string,
+  overrides: Partial<LibreOfficeNetworkProxyProbeResult> = {}
+): LibreOfficeNetworkProxyProbeResult {
+  void detail
+  return {
+    ok: false,
+    proxyMode: proxy.proxyMode,
+    metadataReachable: true,
+    assetFound: true,
+    headPassed: false,
+    contentLength: 'unavailable',
+    redirectHostAllowed: false,
+    rangePassed: false,
+    terminalDiagnostic: diagnostic,
+    ...overrides,
+  }
+}
+
+function isAllowedLibreOfficeOfficialDownloadHost(value: string): boolean {
+  try {
+    const host = new URL(value).hostname.toLowerCase()
+    return host === 'github.com' || host === 'release-assets.githubusercontent.com'
+  } catch {
+    return false
+  }
+}
+
+function sanitizeNetworkErrorCode(error: any): LibreOfficeNetworkProxyProbeResult['terminalDiagnostic'] {
+  const code = String(error?.cause?.code ?? error?.code ?? error?.message ?? '').trim()
+  if (/timeout|timedout|etimedout|abort/iu.test(code)) return 'proxy_connection_timeout'
+  return 'metadata_reachable_head_failed'
+}
+
 const defaultOfficialPackageTransport: PackageDownloadTransport = {
   async fetchPackage(request) {
-    const response = await fetch(request.transportRef, { signal: request.signal })
+    const init = buildProxyFetchInit(request.proxy, request.transportRef, { signal: request.signal })
+    if (isProxyFetchInitFailure(init)) {
+      return { ok: false, code: 'download_failed', detail: init.diagnosticCode }
+    }
+    let response: Response
+    try {
+      response = await fetch(request.transportRef, init)
+    } catch (err: any) {
+      return {
+        ok: false,
+        code: request.signal?.aborted ? 'cancelled' : 'download_failed',
+        detail: request.signal?.aborted ? 'download cancelled' : sanitizeNetworkErrorCode(err),
+      }
+    }
     if (!response.ok) {
       return { ok: false, code: 'download_failed', detail: `http_${response.status}` }
     }
@@ -2555,6 +3312,9 @@ const defaultOfficialPackageTransport: PackageDownloadTransport = {
       return { ok: false, code: 'too_large', finalRef: response.url }
     }
     return { ok: true, bytes, finalRef: response.url }
+  },
+  async fetchPackageToFile(request) {
+    return fetchPackageToFileWithFetch(request)
   },
 }
 

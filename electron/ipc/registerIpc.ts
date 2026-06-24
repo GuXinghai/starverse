@@ -25,6 +25,10 @@ import {
   DEEPSEEK_CREDENTIAL_SETTINGS_IPC_CHANNELS,
 } from './deepSeekCredentialSettingsIpc'
 import {
+  registerLibreOfficeSystemProxyProbeIpc,
+  LIBREOFFICE_SYSTEM_PROXY_PROBE_IPC_CHANNELS,
+} from './libreOfficeSystemProxyProbeIpc'
+import {
   registerLocalEndpointDiagnosticsIpc,
   LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS,
 } from './localEndpointDiagnosticsIpc'
@@ -57,6 +61,7 @@ export const CORE_IPC_CHANNELS = [
   ...GOOGLE_AI_STUDIO_CREDENTIAL_SETTINGS_IPC_CHANNELS,
   ...ANTHROPIC_CREDENTIAL_SETTINGS_IPC_CHANNELS,
   ...DEEPSEEK_CREDENTIAL_SETTINGS_IPC_CHANNELS,
+  ...LIBREOFFICE_SYSTEM_PROXY_PROBE_IPC_CHANNELS,
   ...LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS,
   ...LOCAL_ENDPOINT_TEXT_CHAT_IPC_CHANNELS,
   ...OPENAI_RESPONSES_TEXT_CHAT_IPC_CHANNELS,
@@ -86,6 +91,8 @@ type RegisterIpcInput = Readonly<{
   performConfigSizeCheck: (context: 'startup' | 'write') => void
   refreshMainLocale?: () => void
   resolveAssetFileByUrl: (rawUrl: string) => Promise<ResolvedAssetFile | null>
+  importLibreOfficeSvpkg?: (packagePath: string) => Promise<unknown>
+  quarantineLibreOfficeRuntime?: () => Promise<unknown>
 }>
 
 export type IpcRegistrationResult = Readonly<{
@@ -133,6 +140,9 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
       registerInvoke: input.registerInvoke,
       store: input.store,
     }),
+    ...registerLibreOfficeSystemProxyProbeIpc({
+      registerInvoke: input.registerInvoke,
+    }),
     ...registerLocalEndpointDiagnosticsIpc({
       registerInvoke: input.registerInvoke,
     }),
@@ -159,7 +169,11 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
       registerInvoke: input.registerInvoke,
       runtimeInfo: input.netExpRuntimeInfo,
     }),
-    ...registerDialogIpc({ registerInvoke: input.registerInvoke }),
+    ...registerDialogIpc({
+      registerInvoke: input.registerInvoke,
+      importLibreOfficeSvpkg: input.importLibreOfficeSvpkg,
+      quarantineLibreOfficeRuntime: input.quarantineLibreOfficeRuntime,
+    }),
     ...registerShellIpc({ registerInvoke: input.registerInvoke }),
     ...registerImageIpc({
       registerInvoke: input.registerInvoke,

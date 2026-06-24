@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -12,9 +12,11 @@ import {
   DFC_OFFICE_PDF_RUNTIME_ID,
   DFC_OFFICE_PDF_RUNTIME_KIND,
   DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID,
+  DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL,
   checkDfcLibreOfficeRuntimeAvailability,
   checkDfcLibreOfficeRuntimeAvailabilitySync,
   createDfcLibreOfficeQuarantinedAvailabilitySummary,
+  createDfcLibreOfficeTrustBlockedAvailabilitySummary,
   getDfcLibreOfficeFirstPartyRuntimeCatalogEntry,
   getDfcLibreOfficeRuntimePackageLayoutContract,
   resolveDfcLibreOfficePluginManagedRuntimeHandle,
@@ -381,6 +383,33 @@ describe('dfc managed LibreOffice runtime gate', () => {
       experimental: true,
       installed: true,
       enabled: true,
+      trust: expect.objectContaining({
+        trustModel: 'owner_gated_hash_pinned_signed_catalog_required_for_production',
+        trustStates: expect.arrayContaining([
+          'unsigned_owner_gated',
+          'hash_pinned',
+          'signature_missing',
+          'catalog_untrusted',
+          'production_source_unapproved',
+        ]),
+        distributionStates: expect.arrayContaining([
+          'prerelease_source_owner_gated',
+          'offline_import_allowed',
+          'download_disabled_by_policy',
+          'system_libreoffice_disallowed',
+        ]),
+        packageDecision: 'candidate_production_asset_pending_signing_legal_approval',
+        signatureCatalogStatus: 'signature_missing_catalog_unsigned',
+        catalogSignatureStatus: 'missing',
+        keyIdStatus: 'not_checked',
+        revocationStatus: 'not_checked',
+        expirationStatus: 'not_checked',
+        rollbackEligibility: 'not_evaluated',
+        productionTrustReadiness: 'blocked_signature_missing',
+        ownerGatedCandidateReadiness: 'owner_gated_hash_pinned_ready',
+        downloadEnabled: false,
+        productionApproved: false,
+      }),
     })
     expect(bridge.capabilityIds).toEqual([
       DFC_OFFICE_PDF_PLUGIN_MANAGEMENT_CAPABILITY_ID,
@@ -435,7 +464,217 @@ describe('dfc managed LibreOffice runtime gate', () => {
     expect(JSON.stringify(result.diagnostics)).not.toContain(root)
   })
 
-  it('blocks plugin-managed runtime handles for quarantine and production-only fake seams', async () => {
+  it('approves only the expected official Windows x64 DOCX-to-PDF runtime for production', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-runtime-prod-win-'))
+    const executable = Buffer.from('fake official soffice executable')
+    const executablePath = 'program/soffice.exe'
+    const catalog = getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()
+    await mkdir(path.join(root, 'program'), { recursive: true })
+    await writeFile(path.join(root, executablePath), executable)
+    await writeManifest(root, {
+      platform: DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.approvedPlatform,
+      arch: DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.approvedArch,
+      executablePath,
+      libreOfficeVersion: catalog.acquisitionSource.runtimeVersion ?? '26.2.4',
+      packageVersion: catalog.acquisitionSource.packageVersion ?? '0.1.0',
+      artifactSha256: catalog.acquisitionSource.expectedSha256,
+      executableSha256: createHash('sha256').update(executable).digest('hex'),
+      executableSizeBytes: executable.byteLength,
+      officialRelease: {
+        sourceKind: 'official',
+        packageRef: catalog.acquisitionSource.packageRef ?? 'official-catalog-package',
+        releaseTag: 'starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64',
+        provenance: 'github_release_asset',
+      },
+    })
+
+    const availability = checkDfcLibreOfficeRuntimeAvailabilitySync({
+      managedRuntimeRootDir: root,
+      platform: 'win32',
+      arch: 'x64',
+    })
+    expect(availability.summary).toMatchObject({
+      status: 'available',
+      source: 'managed_manifest',
+      trust: expect.objectContaining({
+        productionApproved: true,
+        productionTrustReadiness: 'ready',
+        packageDecision: 'approved_windows_x64_docx_to_pdf_production_asset',
+        trustStates: expect.arrayContaining(['owner_approved_hash_pinned', 'hash_pinned']),
+        distributionStates: expect.arrayContaining([
+          'windows_x64_production_approved',
+          'manual_github_release_allowed',
+          'verified_offline_import_allowed',
+          'download_disabled_by_policy',
+        ]),
+      }),
+    })
+
+    const bridge = toDfcLibreOfficePluginLifecycleBridge(availability.summary)
+    expect(bridge).toMatchObject({
+      lifecycleStatus: 'installed',
+      productionApproved: true,
+      experimental: false,
+      installed: true,
+      enabled: true,
+    })
+
+    const handle = await resolveDfcLibreOfficePluginManagedRuntimeHandle({
+      managedRuntimeRootDir: root,
+      capabilityId: 'docx_to_pdf',
+      platform: 'win32',
+      arch: 'x64',
+      allowExperimental: false,
+      productionOnly: true,
+    })
+    expect(handle).toMatchObject({
+      ok: true,
+      handle: expect.objectContaining({
+        productionApproved: true,
+        experimental: false,
+        degraded: false,
+      }),
+    })
+    expect(JSON.stringify(availability.summary)).not.toContain(root)
+  })
+
+  it('backfills legacy official package-prep provenance for the approved installed Windows x64 runtime', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-runtime-prod-legacy-'))
+    const executable = Buffer.from('fake official soffice executable')
+    const executablePath = 'program/soffice.exe'
+    const catalog = getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()
+    await mkdir(path.join(root, 'program'), { recursive: true })
+    await writeFile(path.join(root, executablePath), executable)
+    await writeManifest(root, {
+      platform: DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.approvedPlatform,
+      arch: DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.approvedArch,
+      executablePath,
+      libreOfficeVersion: catalog.acquisitionSource.runtimeVersion ?? '26.2.4',
+      packageVersion: catalog.acquisitionSource.packageVersion ?? '0.1.0',
+      artifactSha256: '120932ed0010000000000000000000000000000000000000000000000000000',
+      executableSha256: createHash('sha256').update(executable).digest('hex'),
+      executableSizeBytes: executable.byteLength,
+      officialRelease: {
+        sourceKind: 'official',
+        packageRef: 'https://download.documentfoundation.org/libreoffice/stable/26.2.4/win/x86_64/LibreOffice_26.2.4_Win_x86-64.msi',
+        releaseTag: 'starverse-runtime-libreoffice-v0.1.0-win32-x64',
+        provenance: 'The Document Foundation official download infrastructure',
+      },
+    })
+
+    const availability = checkDfcLibreOfficeRuntimeAvailabilitySync({
+      managedRuntimeRootDir: root,
+      platform: 'win32',
+      arch: 'x64',
+    })
+
+    expect(availability.summary).toMatchObject({
+      status: 'available',
+      source: 'managed_manifest',
+      trust: expect.objectContaining({
+        productionApproved: true,
+        lastVerificationResult: 'hash_pin_matched',
+      }),
+    })
+    const manifest = JSON.parse(await readFile(path.join(root, 'manifest.json'), 'utf8')) as DfcOfficePdfRuntimeManifest
+    expect(manifest.artifactSha256).toBe(catalog.acquisitionSource.expectedSha256)
+    expect(manifest.officialRelease?.packageRef).toBe(catalog.acquisitionSource.packageRef)
+    expect(manifest.officialRelease?.releaseTag).toBe('starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64')
+  })
+
+  it('blocks approved-scope managed runtimes with precise package source diagnostics when the package identity is wrong', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-runtime-prod-mismatch-'))
+    const executable = Buffer.from('fake official soffice executable')
+    const executablePath = 'program/soffice.exe'
+    const catalog = getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()
+    await mkdir(path.join(root, 'program'), { recursive: true })
+    await writeFile(path.join(root, executablePath), executable)
+    await writeManifest(root, {
+      platform: DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.approvedPlatform,
+      arch: DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.approvedArch,
+      executablePath,
+      libreOfficeVersion: catalog.acquisitionSource.runtimeVersion ?? '26.2.4',
+      packageVersion: catalog.acquisitionSource.packageVersion ?? '0.1.0',
+      artifactSha256: catalog.acquisitionSource.expectedSha256,
+      executableSha256: createHash('sha256').update(executable).digest('hex'),
+      executableSizeBytes: executable.byteLength,
+      officialRelease: {
+        sourceKind: 'official',
+        packageRef: 'GuXinghai/starverse@wrong-release/wrong.svpkg',
+        releaseTag: 'wrong-release',
+        provenance: 'github_release_asset',
+      },
+    })
+
+    const availability = checkDfcLibreOfficeRuntimeAvailabilitySync({
+      managedRuntimeRootDir: root,
+      platform: 'win32',
+      arch: 'x64',
+    })
+
+    expect(availability.summary).toMatchObject({
+      status: 'blocked',
+      healthStatus: 'blocked',
+      productCode: 'conversion_sandbox_denied',
+      internalCode: 'office_pdf_runtime_package_source_mismatch',
+      source: 'managed_manifest',
+      trust: expect.objectContaining({
+        diagnosticCode: 'office_pdf_runtime_package_source_mismatch',
+        productionApproved: false,
+      }),
+    })
+    const bridge = toDfcLibreOfficePluginLifecycleBridge(availability.summary)
+    expect(bridge.productionApproved).toBe(false)
+    expect(bridge.productCode).toBe('conversion_sandbox_denied')
+    expect(bridge.internalCode).toBe('office_pdf_runtime_package_source_mismatch')
+  })
+
+  it('keeps non-Windows LibreOffice packages blocked as deferred and not production-approved', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-runtime-prod-deferred-'))
+    const executable = Buffer.from('fake official soffice executable')
+    const executablePath = 'program/soffice'
+    const catalog = getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()
+    await mkdir(path.join(root, 'program'), { recursive: true })
+    await writeFile(path.join(root, executablePath), executable)
+    await writeManifest(root, {
+      platform: 'darwin',
+      arch: 'arm64',
+      executablePath,
+      libreOfficeVersion: catalog.acquisitionSource.runtimeVersion ?? '26.2.4',
+      packageVersion: catalog.acquisitionSource.packageVersion ?? '0.1.0',
+      artifactSha256: catalog.acquisitionSource.expectedSha256,
+      executableSha256: createHash('sha256').update(executable).digest('hex'),
+      executableSizeBytes: executable.byteLength,
+      officialRelease: {
+        sourceKind: 'official',
+        packageRef: 'future-darwin-arm64-package',
+        releaseTag: 'future-darwin-arm64',
+        provenance: 'deferred-platform-fixture',
+      },
+    })
+
+    const availability = checkDfcLibreOfficeRuntimeAvailabilitySync({
+      managedRuntimeRootDir: root,
+      platform: 'darwin',
+      arch: 'arm64',
+    })
+
+    expect(availability.summary).toMatchObject({
+      status: 'blocked',
+      source: 'managed_manifest',
+      internalCode: 'office_pdf_runtime_package_platform_mismatch',
+      trust: expect.objectContaining({
+        productionApproved: false,
+        diagnosticCode: 'office_pdf_runtime_package_platform_mismatch',
+      }),
+    })
+    const bridge = toDfcLibreOfficePluginLifecycleBridge(availability.summary)
+    expect(bridge.productionApproved).toBe(false)
+    expect(bridge.experimental).toBe(false)
+    expect(bridge.internalCode).toBe('office_pdf_runtime_package_platform_mismatch')
+  })
+
+  it('blocks plugin-managed runtime handles for quarantine, trust blocks, and production-only fake seams', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-runtime-handle-blocked-'))
     const executable = Buffer.from('fake soffice executable')
     const executablePath = process.platform === 'win32' ? 'program/soffice.exe' : 'program/soffice'
@@ -466,6 +705,58 @@ describe('dfc managed LibreOffice runtime gate', () => {
     })
     expect(JSON.stringify(quarantined)).not.toContain(root)
 
+    const trustBlocked = await resolveDfcLibreOfficePluginManagedRuntimeHandle({
+      managedRuntimeRootDir: root,
+      lifecycleSummary: createDfcLibreOfficeTrustBlockedAvailabilitySummary({
+        message: `signature invalid at ${root}`,
+        trustStates: ['signature_invalid'],
+        distributionStates: ['distribution_mode_unapproved', 'download_disabled_by_policy'],
+        diagnosticCode: 'signature_invalid',
+      }),
+    })
+    expect(trustBlocked).toMatchObject({
+      ok: false,
+      handle: null,
+      summary: expect.objectContaining({
+        status: 'blocked',
+        healthStatus: 'blocked',
+        productCode: 'conversion_sandbox_denied',
+        internalCode: 'office_pdf_runtime_trust_blocked',
+        trust: expect.objectContaining({
+          trustStates: ['signature_invalid'],
+          distributionStates: ['distribution_mode_unapproved', 'download_disabled_by_policy'],
+          signatureCatalogStatus: 'signature_invalid_or_catalog_untrusted',
+          lastVerificationResult: 'blocked',
+          diagnosticCode: 'signature_invalid',
+        }),
+      }),
+    })
+    expect(JSON.stringify(trustBlocked)).not.toContain(root)
+
+    const productionUnsigned = await resolveDfcLibreOfficePluginManagedRuntimeHandle({
+      managedRuntimeRootDir: root,
+      productionOnly: true,
+      lifecycleSummary: {
+        ...checkDfcLibreOfficeRuntimeAvailabilitySync({ managedRuntimeRootDir: root }).summary,
+        source: 'managed_manifest',
+      },
+    })
+    expect(productionUnsigned).toMatchObject({
+      ok: false,
+      handle: null,
+      summary: expect.objectContaining({
+        status: 'blocked',
+        healthStatus: 'blocked',
+        internalCode: 'office_pdf_catalog_signature_missing',
+        trust: expect.objectContaining({
+          productionTrustReadiness: 'blocked_signature_missing',
+          ownerGatedCandidateReadiness: 'owner_gated_hash_pinned_ready',
+          diagnosticCode: 'office_pdf_catalog_signature_missing',
+        }),
+      }),
+    })
+    expect(JSON.stringify(productionUnsigned)).not.toContain(root)
+
     const productionOnly = await resolveDfcLibreOfficePluginManagedRuntimeHandle({
       managedRuntimeRootDir: root,
       productionOnly: true,
@@ -474,7 +765,11 @@ describe('dfc managed LibreOffice runtime gate', () => {
       ok: false,
       handle: null,
       summary: expect.objectContaining({
-        source: 'fake_seam',
+        status: 'blocked',
+        internalCode: 'office_pdf_catalog_signature_missing',
+        trust: expect.objectContaining({
+          productionTrustReadiness: 'blocked_signature_missing',
+        }),
       }),
     })
     expect(JSON.stringify(productionOnly.summary)).not.toContain(root)
@@ -514,8 +809,9 @@ describe('dfc managed LibreOffice runtime gate', () => {
       displayName: 'LibreOffice Office PDF',
       provider: DFC_OFFICE_PDF_PLUGIN_PROVIDER,
       runtimeKind: 'managed',
-      productionApproved: false,
-      experimental: true,
+      productionApproved: true,
+      productionApprovalScope: DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL,
+      experimental: false,
       artifactSourcePolicy: {
         officialCatalogCandidate: true,
         importedDevArtifactAllowed: true,
@@ -533,9 +829,33 @@ describe('dfc managed LibreOffice runtime gate', () => {
         runtimeVersion: '26.2.4',
         platform: 'win32',
         arch: 'x64',
-        productionApproved: false,
-        ownerGated: true,
-        experimental: true,
+        productionApproved: true,
+        ownerGated: false,
+        experimental: false,
+      },
+      trustPolicy: {
+        selectedModel: 'owner_gated_hash_pinned_signed_catalog_required_for_production',
+        currentPackageDecision: 'approved_windows_x64_docx_to_pdf_production_asset',
+        currentTrustStates: expect.arrayContaining([
+          'owner_approved_hash_pinned',
+          'hash_pinned',
+          'signature_missing',
+          'catalog_untrusted',
+        ]),
+        currentDistributionStates: expect.arrayContaining([
+          'offline_import_allowed',
+          'manual_github_release_allowed',
+          'verified_offline_import_allowed',
+          'windows_x64_production_approved',
+          'download_disabled_by_policy',
+          'bundled_runtime_not_approved',
+          'install_repair_download_not_approved',
+          'product_mirror_pending_approval',
+          'system_libreoffice_disallowed',
+        ]),
+        unsignedPackagesProductionApproved: false,
+        detachedSignatureRequiredForProduction: true,
+        signedCatalogRequiredForProduction: true,
       },
       layoutContract: expect.objectContaining({
         layoutVersion: '1',
@@ -568,6 +888,23 @@ describe('dfc managed LibreOffice runtime gate', () => {
     ])
     expect(entry.supportedPlatforms).toEqual(['win32', 'darwin', 'linux'])
     expect(entry.supportedFormats).toEqual(['docx'])
+    expect(entry.verificationOrder).toEqual([
+      'package_size_preflight',
+      'package_sha256_preflight',
+      'signature_or_catalog_verification_if_enabled',
+      'archive_extraction_to_staging',
+      'manifest_identity_validation',
+      'runtime_identity_validation',
+      'package_runtime_version_validation',
+      'platform_arch_validation',
+      'executable_relative_path_validation',
+      'executable_hash_size_validation',
+      'provenance_license_security_policy_validation',
+      'realpath_containment',
+      'symlink_reparse_escape_rejection',
+      'activation',
+      'optional_owner_gated_health_check_smoke',
+    ])
   })
 
   it('exposes the shared LibreOffice package layout verification contract', () => {
