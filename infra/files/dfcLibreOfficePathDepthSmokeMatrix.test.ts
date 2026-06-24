@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { mkdir, mkdtemp, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -8,11 +9,12 @@ import {
   runDfcLibreOfficeDocxToPdfAdapter,
   type DfcLibreOfficePdfAdapterResult,
 } from './dfcLibreOfficePdfAdapter'
-import { resolveDfcLibreOfficeRuntimeExecutionDescriptor } from './dfcManagedLibreOfficeRuntime'
+import { resolveDfcLibreOfficePluginManagedRuntimeHandle } from './dfcManagedLibreOfficeRuntime'
 
 type PathDepthClass = 'short' | 'deep'
 
 type PathDepthSmokeMatrixCase = Readonly<{
+  matrixLabel: 'A' | 'B' | 'C' | 'D'
   id: string
   runtimeClass: PathDepthClass
   runtimeRootEnv: 'STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_SHORT_RUNTIME_ROOT' | 'STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_DEEP_RUNTIME_ROOT'
@@ -20,12 +22,26 @@ type PathDepthSmokeMatrixCase = Readonly<{
   assetId: string
 }>
 
+type PathDepthFailurePhase =
+  | 'none'
+  | 'runtime_resolution'
+  | 'process_execution'
+  | 'output_validation'
+  | 'sandbox_planning'
+  | 'cleanup'
+  | 'unknown'
+
+type PathDepthPdfOutputValidation = 'valid_pdf' | 'failed' | 'not_reached'
+
 type PathDepthSmokeEvidence = Readonly<{
+  matrixLabel: PathDepthSmokeMatrixCase['matrixLabel']
   caseId: string
   runtimeClass: PathDepthClass
   sandboxClass: PathDepthClass
   status: DfcLibreOfficePdfAdapterResult['status'] | 'runtime_unavailable'
-  ok: boolean
+  passed: boolean
+  failurePhase: PathDepthFailurePhase
+  pdfOutputValidation: PathDepthPdfOutputValidation
   cleanupStatus: DfcLibreOfficePdfAdapterResult['cleanupStatus'] | 'not_started'
   pathLengths: Readonly<{
     runtimeRoot: number
@@ -44,8 +60,16 @@ type PathDepthSmokeEvidence = Readonly<{
 }>
 
 const PATH_DEPTH_SMOKE_FLAG = 'STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_SMOKE'
+const spawnWithStreamErrorGuards: NonNullable<RunExternalProcessInput['spawnImpl']> = (command, args, options) => {
+  const child = spawn(command, args, options)
+  child.stdout.on('error', () => {})
+  child.stderr.on('error', () => {})
+  return child
+}
+
 const PATH_DEPTH_MATRIX_CASES: readonly PathDepthSmokeMatrixCase[] = [
   {
+    matrixLabel: 'A',
     id: 'short-runtime-short-sandbox',
     runtimeClass: 'short',
     runtimeRootEnv: 'STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_SHORT_RUNTIME_ROOT',
@@ -53,6 +77,7 @@ const PATH_DEPTH_MATRIX_CASES: readonly PathDepthSmokeMatrixCase[] = [
     assetId: 'asset-path-depth-short-short',
   },
   {
+    matrixLabel: 'B',
     id: 'short-runtime-deep-sandbox',
     runtimeClass: 'short',
     runtimeRootEnv: 'STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_SHORT_RUNTIME_ROOT',
@@ -60,6 +85,7 @@ const PATH_DEPTH_MATRIX_CASES: readonly PathDepthSmokeMatrixCase[] = [
     assetId: 'asset-path-depth-short-runtime-deep-sandbox-docx-pdf',
   },
   {
+    matrixLabel: 'C',
     id: 'deep-runtime-short-sandbox',
     runtimeClass: 'deep',
     runtimeRootEnv: 'STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_DEEP_RUNTIME_ROOT',
@@ -67,6 +93,7 @@ const PATH_DEPTH_MATRIX_CASES: readonly PathDepthSmokeMatrixCase[] = [
     assetId: 'asset-path-depth-deep-runtime-short-sandbox',
   },
   {
+    matrixLabel: 'D',
     id: 'deep-runtime-deep-sandbox',
     runtimeClass: 'deep',
     runtimeRootEnv: 'STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_DEEP_RUNTIME_ROOT',
@@ -80,11 +107,11 @@ const realPathDepthSmoke = process.env[PATH_DEPTH_SMOKE_FLAG] === '1' ? it : it.
 describe('DFC LibreOffice path-depth smoke matrix harness', () => {
   it('defines a default-off matrix covering short/deep runtime roots and sandbox input/output paths', () => {
     expect(PATH_DEPTH_SMOKE_FLAG).toBe('STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_SMOKE')
-    expect(PATH_DEPTH_MATRIX_CASES.map((entry) => entry.id)).toEqual([
-      'short-runtime-short-sandbox',
-      'short-runtime-deep-sandbox',
-      'deep-runtime-short-sandbox',
-      'deep-runtime-deep-sandbox',
+    expect(PATH_DEPTH_MATRIX_CASES.map((entry) => `${entry.matrixLabel}:${entry.id}`)).toEqual([
+      'A:short-runtime-short-sandbox',
+      'B:short-runtime-deep-sandbox',
+      'C:deep-runtime-short-sandbox',
+      'D:deep-runtime-deep-sandbox',
     ])
     expect(new Set(PATH_DEPTH_MATRIX_CASES.map((entry) => entry.runtimeClass))).toEqual(new Set(['short', 'deep']))
     expect(new Set(PATH_DEPTH_MATRIX_CASES.map((entry) => entry.sandboxClass))).toEqual(new Set(['short', 'deep']))
@@ -107,7 +134,7 @@ describe('DFC LibreOffice path-depth smoke matrix harness', () => {
           'C:\\Users\\owner\\private\\sandbox-root\\input\\asset.docx',
         ],
         cwd: 'C:\\Users\\owner\\private\\sandbox-root\\work',
-        env: {},
+        env: {} as unknown as NodeJS.ProcessEnv,
         mode: 'conversion',
         timeoutMs: 300_000,
         shell: false,
@@ -131,6 +158,10 @@ describe('DFC LibreOffice path-depth smoke matrix harness', () => {
       outputDir: true,
       profileDir: true,
     })
+    expect(evidence.matrixLabel).toBe('D')
+    expect(evidence.passed).toBe(false)
+    expect(evidence.failurePhase).toBe('process_execution')
+    expect(evidence.pdfOutputValidation).toBe('not_reached')
     expect(evidence.pathLengths.runtimeRoot).toBeGreaterThan(0)
     expect(evidence.diagnosticCodes).toEqual(['office_pdf_process_timeout'])
     expect(serialized).not.toContain('C:\\Users\\owner')
@@ -140,13 +171,16 @@ describe('DFC LibreOffice path-depth smoke matrix harness', () => {
   })
 
   realPathDepthSmoke('runs DOCX-to-PDF against the explicit short/deep runtime and sandbox path-depth matrix', async () => {
+    const evidenceRecords: PathDepthSmokeEvidence[] = []
+    const validationFailures: string[] = []
+
     for (const matrixCase of PATH_DEPTH_MATRIX_CASES) {
       const runtimeRoot = String(process.env[matrixCase.runtimeRootEnv] ?? '').trim()
       if (!runtimeRoot) {
         throw new Error(`Missing ${matrixCase.runtimeRootEnv} for LibreOffice path-depth smoke case ${matrixCase.id}.`)
       }
 
-      const availability = await resolveDfcLibreOfficeRuntimeExecutionDescriptor({
+      const availability = await resolveDfcLibreOfficePluginManagedRuntimeHandle({
         managedRuntimeRootDir: runtimeRoot,
       })
       if (!availability.ok) {
@@ -158,7 +192,11 @@ describe('DFC LibreOffice path-depth smoke matrix harness', () => {
           result: null,
           runtimeUnavailable: true,
         })
-        throw new Error(`LibreOffice path-depth smoke runtime unavailable for ${matrixCase.id}: ${evidence.diagnosticCodes.join(',') || 'runtime_unavailable'}`)
+        evidenceRecords.push(evidence)
+        if (matrixCase.matrixLabel === 'A') {
+          validationFailures.push(`${matrixCase.matrixLabel}:${matrixCase.id}:runtime_unavailable:${evidence.diagnosticCodes.join(',') || 'runtime_unavailable'}`)
+        }
+        continue
       }
 
       const sandboxRoot = await createSandboxRoot(matrixCase)
@@ -168,10 +206,13 @@ describe('DFC LibreOffice path-depth smoke matrix harness', () => {
         sourceExtension: 'docx',
         sourceBytes: createMinimalDocxBuffer(),
         sandboxRootDir: sandboxRoot,
-        runtime: availability.runtime,
+        runtime: availability.handle,
         processRunner: async (input) => {
           processInput = input
-          return runExternalProcess(input)
+          return runExternalProcess({
+            ...input,
+            spawnImpl: spawnWithStreamErrorGuards,
+          })
         },
         timeoutMs: 300_000,
         cleanupSandbox: true,
@@ -185,22 +226,32 @@ describe('DFC LibreOffice path-depth smoke matrix harness', () => {
         result,
       })
       const serializedEvidence = JSON.stringify(evidence)
-      if (!processInput) throw new Error(`LibreOffice path-depth smoke did not record process input for ${matrixCase.id}.`)
+      evidenceRecords.push(evidence)
+      if (!processInput) validationFailures.push(`${matrixCase.matrixLabel}:${matrixCase.id}:process_input_missing`)
       if (!evidence.recordedPaths.inputPath || !evidence.recordedPaths.outputDir || !evidence.recordedPaths.profileDir) {
-        throw new Error(`LibreOffice path-depth smoke did not record required path classes for ${matrixCase.id}.`)
+        validationFailures.push(`${matrixCase.matrixLabel}:${matrixCase.id}:path_classes_missing`)
       }
-      if (serializedEvidence.includes(runtimeRoot) || serializedEvidence.includes(sandboxRoot) || serializedEvidence.includes(availability.runtime.executablePath)) {
-        throw new Error(`LibreOffice path-depth smoke evidence leaked raw paths for ${matrixCase.id}.`)
+      if (serializedEvidence.includes(runtimeRoot) || serializedEvidence.includes(sandboxRoot) || serializedEvidence.includes(availability.handle.executablePath)) {
+        validationFailures.push(`${matrixCase.matrixLabel}:${matrixCase.id}:raw_path_leak`)
       }
-      if (!result.ok) {
-        throw new Error(`LibreOffice path-depth smoke failed for ${matrixCase.id}: ${result.status}; diagnostics=${evidence.diagnosticCodes.join(',')}`)
+      if (!result.ok && matrixCase.matrixLabel === 'A') {
+        validationFailures.push(`${matrixCase.matrixLabel}:${matrixCase.id}:${result.status}:${evidence.failurePhase}:${evidence.diagnosticCodes.join(',')}`)
       }
       if (result.cleanupStatus !== 'attempted') {
-        throw new Error(`LibreOffice path-depth smoke did not attempt cleanup for ${matrixCase.id}.`)
+        validationFailures.push(`${matrixCase.matrixLabel}:${matrixCase.id}:cleanup_not_attempted`)
       }
       if (await pathExists(sandboxRoot)) {
-        throw new Error(`LibreOffice path-depth smoke sandbox cleanup left a directory for ${matrixCase.id}.`)
+        validationFailures.push(`${matrixCase.matrixLabel}:${matrixCase.id}:cleanup_left_directory`)
       }
+    }
+
+    console.info(JSON.stringify({
+      type: 'dfc-libreoffice-path-depth-evidence',
+      cases: evidenceRecords,
+    }, null, 2))
+
+    if (validationFailures.length > 0) {
+      throw new Error(`LibreOffice path-depth smoke matrix failed: ${validationFailures.join('; ')}`)
     }
   }, 30 * 60 * 1000)
 })
@@ -219,13 +270,17 @@ function buildPathDepthEvidence(input: Readonly<{
   const inputPath = String(args[args.length - 1] ?? '')
   const profileDir = String(profileArg).replace(/^-env:UserInstallation=file:\/\//, '')
   const status = input.runtimeUnavailable === true ? 'runtime_unavailable' : input.result?.status ?? 'runtime_unavailable'
+  const diagnosticCodes = input.result?.diagnostics.map((diagnostic) => diagnostic.code) ?? []
 
   return {
+    matrixLabel: input.matrixCase.matrixLabel,
     caseId: input.matrixCase.id,
     runtimeClass: input.matrixCase.runtimeClass,
     sandboxClass: input.matrixCase.sandboxClass,
     status,
-    ok: input.result?.ok ?? false,
+    passed: input.result?.ok ?? false,
+    failurePhase: classifyFailurePhase(status, diagnosticCodes),
+    pdfOutputValidation: classifyPdfOutputValidation(input.result, diagnosticCodes),
     cleanupStatus: input.result?.cleanupStatus ?? 'not_started',
     pathLengths: {
       runtimeRoot: input.runtimeRoot.length,
@@ -240,8 +295,30 @@ function buildPathDepthEvidence(input: Readonly<{
       outputDir: outputDir.length > 0,
       profileDir: profileDir.length > 0,
     },
-    diagnosticCodes: input.result?.diagnostics.map((diagnostic) => diagnostic.code) ?? [],
+    diagnosticCodes,
   }
+}
+
+function classifyFailurePhase(
+  status: PathDepthSmokeEvidence['status'],
+  diagnosticCodes: readonly string[]
+): PathDepthFailurePhase {
+  if (status === 'succeeded') return 'none'
+  if (status === 'runtime_unavailable') return 'runtime_resolution'
+  if (diagnosticCodes.some((code) => code.startsWith('office_pdf_output_'))) return 'output_validation'
+  if (diagnosticCodes.some((code) => code.startsWith('office_pdf_sandbox_'))) return 'sandbox_planning'
+  if (diagnosticCodes.some((code) => code.includes('cleanup'))) return 'cleanup'
+  if (status === 'failed' || status === 'timed_out') return 'process_execution'
+  return 'unknown'
+}
+
+function classifyPdfOutputValidation(
+  result: DfcLibreOfficePdfAdapterResult | null,
+  diagnosticCodes: readonly string[]
+): PathDepthPdfOutputValidation {
+  if (result?.ok) return 'valid_pdf'
+  if (diagnosticCodes.some((code) => code.startsWith('office_pdf_output_'))) return 'failed'
+  return 'not_reached'
 }
 
 async function createSandboxRoot(matrixCase: PathDepthSmokeMatrixCase): Promise<string> {

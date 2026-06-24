@@ -1757,6 +1757,7 @@ export type WorkerInitConfig = {
   isProduction?: boolean
   electronConversionBridge?: import('../files/electronConversionBridge').ElectronConversionBridge
   officePdfProcessRunner?: import('../files/dfcLibreOfficePdfAdapter').DfcLibreOfficePdfProcessRunner
+  officePdfRuntimeSummary?: () => import('../files/dfcManagedLibreOfficeRuntime').DfcOfficePdfRuntimeAvailabilitySummary | null
 }
 
 export type { DbMethod } from './dbMethodsRegistry'
@@ -2236,6 +2237,24 @@ export type ElectronConversionWorkerResponseMessage = {
   type: 'electron-conversion-response'
   id: string
   response: import('../files/electronConversionServiceContract').ElectronConversionResponse
+}
+
+export type ElectronPackageDownloadWorkerRequestMessage = {
+  type: 'electron-package-download-request'
+  id: string
+  request: import('../../src/next/plugin-distribution/packageDownloader').PackageDownloadFileTransportRequest
+}
+
+export type ElectronPackageDownloadWorkerResponseMessage = {
+  type: 'electron-package-download-response'
+  id: string
+  response: import('../../src/next/plugin-distribution/packageDownloader').PackageDownloadFileTransportResult
+}
+
+export type ElectronPackageDownloadWorkerProgressMessage = {
+  type: 'electron-package-download-progress'
+  id: string
+  progress: import('../../src/next/plugin-distribution/packageDownloader').PackageDownloadProgress
 }
 
 // ========== Model Data Types ==========

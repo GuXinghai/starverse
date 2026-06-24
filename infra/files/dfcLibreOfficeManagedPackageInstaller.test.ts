@@ -11,6 +11,7 @@ import {
   rollbackDfcLibreOfficeManagedRuntimePackage,
   updateDfcLibreOfficeManagedRuntimePackage,
 } from './dfcLibreOfficeManagedPackageInstaller'
+import type { DfcLibreOfficeCatalogVerificationResult } from './dfcLibreOfficeSignedCatalog'
 
 describe('dfc LibreOffice managed package installer scaffold', () => {
   it('imports a valid managed runtime into the active root and preserves previous known-good metadata', async () => {
@@ -349,6 +350,40 @@ describe('dfc LibreOffice managed package installer scaffold', () => {
       diagnostics: [expect.objectContaining({ code: 'office_pdf_rollback_target_quarantined' })],
     })
     expect(JSON.stringify(quarantined)).not.toContain(previous.root)
+  })
+
+  it('rejects rollback when signed catalog trust metadata makes the target ineligible', async () => {
+    const appRoot = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-rollback-catalog-'))
+    const previous = await createRuntime('24.8.0')
+    const revokedCatalog: DfcLibreOfficeCatalogVerificationResult = {
+      ok: false,
+      entry: null,
+      diagnosticCode: 'office_pdf_catalog_package_revoked',
+      diagnostics: ['office_pdf_catalog_package_revoked'],
+      trust: {
+        revocationStatus: 'revoked',
+        rollbackEligibility: 'ineligible',
+        productionTrustReadiness: 'blocked_revoked',
+        ownerGatedCandidateReadiness: 'blocked',
+      },
+    }
+
+    const result = await rollbackDfcLibreOfficeManagedRuntimePackage({
+      appManagedRootDir: appRoot,
+      previousKnownGood: {
+        managedRuntimeRootDir: previous.root,
+        packageVersion: '24.8.0-test',
+        libreOfficeVersion: '24.8.0',
+        revoked: false,
+      },
+      previousKnownGoodCatalogVerification: revokedCatalog,
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostics: [expect.objectContaining({ code: 'office_pdf_rollback_target_revoked' })],
+    })
+    expect(JSON.stringify(result)).not.toContain(previous.root)
   })
 
   it('quarantines active runtime as blocked and not production healthy', async () => {

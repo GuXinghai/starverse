@@ -4,6 +4,21 @@ import electron from 'vite-plugin-electron/simple'
 import vue from '@vitejs/plugin-vue'
 import { getAppCsp, injectAppCspIntoHtml, normalizeAppCspEnv } from './config/appCsp'
 
+const generatedRuntimeWatchIgnores = [
+  '**/.external-runtime-work/**',
+  '**/.starverse-engines/**',
+  '**/managed-runtimes/**',
+  '**/staging/**',
+  '**/sandbox/**',
+  '**/temp/**',
+  '**/tmp/**',
+  '**/.vite/**',
+  '**/dist/**',
+  '**/dist-electron/**',
+  '**/release/**',
+  '**/out/**',
+]
+
 // https://vitejs.dev/config/
 export default defineConfig({
   resolve: {
@@ -72,7 +87,7 @@ export default defineConfig({
   server: {
     watch: {
       ignored: [
-        '**/.external-runtime-work/**',
+        ...generatedRuntimeWatchIgnores,
         '**/.artifacts/netlog/**',
       ],
     },

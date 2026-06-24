@@ -2,6 +2,7 @@ import { isMainThread, parentPort, workerData } from 'node:worker_threads'
 import { DbWorkerRuntime, attachWorkerPort } from '../../infra/db/worker'
 import type { WorkerInitConfig } from '../../infra/db/types'
 import { createWorkerThreadElectronConversionBridge } from '../../infra/files/electronConversionBridge'
+import { runExternalProcess } from '../../src/next/file-type/externalProcessRunner'
 
 console.log('[worker] Worker 线程启动')
 console.log('[worker] isMainThread:', isMainThread)
@@ -49,6 +50,7 @@ try {
   runtime = new DbWorkerRuntime({
     ...((workerData ?? {}) as WorkerInitConfig),
     electronConversionBridge: createWorkerThreadElectronConversionBridge(parentPort),
+    officePdfProcessRunner: runExternalProcess,
   })
   console.log('[worker] DbWorkerRuntime 初始化成功')
   console.log('[worker] 🔍 测试: Worker 日志输出正常')

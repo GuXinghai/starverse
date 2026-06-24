@@ -6,6 +6,7 @@ import { resolveManagedStoragePath } from '../../../../src/shared/files/localSto
 import type { SendPlan } from '../../../../src/shared/files/sendPlanTypes'
 import { serializeSendPlanForOpenRouter } from '../../../../src/next/openrouter/openRouterSendPlanSerializer'
 import type { DerivativeErrorCode, DfcOptionGenerationErrorCode, DfcOptionGenerationStateRecord, FileAssetRecord, FileDerivativeRecord } from '../../types'
+import { DFC_LIBREOFFICE_PDF_PATH_POLICY_EXCEEDED } from '../../../files/dfcLibreOfficePdfAdapter'
 import {
   getDfcLibreOfficeManagedRuntimeRoot,
   resolveDfcLibreOfficePluginManagedRuntimeHandle,
@@ -780,6 +781,7 @@ async function ensureOfficePdfRuntimeGate(
   const availability = await resolveDfcLibreOfficePluginManagedRuntimeHandle({
     managedRuntimeRootDir: getDfcLibreOfficeManagedRuntimeRoot(runtime.fileStorageRootDir),
     capabilityId: 'docx_to_pdf',
+    lifecycleSummary: runtime.officePdfRuntimeSummary?.() ?? null,
     allowExperimental: true,
     productionOnly: false,
   })
@@ -829,7 +831,7 @@ async function ensureOfficePdfRuntimeGate(
   if (ran.job.status !== 'ready' || !ran.derivative) {
     runtime.dfcOptionGenerationStateRepo.markFailed({
       id: generationState.id,
-      errorCode: normalizeOfficePdfGenerationErrorCode(ran.job.errorCode),
+      errorCode: normalizeOfficePdfGenerationErrorCode(ran.job.errorCode, ran.job.errorMessage),
       retryable: !NON_RETRYABLE_TEXT_CONVERSION_ERRORS.has(ran.job.errorCode ?? ''),
     })
     return { changed: true }
@@ -1324,7 +1326,10 @@ function normalizeDerivativeErrorCode(value: string | null | undefined): Derivat
   return isDerivativeErrorCode(normalized) ? normalized : 'derivative_output_write_failed'
 }
 
-function normalizeOfficePdfGenerationErrorCode(value: string | null | undefined): DfcOptionGenerationErrorCode {
+function normalizeOfficePdfGenerationErrorCode(value: string | null | undefined, message?: string | null): DfcOptionGenerationErrorCode {
+  if (String(message ?? '').includes(DFC_LIBREOFFICE_PDF_PATH_POLICY_EXCEEDED)) {
+    return 'conversion_sandbox_denied'
+  }
   const normalized = String(value ?? '').trim()
   switch (normalized) {
     case 'derivative_task_timeout':

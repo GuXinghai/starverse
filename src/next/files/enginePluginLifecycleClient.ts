@@ -2,16 +2,19 @@ import {
   decodeInstalledPluginsResponse,
   decodeInstallOfficialPluginResult,
   decodeInstallOperationStatusResult,
+  decodeCancelInstallOperationResult,
   decodeLifecycleInstalledResult,
   decodeListOfficialPluginsResponse,
   decodeDiagnosticsSummary,
   type DecodedInstalledPlugin,
   type DecodedInstallOfficialPluginResult,
   type DecodedInstallOperationStatusResult,
+  type DecodedCancelInstallOperationResult,
   type DecodedLifecycleInstalledResult,
   type DecodedLifecycleListOfficialResult,
   type DecodedDiagnosticsSummary,
   type GetInstallOperationStatusRequest,
+  type CancelInstallOperationRequest,
   type LifecycleEngineRequest,
   type InstallOfficialPluginRequest,
   type ListOfficialPluginsRequest,
@@ -67,6 +70,13 @@ export async function getInstallOperationStatus(
   return decodeInstallOperationStatusResult(raw)
 }
 
+export async function cancelInstallOperation(
+  params: CancelInstallOperationRequest = {}
+): Promise<DecodedCancelInstallOperationResult> {
+  const raw = await requireDbBridge().invoke('enginePluginLifecycle.cancelInstallOperation', params)
+  return decodeCancelInstallOperationResult(raw)
+}
+
 export async function enablePlugin(params: LifecycleEngineRequest): Promise<DecodedLifecycleInstalledResult> {
   const raw = await requireDbBridge().invoke('enginePluginLifecycle.enablePlugin', params)
   return decodeLifecycleInstalledResult(raw)
@@ -92,6 +102,22 @@ export async function registerLocalPackage(
 ): Promise<DecodedLifecycleInstalledResult> {
   const raw = await requireDbBridge().invoke('enginePluginLifecycle.registerLocalPackage', params)
   return decodeLifecycleInstalledResult(raw)
+}
+
+export async function importLibreOfficeSvpkg(): Promise<DecodedLifecycleInstalledResult> {
+  const api = (globalThis as any).electronAPI as { importLibreOfficeSvpkg?: () => Promise<unknown> } | undefined
+  if (!api || typeof api.importLibreOfficeSvpkg !== 'function') {
+    throw new Error('LibreOffice package import is unavailable')
+  }
+  return decodeLifecycleInstalledResult(await api.importLibreOfficeSvpkg())
+}
+
+export async function quarantineLibreOfficeRuntime(): Promise<DecodedLifecycleInstalledResult> {
+  const api = (globalThis as any).electronAPI as { quarantineLibreOfficeRuntime?: () => Promise<unknown> } | undefined
+  if (!api || typeof api.quarantineLibreOfficeRuntime !== 'function') {
+    throw new Error('LibreOffice runtime quarantine is unavailable')
+  }
+  return decodeLifecycleInstalledResult(await api.quarantineLibreOfficeRuntime())
 }
 
 export async function getDiagnosticsSummary(): Promise<DecodedDiagnosticsSummary> {

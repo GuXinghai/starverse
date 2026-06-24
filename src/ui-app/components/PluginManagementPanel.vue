@@ -1,16 +1,25 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
+  cancelInstallOperation,
   disablePlugin,
   enablePlugin,
   getDiagnosticsSummary,
   getInstallOperationStatus,
+  importLibreOfficeSvpkg,
   installOfficialPlugin,
   listInstalledPlugins,
   listOfficialPlugins,
+  quarantineLibreOfficeRuntime,
   runPluginHealthCheck,
   uninstallPlugin,
 } from '@/next/files/enginePluginLifecycleClient'
+import { getNetworkProxySettings } from '@/next/settings/networkProxySettingsClient'
+import {
+  DEFAULT_NETWORK_PROXY_SETTINGS,
+  proxyModeLabel,
+  type NetworkProxyMode,
+} from '@/next/plugin-distribution/networkProxyShared'
 import {
   pluginErrorChainDiagnosticLines,
   pluginErrorChainDetailRows,
@@ -79,6 +88,7 @@ const diagnosticsSummary = ref<DecodedDiagnosticsSummary | null>(null)
 const installOperations = ref<Record<string, DecodedOfficialInstallOperation>>({})
 const selectedDetails = ref<PdpManagementDetailModel | null>(null)
 const expandedErrorChains = ref<Record<string, boolean>>({})
+const networkProxyMode = ref<NetworkProxyMode>(DEFAULT_NETWORK_PROXY_SETTINGS.proxyMode)
 let installPollTimer: ReturnType<typeof setInterval> | null = null
 
 const PANEL_ACTION_OPTIONS = {
@@ -121,6 +131,7 @@ async function loadData(options?: Readonly<{ preserveMessages?: boolean; silent?
       listInstalledPlugins(),
       loadInstallOperationStatus(),
     ])
+    void refreshNetworkProxyMode()
     let installed = initialInstalled
     if (installOperation) {
       installOperations.value = {
@@ -210,8 +221,14 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
     selectedDetails.value = detailModelForRow(row)
     return
   }
-  if (action.id !== 'install_official_plugin' && !row.engineId) return
+  if (
+    action.id !== 'install_official_plugin' &&
+    action.id !== 'cancel_official_install' &&
+    !(isLibreOfficeRow(row) && (action.id === 'manual_local_package_registration' || action.id === 'acknowledge_quarantine')) &&
+    !row.engineId
+  ) return
   if (action.id === 'uninstall_metadata' && !confirmUninstallAction(row)) return
+  if (isLibreOfficeRow(row) && action.id === 'acknowledge_quarantine' && !confirmLibreOfficeQuarantineAction()) return
 
   const actionLabel = displayActionLabel(row, action)
   loading.value = true
@@ -254,6 +271,21 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
       }
       return
     }
+    if (action.id === 'cancel_official_install') {
+      const operation = row.installOperation
+      const result = await cancelInstallOperation({
+        operationId: operation?.operationId,
+        pluginId: row.plugin.id,
+        pluginVersion: row.plugin.pluginVersion,
+      })
+      if (result.ok) {
+        if (result.value) upsertInstallOperation(result.value)
+        statusMessage.value = `${actionLabel}: ${installOperationLabel('cancelled')}`
+      } else {
+        error.value = pluginPrimaryErrorDisplay(result.errorChain, result.reason)
+      }
+      return
+    }
     const result = await invokeLifecycleAction(action.id, row)
     if (result.ok) {
       statusMessage.value = `${actionLabel}: ${sanitizePdpManagementText(result.value.engineId, 'plugin')}`
@@ -274,6 +306,8 @@ async function invokeLifecycleAction(
   row: PluginPanelRow
 ): Promise<DecodedLifecycleInstalledResult> {
   const engineId = row.engineId
+  if (isLibreOfficeRow(row) && actionId === 'manual_local_package_registration') return importLibreOfficeSvpkg()
+  if (isLibreOfficeRow(row) && actionId === 'acknowledge_quarantine') return quarantineLibreOfficeRuntime()
   if (!engineId) {
     return { ok: false, reason: 'settings_action_not_wired', message: 'registered plugin id unavailable', errorChain: null }
   }
@@ -296,6 +330,32 @@ function uiActions(row: PluginPanelRow): readonly UiAction[] {
   return row.managementState.actions.actions.filter((action) =>
     action.id !== 'rollback_metadata' || row.plugin.status.rollbackState === 'previous_known_good_metadata'
   ).map((action) => {
+    if (isLibreOfficeRow(row)) {
+      if (
+        action.id === 'view_details' ||
+        action.id === 'install_official_plugin' ||
+        action.id === 'cancel_official_install' ||
+        action.id === 'check_health' ||
+        action.id === 'manual_local_package_registration' ||
+        action.id === 'disable' ||
+        action.id === 'uninstall_metadata' ||
+        action.id === 'acknowledge_quarantine'
+      ) {
+        return {
+          ...action,
+          enabled: (action.id === 'install_official_plugin' || action.id === 'cancel_official_install') ? action.enabled : true,
+          clickable: (action.id === 'install_official_plugin' || action.id === 'cancel_official_install') ? action.enabled : true,
+          label: libreOfficeActionLabel(action.id, action.label),
+          reasonCodes: (action.id === 'install_official_plugin' || action.id === 'cancel_official_install') ? action.reasonCodes : [],
+        }
+      }
+      return {
+        ...action,
+        enabled: false,
+        clickable: false,
+        reasonCodes: ['owner_gated_internal_control'],
+      }
+    }
     const isClickable = clickable.has(action.id)
     if (isClickable) {
       return {
@@ -325,7 +385,23 @@ function uiActions(row: PluginPanelRow): readonly UiAction[] {
   })
 }
 
+async function refreshNetworkProxyMode(): Promise<void> {
+  try {
+    networkProxyMode.value = (await getNetworkProxySettings()).proxyMode
+  } catch {
+    networkProxyMode.value = DEFAULT_NETWORK_PROXY_SETTINGS.proxyMode
+  }
+}
+
+function isLibreOfficeRow(row: PluginPanelRow): boolean {
+  return row.plugin.id === 'libreoffice' || row.engineId === 'libreoffice'
+}
+
 function displayActionLabel(row: PluginPanelRow, action: UiAction): string {
+  if (isLibreOfficeRow(row)) {
+    if (action.id === 'install_official_plugin' && row.installOperation?.state === 'paused_retryable') return 'Retry install'
+    return libreOfficeActionLabel(action.id, action.label)
+  }
   if (action.id === 'install_official_plugin') {
     if (row.plugin.status.updateState === 'repair_available') return 'Repair / Reinstall'
   }
@@ -333,6 +409,17 @@ function displayActionLabel(row: PluginPanelRow, action: UiAction): string {
   if (action.id === 'rollback_metadata' && row.plugin.status.rollbackState !== 'previous_known_good_metadata') return 'Rollback unavailable'
   if (action.id !== 'uninstall_metadata') return action.label
   return isOfficialManagedMagikaRow(row) ? 'Uninstall plugin' : 'Remove registration'
+}
+
+function libreOfficeActionLabel(actionId: PdpManagementActionId, fallback: string): string {
+  if (actionId === 'install_official_plugin') return 'Download / Install'
+  if (actionId === 'cancel_official_install') return 'Cancel install'
+  if (actionId === 'manual_local_package_registration') return 'Import .svpkg'
+  if (actionId === 'check_health') return 'Recheck runtime'
+  if (actionId === 'disable') return 'Disable runtime'
+  if (actionId === 'uninstall_metadata') return 'Clear runtime'
+  if (actionId === 'acknowledge_quarantine') return 'Quarantine runtime'
+  return fallback
 }
 
 function isOfficialManagedMagikaRow(row: PluginPanelRow): boolean {
@@ -350,7 +437,15 @@ function uninstallConfirmationMessage(row: PluginPanelRow): string {
 
 function confirmUninstallAction(row: PluginPanelRow): boolean {
   if (typeof window === 'undefined' || typeof window.confirm !== 'function') return false
+  if (isLibreOfficeRow(row)) {
+    return window.confirm('Clear LibreOffice runtime? This removes the active managed runtime metadata and keeps DOCX PDF unavailable until a package is imported again.')
+  }
   return window.confirm(uninstallConfirmationMessage(row))
+}
+
+function confirmLibreOfficeQuarantineAction(): boolean {
+  if (typeof window === 'undefined' || typeof window.confirm !== 'function') return false
+  return window.confirm('Quarantine LibreOffice runtime? DOCX PDF will remain blocked until a new valid package is imported.')
 }
 
 function toCatalogEntry(item: DecodedOfficialPlugin): PdpManagementCatalogInput {
@@ -411,6 +506,7 @@ function toRegistryRecord(item: DecodedInstalledPlugin): PdpManagementRegistryIn
     errorChain: item.errorChain,
     releaseProvenance: item.releaseProvenance,
     previousKnownGood: item.previousKnownGood,
+    productGate: item.productGate,
     updatedAt: item.updatedAt,
     diagnostics: item.failureReason ? [item.failureReason] : [],
   }
@@ -537,11 +633,39 @@ function detailModelForRow(row: PluginPanelRow): PdpManagementDetailModel {
       status: row.plugin.status.healthStatus,
     },
     diagnostics: [
+      ...(row.plugin.productGate ? productGateDiagnosticLines(row.plugin.productGate) : []),
       ...pluginErrorChainDiagnosticLines(registryErrorChain(row), row.registryRecord?.failureReason ?? null),
       ...(row.installOperation?.sanitizedDiagnostics ?? []),
       ...(row.installOperation?.diagnosticCode ? [row.installOperation.diagnosticCode] : []),
     ],
   })
+}
+
+function productGateDiagnosticLines(
+  gate: NonNullable<PdpManagementPluginViewModel['productGate']>
+): readonly string[] {
+  return [
+    `product_gate:${gate.status}`,
+    `productionApproved:${gate.productionApproved ? 'true' : 'false'}`,
+    `ownerGated:${gate.ownerGated ? 'true' : 'false'}`,
+    `experimental:${gate.experimental ? 'true' : 'false'}`,
+    `downloadEnabled:${gate.downloadEnabled === true ? 'true' : 'false'}`,
+    ...(gate.trustModel ? [`trustModel:${gate.trustModel}`] : []),
+    ...((gate.trustStates ?? []).map((state) => `trustState:${state}`)),
+    ...((gate.distributionStates ?? []).map((state) => `distributionState:${state}`)),
+    ...(gate.packageDecision ? [`packageDecision:${gate.packageDecision}`] : []),
+    ...(gate.signatureCatalogStatus ? [`signatureCatalogStatus:${gate.signatureCatalogStatus}`] : []),
+    ...(gate.catalogSignatureStatus ? [`catalogSignatureStatus:${gate.catalogSignatureStatus}`] : []),
+    ...(gate.keyIdStatus ? [`keyIdStatus:${gate.keyIdStatus}`] : []),
+    ...(gate.revocationStatus ? [`revocationStatus:${gate.revocationStatus}`] : []),
+    ...(gate.expirationStatus ? [`expirationStatus:${gate.expirationStatus}`] : []),
+    ...(gate.rollbackEligibility ? [`rollbackEligibility:${gate.rollbackEligibility}`] : []),
+    ...(gate.productionTrustReadiness ? [`productionTrustReadiness:${gate.productionTrustReadiness}`] : []),
+    ...(gate.ownerGatedCandidateReadiness ? [`ownerGatedCandidateReadiness:${gate.ownerGatedCandidateReadiness}`] : []),
+    ...(gate.lastVerificationResult ? [`lastVerificationResult:${gate.lastVerificationResult}`] : []),
+    ...(gate.productCode ? [`productCode:${gate.productCode}`] : []),
+    ...(gate.internalCode ? [`internalCode:${gate.internalCode}`] : []),
+  ]
 }
 
 function closeDetails(): void {
@@ -571,6 +695,8 @@ const ACTION_REASON_LABELS: Readonly<Record<string, string>> = {
   not_quarantined: 'Not quarantined',
   install_in_progress: 'Install in progress',
   install_reconciling: 'Finishing install',
+  download_disabled_by_policy: 'Download disabled by policy',
+  owner_gated_internal_control: 'Owner-gated internal control',
 }
 
 function humanizeReasonCode(code: string): string {
@@ -754,7 +880,7 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
       <div>
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Plugin Management</div>
         <div class="mt-1 text-[11px] text-gray-500">
-          Built-in Magika installs through the official verify-before-install release path.
+          Built-in Magika installs through the official verify-before-install release path. LibreOffice Office-to-PDF is owner-gated and experimental.
         </div>
       </div>
       <button
@@ -799,6 +925,31 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
               <div>Available version: {{ displayOptional(row.plugin.availableVersion) }}</div>
               <div>Model: {{ displayOptional(row.plugin.modelVersion) }}</div>
               <div>Runtime: {{ displayOptional(row.plugin.runtimeVersion) }}</div>
+              <template v-if="row.plugin.productGate">
+                <div>Product gate: {{ humanizeReasonCode(row.plugin.productGate.status) }}</div>
+                <div>Approval: {{ row.plugin.productGate.productionApproved ? 'Production approved' : 'Not production approved' }}</div>
+                <div>Download: {{ row.plugin.productGate.downloadEnabled ? 'Enabled' : 'Disabled by policy' }}</div>
+                <div>Source: {{ displayOptional(row.plugin.productGate.source) }}</div>
+                <div>Trust: {{ displayOptional(row.plugin.productGate.trustStates?.join(', ')) }}</div>
+                <div>Distribution: {{ displayOptional(row.plugin.productGate.distributionStates?.join(', ')) }}</div>
+                <div>Signature/catalog: {{ displayOptional(row.plugin.productGate.signatureCatalogStatus) }}</div>
+                <div>Catalog signature: {{ displayOptional(row.plugin.productGate.catalogSignatureStatus) }}</div>
+                <div>Key: {{ displayOptional(row.plugin.productGate.keyIdStatus) }}</div>
+                <div>Revocation: {{ displayOptional(row.plugin.productGate.revocationStatus) }}</div>
+                <div>Expiration: {{ displayOptional(row.plugin.productGate.expirationStatus) }}</div>
+                <div>Rollback: {{ displayOptional(row.plugin.productGate.rollbackEligibility) }}</div>
+                <div>Production trust: {{ displayOptional(row.plugin.productGate.productionTrustReadiness) }}</div>
+                <div>Owner candidate: {{ displayOptional(row.plugin.productGate.ownerGatedCandidateReadiness) }}</div>
+                <div>Package decision: {{ displayOptional(row.plugin.productGate.packageDecision) }}</div>
+                <div>Approved platform: {{ displayOptional(row.plugin.productGate.approvedPlatform) }} / {{ displayOptional(row.plugin.productGate.approvedArch) }}</div>
+                <div>Approved route: {{ displayOptional(row.plugin.productGate.approvedInput) }} to {{ displayOptional(row.plugin.productGate.approvedOutput) }}</div>
+                <div>Approved acquisition: {{ displayOptional(row.plugin.productGate.approvedAcquisitionModes?.join(', ')) }}</div>
+                <div>Automatic download: {{ row.plugin.productGate.automaticDownloadEnabled ? 'Enabled' : 'Disabled' }}</div>
+                <div>Postinstall download: {{ row.plugin.productGate.postinstallDownloadEnabled ? 'Enabled' : 'Disabled' }}</div>
+                <div>Conversion-time download: {{ row.plugin.productGate.conversionTimeDownloadEnabled ? 'Enabled' : 'Disabled' }}</div>
+                <div>Platform packages: {{ displayOptional(row.plugin.productGate.platformPackageStatus) }}</div>
+                <div>Diagnostic: {{ displayOptional(row.plugin.productGate.productCode ?? row.plugin.productGate.internalCode) }}</div>
+              </template>
               <div>Signature key: {{ displayOptional(row.plugin.releaseProvenance?.trustKeyId) }}</div>
               <div>Package hash: {{ shortHash(row.plugin.releaseProvenance?.packageSha256) }}</div>
               <div>Inventory hash: {{ shortHash(row.plugin.releaseProvenance?.inventorySha256) }}</div>
@@ -849,6 +1000,21 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
           <div v-if="row.installOperation?.failureReason">
             Failure: {{ installOperationFailureReason(row.installOperation) }}
           </div>
+          <template v-if="row.plugin.productGate">
+            <div>Owner gate: {{ row.plugin.productGate.ownerGated ? 'Enabled' : 'Not required' }}</div>
+            <div>Experimental: {{ row.plugin.productGate.experimental ? 'Enabled' : 'Disabled' }}</div>
+            <div>Fallback targets: {{ row.plugin.productGate.fallbackTargetKinds.join(', ') || 'None' }}</div>
+            <div>Gate message: {{ row.plugin.productGate.message }}</div>
+          </template>
+          <template v-if="isLibreOfficeRow(row)">
+            <div>Manual install: Downloads LibreOffice runtime package from GitHub</div>
+            <div>Network mode: {{ proxyModeLabel(networkProxyMode) }}</div>
+            <div>Downloader proxy: Uses Network Proxy settings</div>
+            <div>Download trigger: User-initiated only</div>
+            <div>Conversion download: Disabled</div>
+            <div>Runtime scope: Windows x64 DOCX-to-PDF production approved when package gate is valid; macOS/Linux package pending</div>
+            <div>Activation: Package is verified before activation</div>
+          </template>
         </div>
 
         <div v-if="row.plugin.reasonCodes.length > 0" class="mt-2 flex flex-wrap gap-1">
@@ -867,7 +1033,7 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
             :key="action.id"
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="loading || !action.enabled || !action.clickable || (action.id !== 'install_official_plugin' && action.id !== 'view_details' && !row.engineId)"
+            :disabled="loading || !action.enabled || !action.clickable || (action.id !== 'install_official_plugin' && action.id !== 'cancel_official_install' && action.id !== 'view_details' && !(isLibreOfficeRow(row) && (action.id === 'manual_local_package_registration' || action.id === 'acknowledge_quarantine')) && !row.engineId)"
             :title="action.enabled ? displayActionLabel(row, action) : actionReasonText(action)"
             :data-reason-codes="!action.enabled ? actionReason(action) : undefined"
             @click="runAction(row, action)"

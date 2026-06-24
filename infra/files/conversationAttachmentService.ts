@@ -1383,6 +1383,7 @@ function dfcOptionStatusFromDerivative(derivative: FileDerivativeRecord): DfcCon
 
 function dfcOptionStatusFromGenerationState(state: DfcOptionGenerationStateRecord): DfcConversionOptionStatus {
   if (state.status === 'pending' || state.status === 'running') return 'pending'
+  if (state.status === 'failed' && state.errorCode === 'conversion_sandbox_denied') return 'blocked'
   if (state.status === 'failed') return 'failed'
   if (state.status === 'stale') return 'stale'
   if (state.status === 'blocked') return 'blocked'

@@ -8,6 +8,7 @@ import { registerFilePipelineHandlers } from './worker/handlers/filePipelineHand
 import { registerEnginePluginLifecycleHandlers } from './worker/handlers/enginePluginLifecycleHandlers'
 import { registerSearchMaintenanceHandlers } from './worker/handlers/searchMaintenanceHandlers'
 import { registerUsagePrefsSettingsHandlers } from './worker/handlers/usagePrefsSettingsHandlers'
+import { dispatchWorkerMessage } from './worker/router'
 
 type HandlerHarness = Readonly<{
   handlers: Map<DbMethod, DbHandler>
@@ -137,6 +138,16 @@ function createLifecycleRuntime() {
       reason: 'already_registered',
       message: 'plugin is already registered',
     })),
+    importDfcLibreOfficeSvpkg: vi.fn(() => Promise.resolve({
+      ok: false,
+      reason: 'local_package_unavailable',
+      message: 'LibreOffice svpkg package could not be read',
+    })),
+    quarantineDfcLibreOfficeRuntime: vi.fn(() => Promise.resolve({
+      ok: false,
+      reason: 'not_installed',
+      message: 'LibreOffice managed runtime root is not configured',
+    })),
   }
   return { runtime: { enginePluginLifecycleService: spies } as any, spies }
 }
@@ -218,6 +229,87 @@ describe('DbWorker handler registration modules', () => {
       installRef: 'plugin_magika_001',
       enabled: true,
     })
+    expect(spies.importDfcLibreOfficeSvpkg).toHaveBeenCalledWith({ packagePath: 'runtime.svpkg' })
+    expect(spies.quarantineDfcLibreOfficeRuntime).toHaveBeenCalledWith()
+  })
+
+  it('keeps install operation status observable while an install handler is pending', async () => {
+    const harness = createHarness()
+    let resolveLongInstall: (value: unknown) => void = () => undefined
+    const longInstall = new Promise((resolve) => {
+      resolveLongInstall = resolve
+    })
+    const runtime = {
+      enginePluginLifecycleService: {
+        installOfficialPlugin: vi.fn(() => longInstall),
+        getInstallOperationStatus: vi.fn(() => ({
+          ok: true,
+          value: {
+            operationId: 'official-install-libreoffice-0.1.0-m49',
+            pluginId: 'libreoffice',
+            pluginVersion: '0.1.0',
+            operationType: 'official_install',
+            source: 'official_builtin',
+            state: 'downloading',
+            phase: 'downloading',
+            phaseLabel: 'Downloading',
+            progressSummary: 'Downloading',
+            stateHistory: ['accepted', 'pending', 'downloading'],
+            startedAt: 1,
+            updatedAt: 2,
+            terminalAt: null,
+            failureReason: null,
+            diagnosticCode: null,
+            sanitizedDiagnostics: [],
+            installedEngineId: null,
+            result: null,
+          },
+        })),
+      },
+    } as any
+
+    registerEnginePluginLifecycleHandlers(harness.register, runtime)
+    const installPromise = dispatchWorkerMessage(harness.handlers, {
+      id: 'install',
+      method: 'enginePluginLifecycle.installOfficialPlugin',
+      params: { pluginId: 'libreoffice', pluginVersion: '0.1.0' },
+    })
+
+    const pollStartedAt = Date.now()
+    const status = await dispatchWorkerMessage(harness.handlers, {
+      id: 'status',
+      method: 'enginePluginLifecycle.getInstallOperationStatus',
+      params: { operationId: 'official-install-libreoffice-0.1.0-m49' },
+    })
+    expect(Date.now() - pollStartedAt).toBeLessThan(100)
+    expect(status).toMatchObject({
+      id: 'status',
+      ok: true,
+      result: {
+        ok: true,
+        value: {
+          pluginId: 'libreoffice',
+          state: 'downloading',
+          stateHistory: ['accepted', 'pending', 'downloading'],
+        },
+      },
+    })
+    expect(runtime.enginePluginLifecycleService.getInstallOperationStatus).toHaveBeenCalledWith({
+      operationId: 'official-install-libreoffice-0.1.0-m49',
+      pluginId: undefined,
+      pluginVersion: undefined,
+    })
+
+    resolveLongInstall({
+      ok: true,
+      value: {
+        operationId: 'official-install-libreoffice-0.1.0-m49',
+        pluginId: 'libreoffice',
+        pluginVersion: '0.1.0',
+        state: 'downloading',
+      },
+    })
+    await expect(installPromise).resolves.toMatchObject({ id: 'install', ok: true })
   })
 })
 
@@ -249,6 +341,8 @@ const lifecycleMethods = [
   'enginePluginLifecycle.uninstallPlugin',
   'enginePluginLifecycle.runHealthCheck',
   'enginePluginLifecycle.registerLocalPackage',
+  'enginePluginLifecycle.importLibreOfficeSvpkgFromPath',
+  'enginePluginLifecycle.quarantineLibreOfficeRuntime',
 ] as const satisfies readonly DbMethod[]
 
 function exerciseRepresentativeHandlers(handlers: ReadonlyMap<DbMethod, DbHandler>) {
@@ -353,6 +447,18 @@ async function exerciseLifecycleHandlers(handlers: ReadonlyMap<DbMethod, DbHandl
     ok: false,
     reason: 'already_registered',
     message: 'plugin is already registered',
+  })
+  await expect(handlers.get('enginePluginLifecycle.importLibreOfficeSvpkgFromPath')!({
+    packagePath: 'runtime.svpkg',
+  })).resolves.toEqual({
+    ok: false,
+    reason: 'local_package_unavailable',
+    message: 'LibreOffice svpkg package could not be read',
+  })
+  await expect(handlers.get('enginePluginLifecycle.quarantineLibreOfficeRuntime')!(undefined)).resolves.toEqual({
+    ok: false,
+    reason: 'not_installed',
+    message: 'LibreOffice managed runtime root is not configured',
   })
 }
 

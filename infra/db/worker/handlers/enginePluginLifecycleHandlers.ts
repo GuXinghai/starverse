@@ -42,6 +42,15 @@ export function registerEnginePluginLifecycleHandlers(
 
   registerInstallOperationStatusHandler(register, runtime)
 
+  register('enginePluginLifecycle.cancelInstallOperation', async (raw) => {
+    const input = asObject(raw)
+    return runtime.enginePluginLifecycleService.cancelInstallOperation({
+      operationId: optionalString(input.operationId),
+      pluginId: optionalString(input.pluginId),
+      pluginVersion: optionalString(input.pluginVersion),
+    })
+  })
+
   register('enginePluginLifecycle.enablePlugin', async (raw) => {
     const input = asObject(raw)
     const result = await runtime.enginePluginLifecycleService.enablePlugin({
@@ -83,8 +92,23 @@ export function registerEnginePluginLifecycleHandlers(
     return result
   })
 
+  register('enginePluginLifecycle.importLibreOfficeSvpkgFromPath', async (raw) => {
+    const input = asObject(raw)
+    return runtime.enginePluginLifecycleService.importDfcLibreOfficeSvpkg({
+      packagePath: requiredString(input.packagePath, 'packagePath'),
+    })
+  })
+
+  register('enginePluginLifecycle.quarantineLibreOfficeRuntime', async () => {
+    return runtime.enginePluginLifecycleService.quarantineDfcLibreOfficeRuntime()
+  })
+
   register('enginePluginLifecycle.getDiagnosticsSummary', () => {
     return runtime.enginePluginLifecycleService.getDiagnosticsSummary()
+  })
+
+  register('enginePluginLifecycle.probeLibreOfficeOfficialDownloadNetwork', () => {
+    return runtime.enginePluginLifecycleService.probeLibreOfficeOfficialDownloadNetwork()
   })
 }
 

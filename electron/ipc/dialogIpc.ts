@@ -4,10 +4,17 @@ import { readFile } from 'node:fs/promises'
 import type { RegisterInvoke } from './types'
 import { t } from '../i18n/mainI18n'
 
-export const DIALOG_IPC_CHANNELS = ['dialog:select-file', 'dialog:select-local-files'] as const
+export const DIALOG_IPC_CHANNELS = [
+  'dialog:select-file',
+  'dialog:select-local-files',
+  'dialog:import-libreoffice-svpkg',
+  'dialog:quarantine-libreoffice-runtime',
+] as const
 
 type RegisterDialogIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
+  importLibreOfficeSvpkg?: (packagePath: string) => Promise<unknown>
+  quarantineLibreOfficeRuntime?: () => Promise<unknown>
 }>
 
 type SelectFileOptions = Readonly<{
@@ -87,6 +94,67 @@ export function registerDialogIpc(input: RegisterDialogIpcInput): string[] {
     } catch (error) {
       console.error('[dialog] select local files failed:', sanitizeDialogErrorMessage(error))
       return { filePaths: [] }
+    }
+  })
+
+  registerInvoke('dialog:import-libreoffice-svpkg', async () => {
+    if (!input.importLibreOfficeSvpkg) {
+      return {
+        ok: false,
+        reason: 'settings_action_not_wired',
+        message: 'LibreOffice package import is unavailable.',
+        errorChain: null,
+      }
+    }
+    try {
+      const result = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [{ name: 'Starverse package', extensions: ['svpkg'] }],
+      })
+      if (result.canceled || result.filePaths.length === 0) {
+        return {
+          ok: false,
+          reason: 'operation_stale',
+          message: 'LibreOffice package import was cancelled.',
+          errorChain: null,
+        }
+      }
+      const packagePath = result.filePaths[0]!
+      console.log('[dialog] selected LibreOffice svpkg:', {
+        hasFile: true,
+        extension: path.extname(packagePath).toLowerCase(),
+      })
+      return await input.importLibreOfficeSvpkg(packagePath)
+    } catch (error) {
+      console.error('[dialog] LibreOffice svpkg import failed:', sanitizeDialogErrorMessage(error))
+      return {
+        ok: false,
+        reason: 'local_package_unavailable',
+        message: 'LibreOffice package import failed.',
+        errorChain: null,
+      }
+    }
+  })
+
+  registerInvoke('dialog:quarantine-libreoffice-runtime', async () => {
+    if (!input.quarantineLibreOfficeRuntime) {
+      return {
+        ok: false,
+        reason: 'settings_action_not_wired',
+        message: 'LibreOffice runtime quarantine is unavailable.',
+        errorChain: null,
+      }
+    }
+    try {
+      return await input.quarantineLibreOfficeRuntime()
+    } catch (error) {
+      console.error('[dialog] LibreOffice runtime quarantine failed:', sanitizeDialogErrorMessage(error))
+      return {
+        ok: false,
+        reason: 'local_package_unavailable',
+        message: 'LibreOffice runtime quarantine failed.',
+        errorChain: null,
+      }
     }
   })
 

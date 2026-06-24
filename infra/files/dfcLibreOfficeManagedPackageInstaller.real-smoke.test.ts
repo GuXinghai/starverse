@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { runExternalProcess } from '../../src/next/file-type/externalProcessRunner'
 import { runDfcLibreOfficeDocxToPdfAdapter } from './dfcLibreOfficePdfAdapter'
 import { importDfcLibreOfficeManagedRuntimePackage } from './dfcLibreOfficeManagedPackageInstaller'
+import { resolveDfcLibreOfficePluginManagedRuntimeHandle } from './dfcManagedLibreOfficeRuntime'
 
 const describeRealImportSmoke = process.env.STARVERSE_DFC_LIBREOFFICE_IMPORT_REAL_SMOKE === '1' ? describe : describe.skip
 
@@ -21,6 +22,11 @@ describeRealImportSmoke('DFC LibreOffice managed package import real smoke', () 
     })
     expect(install.ok).toBe(true)
     if (!install.ok) throw new Error('LibreOffice managed import failed.')
+    const runtime = await resolveDfcLibreOfficePluginManagedRuntimeHandle({
+      managedRuntimeRootDir: install.activeRuntimeRootDir,
+    })
+    expect(runtime.ok).toBe(true)
+    if (!runtime.ok) throw new Error('LibreOffice managed import handle unavailable.')
 
     const sandboxRootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-dfc-office-pdf-import-real-smoke-'))
     const result = await runDfcLibreOfficeDocxToPdfAdapter({
@@ -28,7 +34,7 @@ describeRealImportSmoke('DFC LibreOffice managed package import real smoke', () 
       sourceExtension: 'docx',
       sourceBytes: createMinimalDocxBuffer(),
       sandboxRootDir,
-      runtime: install.runtime,
+      runtime: runtime.handle,
       processRunner: runExternalProcess,
       timeoutMs: 300_000,
       cleanupSandbox: true,
@@ -50,7 +56,7 @@ describeRealImportSmoke('DFC LibreOffice managed package import real smoke', () 
     expect(await pathExists(sandboxRootDir)).toBe(false)
     expect(JSON.stringify(result.diagnostics)).not.toContain(sourceRuntimeRoot)
     expect(JSON.stringify(result.diagnostics)).not.toContain(install.activeRuntimeRootDir)
-    expect(JSON.stringify(result.diagnostics)).not.toContain(install.runtime.executablePath)
+    expect(JSON.stringify(result.diagnostics)).not.toContain(runtime.handle.executablePath)
   }, 360_000)
 })
 

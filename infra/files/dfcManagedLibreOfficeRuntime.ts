@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { readFileSync, realpathSync, statSync } from 'node:fs'
-import { readFile, realpath, stat } from 'node:fs/promises'
+import { readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parseManagedEnginePluginManifest } from '../../src/next/file-type/externalEngineManifest'
 import type { EnginePlatform, ManagedEnginePluginManifest } from '../../src/next/file-type/externalEngineTypes'
@@ -13,6 +13,7 @@ export const DFC_OFFICE_PDF_CAPABILITIES = ['office_to_pdf', 'docx_to_pdf'] as c
 export const DFC_OFFICE_PDF_PLUGIN_MANAGEMENT_CAPABILITY_ID = 'document_conversion'
 export const DFC_OFFICE_PDF_PLUGIN_PROVIDER = 'first_party_managed_runtime'
 export const DFC_OFFICE_PDF_RUNTIME_MANIFEST = 'manifest.json'
+export const DFC_OFFICE_PDF_QUARANTINE_MARKER = 'starverse-quarantine.json'
 export const DFC_OFFICE_PDF_MIN_CONTRACT_VERSION = '1'
 export const DFC_OFFICE_PDF_RUNTIME_KIND = 'managed_external_process'
 export const DFC_OFFICE_PDF_DISPLAY_NAME = 'LibreOffice Office PDF'
@@ -20,11 +21,54 @@ export const DFC_OFFICE_PDF_CATALOG_VERSION = '0.1.0'
 export const DFC_OFFICE_PDF_PACKAGE_LAYOUT_VERSION = '1'
 
 export type DfcLibreOfficeRuntimePlatformId = 'win32' | 'darwin' | 'linux'
+export type DfcLibreOfficeProductionApprovalPlatform = 'win32'
+export type DfcLibreOfficeProductionApprovalArch = 'x64'
+export type DfcLibreOfficeProductionApprovalInput = 'docx'
+export type DfcLibreOfficeProductionApprovalOutput = 'pdf_attachment'
+export type DfcLibreOfficeProductionApprovalAcquisitionMode = 'manual_github_release' | 'offline_import'
+
+export type DfcLibreOfficeScopedProductionApproval = Readonly<{
+  productionApproved: true
+  approvedPlatform: DfcLibreOfficeProductionApprovalPlatform
+  approvedArch: DfcLibreOfficeProductionApprovalArch
+  approvedInput: DfcLibreOfficeProductionApprovalInput
+  approvedOutput: DfcLibreOfficeProductionApprovalOutput
+  approvedAcquisitionModes: readonly DfcLibreOfficeProductionApprovalAcquisitionMode[]
+  automaticDownloadEnabled: false
+  postinstallDownloadEnabled: false
+  conversionTimeDownloadEnabled: false
+}>
+
+export const DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL: DfcLibreOfficeScopedProductionApproval = {
+  productionApproved: true,
+  approvedPlatform: 'win32',
+  approvedArch: 'x64',
+  approvedInput: 'docx',
+  approvedOutput: 'pdf_attachment',
+  approvedAcquisitionModes: ['manual_github_release', 'offline_import'],
+  automaticDownloadEnabled: false,
+  postinstallDownloadEnabled: false,
+  conversionTimeDownloadEnabled: false,
+}
 
 export type DfcOfficePdfRuntimeDiagnosticCode =
   | 'office_pdf_runtime_missing'
   | 'office_pdf_runtime_disabled'
   | 'office_pdf_runtime_quarantined'
+  | 'office_pdf_runtime_trust_blocked'
+  | 'office_pdf_runtime_package_hash_mismatch'
+  | 'office_pdf_runtime_package_source_mismatch'
+  | 'office_pdf_runtime_package_platform_mismatch'
+  | 'office_pdf_runtime_package_scope_mismatch'
+  | 'office_pdf_runtime_package_version_mismatch'
+  | 'office_pdf_catalog_signature_missing'
+  | 'office_pdf_catalog_signature_invalid'
+  | 'office_pdf_catalog_untrusted_key'
+  | 'office_pdf_catalog_package_revoked'
+  | 'office_pdf_catalog_package_expired'
+  | 'office_pdf_catalog_package_mismatch'
+  | 'office_pdf_catalog_schema_unsupported'
+  | 'office_pdf_catalog_source_unapproved'
   | 'office_pdf_runtime_manifest_invalid'
   | 'office_pdf_runtime_executable_missing'
   | 'office_pdf_runtime_path_rejected'
@@ -70,6 +114,73 @@ export type DfcOfficePdfRuntimeIdentitySummary = Readonly<{
   executableRef: 'managed_relative_executable'
 }>
 
+export type DfcLibreOfficePackageTrustState =
+  | 'unsigned_owner_gated'
+  | 'owner_approved_hash_pinned'
+  | 'hash_pinned'
+  | 'signature_missing'
+  | 'signature_invalid'
+  | 'signature_valid'
+  | 'catalog_untrusted'
+  | 'catalog_trusted'
+  | 'revoked'
+  | 'expired'
+  | 'production_source_unapproved'
+
+export type DfcLibreOfficePackageDistributionState =
+  | 'prerelease_source_owner_gated'
+  | 'windows_x64_production_approved'
+  | 'manual_github_release_allowed'
+  | 'verified_offline_import_allowed'
+  | 'distribution_mode_unapproved'
+  | 'offline_import_allowed'
+  | 'download_disabled_by_policy'
+  | 'bundled_runtime_not_approved'
+  | 'install_repair_download_not_approved'
+  | 'production_release_pending_approval'
+  | 'product_mirror_pending_approval'
+  | 'system_libreoffice_disallowed'
+
+export type DfcLibreOfficePackageDecisionStatus =
+  | 'owner_gated_test_asset'
+  | 'approved_windows_x64_docx_to_pdf_production_asset'
+  | 'candidate_production_asset_pending_signing_legal_approval'
+  | 'replace_before_production'
+  | 'mirror_pending_approval'
+  | 'bundle_not_approved'
+  | 'rejected'
+
+export type DfcLibreOfficeTrustModel =
+  | 'owner_gated_hash_pinned_signed_catalog_required_for_production'
+
+export type DfcLibreOfficeTrustDistributionStatus = Readonly<{
+  trustModel: DfcLibreOfficeTrustModel
+  trustStates: readonly DfcLibreOfficePackageTrustState[]
+  distributionStates: readonly DfcLibreOfficePackageDistributionState[]
+  packageDecision: DfcLibreOfficePackageDecisionStatus
+  signatureCatalogStatus: 'signature_missing_catalog_unsigned' | 'signature_valid_catalog_trusted' | 'signature_invalid_or_catalog_untrusted'
+  catalogSignatureStatus: 'missing' | 'valid' | 'invalid'
+  keyIdStatus: 'not_checked' | 'trusted' | 'untrusted'
+  revocationStatus: 'not_checked' | 'not_revoked' | 'revoked'
+  expirationStatus: 'not_checked' | 'not_expired' | 'expired'
+  rollbackEligibility: 'not_evaluated' | 'eligible' | 'ineligible'
+  productionTrustReadiness:
+    | 'ready'
+    | 'blocked_signature_missing'
+    | 'blocked_catalog_unsigned'
+    | 'blocked_catalog_invalid'
+    | 'blocked_untrusted_key'
+    | 'blocked_revoked'
+    | 'blocked_expired'
+    | 'blocked_package_mismatch'
+    | 'blocked_source_unapproved'
+  ownerGatedCandidateReadiness: 'owner_gated_hash_pinned_ready' | 'blocked'
+  lastVerificationResult: 'hash_pin_matched' | 'signed_catalog_verified' | 'not_reached' | 'blocked'
+  downloadEnabled: false
+  productionApproved: boolean
+  diagnosticCode: string | null
+}>
+
 export type DfcOfficePdfRuntimeAvailabilitySummary = Readonly<{
   status: DfcOfficePdfRuntimeAvailabilityState
   healthStatus: DfcOfficePdfRuntimeHealthStatus
@@ -80,6 +191,7 @@ export type DfcOfficePdfRuntimeAvailabilitySummary = Readonly<{
   recoverable: boolean
   source: DfcOfficePdfRuntimeSource
   runtime: DfcOfficePdfRuntimeIdentitySummary | null
+  trust: DfcLibreOfficeTrustDistributionStatus
 }>
 
 export type DfcOfficePdfRuntimeAvailability =
@@ -110,7 +222,7 @@ export type DfcLibreOfficePluginManagedRuntimeHandle = Readonly<{
   packageVersion: string
   source: DfcOfficePdfRuntimeSource
   healthStatus: DfcOfficePdfRuntimeHealthStatus
-  productionApproved: false
+  productionApproved: boolean
   experimental: boolean
   degraded: boolean
   productCode: DfcOfficePdfRuntimeProductCode | null
@@ -146,7 +258,7 @@ export type DfcLibreOfficePluginLifecycleBridge = Readonly<{
   productCode: DfcOfficePdfRuntimeProductCode | null
   internalCode: DfcOfficePdfRuntimeDiagnosticCode | null
   source: DfcOfficePdfRuntimeSource
-  productionApproved: false
+  productionApproved: boolean
   experimental: boolean
   installed: boolean
   enabled: boolean
@@ -154,6 +266,7 @@ export type DfcLibreOfficePluginLifecycleBridge = Readonly<{
   recoverable: boolean
   message: string
   runtime: DfcOfficePdfRuntimeIdentitySummary | null
+  trust: DfcLibreOfficeTrustDistributionStatus
 }>
 
 export type DfcLibreOfficeRuntimePackageLayoutContract = Readonly<{
@@ -191,7 +304,7 @@ export type DfcLibreOfficeRuntimePackageLayoutContract = Readonly<{
     fakeSeamAllowedForTests: true
     systemPathFallbackAllowed: false
   }>
-  productionApproved: false
+  productionApproved: boolean
 }>
 
 export type DfcLibreOfficeRuntimeAcquisitionSourceKind =
@@ -214,9 +327,9 @@ export type DfcLibreOfficeRuntimeAcquisitionSource = Readonly<{
   licenseRequired: true
   provenanceRequired: true
   securityPolicyRequired: true
-  productionApproved: false
-  ownerGated: true
-  experimental: true
+  productionApproved: boolean
+  ownerGated: boolean
+  experimental: boolean
 }>
 
 export type DfcLibreOfficeFirstPartyRuntimeCatalogEntry = Readonly<{
@@ -237,6 +350,32 @@ export type DfcLibreOfficeFirstPartyRuntimeCatalogEntry = Readonly<{
     systemPathFallbackAllowed: false
   }>
   acquisitionSource: DfcLibreOfficeRuntimeAcquisitionSource
+  trustPolicy: Readonly<{
+    selectedModel: DfcLibreOfficeTrustModel
+    currentPackageDecision: DfcLibreOfficePackageDecisionStatus
+    currentTrustStates: readonly DfcLibreOfficePackageTrustState[]
+    currentDistributionStates: readonly DfcLibreOfficePackageDistributionState[]
+    unsignedPackagesProductionApproved: false
+    detachedSignatureRequiredForProduction: true
+    signedCatalogRequiredForProduction: true
+  }>
+  verificationOrder: readonly [
+    'package_size_preflight',
+    'package_sha256_preflight',
+    'signature_or_catalog_verification_if_enabled',
+    'archive_extraction_to_staging',
+    'manifest_identity_validation',
+    'runtime_identity_validation',
+    'package_runtime_version_validation',
+    'platform_arch_validation',
+    'executable_relative_path_validation',
+    'executable_hash_size_validation',
+    'provenance_license_security_policy_validation',
+    'realpath_containment',
+    'symlink_reparse_escape_rejection',
+    'activation',
+    'optional_owner_gated_health_check_smoke',
+  ]
   requirements: Readonly<{
     manifestHashRequired: true
     executableHashRequired: true
@@ -252,8 +391,9 @@ export type DfcLibreOfficeFirstPartyRuntimeCatalogEntry = Readonly<{
       'isolated_profile_required',
     ]
   }>
-  productionApproved: false
-  experimental: true
+  productionApproved: boolean
+  productionApprovalScope?: DfcLibreOfficeScopedProductionApproval
+  experimental: boolean
 }>
 
 export type DfcOfficePdfManagedRuntimeSummary = Readonly<{
@@ -346,6 +486,9 @@ const NUL_RE = /\0/u
 const WINDOWS_DRIVE_RE = /^[A-Za-z]:[\\/]/u
 const UNC_RE = /^\\\\/u
 const FULL_SHA256_RE = /^[a-fA-F0-9]{64}$/u
+const DFC_LIBREOFFICE_APPROVED_EXECUTABLE_RELATIVE_PATH = 'program/soffice.exe'
+const DFC_LIBREOFFICE_LEGACY_UPSTREAM_MSI_URL = 'https://download.documentfoundation.org/libreoffice/stable/26.2.4/win/x86_64/LibreOffice_26.2.4_Win_x86-64.msi'
+const DFC_LIBREOFFICE_LEGACY_RELEASE_TAG = 'starverse-runtime-libreoffice-v0.1.0-win32-x64'
 
 export function getDfcLibreOfficeManagedRuntimeRoot(appManagedRootDir: string): string {
   return path.join(appManagedRootDir, 'managed-runtimes', 'dfc-office-pdf', DFC_OFFICE_PDF_RUNTIME_ID)
@@ -396,9 +539,12 @@ export async function resolveDfcLibreOfficeRuntimeExecutionDescriptor(input: Rea
   if (input.pluginEnabled === false) {
     return unavailable('office_pdf_runtime_disabled', 'Office PDF managed runtime is disabled.')
   }
+  if (readFileSyncIfAvailable(path.join(root, DFC_OFFICE_PDF_QUARANTINE_MARKER)) !== null) {
+    return unavailable('office_pdf_runtime_quarantined', 'LibreOffice managed runtime is quarantined.')
+  }
 
   const manifestPath = path.join(root, DFC_OFFICE_PDF_RUNTIME_MANIFEST)
-  const manifestText = await readFile(manifestPath, 'utf8').catch((error) => {
+  let manifestText = await readFile(manifestPath, 'utf8').catch((error) => {
     if (isNotFound(error)) return null
     return ''
   })
@@ -407,6 +553,11 @@ export async function resolveDfcLibreOfficeRuntimeExecutionDescriptor(input: Rea
   }
   if (!manifestText) {
     return unavailable('office_pdf_runtime_manifest_invalid', 'Office PDF runtime manifest cannot be read.')
+  }
+  const backfilledManifestText = backfillDfcLibreOfficeApprovedActivationManifestText(manifestText)
+  if (backfilledManifestText && backfilledManifestText !== manifestText) {
+    await writeFile(manifestPath, backfilledManifestText, 'utf8').catch(() => undefined)
+    manifestText = backfilledManifestText
   }
 
   const parsed = parseManifest(manifestText)
@@ -509,7 +660,7 @@ export function toDfcLibreOfficePluginLifecycleBridge(
     productCode: summary.productCode,
     internalCode: summary.internalCode,
     source: summary.source,
-    productionApproved: false,
+    productionApproved: summary.trust.productionApproved === true && summary.status === 'available',
     experimental: summary.status === 'experimental' || summary.source !== 'managed_manifest',
     installed: summary.status === 'available' || summary.status === 'experimental',
     enabled: summary.status === 'available' || summary.status === 'experimental',
@@ -517,6 +668,7 @@ export function toDfcLibreOfficePluginLifecycleBridge(
     recoverable: summary.recoverable,
     message: summary.message,
     runtime: summary.runtime,
+    trust: summary.trust,
   }
 }
 
@@ -555,10 +707,51 @@ export function getDfcLibreOfficeFirstPartyRuntimeCatalogEntry(): DfcLibreOffice
       licenseRequired: true,
       provenanceRequired: true,
       securityPolicyRequired: true,
-      productionApproved: false,
-      ownerGated: true,
-      experimental: true,
+      productionApproved: true,
+      ownerGated: false,
+      experimental: false,
     },
+    trustPolicy: {
+      selectedModel: 'owner_gated_hash_pinned_signed_catalog_required_for_production',
+      currentPackageDecision: 'approved_windows_x64_docx_to_pdf_production_asset',
+      currentTrustStates: [
+        'owner_approved_hash_pinned',
+        'hash_pinned',
+        'signature_missing',
+        'catalog_untrusted',
+      ],
+      currentDistributionStates: [
+        'offline_import_allowed',
+        'verified_offline_import_allowed',
+        'manual_github_release_allowed',
+        'windows_x64_production_approved',
+        'download_disabled_by_policy',
+        'bundled_runtime_not_approved',
+        'install_repair_download_not_approved',
+        'product_mirror_pending_approval',
+        'system_libreoffice_disallowed',
+      ],
+      unsignedPackagesProductionApproved: false,
+      detachedSignatureRequiredForProduction: true,
+      signedCatalogRequiredForProduction: true,
+    },
+    verificationOrder: [
+      'package_size_preflight',
+      'package_sha256_preflight',
+      'signature_or_catalog_verification_if_enabled',
+      'archive_extraction_to_staging',
+      'manifest_identity_validation',
+      'runtime_identity_validation',
+      'package_runtime_version_validation',
+      'platform_arch_validation',
+      'executable_relative_path_validation',
+      'executable_hash_size_validation',
+      'provenance_license_security_policy_validation',
+      'realpath_containment',
+      'symlink_reparse_escape_rejection',
+      'activation',
+      'optional_owner_gated_health_check_smoke',
+    ],
     requirements: {
       manifestHashRequired: true,
       executableHashRequired: true,
@@ -574,8 +767,9 @@ export function getDfcLibreOfficeFirstPartyRuntimeCatalogEntry(): DfcLibreOffice
         'isolated_profile_required',
       ],
     },
-    productionApproved: false,
-    experimental: true,
+    productionApproved: true,
+    productionApprovalScope: DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL,
+    experimental: false,
   }
 }
 
@@ -592,7 +786,7 @@ export async function resolveDfcLibreOfficePluginManagedRuntimeHandle(input: Rea
   const capabilityId = input.capabilityId ?? 'docx_to_pdf'
   const lifecycleSummary = input.lifecycleSummary ?? null
   if (lifecycleSummary && !isRuntimeSummaryUsableForAdapter(lifecycleSummary, input)) {
-    return unavailableHandle(lifecycleSummary)
+    return unavailableHandle(toProductionTrustBlockedSummaryIfNeeded(lifecycleSummary, input))
   }
 
   const availability = await resolveDfcLibreOfficeRuntimeExecutionDescriptor({
@@ -605,7 +799,7 @@ export async function resolveDfcLibreOfficePluginManagedRuntimeHandle(input: Rea
 
   const summary = lifecycleSummary ?? availability.summary
   if (!isRuntimeSummaryUsableForAdapter(summary, input)) {
-    return unavailableHandle(summary)
+    return unavailableHandle(toProductionTrustBlockedSummaryIfNeeded(summary, input))
   }
   const bridge = toDfcLibreOfficePluginLifecycleBridge(summary)
   const executableRelativePath = toManagedRelativePath(availability.runtime.managedRuntimeRootDir, availability.runtime.executablePath)
@@ -627,7 +821,7 @@ export async function resolveDfcLibreOfficePluginManagedRuntimeHandle(input: Rea
       packageVersion: availability.runtime.packageVersion,
       source: summary.source,
       healthStatus: summary.healthStatus,
-      productionApproved: false,
+      productionApproved: bridge.productionApproved,
       experimental: bridge.experimental,
       degraded: bridge.experimental || !bridge.productionApproved || summary.source !== 'managed_manifest',
       productCode: summary.productCode,
@@ -654,6 +848,45 @@ export function createDfcLibreOfficeQuarantinedAvailabilitySummary(input?: Reado
     recoverable: true,
     source: 'quarantined_runtime',
     runtime: input?.runtime ?? null,
+    trust: createDfcLibreOfficeTrustDistributionStatus({
+      trustStates: ['revoked'],
+      distributionStates: ['distribution_mode_unapproved', 'download_disabled_by_policy'],
+      packageDecision: 'rejected',
+      signatureCatalogStatus: 'signature_invalid_or_catalog_untrusted',
+      lastVerificationResult: 'blocked',
+      diagnosticCode: 'office_pdf_runtime_quarantined',
+    }),
+  }
+}
+
+export function createDfcLibreOfficeTrustBlockedAvailabilitySummary(input?: Readonly<{
+  message?: string | null
+  runtime?: DfcOfficePdfRuntimeIdentitySummary | null
+  trustStates?: readonly DfcLibreOfficePackageTrustState[] | null
+  distributionStates?: readonly DfcLibreOfficePackageDistributionState[] | null
+  diagnosticCode?: DfcOfficePdfRuntimeDiagnosticCode | string | null
+  trust?: Partial<DfcLibreOfficeTrustDistributionStatus> | null
+}>): DfcOfficePdfRuntimeAvailabilitySummary {
+  const diagnosticCode = input?.diagnosticCode ?? 'office_pdf_runtime_trust_blocked'
+  return {
+    status: 'blocked',
+    healthStatus: 'blocked',
+    productCode: 'conversion_sandbox_denied',
+    internalCode: isDfcOfficePdfRuntimeDiagnosticCode(diagnosticCode) ? diagnosticCode : 'office_pdf_runtime_trust_blocked',
+    message: sanitizeRuntimeMessage(input?.message, 'LibreOffice package trust policy blocked Office PDF conversion.'),
+    retryable: false,
+    recoverable: true,
+    source: 'managed_manifest',
+    runtime: input?.runtime ?? null,
+    trust: createDfcLibreOfficeTrustDistributionStatus({
+      trustStates: input?.trustStates ?? ['signature_invalid'],
+      distributionStates: input?.distributionStates ?? ['distribution_mode_unapproved', 'download_disabled_by_policy'],
+      packageDecision: 'replace_before_production',
+      signatureCatalogStatus: 'signature_invalid_or_catalog_untrusted',
+      lastVerificationResult: 'blocked',
+      diagnosticCode,
+      ...(input?.trust ?? {}),
+    }),
   }
 }
 
@@ -772,14 +1005,26 @@ function resolveDfcLibreOfficeRuntimeExecutionDescriptorSync(input: Readonly<{
   if (input.pluginEnabled === false) {
     return unavailable('office_pdf_runtime_disabled', 'Office PDF managed runtime is disabled.')
   }
+  if (readFileSyncIfAvailable(path.join(root, DFC_OFFICE_PDF_QUARANTINE_MARKER)) !== null) {
+    return unavailable('office_pdf_runtime_quarantined', 'LibreOffice managed runtime is quarantined.')
+  }
 
   const manifestPath = path.join(root, DFC_OFFICE_PDF_RUNTIME_MANIFEST)
-  const manifestText = readFileSyncIfAvailable(manifestPath)
+  let manifestText = readFileSyncIfAvailable(manifestPath)
   if (manifestText === null) {
     return unavailable('office_pdf_runtime_missing', 'Office PDF runtime manifest is missing.')
   }
   if (!manifestText) {
     return unavailable('office_pdf_runtime_manifest_invalid', 'Office PDF runtime manifest cannot be read.')
+  }
+  const backfilledManifestText = backfillDfcLibreOfficeApprovedActivationManifestText(manifestText)
+  if (backfilledManifestText && backfilledManifestText !== manifestText) {
+    try {
+      writeFileSync(manifestPath, backfilledManifestText, 'utf8')
+      manifestText = backfilledManifestText
+    } catch {
+      manifestText = backfilledManifestText
+    }
   }
 
   const parsed = parseManifest(manifestText)
@@ -1025,6 +1270,65 @@ function isValidOfficialRelease(value: DfcOfficePdfRuntimeOfficialRelease | null
   return true
 }
 
+function readReleaseTagFromCatalogSource(catalog: DfcLibreOfficeFirstPartyRuntimeCatalogEntry): string | null {
+  const sourceUrl = catalog.acquisitionSource.sourceUrl
+  if (sourceUrl) {
+    const match = sourceUrl.match(/\/releases\/download\/([^/]+)\//u)
+    if (match?.[1]) return decodeURIComponent(match[1])
+  }
+  const packageRef = catalog.acquisitionSource.packageRef
+  if (packageRef) {
+    const match = packageRef.match(/@([^/]+)\//u)
+    if (match?.[1]) return match[1]
+  }
+  return null
+}
+
+function backfillDfcLibreOfficeApprovedActivationManifestText(value: string): string | null {
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown> | null
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    const catalog = getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()
+    const releaseTag = readReleaseTagFromCatalogSource(catalog)
+    if (!releaseTag || !isLegacyApprovedWindowsX64RuntimeManifest(parsed)) return null
+    const currentRelease = parsed.officialRelease as Record<string, unknown> | null
+    parsed.artifactSha256 = catalog.acquisitionSource.expectedSha256
+    parsed.officialRelease = {
+      ...(currentRelease ?? {}),
+      sourceKind: 'official',
+      packageRef: catalog.acquisitionSource.packageRef,
+      releaseTag,
+      provenance: 'github_release_asset',
+    }
+    return JSON.stringify(parsed, null, 2)
+  } catch {
+    return null
+  }
+}
+
+function isLegacyApprovedWindowsX64RuntimeManifest(input: Record<string, unknown>): boolean {
+  const catalog = getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()
+  const officialRelease = input.officialRelease
+  if (!officialRelease || typeof officialRelease !== 'object' || Array.isArray(officialRelease)) return false
+  const release = officialRelease as Record<string, unknown>
+  const capabilities = Array.isArray(input.capabilities) ? input.capabilities : []
+  return input.manifestSchemaVersion === DFC_OFFICE_PDF_MIN_CONTRACT_VERSION &&
+    input.pluginId === DFC_OFFICE_PDF_PLUGIN_ID &&
+    input.packageId === DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID &&
+    input.runtimePackageId === DFC_OFFICE_PDF_RUNTIME_PACKAGE_ID &&
+    input.engineId === DFC_OFFICE_PDF_ENGINE_ID &&
+    input.runtimeId === DFC_OFFICE_PDF_RUNTIME_ID &&
+    input.platform === DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.approvedPlatform &&
+    input.arch === DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.approvedArch &&
+    input.packageVersion === catalog.acquisitionSource.packageVersion &&
+    input.libreOfficeVersion === catalog.acquisitionSource.runtimeVersion &&
+    input.executablePath === DFC_LIBREOFFICE_APPROVED_EXECUTABLE_RELATIVE_PATH &&
+    DFC_OFFICE_PDF_CAPABILITIES.every((capability) => capabilities.includes(capability)) &&
+    release.sourceKind === 'official' &&
+    release.packageRef === DFC_LIBREOFFICE_LEGACY_UPSTREAM_MSI_URL &&
+    release.releaseTag === DFC_LIBREOFFICE_LEGACY_RELEASE_TAG
+}
+
 function normalizeEnginePlatform(value: string): EnginePlatform {
   return value === 'win32' || value === 'darwin' || value === 'linux' ? value : 'any'
 }
@@ -1055,12 +1359,46 @@ function availableSummary(
   manifest: DfcOfficePdfRuntimeManifest,
   manifestHashPrefix: string
 ): DfcOfficePdfRuntimeAvailabilitySummary {
+  const approvalMismatch = getDfcLibreOfficeWindowsX64ProductionApprovalMismatch(manifest)
+  const productionApproved = approvalMismatch === null
+  if (approvalMismatch && runtimeSourceFromManifest(manifest) === 'managed_manifest') {
+    return {
+      status: 'blocked',
+      healthStatus: 'blocked',
+      productCode: runtimeProductCodeFromInternalCode(approvalMismatch.code),
+      internalCode: approvalMismatch.code,
+      message: approvalMismatch.message,
+      retryable: false,
+      recoverable: true,
+      source: 'managed_manifest',
+      runtime: {
+        pluginId: manifest.pluginId ?? DFC_OFFICE_PDF_PLUGIN_ID,
+        engineId: manifest.engineId,
+        runtimeId: manifest.runtimeId,
+        pluginVersion: manifest.pluginVersion ?? manifest.packageVersion,
+        packageVersion: manifest.packageVersion,
+        libreOfficeVersion: manifest.libreOfficeVersion,
+        runtimeKind: manifest.runtimeKind ?? DFC_OFFICE_PDF_RUNTIME_KIND,
+        platform: manifest.platform,
+        arch: manifest.arch ?? null,
+        capabilities: [...(manifest.capabilities ?? [])],
+        manifestHashPrefix,
+        executableRef: 'managed_relative_executable',
+      },
+      trust: createDfcLibreOfficeTrustDistributionStatus({
+        lastVerificationResult: approvalMismatch.verificationResult,
+        diagnosticCode: approvalMismatch.code,
+      }),
+    }
+  }
   return {
-    status: 'experimental',
+    status: productionApproved ? 'available' : 'experimental',
     healthStatus: 'healthy',
     productCode: null,
     internalCode: null,
-    message: 'LibreOffice managed runtime is available for owner-gated Office PDF conversion.',
+    message: productionApproved
+      ? 'LibreOffice managed runtime is production-approved for Windows x64 DOCX-to-PDF conversion.'
+      : 'LibreOffice managed runtime is available for owner-gated Office PDF conversion.',
     retryable: false,
     recoverable: false,
     source: runtimeSourceFromManifest(manifest),
@@ -1078,6 +1416,11 @@ function availableSummary(
       manifestHashPrefix,
       executableRef: 'managed_relative_executable',
     },
+    trust: productionApproved
+      ? createDfcLibreOfficeWindowsX64ProductionTrustStatus()
+      : createDfcLibreOfficeTrustDistributionStatus({
+        lastVerificationResult: isExpectedCatalogPackage(manifest) ? 'hash_pin_matched' : 'not_reached',
+      }),
   }
 }
 
@@ -1097,7 +1440,161 @@ function unavailableSummary(
     recoverable: code !== 'office_pdf_runtime_platform_unsupported',
     source: runtimeSourceFromInternalCode(code),
     runtime: null,
+    trust: createDfcLibreOfficeTrustDistributionStatus({
+      lastVerificationResult: 'not_reached',
+      diagnosticCode: code,
+    }),
   }
+}
+
+export function createDfcLibreOfficeTrustDistributionStatus(input?: Partial<DfcLibreOfficeTrustDistributionStatus>): DfcLibreOfficeTrustDistributionStatus {
+  return {
+    trustModel: input?.trustModel ?? 'owner_gated_hash_pinned_signed_catalog_required_for_production',
+    trustStates: input?.trustStates ?? [
+      'unsigned_owner_gated',
+      'hash_pinned',
+      'signature_missing',
+      'catalog_untrusted',
+      'production_source_unapproved',
+    ],
+    distributionStates: input?.distributionStates ?? [
+      'prerelease_source_owner_gated',
+      'offline_import_allowed',
+      'download_disabled_by_policy',
+      'bundled_runtime_not_approved',
+      'install_repair_download_not_approved',
+      'production_release_pending_approval',
+      'product_mirror_pending_approval',
+      'system_libreoffice_disallowed',
+    ],
+    packageDecision: input?.packageDecision ?? 'candidate_production_asset_pending_signing_legal_approval',
+    signatureCatalogStatus: input?.signatureCatalogStatus ?? 'signature_missing_catalog_unsigned',
+    catalogSignatureStatus: input?.catalogSignatureStatus ?? 'missing',
+    keyIdStatus: input?.keyIdStatus ?? 'not_checked',
+    revocationStatus: input?.revocationStatus ?? 'not_checked',
+    expirationStatus: input?.expirationStatus ?? 'not_checked',
+    rollbackEligibility: input?.rollbackEligibility ?? 'not_evaluated',
+    productionTrustReadiness: input?.productionTrustReadiness ?? 'blocked_signature_missing',
+    ownerGatedCandidateReadiness: input?.ownerGatedCandidateReadiness ?? 'owner_gated_hash_pinned_ready',
+    lastVerificationResult: input?.lastVerificationResult ?? 'not_reached',
+    downloadEnabled: false,
+    productionApproved: input?.productionApproved === true,
+    diagnosticCode: input?.diagnosticCode ?? null,
+  }
+}
+
+export function createDfcLibreOfficeWindowsX64ProductionTrustStatus(): DfcLibreOfficeTrustDistributionStatus {
+  return createDfcLibreOfficeTrustDistributionStatus({
+    trustStates: [
+      'owner_approved_hash_pinned',
+      'hash_pinned',
+      'signature_missing',
+      'catalog_untrusted',
+    ],
+    distributionStates: [
+      'windows_x64_production_approved',
+      'manual_github_release_allowed',
+      'verified_offline_import_allowed',
+      'offline_import_allowed',
+      'download_disabled_by_policy',
+      'bundled_runtime_not_approved',
+      'install_repair_download_not_approved',
+      'product_mirror_pending_approval',
+      'system_libreoffice_disallowed',
+    ],
+    packageDecision: 'approved_windows_x64_docx_to_pdf_production_asset',
+    signatureCatalogStatus: 'signature_missing_catalog_unsigned',
+    catalogSignatureStatus: 'missing',
+    keyIdStatus: 'not_checked',
+    revocationStatus: 'not_checked',
+    expirationStatus: 'not_checked',
+    rollbackEligibility: 'not_evaluated',
+    productionTrustReadiness: 'ready',
+    ownerGatedCandidateReadiness: 'owner_gated_hash_pinned_ready',
+    lastVerificationResult: 'hash_pin_matched',
+    productionApproved: true,
+    diagnosticCode: null,
+  })
+}
+
+function isExpectedCatalogPackage(manifest: DfcOfficePdfRuntimeManifest): boolean {
+  const catalog = getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()
+  return manifest.packageVersion === catalog.acquisitionSource.packageVersion &&
+    manifest.libreOfficeVersion === catalog.acquisitionSource.runtimeVersion &&
+    manifest.artifactSha256?.toLowerCase() === catalog.acquisitionSource.expectedSha256 &&
+    manifest.officialRelease?.packageRef === catalog.acquisitionSource.packageRef &&
+    manifest.officialRelease?.releaseTag === readReleaseTagFromCatalogSource(catalog)
+}
+
+export function isDfcLibreOfficeWindowsX64ProductionApprovedManifest(
+  manifest: DfcOfficePdfRuntimeManifest
+): boolean {
+  return getDfcLibreOfficeWindowsX64ProductionApprovalMismatch(manifest) === null
+}
+
+function getDfcLibreOfficeWindowsX64ProductionApprovalMismatch(
+  manifest: DfcOfficePdfRuntimeManifest
+): Readonly<{
+  code: DfcOfficePdfRuntimeDiagnosticCode
+  message: string
+  verificationResult: DfcLibreOfficeTrustDistributionStatus['lastVerificationResult']
+}> | null {
+  const catalog = getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()
+  if (runtimeSourceFromManifest(manifest) !== 'managed_manifest' || manifest.officialRelease?.sourceKind !== 'official') {
+    return {
+      code: 'office_pdf_runtime_package_source_mismatch',
+      message: 'LibreOffice runtime source is not the approved official managed package.',
+      verificationResult: 'blocked',
+    }
+  }
+  if (
+    manifest.platform !== DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.approvedPlatform ||
+    manifest.arch !== DFC_LIBREOFFICE_WINDOWS_X64_PRODUCTION_APPROVAL.approvedArch
+  ) {
+    return {
+      code: 'office_pdf_runtime_package_platform_mismatch',
+      message: 'LibreOffice runtime platform or architecture is outside the approved Windows x64 scope.',
+      verificationResult: 'blocked',
+    }
+  }
+  if (
+    manifest.packageVersion !== catalog.acquisitionSource.packageVersion ||
+    manifest.libreOfficeVersion !== catalog.acquisitionSource.runtimeVersion
+  ) {
+    return {
+      code: 'office_pdf_runtime_package_version_mismatch',
+      message: 'LibreOffice runtime package or runtime version is outside the approved scope.',
+      verificationResult: 'blocked',
+    }
+  }
+  if (
+    manifest.executablePath !== DFC_LIBREOFFICE_APPROVED_EXECUTABLE_RELATIVE_PATH ||
+    !DFC_OFFICE_PDF_CAPABILITIES.every((capability) => manifest.capabilities?.includes(capability))
+  ) {
+    return {
+      code: 'office_pdf_runtime_package_scope_mismatch',
+      message: 'LibreOffice runtime executable or capability scope is outside the approved DOCX-to-PDF package.',
+      verificationResult: 'blocked',
+    }
+  }
+  if (
+    manifest.officialRelease?.packageRef !== catalog.acquisitionSource.packageRef ||
+    manifest.officialRelease?.releaseTag !== readReleaseTagFromCatalogSource(catalog)
+  ) {
+    return {
+      code: 'office_pdf_runtime_package_source_mismatch',
+      message: 'LibreOffice runtime official release metadata does not match the approved GitHub package descriptor.',
+      verificationResult: 'blocked',
+    }
+  }
+  if (manifest.artifactSha256?.toLowerCase() !== catalog.acquisitionSource.expectedSha256) {
+    return {
+      code: 'office_pdf_runtime_package_hash_mismatch',
+      message: 'LibreOffice runtime package hash does not match the approved Windows x64 package pin.',
+      verificationResult: 'blocked',
+    }
+  }
+  return null
 }
 
 function runtimeProductCodeFromInternalCode(
@@ -1108,6 +1605,20 @@ function runtimeProductCodeFromInternalCode(
       return 'conversion_engine_missing'
     case 'office_pdf_runtime_disabled':
     case 'office_pdf_runtime_quarantined':
+    case 'office_pdf_runtime_trust_blocked':
+    case 'office_pdf_runtime_package_hash_mismatch':
+    case 'office_pdf_runtime_package_source_mismatch':
+    case 'office_pdf_runtime_package_platform_mismatch':
+    case 'office_pdf_runtime_package_scope_mismatch':
+    case 'office_pdf_runtime_package_version_mismatch':
+    case 'office_pdf_catalog_signature_missing':
+    case 'office_pdf_catalog_signature_invalid':
+    case 'office_pdf_catalog_untrusted_key':
+    case 'office_pdf_catalog_package_revoked':
+    case 'office_pdf_catalog_package_expired':
+    case 'office_pdf_catalog_package_mismatch':
+    case 'office_pdf_catalog_schema_unsupported':
+    case 'office_pdf_catalog_source_unapproved':
     case 'office_pdf_runtime_path_rejected':
     case 'office_pdf_runtime_platform_unsupported':
       return 'conversion_sandbox_denied'
@@ -1126,6 +1637,20 @@ function runtimeHealthStatusFromInternalCode(
       return 'missing'
     case 'office_pdf_runtime_disabled':
     case 'office_pdf_runtime_quarantined':
+    case 'office_pdf_runtime_trust_blocked':
+    case 'office_pdf_runtime_package_hash_mismatch':
+    case 'office_pdf_runtime_package_source_mismatch':
+    case 'office_pdf_runtime_package_platform_mismatch':
+    case 'office_pdf_runtime_package_scope_mismatch':
+    case 'office_pdf_runtime_package_version_mismatch':
+    case 'office_pdf_catalog_signature_missing':
+    case 'office_pdf_catalog_signature_invalid':
+    case 'office_pdf_catalog_untrusted_key':
+    case 'office_pdf_catalog_package_revoked':
+    case 'office_pdf_catalog_package_expired':
+    case 'office_pdf_catalog_package_mismatch':
+    case 'office_pdf_catalog_schema_unsupported':
+    case 'office_pdf_catalog_source_unapproved':
     case 'office_pdf_runtime_path_rejected':
     case 'office_pdf_runtime_platform_unsupported':
       return 'blocked'
@@ -1173,8 +1698,77 @@ function isRuntimeSummaryUsableForAdapter(
   if (input.productionOnly === true && (summary.source === 'fake_seam' || summary.source === 'imported_dev_artifact')) {
     return false
   }
+  if (input.productionOnly === true && summary.trust.productionTrustReadiness !== 'ready') {
+    return false
+  }
   if (input.allowExperimental === false && summary.status === 'experimental') return false
   return true
+}
+
+function toProductionTrustBlockedSummaryIfNeeded(
+  summary: DfcOfficePdfRuntimeAvailabilitySummary,
+  input: Readonly<{
+    productionOnly?: boolean | null
+  }>
+): DfcOfficePdfRuntimeAvailabilitySummary {
+  if (input.productionOnly !== true || summary.trust.productionTrustReadiness === 'ready') return summary
+  const code = productionTrustReadinessDiagnosticCode(summary.trust.productionTrustReadiness)
+  return createDfcLibreOfficeTrustBlockedAvailabilitySummary({
+    message: summary.message,
+    runtime: summary.runtime,
+    trustStates: summary.trust.trustStates,
+    distributionStates: summary.trust.distributionStates,
+    diagnosticCode: code,
+    trust: {
+      ...summary.trust,
+      diagnosticCode: code,
+      lastVerificationResult: 'blocked',
+    },
+  })
+}
+
+function productionTrustReadinessDiagnosticCode(
+  readiness: DfcLibreOfficeTrustDistributionStatus['productionTrustReadiness']
+): DfcOfficePdfRuntimeDiagnosticCode {
+  switch (readiness) {
+    case 'ready':
+      return 'office_pdf_runtime_trust_blocked'
+    case 'blocked_signature_missing':
+    case 'blocked_catalog_unsigned':
+      return 'office_pdf_catalog_signature_missing'
+    case 'blocked_catalog_invalid':
+      return 'office_pdf_catalog_signature_invalid'
+    case 'blocked_untrusted_key':
+      return 'office_pdf_catalog_untrusted_key'
+    case 'blocked_revoked':
+      return 'office_pdf_catalog_package_revoked'
+    case 'blocked_expired':
+      return 'office_pdf_catalog_package_expired'
+    case 'blocked_package_mismatch':
+      return 'office_pdf_catalog_package_mismatch'
+    case 'blocked_source_unapproved':
+      return 'office_pdf_catalog_source_unapproved'
+  }
+}
+
+function isDfcOfficePdfRuntimeDiagnosticCode(value: string): value is DfcOfficePdfRuntimeDiagnosticCode {
+  return value === 'office_pdf_runtime_missing' ||
+    value === 'office_pdf_runtime_disabled' ||
+    value === 'office_pdf_runtime_quarantined' ||
+    value === 'office_pdf_runtime_trust_blocked' ||
+    value === 'office_pdf_catalog_signature_missing' ||
+    value === 'office_pdf_catalog_signature_invalid' ||
+    value === 'office_pdf_catalog_untrusted_key' ||
+    value === 'office_pdf_catalog_package_revoked' ||
+    value === 'office_pdf_catalog_package_expired' ||
+    value === 'office_pdf_catalog_package_mismatch' ||
+    value === 'office_pdf_catalog_schema_unsupported' ||
+    value === 'office_pdf_catalog_source_unapproved' ||
+    value === 'office_pdf_runtime_manifest_invalid' ||
+    value === 'office_pdf_runtime_executable_missing' ||
+    value === 'office_pdf_runtime_path_rejected' ||
+    value === 'office_pdf_runtime_platform_unsupported' ||
+    value === 'office_pdf_runtime_metadata_incomplete'
 }
 
 function unavailableHandle(

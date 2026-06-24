@@ -111,4 +111,44 @@ describe('SettingsRepo', () => {
     repo.setImageGenerationDefault(null)
     expect(repo.getImageGenerationDefault()).toBeNull()
   })
+
+  it('persists network proxy settings with environment default', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new SettingsRepo(db)
+
+    expect(repo.getNetworkProxySettings()).toEqual({
+      proxyMode: 'environment',
+      manualProxyUrl: '',
+      noProxy: '',
+      strictSSL: true,
+    })
+
+    repo.setNetworkProxySettings({
+      proxyMode: 'manual',
+      manualProxyUrl: 'http://127.0.0.1:7890',
+      noProxy: 'localhost,.github.com',
+      strictSSL: true,
+    })
+    expect(repo.getNetworkProxySettings()).toEqual({
+      proxyMode: 'manual',
+      manualProxyUrl: 'http://127.0.0.1:7890',
+      noProxy: 'localhost,.github.com',
+      strictSSL: true,
+    })
+  })
+
+  it('rejects credential-bearing proxy URLs before persistence', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new SettingsRepo(db)
+
+    expect(() => repo.setNetworkProxySettings({
+      proxyMode: 'manual',
+      manualProxyUrl: 'http://user:secret@127.0.0.1:7890',
+      noProxy: '',
+      strictSSL: true,
+    })).toThrow(/proxy credentials/u)
+    expect(repo.getNetworkProxySettings().manualProxyUrl).toBe('')
+  })
 })

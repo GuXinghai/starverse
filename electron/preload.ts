@@ -150,6 +150,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('dialog:select-file', options),
   selectLocalFiles: (options?: { context?: 'file' | 'image'; allowMultiple?: boolean }) =>
     ipcRenderer.invoke('dialog:select-local-files', options),
+  importLibreOfficeSvpkg: () => ipcRenderer.invoke('dialog:import-libreoffice-svpkg'),
+  quarantineLibreOfficeRuntime: () => ipcRenderer.invoke('dialog:quarantine-libreoffice-runtime'),
 
   /**
    * 使用系统默认应用打开图片
@@ -179,6 +181,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * 获取网络实验运行时信息（开关注入/版本/argv）
    */
   getNetExpRuntimeInfo: () => ipcRenderer.invoke('netexp:get-runtime-info'),
+  probeLibreOfficeSystemProxyDownloadNetwork: () =>
+    ipcRenderer.invoke('network-proxy:probe-libreoffice-system'),
   onModelCatalogSynced: (callback: () => void) => {
     const handler = () => callback()
     ipcRenderer.on('db:modelCatalogSynced', handler)

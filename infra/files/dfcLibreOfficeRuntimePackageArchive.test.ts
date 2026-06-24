@@ -18,6 +18,7 @@ type PackageOptions = Readonly<{
   omitRuntimeManifest?: boolean
   omitExecutable?: boolean
   extraEntries?: readonly ZipFixtureEntry[]
+  includeExtraEntriesInInventory?: boolean
   inventoryMutator?: (inventory: any) => void
   packageManifestMutator?: (manifest: any) => void
   runtimeManifestMutator?: (manifest: any) => void
@@ -139,6 +140,9 @@ function buildValidPackage(options: PackageOptions = {}): Buffer {
   files.push({ name: 'attribution/NOTICE', content: 'LibreOffice attribution fixture' })
   files.push({ name: 'notices/NOTICE', content: 'LibreOffice notices fixture' })
   files.push({ name: 'provenance/provenance.json', content: jsonBytes({ source: 'fixture' }) })
+  if (options.includeExtraEntriesInInventory) {
+    files.push(...(options.extraEntries ?? []))
+  }
 
   const inventoryArtifacts = files.map((file, index) => ({
     artifactId: `artifact-${index}`,
@@ -168,7 +172,9 @@ function buildValidPackage(options: PackageOptions = {}): Buffer {
   if (!options.omitInventory) {
     files.push({ name: 'inventory.json', content: jsonBytes(inventory) })
   }
-  files.push(...(options.extraEntries ?? []))
+  if (!options.includeExtraEntriesInInventory) {
+    files.push(...(options.extraEntries ?? []))
+  }
   return createZip(files)
 }
 
@@ -214,6 +220,40 @@ describe('LibreOffice svpkg runtime package archive bridge', () => {
       source: 'downloaded_candidate',
     })
     expect(JSON.stringify(result.diagnostics)).not.toContain(extractionRoot)
+  })
+
+  it('keeps the event loop observable while extracting many svpkg entries', async () => {
+    const extraEntries = Array.from({ length: 32 }, (_, index) => ({
+      name: `documentation/chunk-${index}.txt`,
+      content: `LibreOffice fixture documentation chunk ${index}`,
+    }))
+    const archive = buildValidPackage({ extraEntries, includeExtraEntriesInInventory: true })
+    const extractionRoot = await tempRoot('yield')
+    let ticks = 0
+    let active = true
+    const tick = () => {
+      if (!active) return
+      ticks += 1
+      setImmediate(tick)
+    }
+    setImmediate(tick)
+
+    try {
+      const result = await extractDfcLibreOfficeRuntimePackageArchive({
+        packageBytes: archive,
+        extractionRootDir: extractionRoot,
+        repoRootDir: process.cwd(),
+        expectedPackageSha256: sha256(archive),
+        expectedPackageSizeBytes: archive.byteLength,
+        platform: 'win32',
+        arch: 'x64',
+      })
+
+      expect(result.ok).toBe(true)
+      expect(ticks).toBeGreaterThan(0)
+    } finally {
+      active = false
+    }
   })
 
   it('rejects missing top-level manifest, inventory, runtime manifest, and executable', async () => {

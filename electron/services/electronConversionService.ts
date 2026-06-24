@@ -9,16 +9,25 @@ import {
   createElectronHtmlPdfConversionAdapter,
   type ElectronHtmlPdfConversionAdapter,
 } from './electronHtmlPdfConversionAdapter'
+import { fetchPackageToFileWithElectronNet } from './electronOfficialPackageDownloadService'
+import type { net } from 'electron'
+import type {
+  PackageDownloadFileTransportRequest,
+  PackageDownloadFileTransportResult,
+} from '../../src/next/plugin-distribution/packageDownloader'
 
 export type MainProcessElectronConversionServiceInput = Readonly<{
   htmlToPdfAdapter?: ElectronHtmlPdfConversionAdapter
+  officialPackageRequest?: typeof net.request
 }>
 
 export class MainProcessElectronConversionService implements ElectronConversionBridge {
   private readonly htmlToPdfAdapter: ElectronHtmlPdfConversionAdapter
+  private readonly officialPackageRequest?: typeof net.request
 
   constructor(input: MainProcessElectronConversionServiceInput = {}) {
     this.htmlToPdfAdapter = input.htmlToPdfAdapter ?? createElectronHtmlPdfConversionAdapter()
+    this.officialPackageRequest = input.officialPackageRequest
   }
 
   async convert(rawRequest: ElectronConversionRequest): Promise<ElectronConversionResponse> {
@@ -36,6 +45,10 @@ export class MainProcessElectronConversionService implements ElectronConversionB
     }
 
     return await this.htmlToPdfAdapter.convert(prepared.request)
+  }
+
+  async fetchPackageToFile(request: PackageDownloadFileTransportRequest): Promise<PackageDownloadFileTransportResult> {
+    return await fetchPackageToFileWithElectronNet(request, { request: this.officialPackageRequest })
   }
 }
 

@@ -395,6 +395,18 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
         return { ok: true }
     })
 
+  register('settings.getNetworkProxySettings', () => {
+        return { value: rt.settingsRepo.getNetworkProxySettings() }
+    })
+
+  register('settings.setNetworkProxySettings', (raw) => {
+        if (!raw || typeof raw !== 'object' || !('value' in raw)) {
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.setNetworkProxySettings requires value')
+        }
+        rt.settingsRepo.setNetworkProxySettings((raw as any).value)
+        return { ok: true }
+    })
+
   register('settings.getChatDraft', (raw) => {
         const key = String(raw?.key ?? '').trim()
         if (!key) {

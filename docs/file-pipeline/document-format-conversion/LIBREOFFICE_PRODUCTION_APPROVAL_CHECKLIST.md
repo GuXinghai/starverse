@@ -1,45 +1,42 @@
 # LibreOffice Production Approval Checklist
 
-Status: Owner approval checklist / production not approved
+Status: Owner-approved Windows x64 DOCX-to-PDF production support / cross-platform deferred
 
-Date: 2026-06-17
+Date: 2026-06-23
 
-Current HEAD reviewed: `f635508a6d493702db6853ff5c9fb5ab55f1848e`
+Scope: LibreOffice Plugin Management / DOCX-to-PDF Windows x64 production approval package
 
-Scope: LibreOffice Plugin Management / DOCX-to-PDF production approval package
+Production state: `productionApproved=true` scoped to Windows x64 DOCX-to-PDF only
 
-Production state: `productionApproved=false`
+This checklist records the Owner decision to approve the current validated LibreOffice DOCX-to-PDF Windows x64 managed runtime path. It does not approve macOS/Linux packages, broad Office format conversion, system LibreOffice, PATH fallback, arbitrary executable paths, arbitrary package URLs, or automatic runtime download.
 
-This document is a production approval decision package for the existing LibreOffice Plugin Management and DFC Office-to-PDF integration. It records the current implementation evidence, remaining blockers, approval gates, and recommended next tasks. It does not approve production support, add conversion formats, change runtime behavior, or flip `productionApproved`.
+## Scoped Production Approval
 
-## 1. Current Implementation Inventory
+Approved product scope:
 
-Current product status:
+- LibreOffice DOCX-to-PDF.
+- Windows x64 initial production package only.
+- Starverse managed `.svpkg` only.
+- Fixed first-party GitHub Release asset descriptor.
+- Manual GitHub Release install through Plugin Management `install_official_plugin`.
+- Verified offline import through the same package verification and activation path as far as practical.
+- DFC selected-ref / verified DerivedAsset authority.
 
-- LibreOffice Plugin Management integration is essentially complete, but not production-approved.
-- Runtime acquisition source is recorded as a GitHub prerelease asset.
-- Release redownload verification passed.
-- DOCX-to-PDF managed runtime smoke passed.
-- Office-to-PDF product status remains DOCX-only, owner-gated, and experimental.
-- `productionApproved=false` remains correct.
+Approved state fields:
 
-Completed components:
+- productionApproved: `true`
+- approvedPlatform: `win32`
+- approvedArch: `x64`
+- approvedInput: `docx`
+- approvedOutput: `pdf_attachment`
+- approvedAcquisitionModes: `manual_github_release`, `offline_import`
+- automaticDownloadEnabled: `false`
+- postinstallDownloadEnabled: `false`
+- conversionTimeDownloadEnabled: `false`
 
-- Managed runtime diagnostics normalization.
-- Plugin Management inventory bridge.
-- Catalog/import contract.
-- Package layout verification policy.
-- Lifecycle controls.
-- DFC adapter switch-over: DOCX-to-PDF adapter obtains the LibreOffice runtime through the plugin-managed runtime handle.
-- Product gate diagnostics.
-- Acquisition/download pipeline, disabled by default and owner-gated.
-- `.svpkg` package archive extraction/import bridge.
-- Owner source decision and `.svpkg` dry-run / package preparation script.
-- Official-source Windows x64 LibreOffice package preparation from The Document Foundation infrastructure.
-- GitHub prerelease asset publication and redownload verification.
-- Archive bridge verification, import helper verification, managed runtime gate verification, and real managed DOCX-to-PDF worker smoke.
+Production approval still requires a valid managed package, package size/hash verification, the implemented signed-catalog or owner-approved hash-pinned trust policy, runtime identity verification, executable identity verification, platform/arch verification, M36 path caps, enabled runtime state, no quarantine, no revocation, no hard-block expiration, approved acquisition mode, and no system/PATH fallback.
 
-Current verified upstream and package metadata:
+## Approved Package Identity
 
 | Item | Value |
 | --- | --- |
@@ -56,499 +53,145 @@ Current verified upstream and package metadata:
 | Executable relative path | `program/soffice.exe` |
 | GitHub repo | `GuXinghai/starverse` |
 | GitHub release tag | `starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64` |
-| Release type | prerelease |
 | Catalog source kind | `github_release_asset` |
 | Catalog download state | `downloadEnabled=false` |
 
-Current supported product scope:
-
-- Input: DOCX only for Office-to-PDF.
-- Output target: `pdf_attachment`.
-- Output asset: verified `converted_pdf` DerivedAsset.
-- Send strategy: `file_attachment`.
-- Fallbacks: `markdown` and `original_file`.
-- Product state: owner-gated and experimental.
-
-Explicitly unsupported:
-
-- `.doc`, `.rtf`, `.docm`.
-- `.xls`, `.xlsx` Office-to-PDF expansion.
-- HTML PDF expansion in this approval package.
-- PS/EPS.
-- PDF OCR or local PDF parsing.
-- Image or audio processing.
-- System LibreOffice, PATH fallback, arbitrary executable path, or renderer-provided executable path.
-
-## 2. Remaining Blockers
-
-Production approval is blocked until all of the following are resolved and accepted by Owner:
-
-- Legal / license / provenance review.
-- Package signing policy.
-- Production acquisition policy.
-- Packaged distribution policy.
-- Multi-platform assets beyond current Windows x64 package.
-- Owner production approval.
-- Windows path-depth / sandbox / LibreOffice output path risk.
-- Typecheck issues under `infra/files/**` that have appeared in recent validation must be triaged or explicitly accepted as unrelated before release approval.
-
-Path-depth risk summary:
-
-- A real managed DOCX-to-PDF worker smoke from a very deep repo-external runtime root previously failed at process conversion.
-- The same redownloaded package passed from a short repo-external runtime root.
-- This must be tracked as a Windows path-depth / sandbox / LibreOffice output risk before production approval.
-
-## 3. Legal / License / Provenance Checklist
-
-Required evidence:
-
-- Official source URL and release provenance from The Document Foundation.
-- Official checksum metadata, including `.meta4` data where available.
-- MSI sha256 and size:
-  - `202f26cda071c5aa4996a5a28412fddceb3891dceb0366982c62650456c0730f`
-  - `372539392`
-- `.svpkg` sha256 and size:
-  - `ce012cf1215f958286be29462d1ae8c122bdc6a779ac84076388de9875487f6e`
-  - `518907010`
-- Package manifest, runtime manifest, inventory, and provenance JSON.
-- License and notice inputs observed during package preparation:
-  - `license.txt`
-  - `LICENSE.html`
-  - `NOTICE`
-  - `CREDITS.fodt`
-- Legal review of LibreOffice license obligations, redistribution rights, attribution, NOTICE requirements, and bundled third-party materials.
-- Decision on whether GitHub-hosted prerelease distribution is acceptable for production or only for owner-gated testing.
-- Reviewer names or approval references for source provenance, license obligations, NOTICE/attribution handling, and redistribution terms.
-- A final approved production asset record that ties the TDF upstream artifact, MSI hash/size, Starverse `.svpkg` hash/size, package manifest, runtime manifest, inventory, license files, notices, attribution, and provenance JSON together.
-
-Approval gate:
-
-- Owner must have a signed-off legal/provenance checklist before the package can be marked production-approved.
-- Production documentation must include the approved source URL, package hash, package size, license references, notice references, attribution references, and review date.
-- Production approval must not proceed from the current GitHub prerelease asset alone; the approval record must explicitly state whether the current prerelease asset is promoted, replaced by a production release asset, mirrored, bundled, or rejected.
-
-## 4. Package Signing And Trust Checklist
-
-Current state:
-
-- The verified `.svpkg` has hash and size verification.
-- No production package signing policy is approved in the current DFC closeout.
-- The `signatures/` package directory is optional until signing is approved.
-
-Required signing/trust decisions:
-
-- Choose whether production packages require:
-  - detached signature files,
-  - embedded package signature metadata,
-  - signed catalog metadata,
-  - GitHub release digest plus Starverse catalog hash pinning,
-  - or a combination.
-- Define the trusted public key / trust root.
-- Define signature verification order relative to size/hash/extraction.
-- Define revocation behavior for signed but later disallowed packages.
-- Define rollback behavior when the active package is revoked or replaced.
-
-Minimum production trust gate:
-
-- Verify package size and sha256 before extraction.
-- Verify manifest identity, runtime identity, package version, runtime version, platform, arch, executable path, executable hash/size, provenance, license, and security policy before activation.
-- Reject absolute paths, traversal, UNC paths, drive escapes, NUL bytes, symlink/reparse-point escapes, missing executable, hash mismatch, unsupported platform, revoked package, expired package, and incomplete metadata.
-- Define the exact checksum/signature verification order for downloaded, offline-imported, bundled, and cached packages.
-- Define the package rollback policy, including which previous package can be a rollback target and when rollback is forbidden.
-- Define the revocation policy, including local cached package handling, catalog state handling, user diagnostics, and whether a revoked package must be deleted or quarantined.
-- Define how signature key rotation or trust-root replacement is handled.
-- Production approval must not proceed until unsigned package handling is explicit. If unsigned packages remain allowed, the Owner must explicitly accept the risk and the package must remain hash-pinned and owner-gated.
-
-## 5. Production Acquisition Policy
-
-Current acquisition state:
-
-- Catalog source points to a GitHub prerelease asset.
-- `downloadEnabled=false`.
-- The asset is owner-gated, experimental, and not production-approved.
-- `downloadEnabled=false` must remain the default until Owner approves production acquisition policy, release trust policy, and user-facing install/repair UX.
-
-Production questions:
-
-- Is a GitHub prerelease asset acceptable for production? Current recommendation: no, not without Owner approval and signing/trust policy.
-- Should production use a normal GitHub release, bundled app asset, first-run explicit download, offline import, or a product-managed mirror?
-- Is automatic download ever allowed, or must install/repair be explicit?
-- What is the network failure behavior?
-- What is the offline install behavior?
-- What is the cache eviction and update policy?
-- Is a fallback mirror allowed? If yes, it must have equal provenance and hash/signature verification.
-
-Required production behavior:
-
-- No implicit runtime acquisition during conversion.
-- No default postinstall download without Owner-approved UX and policy.
-- No system LibreOffice fallback if acquisition fails.
-- Failed/missing acquisition keeps DOCX `pdf_attachment` unavailable or blocked with safe diagnostics.
-- Production acquisition must use a version-pinned source URL, expected sha256, expected size, package version, runtime version, platform, arch, and trust policy reference.
-- GitHub prerelease assets are acceptable only for owner-gated testing unless the Owner explicitly approves prerelease-as-production policy.
-- A production asset must have a rollback/revocation plan before `downloadEnabled` can change.
-- Cache and retry behavior must not create silent background downloads during conversion.
-- Offline import must run the same hash/signature/provenance/license/security policy checks as online acquisition.
-
-## 6. Packaged Distribution Policy
-
-Distribution options to decide:
-
-| Option | Impact | Current status |
-| --- | --- | --- |
-| Bundle LibreOffice runtime with app | Increases app size by hundreds of MB; simplifies offline availability | Not approved |
-| Download on demand through explicit install/repair | Smaller app; requires network policy, consent, cache, signing, retry, and failure UX | Not approved |
-| Offline import by Owner/admin | Best for controlled environments; requires import UX and validation | Scaffold exists; production UX not approved |
-| User-installed system LibreOffice | Avoids package size; weak provenance and inconsistent behavior | Disallowed |
-
-Current policy:
-
-- No production distribution mode is approved.
-- Bundled LibreOffice runtime is not approved.
-- On-demand production download is not approved and remains blocked by `downloadEnabled=false`.
-- User/admin `.svpkg` import remains owner-gated and experimental.
-- User-installed system LibreOffice remains disallowed as a production acquisition source.
-
-Production packaging concerns:
-
-- App package size and installer performance.
-- Per-platform runtime layout.
-- Update cadence and security fixes.
-- Revocation and rollback policy.
-- User consent and owner gate wording.
-- Product gate diagnostics before enabling conversion.
-
-Approval gates by distribution option:
-
-- Bundled runtime:
-  - quantify app installer size impact and update cadence,
-  - define whether runtime updates require app updates or separable asset updates,
-  - verify bundled package hash/signature/provenance during build and at runtime activation,
-  - define rollback/removal behavior for a bundled but revoked runtime,
-  - document user consent and Owner gate wording before enabling Office-to-PDF.
-- On-demand download:
-  - require explicit user or Owner install/repair action,
-  - keep conversion-time automatic download disabled,
-  - define offline behavior, network failure behavior, retry policy, cache policy, and telemetry/diagnostic wording,
-  - verify downloaded package hash/signature/provenance before extraction,
-  - keep `downloadEnabled=false` until production acquisition and trust policies are approved.
-- User/admin `.svpkg` import:
-  - require the same hash/signature/provenance/license/security checks as online acquisition,
-  - define import UX, replacement/update behavior, and rollback/removal behavior,
-  - reject packages with unsupported platform, architecture, layout, executable path, or policy metadata,
-  - keep the path owner-gated until Owner approves production import UX.
-
-## 7. Multi-Platform Plan
-
-Current verified asset:
-
-- Windows x64 only: `win32` / `x64`.
-- Current production package coverage is Windows x64 only; macOS and Linux production assets do not exist yet.
-- Current asset naming pattern: `starverse-runtime-libreoffice-<packageVersion>-<runtimeVersion>-<platform>-<arch>.svpkg`.
-
-Future platform requirements:
-
-- macOS:
-  - identify official TDF package source and architecture variants,
-  - define extracted package layout,
-  - verify executable relative path,
-  - validate codesigning/notarization implications,
-  - define package naming for `darwin` and each supported architecture,
-  - run archive/import/runtime/smoke validation.
-- Linux:
-  - decide package source format and distro assumptions,
-  - avoid system package manager dependence as production authority unless Owner approves,
-  - validate package layout and executable path,
-  - define package naming for `linux` and each supported architecture,
-  - run archive/import/runtime/smoke validation.
-- Architecture naming must stay consistent across package metadata, catalog entries, release asset names, and runtime manifests.
-- Package layout must keep a stable executable relative path, manifest schema, inventory format, security policy, license inputs, and provenance JSON across platforms.
-
-Per-platform production approval requires:
-
-- Package source decision.
-- Hash/size/signature evidence.
-- Layout verification.
-- Runtime gate verification.
-- Real DOCX-to-PDF managed worker smoke.
-- Path-depth / sandbox / cleanup confidence.
-- Package import verification from the exact platform `.svpkg`.
-- Redownload or offline-import verification, depending on the approved distribution mode.
-- Explicit Owner approval that the platform asset is production-supported.
-
-## 8. Path-Depth / Sandbox / Output Risk
-
-Known observation:
-
-- Deep repo-external runtime root smoke failed at process conversion.
-- Short repo-external runtime root smoke succeeded with the same redownloaded prerelease package.
-
-Likely risk areas, without overclaiming root cause:
-
-- Windows path length limits.
-- LibreOffice profile/output path handling.
-- Sandbox input/output/work path depth.
-- Temporary profile path depth.
-- Process working directory or argument path depth.
-- Runtime package extraction root depth.
-
-Required reproduction matrix before production approval:
-
-| Dimension | Required cases |
-| --- | --- |
-| Runtime root depth | short, medium, deep |
-| App data root | default user app data, custom managed root |
-| Sandbox root | OS temp short path, app-managed temp path, deep path |
-| Input path | short file name, long file name, Unicode file name, spaces |
-| Output path | short output dir, deep output dir |
-| Package source | imported local package, redownloaded release package |
-| Failure capture | no raw absolute path in renderer-visible diagnostics |
-
-Approval gate:
-
-- Define a maximum supported runtime root/output path length or harden the sandbox/runtime root selection to enforce short controlled paths.
-- Add targeted regression tests or documented smoke steps for the chosen policy.
-- Record failure diagnostics and ensure they are symbolic/sanitized.
-- Production approval must not proceed until the chosen maximum path-length policy or controlled short-path policy is written down and verified against the reproduction matrix above.
-
-Default-off harness:
-
-```powershell
-npm run rebuild:node
-npx vitest --run infra/files/dfcLibreOfficePathDepthSmokeMatrix.test.ts --reporter=dot --silent
-```
-
-The default command validates the matrix definition and sanitized evidence shape only. It does not run real LibreOffice.
-
-Real path-depth smoke requires explicit Owner/engineer opt-in and two already prepared managed runtime roots:
-
-```powershell
-$env:STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_SMOKE = '1'
-$env:STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_SHORT_RUNTIME_ROOT = '<short-managed-runtime-root>'
-$env:STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_DEEP_RUNTIME_ROOT = '<deep-managed-runtime-root>'
-npx vitest --run infra/files/dfcLibreOfficePathDepthSmokeMatrix.test.ts --reporter=dot --silent
-```
-
-Required evidence from the real harness:
-
-- short runtime root with short sandbox/input/output/profile paths succeeds or fails with sanitized diagnostic codes only.
-- short runtime root with deep sandbox/input/output/profile paths succeeds or fails with sanitized diagnostic codes only.
-- deep runtime root with short sandbox/input/output/profile paths succeeds or fails with sanitized diagnostic codes only.
-- deep runtime root with deep sandbox/input/output/profile paths succeeds or fails with sanitized diagnostic codes only.
-- harness output records only case ids, path classes, path lengths, cleanup status, and diagnostic codes; it must not print raw runtime roots, sandbox roots, executable paths, input paths, output paths, user names, or package paths.
-
-## 9. Runtime Security Checklist
-
-The current design requires:
-
-- Execution only through a managed runtime handle.
-- No system LibreOffice discovery.
-- No PATH fallback.
-- No user-selected executable.
-- No renderer-provided executable path.
-- Argument-array process launch; no shell command concatenation.
-- Sandbox copy for input.
-- Controlled sandbox output directory.
-- Isolated temporary LibreOffice profile.
-- Timeout and process-tree cleanup.
-- Output validation requiring expected PDF output under controlled output dir.
-- stdout/stderr size limits and redaction.
-- No local absolute paths, raw storage refs, command lines, env, document body, PDF body, full hashes, or sensitive temp paths in renderer-visible diagnostics.
-
-Before production approval, verify or complete:
-
-- Macro execution disabled or not triggered.
-- External links are not refreshed.
-- Network is disabled or blocked according to policy.
-- Embedded object execution is disabled.
-- Temporary profile cleanup occurs on success and failure.
-- Sandbox input/output/work dirs are cleaned up.
-- Process timeout kills child process tree.
-- Logs do not include sensitive absolute paths.
-- Conversion failure remains fail-closed with no ready DerivedAsset and no legacy fallback.
-
-Approval gate:
-
-- Production approval must not proceed until runtime security evidence proves the manifest policy and actual LibreOffice process invocation agree: macros are not executed, network and external refresh behavior are blocked, the profile is isolated, stdout/stderr are bounded and redacted, timeout cleanup reaches the process tree, and sandbox/profile/temp cleanup is verified for success and failure.
-- If any of these controls are only declared in manifest metadata rather than enforced by invocation or sandbox policy, the approval record must explicitly identify the gap and assign a follow-up task before `productionApproved` can change.
-
-## 10. Product Gate / UX Checklist
-
-Current product gate:
-
-- Office-to-PDF is owner-gated.
-- Experimental state remains visible in runtime/product diagnostics.
-- Missing, invalid, unhealthy, quarantined, degraded, disabled, unsupported, timeout, and conversion-failed states must keep PDF conversion unavailable/blocked.
-
-Required UX decisions before broader exposure:
-
-- How Office-to-PDF is surfaced in Plugin Management.
-- Whether users see a download/install/repair action.
-- Required warning wording for experimental or production-approved states.
-- Whether `pdf_attachment` appears by default or only under advanced options.
-- How fallback to `markdown` and `original_file` is presented.
-- How to explain unsupported `.doc`, `.rtf`, `.docm`, XLS/XLSX Office-to-PDF, HTML PDF, PS/EPS, and PDF OCR.
-- What diagnostics are required before enabling the feature.
-
-Product claim boundary:
-
-- Allowed now: owner-gated, experimental, managed runtime path, DOCX-only, production approval pending.
-- Not allowed now: production-ready, bundled LibreOffice, broad Office support, automatic runtime download, system fallback, or `productionApproved=true`.
-
-## 11. Test / Validation Matrix
-
-Existing validations already passed:
-
-- Archive bridge verification from real `.svpkg`.
-- Import helper verification from real `.svpkg`.
-- Managed runtime gate verification.
-- Real managed DOCX-to-PDF worker smoke.
-- Draft/prerelease redownload hash/size verification.
-- Redownloaded package archive/import/runtime/smoke verification.
-- Targeted unit tests for runtime, adapter, package installer, lifecycle service, acquisition, and worker path in previous rounds.
-
-Future required validations before production approval:
-
-| Area | Required validation |
-| --- | --- |
-| Legal/provenance | verify source URL, TDF metadata, license, NOTICE, attribution, redistribution review |
-| Package signing | verify selected signature/trust policy |
-| Acquisition | redownload from production-approved source, hash/size/signature validation, offline failure behavior |
-| Import/install | staged extraction, realpath containment, symlink/reparse rejection, rollback, cleanup |
-| Runtime security | no macros, no network, no external links refresh, isolated profile, timeout/process cleanup |
-| Path-depth | reproduction matrix across short/medium/deep roots |
-| Product UX | owner-gated diagnostics, warning text, fallback behavior |
-| Platform | Windows x64 plus future macOS/Linux asset-specific smoke |
-| Regression | OpenRouter/provider work unaffected; Send Plan and DFC selected-ref authority unchanged |
-
-Suggested targeted commands for future implementation/audit rounds:
-
-```powershell
-npm run rebuild:node
-npx vitest --run infra/files/dfcManagedLibreOfficeRuntime.test.ts infra/files/dfcLibreOfficePdfAdapter.test.ts infra/files/dfcLibreOfficeManagedPackageInstaller.test.ts infra/files/dfcLibreOfficeRuntimeAcquisition.test.ts infra/files/enginePluginLifecycleService.test.ts --reporter=dot --silent
-npx vitest --run infra/db/worker.filePipeline.test.ts -t "LibreOffice|Office PDF|DOCX pdf_attachment|unsupported|real managed" --reporter=dot --silent
-git diff --check
-```
-
-Real smoke commands remain environment-gated and must use repo-external runtime roots:
-
-```powershell
-npm run test:office-pdf-libreoffice-import-dev-smoke
-npx vitest --run infra/files/dfcLibreOfficeRuntimePackageArchive.test.ts -t "real owner-approved" --reporter=dot --silent
-npx vitest --run infra/db/worker.filePipeline.test.ts -t "real managed" --reporter=dot --silent
-```
-
-Typecheck note:
-
-- Recent validation in this repository has observed unresolved `infra/files/**` LibreOffice/DFC typecheck failures in real-smoke/package archive files. Before production approval, rerun `npx vue-tsc --noEmit --pretty false`, confirm whether those failures still exist, and either fix them or explicitly document why they are unrelated to production approval.
-
-## 12. Production Readiness Closeout And Owner Decision Index
-
-Closeout status:
-
-- Current verified asset remains the Windows x64 prerelease `.svpkg`: `starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg`.
-- Current package sha256 remains `ce012cf1215f958286be29462d1ae8c122bdc6a779ac84076388de9875487f6e`.
-- Current package sizeBytes remains `518907010`.
-- Current product scope remains DOCX-to-PDF only, owner-gated, and experimental.
-- Blocker gates are now documented and test-locked for production approval state, DOCX-only scope, release trust/acquisition, packaged distribution, multi-platform requirements, runtime security, and path-depth risk.
-- The path-depth smoke matrix harness exists and is default-off, but real path-depth evidence is still pending.
-- Release trust, acquisition, distribution, and multi-platform gates are defined, but none are Owner-approved for production.
-- `productionApproved=false` remains the only allowed production state until every required gate below is complete.
-
-Readiness index:
-
-| Gate | Current state | Evidence present | Evidence missing | Next executable task | Owner decision required |
-| --- | --- | --- | --- | --- | --- |
-| Verified Windows x64 asset | Draft/prerelease evidence present | TDF MSI URL/hash/size, `.svpkg` hash/size, GitHub prerelease asset, redownload/import/smoke evidence | Production asset promotion/replacement decision | Legal/provenance review package | Yes |
-| Production approval state | Not approved | `productionApproved=false` documented and source-guarded | Final Owner approval and implementation commit | Owner approval checkpoint after all blockers close | Yes |
-| DOCX-only product scope | Owner-gated experimental | DOCX-only scope and non-goal formats documented/test-locked | Product approval for broader exposure, if ever desired | Keep scope unchanged during approval work | No |
-| Runtime security | Partial readiness | Manifest policy, sandboxed invocation, timeout/redaction/cleanup seams, checklist gate | Final runtime security audit evidence against real managed smoke | Runtime security evidence package | Yes |
-| Path-depth / sandbox output | Blocked | Deep failure and short success recorded; default-off smoke matrix harness documented | Real matrix run evidence and selected max-path or controlled short-path policy | Real path-depth smoke evidence run | Yes |
-| Release trust / legal provenance | Blocked | TDF source, MSI/package hashes, license/NOTICE inputs, required evidence list | Legal/license/NOTICE/redistribution approval record | Legal/provenance review package | Yes |
-| Signing / trust policy | Blocked | Checksum, signature, rollback, revocation, unsigned-package expectations documented | Selected signature format, trust root, revocation/rollback implementation policy | Signing/trust policy package | Yes |
-| Production acquisition | Blocked | `downloadEnabled=false`, hash-pinned prerelease source, no implicit conversion-time download gate | Approved production source, install/repair UX, offline/network/cache/update policy | Distribution/acquisition approval package | Yes |
-| Packaged distribution | Blocked | Bundled/download/import options and approval gates documented | Chosen distribution mode, app size impact, update/removal policy, user consent wording | Distribution/acquisition approval package | Yes |
-| Multi-platform assets | Blocked | Windows x64 current status and macOS/Linux requirements documented | macOS/Linux `.svpkg` assets, per-platform import/runtime/smoke evidence | Platform asset preparation task after Owner approval | Yes |
-| Typecheck/regression | Partial readiness | Targeted checklist tests and previous DFC validations | Current full typecheck triage for known `infra/files/**` failures | Validation cleanup task before final approval | No, unless accepting failures |
-
-Recommended next executable tasks:
-
-1. `test(file-conversion): run LibreOffice path-depth smoke evidence matrix`
-   - Run the default-off matrix with explicit environment variables and repo-external runtime roots.
-   - Capture sanitized evidence for short/deep runtime and input/output paths.
-   - Select either a max supported path policy or a controlled short-path runtime policy.
-2. `docs(file-conversion): assemble LibreOffice legal provenance review package`
-   - Attach TDF source provenance, MSI hash/size, `.svpkg` hash/size, package/runtime manifests, inventory, license/NOTICE/attribution inputs, and redistribution review notes.
-   - Record whether the current GitHub prerelease asset can be promoted, replaced, mirrored, bundled, or rejected for production.
-3. `docs(file-conversion): define LibreOffice signing trust and distribution approval policy`
-   - Decide signature/checksum trust policy, rollback/revocation handling, unsigned package policy, production acquisition source, download/import/bundling mode, and user consent wording.
-   - Keep `downloadEnabled=false` until this policy is approved.
-
-## 13. Approval Decision Table
-
-| Gate | Owner | Current status | Required evidence | Pass/fail criteria | Target follow-up task |
-| --- | --- | --- | --- | --- | --- |
-| Legal/license/provenance | Owner/legal | Blocked | TDF source URL, MSI hash/size, `.svpkg` hash/size, license/NOTICE/attribution review | Written approval; no unresolved redistribution blocker | Legal/provenance review package |
-| Signing/trust | Owner/security | Blocked | Signature format, trust root, revocation policy | Package verification can reject unsigned/untrusted or revoked artifacts according to policy | Signing policy implementation |
-| Production acquisition | Owner/product/security | Blocked | Approved source, download UX, cache/update/offline policy | No implicit conversion-time download; safe failure behavior | Acquisition policy hardening |
-| Packaged distribution | Owner/release | Blocked | Bundled/download/offline import decision, app size impact, user consent | Distribution route is explicit and tested | Distribution decision package |
-| Windows path-depth | Engineering/Owner | Blocked | Reproduction matrix and selected mitigation | Deep/short behavior understood; chosen path policy enforced | Path-depth smoke matrix |
-| Runtime security | Security/Owner | Partial | sandbox, profile, no network, no macro, cleanup, log redaction evidence | Fail-closed behavior and no sensitive diagnostics | Runtime security audit |
-| Product UX | Product/Owner | Blocked | warning text, Plugin Management flow, fallback wording | No production overclaim; user can understand experimental state | UX/product gate checklist |
-| Multi-platform | Owner/release | Blocked | macOS/Linux package candidates and smoke results | Each platform passes package/import/runtime/smoke gates | Platform package plan |
-| Typecheck/regression | Engineering | Partial | current typecheck and targeted test results | No relevant DFC errors or accepted unrelated failures only | Validation cleanup |
-| Final production approval | Owner | Not approved | all prior gates complete | Owner explicitly approves `productionApproved=true` change | Production approval implementation |
-
-## 14. Recommended Next Tasks
-
-Recommended Codex implementation/audit task:
-
-- Task: `test(file-conversion): run LibreOffice path-depth smoke evidence matrix`
-- Scope:
-  - Execute the default-off path-depth smoke matrix with explicit runtime roots.
-  - Record sanitized evidence and selected path policy.
-  - Keep DOCX-to-PDF only and owner-gated.
-  - Do not change runtime behavior or flip `productionApproved`.
-
-Recommended DeepSeek review/hardening task:
-
-- Task: `review(file-conversion): LibreOffice path-depth and runtime security evidence`
-- Scope:
-  - Review real matrix evidence, sandbox/profile/network/macro/output/logging policy, and failure diagnostics.
-  - Identify P0/P1 blockers before production approval.
-
-Recommended Owner checkpoint:
-
-- Decision: choose the next approval package after path-depth evidence:
-  - legal/provenance review package,
-  - signing/trust policy package,
-  - or distribution/acquisition approval package.
-
-Task sizing guidance:
-
-- Keep each next task medium-sized.
-- Do not split into single-field doc patches.
-- Do not combine production approval, signing, acquisition, packaged distribution, multi-platform support, and `productionApproved=true` into one implementation commit.
-
-## 15. Explicit Non-Goals
-
-This approval checklist does not:
-
-- approve production Office-to-PDF support,
-- change `productionApproved` to true,
-- implement `.doc`, `.rtf`, `.docm`,
-- implement `.xls` / `.xlsx` Office-to-PDF,
-- implement HTML PDF changes,
-- implement PS/EPS,
-- implement PDF OCR or local PDF parsing,
-- implement image or audio processing,
-- change production runtime behavior,
-- change DFC conversion code,
-- change package.json or lockfiles,
-- install dependencies,
-- create runtime acquisition implementation,
-- modify GitHub release assets,
-- upload or download files,
-- touch provider architecture source code,
-- revive LiteLLM or old Gemini scope,
-- add Agent/RAG/coding workflow platform scope.
+Manual GitHub Release install and verified offline import are approved acquisition modes. Opening Plugin Management, reading status, uploading DOCX, generating DFC options, Send Plan, and conversion attempts must not download.
+
+## Legal And Provenance Record
+
+Approval statement by Owner: approved for Windows x64 DOCX-to-PDF managed `.svpkg` only.
+
+The Windows x64 legal/provenance approval record is limited to the package identity above. It covers:
+
+- Upstream authority: The Document Foundation.
+- TDF Windows x64 MSI URL, MSI sha256, and MSI size.
+- Starverse `.svpkg` sha256 and size.
+- Package manifest, runtime manifest, inventory, provenance JSON, license files, NOTICE / CREDITS / attribution files.
+- GitHub Release source descriptor.
+- DOCX-to-PDF only.
+
+This approval does not generalize legal/provenance acceptance to future macOS or Linux packages.
+
+## Trust And Distribution Policy
+
+Current trust model: `owner_gated_hash_pinned_signed_catalog_required_for_production`, with M46 Owner acceptance of the validated Windows x64 hash-pinned package path and the M43 signed-catalog/revocation/expiration/rollback logic remaining in force.
+
+Renderer-safe production trust/distribution states for the approved package include:
+
+- `owner_approved_hash_pinned`
+- `hash_pinned`
+- `signature_missing`
+- `catalog_untrusted`
+- `windows_x64_production_approved`
+- `manual_github_release_allowed`
+- `verified_offline_import_allowed`
+- `download_disabled_by_policy`
+- `system_libreoffice_disallowed`
+
+Revoked packages are not launchable and are not rollback targets. Expired packages remain hard blocks where the signed-catalog policy marks them hard-blocked. Rollback targets require matching runtime/plugin identity, same platform/arch, package hash/size verification, manifest/runtime/executable verification, not revoked, not expired under hard-block policy, `rollbackAllowed=true`, and the relevant trust policy pass.
+
+## Security Acceptance Record
+
+Accepted Windows x64 controls:
+
+- managed runtime handle only
+- no system LibreOffice
+- no PATH fallback
+- no renderer executable path
+- no arbitrary executable path
+- `shell: false`
+- argument-array invocation
+- sandbox input copy
+- controlled output dir
+- isolated profile dir
+- timeout/process cleanup
+- stdout/stderr redaction
+- PDF output validation
+- path-cap guard
+- signed catalog/revocation/expiration/rollback checks
+
+Macro, external-link, network, and embedded-object policy remains scoped to the approved Windows x64 DOCX-to-PDF path. Accepted macro/external-link/network/embedded-object risk is limited to Windows x64 DOCX-to-PDF and must be re-reviewed for any new platform package.
+
+## DFC Production Behavior
+
+Approved Windows x64 with valid runtime:
+
+- DOCX exposes production-ready `pdf_attachment`.
+- DerivedAsset remains `converted_pdf`.
+- Send strategy remains `file_attachment`.
+- Send asset ref remains `derived_asset`.
+- Preview remains metadata-only.
+- Send Plan remains selected-ref / verified-DerivedAsset authoritative.
+
+Blocked states:
+
+- Missing runtime: DOCX `pdf_attachment` unavailable/blocked, manual install available diagnostic, no automatic download.
+- Invalid, disabled, quarantined, revoked, expired, untrusted, or path-blocked runtime: no ready `converted_pdf`, no stale ready PDF option, no legacy fallback, no system/PATH fallback.
+- Non-Windows package without approved `.svpkg`: DOCX `pdf_attachment` unavailable/blocked with platform package pending diagnostic.
+
+DOCX `markdown` and `original_file` remain independent.
+
+## Plugin Management Status
+
+Windows x64 with a valid runtime shows production approval for DOCX-to-PDF, manual install only, automatic download disabled, DOCX only, package/runtime version, trust/catalog status, and GitHub Release or verified offline import source.
+
+macOS and Linux show the LibreOffice DOCX-to-PDF capability as known but platform package pending. They are not production-approved.
+
+Renderer output must not expose raw package paths, runtime roots, executable paths, command lines, env, storage refs, content tokens, manifest bodies, license bodies, DOCX/PDF bodies, or full hashes.
+
+## Cross-Platform Deferral Record
+
+macOS and Linux remain deferred, not rejected. Production enablement is package-gated per platform.
+
+Deferred platform packages:
+
+- darwin / arm64
+- darwin / x64
+- linux / x64
+- linux / arm64
+
+Required future gates for each platform:
+
+- official LibreOffice upstream package source
+- package extraction/preparation
+- `.svpkg` manifest
+- executable relative path
+- executable hash/size
+- package size/hash
+- signed catalog entry
+- Plugin Management install descriptor
+- runtime gate validation
+- platform-specific sandbox/profile/temp behavior
+- packaged Electron smoke
+- DOCX-to-PDF PDF validation
+- legal/provenance update if needed
+
+## Explicitly Unsupported
+
+Unsupported scope remains locked:
+
+- `.doc`
+- `.rtf`
+- `.docm`
+- `.xls/.xlsx` Office-to-PDF
+- PS/EPS
+- PDF OCR/local parsing
+- image/audio processing
+- system LibreOffice
+- PATH fallback
+- common-install-location probing
+- arbitrary executable path
+- renderer-provided executable path
+- arbitrary plugin URL input
+- automatic download
+- startup/background download
+- postinstall download
+- conversion-time download
+
+## Remaining Future Work
+
+- Prepare and validate deferred macOS/Linux `.svpkg` packages only when separately approved.
+- Publish or provision a production signed catalog/trust-root flow if Owner later requires signature trust beyond the accepted Windows x64 hash-pinned package.
+- Re-review macro/external-link/network/embedded-object behavior for any new package/platform scope.
+- Keep the no-auto-download regression suite and packaged smoke commands green.

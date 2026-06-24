@@ -81,6 +81,45 @@ const previousKnownGoodSchema = z.object({
 const optionalReleaseProvenanceSchema = releaseProvenanceSchema.nullable().optional().transform((value) => value ?? null)
 const optionalPreviousKnownGoodSchema = previousKnownGoodSchema.nullable().optional().transform((value) => value ?? null)
 
+const productGateSchema = z.object({
+  status: z.enum(['available', 'unavailable', 'blocked', 'experimental', 'degraded', 'quarantined', 'missing', 'unhealthy']),
+  productCode: z.string().trim().nullable(),
+  internalCode: z.string().trim().nullable(),
+  productionApproved: z.boolean(),
+  ownerGated: z.boolean(),
+  experimental: z.boolean(),
+  degraded: z.boolean(),
+  quarantined: z.boolean(),
+  source: z.string().trim().nullable(),
+  trustModel: z.string().trim().nullable().optional().default(null),
+  trustStates: z.array(z.string().trim()).optional().default([]),
+  distributionStates: z.array(z.string().trim()).optional().default([]),
+  packageDecision: z.string().trim().nullable().optional().default(null),
+  signatureCatalogStatus: z.string().trim().nullable().optional().default(null),
+  catalogSignatureStatus: z.string().trim().nullable().optional().default(null),
+  keyIdStatus: z.string().trim().nullable().optional().default(null),
+  revocationStatus: z.string().trim().nullable().optional().default(null),
+  expirationStatus: z.string().trim().nullable().optional().default(null),
+  rollbackEligibility: z.string().trim().nullable().optional().default(null),
+  productionTrustReadiness: z.string().trim().nullable().optional().default(null),
+  ownerGatedCandidateReadiness: z.string().trim().nullable().optional().default(null),
+  lastVerificationResult: z.string().trim().nullable().optional().default(null),
+  downloadEnabled: z.boolean().optional().default(false),
+  approvedPlatform: z.string().trim().nullable().optional().default(null),
+  approvedArch: z.string().trim().nullable().optional().default(null),
+  approvedInput: z.string().trim().nullable().optional().default(null),
+  approvedOutput: z.string().trim().nullable().optional().default(null),
+  approvedAcquisitionModes: z.array(z.string().trim()).optional().default([]),
+  automaticDownloadEnabled: z.boolean().optional().default(false),
+  postinstallDownloadEnabled: z.boolean().optional().default(false),
+  conversionTimeDownloadEnabled: z.boolean().optional().default(false),
+  platformPackageStatus: z.string().trim().nullable().optional().default(null),
+  fallbackTargetKinds: z.array(z.string().trim()),
+  message: z.string().trim(),
+})
+
+const optionalProductGateSchema = productGateSchema.nullable().optional().transform((value) => value ?? null)
+
 const installedPluginSchema = z.object({
   engineId: nonEmpty,
   displayName: nonEmpty,
@@ -105,6 +144,7 @@ const installedPluginSchema = z.object({
   errorChain: optionalPluginErrorChainSchema,
   releaseProvenance: optionalReleaseProvenanceSchema,
   previousKnownGood: optionalPreviousKnownGoodSchema,
+  productGate: optionalProductGateSchema,
 })
 
 const officialPluginSchema = z.object({
@@ -152,6 +192,8 @@ const officialInstallOperationStateSchema = z.enum([
   'accepted',
   'pending',
   'downloading',
+  'retrying',
+  'paused_retryable',
   'verifying',
   'staging',
   'registering',
@@ -201,6 +243,7 @@ const diagnosticsEntrySchema = z.object({
   modelVersion: nonEmpty.nullable(),
   failureReason: nonEmpty.nullable(),
   installSource: nonEmpty.nullable(),
+  productGate: optionalProductGateSchema,
 })
 
 const diagnosticsSummarySchema = z.object({
@@ -238,16 +281,22 @@ const installOperationStatusResultSchema = z.union([
   lifecycleSuccessSchema(officialInstallOperationSchema.nullable()),
   lifecycleFailureSchema,
 ])
+const cancelInstallOperationResultSchema = z.union([
+  lifecycleSuccessSchema(officialInstallOperationSchema.nullable()),
+  lifecycleFailureSchema,
+])
 
 export type DecodedInstalledPlugin = z.infer<typeof installedPluginSchema>
 export type DecodedPluginErrorChain = z.infer<typeof pluginErrorChainSchema>
 export type DecodedReleaseProvenance = z.infer<typeof releaseProvenanceSchema>
 export type DecodedPreviousKnownGood = z.infer<typeof previousKnownGoodSchema>
+export type DecodedProductGate = z.infer<typeof productGateSchema>
 export type DecodedOfficialPlugin = z.infer<typeof officialPluginSchema>
 export type DecodedOfficialInstallOperation = z.infer<typeof officialInstallOperationSchema>
 export type DecodedLifecycleInstalledResult = z.infer<typeof lifecycleInstalledResultSchema>
 export type DecodedInstallOfficialPluginResult = z.infer<typeof installOfficialPluginResultSchema>
 export type DecodedInstallOperationStatusResult = z.infer<typeof installOperationStatusResultSchema>
+export type DecodedCancelInstallOperationResult = z.infer<typeof cancelInstallOperationResultSchema>
 export type DecodedLifecycleListOfficialResult = z.infer<typeof listOfficialResultSchema>
 export type DecodedDiagnosticsSummary = z.infer<typeof diagnosticsSummarySchema>
 
@@ -276,6 +325,11 @@ export type GetInstallOperationStatusRequest = Readonly<{
   pluginId?: string
   pluginVersion?: string
 }>
+export type CancelInstallOperationRequest = Readonly<{
+  operationId?: string
+  pluginId?: string
+  pluginVersion?: string
+}>
 export type LifecycleEngineRequest = Readonly<{ engineId: string }>
 
 export function decodeInstalledPluginsResponse(raw: unknown): DecodedInstalledPlugin[] {
@@ -296,6 +350,10 @@ export function decodeInstallOfficialPluginResult(raw: unknown): DecodedInstallO
 
 export function decodeInstallOperationStatusResult(raw: unknown): DecodedInstallOperationStatusResult {
   return installOperationStatusResultSchema.parse(raw)
+}
+
+export function decodeCancelInstallOperationResult(raw: unknown): DecodedCancelInstallOperationResult {
+  return cancelInstallOperationResultSchema.parse(raw)
 }
 
 export function decodeDiagnosticsSummary(raw: unknown): DecodedDiagnosticsSummary {

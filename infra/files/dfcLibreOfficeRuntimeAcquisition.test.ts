@@ -57,7 +57,7 @@ async function tempCache(): Promise<string> {
 }
 
 describe('DFC LibreOffice runtime acquisition pipeline', () => {
-  it('points the catalog acquisition source at the owner-gated prerelease asset', () => {
+  it('points the catalog acquisition source at the scoped Windows x64 production asset with automatic download disabled', () => {
     const entry = getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()
 
     expect(entry.acquisitionSource).toMatchObject({
@@ -71,9 +71,17 @@ describe('DFC LibreOffice runtime acquisition pipeline', () => {
       runtimeVersion: '26.2.4',
       platform: 'win32',
       arch: 'x64',
-      productionApproved: false,
-      ownerGated: true,
-      experimental: true,
+      productionApproved: true,
+      ownerGated: false,
+      experimental: false,
+    })
+    expect(entry.productionApprovalScope).toMatchObject({
+      approvedPlatform: 'win32',
+      approvedArch: 'x64',
+      approvedInput: 'docx',
+      approvedOutput: 'pdf_attachment',
+      automaticDownloadEnabled: false,
+      conversionTimeDownloadEnabled: false,
     })
   })
 

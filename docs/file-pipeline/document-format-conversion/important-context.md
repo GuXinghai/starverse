@@ -7,10 +7,10 @@ This file is the recovery entry point after context compression. The source of t
 - Current branch at latest documented DFC closeout: `main`
 - Current topic directory: `docs/file-pipeline/document-format-conversion/`
 - Current SSOT file: `starverse_format_conversion_preview_v1_2.md`
-- Latest closeout: `dfc-libreoffice-plugin-management-closeout.md` records the LibreOffice Plugin Management route through runtime diagnostics, lifecycle inventory, catalog/import contract, package verification, lifecycle controls, adapter switch-over, product gate diagnostics, acquisition/download pipeline, release/upload owner-gate audit, `.svpkg` import bridge, official-source local package preparation, draft release redownload verification, and owner-gated prerelease acquisition source evidence.
-- Current recovery state: LibreOffice Office-to-PDF remains owner-gated and experimental with `productionApproved=false`. The current path is DOCX-only `pdf_attachment` through the managed runtime handle, with `markdown` and `original_file` fallbacks unchanged. Imported dev artifacts, official-source local `.svpkg` verification, draft release redownload verification, and prerelease redownload verification provide local/distribution confidence only; fake seams are not production runtime authority. Task 9 adds a disabled-by-default, owner-gated acquisition/download contract and controlled runtime cache/staging helper. Task 10 verified GitHub repo permissions and later Owner authorized a draft release upload/redownload verification round. Task 10R adds the `.svpkg` archive import bridge, records `dfc-libreoffice-owner-source-decision.md`, and adds a package preparation script. The follow-up official-source preparation round downloaded LibreOffice `26.2.4` Windows x86_64 from The Document Foundation infrastructure, prepared a real repo-external Starverse `.svpkg`, verified it through the archive/import bridge, and ran the real managed DOCX-to-PDF worker smoke. The prerelease verification round promoted the same `.svpkg` as `starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64`, redownloaded the asset, verified sha256/size, re-ran archive/import verification, re-ran the real managed DOCX-to-PDF worker smoke, and pointed the catalog acquisition source at the prerelease asset with `downloadEnabled=false`. No LibreOffice binary, `.svpkg`, extracted runtime, system LibreOffice/PATH fallback, `.doc` / `.rtf` / `.docm`, PS/EPS, or PDF OCR/local parsing support is committed or production-approved.
+- Latest closeout / evidence bundle: `dfc-m59-electron-net-system-real-install-and-live-docx.md` records the first real LibreOffice official install attempt through the selected Electron-net system route. The route passed a bounded fixed-asset diagnostic immediately before install, and the one real `install_official_plugin` operation reached `accepted -> pending -> downloading -> verifying -> staging`. The earlier GitHub large-body transfer failure did not reproduce; the blocker moved to `install_operation_status_timeout` during staging/import. Follow-up installed-state-only smoke still reported runtime `missing` with `conversion_engine_missing`, so live DOCX-to-PDF was not reached. Final classification: `system_install_failed_unknown`.
+- Current recovery state: LibreOffice DOCX-to-PDF is production-approved only for the validated Windows x64 managed `.svpkg` path. The scoped approval is `productionApproved=true`, `approvedPlatform=win32`, `approvedArch=x64`, `approvedInput=docx`, `approvedOutput=pdf_attachment`, approved acquisition modes `manual_github_release` and `offline_import`, with automatic/startup/background/postinstall/conversion-time download still disabled. The current path remains DOCX-only `pdf_attachment` through the managed runtime handle, with `markdown` and `original_file` fallbacks unchanged. Imported dev artifacts and fake seams are not production runtime authority. macOS and Linux packages are deferred, not rejected, and require independent platform package preparation, trust/catalog entries, packaged smoke, PDF validation, and legal/provenance updates. M54 implemented resumable streaming, M56 added proxy settings, M58 selected Electron-net system route, and M59 proved the system route can carry the package body to staging. The remaining blocker is staging/import status liveness or DB worker availability during heavy `.svpkg` staging. No LibreOffice binary, `.svpkg`, extracted runtime, system LibreOffice/PATH fallback, `.doc` / `.rtf` / `.docm`, `.xls/.xlsx`, PS/EPS, PDF OCR/local parsing, image/audio support, arbitrary executable paths, renderer-provided executable paths, arbitrary plugin URLs, or automatic download behavior is committed or approved.
 - Task 0-10R commit chain for this route includes `b50ce13`, `a506258`, `462a259`, `677328f`, `67b2bf5`, `ea33a9a`, `4e11d00`, `7c20e21`, `f79e38c`, `efe3696`, `4cf4e40`, `5ce73c4`, and `5dfe3fe`. The current round adds official-source local package preparation and verification evidence.
-- Next DFC work should not expand Office formats or flip production approval until Owner explicitly accepts legal/license/provenance/security review, package signing policy, production acquisition policy, platform layout review, packaged smoke policy, user-facing wording, and lifecycle policy.
+- Next DFC work should isolate LibreOffice `.svpkg` staging/import/extraction from DB worker status polling, or make install operation status observable while staging/import runs. Do not run a second real install operation or click Retry unless Owner explicitly authorizes it. Do not expand Office formats, approve macOS/Linux packages, enable automatic/startup/background/postinstall/conversion-time downloads, add system/PATH fallback, allow arbitrary executable paths, allow arbitrary package URLs, or loosen sandbox/path-cap/diagnostics privacy boundaries unless Owner explicitly approves that separate scope.
 - Local worktree note at this closeout: `public/build-id.json` and `.artifacts/**` may be unrelated dirty local items and must not be staged as part of DFC documentation or runtime work.
 - Current navigation note: the old root-level `format-conversion-preview-*` v1.0 files are historical only under `docs/file-pipeline/document-format-conversion/archive/v1.0-superseded/`; do not use them as implementation authority.
 - The DFC-0 through DFC-6 bullets in this section are historical setup milestones; later DFC-7 through DFC-30 and DFC-M0 through DFC-M32 recovery notes are appended below and the full append-only sequence is in `progress-ledger.md`.
@@ -1643,9 +1643,498 @@ Proceed to M32 packaged Office-to-PDF smoke confidence or user-visible experimen
 
 Proceed to packaged smoke confidence first. If owner prioritizes exposure instead, open a user-visible experimental gate package with explicit diagnostics and fail-closed behavior. Do not expand to `.doc`, `.rtf`, `.docm`, PS/EPS, system fallback, or production Office-to-PDF claims before owner approval.
 
+## DFC-M33 Integrated LibreOffice production-gate evidence recovery notes
+
+- M33 consolidates evidence only, plus minimal test/harness typing cleanup needed for validation. It does not change production runtime behavior.
+- New bundle: `dfc-m33-integrated-libreoffice-production-gate-evidence.md`.
+- Default-off path-depth matrix validation passed for matrix definition and sanitized evidence shape. The real matrix remains pending because no explicit `STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_SHORT_RUNTIME_ROOT` or `STARVERSE_DFC_LIBREOFFICE_PATH_DEPTH_DEEP_RUNTIME_ROOT` was provided in this shell.
+- Runtime security evidence now maps managed-runtime-only execution, no system/PATH fallback, sandbox input/output, isolated profile, argument-array process launch, timeout/process cleanup, output validation, fail-closed behavior, and diagnostic redaction to current files/tests.
+- Legal/provenance packet records the current Windows x64 prerelease `.svpkg`: TDF source URL, observed mirror host, MSI hash/size, package hash/size, executable hash/size, inventory count, manifests/inventory/provenance/license/NOTICE/attribution inputs, and promote/replace/mirror/bundle/reject decision slot.
+- Signing/trust and distribution memo recommends rejecting unsigned production packages, requiring signed catalog/package trust, verifying size/hash before extraction and signature/trust before activation, and keeping conversion-time automatic download disallowed.
+- Packaged smoke readiness plan is recorded, but packaged smoke is not complete until a production-like packaged app actually runs against a production-like managed runtime location.
+- ER advanced, PR unchanged: evidence readiness improved; production readiness remains blocked. `productionApproved=false` and `downloadEnabled=false` remain the only allowed state.
+
+## Recommended next round
+
+Proceed to M34 real path-depth matrix with explicit repo-external short/deep runtime roots and a selected path policy. Do not combine M34 with production approval, download enablement, format expansion, GitHub asset mutation, or packaged smoke claims.
+
+## DFC-M34 LibreOffice real path-depth matrix recovery notes
+
+- M34 runs the real LibreOffice path-depth matrix with explicit repo-external short and deep managed runtime roots.
+- Matrix A passed: short runtime root plus short sandbox/input/output/profile paths generated a valid PDF and cleanup was attempted.
+- Matrices B/C/D failed before PDF validation with symbolic `command_not_found`: short runtime plus deep sandbox, deep runtime plus short sandbox, and deep runtime plus deep sandbox.
+- Sanitized evidence recorded only case id, path classes, path lengths, pass/fail, failure phase, diagnostic code, cleanup status, and PDF output validation state.
+- No raw runtime root, sandbox root, executable path, input/output path, command line, env, DOCX body, PDF body, storage ref, content token, or full hash is recorded in the M34 evidence doc.
+- Selected path policy: controlled short-path runtime/sandbox policy. For M35 Windows x64 packaged smoke, target caps are runtime root <= 120, sandbox root <= 80, input path <= 130, output dir <= 90, and isolated profile dir <= 110.
+- The target caps are not a general max supported path length claim; they are the concrete execution envelope for the next packaged smoke.
+- Production behavior remains unchanged. `productionApproved=false` and `downloadEnabled=false` remain the only allowed states.
+
+## Recommended next round
+
+Proceed to M35 packaged smoke preparation using the controlled short-path policy. Do not claim packaged smoke completion until a production-like packaged app actually runs and records sanitized evidence. Do not combine M35 with production approval, download enablement, GitHub asset mutation, or Office format expansion.
+
+## DFC-M35 LibreOffice packaged smoke confidence recovery notes
+
+- M35 adds production-like managed package-location smoke confidence under the M34 controlled short-path policy.
+- New evidence doc: `dfc-m35-libreoffice-packaged-smoke-confidence.md`.
+- New packaged smoke command: `npm run test:office-pdf-libreoffice-packaged-smoke`.
+- The command requires an explicit repo-external `.svpkg` path and does not download LibreOffice or use the M28 `.external-runtime-work` dev artifact as authority.
+- The smoke imports the current Windows x64 prerelease `.svpkg` into a short app-managed root, validates package/runtime/executable identity, enforces path caps before launch, converts a minimal DOCX to PDF through managed `soffice`, validates controlled output/PDF, and attempts cleanup.
+- Observed M35 path lengths: runtime root 98, sandbox root 47, input path 66, output dir 54, isolated profile dir 72. All are under the M34/M35 caps.
+- The existing real managed worker smoke passed against the imported active runtime root and verifies ready DOCX `pdf_attachment`, `converted_pdf`, `file_attachment`, `derived_asset`, metadata-only preview, and selected-ref Send Plan authority.
+- Lightweight deep-runtime classification found the deep executable by `fs.stat`, passed runtime gate realpath containment, classified spawn source as `managed_descriptor`, and selected `downstream_process_long_path_failure`.
+- M35 does not investigate broad long-path support and does not claim general long-path support.
+- Missing, disabled, executable-mismatch, and path-cap-exceeded cases fail closed in targeted tests.
+- M35 does not change production conversion behavior, package acquisition flags, DB schema, renderer IPC shape, Send Plan main-flow, asset model, DFC vocabulary, dependencies, or lockfiles.
+- `productionApproved=false` and `downloadEnabled=false` remain unchanged.
+- Full packaged app / installer smoke, user-visible experimental support, production approval, legal/trust/acquisition approval, and multi-platform packages remain blocked.
+
+## Recommended next round
+
+Proceed to M36 full packaged app / installer smoke rehearsal using the controlled short-path policy, still with `productionApproved=false` and `downloadEnabled=false`. Decide whether the M35 path-cap guard should move from harness enforcement into the production conversion gate before any user-visible exposure. Do not expand Office formats or add system/PATH fallback.
+
+## DFC-M36 LibreOffice product gate path caps recovery notes
+
+- M36 promotes the M34/M35 controlled short-path policy into the real managed Windows x64 LibreOffice DOCX-to-PDF adapter path before process launch.
+- Production-path caps are runtime root <= 120, sandbox root <= 80, input path <= 130, output directory <= 90, and isolated profile directory <= 110.
+- Cap failures return symbolic adapter diagnostic `office_pdf_path_policy_exceeded` before sandbox file creation or process launch.
+- The DFC worker maps the path-policy denial to the existing blocked Office PDF product state `conversion_sandbox_denied`, producing an unavailable/blocked DOCX `pdf_attachment` option, no ready `converted_pdf` DerivedAsset, empty PDF send refs, and no legacy/system/PATH fallback.
+- The Office PDF worker sandbox root now uses a short controlled temp prefix so short-path managed runtimes can still satisfy the active product gate.
+- The production-like packaged smoke command remains owner-gated/env-gated and uses a repo-external `.svpkg` imported into an app-managed short runtime root; it is not production approval and not a user-visible support claim.
+- Observed packaged-smoke path lengths remain runtime root 98, sandbox root 47, input path 66, output directory 54, isolated profile directory 72. All are under caps.
+- `productionApproved=false` and `downloadEnabled=false` remain unchanged.
+- Unsupported formats remain unsupported: `.doc`, `.rtf`, `.docm`, `.xls/.xlsx` Office-to-PDF, PS/EPS, PDF OCR, image, and audio were not added.
+- No LibreOffice binary, MSI, `.svpkg`, extracted runtime, staging output, sandbox output, or temp output belongs in git.
+
+Proceed to M37 true packaged Electron app / installer smoke under the controlled short-path policy. Keep Office-to-PDF owner-gated, experimental, DOCX-only, `productionApproved=false`, and `downloadEnabled=false`; do not combine M37 with production support claims, format expansion, system/PATH fallback, or broad long-path support.
+
+## DFC-M37-M39 LibreOffice plugin onboarding recovery notes
+
+- M37-M39 integrates LibreOffice Office PDF into Plugin Management as an owner-gated experimental managed runtime plugin entry.
+- The lifecycle service already synthesized the LibreOffice bridge; this round carries the sanitized `productGate` DTO through IPC and the Plugin Management view model/UI.
+- Plugin Management now displays LibreOffice Office PDF product-gate status, approval state, download disabled state, source, symbolic diagnostic, owner-gate, experimental state, fallback targets, runtime version, and package version without raw paths.
+- The only clickable LibreOffice lifecycle control added in the UI is `Recheck runtime`; it calls `enginePluginLifecycle.runHealthCheck` and returns the current managed-runtime bridge DTO. It does not enable downloads, install/repair, select executables, or mutate production approval.
+- Renderer `.svpkg` import, disable, clear active runtime, and quarantine controls remain incomplete and should be handled in a bounded follow-up if needed.
+- New packaged Electron smoke command: `npm run test:office-pdf-libreoffice-packaged-electron-smoke`.
+- The packaged Electron smoke requires an explicit repo-external `.svpkg` via `STARVERSE_DFC_LIBREOFFICE_PACKAGED_ELECTRON_SVPKG`, `STARVERSE_DFC_LIBREOFFICE_PACKAGED_SVPKG`, or `STARVERSE_DFC_LIBREOFFICE_REAL_SVPKG`; this shell had none, so true packaged Electron smoke was not run and must not be claimed as passed.
+- The smoke stages the package into a short app-managed `userData` root, uses the existing packaged managed-runtime import smoke for runtime validation, builds or uses a directory-packaged Electron app, launches with a smoke-only DFC query, and triggers DOCX PDF through the packaged renderer plus normal DB worker path.
+- The packaged smoke DFC seeder is smoke-query gated and adds DOCX `pdf_attachment` selection coverage alongside the existing markdown and HTML PDF smoke seeders.
+- Runtime security evidence is consolidated in `infra/files/dfcLibreOfficePluginOnboardingSecurityEvidence.test.ts`. It records managed-runtime-only execution, no system/PATH fallback, argument-array launch, `shell:false`, sandbox input/output, isolated profile, timeout/cleanup, output validation, and redacted diagnostics as enforced.
+- Macros, external links, network, and embedded object execution remain manifest-declared controls and are explicitly recorded as blocking gaps before production approval, not as invocation-enforced controls.
+- Diagnostic taxonomy remains symbolic and sanitized. Product/UI evidence must not include raw absolute paths, usernames, runtime roots, sandbox roots, executable paths, input/output paths, command lines, env, storage refs, content tokens, DOCX/PDF body, manifest body, license body, or full hashes.
+- `productionApproved=false`, `downloadEnabled=false`, DOCX-only Office-to-PDF scope, no system/PATH fallback, and unsupported format exclusions remain unchanged.
+
+## Recommended next round
+
+Proceed to M40 by running the true packaged Electron smoke with an explicit repo-external `.svpkg`, then implement bounded owner-gated import/disable/clear/quarantine controls only if the smoke passes. Do not combine M40 with production support claims, download enablement, broad Office support, system fallback, DB schema changes, Send Plan main-flow changes, or DFC vocabulary changes.
+
+## DFC-M40 LibreOffice packaged Electron smoke / lifecycle controls recovery notes
+
+- M40 completes bounded owner-gated Plugin Management lifecycle controls for LibreOffice Office PDF: import `.svpkg`, recheck runtime, disable runtime, clear active runtime, and quarantine runtime.
+- Renderer import/quarantine are command-style `electronAPI` methods. The renderer does not provide a raw package path or executable path. The raw `.svpkg` path exists only inside the main-process dialog callback and worker-only lifecycle method.
+- Import reuses the managed package archive/import validation path with catalog expected hash/size and app-managed runtime activation. Invalid package import returns sanitized lifecycle failure and does not expose the selected raw path.
+- Disable writes `enabled=false` into the active managed runtime manifest. Clear removes the active managed runtime root. Quarantine writes `starverse-quarantine.json`, and the managed runtime gate checks that marker before manifest/process launch.
+- Missing, disabled, invalid, executable mismatch, path-policy exceeded, import-incomplete, and quarantined states fail closed: no ready DOCX `pdf_attachment`, no ready `converted_pdf`, no system/PATH fallback, and no legacy fallback.
+- True packaged Electron smoke was executed with `STARVERSE_DFC_LIBREOFFICE_PACKAGED_ELECTRON_SVPKG` set to an explicit repo-external candidate, but failed during managed package import/staging before Electron build/launch. The discovered candidate was small and not a usable LibreOffice managed runtime package.
+- No true packaged Electron DOCX-to-PDF pass is claimed for M40. PDF validation, packaged app DFC option/preview/Send Plan evidence, and packaged app path-cap success evidence remain not reached.
+- `npm run test:office-pdf-libreoffice-packaged-smoke` remains env-gated and failed in the ambient shell without `STARVERSE_DFC_LIBREOFFICE_PACKAGED_SVPKG`.
+- `productionApproved=false`, `downloadEnabled=false`, DOCX-only Office-to-PDF scope, no system/PATH fallback, no arbitrary executable path, no renderer-provided executable path, no automatic download, and unsupported format exclusions remain unchanged.
+- Macros, external links, network, and embedded object execution remain manifest-declared controls and production blockers until invocation-enforced evidence or accepted policy exists.
+
+## Recommended next round
+
+Proceed to M41 by supplying a valid repo-external LibreOffice managed runtime `.svpkg` and rerunning `npm run test:office-pdf-libreoffice-packaged-electron-smoke` through packaged Electron launch and DOCX-to-PDF conversion. Keep M41 focused on smoke closure and sanitized evidence; do not combine it with production approval, download enablement, broad Office support, system/PATH fallback, or long-path support claims.
+
+## DFC-M41 valid SVPKG packaged Electron smoke recovery notes
+
+- M41 closes the M40 true packaged Electron smoke blocker using a valid repo-external LibreOffice managed runtime `.svpkg`.
+- The valid package preflight matched the expected Windows x64 package size and hash, recorded size class `>=100mb`, and exposed only the short hash prefix `ce012cf1215f` in evidence.
+- New preflight hardening rejects missing, non-`.svpkg`, unreadable, tiny, expected-size-mismatch, and expected-hash-mismatch package inputs before import/staging. Tiny placeholders, HTML error pages, JSON/text responses, empty files, and truncated artifacts fail closed with symbolic diagnostics such as `office_pdf_package_invalid_size`.
+- The true packaged Electron smoke passed through package import/staging, managed runtime activation, packaged app build/launch, packaged worker runtime discovery, DOCX-to-PDF conversion, metadata-only preview, and selected-ref Send Plan authority.
+- Staged adapter evidence from the same command used runtime root length 72, sandbox root 47, input path 66, output dir 54, and isolated profile dir 72; all satisfied the M36 controlled short-path caps and produced `valid_pdf` with cleanup attempted.
+- Packaged app evidence reported plugin row visible, package version `0.1.0`, runtime version `26.2.4`, source `managed_manifest`, ready DOCX `pdf_attachment`, `converted_pdf`, `file_attachment`, `derived_asset`, metadata-only `raw_file:ready` preview, and selected-ref authority from a verified DerivedAsset.
+- Plugin status remains owner-gated/degraded with `owner_gate_not_production_approved`; this is expected and is not production approval.
+- The packaged DB worker now receives the existing managed external process runner so the packaged app can exercise the same Office PDF product path used by the worker tests. The directory-packaged app includes `infra/db/schema.sql` so packaged DB initialization can run.
+- M41 does not add or enable runtime download, install/repair download, postinstall download, conversion-time download, system LibreOffice discovery, PATH fallback, common-install probing, arbitrary executable paths, renderer-provided executable paths, new Office formats, broad long-path support, DB schema changes, Send Plan main-flow changes, asset model changes, DFC vocabulary changes, dependencies, lockfiles, or GitHub asset mutation.
+- `productionApproved=false` and `downloadEnabled=false` remain unchanged.
+- Unsupported formats remain unsupported: `.doc`, `.rtf`, `.docm`, `.xls/.xlsx` Office-to-PDF, PS/EPS, PDF OCR, image, and audio.
+- LibreOffice binaries, MSI files, `.svpkg` files, extracted runtimes, staging output, sandbox output, installer output, packaged output, and temp files must not be committed.
+- Macros, external links, network, and embedded object execution remain production blockers until invocation-enforced evidence or accepted policy exists.
+
+## Recommended next round
+
+Proceed to M42 signed package/trust verification evidence and production distribution decision wiring. Keep Office-to-PDF owner-gated, experimental, DOCX-only, `productionApproved=false`, and `downloadEnabled=false` until explicit Owner approval; do not combine M42 with format expansion, system/PATH fallback, or broad long-path support.
+
+## DFC-M42 LibreOffice trust/distribution decision recovery notes
+
+- M42 selects `owner_gated_hash_pinned_signed_catalog_required_for_production` as the current LibreOffice package trust model.
+- The current Windows x64 `.svpkg` remains owner-gated and hash-pinned. It is a candidate production asset pending signing/legal approval, not a production-approved package.
+- Detached signature or signed Starverse catalog verification is required before production approval. Current signature/catalog state is `signature_missing_catalog_unsigned`.
+- Current trust states are renderer-safe enum strings: `unsigned_owner_gated`, `hash_pinned`, `signature_missing`, `catalog_untrusted`, and `production_source_unapproved`.
+- Current distribution states are renderer-safe enum strings: `prerelease_source_owner_gated`, `offline_import_allowed`, `download_disabled_by_policy`, `bundled_runtime_not_approved`, `install_repair_download_not_approved`, `production_release_pending_approval`, `product_mirror_pending_approval`, and `system_libreoffice_disallowed`.
+- Plugin Management now displays LibreOffice trust states, distribution states, package decision, signature/catalog status, last verification result, production approval state, download state, and sanitized diagnostic code without raw package/runtime/executable paths.
+- The first-party LibreOffice catalog carries the M42 verification order: package size, package sha256, signature/catalog if enabled, extraction into staging, manifest identity, runtime identity, package/runtime version, platform/arch, executable relative path, executable hash/size, provenance/license/security policy, realpath containment, symlink/reparse rejection, activation, and optional owner-gated health/smoke.
+- Trust-blocked summaries fail closed before process launch. DFC gets an unavailable/blocked DOCX `pdf_attachment`, no ready `converted_pdf`, no stale ready PDF option, no legacy fallback, and no system/PATH fallback. DOCX `markdown` and `original_file` remain independent where already supported.
+- Revoked packages are not launchable and are not rollback targets. Rollback is eligible only for valid, not revoked, not expired, same-platform/arch packages whose trust policy passes.
+- M42 true packaged Electron smoke passed again with a valid repo-external `.svpkg`. Sanitized evidence recorded package size class `>=100mb`, expected size/hash match, short hash prefix only, packaged app runtime root length 72, packaged app input path length 41, ready `pdf_attachment`, `converted_pdf`, `file_attachment`, `derived_asset`, metadata-only preview, selected-ref authority, and `owner_gate_not_production_approved`.
+- M42 direct packaged smoke passed again with runtime root 98, sandbox root 47, input path 66, output dir 54, profile dir 72, and `valid_pdf`.
+- The packaged Electron smoke harness now sanitizes child-process output so third-party build logs do not expose Windows absolute paths in captured smoke evidence.
+- `productionApproved=false` and `downloadEnabled=false` remain unchanged.
+- Unsupported formats remain unsupported: `.doc`, `.rtf`, `.docm`, `.xls/.xlsx` Office-to-PDF, PS/EPS, PDF OCR, image, and audio.
+- LibreOffice binaries, MSI files, `.svpkg` files, extracted runtimes, staging output, sandbox output, installer output, packaged output, and temp files must not be committed.
+- Remaining production blockers are Owner approval, signed package or signed catalog verification, legal/provenance approval, approved production distribution source, multi-platform package evidence, and invocation-enforced or accepted policy for macros, external links, network, and embedded objects.
+
+## Recommended next round
+
+Proceed to M43 detached signature or signed Starverse catalog verification with revocation metadata and rollback eligibility enforcement. Keep Office-to-PDF owner-gated, experimental, DOCX-only, `productionApproved=false`, and `downloadEnabled=false`; do not combine M43 with production support claims, automatic downloads, format expansion, system/PATH fallback, or broad long-path support.
+
+## DFC-M43 LibreOffice signed catalog verification recovery notes
+
+- M43 adds `infra/files/dfcLibreOfficeSignedCatalog.ts` as the LibreOffice-specific signed catalog execution layer.
+- Signed catalog payload schema version is `1`; envelope schema version is `1`; signature algorithm is Ed25519; signature value is base64 over a deterministic canonical JSON payload.
+- M43 implements a narrow canonical JSON serializer for the LibreOffice catalog shape instead of adding a dependency.
+- The trust root model accepts public keys only, with key scope `test_only` or `owner_controlled_production`. Tests generate Ed25519 key pairs at runtime. No private signing key is committed or embedded.
+- Catalog entries include package/runtime/plugin identities, runtime/package versions, platform/arch, package hash/size, executable relative path/hash/size, capabilities, source kind, channel, production approval state, trust policy id, createdAt, optional expiresAt/revokedAt/revocationReason, rollbackAllowed, and minimum Starverse contract version.
+- Verification checks schema, trusted key id, algorithm, signature, package hash/size, manifest/runtime identity, platform/arch, executable relative path/hash/size, required capabilities, trust policy id, revocation, expiration, and source/channel policy.
+- Owner-gated unsigned hash-pinned candidate behavior is preserved: `ownerGatedCandidateReadiness=owner_gated_hash_pinned_ready`, `productionTrustReadiness=blocked_signature_missing`, `signatureCatalogStatus=signature_missing_catalog_unsigned`.
+- Production-required mode with missing signed catalog blocks before launch with `office_pdf_catalog_signature_missing`.
+- Additional signed-catalog symbolic diagnostics are `office_pdf_catalog_signature_invalid`, `office_pdf_catalog_untrusted_key`, `office_pdf_catalog_package_revoked`, `office_pdf_catalog_package_expired`, `office_pdf_catalog_package_mismatch`, `office_pdf_catalog_schema_unsupported`, and `office_pdf_catalog_source_unapproved`.
+- Expired packages are hard blocks in M43 signed-catalog verification and rollback eligibility.
+- Revoked packages are hard blocks: not launchable, not rollback targets, unavailable/blocked DOCX `pdf_attachment`, no ready `converted_pdf`, no stale PDF option, no legacy fallback, no system/PATH fallback.
+- Rollback eligibility now has a signed-catalog evaluator and optional managed-package rollback enforcement. Eligible rollback requires matching plugin/runtime identity, same platform/arch, successful catalog package/runtime/executable verification, not revoked, not expired, `rollbackAllowed=true`, and trust policy passing for the requested mode.
+- Plugin Management status now displays catalog signature status, key id status, revocation status, expiration status, rollback eligibility, production trust readiness, and owner-gated candidate readiness, in addition to the M42 trust/distribution fields.
+- `productionApproved=false` and `downloadEnabled=false` remain unchanged.
+- Unsupported formats remain unsupported: `.doc`, `.rtf`, `.docm`, `.xls/.xlsx` Office-to-PDF, PS/EPS, PDF OCR, image, and audio.
+- LibreOffice binaries, MSI files, `.svpkg` files, extracted runtimes, staging output, sandbox output, installer output, packaged output, and temp files must not be committed.
+- Remaining production blockers are Owner approval, owner-controlled production trust-root provisioning, signed production catalog publication, legal/provenance approval, approved production distribution source, multi-platform package evidence, and invocation-enforced or accepted policy for macros, external links, network, and embedded objects.
+
+## Recommended next round
+
+Proceed to M44 owner-controlled production trust-root/catalog provisioning and a production distribution approval workflow. Keep Office-to-PDF owner-gated, experimental, DOCX-only, `productionApproved=false`, and `downloadEnabled=false`; do not combine M44 with production support claims, automatic downloads, format expansion, system/PATH fallback, or broad long-path support.
+
+## DFC-M44R0 Magika acquisition parity audit recovery notes
+
+- M44R0 is documentation-only. It does not implement LibreOffice manual GitHub download, does not change Magika behavior, and does not enable any download behavior.
+- Existing Magika manual GitHub official install route was found. The route is Plugin Management `install_official_plugin` -> DB bridge `enginePluginLifecycle.installOfficialPlugin` -> `EnginePluginLifecycleService.installOfficialPlugin` -> `verifyOfficialPackageReleaseDownload` -> `downloadOfficialPackageToMemory` -> signature/trust verification -> ZIP extraction/stage -> health check -> managed-root promotion -> registry upsert.
+- Magika official release metadata lives in `src/next/plugin-distribution/magikaOfficialRelease.ts` and pins GitHub release asset identity, expected package hash/size, manifest/inventory hash, signature envelope, trust root, trusted key material, compatibility, and `remoteInstallEnabled=true`.
+- Magika download is user-initiated. No status/listing/file-detection path was found that starts automatic download. Plugin Management load calls list/status methods and polls existing operations; only the explicit install action calls `installOfficialPlugin`.
+- Generic reusable components for LibreOffice M44 are `downloadPolicy.ts`, `packageDownloader.ts`, `officialPackageRelease.ts`, `cryptoVerification.ts`, `installOperationState.ts`, Plugin Management action/view-model/DTO sanitization, and install-operation polling.
+- Reuse is partial for staging/activation: Magika extracts ZIP and promotes `magika` under the managed root; LibreOffice must keep `.svpkg` import, large-package handling, M36 path caps, external-process security, DOCX-only capability, and M43 signed catalog/revocation gates.
+- Current Magika state machine includes `cancelled` and lower-level downloader `AbortSignal`, but no user-facing cancel IPC/action was found. Do not invent a broad LibreOffice cancel surface unless M44 can hold and abort a user-started operation safely.
+- Existing LibreOffice `dfcLibreOfficeRuntimeAcquisition.ts` already reuses `downloadOfficialPackageToMemory` but is not the Plugin Management manual install operation. M44 should avoid a parallel acquisition system by aligning it with Magika's official install operation and UI polling pattern.
+- Recommended M44 shape: add an owner-gated LibreOffice `Download / Install` action, reuse official-source HTTPS/host/hash/size downloader policy, feed verified bytes into the existing `.svpkg` import/archive/runtime validation path, then enforce M43 signed catalog trust, M36 path caps, and product gate semantics.
+- M44 no-auto-download proof must cover Plugin Management open/status, DOCX upload, `ensureDfcOptions`, Send Plan, and missing-runtime conversion attempts. Only an explicit Plugin Management user gesture may call the LibreOffice download transport.
+- Preserve `productionApproved=false`; preserve automatic/background/postinstall/conversion-time download disabled; keep unsupported Office/PDF/image/audio formats unsupported; do not add system/PATH fallback or arbitrary executable paths.
+
+## Recommended next round
+
+Proceed to M44 implementation by reusing the Magika-aligned official install operation pattern for owner-gated manual LibreOffice download/install. Do not change production approval, automatic download policy, broad Office support, system/PATH fallback, or GitHub release assets.
+
+## DFC-M44 LibreOffice manual GitHub install recovery notes
+
+- M44 implements LibreOffice Download / Install through the existing Plugin Management `install_official_plugin` operation pattern used by Magika. It does not add a parallel LibreOffice acquisition system.
+- `EnginePluginLifecycleService.installOfficialPlugin` now routes `pluginId=libreoffice` to a LibreOffice official install branch using the same operation DTO/state map/polling model: `accepted`, `pending`, `downloading`, `verifying`, `staging`, `registering`, `health_checking`, and terminal states.
+- The LibreOffice official install branch downloads only after an explicit Plugin Management user gesture. Status/list/read/poll paths do not call the download transport.
+- LibreOffice manual install uses the fixed first-party GitHub Release asset descriptor from `getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()`: source kind `github_release_asset`, release tag `starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64`, asset `starverse-runtime-libreoffice-0.1.0-26.2.4-win32-x64.svpkg`, size `518907010`, and catalog-pinned sha256.
+- `downloadEnabled=false` remains unchanged and now explicitly means automatic/download-by-policy is disabled. Manual owner-gated Plugin Management install is represented separately through `manual_github_install_available`, `automatic_download_disabled_by_policy`, `conversion_time_download_disabled_by_policy`, and `requires_user_gesture` renderer-safe reason codes.
+- The download uses shared `downloadOfficialPackageToMemory` policy checks: official HTTPS source, host allowlist, max bytes, expected size, and expected sha256. Arbitrary URL input is not exposed.
+- Verified bytes are passed into the existing LibreOffice `.svpkg` archive import/activation pipeline. Offline import and manual GitHub install therefore share manifest/runtime/package version, platform/arch, executable relative path, executable hash/size, capability, provenance/license/security policy, realpath containment, and symlink/reparse escape checks as far as practical.
+- M43 trust policy remains in force: owner-gated hash-pinned candidate usage may run, but production trust is blocked without signed catalog trust; revoked, expired, and catalog-mismatched packages fail closed.
+- Plugin Management now labels the LibreOffice action as `Download / Install` and shows manual-install status text: GitHub runtime package, user-initiated only, no automatic conversion download, experimental DOCX-only, production approval pending, and verified before activation.
+- Failure diagnostics are symbolic and renderer-safe: size mismatch -> `size_mismatch`; hash mismatch -> `hash_mismatch`; transport failure -> `download_failed`; invalid `.svpkg` activation -> `local_package_unavailable`; signed-catalog failures remain M43 `office_pdf_catalog_*` diagnostics.
+- No-auto-download tests cover service status/read/poll paths and UI render. Only clicking Download / Install calls `enginePluginLifecycle.installOfficialPlugin`.
+- `productionApproved=false` remains unchanged. LibreOffice Office-to-PDF remains DOCX-only, owner-gated, experimental, and not production-approved.
+- Unsupported formats remain unsupported: `.doc`, `.rtf`, `.docm`, `.xls/.xlsx` Office-to-PDF, PS/EPS, PDF OCR, image, and audio.
+- System LibreOffice discovery, PATH fallback, common-install probing, arbitrary executable paths, renderer-provided executable paths, automatic download, postinstall download, startup/background download, and conversion-time download remain forbidden.
+- LibreOffice binaries, MSI files, `.svpkg` files, extracted runtimes, staging output, sandbox output, installer output, packaged output, temp files, and private signing keys must not be committed.
+- Remaining production blockers are Owner approval, owner-controlled production trust-root provisioning, signed production catalog publication, legal/provenance approval, approved production distribution source, multi-platform package evidence, and invocation-enforced or accepted policy for macros, external links, network, and embedded objects.
+
+## Recommended next round
+
+Proceed to M45 signed catalog publication / production trust-root provisioning / release-channel hardening. Keep Office-to-PDF owner-gated, experimental, DOCX-only, `productionApproved=false`, and automatic/conversion-time download disabled until Owner/legal/security gates close.
+
+## DFC-M45 LibreOffice manual GitHub install E2E smoke recovery notes
+
+- M45 closes the M44 smoke gap with `npm run test:office-pdf-libreoffice-official-install-smoke`.
+- The new smoke script is `scripts/dfc/office-pdf-libreoffice-official-install-smoke.mjs`; the env-gated real test is `infra/files/dfcLibreOfficeOfficialInstall.real-smoke.test.ts`.
+- The real smoke uses the existing Magika-aligned `install_official_plugin` operation path through `EnginePluginLifecycleService.installOfficialPlugin`, not a parallel acquisition system.
+- Download source is the fixed bundled LibreOffice first-party GitHub Release asset descriptor. No arbitrary URL input is accepted or supplied.
+- The smoke proved no-auto-download before the explicit install operation: official listing, installed-plugin status read, and install-operation status poll did not call the download transport.
+- The explicit install operation started download and reached terminal `installed` with states `accepted`, `pending`, `downloading`, `verifying`, `staging`, `registering`, `health_checking`, `installed`.
+- Downloaded package verification passed: size `518907010` matched, catalog sha256 matched, source kind `github_release_asset`, owner-gated hash-pinned candidate allowed, production trust still blocked without signed production catalog.
+- Activation passed through existing `.svpkg` import/runtime validation: runtime identity validated, executable identity validated, capabilities `office_to_pdf` and `docx_to_pdf` validated, active runtime root length 98, `productionApproved=false`, `downloadEnabled=false`.
+- The same downloaded repo-external temp `.svpkg` was reused for direct packaged smoke and packaged Electron smoke, avoiding reliance on a pre-staged package. The temp package and app root were cleaned after the run.
+- Post-install DFC worker real-managed smoke passed against the runtime activated by official install.
+- Direct packaged smoke passed with valid PDF, cleanup attempted, runtime root 98, sandbox root 47, input path 66, output dir 54, profile dir 72, package/runtime/executable identity validated.
+- True packaged Electron smoke passed: Plugin Management visible, production approval false, owner-gated and experimental true, status degraded, diagnostic `owner_gate_not_production_approved`, runtime discovery validated by packaged worker, package version `0.1.0`, runtime version `26.2.4`, DOCX `pdf_attachment` ready, send strategy `file_attachment`, selected-ref authority `derived_asset`, preview `raw_file:ready`, path lengths userDataRoot 43 / runtimeRoot 98 / inputPath 67.
+- Failure diagnostics remain symbolic. Covered fail-closed families include `download_failed`, `size_mismatch`, `hash_mismatch`, `local_package_unavailable`, `.svpkg` invalid manifest/platform/executable mismatch diagnostics, signed-catalog revoked/expired/mismatch diagnostics, and `office_pdf_path_policy_exceeded`.
+- No raw path, command line, env, storage ref, content token, DOCX/PDF body, manifest body, license body, or full hash should be emitted in evidence. M45 privacy scan found only a negative assertion in test source.
+- `productionApproved=false` remains unchanged. `downloadEnabled=false` remains unchanged and continues to mean automatic/conversion-time download disabled.
+- Unsupported formats remain unsupported: `.doc`, `.rtf`, `.docm`, `.xls/.xlsx` Office-to-PDF, PS/EPS, PDF OCR, image, and audio.
+- System LibreOffice discovery, PATH fallback, common-install probing, arbitrary executable paths, renderer-provided executable paths, automatic download, postinstall download, startup/background download, and conversion-time download remain forbidden.
+- Artifact scan after cleanup found no `.svpkg`, MSI, managed runtime, staging, sandbox, release, packaged, or executable output in git status.
+- Electron smoke switched native ABI during the run; final `npm run rebuild:node` restored the Node ABI target.
+- Remaining production blockers are Owner approval, owner-controlled production trust-root provisioning, signed production catalog publication, legal/provenance approval, approved production distribution source, multi-platform package evidence, and invocation-enforced or accepted policy for macros, external links, network, and embedded objects.
+
+## Recommended next round
+
+Proceed to M46 signed catalog publication rehearsal, production trust-root provisioning, release-channel policy, and legal/security blocker closure. Keep Office-to-PDF owner-gated, experimental, DOCX-only, `productionApproved=false`, and automatic/conversion-time download disabled.
+
+## DFC-M46 LibreOffice Windows x64 production approval recovery notes
+
+- Owner approved production support for the current validated LibreOffice DOCX-to-PDF Windows x64 managed runtime path.
+- Production approval is scoped, not broad: `productionApproved=true`, approved platform `win32`, approved arch `x64`, approved input `docx`, approved output `pdf_attachment`, approved acquisition modes `manual_github_release` and `offline_import`.
+- Automatic download remains disabled. Startup/background download, postinstall download, conversion-time download, DFC option generation download, Send Plan download, and arbitrary URL input remain forbidden.
+- The first-party LibreOffice catalog now records Windows x64 production approval for the fixed GitHub Release asset descriptor while keeping `downloadEnabled=false`.
+- The runtime availability gate promotes only the expected official Windows x64 package identity to production `available`. Fake seams and imported development artifacts remain degraded/non-production; missing, disabled, quarantined, revoked, expired, untrusted, and path-blocked states remain blocked or unavailable.
+- Plugin Management product gate now exposes approved platform/arch/input/output/acquisition modes, automatic/postinstall/conversion-time download disabled states, and platform package status `windows_x64_approved_mac_linux_deferred`.
+- DFC ready behavior for approved Windows x64 remains `pdf_attachment`, `converted_pdf`, `file_attachment`, `derived_asset`, metadata-only preview, and selected-ref / verified-DerivedAsset authority.
+- Missing runtime still surfaces unavailable/blocked DOCX `pdf_attachment` with manual install availability and no automatic download.
+- macOS and Linux are deferred, not rejected. Future `darwin/arm64`, `darwin/x64`, `linux/x64`, and optional `linux/arm64` packages require independent package preparation, signed catalog entry, Plugin Management descriptor, runtime validation, packaged Electron smoke, PDF validation, and legal/provenance updates.
+- Unsupported formats remain unsupported: `.doc`, `.rtf`, `.docm`, `.xls/.xlsx` Office-to-PDF, PS/EPS, PDF OCR/local parsing, image/audio.
+- System LibreOffice discovery, PATH fallback, common-install probing, arbitrary executable paths, renderer-provided executable paths, sandbox loosening, path-cap loosening, diagnostics privacy loosening, and selected-ref Send Plan changes remain forbidden.
+- M46 validation passed for Node rebuild, `vue-tsc`, script syntax checks, runtime/product-gate tests, Plugin Management view-model/UI tests, lifecycle service tests, targeted DFC worker LibreOffice tests, signed catalog / installer / archive / acquisition / adapter tests, default-off path-depth tests, M46 doc privacy scan, artifact scan, and `git diff --check`.
+- M46 real official install smoke was attempted but failed during download with sanitized `download_failed:curl_28` after `accepted -> pending -> downloading -> failed`; no activation, conversion, packaged smoke, or runtime output occurred in that run. Direct packaged smoke and packaged Electron smoke were blocked because explicit `.svpkg` env vars were absent.
+- LibreOffice binaries, MSI files, `.svpkg` files, extracted runtimes, staging output, sandbox output, installer output, packaged output, temp files, and private signing keys must not be committed.
+
+## Recommended next round
+
+Proceed to M47 release hardening/monitoring for the Windows x64 production path, or a separate cross-platform package preparation plan only if Owner chooses to expand to macOS/Linux. Do not add broad Office support, automatic downloads, system/PATH fallback, arbitrary executable paths, or arbitrary plugin URLs.
+
 ## Local runtime workdir watcher boundary note
 
 - LibreOffice / external runtime preparation created `.external-runtime-work/` under the repo root.
 - Git ignored it, but Vite watcher still scanned it and caused dev renderer white-screen via event-loop stalls.
 - Permanent guard: `.external-runtime-work/` must remain in Vite `server.watch.ignored`.
 - Future runtime workdirs must follow `docs/maintenance/local-runtime-workdirs.md`.
+## DFC-M47 live installed-state verification notes
+
+- M47 must be read as a blocked live installed-state verification, not as a DOCX-to-PDF live success.
+- The live dev Electron app launched against app-managed state without `--user-data-dir`, external `.svpkg` env vars, or external runtime root injection.
+- Plugin Management opened and showed the LibreOffice Office PDF entry.
+- Reading status and opening Plugin Management did not start a download.
+- The live app-managed LibreOffice runtime was missing on this machine.
+- The smoke made the one M47-allowed official `install_official_plugin` attempt and stopped after `accepted -> pending -> downloading -> failed` with sanitized diagnostic `fetch_failed`.
+- Do not retry the large LibreOffice download repeatedly in follow-up work. Diagnose the fetch failure first, or rerun M47 only when a live app-managed runtime exists or one user-initiated install is expected to complete.
+- The missing-runtime DOCX fixture attempt returned blocked state with `conversion_engine_missing`, did not start automatic download, did not create a ready `converted_pdf`, and did not silently fallback to markdown/original/plain text/legacy/system/PATH output.
+- Ready live installed-state DOCX-to-PDF conversion, valid PDF validation, metadata-only PDF preview, and selected-ref Send Plan authority remain unverified in M47 because runtime activation did not happen.
+- No uninstall/reinstall, external `.svpkg` injection, system LibreOffice, PATH fallback, arbitrary executable path, renderer-provided executable path, or unsupported Office/PDF/image/audio format support was used.
+- The M47 smoke harness now redacts renderer console text by default in failure diagnostics and redacts UUIDs/full SHA-256 values.
+- After M47 Electron validation, restore the Node ABI target with `npm run rebuild:node` before further Node/Vitest work.
+
+## DFC-M50 LibreOffice streaming acquisition recovery notes
+
+- M50 should be read as a bounded acquisition reliability fix, not as a real live install success.
+- The shared package downloader now supports file-staged official downloads through `downloadOfficialPackageToFile` and `fetchPackageToFileWithFetch`.
+- LibreOffice official install now uses streaming-to-temp-file acquisition for network body transfer. It no longer uses the default `fetchPackage()->response.arrayBuffer()` body path for the large `.svpkg`.
+- Magika keeps the existing bytes-based official package path.
+- The streaming path writes chunks to an app-managed temp file, computes sha256 during streaming, checks content length/max size, verifies expected size/hash before import, and deletes partial/temp files on stream error, cancellation, redirect rejection, size mismatch, hash mismatch, and post-import cleanup.
+- LibreOffice install operation state remains the Magika-aligned model: `accepted`, `pending`, `downloading`, `verifying`, `staging`, `registering`, `health_checking`, `installed`, `failed`, or `cancelled`.
+- Service-level simulated streaming acquisition proved repeated `getInstallOperationStatus` calls return promptly while the operation is still `downloading`, then the operation can continue to `installed`.
+- Package downloader unit coverage proves file staging, hash-mismatch cleanup, chunked fetch streaming, and stream-error partial cleanup without downloading the real LibreOffice package.
+- No full LibreOffice package retry was attempted in M50.
+- Live installed-state DOCX-to-PDF remains unverified after M50 until a future one-time official install retry succeeds or an app-managed runtime is already installed.
+- The existing `.svpkg` archive importer is still byte-based after the verified temp file reaches import. Treat this as a separate import-stage memory follow-up only if needed; M50 removes the network-body `arrayBuffer()` acquisition risk.
+- No external `.svpkg` env vars, external runtime path injection, uninstall/reinstall, system LibreOffice, PATH fallback, arbitrary URL, automatic/startup/background/postinstall/conversion-time download, macOS/Linux approval, unsupported Office/PDF/image/audio format support, dependency, lockfile, GitHub asset, runtime package, or binary changed.
+- Final classification: `streaming_acquisition_ready_no_real_retry`.
+
+## Recommended next round
+
+Proceed to M51 with exactly one controlled real `install_official_plugin` retry only after Owner/network approval. If it installs, rerun live installed-state DOCX-to-PDF verification; if it fails, stop and classify the terminal diagnostic without repeated downloads.
+
+## DFC-M51 controlled real streaming install retry recovery notes
+
+- M51 did not consume the single allowed real full LibreOffice package download/install retry.
+- The environment check found no `STARVERSE_DFC_LIBREOFFICE*` external injection env vars.
+- `npm run rebuild:electron` passed before live Electron verification.
+- Installed-state-only live smoke launched dev Electron and built worker/renderer/main/preload, but failed before Plugin Management/runtime preflight because the renderer did not mount: app root was present, app root child count was 0, and the smoke helper was not registered before timeout.
+- Because runtime preflight was not reached, M51 did not confirm whether the app-managed LibreOffice runtime was installed, missing, disabled, quarantined, invalid, revoked, expired, or blocked.
+- The installed-state-only smoke did not start install and did not download.
+- Lightweight metadata probe used the fixed first-party GitHub Release descriptor and no arbitrary URL input. Release metadata was reachable, expected tag/asset were found, and size metadata was `bytes_518907010`.
+- HEAD preflight failed with sanitized diagnostic `network_und_err_connect_timeout`; redirect was unknown and content length was unavailable.
+- Range probe remained skipped by default, so no package body was downloaded.
+- Because live runtime preflight did not complete and HEAD/content-length did not match, the controlled 500 MB streaming install retry was not started.
+- No external `.svpkg` env vars, external runtime path injection, uninstall/reinstall, system LibreOffice, PATH fallback, arbitrary URL, automatic/startup/background/postinstall/conversion-time download, macOS/Linux approval, unsupported Office/PDF/image/audio support, package body download, activation, runtime output, staging output, sandbox output, packaged output, dependency, lockfile, GitHub asset, or binary changed in M51.
+- Live DOCX-to-PDF, valid PDF validation, metadata-only preview, and selected-ref Send Plan authority remain unverified after M51.
+- Final classification: `streaming_install_failed_network`, scoped to lightweight source preflight. The real install operation did not start.
+
+## Recommended next round
+
+Proceed to M52 by first fixing or isolating the live renderer mount timeout, then rerun metadata/HEAD preflight. Only after live runtime preflight reaches Plugin Management and HEAD/content length match should one controlled real streaming `install_official_plugin` retry be attempted.
+
+## DFC-M52R0 renderer mount timeout watch-pollution recovery notes
+
+- M52R0 did not run `install_official_plugin`, did not download LibreOffice, did not use external `.svpkg` env vars, did not use external runtime path injection, and did not uninstall/reinstall.
+- Repo-local generated/runtime directory scan found `.external-runtime-work` as the dominant watch-pollution risk: 252254 files, 20459 directories, 19364.4 MB, max depth 13.
+- Other present generated output directories were `release` at 1564.53 MB, `out` at 14.16 MB, `dist-electron` at 13.43 MB, and `dist` at 11.47 MB.
+- Before M52R0, `vite.config.ts` ignored `.external-runtime-work`, but did not explicitly ignore the broader generated/runtime families. `scripts/smoke/vite.renderer-smoke.config.ts` ignored only `.artifacts/netlog`, so renderer smoke could watch `.external-runtime-work`.
+- M52R0 added shared generated/runtime watch ignores to both main and smoke Vite configs for `.external-runtime-work`, `.starverse-engines`, `managed-runtimes`, `staging`, `sandbox`, `temp`, `tmp`, `.vite`, `dist`, `dist-electron`, `release`, and `out`.
+- Installed-state-only live smoke then mounted and reached sanitized runtime evidence. Runtime state remained `missing`; install attempted false; download attempted false; diagnostic `conversion_engine_missing`.
+- Final classification: `renderer_mount_fixed_by_watch_ignore`.
+- The one controlled real LibreOffice streaming install retry remains unconsumed after M52R0.
+- Next work should rerun lightweight GitHub metadata/HEAD preflight now that renderer mount is fixed. Only if metadata/HEAD passes and Owner permits should the single real streaming `install_official_plugin` retry be attempted.
+
+## DFC-M52 GitHub HEAD preflight rerun recovery notes
+
+- M52 did not run `install_official_plugin`, did not download the full LibreOffice package, did not use external `.svpkg` env vars, did not use external runtime path injection, and did not uninstall/reinstall.
+- Installed-state-only live smoke still mounted after the M52R0 watch-ignore fix and reached sanitized runtime status evidence.
+- Live app-managed LibreOffice runtime remains `missing`; install attempted false; download attempted false; diagnostic `conversion_engine_missing`.
+- Fixed first-party GitHub Release metadata is reachable: expected tag found true, expected asset found true, asset size metadata `bytes_518907010`.
+- HEAD/content-length preflight still failed: HEAD reachable false, redirect unknown, content length unavailable, terminal diagnostic `network_econnreset`.
+- Range probe stayed skipped by default, so no package body bytes were intentionally read.
+- The one controlled real LibreOffice streaming install retry remains unconsumed after M52.
+- Final classification: `head_preflight_failed_network`.
+- Recommended next: retry lightweight HEAD later after network stabilization, or proceed to a full install attempt only if Owner explicitly accepts consuming the one retry despite HEAD preflight failure. Do not start package body transfer silently.
+
+## DFC-M54 LibreOffice resumable streaming recovery notes
+
+- M54 implements resumable streaming for the fixed first-party LibreOffice Windows x64 GitHub Release `.svpkg` asset only.
+- The implementation preserves the M50 streaming-to-temp-file acquisition path and adds persisted internal partial metadata, `Range: bytes=<currentSize>-` resume, final size/hash verification, and existing trust/staging/activation gates.
+- Automatic retry policy is capped at 3 retries with a 3000 ms delay and is limited to transient body-transfer failures.
+- Retry does not apply to size/hash mismatch, invalid manifest, unsupported platform, revoked/expired package, untrusted catalog, invalid signature, path policy failure, or activation failure.
+- Resume requires `206 Partial Content` and a valid `Content-Range`. `200` on resume fails with `resume_range_ignored`; invalid `Content-Range` fails with `resume_content_range_invalid`; rejected range fails with `resume_range_rejected`.
+- Retry exhaustion pauses the operation as `paused_retryable` with diagnostic `resume_retries_exhausted`.
+- Plugin Management exposes `Retry install` through the existing official install action when the operation is paused, and `Cancel install` for clearing retained partial artifacts and metadata.
+- Cancel cleanup is lifecycle-owned and renderer-safe; raw temp paths, package paths, runtime roots, executable paths, raw URLs, command lines, env, storage refs, content tokens, full hashes, DOCX/PDF bodies, manifest bodies, and private keys are not exposed to renderer DTOs.
+- Magika remains on its existing bytes-based official install path.
+- M54 did not run a real full LibreOffice package download, did not run real `install_official_plugin`, did not use external `.svpkg` injection, did not uninstall/reinstall, and did not use system/PATH fallback.
+- Simulated resumable downloader, lifecycle pause/cancel, Plugin Management, and Magika regression tests passed.
+- Live installed-state DOCX-to-PDF remains pending until a future controlled real install succeeds or an app-managed runtime is already installed.
+- Recommended next: M55 should perform one controlled real LibreOffice official install attempt using resumable streaming, then verify live DOCX-to-PDF only if activation succeeds.
+
+## DFC-M55 real resumable install retry recovery notes
+
+- M55 consumed exactly one real LibreOffice `install_official_plugin` operation through the normal Plugin Management / lifecycle path.
+- No `STARVERSE_DFC_LIBREOFFICE*` external `.svpkg` or runtime injection env vars were present before launch.
+- `npm run rebuild:node` passed before the live work, and `npm run rebuild:electron` passed before the dev Electron smoke.
+- The live smoke reached the real M54 resumable downloader. Read-only app-managed download metadata showed the official descriptor matched, source kind `github_release_asset`, range mode `direct_browser_download_url`, current bytes written `0`, no partial package file, retry count metadata `4`, and terminal diagnostic `resume_retries_exhausted`.
+- Interpreting the retry count: the operation exhausted the M54 automatic retry budget before retaining any package body bytes. This is a network/body-transfer startup failure, not a size/hash verification, staging, activation, path-cap, runtime gate, or DOCX conversion failure.
+- Verification, staging, activation, Plugin Management ready-state verification, and live DOCX-to-PDF were not reached.
+- The live smoke harness had an observability bug: it did not treat M54 `paused_retryable` as terminal, so it kept waiting for the old terminal states and would have timed out after the install timeout. The live smoke process tree was killed after sanitized metadata identified the paused retryable state; no Retry click or second install operation was started.
+- M55 added a harness-only fix: `paused_retryable` now ends live smoke polling, and install state/progress changes print sanitized `dfc-m47-live-smoke-install-progress` JSON records.
+- No production downloader, lifecycle, Plugin Management, DFC worker, package descriptor, trust policy, runtime gate, path-cap policy, automatic download policy, unsupported format support, macOS/Linux approval, dependency, lockfile, GitHub asset, runtime package, or binary changed.
+- Final classification: `real_resumable_install_paused_retryable`.
+- The one Owner-authorized real install operation has been consumed. Do not click Retry or start a second `install_official_plugin` operation unless Owner explicitly authorizes it.
+
+## Recommended next round
+
+Proceed to M56 only with explicit Owner direction: either use the fixed live smoke observability and perform one user-visible Retry install, or use a harness-local official asset-body substitute that still runs `install_official_plugin -> downloader -> size/hash/trust -> staging -> activation -> DFC` without relying on the unstable large GitHub body transfer.
+
+## DFC-M56 network proxy settings recovery notes
+
+- M56 adds Starverse-level Network Proxy settings for Plugin Management official downloads.
+- Persistent settings are stored through `settings_kv` / `SettingsRepo` as `proxyMode`, `manualProxyUrl`, `noProxy`, and fixed strict SSL.
+- Default proxy mode is `environment` because the downloader remains Node/undici based in this round.
+- `direct` uses no proxy; `environment` uses undici environment proxy handling; `manual` uses an HTTP/HTTPS proxy URL; `system` is visible but returns `proxy_system_unavailable` until an Electron net backend is implemented.
+- Proxy credentials are not supported in M56. Credential-bearing proxy URLs are rejected before persistence and must not be logged or exposed to renderer.
+- The shared official package downloader now accepts an optional proxy policy. LibreOffice official install passes settings into the M54 file-staged resumable download path, including Range retry requests.
+- The Magika official bytes path remains behaviorally unchanged except for compatible shared proxy-policy plumbing.
+- M56 adds a bounded LibreOffice official package network diagnostic probe: fixed descriptor only, HEAD/content-length, redirect host allowlist, and a 1 KB Range check. It does not run `install_official_plugin` and does not download the full package.
+- Settings UI includes a Network Proxy section and Test connection button. Plugin Management LibreOffice rows show the current network mode and that manual install uses configured proxy settings.
+- M56 does not add automatic, startup/background, postinstall, conversion-time, DOCX-option, Send Plan, or missing-runtime download triggers.
+- M56 does not approve macOS/Linux packages, system LibreOffice, PATH fallback, arbitrary URLs, arbitrary executable paths, or unsupported formats.
+- M56 validation passed: Node rebuild, targeted proxy/settings/downloader tests, Plugin Management tests, lifecycle tests, official release tests, `vue-tsc`, script syntax checks, `git diff --check`, and privacy/artifact scans.
+- The bounded Node-default diagnostic probe passed for the fixed LibreOffice GitHub Release asset: metadata reachable, asset found, HEAD passed, content length matched, redirect host allowed, 1 KB Range passed, terminal diagnostic `proxy_probe_passed`.
+- M56 did not run `install_official_plugin` and did not download the full LibreOffice package.
+- Recommended M57: run the bounded proxy diagnostic with the Owner-selected proxy mode. If HEAD/Range pass, request explicit Owner approval for one Plugin Management Retry install using the proxy-aware resumable downloader.
+
+## DFC-M57 proxy-aware install preflight recovery notes
+
+- M57 did not start `install_official_plugin`, did not download the full LibreOffice package, did not use external `.svpkg` env vars, did not use external runtime path injection, did not uninstall/reinstall, and did not use system LibreOffice or PATH fallback.
+- The first app-path diagnostic-only live smoke exposed a renderer/Node boundary bug from M56: renderer UI imported `src/next/plugin-distribution/networkProxy.ts`, which imports undici `EnvHttpProxyAgent` at top level. Vite browser bundling then failed with a sanitized `SyntaxError`, leaving the app root empty.
+- M57 fixed that boundary narrowly by adding `src/next/plugin-distribution/networkProxyShared.ts` for browser-safe proxy settings types/defaults/normalization/labels/redaction helpers. Renderer clients now import the shared module; Node downloader code still imports the undici-backed `networkProxy.ts`.
+- After the boundary fix, diagnostic-only live smoke mounted the app, opened Plugin Management, and read sanitized LibreOffice status.
+- Live app-managed LibreOffice runtime remains `missing`; diagnostic `conversion_engine_missing`; no install operation was active or started by status read or Plugin Management open.
+- Selected proxy mode was `environment`; manual proxy configured false; environment proxy available to the Electron app path false; system mode selected false.
+- The app-path bounded proxy diagnostic used the lifecycle service/DB worker path and reported: metadata reachable true, asset found true, HEAD passed false, content length unavailable, redirect host not allowed, range passed false, terminal diagnostic `metadata_reachable_head_failed`.
+- Because the bounded app-path diagnostic failed, M57 stopped before any real package body transfer and did not consume a new install attempt.
+- Final classification: `proxy_diagnostic_failed_no_install`.
+- Recommended next: configure a working Manual proxy or environment proxy visible to the Electron app path, or implement an Electron-net-backed `system` proxy backend. Only after app-path diagnostic returns `proxy_probe_passed` should a single real Plugin Management `install_official_plugin` operation run.
+
+## DFC-M58 dual proxy path probe recovery notes
+
+- M58 did not run `install_official_plugin`, did not download the full LibreOffice package, did not use external `.svpkg` env vars, did not use external runtime path injection, did not uninstall/reinstall, and did not use system LibreOffice or PATH fallback.
+- M58 added a bounded Electron-net system proxy diagnostic IPC: `network-proxy:probe-libreoffice-system`. Renderer clients use it only when `proxyMode` is `system`; manual/environment/direct diagnostics remain on the existing DB worker / Node undici path.
+- The system proxy probe is fixed-descriptor only for the LibreOffice official GitHub Release asset. It performs HEAD/content-length and `Range: bytes=0-1023` only. If a Range request is not `206`, the request is aborted instead of consuming a full response body.
+- The live smoke gained `SV_M58_DUAL_PROXY_PROBE=1`, which temporarily probes manual/system routes, restores proxy settings, opens Plugin Management for no-download evidence, and exits before any install branch.
+- Manual route result: `manual_proxy_missing`; no manual proxy URL was configured or supplied, so no manual-proxy network request was attempted.
+- System route result: `system_proxy_probe_passed`; metadata reachable true, asset found true, HEAD passed true, content length match, redirect host allowed true, 1 KB Range passed true, terminal diagnostic `proxy_probe_passed`.
+- Live app-managed LibreOffice runtime remains `missing`; diagnostic `conversion_engine_missing`; no install operation was active or started by status read, Plugin Management open, proxy setting changes, or diagnostics.
+- Selected M59 route: `system`.
+- Final classification: `system_proxy_probe_passed_retry_available`.
+- Recommended next: M59 may run exactly one controlled real Plugin Management `install_official_plugin` using the selected system route after Owner approval. Keep no external `.svpkg` injection, no automatic download, no system/PATH fallback, and no unsupported format expansion.
+
+## DFC-M59 Electron-net system real install recovery notes
+
+- M59 added a narrow worker/main package body download bridge for LibreOffice official install under `proxyMode: system`.
+- The bridge keeps the normal Plugin Management `install_official_plugin` operation, existing official descriptor, size/hash/trust/staging/activation pipeline, and runtime gate. It only swaps the network body transport to Electron-net for the selected system route.
+- Manual/environment/direct paths still use the existing shared downloader. Magika remains on the existing bytes path.
+- No external `.svpkg` env vars, external runtime root injection, uninstall/reinstall, system LibreOffice, PATH fallback, arbitrary URL input, automatic/startup/background/postinstall/conversion-time download, unsupported format expansion, macOS/Linux approval, dependency, lockfile, GitHub asset, runtime package, or binary was added.
+- The first M59 live run stopped before install because the system bounded diagnostic returned `system_proxy_probe_failed`; no install was started in that run.
+- A follow-up M58-style bounded probe immediately passed the same system route: metadata reachable, asset found, HEAD passed, content length matched, redirect host allowed, 1 KB Range passed, diagnostic `proxy_probe_passed`, selected route `system`.
+- The second M59 live run consumed exactly one real LibreOffice `install_official_plugin` operation through the selected system route.
+- Operation states observed: `accepted -> pending -> downloading -> verifying -> staging`.
+- The earlier large GitHub body-transfer blocker did not reproduce. The package body transfer completed far enough to enter verification/staging.
+- The operation then failed from the smoke perspective with `install_operation_status_timeout` while staging/import was in progress.
+- Installed-state-only follow-up still reported LibreOffice runtime `missing` with `conversion_engine_missing`; live DOCX-to-PDF was not reached.
+- Final classification: `system_install_failed_unknown`.
+- The remaining blocker is now staging/import status liveness or DB worker availability during heavy `.svpkg` staging, not initial Electron-net system-route package body transfer.
+- Do not run a second real install operation or click Retry unless Owner explicitly authorizes it.
+- Recommended M60: isolate LibreOffice `.svpkg` staging/import/extraction from DB worker status polling, or make operation status storage observable while staging/import runs.
+
+## DFC-M60 staging/import observability recovery notes
+
+- M60 did not start another real install operation, did not download the full LibreOffice package, did not click Retry, did not use external `.svpkg` env vars, did not use external runtime path injection, did not uninstall/reinstall, and did not use system LibreOffice or PATH fallback.
+- M60 mapped the post-download path: verified temp package -> `verifying` -> `staging` -> `.svpkg` file import -> archive extraction/manifest/runtime/executable validation -> managed runtime activation -> `registering` -> `health_checking` -> terminal state.
+- `enginePluginLifecycle.getInstallOperationStatus` remains a lightweight lifecycle-service status read, but the DB worker must still be able to service the handler. M59's `install_operation_status_timeout` after `staging` is consistent with staging/import monopolizing the worker event loop.
+- The default `.svpkg` import path still reads the package file and preserves all size/hash/trust/manifest/runtime/executable/platform/capability/containment/revocation checks.
+- M60 removed the most direct event-loop starvation source in archive extraction: compressed zip entries now use asynchronous zlib inflate instead of synchronous `inflateRawSync`, and the extraction loop yields between entry batches.
+- A simulated long-staging lifecycle test now holds the LibreOffice official package file importer in `staging` and proves repeated `getInstallOperationStatus` polls return promptly with state `staging`.
+- An archive extraction test now proves the `.svpkg` extraction loop yields to the event loop while processing many entries.
+- The live smoke harness now treats observable progress as progress and reports phase-specific active-state timeouts: `install_staging_timeout`, `install_activation_timeout`, or `install_operation_timeout`. A status-channel exception remains `install_operation_status_timeout`.
+- Final classification: `staging_status_observability_fixed`.
+- Live installed-state DOCX-to-PDF remains unverified after M60 because no real install was run. A future M61 real retry requires explicit Owner approval and must still avoid external `.svpkg` injection, uninstall/reinstall, system/PATH fallback, unsupported formats, macOS/Linux approval, and automatic/conversion-time downloads.
+
+## DFC-M61 real install after staging fix recovery notes
+
+- M61 consumed exactly one real LibreOffice `install_official_plugin` operation after the M60 staging/import observability fix.
+- No `STARVERSE_DFC_LIBREOFFICE*` external `.svpkg` or runtime injection env vars were present before launch.
+- M61 did not use external `.svpkg` injection, external runtime path injection, uninstall/reinstall, system LibreOffice, PATH fallback, arbitrary URL input, automatic/startup/background/postinstall/conversion-time download, unsupported formats, or macOS/Linux approval.
+- The selected route was Electron-net `system`; the bounded diagnostic passed with metadata reachable, asset found, HEAD passed, content length matched, redirect host allowed, 1 KB Range passed, and diagnostic `proxy_probe_passed`.
+- Initial runtime state was `missing`, so the one allowed real install operation was started.
+- Operation states observed: `accepted -> pending -> downloading -> verifying -> staging -> registering -> health_checking -> installed`.
+- No retry/resume was needed and no M60 phase timeout occurred. The M59 `install_operation_status_timeout` after `staging` did not reproduce.
+- Staging/import, registering/activation, and health checking were reached from the install operation perspective.
+- Final runtime status remained `blocked` with diagnostic `owner_gate_not_production_approved`. The live smoke surfaced `productionApproved=false`, `approvedPlatform=null`, `approvedArch=null`, and `approvedRoute=null`.
+- DOCX workflow was attempted after install, but `pdf_attachment` stayed blocked with `conversion_engine_missing`. No target kind, DerivedAsset, send strategy, SendAssetRef, PDF validation, or metadata-only preview result was produced.
+- No silent fallback occurred: the sanitized result was `missing_runtime_no_download_no_fallback`.
+- Final classification: `real_install_passed_live_docx_failed`.
+- Next work should not reinstall or redownload. M62 should diagnose the production-gate/runtime-readiness mismatch for the already installed Windows x64 runtime, especially package manifest production approval fields, trust/catalog state, scoped approval mapping, and DFC runtime availability mapping.
+
+## DFC-M62 approved runtime owner-gate recovery notes
+
+- M62 did not run `install_official_plugin`, did not download or retry a package, did not uninstall/reinstall, did not use external `.svpkg` env vars, did not use external runtime injection, and did not use system LibreOffice or PATH fallback.
+- Root cause: the M61-installed active runtime manifest retained package-preparation/upstream MSI provenance metadata instead of the M46-approved Starverse `.svpkg` package identity, so the exact Windows x64 production approval matcher reported `productionApproved=false` and surfaced the generic `owner_gate_not_production_approved` block.
+- The fix adds exact approved-scope mismatch diagnostics for package hash, package source, platform/arch, package/runtime version, and DOCX-to-PDF scope.
+- The known-good installed Windows x64 `26.2.4` runtime with legacy upstream MSI provenance is backfilled to the approved Starverse `.svpkg` package identity only when platform, arch, package/runtime versions, capabilities, source kind, and executable relative path match the M46 scope.
+- Future official `.svpkg` imports now stamp the verified package hash/source metadata into the activation manifest before activation, so Plugin Management and DFC availability use the same approval decision.
+- Installed-state live smoke reused the existing app-managed runtime. Runtime status became `ready`, production approval surfaced as Windows x64 DOCX-to-PDF approved, and no install/download was attempted.
+- Live DOCX workflow passed: `pdf_attachment` became available, target kind was `pdf_attachment`, DerivedAsset kind was `converted_pdf`, SendAssetRef kind was `derived_asset`, send strategy was `file_attachment`, PDF validation was `valid_pdf`, and metadata-only preview behavior was preserved.
+- No silent fallback occurred to markdown, original file, plain text, legacy selectedSendMode, system LibreOffice, or PATH output.
+- Final classification: `approved_runtime_owner_gate_unblocked_live_docx_verified`.
+- Recommended M63: close Windows x64 LibreOffice DOCX-to-PDF production evidence and wording without expanding platform or format scope.
+
+## DFC-M63 plugin availability and production closeout notes
+
+- M63 did not run `install_official_plugin`, did not download or retry a package, did not uninstall/reinstall, did not use external `.svpkg` env vars, did not use external runtime injection, and did not use system LibreOffice or PATH fallback.
+- Live Starverse launched against the existing app-managed LibreOffice runtime state.
+- Plugin Management showed the LibreOffice Office PDF / DOCX-to-PDF plugin entry as visible and ready.
+- The runtime was reused; no install/download operation was attempted.
+- Runtime status was ready before and after Recheck. Recheck did not start download, install, system LibreOffice discovery, or PATH fallback.
+- Plugin Management surfaced Windows x64 DOCX-to-PDF production approval with platform `win32`, arch `x64`, managed runtime source, manual install only, automatic download disabled, conversion-time download disabled, and macOS/Linux package pending.
+- Live DOCX workflow passed: `pdf_attachment` was available, target kind was `pdf_attachment`, DerivedAsset kind was `converted_pdf`, send strategy was `file_attachment`, SendAssetRef kind was `derived_asset`, PDF validation was `valid_pdf`, and metadata-only preview behavior was preserved.
+- No silent fallback occurred to markdown, original file, plain text, legacy selectedSendMode, system LibreOffice, or PATH output.
+- Targeted worker tests preserve unsupported route locks for `.doc`, `.rtf`, `.docm`, Excel-to-PDF, PS/EPS, and PDF OCR/local parsing.
+- User-facing wording for this scope: Windows x64 supported; DOCX to PDF only; managed LibreOffice runtime; manual official install; no automatic conversion-time download; macOS/Linux pending.
+- Final classification: `libreoffice_plugin_available_live_docx_verified`.
+- Recommended M64: prepare release-facing support notes and operational monitoring for the Windows x64 DOCX-to-PDF path without expanding platform or format scope.

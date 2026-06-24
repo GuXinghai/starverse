@@ -38,6 +38,7 @@ import { requestElectronConversion, type ElectronConversionBridge } from './elec
 import {
   DFC_LIBREOFFICE_PDF_CONVERTER_NAME,
   DFC_LIBREOFFICE_PDF_CONVERTER_VERSION,
+  DFC_LIBREOFFICE_PDF_PATH_POLICY_EXCEEDED,
   runDfcLibreOfficeDocxToPdfAdapter,
   type DfcLibreOfficePdfProcessRunner,
 } from './dfcLibreOfficePdfAdapter'
@@ -679,7 +680,7 @@ export class DerivativeJobService {
       invalidCode: 'derivative_input_missing',
       readCode: 'derivative_local_file_read_failed',
     })
-    const sandboxRootDir = path.join(os.tmpdir(), 'starverse-dfc-sandbox', 'libreoffice-office-pdf', shortSandboxJobSegment(job.id))
+    const sandboxRootDir = path.join(os.tmpdir(), 'slo', shortSandboxJobSegment(job.id))
     const timeoutMs = readPositiveConfigNumber(job.configJson, 'timeoutMs') ?? 60_000
     const result = await runDfcLibreOfficeDocxToPdfAdapter({
       assetId: asset.id,
@@ -694,14 +695,19 @@ export class DerivativeJobService {
     if (!result.ok || !result.output) {
       await rm(sandboxRootDir, { recursive: true, force: true }).catch(() => undefined)
       const diagnosticCode = String(result.diagnostics[0]?.code ?? '')
+      const diagnosticMessage = diagnosticCode === DFC_LIBREOFFICE_PDF_PATH_POLICY_EXCEEDED
+        ? DFC_LIBREOFFICE_PDF_PATH_POLICY_EXCEEDED
+        : result.diagnostics[0]?.message ?? 'Office-to-PDF fake process conversion failed.'
       const code = result.status === 'timed_out'
         ? 'derivative_task_timeout'
         : diagnosticCode.startsWith('office_pdf_output_')
           ? 'derivative_output_write_failed'
+        : diagnosticCode === DFC_LIBREOFFICE_PDF_PATH_POLICY_EXCEEDED
+          ? 'conversion_not_implemented'
         : result.status === 'blocked'
           ? 'conversion_not_implemented'
           : 'derivative_output_write_failed'
-      throw derivativeError(code, job.id, asset.id, job.derivativeKind, result.diagnostics[0]?.message ?? 'Office-to-PDF fake process conversion failed.')
+      throw derivativeError(code, job.id, asset.id, job.derivativeKind, diagnosticMessage)
     }
 
     let cleanupStatus: 'attempted' | 'failed' = 'attempted'

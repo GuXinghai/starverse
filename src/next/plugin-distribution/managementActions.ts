@@ -3,6 +3,7 @@ import type { PdpManagementPluginViewModel } from './managementViewModel'
 export const PDP_MANAGEMENT_ACTION_IDS = [
   'view_details',
   'install_official_plugin',
+  'cancel_official_install',
   'manual_local_package_registration',
   'enable',
   'disable',
@@ -65,6 +66,7 @@ export function buildPdpManagementActions(
     actions: [
       viewDetailsAction(),
       installOfficialPluginAction(plugin, flags),
+      disabledAction('cancel_official_install', 'Cancel install', ['no_paused_install']),
       manualLocalRegistrationAction(plugin, flags),
       enableAction(plugin, flags),
       disableAction(plugin, flags),
@@ -110,7 +112,10 @@ function installOfficialPluginAction(
   if (blockedReinstall) {
     return disabledAction('install_official_plugin', 'Install official plugin', [blockedReinstall])
   }
-  if (plugin.reasonCodes.includes('signature_missing')) {
+  if (
+    plugin.reasonCodes.includes('signature_missing') &&
+    plugin.productGate?.ownerGatedCandidateReadiness !== 'owner_gated_hash_pinned_ready'
+  ) {
     return disabledAction('install_official_plugin', 'Install official plugin', ['signature_missing'])
   }
   if (plugin.reasonCodes.includes('official_trusted_root_unconfigured')) {

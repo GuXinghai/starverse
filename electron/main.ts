@@ -591,12 +591,18 @@ const dbWorkerManager = new DbWorkerManager({
   schemaPath: DB_SCHEMA_PATH,
   logSlowQueryMs: 75,
   logDirectory: DB_LOG_DIR,
-  callTimeoutMs: 20000,
+  callTimeoutMs: normalizeDbWorkerCallTimeoutMs(process.env.STARVERSE_DB_WORKER_CALL_TIMEOUT_MS),
   restartBackoffMs: 500,
   maxRestartAttempts: 5,
   maxPending: 400,
   electronConversionBridge: createMainProcessElectronConversionService(),
 })
+
+function normalizeDbWorkerCallTimeoutMs(value: string | undefined): number {
+  const parsed = Number.parseInt(String(value ?? '').trim(), 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) return 20000
+  return Math.min(parsed, 10 * 60 * 1000)
+}
 
 type DbExpConfig = {
   forceRebuildOnNextLaunch?: unknown
@@ -776,6 +782,10 @@ function registerCoreIpcHandlers(): string[] {
     performConfigSizeCheck: (context) => performConfigSizeCheck(store, context),
     refreshMainLocale: () => initMainI18n(store, app.getPreferredSystemLanguages()),
     resolveAssetFileByUrl,
+    importLibreOfficeSvpkg: (packagePath) =>
+      dbWorkerManager.call('enginePluginLifecycle.importLibreOfficeSvpkgFromPath', { packagePath }),
+    quarantineLibreOfficeRuntime: () =>
+      dbWorkerManager.call('enginePluginLifecycle.quarantineLibreOfficeRuntime'),
   })
 
   const validation = validateCoreIpcRegistration(registration.channels)
