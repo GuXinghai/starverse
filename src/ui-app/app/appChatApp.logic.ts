@@ -5419,11 +5419,10 @@ export function useAppChatAppLogic() {
   }
 
   function isElectronSmokeDfcFixtureEnabled(): boolean {
-    if (!import.meta.env.DEV) return false
     if (typeof window === 'undefined') return false
     try {
       const params = new URLSearchParams(window.location.search)
-      return params.get('sv-electron-smoke-dfc') === '1'
+      return params.get('sv-electron-smoke-dfc') === '1' && (import.meta.env.DEV || window.location.protocol === 'file:')
     } catch {
       return false
     }
@@ -5457,6 +5456,7 @@ export function useAppChatAppLogic() {
   type ElectronSmokeDfcWindow = Window & {
     __starverseElectronSmokeSeedDfcAttachment?: (filePath: string) => Promise<ElectronSmokeDfcBackendSeedResult>
     __starverseElectronSmokeSeedHtmlPdfAttachment?: (filePath: string) => Promise<ElectronSmokeDfcHtmlPdfSeedResult>
+    __starverseElectronSmokeSeedDocxPdfAttachment?: (filePath: string) => Promise<ElectronSmokeDfcHtmlPdfSeedResult>
   }
 
   function installElectronSmokeDfcBackendSeeder() {
@@ -5465,6 +5465,7 @@ export function useAppChatAppLogic() {
     const smokeWindow = window as ElectronSmokeDfcWindow
     smokeWindow.__starverseElectronSmokeSeedDfcAttachment = seedElectronSmokeBackendDfcAttachment
     smokeWindow.__starverseElectronSmokeSeedHtmlPdfAttachment = seedElectronSmokeBackendHtmlPdfAttachment
+    smokeWindow.__starverseElectronSmokeSeedDocxPdfAttachment = seedElectronSmokeBackendDocxPdfAttachment
   }
 
   async function seedElectronSmokeBackendDfcAttachment(filePath: string): Promise<ElectronSmokeDfcBackendSeedResult> {
@@ -7278,6 +7279,104 @@ export function useAppChatAppLogic() {
     }
 
     return 'missing'
+  }
+
+  async function seedElectronSmokeBackendDocxPdfAttachment(filePath: string): Promise<ElectronSmokeDfcHtmlPdfSeedResult> {
+    if (!isElectronSmokeDfcFixtureEnabled()) throw new Error('Electron smoke DFC seam is disabled')
+    const normalizedFilePath = String(filePath ?? '').trim()
+    if (!normalizedFilePath) throw new Error('Electron smoke DOCX fixture path is required')
+
+    const conversationId = await ensureActiveConvo()
+    const ingestion = await ingestLocalFile({
+      filePath: normalizedFilePath,
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      sourceKind: 'generated',
+    })
+    if (!ingestion.success || !ingestion.assetId) {
+      throw new Error('Electron smoke DOCX fixture ingestion failed')
+    }
+
+    const attachment = await addConversationDraftAttachment({
+      conversationId,
+      assetId: ingestion.assetId,
+      attachmentOrder: draftAttachmentRecords.value.length,
+      includeInNextRequest: true,
+    })
+    await refreshDraftAttachmentViewModels()
+
+    const ensuredOptions = await ensureConversationDraftAttachmentDfcOptions({
+      conversationId,
+      assetId: ingestion.assetId,
+    })
+    const pdfOption = ensuredOptions.options.find((option) =>
+      option.targetKind === 'pdf_attachment'
+      && option.sendStrategy === 'file_attachment'
+      && option.isAvailable
+      && option.sendAssetRefs.some((ref) => ref.kind === 'derived_asset')
+    )
+    if (!pdfOption) {
+      draftAttachmentDfcOptionsByAssetId.value = {
+        ...draftAttachmentDfcOptionsByAssetId.value,
+        [ingestion.assetId]: ensuredOptions,
+      }
+      throw new Error(`Electron smoke DOCX PDF option is unavailable: ${JSON.stringify({
+        options: ensuredOptions.options.map((option) => ({
+          targetKind: option.targetKind,
+          isAvailable: option.isAvailable,
+          status: option.status,
+          sendStrategy: option.sendStrategy,
+          diagnostics: option.diagnostics?.map((diagnostic) => ({
+            code: diagnostic.code,
+            severity: diagnostic.severity ?? null,
+            productCode: diagnostic.productCode ?? null,
+            runtimeStatus: diagnostic.runtimeStatus ?? null,
+          })) ?? [],
+        })),
+      })}`)
+    }
+
+    await updateConversationDraftAttachmentSettings({
+      conversationId,
+      assetId: ingestion.assetId,
+      dfcManaged: true,
+      selectedOptionId: pdfOption.optionId,
+      selectedAssetRefs: [...pdfOption.sendAssetRefs],
+    })
+    await refreshDraftAttachmentViewModels()
+
+    const selectedOptions = await ensureConversationDraftAttachmentDfcOptions({
+      conversationId,
+      assetId: ingestion.assetId,
+    })
+    const preview = await getConversationDraftAttachmentDfcPreview({
+      conversationId,
+      assetId: ingestion.assetId,
+      maxCharacters: 2048,
+    })
+    draftAttachmentDfcOptionsByAssetId.value = {
+      ...draftAttachmentDfcOptionsByAssetId.value,
+      [ingestion.assetId]: selectedOptions,
+    }
+    draftAttachmentDfcPreviewByAssetId.value = {
+      ...draftAttachmentDfcPreviewByAssetId.value,
+      [ingestion.assetId]: preview,
+    }
+
+    return {
+      backendOwned: true,
+      conversationId,
+      assetId: ingestion.assetId,
+      attachmentId: attachment.id,
+      optionId: pdfOption.optionId,
+      targetKind: pdfOption.targetKind,
+      sendStrategy: pdfOption.sendStrategy,
+      selectedAssetRefs: [...pdfOption.sendAssetRefs],
+      previewKind: preview.preview.kind,
+      previewStatus: preview.preview.status,
+      availableTargets: selectedOptions.options
+        .filter((option) => option.isAvailable)
+        .map((option) => option.targetKind),
+    }
   }
 
   function applySelectedModelOverrideForActiveConvo() {
@@ -9132,6 +9231,25 @@ export function useAppChatAppLogic() {
     const hasDraftAttachments = draftAttachmentRecords.value.length > 0
     if (!text && !hasDraftAttachments) return
 
+    const runtimeSelection = currentRuntimeSelection.value
+    const runtimeCapability = currentRuntimeCapability.value
+    const runtimeBlockReason = getRuntimeTextChatBlockReason({
+      selection: runtimeSelection,
+      capability: runtimeCapability,
+      text,
+      hasDraftAttachments,
+      sessionConfig: activeSessionConfig.value,
+    })
+    if (runtimeBlockReason) {
+      setAttachmentFeedback('error', runtimeBlockReason)
+      return
+    }
+    const runtimeRoute = resolveRuntimeTextSendRoute(runtimeSelection)
+    if (runtimeRoute.kind === 'none') {
+      setAttachmentFeedback('error', runtimeRoute.reason)
+      return
+    }
+
     const convoId = await ensureActiveConvo()
     const branch = await ensureActiveBranch(convoId)
     loadError.value = null
@@ -9206,25 +9324,6 @@ export function useAppChatAppLogic() {
           await applyDraftAttachmentDecisions(draftDecisions)
           gate = await preflightDraftAttachmentSendGate({
             conversationId: convoId,
-    const runtimeSelection = currentRuntimeSelection.value
-    const runtimeCapability = currentRuntimeCapability.value
-    const runtimeBlockReason = getRuntimeTextChatBlockReason({
-      selection: runtimeSelection,
-      capability: runtimeCapability,
-      text,
-      hasDraftAttachments,
-      sessionConfig: activeSessionConfig.value,
-    })
-    if (runtimeBlockReason) {
-      setAttachmentFeedback('error', runtimeBlockReason)
-      return
-    }
-    const runtimeRoute = resolveRuntimeTextSendRoute(runtimeSelection)
-    if (runtimeRoute.kind === 'none') {
-      setAttachmentFeedback('error', runtimeRoute.reason)
-      return
-    }
-
             draftText: text,
             modelId,
             baseUrl,
@@ -9947,6 +10046,7 @@ export function useAppChatAppLogic() {
   onMounted(async () => {
     isReady.value = false
     loadError.value = null
+    readOpenRouterChatStorage()
     readLocalEndpointChatStorage()
     readOpenAIResponsesChatStorage()
     readGoogleAIStudioChatStorage()
@@ -10005,6 +10105,7 @@ export function useAppChatAppLogic() {
     window.addEventListener(GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT, handleGoogleAIStudioChatSettingsUpdated)
     window.addEventListener(ANTHROPIC_CHAT_SETTINGS_EVENT, handleAnthropicChatSettingsUpdated)
     window.addEventListener(DEEPSEEK_CHAT_SETTINGS_EVENT, handleDeepSeekChatSettingsUpdated)
+    window.addEventListener('storage', handleOpenRouterChatStorage)
     window.addEventListener('storage', handleLocalEndpointChatStorage)
     window.addEventListener('storage', handleOpenAIResponsesChatStorage)
     window.addEventListener('storage', handleGoogleAIStudioChatStorage)
@@ -10046,7 +10147,6 @@ export function useAppChatAppLogic() {
         else idsRefChangedCount += 1
         lastTranscriptIdsRef = ids
 
-    readOpenRouterChatStorage()
         const excludeId = activeAssistantMessageId.value ?? activeCursorMessageId.value
         const candidates = excludeId ? ids.filter((id) => id !== excludeId) : ids.slice()
         const eligibleCandidates = candidates.filter((id) => {
@@ -10105,7 +10205,6 @@ export function useAppChatAppLogic() {
     }
   })
 
-    window.addEventListener('storage', handleOpenRouterChatStorage)
   // DB 事件订阅
   let unsubscribeDbEvent: (() => void) | null = null
 
@@ -10147,6 +10246,7 @@ export function useAppChatAppLogic() {
     window.removeEventListener(GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT, handleGoogleAIStudioChatSettingsUpdated)
     window.removeEventListener(ANTHROPIC_CHAT_SETTINGS_EVENT, handleAnthropicChatSettingsUpdated)
     window.removeEventListener(DEEPSEEK_CHAT_SETTINGS_EVENT, handleDeepSeekChatSettingsUpdated)
+    window.removeEventListener('storage', handleOpenRouterChatStorage)
     window.removeEventListener('storage', handleLocalEndpointChatStorage)
     window.removeEventListener('storage', handleOpenAIResponsesChatStorage)
     window.removeEventListener('storage', handleGoogleAIStudioChatStorage)
@@ -10246,7 +10346,6 @@ export function useAppChatAppLogic() {
     onBulkDeleteConvos,
     onBulkMoveConvosToProject,
     searchModalOpen,
-    window.removeEventListener('storage', handleOpenRouterChatStorage)
     searchProjectOptions,
     searchConvoOptions,
     closeSearchModal,
@@ -10363,11 +10462,16 @@ export function useAppChatAppLogic() {
     composerImageInputSupported,
     composerImageInputSupportReason,
     activeSessionConfig,
+    openRouterChatConfig,
     localEndpointChatConfig,
     openAIResponsesChatConfig,
     googleAIStudioChatConfig,
     anthropicChatConfig,
     deepSeekChatConfig,
+    deepSeekModelAvailabilityStatus,
+    currentRuntimeSelection,
+    currentRuntimeCapability,
+    currentRuntimeStatus,
     model,
     requestedReasoningEffort,
     requestedReasoningExclude,
@@ -10401,6 +10505,7 @@ export function useAppChatAppLogic() {
     onComposerUpdateWebSearchLayer,
     onUpdateImageGeneration,
     onUpdateImageGenerationFollowDefault,
+    onUpdateOpenRouterChatEnabled,
     onUpdateLocalEndpointChatEnabled,
     onUpdateLocalEndpointChatUrl,
     onUpdateLocalEndpointChatModel,
@@ -10417,6 +10522,7 @@ export function useAppChatAppLogic() {
     onUpdateDeepSeekChatEnabled,
     onUpdateDeepSeekChatModel,
     onClearDeepSeekChat,
+    onRefreshDeepSeekModels,
     onComposerOpenWebSearchSettings,
     onAttachFilesRequested,
     onAttachImagesRequested,
@@ -10462,18 +10568,11 @@ export function useAppChatAppLogic() {
     questionEditSession,
     isQuestionEditMode,
     closeQuestionEdit,
-    openRouterChatConfig,
     submitQuestionEdit,
     canReplaceQuestionInUi,
     pendingDeleteQuestionId,
     requestDeleteQuestion,
     cancelDeleteQuestion,
-    deepSeekModelAvailabilityStatus,
-    currentRuntimeSelection,
-    currentRuntimeCapability,
-    currentRuntimeStatus,
     confirmDeleteQuestion,
   }
 }
-    onUpdateOpenRouterChatEnabled,
-    onRefreshDeepSeekModels,
