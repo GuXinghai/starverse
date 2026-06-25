@@ -2171,3 +2171,19 @@ Proceed to M56 only with explicit Owner direction: either use the fixed live smo
 - Electron smoke rebuilt Electron ABI, launched Starverse, opened backend-owned Markdown DFC attachment details with selected preview, opened HTML `pdf_attachment` details with derived ref and metadata-only preview, and reported `previewContainsPath: false`.
 - Current ABI target after this round is Electron. Do not commit native rebuild side effects, `node_modules`, generated binaries, `dist*`, `.artifacts`, or `public/build-id.json`.
 - The worktree still contains unrelated provider/runtime dirty files, and `src/ui-app/app/appChatApp.logic.ts` has overlapping non-DFC dirty hunks. Any commit for this P2 polish must partial-stage only DFC-owned hunks.
+
+## 2026-06-25 batch commit closeout notes
+
+- Owner changed the closeout strategy from one strict DFC-only commit to batch commits by honest scope.
+- Batch commits created:
+  - `9ca10eb2 polish(dfc): localize attachment send UI` for DFC attachment UX P2 polish, DFC i18n, UI/tests, DFC evidence docs, and DFC-only `appChatApp.logic.ts` hunks.
+  - `1eb53b27 feat(provider): formalize runtime selection` for provider/DeepSeek/runtime selection docs, IPC/source/tests, UI wiring, smoke script, and provider-only `appChatApp.logic.ts` hunks.
+  - `a958eb2d chore(app): finish runtime wiring and DFC smoke seam` for the remaining mixed `appChatApp.logic.ts` hunks: provider runtime wiring cleanup plus DFC DOCX Electron smoke seeder/gating.
+- The final mixed commit exists because repeated manual split attempts were not reliable for `appChatApp.logic.ts` return-order and long DOCX smoke hunks. It is intentionally not described as DFC-only.
+- Validation after batching:
+  - DFC polish: Node ABI rebuild, focused UI/i18n/DFC Vitest 7 files / 325 tests, `vue-tsc`, privacy gate, Electron ABI rebuild, real Electron DFC smoke.
+  - Provider/runtime: Node ABI rebuild, targeted provider/runtime Vitest 9 files / 99 tests, `vue-tsc`.
+  - Mixed app-shell/smoke seam: `vue-tsc`, Electron ABI rebuild, real Electron DFC smoke.
+- `public/build-id.json` remains dirty and excluded as a generated build-id artifact. Do not commit it as part of DFC/provider/runtime closeout.
+- No native `.node`, `node_modules`, lockfile, `.svpkg`, MSI, runtime package, build output, token, key, or private runtime artifact was staged.
+- Current ABI target after final validation is Electron.
