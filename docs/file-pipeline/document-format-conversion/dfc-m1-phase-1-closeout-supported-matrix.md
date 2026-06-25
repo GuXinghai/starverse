@@ -167,3 +167,29 @@ Focused validation at this addendum point:
 - `npm run gate:privacy`
 
 Real Electron launch validation passed after rebuilding the Electron ABI and launching Starverse through the DFC smoke URL. The smoke confirmed backend-owned Markdown option seeding, HTML `pdf_attachment` option generation, Detail Inspector target cards, metadata-only preview behavior, and no path/storage/hash/body-like preview exposure. The final privacy gate passed; clean-worktree/commit status is tracked in the living goal docs and final ledger entry for this productization round.
+
+## DFC v1.2 closure addendum
+
+As of 2026-06-25, the DFC v1.2 implementation baseline is stage-closed around the following scope:
+
+| Capability | Closure classification |
+| --- | --- |
+| Text files to `plain_text` / text prompt routes | supported |
+| Markdown files to `markdown` | supported |
+| Code/config/script-like text to `code` | supported |
+| CSV/TSV to `table_markdown` | supported |
+| HTML to safe `markdown` and source/code-oriented `code` | supported |
+| HTML to `pdf_attachment` | supported through the existing Electron conversion bridge and smoke evidence |
+| XLSX to `table_markdown` | backend pilot |
+| DOCX to `markdown` | backend pilot |
+| Windows x64 DOCX to `pdf_attachment` | supported through managed LibreOffice runtime and M63/M64 smoke evidence |
+| `.doc`, `.rtf`, `.docm`, `.xls` | explicitly unsupported |
+| Excel-to-PDF | deferred |
+| PS/EPS | deferred |
+| PDF OCR/local parsing | explicitly unsupported |
+| macOS/Linux LibreOffice | deferred |
+| system LibreOffice / PATH fallback | explicitly unsupported |
+| automatic/startup/background/postinstall/conversion-time download | explicitly unsupported |
+| external engines or new dependencies | explicitly unsupported |
+
+This closure addendum records the current implementation baseline after later owner-approved pilots. It does not reopen the broader v1.2 design candidate list in `starverse_format_conversion_preview_v1_2.md`, and it does not add new runtime behavior.
