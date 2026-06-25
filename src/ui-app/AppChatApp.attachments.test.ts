@@ -2419,6 +2419,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     })
     expect(JSON.stringify(dfcAttachmentDefaultsValue)).not.toContain('dfc:')
     expect(JSON.stringify(dfcAttachmentDefaultsValue)).not.toContain('derivative-markdown')
+    expect(await screen.findByTestId('composer-attachment-feedback')).toHaveTextContent('已保存全局默认。')
 
     await user.click(await screen.findByTestId('draft-attachment-dfc-apply-global-default'))
 
@@ -2449,7 +2450,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     await user.click(screen.getByTestId('draft-attachment-dfc-option-markdown'))
 
     await waitFor(() => {
-      expect(screen.getByTestId('draft-attachment-dfc-option-markdown')).toHaveTextContent('selected')
+      expect(screen.getByTestId('draft-attachment-dfc-option-markdown')).toHaveTextContent('已选择')
     })
     expect(await screen.findByTestId('draft-attachment-dfc-preview-text')).toHaveTextContent('Markdown preview from selected option')
     const updateCallsAfterSelection = invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.updateAttachmentSettings').length
@@ -2462,7 +2463,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     await screen.findByTestId('draft-attachment-details-dialog')
 
     await waitFor(() => {
-      expect(screen.getByTestId('draft-attachment-dfc-option-markdown')).toHaveTextContent('selected')
+      expect(screen.getByTestId('draft-attachment-dfc-option-markdown')).toHaveTextContent('已选择')
     })
     expect(await screen.findByTestId('draft-attachment-dfc-preview-text')).toHaveTextContent('Markdown preview from selected option')
     expect(invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.updateAttachmentSettings')).toHaveLength(updateCallsAfterSelection)
@@ -2490,11 +2491,13 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     await screen.findByTestId('draft-attachment-details-dialog')
 
     await waitFor(() => {
-      expect(screen.getByTestId('draft-attachment-dfc-option-markdown')).toHaveTextContent('selected')
+      expect(screen.getByTestId('draft-attachment-dfc-option-markdown')).toHaveTextContent('已选择')
     })
-    expect(await screen.findByTestId('draft-attachment-dfc-option-markdown-diagnostic')).toHaveTextContent('dfc_selection_refs_mismatch')
-    expect(await screen.findByTestId('draft-attachment-dfc-preview-status')).toHaveTextContent('blocked')
-    expect(screen.getAllByText('dfc_selection_refs_mismatch').length).toBeGreaterThanOrEqual(1)
+    expect(await screen.findByTestId('draft-attachment-dfc-option-markdown-diagnostic')).toHaveTextContent('已保存的发送引用与后端当前格式不一致')
+    expect(await screen.findByTestId('draft-attachment-dfc-preview-status')).toHaveTextContent('已阻断')
+    const debugInfo = screen.getByTestId('draft-attachment-debug-info')
+    expect(debugInfo).not.toHaveAttribute('open')
+    expect(debugInfo).toHaveTextContent('dfc_selection_refs_mismatch')
     expect(screen.queryByTestId('draft-attachment-dfc-preview-text')).toBeNull()
     expect(invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.updateAttachmentSettings')).toHaveLength(0)
   })

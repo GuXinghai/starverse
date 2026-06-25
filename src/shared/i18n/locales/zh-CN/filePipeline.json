@@ -37,6 +37,210 @@
       "incompatible": "与当前模型不兼容",
       "readyWithWarnings": "就绪（有警告）",
       "unsupported": "不支持"
+    },
+    "attachment": {
+      "media": {
+        "url": "URL",
+        "pdf": "PDF",
+        "text": "TXT",
+        "audio": "音频",
+        "video": "视频",
+        "binary": "文件",
+        "file": "文件"
+      },
+      "tooltip": {
+        "type": "类型",
+        "status": "状态",
+        "recommendedRoute": "推荐路径",
+        "compatibility": "兼容性",
+        "warning": "警告",
+        "blocked": "阻断",
+        "detection": "检测"
+      },
+      "detectionLabel": {
+        "pending": "待检测",
+        "failed": "检测失败",
+        "advancedFailed": "高级检测失败 / Magika 检测失败",
+        "advancedMagika": "高级检测 · Magika",
+        "advanced": "高级检测",
+        "parserValidated": "解析器验证",
+        "basic": "基础检测"
+      },
+      "routeLabel": {
+        "directText": "直接发送文本",
+        "directImage": "直接发送图片",
+        "directAudio": "直接发送音频",
+        "directVideo": "直接发送视频",
+        "directFile": "直接发送文件",
+        "convertedMarkdown": "转换为 Markdown",
+        "convertedPlainText": "转换为纯文本",
+        "convertedCsv": "转换为 CSV",
+        "convertedTsv": "转换为 TSV",
+        "convertedPdf": "转换为 PDF",
+        "renderedImages": "渲染为图片",
+        "extractedText": "提取文本",
+        "extractedAudio": "提取音频",
+        "selectedFrames": "选择帧",
+        "blocked": "不可发送",
+        "askUser": "需要选择",
+        "skip": "跳过"
+      },
+      "details": {
+        "title": "附件详情",
+        "basic": "基础信息",
+        "fileName": "文件名",
+        "extension": "扩展名",
+        "mime": "MIME",
+        "fileType": "文件类型",
+        "status": "状态",
+        "detection": "检测",
+        "currentSend": "当前发送",
+        "sendMode": "发送方式",
+        "urlRetention": "URL 保留",
+        "canRemove": "可移除",
+        "reasons": "提示",
+        "noReasons": "没有警告或阻断。",
+        "operations": "操作",
+        "retryPreview": "重试预览",
+        "targetFormat": "目标格式",
+        "targetFormatHint": "仅使用后端返回的格式路径。选择卡片会保存后端 option 和 refs；默认设置不会自动改写当前草稿。",
+        "loading": "加载中…",
+        "noFormatOptions": "没有可选格式。",
+        "recommended": "推荐",
+        "fileTypeDefault": "文件类型默认",
+        "globalDefault": "全局默认",
+        "useFileTypeDefault": "使用文件类型默认",
+        "useGlobalDefault": "使用全局默认",
+        "clearFileTypeDefault": "清除文件类型默认",
+        "clearGlobalDefault": "清除全局默认",
+        "selected": "已选择",
+        "useThisFormat": "使用此格式",
+        "setFileTypeDefault": "设为文件类型默认",
+        "setGlobalDefault": "设为全局默认",
+        "selectionStatus": "选择状态",
+        "sendPreview": "发送预览",
+        "sendPreviewHint": "预览来自已选择的后端发送路径，不由渲染器猜测生成。",
+        "target": "目标格式",
+        "strategy": "发送方式",
+        "pdfMetadataPreview": "已选择 PDF 附件。此元数据预览使用实际将发送的派生附件；内容字节和本机位置不会显示。",
+        "rawMetadataPreview": "已选择原始文件。此元数据预览使用实际将发送的原始文件引用；内容字节和本机位置不会显示。",
+        "noSelectedPreview": "尚无已选择格式的预览。",
+        "chars": "{count} 字符",
+        "bytes": "{count} 字节",
+        "truncated": "已截断",
+        "sendModeHint": "默认按附件、对话、项目、全局的顺序解析。",
+        "notUrlBased": "此附件不是 URL 附件。",
+        "urlInfo": "URL 信息",
+        "originalUrl": "原始 URL",
+        "resolvedUrl": "解析后 URL",
+        "probeStatus": "探测状态",
+        "materialization": "本地副本状态",
+        "lastProbe": "上次探测",
+        "probeWarning": "探测警告",
+        "probeType": "探测类型",
+        "probeLength": "探测长度",
+        "localCopy": "本地副本",
+        "localCopyExists": "已存在",
+        "localCopyUnavailable": "不可用",
+        "urlProbeFailed": "当前设备未完成探测或本地副本保存；仍可保留 URL 并按链接发送。",
+        "advancedInfo": "高级信息",
+        "advancedInfoHint": "默认收起，仅用于排查附件状态；不会显示文件路径、内容或完整哈希。",
+        "debugField": "字段",
+        "debugValue": "值"
+      },
+      "compatibility": {
+        "compatible": "兼容",
+        "warning": "有警告",
+        "blocked": "已阻断",
+        "pending": "检查中",
+        "incompatible": "不兼容",
+        "unknown": "未知"
+      }
+    },
+    "dfc": {
+      "targetKind": {
+        "originalFile": "原始文件",
+        "plainText": "纯文本",
+        "markdown": "Markdown",
+        "code": "代码",
+        "tableMarkdown": "表格 Markdown",
+        "pdfAttachment": "PDF 附件",
+        "notSet": "未设置"
+      },
+      "targetExplanation": {
+        "originalFile": "模型支持文件输入时，发送上传的原始文件。",
+        "plainText": "发送后端派生出的纯文本内容。",
+        "markdown": "发送后端派生出的 Markdown 内容。",
+        "code": "发送后端派生出的代码或源码文本。",
+        "tableMarkdown": "发送后端派生出的表格 Markdown。",
+        "pdfAttachment": "发送后端派生出的 PDF 附件；预览只显示元数据。"
+      },
+      "sendStrategy": {
+        "fileAttachment": "作为文件附件发送",
+        "textInPrompt": "作为文本放入提示词"
+      },
+      "optionStatus": {
+        "ready": "就绪",
+        "pending": "准备中",
+        "candidate": "候选",
+        "failed": "失败",
+        "stale": "已过期",
+        "blocked": "已阻断",
+        "unknown": "未知"
+      },
+      "previewStatus": {
+        "ready": "就绪",
+        "blocked": "已阻断",
+        "pending": "准备中",
+        "failed": "失败",
+        "none": "无预览",
+        "unknown": "未知"
+      },
+      "decisionStatus": {
+        "ready": "已选择可发送格式",
+        "needsUserSelection": "需要选择目标格式",
+        "blocked": "当前选择被阻断",
+        "pending": "格式准备中",
+        "failed": "格式准备失败",
+        "unknown": "需要确认"
+      },
+      "decisionReason": {
+        "selectedOptionMissing": "请选择目标格式。",
+        "selectedOptionNotFound": "已保存的格式不可用，请重新选择。",
+        "unknown": "需要重新检查当前选择。"
+      },
+      "recommendationReason": {
+        "textPreview": "后端已准备可预览的文本资产，因此推荐此格式。",
+        "layoutFidelity": "后端已准备 PDF 资产，可保留版式，因此推荐此格式。",
+        "originalFileFallback": "没有可用派生资产时，这是当前最稳妥的后端路径。"
+      },
+      "disabledReason": {
+        "pending": "仍在准备",
+        "failed": "准备失败",
+        "stale": "结果已过期",
+        "blocked": "已被阻断",
+        "incompatible": "与当前模型不兼容",
+        "unavailable": "当前不可用",
+        "unknown": "不可用"
+      },
+      "diagnostic": {
+        "selectionRefsMismatch": "已保存的发送引用与后端当前格式不一致，请重新选择目标格式。",
+        "generic": "后端返回了诊断信息，可在高级信息中查看代码。",
+        "count": "{count} 条诊断信息"
+      },
+      "feedback": {
+        "optionUnavailable": "目标格式已不可用。",
+        "optionDisabled": "目标格式当前不可用：{reason}。",
+        "fileTypeDefaultUnavailable": "此附件没有可保存的文件类型默认。",
+        "saveDefaultFailed": "无法保存附件格式默认设置。",
+        "clearDefaultFailed": "无法清除附件格式默认设置。",
+        "fileTypeDefaultSaved": "已保存文件类型默认。",
+        "globalDefaultSaved": "已保存全局默认。",
+        "fileTypeDefaultCleared": "已清除文件类型默认。",
+        "globalDefaultCleared": "已清除全局默认。",
+        "loadOptionsFailed": "目标格式加载失败。",
+        "loadPreviewFailed": "发送预览加载失败。"
+      }
     }
   }
 }

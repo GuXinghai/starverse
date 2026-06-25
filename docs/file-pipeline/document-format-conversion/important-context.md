@@ -2154,3 +2154,20 @@ Proceed to M56 only with explicit Owner direction: either use the fixed live smo
 - Commit isolation used a DFC-only partial staged patch for overlapping files such as `src/ui-app/AppChatApp.vue` and `src/ui-app/app/appChatApp.logic.ts`; the staged hunks exclude provider/runtime and DOCX smoke seam work.
 - Clean-worktree closeout was removed from DFC-M64 acceptance by the user on 2026-06-25 10:58 +08:00. Pre-existing unrelated provider/runtime dirty changes remain outside the DFC-only commit path; an unverified DOCX smoke seam is also mixed into the same dirty `appChatApp.logic.ts` surface. Do not absorb or revert those non-DFC-M64 changes from this DFC goal without an owner decision.
 - Final classification: `attachment_productization_verified_dfc_committed_revised_goal_complete`.
+
+## DFC-M64 DeepSeek P2 attachment UI polish recovery notes
+
+- This round fixes DeepSeek P2 review items for commit `67e7c779 Productize DFC attachment sending experience`.
+- Scope is DFC attachment product UX polish only: i18n, human-readable Chinese labels, debug-field layout, default-save feedback, and living-plan wording.
+- New DFC attachment UI strings live in the existing shared i18n namespace under `src/shared/i18n/locales/zh-CN/filePipeline.json` and `src/shared/i18n/locales/en-US/filePipeline.json`.
+- `DraftAttachmentDetailsDialog.vue` main view now uses human labels for compatibility, decision status/reason, diagnostics, target format, selected/default badges, preview status, and send strategy.
+- Raw debug fields such as `assetKind`, `aiPayloadKind`, `sourceKind`, `displayStatus`, `detectionLevel`, `sendPlanStatus`, raw timestamps, `decisionStatus`, `decisionReasonCode`, preview diagnostics, per-option `targetKind`, `sendStrategy`, `status`, `compatibilityStatus`, `disabledReason`, and diagnostic codes are kept under a default-collapsed advanced information block.
+- `DraftAttachmentCard.vue` chip tooltip/status copy now uses i18n labels and avoids hardcoded English UI strings for the new DFC surface.
+- Default setting success/failure feedback now uses localized composer attachment feedback, so saving file-type/global defaults gives visible user feedback.
+- The unused local `dfcManaged` prop/type field was removed from `DraftAttachmentDetailsDialog.vue`; backend DTO authority and attachment semantics were not changed.
+- The living plan now describes `DraftAttachmentStrip.vue` as the unchanged shelf/list container; chip tooltip/status formatting belongs to `DraftAttachmentCard.vue`.
+- No DFC backend authority, conversion capability, DB schema, Send Plan semantics, runtime behavior, download policy, supported format, external engine, dependency, system/PATH LibreOffice, or auto-download behavior changed in this round.
+- Validation passed: focused UI/i18n Vitest 3 files / 69 tests; related DFC/contract Vitest 4 files / 256 tests; `npx vue-tsc --noEmit --pretty false`; `git diff --check`; `npm run gate:privacy`; real `npm run test:electron-smoke`.
+- Electron smoke rebuilt Electron ABI, launched Starverse, opened backend-owned Markdown DFC attachment details with selected preview, opened HTML `pdf_attachment` details with derived ref and metadata-only preview, and reported `previewContainsPath: false`.
+- Current ABI target after this round is Electron. Do not commit native rebuild side effects, `node_modules`, generated binaries, `dist*`, `.artifacts`, or `public/build-id.json`.
+- The worktree still contains unrelated provider/runtime dirty files, and `src/ui-app/app/appChatApp.logic.ts` has overlapping non-DFC dirty hunks. Any commit for this P2 polish must partial-stage only DFC-owned hunks.

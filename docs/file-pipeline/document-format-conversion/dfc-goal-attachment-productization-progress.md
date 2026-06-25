@@ -376,3 +376,74 @@ Risks:
 
 Next step:
 - Amend the DFC productization commit with this final evidence update and mark the revised goal complete.
+
+## 2026-06-25 14:58 +08:00
+
+Action:
+- Started the DeepSeek P2 review fix for commit `67e7c779` as a DFC UI-only polish round.
+- Added DFC attachment UI strings to the existing shared i18n `filePipeline` namespace for zh-CN and en-US.
+- Changed `DraftAttachmentCard.vue` tooltip/status labels to use shared i18n and human Chinese labels instead of hardcoded English/raw route/compatibility terms.
+- Changed `DraftAttachmentDetailsDialog.vue` main view to show human-readable labels for target format, selection status, preview status, compatibility, diagnostics, defaults, and URL/send-mode sections.
+- Moved raw debug fields such as `assetKind`, `aiPayloadKind`, `sourceKind`, `displayStatus`, `detectionLevel`, `sendPlanStatus`, decision raw fields, diagnostic codes, and timestamps into a default-collapsed advanced information block.
+- Removed the unused local `dfcManaged` field from the details component prop type instead of giving it artificial UI behavior.
+- Localized DFC default-save/default-clear feedback in `appChatApp.logic.ts`; the existing transient composer feedback now shows visible Chinese success copy after save.
+- Corrected the living-plan file map so `DraftAttachmentStrip.vue` is described as the shelf/list container, not as a file modified for the productization polish.
+
+Changed files:
+- `src/shared/i18n/locales/zh-CN/filePipeline.json`
+- `src/shared/i18n/locales/en-US/filePipeline.json`
+- `src/ui-app/components/DraftAttachmentCard.vue`
+- `src/ui-app/components/DraftAttachmentCard.test.ts`
+- `src/ui-app/components/DraftAttachmentDetailsDialog.vue`
+- `src/ui-app/AppChatApp.attachments.test.ts`
+- `src/ui-app/app/appChatApp.logic.ts`
+- `docs/file-pipeline/document-format-conversion/dfc-goal-attachment-productization-living-plan.md`
+- `docs/file-pipeline/document-format-conversion/dfc-goal-attachment-productization-progress.md`
+
+Tests:
+- `npm run rebuild:node` passed.
+- `npx vitest --run src/ui-app/components/DraftAttachmentCard.test.ts src/ui-app/AppChatApp.attachments.test.ts src/shared/i18n/locales/localeKeyConsistency.test.ts --testTimeout 60000 --reporter=dot` passed: 3 files / 69 tests.
+- `npx vue-tsc --noEmit --pretty false` passed.
+
+Risks:
+- This round intentionally does not change DFC backend authority, conversion capability, DB schema, Send Plan semantics, runtime behavior, download policy, or supported formats.
+- The worktree still contains unrelated provider/runtime dirty files outside this DFC polish; do not absorb or revert them while closing this review fix.
+
+Next step:
+- Run the remaining related DFC/contract tests, `git diff --check`, privacy gate, and update `progress-ledger.md` plus `important-context.md` with final evidence.
+
+## 2026-06-25 15:07 +08:00
+
+Action:
+- Completed the DeepSeek P2 DFC attachment UI polish validation and evidence update.
+- Confirmed the Electron smoke path exercises DFC attachment details through stable `data-testid` selectors and format labels, so no smoke script patch was needed.
+- Rebuilt Electron ABI and ran the real Starverse Electron smoke after the UI/i18n polish.
+- Updated the living plan, progress ledger, and important context with final evidence and boundaries.
+
+Changed files:
+- `src/shared/i18n/locales/zh-CN/filePipeline.json`
+- `src/shared/i18n/locales/en-US/filePipeline.json`
+- `src/ui-app/components/DraftAttachmentCard.vue`
+- `src/ui-app/components/DraftAttachmentCard.test.ts`
+- `src/ui-app/components/DraftAttachmentDetailsDialog.vue`
+- `src/ui-app/AppChatApp.attachments.test.ts`
+- `src/ui-app/app/appChatApp.logic.ts`
+- `docs/file-pipeline/document-format-conversion/dfc-goal-attachment-productization-living-plan.md`
+- `docs/file-pipeline/document-format-conversion/dfc-goal-attachment-productization-progress.md`
+- `docs/file-pipeline/document-format-conversion/progress-ledger.md`
+- `docs/file-pipeline/document-format-conversion/important-context.md`
+
+Tests:
+- `npx vitest --run src/next/ipc/contracts/dbBridgeContracts.test.ts src/next/files/conversationDraftClient.test.ts infra/files/conversationAttachmentService.test.ts src/shared/files/documentFormatConversion.test.ts --testTimeout 60000 --reporter=dot` passed: 4 files / 256 tests.
+- `git diff --check` passed with LF/CRLF warnings only.
+- `npm run gate:privacy` passed: scanned 1236 files, no unclassified privacy-sensitive matches.
+- `npm run rebuild:electron` passed.
+- `npm run test:electron-smoke` passed after its internal Electron rebuild: backend-owned Markdown DFC attachment details opened with selected preview, HTML `pdf_attachment` details opened with derived ref and metadata-only preview, and the preview privacy sentinel reported `previewContainsPath: false`.
+
+Risks:
+- Current ABI target is Electron after the required smoke path.
+- The worktree still contains unrelated provider/runtime dirty files outside this DFC polish; this round did not revert or absorb them.
+- `src/ui-app/app/appChatApp.logic.ts` has unrelated existing dirty hunks, so any future commit must stage only the DFC-owned polish hunks.
+
+Next step:
+- If this polish is committed, create a DFC-only commit or partial stage that excludes unrelated provider/runtime changes and generated native/build artifacts.

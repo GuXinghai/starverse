@@ -1,6 +1,6 @@
 # DFC v1.2 Attachment Productization Living Plan
 
-Last updated: 2026-06-25 11:00 +08:00
+Last updated: 2026-06-25 15:07 +08:00
 
 ## Goal
 
@@ -67,8 +67,9 @@ Refined map after the first read-only code mapping pass:
 | DFC design docs | `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md` | Source product contract for Attachment Shelf and Detail Inspector. |
 | DFC closeout/evidence | `progress-ledger.md`, `important-context.md`, `dfc-m63-libreoffice-plugin-availability-smoke-and-production-closeout.md` | Must stay aligned with this goal and final evidence. |
 | App shell / composer | `src/ui-app/AppChatApp.vue`, `src/ui-app/app/appChatApp.logic.ts`, `src/ui-app/AppChatApp.attachments.test.ts` | Existing entry point for draft attachments, DFC option/preview loading, selected option updates, and details dialog state. |
-| Attachment shelf/chip | `src/ui-app/components/DraftAttachmentStrip.vue`, `DraftAttachmentCard.vue`, `DraftAttachmentCard.test.ts` | Existing shelf/card surface; needs chip-style tooltip and safer product status summary. |
+| Attachment shelf/chip | `src/ui-app/components/DraftAttachmentStrip.vue`, `DraftAttachmentCard.vue`, `DraftAttachmentCard.test.ts` | `DraftAttachmentStrip.vue` is the unchanged shelf/list container that renders chips and forwards interactions; chip tooltip/status copy and user-facing formatting live in `DraftAttachmentCard.vue`. |
 | Detail inspector | `src/ui-app/components/DraftAttachmentDetailsDialog.vue` | Existing details dialog with send mode, URL retention, DFC option list, diagnostics, and preview; needs clearer target cards, recommendation/default actions, PDF/raw preview language. |
+| DFC UI i18n | `src/shared/i18n/locales/zh-CN/filePipeline.json`, `src/shared/i18n/locales/en-US/filePipeline.json` | DFC attachment UI copy should use existing shared `t`/`tf` helpers, with Chinese as the default UI style and en-US kept key-consistent. |
 | Renderer DFC client | `src/next/files/conversationDraftClient.ts`, `conversationDraftClient.test.ts` | Calls backend-owned `getDfcOptions`, `ensureDfcOptions`, `getDfcPreview`, and `updateAttachmentSettings`. |
 | IPC contracts/sanitization | `src/next/ipc/contracts/dbBridgeContracts.ts`, `dbBridgeContracts.test.ts` | Decodes DFC option/preview payloads and strips private renderer meta. |
 | DFC backend contracts | `infra/files/conversationAttachmentService.ts`, `src/shared/files/documentFormatConversion.ts` | Backend owns option construction, selected refs, decision coherence, and SendAssetRef validation. |
@@ -87,6 +88,7 @@ Refined map after the first read-only code mapping pass:
 | P4 Preview and diagnostics | Implemented, validating | Preview reflects the actual selected send asset; diagnostics are sanitized and explainable. |
 | P5 User defaults | Implemented, validating | Minimal default-setting loop persists safe preferences without silently changing unsupported routes. |
 | P6 Validation and docs closeout | Complete | Targeted UI/DFC tests, `vue-tsc`, real Electron automation, `git diff --check`, privacy scan, implementation docs, DFC-only staging, and DFC-only commit are complete. User removed the clean-worktree requirement on 2026-06-25 10:58 +08:00; unrelated provider/runtime dirty work remains outside this DFC goal and outside the DFC commit. |
+| P7 DeepSeek P2 UI polish | Complete | New DFC UI strings use shared i18n, main Detail Inspector shows human Chinese labels, raw compatibility/decision/diagnostic/debug fields are under default-collapsed advanced info, default-save feedback is visible, and no backend authority/runtime/support behavior changes. Targeted UI/DFC tests, `vue-tsc`, `git diff --check`, privacy gate, and real Electron smoke passed. |
 
 ## Test Plan
 
@@ -110,11 +112,12 @@ ABI policy:
 
 - Existing dirty worktree contains provider/runtime changes outside this DFC goal plus an unverified DOCX smoke seam in the same overlapping file set; they were not reverted or absorbed into the DFC commit. Clean worktree is no longer a DFC-M64 acceptance requirement per the 2026-06-25 10:58 +08:00 user update.
 - Existing UI may already be mid-refactor, so the patch must stay narrow and avoid style-only churn.
-- Real Electron validation passed for backend-owned Markdown and HTML PDF attachment routes; final static privacy/diff checks and commit isolation passed.
+- Real Electron validation passed for backend-owned Markdown and HTML PDF attachment routes; final static privacy/diff checks passed for the P2 UI polish.
 - Privacy regressions are easy if diagnostics include raw backend details; tests/scans must verify sanitized output.
 - Unsupported formats must remain unavailable even if UI cards become more generic.
 - The current component already exists as a card-heavy shelf; changing it to a mature chip experience should avoid broad style churn or hidden behavioral changes.
 - A global DFC default store would be a larger architecture path; this goal should first use the existing attachment-level settings/update path unless a narrow existing default store is found.
+- DeepSeek P2 polish is UI-only, but it touches `appChatApp.logic.ts`, which still has unrelated provider/runtime dirty work in the worktree; any future commit must stage only DFC-owned hunks.
 
 ## Stop Conditions
 
@@ -138,3 +141,5 @@ ABI policy:
 | 2026-06-25 10:47 +08:00 | Re-audited after commit; DFC-owned files have no remaining diff, but provider/runtime dirty files and an unverified DOCX smoke seam still block clean-worktree completion. |
 | 2026-06-25 10:58 +08:00 | User removed the clean-worktree requirement; DFC-M64 productization is complete with the DFC-only productization commit, validation evidence, and unrelated worktree changes left untouched. |
 | 2026-06-25 11:00 +08:00 | Re-ran doc-scoped `git diff --check` and full privacy scan after the revised objective update; both passed. |
+| 2026-06-25 14:58 +08:00 | Implemented DeepSeek P2 UI polish for DFC attachment copy/i18n, main-view label hygiene, default-collapsed advanced debug info, and visible default-save feedback; final static/privacy validation pending. |
+| 2026-06-25 15:07 +08:00 | Completed DeepSeek P2 UI polish validation: related UI/DFC Vitest, `vue-tsc`, `git diff --check`, privacy gate, and real Electron smoke passed; docs updated with final evidence. |
