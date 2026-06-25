@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { t } from '@/shared/i18n'
 
 type DraftAttachmentDisplayStatus =
   | 'parsing'
@@ -70,11 +71,16 @@ const emit = defineEmits<{
 }>()
 
 const statusLabel = computed(() => {
-  if (props.attachment.displayStatus === 'detection_pending') return '待检测'
-  if (props.attachment.displayStatus === 'detection_required') return '待检测'
-  if (props.attachment.displayStatus === 'detection_failed') return '检测失败'
-  const value = props.attachment.displayStatus.replace(/_/g, ' ')
-  return value.length > 0 ? value : 'ready'
+  if (props.attachment.displayStatus === 'detection_pending') return t('filePipeline.displayStatus.detectionPending')
+  if (props.attachment.displayStatus === 'detection_required') return t('filePipeline.displayStatus.detectionRequired')
+  if (props.attachment.displayStatus === 'detection_failed') return t('filePipeline.displayStatus.detectionFailed')
+  if (props.attachment.displayStatus === 'parsing') return t('filePipeline.displayStatus.parsing')
+  if (props.attachment.displayStatus === 'ready') return t('filePipeline.displayStatus.ready')
+  if (props.attachment.displayStatus === 'ready_with_warnings') return t('filePipeline.displayStatus.readyWithWarnings')
+  if (props.attachment.displayStatus === 'incompatible_with_current_model') return t('filePipeline.displayStatus.incompatible')
+  if (props.attachment.displayStatus === 'failed') return t('filePipeline.displayStatus.failed')
+  if (props.attachment.displayStatus === 'unsupported') return t('filePipeline.displayStatus.unsupported')
+  return t('filePipeline.displayStatus.ready')
 })
 
 const toneClass = computed(() => {
@@ -99,13 +105,13 @@ const dotToneClass = computed(() => {
 })
 
 const mediaLabel = computed(() => {
-  if (props.attachment.sourceKind.trim() === 'url_import') return 'URL'
-  if (props.attachment.aiPayloadKind === 'pdf') return 'PDF'
-  if (props.attachment.aiPayloadKind === 'text') return 'TXT'
-  if (props.attachment.aiPayloadKind === 'audio') return 'AUDIO'
-  if (props.attachment.aiPayloadKind === 'video') return 'VIDEO'
-  if (props.attachment.aiPayloadKind === 'binary') return 'FILE'
-  return props.attachment.aiPayloadKind.toUpperCase()
+  if (props.attachment.sourceKind.trim() === 'url_import') return t('filePipeline.attachment.media.url')
+  if (props.attachment.aiPayloadKind === 'pdf') return t('filePipeline.attachment.media.pdf')
+  if (props.attachment.aiPayloadKind === 'text') return t('filePipeline.attachment.media.text')
+  if (props.attachment.aiPayloadKind === 'audio') return t('filePipeline.attachment.media.audio')
+  if (props.attachment.aiPayloadKind === 'video') return t('filePipeline.attachment.media.video')
+  if (props.attachment.aiPayloadKind === 'binary') return t('filePipeline.attachment.media.binary')
+  return t('filePipeline.attachment.media.file')
 })
 
 function normalizeLabelCode(value: string | null): string | null {
@@ -117,39 +123,64 @@ function normalizeLabelCode(value: string | null): string | null {
 
 const fileTypeHint = computed(() => props.attachment.fileTypeInfo)
 const detectionInfo = computed(() => props.attachment.detectionInfo)
-const recommendedRouteLabel = computed(() => normalizeLabelCode(fileTypeHint.value?.recommendedRouteLabelCode ?? null))
+const recommendedRouteLabel = computed(() => formatRouteLabel(fileTypeHint.value?.recommendedRouteLabelCode ?? fileTypeHint.value?.recommendedRoute ?? null))
 const compatibilityLabel = computed(() => {
   const compatibility = fileTypeHint.value?.compatibility ?? 'unknown'
-  if (compatibility === 'blocked') return 'blocked'
-  if (compatibility === 'warning') return 'warning'
-  if (compatibility === 'compatible') return 'compatible'
-  return 'unknown'
+  if (compatibility === 'blocked') return t('filePipeline.attachment.compatibility.blocked')
+  if (compatibility === 'warning') return t('filePipeline.attachment.compatibility.warning')
+  if (compatibility === 'compatible') return t('filePipeline.attachment.compatibility.compatible')
+  return t('filePipeline.attachment.compatibility.unknown')
 })
+
+function formatRouteLabel(value: string | null): string | null {
+  const code = normalizeLabelCode(value)
+  if (!code) return null
+  if (code === 'direct_text') return t('filePipeline.attachment.routeLabel.directText')
+  if (code === 'direct_image') return t('filePipeline.attachment.routeLabel.directImage')
+  if (code === 'direct_audio') return t('filePipeline.attachment.routeLabel.directAudio')
+  if (code === 'direct_video') return t('filePipeline.attachment.routeLabel.directVideo')
+  if (code === 'direct_file') return t('filePipeline.attachment.routeLabel.directFile')
+  if (code === 'converted_markdown') return t('filePipeline.attachment.routeLabel.convertedMarkdown')
+  if (code === 'converted_plain_text') return t('filePipeline.attachment.routeLabel.convertedPlainText')
+  if (code === 'converted_csv') return t('filePipeline.attachment.routeLabel.convertedCsv')
+  if (code === 'converted_tsv') return t('filePipeline.attachment.routeLabel.convertedTsv')
+  if (code === 'converted_pdf') return t('filePipeline.attachment.routeLabel.convertedPdf')
+  if (code === 'rendered_images') return t('filePipeline.attachment.routeLabel.renderedImages')
+  if (code === 'extracted_text') return t('filePipeline.attachment.routeLabel.extractedText')
+  if (code === 'extracted_audio') return t('filePipeline.attachment.routeLabel.extractedAudio')
+  if (code === 'selected_frames') return t('filePipeline.attachment.routeLabel.selectedFrames')
+  if (code === 'blocked') return t('filePipeline.attachment.routeLabel.blocked')
+  if (code === 'ask_user') return t('filePipeline.attachment.routeLabel.askUser')
+  if (code === 'skip') return t('filePipeline.attachment.routeLabel.skip')
+  return null
+}
 
 const tooltipText = computed(() => {
   const lines = [
     props.attachment.filename,
-    `Type: ${mediaLabel.value}${props.attachment.extension ? ` / ${props.attachment.extension}` : ''}`,
-    `Status: ${statusLabel.value}`,
+    `${t('filePipeline.attachment.tooltip.type')}：${mediaLabel.value}${props.attachment.extension ? ` / ${props.attachment.extension}` : ''}`,
+    `${t('filePipeline.attachment.tooltip.status')}：${statusLabel.value}`,
   ]
-  if (recommendedRouteLabel.value) lines.push(`Recommended route: ${recommendedRouteLabel.value}`)
-  if (compatibilityLabel.value !== 'unknown') lines.push(`Compatibility: ${compatibilityLabel.value}`)
-  if (props.attachment.warningReason) lines.push(`Warning: ${props.attachment.warningReason}`)
-  if (props.attachment.blockingReason) lines.push(`Blocked: ${props.attachment.blockingReason}`)
-  if (detectionLabel.value) lines.push(`Detection: ${detectionLabel.value}`)
+  if (recommendedRouteLabel.value) lines.push(`${t('filePipeline.attachment.tooltip.recommendedRoute')}：${recommendedRouteLabel.value}`)
+  if (fileTypeHint.value && fileTypeHint.value.compatibility !== 'unknown') lines.push(`${t('filePipeline.attachment.tooltip.compatibility')}：${compatibilityLabel.value}`)
+  if (props.attachment.warningReason) lines.push(`${t('filePipeline.attachment.tooltip.warning')}：${props.attachment.warningReason}`)
+  if (props.attachment.blockingReason) lines.push(`${t('filePipeline.attachment.tooltip.blocked')}：${props.attachment.blockingReason}`)
+  if (detectionLabel.value) lines.push(`${t('filePipeline.attachment.tooltip.detection')}：${detectionLabel.value}`)
   return lines.join('\n')
 })
 
 const detectionLabel = computed(() => {
   const detection = detectionInfo.value
   if (!detection) return null
-  if (detection.routeEligibility === 'detection_pending' || detection.routeEligibility === 'detection_required') return '待检测'
+  if (detection.routeEligibility === 'detection_pending' || detection.routeEligibility === 'detection_required') return t('filePipeline.attachment.detectionLabel.pending')
   if (detection.routeEligibility === 'detection_failed') {
-    return detection.advancedAttempted ? '高级检测失败 / Magika 检测失败' : '检测失败'
+    return detection.advancedAttempted ? t('filePipeline.attachment.detectionLabel.advancedFailed') : t('filePipeline.attachment.detectionLabel.failed')
   }
-  if (detection.detectionLevel === 'advanced' && detection.usedMagika) return '高级检测 · Magika'
-  if (detection.detectionLevel === 'basic') return '基础检测'
-  return '待检测'
+  if (detection.detectionLevel === 'advanced' && detection.usedMagika) return t('filePipeline.attachment.detectionLabel.advancedMagika')
+  if (detection.detectionLevel === 'parser_validated') return t('filePipeline.attachment.detectionLabel.parserValidated')
+  if (detection.detectionLevel === 'advanced') return t('filePipeline.attachment.detectionLabel.advanced')
+  if (detection.detectionLevel === 'basic') return t('filePipeline.attachment.detectionLabel.basic')
+  return t('filePipeline.attachment.detectionLabel.pending')
 })
 
 function removeAttachment() {
@@ -207,7 +238,7 @@ function openDetails() {
       type="button"
       class="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-xs leading-none text-gray-700 hover:bg-gray-50"
       :data-testid="`draft-attachment-remove-${props.attachment.assetId}`"
-      title="Remove attachment"
+      :title="t('composer.actions.removeAttachment')"
       @click.stop="removeAttachment"
     >
       x

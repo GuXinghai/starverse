@@ -5075,32 +5075,44 @@ export function useAppChatAppLogic() {
   }
 
   function formatDfcTargetKind(value: DfcTargetKind): string {
-    if (value === 'original_file') return 'Original file'
-    if (value === 'plain_text') return 'Plain text'
-    if (value === 'markdown') return 'Markdown'
-    if (value === 'code') return 'Code'
-    if (value === 'table_markdown') return 'Table markdown'
-    return 'PDF attachment'
+    if (value === 'original_file') return t('filePipeline.dfc.targetKind.originalFile')
+    if (value === 'plain_text') return t('filePipeline.dfc.targetKind.plainText')
+    if (value === 'markdown') return t('filePipeline.dfc.targetKind.markdown')
+    if (value === 'code') return t('filePipeline.dfc.targetKind.code')
+    if (value === 'table_markdown') return t('filePipeline.dfc.targetKind.tableMarkdown')
+    return t('filePipeline.dfc.targetKind.pdfAttachment')
   }
 
   function formatDfcSendStrategy(value: DfcSendStrategy): string {
-    return value === 'file_attachment' ? 'file attachment' : 'text in prompt'
+    return value === 'file_attachment'
+      ? t('filePipeline.dfc.sendStrategy.fileAttachment')
+      : t('filePipeline.dfc.sendStrategy.textInPrompt')
+  }
+
+  function formatDfcOptionStatus(value: string): string {
+    if (value === 'ready') return t('filePipeline.dfc.optionStatus.ready')
+    if (value === 'pending') return t('filePipeline.dfc.optionStatus.pending')
+    if (value === 'candidate') return t('filePipeline.dfc.optionStatus.candidate')
+    if (value === 'failed') return t('filePipeline.dfc.optionStatus.failed')
+    if (value === 'stale') return t('filePipeline.dfc.optionStatus.stale')
+    if (value === 'blocked') return t('filePipeline.dfc.optionStatus.blocked')
+    return t('filePipeline.dfc.optionStatus.unknown')
   }
 
   function explainDfcTargetKind(value: DfcTargetKind): string {
-    if (value === 'original_file') return 'Sends the uploaded file as a file attachment when the model supports it.'
-    if (value === 'plain_text') return 'Sends the backend-derived plain text in the prompt.'
-    if (value === 'markdown') return 'Sends backend-derived Markdown in the prompt.'
-    if (value === 'code') return 'Sends backend-derived source/code text in the prompt.'
-    if (value === 'table_markdown') return 'Sends backend-derived table Markdown in the prompt.'
-    return 'Sends the backend-derived PDF as a file attachment; preview is metadata-only.'
+    if (value === 'original_file') return t('filePipeline.dfc.targetExplanation.originalFile')
+    if (value === 'plain_text') return t('filePipeline.dfc.targetExplanation.plainText')
+    if (value === 'markdown') return t('filePipeline.dfc.targetExplanation.markdown')
+    if (value === 'code') return t('filePipeline.dfc.targetExplanation.code')
+    if (value === 'table_markdown') return t('filePipeline.dfc.targetExplanation.tableMarkdown')
+    return t('filePipeline.dfc.targetExplanation.pdfAttachment')
   }
 
   function formatDfcRecommendationReason(value: string | null): string | null {
-    if (value === 'backend_recommends_text_preview') return 'Recommended because the backend has a previewable text asset for this file.'
-    if (value === 'backend_recommends_layout_fidelity') return 'Recommended because the backend has a PDF asset for layout fidelity.'
-    if (value === 'backend_recommends_original_file_fallback') return 'Recommended as the safest available fallback when no derived asset is ready.'
-    return value
+    if (value === 'backend_recommends_text_preview') return t('filePipeline.dfc.recommendationReason.textPreview')
+    if (value === 'backend_recommends_layout_fidelity') return t('filePipeline.dfc.recommendationReason.layoutFidelity')
+    if (value === 'backend_recommends_original_file_fallback') return t('filePipeline.dfc.recommendationReason.originalFileFallback')
+    return value ? t('filePipeline.dfc.decisionReason.unknown') : null
   }
 
   function getDfcDefaultFileTypeKey(asset: DecodedFileAsset | null, filename: string | null | undefined): string | null {
@@ -5182,7 +5194,12 @@ export function useAppChatAppLogic() {
           disabled: disabledReason != null,
           disabledReason,
           label: formatDfcTargetKind(option.targetKind),
-          detail: `${formatDfcSendStrategy(option.sendStrategy)} · ${option.status}`,
+          detail: `${formatDfcSendStrategy(option.sendStrategy)} · ${formatDfcOptionStatus(option.status)}`,
+          explanation: explainDfcTargetKind(option.targetKind),
+          recommended,
+          recommendationReason: recommended ? formatDfcRecommendationReason(dto.recommendedReasonCode) : null,
+          matchesFileTypeDefault: option.optionId === fileTypeDefaultOption?.optionId,
+          matchesGlobalDefault: option.optionId === globalDefaultOption?.optionId,
           diagnostics: option.diagnostics.map((item) => item.code),
           sendAssetRefs: option.sendAssetRefs,
         }
@@ -6131,7 +6148,7 @@ export function useAppChatAppLogic() {
       if (seq !== draftAttachmentDfcOptionsSeq) return
       draftAttachmentDfcOptionsErrorByAssetId.value = {
         ...draftAttachmentDfcOptionsErrorByAssetId.value,
-        [id]: error instanceof Error ? error.message : 'Failed to load format options.',
+        [id]: error instanceof Error ? error.message : t('filePipeline.dfc.feedback.loadOptionsFailed'),
       }
     } finally {
       if (seq === draftAttachmentDfcOptionsSeq) {
@@ -6171,7 +6188,7 @@ export function useAppChatAppLogic() {
       if (seq !== draftAttachmentDfcPreviewSeq) return
       draftAttachmentDfcPreviewErrorByAssetId.value = {
         ...draftAttachmentDfcPreviewErrorByAssetId.value,
-        [id]: 'Failed to load selected preview.',
+        [id]: t('filePipeline.dfc.feedback.loadPreviewFailed'),
       }
     } finally {
       if (seq === draftAttachmentDfcPreviewSeq) {
@@ -6221,13 +6238,13 @@ export function useAppChatAppLogic() {
     const dto = draftAttachmentDfcOptionsByAssetId.value[assetId] ?? null
     const option = dto?.options.find((item) => item.optionId === optionId) ?? null
     if (!option) {
-      setAttachmentFeedback('error', 'Format option is no longer available.')
+      setAttachmentFeedback('error', t('filePipeline.dfc.feedback.optionUnavailable'))
       void refreshDraftAttachmentDfcOptions(assetId)
       return
     }
     const disabledReason = buildDfcOptionDisabledReason(option)
     if (disabledReason) {
-      setAttachmentFeedback('warning', `Format option is ${disabledReason}.`)
+      setAttachmentFeedback('warning', tf('filePipeline.dfc.feedback.optionDisabled', { reason: t(`filePipeline.dfc.disabledReason.${disabledReason}`) }))
       return
     }
     await updateSelectedDraftAttachmentSettings({
@@ -6247,7 +6264,7 @@ export function useAppChatAppLogic() {
     const details = buildDraftAttachmentDetailsViewModel(assetId)
     const fileTypeKey = details?.dfcOptions.fileTypeKey ?? null
     if (input.scope === 'file_type' && !fileTypeKey) {
-      setAttachmentFeedback('warning', 'File type default is unavailable for this attachment.')
+      setAttachmentFeedback('warning', t('filePipeline.dfc.feedback.fileTypeDefaultUnavailable'))
       return
     }
     const next = setDfcAttachmentDefaultTarget(dfcAttachmentDefaults.value, {
@@ -6257,11 +6274,11 @@ export function useAppChatAppLogic() {
     })
     const saved = await setDfcAttachmentDefaults(next)
     if (!saved) {
-      setAttachmentFeedback('error', 'Could not save DFC attachment default.')
+      setAttachmentFeedback('error', t('filePipeline.dfc.feedback.saveDefaultFailed'))
       return
     }
     dfcAttachmentDefaults.value = next
-    setAttachmentFeedback('success', input.scope === 'file_type' ? 'Saved file type default.' : 'Saved global attachment default.')
+    setAttachmentFeedback('success', input.scope === 'file_type' ? t('filePipeline.dfc.feedback.fileTypeDefaultSaved') : t('filePipeline.dfc.feedback.globalDefaultSaved'))
   }
 
   async function clearSelectedDraftAttachmentDfcDefault(scope: 'file_type' | 'global') {
@@ -6269,7 +6286,7 @@ export function useAppChatAppLogic() {
     const details = buildDraftAttachmentDetailsViewModel(assetId)
     const fileTypeKey = details?.dfcOptions.fileTypeKey ?? null
     if (scope === 'file_type' && !fileTypeKey) {
-      setAttachmentFeedback('warning', 'File type default is unavailable for this attachment.')
+      setAttachmentFeedback('warning', t('filePipeline.dfc.feedback.fileTypeDefaultUnavailable'))
       return
     }
     const next = clearDfcAttachmentDefaultTarget(dfcAttachmentDefaults.value, {
@@ -6278,11 +6295,11 @@ export function useAppChatAppLogic() {
     })
     const saved = await setDfcAttachmentDefaults(next)
     if (!saved) {
-      setAttachmentFeedback('error', 'Could not clear DFC attachment default.')
+      setAttachmentFeedback('error', t('filePipeline.dfc.feedback.clearDefaultFailed'))
       return
     }
     dfcAttachmentDefaults.value = next
-    setAttachmentFeedback('success', scope === 'file_type' ? 'Cleared file type default.' : 'Cleared global attachment default.')
+    setAttachmentFeedback('success', scope === 'file_type' ? t('filePipeline.dfc.feedback.fileTypeDefaultCleared') : t('filePipeline.dfc.feedback.globalDefaultCleared'))
   }
 
   async function retrySelectedDraftAttachmentPreview() {

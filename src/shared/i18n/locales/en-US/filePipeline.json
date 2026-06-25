@@ -37,6 +37,210 @@
       "incompatible": "Incompatible with current model",
       "readyWithWarnings": "Ready (with warnings)",
       "unsupported": "Unsupported"
+    },
+    "attachment": {
+      "media": {
+        "url": "URL",
+        "pdf": "PDF",
+        "text": "TXT",
+        "audio": "Audio",
+        "video": "Video",
+        "binary": "File",
+        "file": "File"
+      },
+      "tooltip": {
+        "type": "Type",
+        "status": "Status",
+        "recommendedRoute": "Recommended route",
+        "compatibility": "Compatibility",
+        "warning": "Warning",
+        "blocked": "Blocked",
+        "detection": "Detection"
+      },
+      "detectionLabel": {
+        "pending": "Awaiting detection",
+        "failed": "Detection failed",
+        "advancedFailed": "Advanced detection failed / Magika failed",
+        "advancedMagika": "Advanced detection · Magika",
+        "advanced": "Advanced detection",
+        "parserValidated": "Parser validated",
+        "basic": "Basic detection"
+      },
+      "routeLabel": {
+        "directText": "Send text directly",
+        "directImage": "Send image directly",
+        "directAudio": "Send audio directly",
+        "directVideo": "Send video directly",
+        "directFile": "Send file directly",
+        "convertedMarkdown": "Convert to Markdown",
+        "convertedPlainText": "Convert to plain text",
+        "convertedCsv": "Convert to CSV",
+        "convertedTsv": "Convert to TSV",
+        "convertedPdf": "Convert to PDF",
+        "renderedImages": "Render as images",
+        "extractedText": "Extract text",
+        "extractedAudio": "Extract audio",
+        "selectedFrames": "Select frames",
+        "blocked": "Blocked",
+        "askUser": "Needs choice",
+        "skip": "Skip"
+      },
+      "details": {
+        "title": "Attachment details",
+        "basic": "Basic information",
+        "fileName": "File name",
+        "extension": "Extension",
+        "mime": "MIME",
+        "fileType": "File type",
+        "status": "Status",
+        "detection": "Detection",
+        "currentSend": "Current send",
+        "sendMode": "Send mode",
+        "urlRetention": "URL retention",
+        "canRemove": "Can remove",
+        "reasons": "Messages",
+        "noReasons": "No warnings or blockers.",
+        "operations": "Actions",
+        "retryPreview": "Retry preview",
+        "targetFormat": "Target format",
+        "targetFormatHint": "Uses backend-provided format routes only. Choosing a card saves the backend option and refs; defaults do not auto-switch this draft.",
+        "loading": "Loading…",
+        "noFormatOptions": "No format options.",
+        "recommended": "Recommended",
+        "fileTypeDefault": "File type default",
+        "globalDefault": "Global default",
+        "useFileTypeDefault": "Use file type default",
+        "useGlobalDefault": "Use global default",
+        "clearFileTypeDefault": "Clear file type default",
+        "clearGlobalDefault": "Clear global default",
+        "selected": "Selected",
+        "useThisFormat": "Use this format",
+        "setFileTypeDefault": "Set file type default",
+        "setGlobalDefault": "Set global default",
+        "selectionStatus": "Selection status",
+        "sendPreview": "Send preview",
+        "sendPreviewHint": "Preview is built from the selected backend route, not renderer guesses.",
+        "target": "Target format",
+        "strategy": "Send mode",
+        "pdfMetadataPreview": "PDF attachment selected. This metadata-only preview uses the derived asset that will be sent; content bytes and local location are hidden.",
+        "rawMetadataPreview": "Original file selected. This metadata-only preview uses the selected raw file ref; content bytes and local location are hidden.",
+        "noSelectedPreview": "No selected preview.",
+        "chars": "{count} chars",
+        "bytes": "{count} bytes",
+        "truncated": "Truncated",
+        "sendModeHint": "Defaults resolve in order: attachment, conversation, project, global.",
+        "notUrlBased": "This attachment is not URL-based.",
+        "urlInfo": "URL info",
+        "originalUrl": "Original URL",
+        "resolvedUrl": "Resolved URL",
+        "probeStatus": "Probe status",
+        "materialization": "Materialization",
+        "lastProbe": "Last probe",
+        "probeWarning": "Probe warning",
+        "probeType": "Probe type",
+        "probeLength": "Probe length",
+        "localCopy": "Local copy",
+        "localCopyExists": "Exists",
+        "localCopyUnavailable": "Not available",
+        "urlProbeFailed": "This device could not finish probing or saving a local copy; the URL can still be kept and sent as a link.",
+        "advancedInfo": "Advanced information",
+        "advancedInfoHint": "Collapsed by default for troubleshooting only; file paths, content, and full hashes are not shown.",
+        "debugField": "Field",
+        "debugValue": "Value"
+      },
+      "compatibility": {
+        "compatible": "Compatible",
+        "warning": "Warning",
+        "blocked": "Blocked",
+        "pending": "Checking",
+        "incompatible": "Incompatible",
+        "unknown": "Unknown"
+      }
+    },
+    "dfc": {
+      "targetKind": {
+        "originalFile": "Original file",
+        "plainText": "Plain text",
+        "markdown": "Markdown",
+        "code": "Code",
+        "tableMarkdown": "Table Markdown",
+        "pdfAttachment": "PDF attachment",
+        "notSet": "Not set"
+      },
+      "targetExplanation": {
+        "originalFile": "Sends the uploaded file when the model supports file input.",
+        "plainText": "Sends backend-derived plain text.",
+        "markdown": "Sends backend-derived Markdown.",
+        "code": "Sends backend-derived code or source text.",
+        "tableMarkdown": "Sends backend-derived table Markdown.",
+        "pdfAttachment": "Sends the backend-derived PDF attachment; preview is metadata-only."
+      },
+      "sendStrategy": {
+        "fileAttachment": "Send as file attachment",
+        "textInPrompt": "Place text in prompt"
+      },
+      "optionStatus": {
+        "ready": "Ready",
+        "pending": "Preparing",
+        "candidate": "Candidate",
+        "failed": "Failed",
+        "stale": "Stale",
+        "blocked": "Blocked",
+        "unknown": "Unknown"
+      },
+      "previewStatus": {
+        "ready": "Ready",
+        "blocked": "Blocked",
+        "pending": "Preparing",
+        "failed": "Failed",
+        "none": "No preview",
+        "unknown": "Unknown"
+      },
+      "decisionStatus": {
+        "ready": "Sendable format selected",
+        "needsUserSelection": "Choose a target format",
+        "blocked": "Current selection is blocked",
+        "pending": "Format is preparing",
+        "failed": "Format preparation failed",
+        "unknown": "Needs review"
+      },
+      "decisionReason": {
+        "selectedOptionMissing": "Choose a target format.",
+        "selectedOptionNotFound": "The saved format is unavailable; choose again.",
+        "unknown": "Review the current selection."
+      },
+      "recommendationReason": {
+        "textPreview": "Recommended because the backend has a previewable text asset.",
+        "layoutFidelity": "Recommended because the backend has a PDF asset for layout fidelity.",
+        "originalFileFallback": "Recommended as the safest backend route when no derived asset is ready."
+      },
+      "disabledReason": {
+        "pending": "still preparing",
+        "failed": "preparation failed",
+        "stale": "result is stale",
+        "blocked": "blocked",
+        "incompatible": "incompatible with the current model",
+        "unavailable": "currently unavailable",
+        "unknown": "unavailable"
+      },
+      "diagnostic": {
+        "selectionRefsMismatch": "The saved send refs no longer match the backend format. Choose the target format again.",
+        "generic": "The backend returned a diagnostic. Open advanced information for the code.",
+        "count": "{count} diagnostics"
+      },
+      "feedback": {
+        "optionUnavailable": "Target format is no longer available.",
+        "optionDisabled": "Target format is unavailable: {reason}.",
+        "fileTypeDefaultUnavailable": "This attachment has no file type default to save.",
+        "saveDefaultFailed": "Could not save attachment format defaults.",
+        "clearDefaultFailed": "Could not clear attachment format defaults.",
+        "fileTypeDefaultSaved": "File type default saved.",
+        "globalDefaultSaved": "Global default saved.",
+        "fileTypeDefaultCleared": "File type default cleared.",
+        "globalDefaultCleared": "Global default cleared.",
+        "loadOptionsFailed": "Could not load target formats.",
+        "loadPreviewFailed": "Could not load send preview."
+      }
     }
   }
 }
