@@ -91,6 +91,13 @@ const textToneClass = computed(() => {
   return 'text-gray-600'
 })
 
+const dotToneClass = computed(() => {
+  if (props.attachment.borderTone === 'green') return 'bg-green-500'
+  if (props.attachment.borderTone === 'yellow') return 'bg-amber-500'
+  if (props.attachment.borderTone === 'red') return 'bg-red-500'
+  return 'bg-gray-400'
+})
+
 const mediaLabel = computed(() => {
   if (props.attachment.sourceKind.trim() === 'url_import') return 'URL'
   if (props.attachment.aiPayloadKind === 'pdf') return 'PDF'
@@ -119,6 +126,20 @@ const compatibilityLabel = computed(() => {
   return 'unknown'
 })
 
+const tooltipText = computed(() => {
+  const lines = [
+    props.attachment.filename,
+    `Type: ${mediaLabel.value}${props.attachment.extension ? ` / ${props.attachment.extension}` : ''}`,
+    `Status: ${statusLabel.value}`,
+  ]
+  if (recommendedRouteLabel.value) lines.push(`Recommended route: ${recommendedRouteLabel.value}`)
+  if (compatibilityLabel.value !== 'unknown') lines.push(`Compatibility: ${compatibilityLabel.value}`)
+  if (props.attachment.warningReason) lines.push(`Warning: ${props.attachment.warningReason}`)
+  if (props.attachment.blockingReason) lines.push(`Blocked: ${props.attachment.blockingReason}`)
+  if (detectionLabel.value) lines.push(`Detection: ${detectionLabel.value}`)
+  return lines.join('\n')
+})
+
 const detectionLabel = computed(() => {
   const detection = detectionInfo.value
   if (!detection) return null
@@ -129,21 +150,6 @@ const detectionLabel = computed(() => {
   if (detection.detectionLevel === 'advanced' && detection.usedMagika) return '高级检测 · Magika'
   if (detection.detectionLevel === 'basic') return '基础检测'
   return '待检测'
-})
-
-const detectionDetail = computed(() => {
-  const detection = detectionInfo.value
-  if (!detection) return null
-  const parts = [
-    `detectionLevel=${detection.detectionLevel ?? 'n/a'}`,
-    `usedMagika=${String(detection.usedMagika)}`,
-    `magikaState=${detection.magikaState}`,
-    `evidenceSources=${detection.evidenceSources.length ? detection.evidenceSources.join(',') : 'none'}`,
-    `decisiveEvidenceSource=${detection.decisiveEvidenceSource ?? 'n/a'}`,
-  ]
-  if (detection.magikaModelVersion) parts.push(`magikaModelVersion=${detection.magikaModelVersion}`)
-  if (detection.advancedFailureReason) parts.push(`advancedFailureReason=${detection.advancedFailureReason}`)
-  return parts.join(' · ')
 })
 
 function removeAttachment() {
@@ -158,17 +164,20 @@ function openDetails() {
 
 <template>
   <div
-    class="relative flex w-[18rem] min-w-0 cursor-pointer flex-col overflow-hidden rounded-lg border shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+    class="group relative flex min-w-0 max-w-[14rem] cursor-pointer items-center gap-2 overflow-visible rounded-full border px-2.5 py-1.5 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
     :class="[toneClass, props.attachment.isParsing ? 'opacity-70 grayscale' : '']"
     :data-testid="`draft-attachment-card-${props.attachment.assetId}`"
     role="button"
     tabindex="0"
+    :title="tooltipText"
+    :aria-label="tooltipText"
     @click="openDetails"
     @keydown.enter.prevent="openDetails"
     @keydown.space.prevent="openDetails"
   >
-    <div class="flex items-start gap-3 p-2.5">
-      <div class="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-white">
+    <span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="dotToneClass" aria-hidden="true"></span>
+    <div class="flex min-w-0 items-center gap-2">
+      <div class="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded border border-gray-200 bg-white">
         <img
           v-if="props.attachment.previewDataUrl"
           :src="props.attachment.previewDataUrl"
@@ -179,71 +188,35 @@ function openDetails() {
         />
         <div
           v-else
-          class="flex h-full w-full flex-col items-center justify-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500"
+          class="flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase text-gray-500"
           data-testid="draft-attachment-placeholder"
         >
-          <div class="text-sm leading-none">▣</div>
-          <div>{{ mediaLabel }}</div>
+          {{ mediaLabel }}
         </div>
       </div>
 
-      <div class="min-w-0 flex-1">
-        <div class="flex items-start justify-between gap-2">
-          <div class="min-w-0">
-            <div class="truncate text-xs font-semibold text-gray-900" :title="props.attachment.filename">
-              {{ props.attachment.filename }}
-            </div>
-            <div class="mt-0.5 text-[11px] text-gray-500">
-              {{ props.attachment.sourceKind }}
-              <span v-if="props.attachment.extension"> · {{ props.attachment.extension }}</span>
-            </div>
-          </div>
-          <button
-            v-if="props.attachment.canRemove"
-            type="button"
-            class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
-            :data-testid="`draft-attachment-remove-${props.attachment.assetId}`"
-            @click.stop="removeAttachment"
-          >
-            Remove
-          </button>
+      <div class="min-w-0">
+        <div class="truncate text-xs font-semibold uppercase tracking-wide text-gray-900">
+          {{ mediaLabel }}<span v-if="props.attachment.extension"> / {{ props.attachment.extension }}</span>
         </div>
-
-        <div class="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
-          <span class="rounded-full border px-2 py-0.5 font-medium uppercase tracking-wide" :class="textToneClass">
-            {{ statusLabel }}
-          </span>
-          <span class="text-gray-500">#{{ props.attachment.assetId }}</span>
-        </div>
-
-        <div v-if="props.attachment.warningReason" class="mt-1 text-[11px] text-amber-700">
-          {{ props.attachment.warningReason }}
-        </div>
-        <div v-else-if="props.attachment.blockingReason" class="mt-1 text-[11px] text-red-700">
-          {{ props.attachment.blockingReason }}
-        </div>
-        <div
-          v-if="detectionLabel"
-          class="mt-1.5 text-[11px]"
-          :class="detectionInfo?.routeEligibility === 'detection_failed' ? 'text-red-700' : 'text-gray-600'"
-          :title="detectionDetail ?? undefined"
-        >
-          {{ detectionLabel }}
-        </div>
-        <div v-if="fileTypeHint" class="mt-1.5 space-y-0.5 text-[11px] text-gray-600">
-          <div>
-            type: {{ fileTypeHint.formatId }} · {{ fileTypeHint.confidenceLevel }}
-          </div>
-          <div>
-            route: {{ recommendedRouteLabel ?? 'n/a' }} · {{ compatibilityLabel }}
-            <span v-if="fileTypeHint.requiresJob"> · needs-job</span>
-            <span v-if="fileTypeHint.engineUnavailable"> · engine-unavailable</span>
-          </div>
-          <div v-if="fileTypeHint.hasConflicts || fileTypeHint.hasExtensionMimeConflict" class="text-amber-700">
-            type conflict detected
-          </div>
-        </div>
+        <div class="truncate text-[10px]" :class="textToneClass">{{ statusLabel }}</div>
       </div>
+    </div>
+    <button
+      v-if="props.attachment.canRemove"
+      type="button"
+      class="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-xs leading-none text-gray-700 hover:bg-gray-50"
+      :data-testid="`draft-attachment-remove-${props.attachment.assetId}`"
+      title="Remove attachment"
+      @click.stop="removeAttachment"
+    >
+      x
+    </button>
+    <div
+      class="pointer-events-none absolute left-0 top-full z-20 mt-2 hidden w-72 whitespace-pre-line rounded border border-gray-200 bg-white p-2 text-xs leading-5 text-gray-700 shadow-lg group-hover:block group-focus:block"
+      data-testid="draft-attachment-tooltip"
+    >
+      {{ tooltipText }}
     </div>
   </div>
 </template>

@@ -64,6 +64,13 @@ const ALLOWLIST = [
     line: /\b(absolutePath|runtimeEntryPath|modelFilePaths|configFilePaths|existsFile|realpath|statPath|readBytes|path\.resolve|path\.relative)\b/u,
   },
   {
+    id: 'dfc-sanitizer-input-and-denylists',
+    reason: 'DFC sanitizer input contracts and private-field denylists must name fields that renderer DTOs strip',
+    path: /^(src\/shared\/files\/documentFormatConversion|src\/next\/ipc\/contracts\/dbBridgeContracts|infra\/files\/(dfcConversionSandbox|electronConversionServiceContract))\.ts$/u,
+    matchTypes: ['contentToken', 'fullHash'],
+    line: /\b(contentToken|fullHash|FULL_HASH_RE|RENDERER_PRIVATE_META_KEYS|dfcAttachmentAuditSchema|DfcRendererAttachmentAuditInput)\b/u,
+  },
+  {
     id: 'negative-privacy-assertions',
     reason: 'tests assert sensitive text is absent or redacted',
     path: /(^|\/)[^/]+\.(test|spec)\.ts$/u,
@@ -104,6 +111,19 @@ const ALLOWLIST = [
     matchTypes: ['c_users_path', 'starverse_path', 'windows_drive_path'],
   },
   {
+    id: 'dfc-privacy-boundary-docs',
+    reason: 'DFC design and evidence docs intentionally name privacy-sensitive fields as forbidden renderer/log output',
+    path: /^docs\/file-pipeline\/document-format-conversion\/.+\.(md|markdown)$/u,
+    matchTypes: ['contentToken'],
+    line: /\b(contentToken|privacy|DTO|renderer|logs?|omit|omits|expose|exposes|禁止|不记录|must not)\b/iu,
+  },
+  {
+    id: 'dfc-historical-path-docs',
+    reason: 'DFC historical and recovery documents contain local path examples as diagnostic evidence, not renderer output',
+    path: /^docs\/file-pipeline\/document-format-conversion\/(archive\/.+|important-context|dfc-m17-html-to-pdf-browser-runtime-blocker|dfc-m29-libreoffice-production-package-policy)\.(md|markdown)$/u,
+    matchTypes: ['c_users_path', 'starverse_path', 'windows_drive_path'],
+  },
+  {
     id: 'user-guide-windows-path-examples',
     reason: 'user guides show Windows path examples for local setup and cleanup',
     path: /^docs\/guides\/(TROUBLESHOOTING|DATA_CLEANUP_GUIDE|DEVELOPMENT_SETUP)\.md$/u,
@@ -112,7 +132,13 @@ const ALLOWLIST = [
   {
     id: 'format-conversion-progress-file-refs',
     reason: 'historical format-conversion progress document contains repo file references',
-    path: /^docs\/file-pipeline\/format-conversion-preview-progress\.md$/u,
+    path: /^(docs\/file-pipeline\/format-conversion-preview-progress|docs\/file-pipeline\/document-format-conversion\/archive\/v1\.0-superseded\/format-conversion-preview-progress)\.md$/u,
+    matchTypes: ['starverse_path', 'windows_drive_path'],
+  },
+  {
+    id: 'maintenance-workdir-docs',
+    reason: 'maintenance audit command logs may name the repo workdir',
+    path: /^docs\/maintenance\/code-health-audits\/.+\/commands\.md$/u,
     matchTypes: ['starverse_path', 'windows_drive_path'],
   },
 ]

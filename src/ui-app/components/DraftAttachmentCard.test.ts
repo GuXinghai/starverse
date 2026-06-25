@@ -54,10 +54,13 @@ describe('DraftAttachmentCard file type hints', () => {
       },
     })
 
-    expect(screen.getByText(/type: docx · high/i)).toBeTruthy()
-    expect(screen.getByText(/route: converted_markdown · warning/i)).toBeTruthy()
-    expect(screen.getByText(/type conflict detected/i)).toBeTruthy()
-    expect(screen.getByText(/高级检测 · Magika/i)).toBeTruthy()
+    const card = screen.getByTestId('draft-attachment-card-asset-a1')
+    expect(card.textContent).toContain('TXT / docx')
+    expect(card.textContent).not.toContain('asset-a1')
+    expect(card.getAttribute('title')).toContain('report.docx')
+    expect(card.getAttribute('title')).toContain('Recommended route: converted_markdown')
+    expect(card.getAttribute('title')).toContain('Compatibility: warning')
+    expect(card.getAttribute('title')).toContain('Detection: 高级检测 · Magika')
   })
 
   it('renders detection state from the app-layer view model', async () => {
@@ -101,6 +104,7 @@ describe('DraftAttachmentCard file type hints', () => {
       },
     })
     expect(screen.getAllByText('待检测').length).toBeGreaterThan(0)
+    expect(screen.getByTestId('draft-attachment-card-asset-a1').getAttribute('title')).toContain('Detection: 待检测')
 
     await rerender({
       attachment: {
@@ -121,7 +125,7 @@ describe('DraftAttachmentCard file type hints', () => {
         },
       },
     })
-    expect(screen.getByText('基础检测')).toBeTruthy()
+    expect(screen.getByTestId('draft-attachment-card-asset-a1').getAttribute('title')).toContain('Detection: 基础检测')
 
     await rerender({
       attachment: {
@@ -142,6 +146,6 @@ describe('DraftAttachmentCard file type hints', () => {
         },
       },
     })
-    expect(screen.getByText('高级检测失败 / Magika 检测失败')).toBeTruthy()
+    expect(screen.getByTestId('draft-attachment-card-asset-a1').getAttribute('title')).toContain('Detection: 高级检测失败 / Magika 检测失败')
   })
 })

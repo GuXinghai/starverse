@@ -18,6 +18,7 @@ import {
   type DfcSendStrategy,
   type DfcTargetKind,
 } from '@/shared/files/documentFormatConversion'
+import { normalizeDfcAttachmentDefaults, type DfcAttachmentDefaults } from '@/shared/files/dfcAttachmentDefaults'
 
 const nonEmpty = z.string().trim().min(1)
 
@@ -612,6 +613,8 @@ const dfcDraftAttachmentOptionsSchema = z.object({
   dfcManaged: z.boolean(),
   selectedOptionId: z.string().trim().nullable().optional(),
   selectedAssetRefs: z.array(dfcSendAssetRefSchema),
+  recommendedOptionId: z.string().trim().nullable().optional(),
+  recommendedReasonCode: z.string().trim().nullable().optional(),
   decision: dfcManagedAttachmentDecisionSchema,
   options: z.array(dfcDraftOptionCandidateSchema),
 }).transform((row): DfcDraftAttachmentOptionsDto => ({
@@ -623,6 +626,8 @@ const dfcDraftAttachmentOptionsSchema = z.object({
   dfcManaged: row.dfcManaged,
   selectedOptionId: row.selectedOptionId ?? null,
   selectedAssetRefs: [...row.selectedAssetRefs],
+  recommendedOptionId: row.recommendedOptionId ?? null,
+  recommendedReasonCode: row.recommendedReasonCode ?? null,
   decision: row.decision,
   options: [...row.options],
 }))
@@ -1184,6 +1189,10 @@ const imageGenerationDefaultSchema = z.object({
   value: definedUnknownSchema.nullable(),
 })
 
+const dfcAttachmentDefaultsSchema = z.object({
+  value: definedUnknownSchema.nullable(),
+}).transform((row): DfcAttachmentDefaults => normalizeDfcAttachmentDefaults(row.value))
+
 const userMessageRenderDefaultSchema = z.object({
   value: z.boolean().nullable(),
 })
@@ -1700,6 +1709,10 @@ export function decodeSamplingParamsDefaultsResponse(raw: unknown): unknown | nu
 
 export function decodeImageGenerationDefaultResponse(raw: unknown): unknown | null {
   return decodeWithSchema('settings.getImageGenerationDefault', imageGenerationDefaultSchema, raw).value
+}
+
+export function decodeDfcAttachmentDefaultsResponse(raw: unknown): DfcAttachmentDefaults {
+  return decodeWithSchema('settings.getDfcAttachmentDefaults', dfcAttachmentDefaultsSchema, raw)
 }
 
 export function decodeUserMessageRenderDefaultResponse(raw: unknown): boolean | null {

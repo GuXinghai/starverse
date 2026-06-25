@@ -182,6 +182,8 @@ const {
   updateSelectedDraftAttachmentSendMode,
   updateSelectedDraftAttachmentUrlRetentionMode,
   updateSelectedDraftAttachmentDfcOption,
+  saveSelectedDraftAttachmentDfcDefault,
+  clearSelectedDraftAttachmentDfcDefault,
   retrySelectedDraftAttachmentPreview,
   attachmentFeedbackTone,
   attachmentFeedbackMessage,
@@ -849,6 +851,8 @@ function shouldShowInlineReasoning(message: any): boolean {
       @update-send-mode="updateSelectedDraftAttachmentSendMode"
       @update-url-retention="updateSelectedDraftAttachmentUrlRetentionMode"
       @update-dfc-option="updateSelectedDraftAttachmentDfcOption"
+      @save-dfc-default="saveSelectedDraftAttachmentDfcDefault"
+      @clear-dfc-default="clearSelectedDraftAttachmentDfcDefault"
       @retry="retrySelectedDraftAttachmentPreview"
     />
 

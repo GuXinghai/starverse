@@ -2,6 +2,7 @@ import BetterSqlite3 from 'better-sqlite3'
 import {
   SETTINGS_KEY_CHAT_REASONING_PANEL_DEFAULT_EXPANDED,
   SETTINGS_KEY_CHAT_REASONING_DISPLAY_MODE,
+  SETTINGS_KEY_DFC_ATTACHMENT_DEFAULTS,
   SETTINGS_KEY_NETWORK_PROXY,
   SETTINGS_KEY_IMAGE_GENERATION_DEFAULT,
   SETTINGS_KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS,
@@ -10,6 +11,7 @@ import {
   SETTINGS_KEY_USER_MESSAGE_RENDER_DEFAULT,
   SETTINGS_KEY_WEB_SEARCH_DEFAULTS,
 } from './settingsKeys'
+import { normalizeDfcAttachmentDefaults } from '../../../src/shared/files/dfcAttachmentDefaults'
 import {
   normalizeNetworkProxySettings,
   proxyUrlContainsCredentials,
@@ -126,6 +128,14 @@ export class SettingsRepo {
 
   setImageGenerationDefault(value: unknown): void {
     this.writeJson(SETTINGS_KEY_IMAGE_GENERATION_DEFAULT, value)
+  }
+
+  getDfcAttachmentDefaults(): unknown {
+    return normalizeDfcAttachmentDefaults(this.readJson(SETTINGS_KEY_DFC_ATTACHMENT_DEFAULTS))
+  }
+
+  setDfcAttachmentDefaults(value: unknown): void {
+    this.writeJson(SETTINGS_KEY_DFC_ATTACHMENT_DEFAULTS, normalizeDfcAttachmentDefaults(value))
   }
 
   getUserMessageRenderDefault(): boolean | null {

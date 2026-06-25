@@ -57,6 +57,7 @@ import {
 import { getUserMessageRenderDefault } from '@/next/settings/userMessageRenderDefaultClient'
 import { getWebSearchDefaults } from '@/next/settings/webSearchDefaultsClient'
 import { getImageGenerationDefault } from '@/next/settings/imageGenerationDefaultClient'
+import { getDfcAttachmentDefaults, setDfcAttachmentDefaults } from '@/next/settings/dfcAttachmentDefaultsClient'
 import { getSamplingParamsDefaults } from '@/next/settings/samplingParamsDefaultsClient'
 import {
   getChatReasoningDisplayMode,
@@ -118,6 +119,13 @@ import type {
 } from '@/shared/files/sendPlanTypes'
 import type { DraftAttachmentSendModePreference, DraftAttachmentUrlRetentionPreference, SendMode } from '@/shared/files/fileTypes'
 import type { DfcAttachmentSendSnapshot, DfcSendAssetRef, DfcSendStrategy, DfcTargetKind } from '@/shared/files/documentFormatConversion'
+import {
+  clearDfcAttachmentDefaultTarget,
+  normalizeDfcAttachmentDefaults,
+  normalizeDfcDefaultFileTypeKey,
+  setDfcAttachmentDefaultTarget,
+  type DfcAttachmentDefaults,
+} from '@/shared/files/dfcAttachmentDefaults'
 import type { MessageAttachmentDetectionInfo, MessageAttachmentDisplayStatus, MessageAttachmentFileTypeInfo, MessageAttachmentVM } from '@/ui-kit/chat/types'
 import type {
   DecodedConversationDraft,
@@ -282,6 +290,7 @@ export function useAppChatAppLogic() {
   const globalUserMessageRenderDefault = ref<boolean | null>(null)
   const globalWebSearchDefaults = ref<SearchSettingsLayer | null>(null)
   const globalSamplingParamsDefaults = ref<SamplingParamsLayer | null>(null)
+  const dfcAttachmentDefaults = ref<DfcAttachmentDefaults>(normalizeDfcAttachmentDefaults(null))
   const skipReasoningPrefSave = ref(false)
   const reasoningPrefSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
   const isDev = import.meta.env.DEV
@@ -334,6 +343,11 @@ export function useAppChatAppLogic() {
     disabledReason: string | null
     label: string
     detail: string
+    explanation: string
+    recommended: boolean
+    recommendationReason: string | null
+    matchesFileTypeDefault: boolean
+    matchesGlobalDefault: boolean
     diagnostics: string[]
     sendAssetRefs: readonly DfcSendAssetRef[]
   }>
@@ -346,6 +360,13 @@ export function useAppChatAppLogic() {
     decisionReasonCode: string | null
     targetKind: DfcTargetKind | null
     sendStrategy: DfcSendStrategy | null
+    recommendedOptionId: string | null
+    recommendedReasonCode: string | null
+    fileTypeKey: string | null
+    fileTypeDefaultTargetKind: DfcTargetKind | null
+    globalDefaultTargetKind: DfcTargetKind | null
+    fileTypeDefaultOptionId: string | null
+    globalDefaultOptionId: string | null
     options: DraftAttachmentDfcOptionViewModel[]
   }>
   type DraftAttachmentDfcPreviewViewModel = Readonly<{
@@ -5066,6 +5087,28 @@ export function useAppChatAppLogic() {
     return value === 'file_attachment' ? 'file attachment' : 'text in prompt'
   }
 
+  function explainDfcTargetKind(value: DfcTargetKind): string {
+    if (value === 'original_file') return 'Sends the uploaded file as a file attachment when the model supports it.'
+    if (value === 'plain_text') return 'Sends the backend-derived plain text in the prompt.'
+    if (value === 'markdown') return 'Sends backend-derived Markdown in the prompt.'
+    if (value === 'code') return 'Sends backend-derived source/code text in the prompt.'
+    if (value === 'table_markdown') return 'Sends backend-derived table Markdown in the prompt.'
+    return 'Sends the backend-derived PDF as a file attachment; preview is metadata-only.'
+  }
+
+  function formatDfcRecommendationReason(value: string | null): string | null {
+    if (value === 'backend_recommends_text_preview') return 'Recommended because the backend has a previewable text asset for this file.'
+    if (value === 'backend_recommends_layout_fidelity') return 'Recommended because the backend has a PDF asset for layout fidelity.'
+    if (value === 'backend_recommends_original_file_fallback') return 'Recommended as the safest available fallback when no derived asset is ready.'
+    return value
+  }
+
+  function getDfcDefaultFileTypeKey(asset: DecodedFileAsset | null, filename: string | null | undefined): string | null {
+    const extension = normalizeDfcDefaultFileTypeKey(asset?.extension ?? normalizeExtension(filename ?? ''))
+    if (extension) return extension
+    return normalizeDfcDefaultFileTypeKey(asset?.assetKind ?? null)
+  }
+
   function buildDfcOptionDisabledReason(option: DecodedDfcDraftAttachmentOptions['options'][number]): string | null {
     if (option.status === 'pending' || option.status === 'candidate' || option.compatibilityStatus === 'pending') return 'pending'
     if (option.status === 'failed') return 'failed'
@@ -5076,10 +5119,13 @@ export function useAppChatAppLogic() {
     return null
   }
 
-  function buildDfcOptionsViewModel(assetId: string): DraftAttachmentDfcOptionsViewModel {
+  function buildDfcOptionsViewModel(assetId: string, asset: DecodedFileAsset | null): DraftAttachmentDfcOptionsViewModel {
     const dto = draftAttachmentDfcOptionsByAssetId.value[assetId] ?? null
     const loading = draftAttachmentDfcOptionsLoadingByAssetId.value[assetId] === true
     const error = draftAttachmentDfcOptionsErrorByAssetId.value[assetId] ?? null
+    const fileTypeKey = getDfcDefaultFileTypeKey(asset, dto?.filename ?? asset?.filename ?? assetId)
+    const fileTypeDefaultTargetKind = fileTypeKey ? dfcAttachmentDefaults.value.fileTypeTargetKinds[fileTypeKey] ?? null : null
+    const globalDefaultTargetKind = dfcAttachmentDefaults.value.globalTargetKind
     if (!dto) {
       return {
         loading,
@@ -5090,9 +5136,22 @@ export function useAppChatAppLogic() {
         decisionReasonCode: null,
         targetKind: null,
         sendStrategy: null,
+        recommendedOptionId: null,
+        recommendedReasonCode: null,
+        fileTypeKey,
+        fileTypeDefaultTargetKind,
+        globalDefaultTargetKind,
+        fileTypeDefaultOptionId: null,
+        globalDefaultOptionId: null,
         options: [],
       }
     }
+    const fileTypeDefaultOption = fileTypeDefaultTargetKind
+      ? dto.options.find((option) => option.targetKind === fileTypeDefaultTargetKind && option.isAvailable) ?? null
+      : null
+    const globalDefaultOption = globalDefaultTargetKind
+      ? dto.options.find((option) => option.targetKind === globalDefaultTargetKind && option.isAvailable) ?? null
+      : null
     return {
       loading,
       error,
@@ -5102,8 +5161,16 @@ export function useAppChatAppLogic() {
       decisionReasonCode: dto.decision.reasonCode,
       targetKind: dto.decision.targetKind,
       sendStrategy: dto.decision.sendStrategy,
+      recommendedOptionId: dto.recommendedOptionId,
+      recommendedReasonCode: dto.recommendedReasonCode,
+      fileTypeKey,
+      fileTypeDefaultTargetKind,
+      globalDefaultTargetKind,
+      fileTypeDefaultOptionId: fileTypeDefaultOption?.optionId ?? null,
+      globalDefaultOptionId: globalDefaultOption?.optionId ?? null,
       options: dto.options.map((option) => {
         const disabledReason = buildDfcOptionDisabledReason(option)
+        const recommended = option.optionId === dto.recommendedOptionId
         return {
           optionId: option.optionId,
           targetKind: option.targetKind,
@@ -5435,6 +5502,8 @@ export function useAppChatAppLogic() {
         dfcManaged: true,
         selectedOptionId: ELECTRON_SMOKE_DFC_OPTION_ID,
         selectedAssetRefs: sendAssetRefs,
+        recommendedOptionId: ELECTRON_SMOKE_DFC_OPTION_ID,
+        recommendedReasonCode: 'backend_recommends_text_preview',
         decision: {
           status: 'ready',
           reasonCode: null,
@@ -5558,7 +5627,7 @@ export function useAppChatAppLogic() {
       localCopyExists: urlInfo?.localCopyExists ?? false,
       retryPreviewAvailable,
       retryPreviewReason,
-      dfcOptions: buildDfcOptionsViewModel(id),
+      dfcOptions: buildDfcOptionsViewModel(id, asset),
       dfcPreview: buildDfcPreviewViewModel(id),
     }
   }
@@ -6168,6 +6237,52 @@ export function useAppChatAppLogic() {
     })
     void refreshDraftAttachmentDfcOptions(assetId)
     void refreshDraftAttachmentDfcPreview(assetId)
+  }
+
+  async function saveSelectedDraftAttachmentDfcDefault(input: Readonly<{
+    scope: 'file_type' | 'global'
+    targetKind: DfcTargetKind
+  }>) {
+    const assetId = String(selectedDraftAttachmentAssetId.value ?? '').trim()
+    const details = buildDraftAttachmentDetailsViewModel(assetId)
+    const fileTypeKey = details?.dfcOptions.fileTypeKey ?? null
+    if (input.scope === 'file_type' && !fileTypeKey) {
+      setAttachmentFeedback('warning', 'File type default is unavailable for this attachment.')
+      return
+    }
+    const next = setDfcAttachmentDefaultTarget(dfcAttachmentDefaults.value, {
+      scope: input.scope,
+      targetKind: input.targetKind,
+      fileTypeKey,
+    })
+    const saved = await setDfcAttachmentDefaults(next)
+    if (!saved) {
+      setAttachmentFeedback('error', 'Could not save DFC attachment default.')
+      return
+    }
+    dfcAttachmentDefaults.value = next
+    setAttachmentFeedback('success', input.scope === 'file_type' ? 'Saved file type default.' : 'Saved global attachment default.')
+  }
+
+  async function clearSelectedDraftAttachmentDfcDefault(scope: 'file_type' | 'global') {
+    const assetId = String(selectedDraftAttachmentAssetId.value ?? '').trim()
+    const details = buildDraftAttachmentDetailsViewModel(assetId)
+    const fileTypeKey = details?.dfcOptions.fileTypeKey ?? null
+    if (scope === 'file_type' && !fileTypeKey) {
+      setAttachmentFeedback('warning', 'File type default is unavailable for this attachment.')
+      return
+    }
+    const next = clearDfcAttachmentDefaultTarget(dfcAttachmentDefaults.value, {
+      scope,
+      fileTypeKey,
+    })
+    const saved = await setDfcAttachmentDefaults(next)
+    if (!saved) {
+      setAttachmentFeedback('error', 'Could not clear DFC attachment default.')
+      return
+    }
+    dfcAttachmentDefaults.value = next
+    setAttachmentFeedback('success', scope === 'file_type' ? 'Cleared file type default.' : 'Cleared global attachment default.')
   }
 
   async function retrySelectedDraftAttachmentPreview() {
@@ -6819,6 +6934,18 @@ export function useAppChatAppLogic() {
       }
     }
     return globalImageGenerationDefault.value
+  }
+
+  async function refreshDfcAttachmentDefaults(): Promise<DfcAttachmentDefaults> {
+    try {
+      dfcAttachmentDefaults.value = await getDfcAttachmentDefaults()
+    } catch (err) {
+      dfcAttachmentDefaults.value = normalizeDfcAttachmentDefaults(null)
+      if (shouldLogDebug()) {
+        console.warn('[ui-app] refreshDfcAttachmentDefaults failed:', err)
+      }
+    }
+    return dfcAttachmentDefaults.value
   }
 
   function handleGlobalImageGenerationDefaultUpdated(event: Event) {
@@ -9731,6 +9858,7 @@ export function useAppChatAppLogic() {
       await refreshGlobalSamplingParamsDefaults()
       await refreshGlobalUserMessageRenderDefault()
       await refreshGlobalImageGenerationDefault()
+      await refreshDfcAttachmentDefaults()
       reasoningDisplayMode.value = await getChatReasoningDisplayMode()
       await loadTranscriptForActiveConvo()
       await restoreDraftForActiveScope()
@@ -10183,6 +10311,8 @@ export function useAppChatAppLogic() {
     updateSelectedDraftAttachmentSendMode,
     updateSelectedDraftAttachmentUrlRetentionMode,
     updateSelectedDraftAttachmentDfcOption,
+    saveSelectedDraftAttachmentDfcDefault,
+    clearSelectedDraftAttachmentDfcDefault,
     retrySelectedDraftAttachmentPreview,
     openAttachmentUrlDialog,
     closeAttachmentUrlDialog,

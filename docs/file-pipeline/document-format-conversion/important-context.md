@@ -2138,3 +2138,19 @@ Proceed to M56 only with explicit Owner direction: either use the fixed live smo
 - User-facing wording for this scope: Windows x64 supported; DOCX to PDF only; managed LibreOffice runtime; manual official install; no automatic conversion-time download; macOS/Linux pending.
 - Final classification: `libreoffice_plugin_available_live_docx_verified`.
 - Recommended M64: prepare release-facing support notes and operational monitoring for the Windows x64 DOCX-to-PDF path without expanding platform or format scope.
+
+## DFC-M64 attachment productization recovery notes
+
+- M64 productized existing DFC v1.2 attachment sending surfaces without adding new conversion engines, dependencies, runtime families, unsupported file types, system/PATH LibreOffice fallback, or automatic download behavior.
+- Attachment Shelf now uses compact chips with status color, remove control, safe title/tooltip details, and click-to-detail behavior. The chip does not show internal asset ids.
+- Detail Inspector now exposes backend-owned target-format cards, recommendation/default badges, explicit route selection controls, warnings/diagnostics, actual text send preview for text routes, and metadata-only raw/PDF preview copy.
+- Backend owns `recommendedOptionId`, `recommendedReasonCode`, option ids, compatibility, selected refs, and send strategy. Renderer defaults store only sanitized `targetKind` preferences by global/file-type scope; applying a default resolves to the current backend option and refs.
+- Renderer still must not forge `optionId`, `targetKind`, compatibility, `SendAssetRef`, derived asset ids, or stale default refs.
+- Privacy boundary: UI copy and tests must not expose local paths, `storageUri`, tokens, env values, command lines, executable paths, full hashes, raw backend payloads, or unintended file body text. Raw/PDF previews should remain metadata-only.
+- Validation passed: focused DFC/UI/contract Vitest 6 files / 305 tests; send-plan serializer Vitest 2 files / 78 tests; `npx vue-tsc --noEmit --pretty false`; real `npm run test:electron-smoke`; `git diff --check`; `npm run gate:privacy`.
+- The first Electron smoke run failed only because metadata-only preview copy used the word `storage` while explaining hidden paths; no real path or storage URI was observed. Copy was reworded and the same smoke then passed with `previewContainsPath: false`.
+- `npm run test:electron-smoke` rebuilt for Electron, launched Starverse, confirmed scoped preload boundary, seeded backend-owned Markdown attachment, opened Detail Inspector, generated HTML `pdf_attachment`, verified selected derived ref and metadata-only preview, and captured visual diagnostics.
+- Current ABI target after M64 validation is Electron. Do not commit native rebuild side effects, `node_modules`, generated binaries, or build artifacts.
+- Commit isolation used a DFC-only partial staged patch for overlapping files such as `src/ui-app/AppChatApp.vue` and `src/ui-app/app/appChatApp.logic.ts`; the staged hunks exclude provider/runtime and DOCX smoke seam work.
+- Clean-worktree closeout was removed from DFC-M64 acceptance by the user on 2026-06-25 10:58 +08:00. Pre-existing unrelated provider/runtime dirty changes remain outside the DFC-only commit path; an unverified DOCX smoke seam is also mixed into the same dirty `appChatApp.logic.ts` surface. Do not absorb or revert those non-DFC-M64 changes from this DFC goal without an owner decision.
+- Final classification: `attachment_productization_verified_dfc_committed_revised_goal_complete`.
