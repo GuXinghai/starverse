@@ -356,6 +356,18 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
         return { ok: true }
     })
 
+  register('settings.getDfcAttachmentDefaults', () => {
+        return { value: rt.settingsRepo.getDfcAttachmentDefaults() }
+    })
+
+  register('settings.setDfcAttachmentDefaults', (raw) => {
+        if (!raw || typeof raw !== 'object' || !('value' in raw)) {
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.setDfcAttachmentDefaults requires value')
+        }
+        rt.settingsRepo.setDfcAttachmentDefaults((raw as any).value ?? null)
+        return { ok: true }
+    })
+
   register('settings.getUserMessageRenderDefault', () => {
         return { value: rt.settingsRepo.getUserMessageRenderDefault() }
     })

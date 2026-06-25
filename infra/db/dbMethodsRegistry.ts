@@ -169,6 +169,8 @@ export const DB_METHODS = [
   { name: 'settings.setSamplingParamsDefaults', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.getImageGenerationDefault', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.setImageGenerationDefault', renderer: true, worker: true, domain: 'settings' },
+  { name: 'settings.getDfcAttachmentDefaults', renderer: true, worker: true, domain: 'settings' },
+  { name: 'settings.setDfcAttachmentDefaults', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.getUserMessageRenderDefault', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.setUserMessageRenderDefault', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.getChatReasoningDisplayMode', renderer: true, worker: true, domain: 'settings' },

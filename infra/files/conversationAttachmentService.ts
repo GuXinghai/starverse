@@ -429,6 +429,7 @@ export class ConversationAttachmentService {
     const options = this.buildDfcOptionCandidates(attachment, asset)
     const decision = this.resolveDfcDraftDecision(attachment, asset, options)
     const mismatchDiagnostic = this.dfcPersistedSelectionMismatchDiagnostic(attachment, decision)
+    const recommendation = this.recommendDfcOption(options)
     return {
       attachmentId: attachment.id,
       conversationId,
@@ -438,6 +439,8 @@ export class ConversationAttachmentService {
       dfcManaged: attachment.dfcManaged,
       selectedOptionId: attachment.dfcManaged ? attachment.selectedOptionId : null,
       selectedAssetRefs: attachment.dfcManaged ? [...attachment.selectedAssetRefs] : [],
+      recommendedOptionId: recommendation.optionId,
+      recommendedReasonCode: recommendation.reasonCode,
       decision,
       options: options.map((option) => this.toDfcDraftOptionCandidateDto(
         option,
@@ -501,6 +504,33 @@ export class ConversationAttachmentService {
       ),
       optionGenerationState: null,
     })
+  }
+
+  private recommendDfcOption(options: readonly DfcConversionOption[]): Readonly<{
+    optionId: string | null
+    reasonCode: string | null
+  }> {
+    const available = options.filter((option) => option.isAvailable && option.status === 'ready')
+    const targetPriority: readonly DfcTargetKind[] = [
+      'table_markdown',
+      'markdown',
+      'code',
+      'plain_text',
+      'pdf_attachment',
+      'original_file',
+    ]
+    for (const targetKind of targetPriority) {
+      const option = available.find((candidate) => candidate.targetKind === targetKind) ?? null
+      if (!option) continue
+      if (targetKind === 'pdf_attachment') {
+        return { optionId: option.optionId, reasonCode: 'backend_recommends_layout_fidelity' }
+      }
+      if (targetKind === 'original_file') {
+        return { optionId: option.optionId, reasonCode: 'backend_recommends_original_file_fallback' }
+      }
+      return { optionId: option.optionId, reasonCode: 'backend_recommends_text_preview' }
+    }
+    return { optionId: null, reasonCode: null }
   }
 
   private dfcPersistedSelectionMismatchDiagnostic(

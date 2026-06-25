@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppChatApp from './AppChatApp.vue'
@@ -81,6 +81,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
   let lastSendPlanModelInputModalities: string[] = ['text']
   let sendPlanBuildCallCount = 0
   let lastSendPlanAttachmentPlans: any[] = []
+  let dfcAttachmentDefaultsValue: unknown = null
   let forceBlockedOnSecondSendPlanBuild = false
   let contextMessages: Array<Record<string, unknown>> = []
   let convoRows: Array<Record<string, unknown>> = []
@@ -484,6 +485,9 @@ describe('ui-app AppChatApp attachment entry flow', () => {
                 : displayStatus === 'ready_with_warnings'
                   ? ['Attachment can be sent with warnings.']
                   : []
+      const semantic = attachment.dfcManaged === true && String(attachment.selectedOptionId ?? '').includes(':markdown:')
+        ? { targetKind: 'markdown', sendStrategy: 'text_in_prompt', mappedFromLegacy: false }
+        : undefined
       return {
         assetId,
         attachmentId: String(attachment.id ?? ''),
@@ -506,9 +510,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
         displayStatus,
         needsUserAttention: eligibility !== 'included',
         notes,
-        semantic: attachment.dfcManaged === true && String(attachment.selectedOptionId ?? '').includes(':markdown:')
-          ? { targetKind: 'markdown', sendStrategy: 'text_in_prompt', mappedFromLegacy: false }
-          : null,
+        ...(semantic ? { semantic } : {}),
         sendAssetRefs: attachment.dfcManaged === true ? [...(attachment.selectedAssetRefs ?? [])] : [],
       }
     })
@@ -677,8 +679,22 @@ describe('ui-app AppChatApp attachment entry flow', () => {
   }
 
   beforeEach(() => {
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.model')
+    globalThis.localStorage?.setItem('starverse.openRouterTextChat.enabled', '1')
     draftResponse = baseDraft()
     sendPlanBuildCallCount = 0
+    lastSendPlanAttachmentPlans = []
+    dfcAttachmentDefaultsValue = null
     forceBlockedOnSecondSendPlanBuild = false
     contextMessages = []
     convoRows = [{ id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 2, meta: { selectedModelKey: 'openai/gpt-4o' } }]
@@ -700,6 +716,11 @@ describe('ui-app AppChatApp attachment entry flow', () => {
       if (method === 'settings.getSamplingParamsDefaults') return { value: null }
       if (method === 'settings.getUserMessageRenderDefault') return { value: null }
       if (method === 'settings.getImageGenerationDefault') return { value: null }
+      if (method === 'settings.getDfcAttachmentDefaults') return { value: dfcAttachmentDefaultsValue }
+      if (method === 'settings.setDfcAttachmentDefaults') {
+        dfcAttachmentDefaultsValue = params?.value ?? null
+        return { ok: true }
+      }
       if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
       if (method === 'settings.setChatReasoningDisplayMode') return { ok: true }
 
@@ -1281,6 +1302,74 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     ;(globalThis as any).dbBridge = { invoke }
     ;(globalThis as any).electronAPI = {
       selectLocalFiles,
+      modelCatalogQueryScopedCurrent: vi.fn(async () => ({
+        status: 'synced',
+        catalogRevision: 'attachments-test',
+        modelCount: 1,
+        lastSyncAtMs: 123,
+        items: [
+          {
+            providerKey: 'openrouter',
+            modelId: 'openai/gpt-4o',
+            modelKey: 'openrouter::openai/gpt-4o',
+            canonicalSlug: 'openai/gpt-4o',
+            displayName: 'GPT-4o',
+            description: 'text only',
+            vendor: 'openai',
+            family: null,
+            status: 'active',
+            visibility: 'visible',
+            contextLength: 128000,
+            maxOutputTokens: 16384,
+            inputModalities: ['text'],
+            outputModalities: ['text'],
+            supportedParameters: [],
+            pricing: {
+              prompt: null,
+              completion: null,
+              request: null,
+              image: null,
+            },
+            capabilities: {
+              reasoning: true,
+              tools: true,
+              structuredOutputs: true,
+              vision: false,
+              longContext: true,
+            },
+            createdAtSec: 1,
+            firstSeenAtMs: 1,
+            lastSeenAtMs: 1,
+            syncedAtMs: 1,
+            raw: {
+              inputModalitiesJson: '["text"]',
+              outputModalitiesJson: '["text"]',
+              supportedParametersJson: '[]',
+              capabilitiesJson: '{"reasoning":true,"tools":true,"structuredOutputs":true,"vision":false,"longContext":true}',
+              pricingJson: null,
+            },
+          },
+        ],
+        nextCursor: null,
+      })),
+      modelCatalogGetSyncStatus: vi.fn(async () => ({
+        ok: true,
+        providerKey: 'openrouter',
+        status: 'synced',
+        syncState: 'ok',
+        failureReasonCode: null,
+        lastSyncedAtMs: 123,
+        modelCount: 1,
+      })),
+      modelCatalogSyncNow: vi.fn(async () => ({
+        ok: true,
+        providerKey: 'openrouter',
+        status: 'synced',
+        syncState: 'ok',
+        syncAttempted: false,
+        modelCount: 1,
+        lastSyncedAtMs: 123,
+      })),
     }
     ;(globalThis as any).electronStore = {
       get: vi.fn(async (key: string) => {
@@ -1292,6 +1381,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
   })
 
   afterEach(() => {
+    cleanup()
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronAPI = originalElectronApi
     ;(globalThis as any).electronStore = originalElectronStore
@@ -2296,6 +2386,50 @@ describe('ui-app AppChatApp attachment entry flow', () => {
           sendAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-markdown' }],
         }),
       ]))
+    })
+  })
+
+  it('saves and applies DFC defaults without persisting backend option ids', async () => {
+    const user = userEvent.setup()
+    draftResponse = {
+      ...baseDraft(),
+      attachments: [makeDraftAttachment('asset-dfc', { attachmentOrder: 0 })],
+      attachedAssetIds: ['asset-dfc'],
+    }
+
+    render(AppChatApp)
+
+    await user.click(await screen.findByTestId('draft-attachment-card-asset-dfc'))
+    await screen.findByTestId('draft-attachment-details-dialog')
+    await screen.findByTestId('draft-attachment-dfc-option-markdown')
+
+    await user.click(screen.getByTestId('draft-attachment-dfc-save-global-default-markdown'))
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith('settings.setDfcAttachmentDefaults', {
+        value: {
+          globalTargetKind: 'markdown',
+          fileTypeTargetKinds: {},
+        },
+      })
+    })
+    expect(dfcAttachmentDefaultsValue).toEqual({
+      globalTargetKind: 'markdown',
+      fileTypeTargetKinds: {},
+    })
+    expect(JSON.stringify(dfcAttachmentDefaultsValue)).not.toContain('dfc:')
+    expect(JSON.stringify(dfcAttachmentDefaultsValue)).not.toContain('derivative-markdown')
+
+    await user.click(await screen.findByTestId('draft-attachment-dfc-apply-global-default'))
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith('conversationDraft.updateAttachmentSettings', expect.objectContaining({
+        conversationId: 'c1',
+        assetId: 'asset-dfc',
+        dfcManaged: true,
+        selectedOptionId: 'dfc:asset-dfc:markdown:derived_asset:derivative-markdown',
+        selectedAssetRefs: [{ kind: 'derived_asset', assetId: 'derivative-markdown' }],
+      }))
     })
   })
 

@@ -233,6 +233,8 @@ export type DfcDraftAttachmentOptionsDto = Readonly<{
   dfcManaged: boolean
   selectedOptionId: string | null
   selectedAssetRefs: readonly DfcSendAssetRef[]
+  recommendedOptionId: string | null
+  recommendedReasonCode: string | null
   decision: DfcManagedAttachmentDecision
   options: readonly DfcDraftOptionCandidateDto[]
 }>

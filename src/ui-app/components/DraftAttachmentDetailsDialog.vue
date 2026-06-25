@@ -27,6 +27,11 @@ type DraftAttachmentDfcOption = Readonly<{
   disabledReason: string | null
   label: string
   detail: string
+  explanation: string
+  recommended: boolean
+  recommendationReason: string | null
+  matchesFileTypeDefault: boolean
+  matchesGlobalDefault: boolean
   diagnostics: readonly string[]
 }>
 
@@ -39,6 +44,13 @@ type DraftAttachmentDfcOptions = Readonly<{
   decisionReasonCode: string | null
   targetKind: string | null
   sendStrategy: string | null
+  recommendedOptionId: string | null
+  recommendedReasonCode: string | null
+  fileTypeKey: string | null
+  fileTypeDefaultTargetKind: string | null
+  globalDefaultTargetKind: string | null
+  fileTypeDefaultOptionId: string | null
+  globalDefaultOptionId: string | null
   options: readonly DraftAttachmentDfcOption[]
 }>
 
@@ -123,6 +135,8 @@ const emit = defineEmits<{
   (e: 'update-send-mode', value: DraftAttachmentSendModePreference): void
   (e: 'update-url-retention', value: DraftAttachmentUrlRetentionPreference): void
   (e: 'update-dfc-option', optionId: string): void
+  (e: 'save-dfc-default', input: { scope: 'file_type' | 'global'; targetKind: any }): void
+  (e: 'clear-dfc-default', scope: 'file_type' | 'global'): void
   (e: 'retry'): void
 }>()
 
@@ -154,6 +168,32 @@ function updateUrlRetention(value: DraftAttachmentUrlRetentionPreference) {
 function updateDfcOption(option: DraftAttachmentDfcOption) {
   if (option.disabled) return
   emit('update-dfc-option', option.optionId)
+}
+
+function formatDfcTargetKind(value: string | null): string {
+  if (value === 'original_file') return 'Original file'
+  if (value === 'plain_text') return 'Plain text'
+  if (value === 'markdown') return 'Markdown'
+  if (value === 'code') return 'Code'
+  if (value === 'table_markdown') return 'Table markdown'
+  if (value === 'pdf_attachment') return 'PDF attachment'
+  return 'Not set'
+}
+
+function recommendedDfcTargetKind(): string | null {
+  const dfcOptions = props.attachment?.dfcOptions
+  if (!dfcOptions) return null
+  return dfcOptions.options.find((option) => option.optionId === dfcOptions.recommendedOptionId)?.targetKind ?? null
+}
+
+function saveDfcDefault(scope: 'file_type' | 'global', option: DraftAttachmentDfcOption) {
+  if (option.disabled) return
+  emit('save-dfc-default', { scope, targetKind: option.targetKind })
+}
+
+function applyDfcDefault(optionId: string | null) {
+  if (!optionId) return
+  emit('update-dfc-option', optionId)
 }
 
 function removeAttachment() {
@@ -252,8 +292,15 @@ function removeAttachment() {
       </div>
 
       <div class="mt-4 grid gap-4 md:grid-cols-2">
-        <section class="space-y-2 rounded border border-gray-200 p-3" data-testid="draft-attachment-dfc-options">
-          <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Format</div>
+        <section class="space-y-3 rounded border border-gray-200 p-3" data-testid="draft-attachment-dfc-options">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Target format</div>
+              <div class="mt-1 text-[11px] text-gray-500">
+                Backend routes only. Choosing a card stores its backend option and refs; defaults do not auto-switch this draft.
+              </div>
+            </div>
+          </div>
           <div v-if="props.attachment.dfcOptions.loading" class="text-sm text-gray-500" data-testid="draft-attachment-dfc-options-loading">
             Loading...
           </div>
@@ -261,21 +308,82 @@ function removeAttachment() {
             {{ props.attachment.dfcOptions.error }}
           </div>
           <div v-else-if="props.attachment.dfcOptions.options.length > 0" class="space-y-2">
-            <button
+            <div class="rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-600" data-testid="draft-attachment-dfc-defaults">
+              <div class="flex flex-wrap gap-x-4 gap-y-1">
+                <span>Recommended: {{ formatDfcTargetKind(recommendedDfcTargetKind()) }}</span>
+                <span>File type default<span v-if="props.attachment.dfcOptions.fileTypeKey"> ({{ props.attachment.dfcOptions.fileTypeKey }})</span>: {{ formatDfcTargetKind(props.attachment.dfcOptions.fileTypeDefaultTargetKind) }}</span>
+                <span>Global default: {{ formatDfcTargetKind(props.attachment.dfcOptions.globalDefaultTargetKind) }}</span>
+              </div>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  :disabled="!props.attachment.dfcOptions.fileTypeDefaultOptionId"
+                  data-testid="draft-attachment-dfc-apply-file-type-default"
+                  @click="applyDfcDefault(props.attachment.dfcOptions.fileTypeDefaultOptionId)"
+                >
+                  Use file type default
+                </button>
+                <button
+                  type="button"
+                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  :disabled="!props.attachment.dfcOptions.globalDefaultOptionId"
+                  data-testid="draft-attachment-dfc-apply-global-default"
+                  @click="applyDfcDefault(props.attachment.dfcOptions.globalDefaultOptionId)"
+                >
+                  Use global default
+                </button>
+                <button
+                  type="button"
+                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  :disabled="!props.attachment.dfcOptions.fileTypeDefaultTargetKind"
+                  data-testid="draft-attachment-dfc-clear-file-type-default"
+                  @click="emit('clear-dfc-default', 'file_type')"
+                >
+                  Clear file type default
+                </button>
+                <button
+                  type="button"
+                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  :disabled="!props.attachment.dfcOptions.globalDefaultTargetKind"
+                  data-testid="draft-attachment-dfc-clear-global-default"
+                  @click="emit('clear-dfc-default', 'global')"
+                >
+                  Clear global default
+                </button>
+              </div>
+            </div>
+            <div
               v-for="option in props.attachment.dfcOptions.options"
               :key="option.optionId"
-              type="button"
-              class="w-full rounded border px-3 py-2 text-left text-sm"
-              :class="option.disabled ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400' : option.selected ? 'border-blue-300 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-800 hover:bg-gray-50'"
-              :disabled="option.disabled"
+              class="rounded border p-3 text-sm"
+              :class="option.disabled ? 'border-gray-200 bg-gray-50 text-gray-400' : option.selected ? 'border-blue-300 bg-blue-50 text-blue-900' : option.recommended ? 'border-green-300 bg-green-50 text-gray-900' : 'border-gray-200 bg-white text-gray-800'"
               :data-testid="`draft-attachment-dfc-option-${option.targetKind}`"
+              role="button"
+              :tabindex="option.disabled ? -1 : 0"
               @click="updateDfcOption(option)"
+              @keydown.enter.prevent="updateDfcOption(option)"
+              @keydown.space.prevent="updateDfcOption(option)"
             >
               <div class="flex items-center justify-between gap-2">
-                <span>{{ option.label }}</span>
-                <span v-if="option.selected" class="text-[11px] text-blue-700">selected</span>
+                <div class="min-w-0">
+                  <div class="font-medium">{{ option.label }}</div>
+                  <div class="mt-1 text-[11px] text-gray-500">{{ option.explanation }}</div>
+                </div>
+                <div class="flex shrink-0 flex-wrap justify-end gap-1 text-[10px] uppercase tracking-wide">
+                  <span v-if="option.selected" class="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700">selected</span>
+                  <span v-if="option.recommended" class="rounded-full bg-green-100 px-2 py-0.5 text-green-700">recommended</span>
+                  <span v-if="option.matchesFileTypeDefault" class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">file default</span>
+                  <span v-if="option.matchesGlobalDefault" class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-700">global default</span>
+                </div>
               </div>
-              <div class="mt-1 text-[11px] text-gray-500">{{ option.detail }}</div>
+              <div class="mt-2 text-[11px] text-gray-500">
+                {{ option.detail }}
+                <span v-if="option.compatibilityStatus"> · compatibility={{ option.compatibilityStatus }}</span>
+              </div>
+              <div v-if="option.recommendationReason" class="mt-1 text-[11px] text-green-700">
+                {{ option.recommendationReason }}
+              </div>
               <div v-if="option.disabledReason" class="mt-1 text-[11px] text-gray-500">{{ option.disabledReason }}</div>
               <div
                 v-for="diagnostic in option.diagnostics"
@@ -285,7 +393,36 @@ function removeAttachment() {
               >
                 {{ diagnostic }}
               </div>
-            </button>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  :disabled="option.disabled"
+                  :data-testid="`draft-attachment-dfc-use-option-${option.targetKind}`"
+                  @click.stop="updateDfcOption(option)"
+                >
+                  Use this path
+                </button>
+                <button
+                  type="button"
+                  class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  :disabled="option.disabled || !props.attachment.dfcOptions.fileTypeKey"
+                  :data-testid="`draft-attachment-dfc-save-file-type-default-${option.targetKind}`"
+                  @click.stop="saveDfcDefault('file_type', option)"
+                >
+                  Set file type default
+                </button>
+                <button
+                  type="button"
+                  class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  :disabled="option.disabled"
+                  :data-testid="`draft-attachment-dfc-save-global-default-${option.targetKind}`"
+                  @click.stop="saveDfcDefault('global', option)"
+                >
+                  Set global default
+                </button>
+              </div>
+            </div>
           </div>
           <div v-else class="text-sm text-gray-500" data-testid="draft-attachment-dfc-options-empty">
             No format options.
@@ -297,7 +434,10 @@ function removeAttachment() {
         </section>
 
         <section class="space-y-2 rounded border border-gray-200 p-3" data-testid="draft-attachment-dfc-preview">
-          <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Preview</div>
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Send preview</div>
+            <div class="mt-1 text-[11px] text-gray-500">Preview is built from the selected backend route, not from renderer guesses.</div>
+          </div>
           <div v-if="props.attachment.dfcPreview.loading" class="text-sm text-gray-500" data-testid="draft-attachment-dfc-preview-loading">
             Loading...
           </div>
@@ -323,7 +463,12 @@ function removeAttachment() {
               class="rounded border border-gray-200 bg-gray-50 p-2 text-sm text-gray-700"
               data-testid="draft-attachment-dfc-preview-raw"
             >
-              Original file selected.
+              <span v-if="props.attachment.dfcPreview.targetKind === 'pdf_attachment'">
+                PDF attachment selected. This metadata-only preview uses the same derived asset that will be sent; content bytes and local location are hidden.
+              </span>
+              <span v-else>
+                Original file selected. This metadata-only preview uses the selected raw file ref; content bytes and local location are hidden.
+              </span>
             </div>
             <div v-else class="text-sm text-gray-500" data-testid="draft-attachment-dfc-preview-empty">
               No selected preview.

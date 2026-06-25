@@ -140,3 +140,30 @@ As of M32 / HEAD `7040dc5`, the current DFC demo-readiness matrix is:
 | PS/EPS | unsupported |
 
 The original M1 non-goals described the M1 baseline before later owner-approved pilots. M32 does not rewrite that history; this addendum records the current deadline closeout state after M21 HTML-to-PDF smoke and M31 Office-to-PDF imported-runtime smoke.
+
+## DFC-M64 attachment productization addendum
+
+As of 2026-06-25, the DFC v1.2 attachment sending experience has a productized UI shell over the existing backend-owned capability surface:
+
+| Area | Current state |
+| --- | --- |
+| Attachment Shelf | Implemented as compact draft attachment chips with status color, remove control, click-to-detail, safe title/tooltip text, and no visible asset id. |
+| Chip tooltip | Implemented with filename/type/status/recommended route/compatibility/warning summaries; no local path, storage URI, token, command, env, full hash, or body exposure. |
+| Detail Inspector | Implemented with backend target-format cards, selected/recommended/default badges, explicit selection, warnings/diagnostics, URL retention/send-mode controls, and remove/retry controls. |
+| Preview | Implemented from the selected backend option/ref path; text previews show selected send text, while `original_file` and `pdf_attachment` use metadata-only copy. |
+| Recommendation | Backend-owned `recommendedOptionId` and `recommendedReasonCode` are surfaced as recommendation labels only; they do not silently select or mutate a draft. |
+| User defaults | Minimal sanitized setting stores only target-kind preferences globally or by file type. Applying a default resolves to the current backend option and refs; the renderer does not persist stale option ids or SendAssetRefs as defaults. |
+| Renderer authority boundary | Preserved. Renderer displays and selects backend-issued options; it does not forge `optionId`, `targetKind`, compatibility, or `SendAssetRef`. |
+| Allowed target scope | Still limited to `original_file`, `plain_text`, `markdown`, `code`, `table_markdown`, CSV/TSV, HTML markdown/code/pdf_attachment, XLSX `table_markdown` pilot, DOCX `markdown` pilot, and Windows x64 DOCX `pdf_attachment`. |
+| Explicit non-goals | `.doc`, `.rtf`, `.docm`, `.xls`, Excel-to-PDF, PS/EPS, PDF OCR, macOS/Linux LibreOffice, system LibreOffice, PATH fallback, auto-download, external engines, and new dependencies remain out of scope. |
+
+Focused validation at this addendum point:
+
+- `npx vitest --run src/ui-app/components/DraftAttachmentCard.test.ts src/ui-app/AppChatApp.attachments.test.ts src/next/ipc/contracts/dbBridgeContracts.test.ts src/next/files/conversationDraftClient.test.ts infra/files/conversationAttachmentService.test.ts src/shared/files/documentFormatConversion.test.ts --testTimeout 60000 --reporter=dot`
+- `npx vitest --run infra/files/sendPlanService.test.ts src/next/openrouter/openRouterSendPlanSerializer.test.ts --testTimeout 60000 --reporter=dot`
+- `npx vue-tsc --noEmit --pretty false`
+- `npm run test:electron-smoke`
+- `git diff --check`
+- `npm run gate:privacy`
+
+Real Electron launch validation passed after rebuilding the Electron ABI and launching Starverse through the DFC smoke URL. The smoke confirmed backend-owned Markdown option seeding, HTML `pdf_attachment` option generation, Detail Inspector target cards, metadata-only preview behavior, and no path/storage/hash/body-like preview exposure. The final privacy gate passed; clean-worktree/commit status is tracked in the living goal docs and final ledger entry for this productization round.
