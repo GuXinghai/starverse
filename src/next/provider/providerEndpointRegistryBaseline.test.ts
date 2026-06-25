@@ -18,6 +18,7 @@ const registryPlaceholderNames = [
   'EndpointRegistryService',
   'ProviderRegistryService',
   'RuntimeProviderRegistryService',
+  'RuntimeManager',
   'EndpointManager',
   'ProviderManager',
   'endpointRegistry',
@@ -26,6 +27,7 @@ const registryPlaceholderNames = [
   'endpointRegistryService',
   'providerRegistryService',
   'runtimeProviderRegistryService',
+  'runtimeManager',
   'endpointManager',
   'providerManager',
 ] as const
@@ -290,7 +292,7 @@ describe('C5 endpoint registry baseline characterization', () => {
 })
 
 describe('C6 local endpoint baseline characterization', () => {
-  it('keeps OpenRouter as the default active send runtime while LocalEndpoint text chat remains explicit experimental routing', () => {
+  it('keeps OpenRouter as an explicit active send runtime while LocalEndpoint text chat remains explicit experimental routing', () => {
     const appChat = readRepoFile('src', 'ui-app', 'app', 'appChatApp.logic.ts')
     const openRouterAdapter = readRepoFile('src', 'next', 'provider', 'openrouter', 'openRouterAdapter.ts')
     const liveStream = readRepoFile('src', 'next', 'live', 'openRouterLiveStream.ts')
@@ -298,6 +300,9 @@ describe('C6 local endpoint baseline characterization', () => {
 
     expect(appChat).toContain('streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource')
     expect(appChat).toContain('streamLocalEndpointTextChatAsDomainEvents')
+    expect(appChat).toContain('deriveCurrentRuntimeSelection')
+    expect(appChat).toContain('resolveRuntimeTextSendRoute')
+    expect(appChat).toContain('openRouterChatEnabled')
     expect(appChat).toContain('localEndpointChatEnabled')
     expect(openRouterAdapter).toContain("credentialSource: 'legacy_store' as const")
     expect(liveStream).toContain("credentialSource === 'legacy_store'")
@@ -408,6 +413,45 @@ describe('C6 local endpoint baseline characterization', () => {
     for (const source of [catalogSchema, openRouterCatalog, catalogSync, sendPlanClient, openRouterSendPlan]) {
       expectNoRegistryPlaceholder(source)
       expectNoLocalEndpointRuntimeIdentifier(source)
+    }
+  })
+})
+
+describe('R2 DeepSeek provider model source guardrails', () => {
+  it('keeps DeepSeek official model availability separate from OpenRouter catalog and Generic live routing', () => {
+    const deepSeekModelSource = readRepoFile('src', 'next', 'provider', 'deepseek', 'deepSeekModelSource.ts')
+    const deepSeekModelIpc = readRepoFile('electron', 'ipc', 'deepSeekModelAvailabilityIpc.ts')
+    const preload = readRepoFile('electron', 'preload.ts')
+    const console = readRepoFile('src', 'ui-app', 'components', 'ChatSessionConsole.vue')
+    const settings = readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue')
+    const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'openRouterCatalogClient.ts')
+    const catalogSync = readRepoFile('src', 'shared', 'modelCatalog', 'catalogSyncJob.ts')
+    const catalogQueryService = readRepoFile('src', 'next', 'modelCatalog', 'catalogQueryService.ts')
+
+    expect(deepSeekModelSource).toContain("DEEPSEEK_MODELS_DEFAULT_BASE_URL = 'https://api.deepseek.com'")
+    expect(deepSeekModelSource).toContain('listDeepSeekProviderModelAvailability')
+    expect(deepSeekModelSource).toContain('/models')
+    expect(deepSeekModelSource).toContain("providerKey: typeof DEEPSEEK_OFFICIAL_PROVIDER_KEY")
+    expect(deepSeekModelSource).toContain("'deepseek-official'")
+    expect(deepSeekModelSource).toContain("'deepseek_official_openai_compat'")
+    expect(deepSeekModelIpc).toContain('DEEPSEEK_API_KEY_STORE_KEY')
+    expect(deepSeekModelIpc).toContain('payload must not include credentials')
+    expect(preload).toContain("contextBridge.exposeInMainWorld('deepSeekModels'")
+    expect(console).toContain('deepseek-models-diagnostics')
+    expect(settings).toContain('Use Console refresh for official availability diagnostics')
+
+    for (const source of [deepSeekModelSource, deepSeekModelIpc, preload, console, settings]) {
+      expectNoRegistryPlaceholder(source)
+      expect(source).not.toMatch(/\b(?:GenericEndpointConfig|GenericEndpointFixtureMetadata|toGenericEndpointFixtureMetadata|streamViaGenericConfig|streamViaGeneric)\b/)
+    }
+
+    for (const source of [openRouterCatalog, catalogSync, catalogQueryService]) {
+      expect(source).not.toContain('deepSeekModelSource')
+      expect(source).not.toContain('ProviderModelAvailability')
+      expect(source).not.toContain('deepseek-v4-flash')
+      expect(source).not.toContain('deepseek-v4-pro')
+      expect(source).not.toContain('deepseek-chat')
+      expect(source).not.toContain('deepseek-reasoner')
     }
   })
 })

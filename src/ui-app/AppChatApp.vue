@@ -133,11 +133,16 @@ const {
   onReviewHistoryIncompatibleAttachments,
   onNavigateHistoryIncompatibleAttachments,
   activeSessionConfig,
+  openRouterChatConfig,
   localEndpointChatConfig,
   openAIResponsesChatConfig,
   googleAIStudioChatConfig,
   anthropicChatConfig,
   deepSeekChatConfig,
+  deepSeekModelAvailabilityStatus,
+  currentRuntimeSelection,
+  currentRuntimeCapability,
+  currentRuntimeStatus,
   modelCatalogForPicker,
   modelCatalogNotice,
   modelPrefsScopeForUi,
@@ -155,6 +160,7 @@ const {
   onComposerUpdateSamplingParamsLayer,
   onComposerUpdateWebSearchLayer,
   onUpdateImageGeneration,
+  onUpdateOpenRouterChatEnabled,
   onUpdateLocalEndpointChatEnabled,
   onUpdateLocalEndpointChatUrl,
   onUpdateLocalEndpointChatModel,
@@ -171,6 +177,7 @@ const {
   onUpdateDeepSeekChatEnabled,
   onUpdateDeepSeekChatModel,
   onClearDeepSeekChat,
+  onRefreshDeepSeekModels,
   onAttachFilesRequested,
   onAttachImagesRequested,
   onAttachUrlRequested,
@@ -800,11 +807,16 @@ function shouldShowInlineReasoning(message: any): boolean {
             :disabled="!isReady || isDraftInteractionLocked"
             :isRunning="isRunning"
             :sessionConfig="activeSessionConfig"
+            :openRouterChat="openRouterChatConfig"
             :localEndpointChat="localEndpointChatConfig"
             :openAIResponsesChat="openAIResponsesChatConfig"
             :googleAIStudioChat="googleAIStudioChatConfig"
             :anthropicChat="anthropicChatConfig"
             :deepSeekChat="deepSeekChatConfig"
+            :deepSeekModelAvailability="deepSeekModelAvailabilityStatus"
+            :currentRuntimeSelection="currentRuntimeSelection"
+            :currentRuntimeCapability="currentRuntimeCapability"
+            :currentRuntimeStatus="currentRuntimeStatus"
             :reasoningDisplayMode="reasoningDisplayMode"
             :modelCatalog="modelCatalogForPicker"
             :webSearchResolved="activeSessionWebSearchResolved"
@@ -820,6 +832,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateImageGenerationResolution="onUpdateImageGenerationResolution"
             @updateImageGenerationAspectRatio="onUpdateImageGenerationAspectRatio"
             @updateImageGeneration="onUpdateImageGeneration"
+            @updateOpenRouterChatEnabled="onUpdateOpenRouterChatEnabled"
             @updateLocalEndpointChatEnabled="onUpdateLocalEndpointChatEnabled"
             @updateLocalEndpointChatUrl="onUpdateLocalEndpointChatUrl"
             @updateLocalEndpointChatModel="onUpdateLocalEndpointChatModel"
@@ -836,6 +849,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateDeepSeekChatEnabled="onUpdateDeepSeekChatEnabled"
             @updateDeepSeekChatModel="onUpdateDeepSeekChatModel"
             @clearDeepSeekChat="onClearDeepSeekChat"
+            @refreshDeepSeekModels="onRefreshDeepSeekModels"
             @updateReasoningDisplayMode="onUpdateReasoningDisplayMode"
             @openSettings="openSettings"
           />

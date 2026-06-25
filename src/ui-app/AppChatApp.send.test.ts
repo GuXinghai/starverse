@@ -150,6 +150,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.model')
     globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.openRouterTextChat.enabled')
+    globalThis.localStorage?.setItem('starverse.openRouterTextChat.enabled', '1')
     convoListMeta = null
     // Make throttle immediate in tests (while still exercising scheduling code paths).
     globalThis.setTimeout = ((fn: (...args: any[]) => void) => originalSetTimeout(fn, 0)) as any
@@ -503,7 +505,28 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.model')
     globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.openRouterTextChat.enabled')
     vi.useRealTimers()
+  })
+
+  it('blocks send when no runtime provider is selected and does not call OpenRouter', async () => {
+    globalThis.localStorage?.removeItem('starverse.openRouterTextChat.enabled')
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'no provider selected ping')
+    await user.click(sendButton())
+
+    expect(draftBox().value).toBe('no provider selected ping')
+    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
+    expect(localEndpointTextChatCallArgs).toHaveLength(0)
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
+    expect(googleAIStudioTextChatCallArgs).toHaveLength(0)
+    expect(anthropicTextChatCallArgs).toHaveLength(0)
+    expect(deepSeekTextChatCallArgs).toHaveLength(0)
   })
 
   it('appends user+assistant, streams text, persists via message.appendDelta', async () => {
@@ -821,7 +844,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.enabled')).toBe('0')
   })
 
-  it('returns to the OpenRouter path when OpenAI Responses chat is disabled or cleared', async () => {
+  it('uses the explicit OpenRouter path when OpenAI Responses chat is disabled or cleared', async () => {
     globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
     globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
     const user = userEvent.setup()
@@ -832,6 +855,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
     window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.openAIResponsesTextChat.enabled' }))
+    globalThis.localStorage?.setItem('starverse.openRouterTextChat.enabled', '1')
+    window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.openRouterTextChat.enabled' }))
 
     await user.click(draftBox())
     await user.type(draftBox(), 'cleared openai responses ping')
@@ -844,7 +869,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(streamOpenRouterChatCallArgs).toHaveLength(1)
   })
 
-  it('returns to the OpenRouter path when Google AI Studio chat is disabled or cleared', async () => {
+  it('uses the explicit OpenRouter path when Google AI Studio chat is disabled or cleared', async () => {
     globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.enabled', '1')
     globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.model', 'gemini-2.5-flash')
     const user = userEvent.setup()
@@ -855,6 +880,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.model')
     window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.googleAIStudioTextChat.enabled' }))
+    globalThis.localStorage?.setItem('starverse.openRouterTextChat.enabled', '1')
+    window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.openRouterTextChat.enabled' }))
 
     await user.click(draftBox())
     await user.type(draftBox(), 'cleared google ai studio ping')
@@ -867,7 +894,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(streamOpenRouterChatCallArgs).toHaveLength(1)
   })
 
-  it('returns to the OpenRouter path when LocalEndpoint chat is disabled or cleared', async () => {
+  it('uses the explicit OpenRouter path when LocalEndpoint chat is disabled or cleared', async () => {
     globalThis.localStorage?.setItem('starverse.localEndpointTextChat.enabled', '1')
     globalThis.localStorage?.setItem('starverse.localEndpointTextChat.url', 'http://localhost:4321/v1')
     globalThis.localStorage?.setItem('starverse.localEndpointTextChat.model', 'settings-selected-model')
@@ -880,6 +907,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
     window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.localEndpointTextChat.enabled' }))
+    globalThis.localStorage?.setItem('starverse.openRouterTextChat.enabled', '1')
+    window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.openRouterTextChat.enabled' }))
 
     await user.click(draftBox())
     await user.type(draftBox(), 'cleared local endpoint ping')
@@ -892,7 +921,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(streamOpenRouterChatCallArgs).toHaveLength(1)
   })
 
-  it('returns to the OpenRouter path when DeepSeek official chat is disabled or cleared', async () => {
+  it('uses the explicit OpenRouter path when DeepSeek official chat is disabled or cleared', async () => {
     globalThis.localStorage?.setItem('starverse.deepSeekTextChat.enabled', '1')
     globalThis.localStorage?.setItem('starverse.deepSeekTextChat.model', 'deepseek-chat')
     const user = userEvent.setup()
@@ -903,6 +932,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.model')
     window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.deepSeekTextChat.enabled' }))
+    globalThis.localStorage?.setItem('starverse.openRouterTextChat.enabled', '1')
+    window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.openRouterTextChat.enabled' }))
 
     await user.click(draftBox())
     await user.type(draftBox(), 'cleared deepseek ping')

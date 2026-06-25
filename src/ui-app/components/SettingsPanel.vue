@@ -1624,6 +1624,9 @@ onMounted(() => {
 
       <div class="rounded-lg border border-gray-200 bg-white p-3">
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.openrouter.title') }}</div>
+        <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-openrouter-explicit-runtime-note">
+          OpenRouter is a first-class provider, but it is not an implicit fallback. Select OpenRouter Chat explicitly in Console before sending through OpenRouter.
+        </div>
 
         <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.apiKey') }}</label>
         <div class="mt-1 flex items-center gap-2">
@@ -2077,7 +2080,7 @@ onMounted(() => {
           <input
             v-model="deepSeekModel"
             type="text"
-            placeholder="deepseek-chat"
+            placeholder="deepseek-v4-flash"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-200 disabled:bg-gray-50"
             :disabled="props.disabled || props.isRunning || loading || saving"
             data-testid="settings-deepseek-model"
@@ -2093,7 +2096,7 @@ onMounted(() => {
           </button>
         </div>
         <div class="mt-1 text-[11px] text-cyan-800" data-testid="settings-deepseek-chat-note">
-          This only updates the experimental DeepSeek official Console default. It does not publish models to the main picker, does not enable chat by itself, and does not persist reasoning_content.
+          This only updates the experimental DeepSeek official Console default. Use Console refresh for official availability diagnostics. Deprecated aliases deepseek-chat and deepseek-reasoner are not long-term primary models. It does not publish models to the main picker, does not enable chat by itself, and does not persist reasoning_content.
         </div>
         <div v-if="deepSeekChatApplyMessage" class="mt-1 text-[11px] text-cyan-900" data-testid="settings-deepseek-chat-apply-result">
           {{ deepSeekChatApplyMessage }}

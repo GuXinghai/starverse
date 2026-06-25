@@ -155,6 +155,69 @@ type DeepSeekCredentialResult =
   | { ok: true; status: DeepSeekCredentialStatus }
   | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
 
+type DeepSeekProviderModelSourceKind =
+  | 'deepseek_models_api'
+  | 'deepseek_pricing_metadata'
+  | 'starverse_curated_metadata'
+  | 'manual_user_model_id'
+
+interface DeepSeekProviderModelAvailability {
+  providerKey: 'deepseek'
+  endpointId: 'deepseek-official'
+  profileId: 'deepseek_official_openai_compat'
+  nativeModelId: string
+  displayName?: string
+  ownedBy?: string
+  source: DeepSeekProviderModelSourceKind
+  confidence: 'provider_reported' | 'curated' | 'manual'
+  observedAtMs: number
+  warnings: string[]
+  capabilitySeed?: {
+    textChat?: boolean
+    thinkingMode?: 'supported' | 'non_thinking_only' | 'thinking_only' | 'unknown'
+    contextLength?: number
+    maxOutputTokens?: number
+    tools?: boolean
+    jsonOutput?: boolean
+    fim?: boolean
+    chatPrefixCompletion?: boolean
+  }
+  pricingSeed?: {
+    inputCacheHitPer1MTokens?: string
+    inputCacheMissPer1MTokens?: string
+    outputPer1MTokens?: string
+    currency?: 'USD'
+    source: 'deepseek_pricing_metadata'
+    observedAtMs: number
+  }
+}
+
+type DeepSeekModelAvailabilityResult =
+  | {
+    ok: true
+    providerKey: 'deepseek'
+    endpointId: 'deepseek-official'
+    profileId: 'deepseek_official_openai_compat'
+    observedAtMs: number
+    models: DeepSeekProviderModelAvailability[]
+    warnings: string[]
+    sourceDocuments: Array<{
+      source: 'deepseek_list_models_api_docs' | 'deepseek_models_pricing_docs' | 'deepseek_api_intro_docs'
+      url: string
+      observedAtMs: number
+    }>
+  }
+  | {
+    ok: false
+    providerKey: 'deepseek'
+    endpointId: 'deepseek-official'
+    profileId: 'deepseek_official_openai_compat'
+    observedAtMs: number
+    code: 'credential_missing' | 'store_unavailable' | 'invalid_payload' | 'invalid_response' | 'http_error' | 'network_error'
+    message: string
+    httpStatus?: number
+  }
+
 type LocalEndpointProbeModelList =
   | {
     ok: true
@@ -314,6 +377,9 @@ interface Window {
     getStatus?: () => Promise<DeepSeekCredentialResult>
     update?: (payload: DeepSeekCredentialUpdatePayload) => Promise<DeepSeekCredentialResult>
     clear?: () => Promise<DeepSeekCredentialResult>
+  }
+  deepSeekModels?: {
+    listAvailability?: (payload?: { timeoutMs?: number }) => Promise<DeepSeekModelAvailabilityResult>
   }
   localEndpointDiagnostics?: {
     probe?: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointProbeResult>
