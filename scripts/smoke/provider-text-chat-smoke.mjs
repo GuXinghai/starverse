@@ -51,9 +51,12 @@ const secretLeakPatterns = [
 const providerCases = [
   {
     id: 'openrouter',
-    label: 'OpenRouter default',
+    label: 'OpenRouter explicit',
     expectedText: 'starverse openrouter smoke ok',
     mockModelId: 'openrouter/smoke-default',
+    controlsTestId: 'openrouter-chat-controls',
+    enabledTestId: 'openrouter-chat-enabled',
+    statusTestId: 'openrouter-chat-selected-status',
     experimental: false,
   },
   {
@@ -636,6 +639,23 @@ async function enableExperimentalProvider(page, row, localMock) {
   await closeRightRailIfOpen(page)
 }
 
+async function selectOpenRouterProvider(page) {
+  await openConsole(page)
+  await page.waitForSelector('[data-testid="openrouter-chat-controls"]', { timeout: 30000 })
+  await page.locator('[data-testid="openrouter-chat-controls"]').scrollIntoViewIfNeeded()
+  const checkbox = page.locator('[data-testid="openrouter-chat-enabled"]')
+  if (!(await checkbox.isChecked())) await setCheckboxByTestId(page, 'openrouter-chat-enabled', true)
+  await waitForPageCondition(page,
+    () => {
+      const status = document.querySelector('[data-testid="openrouter-chat-selected-status"]')?.textContent ?? ''
+      return status.includes('active') && status.includes('OpenRouter')
+    },
+    null,
+    10000,
+  )
+  await closeRightRailIfOpen(page)
+}
+
 async function clearExperimentalProvider(page, row) {
   await openConsole(page)
   await page.waitForSelector(`[data-testid="${row.controlsTestId}"]`, { timeout: 30000 })
@@ -743,7 +763,7 @@ async function assertExperimentalModelsNotInMainPicker(page) {
   await page.waitForSelector('[data-testid="model-picker-dialog"]', { state: 'detached', timeout: 10000 }).catch(() => undefined)
 }
 
-async function assertOpenRouterDefaultState(page) {
+async function assertNoExperimentalProviderSelected(page) {
   const state = await page.evaluate(() => ({
     local: window.localStorage.getItem('starverse.localEndpointTextChat.enabled'),
     openai: window.localStorage.getItem('starverse.openAIResponsesTextChat.enabled'),
@@ -808,12 +828,14 @@ async function runUiSmoke(input) {
 
     const results = []
 
-    currentStep = 'assert default OpenRouter state'
-    await assertOpenRouterDefaultState(page)
+    currentStep = 'assert no experimental provider selected'
+    await assertNoExperimentalProviderSelected(page)
     const openRouter = providerCases.find((row) => row.id === 'openrouter')
-    currentStep = 'send OpenRouter default prompt'
-    await sendPromptAndWait(page, 'Please run the OpenRouter default smoke response.', openRouter.expectedText)
-    currentStep = 'abort OpenRouter default prompt'
+    currentStep = 'select OpenRouter provider'
+    await selectOpenRouterProvider(page)
+    currentStep = 'send OpenRouter explicit prompt'
+    await sendPromptAndWait(page, 'Please run the OpenRouter explicit smoke response.', openRouter.expectedText)
+    currentStep = 'abort OpenRouter explicit prompt'
     await sendAbortAndWait(page, openRouter, localMock, openRouterMock, electronApp)
     results.push({ provider: openRouter.id, mode: 'loopback mock endpoint through real OpenRouter IPC', ok: true })
 
@@ -826,8 +848,8 @@ async function runUiSmoke(input) {
       await sendAbortAndWait(page, row, localMock, openRouterMock, electronApp)
       currentStep = `clear ${row.id}`
       await clearExperimentalProvider(page, row)
-      currentStep = `assert OpenRouter default after ${row.id}`
-      await assertOpenRouterDefaultState(page)
+      currentStep = `assert no experimental provider after ${row.id}`
+      await assertNoExperimentalProviderSelected(page)
       results.push({
         provider: row.id,
         mode: row.id === 'local-endpoint' ? 'loopback mock endpoint through real LocalEndpoint IPC' : 'mocked provider-specific renderer bridge',
@@ -835,8 +857,10 @@ async function runUiSmoke(input) {
       })
     }
 
+    currentStep = 'select final OpenRouter provider'
+    await selectOpenRouterProvider(page)
     currentStep = 'send final OpenRouter prompt'
-    await sendPromptAndWait(page, 'Please run the final OpenRouter default smoke response.', openRouter.expectedText)
+    await sendPromptAndWait(page, 'Please run the final OpenRouter explicit smoke response.', openRouter.expectedText)
     currentStep = 'assert experimental models not in main picker'
     await assertExperimentalModelsNotInMainPicker(page)
     currentStep = 'assert no secret exposure'
@@ -862,7 +886,7 @@ async function runUiSmoke(input) {
       },
       providerIpcMockCallCount: Array.isArray(mainMockState.calls) ? mainMockState.calls.length : 0,
       providerIpcMockAbortCount: Array.isArray(mainMockState.aborts) ? mainMockState.aborts.length : 0,
-      openRouterDefaultAfterClear: true,
+      openRouterExplicitSelectionRequired: true,
       experimentalModelsInMainPicker: false,
       artifact: path.relative(repoRoot, summaryPath).replace(/\\/g, '/'),
     }

@@ -25,6 +25,10 @@ import {
   DEEPSEEK_CREDENTIAL_SETTINGS_IPC_CHANNELS,
 } from './deepSeekCredentialSettingsIpc'
 import {
+  registerDeepSeekModelAvailabilityIpc,
+  DEEPSEEK_MODEL_AVAILABILITY_IPC_CHANNELS,
+} from './deepSeekModelAvailabilityIpc'
+import {
   registerLibreOfficeSystemProxyProbeIpc,
   LIBREOFFICE_SYSTEM_PROXY_PROBE_IPC_CHANNELS,
 } from './libreOfficeSystemProxyProbeIpc'
@@ -61,6 +65,7 @@ export const CORE_IPC_CHANNELS = [
   ...GOOGLE_AI_STUDIO_CREDENTIAL_SETTINGS_IPC_CHANNELS,
   ...ANTHROPIC_CREDENTIAL_SETTINGS_IPC_CHANNELS,
   ...DEEPSEEK_CREDENTIAL_SETTINGS_IPC_CHANNELS,
+  ...DEEPSEEK_MODEL_AVAILABILITY_IPC_CHANNELS,
   ...LIBREOFFICE_SYSTEM_PROXY_PROBE_IPC_CHANNELS,
   ...LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS,
   ...LOCAL_ENDPOINT_TEXT_CHAT_IPC_CHANNELS,
@@ -137,6 +142,10 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
       store: input.store,
     }),
     ...registerDeepSeekCredentialSettingsIpc({
+      registerInvoke: input.registerInvoke,
+      store: input.store,
+    }),
+    ...registerDeepSeekModelAvailabilityIpc({
       registerInvoke: input.registerInvoke,
       store: input.store,
     }),

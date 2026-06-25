@@ -88,6 +88,20 @@ import { streamGoogleAIStudioTextChatAsDomainEvents } from '@/next/live/googleAI
 import { streamAnthropicTextChatAsDomainEvents } from '@/next/live/anthropicTextChat'
 import { streamDeepSeekTextChatAsDomainEvents } from '@/next/live/deepSeekTextChat'
 import {
+  DEEPSEEK_OFFICIAL_ENDPOINT_ID,
+  DEEPSEEK_OFFICIAL_PROFILE_ID,
+  DEEPSEEK_OFFICIAL_PROVIDER_KEY,
+  type DeepSeekModelAvailabilityResult,
+} from '@/next/provider/deepseek/deepSeekModelSource'
+import {
+  deriveCurrentRuntimeSelection,
+  formatRuntimeCapabilitySummaryLite,
+  formatRuntimeSelectionLabel,
+  getRuntimeCapabilitySummaryLite,
+  getRuntimeTextChatBlockReason,
+  resolveRuntimeTextSendRoute,
+} from '@/next/provider/runtimeSelection'
+import {
   prepareOpenRouterReplayFromMessage,
   prepareOpenRouterSendFromDraft,
   type PreparedOpenRouterReplay,
@@ -231,6 +245,7 @@ export function useAppChatAppLogic() {
   const model = ref(DEFAULT_CHAT_MODEL_ID)
   const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('auto')
   const requestedReasoningExclude = ref(false)
+  const OPENROUTER_CHAT_ENABLED_KEY = 'starverse.openRouterTextChat.enabled'
   const LOCAL_ENDPOINT_CHAT_ENABLED_KEY = 'starverse.localEndpointTextChat.enabled'
   const LOCAL_ENDPOINT_CHAT_URL_KEY = 'starverse.localEndpointTextChat.url'
   const LOCAL_ENDPOINT_CHAT_MODEL_KEY = 'starverse.localEndpointTextChat.model'
@@ -248,6 +263,7 @@ export function useAppChatAppLogic() {
   const DEEPSEEK_CHAT_ENABLED_KEY = 'starverse.deepSeekTextChat.enabled'
   const DEEPSEEK_CHAT_MODEL_KEY = 'starverse.deepSeekTextChat.model'
   const DEEPSEEK_CHAT_SETTINGS_EVENT = 'settings:deepSeekTextChatUpdated'
+  const openRouterChatEnabled = ref(false)
   const localEndpointChatEnabled = ref(false)
   const localEndpointChatUrl = ref(DEFAULT_LOCAL_ENDPOINT_CHAT_URL)
   const localEndpointChatModel = ref('')
@@ -259,6 +275,12 @@ export function useAppChatAppLogic() {
   const anthropicChatModel = ref('')
   const deepSeekChatEnabled = ref(false)
   const deepSeekChatModel = ref('')
+  type DeepSeekModelAvailabilityFailureCode = Extract<DeepSeekModelAvailabilityResult, { ok: false }>['code']
+  type DeepSeekModelsBridge = Readonly<{
+    listAvailability: (payload?: unknown) => Promise<DeepSeekModelAvailabilityResult>
+  }>
+  const deepSeekModelAvailabilityLoading = ref(false)
+  const deepSeekModelAvailabilityResult = ref<DeepSeekModelAvailabilityResult | null>(null)
   type ImageGenerationUiState = ImageGenerationUserConfig
   const imageGenerationState = ref<ImageGenerationUiState>(DEFAULT_IMAGE_GENERATION_USER_CONFIG)
   const imageGenerationConvoMode = ref<ConvoImageGenerationMode>('default')
@@ -3619,6 +3641,11 @@ export function useAppChatAppLogic() {
   }
 
   const activeSessionConfig = computed(() => getChatSessionConfigForConvo(getActiveConvoRecord()))
+  const openRouterChatConfig = computed(() => ({
+    enabled: openRouterChatEnabled.value,
+    model: normalizeModelKey(model.value),
+    providerLabel: 'OpenRouter · first-class provider',
+  }))
   const localEndpointChatConfig = computed(() => ({
     enabled: localEndpointChatEnabled.value,
     endpointUrl: localEndpointChatUrl.value,
@@ -3645,12 +3672,64 @@ export function useAppChatAppLogic() {
     model: deepSeekChatModel.value,
     experimentalLabel: 'Experimental · DeepSeek official text-only · not OpenRouter',
   }))
+  const deepSeekModelAvailabilityStatus = computed(() => ({
+    loading: deepSeekModelAvailabilityLoading.value,
+    result: deepSeekModelAvailabilityResult.value,
+  }))
+  const currentRuntimeSelection = computed(() => deriveCurrentRuntimeSelection({
+    openrouter: {
+      selected: openRouterChatEnabled.value,
+      modelKey: normalizeModelKey(model.value),
+      credentialStatus: 'unknown',
+    },
+    localEndpoint: {
+      selected: localEndpointChatEnabled.value,
+      endpointId: localEndpointChatUrl.value.trim(),
+      modelKey: localEndpointChatModel.value.trim(),
+      credentialStatus: 'not_required',
+    },
+    openAIResponses: {
+      selected: openAIResponsesChatEnabled.value,
+      modelKey: openAIResponsesChatModel.value.trim(),
+      credentialStatus: 'unknown',
+    },
+    googleAIStudio: {
+      selected: googleAIStudioChatEnabled.value,
+      modelKey: googleAIStudioChatModel.value.trim(),
+      credentialStatus: 'unknown',
+    },
+    anthropic: {
+      selected: anthropicChatEnabled.value,
+      modelKey: anthropicChatModel.value.trim(),
+      credentialStatus: 'unknown',
+    },
+    deepSeek: {
+      selected: deepSeekChatEnabled.value,
+      modelKey: deepSeekChatModel.value.trim(),
+      credentialStatus: 'unknown',
+    },
+  }))
+  const currentRuntimeCapability = computed(() => getRuntimeCapabilitySummaryLite(currentRuntimeSelection.value))
+  const currentRuntimeStatus = computed(() => ({
+    selectionLabel: formatRuntimeSelectionLabel(currentRuntimeSelection.value),
+    capabilitySummary: formatRuntimeCapabilitySummaryLite(currentRuntimeCapability.value),
+    warnings: currentRuntimeCapability.value.warnings,
+  }))
 
   function applyLocalEndpointChatStorageValues(input: Readonly<{ endpointUrl?: unknown; model?: unknown }>) {
     const endpointUrl = String(input.endpointUrl ?? '').trim()
     const modelId = String(input.model ?? '').trim()
     if (endpointUrl) localEndpointChatUrl.value = endpointUrl
     if (modelId) localEndpointChatModel.value = modelId
+  }
+
+  function readOpenRouterChatStorage() {
+    try {
+      openRouterChatEnabled.value =
+        String(globalThis.localStorage?.getItem(OPENROUTER_CHAT_ENABLED_KEY) ?? '').trim() === '1'
+    } catch {
+      // OpenRouter provider selection is a non-secret renderer preference; failure keeps unset.
+    }
   }
 
   function readLocalEndpointChatStorage() {
@@ -3742,6 +3821,12 @@ export function useAppChatAppLogic() {
     if (!detail || typeof detail !== 'object') return
     const modelId = String((detail as { model?: unknown }).model ?? '').trim()
     if (modelId) deepSeekChatModel.value = modelId
+  }
+
+  function handleOpenRouterChatStorage(event: StorageEvent) {
+    if (event.key !== OPENROUTER_CHAT_ENABLED_KEY) return
+    readOpenRouterChatStorage()
+    enforceExperimentalChatMutualExclusion()
   }
 
   function handleLocalEndpointChatStorage(event: StorageEvent) {
@@ -3836,12 +3921,22 @@ export function useAppChatAppLogic() {
     }
   }
 
+  function persistOpenRouterChatStorage() {
+    try {
+      globalThis.localStorage?.setItem(OPENROUTER_CHAT_ENABLED_KEY, openRouterChatEnabled.value ? '1' : '0')
+    } catch {
+      // Non-fatal: the user can still use the current in-memory selection.
+    }
+  }
+
   function enforceExperimentalChatMutualExclusion() {
     if (deepSeekChatEnabled.value) {
+      openRouterChatEnabled.value = false
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
+      persistOpenRouterChatStorage()
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
@@ -3849,10 +3944,12 @@ export function useAppChatAppLogic() {
       return
     }
     if (anthropicChatEnabled.value) {
+      openRouterChatEnabled.value = false
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       deepSeekChatEnabled.value = false
+      persistOpenRouterChatStorage()
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
@@ -3860,10 +3957,12 @@ export function useAppChatAppLogic() {
       return
     }
     if (googleAIStudioChatEnabled.value) {
+      openRouterChatEnabled.value = false
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       anthropicChatEnabled.value = false
       deepSeekChatEnabled.value = false
+      persistOpenRouterChatStorage()
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistAnthropicChatStorage()
@@ -3871,10 +3970,12 @@ export function useAppChatAppLogic() {
       return
     }
     if (openAIResponsesChatEnabled.value) {
+      openRouterChatEnabled.value = false
       localEndpointChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
       deepSeekChatEnabled.value = false
+      persistOpenRouterChatStorage()
       persistLocalEndpointChatStorage()
       persistGoogleAIStudioChatStorage()
       persistAnthropicChatStorage()
@@ -3882,10 +3983,12 @@ export function useAppChatAppLogic() {
       return
     }
     if (localEndpointChatEnabled.value) {
+      openRouterChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
       deepSeekChatEnabled.value = false
+      persistOpenRouterChatStorage()
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
       persistAnthropicChatStorage()
@@ -3893,14 +3996,34 @@ export function useAppChatAppLogic() {
     }
   }
 
-  function onUpdateLocalEndpointChatEnabled(enabled: boolean) {
+  function onUpdateOpenRouterChatEnabled(enabled: boolean) {
     if (isDraftInteractionLocked.value || isRunning.value) return
-    localEndpointChatEnabled.value = enabled
+    openRouterChatEnabled.value = enabled
     if (enabled) {
+      localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
       deepSeekChatEnabled.value = false
+      persistLocalEndpointChatStorage()
+      persistOpenAIResponsesChatStorage()
+      persistGoogleAIStudioChatStorage()
+      persistAnthropicChatStorage()
+      persistDeepSeekChatStorage()
+    }
+    persistOpenRouterChatStorage()
+  }
+
+  function onUpdateLocalEndpointChatEnabled(enabled: boolean) {
+    if (isDraftInteractionLocked.value || isRunning.value) return
+    localEndpointChatEnabled.value = enabled
+    if (enabled) {
+      openRouterChatEnabled.value = false
+      openAIResponsesChatEnabled.value = false
+      googleAIStudioChatEnabled.value = false
+      anthropicChatEnabled.value = false
+      deepSeekChatEnabled.value = false
+      persistOpenRouterChatStorage()
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
       persistAnthropicChatStorage()
@@ -3929,7 +4052,7 @@ export function useAppChatAppLogic() {
       globalThis.localStorage?.removeItem(LOCAL_ENDPOINT_CHAT_URL_KEY)
       globalThis.localStorage?.removeItem(LOCAL_ENDPOINT_CHAT_MODEL_KEY)
     } catch {
-      // Non-fatal: in-memory state still returns the session to the OpenRouter path.
+      // Non-fatal: in-memory state still leaves the runtime selection unset unless another provider is selected.
     }
   }
 
@@ -3937,10 +4060,12 @@ export function useAppChatAppLogic() {
     if (isDraftInteractionLocked.value || isRunning.value) return
     openAIResponsesChatEnabled.value = enabled
     if (enabled) {
+      openRouterChatEnabled.value = false
       localEndpointChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
       deepSeekChatEnabled.value = false
+      persistOpenRouterChatStorage()
       persistLocalEndpointChatStorage()
       persistGoogleAIStudioChatStorage()
       persistAnthropicChatStorage()
@@ -3962,7 +4087,7 @@ export function useAppChatAppLogic() {
       globalThis.localStorage?.removeItem(OPENAI_RESPONSES_CHAT_ENABLED_KEY)
       globalThis.localStorage?.removeItem(OPENAI_RESPONSES_CHAT_MODEL_KEY)
     } catch {
-      // Non-fatal: in-memory state still returns the session to the OpenRouter path.
+      // Non-fatal: in-memory state still leaves the runtime selection unset unless another provider is selected.
     }
   }
 
@@ -3970,10 +4095,12 @@ export function useAppChatAppLogic() {
     if (isDraftInteractionLocked.value || isRunning.value) return
     googleAIStudioChatEnabled.value = enabled
     if (enabled) {
+      openRouterChatEnabled.value = false
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       anthropicChatEnabled.value = false
       deepSeekChatEnabled.value = false
+      persistOpenRouterChatStorage()
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistAnthropicChatStorage()
@@ -3995,7 +4122,7 @@ export function useAppChatAppLogic() {
       globalThis.localStorage?.removeItem(GOOGLE_AI_STUDIO_CHAT_ENABLED_KEY)
       globalThis.localStorage?.removeItem(GOOGLE_AI_STUDIO_CHAT_MODEL_KEY)
     } catch {
-      // Non-fatal: in-memory state still returns the session to the OpenRouter path.
+      // Non-fatal: in-memory state still leaves the runtime selection unset unless another provider is selected.
     }
   }
 
@@ -4003,10 +4130,12 @@ export function useAppChatAppLogic() {
     if (isDraftInteractionLocked.value || isRunning.value) return
     anthropicChatEnabled.value = enabled
     if (enabled) {
+      openRouterChatEnabled.value = false
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       deepSeekChatEnabled.value = false
+      persistOpenRouterChatStorage()
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
@@ -4028,7 +4157,7 @@ export function useAppChatAppLogic() {
       globalThis.localStorage?.removeItem(ANTHROPIC_CHAT_ENABLED_KEY)
       globalThis.localStorage?.removeItem(ANTHROPIC_CHAT_MODEL_KEY)
     } catch {
-      // Non-fatal: in-memory state still returns the session to the OpenRouter path.
+      // Non-fatal: in-memory state still leaves the runtime selection unset unless another provider is selected.
     }
   }
 
@@ -4036,10 +4165,12 @@ export function useAppChatAppLogic() {
     if (isDraftInteractionLocked.value || isRunning.value) return
     deepSeekChatEnabled.value = enabled
     if (enabled) {
+      openRouterChatEnabled.value = false
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
+      persistOpenRouterChatStorage()
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
@@ -4061,7 +4192,51 @@ export function useAppChatAppLogic() {
       globalThis.localStorage?.removeItem(DEEPSEEK_CHAT_ENABLED_KEY)
       globalThis.localStorage?.removeItem(DEEPSEEK_CHAT_MODEL_KEY)
     } catch {
-      // Non-fatal: in-memory state still returns the session to the OpenRouter path.
+      // Non-fatal: in-memory state still leaves the runtime selection unset unless another provider is selected.
+    }
+  }
+
+  function getDeepSeekModelsBridge(): DeepSeekModelsBridge | null {
+    const bridge = (globalThis as any)?.deepSeekModels as DeepSeekModelsBridge | undefined
+    return typeof bridge?.listAvailability === 'function' ? bridge : null
+  }
+
+  function buildDeepSeekModelAvailabilityFailure(
+    code: DeepSeekModelAvailabilityFailureCode,
+    message: string,
+  ): DeepSeekModelAvailabilityResult {
+    return {
+      ok: false,
+      providerKey: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
+      endpointId: DEEPSEEK_OFFICIAL_ENDPOINT_ID,
+      profileId: DEEPSEEK_OFFICIAL_PROFILE_ID,
+      observedAtMs: Date.now(),
+      code,
+      message,
+    }
+  }
+
+  async function onRefreshDeepSeekModels() {
+    if (deepSeekModelAvailabilityLoading.value) return
+    const bridge = getDeepSeekModelsBridge()
+    if (!bridge) {
+      deepSeekModelAvailabilityResult.value = buildDeepSeekModelAvailabilityFailure(
+        'invalid_payload',
+        'DeepSeek model availability bridge is unavailable.',
+      )
+      return
+    }
+
+    deepSeekModelAvailabilityLoading.value = true
+    try {
+      deepSeekModelAvailabilityResult.value = await bridge.listAvailability({ timeoutMs: 30000 })
+    } catch {
+      deepSeekModelAvailabilityResult.value = buildDeepSeekModelAvailabilityFailure(
+        'network_error',
+        'DeepSeek model availability request failed safely.',
+      )
+    } finally {
+      deepSeekModelAvailabilityLoading.value = false
     }
   }
 
@@ -8608,77 +8783,6 @@ export function useAppChatAppLogic() {
     return prepared
   }
 
-  function getLocalEndpointTextChatBlockReason(input: Readonly<{
-    text: string
-    hasDraftAttachments: boolean
-  }>): string | null {
-    if (!input.text.trim()) return 'LocalEndpoint text chat requires a plain text message.'
-    if (!localEndpointChatUrl.value.trim()) return 'LocalEndpoint text chat requires a localhost endpoint URL.'
-    if (!localEndpointChatModel.value.trim()) return 'LocalEndpoint text chat requires a selected or manual model id.'
-    if (input.hasDraftAttachments) return 'LocalEndpoint text chat is text-only. Remove attachments before sending.'
-    const config = activeSessionConfig.value
-    if (config.webSearch.enabled) return 'LocalEndpoint text chat does not support web search. Disable web search before sending.'
-    if (config.reasoning.enabled) return 'LocalEndpoint text chat does not support reasoning controls. Disable reasoning before sending.'
-    if (config.imageGeneration.enabled) return 'LocalEndpoint text chat does not support image generation. Disable image generation before sending.'
-    return null
-  }
-
-  function getOpenAIResponsesTextChatBlockReason(input: Readonly<{
-    text: string
-    hasDraftAttachments: boolean
-  }>): string | null {
-    if (!input.text.trim()) return 'OpenAI Responses experimental text chat requires a plain text message.'
-    if (!openAIResponsesChatModel.value.trim()) return 'OpenAI Responses experimental text chat requires a manual model id.'
-    if (input.hasDraftAttachments) return 'OpenAI Responses experimental text chat is text-only. Remove attachments before sending.'
-    const config = activeSessionConfig.value
-    if (config.webSearch.enabled) return 'OpenAI Responses experimental text chat does not support web search. Disable web search before sending.'
-    if (config.reasoning.enabled) return 'OpenAI Responses experimental text chat does not support reasoning controls. Disable reasoning before sending.'
-    if (config.imageGeneration.enabled) return 'OpenAI Responses experimental text chat does not support image generation. Disable image generation before sending.'
-    return null
-  }
-
-  function getGoogleAIStudioTextChatBlockReason(input: Readonly<{
-    text: string
-    hasDraftAttachments: boolean
-  }>): string | null {
-    if (!input.text.trim()) return 'Google AI Studio experimental text chat requires a plain text message.'
-    if (!googleAIStudioChatModel.value.trim()) return 'Google AI Studio experimental text chat requires a Gemini model id.'
-    if (input.hasDraftAttachments) return 'Google AI Studio experimental text chat is text-only. Remove attachments before sending.'
-    const config = activeSessionConfig.value
-    if (config.webSearch.enabled) return 'Google AI Studio experimental text chat does not support web search. Disable web search before sending.'
-    if (config.reasoning.enabled) return 'Google AI Studio experimental text chat does not support reasoning controls. Disable reasoning before sending.'
-    if (config.imageGeneration.enabled) return 'Google AI Studio experimental text chat does not support image generation. Disable image generation before sending.'
-    return null
-  }
-
-  function getAnthropicTextChatBlockReason(input: Readonly<{
-    text: string
-    hasDraftAttachments: boolean
-  }>): string | null {
-    if (!input.text.trim()) return 'Anthropic Messages experimental text chat requires a plain text message.'
-    if (!anthropicChatModel.value.trim()) return 'Anthropic Messages experimental text chat requires a Claude model id.'
-    if (input.hasDraftAttachments) return 'Anthropic Messages experimental text chat is text-only. Remove attachments before sending.'
-    const config = activeSessionConfig.value
-    if (config.webSearch.enabled) return 'Anthropic Messages experimental text chat does not support web search. Disable web search before sending.'
-    if (config.reasoning.enabled) return 'Anthropic Messages experimental text chat does not support reasoning or thinking controls. Disable reasoning before sending.'
-    if (config.imageGeneration.enabled) return 'Anthropic Messages experimental text chat does not support image generation. Disable image generation before sending.'
-    return null
-  }
-
-  function getDeepSeekTextChatBlockReason(input: Readonly<{
-    text: string
-    hasDraftAttachments: boolean
-  }>): string | null {
-    if (!input.text.trim()) return 'DeepSeek official experimental text chat requires a plain text message.'
-    if (!deepSeekChatModel.value.trim()) return 'DeepSeek official experimental text chat requires a DeepSeek model id.'
-    if (input.hasDraftAttachments) return 'DeepSeek official experimental text chat is text-only. Remove attachments before sending.'
-    const config = activeSessionConfig.value
-    if (config.webSearch.enabled) return 'DeepSeek official experimental text chat does not support web search. Disable web search before sending.'
-    if (config.reasoning.enabled) return 'DeepSeek official experimental text chat does not support reasoning or thinking controls. Disable reasoning before sending.'
-    if (config.imageGeneration.enabled) return 'DeepSeek official experimental text chat does not support image generation. Disable image generation before sending.'
-    return null
-  }
-
   async function sendLocalEndpointTextChat(input: Readonly<{
     convoId: string
     branch: BranchSummary
@@ -9042,53 +9146,28 @@ export function useAppChatAppLogic() {
       if (import.meta.env?.DEV) console.warn('[ui-app] context.buildForBranch failed; using empty context', err)
     }
 
-    if (deepSeekChatEnabled.value) {
-      const blockReason = getDeepSeekTextChatBlockReason({ text, hasDraftAttachments })
-      if (blockReason) {
-        setAttachmentFeedback('error', blockReason)
+    if (runtimeRoute.kind === 'experimental_text') {
+      if (runtimeRoute.providerKey === 'deepseek') {
+        await sendDeepSeekTextChat({ convoId, branch, text, contextMessages })
         return
       }
-      await sendDeepSeekTextChat({ convoId, branch, text, contextMessages })
-      return
-    }
-
-    if (anthropicChatEnabled.value) {
-      const blockReason = getAnthropicTextChatBlockReason({ text, hasDraftAttachments })
-      if (blockReason) {
-        setAttachmentFeedback('error', blockReason)
+      if (runtimeRoute.providerKey === 'anthropic_messages') {
+        await sendAnthropicTextChat({ convoId, branch, text, contextMessages })
         return
       }
-      await sendAnthropicTextChat({ convoId, branch, text, contextMessages })
-      return
-    }
-
-    if (googleAIStudioChatEnabled.value) {
-      const blockReason = getGoogleAIStudioTextChatBlockReason({ text, hasDraftAttachments })
-      if (blockReason) {
-        setAttachmentFeedback('error', blockReason)
+      if (runtimeRoute.providerKey === 'google_ai_studio') {
+        await sendGoogleAIStudioTextChat({ convoId, branch, text, contextMessages })
         return
       }
-      await sendGoogleAIStudioTextChat({ convoId, branch, text, contextMessages })
-      return
-    }
-
-    if (openAIResponsesChatEnabled.value) {
-      const blockReason = getOpenAIResponsesTextChatBlockReason({ text, hasDraftAttachments })
-      if (blockReason) {
-        setAttachmentFeedback('error', blockReason)
+      if (runtimeRoute.providerKey === 'openai_responses') {
+        await sendOpenAIResponsesTextChat({ convoId, branch, text, contextMessages })
         return
       }
-      await sendOpenAIResponsesTextChat({ convoId, branch, text, contextMessages })
-      return
-    }
-
-    if (localEndpointChatEnabled.value) {
-      const blockReason = getLocalEndpointTextChatBlockReason({ text, hasDraftAttachments })
-      if (blockReason) {
-        setAttachmentFeedback('error', blockReason)
+      if (runtimeRoute.providerKey === 'local_endpoint') {
+        await sendLocalEndpointTextChat({ convoId, branch, text, contextMessages })
         return
       }
-      await sendLocalEndpointTextChat({ convoId, branch, text, contextMessages })
+      setAttachmentFeedback('error', 'Selected runtime provider is not routable for text chat.')
       return
     }
 
@@ -9127,6 +9206,25 @@ export function useAppChatAppLogic() {
           await applyDraftAttachmentDecisions(draftDecisions)
           gate = await preflightDraftAttachmentSendGate({
             conversationId: convoId,
+    const runtimeSelection = currentRuntimeSelection.value
+    const runtimeCapability = currentRuntimeCapability.value
+    const runtimeBlockReason = getRuntimeTextChatBlockReason({
+      selection: runtimeSelection,
+      capability: runtimeCapability,
+      text,
+      hasDraftAttachments,
+      sessionConfig: activeSessionConfig.value,
+    })
+    if (runtimeBlockReason) {
+      setAttachmentFeedback('error', runtimeBlockReason)
+      return
+    }
+    const runtimeRoute = resolveRuntimeTextSendRoute(runtimeSelection)
+    if (runtimeRoute.kind === 'none') {
+      setAttachmentFeedback('error', runtimeRoute.reason)
+      return
+    }
+
             draftText: text,
             modelId,
             baseUrl,
@@ -9948,6 +10046,7 @@ export function useAppChatAppLogic() {
         else idsRefChangedCount += 1
         lastTranscriptIdsRef = ids
 
+    readOpenRouterChatStorage()
         const excludeId = activeAssistantMessageId.value ?? activeCursorMessageId.value
         const candidates = excludeId ? ids.filter((id) => id !== excludeId) : ids.slice()
         const eligibleCandidates = candidates.filter((id) => {
@@ -10006,6 +10105,7 @@ export function useAppChatAppLogic() {
     }
   })
 
+    window.addEventListener('storage', handleOpenRouterChatStorage)
   // DB 事件订阅
   let unsubscribeDbEvent: (() => void) | null = null
 
@@ -10146,6 +10246,7 @@ export function useAppChatAppLogic() {
     onBulkDeleteConvos,
     onBulkMoveConvosToProject,
     searchModalOpen,
+    window.removeEventListener('storage', handleOpenRouterChatStorage)
     searchProjectOptions,
     searchConvoOptions,
     closeSearchModal,
@@ -10361,11 +10462,18 @@ export function useAppChatAppLogic() {
     questionEditSession,
     isQuestionEditMode,
     closeQuestionEdit,
+    openRouterChatConfig,
     submitQuestionEdit,
     canReplaceQuestionInUi,
     pendingDeleteQuestionId,
     requestDeleteQuestion,
     cancelDeleteQuestion,
+    deepSeekModelAvailabilityStatus,
+    currentRuntimeSelection,
+    currentRuntimeCapability,
+    currentRuntimeStatus,
     confirmDeleteQuestion,
   }
 }
+    onUpdateOpenRouterChatEnabled,
+    onRefreshDeepSeekModels,

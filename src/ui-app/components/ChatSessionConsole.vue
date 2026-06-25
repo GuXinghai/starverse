@@ -4,6 +4,14 @@ import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
 import type { SearchSettingsLayer, ResolvedSearchSettings } from '@/next/openrouter/searchSettingsResolver'
 import type { SamplingParamsLayer, ResolvedSamplingParams } from '@/next/openrouter/samplingParamsResolver'
 import type { ImageGenerationUserConfig } from '@/next/openrouter/imageGenerationSettingsPersistence'
+import type {
+  CurrentRuntimeSelection,
+  RuntimeCapabilitySummaryLite,
+} from '@/next/provider/runtimeSelection'
+import type {
+  DeepSeekModelAvailabilityResult,
+  ProviderModelAvailability,
+} from '@/next/provider/deepseek/deepSeekModelSource'
 import type { ChatSessionConfig } from '../app/chatSessionConfig'
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import SamplingParamsSettingsEditor from './SamplingParamsSettingsEditor.vue'
@@ -13,6 +21,11 @@ const props = defineProps<{
   disabled: boolean
   isRunning: boolean
   sessionConfig: ChatSessionConfig
+  openRouterChat?: Readonly<{
+    enabled: boolean
+    model: string
+    providerLabel: string
+  }> | null
   localEndpointChat?: Readonly<{
     enabled: boolean
     endpointUrl: string
@@ -39,6 +52,17 @@ const props = defineProps<{
     model: string
     experimentalLabel: string
   }> | null
+  deepSeekModelAvailability?: Readonly<{
+    loading: boolean
+    result: DeepSeekModelAvailabilityResult | null
+  }> | null
+  currentRuntimeSelection?: CurrentRuntimeSelection | null
+  currentRuntimeCapability?: RuntimeCapabilitySummaryLite | null
+  currentRuntimeStatus?: Readonly<{
+    selectionLabel: string
+    capabilitySummary: string
+    warnings: readonly string[]
+  }> | null
   reasoningDisplayMode: 'inline' | 'rail'
   modelCatalog: readonly ModelCatalogItem[]
   webSearchResolved: ResolvedSearchSettings | null
@@ -57,6 +81,7 @@ const emit = defineEmits<{
   (e: 'updateImageGenerationResolution', value: '1K' | '2K' | '4K'): void
   (e: 'updateImageGenerationAspectRatio', value: '16:9' | '3:4' | '1:1' | '4:3'): void
   (e: 'updateImageGeneration', value: ImageGenerationUserConfig): void
+  (e: 'updateOpenRouterChatEnabled', enabled: boolean): void
   (e: 'updateLocalEndpointChatEnabled', enabled: boolean): void
   (e: 'updateLocalEndpointChatUrl', value: string): void
   (e: 'updateLocalEndpointChatModel', value: string): void
@@ -73,12 +98,26 @@ const emit = defineEmits<{
   (e: 'updateDeepSeekChatEnabled', enabled: boolean): void
   (e: 'updateDeepSeekChatModel', value: string): void
   (e: 'clearDeepSeekChat'): void
+  (e: 'refreshDeepSeekModels'): void
   (e: 'updateReasoningDisplayMode', mode: 'inline' | 'rail'): void
   (e: 'openSettings'): void
 }>()
 
 const disabled = computed(() => props.disabled || props.isRunning)
 const modelValue = computed(() => props.sessionConfig.model.selectedModelKey ?? 'openrouter/auto')
+const openRouterChat = computed(() => props.openRouterChat ?? {
+  enabled: false,
+  model: modelValue.value,
+  providerLabel: 'OpenRouter · first-class provider',
+})
+const openRouterChatStatusLabel = computed(() => openRouterChat.value.enabled ? 'active' : 'inactive')
+const runtimeStatus = computed(() => props.currentRuntimeStatus ?? {
+  selectionLabel: 'No runtime provider selected',
+  capabilitySummary: 'text chat blocked',
+  warnings: ['Select a runtime provider and model before sending.'],
+})
+const runtimeSelectionStateLabel = computed(() => props.currentRuntimeSelection?.state === 'selected' ? 'selected' : 'unset')
+const runtimeCapabilitySourceLabel = computed(() => props.currentRuntimeCapability?.source ?? 'unset')
 const localEndpointChat = computed(() => props.localEndpointChat ?? {
   enabled: false,
   endpointUrl: 'http://localhost:1234/v1',
@@ -110,6 +149,33 @@ const deepSeekChat = computed(() => props.deepSeekChat ?? {
   experimentalLabel: 'Experimental · DeepSeek official text-only · not OpenRouter',
 })
 const deepSeekChatStatusLabel = computed(() => deepSeekChat.value.enabled ? 'active' : 'inactive')
+const deepSeekModelAvailability = computed(() => props.deepSeekModelAvailability ?? {
+  loading: false,
+  result: null,
+})
+const deepSeekAvailabilityModels = computed(() => {
+  const result = deepSeekModelAvailability.value.result
+  return result?.ok ? result.models : []
+})
+const deepSeekAvailabilityWarnings = computed(() => {
+  const result = deepSeekModelAvailability.value.result
+  return result?.ok ? result.warnings : []
+})
+const deepSeekAvailabilitySourceDocuments = computed(() => {
+  const result = deepSeekModelAvailability.value.result
+  return result?.ok ? result.sourceDocuments : []
+})
+const deepSeekAvailabilityFailure = computed(() => {
+  const result = deepSeekModelAvailability.value.result
+  return result && !result.ok ? result : null
+})
+const deepSeekAvailabilitySummary = computed(() => {
+  if (deepSeekModelAvailability.value.loading) return 'Refreshing DeepSeek official models...'
+  const result = deepSeekModelAvailability.value.result
+  if (!result) return 'DeepSeek official models have not been refreshed in this session.'
+  if (!result.ok) return `${result.message} (${result.code})`
+  return `${result.models.length} DeepSeek model availability records. Observed ${formatObservedAt(result.observedAtMs)}.`
+})
 const imageValue = computed<ImageGenerationUserConfig>(() => ({
   enabled: props.sessionConfig.imageGeneration.enabled,
   outputMode: props.sessionConfig.imageGeneration.detail?.outputMode ?? 'auto',
@@ -117,6 +183,34 @@ const imageValue = computed<ImageGenerationUserConfig>(() => ({
   imageSize: props.sessionConfig.imageGeneration.resolution,
   advancedJson: props.sessionConfig.imageGeneration.detail?.advancedJson ?? '',
 }))
+
+function formatObservedAt(observedAtMs: number): string {
+  if (!Number.isFinite(observedAtMs)) return 'unknown'
+  try {
+    return new Date(observedAtMs).toISOString()
+  } catch {
+    return 'unknown'
+  }
+}
+
+function formatDeepSeekCapabilitySeed(model: ProviderModelAvailability): string {
+  const seed = model.capabilitySeed
+  if (!seed) return 'capability seed unknown'
+  const chunks = [
+    seed.textChat === true ? 'text chat' : null,
+    seed.thinkingMode ? `thinking: ${seed.thinkingMode}` : null,
+    typeof seed.contextLength === 'number' ? `context ${seed.contextLength}` : null,
+    typeof seed.maxOutputTokens === 'number' ? `max output ${seed.maxOutputTokens}` : null,
+  ].filter(Boolean)
+  return chunks.length > 0 ? chunks.join(' · ') : 'capability seed unknown'
+}
+
+function formatDeepSeekPricingSeed(model: ProviderModelAvailability): string {
+  const pricing = model.pricingSeed
+  if (!pricing) return 'pricing seed unknown'
+  const currency = pricing.currency ?? 'USD'
+  return `${currency}/1M input hit ${pricing.inputCacheHitPer1MTokens ?? '?'} · miss ${pricing.inputCacheMissPer1MTokens ?? '?'} · output ${pricing.outputPer1MTokens ?? '?'}`
+}
 
 function chipClass(active: boolean): string {
   return active
@@ -150,6 +244,27 @@ function chipClass(active: boolean): string {
         </div>
       </section>
 
+      <section class="space-y-2 rounded-lg border border-gray-200 bg-gray-50/70 p-3" data-testid="runtime-selection-status">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Runtime</div>
+            <div class="mt-1 text-[11px] text-gray-700" data-testid="runtime-selection-label">
+              {{ runtimeStatus.selectionLabel }}
+            </div>
+          </div>
+          <span class="shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-700" data-testid="runtime-selection-state">
+            {{ runtimeSelectionStateLabel }}
+          </span>
+        </div>
+        <div class="rounded border border-gray-100 bg-white px-2 py-1.5 text-[11px] text-gray-700" data-testid="runtime-capability-summary">
+          {{ runtimeStatus.capabilitySummary }}
+          <span> · source {{ runtimeCapabilitySourceLabel }}</span>
+        </div>
+        <ul v-if="runtimeStatus.warnings.length" class="space-y-1 text-[11px] text-gray-600" data-testid="runtime-capability-warnings">
+          <li v-for="warning in runtimeStatus.warnings" :key="warning">{{ warning }}</li>
+        </ul>
+      </section>
+
       <section class="space-y-2 rounded-lg border border-gray-200 bg-gray-50/70 p-3">
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Model</div>
         <select
@@ -163,6 +278,33 @@ function chipClass(active: boolean): string {
             {{ item.name }}
           </option>
         </select>
+      </section>
+
+      <section class="space-y-3 rounded-lg border border-gray-200 bg-gray-50/70 p-3" data-testid="openrouter-chat-controls">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-700">OpenRouter Chat</div>
+            <div class="mt-1 text-[11px] text-gray-600">{{ openRouterChat.providerLabel }}</div>
+          </div>
+          <label class="flex items-center gap-2 text-sm text-gray-800">
+            <input
+              type="checkbox"
+              :checked="openRouterChat.enabled"
+              :disabled="disabled"
+              data-testid="openrouter-chat-enabled"
+              @change="emit('updateOpenRouterChatEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            enabled
+          </label>
+        </div>
+        <div class="text-[11px] text-gray-700" data-testid="openrouter-chat-warning">
+          Explicit first-class provider selection. Existing OpenRouter Send Plan, attachments, web search, reasoning, image generation, and legacy-store credential source stay on the OpenRouter path.
+        </div>
+        <div class="rounded border border-gray-100 bg-white px-2 py-1.5 text-[11px] text-gray-800" data-testid="openrouter-chat-selected-status">
+          <div>OpenRouter chat is {{ openRouterChatStatusLabel }}.</div>
+          <div>Selected OpenRouter model: {{ openRouterChat.model || 'none' }}</div>
+          <div>OpenRouter is not an implicit fallback; select it here before sending with OpenRouter.</div>
+        </div>
       </section>
 
       <section class="space-y-3 rounded-lg border border-blue-200 bg-blue-50/70 p-3" data-testid="openai-responses-chat-controls">
@@ -317,6 +459,69 @@ function chipClass(active: boolean): string {
           <div>Experimental DeepSeek official chat is {{ deepSeekChatStatusLabel }}.</div>
           <div>Selected DeepSeek model: {{ deepSeekChat.model || 'none' }}</div>
           <div>DeepSeek chat uses a main-process credential bridge and does not expose API keys to this console.</div>
+        </div>
+        <div class="space-y-2 rounded border border-cyan-100 bg-white px-2 py-2 text-[11px] text-cyan-900" data-testid="deepseek-models-diagnostics">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="font-semibold">DeepSeek official model source</div>
+              <div data-testid="deepseek-models-summary">{{ deepSeekAvailabilitySummary }}</div>
+            </div>
+            <button
+              type="button"
+              class="rounded-md border border-cyan-300 bg-cyan-50 px-2 py-1 text-[11px] font-semibold text-cyan-900 hover:bg-cyan-100 disabled:opacity-50"
+              :disabled="disabled || deepSeekModelAvailability.loading"
+              data-testid="deepseek-models-refresh"
+              @click="emit('refreshDeepSeekModels')"
+            >
+              {{ deepSeekModelAvailability.loading ? 'Refreshing...' : 'Refresh models' }}
+            </button>
+          </div>
+          <div v-if="deepSeekAvailabilityFailure" class="text-red-700" data-testid="deepseek-models-error">
+            {{ deepSeekAvailabilityFailure.message }}
+          </div>
+          <div v-if="deepSeekAvailabilitySourceDocuments.length > 0" class="text-cyan-700" data-testid="deepseek-models-source">
+            Source docs:
+            <span v-for="sourceDoc in deepSeekAvailabilitySourceDocuments" :key="sourceDoc.source" class="mr-1">
+              {{ sourceDoc.source }} observed {{ formatObservedAt(sourceDoc.observedAtMs) }}
+            </span>
+          </div>
+          <div v-for="warning in deepSeekAvailabilityWarnings" :key="warning" class="text-amber-700" data-testid="deepseek-model-warning">
+            {{ warning }}
+          </div>
+          <div v-if="deepSeekAvailabilityModels.length > 0" class="space-y-1" data-testid="deepseek-models-list">
+            <div
+              v-for="modelAvailability in deepSeekAvailabilityModels"
+              :key="modelAvailability.nativeModelId"
+              class="rounded border border-cyan-50 bg-cyan-50/60 px-2 py-1"
+              data-testid="deepseek-model-row"
+            >
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
+                  <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
+                  <div>{{ formatDeepSeekCapabilitySeed(modelAvailability) }}</div>
+                  <div>{{ formatDeepSeekPricingSeed(modelAvailability) }}</div>
+                </div>
+                <button
+                  type="button"
+                  class="rounded-md border border-cyan-200 bg-white px-2 py-1 text-[11px] font-medium text-cyan-800 hover:bg-cyan-100 disabled:opacity-50"
+                  :disabled="disabled"
+                  data-testid="deepseek-model-use"
+                  @click="emit('updateDeepSeekChatModel', modelAvailability.nativeModelId)"
+                >
+                  Use model id
+                </button>
+              </div>
+              <div
+                v-for="warning in modelAvailability.warnings"
+                :key="`${modelAvailability.nativeModelId}:${warning}`"
+                class="mt-1 text-amber-700"
+                data-testid="deepseek-model-warning"
+              >
+                {{ warning }}
+              </div>
+            </div>
+          </div>
         </div>
         <div class="flex flex-wrap gap-2">
           <button

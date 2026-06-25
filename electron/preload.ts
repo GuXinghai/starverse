@@ -39,6 +39,10 @@ contextBridge.exposeInMainWorld('deepSeekCredential', {
   clear: () => ipcRenderer.invoke('deepseek-credential:clear'),
 })
 
+contextBridge.exposeInMainWorld('deepSeekModels', {
+  listAvailability: (payload?: unknown) => ipcRenderer.invoke('deepseek-models:list-availability', payload),
+})
+
 contextBridge.exposeInMainWorld('localEndpointDiagnostics', {
   probe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:probe', payload),
   streamProbe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:stream-probe', payload),
