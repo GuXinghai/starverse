@@ -447,3 +447,32 @@ Risks:
 
 Next step:
 - If this polish is committed, create a DFC-only commit or partial stage that excludes unrelated provider/runtime changes and generated native/build artifacts.
+
+## 2026-06-25 15:46 +08:00
+
+Action:
+- Switched from a single DFC-only closeout commit to a batch commit strategy per Owner instruction.
+- Re-inventoried the dirty worktree and separated retained changes into DFC attachment UX P2 polish, provider/DeepSeek/runtime, and a final mixed app-shell commit for provider runtime wiring cleanup plus the DFC DOCX Electron smoke seam.
+- Excluded `public/build-id.json` as a generated build-id artifact and did not stage native/build/runtime/package artifacts.
+
+Commits:
+- `9ca10eb2 polish(dfc): localize attachment send UI`
+  - Scope: DFC attachment UX P2 polish and DFC evidence docs.
+  - Files: DFC i18n JSON, attachment chip/details UI, attachment tests, DFC progress/evidence docs, and DFC-only hunks from `appChatApp.logic.ts`.
+  - Validation: `npm run rebuild:node`; focused UI/i18n/DFC Vitest passed 7 files / 325 tests; `npx vue-tsc --noEmit --pretty false`; `npm run gate:privacy`; `npm run rebuild:electron`; `npm run test:electron-smoke`; `git diff --cached --check`.
+- `1eb53b27 feat(provider): formalize runtime selection`
+  - Scope: provider/DeepSeek/runtime selection architecture and UI integration.
+  - Files: provider architecture docs, DeepSeek model availability IPC/source, runtime selection source/tests, provider text-chat smoke script, AppChatApp/ChatSessionConsole/SettingsPanel UI tests and UI wiring, provider-only hunks from `appChatApp.logic.ts`.
+  - Validation: `npm run rebuild:node`; provider/runtime targeted Vitest passed 9 files / 99 tests; `npx vue-tsc --noEmit --pretty false`; `git diff --cached --check`.
+- `a958eb2d chore(app): finish runtime wiring and DFC smoke seam`
+  - Scope: mixed follow-up in `src/ui-app/app/appChatApp.logic.ts` after repeated hunk-split attempts. Contains remaining provider runtime wiring cleanup plus the DFC DOCX Electron smoke seeder/gating seam.
+  - Split note: attempts to isolate this file by manual `git apply --cached` patches and `git add -p` were not reliable for the return-order and long DOCX smoke hunks. The commit message intentionally names the mixed scope instead of presenting it as DFC-only.
+  - Validation: `npx vue-tsc --noEmit --pretty false`; `npm run rebuild:electron`; `npm run test:electron-smoke`; `git diff --cached --check`.
+
+Risks:
+- `public/build-id.json` remains dirty by design as a generated artifact and must not be committed.
+- Current ABI target is Electron after the final smoke validation.
+- No `.svpkg`, MSI, runtime package, native `.node`, `node_modules`, lockfile, build output, token, key, or private runtime artifact was staged.
+
+Next step:
+- Commit this documentation-only batch strategy record, then final status should show only the excluded `public/build-id.json` generated artifact dirty.
