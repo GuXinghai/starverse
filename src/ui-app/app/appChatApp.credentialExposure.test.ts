@@ -129,13 +129,16 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
 
   it('keeps OpenAI Responses experimental send native, explicit, text-only, and renderer-secret-free', () => {
     const appChatSource = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
+    const coordinatorSource = readFileSync(resolve(testDir, 'providerRuntimeSendCoordinator.ts'), 'utf8')
     const settingsSource = readFileSync(resolve(testDir, '..', 'components', 'SettingsPanel.vue'), 'utf8')
 
-    expect(appChatSource).toContain('streamOpenAIResponsesTextChatAsDomainEvents')
+    expect(appChatSource).toContain('resolveProviderRuntimeTextSendPreflight')
+    expect(appChatSource).toContain('sendExperimentalProviderTextChat')
+    expect(coordinatorSource).toContain('streamOpenAIResponsesTextChatAsDomainEvents')
     expect(appChatSource).toContain('openAIResponsesChatEnabled')
-    expect(appChatSource).toContain('getRuntimeTextChatBlockReason')
-    expect(appChatSource).toContain('resolveRuntimeTextSendRoute')
-    expect(appChatSource).toContain("runtimeRoute.providerKey === 'openai_responses'")
+    expect(coordinatorSource).toContain('getRuntimeTextChatBlockReason')
+    expect(coordinatorSource).toContain('resolveRuntimeTextSendRoute')
+    expect(coordinatorSource).toContain("case 'openai_responses'")
     expect(settingsSource).toContain('openAIResponsesCredential')
     expect(settingsSource).not.toContain("electronStore.get('openAIResponsesApiKey')")
     expect(settingsSource).not.toContain("electronStore.set('openAIResponsesApiKey'")
@@ -165,12 +168,14 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
 
   it('keeps experimental LocalEndpoint chat text-only and blocks high-risk send options before streaming', () => {
     const source = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
+    const coordinatorSource = readFileSync(resolve(testDir, 'providerRuntimeSendCoordinator.ts'), 'utf8')
 
-    expect(source).toContain('getRuntimeTextChatBlockReason')
+    expect(source).toContain('resolveProviderRuntimeTextSendPreflight')
+    expect(coordinatorSource).toContain('getRuntimeTextChatBlockReason')
     expect(source).toContain('currentRuntimeCapability')
-    expect(source).toContain("runtimeRoute.providerKey === 'local_endpoint'")
-    expect(source).toContain('sendLocalEndpointTextChat')
-    expect(source).toContain('streamLocalEndpointTextChatAsDomainEvents')
+    expect(coordinatorSource).toContain("case 'local_endpoint'")
+    expect(source).toContain('sendExperimentalProviderTextChat')
+    expect(coordinatorSource).toContain('streamLocalEndpointTextChatAsDomainEvents')
     expect(source).not.toContain('localEndpointApiKey')
     expect(source).not.toContain('localEndpointAuthorization')
     expect(source).not.toContain('localEndpointCustomHeader')
@@ -178,12 +183,13 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
 
   it('keeps Google AI Studio experimental send native, explicit, text-only, and old-Gemini-runtime-free', () => {
     const appChatSource = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
+    const coordinatorSource = readFileSync(resolve(testDir, 'providerRuntimeSendCoordinator.ts'), 'utf8')
     const settingsSource = readFileSync(resolve(testDir, '..', 'components', 'SettingsPanel.vue'), 'utf8')
 
-    expect(appChatSource).toContain('streamGoogleAIStudioTextChatAsDomainEvents')
+    expect(coordinatorSource).toContain('streamGoogleAIStudioTextChatAsDomainEvents')
     expect(appChatSource).toContain('googleAIStudioChatEnabled')
-    expect(appChatSource).toContain('getRuntimeTextChatBlockReason')
-    expect(appChatSource).toContain("runtimeRoute.providerKey === 'google_ai_studio'")
+    expect(coordinatorSource).toContain('getRuntimeTextChatBlockReason')
+    expect(coordinatorSource).toContain("case 'google_ai_studio'")
     expect(appChatSource).not.toContain('PROVIDERS.GEMINI')
     expect(appChatSource).not.toMatch(/streamVia\w*Gemini/)
     expect(appChatSource).not.toContain('geminiApiKey')
@@ -198,12 +204,13 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
 
   it('keeps Anthropic Messages experimental send native, explicit, text-only, and renderer-secret-free', () => {
     const appChatSource = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
+    const coordinatorSource = readFileSync(resolve(testDir, 'providerRuntimeSendCoordinator.ts'), 'utf8')
     const settingsSource = readFileSync(resolve(testDir, '..', 'components', 'SettingsPanel.vue'), 'utf8')
 
-    expect(appChatSource).toContain('streamAnthropicTextChatAsDomainEvents')
+    expect(coordinatorSource).toContain('streamAnthropicTextChatAsDomainEvents')
     expect(appChatSource).toContain('anthropicChatEnabled')
-    expect(appChatSource).toContain('getRuntimeTextChatBlockReason')
-    expect(appChatSource).toContain("runtimeRoute.providerKey === 'anthropic_messages'")
+    expect(coordinatorSource).toContain('getRuntimeTextChatBlockReason')
+    expect(coordinatorSource).toContain("case 'anthropic_messages'")
     expect(appChatSource).not.toMatch(/streamViaAnthropic\s*\(/)
     expect(appChatSource).not.toContain('anthropicApiKey')
     expect(settingsSource).toContain('anthropicCredential')
@@ -237,12 +244,13 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
 
   it('keeps DeepSeek official experimental send native/profile-specific, explicit, text-only, and renderer-secret-free', () => {
     const appChatSource = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
+    const coordinatorSource = readFileSync(resolve(testDir, 'providerRuntimeSendCoordinator.ts'), 'utf8')
     const settingsSource = readFileSync(resolve(testDir, '..', 'components', 'SettingsPanel.vue'), 'utf8')
 
-    expect(appChatSource).toContain('streamDeepSeekTextChatAsDomainEvents')
+    expect(coordinatorSource).toContain('streamDeepSeekTextChatAsDomainEvents')
     expect(appChatSource).toContain('deepSeekChatEnabled')
-    expect(appChatSource).toContain('getRuntimeTextChatBlockReason')
-    expect(appChatSource).toContain("runtimeRoute.providerKey === 'deepseek'")
+    expect(coordinatorSource).toContain('getRuntimeTextChatBlockReason')
+    expect(coordinatorSource).toContain("case 'deepseek'")
     expect(appChatSource).not.toMatch(/streamViaDeepSeek\s*\(/)
     expect(appChatSource).not.toContain('deepSeekApiKey')
     expect(appChatSource).not.toContain('streamViaGenericConfig')

@@ -301,14 +301,16 @@ describe('C5 endpoint registry baseline characterization', () => {
 describe('C6 local endpoint baseline characterization', () => {
   it('keeps OpenRouter as an explicit active send runtime while LocalEndpoint text chat remains explicit experimental routing', () => {
     const appChat = readRepoFile('src', 'ui-app', 'app', 'appChatApp.logic.ts')
+    const coordinator = readRepoFile('src', 'ui-app', 'app', 'providerRuntimeSendCoordinator.ts')
     const openRouterAdapter = readRepoFile('src', 'next', 'provider', 'openrouter', 'openRouterAdapter.ts')
     const liveStream = readRepoFile('src', 'next', 'live', 'openRouterLiveStream.ts')
     const bridge = readRepoFile('electron', 'ipc', 'openRouterStreamBridge.ts')
 
     expect(appChat).toContain('streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource')
-    expect(appChat).toContain('streamLocalEndpointTextChatAsDomainEvents')
+    expect(coordinator).toContain('streamLocalEndpointTextChatAsDomainEvents')
     expect(appChat).toContain('deriveCurrentRuntimeSelection')
-    expect(appChat).toContain('resolveRuntimeTextSendRoute')
+    expect(appChat).toContain('resolveProviderRuntimeTextSendPreflight')
+    expect(coordinator).toContain('resolveRuntimeTextSendRoute')
     expect(appChat).toContain('openRouterChatEnabled')
     expect(appChat).toContain('localEndpointChatEnabled')
     expect(openRouterAdapter).toContain("credentialSource: 'legacy_store' as const")
@@ -316,7 +318,7 @@ describe('C6 local endpoint baseline characterization', () => {
     expect(bridge).toContain("credentialService.readApiKey('openrouter')")
     expect(bridge).not.toContain('resolveOpenRouterChatCredentialFromLegacyStore')
 
-    expect(appChat).not.toMatch(/\bstreamVia(?:Generic|DeepSeek|OpenAIResponses|Anthropic|Gemini)\b/)
+    expect(`${appChat}\n${coordinator}`).not.toMatch(/\bstreamVia(?:Generic|DeepSeek|OpenAIResponses|Anthropic|Gemini)\b/)
     expect(appChat).not.toMatch(/\b(?:RuntimeProviderRegistry|ProviderRegistry|EndpointRegistry)\b/)
   })
 
