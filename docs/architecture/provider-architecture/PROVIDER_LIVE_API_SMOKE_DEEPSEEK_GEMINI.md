@@ -115,9 +115,25 @@ The Gemini availability failure is currently classified as network reachability,
 
 Fix result: a minimal provider live HTTP transport seam now uses Electron session-backed networking for Google AI Studio model availability and text chat. Do not describe environment proxy support as equivalent to Chromium/system proxy unless the implementation actually uses that chain. A future diagnostic enhancement could add an opt-in redacted transport detail for maintainers, but it should not expose provider headers, raw error bodies, or raw API keys.
 
+## Gemini Text Chat 404 Diagnosis v1
+
+Scope: this follow-up only examined why model availability could succeed while a short Google AI Studio text stream returned a safe `404`. It did not re-run DeepSeek and did not call OpenAI Responses, Anthropic, or OpenRouter.
+
+Findings:
+
+- Endpoint shape: the current Gemini text adapter uses `POST https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?alt=sse`, which matches the Gemini REST streaming endpoint shape when `{model}` is an unprefixed native model id such as `gemini-2.0-flash`.
+- Model id shape: Google model availability records may carry both `providerModelName` such as `models/gemini-2.5-flash` and `nativeModelId` such as `gemini-2.5-flash`. The Console applies `nativeModelId`, so the known post-fix `gemini-2.0-flash` attempt did not fail because of a double `models/models/...` prefix.
+- Hardening patch: Google AI Studio text IPC now normalizes an optional `models/` prefix before dispatch and rejects invalid model ids. This prevents diagnostic or future UI paths from accidentally double-prefixing the REST path.
+- Safe 404 cause: provider `404` is now mapped to the sanitized message `Google AI Studio model was not found for the selected API version or does not support streaming text chat.` The raw provider body is still not sent to the renderer.
+- Live retry status: `gemini-3.1-flash-lite` succeeded through the same `streamGenerateContent` endpoint with HTTP `200`, `text/event-stream`, and an SSE text chunk containing `OK`.
+- Model list refresh: a follow-up `GET https://generativelanguage.googleapis.com/v1beta/models?pageSize=200` returned 55 models. The returned list included `gemini-2.0-flash`, `gemini-3.1-flash-lite`, and other `generateContent`-capable models.
+- Secret handling: temporary diagnostics used only redacted output and did not write the supplied key to source, env files, fixtures, reports, or git diff.
+
+Conclusion: the known post-fix `gemini-2.0-flash` `404` is no longer attributable to proxy transport, endpoint shape, header shape, or credential path. The local text endpoint construction is correct for unprefixed ids, and the UI-selected `nativeModelId` path is consistent. `gemini-3.1-flash-lite` is confirmed live text-capable through the current Google AI Studio stream path. The remaining likely cause for the earlier `gemini-2.0-flash` failure is model/API-version availability or streaming support for that specific selected model under the current API key.
+
 ## Recommendation
 
 - DeepSeek official live availability + send can be treated as a partial live pass for the text path, with the limitation that reasoning artifact rendering was not exercised.
 - Gemini / Google AI Studio model availability can be treated as proxy-aligned after the session-backed transport fix.
-- Gemini / Google AI Studio text send should not be treated as live-passed yet; the single post-fix short-send attempt ended with safe `404`.
-- Do not enter a full Gemini live E2E pass claim until a post-fix short text send succeeds and produces a visible answer.
+- Gemini / Google AI Studio text send can be treated as live-passed for `gemini-3.1-flash-lite` after the direct stream retry returned HTTP `200` and visible `OK`.
+- Do not use the earlier `gemini-2.0-flash` `404` as evidence of text path failure; treat it as a model-specific selection/availability issue unless reproduced with sanitized provider details.

@@ -65,6 +65,13 @@ const MAX_MESSAGE_CHARS = 20000
 const GOOGLE_AI_STUDIO_BASE_URL = 'https://generativelanguage.googleapis.com'
 const activeControllers = new Map<string, AbortController>()
 
+function normalizeGoogleAIStudioTextChatModelId(raw: unknown): string | null {
+  const value = String(raw ?? '').trim()
+  const withoutPrefix = value.startsWith('models/') ? value.slice('models/'.length) : value
+  if (!withoutPrefix || withoutPrefix.length > 128) return null
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(withoutPrefix) ? withoutPrefix : null
+}
+
 function normalizeTimeoutMs(raw: unknown): number {
   if (typeof raw !== 'number' || !Number.isFinite(raw)) return DEFAULT_TIMEOUT_MS
   return Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, Math.trunc(raw)))
@@ -99,7 +106,7 @@ export function validateGoogleAIStudioTextChatPayload(payload: unknown): Validat
   const record = payload as GoogleAIStudioTextChatPayload
   const requestId = String(record.requestId ?? '').trim()
   const assistantMessageId = String(record.assistantMessageId ?? '').trim()
-  const model = String(record.model ?? '').trim()
+  const model = normalizeGoogleAIStudioTextChatModelId(record.model)
   if (!requestId || !assistantMessageId || !model) {
     return staticFailure('invalid_payload', 'Google AI Studio text chat payload is invalid.')
   }
@@ -151,6 +158,8 @@ function safeProviderError(error: StarverseProviderError): StarverseProviderErro
         ? 'Google AI Studio rate limit was reached.'
         : category === 'aborted'
           ? 'Google AI Studio text chat was aborted.'
+          : error.httpStatus === 404
+            ? 'Google AI Studio model was not found for the selected API version or does not support streaming text chat.'
           : 'Google AI Studio text chat failed safely.',
     ...(error.code ? { code: String(error.code) } : {}),
     ...(error.httpStatus ? { httpStatus: error.httpStatus } : {}),
