@@ -82,11 +82,6 @@ import { startNetExpRunReport } from '@/next/netExp/netExpRunReport'
 import { applyEventsBatch, createInitialState, startGeneration, toggleReasoningPanelState } from '@/next/state/reducer'
 import { selectMessage, selectRun } from '@/next/state/selectors'
 import { streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource } from '@/next/provider/openrouter/openRouterAdapter'
-import { streamLocalEndpointTextChatAsDomainEvents } from '@/next/live/localEndpointTextChat'
-import { streamOpenAIResponsesTextChatAsDomainEvents } from '@/next/live/openAIResponsesTextChat'
-import { streamGoogleAIStudioTextChatAsDomainEvents } from '@/next/live/googleAIStudioTextChat'
-import { streamAnthropicTextChatAsDomainEvents } from '@/next/live/anthropicTextChat'
-import { streamDeepSeekTextChatAsDomainEvents } from '@/next/live/deepSeekTextChat'
 import {
   DEEPSEEK_OFFICIAL_ENDPOINT_ID,
   DEEPSEEK_OFFICIAL_PROFILE_ID,
@@ -116,8 +111,6 @@ import {
   formatRuntimeCapabilitySummaryLite,
   formatRuntimeSelectionLabel,
   getRuntimeCapabilitySummaryLite,
-  getRuntimeTextChatBlockReason,
-  resolveRuntimeTextSendRoute,
 } from '@/next/provider/runtimeSelection'
 import type { ReasoningArtifact, ReasoningArtifactProvider } from '@/next/provider/reasoningArtifact'
 import {
@@ -131,6 +124,15 @@ import {
   retainReasoningArtifactsForMessages,
   type ReasoningArtifactsByMessageId,
 } from './reasoningArtifactLifecycle'
+import {
+  createExperimentalRuntimeTextEvents,
+  getExperimentalRuntimeTextModelId,
+  getExperimentalRuntimeTextReasoningArtifactProvider,
+  getExperimentalRuntimeTextRequestPrefix,
+  isExperimentalRuntimeTextProviderKey,
+  resolveProviderRuntimeTextSendPreflight,
+  type ExperimentalRuntimeTextProviderKey,
+} from './providerRuntimeSendCoordinator'
 import {
   prepareOpenRouterReplayFromMessage,
   prepareOpenRouterSendFromDraft,
@@ -9139,14 +9141,23 @@ export function useAppChatAppLogic() {
     return prepared
   }
 
-  async function sendLocalEndpointTextChat(input: Readonly<{
+  async function sendExperimentalProviderTextChat(input: Readonly<{
+    providerKey: ExperimentalRuntimeTextProviderKey
     convoId: string
     branch: BranchSummary
     text: string
     contextMessages: any[]
   }>) {
-    const endpointUrl = localEndpointChatUrl.value.trim()
-    const modelId = localEndpointChatModel.value.trim()
+    const modelId = getExperimentalRuntimeTextModelId(input.providerKey, {
+      localEndpoint: localEndpointChatModel.value,
+      openAIResponses: openAIResponsesChatModel.value,
+      googleAIStudio: googleAIStudioChatModel.value,
+      anthropic: anthropicChatModel.value,
+      deepSeek: deepSeekChatModel.value,
+    })
+    const endpointUrl = input.providerKey === 'local_endpoint'
+      ? localEndpointChatUrl.value.trim()
+      : undefined
 
     const begun = await beginTurn(input.branch.id, input.text)
     draft.value = ''
@@ -9164,7 +9175,7 @@ export function useAppChatAppLogic() {
     const userMessageId = begun.questionId
     const assistantMessageId = begun.assistantId
     const assistantSeq = begun.assistantSeq
-    const requestId = randomId('local_req')
+    const requestId = randomId(getExperimentalRuntimeTextRequestPrefix(input.providerKey))
 
     messageSeqById.value.set(userMessageId, begun.questionSeq)
     messageSeqById.value.set(assistantMessageId, assistantSeq)
@@ -9190,6 +9201,7 @@ export function useAppChatAppLogic() {
     })
     state.value = started.state
 
+    const reasoningArtifactProvider = getExperimentalRuntimeTextReasoningArtifactProvider(input.providerKey)
     await runAssistantStreamSession({
       convoId: input.convoId,
       branchId: input.branch.id,
@@ -9197,289 +9209,15 @@ export function useAppChatAppLogic() {
       assistantMessageId,
       assistantSeq,
       modelId,
-      createEvents: (signal) => streamLocalEndpointTextChatAsDomainEvents({
+      ...(reasoningArtifactProvider ? { reasoningArtifactProvider } : {}),
+      createEvents: (signal) => createExperimentalRuntimeTextEvents({
+        providerKey: input.providerKey,
         requestId,
         assistantMessageId,
-        endpointUrl,
-        model: modelId,
+        modelId,
         userText: input.text,
         contextMessages: input.contextMessages,
-        signal,
-      }),
-    })
-  }
-
-  async function sendOpenAIResponsesTextChat(input: Readonly<{
-    convoId: string
-    branch: BranchSummary
-    text: string
-    contextMessages: any[]
-  }>) {
-    const modelId = openAIResponsesChatModel.value.trim()
-
-    const begun = await beginTurn(input.branch.id, input.text)
-    draft.value = ''
-    const cleared = await updateConversationDraftText({
-      conversationId: input.convoId,
-      draftText: '',
-      draftMode: 'compose',
-      editingSourceMessageId: null,
-    })
-    applyDraftPersistenceStateFromDraft(cleared)
-    void refreshDraftAttachmentViewModels()
-
-    patchBranch(input.branch.id, { headMessageId: begun.assistantId, updatedAt: Date.now() })
-
-    const userMessageId = begun.questionId
-    const assistantMessageId = begun.assistantId
-    const assistantSeq = begun.assistantSeq
-    const requestId = randomId('openai_responses_req')
-
-    messageSeqById.value.set(userMessageId, begun.questionSeq)
-    messageSeqById.value.set(assistantMessageId, assistantSeq)
-
-    ensureMessageMetaEntry(userMessageId, { role: 'user', status: 'final' })
-    ensureMessageMetaEntry(assistantMessageId, {
-      parentId: userMessageId,
-      questionId: userMessageId,
-      answerRootId: assistantMessageId,
-      role: 'assistant',
-      status: 'streaming',
-    })
-
-    const started = startGeneration(state.value, {
-      runId: input.branch.id,
-      requestId,
-      model: modelId,
-      userMessageId,
-      userMessageText: input.text,
-      assistantMessageId,
-      reasoningPanelDefaultExpanded: false,
-      requestedReasoningMode: 'auto',
-    })
-    state.value = started.state
-
-    await runAssistantStreamSession({
-      convoId: input.convoId,
-      branchId: input.branch.id,
-      requestId,
-      assistantMessageId,
-      assistantSeq,
-      modelId,
-      reasoningArtifactProvider: 'openai_responses',
-      createEvents: (signal) => streamOpenAIResponsesTextChatAsDomainEvents({
-        requestId,
-        assistantMessageId,
-        model: modelId,
-        userText: input.text,
-        contextMessages: input.contextMessages,
-        signal,
-      }),
-    })
-  }
-
-  async function sendGoogleAIStudioTextChat(input: Readonly<{
-    convoId: string
-    branch: BranchSummary
-    text: string
-    contextMessages: any[]
-  }>) {
-    const modelId = googleAIStudioChatModel.value.trim()
-
-    const begun = await beginTurn(input.branch.id, input.text)
-    draft.value = ''
-    const cleared = await updateConversationDraftText({
-      conversationId: input.convoId,
-      draftText: '',
-      draftMode: 'compose',
-      editingSourceMessageId: null,
-    })
-    applyDraftPersistenceStateFromDraft(cleared)
-    void refreshDraftAttachmentViewModels()
-
-    patchBranch(input.branch.id, { headMessageId: begun.assistantId, updatedAt: Date.now() })
-
-    const userMessageId = begun.questionId
-    const assistantMessageId = begun.assistantId
-    const assistantSeq = begun.assistantSeq
-    const requestId = randomId('google_ai_studio_req')
-
-    messageSeqById.value.set(userMessageId, begun.questionSeq)
-    messageSeqById.value.set(assistantMessageId, assistantSeq)
-
-    ensureMessageMetaEntry(userMessageId, { role: 'user', status: 'final' })
-    ensureMessageMetaEntry(assistantMessageId, {
-      parentId: userMessageId,
-      questionId: userMessageId,
-      answerRootId: assistantMessageId,
-      role: 'assistant',
-      status: 'streaming',
-    })
-
-    const started = startGeneration(state.value, {
-      runId: input.branch.id,
-      requestId,
-      model: modelId,
-      userMessageId,
-      userMessageText: input.text,
-      assistantMessageId,
-      reasoningPanelDefaultExpanded: false,
-      requestedReasoningMode: 'auto',
-    })
-    state.value = started.state
-
-    await runAssistantStreamSession({
-      convoId: input.convoId,
-      branchId: input.branch.id,
-      requestId,
-      assistantMessageId,
-      assistantSeq,
-      modelId,
-      reasoningArtifactProvider: 'google_ai_studio',
-      createEvents: (signal) => streamGoogleAIStudioTextChatAsDomainEvents({
-        requestId,
-        assistantMessageId,
-        model: modelId,
-        userText: input.text,
-        contextMessages: input.contextMessages,
-        signal,
-      }),
-    })
-  }
-
-  async function sendAnthropicTextChat(input: Readonly<{
-    convoId: string
-    branch: BranchSummary
-    text: string
-    contextMessages: any[]
-  }>) {
-    const modelId = anthropicChatModel.value.trim()
-
-    const begun = await beginTurn(input.branch.id, input.text)
-    draft.value = ''
-    const cleared = await updateConversationDraftText({
-      conversationId: input.convoId,
-      draftText: '',
-      draftMode: 'compose',
-      editingSourceMessageId: null,
-    })
-    applyDraftPersistenceStateFromDraft(cleared)
-    void refreshDraftAttachmentViewModels()
-
-    patchBranch(input.branch.id, { headMessageId: begun.assistantId, updatedAt: Date.now() })
-
-    const userMessageId = begun.questionId
-    const assistantMessageId = begun.assistantId
-    const assistantSeq = begun.assistantSeq
-    const requestId = randomId('anthropic_req')
-
-    messageSeqById.value.set(userMessageId, begun.questionSeq)
-    messageSeqById.value.set(assistantMessageId, assistantSeq)
-
-    ensureMessageMetaEntry(userMessageId, { role: 'user', status: 'final' })
-    ensureMessageMetaEntry(assistantMessageId, {
-      parentId: userMessageId,
-      questionId: userMessageId,
-      answerRootId: assistantMessageId,
-      role: 'assistant',
-      status: 'streaming',
-    })
-
-    const started = startGeneration(state.value, {
-      runId: input.branch.id,
-      requestId,
-      model: modelId,
-      userMessageId,
-      userMessageText: input.text,
-      assistantMessageId,
-      reasoningPanelDefaultExpanded: false,
-      requestedReasoningMode: 'auto',
-    })
-    state.value = started.state
-
-    await runAssistantStreamSession({
-      convoId: input.convoId,
-      branchId: input.branch.id,
-      requestId,
-      assistantMessageId,
-      assistantSeq,
-      modelId,
-      reasoningArtifactProvider: 'anthropic_messages',
-      createEvents: (signal) => streamAnthropicTextChatAsDomainEvents({
-        requestId,
-        assistantMessageId,
-        model: modelId,
-        userText: input.text,
-        contextMessages: input.contextMessages,
-        signal,
-      }),
-    })
-  }
-
-  async function sendDeepSeekTextChat(input: Readonly<{
-    convoId: string
-    branch: BranchSummary
-    text: string
-    contextMessages: any[]
-  }>) {
-    const modelId = deepSeekChatModel.value.trim()
-
-    const begun = await beginTurn(input.branch.id, input.text)
-    draft.value = ''
-    const cleared = await updateConversationDraftText({
-      conversationId: input.convoId,
-      draftText: '',
-      draftMode: 'compose',
-      editingSourceMessageId: null,
-    })
-    applyDraftPersistenceStateFromDraft(cleared)
-    void refreshDraftAttachmentViewModels()
-
-    patchBranch(input.branch.id, { headMessageId: begun.assistantId, updatedAt: Date.now() })
-
-    const userMessageId = begun.questionId
-    const assistantMessageId = begun.assistantId
-    const assistantSeq = begun.assistantSeq
-    const requestId = randomId('deepseek_req')
-
-    messageSeqById.value.set(userMessageId, begun.questionSeq)
-    messageSeqById.value.set(assistantMessageId, assistantSeq)
-
-    ensureMessageMetaEntry(userMessageId, { role: 'user', status: 'final' })
-    ensureMessageMetaEntry(assistantMessageId, {
-      parentId: userMessageId,
-      questionId: userMessageId,
-      answerRootId: assistantMessageId,
-      role: 'assistant',
-      status: 'streaming',
-    })
-
-    const started = startGeneration(state.value, {
-      runId: input.branch.id,
-      requestId,
-      model: modelId,
-      userMessageId,
-      userMessageText: input.text,
-      assistantMessageId,
-      reasoningPanelDefaultExpanded: false,
-      requestedReasoningMode: 'auto',
-    })
-    state.value = started.state
-
-    await runAssistantStreamSession({
-      convoId: input.convoId,
-      branchId: input.branch.id,
-      requestId,
-      assistantMessageId,
-      assistantSeq,
-      modelId,
-      reasoningArtifactProvider: 'deepseek',
-      createEvents: (signal) => streamDeepSeekTextChatAsDomainEvents({
-        requestId,
-        assistantMessageId,
-        model: modelId,
-        userText: input.text,
-        contextMessages: input.contextMessages,
+        ...(endpointUrl ? { localEndpointUrl: endpointUrl } : {}),
         signal,
       }),
     })
@@ -9492,24 +9230,18 @@ export function useAppChatAppLogic() {
     const hasDraftAttachments = draftAttachmentRecords.value.length > 0
     if (!text && !hasDraftAttachments) return
 
-    const runtimeSelection = currentRuntimeSelection.value
-    const runtimeCapability = currentRuntimeCapability.value
-    const runtimeBlockReason = getRuntimeTextChatBlockReason({
-      selection: runtimeSelection,
-      capability: runtimeCapability,
+    const runtimePreflight = resolveProviderRuntimeTextSendPreflight({
+      selection: currentRuntimeSelection.value,
+      capability: currentRuntimeCapability.value,
       text,
       hasDraftAttachments,
       sessionConfig: activeSessionConfig.value,
     })
-    if (runtimeBlockReason) {
-      setAttachmentFeedback('error', runtimeBlockReason)
+    if (!runtimePreflight.ok) {
+      setAttachmentFeedback('error', runtimePreflight.reason)
       return
     }
-    const runtimeRoute = resolveRuntimeTextSendRoute(runtimeSelection)
-    if (runtimeRoute.kind === 'none') {
-      setAttachmentFeedback('error', runtimeRoute.reason)
-      return
-    }
+    const runtimeRoute = runtimePreflight.route
 
     const convoId = await ensureActiveConvo()
     const branch = await ensureActiveBranch(convoId)
@@ -9526,24 +9258,14 @@ export function useAppChatAppLogic() {
     }
 
     if (runtimeRoute.kind === 'experimental_text') {
-      if (runtimeRoute.providerKey === 'deepseek') {
-        await sendDeepSeekTextChat({ convoId, branch, text, contextMessages })
-        return
-      }
-      if (runtimeRoute.providerKey === 'anthropic_messages') {
-        await sendAnthropicTextChat({ convoId, branch, text, contextMessages })
-        return
-      }
-      if (runtimeRoute.providerKey === 'google_ai_studio') {
-        await sendGoogleAIStudioTextChat({ convoId, branch, text, contextMessages })
-        return
-      }
-      if (runtimeRoute.providerKey === 'openai_responses') {
-        await sendOpenAIResponsesTextChat({ convoId, branch, text, contextMessages })
-        return
-      }
-      if (runtimeRoute.providerKey === 'local_endpoint') {
-        await sendLocalEndpointTextChat({ convoId, branch, text, contextMessages })
+      if (isExperimentalRuntimeTextProviderKey(runtimeRoute.providerKey)) {
+        await sendExperimentalProviderTextChat({
+          providerKey: runtimeRoute.providerKey,
+          convoId,
+          branch,
+          text,
+          contextMessages,
+        })
         return
       }
       setAttachmentFeedback('error', 'Selected runtime provider is not routable for text chat.')
