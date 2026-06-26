@@ -4,6 +4,7 @@ import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEven
 import { streamViaGemini, type GeminiFetchFn } from '../../src/next/provider/gemini/geminiAdapter'
 import type { GeminiContent } from '../../src/next/provider/gemini/geminiRequestBuilder'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
+import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
 
 export const GOOGLE_AI_STUDIO_TEXT_CHAT_IPC_CHANNELS = [
   'google-ai-studio-chat:stream-text',
@@ -40,7 +41,7 @@ export type GoogleAIStudioTextChatWireEvent =
 type RegisterGoogleAIStudioTextChatIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   credentialService: ProviderCredentialService
-  fetchImpl?: typeof fetch
+  fetchImpl?: ProviderFetch
 }>
 
 type ValidatedTextChatSuccess = Readonly<{
@@ -214,7 +215,7 @@ async function forwardGoogleAIStudioStream(input: Readonly<{
   request: ValidatedTextChatSuccess
   sender: WebContents
   credentialService: ProviderCredentialService
-  fetchImpl: typeof fetch
+  fetchImpl: ProviderFetch
 }>): Promise<void> {
   const apiKey = readGoogleAIStudioApiKey(input.credentialService)
   if (typeof apiKey !== 'string') {
@@ -296,7 +297,7 @@ export function registerGoogleAIStudioTextChatIpc(
     if (!validated.ok) return validated
 
     const sender = (event as { sender?: WebContents } | null)?.sender
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = input.fetchImpl ?? createElectronSessionProviderFetch()
     if (!sender || typeof sender.send !== 'function' || typeof fetchImpl !== 'function') {
       return staticFailure('invalid_payload', 'Google AI Studio text chat bridge is unavailable.')
     }

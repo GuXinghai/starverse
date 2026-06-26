@@ -1,5 +1,6 @@
 import type { RegisterInvoke } from './types'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
+import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
 import {
   GOOGLE_AI_STUDIO_ENDPOINT_ID,
   GOOGLE_AI_STUDIO_PROFILE_ID,
@@ -16,7 +17,7 @@ export const GOOGLE_AI_STUDIO_MODEL_AVAILABILITY_IPC_CHANNELS = [
 type RegisterGoogleAIStudioModelAvailabilityIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   credentialService: ProviderCredentialService
-  fetchImpl?: typeof fetch
+  fetchImpl?: ProviderFetch
 }>
 
 type GoogleAIStudioModelAvailabilityPayload = Readonly<{
@@ -101,7 +102,7 @@ export function registerGoogleAIStudioModelAvailabilityIpc(
     const apiKey = readGoogleAIStudioApiKey(input.credentialService)
     if (typeof apiKey !== 'string') return apiKey
 
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = input.fetchImpl ?? createElectronSessionProviderFetch()
     if (typeof fetchImpl !== 'function') {
       return safeFailure('invalid_payload', 'Google AI Studio model availability bridge is unavailable.')
     }

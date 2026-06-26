@@ -83,6 +83,10 @@ export type GeminiModelAvailabilityFailure = Readonly<{
     | 'network_error'
   message: string
   httpStatus?: number
+  transportCause?: Readonly<{
+    name?: string
+    code?: string
+  }>
 }>
 
 export type GeminiModelAvailabilityResult =
@@ -210,6 +214,23 @@ function safeHttpErrorMessage(status: number): string {
   if (status === 401 || status === 403) return 'Google AI Studio model source credential was rejected.'
   if (status === 429) return 'Google AI Studio model source rate limit was reached.'
   return 'Google AI Studio model source request failed safely.'
+}
+
+function safeToken(value: unknown): string | undefined {
+  const text = String(value ?? '').trim()
+  return /^[A-Za-z0-9_.-]{1,80}$/.test(text) ? text : undefined
+}
+
+function safeTransportCause(error: unknown): NonNullable<GeminiModelAvailabilityFailure['transportCause']> | undefined {
+  const record = error && typeof error === 'object' ? error as Record<string, unknown> : {}
+  const cause = record.cause && typeof record.cause === 'object' ? record.cause as Record<string, unknown> : {}
+  const name = safeToken(record.name) ?? safeToken(cause.name)
+  const code = safeToken(record.code) ?? safeToken(cause.code)
+  if (!name && !code) return undefined
+  return {
+    ...(name ? { name } : {}),
+    ...(code ? { code } : {}),
+  }
 }
 
 async function readJsonSafely(response: Response): Promise<unknown> {
@@ -460,7 +481,8 @@ export async function listGeminiProviderModelAvailability(
         signal: input.signal ?? undefined,
         redirect: 'error',
       })
-    } catch {
+    } catch (error) {
+      const transportCause = safeTransportCause(error)
       return {
         ok: false,
         providerKey: GOOGLE_AI_STUDIO_PROVIDER_KEY,
@@ -469,6 +491,7 @@ export async function listGeminiProviderModelAvailability(
         observedAtMs,
         code: 'network_error',
         message: 'Google AI Studio model source request failed safely.',
+        ...(transportCause ? { transportCause } : {}),
       }
     }
 
