@@ -3,10 +3,27 @@ import {
   GOOGLE_AI_STUDIO_API_KEY_STORE_KEY,
   registerGoogleAIStudioCredentialSettingsIpc,
 } from './googleAIStudioCredentialSettingsIpc'
+import {
+  PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX,
+  createProviderCredentialService,
+  type ProviderSecureStorageBackend,
+} from '../credentials/providerCredentialService'
+
+const secureStorage: ProviderSecureStorageBackend = {
+  kind: 'electron_safe_storage',
+  isEncryptionAvailable: () => true,
+  encryptString: (value) => Buffer.from(`encrypted:${value}`, 'utf8'),
+  decryptString: (encrypted) => encrypted.toString('utf8').replace(/^encrypted:/, ''),
+}
 
 function registerWithStore(store: any) {
   const registerInvoke = vi.fn()
-  registerGoogleAIStudioCredentialSettingsIpc({ registerInvoke, store })
+  const credentialService = createProviderCredentialService(store, {
+    secureStorage,
+    allowPlaintextFallback: true,
+    nowMs: () => 123,
+  })
+  registerGoogleAIStudioCredentialSettingsIpc({ registerInvoke, credentialService })
   return {
     get: registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-credential:get-status')?.[1],
     update: registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-credential:update')?.[1],
@@ -28,11 +45,14 @@ describe('googleAIStudioCredentialSettingsIpc', () => {
     expect(result).toMatchObject({
       ok: true,
       status: {
-        source: 'legacy_store',
+        source: 'secure_store',
+        backend: 'electron_safe_storage',
         providerId: 'google-ai-studio',
         profileId: 'gemini_api_v1',
         apiKeyConfigured: true,
         maskedApiKey: '***',
+        migratedFromLegacy: true,
+        warnings: [],
         defaultBaseUrl: 'https://generativelanguage.googleapis.com',
         rendererVisible: true,
       },
@@ -54,7 +74,10 @@ describe('googleAIStudioCredentialSettingsIpc', () => {
 
     const update = await handlers.update({}, { apiKey: ' AIza-new-google-key ' })
     expect(update).toMatchObject({ ok: true, status: { apiKeyConfigured: true, maskedApiKey: '***' } })
-    expect(store.set).toHaveBeenCalledWith(GOOGLE_AI_STUDIO_API_KEY_STORE_KEY, 'AIza-new-google-key')
+    expect(store.set).toHaveBeenCalledWith(`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}google_ai_studio`, expect.objectContaining({
+      backend: 'electron_safe_storage',
+      providerKey: 'google_ai_studio',
+    }))
     expect(JSON.stringify(update)).not.toContain('AIza-new-google-key')
 
     const clear = await handlers.clear({})
@@ -77,10 +100,13 @@ describe('googleAIStudioCredentialSettingsIpc', () => {
       message: 'Google AI Studio credential settings payload is invalid.',
     })
     const result = await handlers.get({})
-    expect(result).toEqual({
-      ok: false,
-      code: 'store_unavailable',
-      message: 'Google AI Studio credential settings store is unavailable.',
+    expect(result).toMatchObject({
+      ok: true,
+      status: {
+        source: 'missing',
+        backend: 'unavailable',
+        apiKeyConfigured: false,
+      },
     })
     expect(JSON.stringify(result)).not.toContain('AIza-raw-google-secret')
   })

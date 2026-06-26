@@ -1,7 +1,11 @@
-import type Store from 'electron-store'
+import {
+  PROVIDER_CREDENTIAL_LEGACY_STORE_KEYS,
+  type ProviderCredentialService,
+  type ProviderCredentialStatusSource,
+} from '../credentials/providerCredentialService'
 import type { RegisterInvoke } from './types'
 
-export const DEEPSEEK_API_KEY_STORE_KEY = 'deepSeekApiKey'
+export const DEEPSEEK_API_KEY_STORE_KEY = PROVIDER_CREDENTIAL_LEGACY_STORE_KEYS.deepseek
 
 export const DEEPSEEK_CREDENTIAL_SETTINGS_IPC_CHANNELS = [
   'deepseek-credential:get-status',
@@ -10,11 +14,14 @@ export const DEEPSEEK_CREDENTIAL_SETTINGS_IPC_CHANNELS = [
 ] as const
 
 export type DeepSeekCredentialSettingsStatus = Readonly<{
-  source: 'legacy_store'
+  source: ProviderCredentialStatusSource
+  backend: 'electron_safe_storage' | 'plaintext_fallback' | 'unavailable'
   providerId: 'deepseek'
   profileId: 'deepseek_official_openai_compat'
   apiKeyConfigured: boolean
   maskedApiKey?: '***'
+  migratedFromLegacy?: boolean
+  warnings: string[]
   defaultBaseUrl: 'https://api.deepseek.com/v1'
   rendererVisible: true
 }>
@@ -29,17 +36,20 @@ export type DeepSeekCredentialSettingsResult =
 
 type RegisterDeepSeekCredentialSettingsIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
-  store: Store
+  credentialService: ProviderCredentialService
 }>
 
-function readStatus(store: Store): DeepSeekCredentialSettingsStatus {
-  const apiKey = String(store.get(DEEPSEEK_API_KEY_STORE_KEY) ?? '').trim()
+function readStatus(credentialService: ProviderCredentialService): DeepSeekCredentialSettingsStatus {
+  const status = credentialService.getStatus('deepseek')
   return {
-    source: 'legacy_store',
+    source: status.source,
+    backend: status.backend,
     providerId: 'deepseek',
     profileId: 'deepseek_official_openai_compat',
-    apiKeyConfigured: apiKey.length > 0,
-    ...(apiKey.length > 0 ? { maskedApiKey: '***' as const } : {}),
+    apiKeyConfigured: status.apiKeyConfigured,
+    ...(status.apiKeyConfigured ? { maskedApiKey: '***' as const } : {}),
+    ...(status.migratedFromLegacy ? { migratedFromLegacy: true } : {}),
+    warnings: status.warnings,
     defaultBaseUrl: 'https://api.deepseek.com/v1',
     rendererVisible: true,
   }
@@ -64,11 +74,11 @@ function safeFailure(code: 'invalid_payload' | 'store_unavailable'): DeepSeekCre
 export function registerDeepSeekCredentialSettingsIpc(
   input: RegisterDeepSeekCredentialSettingsIpcInput,
 ): string[] {
-  const { registerInvoke, store } = input
+  const { registerInvoke, credentialService } = input
 
   registerInvoke('deepseek-credential:get-status', () => {
     try {
-      return { ok: true, status: readStatus(store) } satisfies DeepSeekCredentialSettingsResult
+      return { ok: true, status: readStatus(credentialService) } satisfies DeepSeekCredentialSettingsResult
     } catch {
       return safeFailure('store_unavailable')
     }
@@ -79,8 +89,8 @@ export function registerDeepSeekCredentialSettingsIpc(
 
     try {
       const apiKey = payload.apiKey?.trim()
-      if (apiKey) store.set(DEEPSEEK_API_KEY_STORE_KEY, apiKey)
-      return { ok: true, status: readStatus(store) } satisfies DeepSeekCredentialSettingsResult
+      if (apiKey) credentialService.updateApiKey('deepseek', apiKey)
+      return { ok: true, status: readStatus(credentialService) } satisfies DeepSeekCredentialSettingsResult
     } catch {
       return safeFailure('store_unavailable')
     }
@@ -88,8 +98,8 @@ export function registerDeepSeekCredentialSettingsIpc(
 
   registerInvoke('deepseek-credential:clear', () => {
     try {
-      store.delete(DEEPSEEK_API_KEY_STORE_KEY)
-      return { ok: true, status: readStatus(store) } satisfies DeepSeekCredentialSettingsResult
+      credentialService.clearApiKey('deepseek')
+      return { ok: true, status: readStatus(credentialService) } satisfies DeepSeekCredentialSettingsResult
     } catch {
       return safeFailure('store_unavailable')
     }

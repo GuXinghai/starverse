@@ -20,7 +20,7 @@
  * @module electron/main
  */
 
-import { app, dialog, ipcMain, session } from 'electron'
+import { app, dialog, ipcMain, safeStorage, session } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
@@ -33,6 +33,7 @@ import { registerOpenRouterStreamBridge, cleanupOpenRouterStreams } from './ipc/
 import { registerInAppBrowserIpc } from './ipc/inappBrowserIpc'
 import { registerModelCatalogSyncIpc } from './ipc/modelCatalogSyncIpc'
 import { registerIpc, validateCoreIpcRegistration } from './ipc/registerIpc'
+import { createProviderCredentialService } from './credentials/providerCredentialService'
 import { validateStartupIpcRegistration } from './ipc/startupIpcAudit'
 import { startStartupBackgroundJobs, wireDbEventsToRenderer } from './jobs/startupBackgroundJobs'
 import { createInAppBrowserManager } from './services/inappBrowser'
@@ -598,6 +599,16 @@ const dbWorkerManager = new DbWorkerManager({
   electronConversionBridge: createMainProcessElectronConversionService(),
 })
 
+const providerCredentialService = createProviderCredentialService(store, {
+  secureStorage: {
+    kind: 'electron_safe_storage',
+    isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
+    encryptString: (value) => safeStorage.encryptString(value),
+    decryptString: (encrypted) => safeStorage.decryptString(encrypted),
+  },
+  allowPlaintextFallback: true,
+})
+
 function normalizeDbWorkerCallTimeoutMs(value: string | undefined): number {
   const parsed = Number.parseInt(String(value ?? '').trim(), 10)
   if (!Number.isFinite(parsed) || parsed <= 0) return 20000
@@ -776,6 +787,7 @@ function registerCoreIpcHandlers(): string[] {
       ipcMain.handle(channel, handler as (...args: any[]) => unknown)
     },
     store,
+    credentialService: providerCredentialService,
     isDev,
     netExpRuntimeInfo,
     migrateAndCleanupConfig: () => migrateAndCleanupConfig(store),
@@ -801,7 +813,7 @@ function registerCoreIpcHandlers(): string[] {
 function registerAllIpcHandlers(): string[] {
   const channels = [
     ...registerDbBridge(dbWorkerManager),
-    ...registerOpenRouterStreamBridge({ store }),
+    ...registerOpenRouterStreamBridge({ store, credentialService: providerCredentialService }),
     ...registerCoreIpcHandlers(),
     ...registerInAppBrowserIpc({
       registerInvoke: (channel, handler) => {
@@ -814,6 +826,7 @@ function registerAllIpcHandlers(): string[] {
         ipcMain.handle(channel, handler as (...args: any[]) => unknown)
       },
       store,
+      credentialService: providerCredentialService,
       dbWorkerManager,
       notifyRenderer: notifyMainWindow,
     }),
@@ -899,6 +912,7 @@ app.whenReady()
 
     startStartupBackgroundJobs({
       store,
+      credentialService: providerCredentialService,
       dbWorkerManager,
       notifyRenderer: notifyMainWindow,
     })

@@ -94,6 +94,24 @@ import {
   type DeepSeekModelAvailabilityResult,
 } from '@/next/provider/deepseek/deepSeekModelSource'
 import {
+  OPENAI_RESPONSES_ENDPOINT_ID,
+  OPENAI_RESPONSES_PROFILE_ID,
+  OPENAI_RESPONSES_PROVIDER_KEY,
+  type OpenAIModelAvailabilityResult,
+} from '@/next/provider/openai-responses/openAIResponsesModelSource'
+import {
+  GOOGLE_AI_STUDIO_ENDPOINT_ID,
+  GOOGLE_AI_STUDIO_PROFILE_ID,
+  GOOGLE_AI_STUDIO_PROVIDER_KEY,
+  type GeminiModelAvailabilityResult,
+} from '@/next/provider/gemini/geminiModelSource'
+import {
+  ANTHROPIC_MESSAGES_ENDPOINT_ID,
+  ANTHROPIC_MESSAGES_PROFILE_ID,
+  ANTHROPIC_MESSAGES_PROVIDER_KEY,
+  type AnthropicModelAvailabilityResult,
+} from '@/next/provider/anthropic/anthropicModelSource'
+import {
   deriveCurrentRuntimeSelection,
   formatRuntimeCapabilitySummaryLite,
   formatRuntimeSelectionLabel,
@@ -101,6 +119,18 @@ import {
   getRuntimeTextChatBlockReason,
   resolveRuntimeTextSendRoute,
 } from '@/next/provider/runtimeSelection'
+import type { ReasoningArtifact, ReasoningArtifactProvider } from '@/next/provider/reasoningArtifact'
+import {
+  collectReasoningArtifactsFromDomainEvent,
+  createReasoningArtifactCollector,
+  type ReasoningArtifactCollectorState,
+} from './reasoningArtifactCollector'
+import {
+  removeReasoningArtifactsForMessages,
+  replaceReasoningArtifactsForMessage,
+  retainReasoningArtifactsForMessages,
+  type ReasoningArtifactsByMessageId,
+} from './reasoningArtifactLifecycle'
 import {
   prepareOpenRouterReplayFromMessage,
   prepareOpenRouterSendFromDraft,
@@ -279,6 +309,24 @@ export function useAppChatAppLogic() {
   type DeepSeekModelsBridge = Readonly<{
     listAvailability: (payload?: unknown) => Promise<DeepSeekModelAvailabilityResult>
   }>
+  type OpenAIModelAvailabilityFailureCode = Extract<OpenAIModelAvailabilityResult, { ok: false }>['code']
+  type OpenAIResponsesModelsBridge = Readonly<{
+    listAvailability: (payload?: unknown) => Promise<OpenAIModelAvailabilityResult>
+  }>
+  type GeminiModelAvailabilityFailureCode = Extract<GeminiModelAvailabilityResult, { ok: false }>['code']
+  type GoogleAIStudioModelsBridge = Readonly<{
+    listAvailability: (payload?: unknown) => Promise<GeminiModelAvailabilityResult>
+  }>
+  type AnthropicModelAvailabilityFailureCode = Extract<AnthropicModelAvailabilityResult, { ok: false }>['code']
+  type AnthropicModelsBridge = Readonly<{
+    listAvailability: (payload?: unknown) => Promise<AnthropicModelAvailabilityResult>
+  }>
+  const openAIResponsesModelAvailabilityLoading = ref(false)
+  const openAIResponsesModelAvailabilityResult = ref<OpenAIModelAvailabilityResult | null>(null)
+  const googleAIStudioModelAvailabilityLoading = ref(false)
+  const googleAIStudioModelAvailabilityResult = ref<GeminiModelAvailabilityResult | null>(null)
+  const anthropicModelAvailabilityLoading = ref(false)
+  const anthropicModelAvailabilityResult = ref<AnthropicModelAvailabilityResult | null>(null)
   const deepSeekModelAvailabilityLoading = ref(false)
   const deepSeekModelAvailabilityResult = ref<DeepSeekModelAvailabilityResult | null>(null)
   type ImageGenerationUiState = ImageGenerationUserConfig
@@ -680,6 +728,7 @@ export function useAppChatAppLogic() {
   const messageMetaById = ref<
     Map<string, MessageMetaEntry>
   >(new Map())
+  const reasoningArtifactsByMessageId = ref<ReasoningArtifactsByMessageId>({})
   const turnFiltersByQuestionId = ref<Map<string, Readonly<EffectiveFilterResult & { chosenAnswerRootId: string }>>>(new Map())
   const questionTurnOrder = ref<string[]>([])
   const candidatesCache = ref<Map<string, BranchCandidate[]>>(new Map())
@@ -906,6 +955,48 @@ export function useAppChatAppLogic() {
     }
     return map
   })
+
+  function setReasoningArtifactsForMessage(messageId: string, artifacts: readonly ReasoningArtifact[]) {
+    reasoningArtifactsByMessageId.value = replaceReasoningArtifactsForMessage(
+      reasoningArtifactsByMessageId.value,
+      messageId,
+      artifacts,
+    )
+  }
+
+  function resetReasoningArtifactsForMessage(messageId: string) {
+    setReasoningArtifactsForMessage(messageId, [])
+  }
+
+  function clearReasoningArtifactsForMessageIds(messageIds: Iterable<string>) {
+    reasoningArtifactsByMessageId.value = removeReasoningArtifactsForMessages(
+      reasoningArtifactsByMessageId.value,
+      messageIds,
+    )
+  }
+
+  function retainReasoningArtifactsForMessageIds(messageIds: Iterable<string>) {
+    reasoningArtifactsByMessageId.value = retainReasoningArtifactsForMessages(
+      reasoningArtifactsByMessageId.value,
+      messageIds,
+    )
+  }
+
+  function getMessageIdsForQuestionRemoval(questionId: string): string[] {
+    const qid = String(questionId ?? '').trim()
+    if (!qid) return []
+    const ids: string[] = [qid]
+    for (const [messageId, meta] of messageMetaById.value.entries()) {
+      if (messageId === qid || meta.questionId === qid || meta.parentId === qid) ids.push(messageId)
+    }
+    return Array.from(new Set(ids))
+  }
+
+  function getReasoningArtifactsForMessage(messageId: string): readonly ReasoningArtifact[] {
+    const id = String(messageId ?? '').trim()
+    if (!id) return []
+    return reasoningArtifactsByMessageId.value[id] ?? []
+  }
 
   const userMessageRenderPolicy = computed(() => {
     const convoMetaValue = extractUserMessageRenderOverride(getActiveConvoRecord()?.meta ?? null)
@@ -2564,6 +2655,7 @@ export function useAppChatAppLogic() {
     }
     if (debug && rendered.debug) console.log('[ui-app] context.getRenderableTurns debug', rendered.debug)
     const rows = rendered.messages
+    retainReasoningArtifactsForMessageIds(rows.map((m) => m.id))
     hydrateStateFromPersistedMessages(
       bid,
       rows.map((m) => ({ id: m.id, role: m.role, seq: m.seq, body: m.body, meta: m.meta }))
@@ -2780,8 +2872,10 @@ export function useAppChatAppLogic() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     try {
+      const deletingActiveConvo = String(activeConvoId.value ?? '') === String(convoId ?? '')
       await deleteChatDraftsForConvo(convoId)
       await deleteConvo(convoId)
+      if (deletingActiveConvo) reasoningArtifactsByMessageId.value = {}
       await refreshConvos()
       await loadTranscriptForActiveConvo()
     } catch (err: any) {
@@ -2807,8 +2901,10 @@ export function useAppChatAppLogic() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     try {
+      const activeDeleted = convoIds.some((id) => String(id ?? '') === String(activeConvoId.value ?? ''))
       await Promise.all(convoIds.map((id) => deleteChatDraftsForConvo(id)))
       await deleteConvos(convoIds)
+      if (activeDeleted) reasoningArtifactsByMessageId.value = {}
       await refreshConvos()
       await loadTranscriptForActiveConvo()
     } catch (err: any) {
@@ -3515,6 +3611,7 @@ export function useAppChatAppLogic() {
     loadError.value = null
 
     try {
+      clearReasoningArtifactsForMessageIds(getMessageIdsForQuestionRemoval(qid))
       const result = await truncateBranchFromQuestion(bid, qid)
       patchBranch(bid, {
         headMessageId: result.headMessageId,
@@ -3671,6 +3768,18 @@ export function useAppChatAppLogic() {
     enabled: deepSeekChatEnabled.value,
     model: deepSeekChatModel.value,
     experimentalLabel: 'Experimental · DeepSeek official text-only · not OpenRouter',
+  }))
+  const openAIResponsesModelAvailabilityStatus = computed(() => ({
+    loading: openAIResponsesModelAvailabilityLoading.value,
+    result: openAIResponsesModelAvailabilityResult.value,
+  }))
+  const googleAIStudioModelAvailabilityStatus = computed(() => ({
+    loading: googleAIStudioModelAvailabilityLoading.value,
+    result: googleAIStudioModelAvailabilityResult.value,
+  }))
+  const anthropicModelAvailabilityStatus = computed(() => ({
+    loading: anthropicModelAvailabilityLoading.value,
+    result: anthropicModelAvailabilityResult.value,
   }))
   const deepSeekModelAvailabilityStatus = computed(() => ({
     loading: deepSeekModelAvailabilityLoading.value,
@@ -4193,6 +4302,138 @@ export function useAppChatAppLogic() {
       globalThis.localStorage?.removeItem(DEEPSEEK_CHAT_MODEL_KEY)
     } catch {
       // Non-fatal: in-memory state still leaves the runtime selection unset unless another provider is selected.
+    }
+  }
+
+  function getOpenAIResponsesModelsBridge(): OpenAIResponsesModelsBridge | null {
+    const bridge = (globalThis as any)?.openAIResponsesModels as OpenAIResponsesModelsBridge | undefined
+    return typeof bridge?.listAvailability === 'function' ? bridge : null
+  }
+
+  function buildOpenAIResponsesModelAvailabilityFailure(
+    code: OpenAIModelAvailabilityFailureCode,
+    message: string,
+  ): OpenAIModelAvailabilityResult {
+    return {
+      ok: false,
+      providerKey: OPENAI_RESPONSES_PROVIDER_KEY,
+      endpointId: OPENAI_RESPONSES_ENDPOINT_ID,
+      profileId: OPENAI_RESPONSES_PROFILE_ID,
+      observedAtMs: Date.now(),
+      code,
+      message,
+    }
+  }
+
+  async function onRefreshOpenAIResponsesModels() {
+    if (openAIResponsesModelAvailabilityLoading.value) return
+    const bridge = getOpenAIResponsesModelsBridge()
+    if (!bridge) {
+      openAIResponsesModelAvailabilityResult.value = buildOpenAIResponsesModelAvailabilityFailure(
+        'invalid_payload',
+        'OpenAI Responses model availability bridge is unavailable.',
+      )
+      return
+    }
+
+    openAIResponsesModelAvailabilityLoading.value = true
+    try {
+      openAIResponsesModelAvailabilityResult.value = await bridge.listAvailability({ timeoutMs: 30000 })
+    } catch {
+      openAIResponsesModelAvailabilityResult.value = buildOpenAIResponsesModelAvailabilityFailure(
+        'network_error',
+        'OpenAI Responses model availability request failed safely.',
+      )
+    } finally {
+      openAIResponsesModelAvailabilityLoading.value = false
+    }
+  }
+
+  function getGoogleAIStudioModelsBridge(): GoogleAIStudioModelsBridge | null {
+    const bridge = (globalThis as any)?.googleAIStudioModels as GoogleAIStudioModelsBridge | undefined
+    return typeof bridge?.listAvailability === 'function' ? bridge : null
+  }
+
+  function buildGoogleAIStudioModelAvailabilityFailure(
+    code: GeminiModelAvailabilityFailureCode,
+    message: string,
+  ): GeminiModelAvailabilityResult {
+    return {
+      ok: false,
+      providerKey: GOOGLE_AI_STUDIO_PROVIDER_KEY,
+      endpointId: GOOGLE_AI_STUDIO_ENDPOINT_ID,
+      profileId: GOOGLE_AI_STUDIO_PROFILE_ID,
+      observedAtMs: Date.now(),
+      code,
+      message,
+    }
+  }
+
+  async function onRefreshGoogleAIStudioModels() {
+    if (googleAIStudioModelAvailabilityLoading.value) return
+    const bridge = getGoogleAIStudioModelsBridge()
+    if (!bridge) {
+      googleAIStudioModelAvailabilityResult.value = buildGoogleAIStudioModelAvailabilityFailure(
+        'invalid_payload',
+        'Google AI Studio model availability bridge is unavailable.',
+      )
+      return
+    }
+
+    googleAIStudioModelAvailabilityLoading.value = true
+    try {
+      googleAIStudioModelAvailabilityResult.value = await bridge.listAvailability({ timeoutMs: 30000 })
+    } catch {
+      googleAIStudioModelAvailabilityResult.value = buildGoogleAIStudioModelAvailabilityFailure(
+        'network_error',
+        'Google AI Studio model availability request failed safely.',
+      )
+    } finally {
+      googleAIStudioModelAvailabilityLoading.value = false
+    }
+  }
+
+  function getAnthropicModelsBridge(): AnthropicModelsBridge | null {
+    const bridge = (globalThis as any)?.anthropicModels as AnthropicModelsBridge | undefined
+    return typeof bridge?.listAvailability === 'function' ? bridge : null
+  }
+
+  function buildAnthropicModelAvailabilityFailure(
+    code: AnthropicModelAvailabilityFailureCode,
+    message: string,
+  ): AnthropicModelAvailabilityResult {
+    return {
+      ok: false,
+      providerKey: ANTHROPIC_MESSAGES_PROVIDER_KEY,
+      endpointId: ANTHROPIC_MESSAGES_ENDPOINT_ID,
+      profileId: ANTHROPIC_MESSAGES_PROFILE_ID,
+      observedAtMs: Date.now(),
+      code,
+      message,
+    }
+  }
+
+  async function onRefreshAnthropicModels() {
+    if (anthropicModelAvailabilityLoading.value) return
+    const bridge = getAnthropicModelsBridge()
+    if (!bridge) {
+      anthropicModelAvailabilityResult.value = buildAnthropicModelAvailabilityFailure(
+        'invalid_payload',
+        'Anthropic model availability bridge is unavailable.',
+      )
+      return
+    }
+
+    anthropicModelAvailabilityLoading.value = true
+    try {
+      anthropicModelAvailabilityResult.value = await bridge.listAvailability({ timeoutMs: 30000 })
+    } catch {
+      anthropicModelAvailabilityResult.value = buildAnthropicModelAvailabilityFailure(
+        'network_error',
+        'Anthropic model availability request failed safely.',
+      )
+    } finally {
+      anthropicModelAvailabilityLoading.value = false
     }
   }
 
@@ -7741,6 +7982,7 @@ export function useAppChatAppLogic() {
     createEvents: (signal: AbortSignal) => AsyncIterable<DomainEvent>
     pdfAnnotationCaptureAssetIds?: ReadonlyArray<string>
     replayManifestDraft?: Record<string, unknown> | null
+    reasoningArtifactProvider?: ReasoningArtifactProvider
     telemetry?: AssistantStreamSessionTelemetry
   }>
 
@@ -8024,6 +8266,14 @@ export function useAppChatAppLogic() {
     const { convoId, branchId, assistantMessageId, assistantSeq, modelId, requestId } = input
     const stream = createActiveStream(branchId, assistantMessageId, assistantSeq)
     activeStream.value = stream
+    const reasoningArtifactCollector: ReasoningArtifactCollectorState | null = input.reasoningArtifactProvider
+      ? createReasoningArtifactCollector({
+          providerKey: input.reasoningArtifactProvider,
+          messageId: assistantMessageId,
+          streamTurnId: requestId,
+        })
+      : null
+    if (reasoningArtifactCollector) resetReasoningArtifactsForMessage(assistantMessageId)
 
     let finalStatus: 'final' | 'error' = 'final'
     let finalMetaStatus: 'final' | 'error' | 'aborted' = 'final'
@@ -8159,6 +8409,12 @@ export function useAppChatAppLogic() {
         }
 
         processReasoningDetailEvent(ev, stream, assistantMessageId)
+        if (reasoningArtifactCollector) {
+          const created = collectReasoningArtifactsFromDomainEvent(reasoningArtifactCollector, ev)
+          if (created.length > 0) {
+            setReasoningArtifactsForMessage(assistantMessageId, reasoningArtifactCollector.artifacts)
+          }
+        }
         if (ev.type === 'MessageDeltaAnnotationBatch' && ev.messageId === assistantMessageId) {
           stream.annotationsTouched.value = true
           stream.annotationsBuffer.value = mergeAnnotationLists(
@@ -8418,6 +8674,7 @@ export function useAppChatAppLogic() {
       assistantMessageId,
       assistantSeq,
       modelId,
+      reasoningArtifactProvider: 'openrouter',
       replayManifestDraft: replayPrepared?.manifestDraft ?? null,
       createEvents: (signal) => streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource({
         requestId,
@@ -9009,6 +9266,7 @@ export function useAppChatAppLogic() {
       assistantMessageId,
       assistantSeq,
       modelId,
+      reasoningArtifactProvider: 'openai_responses',
       createEvents: (signal) => streamOpenAIResponsesTextChatAsDomainEvents({
         requestId,
         assistantMessageId,
@@ -9077,6 +9335,7 @@ export function useAppChatAppLogic() {
       assistantMessageId,
       assistantSeq,
       modelId,
+      reasoningArtifactProvider: 'google_ai_studio',
       createEvents: (signal) => streamGoogleAIStudioTextChatAsDomainEvents({
         requestId,
         assistantMessageId,
@@ -9145,6 +9404,7 @@ export function useAppChatAppLogic() {
       assistantMessageId,
       assistantSeq,
       modelId,
+      reasoningArtifactProvider: 'anthropic_messages',
       createEvents: (signal) => streamAnthropicTextChatAsDomainEvents({
         requestId,
         assistantMessageId,
@@ -9213,6 +9473,7 @@ export function useAppChatAppLogic() {
       assistantMessageId,
       assistantSeq,
       modelId,
+      reasoningArtifactProvider: 'deepseek',
       createEvents: (signal) => streamDeepSeekTextChatAsDomainEvents({
         requestId,
         assistantMessageId,
@@ -9436,6 +9697,7 @@ export function useAppChatAppLogic() {
       assistantMessageId,
       assistantSeq,
       modelId,
+      reasoningArtifactProvider: 'openrouter',
       ...(preparedFileSend ? { pdfAnnotationCaptureAssetIds: getPreparedPdfAssetIds(preparedFileSend) } : {}),
       createEvents: (signal) => streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource({
         requestId,
@@ -10382,6 +10644,7 @@ export function useAppChatAppLogic() {
     copyErrorDetails,
     transcriptMessageIds,
     transcriptMessagesById,
+    getReasoningArtifactsForMessage,
     activeCursorMessageId,
     isTurnExcludedForMessage,
     onSelectCursor,
@@ -10468,6 +10731,9 @@ export function useAppChatAppLogic() {
     googleAIStudioChatConfig,
     anthropicChatConfig,
     deepSeekChatConfig,
+    openAIResponsesModelAvailabilityStatus,
+    googleAIStudioModelAvailabilityStatus,
+    anthropicModelAvailabilityStatus,
     deepSeekModelAvailabilityStatus,
     currentRuntimeSelection,
     currentRuntimeCapability,
@@ -10513,12 +10779,15 @@ export function useAppChatAppLogic() {
     onUpdateOpenAIResponsesChatEnabled,
     onUpdateOpenAIResponsesChatModel,
     onClearOpenAIResponsesChat,
+    onRefreshOpenAIResponsesModels,
     onUpdateGoogleAIStudioChatEnabled,
     onUpdateGoogleAIStudioChatModel,
     onClearGoogleAIStudioChat,
+    onRefreshGoogleAIStudioModels,
     onUpdateAnthropicChatEnabled,
     onUpdateAnthropicChatModel,
     onClearAnthropicChat,
+    onRefreshAnthropicModels,
     onUpdateDeepSeekChatEnabled,
     onUpdateDeepSeekChatModel,
     onClearDeepSeekChat,

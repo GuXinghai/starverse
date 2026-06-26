@@ -8,10 +8,11 @@ import {
   type OpenRouterStreamWireRequest,
 } from '../../src/shared/ipc/openRouterStreamWire'
 import {
+  OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY,
   openRouterLegacyCredentialFromRaw,
-  resolveOpenRouterChatCredentialFromLegacyStore,
   type OpenRouterLegacyCredentialMaterial,
 } from '../../src/next/provider/openrouter/openRouterLegacyCredential'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 
 /**
  * Narrow interface for HTTP response objects.
@@ -171,32 +172,41 @@ function buildFallbackRequestBody(payload: OpenRouterStreamWireRequest): Record<
 function resolveOpenRouterStreamCredential(
   payload: OpenRouterStreamWireRequest,
   store: Store | undefined,
+  credentialService?: ProviderCredentialService,
 ): OpenRouterStreamCredentialResolution {
-  if (payload.config.credentialSource === 'legacy_store') {
-    if (!store) {
-      return {
-        ok: false,
-        code: 'credential_unresolved',
-        error: 'Credential could not be resolved.',
-      }
+  if (payload.config.credentialSource !== 'legacy_store') {
+    return {
+      ok: false,
+      code: 'credential_source_rejected',
+      error: 'Credential source is not allowed.',
     }
-
-    const result = resolveOpenRouterChatCredentialFromLegacyStore(store)
-    if (!result.ok) {
-      return {
-        ok: false,
-        code: result.failure.code,
-        error: result.failure.message,
-      }
-    }
-    return { ok: true, credential: result.credential }
   }
 
+  if (!credentialService) {
+    return {
+      ok: false,
+      code: 'credential_unresolved',
+      error: 'Credential could not be resolved.',
+    }
+  }
+
+  const apiKey = credentialService.readApiKey('openrouter')
+  if (!apiKey.ok) {
+    return {
+      ok: false,
+      code: apiKey.code === 'credential_missing' ? 'credential_unresolved' : apiKey.code,
+      error: 'Credential could not be resolved.',
+    }
+  }
+
+  const baseUrl = store
+    ? String(store.get(OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY) ?? '').trim() || undefined
+    : undefined
   return {
     ok: true,
     credential: openRouterLegacyCredentialFromRaw({
-      apiKey: String(payload.config.apiKey ?? ''),
-      ...(payload.config.baseUrl ? { baseUrl: payload.config.baseUrl } : {}),
+      apiKey: apiKey.apiKey,
+      ...(baseUrl ? { baseUrl } : {}),
     }),
   }
 }
@@ -471,7 +481,10 @@ async function startStream(
   }
 }
 
-export function registerOpenRouterStreamBridge(input?: Readonly<{ store?: Store }>): string[] {
+export function registerOpenRouterStreamBridge(input?: Readonly<{
+  store?: Store
+  credentialService?: ProviderCredentialService
+}>): string[] {
   ipcMain.handle('openrouter:stream-chat', async (event, payload: unknown) => {
     const validated = validateOpenRouterStreamRequest(payload)
     if (!validated.ok) {
@@ -482,7 +495,7 @@ export function registerOpenRouterStreamBridge(input?: Readonly<{ store?: Store 
         supportedWireVersion: OPENROUTER_STREAM_WIRE_VERSION,
       }
     }
-    const credential = resolveOpenRouterStreamCredential(validated.payload, input?.store)
+    const credential = resolveOpenRouterStreamCredential(validated.payload, input?.store, input?.credentialService)
     if (!credential.ok) {
       return {
         ok: false,

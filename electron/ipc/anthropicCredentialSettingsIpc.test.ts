@@ -3,6 +3,18 @@ import {
   ANTHROPIC_API_KEY_STORE_KEY,
   registerAnthropicCredentialSettingsIpc,
 } from './anthropicCredentialSettingsIpc'
+import {
+  PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX,
+  createProviderCredentialService,
+  type ProviderSecureStorageBackend,
+} from '../credentials/providerCredentialService'
+
+const secureStorage: ProviderSecureStorageBackend = {
+  kind: 'electron_safe_storage',
+  isEncryptionAvailable: () => true,
+  encryptString: (value) => Buffer.from(`encrypted:${value}`, 'utf8'),
+  decryptString: (encrypted) => encrypted.toString('utf8').replace(/^encrypted:/, ''),
+}
 
 function registerHandlers(initialStore?: Record<string, unknown>) {
   const registerInvoke = vi.fn()
@@ -16,7 +28,12 @@ function registerHandlers(initialStore?: Record<string, unknown>) {
       values.delete(key)
     }),
   } as any
-  registerAnthropicCredentialSettingsIpc({ registerInvoke, store })
+  const credentialService = createProviderCredentialService(store, {
+    secureStorage,
+    allowPlaintextFallback: true,
+    nowMs: () => 123,
+  })
+  registerAnthropicCredentialSettingsIpc({ registerInvoke, credentialService })
   const handlers = new Map<string, (...args: unknown[]) => unknown>()
   for (const [channel, handler] of registerInvoke.mock.calls) {
     handlers.set(channel, handler)
@@ -33,11 +50,14 @@ describe('anthropicCredentialSettingsIpc', () => {
     expect(result).toMatchObject({
       ok: true,
       status: {
-        source: 'legacy_store',
+        source: 'secure_store',
+        backend: 'electron_safe_storage',
         providerId: 'anthropic',
         profileId: 'anthropic_messages_v1',
         apiKeyConfigured: true,
         maskedApiKey: '***',
+        migratedFromLegacy: true,
+        warnings: [],
         defaultBaseUrl: 'https://api.anthropic.com/v1',
         rendererVisible: true,
       },
@@ -47,7 +67,7 @@ describe('anthropicCredentialSettingsIpc', () => {
     expect(JSON.stringify(result)).not.toContain('Authorization')
   })
 
-  it('updates and clears the legacy-store backed API key without returning it', async () => {
+  it('updates and clears the service-backed API key without returning it', async () => {
     const { handlers, store } = registerHandlers()
 
     const updateResult = await handlers.get('anthropic-credential:update')?.({}, {
@@ -55,7 +75,10 @@ describe('anthropicCredentialSettingsIpc', () => {
     })
     const clearResult = await handlers.get('anthropic-credential:clear')?.({})
 
-    expect(store.set).toHaveBeenCalledWith(ANTHROPIC_API_KEY_STORE_KEY, 'sk-ant-updated')
+    expect(store.set).toHaveBeenCalledWith(`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}anthropic`, expect.objectContaining({
+      backend: 'electron_safe_storage',
+      providerKey: 'anthropic',
+    }))
     expect(store.delete).toHaveBeenCalledWith(ANTHROPIC_API_KEY_STORE_KEY)
     expect(JSON.stringify(updateResult)).not.toContain('sk-ant-updated')
     expect(JSON.stringify(clearResult)).not.toContain('sk-ant-updated')

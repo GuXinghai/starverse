@@ -1,9 +1,8 @@
 import type { WebContents } from 'electron'
-import type Store from 'electron-store'
 import type { RegisterInvoke } from './types'
 import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
 import { streamViaDeepSeek, type DeepSeekFetchFn } from '../../src/next/provider/deepseek/deepSeekAdapter'
-import { DEEPSEEK_API_KEY_STORE_KEY } from './deepSeekCredentialSettingsIpc'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 
 export const DEEPSEEK_TEXT_CHAT_IPC_CHANNELS = [
   'deepseek-chat:stream-text',
@@ -39,7 +38,7 @@ export type DeepSeekTextChatWireEvent =
 
 type RegisterDeepSeekTextChatIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
-  store: Store
+  credentialService: ProviderCredentialService
   fetchImpl?: typeof fetch
 }>
 
@@ -118,16 +117,13 @@ export function validateDeepSeekTextChatPayload(payload: unknown): ValidatedText
   }
 }
 
-function readDeepSeekApiKey(store: Store): DeepSeekTextChatStartFailure | string {
-  try {
-    const apiKey = String(store.get(DEEPSEEK_API_KEY_STORE_KEY) ?? '').trim()
-    if (!apiKey) {
-      return staticFailure('credential_missing', 'DeepSeek API key is not configured.')
-    }
-    return apiKey
-  } catch {
-    return staticFailure('store_unavailable', 'DeepSeek credential store is unavailable.')
+function readDeepSeekApiKey(credentialService: ProviderCredentialService): DeepSeekTextChatStartFailure | string {
+  const result = credentialService.readApiKey('deepseek')
+  if (result.ok) return result.apiKey
+  if (result.code === 'credential_missing') {
+    return staticFailure('credential_missing', 'DeepSeek API key is not configured.')
   }
+  return staticFailure('store_unavailable', 'DeepSeek credential store is unavailable.')
 }
 
 function safeProviderError(error: StarverseProviderError): StarverseProviderError {
@@ -212,10 +208,10 @@ function buildProviderRequest(input: Readonly<{
 async function forwardDeepSeekStream(input: Readonly<{
   request: ValidatedTextChatSuccess
   sender: WebContents
-  store: Store
+  credentialService: ProviderCredentialService
   fetchImpl: typeof fetch
 }>): Promise<void> {
-  const apiKey = readDeepSeekApiKey(input.store)
+  const apiKey = readDeepSeekApiKey(input.credentialService)
   if (typeof apiKey !== 'string') {
     sendWireEvent(input.sender, input.request.requestId, {
       type: 'event',
@@ -302,7 +298,7 @@ export function registerDeepSeekTextChatIpc(
       return staticFailure('invalid_payload', 'DeepSeek official text chat bridge is unavailable.')
     }
 
-    void forwardDeepSeekStream({ request: validated, sender, store: input.store, fetchImpl })
+    void forwardDeepSeekStream({ request: validated, sender, credentialService: input.credentialService, fetchImpl })
     return { ok: true }
   })
 

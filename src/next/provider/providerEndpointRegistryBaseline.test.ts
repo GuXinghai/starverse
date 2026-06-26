@@ -15,18 +15,22 @@ const registryPlaceholderNames = [
   'EndpointRegistry',
   'ProviderRegistry',
   'RuntimeProviderRegistry',
+  'ModelSourceRegistry',
   'EndpointRegistryService',
   'ProviderRegistryService',
   'RuntimeProviderRegistryService',
+  'ModelSourceRegistryService',
   'RuntimeManager',
   'EndpointManager',
   'ProviderManager',
   'endpointRegistry',
   'providerRegistry',
   'runtimeProviderRegistry',
+  'modelSourceRegistry',
   'endpointRegistryService',
   'providerRegistryService',
   'runtimeProviderRegistryService',
+  'modelSourceRegistryService',
   'runtimeManager',
   'endpointManager',
   'providerManager',
@@ -112,7 +116,7 @@ describe('C5 endpoint registry baseline characterization', () => {
     expect(productionOccurrences(pattern)).toEqual([])
   })
 
-  it('keeps active OpenRouter chat/send on the first-class legacy_store credential source, not a registry route', () => {
+  it('keeps active OpenRouter chat/send on the first-class service-backed credential source, not a registry route', () => {
     const appChat = readRepoFile('src', 'ui-app', 'app', 'appChatApp.logic.ts')
     const adapter = readRepoFile('src', 'next', 'provider', 'openrouter', 'openRouterAdapter.ts')
     const liveStream = readRepoFile('src', 'next', 'live', 'openRouterLiveStream.ts')
@@ -123,7 +127,8 @@ describe('C5 endpoint registry baseline characterization', () => {
     expect(adapter).toContain("credentialSource: 'legacy_store' as const")
     expect(liveStream).toContain("credentialSource === 'legacy_store'")
     expect(liveStream).toContain('...(credentialSource ? {} : options.config.baseUrl ? { baseUrl: options.config.baseUrl } : {})')
-    expect(bridge).toContain('resolveOpenRouterChatCredentialFromLegacyStore')
+    expect(bridge).toContain("credentialService.readApiKey('openrouter')")
+    expect(bridge).not.toContain('resolveOpenRouterChatCredentialFromLegacyStore')
 
     for (const source of [appChat, adapter, liveStream, bridge]) {
       expectNoRegistryPlaceholder(source)
@@ -162,7 +167,8 @@ describe('C5 endpoint registry baseline characterization', () => {
     expect(settings).not.toContain('EndpointRegistry')
     expect(settings).not.toContain('ProviderRegistry')
     expect(settings).toContain('settings-openrouter-endpoint-metadata')
-    expect(credentialIpc).toContain("source: 'legacy_store'")
+    expect(credentialIpc).toContain('ProviderCredentialStatusSource')
+    expect(credentialIpc).toContain('credentialStatus.source')
     expect(credentialIpc).toContain("kind: 'openrouter_endpoint'")
     expect(credentialIpc).toContain('buildOpenRouterEndpointMetadataFromLegacyStoreState')
     expect(credentialIpc).toContain('endpointStatus')
@@ -245,7 +251,8 @@ describe('C5 endpoint registry baseline characterization', () => {
 
     expect(credentialIpc).toContain("kind: 'openrouter_endpoint'")
     expect(credentialIpc).toContain("rendererVisible: true")
-    expect(credentialIpc).toContain("source: 'legacy_store'")
+    expect(credentialIpc).toContain('ProviderCredentialStatusSource')
+    expect(credentialIpc).toContain('credentialStatus.source')
     expect(credentialIpc).toContain('credentialRef')
     expect(credentialIpc).toContain('catalogCredentialRef')
     expect(credentialIpc).not.toMatch(/\b(?:EndpointRegistry|ProviderRegistry|RuntimeProviderRegistry)\b/)
@@ -306,7 +313,8 @@ describe('C6 local endpoint baseline characterization', () => {
     expect(appChat).toContain('localEndpointChatEnabled')
     expect(openRouterAdapter).toContain("credentialSource: 'legacy_store' as const")
     expect(liveStream).toContain("credentialSource === 'legacy_store'")
-    expect(bridge).toContain('resolveOpenRouterChatCredentialFromLegacyStore')
+    expect(bridge).toContain("credentialService.readApiKey('openrouter')")
+    expect(bridge).not.toContain('resolveOpenRouterChatCredentialFromLegacyStore')
 
     expect(appChat).not.toMatch(/\bstreamVia(?:Generic|DeepSeek|OpenAIResponses|Anthropic|Gemini)\b/)
     expect(appChat).not.toMatch(/\b(?:RuntimeProviderRegistry|ProviderRegistry|EndpointRegistry)\b/)
@@ -434,7 +442,8 @@ describe('R2 DeepSeek provider model source guardrails', () => {
     expect(deepSeekModelSource).toContain("providerKey: typeof DEEPSEEK_OFFICIAL_PROVIDER_KEY")
     expect(deepSeekModelSource).toContain("'deepseek-official'")
     expect(deepSeekModelSource).toContain("'deepseek_official_openai_compat'")
-    expect(deepSeekModelIpc).toContain('DEEPSEEK_API_KEY_STORE_KEY')
+    expect(deepSeekModelIpc).toContain('ProviderCredentialService')
+    expect(deepSeekModelIpc).toContain("readApiKey('deepseek')")
     expect(deepSeekModelIpc).toContain('payload must not include credentials')
     expect(preload).toContain("contextBridge.exposeInMainWorld('deepSeekModels'")
     expect(console).toContain('deepseek-models-diagnostics')
@@ -452,6 +461,128 @@ describe('R2 DeepSeek provider model source guardrails', () => {
       expect(source).not.toContain('deepseek-v4-pro')
       expect(source).not.toContain('deepseek-chat')
       expect(source).not.toContain('deepseek-reasoner')
+    }
+  })
+})
+
+describe('R3 Gemini provider model source guardrails', () => {
+  it('keeps Google AI Studio model availability separate from OpenRouter catalog, Generic live routing, and legacy Gemini runtime', () => {
+    const geminiModelSource = readRepoFile('src', 'next', 'provider', 'gemini', 'geminiModelSource.ts')
+    const googleModelIpc = readRepoFile('electron', 'ipc', 'googleAIStudioModelAvailabilityIpc.ts')
+    const preload = readRepoFile('electron', 'preload.ts')
+    const console = readRepoFile('src', 'ui-app', 'components', 'ChatSessionConsole.vue')
+    const settings = readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue')
+    const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'openRouterCatalogClient.ts')
+    const catalogSync = readRepoFile('src', 'shared', 'modelCatalog', 'catalogSyncJob.ts')
+    const catalogQueryService = readRepoFile('src', 'next', 'modelCatalog', 'catalogQueryService.ts')
+
+    expect(geminiModelSource).toContain("GEMINI_MODELS_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com'")
+    expect(geminiModelSource).toContain('listGeminiProviderModelAvailability')
+    expect(geminiModelSource).toContain('/v1beta/models')
+    expect(geminiModelSource).toContain("providerKey: typeof GOOGLE_AI_STUDIO_PROVIDER_KEY")
+    expect(geminiModelSource).toContain("'google-ai-studio-official'")
+    expect(geminiModelSource).toContain("'gemini_api_v1'")
+    expect(googleModelIpc).toContain('ProviderCredentialService')
+    expect(googleModelIpc).toContain("readApiKey('google_ai_studio')")
+    expect(googleModelIpc).toContain('payload must not include credentials')
+    expect(googleModelIpc).toContain('geminiapikey')
+    expect(googleModelIpc).not.toContain("store.get('geminiApiKey')")
+    expect(preload).toContain("contextBridge.exposeInMainWorld('googleAIStudioModels'")
+    expect(console).toContain('google-ai-studio-models-diagnostics')
+    expect(settings).toContain('Use Console refresh for official availability diagnostics')
+
+    for (const source of [geminiModelSource, googleModelIpc, preload, console, settings]) {
+      expectNoRegistryPlaceholder(source)
+      expect(source).not.toMatch(/\b(?:GenericEndpointConfig|GenericEndpointFixtureMetadata|toGenericEndpointFixtureMetadata|streamViaGenericConfig|streamViaGeneric)\b/)
+    }
+
+    for (const source of [openRouterCatalog, catalogSync, catalogQueryService]) {
+      expect(source).not.toContain('geminiModelSource')
+      expect(source).not.toContain('GeminiProviderModelAvailability')
+      expect(source).not.toContain('gemini-2.5-flash')
+      expect(source).not.toContain('gemini-2.5-pro')
+    }
+  })
+})
+
+describe('R4 OpenAI Responses provider model source guardrails', () => {
+  it('keeps OpenAI Responses model availability separate from OpenRouter catalog and Generic live routing', () => {
+    const openAIModelSource = readRepoFile('src', 'next', 'provider', 'openai-responses', 'openAIResponsesModelSource.ts')
+    const openAIModelIpc = readRepoFile('electron', 'ipc', 'openAIResponsesModelAvailabilityIpc.ts')
+    const preload = readRepoFile('electron', 'preload.ts')
+    const console = readRepoFile('src', 'ui-app', 'components', 'ChatSessionConsole.vue')
+    const settings = readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue')
+    const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'openRouterCatalogClient.ts')
+    const catalogSync = readRepoFile('src', 'shared', 'modelCatalog', 'catalogSyncJob.ts')
+    const catalogQueryService = readRepoFile('src', 'next', 'modelCatalog', 'catalogQueryService.ts')
+
+    expect(openAIModelSource).toContain("OPENAI_MODELS_DEFAULT_BASE_URL = 'https://api.openai.com/v1'")
+    expect(openAIModelSource).toContain('listOpenAIProviderModelAvailability')
+    expect(openAIModelSource).toContain('/models')
+    expect(openAIModelSource).toContain("providerKey: typeof OPENAI_RESPONSES_PROVIDER_KEY")
+    expect(openAIModelSource).toContain("'openai-responses-official'")
+    expect(openAIModelSource).toContain("'openai_responses_v1'")
+    expect(openAIModelIpc).toContain('ProviderCredentialService')
+    expect(openAIModelIpc).toContain("readApiKey('openai_responses')")
+    expect(openAIModelIpc).toContain('payload must not include credentials')
+    expect(preload).toContain("contextBridge.exposeInMainWorld('openAIResponsesModels'")
+    expect(console).toContain('openai-responses-models-diagnostics')
+    expect(settings).toContain('Use Console refresh for official availability diagnostics')
+
+    for (const source of [openAIModelSource, openAIModelIpc, preload, console, settings]) {
+      expectNoRegistryPlaceholder(source)
+      expect(source).not.toMatch(/\b(?:GenericEndpointConfig|GenericEndpointFixtureMetadata|toGenericEndpointFixtureMetadata|streamViaGenericConfig|streamViaGeneric)\b/)
+    }
+
+    for (const source of [openRouterCatalog, catalogSync, catalogQueryService]) {
+      expect(source).not.toContain('openAIResponsesModelSource')
+      expect(source).not.toContain('OpenAIProviderModelAvailability')
+      expect(source).not.toContain('gpt-4.1-mini')
+      expect(source).not.toContain('gpt-4.1')
+    }
+  })
+})
+
+describe('R5 Anthropic Messages provider model source guardrails', () => {
+  it('keeps Anthropic Messages model availability separate from OpenRouter catalog, Generic live routing, and visible thinking text', () => {
+    const anthropicModelSource = readRepoFile('src', 'next', 'provider', 'anthropic', 'anthropicModelSource.ts')
+    const anthropicModelIpc = readRepoFile('electron', 'ipc', 'anthropicModelAvailabilityIpc.ts')
+    const preload = readRepoFile('electron', 'preload.ts')
+    const console = readRepoFile('src', 'ui-app', 'components', 'ChatSessionConsole.vue')
+    const settings = readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue')
+    const anthropicStreamMapper = readRepoFile('src', 'next', 'provider', 'anthropic', 'anthropicStreamMapper.ts')
+    const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'openRouterCatalogClient.ts')
+    const catalogSync = readRepoFile('src', 'shared', 'modelCatalog', 'catalogSyncJob.ts')
+    const catalogQueryService = readRepoFile('src', 'next', 'modelCatalog', 'catalogQueryService.ts')
+
+    expect(anthropicModelSource).toContain("ANTHROPIC_MODELS_DEFAULT_BASE_URL = 'https://api.anthropic.com/v1'")
+    expect(anthropicModelSource).toContain("ANTHROPIC_MODELS_API_VERSION = '2023-06-01'")
+    expect(anthropicModelSource).toContain('listAnthropicProviderModelAvailability')
+    expect(anthropicModelSource).toContain('/models')
+    expect(anthropicModelSource).toContain("providerKey: typeof ANTHROPIC_MESSAGES_PROVIDER_KEY")
+    expect(anthropicModelSource).toContain("'anthropic-official'")
+    expect(anthropicModelSource).toContain("'anthropic_messages_v1'")
+    expect(anthropicModelIpc).toContain('ProviderCredentialService')
+    expect(anthropicModelIpc).toContain("readApiKey('anthropic')")
+    expect(anthropicModelIpc).toContain('payload must not include credentials')
+    expect(anthropicModelIpc).toContain('xapikey')
+    expect(preload).toContain("contextBridge.exposeInMainWorld('anthropicModels'")
+    expect(console).toContain('anthropic-models-diagnostics')
+    expect(settings).toContain('Use Console refresh for official availability diagnostics')
+    expect(anthropicStreamMapper).toContain("'message.reasoning_detail'")
+    expect(anthropicStreamMapper).not.toMatch(/thinking_delta[\s\S]{0,200}message\.text_delta/)
+    expect(anthropicStreamMapper).not.toMatch(/signature_delta[\s\S]{0,200}message\.text_delta/)
+
+    for (const source of [anthropicModelSource, anthropicModelIpc, preload, console, settings]) {
+      expectNoRegistryPlaceholder(source)
+      expect(source).not.toMatch(/\b(?:GenericEndpointConfig|GenericEndpointFixtureMetadata|toGenericEndpointFixtureMetadata|streamViaGenericConfig|streamViaGeneric)\b/)
+    }
+
+    for (const source of [openRouterCatalog, catalogSync, catalogQueryService]) {
+      expect(source).not.toContain('anthropicModelSource')
+      expect(source).not.toContain('AnthropicProviderModelAvailability')
+      expect(source).not.toContain('claude-sonnet-4-5')
+      expect(source).not.toContain('claude-opus-4-1')
     }
   })
 })

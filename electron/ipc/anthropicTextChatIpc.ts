@@ -1,9 +1,8 @@
 import type { WebContents } from 'electron'
-import type Store from 'electron-store'
 import type { RegisterInvoke } from './types'
 import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
 import { streamViaAnthropic, type AnthropicFetchFn } from '../../src/next/provider/anthropic/anthropicAdapter'
-import { ANTHROPIC_API_KEY_STORE_KEY } from './anthropicCredentialSettingsIpc'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 
 export const ANTHROPIC_TEXT_CHAT_IPC_CHANNELS = [
   'anthropic-chat:stream-text',
@@ -39,7 +38,7 @@ export type AnthropicTextChatWireEvent =
 
 type RegisterAnthropicTextChatIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
-  store: Store
+  credentialService: ProviderCredentialService
   fetchImpl?: typeof fetch
 }>
 
@@ -118,16 +117,13 @@ export function validateAnthropicTextChatPayload(payload: unknown): ValidatedTex
   }
 }
 
-function readAnthropicApiKey(store: Store): AnthropicTextChatStartFailure | string {
-  try {
-    const apiKey = String(store.get(ANTHROPIC_API_KEY_STORE_KEY) ?? '').trim()
-    if (!apiKey) {
-      return staticFailure('credential_missing', 'Anthropic API key is not configured.')
-    }
-    return apiKey
-  } catch {
-    return staticFailure('store_unavailable', 'Anthropic credential store is unavailable.')
+function readAnthropicApiKey(credentialService: ProviderCredentialService): AnthropicTextChatStartFailure | string {
+  const result = credentialService.readApiKey('anthropic')
+  if (result.ok) return result.apiKey
+  if (result.code === 'credential_missing') {
+    return staticFailure('credential_missing', 'Anthropic API key is not configured.')
   }
+  return staticFailure('store_unavailable', 'Anthropic credential store is unavailable.')
 }
 
 function safeProviderError(error: StarverseProviderError): StarverseProviderError {
@@ -209,10 +205,10 @@ function buildProviderRequest(input: Readonly<{
 async function forwardAnthropicStream(input: Readonly<{
   request: ValidatedTextChatSuccess
   sender: WebContents
-  store: Store
+  credentialService: ProviderCredentialService
   fetchImpl: typeof fetch
 }>): Promise<void> {
-  const apiKey = readAnthropicApiKey(input.store)
+  const apiKey = readAnthropicApiKey(input.credentialService)
   if (typeof apiKey !== 'string') {
     sendWireEvent(input.sender, input.request.requestId, {
       type: 'event',
@@ -297,7 +293,7 @@ export function registerAnthropicTextChatIpc(
       return staticFailure('invalid_payload', 'Anthropic Messages text chat bridge is unavailable.')
     }
 
-    void forwardAnthropicStream({ request: validated, sender, store: input.store, fetchImpl })
+    void forwardAnthropicStream({ request: validated, sender, credentialService: input.credentialService, fetchImpl })
     return { ok: true }
   })
 

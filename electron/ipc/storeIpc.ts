@@ -6,6 +6,10 @@ import {
   safeClearConfig,
 } from '../config/configSchema'
 import { OPENROUTER_CATALOG_LOCAL_SECRET_KEY } from '../modelCatalog/catalogScope'
+import {
+  isProviderCredentialSecureStoreKey,
+  providerCredentialSecureStoreKeys,
+} from '../credentials/providerCredentialService'
 import type { RegisterInvoke } from './types'
 
 export const STORE_IPC_CHANNELS = [
@@ -42,12 +46,12 @@ function isLocaleConfigKey(key: string): boolean {
 }
 
 function isRendererBlockedCredentialStoreKey(key: string): boolean {
-  return RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS.has(key)
+  return RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS.has(key) || isProviderCredentialSecureStoreKey(key)
 }
 
 function buildRendererSafeClearKeepKeys(keepKeys: unknown): string[] {
   const safeKeepKeys = Array.isArray(keepKeys) ? keepKeys.map((item) => String(item)) : []
-  for (const key of RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS) {
+  for (const key of [...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS, ...providerCredentialSecureStoreKeys()]) {
     if (!safeKeepKeys.includes(key)) {
       safeKeepKeys.push(key)
     }

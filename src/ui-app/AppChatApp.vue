@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import ChatTranscript from '@/ui-kit/chat/ChatTranscript.vue'
 import ChatMessageBubble from '@/ui-kit/chat/ChatMessageBubble.vue'
 import ChatAppReasoningPanel from './components/ChatAppReasoningPanel.vue'
+import ReasoningArtifactDiagnostics from './components/ReasoningArtifactDiagnostics.vue'
 import ChatWorkspaceShell from './components/ChatWorkspaceShell.vue'
 import ChatTopSummaryBar from './components/ChatTopSummaryBar.vue'
 import ChatRightRail from './components/ChatRightRail.vue'
@@ -62,6 +63,7 @@ const {
   normalizedErrorActionHint,
   transcriptMessageIds,
   transcriptMessagesById,
+  getReasoningArtifactsForMessage,
   activeCursorMessageId,
   isTurnExcludedForMessage,
   onSelectCursor,
@@ -139,6 +141,9 @@ const {
   googleAIStudioChatConfig,
   anthropicChatConfig,
   deepSeekChatConfig,
+  openAIResponsesModelAvailabilityStatus,
+  googleAIStudioModelAvailabilityStatus,
+  anthropicModelAvailabilityStatus,
   deepSeekModelAvailabilityStatus,
   currentRuntimeSelection,
   currentRuntimeCapability,
@@ -168,12 +173,15 @@ const {
   onUpdateOpenAIResponsesChatEnabled,
   onUpdateOpenAIResponsesChatModel,
   onClearOpenAIResponsesChat,
+  onRefreshOpenAIResponsesModels,
   onUpdateGoogleAIStudioChatEnabled,
   onUpdateGoogleAIStudioChatModel,
   onClearGoogleAIStudioChat,
+  onRefreshGoogleAIStudioModels,
   onUpdateAnthropicChatEnabled,
   onUpdateAnthropicChatModel,
   onClearAnthropicChat,
+  onRefreshAnthropicModels,
   onUpdateDeepSeekChatEnabled,
   onUpdateDeepSeekChatModel,
   onClearDeepSeekChat,
@@ -380,6 +388,11 @@ function shouldShowInlineReasoning(message: any): boolean {
                   />
                 </template>
               </ChatMessageBubble>
+
+              <ReasoningArtifactDiagnostics
+                v-if="message.role === 'assistant' && getReasoningArtifactsForMessage(message.messageId).length > 0"
+                :artifacts="getReasoningArtifactsForMessage(message.messageId)"
+              />
 
               <div
                 v-if="message.role === 'user' && (historyAttachmentViewModelsByMessageId[message.messageId]?.length ?? 0) > 0"
@@ -813,6 +826,9 @@ function shouldShowInlineReasoning(message: any): boolean {
             :googleAIStudioChat="googleAIStudioChatConfig"
             :anthropicChat="anthropicChatConfig"
             :deepSeekChat="deepSeekChatConfig"
+            :openAIResponsesModelAvailability="openAIResponsesModelAvailabilityStatus"
+            :googleAIStudioModelAvailability="googleAIStudioModelAvailabilityStatus"
+            :anthropicModelAvailability="anthropicModelAvailabilityStatus"
             :deepSeekModelAvailability="deepSeekModelAvailabilityStatus"
             :currentRuntimeSelection="currentRuntimeSelection"
             :currentRuntimeCapability="currentRuntimeCapability"
@@ -840,12 +856,15 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateOpenAIResponsesChatEnabled="onUpdateOpenAIResponsesChatEnabled"
             @updateOpenAIResponsesChatModel="onUpdateOpenAIResponsesChatModel"
             @clearOpenAIResponsesChat="onClearOpenAIResponsesChat"
+            @refreshOpenAIResponsesModels="onRefreshOpenAIResponsesModels"
             @updateGoogleAIStudioChatEnabled="onUpdateGoogleAIStudioChatEnabled"
             @updateGoogleAIStudioChatModel="onUpdateGoogleAIStudioChatModel"
             @clearGoogleAIStudioChat="onClearGoogleAIStudioChat"
+            @refreshGoogleAIStudioModels="onRefreshGoogleAIStudioModels"
             @updateAnthropicChatEnabled="onUpdateAnthropicChatEnabled"
             @updateAnthropicChatModel="onUpdateAnthropicChatModel"
             @clearAnthropicChat="onClearAnthropicChat"
+            @refreshAnthropicModels="onRefreshAnthropicModels"
             @updateDeepSeekChatEnabled="onUpdateDeepSeekChatEnabled"
             @updateDeepSeekChatModel="onUpdateDeepSeekChatModel"
             @clearDeepSeekChat="onClearDeepSeekChat"

@@ -1,4 +1,5 @@
 import type Store from 'electron-store'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import { registerDialogIpc, DIALOG_IPC_CHANNELS } from './dialogIpc'
 import { registerImageIpc, IMAGE_IPC_CHANNELS, type ResolvedAssetFile } from './imageIpc'
 import { registerNetExpIpc, NETEXP_IPC_CHANNELS } from './netExpIpc'
@@ -13,6 +14,10 @@ import {
   OPENAI_RESPONSES_CREDENTIAL_SETTINGS_IPC_CHANNELS,
 } from './openAIResponsesCredentialSettingsIpc'
 import {
+  registerOpenAIResponsesModelAvailabilityIpc,
+  OPENAI_RESPONSES_MODEL_AVAILABILITY_IPC_CHANNELS,
+} from './openAIResponsesModelAvailabilityIpc'
+import {
   registerGoogleAIStudioCredentialSettingsIpc,
   GOOGLE_AI_STUDIO_CREDENTIAL_SETTINGS_IPC_CHANNELS,
 } from './googleAIStudioCredentialSettingsIpc'
@@ -21,6 +26,10 @@ import {
   ANTHROPIC_CREDENTIAL_SETTINGS_IPC_CHANNELS,
 } from './anthropicCredentialSettingsIpc'
 import {
+  registerAnthropicModelAvailabilityIpc,
+  ANTHROPIC_MODEL_AVAILABILITY_IPC_CHANNELS,
+} from './anthropicModelAvailabilityIpc'
+import {
   registerDeepSeekCredentialSettingsIpc,
   DEEPSEEK_CREDENTIAL_SETTINGS_IPC_CHANNELS,
 } from './deepSeekCredentialSettingsIpc'
@@ -28,6 +37,10 @@ import {
   registerDeepSeekModelAvailabilityIpc,
   DEEPSEEK_MODEL_AVAILABILITY_IPC_CHANNELS,
 } from './deepSeekModelAvailabilityIpc'
+import {
+  registerGoogleAIStudioModelAvailabilityIpc,
+  GOOGLE_AI_STUDIO_MODEL_AVAILABILITY_IPC_CHANNELS,
+} from './googleAIStudioModelAvailabilityIpc'
 import {
   registerLibreOfficeSystemProxyProbeIpc,
   LIBREOFFICE_SYSTEM_PROXY_PROBE_IPC_CHANNELS,
@@ -62,9 +75,12 @@ export const CORE_IPC_CHANNELS = [
   ...STORE_IPC_CHANNELS,
   ...OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS,
   ...OPENAI_RESPONSES_CREDENTIAL_SETTINGS_IPC_CHANNELS,
+  ...OPENAI_RESPONSES_MODEL_AVAILABILITY_IPC_CHANNELS,
   ...GOOGLE_AI_STUDIO_CREDENTIAL_SETTINGS_IPC_CHANNELS,
   ...ANTHROPIC_CREDENTIAL_SETTINGS_IPC_CHANNELS,
+  ...ANTHROPIC_MODEL_AVAILABILITY_IPC_CHANNELS,
   ...DEEPSEEK_CREDENTIAL_SETTINGS_IPC_CHANNELS,
+  ...GOOGLE_AI_STUDIO_MODEL_AVAILABILITY_IPC_CHANNELS,
   ...DEEPSEEK_MODEL_AVAILABILITY_IPC_CHANNELS,
   ...LIBREOFFICE_SYSTEM_PROXY_PROBE_IPC_CHANNELS,
   ...LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS,
@@ -90,6 +106,7 @@ export const CORE_IPC_CRITICAL_CHANNELS = [
 type RegisterIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   store: Store
+  credentialService: ProviderCredentialService
   isDev: boolean
   netExpRuntimeInfo: unknown
   migrateAndCleanupConfig: () => void
@@ -128,26 +145,39 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
     ...registerOpenRouterCredentialSettingsIpc({
       registerInvoke: input.registerInvoke,
       store: input.store,
+      credentialService: input.credentialService,
     }),
     ...registerOpenAIResponsesCredentialSettingsIpc({
       registerInvoke: input.registerInvoke,
-      store: input.store,
+      credentialService: input.credentialService,
+    }),
+    ...registerOpenAIResponsesModelAvailabilityIpc({
+      registerInvoke: input.registerInvoke,
+      credentialService: input.credentialService,
     }),
     ...registerGoogleAIStudioCredentialSettingsIpc({
       registerInvoke: input.registerInvoke,
-      store: input.store,
+      credentialService: input.credentialService,
     }),
     ...registerAnthropicCredentialSettingsIpc({
       registerInvoke: input.registerInvoke,
-      store: input.store,
+      credentialService: input.credentialService,
+    }),
+    ...registerAnthropicModelAvailabilityIpc({
+      registerInvoke: input.registerInvoke,
+      credentialService: input.credentialService,
     }),
     ...registerDeepSeekCredentialSettingsIpc({
       registerInvoke: input.registerInvoke,
-      store: input.store,
+      credentialService: input.credentialService,
+    }),
+    ...registerGoogleAIStudioModelAvailabilityIpc({
+      registerInvoke: input.registerInvoke,
+      credentialService: input.credentialService,
     }),
     ...registerDeepSeekModelAvailabilityIpc({
       registerInvoke: input.registerInvoke,
-      store: input.store,
+      credentialService: input.credentialService,
     }),
     ...registerLibreOfficeSystemProxyProbeIpc({
       registerInvoke: input.registerInvoke,
@@ -160,19 +190,19 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
     }),
     ...registerOpenAIResponsesTextChatIpc({
       registerInvoke: input.registerInvoke,
-      store: input.store,
+      credentialService: input.credentialService,
     }),
     ...registerGoogleAIStudioTextChatIpc({
       registerInvoke: input.registerInvoke,
-      store: input.store,
+      credentialService: input.credentialService,
     }),
     ...registerAnthropicTextChatIpc({
       registerInvoke: input.registerInvoke,
-      store: input.store,
+      credentialService: input.credentialService,
     }),
     ...registerDeepSeekTextChatIpc({
       registerInvoke: input.registerInvoke,
-      store: input.store,
+      credentialService: input.credentialService,
     }),
     ...registerNetExpIpc({
       registerInvoke: input.registerInvoke,

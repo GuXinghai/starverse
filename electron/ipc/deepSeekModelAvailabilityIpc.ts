@@ -1,6 +1,5 @@
-import type Store from 'electron-store'
 import type { RegisterInvoke } from './types'
-import { DEEPSEEK_API_KEY_STORE_KEY } from './deepSeekCredentialSettingsIpc'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import {
   DEEPSEEK_OFFICIAL_ENDPOINT_ID,
   DEEPSEEK_OFFICIAL_PROFILE_ID,
@@ -16,7 +15,7 @@ export const DEEPSEEK_MODEL_AVAILABILITY_IPC_CHANNELS = [
 
 type RegisterDeepSeekModelAvailabilityIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
-  store: Store
+  credentialService: ProviderCredentialService
   fetchImpl?: typeof fetch
 }>
 
@@ -81,16 +80,13 @@ function isDeepSeekModelAvailabilityFailure(
   return (value as { ok?: unknown }).ok === false
 }
 
-function readDeepSeekApiKey(store: Store): string | DeepSeekModelAvailabilityFailure {
-  try {
-    const apiKey = String(store.get(DEEPSEEK_API_KEY_STORE_KEY) ?? '').trim()
-    if (!apiKey) {
-      return safeFailure('credential_missing', 'DeepSeek API key is not configured.')
-    }
-    return apiKey
-  } catch {
-    return safeFailure('store_unavailable', 'DeepSeek credential store is unavailable.')
+function readDeepSeekApiKey(credentialService: ProviderCredentialService): string | DeepSeekModelAvailabilityFailure {
+  const result = credentialService.readApiKey('deepseek')
+  if (result.ok) return result.apiKey
+  if (result.code === 'credential_missing') {
+    return safeFailure('credential_missing', 'DeepSeek API key is not configured.')
   }
+  return safeFailure('store_unavailable', 'DeepSeek credential store is unavailable.')
 }
 
 export function registerDeepSeekModelAvailabilityIpc(
@@ -100,7 +96,7 @@ export function registerDeepSeekModelAvailabilityIpc(
     const validated = validatePayload(payload)
     if (isDeepSeekModelAvailabilityFailure(validated)) return validated
 
-    const apiKey = readDeepSeekApiKey(input.store)
+    const apiKey = readDeepSeekApiKey(input.credentialService)
     if (typeof apiKey !== 'string') return apiKey
 
     const fetchImpl = input.fetchImpl ?? globalThis.fetch

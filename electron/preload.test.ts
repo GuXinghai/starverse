@@ -31,10 +31,13 @@ describe('preload scoped API exposure', () => {
       'electronStore',
       'openRouterCredential',
       'openAIResponsesCredential',
+      'openAIResponsesModels',
       'googleAIStudioCredential',
       'anthropicCredential',
+      'anthropicModels',
       'deepSeekCredential',
       'deepSeekModels',
+      'googleAIStudioModels',
       'localEndpointDiagnostics',
       'localEndpointChat',
       'openAIResponsesChat',
@@ -79,10 +82,13 @@ describe('preload scoped API exposure', () => {
     const electronStore = exposeInMainWorld.mock.calls.find(([name]) => name === 'electronStore')?.[1]
     const openRouterCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'openRouterCredential')?.[1]
     const openAIResponsesCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'openAIResponsesCredential')?.[1]
+    const openAIResponsesModels = exposeInMainWorld.mock.calls.find(([name]) => name === 'openAIResponsesModels')?.[1]
     const googleAIStudioCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'googleAIStudioCredential')?.[1]
     const anthropicCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'anthropicCredential')?.[1]
+    const anthropicModels = exposeInMainWorld.mock.calls.find(([name]) => name === 'anthropicModels')?.[1]
     const deepSeekCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'deepSeekCredential')?.[1]
     const deepSeekModels = exposeInMainWorld.mock.calls.find(([name]) => name === 'deepSeekModels')?.[1]
+    const googleAIStudioModels = exposeInMainWorld.mock.calls.find(([name]) => name === 'googleAIStudioModels')?.[1]
     const localEndpointDiagnostics = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointDiagnostics')?.[1]
     const localEndpointChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointChat')?.[1]
     const openAIResponsesChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'openAIResponsesChat')?.[1]
@@ -107,6 +113,9 @@ describe('preload scoped API exposure', () => {
       update: expect.any(Function),
       clear: expect.any(Function),
     })
+    expect(openAIResponsesModels).toEqual({
+      listAvailability: expect.any(Function),
+    })
     expect(googleAIStudioCredential).toEqual({
       getStatus: expect.any(Function),
       update: expect.any(Function),
@@ -117,12 +126,18 @@ describe('preload scoped API exposure', () => {
       update: expect.any(Function),
       clear: expect.any(Function),
     })
+    expect(anthropicModels).toEqual({
+      listAvailability: expect.any(Function),
+    })
     expect(deepSeekCredential).toEqual({
       getStatus: expect.any(Function),
       update: expect.any(Function),
       clear: expect.any(Function),
     })
     expect(deepSeekModels).toEqual({
+      listAvailability: expect.any(Function),
+    })
+    expect(googleAIStudioModels).toEqual({
       listAvailability: expect.any(Function),
     })
     expect(localEndpointDiagnostics).toEqual({
@@ -171,15 +186,24 @@ describe('preload scoped API exposure', () => {
     expect(localEndpointChat.endpointRegistry).toBeUndefined()
     expect(openAIResponsesCredential.apiKey).toBeUndefined()
     expect(openAIResponsesCredential.endpointRegistry).toBeUndefined()
+    expect(openAIResponsesModels.apiKey).toBeUndefined()
+    expect(openAIResponsesModels.update).toBeUndefined()
+    expect(openAIResponsesModels.endpointRegistry).toBeUndefined()
     expect(googleAIStudioCredential.apiKey).toBeUndefined()
     expect(googleAIStudioCredential.endpointRegistry).toBeUndefined()
     expect(anthropicCredential.apiKey).toBeUndefined()
     expect(anthropicCredential.endpointRegistry).toBeUndefined()
+    expect(anthropicModels.apiKey).toBeUndefined()
+    expect(anthropicModels.update).toBeUndefined()
+    expect(anthropicModels.endpointRegistry).toBeUndefined()
     expect(deepSeekCredential.apiKey).toBeUndefined()
     expect(deepSeekCredential.endpointRegistry).toBeUndefined()
     expect(deepSeekModels.apiKey).toBeUndefined()
     expect(deepSeekModels.update).toBeUndefined()
     expect(deepSeekModels.endpointRegistry).toBeUndefined()
+    expect(googleAIStudioModels.apiKey).toBeUndefined()
+    expect(googleAIStudioModels.update).toBeUndefined()
+    expect(googleAIStudioModels.endpointRegistry).toBeUndefined()
     expect(openAIResponsesChat.getStatus).toBeUndefined()
     expect(openAIResponsesChat.update).toBeUndefined()
     expect(openAIResponsesChat.endpointRegistry).toBeUndefined()
@@ -206,16 +230,19 @@ describe('preload scoped API exposure', () => {
     await openAIResponsesCredential.getStatus()
     await openAIResponsesCredential.update({ apiKey: 'raw-openai-key' })
     await openAIResponsesCredential.clear()
+    await openAIResponsesModels.listAvailability({ timeoutMs: 5000 })
     await googleAIStudioCredential.getStatus()
     await googleAIStudioCredential.update({ apiKey: 'raw-google-key' })
     await googleAIStudioCredential.clear()
     await anthropicCredential.getStatus()
     await anthropicCredential.update({ apiKey: 'raw-anthropic-key' })
     await anthropicCredential.clear()
+    await anthropicModels.listAvailability({ timeoutMs: 5000 })
     await deepSeekCredential.getStatus()
     await deepSeekCredential.update({ apiKey: 'raw-deepseek-key' })
     await deepSeekCredential.clear()
     await deepSeekModels.listAvailability({ timeoutMs: 5000 })
+    await googleAIStudioModels.listAvailability({ timeoutMs: 5000 })
     await localEndpointDiagnostics.probe({ url: 'http://localhost:1234', timeoutMs: 5000 })
     await localEndpointDiagnostics.streamProbe({ url: 'http://localhost:1234', timeoutMs: 5000 })
     await localEndpointChat.startTextChat({
@@ -282,6 +309,9 @@ describe('preload scoped API exposure', () => {
       apiKey: 'raw-openai-key',
     })
     expect(invoke).toHaveBeenCalledWith('openai-responses-credential:clear')
+    expect(invoke).toHaveBeenCalledWith('openai-responses-models:list-availability', {
+      timeoutMs: 5000,
+    })
     expect(invoke).toHaveBeenCalledWith('google-ai-studio-credential:get-status')
     expect(invoke).toHaveBeenCalledWith('google-ai-studio-credential:update', {
       apiKey: 'raw-google-key',
@@ -292,12 +322,18 @@ describe('preload scoped API exposure', () => {
       apiKey: 'raw-anthropic-key',
     })
     expect(invoke).toHaveBeenCalledWith('anthropic-credential:clear')
+    expect(invoke).toHaveBeenCalledWith('anthropic-models:list-availability', {
+      timeoutMs: 5000,
+    })
     expect(invoke).toHaveBeenCalledWith('deepseek-credential:get-status')
     expect(invoke).toHaveBeenCalledWith('deepseek-credential:update', {
       apiKey: 'raw-deepseek-key',
     })
     expect(invoke).toHaveBeenCalledWith('deepseek-credential:clear')
     expect(invoke).toHaveBeenCalledWith('deepseek-models:list-availability', {
+      timeoutMs: 5000,
+    })
+    expect(invoke).toHaveBeenCalledWith('google-ai-studio-models:list-availability', {
       timeoutMs: 5000,
     })
     expect(invoke).toHaveBeenCalledWith('local-endpoint-diagnostics:probe', {
@@ -352,10 +388,13 @@ describe('preload scoped API exposure', () => {
 
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openRouterCredential'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openAIResponsesCredential'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openAIResponsesModels'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('googleAIStudioCredential'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('anthropicCredential'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('anthropicModels'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('deepSeekCredential'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('deepSeekModels'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('googleAIStudioModels'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointDiagnostics'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointChat'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openAIResponsesChat'")

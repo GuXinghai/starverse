@@ -3,6 +3,18 @@ import {
   registerOpenRouterCredentialSettingsIpc,
   OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS,
 } from './openRouterCredentialSettingsIpc'
+import {
+  PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX,
+  createProviderCredentialService,
+  type ProviderSecureStorageBackend,
+} from '../credentials/providerCredentialService'
+
+const secureStorage: ProviderSecureStorageBackend = {
+  kind: 'electron_safe_storage',
+  isEncryptionAvailable: () => true,
+  encryptString: (value) => Buffer.from(`encrypted:${value}`, 'utf8'),
+  decryptString: (encrypted) => encrypted.toString('utf8').replace(/^encrypted:/, ''),
+}
 
 function registerHandlers(initialStore: Record<string, unknown> = {}) {
   const registerInvoke = vi.fn()
@@ -17,7 +29,13 @@ function registerHandlers(initialStore: Record<string, unknown> = {}) {
     }),
   } as any
 
-  registerOpenRouterCredentialSettingsIpc({ registerInvoke, store })
+  const credentialService = createProviderCredentialService(store, {
+    secureStorage,
+    allowPlaintextFallback: true,
+    nowMs: () => 123,
+  })
+
+  registerOpenRouterCredentialSettingsIpc({ registerInvoke, store, credentialService })
 
   const handlers = new Map<string, (...args: unknown[]) => unknown>()
   for (const [channel, handler] of registerInvoke.mock.calls) {
@@ -44,7 +62,7 @@ function openRouterEndpointMetadata(
     providerId: 'openrouter',
     profileId: 'openrouter_v1_chat',
     displayName: overrides.displayName ?? (baseUrlConfigured ? 'OpenRouter custom endpoint' : 'OpenRouter official endpoint'),
-    source: 'legacy_store',
+    source: 'secure_store',
     baseUrlConfigured,
     ...(overrides.baseUrlInvalid ? { baseUrlInvalid: true } : {}),
     ...(overrides.displayBaseUrl ? { displayBaseUrl: overrides.displayBaseUrl } : {}),
@@ -80,9 +98,12 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
     expect(result).toEqual({
       ok: true,
       status: {
-        source: 'legacy_store',
+        source: 'secure_store',
+        backend: 'electron_safe_storage',
         apiKeyConfigured: true,
         maskedApiKey: '***',
+        migratedFromLegacy: true,
+        warnings: [],
         baseUrlConfigured: true,
         displayBaseUrl: 'https://openrouter.example.test/api/v1',
         defaultBaseUrl: 'https://openrouter.ai/api/v1',
@@ -124,9 +145,12 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
     expect(result).toEqual({
       ok: true,
       status: {
-        source: 'legacy_store',
+        source: 'secure_store',
+        backend: 'electron_safe_storage',
         apiKeyConfigured: true,
         maskedApiKey: '***',
+        migratedFromLegacy: true,
+        warnings: [],
         baseUrlConfigured: true,
         baseUrlInvalid: true,
         defaultBaseUrl: 'https://openrouter.ai/api/v1',
@@ -156,9 +180,12 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
     expect(result).toEqual({
       ok: true,
       status: {
-        source: 'legacy_store',
+        source: 'secure_store',
+        backend: 'electron_safe_storage',
         apiKeyConfigured: true,
         maskedApiKey: '***',
+        migratedFromLegacy: true,
+        warnings: [],
         baseUrlConfigured: false,
         defaultBaseUrl: 'https://openrouter.ai/api/v1',
         endpoint: openRouterEndpointMetadata(),
@@ -185,7 +212,10 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
       baseUrl: ' https://openrouter-proxy.example.test/api/v1 ',
     })
 
-    expect(store.set).toHaveBeenCalledWith('openRouterApiKey', 'sk-new-openrouter-key')
+    expect(store.set).toHaveBeenCalledWith(`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}openrouter`, expect.objectContaining({
+      backend: 'electron_safe_storage',
+      providerKey: 'openrouter',
+    }))
     expect(store.set).toHaveBeenCalledWith('openRouterBaseUrl', 'https://openrouter-proxy.example.test/api/v1')
     expect(JSON.stringify(result)).not.toContain('sk-new-openrouter-key')
   })
@@ -200,7 +230,10 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
       baseUrl: 'https://openrouter-proxy.example.test/api/v1',
     })
 
-    expect(store.set).not.toHaveBeenCalledWith('openRouterApiKey', expect.anything())
+    expect(store.set).toHaveBeenCalledWith(`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}openrouter`, expect.objectContaining({
+      backend: 'electron_safe_storage',
+      providerKey: 'openrouter',
+    }))
     expect(store.set).toHaveBeenCalledWith('openRouterBaseUrl', 'https://openrouter-proxy.example.test/api/v1')
     expect(JSON.stringify(result)).not.toContain('sk-existing')
   })
@@ -215,7 +248,10 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
       apiKey: 'sk-replacement',
     })
 
-    expect(store.set).toHaveBeenCalledWith('openRouterApiKey', 'sk-replacement')
+    expect(store.set).toHaveBeenCalledWith(`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}openrouter`, expect.objectContaining({
+      backend: 'electron_safe_storage',
+      providerKey: 'openrouter',
+    }))
     expect(store.set).not.toHaveBeenCalledWith('openRouterBaseUrl', expect.anything())
     expect(JSON.stringify(result)).not.toContain('sk-replacement')
   })
@@ -228,6 +264,7 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
 
     const result = await handlers.get('openrouter-credential:clear')?.({})
 
+    expect(store.delete).toHaveBeenCalledWith(`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}openrouter`)
     expect(store.delete).toHaveBeenCalledWith('openRouterApiKey')
     expect(store.delete).not.toHaveBeenCalledWith('openRouterBaseUrl')
     expect(values.get('openRouterBaseUrl')).toBe('https://openrouter.ai/api/v1')
@@ -243,7 +280,8 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
     await handlers.get('openrouter-credential:update')?.({}, { baseUrl: null })
 
     expect(store.delete).toHaveBeenCalledWith('openRouterBaseUrl')
-    expect(store.delete).not.toHaveBeenCalledWith('openRouterApiKey')
+    expect(store.delete).not.toHaveBeenCalledWith(`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}openrouter`)
+    expect(store.delete).toHaveBeenCalledWith('openRouterApiKey')
   })
 
   it('fails invalid payloads and store errors safely', async () => {
@@ -261,10 +299,13 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
       code: 'invalid_payload',
       message: 'OpenRouter credential settings payload is invalid.',
     })
-    expect(failure).toEqual({
-      ok: false,
-      code: 'store_unavailable',
-      message: 'OpenRouter credential settings store is unavailable.',
+    expect(failure).toMatchObject({
+      ok: true,
+      status: {
+        source: 'missing',
+        backend: 'unavailable',
+        apiKeyConfigured: false,
+      },
     })
     const serialized = JSON.stringify([invalid, failure])
     expect(serialized).not.toContain(rawKey)

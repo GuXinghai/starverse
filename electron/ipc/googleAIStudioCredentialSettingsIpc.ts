@@ -1,7 +1,11 @@
-import type Store from 'electron-store'
+import {
+  PROVIDER_CREDENTIAL_LEGACY_STORE_KEYS,
+  type ProviderCredentialService,
+  type ProviderCredentialStatusSource,
+} from '../credentials/providerCredentialService'
 import type { RegisterInvoke } from './types'
 
-export const GOOGLE_AI_STUDIO_API_KEY_STORE_KEY = 'googleAIStudioApiKey'
+export const GOOGLE_AI_STUDIO_API_KEY_STORE_KEY = PROVIDER_CREDENTIAL_LEGACY_STORE_KEYS.google_ai_studio
 
 export const GOOGLE_AI_STUDIO_CREDENTIAL_SETTINGS_IPC_CHANNELS = [
   'google-ai-studio-credential:get-status',
@@ -10,11 +14,14 @@ export const GOOGLE_AI_STUDIO_CREDENTIAL_SETTINGS_IPC_CHANNELS = [
 ] as const
 
 export type GoogleAIStudioCredentialSettingsStatus = Readonly<{
-  source: 'legacy_store'
+  source: ProviderCredentialStatusSource
+  backend: 'electron_safe_storage' | 'plaintext_fallback' | 'unavailable'
   providerId: 'google-ai-studio'
   profileId: 'gemini_api_v1'
   apiKeyConfigured: boolean
   maskedApiKey?: '***'
+  migratedFromLegacy?: boolean
+  warnings: string[]
   defaultBaseUrl: 'https://generativelanguage.googleapis.com'
   rendererVisible: true
 }>
@@ -29,17 +36,20 @@ export type GoogleAIStudioCredentialSettingsResult =
 
 type RegisterGoogleAIStudioCredentialSettingsIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
-  store: Store
+  credentialService: ProviderCredentialService
 }>
 
-function readStatus(store: Store): GoogleAIStudioCredentialSettingsStatus {
-  const apiKey = String(store.get(GOOGLE_AI_STUDIO_API_KEY_STORE_KEY) ?? '').trim()
+function readStatus(credentialService: ProviderCredentialService): GoogleAIStudioCredentialSettingsStatus {
+  const status = credentialService.getStatus('google_ai_studio')
   return {
-    source: 'legacy_store',
+    source: status.source,
+    backend: status.backend,
     providerId: 'google-ai-studio',
     profileId: 'gemini_api_v1',
-    apiKeyConfigured: apiKey.length > 0,
-    ...(apiKey.length > 0 ? { maskedApiKey: '***' as const } : {}),
+    apiKeyConfigured: status.apiKeyConfigured,
+    ...(status.apiKeyConfigured ? { maskedApiKey: '***' as const } : {}),
+    ...(status.migratedFromLegacy ? { migratedFromLegacy: true } : {}),
+    warnings: status.warnings,
     defaultBaseUrl: 'https://generativelanguage.googleapis.com',
     rendererVisible: true,
   }
@@ -64,11 +74,11 @@ function safeFailure(code: 'invalid_payload' | 'store_unavailable'): GoogleAIStu
 export function registerGoogleAIStudioCredentialSettingsIpc(
   input: RegisterGoogleAIStudioCredentialSettingsIpcInput,
 ): string[] {
-  const { registerInvoke, store } = input
+  const { registerInvoke, credentialService } = input
 
   registerInvoke('google-ai-studio-credential:get-status', () => {
     try {
-      return { ok: true, status: readStatus(store) } satisfies GoogleAIStudioCredentialSettingsResult
+      return { ok: true, status: readStatus(credentialService) } satisfies GoogleAIStudioCredentialSettingsResult
     } catch {
       return safeFailure('store_unavailable')
     }
@@ -79,8 +89,8 @@ export function registerGoogleAIStudioCredentialSettingsIpc(
 
     try {
       const apiKey = payload.apiKey?.trim()
-      if (apiKey) store.set(GOOGLE_AI_STUDIO_API_KEY_STORE_KEY, apiKey)
-      return { ok: true, status: readStatus(store) } satisfies GoogleAIStudioCredentialSettingsResult
+      if (apiKey) credentialService.updateApiKey('google_ai_studio', apiKey)
+      return { ok: true, status: readStatus(credentialService) } satisfies GoogleAIStudioCredentialSettingsResult
     } catch {
       return safeFailure('store_unavailable')
     }
@@ -88,8 +98,8 @@ export function registerGoogleAIStudioCredentialSettingsIpc(
 
   registerInvoke('google-ai-studio-credential:clear', () => {
     try {
-      store.delete(GOOGLE_AI_STUDIO_API_KEY_STORE_KEY)
-      return { ok: true, status: readStatus(store) } satisfies GoogleAIStudioCredentialSettingsResult
+      credentialService.clearApiKey('google_ai_studio')
+      return { ok: true, status: readStatus(credentialService) } satisfies GoogleAIStudioCredentialSettingsResult
     } catch {
       return safeFailure('store_unavailable')
     }

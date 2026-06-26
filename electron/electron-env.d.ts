@@ -21,7 +21,12 @@ declare namespace NodeJS {
   }
 }
 
-type OpenRouterCredentialSource = 'legacy_store'
+type ProviderCredentialStatusSource =
+  | 'secure_store'
+  | 'plaintext_fallback'
+  | 'missing'
+type ProviderCredentialBackendKind = 'electron_safe_storage' | 'plaintext_fallback' | 'unavailable'
+type OpenRouterCredentialSource = ProviderCredentialStatusSource
 
 type OpenRouterEndpointCredentialRef = Readonly<{ kind: 'credential_ref'; id: 'openrouter-chat-legacy-store' }>
 type OpenRouterCatalogCredentialRef = Readonly<{ kind: 'credential_ref'; id: 'openrouter-catalog-legacy-store' }>
@@ -65,8 +70,11 @@ type OpenRouterEndpointMetadata =
 
 interface OpenRouterCredentialStatus {
   source: OpenRouterCredentialSource
+  backend: ProviderCredentialBackendKind
   apiKeyConfigured: boolean
   maskedApiKey?: '***'
+  migratedFromLegacy?: boolean
+  warnings: string[]
   baseUrlConfigured: boolean
   baseUrlInvalid?: boolean
   displayBaseUrl?: string
@@ -84,11 +92,14 @@ type OpenRouterCredentialResult =
   | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
 
 interface OpenAIResponsesCredentialStatus {
-  source: 'legacy_store'
+  source: ProviderCredentialStatusSource
+  backend: ProviderCredentialBackendKind
   providerId: 'openai'
   profileId: 'openai_responses_v1'
   apiKeyConfigured: boolean
   maskedApiKey?: '***'
+  migratedFromLegacy?: boolean
+  warnings: string[]
   defaultBaseUrl: 'https://api.openai.com/v1'
   rendererVisible: true
 }
@@ -101,12 +112,89 @@ type OpenAIResponsesCredentialResult =
   | { ok: true; status: OpenAIResponsesCredentialStatus }
   | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
 
+type ProviderModelAvailabilityCommonSourceKind =
+  | 'provider_api'
+  | 'provider_docs'
+  | 'starverse_curated_metadata'
+  | 'manual_user_model_id'
+  | 'local_probe'
+
+interface ProviderModelAvailabilityProvenance {
+  sourceKind: ProviderModelAvailabilityCommonSourceKind
+  sourceLabel: string
+  observedAtMs: number
+  metadataVersion?: string
+  parserVersion: number
+}
+
+type OpenAIModelSourceKind =
+  | 'openai_models_api'
+  | 'starverse_curated_metadata'
+  | 'manual_user_model_id'
+
+interface OpenAIProviderModelAvailability {
+  providerKey: 'openai_responses'
+  endpointId: 'openai-responses-official'
+  profileId: 'openai_responses_v1'
+  nativeModelId: string
+  displayName?: string
+  ownedBy?: string
+  createdAtSec?: number
+  source: OpenAIModelSourceKind
+  confidence: 'provider_reported' | 'curated' | 'manual'
+  observedAtMs: number
+  warnings: string[]
+  provenance?: ProviderModelAvailabilityProvenance
+  providerSpecific?: unknown
+  capabilitySeed?: {
+    textChat?: boolean
+    responsesApi?: boolean
+    reasoning?: 'supported' | 'unsupported' | 'unknown'
+    reasoningEffort?: Array<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'>
+    imageInput?: boolean | 'unknown'
+    fileInput?: boolean | 'unknown'
+    functionCalling?: boolean | 'unknown'
+    hostedTools?: boolean | 'unknown'
+    structuredOutput?: boolean | 'unknown'
+    audioInput?: boolean | 'unknown'
+  }
+}
+
+type OpenAIModelAvailabilityResult =
+  | {
+    ok: true
+    providerKey: 'openai_responses'
+    endpointId: 'openai-responses-official'
+    profileId: 'openai_responses_v1'
+    observedAtMs: number
+    models: OpenAIProviderModelAvailability[]
+    warnings: string[]
+    sourceDocuments: Array<{
+      source: 'openai_list_models_api_docs' | 'openai_responses_create_docs'
+      url: string
+      observedAtMs: number
+    }>
+  }
+  | {
+    ok: false
+    providerKey: 'openai_responses'
+    endpointId: 'openai-responses-official'
+    profileId: 'openai_responses_v1'
+    observedAtMs: number
+    code: 'credential_missing' | 'store_unavailable' | 'invalid_payload' | 'invalid_response' | 'http_error' | 'network_error'
+    message: string
+    httpStatus?: number
+  }
+
 interface GoogleAIStudioCredentialStatus {
-  source: 'legacy_store'
+  source: ProviderCredentialStatusSource
+  backend: ProviderCredentialBackendKind
   providerId: 'google-ai-studio'
   profileId: 'gemini_api_v1'
   apiKeyConfigured: boolean
   maskedApiKey?: '***'
+  migratedFromLegacy?: boolean
+  warnings: string[]
   defaultBaseUrl: 'https://generativelanguage.googleapis.com'
   rendererVisible: true
 }
@@ -120,11 +208,14 @@ type GoogleAIStudioCredentialResult =
   | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
 
 interface AnthropicCredentialStatus {
-  source: 'legacy_store'
+  source: ProviderCredentialStatusSource
+  backend: ProviderCredentialBackendKind
   providerId: 'anthropic'
   profileId: 'anthropic_messages_v1'
   apiKeyConfigured: boolean
   maskedApiKey?: '***'
+  migratedFromLegacy?: boolean
+  warnings: string[]
   defaultBaseUrl: 'https://api.anthropic.com/v1'
   rendererVisible: true
 }
@@ -137,12 +228,75 @@ type AnthropicCredentialResult =
   | { ok: true; status: AnthropicCredentialStatus }
   | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
 
+type AnthropicModelSourceKind =
+  | 'anthropic_models_api'
+  | 'starverse_curated_metadata'
+  | 'manual_user_model_id'
+
+interface AnthropicProviderModelAvailability {
+  providerKey: 'anthropic_messages'
+  endpointId: 'anthropic-official'
+  profileId: 'anthropic_messages_v1'
+  nativeModelId: string
+  displayName?: string
+  createdAt?: string
+  modelType?: string
+  source: AnthropicModelSourceKind
+  confidence: 'provider_reported' | 'curated' | 'manual'
+  observedAtMs: number
+  warnings: string[]
+  provenance?: ProviderModelAvailabilityProvenance
+  providerSpecific?: unknown
+  capabilitySeed?: {
+    textChat?: boolean
+    imageInput?: boolean | 'unknown'
+    maxInputTokens?: number
+    maxOutputTokens?: number
+    thinking?: 'supported' | 'unsupported' | 'unknown'
+    adaptiveThinking?: boolean | 'unknown'
+    toolUse?: boolean | 'unknown'
+    files?: boolean | 'unknown'
+    structuredOutput?: boolean | 'unknown'
+    citations?: boolean | 'unknown'
+    capabilitiesRawKeys?: string[]
+  }
+}
+
+type AnthropicModelAvailabilityResult =
+  | {
+    ok: true
+    providerKey: 'anthropic_messages'
+    endpointId: 'anthropic-official'
+    profileId: 'anthropic_messages_v1'
+    observedAtMs: number
+    models: AnthropicProviderModelAvailability[]
+    warnings: string[]
+    sourceDocuments: Array<{
+      source: 'anthropic_list_models_api_docs' | 'anthropic_messages_api_docs' | 'anthropic_models_overview_docs'
+      url: string
+      observedAtMs: number
+    }>
+  }
+  | {
+    ok: false
+    providerKey: 'anthropic_messages'
+    endpointId: 'anthropic-official'
+    profileId: 'anthropic_messages_v1'
+    observedAtMs: number
+    code: 'credential_missing' | 'store_unavailable' | 'invalid_payload' | 'invalid_response' | 'http_error' | 'network_error'
+    message: string
+    httpStatus?: number
+  }
+
 interface DeepSeekCredentialStatus {
-  source: 'legacy_store'
+  source: ProviderCredentialStatusSource
+  backend: ProviderCredentialBackendKind
   providerId: 'deepseek'
   profileId: 'deepseek_official_openai_compat'
   apiKeyConfigured: boolean
   maskedApiKey?: '***'
+  migratedFromLegacy?: boolean
+  warnings: string[]
   defaultBaseUrl: 'https://api.deepseek.com/v1'
   rendererVisible: true
 }
@@ -172,6 +326,8 @@ interface DeepSeekProviderModelAvailability {
   confidence: 'provider_reported' | 'curated' | 'manual'
   observedAtMs: number
   warnings: string[]
+  provenance?: ProviderModelAvailabilityProvenance
+  providerSpecific?: unknown
   capabilitySeed?: {
     textChat?: boolean
     thinkingMode?: 'supported' | 'non_thinking_only' | 'thinking_only' | 'unknown'
@@ -212,6 +368,64 @@ type DeepSeekModelAvailabilityResult =
     providerKey: 'deepseek'
     endpointId: 'deepseek-official'
     profileId: 'deepseek_official_openai_compat'
+    observedAtMs: number
+    code: 'credential_missing' | 'store_unavailable' | 'invalid_payload' | 'invalid_response' | 'http_error' | 'network_error'
+    message: string
+    httpStatus?: number
+  }
+
+type GeminiModelSourceKind =
+  | 'gemini_models_api'
+  | 'starverse_curated_metadata'
+  | 'manual_user_model_id'
+
+interface GeminiProviderModelAvailability {
+  providerKey: 'google_ai_studio'
+  endpointId: 'google-ai-studio-official'
+  profileId: 'gemini_api_v1'
+  nativeModelId: string
+  providerModelName?: string
+  displayName?: string
+  description?: string
+  source: GeminiModelSourceKind
+  confidence: 'provider_reported' | 'curated' | 'manual'
+  observedAtMs: number
+  warnings: string[]
+  provenance?: ProviderModelAvailabilityProvenance
+  providerSpecific?: unknown
+  capabilitySeed?: {
+    textChat?: boolean
+    supportedGenerationMethods?: string[]
+    inputTokenLimit?: number
+    outputTokenLimit?: number
+    thinking?: 'supported' | 'unknown'
+    functionCalling?: boolean | 'unknown'
+    builtInTools?: boolean | 'unknown'
+    vision?: boolean | 'unknown'
+    structuredOutput?: boolean | 'unknown'
+  }
+}
+
+type GeminiModelAvailabilityResult =
+  | {
+    ok: true
+    providerKey: 'google_ai_studio'
+    endpointId: 'google-ai-studio-official'
+    profileId: 'gemini_api_v1'
+    observedAtMs: number
+    models: GeminiProviderModelAvailability[]
+    warnings: string[]
+    sourceDocuments: Array<{
+      source: 'gemini_models_api_docs' | 'gemini_api_key_docs'
+      url: string
+      observedAtMs: number
+    }>
+  }
+  | {
+    ok: false
+    providerKey: 'google_ai_studio'
+    endpointId: 'google-ai-studio-official'
+    profileId: 'gemini_api_v1'
     observedAtMs: number
     code: 'credential_missing' | 'store_unavailable' | 'invalid_payload' | 'invalid_response' | 'http_error' | 'network_error'
     message: string
@@ -363,6 +577,9 @@ interface Window {
     update?: (payload: OpenAIResponsesCredentialUpdatePayload) => Promise<OpenAIResponsesCredentialResult>
     clear?: () => Promise<OpenAIResponsesCredentialResult>
   }
+  openAIResponsesModels?: {
+    listAvailability?: (payload?: { timeoutMs?: number }) => Promise<OpenAIModelAvailabilityResult>
+  }
   googleAIStudioCredential?: {
     getStatus?: () => Promise<GoogleAIStudioCredentialResult>
     update?: (payload: GoogleAIStudioCredentialUpdatePayload) => Promise<GoogleAIStudioCredentialResult>
@@ -373,6 +590,9 @@ interface Window {
     update?: (payload: AnthropicCredentialUpdatePayload) => Promise<AnthropicCredentialResult>
     clear?: () => Promise<AnthropicCredentialResult>
   }
+  anthropicModels?: {
+    listAvailability?: (payload?: { timeoutMs?: number }) => Promise<AnthropicModelAvailabilityResult>
+  }
   deepSeekCredential?: {
     getStatus?: () => Promise<DeepSeekCredentialResult>
     update?: (payload: DeepSeekCredentialUpdatePayload) => Promise<DeepSeekCredentialResult>
@@ -380,6 +600,9 @@ interface Window {
   }
   deepSeekModels?: {
     listAvailability?: (payload?: { timeoutMs?: number }) => Promise<DeepSeekModelAvailabilityResult>
+  }
+  googleAIStudioModels?: {
+    listAvailability?: (payload?: { timeoutMs?: number }) => Promise<GeminiModelAvailabilityResult>
   }
   localEndpointDiagnostics?: {
     probe?: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointProbeResult>
