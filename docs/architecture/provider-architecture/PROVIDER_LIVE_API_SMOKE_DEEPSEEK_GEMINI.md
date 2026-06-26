@@ -4,7 +4,7 @@
 
 Recommendation: do not mark the full DeepSeek + Gemini live E2E as passed.
 
-DeepSeek completed one real model availability refresh and one real text stream send. Google AI Studio / Gemini was blocked at the model availability step after the single allowed retry.
+DeepSeek completed one real model availability refresh and one real text stream send. Google AI Studio / Gemini was originally blocked at the model availability step by a main-process transport proxy mismatch; after Provider HTTP Transport Proxy Alignment v1, model availability succeeded through the Electron session-backed transport, but the single allowed short text send ended with a safe `404` terminal error.
 
 This report contains only redacted credential status and safe provider status. It does not contain raw API keys, Authorization headers, Bearer tokens, provider request payloads, or provider error bodies.
 
@@ -60,10 +60,15 @@ Important limitation: this DeepSeek run happened before rebuilding stale `dist-e
   - `session.defaultSession.resolveProxy('https://generativelanguage.googleapis.com/v1beta/models')`: `PROXY configured`.
   - Current Google AI Studio model availability HTTP client: Node fetch / undici via `globalThis.fetch`.
   - Current Google AI Studio text chat HTTP client: Node fetch / undici via `globalThis.fetch`.
-- Selected model: not selected.
-- Text stream send: not run.
-- Thought artifact diagnostics: not run.
-- Abnormal behavior: Gemini live E2E is blocked at model source availability. This was not advanced to send because the task budget allowed only one retry and the provider availability step did not pass.
+- Proxy alignment fix result:
+  - Google AI Studio model availability was rewired to an Electron session-backed provider transport.
+  - Google AI Studio text chat was rewired to the same session-backed provider transport.
+  - Post-fix Gemini model availability live retry succeeded in about 1.0s and returned 55 safe availability records.
+  - Post-fix Gemini short text send was attempted once with `gemini-2.0-flash`; it reached the provider path and ended with safe terminal `stream.error`, code `404`, no visible answer, and no thought artifacts. No second text-send retry was run.
+- Selected model for the single post-fix text send: `gemini-2.0-flash`.
+- Text stream send: attempted once after availability succeeded; failed safely as above.
+- Thought artifact diagnostics: none observed because the send did not produce visible text.
+- Abnormal behavior: Gemini model availability is no longer blocked by Node/undici direct-connect timeout after session-backed transport alignment. Gemini short text send still did not pass; the safe `404` terminal error is now a provider/model send-path follow-up, not the original proxy mismatch.
 
 ## Security Checks
 
@@ -96,7 +101,7 @@ node scripts/build-db-worker.cjs
 npx vite build --mode development --config vite.config.ts
 ```
 
-After rebuild, the Gemini availability bridge was available and the retry reached the model source request path, but the request failed safely as `network_error`.
+After rebuild, the Gemini availability bridge was available and the retry reached the model source request path, but the request failed safely as `network_error`. Provider HTTP Transport Proxy Alignment v1 later moved Google AI Studio model/text transport to an Electron session-backed fetch path; the model availability retry then succeeded.
 
 ## Gemini Network Error Follow-Up
 
@@ -108,10 +113,11 @@ The Gemini availability failure is currently classified as network reachability,
 - Observed failure mode: Node fetch did not receive an HTTP response, so there was no HTTP status to remap.
 - Proxy-chain conclusion: Chromium/session proxy resolution reports a proxy for the Gemini target, but the current provider request path uses Node fetch / undici and does not use Electron `session.fetch` or `net.request`. In this environment the provider request path therefore does not reach Google API through the configured Chromium/session proxy.
 
-Recommended code direction: add a minimal provider live HTTP transport seam that can use Electron session-backed networking for Google AI Studio model availability and text chat, or switch only the Google AI Studio official model/text paths to `session.fetch` / `net.request`. Do not describe environment proxy support as equivalent to Chromium/system proxy unless the implementation actually uses that chain. A future diagnostic enhancement could add an opt-in redacted transport detail for maintainers, but it should not expose provider headers, raw error bodies, or raw API keys.
+Fix result: a minimal provider live HTTP transport seam now uses Electron session-backed networking for Google AI Studio model availability and text chat. Do not describe environment proxy support as equivalent to Chromium/system proxy unless the implementation actually uses that chain. A future diagnostic enhancement could add an opt-in redacted transport detail for maintainers, but it should not expose provider headers, raw error bodies, or raw API keys.
 
 ## Recommendation
 
 - DeepSeek official live availability + send can be treated as a partial live pass for the text path, with the limitation that reasoning artifact rendering was not exercised.
-- Gemini / Google AI Studio should not be treated as live-passed; it is blocked at model availability with safe `network_error` after one allowed retry and follow-up connectivity checks.
-- Do not enter a Gemini live-send hardening claim until Gemini model availability succeeds in the same current built artifact.
+- Gemini / Google AI Studio model availability can be treated as proxy-aligned after the session-backed transport fix.
+- Gemini / Google AI Studio text send should not be treated as live-passed yet; the single post-fix short-send attempt ended with safe `404`.
+- Do not enter a full Gemini live E2E pass claim until a post-fix short text send succeeds and produces a visible answer.

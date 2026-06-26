@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   getGeminiCuratedModelAvailabilitySeeds,
+  listGeminiProviderModelAvailability,
   parseGeminiModelsResponse,
   resolveGeminiModelAvailabilityFromModelsPayload,
 } from './geminiModelSource'
@@ -77,14 +78,14 @@ describe('Gemini models.list parser', () => {
         {
           name: 'models/gemini-2.5-flash',
           supportedGenerationMethods: ['generateContent'],
-          apiKey: 'AIza-provider-should-not-leak',
-          nested: { Authorization: 'Bearer AIza-provider-should-not-leak' },
+          apiKey: 'fake-provider-secret-should-not-leak',
+          nested: { Authorization: 'Bearer fake-provider-secret-should-not-leak' },
         },
       ],
     }, OBSERVED_AT_MS)
 
     expect(result.ok).toBe(true)
-    expect(JSON.stringify(result)).not.toContain('AIza-provider-should-not-leak')
+    expect(JSON.stringify(result)).not.toContain('fake-provider-secret-should-not-leak')
     expect(JSON.stringify(result)).not.toContain('Authorization')
     expect(JSON.stringify(result)).not.toContain('Bearer')
   })
@@ -166,5 +167,38 @@ describe('Gemini curated metadata seed', () => {
     })
     expect(flash?.warnings.join('\n')).toContain('supplemental metadata')
     expect(result.ok && result.models.some((model) => model.nativeModelId === 'gemini-2.5-pro')).toBe(false)
+  })
+})
+
+describe('Gemini model availability transport errors', () => {
+  it('keeps sanitized network cause without leaking raw messages', async () => {
+    const secret = 'fake-google-secret'
+    const cause = Object.assign(new Error(`connect failed for ${secret}`), {
+      name: 'ConnectTimeoutError',
+      code: 'UND_ERR_CONNECT_TIMEOUT',
+    })
+    const fetchImpl = vi.fn(async () => {
+      throw Object.assign(new TypeError(`fetch failed ${secret}`), { cause })
+    }) as unknown as typeof fetch
+
+    const result = await listGeminiProviderModelAvailability({
+      apiKey: secret,
+      fetchImpl,
+      observedAtMs: OBSERVED_AT_MS,
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'network_error',
+      message: 'Google AI Studio model source request failed safely.',
+      transportCause: {
+        name: 'TypeError',
+        code: 'UND_ERR_CONNECT_TIMEOUT',
+      },
+    })
+    const serialized = JSON.stringify(result)
+    expect(serialized).not.toContain(secret)
+    expect(serialized).not.toContain('connect failed')
+    expect(serialized).not.toContain('fetch failed')
   })
 })
