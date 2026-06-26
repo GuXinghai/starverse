@@ -45,15 +45,22 @@ describe('googleAIStudioTextChatIpc', () => {
     expect(validateGoogleAIStudioTextChatPayload({
       requestId: 'google_ai_studio_req_1',
       assistantMessageId: 'assistant_1',
-      model: 'gemini-2.5-flash',
+      model: 'models/gemini-2.5-flash',
       messages: [{ role: 'user', content: 'hello' }],
-    })).toMatchObject({ ok: true })
+    })).toMatchObject({ ok: true, model: 'gemini-2.5-flash' })
 
     expect(validateGoogleAIStudioTextChatPayload({
       requestId: 'google_ai_studio_req_bad',
       assistantMessageId: 'assistant_1',
       model: 'gemini-2.5-flash',
       messages: [{ role: 'tool', content: 'unsupported' }],
+    })).toMatchObject({ ok: false, code: 'invalid_payload' })
+
+    expect(validateGoogleAIStudioTextChatPayload({
+      requestId: 'google_ai_studio_req_bad_model',
+      assistantMessageId: 'assistant_1',
+      model: 'models/../secret',
+      messages: [{ role: 'user', content: 'hello' }],
     })).toMatchObject({ ok: false, code: 'invalid_payload' })
   })
 
@@ -62,7 +69,7 @@ describe('googleAIStudioTextChatIpc', () => {
       expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse')
       expect(init?.method).toBe('POST')
       expect(init?.redirect).toBe('error')
-      expect((init?.headers as Record<string, string>)?.['x-goog-api-key']).toBe('AIza-google-secret')
+      expect((init?.headers as Record<string, string>)?.['x-goog-api-key']).toBe('fake-google-secret')
       expect((init?.headers as Record<string, string>)?.Authorization).toBeUndefined()
       const body = JSON.parse(String(init?.body ?? '{}'))
       expect(body).toMatchObject({
@@ -72,7 +79,7 @@ describe('googleAIStudioTextChatIpc', () => {
     }) as unknown as typeof fetch
 
     const registerInvoke = vi.fn()
-    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService('AIza-google-secret'), fetchImpl })
+    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService('fake-google-secret'), fetchImpl })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:stream-text')?.[1]
     const sender = createSender()
 
@@ -94,10 +101,31 @@ describe('googleAIStudioTextChatIpc', () => {
     )).toBe(true)
     expect(events.some((event) => event.type === 'event' && event.event.type === 'stream.done')).toBe(true)
     const serializedEvents = JSON.stringify(events)
-    expect(serializedEvents).not.toContain('AIza-google-secret')
+    expect(serializedEvents).not.toContain('fake-google-secret')
     expect(serializedEvents).not.toContain('x-goog-api-key')
     expect(serializedEvents).not.toContain('Authorization')
     expect(serializedEvents).not.toContain('Bearer')
+  })
+
+  it('accepts provider model names without double-prefixing the stream endpoint', async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse')
+      return makeSseResponse(textChunk('OK'), doneChunk())
+    }) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService('fake-google-secret'), fetchImpl })
+    const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:stream-text')?.[1]
+    const sender = createSender()
+
+    await handler({ sender }, {
+      requestId: 'google_ai_studio_req_prefixed_model',
+      assistantMessageId: 'assistant_1',
+      model: 'models/gemini-2.5-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('google-ai-studio-chat:end:google_ai_studio_req_prefixed_model'))
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 
   it('fails before fetch when the Google AI Studio API key is missing', async () => {
@@ -128,10 +156,10 @@ describe('googleAIStudioTextChatIpc', () => {
 
   it('normalizes malicious transport errors before sending them to the renderer', async () => {
     const fetchImpl = vi.fn(async () => {
-      throw new Error('Authorization: Bearer AIza-google-secret at https://public.example.test')
+      throw new Error('Authorization: Bearer fake-google-secret at https://public.example.test')
     }) as unknown as typeof fetch
     const registerInvoke = vi.fn()
-    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService('AIza-google-secret'), fetchImpl })
+    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService('fake-google-secret'), fetchImpl })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:stream-text')?.[1]
     const sender = createSender()
 
@@ -144,11 +172,51 @@ describe('googleAIStudioTextChatIpc', () => {
 
     await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('google-ai-studio-chat:end:google_ai_studio_req_error'))
     const serialized = JSON.stringify(sentEvents(sender, 'google_ai_studio_req_error'))
-    expect(serialized).not.toContain('AIza-google-secret')
+    expect(serialized).not.toContain('fake-google-secret')
     expect(serialized).not.toContain('Authorization')
     expect(serialized).not.toContain('Bearer')
     expect(serialized).not.toContain('public.example.test')
     expect(serialized).toContain('Google AI Studio text chat failed safely.')
+  })
+
+  it('maps provider 404 to a clearer sanitized model/version/streaming cause', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      error: {
+        code: 404,
+        status: 'NOT_FOUND',
+        message: 'models/gemini-2.0-flash is not found for API version v1beta, or is not supported for streamGenerateContent. Authorization: Bearer fake-google-secret',
+      },
+    }), {
+      status: 404,
+      statusText: 'Not Found',
+      headers: { 'content-type': 'application/json' },
+    })) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService('fake-google-secret'), fetchImpl })
+    const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:stream-text')?.[1]
+    const sender = createSender()
+
+    await handler({ sender }, {
+      requestId: 'google_ai_studio_req_404',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-2.0-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('google-ai-studio-chat:end:google_ai_studio_req_404'))
+    const events = sentEvents(sender, 'google_ai_studio_req_404')
+    expect(events.some((event) =>
+      event.type === 'event' &&
+      event.event.type === 'stream.error' &&
+      event.event.error.httpStatus === 404 &&
+      event.event.error.code === '404' &&
+      event.event.error.message === 'Google AI Studio model was not found for the selected API version or does not support streaming text chat.',
+    )).toBe(true)
+    const serialized = JSON.stringify(events)
+    expect(serialized).not.toContain('streamGenerateContent. Authorization')
+    expect(serialized).not.toContain('Bearer')
+    expect(serialized).not.toContain('fake-google-secret')
+    expect(serialized).not.toContain('NOT_FOUND')
   })
 
   it('supports abort through the explicit Google AI Studio chat abort channel', async () => {
@@ -162,7 +230,7 @@ describe('googleAIStudioTextChatIpc', () => {
       })
     }) as unknown as typeof fetch
     const registerInvoke = vi.fn()
-    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService('AIza-google-secret'), fetchImpl })
+    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService('fake-google-secret'), fetchImpl })
     const startHandler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:stream-text')?.[1]
     const abortHandler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:abort')?.[1]
     const sender = createSender()
