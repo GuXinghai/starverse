@@ -16,6 +16,7 @@ const hoisted = vi.hoisted(() => {
   return {
     capturedDispatchTypes: [] as string[],
     fixtureErrorEnvelope,
+    streamOptions: [] as any[],
     throwAbortInGenerator: false,
   }
 })
@@ -29,6 +30,16 @@ try {
 }
 
 const capturedDispatchTypes = hoisted.capturedDispatchTypes
+const capturedStreamOptions = hoisted.streamOptions
+
+const draftBox = () => screen.getByTestId('composer-draft') as HTMLTextAreaElement
+const sendButton = () => screen.getByTestId('composer-send')
+const waitForComposerReady = async () => {
+  await waitFor(() => {
+    expect(screen.getByTestId('current-model-pill')).toBeInTheDocument()
+    expect(draftBox()).not.toBeDisabled()
+  })
+}
 
 vi.mock('@/next/state/reducer', async () => {
   const actual = await vi.importActual<typeof import('@/next/state/reducer')>('@/next/state/reducer')
@@ -61,6 +72,7 @@ vi.mock('@/next/live/openRouterLiveStream', () => {
   ] as const
 
   async function* streamOpenRouterChatAsEvents(options: any) {
+    hoisted.streamOptions.push(options)
     if (hoisted.throwAbortInGenerator) {
       const error = new Error('aborted in generator')
       ;(error as any).name = 'AbortError'
@@ -260,6 +272,40 @@ function createDbBridge(mode: ScenarioMode) {
     if (method === 'context.buildForBranch') {
       return { messages: orderedMessages() }
     }
+    if (method === 'sendPlan.buildCurrent') {
+      return {
+        sendPlan: {
+          status: 'sendable',
+          warnings: [],
+          blockingReasons: [],
+          includedAttachments: [],
+          excludedAttachments: [],
+          attachmentPlans: [],
+          requiresModelChange: false,
+          canProceedAfterDroppingExcluded: false,
+          requiresUserConfirmation: false,
+          plannerVersion: 'phase-5/v1',
+        },
+        draftText: '',
+        assets: [],
+        storageRootDir: 'C:/tmp',
+      }
+    }
+    if (method === 'sendPlan.prepareOpenRouterReplayFromMessage') {
+      const userMessageId = String(params?.userMessageId ?? '')
+      const text = String(store.messagesById[userMessageId]?.body ?? 'Q1')
+      return {
+        status: 'sendable',
+        currentUserContentBlocks: [{ type: 'text', text }],
+        sentAssetIds: [],
+        includedAttachments: [],
+        excludedAttachments: [],
+        blockingReasons: [],
+        diagnostics: { sendPlanStatus: 'sendable' },
+        modelCapabilitySnapshot: { modelId: DEFAULT_OPENROUTER_TEST_MODEL, providerKey: 'openrouter' },
+        manifestDraft: { replayMode: 'current', sourceUserMessageId: userMessageId, sentAssetIds: [] },
+      }
+    }
     if (method === 'conversationDraft.restore' || method === 'conversationDraft.updateText') {
       return {
         conversationId: convoId,
@@ -355,6 +401,19 @@ function createDbBridge(mode: ScenarioMode) {
       return { ok: true, newAnswerRootId: streamAnswerId, newAssistantSeq: 3 }
     }
 
+    if (method === 'branch.truncateFromQuestion') {
+      const qid = String(params?.questionId ?? '')
+      const question = store.messagesById[qid]
+      const minSeq = typeof question?.seq === 'number' ? question.seq : Number.POSITIVE_INFINITY
+      for (const message of Object.values(store.messagesById)) {
+        if (message.seq >= minSeq) delete store.messagesById[message.id]
+      }
+      store.headMessageId = null
+      store.chosenAnswerRootId = null
+      store.candidates = []
+      return { ok: true, headMessageId: null, fallbackQuestionId: null }
+    }
+
     if (method === 'message.appendDelta') {
       const seq = Number(params?.seq ?? NaN)
       const appendBody = String(params?.appendBody ?? '')
@@ -404,15 +463,16 @@ async function runScenario(mode: ScenarioMode, options?: { expectHello?: boolean
     await screen.findByText('Q1')
     await screen.findByText('A-old')
   }
+  await waitForComposerReady()
 
   capturedDispatchTypes.length = 0
   const callStart = invoke.mock.calls.length
 
   if (mode === 'send') {
-    const box = screen.getByPlaceholderText('Type a message...')
+    const box = draftBox()
     await user.click(box)
     await user.type(box, 'fixture question')
-    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await user.click(sendButton())
   } else if (mode === 'regenerate') {
     const button = await screen.findByTestId('regen-q-u1')
     await user.click(button)
@@ -486,11 +546,24 @@ async function runScenario(mode: ScenarioMode, options?: { expectHello?: boolean
 describe('ui-app AppChatApp stream session parity', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronStore = (globalThis as any).electronStore
+  const originalClipboard = globalThis.navigator.clipboard
   const originalSetTimeout = globalThis.setTimeout
+  let clipboardWriteText: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     vi.useFakeTimers()
     globalThis.setTimeout = ((fn: (...args: any[]) => void) => originalSetTimeout(fn, 0)) as any
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.enabled')
+    globalThis.localStorage?.setItem('starverse.openRouterTextChat.enabled', '1')
+    clipboardWriteText = vi.fn(async () => undefined)
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: clipboardWriteText },
+    })
 
     ;(globalThis as any).electronStore = {
       get: vi.fn(async (key: string) => {
@@ -503,10 +576,16 @@ describe('ui-app AppChatApp stream session parity', () => {
 
   afterEach(() => {
     capturedDispatchTypes.length = 0
+    capturedStreamOptions.length = 0
     hoisted.throwAbortInGenerator = false
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronStore = originalElectronStore
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: originalClipboard,
+    })
     globalThis.setTimeout = originalSetTimeout
+    globalThis.localStorage?.removeItem('starverse.openRouterTextChat.enabled')
     vi.useRealTimers()
   })
 
@@ -542,6 +621,44 @@ describe('ui-app AppChatApp stream session parity', () => {
     expect(summary.endReasonSequence).toEqual(['user_abort'])
     expect(summary.completionClasses).toEqual(['aborted'])
     expect(summary.appendDeltaText).toBe('')
+  })
+
+  it('keeps reasoning artifacts out of copy, prompt/context, and clears them when the question is deleted', async () => {
+    const user = userEvent.setup()
+    const { invoke } = createDbBridge('send')
+    ;(globalThis as any).dbBridge = { invoke }
+
+    render(AppChatApp)
+    await screen.findByRole('button', { name: /Chat 1/ })
+    await waitForComposerReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'fixture question')
+    await user.click(sendButton())
+
+    await screen.findByText('hello')
+    const diagnostics = await screen.findByTestId('reasoning-artifact-diagnostics')
+    expect(diagnostics.textContent).toContain('Reasoning details · 1')
+    expect(diagnostics.textContent).toContain('reasoning-fixture')
+
+    await vi.runAllTimersAsync()
+    const copyButton = await screen.findByTestId('copy-assistant-text-a_stream')
+    await waitFor(() => {
+      expect(copyButton).not.toBeDisabled()
+    })
+    expect(copyButton.textContent).toContain('Copy text')
+    expect(diagnostics.textContent?.toLowerCase()).not.toContain('copy')
+    expect(clipboardWriteText).not.toHaveBeenCalledWith(expect.stringContaining('reasoning-fixture'))
+
+    const contextCalls = invoke.mock.calls.filter((call) => call[0] === 'context.buildForBranch')
+    expect(JSON.stringify(contextCalls)).not.toContain('reasoning-fixture')
+    expect(JSON.stringify(capturedStreamOptions)).not.toContain('reasoning-fixture')
+
+    await user.click(await screen.findByTestId('delete-q-u1'))
+    await user.click(await screen.findByTestId('confirm-delete-q-u1'))
+    await waitFor(() => {
+      expect(screen.queryByTestId('reasoning-artifact-diagnostics')).toBeNull()
+    })
   })
 })
 

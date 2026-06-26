@@ -1,4 +1,5 @@
 import type Store from 'electron-store'
+import type { OpenRouterCatalogCredentialStoreReader } from './openRouterCatalogCredential'
 import { syncOpenRouterModelCatalog } from '../modelCatalog/catalogSyncJob'
 import { CatalogSyncRunner, type CatalogSyncRunnerMeta, type CatalogSyncRunnerResult } from '../modelCatalog/catalogSyncRunner'
 import type { DbWorkerManager } from '../db/workerManager'
@@ -79,8 +80,11 @@ function resolveOpenRouterCatalogScopeFromCredential(
   }
 }
 
-export function resolveCurrentOpenRouterCatalogScope(store: Store): OpenRouterCatalogScopeContext | null {
-  const credentialResult = resolveOpenRouterCatalogCredentialFromLegacyStore(store)
+export function resolveCurrentOpenRouterCatalogScope(
+  store: Store,
+  credentialStore: OpenRouterCatalogCredentialStoreReader = store,
+): OpenRouterCatalogScopeContext | null {
+  const credentialResult = resolveOpenRouterCatalogCredentialFromLegacyStore(credentialStore)
   if (!credentialResult.ok) return null
   return resolveOpenRouterCatalogScopeFromCredential(store, credentialResult.credential)
 }
@@ -109,12 +113,13 @@ function buildMissingApiKeyResult(providerKey: 'openrouter'): CatalogSyncRunnerR
 
 export async function runCatalogSyncAtStartup(input: Readonly<{
   store: Store
+  credentialStore?: OpenRouterCatalogCredentialStoreReader
   dbWorkerManager: DbWorkerManager
   force?: boolean
   freshnessMs?: number
 }>): Promise<CatalogSyncRunnerResult> {
   const providerKey = 'openrouter'
-  const credentialResult = resolveOpenRouterCatalogCredentialFromLegacyStore(input.store)
+  const credentialResult = resolveOpenRouterCatalogCredentialFromLegacyStore(input.credentialStore ?? input.store)
   if (!credentialResult.ok) {
     return buildMissingApiKeyResult(providerKey)
   }

@@ -1,10 +1,9 @@
 import type { WebContents } from 'electron'
-import type Store from 'electron-store'
 import type { RegisterInvoke } from './types'
 import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
 import { streamViaGemini, type GeminiFetchFn } from '../../src/next/provider/gemini/geminiAdapter'
 import type { GeminiContent } from '../../src/next/provider/gemini/geminiRequestBuilder'
-import { GOOGLE_AI_STUDIO_API_KEY_STORE_KEY } from './googleAIStudioCredentialSettingsIpc'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 
 export const GOOGLE_AI_STUDIO_TEXT_CHAT_IPC_CHANNELS = [
   'google-ai-studio-chat:stream-text',
@@ -40,7 +39,7 @@ export type GoogleAIStudioTextChatWireEvent =
 
 type RegisterGoogleAIStudioTextChatIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
-  store: Store
+  credentialService: ProviderCredentialService
   fetchImpl?: typeof fetch
 }>
 
@@ -119,16 +118,13 @@ export function validateGoogleAIStudioTextChatPayload(payload: unknown): Validat
   }
 }
 
-function readGoogleAIStudioApiKey(store: Store): GoogleAIStudioTextChatStartFailure | string {
-  try {
-    const apiKey = String(store.get(GOOGLE_AI_STUDIO_API_KEY_STORE_KEY) ?? '').trim()
-    if (!apiKey) {
-      return staticFailure('credential_missing', 'Google AI Studio API key is not configured.')
-    }
-    return apiKey
-  } catch {
-    return staticFailure('store_unavailable', 'Google AI Studio credential store is unavailable.')
+function readGoogleAIStudioApiKey(credentialService: ProviderCredentialService): GoogleAIStudioTextChatStartFailure | string {
+  const result = credentialService.readApiKey('google_ai_studio')
+  if (result.ok) return result.apiKey
+  if (result.code === 'credential_missing') {
+    return staticFailure('credential_missing', 'Google AI Studio API key is not configured.')
   }
+  return staticFailure('store_unavailable', 'Google AI Studio credential store is unavailable.')
 }
 
 function safeProviderError(error: StarverseProviderError): StarverseProviderError {
@@ -217,10 +213,10 @@ function buildProviderRequest(input: Readonly<{
 async function forwardGoogleAIStudioStream(input: Readonly<{
   request: ValidatedTextChatSuccess
   sender: WebContents
-  store: Store
+  credentialService: ProviderCredentialService
   fetchImpl: typeof fetch
 }>): Promise<void> {
-  const apiKey = readGoogleAIStudioApiKey(input.store)
+  const apiKey = readGoogleAIStudioApiKey(input.credentialService)
   if (typeof apiKey !== 'string') {
     sendWireEvent(input.sender, input.request.requestId, {
       type: 'event',
@@ -305,7 +301,7 @@ export function registerGoogleAIStudioTextChatIpc(
       return staticFailure('invalid_payload', 'Google AI Studio text chat bridge is unavailable.')
     }
 
-    void forwardGoogleAIStudioStream({ request: validated, sender, store: input.store, fetchImpl })
+    void forwardGoogleAIStudioStream({ request: validated, sender, credentialService: input.credentialService, fetchImpl })
     return { ok: true }
   })
 

@@ -1,6 +1,9 @@
 import type Store from 'electron-store'
+import type {
+  ProviderCredentialService,
+  ProviderCredentialStatusSource,
+} from '../credentials/providerCredentialService'
 import {
-  OPENROUTER_CHAT_LEGACY_API_KEY_STORE_KEY,
   OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY,
 } from '../../src/next/provider/openrouter/openRouterLegacyCredential'
 import type { RegisterInvoke } from './types'
@@ -12,9 +15,12 @@ export const OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS = [
 ] as const
 
 export type OpenRouterCredentialSettingsStatus = Readonly<{
-  source: 'legacy_store'
+  source: ProviderCredentialStatusSource
+  backend: 'electron_safe_storage' | 'plaintext_fallback' | 'unavailable'
   apiKeyConfigured: boolean
   maskedApiKey?: '***'
+  migratedFromLegacy?: boolean
+  warnings: string[]
   baseUrlConfigured: boolean
   baseUrlInvalid?: boolean
   displayBaseUrl?: string
@@ -34,6 +40,7 @@ export type OpenRouterCredentialSettingsResult =
 type RegisterOpenRouterCredentialSettingsIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   store: Store
+  credentialService: ProviderCredentialService
 }>
 
 const DEFAULT_OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
@@ -55,7 +62,7 @@ type OpenRouterEndpointMetadataBase = Readonly<{
   kind: 'openrouter_endpoint'
   providerId: 'openrouter'
   profileId: typeof OPENROUTER_PROFILE_ID
-  source: 'legacy_store'
+  source: ProviderCredentialStatusSource
   defaultBaseUrl: string
   credentialRef: typeof OPENROUTER_CHAT_LEGACY_CREDENTIAL_METADATA_REF
   catalogCredentialRef: typeof OPENROUTER_CATALOG_LEGACY_CREDENTIAL_METADATA_REF
@@ -112,12 +119,13 @@ function sanitizeDisplayBaseUrl(raw: unknown): SafeDisplayBaseUrl {
 export function buildOpenRouterEndpointMetadataFromLegacyStoreState(input: Readonly<{
   baseUrlConfigured: boolean
   safeBaseUrl: SafeDisplayBaseUrl
+  credentialSource?: ProviderCredentialStatusSource
 }>): OpenRouterEndpointMetadata {
   const base = {
     kind: 'openrouter_endpoint',
     providerId: 'openrouter',
     profileId: OPENROUTER_PROFILE_ID,
-    source: 'legacy_store',
+    source: input.credentialSource ?? 'missing',
     defaultBaseUrl: DEFAULT_OPENROUTER_BASE_URL,
     credentialRef: OPENROUTER_CHAT_LEGACY_CREDENTIAL_METADATA_REF,
     catalogCredentialRef: OPENROUTER_CATALOG_LEGACY_CREDENTIAL_METADATA_REF,
@@ -156,21 +164,28 @@ export function buildOpenRouterEndpointMetadataFromLegacyStoreState(input: Reado
   }
 }
 
-function readStatus(store: Store): OpenRouterCredentialSettingsStatus {
-  const apiKey = String(store.get(OPENROUTER_CHAT_LEGACY_API_KEY_STORE_KEY) ?? '').trim()
+function readStatus(store: Store, credentialService: ProviderCredentialService): OpenRouterCredentialSettingsStatus {
+  const credentialStatus = credentialService.getStatus('openrouter')
   const baseUrl = String(store.get(OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY) ?? '').trim()
   const safeBaseUrl = sanitizeDisplayBaseUrl(baseUrl)
   const baseUrlConfigured = baseUrl.length > 0
 
   return {
-    source: 'legacy_store',
-    apiKeyConfigured: apiKey.length > 0,
-    ...(apiKey.length > 0 ? { maskedApiKey: '***' as const } : {}),
+    source: credentialStatus.source,
+    backend: credentialStatus.backend,
+    apiKeyConfigured: credentialStatus.apiKeyConfigured,
+    ...(credentialStatus.apiKeyConfigured ? { maskedApiKey: '***' as const } : {}),
+    ...(credentialStatus.migratedFromLegacy ? { migratedFromLegacy: true } : {}),
+    warnings: credentialStatus.warnings,
     baseUrlConfigured,
     ...(safeBaseUrl.invalid ? { baseUrlInvalid: true } : {}),
     ...(safeBaseUrl.displayBaseUrl ? { displayBaseUrl: safeBaseUrl.displayBaseUrl } : {}),
     defaultBaseUrl: DEFAULT_OPENROUTER_BASE_URL,
-    endpoint: buildOpenRouterEndpointMetadataFromLegacyStoreState({ baseUrlConfigured, safeBaseUrl }),
+    endpoint: buildOpenRouterEndpointMetadataFromLegacyStoreState({
+      baseUrlConfigured,
+      safeBaseUrl,
+      credentialSource: credentialStatus.source,
+    }),
   }
 }
 
@@ -195,11 +210,11 @@ function safeFailure(code: 'invalid_payload' | 'store_unavailable'): OpenRouterC
 export function registerOpenRouterCredentialSettingsIpc(
   input: RegisterOpenRouterCredentialSettingsIpcInput,
 ): string[] {
-  const { registerInvoke, store } = input
+  const { registerInvoke, store, credentialService } = input
 
   registerInvoke('openrouter-credential:get-status', () => {
     try {
-      return { ok: true, status: readStatus(store) } satisfies OpenRouterCredentialSettingsResult
+      return { ok: true, status: readStatus(store, credentialService) } satisfies OpenRouterCredentialSettingsResult
     } catch {
       return safeFailure('store_unavailable')
     }
@@ -211,7 +226,7 @@ export function registerOpenRouterCredentialSettingsIpc(
     try {
       const apiKey = payload.apiKey?.trim()
       if (apiKey) {
-        store.set(OPENROUTER_CHAT_LEGACY_API_KEY_STORE_KEY, apiKey)
+        credentialService.updateApiKey('openrouter', apiKey)
       }
 
       if (payload.baseUrl === null) {
@@ -220,7 +235,7 @@ export function registerOpenRouterCredentialSettingsIpc(
         store.set(OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY, payload.baseUrl.trim())
       }
 
-      return { ok: true, status: readStatus(store) } satisfies OpenRouterCredentialSettingsResult
+      return { ok: true, status: readStatus(store, credentialService) } satisfies OpenRouterCredentialSettingsResult
     } catch {
       return safeFailure('store_unavailable')
     }
@@ -230,8 +245,8 @@ export function registerOpenRouterCredentialSettingsIpc(
     try {
       // Clear only API key credential material. Custom base URL endpoint material is
       // preserved here and cleared explicitly through update({ baseUrl: null }).
-      store.delete(OPENROUTER_CHAT_LEGACY_API_KEY_STORE_KEY)
-      return { ok: true, status: readStatus(store) } satisfies OpenRouterCredentialSettingsResult
+      credentialService.clearApiKey('openrouter')
+      return { ok: true, status: readStatus(store, credentialService) } satisfies OpenRouterCredentialSettingsResult
     } catch {
       return safeFailure('store_unavailable')
     }

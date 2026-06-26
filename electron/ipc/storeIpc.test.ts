@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { safeClearConfig } from '../config/configSchema'
 import { OPENROUTER_CATALOG_LOCAL_SECRET_KEY } from '../modelCatalog/catalogScope'
+import { providerCredentialSecureStoreKeys } from '../credentials/providerCredentialService'
 import { registerStoreIpc, RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS } from './storeIpc'
 
 vi.mock('../config/configSchema', async (importOriginal) => {
@@ -130,6 +131,7 @@ describe('registerStoreIpc', () => {
       'geminiApiKey',
       'apiKey',
       OPENROUTER_CATALOG_LOCAL_SECRET_KEY,
+      ...providerCredentialSecureStoreKeys(),
     ] as const
     const { handlers, store } = registerHandlers({
       initialStore: Object.fromEntries(blockedKeys.map((key) => [key, `legacy-${key}`])),
@@ -186,7 +188,7 @@ describe('registerStoreIpc', () => {
 
     expect(vi.mocked(safeClearConfig)).toHaveBeenCalledWith(
       expect.anything(),
-      expect.arrayContaining([...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS])
+      expect.arrayContaining([...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS, ...providerCredentialSecureStoreKeys()])
     )
   })
 
@@ -200,6 +202,7 @@ describe('registerStoreIpc', () => {
     expect(keepKeys).toEqual(expect.arrayContaining([
       'language',
       ...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS,
+      ...providerCredentialSecureStoreKeys(),
     ]))
     expect(keepKeys).not.toContain('theme')
     expect(keepKeys).not.toContain('activeProvider')
@@ -212,7 +215,10 @@ describe('registerStoreIpc', () => {
     await handlers.get('store-clear-safe')?.({}, ['openRouterApiKey', 'openRouterBaseUrl'])
 
     const keepKeys = vi.mocked(safeClearConfig).mock.calls.at(-1)?.[1] ?? []
-    expect(keepKeys).toEqual(expect.arrayContaining([...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS]))
+    expect(keepKeys).toEqual(expect.arrayContaining([
+      ...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS,
+      ...providerCredentialSecureStoreKeys(),
+    ]))
     expect(keepKeys.filter((key) => key === 'openRouterApiKey')).toHaveLength(1)
     expect(keepKeys.filter((key) => key === 'openRouterBaseUrl')).toHaveLength(1)
   })

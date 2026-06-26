@@ -3,6 +3,18 @@ import {
   DEEPSEEK_API_KEY_STORE_KEY,
   registerDeepSeekCredentialSettingsIpc,
 } from './deepSeekCredentialSettingsIpc'
+import {
+  PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX,
+  createProviderCredentialService,
+  type ProviderSecureStorageBackend,
+} from '../credentials/providerCredentialService'
+
+const secureStorage: ProviderSecureStorageBackend = {
+  kind: 'electron_safe_storage',
+  isEncryptionAvailable: () => true,
+  encryptString: (value) => Buffer.from(`encrypted:${value}`, 'utf8'),
+  decryptString: (encrypted) => encrypted.toString('utf8').replace(/^encrypted:/, ''),
+}
 
 function registerHandlers(initialStore?: Record<string, unknown>) {
   const registerInvoke = vi.fn()
@@ -16,7 +28,12 @@ function registerHandlers(initialStore?: Record<string, unknown>) {
       values.delete(key)
     }),
   } as any
-  registerDeepSeekCredentialSettingsIpc({ registerInvoke, store })
+  const credentialService = createProviderCredentialService(store, {
+    secureStorage,
+    allowPlaintextFallback: true,
+    nowMs: () => 123,
+  })
+  registerDeepSeekCredentialSettingsIpc({ registerInvoke, credentialService })
   const handlers = new Map<string, (...args: unknown[]) => unknown>()
   for (const [channel, handler] of registerInvoke.mock.calls) {
     handlers.set(channel, handler)
@@ -33,11 +50,14 @@ describe('deepSeekCredentialSettingsIpc', () => {
     expect(result).toMatchObject({
       ok: true,
       status: {
-        source: 'legacy_store',
+        source: 'secure_store',
+        backend: 'electron_safe_storage',
         providerId: 'deepseek',
         profileId: 'deepseek_official_openai_compat',
         apiKeyConfigured: true,
         maskedApiKey: '***',
+        migratedFromLegacy: true,
+        warnings: [],
         defaultBaseUrl: 'https://api.deepseek.com/v1',
         rendererVisible: true,
       },
@@ -47,7 +67,7 @@ describe('deepSeekCredentialSettingsIpc', () => {
     expect(JSON.stringify(result)).not.toContain('Authorization')
   })
 
-  it('updates and clears the legacy-store backed API key without returning it', async () => {
+  it('updates and clears the service-backed API key without returning it', async () => {
     const { handlers, store } = registerHandlers()
 
     const updateResult = await handlers.get('deepseek-credential:update')?.({}, {
@@ -55,7 +75,10 @@ describe('deepSeekCredentialSettingsIpc', () => {
     })
     const clearResult = await handlers.get('deepseek-credential:clear')?.({})
 
-    expect(store.set).toHaveBeenCalledWith(DEEPSEEK_API_KEY_STORE_KEY, 'sk-deepseek-updated')
+    expect(store.set).toHaveBeenCalledWith(`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}deepseek`, expect.objectContaining({
+      backend: 'electron_safe_storage',
+      providerKey: 'deepseek',
+    }))
     expect(store.delete).toHaveBeenCalledWith(DEEPSEEK_API_KEY_STORE_KEY)
     expect(JSON.stringify(updateResult)).not.toContain('sk-deepseek-updated')
     expect(JSON.stringify(clearResult)).not.toContain('sk-deepseek-updated')

@@ -2,8 +2,7 @@ import type { WebContents } from 'electron'
 import type { RegisterInvoke } from './types'
 import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
 import { streamViaOpenAIResponses, type ResponsesFetchFn } from '../../src/next/provider/openai-responses/openaiResponsesAdapter'
-import { OPENAI_RESPONSES_API_KEY_STORE_KEY } from './openAIResponsesCredentialSettingsIpc'
-import type Store from 'electron-store'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 
 export const OPENAI_RESPONSES_TEXT_CHAT_IPC_CHANNELS = [
   'openai-responses-chat:stream-text',
@@ -39,7 +38,7 @@ export type OpenAIResponsesTextChatWireEvent =
 
 type RegisterOpenAIResponsesTextChatIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
-  store: Store
+  credentialService: ProviderCredentialService
   fetchImpl?: typeof fetch
 }>
 
@@ -118,16 +117,13 @@ export function validateOpenAIResponsesTextChatPayload(payload: unknown): Valida
   }
 }
 
-function readOpenAIResponsesApiKey(store: Store): OpenAIResponsesTextChatStartFailure | string {
-  try {
-    const apiKey = String(store.get(OPENAI_RESPONSES_API_KEY_STORE_KEY) ?? '').trim()
-    if (!apiKey) {
-      return staticFailure('credential_missing', 'OpenAI Responses API key is not configured.')
-    }
-    return apiKey
-  } catch {
-    return staticFailure('store_unavailable', 'OpenAI Responses credential store is unavailable.')
+function readOpenAIResponsesApiKey(credentialService: ProviderCredentialService): OpenAIResponsesTextChatStartFailure | string {
+  const result = credentialService.readApiKey('openai_responses')
+  if (result.ok) return result.apiKey
+  if (result.code === 'credential_missing') {
+    return staticFailure('credential_missing', 'OpenAI Responses API key is not configured.')
   }
+  return staticFailure('store_unavailable', 'OpenAI Responses credential store is unavailable.')
 }
 
 function safeProviderError(error: StarverseProviderError): StarverseProviderError {
@@ -209,10 +205,10 @@ function buildProviderRequest(input: Readonly<{
 async function forwardOpenAIResponsesStream(input: Readonly<{
   request: ValidatedTextChatSuccess
   sender: WebContents
-  store: Store
+  credentialService: ProviderCredentialService
   fetchImpl: typeof fetch
 }>): Promise<void> {
-  const apiKey = readOpenAIResponsesApiKey(input.store)
+  const apiKey = readOpenAIResponsesApiKey(input.credentialService)
   if (typeof apiKey !== 'string') {
     sendWireEvent(input.sender, input.request.requestId, {
       type: 'event',
@@ -297,7 +293,7 @@ export function registerOpenAIResponsesTextChatIpc(
       return staticFailure('invalid_payload', 'OpenAI Responses text chat bridge is unavailable.')
     }
 
-    void forwardOpenAIResponsesStream({ request: validated, sender, store: input.store, fetchImpl })
+    void forwardOpenAIResponsesStream({ request: validated, sender, credentialService: input.credentialService, fetchImpl })
     return { ok: true }
   })
 

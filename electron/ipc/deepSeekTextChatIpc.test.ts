@@ -5,7 +5,7 @@ import {
   validateDeepSeekTextChatPayload,
   type DeepSeekTextChatWireEvent,
 } from './deepSeekTextChatIpc'
-import { DEEPSEEK_API_KEY_STORE_KEY } from './deepSeekCredentialSettingsIpc'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 
 function textDeltaSse(delta: string): string {
   return `data: ${JSON.stringify({ id: 'ds_1', model: 'deepseek-chat', choices: [{ index: 0, delta: { content: delta }, finish_reason: null }] })}`
@@ -38,10 +38,12 @@ function sentEvents(sender: ReturnType<typeof createSender>, requestId: string):
     .map(([, payload]) => payload as DeepSeekTextChatWireEvent)
 }
 
-function createStore(apiKey?: string) {
+function createCredentialService(apiKey?: string): ProviderCredentialService {
   return {
-    get: vi.fn((key: string) => key === DEEPSEEK_API_KEY_STORE_KEY ? apiKey : undefined),
-  } as any
+    readApiKey: vi.fn(() => apiKey
+      ? { ok: true, providerKey: 'deepseek', apiKey, source: 'secure_store', backend: 'electron_safe_storage', migratedFromLegacy: false, warnings: [] }
+      : { ok: false, providerKey: 'deepseek', code: 'credential_missing', message: 'missing', source: 'missing', backend: 'electron_safe_storage', warnings: [] }),
+  } as unknown as ProviderCredentialService
 }
 
 describe('deepSeekTextChatIpc', () => {
@@ -79,7 +81,7 @@ describe('deepSeekTextChatIpc', () => {
     }) as unknown as typeof fetch
 
     const registerInvoke = vi.fn()
-    registerDeepSeekTextChatIpc({ registerInvoke, store: createStore('sk-deepseek-secret'), fetchImpl })
+    registerDeepSeekTextChatIpc({ registerInvoke, credentialService: createCredentialService('sk-deepseek-secret'), fetchImpl })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'deepseek-chat:stream-text')?.[1]
     const sender = createSender()
 
@@ -111,7 +113,7 @@ describe('deepSeekTextChatIpc', () => {
       makeSseResponse(reasoningDeltaSse('private chain of thought'), textDeltaSse('visible answer'), finishSse(), doneSse()),
     ) as unknown as typeof fetch
     const registerInvoke = vi.fn()
-    registerDeepSeekTextChatIpc({ registerInvoke, store: createStore('sk-deepseek-secret'), fetchImpl })
+    registerDeepSeekTextChatIpc({ registerInvoke, credentialService: createCredentialService('sk-deepseek-secret'), fetchImpl })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'deepseek-chat:stream-text')?.[1]
     const sender = createSender()
 
@@ -136,7 +138,7 @@ describe('deepSeekTextChatIpc', () => {
   it('fails before fetch when the DeepSeek API key is missing', async () => {
     const fetchImpl = vi.fn() as unknown as typeof fetch
     const registerInvoke = vi.fn()
-    registerDeepSeekTextChatIpc({ registerInvoke, store: createStore(), fetchImpl })
+    registerDeepSeekTextChatIpc({ registerInvoke, credentialService: createCredentialService(), fetchImpl })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'deepseek-chat:stream-text')?.[1]
     const sender = createSender()
 
@@ -164,7 +166,7 @@ describe('deepSeekTextChatIpc', () => {
       throw new Error('Authorization: Bearer sk-deepseek-secret at https://public.example.test')
     }) as unknown as typeof fetch
     const registerInvoke = vi.fn()
-    registerDeepSeekTextChatIpc({ registerInvoke, store: createStore('sk-deepseek-secret'), fetchImpl })
+    registerDeepSeekTextChatIpc({ registerInvoke, credentialService: createCredentialService('sk-deepseek-secret'), fetchImpl })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'deepseek-chat:stream-text')?.[1]
     const sender = createSender()
 
@@ -195,7 +197,7 @@ describe('deepSeekTextChatIpc', () => {
       })
     }) as unknown as typeof fetch
     const registerInvoke = vi.fn()
-    registerDeepSeekTextChatIpc({ registerInvoke, store: createStore('sk-deepseek-secret'), fetchImpl })
+    registerDeepSeekTextChatIpc({ registerInvoke, credentialService: createCredentialService('sk-deepseek-secret'), fetchImpl })
     const startHandler = registerInvoke.mock.calls.find(([channel]) => channel === 'deepseek-chat:stream-text')?.[1]
     const abortHandler = registerInvoke.mock.calls.find(([channel]) => channel === 'deepseek-chat:abort')?.[1]
     const sender = createSender()

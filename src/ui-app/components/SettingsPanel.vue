@@ -70,11 +70,17 @@ type ElectronStoreLike = Readonly<{
   delete: (key: string) => Promise<any>
 }>
 
+type ProviderCredentialStatusSource =
+  | 'secure_store'
+  | 'plaintext_fallback'
+  | 'missing'
+type ProviderCredentialBackendKind = 'electron_safe_storage' | 'plaintext_fallback' | 'unavailable'
+
 type OpenRouterEndpointMetadataBase = Readonly<{
   kind: 'openrouter_endpoint'
   providerId: 'openrouter'
   profileId: 'openrouter_v1_chat'
-  source: 'legacy_store'
+  source: ProviderCredentialStatusSource
   defaultBaseUrl: string
   credentialRef: Readonly<{ kind: 'credential_ref'; id: 'openrouter-chat-legacy-store' }>
   catalogCredentialRef: Readonly<{ kind: 'credential_ref'; id: 'openrouter-catalog-legacy-store' }>
@@ -108,9 +114,12 @@ type OpenRouterEndpointMetadata =
   }>
 
 type OpenRouterCredentialStatus = Readonly<{
-  source: 'legacy_store'
+  source: ProviderCredentialStatusSource
+  backend?: ProviderCredentialBackendKind
   apiKeyConfigured: boolean
   maskedApiKey?: string
+  migratedFromLegacy?: boolean
+  warnings?: string[]
   baseUrlConfigured: boolean
   baseUrlInvalid?: boolean
   displayBaseUrl?: string
@@ -131,11 +140,14 @@ type OpenRouterCredentialBridge = Readonly<{
 }>
 
 type OpenAIResponsesCredentialStatus = Readonly<{
-  source: 'legacy_store'
+  source: ProviderCredentialStatusSource
+  backend?: ProviderCredentialBackendKind
   providerId: 'openai'
   profileId: 'openai_responses_v1'
   apiKeyConfigured: boolean
   maskedApiKey?: string
+  migratedFromLegacy?: boolean
+  warnings?: string[]
   defaultBaseUrl: string
   rendererVisible: true
 }>
@@ -153,11 +165,14 @@ type OpenAIResponsesCredentialBridge = Readonly<{
 }>
 
 type GoogleAIStudioCredentialStatus = Readonly<{
-  source: 'legacy_store'
+  source: ProviderCredentialStatusSource
+  backend?: ProviderCredentialBackendKind
   providerId: 'google-ai-studio'
   profileId: 'gemini_api_v1'
   apiKeyConfigured: boolean
   maskedApiKey?: string
+  migratedFromLegacy?: boolean
+  warnings?: string[]
   defaultBaseUrl: string
   rendererVisible: true
 }>
@@ -175,11 +190,14 @@ type GoogleAIStudioCredentialBridge = Readonly<{
 }>
 
 type AnthropicCredentialStatus = Readonly<{
-  source: 'legacy_store'
+  source: ProviderCredentialStatusSource
+  backend?: ProviderCredentialBackendKind
   providerId: 'anthropic'
   profileId: 'anthropic_messages_v1'
   apiKeyConfigured: boolean
   maskedApiKey?: string
+  migratedFromLegacy?: boolean
+  warnings?: string[]
   defaultBaseUrl: string
   rendererVisible: true
 }>
@@ -197,11 +215,14 @@ type AnthropicCredentialBridge = Readonly<{
 }>
 
 type DeepSeekCredentialStatus = Readonly<{
-  source: 'legacy_store'
+  source: ProviderCredentialStatusSource
+  backend?: ProviderCredentialBackendKind
   providerId: 'deepseek'
   profileId: 'deepseek_official_openai_compat'
   apiKeyConfigured: boolean
   maskedApiKey?: string
+  migratedFromLegacy?: boolean
+  warnings?: string[]
   defaultBaseUrl: string
   rendererVisible: true
 }>
@@ -371,24 +392,29 @@ const baseUrl = ref('')
 const loadedBaseUrl = ref('')
 const apiKeyConfigured = ref(false)
 const maskedApiKey = ref('')
+const credentialWarnings = ref<string[]>([])
 const openAIResponsesApiKey = ref('')
 const openAIResponsesApiKeyConfigured = ref(false)
 const openAIResponsesMaskedApiKey = ref('')
+const openAIResponsesCredentialWarnings = ref<string[]>([])
 const openAIResponsesModel = ref('')
 const openAIResponsesChatApplyMessage = ref<string | null>(null)
 const googleAIStudioApiKey = ref('')
 const googleAIStudioApiKeyConfigured = ref(false)
 const googleAIStudioMaskedApiKey = ref('')
+const googleAIStudioCredentialWarnings = ref<string[]>([])
 const googleAIStudioModel = ref('')
 const googleAIStudioChatApplyMessage = ref<string | null>(null)
 const anthropicApiKey = ref('')
 const anthropicApiKeyConfigured = ref(false)
 const anthropicMaskedApiKey = ref('')
+const anthropicCredentialWarnings = ref<string[]>([])
 const anthropicModel = ref('')
 const anthropicChatApplyMessage = ref<string | null>(null)
 const deepSeekApiKey = ref('')
 const deepSeekApiKeyConfigured = ref(false)
 const deepSeekMaskedApiKey = ref('')
+const deepSeekCredentialWarnings = ref<string[]>([])
 const deepSeekModel = ref('')
 const deepSeekChatApplyMessage = ref<string | null>(null)
 const endpointDisplayName = ref('OpenRouter official endpoint')
@@ -612,6 +638,7 @@ function applyOpenRouterCredentialStatus(status: OpenRouterCredentialStatus) {
   apiKey.value = ''
   apiKeyConfigured.value = status.apiKeyConfigured === true
   maskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
+  credentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
   endpointDisplayName.value = endpoint?.displayName || 'OpenRouter official endpoint'
   endpointDisplayStatus.value = endpoint?.endpointStatus === 'invalid_custom'
     ? 'Invalid custom endpoint'
@@ -641,24 +668,28 @@ function applyOpenAIResponsesCredentialStatus(status: OpenAIResponsesCredentialS
   openAIResponsesApiKey.value = ''
   openAIResponsesApiKeyConfigured.value = status.apiKeyConfigured === true
   openAIResponsesMaskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
+  openAIResponsesCredentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
 }
 
 function applyGoogleAIStudioCredentialStatus(status: GoogleAIStudioCredentialStatus) {
   googleAIStudioApiKey.value = ''
   googleAIStudioApiKeyConfigured.value = status.apiKeyConfigured === true
   googleAIStudioMaskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
+  googleAIStudioCredentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
 }
 
 function applyAnthropicCredentialStatus(status: AnthropicCredentialStatus) {
   anthropicApiKey.value = ''
   anthropicApiKeyConfigured.value = status.apiKeyConfigured === true
   anthropicMaskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
+  anthropicCredentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
 }
 
 function applyDeepSeekCredentialStatus(status: DeepSeekCredentialStatus) {
   deepSeekApiKey.value = ''
   deepSeekApiKeyConfigured.value = status.apiKeyConfigured === true
   deepSeekMaskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
+  deepSeekCredentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
 }
 
 async function loadOpenAIResponsesCredentialStatus() {
@@ -666,6 +697,7 @@ async function loadOpenAIResponsesCredentialStatus() {
   if (!credentialBridge) {
     openAIResponsesApiKeyConfigured.value = false
     openAIResponsesMaskedApiKey.value = ''
+    openAIResponsesCredentialWarnings.value = []
     return
   }
 
@@ -681,6 +713,7 @@ async function loadGoogleAIStudioCredentialStatus() {
   if (!credentialBridge) {
     googleAIStudioApiKeyConfigured.value = false
     googleAIStudioMaskedApiKey.value = ''
+    googleAIStudioCredentialWarnings.value = []
     return
   }
 
@@ -696,6 +729,7 @@ async function loadAnthropicCredentialStatus() {
   if (!credentialBridge) {
     anthropicApiKeyConfigured.value = false
     anthropicMaskedApiKey.value = ''
+    anthropicCredentialWarnings.value = []
     return
   }
 
@@ -711,6 +745,7 @@ async function loadDeepSeekCredentialStatus() {
   if (!credentialBridge) {
     deepSeekApiKeyConfigured.value = false
     deepSeekMaskedApiKey.value = ''
+    deepSeekCredentialWarnings.value = []
     return
   }
 
@@ -1657,6 +1692,9 @@ onMounted(() => {
         <div class="mt-1 text-[11px] text-gray-500">
           {{ apiKeyConfigured ? `已配置：${maskedApiKey || '***'}` : '未配置' }}
         </div>
+        <div v-if="credentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-openrouter-credential-warnings">
+          <div v-for="warning in credentialWarnings" :key="warning">{{ warning }}</div>
+        </div>
 
         <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.baseUrl') }}</label>
         <div class="mt-1 flex items-center gap-2">
@@ -1879,6 +1917,9 @@ onMounted(() => {
         <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-openai-responses-key-status">
           {{ openAIResponsesApiKeyConfigured ? `Configured: ${openAIResponsesMaskedApiKey || '***'}` : 'Not configured' }}
         </div>
+        <div v-if="openAIResponsesCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-openai-responses-credential-warnings">
+          <div v-for="warning in openAIResponsesCredentialWarnings" :key="warning">{{ warning }}</div>
+        </div>
 
         <label class="mt-3 block text-[11px] font-semibold text-gray-700">Manual Responses model id</label>
         <div class="mt-1 flex items-center gap-2">
@@ -1901,7 +1942,7 @@ onMounted(() => {
           </button>
         </div>
         <div class="mt-1 text-[11px] text-blue-800" data-testid="settings-openai-responses-chat-note">
-          This only updates the experimental OpenAI Responses Console default. It does not publish models to the main picker and does not enable chat by itself.
+          This only updates the experimental OpenAI Responses Console default. Use Console refresh for official availability diagnostics. It does not publish models to the main picker and does not enable chat by itself.
         </div>
         <div v-if="openAIResponsesChatApplyMessage" class="mt-1 text-[11px] text-blue-900" data-testid="settings-openai-responses-chat-apply-result">
           {{ openAIResponsesChatApplyMessage }}
@@ -1944,6 +1985,9 @@ onMounted(() => {
         <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-google-ai-studio-key-status">
           {{ googleAIStudioApiKeyConfigured ? `Configured: ${googleAIStudioMaskedApiKey || '***'}` : 'Not configured' }}
         </div>
+        <div v-if="googleAIStudioCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-google-ai-studio-credential-warnings">
+          <div v-for="warning in googleAIStudioCredentialWarnings" :key="warning">{{ warning }}</div>
+        </div>
 
         <label class="mt-3 block text-[11px] font-semibold text-gray-700">Manual Gemini model id</label>
         <div class="mt-1 flex items-center gap-2">
@@ -1966,7 +2010,7 @@ onMounted(() => {
           </button>
         </div>
         <div class="mt-1 text-[11px] text-emerald-800" data-testid="settings-google-ai-studio-chat-note">
-          This only updates the experimental Google AI Studio Console default. It does not publish models to the main picker, does not enable chat by itself, and does not use legacy Gemini runtime.
+          This only updates the experimental Google AI Studio Console default. Use Console refresh for official availability diagnostics. It does not publish models to the main picker, does not enable chat by itself, and does not use legacy Gemini runtime.
         </div>
         <div v-if="googleAIStudioChatApplyMessage" class="mt-1 text-[11px] text-emerald-900" data-testid="settings-google-ai-studio-chat-apply-result">
           {{ googleAIStudioChatApplyMessage }}
@@ -2009,6 +2053,9 @@ onMounted(() => {
         <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-anthropic-key-status">
           {{ anthropicApiKeyConfigured ? `Configured: ${anthropicMaskedApiKey || '***'}` : 'Not configured' }}
         </div>
+        <div v-if="anthropicCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-anthropic-credential-warnings">
+          <div v-for="warning in anthropicCredentialWarnings" :key="warning">{{ warning }}</div>
+        </div>
 
         <label class="mt-3 block text-[11px] font-semibold text-gray-700">Manual Claude model id</label>
         <div class="mt-1 flex items-center gap-2">
@@ -2031,7 +2078,7 @@ onMounted(() => {
           </button>
         </div>
         <div class="mt-1 text-[11px] text-rose-800" data-testid="settings-anthropic-chat-note">
-          This only updates the experimental Anthropic Messages Console default. It does not publish models to the main picker, does not enable chat by itself, and does not persist thinking/signature output.
+          This only updates the experimental Anthropic Messages Console default. Use Console refresh for official availability diagnostics. It does not publish models to the main picker, does not enable chat by itself, and does not persist thinking/signature output.
         </div>
         <div v-if="anthropicChatApplyMessage" class="mt-1 text-[11px] text-rose-900" data-testid="settings-anthropic-chat-apply-result">
           {{ anthropicChatApplyMessage }}
@@ -2073,6 +2120,9 @@ onMounted(() => {
         </div>
         <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-deepseek-key-status">
           {{ deepSeekApiKeyConfigured ? `Configured: ${deepSeekMaskedApiKey || '***'}` : 'Not configured' }}
+        </div>
+        <div v-if="deepSeekCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-deepseek-credential-warnings">
+          <div v-for="warning in deepSeekCredentialWarnings" :key="warning">{{ warning }}</div>
         </div>
 
         <label class="mt-3 block text-[11px] font-semibold text-gray-700">Manual DeepSeek model id</label>

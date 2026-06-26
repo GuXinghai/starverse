@@ -1,6 +1,8 @@
 import type Store from 'electron-store'
 import type { DbWorkerManager } from '../db/workerManager'
 import { resolveCurrentOpenRouterCatalogScope, runCatalogSyncAtStartup } from '../jobs/catalogSyncStartup'
+import type { OpenRouterCatalogCredentialStoreReader } from '../jobs/openRouterCatalogCredential'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import { cleanupExpiredOpenRouterScopedCatalogCaches } from '../jobs/catalogCacheCleanup'
 import { mapCacheCorruptedToCode, mapDbUnavailableToCode, mapErrorToSyncCode, mapMissingApiKeyToCode } from '../../src/shared/modelCatalog/catalogSyncErrorMapper'
 import {
@@ -210,16 +212,22 @@ async function runScopedCleanupAfterCatalogChange(input: Readonly<{
 export function registerModelCatalogSyncIpc(input: Readonly<{
   registerInvoke: RegisterInvoke
   store: Store
+  credentialService?: ProviderCredentialService
   dbWorkerManager: DbWorkerManager
   notifyRenderer: (channel: string, payload: unknown) => void
 }>): string[] {
   const { registerInvoke, store, dbWorkerManager, notifyRenderer } = input
+  const credentialStore: OpenRouterCatalogCredentialStoreReader = {
+    get: (key: string) => input.credentialService
+      ? input.credentialService.getLegacyStoreValue(key)
+      : store.get(key),
+  }
 
   const syncNowHandler = async (_event: unknown, options?: unknown): Promise<SyncNowResult> => {
     const opts = (options ?? {}) as SyncNowInput
     const providerKey = opts.providerKey ?? 'openrouter'
     const force = opts.force === true
-    const scope = resolveCurrentOpenRouterCatalogScope(store)
+    const scope = resolveCurrentOpenRouterCatalogScope(store, credentialStore)
     if (!scope) {
       const mapped = mapMissingApiKeyToCode()
       return {
@@ -243,6 +251,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
       try {
         const result = await runCatalogSyncAtStartup({
           store,
+          credentialStore,
           dbWorkerManager,
           force,
           freshnessMs: freshnessMsFromStore(store),
@@ -358,7 +367,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
     const opts = (options ?? {}) as { providerKey?: string }
     const providerKey = opts.providerKey ?? 'openrouter'
 
-    const scope = resolveCurrentOpenRouterCatalogScope(store)
+    const scope = resolveCurrentOpenRouterCatalogScope(store, credentialStore)
     if (!scope) {
       const mapped = mapMissingApiKeyToCode()
       return {
@@ -471,7 +480,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
     const providerKey = typeof opts.providerKey === 'string' && opts.providerKey.trim()
       ? opts.providerKey.trim()
       : 'openrouter'
-    const scope = resolveCurrentOpenRouterCatalogScope(store)
+    const scope = resolveCurrentOpenRouterCatalogScope(store, credentialStore)
     if (!scope) {
       const mapped = mapMissingApiKeyToCode()
       return {
@@ -630,7 +639,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
 
   registerInvoke('modelCatalog.clearCurrentScopedCache', async (): Promise<CatalogClearResult> => {
     const providerKey = 'openrouter'
-    const scope = resolveCurrentOpenRouterCatalogScope(store)
+    const scope = resolveCurrentOpenRouterCatalogScope(store, credentialStore)
     if (!scope) {
       const mapped = mapMissingApiKeyToCode()
       return {

@@ -5,7 +5,7 @@ import {
   validateGoogleAIStudioTextChatPayload,
   type GoogleAIStudioTextChatWireEvent,
 } from './googleAIStudioTextChatIpc'
-import { GOOGLE_AI_STUDIO_API_KEY_STORE_KEY } from './googleAIStudioCredentialSettingsIpc'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 
 function textChunk(text: string): string {
   return `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] })}`
@@ -32,10 +32,12 @@ function sentEvents(sender: ReturnType<typeof createSender>, requestId: string):
     .map(([, payload]) => payload as GoogleAIStudioTextChatWireEvent)
 }
 
-function createStore(apiKey?: string) {
+function createCredentialService(apiKey?: string): ProviderCredentialService {
   return {
-    get: vi.fn((key: string) => key === GOOGLE_AI_STUDIO_API_KEY_STORE_KEY ? apiKey : undefined),
-  } as any
+    readApiKey: vi.fn(() => apiKey
+      ? { ok: true, providerKey: 'google_ai_studio', apiKey, source: 'secure_store', backend: 'electron_safe_storage', migratedFromLegacy: false, warnings: [] }
+      : { ok: false, providerKey: 'google_ai_studio', code: 'credential_missing', message: 'missing', source: 'missing', backend: 'electron_safe_storage', warnings: [] }),
+  } as unknown as ProviderCredentialService
 }
 
 describe('googleAIStudioTextChatIpc', () => {
@@ -70,7 +72,7 @@ describe('googleAIStudioTextChatIpc', () => {
     }) as unknown as typeof fetch
 
     const registerInvoke = vi.fn()
-    registerGoogleAIStudioTextChatIpc({ registerInvoke, store: createStore('AIza-google-secret'), fetchImpl })
+    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService('AIza-google-secret'), fetchImpl })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:stream-text')?.[1]
     const sender = createSender()
 
@@ -101,7 +103,7 @@ describe('googleAIStudioTextChatIpc', () => {
   it('fails before fetch when the Google AI Studio API key is missing', async () => {
     const fetchImpl = vi.fn() as unknown as typeof fetch
     const registerInvoke = vi.fn()
-    registerGoogleAIStudioTextChatIpc({ registerInvoke, store: createStore(), fetchImpl })
+    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService(), fetchImpl })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:stream-text')?.[1]
     const sender = createSender()
 
@@ -129,7 +131,7 @@ describe('googleAIStudioTextChatIpc', () => {
       throw new Error('Authorization: Bearer AIza-google-secret at https://public.example.test')
     }) as unknown as typeof fetch
     const registerInvoke = vi.fn()
-    registerGoogleAIStudioTextChatIpc({ registerInvoke, store: createStore('AIza-google-secret'), fetchImpl })
+    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService('AIza-google-secret'), fetchImpl })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:stream-text')?.[1]
     const sender = createSender()
 
@@ -160,7 +162,7 @@ describe('googleAIStudioTextChatIpc', () => {
       })
     }) as unknown as typeof fetch
     const registerInvoke = vi.fn()
-    registerGoogleAIStudioTextChatIpc({ registerInvoke, store: createStore('AIza-google-secret'), fetchImpl })
+    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService('AIza-google-secret'), fetchImpl })
     const startHandler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:stream-text')?.[1]
     const abortHandler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:abort')?.[1]
     const sender = createSender()

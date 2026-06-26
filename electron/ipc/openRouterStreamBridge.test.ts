@@ -117,6 +117,14 @@ function createStore(initial: Record<string, unknown>) {
   } as any
 }
 
+function createCredentialService(apiKey?: string) {
+  return {
+    readApiKey: vi.fn(() => apiKey
+      ? { ok: true, providerKey: 'openrouter', apiKey, source: 'secure_store', backend: 'electron_safe_storage', migratedFromLegacy: false, warnings: [] }
+      : { ok: false, providerKey: 'openrouter', code: 'credential_missing', message: 'missing', source: 'missing', backend: 'electron_safe_storage', warnings: [] }),
+  } as any
+}
+
 /**
  * Simulates renderer-side drain behavior in openRouterLiveStream:
  * - consume wire queue in-order
@@ -333,14 +341,15 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
     expect(simulateRendererWireDrain(steps)).toEqual(['responseMeta', 'chunk'])
   })
 
-  it('characterizes main IPC bridge legacy Authorization and baseUrl request behavior', async () => {
+  it('rejects renderer raw credential payloads before net.request', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const rawKey = 'sk-or-ipc-bridge-legacy-secret'
-    const baseUrl = 'https://openrouter-proxy.example.test/custom/v1/'
+    const rawKey = 'sk-or-ipc-bridge-renderer-secret'
     const sender = { send: vi.fn() }
 
     try {
-      expect(registerOpenRouterStreamBridge()).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
+      expect(registerOpenRouterStreamBridge({
+        credentialService: createCredentialService('sk-or-service-secret'),
+      })).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
       const handler = electronMock.handlers.get('openrouter:stream-chat')
       expect(handler).toBeTruthy()
 
@@ -354,51 +363,44 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
           messages: [{ role: 'user', content: 'hello' }],
         },
         config: {
+          credentialSource: 'renderer_payload',
           apiKey: rawKey,
-          baseUrl,
+          Authorization: `Bearer ${rawKey}`,
+          headers: { Authorization: `Bearer ${rawKey}` },
           model: 'openrouter/test-model',
           requestedReasoningMode: 'auto',
         },
       })
 
-      expect(result).toEqual({ ok: true })
-      expect(electronMock.requestCalls).toHaveLength(1)
-      expect((electronMock.requestCalls[0]?.options as any)?.url).toBe(
-        'https://openrouter-proxy.example.test/custom/v1/chat/completions'
-      )
-      expect(electronMock.requestCalls[0]?.headers.Authorization).toBe(`Bearer ${rawKey}`)
-      expect(electronMock.requestCalls[0]?.headers['Content-Type']).toBe('application/json')
-      expect(electronMock.requestCalls[0]?.headers['HTTP-Referer']).toBe('https://github.com/GuXinghai/starverse')
-      expect(electronMock.requestCalls[0]?.headers['X-Title']).toBe('Starverse')
-
-      await vi.waitFor(() => expect(sender.send).toHaveBeenCalled())
-      const serializedWireEvents = JSON.stringify(sender.send.mock.calls)
-      expect(serializedWireEvents).not.toContain(rawKey)
-      expect(serializedWireEvents).not.toContain(`Bearer ${rawKey}`)
-      expect(serializedWireEvents).not.toContain('Authorization')
+      expect(result).toEqual({
+        ok: false,
+        code: 'credential_source_rejected',
+        error: 'Credential source is not allowed.',
+        supportedWireVersion: OPENROUTER_STREAM_WIRE_VERSION,
+      })
+      expect(electronMock.requestCalls).toHaveLength(0)
+      expect(sender.send).not.toHaveBeenCalled()
 
       const serializedLogs = warnSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
       expect(serializedLogs).not.toContain(rawKey)
       expect(serializedLogs).not.toContain(`Bearer ${rawKey}`)
-      expect(serializedLogs).toContain('API Key (REDACTED): sk-o...cret')
-      expect(serializedLogs).toContain('Authorization: [REDACTED]')
     } finally {
       warnSpy.mockRestore()
       cleanupOpenRouterStreams()
     }
   })
 
-  it('routes main IPC bridge C3 legacy_store credential source through injected store resolver', async () => {
+  it('routes main IPC bridge C3 legacy_store credential source through ProviderCredentialService', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const rawKey = 'sk-or-ipc-bridge-c3-resolved-secret'
     const store = createStore({
-      openRouterApiKey: `  ${rawKey}  `,
       openRouterBaseUrl: ' https://openrouter-proxy.example.test/custom/v1/ ',
     })
+    const credentialService = createCredentialService(rawKey)
     const sender = { send: vi.fn() }
 
     try {
-      expect(registerOpenRouterStreamBridge({ store })).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
+      expect(registerOpenRouterStreamBridge({ store, credentialService })).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
       const handler = electronMock.handlers.get('openrouter:stream-chat')
       expect(handler).toBeTruthy()
 
@@ -413,25 +415,31 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
         },
         config: {
           credentialSource: 'legacy_store',
+          apiKey: 'sk-openrouter-renderer-payload-ignored',
+          Authorization: 'Bearer sk-openrouter-renderer-authorization-ignored',
+          headers: { Authorization: 'Bearer sk-openrouter-renderer-header-ignored' },
           baseUrl: 'https://ignored-renderer-base.example.test/v1',
           model: 'openrouter/test-model',
           requestedReasoningMode: 'auto',
         },
-      })
+      } as any)
 
       expect(result).toEqual({ ok: true })
-      expect(store.get).toHaveBeenCalledWith('openRouterApiKey')
+      expect(credentialService.readApiKey).toHaveBeenCalledWith('openrouter')
+      expect(store.get).not.toHaveBeenCalledWith('openRouterApiKey')
       expect(store.get).toHaveBeenCalledWith('openRouterBaseUrl')
       expect(electronMock.requestCalls).toHaveLength(1)
       expect((electronMock.requestCalls[0]?.options as any)?.url).toBe(
         'https://openrouter-proxy.example.test/custom/v1/chat/completions'
       )
       expect(electronMock.requestCalls[0]?.headers.Authorization).toBe(`Bearer ${rawKey}`)
+      expect(electronMock.requestCalls[0]?.headers.Authorization).not.toContain('renderer')
 
       const serializedWireEvents = JSON.stringify(sender.send.mock.calls)
       expect(serializedWireEvents).not.toContain(rawKey)
       expect(serializedWireEvents).not.toContain(`Bearer ${rawKey}`)
       expect(serializedWireEvents).not.toContain('Authorization')
+      expect(serializedWireEvents).not.toContain('sk-openrouter-renderer-payload-ignored')
 
       const serializedLogs = warnSpy.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
       expect(serializedLogs).not.toContain(rawKey)
@@ -447,13 +455,13 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
   it('fails resolver-backed main IPC credential resolution before net.request without leaking raw store values', async () => {
     const rawKey = 'sk-or-ipc-bridge-missing-should-not-leak'
     const store = createStore({
-      openRouterApiKey: '   ',
       openRouterBaseUrl: `https://user:pass@example.test/${rawKey}`,
     })
+    const credentialService = createCredentialService()
     const sender = { send: vi.fn() }
 
     try {
-      expect(registerOpenRouterStreamBridge({ store })).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
+      expect(registerOpenRouterStreamBridge({ store, credentialService })).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
       const handler = electronMock.handlers.get('openrouter:stream-chat')
       expect(handler).toBeTruthy()
 
@@ -495,6 +503,7 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
     const encoder = new TextEncoder()
     const rawKey = 'sk-or-ipc-bridge-nonempty-secret'
     const sender = { send: vi.fn() }
+    const credentialService = createCredentialService(rawKey)
     electronMock.responseQueue.push({
       statusCode: 200,
       headers: { 'x-openrouter-generation-id': 'gen_nonempty' },
@@ -505,7 +514,7 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
     })
 
     try {
-      expect(registerOpenRouterStreamBridge()).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
+      expect(registerOpenRouterStreamBridge({ credentialService })).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
       const handler = electronMock.handlers.get('openrouter:stream-chat')
       expect(handler).toBeTruthy()
 
@@ -519,7 +528,7 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
           messages: [{ role: 'user', content: 'hello' }],
         },
         config: {
-          apiKey: rawKey,
+          credentialSource: 'legacy_store',
           model: 'openrouter/test-model',
           requestedReasoningMode: 'auto',
         },

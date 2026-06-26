@@ -5,7 +5,7 @@ import {
   validateAnthropicTextChatPayload,
   type AnthropicTextChatWireEvent,
 } from './anthropicTextChatIpc'
-import { ANTHROPIC_API_KEY_STORE_KEY } from './anthropicCredentialSettingsIpc'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 
 function textDeltaSse(delta: string): string {
   return `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: delta } })}`
@@ -30,10 +30,12 @@ function sentEvents(sender: ReturnType<typeof createSender>, requestId: string):
     .map(([, payload]) => payload as AnthropicTextChatWireEvent)
 }
 
-function createStore(apiKey?: string) {
+function createCredentialService(apiKey?: string): ProviderCredentialService {
   return {
-    get: vi.fn((key: string) => key === ANTHROPIC_API_KEY_STORE_KEY ? apiKey : undefined),
-  } as any
+    readApiKey: vi.fn(() => apiKey
+      ? { ok: true, providerKey: 'anthropic', apiKey, source: 'secure_store', backend: 'electron_safe_storage', migratedFromLegacy: false, warnings: [] }
+      : { ok: false, providerKey: 'anthropic', code: 'credential_missing', message: 'missing', source: 'missing', backend: 'electron_safe_storage', warnings: [] }),
+  } as unknown as ProviderCredentialService
 }
 
 describe('anthropicTextChatIpc', () => {
@@ -73,7 +75,7 @@ describe('anthropicTextChatIpc', () => {
     }) as unknown as typeof fetch
 
     const registerInvoke = vi.fn()
-    registerAnthropicTextChatIpc({ registerInvoke, store: createStore('sk-ant-secret'), fetchImpl })
+    registerAnthropicTextChatIpc({ registerInvoke, credentialService: createCredentialService('sk-ant-secret'), fetchImpl })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'anthropic-chat:stream-text')?.[1]
     const sender = createSender()
 
@@ -104,7 +106,7 @@ describe('anthropicTextChatIpc', () => {
   it('fails before fetch when the Anthropic API key is missing', async () => {
     const fetchImpl = vi.fn() as unknown as typeof fetch
     const registerInvoke = vi.fn()
-    registerAnthropicTextChatIpc({ registerInvoke, store: createStore(), fetchImpl })
+    registerAnthropicTextChatIpc({ registerInvoke, credentialService: createCredentialService(), fetchImpl })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'anthropic-chat:stream-text')?.[1]
     const sender = createSender()
 
@@ -132,7 +134,7 @@ describe('anthropicTextChatIpc', () => {
       throw new Error('Authorization: Bearer sk-ant-secret at https://public.example.test')
     }) as unknown as typeof fetch
     const registerInvoke = vi.fn()
-    registerAnthropicTextChatIpc({ registerInvoke, store: createStore('sk-ant-secret'), fetchImpl })
+    registerAnthropicTextChatIpc({ registerInvoke, credentialService: createCredentialService('sk-ant-secret'), fetchImpl })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'anthropic-chat:stream-text')?.[1]
     const sender = createSender()
 
@@ -163,7 +165,7 @@ describe('anthropicTextChatIpc', () => {
       })
     }) as unknown as typeof fetch
     const registerInvoke = vi.fn()
-    registerAnthropicTextChatIpc({ registerInvoke, store: createStore('sk-ant-secret'), fetchImpl })
+    registerAnthropicTextChatIpc({ registerInvoke, credentialService: createCredentialService('sk-ant-secret'), fetchImpl })
     const startHandler = registerInvoke.mock.calls.find(([channel]) => channel === 'anthropic-chat:stream-text')?.[1]
     const abortHandler = registerInvoke.mock.calls.find(([channel]) => channel === 'anthropic-chat:abort')?.[1]
     const sender = createSender()

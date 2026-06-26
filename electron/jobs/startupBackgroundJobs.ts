@@ -1,6 +1,8 @@
 import type Store from 'electron-store'
 import type { DbWorkerManager } from '../db/workerManager'
 import { runCatalogSyncAtStartup } from './catalogSyncStartup'
+import type { OpenRouterCatalogCredentialStoreReader } from './openRouterCatalogCredential'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import {
   cleanupExpiredOpenRouterScopedCatalogCaches,
   clearDeprecatedOpenRouterCatalogCacheOnce,
@@ -29,16 +31,23 @@ export type StartupJobResult = Readonly<{
 
 export async function runStartupBackgroundJobs(input: Readonly<{
   store: Store
+  credentialService?: ProviderCredentialService
   dbWorkerManager: DbWorkerManager
   runCatalogSync?: typeof runCatalogSyncAtStartup
   cleanupExpiredScopedCaches?: typeof cleanupExpiredOpenRouterScopedCatalogCaches
   clearDeprecatedCatalogCacheOnce?: typeof clearDeprecatedOpenRouterCatalogCacheOnce
 }>): Promise<StartupJobResult> {
   const postWindowNotifications: Array<Readonly<{ channel: string; payload: unknown }>> = []
+  const credentialStore: OpenRouterCatalogCredentialStoreReader = {
+    get: (key: string) => input.credentialService
+      ? input.credentialService.getLegacyStoreValue(key)
+      : input.store.get(key),
+  }
   const policy = normalizeCatalogAutoSyncPolicy(input.store.get(OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY))
   if (policy !== 'never') {
     const catalogSyncResult = await (input.runCatalogSync ?? runCatalogSyncAtStartup)({
       store: input.store,
+      credentialStore,
       dbWorkerManager: input.dbWorkerManager,
       force: policy === 'always',
       freshnessMs: normalizeCatalogFreshnessMs(input.store.get(OPENROUTER_CATALOG_FRESHNESS_MS_KEY)),
@@ -79,6 +88,7 @@ export async function runStartupBackgroundJobs(input: Readonly<{
 
 export function startStartupBackgroundJobs(input: Readonly<{
   store: Store
+  credentialService?: ProviderCredentialService
   dbWorkerManager: DbWorkerManager
   notifyRenderer: NotifyRenderer
   runJobs?: typeof runStartupBackgroundJobs
@@ -87,6 +97,7 @@ export function startStartupBackgroundJobs(input: Readonly<{
   void Promise.resolve()
     .then(() => runJobs({
       store: input.store,
+      credentialService: input.credentialService,
       dbWorkerManager: input.dbWorkerManager,
     }))
     .then((result) => {

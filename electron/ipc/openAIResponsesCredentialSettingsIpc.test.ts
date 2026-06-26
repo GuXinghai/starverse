@@ -3,6 +3,18 @@ import {
   OPENAI_RESPONSES_API_KEY_STORE_KEY,
   registerOpenAIResponsesCredentialSettingsIpc,
 } from './openAIResponsesCredentialSettingsIpc'
+import {
+  PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX,
+  createProviderCredentialService,
+  type ProviderSecureStorageBackend,
+} from '../credentials/providerCredentialService'
+
+const secureStorage: ProviderSecureStorageBackend = {
+  kind: 'electron_safe_storage',
+  isEncryptionAvailable: () => true,
+  encryptString: (value) => Buffer.from(`encrypted:${value}`, 'utf8'),
+  decryptString: (encrypted) => encrypted.toString('utf8').replace(/^encrypted:/, ''),
+}
 
 function registerHandlers(initialStore?: Record<string, unknown>) {
   const registerInvoke = vi.fn()
@@ -16,7 +28,12 @@ function registerHandlers(initialStore?: Record<string, unknown>) {
       values.delete(key)
     }),
   } as any
-  registerOpenAIResponsesCredentialSettingsIpc({ registerInvoke, store })
+  const credentialService = createProviderCredentialService(store, {
+    secureStorage,
+    allowPlaintextFallback: true,
+    nowMs: () => 123,
+  })
+  registerOpenAIResponsesCredentialSettingsIpc({ registerInvoke, credentialService })
   const handlers = new Map<string, (...args: unknown[]) => unknown>()
   for (const [channel, handler] of registerInvoke.mock.calls) {
     handlers.set(channel, handler)
@@ -33,11 +50,14 @@ describe('openAIResponsesCredentialSettingsIpc', () => {
     expect(result).toMatchObject({
       ok: true,
       status: {
-        source: 'legacy_store',
+        source: 'secure_store',
+        backend: 'electron_safe_storage',
         providerId: 'openai',
         profileId: 'openai_responses_v1',
         apiKeyConfigured: true,
         maskedApiKey: '***',
+        migratedFromLegacy: true,
+        warnings: [],
         defaultBaseUrl: 'https://api.openai.com/v1',
         rendererVisible: true,
       },
@@ -47,7 +67,7 @@ describe('openAIResponsesCredentialSettingsIpc', () => {
     expect(JSON.stringify(result)).not.toContain('Authorization')
   })
 
-  it('updates and clears the legacy-store backed API key without returning it', async () => {
+  it('updates and clears the service-backed API key without returning it', async () => {
     const { handlers, store } = registerHandlers()
 
     const updateResult = await handlers.get('openai-responses-credential:update')?.({}, {
@@ -55,7 +75,10 @@ describe('openAIResponsesCredentialSettingsIpc', () => {
     })
     const clearResult = await handlers.get('openai-responses-credential:clear')?.({})
 
-    expect(store.set).toHaveBeenCalledWith(OPENAI_RESPONSES_API_KEY_STORE_KEY, 'sk-openai-updated')
+    expect(store.set).toHaveBeenCalledWith(`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}openai_responses`, expect.objectContaining({
+      backend: 'electron_safe_storage',
+      providerKey: 'openai_responses',
+    }))
     expect(store.delete).toHaveBeenCalledWith(OPENAI_RESPONSES_API_KEY_STORE_KEY)
     expect(JSON.stringify(updateResult)).not.toContain('sk-openai-updated')
     expect(JSON.stringify(clearResult)).not.toContain('sk-openai-updated')

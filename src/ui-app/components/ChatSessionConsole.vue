@@ -9,9 +9,21 @@ import type {
   RuntimeCapabilitySummaryLite,
 } from '@/next/provider/runtimeSelection'
 import type {
+  OpenAIModelAvailabilityResult,
+  OpenAIProviderModelAvailability,
+} from '@/next/provider/openai-responses/openAIResponsesModelSource'
+import type {
   DeepSeekModelAvailabilityResult,
   ProviderModelAvailability,
 } from '@/next/provider/deepseek/deepSeekModelSource'
+import type {
+  GeminiModelAvailabilityResult,
+  GeminiProviderModelAvailability,
+} from '@/next/provider/gemini/geminiModelSource'
+import type {
+  AnthropicModelAvailabilityResult,
+  AnthropicProviderModelAvailability,
+} from '@/next/provider/anthropic/anthropicModelSource'
 import type { ChatSessionConfig } from '../app/chatSessionConfig'
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import SamplingParamsSettingsEditor from './SamplingParamsSettingsEditor.vue'
@@ -37,15 +49,27 @@ const props = defineProps<{
     model: string
     experimentalLabel: string
   }> | null
+  openAIResponsesModelAvailability?: Readonly<{
+    loading: boolean
+    result: OpenAIModelAvailabilityResult | null
+  }> | null
   googleAIStudioChat?: Readonly<{
     enabled: boolean
     model: string
     experimentalLabel: string
   }> | null
+  googleAIStudioModelAvailability?: Readonly<{
+    loading: boolean
+    result: GeminiModelAvailabilityResult | null
+  }> | null
   anthropicChat?: Readonly<{
     enabled: boolean
     model: string
     experimentalLabel: string
+  }> | null
+  anthropicModelAvailability?: Readonly<{
+    loading: boolean
+    result: AnthropicModelAvailabilityResult | null
   }> | null
   deepSeekChat?: Readonly<{
     enabled: boolean
@@ -89,12 +113,15 @@ const emit = defineEmits<{
   (e: 'updateOpenAIResponsesChatEnabled', enabled: boolean): void
   (e: 'updateOpenAIResponsesChatModel', value: string): void
   (e: 'clearOpenAIResponsesChat'): void
+  (e: 'refreshOpenAIResponsesModels'): void
   (e: 'updateGoogleAIStudioChatEnabled', enabled: boolean): void
   (e: 'updateGoogleAIStudioChatModel', value: string): void
   (e: 'clearGoogleAIStudioChat'): void
+  (e: 'refreshGoogleAIStudioModels'): void
   (e: 'updateAnthropicChatEnabled', enabled: boolean): void
   (e: 'updateAnthropicChatModel', value: string): void
   (e: 'clearAnthropicChat'): void
+  (e: 'refreshAnthropicModels'): void
   (e: 'updateDeepSeekChatEnabled', enabled: boolean): void
   (e: 'updateDeepSeekChatModel', value: string): void
   (e: 'clearDeepSeekChat'): void
@@ -131,18 +158,99 @@ const openAIResponsesChat = computed(() => props.openAIResponsesChat ?? {
   experimentalLabel: 'Experimental · OpenAI Responses text-only · not OpenRouter',
 })
 const openAIResponsesChatStatusLabel = computed(() => openAIResponsesChat.value.enabled ? 'active' : 'inactive')
+const openAIResponsesModelAvailability = computed(() => props.openAIResponsesModelAvailability ?? {
+  loading: false,
+  result: null,
+})
+const openAIResponsesAvailabilityModels = computed(() => {
+  const result = openAIResponsesModelAvailability.value.result
+  return result?.ok ? result.models : []
+})
+const openAIResponsesAvailabilityWarnings = computed(() => {
+  const result = openAIResponsesModelAvailability.value.result
+  return result?.ok ? result.warnings : []
+})
+const openAIResponsesAvailabilitySourceDocuments = computed(() => {
+  const result = openAIResponsesModelAvailability.value.result
+  return result?.ok ? result.sourceDocuments : []
+})
+const openAIResponsesAvailabilityFailure = computed(() => {
+  const result = openAIResponsesModelAvailability.value.result
+  return result && !result.ok ? result : null
+})
+const openAIResponsesAvailabilitySummary = computed(() => {
+  if (openAIResponsesModelAvailability.value.loading) return 'Refreshing OpenAI official models...'
+  const result = openAIResponsesModelAvailability.value.result
+  if (!result) return 'OpenAI official models have not been refreshed in this session.'
+  if (!result.ok) return `${result.message} (${result.code})`
+  return `${result.models.length} OpenAI model availability records. Observed ${formatObservedAt(result.observedAtMs)}.`
+})
 const googleAIStudioChat = computed(() => props.googleAIStudioChat ?? {
   enabled: false,
   model: '',
   experimentalLabel: 'Experimental · Google AI Studio Gemini text-only · not OpenRouter',
 })
 const googleAIStudioChatStatusLabel = computed(() => googleAIStudioChat.value.enabled ? 'active' : 'inactive')
+const googleAIStudioModelAvailability = computed(() => props.googleAIStudioModelAvailability ?? {
+  loading: false,
+  result: null,
+})
+const googleAIStudioAvailabilityModels = computed(() => {
+  const result = googleAIStudioModelAvailability.value.result
+  return result?.ok ? result.models : []
+})
+const googleAIStudioAvailabilityWarnings = computed(() => {
+  const result = googleAIStudioModelAvailability.value.result
+  return result?.ok ? result.warnings : []
+})
+const googleAIStudioAvailabilitySourceDocuments = computed(() => {
+  const result = googleAIStudioModelAvailability.value.result
+  return result?.ok ? result.sourceDocuments : []
+})
+const googleAIStudioAvailabilityFailure = computed(() => {
+  const result = googleAIStudioModelAvailability.value.result
+  return result && !result.ok ? result : null
+})
+const googleAIStudioAvailabilitySummary = computed(() => {
+  if (googleAIStudioModelAvailability.value.loading) return 'Refreshing Gemini official models...'
+  const result = googleAIStudioModelAvailability.value.result
+  if (!result) return 'Gemini official models have not been refreshed in this session.'
+  if (!result.ok) return `${result.message} (${result.code})`
+  return `${result.models.length} Gemini model availability records. Observed ${formatObservedAt(result.observedAtMs)}.`
+})
 const anthropicChat = computed(() => props.anthropicChat ?? {
   enabled: false,
   model: '',
   experimentalLabel: 'Experimental · Anthropic Messages text-only · not OpenRouter',
 })
 const anthropicChatStatusLabel = computed(() => anthropicChat.value.enabled ? 'active' : 'inactive')
+const anthropicModelAvailability = computed(() => props.anthropicModelAvailability ?? {
+  loading: false,
+  result: null,
+})
+const anthropicAvailabilityModels = computed(() => {
+  const result = anthropicModelAvailability.value.result
+  return result?.ok ? result.models : []
+})
+const anthropicAvailabilityWarnings = computed(() => {
+  const result = anthropicModelAvailability.value.result
+  return result?.ok ? result.warnings : []
+})
+const anthropicAvailabilitySourceDocuments = computed(() => {
+  const result = anthropicModelAvailability.value.result
+  return result?.ok ? result.sourceDocuments : []
+})
+const anthropicAvailabilityFailure = computed(() => {
+  const result = anthropicModelAvailability.value.result
+  return result && !result.ok ? result : null
+})
+const anthropicAvailabilitySummary = computed(() => {
+  if (anthropicModelAvailability.value.loading) return 'Refreshing Anthropic official models...'
+  const result = anthropicModelAvailability.value.result
+  if (!result) return 'Anthropic official models have not been refreshed in this session.'
+  if (!result.ok) return `${result.message} (${result.code})`
+  return `${result.models.length} Anthropic model availability records. Observed ${formatObservedAt(result.observedAtMs)}.`
+})
 const deepSeekChat = computed(() => props.deepSeekChat ?? {
   enabled: false,
   model: '',
@@ -210,6 +318,65 @@ function formatDeepSeekPricingSeed(model: ProviderModelAvailability): string {
   if (!pricing) return 'pricing seed unknown'
   const currency = pricing.currency ?? 'USD'
   return `${currency}/1M input hit ${pricing.inputCacheHitPer1MTokens ?? '?'} · miss ${pricing.inputCacheMissPer1MTokens ?? '?'} · output ${pricing.outputPer1MTokens ?? '?'}`
+}
+
+function formatOpenAICapabilitySeed(model: OpenAIProviderModelAvailability): string {
+  const seed = model.capabilitySeed
+  if (!seed) return 'capability seed unknown'
+  const chunks = [
+    seed.textChat === true ? 'text chat' : seed.textChat === false ? 'text chat blocked' : null,
+    seed.responsesApi === true ? 'Responses API' : seed.responsesApi === false ? 'Responses API blocked' : null,
+    seed.reasoning ? `reasoning ${seed.reasoning}` : null,
+    Array.isArray(seed.reasoningEffort) && seed.reasoningEffort.length > 0
+      ? `effort ${seed.reasoningEffort.join(', ')}`
+      : null,
+    seed.functionCalling ? `function calling ${seed.functionCalling}` : null,
+    seed.hostedTools ? `hosted tools ${seed.hostedTools}` : null,
+    seed.structuredOutput ? `structured output ${seed.structuredOutput}` : null,
+    seed.imageInput ? `image input ${seed.imageInput}` : null,
+    seed.fileInput ? `file input ${seed.fileInput}` : null,
+    seed.audioInput ? `audio input ${seed.audioInput}` : null,
+  ].filter(Boolean)
+  return chunks.length > 0 ? chunks.join(' · ') : 'capability seed unknown'
+}
+
+function formatGeminiCapabilitySeed(model: GeminiProviderModelAvailability): string {
+  const seed = model.capabilitySeed
+  if (!seed) return 'capability seed unknown'
+  const chunks = [
+    seed.textChat === true ? 'text chat' : seed.textChat === false ? 'text chat blocked' : null,
+    Array.isArray(seed.supportedGenerationMethods) && seed.supportedGenerationMethods.length > 0
+      ? `methods ${seed.supportedGenerationMethods.join(', ')}`
+      : null,
+    typeof seed.inputTokenLimit === 'number' ? `input ${seed.inputTokenLimit}` : null,
+    typeof seed.outputTokenLimit === 'number' ? `output ${seed.outputTokenLimit}` : null,
+    seed.thinking ? `thinking ${seed.thinking}` : null,
+    seed.functionCalling ? `function calling ${seed.functionCalling}` : null,
+    seed.vision ? `vision ${seed.vision}` : null,
+    seed.structuredOutput ? `structured output ${seed.structuredOutput}` : null,
+  ].filter(Boolean)
+  return chunks.length > 0 ? chunks.join(' · ') : 'capability seed unknown'
+}
+
+function formatAnthropicCapabilitySeed(model: AnthropicProviderModelAvailability): string {
+  const seed = model.capabilitySeed
+  if (!seed) return 'capability seed unknown'
+  const chunks = [
+    seed.textChat === true ? 'text chat' : seed.textChat === false ? 'text chat blocked' : null,
+    seed.imageInput !== undefined ? `image input ${seed.imageInput}` : null,
+    seed.thinking ? `thinking ${seed.thinking}` : null,
+    seed.adaptiveThinking !== undefined ? `adaptive thinking ${seed.adaptiveThinking}` : null,
+    typeof seed.maxInputTokens === 'number' ? `max input ${seed.maxInputTokens}` : null,
+    typeof seed.maxOutputTokens === 'number' ? `max output ${seed.maxOutputTokens}` : null,
+    seed.toolUse !== undefined ? `tool use ${seed.toolUse}` : null,
+    seed.files !== undefined ? `files ${seed.files}` : null,
+    seed.structuredOutput !== undefined ? `structured output ${seed.structuredOutput}` : null,
+    seed.citations !== undefined ? `citations ${seed.citations}` : null,
+    Array.isArray(seed.capabilitiesRawKeys) && seed.capabilitiesRawKeys.length > 0
+      ? `raw capability keys ${seed.capabilitiesRawKeys.join(', ')}`
+      : null,
+  ].filter(Boolean)
+  return chunks.length > 0 ? chunks.join(' · ') : 'capability seed unknown'
 }
 
 function chipClass(active: boolean): string {
@@ -343,6 +510,70 @@ function chipClass(active: boolean): string {
           <div>Selected Responses model: {{ openAIResponsesChat.model || 'none' }}</div>
           <div>OpenAI Responses chat uses a main-process credential bridge and does not expose API keys to this console.</div>
         </div>
+        <div class="space-y-2 rounded border border-blue-100 bg-white px-2 py-2 text-[11px] text-blue-900" data-testid="openai-responses-models-diagnostics">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="font-semibold">OpenAI official model source</div>
+              <div data-testid="openai-responses-models-summary">{{ openAIResponsesAvailabilitySummary }}</div>
+            </div>
+            <button
+              type="button"
+              class="rounded-md border border-blue-300 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-900 hover:bg-blue-100 disabled:opacity-50"
+              :disabled="disabled || openAIResponsesModelAvailability.loading"
+              data-testid="openai-responses-models-refresh"
+              @click="emit('refreshOpenAIResponsesModels')"
+            >
+              {{ openAIResponsesModelAvailability.loading ? 'Refreshing...' : 'Refresh models' }}
+            </button>
+          </div>
+          <div v-if="openAIResponsesAvailabilityFailure" class="text-red-700" data-testid="openai-responses-models-error">
+            {{ openAIResponsesAvailabilityFailure.message }}
+          </div>
+          <div v-if="openAIResponsesAvailabilitySourceDocuments.length > 0" class="text-blue-700" data-testid="openai-responses-models-source">
+            Source docs:
+            <span v-for="sourceDoc in openAIResponsesAvailabilitySourceDocuments" :key="sourceDoc.source" class="mr-1">
+              {{ sourceDoc.source }} observed {{ formatObservedAt(sourceDoc.observedAtMs) }}
+            </span>
+          </div>
+          <div v-for="warning in openAIResponsesAvailabilityWarnings" :key="warning" class="text-amber-700" data-testid="openai-responses-model-warning">
+            {{ warning }}
+          </div>
+          <div v-if="openAIResponsesAvailabilityModels.length > 0" class="space-y-1" data-testid="openai-responses-models-list">
+            <div
+              v-for="modelAvailability in openAIResponsesAvailabilityModels"
+              :key="modelAvailability.nativeModelId"
+              class="rounded border border-blue-50 bg-blue-50/60 px-2 py-1"
+              data-testid="openai-responses-model-row"
+            >
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
+                  <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
+                  <div v-if="modelAvailability.ownedBy">owned by {{ modelAvailability.ownedBy }}</div>
+                  <div v-if="modelAvailability.createdAtSec">created {{ modelAvailability.createdAtSec }}</div>
+                  <div>{{ formatOpenAICapabilitySeed(modelAvailability) }}</div>
+                </div>
+                <button
+                  type="button"
+                  class="rounded-md border border-blue-200 bg-white px-2 py-1 text-[11px] font-medium text-blue-800 hover:bg-blue-100 disabled:opacity-50"
+                  :disabled="disabled"
+                  data-testid="openai-responses-model-use"
+                  @click="emit('updateOpenAIResponsesChatModel', modelAvailability.nativeModelId)"
+                >
+                  Use model id
+                </button>
+              </div>
+              <div
+                v-for="warning in modelAvailability.warnings"
+                :key="`${modelAvailability.nativeModelId}:${warning}`"
+                class="mt-1 text-amber-700"
+                data-testid="openai-responses-model-warning"
+              >
+                {{ warning }}
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
@@ -400,6 +631,70 @@ function chipClass(active: boolean): string {
           <div>Experimental Anthropic Messages chat is {{ anthropicChatStatusLabel }}.</div>
           <div>Selected Claude model: {{ anthropicChat.model || 'none' }}</div>
           <div>Anthropic chat uses a main-process credential bridge and does not expose API keys to this console.</div>
+        </div>
+        <div class="space-y-2 rounded border border-rose-100 bg-white px-2 py-2 text-[11px] text-rose-900" data-testid="anthropic-models-diagnostics">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="font-semibold">Anthropic official model source</div>
+              <div data-testid="anthropic-models-summary">{{ anthropicAvailabilitySummary }}</div>
+            </div>
+            <button
+              type="button"
+              class="rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-900 hover:bg-rose-100 disabled:opacity-50"
+              :disabled="disabled || anthropicModelAvailability.loading"
+              data-testid="anthropic-models-refresh"
+              @click="emit('refreshAnthropicModels')"
+            >
+              {{ anthropicModelAvailability.loading ? 'Refreshing...' : 'Refresh models' }}
+            </button>
+          </div>
+          <div v-if="anthropicAvailabilityFailure" class="text-red-700" data-testid="anthropic-models-error">
+            {{ anthropicAvailabilityFailure.message }}
+          </div>
+          <div v-if="anthropicAvailabilitySourceDocuments.length > 0" class="text-rose-700" data-testid="anthropic-models-source">
+            Source docs:
+            <span v-for="sourceDoc in anthropicAvailabilitySourceDocuments" :key="sourceDoc.source" class="mr-1">
+              {{ sourceDoc.source }} observed {{ formatObservedAt(sourceDoc.observedAtMs) }}
+            </span>
+          </div>
+          <div v-for="warning in anthropicAvailabilityWarnings" :key="warning" class="text-amber-700" data-testid="anthropic-model-warning">
+            {{ warning }}
+          </div>
+          <div v-if="anthropicAvailabilityModels.length > 0" class="space-y-1" data-testid="anthropic-models-list">
+            <div
+              v-for="modelAvailability in anthropicAvailabilityModels"
+              :key="modelAvailability.nativeModelId"
+              class="rounded border border-rose-50 bg-rose-50/60 px-2 py-1"
+              data-testid="anthropic-model-row"
+            >
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
+                  <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
+                  <div v-if="modelAvailability.modelType">type {{ modelAvailability.modelType }}</div>
+                  <div v-if="modelAvailability.createdAt">created {{ modelAvailability.createdAt }}</div>
+                  <div>{{ formatAnthropicCapabilitySeed(modelAvailability) }}</div>
+                </div>
+                <button
+                  type="button"
+                  class="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-medium text-rose-800 hover:bg-rose-100 disabled:opacity-50"
+                  :disabled="disabled"
+                  data-testid="anthropic-model-use"
+                  @click="emit('updateAnthropicChatModel', modelAvailability.nativeModelId)"
+                >
+                  Use model id
+                </button>
+              </div>
+              <div
+                v-for="warning in modelAvailability.warnings"
+                :key="`${modelAvailability.nativeModelId}:${warning}`"
+                class="mt-1 text-amber-700"
+                data-testid="anthropic-model-warning"
+              >
+                {{ warning }}
+              </div>
+            </div>
+          </div>
         </div>
         <div class="flex flex-wrap gap-2">
           <button
@@ -580,6 +875,69 @@ function chipClass(active: boolean): string {
           <div>Experimental Google AI Studio chat is {{ googleAIStudioChatStatusLabel }}.</div>
           <div>Selected Gemini model: {{ googleAIStudioChat.model || 'none' }}</div>
           <div>Google AI Studio chat uses a main-process credential bridge and does not expose API keys to this console.</div>
+        </div>
+        <div class="space-y-2 rounded border border-emerald-100 bg-white px-2 py-2 text-[11px] text-emerald-900" data-testid="google-ai-studio-models-diagnostics">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="font-semibold">Gemini official model source</div>
+              <div data-testid="google-ai-studio-models-summary">{{ googleAIStudioAvailabilitySummary }}</div>
+            </div>
+            <button
+              type="button"
+              class="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
+              :disabled="disabled || googleAIStudioModelAvailability.loading"
+              data-testid="google-ai-studio-models-refresh"
+              @click="emit('refreshGoogleAIStudioModels')"
+            >
+              {{ googleAIStudioModelAvailability.loading ? 'Refreshing...' : 'Refresh models' }}
+            </button>
+          </div>
+          <div v-if="googleAIStudioAvailabilityFailure" class="text-red-700" data-testid="google-ai-studio-models-error">
+            {{ googleAIStudioAvailabilityFailure.message }}
+          </div>
+          <div v-if="googleAIStudioAvailabilitySourceDocuments.length > 0" class="text-emerald-700" data-testid="google-ai-studio-models-source">
+            Source docs:
+            <span v-for="sourceDoc in googleAIStudioAvailabilitySourceDocuments" :key="sourceDoc.source" class="mr-1">
+              {{ sourceDoc.source }} observed {{ formatObservedAt(sourceDoc.observedAtMs) }}
+            </span>
+          </div>
+          <div v-for="warning in googleAIStudioAvailabilityWarnings" :key="warning" class="text-amber-700" data-testid="google-ai-studio-model-warning">
+            {{ warning }}
+          </div>
+          <div v-if="googleAIStudioAvailabilityModels.length > 0" class="space-y-1" data-testid="google-ai-studio-models-list">
+            <div
+              v-for="modelAvailability in googleAIStudioAvailabilityModels"
+              :key="modelAvailability.nativeModelId"
+              class="rounded border border-emerald-50 bg-emerald-50/60 px-2 py-1"
+              data-testid="google-ai-studio-model-row"
+            >
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
+                  <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
+                  <div v-if="modelAvailability.providerModelName">{{ modelAvailability.providerModelName }}</div>
+                  <div>{{ formatGeminiCapabilitySeed(modelAvailability) }}</div>
+                </div>
+                <button
+                  type="button"
+                  class="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                  :disabled="disabled"
+                  data-testid="google-ai-studio-model-use"
+                  @click="emit('updateGoogleAIStudioChatModel', modelAvailability.nativeModelId)"
+                >
+                  Use model id
+                </button>
+              </div>
+              <div
+                v-for="warning in modelAvailability.warnings"
+                :key="`${modelAvailability.nativeModelId}:${warning}`"
+                class="mt-1 text-amber-700"
+                data-testid="google-ai-studio-model-warning"
+              >
+                {{ warning }}
+              </div>
+            </div>
+          </div>
         </div>
         <div class="flex flex-wrap gap-2">
           <button

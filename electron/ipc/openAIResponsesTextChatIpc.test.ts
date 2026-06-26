@@ -5,7 +5,7 @@ import {
   validateOpenAIResponsesTextChatPayload,
   type OpenAIResponsesTextChatWireEvent,
 } from './openAIResponsesTextChatIpc'
-import { OPENAI_RESPONSES_API_KEY_STORE_KEY } from './openAIResponsesCredentialSettingsIpc'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 
 function textDeltaSse(delta: string, seq = 1): string {
   return `event: response.output_text.delta\ndata: ${JSON.stringify({ type: 'response.output_text.delta', delta, item_id: 'i1', content_index: 0, output_index: 0, sequence_number: seq })}`
@@ -30,10 +30,12 @@ function sentEvents(sender: ReturnType<typeof createSender>, requestId: string):
     .map(([, payload]) => payload as OpenAIResponsesTextChatWireEvent)
 }
 
-function createStore(apiKey?: string) {
+function createCredentialService(apiKey?: string): ProviderCredentialService {
   return {
-    get: vi.fn((key: string) => key === OPENAI_RESPONSES_API_KEY_STORE_KEY ? apiKey : undefined),
-  } as any
+    readApiKey: vi.fn(() => apiKey
+      ? { ok: true, providerKey: 'openai_responses', apiKey, source: 'secure_store', backend: 'electron_safe_storage', migratedFromLegacy: false, warnings: [] }
+      : { ok: false, providerKey: 'openai_responses', code: 'credential_missing', message: 'missing', source: 'missing', backend: 'electron_safe_storage', warnings: [] }),
+  } as unknown as ProviderCredentialService
 }
 
 describe('openAIResponsesTextChatIpc', () => {
@@ -69,7 +71,7 @@ describe('openAIResponsesTextChatIpc', () => {
     }) as unknown as typeof fetch
 
     const registerInvoke = vi.fn()
-    registerOpenAIResponsesTextChatIpc({ registerInvoke, store: createStore('sk-openai-secret'), fetchImpl })
+    registerOpenAIResponsesTextChatIpc({ registerInvoke, credentialService: createCredentialService('sk-openai-secret'), fetchImpl })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'openai-responses-chat:stream-text')?.[1]
     const sender = createSender()
 
@@ -98,7 +100,7 @@ describe('openAIResponsesTextChatIpc', () => {
   it('fails before fetch when the OpenAI Responses API key is missing', async () => {
     const fetchImpl = vi.fn() as unknown as typeof fetch
     const registerInvoke = vi.fn()
-    registerOpenAIResponsesTextChatIpc({ registerInvoke, store: createStore(), fetchImpl })
+    registerOpenAIResponsesTextChatIpc({ registerInvoke, credentialService: createCredentialService(), fetchImpl })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'openai-responses-chat:stream-text')?.[1]
     const sender = createSender()
 
@@ -126,7 +128,7 @@ describe('openAIResponsesTextChatIpc', () => {
       throw new Error('Authorization: Bearer sk-openai-secret at https://public.example.test')
     }) as unknown as typeof fetch
     const registerInvoke = vi.fn()
-    registerOpenAIResponsesTextChatIpc({ registerInvoke, store: createStore('sk-openai-secret'), fetchImpl })
+    registerOpenAIResponsesTextChatIpc({ registerInvoke, credentialService: createCredentialService('sk-openai-secret'), fetchImpl })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'openai-responses-chat:stream-text')?.[1]
     const sender = createSender()
 
@@ -157,7 +159,7 @@ describe('openAIResponsesTextChatIpc', () => {
       })
     }) as unknown as typeof fetch
     const registerInvoke = vi.fn()
-    registerOpenAIResponsesTextChatIpc({ registerInvoke, store: createStore('sk-openai-secret'), fetchImpl })
+    registerOpenAIResponsesTextChatIpc({ registerInvoke, credentialService: createCredentialService('sk-openai-secret'), fetchImpl })
     const startHandler = registerInvoke.mock.calls.find(([channel]) => channel === 'openai-responses-chat:stream-text')?.[1]
     const abortHandler = registerInvoke.mock.calls.find(([channel]) => channel === 'openai-responses-chat:abort')?.[1]
     const sender = createSender()

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { DEEPSEEK_API_KEY_STORE_KEY } from './deepSeekCredentialSettingsIpc'
 import {
   DEEPSEEK_MODEL_AVAILABILITY_IPC_CHANNELS,
   registerDeepSeekModelAvailabilityIpc,
 } from './deepSeekModelAvailabilityIpc'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -12,17 +12,19 @@ function jsonResponse(payload: unknown, status = 200): Response {
   })
 }
 
-function createStore(apiKey?: string) {
+function createCredentialService(apiKey?: string): ProviderCredentialService {
   return {
-    get: vi.fn((key: string) => key === DEEPSEEK_API_KEY_STORE_KEY ? apiKey : undefined),
-  } as any
+    readApiKey: vi.fn(() => apiKey
+      ? { ok: true, providerKey: 'deepseek', apiKey, source: 'secure_store', backend: 'electron_safe_storage', migratedFromLegacy: false, warnings: [] }
+      : { ok: false, providerKey: 'deepseek', code: 'credential_missing', message: 'missing', source: 'missing', backend: 'electron_safe_storage', warnings: [] }),
+  } as unknown as ProviderCredentialService
 }
 
 function registerHandler(input: Readonly<{ apiKey?: string; fetchImpl?: typeof fetch }>) {
   const registerInvoke = vi.fn()
   registerDeepSeekModelAvailabilityIpc({
     registerInvoke,
-    store: createStore(input.apiKey),
+    credentialService: createCredentialService(input.apiKey),
     fetchImpl: input.fetchImpl ?? vi.fn() as unknown as typeof fetch,
   })
   const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'deepseek-models:list-availability')?.[1]

@@ -40,6 +40,15 @@ try {
 
 const capturedDispatchTypes = hoisted.capturedDispatchTypes
 
+const draftBox = () => screen.getByTestId('composer-draft') as HTMLTextAreaElement
+const sendButton = () => screen.getByTestId('composer-send')
+const waitForComposerReady = async () => {
+  await waitFor(() => {
+    expect(screen.getByTestId('current-model-pill')).toBeInTheDocument()
+    expect(draftBox()).not.toBeDisabled()
+  })
+}
+
 vi.mock('@/next/state/reducer', async () => {
   const actual = await vi.importActual<typeof import('@/next/state/reducer')>('@/next/state/reducer')
   return {
@@ -242,6 +251,25 @@ function createDbBridge() {
     if (method === 'context.buildForBranch') {
       return { messages: orderedMessages() }
     }
+    if (method === 'sendPlan.buildCurrent') {
+      return {
+        sendPlan: {
+          status: 'sendable',
+          warnings: [],
+          blockingReasons: [],
+          includedAttachments: [],
+          excludedAttachments: [],
+          attachmentPlans: [],
+          requiresModelChange: false,
+          canProceedAfterDroppingExcluded: false,
+          requiresUserConfirmation: false,
+          plannerVersion: 'phase-5/v1',
+        },
+        draftText: '',
+        assets: [],
+        storageRootDir: 'C:/tmp',
+      }
+    }
     if (method === 'conversationDraft.restore' || method === 'conversationDraft.updateText') {
       return {
         conversationId: convoId,
@@ -324,14 +352,15 @@ async function runScenario(scenario: StreamScenario): Promise<ScenarioSummary> {
 
   render(AppChatApp)
   await screen.findByRole('button', { name: /Chat 1/ })
+  await waitForComposerReady()
 
   capturedDispatchTypes.length = 0
   const callStart = invoke.mock.calls.length
 
-  const box = screen.getByPlaceholderText('Type a message...')
+  const box = draftBox()
   await user.click(box)
   await user.type(box, 'fixture question')
-  await user.click(screen.getByRole('button', { name: 'Send' }))
+  await user.click(sendButton())
 
   await vi.runAllTimersAsync()
   await waitFor(() => {
@@ -383,6 +412,12 @@ describe('ui-app AppChatApp stream session terminal idempotency', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     globalThis.setTimeout = ((fn: (...args: any[]) => void) => originalSetTimeout(fn, 0)) as any
+    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.enabled')
+    globalThis.localStorage?.setItem('starverse.openRouterTextChat.enabled', '1')
 
     ;(globalThis as any).electronStore = {
       get: vi.fn(async (key: string) => {
@@ -399,6 +434,7 @@ describe('ui-app AppChatApp stream session terminal idempotency', () => {
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronStore = originalElectronStore
     globalThis.setTimeout = originalSetTimeout
+    globalThis.localStorage?.removeItem('starverse.openRouterTextChat.enabled')
     vi.useRealTimers()
   })
 

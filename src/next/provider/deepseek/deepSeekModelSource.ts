@@ -1,3 +1,10 @@
+import {
+  createProviderModelAvailabilityProvenance,
+  type ProviderModelAvailabilityEnvelope,
+  type ProviderModelCapabilitySeed,
+  type ProviderModelSourceKind as CommonProviderModelSourceKind,
+} from '../modelAvailabilityEnvelope'
+
 export const DEEPSEEK_OFFICIAL_PROVIDER_KEY = 'deepseek' as const
 export const DEEPSEEK_OFFICIAL_ENDPOINT_ID = 'deepseek-official' as const
 export const DEEPSEEK_OFFICIAL_PROFILE_ID = 'deepseek_official_openai_compat' as const
@@ -14,17 +21,34 @@ export type ProviderModelSourceKind =
   | 'starverse_curated_metadata'
   | 'manual_user_model_id'
 
-export type ProviderModelAvailability = Readonly<{
-  providerKey: typeof DEEPSEEK_OFFICIAL_PROVIDER_KEY
-  endpointId: typeof DEEPSEEK_OFFICIAL_ENDPOINT_ID
-  profileId: typeof DEEPSEEK_OFFICIAL_PROFILE_ID
-  nativeModelId: string
-  displayName?: string
+export type DeepSeekProviderSpecificModelAvailability = Readonly<{
   ownedBy?: string
+  pricingSeed?: Readonly<{
+    inputCacheHitPer1MTokens?: string
+    inputCacheMissPer1MTokens?: string
+    outputPer1MTokens?: string
+    currency?: 'USD'
+    source: 'deepseek_pricing_metadata'
+    observedAtMs: number
+  }>
+  alias?: Readonly<{
+    deprecated: boolean
+    deprecationAtIso: typeof DEEPSEEK_ALIAS_DEPRECATION_AT_ISO
+    replacementModelId: 'deepseek-v4-flash'
+    mode: 'non-thinking' | 'thinking'
+  }>
+}>
+
+export type ProviderModelAvailability = ProviderModelAvailabilityEnvelope<
+  typeof DEEPSEEK_OFFICIAL_PROVIDER_KEY,
+  typeof DEEPSEEK_OFFICIAL_ENDPOINT_ID,
+  typeof DEEPSEEK_OFFICIAL_PROFILE_ID,
+  DeepSeekProviderSpecificModelAvailability
+> & Readonly<{
   source: ProviderModelSourceKind
   confidence: 'provider_reported' | 'curated' | 'manual'
-  observedAtMs: number
-  warnings: string[]
+  displayName?: string
+  ownedBy?: string
   capabilitySeed?: Readonly<{
     textChat?: boolean
     thinkingMode?: 'supported' | 'non_thinking_only' | 'thinking_only' | 'unknown'
@@ -34,7 +58,7 @@ export type ProviderModelAvailability = Readonly<{
     jsonOutput?: boolean
     fim?: boolean
     chatPrefixCompletion?: boolean
-  }>
+  }> & ProviderModelCapabilitySeed
   pricingSeed?: Readonly<{
     inputCacheHitPer1MTokens?: string
     inputCacheMissPer1MTokens?: string
@@ -120,6 +144,12 @@ function sourceDocuments(observedAtMs: number): DeepSeekModelSourceDocument[] {
   ]
 }
 
+function commonSourceKind(source: ProviderModelSourceKind): CommonProviderModelSourceKind {
+  if (source === 'deepseek_models_api') return 'provider_api'
+  if (source === 'deepseek_pricing_metadata') return 'provider_docs'
+  return source
+}
+
 function availabilityBase(input: Readonly<{
   nativeModelId: string
   source: ProviderModelSourceKind
@@ -128,7 +158,7 @@ function availabilityBase(input: Readonly<{
   warnings?: string[]
 }>): Pick<
   ProviderModelAvailability,
-  'providerKey' | 'endpointId' | 'profileId' | 'nativeModelId' | 'source' | 'confidence' | 'observedAtMs' | 'warnings'
+  'providerKey' | 'endpointId' | 'profileId' | 'nativeModelId' | 'source' | 'confidence' | 'observedAtMs' | 'warnings' | 'provenance'
 > {
   return {
     providerKey: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
@@ -139,6 +169,11 @@ function availabilityBase(input: Readonly<{
     confidence: input.confidence,
     observedAtMs: input.observedAtMs,
     warnings: [...(input.warnings ?? [])],
+    provenance: createProviderModelAvailabilityProvenance({
+      sourceKind: commonSourceKind(input.source),
+      sourceLabel: input.source,
+      observedAtMs: input.observedAtMs,
+    }),
   }
 }
 
@@ -195,6 +230,7 @@ function modelFromApiRecord(record: ModelRecord, observedAtMs: number): Provider
       observedAtMs,
     }),
     ...(ownedBy ? { ownedBy } : {}),
+    ...(ownedBy ? { providerSpecific: { ownedBy } } : {}),
   }
 }
 
@@ -294,6 +330,7 @@ export function getDeepSeekCuratedModelAvailabilitySeeds(observedAtMs: number): 
       ownedBy: 'deepseek',
       capabilitySeed: sharedDeepSeekV4CapabilitySeed(),
       pricingSeed: flashPricing,
+      providerSpecific: { ownedBy: 'deepseek', pricingSeed: flashPricing },
     },
     {
       ...availabilityBase({
@@ -307,6 +344,7 @@ export function getDeepSeekCuratedModelAvailabilitySeeds(observedAtMs: number): 
       ownedBy: 'deepseek',
       capabilitySeed: sharedDeepSeekV4CapabilitySeed(),
       pricingSeed: proPricing,
+      providerSpecific: { ownedBy: 'deepseek', pricingSeed: proPricing },
     },
     {
       ...availabilityBase({
@@ -323,6 +361,16 @@ export function getDeepSeekCuratedModelAvailabilitySeeds(observedAtMs: number): 
         thinkingMode: 'non_thinking_only',
       },
       pricingSeed: flashPricing,
+      providerSpecific: {
+        ownedBy: 'deepseek',
+        pricingSeed: flashPricing,
+        alias: {
+          deprecated: true,
+          deprecationAtIso: DEEPSEEK_ALIAS_DEPRECATION_AT_ISO,
+          replacementModelId: 'deepseek-v4-flash',
+          mode: 'non-thinking',
+        },
+      },
     },
     {
       ...availabilityBase({
@@ -339,6 +387,16 @@ export function getDeepSeekCuratedModelAvailabilitySeeds(observedAtMs: number): 
         thinkingMode: 'thinking_only',
       },
       pricingSeed: flashPricing,
+      providerSpecific: {
+        ownedBy: 'deepseek',
+        pricingSeed: flashPricing,
+        alias: {
+          deprecated: true,
+          deprecationAtIso: DEEPSEEK_ALIAS_DEPRECATION_AT_ISO,
+          replacementModelId: 'deepseek-v4-flash',
+          mode: 'thinking',
+        },
+      },
     },
   ]
 }
@@ -358,6 +416,12 @@ function mergeAvailability(
       ...(seed?.ownedBy && !providerModel.ownedBy ? { ownedBy: seed.ownedBy } : {}),
       ...(seed?.capabilitySeed ? { capabilitySeed: seed.capabilitySeed } : {}),
       ...(seed?.pricingSeed ? { pricingSeed: seed.pricingSeed } : {}),
+      providerSpecific: {
+        ...(providerModel.providerSpecific ?? {}),
+        ...(seed?.providerSpecific ?? {}),
+        ...(seed?.ownedBy && !providerModel.ownedBy ? { ownedBy: seed.ownedBy } : {}),
+        ...(seed?.pricingSeed ? { pricingSeed: seed.pricingSeed } : {}),
+      },
       warnings: [
         ...providerModel.warnings,
         ...(seed?.warnings ?? []),

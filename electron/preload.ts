@@ -33,6 +33,10 @@ contextBridge.exposeInMainWorld('anthropicCredential', {
   clear: () => ipcRenderer.invoke('anthropic-credential:clear'),
 })
 
+contextBridge.exposeInMainWorld('anthropicModels', {
+  listAvailability: (payload?: unknown) => ipcRenderer.invoke('anthropic-models:list-availability', payload),
+})
+
 contextBridge.exposeInMainWorld('deepSeekCredential', {
   getStatus: () => ipcRenderer.invoke('deepseek-credential:get-status'),
   update: (payload: unknown) => ipcRenderer.invoke('deepseek-credential:update', payload),
@@ -41,6 +45,14 @@ contextBridge.exposeInMainWorld('deepSeekCredential', {
 
 contextBridge.exposeInMainWorld('deepSeekModels', {
   listAvailability: (payload?: unknown) => ipcRenderer.invoke('deepseek-models:list-availability', payload),
+})
+
+contextBridge.exposeInMainWorld('openAIResponsesModels', {
+  listAvailability: (payload?: unknown) => ipcRenderer.invoke('openai-responses-models:list-availability', payload),
+})
+
+contextBridge.exposeInMainWorld('googleAIStudioModels', {
+  listAvailability: (payload?: unknown) => ipcRenderer.invoke('google-ai-studio-models:list-availability', payload),
 })
 
 contextBridge.exposeInMainWorld('localEndpointDiagnostics', {
