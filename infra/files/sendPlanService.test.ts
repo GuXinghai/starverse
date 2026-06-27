@@ -2089,7 +2089,7 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
     ])
   })
 
-  it('keeps URL assets sendable_with_warnings when local copy materialization failed but the URL remains retained', () => {
+  it('blocks link_and_file URL assets when local snapshot materialization failed', () => {
     const h = createHarness()
     insertConvo(h.db, 'c1')
     createAsset(h.fileAssetRepo, 'url-pdf', {
@@ -2120,11 +2120,60 @@ describeIfBetterSqlite('SendPlanService send planning', () => {
     })
     const plan = h.sendPlanService.buildSendPlan(collected)
 
-    expect(plan.status).toBe('sendable_with_warnings')
+    expect(plan.status).toBe('blocked')
     expect(plan.attachmentPlans[0]).toMatchObject({
       assetId: 'url-pdf',
-      selectedSendMode: 'url_ref',
-      displayStatus: 'ready_with_warnings',
+      selectedSendMode: null,
+      eligibility: 'blocked',
+      exclusionReason: 'url_snapshot_failed',
+      displayStatus: 'failed',
+    })
+    expect(plan.blockingReasons).toEqual([
+      expect.objectContaining({
+        code: 'draft_attachment_blocked',
+        assetId: 'url-pdf',
+        message: expect.stringContaining('Retry snapshot'),
+      }),
+    ])
+  })
+
+  it('blocks link_and_file URL assets while snapshot materialization is pending', () => {
+    const h = createHarness()
+    insertConvo(h.db, 'c1')
+    createAsset(h.fileAssetRepo, 'url-pending', {
+      sha256: null,
+      filename: 'remote.pdf',
+      extension: 'pdf',
+      mime: 'application/pdf',
+      assetKind: 'document',
+      sourceKind: 'url_import',
+      storageBackend: 'remote_url',
+      storageUri: 'https://example.test/remote.pdf',
+      ingestStatus: 'materializing',
+      sourceMetaJson: {
+        originalUrl: 'https://example.test/original.pdf',
+        resolvedUrl: 'https://example.test/remote.pdf',
+        retentionMode: 'link_and_file',
+        probeStatus: 'accessible',
+        materializationStatus: 'materializing',
+      },
+    })
+    createVerdict(h, 'url-pending', 'pdf', 'document')
+    h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: 'url-pending' })
+
+    const collected = h.sendPlanService.collectCurrentSendInputs({
+      conversationId: 'c1',
+      model: model(['text', 'file']),
+      providerContext: providerContext(),
+    })
+    const plan = h.sendPlanService.buildSendPlan(collected)
+
+    expect(plan.status).toBe('blocked')
+    expect(plan.attachmentPlans[0]).toMatchObject({
+      assetId: 'url-pending',
+      eligibility: 'blocked',
+      exclusionReason: 'attachment_parsing_incomplete',
+      displayStatus: 'parsing',
     })
   })
 

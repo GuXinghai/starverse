@@ -1628,6 +1628,9 @@ describe('DFC renderer DTO sanitization', () => {
       sourceMetaJson: {
         originalUrl: 'https://example.test/data.csv',
         resolvedUrl: 'https://cdn.example.test/data.csv',
+        originalPath: 'C:/Users/example/secret.csv',
+        storagePath: 'C:/Users/example/AppData/assets/blobs/aa/blob.csv',
+        blobId: 'blob-private-id',
         contentToken: 'secret-token',
         textConversion: {
           status: 'ready',
@@ -1661,6 +1664,8 @@ describe('DFC renderer DTO sanitization', () => {
       nested: { safeLabel: 'visible' },
     })
     expect(JSON.stringify(decoded)).not.toContain('secret-token')
+    expect(JSON.stringify(decoded)).not.toContain('secret.csv')
+    expect(JSON.stringify(decoded)).not.toContain('blob-private-id')
     expect(JSON.stringify(decoded)).not.toContain('starverse-text-derivative')
     expect(JSON.stringify(decoded)).not.toContain('assets/derived/raw-1/derived-1.md')
     expect(JSON.stringify(decoded)).not.toContain('bbbb')

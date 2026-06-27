@@ -1,6 +1,7 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { readFile } from 'node:fs/promises'
 import type { FileAssetRepo } from '../db/repo/fileAssetRepo'
+import type { FileAssetStoreRepo } from '../db/repo/fileAssetStoreRepo'
 import type { MessageRepo } from '../db/repo/messageRepo'
 import type { MessageAttachmentRepo } from '../db/repo/messageAttachmentRepo'
 import type { BranchRepo } from '../db/repo/branchRepo'
@@ -122,6 +123,7 @@ type DfcPreviewSource = Readonly<{
 export type ConversationAttachmentServiceDeps = Readonly<{
   db: SqlDatabase
   fileAssetRepo: FileAssetRepo
+  fileAssetStoreRepo?: Pick<FileAssetStoreRepo, 'bindAsset' | 'markBindingDeleted'>
   messageRepo: MessageRepo
   messageAttachmentRepo: MessageAttachmentRepo
   branchRepo?: BranchRepo
@@ -162,6 +164,7 @@ export class ConversationAttachmentService {
       updatedAt: input.updatedAt ?? this.now(),
     })
     this.clearLifecycleMark(input.assetId)
+    this.bindConversationAsset(input.conversationId, input.assetId, input.createdAt ?? this.now())
     return attachment
   }
 
@@ -202,7 +205,10 @@ export class ConversationAttachmentService {
 
   removeDraftAttachment(input: RemoveDraftAttachmentInput): { ok: true; removed: boolean; ownership: AssetAttachmentOwnership } {
     const removed = this.draftRepo.removeAttachment(input)
-    if (removed) this.markDetachedIfUnowned(input.assetId, input.updatedAt ?? this.now(), 'removed_from_draft')
+    if (removed) {
+      this.markConversationBindingDeleted(input.conversationId, input.assetId, input.updatedAt ?? this.now())
+      this.markDetachedIfUnowned(input.assetId, input.updatedAt ?? this.now(), 'removed_from_draft')
+    }
     return {
       ok: true,
       removed,
@@ -225,9 +231,11 @@ export class ConversationAttachmentService {
       const attachments = migration.included.map((attachment) =>
         this.createMessageAttachmentFromDraft(message.id, attachment, snapshotMap.get(attachment.id), input.dfcAttachmentSendSnapshots !== undefined)
       )
+      for (const attachment of attachments) this.bindMessageAsset(message.id, attachment.assetId, attachment.createdAt)
       const cleared = this.draftRepo.clear(input.conversationId, this.now())
       for (const attachment of attachments) this.clearLifecycleMark(attachment.assetId)
       for (const skippedAssetId of migration.skippedAssetIds) {
+        this.markConversationBindingDeleted(input.conversationId, skippedAssetId, this.now())
         this.markDetachedIfUnowned(skippedAssetId, this.now(), 'not_sent_in_transaction')
       }
       return { message, attachments, draft: cleared }
@@ -249,9 +257,11 @@ export class ConversationAttachmentService {
       const attachments = migration.included.map((attachment) =>
         this.createMessageAttachmentFromDraft(messageId, attachment, snapshotMap.get(attachment.id), input.dfcAttachmentSendSnapshots !== undefined)
       )
+      for (const attachment of attachments) this.bindMessageAsset(messageId, attachment.assetId, attachment.createdAt)
       const cleared = this.draftRepo.clear(conversationId, input.updatedAt ?? this.now())
       for (const attachment of attachments) this.clearLifecycleMark(attachment.assetId)
       for (const skippedAssetId of migration.skippedAssetIds) {
+        this.markConversationBindingDeleted(conversationId, skippedAssetId, this.now())
         this.markDetachedIfUnowned(skippedAssetId, this.now(), 'not_sent_in_transaction')
       }
       return { messageId, attachments, draft: cleared }
@@ -272,7 +282,10 @@ export class ConversationAttachmentService {
         AND asset_id = @assetId
     `).run({ messageId, assetId })
     const detached = Number(result.changes ?? 0) > 0
-    if (detached) this.markDetachedIfUnowned(assetId, input.updatedAt ?? this.now(), input.reason ?? 'detached_from_message')
+    if (detached) {
+      this.markMessageBindingDeleted(messageId, assetId, input.updatedAt ?? this.now())
+      this.markDetachedIfUnowned(assetId, input.updatedAt ?? this.now(), input.reason ?? 'detached_from_message')
+    }
     return { ok: true, detached, ownership: this.getAssetOwnership({ assetId }) }
   }
 
@@ -291,7 +304,7 @@ export class ConversationAttachmentService {
       selectedOptionId: attachment.dfcManaged ? attachment.usedOptionId : null,
       selectedAssetRefs: attachment.dfcManaged ? attachment.usedAssetRefs : [],
     }))
-    return this.draftRepo.replace({
+    const draft = this.draftRepo.replace({
       conversationId: input.conversationId,
       draftText: message.body ?? '',
       draftMode: 'edit',
@@ -299,6 +312,10 @@ export class ConversationAttachmentService {
       attachments,
       updatedAt: input.updatedAt ?? this.now(),
     })
+    for (const attachment of draft.attachments) {
+      this.bindConversationAsset(input.conversationId, attachment.assetId, input.updatedAt ?? this.now())
+    }
+    return draft
   }
 
   getResendAttachmentDefaults(messageId: string): MessageAttachmentRecord[] {
@@ -1079,6 +1096,42 @@ export class ConversationAttachmentService {
       sendStrategy: normalizedDfcSnapshot?.sendStrategy ?? null,
       createdAt: attachment.createdAt,
       updatedAt: this.now(),
+    })
+  }
+
+  private bindConversationAsset(conversationId: string, assetId: string, createdAt: number): void {
+    this.deps.fileAssetStoreRepo?.bindAsset({
+      assetId,
+      scope: 'conversation',
+      conversationId,
+      createdAt,
+    })
+  }
+
+  private bindMessageAsset(messageId: string, assetId: string, createdAt: number): void {
+    this.deps.fileAssetStoreRepo?.bindAsset({
+      assetId,
+      scope: 'message',
+      messageId,
+      createdAt,
+    })
+  }
+
+  private markConversationBindingDeleted(conversationId: string, assetId: string, deletedAt: number): void {
+    this.deps.fileAssetStoreRepo?.markBindingDeleted({
+      assetId,
+      scope: 'conversation',
+      conversationId,
+      deletedAt,
+    })
+  }
+
+  private markMessageBindingDeleted(messageId: string, assetId: string, deletedAt: number): void {
+    this.deps.fileAssetStoreRepo?.markBindingDeleted({
+      assetId,
+      scope: 'message',
+      messageId,
+      deletedAt,
     })
   }
 
