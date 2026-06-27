@@ -675,6 +675,8 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
                 currentUserContentBlocks: [
                     { type: 'text', text: 'describe the attachment' },
                     { type: 'image_url', image_url: { url: 'https://cdn.example.test/photo.png' } },
+                    { type: 'image_url', image_url: { url: 'https://user:pass@cdn.example.test/private.png' } },
+                    { type: 'image_url', image_url: { url: 'data:image/webp;base64,AAAA' } },
                     { type: 'file', file: { filename: 'manual.pdf', file_data: 'https://cdn.example.test/manual.pdf' } },
                 ],
                 config: {
@@ -690,6 +692,8 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
             const bodyText = String(calls[0]?.init?.body ?? '')
             expect(bodyText).toContain('"plugins":[{"id":"file-parser","pdf":{"engine":"native"}}]')
             expect(bodyText).toContain('"content":[{"type":"text","text":"describe the attachment"},{"type":"image_url"')
+            expect(bodyText).not.toContain('user:pass')
+            expect(bodyText).not.toContain('data:image/webp')
             expect(bodyText).toContain('"type":"file","file":{"filename":"manual.pdf","file_data":"https://cdn.example.test/manual.pdf"}}')
         } finally {
             globalThis.fetch = originalFetch

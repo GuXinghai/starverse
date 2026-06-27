@@ -394,6 +394,54 @@ describe('streamViaOpenRouter', () => {
     }
   })
 
+  it('passes text plus image_url content blocks through the OpenRouter chat request body', async () => {
+    const originalFetch = globalThis.fetch
+    const calls: any[] = []
+    globalThis.fetch = vi.fn(async (url: any, init: any) => {
+      calls.push({ url, init })
+      const body = streamFromText(fixture)
+      return new Response(body as any, { status: 200, headers: { 'x-openrouter-generation-id': 'gen_header' } })
+    }) as any
+
+    try {
+      const request: ProviderStreamRequest = {
+        requestId: 'rid',
+        assistantMessageId: 'assistant_1',
+        userText: 'Describe this image.',
+        currentUserContentBlocks: [
+          { type: 'text', text: 'Describe this image.' },
+          {
+            type: 'image_url',
+            image_url: { url: 'data:image/png;base64,iVBORw0KGgo=' },
+            storagePath: 'D:\\Starverse\\storage\\tiny.png',
+          } as any,
+        ],
+        config: {
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
+          requestedReasoningMode: 'auto',
+        },
+      }
+
+      for await (const _ of streamViaOpenRouter(request, { apiKey: 'k' })) {
+        // consume
+      }
+
+      const body = JSON.parse(String(calls[0]?.init?.body ?? '{}'))
+      const userMessage = body.messages?.at(-1)
+      expect(userMessage?.role).toBe('user')
+      expect(userMessage?.content).toEqual([
+        { type: 'text', text: 'Describe this image.' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgo=' } },
+      ])
+      const serialized = JSON.stringify(body)
+      expect(serialized).not.toContain('storagePath')
+      expect(serialized).not.toContain('D:\\Starverse')
+      expect(serialized).not.toContain('blobId')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   it('preserves legacy Authorization header behavior through adapter facade', async () => {
     const originalFetch = globalThis.fetch
     const calls: any[] = []

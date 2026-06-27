@@ -1,6 +1,7 @@
 import type { DomainEvent } from '@/next/state/types'
 import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
 import { streamEventToDomainEvent } from '@/next/provider/streamEventBridge'
+import type { ProviderRuntimeContentBlock } from '@/next/multimodal/providerRuntimeContentBlocks'
 
 export type DeepSeekTextChatMessage = Readonly<{
   role: 'user' | 'assistant'
@@ -13,6 +14,7 @@ export type DeepSeekTextChatOptions = Readonly<{
   model: string
   userText: string
   contextMessages?: readonly unknown[]
+  currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
   signal?: AbortSignal
   timeoutMs?: number
 }>
@@ -194,6 +196,10 @@ export async function* streamDeepSeekTextChatAsDomainEvents(
     contextMessages: options.contextMessages,
     userText: options.userText,
   })
+  const hasContentBlocks = (options.currentUserContentBlocks?.length ?? 0) > 0
+  if (messages.length === 0 && hasContentBlocks) {
+    messages.push({ role: 'user', content: '' })
+  }
   if (messages.length === 0) {
     yield streamError('invalid_payload', 'DeepSeek official text chat requires a text message.', 'bad_request')
     return
@@ -209,6 +215,7 @@ export async function* streamDeepSeekTextChatAsDomainEvents(
         assistantMessageId: options.assistantMessageId,
         model: options.model,
         messages,
+        ...(hasContentBlocks ? { currentUserContentBlocks: options.currentUserContentBlocks } : {}),
         ...(typeof options.timeoutMs === 'number' ? { timeoutMs: options.timeoutMs } : {}),
       }),
     })

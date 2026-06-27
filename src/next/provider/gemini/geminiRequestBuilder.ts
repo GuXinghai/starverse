@@ -15,6 +15,8 @@ import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
 
 export type GeminiPart = Readonly<{
   text?: string
+  inlineData?: Readonly<{ mimeType: string; data: string }>
+  fileData?: Readonly<{ mimeType: string; fileUri: string }>
   functionCall?: Readonly<{ name: string; args?: unknown }>
   functionResponse?: Readonly<{ name: string; response: unknown }>
 }>

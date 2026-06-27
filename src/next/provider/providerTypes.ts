@@ -135,7 +135,7 @@ export type ProviderStreamRequest = Readonly<{
   assistantMessageId: string
   userText: string
   contextMessages?: ReadonlyArray<unknown>
-  currentUserContentBlocks?: ReadonlyArray<Readonly<{ type: string; [key: string]: unknown }>>
+  currentUserContentBlocks?: ReadonlyArray<Readonly<{ type?: string; [key: string]: unknown }>>
   contextMode?: 'default' | 'advanced_reasoning_blocks'
   signal?: AbortSignal | null
   config: ProviderStreamConfig

@@ -569,6 +569,15 @@ export const PrepareOpenRouterSendSchema = z.object({
   pdfFileParser: OpenRouterPdfFileParserConfigSchema,
 })
 
+export const PrepareProviderImageSendSchema = z.object({
+  provider: z.enum(['openai_responses', 'anthropic_messages', 'google_ai_studio', 'openrouter']),
+  conversationId: z.string().min(1),
+  draftText: z.string().optional(),
+  historyMessageIds: z.array(z.string().min(1)).optional(),
+  model: SendPlanModelDescriptorSchema,
+  providerContext: SendPlanProviderContextSchema,
+})
+
 export const PrepareOpenRouterReplayFromMessageSchema: ZodType<PrepareOpenRouterReplayFromMessageInput> = z.object({
   branchId: z.string().min(1),
   userMessageId: z.string().min(1),

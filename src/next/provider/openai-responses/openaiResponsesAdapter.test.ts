@@ -123,6 +123,44 @@ describe('streamViaOpenAIResponses', () => {
     expect(body.input).toEqual([{ role: 'user', content: 'Hello' }])
   })
 
+  it('adds input_image content part for text plus image requests without leaking local paths', async () => {
+    const response = makeSseResponse(textDeltaSse('Hi'))
+    const fetch = mockFetch(response)
+
+    await collectEvents(streamViaOpenAIResponses({
+      ...makeRequest(),
+      currentUserContentBlocks: [
+        { type: 'input_image', image_url: 'data:image/png;base64,iVBORw0KGgo=' },
+        {
+          type: 'input_image',
+          image_url: 'data:image/png;base64,ignored',
+          storagePath: 'D:\\Starverse\\storage\\image.png',
+        } as any,
+      ],
+    }, {
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      fetch,
+    }))
+
+    const [, init] = (fetch as any).mock.calls[0]
+    const body = JSON.parse(init.body)
+    expect(body.input).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'input_text', text: 'Hello' },
+          { type: 'input_image', image_url: 'data:image/png;base64,iVBORw0KGgo=' },
+          { type: 'input_image', image_url: 'data:image/png;base64,ignored' },
+        ],
+      },
+    ])
+    const serialized = JSON.stringify(body)
+    expect(serialized).not.toContain('storagePath')
+    expect(serialized).not.toContain('D:\\Starverse')
+    expect(serialized).not.toContain('blobId')
+  })
+
   it('output_text delta yields visible text', async () => {
     const response = makeSseResponse(
       textDeltaSse('Hello! '),

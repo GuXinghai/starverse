@@ -18,6 +18,7 @@ import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProvid
 import { buildDeepSeekRequest, type DeepSeekMessage } from '@/next/provider/deepseek/deepSeekRequestBuilder'
 import { decodeDeepSeekSSE } from '@/next/provider/deepseek/deepSeekSseDecoder'
 import { mapDeepSeekChunkToEvents } from '@/next/provider/deepseek/deepSeekStreamMapper'
+import { hasProviderRuntimeNonTextBlock } from '@/next/multimodal/providerRuntimeContentBlocks'
 
 // ---------------------------------------------------------------------------
 // Adapter types
@@ -50,6 +51,21 @@ export const streamViaDeepSeek: RuntimeProviderStreamAdapter = async function* s
   transport: DeepSeekTransportOptions & { fetch: DeepSeekFetchFn },
 ): AsyncGenerator<StarverseStreamEvent> {
   const { assistantMessageId, config, signal } = request
+
+  if (hasProviderRuntimeNonTextBlock(request.currentUserContentBlocks)) {
+    yield {
+      type: 'stream.error',
+      error: {
+        phase: 'request_build',
+        provider: 'deepseek',
+        category: 'bad_request',
+        code: 'unsupported_provider',
+        message: 'DeepSeek official runtime does not support image or file attachments in Starverse.',
+      } satisfies StarverseProviderError,
+      terminal: true,
+    }
+    return
+  }
 
   // Build messages from request (simplified — no reasoning injection)
   const messages = buildMessages(request)

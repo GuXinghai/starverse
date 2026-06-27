@@ -19,6 +19,7 @@ import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProvid
 import { buildResponsesRequest, type ResponsesInputMessage } from '@/next/provider/openai-responses/openaiResponsesRequestBuilder'
 import { decodeResponsesSSE } from '@/next/provider/openai-responses/openaiResponsesSseDecoder'
 import { mapOpenAIResponsesEventToStarverse } from '@/next/provider/openai-responses/openaiResponsesStreamMapper'
+import { buildOpenAIResponsesUserContent } from '@/next/multimodal/providerRuntimeContentBlocks'
 
 // ---------------------------------------------------------------------------
 // Adapter types
@@ -176,15 +177,10 @@ function buildMessages(request: ProviderStreamRequest): ResponsesInputMessage[] 
   }
 
   // Current user message
-  if (request.currentUserContentBlocks && request.currentUserContentBlocks.length > 0) {
-    const textParts = request.currentUserContentBlocks
-      .filter((b) => b.type === 'text')
-      .map((b) => (b as any).text)
-      .filter((t): t is string => typeof t === 'string')
-    messages.push({ role: 'user', content: textParts.join('\n') })
-  } else {
-    messages.push({ role: 'user', content: request.userText })
-  }
+  messages.push({
+    role: 'user',
+    content: buildOpenAIResponsesUserContent(request.userText, request.currentUserContentBlocks),
+  })
 
   return messages
 }

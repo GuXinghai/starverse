@@ -216,19 +216,31 @@ describe('RuntimeCapabilitySummaryLite', () => {
     expect(formatRuntimeCapabilitySummaryLite(cap)).toContain('attachments supported')
   })
 
-  it('summarizes experimental provider text-only capabilities conservatively', () => {
+  it('summarizes image-capable experimental providers as small-image inline only', () => {
     const cap = getRuntimeCapabilitySummaryLite(selected('openai_responses', 'gpt-4.1-mini'))
     expect(cap).toMatchObject({
       textChat: true,
       streamingText: true,
-      attachments: 'blocked',
+      attachments: 'supported',
       webSearch: 'blocked',
       tools: 'blocked',
       reasoningArtifacts: 'filtered',
       imageGeneration: 'blocked',
       structuredOutput: 'blocked',
+      source: 'experimental_image_inline',
+    })
+    expect(cap.warnings.join('\n')).toContain('small image inline attachments only')
+  })
+
+  it('keeps DeepSeek official runtime text-only for file inputs', () => {
+    const cap = getRuntimeCapabilitySummaryLite(selected('deepseek', 'deepseek-chat'))
+    expect(cap).toMatchObject({
+      textChat: true,
+      streamingText: true,
+      attachments: 'blocked',
       source: 'experimental_text_only',
     })
+    expect(cap.warnings.join('\n')).toContain('not converted')
   })
 
   it('summarizes LocalEndpoint as conservative loopback text chat', () => {
@@ -312,8 +324,8 @@ describe('getRuntimeTextChatBlockReason', () => {
     })).toBe('请输入消息内容后再发送。')
   })
 
-  it('blocks attachments for experimental text-only providers', () => {
-    const selection = selected('openai_responses', 'gpt-4.1-mini')
+  it('blocks attachments for DeepSeek text-only runtime', () => {
+    const selection = selected('deepseek', 'deepseek-chat')
     expect(getRuntimeTextChatBlockReason({
       selection,
       capability: getRuntimeCapabilitySummaryLite(selection),
@@ -321,6 +333,17 @@ describe('getRuntimeTextChatBlockReason', () => {
       hasDraftAttachments: true,
       sessionConfig: baseSessionConfig,
     })).toContain('text-only')
+  })
+
+  it('allows attachments through image-capable experimental provider preflight', () => {
+    const selection = selected('openai_responses', 'gpt-4.1-mini')
+    expect(getRuntimeTextChatBlockReason({
+      selection,
+      capability: getRuntimeCapabilitySummaryLite(selection),
+      text: 'hello',
+      hasDraftAttachments: true,
+      sessionConfig: baseSessionConfig,
+    })).toBeNull()
   })
 
   it('blocks web search for experimental text-only providers', () => {

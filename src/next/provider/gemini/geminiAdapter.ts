@@ -19,6 +19,7 @@ import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProvid
 import { buildGeminiRequest, type GeminiContent } from '@/next/provider/gemini/geminiRequestBuilder'
 import { decodeGeminiSSE } from '@/next/provider/gemini/geminiSseDecoder'
 import { mapGeminiStreamChunkToStarverse } from '@/next/provider/gemini/geminiStreamMapper'
+import { buildGeminiUserParts } from '@/next/multimodal/providerRuntimeContentBlocks'
 
 // ---------------------------------------------------------------------------
 // Adapter types
@@ -181,15 +182,10 @@ function buildMessages(request: ProviderStreamRequest): GeminiContent[] {
   }
 
   // Current user message
-  if (request.currentUserContentBlocks && request.currentUserContentBlocks.length > 0) {
-    const textParts = request.currentUserContentBlocks
-      .filter((b) => b.type === 'text')
-      .map((b) => (b as any).text)
-      .filter((t): t is string => typeof t === 'string')
-    messages.push({ role: 'user', parts: textParts.map((t) => ({ text: t })) })
-  } else {
-    messages.push({ role: 'user', parts: [{ text: request.userText }] })
-  }
+  messages.push({
+    role: 'user',
+    parts: buildGeminiUserParts(request.userText, request.currentUserContentBlocks),
+  })
 
   return messages
 }

@@ -19,6 +19,7 @@ import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProvid
 import { buildAnthropicRequest, type AnthropicMessage } from '@/next/provider/anthropic/anthropicRequestBuilder'
 import { decodeAnthropicSSE } from '@/next/provider/anthropic/anthropicSseDecoder'
 import { mapAnthropicStreamEventToStarverse } from '@/next/provider/anthropic/anthropicStreamMapper'
+import { buildAnthropicUserContent } from '@/next/multimodal/providerRuntimeContentBlocks'
 
 // ---------------------------------------------------------------------------
 // Adapter types
@@ -180,15 +181,10 @@ function buildMessages(request: ProviderStreamRequest): AnthropicMessage[] {
   }
 
   // Current user message
-  if (request.currentUserContentBlocks && request.currentUserContentBlocks.length > 0) {
-    const textParts = request.currentUserContentBlocks
-      .filter((b) => b.type === 'text')
-      .map((b) => (b as any).text)
-      .filter((t): t is string => typeof t === 'string')
-    messages.push({ role: 'user', content: textParts.join('\n') })
-  } else {
-    messages.push({ role: 'user', content: request.userText })
-  }
+  messages.push({
+    role: 'user',
+    content: buildAnthropicUserContent(request.userText, request.currentUserContentBlocks),
+  })
 
   return messages
 }

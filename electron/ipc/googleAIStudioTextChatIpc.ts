@@ -5,6 +5,10 @@ import { streamViaGemini, type GeminiFetchFn } from '../../src/next/provider/gem
 import type { GeminiContent } from '../../src/next/provider/gemini/geminiRequestBuilder'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
+import {
+  sanitizeProviderRuntimeImageContentBlocks,
+  type ProviderRuntimeContentBlock,
+} from '../../src/next/multimodal/providerRuntimeContentBlocks'
 
 export const GOOGLE_AI_STUDIO_TEXT_CHAT_IPC_CHANNELS = [
   'google-ai-studio-chat:stream-text',
@@ -21,6 +25,7 @@ export type GoogleAIStudioTextChatPayload = Readonly<{
   assistantMessageId?: unknown
   model?: unknown
   messages?: unknown
+  currentUserContentBlocks?: unknown
   timeoutMs?: unknown
 }>
 
@@ -50,6 +55,7 @@ type ValidatedTextChatSuccess = Readonly<{
   assistantMessageId: string
   model: string
   messages: GoogleAIStudioTextChatMessage[]
+  currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
   timeoutMs: number
 }>
 
@@ -84,15 +90,22 @@ function staticFailure(
   return { ok: false, code, error }
 }
 
-function normalizeMessages(raw: unknown): GoogleAIStudioTextChatMessage[] | null {
+function normalizeMessages(raw: unknown, allowEmptyCurrentUser = false): GoogleAIStudioTextChatMessage[] | null {
   if (!Array.isArray(raw) || raw.length === 0) return null
   const out: GoogleAIStudioTextChatMessage[] = []
-  for (const item of raw.slice(-MAX_MESSAGES)) {
+  const sliced = raw.slice(-MAX_MESSAGES)
+  for (let index = 0; index < sliced.length; index++) {
+    const item = sliced[index]
     if (!item || typeof item !== 'object') return null
     const role = (item as Record<string, unknown>).role
     if (role !== 'user' && role !== 'assistant') return null
     const content = String((item as Record<string, unknown>).content ?? '').trim()
-    if (!content) continue
+    if (!content) {
+      if (allowEmptyCurrentUser && index === sliced.length - 1 && role === 'user') {
+        out.push({ role, content: '' })
+      }
+      continue
+    }
     out.push({ role, content: content.slice(0, MAX_MESSAGE_CHARS) })
   }
   if (out.length === 0 || out[out.length - 1]?.role !== 'user') return null
@@ -111,9 +124,14 @@ export function validateGoogleAIStudioTextChatPayload(payload: unknown): Validat
     return staticFailure('invalid_payload', 'Google AI Studio text chat payload is invalid.')
   }
 
-  const messages = normalizeMessages(record.messages)
+  const contentBlocks = sanitizeProviderRuntimeImageContentBlocks('google_ai_studio', record.currentUserContentBlocks)
+  if (!contentBlocks.ok) {
+    return staticFailure('invalid_payload', 'Google AI Studio image content block payload is invalid.')
+  }
+
+  const messages = normalizeMessages(record.messages, contentBlocks.blocks.length > 0)
   if (!messages) {
-    return staticFailure('invalid_payload', 'Google AI Studio text chat requires text-only user and assistant messages.')
+    return staticFailure('invalid_payload', 'Google AI Studio text chat requires user and assistant messages.')
   }
 
   return {
@@ -122,6 +140,7 @@ export function validateGoogleAIStudioTextChatPayload(payload: unknown): Validat
     assistantMessageId,
     model,
     messages,
+    ...(contentBlocks.blocks.length > 0 ? { currentUserContentBlocks: contentBlocks.blocks } : {}),
     timeoutMs: normalizeTimeoutMs(record.timeoutMs),
   }
 }
@@ -212,6 +231,7 @@ function buildProviderRequest(input: Readonly<{
     assistantMessageId: input.request.assistantMessageId,
     userText: currentUser?.content ?? '',
     contextMessages,
+    ...(input.request.currentUserContentBlocks?.length ? { currentUserContentBlocks: input.request.currentUserContentBlocks } : {}),
     signal: input.controller.signal,
     config: {
       model: input.request.model,

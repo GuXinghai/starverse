@@ -3,6 +3,10 @@ import type { RegisterInvoke } from './types'
 import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
 import { streamViaDeepSeek, type DeepSeekFetchFn } from '../../src/next/provider/deepseek/deepSeekAdapter'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
+import {
+  sanitizeProviderRuntimeImageContentBlocks,
+  type ProviderRuntimeContentBlock,
+} from '../../src/next/multimodal/providerRuntimeContentBlocks'
 
 export const DEEPSEEK_TEXT_CHAT_IPC_CHANNELS = [
   'deepseek-chat:stream-text',
@@ -19,6 +23,7 @@ export type DeepSeekTextChatPayload = Readonly<{
   assistantMessageId?: unknown
   model?: unknown
   messages?: unknown
+  currentUserContentBlocks?: unknown
   timeoutMs?: unknown
 }>
 
@@ -48,6 +53,7 @@ type ValidatedTextChatSuccess = Readonly<{
   assistantMessageId: string
   model: string
   messages: DeepSeekTextChatMessage[]
+  currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
   timeoutMs: number
 }>
 
@@ -75,15 +81,22 @@ function staticFailure(
   return { ok: false, code, error }
 }
 
-function normalizeMessages(raw: unknown): DeepSeekTextChatMessage[] | null {
+function normalizeMessages(raw: unknown, allowEmptyCurrentUser = false): DeepSeekTextChatMessage[] | null {
   if (!Array.isArray(raw) || raw.length === 0) return null
   const out: DeepSeekTextChatMessage[] = []
-  for (const item of raw.slice(-MAX_MESSAGES)) {
+  const sliced = raw.slice(-MAX_MESSAGES)
+  for (let index = 0; index < sliced.length; index++) {
+    const item = sliced[index]
     if (!item || typeof item !== 'object') return null
     const role = (item as Record<string, unknown>).role
     if (role !== 'user' && role !== 'assistant') return null
     const content = String((item as Record<string, unknown>).content ?? '').trim()
-    if (!content) continue
+    if (!content) {
+      if (allowEmptyCurrentUser && index === sliced.length - 1 && role === 'user') {
+        out.push({ role, content: '' })
+      }
+      continue
+    }
     out.push({ role, content: content.slice(0, MAX_MESSAGE_CHARS) })
   }
   if (out.length === 0 || out[out.length - 1]?.role !== 'user') return null
@@ -102,9 +115,14 @@ export function validateDeepSeekTextChatPayload(payload: unknown): ValidatedText
     return staticFailure('invalid_payload', 'DeepSeek official text chat payload is invalid.')
   }
 
-  const messages = normalizeMessages(record.messages)
+  const contentBlocks = sanitizeProviderRuntimeImageContentBlocks('deepseek', record.currentUserContentBlocks)
+  if (!contentBlocks.ok) {
+    return staticFailure('invalid_payload', 'DeepSeek official image content block payload is invalid.')
+  }
+
+  const messages = normalizeMessages(record.messages, contentBlocks.blocks.length > 0)
   if (!messages) {
-    return staticFailure('invalid_payload', 'DeepSeek official text chat requires text-only user and assistant messages.')
+    return staticFailure('invalid_payload', 'DeepSeek official text chat requires user and assistant messages.')
   }
 
   return {
@@ -113,6 +131,7 @@ export function validateDeepSeekTextChatPayload(payload: unknown): ValidatedText
     assistantMessageId,
     model,
     messages,
+    ...(contentBlocks.blocks.length > 0 ? { currentUserContentBlocks: contentBlocks.blocks } : {}),
     timeoutMs: normalizeTimeoutMs(record.timeoutMs),
   }
 }
@@ -149,6 +168,8 @@ function safeProviderError(error: StarverseProviderError): StarverseProviderErro
         ? 'DeepSeek rate limit was reached.'
         : category === 'aborted'
           ? 'DeepSeek official text chat was aborted.'
+          : category === 'bad_request' && error.code === 'unsupported_provider'
+            ? 'DeepSeek official runtime does not support image or file attachments in Starverse.'
           : 'DeepSeek official text chat failed safely.',
     ...(error.code ? { code: String(error.code) } : {}),
     ...(error.httpStatus ? { httpStatus: error.httpStatus } : {}),
@@ -197,6 +218,7 @@ function buildProviderRequest(input: Readonly<{
     assistantMessageId: input.request.assistantMessageId,
     userText: currentUser?.content ?? '',
     contextMessages,
+    ...(input.request.currentUserContentBlocks?.length ? { currentUserContentBlocks: input.request.currentUserContentBlocks } : {}),
     signal: input.controller.signal,
     config: {
       model: input.request.model,
