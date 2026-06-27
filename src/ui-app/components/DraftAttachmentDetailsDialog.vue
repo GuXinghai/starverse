@@ -119,6 +119,7 @@ type DraftAttachmentDetailsViewModel = Readonly<{
   localCopyExists: boolean
   retryPreviewAvailable: boolean
   retryPreviewReason: string | null
+  retryPreviewLabel: string
   detectionInfo: DraftAttachmentDetectionInfo | null
   dfcOptions: DraftAttachmentDfcOptions
   dfcPreview: DraftAttachmentDfcPreview
@@ -383,7 +384,7 @@ function removeAttachment() {
               data-testid="draft-attachment-details-retry"
               @click="emit('retry')"
             >
-              {{ t('filePipeline.attachment.details.retryPreview') }}
+              {{ props.attachment.retryPreviewLabel }}
             </button>
             <button
               v-if="props.attachment.canRemove"

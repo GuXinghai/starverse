@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import os from 'node:os'
 import path from 'node:path'
 import { FileAssetRepo } from '../db/repo/fileAssetRepo'
+import { FileAssetStoreRepo } from '../db/repo/fileAssetStoreRepo'
 import { FileIngestionService } from './fileIngestionService'
 import type { FetchLike } from './urlProbe'
 import { canOpenBetterSqliteForSuite } from '../testUtils/betterSqliteGate'
@@ -20,14 +21,16 @@ function createHarness(ids: string[] = ['asset-1']) {
   const db = new BetterSqlite3(':memory:')
   loadSchema(db)
   const repo = new FileAssetRepo(db)
+  const storeRepo = new FileAssetStoreRepo(db)
   const idQueue = [...ids]
   const service = new FileIngestionService({
     fileAssetRepo: repo,
+    fileAssetStoreRepo: storeRepo,
     storageRootDir: rootDir,
     idFactory: () => idQueue.shift() ?? `asset-${Date.now()}`,
     now: () => 1234,
   })
-  return { db, repo, rootDir, service }
+  return { db, repo, storeRepo, rootDir, service }
 }
 
 function response(
@@ -72,14 +75,22 @@ describeIfBetterSqlite('FileIngestionService local files', () => {
         mime: 'text/markdown',
         sizeBytes: 6,
         storageBackend: 'local_fs',
-        storageUri: 'assets/original/as/asset-local.md',
+        storageUri: expect.stringMatching(/^assets\/blobs\/[a-f0-9]{2}\/[a-f0-9]{64}\.md$/),
         ingestStatus: 'stored',
         sourceMetaJson: {
           importStatus: 'ready',
           materializationStatus: 'stored',
+          origin: 'local_file',
+          originalPath: sourcePath,
+          blobId: expect.any(String),
         },
       })
-      expect(existsSync(path.join(h.rootDir, 'assets', 'original', 'as', 'asset-local.md'))).toBe(true)
+      expect(existsSync(path.join(h.rootDir, ...(asset?.storageUri ?? '').split('/')))).toBe(true)
+      expect(h.storeRepo.getCurrentRevision('asset-local')).toMatchObject({
+        assetId: 'asset-local',
+        blobId: expect.any(String),
+        cause: 'imported',
+      })
     } finally {
       rmSync(h.rootDir, { recursive: true, force: true })
     }
@@ -118,6 +129,46 @@ describeIfBetterSqlite('FileIngestionService local files', () => {
         processingStatus: 'unsupported',
         isNativeSupportedForMvp: false,
       })
+    } finally {
+      rmSync(h.rootDir, { recursive: true, force: true })
+    }
+  })
+
+  it('dedupes duplicate local file content by blob sha256 while keeping separate assets', async () => {
+    const h = createHarness(['asset-a', 'asset-b'])
+    try {
+      const firstPath = path.join(h.rootDir, 'first.txt')
+      const secondPath = path.join(h.rootDir, 'second.txt')
+      writeFileSync(firstPath, 'same body')
+      writeFileSync(secondPath, 'same body')
+
+      await h.service.ingestLocalFile({ filePath: firstPath })
+      await h.service.ingestLocalFile({ filePath: secondPath })
+
+      const first = h.repo.getById('asset-a')
+      const second = h.repo.getById('asset-b')
+      expect(first?.sha256).toBe(second?.sha256)
+      expect(first?.storageUri).toBe(second?.storageUri)
+      expect(h.storeRepo.listBindingsByAssetId('asset-a')).toEqual([])
+      const blobCount = h.db.prepare('SELECT COUNT(*) AS count FROM file_blobs').get() as { count: number }
+      expect(blobCount.count).toBe(1)
+      expect(h.storeRepo.getCurrentRevision('asset-a')?.blobId).toBe(h.storeRepo.getCurrentRevision('asset-b')?.blobId)
+    } finally {
+      rmSync(h.rootDir, { recursive: true, force: true })
+    }
+  })
+
+  it('normalizes unsafe display filenames without using them in storage paths', async () => {
+    const h = createHarness(['asset-safe'])
+    try {
+      const sourcePath = path.join(h.rootDir, '..unsafe name.md')
+      writeFileSync(sourcePath, 'safe')
+
+      await h.service.ingestLocalFile({ filePath: sourcePath })
+      const asset = h.repo.getById('asset-safe')
+
+      expect(asset?.filename).toBe('unsafe name.md')
+      expect(asset?.storageUri).toMatch(/^assets\/blobs\/[a-f0-9]{2}\/[a-f0-9]{64}\.md$/)
     } finally {
       rmSync(h.rootDir, { recursive: true, force: true })
     }
@@ -275,10 +326,23 @@ describeIfBetterSqlite('FileIngestionService URL link_and_file', () => {
       expect(asset).toMatchObject({
         sha256: expect.any(String),
         storageBackend: 'local_fs',
-        storageUri: 'assets/original/as/asset-url-file.txt',
+        storageUri: expect.stringMatching(/^assets\/blobs\/[a-f0-9]{2}\/[a-f0-9]{64}\.txt$/),
         ingestStatus: 'stored',
+        sourceMetaJson: {
+          origin: 'url',
+          originalUrl: 'https://example.test/readme.txt',
+          resolvedUrl: 'https://example.test/readme.txt',
+          retentionMode: 'link_and_file',
+          materializationStatus: 'stored',
+          blobId: expect.any(String),
+        },
       })
-      expect(existsSync(path.join(h.rootDir, 'assets', 'original', 'as', 'asset-url-file.txt'))).toBe(true)
+      expect(existsSync(path.join(h.rootDir, ...(asset?.storageUri ?? '').split('/')))).toBe(true)
+      expect(h.storeRepo.getCurrentRevision('asset-url-file')).toMatchObject({
+        assetId: 'asset-url-file',
+        blobId: expect.any(String),
+        cause: 'url_snapshot',
+      })
     } finally {
       rmSync(h.rootDir, { recursive: true, force: true })
     }
@@ -291,6 +355,7 @@ describeIfBetterSqlite('FileIngestionService URL link_and_file fallback', () => 
     try {
       const service = new FileIngestionService({
         fileAssetRepo: h.repo,
+        fileAssetStoreRepo: h.storeRepo,
         storageRootDir: h.rootDir,
         idFactory: () => 'asset-url-fallback',
         now: () => 1234,
@@ -432,6 +497,7 @@ function serviceWithFetch(
 ): FileIngestionService {
   return new FileIngestionService({
     fileAssetRepo: harness.repo,
+    fileAssetStoreRepo: harness.storeRepo,
     storageRootDir: harness.rootDir,
     idFactory: () => id,
     now: () => 1234,

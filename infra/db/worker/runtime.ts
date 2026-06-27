@@ -10,6 +10,7 @@ import { MessageRepo } from '../repo/messageRepo'
 import { MessageErrorRepo } from '../repo/messageErrorRepo'
 import { MessageAssetRepo } from '../repo/messageAssetRepo'
 import { FileAssetRepo } from '../repo/fileAssetRepo'
+import { FileAssetStoreRepo } from '../repo/fileAssetStoreRepo'
 import { FileDerivativeRepo } from '../repo/fileDerivativeRepo'
 import { DerivativeJobRepo } from '../repo/derivativeJobRepo'
 import { DfcOptionGenerationStateRepo } from '../repo/dfcOptionGenerationStateRepo'
@@ -181,6 +182,7 @@ export class DbWorkerRuntime {
   readonly messageErrorRepo: MessageErrorRepo
   readonly messageAssetRepo: MessageAssetRepo
   readonly fileAssetRepo: FileAssetRepo
+  readonly fileAssetStoreRepo: FileAssetStoreRepo
   readonly fileDerivativeRepo: FileDerivativeRepo
   readonly derivativeJobRepo: DerivativeJobRepo
   readonly dfcOptionGenerationStateRepo: DfcOptionGenerationStateRepo
@@ -292,6 +294,7 @@ export class DbWorkerRuntime {
     this.messageAssetRepo = new MessageAssetRepo(this.db, path.join(path.dirname(config.dbPath), 'assets', 'images'))
     this.fileStorageRootDir = path.dirname(config.dbPath)
     this.fileAssetRepo = new FileAssetRepo(this.db)
+    this.fileAssetStoreRepo = new FileAssetStoreRepo(this.db)
     this.fileDerivativeRepo = new FileDerivativeRepo(this.db)
     this.derivativeJobRepo = new DerivativeJobRepo(this.db)
     this.dfcOptionGenerationStateRepo = new DfcOptionGenerationStateRepo(this.db)
@@ -304,6 +307,7 @@ export class DbWorkerRuntime {
     this.conversationAttachmentService = new ConversationAttachmentService({
       db: this.db,
       fileAssetRepo: this.fileAssetRepo,
+      fileAssetStoreRepo: this.fileAssetStoreRepo,
       messageRepo: this.messageRepo,
       messageAttachmentRepo: this.messageAttachmentRepo,
       branchRepo: this.branchRepo,
@@ -318,6 +322,7 @@ export class DbWorkerRuntime {
     })
     this.fileIngestionService = new FileIngestionService({
       fileAssetRepo: this.fileAssetRepo,
+      fileAssetStoreRepo: this.fileAssetStoreRepo,
       storageRootDir: this.fileStorageRootDir,
     })
     const magikaRuntimeLoader = this.buildMagikaRuntimeLoader()

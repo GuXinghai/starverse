@@ -153,6 +153,38 @@ CREATE TABLE IF NOT EXISTS file_assets (
   deleted_at INTEGER
 );
 
+CREATE TABLE IF NOT EXISTS file_blobs (
+  id TEXT PRIMARY KEY,
+  sha256 TEXT NOT NULL UNIQUE,
+  size_bytes INTEGER NOT NULL,
+  mime TEXT,
+  storage_backend TEXT NOT NULL CHECK (storage_backend IN ('local_fs', 'remote_url')),
+  storage_uri TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS file_asset_revisions (
+  id TEXT PRIMARY KEY,
+  asset_id TEXT NOT NULL REFERENCES file_assets(id) ON DELETE CASCADE,
+  blob_id TEXT NOT NULL REFERENCES file_blobs(id),
+  parent_revision_id TEXT REFERENCES file_asset_revisions(id) ON DELETE SET NULL,
+  cause TEXT NOT NULL CHECK (cause IN ('imported', 'url_snapshot', 'converted', 'compressed', 'preview_generated', 'ai_edited', 'user_replaced')),
+  derived_from_asset_id TEXT REFERENCES file_assets(id) ON DELETE SET NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS file_asset_bindings (
+  id TEXT PRIMARY KEY,
+  asset_id TEXT NOT NULL REFERENCES file_assets(id) ON DELETE CASCADE,
+  scope TEXT NOT NULL CHECK (scope IN ('conversation', 'message', 'branch', 'project')),
+  conversation_id TEXT,
+  message_id TEXT,
+  branch_id TEXT,
+  project_id TEXT,
+  created_at INTEGER NOT NULL,
+  deleted_at INTEGER
+);
+
 CREATE TABLE IF NOT EXISTS file_derivatives (
   id TEXT PRIMARY KEY,
   parent_asset_id TEXT NOT NULL REFERENCES file_assets(id),
@@ -286,6 +318,14 @@ CREATE TABLE IF NOT EXISTS file_type_verdicts (
 
 CREATE INDEX IF NOT EXISTS idx_file_assets_sha256 ON file_assets(sha256);
 CREATE INDEX IF NOT EXISTS idx_file_assets_deleted ON file_assets(deleted_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_file_blobs_sha256 ON file_blobs(sha256);
+CREATE INDEX IF NOT EXISTS idx_file_asset_revisions_asset_created ON file_asset_revisions(asset_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_file_asset_revisions_blob ON file_asset_revisions(blob_id);
+CREATE INDEX IF NOT EXISTS idx_file_asset_bindings_asset_scope ON file_asset_bindings(asset_id, scope, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_file_asset_bindings_conversation ON file_asset_bindings(conversation_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_file_asset_bindings_message ON file_asset_bindings(message_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_file_asset_bindings_branch ON file_asset_bindings(branch_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_file_asset_bindings_project ON file_asset_bindings(project_id, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_file_derivatives_parent ON file_derivatives(parent_asset_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_derivative_jobs_asset_created ON derivative_jobs(asset_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_derivative_jobs_status_updated ON derivative_jobs(status, updated_at DESC);

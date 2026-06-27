@@ -256,6 +256,36 @@ describe('ui-app AppChatApp attachment entry flow', () => {
           deletedAt: null,
         }
       }
+      if (normalized.includes('snapshot-failed')) {
+        return {
+          id: assetId,
+          sha256: null,
+          filename: 'remote.pdf',
+          extension: 'pdf',
+          mime: 'application/pdf',
+          sizeBytes: 1,
+          assetKind: 'document',
+          sourceKind: 'url_import',
+          storageBackend: 'remote_url',
+          storageUri: 'https://example.com/remote.pdf',
+          ingestStatus: 'materialization_failed',
+          previewStatus: 'unsupported',
+          sourceMetaJson: {
+            originalUrl: 'https://example.com/remote.pdf',
+            resolvedUrl: 'https://example.com/remote.pdf',
+            retentionMode: 'link_and_file',
+            probeStatus: 'accessible',
+            materializationStatus: 'materialization_failed',
+            lastProbeAt: 1,
+            probeWarning: null,
+            contentTypeFromProbe: 'application/pdf',
+            contentLengthFromProbe: '1234',
+          },
+          createdAt: 1,
+          updatedAt: 1,
+          deletedAt: null,
+        }
+      }
       return {
         id: assetId,
         sha256: null,
@@ -1431,7 +1461,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith('fileIngestion.ingestUrl', expect.objectContaining({
         url: 'https://example.com/file.pdf',
-        retentionMode: 'link_only',
+        retentionMode: 'link_and_file',
       }))
       expect(invoke).toHaveBeenCalledWith('conversationDraft.addAttachment', expect.objectContaining({ assetId: 'asset-url', conversationId: 'c1' }))
       expect(screen.getByTestId('draft-attachment-strip')).toBeTruthy()
@@ -2542,6 +2572,41 @@ describe('ui-app AppChatApp attachment entry flow', () => {
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith('preview.ensure', expect.objectContaining({ assetId: 'asset-image-failed' }))
+    })
+  })
+
+  it('retries a failed URL snapshot from the attachment details dialog', async () => {
+    const user = userEvent.setup()
+    draftResponse = {
+      ...baseDraft(),
+      attachments: [makeDraftAttachment('asset-link-snapshot-failed', {
+        attachmentOrder: 0,
+        urlRetentionMode: 'link_and_file',
+      })],
+      attachedAssetIds: ['asset-link-snapshot-failed'],
+    }
+
+    render(AppChatApp)
+
+    await user.click(await screen.findByTestId('draft-attachment-card-asset-link-snapshot-failed'))
+    await screen.findByTestId('draft-attachment-details-dialog')
+    expect(screen.getByTestId('draft-attachment-details-retry')).toHaveTextContent('重试快照')
+    await user.click(screen.getByTestId('draft-attachment-details-retry'))
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith('fileIngestion.ingestUrl', expect.objectContaining({
+        url: 'https://example.com/remote.pdf',
+        retentionMode: 'link_and_file',
+      }))
+      expect(invoke).toHaveBeenCalledWith('conversationDraft.addAttachment', expect.objectContaining({
+        conversationId: 'c1',
+        assetId: 'asset-url',
+        urlRetentionMode: 'link_and_file',
+      }))
+      expect(invoke).toHaveBeenCalledWith('conversationDraft.removeAttachment', expect.objectContaining({
+        conversationId: 'c1',
+        assetId: 'asset-link-snapshot-failed',
+      }))
     })
   })
 

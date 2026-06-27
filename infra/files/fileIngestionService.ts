@@ -6,9 +6,10 @@ import type { AiPayloadKind, AssetKind, ProcessingStatus, SourceKind } from '../
 import { inferFileProfile, normalizeExtension } from '../../src/shared/files/fileRules'
 import type { CreateFileAssetInput, FileAssetRecord, FileIngestStatus, JsonObject } from '../db/types'
 import type { FileAssetRepo } from '../db/repo/fileAssetRepo'
+import type { FileAssetStoreRepo } from '../db/repo/fileAssetStoreRepo'
 import {
-  getOriginalAssetPath,
-  getOriginalAssetStorageUri,
+  getBlobPath,
+  getBlobStorageUri,
   LOCAL_FILE_STORAGE_BACKEND,
 } from './fileStoragePaths'
 import { probeUrl, type FetchLike, type UrlProbeResult, type UrlProbeStatus } from './urlProbe'
@@ -71,6 +72,7 @@ export type IngestUrlInput = Readonly<{
 
 export type FileIngestionServiceDeps = Readonly<{
   fileAssetRepo: Pick<FileAssetRepo, 'create'>
+  fileAssetStoreRepo?: Pick<FileAssetStoreRepo, 'createBlob' | 'createRevision' | 'getBlobBySha256'>
   storageRootDir: string
   fetch?: FetchLike
   idFactory?: () => string
@@ -139,23 +141,24 @@ export class FileIngestionService {
       ])
     }
 
-    const filename = path.basename(sourcePath)
+    const filename = sanitizeFilename(path.basename(sourcePath), 'local-file')
     const extension = normalizeExtension(filename)
     const mime = normalizeMime(input.mimeType) ?? mimeFromExtension(extension)
     const profile = inferFileProfile({ filename, extension, mimeType: mime })
     const warnings = localMetadataWarnings(profile.hasConflictingSignals)
     const assetId = this.idFactory()
-    const storageUri = getOriginalAssetStorageUri({ assetId, extension: profile.extension ?? extension })
-    const targetPath = getOriginalAssetPath({
-      rootDir: this.deps.storageRootDir,
-      assetId,
-      extension: profile.extension ?? extension,
-    })
 
     let sha256: string
+    let materialized: MaterializedBlob | null = null
     try {
       sha256 = await hashFile(sourcePath)
-      await this.copyLocalFileAtomically(sourcePath, targetPath)
+      materialized = await this.materializeLocalBlob({
+        sourcePath,
+        sha256,
+        sizeBytes: fileStats.size,
+        mime,
+        extension: profile.extension ?? extension,
+      })
     } catch {
       return resultFromProfile({
         success: false,
@@ -178,8 +181,24 @@ export class FileIngestionService {
         mime,
         sizeBytes: fileStats.size,
         sourceKind: input.sourceKind ?? 'local_upload',
-        storageUri,
+        storageUri: materialized.storageUri,
+        sourceMetaJson: {
+          importStatus: 'ready',
+          materializationStatus: 'stored',
+          origin: input.sourceKind === 'generated' ? 'ai_generated' : 'local_file',
+          originalPath: sourcePath,
+          blobId: materialized.blobId,
+          blobReused: materialized.reused,
+        },
       })
+      if (materialized.blobId) {
+        this.deps.fileAssetStoreRepo?.createRevision({
+          assetId: asset.id,
+          blobId: materialized.blobId,
+          cause: 'imported',
+          createdAt: this.now(),
+        })
+      }
       return resultFromProfile({
         success: true,
         sourceKind: asset.sourceKind,
@@ -191,7 +210,7 @@ export class FileIngestionService {
         failureReasonCode: null,
       })
     } catch (error) {
-      await rm(targetPath, { force: true })
+      if (materialized?.createdStoragePath) await rm(materialized.createdStoragePath, { force: true })
       return resultFromProfile({
         success: false,
         sourceKind: input.sourceKind ?? 'local_upload',
@@ -209,11 +228,12 @@ export class FileIngestionService {
     const originalUrl = String(input.url ?? '').trim()
     const parsedUrl = parseHttpUrl(originalUrl)
     if (!parsedUrl.ok) {
+      const safeUrl = redactUrlCredentials(originalUrl)
       return resultFromProfile({
         success: false,
         sourceKind: 'url_import',
         assetId: null,
-        profile: inferFileProfile({ filename: originalUrl }),
+        profile: inferFileProfile({ filename: safeUrl }),
         importStatus: 'failed',
         sendEligibilityHints: urlHints(false, false),
         warnings: [warning(parsedUrl.code, parsedUrl.message)],
@@ -221,8 +241,8 @@ export class FileIngestionService {
         retentionMode: input.retentionMode,
         probeStatus: 'rejected',
         materializationStatus: 'not_requested',
-        originalUrl,
-        resolvedUrl: originalUrl,
+        originalUrl: safeUrl,
+        resolvedUrl: safeUrl,
       })
     }
 
@@ -310,6 +330,7 @@ export class FileIngestionService {
     sizeBytes: number
     sourceKind: Extract<SourceKind, 'local_upload' | 'generated'>
     storageUri: string
+    sourceMetaJson: JsonObject
   }>): FileAssetRecord {
     return this.finalizeIngestedAsset({
       id: input.assetId,
@@ -322,10 +343,7 @@ export class FileIngestionService {
       storageBackend: LOCAL_FILE_STORAGE_BACKEND,
       storageUri: input.storageUri,
       ingestStatus: 'stored',
-      sourceMetaJson: {
-        importStatus: 'ready',
-        materializationStatus: 'stored',
-      },
+      sourceMetaJson: input.sourceMetaJson,
     })
   }
 
@@ -371,8 +389,8 @@ export class FileIngestionService {
         retentionMode: input.retentionMode,
         probeStatus: input.probe.probeStatus,
         materializationStatus: input.materializationStatus,
-        originalUrl: input.probe.originalUrl,
-        resolvedUrl: input.probe.resolvedUrl,
+        originalUrl: redactUrlCredentials(input.probe.originalUrl),
+        resolvedUrl: redactUrlCredentials(input.probe.resolvedUrl),
       })
     } catch (error) {
       return resultFromProfile({
@@ -387,8 +405,8 @@ export class FileIngestionService {
         retentionMode: input.retentionMode,
         probeStatus: input.probe.probeStatus,
         materializationStatus: input.materializationStatus,
-        originalUrl: input.probe.originalUrl,
-        resolvedUrl: input.probe.resolvedUrl,
+        originalUrl: redactUrlCredentials(input.probe.originalUrl),
+        resolvedUrl: redactUrlCredentials(input.probe.resolvedUrl),
       })
     }
   }
@@ -406,14 +424,14 @@ export class FileIngestionService {
 
     const sha256 = createHash('sha256').update(bytes).digest('hex')
     const assetId = this.idFactory()
-    const storageUri = getOriginalAssetStorageUri({ assetId, extension: input.extension })
-    const targetPath = getOriginalAssetPath({
-      rootDir: this.deps.storageRootDir,
-      assetId,
-      extension: input.extension,
-    })
+    let materialized: MaterializedBlob | null = null
     try {
-      await this.writeBufferAtomically(targetPath, bytes)
+      materialized = await this.materializeBufferBlob({
+        bytes,
+        sha256,
+        mime: input.mime,
+        extension: input.extension,
+      })
       const asset = this.finalizeIngestedAsset({
         id: assetId,
         sha256,
@@ -423,15 +441,25 @@ export class FileIngestionService {
         sizeBytes: bytes.byteLength,
         sourceKind: 'url_import',
         storageBackend: LOCAL_FILE_STORAGE_BACKEND,
-        storageUri,
+        storageUri: materialized.storageUri,
         ingestStatus: 'stored',
         sourceMetaJson: urlSourceMeta({
           probe,
           retentionMode: input.retentionMode,
           importStatus: 'ready',
           materializationStatus: 'stored',
+          blobId: materialized.blobId,
+          blobReused: materialized.reused,
         }),
       })
+      if (materialized.blobId) {
+        this.deps.fileAssetStoreRepo?.createRevision({
+          assetId: asset.id,
+          blobId: materialized.blobId,
+          cause: 'url_snapshot',
+          createdAt: this.now(),
+        })
+      }
       return resultFromProfile({
         success: true,
         sourceKind: 'url_import',
@@ -444,11 +472,11 @@ export class FileIngestionService {
         retentionMode: input.retentionMode,
         probeStatus: probe.probeStatus,
         materializationStatus: 'stored',
-        originalUrl: probe.originalUrl,
-        resolvedUrl: probe.resolvedUrl,
+        originalUrl: redactUrlCredentials(probe.originalUrl),
+        resolvedUrl: redactUrlCredentials(probe.resolvedUrl),
       })
     } catch {
-      await rm(targetPath, { force: true })
+      if (materialized?.createdStoragePath) await rm(materialized.createdStoragePath, { force: true })
       return this.createUrlMaterializationFailureResult(probe, input)
     }
   }
@@ -476,11 +504,91 @@ export class FileIngestionService {
       materializationStatus: 'materialization_failed',
       warnings: [
         ...input.warnings,
-        warning('url_materialization_failed', 'Remote file could not be saved locally; URL reference remains retained.'),
+        warning('url_materialization_failed', 'Remote file snapshot could not be saved locally; retry snapshot before sending.'),
       ],
     })
   }
+
+  private async materializeLocalBlob(input: Readonly<{
+    sourcePath: string
+    sha256: string
+    sizeBytes: number
+    mime: string | null
+    extension: string | null
+  }>): Promise<MaterializedBlob> {
+    const existing = this.deps.fileAssetStoreRepo?.getBlobBySha256(input.sha256) ?? null
+    if (existing) {
+      return {
+        storageUri: existing.storageUri,
+        blobId: existing.id,
+        reused: true,
+        createdStoragePath: null,
+      }
+    }
+
+    const storageUri = getBlobStorageUri({ sha256: input.sha256, extension: input.extension })
+    const targetPath = getBlobPath({ rootDir: this.deps.storageRootDir, sha256: input.sha256, extension: input.extension })
+
+    await this.copyLocalFileAtomically(input.sourcePath, targetPath)
+    const blob = this.deps.fileAssetStoreRepo?.createBlob({
+      sha256: input.sha256,
+      sizeBytes: input.sizeBytes,
+      mime: input.mime,
+      storageBackend: LOCAL_FILE_STORAGE_BACKEND,
+      storageUri,
+      createdAt: this.now(),
+    }) ?? null
+    return {
+      storageUri,
+      blobId: blob?.id ?? null,
+      reused: false,
+      createdStoragePath: targetPath,
+    }
+  }
+
+  private async materializeBufferBlob(input: Readonly<{
+    bytes: Uint8Array
+    sha256: string
+    mime: string | null
+    extension: string | null
+  }>): Promise<MaterializedBlob> {
+    const existing = this.deps.fileAssetStoreRepo?.getBlobBySha256(input.sha256) ?? null
+    if (existing) {
+      return {
+        storageUri: existing.storageUri,
+        blobId: existing.id,
+        reused: true,
+        createdStoragePath: null,
+      }
+    }
+
+    const storageUri = getBlobStorageUri({ sha256: input.sha256, extension: input.extension })
+    const targetPath = getBlobPath({ rootDir: this.deps.storageRootDir, sha256: input.sha256, extension: input.extension })
+
+    await this.writeBufferAtomically(targetPath, input.bytes)
+    const blob = this.deps.fileAssetStoreRepo?.createBlob({
+      sha256: input.sha256,
+      sizeBytes: input.bytes.byteLength,
+      mime: input.mime,
+      storageBackend: LOCAL_FILE_STORAGE_BACKEND,
+      storageUri,
+      createdAt: this.now(),
+    }) ?? null
+    return {
+      storageUri,
+      blobId: blob?.id ?? null,
+      reused: false,
+      createdStoragePath: targetPath,
+    }
+  }
 }
+
+type MaterializedBlob = Readonly<{
+  storageUri: string
+  blobId: string | null
+  reused: boolean
+  createdStoragePath: string | null
+}>
 
 async function copyFileAtomically(sourcePath: string, targetPath: string): Promise<void> {
   await mkdir(path.dirname(targetPath), { recursive: true })
@@ -593,7 +701,7 @@ function urlHints(canUseUrlRef: boolean, canUseLocalFile: boolean): SendEligibil
     canUseInlinePayload: canUseLocalFile,
     urlReferenceMayStillBeUsable: canUseUrlRef,
     notes: canUseUrlRef && !canUseLocalFile
-      ? ['Current device did not save a file copy; URL reference remains retained for later send adaptation.']
+      ? ['Current device did not save a file copy; retry snapshot before sending as a file asset.']
       : [],
   }
 }
@@ -603,10 +711,13 @@ function urlSourceMeta(input: Readonly<{
   retentionMode: UrlRetentionMode
   importStatus: FileImportStatus
   materializationStatus: MaterializationStatus
+  blobId?: string | null
+  blobReused?: boolean
 }>): JsonObject {
-  return {
-    originalUrl: input.probe.originalUrl,
-    resolvedUrl: input.probe.resolvedUrl,
+  const meta: JsonObject = {
+    origin: 'url',
+    originalUrl: redactUrlCredentials(input.probe.originalUrl),
+    resolvedUrl: redactUrlCredentials(input.probe.resolvedUrl),
     retentionMode: input.retentionMode,
     importStatus: input.importStatus,
     probeStatus: input.probe.probeStatus,
@@ -616,6 +727,9 @@ function urlSourceMeta(input: Readonly<{
     contentTypeFromProbe: input.probe.contentType,
     contentLengthFromProbe: input.probe.contentLength,
   }
+  if (input.blobId) meta.blobId = input.blobId
+  if (input.blobReused !== undefined) meta.blobReused = input.blobReused
+  return meta
 }
 
 function ingestStatusForUrlLink(importStatus: FileImportStatus): FileIngestStatus {
@@ -629,7 +743,7 @@ function buildProbeWarnings(probe: UrlProbeResult): FileIngestionWarning[] {
   return [
     warning(
       probe.probeStatus,
-      'Current device could not complete URL probing; the URL reference remains retained for later send adaptation.'
+      'Current device could not complete URL probing; retry snapshot before sending as a file asset.'
     ),
   ]
 }
@@ -640,16 +754,36 @@ function parseHttpUrl(value: string): Readonly<{ ok: true; url: string } | { ok:
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
       return { ok: false, code: 'url_scheme_not_allowed', message: 'Only http and https URLs are allowed.' }
     }
+    if (url.username || url.password) {
+      return { ok: false, code: 'url_credentials_not_allowed', message: 'URLs with embedded credentials are not allowed.' }
+    }
     return { ok: true, url: url.toString() }
   } catch {
     return { ok: false, code: 'invalid_url', message: 'URL syntax is invalid.' }
   }
 }
 
+function redactUrlCredentials(value: string): string {
+  try {
+    const url = new URL(value)
+    if (url.username || url.password) {
+      url.username = ''
+      url.password = ''
+    }
+    return url.toString()
+  } catch {
+    return String(value ?? '')
+  }
+}
+
 function filenameFromUrl(value: string): string {
   const pathname = urlPathname(value)
   const name = pathname.split('/').filter(Boolean).pop()
-  return decodeURIComponent(name || 'remote-file')
+  try {
+    return sanitizeFilename(decodeURIComponent(name || 'remote-file'), 'remote-file')
+  } catch {
+    return sanitizeFilename(name || 'remote-file', 'remote-file')
+  }
 }
 
 function urlPathname(value: string): string {
@@ -683,4 +817,10 @@ function mimeFromExtension(extension: string | null): string | null {
     default:
       return null
   }
+}
+
+function sanitizeFilename(value: string, fallback: string): string {
+  const base = path.basename(String(value ?? '').trim()).replace(/[\u0000-\u001f<>:"/\\|?*]+/g, '_')
+  const collapsed = base.replace(/\s+/g, ' ').replace(/^\.+/, '').trim()
+  return collapsed || fallback
 }

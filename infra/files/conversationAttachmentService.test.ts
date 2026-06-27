@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { ConversationAttachmentService } from './conversationAttachmentService'
 import { FileAssetRepo } from '../db/repo/fileAssetRepo'
+import { FileAssetStoreRepo } from '../db/repo/fileAssetStoreRepo'
 import { MessageAttachmentRepo } from '../db/repo/messageAttachmentRepo'
 import { MessageRepo } from '../db/repo/messageRepo'
 import { BranchRepo } from '../db/repo/branchRepo'
@@ -29,6 +30,7 @@ function createHarness(input: Readonly<{ storageRootDir?: string }> = {}) {
   const db = new BetterSqlite3(':memory:')
   loadSchema(db)
   const fileAssetRepo = new FileAssetRepo(db)
+  const fileAssetStoreRepo = new FileAssetStoreRepo(db)
   const messageRepo = new MessageRepo(db)
   const messageAttachmentRepo = new MessageAttachmentRepo(db)
   const branchRepo = new BranchRepo(db)
@@ -36,6 +38,7 @@ function createHarness(input: Readonly<{ storageRootDir?: string }> = {}) {
   const service = new ConversationAttachmentService({
     db,
     fileAssetRepo,
+    fileAssetStoreRepo,
     messageRepo,
     messageAttachmentRepo,
     branchRepo,
@@ -43,7 +46,7 @@ function createHarness(input: Readonly<{ storageRootDir?: string }> = {}) {
     storageRootDir: input.storageRootDir,
     now: () => 1000,
   })
-  return { db, service, fileAssetRepo, messageRepo, messageAttachmentRepo, branchRepo }
+  return { db, service, fileAssetRepo, fileAssetStoreRepo, messageRepo, messageAttachmentRepo, branchRepo }
 }
 
 function createAsset(repo: FileAssetRepo, id: string, overrides: Partial<Parameters<FileAssetRepo['create']>[0]> = {}) {
@@ -137,6 +140,14 @@ describeIfBetterSqlite('ConversationAttachmentService drafts', () => {
       aiPayloadKind: 'text',
       processingStatus: 'native_supported',
     })
+    expect(h.fileAssetStoreRepo.listBindingsByAssetId('asset-1')).toEqual([
+      expect.objectContaining({
+        assetId: 'asset-1',
+        scope: 'conversation',
+        conversationId: 'c1',
+        deletedAt: null,
+      }),
+    ])
   })
 
   it('removes draft attachments without deleting the asset and marks detached ownership', () => {
@@ -157,6 +168,13 @@ describeIfBetterSqlite('ConversationAttachmentService drafts', () => {
     })
     expect(h.fileAssetRepo.getById('asset-1')?.deletedAt).toBeNull()
     expect(h.service.restoreDraft({ conversationId: 'c1' }).attachedAssetIds).toEqual([])
+    expect(h.fileAssetStoreRepo.listBindingsByAssetId('asset-1')).toEqual([
+      expect.objectContaining({
+        scope: 'conversation',
+        conversationId: 'c1',
+        deletedAt: 1000,
+      }),
+    ])
   })
 
   it('keeps draft attachments when user message creation fails', () => {
@@ -198,6 +216,10 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
     expect(h.service.restoreDraft({ conversationId: 'c1' }).attachedAssetIds).toEqual([])
     expect(h.service.listMessageAttachments(result.message.id)).toEqual([
       expect.objectContaining({ assetId: 'asset-1', messageId: result.message.id }),
+    ])
+    expect(h.fileAssetStoreRepo.listBindingsByAssetId('asset-1')).toEqual([
+      expect.objectContaining({ scope: 'conversation', conversationId: 'c1', deletedAt: null }),
+      expect.objectContaining({ scope: 'message', messageId: result.message.id, deletedAt: null }),
     ])
     expect(h.service.getAssetOwnership({ assetId: 'asset-1' })).toMatchObject({
       ownerKind: 'message',
@@ -284,6 +306,10 @@ describeIfBetterSqlite('ConversationAttachmentService message ownership', () => 
       lifecycleStatus: 'abandoned',
       reason: 'user_discarded',
     })
+    expect(h.fileAssetStoreRepo.listBindingsByAssetId('asset-1')).toEqual([
+      expect.objectContaining({ scope: 'conversation', conversationId: 'c1', deletedAt: null }),
+      expect.objectContaining({ scope: 'message', messageId: message.id, deletedAt: 1000 }),
+    ])
     expect(h.fileAssetRepo.getById('asset-1')?.ingestStatus).toBe('stored')
   })
 

@@ -270,6 +270,22 @@ export type FileIngestStatus =
   | 'deleted'
 export type FilePreviewStatus = 'not_requested' | 'pending' | 'ready' | 'failed'
 export type FileDerivativeStatus = 'pending' | 'ready' | 'failed' | 'deleted'
+export type FileAssetOrigin =
+  | 'local_file'
+  | 'url'
+  | 'ai_generated'
+  | 'chat_added'
+  | 'project_added'
+  | 'derived'
+export type AssetRevisionCause =
+  | 'imported'
+  | 'url_snapshot'
+  | 'converted'
+  | 'compressed'
+  | 'preview_generated'
+  | 'ai_edited'
+  | 'user_replaced'
+export type AssetBindingScope = 'conversation' | 'message' | 'branch' | 'project'
 export type DerivativeJobStatus = 'pending' | 'running' | 'ready' | 'failed' | 'cancelled'
 export type DfcOptionGenerationStatus = 'pending' | 'running' | 'ready' | 'failed' | 'stale' | 'blocked'
 export type DfcOptionGenerationTargetKind = 'plain_text' | 'markdown' | 'code' | 'table_markdown' | 'pdf_attachment'
@@ -381,6 +397,79 @@ export type FileAssetPhysicalCleanupPlan = Readonly<{
   assetId: string
   storageUris: string[]
   physicalDeletePerformed: false
+}>
+
+export type FileBlobRecord = Readonly<{
+  id: string
+  sha256: string
+  sizeBytes: number
+  mime: string | null
+  storageBackend: FileStorageBackend
+  storageUri: string
+  createdAt: number
+}>
+
+export type CreateFileBlobInput = Readonly<{
+  id?: string
+  sha256: string
+  sizeBytes: number
+  mime?: string | null
+  storageBackend?: FileStorageBackend
+  storageUri: string
+  createdAt?: number
+}>
+
+export type AssetRevisionRecord = Readonly<{
+  id: string
+  assetId: string
+  blobId: string
+  parentRevisionId: string | null
+  cause: AssetRevisionCause
+  derivedFromAssetId: string | null
+  createdAt: number
+}>
+
+export type CreateAssetRevisionInput = Readonly<{
+  id?: string
+  assetId: string
+  blobId: string
+  parentRevisionId?: string | null
+  cause: AssetRevisionCause
+  derivedFromAssetId?: string | null
+  createdAt?: number
+}>
+
+export type AssetBindingRecord = Readonly<{
+  id: string
+  assetId: string
+  scope: AssetBindingScope
+  conversationId: string | null
+  messageId: string | null
+  branchId: string | null
+  projectId: string | null
+  createdAt: number
+  deletedAt: number | null
+}>
+
+export type CreateAssetBindingInput = Readonly<{
+  id?: string
+  assetId: string
+  scope: AssetBindingScope
+  conversationId?: string | null
+  messageId?: string | null
+  branchId?: string | null
+  projectId?: string | null
+  createdAt?: number
+}>
+
+export type DeleteAssetBindingInput = Readonly<{
+  assetId: string
+  scope: AssetBindingScope
+  conversationId?: string | null
+  messageId?: string | null
+  branchId?: string | null
+  projectId?: string | null
+  deletedAt?: number
 }>
 
 export type FileDerivativeRecord = Readonly<{

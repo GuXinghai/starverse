@@ -40,7 +40,7 @@ export function resolveManagedStoragePath(
     return invalidStorageUri('Storage URI cannot contain relative path traversal segments.')
   }
   if (!isAllowedStorageUriPrefix(segments)) {
-    return invalidStorageUri('Storage URI must be under assets/original or assets/derived.')
+    return invalidStorageUri('Storage URI must be under assets/blobs, assets/original, or assets/derived.')
   }
 
   const root = path.resolve(String(storageRootDir ?? '').trim())
@@ -66,7 +66,7 @@ function isAllowedStorageUriPrefix(segments: string[]): boolean {
   return (
     segments.length >= 3 &&
     segments[0] === 'assets' &&
-    (segments[1] === 'original' || segments[1] === 'derived')
+    (segments[1] === 'blobs' || segments[1] === 'original' || segments[1] === 'derived')
   )
 }
 

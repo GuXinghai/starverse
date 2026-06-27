@@ -378,6 +378,16 @@ export class SendPlanService {
     if (attachment.fileAsset.deletedAt != null || attachment.fileAsset.ingestStatus === 'deleted') {
       return excludedPlan(attachment, 'asset_soft_deleted', 'failed', true, ['Attachment asset has been soft deleted.'], lineageGate.lineage)
     }
+    const urlSnapshotGate = evaluateUrlSnapshotGate(attachment)
+    if (urlSnapshotGate.blocked) {
+      return blockedPlan(
+        attachment,
+        urlSnapshotGate.displayStatus,
+        urlSnapshotGate.reasonCode,
+        urlSnapshotGate.notes,
+        lineageGate.lineage
+      )
+    }
     if (attachment.dfcManaged) {
       const dfcBlocked = blockedPlanFromDfcDecision(attachment, lineageGate.lineage)
       if (dfcBlocked) return dfcBlocked
@@ -455,6 +465,16 @@ export class SendPlanService {
     }
     if (attachment.fileAsset.deletedAt != null || attachment.fileAsset.ingestStatus === 'deleted') {
       return excludedPlan(attachment, 'asset_soft_deleted', 'failed', true, ['History attachment asset has been soft deleted.'], lineageGate.lineage)
+    }
+    const urlSnapshotGate = evaluateUrlSnapshotGate(attachment)
+    if (urlSnapshotGate.blocked) {
+      return blockedPlan(
+        attachment,
+        urlSnapshotGate.displayStatus,
+        urlSnapshotGate.reasonCode,
+        urlSnapshotGate.notes,
+        lineageGate.lineage
+      )
     }
     if (attachment.dfcManaged) {
       const dfcBlocked = blockedPlanFromDfcDecision(attachment, lineageGate.lineage)
@@ -1199,6 +1219,40 @@ function evaluateAttachmentDetectionGate(
     displayStatus: 'detection_required',
     reasonCode: 'file_type_detection_required',
     notes: [`Attachment ${attachment.assetId} requires file type detection before send planning.`],
+  }
+}
+
+function evaluateUrlSnapshotGate(
+  attachment: CollectedAttachmentInput
+): Readonly<{ blocked: boolean; displayStatus: AttachmentDisplayStatus; reasonCode: string; notes: string[] }> {
+  const asset = attachment.fileAsset
+  if (!asset || asset.sourceKind !== 'url_import') {
+    return { blocked: false, displayStatus: 'ready', reasonCode: '', notes: [] }
+  }
+  const meta = parseUrlMeta(asset)
+  const retentionMode = meta.retentionMode ?? 'link_and_file'
+  if (retentionMode !== 'link_and_file') {
+    return { blocked: false, displayStatus: 'ready', reasonCode: '', notes: [] }
+  }
+  if (hasStoredLocalCopy(asset) && meta.materializationStatus === 'stored') {
+    return { blocked: false, displayStatus: 'ready', reasonCode: '', notes: [] }
+  }
+  const pending = INTERMEDIATE_INGEST_STATUSES.has(asset.ingestStatus)
+    || meta.materializationStatus === 'materializing'
+    || meta.probeStatus === 'probing'
+  if (pending) {
+    return {
+      blocked: true,
+      displayStatus: 'parsing',
+      reasonCode: 'url_snapshot_pending',
+      notes: [`Attachment ${attachment.assetId} URL snapshot is still pending. Retry snapshot before sending.`],
+    }
+  }
+  return {
+    blocked: true,
+    displayStatus: 'failed',
+    reasonCode: 'url_snapshot_failed',
+    notes: [`Attachment ${attachment.assetId} URL snapshot is not ready. Retry snapshot before sending.`],
   }
 }
 
@@ -2219,6 +2273,7 @@ function hasStoredLocalCopy(asset: FileAssetRecord): boolean {
 function parseUrlMeta(asset: FileAssetRecord): Readonly<{
   originalUrl: string | null
   resolvedUrl: string | null
+  retentionMode: string | null
   probeStatus: string | null
   materializationStatus: string | null
 }> {
@@ -2230,6 +2285,7 @@ function parseUrlMeta(asset: FileAssetRecord): Readonly<{
   return {
     originalUrl: readString('originalUrl'),
     resolvedUrl: readString('resolvedUrl'),
+    retentionMode: readString('retentionMode'),
     probeStatus: readString('probeStatus'),
     materializationStatus: readString('materializationStatus'),
   }
