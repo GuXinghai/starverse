@@ -3,6 +3,10 @@ import {
   streamLMStudioTextChatAsDomainEvents,
   type LMStudioTextChatConfig,
 } from '@/next/live/lmStudioTextChat'
+import {
+  streamOllamaTextChatAsDomainEvents,
+  type OllamaTextChatConfig,
+} from '@/next/live/ollamaTextChat'
 import { streamOpenAIResponsesTextChatAsDomainEvents } from '@/next/live/openAIResponsesTextChat'
 import { streamGoogleAIStudioTextChatAsDomainEvents } from '@/next/live/googleAIStudioTextChat'
 import { streamAnthropicTextChatAsDomainEvents } from '@/next/live/anthropicTextChat'
@@ -35,6 +39,7 @@ export type ProviderRuntimeTextSendPreflightResult =
 
 export type ExperimentalRuntimeTextModelIds = Readonly<{
   lmStudio: string
+  ollama: string
   localEndpoint: string
   openAIResponses: string
   googleAIStudio: string
@@ -51,6 +56,7 @@ export type ExperimentalRuntimeTextEventInput = Readonly<{
   contextMessages: any[]
   signal: AbortSignal
   lmStudioConfig?: LMStudioTextChatConfig
+  ollamaConfig?: OllamaTextChatConfig
   localEndpointUrl?: string
 }>
 
@@ -83,6 +89,8 @@ export function getExperimentalRuntimeTextRequestPrefix(providerKey: Experimenta
       return 'local_req'
     case 'lm_studio':
       return 'lm_studio_req'
+    case 'ollama_local':
+      return 'ollama_req'
     case 'openai_responses':
       return 'openai_responses_req'
     case 'google_ai_studio':
@@ -101,6 +109,8 @@ export function getExperimentalRuntimeTextModelId(
   switch (providerKey) {
     case 'lm_studio':
       return modelIds.lmStudio.trim()
+    case 'ollama_local':
+      return modelIds.ollama.trim()
     case 'local_endpoint':
       return modelIds.localEndpoint.trim()
     case 'openai_responses':
@@ -119,6 +129,8 @@ export function getExperimentalRuntimeTextReasoningArtifactProvider(
 ): ReasoningArtifactProvider | undefined {
   switch (providerKey) {
     case 'lm_studio':
+      return undefined
+    case 'ollama_local':
       return undefined
     case 'local_endpoint':
       return undefined
@@ -153,6 +165,28 @@ export function createExperimentalRuntimeTextEvents(
           chatMode: 'openai_compatible',
           openAICompatible: { basePath: '/v1', preferredEndpoint: 'chat_completions' },
           nativeRest: { basePath: '/api/v1' },
+        },
+        model: input.modelId,
+        userText: input.userText,
+        contextMessages: input.contextMessages,
+        signal: input.signal,
+      })
+    case 'ollama_local':
+      return streamOllamaTextChatAsDomainEvents({
+        requestId: input.requestId,
+        assistantMessageId: input.assistantMessageId,
+        config: input.ollamaConfig ?? {
+          providerKey: 'ollama_local',
+          endpointUrl: '',
+          nativeControls: {
+            diagnosticsEnabled: true,
+            manualLoadUnloadEnabled: true,
+            autoLoadBeforeSendEnabled: false,
+            autoUnloadAfterSendEnabled: false,
+          },
+          chatMode: 'native_rest',
+          nativeRest: { basePath: '/api', preferredEndpoint: 'chat' },
+          openAICompatible: { basePath: '/v1', preferredEndpoint: 'chat_completions' },
         },
         model: input.modelId,
         userText: input.userText,

@@ -91,6 +91,27 @@ describe('CurrentRuntimeSelection', () => {
     })
   })
 
+  it('selects Ollama Local from its explicit experimental flag', () => {
+    expect(deriveCurrentRuntimeSelection({
+      ollama: {
+        selected: true,
+        endpointId: 'http://127.0.0.1:11434',
+        profileId: 'ollama_native_rest_chat_v1',
+        modelKey: 'llama3.2:latest',
+        credentialStatus: 'not_required',
+      },
+    })).toMatchObject({
+      state: 'selected',
+      providerKey: 'ollama_local',
+      endpointId: 'http://127.0.0.1:11434',
+      profileId: 'ollama_native_rest_chat_v1',
+      modelKey: 'llama3.2:latest',
+      source: 'legacy_experimental_flag',
+      mode: 'experimental',
+      credentialStatus: 'not_required',
+    })
+  })
+
   it('selects OpenAI Responses from its explicit experimental flag', () => {
     expect(deriveCurrentRuntimeSelection({
       openAIResponses: { selected: true, modelKey: 'gpt-4.1-mini' },
@@ -147,10 +168,23 @@ describe('CurrentRuntimeSelection', () => {
       anthropic: { selected: true, modelKey: 'claude-sonnet-4-5' },
       deepSeek: { selected: true, modelKey: 'deepseek-chat' },
       lmStudio: { selected: true, modelKey: 'openai/gpt-oss-20b' },
+      ollama: { selected: true, modelKey: 'llama3.2:latest' },
     })).toMatchObject({
       state: 'selected',
       providerKey: 'deepseek',
       source: 'legacy_experimental_flag',
+    })
+  })
+
+  it('prioritizes Ollama above LM Studio and the older generic LocalEndpoint flag', () => {
+    expect(deriveCurrentRuntimeSelection({
+      localEndpoint: { selected: true, modelKey: 'local-model' },
+      lmStudio: { selected: true, modelKey: 'openai/gpt-oss-20b' },
+      ollama: { selected: true, modelKey: 'llama3.2:latest' },
+    })).toMatchObject({
+      state: 'selected',
+      providerKey: 'ollama_local',
+      modelKey: 'llama3.2:latest',
     })
   })
 
@@ -226,6 +260,22 @@ describe('RuntimeCapabilitySummaryLite', () => {
       source: 'lm_studio_local',
     })
     expect(cap.warnings.join('\n')).toContain('Native REST load/unload controls')
+  })
+
+  it('summarizes Ollama as a separate conservative local provider', () => {
+    const cap = getRuntimeCapabilitySummaryLite(selected('ollama_local', 'llama3.2:latest'))
+    expect(cap).toMatchObject({
+      textChat: true,
+      streamingText: 'probe_required',
+      attachments: 'blocked',
+      webSearch: 'blocked',
+      tools: 'blocked',
+      reasoningArtifacts: 'filtered',
+      imageGeneration: 'blocked',
+      structuredOutput: 'blocked',
+      source: 'ollama_local',
+    })
+    expect(cap.warnings.join('\n')).toContain('thinking metadata is filtered')
   })
 
   it('summarizes unset runtime as blocked', () => {
@@ -370,6 +420,7 @@ describe('resolveRuntimeTextSendRoute', () => {
     'anthropic_messages',
     'deepseek',
     'lm_studio',
+    'ollama_local',
     'local_endpoint',
   ] as const)('routes %s to experimental text path', (providerKey) => {
     expect(resolveRuntimeTextSendRoute(selected(providerKey))).toEqual({

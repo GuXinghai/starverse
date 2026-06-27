@@ -6,6 +6,7 @@ import AppChatApp from './AppChatApp.vue'
 
 const streamOpenRouterChatCallArgs: any[] = []
 const localEndpointTextChatCallArgs: any[] = []
+const ollamaTextChatCallArgs: any[] = []
 const openAIResponsesTextChatCallArgs: any[] = []
 const googleAIStudioTextChatCallArgs: any[] = []
 const anthropicTextChatCallArgs: any[] = []
@@ -76,6 +77,18 @@ vi.mock('@/next/live/localEndpointTextChat', () => {
   return { streamLocalEndpointTextChatAsDomainEvents }
 })
 
+vi.mock('@/next/live/ollamaTextChat', () => {
+  async function* streamOllamaTextChatAsDomainEvents(options: any) {
+    ollamaTextChatCallArgs.push(options)
+    const assistantMessageId = String(options?.assistantMessageId ?? 'a1')
+    yield { type: 'MetaDelta', meta: { id: 'ollama_gen_1', model: String(options?.model ?? 'llama3.2:latest'), provider: 'ollama_local' } }
+    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'ollama ' }
+    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'hi' }
+    yield { type: 'StreamDone' }
+  }
+  return { streamOllamaTextChatAsDomainEvents }
+})
+
 vi.mock('@/next/live/openAIResponsesTextChat', () => {
   async function* streamOpenAIResponsesTextChatAsDomainEvents(options: any) {
     openAIResponsesTextChatCallArgs.push(options)
@@ -135,6 +148,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     vi.useFakeTimers()
     streamOpenRouterChatCallArgs.length = 0
     localEndpointTextChatCallArgs.length = 0
+    ollamaTextChatCallArgs.length = 0
     openAIResponsesTextChatCallArgs.length = 0
     googleAIStudioTextChatCallArgs.length = 0
     anthropicTextChatCallArgs.length = 0
@@ -142,6 +156,12 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.ollamaTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.ollama.endpointUrl')
+    globalThis.localStorage?.removeItem('starverse.ollama.model')
+    globalThis.localStorage?.removeItem('starverse.ollama.chatMode')
+    globalThis.localStorage?.removeItem('starverse.ollama.nativeRest.preferredEndpoint')
+    globalThis.localStorage?.removeItem('starverse.ollama.openAICompatible.preferredEndpoint')
     globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
     globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.enabled')
@@ -603,6 +623,46 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     })
     expect(localEndpointTextChatCallArgs[0].currentUserContentBlocks).toBeUndefined()
     expect(invoke).toHaveBeenCalledWith('branch.beginTurn', expect.objectContaining({ branchId: 'b1', userBody: 'local ping' }))
+    expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 2 }))
+    expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a1', status: 'final' }))
+    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
+  })
+
+  it('routes explicit Ollama Local text chat through the normal transcript without OpenRouter or Generic send', async () => {
+    globalThis.localStorage?.setItem('starverse.ollamaTextChat.enabled', '1')
+    globalThis.localStorage?.setItem('starverse.ollama.endpointUrl', 'http://127.0.0.1:11434')
+    globalThis.localStorage?.setItem('starverse.ollama.model', 'llama3.2:latest')
+    globalThis.localStorage?.setItem('starverse.ollama.chatMode', 'native_rest')
+    globalThis.localStorage?.setItem('starverse.ollama.nativeRest.preferredEndpoint', 'chat')
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'ollama ping')
+    await user.click(sendButton())
+
+    await screen.findByText('ollama ping')
+    await screen.findByText('ollama hi')
+    await vi.runAllTimersAsync()
+
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
+    expect(localEndpointTextChatCallArgs).toHaveLength(0)
+    expect(ollamaTextChatCallArgs).toHaveLength(1)
+    expect(ollamaTextChatCallArgs[0]).toMatchObject({
+      config: {
+        providerKey: 'ollama_local',
+        endpointUrl: 'http://127.0.0.1:11434',
+        chatMode: 'native_rest',
+        nativeRest: { basePath: '/api', preferredEndpoint: 'chat' },
+      },
+      model: 'llama3.2:latest',
+      userText: 'ollama ping',
+    })
+    expect(ollamaTextChatCallArgs[0].currentUserContentBlocks).toBeUndefined()
+    expect(invoke).toHaveBeenCalledWith('branch.beginTurn', expect.objectContaining({ branchId: 'b1', userBody: 'ollama ping' }))
     expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 2 }))
     expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a1', status: 'final' }))
     expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')

@@ -301,6 +301,7 @@ describe('C5 endpoint registry baseline characterization', () => {
 describe('C6 local endpoint baseline characterization', () => {
   it('keeps OpenRouter as an explicit active send runtime while LocalEndpoint text chat remains explicit experimental routing', () => {
     const appChat = readRepoFile('src', 'ui-app', 'app', 'appChatApp.logic.ts')
+    const providerSettings = readRepoFile('src', 'ui-app', 'app', 'useExperimentalProviderChatSettings.ts')
     const coordinator = readRepoFile('src', 'ui-app', 'app', 'providerRuntimeSendCoordinator.ts')
     const openRouterAdapter = readRepoFile('src', 'next', 'provider', 'openrouter', 'openRouterAdapter.ts')
     const liveStream = readRepoFile('src', 'next', 'live', 'openRouterLiveStream.ts')
@@ -308,11 +309,11 @@ describe('C6 local endpoint baseline characterization', () => {
 
     expect(appChat).toContain('streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource')
     expect(coordinator).toContain('streamLocalEndpointTextChatAsDomainEvents')
-    expect(appChat).toContain('deriveCurrentRuntimeSelection')
+    expect(providerSettings).toContain('deriveCurrentRuntimeSelection')
     expect(appChat).toContain('resolveProviderRuntimeTextSendPreflight')
     expect(coordinator).toContain('resolveRuntimeTextSendRoute')
-    expect(appChat).toContain('openRouterChatEnabled')
-    expect(appChat).toContain('localEndpointChatEnabled')
+    expect(providerSettings).toContain('openRouterChatEnabled')
+    expect(providerSettings).toContain('localEndpointChatEnabled')
     expect(openRouterAdapter).toContain("credentialSource: 'legacy_store' as const")
     expect(liveStream).toContain("credentialSource === 'legacy_store'")
     expect(bridge).toContain("credentialService.readApiKey('openrouter')")

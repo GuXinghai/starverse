@@ -5,6 +5,7 @@ export type RuntimeProviderKey =
   | 'anthropic_messages'
   | 'deepseek'
   | 'lm_studio'
+  | 'ollama_local'
   | 'local_endpoint'
 
 export type RuntimeCredentialStatus = 'configured' | 'missing' | 'not_required' | 'unknown'
@@ -42,6 +43,7 @@ export type RuntimeCapabilitySummaryLite = Readonly<{
     | 'catalog_seed'
     | 'local_probe'
     | 'lm_studio_local'
+    | 'ollama_local'
     | 'experimental_text_only'
     | 'unset'
   warnings: string[]
@@ -64,6 +66,7 @@ type RuntimeSelectionProviderInput = Readonly<{
 export type RuntimeSelectionSourceInput = Readonly<{
   openrouter?: RuntimeSelectionProviderInput
   lmStudio?: RuntimeSelectionProviderInput
+  ollama?: RuntimeSelectionProviderInput
   localEndpoint?: RuntimeSelectionProviderInput
   openAIResponses?: RuntimeSelectionProviderInput
   googleAIStudio?: RuntimeSelectionProviderInput
@@ -100,6 +103,7 @@ export const RUNTIME_PROVIDER_DISPLAY_NAMES: Record<RuntimeProviderKey, string> 
   anthropic_messages: 'Anthropic Messages',
   deepseek: 'DeepSeek official',
   lm_studio: 'LM Studio Local',
+  ollama_local: 'Ollama Local',
   local_endpoint: 'LocalEndpoint',
 }
 
@@ -108,6 +112,7 @@ const EXPERIMENTAL_SELECTION_PRIORITY: readonly RuntimeProviderKey[] = [
   'anthropic_messages',
   'google_ai_studio',
   'openai_responses',
+  'ollama_local',
   'lm_studio',
   'local_endpoint',
 ]
@@ -119,6 +124,7 @@ const DEFAULT_ENDPOINT_ID: Record<RuntimeProviderKey, string> = {
   anthropic_messages: 'anthropic-messages-official',
   deepseek: 'deepseek-official',
   lm_studio: 'lm-studio-loopback-local-storage',
+  ollama_local: 'ollama-loopback-local-storage',
   local_endpoint: 'local-endpoint-loopback-local-storage',
 }
 
@@ -129,6 +135,7 @@ const DEFAULT_PROFILE_ID: Record<RuntimeProviderKey, string> = {
   anthropic_messages: 'anthropic_messages_v1',
   deepseek: 'deepseek_official_openai_compat',
   lm_studio: 'lm_studio_local_v1',
+  ollama_local: 'ollama_native_rest_chat_v1',
   local_endpoint: 'local_endpoint_openai_compat_text_v1',
 }
 
@@ -173,6 +180,7 @@ function providerInputForKey(input: RuntimeSelectionSourceInput, providerKey: Ru
   if (providerKey === 'anthropic_messages') return input.anthropic
   if (providerKey === 'google_ai_studio') return input.googleAIStudio
   if (providerKey === 'openai_responses') return input.openAIResponses
+  if (providerKey === 'ollama_local') return input.ollama
   if (providerKey === 'lm_studio') return input.lmStudio
   if (providerKey === 'local_endpoint') return input.localEndpoint
   return input.openrouter
@@ -265,6 +273,27 @@ export function getRuntimeCapabilitySummaryLite(selection: CurrentRuntimeSelecti
     }
   }
 
+  if (selection.providerKey === 'ollama_local') {
+    return {
+      textChat: true,
+      streamingText: 'probe_required',
+      attachments: 'blocked',
+      webSearch: 'blocked',
+      tools: 'blocked',
+      reasoningArtifacts: 'filtered',
+      imageGeneration: 'blocked',
+      structuredOutput: 'blocked',
+      usageFinal: 'not_guaranteed',
+      source: 'ollama_local',
+      warnings: [
+        'Ollama Local v1 is text-only, loopback-only, and externally managed.',
+        'Native REST load/unload controls are separate from OpenAI-compatible chat mode.',
+        'Provider thinking metadata is filtered from visible text in the native REST stream.',
+        'Files, tools, web search, reasoning controls, image generation, and structured output are blocked.',
+      ],
+    }
+  }
+
   return {
     textChat: true,
     streamingText: true,
@@ -305,7 +334,7 @@ export function getRuntimeTextChatBlockReason(input: RuntimeTextChatBlockReasonI
 
   const providerName = RUNTIME_PROVIDER_DISPLAY_NAMES[input.selection.providerKey]
   if (!input.selection.endpointId.trim()) {
-    return input.selection.providerKey === 'local_endpoint' || input.selection.providerKey === 'lm_studio'
+    return input.selection.providerKey === 'local_endpoint' || input.selection.providerKey === 'lm_studio' || input.selection.providerKey === 'ollama_local'
       ? `${providerName} text chat requires a localhost endpoint URL.`
       : `${providerName} requires an endpoint before sending.`
   }
@@ -352,6 +381,7 @@ export function resolveRuntimeTextSendRoute(selection: CurrentRuntimeSelection):
     selection.providerKey === 'anthropic_messages' ||
     selection.providerKey === 'deepseek' ||
     selection.providerKey === 'lm_studio' ||
+    selection.providerKey === 'ollama_local' ||
     selection.providerKey === 'local_endpoint'
   ) {
     return { kind: 'experimental_text', providerKey: selection.providerKey }

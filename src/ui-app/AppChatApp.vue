@@ -138,6 +138,7 @@ const {
   activeSessionConfig,
   openRouterChatConfig,
   lmStudioChatConfig,
+  ollamaChatConfig,
   localEndpointChatConfig,
   openAIResponsesChatConfig,
   googleAIStudioChatConfig,
@@ -175,6 +176,14 @@ const {
   onUpdateLMStudioOpenAICompatiblePreferredEndpoint,
   onUpdateLMStudioNativeRestControl,
   onClearLMStudioChat,
+  onUpdateOllamaChatEnabled,
+  onUpdateOllamaEndpointUrl,
+  onUpdateOllamaModel,
+  onUpdateOllamaChatMode,
+  onUpdateOllamaNativeRestPreferredEndpoint,
+  onUpdateOllamaOpenAICompatiblePreferredEndpoint,
+  onUpdateOllamaNativeControl,
+  onClearOllamaChat,
   onUpdateLocalEndpointChatEnabled,
   onUpdateLocalEndpointChatUrl,
   onUpdateLocalEndpointChatModel,
@@ -263,6 +272,10 @@ const modelSummary = computed(() => {
   if (lmStudioChatConfig.value.enabled) {
     const model = lmStudioChatConfig.value.model.trim() || t('settings.lmStudio.manualModelRequired')
     return tf('settings.lmStudio.modelSummary', { model })
+  }
+  if (ollamaChatConfig.value.enabled) {
+    const model = ollamaChatConfig.value.model.trim() || t('settings.ollama.manualModelRequired')
+    return tf('settings.ollama.modelSummary', { model })
   }
   if (deepSeekChatConfig.value.enabled) {
     const model = deepSeekChatConfig.value.model.trim() || 'manual model required'
@@ -835,6 +848,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             :sessionConfig="activeSessionConfig"
             :openRouterChat="openRouterChatConfig"
             :lmStudioChat="lmStudioChatConfig"
+            :ollamaChat="ollamaChatConfig"
             :localEndpointChat="localEndpointChatConfig"
             :openAIResponsesChat="openAIResponsesChatConfig"
             :googleAIStudioChat="googleAIStudioChatConfig"
@@ -870,6 +884,14 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateLMStudioOpenAICompatiblePreferredEndpoint="onUpdateLMStudioOpenAICompatiblePreferredEndpoint"
             @updateLMStudioNativeRestControl="onUpdateLMStudioNativeRestControl"
             @clearLMStudioChat="onClearLMStudioChat"
+            @updateOllamaChatEnabled="onUpdateOllamaChatEnabled"
+            @updateOllamaEndpointUrl="onUpdateOllamaEndpointUrl"
+            @updateOllamaModel="onUpdateOllamaModel"
+            @updateOllamaChatMode="onUpdateOllamaChatMode"
+            @updateOllamaNativeRestPreferredEndpoint="onUpdateOllamaNativeRestPreferredEndpoint"
+            @updateOllamaOpenAICompatiblePreferredEndpoint="onUpdateOllamaOpenAICompatiblePreferredEndpoint"
+            @updateOllamaNativeControl="onUpdateOllamaNativeControl"
+            @clearOllamaChat="onClearOllamaChat"
             @updateLocalEndpointChatEnabled="onUpdateLocalEndpointChatEnabled"
             @updateLocalEndpointChatUrl="onUpdateLocalEndpointChatUrl"
             @updateLocalEndpointChatModel="onUpdateLocalEndpointChatModel"
