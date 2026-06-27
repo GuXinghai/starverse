@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
 import type { SearchSettingsLayer, ResolvedSearchSettings } from '@/next/openrouter/searchSettingsResolver'
 import type { SamplingParamsLayer, ResolvedSamplingParams } from '@/next/openrouter/samplingParamsResolver'
@@ -28,6 +28,7 @@ import type { ChatSessionConfig } from '../app/chatSessionConfig'
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import SamplingParamsSettingsEditor from './SamplingParamsSettingsEditor.vue'
 import ImageGenerationSettingsEditor from './ImageGenerationSettingsEditor.vue'
+import { t, tf } from '@/shared/i18n'
 
 const props = defineProps<{
   disabled: boolean
@@ -37,6 +38,38 @@ const props = defineProps<{
     enabled: boolean
     model: string
     providerLabel: string
+  }> | null
+  lmStudioChat?: Readonly<{
+    enabled: boolean
+    endpointUrl: string
+    model: string
+    chatMode: 'openai_compatible' | 'native_rest'
+    openAICompatiblePreferredEndpoint: 'chat_completions' | 'responses'
+    nativeRestControls: Readonly<{
+      diagnosticsEnabled: boolean
+      manualLoadUnloadEnabled: boolean
+      autoLoadBeforeSendEnabled: boolean
+      autoUnloadAfterSendEnabled: boolean
+      autoUnloadAfterIdleEnabled?: boolean
+    }>
+    config: Readonly<{
+      providerKey: 'lm_studio'
+      endpointUrl: string
+      nativeRestControls: Readonly<{
+        diagnosticsEnabled: boolean
+        manualLoadUnloadEnabled: boolean
+        autoLoadBeforeSendEnabled: boolean
+        autoUnloadAfterSendEnabled: boolean
+        autoUnloadAfterIdleEnabled?: boolean
+      }>
+      chatMode: 'openai_compatible' | 'native_rest'
+      openAICompatible: Readonly<{
+        basePath: '/v1'
+        preferredEndpoint: 'chat_completions' | 'responses'
+      }>
+      nativeRest: Readonly<{ basePath: '/api/v1' }>
+    }>
+    experimentalLabel: string
   }> | null
   localEndpointChat?: Readonly<{
     enabled: boolean
@@ -106,6 +139,17 @@ const emit = defineEmits<{
   (e: 'updateImageGenerationAspectRatio', value: '16:9' | '3:4' | '1:1' | '4:3'): void
   (e: 'updateImageGeneration', value: ImageGenerationUserConfig): void
   (e: 'updateOpenRouterChatEnabled', enabled: boolean): void
+  (e: 'updateLMStudioChatEnabled', enabled: boolean): void
+  (e: 'updateLMStudioEndpointUrl', value: string): void
+  (e: 'updateLMStudioModel', value: string): void
+  (e: 'updateLMStudioChatMode', mode: 'openai_compatible' | 'native_rest'): void
+  (e: 'updateLMStudioOpenAICompatiblePreferredEndpoint', endpoint: 'chat_completions' | 'responses'): void
+  (
+    e: 'updateLMStudioNativeRestControl',
+    key: 'diagnosticsEnabled' | 'manualLoadUnloadEnabled' | 'autoLoadBeforeSendEnabled' | 'autoUnloadAfterSendEnabled' | 'autoUnloadAfterIdleEnabled',
+    enabled: boolean
+  ): void
+  (e: 'clearLMStudioChat'): void
   (e: 'updateLocalEndpointChatEnabled', enabled: boolean): void
   (e: 'updateLocalEndpointChatUrl', value: string): void
   (e: 'updateLocalEndpointChatModel', value: string): void
@@ -138,6 +182,59 @@ const openRouterChat = computed(() => props.openRouterChat ?? {
   providerLabel: 'OpenRouter · first-class provider',
 })
 const openRouterChatStatusLabel = computed(() => openRouterChat.value.enabled ? 'active' : 'inactive')
+const lmStudioChat = computed(() => props.lmStudioChat ?? {
+  enabled: false,
+  endpointUrl: 'http://127.0.0.1:1234',
+  model: '',
+  chatMode: 'openai_compatible' as const,
+  openAICompatiblePreferredEndpoint: 'chat_completions' as const,
+  nativeRestControls: {
+    diagnosticsEnabled: true,
+    manualLoadUnloadEnabled: true,
+    autoLoadBeforeSendEnabled: false,
+    autoUnloadAfterSendEnabled: false,
+    autoUnloadAfterIdleEnabled: false,
+  },
+  config: {
+    providerKey: 'lm_studio' as const,
+    endpointUrl: 'http://127.0.0.1:1234',
+    nativeRestControls: {
+      diagnosticsEnabled: true,
+      manualLoadUnloadEnabled: true,
+      autoLoadBeforeSendEnabled: false,
+      autoUnloadAfterSendEnabled: false,
+      autoUnloadAfterIdleEnabled: false,
+    },
+    chatMode: 'openai_compatible' as const,
+    openAICompatible: { basePath: '/v1' as const, preferredEndpoint: 'chat_completions' as const },
+    nativeRest: { basePath: '/api/v1' as const },
+  },
+  experimentalLabel: t('settings.lmStudio.experimentalLabel'),
+})
+const lmStudioChatStatusLabel = computed(() => lmStudioChat.value.enabled ? t('settings.lmStudio.active') : t('settings.lmStudio.inactive'))
+const lmStudioProbeLoading = ref(false)
+const lmStudioActionLoading = ref(false)
+const lmStudioProbeResult = ref<any | null>(null)
+const lmStudioActionResult = ref<string>('')
+const lmStudioNativeModels = computed(() => {
+  const result = lmStudioProbeResult.value
+  return result?.ok && result.diagnostics?.nativeRest?.ok ? result.diagnostics.nativeRest.models as any[] : []
+})
+const lmStudioSelectedNativeModel = computed(() => {
+  const selected = lmStudioChat.value.model.trim()
+  return lmStudioNativeModels.value.find((model) => model.key === selected || model.loadedInstances?.includes(selected)) ?? null
+})
+const lmStudioSelectedInstanceId = computed(() => {
+  const model = lmStudioSelectedNativeModel.value
+  return Array.isArray(model?.loadedInstances) && model.loadedInstances[0] ? String(model.loadedInstances[0]) : lmStudioChat.value.model.trim()
+})
+const lmStudioBridgeAvailable = computed(() => {
+  const bridge = (globalThis as any).lmStudioProvider
+  return !!bridge && typeof bridge.probe === 'function' && typeof bridge.loadModel === 'function' && typeof bridge.unloadModel === 'function'
+})
+function formatLMStudioAvailability(available: boolean): string {
+  return available ? t('settings.lmStudio.available') : t('settings.lmStudio.unavailable')
+}
 const runtimeStatus = computed(() => props.currentRuntimeStatus ?? {
   selectionLabel: 'No runtime provider selected',
   capabilitySummary: 'text chat blocked',
@@ -298,6 +395,96 @@ function formatObservedAt(observedAtMs: number): string {
     return new Date(observedAtMs).toISOString()
   } catch {
     return 'unknown'
+  }
+}
+
+function formatLMStudioModels(models: any[]): string {
+  if (models.length === 0) return t('settings.lmStudio.none')
+  return models
+    .slice(0, 12)
+    .map((model) => {
+      const loaded = model.loaded
+        ? `${t('settings.lmStudio.loaded')}:${(model.loadedInstances ?? []).join(',') || model.key}`
+        : t('settings.lmStudio.unloaded')
+      const label = model.displayName && model.displayName !== model.key
+        ? `${model.displayName} (${model.key})`
+        : model.key
+      const meta = [model.type, model.quantization, model.paramsString, model.maxContextLength ? tf('settings.lmStudio.contextShort', { value: model.maxContextLength }) : null]
+        .filter(Boolean)
+        .join(' · ')
+      return `${label} (${loaded}${meta ? ` · ${meta}` : ''})`
+    })
+    .join(' | ')
+}
+
+async function probeLMStudio(options: Readonly<{ clearAction?: boolean }> = {}) {
+  const bridge = (globalThis as any).lmStudioProvider
+  if (!lmStudioBridgeAvailable.value) {
+    lmStudioActionResult.value = t('settings.lmStudio.bridgeUnavailable')
+    return
+  }
+  lmStudioProbeLoading.value = true
+  if (options.clearAction !== false) lmStudioActionResult.value = ''
+  try {
+    const result = await bridge.probe({
+      endpointUrl: lmStudioChat.value.endpointUrl,
+      selectedModel: lmStudioChat.value.model,
+      timeoutMs: 5000,
+    })
+    lmStudioProbeResult.value = result
+  } catch {
+    lmStudioProbeResult.value = null
+    lmStudioActionResult.value = t('settings.lmStudio.probeFailedSafely')
+  } finally {
+    lmStudioProbeLoading.value = false
+  }
+}
+
+async function loadLMStudioSelectedModel() {
+  const bridge = (globalThis as any).lmStudioProvider
+  const model = lmStudioChat.value.model.trim()
+  if (!lmStudioBridgeAvailable.value || !model) return
+  lmStudioActionLoading.value = true
+  lmStudioActionResult.value = ''
+  try {
+    const result = await bridge.loadModel({
+      endpointUrl: lmStudioChat.value.endpointUrl,
+      model,
+      manualLoadUnloadEnabled: lmStudioChat.value.nativeRestControls.manualLoadUnloadEnabled,
+      timeoutMs: 120000,
+    })
+    lmStudioActionResult.value = result?.ok
+      ? tf('settings.lmStudio.loadRequested', { instanceId: result.instanceId })
+      : tf('settings.lmStudio.loadFailed', { message: result?.message ?? t('settings.lmStudio.safeFailure') })
+    await probeLMStudio({ clearAction: false })
+  } catch {
+    lmStudioActionResult.value = t('settings.lmStudio.loadFailedSafely')
+  } finally {
+    lmStudioActionLoading.value = false
+  }
+}
+
+async function unloadLMStudioSelectedModel() {
+  const bridge = (globalThis as any).lmStudioProvider
+  const instanceId = lmStudioSelectedInstanceId.value.trim()
+  if (!lmStudioBridgeAvailable.value || !instanceId) return
+  lmStudioActionLoading.value = true
+  lmStudioActionResult.value = ''
+  try {
+    const result = await bridge.unloadModel({
+      endpointUrl: lmStudioChat.value.endpointUrl,
+      instanceId,
+      manualLoadUnloadEnabled: lmStudioChat.value.nativeRestControls.manualLoadUnloadEnabled,
+      timeoutMs: 120000,
+    })
+    lmStudioActionResult.value = result?.ok
+      ? tf('settings.lmStudio.unloadRequested', { instanceId: result.instanceId })
+      : tf('settings.lmStudio.unloadFailed', { message: result?.message ?? t('settings.lmStudio.safeFailure') })
+    await probeLMStudio({ clearAction: false })
+  } catch {
+    lmStudioActionResult.value = t('settings.lmStudio.unloadFailedSafely')
+  } finally {
+    lmStudioActionLoading.value = false
   }
 }
 
@@ -957,6 +1144,225 @@ function chipClass(active: boolean): string {
             @click="emit('clearGoogleAIStudioChat')"
           >
             Clear Google AI Studio chat settings
+          </button>
+        </div>
+      </section>
+
+      <section class="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50/70 p-3" data-testid="lm-studio-chat-controls">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-indigo-800">{{ t('settings.lmStudio.title') }}</div>
+            <div class="mt-1 text-[11px] text-indigo-700">{{ lmStudioChat.experimentalLabel }}</div>
+          </div>
+          <label class="flex items-center gap-2 text-sm text-indigo-900">
+            <input
+              type="checkbox"
+              :checked="lmStudioChat.enabled"
+              :disabled="disabled"
+              data-testid="lm-studio-chat-enabled"
+              @change="emit('updateLMStudioChatEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            {{ t('settings.lmStudio.enabled') }}
+          </label>
+        </div>
+        <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+          <label class="space-y-1">
+            <span class="block text-[11px] font-semibold text-indigo-900">{{ t('settings.lmStudio.endpointUrl') }}</span>
+            <input
+              class="w-full rounded border border-indigo-200 bg-white px-2 py-1.5 text-sm disabled:bg-indigo-50"
+              :value="lmStudioChat.endpointUrl"
+              :disabled="disabled || !lmStudioChat.enabled"
+              placeholder="http://127.0.0.1:1234"
+              data-testid="lm-studio-endpoint-url"
+              @input="emit('updateLMStudioEndpointUrl', ($event.target as HTMLInputElement).value)"
+            />
+          </label>
+          <label class="space-y-1">
+            <span class="block text-[11px] font-semibold text-indigo-900">{{ t('settings.lmStudio.selectedModel') }}</span>
+            <input
+              class="w-full rounded border border-indigo-200 bg-white px-2 py-1.5 text-sm disabled:bg-indigo-50"
+              :value="lmStudioChat.model"
+              :disabled="disabled || !lmStudioChat.enabled"
+              placeholder="openai/gpt-oss-20b"
+              data-testid="lm-studio-model"
+              @input="emit('updateLMStudioModel', ($event.target as HTMLInputElement).value)"
+            />
+          </label>
+        </div>
+        <div class="space-y-2 rounded border border-indigo-100 bg-white px-2 py-2 text-[11px] text-indigo-900">
+          <div class="font-semibold">{{ t('settings.lmStudio.chatMode') }}</div>
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              class="rounded-md border px-2 py-1.5 text-[11px]"
+              :class="chipClass(lmStudioChat.chatMode === 'openai_compatible')"
+              :disabled="disabled || !lmStudioChat.enabled"
+              data-testid="lm-studio-chat-mode-openai"
+              @click="emit('updateLMStudioChatMode', 'openai_compatible')"
+            >
+              {{ t('settings.lmStudio.openAICompatible') }}
+            </button>
+            <button
+              type="button"
+              class="rounded-md border px-2 py-1.5 text-[11px]"
+              :class="chipClass(lmStudioChat.chatMode === 'native_rest')"
+              :disabled="disabled || !lmStudioChat.enabled"
+              data-testid="lm-studio-chat-mode-native"
+              @click="emit('updateLMStudioChatMode', 'native_rest')"
+            >
+              {{ t('settings.lmStudio.nativeRest') }}
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              class="rounded-md border px-2 py-1.5 text-[11px]"
+              :class="chipClass(lmStudioChat.openAICompatiblePreferredEndpoint === 'chat_completions')"
+              :disabled="disabled || !lmStudioChat.enabled || lmStudioChat.chatMode !== 'openai_compatible'"
+              data-testid="lm-studio-openai-endpoint-chat-completions"
+              @click="emit('updateLMStudioOpenAICompatiblePreferredEndpoint', 'chat_completions')"
+            >
+              /v1/chat/completions
+            </button>
+            <button
+              type="button"
+              class="rounded-md border px-2 py-1.5 text-[11px]"
+              :class="chipClass(lmStudioChat.openAICompatiblePreferredEndpoint === 'responses')"
+              :disabled="disabled || !lmStudioChat.enabled || lmStudioChat.chatMode !== 'openai_compatible'"
+              data-testid="lm-studio-openai-endpoint-responses"
+              @click="emit('updateLMStudioOpenAICompatiblePreferredEndpoint', 'responses')"
+            >
+              /v1/responses
+            </button>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 gap-2 rounded border border-indigo-100 bg-white px-2 py-2 text-[11px] text-indigo-900 md:grid-cols-2">
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              :checked="lmStudioChat.nativeRestControls.diagnosticsEnabled"
+              :disabled="disabled"
+              data-testid="lm-studio-diagnostics-enabled"
+              @change="emit('updateLMStudioNativeRestControl', 'diagnosticsEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            {{ t('settings.lmStudio.nativeRestDiagnostics') }}
+          </label>
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              :checked="lmStudioChat.nativeRestControls.manualLoadUnloadEnabled"
+              :disabled="disabled"
+              data-testid="lm-studio-manual-load-unload-enabled"
+              @change="emit('updateLMStudioNativeRestControl', 'manualLoadUnloadEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            {{ t('settings.lmStudio.manualLoadUnload') }}
+          </label>
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              :checked="lmStudioChat.nativeRestControls.autoLoadBeforeSendEnabled"
+              :disabled="disabled"
+              data-testid="lm-studio-auto-load-enabled"
+              @change="emit('updateLMStudioNativeRestControl', 'autoLoadBeforeSendEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            {{ t('settings.lmStudio.autoLoadBeforeSend') }}
+          </label>
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              :checked="lmStudioChat.nativeRestControls.autoUnloadAfterSendEnabled"
+              :disabled="disabled"
+              data-testid="lm-studio-auto-unload-after-send-enabled"
+              @change="emit('updateLMStudioNativeRestControl', 'autoUnloadAfterSendEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            {{ t('settings.lmStudio.autoUnloadAfterSend') }}
+          </label>
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              :checked="lmStudioChat.nativeRestControls.autoUnloadAfterIdleEnabled === true"
+              :disabled="disabled"
+              data-testid="lm-studio-auto-unload-after-idle-enabled"
+              @change="emit('updateLMStudioNativeRestControl', 'autoUnloadAfterIdleEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            {{ t('settings.lmStudio.autoUnloadAfterIdleDeferred') }}
+          </label>
+        </div>
+        <div class="rounded border border-indigo-100 bg-white px-2 py-1.5 text-[11px] text-indigo-900" data-testid="lm-studio-selected-status">
+          <div>{{ tf('settings.lmStudio.chatStatus', { status: lmStudioChatStatusLabel }) }}</div>
+          <div>{{ t('settings.lmStudio.endpoint') }}: {{ lmStudioChat.endpointUrl || t('settings.lmStudio.none') }}</div>
+          <div>{{ t('settings.lmStudio.selectedModel') }}: {{ lmStudioChat.model || t('settings.lmStudio.none') }}</div>
+          <div>{{ t('settings.lmStudio.mode') }}: {{ lmStudioChat.chatMode }} · {{ t('settings.lmStudio.openAIEndpoint') }}: {{ lmStudioChat.openAICompatiblePreferredEndpoint }}</div>
+          <div>{{ t('settings.lmStudio.boundarySummary') }}</div>
+        </div>
+        <div class="space-y-2 rounded border border-indigo-100 bg-white px-2 py-2 text-[11px] text-indigo-900" data-testid="lm-studio-diagnostics">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="font-semibold">{{ t('settings.lmStudio.controlPlane') }}</div>
+              <div v-if="lmStudioProbeResult?.ok" data-testid="lm-studio-probe-summary">
+                {{ t('settings.lmStudio.nativeProbeLabel') }}={{ formatLMStudioAvailability(lmStudioProbeResult.diagnostics.nativeRestAvailable) }};
+                {{ t('settings.lmStudio.openAIProbeLabel') }}={{ formatLMStudioAvailability(lmStudioProbeResult.diagnostics.openAICompatibleAvailable) }}
+              </div>
+              <div v-else data-testid="lm-studio-probe-summary">{{ t('settings.lmStudio.notProbed') }}</div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                class="rounded-md border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
+                :disabled="disabled || !lmStudioChat.enabled || !lmStudioChat.nativeRestControls.diagnosticsEnabled || lmStudioProbeLoading || !lmStudioBridgeAvailable"
+                data-testid="lm-studio-probe"
+                @click="probeLMStudio()"
+              >
+                {{ lmStudioProbeLoading ? t('settings.lmStudio.probing') : t('settings.lmStudio.probe') }}
+              </button>
+              <button
+                type="button"
+                class="rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-900 hover:bg-indigo-50 disabled:opacity-50"
+                :disabled="disabled || !lmStudioChat.enabled || !lmStudioChat.nativeRestControls.manualLoadUnloadEnabled || lmStudioActionLoading || !lmStudioChat.model"
+                data-testid="lm-studio-load-model"
+                @click="loadLMStudioSelectedModel"
+              >
+                {{ t('settings.lmStudio.load') }}
+              </button>
+              <button
+                type="button"
+                class="rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-900 hover:bg-indigo-50 disabled:opacity-50"
+                :disabled="disabled || !lmStudioChat.enabled || !lmStudioChat.nativeRestControls.manualLoadUnloadEnabled || lmStudioActionLoading || !lmStudioSelectedInstanceId"
+                data-testid="lm-studio-unload-model"
+                @click="unloadLMStudioSelectedModel"
+              >
+                {{ t('settings.lmStudio.unload') }}
+              </button>
+            </div>
+          </div>
+          <div v-if="lmStudioProbeResult?.ok" class="space-y-1" data-testid="lm-studio-probe-result">
+            <div data-testid="lm-studio-native-status">{{ t('settings.lmStudio.nativeRest') }}: {{ lmStudioProbeResult.diagnostics.nativeRestAvailable ? t('settings.lmStudio.available') : lmStudioProbeResult.diagnostics.nativeRest.message }}</div>
+            <div data-testid="lm-studio-openai-status">{{ t('settings.lmStudio.openAICompatible') }}: {{ lmStudioProbeResult.diagnostics.openAICompatibleAvailable ? t('settings.lmStudio.available') : lmStudioProbeResult.diagnostics.openAICompatible.message }}</div>
+            <div data-testid="lm-studio-models">{{ t('settings.lmStudio.models') }}: {{ formatLMStudioModels(lmStudioNativeModels) }}</div>
+          </div>
+          <div v-else-if="lmStudioProbeResult && !lmStudioProbeResult.ok" class="text-red-700" data-testid="lm-studio-probe-error">
+            {{ lmStudioProbeResult.message }}
+          </div>
+          <div v-if="lmStudioActionResult" data-testid="lm-studio-action-result">{{ lmStudioActionResult }}</div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
+            :disabled="disabled || !lmStudioChat.enabled"
+            data-testid="lm-studio-chat-disable"
+            @click="emit('updateLMStudioChatEnabled', false)"
+          >
+            {{ t('settings.lmStudio.disable') }}
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
+            :disabled="disabled"
+            data-testid="lm-studio-chat-clear"
+            @click="emit('clearLMStudioChat')"
+          >
+            {{ t('settings.lmStudio.clearSettings') }}
           </button>
         </div>
       </section>

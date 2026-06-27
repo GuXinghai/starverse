@@ -499,12 +499,131 @@ type LocalEndpointStreamProbeResult =
     safeUrl?: string
   }
 
+type LMStudioChatMode = 'openai_compatible' | 'native_rest'
+type LMStudioPreferredEndpoint = 'chat_completions' | 'responses'
+
+interface LMStudioNativeRestControls {
+  diagnosticsEnabled: boolean
+  manualLoadUnloadEnabled: boolean
+  autoLoadBeforeSendEnabled: boolean
+  autoUnloadAfterSendEnabled: boolean
+  autoUnloadAfterIdleEnabled?: boolean
+}
+
+interface LMStudioLocalProviderConfig {
+  providerKey: 'lm_studio'
+  endpointUrl: string
+  nativeRestControls: LMStudioNativeRestControls
+  chatMode: LMStudioChatMode
+  openAICompatible: {
+    basePath: '/v1'
+    preferredEndpoint: LMStudioPreferredEndpoint
+  }
+  nativeRest: {
+    basePath: '/api/v1'
+  }
+}
+
+interface LMStudioModelSummary {
+  key: string
+  displayName: string
+  type: 'llm' | 'embedding' | 'unknown'
+  loaded: boolean
+  loadedInstances: string[]
+  publisher?: string
+  architecture?: string
+  quantization?: string
+  sizeBytes?: number
+  paramsString?: string
+  maxContextLength?: number
+  format?: string
+}
+
+type LMStudioModelList =
+  | {
+    ok: true
+    source: 'lm_studio_api_v1_models' | 'lm_studio_openai_v1_models'
+    models: LMStudioModelSummary[]
+    modelIds: string[]
+    loadedCount: number
+    unloadedCount: number
+  }
+  | {
+    ok: false
+    code: 'unavailable' | 'http_error' | 'invalid_response' | 'timeout' | 'network_error'
+    message: string
+  }
+
+interface LMStudioProbeDiagnostics {
+  kind: 'lm_studio_local_provider_diagnostics'
+  providerKey: 'lm_studio'
+  safeBaseUrl: string
+  nativeRestAvailable: boolean
+  openAICompatibleAvailable: boolean
+  nativeRest: LMStudioModelList
+  openAICompatible: LMStudioModelList
+  selectedModelLoaded?: boolean
+  selectedModelLoadedInstances?: string[]
+  warnings: string[]
+  message: string
+}
+
+type LMStudioProbeResult =
+  | { ok: true; diagnostics: LMStudioProbeDiagnostics }
+  | {
+    ok: false
+    code: 'invalid_url' | 'remote_host_rejected' | 'embedded_credentials_rejected'
+    message: string
+    safeUrl?: string
+  }
+
+type LMStudioControlResult =
+  | {
+    ok: true
+    operation: 'load' | 'unload'
+    model?: string
+    instanceId: string
+    status?: 'loaded'
+    type?: 'llm' | 'embedding' | 'unknown'
+    loadTimeSeconds?: number
+    warnings: string[]
+  }
+  | {
+    ok: false
+    code:
+      | 'invalid_payload'
+      | 'invalid_url'
+      | 'remote_host_rejected'
+      | 'embedded_credentials_rejected'
+      | 'controls_disabled'
+      | 'timeout'
+      | 'network_error'
+      | 'http_error'
+      | 'invalid_response'
+    message: string
+    safeUrl?: string
+  }
+
 type LocalEndpointTextChatMessage = {
   role: 'user' | 'assistant'
   content: string
 }
 
 type LocalEndpointTextChatStartResult =
+  | { ok: true }
+  | {
+    ok: false
+    code: 'invalid_payload' | 'invalid_url' | 'remote_host_rejected' | 'embedded_credentials_rejected'
+    error: string
+    safeUrl?: string
+  }
+
+type LMStudioTextChatMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+type LMStudioTextChatStartResult =
   | { ok: true }
   | {
     ok: false
@@ -616,6 +735,34 @@ interface Window {
       messages: LocalEndpointTextChatMessage[]
       timeoutMs?: number
     }) => Promise<LocalEndpointTextChatStartResult>
+    abortTextChat?: (requestId: string) => Promise<{ ok: true }>
+    onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
+    onTextChatEnd?: (requestId: string, callback: () => void) => () => void
+  }
+  lmStudioProvider?: {
+    probe?: (payload: { endpointUrl?: string; selectedModel?: string; timeoutMs?: number }) => Promise<LMStudioProbeResult>
+    loadModel?: (payload: {
+      endpointUrl: string
+      model: string
+      manualLoadUnloadEnabled?: boolean
+      timeoutMs?: number
+    }) => Promise<LMStudioControlResult>
+    unloadModel?: (payload: {
+      endpointUrl: string
+      instanceId: string
+      manualLoadUnloadEnabled?: boolean
+      timeoutMs?: number
+    }) => Promise<LMStudioControlResult>
+  }
+  lmStudioChat?: {
+    startTextChat?: (payload: {
+      requestId: string
+      assistantMessageId: string
+      config: LMStudioLocalProviderConfig
+      model: string
+      messages: LMStudioTextChatMessage[]
+      timeoutMs?: number
+    }) => Promise<LMStudioTextChatStartResult>
     abortTextChat?: (requestId: string) => Promise<{ ok: true }>
     onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
     onTextChatEnd?: (requestId: string, callback: () => void) => () => void

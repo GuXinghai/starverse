@@ -79,6 +79,31 @@ contextBridge.exposeInMainWorld('localEndpointChat', {
   },
 })
 
+contextBridge.exposeInMainWorld('lmStudioProvider', {
+  probe: (payload: unknown) => ipcRenderer.invoke('lm-studio:probe', payload),
+  loadModel: (payload: unknown) => ipcRenderer.invoke('lm-studio:load-model', payload),
+  unloadModel: (payload: unknown) => ipcRenderer.invoke('lm-studio:unload-model', payload),
+})
+
+contextBridge.exposeInMainWorld('lmStudioChat', {
+  startTextChat: (payload: unknown) => ipcRenderer.invoke('lm-studio-chat:stream-text', payload),
+  abortTextChat: (requestId: string) => ipcRenderer.invoke('lm-studio-chat:abort', requestId),
+  onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
+    ipcRenderer.on(`lm-studio-chat:chunk:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`lm-studio-chat:chunk:${requestId}`, handler)
+    }
+  },
+  onTextChatEnd: (requestId: string, callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on(`lm-studio-chat:end:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`lm-studio-chat:end:${requestId}`, handler)
+    }
+  },
+})
+
 contextBridge.exposeInMainWorld('openAIResponsesChat', {
   startTextChat: (payload: unknown) => ipcRenderer.invoke('openai-responses-chat:stream-text', payload),
   abortTextChat: (requestId: string) => ipcRenderer.invoke('openai-responses-chat:abort', requestId),

@@ -1,4 +1,8 @@
 import { streamLocalEndpointTextChatAsDomainEvents } from '@/next/live/localEndpointTextChat'
+import {
+  streamLMStudioTextChatAsDomainEvents,
+  type LMStudioTextChatConfig,
+} from '@/next/live/lmStudioTextChat'
 import { streamOpenAIResponsesTextChatAsDomainEvents } from '@/next/live/openAIResponsesTextChat'
 import { streamGoogleAIStudioTextChatAsDomainEvents } from '@/next/live/googleAIStudioTextChat'
 import { streamAnthropicTextChatAsDomainEvents } from '@/next/live/anthropicTextChat'
@@ -30,6 +34,7 @@ export type ProviderRuntimeTextSendPreflightResult =
   | Readonly<{ ok: false; reason: string }>
 
 export type ExperimentalRuntimeTextModelIds = Readonly<{
+  lmStudio: string
   localEndpoint: string
   openAIResponses: string
   googleAIStudio: string
@@ -45,6 +50,7 @@ export type ExperimentalRuntimeTextEventInput = Readonly<{
   userText: string
   contextMessages: any[]
   signal: AbortSignal
+  lmStudioConfig?: LMStudioTextChatConfig
   localEndpointUrl?: string
 }>
 
@@ -75,6 +81,8 @@ export function getExperimentalRuntimeTextRequestPrefix(providerKey: Experimenta
   switch (providerKey) {
     case 'local_endpoint':
       return 'local_req'
+    case 'lm_studio':
+      return 'lm_studio_req'
     case 'openai_responses':
       return 'openai_responses_req'
     case 'google_ai_studio':
@@ -91,6 +99,8 @@ export function getExperimentalRuntimeTextModelId(
   modelIds: ExperimentalRuntimeTextModelIds
 ): string {
   switch (providerKey) {
+    case 'lm_studio':
+      return modelIds.lmStudio.trim()
     case 'local_endpoint':
       return modelIds.localEndpoint.trim()
     case 'openai_responses':
@@ -108,6 +118,8 @@ export function getExperimentalRuntimeTextReasoningArtifactProvider(
   providerKey: ExperimentalRuntimeTextProviderKey
 ): ReasoningArtifactProvider | undefined {
   switch (providerKey) {
+    case 'lm_studio':
+      return undefined
     case 'local_endpoint':
       return undefined
     case 'openai_responses':
@@ -125,6 +137,28 @@ export function createExperimentalRuntimeTextEvents(
   input: ExperimentalRuntimeTextEventInput
 ): AsyncIterable<DomainEvent> {
   switch (input.providerKey) {
+    case 'lm_studio':
+      return streamLMStudioTextChatAsDomainEvents({
+        requestId: input.requestId,
+        assistantMessageId: input.assistantMessageId,
+        config: input.lmStudioConfig ?? {
+          providerKey: 'lm_studio',
+          endpointUrl: '',
+          nativeRestControls: {
+            diagnosticsEnabled: true,
+            manualLoadUnloadEnabled: true,
+            autoLoadBeforeSendEnabled: false,
+            autoUnloadAfterSendEnabled: false,
+          },
+          chatMode: 'openai_compatible',
+          openAICompatible: { basePath: '/v1', preferredEndpoint: 'chat_completions' },
+          nativeRest: { basePath: '/api/v1' },
+        },
+        model: input.modelId,
+        userText: input.userText,
+        contextMessages: input.contextMessages,
+        signal: input.signal,
+      })
     case 'local_endpoint':
       return streamLocalEndpointTextChatAsDomainEvents({
         requestId: input.requestId,

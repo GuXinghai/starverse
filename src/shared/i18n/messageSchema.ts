@@ -127,6 +127,56 @@ export interface SettingsMessages {
       readonly catalogCacheClearFailed: string
       readonly catalogCacheNoApiKey: string
     }
+    readonly lmStudio: {
+      readonly title: string
+      readonly experimentalLabel: string
+      readonly enabled: string
+      readonly endpointUrl: string
+      readonly selectedModel: string
+      readonly chatMode: string
+      readonly openAICompatible: string
+      readonly nativeRest: string
+      readonly nativeRestDiagnostics: string
+      readonly manualLoadUnload: string
+      readonly autoLoadBeforeSend: string
+      readonly autoUnloadAfterSend: string
+      readonly autoUnloadAfterIdleDeferred: string
+      readonly active: string
+      readonly inactive: string
+      readonly available: string
+      readonly unavailable: string
+      readonly notProbed: string
+      readonly none: string
+      readonly chatStatus: string
+      readonly endpoint: string
+      readonly mode: string
+      readonly openAIEndpoint: string
+      readonly boundarySummary: string
+      readonly controlPlane: string
+      readonly nativeProbeLabel: string
+      readonly openAIProbeLabel: string
+      readonly probe: string
+      readonly probing: string
+      readonly load: string
+      readonly unload: string
+      readonly models: string
+      readonly loaded: string
+      readonly unloaded: string
+      readonly contextShort: string
+      readonly bridgeUnavailable: string
+      readonly probeFailedSafely: string
+      readonly loadRequested: string
+      readonly loadFailed: string
+      readonly loadFailedSafely: string
+      readonly unloadRequested: string
+      readonly unloadFailed: string
+      readonly unloadFailedSafely: string
+      readonly safeFailure: string
+      readonly disable: string
+      readonly clearSettings: string
+      readonly manualModelRequired: string
+      readonly modelSummary: string
+    }
     readonly network: {
       readonly title: string
       readonly disableHttp2: string
