@@ -130,12 +130,13 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
   it('keeps OpenAI Responses experimental send native, explicit, text-only, and renderer-secret-free', () => {
     const appChatSource = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
     const coordinatorSource = readFileSync(resolve(testDir, 'providerRuntimeSendCoordinator.ts'), 'utf8')
+    const providerSettingsSource = readFileSync(resolve(testDir, 'useExperimentalProviderChatSettings.ts'), 'utf8')
     const settingsSource = readFileSync(resolve(testDir, '..', 'components', 'SettingsPanel.vue'), 'utf8')
 
     expect(appChatSource).toContain('resolveProviderRuntimeTextSendPreflight')
     expect(appChatSource).toContain('sendExperimentalProviderTextChat')
     expect(coordinatorSource).toContain('streamOpenAIResponsesTextChatAsDomainEvents')
-    expect(appChatSource).toContain('openAIResponsesChatEnabled')
+    expect(providerSettingsSource).toContain('openAIResponsesChatEnabled')
     expect(coordinatorSource).toContain('getRuntimeTextChatBlockReason')
     expect(coordinatorSource).toContain('resolveRuntimeTextSendRoute')
     expect(coordinatorSource).toContain("case 'openai_responses'")
@@ -184,11 +185,12 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
   it('keeps Google AI Studio experimental send native, explicit, text-only, and old-Gemini-runtime-free', () => {
     const appChatSource = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
     const coordinatorSource = readFileSync(resolve(testDir, 'providerRuntimeSendCoordinator.ts'), 'utf8')
+    const providerSettingsSource = readFileSync(resolve(testDir, 'useExperimentalProviderChatSettings.ts'), 'utf8')
     const settingsSource = readFileSync(resolve(testDir, '..', 'components', 'SettingsPanel.vue'), 'utf8')
     const textChatIpcSource = readRepoFile('electron', 'ipc', 'googleAIStudioTextChatIpc.ts')
 
     expect(coordinatorSource).toContain('streamGoogleAIStudioTextChatAsDomainEvents')
-    expect(appChatSource).toContain('googleAIStudioChatEnabled')
+    expect(providerSettingsSource).toContain('googleAIStudioChatEnabled')
     expect(coordinatorSource).toContain('getRuntimeTextChatBlockReason')
     expect(coordinatorSource).toContain("case 'google_ai_studio'")
     expect(textChatIpcSource).toContain('createElectronSessionProviderFetch')
@@ -208,10 +210,11 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
   it('keeps Anthropic Messages experimental send native, explicit, text-only, and renderer-secret-free', () => {
     const appChatSource = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
     const coordinatorSource = readFileSync(resolve(testDir, 'providerRuntimeSendCoordinator.ts'), 'utf8')
+    const providerSettingsSource = readFileSync(resolve(testDir, 'useExperimentalProviderChatSettings.ts'), 'utf8')
     const settingsSource = readFileSync(resolve(testDir, '..', 'components', 'SettingsPanel.vue'), 'utf8')
 
     expect(coordinatorSource).toContain('streamAnthropicTextChatAsDomainEvents')
-    expect(appChatSource).toContain('anthropicChatEnabled')
+    expect(providerSettingsSource).toContain('anthropicChatEnabled')
     expect(coordinatorSource).toContain('getRuntimeTextChatBlockReason')
     expect(coordinatorSource).toContain("case 'anthropic_messages'")
     expect(appChatSource).not.toMatch(/streamViaAnthropic\s*\(/)
@@ -248,10 +251,11 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
   it('keeps DeepSeek official experimental send native/profile-specific, explicit, text-only, and renderer-secret-free', () => {
     const appChatSource = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
     const coordinatorSource = readFileSync(resolve(testDir, 'providerRuntimeSendCoordinator.ts'), 'utf8')
+    const providerSettingsSource = readFileSync(resolve(testDir, 'useExperimentalProviderChatSettings.ts'), 'utf8')
     const settingsSource = readFileSync(resolve(testDir, '..', 'components', 'SettingsPanel.vue'), 'utf8')
 
     expect(coordinatorSource).toContain('streamDeepSeekTextChatAsDomainEvents')
-    expect(appChatSource).toContain('deepSeekChatEnabled')
+    expect(providerSettingsSource).toContain('deepSeekChatEnabled')
     expect(coordinatorSource).toContain('getRuntimeTextChatBlockReason')
     expect(coordinatorSource).toContain("case 'deepseek'")
     expect(appChatSource).not.toMatch(/streamViaDeepSeek\s*\(/)
@@ -312,20 +316,21 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
 
   it('keeps Anthropic and DeepSeek mutually exclusive with Google AI Studio, OpenAI Responses, and LocalEndpoint modes', () => {
     const appChatSource = readFileSync(resolve(testDir, 'appChatApp.logic.ts'), 'utf8')
+    const providerSettingsSource = readFileSync(resolve(testDir, 'useExperimentalProviderChatSettings.ts'), 'utf8')
 
-    expect(appChatSource).toContain('if (deepSeekChatEnabled.value)')
-    expect(appChatSource).toContain('persistDeepSeekChatStorage')
+    expect(providerSettingsSource).toContain('if (deepSeekChatEnabled.value)')
+    expect(providerSettingsSource).toContain('persistDeepSeekChatStorage')
     expect(appChatSource).toContain('onUpdateDeepSeekChatEnabled')
     expect(appChatSource).toContain('onClearDeepSeekChat')
-    expect(appChatSource).toContain('settings:deepSeekTextChatUpdated')
-    expect(appChatSource).toContain('if (anthropicChatEnabled.value)')
-    expect(appChatSource).toContain('openAIResponsesChatEnabled.value = false')
-    expect(appChatSource).toContain('googleAIStudioChatEnabled.value = false')
-    expect(appChatSource).toContain('localEndpointChatEnabled.value = false')
-    expect(appChatSource).toContain('persistAnthropicChatStorage')
+    expect(providerSettingsSource).toContain('settings:deepSeekTextChatUpdated')
+    expect(providerSettingsSource).toContain('if (anthropicChatEnabled.value)')
+    expect(providerSettingsSource).toContain('openAIResponsesChatEnabled.value = false')
+    expect(providerSettingsSource).toContain('googleAIStudioChatEnabled.value = false')
+    expect(providerSettingsSource).toContain('localEndpointChatEnabled.value = false')
+    expect(providerSettingsSource).toContain('persistAnthropicChatStorage')
     expect(appChatSource).toContain('onUpdateAnthropicChatEnabled')
     expect(appChatSource).toContain('onClearAnthropicChat')
-    expect(appChatSource).toContain('settings:anthropicMessagesTextChatUpdated')
+    expect(providerSettingsSource).toContain('settings:anthropicMessagesTextChatUpdated')
   })
 
   it('audits OpenRouter catalog as resolver-backed and separate from renderer credential exposure', () => {

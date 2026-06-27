@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/vue'
+import { render, screen } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppChatApp from './AppChatApp.vue'
@@ -158,9 +158,7 @@ describe('ui-app (read-only) AppChatApp', () => {
     const user = userEvent.setup()
     render(AppChatApp)
 
-    const sidebarTitle = await screen.findByText('Conversations')
-    const sidebar = (sidebarTitle.closest('.w-80') ?? document.body) as HTMLElement
-    const newButton = within(sidebar).getByRole('button', { name: 'New' })
+    const newButton = await screen.findByRole('button', { name: '新建' })
 
     await user.click(newButton)
 

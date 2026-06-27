@@ -104,6 +104,31 @@ contextBridge.exposeInMainWorld('lmStudioChat', {
   },
 })
 
+contextBridge.exposeInMainWorld('ollamaProvider', {
+  probe: (payload: unknown) => ipcRenderer.invoke('ollama:probe', payload),
+  loadModel: (payload: unknown) => ipcRenderer.invoke('ollama:load-model', payload),
+  unloadModel: (payload: unknown) => ipcRenderer.invoke('ollama:unload-model', payload),
+})
+
+contextBridge.exposeInMainWorld('ollamaChat', {
+  startTextChat: (payload: unknown) => ipcRenderer.invoke('ollama-chat:stream-text', payload),
+  abortTextChat: (requestId: string) => ipcRenderer.invoke('ollama-chat:abort', requestId),
+  onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
+    ipcRenderer.on(`ollama-chat:chunk:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`ollama-chat:chunk:${requestId}`, handler)
+    }
+  },
+  onTextChatEnd: (requestId: string, callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on(`ollama-chat:end:${requestId}`, handler)
+    return () => {
+      ipcRenderer.removeListener(`ollama-chat:end:${requestId}`, handler)
+    }
+  },
+})
+
 contextBridge.exposeInMainWorld('openAIResponsesChat', {
   startTextChat: (payload: unknown) => ipcRenderer.invoke('openai-responses-chat:stream-text', payload),
   abortTextChat: (requestId: string) => ipcRenderer.invoke('openai-responses-chat:abort', requestId),

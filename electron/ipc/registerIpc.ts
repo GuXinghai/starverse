@@ -58,6 +58,10 @@ import {
   LM_STUDIO_LOCAL_PROVIDER_IPC_CHANNELS,
 } from './lmStudioLocalProviderIpc'
 import {
+  registerOllamaLocalProviderIpc,
+  OLLAMA_LOCAL_PROVIDER_IPC_CHANNELS,
+} from './ollamaLocalProviderIpc'
+import {
   registerOpenAIResponsesTextChatIpc,
   OPENAI_RESPONSES_TEXT_CHAT_IPC_CHANNELS,
 } from './openAIResponsesTextChatIpc'
@@ -90,6 +94,7 @@ export const CORE_IPC_CHANNELS = [
   ...LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS,
   ...LOCAL_ENDPOINT_TEXT_CHAT_IPC_CHANNELS,
   ...LM_STUDIO_LOCAL_PROVIDER_IPC_CHANNELS,
+  ...OLLAMA_LOCAL_PROVIDER_IPC_CHANNELS,
   ...OPENAI_RESPONSES_TEXT_CHAT_IPC_CHANNELS,
   ...GOOGLE_AI_STUDIO_TEXT_CHAT_IPC_CHANNELS,
   ...ANTHROPIC_TEXT_CHAT_IPC_CHANNELS,
@@ -194,6 +199,9 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
       registerInvoke: input.registerInvoke,
     }),
     ...registerLMStudioLocalProviderIpc({
+      registerInvoke: input.registerInvoke,
+    }),
+    ...registerOllamaLocalProviderIpc({
       registerInvoke: input.registerInvoke,
     }),
     ...registerOpenAIResponsesTextChatIpc({

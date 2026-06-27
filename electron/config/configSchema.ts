@@ -1,3 +1,5 @@
+import { isProviderCredentialSecureStoreKey } from '../credentials/providerCredentialService'
+
 /**
  * configSchema.ts - 应用配置 Schema 定义
  * 
@@ -140,6 +142,12 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   'devToolsOpen',         // 开发者工具是否打开（开发环境）
 ])
 
+function isAllowedConfigKey(key: string): boolean {
+  return ALLOWED_CONFIG_KEYS.has(key) ||
+    key === 'providerCredentials' ||
+    isProviderCredentialSecureStoreKey(key)
+}
+
 /**
  * 已知的遗留大字段列表
  * 
@@ -239,7 +247,7 @@ export function validateAndCleanConfig(config: Record<string, any>): {
   const removed: Array<{ key: string; size: number }> = []
   
   for (const [configKey, value] of Object.entries(config)) {
-    if (ALLOWED_CONFIG_KEYS.has(configKey)) {
+    if (isAllowedConfigKey(configKey)) {
       cleaned[configKey] = value
     } else {
       const size = JSON.stringify(value).length
@@ -461,7 +469,7 @@ export function checkConfigIntegrity(store: any): {
     }
     
     // 检查是否有非法字段
-    const illegalKeys = Object.keys(config).filter(key => !ALLOWED_CONFIG_KEYS.has(key))
+    const illegalKeys = Object.keys(config).filter(key => !isAllowedConfigKey(key))
     if (illegalKeys.length > 0) {
       return {
         ok: false,

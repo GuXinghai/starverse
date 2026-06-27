@@ -71,6 +71,42 @@ const props = defineProps<{
     }>
     experimentalLabel: string
   }> | null
+  ollamaChat?: Readonly<{
+    enabled: boolean
+    endpointUrl: string
+    model: string
+    chatMode: 'native_rest' | 'openai_compatible'
+    nativeRestPreferredEndpoint: 'chat' | 'generate'
+    openAICompatiblePreferredEndpoint: 'chat_completions' | 'responses'
+    nativeControls: Readonly<{
+      diagnosticsEnabled: boolean
+      manualLoadUnloadEnabled: boolean
+      autoLoadBeforeSendEnabled: boolean
+      autoUnloadAfterSendEnabled: boolean
+      autoUnloadAfterIdleEnabled?: boolean
+    }>
+    config: Readonly<{
+      providerKey: 'ollama_local'
+      endpointUrl: string
+      nativeControls: Readonly<{
+        diagnosticsEnabled: boolean
+        manualLoadUnloadEnabled: boolean
+        autoLoadBeforeSendEnabled: boolean
+        autoUnloadAfterSendEnabled: boolean
+        autoUnloadAfterIdleEnabled?: boolean
+      }>
+      chatMode: 'native_rest' | 'openai_compatible'
+      nativeRest: Readonly<{
+        basePath: '/api'
+        preferredEndpoint: 'chat' | 'generate'
+      }>
+      openAICompatible: Readonly<{
+        basePath: '/v1'
+        preferredEndpoint: 'chat_completions' | 'responses'
+      }>
+    }>
+    experimentalLabel: string
+  }> | null
   localEndpointChat?: Readonly<{
     enabled: boolean
     endpointUrl: string
@@ -150,6 +186,18 @@ const emit = defineEmits<{
     enabled: boolean
   ): void
   (e: 'clearLMStudioChat'): void
+  (e: 'updateOllamaChatEnabled', enabled: boolean): void
+  (e: 'updateOllamaEndpointUrl', value: string): void
+  (e: 'updateOllamaModel', value: string): void
+  (e: 'updateOllamaChatMode', mode: 'native_rest' | 'openai_compatible'): void
+  (e: 'updateOllamaNativeRestPreferredEndpoint', endpoint: 'chat' | 'generate'): void
+  (e: 'updateOllamaOpenAICompatiblePreferredEndpoint', endpoint: 'chat_completions' | 'responses'): void
+  (
+    e: 'updateOllamaNativeControl',
+    key: 'diagnosticsEnabled' | 'manualLoadUnloadEnabled' | 'autoLoadBeforeSendEnabled' | 'autoUnloadAfterSendEnabled' | 'autoUnloadAfterIdleEnabled',
+    enabled: boolean
+  ): void
+  (e: 'clearOllamaChat'): void
   (e: 'updateLocalEndpointChatEnabled', enabled: boolean): void
   (e: 'updateLocalEndpointChatUrl', value: string): void
   (e: 'updateLocalEndpointChatModel', value: string): void
@@ -234,6 +282,56 @@ const lmStudioBridgeAvailable = computed(() => {
 })
 function formatLMStudioAvailability(available: boolean): string {
   return available ? t('settings.lmStudio.available') : t('settings.lmStudio.unavailable')
+}
+const ollamaChat = computed(() => props.ollamaChat ?? {
+  enabled: false,
+  endpointUrl: 'http://127.0.0.1:11434',
+  model: '',
+  chatMode: 'native_rest' as const,
+  nativeRestPreferredEndpoint: 'chat' as const,
+  openAICompatiblePreferredEndpoint: 'chat_completions' as const,
+  nativeControls: {
+    diagnosticsEnabled: true,
+    manualLoadUnloadEnabled: true,
+    autoLoadBeforeSendEnabled: false,
+    autoUnloadAfterSendEnabled: false,
+    autoUnloadAfterIdleEnabled: false,
+  },
+  config: {
+    providerKey: 'ollama_local' as const,
+    endpointUrl: 'http://127.0.0.1:11434',
+    nativeControls: {
+      diagnosticsEnabled: true,
+      manualLoadUnloadEnabled: true,
+      autoLoadBeforeSendEnabled: false,
+      autoUnloadAfterSendEnabled: false,
+      autoUnloadAfterIdleEnabled: false,
+    },
+    chatMode: 'native_rest' as const,
+    nativeRest: { basePath: '/api' as const, preferredEndpoint: 'chat' as const },
+    openAICompatible: { basePath: '/v1' as const, preferredEndpoint: 'chat_completions' as const },
+  },
+  experimentalLabel: t('settings.ollama.experimentalLabel'),
+})
+const ollamaChatStatusLabel = computed(() => ollamaChat.value.enabled ? t('settings.ollama.active') : t('settings.ollama.inactive'))
+const ollamaProbeLoading = ref(false)
+const ollamaActionLoading = ref(false)
+const ollamaProbeResult = ref<any | null>(null)
+const ollamaActionResult = ref<string>('')
+const ollamaLocalModels = computed(() => {
+  const result = ollamaProbeResult.value
+  return result?.ok && result.diagnostics?.localModels?.ok ? result.diagnostics.localModels.models as any[] : []
+})
+const ollamaRunningModels = computed(() => {
+  const result = ollamaProbeResult.value
+  return result?.ok && result.diagnostics?.runningModels?.ok ? result.diagnostics.runningModels.models as any[] : []
+})
+const ollamaBridgeAvailable = computed(() => {
+  const bridge = (globalThis as any).ollamaProvider
+  return !!bridge && typeof bridge.probe === 'function' && typeof bridge.loadModel === 'function' && typeof bridge.unloadModel === 'function'
+})
+function formatOllamaAvailability(available: boolean): string {
+  return available ? t('settings.ollama.available') : t('settings.ollama.unavailable')
 }
 const runtimeStatus = computed(() => props.currentRuntimeStatus ?? {
   selectionLabel: 'No runtime provider selected',
@@ -485,6 +583,94 @@ async function unloadLMStudioSelectedModel() {
     lmStudioActionResult.value = t('settings.lmStudio.unloadFailedSafely')
   } finally {
     lmStudioActionLoading.value = false
+  }
+}
+
+function formatOllamaModels(models: any[]): string {
+  if (models.length === 0) return t('settings.ollama.none')
+  return models
+    .slice(0, 12)
+    .map((model) => {
+      const label = model.displayName && model.displayName !== model.key
+        ? `${model.displayName} (${model.key})`
+        : model.key
+      const status = model.running ? t('settings.ollama.running') : t('settings.ollama.installed')
+      const details = model.details && typeof model.details === 'object'
+        ? [model.details.family, model.details.parameterSize, model.details.quantizationLevel].filter(Boolean).join(' · ')
+        : ''
+      return `${label} (${status}${details ? ` · ${details}` : ''})`
+    })
+    .join(' | ')
+}
+
+async function probeOllama(options: Readonly<{ clearAction?: boolean }> = {}) {
+  const bridge = (globalThis as any).ollamaProvider
+  if (!ollamaBridgeAvailable.value) {
+    ollamaActionResult.value = t('settings.ollama.bridgeUnavailable')
+    return
+  }
+  ollamaProbeLoading.value = true
+  if (options.clearAction !== false) ollamaActionResult.value = ''
+  try {
+    const result = await bridge.probe({
+      endpointUrl: ollamaChat.value.endpointUrl,
+      selectedModel: ollamaChat.value.model,
+      timeoutMs: 5000,
+    })
+    ollamaProbeResult.value = result
+  } catch {
+    ollamaProbeResult.value = null
+    ollamaActionResult.value = t('settings.ollama.probeFailedSafely')
+  } finally {
+    ollamaProbeLoading.value = false
+  }
+}
+
+async function loadOllamaSelectedModel() {
+  const bridge = (globalThis as any).ollamaProvider
+  const model = ollamaChat.value.model.trim()
+  if (!ollamaBridgeAvailable.value || !model) return
+  ollamaActionLoading.value = true
+  ollamaActionResult.value = ''
+  try {
+    const result = await bridge.loadModel({
+      endpointUrl: ollamaChat.value.endpointUrl,
+      model,
+      manualLoadUnloadEnabled: ollamaChat.value.nativeControls.manualLoadUnloadEnabled,
+      timeoutMs: 120000,
+    })
+    ollamaActionResult.value = result?.ok
+      ? tf('settings.ollama.loadRequested', { model: result.model })
+      : tf('settings.ollama.loadFailed', { message: result?.message ?? t('settings.ollama.safeFailure') })
+    await probeOllama({ clearAction: false })
+  } catch {
+    ollamaActionResult.value = t('settings.ollama.loadFailedSafely')
+  } finally {
+    ollamaActionLoading.value = false
+  }
+}
+
+async function unloadOllamaSelectedModel() {
+  const bridge = (globalThis as any).ollamaProvider
+  const model = ollamaChat.value.model.trim()
+  if (!ollamaBridgeAvailable.value || !model) return
+  ollamaActionLoading.value = true
+  ollamaActionResult.value = ''
+  try {
+    const result = await bridge.unloadModel({
+      endpointUrl: ollamaChat.value.endpointUrl,
+      model,
+      manualLoadUnloadEnabled: ollamaChat.value.nativeControls.manualLoadUnloadEnabled,
+      timeoutMs: 120000,
+    })
+    ollamaActionResult.value = result?.ok
+      ? tf('settings.ollama.unloadRequested', { model: result.model })
+      : tf('settings.ollama.unloadFailed', { message: result?.message ?? t('settings.ollama.safeFailure') })
+    await probeOllama({ clearAction: false })
+  } catch {
+    ollamaActionResult.value = t('settings.ollama.unloadFailedSafely')
+  } finally {
+    ollamaActionLoading.value = false
   }
 }
 
@@ -1363,6 +1549,249 @@ function chipClass(active: boolean): string {
             @click="emit('clearLMStudioChat')"
           >
             {{ t('settings.lmStudio.clearSettings') }}
+          </button>
+        </div>
+      </section>
+
+      <section class="space-y-3 rounded-lg border border-green-200 bg-green-50/70 p-3" data-testid="ollama-chat-controls">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-green-800">{{ t('settings.ollama.title') }}</div>
+            <div class="mt-1 text-[11px] text-green-700">{{ ollamaChat.experimentalLabel }}</div>
+          </div>
+          <label class="flex items-center gap-2 text-sm text-green-900">
+            <input
+              type="checkbox"
+              :checked="ollamaChat.enabled"
+              :disabled="disabled"
+              data-testid="ollama-chat-enabled"
+              @change="emit('updateOllamaChatEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            {{ t('settings.ollama.enabled') }}
+          </label>
+        </div>
+        <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+          <label class="space-y-1">
+            <span class="block text-[11px] font-semibold text-green-900">{{ t('settings.ollama.endpointUrl') }}</span>
+            <input
+              class="w-full rounded border border-green-200 bg-white px-2 py-1.5 text-sm disabled:bg-green-50"
+              :value="ollamaChat.endpointUrl"
+              :disabled="disabled || !ollamaChat.enabled"
+              placeholder="http://127.0.0.1:11434"
+              data-testid="ollama-endpoint-url"
+              @input="emit('updateOllamaEndpointUrl', ($event.target as HTMLInputElement).value)"
+            />
+          </label>
+          <label class="space-y-1">
+            <span class="block text-[11px] font-semibold text-green-900">{{ t('settings.ollama.selectedModel') }}</span>
+            <input
+              class="w-full rounded border border-green-200 bg-white px-2 py-1.5 text-sm disabled:bg-green-50"
+              :value="ollamaChat.model"
+              :disabled="disabled || !ollamaChat.enabled"
+              placeholder="llama3.2:latest"
+              data-testid="ollama-model"
+              @input="emit('updateOllamaModel', ($event.target as HTMLInputElement).value)"
+            />
+          </label>
+        </div>
+        <div class="space-y-2 rounded border border-green-100 bg-white px-2 py-2 text-[11px] text-green-900">
+          <div class="font-semibold">{{ t('settings.ollama.chatMode') }}</div>
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              class="rounded-md border px-2 py-1.5 text-[11px]"
+              :class="chipClass(ollamaChat.chatMode === 'native_rest')"
+              :disabled="disabled || !ollamaChat.enabled"
+              data-testid="ollama-chat-mode-native"
+              @click="emit('updateOllamaChatMode', 'native_rest')"
+            >
+              {{ t('settings.ollama.nativeRest') }}
+            </button>
+            <button
+              type="button"
+              class="rounded-md border px-2 py-1.5 text-[11px]"
+              :class="chipClass(ollamaChat.chatMode === 'openai_compatible')"
+              :disabled="disabled || !ollamaChat.enabled"
+              data-testid="ollama-chat-mode-openai"
+              @click="emit('updateOllamaChatMode', 'openai_compatible')"
+            >
+              {{ t('settings.ollama.openAICompatible') }}
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              class="rounded-md border px-2 py-1.5 text-[11px]"
+              :class="chipClass(ollamaChat.nativeRestPreferredEndpoint === 'chat')"
+              :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest'"
+              data-testid="ollama-native-endpoint-chat"
+              @click="emit('updateOllamaNativeRestPreferredEndpoint', 'chat')"
+            >
+              /api/chat
+            </button>
+            <button
+              type="button"
+              class="rounded-md border px-2 py-1.5 text-[11px]"
+              :class="chipClass(ollamaChat.nativeRestPreferredEndpoint === 'generate')"
+              :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest'"
+              data-testid="ollama-native-endpoint-generate"
+              @click="emit('updateOllamaNativeRestPreferredEndpoint', 'generate')"
+            >
+              /api/generate
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              class="rounded-md border px-2 py-1.5 text-[11px]"
+              :class="chipClass(ollamaChat.openAICompatiblePreferredEndpoint === 'chat_completions')"
+              :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'openai_compatible'"
+              data-testid="ollama-openai-endpoint-chat-completions"
+              @click="emit('updateOllamaOpenAICompatiblePreferredEndpoint', 'chat_completions')"
+            >
+              /v1/chat/completions
+            </button>
+            <button
+              type="button"
+              class="rounded-md border px-2 py-1.5 text-[11px]"
+              :class="chipClass(ollamaChat.openAICompatiblePreferredEndpoint === 'responses')"
+              :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'openai_compatible'"
+              data-testid="ollama-openai-endpoint-responses"
+              @click="emit('updateOllamaOpenAICompatiblePreferredEndpoint', 'responses')"
+            >
+              /v1/responses
+            </button>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 gap-2 rounded border border-green-100 bg-white px-2 py-2 text-[11px] text-green-900 md:grid-cols-2">
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              :checked="ollamaChat.nativeControls.diagnosticsEnabled"
+              :disabled="disabled"
+              data-testid="ollama-diagnostics-enabled"
+              @change="emit('updateOllamaNativeControl', 'diagnosticsEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            {{ t('settings.ollama.nativeRestDiagnostics') }}
+          </label>
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              :checked="ollamaChat.nativeControls.manualLoadUnloadEnabled"
+              :disabled="disabled"
+              data-testid="ollama-manual-load-unload-enabled"
+              @change="emit('updateOllamaNativeControl', 'manualLoadUnloadEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            {{ t('settings.ollama.manualLoadUnload') }}
+          </label>
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              :checked="ollamaChat.nativeControls.autoLoadBeforeSendEnabled"
+              :disabled="disabled"
+              data-testid="ollama-auto-load-enabled"
+              @change="emit('updateOllamaNativeControl', 'autoLoadBeforeSendEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            {{ t('settings.ollama.autoLoadBeforeSend') }}
+          </label>
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              :checked="ollamaChat.nativeControls.autoUnloadAfterSendEnabled"
+              :disabled="disabled"
+              data-testid="ollama-auto-unload-after-send-enabled"
+              @change="emit('updateOllamaNativeControl', 'autoUnloadAfterSendEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            {{ t('settings.ollama.autoUnloadAfterSend') }}
+          </label>
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              :checked="ollamaChat.nativeControls.autoUnloadAfterIdleEnabled === true"
+              :disabled="disabled"
+              data-testid="ollama-auto-unload-after-idle-enabled"
+              @change="emit('updateOllamaNativeControl', 'autoUnloadAfterIdleEnabled', ($event.target as HTMLInputElement).checked)"
+            />
+            {{ t('settings.ollama.autoUnloadAfterIdleDeferred') }}
+          </label>
+        </div>
+        <div class="rounded border border-green-100 bg-white px-2 py-1.5 text-[11px] text-green-900" data-testid="ollama-selected-status">
+          <div>{{ tf('settings.ollama.chatStatus', { status: ollamaChatStatusLabel }) }}</div>
+          <div>{{ t('settings.ollama.endpoint') }}: {{ ollamaChat.endpointUrl || t('settings.ollama.none') }}</div>
+          <div>{{ t('settings.ollama.selectedModel') }}: {{ ollamaChat.model || t('settings.ollama.none') }}</div>
+          <div>{{ t('settings.ollama.mode') }}: {{ ollamaChat.chatMode }} · {{ t('settings.ollama.nativeEndpoint') }}: {{ ollamaChat.nativeRestPreferredEndpoint }} · {{ t('settings.ollama.openAIEndpoint') }}: {{ ollamaChat.openAICompatiblePreferredEndpoint }}</div>
+          <div>{{ t('settings.ollama.boundarySummary') }}</div>
+        </div>
+        <div class="space-y-2 rounded border border-green-100 bg-white px-2 py-2 text-[11px] text-green-900" data-testid="ollama-diagnostics">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="font-semibold">{{ t('settings.ollama.controlPlane') }}</div>
+              <div v-if="ollamaProbeResult?.ok" data-testid="ollama-probe-summary">
+                {{ t('settings.ollama.nativeProbeLabel') }}={{ formatOllamaAvailability(ollamaProbeResult.diagnostics.nativeRestAvailable) }};
+                {{ t('settings.ollama.openAIProbeLabel') }}={{ formatOllamaAvailability(ollamaProbeResult.diagnostics.openAICompatibleAvailable) }}
+              </div>
+              <div v-else data-testid="ollama-probe-summary">{{ t('settings.ollama.notProbed') }}</div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                class="rounded-md border border-green-300 bg-green-50 px-2 py-1 text-[11px] font-semibold text-green-900 hover:bg-green-100 disabled:opacity-50"
+                :disabled="disabled || !ollamaChat.enabled || !ollamaChat.nativeControls.diagnosticsEnabled || ollamaProbeLoading || !ollamaBridgeAvailable"
+                data-testid="ollama-probe"
+                @click="probeOllama()"
+              >
+                {{ ollamaProbeLoading ? t('settings.ollama.probing') : t('settings.ollama.probe') }}
+              </button>
+              <button
+                type="button"
+                class="rounded-md border border-green-300 bg-white px-2 py-1 text-[11px] font-semibold text-green-900 hover:bg-green-50 disabled:opacity-50"
+                :disabled="disabled || !ollamaChat.enabled || !ollamaChat.nativeControls.manualLoadUnloadEnabled || ollamaActionLoading || !ollamaChat.model"
+                data-testid="ollama-load-model"
+                @click="loadOllamaSelectedModel"
+              >
+                {{ t('settings.ollama.load') }}
+              </button>
+              <button
+                type="button"
+                class="rounded-md border border-green-300 bg-white px-2 py-1 text-[11px] font-semibold text-green-900 hover:bg-green-50 disabled:opacity-50"
+                :disabled="disabled || !ollamaChat.enabled || !ollamaChat.nativeControls.manualLoadUnloadEnabled || ollamaActionLoading || !ollamaChat.model"
+                data-testid="ollama-unload-model"
+                @click="unloadOllamaSelectedModel"
+              >
+                {{ t('settings.ollama.unload') }}
+              </button>
+            </div>
+          </div>
+          <div v-if="ollamaProbeResult?.ok" class="space-y-1" data-testid="ollama-probe-result">
+            <div data-testid="ollama-native-status">{{ t('settings.ollama.nativeRest') }}: {{ ollamaProbeResult.diagnostics.nativeRestAvailable ? t('settings.ollama.available') : ollamaProbeResult.diagnostics.localModels.message }}</div>
+            <div data-testid="ollama-openai-status">{{ t('settings.ollama.openAICompatible') }}: {{ ollamaProbeResult.diagnostics.openAICompatibleAvailable ? t('settings.ollama.available') : ollamaProbeResult.diagnostics.openAICompatible.message }}</div>
+            <div data-testid="ollama-version">{{ t('settings.ollama.version') }}: {{ ollamaProbeResult.diagnostics.version.ok ? ollamaProbeResult.diagnostics.version.version : ollamaProbeResult.diagnostics.version.message }}</div>
+            <div data-testid="ollama-local-models">{{ t('settings.ollama.localModels') }}: {{ formatOllamaModels(ollamaLocalModels) }}</div>
+            <div data-testid="ollama-running-models">{{ t('settings.ollama.runningModels') }}: {{ formatOllamaModels(ollamaRunningModels) }}</div>
+          </div>
+          <div v-else-if="ollamaProbeResult && !ollamaProbeResult.ok" class="text-red-700" data-testid="ollama-probe-error">
+            {{ ollamaProbeResult.message }}
+          </div>
+          <div v-if="ollamaActionResult" data-testid="ollama-action-result">{{ ollamaActionResult }}</div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-semibold text-green-900 hover:bg-green-100 disabled:opacity-50"
+            :disabled="disabled || !ollamaChat.enabled"
+            data-testid="ollama-chat-disable"
+            @click="emit('updateOllamaChatEnabled', false)"
+          >
+            {{ t('settings.ollama.disable') }}
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-green-300 bg-white px-3 py-1.5 text-xs font-semibold text-green-900 hover:bg-green-100 disabled:opacity-50"
+            :disabled="disabled"
+            data-testid="ollama-chat-clear"
+            @click="emit('clearOllamaChat')"
+          >
+            {{ t('settings.ollama.clearSettings') }}
           </button>
         </div>
       </section>

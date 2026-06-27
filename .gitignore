@@ -146,3 +146,11 @@ reports/
 *.7z
 *.tar
 *.gz
+
+# Provider key vault local artifacts
+*.vault
+*.vault.tmp
+*.vault.bak
+provider-keys.vault
+tools/provider-key-vault/.tmp/
+tools/provider-key-vault/test-output/

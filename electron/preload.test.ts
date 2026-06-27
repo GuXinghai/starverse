@@ -40,6 +40,10 @@ describe('preload scoped API exposure', () => {
       'googleAIStudioModels',
       'localEndpointDiagnostics',
       'localEndpointChat',
+      'lmStudioProvider',
+      'lmStudioChat',
+      'ollamaProvider',
+      'ollamaChat',
       'openAIResponsesChat',
       'googleAIStudioChat',
       'anthropicChat',
@@ -91,6 +95,10 @@ describe('preload scoped API exposure', () => {
     const googleAIStudioModels = exposeInMainWorld.mock.calls.find(([name]) => name === 'googleAIStudioModels')?.[1]
     const localEndpointDiagnostics = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointDiagnostics')?.[1]
     const localEndpointChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointChat')?.[1]
+    const lmStudioProvider = exposeInMainWorld.mock.calls.find(([name]) => name === 'lmStudioProvider')?.[1]
+    const lmStudioChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'lmStudioChat')?.[1]
+    const ollamaProvider = exposeInMainWorld.mock.calls.find(([name]) => name === 'ollamaProvider')?.[1]
+    const ollamaChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'ollamaChat')?.[1]
     const openAIResponsesChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'openAIResponsesChat')?.[1]
     const googleAIStudioChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'googleAIStudioChat')?.[1]
     const anthropicChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'anthropicChat')?.[1]
@@ -150,6 +158,28 @@ describe('preload scoped API exposure', () => {
       onTextChatChunk: expect.any(Function),
       onTextChatEnd: expect.any(Function),
     })
+    expect(lmStudioProvider).toEqual({
+      probe: expect.any(Function),
+      loadModel: expect.any(Function),
+      unloadModel: expect.any(Function),
+    })
+    expect(lmStudioChat).toEqual({
+      startTextChat: expect.any(Function),
+      abortTextChat: expect.any(Function),
+      onTextChatChunk: expect.any(Function),
+      onTextChatEnd: expect.any(Function),
+    })
+    expect(ollamaProvider).toEqual({
+      probe: expect.any(Function),
+      loadModel: expect.any(Function),
+      unloadModel: expect.any(Function),
+    })
+    expect(ollamaChat).toEqual({
+      startTextChat: expect.any(Function),
+      abortTextChat: expect.any(Function),
+      onTextChatChunk: expect.any(Function),
+      onTextChatEnd: expect.any(Function),
+    })
     expect(openAIResponsesChat).toEqual({
       startTextChat: expect.any(Function),
       abortTextChat: expect.any(Function),
@@ -184,6 +214,18 @@ describe('preload scoped API exposure', () => {
     expect(localEndpointChat.getStatus).toBeUndefined()
     expect(localEndpointChat.update).toBeUndefined()
     expect(localEndpointChat.endpointRegistry).toBeUndefined()
+    expect(lmStudioProvider.getStatus).toBeUndefined()
+    expect(lmStudioProvider.update).toBeUndefined()
+    expect(lmStudioProvider.endpointRegistry).toBeUndefined()
+    expect(lmStudioChat.getStatus).toBeUndefined()
+    expect(lmStudioChat.update).toBeUndefined()
+    expect(lmStudioChat.endpointRegistry).toBeUndefined()
+    expect(ollamaProvider.getStatus).toBeUndefined()
+    expect(ollamaProvider.update).toBeUndefined()
+    expect(ollamaProvider.endpointRegistry).toBeUndefined()
+    expect(ollamaChat.getStatus).toBeUndefined()
+    expect(ollamaChat.update).toBeUndefined()
+    expect(ollamaChat.endpointRegistry).toBeUndefined()
     expect(openAIResponsesCredential.apiKey).toBeUndefined()
     expect(openAIResponsesCredential.endpointRegistry).toBeUndefined()
     expect(openAIResponsesModels.apiKey).toBeUndefined()
@@ -254,6 +296,30 @@ describe('preload scoped API exposure', () => {
     await localEndpointChat.abortTextChat('local_req_preload')
     localEndpointChat.onTextChatChunk('local_req_preload', () => {})
     localEndpointChat.onTextChatEnd('local_req_preload', () => {})
+    await lmStudioProvider.probe({ endpointUrl: 'http://localhost:1234', timeoutMs: 5000 })
+    await lmStudioProvider.loadModel({ endpointUrl: 'http://localhost:1234', model: 'openai/gpt-oss-20b' })
+    await lmStudioProvider.unloadModel({ endpointUrl: 'http://localhost:1234', instanceId: 'inst-loaded' })
+    await lmStudioChat.startTextChat({
+      requestId: 'lm_studio_req_preload',
+      assistantMessageId: 'assistant_1',
+      model: 'openai/gpt-oss-20b',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    await lmStudioChat.abortTextChat('lm_studio_req_preload')
+    lmStudioChat.onTextChatChunk('lm_studio_req_preload', () => {})
+    lmStudioChat.onTextChatEnd('lm_studio_req_preload', () => {})
+    await ollamaProvider.probe({ endpointUrl: 'http://localhost:11434', timeoutMs: 5000 })
+    await ollamaProvider.loadModel({ endpointUrl: 'http://localhost:11434', model: 'llama3.2:latest' })
+    await ollamaProvider.unloadModel({ endpointUrl: 'http://localhost:11434', model: 'llama3.2:latest' })
+    await ollamaChat.startTextChat({
+      requestId: 'ollama_req_preload',
+      assistantMessageId: 'assistant_1',
+      model: 'llama3.2:latest',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    await ollamaChat.abortTextChat('ollama_req_preload')
+    ollamaChat.onTextChatChunk('ollama_req_preload', () => {})
+    ollamaChat.onTextChatEnd('ollama_req_preload', () => {})
     await openAIResponsesChat.startTextChat({
       requestId: 'openai_responses_req_preload',
       assistantMessageId: 'assistant_1',
@@ -351,6 +417,44 @@ describe('preload scoped API exposure', () => {
       messages: [{ role: 'user', content: 'hello' }],
     })
     expect(invoke).toHaveBeenCalledWith('local-endpoint-chat:abort', 'local_req_preload')
+    expect(invoke).toHaveBeenCalledWith('lm-studio:probe', {
+      endpointUrl: 'http://localhost:1234',
+      timeoutMs: 5000,
+    })
+    expect(invoke).toHaveBeenCalledWith('lm-studio:load-model', {
+      endpointUrl: 'http://localhost:1234',
+      model: 'openai/gpt-oss-20b',
+    })
+    expect(invoke).toHaveBeenCalledWith('lm-studio:unload-model', {
+      endpointUrl: 'http://localhost:1234',
+      instanceId: 'inst-loaded',
+    })
+    expect(invoke).toHaveBeenCalledWith('lm-studio-chat:stream-text', {
+      requestId: 'lm_studio_req_preload',
+      assistantMessageId: 'assistant_1',
+      model: 'openai/gpt-oss-20b',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(invoke).toHaveBeenCalledWith('lm-studio-chat:abort', 'lm_studio_req_preload')
+    expect(invoke).toHaveBeenCalledWith('ollama:probe', {
+      endpointUrl: 'http://localhost:11434',
+      timeoutMs: 5000,
+    })
+    expect(invoke).toHaveBeenCalledWith('ollama:load-model', {
+      endpointUrl: 'http://localhost:11434',
+      model: 'llama3.2:latest',
+    })
+    expect(invoke).toHaveBeenCalledWith('ollama:unload-model', {
+      endpointUrl: 'http://localhost:11434',
+      model: 'llama3.2:latest',
+    })
+    expect(invoke).toHaveBeenCalledWith('ollama-chat:stream-text', {
+      requestId: 'ollama_req_preload',
+      assistantMessageId: 'assistant_1',
+      model: 'llama3.2:latest',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+    expect(invoke).toHaveBeenCalledWith('ollama-chat:abort', 'ollama_req_preload')
     expect(invoke).toHaveBeenCalledWith('openai-responses-chat:stream-text', {
       requestId: 'openai_responses_req_preload',
       assistantMessageId: 'assistant_1',
@@ -397,6 +501,10 @@ describe('preload scoped API exposure', () => {
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('googleAIStudioModels'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointDiagnostics'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointChat'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('lmStudioProvider'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('lmStudioChat'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('ollamaProvider'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('ollamaChat'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openAIResponsesChat'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('googleAIStudioChat'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('anthropicChat'")

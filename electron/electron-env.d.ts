@@ -604,6 +604,114 @@ type LMStudioControlResult =
     safeUrl?: string
   }
 
+type OllamaChatMode = 'native_rest' | 'openai_compatible'
+type OllamaNativePreferredEndpoint = 'chat' | 'generate'
+type OllamaPreferredEndpoint = 'chat_completions' | 'responses'
+
+interface OllamaNativeControls {
+  diagnosticsEnabled: boolean
+  manualLoadUnloadEnabled: boolean
+  autoLoadBeforeSendEnabled: boolean
+  autoUnloadAfterSendEnabled: boolean
+  autoUnloadAfterIdleEnabled?: boolean
+}
+
+interface OllamaLocalProviderConfig {
+  providerKey: 'ollama_local'
+  endpointUrl: string
+  nativeControls: OllamaNativeControls
+  chatMode: OllamaChatMode
+  nativeRest: {
+    basePath: '/api'
+    preferredEndpoint: OllamaNativePreferredEndpoint
+  }
+  openAICompatible: {
+    basePath: '/v1'
+    preferredEndpoint: OllamaPreferredEndpoint
+  }
+}
+
+interface OllamaModelSummary {
+  key: string
+  displayName: string
+  running: boolean
+  digest?: string
+  sizeBytes?: number
+  sizeVramBytes?: number
+  expiresAt?: string
+}
+
+type OllamaModelList =
+  | {
+    ok: true
+    source: 'ollama_api_tags' | 'ollama_api_ps' | 'ollama_openai_v1_models'
+    models: OllamaModelSummary[]
+    modelIds: string[]
+    count: number
+  }
+  | {
+    ok: false
+    code: 'unavailable' | 'http_error' | 'invalid_response' | 'timeout' | 'network_error'
+    message: string
+  }
+
+type OllamaVersionProbe =
+  | { ok: true; version: string }
+  | {
+    ok: false
+    code: 'unavailable' | 'http_error' | 'invalid_response' | 'timeout' | 'network_error'
+    message: string
+  }
+
+interface OllamaProbeDiagnostics {
+  kind: 'ollama_local_provider_diagnostics'
+  providerKey: 'ollama_local'
+  safeBaseUrl: string
+  nativeRestAvailable: boolean
+  openAICompatibleAvailable: boolean
+  localModels: OllamaModelList
+  runningModels: OllamaModelList
+  version: OllamaVersionProbe
+  openAICompatible: OllamaModelList
+  selectedModelKnown?: boolean
+  selectedModelRunning?: boolean
+  warnings: string[]
+  message: string
+}
+
+type OllamaProbeResult =
+  | { ok: true; diagnostics: OllamaProbeDiagnostics }
+  | {
+    ok: false
+    code: 'invalid_url' | 'remote_host_rejected' | 'embedded_credentials_rejected'
+    message: string
+    safeUrl?: string
+  }
+
+type OllamaControlResult =
+  | {
+    ok: true
+    operation: 'load' | 'unload'
+    model: string
+    status: 'loaded' | 'unloaded'
+    warnings: string[]
+  }
+  | {
+    ok: false
+    code:
+      | 'invalid_payload'
+      | 'invalid_url'
+      | 'remote_host_rejected'
+      | 'embedded_credentials_rejected'
+      | 'controls_disabled'
+      | 'timeout'
+      | 'network_error'
+      | 'http_error'
+      | 'invalid_response'
+    message: string
+    safeUrl?: string
+  }
+
 type LocalEndpointTextChatMessage = {
   role: 'user' | 'assistant'
   content: string
@@ -624,6 +732,20 @@ type LMStudioTextChatMessage = {
 }
 
 type LMStudioTextChatStartResult =
+  | { ok: true }
+  | {
+    ok: false
+    code: 'invalid_payload' | 'invalid_url' | 'remote_host_rejected' | 'embedded_credentials_rejected'
+    error: string
+    safeUrl?: string
+  }
+
+type OllamaTextChatMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+type OllamaTextChatStartResult =
   | { ok: true }
   | {
     ok: false
@@ -763,6 +885,34 @@ interface Window {
       messages: LMStudioTextChatMessage[]
       timeoutMs?: number
     }) => Promise<LMStudioTextChatStartResult>
+    abortTextChat?: (requestId: string) => Promise<{ ok: true }>
+    onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
+    onTextChatEnd?: (requestId: string, callback: () => void) => () => void
+  }
+  ollamaProvider?: {
+    probe?: (payload: { endpointUrl?: string; selectedModel?: string; timeoutMs?: number }) => Promise<OllamaProbeResult>
+    loadModel?: (payload: {
+      endpointUrl: string
+      model: string
+      manualLoadUnloadEnabled?: boolean
+      timeoutMs?: number
+    }) => Promise<OllamaControlResult>
+    unloadModel?: (payload: {
+      endpointUrl: string
+      model: string
+      manualLoadUnloadEnabled?: boolean
+      timeoutMs?: number
+    }) => Promise<OllamaControlResult>
+  }
+  ollamaChat?: {
+    startTextChat?: (payload: {
+      requestId: string
+      assistantMessageId: string
+      config: OllamaLocalProviderConfig
+      model: string
+      messages: OllamaTextChatMessage[]
+      timeoutMs?: number
+    }) => Promise<OllamaTextChatStartResult>
     abortTextChat?: (requestId: string) => Promise<{ ok: true }>
     onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
     onTextChatEnd?: (requestId: string, callback: () => void) => () => void
