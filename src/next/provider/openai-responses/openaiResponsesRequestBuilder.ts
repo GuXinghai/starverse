@@ -13,9 +13,15 @@ import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
 // OpenAI Responses request types — provider-native schema, contained here
 // ---------------------------------------------------------------------------
 
+export type ResponsesInputContentPart = Readonly<
+  | { type: 'input_text'; text: string }
+  | { type: 'input_image'; image_url: string }
+  | { type: 'input_file'; filename?: string; file_data?: string; file_url?: string }
+>
+
 export type ResponsesInputMessage = Readonly<{
   role: 'user' | 'assistant' | 'system' | 'developer'
-  content: string
+  content: string | ReadonlyArray<ResponsesInputContentPart>
   type?: 'message'
 }>
 

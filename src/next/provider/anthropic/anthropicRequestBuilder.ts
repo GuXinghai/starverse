@@ -13,9 +13,26 @@ import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
 // Anthropic request types — provider-native schema, contained here
 // ---------------------------------------------------------------------------
 
+export type AnthropicContentBlock = Readonly<
+  | { type: 'text'; text: string }
+  | {
+      type: 'image'
+      source:
+        | Readonly<{ type: 'base64'; media_type: string; data: string }>
+        | Readonly<{ type: 'url'; url: string }>
+    }
+  | {
+      type: 'document'
+      source:
+        | Readonly<{ type: 'base64'; media_type: string; data: string }>
+        | Readonly<{ type: 'url'; url: string }>
+      title?: string
+    }
+>
+
 export type AnthropicMessage = Readonly<{
   role: 'user' | 'assistant'
-  content: string
+  content: string | ReadonlyArray<AnthropicContentBlock>
 }>
 
 export type AnthropicThinkingConfig = Readonly<{

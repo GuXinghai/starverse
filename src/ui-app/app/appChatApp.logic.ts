@@ -134,6 +134,11 @@ import {
   type PreparedOpenRouterReplay,
   type PreparedOpenRouterSend,
 } from '@/next/openrouter/openRouterSendPreparation'
+import {
+  prepareProviderImageSendFromDraft,
+  type PreparedProviderImageSend,
+  type ProviderImageRuntimeProvider,
+} from '@/next/multimodal/providerImageSendPreparation'
 import { capturePdfAnnotationDerivatives } from '@/next/files/derivativeJobClient'
 import {
   addConversationDraftAttachment,
@@ -8715,12 +8720,74 @@ export function useAppChatAppLogic() {
     return prepared
   }
 
+  type PreparedProviderImageSendOk = Extract<PreparedProviderImageSend, { ok: true }>
+  type ExperimentalProviderImageRuntimeProvider = Extract<ProviderImageRuntimeProvider, ExperimentalRuntimeTextProviderKey>
+
+  function isExperimentalProviderImageRuntime(
+    providerKey: ExperimentalRuntimeTextProviderKey
+  ): providerKey is ExperimentalProviderImageRuntimeProvider {
+    return providerKey === 'openai_responses' ||
+      providerKey === 'google_ai_studio' ||
+      providerKey === 'anthropic_messages'
+  }
+
+  function buildExperimentalImageSendPlanModelDescriptor(input: Readonly<{
+    providerKey: ExperimentalProviderImageRuntimeProvider
+    modelId: string
+  }>): SendPlanModelDescriptor {
+    const normalized = normalizeModelKey(input.modelId)
+    return {
+      providerKey: input.providerKey,
+      modelId: normalized,
+      modelKey: `${input.providerKey}::${normalized}`,
+      inputModalities: ['text', 'image'],
+      outputModalities: ['text'],
+    }
+  }
+
+  function buildExperimentalImageSendPlanProviderContext(providerKey: ExperimentalProviderImageRuntimeProvider): SendPlanProviderContext {
+    return {
+      providerKey,
+      supportsImageUrlRef: true,
+      supportsPdfInputs: false,
+      supportsPdfUrlRef: false,
+      supportsTextUrlRef: false,
+      supportsVideoUrlRef: false,
+      supportsInlineData: true,
+      supportsProviderFileRef: false,
+      preferredDraftSendModes: ['inline_base64', 'url_ref'],
+    }
+  }
+
+  async function prepareExperimentalProviderImageSend(input: Readonly<{
+    providerKey: ExperimentalProviderImageRuntimeProvider
+    conversationId: string
+    userText: string
+    modelId: string
+    historyMessageIds: ReadonlyArray<string>
+  }>): Promise<PreparedProviderImageSend | null> {
+    return await prepareProviderImageSendFromDraft({
+      provider: input.providerKey,
+      conversationId: input.conversationId,
+      userText: input.userText,
+      model: buildExperimentalImageSendPlanModelDescriptor({
+        providerKey: input.providerKey,
+        modelId: input.modelId,
+      }),
+      providerContext: buildExperimentalImageSendPlanProviderContext(input.providerKey),
+      historyMessageIds: input.historyMessageIds,
+    })
+  }
+
   async function sendExperimentalProviderTextChat(input: Readonly<{
     providerKey: ExperimentalRuntimeTextProviderKey
     convoId: string
     branch: BranchSummary
     text: string
     contextMessages: any[]
+    currentUserContentBlocks?: PreparedProviderImageSendOk['contentParts']
+    sentAssetIds?: ReadonlyArray<string>
+    attachConversationDraft?: boolean
   }>) {
     const modelId = getExperimentalRuntimeTextModelId(input.providerKey, {
       lmStudio: lmStudioModel.value,
@@ -8741,7 +8808,10 @@ export function useAppChatAppLogic() {
       ? ollamaProviderConfig.value
       : undefined
 
-    const begun = await beginTurn(input.branch.id, input.text)
+    const begun = await beginTurn(input.branch.id, input.text, {
+      ...(input.attachConversationDraft ? { attachConversationDraft: true } : {}),
+      ...(input.sentAssetIds?.length ? { sentAssetIds: Array.from(input.sentAssetIds) } : {}),
+    })
     draft.value = ''
     const cleared = await updateConversationDraftText({
       conversationId: input.convoId,
@@ -8799,6 +8869,7 @@ export function useAppChatAppLogic() {
         modelId,
         userText: input.text,
         contextMessages: input.contextMessages,
+        currentUserContentBlocks: input.currentUserContentBlocks,
         ...(lmStudioConfig ? { lmStudioConfig } : {}),
         ...(ollamaConfig ? { ollamaConfig } : {}),
         ...(endpointUrl ? { localEndpointUrl: endpointUrl } : {}),
@@ -8843,12 +8914,57 @@ export function useAppChatAppLogic() {
 
     if (runtimeRoute.kind === 'experimental_text') {
       if (isExperimentalRuntimeTextProviderKey(runtimeRoute.providerKey)) {
+        let preparedImageSend: PreparedProviderImageSendOk | null = null
+        if (hasDraftAttachments && isExperimentalProviderImageRuntime(runtimeRoute.providerKey)) {
+          const providerModelId = getExperimentalRuntimeTextModelId(runtimeRoute.providerKey, {
+            lmStudio: lmStudioModel.value,
+            ollama: ollamaModel.value,
+            localEndpoint: localEndpointChatModel.value,
+            openAIResponses: openAIResponsesChatModel.value,
+            googleAIStudio: googleAIStudioChatModel.value,
+            anthropic: anthropicChatModel.value,
+            deepSeek: deepSeekChatModel.value,
+          })
+          composerSendPlanLoading.value = true
+          try {
+            const prepared = await prepareExperimentalProviderImageSend({
+              providerKey: runtimeRoute.providerKey,
+              conversationId: convoId,
+              userText: text,
+              modelId: providerModelId,
+              historyMessageIds: contextMessageIds,
+            })
+            if (!prepared) {
+              setAttachmentFeedback('error', 'Provider image input preparation is unavailable.')
+              return
+            }
+            if (!prepared.ok) {
+              if (prepared.sendPlan) applyComposerSendPlanGateState(prepared.sendPlan)
+              setAttachmentFeedback('error', sanitizeSendPlanSummaryMessage(prepared.message) ?? 'Provider image input preparation failed.')
+              return
+            }
+            applyComposerSendPlanGateState(prepared.sendPlan)
+            if (prepared.contentParts.length === 0) {
+              setAttachmentFeedback('error', 'No sendable image attachment was found for this runtime.')
+              return
+            }
+            preparedImageSend = prepared
+          } catch (err: any) {
+            loadError.value = err?.message ? String(err.message) : String(err)
+            return
+          } finally {
+            composerSendPlanLoading.value = false
+          }
+        }
         await sendExperimentalProviderTextChat({
           providerKey: runtimeRoute.providerKey,
           convoId,
           branch,
           text,
           contextMessages,
+          ...(preparedImageSend ? { currentUserContentBlocks: preparedImageSend.contentParts } : {}),
+          ...(preparedImageSend?.hasDraftAttachmentPlans ? { attachConversationDraft: true } : {}),
+          ...(preparedImageSend?.sentAssetIds.length ? { sentAssetIds: preparedImageSend.sentAssetIds } : {}),
         })
         return
       }

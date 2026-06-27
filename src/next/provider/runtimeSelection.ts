@@ -44,6 +44,7 @@ export type RuntimeCapabilitySummaryLite = Readonly<{
     | 'local_probe'
     | 'lm_studio_local'
     | 'ollama_local'
+    | 'experimental_image_inline'
     | 'experimental_text_only'
     | 'unset'
   warnings: string[]
@@ -290,6 +291,48 @@ export function getRuntimeCapabilitySummaryLite(selection: CurrentRuntimeSelecti
         'Native REST load/unload controls are separate from OpenAI-compatible chat mode.',
         'Provider thinking metadata is filtered from visible text in the native REST stream.',
         'Files, tools, web search, reasoning controls, image generation, and structured output are blocked.',
+      ],
+    }
+  }
+
+  if (
+    selection.providerKey === 'openai_responses' ||
+    selection.providerKey === 'google_ai_studio' ||
+    selection.providerKey === 'anthropic_messages'
+  ) {
+    return {
+      textChat: true,
+      streamingText: true,
+      attachments: 'supported',
+      webSearch: 'blocked',
+      tools: 'blocked',
+      reasoningArtifacts: 'filtered',
+      imageGeneration: 'blocked',
+      structuredOutput: 'blocked',
+      usageFinal: 'not_guaranteed',
+      source: 'experimental_image_inline',
+      warnings: [
+        `${RUNTIME_PROVIDER_DISPLAY_NAMES[selection.providerKey]} R1 supports small image inline attachments only.`,
+        'PDF, document, audio, video, tools, web search, image generation, and structured output are blocked in this runtime slice.',
+      ],
+    }
+  }
+
+  if (selection.providerKey === 'deepseek') {
+    return {
+      textChat: true,
+      streamingText: true,
+      attachments: 'blocked',
+      webSearch: 'blocked',
+      tools: 'blocked',
+      reasoningArtifacts: 'filtered',
+      imageGeneration: 'blocked',
+      structuredOutput: 'blocked',
+      usageFinal: 'not_guaranteed',
+      source: 'experimental_text_only',
+      warnings: [
+        'DeepSeek official runtime is text-only in Starverse.',
+        'File and image attachments are blocked and are not converted into prompt text.',
       ],
     }
   }

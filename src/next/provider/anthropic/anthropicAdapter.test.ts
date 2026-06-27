@@ -122,6 +122,48 @@ describe('streamViaAnthropic', () => {
     expect(body.messages).toEqual([{ role: 'user', content: 'Hello' }])
   })
 
+  it('adds image content block for text plus image requests without leaking local paths', async () => {
+    const response = makeSseResponse(
+      messageStartSse({ id: 'msg_1', model: 'claude-sonnet-4-5', usage: { input_tokens: 10, output_tokens: 0 } }),
+      messageStopSse(),
+    )
+    const fetch = mockFetch(response)
+
+    await collectEvents(streamViaAnthropic({
+      ...makeRequest(),
+      currentUserContentBlocks: [
+        {
+          type: 'image',
+          source: { type: 'base64', media_type: 'image/jpeg', data: '/9j/4AAQSkZJRgABAQ==' },
+          originalPath: 'D:\\Starverse\\fixtures\\tiny.jpg',
+        } as any,
+      ],
+    }, {
+      baseUrl: 'https://api.anthropic.com/v1',
+      apiKey: 'sk-ant-test',
+      fetch,
+    }))
+
+    const [, init] = (fetch as any).mock.calls[0]
+    const body = JSON.parse(init.body)
+    expect(body.messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Hello' },
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/jpeg', data: '/9j/4AAQSkZJRgABAQ==' },
+          },
+        ],
+      },
+    ])
+    const serialized = JSON.stringify(body)
+    expect(serialized).not.toContain('originalPath')
+    expect(serialized).not.toContain('D:\\Starverse')
+    expect(serialized).not.toContain('storagePath')
+  })
+
   it('text_delta yields visible text', async () => {
     const response = makeSseResponse(
       messageStartSse({ id: 'msg_1', model: 'claude-sonnet-4-5', usage: { input_tokens: 10, output_tokens: 0 } }),

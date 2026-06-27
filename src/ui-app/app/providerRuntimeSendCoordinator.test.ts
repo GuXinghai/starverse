@@ -177,6 +177,19 @@ describe('providerRuntimeSendCoordinator', () => {
     })
   })
 
+  it('allows image-capable experimental providers through the attachment preflight gate', () => {
+    expect(resolveProviderRuntimeTextSendPreflight({
+      selection: selected('openai_responses'),
+      capability: { ...capability, source: 'experimental_image_inline', attachments: 'supported' },
+      text: 'describe',
+      hasDraftAttachments: true,
+      sessionConfig: {},
+    })).toEqual({
+      ok: true,
+      route: { kind: 'experimental_text', providerKey: 'openai_responses' },
+    })
+  })
+
   it('maps experimental provider models, request prefixes, and reasoning artifact providers deterministically', () => {
     const models = {
       lmStudio: ' openai/gpt-oss-20b ',
@@ -266,5 +279,41 @@ describe('providerRuntimeSendCoordinator', () => {
     expect(googleAIStudioCalls).toEqual([expect.objectContaining({ model: 'model_1' })])
     expect(anthropicCalls).toEqual([expect.objectContaining({ model: 'model_1' })])
     expect(deepSeekCalls).toEqual([expect.objectContaining({ model: 'model_1' })])
+  })
+
+  it('passes current user image content blocks to image-capable experimental cloud wrappers only', async () => {
+    openAIResponsesCalls.length = 0
+    googleAIStudioCalls.length = 0
+    anthropicCalls.length = 0
+    localEndpointCalls.length = 0
+    const abortController = new AbortController()
+    const imageBlocks = [{ type: 'input_image', image_url: 'data:image/png;base64,iVBORw0KGgo=' }]
+    const baseInput = {
+      requestId: 'req_2',
+      assistantMessageId: 'assistant_2',
+      modelId: 'model_2',
+      userText: 'describe',
+      contextMessages: [],
+      currentUserContentBlocks: imageBlocks,
+      signal: abortController.signal,
+    }
+
+    await drain(createExperimentalRuntimeTextEvents({ ...baseInput, providerKey: 'openai_responses' }))
+    await drain(createExperimentalRuntimeTextEvents({
+      ...baseInput,
+      providerKey: 'google_ai_studio',
+      currentUserContentBlocks: [{ inlineData: { mimeType: 'image/png', data: 'iVBORw0KGgo=' } }],
+    }))
+    await drain(createExperimentalRuntimeTextEvents({
+      ...baseInput,
+      providerKey: 'anthropic_messages',
+      currentUserContentBlocks: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } }],
+    }))
+    await drain(createExperimentalRuntimeTextEvents({ ...baseInput, providerKey: 'local_endpoint', localEndpointUrl: 'http://127.0.0.1:11434/v1' }))
+
+    expect(openAIResponsesCalls[0]?.currentUserContentBlocks).toEqual(imageBlocks)
+    expect(googleAIStudioCalls[0]?.currentUserContentBlocks).toEqual([{ inlineData: { mimeType: 'image/png', data: 'iVBORw0KGgo=' } }])
+    expect(anthropicCalls[0]?.currentUserContentBlocks).toEqual([{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } }])
+    expect(localEndpointCalls[0]?.currentUserContentBlocks).toBeUndefined()
   })
 })

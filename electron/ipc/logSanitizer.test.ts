@@ -15,6 +15,16 @@ describe('logSanitizer', () => {
     expect(output).not.toContain('a1b2c3d4e5f6')
   })
 
+  it('redacts URL credentials, query strings, and fragments in log strings', () => {
+    const output = redactSensitiveString('GET https://user:pass@example.test/files/report.pdf?token=secret&sig=abc#frag failed')
+
+    expect(output).toContain('https://example.test/files/report.pdf')
+    expect(output).not.toContain('user:pass')
+    expect(output).not.toContain('token=secret')
+    expect(output).not.toContain('sig=abc')
+    expect(output).not.toContain('#frag')
+  })
+
   it('returns basename only for local paths', () => {
     expect(basenameForLog('C:\\Users\\alice\\Pictures\\report.png')).toBe('report.png')
     expect(basenameForLog('/Users/alice/Pictures/report.png')).toBe('report.png')

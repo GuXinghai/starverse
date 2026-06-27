@@ -373,7 +373,7 @@ export type LiveStreamOptions = Readonly<{
    * pushing OpenRouter request-shaping into UI layers.
    */
   contextMessages?: ReadonlyArray<InternalMessage>
-  currentUserContentBlocks?: ReadonlyArray<Readonly<{ type: string; [key: string]: unknown }>>
+  currentUserContentBlocks?: ReadonlyArray<Readonly<{ type?: string; [key: string]: unknown }>>
   contextMode?: ContextMode
   signal?: AbortSignal | null
   config: LiveRequestConfig
@@ -449,6 +449,67 @@ export const fetchTransportStrategy: OpenRouterTransportStrategy<OpenRouterFetch
   }
 }
 
+function sanitizeOpenRouterRuntimeContentBlocks(
+  blocks: LiveStreamOptions['currentUserContentBlocks']
+): NonNullable<InternalMessage['contentBlocks']> {
+  if (!blocks || blocks.length === 0) return []
+  const out: Array<NonNullable<InternalMessage['contentBlocks']>[number]> = []
+  for (const block of blocks) {
+    if (!block || typeof block !== 'object') continue
+    const record = block as Record<string, unknown>
+    if (record.type === 'text' && typeof record.text === 'string' && record.text.trim()) {
+      out.push({ type: 'text', text: record.text.trim() })
+      continue
+    }
+    if (record.type === 'image_url') {
+      const imageUrl = record.image_url as Record<string, unknown> | undefined
+      const url = imageUrl ? normalizeSafeRuntimeImageUrl(imageUrl.url) : null
+      if (url) {
+        out.push({ type: 'image_url', image_url: { url } })
+      }
+      continue
+    }
+    if (record.type === 'file') {
+      const file = record.file as Record<string, unknown> | undefined
+      if (!file) continue
+      const filename = typeof file.filename === 'string' ? file.filename : 'attachment'
+      const fileData = typeof file.file_data === 'string' ? file.file_data : ''
+      if (fileData) out.push({ type: 'file', file: { filename, file_data: fileData } } as any)
+      continue
+    }
+    if (record.type === 'input_audio') {
+      const inputAudio = record.input_audio as Record<string, unknown> | undefined
+      if (!inputAudio) continue
+      const data = typeof inputAudio.data === 'string' ? inputAudio.data : ''
+      const format = typeof inputAudio.format === 'string' ? inputAudio.format : ''
+      if (data && format) out.push({ type: 'input_audio', input_audio: { data, format } } as any)
+      continue
+    }
+    if (record.type === 'video_url') {
+      const videoUrl = record.video_url as Record<string, unknown> | undefined
+      if (videoUrl && typeof videoUrl.url === 'string' && videoUrl.url.trim()) {
+        out.push({ type: 'video_url', video_url: { url: videoUrl.url.trim() } } as any)
+      }
+    }
+  }
+  return out
+}
+
+function normalizeSafeRuntimeImageUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (/^data:image\/(?:png|jpeg|jpg);base64,/i.test(trimmed)) return trimmed
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null
+    if (parsed.username || parsed.password) return null
+    return parsed.toString()
+  } catch {
+    return null
+  }
+}
+
 export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions): AsyncGenerator<DomainEvent> {
   const signal = options.signal ?? null
   const requestContext = { model: options.config.model, stream: true }
@@ -463,10 +524,11 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
   const providerRequireParameters = await getOpenRouterProviderRequireParameters()
   const netExp = await getNetExpSettings()
 
+  const currentUserContentBlocks = sanitizeOpenRouterRuntimeContentBlocks(options.currentUserContentBlocks)
   const internalMessages: InternalMessage[] = [
     ...((options.contextMessages ?? []) as InternalMessage[]),
-    options.currentUserContentBlocks && options.currentUserContentBlocks.length > 0
-      ? { role: 'user', contentBlocks: options.currentUserContentBlocks }
+    currentUserContentBlocks.length > 0
+      ? { role: 'user', contentBlocks: currentUserContentBlocks }
       : { role: 'user', contentText: options.userText },
   ]
 

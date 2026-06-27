@@ -121,6 +121,58 @@ describe('streamViaDeepSeek', () => {
     expect(body.messages).toEqual([{ role: 'user', content: 'Hello' }])
   })
 
+  it('rejects image attachments before fetch without text downgrade', async () => {
+    const fetch = vi.fn(async () => makeSseResponse(textSseChunk('gen_1', 'deepseek-chat', 'hi'))) as DeepSeekFetchFn
+
+    const events = await collectEvents(streamViaDeepSeek({
+      ...makeRequest(),
+      currentUserContentBlocks: [
+        { type: 'text', text: 'Describe this image.' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgo=' } },
+      ],
+    }, {
+      baseUrl: 'https://api.deepseek.com/v1',
+      apiKey: 'sk-test',
+      fetch,
+    }))
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(events).toHaveLength(1)
+    expect(events[0]?.type).toBe('stream.error')
+    if (events[0]?.type === 'stream.error') {
+      expect(events[0].terminal).toBe(true)
+      expect(events[0].error.phase).toBe('request_build')
+      expect(events[0].error.code).toBe('unsupported_provider')
+      expect(events[0].error.message).toContain('does not support image or file attachments')
+    }
+  })
+
+  it('rejects file content blocks before fetch without text downgrade', async () => {
+    const fetch = vi.fn(async () => makeSseResponse(textSseChunk('gen_1', 'deepseek-chat', 'hi'))) as DeepSeekFetchFn
+
+    const events = await collectEvents(streamViaDeepSeek({
+      ...makeRequest(),
+      currentUserContentBlocks: [
+        { type: 'text', text: 'Summarize this file.' },
+        { type: 'file', file: { filename: 'secret.txt', file_data: 'data:text/plain;base64,AAAA' } },
+      ],
+    }, {
+      baseUrl: 'https://api.deepseek.com/v1',
+      apiKey: 'sk-test',
+      fetch,
+    }))
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(events).toHaveLength(1)
+    expect(events[0]?.type).toBe('stream.error')
+    if (events[0]?.type === 'stream.error') {
+      expect(events[0].terminal).toBe(true)
+      expect(events[0].error.phase).toBe('request_build')
+      expect(events[0].error.code).toBe('unsupported_provider')
+      expect(events[0].error.message).toContain('does not support image or file attachments')
+    }
+  })
+
   it('reasoning_content fixture yields reasoning events only', async () => {
     const response = makeSseResponse(
       reasoningSseChunk('gen_1', 'deepseek-r1', 'Let me think...'),

@@ -22,6 +22,7 @@ import {
 } from '@/next/provider/runtimeSelection'
 import type { ReasoningArtifactProvider } from '@/next/provider/reasoningArtifact'
 import type { DomainEvent } from '@/next/state/types'
+import type { ProviderRuntimeContentBlock } from '@/next/multimodal/providerRuntimeContentBlocks'
 
 export type ExperimentalRuntimeTextProviderKey = Exclude<RuntimeProviderKey, 'openrouter'>
 
@@ -54,6 +55,7 @@ export type ExperimentalRuntimeTextEventInput = Readonly<{
   modelId: string
   userText: string
   contextMessages: any[]
+  currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
   signal: AbortSignal
   lmStudioConfig?: LMStudioTextChatConfig
   ollamaConfig?: OllamaTextChatConfig
@@ -210,6 +212,7 @@ export function createExperimentalRuntimeTextEvents(
         model: input.modelId,
         userText: input.userText,
         contextMessages: input.contextMessages,
+        currentUserContentBlocks: input.currentUserContentBlocks,
         signal: input.signal,
       })
     case 'google_ai_studio':
@@ -219,6 +222,7 @@ export function createExperimentalRuntimeTextEvents(
         model: input.modelId,
         userText: input.userText,
         contextMessages: input.contextMessages,
+        currentUserContentBlocks: input.currentUserContentBlocks,
         signal: input.signal,
       })
     case 'anthropic_messages':
@@ -228,6 +232,7 @@ export function createExperimentalRuntimeTextEvents(
         model: input.modelId,
         userText: input.userText,
         contextMessages: input.contextMessages,
+        currentUserContentBlocks: input.currentUserContentBlocks,
         signal: input.signal,
       })
     case 'deepseek':
@@ -237,6 +242,7 @@ export function createExperimentalRuntimeTextEvents(
         model: input.modelId,
         userText: input.userText,
         contextMessages: input.contextMessages,
+        currentUserContentBlocks: input.currentUserContentBlocks,
         signal: input.signal,
       })
   }
