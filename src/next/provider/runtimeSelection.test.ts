@@ -70,6 +70,27 @@ describe('CurrentRuntimeSelection', () => {
     })
   })
 
+  it('selects LM Studio Local from its explicit experimental flag', () => {
+    expect(deriveCurrentRuntimeSelection({
+      lmStudio: {
+        selected: true,
+        endpointId: 'http://127.0.0.1:1234',
+        profileId: 'lm_studio_openai_chat_completions_v1',
+        modelKey: 'openai/gpt-oss-20b',
+        credentialStatus: 'not_required',
+      },
+    })).toMatchObject({
+      state: 'selected',
+      providerKey: 'lm_studio',
+      endpointId: 'http://127.0.0.1:1234',
+      profileId: 'lm_studio_openai_chat_completions_v1',
+      modelKey: 'openai/gpt-oss-20b',
+      source: 'legacy_experimental_flag',
+      mode: 'experimental',
+      credentialStatus: 'not_required',
+    })
+  })
+
   it('selects OpenAI Responses from its explicit experimental flag', () => {
     expect(deriveCurrentRuntimeSelection({
       openAIResponses: { selected: true, modelKey: 'gpt-4.1-mini' },
@@ -125,10 +146,22 @@ describe('CurrentRuntimeSelection', () => {
       googleAIStudio: { selected: true, modelKey: 'gemini-2.5-flash' },
       anthropic: { selected: true, modelKey: 'claude-sonnet-4-5' },
       deepSeek: { selected: true, modelKey: 'deepseek-chat' },
+      lmStudio: { selected: true, modelKey: 'openai/gpt-oss-20b' },
     })).toMatchObject({
       state: 'selected',
       providerKey: 'deepseek',
       source: 'legacy_experimental_flag',
+    })
+  })
+
+  it('prioritizes LM Studio above the older generic LocalEndpoint flag', () => {
+    expect(deriveCurrentRuntimeSelection({
+      localEndpoint: { selected: true, modelKey: 'local-model' },
+      lmStudio: { selected: true, modelKey: 'openai/gpt-oss-20b' },
+    })).toMatchObject({
+      state: 'selected',
+      providerKey: 'lm_studio',
+      modelKey: 'openai/gpt-oss-20b',
     })
   })
 })
@@ -177,6 +210,22 @@ describe('RuntimeCapabilitySummaryLite', () => {
       structuredOutput: 'blocked',
       source: 'local_probe',
     })
+  })
+
+  it('summarizes LM Studio as a separate conservative local provider', () => {
+    const cap = getRuntimeCapabilitySummaryLite(selected('lm_studio', 'openai/gpt-oss-20b'))
+    expect(cap).toMatchObject({
+      textChat: true,
+      streamingText: 'probe_required',
+      attachments: 'blocked',
+      webSearch: 'blocked',
+      tools: 'blocked',
+      reasoningArtifacts: 'blocked',
+      imageGeneration: 'blocked',
+      structuredOutput: 'blocked',
+      source: 'lm_studio_local',
+    })
+    expect(cap.warnings.join('\n')).toContain('Native REST load/unload controls')
   })
 
   it('summarizes unset runtime as blocked', () => {
@@ -320,6 +369,7 @@ describe('resolveRuntimeTextSendRoute', () => {
     'google_ai_studio',
     'anthropic_messages',
     'deepseek',
+    'lm_studio',
     'local_endpoint',
   ] as const)('routes %s to experimental text path', (providerKey) => {
     expect(resolveRuntimeTextSendRoute(selected(providerKey))).toEqual({

@@ -19,6 +19,7 @@ import SettingsModal from './components/SettingsModal.vue'
 import WebSearchSettingsEditor from './components/WebSearchSettingsEditor.vue'
 import SamplingParamsSettingsEditor from './components/SamplingParamsSettingsEditor.vue'
 import SearchModal from './components/SearchModal.vue'
+import { t, tf } from '@/shared/i18n'
 import { useAppChatAppLogic } from './app/appChatApp.logic'
 import { formatModelIndicatorName } from './components/modelIndicatorName'
 
@@ -136,6 +137,7 @@ const {
   onNavigateHistoryIncompatibleAttachments,
   activeSessionConfig,
   openRouterChatConfig,
+  lmStudioChatConfig,
   localEndpointChatConfig,
   openAIResponsesChatConfig,
   googleAIStudioChatConfig,
@@ -166,6 +168,13 @@ const {
   onComposerUpdateWebSearchLayer,
   onUpdateImageGeneration,
   onUpdateOpenRouterChatEnabled,
+  onUpdateLMStudioChatEnabled,
+  onUpdateLMStudioEndpointUrl,
+  onUpdateLMStudioModel,
+  onUpdateLMStudioChatMode,
+  onUpdateLMStudioOpenAICompatiblePreferredEndpoint,
+  onUpdateLMStudioNativeRestControl,
+  onClearLMStudioChat,
   onUpdateLocalEndpointChatEnabled,
   onUpdateLocalEndpointChatUrl,
   onUpdateLocalEndpointChatModel,
@@ -251,6 +260,10 @@ const runSummary = computed(() => {
 })
 
 const modelSummary = computed(() => {
+  if (lmStudioChatConfig.value.enabled) {
+    const model = lmStudioChatConfig.value.model.trim() || t('settings.lmStudio.manualModelRequired')
+    return tf('settings.lmStudio.modelSummary', { model })
+  }
   if (deepSeekChatConfig.value.enabled) {
     const model = deepSeekChatConfig.value.model.trim() || 'manual model required'
     return `DeepSeek official · ${model}`
@@ -821,6 +834,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             :isRunning="isRunning"
             :sessionConfig="activeSessionConfig"
             :openRouterChat="openRouterChatConfig"
+            :lmStudioChat="lmStudioChatConfig"
             :localEndpointChat="localEndpointChatConfig"
             :openAIResponsesChat="openAIResponsesChatConfig"
             :googleAIStudioChat="googleAIStudioChatConfig"
@@ -849,6 +863,13 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateImageGenerationAspectRatio="onUpdateImageGenerationAspectRatio"
             @updateImageGeneration="onUpdateImageGeneration"
             @updateOpenRouterChatEnabled="onUpdateOpenRouterChatEnabled"
+            @updateLMStudioChatEnabled="onUpdateLMStudioChatEnabled"
+            @updateLMStudioEndpointUrl="onUpdateLMStudioEndpointUrl"
+            @updateLMStudioModel="onUpdateLMStudioModel"
+            @updateLMStudioChatMode="onUpdateLMStudioChatMode"
+            @updateLMStudioOpenAICompatiblePreferredEndpoint="onUpdateLMStudioOpenAICompatiblePreferredEndpoint"
+            @updateLMStudioNativeRestControl="onUpdateLMStudioNativeRestControl"
+            @clearLMStudioChat="onClearLMStudioChat"
             @updateLocalEndpointChatEnabled="onUpdateLocalEndpointChatEnabled"
             @updateLocalEndpointChatUrl="onUpdateLocalEndpointChatUrl"
             @updateLocalEndpointChatModel="onUpdateLocalEndpointChatModel"

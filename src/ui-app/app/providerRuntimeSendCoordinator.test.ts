@@ -10,6 +10,7 @@ import {
 } from './providerRuntimeSendCoordinator'
 
 const localEndpointCalls: any[] = []
+const lmStudioCalls: any[] = []
 const openAIResponsesCalls: any[] = []
 const googleAIStudioCalls: any[] = []
 const anthropicCalls: any[] = []
@@ -24,6 +25,15 @@ async function drain(iterable: AsyncIterable<unknown>): Promise<void> {
 vi.mock('@/next/live/localEndpointTextChat', () => ({
   streamLocalEndpointTextChatAsDomainEvents: (input: any) => {
     localEndpointCalls.push(input)
+    return async function* events() {
+      yield { type: 'StreamDone' }
+    }()
+  },
+}))
+
+vi.mock('@/next/live/lmStudioTextChat', () => ({
+  streamLMStudioTextChatAsDomainEvents: (input: any) => {
+    lmStudioCalls.push(input)
     return async function* events() {
       yield { type: 'StreamDone' }
     }()
@@ -125,6 +135,7 @@ describe('providerRuntimeSendCoordinator', () => {
       'anthropic_messages',
       'google_ai_studio',
       'openai_responses',
+      'lm_studio',
       'local_endpoint',
     ]
 
@@ -157,6 +168,7 @@ describe('providerRuntimeSendCoordinator', () => {
 
   it('maps experimental provider models, request prefixes, and reasoning artifact providers deterministically', () => {
     const models = {
+      lmStudio: ' openai/gpt-oss-20b ',
       localEndpoint: ' local-model ',
       openAIResponses: ' gpt-4.1-mini ',
       googleAIStudio: ' gemini-2.5-flash ',
@@ -164,18 +176,21 @@ describe('providerRuntimeSendCoordinator', () => {
       deepSeek: ' deepseek-v4-flash ',
     }
 
+    expect(getExperimentalRuntimeTextModelId('lm_studio', models)).toBe('openai/gpt-oss-20b')
     expect(getExperimentalRuntimeTextModelId('local_endpoint', models)).toBe('local-model')
     expect(getExperimentalRuntimeTextModelId('openai_responses', models)).toBe('gpt-4.1-mini')
     expect(getExperimentalRuntimeTextModelId('google_ai_studio', models)).toBe('gemini-2.5-flash')
     expect(getExperimentalRuntimeTextModelId('anthropic_messages', models)).toBe('claude-sonnet-4-5')
     expect(getExperimentalRuntimeTextModelId('deepseek', models)).toBe('deepseek-v4-flash')
 
+    expect(getExperimentalRuntimeTextRequestPrefix('lm_studio')).toBe('lm_studio_req')
     expect(getExperimentalRuntimeTextRequestPrefix('local_endpoint')).toBe('local_req')
     expect(getExperimentalRuntimeTextRequestPrefix('openai_responses')).toBe('openai_responses_req')
     expect(getExperimentalRuntimeTextRequestPrefix('google_ai_studio')).toBe('google_ai_studio_req')
     expect(getExperimentalRuntimeTextRequestPrefix('anthropic_messages')).toBe('anthropic_req')
     expect(getExperimentalRuntimeTextRequestPrefix('deepseek')).toBe('deepseek_req')
 
+    expect(getExperimentalRuntimeTextReasoningArtifactProvider('lm_studio')).toBeUndefined()
     expect(getExperimentalRuntimeTextReasoningArtifactProvider('local_endpoint')).toBeUndefined()
     expect(getExperimentalRuntimeTextReasoningArtifactProvider('openai_responses')).toBe('openai_responses')
     expect(getExperimentalRuntimeTextReasoningArtifactProvider('google_ai_studio')).toBe('google_ai_studio')
@@ -194,12 +209,28 @@ describe('providerRuntimeSendCoordinator', () => {
       signal: abortController.signal,
     }
 
+    const lmStudioConfig = {
+      providerKey: 'lm_studio' as const,
+      endpointUrl: 'http://127.0.0.1:1234',
+      nativeRestControls: {
+        diagnosticsEnabled: true,
+        manualLoadUnloadEnabled: true,
+        autoLoadBeforeSendEnabled: true,
+        autoUnloadAfterSendEnabled: false,
+      },
+      chatMode: 'openai_compatible' as const,
+      openAICompatible: { basePath: '/v1' as const, preferredEndpoint: 'chat_completions' as const },
+      nativeRest: { basePath: '/api/v1' as const },
+    }
+
+    await drain(createExperimentalRuntimeTextEvents({ ...baseInput, providerKey: 'lm_studio', lmStudioConfig }))
     await drain(createExperimentalRuntimeTextEvents({ ...baseInput, providerKey: 'local_endpoint', localEndpointUrl: ' http://127.0.0.1:11434/v1 ' }))
     await drain(createExperimentalRuntimeTextEvents({ ...baseInput, providerKey: 'openai_responses' }))
     await drain(createExperimentalRuntimeTextEvents({ ...baseInput, providerKey: 'google_ai_studio' }))
     await drain(createExperimentalRuntimeTextEvents({ ...baseInput, providerKey: 'anthropic_messages' }))
     await drain(createExperimentalRuntimeTextEvents({ ...baseInput, providerKey: 'deepseek' }))
 
+    expect(lmStudioCalls).toEqual([expect.objectContaining({ config: lmStudioConfig, model: 'model_1' })])
     expect(localEndpointCalls).toEqual([expect.objectContaining({ endpointUrl: 'http://127.0.0.1:11434/v1', model: 'model_1' })])
     expect(openAIResponsesCalls).toEqual([expect.objectContaining({ model: 'model_1' })])
     expect(googleAIStudioCalls).toEqual([expect.objectContaining({ model: 'model_1' })])

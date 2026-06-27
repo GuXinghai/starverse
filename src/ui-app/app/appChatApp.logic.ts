@@ -133,6 +133,7 @@ import {
   resolveProviderRuntimeTextSendPreflight,
   type ExperimentalRuntimeTextProviderKey,
 } from './providerRuntimeSendCoordinator'
+import type { LMStudioTextChatConfig } from '@/next/live/lmStudioTextChat'
 import {
   prepareOpenRouterReplayFromMessage,
   prepareOpenRouterSendFromDraft,
@@ -278,6 +279,18 @@ export function useAppChatAppLogic() {
   const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('auto')
   const requestedReasoningExclude = ref(false)
   const OPENROUTER_CHAT_ENABLED_KEY = 'starverse.openRouterTextChat.enabled'
+  const LM_STUDIO_CHAT_ENABLED_KEY = 'starverse.lmStudioTextChat.enabled'
+  const LM_STUDIO_ENDPOINT_URL_KEY = 'starverse.lmStudio.endpointUrl'
+  const LM_STUDIO_MODEL_KEY = 'starverse.lmStudio.model'
+  const LM_STUDIO_CHAT_MODE_KEY = 'starverse.lmStudio.chatMode'
+  const LM_STUDIO_OPENAI_ENDPOINT_KEY = 'starverse.lmStudio.openAICompatible.preferredEndpoint'
+  const LM_STUDIO_DIAGNOSTICS_ENABLED_KEY = 'starverse.lmStudio.nativeRest.diagnosticsEnabled'
+  const LM_STUDIO_MANUAL_LOAD_UNLOAD_ENABLED_KEY = 'starverse.lmStudio.nativeRest.manualLoadUnloadEnabled'
+  const LM_STUDIO_AUTO_LOAD_BEFORE_SEND_ENABLED_KEY = 'starverse.lmStudio.nativeRest.autoLoadBeforeSendEnabled'
+  const LM_STUDIO_AUTO_UNLOAD_AFTER_SEND_ENABLED_KEY = 'starverse.lmStudio.nativeRest.autoUnloadAfterSendEnabled'
+  const LM_STUDIO_AUTO_UNLOAD_AFTER_IDLE_ENABLED_KEY = 'starverse.lmStudio.nativeRest.autoUnloadAfterIdleEnabled'
+  const LM_STUDIO_SETTINGS_EVENT = 'settings:lmStudioLocalProviderUpdated'
+  const DEFAULT_LM_STUDIO_ENDPOINT_URL = 'http://127.0.0.1:1234'
   const LOCAL_ENDPOINT_CHAT_ENABLED_KEY = 'starverse.localEndpointTextChat.enabled'
   const LOCAL_ENDPOINT_CHAT_URL_KEY = 'starverse.localEndpointTextChat.url'
   const LOCAL_ENDPOINT_CHAT_MODEL_KEY = 'starverse.localEndpointTextChat.model'
@@ -296,6 +309,16 @@ export function useAppChatAppLogic() {
   const DEEPSEEK_CHAT_MODEL_KEY = 'starverse.deepSeekTextChat.model'
   const DEEPSEEK_CHAT_SETTINGS_EVENT = 'settings:deepSeekTextChatUpdated'
   const openRouterChatEnabled = ref(false)
+  const lmStudioChatEnabled = ref(false)
+  const lmStudioEndpointUrl = ref(DEFAULT_LM_STUDIO_ENDPOINT_URL)
+  const lmStudioModel = ref('')
+  const lmStudioChatMode = ref<'openai_compatible' | 'native_rest'>('openai_compatible')
+  const lmStudioOpenAICompatiblePreferredEndpoint = ref<'chat_completions' | 'responses'>('chat_completions')
+  const lmStudioDiagnosticsEnabled = ref(true)
+  const lmStudioManualLoadUnloadEnabled = ref(true)
+  const lmStudioAutoLoadBeforeSendEnabled = ref(false)
+  const lmStudioAutoUnloadAfterSendEnabled = ref(false)
+  const lmStudioAutoUnloadAfterIdleEnabled = ref(false)
   const localEndpointChatEnabled = ref(false)
   const localEndpointChatUrl = ref(DEFAULT_LOCAL_ENDPOINT_CHAT_URL)
   const localEndpointChatModel = ref('')
@@ -3745,6 +3768,35 @@ export function useAppChatAppLogic() {
     model: normalizeModelKey(model.value),
     providerLabel: 'OpenRouter · first-class provider',
   }))
+  const lmStudioProviderConfig = computed<LMStudioTextChatConfig>(() => ({
+    providerKey: 'lm_studio',
+    endpointUrl: lmStudioEndpointUrl.value,
+    nativeRestControls: {
+      diagnosticsEnabled: lmStudioDiagnosticsEnabled.value,
+      manualLoadUnloadEnabled: lmStudioManualLoadUnloadEnabled.value,
+      autoLoadBeforeSendEnabled: lmStudioAutoLoadBeforeSendEnabled.value,
+      autoUnloadAfterSendEnabled: lmStudioAutoUnloadAfterSendEnabled.value,
+      autoUnloadAfterIdleEnabled: lmStudioAutoUnloadAfterIdleEnabled.value,
+    },
+    chatMode: lmStudioChatMode.value,
+    openAICompatible: {
+      basePath: '/v1',
+      preferredEndpoint: lmStudioOpenAICompatiblePreferredEndpoint.value,
+    },
+    nativeRest: {
+      basePath: '/api/v1',
+    },
+  }))
+  const lmStudioChatConfig = computed(() => ({
+    enabled: lmStudioChatEnabled.value,
+    endpointUrl: lmStudioEndpointUrl.value,
+    model: lmStudioModel.value,
+    chatMode: lmStudioChatMode.value,
+    openAICompatiblePreferredEndpoint: lmStudioOpenAICompatiblePreferredEndpoint.value,
+    nativeRestControls: lmStudioProviderConfig.value.nativeRestControls,
+    config: lmStudioProviderConfig.value,
+    experimentalLabel: t('settings.lmStudio.experimentalLabel'),
+  }))
   const localEndpointChatConfig = computed(() => ({
     enabled: localEndpointChatEnabled.value,
     endpointUrl: localEndpointChatUrl.value,
@@ -3793,6 +3845,17 @@ export function useAppChatAppLogic() {
       modelKey: normalizeModelKey(model.value),
       credentialStatus: 'unknown',
     },
+    lmStudio: {
+      selected: lmStudioChatEnabled.value,
+      endpointId: lmStudioEndpointUrl.value.trim(),
+      profileId: lmStudioChatMode.value === 'native_rest'
+        ? 'lm_studio_native_rest_chat_v1'
+        : lmStudioOpenAICompatiblePreferredEndpoint.value === 'responses'
+          ? 'lm_studio_openai_responses_v1'
+          : 'lm_studio_openai_chat_completions_v1',
+      modelKey: lmStudioModel.value.trim(),
+      credentialStatus: 'not_required',
+    },
     localEndpoint: {
       selected: localEndpointChatEnabled.value,
       endpointId: localEndpointChatUrl.value.trim(),
@@ -3834,12 +3897,60 @@ export function useAppChatAppLogic() {
     if (modelId) localEndpointChatModel.value = modelId
   }
 
+  function applyLMStudioStorageValues(input: Readonly<{
+    endpointUrl?: unknown
+    model?: unknown
+    chatMode?: unknown
+    openAICompatiblePreferredEndpoint?: unknown
+    diagnosticsEnabled?: unknown
+    manualLoadUnloadEnabled?: unknown
+    autoLoadBeforeSendEnabled?: unknown
+    autoUnloadAfterSendEnabled?: unknown
+    autoUnloadAfterIdleEnabled?: unknown
+  }>) {
+    const endpointUrl = String(input.endpointUrl ?? '').trim()
+    const modelId = String(input.model ?? '').trim()
+    const chatMode = String(input.chatMode ?? '').trim()
+    const preferredEndpoint = String(input.openAICompatiblePreferredEndpoint ?? '').trim()
+    if (endpointUrl) lmStudioEndpointUrl.value = endpointUrl
+    if (modelId) lmStudioModel.value = modelId
+    if (chatMode === 'openai_compatible' || chatMode === 'native_rest') lmStudioChatMode.value = chatMode
+    if (preferredEndpoint === 'chat_completions' || preferredEndpoint === 'responses') {
+      lmStudioOpenAICompatiblePreferredEndpoint.value = preferredEndpoint
+    }
+    if (typeof input.diagnosticsEnabled === 'boolean') lmStudioDiagnosticsEnabled.value = input.diagnosticsEnabled
+    if (typeof input.manualLoadUnloadEnabled === 'boolean') lmStudioManualLoadUnloadEnabled.value = input.manualLoadUnloadEnabled
+    if (typeof input.autoLoadBeforeSendEnabled === 'boolean') lmStudioAutoLoadBeforeSendEnabled.value = input.autoLoadBeforeSendEnabled
+    if (typeof input.autoUnloadAfterSendEnabled === 'boolean') lmStudioAutoUnloadAfterSendEnabled.value = input.autoUnloadAfterSendEnabled
+    if (typeof input.autoUnloadAfterIdleEnabled === 'boolean') lmStudioAutoUnloadAfterIdleEnabled.value = input.autoUnloadAfterIdleEnabled
+  }
+
   function readOpenRouterChatStorage() {
     try {
       openRouterChatEnabled.value =
         String(globalThis.localStorage?.getItem(OPENROUTER_CHAT_ENABLED_KEY) ?? '').trim() === '1'
     } catch {
       // OpenRouter provider selection is a non-secret renderer preference; failure keeps unset.
+    }
+  }
+
+  function readLMStudioChatStorage() {
+    try {
+      lmStudioChatEnabled.value =
+        String(globalThis.localStorage?.getItem(LM_STUDIO_CHAT_ENABLED_KEY) ?? '').trim() === '1'
+      applyLMStudioStorageValues({
+        endpointUrl: globalThis.localStorage?.getItem(LM_STUDIO_ENDPOINT_URL_KEY),
+        model: globalThis.localStorage?.getItem(LM_STUDIO_MODEL_KEY),
+        chatMode: globalThis.localStorage?.getItem(LM_STUDIO_CHAT_MODE_KEY),
+        openAICompatiblePreferredEndpoint: globalThis.localStorage?.getItem(LM_STUDIO_OPENAI_ENDPOINT_KEY),
+        diagnosticsEnabled: globalThis.localStorage?.getItem(LM_STUDIO_DIAGNOSTICS_ENABLED_KEY) !== '0',
+        manualLoadUnloadEnabled: globalThis.localStorage?.getItem(LM_STUDIO_MANUAL_LOAD_UNLOAD_ENABLED_KEY) !== '0',
+        autoLoadBeforeSendEnabled: globalThis.localStorage?.getItem(LM_STUDIO_AUTO_LOAD_BEFORE_SEND_ENABLED_KEY) === '1',
+        autoUnloadAfterSendEnabled: globalThis.localStorage?.getItem(LM_STUDIO_AUTO_UNLOAD_AFTER_SEND_ENABLED_KEY) === '1',
+        autoUnloadAfterIdleEnabled: globalThis.localStorage?.getItem(LM_STUDIO_AUTO_UNLOAD_AFTER_IDLE_ENABLED_KEY) === '1',
+      })
+    } catch {
+      // LM Studio settings are non-secret renderer preferences; failure keeps defaults.
     }
   }
 
@@ -3906,6 +4017,22 @@ export function useAppChatAppLogic() {
     applyLocalEndpointChatStorageValues(detail as { endpointUrl?: unknown; model?: unknown })
   }
 
+  function handleLMStudioSettingsUpdated(event: Event) {
+    const detail = (event as CustomEvent).detail
+    if (!detail || typeof detail !== 'object') return
+    applyLMStudioStorageValues(detail as {
+      endpointUrl?: unknown
+      model?: unknown
+      chatMode?: unknown
+      openAICompatiblePreferredEndpoint?: unknown
+      diagnosticsEnabled?: unknown
+      manualLoadUnloadEnabled?: unknown
+      autoLoadBeforeSendEnabled?: unknown
+      autoUnloadAfterSendEnabled?: unknown
+      autoUnloadAfterIdleEnabled?: unknown
+    })
+  }
+
   function handleOpenAIResponsesChatSettingsUpdated(event: Event) {
     const detail = (event as CustomEvent).detail
     if (!detail || typeof detail !== 'object') return
@@ -3950,6 +4077,23 @@ export function useAppChatAppLogic() {
     enforceExperimentalChatMutualExclusion()
   }
 
+  function handleLMStudioChatStorage(event: StorageEvent) {
+    if (
+      event.key !== LM_STUDIO_CHAT_ENABLED_KEY &&
+      event.key !== LM_STUDIO_ENDPOINT_URL_KEY &&
+      event.key !== LM_STUDIO_MODEL_KEY &&
+      event.key !== LM_STUDIO_CHAT_MODE_KEY &&
+      event.key !== LM_STUDIO_OPENAI_ENDPOINT_KEY &&
+      event.key !== LM_STUDIO_DIAGNOSTICS_ENABLED_KEY &&
+      event.key !== LM_STUDIO_MANUAL_LOAD_UNLOAD_ENABLED_KEY &&
+      event.key !== LM_STUDIO_AUTO_LOAD_BEFORE_SEND_ENABLED_KEY &&
+      event.key !== LM_STUDIO_AUTO_UNLOAD_AFTER_SEND_ENABLED_KEY &&
+      event.key !== LM_STUDIO_AUTO_UNLOAD_AFTER_IDLE_ENABLED_KEY
+    ) return
+    readLMStudioChatStorage()
+    enforceExperimentalChatMutualExclusion()
+  }
+
   function handleOpenAIResponsesChatStorage(event: StorageEvent) {
     if (
       event.key !== OPENAI_RESPONSES_CHAT_ENABLED_KEY &&
@@ -3991,6 +4135,23 @@ export function useAppChatAppLogic() {
       globalThis.localStorage?.setItem(LOCAL_ENDPOINT_CHAT_ENABLED_KEY, localEndpointChatEnabled.value ? '1' : '0')
       globalThis.localStorage?.setItem(LOCAL_ENDPOINT_CHAT_URL_KEY, localEndpointChatUrl.value)
       globalThis.localStorage?.setItem(LOCAL_ENDPOINT_CHAT_MODEL_KEY, localEndpointChatModel.value)
+    } catch {
+      // Non-fatal: the user can still use the current in-memory settings.
+    }
+  }
+
+  function persistLMStudioChatStorage() {
+    try {
+      globalThis.localStorage?.setItem(LM_STUDIO_CHAT_ENABLED_KEY, lmStudioChatEnabled.value ? '1' : '0')
+      globalThis.localStorage?.setItem(LM_STUDIO_ENDPOINT_URL_KEY, lmStudioEndpointUrl.value)
+      globalThis.localStorage?.setItem(LM_STUDIO_MODEL_KEY, lmStudioModel.value)
+      globalThis.localStorage?.setItem(LM_STUDIO_CHAT_MODE_KEY, lmStudioChatMode.value)
+      globalThis.localStorage?.setItem(LM_STUDIO_OPENAI_ENDPOINT_KEY, lmStudioOpenAICompatiblePreferredEndpoint.value)
+      globalThis.localStorage?.setItem(LM_STUDIO_DIAGNOSTICS_ENABLED_KEY, lmStudioDiagnosticsEnabled.value ? '1' : '0')
+      globalThis.localStorage?.setItem(LM_STUDIO_MANUAL_LOAD_UNLOAD_ENABLED_KEY, lmStudioManualLoadUnloadEnabled.value ? '1' : '0')
+      globalThis.localStorage?.setItem(LM_STUDIO_AUTO_LOAD_BEFORE_SEND_ENABLED_KEY, lmStudioAutoLoadBeforeSendEnabled.value ? '1' : '0')
+      globalThis.localStorage?.setItem(LM_STUDIO_AUTO_UNLOAD_AFTER_SEND_ENABLED_KEY, lmStudioAutoUnloadAfterSendEnabled.value ? '1' : '0')
+      globalThis.localStorage?.setItem(LM_STUDIO_AUTO_UNLOAD_AFTER_IDLE_ENABLED_KEY, lmStudioAutoUnloadAfterIdleEnabled.value ? '1' : '0')
     } catch {
       // Non-fatal: the user can still use the current in-memory settings.
     }
@@ -4043,11 +4204,13 @@ export function useAppChatAppLogic() {
   function enforceExperimentalChatMutualExclusion() {
     if (deepSeekChatEnabled.value) {
       openRouterChatEnabled.value = false
+      lmStudioChatEnabled.value = false
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
       persistOpenRouterChatStorage()
+      persistLMStudioChatStorage()
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
@@ -4056,11 +4219,13 @@ export function useAppChatAppLogic() {
     }
     if (anthropicChatEnabled.value) {
       openRouterChatEnabled.value = false
+      lmStudioChatEnabled.value = false
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       deepSeekChatEnabled.value = false
       persistOpenRouterChatStorage()
+      persistLMStudioChatStorage()
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
@@ -4069,11 +4234,13 @@ export function useAppChatAppLogic() {
     }
     if (googleAIStudioChatEnabled.value) {
       openRouterChatEnabled.value = false
+      lmStudioChatEnabled.value = false
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       anthropicChatEnabled.value = false
       deepSeekChatEnabled.value = false
       persistOpenRouterChatStorage()
+      persistLMStudioChatStorage()
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistAnthropicChatStorage()
@@ -4082,12 +4249,29 @@ export function useAppChatAppLogic() {
     }
     if (openAIResponsesChatEnabled.value) {
       openRouterChatEnabled.value = false
+      lmStudioChatEnabled.value = false
       localEndpointChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
       deepSeekChatEnabled.value = false
       persistOpenRouterChatStorage()
+      persistLMStudioChatStorage()
       persistLocalEndpointChatStorage()
+      persistGoogleAIStudioChatStorage()
+      persistAnthropicChatStorage()
+      persistDeepSeekChatStorage()
+      return
+    }
+    if (lmStudioChatEnabled.value) {
+      openRouterChatEnabled.value = false
+      localEndpointChatEnabled.value = false
+      openAIResponsesChatEnabled.value = false
+      googleAIStudioChatEnabled.value = false
+      anthropicChatEnabled.value = false
+      deepSeekChatEnabled.value = false
+      persistOpenRouterChatStorage()
+      persistLocalEndpointChatStorage()
+      persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
       persistAnthropicChatStorage()
       persistDeepSeekChatStorage()
@@ -4095,11 +4279,13 @@ export function useAppChatAppLogic() {
     }
     if (localEndpointChatEnabled.value) {
       openRouterChatEnabled.value = false
+      lmStudioChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
       deepSeekChatEnabled.value = false
       persistOpenRouterChatStorage()
+      persistLMStudioChatStorage()
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
       persistAnthropicChatStorage()
@@ -4111,11 +4297,13 @@ export function useAppChatAppLogic() {
     if (isDraftInteractionLocked.value || isRunning.value) return
     openRouterChatEnabled.value = enabled
     if (enabled) {
+      lmStudioChatEnabled.value = false
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
       deepSeekChatEnabled.value = false
+      persistLMStudioChatStorage()
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
@@ -4125,16 +4313,98 @@ export function useAppChatAppLogic() {
     persistOpenRouterChatStorage()
   }
 
-  function onUpdateLocalEndpointChatEnabled(enabled: boolean) {
+  function onUpdateLMStudioChatEnabled(enabled: boolean) {
     if (isDraftInteractionLocked.value || isRunning.value) return
-    localEndpointChatEnabled.value = enabled
+    lmStudioChatEnabled.value = enabled
     if (enabled) {
       openRouterChatEnabled.value = false
+      localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
       deepSeekChatEnabled.value = false
       persistOpenRouterChatStorage()
+      persistLocalEndpointChatStorage()
+      persistOpenAIResponsesChatStorage()
+      persistGoogleAIStudioChatStorage()
+      persistAnthropicChatStorage()
+      persistDeepSeekChatStorage()
+    }
+    persistLMStudioChatStorage()
+  }
+
+  function onUpdateLMStudioEndpointUrl(endpointUrl: string) {
+    lmStudioEndpointUrl.value = String(endpointUrl ?? '')
+    persistLMStudioChatStorage()
+  }
+
+  function onUpdateLMStudioModel(modelId: string) {
+    lmStudioModel.value = String(modelId ?? '')
+    persistLMStudioChatStorage()
+  }
+
+  function onUpdateLMStudioChatMode(chatMode: 'openai_compatible' | 'native_rest') {
+    lmStudioChatMode.value = chatMode === 'native_rest' ? 'native_rest' : 'openai_compatible'
+    persistLMStudioChatStorage()
+  }
+
+  function onUpdateLMStudioOpenAICompatiblePreferredEndpoint(endpoint: 'chat_completions' | 'responses') {
+    lmStudioOpenAICompatiblePreferredEndpoint.value = endpoint === 'responses' ? 'responses' : 'chat_completions'
+    persistLMStudioChatStorage()
+  }
+
+  function onUpdateLMStudioNativeRestControl(
+    key: 'diagnosticsEnabled' | 'manualLoadUnloadEnabled' | 'autoLoadBeforeSendEnabled' | 'autoUnloadAfterSendEnabled' | 'autoUnloadAfterIdleEnabled',
+    enabled: boolean,
+  ) {
+    if (key === 'diagnosticsEnabled') lmStudioDiagnosticsEnabled.value = enabled
+    if (key === 'manualLoadUnloadEnabled') lmStudioManualLoadUnloadEnabled.value = enabled
+    if (key === 'autoLoadBeforeSendEnabled') lmStudioAutoLoadBeforeSendEnabled.value = enabled
+    if (key === 'autoUnloadAfterSendEnabled') lmStudioAutoUnloadAfterSendEnabled.value = enabled
+    if (key === 'autoUnloadAfterIdleEnabled') lmStudioAutoUnloadAfterIdleEnabled.value = enabled
+    persistLMStudioChatStorage()
+  }
+
+  function onClearLMStudioChat() {
+    if (isDraftInteractionLocked.value || isRunning.value) return
+    lmStudioChatEnabled.value = false
+    lmStudioEndpointUrl.value = DEFAULT_LM_STUDIO_ENDPOINT_URL
+    lmStudioModel.value = ''
+    lmStudioChatMode.value = 'openai_compatible'
+    lmStudioOpenAICompatiblePreferredEndpoint.value = 'chat_completions'
+    lmStudioDiagnosticsEnabled.value = true
+    lmStudioManualLoadUnloadEnabled.value = true
+    lmStudioAutoLoadBeforeSendEnabled.value = false
+    lmStudioAutoUnloadAfterSendEnabled.value = false
+    lmStudioAutoUnloadAfterIdleEnabled.value = false
+    try {
+      globalThis.localStorage?.removeItem(LM_STUDIO_CHAT_ENABLED_KEY)
+      globalThis.localStorage?.removeItem(LM_STUDIO_ENDPOINT_URL_KEY)
+      globalThis.localStorage?.removeItem(LM_STUDIO_MODEL_KEY)
+      globalThis.localStorage?.removeItem(LM_STUDIO_CHAT_MODE_KEY)
+      globalThis.localStorage?.removeItem(LM_STUDIO_OPENAI_ENDPOINT_KEY)
+      globalThis.localStorage?.removeItem(LM_STUDIO_DIAGNOSTICS_ENABLED_KEY)
+      globalThis.localStorage?.removeItem(LM_STUDIO_MANUAL_LOAD_UNLOAD_ENABLED_KEY)
+      globalThis.localStorage?.removeItem(LM_STUDIO_AUTO_LOAD_BEFORE_SEND_ENABLED_KEY)
+      globalThis.localStorage?.removeItem(LM_STUDIO_AUTO_UNLOAD_AFTER_SEND_ENABLED_KEY)
+      globalThis.localStorage?.removeItem(LM_STUDIO_AUTO_UNLOAD_AFTER_IDLE_ENABLED_KEY)
+    } catch {
+      // Non-fatal: in-memory state still leaves the runtime selection unset unless another provider is selected.
+    }
+  }
+
+  function onUpdateLocalEndpointChatEnabled(enabled: boolean) {
+    if (isDraftInteractionLocked.value || isRunning.value) return
+    localEndpointChatEnabled.value = enabled
+    if (enabled) {
+      openRouterChatEnabled.value = false
+      lmStudioChatEnabled.value = false
+      openAIResponsesChatEnabled.value = false
+      googleAIStudioChatEnabled.value = false
+      anthropicChatEnabled.value = false
+      deepSeekChatEnabled.value = false
+      persistOpenRouterChatStorage()
+      persistLMStudioChatStorage()
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
       persistAnthropicChatStorage()
@@ -4172,11 +4442,13 @@ export function useAppChatAppLogic() {
     openAIResponsesChatEnabled.value = enabled
     if (enabled) {
       openRouterChatEnabled.value = false
+      lmStudioChatEnabled.value = false
       localEndpointChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
       deepSeekChatEnabled.value = false
       persistOpenRouterChatStorage()
+      persistLMStudioChatStorage()
       persistLocalEndpointChatStorage()
       persistGoogleAIStudioChatStorage()
       persistAnthropicChatStorage()
@@ -4207,11 +4479,13 @@ export function useAppChatAppLogic() {
     googleAIStudioChatEnabled.value = enabled
     if (enabled) {
       openRouterChatEnabled.value = false
+      lmStudioChatEnabled.value = false
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       anthropicChatEnabled.value = false
       deepSeekChatEnabled.value = false
       persistOpenRouterChatStorage()
+      persistLMStudioChatStorage()
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistAnthropicChatStorage()
@@ -4242,11 +4516,13 @@ export function useAppChatAppLogic() {
     anthropicChatEnabled.value = enabled
     if (enabled) {
       openRouterChatEnabled.value = false
+      lmStudioChatEnabled.value = false
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       deepSeekChatEnabled.value = false
       persistOpenRouterChatStorage()
+      persistLMStudioChatStorage()
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
@@ -4277,11 +4553,13 @@ export function useAppChatAppLogic() {
     deepSeekChatEnabled.value = enabled
     if (enabled) {
       openRouterChatEnabled.value = false
+      lmStudioChatEnabled.value = false
       localEndpointChatEnabled.value = false
       openAIResponsesChatEnabled.value = false
       googleAIStudioChatEnabled.value = false
       anthropicChatEnabled.value = false
       persistOpenRouterChatStorage()
+      persistLMStudioChatStorage()
       persistLocalEndpointChatStorage()
       persistOpenAIResponsesChatStorage()
       persistGoogleAIStudioChatStorage()
@@ -9149,6 +9427,7 @@ export function useAppChatAppLogic() {
     contextMessages: any[]
   }>) {
     const modelId = getExperimentalRuntimeTextModelId(input.providerKey, {
+      lmStudio: lmStudioModel.value,
       localEndpoint: localEndpointChatModel.value,
       openAIResponses: openAIResponsesChatModel.value,
       googleAIStudio: googleAIStudioChatModel.value,
@@ -9157,6 +9436,9 @@ export function useAppChatAppLogic() {
     })
     const endpointUrl = input.providerKey === 'local_endpoint'
       ? localEndpointChatUrl.value.trim()
+      : undefined
+    const lmStudioConfig = input.providerKey === 'lm_studio'
+      ? lmStudioProviderConfig.value
       : undefined
 
     const begun = await beginTurn(input.branch.id, input.text)
@@ -9217,6 +9499,7 @@ export function useAppChatAppLogic() {
         modelId,
         userText: input.text,
         contextMessages: input.contextMessages,
+        ...(lmStudioConfig ? { lmStudioConfig } : {}),
         ...(endpointUrl ? { localEndpointUrl: endpointUrl } : {}),
         signal,
       }),
@@ -10031,6 +10314,7 @@ export function useAppChatAppLogic() {
     isReady.value = false
     loadError.value = null
     readOpenRouterChatStorage()
+    readLMStudioChatStorage()
     readLocalEndpointChatStorage()
     readOpenAIResponsesChatStorage()
     readGoogleAIStudioChatStorage()
@@ -10084,12 +10368,14 @@ export function useAppChatAppLogic() {
     window.addEventListener('settings:webSearchDefaultsUpdated', handleGlobalWebSearchDefaultsUpdated)
     window.addEventListener('settings:samplingParamsDefaultsUpdated', handleGlobalSamplingParamsDefaultsUpdated)
     window.addEventListener('settings:imageGenerationDefaultUpdated', handleGlobalImageGenerationDefaultUpdated)
+    window.addEventListener(LM_STUDIO_SETTINGS_EVENT, handleLMStudioSettingsUpdated)
     window.addEventListener(LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT, handleLocalEndpointChatSettingsUpdated)
     window.addEventListener(OPENAI_RESPONSES_CHAT_SETTINGS_EVENT, handleOpenAIResponsesChatSettingsUpdated)
     window.addEventListener(GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT, handleGoogleAIStudioChatSettingsUpdated)
     window.addEventListener(ANTHROPIC_CHAT_SETTINGS_EVENT, handleAnthropicChatSettingsUpdated)
     window.addEventListener(DEEPSEEK_CHAT_SETTINGS_EVENT, handleDeepSeekChatSettingsUpdated)
     window.addEventListener('storage', handleOpenRouterChatStorage)
+    window.addEventListener('storage', handleLMStudioChatStorage)
     window.addEventListener('storage', handleLocalEndpointChatStorage)
     window.addEventListener('storage', handleOpenAIResponsesChatStorage)
     window.addEventListener('storage', handleGoogleAIStudioChatStorage)
@@ -10225,12 +10511,14 @@ export function useAppChatAppLogic() {
     window.removeEventListener('settings:webSearchDefaultsUpdated', handleGlobalWebSearchDefaultsUpdated)
     window.removeEventListener('settings:samplingParamsDefaultsUpdated', handleGlobalSamplingParamsDefaultsUpdated)
     window.removeEventListener('settings:imageGenerationDefaultUpdated', handleGlobalImageGenerationDefaultUpdated)
+    window.removeEventListener(LM_STUDIO_SETTINGS_EVENT, handleLMStudioSettingsUpdated)
     window.removeEventListener(LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT, handleLocalEndpointChatSettingsUpdated)
     window.removeEventListener(OPENAI_RESPONSES_CHAT_SETTINGS_EVENT, handleOpenAIResponsesChatSettingsUpdated)
     window.removeEventListener(GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT, handleGoogleAIStudioChatSettingsUpdated)
     window.removeEventListener(ANTHROPIC_CHAT_SETTINGS_EVENT, handleAnthropicChatSettingsUpdated)
     window.removeEventListener(DEEPSEEK_CHAT_SETTINGS_EVENT, handleDeepSeekChatSettingsUpdated)
     window.removeEventListener('storage', handleOpenRouterChatStorage)
+    window.removeEventListener('storage', handleLMStudioChatStorage)
     window.removeEventListener('storage', handleLocalEndpointChatStorage)
     window.removeEventListener('storage', handleOpenAIResponsesChatStorage)
     window.removeEventListener('storage', handleGoogleAIStudioChatStorage)
@@ -10448,6 +10736,7 @@ export function useAppChatAppLogic() {
     composerImageInputSupportReason,
     activeSessionConfig,
     openRouterChatConfig,
+    lmStudioChatConfig,
     localEndpointChatConfig,
     openAIResponsesChatConfig,
     googleAIStudioChatConfig,
@@ -10494,6 +10783,13 @@ export function useAppChatAppLogic() {
     onUpdateImageGeneration,
     onUpdateImageGenerationFollowDefault,
     onUpdateOpenRouterChatEnabled,
+    onUpdateLMStudioChatEnabled,
+    onUpdateLMStudioEndpointUrl,
+    onUpdateLMStudioModel,
+    onUpdateLMStudioChatMode,
+    onUpdateLMStudioOpenAICompatiblePreferredEndpoint,
+    onUpdateLMStudioNativeRestControl,
+    onClearLMStudioChat,
     onUpdateLocalEndpointChatEnabled,
     onUpdateLocalEndpointChatUrl,
     onUpdateLocalEndpointChatModel,
