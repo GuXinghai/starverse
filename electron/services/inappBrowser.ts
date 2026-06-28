@@ -2,6 +2,7 @@ import { BrowserView, BrowserWindow, clipboard, shell } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { validateExternalUrl } from '../security/externalUrlPolicy'
 
 type InAppBrowserConfig = {
   preloadPath: string
@@ -29,6 +30,10 @@ type InternalWindow = {
   activeTabId: string | null
   tabIds: Set<string>
 }
+
+export type InAppOpenExternalResult =
+  | Readonly<{ ok: true }>
+  | Readonly<{ ok: false; code: 'tab_not_found' | 'invalid_url' | 'external_protocol_blocked'; message: string }>
 
 const DEFAULT_TOOLBAR_HEIGHT = 120
 
@@ -130,13 +135,16 @@ export class InAppBrowserManager {
 
   openExternal(tabId: string) {
     const tab = this.tabs.get(tabId)
-    if (!tab) return false
-    const url = tab.view.webContents.getURL()
-    if (url) {
-      shell.openExternal(url)
-      return true
+    if (!tab) {
+      return { ok: false, code: 'tab_not_found', message: 'In-app browser tab was not found.' } satisfies InAppOpenExternalResult
     }
-    return false
+    const url = tab.view.webContents.getURL()
+    const allowed = validateExternalUrl(url)
+    if (!allowed.ok) {
+      return allowed
+    }
+    shell.openExternal(allowed.url)
+    return { ok: true } satisfies InAppOpenExternalResult
   }
 
   copyLink(tabId: string) {
@@ -293,14 +301,15 @@ export class InAppBrowserManager {
     const { view } = tab
 
     view.webContents.setWindowOpenHandler(({ url }) => {
-      this.openLink(url, tab.windowId)
+      if (validateExternalUrl(url).ok) {
+        this.openLink(url, tab.windowId)
+      }
       return { action: 'deny' }
     })
 
     view.webContents.on('will-navigate', (event, targetUrl) => {
-      if (!this.isHttpUrl(targetUrl)) {
+      if (!validateExternalUrl(targetUrl).ok) {
         event.preventDefault()
-        shell.openExternal(targetUrl)
       }
     })
 

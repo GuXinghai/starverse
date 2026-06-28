@@ -4138,15 +4138,50 @@ export function useAppChatAppLogic() {
     return scope.convoId
   }
 
+  type FileSelectionGrant = Readonly<{
+    filePath: string
+    token: string
+    expiresAtMs: number
+  }>
+
+  type SelectLocalFilesResult = Readonly<{
+    filePaths: string[]
+    fileGrants?: FileSelectionGrant[]
+  }>
+
+  type LocalFileIngestionTarget = Readonly<{
+    filePath: string
+    selectionGrantToken?: string
+  }>
+
   function getElectronApi(): Readonly<{
-    selectLocalFiles: (options?: { context?: 'file' | 'image'; allowMultiple?: boolean }) => Promise<{ filePaths: string[] } | null>
+    selectLocalFiles: (options?: { context?: 'file' | 'image'; allowMultiple?: boolean }) => Promise<SelectLocalFilesResult | null>
   }> | null {
     const api = (globalThis as any)?.electronAPI as
       | Readonly<{
-        selectLocalFiles: (options?: { context?: 'file' | 'image'; allowMultiple?: boolean }) => Promise<{ filePaths: string[] } | null>
+        selectLocalFiles: (options?: { context?: 'file' | 'image'; allowMultiple?: boolean }) => Promise<SelectLocalFilesResult | null>
       }>
       | undefined
     return api && typeof api.selectLocalFiles === 'function' ? api : null
+  }
+
+  function selectedLocalFilesFromDialogResult(result: SelectLocalFilesResult | null | undefined): LocalFileIngestionTarget[] {
+    const filePaths = Array.isArray(result?.filePaths) ? result.filePaths : []
+    const grantsByPath = new Map(
+      (Array.isArray(result?.fileGrants) ? result.fileGrants : [])
+        .map((grant) => [String(grant.filePath ?? '').trim(), String(grant.token ?? '').trim()] as const)
+        .filter(([filePath, token]) => filePath.length > 0 && token.length > 0)
+    )
+    return filePaths
+      .map((filePath) => {
+        const cleanedPath = String(filePath ?? '').trim()
+        const token = grantsByPath.get(cleanedPath)
+        return {
+          filePath: cleanedPath,
+          ...(token ? { selectionGrantToken: token } : {}),
+        }
+      })
+      .filter((file) => file.filePath.length > 0)
   }
 
   function clearAttachmentFeedback() {
@@ -5788,10 +5823,18 @@ export function useAppChatAppLogic() {
   }
 
   async function ingestLocalFiles(
-    filePaths: readonly string[],
+    filePaths: readonly (string | LocalFileIngestionTarget)[],
     options?: Readonly<{ mimeType?: string | null; sourceKind?: 'local_upload' | 'generated' }>,
   ) {
-    const cleaned = filePaths.map((value) => String(value ?? '').trim()).filter((value) => value.length > 0)
+    const cleaned = filePaths
+      .map((value) => {
+        if (typeof value === 'string') return { filePath: value.trim() }
+        return {
+          filePath: String(value.filePath ?? '').trim(),
+          ...(value.selectionGrantToken ? { selectionGrantToken: value.selectionGrantToken } : {}),
+        }
+      })
+      .filter((value) => value.filePath.length > 0)
     if (cleaned.length === 0) return
     const convoId = await ensureActiveConvo()
 
@@ -5799,10 +5842,11 @@ export function useAppChatAppLogic() {
     let failureCount = 0
     let lastSuccessLabel: string | null = null
 
-    for (const filePath of cleaned) {
+    for (const file of cleaned) {
       try {
         const result = await ingestLocalFile({
-          filePath,
+          filePath: file.filePath,
+          ...(file.selectionGrantToken ? { selectionGrantToken: file.selectionGrantToken } : {}),
           mimeType: options?.mimeType ?? null,
           sourceKind: options?.sourceKind ?? 'local_upload',
         })
@@ -5985,9 +6029,9 @@ export function useAppChatAppLogic() {
       return
     }
     const result = await api.selectLocalFiles({ context: 'file', allowMultiple: true })
-    const filePaths = Array.isArray(result?.filePaths) ? result.filePaths : []
-    if (filePaths.length === 0) return
-    await ingestLocalFiles(filePaths, { sourceKind: 'local_upload' })
+    const files = selectedLocalFilesFromDialogResult(result)
+    if (files.length === 0) return
+    await ingestLocalFiles(files, { sourceKind: 'local_upload' })
   }
 
   async function onAttachImagesRequested() {
@@ -6003,9 +6047,9 @@ export function useAppChatAppLogic() {
       return
     }
     const result = await api.selectLocalFiles({ context: 'image', allowMultiple: true })
-    const filePaths = Array.isArray(result?.filePaths) ? result.filePaths : []
-    if (filePaths.length === 0) return
-    await ingestLocalFiles(filePaths, { sourceKind: 'local_upload' })
+    const files = selectedLocalFilesFromDialogResult(result)
+    if (files.length === 0) return
+    await ingestLocalFiles(files, { sourceKind: 'local_upload' })
   }
 
   function onAttachUrlRequested(prefillUrl?: string | null) {

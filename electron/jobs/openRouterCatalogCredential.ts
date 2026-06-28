@@ -10,6 +10,9 @@ import {
   createBearerCredential,
 } from '@/next/provider/credentials/providerCredential'
 import {
+  validateOpenRouterOfficialBaseUrl,
+} from '../openrouter/openRouterEndpointPolicy'
+import {
   providerCredentialResolutionFailure,
   providerCredentialResolutionFromCredential,
   resolveProviderCredential,
@@ -81,18 +84,14 @@ export function readOpenRouterCatalogLegacyCredentialFromStore(
   const apiKey = String(store.get(OPENROUTER_CATALOG_LEGACY_API_KEY_STORE_KEY) ?? '').trim()
   if (!apiKey) return null
 
-  const baseUrl = String(store.get(OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY) ?? '').trim() || null
+  const rawBaseUrl = String(store.get(OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY) ?? '').trim()
+  const baseUrl = rawBaseUrl ? validateOpenRouterOfficialBaseUrl(rawBaseUrl) : null
+  if (baseUrl && !baseUrl.ok) return null
   return {
     kind: 'openrouter_catalog_legacy_credential',
     apiKey,
-    baseUrl,
+    baseUrl: baseUrl?.baseUrl ?? null,
   }
-}
-
-function readOpenRouterCatalogLegacyBaseUrlFromStore(
-  store: OpenRouterCatalogCredentialStoreReader,
-): string | null {
-  return String(store.get(OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY) ?? '').trim() || null
 }
 
 function openRouterCatalogCredentialResolutionFailure(
@@ -119,6 +118,15 @@ function openRouterCatalogCredentialResolutionFailure(
     code: 'credential_unresolved',
     status: 'missing',
     message: 'Credential could not be resolved.',
+  }
+}
+
+function openRouterCatalogBaseUrlPolicyFailure(): OpenRouterCatalogCredentialResolutionFailure {
+  return {
+    kind: 'openrouter_catalog_credential_resolution_error',
+    code: 'credential_invalid',
+    status: 'invalid',
+    message: 'Credential material is invalid.',
   }
 }
 
@@ -202,9 +210,21 @@ export function resolveOpenRouterCatalogCredentialFromLegacyStore(
     }
   }
 
+  const rawBaseUrl = String(store.get(OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY) ?? '').trim()
+  const baseUrl = rawBaseUrl ? validateOpenRouterOfficialBaseUrl(rawBaseUrl) : null
+  if (baseUrl && !baseUrl.ok) {
+    const failure = openRouterCatalogBaseUrlPolicyFailure()
+    return {
+      ok: false,
+      source: 'legacy_store',
+      failure,
+      diagnostics: toSafeOpenRouterCatalogCredentialDiagnostics(failure),
+    }
+  }
+
   const credential = {
     ...resolved,
-    baseUrl: readOpenRouterCatalogLegacyBaseUrlFromStore(store),
+    baseUrl: baseUrl?.baseUrl ?? null,
   }
   return {
     ok: true,

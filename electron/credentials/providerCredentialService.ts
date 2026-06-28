@@ -68,7 +68,7 @@ export type ProviderSecureStorageBackend = Readonly<{
 
 export type ProviderCredentialServiceOptions = Readonly<{
   secureStorage: ProviderSecureStorageBackend
-  allowPlaintextFallback: boolean
+  allowPlaintextFallback?: boolean
   nowMs?: () => number
 }>
 
@@ -155,14 +155,15 @@ export function createProviderCredentialService(
   options: ProviderCredentialServiceOptions,
 ): ProviderCredentialService {
   const nowMs = options.nowMs ?? Date.now
+  const plaintextFallbackAllowed = options.allowPlaintextFallback === true
 
   function backendKind(): ProviderCredentialBackendKind {
     try {
       if (options.secureStorage.isEncryptionAvailable()) return 'electron_safe_storage'
     } catch {
-      return options.allowPlaintextFallback ? 'plaintext_fallback' : 'unavailable'
+      return plaintextFallbackAllowed ? 'plaintext_fallback' : 'unavailable'
     }
-    return options.allowPlaintextFallback ? 'plaintext_fallback' : 'unavailable'
+    return plaintextFallbackAllowed ? 'plaintext_fallback' : 'unavailable'
   }
 
   function writeApiKey(providerKey: ProviderCredentialKey, apiKey: string): Exclude<ProviderCredentialBackendKind, 'unavailable'> {

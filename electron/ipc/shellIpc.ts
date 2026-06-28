@@ -2,6 +2,7 @@ import { shell } from 'electron'
 import type { RegisterInvoke } from './types'
 import { t } from '../i18n/mainI18n'
 import { summarizeErrorForLog } from './logSanitizer'
+import { validateExternalUrl } from '../security/externalUrlPolicy'
 
 export const SHELL_IPC_CHANNELS = ['shell:open-external'] as const
 
@@ -18,11 +19,11 @@ export function registerShellIpc(input: RegisterShellIpcInput): string[] {
       if (!rawUrl) {
         throw new Error(t('dialogs.errors.invalidUrl'))
       }
-      const parsed = new URL(rawUrl)
-      if (!['http:', 'https:'].includes(parsed.protocol)) {
+      const allowed = validateExternalUrl(rawUrl)
+      if (!allowed.ok) {
         throw new Error(t('dialogs.errors.unsupportedProtocol'))
       }
-      await shell.openExternal(parsed.toString())
+      await shell.openExternal(allowed.url)
       return { success: true }
     } catch (error) {
       const errorSummary = summarizeErrorForLog(error)
@@ -45,8 +46,8 @@ function categorizeOpenExternalError(url: unknown): string {
   const rawUrl = typeof url === 'string' ? url : ''
   if (!rawUrl) return 'invalid_url'
   try {
-    const parsed = new URL(rawUrl)
-    if (!['http:', 'https:'].includes(parsed.protocol)) return 'unsupported_protocol'
+    const allowed = validateExternalUrl(rawUrl)
+    if (!allowed.ok) return allowed.code === 'external_protocol_blocked' ? 'unsupported_protocol' : 'invalid_url'
   } catch {
     return 'invalid_url'
   }

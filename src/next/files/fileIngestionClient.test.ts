@@ -33,9 +33,17 @@ describe('fileIngestionClient', () => {
     }))
     ;(globalThis as any).dbBridge = { invoke }
 
-    const result = await ingestLocalFile({ filePath: 'C:/tmp/a.png', mimeType: 'image/png' })
+    const result = await ingestLocalFile({
+      filePath: 'C:/tmp/a.png',
+      selectionGrantToken: 'grant-1',
+      mimeType: 'image/png',
+    })
 
-    expect(invoke).toHaveBeenCalledWith('fileIngestion.ingestLocalFile', { filePath: 'C:/tmp/a.png', mimeType: 'image/png' })
+    expect(invoke).toHaveBeenCalledWith('fileIngestion.ingestLocalFile', {
+      filePath: 'C:/tmp/a.png',
+      selectionGrantToken: 'grant-1',
+      mimeType: 'image/png',
+    })
     expect(result.success).toBe(true)
     expect(result.assetId).toBe('asset-1')
   })

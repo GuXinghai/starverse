@@ -3,6 +3,8 @@ import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import type { RegisterInvoke } from './types'
 import { t } from '../i18n/mainI18n'
+import type { FileSelectionGrantStore } from './fileSelectionGrants'
+import { senderIdFromIpcEvent } from './fileSelectionGrants'
 
 export const DIALOG_IPC_CHANNELS = [
   'dialog:select-file',
@@ -13,6 +15,7 @@ export const DIALOG_IPC_CHANNELS = [
 
 type RegisterDialogIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
+  fileSelectionGrants?: FileSelectionGrantStore
   importLibreOfficeSvpkg?: (packagePath: string) => Promise<unknown>
   quarantineLibreOfficeRuntime?: () => Promise<unknown>
 }>
@@ -76,7 +79,7 @@ export function registerDialogIpc(input: RegisterDialogIpcInput): string[] {
     }
   })
 
-  registerInvoke('dialog:select-local-files', async (_event: unknown, options: unknown = {}) => {
+  registerInvoke('dialog:select-local-files', async (event: unknown, options: unknown = {}) => {
     try {
       const normalized = (options ?? {}) as SelectLocalFilesOptions
       const context = normalized.context === 'image' ? 'image' : 'file'
@@ -90,7 +93,14 @@ export function registerDialogIpc(input: RegisterDialogIpcInput): string[] {
       if (result.canceled || result.filePaths.length === 0) {
         return { filePaths: [] }
       }
-      return { filePaths: result.filePaths }
+      const senderId = senderIdFromIpcEvent(event)
+      const fileGrants = input.fileSelectionGrants && senderId !== null
+        ? result.filePaths.map((filePath) => input.fileSelectionGrants!.create({ senderId, filePath }))
+        : undefined
+      return {
+        filePaths: result.filePaths,
+        ...(fileGrants ? { fileGrants } : {}),
+      }
     } catch (error) {
       console.error('[dialog] select local files failed:', sanitizeDialogErrorMessage(error))
       return { filePaths: [] }

@@ -268,13 +268,15 @@ export class DbWorkerManager {
     }
     
     // 2. 双保险检查 - 第二道门：app.isPackaged（如可用）
+    let isPackaged = false
     try {
       const { app } = await import('electron')
-      if (app.isPackaged) {
-        throw new DbWorkerError('ERR_FORBIDDEN', 'db.reset is forbidden in packaged app')
-      }
+      isPackaged = app.isPackaged === true
     } catch {
       // electron 模块不可用时跳过（如单元测试环境）
+    }
+    if (isPackaged) {
+      throw new DbWorkerError('ERR_FORBIDDEN', 'db.reset is forbidden in packaged app')
     }
     
     // 3. 获取数据库路径

@@ -37,6 +37,8 @@ import { DB_RENDERER_METHOD_SET } from '../../infra/db/dbMethodsRegistry'
 import { DbWorkerError } from '../../infra/db/errors'
 import { DbWorkerManager } from '../db/workerManager'
 import { summarizeErrorForLog, summarizeIpcParamsForLog } from './logSanitizer'
+import type { FileSelectionGrantStore } from './fileSelectionGrants'
+import { senderIdFromIpcEvent } from './fileSelectionGrants'
 
 export const DB_BRIDGE_IPC_CHANNELS = ['db:invoke'] as const
 
@@ -71,6 +73,10 @@ type InvokePayload = {
   params?: unknown   // 方法参数（可选）
 }
 
+type DbBridgeOptions = Readonly<{
+  fileSelectionGrants?: FileSelectionGrantStore
+}>
+
 /**
  * 注册数据库 IPC 桥接
  * 
@@ -102,7 +108,7 @@ type InvokePayload = {
  * createWindow()
  * ```
  */
-export const registerDbBridge = (manager: DbWorkerManager): string[] => {
+export const registerDbBridge = (manager: DbWorkerManager, options: DbBridgeOptions = {}): string[] => {
   const toIpcError = (error: unknown): Error => {
     // Electron's ipcMain.handle() only reliably transports built-in Error instances.
     // If we throw non-Error values (or custom error subclasses), the renderer often sees:
@@ -144,21 +150,14 @@ export const registerDbBridge = (manager: DbWorkerManager): string[] => {
    * @returns Promise - 数据库操作结果
    * @throws {DbWorkerError} Payload 验证失败或方法不允许
    */
-  ipcMain.handle('db:invoke', async (_event, payload: InvokePayload) => {
+  ipcMain.handle('db:invoke', async (event, payload: InvokePayload) => {
     try {
       // ========== 步骤 1: Payload 验证 ==========
       if (!payload || typeof payload !== 'object') {
         throw new DbWorkerError('ERR_VALIDATION', 'Invalid DB IPC payload')
       }
 
-      // ========== 步骤 2: 特殊方法处理 ==========
-      
-      // db.reset: 重置数据库（dev-only，直接调用 manager.reset()）
-      if (payload.method === 'db.reset') {
-        return await manager.reset()
-      }
-
-      // ========== 步骤 3: 白名单检查 ==========
+      // ========== 步骤 2: 白名单检查 ==========
       if (!allowSet.has(payload.method)) {
         throw new DbWorkerError('ERR_NOT_FOUND', `Method not allowed: ${payload.method}`)
       }
@@ -169,8 +168,12 @@ export const registerDbBridge = (manager: DbWorkerManager): string[] => {
 
       console.log(`[dbBridge] 调用方法: ${payload.method}`, summarizeIpcParamsForLog(payload.params))
 
-      // ========== 步骤 4: 转发给 Worker ==========
-      return await manager.call(payload.method, payload.params)
+      const params = payload.method === 'fileIngestion.ingestLocalFile'
+        ? consumeLocalFileGrant(event, payload.params, options.fileSelectionGrants)
+        : payload.params
+
+      // ========== 步骤 3: 转发给 Worker ==========
+      return await manager.call(payload.method, params)
     } catch (error) {
       const errorSummary = summarizeErrorForLog(error)
       console.error(`[dbBridge] 调用失败: ${payload?.method}`, errorSummary)
@@ -180,4 +183,32 @@ export const registerDbBridge = (manager: DbWorkerManager): string[] => {
   })
 
   return [...DB_BRIDGE_IPC_CHANNELS]
+}
+
+function consumeLocalFileGrant(
+  event: unknown,
+  params: unknown,
+  fileSelectionGrants?: FileSelectionGrantStore,
+): unknown {
+  if (!fileSelectionGrants) {
+    throw new DbWorkerError('ERR_FORBIDDEN', 'Local file ingestion requires a valid file selection grant')
+  }
+  if (!params || typeof params !== 'object' || Array.isArray(params)) {
+    throw new DbWorkerError('ERR_VALIDATION', 'Invalid local file ingestion payload')
+  }
+  const value = params as Record<string, unknown>
+  const filePath = String(value.filePath ?? '').trim()
+  const token = String(value.selectionGrantToken ?? '').trim()
+  const senderId = senderIdFromIpcEvent(event)
+  if (!filePath || !token || senderId === null) {
+    throw new DbWorkerError('ERR_FORBIDDEN', 'Local file ingestion requires a valid file selection grant')
+  }
+  const consumed = fileSelectionGrants.consume({ senderId, filePath, token })
+  if (!consumed.ok) {
+    throw new DbWorkerError('ERR_FORBIDDEN', 'Local file ingestion requires a valid file selection grant', {
+      reason: consumed.code,
+    })
+  }
+  const { selectionGrantToken: _selectionGrantToken, ...forwarded } = value
+  return forwarded
 }

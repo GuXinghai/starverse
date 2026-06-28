@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { tmpdir } from 'node:os'
 import { registerDialogIpc } from './dialogIpc'
+import { createFileSelectionGrantStore } from './fileSelectionGrants'
 
 vi.mock('electron', () => ({
   dialog: {
@@ -79,6 +80,40 @@ describe('registerDialogIpc', () => {
     expect(showOpenDialog).toHaveBeenCalledWith(expect.objectContaining({
       filters: [expect.objectContaining({ extensions: ['*'] })],
     }))
+  })
+
+  it('returns sender-bound selection grants for selected local files when a grant store is wired', async () => {
+    const registerInvoke = vi.fn()
+    const fileSelectionGrants = createFileSelectionGrantStore({
+      now: () => 1000,
+      tokenFactory: (() => {
+        let seq = 0
+        return () => `grant-${++seq}`
+      })(),
+      ttlMs: 5000,
+    })
+    registerDialogIpc({ registerInvoke, fileSelectionGrants })
+    const handlers = new Map<string, (event: unknown, payload?: unknown) => Promise<unknown>>()
+    for (const [channel, handler] of registerInvoke.mock.calls) {
+      handlers.set(channel, handler)
+    }
+
+    const showOpenDialog = vi.mocked(dialog.showOpenDialog)
+    showOpenDialog.mockResolvedValueOnce({
+      canceled: false,
+      filePaths: ['C:/tmp/a.txt'],
+    } as any)
+
+    const result = await handlers.get('dialog:select-local-files')?.({ sender: { id: 7 } }, { context: 'file' })
+    expect(result).toEqual({
+      filePaths: ['C:/tmp/a.txt'],
+      fileGrants: [{
+        filePath: 'C:/tmp/a.txt',
+        token: 'grant-1',
+        expiresAtMs: 6000,
+      }],
+    })
+    expect(fileSelectionGrants.consume({ senderId: 7, filePath: 'C:/tmp/a.txt', token: 'grant-1' })).toEqual({ ok: true })
   })
 
   it('does not log full local paths for dialog:select-local-files image context and still returns filePaths[]', async () => {

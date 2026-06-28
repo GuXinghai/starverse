@@ -13,6 +13,10 @@ import {
   type OpenRouterLegacyCredentialMaterial,
 } from '../../src/next/provider/openrouter/openRouterLegacyCredential'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
+import {
+  OPENROUTER_DEFAULT_BASE_URL,
+  validateOpenRouterOfficialBaseUrl,
+} from '../openrouter/openRouterEndpointPolicy'
 
 /**
  * Narrow interface for HTTP response objects.
@@ -199,14 +203,22 @@ function resolveOpenRouterStreamCredential(
     }
   }
 
-  const baseUrl = store
+  const rawBaseUrl = store
     ? String(store.get(OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY) ?? '').trim() || undefined
     : undefined
+  const baseUrlValidation = validateOpenRouterOfficialBaseUrl(rawBaseUrl)
+  if (!baseUrlValidation.ok) {
+    return {
+      ok: false,
+      code: 'base_url_untrusted',
+      error: 'OpenRouter base URL is not trusted for the saved official credential.',
+    }
+  }
   return {
     ok: true,
     credential: openRouterLegacyCredentialFromRaw({
       apiKey: apiKey.apiKey,
-      ...(baseUrl ? { baseUrl } : {}),
+      ...(rawBaseUrl ? { baseUrl: baseUrlValidation.baseUrl } : {}),
     }),
   }
 }
@@ -360,7 +372,13 @@ async function startStream(
   try {
     const body = payload.requestBody ?? buildFallbackRequestBody(payload)
     const requestBody = JSON.stringify(body)
-    const baseUrl = (credential.baseUrl || 'https://openrouter.ai/api/v1').replace(/\/+$/, '')
+    const baseUrlValidation = validateOpenRouterOfficialBaseUrl(credential.baseUrl || OPENROUTER_DEFAULT_BASE_URL)
+    if (!baseUrlValidation.ok) {
+      const error = new Error('OpenRouter base URL is not trusted for the saved official credential.')
+      ;(error as any).code = 'base_url_untrusted'
+      throw error
+    }
+    const baseUrl = baseUrlValidation.baseUrl.replace(/\/+$/, '')
     const url = new URL(baseUrl)
     const origin = `${url.protocol}//${url.host}`
     const basePath = url.pathname.replace(/\/+$/, '')

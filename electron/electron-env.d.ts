@@ -89,7 +89,7 @@ interface OpenRouterCredentialUpdatePayload {
 
 type OpenRouterCredentialResult =
   | { ok: true; status: OpenRouterCredentialStatus }
-  | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
+  | { ok: false; code: 'invalid_payload' | 'store_unavailable' | 'untrusted_base_url'; message: string }
 
 interface OpenAIResponsesCredentialStatus {
   source: ProviderCredentialStatusSource
@@ -966,6 +966,10 @@ interface Window {
     onTextChatEnd?: (requestId: string, callback: () => void) => () => void
   }
   electronAPI?: {
+    selectLocalFiles?: (options?: { context?: 'file' | 'image'; allowMultiple?: boolean }) => Promise<{
+      filePaths: string[]
+      fileGrants?: Array<{ filePath: string; token: string; expiresAtMs: number }>
+    } | null>
     getNetExpRuntimeInfo?: () => Promise<unknown>
     onModelCatalogSynced?: (callback: () => void) => () => void
     modelCatalogSyncNow?: (options?: { providerKey?: string; force?: boolean; reason?: string }) => Promise<unknown>
