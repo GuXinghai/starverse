@@ -394,7 +394,7 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const rawKey = 'sk-or-ipc-bridge-c3-resolved-secret'
     const store = createStore({
-      openRouterBaseUrl: ' https://openrouter-proxy.example.test/custom/v1/ ',
+      openRouterBaseUrl: ' https://openrouter.ai/api/v1/ ',
     })
     const credentialService = createCredentialService(rawKey)
     const sender = { send: vi.fn() }
@@ -430,7 +430,7 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
       expect(store.get).toHaveBeenCalledWith('openRouterBaseUrl')
       expect(electronMock.requestCalls).toHaveLength(1)
       expect((electronMock.requestCalls[0]?.options as any)?.url).toBe(
-        'https://openrouter-proxy.example.test/custom/v1/chat/completions'
+        'https://openrouter.ai/api/v1/chat/completions'
       )
       expect(electronMock.requestCalls[0]?.headers.Authorization).toBe(`Bearer ${rawKey}`)
       expect(electronMock.requestCalls[0]?.headers.Authorization).not.toContain('renderer')
@@ -448,6 +448,49 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
       expect(serializedLogs).toContain('Authorization: [REDACTED]')
     } finally {
       warnSpy.mockRestore()
+      cleanupOpenRouterStreams()
+    }
+  })
+
+  it('rejects untrusted OpenRouter baseUrl before net.request and never sends Authorization to attacker host', async () => {
+    const rawKey = 'sk-or-ipc-bridge-attacker-secret'
+    const store = createStore({
+      openRouterBaseUrl: 'https://attacker.example.test/custom/v1',
+    })
+    const credentialService = createCredentialService(rawKey)
+    const sender = { send: vi.fn() }
+
+    try {
+      expect(registerOpenRouterStreamBridge({ store, credentialService })).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
+      const handler = electronMock.handlers.get('openrouter:stream-chat')
+      expect(handler).toBeTruthy()
+
+      const result = await handler?.({ sender }, {
+        requestId: 'rid_ipc_bridge_attacker_base',
+        wireVersion: OPENROUTER_STREAM_WIRE_VERSION,
+        requestBody: {
+          model: 'openrouter/test-model',
+          stream: true,
+          messages: [{ role: 'user', content: 'hello' }],
+        },
+        config: {
+          credentialSource: 'legacy_store',
+          model: 'openrouter/test-model',
+          requestedReasoningMode: 'auto',
+        },
+      })
+
+      expect(result).toEqual({
+        ok: false,
+        code: 'base_url_untrusted',
+        error: 'OpenRouter base URL is not trusted for the saved official credential.',
+        supportedWireVersion: OPENROUTER_STREAM_WIRE_VERSION,
+      })
+      expect(electronMock.requestCalls).toHaveLength(0)
+      expect(sender.send).not.toHaveBeenCalled()
+      expect(JSON.stringify(result)).not.toContain(rawKey)
+      expect(JSON.stringify(result)).not.toContain('Authorization')
+    } finally {
       cleanupOpenRouterStreams()
     }
   })

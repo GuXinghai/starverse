@@ -42,7 +42,6 @@ describe('providerCredentialService', () => {
     const store = createStore()
     const service = createProviderCredentialService(store, {
       secureStorage: createSecureBackend(),
-      allowPlaintextFallback: true,
       nowMs: () => 123,
     })
 
@@ -61,6 +60,11 @@ describe('providerCredentialService', () => {
       source: 'secure_store',
     })
     expect(store.set).not.toHaveBeenCalledWith(PROVIDER_CREDENTIAL_LEGACY_STORE_KEYS.openrouter, expect.anything())
+    expect(store.values.get(`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}openrouter`)).toEqual(expect.objectContaining({
+      backend: 'electron_safe_storage',
+      ciphertextBase64: expect.any(String),
+    }))
+    expect(JSON.stringify(store.values.get(`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}openrouter`))).not.toContain('plaintext')
     expect(JSON.stringify(status)).not.toContain('sk-openrouter-secure')
 
     const clear = service.clearApiKey('openrouter')
@@ -75,7 +79,6 @@ describe('providerCredentialService', () => {
     })
     const service = createProviderCredentialService(store, {
       secureStorage: createSecureBackend(),
-      allowPlaintextFallback: true,
     })
 
     const read = service.readApiKey('deepseek')
@@ -100,7 +103,6 @@ describe('providerCredentialService', () => {
     })
     const service = createProviderCredentialService(store, {
       secureStorage: createSecureBackend({ failEncrypt: true }),
-      allowPlaintextFallback: true,
     })
 
     const read = service.readApiKey('anthropic')
@@ -121,27 +123,47 @@ describe('providerCredentialService', () => {
     })
   })
 
-  it('uses plaintext fallback with an explicit warning when secure storage is unavailable', () => {
+  it('rejects new API key writes when secure storage is unavailable and plaintext fallback was not explicitly allowed', () => {
     const store = createStore()
     const service = createProviderCredentialService(store, {
       secureStorage: createSecureBackend({ available: false }),
-      allowPlaintextFallback: true,
     })
 
-    const status = service.updateApiKey('google_ai_studio', 'AIza-google-key')
-    const read = service.readApiKey('google_ai_studio')
+    expect(() => service.updateApiKey('google_ai_studio', 'AIza-google-key')).toThrow('secure credential backend unavailable')
+    expect(store.set).not.toHaveBeenCalledWith(`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}google_ai_studio`, expect.anything())
+    expect(service.getStatus('google_ai_studio')).toEqual({
+      providerKey: 'google_ai_studio',
+      source: 'missing',
+      backend: 'unavailable',
+      apiKeyConfigured: false,
+      warnings: [],
+    })
+  })
+
+  it('recognizes an existing plaintext fallback record in status without exposing the key', () => {
+    const store = createStore({
+      [`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}google_ai_studio`]: {
+        version: 1,
+        providerKey: 'google_ai_studio',
+        backend: 'plaintext_fallback',
+        plaintext: 'AIza-existing-plaintext-key',
+        updatedAtMs: 123,
+      },
+    })
+    const service = createProviderCredentialService(store, {
+      secureStorage: createSecureBackend({ available: false }),
+    })
+
+    const status = service.getStatus('google_ai_studio')
 
     expect(status).toMatchObject({
       source: 'plaintext_fallback',
       backend: 'plaintext_fallback',
       apiKeyConfigured: true,
+      maskedApiKey: '***',
     })
     expect(status.warnings.join(' ')).toContain('plaintext fallback')
-    expect(read).toMatchObject({
-      ok: true,
-      apiKey: 'AIza-google-key',
-      source: 'plaintext_fallback',
-    })
+    expect(JSON.stringify(status)).not.toContain('AIza-existing-plaintext-key')
   })
 
   it('clears secure and legacy secret records so old keys do not revive', () => {
@@ -150,7 +172,6 @@ describe('providerCredentialService', () => {
     })
     const service = createProviderCredentialService(store, {
       secureStorage: createSecureBackend(),
-      allowPlaintextFallback: true,
     })
 
     expect(service.readApiKey('openai_responses')).toMatchObject({
@@ -176,7 +197,6 @@ describe('providerCredentialService', () => {
   it('returns missing when neither secure nor legacy credential exists', () => {
     const service = createProviderCredentialService(createStore(), {
       secureStorage: createSecureBackend(),
-      allowPlaintextFallback: true,
     })
 
     expect(service.getStatus('openai_responses')).toMatchObject({

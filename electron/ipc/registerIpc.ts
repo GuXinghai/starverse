@@ -9,6 +9,7 @@ import {
   registerOpenRouterCredentialSettingsIpc,
   OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS,
 } from './openRouterCredentialSettingsIpc'
+import type { FileSelectionGrantStore } from './fileSelectionGrants'
 import {
   registerOpenAIResponsesCredentialSettingsIpc,
   OPENAI_RESPONSES_CREDENTIAL_SETTINGS_IPC_CHANNELS,
@@ -123,6 +124,7 @@ type RegisterIpcInput = Readonly<{
   performConfigSizeCheck: (context: 'startup' | 'write') => void
   refreshMainLocale?: () => void
   resolveAssetFileByUrl: (rawUrl: string) => Promise<ResolvedAssetFile | null>
+  fileSelectionGrants?: FileSelectionGrantStore
   importLibreOfficeSvpkg?: (packagePath: string) => Promise<unknown>
   quarantineLibreOfficeRuntime?: () => Promise<unknown>
 }>
@@ -226,6 +228,7 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
     }),
     ...registerDialogIpc({
       registerInvoke: input.registerInvoke,
+      fileSelectionGrants: input.fileSelectionGrants,
       importLibreOfficeSvpkg: input.importLibreOfficeSvpkg,
       quarantineLibreOfficeRuntime: input.quarantineLibreOfficeRuntime,
     }),

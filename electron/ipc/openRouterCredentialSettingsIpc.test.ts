@@ -86,7 +86,7 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
     expect([...handlers.keys()]).toEqual([...OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS])
   })
 
-  it('returns safe configured status without raw key or URL userinfo/query', async () => {
+  it('marks non-official stored base URL untrusted without returning URL userinfo/query', async () => {
     const rawKey = 'sk-openrouter-settings-secret'
     const { handlers } = registerHandlers({
       openRouterApiKey: ` ${rawKey} `,
@@ -105,14 +105,14 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
         migratedFromLegacy: true,
         warnings: [],
         baseUrlConfigured: true,
-        displayBaseUrl: 'https://openrouter.example.test/api/v1',
+        baseUrlInvalid: true,
         defaultBaseUrl: 'https://openrouter.ai/api/v1',
         endpoint: openRouterEndpointMetadata({
           endpointId: 'openrouter-custom-legacy-store',
-          endpointStatus: 'custom',
+          endpointStatus: 'invalid_custom',
           displayName: 'OpenRouter custom endpoint',
           baseUrlConfigured: true,
-          displayBaseUrl: 'https://openrouter.example.test/api/v1',
+          baseUrlInvalid: true,
         }),
       },
     })
@@ -122,6 +122,7 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
     expect(serialized).not.toContain('Authorization')
     expect(serialized).not.toContain('user:pass')
     expect(serialized).not.toContain('?token=')
+    expect(serialized).not.toContain('openrouter.example.test')
     expect((result as any).status.endpoint.credentialRef).toEqual({
       kind: 'credential_ref',
       id: 'openrouter-chat-legacy-store',
@@ -201,7 +202,7 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
     }))
   })
 
-  it('updates API key and base URL one-way through legacy store backing', async () => {
+  it('updates API key and official base URL one-way through legacy store backing', async () => {
     const { handlers, store } = registerHandlers({
       openRouterApiKey: 'sk-old',
       openRouterBaseUrl: 'https://openrouter.ai/api/v1',
@@ -209,33 +210,55 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
 
     const result = await handlers.get('openrouter-credential:update')?.({}, {
       apiKey: ' sk-new-openrouter-key ',
-      baseUrl: ' https://openrouter-proxy.example.test/api/v1 ',
+      baseUrl: ' https://openrouter.ai/api/v1/ ',
     })
 
     expect(store.set).toHaveBeenCalledWith(`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}openrouter`, expect.objectContaining({
       backend: 'electron_safe_storage',
       providerKey: 'openrouter',
     }))
-    expect(store.set).toHaveBeenCalledWith('openRouterBaseUrl', 'https://openrouter-proxy.example.test/api/v1')
+    expect(store.set).toHaveBeenCalledWith('openRouterBaseUrl', 'https://openrouter.ai/api/v1')
     expect(JSON.stringify(result)).not.toContain('sk-new-openrouter-key')
   })
 
-  it('can update base URL without requiring API key re-entry', async () => {
+  it('can update official base URL without requiring API key re-entry', async () => {
     const { handlers, store } = registerHandlers({
       openRouterApiKey: 'sk-existing',
       openRouterBaseUrl: 'https://openrouter.ai/api/v1',
     })
 
     const result = await handlers.get('openrouter-credential:update')?.({}, {
-      baseUrl: 'https://openrouter-proxy.example.test/api/v1',
+      baseUrl: 'https://openrouter.ai/api/v1/',
     })
 
     expect(store.set).toHaveBeenCalledWith(`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}openrouter`, expect.objectContaining({
       backend: 'electron_safe_storage',
       providerKey: 'openrouter',
     }))
-    expect(store.set).toHaveBeenCalledWith('openRouterBaseUrl', 'https://openrouter-proxy.example.test/api/v1')
+    expect(store.set).toHaveBeenCalledWith('openRouterBaseUrl', 'https://openrouter.ai/api/v1')
     expect(JSON.stringify(result)).not.toContain('sk-existing')
+  })
+
+  it('rejects attacker base URL without overwriting an existing safe configuration', async () => {
+    const { handlers, store, values } = registerHandlers({
+      openRouterApiKey: 'sk-existing',
+      openRouterBaseUrl: 'https://openrouter.ai/api/v1',
+    })
+
+    const result = await handlers.get('openrouter-credential:update')?.({}, {
+      apiKey: 'sk-new-should-not-write',
+      baseUrl: 'https://attacker.example.test/api/v1',
+    })
+
+    expect(result).toEqual({
+      ok: false,
+      code: 'untrusted_base_url',
+      message: 'OpenRouter base URL is not trusted for the saved official credential.',
+    })
+    expect(store.set).not.toHaveBeenCalledWith('openRouterBaseUrl', expect.anything())
+    expect(store.set).not.toHaveBeenCalledWith(`${PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX}openrouter`, expect.anything())
+    expect(values.get('openRouterBaseUrl')).toBe('https://openrouter.ai/api/v1')
+    expect(JSON.stringify(result)).not.toContain('sk-new-should-not-write')
   })
 
   it('can update API key without requiring base URL re-entry', async () => {

@@ -7,6 +7,10 @@ import {
   OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY,
 } from '../../src/next/provider/openrouter/openRouterLegacyCredential'
 import type { RegisterInvoke } from './types'
+import {
+  OPENROUTER_DEFAULT_BASE_URL,
+  validateOpenRouterOfficialBaseUrl,
+} from '../openrouter/openRouterEndpointPolicy'
 
 export const OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS = [
   'openrouter-credential:get-status',
@@ -35,7 +39,7 @@ export type OpenRouterCredentialSettingsUpdatePayload = Readonly<{
 
 export type OpenRouterCredentialSettingsResult =
   | Readonly<{ ok: true; status: OpenRouterCredentialSettingsStatus }>
-  | Readonly<{ ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }>
+  | Readonly<{ ok: false; code: 'invalid_payload' | 'store_unavailable' | 'untrusted_base_url'; message: string }>
 
 type RegisterOpenRouterCredentialSettingsIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
@@ -43,7 +47,7 @@ type RegisterOpenRouterCredentialSettingsIpcInput = Readonly<{
   credentialService: ProviderCredentialService
 }>
 
-const DEFAULT_OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+const DEFAULT_OPENROUTER_BASE_URL = OPENROUTER_DEFAULT_BASE_URL
 const OPENROUTER_OFFICIAL_ENDPOINT_ID = 'openrouter-official'
 const OPENROUTER_CUSTOM_LEGACY_ENDPOINT_ID = 'openrouter-custom-legacy-store'
 const OPENROUTER_PROFILE_ID = 'openrouter_v1_chat'
@@ -105,12 +109,9 @@ function sanitizeDisplayBaseUrl(raw: unknown): SafeDisplayBaseUrl {
   if (!value) return { invalid: false }
 
   try {
-    const url = new URL(value)
-    url.username = ''
-    url.password = ''
-    url.search = ''
-    url.hash = ''
-    return { displayBaseUrl: url.toString(), invalid: false }
+    const official = validateOpenRouterOfficialBaseUrl(value)
+    if (!official.ok) return { invalid: true }
+    return { displayBaseUrl: official.baseUrl, invalid: false }
   } catch {
     return { invalid: true }
   }
@@ -197,13 +198,15 @@ function isUpdatePayload(payload: unknown): payload is OpenRouterCredentialSetti
   return true
 }
 
-function safeFailure(code: 'invalid_payload' | 'store_unavailable'): OpenRouterCredentialSettingsResult {
+function safeFailure(code: 'invalid_payload' | 'store_unavailable' | 'untrusted_base_url'): OpenRouterCredentialSettingsResult {
   return {
     ok: false,
     code,
     message: code === 'invalid_payload'
       ? 'OpenRouter credential settings payload is invalid.'
-      : 'OpenRouter credential settings store is unavailable.',
+      : code === 'untrusted_base_url'
+        ? 'OpenRouter base URL is not trusted for the saved official credential.'
+        : 'OpenRouter credential settings store is unavailable.',
   }
 }
 
@@ -224,6 +227,11 @@ export function registerOpenRouterCredentialSettingsIpc(
     if (!isUpdatePayload(payload)) return safeFailure('invalid_payload')
 
     try {
+      const baseUrlValidation = typeof payload.baseUrl === 'string'
+        ? validateOpenRouterOfficialBaseUrl(payload.baseUrl)
+        : null
+      if (baseUrlValidation && !baseUrlValidation.ok) return safeFailure('untrusted_base_url')
+
       const apiKey = payload.apiKey?.trim()
       if (apiKey) {
         credentialService.updateApiKey('openrouter', apiKey)
@@ -231,8 +239,8 @@ export function registerOpenRouterCredentialSettingsIpc(
 
       if (payload.baseUrl === null) {
         store.delete(OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY)
-      } else if (typeof payload.baseUrl === 'string') {
-        store.set(OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY, payload.baseUrl.trim())
+      } else if (baseUrlValidation?.ok) {
+        store.set(OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY, baseUrlValidation.baseUrl)
       }
 
       return { ok: true, status: readStatus(store, credentialService) } satisfies OpenRouterCredentialSettingsResult

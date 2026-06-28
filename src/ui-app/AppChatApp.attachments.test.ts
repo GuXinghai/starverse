@@ -732,9 +732,15 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     historyAttachmentRowsByMessageId = {}
     selectLocalFiles = vi.fn(async (options?: { context?: 'file' | 'image' }) => {
       if (options?.context === 'image') {
-        return { filePaths: ['C:/tmp/photo.png'] }
+        return {
+          filePaths: ['C:/tmp/photo.png'],
+          fileGrants: [{ filePath: 'C:/tmp/photo.png', token: 'grant-photo', expiresAtMs: 9999 }],
+        }
       }
-      return { filePaths: ['C:/tmp/doc.txt'] }
+      return {
+        filePaths: ['C:/tmp/doc.txt'],
+        fileGrants: [{ filePath: 'C:/tmp/doc.txt', token: 'grant-doc', expiresAtMs: 9999 }],
+      }
     })
 
     invoke = vi.fn(async (method: string, params?: any) => {
@@ -1431,7 +1437,10 @@ describe('ui-app AppChatApp attachment entry flow', () => {
 
     await waitFor(() => {
       expect(selectLocalFiles).toHaveBeenCalledWith({ context: 'file', allowMultiple: true })
-      expect(invoke).toHaveBeenCalledWith('fileIngestion.ingestLocalFile', expect.objectContaining({ filePath: 'C:/tmp/doc.txt' }))
+      expect(invoke).toHaveBeenCalledWith('fileIngestion.ingestLocalFile', expect.objectContaining({
+        filePath: 'C:/tmp/doc.txt',
+        selectionGrantToken: 'grant-doc',
+      }))
       expect(invoke).toHaveBeenCalledWith('conversationDraft.addAttachment', expect.objectContaining({ assetId: 'asset-text', conversationId: 'c1' }))
       expect(screen.getByTestId('draft-attachment-strip')).toBeTruthy()
       expect(sendPlanBuildCallCount).toBeGreaterThan(1)
@@ -1472,7 +1481,13 @@ describe('ui-app AppChatApp attachment entry flow', () => {
   it('keeps single-file failures local and continues later files', async () => {
     const layoutMock = mockAttachmentMenuLayout()
     const user = userEvent.setup()
-    selectLocalFiles.mockResolvedValueOnce({ filePaths: ['C:/tmp/bad.txt', 'C:/tmp/good.txt'] })
+    selectLocalFiles.mockResolvedValueOnce({
+      filePaths: ['C:/tmp/bad.txt', 'C:/tmp/good.txt'],
+      fileGrants: [
+        { filePath: 'C:/tmp/bad.txt', token: 'grant-bad', expiresAtMs: 9999 },
+        { filePath: 'C:/tmp/good.txt', token: 'grant-good', expiresAtMs: 9999 },
+      ],
+    })
     render(AppChatApp)
 
     await user.click(await screen.findByTestId('composer-attach-toggle'))
@@ -1482,8 +1497,14 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     await user.click(screen.getByTestId('composer-attach-file'))
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith('fileIngestion.ingestLocalFile', expect.objectContaining({ filePath: 'C:/tmp/bad.txt' }))
-      expect(invoke).toHaveBeenCalledWith('fileIngestion.ingestLocalFile', expect.objectContaining({ filePath: 'C:/tmp/good.txt' }))
+      expect(invoke).toHaveBeenCalledWith('fileIngestion.ingestLocalFile', expect.objectContaining({
+        filePath: 'C:/tmp/bad.txt',
+        selectionGrantToken: 'grant-bad',
+      }))
+      expect(invoke).toHaveBeenCalledWith('fileIngestion.ingestLocalFile', expect.objectContaining({
+        filePath: 'C:/tmp/good.txt',
+        selectionGrantToken: 'grant-good',
+      }))
       expect(invoke).toHaveBeenCalledWith('conversationDraft.addAttachment', expect.objectContaining({ assetId: 'asset-text', conversationId: 'c1' }))
     })
     layoutMock.mockRestore()

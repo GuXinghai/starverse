@@ -33,6 +33,10 @@ function createHarness(ids: string[] = ['asset-1']) {
   return { db, repo, storeRepo, rootDir, service }
 }
 
+function countRows(db: BetterSqlite3.Database, table: string): number {
+  return (db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count
+}
+
 function response(
   body: BodyInit | null,
   init: ResponseInit & Readonly<{ url?: string }> = {}
@@ -45,6 +49,26 @@ function response(
 }
 
 describeIfBetterSqlite('FileIngestionService local files', () => {
+  it('fails fast when fileAssetStoreRepo is missing before local import can create a half asset', () => {
+    const rootDir = mkdtempSync(path.join(os.tmpdir(), 'starverse-ingest-missing-store-'))
+    const db = new BetterSqlite3(':memory:')
+    try {
+      loadSchema(db)
+      const repo = new FileAssetRepo(db)
+
+      expect(() => new FileIngestionService({
+        fileAssetRepo: repo,
+        storageRootDir: rootDir,
+      } as any)).toThrow('FileIngestionService requires fileAssetStoreRepo')
+      expect(countRows(db, 'file_assets')).toBe(0)
+      expect(countRows(db, 'file_blobs')).toBe(0)
+      expect(countRows(db, 'file_asset_revisions')).toBe(0)
+    } finally {
+      db.close()
+      rmSync(rootDir, { recursive: true, force: true })
+    }
+  })
+
   it('ingests a local file into storage and file_assets', async () => {
     const h = createHarness(['asset-local'])
     try {
@@ -155,6 +179,70 @@ describeIfBetterSqlite('FileIngestionService local files', () => {
       expect(h.storeRepo.getCurrentRevision('asset-a')?.blobId).toBe(h.storeRepo.getCurrentRevision('asset-b')?.blobId)
     } finally {
       rmSync(h.rootDir, { recursive: true, force: true })
+    }
+  })
+
+  it('uses the canonical blob storage URI when blob insertion races with another writer', async () => {
+    const rootDir = mkdtempSync(path.join(os.tmpdir(), 'starverse-ingest-race-'))
+    try {
+      const sourcePath = path.join(rootDir, 'race.txt')
+      writeFileSync(sourcePath, 'same body')
+      let createdAssetInput: any = null
+      const service = new FileIngestionService({
+        fileAssetRepo: {
+          create: (input: any) => {
+            createdAssetInput = input
+            return {
+              ...input,
+              storageBackend: input.storageBackend ?? 'local_fs',
+              previewStatus: input.previewStatus ?? 'not_requested',
+              sourceMetaJson: input.sourceMetaJson ?? null,
+              createdAt: input.createdAt ?? 1234,
+              updatedAt: input.updatedAt ?? 1234,
+              deletedAt: null,
+            }
+          },
+        },
+        fileAssetStoreRepo: {
+          getBlobBySha256: () => null,
+          createBlob: (input: any) => ({
+            id: 'blob-existing',
+            sha256: input.sha256,
+            sizeBytes: input.sizeBytes,
+            mime: input.mime ?? null,
+            storageBackend: 'local_fs',
+            storageUri: 'assets/blobs/ca/canonical.txt',
+            createdAt: 1000,
+          }),
+          createRevision: (input: any) => ({
+            id: 'rev-1',
+            assetId: input.assetId,
+            blobId: input.blobId,
+            parentRevisionId: input.parentRevisionId ?? null,
+            cause: input.cause,
+            derivedFromAssetId: input.derivedFromAssetId ?? null,
+            createdAt: input.createdAt ?? 1234,
+          }),
+        },
+        storageRootDir: rootDir,
+        idFactory: () => 'asset-race',
+        now: () => 1234,
+        copyLocalFileAtomically: async () => {},
+      })
+
+      const result = await service.ingestLocalFile({ filePath: sourcePath, mimeType: 'text/plain' })
+
+      expect(result.success).toBe(true)
+      expect(createdAssetInput).toMatchObject({
+        id: 'asset-race',
+        storageUri: 'assets/blobs/ca/canonical.txt',
+        sourceMetaJson: {
+          blobId: 'blob-existing',
+          blobReused: true,
+        },
+      })
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true })
     }
   })
 
@@ -283,9 +371,132 @@ describeIfBetterSqlite('FileIngestionService URL link_only failures', () => {
       rmSync(h.rootDir, { recursive: true, force: true })
     }
   })
+
+  it.each([
+    'http://127.0.0.1/file.pdf',
+    'http://localhost/file.pdf',
+    'http://[::1]/file.pdf',
+    'http://10.0.0.1/file.pdf',
+    'http://172.16.0.1/file.pdf',
+    'http://192.168.1.1/file.pdf',
+    'http://169.254.1.1/file.pdf',
+    'http://[fc00::1]/file.pdf',
+    'http://[fe80::1]/file.pdf',
+    'http://[::ffff:127.0.0.1]/file.pdf',
+  ])('rejects SSRF target %s without issuing a fetch', async (url) => {
+    const h = createHarness(['asset-ssrf'])
+    try {
+      let fetchCalled = false
+      const service = serviceWithFetch(h, async () => {
+        fetchCalled = true
+        return response(null, { status: 200 })
+      }, 'asset-ssrf')
+
+      const result = await service.ingestUrl({
+        url,
+        retentionMode: 'link_only',
+      })
+
+      expect(result).toMatchObject({
+        success: false,
+        assetId: null,
+        retentionMode: 'link_only',
+        probeStatus: 'rejected',
+        failureReasonCode: 'url_host_not_allowed',
+      })
+      expect(fetchCalled).toBe(false)
+      expect(h.repo.getById('asset-ssrf')).toBeNull()
+    } finally {
+      rmSync(h.rootDir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects a public URL when the HEAD redirect target is private', async () => {
+    const h = createHarness(['asset-redirect-private'])
+    try {
+      const service = serviceWithFetch(h, async () =>
+        response(null, {
+          status: 302,
+          headers: { location: 'http://127.0.0.1/private.pdf' },
+          url: 'https://example.test/file.pdf',
+        }), 'asset-redirect-private')
+
+      const result = await service.ingestUrl({
+        url: 'https://example.test/file.pdf',
+        retentionMode: 'link_only',
+      })
+
+      expect(result).toMatchObject({
+        success: false,
+        assetId: null,
+        probeStatus: 'rejected',
+        failureReasonCode: 'url_host_not_allowed',
+      })
+      expect(h.repo.getById('asset-redirect-private')).toBeNull()
+    } finally {
+      rmSync(h.rootDir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects a public URL when the GET fallback redirect target is private', async () => {
+    const h = createHarness(['asset-get-redirect-private'])
+    try {
+      const service = serviceWithFetch(h, async (_url, init) => {
+        if (init?.method === 'HEAD') {
+          return response(null, { status: 405, url: 'https://example.test/file.pdf' })
+        }
+        return response(null, {
+          status: 302,
+          headers: { location: 'http://127.0.0.1/private.pdf' },
+          url: 'https://example.test/file.pdf',
+        })
+      }, 'asset-get-redirect-private')
+
+      const result = await service.ingestUrl({
+        url: 'https://example.test/file.pdf',
+        retentionMode: 'link_only',
+      })
+
+      expect(result).toMatchObject({
+        success: false,
+        assetId: null,
+        probeStatus: 'rejected',
+        failureReasonCode: 'url_host_not_allowed',
+      })
+      expect(h.repo.getById('asset-get-redirect-private')).toBeNull()
+    } finally {
+      rmSync(h.rootDir, { recursive: true, force: true })
+    }
+  })
 })
 
 describeIfBetterSqlite('FileIngestionService URL link_and_file', () => {
+  it('fails fast when fileAssetStoreRepo is missing before URL snapshot can create a half asset', () => {
+    const rootDir = mkdtempSync(path.join(os.tmpdir(), 'starverse-ingest-missing-store-url-'))
+    const db = new BetterSqlite3(':memory:')
+    try {
+      loadSchema(db)
+      const repo = new FileAssetRepo(db)
+      let fetchCalled = false
+
+      expect(() => new FileIngestionService({
+        fileAssetRepo: repo,
+        storageRootDir: rootDir,
+        fetch: async () => {
+          fetchCalled = true
+          return response('body', { status: 200 })
+        },
+      } as any)).toThrow('FileIngestionService requires fileAssetStoreRepo')
+      expect(fetchCalled).toBe(false)
+      expect(countRows(db, 'file_assets')).toBe(0)
+      expect(countRows(db, 'file_blobs')).toBe(0)
+      expect(countRows(db, 'file_asset_revisions')).toBe(0)
+    } finally {
+      db.close()
+      rmSync(rootDir, { recursive: true, force: true })
+    }
+  })
+
   it('downloads and stores a file copy when link_and_file materialization succeeds', async () => {
     const h = createHarness(['asset-url-file'])
     try {
@@ -369,6 +580,7 @@ describeIfBetterSqlite('FileIngestionService URL link_and_file fallback', () => 
           }
           return response('pdf-bytes', { status: 200, url: 'https://example.test/file.pdf' })
         },
+        resolveHostname: async () => ['93.184.216.34'],
         writeBufferAtomically: async () => {
           throw new Error('disk full')
         },
@@ -502,5 +714,6 @@ function serviceWithFetch(
     idFactory: () => id,
     now: () => 1234,
     fetch,
+    resolveHostname: async () => ['93.184.216.34'],
   })
 }

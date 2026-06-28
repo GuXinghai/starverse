@@ -672,7 +672,7 @@ describe('ui-app SettingsPanel', () => {
     ;(globalThis as any).openRouterCredential = createOpenRouterCredentialMock({
       apiKeyConfigured: true,
       baseUrlConfigured: true,
-      displayBaseUrl: 'https://openrouter-proxy.example.test/api/v1',
+      displayBaseUrl: 'https://openrouter.ai/api/v1',
     })
 
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
@@ -682,7 +682,7 @@ describe('ui-app SettingsPanel', () => {
     const endpointMetadata = await screen.findByTestId('settings-openrouter-endpoint-metadata')
     expect(screen.getByTestId('settings-openrouter-endpoint-status').textContent).toContain('Custom endpoint')
     expect(endpointMetadata.textContent).toContain('OpenRouter custom endpoint')
-    expect(endpointMetadata.textContent).toContain('https://openrouter-proxy.example.test/api/v1')
+    expect(endpointMetadata.textContent).toContain('https://openrouter.ai/api/v1')
     expect(endpointMetadata.textContent).not.toContain('Authorization')
     expect(endpointMetadata.textContent).not.toContain('Bearer')
     expect(endpointMetadata.textContent).not.toContain('sk-')
@@ -792,11 +792,11 @@ describe('ui-app SettingsPanel', () => {
     const baseUrlInput = await screen.findByDisplayValue('https://openrouter.ai/api/v1') as HTMLInputElement
     await waitFor(() => expect(baseUrlInput).not.toBeDisabled())
     await user.clear(baseUrlInput)
-    await user.type(baseUrlInput, 'https://openrouter-proxy.example.test/api/v1')
+    await user.type(baseUrlInput, 'https://openrouter.ai/api/v1/')
     await user.click(screen.getByRole('button', { name: '保存' }))
 
     expect((globalThis as any).openRouterCredential.update).toHaveBeenCalledWith({
-      baseUrl: 'https://openrouter-proxy.example.test/api/v1',
+      baseUrl: 'https://openrouter.ai/api/v1/',
     })
     const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
     expect(storeSet).not.toHaveBeenCalledWith('openRouterBaseUrl', expect.anything())
@@ -827,11 +827,11 @@ describe('ui-app SettingsPanel', () => {
     expect(screen.getByTestId('settings-openrouter-endpoint-metadata').textContent).not.toContain('user:pass')
     expect(screen.getByTestId('settings-openrouter-endpoint-metadata').textContent).not.toContain('token=')
 
-    await fireEvent.update(baseUrlInput, 'https://openrouter-proxy.example.test/api/v1')
+    await fireEvent.update(baseUrlInput, 'https://openrouter.ai/api/v1')
     await user.click(screen.getByRole('button', { name: '保存' }))
 
     expect((globalThis as any).openRouterCredential.update).toHaveBeenCalledWith({
-      baseUrl: 'https://openrouter-proxy.example.test/api/v1',
+      baseUrl: 'https://openrouter.ai/api/v1',
     })
     expect(JSON.stringify(document.body.textContent)).not.toContain('user:pass')
     expect(JSON.stringify(document.body.textContent)).not.toContain('sk-hidden')

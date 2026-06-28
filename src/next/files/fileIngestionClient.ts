@@ -17,6 +17,7 @@ function requireDbBridge(): DbBridge {
 
 export async function ingestLocalFile(input: Readonly<{
   filePath: string
+  selectionGrantToken?: string
   mimeType?: string | null
   sourceKind?: 'local_upload' | 'generated'
 }>): Promise<DecodedFileIngestionResult> {

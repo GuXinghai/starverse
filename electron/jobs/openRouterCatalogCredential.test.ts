@@ -69,10 +69,10 @@ function relativePath(file: string): string {
 }
 
 describe('OpenRouter catalog legacy credential read wrapper', () => {
-  it('reads the current legacy OpenRouter catalog apiKey and baseUrl unchanged apart from existing trim behavior', () => {
+  it('reads the current legacy OpenRouter catalog apiKey and official baseUrl normalized', () => {
     const store = createStore({
       [OPENROUTER_CATALOG_LEGACY_API_KEY_STORE_KEY]: `  ${RAW_KEY}  `,
-      [OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY]: ' https://openrouter-proxy.example.test/custom/v1/ ',
+      [OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY]: ' https://openrouter.ai/api/v1/ ',
     })
 
     const credential = readOpenRouterCatalogLegacyCredentialFromStore(store)
@@ -80,8 +80,21 @@ describe('OpenRouter catalog legacy credential read wrapper', () => {
     expect(credential).toEqual({
       kind: 'openrouter_catalog_legacy_credential',
       apiKey: RAW_KEY,
-      baseUrl: 'https://openrouter-proxy.example.test/custom/v1/',
+      baseUrl: 'https://openrouter.ai/api/v1',
     })
+    expect(store.get).toHaveBeenCalledWith('openRouterApiKey')
+    expect(store.get).toHaveBeenCalledWith('openRouterBaseUrl')
+  })
+
+  it('does not return catalog credential material for an untrusted stored baseUrl', () => {
+    const store = createStore({
+      [OPENROUTER_CATALOG_LEGACY_API_KEY_STORE_KEY]: `  ${RAW_KEY}  `,
+      [OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY]: ' https://attacker.example.test/custom/v1/ ',
+    })
+
+    const credential = readOpenRouterCatalogLegacyCredentialFromStore(store)
+
+    expect(credential).toBeNull()
     expect(store.get).toHaveBeenCalledWith('openRouterApiKey')
     expect(store.get).toHaveBeenCalledWith('openRouterBaseUrl')
   })
@@ -114,7 +127,7 @@ describe('OpenRouter catalog legacy credential read wrapper', () => {
   it('safe diagnostics never include raw key, Bearer, Authorization, or URL userinfo', () => {
     const credential = readOpenRouterCatalogLegacyCredentialFromStore(createStore({
       [OPENROUTER_CATALOG_LEGACY_API_KEY_STORE_KEY]: RAW_KEY,
-      [OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY]: 'https://user:pass@openrouter.example.test/custom/v1',
+      [OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY]: 'https://openrouter.ai/api/v1',
     }))
 
     const diagnostics = toSafeOpenRouterCatalogCredentialDiagnostics(credential)
@@ -176,10 +189,10 @@ describe('OpenRouter catalog legacy credential read wrapper', () => {
     })
   })
 
-  it('resolver-backed legacy_store source reads the current catalog apiKey and baseUrl unchanged apart from existing trim behavior', () => {
+  it('resolver-backed legacy_store source reads the current catalog apiKey and official baseUrl normalized', () => {
     const store = createStore({
       [OPENROUTER_CATALOG_LEGACY_API_KEY_STORE_KEY]: `  ${RAW_KEY}  `,
-      [OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY]: ' https://openrouter-proxy.example.test/custom/v1/ ',
+      [OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY]: ' https://openrouter.ai/api/v1/ ',
     })
 
     const result = resolveOpenRouterCatalogCredentialFromLegacyStore(store)
@@ -190,7 +203,7 @@ describe('OpenRouter catalog legacy credential read wrapper', () => {
       credential: {
         kind: 'openrouter_catalog_legacy_credential',
         apiKey: RAW_KEY,
-        baseUrl: 'https://openrouter-proxy.example.test/custom/v1/',
+        baseUrl: 'https://openrouter.ai/api/v1',
       },
       diagnostics: {
         kind: 'openrouter_catalog_legacy_credential',
@@ -201,6 +214,33 @@ describe('OpenRouter catalog legacy credential read wrapper', () => {
     })
     expect(store.get).toHaveBeenCalledWith('openRouterApiKey')
     expect(store.get).toHaveBeenCalledWith('openRouterBaseUrl')
+  })
+
+  it('resolver-backed legacy_store source rejects untrusted baseUrl before active catalog sync can use the key', () => {
+    const store = createStore({
+      [OPENROUTER_CATALOG_LEGACY_API_KEY_STORE_KEY]: `  ${RAW_KEY}  `,
+      [OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY]: ' https://attacker.example.test/custom/v1/ ',
+    })
+
+    const result = resolveOpenRouterCatalogCredentialFromLegacyStore(store)
+
+    expect(result).toEqual({
+      ok: false,
+      source: 'legacy_store',
+      failure: {
+        kind: 'openrouter_catalog_credential_resolution_error',
+        code: 'credential_invalid',
+        status: 'invalid',
+        message: 'Credential material is invalid.',
+      },
+      diagnostics: {
+        kind: 'openrouter_catalog_legacy_credential',
+        status: 'invalid',
+        code: 'credential_invalid',
+        baseUrlConfigured: false,
+      },
+    })
+    expectNoSecretLeak(result)
   })
 
   it('resolver-backed legacy_store source preserves empty-key behavior without baseUrl fallback reads', () => {

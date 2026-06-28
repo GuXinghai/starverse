@@ -30,6 +30,7 @@ import Store from 'electron-store'
 import { DbWorkerManager } from './db/workerManager'
 import { registerDbBridge } from './ipc/dbBridge'
 import { registerOpenRouterStreamBridge, cleanupOpenRouterStreams } from './ipc/openRouterStreamBridge'
+import { createFileSelectionGrantStore } from './ipc/fileSelectionGrants'
 import { registerInAppBrowserIpc } from './ipc/inappBrowserIpc'
 import { registerModelCatalogSyncIpc } from './ipc/modelCatalogSyncIpc'
 import { registerIpc, validateCoreIpcRegistration } from './ipc/registerIpc'
@@ -599,6 +600,8 @@ const dbWorkerManager = new DbWorkerManager({
   electronConversionBridge: createMainProcessElectronConversionService(),
 })
 
+const fileSelectionGrants = createFileSelectionGrantStore()
+
 const providerCredentialService = createProviderCredentialService(store, {
   secureStorage: {
     kind: 'electron_safe_storage',
@@ -606,7 +609,6 @@ const providerCredentialService = createProviderCredentialService(store, {
     encryptString: (value) => safeStorage.encryptString(value),
     decryptString: (encrypted) => safeStorage.decryptString(encrypted),
   },
-  allowPlaintextFallback: true,
 })
 
 function normalizeDbWorkerCallTimeoutMs(value: string | undefined): number {
@@ -794,6 +796,7 @@ function registerCoreIpcHandlers(): string[] {
     performConfigSizeCheck: (context) => performConfigSizeCheck(store, context),
     refreshMainLocale: () => initMainI18n(store, app.getPreferredSystemLanguages()),
     resolveAssetFileByUrl,
+    fileSelectionGrants,
     importLibreOfficeSvpkg: (packagePath) =>
       dbWorkerManager.call('enginePluginLifecycle.importLibreOfficeSvpkgFromPath', { packagePath }),
     quarantineLibreOfficeRuntime: () =>
@@ -812,7 +815,7 @@ function registerCoreIpcHandlers(): string[] {
 
 function registerAllIpcHandlers(): string[] {
   const channels = [
-    ...registerDbBridge(dbWorkerManager),
+    ...registerDbBridge(dbWorkerManager, { fileSelectionGrants }),
     ...registerOpenRouterStreamBridge({ store, credentialService: providerCredentialService }),
     ...registerCoreIpcHandlers(),
     ...registerInAppBrowserIpc({

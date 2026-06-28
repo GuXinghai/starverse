@@ -12,7 +12,14 @@ import {
   getBlobStorageUri,
   LOCAL_FILE_STORAGE_BACKEND,
 } from './fileStoragePaths'
-import { probeUrl, type FetchLike, type UrlProbeResult, type UrlProbeStatus } from './urlProbe'
+import {
+  fetchPublicHttpUrl,
+  probeUrl,
+  type FetchLike,
+  type ResolveHostname,
+  type UrlProbeResult,
+  type UrlProbeStatus,
+} from './urlProbe'
 
 export type UrlRetentionMode = 'link_only' | 'link_and_file'
 export type MaterializationStatus = 'not_requested' | 'materializing' | 'stored' | 'materialization_failed'
@@ -72,9 +79,10 @@ export type IngestUrlInput = Readonly<{
 
 export type FileIngestionServiceDeps = Readonly<{
   fileAssetRepo: Pick<FileAssetRepo, 'create'>
-  fileAssetStoreRepo?: Pick<FileAssetStoreRepo, 'createBlob' | 'createRevision' | 'getBlobBySha256'>
+  fileAssetStoreRepo: Pick<FileAssetStoreRepo, 'createBlob' | 'createRevision' | 'getBlobBySha256'>
   storageRootDir: string
   fetch?: FetchLike
+  resolveHostname?: ResolveHostname
   idFactory?: () => string
   now?: () => number
   maxRemoteBytes?: number
@@ -116,6 +124,9 @@ export class FileIngestionService {
   private readonly writeBufferAtomically: (targetPath: string, bytes: Uint8Array) => Promise<void>
 
   constructor(private readonly deps: FileIngestionServiceDeps) {
+    if (!deps.fileAssetStoreRepo) {
+      throw new Error('FileIngestionService requires fileAssetStoreRepo for blob and revision tracking.')
+    }
     this.idFactory = deps.idFactory ?? randomUUID
     this.now = deps.now ?? Date.now
     this.maxRemoteBytes = deps.maxRemoteBytes ?? DEFAULT_MAX_REMOTE_BYTES
@@ -192,7 +203,7 @@ export class FileIngestionService {
         },
       })
       if (materialized.blobId) {
-        this.deps.fileAssetStoreRepo?.createRevision({
+        this.deps.fileAssetStoreRepo.createRevision({
           assetId: asset.id,
           blobId: materialized.blobId,
           cause: 'imported',
@@ -249,6 +260,7 @@ export class FileIngestionService {
     const probe = await probeUrl(parsedUrl.url, {
       fetch: this.deps.fetch,
       now: this.now,
+      resolveHostname: this.deps.resolveHostname,
     })
     const probeWarnings = buildProbeWarnings(probe)
     const extension = normalizeExtension(urlPathname(probe.resolvedUrl || probe.originalUrl))
@@ -260,6 +272,24 @@ export class FileIngestionService {
         ? [warning('metadata_conflict', 'URL MIME and URL suffix classify to different file payloads.')]
         : []),
     ]
+
+    if (probe.probeStatus === 'rejected') {
+      return resultFromProfile({
+        success: false,
+        sourceKind: 'url_import',
+        assetId: null,
+        profile,
+        importStatus: 'failed',
+        sendEligibilityHints: urlHints(false, false),
+        warnings,
+        failureReasonCode: probe.warning ?? 'url_host_not_allowed',
+        retentionMode: input.retentionMode,
+        probeStatus: 'rejected',
+        materializationStatus: 'not_requested',
+        originalUrl: redactUrlCredentials(probe.originalUrl),
+        resolvedUrl: redactUrlCredentials(probe.resolvedUrl),
+      })
+    }
 
     if (input.retentionMode === 'link_only') {
       return this.createUrlLinkAsset({
@@ -453,7 +483,7 @@ export class FileIngestionService {
         }),
       })
       if (materialized.blobId) {
-        this.deps.fileAssetStoreRepo?.createRevision({
+        this.deps.fileAssetStoreRepo.createRevision({
           assetId: asset.id,
           blobId: materialized.blobId,
           cause: 'url_snapshot',
@@ -484,7 +514,10 @@ export class FileIngestionService {
   private async downloadRemoteBytes(url: string): Promise<Uint8Array> {
     const fetchImpl = this.deps.fetch ?? globalThis.fetch
     if (!fetchImpl) throw new Error('fetch_unavailable')
-    const response = await fetchImpl(url, { method: 'GET', redirect: 'follow' })
+    const response = await fetchPublicHttpUrl(url, { method: 'GET' }, {
+      fetch: fetchImpl,
+      resolveHostname: this.deps.resolveHostname,
+    })
     if (!response.ok) throw new Error(`http_status_${response.status}`)
     const buffer = new Uint8Array(await response.arrayBuffer())
     if (buffer.byteLength > this.maxRemoteBytes) throw new Error('remote_file_too_large')
@@ -516,7 +549,7 @@ export class FileIngestionService {
     mime: string | null
     extension: string | null
   }>): Promise<MaterializedBlob> {
-    const existing = this.deps.fileAssetStoreRepo?.getBlobBySha256(input.sha256) ?? null
+    const existing = this.deps.fileAssetStoreRepo.getBlobBySha256(input.sha256)
     if (existing) {
       return {
         storageUri: existing.storageUri,
@@ -530,16 +563,25 @@ export class FileIngestionService {
     const targetPath = getBlobPath({ rootDir: this.deps.storageRootDir, sha256: input.sha256, extension: input.extension })
 
     await this.copyLocalFileAtomically(input.sourcePath, targetPath)
-    const blob = this.deps.fileAssetStoreRepo?.createBlob({
+    const blob = this.deps.fileAssetStoreRepo.createBlob({
       sha256: input.sha256,
       sizeBytes: input.sizeBytes,
       mime: input.mime,
       storageBackend: LOCAL_FILE_STORAGE_BACKEND,
       storageUri,
       createdAt: this.now(),
-    }) ?? null
+    })
+    if (blob && blob.storageUri !== storageUri) {
+      await rm(targetPath, { force: true })
+      return {
+        storageUri: blob.storageUri,
+        blobId: blob.id,
+        reused: true,
+        createdStoragePath: null,
+      }
+    }
     return {
-      storageUri,
+      storageUri: blob?.storageUri ?? storageUri,
       blobId: blob?.id ?? null,
       reused: false,
       createdStoragePath: targetPath,
@@ -552,7 +594,7 @@ export class FileIngestionService {
     mime: string | null
     extension: string | null
   }>): Promise<MaterializedBlob> {
-    const existing = this.deps.fileAssetStoreRepo?.getBlobBySha256(input.sha256) ?? null
+    const existing = this.deps.fileAssetStoreRepo.getBlobBySha256(input.sha256)
     if (existing) {
       return {
         storageUri: existing.storageUri,
@@ -566,16 +608,25 @@ export class FileIngestionService {
     const targetPath = getBlobPath({ rootDir: this.deps.storageRootDir, sha256: input.sha256, extension: input.extension })
 
     await this.writeBufferAtomically(targetPath, input.bytes)
-    const blob = this.deps.fileAssetStoreRepo?.createBlob({
+    const blob = this.deps.fileAssetStoreRepo.createBlob({
       sha256: input.sha256,
       sizeBytes: input.bytes.byteLength,
       mime: input.mime,
       storageBackend: LOCAL_FILE_STORAGE_BACKEND,
       storageUri,
       createdAt: this.now(),
-    }) ?? null
+    })
+    if (blob && blob.storageUri !== storageUri) {
+      await rm(targetPath, { force: true })
+      return {
+        storageUri: blob.storageUri,
+        blobId: blob.id,
+        reused: true,
+        createdStoragePath: null,
+      }
+    }
     return {
-      storageUri,
+      storageUri: blob?.storageUri ?? storageUri,
       blobId: blob?.id ?? null,
       reused: false,
       createdStoragePath: targetPath,
@@ -742,7 +793,7 @@ function buildProbeWarnings(probe: UrlProbeResult): FileIngestionWarning[] {
   if (probe.probeStatus === 'accessible') return []
   return [
     warning(
-      probe.probeStatus,
+      probe.probeStatus === 'rejected' && probe.warning ? probe.warning : probe.probeStatus,
       'Current device could not complete URL probing; retry snapshot before sending as a file asset.'
     ),
   ]
