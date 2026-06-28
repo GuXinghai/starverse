@@ -1097,8 +1097,7 @@ export type BuildCurrentSendPlanInput = Readonly<{
 export type BuildCurrentSendPlanResult = Readonly<{
   sendPlan: SendPlan
   draftText: string
-  assets: FileAssetRecord[]
-  storageRootDir: string
+  assets: Array<Omit<FileAssetRecord, 'sha256' | 'storageUri'>>
 }>
 
 export type PrepareOpenRouterReplayFromMessageInput = Readonly<{

@@ -8,6 +8,7 @@ import { BranchRepo } from '../db/repo/branchRepo'
 import { ConversationDraftRepo } from '../db/repo/conversationDraftRepo'
 import { FileDerivativeRepo } from '../db/repo/fileDerivativeRepo'
 import { FileAssetRepo } from '../db/repo/fileAssetRepo'
+import { FileAssetStoreRepo } from '../db/repo/fileAssetStoreRepo'
 import { FileTypeVerdictRepo } from '../db/repo/fileTypeVerdictRepo'
 import { MessageAttachmentRepo } from '../db/repo/messageAttachmentRepo'
 import { MessageRepo } from '../db/repo/messageRepo'
@@ -551,6 +552,7 @@ function createHarness() {
   const db = new BetterSqlite3(':memory:')
   loadSchema(db)
   const fileAssetRepo = new FileAssetRepo(db)
+  const fileAssetStoreRepo = new FileAssetStoreRepo(db)
   const fileDerivativeRepo = new FileDerivativeRepo(db)
   const fileTypeVerdictRepo = new FileTypeVerdictRepo(db)
   const messageRepo = new MessageRepo(db)
@@ -560,6 +562,7 @@ function createHarness() {
   const conversationAttachmentService = new ConversationAttachmentService({
     db,
     fileAssetRepo,
+    fileAssetStoreRepo,
     messageRepo,
     messageAttachmentRepo,
     branchRepo,

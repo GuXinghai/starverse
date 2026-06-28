@@ -123,7 +123,7 @@ type DfcPreviewSource = Readonly<{
 export type ConversationAttachmentServiceDeps = Readonly<{
   db: SqlDatabase
   fileAssetRepo: FileAssetRepo
-  fileAssetStoreRepo?: Pick<FileAssetStoreRepo, 'bindAsset' | 'markBindingDeleted'>
+  fileAssetStoreRepo: Pick<FileAssetStoreRepo, 'bindAsset' | 'markBindingDeleted'>
   messageRepo: MessageRepo
   messageAttachmentRepo: MessageAttachmentRepo
   branchRepo?: BranchRepo
@@ -137,6 +137,9 @@ export class ConversationAttachmentService {
   private readonly now: () => number
 
   constructor(private readonly deps: ConversationAttachmentServiceDeps) {
+    if (!deps.fileAssetStoreRepo) {
+      throw new Error('ConversationAttachmentService requires fileAssetStoreRepo for asset binding tracking.')
+    }
     this.draftRepo = deps.draftRepo ?? new ConversationDraftRepo(deps.db)
     this.now = deps.now ?? Date.now
   }
@@ -1100,7 +1103,7 @@ export class ConversationAttachmentService {
   }
 
   private bindConversationAsset(conversationId: string, assetId: string, createdAt: number): void {
-    this.deps.fileAssetStoreRepo?.bindAsset({
+    this.deps.fileAssetStoreRepo.bindAsset({
       assetId,
       scope: 'conversation',
       conversationId,
@@ -1109,7 +1112,7 @@ export class ConversationAttachmentService {
   }
 
   private bindMessageAsset(messageId: string, assetId: string, createdAt: number): void {
-    this.deps.fileAssetStoreRepo?.bindAsset({
+    this.deps.fileAssetStoreRepo.bindAsset({
       assetId,
       scope: 'message',
       messageId,
@@ -1118,7 +1121,7 @@ export class ConversationAttachmentService {
   }
 
   private markConversationBindingDeleted(conversationId: string, assetId: string, deletedAt: number): void {
-    this.deps.fileAssetStoreRepo?.markBindingDeleted({
+    this.deps.fileAssetStoreRepo.markBindingDeleted({
       assetId,
       scope: 'conversation',
       conversationId,
@@ -1127,7 +1130,7 @@ export class ConversationAttachmentService {
   }
 
   private markMessageBindingDeleted(messageId: string, assetId: string, deletedAt: number): void {
-    this.deps.fileAssetStoreRepo?.markBindingDeleted({
+    this.deps.fileAssetStoreRepo.markBindingDeleted({
       assetId,
       scope: 'message',
       messageId,

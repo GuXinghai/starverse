@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { resolveManagedStoragePath } from '../../../../src/shared/files/localStorageResolver'
 import type { SendPlan } from '../../../../src/shared/files/sendPlanTypes'
 import { serializeSendPlanForOpenRouter } from '../../../../src/next/openrouter/openRouterSendPlanSerializer'
-import type { DerivativeErrorCode, DfcOptionGenerationErrorCode, DfcOptionGenerationStateRecord, FileAssetRecord, FileDerivativeRecord } from '../../types'
+import type { DerivativeErrorCode, DfcOptionGenerationErrorCode, DfcOptionGenerationStateRecord, FileAssetRecord, FileDerivativeRecord, JsonObject } from '../../types'
 import { DFC_LIBREOFFICE_PDF_PATH_POLICY_EXCEEDED } from '../../../files/dfcLibreOfficePdfAdapter'
 import {
   getDfcLibreOfficeManagedRuntimeRoot,
@@ -63,17 +63,17 @@ const textDerivativeEnsureInFlight = new WeakMap<DbWorkerRuntime, Map<string, Pr
 export function registerFilePipelineHandlers(register: RegisterHandler, runtime: DbWorkerRuntime) {
   register('fileAsset.create', (raw) => {
     const input = CreateFileAssetSchema.parse(raw)
-    return runtime.fileAssetRepo.create(input)
+    return toRendererFileAsset(runtime.fileAssetRepo.create(input))
   })
 
   register('fileAsset.getById', (raw) => {
     const input = GetFileAssetByIdSchema.parse(raw)
-    return runtime.fileAssetRepo.getById(input.id)
+    return toRendererFileAsset(runtime.fileAssetRepo.getById(input.id))
   })
 
   register('fileAsset.listByIds', (raw) => {
     const input = ListFileAssetsByIdsSchema.parse(raw)
-    return runtime.fileAssetRepo.listByIds(input)
+    return runtime.fileAssetRepo.listByIds(input).map(toRendererFileAsset)
   })
 
   register('fileAsset.softDelete', (raw) => {
@@ -88,22 +88,22 @@ export function registerFilePipelineHandlers(register: RegisterHandler, runtime:
 
   register('fileDerivative.create', (raw) => {
     const input = CreateFileDerivativeSchema.parse(raw)
-    return runtime.fileDerivativeRepo.create(input)
+    return toRendererFileDerivative(runtime.fileDerivativeRepo.create(input))
   })
 
   register('fileDerivative.getById', (raw) => {
     const input = GetFileDerivativeByIdSchema.parse(raw)
-    return runtime.fileDerivativeRepo.getById(input.id)
+    return toRendererFileDerivative(runtime.fileDerivativeRepo.getById(input.id))
   })
 
   register('fileDerivative.listByParentAssetId', (raw) => {
     const input = ListFileDerivativesByParentAssetIdSchema.parse(raw)
-    return runtime.fileDerivativeRepo.listByParentAssetId(input)
+    return runtime.fileDerivativeRepo.listByParentAssetId(input).map(toRendererFileDerivative)
   })
 
   register('fileDerivative.getLatestReady', (raw) => {
     const input = GetLatestReadyFileDerivativeSchema.parse(raw)
-    return runtime.fileDerivativeRepo.getLatestReady(input)
+    return toRendererFileDerivative(runtime.fileDerivativeRepo.getLatestReady(input))
   })
 
   register('derivativeJob.create', (raw) => {
@@ -552,9 +552,111 @@ async function buildCurrentSendPlanPayloadAsync(
   return {
     sendPlan,
     draftText: collected.draftText,
-    assets,
-    storageRootDir: runtime.fileStorageRootDir,
+    assets: assets.map(toRendererFileAsset),
   }
+}
+
+type RendererFileAssetRecord = Omit<FileAssetRecord, 'sha256' | 'storageUri'> & Readonly<{
+  sourceMetaJson: JsonObject | null
+}>
+
+type RendererFileDerivativeRecord = Omit<FileDerivativeRecord, 'storageUri'> & Readonly<{
+  metaJson: JsonObject | null
+}>
+
+const RENDERER_PRIVATE_META_KEYS = new Set([
+  'contentToken',
+  'storageRef',
+  'storageUri',
+  'sendTextStorageUri',
+  'fileUrl',
+  'path',
+  'filePath',
+  'originalPath',
+  'rawPath',
+  'rawTempPath',
+  'storagePath',
+  'blobId',
+  'body',
+  'fileBody',
+  'rawFileBody',
+  'sha256',
+  'hash',
+  'sourceHash',
+  'contentHash',
+  'previewHash',
+  'conversionSettingsHash',
+  'previewContentHash',
+  'sendContentHash',
+  'storageClass',
+  'converterName',
+  'converterVersion',
+])
+
+const RENDERER_FILE_ASSET_PRIVATE_CONTAINERS = new Set(['textConversion', 'lineage'])
+
+function toRendererFileAsset(asset: FileAssetRecord | null): RendererFileAssetRecord | null {
+  if (!asset) return null
+  return {
+    id: asset.id,
+    filename: asset.filename,
+    extension: asset.extension,
+    mime: asset.mime,
+    sizeBytes: asset.sizeBytes,
+    assetKind: asset.assetKind,
+    sourceKind: asset.sourceKind,
+    storageBackend: asset.storageBackend,
+    ingestStatus: asset.ingestStatus,
+    previewStatus: asset.previewStatus,
+    sourceMetaJson: sanitizeRendererMeta(asset.sourceMetaJson, RENDERER_FILE_ASSET_PRIVATE_CONTAINERS),
+    createdAt: asset.createdAt,
+    updatedAt: asset.updatedAt,
+    deletedAt: asset.deletedAt,
+  }
+}
+
+function toRendererFileDerivative(derivative: FileDerivativeRecord | null): RendererFileDerivativeRecord | null {
+  if (!derivative) return null
+  return {
+    id: derivative.id,
+    parentAssetId: derivative.parentAssetId,
+    derivedKind: derivative.derivedKind,
+    mime: derivative.mime,
+    generator: derivative.generator,
+    status: derivative.status,
+    metaJson: sanitizeRendererMeta(derivative.metaJson),
+    createdAt: derivative.createdAt,
+    updatedAt: derivative.updatedAt,
+    deletedAt: derivative.deletedAt,
+  }
+}
+
+function sanitizeRendererMeta(
+  meta: JsonObject | null,
+  privateContainers: ReadonlySet<string> = new Set(),
+): JsonObject | null {
+  if (!meta || typeof meta !== 'object') return null
+  const sanitized = sanitizeRendererMetaValue(meta, privateContainers)
+  if (!sanitized || typeof sanitized !== 'object' || Array.isArray(sanitized)) return null
+  return Object.keys(sanitized).length > 0 ? sanitized as JsonObject : null
+}
+
+function sanitizeRendererMetaValue(value: unknown, privateContainers: ReadonlySet<string>): unknown {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizeRendererMetaValue(item, privateContainers))
+      .filter((item) => item !== undefined)
+  }
+  if (!value || typeof value !== 'object') return value
+  const output: JsonObject = {}
+  for (const [key, child] of Object.entries(value as JsonObject)) {
+    if (RENDERER_PRIVATE_META_KEYS.has(key) || privateContainers.has(key)) continue
+    const sanitized = sanitizeRendererMetaValue(child, privateContainers)
+    if (sanitized === undefined) continue
+    if (sanitized && typeof sanitized === 'object' && !Array.isArray(sanitized) && Object.keys(sanitized).length === 0) continue
+    output[key] = sanitized
+  }
+  return output
 }
 
 async function ensureFileTypeVerdictsForCollected(

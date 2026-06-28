@@ -99,8 +99,13 @@ The renderer receives:
 
 - safe metadata such as filename, type, size, URL status, and snapshot status;
 - no raw storage path;
+- no managed storage URI or storage root;
 - no raw original local path;
 - no full content hashes or blob ids.
+
+Renderer-facing DB bridge methods return safe file-asset projections. Raw `fileAsset.create`,
+physical cleanup planning, and generic `fileDerivative.*` storage records stay worker/main
+owned rather than renderer-callable.
 
 ## DFC Relation
 

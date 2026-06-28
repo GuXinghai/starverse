@@ -61,7 +61,7 @@ describe('sendPlanClient', () => {
       draftText: 'hello',
     }))
     expect(result.sendPlan.status).toBe('sendable')
-    expect(result.storageRootDir).toBe('C:/tmp')
+    expect(result).not.toHaveProperty('storageRootDir')
   })
 
   it('throws a contract error for malformed replay preparation responses', async () => {
