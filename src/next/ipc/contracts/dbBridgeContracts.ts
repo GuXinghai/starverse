@@ -77,7 +77,6 @@ export type DecodedMessageAssetRender = Readonly<{
 
 export type DecodedFileAsset = Readonly<{
   id: string
-  sha256: string | null
   filename: string
   extension: string | null
   mime: string | null
@@ -85,7 +84,6 @@ export type DecodedFileAsset = Readonly<{
   assetKind: string
   sourceKind: string
   storageBackend: string
-  storageUri: string
   ingestStatus: string
   previewStatus: string
   sourceMetaJson: Record<string, unknown> | null
@@ -292,7 +290,6 @@ export type DecodedBuildCurrentSendPlanResult = Readonly<{
   sendPlan: SendPlan
   draftText: string
   assets: DecodedFileAsset[]
-  storageRootDir: string
 }>
 
 export type DecodedBeginTurnResult = Readonly<{
@@ -434,10 +431,38 @@ const privateFileAssetSchema = z.object({
   deletedAt: row.deletedAt ?? null,
 }))
 
-const fileAssetSchema = privateFileAssetSchema.transform((row) => ({
-  ...row,
-  sha256: null,
-  sourceMetaJson: sanitizeRendererFileAssetSourceMeta(row.sourceMetaJson),
+const fileAssetSchema = z.object({
+  id: nonEmpty,
+  sha256: z.string().trim().nullable().optional(),
+  filename: nonEmpty,
+  extension: z.string().trim().nullable().optional(),
+  mime: z.string().trim().nullable().optional(),
+  sizeBytes: z.number().int().nonnegative(),
+  assetKind: nonEmpty,
+  sourceKind: nonEmpty,
+  storageBackend: nonEmpty,
+  storageUri: z.string().trim().optional(),
+  ingestStatus: nonEmpty,
+  previewStatus: nonEmpty,
+  sourceMetaJson: z.record(z.unknown()).nullable().optional(),
+  createdAt: z.number().finite(),
+  updatedAt: z.number().finite(),
+  deletedAt: z.number().finite().nullable().optional(),
+}).transform((row) => ({
+  id: row.id,
+  filename: row.filename,
+  extension: row.extension ?? null,
+  mime: row.mime ?? null,
+  sizeBytes: row.sizeBytes,
+  assetKind: row.assetKind,
+  sourceKind: row.sourceKind,
+  storageBackend: row.storageBackend,
+  ingestStatus: row.ingestStatus,
+  previewStatus: row.previewStatus,
+  sourceMetaJson: sanitizeRendererFileAssetSourceMeta(row.sourceMetaJson ?? null),
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
+  deletedAt: row.deletedAt ?? null,
 }))
 
 const privateFileDerivativeSchema = z.object({
@@ -1062,7 +1087,6 @@ const buildCurrentSendPlanResultSchema = z.object({
   sendPlan: sendPlanSchema,
   draftText: z.string(),
   assets: z.array(fileAssetSchema),
-  storageRootDir: nonEmpty,
 })
 
 type BuildCurrentSendPlanSchemaOutput = z.output<typeof buildCurrentSendPlanResultSchema>
@@ -1079,7 +1103,6 @@ function toDecodedBuildCurrentSendPlanResult(
     draftText: value.draftText,
     sendPlan: value.sendPlan,
     assets: value.assets,
-    storageRootDir: value.storageRootDir,
   } as DecodedBuildCurrentSendPlanResult
 }
 

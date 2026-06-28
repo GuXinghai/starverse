@@ -769,7 +769,6 @@ const cases: ContractCase[] = [
         requiresUserConfirmation: false,
         plannerVersion: 'phase-5/v1',
       },
-      draftText: 'hello',
       assets: [],
     },
     wrongType: {
@@ -1657,7 +1656,8 @@ describe('DFC renderer DTO sanitization', () => {
       deletedAt: null,
     })
 
-    expect(decoded.sha256).toBeNull()
+    expect(decoded).not.toHaveProperty('sha256')
+    expect(decoded).not.toHaveProperty('storageUri')
     expect(decoded.sourceMetaJson).toEqual({
       originalUrl: 'https://example.test/data.csv',
       resolvedUrl: 'https://cdn.example.test/data.csv',

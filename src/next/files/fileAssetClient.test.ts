@@ -35,5 +35,7 @@ describe('fileAssetClient', () => {
 
     expect(invoke).toHaveBeenCalledWith('fileAsset.listByIds', { ids: ['asset-1'] })
     expect(result[0]?.filename).toBe('report.pdf')
+    expect(result[0]).not.toHaveProperty('sha256')
+    expect(result[0]).not.toHaveProperty('storageUri')
   })
 })

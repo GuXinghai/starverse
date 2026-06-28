@@ -10,6 +10,7 @@ import type { DbHandler, DbMethod } from './types'
 import { dispatchWorkerMessage } from './worker/router'
 import { registerFilePipelineHandlers } from './worker/handlers/filePipelineHandlers'
 import { FileAssetRepo } from './repo/fileAssetRepo'
+import { FileAssetStoreRepo } from './repo/fileAssetStoreRepo'
 import { FileDerivativeRepo } from './repo/fileDerivativeRepo'
 import { DerivativeJobRepo } from './repo/derivativeJobRepo'
 import { DfcOptionGenerationStateRepo } from './repo/dfcOptionGenerationStateRepo'
@@ -352,6 +353,7 @@ function createWorkerHarness(options: Readonly<{
   insertConvo(db, 'c1')
   const message = new MessageRepo(db).append({ convoId: 'c1', role: 'user', body: 'attach' })
   const fileAssetRepo = new FileAssetRepo(db)
+  const fileAssetStoreRepo = new FileAssetStoreRepo(db)
   const fileDerivativeRepo = new FileDerivativeRepo(db)
   const derivativeJobRepo = new DerivativeJobRepo(db)
   const dfcOptionGenerationStateRepo = new DfcOptionGenerationStateRepo(db)
@@ -367,6 +369,7 @@ function createWorkerHarness(options: Readonly<{
   const conversationAttachmentService = new ConversationAttachmentService({
     db,
     fileAssetRepo,
+    fileAssetStoreRepo,
     messageRepo,
     messageAttachmentRepo,
     branchRepo,
@@ -436,6 +439,7 @@ function createWorkerHarness(options: Readonly<{
     fileTypeDetectionCoordinator,
     fileIngestionService: new FileIngestionService({
       fileAssetRepo,
+      fileAssetStoreRepo,
       storageRootDir,
     }),
     fileStorageRootDir: storageRootDir,

@@ -118,7 +118,36 @@ function writeManagedFile(storageRootDir: string, storageUri: string, text: stri
   writeFileSync(filePath, text, 'utf8')
 }
 
+function countRows(db: BetterSqlite3.Database, table: string): number {
+  return (db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count
+}
+
 describeIfBetterSqlite('ConversationAttachmentService drafts', () => {
+  it('fails fast when fileAssetStoreRepo is missing before creating attachment half state', () => {
+    const db = new BetterSqlite3(':memory:')
+    try {
+      loadSchema(db)
+      insertConvo(db, 'c1')
+      const fileAssetRepo = new FileAssetRepo(db)
+      createAsset(fileAssetRepo, 'asset-1')
+
+      expect(() => new ConversationAttachmentService({
+        db,
+        fileAssetRepo,
+        messageRepo: new MessageRepo(db),
+        messageAttachmentRepo: new MessageAttachmentRepo(db),
+        branchRepo: new BranchRepo(db),
+        draftRepo: new ConversationDraftRepo(db),
+        now: () => 1000,
+      } as any)).toThrow('ConversationAttachmentService requires fileAssetStoreRepo')
+      expect(countRows(db, 'draft_attachments')).toBe(0)
+      expect(countRows(db, 'message_attachments')).toBe(0)
+      expect(countRows(db, 'file_asset_bindings')).toBe(0)
+    } finally {
+      db.close()
+    }
+  })
+
   it('restores draft text and attachments as one input snapshot', () => {
     const h = createHarness()
     insertConvo(h.db, 'c1')
@@ -186,6 +215,7 @@ describeIfBetterSqlite('ConversationAttachmentService drafts', () => {
     const service = new ConversationAttachmentService({
       db: h.db,
       fileAssetRepo: h.fileAssetRepo,
+      fileAssetStoreRepo: h.fileAssetStoreRepo,
       messageRepo: { append: () => { throw new Error('append failed') } } as unknown as MessageRepo,
       messageAttachmentRepo: h.messageAttachmentRepo,
       branchRepo: h.branchRepo,
