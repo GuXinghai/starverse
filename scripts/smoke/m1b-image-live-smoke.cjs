@@ -6,9 +6,15 @@ const zlib = require('zlib')
 
 const PROMPT = 'Reply with exactly one short sentence describing the image.'
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+const OPENAI_RESPONSES_BASE_URL = 'https://api.openai.com/v1'
+const ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1'
+const ANTHROPIC_API_VERSION = '2023-06-01'
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com'
-const FORBIDDEN_REQUEST_STRINGS = ['originalPath', 'storagePath', 'blobId', 'storageUri', 'originalUrl']
+const FORBIDDEN_REQUEST_STRINGS = ['originalPath', 'storagePath', 'blobId', 'storageUri', 'originalUrl', 'Authorization']
 const MAX_GENERATION_CALLS = 2
+const DEFAULT_PROVIDERS = ['openrouter', 'gemini']
+const OPENAI_MODEL_PRIORITY = ['gpt-5.4-nano', 'gpt-5.4-mini']
+const ANTHROPIC_MODEL_PRIORITY = ['claude-haiku-4-5-20251001', 'claude-haiku-4-5']
 
 const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming')
 const starverseUserData = path.join(appData, 'Starverse')
@@ -16,6 +22,16 @@ app.setName('Starverse')
 app.setPath('userData', starverseUserData)
 
 let generationCalls = 0
+
+function selectedProvidersFromArgs(argv) {
+  const arg = argv.find((value) => value.startsWith('--providers='))
+  const raw = arg ? arg.slice('--providers='.length) : ''
+  const selected = raw
+    ? raw.split(',').map((value) => value.trim().toLowerCase()).filter(Boolean)
+    : DEFAULT_PROVIDERS
+  const allowed = new Set(['openrouter', 'gemini', 'openai', 'anthropic'])
+  return selected.filter((provider) => allowed.has(provider))
+}
 
 function crc32(buffer) {
   if (!crc32.table) {
@@ -130,10 +146,15 @@ function readSecureKey(config, providerKey) {
   }
 }
 
-function requestLeakCheck(body, fixturePath) {
+function requestLeakCheck(body, fixturePath, secretValues = []) {
   const serialized = JSON.stringify(body)
   const leaks = FORBIDDEN_REQUEST_STRINGS.filter((needle) => serialized.includes(needle))
   if (fixturePath && serialized.includes(fixturePath)) leaks.push('fixturePath')
+  secretValues
+    .filter((value) => typeof value === 'string' && value.length > 0)
+    .forEach((value) => {
+      if (serialized.includes(value)) leaks.push('apiKey')
+    })
   return { ok: leaks.length === 0, leaks }
 }
 
@@ -356,7 +377,7 @@ async function smokeOpenRouter(config, imageDataUrl, fixturePath) {
     max_tokens: 32,
   }
 
-  const leakCheck = requestLeakCheck(body, fixturePath)
+  const leakCheck = requestLeakCheck(body, fixturePath, [key.apiKey])
   if (!leakCheck.ok) {
     return {
       provider: 'openrouter',
@@ -412,6 +433,353 @@ async function smokeOpenRouter(config, imageDataUrl, fixturePath) {
       inspected: picked.inspected,
       warning: picked.warning || null,
     },
+    textLength: text.length,
+    sample: text.slice(0, 160),
+  }
+}
+
+function openAIHeaders(apiKey) {
+  return {
+    Authorization: `Bearer ${apiKey}`,
+  }
+}
+
+async function listOpenAIModels(apiKey) {
+  try {
+    const payload = await electronFetchJson(`${OPENAI_RESPONSES_BASE_URL}/models`, {
+      headers: openAIHeaders(apiKey),
+    })
+    const ids = (Array.isArray(payload?.data) ? payload.data : [])
+      .map((model) => String(model?.id || '').trim())
+      .filter(Boolean)
+    return { ok: true, ids, modelCount: ids.length }
+  } catch (error) {
+    return {
+      ok: false,
+      reason: sanitizeMessage(error?.message || 'OpenAI model availability failed'),
+    }
+  }
+}
+
+function pickOpenAIModel(ids) {
+  const available = new Set(ids)
+  for (const model of OPENAI_MODEL_PRIORITY) {
+    if (available.has(model)) return model
+  }
+  return null
+}
+
+function extractOpenAIResponsesText(payload) {
+  if (typeof payload?.delta === 'string') return payload.delta
+  if (typeof payload?.text === 'string') return payload.text
+
+  let text = ''
+  const output = Array.isArray(payload?.response?.output) ? payload.response.output : Array.isArray(payload?.output) ? payload.output : []
+  for (const item of output) {
+    const content = Array.isArray(item?.content) ? item.content : []
+    for (const part of content) {
+      if (typeof part?.text === 'string') text += part.text
+    }
+  }
+  return text
+}
+
+async function readOpenAIResponsesSseText(response) {
+  const reader = response.body?.getReader?.()
+  if (!reader) throw new Error('OpenAI Responses response body is not readable.')
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let text = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let newlineIndex = buffer.indexOf('\n')
+    while (newlineIndex >= 0) {
+      const line = buffer.slice(0, newlineIndex).trim()
+      buffer = buffer.slice(newlineIndex + 1)
+      if (line.startsWith('data:')) {
+        const data = line.slice(5).trim()
+        if (data && data !== '[DONE]') {
+          try {
+            text += extractOpenAIResponsesText(JSON.parse(data))
+          } catch {
+            // Ignore malformed individual SSE chunks; terminal emptiness is checked by caller.
+          }
+        }
+      }
+      newlineIndex = buffer.indexOf('\n')
+    }
+  }
+  return text.trim()
+}
+
+async function smokeOpenAIResponses(config, imageDataUrl, fixturePath) {
+  const key = readSecureKey(config, 'openai_responses')
+  if (!key.ok) return { provider: 'openai_responses', status: 'skipped', reason: key.reason }
+
+  const availability = await listOpenAIModels(key.apiKey)
+  if (!availability.ok) {
+    return {
+      provider: 'openai_responses',
+      status: 'skipped',
+      reason: 'model availability failed; generation not attempted',
+      safeError: availability.reason,
+      generationCallMade: false,
+    }
+  }
+
+  const model = pickOpenAIModel(availability.ids)
+  if (!model) {
+    return {
+      provider: 'openai_responses',
+      status: 'skipped',
+      reason: `preferred models unavailable in /models: ${OPENAI_MODEL_PRIORITY.join(', ')}`,
+      checkedModelCount: availability.modelCount,
+      generationCallMade: false,
+    }
+  }
+
+  const body = {
+    model,
+    input: [
+      {
+        role: 'user',
+        content: [
+          { type: 'input_text', text: PROMPT },
+          { type: 'input_image', image_url: imageDataUrl },
+        ],
+      },
+    ],
+    stream: true,
+    temperature: 0,
+    max_output_tokens: 32,
+  }
+
+  const leakCheck = requestLeakCheck(body, fixturePath, [key.apiKey])
+  if (!leakCheck.ok) {
+    return {
+      provider: 'openai_responses',
+      status: 'blocked',
+      reason: `request body leak: ${leakCheck.leaks.join(', ')}`,
+      model,
+    }
+  }
+
+  if (generationCalls >= MAX_GENERATION_CALLS) {
+    return { provider: 'openai_responses', status: 'skipped', reason: 'generation call budget exhausted', model }
+  }
+  generationCalls += 1
+
+  const response = await session.defaultSession.fetch(`${OPENAI_RESPONSES_BASE_URL}/responses`, {
+    method: 'POST',
+    headers: {
+      ...openAIHeaders(key.apiKey),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    const bodyText = await response.text().catch(() => '')
+    return {
+      provider: 'openai_responses',
+      status: 'failed',
+      model,
+      generationCallMade: true,
+      requestLeakCheck: 'passed',
+      imageBlock: 'input_image',
+      safeError: safeHttpError(response, bodyText),
+    }
+  }
+
+  const text = await readOpenAIResponsesSseText(response)
+  return {
+    provider: 'openai_responses',
+    status: text ? 'passed' : 'failed',
+    model,
+    generationCallMade: true,
+    requestLeakCheck: 'passed',
+    imageBlock: 'input_image',
+    textLength: text.length,
+    sample: text.slice(0, 160),
+  }
+}
+
+function anthropicHeaders(apiKey) {
+  return {
+    'x-api-key': apiKey,
+    'anthropic-version': ANTHROPIC_API_VERSION,
+  }
+}
+
+async function listAnthropicModels(apiKey) {
+  const all = []
+  let afterId = null
+  try {
+    for (let page = 0; page < 5; page += 1) {
+      const url = new URL(`${ANTHROPIC_BASE_URL}/models`)
+      url.searchParams.set('limit', '100')
+      if (afterId) url.searchParams.set('after_id', afterId)
+      const payload = await electronFetchJson(url.toString(), {
+        headers: anthropicHeaders(apiKey),
+      })
+      const models = Array.isArray(payload?.data) ? payload.data : []
+      all.push(...models)
+      if (payload?.has_more !== true || !payload?.last_id) break
+      afterId = String(payload.last_id)
+    }
+    return { ok: true, models: all, modelCount: all.length }
+  } catch (error) {
+    return {
+      ok: false,
+      reason: sanitizeMessage(error?.message || 'Anthropic model availability failed'),
+    }
+  }
+}
+
+function pickAnthropicModel(models) {
+  const byId = new Map()
+  for (const model of models) {
+    const id = String(model?.id || '').trim()
+    if (id) byId.set(id, model)
+  }
+  for (const modelId of ANTHROPIC_MODEL_PRIORITY) {
+    const model = byId.get(modelId)
+    if (model) return { id: modelId, raw: model }
+  }
+  return null
+}
+
+function extractAnthropicText(payload) {
+  if (payload?.type === 'content_block_delta' && typeof payload?.delta?.text === 'string') {
+    return payload.delta.text
+  }
+  if (payload?.type === 'content_block_start' && typeof payload?.content_block?.text === 'string') {
+    return payload.content_block.text
+  }
+  return ''
+}
+
+async function readAnthropicSseText(response) {
+  const reader = response.body?.getReader?.()
+  if (!reader) throw new Error('Anthropic response body is not readable.')
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let text = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let newlineIndex = buffer.indexOf('\n')
+    while (newlineIndex >= 0) {
+      const line = buffer.slice(0, newlineIndex).trim()
+      buffer = buffer.slice(newlineIndex + 1)
+      if (line.startsWith('data:')) {
+        const data = line.slice(5).trim()
+        if (data) {
+          try {
+            text += extractAnthropicText(JSON.parse(data))
+          } catch {
+            // Ignore malformed individual SSE chunks; terminal emptiness is checked by caller.
+          }
+        }
+      }
+      newlineIndex = buffer.indexOf('\n')
+    }
+  }
+  return text.trim()
+}
+
+async function smokeAnthropic(config, imageBase64, fixturePath) {
+  const key = readSecureKey(config, 'anthropic')
+  if (!key.ok) return { provider: 'anthropic_messages', status: 'skipped', reason: key.reason }
+
+  const availability = await listAnthropicModels(key.apiKey)
+  if (!availability.ok) {
+    return {
+      provider: 'anthropic_messages',
+      status: 'skipped',
+      reason: 'model availability failed; generation not attempted',
+      safeError: availability.reason,
+      generationCallMade: false,
+    }
+  }
+
+  const picked = pickAnthropicModel(availability.models)
+  if (!picked) {
+    return {
+      provider: 'anthropic_messages',
+      status: 'skipped',
+      reason: `Claude Haiku 4.5 unavailable in /models: ${ANTHROPIC_MODEL_PRIORITY.join(', ')}`,
+      checkedModelCount: availability.modelCount,
+      generationCallMade: false,
+    }
+  }
+
+  const body = {
+    model: picked.id,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: PROMPT },
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imageBase64 } },
+        ],
+      },
+    ],
+    max_tokens: 32,
+    stream: true,
+    temperature: 0,
+  }
+
+  const leakCheck = requestLeakCheck(body, fixturePath, [key.apiKey])
+  if (!leakCheck.ok) {
+    return {
+      provider: 'anthropic_messages',
+      status: 'blocked',
+      reason: `request body leak: ${leakCheck.leaks.join(', ')}`,
+      model: picked.id,
+    }
+  }
+
+  if (generationCalls >= MAX_GENERATION_CALLS) {
+    return { provider: 'anthropic_messages', status: 'skipped', reason: 'generation call budget exhausted', model: picked.id }
+  }
+  generationCalls += 1
+
+  const response = await session.defaultSession.fetch(`${ANTHROPIC_BASE_URL}/messages`, {
+    method: 'POST',
+    headers: {
+      ...anthropicHeaders(key.apiKey),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    const bodyText = await response.text().catch(() => '')
+    return {
+      provider: 'anthropic_messages',
+      status: 'failed',
+      model: picked.id,
+      generationCallMade: true,
+      requestLeakCheck: 'passed',
+      imageBlock: 'image',
+      safeError: safeHttpError(response, bodyText),
+    }
+  }
+
+  const text = await readAnthropicSseText(response)
+  return {
+    provider: 'anthropic_messages',
+    status: text ? 'passed' : 'failed',
+    model: picked.id,
+    generationCallMade: true,
+    requestLeakCheck: 'passed',
+    imageBlock: 'image',
     textLength: text.length,
     sample: text.slice(0, 160),
   }
@@ -556,7 +924,7 @@ async function smokeGemini(config, imageBase64, fixturePath) {
     },
   }
 
-  const leakCheck = requestLeakCheck(body, fixturePath)
+  const leakCheck = requestLeakCheck(body, fixturePath, [key.apiKey])
   if (!leakCheck.ok) {
     return {
       provider: 'gemini',
@@ -607,6 +975,8 @@ async function smokeGemini(config, imageBase64, fixturePath) {
 }
 
 async function main() {
+  const explicitProviders = process.argv.some((value) => value.startsWith('--providers='))
+  const selectedProviders = selectedProvidersFromArgs(process.argv.slice(2))
   const png = makePng64()
   const fixturePath = path.join(os.tmpdir(), 'starverse-m1b-image-live-smoke-64.png')
   fs.writeFileSync(fixturePath, png)
@@ -614,6 +984,7 @@ async function main() {
   const output = {
     ok: false,
     prompt: PROMPT,
+    selectedProviders,
     generationCalls: 0,
     results: [
       {
@@ -644,17 +1015,27 @@ async function main() {
     })
 
     const imageBase64 = png.toString('base64')
-    const openRouter = await smokeOpenRouter(config, `data:image/png;base64,${imageBase64}`, fixturePath)
-    output.results.push(openRouter)
+    const imageDataUrl = `data:image/png;base64,${imageBase64}`
+    for (const provider of selectedProviders) {
+      const hasPassedProvider = output.results.some((result) => result.provider !== 'fixture' && result.status === 'passed')
+      if (!explicitProviders && provider === 'gemini' && hasPassedProvider) {
+        output.results.push({
+          provider: 'gemini',
+          status: 'skipped',
+          reason: 'OpenRouter passed; spend policy stops after first successful provider.',
+        })
+        continue
+      }
 
-    if (openRouter.status === 'passed') {
-      output.results.push({
-        provider: 'gemini',
-        status: 'skipped',
-        reason: 'OpenRouter passed; spend policy stops after first successful provider.',
-      })
-    } else {
-      output.results.push(await smokeGemini(config, imageBase64, fixturePath))
+      if (provider === 'openrouter') {
+        output.results.push(await smokeOpenRouter(config, imageDataUrl, fixturePath))
+      } else if (provider === 'gemini') {
+        output.results.push(await smokeGemini(config, imageBase64, fixturePath))
+      } else if (provider === 'openai') {
+        output.results.push(await smokeOpenAIResponses(config, imageDataUrl, fixturePath))
+      } else if (provider === 'anthropic') {
+        output.results.push(await smokeAnthropic(config, imageBase64, fixturePath))
+      }
     }
   } finally {
     output.generationCalls = generationCalls
