@@ -216,7 +216,7 @@ describe('RuntimeCapabilitySummaryLite', () => {
     expect(formatRuntimeCapabilitySummaryLite(cap)).toContain('attachments supported')
   })
 
-  it('summarizes image-capable experimental providers as small-image inline only', () => {
+  it('summarizes file-capable experimental providers as small image and PDF inline only', () => {
     const cap = getRuntimeCapabilitySummaryLite(selected('openai_responses', 'gpt-4.1-mini'))
     expect(cap).toMatchObject({
       textChat: true,
@@ -229,7 +229,8 @@ describe('RuntimeCapabilitySummaryLite', () => {
       structuredOutput: 'blocked',
       source: 'experimental_image_inline',
     })
-    expect(cap.warnings.join('\n')).toContain('small image inline attachments only')
+    expect(cap.warnings.join('\n')).toContain('small PNG/JPEG image and small PDF inline attachments')
+    expect(cap.warnings.join('\n')).toContain('Non-PDF documents')
   })
 
   it('keeps DeepSeek official runtime text-only for file inputs', () => {

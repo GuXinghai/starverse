@@ -82,6 +82,7 @@ export const DB_METHODS = [
   { name: 'sendPlan.prepareOpenRouter', renderer: true, worker: true, domain: 'sendPlan' },
   { name: 'sendPlan.prepareOpenRouterReplayFromMessage', renderer: true, worker: true, domain: 'sendPlan' },
   { name: 'providerFileInput.prepareDraftImages', renderer: true, worker: true, domain: 'providerFileInput' },
+  { name: 'providerFileInput.prepareDraftFiles', renderer: true, worker: true, domain: 'providerFileInput' },
   { name: 'fileIngestion.ingestLocalFile', renderer: true, worker: true, domain: 'fileIngestion' },
   { name: 'fileIngestion.ingestUrl', renderer: true, worker: true, domain: 'fileIngestion' },
   { name: 'preview.getLatestReady', renderer: true, worker: true, domain: 'preview' },

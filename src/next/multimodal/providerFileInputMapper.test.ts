@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createProviderFileInputAssetReader,
+  M1C_PDF_INLINE_LIMIT_BYTES,
   prepareProviderFileInput,
   type ProviderFileAssetMetadata,
   type ProviderFileInputProvider,
@@ -210,6 +211,29 @@ describe('providerFileInputMapper', () => {
     if (result.ok) expect(result.requestPart).toEqual(expectedUrlPart(provider, 'pdf', 'manual.pdf', 'application/pdf', url))
   })
 
+  it('rejects link_only PDF URLs with query or hash without leaking URL tokens', async () => {
+    const result = await prepareProviderFileInput({
+      provider: 'openrouter',
+      assetId: 'asset-link-only-pdf-token',
+      readAsset: async () => providerUrlReadResult({
+        assetId: 'asset-link-only-pdf-token',
+        filename: 'manual.pdf',
+        mimeType: 'application/pdf',
+        extension: 'pdf',
+        url: 'https://cdn.example.test/manual.pdf?token=do-not-leak#frag',
+      }),
+    })
+
+    expect(result).toEqual({
+      ok: false,
+      provider: 'openrouter',
+      code: 'url_not_allowed',
+      message: 'Provider openrouter does not allow direct URL input for pdf assets.',
+    })
+    expect(JSON.stringify(result)).not.toContain('do-not-leak')
+    expect(JSON.stringify(result)).not.toContain('#frag')
+  })
+
   it('rejects link_only URLs with embedded credentials without leaking credentials in the error', async () => {
     const credentialedUrl = 'https://user:secret@cdn.example.test/photo.png?token=do-not-leak'
     const result = await prepareProviderFileInput({
@@ -295,6 +319,30 @@ describe('providerFileInputMapper', () => {
       provider: 'google_ai_studio',
       code: 'too_large_for_inline',
       message: 'Asset asset-large is too large for inline google_ai_studio file input.',
+    })
+    expect(JSON.stringify(result)).not.toContain('file_id')
+    expect(JSON.stringify(result)).not.toContain('fileUri')
+  })
+
+  it('enforces the M1c 1 MB PDF inline hard limit by default', async () => {
+    const bytes = new Uint8Array(M1C_PDF_INLINE_LIMIT_BYTES + 1)
+    const result = await prepareProviderFileInput({
+      provider: 'openai_responses',
+      assetId: 'asset-large-pdf',
+      readAsset: async () => managedReadResult({
+        assetId: 'asset-large-pdf',
+        filename: 'large.pdf',
+        mimeType: 'application/pdf',
+        extension: 'pdf',
+        bytes,
+      }),
+    })
+
+    expect(result).toEqual({
+      ok: false,
+      provider: 'openai_responses',
+      code: 'too_large_for_inline',
+      message: 'Asset asset-large-pdf is too large for inline openai_responses file input.',
     })
     expect(JSON.stringify(result)).not.toContain('file_id')
     expect(JSON.stringify(result)).not.toContain('fileUri')

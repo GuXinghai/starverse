@@ -164,6 +164,52 @@ describe('streamViaAnthropic', () => {
     expect(serialized).not.toContain('storagePath')
   })
 
+  it('adds document PDF content block for text plus PDF requests without leaking local metadata', async () => {
+    const response = makeSseResponse(
+      messageStartSse({ id: 'msg_1', model: 'claude-sonnet-4-5', usage: { input_tokens: 10, output_tokens: 0 } }),
+      messageStopSse(),
+    )
+    const fetch = mockFetch(response)
+
+    await collectEvents(streamViaAnthropic({
+      ...makeRequest(),
+      currentUserContentBlocks: [
+        {
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0xLjQK' },
+          title: 'manual.pdf',
+          originalPath: 'D:\\Starverse\\fixtures\\manual.pdf',
+          originalUrl: 'https://cdn.example.test/manual.pdf?token=secret',
+        } as any,
+      ],
+    }, {
+      baseUrl: 'https://api.anthropic.com/v1',
+      apiKey: 'sk-ant-test',
+      fetch,
+    }))
+
+    const [, init] = (fetch as any).mock.calls[0]
+    const body = JSON.parse(init.body)
+    expect(body.messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Hello' },
+          {
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0xLjQK' },
+            title: 'manual.pdf',
+          },
+        ],
+      },
+    ])
+    const serialized = JSON.stringify(body)
+    expect(serialized).not.toContain('originalPath')
+    expect(serialized).not.toContain('originalUrl')
+    expect(serialized).not.toContain('D:\\Starverse')
+    expect(serialized).not.toContain('token=secret')
+  })
+
   it('text_delta yields visible text', async () => {
     const response = makeSseResponse(
       messageStartSse({ id: 'msg_1', model: 'claude-sonnet-4-5', usage: { input_tokens: 10, output_tokens: 0 } }),

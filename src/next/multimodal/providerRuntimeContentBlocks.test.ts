@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { sanitizeProviderRuntimeImageContentBlocks } from '@/next/multimodal/providerRuntimeContentBlocks'
+import {
+  sanitizeProviderRuntimeFileContentBlocks,
+  sanitizeProviderRuntimeImageContentBlocks,
+} from '@/next/multimodal/providerRuntimeContentBlocks'
 
 describe('providerRuntimeContentBlocks', () => {
   it('rejects credentialed URL image references at the IPC sanitizer boundary', () => {
@@ -29,5 +32,83 @@ describe('providerRuntimeContentBlocks', () => {
       ok: false,
       message: 'Provider runtime image content block is invalid.',
     })
+  })
+
+  it('accepts provider PDF runtime blocks for the M1c file sanitizer', () => {
+    expect(sanitizeProviderRuntimeFileContentBlocks('openai_responses', [
+      { type: 'input_file', filename: 'manual.pdf', file_data: 'data:application/pdf;base64,JVBERi0xLjQK' },
+    ])).toEqual({
+      ok: true,
+      blocks: [
+        { type: 'input_file', filename: 'manual.pdf', file_data: 'data:application/pdf;base64,JVBERi0xLjQK' },
+      ],
+    })
+
+    expect(sanitizeProviderRuntimeFileContentBlocks('anthropic_messages', [
+      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0xLjQK' }, title: 'manual.pdf' },
+    ])).toEqual({
+      ok: true,
+      blocks: [
+        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0xLjQK' }, title: 'manual.pdf' },
+      ],
+    })
+
+    expect(sanitizeProviderRuntimeFileContentBlocks('google_ai_studio', [
+      { inlineData: { mimeType: 'application/pdf', data: 'JVBERi0xLjQK' } },
+    ])).toEqual({
+      ok: true,
+      blocks: [
+        { inlineData: { mimeType: 'application/pdf', data: 'JVBERi0xLjQK' } },
+      ],
+    })
+
+    expect(sanitizeProviderRuntimeFileContentBlocks('openrouter', [
+      { type: 'file', file: { filename: 'manual.pdf', file_data: 'data:application/pdf;base64,JVBERi0xLjQK' } },
+    ])).toEqual({
+      ok: true,
+      blocks: [
+        { type: 'file', file: { filename: 'manual.pdf', file_data: 'data:application/pdf;base64,JVBERi0xLjQK' } },
+      ],
+    })
+  })
+
+  it('rejects PDF URL references with query or hash without leaking tokens', () => {
+    const result = sanitizeProviderRuntimeFileContentBlocks('openrouter', [
+      {
+        type: 'file',
+        file: { filename: 'manual.pdf', file_data: 'https://cdn.example.test/manual.pdf?token=do-not-leak#frag' },
+      },
+    ])
+
+    expect(result).toEqual({
+      ok: false,
+      message: 'Provider runtime file content block is invalid.',
+    })
+    expect(JSON.stringify(result)).not.toContain('do-not-leak')
+  })
+
+  it('rejects inline PDF runtime blocks over 1 MB without echoing the payload', () => {
+    const oversizedBase64 = 'A'.repeat(1_398_104)
+
+    const openAI = sanitizeProviderRuntimeFileContentBlocks('openai_responses', [
+      { type: 'input_file', filename: 'large.pdf', file_data: `data:application/pdf;base64,${oversizedBase64}` },
+    ])
+    const anthropic = sanitizeProviderRuntimeFileContentBlocks('anthropic_messages', [
+      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: oversizedBase64 }, title: 'large.pdf' },
+    ])
+    const gemini = sanitizeProviderRuntimeFileContentBlocks('google_ai_studio', [
+      { inlineData: { mimeType: 'application/pdf', data: oversizedBase64 } },
+    ])
+    const openRouter = sanitizeProviderRuntimeFileContentBlocks('openrouter', [
+      { type: 'file', file: { filename: 'large.pdf', file_data: `data:application/pdf;base64,${oversizedBase64}` } },
+    ])
+
+    for (const result of [openAI, anthropic, gemini, openRouter]) {
+      expect(result).toEqual({
+        ok: false,
+        message: 'Provider runtime file content block is invalid.',
+      })
+      expect(JSON.stringify(result)).not.toContain(oversizedBase64.slice(0, 64))
+    }
   })
 })

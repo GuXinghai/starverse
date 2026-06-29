@@ -442,6 +442,57 @@ describe('streamViaOpenRouter', () => {
     }
   })
 
+  it('passes text plus PDF file content blocks through the OpenRouter chat request body without parser plugins', async () => {
+    const originalFetch = globalThis.fetch
+    const calls: any[] = []
+    globalThis.fetch = vi.fn(async (url: any, init: any) => {
+      calls.push({ url, init })
+      const body = streamFromText(fixture)
+      return new Response(body as any, { status: 200, headers: { 'x-openrouter-generation-id': 'gen_header' } })
+    }) as any
+
+    try {
+      const request: ProviderStreamRequest = {
+        requestId: 'rid',
+        assistantMessageId: 'assistant_1',
+        userText: 'Read this PDF.',
+        currentUserContentBlocks: [
+          { type: 'text', text: 'Read this PDF.' },
+          {
+            type: 'file',
+            file: { filename: 'manual.pdf', file_data: 'data:application/pdf;base64,JVBERi0xLjQK' },
+            originalUrl: 'https://cdn.example.test/manual.pdf?token=secret',
+            storagePath: 'D:\\Starverse\\storage\\manual.pdf',
+          } as any,
+        ],
+        config: {
+          model: DEFAULT_OPENROUTER_TEST_MODEL,
+          requestedReasoningMode: 'auto',
+        },
+      }
+
+      for await (const _ of streamViaOpenRouter(request, { apiKey: 'k' })) {
+        // consume
+      }
+
+      const body = JSON.parse(String(calls[0]?.init?.body ?? '{}'))
+      const userMessage = body.messages?.at(-1)
+      expect(userMessage?.role).toBe('user')
+      expect(userMessage?.content).toEqual([
+        { type: 'text', text: 'Read this PDF.' },
+        { type: 'file', file: { filename: 'manual.pdf', file_data: 'data:application/pdf;base64,JVBERi0xLjQK' } },
+      ])
+      expect(body.plugins).toBeUndefined()
+      const serialized = JSON.stringify(body)
+      expect(serialized).not.toContain('originalUrl')
+      expect(serialized).not.toContain('storagePath')
+      expect(serialized).not.toContain('D:\\Starverse')
+      expect(serialized).not.toContain('token=secret')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   it('preserves legacy Authorization header behavior through adapter facade', async () => {
     const originalFetch = globalThis.fetch
     const calls: any[] = []

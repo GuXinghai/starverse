@@ -424,6 +424,39 @@ describe('openRouterSendPlanSerializer', () => {
     expect(result.additionalPlugins).toEqual([{ id: 'file-parser', pdf: { engine: 'native' } }])
   })
 
+  it('rejects PDF URL refs with query or hash instead of passing tokenized URLs', async () => {
+    const dir = await createRoot()
+    const asset = makeAsset({
+      id: 'asset-pdf-url-token',
+      filename: 'manual.pdf',
+      assetKind: 'document',
+      storageBackend: 'remote_url',
+      storageUri: 'https://cdn.example.test/manual.pdf?token=do-not-leak#frag',
+      sourceMetaJson: {
+        resolvedUrl: 'https://cdn.example.test/manual.pdf?token=do-not-leak#frag',
+      },
+    })
+
+    await expect(serializeSendPlanForOpenRouter({
+      sendPlan: makeSendPlan([
+        makeAttachmentPlan({
+          assetId: asset.id,
+          attachmentId: 'att-pdf-url-token',
+          aiPayloadKind: 'pdf',
+          selectedSendMode: 'url_ref',
+        }),
+      ]),
+      userText: 'read the PDF',
+      assetsById: { [asset.id]: asset },
+      storageRootDir: dir,
+    })).rejects.toMatchObject({
+      details: {
+        code: 'attachment_url_missing',
+        assetId: asset.id,
+      },
+    })
+  })
+
   it('serializes inline PDF files as base64 file parts', async () => {
     const dir = await createRoot()
     const asset = makeAsset({

@@ -136,6 +136,52 @@ async function createDraftImageAsset(input: Readonly<{
   input.h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: input.assetId })
 }
 
+async function createDraftPdfAsset(input: Readonly<{
+  h: ReturnType<typeof makeHarness>
+  storageRootDir: string
+  assetId: string
+  filename: string
+  bytes: Uint8Array
+}>) {
+  const storageUri = `assets/blobs/${input.assetId}/${input.filename}`
+  const filePath = path.join(input.storageRootDir, ...storageUri.split('/'))
+  await mkdir(path.dirname(filePath), { recursive: true })
+  await writeFile(filePath, input.bytes)
+
+  input.h.fileAssetRepo.create({
+    id: input.assetId,
+    sha256: hash(input.bytes),
+    filename: input.filename,
+    extension: 'pdf',
+    mime: 'application/pdf',
+    sizeBytes: input.bytes.byteLength,
+    assetKind: 'document',
+    sourceKind: 'local_upload',
+    storageBackend: 'local_fs',
+    storageUri: `assets/original/${input.assetId}/${input.filename}`,
+    ingestStatus: 'stored',
+    previewStatus: 'not_requested',
+  })
+  const blob = input.h.fileAssetStoreRepo.createBlob({
+    id: `blob-${input.assetId}`,
+    sha256: hash(input.bytes),
+    sizeBytes: input.bytes.byteLength,
+    mime: 'application/pdf',
+    storageBackend: 'local_fs',
+    storageUri,
+    createdAt: 1000,
+  })
+  input.h.fileAssetStoreRepo.createRevision({
+    id: `rev-${input.assetId}`,
+    assetId: input.assetId,
+    blobId: blob.id,
+    cause: 'imported',
+    createdAt: 1000,
+  })
+  createVerdict(input.h.fileTypeVerdictRepo, input.assetId, 'pdf', 'document')
+  input.h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: input.assetId })
+}
+
 function createVerdict(
   repo: FileTypeVerdictRepo,
   assetId: string,
@@ -206,6 +252,29 @@ function prepareParams() {
     providerContext: {
       providerKey: 'openai_responses',
       supportsImageUrlRef: true,
+      supportsInlineData: true,
+      preferredDraftSendModes: ['inline_base64', 'url_ref'],
+    },
+  }
+}
+
+function prepareFileParams() {
+  return {
+    provider: 'openai_responses',
+    conversationId: 'c1',
+    draftText: 'read pdf',
+    model: {
+      providerKey: 'openai_responses',
+      modelId: 'gpt-4.1-mini',
+      modelKey: 'openai_responses::gpt-4.1-mini',
+      inputModalities: ['text', 'image', 'file'],
+      outputModalities: ['text'],
+    },
+    providerContext: {
+      providerKey: 'openai_responses',
+      supportsImageUrlRef: true,
+      supportsPdfInputs: true,
+      supportsPdfUrlRef: true,
       supportsInlineData: true,
       preferredDraftSendModes: ['inline_base64', 'url_ref'],
     },
@@ -288,6 +357,83 @@ describeIfBetterSqlite('provider file input worker handlers', () => {
           contentParts: [],
         },
       })
+    } finally {
+      h.db.close()
+      await rm(storageRootDir, { recursive: true, force: true })
+    }
+  })
+
+  it('prepares a draft PDF through the M1c file runtime slice without exposing storage metadata', async () => {
+    const storageRootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-provider-file-input-'))
+    const h = makeHarness(storageRootDir)
+    try {
+      await createDraftPdfAsset({
+        h,
+        storageRootDir,
+        assetId: 'asset-pdf',
+        filename: 'manual.pdf',
+        bytes: new TextEncoder().encode('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n'),
+      })
+
+      const prepared = await dispatchWorkerMessage(h.handlers, {
+        id: 'req-provider-file-input-pdf',
+        method: 'providerFileInput.prepareDraftFiles',
+        params: prepareFileParams(),
+      })
+
+      expect(prepared).toMatchObject({
+        ok: true,
+        result: {
+          ok: true,
+          contentParts: [
+            { type: 'input_file', filename: 'manual.pdf', file_data: expect.stringMatching(/^data:application\/pdf;base64,/) },
+          ],
+          diagnostics: expect.objectContaining({
+            includedPdfCount: 1,
+            includedFileCount: 1,
+            containsMultimodalParts: true,
+          }),
+        },
+      })
+      const serialized = JSON.stringify(prepared)
+      expect(serialized).not.toContain(storageRootDir)
+      expect(serialized).not.toContain('storageUri')
+      expect(serialized).not.toContain('storagePath')
+      expect(serialized).not.toContain('blob-asset-pdf')
+    } finally {
+      h.db.close()
+      await rm(storageRootDir, { recursive: true, force: true })
+    }
+  })
+
+  it('blocks draft PDFs over the M1c 1 MB inline hard limit', async () => {
+    const storageRootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-provider-file-input-'))
+    const h = makeHarness(storageRootDir)
+    try {
+      await createDraftPdfAsset({
+        h,
+        storageRootDir,
+        assetId: 'asset-large-pdf',
+        filename: 'large.pdf',
+        bytes: new Uint8Array((1024 * 1024) + 1),
+      })
+
+      const prepared = await dispatchWorkerMessage(h.handlers, {
+        id: 'req-provider-file-input-large-pdf',
+        method: 'providerFileInput.prepareDraftFiles',
+        params: prepareFileParams(),
+      })
+
+      expect(prepared).toMatchObject({
+        ok: true,
+        result: {
+          ok: false,
+          code: 'too_large_for_inline',
+          message: 'Asset asset-large-pdf is too large for inline openai_responses file input.',
+          contentParts: [],
+        },
+      })
+      expect(JSON.stringify(prepared)).not.toContain(storageRootDir)
     } finally {
       h.db.close()
       await rm(storageRootDir, { recursive: true, force: true })

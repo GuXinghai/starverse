@@ -143,6 +143,44 @@ describe('streamViaGemini', () => {
     expect(serialized).not.toContain('D:\\Starverse')
   })
 
+  it('adds inlineData PDF part for text plus PDF requests without leaking local metadata', async () => {
+    const response = makeSseResponse(textChunkSse('Hi'), finishChunkSse('STOP'))
+    const fetch = mockFetch(response)
+
+    await collectEvents(streamViaGemini({
+      ...makeRequest(),
+      currentUserContentBlocks: [
+        {
+          inlineData: { mimeType: 'application/pdf', data: 'JVBERi0xLjQK' },
+          blobId: 'blob_local_path_should_not_pass',
+          storageUri: 'assets/blobs/manual.pdf',
+          originalUrl: 'https://cdn.example.test/manual.pdf?token=secret',
+        } as any,
+      ],
+    }, {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: 'test-key',
+      fetch,
+    }))
+
+    const [, init] = (fetch as any).mock.calls[0]
+    const body = JSON.parse(init.body)
+    expect(body.contents).toEqual([
+      {
+        role: 'user',
+        parts: [
+          { text: 'Hello' },
+          { inlineData: { mimeType: 'application/pdf', data: 'JVBERi0xLjQK' } },
+        ],
+      },
+    ])
+    const serialized = JSON.stringify(body)
+    expect(serialized).not.toContain('blob_local_path_should_not_pass')
+    expect(serialized).not.toContain('storageUri')
+    expect(serialized).not.toContain('originalUrl')
+    expect(serialized).not.toContain('token=secret')
+  })
+
   it('text part yields visible text', async () => {
     const response = makeSseResponse(
       textChunkSse('Hello! '),

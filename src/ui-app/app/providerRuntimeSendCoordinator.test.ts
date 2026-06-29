@@ -316,4 +316,40 @@ describe('providerRuntimeSendCoordinator', () => {
     expect(anthropicCalls[0]?.currentUserContentBlocks).toEqual([{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } }])
     expect(localEndpointCalls[0]?.currentUserContentBlocks).toBeUndefined()
   })
+
+  it('passes current user PDF content blocks to file-capable experimental cloud wrappers only', async () => {
+    openAIResponsesCalls.length = 0
+    googleAIStudioCalls.length = 0
+    anthropicCalls.length = 0
+    localEndpointCalls.length = 0
+    const abortController = new AbortController()
+    const openAiPdfBlocks = [{ type: 'input_file', filename: 'manual.pdf', file_data: 'data:application/pdf;base64,JVBERi0xLjQK' }]
+    const baseInput = {
+      requestId: 'req_pdf',
+      assistantMessageId: 'assistant_pdf',
+      modelId: 'model_pdf',
+      userText: 'read pdf',
+      contextMessages: [],
+      currentUserContentBlocks: openAiPdfBlocks,
+      signal: abortController.signal,
+    }
+
+    await drain(createExperimentalRuntimeTextEvents({ ...baseInput, providerKey: 'openai_responses' }))
+    await drain(createExperimentalRuntimeTextEvents({
+      ...baseInput,
+      providerKey: 'google_ai_studio',
+      currentUserContentBlocks: [{ inlineData: { mimeType: 'application/pdf', data: 'JVBERi0xLjQK' } }],
+    }))
+    await drain(createExperimentalRuntimeTextEvents({
+      ...baseInput,
+      providerKey: 'anthropic_messages',
+      currentUserContentBlocks: [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0xLjQK' }, title: 'manual.pdf' }],
+    }))
+    await drain(createExperimentalRuntimeTextEvents({ ...baseInput, providerKey: 'local_endpoint', localEndpointUrl: 'http://127.0.0.1:11434/v1' }))
+
+    expect(openAIResponsesCalls[0]?.currentUserContentBlocks).toEqual(openAiPdfBlocks)
+    expect(googleAIStudioCalls[0]?.currentUserContentBlocks).toEqual([{ inlineData: { mimeType: 'application/pdf', data: 'JVBERi0xLjQK' } }])
+    expect(anthropicCalls[0]?.currentUserContentBlocks).toEqual([{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0xLjQK' }, title: 'manual.pdf' }])
+    expect(localEndpointCalls[0]?.currentUserContentBlocks).toBeUndefined()
+  })
 })

@@ -6,6 +6,12 @@ export type ProviderRuntimeContentBlock = Readonly<{
 export type OpenAIResponsesRuntimeContentPart =
   | Readonly<{ type: 'input_text'; text: string }>
   | Readonly<{ type: 'input_image'; image_url: string }>
+  | Readonly<{
+      type: 'input_file'
+      filename: string
+      file_data?: string
+      file_url?: string
+    }>
 
 export type AnthropicRuntimeContentBlock =
   | Readonly<{ type: 'text'; text: string }>
@@ -14,6 +20,13 @@ export type AnthropicRuntimeContentBlock =
       source:
         | Readonly<{ type: 'base64'; media_type: string; data: string }>
         | Readonly<{ type: 'url'; url: string }>
+    }>
+  | Readonly<{
+      type: 'document'
+      source:
+        | Readonly<{ type: 'base64'; media_type: string; data: string }>
+        | Readonly<{ type: 'url'; url: string }>
+      title?: string
     }>
 
 export type GeminiRuntimePart =
@@ -30,18 +43,21 @@ export type ProviderRuntimeImageProvider =
 
 const MAX_RUNTIME_CONTENT_BLOCKS = 16
 const MAX_RUNTIME_TEXT_CHARS = 20000
+const MAX_RUNTIME_FILENAME_CHARS = 120
+const MAX_RUNTIME_PDF_INLINE_BYTES = 1024 * 1024
 const IMAGE_DATA_URL_PREFIX = /^data:image\/(?:png|jpeg|jpg);base64,/i
+const PDF_DATA_URL_PREFIX = /^data:application\/pdf;base64,/i
 
 export function buildOpenAIResponsesUserContent(
   userText: string,
   blocks: ReadonlyArray<ProviderRuntimeContentBlock> | undefined
 ): string | OpenAIResponsesRuntimeContentPart[] {
-  const imageParts = collectOpenAIResponsesImageParts(blocks)
+  const fileParts = collectOpenAIResponsesFileParts(blocks)
   const textParts = collectRuntimeTextParts(userText, blocks)
-  if (imageParts.length === 0) return textParts.join('\n')
+  if (fileParts.length === 0) return textParts.join('\n')
   return [
     ...textParts.map((text) => ({ type: 'input_text' as const, text })),
-    ...imageParts,
+    ...fileParts,
   ]
 }
 
@@ -49,12 +65,12 @@ export function buildAnthropicUserContent(
   userText: string,
   blocks: ReadonlyArray<ProviderRuntimeContentBlock> | undefined
 ): string | AnthropicRuntimeContentBlock[] {
-  const imageParts = collectAnthropicImageBlocks(blocks)
+  const fileParts = collectAnthropicFileBlocks(blocks)
   const textParts = collectRuntimeTextParts(userText, blocks)
-  if (imageParts.length === 0) return textParts.join('\n')
+  if (fileParts.length === 0) return textParts.join('\n')
   return [
     ...textParts.map((text) => ({ type: 'text' as const, text })),
-    ...imageParts,
+    ...fileParts,
   ]
 }
 
@@ -62,11 +78,11 @@ export function buildGeminiUserParts(
   userText: string,
   blocks: ReadonlyArray<ProviderRuntimeContentBlock> | undefined
 ): GeminiRuntimePart[] {
-  const imageParts = collectGeminiImageParts(blocks)
+  const fileParts = collectGeminiFileParts(blocks)
   const textParts = collectRuntimeTextParts(userText, blocks)
   return [
     ...textParts.map((text) => ({ text })),
-    ...imageParts,
+    ...fileParts,
   ]
 }
 
@@ -122,6 +138,33 @@ export function sanitizeProviderRuntimeImageContentBlocks(
   return { ok: true, blocks: out }
 }
 
+export function sanitizeProviderRuntimeFileContentBlocks(
+  provider: ProviderRuntimeImageProvider,
+  raw: unknown
+): Readonly<{ ok: true; blocks: ProviderRuntimeContentBlock[] } | { ok: false; message: string }> {
+  if (raw === undefined || raw === null) return { ok: true, blocks: [] }
+  if (!Array.isArray(raw)) {
+    return { ok: false, message: 'Provider runtime content blocks must be an array.' }
+  }
+
+  const out: ProviderRuntimeContentBlock[] = []
+  for (const item of raw.slice(0, MAX_RUNTIME_CONTENT_BLOCKS)) {
+    const text = sanitizeTextBlock(item)
+    if (text) {
+      out.push(text)
+      continue
+    }
+
+    const file = sanitizeFileBlock(provider, item)
+    if (!file) {
+      return { ok: false, message: 'Provider runtime file content block is invalid.' }
+    }
+    out.push(file)
+  }
+
+  return { ok: true, blocks: out }
+}
+
 function collectRuntimeTextParts(
   userText: string,
   blocks: ReadonlyArray<ProviderRuntimeContentBlock> | undefined
@@ -142,19 +185,26 @@ function collectRuntimeTextParts(
   return fallback ? [fallback] : []
 }
 
-function collectOpenAIResponsesImageParts(
+function collectOpenAIResponsesFileParts(
   blocks: ReadonlyArray<ProviderRuntimeContentBlock> | undefined
 ): OpenAIResponsesRuntimeContentPart[] {
   const out: OpenAIResponsesRuntimeContentPart[] = []
   for (const block of blocks ?? []) {
     if (isOpenAIResponsesImagePart(block)) {
       out.push({ type: 'input_image', image_url: block.image_url })
+    } else if (isOpenAIResponsesFilePart(block)) {
+      out.push({
+        type: 'input_file',
+        filename: block.filename,
+        ...(block.file_data ? { file_data: block.file_data } : {}),
+        ...(block.file_url ? { file_url: block.file_url } : {}),
+      })
     }
   }
   return out
 }
 
-function collectAnthropicImageBlocks(
+function collectAnthropicFileBlocks(
   blocks: ReadonlyArray<ProviderRuntimeContentBlock> | undefined
 ): AnthropicRuntimeContentBlock[] {
   const out: AnthropicRuntimeContentBlock[] = []
@@ -176,24 +226,43 @@ function collectAnthropicImageBlocks(
           url: block.source.url,
         },
       })
+    } else if (isAnthropicBase64DocumentBlock(block)) {
+      out.push({
+        type: 'document',
+        source: {
+          type: 'base64',
+          media_type: block.source.media_type,
+          data: block.source.data,
+        },
+        ...(block.title ? { title: block.title } : {}),
+      })
+    } else if (isAnthropicUrlDocumentBlock(block)) {
+      out.push({
+        type: 'document',
+        source: {
+          type: 'url',
+          url: block.source.url,
+        },
+        ...(block.title ? { title: block.title } : {}),
+      })
     }
   }
   return out
 }
 
-function collectGeminiImageParts(
+function collectGeminiFileParts(
   blocks: ReadonlyArray<ProviderRuntimeContentBlock> | undefined
 ): GeminiRuntimePart[] {
   const out: GeminiRuntimePart[] = []
   for (const block of blocks ?? []) {
-    if (isGeminiInlineDataImagePart(block)) {
+    if (isGeminiInlineDataFilePart(block)) {
       out.push({
         inlineData: {
           mimeType: block.inlineData.mimeType,
           data: block.inlineData.data,
         },
       })
-    } else if (isGeminiFileDataImagePart(block)) {
+    } else if (isGeminiFileDataFilePart(block)) {
       out.push({
         fileData: {
           mimeType: block.fileData.mimeType,
@@ -265,10 +334,105 @@ function sanitizeImageBlock(provider: ProviderRuntimeImageProvider, item: unknow
   }
 }
 
+function sanitizeFileBlock(provider: ProviderRuntimeImageProvider, item: unknown): ProviderRuntimeContentBlock | null {
+  const image = sanitizeImageBlock(provider, item)
+  if (image) return image
+
+  switch (provider) {
+    case 'openai_responses':
+      return isOpenAIResponsesFilePart(item)
+        ? {
+            type: 'input_file',
+            filename: item.filename,
+            ...(item.file_data ? { file_data: item.file_data } : {}),
+            ...(item.file_url ? { file_url: item.file_url } : {}),
+          }
+        : null
+    case 'anthropic_messages':
+      if (isAnthropicBase64DocumentBlock(item)) {
+        return {
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: item.source.media_type,
+            data: item.source.data,
+          },
+          ...(item.title ? { title: item.title } : {}),
+        }
+      }
+      return isAnthropicUrlDocumentBlock(item)
+        ? { type: 'document', source: { type: 'url', url: item.source.url }, ...(item.title ? { title: item.title } : {}) }
+        : null
+    case 'google_ai_studio':
+      if (isGeminiInlineDataFilePart(item)) {
+        return { inlineData: { mimeType: item.inlineData.mimeType, data: item.inlineData.data } }
+      }
+      return isGeminiFileDataFilePart(item)
+        ? { fileData: { mimeType: item.fileData.mimeType, fileUri: item.fileData.fileUri } }
+        : null
+    case 'openrouter':
+      return isOpenRouterFilePart(item)
+        ? { type: 'file', file: { filename: item.file.filename, file_data: item.file.file_data } }
+        : null
+    case 'deepseek':
+      if (isOpenAIResponsesFilePart(item)) {
+        return {
+          type: 'input_file',
+          filename: item.filename,
+          ...(item.file_data ? { file_data: item.file_data } : {}),
+          ...(item.file_url ? { file_url: item.file_url } : {}),
+        }
+      }
+      if (isAnthropicBase64DocumentBlock(item)) {
+        return {
+          type: 'document',
+          source: { type: 'base64', media_type: item.source.media_type, data: item.source.data },
+          ...(item.title ? { title: item.title } : {}),
+        }
+      }
+      if (isAnthropicUrlDocumentBlock(item)) {
+        return { type: 'document', source: { type: 'url', url: item.source.url }, ...(item.title ? { title: item.title } : {}) }
+      }
+      if (isGeminiInlineDataFilePart(item)) {
+        return { inlineData: { mimeType: item.inlineData.mimeType, data: item.inlineData.data } }
+      }
+      if (isGeminiFileDataFilePart(item)) {
+        return { fileData: { mimeType: item.fileData.mimeType, fileUri: item.fileData.fileUri } }
+      }
+      return isOpenRouterFilePart(item)
+        ? { type: 'file', file: { filename: item.file.filename, file_data: item.file.file_data } }
+        : null
+  }
+}
+
 function isOpenAIResponsesImagePart(item: unknown): item is Readonly<{ type: 'input_image'; image_url: string }> {
   if (!item || typeof item !== 'object') return false
   const record = item as Record<string, unknown>
   return record.type === 'input_image' && isSafeImageReference(record.image_url)
+}
+
+function isOpenAIResponsesFilePart(item: unknown): item is Readonly<{
+  type: 'input_file'
+  filename: string
+  file_data?: string
+  file_url?: string
+}> {
+  if (!item || typeof item !== 'object') return false
+  const record = item as Record<string, unknown>
+  if (record.type !== 'input_file') return false
+  const filename = sanitizeFilename(record.filename)
+  if (!filename) return false
+  const fileData = record.file_data
+  const fileUrl = record.file_url
+  if (typeof fileData === 'string' && isSafePdfDataUrl(fileData)) {
+    ;(record as { filename: string }).filename = filename
+    return fileUrl === undefined
+  }
+  if (typeof fileUrl === 'string' && isSafePdfUrl(fileUrl)) {
+    ;(record as { filename: string }).filename = filename
+    return fileData === undefined
+  }
+  return false
 }
 
 function isAnthropicImageBlock(item: unknown): item is Extract<AnthropicRuntimeContentBlock, { type: 'image' }> {
@@ -302,6 +466,45 @@ function isAnthropicUrlImageBlock(item: unknown): item is Readonly<{
     isSafeImageReference(source.url)
 }
 
+function isAnthropicBase64DocumentBlock(item: unknown): item is Readonly<{
+  type: 'document'
+  source: Readonly<{ type: 'base64'; media_type: string; data: string }>
+  title?: string
+}> {
+  if (!item || typeof item !== 'object') return false
+  const record = item as Record<string, unknown>
+  const source = record.source as Record<string, unknown> | undefined
+  const title = sanitizeFilename(record.title)
+  if (record.title !== undefined) {
+    if (!title) return false
+    ;(record as { title: string }).title = title
+  }
+  return record.type === 'document' &&
+    !!source &&
+    source.type === 'base64' &&
+    normalizeMimeType(source.media_type) === 'application/pdf' &&
+    isSafePdfBase64Data(source.data)
+}
+
+function isAnthropicUrlDocumentBlock(item: unknown): item is Readonly<{
+  type: 'document'
+  source: Readonly<{ type: 'url'; url: string }>
+  title?: string
+}> {
+  if (!item || typeof item !== 'object') return false
+  const record = item as Record<string, unknown>
+  const source = record.source as Record<string, unknown> | undefined
+  const title = sanitizeFilename(record.title)
+  if (record.title !== undefined) {
+    if (!title) return false
+    ;(record as { title: string }).title = title
+  }
+  return record.type === 'document' &&
+    !!source &&
+    source.type === 'url' &&
+    isSafePdfUrl(source.url)
+}
+
 function isGeminiImagePart(item: unknown): item is Extract<GeminiRuntimePart, { inlineData: unknown } | { fileData: unknown }> {
   return isGeminiInlineDataImagePart(item) || isGeminiFileDataImagePart(item)
 }
@@ -314,12 +517,34 @@ function isGeminiInlineDataImagePart(item: unknown): item is Readonly<{
   return !!inlineData && isImageMimeType(inlineData.mimeType) && isNonEmptyString(inlineData.data)
 }
 
+function isGeminiInlineDataFilePart(item: unknown): item is Readonly<{
+  inlineData: Readonly<{ mimeType: string; data: string }>
+}> {
+  if (!item || typeof item !== 'object') return false
+  const inlineData = (item as Record<string, unknown>).inlineData as Record<string, unknown> | undefined
+  if (!inlineData) return false
+  const mimeType = normalizeMimeType(inlineData.mimeType)
+  if (mimeType === 'application/pdf') return isSafePdfBase64Data(inlineData.data)
+  return isImageMimeType(inlineData.mimeType) && isNonEmptyString(inlineData.data)
+}
+
 function isGeminiFileDataImagePart(item: unknown): item is Readonly<{
   fileData: Readonly<{ mimeType: string; fileUri: string }>
 }> {
   if (!item || typeof item !== 'object') return false
   const fileData = (item as Record<string, unknown>).fileData as Record<string, unknown> | undefined
   return !!fileData && isImageMimeType(fileData.mimeType) && isSafeHttpUrl(fileData.fileUri)
+}
+
+function isGeminiFileDataFilePart(item: unknown): item is Readonly<{
+  fileData: Readonly<{ mimeType: string; fileUri: string }>
+}> {
+  if (!item || typeof item !== 'object') return false
+  const fileData = (item as Record<string, unknown>).fileData as Record<string, unknown> | undefined
+  if (!fileData) return false
+  const mimeType = normalizeMimeType(fileData.mimeType)
+  if (mimeType === 'application/pdf') return isSafePdfUrl(fileData.fileUri)
+  return isImageMimeType(fileData.mimeType) && isSafeHttpUrl(fileData.fileUri)
 }
 
 function isOpenRouterImagePart(item: unknown): item is Readonly<{
@@ -332,6 +557,22 @@ function isOpenRouterImagePart(item: unknown): item is Readonly<{
   return record.type === 'image_url' && !!imageUrl && isSafeImageReference(imageUrl.url)
 }
 
+function isOpenRouterFilePart(item: unknown): item is Readonly<{
+  type: 'file'
+  file: Readonly<{ filename: string; file_data: string }>
+}> {
+  if (!item || typeof item !== 'object') return false
+  const record = item as Record<string, unknown>
+  const file = record.file as Record<string, unknown> | undefined
+  if (record.type !== 'file' || !file) return false
+  const filename = sanitizeFilename(file.filename)
+  if (!filename) return false
+  const fileData = file.file_data
+  if (!isSafePdfReference(fileData)) return false
+  ;(file as { filename: string }).filename = filename
+  return true
+}
+
 function isImageMimeType(value: unknown): value is string {
   if (typeof value !== 'string') return false
   return /^image\/(?:png|jpeg|jpg)$/i.test(value.trim())
@@ -341,12 +582,18 @@ function isSafeImageReference(value: unknown): value is string {
   return isSafeHttpUrl(value) || isSafeImageDataUrl(value)
 }
 
-function isSafeHttpUrl(value: unknown): value is string {
+function isSafePdfReference(value: unknown): value is string {
+  return isSafePdfDataUrl(value) || isSafePdfUrl(value)
+}
+
+function isSafeHttpUrl(value: unknown, options?: Readonly<{ rejectQueryHash?: boolean }>): value is string {
   if (typeof value !== 'string') return false
   try {
     const parsed = new URL(value)
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false
-    return !parsed.username && !parsed.password
+    if (parsed.username || parsed.password) return false
+    if (options?.rejectQueryHash && (parsed.search || parsed.hash)) return false
+    return true
   } catch {
     return false
   }
@@ -354,6 +601,48 @@ function isSafeHttpUrl(value: unknown): value is string {
 
 function isSafeImageDataUrl(value: unknown): value is string {
   return typeof value === 'string' && IMAGE_DATA_URL_PREFIX.test(value)
+}
+
+function isSafePdfDataUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  if (!PDF_DATA_URL_PREFIX.test(trimmed)) return false
+  return isBase64PayloadWithinBytes(trimmed.replace(PDF_DATA_URL_PREFIX, ''), MAX_RUNTIME_PDF_INLINE_BYTES)
+}
+
+function isSafePdfBase64Data(value: unknown): value is string {
+  return typeof value === 'string' &&
+    isBase64PayloadWithinBytes(value.trim(), MAX_RUNTIME_PDF_INLINE_BYTES)
+}
+
+function isSafePdfUrl(value: unknown): value is string {
+  return isSafeHttpUrl(value, { rejectQueryHash: true })
+}
+
+function normalizeMimeType(value: unknown): string | null {
+  const normalized = String(value ?? '').split(';', 1)[0]?.trim().toLowerCase()
+  return normalized || null
+}
+
+function sanitizeFilename(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .split(/[\\/]/)
+    .pop()
+    ?.replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_RUNTIME_FILENAME_CHARS)
+  return normalized || null
+}
+
+function isBase64PayloadWithinBytes(value: string, maxBytes: number): boolean {
+  if (!value) return false
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(value)) return false
+  if (value.length % 4 === 1) return false
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0
+  const estimatedBytes = Math.floor((value.length * 3) / 4) - padding
+  return estimatedBytes >= 0 && estimatedBytes <= maxBytes
 }
 
 function isNonEmptyString(value: unknown): value is string {

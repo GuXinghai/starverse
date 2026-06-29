@@ -578,6 +578,8 @@ export const PrepareProviderImageSendSchema = z.object({
   providerContext: SendPlanProviderContextSchema,
 })
 
+export const PrepareProviderFileSendSchema = PrepareProviderImageSendSchema
+
 export const PrepareOpenRouterReplayFromMessageSchema: ZodType<PrepareOpenRouterReplayFromMessageInput> = z.object({
   branchId: z.string().min(1),
   userMessageId: z.string().min(1),
