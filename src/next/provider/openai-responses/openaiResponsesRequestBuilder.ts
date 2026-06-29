@@ -16,7 +16,7 @@ import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
 export type ResponsesInputContentPart = Readonly<
   | { type: 'input_text'; text: string }
   | { type: 'input_image'; image_url: string }
-  | { type: 'input_file'; filename?: string; file_data?: string; file_url?: string }
+  | { type: 'input_file'; filename?: string; file_id?: string; file_data?: string; file_url?: string }
 >
 
 export type ResponsesInputMessage = Readonly<{

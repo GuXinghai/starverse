@@ -39,6 +39,7 @@ import { validateStartupIpcRegistration } from './ipc/startupIpcAudit'
 import { startStartupBackgroundJobs, wireDbEventsToRenderer } from './jobs/startupBackgroundJobs'
 import { createInAppBrowserManager } from './services/inappBrowser'
 import { createMainProcessElectronConversionService } from './services/electronConversionService'
+import { createProviderFileUploadService } from './services/providerFileUploadService'
 import { createMainWindowLifecycle } from './windows/mainWindowLifecycle'
 import {
   CURRENT_CONFIG_VERSION,
@@ -611,6 +612,10 @@ const providerCredentialService = createProviderCredentialService(store, {
   },
 })
 
+const providerFileUploadService = createProviderFileUploadService({
+  db: dbWorkerManager,
+})
+
 function normalizeDbWorkerCallTimeoutMs(value: string | undefined): number {
   const parsed = Number.parseInt(String(value ?? '').trim(), 10)
   if (!Number.isFinite(parsed) || parsed <= 0) return 20000
@@ -801,6 +806,7 @@ function registerCoreIpcHandlers(): string[] {
       dbWorkerManager.call('enginePluginLifecycle.importLibreOfficeSvpkgFromPath', { packagePath }),
     quarantineLibreOfficeRuntime: () =>
       dbWorkerManager.call('enginePluginLifecycle.quarantineLibreOfficeRuntime'),
+    providerFileUploadService,
   })
 
   const validation = validateCoreIpcRegistration(registration.channels)

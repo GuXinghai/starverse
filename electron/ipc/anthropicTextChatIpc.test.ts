@@ -39,6 +39,19 @@ function createCredentialService(apiKey?: string): ProviderCredentialService {
 }
 
 describe('anthropicTextChatIpc', () => {
+  const uploadBlock = {
+    type: 'starverse_provider_file_upload',
+    provider: 'anthropic_messages',
+    assetId: 'asset-upload',
+    revisionId: 'rev-upload',
+    blobSha256: 'a'.repeat(64),
+    mimeType: 'application/pdf',
+    sizeBytes: 4,
+    kind: 'pdf',
+    filename: 'manual.pdf',
+    dataBase64: 'JVBERg==',
+  }
+
   it('validates text-only payloads before fetch', () => {
     expect(validateAnthropicTextChatPayload({
       requestId: 'anthropic_req_1',
@@ -127,6 +140,57 @@ describe('anthropicTextChatIpc', () => {
       event.event.error.code === 'credential_missing',
     )).toBe(true)
     expect(events.some((event) => event.type === 'event' && event.event.type === 'stream.done')).toBe(false)
+  })
+
+  it('resolves provider upload blocks before building the Anthropic Messages request body', async () => {
+    const providerFileUploadService = {
+      resolveContentBlocks: vi.fn(async () => ({
+        ok: true,
+        blocks: [
+          { type: 'document', source: { type: 'file', file_id: 'file-anthropic-uploaded' }, title: 'manual.pdf' },
+        ],
+        cacheEvents: [],
+      })),
+      invalidate: vi.fn(),
+    }
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}'))
+      const serializedBody = JSON.stringify(body)
+      expect(body.messages[0].content).toEqual([
+        { type: 'text', text: 'Read it.' },
+        { type: 'document', source: { type: 'file', file_id: 'file-anthropic-uploaded' }, title: 'manual.pdf' },
+      ])
+      expect(serializedBody).not.toContain('JVBERg')
+      expect(serializedBody).not.toContain('originalPath')
+      expect(serializedBody).not.toContain('storagePath')
+      expect(serializedBody).not.toContain('blobId')
+      expect(serializedBody).not.toContain('originalUrl')
+      expect(serializedBody).not.toContain('sk-ant-secret')
+      return makeSseResponse(textDeltaSse('done'), messageStopSse())
+    }) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerAnthropicTextChatIpc({
+      registerInvoke,
+      credentialService: createCredentialService('sk-ant-secret'),
+      providerFileUploadService: providerFileUploadService as any,
+      fetchImpl,
+    })
+    const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'anthropic-chat:stream-text')?.[1]
+    const sender = createSender()
+
+    await handler({ sender }, {
+      requestId: 'anthropic_req_upload',
+      assistantMessageId: 'assistant_1',
+      model: 'claude-haiku-4-5-20251001',
+      messages: [{ role: 'user', content: 'Read it.' }],
+      currentUserContentBlocks: [uploadBlock],
+    })
+
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1))
+    expect(providerFileUploadService.resolveContentBlocks).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'anthropic_messages',
+      baseUrl: 'https://api.anthropic.com/v1',
+    }))
   })
 
   it('normalizes malicious transport errors before sending them to the renderer', async () => {

@@ -6,6 +6,7 @@ import {
   createProviderFileInputAssetReader,
   M1C_PDF_INLINE_LIMIT_BYTES,
   prepareProviderFileInput,
+  prepareProviderFileUploadInput,
   type ProviderFileInputKind,
   type ProviderFileInputProvider,
   type ProviderFileInputSendMode,
@@ -47,6 +48,27 @@ export function registerProviderFileInputHandlers(register: RegisterHandler, run
       allowedKinds: new Set<ProviderFileInputKind>(['image', 'pdf']),
       imageOnly: false,
     })
+  })
+
+  register('providerFileCache.findReusable', (raw) => {
+    const input = raw as any
+    return runtime.providerFileUploadCacheRepo.findReusable(input, Number(input?.nowMs ?? Date.now()))
+  })
+
+  register('providerFileCache.reserve', (raw) => {
+    return runtime.providerFileUploadCacheRepo.reserve(raw as any)
+  })
+
+  register('providerFileCache.markReady', (raw) => {
+    return runtime.providerFileUploadCacheRepo.markReady(raw as any)
+  })
+
+  register('providerFileCache.markFailed', (raw) => {
+    return runtime.providerFileUploadCacheRepo.markFailed(raw as any)
+  })
+
+  register('providerFileCache.invalidate', (raw) => {
+    return runtime.providerFileUploadCacheRepo.invalidate(raw as any)
   })
 }
 
@@ -141,7 +163,11 @@ async function prepareDraftFileInputs(
       })
     }
 
-    const prepared = await prepareProviderFileInput({
+    const provider = input.provider as ProviderFileInputProvider
+    const prepare = shouldUseProviderUploadInput(provider, sendMode)
+      ? prepareProviderFileUploadInput
+      : prepareProviderFileInput
+    const prepared = await prepare({
       provider: input.provider as ProviderFileInputProvider,
       assetId: plan.assetId,
       sendMode,
@@ -239,6 +265,13 @@ function mapSendMode(mode: SendMode | null): ProviderFileInputSendMode | null {
   if (mode === 'inline_base64') return 'inline_base64'
   if (mode === 'url_ref') return 'url_ref'
   return null
+}
+
+function shouldUseProviderUploadInput(provider: string, sendMode: ProviderFileInputSendMode): boolean {
+  if (sendMode === 'url_ref') return false
+  return provider === 'openai_responses' ||
+    provider === 'anthropic_messages' ||
+    provider === 'google_ai_studio'
 }
 
 function isAllowedPlan(plan: AttachmentPlan, allowedKinds: ReadonlySet<ProviderFileInputKind>): boolean {

@@ -8,7 +8,8 @@ export type OpenAIResponsesRuntimeContentPart =
   | Readonly<{ type: 'input_image'; image_url: string }>
   | Readonly<{
       type: 'input_file'
-      filename: string
+      filename?: string
+      file_id?: string
       file_data?: string
       file_url?: string
     }>
@@ -20,12 +21,14 @@ export type AnthropicRuntimeContentBlock =
       source:
         | Readonly<{ type: 'base64'; media_type: string; data: string }>
         | Readonly<{ type: 'url'; url: string }>
+        | Readonly<{ type: 'file'; file_id: string }>
     }>
   | Readonly<{
       type: 'document'
       source:
         | Readonly<{ type: 'base64'; media_type: string; data: string }>
         | Readonly<{ type: 'url'; url: string }>
+        | Readonly<{ type: 'file'; file_id: string }>
       title?: string
     }>
 
@@ -48,6 +51,19 @@ export type ProviderRuntimeImageProvider =
   | 'local_endpoint'
   | 'lm_studio'
   | 'ollama_local'
+
+export type ProviderRuntimeUploadRequestBlock = Readonly<{
+  type: 'starverse_provider_file_upload'
+  provider: 'openai_responses' | 'anthropic_messages' | 'google_ai_studio'
+  assetId: string
+  revisionId: string
+  blobSha256: string
+  mimeType: string
+  sizeBytes: number
+  kind: 'image' | 'pdf'
+  filename: string
+  dataBase64: string
+}>
 
 const MAX_RUNTIME_CONTENT_BLOCKS = 16
 const MAX_RUNTIME_TEXT_CHARS = 20000
@@ -216,7 +232,8 @@ function collectOpenAIResponsesFileParts(
     } else if (isOpenAIResponsesFilePart(block)) {
       out.push({
         type: 'input_file',
-        filename: block.filename,
+        ...(block.filename ? { filename: block.filename } : {}),
+        ...(block.file_id ? { file_id: block.file_id } : {}),
         ...(block.file_data ? { file_data: block.file_data } : {}),
         ...(block.file_url ? { file_url: block.file_url } : {}),
       })
@@ -247,6 +264,14 @@ function collectAnthropicFileBlocks(
           url: block.source.url,
         },
       })
+    } else if (isAnthropicFileImageBlock(block)) {
+      out.push({
+        type: 'image',
+        source: {
+          type: 'file',
+          file_id: block.source.file_id,
+        },
+      })
     } else if (isAnthropicBase64DocumentBlock(block)) {
       out.push({
         type: 'document',
@@ -263,6 +288,15 @@ function collectAnthropicFileBlocks(
         source: {
           type: 'url',
           url: block.source.url,
+        },
+        ...(block.title ? { title: block.title } : {}),
+      })
+    } else if (isAnthropicFileDocumentBlock(block)) {
+      out.push({
+        type: 'document',
+        source: {
+          type: 'file',
+          file_id: block.source.file_id,
         },
         ...(block.title ? { title: block.title } : {}),
       })
@@ -336,6 +370,8 @@ function sanitizeImageBlock(provider: ProviderRuntimeImageProvider, item: unknow
       }
       return isAnthropicUrlImageBlock(item)
         ? { type: 'image', source: { type: 'url', url: item.source.url } }
+        : isAnthropicFileImageBlock(item)
+          ? { type: 'image', source: { type: 'file', file_id: item.source.file_id } }
         : null
     case 'google_ai_studio':
       if (isGeminiInlineDataImagePart(item)) {
@@ -380,15 +416,18 @@ function sanitizeFileBlock(provider: ProviderRuntimeImageProvider, item: unknown
 
   switch (provider) {
     case 'openai_responses':
+      if (isProviderRuntimeUploadRequestBlock(item) && item.provider === 'openai_responses') return item
       return isOpenAIResponsesFilePart(item)
         ? {
             type: 'input_file',
-            filename: item.filename,
+            ...(item.filename ? { filename: item.filename } : {}),
+            ...(item.file_id ? { file_id: item.file_id } : {}),
             ...(item.file_data ? { file_data: item.file_data } : {}),
             ...(item.file_url ? { file_url: item.file_url } : {}),
           }
         : null
     case 'anthropic_messages':
+      if (isProviderRuntimeUploadRequestBlock(item) && item.provider === 'anthropic_messages') return item
       if (isAnthropicBase64DocumentBlock(item)) {
         return {
           type: 'document',
@@ -402,8 +441,11 @@ function sanitizeFileBlock(provider: ProviderRuntimeImageProvider, item: unknown
       }
       return isAnthropicUrlDocumentBlock(item)
         ? { type: 'document', source: { type: 'url', url: item.source.url }, ...(item.title ? { title: item.title } : {}) }
+        : isAnthropicFileDocumentBlock(item)
+          ? { type: 'document', source: { type: 'file', file_id: item.source.file_id }, ...(item.title ? { title: item.title } : {}) }
         : null
     case 'google_ai_studio':
+      if (isProviderRuntimeUploadRequestBlock(item) && item.provider === 'google_ai_studio') return item
       if (isGeminiInlineDataFilePart(item)) {
         return { inlineData: { mimeType: item.inlineData.mimeType, data: item.inlineData.data } }
       }
@@ -458,7 +500,8 @@ function isOpenAIResponsesImagePart(item: unknown): item is Readonly<{ type: 'in
 
 function isOpenAIResponsesFilePart(item: unknown): item is Readonly<{
   type: 'input_file'
-  filename: string
+  filename?: string
+  file_id?: string
   file_data?: string
   file_url?: string
 }> {
@@ -466,9 +509,13 @@ function isOpenAIResponsesFilePart(item: unknown): item is Readonly<{
   const record = item as Record<string, unknown>
   if (record.type !== 'input_file') return false
   const filename = sanitizeFilename(record.filename)
-  if (!filename) return false
   const fileData = record.file_data
   const fileUrl = record.file_url
+  const fileId = record.file_id
+  if (typeof fileId === 'string' && isSafeProviderFileId(fileId)) {
+    return record.filename === undefined && fileData === undefined && fileUrl === undefined
+  }
+  if (!filename) return false
   if (typeof fileData === 'string' && isSafePdfDataUrl(fileData)) {
     ;(record as { filename: string }).filename = filename
     return fileUrl === undefined
@@ -481,7 +528,7 @@ function isOpenAIResponsesFilePart(item: unknown): item is Readonly<{
 }
 
 function isAnthropicImageBlock(item: unknown): item is Extract<AnthropicRuntimeContentBlock, { type: 'image' }> {
-  return isAnthropicBase64ImageBlock(item) || isAnthropicUrlImageBlock(item)
+  return isAnthropicBase64ImageBlock(item) || isAnthropicUrlImageBlock(item) || isAnthropicFileImageBlock(item)
 }
 
 function isAnthropicBase64ImageBlock(item: unknown): item is Readonly<{
@@ -509,6 +556,19 @@ function isAnthropicUrlImageBlock(item: unknown): item is Readonly<{
     !!source &&
     source.type === 'url' &&
     isSafeImageReference(source.url)
+}
+
+function isAnthropicFileImageBlock(item: unknown): item is Readonly<{
+  type: 'image'
+  source: Readonly<{ type: 'file'; file_id: string }>
+}> {
+  if (!item || typeof item !== 'object') return false
+  const record = item as Record<string, unknown>
+  const source = record.source as Record<string, unknown> | undefined
+  return record.type === 'image' &&
+    !!source &&
+    source.type === 'file' &&
+    isSafeProviderFileId(source.file_id)
 }
 
 function isAnthropicBase64DocumentBlock(item: unknown): item is Readonly<{
@@ -548,6 +608,25 @@ function isAnthropicUrlDocumentBlock(item: unknown): item is Readonly<{
     !!source &&
     source.type === 'url' &&
     isSafePdfUrl(source.url)
+}
+
+function isAnthropicFileDocumentBlock(item: unknown): item is Readonly<{
+  type: 'document'
+  source: Readonly<{ type: 'file'; file_id: string }>
+  title?: string
+}> {
+  if (!item || typeof item !== 'object') return false
+  const record = item as Record<string, unknown>
+  const source = record.source as Record<string, unknown> | undefined
+  const title = sanitizeFilename(record.title)
+  if (record.title !== undefined) {
+    if (!title) return false
+    ;(record as { title: string }).title = title
+  }
+  return record.type === 'document' &&
+    !!source &&
+    source.type === 'file' &&
+    isSafeProviderFileId(source.file_id)
 }
 
 function isGeminiImagePart(item: unknown): item is Extract<GeminiRuntimePart, { inlineData: unknown } | { fileData: unknown }> {
@@ -625,9 +704,40 @@ function isOpenRouterFilePart(item: unknown): item is Readonly<{
   return true
 }
 
+export function isProviderRuntimeUploadRequestBlock(item: unknown): item is ProviderRuntimeUploadRequestBlock {
+  if (!item || typeof item !== 'object') return false
+  const record = item as Record<string, unknown>
+  const provider = String(record.provider ?? '')
+  const kind = String(record.kind ?? '')
+  const mimeType = normalizeMimeType(record.mimeType)
+  const sizeBytes = Number(record.sizeBytes)
+  return record.type === 'starverse_provider_file_upload' &&
+    (provider === 'openai_responses' || provider === 'anthropic_messages' || provider === 'google_ai_studio') &&
+    isNonEmptyString(record.assetId) &&
+    isNonEmptyString(record.revisionId) &&
+    isSafeSha256(record.blobSha256) &&
+    (kind === 'image' || kind === 'pdf') &&
+    (kind === 'image' ? isImageMimeType(mimeType) : mimeType === 'application/pdf') &&
+    Number.isSafeInteger(sizeBytes) &&
+    sizeBytes >= 0 &&
+    !!sanitizeFilename(record.filename) &&
+    isNonEmptyString(record.dataBase64) &&
+    isBase64PayloadWithinBytes(record.dataBase64.trim(), Math.max(sizeBytes, 1))
+}
+
 function isImageMimeType(value: unknown): value is string {
   if (typeof value !== 'string') return false
   return /^image\/(?:png|jpeg|jpg)$/i.test(value.trim())
+}
+
+function isSafeProviderFileId(value: unknown): value is string {
+  return typeof value === 'string' &&
+    /^[A-Za-z0-9][A-Za-z0-9._:/-]{1,255}$/.test(value.trim()) &&
+    !/[?&#\\]/.test(value)
+}
+
+function isSafeSha256(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value.trim())
 }
 
 function isSafeImageReference(value: unknown): value is string {

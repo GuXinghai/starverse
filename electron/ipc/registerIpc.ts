@@ -78,6 +78,7 @@ import {
   registerDeepSeekTextChatIpc,
   DEEPSEEK_TEXT_CHAT_IPC_CHANNELS,
 } from './deepSeekTextChatIpc'
+import type { ProviderFileUploadService } from '../services/providerFileUploadService'
 import type { RegisterInvoke } from './types'
 
 export const CORE_IPC_CHANNELS = [
@@ -127,6 +128,7 @@ type RegisterIpcInput = Readonly<{
   fileSelectionGrants?: FileSelectionGrantStore
   importLibreOfficeSvpkg?: (packagePath: string) => Promise<unknown>
   quarantineLibreOfficeRuntime?: () => Promise<unknown>
+  providerFileUploadService?: ProviderFileUploadService
 }>
 
 export type IpcRegistrationResult = Readonly<{
@@ -209,14 +211,17 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
     ...registerOpenAIResponsesTextChatIpc({
       registerInvoke: input.registerInvoke,
       credentialService: input.credentialService,
+      providerFileUploadService: input.providerFileUploadService,
     }),
     ...registerGoogleAIStudioTextChatIpc({
       registerInvoke: input.registerInvoke,
       credentialService: input.credentialService,
+      providerFileUploadService: input.providerFileUploadService,
     }),
     ...registerAnthropicTextChatIpc({
       registerInvoke: input.registerInvoke,
       credentialService: input.credentialService,
+      providerFileUploadService: input.providerFileUploadService,
     }),
     ...registerDeepSeekTextChatIpc({
       registerInvoke: input.registerInvoke,

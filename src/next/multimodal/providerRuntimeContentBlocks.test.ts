@@ -1,11 +1,28 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildAnthropicUserContent,
+  buildGeminiUserParts,
   buildOpenAICompatibleUserContent,
+  buildOpenAIResponsesUserContent,
+  isProviderRuntimeUploadRequestBlock,
   sanitizeProviderRuntimeFileContentBlocks,
   sanitizeProviderRuntimeImageContentBlocks,
 } from '@/next/multimodal/providerRuntimeContentBlocks'
 
 describe('providerRuntimeContentBlocks', () => {
+  const uploadBlock = {
+    type: 'starverse_provider_file_upload',
+    provider: 'openai_responses',
+    assetId: 'asset-upload',
+    revisionId: 'rev-upload',
+    blobSha256: 'a'.repeat(64),
+    mimeType: 'application/pdf',
+    sizeBytes: 4,
+    kind: 'pdf',
+    filename: 'manual.pdf',
+    dataBase64: 'JVBERg==',
+  }
+
   it('rejects credentialed URL image references at the IPC sanitizer boundary', () => {
     const result = sanitizeProviderRuntimeImageContentBlocks('openrouter', [
       {
@@ -18,7 +35,6 @@ describe('providerRuntimeContentBlocks', () => {
     expect(JSON.stringify(result)).not.toContain('user:secret')
     expect(JSON.stringify(result)).not.toContain('do-not-leak')
   })
-
 
   it('builds OpenAI-compatible text plus image_url content parts for local runtimes', () => {
     const content = buildOpenAICompatibleUserContent('Describe it.', [
@@ -109,6 +125,60 @@ describe('providerRuntimeContentBlocks', () => {
         { type: 'file', file: { filename: 'manual.pdf', file_data: 'data:application/pdf;base64,JVBERi0xLjQK' } },
       ],
     })
+  })
+
+  it('accepts safe provider upload DTOs before main-process upload resolution', () => {
+    const result = sanitizeProviderRuntimeFileContentBlocks('openai_responses', [uploadBlock])
+
+    expect(result).toEqual({ ok: true, blocks: [uploadBlock] })
+    expect(isProviderRuntimeUploadRequestBlock(uploadBlock)).toBe(true)
+    expect(JSON.stringify(result)).not.toContain('storagePath')
+    expect(JSON.stringify(result)).not.toContain('blobId')
+    expect(JSON.stringify(result)).not.toContain('originalUrl')
+  })
+
+  it('rejects provider upload DTOs for DeepSeek and provider mismatches', () => {
+    expect(sanitizeProviderRuntimeFileContentBlocks('deepseek', [uploadBlock])).toMatchObject({
+      ok: false,
+      message: 'Provider runtime file content block is invalid.',
+    })
+    expect(sanitizeProviderRuntimeFileContentBlocks('anthropic_messages', [uploadBlock])).toMatchObject({
+      ok: false,
+      message: 'Provider runtime file content block is invalid.',
+    })
+  })
+
+  it('builds OpenAI Responses file_id request parts', () => {
+    const content = buildOpenAIResponsesUserContent('Read it.', [
+      { type: 'input_file', file_id: 'file-openai-1' },
+    ])
+
+    expect(content).toEqual([
+      { type: 'input_text', text: 'Read it.' },
+      { type: 'input_file', file_id: 'file-openai-1' },
+    ])
+  })
+
+  it('builds Anthropic file_id document blocks', () => {
+    const content = buildAnthropicUserContent('Read it.', [
+      { type: 'document', source: { type: 'file', file_id: 'file-anthropic-1' }, title: 'manual.pdf' },
+    ])
+
+    expect(content).toEqual([
+      { type: 'text', text: 'Read it.' },
+      { type: 'document', source: { type: 'file', file_id: 'file-anthropic-1' }, title: 'manual.pdf' },
+    ])
+  })
+
+  it('builds Gemini fileUri parts', () => {
+    const parts = buildGeminiUserParts('Read it.', [
+      { fileData: { mimeType: 'application/pdf', fileUri: 'https://generativelanguage.googleapis.com/v1beta/files/file-a' } },
+    ])
+
+    expect(parts).toEqual([
+      { text: 'Read it.' },
+      { fileData: { mimeType: 'application/pdf', fileUri: 'https://generativelanguage.googleapis.com/v1beta/files/file-a' } },
+    ])
   })
 
   it('rejects PDF URL references with query or hash without leaking tokens', () => {

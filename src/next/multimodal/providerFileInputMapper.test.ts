@@ -3,6 +3,7 @@ import {
   createProviderFileInputAssetReader,
   M1C_PDF_INLINE_LIMIT_BYTES,
   prepareProviderFileInput,
+  prepareProviderFileUploadInput,
   type ProviderFileAssetMetadata,
   type ProviderFileInputProvider,
   type ProviderFileInputReadResult,
@@ -65,6 +66,46 @@ describe('providerFileInputMapper', () => {
     if (result.ok) expect(result.requestPart).toEqual(expectedInlinePart(provider, 'image', 'pixel.png', 'image/png', bytes))
   })
 
+  it.each(['openai_responses', 'anthropic_messages', 'google_ai_studio'] as const)(
+    'maps a tiny PNG asset to %s provider upload request part',
+    async (provider) => {
+      const result = await prepareProviderFileUploadInput({
+        provider,
+        assetId: 'asset-upload-png',
+        readAsset: async () => managedReadResult({
+          assetId: 'asset-upload-png',
+          filename: 'pixel.png',
+          mimeType: 'image/png',
+          extension: 'png',
+          bytes: TINY_PNG_BYTES,
+        }),
+      })
+
+      expect(result).toMatchObject({
+        ok: true,
+        provider,
+        assetId: 'asset-upload-png',
+        revisionId: 'rev-asset-upload-png',
+        mimeType: 'image/png',
+        kind: 'image',
+      })
+      if (result.ok) {
+        expect(result.requestPart).toEqual({
+          type: 'starverse_provider_file_upload',
+          provider,
+          assetId: 'asset-upload-png',
+          revisionId: 'rev-asset-upload-png',
+          blobSha256: 'b'.repeat(64),
+          mimeType: 'image/png',
+          sizeBytes: TINY_PNG_BYTES.byteLength,
+          kind: 'image',
+          filename: 'pixel.png',
+          dataBase64: Buffer.from(TINY_PNG_BYTES).toString('base64'),
+        })
+      }
+    }
+  )
+
   it.each(PROVIDERS)('maps a tiny JPEG asset to %s request part', async (provider) => {
     const bytes = TINY_JPEG_BYTES
     const result = await prepareProviderFileInput({
@@ -90,7 +131,6 @@ describe('providerFileInputMapper', () => {
     })
     if (result.ok) expect(result.requestPart).toEqual(expectedInlinePart(provider, 'image', 'photo.jpeg', 'image/jpeg', bytes))
   })
-
 
   it.each(OPENAI_COMPAT_IMAGE_PROVIDERS)('maps a tiny PNG asset to %s OpenAI-compatible image_url content part', async (provider) => {
     const result = await prepareProviderFileInput({
@@ -164,7 +204,6 @@ describe('providerFileInputMapper', () => {
     if (result.ok) expect(result.requestPart).toEqual(expectedInlinePart(provider, 'pdf', 'manual.pdf', 'application/pdf', bytes))
   })
 
-
   it.each(OPENAI_COMPAT_IMAGE_PROVIDERS)('rejects PDF input for image-only %s runtime', async (provider) => {
     const result = await prepareProviderFileInput({
       provider,
@@ -185,6 +224,49 @@ describe('providerFileInputMapper', () => {
       message: `Provider ${provider} does not support pdf inline file input.`,
     })
   })
+
+  it.each(['openai_responses', 'anthropic_messages', 'google_ai_studio'] as const)(
+    'maps a one-page small PDF asset to %s provider upload request part',
+    async (provider) => {
+      const result = await prepareProviderFileUploadInput({
+        provider,
+        assetId: 'asset-upload-pdf',
+        readAsset: async () => managedReadResult({
+          assetId: 'asset-upload-pdf',
+          filename: 'manual.pdf',
+          mimeType: 'application/pdf',
+          extension: 'pdf',
+          bytes: TINY_PDF_BYTES,
+        }),
+      })
+
+      expect(result).toMatchObject({
+        ok: true,
+        provider,
+        assetId: 'asset-upload-pdf',
+        revisionId: 'rev-asset-upload-pdf',
+        mimeType: 'application/pdf',
+        kind: 'pdf',
+      })
+      if (result.ok) {
+        expect(result.requestPart).toMatchObject({
+          type: 'starverse_provider_file_upload',
+          provider,
+          assetId: 'asset-upload-pdf',
+          revisionId: 'rev-asset-upload-pdf',
+          blobSha256: 'b'.repeat(64),
+          mimeType: 'application/pdf',
+          sizeBytes: TINY_PDF_BYTES.byteLength,
+          kind: 'pdf',
+          filename: 'manual.pdf',
+        })
+        expect(JSON.stringify(result.requestPart)).not.toContain('originalPath')
+        expect(JSON.stringify(result.requestPart)).not.toContain('storagePath')
+        expect(JSON.stringify(result.requestPart)).not.toContain('originalUrl')
+        expect(JSON.stringify(result.requestPart)).not.toContain('blobId')
+      }
+    }
+  )
 
   it('maps link_and_file URL snapshots from managed snapshot bytes without passing originalUrl', async () => {
     const result = await prepareProviderFileInput({
@@ -240,7 +322,6 @@ describe('providerFileInputMapper', () => {
     })
     if (result.ok) expect(result.requestPart).toEqual(expectedUrlPart(provider, 'image', 'remote.png', 'image/png', url))
   })
-
 
   it.each(OPENAI_COMPAT_IMAGE_PROVIDERS)('maps link_only public image URLs for URL-capable %s OpenAI-compatible request parts', async (provider) => {
     const url = 'https://cdn.example.test/photo.png'
@@ -776,6 +857,7 @@ function managedReadResult(input: Readonly<{
     },
     blob: {
       id: `blob-${input.assetId}`,
+      sha256: 'b'.repeat(64),
       mimeType: input.mimeType,
       sizeBytes: input.bytes.byteLength,
     },

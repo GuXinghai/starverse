@@ -439,6 +439,79 @@ export type CreateAssetRevisionInput = Readonly<{
   createdAt?: number
 }>
 
+export type ProviderFileUploadCacheProvider =
+  | 'openai_responses'
+  | 'anthropic_messages'
+  | 'google_ai_studio'
+
+export type ProviderFileUploadCacheAssetKind = 'image' | 'pdf'
+export type ProviderFileUploadCacheStatus = 'uploading' | 'ready' | 'failed' | 'invalidated'
+
+export type ProviderFileUploadCacheKey = Readonly<{
+  provider: ProviderFileUploadCacheProvider
+  endpointFamily: string
+  normalizedBaseUrl: string
+  credentialFingerprint: string
+  assetId: string
+  revisionId: string
+  blobSha256: string
+  mimeType: string
+  sizeBytes: number
+  assetKind: ProviderFileUploadCacheAssetKind
+  uploadPurpose: string
+}>
+
+export type ProviderFileUploadCacheRecord = ProviderFileUploadCacheKey & Readonly<{
+  id: string
+  providerFileId: string | null
+  providerFileUri: string | null
+  providerFileName: string | null
+  status: ProviderFileUploadCacheStatus
+  expiresAtMs: number | null
+  uploadStartedAtMs: number
+  uploadedAtMs: number | null
+  invalidatedAtMs: number | null
+  lastErrorCode: string | null
+  lastErrorMessage: string | null
+  metadataJson: JsonObject | null
+  createdAtMs: number
+  updatedAtMs: number
+}>
+
+export type ProviderFileUploadCacheReserveInput = ProviderFileUploadCacheKey & Readonly<{
+  id?: string
+  nowMs?: number
+}>
+
+export type ProviderFileUploadCacheReserveResult =
+  | Readonly<{ status: 'reserved'; record: ProviderFileUploadCacheRecord }>
+  | Readonly<{ status: 'ready'; record: ProviderFileUploadCacheRecord }>
+  | Readonly<{ status: 'conflict'; record: ProviderFileUploadCacheRecord | null; retryable: true }>
+
+export type ProviderFileUploadCacheMarkReadyInput = Readonly<{
+  id: string
+  providerFileId?: string | null
+  providerFileUri?: string | null
+  providerFileName?: string | null
+  expiresAtMs?: number | null
+  metadataJson?: JsonObject | null
+  nowMs?: number
+}>
+
+export type ProviderFileUploadCacheMarkFailedInput = Readonly<{
+  id: string
+  errorCode: string
+  errorMessage: string
+  nowMs?: number
+}>
+
+export type ProviderFileUploadCacheInvalidateInput = Readonly<{
+  id: string
+  errorCode?: string
+  errorMessage?: string
+  nowMs?: number
+}>
+
 export type AssetBindingRecord = Readonly<{
   id: string
   assetId: string

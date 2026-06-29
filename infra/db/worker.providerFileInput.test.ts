@@ -258,20 +258,26 @@ function prepareParams() {
   }
 }
 
-function prepareFileParams() {
+function prepareFileParams(overrides: Readonly<{
+  provider?: string
+  providerKey?: string
+  modelKey?: string
+}> = {}) {
+  const provider = overrides.provider ?? 'openai_responses'
+  const providerKey = overrides.providerKey ?? 'openai_responses'
   return {
-    provider: 'openai_responses',
+    provider,
     conversationId: 'c1',
     draftText: 'read pdf',
     model: {
-      providerKey: 'openai_responses',
+      providerKey,
       modelId: 'gpt-4.1-mini',
-      modelKey: 'openai_responses::gpt-4.1-mini',
+      modelKey: overrides.modelKey ?? 'openai_responses::gpt-4.1-mini',
       inputModalities: ['text', 'image', 'file'],
       outputModalities: ['text'],
     },
     providerContext: {
-      providerKey: 'openai_responses',
+      providerKey,
       supportsImageUrlRef: true,
       supportsPdfInputs: true,
       supportsPdfUrlRef: true,
@@ -308,7 +314,18 @@ describeIfBetterSqlite('provider file input worker handlers', () => {
         result: {
           ok: true,
           contentParts: [
-            { type: 'input_image', image_url: expect.stringMatching(/^data:image\/png;base64,/) },
+            {
+              type: 'starverse_provider_file_upload',
+              provider: 'openai_responses',
+              assetId: 'asset-png',
+              revisionId: expect.any(String),
+              blobSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+              mimeType: 'image/png',
+              sizeBytes: expect.any(Number),
+              kind: 'image',
+              filename: 'photo.png',
+              dataBase64: expect.any(String),
+            },
           ],
           diagnostics: expect.objectContaining({
             includedImageCount: 1,
@@ -321,6 +338,7 @@ describeIfBetterSqlite('provider file input worker handlers', () => {
       expect(serialized).not.toContain('storageUri')
       expect(serialized).not.toContain('storagePath')
       expect(serialized).not.toContain('blob-asset-png')
+      expect(serialized).not.toContain('originalUrl')
     } finally {
       h.db.close()
       await rm(storageRootDir, { recursive: true, force: true })
@@ -363,7 +381,7 @@ describeIfBetterSqlite('provider file input worker handlers', () => {
     }
   })
 
-  it('prepares a draft PDF through the M1c file runtime slice without exposing storage metadata', async () => {
+  it('prepares a draft PDF through the M1d upload runtime slice without exposing storage metadata', async () => {
     const storageRootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-provider-file-input-'))
     const h = makeHarness(storageRootDir)
     try {
@@ -386,7 +404,18 @@ describeIfBetterSqlite('provider file input worker handlers', () => {
         result: {
           ok: true,
           contentParts: [
-            { type: 'input_file', filename: 'manual.pdf', file_data: expect.stringMatching(/^data:application\/pdf;base64,/) },
+            {
+              type: 'starverse_provider_file_upload',
+              provider: 'openai_responses',
+              assetId: 'asset-pdf',
+              revisionId: expect.any(String),
+              blobSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+              mimeType: 'application/pdf',
+              sizeBytes: expect.any(Number),
+              kind: 'pdf',
+              filename: 'manual.pdf',
+              dataBase64: expect.any(String),
+            },
           ],
           diagnostics: expect.objectContaining({
             includedPdfCount: 1,
@@ -400,13 +429,14 @@ describeIfBetterSqlite('provider file input worker handlers', () => {
       expect(serialized).not.toContain('storageUri')
       expect(serialized).not.toContain('storagePath')
       expect(serialized).not.toContain('blob-asset-pdf')
+      expect(serialized).not.toContain('originalUrl')
     } finally {
       h.db.close()
       await rm(storageRootDir, { recursive: true, force: true })
     }
   })
 
-  it('blocks draft PDFs over the M1c 1 MB inline hard limit', async () => {
+  it('keeps the M1c 1 MB inline hard limit for the OpenRouter inline path', async () => {
     const storageRootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-provider-file-input-'))
     const h = makeHarness(storageRootDir)
     try {
@@ -421,7 +451,11 @@ describeIfBetterSqlite('provider file input worker handlers', () => {
       const prepared = await dispatchWorkerMessage(h.handlers, {
         id: 'req-provider-file-input-large-pdf',
         method: 'providerFileInput.prepareDraftFiles',
-        params: prepareFileParams(),
+        params: prepareFileParams({
+          provider: 'openrouter',
+          providerKey: 'openrouter',
+          modelKey: 'openrouter::test/pdf',
+        }),
       })
 
       expect(prepared).toMatchObject({
@@ -429,7 +463,7 @@ describeIfBetterSqlite('provider file input worker handlers', () => {
         result: {
           ok: false,
           code: 'too_large_for_inline',
-          message: 'Asset asset-large-pdf is too large for inline openai_responses file input.',
+          message: 'Asset asset-large-pdf is too large for inline openrouter file input.',
           contentParts: [],
         },
       })

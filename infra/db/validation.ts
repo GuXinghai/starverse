@@ -570,7 +570,7 @@ export const PrepareOpenRouterSendSchema = z.object({
 })
 
 export const PrepareProviderImageSendSchema = z.object({
-  provider: z.enum(['openai_responses', 'anthropic_messages', 'google_ai_studio', 'openrouter']),
+  provider: z.enum(['openai_responses', 'anthropic_messages', 'google_ai_studio', 'openrouter', 'lm_studio', 'ollama_local']),
   conversationId: z.string().min(1),
   draftText: z.string().optional(),
   historyMessageIds: z.array(z.string().min(1)).optional(),
