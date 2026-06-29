@@ -6,9 +6,12 @@ import type { GeminiContent } from '../../src/next/provider/gemini/geminiRequest
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
 import {
+  isProviderRuntimeUploadRequestBlock,
   sanitizeProviderRuntimeFileContentBlocks,
   type ProviderRuntimeContentBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
+import type { ProviderFileUploadCacheEvent, ProviderFileUploadService } from '../services/providerFileUploadService'
+import { invalidateProviderFileUploadCacheOnReferenceError } from '../services/providerFileUploadInvalidation'
 
 export const GOOGLE_AI_STUDIO_TEXT_CHAT_IPC_CHANNELS = [
   'google-ai-studio-chat:stream-text',
@@ -46,6 +49,7 @@ export type GoogleAIStudioTextChatWireEvent =
 type RegisterGoogleAIStudioTextChatIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   credentialService: ProviderCredentialService
+  providerFileUploadService?: ProviderFileUploadService
   fetchImpl?: ProviderFetch
 }>
 
@@ -244,6 +248,7 @@ async function forwardGoogleAIStudioStream(input: Readonly<{
   request: ValidatedTextChatSuccess
   sender: WebContents
   credentialService: ProviderCredentialService
+  providerFileUploadService?: ProviderFileUploadService
   fetchImpl: ProviderFetch
 }>): Promise<void> {
   const apiKey = readGoogleAIStudioApiKey(input.credentialService)
@@ -276,15 +281,46 @@ async function forwardGoogleAIStudioStream(input: Readonly<{
   })
 
   try {
-    const events = streamViaGemini(buildProviderRequest({ request: input.request, controller }), {
+    const uploadResolved = await resolveUploadBlocksForGoogleAIStudio({
+      request: input.request,
+      apiKey,
+      service: input.providerFileUploadService,
+      fetchImpl: fetchWithRedirectError,
+      signal: controller.signal,
+    })
+    if (!uploadResolved.ok) {
+      sendWireEvent(input.sender, input.request.requestId, {
+        type: 'event',
+        event: {
+          type: 'stream.error',
+          error: {
+            phase: 'request_build',
+            provider: 'google-ai-studio',
+            category: uploadResolved.retryable ? 'network' : 'bad_request',
+            code: uploadResolved.code,
+            message: uploadResolved.message,
+            ...(uploadResolved.retryable ? { retryable: true } : {}),
+          },
+          terminal: true,
+        },
+      })
+      return
+    }
+    const events = streamViaGemini(buildProviderRequest({ request: uploadResolved.request, controller }), {
       baseUrl: GOOGLE_AI_STUDIO_BASE_URL,
       apiKey,
       fetch: fetchWithRedirectError,
     })
     for await (const event of events) {
+      const safeEvent = safeStreamEvent(event)
+      await invalidateProviderFileUploadCacheOnReferenceError({
+        service: input.providerFileUploadService,
+        cacheEvents: uploadResolved.cacheEvents,
+        streamEvent: event,
+      })
       sendWireEvent(input.sender, input.request.requestId, {
         type: 'event',
-        event: safeStreamEvent(event),
+        event: safeEvent,
       })
     }
   } catch {
@@ -331,7 +367,13 @@ export function registerGoogleAIStudioTextChatIpc(
       return staticFailure('invalid_payload', 'Google AI Studio text chat bridge is unavailable.')
     }
 
-    void forwardGoogleAIStudioStream({ request: validated, sender, credentialService: input.credentialService, fetchImpl })
+    void forwardGoogleAIStudioStream({
+      request: validated,
+      sender,
+      credentialService: input.credentialService,
+      providerFileUploadService: input.providerFileUploadService,
+      fetchImpl,
+    })
     return { ok: true }
   })
 
@@ -340,4 +382,39 @@ export function registerGoogleAIStudioTextChatIpc(
   })
 
   return [...GOOGLE_AI_STUDIO_TEXT_CHAT_IPC_CHANNELS]
+}
+
+async function resolveUploadBlocksForGoogleAIStudio(input: Readonly<{
+  request: ValidatedTextChatSuccess
+  apiKey: string
+  service?: ProviderFileUploadService
+  fetchImpl: GeminiFetchFn
+  signal: AbortSignal
+}>): Promise<
+  | Readonly<{ ok: true; request: ValidatedTextChatSuccess; cacheEvents: ProviderFileUploadCacheEvent[] }>
+  | Readonly<{ ok: false; code: string; message: string; retryable?: boolean }>
+> {
+  const blocks = input.request.currentUserContentBlocks ?? []
+  if (!blocks.some(isProviderRuntimeUploadRequestBlock)) return { ok: true, request: input.request, cacheEvents: [] }
+  if (!input.service) {
+    return { ok: false, code: 'provider_file_upload_unavailable', message: 'Provider file upload service is unavailable.' }
+  }
+  const resolved = await input.service.resolveContentBlocks({
+    provider: 'google_ai_studio',
+      endpointFamily: 'google_ai_studio',
+      baseUrl: GOOGLE_AI_STUDIO_BASE_URL,
+      apiKey: input.apiKey,
+      blocks,
+      fetchImpl: input.fetchImpl as any,
+      signal: input.signal,
+  })
+  if (!resolved.ok) return resolved
+  return {
+    ok: true,
+    request: {
+      ...input.request,
+      currentUserContentBlocks: resolved.blocks,
+    },
+    cacheEvents: resolved.cacheEvents,
+  }
 }

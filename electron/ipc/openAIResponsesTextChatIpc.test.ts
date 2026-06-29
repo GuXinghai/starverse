@@ -39,6 +39,19 @@ function createCredentialService(apiKey?: string): ProviderCredentialService {
 }
 
 describe('openAIResponsesTextChatIpc', () => {
+  const uploadBlock = {
+    type: 'starverse_provider_file_upload',
+    provider: 'openai_responses',
+    assetId: 'asset-upload',
+    revisionId: 'rev-upload',
+    blobSha256: 'a'.repeat(64),
+    mimeType: 'application/pdf',
+    sizeBytes: 4,
+    kind: 'pdf',
+    filename: 'manual.pdf',
+    dataBase64: 'JVBERg==',
+  }
+
   it('validates text-only payloads before fetch', () => {
     expect(validateOpenAIResponsesTextChatPayload({
       requestId: 'openai_responses_req_1',
@@ -121,6 +134,57 @@ describe('openAIResponsesTextChatIpc', () => {
       event.event.error.code === 'credential_missing',
     )).toBe(true)
     expect(events.some((event) => event.type === 'event' && event.event.type === 'stream.done')).toBe(false)
+  })
+
+  it('resolves provider upload blocks before building the OpenAI Responses request body', async () => {
+    const providerFileUploadService = {
+      resolveContentBlocks: vi.fn(async () => ({
+        ok: true,
+        blocks: [
+          { type: 'input_file', file_id: 'file-openai-uploaded' },
+        ],
+        cacheEvents: [],
+      })),
+      invalidate: vi.fn(),
+    }
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}'))
+      const serializedBody = JSON.stringify(body)
+      expect(body.input[0].content).toEqual([
+        { type: 'input_text', text: 'Read it.' },
+        { type: 'input_file', file_id: 'file-openai-uploaded' },
+      ])
+      expect(serializedBody).not.toContain('data:application/pdf')
+      expect(serializedBody).not.toContain('originalPath')
+      expect(serializedBody).not.toContain('storagePath')
+      expect(serializedBody).not.toContain('blobId')
+      expect(serializedBody).not.toContain('originalUrl')
+      expect(serializedBody).not.toContain('sk-openai-secret')
+      return makeSseResponse(textDeltaSse('done'), completedSse())
+    }) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerOpenAIResponsesTextChatIpc({
+      registerInvoke,
+      credentialService: createCredentialService('sk-openai-secret'),
+      providerFileUploadService: providerFileUploadService as any,
+      fetchImpl,
+    })
+    const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'openai-responses-chat:stream-text')?.[1]
+    const sender = createSender()
+
+    await handler({ sender }, {
+      requestId: 'openai_responses_req_upload',
+      assistantMessageId: 'assistant_1',
+      model: 'gpt-5.4-nano',
+      messages: [{ role: 'user', content: 'Read it.' }],
+      currentUserContentBlocks: [uploadBlock],
+    })
+
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1))
+    expect(providerFileUploadService.resolveContentBlocks).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'openai_responses',
+      baseUrl: 'https://api.openai.com/v1',
+    }))
   })
 
   it('normalizes malicious transport errors before sending them to the renderer', async () => {

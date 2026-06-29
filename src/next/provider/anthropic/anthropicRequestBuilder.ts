@@ -20,12 +20,14 @@ export type AnthropicContentBlock = Readonly<
       source:
         | Readonly<{ type: 'base64'; media_type: string; data: string }>
         | Readonly<{ type: 'url'; url: string }>
+        | Readonly<{ type: 'file'; file_id: string }>
     }
   | {
       type: 'document'
       source:
         | Readonly<{ type: 'base64'; media_type: string; data: string }>
         | Readonly<{ type: 'url'; url: string }>
+        | Readonly<{ type: 'file'; file_id: string }>
       title?: string
     }
 >

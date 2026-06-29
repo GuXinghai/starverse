@@ -41,6 +41,19 @@ function createCredentialService(apiKey?: string): ProviderCredentialService {
 }
 
 describe('googleAIStudioTextChatIpc', () => {
+  const uploadBlock = {
+    type: 'starverse_provider_file_upload',
+    provider: 'google_ai_studio',
+    assetId: 'asset-upload',
+    revisionId: 'rev-upload',
+    blobSha256: 'a'.repeat(64),
+    mimeType: 'application/pdf',
+    sizeBytes: 4,
+    kind: 'pdf',
+    filename: 'manual.pdf',
+    dataBase64: 'JVBERg==',
+  }
+
   it('validates text-only payloads before fetch', () => {
     expect(validateGoogleAIStudioTextChatPayload({
       requestId: 'google_ai_studio_req_1',
@@ -152,6 +165,57 @@ describe('googleAIStudioTextChatIpc', () => {
       event.event.error.code === 'credential_missing',
     )).toBe(true)
     expect(events.some((event) => event.type === 'event' && event.event.type === 'stream.done')).toBe(false)
+  })
+
+  it('resolves provider upload blocks before building the Gemini request body', async () => {
+    const providerFileUploadService = {
+      resolveContentBlocks: vi.fn(async () => ({
+        ok: true,
+        blocks: [
+          { fileData: { mimeType: 'application/pdf', fileUri: 'https://generativelanguage.googleapis.com/v1beta/files/file-uploaded' } },
+        ],
+        cacheEvents: [],
+      })),
+      invalidate: vi.fn(),
+    }
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}'))
+      const serializedBody = JSON.stringify(body)
+      expect(body.contents[0].parts).toEqual([
+        { text: 'Read it.' },
+        { fileData: { mimeType: 'application/pdf', fileUri: 'https://generativelanguage.googleapis.com/v1beta/files/file-uploaded' } },
+      ])
+      expect(serializedBody).not.toContain('JVBERg')
+      expect(serializedBody).not.toContain('originalPath')
+      expect(serializedBody).not.toContain('storagePath')
+      expect(serializedBody).not.toContain('blobId')
+      expect(serializedBody).not.toContain('originalUrl')
+      expect(serializedBody).not.toContain('fake-google-secret')
+      return makeSseResponse(textChunk('done'), doneChunk())
+    }) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerGoogleAIStudioTextChatIpc({
+      registerInvoke,
+      credentialService: createCredentialService('fake-google-secret'),
+      providerFileUploadService: providerFileUploadService as any,
+      fetchImpl,
+    })
+    const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:stream-text')?.[1]
+    const sender = createSender()
+
+    await handler({ sender }, {
+      requestId: 'google_ai_studio_req_upload',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-3.1-flash-lite',
+      messages: [{ role: 'user', content: 'Read it.' }],
+      currentUserContentBlocks: [uploadBlock],
+    })
+
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1))
+    expect(providerFileUploadService.resolveContentBlocks).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'google_ai_studio',
+      baseUrl: 'https://generativelanguage.googleapis.com',
+    }))
   })
 
   it('normalizes malicious transport errors before sending them to the renderer', async () => {

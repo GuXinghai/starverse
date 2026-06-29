@@ -13,6 +13,11 @@ export type ProviderFileInputProvider =
   | 'lm_studio'
   | 'ollama_local'
 
+export type ProviderFileUploadInputProvider =
+  | 'openai_responses'
+  | 'anthropic_messages'
+  | 'google_ai_studio'
+
 export type ProviderFileInputRequestedProvider = ProviderFileInputProvider | 'deepseek' | string
 export type ProviderFileInputKind = 'image' | 'pdf' | 'document'
 export type ProviderFileInputSendMode = 'inline_base64' | 'url_ref'
@@ -27,7 +32,7 @@ export type ProviderFileInputErrorCode =
 export type PreparedProviderFileInput =
   | Readonly<{
       ok: true
-      provider: ProviderFileInputProvider
+      provider: ProviderFileInputProvider | ProviderFileUploadInputProvider
       assetId: string
       revisionId: string
       mimeType: string
@@ -67,6 +72,7 @@ export type ProviderFileRevisionMetadata = Readonly<{
 
 export type ProviderFileBlobMetadata = Readonly<{
   id: string
+  sha256?: string | null
   mimeType?: string | null
   sizeBytes?: number | null
 }>
@@ -116,6 +122,19 @@ export type PrepareProviderFileInputInput = Readonly<{
   maxInlineBytes?: number
 }>
 
+export type ProviderFileUploadRequestPart = Readonly<{
+  type: 'starverse_provider_file_upload'
+  provider: ProviderFileUploadInputProvider
+  assetId: string
+  revisionId: string
+  blobSha256: string
+  mimeType: string
+  sizeBytes: number
+  kind: 'image' | 'pdf'
+  filename: string
+  dataBase64: string
+}>
+
 export const DEFAULT_PROVIDER_FILE_INLINE_LIMIT_BYTES = 20 * 1024 * 1024
 export const M1C_PDF_INLINE_LIMIT_BYTES = 1024 * 1024
 
@@ -128,6 +147,12 @@ const SUPPORTED_PROVIDERS: ReadonlySet<string> = new Set([
   'local_endpoint',
   'lm_studio',
   'ollama_local',
+])
+
+const UPLOAD_CAPABLE_PROVIDERS: ReadonlySet<string> = new Set([
+  'openai_responses',
+  'anthropic_messages',
+  'google_ai_studio',
 ])
 
 const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
@@ -182,6 +207,48 @@ export async function prepareProviderFileInput(
     read,
     sendMode: input.sendMode,
     maxInlineBytes: input.maxInlineBytes ?? DEFAULT_PROVIDER_FILE_INLINE_LIMIT_BYTES,
+  })
+}
+
+export async function prepareProviderFileUploadInput(
+  input: PrepareProviderFileInputInput
+): Promise<PreparedProviderFileInput> {
+  const provider = normalizeProvider(input.provider)
+  if (provider === 'deepseek') {
+    return unsupportedProvider(input.provider, 'DeepSeek official APIs are text-only for Starverse file input mapping.')
+  }
+  if (!isUploadCapableProvider(provider)) {
+    return unsupportedProvider(input.provider, `Provider ${String(input.provider)} does not support provider file upload input.`)
+  }
+
+  const read = await input.readAsset(input.assetId)
+  if (!read.ok) {
+    return {
+      ok: false,
+      provider,
+      code: 'asset_not_ready',
+      message: read.message,
+    }
+  }
+
+  const readiness = assertAssetReady(read.asset)
+  if (!readiness.ok) {
+    return {
+      ok: false,
+      provider,
+      code: 'asset_not_ready',
+      message: readiness.message,
+    }
+  }
+
+  if (read.source === 'provider_url') {
+    return prepareProviderUrlInput({ provider, read, sendMode: input.sendMode })
+  }
+
+  return prepareManagedBytesUploadInput({
+    provider,
+    read,
+    sendMode: input.sendMode,
   })
 }
 
@@ -330,6 +397,69 @@ function prepareManagedBytesInput(input: Readonly<{
       base64,
       dataUrl,
     }),
+  }
+}
+
+function prepareManagedBytesUploadInput(input: Readonly<{
+  provider: ProviderFileUploadInputProvider
+  read: Extract<ProviderFileInputReadResult, { source: 'managed_bytes' }>
+  sendMode: ProviderFileInputSendMode | undefined
+}>): PreparedProviderFileInput {
+  const { provider, read, sendMode } = input
+  const retentionMode = readUrlRetentionMode(read.asset)
+  if (sendMode === 'url_ref' && retentionMode !== 'link_and_file') {
+    return {
+      ok: false,
+      provider,
+      code: 'url_not_allowed',
+      message: `Asset ${read.asset.id} has no provider URL send mode for ${provider}.`,
+    }
+  }
+
+  const classified = classifyProviderFileInput(read.asset, read.blob)
+  if (!classified.ok) return { ok: false, provider, code: 'unsupported_mime', message: classified.message }
+  if (classified.kind !== 'image' && classified.kind !== 'pdf') {
+    return {
+      ok: false,
+      provider,
+      code: 'unsupported_mime',
+      message: `Provider file upload does not support ${classified.kind} assets in this runtime slice.`,
+    }
+  }
+
+  const blobSha256 = normalizeSha256(read.blob.sha256)
+  if (!blobSha256) {
+    return {
+      ok: false,
+      provider,
+      code: 'asset_not_ready',
+      message: `Asset ${read.asset.id} current revision has no blob sha256 for provider file upload.`,
+    }
+  }
+
+  const sizeBytes = read.blob.sizeBytes ?? read.asset.sizeBytes ?? read.bytes.byteLength
+  const base64 = encodeBase64(read.bytes)
+
+  return {
+    ok: true,
+    provider,
+    assetId: read.asset.id,
+    revisionId: read.revision.id,
+    mimeType: classified.mimeType,
+    sizeBytes,
+    kind: classified.kind,
+    requestPart: {
+      type: 'starverse_provider_file_upload',
+      provider,
+      assetId: read.asset.id,
+      revisionId: read.revision.id,
+      blobSha256,
+      mimeType: classified.mimeType,
+      sizeBytes,
+      kind: classified.kind,
+      filename: sanitizeFilename(read.asset.filename),
+      dataBase64: base64,
+    } satisfies ProviderFileUploadRequestPart,
   }
 }
 
@@ -566,6 +696,7 @@ function mapRevisionRecord(revision: AssetRevisionRecord): ProviderFileRevisionM
 function mapBlobRecord(blob: FileBlobRecord): ProviderFileBlobMetadata {
   return {
     id: blob.id,
+    sha256: blob.sha256,
     mimeType: blob.mime,
     sizeBytes: blob.sizeBytes,
   }
@@ -577,6 +708,10 @@ function normalizeProvider(provider: ProviderFileInputRequestedProvider): string
 
 function isSupportedProvider(provider: string): provider is ProviderFileInputProvider {
   return SUPPORTED_PROVIDERS.has(provider)
+}
+
+function isUploadCapableProvider(provider: string): provider is ProviderFileUploadInputProvider {
+  return UPLOAD_CAPABLE_PROVIDERS.has(provider)
 }
 
 function unsupportedProvider(provider: ProviderFileInputRequestedProvider, message: string): PreparedProviderFileInput {
@@ -591,6 +726,11 @@ function unsupportedProvider(provider: ProviderFileInputRequestedProvider, messa
 function normalizeMimeType(value: string | null | undefined): string | null {
   const normalized = String(value ?? '').split(';', 1)[0]?.trim().toLowerCase()
   return normalized || null
+}
+
+function normalizeSha256(value: string | null | undefined): string | null {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  return /^[a-f0-9]{64}$/.test(normalized) ? normalized : null
 }
 
 function mimeFromExtension(extension: string | null | undefined): string | null {

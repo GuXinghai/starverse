@@ -27,11 +27,13 @@ import { ModelPreferencesRepo } from '../repo/modelPreferencesRepo'
 import { ModelCatalogRepo } from '../repo/modelCatalogRepo'
 import { ReasoningModelIndexRepo } from '../repo/reasoningModelIndexRepo'
 import { SettingsRepo } from '../repo/settingsRepo'
+import { ProviderFileUploadCacheRepo } from '../repo/providerFileUploadCacheRepo'
 import { ensureBranchingSchema } from '../migrations/ensureBranchingSchema'
 import { ensureSearchSchema } from '../migrations/ensureSearchSchema'
 import { ensureFilePipelineSchema } from '../migrations/ensureFilePipelineSchema'
 import { ensureP4C1DerivedKindSchema } from '../migrations/ensureP4C1DerivedKindSchema'
 import { ensureEnginePluginRegistrySchema } from '../migrations/ensureEnginePluginRegistrySchema'
+import { ensureProviderFileUploadCacheSchema } from '../migrations/ensureProviderFileUploadCacheSchema'
 import { ConversationAttachmentService } from '../../files/conversationAttachmentService'
 import { DerivativeJobService } from '../../files/derivativeJobService'
 import { FileIngestionService } from '../../files/fileIngestionService'
@@ -207,6 +209,7 @@ export class DbWorkerRuntime {
   readonly modelCatalogRepo: ModelCatalogRepo
   readonly reasoningModelIndexRepo: ReasoningModelIndexRepo
   readonly settingsRepo: SettingsRepo
+  readonly providerFileUploadCacheRepo: ProviderFileUploadCacheRepo
   readonly officePdfRuntimeSummary?: () => DfcOfficePdfRuntimeAvailabilitySummary | null
   private handlers: WorkerHandlerMap = new Map()
   inboxId: string = ''
@@ -249,6 +252,8 @@ export class DbWorkerRuntime {
     ensureP4C1DerivedKindSchema(this.db)
     console.log('[DbWorkerRuntime] 确保 Engine Plugin Registry Schema...')
     ensureEnginePluginRegistrySchema(this.db)
+    console.log('[DbWorkerRuntime] 确保 Provider File Upload Cache Schema...')
+    ensureProviderFileUploadCacheSchema(this.db)
     console.log('[DbWorkerRuntime] 确保 Model Catalog Schema...')
     this.ensureModelCatalogSchema()
     console.log('[DbWorkerRuntime] 确保 Scoped Model Catalog Schema...')
@@ -303,6 +308,7 @@ export class DbWorkerRuntime {
     this.messageAttachmentRepo = new MessageAttachmentRepo(this.db)
     this.conversationDraftRepo = new ConversationDraftRepo(this.db)
     this.settingsRepo = new SettingsRepo(this.db)
+    this.providerFileUploadCacheRepo = new ProviderFileUploadCacheRepo(this.db)
     this.branchRepo = new BranchRepo(this.db)
     this.conversationAttachmentService = new ConversationAttachmentService({
       db: this.db,

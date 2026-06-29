@@ -4,9 +4,12 @@ import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEven
 import { streamViaAnthropic, type AnthropicFetchFn } from '../../src/next/provider/anthropic/anthropicAdapter'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import {
+  isProviderRuntimeUploadRequestBlock,
   sanitizeProviderRuntimeFileContentBlocks,
   type ProviderRuntimeContentBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
+import type { ProviderFileUploadCacheEvent, ProviderFileUploadService } from '../services/providerFileUploadService'
+import { invalidateProviderFileUploadCacheOnReferenceError } from '../services/providerFileUploadInvalidation'
 
 export const ANTHROPIC_TEXT_CHAT_IPC_CHANNELS = [
   'anthropic-chat:stream-text',
@@ -44,6 +47,7 @@ export type AnthropicTextChatWireEvent =
 type RegisterAnthropicTextChatIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   credentialService: ProviderCredentialService
+  providerFileUploadService?: ProviderFileUploadService
   fetchImpl?: typeof fetch
 }>
 
@@ -226,6 +230,7 @@ async function forwardAnthropicStream(input: Readonly<{
   request: ValidatedTextChatSuccess
   sender: WebContents
   credentialService: ProviderCredentialService
+  providerFileUploadService?: ProviderFileUploadService
   fetchImpl: typeof fetch
 }>): Promise<void> {
   const apiKey = readAnthropicApiKey(input.credentialService)
@@ -258,15 +263,46 @@ async function forwardAnthropicStream(input: Readonly<{
   })
 
   try {
-    const events = streamViaAnthropic(buildProviderRequest({ request: input.request, controller }), {
+    const uploadResolved = await resolveUploadBlocksForAnthropic({
+      request: input.request,
+      apiKey,
+      service: input.providerFileUploadService,
+      fetchImpl: fetchWithRedirectError,
+      signal: controller.signal,
+    })
+    if (!uploadResolved.ok) {
+      sendWireEvent(input.sender, input.request.requestId, {
+        type: 'event',
+        event: {
+          type: 'stream.error',
+          error: {
+            phase: 'request_build',
+            provider: 'anthropic',
+            category: uploadResolved.retryable ? 'network' : 'bad_request',
+            code: uploadResolved.code,
+            message: uploadResolved.message,
+            ...(uploadResolved.retryable ? { retryable: true } : {}),
+          },
+          terminal: true,
+        },
+      })
+      return
+    }
+    const events = streamViaAnthropic(buildProviderRequest({ request: uploadResolved.request, controller }), {
       baseUrl: ANTHROPIC_BASE_URL,
       apiKey,
       fetch: fetchWithRedirectError,
     })
     for await (const event of events) {
+      const safeEvent = safeStreamEvent(event)
+      await invalidateProviderFileUploadCacheOnReferenceError({
+        service: input.providerFileUploadService,
+        cacheEvents: uploadResolved.cacheEvents,
+        streamEvent: event,
+      })
       sendWireEvent(input.sender, input.request.requestId, {
         type: 'event',
-        event: safeStreamEvent(event),
+        event: safeEvent,
       })
     }
   } catch {
@@ -313,7 +349,13 @@ export function registerAnthropicTextChatIpc(
       return staticFailure('invalid_payload', 'Anthropic Messages text chat bridge is unavailable.')
     }
 
-    void forwardAnthropicStream({ request: validated, sender, credentialService: input.credentialService, fetchImpl })
+    void forwardAnthropicStream({
+      request: validated,
+      sender,
+      credentialService: input.credentialService,
+      providerFileUploadService: input.providerFileUploadService,
+      fetchImpl,
+    })
     return { ok: true }
   })
 
@@ -322,4 +364,39 @@ export function registerAnthropicTextChatIpc(
   })
 
   return [...ANTHROPIC_TEXT_CHAT_IPC_CHANNELS]
+}
+
+async function resolveUploadBlocksForAnthropic(input: Readonly<{
+  request: ValidatedTextChatSuccess
+  apiKey: string
+  service?: ProviderFileUploadService
+  fetchImpl: AnthropicFetchFn
+  signal: AbortSignal
+}>): Promise<
+  | Readonly<{ ok: true; request: ValidatedTextChatSuccess; cacheEvents: ProviderFileUploadCacheEvent[] }>
+  | Readonly<{ ok: false; code: string; message: string; retryable?: boolean }>
+> {
+  const blocks = input.request.currentUserContentBlocks ?? []
+  if (!blocks.some(isProviderRuntimeUploadRequestBlock)) return { ok: true, request: input.request, cacheEvents: [] }
+  if (!input.service) {
+    return { ok: false, code: 'provider_file_upload_unavailable', message: 'Provider file upload service is unavailable.' }
+  }
+  const resolved = await input.service.resolveContentBlocks({
+    provider: 'anthropic_messages',
+      endpointFamily: 'anthropic_messages',
+      baseUrl: ANTHROPIC_BASE_URL,
+      apiKey: input.apiKey,
+      blocks,
+      fetchImpl: input.fetchImpl as any,
+      signal: input.signal,
+  })
+  if (!resolved.ok) return resolved
+  return {
+    ok: true,
+    request: {
+      ...input.request,
+      currentUserContentBlocks: resolved.blocks,
+    },
+    cacheEvents: resolved.cacheEvents,
+  }
 }

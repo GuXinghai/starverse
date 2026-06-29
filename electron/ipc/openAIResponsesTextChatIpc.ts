@@ -4,9 +4,12 @@ import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEven
 import { streamViaOpenAIResponses, type ResponsesFetchFn } from '../../src/next/provider/openai-responses/openaiResponsesAdapter'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import {
+  isProviderRuntimeUploadRequestBlock,
   sanitizeProviderRuntimeFileContentBlocks,
   type ProviderRuntimeContentBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
+import type { ProviderFileUploadCacheEvent, ProviderFileUploadService } from '../services/providerFileUploadService'
+import { invalidateProviderFileUploadCacheOnReferenceError } from '../services/providerFileUploadInvalidation'
 
 export const OPENAI_RESPONSES_TEXT_CHAT_IPC_CHANNELS = [
   'openai-responses-chat:stream-text',
@@ -44,6 +47,7 @@ export type OpenAIResponsesTextChatWireEvent =
 type RegisterOpenAIResponsesTextChatIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   credentialService: ProviderCredentialService
+  providerFileUploadService?: ProviderFileUploadService
   fetchImpl?: typeof fetch
 }>
 
@@ -226,6 +230,7 @@ async function forwardOpenAIResponsesStream(input: Readonly<{
   request: ValidatedTextChatSuccess
   sender: WebContents
   credentialService: ProviderCredentialService
+  providerFileUploadService?: ProviderFileUploadService
   fetchImpl: typeof fetch
 }>): Promise<void> {
   const apiKey = readOpenAIResponsesApiKey(input.credentialService)
@@ -258,15 +263,46 @@ async function forwardOpenAIResponsesStream(input: Readonly<{
   })
 
   try {
-    const events = streamViaOpenAIResponses(buildProviderRequest({ request: input.request, controller }), {
+    const uploadResolved = await resolveUploadBlocksForOpenAI({
+      request: input.request,
+      apiKey,
+      service: input.providerFileUploadService,
+      fetchImpl: fetchWithRedirectError,
+      signal: controller.signal,
+    })
+    if (!uploadResolved.ok) {
+      sendWireEvent(input.sender, input.request.requestId, {
+        type: 'event',
+        event: {
+          type: 'stream.error',
+          error: {
+            phase: 'request_build',
+            provider: 'openai-responses',
+            category: uploadResolved.retryable ? 'network' : 'bad_request',
+            code: uploadResolved.code,
+            message: uploadResolved.message,
+            ...(uploadResolved.retryable ? { retryable: true } : {}),
+          },
+          terminal: true,
+        },
+      })
+      return
+    }
+    const events = streamViaOpenAIResponses(buildProviderRequest({ request: uploadResolved.request, controller }), {
       baseUrl: OPENAI_RESPONSES_BASE_URL,
       apiKey,
       fetch: fetchWithRedirectError,
     })
     for await (const event of events) {
+      const safeEvent = safeStreamEvent(event)
+      await invalidateProviderFileUploadCacheOnReferenceError({
+        service: input.providerFileUploadService,
+        cacheEvents: uploadResolved.cacheEvents,
+        streamEvent: event,
+      })
       sendWireEvent(input.sender, input.request.requestId, {
         type: 'event',
-        event: safeStreamEvent(event),
+        event: safeEvent,
       })
     }
   } catch {
@@ -313,7 +349,13 @@ export function registerOpenAIResponsesTextChatIpc(
       return staticFailure('invalid_payload', 'OpenAI Responses text chat bridge is unavailable.')
     }
 
-    void forwardOpenAIResponsesStream({ request: validated, sender, credentialService: input.credentialService, fetchImpl })
+    void forwardOpenAIResponsesStream({
+      request: validated,
+      sender,
+      credentialService: input.credentialService,
+      providerFileUploadService: input.providerFileUploadService,
+      fetchImpl,
+    })
     return { ok: true }
   })
 
@@ -322,4 +364,39 @@ export function registerOpenAIResponsesTextChatIpc(
   })
 
   return [...OPENAI_RESPONSES_TEXT_CHAT_IPC_CHANNELS]
+}
+
+async function resolveUploadBlocksForOpenAI(input: Readonly<{
+  request: ValidatedTextChatSuccess
+  apiKey: string
+  service?: ProviderFileUploadService
+  fetchImpl: ResponsesFetchFn
+  signal: AbortSignal
+}>): Promise<
+  | Readonly<{ ok: true; request: ValidatedTextChatSuccess; cacheEvents: ProviderFileUploadCacheEvent[] }>
+  | Readonly<{ ok: false; code: string; message: string; retryable?: boolean }>
+> {
+  const blocks = input.request.currentUserContentBlocks ?? []
+  if (!blocks.some(isProviderRuntimeUploadRequestBlock)) return { ok: true, request: input.request, cacheEvents: [] }
+  if (!input.service) {
+    return { ok: false, code: 'provider_file_upload_unavailable', message: 'Provider file upload service is unavailable.' }
+  }
+  const resolved = await input.service.resolveContentBlocks({
+    provider: 'openai_responses',
+      endpointFamily: 'openai_responses',
+      baseUrl: OPENAI_RESPONSES_BASE_URL,
+      apiKey: input.apiKey,
+      blocks,
+      fetchImpl: input.fetchImpl as any,
+      signal: input.signal,
+  })
+  if (!resolved.ok) return resolved
+  return {
+    ok: true,
+    request: {
+      ...input.request,
+      currentUserContentBlocks: resolved.blocks,
+    },
+    cacheEvents: resolved.cacheEvents,
+  }
 }
