@@ -264,7 +264,7 @@ describe('RuntimeCapabilitySummaryLite', () => {
     expect(cap).toMatchObject({
       textChat: true,
       streamingText: 'probe_required',
-      attachments: 'blocked',
+      attachments: 'supported',
       webSearch: 'blocked',
       tools: 'blocked',
       reasoningArtifacts: 'blocked',
@@ -273,6 +273,7 @@ describe('RuntimeCapabilitySummaryLite', () => {
       source: 'lm_studio_local',
     })
     expect(cap.warnings.join('\n')).toContain('Native REST load/unload controls')
+    expect(cap.warnings.join('\n')).toContain('vision-capable')
   })
 
   it('summarizes Ollama as a separate conservative local provider', () => {
@@ -280,7 +281,7 @@ describe('RuntimeCapabilitySummaryLite', () => {
     expect(cap).toMatchObject({
       textChat: true,
       streamingText: 'probe_required',
-      attachments: 'blocked',
+      attachments: 'supported',
       webSearch: 'blocked',
       tools: 'blocked',
       reasoningArtifacts: 'filtered',
@@ -289,6 +290,7 @@ describe('RuntimeCapabilitySummaryLite', () => {
       source: 'ollama_local',
     })
     expect(cap.warnings.join('\n')).toContain('thinking metadata is filtered')
+    expect(cap.warnings.join('\n')).toContain('/api/show')
   })
 
   it('summarizes unset runtime as blocked', () => {

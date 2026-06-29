@@ -1,6 +1,10 @@
 import type { WebContents } from 'electron'
 import type { RegisterInvoke } from './types'
 import { openAiChatCompletionsUrl, validateLocalEndpointProbeUrl } from './localEndpointDiagnosticsIpc'
+import {
+  sanitizeProviderRuntimeImageContentBlocks,
+  type OpenAICompatibleChatContentPart,
+} from '../../src/next/multimodal/providerRuntimeContentBlocks'
 
 export const LOCAL_ENDPOINT_TEXT_CHAT_IPC_CHANNELS = [
   'local-endpoint-chat:stream-text',
@@ -9,7 +13,7 @@ export const LOCAL_ENDPOINT_TEXT_CHAT_IPC_CHANNELS = [
 
 export type LocalEndpointTextChatMessage = Readonly<{
   role: 'user' | 'assistant'
-  content: string
+  content: string | ReadonlyArray<OpenAICompatibleChatContentPart>
 }>
 
 export type LocalEndpointTextChatPayload = Readonly<{
@@ -100,12 +104,34 @@ function normalizeMessages(raw: unknown): LocalEndpointTextChatMessage[] | null 
     if (!item || typeof item !== 'object') return null
     const role = (item as Record<string, unknown>).role
     if (role !== 'user' && role !== 'assistant') return null
-    const content = String((item as Record<string, unknown>).content ?? '').trim()
+    const content = normalizeOpenAICompatibleMessageContent((item as Record<string, unknown>).content)
     if (!content) continue
-    out.push({ role, content: content.slice(0, MAX_MESSAGE_CHARS) })
+    out.push({ role, content })
   }
   if (out.length === 0 || out[out.length - 1]?.role !== 'user') return null
   return out
+}
+
+function normalizeOpenAICompatibleMessageContent(raw: unknown): string | OpenAICompatibleChatContentPart[] | null {
+  if (typeof raw === 'string') {
+    const content = raw.trim()
+    return content ? content.slice(0, MAX_MESSAGE_CHARS) : null
+  }
+  if (!Array.isArray(raw)) return null
+  const sanitized = sanitizeProviderRuntimeImageContentBlocks('local_endpoint', raw)
+  if (!sanitized.ok || sanitized.blocks.length === 0) return null
+  const out: OpenAICompatibleChatContentPart[] = []
+  for (const block of sanitized.blocks) {
+    if (block.type === 'text' && typeof block.text === 'string') {
+      out.push({ type: 'text', text: block.text.slice(0, MAX_MESSAGE_CHARS) })
+      continue
+    }
+    const imageUrl = (block as Record<string, any>).image_url
+    if (block.type === 'image_url' && imageUrl && typeof imageUrl.url === 'string') {
+      out.push({ type: 'image_url', image_url: { url: imageUrl.url } })
+    }
+  }
+  return out.length > 0 ? out : null
 }
 
 export function validateLocalEndpointTextChatPayload(payload: unknown): ValidatedTextChatPayload {

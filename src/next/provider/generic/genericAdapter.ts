@@ -1,15 +1,20 @@
 /**
  * Generic OpenAI-compatible Chat Completions adapter — fixture integration.
  *
- * Conservative capability: text chat + basic streaming + basic error.
- * Unsupported by default: tools, files, vision, reasoning, web search,
- * structured output, image generation, parallel tool calls, multimodal.
+ * Conservative capability: text chat + basic streaming + basic error, with
+ * image_url input only when an explicit Generic image input profile allows it.
+ * Unsupported by default: tools, files, reasoning, web search, structured
+ * output, image generation, parallel tool calls, and non-profile-gated
+ * multimodal.
  */
 
 import type { ProviderStreamRequest, StarverseStreamEvent, StarverseProviderError } from '@/next/provider/providerTypes'
 import type { RuntimeProviderStreamAdapter, ProviderStreamTransport } from '@/next/provider/runtimeProviderAdapter'
 import { buildGenericRequest, type GenericMessage } from '@/next/provider/generic/genericRequestBuilder'
 import { decodeGenericSSE } from '@/next/provider/generic/genericSseDecoder'
+import {
+  buildOpenAICompatibleUserContent,
+} from '@/next/multimodal/providerRuntimeContentBlocks'
 import {
   buildAuthHeader,
   isCredentialError,
@@ -22,6 +27,7 @@ import {
   GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID,
   type GenericEndpointDescriptor,
   type DescriptorValidationError,
+  type GenericImageInputProfile,
 } from '@/next/provider/generic/genericEndpointDescriptor'
 import {
   resolveGenericEndpointDescriptor as resolveConfigToDescriptor,
@@ -133,7 +139,7 @@ async function* streamGenericCore(
   }
 
   // Validate outbound content before fetch — reject unsupported input deterministically
-  const validation = buildMessages(request)
+  const validation = buildMessages(request, descriptor.imageInputProfile)
   if (!validation.ok) {
     yield {
       type: 'stream.error',
@@ -293,7 +299,7 @@ type ValidationResult =
  * Validate and build messages for Generic adapter.
  * Rejects unsupported content deterministically before fetch.
  */
-function buildMessages(request: ProviderStreamRequest): ValidationResult {
+function buildMessages(request: ProviderStreamRequest, imageInputProfile: GenericImageInputProfile): ValidationResult {
   const messages: GenericMessage[] = []
 
   // contextMessages: all must be generic-compatible, none silently dropped
@@ -315,57 +321,122 @@ function buildMessages(request: ProviderStreamRequest): ValidationResult {
     }
   }
 
-  // currentUserContentBlocks: reject non-text blocks, reject malformed text blocks, reject empty result
+  // currentUserContentBlocks: reject unsupported image blocks before fetch.
   if (request.currentUserContentBlocks && request.currentUserContentBlocks.length > 0) {
-    const textParts: string[] = []
-    for (const block of request.currentUserContentBlocks) {
-      if (block.type !== 'text') {
+    const imageError = validateGenericImageBlocks(request.currentUserContentBlocks, imageInputProfile)
+    if (imageError) {
+      return { ok: false, error: imageError }
+    }
+
+    const content = buildOpenAICompatibleUserContent(request.userText, request.currentUserContentBlocks)
+    if (Array.isArray(content)) {
+      if (content.length === 0) {
         return {
           ok: false,
           error: {
             phase: 'request_build',
             provider: 'generic',
             category: 'bad_request',
-            message: `Generic adapter does not support content block type "${block.type}". Only text blocks are supported.`,
-            code: 'unsupported_content_block',
+            message: 'User content blocks produced empty message after text extraction.',
+            code: 'empty_user_content',
           },
         }
       }
-      // Reject text blocks with missing or non-string text field
-      if (typeof block.text !== 'string') {
+      messages.push({ role: 'user', content })
+    } else {
+      if (content.length === 0) {
         return {
           ok: false,
           error: {
             phase: 'request_build',
             provider: 'generic',
             category: 'bad_request',
-            message: 'Generic adapter requires text blocks to have a string "text" field.',
-            code: 'malformed_text_block',
+            message: 'User content blocks produced empty message after text extraction.',
+            code: 'empty_user_content',
           },
         }
       }
-      textParts.push(block.text)
+      messages.push({ role: 'user', content })
     }
-    const combined = textParts.join('\n')
-    if (combined.length === 0) {
-      return {
-        ok: false,
-        error: {
-          phase: 'request_build',
-          provider: 'generic',
-          category: 'bad_request',
-          message: 'User content blocks produced empty message after text extraction.',
-          code: 'empty_user_content',
-        },
-      }
-    }
-    messages.push({ role: 'user', content: combined })
   } else {
     // Direct userText — always accepted (string content)
     messages.push({ role: 'user', content: request.userText })
   }
 
   return { ok: true, messages }
+}
+
+function validateGenericImageBlocks(
+  blocks: ReadonlyArray<Readonly<{ type?: string; [key: string]: unknown }>>,
+  imageInputProfile: GenericImageInputProfile,
+): StarverseProviderError | null {
+  for (const block of blocks) {
+    if (!block || typeof block !== 'object') {
+      return malformedTextBlockError()
+    }
+    if (block.type === 'text' || block.type === undefined) {
+      if (typeof block.text !== 'string') return malformedTextBlockError()
+      continue
+    }
+    if (block.type !== 'image_url') {
+      return unsupportedContentBlockError(String(block.type ?? 'unknown'))
+    }
+    const imageUrl = block.image_url as Record<string, unknown> | undefined
+    const url = typeof imageUrl?.url === 'string' ? imageUrl.url : ''
+    if (!url) return unsupportedContentBlockError('image_url')
+    if (!isSupportedGenericImageUrl(url, imageInputProfile)) {
+      return {
+        phase: 'request_build',
+        provider: 'generic',
+        category: 'bad_request',
+        message: 'Generic OpenAI-compatible endpoint is not enabled for this image input profile.',
+        code: 'unsupported_image_input_profile',
+      }
+    }
+  }
+  return null
+}
+
+function malformedTextBlockError(): StarverseProviderError {
+  return {
+    phase: 'request_build',
+    provider: 'generic',
+    category: 'bad_request',
+    message: 'Generic adapter requires text blocks to have a string "text" field.',
+    code: 'malformed_text_block',
+  }
+}
+
+function unsupportedContentBlockError(type: string): StarverseProviderError {
+  return {
+    phase: 'request_build',
+    provider: 'generic',
+    category: 'bad_request',
+    message: `Generic adapter does not support content block type "${type}". Only text and enabled image_url blocks are supported.`,
+    code: 'unsupported_content_block',
+  }
+}
+
+function isSupportedGenericImageUrl(url: string, imageInputProfile: GenericImageInputProfile): boolean {
+  if (imageInputProfile === 'text_only' || imageInputProfile === 'unknown_unsupported') return false
+  if (isImageDataUrl(url)) return true
+  if (imageInputProfile !== 'chat_completions_image_url') return false
+  return isSafeHttpImageUrl(url)
+}
+
+function isImageDataUrl(url: string): boolean {
+  return /^data:image\/(?:png|jpeg|jpg);base64,/i.test(url.trim())
+}
+
+function isSafeHttpImageUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      !parsed.username &&
+      !parsed.password
+  } catch {
+    return false
+  }
 }
 
 function isGenericMessage(msg: unknown): msg is GenericMessage {

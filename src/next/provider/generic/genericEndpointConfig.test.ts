@@ -137,6 +137,7 @@ describe('Generic endpoint fixture metadata boundary', () => {
       baseUrl: 'https://api.example.com/v1',
       model: 'gpt-4o-mini',
       credentialRef: { kind: 'credential_ref', id: 'default' },
+      imageInputProfile: 'text_only',
       capability: expect.objectContaining({
         textChat: true,
         streamingText: true,

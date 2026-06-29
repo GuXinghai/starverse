@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildOpenAICompatibleUserContent,
   sanitizeProviderRuntimeFileContentBlocks,
   sanitizeProviderRuntimeImageContentBlocks,
 } from '@/next/multimodal/providerRuntimeContentBlocks'
@@ -16,6 +17,44 @@ describe('providerRuntimeContentBlocks', () => {
     expect(result.ok).toBe(false)
     expect(JSON.stringify(result)).not.toContain('user:secret')
     expect(JSON.stringify(result)).not.toContain('do-not-leak')
+  })
+
+
+  it('builds OpenAI-compatible text plus image_url content parts for local runtimes', () => {
+    const content = buildOpenAICompatibleUserContent('Describe it.', [
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
+    ])
+
+    expect(content).toEqual([
+      { type: 'text', text: 'Describe it.' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } },
+    ])
+    expect(JSON.stringify(content)).not.toContain('storagePath')
+    expect(JSON.stringify(content)).not.toContain('blobId')
+    expect(JSON.stringify(content)).not.toContain('originalPath')
+  })
+
+  it('sanitizes OpenAI-compatible image blocks for LM Studio and Ollama without accepting credentialed URLs', () => {
+    expect(sanitizeProviderRuntimeImageContentBlocks('lm_studio', [
+      { type: 'text', text: 'Describe it.' },
+      { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,/9j/AA==' } },
+    ])).toEqual({
+      ok: true,
+      blocks: [
+        { type: 'text', text: 'Describe it.' },
+        { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,/9j/AA==' } },
+      ],
+    })
+
+    const rejected = sanitizeProviderRuntimeImageContentBlocks('ollama_local', [
+      { type: 'image_url', image_url: { url: 'https://user:secret@cdn.example.test/photo.png?token=do-not-leak' } },
+    ])
+    expect(rejected).toEqual({
+      ok: false,
+      message: 'Provider runtime image content block is invalid.',
+    })
+    expect(JSON.stringify(rejected)).not.toContain('user:secret')
+    expect(JSON.stringify(rejected)).not.toContain('do-not-leak')
   })
 
   it('rejects non-M1b image MIME types for direct runtime blocks', () => {

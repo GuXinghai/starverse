@@ -405,6 +405,172 @@ describe('ollamaLocalProviderIpc', () => {
     ])
   })
 
+  it('sends native /api/chat image bodies with pure base64 images and no data URL prefix', async () => {
+    const urls: string[] = []
+    const bodies: unknown[] = []
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      urls.push(url)
+      if (init?.body) bodies.push(JSON.parse(String(init.body)))
+      if (url.endsWith('/api/ps')) return jsonResponse(ollamaPs([{ name: 'llava:latest', model: 'llava:latest' }]))
+      if (url.endsWith('/api/show')) return jsonResponse({ capabilities: ['completion', 'vision'] })
+      if (url.endsWith('/api/chat')) {
+        return streamResponse('{"message":{"role":"assistant","content":"OK"},"done":true}\n')
+      }
+      throw new Error(`unexpected url: ${url}`)
+    }) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerOllamaLocalProviderIpc({ registerInvoke, fetchImpl })
+    const startHandler = registeredHandler(registerInvoke, 'ollama-chat:stream-text')
+    const sender = createSender()
+
+    expect(startHandler({ sender }, {
+      requestId: 'ollama_req_native_image',
+      assistantMessageId: 'assistant_1',
+      config: defaultConfig(),
+      model: 'llava:latest',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: 'Describe it.' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgo=' } },
+      ] }],
+      timeoutMs: 750,
+    })).toEqual({ ok: true })
+
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('ollama-chat:end:ollama_req_native_image'))
+    expect(urls).toEqual([
+      'http://127.0.0.1:11434/api/ps',
+      'http://127.0.0.1:11434/api/show',
+      'http://127.0.0.1:11434/api/chat',
+    ])
+    expect(bodies).toEqual([
+      { model: 'llava:latest' },
+      {
+        model: 'llava:latest',
+        messages: [{ role: 'user', content: 'Describe it.', images: ['iVBORw0KGgo='] }],
+        stream: true,
+      },
+    ])
+    expect(JSON.stringify(bodies)).not.toContain('data:image')
+  })
+
+  it('sends native /api/generate image bodies with top-level pure base64 images', async () => {
+    const bodies: unknown[] = []
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.body) bodies.push(JSON.parse(String(init.body)))
+      if (url.endsWith('/api/ps')) return jsonResponse(ollamaPs([{ name: 'llava:latest', model: 'llava:latest' }]))
+      if (url.endsWith('/api/show')) return jsonResponse({ capabilities: ['vision'] })
+      if (url.endsWith('/api/generate')) return streamResponse('{"response":"OK","done":true}\n')
+      throw new Error(`unexpected url: ${url}`)
+    }) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerOllamaLocalProviderIpc({ registerInvoke, fetchImpl })
+    const startHandler = registeredHandler(registerInvoke, 'ollama-chat:stream-text')
+    const sender = createSender()
+
+    expect(startHandler({ sender }, {
+      requestId: 'ollama_req_generate_image',
+      assistantMessageId: 'assistant_1',
+      config: defaultConfig({ nativePreferredEndpoint: 'generate' }),
+      model: 'llava:latest',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: 'Describe it.' },
+        { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,/9j/AA==' } },
+      ] }],
+      timeoutMs: 750,
+    })).toEqual({ ok: true })
+
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('ollama-chat:end:ollama_req_generate_image'))
+    expect(bodies).toEqual([
+      { model: 'llava:latest' },
+      {
+        model: 'llava:latest',
+        prompt: 'user: Describe it.',
+        stream: true,
+        images: ['/9j/AA=='],
+      },
+    ])
+    expect(JSON.stringify(bodies)).not.toContain('data:image')
+  })
+
+  it('sends Ollama OpenAI-compatible image_url data URLs and safe image URLs through chat completions', async () => {
+    const bodies: unknown[] = []
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.body) bodies.push(JSON.parse(String(init.body)))
+      if (url.endsWith('/api/ps')) return jsonResponse(ollamaPs([{ name: 'llava:latest', model: 'llava:latest' }]))
+      if (url.endsWith('/api/show')) return jsonResponse({ capabilities: ['vision'] })
+      if (url.endsWith('/v1/chat/completions')) {
+        return streamResponse('data: {"choices":[{"index":0,"delta":{"content":"OK"},"finish_reason":null}]}\n\ndata: [DONE]\n\n', 200, 'text/event-stream')
+      }
+      throw new Error(`unexpected url: ${url}`)
+    }) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerOllamaLocalProviderIpc({ registerInvoke, fetchImpl })
+    const startHandler = registeredHandler(registerInvoke, 'ollama-chat:stream-text')
+    const sender = createSender()
+
+    expect(startHandler({ sender }, {
+      requestId: 'ollama_req_openai_image',
+      assistantMessageId: 'assistant_1',
+      config: defaultConfig({ chatMode: 'openai_compatible' }),
+      model: 'llava:latest',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: 'Describe it.' },
+        { type: 'image_url', image_url: { url: 'https://cdn.example.test/photo.png' } },
+      ] }],
+      timeoutMs: 750,
+    })).toEqual({ ok: true })
+
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('ollama-chat:end:ollama_req_openai_image'))
+    expect(bodies).toEqual([
+      { model: 'llava:latest' },
+      {
+        model: 'llava:latest',
+        messages: [{ role: 'user', content: [
+          { type: 'text', text: 'Describe it.' },
+          { type: 'image_url', image_url: { url: 'https://cdn.example.test/photo.png' } },
+        ] }],
+        stream: true,
+      },
+    ])
+  })
+
+  it('blocks Ollama native link-only image URLs before generation', async () => {
+    const urls: string[] = []
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      urls.push(url)
+      if (url.endsWith('/api/ps')) return jsonResponse(ollamaPs([{ name: 'llava:latest', model: 'llava:latest' }]))
+      if (url.endsWith('/api/show')) return jsonResponse({ capabilities: ['vision'] })
+      if (init?.method === 'POST') throw new Error(`unexpected post: ${url}`)
+      throw new Error(`unexpected url: ${url}`)
+    }) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerOllamaLocalProviderIpc({ registerInvoke, fetchImpl })
+    const startHandler = registeredHandler(registerInvoke, 'ollama-chat:stream-text')
+    const sender = createSender()
+
+    expect(startHandler({ sender }, {
+      requestId: 'ollama_req_native_url_blocked',
+      assistantMessageId: 'assistant_1',
+      config: defaultConfig(),
+      model: 'llava:latest',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: 'Describe it.' },
+        { type: 'image_url', image_url: { url: 'https://cdn.example.test/photo.png' } },
+      ] }],
+      timeoutMs: 750,
+    })).toEqual({ ok: true })
+
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('ollama-chat:end:ollama_req_native_url_blocked'))
+    expect(urls).toEqual([
+      'http://127.0.0.1:11434/api/ps',
+      'http://127.0.0.1:11434/api/show',
+    ])
+    const events = sentEvents(sender, 'ollama_req_native_url_blocked')
+    expect(events.some((event) =>
+      event.type === 'error' &&
+      event.error.code === 'url_not_allowed'
+    )).toBe(true)
+  })
+
   it('supports OpenAI-compatible Responses mapping when explicitly selected', async () => {
     const urls: string[] = []
     const bodies: unknown[] = []

@@ -258,7 +258,7 @@ export function getRuntimeCapabilitySummaryLite(selection: CurrentRuntimeSelecti
     return {
       textChat: true,
       streamingText: 'probe_required',
-      attachments: 'blocked',
+      attachments: 'supported',
       webSearch: 'blocked',
       tools: 'blocked',
       reasoningArtifacts: 'blocked',
@@ -267,9 +267,9 @@ export function getRuntimeCapabilitySummaryLite(selection: CurrentRuntimeSelecti
       usageFinal: 'not_guaranteed',
       source: 'lm_studio_local',
       warnings: [
-        'LM Studio Local v1 is text-only, loopback-only, and externally managed.',
+        'LM Studio Local image input supports PNG/JPEG through OpenAI-compatible chat completions when the selected model is confirmed vision-capable.',
         'Native REST load/unload controls are separate from OpenAI-compatible chat mode.',
-        'Files, tools, web search, reasoning controls, image generation, and structured output are blocked.',
+        'PDF, files, tools, web search, reasoning controls, image generation, and structured output are blocked.',
       ],
     }
   }
@@ -278,7 +278,7 @@ export function getRuntimeCapabilitySummaryLite(selection: CurrentRuntimeSelecti
     return {
       textChat: true,
       streamingText: 'probe_required',
-      attachments: 'blocked',
+      attachments: 'supported',
       webSearch: 'blocked',
       tools: 'blocked',
       reasoningArtifacts: 'filtered',
@@ -287,10 +287,10 @@ export function getRuntimeCapabilitySummaryLite(selection: CurrentRuntimeSelecti
       usageFinal: 'not_guaranteed',
       source: 'ollama_local',
       warnings: [
-        'Ollama Local v1 is text-only, loopback-only, and externally managed.',
+        'Ollama Local image input supports PNG/JPEG when /api/show confirms the selected model is vision-capable.',
         'Native REST load/unload controls are separate from OpenAI-compatible chat mode.',
         'Provider thinking metadata is filtered from visible text in the native REST stream.',
-        'Files, tools, web search, reasoning controls, image generation, and structured output are blocked.',
+        'PDF, files, tools, web search, reasoning controls, image generation, and structured output are blocked.',
       ],
     }
   }

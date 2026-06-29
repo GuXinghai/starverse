@@ -10,6 +10,8 @@ export type ProviderFileRuntimeProvider =
   | 'anthropic_messages'
   | 'google_ai_studio'
   | 'openrouter'
+  | 'lm_studio'
+  | 'ollama_local'
 
 export type PrepareProviderFileSendInput = Readonly<{
   provider: ProviderFileRuntimeProvider

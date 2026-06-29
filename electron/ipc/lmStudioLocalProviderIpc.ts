@@ -1,5 +1,9 @@
 import type { WebContents } from 'electron'
 import type { RegisterInvoke } from './types'
+import {
+  sanitizeProviderRuntimeImageContentBlocks,
+  type OpenAICompatibleChatContentPart,
+} from '../../src/next/multimodal/providerRuntimeContentBlocks'
 
 export const LM_STUDIO_LOCAL_PROVIDER_IPC_CHANNELS = [
   'lm-studio:probe',
@@ -38,7 +42,7 @@ export type LMStudioLocalProviderConfig = Readonly<{
 
 export type LMStudioTextChatMessage = Readonly<{
   role: 'user' | 'assistant'
-  content: string
+  content: string | ReadonlyArray<OpenAICompatibleChatContentPart>
 }>
 
 export type LMStudioModelSummary = Readonly<{
@@ -386,12 +390,37 @@ function normalizeMessages(raw: unknown): LMStudioTextChatMessage[] | null {
     if (!item || typeof item !== 'object') return null
     const role = (item as Record<string, unknown>).role
     if (role !== 'user' && role !== 'assistant') return null
-    const content = String((item as Record<string, unknown>).content ?? '').trim()
+    const content = normalizeOpenAICompatibleMessageContent((item as Record<string, unknown>).content, 'lm_studio')
     if (!content) continue
-    out.push({ role, content: content.slice(0, MAX_MESSAGE_CHARS) })
+    out.push({ role, content })
   }
   if (out.length === 0 || out[out.length - 1]?.role !== 'user') return null
   return out
+}
+
+function normalizeOpenAICompatibleMessageContent(
+  raw: unknown,
+  provider: 'lm_studio',
+): string | OpenAICompatibleChatContentPart[] | null {
+  if (typeof raw === 'string') {
+    const content = raw.trim()
+    return content ? content.slice(0, MAX_MESSAGE_CHARS) : null
+  }
+  if (!Array.isArray(raw)) return null
+  const sanitized = sanitizeProviderRuntimeImageContentBlocks(provider, raw)
+  if (!sanitized.ok || sanitized.blocks.length === 0) return null
+  const out: OpenAICompatibleChatContentPart[] = []
+  for (const block of sanitized.blocks) {
+    if (block.type === 'text' && typeof block.text === 'string') {
+      out.push({ type: 'text', text: block.text.slice(0, MAX_MESSAGE_CHARS) })
+      continue
+    }
+    const imageUrl = (block as Record<string, any>).image_url
+    if (block.type === 'image_url' && imageUrl && typeof imageUrl.url === 'string') {
+      out.push({ type: 'image_url', image_url: { url: imageUrl.url } })
+    }
+  }
+  return out.length > 0 ? out : null
 }
 
 export function validateLMStudioTextChatPayload(payload: unknown): ValidatedTextChatPayload {
@@ -844,15 +873,33 @@ function nativeRestChatBody(request: ValidatedTextChatSuccess): Record<string, u
   const previous = request.messages.slice(0, -1)
   const current = request.messages[request.messages.length - 1]
   const contextText = previous
-    .map((message) => `${message.role}: ${message.content}`)
+    .map((message) => `${message.role}: ${messageContentText(message)}`)
     .join('\n')
     .trim()
   return {
     model: request.model,
-    input: contextText ? `${contextText}\nuser: ${current?.content ?? ''}` : current?.content ?? '',
+    input: contextText ? `${contextText}\nuser: ${messageContentText(current)}` : messageContentText(current),
     stream: true,
     store: false,
   }
+}
+
+function messageContentText(message: LMStudioTextChatMessage | undefined): string {
+  const content = message?.content
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text)
+    .join('')
+}
+
+function messageHasImage(message: LMStudioTextChatMessage): boolean {
+  return Array.isArray(message.content) && message.content.some((part) => part.type === 'image_url')
+}
+
+function messagesHaveImage(messages: ReadonlyArray<LMStudioTextChatMessage>): boolean {
+  return messages.some(messageHasImage)
 }
 
 function syntheticOpenAITextDelta(text: string): string {
@@ -1042,6 +1089,7 @@ async function forwardNativeRestStream(input: Readonly<{
 async function maybeAutoLoadBeforeSend(input: Readonly<{
   request: ValidatedTextChatSuccess
   fetchImpl: typeof fetch
+  requireVision: boolean
 }>): Promise<
   | Readonly<{ ok: true; autoLoadedInstanceId?: string }>
   | Readonly<{ ok: false; event: LMStudioTextChatWireEvent }>
@@ -1049,10 +1097,18 @@ async function maybeAutoLoadBeforeSend(input: Readonly<{
   const controls = input.request.config.nativeRestControls
   const state = await resolveModelLoadedState(input.fetchImpl, input.request.endpoint, input.request.model, input.request.timeoutMs)
   if (!state.ok) {
+    if (input.requireVision) {
+      return { ok: false, event: makeSafeTransportError(state.code, 'LM Studio vision capability could not be confirmed for the selected model.') }
+    }
     if (controls.autoLoadBeforeSendEnabled) {
       return { ok: false, event: makeSafeTransportError(state.code, 'LM Studio native REST control plane is unavailable.') }
     }
     return { ok: true }
+  }
+  if (input.requireVision) {
+    if (!state.known || state.model.capabilities?.vision !== true) {
+      return { ok: false, event: makeSafeTransportError('unsupported_image_input', 'LM Studio selected model is not confirmed as vision-capable.') }
+    }
   }
   if (!state.known) {
     if (controls.autoLoadBeforeSendEnabled) {
@@ -1093,7 +1149,27 @@ async function forwardLMStudioTextChat(input: Readonly<{
   let autoLoadedInstanceId: string | undefined
 
   try {
-    const loadResult = await maybeAutoLoadBeforeSend({ request: input.request, fetchImpl: input.fetchImpl })
+    const hasImage = messagesHaveImage(input.request.messages)
+    if (
+      hasImage &&
+      (input.request.config.chatMode !== 'openai_compatible' ||
+        input.request.config.openAICompatible.preferredEndpoint !== 'chat_completions')
+    ) {
+      sendWireEvent(input.sender, input.request.requestId, {
+        type: 'responseMeta',
+        status: 0,
+        requestId: input.request.requestId,
+        provider: 'lm_studio',
+        headers: {},
+      })
+      sendWireEvent(input.sender, input.request.requestId, makeSafeTransportError(
+        'unsupported_image_input',
+        'LM Studio image input is only enabled for OpenAI-compatible chat completions in this runtime slice.',
+      ))
+      return
+    }
+
+    const loadResult = await maybeAutoLoadBeforeSend({ request: input.request, fetchImpl: input.fetchImpl, requireVision: hasImage })
     if (!loadResult.ok) {
       sendWireEvent(input.sender, input.request.requestId, {
         type: 'responseMeta',
