@@ -171,6 +171,7 @@ export function createExperimentalRuntimeTextEvents(
         model: input.modelId,
         userText: input.userText,
         contextMessages: input.contextMessages,
+        currentUserContentBlocks: input.currentUserContentBlocks,
         signal: input.signal,
       })
     case 'ollama_local':
@@ -193,6 +194,7 @@ export function createExperimentalRuntimeTextEvents(
         model: input.modelId,
         userText: input.userText,
         contextMessages: input.contextMessages,
+        currentUserContentBlocks: input.currentUserContentBlocks,
         signal: input.signal,
       })
     case 'local_endpoint':

@@ -281,10 +281,12 @@ describe('providerRuntimeSendCoordinator', () => {
     expect(deepSeekCalls).toEqual([expect.objectContaining({ model: 'model_1' })])
   })
 
-  it('passes current user image content blocks to image-capable experimental cloud wrappers only', async () => {
+  it('passes current user image content blocks to image-capable experimental wrappers', async () => {
     openAIResponsesCalls.length = 0
     googleAIStudioCalls.length = 0
     anthropicCalls.length = 0
+    lmStudioCalls.length = 0
+    ollamaCalls.length = 0
     localEndpointCalls.length = 0
     const abortController = new AbortController()
     const imageBlocks = [{ type: 'input_image', image_url: 'data:image/png;base64,iVBORw0KGgo=' }]
@@ -309,11 +311,24 @@ describe('providerRuntimeSendCoordinator', () => {
       providerKey: 'anthropic_messages',
       currentUserContentBlocks: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } }],
     }))
+    const openAiCompatibleBlocks = [{ type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgo=' } }]
+    await drain(createExperimentalRuntimeTextEvents({
+      ...baseInput,
+      providerKey: 'lm_studio',
+      currentUserContentBlocks: openAiCompatibleBlocks,
+    }))
+    await drain(createExperimentalRuntimeTextEvents({
+      ...baseInput,
+      providerKey: 'ollama_local',
+      currentUserContentBlocks: openAiCompatibleBlocks,
+    }))
     await drain(createExperimentalRuntimeTextEvents({ ...baseInput, providerKey: 'local_endpoint', localEndpointUrl: 'http://127.0.0.1:11434/v1' }))
 
     expect(openAIResponsesCalls[0]?.currentUserContentBlocks).toEqual(imageBlocks)
     expect(googleAIStudioCalls[0]?.currentUserContentBlocks).toEqual([{ inlineData: { mimeType: 'image/png', data: 'iVBORw0KGgo=' } }])
     expect(anthropicCalls[0]?.currentUserContentBlocks).toEqual([{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } }])
+    expect(lmStudioCalls[0]?.currentUserContentBlocks).toEqual(openAiCompatibleBlocks)
+    expect(ollamaCalls[0]?.currentUserContentBlocks).toEqual(openAiCompatibleBlocks)
     expect(localEndpointCalls[0]?.currentUserContentBlocks).toBeUndefined()
   })
 

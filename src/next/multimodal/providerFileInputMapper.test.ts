@@ -16,6 +16,13 @@ const PROVIDERS = [
   'openrouter',
 ] as const satisfies readonly ProviderFileInputProvider[]
 
+const OPENAI_COMPAT_IMAGE_PROVIDERS = [
+  'generic_openai_compatible',
+  'local_endpoint',
+  'lm_studio',
+  'ollama_local',
+] as const satisfies readonly ProviderFileInputProvider[]
+
 const TINY_PNG_BYTES = Uint8Array.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
   0x00, 0x00, 0x00, 0x0d,
@@ -84,6 +91,53 @@ describe('providerFileInputMapper', () => {
     if (result.ok) expect(result.requestPart).toEqual(expectedInlinePart(provider, 'image', 'photo.jpeg', 'image/jpeg', bytes))
   })
 
+
+  it.each(OPENAI_COMPAT_IMAGE_PROVIDERS)('maps a tiny PNG asset to %s OpenAI-compatible image_url content part', async (provider) => {
+    const result = await prepareProviderFileInput({
+      provider,
+      assetId: `asset-${provider}-png`,
+      readAsset: async () => managedReadResult({
+        assetId: `asset-${provider}-png`,
+        filename: 'pixel.png',
+        mimeType: 'image/png',
+        extension: 'png',
+        bytes: TINY_PNG_BYTES,
+      }),
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      provider,
+      mimeType: 'image/png',
+      kind: 'image',
+    })
+    if (!result.ok) throw new Error(result.message)
+    expect(result.requestPart).toEqual(expectedInlinePart(provider, 'image', 'pixel.png', 'image/png', TINY_PNG_BYTES))
+  })
+
+  it.each(OPENAI_COMPAT_IMAGE_PROVIDERS)('maps a tiny JPEG asset to %s OpenAI-compatible image_url content part', async (provider) => {
+    const result = await prepareProviderFileInput({
+      provider,
+      assetId: `asset-${provider}-jpeg`,
+      readAsset: async () => managedReadResult({
+        assetId: `asset-${provider}-jpeg`,
+        filename: 'photo.jpeg',
+        mimeType: 'image/jpeg',
+        extension: 'jpeg',
+        bytes: TINY_JPEG_BYTES,
+      }),
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      provider,
+      mimeType: 'image/jpeg',
+      kind: 'image',
+    })
+    if (!result.ok) throw new Error(result.message)
+    expect(result.requestPart).toEqual(expectedInlinePart(provider, 'image', 'photo.jpeg', 'image/jpeg', TINY_JPEG_BYTES))
+  })
+
   it.each(PROVIDERS)('maps a one-page small PDF asset to %s request part', async (provider) => {
     const bytes = TINY_PDF_BYTES
     const result = await prepareProviderFileInput({
@@ -108,6 +162,28 @@ describe('providerFileInputMapper', () => {
       kind: 'pdf',
     })
     if (result.ok) expect(result.requestPart).toEqual(expectedInlinePart(provider, 'pdf', 'manual.pdf', 'application/pdf', bytes))
+  })
+
+
+  it.each(OPENAI_COMPAT_IMAGE_PROVIDERS)('rejects PDF input for image-only %s runtime', async (provider) => {
+    const result = await prepareProviderFileInput({
+      provider,
+      assetId: `asset-${provider}-pdf`,
+      readAsset: async () => managedReadResult({
+        assetId: `asset-${provider}-pdf`,
+        filename: 'manual.pdf',
+        mimeType: 'application/pdf',
+        extension: 'pdf',
+        bytes: TINY_PDF_BYTES,
+      }),
+    })
+
+    expect(result).toEqual({
+      ok: false,
+      provider,
+      code: 'unsupported_mime',
+      message: `Provider ${provider} does not support pdf inline file input.`,
+    })
   })
 
   it('maps link_and_file URL snapshots from managed snapshot bytes without passing originalUrl', async () => {
@@ -163,6 +239,32 @@ describe('providerFileInputMapper', () => {
       kind: 'image',
     })
     if (result.ok) expect(result.requestPart).toEqual(expectedUrlPart(provider, 'image', 'remote.png', 'image/png', url))
+  })
+
+
+  it.each(OPENAI_COMPAT_IMAGE_PROVIDERS)('maps link_only public image URLs for URL-capable %s OpenAI-compatible request parts', async (provider) => {
+    const url = 'https://cdn.example.test/photo.png'
+    const result = await prepareProviderFileInput({
+      provider,
+      assetId: `asset-${provider}-link-only-image`,
+      readAsset: async () => providerUrlReadResult({
+        assetId: `asset-${provider}-link-only-image`,
+        filename: 'remote.png',
+        mimeType: 'image/png',
+        extension: 'png',
+        url,
+      }),
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      provider,
+      revisionId: 'link_only',
+      mimeType: 'image/png',
+      kind: 'image',
+    })
+    if (!result.ok) throw new Error(result.message)
+    expect(result.requestPart).toEqual(expectedUrlPart(provider, 'image', 'remote.png', 'image/png', url))
   })
 
   it('rejects link_only URL inputs when the provider shape has no documented URL part for that kind', async () => {
@@ -760,6 +862,11 @@ function expectedInlinePart(
       return kind === 'image'
         ? { type: 'image_url', image_url: { url: dataUrl } }
         : { type: 'file', file: { filename, file_data: dataUrl } }
+    case 'generic_openai_compatible':
+    case 'local_endpoint':
+    case 'lm_studio':
+    case 'ollama_local':
+      return { type: 'image_url', image_url: { url: dataUrl } }
   }
 }
 
@@ -785,6 +892,11 @@ function expectedUrlPart(
       return kind === 'image'
         ? { type: 'image_url', image_url: { url } }
         : { type: 'file', file: { filename, file_data: url } }
+    case 'generic_openai_compatible':
+    case 'local_endpoint':
+    case 'lm_studio':
+    case 'ollama_local':
+      return { type: 'image_url', image_url: { url } }
   }
 }
 

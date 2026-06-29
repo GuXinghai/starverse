@@ -34,12 +34,20 @@ export type GeminiRuntimePart =
   | Readonly<{ inlineData: Readonly<{ mimeType: string; data: string }> }>
   | Readonly<{ fileData: Readonly<{ mimeType: string; fileUri: string }> }>
 
+export type OpenAICompatibleChatContentPart =
+  | Readonly<{ type: 'text'; text: string }>
+  | Readonly<{ type: 'image_url'; image_url: Readonly<{ url: string }> }>
+
 export type ProviderRuntimeImageProvider =
   | 'openai_responses'
   | 'anthropic_messages'
   | 'google_ai_studio'
   | 'openrouter'
   | 'deepseek'
+  | 'generic_openai_compatible'
+  | 'local_endpoint'
+  | 'lm_studio'
+  | 'ollama_local'
 
 const MAX_RUNTIME_CONTENT_BLOCKS = 16
 const MAX_RUNTIME_TEXT_CHARS = 20000
@@ -86,6 +94,19 @@ export function buildGeminiUserParts(
   ]
 }
 
+export function buildOpenAICompatibleUserContent(
+  userText: string,
+  blocks: ReadonlyArray<ProviderRuntimeContentBlock> | undefined
+): string | OpenAICompatibleChatContentPart[] {
+  const imageParts = collectOpenAICompatibleImageParts(blocks)
+  const textParts = collectRuntimeTextParts(userText, blocks)
+  if (imageParts.length === 0) return textParts.join('\n')
+  return [
+    ...textParts.map((text) => ({ type: 'text' as const, text })),
+    ...imageParts,
+  ]
+}
+
 export function hasProviderRuntimeImageBlock(
   blocks: ReadonlyArray<ProviderRuntimeContentBlock> | undefined
 ): boolean {
@@ -94,7 +115,7 @@ export function hasProviderRuntimeImageBlock(
     isOpenAIResponsesImagePart(block) ||
     isAnthropicImageBlock(block) ||
     isGeminiImagePart(block) ||
-    isOpenRouterImagePart(block)
+    isOpenAICompatibleImagePart(block)
   )
 }
 
@@ -274,6 +295,18 @@ function collectGeminiFileParts(
   return out
 }
 
+function collectOpenAICompatibleImageParts(
+  blocks: ReadonlyArray<ProviderRuntimeContentBlock> | undefined
+): OpenAICompatibleChatContentPart[] {
+  const out: OpenAICompatibleChatContentPart[] = []
+  for (const block of blocks ?? []) {
+    if (isOpenAICompatibleImagePart(block)) {
+      out.push({ type: 'image_url', image_url: { url: block.image_url.url } })
+    }
+  }
+  return out
+}
+
 function sanitizeTextBlock(item: unknown): ProviderRuntimeContentBlock | null {
   if (!item || typeof item !== 'object') return null
   const record = item as Record<string, unknown>
@@ -313,6 +346,13 @@ function sanitizeImageBlock(provider: ProviderRuntimeImageProvider, item: unknow
         : null
     case 'openrouter':
       return isOpenRouterImagePart(item)
+        ? { type: 'image_url', image_url: { url: item.image_url.url } }
+        : null
+    case 'generic_openai_compatible':
+    case 'local_endpoint':
+    case 'lm_studio':
+    case 'ollama_local':
+      return isOpenAICompatibleImagePart(item)
         ? { type: 'image_url', image_url: { url: item.image_url.url } }
         : null
     case 'deepseek':
@@ -374,6 +414,11 @@ function sanitizeFileBlock(provider: ProviderRuntimeImageProvider, item: unknown
       return isOpenRouterFilePart(item)
         ? { type: 'file', file: { filename: item.file.filename, file_data: item.file.file_data } }
         : null
+    case 'generic_openai_compatible':
+    case 'local_endpoint':
+    case 'lm_studio':
+    case 'ollama_local':
+      return null
     case 'deepseek':
       if (isOpenAIResponsesFilePart(item)) {
         return {
@@ -548,6 +593,13 @@ function isGeminiFileDataFilePart(item: unknown): item is Readonly<{
 }
 
 function isOpenRouterImagePart(item: unknown): item is Readonly<{
+  type: 'image_url'
+  image_url: Readonly<{ url: string }>
+}> {
+  return isOpenAICompatibleImagePart(item)
+}
+
+function isOpenAICompatibleImagePart(item: unknown): item is Readonly<{
   type: 'image_url'
   image_url: Readonly<{ url: string }>
 }> {

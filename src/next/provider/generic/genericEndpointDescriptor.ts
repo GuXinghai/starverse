@@ -21,6 +21,12 @@ import {
 export const GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID =
   'generic_openai_compat_chat_completions' as const
 
+export type GenericImageInputProfile =
+  | 'text_only'
+  | 'chat_completions_image_data_url'
+  | 'chat_completions_image_url'
+  | 'unknown_unsupported'
+
 // ---------------------------------------------------------------------------
 // Capability — conservative defaults
 // ---------------------------------------------------------------------------
@@ -100,6 +106,7 @@ export type GenericEndpointDescriptor = Readonly<{
   model: string
   credential: ProviderCredential
   capability: GenericRuntimeCapability
+  imageInputProfile: GenericImageInputProfile
 }>
 
 // ---------------------------------------------------------------------------
@@ -117,6 +124,7 @@ export type DescriptorValidationError = Readonly<{
     | 'url_has_userinfo'
     | 'url_has_query'
     | 'url_has_fragment'
+    | 'invalid_image_input_profile'
   message: string
 }>
 
@@ -203,6 +211,7 @@ export function validateGenericEndpointDescriptor(input: {
   baseUrl: string
   model: string
   apiKey: string
+  imageInputProfile?: unknown
 }): GenericEndpointDescriptor | DescriptorValidationError {
   // Profile — static safe message, never echoes the input
   if (input.profileId !== GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID) {
@@ -227,13 +236,32 @@ export function validateGenericEndpointDescriptor(input: {
     return { code: 'invalid_credential', message: cred.message }
   }
 
+  const imageInputProfile = normalizeGenericImageInputProfile(input.imageInputProfile)
+  if (!imageInputProfile) {
+    return { code: 'invalid_image_input_profile', message: 'Unsupported Generic image input profile.' }
+  }
+
   return {
     profileId: GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID,
     baseUrl: urlOrError,
     model,
     credential: cred,
     capability: { ...DEFAULT_CAPABILITY },
+    imageInputProfile,
   }
+}
+
+export function normalizeGenericImageInputProfile(input: unknown): GenericImageInputProfile | null {
+  if (input === undefined || input === null || input === '') return 'text_only'
+  if (
+    input === 'text_only' ||
+    input === 'chat_completions_image_data_url' ||
+    input === 'chat_completions_image_url' ||
+    input === 'unknown_unsupported'
+  ) {
+    return input
+  }
+  return null
 }
 
 /**

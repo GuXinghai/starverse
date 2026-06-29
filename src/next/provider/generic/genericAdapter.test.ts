@@ -1593,6 +1593,123 @@ describe('streamViaGenericConfig', () => {
     expect(body.model).toBe('custom-model-7b')
   })
 
+  it('sends text plus PNG image_url data URL when Generic image data URL profile is enabled', async () => {
+    const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
+    const fetch = mockFetch(response)
+    const dataUrl = 'data:image/png;base64,iVBORw0KGgo='
+
+    await collectEvents(streamViaGenericConfig(
+      {
+        ...makeRequest(),
+        currentUserContentBlocks: [
+          { type: 'text', text: 'Describe it.' },
+          { type: 'image_url', image_url: { url: dataUrl } },
+        ],
+      },
+      validEndpointConfig({ imageInputProfile: 'chat_completions_image_data_url' }),
+      VALID_RESOLVER,
+      fetch,
+    ))
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body)
+    expect(body.messages).toEqual([{
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Describe it.' },
+        { type: 'image_url', image_url: { url: dataUrl } },
+      ],
+    }])
+    expect(JSON.stringify(body)).not.toContain('originalPath')
+    expect(JSON.stringify(body)).not.toContain('storagePath')
+    expect(JSON.stringify(body)).not.toContain('blobId')
+  })
+
+  it('sends text plus JPEG image_url data URL when Generic image data URL profile is enabled', async () => {
+    const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
+    const fetch = mockFetch(response)
+    const dataUrl = 'data:image/jpeg;base64,/9j/AA=='
+
+    await collectEvents(streamViaGenericConfig(
+      {
+        ...makeRequest(),
+        currentUserContentBlocks: [
+          { type: 'text', text: 'Describe it.' },
+          { type: 'image_url', image_url: { url: dataUrl } },
+        ],
+      },
+      validEndpointConfig({ imageInputProfile: 'chat_completions_image_data_url' }),
+      VALID_RESOLVER,
+      fetch,
+    ))
+
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body)
+    expect(body.messages[0].content[1]).toEqual({ type: 'image_url', image_url: { url: dataUrl } })
+  })
+
+  it('blocks Generic image input when the endpoint profile is text-only', async () => {
+    const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+    const events = await collectEvents(streamViaGenericConfig(
+      {
+        ...makeRequest(),
+        currentUserContentBlocks: [
+          { type: 'text', text: 'Describe it.' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgo=' } },
+        ],
+      },
+      validEndpointConfig({ imageInputProfile: 'text_only' }),
+      VALID_RESOLVER,
+      fetch,
+    ))
+
+    expect(fetch).toHaveBeenCalledTimes(0)
+    expectTerminalErrorWithoutDone(events)
+    expect(JSON.stringify(events)).toContain('unsupported_image_input_profile')
+  })
+
+  it('passes safe image URLs only when the Generic URL-capable profile is enabled', async () => {
+    const response = makeSseResponseWithDone(textChunkJson('Hi'), finishChunkJson('stop'))
+    const fetch = mockFetch(response)
+    const url = 'https://cdn.example.test/photo.png'
+
+    await collectEvents(streamViaGenericConfig(
+      {
+        ...makeRequest(),
+        currentUserContentBlocks: [
+          { type: 'text', text: 'Describe it.' },
+          { type: 'image_url', image_url: { url } },
+        ],
+      },
+      validEndpointConfig({ imageInputProfile: 'chat_completions_image_url' }),
+      VALID_RESOLVER,
+      fetch,
+    ))
+
+    const body = JSON.parse((fetch as any).mock.calls[0][1].body)
+    expect(body.messages[0].content).toContainEqual({ type: 'image_url', image_url: { url } })
+  })
+
+  it('blocks Generic image URLs when only data URL profile is enabled', async () => {
+    const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
+
+    const events = await collectEvents(streamViaGenericConfig(
+      {
+        ...makeRequest(),
+        currentUserContentBlocks: [
+          { type: 'text', text: 'Describe it.' },
+          { type: 'image_url', image_url: { url: 'https://cdn.example.test/photo.png' } },
+        ],
+      },
+      validEndpointConfig({ imageInputProfile: 'chat_completions_image_data_url' }),
+      VALID_RESOLVER,
+      fetch,
+    ))
+
+    expect(fetch).toHaveBeenCalledTimes(0)
+    expectTerminalErrorWithoutDone(events)
+  })
+
   it('invalid config fails before fetch', async () => {
     const fetch = mockFetch(makeSseResponseWithDone(textChunkJson('Hi')))
 

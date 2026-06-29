@@ -1,5 +1,9 @@
 import type { WebContents } from 'electron'
 import type { RegisterInvoke } from './types'
+import {
+  sanitizeProviderRuntimeImageContentBlocks,
+  type OpenAICompatibleChatContentPart,
+} from '../../src/next/multimodal/providerRuntimeContentBlocks'
 
 export const OLLAMA_LOCAL_PROVIDER_IPC_CHANNELS = [
   'ollama:probe',
@@ -40,7 +44,7 @@ export type OllamaLocalProviderConfig = Readonly<{
 
 export type OllamaTextChatMessage = Readonly<{
   role: 'user' | 'assistant'
-  content: string
+  content: string | ReadonlyArray<OpenAICompatibleChatContentPart>
 }>
 
 export type OllamaModelSummary = Readonly<{
@@ -206,6 +210,10 @@ type ModelRunningState =
   | Readonly<{ ok: true; known: false }>
   | Readonly<{ ok: false; code: 'timeout' | 'network_error' | 'http_error' | 'invalid_response'; message: string }>
 
+type ModelVisionState =
+  | Readonly<{ ok: true; supportsVision: boolean }>
+  | Readonly<{ ok: false; code: 'timeout' | 'network_error' | 'http_error' | 'invalid_response'; message: string }>
+
 const DEFAULT_TIMEOUT_MS = 30000
 const MIN_TIMEOUT_MS = 1000
 const MAX_TIMEOUT_MS = 120000
@@ -353,7 +361,7 @@ export function validateOllamaEndpointUrl(raw: unknown): ValidatedEndpointUrl {
   return { ok: true, url, safeBaseUrl: safeUrl }
 }
 
-function ollamaUrl(base: URL, pathname: '/api/tags' | '/api/ps' | '/api/version' | '/api/chat' | '/api/generate' | '/v1/models' | '/v1/chat/completions' | '/v1/responses'): string {
+function ollamaUrl(base: URL, pathname: '/api/tags' | '/api/ps' | '/api/version' | '/api/show' | '/api/chat' | '/api/generate' | '/v1/models' | '/v1/chat/completions' | '/v1/responses'): string {
   const url = new URL(base.toString())
   url.username = ''
   url.password = ''
@@ -406,12 +414,34 @@ function normalizeMessages(raw: unknown): OllamaTextChatMessage[] | null {
     if (!item || typeof item !== 'object') return null
     const role = (item as Record<string, unknown>).role
     if (role !== 'user' && role !== 'assistant') return null
-    const content = String((item as Record<string, unknown>).content ?? '').trim()
+    const content = normalizeOpenAICompatibleMessageContent((item as Record<string, unknown>).content)
     if (!content) continue
-    out.push({ role, content: content.slice(0, MAX_MESSAGE_CHARS) })
+    out.push({ role, content })
   }
   if (out.length === 0 || out[out.length - 1]?.role !== 'user') return null
   return out
+}
+
+function normalizeOpenAICompatibleMessageContent(raw: unknown): string | OpenAICompatibleChatContentPart[] | null {
+  if (typeof raw === 'string') {
+    const content = raw.trim()
+    return content ? content.slice(0, MAX_MESSAGE_CHARS) : null
+  }
+  if (!Array.isArray(raw)) return null
+  const sanitized = sanitizeProviderRuntimeImageContentBlocks('ollama_local', raw)
+  if (!sanitized.ok || sanitized.blocks.length === 0) return null
+  const out: OpenAICompatibleChatContentPart[] = []
+  for (const block of sanitized.blocks) {
+    if (block.type === 'text' && typeof block.text === 'string') {
+      out.push({ type: 'text', text: block.text.slice(0, MAX_MESSAGE_CHARS) })
+      continue
+    }
+    const imageUrl = (block as Record<string, any>).image_url
+    if (block.type === 'image_url' && imageUrl && typeof imageUrl.url === 'string') {
+      out.push({ type: 'image_url', image_url: { url: imageUrl.url } })
+    }
+  }
+  return out.length > 0 ? out : null
 }
 
 export function validateOllamaTextChatPayload(payload: unknown): ValidatedTextChatPayload {
@@ -736,6 +766,31 @@ async function resolveModelRunningState(
     : { ok: true, known: false }
 }
 
+function parseVisionCapability(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object') return false
+  const record = payload as Record<string, unknown>
+  const capabilities = Array.isArray(record.capabilities) ? record.capabilities.map(String) : []
+  return capabilities.some((item) => item.trim().toLowerCase() === 'vision')
+}
+
+async function resolveModelVisionState(
+  fetchImpl: typeof fetch,
+  endpoint: URL,
+  modelId: string,
+  timeoutMs: number,
+): Promise<ModelVisionState> {
+  const result = await postJson(fetchImpl, ollamaUrl(endpoint, '/api/show'), { model: modelId }, timeoutMs)
+  if (!result.ok) {
+    const failure = safeModelListFailure(result.code) as Exclude<OllamaModelList, Readonly<{ ok: true }>>
+    return {
+      ok: false,
+      code: result.code,
+      message: failure.message,
+    }
+  }
+  return { ok: true, supportsVision: parseVisionCapability(result.payload) }
+}
+
 async function chatControlInternal(input: Readonly<{
   fetchImpl: typeof fetch
   endpoint: URL
@@ -865,24 +920,93 @@ function responsesBody(request: ValidatedTextChatSuccess): Record<string, unknow
 
 function generatePrompt(request: ValidatedTextChatSuccess): string {
   return request.messages
-    .map((message) => `${message.role}: ${message.content}`)
+    .map((message) => `${message.role}: ${messageContentText(message)}`)
     .join('\n')
     .trim()
 }
 
-function nativeRestBody(request: ValidatedTextChatSuccess): Record<string, unknown> {
+type NativeRestBodyResult =
+  | Readonly<{ ok: true; body: Record<string, unknown> }>
+  | Readonly<{ ok: false; event: OllamaTextChatWireEvent }>
+
+type NativeImagePayloadsResult =
+  | Readonly<{ ok: true; images: string[] }>
+  | Readonly<{ ok: false; event: OllamaTextChatWireEvent }>
+
+function nativeRestBody(request: ValidatedTextChatSuccess): NativeRestBodyResult {
+  const imageResult = nativeImagePayloads(request.messages)
+  if (!imageResult.ok) return { ok: false, event: imageResult.event }
   if (request.config.nativeRest.preferredEndpoint === 'generate') {
     return {
-      model: request.model,
-      prompt: generatePrompt(request),
-      stream: true,
+      ok: true,
+      body: {
+        model: request.model,
+        prompt: generatePrompt(request),
+        stream: true,
+        ...(imageResult.images.length ? { images: imageResult.images } : {}),
+      },
     }
   }
   return {
-    model: request.model,
-    messages: request.messages,
-    stream: true,
+    ok: true,
+    body: {
+      model: request.model,
+      messages: request.messages.map((message) => {
+        const images = messageImageDataUrls(message)
+          .map(extractImageBase64FromDataUrl)
+          .filter((value): value is string => !!value)
+        return {
+          role: message.role,
+          content: messageContentText(message),
+          ...(images.length ? { images } : {}),
+        }
+      }),
+      stream: true,
+    },
   }
+}
+
+function messageContentText(message: OllamaTextChatMessage | undefined): string {
+  const content = message?.content
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text)
+    .join('')
+}
+
+function messageImageDataUrls(message: OllamaTextChatMessage): string[] {
+  if (!Array.isArray(message.content)) return []
+  return message.content
+    .filter((part) => part.type === 'image_url')
+    .map((part) => part.image_url.url)
+}
+
+function messagesHaveImage(messages: ReadonlyArray<OllamaTextChatMessage>): boolean {
+  return messages.some((message) => messageImageDataUrls(message).length > 0)
+}
+
+function nativeImagePayloads(messages: ReadonlyArray<OllamaTextChatMessage>): NativeImagePayloadsResult {
+  const images: string[] = []
+  for (const message of messages) {
+    for (const url of messageImageDataUrls(message)) {
+      const base64 = extractImageBase64FromDataUrl(url)
+      if (!base64) {
+        return {
+          ok: false,
+          event: makeSafeTransportError('url_not_allowed', 'Ollama native REST image input requires managed image bytes; link-only image URLs require OpenAI-compatible mode.'),
+        }
+      }
+      images.push(base64)
+    }
+  }
+  return { ok: true, images }
+}
+
+function extractImageBase64FromDataUrl(url: string): string | null {
+  const match = /^data:image\/(?:png|jpeg|jpg);base64,([A-Za-z0-9+/]*={0,2})$/i.exec(url.trim())
+  return match?.[1] || null
 }
 
 function syntheticOpenAITextDelta(text: string): string {
@@ -1045,13 +1169,25 @@ async function forwardNativeRestStream(input: Readonly<{
   controller: AbortController
 }>): Promise<boolean> {
   const preferred = input.request.config.nativeRest.preferredEndpoint
+  const bodyResult = nativeRestBody(input.request)
+  if (!bodyResult.ok) {
+    sendWireEvent(input.sender, input.request.requestId, {
+      type: 'responseMeta',
+      status: 0,
+      requestId: input.request.requestId,
+      provider: 'ollama_local',
+      headers: {},
+    })
+    sendWireEvent(input.sender, input.request.requestId, bodyResult.event)
+    return false
+  }
   const response = await input.fetchImpl(ollamaUrl(input.request.endpoint, preferred === 'generate' ? '/api/generate' : '/api/chat'), {
     method: 'POST',
     headers: {
       Accept: 'application/x-ndjson',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(nativeRestBody(input.request)),
+    body: JSON.stringify(bodyResult.body),
     redirect: 'error',
     signal: input.controller.signal,
   })
@@ -1138,6 +1274,7 @@ async function forwardNativeRestStream(input: Readonly<{
 async function maybeAutoLoadBeforeSend(input: Readonly<{
   request: ValidatedTextChatSuccess
   fetchImpl: typeof fetch
+  requireVision: boolean
 }>): Promise<
   | Readonly<{ ok: true; autoLoadedModel?: string }>
   | Readonly<{ ok: false; event: OllamaTextChatWireEvent }>
@@ -1145,10 +1282,22 @@ async function maybeAutoLoadBeforeSend(input: Readonly<{
   const controls = input.request.config.nativeControls
   const state = await resolveModelRunningState(input.fetchImpl, input.request.endpoint, input.request.model, input.request.timeoutMs)
   if (!state.ok) {
+    if (input.requireVision) {
+      return { ok: false, event: makeSafeTransportError(state.code, 'Ollama vision capability could not be confirmed for the selected model.') }
+    }
     if (controls.autoLoadBeforeSendEnabled) {
       return { ok: false, event: makeSafeTransportError(state.code, 'Ollama native REST control plane is unavailable.') }
     }
     return { ok: true }
+  }
+  if (input.requireVision) {
+    const vision = await resolveModelVisionState(input.fetchImpl, input.request.endpoint, input.request.model, input.request.timeoutMs)
+    if (!vision.ok) {
+      return { ok: false, event: makeSafeTransportError(vision.code, 'Ollama vision capability could not be confirmed for the selected model.') }
+    }
+    if (!vision.supportsVision) {
+      return { ok: false, event: makeSafeTransportError('unsupported_image_input', 'Ollama selected model is not confirmed as vision-capable.') }
+    }
   }
   if (state.known && state.running) return { ok: true }
   if (!controls.autoLoadBeforeSendEnabled) {
@@ -1177,7 +1326,27 @@ async function forwardOllamaTextChat(input: Readonly<{
   let autoLoadedModel: string | undefined
 
   try {
-    const loadResult = await maybeAutoLoadBeforeSend({ request: input.request, fetchImpl: input.fetchImpl })
+    const hasImage = messagesHaveImage(input.request.messages)
+    if (
+      hasImage &&
+      input.request.config.chatMode === 'openai_compatible' &&
+      input.request.config.openAICompatible.preferredEndpoint !== 'chat_completions'
+    ) {
+      sendWireEvent(input.sender, input.request.requestId, {
+        type: 'responseMeta',
+        status: 0,
+        requestId: input.request.requestId,
+        provider: 'ollama_local',
+        headers: {},
+      })
+      sendWireEvent(input.sender, input.request.requestId, makeSafeTransportError(
+        'unsupported_image_input',
+        'Ollama OpenAI-compatible image input is only enabled for chat completions in this runtime slice.',
+      ))
+      return
+    }
+
+    const loadResult = await maybeAutoLoadBeforeSend({ request: input.request, fetchImpl: input.fetchImpl, requireVision: hasImage })
     if (!loadResult.ok) {
       sendWireEvent(input.sender, input.request.requestId, {
         type: 'responseMeta',

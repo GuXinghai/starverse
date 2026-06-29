@@ -712,9 +712,13 @@ type OllamaControlResult =
     safeUrl?: string
   }
 
+type OpenAICompatibleImageContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 type LocalEndpointTextChatMessage = {
   role: 'user' | 'assistant'
-  content: string
+  content: string | OpenAICompatibleImageContentPart[]
 }
 
 type LocalEndpointTextChatStartResult =
@@ -728,7 +732,7 @@ type LocalEndpointTextChatStartResult =
 
 type LMStudioTextChatMessage = {
   role: 'user' | 'assistant'
-  content: string
+  content: string | OpenAICompatibleImageContentPart[]
 }
 
 type LMStudioTextChatStartResult =
@@ -742,7 +746,7 @@ type LMStudioTextChatStartResult =
 
 type OllamaTextChatMessage = {
   role: 'user' | 'assistant'
-  content: string
+  content: string | OpenAICompatibleImageContentPart[]
 }
 
 type OllamaTextChatStartResult =

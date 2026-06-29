@@ -9,10 +9,15 @@ import {
   streamWireSemanticCore,
 } from '@/next/streaming/core'
 import { buildAbortEnvelope } from '@/next/errors/openRouterErrorEnvelope'
+import {
+  buildOpenAICompatibleUserContent,
+  type OpenAICompatibleChatContentPart,
+  type ProviderRuntimeContentBlock,
+} from '@/next/multimodal/providerRuntimeContentBlocks'
 
 export type LMStudioTextChatMessage = Readonly<{
   role: 'user' | 'assistant'
-  content: string
+  content: string | ReadonlyArray<OpenAICompatibleChatContentPart>
 }>
 
 export type LMStudioNativeRestControls = Readonly<{
@@ -44,6 +49,7 @@ export type LMStudioTextChatOptions = Readonly<{
   model: string
   userText: string
   contextMessages?: readonly unknown[]
+  currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
   signal?: AbortSignal
   timeoutMs?: number
 }>
@@ -81,6 +87,7 @@ function textFromContent(content: unknown): string {
 export function buildLMStudioTextChatMessages(input: Readonly<{
   contextMessages?: readonly unknown[]
   userText: string
+  currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
 }>): LMStudioTextChatMessage[] {
   const messages: LMStudioTextChatMessage[] = []
   for (const item of input.contextMessages ?? []) {
@@ -93,8 +100,13 @@ export function buildLMStudioTextChatMessages(input: Readonly<{
     messages.push({ role, content })
   }
 
-  const userText = input.userText.trim()
-  if (userText) messages.push({ role: 'user', content: userText })
+  const userContent = buildOpenAICompatibleUserContent(input.userText, input.currentUserContentBlocks)
+  if (Array.isArray(userContent)) {
+    if (userContent.length > 0) messages.push({ role: 'user', content: userContent })
+  } else {
+    const userText = userContent.trim()
+    if (userText) messages.push({ role: 'user', content: userText })
+  }
   return messages
 }
 
@@ -192,6 +204,7 @@ export async function* streamLMStudioTextChatAsDomainEvents(
   const messages = buildLMStudioTextChatMessages({
     contextMessages: options.contextMessages,
     userText: options.userText,
+    currentUserContentBlocks: options.currentUserContentBlocks,
   })
   if (messages.length === 0) {
     yield* semanticMapIpcStartInvokeError(

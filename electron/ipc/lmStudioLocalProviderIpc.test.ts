@@ -190,6 +190,97 @@ describe('lmStudioLocalProviderIpc', () => {
     expect(serialized).not.toContain('user:pass')
   })
 
+  it('sends OpenAI-compatible text plus image_url content only when the loaded model is vision-capable', async () => {
+    const urls: string[] = []
+    const bodies: unknown[] = []
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      urls.push(url)
+      if (init?.body) bodies.push(JSON.parse(String(init.body)))
+      if (url.endsWith('/api/v1/models')) {
+        return jsonResponse({
+          models: [{
+            key: 'vision-model',
+            display_name: 'Vision Model',
+            type: 'llm',
+            capabilities: { vision: true },
+            loaded_instances: [{ id: 'vision-model/loaded' }],
+          }],
+        })
+      }
+      if (url.endsWith('/v1/chat/completions')) {
+        return sseResponse('data: {"choices":[{"index":0,"delta":{"content":"OK"},"finish_reason":null}]}\n\ndata: [DONE]\n\n')
+      }
+      throw new Error(`unexpected url: ${url}`)
+    }) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerLMStudioLocalProviderIpc({ registerInvoke, fetchImpl })
+    const startHandler = registeredHandler(registerInvoke, 'lm-studio-chat:stream-text')
+    const sender = createSender()
+    const dataUrl = 'data:image/png;base64,iVBORw0KGgo='
+
+    expect(startHandler({ sender }, {
+      requestId: 'lm_studio_req_image',
+      assistantMessageId: 'assistant_1',
+      config: defaultConfig(),
+      model: 'vision-model',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: 'Describe it.' },
+        { type: 'image_url', image_url: { url: dataUrl } },
+      ] }],
+      timeoutMs: 750,
+    })).toEqual({ ok: true })
+
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('lm-studio-chat:end:lm_studio_req_image'))
+    expect(urls).toEqual([
+      'http://127.0.0.1:1234/api/v1/models',
+      'http://127.0.0.1:1234/v1/chat/completions',
+    ])
+    expect(bodies[0]).toEqual({
+      model: 'vision-model',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: 'Describe it.' },
+        { type: 'image_url', image_url: { url: dataUrl } },
+      ] }],
+      stream: true,
+    })
+    expect(JSON.stringify(bodies)).not.toContain('originalPath')
+    expect(JSON.stringify(bodies)).not.toContain('storagePath')
+    expect(JSON.stringify(bodies)).not.toContain('blobId')
+  })
+
+  it('blocks LM Studio image input when the selected model vision capability is unknown', async () => {
+    const urls: string[] = []
+    const fetchImpl = vi.fn(async (url: string) => {
+      urls.push(url)
+      if (url.endsWith('/api/v1/models')) return jsonResponse(nativeModels([{ id: 'openai/gpt-oss-20b/loaded' }]))
+      throw new Error(`unexpected url: ${url}`)
+    }) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerLMStudioLocalProviderIpc({ registerInvoke, fetchImpl })
+    const startHandler = registeredHandler(registerInvoke, 'lm-studio-chat:stream-text')
+    const sender = createSender()
+
+    expect(startHandler({ sender }, {
+      requestId: 'lm_studio_req_image_unknown',
+      assistantMessageId: 'assistant_1',
+      config: defaultConfig(),
+      model: 'openai/gpt-oss-20b',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: 'Describe it.' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgo=' } },
+      ] }],
+      timeoutMs: 750,
+    })).toEqual({ ok: true })
+
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('lm-studio-chat:end:lm_studio_req_image_unknown'))
+    expect(urls).toEqual(['http://127.0.0.1:1234/api/v1/models'])
+    const events = sentEvents(sender, 'lm_studio_req_image_unknown')
+    expect(events.some((event) =>
+      event.type === 'error' &&
+      event.error.code === 'unsupported_image_input'
+    )).toBe(true)
+  })
+
   it('runs manual load and unload only through native REST control-plane endpoints', async () => {
     const urls: string[] = []
     const bodies: unknown[] = []

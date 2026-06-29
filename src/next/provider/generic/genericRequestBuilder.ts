@@ -2,17 +2,19 @@
  * Generic OpenAI-compatible Chat Completions request builder — pure function.
  *
  * Builds a minimal OpenAI-compatible request body for long-tail/custom endpoints.
- * Conservative capability: text chat + basic streaming only.
+ * Conservative capability: text chat + basic streaming, with image_url
+ * content parts only when an explicit Generic image input profile allows them.
  *
  * Unsupported by default: tools, functions, response_format, reasoning,
- * web_search, plugins, multimodal content parts, files/attachments.
+ * web_search, plugins, files/attachments, and non-profile-gated multimodal.
  */
 
 import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
+import type { OpenAICompatibleChatContentPart } from '@/next/multimodal/providerRuntimeContentBlocks'
 
 export type GenericMessage = Readonly<{
   role: 'system' | 'user' | 'assistant'
-  content: string
+  content: string | ReadonlyArray<OpenAICompatibleChatContentPart>
 }>
 
 export type GenericRequest = Readonly<{
@@ -39,7 +41,8 @@ export type GenericRequestInput = Readonly<{
  * - `stream: true` is always set.
  * - `temperature`, `top_p`, `max_tokens` included only when present in samplingParams.
  * - `user` included only when provided.
- * - No tools, functions, response_format, reasoning, web_search, plugins, multimodal.
+ * - No tools, functions, response_format, reasoning, web_search, plugins,
+ *   files/attachments, or non-profile-gated multimodal.
  */
 export function buildGenericRequest(input: GenericRequestInput): GenericRequest {
   const { model, messages, config, user } = input

@@ -25,9 +25,11 @@ import {
   buildChatCompletionsUrl,
   validateGenericEndpointDescriptor,
   validateCapabilityOverride,
+  normalizeGenericImageInputProfile,
   type GenericEndpointDescriptor,
   type DescriptorValidationError,
   type GenericRuntimeCapability,
+  type GenericImageInputProfile,
 } from '@/next/provider/generic/genericEndpointDescriptor'
 
 // ---------------------------------------------------------------------------
@@ -59,6 +61,7 @@ export type GenericEndpointConfig = Readonly<{
   baseUrl: string
   model: string
   credentialRef: GenericCredentialRef
+  imageInputProfile?: GenericImageInputProfile
   capabilityOverride?: GenericCapabilityOverride
 }>
 
@@ -77,6 +80,7 @@ export type GenericEndpointFixtureMetadata = Readonly<{
   model: string
   credentialRef: GenericCredentialRef
   capability: GenericRuntimeCapability
+  imageInputProfile: GenericImageInputProfile
 }>
 
 // ---------------------------------------------------------------------------
@@ -103,6 +107,7 @@ export type ConfigValidationError = Readonly<{
     | 'url_has_userinfo'
     | 'url_has_query'
     | 'url_has_fragment'
+    | 'invalid_image_input_profile'
   message: string
 }>
 
@@ -119,6 +124,7 @@ export type SafeGenericEndpointMetadata = Readonly<{
   credentialPresent: boolean
   credential: SafeProviderCredentialMetadata
   capability: GenericRuntimeCapability
+  imageInputProfile: GenericImageInputProfile
 }>
 
 export type SafeGenericEndpointMetadataOptions = Readonly<{
@@ -226,6 +232,11 @@ export function toGenericEndpointFixtureMetadata(
     }
   }
 
+  const imageInputProfile = normalizeGenericImageInputProfile(config.imageInputProfile)
+  if (!imageInputProfile) {
+    return { code: 'blocked_capability_override', message: 'Unsupported Generic image input profile.' }
+  }
+
   return {
     kind: 'generic_endpoint_fixture',
     fixtureOnly: true,
@@ -241,6 +252,7 @@ export function toGenericEndpointFixtureMetadata(
     model: config.model.trim(),
     credentialRef,
     capability: applyValidatedCapabilityOverride(genericConservativeCapability(), config.capabilityOverride),
+    imageInputProfile,
   }
 }
 
@@ -302,6 +314,11 @@ export function resolveGenericEndpointDescriptor(
     }
   }
 
+  const imageInputProfile = normalizeGenericImageInputProfile(config.imageInputProfile)
+  if (!imageInputProfile) {
+    return { code: 'invalid_image_input_profile', message: 'Unsupported Generic image input profile.' }
+  }
+
   // 4. Resolve credential through injected provider-layer resolver
   const credentialResolution = resolveProviderCredential(config.credentialRef, resolveCredential)
   if (!credentialResolution.ok) {
@@ -317,6 +334,7 @@ export function resolveGenericEndpointDescriptor(
     baseUrl: config.baseUrl,
     model: config.model,
     apiKey: credentialResolution.credential.token,
+    imageInputProfile,
   })
   if ('code' in descriptor) {
     return mapDescriptorError(descriptor)
@@ -383,5 +401,6 @@ export function toSafeGenericEndpointMetadata(
     credentialPresent: credential.present,
     credential,
     capability,
+    imageInputProfile: normalizeGenericImageInputProfile(config.imageInputProfile) ?? 'text_only',
   }
 }

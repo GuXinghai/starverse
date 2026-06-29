@@ -8771,7 +8771,9 @@ export function useAppChatAppLogic() {
   ): providerKey is ExperimentalProviderFileRuntimeProvider {
     return providerKey === 'openai_responses' ||
       providerKey === 'google_ai_studio' ||
-      providerKey === 'anthropic_messages'
+      providerKey === 'anthropic_messages' ||
+      providerKey === 'lm_studio' ||
+      providerKey === 'ollama_local'
   }
 
   function buildExperimentalImageSendPlanModelDescriptor(input: Readonly<{
@@ -8792,8 +8794,12 @@ export function useAppChatAppLogic() {
     return {
       providerKey,
       supportsImageUrlRef: true,
-      supportsPdfInputs: true,
-      supportsPdfUrlRef: true,
+      supportsPdfInputs: providerKey === 'openai_responses' ||
+        providerKey === 'google_ai_studio' ||
+        providerKey === 'anthropic_messages',
+      supportsPdfUrlRef: providerKey === 'openai_responses' ||
+        providerKey === 'google_ai_studio' ||
+        providerKey === 'anthropic_messages',
       supportsTextUrlRef: false,
       supportsVideoUrlRef: false,
       supportsInlineData: true,
