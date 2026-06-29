@@ -113,6 +113,7 @@ export type PrepareProviderFileInputInput = Readonly<{
 }>
 
 export const DEFAULT_PROVIDER_FILE_INLINE_LIMIT_BYTES = 20 * 1024 * 1024
+export const M1C_PDF_INLINE_LIMIT_BYTES = 1024 * 1024
 
 const SUPPORTED_PROVIDERS: ReadonlySet<string> = new Set([
   'openai_responses',
@@ -289,8 +290,11 @@ function prepareManagedBytesInput(input: Readonly<{
     }
   }
 
+  const effectiveMaxInlineBytes = classified.kind === 'pdf'
+    ? Math.min(maxInlineBytes, M1C_PDF_INLINE_LIMIT_BYTES)
+    : maxInlineBytes
   const sizeBytes = read.blob.sizeBytes ?? read.asset.sizeBytes ?? read.bytes.byteLength
-  if (sizeBytes > maxInlineBytes || read.bytes.byteLength > maxInlineBytes) {
+  if (sizeBytes > effectiveMaxInlineBytes || read.bytes.byteLength > effectiveMaxInlineBytes) {
     return {
       ok: false,
       provider,
@@ -348,7 +352,7 @@ function prepareProviderUrlInput(input: Readonly<{
   const classified = classifyProviderFileInput(read.asset, null)
   if (!classified.ok) return { ok: false, provider, code: 'unsupported_mime', message: classified.message }
 
-  const url = normalizeHttpUrl(read.url)
+  const url = normalizeProviderUrlForKind(read.url, classified.kind)
   if (!url || !supportsProviderUrl(provider, classified.kind)) {
     return {
       ok: false,
@@ -601,10 +605,19 @@ function encodeBase64(bytes: Uint8Array): string {
 }
 
 function normalizeHttpUrl(value: string): string | null {
+  return normalizeHttpUrlWithPolicy(value, { rejectQueryHash: false })
+}
+
+function normalizeProviderUrlForKind(value: string, kind: ProviderFileInputKind): string | null {
+  return normalizeHttpUrlWithPolicy(value, { rejectQueryHash: kind === 'pdf' })
+}
+
+function normalizeHttpUrlWithPolicy(value: string, options: Readonly<{ rejectQueryHash: boolean }>): string | null {
   try {
     const url = new URL(value)
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
     if (url.username || url.password) return null
+    if (options.rejectQueryHash && (url.search || url.hash)) return null
     return url.toString()
   } catch {
     return null

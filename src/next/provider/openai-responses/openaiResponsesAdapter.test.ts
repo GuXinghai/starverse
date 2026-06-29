@@ -161,6 +161,51 @@ describe('streamViaOpenAIResponses', () => {
     expect(serialized).not.toContain('blobId')
   })
 
+  it('adds input_file PDF content part for text plus PDF requests without leaking local metadata', async () => {
+    const response = makeSseResponse(textDeltaSse('Hi'))
+    const fetch = mockFetch(response)
+
+    await collectEvents(streamViaOpenAIResponses({
+      ...makeRequest(),
+      currentUserContentBlocks: [
+        {
+          type: 'input_file',
+          filename: 'manual.pdf',
+          file_data: 'data:application/pdf;base64,JVBERi0xLjQK',
+          originalUrl: 'https://cdn.example.test/manual.pdf?token=secret',
+          storagePath: 'D:\\Starverse\\storage\\manual.pdf',
+          blobId: 'blob-secret',
+        } as any,
+      ],
+    }, {
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      fetch,
+    }))
+
+    const [, init] = (fetch as any).mock.calls[0]
+    const body = JSON.parse(init.body)
+    expect(body.input).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'input_text', text: 'Hello' },
+          {
+            type: 'input_file',
+            filename: 'manual.pdf',
+            file_data: 'data:application/pdf;base64,JVBERi0xLjQK',
+          },
+        ],
+      },
+    ])
+    const serialized = JSON.stringify(body)
+    expect(serialized).not.toContain('originalUrl')
+    expect(serialized).not.toContain('storagePath')
+    expect(serialized).not.toContain('D:\\Starverse')
+    expect(serialized).not.toContain('blob-secret')
+    expect(serialized).not.toContain('token=secret')
+  })
+
   it('output_text delta yields visible text', async () => {
     const response = makeSseResponse(
       textDeltaSse('Hello! '),

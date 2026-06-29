@@ -6,7 +6,7 @@ import type { GeminiContent } from '../../src/next/provider/gemini/geminiRequest
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
 import {
-  sanitizeProviderRuntimeImageContentBlocks,
+  sanitizeProviderRuntimeFileContentBlocks,
   type ProviderRuntimeContentBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
 
@@ -124,9 +124,9 @@ export function validateGoogleAIStudioTextChatPayload(payload: unknown): Validat
     return staticFailure('invalid_payload', 'Google AI Studio text chat payload is invalid.')
   }
 
-  const contentBlocks = sanitizeProviderRuntimeImageContentBlocks('google_ai_studio', record.currentUserContentBlocks)
+  const contentBlocks = sanitizeProviderRuntimeFileContentBlocks('google_ai_studio', record.currentUserContentBlocks)
   if (!contentBlocks.ok) {
-    return staticFailure('invalid_payload', 'Google AI Studio image content block payload is invalid.')
+    return staticFailure('invalid_payload', 'Google AI Studio file content block payload is invalid.')
   }
 
   const messages = normalizeMessages(record.messages, contentBlocks.blocks.length > 0)

@@ -4,7 +4,7 @@ import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEven
 import { streamViaAnthropic, type AnthropicFetchFn } from '../../src/next/provider/anthropic/anthropicAdapter'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import {
-  sanitizeProviderRuntimeImageContentBlocks,
+  sanitizeProviderRuntimeFileContentBlocks,
   type ProviderRuntimeContentBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
 
@@ -115,9 +115,9 @@ export function validateAnthropicTextChatPayload(payload: unknown): ValidatedTex
     return staticFailure('invalid_payload', 'Anthropic Messages text chat payload is invalid.')
   }
 
-  const contentBlocks = sanitizeProviderRuntimeImageContentBlocks('anthropic_messages', record.currentUserContentBlocks)
+  const contentBlocks = sanitizeProviderRuntimeFileContentBlocks('anthropic_messages', record.currentUserContentBlocks)
   if (!contentBlocks.ok) {
-    return staticFailure('invalid_payload', 'Anthropic Messages image content block payload is invalid.')
+    return staticFailure('invalid_payload', 'Anthropic Messages file content block payload is invalid.')
   }
 
   const messages = normalizeMessages(record.messages, contentBlocks.blocks.length > 0)

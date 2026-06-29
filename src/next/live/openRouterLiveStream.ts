@@ -472,8 +472,8 @@ function sanitizeOpenRouterRuntimeContentBlocks(
     if (record.type === 'file') {
       const file = record.file as Record<string, unknown> | undefined
       if (!file) continue
-      const filename = typeof file.filename === 'string' ? file.filename : 'attachment'
-      const fileData = typeof file.file_data === 'string' ? file.file_data : ''
+      const filename = sanitizeRuntimeFilename(file.filename) ?? 'attachment.pdf'
+      const fileData = normalizeSafeRuntimePdfFileData(file.file_data)
       if (fileData) out.push({ type: 'file', file: { filename, file_data: fileData } } as any)
       continue
     }
@@ -508,6 +508,46 @@ function normalizeSafeRuntimeImageUrl(value: unknown): string | null {
   } catch {
     return null
   }
+}
+
+function normalizeSafeRuntimePdfFileData(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (/^data:application\/pdf;base64,/i.test(trimmed)) {
+    const payload = trimmed.replace(/^data:application\/pdf;base64,/i, '')
+    return isRuntimeBase64PayloadWithinBytes(payload, 1024 * 1024) ? trimmed : null
+  }
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null
+    if (parsed.username || parsed.password) return null
+    if (parsed.search || parsed.hash) return null
+    return parsed.toString()
+  } catch {
+    return null
+  }
+}
+
+function isRuntimeBase64PayloadWithinBytes(value: string, maxBytes: number): boolean {
+  if (!value) return false
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(value)) return false
+  if (value.length % 4 === 1) return false
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0
+  const estimatedBytes = Math.floor((value.length * 3) / 4) - padding
+  return estimatedBytes >= 0 && estimatedBytes <= maxBytes
+}
+
+function sanitizeRuntimeFilename(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .split(/[\\/]/)
+    .pop()
+    ?.replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120)
+  return normalized || null
 }
 
 export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions): AsyncGenerator<DomainEvent> {

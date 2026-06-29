@@ -1,181 +1,233 @@
 import type { DbWorkerRuntime } from '../runtime'
 import type { RegisterHandler } from './types'
-import type { SendPlan } from '../../../../src/shared/files/sendPlanTypes'
+import type { SendPlan, SendPlanModelDescriptor, SendPlanProviderContext } from '../../../../src/shared/files/sendPlanTypes'
 import type { SendMode } from '../../../../src/shared/files/fileTypes'
 import {
   createProviderFileInputAssetReader,
+  M1C_PDF_INLINE_LIMIT_BYTES,
   prepareProviderFileInput,
+  type ProviderFileInputKind,
   type ProviderFileInputProvider,
   type ProviderFileInputSendMode,
 } from '../../../../src/next/multimodal/providerFileInputMapper'
-import { PrepareProviderImageSendSchema } from '../../validation'
+import {
+  PrepareProviderFileSendSchema,
+  PrepareProviderImageSendSchema,
+} from '../../validation'
 
-type PreparedProviderImageDiagnostic = Readonly<{
+type AttachmentPlan = SendPlan['attachmentPlans'][number]
+
+type PreparedProviderFileDiagnostic = Readonly<{
   assetId: string
   attachmentId: string
-  source: SendPlan['attachmentPlans'][number]['source']
+  source: AttachmentPlan['source']
   selectedSendMode: SendMode
   mimeType: string
   sizeBytes: number
+  kind: ProviderFileInputKind
+}>
+
+type PrepareDraftRuntimeOptions = Readonly<{
+  allowedKinds: ReadonlySet<ProviderFileInputKind>
+  imageOnly: boolean
 }>
 
 export function registerProviderFileInputHandlers(register: RegisterHandler, runtime: DbWorkerRuntime) {
   register('providerFileInput.prepareDraftImages', async (raw) => {
     const input = PrepareProviderImageSendSchema.parse(raw)
-    const collected = runtime.sendPlanService.collectCurrentSendInputs({
-      conversationId: input.conversationId,
-      draftText: input.draftText,
-      historyScope: historyScopeFromIds(input.historyMessageIds),
-      model: input.model,
-      providerContext: input.providerContext,
+    return prepareDraftFileInputs(input, runtime, {
+      allowedKinds: new Set<ProviderFileInputKind>(['image']),
+      imageOnly: true,
     })
-    const sendPlan = runtime.sendPlanService.buildSendPlan(collected)
-    const hasDraftAttachmentPlans = sendPlan.attachmentPlans.some((plan) => plan.source === 'draft')
+  })
 
-    const unsupportedM1bImagePlan = sendPlan.attachmentPlans.find((plan) =>
-      isUnsupportedM1bRuntimeImagePlan(plan) ||
-      isUnsupportedM1bRuntimeImageMime(runtime.fileAssetRepo.getById(plan.assetId)?.mime ?? null)
-    )
-    if (unsupportedM1bImagePlan) {
-      return {
-        ok: false,
+  register('providerFileInput.prepareDraftFiles', async (raw) => {
+    const input = PrepareProviderFileSendSchema.parse(raw)
+    return prepareDraftFileInputs(input, runtime, {
+      allowedKinds: new Set<ProviderFileInputKind>(['image', 'pdf']),
+      imageOnly: false,
+    })
+  })
+}
+
+async function prepareDraftFileInputs(
+  input: Readonly<{
+    provider: string
+    conversationId: string
+    draftText?: string
+    historyMessageIds?: ReadonlyArray<string>
+    model: SendPlanModelDescriptor
+    providerContext: SendPlanProviderContext
+  }>,
+  runtime: DbWorkerRuntime,
+  options: PrepareDraftRuntimeOptions
+) {
+  const collected = runtime.sendPlanService.collectCurrentSendInputs({
+    conversationId: input.conversationId,
+    draftText: input.draftText,
+    historyScope: historyScopeFromIds(input.historyMessageIds),
+    model: input.model,
+    providerContext: input.providerContext,
+  })
+  const sendPlan = runtime.sendPlanService.buildSendPlan(collected)
+  const hasDraftAttachmentPlans = sendPlan.attachmentPlans.some((plan) => plan.source === 'draft')
+
+  const unsupportedImagePlan = sendPlan.attachmentPlans.find((plan) =>
+    isUnsupportedM1bRuntimeImagePlan(plan) ||
+    isUnsupportedM1bRuntimeImageMime(runtime.fileAssetRepo.getById(plan.assetId)?.mime ?? null)
+  )
+  if (unsupportedImagePlan) {
+    return prepareFailure({
+      code: 'unsupported_mime',
+      message: 'This runtime slice only supports PNG and JPEG image attachments.',
+      sendPlan,
+      hasDraftAttachmentPlans,
+    })
+  }
+
+  if (sendPlan.status === 'blocked' || sendPlan.requiresUserConfirmation) {
+    return prepareFailure({
+      code: 'asset_not_ready',
+      message: resolveSendPlanBlockedMessage(sendPlan, options.imageOnly),
+      sendPlan,
+      hasDraftAttachmentPlans,
+    })
+  }
+
+  const includedPlans = sendPlan.attachmentPlans.filter((plan) =>
+    plan.eligibility === 'included' || plan.eligibility === 'warning'
+  )
+  const unsupportedPlan = includedPlans.find((plan) => !isAllowedPlan(plan, options.allowedKinds))
+  if (unsupportedPlan) {
+    return prepareFailure({
+      code: 'unsupported_mime',
+      message: options.imageOnly
+        ? 'This runtime slice only supports image attachments.'
+        : 'This runtime slice only supports PNG/JPEG image and PDF attachments.',
+      sendPlan,
+      hasDraftAttachmentPlans,
+    })
+  }
+
+  if (hasDraftAttachmentPlans && includedPlans.length === 0) {
+    return prepareFailure({
+      code: 'unsupported_mime',
+      message: options.imageOnly
+        ? 'No sendable image attachment was found for this runtime.'
+        : 'No sendable image or PDF attachment was found for this runtime.',
+      sendPlan,
+      hasDraftAttachmentPlans,
+    })
+  }
+
+  const reader = createProviderFileInputAssetReader({
+    fileAssetRepo: runtime.fileAssetRepo,
+    fileAssetStoreRepo: runtime.fileAssetStoreRepo,
+    storageRootDir: runtime.fileStorageRootDir,
+  })
+  const contentParts: unknown[] = []
+  const included: PreparedProviderFileDiagnostic[] = []
+
+  for (const plan of includedPlans) {
+    const sendMode = mapSendMode(plan.selectedSendMode)
+    if (!sendMode) {
+      return prepareFailure({
+        code: 'asset_not_ready',
+        message: options.imageOnly
+          ? 'Image attachment has no runtime send mode.'
+          : 'Attachment has no runtime send mode.',
+        sendPlan,
+        hasDraftAttachmentPlans,
+      })
+    }
+
+    const prepared = await prepareProviderFileInput({
+      provider: input.provider as ProviderFileInputProvider,
+      assetId: plan.assetId,
+      sendMode,
+      readAsset: reader,
+      ...(plan.aiPayloadKind === 'pdf' ? { maxInlineBytes: M1C_PDF_INLINE_LIMIT_BYTES } : {}),
+    })
+    if (!prepared.ok) {
+      return prepareFailure({
+        code: prepared.code,
+        message: sanitizeDiagnosticMessage(prepared.message),
+        sendPlan,
+        hasDraftAttachmentPlans,
+      })
+    }
+    if (!options.allowedKinds.has(prepared.kind)) {
+      return prepareFailure({
+        code: 'unsupported_mime',
+        message: options.imageOnly
+          ? 'Only image attachments can be sent through this runtime slice.'
+          : 'Only PNG/JPEG image and PDF attachments can be sent through this runtime slice.',
+        sendPlan,
+        hasDraftAttachmentPlans,
+      })
+    }
+    if (prepared.kind === 'image' && !isM1bRuntimeImageMime(prepared.mimeType)) {
+      return prepareFailure({
         code: 'unsupported_mime',
         message: 'This runtime slice only supports PNG and JPEG image attachments.',
         sendPlan,
-        contentParts: [],
-        sentAssetIds: [],
         hasDraftAttachmentPlans,
-      }
+      })
     }
-
-    if (sendPlan.status === 'blocked' || sendPlan.requiresUserConfirmation) {
-      return {
-        ok: false,
-        code: 'asset_not_ready',
-        message: resolveSendPlanBlockedMessage(sendPlan),
-        sendPlan,
-        contentParts: [],
-        sentAssetIds: [],
-        hasDraftAttachmentPlans,
-      }
-    }
-
-    const includedPlans = sendPlan.attachmentPlans.filter((plan) =>
-      plan.eligibility === 'included' || plan.eligibility === 'warning'
-    )
-    const unsupportedPlan = includedPlans.find((plan) => plan.aiPayloadKind !== 'image')
-    if (unsupportedPlan) {
-      return {
-        ok: false,
+    if (prepared.kind === 'pdf' && prepared.mimeType !== 'application/pdf') {
+      return prepareFailure({
         code: 'unsupported_mime',
-        message: 'This runtime slice only supports image attachments.',
+        message: 'This runtime slice only supports application/pdf PDF attachments.',
         sendPlan,
-        contentParts: [],
-        sentAssetIds: [],
         hasDraftAttachmentPlans,
-      }
+      })
     }
 
-    if (hasDraftAttachmentPlans && includedPlans.length === 0) {
-      return {
-        ok: false,
-        code: 'unsupported_mime',
-        message: 'No sendable image attachment was found for this runtime.',
-        sendPlan,
-        contentParts: [],
-        sentAssetIds: [],
-        hasDraftAttachmentPlans,
-      }
-    }
-
-    const reader = createProviderFileInputAssetReader({
-      fileAssetRepo: runtime.fileAssetRepo,
-      fileAssetStoreRepo: runtime.fileAssetStoreRepo,
-      storageRootDir: runtime.fileStorageRootDir,
+    contentParts.push(prepared.requestPart)
+    included.push({
+      assetId: plan.assetId,
+      attachmentId: plan.attachmentId,
+      source: plan.source,
+      selectedSendMode: sendMode,
+      mimeType: prepared.mimeType,
+      sizeBytes: prepared.sizeBytes,
+      kind: prepared.kind,
     })
-    const contentParts: unknown[] = []
-    const included: PreparedProviderImageDiagnostic[] = []
+  }
 
-    for (const plan of includedPlans) {
-      const sendMode = mapSendMode(plan.selectedSendMode)
-      if (!sendMode) {
-        return {
-          ok: false,
-          code: 'asset_not_ready',
-          message: 'Image attachment has no runtime send mode.',
-          sendPlan,
-          contentParts: [],
-          sentAssetIds: [],
-          hasDraftAttachmentPlans,
-        }
-      }
+  return {
+    ok: true,
+    provider: input.provider,
+    sendPlan,
+    contentParts,
+    sentAssetIds: Array.from(new Set(sendPlan.includedAttachments.map((attachment) => attachment.assetId))),
+    hasDraftAttachmentPlans,
+    diagnostics: {
+      sendPlanStatus: sendPlan.status,
+      includedImageCount: included.filter((item) => item.kind === 'image').length,
+      includedPdfCount: included.filter((item) => item.kind === 'pdf').length,
+      includedFileCount: included.length,
+      included,
+      containsMultimodalParts: contentParts.length > 0,
+    },
+  }
+}
 
-      const prepared = await prepareProviderFileInput({
-        provider: input.provider as ProviderFileInputProvider,
-        assetId: plan.assetId,
-        sendMode,
-        readAsset: reader,
-      })
-      if (!prepared.ok) {
-        return {
-          ok: false,
-          code: prepared.code,
-          message: sanitizeDiagnosticMessage(prepared.message),
-          sendPlan,
-          contentParts: [],
-          sentAssetIds: [],
-          hasDraftAttachmentPlans,
-        }
-      }
-      if (prepared.kind !== 'image') {
-        return {
-          ok: false,
-          code: 'unsupported_mime',
-          message: 'Only image attachments can be sent through this runtime slice.',
-          sendPlan,
-          contentParts: [],
-          sentAssetIds: [],
-          hasDraftAttachmentPlans,
-        }
-      }
-      if (!isM1bRuntimeImageMime(prepared.mimeType)) {
-        return {
-          ok: false,
-          code: 'unsupported_mime',
-          message: 'This runtime slice only supports PNG and JPEG image attachments.',
-          sendPlan,
-          contentParts: [],
-          sentAssetIds: [],
-          hasDraftAttachmentPlans,
-        }
-      }
-
-      contentParts.push(prepared.requestPart)
-      included.push({
-        assetId: plan.assetId,
-        attachmentId: plan.attachmentId,
-        source: plan.source,
-        selectedSendMode: sendMode,
-        mimeType: prepared.mimeType,
-        sizeBytes: prepared.sizeBytes,
-      })
-    }
-
-    return {
-      ok: true,
-      provider: input.provider,
-      sendPlan,
-      contentParts,
-      sentAssetIds: Array.from(new Set(sendPlan.includedAttachments.map((attachment) => attachment.assetId))),
-      hasDraftAttachmentPlans,
-      diagnostics: {
-        sendPlanStatus: sendPlan.status,
-        includedImageCount: included.length,
-        included,
-        containsMultimodalParts: contentParts.length > 0,
-      },
-    }
-  })
+function prepareFailure(input: Readonly<{
+  code: string
+  message: string
+  sendPlan: SendPlan
+  hasDraftAttachmentPlans: boolean
+}>) {
+  return {
+    ok: false,
+    code: input.code,
+    message: input.message,
+    sendPlan: input.sendPlan,
+    contentParts: [],
+    sentAssetIds: [],
+    hasDraftAttachmentPlans: input.hasDraftAttachmentPlans,
+  }
 }
 
 function historyScopeFromIds(ids: ReadonlyArray<string> | undefined): { messageIds: string[] } | null {
@@ -189,6 +241,12 @@ function mapSendMode(mode: SendMode | null): ProviderFileInputSendMode | null {
   return null
 }
 
+function isAllowedPlan(plan: AttachmentPlan, allowedKinds: ReadonlySet<ProviderFileInputKind>): boolean {
+  if (plan.aiPayloadKind === 'image') return allowedKinds.has('image')
+  if (plan.aiPayloadKind === 'pdf') return allowedKinds.has('pdf')
+  return false
+}
+
 function isM1bRuntimeImageMime(mimeType: string): boolean {
   const normalized = String(mimeType ?? '').split(';', 1)[0]?.trim().toLowerCase()
   return normalized === 'image/png' || normalized === 'image/jpeg'
@@ -199,19 +257,25 @@ function isUnsupportedM1bRuntimeImageMime(mimeType: string | null): boolean {
   return !!normalized && normalized.startsWith('image/') && normalized !== 'image/png' && normalized !== 'image/jpeg'
 }
 
-function isUnsupportedM1bRuntimeImagePlan(plan: SendPlan['attachmentPlans'][number]): boolean {
+function isUnsupportedM1bRuntimeImagePlan(plan: AttachmentPlan): boolean {
   if (plan.fileType?.kind !== 'image' && plan.aiPayloadKind !== 'image') return false
   const formatId = String(plan.fileType?.formatId ?? '').trim().toLowerCase()
   return !!formatId && formatId !== 'png' && formatId !== 'jpeg'
 }
 
-function resolveSendPlanBlockedMessage(sendPlan: SendPlan): string {
+function resolveSendPlanBlockedMessage(sendPlan: SendPlan, imageOnly: boolean): string {
   const reason = sendPlan.blockingReasons
     .map((item) => item.message || item.code)
     .find((value) => String(value ?? '').trim().length > 0)
   if (reason) return sanitizeDiagnosticMessage(String(reason))
-  if (sendPlan.requiresUserConfirmation) return 'Attachment send requires confirmation before runtime image mapping.'
-  return 'Attachment is not ready for provider image input.'
+  if (sendPlan.requiresUserConfirmation) {
+    return imageOnly
+      ? 'Attachment send requires confirmation before runtime image mapping.'
+      : 'Attachment send requires confirmation before runtime file mapping.'
+  }
+  return imageOnly
+    ? 'Attachment is not ready for provider image input.'
+    : 'Attachment is not ready for provider file input.'
 }
 
 function sanitizeDiagnosticMessage(raw: string): string {

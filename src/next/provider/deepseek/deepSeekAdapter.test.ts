@@ -173,6 +173,32 @@ describe('streamViaDeepSeek', () => {
     }
   })
 
+  it('rejects PDF file content blocks before fetch without text downgrade', async () => {
+    const fetch = vi.fn(async () => makeSseResponse(textSseChunk('gen_1', 'deepseek-chat', 'hi'))) as DeepSeekFetchFn
+
+    const events = await collectEvents(streamViaDeepSeek({
+      ...makeRequest(),
+      currentUserContentBlocks: [
+        { type: 'text', text: 'Summarize this PDF.' },
+        { type: 'file', file: { filename: 'manual.pdf', file_data: 'data:application/pdf;base64,JVBERi0xLjQK' } },
+      ],
+    }, {
+      baseUrl: 'https://api.deepseek.com/v1',
+      apiKey: 'sk-test',
+      fetch,
+    }))
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(events).toHaveLength(1)
+    expect(events[0]?.type).toBe('stream.error')
+    if (events[0]?.type === 'stream.error') {
+      expect(events[0].terminal).toBe(true)
+      expect(events[0].error.phase).toBe('request_build')
+      expect(events[0].error.code).toBe('unsupported_provider')
+      expect(events[0].error.message).toContain('does not support image or file attachments')
+    }
+  })
+
   it('reasoning_content fixture yields reasoning events only', async () => {
     const response = makeSseResponse(
       reasoningSseChunk('gen_1', 'deepseek-r1', 'Let me think...'),

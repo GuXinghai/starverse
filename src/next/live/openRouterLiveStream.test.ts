@@ -678,6 +678,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
                     { type: 'image_url', image_url: { url: 'https://user:pass@cdn.example.test/private.png' } },
                     { type: 'image_url', image_url: { url: 'data:image/webp;base64,AAAA' } },
                     { type: 'file', file: { filename: 'manual.pdf', file_data: 'https://cdn.example.test/manual.pdf' } },
+                    { type: 'file', file: { filename: 'too-large.pdf', file_data: `data:application/pdf;base64,${'A'.repeat(1_398_104)}` } },
                 ],
                 config: {
                     apiKey: 'k',
@@ -694,6 +695,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
             expect(bodyText).toContain('"content":[{"type":"text","text":"describe the attachment"},{"type":"image_url"')
             expect(bodyText).not.toContain('user:pass')
             expect(bodyText).not.toContain('data:image/webp')
+            expect(bodyText).not.toContain('too-large.pdf')
             expect(bodyText).toContain('"type":"file","file":{"filename":"manual.pdf","file_data":"https://cdn.example.test/manual.pdf"}}')
         } finally {
             globalThis.fetch = originalFetch

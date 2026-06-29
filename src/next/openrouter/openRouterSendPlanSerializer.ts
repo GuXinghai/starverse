@@ -433,7 +433,7 @@ export async function resolveAttachmentPayloadSource(
 
   const asset = getAssetOrThrow(attachmentPlan, context.assetsById)
   if (sendMode === 'url_ref') {
-    const url = resolveUrlReference(asset)
+    const url = resolveUrlReference(asset, attachmentPlan.aiPayloadKind)
     if (!url) {
       throw mapOpenRouterAttachmentError('attachment_url_missing', attachmentPlan, {
         message: `Attachment ${attachmentPlan.assetId} has no retained URL for send mode url_ref.`,
@@ -624,14 +624,14 @@ function resolveLocalStoragePath(storageRootDir: string, asset: FileAssetRecord)
   })
 }
 
-function resolveUrlReference(asset: FileAssetRecord): string | null {
+function resolveUrlReference(asset: FileAssetRecord, aiPayloadKind: string): string | null {
   const meta = asset.sourceMetaJson ?? null
   const candidateKeys = ['resolvedUrl', 'originalUrl']
   for (const key of candidateKeys) {
     const value = meta?.[key]
-    if (typeof value === 'string' && isHttpUrl(value)) return value
+    if (typeof value === 'string' && isHttpUrl(value, { rejectQueryHash: aiPayloadKind === 'pdf' })) return value
   }
-  if (asset.storageBackend === 'remote_url' && isHttpUrl(asset.storageUri)) {
+  if (asset.storageBackend === 'remote_url' && isHttpUrl(asset.storageUri, { rejectQueryHash: aiPayloadKind === 'pdf' })) {
     return asset.storageUri
   }
   return null
@@ -731,11 +731,14 @@ function resolvePdfFileParserPlugins(
   }]
 }
 
-function isHttpUrl(value: string | null | undefined): value is string {
+function isHttpUrl(value: string | null | undefined, options?: Readonly<{ rejectQueryHash?: boolean }>): value is string {
   if (!value) return false
   try {
     const parsed = new URL(value)
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+    if (parsed.username || parsed.password) return false
+    if (options?.rejectQueryHash && (parsed.search || parsed.hash)) return false
+    return true
   } catch {
     return false
   }

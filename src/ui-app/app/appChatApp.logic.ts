@@ -135,10 +135,10 @@ import {
   type PreparedOpenRouterSend,
 } from '@/next/openrouter/openRouterSendPreparation'
 import {
-  prepareProviderImageSendFromDraft,
-  type PreparedProviderImageSend,
-  type ProviderImageRuntimeProvider,
-} from '@/next/multimodal/providerImageSendPreparation'
+  prepareProviderFileSendFromDraft,
+  type PreparedProviderFileSend,
+  type ProviderFileRuntimeProvider,
+} from '@/next/multimodal/providerFileSendPreparation'
 import { capturePdfAnnotationDerivatives } from '@/next/files/derivativeJobClient'
 import {
   addConversationDraftAttachment,
@@ -8751,7 +8751,6 @@ export function useAppChatAppLogic() {
       model: modelDescriptor,
       providerContext: buildSendPlanProviderContext(input.baseUrl),
       historyMessageIds: input.historyMessageIds,
-      pdfFileParser: { enabled: true, engine: 'native' },
     })
     if (prepared && shouldLogDebug()) {
       console.info('[ui-app] file send plan prepared', {
@@ -8764,19 +8763,19 @@ export function useAppChatAppLogic() {
     return prepared
   }
 
-  type PreparedProviderImageSendOk = Extract<PreparedProviderImageSend, { ok: true }>
-  type ExperimentalProviderImageRuntimeProvider = Extract<ProviderImageRuntimeProvider, ExperimentalRuntimeTextProviderKey>
+  type PreparedProviderFileSendOk = Extract<PreparedProviderFileSend, { ok: true }>
+  type ExperimentalProviderFileRuntimeProvider = Extract<ProviderFileRuntimeProvider, ExperimentalRuntimeTextProviderKey>
 
-  function isExperimentalProviderImageRuntime(
+  function isExperimentalProviderFileRuntime(
     providerKey: ExperimentalRuntimeTextProviderKey
-  ): providerKey is ExperimentalProviderImageRuntimeProvider {
+  ): providerKey is ExperimentalProviderFileRuntimeProvider {
     return providerKey === 'openai_responses' ||
       providerKey === 'google_ai_studio' ||
       providerKey === 'anthropic_messages'
   }
 
   function buildExperimentalImageSendPlanModelDescriptor(input: Readonly<{
-    providerKey: ExperimentalProviderImageRuntimeProvider
+    providerKey: ExperimentalProviderFileRuntimeProvider
     modelId: string
   }>): SendPlanModelDescriptor {
     const normalized = normalizeModelKey(input.modelId)
@@ -8784,17 +8783,17 @@ export function useAppChatAppLogic() {
       providerKey: input.providerKey,
       modelId: normalized,
       modelKey: `${input.providerKey}::${normalized}`,
-      inputModalities: ['text', 'image'],
+      inputModalities: ['text', 'image', 'file'],
       outputModalities: ['text'],
     }
   }
 
-  function buildExperimentalImageSendPlanProviderContext(providerKey: ExperimentalProviderImageRuntimeProvider): SendPlanProviderContext {
+  function buildExperimentalImageSendPlanProviderContext(providerKey: ExperimentalProviderFileRuntimeProvider): SendPlanProviderContext {
     return {
       providerKey,
       supportsImageUrlRef: true,
-      supportsPdfInputs: false,
-      supportsPdfUrlRef: false,
+      supportsPdfInputs: true,
+      supportsPdfUrlRef: true,
       supportsTextUrlRef: false,
       supportsVideoUrlRef: false,
       supportsInlineData: true,
@@ -8803,14 +8802,14 @@ export function useAppChatAppLogic() {
     }
   }
 
-  async function prepareExperimentalProviderImageSend(input: Readonly<{
-    providerKey: ExperimentalProviderImageRuntimeProvider
+  async function prepareExperimentalProviderFileSend(input: Readonly<{
+    providerKey: ExperimentalProviderFileRuntimeProvider
     conversationId: string
     userText: string
     modelId: string
     historyMessageIds: ReadonlyArray<string>
-  }>): Promise<PreparedProviderImageSend | null> {
-    return await prepareProviderImageSendFromDraft({
+  }>): Promise<PreparedProviderFileSend | null> {
+    return await prepareProviderFileSendFromDraft({
       provider: input.providerKey,
       conversationId: input.conversationId,
       userText: input.userText,
@@ -8829,7 +8828,7 @@ export function useAppChatAppLogic() {
     branch: BranchSummary
     text: string
     contextMessages: any[]
-    currentUserContentBlocks?: PreparedProviderImageSendOk['contentParts']
+    currentUserContentBlocks?: PreparedProviderFileSendOk['contentParts']
     sentAssetIds?: ReadonlyArray<string>
     attachConversationDraft?: boolean
   }>) {
@@ -8958,8 +8957,8 @@ export function useAppChatAppLogic() {
 
     if (runtimeRoute.kind === 'experimental_text') {
       if (isExperimentalRuntimeTextProviderKey(runtimeRoute.providerKey)) {
-        let preparedImageSend: PreparedProviderImageSendOk | null = null
-        if (hasDraftAttachments && isExperimentalProviderImageRuntime(runtimeRoute.providerKey)) {
+        let preparedFileSend: PreparedProviderFileSendOk | null = null
+        if (hasDraftAttachments && isExperimentalProviderFileRuntime(runtimeRoute.providerKey)) {
           const providerModelId = getExperimentalRuntimeTextModelId(runtimeRoute.providerKey, {
             lmStudio: lmStudioModel.value,
             ollama: ollamaModel.value,
@@ -8971,7 +8970,7 @@ export function useAppChatAppLogic() {
           })
           composerSendPlanLoading.value = true
           try {
-            const prepared = await prepareExperimentalProviderImageSend({
+            const prepared = await prepareExperimentalProviderFileSend({
               providerKey: runtimeRoute.providerKey,
               conversationId: convoId,
               userText: text,
@@ -8979,20 +8978,20 @@ export function useAppChatAppLogic() {
               historyMessageIds: contextMessageIds,
             })
             if (!prepared) {
-              setAttachmentFeedback('error', 'Provider image input preparation is unavailable.')
+              setAttachmentFeedback('error', 'Provider file input preparation is unavailable.')
               return
             }
             if (!prepared.ok) {
               if (prepared.sendPlan) applyComposerSendPlanGateState(prepared.sendPlan)
-              setAttachmentFeedback('error', sanitizeSendPlanSummaryMessage(prepared.message) ?? 'Provider image input preparation failed.')
+              setAttachmentFeedback('error', sanitizeSendPlanSummaryMessage(prepared.message) ?? 'Provider file input preparation failed.')
               return
             }
             applyComposerSendPlanGateState(prepared.sendPlan)
             if (prepared.contentParts.length === 0) {
-              setAttachmentFeedback('error', 'No sendable image attachment was found for this runtime.')
+              setAttachmentFeedback('error', 'No sendable image or PDF attachment was found for this runtime.')
               return
             }
-            preparedImageSend = prepared
+            preparedFileSend = prepared
           } catch (err: any) {
             loadError.value = err?.message ? String(err.message) : String(err)
             return
@@ -9006,9 +9005,9 @@ export function useAppChatAppLogic() {
           branch,
           text,
           contextMessages,
-          ...(preparedImageSend ? { currentUserContentBlocks: preparedImageSend.contentParts } : {}),
-          ...(preparedImageSend?.hasDraftAttachmentPlans ? { attachConversationDraft: true } : {}),
-          ...(preparedImageSend?.sentAssetIds.length ? { sentAssetIds: preparedImageSend.sentAssetIds } : {}),
+          ...(preparedFileSend ? { currentUserContentBlocks: preparedFileSend.contentParts } : {}),
+          ...(preparedFileSend?.hasDraftAttachmentPlans ? { attachConversationDraft: true } : {}),
+          ...(preparedFileSend?.sentAssetIds.length ? { sentAssetIds: preparedFileSend.sentAssetIds } : {}),
         })
         return
       }

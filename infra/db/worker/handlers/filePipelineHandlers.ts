@@ -444,7 +444,6 @@ function registerConversationAttachmentHandlers(register: RegisterHandler, runti
       userText: replayText,
       assetsById: new Map(assets.map((asset) => [asset.id, asset])),
       storageRootDir: runtime.fileStorageRootDir,
-      pdfFileParser: { enabled: true, engine: 'native' },
       providerContext: {
         allowVideoUrlRef: input.providerContext.supportsVideoUrlRef === true,
       },

@@ -4,7 +4,7 @@ import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEven
 import { streamViaDeepSeek, type DeepSeekFetchFn } from '../../src/next/provider/deepseek/deepSeekAdapter'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import {
-  sanitizeProviderRuntimeImageContentBlocks,
+  sanitizeProviderRuntimeFileContentBlocks,
   type ProviderRuntimeContentBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
 
@@ -115,9 +115,9 @@ export function validateDeepSeekTextChatPayload(payload: unknown): ValidatedText
     return staticFailure('invalid_payload', 'DeepSeek official text chat payload is invalid.')
   }
 
-  const contentBlocks = sanitizeProviderRuntimeImageContentBlocks('deepseek', record.currentUserContentBlocks)
+  const contentBlocks = sanitizeProviderRuntimeFileContentBlocks('deepseek', record.currentUserContentBlocks)
   if (!contentBlocks.ok) {
-    return staticFailure('invalid_payload', 'DeepSeek official image content block payload is invalid.')
+    return staticFailure('invalid_payload', 'DeepSeek official file content block payload is invalid.')
   }
 
   const messages = normalizeMessages(record.messages, contentBlocks.blocks.length > 0)

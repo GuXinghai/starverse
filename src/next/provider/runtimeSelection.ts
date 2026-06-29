@@ -312,8 +312,8 @@ export function getRuntimeCapabilitySummaryLite(selection: CurrentRuntimeSelecti
       usageFinal: 'not_guaranteed',
       source: 'experimental_image_inline',
       warnings: [
-        `${RUNTIME_PROVIDER_DISPLAY_NAMES[selection.providerKey]} R1 supports small image inline attachments only.`,
-        'PDF, document, audio, video, tools, web search, image generation, and structured output are blocked in this runtime slice.',
+        `${RUNTIME_PROVIDER_DISPLAY_NAMES[selection.providerKey]} R1 supports small PNG/JPEG image and small PDF inline attachments.`,
+        'Non-PDF documents, audio, video, tools, web search, image generation, and structured output are blocked in this runtime slice.',
       ],
     }
   }
