@@ -254,6 +254,11 @@ import {
   type ChatSessionConfig,
   type ChatSessionConfigPatch,
 } from './chatSessionConfig'
+import {
+  buildLocalProviderModelSource,
+  buildProviderAvailabilityModelSource,
+  type ProviderModelPickerSource,
+} from './providerModelPickerViewModel'
 import { deriveSendButtonMode, type SendButtonMode } from './sendButtonMode'
 
 /**
@@ -3805,6 +3810,62 @@ export function useAppChatAppLogic() {
     loading: deepSeekModelAvailabilityLoading.value,
     result: deepSeekModelAvailabilityResult.value,
   }))
+
+  const providerModelPickerSources = computed<readonly ProviderModelPickerSource[]>(() => [
+    buildProviderAvailabilityModelSource({
+      providerId: OPENAI_RESPONSES_PROVIDER_KEY,
+      providerName: 'OpenAI Responses',
+      status: openAIResponsesModelAvailabilityStatus.value,
+    }),
+    buildProviderAvailabilityModelSource({
+      providerId: GOOGLE_AI_STUDIO_PROVIDER_KEY,
+      providerName: 'Google AI Studio',
+      status: googleAIStudioModelAvailabilityStatus.value,
+    }),
+    buildProviderAvailabilityModelSource({
+      providerId: ANTHROPIC_MESSAGES_PROVIDER_KEY,
+      providerName: 'Anthropic Messages',
+      status: anthropicModelAvailabilityStatus.value,
+    }),
+    buildProviderAvailabilityModelSource({
+      providerId: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
+      providerName: 'DeepSeek',
+      status: deepSeekModelAvailabilityStatus.value,
+    }),
+    buildLocalProviderModelSource({
+      providerId: 'lm_studio',
+      providerName: 'LM Studio',
+      modelId: lmStudioChatConfig.value.model,
+      enabled: lmStudioChatConfig.value.enabled,
+      modeLabel: lmStudioChatConfig.value.chatMode,
+      endpointLabel: lmStudioChatConfig.value.endpointUrl,
+    }),
+    buildLocalProviderModelSource({
+      providerId: 'ollama_local',
+      providerName: 'Ollama',
+      modelId: ollamaChatConfig.value.model,
+      enabled: ollamaChatConfig.value.enabled,
+      modeLabel: ollamaChatConfig.value.chatMode,
+      endpointLabel: ollamaChatConfig.value.endpointUrl,
+    }),
+    buildLocalProviderModelSource({
+      providerId: 'local_endpoint',
+      providerName: 'Local/OpenAI-compatible',
+      modelId: localEndpointChatConfig.value.model,
+      enabled: localEndpointChatConfig.value.enabled,
+      modeLabel: 'openai_compatible',
+      endpointLabel: localEndpointChatConfig.value.endpointUrl,
+    }),
+  ])
+
+  async function onRefreshProviderModelPickerSources() {
+    await Promise.allSettled([
+      onRefreshOpenAIResponsesModels(),
+      onRefreshGoogleAIStudioModels(),
+      onRefreshAnthropicModels(),
+      onRefreshDeepSeekModels(),
+    ])
+  }
 
   function getOpenAIResponsesModelsBridge(): OpenAIResponsesModelsBridge | null {
     const bridge = (globalThis as any)?.openAIResponsesModels as OpenAIResponsesModelsBridge | undefined
@@ -10299,6 +10360,7 @@ export function useAppChatAppLogic() {
     requestedReasoningEffort,
     requestedReasoningExclude,
     modelCatalogForPicker,
+    providerModelPickerSources,
     showHiddenModelsInPickers,
     modelCatalogNotice,
     modelPrefsScopeForUi,
@@ -10352,6 +10414,7 @@ export function useAppChatAppLogic() {
     onUpdateOpenAIResponsesChatModel,
     onClearOpenAIResponsesChat,
     onRefreshOpenAIResponsesModels,
+    onRefreshProviderModelPickerSources,
     onUpdateGoogleAIStudioChatEnabled,
     onUpdateGoogleAIStudioChatModel,
     onClearGoogleAIStudioChat,

@@ -47,11 +47,22 @@ import {
   type ChatModelSelection,
 } from '@/next/provider/modelSelection'
 import type { RuntimeProviderKey } from '@/next/provider/runtimeSelection'
+import type { ProviderModelPickerItem, ProviderModelPickerSource } from '../app/providerModelPickerViewModel'
 
 type TriState = 'any' | 'yes' | 'no'
 type DetailTab = 'model' | 'endpoints'
 type PickerMode = 'all' | 'favorites' | 'recents'
-type ShortcutItem = Readonly<{ modelKey: string; modelId: string; name: string; available: boolean }>
+type PickerModelItem = CatalogQueryItem & Readonly<{
+  providerId: RuntimeProviderKey
+  providerName: string
+  itemKey: string
+  capabilitySummary?: string
+  statusLabel?: string
+  sourceLabel?: string
+  selectable: boolean
+  detailSource: 'openrouter_catalog' | 'provider_source'
+}>
+type ShortcutItem = Readonly<{ modelKey: string; providerId: RuntimeProviderKey; modelId: string; name: string; available: boolean }>
 
 type QueryFn = (input: CatalogQueryInput) => Promise<CatalogQueryResult>
 type EndpointDetailFn = (input: GetModelEndpointDetailsInput) => Promise<ModelEndpointDetailsResult>
@@ -64,6 +75,7 @@ const props = withDefaults(
     isRunning?: boolean
     selectedProviderId?: RuntimeProviderKey
     selectedModelId: string
+    providerSources?: readonly ProviderModelPickerSource[]
     favoriteModelKeys?: readonly string[]
     recentModelKeys?: readonly string[]
     fallbackModels?: readonly ModelCatalogItem[]
@@ -79,6 +91,7 @@ const props = withDefaults(
     isRunning: false,
     favoriteModelKeys: () => [],
     recentModelKeys: () => [],
+    providerSources: () => [],
     fallbackModels: () => [],
     notice: null,
     debounceMs: 250,
@@ -101,6 +114,7 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 const listScrollRef = ref<HTMLElement | null>(null)
 const searchText = ref('')
 const includeDescriptionInSearch = ref(false)
+const selectedProviderFilter = ref<RuntimeProviderKey | 'all'>('all')
 const selectedVendors = ref<string[]>([])
 const selectedCategory = ref<OpenRouterModelCategory | 'all'>('all')
 const contextLengthMin = ref('')
@@ -125,7 +139,7 @@ const error = ref<string | null>(null)
 const queryNotice = ref<string | null>(null)
 const items = ref<CatalogQueryItem[]>([])
 const nextCursor = ref<CatalogQueryCursor | null>(null)
-const activeModelId = ref('')
+const activeModelKey = ref('')
 const modelDetail = ref<ModelCatalogModelDetailResult['item']>(null)
 const modelDetailLoading = ref(false)
 const modelDetailError = ref<string | null>(null)
@@ -202,7 +216,28 @@ let endpointSeq = 0
 let skipAutoQuery = false
 let lastFocusBeforeOpen: HTMLElement | null = null
 
-const itemKeys = computed(() => items.value.map((item) => item.modelId))
+const openRouterPickerItems = computed(() => items.value.map((item) => toOpenRouterPickerItem(item)))
+const providerPickerItems = computed(() => props.providerSources.flatMap((source) => source.items.map((item) => toProviderPickerItem(item))))
+const pickerItems = computed(() => {
+  const sourceItems = [...openRouterPickerItems.value, ...providerPickerItems.value]
+  const providerFilter = selectedProviderFilter.value
+  const text = searchText.value.trim().toLowerCase()
+  return sourceItems.filter((item) => {
+    if (providerFilter !== 'all' && item.providerId !== providerFilter) return false
+    if (item.detailSource === 'openrouter_catalog') return true
+    if (!text) return true
+    const haystack = [
+      item.displayName,
+      item.modelId,
+      item.providerName,
+      item.vendor,
+      includeDescriptionInSearch.value ? item.description : null,
+    ].map((part) => String(part ?? '').toLowerCase()).join('\n')
+    return haystack.includes(text)
+  })
+})
+
+const itemKeys = computed(() => pickerItems.value.map((item) => item.itemKey))
 const { range, topPaddingPx, bottomPaddingPx, measureElement, getOffsetForIndex, refresh } = useVirtualWindow({
   items: itemKeys,
   scrollEl: listScrollRef,
@@ -210,11 +245,11 @@ const { range, topPaddingPx, bottomPaddingPx, measureElement, getOffsetForIndex,
   overscan: 10,
 })
 
-const visibleItems = computed(() => items.value.slice(range.value.start, range.value.end))
+const visibleItems = computed(() => pickerItems.value.slice(range.value.start, range.value.end))
 
 const vendorOptions = computed(() => {
   const vendorSet = new Set<string>()
-  for (const item of items.value) {
+  for (const item of pickerItems.value) {
     const vendor = String(item.vendor ?? '').trim()
     if (vendor) vendorSet.add(vendor)
   }
@@ -226,21 +261,26 @@ const vendorOptions = computed(() => {
 })
 
 const activeIndex = computed(() => {
-  const active = normalizeModelId(activeModelId.value)
-  return items.value.findIndex((item) => normalizeModelId(item.modelId) === active)
+  const active = activeModelKey.value
+  return pickerItems.value.findIndex((item) => item.itemKey === active)
 })
 const activeItem = computed(() => {
   const index = activeIndex.value
-  return index >= 0 ? items.value[index] : null
+  return index >= 0 ? pickerItems.value[index] : null
 })
 
+const selectedProviderId = computed(() => props.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID)
 const selectedModelId = computed(() => normalizeModelId(props.selectedModelId))
 
 const selectedModelLabel = computed(() => {
   const selected = selectedModelId.value
-  const inResults = items.value.find((item) => normalizeModelId(item.modelId) === selected)
-  if (inResults) return inResults.displayName
-  return selected || DEFAULT_OPENROUTER_MODEL_ID
+  const inResults = pickerItems.value.find((item) =>
+    item.providerId === selectedProviderId.value && normalizeModelId(item.modelId) === selected
+  )
+  const label = inResults?.displayName ?? (selected || DEFAULT_OPENROUTER_MODEL_ID)
+  return selectedProviderId.value === DEFAULT_CHAT_PROVIDER_ID
+    ? label
+    : `${providerNameForId(selectedProviderId.value)} · ${label}`
 })
 
 const effectiveNotice = computed(() => {
@@ -248,7 +288,9 @@ const effectiveNotice = computed(() => {
   return noticeParts.length > 0 ? noticeParts.join(' ') : null
 })
 
-const canLoadMore = computed(() => !!nextCursor.value && !loading.value && !props.disabled)
+const canLoadMore = computed(() => selectedProviderFilter.value !== 'all' && selectedProviderFilter.value !== DEFAULT_CHAT_PROVIDER_ID
+  ? false
+  : !!nextCursor.value && !loading.value && !props.disabled)
 const endpointItems = computed(() => endpointDetails.value?.items ?? [])
 const endpointFetchedAtMs = computed(() => endpointDetails.value?.fetchedAtMs ?? null)
 const endpointError = computed(() => endpointDetails.value?.error ?? null)
@@ -263,11 +305,15 @@ const activeShortcutItems = computed(() => {
   return []
 })
 const activeDetailModelId = computed(() => {
-  const normalized = normalizeModelId(activeModelId.value)
-  if (normalized && items.value.some((item) => normalizeModelId(item.modelId) === normalized)) return normalized
+  return activeDetailItem.value?.modelId ?? ''
+})
+const activeDetailItem = computed(() => {
+  if (activeItem.value) return activeItem.value
   const selected = selectedModelId.value
-  if (selected && items.value.some((item) => normalizeModelId(item.modelId) === selected)) return selected
-  return ''
+  if (!selected) return null
+  return pickerItems.value.find((item) =>
+    item.providerId === selectedProviderId.value && normalizeModelId(item.modelId) === selected
+  ) ?? null
 })
 const favoriteOrderDirty = computed(() => {
   const next = editableFavoriteModelKeys.value
@@ -282,6 +328,7 @@ const queryFilterSignature = computed(() =>
   JSON.stringify({
     searchText: searchText.value.trim(),
     includeDescriptionInSearch: includeDescriptionInSearch.value,
+    selectedProviderFilter: selectedProviderFilter.value,
     selectedVendors: [...selectedVendors.value].sort(),
     selectedCategory: selectedCategory.value,
     contextLengthMin: contextLengthMin.value,
@@ -324,6 +371,99 @@ const syncFailureReasonText = computed(() => {
   const key = SYNC_FAILURE_REASON_MAP[code] ?? SYNC_FAILURE_REASON_MAP.unknown_error
   return t(key)
 })
+
+const providerOptions = computed(() => {
+  const options = new Map<RuntimeProviderKey, { providerId: RuntimeProviderKey; providerName: string; statusLabel: string; loading: boolean; count: number }>()
+  options.set(DEFAULT_CHAT_PROVIDER_ID, {
+    providerId: DEFAULT_CHAT_PROVIDER_ID,
+    providerName: 'OpenRouter',
+    statusLabel: syncStatus.value === 'synced' ? `${items.value.length} shown` : syncStatus.value,
+    loading: loading.value || syncStatus.value === 'syncing',
+    count: items.value.length,
+  })
+  for (const source of props.providerSources) {
+    options.set(source.providerId, {
+      providerId: source.providerId,
+      providerName: source.providerName,
+      statusLabel: source.statusLabel,
+      loading: source.loading,
+      count: source.items.length,
+    })
+  }
+  return Array.from(options.values())
+})
+
+function providerNameForId(providerId: RuntimeProviderKey): string {
+  return providerOptions.value.find((option) => option.providerId === providerId)?.providerName ?? providerId
+}
+
+function pickerItemKey(providerId: RuntimeProviderKey, modelId: string): string {
+  return buildProviderModelKey({ providerId, modelId })
+}
+
+function toOpenRouterPickerItem(item: CatalogQueryItem): PickerModelItem {
+  return {
+    ...item,
+    providerId: DEFAULT_CHAT_PROVIDER_ID,
+    providerName: 'OpenRouter',
+    itemKey: pickerItemKey(DEFAULT_CHAT_PROVIDER_ID, item.modelId),
+    capabilitySummary: openRouterCapabilitySummary(item),
+    statusLabel: item.status ?? item.visibility ?? 'catalog',
+    sourceLabel: 'OpenRouter catalog',
+    selectable: true,
+    detailSource: 'openrouter_catalog',
+  }
+}
+
+function toProviderPickerItem(item: ProviderModelPickerItem): PickerModelItem {
+  return {
+    providerKey: item.providerId,
+    providerId: item.providerId,
+    providerName: item.providerName,
+    modelId: item.modelId,
+    modelKey: item.modelKey,
+    canonicalSlug: item.modelId,
+    displayName: item.displayName,
+    description: item.description,
+    vendor: item.vendor,
+    contextLength: null,
+    maxOutputTokens: null,
+    createdAtSec: null,
+    pricing: { prompt: null, completion: null, request: null, image: null },
+    capabilities: {
+      reasoning: item.capabilitySummary.includes('reasoning'),
+      tools: item.capabilitySummary.includes('tools'),
+      structuredOutputs: item.capabilitySummary.includes('structured output'),
+      vision: item.inputModalities.includes('image'),
+      longContext: item.capabilitySummary.includes('ctx '),
+    },
+    inputModalities: [...item.inputModalities],
+    outputModalities: [...item.outputModalities],
+    status: item.statusLabel,
+    visibility: item.selectable ? 'visible' : 'disabled',
+    itemKey: pickerItemKey(item.providerId, item.modelId),
+    capabilitySummary: item.capabilitySummary,
+    statusLabel: item.statusLabel,
+    sourceLabel: item.sourceLabel,
+    selectable: item.selectable,
+    detailSource: 'provider_source',
+  }
+}
+
+function openRouterCapabilitySummary(item: CatalogQueryItem): string {
+  const labels: string[] = []
+  if (Array.isArray(item.inputModalities) && item.inputModalities.length > 0) {
+    labels.push(`in:${item.inputModalities.join('+')}`)
+  }
+  if (Array.isArray(item.outputModalities) && item.outputModalities.length > 0) {
+    labels.push(`out:${item.outputModalities.join('+')}`)
+  }
+  if (item.capabilities.reasoning) labels.push('reasoning')
+  if (item.capabilities.tools) labels.push('tools')
+  if (item.capabilities.vision) labels.push('vision')
+  if (item.capabilities.longContext) labels.push('long context')
+  return labels.length > 0 ? labels.join(' · ') : 'catalog capability'
+}
 
 function formatSyncTime(ms: number | null): string {
   if (!ms || ms <= 0) return '—'
@@ -412,12 +552,27 @@ function parseModelIdFromModelKey(modelKey: string): string {
   return normalized.slice(delimiterIndex + delimiter.length).trim()
 }
 
+function parseProviderIdFromModelKey(modelKey: string): RuntimeProviderKey {
+  const normalized = String(modelKey ?? '').trim()
+  const delimiter = '::'
+  const delimiterIndex = normalized.indexOf(delimiter)
+  if (delimiterIndex <= 0) return DEFAULT_CHAT_PROVIDER_ID
+  const providerId = normalized.slice(0, delimiterIndex).trim()
+  return providerOptions.value.some((option) => option.providerId === providerId)
+    ? providerId as RuntimeProviderKey
+    : DEFAULT_CHAT_PROVIDER_ID
+}
+
 function normalizeModelId(value: unknown): string {
   return String(value ?? '').trim()
 }
 
-function isSelectedModel(modelId: string): boolean {
-  return normalizeModelId(modelId) === selectedModelId.value
+function isSelectedModel(modelId: string, providerId: RuntimeProviderKey = DEFAULT_CHAT_PROVIDER_ID): boolean {
+  return providerId === selectedProviderId.value && normalizeModelId(modelId) === selectedModelId.value
+}
+
+function isSelectedItem(item: PickerModelItem): boolean {
+  return isSelectedModel(item.modelId, item.providerId)
 }
 
 function normalizeFavoriteModelKeys(input: readonly string[]): string[] {
@@ -440,7 +595,8 @@ function resetFavoriteEditorState() {
 
 function resolveFavoriteName(modelKey: string): string {
   const modelId = parseModelIdFromModelKey(modelKey)
-  const inResults = items.value.find((item) => item.modelId === modelId)
+  const providerId = parseProviderIdFromModelKey(modelKey)
+  const inResults = pickerItems.value.find((item) => item.providerId === providerId && item.modelId === modelId)
   if (inResults) return inResults.displayName
   return modelId || modelKey
 }
@@ -448,11 +604,13 @@ function resolveFavoriteName(modelKey: string): string {
 function buildShortcutItems(modelKeys: readonly string[]): ShortcutItem[] {
   return modelKeys
     .map((modelKey) => {
+      const providerId = parseProviderIdFromModelKey(modelKey)
       const modelId = normalizeModelId(parseModelIdFromModelKey(modelKey))
       if (!modelId) return null
-      const available = items.value.some((item) => normalizeModelId(item.modelId) === modelId)
+      const available = pickerItems.value.some((item) => item.providerId === providerId && normalizeModelId(item.modelId) === modelId)
       return {
         modelKey,
+        providerId,
         modelId,
         name: resolveFavoriteName(modelKey),
         available,
@@ -649,28 +807,34 @@ function ensureActiveCandidate() {
     const shortcutItems = activeShortcutItems.value
     const availableShortcutItems = shortcutItems.filter((item) => item.available)
     if (availableShortcutItems.length === 0) {
-      activeModelId.value = ''
+      activeModelKey.value = ''
       return
     }
-    if (activeModelId.value && availableShortcutItems.some((item) => normalizeModelId(item.modelId) === normalizeModelId(activeModelId.value))) return
+    if (activeModelKey.value && availableShortcutItems.some((item) => item.modelKey === activeModelKey.value)) return
     const selected = selectedModelId.value
-    const selectedExists = selected && availableShortcutItems.some((item) => normalizeModelId(item.modelId) === selected)
-    activeModelId.value = selectedExists ? selected : availableShortcutItems[0].modelId
+    const selectedKey = selected ? pickerItemKey(selectedProviderId.value, selected) : ''
+    const selectedExists = selected && availableShortcutItems.some((item) =>
+      item.providerId === selectedProviderId.value && normalizeModelId(item.modelId) === selected
+    )
+    activeModelKey.value = selectedExists ? selectedKey : availableShortcutItems[0].modelKey
     return
   }
-  if (items.value.length === 0) {
-    activeModelId.value = ''
+  if (pickerItems.value.length === 0) {
+    activeModelKey.value = ''
     return
   }
-  if (activeModelId.value && items.value.some((item) => normalizeModelId(item.modelId) === normalizeModelId(activeModelId.value))) return
+  if (activeModelKey.value && pickerItems.value.some((item) => item.itemKey === activeModelKey.value)) return
   const selected = selectedModelId.value
-  const selectedExists = selected && items.value.some((item) => normalizeModelId(item.modelId) === selected)
-  activeModelId.value = selectedExists ? selected : ''
+  const selectedKey = selected ? pickerItemKey(selectedProviderId.value, selected) : ''
+  const selectedExists = selected && pickerItems.value.some((item) =>
+    item.providerId === selectedProviderId.value && normalizeModelId(item.modelId) === selected
+  )
+  activeModelKey.value = selectedExists ? selectedKey : ''
 }
 
 function ensureActiveVisible(index: number) {
   const el = listScrollRef.value
-  if (!el || index < 0 || index >= items.value.length) return
+  if (!el || index < 0 || index >= pickerItems.value.length) return
   const top = getOffsetForIndex(index)
   const bottom = getOffsetForIndex(index + 1)
   if (top < el.scrollTop) {
@@ -684,26 +848,28 @@ function ensureActiveVisible(index: number) {
 }
 
 type PickerUiSnapshot = Readonly<{
-  activeModelId: string
+  activeModelKey: string
   scrollTop: number
 }>
 
 function capturePickerUiSnapshot(): PickerUiSnapshot {
   return {
-    activeModelId: activeModelId.value,
+    activeModelKey: activeModelKey.value,
     scrollTop: listScrollRef.value?.scrollTop ?? 0,
   }
 }
 
 async function restorePickerUiSnapshot(snapshot: PickerUiSnapshot) {
   await nextTick()
-  const active = normalizeModelId(snapshot.activeModelId)
-  if (active && items.value.some((item) => normalizeModelId(item.modelId) === active)) {
-    activeModelId.value = active
-  } else if (selectedModelId.value && items.value.some((item) => normalizeModelId(item.modelId) === selectedModelId.value)) {
-    activeModelId.value = selectedModelId.value
+  const active = String(snapshot.activeModelKey ?? '').trim()
+  if (active && pickerItems.value.some((item) => item.itemKey === active)) {
+    activeModelKey.value = active
+  } else if (selectedModelId.value && pickerItems.value.some((item) =>
+    item.providerId === selectedProviderId.value && normalizeModelId(item.modelId) === selectedModelId.value
+  )) {
+    activeModelKey.value = pickerItemKey(selectedProviderId.value, selectedModelId.value)
   } else {
-    activeModelId.value = ''
+    activeModelKey.value = ''
   }
   await nextTick()
   refresh()
@@ -750,7 +916,7 @@ async function fetchPage(append: boolean, options: Readonly<{ preserveUiState?: 
     if (!append) {
       items.value = []
       nextCursor.value = null
-      activeModelId.value = ''
+      activeModelKey.value = ''
     }
     error.value = err?.message ? String(err.message) : 'Failed to query model catalog.'
   } finally {
@@ -762,7 +928,8 @@ async function fetchPage(append: boolean, options: Readonly<{ preserveUiState?: 
 
 async function fetchEndpointDetails(forceRefresh: boolean) {
   const modelId = String(activeDetailModelId.value ?? '').trim()
-  if (!props.open || !modelId) {
+  const detailItem = activeDetailItem.value
+  if (!props.open || !modelId || detailItem?.providerId !== DEFAULT_CHAT_PROVIDER_ID) {
     endpointDetails.value = null
     endpointLoading.value = false
     return
@@ -797,7 +964,8 @@ async function fetchEndpointDetails(forceRefresh: boolean) {
 
 async function fetchModelDetail() {
   const modelId = String(activeDetailModelId.value ?? '').trim()
-  if (!props.open || !modelId) {
+  const detailItem = activeDetailItem.value
+  if (!props.open || !modelId || detailItem?.providerId !== DEFAULT_CHAT_PROVIDER_ID) {
     modelDetail.value = null
     modelDetailError.value = null
     modelDetailLoading.value = false
@@ -839,7 +1007,7 @@ function openDialogState() {
   skipAutoQuery = true
   items.value = []
   nextCursor.value = null
-  activeModelId.value = selectedModelId.value
+  activeModelKey.value = selectedModelId.value ? pickerItemKey(selectedProviderId.value, selectedModelId.value) : ''
   modelDetail.value = null
   modelDetailLoading.value = false
   modelDetailError.value = null
@@ -847,6 +1015,7 @@ function openDialogState() {
   endpointLoading.value = false
   activeDetailTab.value = 'model'
   activePickerMode.value = 'all'
+  selectedProviderFilter.value = 'all'
   queryNotice.value = null
   error.value = null
   pendingCatalogUpdateAvailable.value = false
@@ -1027,38 +1196,52 @@ function onClose() {
   emit('close')
 }
 
-function onSelectModel(modelId: string) {
+function onSelectItem(item: PickerModelItem | null | undefined) {
   if (props.disabled || props.isRunning) return
-  const normalized = String(modelId ?? '').trim()
-  if (!normalized) return
-  const scopedItem = items.value.find((item) => item.modelId === normalized)
-  if (!scopedItem) return
-  emit('select', { providerId: DEFAULT_CHAT_PROVIDER_ID, modelId: normalized }, scopedItem.displayName)
+  if (!item?.selectable) return
+  emit('select', { providerId: item.providerId, modelId: item.modelId }, item.displayName)
   emit('close')
 }
 
-function onToggleFavorite(modelId: string) {
-  if (props.disabled || props.isRunning) return
+function onSelectModel(modelId: string, providerId: RuntimeProviderKey = DEFAULT_CHAT_PROVIDER_ID) {
   const normalized = String(modelId ?? '').trim()
+  if (!normalized) return
+  onSelectItem(pickerItems.value.find((item) => item.providerId === providerId && item.modelId === normalized))
+}
+
+function onToggleFavorite(item: PickerModelItem) {
+  if (props.disabled || props.isRunning) return
+  if (item.providerId !== DEFAULT_CHAT_PROVIDER_ID) return
+  const normalized = String(item.modelId ?? '').trim()
   if (!normalized) return
   emit('toggleFavorite', normalized)
 }
 
-function isFavoriteModel(modelId: string): boolean {
-  const normalized = String(modelId ?? '').trim()
-  if (!normalized) return false
-  return favoriteModelKeySet.value.has(buildProviderModelKey({ providerId: DEFAULT_CHAT_PROVIDER_ID, modelId: normalized }))
+function findPickerItem(providerId: RuntimeProviderKey, modelId: string): PickerModelItem | null {
+  const normalized = normalizeModelId(modelId)
+  return pickerItems.value.find((candidate) => candidate.providerId === providerId && candidate.modelId === normalized) ?? null
 }
 
-function onRowRef(modelId: string, el: Element | null) {
-  measureElement(modelId, el as HTMLElement | null)
+function onToggleShortcutFavorite(item: ShortcutItem) {
+  const pickerItem = findPickerItem(item.providerId, item.modelId)
+  if (pickerItem) onToggleFavorite(pickerItem)
+}
+
+function isFavoriteModel(modelId: string, providerId: RuntimeProviderKey = DEFAULT_CHAT_PROVIDER_ID): boolean {
+  const normalized = String(modelId ?? '').trim()
+  if (!normalized) return false
+  return favoriteModelKeySet.value.has(buildProviderModelKey({ providerId, modelId: normalized }))
+}
+
+function onRowRef(item: PickerModelItem, el: Element | null) {
+  measureElement(item.itemKey, el as HTMLElement | null)
 }
 
 function onMoveActive(delta: 1 | -1) {
-  if (items.value.length === 0) return
+  if (pickerItems.value.length === 0) return
   const current = activeIndex.value >= 0 ? activeIndex.value : 0
-  const next = Math.max(0, Math.min(items.value.length - 1, current + delta))
-  activeModelId.value = items.value[next].modelId
+  const next = Math.max(0, Math.min(pickerItems.value.length - 1, current + delta))
+  activeModelKey.value = pickerItems.value[next].itemKey
   ensureActiveVisible(next)
 }
 
@@ -1083,11 +1266,16 @@ function onDialogKeydown(ev: KeyboardEvent) {
 
   if (ev.key === 'Enter' && !isTypingElement) {
     const active = activePickerMode.value === 'all'
-      ? activeItem.value?.modelId
-      : activeDetailModelId.value
+      ? activeItem.value
+      : (() => {
+          const shortcut = activeShortcutItems.value.find((item) => item.modelKey === activeModelKey.value)
+          return shortcut
+            ? pickerItems.value.find((item) => item.providerId === shortcut.providerId && item.modelId === shortcut.modelId)
+            : null
+        })()
     if (!active) return
     ev.preventDefault()
-    onSelectModel(active)
+    onSelectItem(active)
   }
 }
 
@@ -1140,13 +1328,14 @@ watch(
 )
 
 watch(
-  () => props.selectedModelId,
-  (next) => {
+  () => [props.selectedProviderId, props.selectedModelId] as const,
+  ([providerId, next]) => {
     if (!props.open) return
     const normalized = normalizeModelId(next)
     if (!normalized) return
-    if (items.value.some((item) => normalizeModelId(item.modelId) === normalized)) {
-      activeModelId.value = normalized
+    const selectedKey = pickerItemKey(providerId ?? DEFAULT_CHAT_PROVIDER_ID, normalized)
+    if (pickerItems.value.some((item) => item.itemKey === selectedKey)) {
+      activeModelKey.value = selectedKey
     }
   },
 )
@@ -1178,8 +1367,9 @@ watch(
 )
 
 watch(
-  () => (props.open ? activeDetailModelId.value : ''),
-  (modelId, prevModelId) => {
+  () => (props.open ? activeDetailItem.value?.itemKey ?? '' : ''),
+  (itemKey, prevItemKey) => {
+    const modelId = activeDetailModelId.value
     if (!props.open || !modelId) {
       modelDetail.value = null
       modelDetailLoading.value = false
@@ -1188,7 +1378,7 @@ watch(
       endpointLoading.value = false
       return
     }
-    if (modelId === prevModelId) return
+    if (itemKey === prevItemKey) return
     void fetchModelDetail()
     endpointSeq += 1
     endpointLoading.value = false
@@ -1204,7 +1394,7 @@ watch(
   () => activeDetailTab.value,
   (tab) => {
     if (!props.open || tab !== 'endpoints') return
-    const modelId = String(activeItem.value?.modelId ?? '').trim()
+    const modelId = String(activeDetailItem.value?.modelId ?? '').trim()
     if (!modelId) return
     if (endpointDetails.value?.modelId === modelId) return
     void fetchEndpointDetails(false)
@@ -1281,6 +1471,33 @@ onBeforeUnmount(() => {
                   />
                   <span>including description</span>
                 </label>
+              </div>
+              <div>
+                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Provider</label>
+                <select
+                  v-model="selectedProviderFilter"
+                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                  :disabled="props.disabled"
+                  data-testid="model-picker-provider-filter"
+                >
+                  <option value="all">All providers</option>
+                  <option v-for="provider in providerOptions" :key="provider.providerId" :value="provider.providerId">
+                    {{ `${provider.providerName} (${provider.count})` }}
+                  </option>
+                </select>
+                <div class="mt-2 space-y-1">
+                  <div
+                    v-for="provider in providerOptions"
+                    :key="`provider-status-${provider.providerId}`"
+                    class="flex items-center justify-between gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px]"
+                    :data-testid="`model-picker-provider-status-${provider.providerId}`"
+                  >
+                    <span class="truncate font-medium text-gray-700">{{ provider.providerName }}</span>
+                    <span :class="provider.loading ? 'text-blue-600' : provider.count > 0 ? 'text-green-700' : 'text-gray-500'">
+                      {{ provider.loading ? 'loading' : provider.statusLabel }}
+                    </span>
+                  </div>
+                </div>
               </div>
               <div>
                 <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Category</label>
@@ -1694,50 +1911,52 @@ onBeforeUnmount(() => {
                 data-testid="model-picker-list"
               >
                 <template v-if="activePickerMode === 'all'">
-                  <div v-if="loading && items.length === 0" class="px-2 py-4 text-sm text-gray-500">Loading models...</div>
-                  <div v-else-if="!loading && items.length === 0" class="px-2 py-4 text-sm text-gray-500">
+                  <div v-if="loading && pickerItems.length === 0" class="px-2 py-4 text-sm text-gray-500">Loading models...</div>
+                  <div v-else-if="!loading && pickerItems.length === 0" class="px-2 py-4 text-sm text-gray-500">
                     No models found for current search/filter.
                   </div>
                   <template v-else>
                     <div :style="{ height: `${topPaddingPx}px` }" />
                     <button
                       v-for="item in visibleItems"
-                      :key="item.modelId"
+                      :key="item.itemKey"
                       type="button"
                       class="mb-2 w-full rounded-lg border px-3 py-2 text-left shadow-sm transition"
                       :class="
-                        isSelectedModel(item.modelId)
+                        isSelectedItem(item)
                           ? 'border-blue-300 bg-blue-50'
                           : 'border-gray-200 bg-white hover:bg-gray-50'
                       "
-                      :data-testid="`model-picker-item-${item.modelId}`"
-                      @mouseenter="activeModelId = item.modelId"
-                      @focus="activeModelId = item.modelId"
-                      @click="onSelectModel(item.modelId)"
-                      :ref="(el) => onRowRef(item.modelId, el as Element | null)"
+                      :data-testid="item.providerId === DEFAULT_CHAT_PROVIDER_ID ? `model-picker-item-${item.modelId}` : `model-picker-item-${item.providerId}-${item.modelId}`"
+                      :disabled="props.disabled || props.isRunning || !item.selectable"
+                      @mouseenter="activeModelKey = item.itemKey"
+                      @focus="activeModelKey = item.itemKey"
+                      @click="onSelectItem(item)"
+                      :ref="(el) => onRowRef(item, el as Element | null)"
                     >
                       <div class="flex items-center justify-between gap-2">
                         <div class="min-w-0">
                           <div class="truncate text-sm font-semibold text-gray-900">{{ item.displayName }}</div>
-                          <div class="truncate text-[11px] text-gray-500">{{ item.modelId }}</div>
+                          <div class="truncate text-[11px] text-gray-500">{{ `${item.providerName} · ${item.modelId}` }}</div>
                         </div>
                         <div class="flex shrink-0 items-center gap-2">
                           <button
+                            v-if="item.providerId === DEFAULT_CHAT_PROVIDER_ID"
                             type="button"
                             class="rounded border px-1.5 py-0.5 text-[11px] leading-none"
                             :class="
-                              isFavoriteModel(item.modelId)
+                              isFavoriteModel(item.modelId, item.providerId)
                                 ? 'border-amber-300 bg-amber-50 text-amber-700'
                                 : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-100'
                             "
                             :disabled="props.disabled || props.isRunning"
                             :data-testid="`model-picker-favorite-${item.modelId}`"
-                            @click.stop="onToggleFavorite(item.modelId)"
+                            @click.stop="onToggleFavorite(item)"
                           >
-                            {{ isFavoriteModel(item.modelId) ? '★' : '☆' }}
+                            {{ isFavoriteModel(item.modelId, item.providerId) ? '★' : '☆' }}
                           </button>
                           <div class="text-[11px] uppercase tracking-wide text-gray-500">
-                            {{ item.vendor || 'unknown' }}
+                            {{ item.providerName }}
                           </div>
                         </div>
                       </div>
@@ -1745,6 +1964,15 @@ onBeforeUnmount(() => {
                         {{ item.description }}
                       </div>
                       <div class="mt-1 flex flex-wrap gap-1 text-[10px] text-gray-600">
+                        <span class="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-blue-700">
+                          {{ item.statusLabel }}
+                        </span>
+                        <span class="rounded border border-gray-200 px-1.5 py-0.5">
+                          {{ item.sourceLabel }}
+                        </span>
+                        <span v-if="item.capabilitySummary" class="rounded border border-gray-200 px-1.5 py-0.5">
+                          {{ item.capabilitySummary }}
+                        </span>
                         <span v-if="hasImageGenerationSignal(item)" class="rounded border border-green-200 bg-green-50 px-1.5 py-0.5 text-green-700">
                           image_gen
                         </span>
@@ -1770,15 +1998,15 @@ onBeforeUnmount(() => {
                       :class="
                         !item.available
                           ? 'border-gray-200 bg-gray-50 text-gray-400 opacity-70'
-                          : isSelectedModel(item.modelId)
+                          : isSelectedModel(item.modelId, item.providerId)
                           ? 'border-blue-300 bg-blue-50'
                           : 'border-gray-200 bg-white hover:bg-gray-50'
                       "
                       :data-testid="`model-picker-${activePickerMode}-item-${item.modelId}`"
                       :disabled="props.disabled || props.isRunning || !item.available"
-                      @mouseenter="activeModelId = item.modelId"
-                      @focus="activeModelId = item.modelId"
-                      @click="onSelectModel(item.modelId)"
+                      @mouseenter="activeModelKey = item.modelKey"
+                      @focus="activeModelKey = item.modelKey"
+                      @click="onSelectModel(item.modelId, item.providerId)"
                     >
                       <div class="flex items-center justify-between gap-2">
                         <div class="min-w-0">
@@ -1786,18 +2014,19 @@ onBeforeUnmount(() => {
                           <div class="truncate text-[11px] text-gray-500">{{ item.modelId }}</div>
                         </div>
                         <button
+                          v-if="item.providerId === DEFAULT_CHAT_PROVIDER_ID"
                           type="button"
                           class="rounded border px-1.5 py-0.5 text-[11px] leading-none"
-                            :class="
-                              isFavoriteModel(item.modelId)
+                          :class="
+                              isFavoriteModel(item.modelId, item.providerId)
                                 ? 'border-amber-300 bg-amber-50 text-amber-700'
                                 : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-100'
                             "
                           :disabled="props.disabled || props.isRunning"
                           :data-testid="`model-picker-favorite-${item.modelId}`"
-                          @click.stop="onToggleFavorite(item.modelId)"
+                          @click.stop="onToggleShortcutFavorite(item)"
                         >
-                          {{ isFavoriteModel(item.modelId) ? '★' : '☆' }}
+                          {{ isFavoriteModel(item.modelId, item.providerId) ? '★' : '☆' }}
                         </button>
                       </div>
                     </button>
@@ -1807,7 +2036,7 @@ onBeforeUnmount(() => {
 
               <div class="flex items-center justify-between border-t border-gray-200 px-3 py-2 text-[11px] text-gray-500">
                 <div>
-                  {{ activePickerMode === 'all' ? `${items.length} result${items.length === 1 ? '' : 's'}` : `${activeShortcutItems.length} model${activeShortcutItems.length === 1 ? '' : 's'}` }}
+                  {{ activePickerMode === 'all' ? `${pickerItems.length} result${pickerItems.length === 1 ? '' : 's'}` : `${activeShortcutItems.length} model${activeShortcutItems.length === 1 ? '' : 's'}` }}
                 </div>
                 <button
                   v-if="activePickerMode === 'all'"
@@ -1852,8 +2081,31 @@ onBeforeUnmount(() => {
                 </button>
               </div>
 
+              <div
+                v-if="activeDetailTab === 'model' && activeDetailItem && activeDetailItem.providerId !== DEFAULT_CHAT_PROVIDER_ID"
+                class="rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700"
+                data-testid="model-picker-provider-detail"
+              >
+                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Provider Model</div>
+                <div class="mt-2 text-sm font-semibold text-gray-900">{{ activeDetailItem.displayName }}</div>
+                <div class="mt-1 break-all text-[11px] text-gray-500">{{ `${activeDetailItem.providerName} · ${activeDetailItem.modelId}` }}</div>
+                <div class="mt-3 grid gap-2">
+                  <div class="rounded border border-gray-200 bg-white px-2 py-1">
+                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Status</div>
+                    <div>{{ activeDetailItem.statusLabel }}</div>
+                  </div>
+                  <div class="rounded border border-gray-200 bg-white px-2 py-1">
+                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Capabilities</div>
+                    <div>{{ activeDetailItem.capabilitySummary ?? 'capability unknown' }}</div>
+                  </div>
+                  <div class="rounded border border-gray-200 bg-white px-2 py-1">
+                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Source</div>
+                    <div>{{ activeDetailItem.sourceLabel ?? 'provider source' }}</div>
+                  </div>
+                </div>
+              </div>
               <ModelDetailPanel
-                v-if="activeDetailTab === 'model'"
+                v-else-if="activeDetailTab === 'model'"
                 :modelId="activeDetailModelId"
                 :loading="modelDetailLoading"
                 :detail="modelDetail"
@@ -1867,7 +2119,7 @@ onBeforeUnmount(() => {
                 :fetchedAtMs="endpointFetchedAtMs"
                 :items="endpointItems"
                 :error="endpointError"
-                :disabled="props.disabled || !activeDetailModelId"
+                :disabled="props.disabled || !activeDetailModelId || activeDetailItem?.providerId !== DEFAULT_CHAT_PROVIDER_ID"
                 @refresh="onRefreshEndpointDetails"
               />
             </div>

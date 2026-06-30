@@ -4,6 +4,7 @@ import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
 import { ModelPrefsService, type ModelPrefsFavorite, type ModelPrefsRecent, type ModelPrefsScopeInput } from '@/next/modelPrefs/modelPrefsService'
 import type { ChatSessionConfig } from '../app/chatSessionConfig'
+import type { ProviderModelPickerSource } from '../app/providerModelPickerViewModel'
 import {
   DEFAULT_CHAT_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
@@ -22,6 +23,7 @@ const props = defineProps<{
   model?: string | null
   sessionConfig?: ChatSessionConfig | null
   modelCatalog: readonly ModelCatalogItem[]
+  providerModelSources?: readonly ProviderModelPickerSource[]
   imageInputSupported?: boolean | null
   imageInputDisabledReason?: string | null
   canSend?: boolean | null
@@ -75,6 +77,7 @@ const emit = defineEmits<{
   (e: 'update:draft', value: string): void
   (e: 'updateModel', value: ChatModelSelection): void
   (e: 'update:model', value: string): void
+  (e: 'refreshProviderModelsRequested'): void
   (e: 'updateReasoningEnabled', value: boolean): void
   (e: 'updateReasoningEffort', value: 'low' | 'medium' | 'high'): void
   (e: 'updateWebSearchEnabled', value: boolean): void
@@ -108,7 +111,7 @@ const attachmentMenuRef = ref<HTMLElement | null>(null)
 const attachmentMenuStyle = ref<CSSProperties>({})
 let unsubscribeModelPrefs: (() => void) | null = null
 let recentPersistTimer: ReturnType<typeof setTimeout> | null = null
-let pendingRecentModelId: string | null = null
+let pendingRecentModelSelection: ChatModelSelection | null = null
 let attachmentMenuOpenToken = 0
 let attachmentMenuFrameId: number | null = null
 
@@ -337,12 +340,32 @@ const modelNameById = computed(() => {
   const map = new Map<string, string>()
   map.set(DEFAULT_OPENROUTER_MODEL_ID, DEFAULT_OPENROUTER_MODEL_ID)
   for (const item of props.modelCatalog) {
-    map.set(normalizeModelKey(item.modelId), formatModelIndicatorName(item.name))
+    const modelId = normalizeModelKey(item.modelId)
+    const displayName = formatModelIndicatorName(item.name)
+    if (!modelId || !displayName) continue
+    map.set(modelId, displayName)
+    map.set(buildProviderModelKey({ providerId: DEFAULT_CHAT_PROVIDER_ID, modelId }), displayName)
+  }
+  for (const source of props.providerModelSources ?? []) {
+    for (const item of source.items) {
+      const modelId = normalizeModelKey(item.modelId)
+      const displayName = formatModelIndicatorName(item.displayName)
+      if (!modelId || !displayName) continue
+      map.set(buildProviderModelKey({ providerId: item.providerId, modelId }), displayName)
+      if (!map.has(modelId)) map.set(modelId, displayName)
+    }
   }
   for (const [modelId, name] of Object.entries(modelDisplayNameOverrides.value)) {
     const normalized = normalizeModelKey(modelId)
     const displayName = formatModelIndicatorName(name)
     if (normalized && displayName) map.set(normalized, displayName)
+  }
+  return map
+})
+const providerNameById = computed(() => {
+  const map = new Map<string, string>([[DEFAULT_CHAT_PROVIDER_ID, 'OpenRouter']])
+  for (const source of props.providerModelSources ?? []) {
+    map.set(source.providerId, source.providerName)
   }
   return map
 })
@@ -385,7 +408,14 @@ const activeQuickModelEmptyText = computed(() => {
   if (modelQuickMode.value === 'recents') return t('composer.modelPicker.noRecents')
   return null
 })
-const currentModelDisplayName = computed(() => modelNameById.value.get(selectedModel.value) ?? selectedModel.value)
+const currentModelDisplayName = computed(() => {
+  const providerModelKey = buildProviderModelKey(selectedModelSelection.value)
+  const displayName = modelNameById.value.get(providerModelKey) ?? modelNameById.value.get(selectedModel.value) ?? selectedModel.value
+  const providerName = providerNameById.value.get(selectedProviderId.value) ?? selectedProviderId.value
+  return selectedProviderId.value === DEFAULT_CHAT_PROVIDER_ID
+    ? displayName
+    : `${providerName} · ${displayName}`
+})
 
 function isSelectedModel(modelId: string): boolean {
   return normalizeModelKey(modelId) === selectedModel.value
@@ -462,14 +492,16 @@ function clearRecentPersistTimer() {
   recentPersistTimer = null
 }
 
-function buildRecentRecord(modelId: string): ModelPrefsRecent {
+function buildRecentRecord(selection: ChatModelSelection): ModelPrefsRecent {
   const nowMs = Date.now()
+  const providerId = selection.providerId ?? DEFAULT_CHAT_PROVIDER_ID
+  const modelId = normalizeModelKey(selection.modelId)
   return {
     scopeType: (activePrefsScope().scopeType ?? 'global') as ModelPrefsRecent['scopeType'],
     scopeId: String(activePrefsScope().scopeId ?? ''),
-    providerKey: DEFAULT_CHAT_PROVIDER_ID,
+    providerKey: providerId,
     modelId,
-    modelKey: buildProviderModelKey({ providerId: DEFAULT_CHAT_PROVIDER_ID, modelId }),
+    modelKey: buildProviderModelKey({ providerId, modelId }),
     lastUsedAtMs: nowMs,
     useCount: 1,
     createdAtMs: nowMs,
@@ -477,35 +509,37 @@ function buildRecentRecord(modelId: string): ModelPrefsRecent {
   }
 }
 
-function scheduleRecentPersistence(modelId: string) {
-  pendingRecentModelId = modelId
+function scheduleRecentPersistence(selection: ChatModelSelection) {
+  pendingRecentModelSelection = selection
   clearRecentPersistTimer()
   recentPersistTimer = setTimeout(() => {
-    const pending = pendingRecentModelId
-    pendingRecentModelId = null
+    const pending = pendingRecentModelSelection
+    pendingRecentModelSelection = null
     recentPersistTimer = null
-    if (!pending) return
+    if (!pending?.modelId) return
     void ModelPrefsService.recordRecent(
       {
-        providerKey: DEFAULT_CHAT_PROVIDER_ID,
-        modelId: pending,
-        modelKey: buildProviderModelKey({ providerId: DEFAULT_CHAT_PROVIDER_ID, modelId: pending }),
+        providerKey: pending.providerId,
+        modelId: pending.modelId,
+        modelKey: buildProviderModelKey(pending),
       },
       activePrefsScope(),
     )
   }, RECENT_MODEL_PERSIST_DEBOUNCE_MS)
 }
 
-function recordRecentModelSelection(modelId: string) {
-  const normalized = normalizeModelKey(modelId)
-  if (!normalized || normalized === DEFAULT_OPENROUTER_MODEL_ID) return
-  const modelKey = buildProviderModelKey({ providerId: DEFAULT_CHAT_PROVIDER_ID, modelId: normalized })
+function recordRecentModelSelection(selection: ChatModelSelection) {
+  const providerId = selection.providerId ?? DEFAULT_CHAT_PROVIDER_ID
+  const normalized = normalizeModelKey(selection.modelId)
+  if (!normalized || (providerId === DEFAULT_CHAT_PROVIDER_ID && normalized === DEFAULT_OPENROUTER_MODEL_ID)) return
+  const normalizedSelection = { providerId, modelId: normalized }
+  const modelKey = buildProviderModelKey(normalizedSelection)
   const next = [
-    buildRecentRecord(normalized),
+    buildRecentRecord(normalizedSelection),
     ...recentModels.value.filter((item) => item.modelKey !== modelKey),
   ].slice(0, maxRecentModels.value)
   recentModels.value = next
-  scheduleRecentPersistence(normalized)
+  scheduleRecentPersistence(normalizedSelection)
 }
 
 function onDraftInput(event: Event) {
@@ -587,6 +621,7 @@ function openModelPicker() {
   if (props.disabled) return
   modelQuickMode.value = null
   modelPickerOpen.value = true
+  emit('refreshProviderModelsRequested')
 }
 
 function closeModelPicker() {
@@ -614,14 +649,15 @@ function onSelectModelFromPicker(selection: ChatModelSelection, displayName?: st
   rememberModelDisplayName(selection.modelId, displayName)
   emit('updateModel', selection)
   emit('update:model', selection.modelId)
-  recordRecentModelSelection(selection.modelId)
+  recordRecentModelSelection(selection)
   modelPickerOpen.value = false
 }
 
 function onUpdateModel(modelId: string) {
-  emit('updateModel', { providerId: DEFAULT_CHAT_PROVIDER_ID, modelId })
+  const selection = { providerId: DEFAULT_CHAT_PROVIDER_ID, modelId }
+  emit('updateModel', selection)
   emit('update:model', modelId)
-  recordRecentModelSelection(modelId)
+  recordRecentModelSelection(selection)
 }
 
 async function onToggleCurrentModelFavorite() {
@@ -1036,6 +1072,7 @@ onBeforeUnmount(() => {
     :isRunning="props.isRunning"
     :selectedProviderId="selectedModelSelection.providerId"
     :selectedModelId="selectedModel"
+    :providerSources="props.providerModelSources ?? []"
     :favoriteModelKeys="favoriteModelKeys"
     :recentModelKeys="recentModelKeys"
     :fallbackModels="props.modelCatalog"

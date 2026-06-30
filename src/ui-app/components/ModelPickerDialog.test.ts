@@ -89,6 +89,81 @@ describe('ModelPickerDialog', () => {
     expect(events.close).toBeTruthy()
   })
 
+  it('renders provider model sources and emits provider-scoped selection', async () => {
+    const user = userEvent.setup()
+    const queryFn = vi.fn(async () => createResult([]))
+    const modelDetailFn = vi.fn(async () => {
+      throw new Error('non-OpenRouter provider source should not request OpenRouter model detail')
+    })
+    const view = render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedProviderId: 'openrouter',
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        modelDetailFn,
+        debounceMs: 0,
+        providerSources: [
+          {
+            providerId: 'openai_responses',
+            providerName: 'OpenAI Responses',
+            statusKind: 'ready',
+            statusLabel: '1 model',
+            loading: false,
+            items: [
+              {
+                providerId: 'openai_responses',
+                providerName: 'OpenAI Responses',
+                modelId: 'gpt-4.1-mini',
+                modelKey: 'openai_responses::gpt-4.1-mini',
+                displayName: 'GPT-4.1 mini',
+                description: 'curated OpenAI model',
+                vendor: 'OpenAI Responses',
+                capabilitySummary: 'text · image input',
+                statusKind: 'ready',
+                statusLabel: 'available',
+                sourceLabel: 'provider availability',
+                selectable: true,
+                inputModalities: ['text', 'image'],
+                outputModalities: ['text'],
+              },
+            ],
+          },
+          {
+            providerId: 'anthropic',
+            providerName: 'Anthropic Messages',
+            statusKind: 'credential_missing',
+            statusLabel: 'credential missing',
+            loading: false,
+            items: [],
+          },
+        ],
+      },
+    })
+
+    expect(await screen.findByTestId('model-picker-provider-status-openai_responses')).toHaveTextContent('1 model')
+    expect(screen.getByTestId('model-picker-provider-status-anthropic')).toHaveTextContent('credential missing')
+    expect(await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1-mini')).toHaveTextContent('OpenAI Responses')
+
+    await fireEvent.update(screen.getByTestId('model-picker-provider-filter'), 'anthropic')
+    await waitFor(() => {
+      expect(screen.queryByTestId('model-picker-item-openai_responses-gpt-4.1-mini')).toBeNull()
+      expect(screen.getByText('No models found for current search/filter.')).toBeTruthy()
+    })
+
+    await fireEvent.update(screen.getByTestId('model-picker-provider-filter'), 'openai_responses')
+    const openAIItem = await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1-mini')
+    await user.hover(openAIItem)
+    expect(await screen.findByTestId('model-picker-provider-detail')).toHaveTextContent('GPT-4.1 mini')
+    expect(modelDetailFn).not.toHaveBeenCalled()
+
+    await user.click(openAIItem)
+
+    const events = view.emitted()
+    expect(events.select?.[0]).toEqual([{ providerId: 'openai_responses', modelId: 'gpt-4.1-mini' }, 'GPT-4.1 mini'])
+    expect(events.close).toBeTruthy()
+  })
+
   it('uses scoped current query API as the default model list source', async () => {
     const scopedQuery = vi.fn(async () => ({
       providerKey: 'openrouter',

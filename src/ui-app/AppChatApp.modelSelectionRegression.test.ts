@@ -9,6 +9,7 @@ import AppChatApp from './AppChatApp.vue'
 describe('ui-app AppChatApp model selection regression', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronAPI = (globalThis as any).electronAPI
+  const originalOpenAIResponsesModels = (globalThis as any).openAIResponsesModels
   let invoke: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
@@ -158,6 +159,7 @@ describe('ui-app AppChatApp model selection regression', () => {
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronAPI = originalElectronAPI
+    ;(globalThis as any).openAIResponsesModels = originalOpenAIResponsesModels
   })
 
   it('keeps a manual model selection after async flush', async () => {
@@ -183,6 +185,58 @@ describe('ui-app AppChatApp model selection regression', () => {
     expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelCatalog.list')
     expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelCatalog.queryCore')
     expect(invoke.mock.calls.map((call) => call[0])).not.toContain('reasoningIndex.list')
+  })
+
+  it('persists a non-OpenRouter picker selection with provider id', async () => {
+    const user = userEvent.setup()
+    ;(globalThis as any).openAIResponsesModels = {
+      listAvailability: vi.fn(async () => ({
+        ok: true,
+        providerKey: 'openai_responses',
+        endpointId: 'default',
+        profileId: 'secure-store',
+        observedAtMs: 123,
+        models: [
+          {
+            providerKey: 'openai_responses',
+            endpointId: 'default',
+            profileId: 'secure-store',
+            nativeModelId: 'gpt-4.1-mini',
+            displayName: 'GPT-4.1 mini',
+            description: 'curated OpenAI model',
+            source: 'starverse_curated_metadata',
+            confidence: 'curated',
+            observedAtMs: 123,
+            warnings: [],
+            capabilitySeed: {
+              textChat: true,
+              imageInput: true,
+            },
+          },
+        ],
+        warnings: [],
+        sourceDocuments: [],
+      })),
+    }
+
+    render(AppChatApp)
+
+    await user.click(await screen.findByTestId('current-model-pill'))
+    const selectedItem = await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1-mini')
+    await user.click(selectedItem)
+
+    await waitFor(() => {
+      const saveCall = invoke.mock.calls.find((call) =>
+        call[0] === 'convo.save' &&
+        call[1]?.meta?.selectedProviderId === 'openai_responses' &&
+        call[1]?.meta?.selectedModelKey === 'gpt-4.1-mini'
+      )
+      expect(saveCall).toBeTruthy()
+    })
+
+    expect(screen.getByTestId('current-model-pill').textContent).toContain('OpenAI Responses')
+    expect(screen.getByTestId('current-model-pill').textContent).toContain('GPT-4.1 mini')
+    expect(screen.getByTestId('current-model-pill').textContent).not.toContain('openrouter/auto')
   })
 
   it('does not rehydrate the selection path with stale session state', () => {
