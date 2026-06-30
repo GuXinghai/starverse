@@ -40,6 +40,13 @@ import {
   type CatalogAutoSyncPolicy,
   type CatalogListUpdateMode,
 } from '@/shared/modelCatalog/catalogSyncSettings'
+import {
+  DEFAULT_CHAT_PROVIDER_ID,
+  DEFAULT_OPENROUTER_MODEL_ID,
+  buildProviderModelKey,
+  type ChatModelSelection,
+} from '@/next/provider/modelSelection'
+import type { RuntimeProviderKey } from '@/next/provider/runtimeSelection'
 
 type TriState = 'any' | 'yes' | 'no'
 type DetailTab = 'model' | 'endpoints'
@@ -55,6 +62,7 @@ const props = withDefaults(
     open: boolean
     disabled?: boolean
     isRunning?: boolean
+    selectedProviderId?: RuntimeProviderKey
     selectedModelId: string
     favoriteModelKeys?: readonly string[]
     recentModelKeys?: readonly string[]
@@ -78,12 +86,13 @@ const props = withDefaults(
     endpointDetailFn: undefined,
     modelDetailFn: undefined,
     forceOutputImageOnly: false,
+    selectedProviderId: DEFAULT_CHAT_PROVIDER_ID,
   },
 )
 
 const emit = defineEmits<{
   close: []
-  select: [modelId: string, displayName: string]
+  select: [selection: ChatModelSelection, displayName: string]
   toggleFavorite: [modelId: string]
   reorderFavorites: [orderedModelKeys: string[]]
 }>()
@@ -231,7 +240,7 @@ const selectedModelLabel = computed(() => {
   const selected = selectedModelId.value
   const inResults = items.value.find((item) => normalizeModelId(item.modelId) === selected)
   if (inResults) return inResults.displayName
-  return selected || 'openrouter/auto'
+  return selected || DEFAULT_OPENROUTER_MODEL_ID
 })
 
 const effectiveNotice = computed(() => {
@@ -612,7 +621,7 @@ function buildQueryInput(append: boolean): CatalogQueryInput {
     ...(expiringWindowDays !== undefined ? { expiringWithinDays: Math.max(0, Math.floor(expiringWindowDays)) } : {}),
   }
   return {
-    sourceProviderKey: 'openrouter',
+    sourceProviderKey: DEFAULT_CHAT_PROVIDER_ID,
     searchText: searchText.value.trim() || undefined,
     includeDescriptionInSearch: includeDescriptionInSearch.value,
     ...(Object.keys(filter).length > 0 ? { filter } : {}),
@@ -763,7 +772,7 @@ async function fetchEndpointDetails(forceRefresh: boolean) {
   endpointLoading.value = true
   try {
     const result = await resolveEndpointDetailFn()({
-      providerKey: 'openrouter',
+      providerKey: DEFAULT_CHAT_PROVIDER_ID,
       modelId,
       forceRefresh,
     })
@@ -772,7 +781,7 @@ async function fetchEndpointDetails(forceRefresh: boolean) {
   } catch (err: any) {
     if (currentSeq !== endpointSeq) return
     endpointDetails.value = {
-      providerKey: 'openrouter',
+      providerKey: DEFAULT_CHAT_PROVIDER_ID,
       modelId,
       fetchedAtMs: null,
       source: 'scoped_catalog',
@@ -799,7 +808,7 @@ async function fetchModelDetail() {
   modelDetailError.value = null
   try {
     const result = await resolveModelDetailFn()({
-      providerKey: 'openrouter',
+      providerKey: DEFAULT_CHAT_PROVIDER_ID,
       modelId,
     })
     if (currentSeq !== modelDetailSeq) return
@@ -903,7 +912,7 @@ async function runSync(force: boolean, reason: 'model_picker_opened' | 'manual_r
 
   try {
     const result = await electronAPI.modelCatalogSyncNow({
-      providerKey: 'openrouter',
+      providerKey: DEFAULT_CHAT_PROVIDER_ID,
       force,
       reason,
     })
@@ -956,7 +965,7 @@ async function fetchSyncStatus() {
   if (!electronAPI?.modelCatalogGetSyncStatus) return
 
   try {
-    const status = await electronAPI.modelCatalogGetSyncStatus({ providerKey: 'openrouter' })
+    const status = await electronAPI.modelCatalogGetSyncStatus({ providerKey: DEFAULT_CHAT_PROVIDER_ID })
     if (!status) return
 
     const state = String(status.syncState ?? 'idle')
@@ -1024,7 +1033,7 @@ function onSelectModel(modelId: string) {
   if (!normalized) return
   const scopedItem = items.value.find((item) => item.modelId === normalized)
   if (!scopedItem) return
-  emit('select', normalized, scopedItem.displayName)
+  emit('select', { providerId: DEFAULT_CHAT_PROVIDER_ID, modelId: normalized }, scopedItem.displayName)
   emit('close')
 }
 
@@ -1038,7 +1047,7 @@ function onToggleFavorite(modelId: string) {
 function isFavoriteModel(modelId: string): boolean {
   const normalized = String(modelId ?? '').trim()
   if (!normalized) return false
-  return favoriteModelKeySet.value.has(`openrouter::${normalized}`)
+  return favoriteModelKeySet.value.has(buildProviderModelKey({ providerId: DEFAULT_CHAT_PROVIDER_ID, modelId: normalized }))
 }
 
 function onRowRef(modelId: string, el: Element | null) {

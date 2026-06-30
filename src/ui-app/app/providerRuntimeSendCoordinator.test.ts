@@ -104,8 +104,10 @@ function selected(providerKey: RuntimeProviderKey, modelKey = `${providerKey}-mo
   return {
     state: 'selected' as const,
     providerKey,
+    providerId: providerKey,
     endpointId: `${providerKey}-endpoint`,
     profileId: `${providerKey}-profile`,
+    modelId: modelKey,
     modelKey,
     source: 'explicit_user_selection' as const,
     mode: providerKey === 'openrouter' ? 'production' as const : 'experimental' as const,

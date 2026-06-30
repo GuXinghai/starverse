@@ -4,6 +4,12 @@ import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
 import { ModelPrefsService, type ModelPrefsFavorite, type ModelPrefsRecent, type ModelPrefsScopeInput } from '@/next/modelPrefs/modelPrefsService'
 import type { ChatSessionConfig } from '../app/chatSessionConfig'
+import {
+  DEFAULT_CHAT_PROVIDER_ID,
+  DEFAULT_OPENROUTER_MODEL_ID,
+  buildProviderModelKey,
+  type ChatModelSelection,
+} from '@/next/provider/modelSelection'
 import ComposerCapabilityChip from './ComposerCapabilityChip.vue'
 import ModelPickerDialog from './ModelPickerDialog.vue'
 import { formatModelIndicatorName } from './modelIndicatorName'
@@ -41,6 +47,7 @@ const props = defineProps<{
 
 const defaultSessionConfig: ChatSessionConfig = {
   model: {
+    selectedProviderId: null,
     selectedModelKey: null,
   },
   reasoning: {
@@ -66,7 +73,7 @@ const defaultSessionConfig: ChatSessionConfig = {
 
 const emit = defineEmits<{
   (e: 'update:draft', value: string): void
-  (e: 'updateModel', value: string): void
+  (e: 'updateModel', value: ChatModelSelection): void
   (e: 'update:model', value: string): void
   (e: 'updateReasoningEnabled', value: boolean): void
   (e: 'updateReasoningEffort', value: 'low' | 'medium' | 'high'): void
@@ -319,11 +326,16 @@ const isSendButtonEnabled = computed(() => resolvedSendButtonMode.value === 'ena
 const historyIncompatibleSummary = computed(() => props.historyIncompatibleSummary ?? null)
 const selectedModel = computed(() => {
   const normalized = normalizeModelKey(resolvedSessionConfig.value.model.selectedModelKey)
-  return normalized || 'openrouter/auto'
+  return normalized || DEFAULT_OPENROUTER_MODEL_ID
 })
+const selectedProviderId = computed(() => resolvedSessionConfig.value.model.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID)
+const selectedModelSelection = computed<ChatModelSelection>(() => ({
+  providerId: selectedProviderId.value,
+  modelId: selectedModel.value,
+}))
 const modelNameById = computed(() => {
   const map = new Map<string, string>()
-  map.set('openrouter/auto', 'openrouter/auto')
+  map.set(DEFAULT_OPENROUTER_MODEL_ID, DEFAULT_OPENROUTER_MODEL_ID)
   for (const item of props.modelCatalog) {
     map.set(normalizeModelKey(item.modelId), formatModelIndicatorName(item.name))
   }
@@ -337,7 +349,7 @@ const modelNameById = computed(() => {
 const favoriteModelKeySet = computed(() => new Set(favoriteModels.value.map((item) => item.modelKey)))
 const currentModelKey = computed(() => {
   const normalized = normalizeModelKey(selectedModel.value)
-  return normalized.length > 0 ? `openrouter::${normalized}` : ''
+  return normalized.length > 0 ? `${selectedProviderId.value}::${normalized}` : ''
 })
 const attachmentFeedbackClass = computed(() => {
   if (props.attachmentFeedbackTone === 'error') return 'border-red-200 bg-red-50 text-red-800'
@@ -455,9 +467,9 @@ function buildRecentRecord(modelId: string): ModelPrefsRecent {
   return {
     scopeType: (activePrefsScope().scopeType ?? 'global') as ModelPrefsRecent['scopeType'],
     scopeId: String(activePrefsScope().scopeId ?? ''),
-    providerKey: 'openrouter',
+    providerKey: DEFAULT_CHAT_PROVIDER_ID,
     modelId,
-    modelKey: `openrouter::${modelId}`,
+    modelKey: buildProviderModelKey({ providerId: DEFAULT_CHAT_PROVIDER_ID, modelId }),
     lastUsedAtMs: nowMs,
     useCount: 1,
     createdAtMs: nowMs,
@@ -475,9 +487,9 @@ function scheduleRecentPersistence(modelId: string) {
     if (!pending) return
     void ModelPrefsService.recordRecent(
       {
-        providerKey: 'openrouter',
+        providerKey: DEFAULT_CHAT_PROVIDER_ID,
         modelId: pending,
-        modelKey: `openrouter::${pending}`,
+        modelKey: buildProviderModelKey({ providerId: DEFAULT_CHAT_PROVIDER_ID, modelId: pending }),
       },
       activePrefsScope(),
     )
@@ -486,8 +498,8 @@ function scheduleRecentPersistence(modelId: string) {
 
 function recordRecentModelSelection(modelId: string) {
   const normalized = normalizeModelKey(modelId)
-  if (!normalized || normalized === 'openrouter/auto') return
-  const modelKey = `openrouter::${normalized}`
+  if (!normalized || normalized === DEFAULT_OPENROUTER_MODEL_ID) return
+  const modelKey = buildProviderModelKey({ providerId: DEFAULT_CHAT_PROVIDER_ID, modelId: normalized })
   const next = [
     buildRecentRecord(normalized),
     ...recentModels.value.filter((item) => item.modelKey !== modelKey),
@@ -598,28 +610,28 @@ function rememberModelDisplayName(modelId: string, displayName?: string) {
   }
 }
 
-function onSelectModelFromPicker(modelId: string, displayName?: string) {
-  rememberModelDisplayName(modelId, displayName)
-  emit('updateModel', modelId)
-  emit('update:model', modelId)
-  recordRecentModelSelection(modelId)
+function onSelectModelFromPicker(selection: ChatModelSelection, displayName?: string) {
+  rememberModelDisplayName(selection.modelId, displayName)
+  emit('updateModel', selection)
+  emit('update:model', selection.modelId)
+  recordRecentModelSelection(selection.modelId)
   modelPickerOpen.value = false
 }
 
 function onUpdateModel(modelId: string) {
-  emit('updateModel', modelId)
+  emit('updateModel', { providerId: DEFAULT_CHAT_PROVIDER_ID, modelId })
   emit('update:model', modelId)
   recordRecentModelSelection(modelId)
 }
 
 async function onToggleCurrentModelFavorite() {
   const modelId = normalizeModelKey(selectedModel.value)
-  if (!modelId || modelId === 'openrouter/auto') return
+  if (!modelId || modelId === DEFAULT_OPENROUTER_MODEL_ID || selectedProviderId.value !== DEFAULT_CHAT_PROVIDER_ID) return
   await ModelPrefsService.toggleFavorite(
     {
-      providerKey: 'openrouter',
+      providerKey: DEFAULT_CHAT_PROVIDER_ID,
       modelId,
-      modelKey: `openrouter::${modelId}`,
+      modelKey: `${DEFAULT_CHAT_PROVIDER_ID}::${modelId}`,
     },
     activePrefsScope(),
   )
@@ -631,9 +643,9 @@ async function onToggleModelPickerFavorite(modelId: string) {
   if (!normalized) return
   await ModelPrefsService.toggleFavorite(
     {
-      providerKey: 'openrouter',
+      providerKey: DEFAULT_CHAT_PROVIDER_ID,
       modelId: normalized,
-      modelKey: `openrouter::${normalized}`,
+      modelKey: `${DEFAULT_CHAT_PROVIDER_ID}::${normalized}`,
     },
     activePrefsScope(),
   )
@@ -913,7 +925,7 @@ onBeforeUnmount(() => {
               ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
               : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
           "
-          :disabled="props.disabled || props.isRunning || selectedModel === 'openrouter/auto'"
+          :disabled="props.disabled || props.isRunning || selectedModel === DEFAULT_OPENROUTER_MODEL_ID || selectedProviderId !== DEFAULT_CHAT_PROVIDER_ID"
           data-testid="current-model-favorite-toggle"
           @click="onToggleCurrentModelFavorite"
         >
@@ -1022,6 +1034,7 @@ onBeforeUnmount(() => {
     :open="modelPickerOpen"
     :disabled="props.disabled"
     :isRunning="props.isRunning"
+    :selectedProviderId="selectedModelSelection.providerId"
     :selectedModelId="selectedModel"
     :favoriteModelKeys="favoriteModelKeys"
     :recentModelKeys="recentModelKeys"

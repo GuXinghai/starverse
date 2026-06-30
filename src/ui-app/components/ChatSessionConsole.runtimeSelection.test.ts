@@ -63,8 +63,10 @@ describe('ChatSessionConsole runtime selection controls', () => {
     const selection = {
       state: 'selected',
       providerKey: 'openrouter',
+      providerId: 'openrouter',
       endpointId: 'openrouter-official',
       profileId: 'openrouter_v1_chat',
+      modelId: 'openrouter/auto',
       modelKey: 'openrouter/auto',
       source: 'explicit_user_selection',
       mode: 'production',

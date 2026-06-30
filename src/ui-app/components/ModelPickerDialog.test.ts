@@ -85,7 +85,7 @@ describe('ModelPickerDialog', () => {
 
     const events = view.emitted()
     expect(events.select).toBeTruthy()
-    expect(events.select?.[0]).toEqual(['openai/gpt-4o', 'GPT-4o'])
+    expect(events.select?.[0]).toEqual([{ providerId: 'openrouter', modelId: 'openai/gpt-4o' }, 'GPT-4o'])
     expect(events.close).toBeTruthy()
   })
 

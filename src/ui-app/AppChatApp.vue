@@ -22,6 +22,7 @@ import SearchModal from './components/SearchModal.vue'
 import { t, tf } from '@/shared/i18n'
 import { useAppChatAppLogic } from './app/appChatApp.logic'
 import { formatModelIndicatorName } from './components/modelIndicatorName'
+import { DEFAULT_CHAT_PROVIDER_ID, DEFAULT_OPENROUTER_MODEL_ID } from '@/next/provider/modelSelection'
 
 const {
   isReady,
@@ -297,9 +298,13 @@ const modelSummary = computed(() => {
     const model = localEndpointChatConfig.value.model.trim() || 'manual model required'
     return `LocalEndpoint · ${model}`
   }
-  const selected = activeSessionConfig.value.model.selectedModelKey ?? 'openrouter/auto'
+  const selectedProvider = activeSessionConfig.value.model.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID
+  const selected = activeSessionConfig.value.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID
   const match = modelCatalogForPicker.value.find((item) => item.modelId === selected)
-  return `Model · ${formatModelIndicatorName(match?.name ?? selected)}`
+  const modelLabel = formatModelIndicatorName(match?.name ?? selected)
+  return selectedProvider === DEFAULT_CHAT_PROVIDER_ID
+    ? `Model · ${modelLabel}`
+    : `Model · ${selectedProvider} · ${modelLabel}`
 })
 
 const webSummary = computed(() => {
