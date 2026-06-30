@@ -18,8 +18,10 @@ export type CurrentRuntimeSelection =
   | Readonly<{
       state: 'selected'
       providerKey: RuntimeProviderKey
+      providerId: RuntimeProviderKey
       endpointId: string
       profileId: string
+      modelId?: string | null
       modelKey?: string | null
       nativeModelId?: string | null
       source: 'explicit_user_selection' | 'legacy_experimental_flag'
@@ -159,13 +161,17 @@ function selectRuntimeProvider(
     : never,
   mode: 'production' | 'experimental',
 ): CurrentRuntimeSelection {
+  const modelKey = normalizeOptionalString(input?.modelKey)
+  const nativeModelId = normalizeOptionalString(input?.nativeModelId)
   return {
     state: 'selected',
     providerKey,
+    providerId: providerKey,
     endpointId: normalizeOptionalString(input?.endpointId) ?? DEFAULT_ENDPOINT_ID[providerKey],
     profileId: normalizeOptionalString(input?.profileId) ?? DEFAULT_PROFILE_ID[providerKey],
-    modelKey: normalizeOptionalString(input?.modelKey),
-    nativeModelId: normalizeOptionalString(input?.nativeModelId),
+    modelId: modelKey ?? nativeModelId,
+    modelKey,
+    nativeModelId,
     source,
     mode,
     credentialStatus: input?.credentialStatus ?? 'unknown',
@@ -362,7 +368,7 @@ function featureEnabled(value: RuntimeTextChatFeatureFlag): boolean {
 }
 
 function selectedModelId(selection: Extract<CurrentRuntimeSelection, { state: 'selected' }>): string {
-  return normalizeOptionalString(selection.modelKey) ?? normalizeOptionalString(selection.nativeModelId) ?? ''
+  return normalizeOptionalString(selection.modelId) ?? normalizeOptionalString(selection.modelKey) ?? normalizeOptionalString(selection.nativeModelId) ?? ''
 }
 
 function providerRequiresTextOnlyGates(selection: CurrentRuntimeSelection): selection is Extract<CurrentRuntimeSelection, { state: 'selected' }> {

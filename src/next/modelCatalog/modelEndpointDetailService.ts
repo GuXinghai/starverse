@@ -1,4 +1,3 @@
-import { PROVIDERS } from '../../constants/providers'
 import type { CatalogEndpointMetric } from '../../shared/modelCatalog/internalSchema'
 import { buildModelKeyForLog, logModelCatalogEvent } from './modelCatalogObservability'
 
@@ -110,18 +109,18 @@ export async function getModelEndpointDetails(
   input: GetModelEndpointDetailsInput
 ): Promise<ModelEndpointDetailsResult> {
   const startedAtMs = Date.now()
-  const providerKey = String(input.providerKey ?? PROVIDERS.OPENROUTER).trim() || PROVIDERS.OPENROUTER
+  const providerKey = String(input.providerKey ?? '').trim()
   const modelId = String(input.modelId ?? '').trim()
   const modelKey = buildModelKeyForLog(providerKey, modelId)
   const catalogApi = getElectronCatalogApi()
-  if (!catalogApi?.modelCatalogQueryScopedCurrent || !modelId) {
+  if (!catalogApi?.modelCatalogQueryScopedCurrent || !providerKey || !modelId) {
     logModelCatalogEvent('endpoints', 'fetch_fail', {
       stage: 'input_validation',
       providerKey,
       modelId,
       modelKey,
       durationMs: Date.now() - startedAtMs,
-      reason: 'missing_scoped_query_ipc_or_modelId',
+      reason: 'missing_scoped_query_ipc_providerKey_or_modelId',
     })
     return {
       providerKey,
@@ -129,7 +128,7 @@ export async function getModelEndpointDetails(
       fetchedAtMs: null,
       source: 'scoped_catalog',
       items: [],
-      error: 'Endpoint details unavailable.',
+      error: providerKey ? 'Endpoint details unavailable.' : 'Endpoint details unavailable: providerKey is required.',
     }
   }
 

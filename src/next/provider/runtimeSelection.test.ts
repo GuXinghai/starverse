@@ -21,8 +21,10 @@ function selected(providerKey: RuntimeProviderKey, modelKey = `${providerKey}-mo
   return {
     state: 'selected',
     providerKey,
+    providerId: providerKey,
     endpointId: `${providerKey}-endpoint`,
     profileId: `${providerKey}-profile`,
+    modelId: modelKey,
     modelKey,
     source: providerKey === 'openrouter' ? 'explicit_user_selection' : 'legacy_experimental_flag',
     mode: providerKey === 'openrouter' ? 'production' : 'experimental',
@@ -40,8 +42,10 @@ describe('CurrentRuntimeSelection', () => {
     })).toEqual({
       state: 'selected',
       providerKey: 'openrouter',
+      providerId: 'openrouter',
       endpointId: 'openrouter-official',
       profileId: 'openrouter_v1_chat',
+      modelId: 'openrouter/auto',
       modelKey: 'openrouter/auto',
       nativeModelId: null,
       source: 'explicit_user_selection',
@@ -459,8 +463,10 @@ describe('resolveRuntimeTextSendRoute', () => {
     expect(resolveRuntimeTextSendRoute({
       state: 'selected',
       providerKey: 'generic_openai_compatible' as RuntimeProviderKey,
+      providerId: 'generic_openai_compatible' as RuntimeProviderKey,
       endpointId: 'generic-fixture',
       profileId: 'generic_openai_compatible_fixture',
+      modelId: 'generic-model',
       modelKey: 'generic-model',
       source: 'explicit_user_selection',
       mode: 'experimental',

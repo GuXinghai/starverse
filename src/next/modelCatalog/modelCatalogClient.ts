@@ -26,7 +26,7 @@ function mapScopedQueryItemToCatalogItem(item: CatalogQueryResult['items'][numbe
 }
 
 export async function listScopedCurrentModelCatalog(
-  sourceProviderKey: string = 'openrouter',
+  sourceProviderKey: string,
 ): Promise<ScopedCurrentModelCatalogListResult> {
   const items: ModelCatalogItem[] = []
   let cursor: CatalogQueryCursor | null = null
