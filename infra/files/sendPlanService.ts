@@ -1444,6 +1444,7 @@ function compatibilityReasonFromProcessingStatusForSemantic(
   if (attachment.processingStatus === 'unsupported') return 'unsupported_processing_status'
   if (attachment.processingStatus !== 'convertible') return null
   if (semantic.targetKind === 'original_file' && semantic.sendStrategy === 'file_attachment') return null
+  if (hasReadyDfcPdfAttachmentAsset(attachment, semantic)) return null
   if (semantic.sendStrategy === 'text_in_prompt' && hasReadyTextConversionAsset(attachment, semantic)) return null
   if (semantic.sendStrategy === 'mixed' && hasReadyMixedConversionAssets(attachment, semantic)) return null
   return 'conversion_required_before_send'
@@ -1588,7 +1589,11 @@ function selectAttachmentSendModeInternal(
   if (candidateGate.blocked) {
     return noModeSelection(attachment, candidateGate.reasonCode, candidateGate.notes)
   }
-  if (attachment.processingStatus === 'convertible' && !hasReadyTextConversionAsset(attachment, semantic)) {
+  if (
+    attachment.processingStatus === 'convertible' &&
+    !hasReadyTextConversionAsset(attachment, semantic) &&
+    !hasReadyDfcPdfAttachmentAsset(attachment, semantic)
+  ) {
     return noModeSelection(attachment, 'conversion_required_before_send', ['Attachment requires conversion before it can be sent.'])
   }
   if (attachment.processingStatus === 'unsupported' || attachment.aiPayloadKind === 'binary') {
@@ -2328,6 +2333,16 @@ function hasReadyMixedConversionAssets(
     && lineage.sendTextStorageUri.trim().length > 0
   const hasReadyFile = Boolean(resolveUrlReference(asset) || hasStoredLocalCopy(asset))
   return hasReadyText && hasReadyFile
+}
+
+function hasReadyDfcPdfAttachmentAsset(
+  attachment: CollectedAttachmentInput,
+  semantic: AttachmentSemanticSummary
+): boolean {
+  if (!attachment.dfcManaged) return false
+  if (attachment.dfcDecision?.status !== 'ready') return false
+  if (semantic.targetKind !== 'pdf_attachment' || semantic.sendStrategy !== 'file_attachment') return false
+  return attachment.dfcDecision.sendAssetRefs.some((ref) => ref.kind === 'derived_asset')
 }
 
 function evaluateConvertedTextHardGate(attachment: CollectedAttachmentInput): string | null {

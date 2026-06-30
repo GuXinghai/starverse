@@ -4450,12 +4450,20 @@ describeIfBetterSqlite('file pipeline worker handlers', () => {
       ok: true,
       result: {
         sendPlan: expect.objectContaining({
-          status: 'partially_sendable',
+          status: 'sendable',
+          requiresUserConfirmation: false,
+          includedAttachments: [
+            expect.objectContaining({
+              assetId,
+            }),
+          ],
+          excludedAttachments: [],
           attachmentPlans: [
             expect.objectContaining({
               assetId,
-              eligibility: 'excluded',
-              exclusionReason: 'incompatible_with_current_model',
+              eligibility: 'included',
+              exclusionReason: null,
+              selectedSendMode: 'inline_base64',
               sendAssetRefs: pdfOption.sendAssetRefs,
               semantic: expect.objectContaining({
                 targetKind: 'pdf_attachment',

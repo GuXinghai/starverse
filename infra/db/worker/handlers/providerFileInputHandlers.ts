@@ -1,14 +1,21 @@
+import { createHash } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import type { DbWorkerRuntime } from '../runtime'
 import type { RegisterHandler } from './types'
 import type { SendPlan, SendPlanModelDescriptor, SendPlanProviderContext } from '../../../../src/shared/files/sendPlanTypes'
 import type { SendMode } from '../../../../src/shared/files/fileTypes'
+import { resolveManagedStoragePath } from '../../../../src/shared/files/localStorageResolver'
+import type { DfcSendAssetRef } from '../../../../src/shared/files/documentFormatConversion'
+import type { FileDerivativeRecord } from '../../types'
 import {
   createProviderFileInputAssetReader,
   M1C_PDF_INLINE_LIMIT_BYTES,
   prepareProviderFileInput,
   prepareProviderFileUploadInput,
+  type ProviderFileInputAssetReader,
   type ProviderFileInputKind,
   type ProviderFileInputProvider,
+  type ProviderFileInputReadResult,
   type ProviderFileInputSendMode,
 } from '../../../../src/next/multimodal/providerFileInputMapper'
 import {
@@ -27,6 +34,22 @@ type PreparedProviderFileDiagnostic = Readonly<{
   sizeBytes: number
   kind: ProviderFileInputKind
 }>
+
+type ProviderInputSendTarget =
+  | Readonly<{
+      kind: 'raw_file'
+      assetId: string
+      readAsset: ProviderFileInputAssetReader
+    }>
+  | Readonly<{
+      kind: 'derived_asset'
+      assetId: string
+      readAsset: ProviderFileInputAssetReader
+    }>
+
+type ProviderInputSendTargetResult =
+  | Readonly<{ ok: true; target: ProviderInputSendTarget }>
+  | Readonly<{ ok: false; code: 'asset_not_ready'; message: string }>
 
 type PrepareDraftRuntimeOptions = Readonly<{
   allowedKinds: ReadonlySet<ProviderFileInputKind>
@@ -151,6 +174,16 @@ async function prepareDraftFileInputs(
   const included: PreparedProviderFileDiagnostic[] = []
 
   for (const plan of includedPlans) {
+    const target = createProviderInputSendTarget(plan, runtime, reader)
+    if (!target.ok) {
+      return prepareFailure({
+        code: target.code,
+        message: sanitizeDiagnosticMessage(target.message),
+        sendPlan,
+        hasDraftAttachmentPlans,
+      })
+    }
+
     const sendMode = mapSendMode(plan.selectedSendMode)
     if (!sendMode) {
       return prepareFailure({
@@ -169,10 +202,10 @@ async function prepareDraftFileInputs(
       : prepareProviderFileInput
     const prepared = await prepare({
       provider: input.provider as ProviderFileInputProvider,
-      assetId: plan.assetId,
+      assetId: target.target.assetId,
       sendMode,
-      readAsset: reader,
-      ...(plan.aiPayloadKind === 'pdf' ? { maxInlineBytes: M1C_PDF_INLINE_LIMIT_BYTES } : {}),
+      readAsset: target.target.readAsset,
+      ...(isPdfAttachmentPlan(plan) ? { maxInlineBytes: M1C_PDF_INLINE_LIMIT_BYTES } : {}),
     })
     if (!prepared.ok) {
       return prepareFailure({
@@ -211,7 +244,7 @@ async function prepareDraftFileInputs(
 
     contentParts.push(prepared.requestPart)
     included.push({
-      assetId: plan.assetId,
+      assetId: prepared.assetId,
       attachmentId: plan.attachmentId,
       source: plan.source,
       selectedSendMode: sendMode,
@@ -237,6 +270,216 @@ async function prepareDraftFileInputs(
       containsMultimodalParts: contentParts.length > 0,
     },
   }
+}
+
+function createProviderInputSendTarget(
+  plan: AttachmentPlan,
+  runtime: DbWorkerRuntime,
+  rawAssetReader: ProviderFileInputAssetReader
+): ProviderInputSendTargetResult {
+  const refs = normalizeSendAssetRefs(plan.sendAssetRefs)
+  const derivedRefs = refs.filter((ref) => ref.kind === 'derived_asset')
+  if (derivedRefs.length > 1) {
+    return {
+      ok: false,
+      code: 'asset_not_ready',
+      message: `Attachment ${plan.assetId} has multiple DFC derived send assets and cannot be mapped unambiguously.`,
+    }
+  }
+  if (derivedRefs.length === 1) {
+    const derivedId = derivedRefs[0]?.assetId ?? ''
+    return createDerivedProviderInputSendTarget({
+      derivativeId: derivedId,
+      sourceAssetId: plan.assetId,
+      runtime,
+    })
+  }
+
+  const rawRefs = refs.filter((ref) => ref.kind === 'raw_file')
+  if (rawRefs.length > 1) {
+    return {
+      ok: false,
+      code: 'asset_not_ready',
+      message: `Attachment ${plan.assetId} has multiple raw send assets and cannot be mapped unambiguously.`,
+    }
+  }
+  if (rawRefs.length === 1 && rawRefs[0]?.assetId !== plan.assetId) {
+    return {
+      ok: false,
+      code: 'asset_not_ready',
+      message: `Attachment ${plan.assetId} raw send asset does not match the attached asset.`,
+    }
+  }
+
+  return {
+    ok: true,
+    target: {
+      kind: 'raw_file',
+      assetId: plan.assetId,
+      readAsset: rawAssetReader,
+    },
+  }
+}
+
+function createDerivedProviderInputSendTarget(input: Readonly<{
+  derivativeId: string
+  sourceAssetId: string
+  runtime: DbWorkerRuntime
+}>): ProviderInputSendTargetResult {
+  const derivative = input.runtime.fileDerivativeRepo.getById(input.derivativeId)
+  if (!derivative) {
+    return {
+      ok: false,
+      code: 'asset_not_ready',
+      message: `Selected DFC derived asset ${input.derivativeId} was not found.`,
+    }
+  }
+  if (derivative.parentAssetId !== input.sourceAssetId) {
+    return {
+      ok: false,
+      code: 'asset_not_ready',
+      message: `Selected DFC derived asset ${derivative.id} does not belong to attachment ${input.sourceAssetId}.`,
+    }
+  }
+  if (derivative.status !== 'ready' || derivative.deletedAt != null) {
+    return {
+      ok: false,
+      code: 'asset_not_ready',
+      message: `Selected DFC derived asset ${derivative.id} is not ready for provider file input.`,
+    }
+  }
+
+  return {
+    ok: true,
+    target: {
+      kind: 'derived_asset',
+      assetId: derivative.id,
+      readAsset: (assetId) => readDerivedProviderInputAsset({
+        assetId,
+        derivative,
+        storageRootDir: input.runtime.fileStorageRootDir,
+      }),
+    },
+  }
+}
+
+async function readDerivedProviderInputAsset(input: Readonly<{
+  assetId: string
+  derivative: FileDerivativeRecord
+  storageRootDir: string
+}>): Promise<ProviderFileInputReadResult> {
+  const { assetId, derivative } = input
+  if (assetId !== derivative.id) {
+    return {
+      ok: false,
+      code: 'asset_not_ready',
+      message: `Selected DFC derived asset ${assetId} does not match the prepared send target.`,
+    }
+  }
+  if (derivative.status !== 'ready' || derivative.deletedAt != null) {
+    return {
+      ok: false,
+      code: 'asset_not_ready',
+      message: `Selected DFC derived asset ${derivative.id} is not ready for provider file input.`,
+    }
+  }
+
+  const resolved = resolveManagedStoragePath(input.storageRootDir, derivative.storageUri, {
+    backend: 'local_fs',
+    deletedAt: derivative.deletedAt,
+  })
+  if (resolved.kind !== 'ok') {
+    return {
+      ok: false,
+      code: 'asset_not_ready',
+      message: resolved.kind === 'missing'
+        ? `Selected DFC derived asset ${derivative.id} has no managed local bytes.`
+        : resolved.message,
+    }
+  }
+
+  let bytes: Uint8Array
+  try {
+    bytes = await readFile(resolved.path)
+  } catch {
+    return {
+      ok: false,
+      code: 'asset_not_ready',
+      message: `Selected DFC derived asset ${derivative.id} managed bytes could not be read.`,
+    }
+  }
+
+  const mimeType = normalizeDerivedMime(derivative)
+  const filename = derivedFilename(derivative, mimeType)
+  const sha256 = createHash('sha256').update(bytes).digest('hex')
+  return {
+    ok: true,
+    source: 'managed_bytes',
+    asset: {
+      id: derivative.id,
+      filename,
+      extension: extensionFromFilename(filename),
+      mimeType,
+      sizeBytes: bytes.byteLength,
+      assetKind: mimeType === 'application/pdf' ? 'document' : 'text',
+      sourceKind: 'derived',
+      storageBackend: 'local_fs',
+      ingestStatus: 'stored',
+      deletedAt: null,
+      sourceMetaJson: null,
+    },
+    revision: {
+      id: `derived:${derivative.parentAssetId}:${derivative.id}:${derivative.updatedAt}`,
+      assetId: derivative.id,
+      blobId: `derived:${derivative.id}`,
+      parentRevisionId: null,
+      cause: 'converted',
+      derivedFromAssetId: derivative.parentAssetId,
+    },
+    blob: {
+      id: `derived:${derivative.id}`,
+      sha256,
+      mimeType,
+      sizeBytes: bytes.byteLength,
+    },
+    bytes,
+  }
+}
+
+function normalizeSendAssetRefs(refs: readonly DfcSendAssetRef[] | undefined): DfcSendAssetRef[] {
+  return (refs ?? [])
+    .map((ref) => ({
+      kind: ref.kind,
+      assetId: String(ref.assetId ?? '').trim(),
+    }) as DfcSendAssetRef)
+    .filter((ref) => ref.assetId.length > 0)
+}
+
+function normalizeDerivedMime(derivative: FileDerivativeRecord): string {
+  const mime = String(derivative.mime ?? '').split(';', 1)[0]?.trim().toLowerCase()
+  if (mime) return mime
+  if (derivative.derivedKind === 'converted_pdf') return 'application/pdf'
+  if (derivative.derivedKind === 'converted_markdown') return 'text/markdown'
+  return 'text/plain'
+}
+
+function derivedFilename(derivative: FileDerivativeRecord, mimeType: string): string {
+  const extension = mimeType === 'application/pdf'
+    ? 'pdf'
+    : mimeType === 'text/markdown'
+      ? 'md'
+      : 'txt'
+  return `${sanitizeDerivedFilenameStem(derivative.id)}.${extension}`
+}
+
+function sanitizeDerivedFilenameStem(value: string): string {
+  const normalized = String(value ?? '').trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')
+  return normalized || 'derived-asset'
+}
+
+function extensionFromFilename(filename: string): string | null {
+  const match = /\.([A-Za-z0-9]+)$/.exec(filename)
+  return match ? match[1]?.toLowerCase() ?? null : null
 }
 
 function prepareFailure(input: Readonly<{
@@ -276,8 +519,13 @@ function shouldUseProviderUploadInput(provider: string, sendMode: ProviderFileIn
 
 function isAllowedPlan(plan: AttachmentPlan, allowedKinds: ReadonlySet<ProviderFileInputKind>): boolean {
   if (plan.aiPayloadKind === 'image') return allowedKinds.has('image')
-  if (plan.aiPayloadKind === 'pdf') return allowedKinds.has('pdf')
+  if (isPdfAttachmentPlan(plan)) return allowedKinds.has('pdf')
   return false
+}
+
+function isPdfAttachmentPlan(plan: AttachmentPlan): boolean {
+  return plan.aiPayloadKind === 'pdf' ||
+    (plan.semantic.targetKind === 'pdf_attachment' && plan.semantic.sendStrategy === 'file_attachment')
 }
 
 function isM1bRuntimeImageMime(mimeType: string): boolean {
