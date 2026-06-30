@@ -135,6 +135,7 @@ import {
   isExperimentalRuntimeTextProviderKey,
   resolveProviderRuntimeTextSendPreflight,
   type ExperimentalRuntimeTextProviderKey,
+  type ProviderRuntimeAvailabilityPreflightResult,
 } from './providerRuntimeSendCoordinator'
 import { useExperimentalProviderChatSettings } from './useExperimentalProviderChatSettings'
 import {
@@ -306,6 +307,25 @@ export function useAppChatAppLogic() {
   type AnthropicModelAvailabilityFailureCode = Extract<AnthropicModelAvailabilityResult, { ok: false }>['code']
   type AnthropicModelsBridge = Readonly<{
     listAvailability: (payload?: unknown) => Promise<AnthropicModelAvailabilityResult>
+  }>
+  type ProviderCredentialStatusResult = Readonly<{
+    ok?: unknown
+    status?: Readonly<{
+      apiKeyConfigured?: unknown
+    }>
+    message?: unknown
+  }>
+  type ProviderCredentialStatusBridge = Readonly<{
+    getStatus: () => Promise<ProviderCredentialStatusResult>
+  }>
+  type LocalEndpointDiagnosticsBridge = Readonly<{
+    probe: (payload: { url?: string; timeoutMs?: number }) => Promise<unknown>
+  }>
+  type LMStudioProviderBridge = Readonly<{
+    probe: (payload: { endpointUrl?: string; selectedModel?: string; timeoutMs?: number }) => Promise<unknown>
+  }>
+  type OllamaProviderBridge = Readonly<{
+    probe: (payload: { endpointUrl?: string; selectedModel?: string; timeoutMs?: number }) => Promise<unknown>
   }>
   const openAIResponsesModelAvailabilityLoading = ref(false)
   const openAIResponsesModelAvailabilityResult = ref<OpenAIModelAvailabilityResult | null>(null)
@@ -4041,6 +4061,206 @@ export function useAppChatAppLogic() {
     } finally {
       deepSeekModelAvailabilityLoading.value = false
     }
+  }
+
+  function getCredentialStatusBridge(providerKey: string): ProviderCredentialStatusBridge | null {
+    const global = globalThis as any
+    const bridge = providerKey === DEFAULT_CHAT_PROVIDER_ID
+      ? global?.openRouterCredential
+      : providerKey === OPENAI_RESPONSES_PROVIDER_KEY
+        ? global?.openAIResponsesCredential
+        : providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY
+          ? global?.googleAIStudioCredential
+          : providerKey === ANTHROPIC_MESSAGES_PROVIDER_KEY
+            ? global?.anthropicCredential
+            : providerKey === DEEPSEEK_OFFICIAL_PROVIDER_KEY
+              ? global?.deepSeekCredential
+              : null
+    return bridge && typeof bridge.getStatus === 'function' ? bridge as ProviderCredentialStatusBridge : null
+  }
+
+  function providerDisplayName(providerKey: string): string {
+    if (providerKey === DEFAULT_CHAT_PROVIDER_ID) return 'OpenRouter'
+    if (providerKey === OPENAI_RESPONSES_PROVIDER_KEY) return 'OpenAI Responses'
+    if (providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY) return 'Google AI Studio'
+    if (providerKey === ANTHROPIC_MESSAGES_PROVIDER_KEY) return 'Anthropic Messages'
+    if (providerKey === DEEPSEEK_OFFICIAL_PROVIDER_KEY) return 'DeepSeek'
+    if (providerKey === 'lm_studio') return 'LM Studio'
+    if (providerKey === 'ollama_local') return 'Ollama'
+    if (providerKey === 'local_endpoint') return 'Local/OpenAI-compatible'
+    return providerKey
+  }
+
+  async function preflightCloudCredential(providerKey: string): Promise<ProviderRuntimeAvailabilityPreflightResult> {
+    const providerName = providerDisplayName(providerKey)
+    const bridge = getCredentialStatusBridge(providerKey)
+    if (!bridge) return { ok: false, reason: `${providerName} credential status is unavailable. Restart Starverse and try again.` }
+    try {
+      const result = await bridge.getStatus()
+      if (result?.ok !== true) return { ok: false, reason: `${providerName} credential status is unavailable.` }
+      if (result.status?.apiKeyConfigured !== true) return { ok: false, reason: `${providerName} credential is not configured.` }
+      return { ok: true }
+    } catch {
+      return { ok: false, reason: `${providerName} credential status check failed safely.` }
+    }
+  }
+
+  function selectedModelKnownInAvailability(result: unknown, modelId: string): boolean {
+    if (!result || typeof result !== 'object' || (result as any).ok !== true) return false
+    const models = Array.isArray((result as any).models) ? (result as any).models : []
+    const normalized = normalizeModelKey(modelId)
+    return models.some((model: unknown) => String((model as any)?.nativeModelId ?? '').trim() === normalized)
+  }
+
+  async function ensureCloudAvailabilityResult(providerKey: string): Promise<unknown> {
+    if (providerKey === OPENAI_RESPONSES_PROVIDER_KEY) {
+      if (!openAIResponsesModelAvailabilityResult.value) await onRefreshOpenAIResponsesModels()
+      return openAIResponsesModelAvailabilityResult.value
+    }
+    if (providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY) {
+      if (!googleAIStudioModelAvailabilityResult.value) await onRefreshGoogleAIStudioModels()
+      return googleAIStudioModelAvailabilityResult.value
+    }
+    if (providerKey === ANTHROPIC_MESSAGES_PROVIDER_KEY) {
+      if (!anthropicModelAvailabilityResult.value) await onRefreshAnthropicModels()
+      return anthropicModelAvailabilityResult.value
+    }
+    if (providerKey === DEEPSEEK_OFFICIAL_PROVIDER_KEY) {
+      if (!deepSeekModelAvailabilityResult.value) await onRefreshDeepSeekModels()
+      return deepSeekModelAvailabilityResult.value
+    }
+    return null
+  }
+
+  async function preflightCloudModelAvailability(providerKey: string, modelId: string): Promise<ProviderRuntimeAvailabilityPreflightResult> {
+    const providerName = providerDisplayName(providerKey)
+    const result = await ensureCloudAvailabilityResult(providerKey)
+    if (!result || typeof result !== 'object') {
+      return { ok: false, reason: `${providerName} model availability is unavailable.` }
+    }
+    if ((result as any).ok !== true) {
+      const message = String((result as any).message ?? '').trim()
+      return { ok: false, reason: message || `${providerName} model availability check failed.` }
+    }
+    if (!selectedModelKnownInAvailability(result, modelId)) {
+      return { ok: false, reason: `${providerName} model "${normalizeModelKey(modelId)}" is not available for the current credential.` }
+    }
+    return { ok: true }
+  }
+
+  function localModelListIncludes(list: unknown, modelId: string): boolean | null {
+    if (!list || typeof list !== 'object') return null
+    if ((list as any).ok !== true) return null
+    const normalized = normalizeModelKey(modelId)
+    const modelIds = Array.isArray((list as any).modelIds)
+      ? (list as any).modelIds
+      : Array.isArray((list as any).models)
+        ? (list as any).models
+        : []
+    if (modelIds.length === 0) return null
+    return modelIds.some((item: unknown) => {
+      if (typeof item === 'string') return item.trim() === normalized
+      return String((item as any)?.key ?? (item as any)?.id ?? (item as any)?.name ?? '').trim() === normalized
+    })
+  }
+
+  async function preflightLocalEndpointAvailability(): Promise<ProviderRuntimeAvailabilityPreflightResult> {
+    const endpointUrl = localEndpointChatUrl.value.trim()
+    const modelId = localEndpointChatModel.value.trim()
+    if (!endpointUrl) return { ok: false, reason: 'Local/OpenAI-compatible endpoint URL is not configured.' }
+    if (!modelId) return { ok: false, reason: 'Local/OpenAI-compatible model is not configured.' }
+    const bridge = (globalThis as any)?.localEndpointDiagnostics as LocalEndpointDiagnosticsBridge | undefined
+    if (!bridge || typeof bridge.probe !== 'function') {
+      return { ok: false, reason: 'Local/OpenAI-compatible endpoint probe is unavailable.' }
+    }
+    try {
+      const result = await bridge.probe({ url: endpointUrl, timeoutMs: 5000 })
+      if (!result || typeof result !== 'object' || (result as any).ok !== true) {
+        return { ok: false, reason: String((result as any)?.message ?? '').trim() || 'Local/OpenAI-compatible endpoint is unavailable.' }
+      }
+      const diagnostics = (result as any).diagnostics
+      if (diagnostics?.status !== 'reachable') return { ok: false, reason: diagnostics?.message || 'Local/OpenAI-compatible endpoint is unavailable.' }
+      const known = localModelListIncludes(diagnostics?.modelList, modelId)
+      if (known === false) return { ok: false, reason: `Local/OpenAI-compatible model "${modelId}" is not available at the configured endpoint.` }
+      return { ok: true }
+    } catch {
+      return { ok: false, reason: 'Local/OpenAI-compatible endpoint probe failed safely.' }
+    }
+  }
+
+  async function preflightLMStudioAvailability(): Promise<ProviderRuntimeAvailabilityPreflightResult> {
+    const endpointUrl = lmStudioChatConfig.value.endpointUrl.trim()
+    const modelId = lmStudioChatConfig.value.model.trim()
+    if (!endpointUrl) return { ok: false, reason: 'LM Studio endpoint URL is not configured.' }
+    if (!modelId) return { ok: false, reason: 'LM Studio model is not configured.' }
+    const bridge = (globalThis as any)?.lmStudioProvider as LMStudioProviderBridge | undefined
+    if (!bridge || typeof bridge.probe !== 'function') return { ok: false, reason: 'LM Studio endpoint probe is unavailable.' }
+    try {
+      const result = await bridge.probe({ endpointUrl, selectedModel: modelId, timeoutMs: 5000 })
+      if (!result || typeof result !== 'object' || (result as any).ok !== true) {
+        return { ok: false, reason: String((result as any)?.message ?? '').trim() || 'LM Studio endpoint is unavailable.' }
+      }
+      const diagnostics = (result as any).diagnostics
+      const mode = lmStudioChatConfig.value.chatMode
+      const endpointAvailable = mode === 'native_rest'
+        ? diagnostics?.nativeRestAvailable === true
+        : diagnostics?.openAICompatibleAvailable === true
+      if (!endpointAvailable) return { ok: false, reason: 'LM Studio selected endpoint mode is unavailable.' }
+      const known = localModelListIncludes(mode === 'native_rest' ? diagnostics?.nativeRest : diagnostics?.openAICompatible, modelId)
+      if (known === false) return { ok: false, reason: `LM Studio model "${modelId}" is not available at the configured endpoint.` }
+      return { ok: true }
+    } catch {
+      return { ok: false, reason: 'LM Studio endpoint probe failed safely.' }
+    }
+  }
+
+  async function preflightOllamaAvailability(): Promise<ProviderRuntimeAvailabilityPreflightResult> {
+    const endpointUrl = ollamaChatConfig.value.endpointUrl.trim()
+    const modelId = ollamaChatConfig.value.model.trim()
+    if (!endpointUrl) return { ok: false, reason: 'Ollama endpoint URL is not configured.' }
+    if (!modelId) return { ok: false, reason: 'Ollama model is not configured.' }
+    const bridge = (globalThis as any)?.ollamaProvider as OllamaProviderBridge | undefined
+    if (!bridge || typeof bridge.probe !== 'function') return { ok: false, reason: 'Ollama endpoint probe is unavailable.' }
+    try {
+      const result = await bridge.probe({ endpointUrl, selectedModel: modelId, timeoutMs: 5000 })
+      if (!result || typeof result !== 'object' || (result as any).ok !== true) {
+        return { ok: false, reason: String((result as any)?.message ?? '').trim() || 'Ollama endpoint is unavailable.' }
+      }
+      const diagnostics = (result as any).diagnostics
+      const mode = ollamaChatConfig.value.chatMode
+      const endpointAvailable = mode === 'native_rest'
+        ? diagnostics?.nativeRestAvailable === true
+        : diagnostics?.openAICompatibleAvailable === true
+      if (!endpointAvailable) return { ok: false, reason: 'Ollama selected endpoint mode is unavailable.' }
+      const known = localModelListIncludes(mode === 'native_rest' ? diagnostics?.localModels : diagnostics?.openAICompatible, modelId)
+      if (known === false) return { ok: false, reason: `Ollama model "${modelId}" is not available at the configured endpoint.` }
+      return { ok: true }
+    } catch {
+      return { ok: false, reason: 'Ollama endpoint probe failed safely.' }
+    }
+  }
+
+  async function resolveCurrentRuntimeAvailabilityPreflight(): Promise<ProviderRuntimeAvailabilityPreflightResult> {
+    const selection = currentRuntimeSelection.value
+    if (selection.state !== 'selected') return { ok: true }
+    const modelId = normalizeModelKey(selection.modelId ?? selection.modelKey ?? selection.nativeModelId)
+    if (selection.providerKey === DEFAULT_CHAT_PROVIDER_ID) {
+      return await preflightCloudCredential(DEFAULT_CHAT_PROVIDER_ID)
+    }
+    if (
+      selection.providerKey === OPENAI_RESPONSES_PROVIDER_KEY ||
+      selection.providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY ||
+      selection.providerKey === ANTHROPIC_MESSAGES_PROVIDER_KEY ||
+      selection.providerKey === DEEPSEEK_OFFICIAL_PROVIDER_KEY
+    ) {
+      const credential = await preflightCloudCredential(selection.providerKey)
+      if (!credential.ok) return credential
+      return await preflightCloudModelAvailability(selection.providerKey, modelId)
+    }
+    if (selection.providerKey === 'local_endpoint') return await preflightLocalEndpointAvailability()
+    if (selection.providerKey === 'lm_studio') return await preflightLMStudioAvailability()
+    if (selection.providerKey === 'ollama_local') return await preflightOllamaAvailability()
+    return { ok: true }
   }
 
   async function updateActiveConvoSessionConfig(patch: ChatSessionConfigPatch): Promise<ChatSessionConfig | null> {
@@ -9098,12 +9318,14 @@ export function useAppChatAppLogic() {
     const hasDraftAttachments = draftAttachmentRecords.value.length > 0
     if (!text && !hasDraftAttachments) return
 
+    const runtimeAvailability = await resolveCurrentRuntimeAvailabilityPreflight()
     const runtimePreflight = resolveProviderRuntimeTextSendPreflight({
       selection: currentRuntimeSelection.value,
       capability: currentRuntimeCapability.value,
       text,
       hasDraftAttachments,
       sessionConfig: activeSessionConfig.value,
+      availability: runtimeAvailability,
     })
     if (!runtimePreflight.ok) {
       setAttachmentFeedback('error', runtimePreflight.reason)

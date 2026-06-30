@@ -32,10 +32,15 @@ export type ProviderRuntimeTextSendPreflightInput = Readonly<{
   text: string
   hasDraftAttachments: boolean
   sessionConfig: RuntimeTextChatSessionConfigLite
+  availability?: ProviderRuntimeAvailabilityPreflightResult
 }>
 
 export type ProviderRuntimeTextSendPreflightResult =
   | Readonly<{ ok: true; route: Exclude<RuntimeTextSendRoute, { kind: 'none' }> }>
+  | Readonly<{ ok: false; reason: string }>
+
+export type ProviderRuntimeAvailabilityPreflightResult =
+  | Readonly<{ ok: true }>
   | Readonly<{ ok: false; reason: string }>
 
 export type ExperimentalRuntimeTextModelIds = Readonly<{
@@ -73,6 +78,7 @@ export function resolveProviderRuntimeTextSendPreflight(
     sessionConfig: input.sessionConfig,
   })
   if (runtimeBlockReason) return { ok: false, reason: runtimeBlockReason }
+  if (input.availability && !input.availability.ok) return { ok: false, reason: input.availability.reason }
 
   const route = resolveRuntimeTextSendRoute(input.selection)
   if (route.kind === 'none') return { ok: false, reason: route.reason }
