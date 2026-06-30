@@ -6,6 +6,7 @@ import AppChatApp from './AppChatApp.vue'
 
 const streamOpenRouterChatCallArgs: any[] = []
 const localEndpointTextChatCallArgs: any[] = []
+const lmStudioTextChatCallArgs: any[] = []
 const ollamaTextChatCallArgs: any[] = []
 const openAIResponsesTextChatCallArgs: any[] = []
 const googleAIStudioTextChatCallArgs: any[] = []
@@ -21,6 +22,64 @@ const waitForAppReady = async () => {
     expect(draftBox()).not.toBeDisabled()
   })
 }
+
+const configuredCredential = () => ({ ok: true, status: { apiKeyConfigured: true, warnings: [] } })
+const missingCredential = () => ({ ok: true, status: { apiKeyConfigured: false, warnings: [] } })
+const availability = (providerKey: string, modelId: string) => ({
+  ok: true,
+  providerKey,
+  endpointId: `${providerKey}-endpoint`,
+  profileId: `${providerKey}-profile`,
+  observedAtMs: 123,
+  models: [{ nativeModelId: modelId, displayName: modelId, warnings: [], capabilitySeed: { textChat: true } }],
+  warnings: [],
+  sourceDocuments: [],
+})
+const localEndpointProbe = (modelId = 'local-model') => ({
+  ok: true,
+  diagnostics: {
+    kind: 'local_endpoint_diagnostics',
+    status: 'reachable',
+    endpointFamily: 'openai_compatible',
+    safeBaseUrl: 'http://localhost:1234/v1',
+    modelList: { ok: true, source: 'openai_v1_models', models: [modelId, 'settings-selected-model'], truncated: false },
+    capabilitySummary: { chatSendAvailable: false, textChat: 'diagnostics_only', streaming: 'not_probed', tools: false, files: false, reasoning: false, webSearch: false },
+    message: 'reachable',
+  },
+})
+const lmStudioProbe = (modelId = 'openai/gpt-oss-20b') => ({
+  ok: true,
+  diagnostics: {
+    kind: 'lm_studio_local_provider_diagnostics',
+    providerKey: 'lm_studio',
+    safeBaseUrl: 'http://127.0.0.1:1234',
+    nativeRestAvailable: true,
+    openAICompatibleAvailable: true,
+    nativeRest: { ok: true, source: 'lm_studio_api_v1_models', models: [{ key: modelId, displayName: modelId, type: 'llm', loaded: true, loadedInstances: ['1'] }], modelIds: [modelId], loadedCount: 1, unloadedCount: 0 },
+    openAICompatible: { ok: true, source: 'lm_studio_openai_v1_models', models: [{ key: modelId, displayName: modelId, type: 'llm', loaded: true, loadedInstances: ['1'] }], modelIds: [modelId], loadedCount: 1, unloadedCount: 0 },
+    selectedModelLoaded: true,
+    warnings: [],
+    message: 'available',
+  },
+})
+const ollamaProbe = (modelId = 'llama3.2:latest') => ({
+  ok: true,
+  diagnostics: {
+    kind: 'ollama_local_provider_diagnostics',
+    providerKey: 'ollama_local',
+    safeBaseUrl: 'http://127.0.0.1:11434',
+    nativeRestAvailable: true,
+    openAICompatibleAvailable: true,
+    localModels: { ok: true, source: 'ollama_api_tags', models: [{ key: modelId, displayName: modelId, running: true }], modelIds: [modelId], count: 1 },
+    runningModels: { ok: true, source: 'ollama_api_ps', models: [{ key: modelId, displayName: modelId, running: true }], modelIds: [modelId], count: 1 },
+    version: { ok: true, version: '0.0.0-test' },
+    openAICompatible: { ok: true, source: 'ollama_openai_v1_models', models: [{ key: modelId, displayName: modelId, running: true }], modelIds: [modelId], count: 1 },
+    selectedModelKnown: true,
+    selectedModelRunning: true,
+    warnings: [],
+    message: 'available',
+  },
+})
 
 vi.mock('@/next/live/openRouterLiveStream', () => {
   async function* streamOpenRouterChatAsEvents(options: any) {
@@ -75,6 +134,18 @@ vi.mock('@/next/live/localEndpointTextChat', () => {
     yield { type: 'StreamDone' }
   }
   return { streamLocalEndpointTextChatAsDomainEvents }
+})
+
+vi.mock('@/next/live/lmStudioTextChat', () => {
+  async function* streamLMStudioTextChatAsDomainEvents(options: any) {
+    lmStudioTextChatCallArgs.push(options)
+    const assistantMessageId = String(options?.assistantMessageId ?? 'a1')
+    yield { type: 'MetaDelta', meta: { id: 'lm_studio_gen_1', model: String(options?.model ?? 'openai/gpt-oss-20b'), provider: 'lm_studio' } }
+    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'lm studio ' }
+    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'hi' }
+    yield { type: 'StreamDone' }
+  }
+  return { streamLMStudioTextChatAsDomainEvents }
 })
 
 vi.mock('@/next/live/ollamaTextChat', () => {
@@ -141,6 +212,18 @@ describe('ui-app AppChatApp (send: pure text)', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronAPI = (globalThis as any).electronAPI
   const originalElectronStore = (globalThis as any).electronStore
+  const originalOpenRouterCredential = (globalThis as any).openRouterCredential
+  const originalOpenAIResponsesCredential = (globalThis as any).openAIResponsesCredential
+  const originalGoogleAIStudioCredential = (globalThis as any).googleAIStudioCredential
+  const originalAnthropicCredential = (globalThis as any).anthropicCredential
+  const originalDeepSeekCredential = (globalThis as any).deepSeekCredential
+  const originalOpenAIResponsesModels = (globalThis as any).openAIResponsesModels
+  const originalGoogleAIStudioModels = (globalThis as any).googleAIStudioModels
+  const originalAnthropicModels = (globalThis as any).anthropicModels
+  const originalDeepSeekModels = (globalThis as any).deepSeekModels
+  const originalLocalEndpointDiagnostics = (globalThis as any).localEndpointDiagnostics
+  const originalLMStudioProvider = (globalThis as any).lmStudioProvider
+  const originalOllamaProvider = (globalThis as any).ollamaProvider
   const originalSetTimeout = globalThis.setTimeout
   let convoListMeta: Record<string, unknown> | null = null
 
@@ -148,6 +231,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     vi.useFakeTimers()
     streamOpenRouterChatCallArgs.length = 0
     localEndpointTextChatCallArgs.length = 0
+    lmStudioTextChatCallArgs.length = 0
     ollamaTextChatCallArgs.length = 0
     openAIResponsesTextChatCallArgs.length = 0
     googleAIStudioTextChatCallArgs.length = 0
@@ -156,6 +240,16 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
+    globalThis.localStorage?.removeItem('starverse.lmStudioTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.lmStudio.endpointUrl')
+    globalThis.localStorage?.removeItem('starverse.lmStudio.model')
+    globalThis.localStorage?.removeItem('starverse.lmStudio.chatMode')
+    globalThis.localStorage?.removeItem('starverse.lmStudio.openAICompatible.preferredEndpoint')
+    globalThis.localStorage?.removeItem('starverse.lmStudioTextChat.enabled')
+    globalThis.localStorage?.removeItem('starverse.lmStudio.endpointUrl')
+    globalThis.localStorage?.removeItem('starverse.lmStudio.model')
+    globalThis.localStorage?.removeItem('starverse.lmStudio.chatMode')
+    globalThis.localStorage?.removeItem('starverse.lmStudio.openAICompatible.preferredEndpoint')
     globalThis.localStorage?.removeItem('starverse.ollamaTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.ollama.endpointUrl')
     globalThis.localStorage?.removeItem('starverse.ollama.model')
@@ -270,6 +364,18 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         return undefined
       }),
     }
+    ;(globalThis as any).openRouterCredential = { getStatus: vi.fn(async () => configuredCredential()) }
+    ;(globalThis as any).openAIResponsesCredential = { getStatus: vi.fn(async () => configuredCredential()) }
+    ;(globalThis as any).googleAIStudioCredential = { getStatus: vi.fn(async () => configuredCredential()) }
+    ;(globalThis as any).anthropicCredential = { getStatus: vi.fn(async () => configuredCredential()) }
+    ;(globalThis as any).deepSeekCredential = { getStatus: vi.fn(async () => configuredCredential()) }
+    ;(globalThis as any).openAIResponsesModels = { listAvailability: vi.fn(async () => availability('openai_responses', 'gpt-4.1-mini')) }
+    ;(globalThis as any).googleAIStudioModels = { listAvailability: vi.fn(async () => availability('google_ai_studio', 'gemini-2.5-flash')) }
+    ;(globalThis as any).anthropicModels = { listAvailability: vi.fn(async () => availability('anthropic_messages', 'claude-sonnet-4-5')) }
+    ;(globalThis as any).deepSeekModels = { listAvailability: vi.fn(async () => availability('deepseek', 'deepseek-chat')) }
+    ;(globalThis as any).localEndpointDiagnostics = { probe: vi.fn(async () => localEndpointProbe()) }
+    ;(globalThis as any).lmStudioProvider = { probe: vi.fn(async () => lmStudioProbe()) }
+    ;(globalThis as any).ollamaProvider = { probe: vi.fn(async () => ollamaProbe()) }
 
     const persisted: Array<any> = []
     let turnCounter = 0
@@ -513,6 +619,18 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronAPI = originalElectronAPI
     ;(globalThis as any).electronStore = originalElectronStore
+    ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
+    ;(globalThis as any).openAIResponsesCredential = originalOpenAIResponsesCredential
+    ;(globalThis as any).googleAIStudioCredential = originalGoogleAIStudioCredential
+    ;(globalThis as any).anthropicCredential = originalAnthropicCredential
+    ;(globalThis as any).deepSeekCredential = originalDeepSeekCredential
+    ;(globalThis as any).openAIResponsesModels = originalOpenAIResponsesModels
+    ;(globalThis as any).googleAIStudioModels = originalGoogleAIStudioModels
+    ;(globalThis as any).anthropicModels = originalAnthropicModels
+    ;(globalThis as any).deepSeekModels = originalDeepSeekModels
+    ;(globalThis as any).localEndpointDiagnostics = originalLocalEndpointDiagnostics
+    ;(globalThis as any).lmStudioProvider = originalLMStudioProvider
+    ;(globalThis as any).ollamaProvider = originalOllamaProvider
     globalThis.setTimeout = originalSetTimeout
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
@@ -543,6 +661,128 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(draftBox().value).toBe('no provider selected ping')
     expect(streamOpenRouterChatCallArgs).toHaveLength(0)
     expect(localEndpointTextChatCallArgs).toHaveLength(0)
+    expect(lmStudioTextChatCallArgs).toHaveLength(0)
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
+    expect(googleAIStudioTextChatCallArgs).toHaveLength(0)
+    expect(anthropicTextChatCallArgs).toHaveLength(0)
+    expect(deepSeekTextChatCallArgs).toHaveLength(0)
+  })
+
+  it.each([
+    {
+      label: 'OpenRouter',
+      credentialBridge: 'openRouterCredential',
+      prompt: 'openrouter missing key ping',
+      setup: () => {},
+    },
+    {
+      label: 'OpenAI Responses',
+      credentialBridge: 'openAIResponsesCredential',
+      prompt: 'openai missing key ping',
+      setup: () => {
+        globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+        globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
+      },
+    },
+    {
+      label: 'Anthropic',
+      credentialBridge: 'anthropicCredential',
+      prompt: 'anthropic missing key ping',
+      setup: () => {
+        globalThis.localStorage?.setItem('starverse.anthropicMessagesTextChat.enabled', '1')
+        globalThis.localStorage?.setItem('starverse.anthropicMessagesTextChat.model', 'claude-sonnet-4-5')
+      },
+    },
+    {
+      label: 'Google AI Studio',
+      credentialBridge: 'googleAIStudioCredential',
+      prompt: 'gemini missing key ping',
+      setup: () => {
+        globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.enabled', '1')
+        globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.model', 'gemini-2.5-flash')
+      },
+    },
+    {
+      label: 'DeepSeek',
+      credentialBridge: 'deepSeekCredential',
+      prompt: 'deepseek missing key ping',
+      setup: () => {
+        globalThis.localStorage?.setItem('starverse.deepSeekTextChat.enabled', '1')
+        globalThis.localStorage?.setItem('starverse.deepSeekTextChat.model', 'deepseek-chat')
+      },
+    },
+  ])('blocks $label before provider stream when credential is missing', async ({ credentialBridge, prompt, setup }) => {
+    ;(globalThis as any)[credentialBridge] = { getStatus: vi.fn(async () => missingCredential()) }
+    setup()
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), prompt)
+    await user.click(sendButton())
+
+    await waitFor(() => expect(draftBox().value).toBe(prompt))
+    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
+    expect(localEndpointTextChatCallArgs).toHaveLength(0)
+    expect(lmStudioTextChatCallArgs).toHaveLength(0)
+    expect(ollamaTextChatCallArgs).toHaveLength(0)
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
+    expect(googleAIStudioTextChatCallArgs).toHaveLength(0)
+    expect(anthropicTextChatCallArgs).toHaveLength(0)
+    expect(deepSeekTextChatCallArgs).toHaveLength(0)
+  })
+
+  it.each([
+    {
+      label: 'LocalEndpoint',
+      prompt: 'local endpoint down ping',
+      setup: () => {
+        globalThis.localStorage?.setItem('starverse.localEndpointTextChat.enabled', '1')
+        globalThis.localStorage?.setItem('starverse.localEndpointTextChat.url', 'http://localhost:1234/v1')
+        globalThis.localStorage?.setItem('starverse.localEndpointTextChat.model', 'local-model')
+        ;(globalThis as any).localEndpointDiagnostics = { probe: vi.fn(async () => ({ ok: false, code: 'network_error', message: 'Local endpoint unavailable.' })) }
+      },
+    },
+    {
+      label: 'LM Studio',
+      prompt: 'lm studio down ping',
+      setup: () => {
+        globalThis.localStorage?.setItem('starverse.lmStudioTextChat.enabled', '1')
+        globalThis.localStorage?.setItem('starverse.lmStudio.endpointUrl', 'http://127.0.0.1:1234')
+        globalThis.localStorage?.setItem('starverse.lmStudio.model', 'openai/gpt-oss-20b')
+        globalThis.localStorage?.setItem('starverse.lmStudio.chatMode', 'openai_compatible')
+        ;(globalThis as any).lmStudioProvider = { probe: vi.fn(async () => ({ ok: false, code: 'network_error', message: 'LM Studio unavailable.' })) }
+      },
+    },
+    {
+      label: 'Ollama',
+      prompt: 'ollama down ping',
+      setup: () => {
+        globalThis.localStorage?.setItem('starverse.ollamaTextChat.enabled', '1')
+        globalThis.localStorage?.setItem('starverse.ollama.endpointUrl', 'http://127.0.0.1:11434')
+        globalThis.localStorage?.setItem('starverse.ollama.model', 'llama3.2:latest')
+        globalThis.localStorage?.setItem('starverse.ollama.chatMode', 'native_rest')
+        ;(globalThis as any).ollamaProvider = { probe: vi.fn(async () => ({ ok: false, code: 'network_error', message: 'Ollama unavailable.' })) }
+      },
+    },
+  ])('blocks $label before provider stream when endpoint probe is unavailable', async ({ prompt, setup }) => {
+    setup()
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), prompt)
+    await user.click(sendButton())
+
+    await waitFor(() => expect(draftBox().value).toBe(prompt))
+    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
+    expect(localEndpointTextChatCallArgs).toHaveLength(0)
+    expect(lmStudioTextChatCallArgs).toHaveLength(0)
+    expect(ollamaTextChatCallArgs).toHaveLength(0)
     expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
     expect(googleAIStudioTextChatCallArgs).toHaveLength(0)
     expect(anthropicTextChatCallArgs).toHaveLength(0)

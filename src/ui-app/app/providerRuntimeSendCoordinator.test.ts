@@ -141,6 +141,23 @@ describe('providerRuntimeSendCoordinator', () => {
     })
   })
 
+  it('blocks credential or availability failures before route dispatch', () => {
+    expect(resolveProviderRuntimeTextSendPreflight({
+      selection: selected('openai_responses', 'gpt-4.1-mini'),
+      capability,
+      text: 'hello',
+      hasDraftAttachments: false,
+      sessionConfig: {},
+      availability: {
+        ok: false,
+        reason: 'OpenAI Responses credential is not configured.',
+      },
+    })).toEqual({
+      ok: false,
+      reason: 'OpenAI Responses credential is not configured.',
+    })
+  })
+
   it('keeps experimental providers on text-only routes', () => {
     const providers: ExperimentalRuntimeTextProviderKey[] = [
       'deepseek',
