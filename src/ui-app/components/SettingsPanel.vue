@@ -15,7 +15,6 @@ import {
 import {
   DEFAULT_NETWORK_PROXY_SETTINGS,
   normalizeNetworkProxySettings,
-  proxyModeLabel,
   type NetworkProxyMode,
 } from '@/next/plugin-distribution/networkProxyShared'
 import {
@@ -35,7 +34,7 @@ import { resolveSamplingParams, type SamplingParamsLayer } from '@/next/openrout
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import SamplingParamsSettingsEditor from './SamplingParamsSettingsEditor.vue'
 import PluginManagementPanel from './PluginManagementPanel.vue'
-import { t, useLanguagePrefs, LOCALE_DISPLAY_NAMES, type SupportedLocale, type LocaleMode } from '@/shared/i18n'
+import { t, tf, useLanguagePrefs, LOCALE_DISPLAY_NAMES, type SupportedLocale, type LocaleMode } from '@/shared/i18n'
 import { saveLanguagePref, saveLanguagePrefSystem, getSystemLocale } from '@/next/settings/languagePrefs'
 import {
   CATALOG_FRESHNESS_PRESETS_MS,
@@ -63,6 +62,32 @@ const props = defineProps<{
   isRunning: boolean
 }>()
 const isDev = import.meta.env?.DEV === true
+
+function credentialStatusText(configured: boolean, maskedValue: string): string {
+  if (!configured) return t('settings.credentials.notConfigured')
+  return tf('settings.credentials.configured', { value: maskedValue || '***' })
+}
+
+function networkProxyModeText(mode: NetworkProxyMode): string {
+  switch (mode) {
+    case 'environment':
+      return t('settings.network.proxyModeEnvironment')
+    case 'manual':
+      return t('settings.network.proxyModeManual')
+    case 'direct':
+      return t('settings.network.proxyModeDirect')
+    case 'system':
+      return t('settings.network.proxyModeSystem')
+  }
+}
+
+function passedFailedText(value: boolean): string {
+  return value ? t('settings.network.passed') : t('settings.network.failed')
+}
+
+function reachableText(value: boolean): string {
+  return value ? t('settings.network.reachable') : t('settings.network.unreachable')
+}
 
 type ElectronStoreLike = Readonly<{
   get: (key: string) => Promise<any>
@@ -417,8 +442,8 @@ const deepSeekMaskedApiKey = ref('')
 const deepSeekCredentialWarnings = ref<string[]>([])
 const deepSeekModel = ref('')
 const deepSeekChatApplyMessage = ref<string | null>(null)
-const endpointDisplayName = ref('OpenRouter official endpoint')
-const endpointDisplayStatus = ref('Official endpoint')
+const endpointDisplayName = ref(t('settings.openrouter.endpointNameOfficial'))
+const endpointDisplayStatus = ref(t('settings.openrouter.endpointOfficial'))
 const endpointDisplayBaseUrl = ref('')
 const endpointBaseUrlInvalid = ref(false)
 const catalogStartupSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
@@ -639,12 +664,14 @@ function applyOpenRouterCredentialStatus(status: OpenRouterCredentialStatus) {
   apiKeyConfigured.value = status.apiKeyConfigured === true
   maskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
   credentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
-  endpointDisplayName.value = endpoint?.displayName || 'OpenRouter official endpoint'
+  endpointDisplayName.value = endpoint?.endpointStatus === 'custom' || endpoint?.endpointStatus === 'invalid_custom'
+    ? t('settings.openrouter.endpointNameCustom')
+    : t('settings.openrouter.endpointNameOfficial')
   endpointDisplayStatus.value = endpoint?.endpointStatus === 'invalid_custom'
-    ? 'Invalid custom endpoint'
+    ? t('settings.openrouter.endpointInvalidCustom')
     : endpoint?.endpointStatus === 'custom'
-      ? 'Custom endpoint'
-      : 'Official endpoint'
+      ? t('settings.openrouter.endpointCustom')
+      : t('settings.openrouter.endpointOfficial')
   endpointDisplayBaseUrl.value = String(endpointSafeDisplayBaseUrl ?? '').trim()
   endpointBaseUrlInvalid.value = endpoint?.baseUrlInvalid === true || status.baseUrlInvalid === true
   baseUrl.value = safeDisplayBaseUrl
@@ -654,12 +681,12 @@ function applyOpenRouterCredentialStatus(status: OpenRouterCredentialStatus) {
 async function loadOpenRouterCredentialStatus() {
   const credentialBridge = getOpenRouterCredentialBridge()
   if (!credentialBridge) {
-    throw new Error('Missing openRouterCredential bridge (run in Electron).')
+    throw new Error(t('settings.runtime.missingOpenRouterCredentialBridge'))
   }
 
   const result = await credentialBridge.getStatus()
   if (!result?.ok || !result.status) {
-    throw new Error(result?.message || 'OpenRouter credential status unavailable.')
+    throw new Error(result?.message || t('settings.runtime.openRouterCredentialStatusUnavailable'))
   }
   applyOpenRouterCredentialStatus(result.status)
 }
@@ -703,7 +730,7 @@ async function loadOpenAIResponsesCredentialStatus() {
 
   const result = await credentialBridge.getStatus()
   if (!result?.ok || !result.status) {
-    throw new Error(result?.message || 'OpenAI Responses credential status unavailable.')
+    throw new Error(result?.message || t('settings.runtime.openAIResponsesCredentialStatusUnavailable'))
   }
   applyOpenAIResponsesCredentialStatus(result.status)
 }
@@ -719,7 +746,7 @@ async function loadGoogleAIStudioCredentialStatus() {
 
   const result = await credentialBridge.getStatus()
   if (!result?.ok || !result.status) {
-    throw new Error(result?.message || 'Google AI Studio credential status unavailable.')
+    throw new Error(result?.message || t('settings.runtime.googleAIStudioCredentialStatusUnavailable'))
   }
   applyGoogleAIStudioCredentialStatus(result.status)
 }
@@ -735,7 +762,7 @@ async function loadAnthropicCredentialStatus() {
 
   const result = await credentialBridge.getStatus()
   if (!result?.ok || !result.status) {
-    throw new Error(result?.message || 'Anthropic credential status unavailable.')
+    throw new Error(result?.message || t('settings.runtime.anthropicCredentialStatusUnavailable'))
   }
   applyAnthropicCredentialStatus(result.status)
 }
@@ -751,7 +778,7 @@ async function loadDeepSeekCredentialStatus() {
 
   const result = await credentialBridge.getStatus()
   if (!result?.ok || !result.status) {
-    throw new Error(result?.message || 'DeepSeek credential status unavailable.')
+    throw new Error(result?.message || t('settings.runtime.deepSeekCredentialStatusUnavailable'))
   }
   applyDeepSeekCredentialStatus(result.status)
 }
@@ -794,7 +821,7 @@ async function load() {
 
   const store = getElectronStore()
   if (!store) {
-    error.value = 'Missing electronStore (run in Electron).'
+    error.value = t('settings.runtime.missingElectronStore')
     return
   }
 
@@ -875,7 +902,7 @@ async function save() {
 
   const store = getElectronStore()
   if (!store) {
-    error.value = 'Missing electronStore (run in Electron).'
+    error.value = t('settings.runtime.missingElectronStore')
     return
   }
 
@@ -885,7 +912,7 @@ async function save() {
   }
   const nextMaxRecentModels = parsePositiveIntegerText(maxRecentModelsDraft.value)
   if (nextMaxRecentModels === null) {
-    error.value = 'maxRecentModels must be a positive integer.'
+    error.value = t('settings.runtime.maxRecentModelsPositiveInteger')
     return
   }
 
@@ -893,7 +920,7 @@ async function save() {
   try {
     const credentialBridge = getOpenRouterCredentialBridge()
     if (!credentialBridge) {
-      throw new Error('Missing openRouterCredential bridge (run in Electron).')
+      throw new Error(t('settings.runtime.missingOpenRouterCredentialBridge'))
     }
     const credentialPayload: { apiKey?: string; baseUrl?: string } = {}
     const nextApiKey = apiKey.value.trim()
@@ -902,7 +929,7 @@ async function save() {
     if (nextBaseUrl !== loadedBaseUrl.value.trim()) credentialPayload.baseUrl = nextBaseUrl
     const credentialResult = await credentialBridge.update(credentialPayload)
     if (!credentialResult?.ok || !credentialResult.status) {
-      throw new Error(credentialResult?.message || 'OpenRouter credential update failed.')
+      throw new Error(credentialResult?.message || t('settings.runtime.openRouterCredentialUpdateFailed'))
     }
     applyOpenRouterCredentialStatus(credentialResult.status)
 
@@ -910,13 +937,13 @@ async function save() {
     const nextOpenAIResponsesApiKey = openAIResponsesApiKey.value.trim()
     if (nextOpenAIResponsesApiKey) {
       if (!openAIResponsesCredentialBridge) {
-        throw new Error('Missing openAIResponsesCredential bridge (run in Electron).')
+        throw new Error(t('settings.runtime.missingOpenAIResponsesCredentialBridge'))
       }
       const openAIResponsesCredentialResult = await openAIResponsesCredentialBridge.update({
         apiKey: nextOpenAIResponsesApiKey,
       })
       if (!openAIResponsesCredentialResult?.ok || !openAIResponsesCredentialResult.status) {
-        throw new Error(openAIResponsesCredentialResult?.message || 'OpenAI Responses credential update failed.')
+        throw new Error(openAIResponsesCredentialResult?.message || t('settings.runtime.openAIResponsesCredentialUpdateFailed'))
       }
       applyOpenAIResponsesCredentialStatus(openAIResponsesCredentialResult.status)
     }
@@ -924,13 +951,13 @@ async function save() {
     const nextGoogleAIStudioApiKey = googleAIStudioApiKey.value.trim()
     if (nextGoogleAIStudioApiKey) {
       if (!googleAIStudioCredentialBridge) {
-        throw new Error('Missing googleAIStudioCredential bridge (run in Electron).')
+        throw new Error(t('settings.runtime.missingGoogleAIStudioCredentialBridge'))
       }
       const googleAIStudioCredentialResult = await googleAIStudioCredentialBridge.update({
         apiKey: nextGoogleAIStudioApiKey,
       })
       if (!googleAIStudioCredentialResult?.ok || !googleAIStudioCredentialResult.status) {
-        throw new Error(googleAIStudioCredentialResult?.message || 'Google AI Studio credential update failed.')
+        throw new Error(googleAIStudioCredentialResult?.message || t('settings.runtime.googleAIStudioCredentialUpdateFailed'))
       }
       applyGoogleAIStudioCredentialStatus(googleAIStudioCredentialResult.status)
     }
@@ -938,13 +965,13 @@ async function save() {
     const nextAnthropicApiKey = anthropicApiKey.value.trim()
     if (nextAnthropicApiKey) {
       if (!anthropicCredentialBridge) {
-        throw new Error('Missing anthropicCredential bridge (run in Electron).')
+        throw new Error(t('settings.runtime.missingAnthropicCredentialBridge'))
       }
       const anthropicCredentialResult = await anthropicCredentialBridge.update({
         apiKey: nextAnthropicApiKey,
       })
       if (!anthropicCredentialResult?.ok || !anthropicCredentialResult.status) {
-        throw new Error(anthropicCredentialResult?.message || 'Anthropic credential update failed.')
+        throw new Error(anthropicCredentialResult?.message || t('settings.runtime.anthropicCredentialUpdateFailed'))
       }
       applyAnthropicCredentialStatus(anthropicCredentialResult.status)
     }
@@ -952,13 +979,13 @@ async function save() {
     const nextDeepSeekApiKey = deepSeekApiKey.value.trim()
     if (nextDeepSeekApiKey) {
       if (!deepSeekCredentialBridge) {
-        throw new Error('Missing deepSeekCredential bridge (run in Electron).')
+        throw new Error(t('settings.runtime.missingDeepSeekCredentialBridge'))
       }
       const deepSeekCredentialResult = await deepSeekCredentialBridge.update({
         apiKey: nextDeepSeekApiKey,
       })
       if (!deepSeekCredentialResult?.ok || !deepSeekCredentialResult.status) {
-        throw new Error(deepSeekCredentialResult?.message || 'DeepSeek credential update failed.')
+        throw new Error(deepSeekCredentialResult?.message || t('settings.runtime.deepSeekCredentialUpdateFailed'))
       }
       applyDeepSeekCredentialStatus(deepSeekCredentialResult.status)
     }
@@ -1051,14 +1078,14 @@ async function clearApiKey() {
   savedMessage.value = null
   const credentialBridge = getOpenRouterCredentialBridge()
   if (!credentialBridge) {
-    error.value = 'Missing openRouterCredential bridge (run in Electron).'
+    error.value = t('settings.runtime.missingOpenRouterCredentialBridge')
     return
   }
   saving.value = true
   try {
     const result = await credentialBridge.clear()
     if (!result?.ok || !result.status) {
-      throw new Error(result?.message || 'OpenRouter credential clear failed.')
+      throw new Error(result?.message || t('settings.runtime.openRouterCredentialClearFailed'))
     }
     applyOpenRouterCredentialStatus(result.status)
     savedMessage.value = t('settings.openrouter.apiKeyCleared')
@@ -1085,14 +1112,14 @@ async function clearBaseUrl() {
   savedMessage.value = null
   const credentialBridge = getOpenRouterCredentialBridge()
   if (!credentialBridge) {
-    error.value = 'Missing openRouterCredential bridge (run in Electron).'
+    error.value = t('settings.runtime.missingOpenRouterCredentialBridge')
     return
   }
   saving.value = true
   try {
     const result = await credentialBridge.update({ baseUrl: null })
     if (!result?.ok || !result.status) {
-      throw new Error(result?.message || 'OpenRouter base URL clear failed.')
+      throw new Error(result?.message || t('settings.runtime.openRouterBaseUrlClearFailed'))
     }
     applyOpenRouterCredentialStatus(result.status)
     savedMessage.value = t('settings.openrouter.baseUrlCleared')
@@ -1127,12 +1154,12 @@ async function testNetworkProxyConnection() {
       strictSSL: true,
     }))
     networkProxyProbeResult.value = await probeLibreOfficeOfficialDownloadNetwork()
-    savedMessage.value = networkProxyProbeResult.value.ok ? 'Proxy probe passed.' : null
+    savedMessage.value = networkProxyProbeResult.value.ok ? t('settings.runtime.proxyProbePassed') : null
     if (!networkProxyProbeResult.value.ok) {
-      error.value = `Proxy probe failed: ${networkProxyProbeResult.value.terminalDiagnostic}`
+      error.value = tf('settings.runtime.proxyProbeFailedWithDiagnostic', { diagnostic: networkProxyProbeResult.value.terminalDiagnostic })
     }
   } catch (err: any) {
-    error.value = err?.message ? String(err.message) : 'Proxy probe failed.'
+    error.value = err?.message ? String(err.message) : t('settings.runtime.proxyProbeFailed')
   } finally {
     networkProxyProbeLoading.value = false
   }
@@ -1143,17 +1170,17 @@ async function clearOpenAIResponsesApiKey() {
   savedMessage.value = null
   const credentialBridge = getOpenAIResponsesCredentialBridge()
   if (!credentialBridge) {
-    error.value = 'Missing openAIResponsesCredential bridge (run in Electron).'
+    error.value = t('settings.runtime.missingOpenAIResponsesCredentialBridge')
     return
   }
   saving.value = true
   try {
     const result = await credentialBridge.clear()
     if (!result?.ok || !result.status) {
-      throw new Error(result?.message || 'OpenAI Responses credential clear failed.')
+      throw new Error(result?.message || t('settings.runtime.openAIResponsesCredentialClearFailed'))
     }
     applyOpenAIResponsesCredentialStatus(result.status)
-    savedMessage.value = 'OpenAI Responses API key cleared.'
+    savedMessage.value = t('settings.runtime.openAIResponsesApiKeyCleared')
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
@@ -1166,17 +1193,17 @@ async function clearGoogleAIStudioApiKey() {
   savedMessage.value = null
   const credentialBridge = getGoogleAIStudioCredentialBridge()
   if (!credentialBridge) {
-    error.value = 'Missing googleAIStudioCredential bridge (run in Electron).'
+    error.value = t('settings.runtime.missingGoogleAIStudioCredentialBridge')
     return
   }
   saving.value = true
   try {
     const result = await credentialBridge.clear()
     if (!result?.ok || !result.status) {
-      throw new Error(result?.message || 'Google AI Studio credential clear failed.')
+      throw new Error(result?.message || t('settings.runtime.googleAIStudioCredentialClearFailed'))
     }
     applyGoogleAIStudioCredentialStatus(result.status)
-    savedMessage.value = 'Google AI Studio API key cleared.'
+    savedMessage.value = t('settings.runtime.googleAIStudioApiKeyCleared')
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
@@ -1189,17 +1216,17 @@ async function clearAnthropicApiKey() {
   savedMessage.value = null
   const credentialBridge = getAnthropicCredentialBridge()
   if (!credentialBridge) {
-    error.value = 'Missing anthropicCredential bridge (run in Electron).'
+    error.value = t('settings.runtime.missingAnthropicCredentialBridge')
     return
   }
   saving.value = true
   try {
     const result = await credentialBridge.clear()
     if (!result?.ok || !result.status) {
-      throw new Error(result?.message || 'Anthropic credential clear failed.')
+      throw new Error(result?.message || t('settings.runtime.anthropicCredentialClearFailed'))
     }
     applyAnthropicCredentialStatus(result.status)
-    savedMessage.value = 'Anthropic API key cleared.'
+    savedMessage.value = t('settings.runtime.anthropicApiKeyCleared')
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
@@ -1212,17 +1239,17 @@ async function clearDeepSeekApiKey() {
   savedMessage.value = null
   const credentialBridge = getDeepSeekCredentialBridge()
   if (!credentialBridge) {
-    error.value = 'Missing deepSeekCredential bridge (run in Electron).'
+    error.value = t('settings.runtime.missingDeepSeekCredentialBridge')
     return
   }
   saving.value = true
   try {
     const result = await credentialBridge.clear()
     if (!result?.ok || !result.status) {
-      throw new Error(result?.message || 'DeepSeek credential clear failed.')
+      throw new Error(result?.message || t('settings.runtime.deepSeekCredentialClearFailed'))
     }
     applyDeepSeekCredentialStatus(result.status)
-    savedMessage.value = 'DeepSeek API key cleared.'
+    savedMessage.value = t('settings.runtime.deepSeekApiKeyCleared')
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
@@ -1305,7 +1332,7 @@ async function verifyAndSync() {
 
   const store = getElectronStore()
   if (!store) {
-    error.value = 'Missing electronStore (run in Electron).'
+    error.value = t('settings.runtime.missingElectronStore')
     return
   }
 
@@ -1318,7 +1345,7 @@ async function verifyAndSync() {
   try {
     const credentialBridge = getOpenRouterCredentialBridge()
     if (!credentialBridge) {
-      error.value = 'Missing openRouterCredential bridge (run in Electron).'
+      error.value = t('settings.runtime.missingOpenRouterCredentialBridge')
       return
     }
     const credentialPayload: { apiKey?: string; baseUrl?: string } = {}
@@ -1328,13 +1355,13 @@ async function verifyAndSync() {
     if (nextBaseUrl !== loadedBaseUrl.value.trim()) credentialPayload.baseUrl = nextBaseUrl
     const credentialResult = await credentialBridge.update(credentialPayload)
     if (!credentialResult?.ok || !credentialResult.status) {
-      throw new Error(credentialResult?.message || 'OpenRouter credential update failed.')
+      throw new Error(credentialResult?.message || t('settings.runtime.openRouterCredentialUpdateFailed'))
     }
     applyOpenRouterCredentialStatus(credentialResult.status)
 
     const electronAPI = (globalThis as any).electronAPI
     if (!electronAPI?.modelCatalogSyncNow) {
-      error.value = 'modelCatalogSyncNow unavailable.'
+      error.value = t('settings.runtime.modelCatalogSyncNowUnavailable')
       return
     }
 
@@ -1377,7 +1404,7 @@ async function clearCurrentCatalogCache() {
 
   const electronAPI = (globalThis as any).electronAPI
   if (!electronAPI?.modelCatalogClearCurrentScopedCache) {
-    error.value = 'modelCatalogClearCurrentScopedCache unavailable.'
+    error.value = t('settings.runtime.modelCatalogClearCurrentUnavailable')
     return
   }
 
@@ -1404,7 +1431,7 @@ async function clearAllOpenRouterCatalogCaches() {
 
   const electronAPI = (globalThis as any).electronAPI
   if (!electronAPI?.modelCatalogClearAllOpenRouterScopedCaches) {
-    error.value = 'modelCatalogClearAllOpenRouterScopedCaches unavailable.'
+    error.value = t('settings.runtime.modelCatalogClearAllUnavailable')
     return
   }
 
@@ -1484,7 +1511,7 @@ async function probeLocalEndpoint() {
     localEndpointProbeResult.value = {
       ok: false,
       code: 'bridge_unavailable',
-      message: 'Local endpoint diagnostics bridge unavailable.',
+      message: t('settings.localEndpoint.bridgeUnavailable'),
     }
     return
   }
@@ -1521,7 +1548,7 @@ async function streamProbeLocalEndpoint() {
     localEndpointStreamProbeResult.value = {
       ok: false,
       code: 'bridge_unavailable',
-      message: 'Local endpoint diagnostics bridge unavailable.',
+      message: t('settings.localEndpoint.bridgeUnavailable'),
     }
     return
   }
@@ -1660,7 +1687,7 @@ onMounted(() => {
       <div class="rounded-lg border border-gray-200 bg-white p-3">
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.openrouter.title') }}</div>
         <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-openrouter-explicit-runtime-note">
-          OpenRouter is a first-class provider, but it is not an implicit fallback. Select OpenRouter Chat explicitly in Console before sending through OpenRouter.
+          {{ t('settings.openrouter.explicitProviderDesc') }}
         </div>
 
         <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.apiKey') }}</label>
@@ -1689,8 +1716,8 @@ onMounted(() => {
             {{ t('common.clear') }}
           </button>
         </div>
-        <div class="mt-1 text-[11px] text-gray-500">
-          {{ apiKeyConfigured ? `已配置：${maskedApiKey || '***'}` : '未配置' }}
+        <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-openrouter-key-status">
+          {{ credentialStatusText(apiKeyConfigured, maskedApiKey) }}
         </div>
         <div v-if="credentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-openrouter-credential-warnings">
           <div v-for="warning in credentialWarnings" :key="warning">{{ warning }}</div>
@@ -1722,7 +1749,7 @@ onMounted(() => {
           <span data-testid="settings-openrouter-endpoint-status">{{ endpointDisplayStatus }}</span>
           <span> · {{ endpointDisplayName }}</span>
           <span v-if="endpointDisplayBaseUrl"> · {{ endpointDisplayBaseUrl }}</span>
-          <span v-if="endpointBaseUrlInvalid" data-testid="settings-openrouter-endpoint-warning"> · Invalid custom base URL</span>
+          <span v-if="endpointBaseUrlInvalid" data-testid="settings-openrouter-endpoint-warning"> · {{ t('settings.openrouter.endpointCustomBaseUrlInvalid') }}</span>
         </div>
 
         <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1884,22 +1911,22 @@ onMounted(() => {
       <div class="rounded-lg border border-blue-200 bg-white p-3" data-testid="settings-openai-responses-experimental">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <div class="text-xs font-semibold uppercase tracking-wide text-blue-800">OpenAI Responses Experimental Chat</div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-blue-800">{{ t('settings.experimentalChat.openAIResponses.title') }}</div>
             <div class="mt-1 text-[11px] text-gray-500">
-              Native OpenAI Responses text-only path. It is separate from OpenRouter, default-off, and uses a main-process credential bridge.
+              {{ t('settings.experimentalChat.openAIResponses.desc') }}
             </div>
           </div>
           <span class="shrink-0 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-800">
-            Experimental
+            {{ t('settings.experimentalChat.experimentalBadge') }}
           </span>
         </div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">OpenAI API key</label>
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.openAIResponses.apiKeyLabel') }}</label>
         <div class="mt-1 flex items-center gap-2">
           <input
             v-model="openAIResponsesApiKey"
             type="password"
-            placeholder="sk-..."
+            :placeholder="t('settings.experimentalChat.placeholder.openAIKey')"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
             :disabled="!canEdit || loading || saving || !openAIResponsesCredentialAvailable"
             data-testid="settings-openai-responses-api-key"
@@ -1911,22 +1938,22 @@ onMounted(() => {
             data-testid="settings-openai-responses-clear-key"
             @click="clearOpenAIResponsesApiKey"
           >
-            Clear key
+            {{ t('settings.experimentalChat.clearKey') }}
           </button>
         </div>
         <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-openai-responses-key-status">
-          {{ openAIResponsesApiKeyConfigured ? `Configured: ${openAIResponsesMaskedApiKey || '***'}` : 'Not configured' }}
+          {{ credentialStatusText(openAIResponsesApiKeyConfigured, openAIResponsesMaskedApiKey) }}
         </div>
         <div v-if="openAIResponsesCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-openai-responses-credential-warnings">
           <div v-for="warning in openAIResponsesCredentialWarnings" :key="warning">{{ warning }}</div>
         </div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">Manual Responses model id</label>
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.openAIResponses.modelLabel') }}</label>
         <div class="mt-1 flex items-center gap-2">
           <input
             v-model="openAIResponsesModel"
             type="text"
-            placeholder="gpt-4.1-mini"
+            :placeholder="t('settings.experimentalChat.placeholder.openAIModel')"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
             :disabled="props.disabled || props.isRunning || loading || saving"
             data-testid="settings-openai-responses-model"
@@ -1938,11 +1965,11 @@ onMounted(() => {
             data-testid="settings-openai-responses-apply-chat"
             @click="applyOpenAIResponsesChatSettings"
           >
-            Use model for experimental chat
+            {{ t('settings.experimentalChat.useModelForChat') }}
           </button>
         </div>
         <div class="mt-1 text-[11px] text-blue-800" data-testid="settings-openai-responses-chat-note">
-          This only updates the experimental OpenAI Responses Console default. Use Console refresh for official availability diagnostics. It does not publish models to the main picker and does not enable chat by itself.
+          {{ t('settings.experimentalChat.openAIResponses.note') }}
         </div>
         <div v-if="openAIResponsesChatApplyMessage" class="mt-1 text-[11px] text-blue-900" data-testid="settings-openai-responses-chat-apply-result">
           {{ openAIResponsesChatApplyMessage }}
@@ -1952,22 +1979,22 @@ onMounted(() => {
       <div class="rounded-lg border border-emerald-200 bg-white p-3" data-testid="settings-google-ai-studio-experimental">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <div class="text-xs font-semibold uppercase tracking-wide text-emerald-800">Google AI Studio Experimental Chat</div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-emerald-800">{{ t('settings.experimentalChat.googleAIStudio.title') }}</div>
             <div class="mt-1 text-[11px] text-gray-500">
-              Native Gemini API text-only path. It is separate from OpenRouter, default-off, and uses a main-process credential bridge.
+              {{ t('settings.experimentalChat.googleAIStudio.desc') }}
             </div>
           </div>
           <span class="shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-800">
-            Experimental
+            {{ t('settings.experimentalChat.experimentalBadge') }}
           </span>
         </div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">Google AI Studio API key</label>
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.googleAIStudio.apiKeyLabel') }}</label>
         <div class="mt-1 flex items-center gap-2">
           <input
             v-model="googleAIStudioApiKey"
             type="password"
-            placeholder="AIza..."
+            :placeholder="t('settings.experimentalChat.placeholder.geminiKey')"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:bg-gray-50"
             :disabled="!canEdit || loading || saving || !googleAIStudioCredentialAvailable"
             data-testid="settings-google-ai-studio-api-key"
@@ -1979,22 +2006,22 @@ onMounted(() => {
             data-testid="settings-google-ai-studio-clear-key"
             @click="clearGoogleAIStudioApiKey"
           >
-            Clear key
+            {{ t('settings.experimentalChat.clearKey') }}
           </button>
         </div>
         <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-google-ai-studio-key-status">
-          {{ googleAIStudioApiKeyConfigured ? `Configured: ${googleAIStudioMaskedApiKey || '***'}` : 'Not configured' }}
+          {{ credentialStatusText(googleAIStudioApiKeyConfigured, googleAIStudioMaskedApiKey) }}
         </div>
         <div v-if="googleAIStudioCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-google-ai-studio-credential-warnings">
           <div v-for="warning in googleAIStudioCredentialWarnings" :key="warning">{{ warning }}</div>
         </div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">Manual Gemini model id</label>
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.googleAIStudio.modelLabel') }}</label>
         <div class="mt-1 flex items-center gap-2">
           <input
             v-model="googleAIStudioModel"
             type="text"
-            placeholder="gemini-2.5-flash"
+            :placeholder="t('settings.experimentalChat.placeholder.geminiModel')"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:bg-gray-50"
             :disabled="props.disabled || props.isRunning || loading || saving"
             data-testid="settings-google-ai-studio-model"
@@ -2006,11 +2033,11 @@ onMounted(() => {
             data-testid="settings-google-ai-studio-apply-chat"
             @click="applyGoogleAIStudioChatSettings"
           >
-            Use model for experimental chat
+            {{ t('settings.experimentalChat.useModelForChat') }}
           </button>
         </div>
         <div class="mt-1 text-[11px] text-emerald-800" data-testid="settings-google-ai-studio-chat-note">
-          This only updates the experimental Google AI Studio Console default. Use Console refresh for official availability diagnostics. It does not publish models to the main picker, does not enable chat by itself, and does not use legacy Gemini runtime.
+          {{ t('settings.experimentalChat.googleAIStudio.note') }}
         </div>
         <div v-if="googleAIStudioChatApplyMessage" class="mt-1 text-[11px] text-emerald-900" data-testid="settings-google-ai-studio-chat-apply-result">
           {{ googleAIStudioChatApplyMessage }}
@@ -2020,22 +2047,22 @@ onMounted(() => {
       <div class="rounded-lg border border-rose-200 bg-white p-3" data-testid="settings-anthropic-experimental">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <div class="text-xs font-semibold uppercase tracking-wide text-rose-800">Anthropic Messages Experimental Chat</div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-rose-800">{{ t('settings.experimentalChat.anthropic.title') }}</div>
             <div class="mt-1 text-[11px] text-gray-500">
-              Native Anthropic Messages text-only path. It is separate from OpenRouter, default-off, and uses a main-process credential bridge.
+              {{ t('settings.experimentalChat.anthropic.desc') }}
             </div>
           </div>
           <span class="shrink-0 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-800">
-            Experimental
+            {{ t('settings.experimentalChat.experimentalBadge') }}
           </span>
         </div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">Anthropic API key</label>
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.anthropic.apiKeyLabel') }}</label>
         <div class="mt-1 flex items-center gap-2">
           <input
             v-model="anthropicApiKey"
             type="password"
-            placeholder="sk-ant-..."
+            :placeholder="t('settings.experimentalChat.placeholder.anthropicKey')"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 disabled:bg-gray-50"
             :disabled="!canEdit || loading || saving || !anthropicCredentialAvailable"
             data-testid="settings-anthropic-api-key"
@@ -2047,22 +2074,22 @@ onMounted(() => {
             data-testid="settings-anthropic-clear-key"
             @click="clearAnthropicApiKey"
           >
-            Clear key
+            {{ t('settings.experimentalChat.clearKey') }}
           </button>
         </div>
         <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-anthropic-key-status">
-          {{ anthropicApiKeyConfigured ? `Configured: ${anthropicMaskedApiKey || '***'}` : 'Not configured' }}
+          {{ credentialStatusText(anthropicApiKeyConfigured, anthropicMaskedApiKey) }}
         </div>
         <div v-if="anthropicCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-anthropic-credential-warnings">
           <div v-for="warning in anthropicCredentialWarnings" :key="warning">{{ warning }}</div>
         </div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">Manual Claude model id</label>
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.anthropic.modelLabel') }}</label>
         <div class="mt-1 flex items-center gap-2">
           <input
             v-model="anthropicModel"
             type="text"
-            placeholder="claude-sonnet-4-5"
+            :placeholder="t('settings.experimentalChat.placeholder.anthropicModel')"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 disabled:bg-gray-50"
             :disabled="props.disabled || props.isRunning || loading || saving"
             data-testid="settings-anthropic-model"
@@ -2074,11 +2101,11 @@ onMounted(() => {
             data-testid="settings-anthropic-apply-chat"
             @click="applyAnthropicChatSettings"
           >
-            Use model for experimental chat
+            {{ t('settings.experimentalChat.useModelForChat') }}
           </button>
         </div>
         <div class="mt-1 text-[11px] text-rose-800" data-testid="settings-anthropic-chat-note">
-          This only updates the experimental Anthropic Messages Console default. Use Console refresh for official availability diagnostics. It does not publish models to the main picker, does not enable chat by itself, and does not persist thinking/signature output.
+          {{ t('settings.experimentalChat.anthropic.note') }}
         </div>
         <div v-if="anthropicChatApplyMessage" class="mt-1 text-[11px] text-rose-900" data-testid="settings-anthropic-chat-apply-result">
           {{ anthropicChatApplyMessage }}
@@ -2088,22 +2115,22 @@ onMounted(() => {
       <div class="rounded-lg border border-cyan-200 bg-white p-3" data-testid="settings-deepseek-experimental">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <div class="text-xs font-semibold uppercase tracking-wide text-cyan-800">DeepSeek Official Experimental Chat</div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-cyan-800">{{ t('settings.experimentalChat.deepSeek.title') }}</div>
             <div class="mt-1 text-[11px] text-gray-500">
-              Native DeepSeek official profile using DeepSeek API semantics. It is separate from OpenRouter, default-off, and uses a main-process credential bridge.
+              {{ t('settings.experimentalChat.deepSeek.desc') }}
             </div>
           </div>
           <span class="shrink-0 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-1 text-[11px] font-semibold text-cyan-800">
-            Experimental
+            {{ t('settings.experimentalChat.experimentalBadge') }}
           </span>
         </div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">DeepSeek API key</label>
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.deepSeek.apiKeyLabel') }}</label>
         <div class="mt-1 flex items-center gap-2">
           <input
             v-model="deepSeekApiKey"
             type="password"
-            placeholder="sk-..."
+            :placeholder="t('settings.experimentalChat.placeholder.deepSeekKey')"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-200 disabled:bg-gray-50"
             :disabled="!canEdit || loading || saving || !deepSeekCredentialAvailable"
             data-testid="settings-deepseek-api-key"
@@ -2115,22 +2142,22 @@ onMounted(() => {
             data-testid="settings-deepseek-clear-key"
             @click="clearDeepSeekApiKey"
           >
-            Clear key
+            {{ t('settings.experimentalChat.clearKey') }}
           </button>
         </div>
         <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-deepseek-key-status">
-          {{ deepSeekApiKeyConfigured ? `Configured: ${deepSeekMaskedApiKey || '***'}` : 'Not configured' }}
+          {{ credentialStatusText(deepSeekApiKeyConfigured, deepSeekMaskedApiKey) }}
         </div>
         <div v-if="deepSeekCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-deepseek-credential-warnings">
           <div v-for="warning in deepSeekCredentialWarnings" :key="warning">{{ warning }}</div>
         </div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">Manual DeepSeek model id</label>
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.deepSeek.modelLabel') }}</label>
         <div class="mt-1 flex items-center gap-2">
           <input
             v-model="deepSeekModel"
             type="text"
-            placeholder="deepseek-v4-flash"
+            :placeholder="t('settings.experimentalChat.placeholder.deepSeekModel')"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-200 disabled:bg-gray-50"
             :disabled="props.disabled || props.isRunning || loading || saving"
             data-testid="settings-deepseek-model"
@@ -2142,11 +2169,11 @@ onMounted(() => {
             data-testid="settings-deepseek-apply-chat"
             @click="applyDeepSeekChatSettings"
           >
-            Use model for experimental chat
+            {{ t('settings.experimentalChat.useModelForChat') }}
           </button>
         </div>
         <div class="mt-1 text-[11px] text-cyan-800" data-testid="settings-deepseek-chat-note">
-          This only updates the experimental DeepSeek official Console default. Use Console refresh for official availability diagnostics. Deprecated aliases deepseek-chat and deepseek-reasoner are not long-term primary models. It does not publish models to the main picker, does not enable chat by itself, and does not persist reasoning_content.
+          {{ t('settings.experimentalChat.deepSeek.note') }}
         </div>
         <div v-if="deepSeekChatApplyMessage" class="mt-1 text-[11px] text-cyan-900" data-testid="settings-deepseek-chat-apply-result">
           {{ deepSeekChatApplyMessage }}
@@ -2156,15 +2183,15 @@ onMounted(() => {
       <div class="rounded-lg border border-gray-200 bg-white p-3" data-testid="settings-local-endpoint-diagnostics">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">Local Endpoint Diagnostics</div>
-            <div class="mt-1 text-[11px] text-gray-500">Experimental diagnostics only. Text chat requires the explicit LocalEndpoint console mode.</div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.localEndpoint.title') }}</div>
+            <div class="mt-1 text-[11px] text-gray-500">{{ t('settings.localEndpoint.desc') }}</div>
           </div>
           <span class="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
-            Diagnostics-only
+            {{ t('settings.localEndpoint.diagnosticsOnly') }}
           </span>
         </div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">Localhost endpoint URL</label>
+        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.localEndpoint.urlLabel') }}</label>
         <div class="mt-1 flex items-center gap-2">
           <input
             v-model="localEndpointUrl"
@@ -2181,7 +2208,7 @@ onMounted(() => {
             data-testid="settings-local-endpoint-probe"
             @click="probeLocalEndpoint"
           >
-            {{ localEndpointProbeLoading ? 'Probing...' : 'Test / Probe' }}
+            {{ localEndpointProbeLoading ? t('settings.localEndpoint.probing') : t('settings.localEndpoint.testProbe') }}
           </button>
           <button
             type="button"
@@ -2190,7 +2217,7 @@ onMounted(() => {
             data-testid="settings-local-endpoint-stream-probe"
             @click="streamProbeLocalEndpoint"
           >
-            {{ localEndpointStreamProbeLoading ? 'Testing...' : 'Test Streaming' }}
+            {{ localEndpointStreamProbeLoading ? t('settings.localEndpoint.testing') : t('settings.localEndpoint.testStreaming') }}
           </button>
         </div>
 
@@ -2201,27 +2228,27 @@ onMounted(() => {
         >
           <template v-if="localEndpointProbeResult.ok">
             <div>
-              Status:
+              {{ t('settings.localEndpoint.statusLabel') }}
               <span data-testid="settings-local-endpoint-probe-status">{{ localEndpointProbeResult.diagnostics.status }}</span>
-              · Family:
+              · {{ t('settings.localEndpoint.familyLabel') }}
               <span data-testid="settings-local-endpoint-probe-family">{{ localEndpointProbeResult.diagnostics.endpointFamily }}</span>
             </div>
-            <div class="mt-1">Endpoint: {{ localEndpointProbeResult.diagnostics.safeBaseUrl }}</div>
+            <div class="mt-1">{{ t('settings.localEndpoint.endpointLabel') }} {{ localEndpointProbeResult.diagnostics.safeBaseUrl }}</div>
             <div class="mt-1">
-              Models:
+              {{ t('settings.localEndpoint.modelsLabel') }}
               <span v-if="localEndpointProbeResult.diagnostics.modelList.ok" data-testid="settings-local-endpoint-probe-models">
-                {{ localEndpointProbeResult.diagnostics.modelList.models.length ? localEndpointProbeResult.diagnostics.modelList.models.join(', ') : 'no models found; enter a manual model id below' }}
-                <span v-if="localEndpointProbeResult.diagnostics.modelList.truncated"> (truncated)</span>
+                {{ localEndpointProbeResult.diagnostics.modelList.models.length ? localEndpointProbeResult.diagnostics.modelList.models.join(', ') : t('settings.localEndpoint.noModelsFound') }}
+                <span v-if="localEndpointProbeResult.diagnostics.modelList.truncated"> {{ t('settings.localEndpoint.truncated') }}</span>
               </span>
               <span v-else data-testid="settings-local-endpoint-probe-models">
-                Model list failed: {{ localEndpointProbeResult.diagnostics.modelList.message }}
+                {{ tf('settings.localEndpoint.modelListFailed', { message: localEndpointProbeResult.diagnostics.modelList.message }) }}
               </span>
             </div>
             <div class="mt-1" data-testid="settings-local-endpoint-probe-capabilities">
-              Capability summary: text diagnostics only; diagnostics do not activate chat send; tools/files/reasoning/web disabled.
+              {{ t('settings.localEndpoint.textCapabilitySummary') }}
             </div>
             <div class="mt-3 grid gap-2 rounded-md border border-amber-100 bg-white px-3 py-2">
-              <label class="block text-[11px] font-semibold text-amber-900">Choose probed model for experimental chat</label>
+              <label class="block text-[11px] font-semibold text-amber-900">{{ t('settings.localEndpoint.chooseProbedModel') }}</label>
               <select
                 class="w-full rounded border border-amber-200 bg-white px-2 py-1.5 text-sm disabled:bg-amber-50"
                 :disabled="localEndpointProbedModels.length === 0"
@@ -2229,16 +2256,16 @@ onMounted(() => {
                 data-testid="settings-local-endpoint-probed-model-select"
                 @change="chooseLocalEndpointProbeModel(($event.target as HTMLSelectElement).value)"
               >
-                <option value="">Select a probed model...</option>
+                <option value="">{{ t('settings.localEndpoint.selectProbedModel') }}</option>
                 <option v-for="modelId in localEndpointProbedModels" :key="modelId" :value="modelId">
                   {{ modelId }}
                 </option>
               </select>
-              <label class="block text-[11px] font-semibold text-amber-900">Manual model id override</label>
+              <label class="block text-[11px] font-semibold text-amber-900">{{ t('settings.localEndpoint.manualModelOverride') }}</label>
               <input
                 class="w-full rounded border border-amber-200 bg-white px-2 py-1.5 text-sm"
                 :value="localEndpointManualModel"
-                placeholder="local-model"
+                :placeholder="t('settings.localEndpoint.placeholderModel')"
                 data-testid="settings-local-endpoint-manual-model"
                 @input="updateLocalEndpointManualModel(($event.target as HTMLInputElement).value)"
               />
@@ -2249,10 +2276,10 @@ onMounted(() => {
                 data-testid="settings-local-endpoint-apply-chat"
                 @click="applyLocalEndpointChatSettings"
               >
-                Use endpoint and model for experimental chat
+                {{ t('settings.localEndpoint.useEndpointAndModel') }}
               </button>
               <div class="text-[11px] text-amber-800" data-testid="settings-local-endpoint-chat-note">
-                This only updates the experimental LocalEndpoint Console defaults. It does not publish models to the main picker and does not enable chat by itself.
+                {{ t('settings.localEndpoint.note') }}
               </div>
               <div v-if="localEndpointChatApplyMessage" class="text-[11px] text-amber-900" data-testid="settings-local-endpoint-chat-apply-result">
                 {{ localEndpointChatApplyMessage }}
@@ -2264,11 +2291,11 @@ onMounted(() => {
               {{ localEndpointProbeResult.message }}
             </div>
             <div class="mt-3 grid gap-2 rounded-md border border-amber-100 bg-white px-3 py-2">
-              <label class="block text-[11px] font-semibold text-amber-900">Manual model id for experimental chat</label>
+              <label class="block text-[11px] font-semibold text-amber-900">{{ t('settings.localEndpoint.manualModelForChat') }}</label>
               <input
                 class="w-full rounded border border-amber-200 bg-white px-2 py-1.5 text-sm"
                 :value="localEndpointManualModel"
-                placeholder="local-model"
+                :placeholder="t('settings.localEndpoint.placeholderModel')"
                 data-testid="settings-local-endpoint-manual-model"
                 @input="updateLocalEndpointManualModel(($event.target as HTMLInputElement).value)"
               />
@@ -2279,10 +2306,10 @@ onMounted(() => {
                 data-testid="settings-local-endpoint-apply-chat"
                 @click="applyLocalEndpointChatSettings"
               >
-                Use manual endpoint and model for experimental chat
+                {{ t('settings.localEndpoint.useManualEndpointAndModel') }}
               </button>
               <div class="text-[11px] text-amber-800" data-testid="settings-local-endpoint-chat-note">
-                Manual override is kept for servers that do not expose a model list. LocalEndpoint remains experimental and default-off.
+                {{ t('settings.localEndpoint.manualNote') }}
               </div>
               <div v-if="localEndpointChatApplyMessage" class="text-[11px] text-amber-900" data-testid="settings-local-endpoint-chat-apply-result">
                 {{ localEndpointChatApplyMessage }}
@@ -2298,20 +2325,20 @@ onMounted(() => {
         >
           <template v-if="localEndpointStreamProbeResult.ok">
             <div>
-              Stream:
+              {{ t('settings.localEndpoint.streamLabel') }}
               <span data-testid="settings-local-endpoint-stream-status">{{ localEndpointStreamProbeResult.diagnostics.status }}</span>
-              · Family:
+              · {{ t('settings.localEndpoint.familyLabel') }}
               <span data-testid="settings-local-endpoint-stream-family">{{ localEndpointStreamProbeResult.diagnostics.endpointFamily }}</span>
             </div>
-            <div class="mt-1">Endpoint: {{ localEndpointStreamProbeResult.diagnostics.safeBaseUrl }}</div>
+            <div class="mt-1">{{ t('settings.localEndpoint.endpointLabel') }} {{ localEndpointStreamProbeResult.diagnostics.safeBaseUrl }}</div>
             <div class="mt-1" data-testid="settings-local-endpoint-stream-evidence">
-              Evidence: {{ localEndpointStreamProbeResult.diagnostics.evidence }}
+              {{ t('settings.localEndpoint.evidenceLabel') }} {{ localEndpointStreamProbeResult.diagnostics.evidence }}
               <span v-if="localEndpointStreamProbeResult.diagnostics.textDeltaPreview">
                 · {{ localEndpointStreamProbeResult.diagnostics.textDeltaPreview }}
               </span>
             </div>
             <div class="mt-1" data-testid="settings-local-endpoint-stream-capabilities">
-              Capability summary: streaming diagnostics only; diagnostics do not activate chat send; tools/files/reasoning/web disabled.
+              {{ t('settings.localEndpoint.streamingCapabilitySummary') }}
             </div>
           </template>
           <template v-else>
@@ -2327,26 +2354,26 @@ onMounted(() => {
 
         <div class="mt-3 space-y-3">
           <div class="rounded-md border border-gray-100 bg-gray-50 p-3">
-            <div class="text-[11px] font-semibold text-gray-700">Network Proxy</div>
+            <div class="text-[11px] font-semibold text-gray-700">{{ t('settings.network.proxyTitle') }}</div>
             <div class="mt-1 text-[11px] text-gray-500">
-              Plugin downloads use this policy. Automatic and conversion-time downloads remain disabled.
+              {{ t('settings.network.proxyPolicyDesc') }}
             </div>
             <div class="mt-3 grid gap-3 sm:grid-cols-2">
               <label class="block text-[11px] text-gray-700">
-                <span class="font-semibold">Proxy mode</span>
+                <span class="font-semibold">{{ t('settings.network.proxyMode') }}</span>
                 <select
                   class="mt-1 w-full rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700 disabled:bg-gray-50"
                   :disabled="!canEdit || loading || saving"
                   v-model="networkProxyMode"
                 >
-                  <option value="environment">Environment variables</option>
-                  <option value="manual">Manual</option>
-                  <option value="direct">Direct</option>
-                  <option value="system">System</option>
+                  <option value="environment">{{ t('settings.network.proxyModeEnvironment') }}</option>
+                  <option value="manual">{{ t('settings.network.proxyModeManual') }}</option>
+                  <option value="direct">{{ t('settings.network.proxyModeDirect') }}</option>
+                  <option value="system">{{ t('settings.network.proxyModeSystem') }}</option>
                 </select>
               </label>
               <label class="block text-[11px] text-gray-700">
-                <span class="font-semibold">Manual proxy URL</span>
+                <span class="font-semibold">{{ t('settings.network.manualProxyUrl') }}</span>
                 <input
                   type="text"
                   class="mt-1 w-full rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700 disabled:bg-gray-50"
@@ -2356,7 +2383,7 @@ onMounted(() => {
                 />
               </label>
               <label class="block text-[11px] text-gray-700 sm:col-span-2">
-                <span class="font-semibold">No proxy / bypass list</span>
+                <span class="font-semibold">{{ t('settings.network.noProxyList') }}</span>
                 <input
                   type="text"
                   class="mt-1 w-full rounded-md border border-gray-200 px-2 py-1 text-[11px] text-gray-700 disabled:bg-gray-50"
@@ -2373,7 +2400,7 @@ onMounted(() => {
                   disabled
                   v-model="networkProxyStrictSsl"
                 />
-                <span>Strict SSL required for plugin downloads</span>
+                <span>{{ t('settings.network.strictSslRequired') }}</span>
               </label>
               <button
                 type="button"
@@ -2381,19 +2408,19 @@ onMounted(() => {
                 :disabled="!canEdit || loading || saving || networkProxyProbeLoading"
                 @click="testNetworkProxyConnection"
               >
-                {{ networkProxyProbeLoading ? 'Testing...' : 'Test connection' }}
+                {{ networkProxyProbeLoading ? t('settings.network.testing') : t('settings.network.testConnection') }}
               </button>
             </div>
             <div class="mt-2 text-[11px] text-gray-500">
-              Current mode: {{ proxyModeLabel(networkProxyMode) }}. Probe checks metadata, HEAD and a 1 KB Range request only.
+              {{ tf('settings.network.currentModeProbeDesc', { mode: networkProxyModeText(networkProxyMode) }) }}
             </div>
             <div v-if="networkProxyProbeResult" class="mt-2 rounded-md border border-gray-100 bg-white px-2 py-1 text-[11px] text-gray-600">
-              <div>Probe: {{ networkProxyProbeResult.ok ? 'passed' : 'failed' }}</div>
-              <div>Metadata: {{ networkProxyProbeResult.metadataReachable ? 'reachable' : 'unreachable' }}</div>
-              <div>HEAD: {{ networkProxyProbeResult.headPassed ? 'passed' : 'failed' }}</div>
-              <div>Content length: {{ networkProxyProbeResult.contentLength }}</div>
-              <div>Range: {{ networkProxyProbeResult.rangePassed ? 'passed' : 'failed' }}</div>
-              <div>Diagnostic: {{ networkProxyProbeResult.terminalDiagnostic }}</div>
+              <div>{{ t('settings.network.probeLabel') }} {{ passedFailedText(networkProxyProbeResult.ok) }}</div>
+              <div>{{ t('settings.network.metadataLabel') }} {{ reachableText(networkProxyProbeResult.metadataReachable) }}</div>
+              <div>{{ t('settings.network.headLabel') }} {{ passedFailedText(networkProxyProbeResult.headPassed) }}</div>
+              <div>{{ t('settings.network.contentLengthLabel') }} {{ networkProxyProbeResult.contentLength }}</div>
+              <div>{{ t('settings.network.rangeLabel') }} {{ passedFailedText(networkProxyProbeResult.rangePassed) }}</div>
+              <div>{{ t('settings.network.diagnosticLabel') }} {{ networkProxyProbeResult.terminalDiagnostic }}</div>
             </div>
           </div>
 

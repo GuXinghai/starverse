@@ -79,14 +79,60 @@ export interface SettingsMessages {
       readonly simplifiedChinese: string
       readonly englishUS: string
     }
+    readonly credentials: {
+      readonly configured: string
+      readonly notConfigured: string
+    }
+    readonly runtime: {
+      readonly missingElectronStore: string
+      readonly missingOpenRouterCredentialBridge: string
+      readonly missingOpenAIResponsesCredentialBridge: string
+      readonly missingGoogleAIStudioCredentialBridge: string
+      readonly missingAnthropicCredentialBridge: string
+      readonly missingDeepSeekCredentialBridge: string
+      readonly openRouterCredentialStatusUnavailable: string
+      readonly openAIResponsesCredentialStatusUnavailable: string
+      readonly googleAIStudioCredentialStatusUnavailable: string
+      readonly anthropicCredentialStatusUnavailable: string
+      readonly deepSeekCredentialStatusUnavailable: string
+      readonly openRouterCredentialUpdateFailed: string
+      readonly openAIResponsesCredentialUpdateFailed: string
+      readonly googleAIStudioCredentialUpdateFailed: string
+      readonly anthropicCredentialUpdateFailed: string
+      readonly deepSeekCredentialUpdateFailed: string
+      readonly openRouterCredentialClearFailed: string
+      readonly openRouterBaseUrlClearFailed: string
+      readonly openAIResponsesCredentialClearFailed: string
+      readonly googleAIStudioCredentialClearFailed: string
+      readonly anthropicCredentialClearFailed: string
+      readonly deepSeekCredentialClearFailed: string
+      readonly openAIResponsesApiKeyCleared: string
+      readonly googleAIStudioApiKeyCleared: string
+      readonly anthropicApiKeyCleared: string
+      readonly deepSeekApiKeyCleared: string
+      readonly maxRecentModelsPositiveInteger: string
+      readonly proxyProbePassed: string
+      readonly proxyProbeFailed: string
+      readonly proxyProbeFailedWithDiagnostic: string
+      readonly modelCatalogSyncNowUnavailable: string
+      readonly modelCatalogClearCurrentUnavailable: string
+      readonly modelCatalogClearAllUnavailable: string
+    }
     readonly openrouter: {
       readonly title: string
+      readonly explicitProviderDesc: string
       readonly apiKey: string
       readonly apiKeyPlaceholder: string
       readonly apiKeyCleared: string
       readonly baseUrl: string
       readonly baseUrlPlaceholder: string
       readonly baseUrlInvalid: string
+      readonly endpointOfficial: string
+      readonly endpointCustom: string
+      readonly endpointInvalidCustom: string
+      readonly endpointNameOfficial: string
+      readonly endpointNameCustom: string
+      readonly endpointCustomBaseUrlInvalid: string
       readonly baseUrlCleared: string
       readonly requireParameters: string
       readonly requireParametersDesc: string
@@ -126,6 +172,80 @@ export interface SettingsMessages {
       readonly catalogCacheClearAllSuccess: string
       readonly catalogCacheClearFailed: string
       readonly catalogCacheNoApiKey: string
+    }
+    readonly experimentalChat: {
+      readonly experimentalBadge: string
+      readonly clearKey: string
+      readonly useModelForChat: string
+      readonly placeholder: {
+        readonly openAIKey: string
+        readonly openAIModel: string
+        readonly geminiKey: string
+        readonly geminiModel: string
+        readonly anthropicKey: string
+        readonly anthropicModel: string
+        readonly deepSeekKey: string
+        readonly deepSeekModel: string
+      }
+      readonly openAIResponses: {
+        readonly title: string
+        readonly desc: string
+        readonly apiKeyLabel: string
+        readonly modelLabel: string
+        readonly note: string
+      }
+      readonly googleAIStudio: {
+        readonly title: string
+        readonly desc: string
+        readonly apiKeyLabel: string
+        readonly modelLabel: string
+        readonly note: string
+      }
+      readonly anthropic: {
+        readonly title: string
+        readonly desc: string
+        readonly apiKeyLabel: string
+        readonly modelLabel: string
+        readonly note: string
+      }
+      readonly deepSeek: {
+        readonly title: string
+        readonly desc: string
+        readonly apiKeyLabel: string
+        readonly modelLabel: string
+        readonly note: string
+      }
+    }
+    readonly localEndpoint: {
+      readonly title: string
+      readonly desc: string
+      readonly bridgeUnavailable: string
+      readonly diagnosticsOnly: string
+      readonly urlLabel: string
+      readonly probing: string
+      readonly testing: string
+      readonly testProbe: string
+      readonly testStreaming: string
+      readonly statusLabel: string
+      readonly familyLabel: string
+      readonly endpointLabel: string
+      readonly modelsLabel: string
+      readonly noModelsFound: string
+      readonly truncated: string
+      readonly modelListFailed: string
+      readonly textCapabilitySummary: string
+      readonly streamingCapabilitySummary: string
+      readonly chooseProbedModel: string
+      readonly selectProbedModel: string
+      readonly manualModelOverride: string
+      readonly manualModelForChat: string
+      readonly placeholderModel: string
+      readonly useEndpointAndModel: string
+      readonly useManualEndpointAndModel: string
+      readonly note: string
+      readonly manualNote: string
+      readonly streamLabel: string
+      readonly evidenceLabel: string
     }
     readonly lmStudio: {
       readonly title: string
@@ -179,6 +299,29 @@ export interface SettingsMessages {
     }
     readonly network: {
       readonly title: string
+      readonly proxyTitle: string
+      readonly proxyPolicyDesc: string
+      readonly proxyMode: string
+      readonly proxyModeEnvironment: string
+      readonly proxyModeManual: string
+      readonly proxyModeDirect: string
+      readonly proxyModeSystem: string
+      readonly manualProxyUrl: string
+      readonly noProxyList: string
+      readonly strictSslRequired: string
+      readonly testing: string
+      readonly testConnection: string
+      readonly currentModeProbeDesc: string
+      readonly probeLabel: string
+      readonly metadataLabel: string
+      readonly headLabel: string
+      readonly contentLengthLabel: string
+      readonly rangeLabel: string
+      readonly diagnosticLabel: string
+      readonly passed: string
+      readonly failed: string
+      readonly reachable: string
+      readonly unreachable: string
       readonly disableHttp2: string
       readonly disableHttp2Desc: string
       readonly disableQuic: string
@@ -398,6 +541,16 @@ export interface SendPlanMessages {
     readonly noLocalCopy: string
     readonly fileCopyNotAllowed: string
     readonly urlOnlyRetention: string
+    readonly dfcSelectionRequired: string
+    readonly dfcSelectionPending: string
+    readonly dfcSelectionFailed: string
+    readonly dfcSelectionStale: string
+    readonly dfcSelectionBlocked: string
+    readonly dfcSelectionUnavailable: string
+    readonly dfcSelectionIncompatible: string
+    readonly dfcRawFileMissing: string
+    readonly dfcDerivedAssetMissing: string
+    readonly dfcSendAssetRefMismatch: string
     readonly sendMode: {
       readonly default: string
       readonly auto: string
@@ -487,6 +640,19 @@ export interface DiagnosticsMessages {
     readonly engineUnavailable: string
     readonly engineTimeout: string
     readonly verdictStale: string
+    readonly reasoningArtifacts: {
+      readonly title: string
+      readonly hiddenCount: string
+      readonly kind: {
+        readonly reasoningText: string
+        readonly reasoningSummary: string
+        readonly thinkingText: string
+        readonly thoughtText: string
+        readonly signature: string
+        readonly opaqueReasoning: string
+        readonly providerMetadata: string
+      }
+    }
   }
 }
 

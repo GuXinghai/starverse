@@ -7,6 +7,19 @@
     "detectFailed": "Detection failed",
     "engineUnavailable": "Detection engine unavailable",
     "engineTimeout": "Detection engine timeout",
-    "verdictStale": "Detection verdict stale"
+    "verdictStale": "Detection verdict stale",
+    "reasoningArtifacts": {
+      "title": "Reasoning details",
+      "hiddenCount": "{count} more reasoning detail artifacts hidden in this diagnostic view.",
+      "kind": {
+        "reasoningText": "reasoning text",
+        "reasoningSummary": "reasoning summary",
+        "thinkingText": "thinking text",
+        "thoughtText": "thought text",
+        "signature": "provider signature",
+        "opaqueReasoning": "opaque reasoning",
+        "providerMetadata": "provider metadata"
+      }
+    }
   }
 }
