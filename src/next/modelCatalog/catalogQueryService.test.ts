@@ -18,6 +18,7 @@ describe('CatalogQueryService.query', () => {
   it('returns empty result when scoped query IPC is not available', async () => {
     ;(globalThis as any).electronAPI = undefined
     const result = await CatalogQueryService.query({
+      sourceProviderKey: 'openrouter',
       searchText: 'vision',
     })
     expect(result).toEqual({
@@ -165,6 +166,7 @@ describe('CatalogQueryService.query', () => {
     ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
 
     await CatalogQueryService.query({
+      sourceProviderKey: 'openrouter',
       filter: {
         providers: ['openai', 'anthropic'],
       },
@@ -184,6 +186,7 @@ describe('CatalogQueryService.query', () => {
     ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
 
     await CatalogQueryService.query({
+      sourceProviderKey: 'openrouter',
       sort: {
         by: 'context_length',
         order: 'desc',
@@ -210,6 +213,7 @@ describe('CatalogQueryService.query', () => {
     }))
 
     await CatalogQueryService.query({
+      sourceProviderKey: 'openrouter',
       sort: {
         by: 'max_output_tokens',
         order: 'asc',
@@ -267,6 +271,7 @@ describe('CatalogQueryService.query', () => {
     ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
 
     const result = await CatalogQueryService.query({
+      sourceProviderKey: 'openrouter',
       page: {
         limit: -5,
       },
@@ -340,6 +345,7 @@ describe('CatalogQueryService.query', () => {
     ;(globalThis as any).dbBridge = { invoke: legacyInvoke }
 
     const result = await CatalogQueryService.query({
+      sourceProviderKey: 'openrouter',
       filter: {
         tags: ['capability:vision'],
       },
@@ -375,8 +381,8 @@ describe('CatalogQueryService.query', () => {
       })
     ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
 
-    const notSynced = await CatalogQueryService.query()
-    const failed = await CatalogQueryService.query()
+    const notSynced = await CatalogQueryService.query({ sourceProviderKey: 'openrouter' })
+    const failed = await CatalogQueryService.query({ sourceProviderKey: 'openrouter' })
 
     expect(notSynced).toMatchObject({
       items: [],
@@ -391,6 +397,20 @@ describe('CatalogQueryService.query', () => {
       notice: 'Model list is unavailable.',
       status: 'failed',
       catalogRevision: null,
+    })
+  })
+
+  it('does not default missing source provider to OpenRouter', async () => {
+    const modelCatalogQueryScopedCurrent = vi.fn()
+    ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
+
+    const result = await CatalogQueryService.query({} as any)
+
+    expect(modelCatalogQueryScopedCurrent).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      items: [],
+      nextCursor: null,
+      notice: 'Model catalog source provider is required.',
     })
   })
 })

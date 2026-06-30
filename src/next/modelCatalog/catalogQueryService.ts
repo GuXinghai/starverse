@@ -1,4 +1,3 @@
-import { PROVIDERS } from '../../constants/providers'
 import {
   OPENROUTER_MODEL_CATEGORIES,
   type OpenRouterModelCategory,
@@ -382,10 +381,10 @@ function normalizeItem(input: unknown): CatalogQueryItem | null {
 }
 
 export class CatalogQueryService {
-  static async query(input: CatalogQueryInput = {}): Promise<CatalogQueryResult> {
+  static async query(input: CatalogQueryInput): Promise<CatalogQueryResult> {
     const startedAtMs = Date.now()
     const sourceProviderKey =
-      String(input.sourceProviderKey ?? input.providerKey ?? PROVIDERS.OPENROUTER).trim() || PROVIDERS.OPENROUTER
+      String(input.sourceProviderKey ?? input.providerKey ?? '').trim()
     const sortBy: CatalogQuerySortBy =
       input.sort?.by === 'created_at' ||
       input.sort?.by === 'context_length' ||
@@ -404,6 +403,17 @@ export class CatalogQueryService {
       searchTextLength: typeof input.searchText === 'string' ? input.searchText.trim().length : 0,
       includeDescriptionInSearch: input.includeDescriptionInSearch === true,
       ...filterSummary,
+    }
+
+    if (!sourceProviderKey) {
+      const notice = 'Model catalog source provider is required.'
+      logModelCatalogEvent('query', 'query_degraded', {
+        ...querySummary,
+        stage: 'input_validation',
+        reason: 'missing_source_provider_key',
+        durationMs: Date.now() - startedAtMs,
+      })
+      return { items: [], nextCursor: null, notice }
     }
 
     const catalogApi = getElectronCatalogApi()

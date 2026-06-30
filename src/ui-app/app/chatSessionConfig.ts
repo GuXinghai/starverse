@@ -19,6 +19,14 @@ import {
   buildReasoningPrefsSavePlan,
   resolveReasoningPrefsFromStoredLayers,
 } from '@/next/settings/reasoningPrefsScope'
+import {
+  DEFAULT_CHAT_PROVIDER_ID,
+  DEFAULT_OPENROUTER_MODEL_ID,
+  isSameChatModelSelection,
+  normalizeRuntimeProviderId,
+  type ChatModelSelection,
+} from '@/next/provider/modelSelection'
+import type { RuntimeProviderKey } from '@/next/provider/runtimeSelection'
 
 export type ChatSessionConfigReasoningEffort = 'low' | 'medium' | 'high'
 export type ChatSessionConfigWebSearchLevel = 'low' | 'high'
@@ -27,6 +35,7 @@ export type ChatSessionConfigAspectRatio = '16:9' | '3:4' | '1:1' | '4:3'
 
 export type ChatSessionConfig = Readonly<{
   model: Readonly<{
+    selectedProviderId?: RuntimeProviderKey | null
     selectedModelKey: string | null
   }>
   reasoning: Readonly<{
@@ -58,6 +67,7 @@ export type ChatSessionConfigSources = Readonly<{
   globalSamplingParamsDefaults?: unknown
   globalImageGenerationDefault?: unknown
   defaultModelKey: string
+  defaultProviderId?: RuntimeProviderKey
 }>
 
 export type ChatSessionConfigPatch = Readonly<Partial<{
@@ -69,6 +79,7 @@ export type ChatSessionConfigPatch = Readonly<Partial<{
 }>>
 
 const MODEL_META_KEY = 'selectedModelKey'
+const PROVIDER_META_KEY = 'selectedProviderId'
 const IMAGE_ASPECT_RATIO_OPTIONS: readonly ChatSessionConfigAspectRatio[] = ['16:9', '3:4', '1:1', '4:3']
 const IMAGE_RESOLUTION_OPTIONS: readonly ChatSessionConfigImageResolution[] = ['1K', '2K', '4K']
 
@@ -82,6 +93,16 @@ function normalizeModelKey(value: unknown, fallback: string): string {
   return normalized.length > 0 ? normalized : fallback
 }
 
+function defaultModelSelection(input: Readonly<{
+  defaultModelKey?: string
+  defaultProviderId?: RuntimeProviderKey
+}>): ChatModelSelection {
+  return {
+    providerId: input.defaultProviderId ?? DEFAULT_CHAT_PROVIDER_ID,
+    modelId: normalizeModelKey(input.defaultModelKey, DEFAULT_OPENROUTER_MODEL_ID),
+  }
+}
+
 function extractSelectedModelKey(meta: unknown): string | null {
   const root = asRecord(meta)
   if (!root) return null
@@ -89,11 +110,26 @@ function extractSelectedModelKey(meta: unknown): string | null {
   return normalized.length > 0 ? normalized : null
 }
 
-function mergeSelectedModelKeyIntoMeta(meta: unknown, selectedModelKey: string, defaultModelKey: string): Record<string, unknown> | null {
+function extractSelectedProviderId(meta: unknown): RuntimeProviderKey | null {
+  const root = asRecord(meta)
+  if (!root) return null
+  return normalizeRuntimeProviderId(root[PROVIDER_META_KEY])
+}
+
+function mergeSelectedModelSelectionIntoMeta(
+  meta: unknown,
+  selection: ChatModelSelection,
+  defaultSelection: ChatModelSelection,
+): Record<string, unknown> | null {
   const root = asRecord(meta)
   const next = root ? { ...root } : {}
-  if (selectedModelKey === defaultModelKey) delete next[MODEL_META_KEY]
-  else next[MODEL_META_KEY] = selectedModelKey
+  if (isSameChatModelSelection(selection, defaultSelection)) {
+    delete next[PROVIDER_META_KEY]
+    delete next[MODEL_META_KEY]
+  } else {
+    next[PROVIDER_META_KEY] = selection.providerId
+    next[MODEL_META_KEY] = selection.modelId
+  }
   return Object.keys(next).length > 0 ? next : null
 }
 
@@ -157,6 +193,9 @@ function buildImageGenerationDetail(input: Readonly<{
 
 export function deserializeChatSessionConfigFromConvoMeta(input: ChatSessionConfigSources): ChatSessionConfig {
   const selectedModelKey = extractSelectedModelKey(input.convoMeta) ?? null
+  const selectedProviderId = selectedModelKey
+    ? extractSelectedProviderId(input.convoMeta) ?? defaultModelSelection(input).providerId
+    : null
 
   const reasoningResolved = resolveReasoningPrefsFromStoredLayers({
     convoMeta: input.convoMeta,
@@ -184,6 +223,7 @@ export function deserializeChatSessionConfigFromConvoMeta(input: ChatSessionConf
 
   return {
     model: {
+      selectedProviderId,
       selectedModelKey,
     },
     reasoning: {
@@ -238,6 +278,7 @@ export function serializeChatSessionConfigToConvoMeta(input: Readonly<{
   config: ChatSessionConfig
   convoProjectId?: string | null
   defaultModelKey: string
+  defaultProviderId?: RuntimeProviderKey
 }>): Record<string, unknown> | null {
   const reasoningPrefs = toReasoningPrefs(input.config.reasoning)
   const reasoningPlan = buildReasoningPrefsSavePlan({
@@ -246,11 +287,15 @@ export function serializeChatSessionConfigToConvoMeta(input: Readonly<{
     prefs: reasoningPrefs,
   })
 
-  const selectedModelKey = normalizeModelKey(
-    input.config.model.selectedModelKey ?? input.defaultModelKey,
-    input.defaultModelKey,
-  )
-  const withModel = mergeSelectedModelKeyIntoMeta(reasoningPlan.nextConvoMeta, selectedModelKey, input.defaultModelKey)
+  const defaultSelection = defaultModelSelection(input)
+  const selectedSelection: ChatModelSelection = {
+    providerId: input.config.model.selectedProviderId ?? defaultSelection.providerId,
+    modelId: normalizeModelKey(
+      input.config.model.selectedModelKey ?? input.defaultModelKey,
+      input.defaultModelKey,
+    ),
+  }
+  const withModel = mergeSelectedModelSelectionIntoMeta(reasoningPlan.nextConvoMeta, selectedSelection, defaultSelection)
 
   const withWebSearch = mergeConvoWebSearchOverrideMeta(
     withModel,

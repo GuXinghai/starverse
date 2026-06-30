@@ -1,4 +1,3 @@
-import { PROVIDERS } from '../../constants/providers'
 import { buildModelKeyForLog, logModelCatalogEvent } from './modelCatalogObservability'
 
 type ElectronCatalogApi = Readonly<{
@@ -255,24 +254,24 @@ export async function getModelCatalogModelDetail(
   input: GetModelCatalogModelDetailInput
 ): Promise<ModelCatalogModelDetailResult> {
   const startedAtMs = Date.now()
-  const providerKey = String(input.providerKey ?? PROVIDERS.OPENROUTER).trim() || PROVIDERS.OPENROUTER
+  const providerKey = String(input.providerKey ?? '').trim()
   const modelId = String(input.modelId ?? '').trim()
   const modelKey = buildModelKeyForLog(providerKey, modelId)
   const catalogApi = getElectronCatalogApi()
-  if (!catalogApi?.modelCatalogQueryScopedCurrent || !modelId) {
+  if (!catalogApi?.modelCatalogQueryScopedCurrent || !providerKey || !modelId) {
     logModelCatalogEvent('detail', 'fetch_fail', {
       stage: 'input_validation',
       providerKey,
       modelId,
       modelKey,
       durationMs: Date.now() - startedAtMs,
-      reason: 'missing_scoped_query_ipc_or_modelId',
+      reason: 'missing_scoped_query_ipc_providerKey_or_modelId',
     })
     return {
       providerKey,
       modelId,
       item: null,
-      error: 'Model detail unavailable.',
+      error: providerKey ? 'Model detail unavailable.' : 'Model detail unavailable: providerKey is required.',
     }
   }
   try {
