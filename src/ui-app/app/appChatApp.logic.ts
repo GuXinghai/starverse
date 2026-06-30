@@ -98,6 +98,10 @@ import {
   type ChatModelSelection,
 } from '@/next/provider/modelSelection'
 import {
+  getRuntimeCapabilitySummaryLite,
+  type CurrentRuntimeSelection,
+} from '@/next/provider/runtimeSelection'
+import {
   OPENAI_RESPONSES_ENDPOINT_ID,
   OPENAI_RESPONSES_PROFILE_ID,
   OPENAI_RESPONSES_PROVIDER_KEY,
@@ -129,7 +133,6 @@ import {
 } from './reasoningArtifactLifecycle'
 import {
   createExperimentalRuntimeTextEvents,
-  getExperimentalRuntimeTextModelId,
   getExperimentalRuntimeTextReasoningArtifactProvider,
   getExperimentalRuntimeTextRequestPrefix,
   isExperimentalRuntimeTextProviderKey,
@@ -730,8 +733,15 @@ export function useAppChatAppLogic() {
     answerRootId: string | null
     role: string
     status: string
+    providerId: ChatModelSelection['providerId'] | null
+    modelId: string | null
     completionOutcome?: CompletionOutcome
   }
+  type AssistantTurnRuntimeSelection = Readonly<{
+    providerId: ChatModelSelection['providerId']
+    modelId: string
+    legacyOpenRouter: boolean
+  }>
   const messageMetaById = ref<
     Map<string, MessageMetaEntry>
   >(new Map())
@@ -1183,14 +1193,8 @@ export function useAppChatAppLogic() {
     currentRuntimeSelection,
     currentRuntimeCapability,
     currentRuntimeStatus,
-    lmStudioModel,
-    ollamaModel,
     localEndpointChatUrl,
     localEndpointChatModel,
-    openAIResponsesChatModel,
-    googleAIStudioChatModel,
-    anthropicChatModel,
-    deepSeekChatModel,
     readExperimentalProviderChatStorage,
     addExperimentalProviderChatEventListeners,
     removeExperimentalProviderChatEventListeners,
@@ -1447,6 +1451,8 @@ export function useAppChatAppLogic() {
         answerRootId: patch.answerRootId ?? null,
         role: patch.role ?? 'assistant',
         status: patch.status ?? 'streaming',
+        providerId: patch.providerId ?? null,
+        modelId: patch.modelId ?? null,
       })
     } else {
       next.set(id, { ...prev, ...patch })
@@ -1885,6 +1891,8 @@ export function useAppChatAppLogic() {
           answerRootId: null,
           role: msg.role ?? 'assistant',
           status: metaStatus ?? 'final',
+          providerId: null,
+          modelId: null,
         })
         metaChanged = true
         continue
@@ -2739,12 +2747,15 @@ export function useAppChatAppLogic() {
     const metaMap = new Map<string, MessageMetaEntry>()
     for (const m of rows) {
       const completionOutcome = extractCompletionOutcomeFromMeta(m.meta ?? null)
+      const runtimeMeta = extractRuntimeSelectionFromMessageMeta(m.meta ?? null)
       metaMap.set(m.id, {
         parentId: m.parentId ?? null,
         questionId: m.questionId ?? null,
         answerRootId: m.answerRootId ?? null,
         role: String(m.role ?? '').trim(),
         status: String(m.status ?? 'final'),
+        providerId: runtimeMeta.providerId,
+        modelId: runtimeMeta.modelId,
         completionOutcome,
       })
     }
@@ -4164,9 +4175,9 @@ export function useAppChatAppLogic() {
     })
   }
 
-  async function preflightLocalEndpointAvailability(): Promise<ProviderRuntimeAvailabilityPreflightResult> {
+  async function preflightLocalEndpointAvailability(modelIdOverride?: string): Promise<ProviderRuntimeAvailabilityPreflightResult> {
     const endpointUrl = localEndpointChatUrl.value.trim()
-    const modelId = localEndpointChatModel.value.trim()
+    const modelId = normalizeRuntimeModelId(modelIdOverride ?? localEndpointChatModel.value)
     if (!endpointUrl) return { ok: false, reason: 'Local/OpenAI-compatible endpoint URL is not configured.' }
     if (!modelId) return { ok: false, reason: 'Local/OpenAI-compatible model is not configured.' }
     const bridge = (globalThis as any)?.localEndpointDiagnostics as LocalEndpointDiagnosticsBridge | undefined
@@ -4188,9 +4199,9 @@ export function useAppChatAppLogic() {
     }
   }
 
-  async function preflightLMStudioAvailability(): Promise<ProviderRuntimeAvailabilityPreflightResult> {
+  async function preflightLMStudioAvailability(modelIdOverride?: string): Promise<ProviderRuntimeAvailabilityPreflightResult> {
     const endpointUrl = lmStudioChatConfig.value.endpointUrl.trim()
-    const modelId = lmStudioChatConfig.value.model.trim()
+    const modelId = normalizeRuntimeModelId(modelIdOverride ?? lmStudioChatConfig.value.model)
     if (!endpointUrl) return { ok: false, reason: 'LM Studio endpoint URL is not configured.' }
     if (!modelId) return { ok: false, reason: 'LM Studio model is not configured.' }
     const bridge = (globalThis as any)?.lmStudioProvider as LMStudioProviderBridge | undefined
@@ -4214,9 +4225,9 @@ export function useAppChatAppLogic() {
     }
   }
 
-  async function preflightOllamaAvailability(): Promise<ProviderRuntimeAvailabilityPreflightResult> {
+  async function preflightOllamaAvailability(modelIdOverride?: string): Promise<ProviderRuntimeAvailabilityPreflightResult> {
     const endpointUrl = ollamaChatConfig.value.endpointUrl.trim()
-    const modelId = ollamaChatConfig.value.model.trim()
+    const modelId = normalizeRuntimeModelId(modelIdOverride ?? ollamaChatConfig.value.model)
     if (!endpointUrl) return { ok: false, reason: 'Ollama endpoint URL is not configured.' }
     if (!modelId) return { ok: false, reason: 'Ollama model is not configured.' }
     const bridge = (globalThis as any)?.ollamaProvider as OllamaProviderBridge | undefined
@@ -4240,10 +4251,13 @@ export function useAppChatAppLogic() {
     }
   }
 
-  async function resolveCurrentRuntimeAvailabilityPreflight(): Promise<ProviderRuntimeAvailabilityPreflightResult> {
-    const selection = currentRuntimeSelection.value
+  async function resolveRuntimeAvailabilityPreflight(
+    selection: CurrentRuntimeSelection
+  ): Promise<ProviderRuntimeAvailabilityPreflightResult> {
     if (selection.state !== 'selected') return { ok: true }
-    const modelId = normalizeModelKey(selection.modelId ?? selection.modelKey ?? selection.nativeModelId)
+    const modelId = selection.providerKey === DEFAULT_CHAT_PROVIDER_ID
+      ? normalizeModelKey(selection.modelId ?? selection.modelKey ?? selection.nativeModelId)
+      : normalizeRuntimeModelId(selection.modelId ?? selection.modelKey ?? selection.nativeModelId)
     if (selection.providerKey === DEFAULT_CHAT_PROVIDER_ID) {
       return await preflightCloudCredential(DEFAULT_CHAT_PROVIDER_ID)
     }
@@ -4253,13 +4267,14 @@ export function useAppChatAppLogic() {
       selection.providerKey === ANTHROPIC_MESSAGES_PROVIDER_KEY ||
       selection.providerKey === DEEPSEEK_OFFICIAL_PROVIDER_KEY
     ) {
+      if (!modelId) return { ok: false, reason: `${providerDisplayName(selection.providerKey)} model is not configured.` }
       const credential = await preflightCloudCredential(selection.providerKey)
       if (!credential.ok) return credential
       return await preflightCloudModelAvailability(selection.providerKey, modelId)
     }
-    if (selection.providerKey === 'local_endpoint') return await preflightLocalEndpointAvailability()
-    if (selection.providerKey === 'lm_studio') return await preflightLMStudioAvailability()
-    if (selection.providerKey === 'ollama_local') return await preflightOllamaAvailability()
+    if (selection.providerKey === 'local_endpoint') return await preflightLocalEndpointAvailability(modelId)
+    if (selection.providerKey === 'lm_studio') return await preflightLMStudioAvailability(modelId)
+    if (selection.providerKey === 'ollama_local') return await preflightOllamaAvailability(modelId)
     return { ok: true }
   }
 
@@ -7166,6 +7181,24 @@ export function useAppChatAppLogic() {
     return normalized.length > 0 ? normalized : DEFAULT_OPENROUTER_MODEL_ID
   }
 
+  function normalizeRuntimeModelId(value: unknown): string {
+    return String(value ?? '').trim()
+  }
+
+  function extractRuntimeSelectionFromMessageMeta(meta: unknown): Readonly<{
+    providerId: ChatModelSelection['providerId'] | null
+    modelId: string | null
+  }> {
+    const record = asRecord(meta)
+    const request = asRecord(record?.request)
+    const providerId = normalizeRuntimeProviderId(record?.providerId ?? record?.providerKey)
+    const modelId = normalizeRuntimeModelId(record?.modelId ?? record?.model ?? request?.model)
+    return {
+      providerId,
+      modelId: modelId.length > 0 ? modelId : null,
+    }
+  }
+
   function normalizeSelectionInput(value: unknown): ChatModelSelection {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       const record = value as Record<string, unknown>
@@ -7191,19 +7224,178 @@ export function useAppChatAppLogic() {
     return normalizeModelKey(model.value)
   }
 
-  function buildOpenRouterOnlyActionBlockedMessage(actionLabel: string): string {
-    const selection = currentRuntimeSelection.value
-    if (selection.state === 'unset') {
-      return `${actionLabel} requires an explicit runtime provider selection.`
-    }
-    const providerName = selection.providerKey
-    return `${actionLabel} currently supports only OpenRouter replay; selected provider is ${providerName}.`
+  function runtimeEndpointIdForProvider(providerId: ChatModelSelection['providerId']): string {
+    const current = currentRuntimeSelection.value
+    if (current.state === 'selected' && current.providerKey === providerId) return current.endpointId
+    if (providerId === DEFAULT_CHAT_PROVIDER_ID) return 'openrouter-official'
+    if (providerId === OPENAI_RESPONSES_PROVIDER_KEY) return OPENAI_RESPONSES_ENDPOINT_ID
+    if (providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY) return GOOGLE_AI_STUDIO_ENDPOINT_ID
+    if (providerId === ANTHROPIC_MESSAGES_PROVIDER_KEY) return ANTHROPIC_MESSAGES_ENDPOINT_ID
+    if (providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY) return DEEPSEEK_OFFICIAL_ENDPOINT_ID
+    if (providerId === 'lm_studio') return lmStudioProviderConfig.value.endpointUrl.trim() || 'lm-studio-loopback-local-storage'
+    if (providerId === 'ollama_local') return ollamaProviderConfig.value.endpointUrl.trim() || 'ollama-loopback-local-storage'
+    return localEndpointChatUrl.value.trim() || 'local-endpoint-loopback-local-storage'
   }
 
-  function ensureOpenRouterRuntimeForHistoricalResend(actionLabel: string): boolean {
-    const selection = currentRuntimeSelection.value
-    if (selection.state === 'selected' && selection.providerKey === DEFAULT_CHAT_PROVIDER_ID) return true
-    const message = buildOpenRouterOnlyActionBlockedMessage(actionLabel)
+  function runtimeProfileIdForProvider(providerId: ChatModelSelection['providerId']): string {
+    const current = currentRuntimeSelection.value
+    if (current.state === 'selected' && current.providerKey === providerId) return current.profileId
+    if (providerId === DEFAULT_CHAT_PROVIDER_ID) return 'openrouter_v1_chat'
+    if (providerId === OPENAI_RESPONSES_PROVIDER_KEY) return OPENAI_RESPONSES_PROFILE_ID
+    if (providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY) return GOOGLE_AI_STUDIO_PROFILE_ID
+    if (providerId === ANTHROPIC_MESSAGES_PROVIDER_KEY) return ANTHROPIC_MESSAGES_PROFILE_ID
+    if (providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY) return DEEPSEEK_OFFICIAL_PROFILE_ID
+    if (providerId === 'lm_studio') {
+      return lmStudioChatConfig.value.chatMode === 'native_rest'
+        ? 'lm_studio_native_rest_chat_v1'
+        : lmStudioChatConfig.value.openAICompatiblePreferredEndpoint === 'responses'
+          ? 'lm_studio_openai_responses_v1'
+          : 'lm_studio_openai_chat_completions_v1'
+    }
+    if (providerId === 'ollama_local') {
+      return ollamaChatConfig.value.chatMode === 'native_rest'
+        ? ollamaChatConfig.value.nativeRestPreferredEndpoint === 'generate'
+          ? 'ollama_native_rest_generate_v1'
+          : 'ollama_native_rest_chat_v1'
+        : ollamaChatConfig.value.openAICompatiblePreferredEndpoint === 'responses'
+          ? 'ollama_openai_responses_v1'
+          : 'ollama_openai_chat_completions_v1'
+    }
+    return 'local_endpoint_openai_compat_text_v1'
+  }
+
+  function buildCurrentRuntimeSelectionForChatModel(selection: ChatModelSelection): CurrentRuntimeSelection {
+    const providerId = selection.providerId
+    const modelId = providerId === DEFAULT_CHAT_PROVIDER_ID
+      ? normalizeModelKey(selection.modelId)
+      : normalizeRuntimeModelId(selection.modelId)
+    return {
+      state: 'selected',
+      providerKey: providerId,
+      providerId,
+      endpointId: runtimeEndpointIdForProvider(providerId),
+      profileId: runtimeProfileIdForProvider(providerId),
+      modelId,
+      modelKey: modelId,
+      nativeModelId: modelId,
+      source: 'explicit_user_selection',
+      mode: providerId === DEFAULT_CHAT_PROVIDER_ID ? 'production' : 'experimental',
+      credentialStatus: providerId === 'local_endpoint' || providerId === 'lm_studio' || providerId === 'ollama_local'
+        ? 'not_required'
+        : 'unknown',
+    }
+  }
+
+  function resolveCurrentRuntimeSelectionForSend(): CurrentRuntimeSelection {
+    const sessionSelection = activeSessionConfig.value.model
+    const selectedModel = normalizeRuntimeModelId(sessionSelection.selectedModelKey)
+    if (selectedModel.length > 0 && selectedModel !== DEFAULT_OPENROUTER_MODEL_ID) {
+      const providerId = sessionSelection.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID
+      return buildCurrentRuntimeSelectionForChatModel({ providerId, modelId: selectedModel })
+    }
+    return currentRuntimeSelection.value
+  }
+
+  function buildCurrentRuntimeSelectionForAssistantTurn(
+    selection: AssistantTurnRuntimeSelection
+  ): CurrentRuntimeSelection {
+    return buildCurrentRuntimeSelectionForChatModel({
+      providerId: selection.providerId,
+      modelId: selection.modelId,
+    })
+  }
+
+  function getStoredRuntimeSelectionForMessage(messageId: string): AssistantTurnRuntimeSelection | null {
+    const id = String(messageId ?? '').trim()
+    if (!id) return null
+    const meta = messageMetaById.value.get(id)
+    if (!meta) return null
+    const modelId = normalizeRuntimeModelId(meta.modelId)
+    if (meta.providerId) {
+      return {
+        providerId: meta.providerId,
+        modelId,
+        legacyOpenRouter: false,
+      }
+    }
+    if (modelId) {
+      return {
+        providerId: DEFAULT_CHAT_PROVIDER_ID,
+        modelId,
+        legacyOpenRouter: true,
+      }
+    }
+    return null
+  }
+
+  function resolveLegacyOpenRouterRuntimeSelection(): AssistantTurnRuntimeSelection {
+    return {
+      providerId: DEFAULT_CHAT_PROVIDER_ID,
+      modelId: activeOpenRouterModelId(),
+      legacyOpenRouter: true,
+    }
+  }
+
+  function resolveHistoricalTurnRuntimeSelection(input: Readonly<{
+    questionId: string
+    answerRootId?: string | null
+  }>): AssistantTurnRuntimeSelection {
+    const questionId = String(input.questionId ?? '').trim()
+    const answerRootId = String(input.answerRootId ?? '').trim()
+    const chosenAnswerRootId = questionId
+      ? String(turnFiltersByQuestionId.value.get(questionId)?.chosenAnswerRootId ?? '').trim()
+      : ''
+    const candidateIds = [answerRootId, chosenAnswerRootId, questionId]
+      .map((id) => String(id ?? '').trim())
+      .filter((id, index, arr) => id.length > 0 && arr.indexOf(id) === index)
+    for (const id of candidateIds) {
+      const selection = getStoredRuntimeSelectionForMessage(id)
+      if (selection) return selection
+    }
+    // Explicit compatibility path for pre-MP providerless history. Do not use current picker/provider state here.
+    return resolveLegacyOpenRouterRuntimeSelection()
+  }
+
+  async function preflightAssistantTurnRuntimeSelection(input: Readonly<{
+    selection: AssistantTurnRuntimeSelection
+    text: string
+  }>): Promise<boolean> {
+    const runtimeSelection = buildCurrentRuntimeSelectionForAssistantTurn(input.selection)
+    const availability = await resolveRuntimeAvailabilityPreflight(runtimeSelection)
+    const preflight = resolveProviderRuntimeTextSendPreflight({
+      selection: runtimeSelection,
+      capability: getRuntimeCapabilitySummaryLite(runtimeSelection),
+      text: input.text,
+      hasDraftAttachments: false,
+      sessionConfig: activeSessionConfig.value,
+      availability,
+    })
+    if (preflight.ok) return true
+    loadError.value = preflight.reason
+    setAttachmentFeedback('error', preflight.reason)
+    return false
+  }
+
+  async function hasIncludedHistoricalAttachments(messageId: string): Promise<boolean> {
+    const id = String(messageId ?? '').trim()
+    if (!id) return false
+    try {
+      const attachments = await listMessageAttachmentsByMessageId(id)
+      return attachments.some((attachment) => attachment.includeInNextRequest === true)
+    } catch (err) {
+      if (shouldLogDebug()) console.warn('[ui-app] historical attachment lookup failed before resend', err)
+      return true
+    }
+  }
+
+  async function ensureHistoricalAttachmentsRoutableForSelection(input: Readonly<{
+    selection: AssistantTurnRuntimeSelection
+    userMessageId: string
+    actionLabel: string
+  }>): Promise<boolean> {
+    if (input.selection.providerId === DEFAULT_CHAT_PROVIDER_ID) return true
+    if (!await hasIncludedHistoricalAttachments(input.userMessageId)) return true
+    const message = `${input.actionLabel} with historical attachments is not available for ${providerDisplayName(input.selection.providerId)} yet.`
     loadError.value = message
     setAttachmentFeedback('error', message)
     return false
@@ -7965,6 +8157,7 @@ export function useAppChatAppLogic() {
     requestId: string
     assistantMessageId: string
     assistantSeq: number
+    providerId: ChatModelSelection['providerId']
     modelId: string
     createEvents: (signal: AbortSignal) => AsyncIterable<DomainEvent>
     pdfAnnotationCaptureAssetIds?: ReadonlyArray<string>
@@ -8250,7 +8443,7 @@ export function useAppChatAppLogic() {
   /* eslint-enable max-depth */
 
   async function runAssistantStreamSession(input: AssistantStreamSessionInput) {
-    const { convoId, branchId, assistantMessageId, assistantSeq, modelId, requestId } = input
+    const { convoId, branchId, assistantMessageId, assistantSeq, providerId, modelId, requestId } = input
     const stream = createActiveStream(branchId, assistantMessageId, assistantSeq)
     activeStream.value = stream
     const reasoningArtifactCollector: ReasoningArtifactCollectorState | null = input.reasoningArtifactProvider
@@ -8300,6 +8493,8 @@ export function useAppChatAppLogic() {
       if (statusPersisted) return
       statusPersisted = true
       const metaPatch: Record<string, unknown> = {}
+      metaPatch.providerId = providerId
+      metaPatch.modelId = modelId
       if (finalCompletionOutcome) {
         metaPatch.completionOutcome = finalCompletionOutcome
       }
@@ -8567,6 +8762,7 @@ export function useAppChatAppLogic() {
     questionText: string
     assistantMessageId: string
     assistantSeq: number
+    runtimeSelection: AssistantTurnRuntimeSelection
     contextMessages: ReadonlyArray<InternalMessage>
     replayPrepared?: PreparedOpenRouterReplay | null
   }>) {
@@ -8578,6 +8774,20 @@ export function useAppChatAppLogic() {
     const questionText = typeof input.questionText === 'string' ? input.questionText : String(input.questionText ?? '')
     if (!convoId || !branchId || !questionId || !assistantMessageId || !Number.isFinite(assistantSeq) || !questionText.trim()) return
     const replayPrepared = input.replayPrepared ?? null
+    const turnRuntimeSelection = input.runtimeSelection
+    const runtimeSelection = buildCurrentRuntimeSelectionForAssistantTurn(turnRuntimeSelection)
+    const runtimeAvailability = await resolveRuntimeAvailabilityPreflight(runtimeSelection)
+    const runtimePreflight = resolveProviderRuntimeTextSendPreflight({
+      selection: runtimeSelection,
+      capability: getRuntimeCapabilitySummaryLite(runtimeSelection),
+      text: questionText,
+      hasDraftAttachments: false,
+      sessionConfig: activeSessionConfig.value,
+      availability: runtimeAvailability,
+    })
+    if (!runtimePreflight.ok) {
+      throw new Error(runtimePreflight.reason)
+    }
 
     // Invariant: while streaming a regenerate/retry answer, the UI should already be projected onto the new chosen answer root.
     // If not, force a single DB-backed rehydrate before we begin streaming to avoid temporarily rendering both old+new variants.
@@ -8601,13 +8811,76 @@ export function useAppChatAppLogic() {
       }
     }
 
-    if (currentRuntimeSelection.value.state !== 'selected' || currentRuntimeSelection.value.providerKey !== DEFAULT_CHAT_PROVIDER_ID) {
-      setAttachmentFeedback('error', 'OpenRouter send path requires an explicit OpenRouter runtime selection.')
+    const modelId = turnRuntimeSelection.modelId
+
+    if (runtimePreflight.route.kind === 'experimental_text') {
+      const providerKey = runtimePreflight.route.providerKey
+      if (!isExperimentalRuntimeTextProviderKey(providerKey)) {
+        throw new Error('Selected runtime provider is not routable for text chat.')
+      }
+      const endpointUrl = providerKey === 'local_endpoint'
+        ? localEndpointChatUrl.value.trim()
+        : undefined
+      const lmStudioConfig = providerKey === 'lm_studio'
+        ? lmStudioProviderConfig.value
+        : undefined
+      const ollamaConfig = providerKey === 'ollama_local'
+        ? ollamaProviderConfig.value
+        : undefined
+      const requestId = randomId(getExperimentalRuntimeTextRequestPrefix(providerKey))
+      const started = startGeneration(state.value, {
+        runId: branchId,
+        requestId,
+        model: modelId,
+        userMessageId: questionId,
+        userMessageText: questionText,
+        assistantMessageId,
+        reasoningPanelDefaultExpanded: false,
+        requestedReasoningMode: 'auto',
+      })
+      state.value = started.state
+      ensureMessageMetaEntry(assistantMessageId, {
+        parentId: questionId,
+        questionId,
+        answerRootId: assistantMessageId,
+        role: 'assistant',
+        status: 'streaming',
+        providerId: providerKey,
+        modelId,
+      })
+      void recordRecentModelUsage(modelId, providerKey)
+
+      const reasoningArtifactProvider = getExperimentalRuntimeTextReasoningArtifactProvider(providerKey)
+      await runAssistantStreamSession({
+        convoId,
+        branchId,
+        requestId,
+        assistantMessageId,
+        assistantSeq,
+        providerId: providerKey,
+        modelId,
+        ...(reasoningArtifactProvider ? { reasoningArtifactProvider } : {}),
+        createEvents: (signal) => createExperimentalRuntimeTextEvents({
+          providerKey,
+          requestId,
+          assistantMessageId,
+          modelId,
+          userText: questionText,
+          contextMessages: Array.from(input.contextMessages),
+          ...(lmStudioConfig ? { lmStudioConfig } : {}),
+          ...(ollamaConfig ? { ollamaConfig } : {}),
+          ...(endpointUrl ? { localEndpointUrl: endpointUrl } : {}),
+          signal,
+        }),
+      })
       return
     }
 
+    if (runtimePreflight.route.kind !== 'openrouter_existing') {
+      throw new Error('Selected runtime provider is not routable for text chat.')
+    }
+
     const baseUrl = await getOpenRouterBaseUrl()
-    const modelId = activeOpenRouterModelId()
 
     const { requestedReasoningMode, requestedReasoningEffortValue, requestedReasoningExclude } = getRequestedReasoningConfig()
     const webSearchConfig = await resolveWebSearchConfigForConvoId(convoId)
@@ -8645,6 +8918,8 @@ export function useAppChatAppLogic() {
       answerRootId: assistantMessageId,
       role: 'assistant',
       status: 'streaming',
+      providerId: DEFAULT_CHAT_PROVIDER_ID,
+      modelId,
     })
 
     const requestReasoningConfig = buildReasoningRequestConfigSnapshot({
@@ -8657,7 +8932,7 @@ export function useAppChatAppLogic() {
     } catch (err) {
       if (shouldLogDebug()) console.warn('[ui-app] setMessageReasoningRequestConfig failed (non-fatal):', err)
     }
-    void recordRecentModelUsage(modelId)
+    void recordRecentModelUsage(modelId, DEFAULT_CHAT_PROVIDER_ID)
 
     await runAssistantStreamSession({
       convoId,
@@ -8665,6 +8940,7 @@ export function useAppChatAppLogic() {
       requestId,
       assistantMessageId,
       assistantSeq,
+      providerId: DEFAULT_CHAT_PROVIDER_ID,
       modelId,
       reasoningArtifactProvider: 'openrouter',
       replayManifestDraft: replayPrepared?.manifestDraft ?? null,
@@ -8697,13 +8973,11 @@ export function useAppChatAppLogic() {
     branchId: string
     userMessageId: string
     userText: string
+    modelId: string
     attachmentDecisions?: ReadonlyArray<AttachmentDecision>
   }>): Promise<PreparedOpenRouterReplay | null> {
-    if (currentRuntimeSelection.value.state !== 'selected' || currentRuntimeSelection.value.providerKey !== DEFAULT_CHAT_PROVIDER_ID) {
-      throw new Error(buildOpenRouterOnlyActionBlockedMessage('Historical attachment replay'))
-    }
     const baseUrl = await getOpenRouterBaseUrl()
-    const modelDescriptor = await buildSendPlanModelDescriptor(activeOpenRouterModelId())
+    const modelDescriptor = await buildSendPlanModelDescriptor(input.modelId)
     const prepared = await prepareOpenRouterReplayFromMessage({
       branchId: input.branchId,
       userMessageId: input.userMessageId,
@@ -9217,20 +9491,13 @@ export function useAppChatAppLogic() {
     convoId: string
     branch: BranchSummary
     text: string
+    modelId: string
     contextMessages: any[]
     currentUserContentBlocks?: PreparedProviderFileSendOk['contentParts']
     sentAssetIds?: ReadonlyArray<string>
     attachConversationDraft?: boolean
   }>) {
-    const modelId = getExperimentalRuntimeTextModelId(input.providerKey, {
-      lmStudio: lmStudioModel.value,
-      ollama: ollamaModel.value,
-      localEndpoint: localEndpointChatModel.value,
-      openAIResponses: openAIResponsesChatModel.value,
-      googleAIStudio: googleAIStudioChatModel.value,
-      anthropic: anthropicChatModel.value,
-      deepSeek: deepSeekChatModel.value,
-    })
+    const modelId = normalizeRuntimeModelId(input.modelId)
     const endpointUrl = input.providerKey === 'local_endpoint'
       ? localEndpointChatUrl.value.trim()
       : undefined
@@ -9272,6 +9539,8 @@ export function useAppChatAppLogic() {
       answerRootId: assistantMessageId,
       role: 'assistant',
       status: 'streaming',
+      providerId: input.providerKey,
+      modelId,
     })
 
     const started = startGeneration(state.value, {
@@ -9293,6 +9562,7 @@ export function useAppChatAppLogic() {
       requestId,
       assistantMessageId,
       assistantSeq,
+      providerId: input.providerKey,
       modelId,
       ...(reasoningArtifactProvider ? { reasoningArtifactProvider } : {}),
       createEvents: (signal) => createExperimentalRuntimeTextEvents({
@@ -9318,10 +9588,11 @@ export function useAppChatAppLogic() {
     const hasDraftAttachments = draftAttachmentRecords.value.length > 0
     if (!text && !hasDraftAttachments) return
 
-    const runtimeAvailability = await resolveCurrentRuntimeAvailabilityPreflight()
+    const runtimeSelection = resolveCurrentRuntimeSelectionForSend()
+    const runtimeAvailability = await resolveRuntimeAvailabilityPreflight(runtimeSelection)
     const runtimePreflight = resolveProviderRuntimeTextSendPreflight({
-      selection: currentRuntimeSelection.value,
-      capability: currentRuntimeCapability.value,
+      selection: runtimeSelection,
+      capability: getRuntimeCapabilitySummaryLite(runtimeSelection),
       text,
       hasDraftAttachments,
       sessionConfig: activeSessionConfig.value,
@@ -9349,17 +9620,11 @@ export function useAppChatAppLogic() {
 
     if (runtimeRoute.kind === 'experimental_text') {
       if (isExperimentalRuntimeTextProviderKey(runtimeRoute.providerKey)) {
+        const providerModelId = runtimeSelection.state === 'selected'
+          ? normalizeRuntimeModelId(runtimeSelection.modelId ?? runtimeSelection.modelKey ?? runtimeSelection.nativeModelId)
+          : ''
         let preparedFileSend: PreparedProviderFileSendOk | null = null
         if (hasDraftAttachments && isExperimentalProviderFileRuntime(runtimeRoute.providerKey)) {
-          const providerModelId = getExperimentalRuntimeTextModelId(runtimeRoute.providerKey, {
-            lmStudio: lmStudioModel.value,
-            ollama: ollamaModel.value,
-            localEndpoint: localEndpointChatModel.value,
-            openAIResponses: openAIResponsesChatModel.value,
-            googleAIStudio: googleAIStudioChatModel.value,
-            anthropic: anthropicChatModel.value,
-            deepSeek: deepSeekChatModel.value,
-          })
           composerSendPlanLoading.value = true
           try {
             const prepared = await prepareExperimentalProviderFileSend({
@@ -9396,6 +9661,7 @@ export function useAppChatAppLogic() {
           convoId,
           branch,
           text,
+          modelId: providerModelId,
           contextMessages,
           ...(preparedFileSend ? { currentUserContentBlocks: preparedFileSend.contentParts } : {}),
           ...(preparedFileSend?.hasDraftAttachmentPlans ? { attachConversationDraft: true } : {}),
@@ -9407,12 +9673,15 @@ export function useAppChatAppLogic() {
       return
     }
 
-    if (currentRuntimeSelection.value.state !== 'selected' || currentRuntimeSelection.value.providerKey !== DEFAULT_CHAT_PROVIDER_ID) {
-      throw new Error(buildOpenRouterOnlyActionBlockedMessage('Historical resend'))
+    if (runtimeRoute.kind !== 'openrouter_existing') {
+      setAttachmentFeedback('error', 'Selected runtime provider is not routable for text chat.')
+      return
     }
 
     const baseUrl = await getOpenRouterBaseUrl()
-    const modelId = activeOpenRouterModelId()
+    const modelId = runtimeSelection.state === 'selected'
+      ? normalizeModelKey(runtimeSelection.modelId ?? runtimeSelection.modelKey ?? runtimeSelection.nativeModelId)
+      : DEFAULT_OPENROUTER_MODEL_ID
 
     composerSendPlanLoading.value = true
     let gate: Readonly<{
@@ -9516,6 +9785,8 @@ export function useAppChatAppLogic() {
       answerRootId: assistantMessageId,
       role: 'assistant',
       status: 'streaming',
+      providerId: DEFAULT_CHAT_PROVIDER_ID,
+      modelId,
     })
 
     const { requestedReasoningMode, requestedReasoningEffortValue, requestedReasoningExclude } = getRequestedReasoningConfig()
@@ -9549,7 +9820,7 @@ export function useAppChatAppLogic() {
     } catch (err) {
       if (shouldLogDebug()) console.warn('[ui-app] setMessageReasoningRequestConfig failed (non-fatal):', err)
     }
-    void recordRecentModelUsage(modelId)
+    void recordRecentModelUsage(modelId, DEFAULT_CHAT_PROVIDER_ID)
 
     await runAssistantStreamSession({
       convoId,
@@ -9557,6 +9828,7 @@ export function useAppChatAppLogic() {
       requestId,
       assistantMessageId,
       assistantSeq,
+      providerId: DEFAULT_CHAT_PROVIDER_ID,
       modelId,
       reasoningArtifactProvider: 'openrouter',
       ...(preparedFileSend ? { pdfAnnotationCaptureAssetIds: getPreparedPdfAssetIds(preparedFileSend) } : {}),
@@ -9790,34 +10062,47 @@ export function useAppChatAppLogic() {
     }
 
     loadError.value = null
-    if (!ensureOpenRouterRuntimeForHistoricalResend('Regenerate from question')) return
+    const runtimeSelection = resolveHistoricalTurnRuntimeSelection({
+      questionId: qid,
+      answerRootId: oldChosenAnswerRootId,
+    })
+    if (!await preflightAssistantTurnRuntimeSelection({ selection: runtimeSelection, text: questionText })) return
+    if (!await ensureHistoricalAttachmentsRoutableForSelection({
+      selection: runtimeSelection,
+      userMessageId: qid,
+      actionLabel: 'Regenerate from question',
+    })) return
     const contextMessages = await buildContextMessagesBeforeQuestion(branch.id, qid)
     let replayPrepared: PreparedOpenRouterReplay | null = null
-    try {
-      replayPrepared = await prepareReplayForHistoricalUserMessage({
-        branchId: branch.id,
-        userMessageId: qid,
-        userText: questionText,
-      })
-      const confirmationRequest = buildAttachmentConfirmationRequestFromReplay('regenerate', replayPrepared)
-      if (confirmationRequest) {
-        const result = await requestAttachmentConfirmation(confirmationRequest)
-        if (!result.confirmed) return
+    if (runtimeSelection.providerId === DEFAULT_CHAT_PROVIDER_ID) {
+      try {
         replayPrepared = await prepareReplayForHistoricalUserMessage({
           branchId: branch.id,
           userMessageId: qid,
           userText: questionText,
-          attachmentDecisions: result.decisions,
+          modelId: runtimeSelection.modelId,
         })
-      } else if (replayPrepared?.status === 'needs_confirmation') {
-        throw new Error(buildReplayBlockedMessage(replayPrepared))
+        const confirmationRequest = buildAttachmentConfirmationRequestFromReplay('regenerate', replayPrepared)
+        if (confirmationRequest) {
+          const result = await requestAttachmentConfirmation(confirmationRequest)
+          if (!result.confirmed) return
+          replayPrepared = await prepareReplayForHistoricalUserMessage({
+            branchId: branch.id,
+            userMessageId: qid,
+            userText: questionText,
+            modelId: runtimeSelection.modelId,
+            attachmentDecisions: result.decisions,
+          })
+        } else if (replayPrepared?.status === 'needs_confirmation') {
+          throw new Error(buildReplayBlockedMessage(replayPrepared))
+        }
+        if (!replayPrepared || replayPrepared.status !== 'sendable') {
+          throw new Error(buildReplayBlockedMessage(replayPrepared))
+        }
+      } catch (err: any) {
+        loadError.value = err?.message ? String(err.message) : String(err)
+        return
       }
-      if (!replayPrepared || replayPrepared.status !== 'sendable') {
-        throw new Error(buildReplayBlockedMessage(replayPrepared))
-      }
-    } catch (err: any) {
-      loadError.value = err?.message ? String(err.message) : String(err)
-      return
     }
 
     try {
@@ -9850,6 +10135,7 @@ export function useAppChatAppLogic() {
         questionText,
         assistantMessageId: regen.newAnswerRootId,
         assistantSeq: regen.newAssistantSeq,
+        runtimeSelection,
         contextMessages,
         replayPrepared,
       })
@@ -9925,7 +10211,14 @@ export function useAppChatAppLogic() {
     if (mode === 'replace' && !canReplaceQuestionInUi(oldQuestionId)) return
 
     loadError.value = null
-    if (!ensureOpenRouterRuntimeForHistoricalResend('Edit question resend')) return
+    const runtimeSelection = resolveHistoricalTurnRuntimeSelection({ questionId: oldQuestionId })
+    if (!await preflightAssistantTurnRuntimeSelection({ selection: runtimeSelection, text: newText })) return
+    if (runtimeSelection.providerId !== DEFAULT_CHAT_PROVIDER_ID && draftAttachmentRecords.value.length > 0) {
+      const message = `Edit question resend with attachments is not available for ${providerDisplayName(runtimeSelection.providerId)} yet.`
+      loadError.value = message
+      setAttachmentFeedback('error', message)
+      return
+    }
     let replayPreparedForEdit: PreparedOpenRouterReplay | null = null
     let confirmedAttachmentDecisions: AttachmentDecision[] = []
     if (!useDraftClone) {
@@ -9934,8 +10227,9 @@ export function useAppChatAppLogic() {
       return
     }
 
-    const modelId = activeOpenRouterModelId()
-    const baseUrl = await getOpenRouterBaseUrl()
+    const isOpenRouterRuntime = runtimeSelection.providerId === DEFAULT_CHAT_PROVIDER_ID
+    const modelId = isOpenRouterRuntime ? runtimeSelection.modelId : DEFAULT_OPENROUTER_MODEL_ID
+    const baseUrl = isOpenRouterRuntime ? await getOpenRouterBaseUrl() : null
     let historyMessageIdsForGate: string[] = []
     try {
       const built = await buildContextForBranchInternalMessages(branch.id, { limit: 200, debug: !!import.meta.env?.DEV })
@@ -9987,14 +10281,17 @@ export function useAppChatAppLogic() {
         draft.value = attached.draft.draftText
         editRestoredDraftAttachmentAssetIds.value = new Set()
         await refreshDraftAttachmentViewModels({ restoredDraft: attached.draft })
-        replayPreparedForEdit = await prepareReplayForHistoricalUserMessage({
-          branchId: branch.id,
-          userMessageId: res.newQuestionId,
-          userText: newText,
-          attachmentDecisions: confirmedAttachmentDecisions,
-        })
-        if (!replayPreparedForEdit || replayPreparedForEdit.status !== 'sendable') {
-          throw new Error(buildReplayBlockedMessage(replayPreparedForEdit))
+        if (isOpenRouterRuntime) {
+          replayPreparedForEdit = await prepareReplayForHistoricalUserMessage({
+            branchId: branch.id,
+            userMessageId: res.newQuestionId,
+            userText: newText,
+            modelId: runtimeSelection.modelId,
+            attachmentDecisions: confirmedAttachmentDecisions,
+          })
+          if (!replayPreparedForEdit || replayPreparedForEdit.status !== 'sendable') {
+            throw new Error(buildReplayBlockedMessage(replayPreparedForEdit))
+          }
         }
       }
 
@@ -10021,6 +10318,7 @@ export function useAppChatAppLogic() {
         questionText: newText,
         assistantMessageId: res.assistantId,
         assistantSeq: res.assistantSeq,
+        runtimeSelection,
         contextMessages,
         replayPrepared: replayPreparedForEdit,
       })
@@ -10090,34 +10388,47 @@ export function useAppChatAppLogic() {
     if (!questionText) return
 
     loadError.value = null
-    if (!ensureOpenRouterRuntimeForHistoricalResend('Retry replace answer')) return
+    const runtimeSelection = resolveHistoricalTurnRuntimeSelection({
+      questionId: qid,
+      answerRootId: current,
+    })
+    if (!await preflightAssistantTurnRuntimeSelection({ selection: runtimeSelection, text: questionText })) return
+    if (!await ensureHistoricalAttachmentsRoutableForSelection({
+      selection: runtimeSelection,
+      userMessageId: qid,
+      actionLabel: 'Retry replace answer',
+    })) return
     const contextMessages = await buildContextMessagesBeforeQuestion(branch.id, qid)
     let replayPrepared: PreparedOpenRouterReplay | null = null
-    try {
-      replayPrepared = await prepareReplayForHistoricalUserMessage({
-        branchId: branch.id,
-        userMessageId: qid,
-        userText: questionText,
-      })
-      const confirmationRequest = buildAttachmentConfirmationRequestFromReplay('retry_replace', replayPrepared)
-      if (confirmationRequest) {
-        const result = await requestAttachmentConfirmation(confirmationRequest)
-        if (!result.confirmed) return
+    if (runtimeSelection.providerId === DEFAULT_CHAT_PROVIDER_ID) {
+      try {
         replayPrepared = await prepareReplayForHistoricalUserMessage({
           branchId: branch.id,
           userMessageId: qid,
           userText: questionText,
-          attachmentDecisions: result.decisions,
+          modelId: runtimeSelection.modelId,
         })
-      } else if (replayPrepared?.status === 'needs_confirmation') {
-        throw new Error(buildReplayBlockedMessage(replayPrepared))
+        const confirmationRequest = buildAttachmentConfirmationRequestFromReplay('retry_replace', replayPrepared)
+        if (confirmationRequest) {
+          const result = await requestAttachmentConfirmation(confirmationRequest)
+          if (!result.confirmed) return
+          replayPrepared = await prepareReplayForHistoricalUserMessage({
+            branchId: branch.id,
+            userMessageId: qid,
+            userText: questionText,
+            modelId: runtimeSelection.modelId,
+            attachmentDecisions: result.decisions,
+          })
+        } else if (replayPrepared?.status === 'needs_confirmation') {
+          throw new Error(buildReplayBlockedMessage(replayPrepared))
+        }
+        if (!replayPrepared || replayPrepared.status !== 'sendable') {
+          throw new Error(buildReplayBlockedMessage(replayPrepared))
+        }
+      } catch (err: any) {
+        loadError.value = err?.message ? String(err.message) : String(err)
+        return
       }
-      if (!replayPrepared || replayPrepared.status !== 'sendable') {
-        throw new Error(buildReplayBlockedMessage(replayPrepared))
-      }
-    } catch (err: any) {
-      loadError.value = err?.message ? String(err.message) : String(err)
-      return
     }
 
     try {
@@ -10133,6 +10444,7 @@ export function useAppChatAppLogic() {
         questionText,
         assistantMessageId: res.newAnswerRootId,
         assistantSeq: res.newAssistantSeq,
+        runtimeSelection,
         contextMessages,
         replayPrepared,
       })

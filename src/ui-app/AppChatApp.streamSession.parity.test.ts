@@ -547,6 +547,7 @@ async function runScenario(mode: ScenarioMode, options?: { expectHello?: boolean
 describe('ui-app AppChatApp stream session parity', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronStore = (globalThis as any).electronStore
+  const originalOpenRouterCredential = (globalThis as any).openRouterCredential
   const originalClipboard = globalThis.navigator.clipboard
   const originalSetTimeout = globalThis.setTimeout
   let clipboardWriteText: ReturnType<typeof vi.fn>
@@ -573,6 +574,7 @@ describe('ui-app AppChatApp stream session parity', () => {
         return undefined
       }),
     }
+    ;(globalThis as any).openRouterCredential = { getStatus: vi.fn(async () => ({ ok: true, status: { apiKeyConfigured: true, warnings: [] } })) }
   })
 
   afterEach(() => {
@@ -581,6 +583,7 @@ describe('ui-app AppChatApp stream session parity', () => {
     hoisted.throwAbortInGenerator = false
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronStore = originalElectronStore
+    ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
     Object.defineProperty(globalThis.navigator, 'clipboard', {
       configurable: true,
       value: originalClipboard,
