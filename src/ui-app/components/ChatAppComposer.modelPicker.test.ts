@@ -146,6 +146,100 @@ describe('ChatAppComposer model picker integration', () => {
     expect(pillAfter.textContent).toContain('Claude 3')
   })
 
+  it('selects non-OpenRouter provider models from picker sources', async () => {
+    const user = userEvent.setup()
+    const queryFn = vi.fn(async (_input: CatalogQueryInput): Promise<CatalogQueryResult> => createResult([]))
+    const updateModel = vi.fn((selection: { providerId: string; modelId: string }) => selection)
+
+    const Wrapper = defineComponent({
+      components: { ChatAppComposer },
+      setup() {
+        const draft = ref('')
+        const model = ref<string>(DEFAULT_OPENROUTER_TEST_MODEL)
+        const selectedProviderId = ref('openrouter')
+        const requestedReasoningEffort = ref<'auto'>('auto')
+        const requestedReasoningExclude = ref(false)
+        const sessionConfig = computed(() => ({
+          ...createSessionConfig(),
+          model: { selectedProviderId: selectedProviderId.value, selectedModelKey: model.value },
+        }))
+        const modelCatalog = ref([])
+        const providerModelSources = ref([
+          {
+            providerId: 'openai_responses' as const,
+            providerName: 'OpenAI Responses',
+            statusKind: 'ready' as const,
+            statusLabel: '1 model',
+            loading: false,
+            items: [
+              {
+                providerId: 'openai_responses' as const,
+                providerName: 'OpenAI Responses',
+                modelId: 'gpt-4.1-mini',
+                modelKey: 'openai_responses::gpt-4.1-mini',
+                displayName: 'GPT-4.1 mini',
+                description: 'curated OpenAI model',
+                vendor: 'OpenAI Responses',
+                capabilitySummary: 'text · image input',
+                statusKind: 'ready' as const,
+                statusLabel: 'available',
+                sourceLabel: 'provider availability',
+                selectable: true,
+                inputModalities: ['text', 'image'],
+                outputModalities: ['text'],
+              },
+            ],
+          },
+        ])
+        const handleUpdateModel = (selection: { providerId: string; modelId: string }) => {
+          updateModel(selection)
+          selectedProviderId.value = selection.providerId
+          model.value = selection.modelId
+        }
+        return {
+          draft,
+          model,
+          requestedReasoningEffort,
+          requestedReasoningExclude,
+          sessionConfig,
+          modelCatalog,
+          providerModelSources,
+          queryFn,
+          handleUpdateModel,
+        }
+      },
+      template: `
+        <ChatAppComposer
+          v-model:draft="draft"
+          v-model:model="model"
+          v-model:requestedReasoningEffort="requestedReasoningEffort"
+          v-model:requestedReasoningExclude="requestedReasoningExclude"
+          :disabled="false"
+          :isRunning="false"
+          :sessionConfig="sessionConfig"
+          :modelCatalog="modelCatalog"
+          :providerModelSources="providerModelSources"
+          :showHiddenModelsInPickers="false"
+          :modelCatalogNotice="null"
+          :modelPickerQueryFn="queryFn"
+          @updateModel="handleUpdateModel"
+        />
+      `,
+    })
+
+    render(Wrapper)
+
+    await user.click(await screen.findByTestId('current-model-pill'))
+    const item = await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1-mini')
+    await user.click(item)
+
+    expect(updateModel).toHaveBeenCalledWith({ providerId: 'openai_responses', modelId: 'gpt-4.1-mini' })
+    await waitFor(() => {
+      expect(screen.getByTestId('current-model-pill').textContent).toContain('OpenAI Responses')
+      expect(screen.getByTestId('current-model-pill').textContent).toContain('GPT-4.1 mini')
+    })
+  })
+
   it('applies image-only output filter from model picker dialog controls', async () => {
     const user = userEvent.setup()
     const queryFn = vi.fn(async (_input: CatalogQueryInput): Promise<CatalogQueryResult> =>

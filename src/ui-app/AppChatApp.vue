@@ -153,6 +153,7 @@ const {
   currentRuntimeCapability,
   currentRuntimeStatus,
   modelCatalogForPicker,
+  providerModelPickerSources,
   modelCatalogNotice,
   modelPrefsScopeForUi,
   activeSessionSamplingParamsResolved,
@@ -193,6 +194,7 @@ const {
   onUpdateOpenAIResponsesChatModel,
   onClearOpenAIResponsesChat,
   onRefreshOpenAIResponsesModels,
+  onRefreshProviderModelPickerSources,
   onUpdateGoogleAIStudioChatEnabled,
   onUpdateGoogleAIStudioChatModel,
   onClearGoogleAIStudioChat,
@@ -797,6 +799,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             :isRunning="isRunning"
             :sessionConfig="activeSessionConfig"
             :modelCatalog="modelCatalogForPicker"
+            :providerModelSources="providerModelPickerSources"
             :modelCatalogNotice="modelCatalogNotice"
             :modelPrefsScope="modelPrefsScopeForUi"
             :imageInputSupported="composerImageInputSupported"
@@ -811,6 +814,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             :isSendPlanLoading="composerSendPlanLoading"
             :historyIncompatibleSummary="historyIncompatibleAttachmentSummary"
             @updateModel="onUpdateModel"
+            @refreshProviderModelsRequested="onRefreshProviderModelPickerSources"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
             @updateWebSearchEnabled="onUpdateWebSearchEnabled"
