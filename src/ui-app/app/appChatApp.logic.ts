@@ -89,6 +89,15 @@ import {
   type DeepSeekModelAvailabilityResult,
 } from '@/next/provider/deepseek/deepSeekModelSource'
 import {
+  DEFAULT_CHAT_MODEL_SELECTION,
+  DEFAULT_CHAT_PROVIDER_ID,
+  DEFAULT_OPENROUTER_MODEL_ID,
+  buildProviderModelKey,
+  normalizeChatModelSelection,
+  normalizeRuntimeProviderId,
+  type ChatModelSelection,
+} from '@/next/provider/modelSelection'
+import {
   OPENAI_RESPONSES_ENDPOINT_ID,
   OPENAI_RESPONSES_PROFILE_ID,
   OPENAI_RESPONSES_PROVIDER_KEY,
@@ -272,9 +281,9 @@ export function useAppChatAppLogic() {
   const rightRailOpen = ref(false)
   const rightRailView = ref<'reasoning' | 'console'>('console')
   const pendingDeleteQuestionId = ref<string | null>(null)
-  const DEFAULT_CHAT_MODEL_ID = 'openrouter/auto'
   const CONVO_META_SELECTED_MODEL_KEY = 'selectedModelKey'
-  const model = ref(DEFAULT_CHAT_MODEL_ID)
+  const CONVO_META_SELECTED_PROVIDER_KEY = 'selectedProviderId'
+  const model = ref(DEFAULT_OPENROUTER_MODEL_ID)
   const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('auto')
   const requestedReasoningExclude = ref(false)
   type DeepSeekModelAvailabilityFailureCode = Extract<DeepSeekModelAvailabilityResult, { ok: false }>['code']
@@ -3770,11 +3779,16 @@ export function useAppChatAppLogic() {
       globalWebSearchDefaults: globalWebSearchDefaults.value,
       globalSamplingParamsDefaults: globalSamplingParamsDefaults.value,
       globalImageGenerationDefault: globalImageGenerationDefault.value,
-      defaultModelKey: DEFAULT_CHAT_MODEL_ID,
+      defaultModelKey: DEFAULT_OPENROUTER_MODEL_ID,
+      defaultProviderId: DEFAULT_CHAT_PROVIDER_ID,
     })
   }
 
-  const activeSessionConfig = computed(() => getChatSessionConfigForConvo(getActiveConvoRecord()))
+  function getActiveSessionConfigSnapshot(): ChatSessionConfig {
+    return getChatSessionConfigForConvo(getActiveConvoRecord())
+  }
+
+  const activeSessionConfig = computed(() => getActiveSessionConfigSnapshot())
   const openAIResponsesModelAvailabilityStatus = computed(() => ({
     loading: openAIResponsesModelAvailabilityLoading.value,
     result: openAIResponsesModelAvailabilityResult.value,
@@ -3977,7 +3991,8 @@ export function useAppChatAppLogic() {
       baseMeta: convo.meta ?? null,
       config: nextConfig,
       convoProjectId: convo.projectId ?? null,
-      defaultModelKey: DEFAULT_CHAT_MODEL_ID,
+      defaultModelKey: DEFAULT_OPENROUTER_MODEL_ID,
+      defaultProviderId: DEFAULT_CHAT_PROVIDER_ID,
     })
     updateLocalConvoMeta(convo.id, nextMeta)
     await persistConvoMetaUpdate(convo, nextMeta)
@@ -4108,7 +4123,10 @@ export function useAppChatAppLogic() {
 
   function applySessionConfigToUi(config: ChatSessionConfig) {
     skipReasoningPrefSave.value = true
-    model.value = normalizeModelKey(config.model.selectedModelKey ?? DEFAULT_CHAT_MODEL_ID)
+    const selectedProviderId = config.model.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID
+    model.value = selectedProviderId === DEFAULT_CHAT_PROVIDER_ID
+      ? normalizeModelKey(config.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID)
+      : DEFAULT_OPENROUTER_MODEL_ID
     requestedReasoningEffort.value = config.reasoning.enabled ? config.reasoning.effort : 'auto'
     requestedReasoningExclude.value = false
     imageGenerationConvoMode.value = config.imageGeneration.mode
@@ -6864,7 +6882,50 @@ export function useAppChatAppLogic() {
 
   function normalizeModelKey(value: unknown): string {
     const normalized = String(value ?? '').trim()
-    return normalized.length > 0 ? normalized : DEFAULT_CHAT_MODEL_ID
+    return normalized.length > 0 ? normalized : DEFAULT_OPENROUTER_MODEL_ID
+  }
+
+  function normalizeSelectionInput(value: unknown): ChatModelSelection {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const record = value as Record<string, unknown>
+      return normalizeChatModelSelection(
+        {
+          providerId: normalizeRuntimeProviderId(record.providerId) ?? DEFAULT_CHAT_PROVIDER_ID,
+          modelId: normalizeModelKey(record.modelId),
+        },
+        DEFAULT_CHAT_MODEL_SELECTION,
+      )
+    }
+    return {
+      providerId: DEFAULT_CHAT_PROVIDER_ID,
+      modelId: normalizeModelKey(value),
+    }
+  }
+
+  function activeOpenRouterModelId(): string {
+    const selection = currentRuntimeSelection.value
+    if (selection.state === 'selected' && selection.providerKey === DEFAULT_CHAT_PROVIDER_ID) {
+      return normalizeModelKey(selection.modelKey ?? selection.nativeModelId ?? model.value)
+    }
+    return normalizeModelKey(model.value)
+  }
+
+  function buildOpenRouterOnlyActionBlockedMessage(actionLabel: string): string {
+    const selection = currentRuntimeSelection.value
+    if (selection.state === 'unset') {
+      return `${actionLabel} requires an explicit runtime provider selection.`
+    }
+    const providerName = selection.providerKey
+    return `${actionLabel} currently supports only OpenRouter replay; selected provider is ${providerName}.`
+  }
+
+  function ensureOpenRouterRuntimeForHistoricalResend(actionLabel: string): boolean {
+    const selection = currentRuntimeSelection.value
+    if (selection.state === 'selected' && selection.providerKey === DEFAULT_CHAT_PROVIDER_ID) return true
+    const message = buildOpenRouterOnlyActionBlockedMessage(actionLabel)
+    loadError.value = message
+    setAttachmentFeedback('error', message)
+    return false
   }
 
   function normalizeImageGenerationState(value: unknown): ImageGenerationUiState {
@@ -6917,12 +6978,18 @@ export function useAppChatAppLogic() {
 
   async function refreshSelectedModelImageCapability() {
     const seq = ++imageCapabilityQuerySeq.value
-    const modelId = normalizeModelKey(model.value)
+    const currentSessionConfig = getActiveSessionConfigSnapshot()
+    const selectedProviderId = currentSessionConfig.model.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID
+    const modelId = selectedProviderId === DEFAULT_CHAT_PROVIDER_ID
+      ? normalizeModelKey(currentSessionConfig.model.selectedModelKey ?? model.value)
+      : DEFAULT_OPENROUTER_MODEL_ID
     selectedModelImageCapabilityLoading.value = true
 
-    if (modelId === DEFAULT_CHAT_MODEL_ID) {
+    if (selectedProviderId !== DEFAULT_CHAT_PROVIDER_ID || modelId === DEFAULT_OPENROUTER_MODEL_ID) {
       selectedModelImageCapabilityClass.value = null
-      selectedModelImageCapabilityReason.value = 'select a concrete model to enable image generation.'
+      selectedModelImageCapabilityReason.value = selectedProviderId === DEFAULT_CHAT_PROVIDER_ID
+        ? 'select a concrete model to enable image generation.'
+        : 'OpenRouter catalog image generation checks are unavailable for the selected provider.'
       composerImageInputSupported.value = null
       composerImageInputSupportReason.value = null
       selectedModelImageCapabilityLoading.value = false
@@ -6930,7 +6997,7 @@ export function useAppChatAppLogic() {
     }
 
     try {
-      const result = await getModelCatalogModelDetail({ providerKey: 'openrouter', modelId })
+      const result = await getModelCatalogModelDetail({ providerKey: DEFAULT_CHAT_PROVIDER_ID, modelId })
       if (seq !== imageCapabilityQuerySeq.value) return
       const item = result.item
       if (!item) {
@@ -7127,6 +7194,11 @@ export function useAppChatAppLogic() {
     return normalized.length > 0 ? normalized : null
   }
 
+  function extractSelectedProviderId(meta: unknown): string | null {
+    if (!meta || typeof meta !== 'object') return null
+    return normalizeRuntimeProviderId((meta as Record<string, unknown>)[CONVO_META_SELECTED_PROVIDER_KEY])
+  }
+
   function resolveSelectedModelAvailability(modelKey: string): 'available' | 'hidden' | 'missing' | 'unknown' {
     const normalized = normalizeModelKey(modelKey)
     if (!normalized) return 'unknown'
@@ -7244,7 +7316,11 @@ export function useAppChatAppLogic() {
   }
 
   function applySelectedModelOverrideForActiveConvo() {
-    const normalized = normalizeModelKey(activeSessionConfig.value.model.selectedModelKey ?? DEFAULT_CHAT_MODEL_ID)
+    const currentSessionConfig = getActiveSessionConfigSnapshot()
+    const selectedProviderId = currentSessionConfig.model.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID
+    const normalized = selectedProviderId === DEFAULT_CHAT_PROVIDER_ID
+      ? normalizeModelKey(currentSessionConfig.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID)
+      : DEFAULT_OPENROUTER_MODEL_ID
     model.value = normalized
 
     const availability = resolveSelectedModelAvailability(normalized)
@@ -7257,19 +7333,23 @@ export function useAppChatAppLogic() {
     }
   }
 
-  async function persistSelectedModelForActiveConvo(nextModelKey: string) {
+  async function persistSelectedModelForActiveConvo(nextModelKey: ChatModelSelection | string) {
     const convo = getActiveConvoRecord()
     if (!convo) return
 
-    const normalized = normalizeModelKey(nextModelKey)
+    const selection = normalizeSelectionInput(nextModelKey)
+    const normalized = selection.modelId
     const currentPersisted = extractSelectedModelKey(convo.meta ?? null)
-    const shouldPersist = normalized === DEFAULT_CHAT_MODEL_ID ? null : normalized
-    if (currentPersisted === shouldPersist) return
+    const currentProvider = extractSelectedProviderId(convo.meta ?? null)
+    const shouldPersist = normalized === DEFAULT_OPENROUTER_MODEL_ID ? null : normalized
+    const shouldPersistProvider = shouldPersist ? selection.providerId : null
+    if (currentPersisted === shouldPersist && currentProvider === shouldPersistProvider) return
 
     try {
       await updateActiveConvoSessionConfig({
         model: {
-          selectedModelKey: normalized === DEFAULT_CHAT_MODEL_ID ? null : normalized,
+          selectedProviderId: shouldPersistProvider,
+          selectedModelKey: normalized === DEFAULT_OPENROUTER_MODEL_ID ? null : normalized,
         },
       })
     } catch (err) {
@@ -7282,11 +7362,14 @@ export function useAppChatAppLogic() {
     }
   }
 
-  async function onUpdateModel(nextModelKey: string) {
+  async function onUpdateModel(nextModelKey: ChatModelSelection | string) {
     if (isDraftInteractionLocked.value) return
-    const normalized = normalizeModelKey(nextModelKey)
-    model.value = normalized
-    await persistSelectedModelForActiveConvo(normalized)
+    const selection = normalizeSelectionInput(nextModelKey)
+    const normalized = selection.modelId
+    if (selection.providerId === DEFAULT_CHAT_PROVIDER_ID) {
+      model.value = normalized
+    }
+    await persistSelectedModelForActiveConvo(selection)
     // Contract: this is the commit path for a manual model selection.
     // Do not rehydrate from active session state here; that would overwrite
     // the just-submitted model with stale convo meta and can snap back to auto.
@@ -7294,14 +7377,14 @@ export function useAppChatAppLogic() {
     scheduleHistoryIncompatibleRefresh()
   }
 
-  async function recordRecentModelUsage(modelId: string) {
+  async function recordRecentModelUsage(modelId: string, providerId: ChatModelSelection['providerId'] = DEFAULT_CHAT_PROVIDER_ID) {
     const normalized = normalizeModelKey(modelId)
     if (!normalized) return
     const result = await ModelPrefsService.recordRecent(
       {
-        providerKey: 'openrouter',
+        providerKey: providerId,
         modelId: normalized,
-        modelKey: `openrouter::${normalized}`,
+        modelKey: buildProviderModelKey({ providerId, modelId: normalized }),
       },
       {
         scopeType: 'global',
@@ -8237,8 +8320,13 @@ export function useAppChatAppLogic() {
       }
     }
 
+    if (currentRuntimeSelection.value.state !== 'selected' || currentRuntimeSelection.value.providerKey !== DEFAULT_CHAT_PROVIDER_ID) {
+      setAttachmentFeedback('error', 'OpenRouter send path requires an explicit OpenRouter runtime selection.')
+      return
+    }
+
     const baseUrl = await getOpenRouterBaseUrl()
-    const modelId = normalizeModelKey(model.value)
+    const modelId = activeOpenRouterModelId()
 
     const { requestedReasoningMode, requestedReasoningEffortValue, requestedReasoningExclude } = getRequestedReasoningConfig()
     const webSearchConfig = await resolveWebSearchConfigForConvoId(convoId)
@@ -8330,8 +8418,11 @@ export function useAppChatAppLogic() {
     userText: string
     attachmentDecisions?: ReadonlyArray<AttachmentDecision>
   }>): Promise<PreparedOpenRouterReplay | null> {
+    if (currentRuntimeSelection.value.state !== 'selected' || currentRuntimeSelection.value.providerKey !== DEFAULT_CHAT_PROVIDER_ID) {
+      throw new Error(buildOpenRouterOnlyActionBlockedMessage('Historical attachment replay'))
+    }
     const baseUrl = await getOpenRouterBaseUrl()
-    const modelDescriptor = await buildSendPlanModelDescriptor(normalizeModelKey(model.value))
+    const modelDescriptor = await buildSendPlanModelDescriptor(activeOpenRouterModelId())
     const prepared = await prepareOpenRouterReplayFromMessage({
       branchId: input.branchId,
       userMessageId: input.userMessageId,
@@ -8394,11 +8485,11 @@ export function useAppChatAppLogic() {
   async function buildSendPlanModelDescriptor(modelId: string): Promise<SendPlanModelDescriptor> {
     const normalized = normalizeModelKey(modelId)
     try {
-      if (normalized !== DEFAULT_CHAT_MODEL_ID) {
-        const detail = await getModelCatalogModelDetail({ providerKey: 'openrouter', modelId: normalized })
+      if (normalized !== DEFAULT_OPENROUTER_MODEL_ID) {
+        const detail = await getModelCatalogModelDetail({ providerKey: DEFAULT_CHAT_PROVIDER_ID, modelId: normalized })
         if (detail.item) {
           return {
-            providerKey: 'openrouter',
+            providerKey: DEFAULT_CHAT_PROVIDER_ID,
             modelId: detail.item.modelId,
             modelKey: detail.item.modelKey,
             inputModalities: detail.item.inputModalities,
@@ -8410,9 +8501,9 @@ export function useAppChatAppLogic() {
       if (shouldLogDebug()) console.warn('[ui-app] model detail unavailable for file send planning', err)
     }
     return {
-      providerKey: 'openrouter',
+      providerKey: DEFAULT_CHAT_PROVIDER_ID,
       modelId: normalized,
-      modelKey: `openrouter::${normalized}`,
+      modelKey: buildProviderModelKey({ providerId: DEFAULT_CHAT_PROVIDER_ID, modelId: normalized }),
       inputModalities: ['text'],
       outputModalities: ['text'],
     }
@@ -8420,7 +8511,7 @@ export function useAppChatAppLogic() {
 
   function buildSendPlanProviderContext(baseUrl: string | null): SendPlanProviderContext {
     return {
-      providerKey: 'openrouter',
+      providerKey: DEFAULT_CHAT_PROVIDER_ID,
       ...(baseUrl ? { baseUrl } : {}),
       supportsImageUrlRef: true,
       supportsPdfInputs: true,
@@ -9033,8 +9124,12 @@ export function useAppChatAppLogic() {
       return
     }
 
+    if (currentRuntimeSelection.value.state !== 'selected' || currentRuntimeSelection.value.providerKey !== DEFAULT_CHAT_PROVIDER_ID) {
+      throw new Error(buildOpenRouterOnlyActionBlockedMessage('Historical resend'))
+    }
+
     const baseUrl = await getOpenRouterBaseUrl()
-    const modelId = normalizeModelKey(model.value)
+    const modelId = activeOpenRouterModelId()
 
     composerSendPlanLoading.value = true
     let gate: Readonly<{
@@ -9412,6 +9507,7 @@ export function useAppChatAppLogic() {
     }
 
     loadError.value = null
+    if (!ensureOpenRouterRuntimeForHistoricalResend('Regenerate from question')) return
     const contextMessages = await buildContextMessagesBeforeQuestion(branch.id, qid)
     let replayPrepared: PreparedOpenRouterReplay | null = null
     try {
@@ -9546,6 +9642,7 @@ export function useAppChatAppLogic() {
     if (mode === 'replace' && !canReplaceQuestionInUi(oldQuestionId)) return
 
     loadError.value = null
+    if (!ensureOpenRouterRuntimeForHistoricalResend('Edit question resend')) return
     let replayPreparedForEdit: PreparedOpenRouterReplay | null = null
     let confirmedAttachmentDecisions: AttachmentDecision[] = []
     if (!useDraftClone) {
@@ -9554,7 +9651,7 @@ export function useAppChatAppLogic() {
       return
     }
 
-    const modelId = normalizeModelKey(model.value)
+    const modelId = activeOpenRouterModelId()
     const baseUrl = await getOpenRouterBaseUrl()
     let historyMessageIdsForGate: string[] = []
     try {
@@ -9710,6 +9807,7 @@ export function useAppChatAppLogic() {
     if (!questionText) return
 
     loadError.value = null
+    if (!ensureOpenRouterRuntimeForHistoricalResend('Retry replace answer')) return
     const contextMessages = await buildContextMessagesBeforeQuestion(branch.id, qid)
     let replayPrepared: PreparedOpenRouterReplay | null = null
     try {

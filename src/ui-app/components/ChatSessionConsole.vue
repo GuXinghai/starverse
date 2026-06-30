@@ -29,6 +29,7 @@ import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import SamplingParamsSettingsEditor from './SamplingParamsSettingsEditor.vue'
 import ImageGenerationSettingsEditor from './ImageGenerationSettingsEditor.vue'
 import { t, tf } from '@/shared/i18n'
+import { DEFAULT_OPENROUTER_MODEL_ID } from '@/next/provider/modelSelection'
 
 const props = defineProps<{
   disabled: boolean
@@ -223,7 +224,7 @@ const emit = defineEmits<{
 }>()
 
 const disabled = computed(() => props.disabled || props.isRunning)
-const modelValue = computed(() => props.sessionConfig.model.selectedModelKey ?? 'openrouter/auto')
+const modelValue = computed(() => props.sessionConfig.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID)
 const openRouterChat = computed(() => props.openRouterChat ?? {
   enabled: false,
   model: modelValue.value,

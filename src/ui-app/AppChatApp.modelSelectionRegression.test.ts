@@ -187,8 +187,8 @@ describe('ui-app AppChatApp model selection regression', () => {
 
   it('does not rehydrate the selection path with stale session state', () => {
     const source = readFileSync(join(process.cwd(), 'src', 'ui-app', 'app', 'appChatApp.logic.ts'), 'utf8')
-    const start = source.indexOf('async function onUpdateModel(nextModelKey: string)')
-    const end = source.indexOf('async function recordRecentModelUsage(modelId: string)')
+    const start = source.indexOf('async function onUpdateModel(nextModelKey: ChatModelSelection | string)')
+    const end = source.indexOf('async function recordRecentModelUsage(')
 
     expect(start).toBeGreaterThanOrEqual(0)
     expect(end).toBeGreaterThan(start)
