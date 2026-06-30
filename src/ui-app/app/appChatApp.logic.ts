@@ -8471,6 +8471,18 @@ export function useAppChatAppLogic() {
     'attachment_lineage_blocked': 'sendPlan.attachmentBlocked',
     'url_snapshot_failed': 'sendPlan.attachmentBlocked',
     'url_snapshot_pending': 'sendPlan.detectionPending',
+    'selected_option_missing': 'sendPlan.dfcSelectionRequired',
+    'selected_option_pending': 'sendPlan.dfcSelectionPending',
+    'selected_option_not_found': 'sendPlan.dfcSelectionUnavailable',
+    'selected_option_failed': 'sendPlan.dfcSelectionFailed',
+    'selected_option_stale': 'sendPlan.dfcSelectionStale',
+    'selected_option_blocked': 'sendPlan.dfcSelectionBlocked',
+    'selected_option_unavailable': 'sendPlan.dfcSelectionUnavailable',
+    'selected_option_incompatible': 'sendPlan.dfcSelectionIncompatible',
+    'raw_file_ref_missing': 'sendPlan.dfcRawFileMissing',
+    'derived_asset_ref_missing': 'sendPlan.dfcDerivedAssetMissing',
+    'send_asset_ref_kind_mismatch': 'sendPlan.dfcSendAssetRefMismatch',
+    'dfc_selected_option_blocked': 'sendPlan.dfcSelectionBlocked',
   }
 
   /**

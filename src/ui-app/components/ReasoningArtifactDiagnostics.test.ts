@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/vue'
 import { describe, expect, it } from 'vitest'
 import ReasoningArtifactDiagnostics from './ReasoningArtifactDiagnostics.vue'
 import type { ReasoningArtifact } from '@/next/provider/reasoningArtifact'
+import { t } from '@/shared/i18n'
 
 const BASE = {
   id: 'ra-1',
@@ -33,9 +34,9 @@ describe('ReasoningArtifactDiagnostics', () => {
     })
 
     const root = screen.getByTestId('reasoning-artifact-diagnostics')
-    expect(root.textContent).toContain('Reasoning details · 1')
+    expect(root.textContent).toContain(`${t('diagnostics.reasoningArtifacts.title')} · 1`)
     expect(root.textContent).toContain('anthropic_messages')
-    expect(root.textContent).toContain('thinking text')
+    expect(root.textContent).toContain(t('diagnostics.reasoningArtifacts.kind.thinkingText'))
     expect(root.textContent).toContain('hidden thinking')
   })
 
@@ -56,7 +57,7 @@ describe('ReasoningArtifactDiagnostics', () => {
     })
 
     const root = screen.getByTestId('reasoning-artifact-diagnostics')
-    expect(root.textContent).toContain('provider signature')
+    expect(root.textContent).toContain(t('diagnostics.reasoningArtifacts.kind.signature'))
     expect(root.textContent).toContain('Provider signature metadata')
     expect(root.textContent).not.toContain('sig-secret')
   })
@@ -79,7 +80,7 @@ describe('ReasoningArtifactDiagnostics', () => {
     })
 
     const root = screen.getByTestId('reasoning-artifact-diagnostics')
-    expect(root.textContent).toContain('opaque reasoning')
+    expect(root.textContent).toContain(t('diagnostics.reasoningArtifacts.kind.opaqueReasoning'))
     expect(root.textContent).toContain('Opaque reasoning; not displayable.')
     expect(root.textContent).not.toContain('encrypted-provider-payload')
   })

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
+import { t } from '@/shared/i18n'
 
 const hoisted = vi.hoisted(() => {
   const fixtureErrorEnvelope: ErrorEnvelope = {
@@ -638,7 +639,7 @@ describe('ui-app AppChatApp stream session parity', () => {
 
     await screen.findByText('hello')
     const diagnostics = await screen.findByTestId('reasoning-artifact-diagnostics')
-    expect(diagnostics.textContent).toContain('Reasoning details · 1')
+    expect(diagnostics.textContent).toContain(`${t('diagnostics.reasoningArtifacts.title')} · 1`)
     expect(diagnostics.textContent).toContain('reasoning-fixture')
 
     await vi.runAllTimersAsync()

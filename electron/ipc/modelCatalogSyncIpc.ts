@@ -305,7 +305,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           } else if (result.failureMessage) {
             const mapped = mapErrorToSyncCode(new Error(result.failureMessage))
             errorCode = mapped.code
-            errorMessage = mapped.code === 'unknown_error' ? '未知错误' : mapped.message
+            errorMessage = mapped.message || mapped.code
           }
         }
 
@@ -323,7 +323,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
         }
       } catch (error) {
         const mapped = mapErrorToSyncCode(error)
-        const safeErrorMessage = mapped.code === 'unknown_error' ? '未知错误' : mapped.message
+        const safeErrorMessage = mapped.message || mapped.code
         console.warn('[modelCatalog.syncNow] sync exception', {
           stage: 'syncNow_handler',
           providerKey,

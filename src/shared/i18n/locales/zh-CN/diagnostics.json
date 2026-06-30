@@ -7,6 +7,19 @@
     "detectFailed": "检测失败",
     "engineUnavailable": "检测引擎不可用",
     "engineTimeout": "检测引擎超时",
-    "verdictStale": "检测结论已过期"
+    "verdictStale": "检测结论已过期",
+    "reasoningArtifacts": {
+      "title": "推理详情",
+      "hiddenCount": "此诊断视图中还隐藏了 {count} 个推理详情 artifact。",
+      "kind": {
+        "reasoningText": "推理文本",
+        "reasoningSummary": "推理摘要",
+        "thinkingText": "thinking 文本",
+        "thoughtText": "thought 文本",
+        "signature": "provider signature",
+        "opaqueReasoning": "opaque reasoning",
+        "providerMetadata": "provider metadata"
+      }
+    }
   }
 }

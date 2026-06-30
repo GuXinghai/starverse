@@ -2,7 +2,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SettingsPanel from './SettingsPanel.vue'
-import { resetI18nForTests } from '@/shared/i18n'
+import { resetI18nForTests, t, tf } from '@/shared/i18n'
+
+const configuredMaskText = () => tf('settings.credentials.configured', { value: '***' })
 
 function createElectronStoreMock() {
   const get = vi.fn(async (_key: string) => {
@@ -366,7 +368,7 @@ describe('ui-app SettingsPanel', () => {
     const keyInput = screen.getByPlaceholderText('sk-…') as HTMLInputElement
     await waitFor(() => expect(keyInput).not.toBeDisabled())
     expect(keyInput.value).toBe('')
-    expect(screen.getByText('已配置：***')).toBeTruthy()
+    expect(screen.getByTestId('settings-openrouter-key-status').textContent).toContain(configuredMaskText())
 
     await user.clear(keyInput)
     await user.type(keyInput, 'sk-new')
@@ -415,7 +417,7 @@ describe('ui-app SettingsPanel', () => {
     await waitFor(() => expect(keyInput).not.toBeDisabled())
     expect(keyInput).toHaveValue('')
     expect(screen.queryByDisplayValue('sk-old')).toBeNull()
-    expect(screen.getByText('已配置：***')).toBeTruthy()
+    expect(screen.getByTestId('settings-openrouter-key-status').textContent).toContain(configuredMaskText())
     expect(screen.getByDisplayValue('https://openrouter.ai/api/v1')).toBeTruthy()
 
     await user.clear(keyInput)
@@ -447,8 +449,8 @@ describe('ui-app SettingsPanel', () => {
     const panel = await screen.findByTestId('settings-openai-responses-experimental')
     const openAIKeyInput = screen.getByTestId('settings-openai-responses-api-key') as HTMLInputElement
     await waitFor(() => expect(openAIKeyInput).not.toBeDisabled())
-    expect(panel.textContent).toContain('Native OpenAI Responses text-only path')
-    expect(screen.getByTestId('settings-openai-responses-key-status').textContent).toContain('Configured: ***')
+    expect(panel.textContent).toContain(t('settings.experimentalChat.openAIResponses.desc'))
+    expect(screen.getByTestId('settings-openai-responses-key-status').textContent).toContain(configuredMaskText())
     expect(openAIKeyInput).toHaveValue('')
     expect(screen.queryByDisplayValue('sk-openai-old')).toBeNull()
 
@@ -476,9 +478,9 @@ describe('ui-app SettingsPanel', () => {
     const panel = await screen.findByTestId('settings-google-ai-studio-experimental')
     const googleKeyInput = screen.getByTestId('settings-google-ai-studio-api-key') as HTMLInputElement
     await waitFor(() => expect(googleKeyInput).not.toBeDisabled())
-    expect(panel.textContent).toContain('Native Gemini API text-only path')
-    expect(panel.textContent).toContain('does not use legacy Gemini runtime')
-    expect(screen.getByTestId('settings-google-ai-studio-key-status').textContent).toContain('Configured: ***')
+    expect(panel.textContent).toContain(t('settings.experimentalChat.googleAIStudio.desc'))
+    expect(panel.textContent).toContain(t('settings.experimentalChat.googleAIStudio.note'))
+    expect(screen.getByTestId('settings-google-ai-studio-key-status').textContent).toContain(configuredMaskText())
     expect(googleKeyInput).toHaveValue('')
     expect(screen.queryByDisplayValue('AIza-old-google-key')).toBeNull()
 
@@ -506,9 +508,8 @@ describe('ui-app SettingsPanel', () => {
     const panel = await screen.findByTestId('settings-anthropic-experimental')
     const anthropicKeyInput = screen.getByTestId('settings-anthropic-api-key') as HTMLInputElement
     await waitFor(() => expect(anthropicKeyInput).not.toBeDisabled())
-    expect(panel.textContent).toContain('Native Anthropic Messages text-only path')
-    expect(panel.textContent).toContain('main-process credential bridge')
-    expect(screen.getByTestId('settings-anthropic-key-status').textContent).toContain('Configured: ***')
+    expect(panel.textContent).toContain(t('settings.experimentalChat.anthropic.desc'))
+    expect(screen.getByTestId('settings-anthropic-key-status').textContent).toContain(configuredMaskText())
     expect(anthropicKeyInput).toHaveValue('')
     expect(screen.queryByDisplayValue('sk-ant-old-key')).toBeNull()
 
@@ -535,9 +536,8 @@ describe('ui-app SettingsPanel', () => {
     const panel = await screen.findByTestId('settings-deepseek-experimental')
     const deepSeekKeyInput = screen.getByTestId('settings-deepseek-api-key') as HTMLInputElement
     await waitFor(() => expect(deepSeekKeyInput).not.toBeDisabled())
-    expect(panel.textContent).toContain('DeepSeek official profile')
-    expect(panel.textContent).toContain('main-process credential bridge')
-    expect(screen.getByTestId('settings-deepseek-key-status').textContent).toContain('Configured: ***')
+    expect(panel.textContent).toContain(t('settings.experimentalChat.deepSeek.desc'))
+    expect(screen.getByTestId('settings-deepseek-key-status').textContent).toContain(configuredMaskText())
     expect(deepSeekKeyInput).toHaveValue('')
     expect(screen.queryByDisplayValue('sk-deepseek-old-key')).toBeNull()
 
@@ -662,7 +662,7 @@ describe('ui-app SettingsPanel', () => {
       const customEvents = dispatched.filter((event) => event.type === 'settings:deepSeekTextChatUpdated') as CustomEvent[]
       expect(customEvents.at(-1)?.detail).toEqual({ model: 'deepseek-chat' })
       expect(document.body.textContent).not.toContain('endpoint picker')
-      expect(document.body.textContent).toContain('does not persist reasoning_content')
+      expect(document.body.textContent).toContain(t('settings.experimentalChat.deepSeek.note'))
     } finally {
       window.dispatchEvent = originalDispatch
     }
@@ -680,8 +680,8 @@ describe('ui-app SettingsPanel', () => {
     await screen.findByText('设置')
 
     const endpointMetadata = await screen.findByTestId('settings-openrouter-endpoint-metadata')
-    expect(screen.getByTestId('settings-openrouter-endpoint-status').textContent).toContain('Custom endpoint')
-    expect(endpointMetadata.textContent).toContain('OpenRouter custom endpoint')
+    expect(screen.getByTestId('settings-openrouter-endpoint-status').textContent).toContain(t('settings.openrouter.endpointCustom'))
+    expect(endpointMetadata.textContent).toContain(t('settings.openrouter.endpointNameCustom'))
     expect(endpointMetadata.textContent).toContain('https://openrouter.ai/api/v1')
     expect(endpointMetadata.textContent).not.toContain('Authorization')
     expect(endpointMetadata.textContent).not.toContain('Bearer')
@@ -703,8 +703,8 @@ describe('ui-app SettingsPanel', () => {
     const endpointMetadata = await screen.findByTestId('settings-openrouter-endpoint-metadata')
     const baseUrlInput = screen.getByPlaceholderText('https://openrouter.ai/api/v1') as HTMLInputElement
 
-    expect(screen.getByTestId('settings-openrouter-endpoint-status').textContent).toContain('Official endpoint')
-    expect(endpointMetadata.textContent).toContain('OpenRouter official endpoint')
+    expect(screen.getByTestId('settings-openrouter-endpoint-status').textContent).toContain(t('settings.openrouter.endpointOfficial'))
+    expect(endpointMetadata.textContent).toContain(t('settings.openrouter.endpointNameOfficial'))
     expect(endpointMetadata.textContent).toContain('https://openrouter.ai/api/v1')
     expect(baseUrlInput).toHaveValue('')
   })
@@ -820,8 +820,8 @@ describe('ui-app SettingsPanel', () => {
     const baseUrlInput = screen.getByPlaceholderText('https://openrouter.ai/api/v1') as HTMLInputElement
     await waitFor(() => expect(baseUrlInput).not.toBeDisabled())
     expect(baseUrlInput).toHaveValue('')
-    expect(screen.getByTestId('settings-openrouter-endpoint-status').textContent).toContain('Invalid custom endpoint')
-    expect(screen.getByTestId('settings-openrouter-endpoint-warning').textContent).toContain('Invalid custom base URL')
+    expect(screen.getByTestId('settings-openrouter-endpoint-status').textContent).toContain(t('settings.openrouter.endpointInvalidCustom'))
+    expect(screen.getByTestId('settings-openrouter-endpoint-warning').textContent).toContain(t('settings.openrouter.endpointCustomBaseUrlInvalid'))
     expect(screen.queryByDisplayValue('[invalid-url]')).toBeNull()
     expect(screen.queryByDisplayValue('https://user:pass@?token=sk-hidden')).toBeNull()
     expect(screen.getByTestId('settings-openrouter-endpoint-metadata').textContent).not.toContain('user:pass')
@@ -1042,12 +1042,11 @@ describe('ui-app SettingsPanel', () => {
       expect(screen.getByTestId('settings-local-endpoint-probe-status').textContent).toContain('reachable')
       expect(screen.getByTestId('settings-local-endpoint-probe-family').textContent).toContain('openai_compatible')
       expect(screen.getByTestId('settings-local-endpoint-probe-models').textContent).toContain('local-model-a')
-      expect(screen.getByTestId('settings-local-endpoint-probe-capabilities').textContent).toContain('diagnostics do not activate chat send')
+      expect(screen.getByTestId('settings-local-endpoint-probe-capabilities').textContent).toContain(t('settings.localEndpoint.textCapabilitySummary'))
       expect(result.textContent).not.toContain('sk-hidden')
       expect(result.textContent).not.toContain('Authorization')
       expect(result.textContent).not.toContain('Bearer')
-      expect(document.body.textContent).toContain('Experimental diagnostics only')
-      expect(document.body.textContent).toContain('Text chat requires the explicit LocalEndpoint console mode')
+      expect(document.body.textContent).toContain(t('settings.localEndpoint.desc'))
 
       const select = screen.getByTestId('settings-local-endpoint-probed-model-select') as HTMLSelectElement
       await waitFor(() => expect(select.value).toBe('local-model-a'))
@@ -1057,7 +1056,7 @@ describe('ui-app SettingsPanel', () => {
       expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.url')).toBe('http://localhost:1234/v1')
       expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.model')).toBe('local-model-b')
       expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.enabled')).toBeNull()
-      expect(screen.getByTestId('settings-local-endpoint-chat-note').textContent).toContain('does not enable chat by itself')
+      expect(screen.getByTestId('settings-local-endpoint-chat-note').textContent).toContain(t('settings.localEndpoint.note'))
       expect(settingsUpdated).toHaveBeenCalledTimes(1)
       expect((settingsUpdated.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({
         endpointUrl: 'http://localhost:1234/v1',
@@ -1100,7 +1099,7 @@ describe('ui-app SettingsPanel', () => {
     expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.url')).toBe('http://localhost:4321/v1')
     expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.model')).toBe('manual-local-model')
     expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.enabled')).toBeNull()
-    expect(screen.getByTestId('settings-local-endpoint-chat-note').textContent).toContain('default-off')
+    expect(screen.getByTestId('settings-local-endpoint-chat-note').textContent).toContain(t('settings.localEndpoint.manualNote'))
     expect(document.body.textContent).not.toContain('Authorization')
     expect(document.body.textContent).not.toContain('Bearer')
   })
@@ -1138,7 +1137,9 @@ describe('ui-app SettingsPanel', () => {
     await screen.findByText('设置')
     await user.click(screen.getByTestId('settings-local-endpoint-probe'))
 
-    expect(await screen.findByTestId('settings-local-endpoint-probe-models')).toHaveTextContent('Model list failed')
+    expect(await screen.findByTestId('settings-local-endpoint-probe-models')).toHaveTextContent(
+      tf('settings.localEndpoint.modelListFailed', { message: 'Model list failed safely.' }),
+    )
     const manualInput = screen.getByTestId('settings-local-endpoint-manual-model') as HTMLInputElement
     await user.type(manualInput, 'manual-after-list-failure')
     await user.click(screen.getByTestId('settings-local-endpoint-apply-chat'))
@@ -1171,7 +1172,7 @@ describe('ui-app SettingsPanel', () => {
     expect(screen.getByTestId('settings-local-endpoint-stream-family').textContent).toContain('openai_compatible')
     expect(screen.getByTestId('settings-local-endpoint-stream-evidence').textContent).toContain('text_delta_observed')
     expect(screen.getByTestId('settings-local-endpoint-stream-evidence').textContent).toContain('pong')
-    expect(screen.getByTestId('settings-local-endpoint-stream-capabilities').textContent).toContain('diagnostics do not activate chat send')
+    expect(screen.getByTestId('settings-local-endpoint-stream-capabilities').textContent).toContain(t('settings.localEndpoint.streamingCapabilitySummary'))
     expect(result.textContent).not.toContain('sk-hidden')
     expect(result.textContent).not.toContain('Authorization')
     expect(result.textContent).not.toContain('Bearer')
@@ -1196,7 +1197,7 @@ describe('ui-app SettingsPanel', () => {
     const storeDelete = (globalThis as any).electronStore.delete as ReturnType<typeof vi.fn>
     expect(storeDelete).not.toHaveBeenCalledWith('openRouterApiKey')
     expect((globalThis as any).openRouterCredential.clear).toHaveBeenCalledTimes(1)
-    await waitFor(() => expect(screen.getByText('未配置')).toBeTruthy())
+    await waitFor(() => expect(screen.getByTestId('settings-openrouter-key-status').textContent).toContain(t('settings.credentials.notConfigured')))
     expect(screen.getByDisplayValue('https://openrouter.ai/api/v1')).toBeTruthy()
   })
 

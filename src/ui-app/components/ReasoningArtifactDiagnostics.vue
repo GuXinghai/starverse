@@ -5,6 +5,7 @@ import {
   type ReasoningArtifact,
   type ReasoningArtifactKind,
 } from '@/next/provider/reasoningArtifact'
+import { t, tf } from '@/shared/i18n'
 
 const props = defineProps<{
   artifacts: readonly ReasoningArtifact[]
@@ -15,19 +16,19 @@ const visibleArtifacts = computed(() => props.artifacts.slice(0, 20))
 function kindLabel(kind: ReasoningArtifactKind): string {
   switch (kind) {
     case 'reasoning_text':
-      return 'reasoning text'
+      return t('diagnostics.reasoningArtifacts.kind.reasoningText')
     case 'reasoning_summary':
-      return 'reasoning summary'
+      return t('diagnostics.reasoningArtifacts.kind.reasoningSummary')
     case 'thinking_text':
-      return 'thinking text'
+      return t('diagnostics.reasoningArtifacts.kind.thinkingText')
     case 'thought_text':
-      return 'thought text'
+      return t('diagnostics.reasoningArtifacts.kind.thoughtText')
     case 'signature':
-      return 'provider signature'
+      return t('diagnostics.reasoningArtifacts.kind.signature')
     case 'opaque_reasoning':
-      return 'opaque reasoning'
+      return t('diagnostics.reasoningArtifacts.kind.opaqueReasoning')
     case 'provider_metadata':
-      return 'provider metadata'
+      return t('diagnostics.reasoningArtifacts.kind.providerMetadata')
   }
 }
 
@@ -43,7 +44,7 @@ function preview(artifact: ReasoningArtifact): string {
     data-testid="reasoning-artifact-diagnostics"
   >
     <summary class="cursor-pointer select-none font-medium text-gray-700">
-      Reasoning details · {{ artifacts.length }}
+      {{ t('diagnostics.reasoningArtifacts.title') }} · {{ artifacts.length }}
     </summary>
 
     <div class="mt-2 space-y-2">
@@ -73,7 +74,7 @@ function preview(artifact: ReasoningArtifact): string {
         v-if="artifacts.length > visibleArtifacts.length"
         class="text-gray-500"
       >
-        {{ artifacts.length - visibleArtifacts.length }} more reasoning detail artifacts hidden in this diagnostic view.
+        {{ tf('diagnostics.reasoningArtifacts.hiddenCount', { count: artifacts.length - visibleArtifacts.length }) }}
       </div>
     </div>
   </details>
