@@ -407,6 +407,7 @@ async function runScenario(scenario: StreamScenario): Promise<ScenarioSummary> {
 describe('ui-app AppChatApp stream session terminal idempotency', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronStore = (globalThis as any).electronStore
+  const originalOpenRouterCredential = (globalThis as any).openRouterCredential
   const originalSetTimeout = globalThis.setTimeout
 
   beforeEach(() => {
@@ -426,6 +427,7 @@ describe('ui-app AppChatApp stream session terminal idempotency', () => {
         return undefined
       }),
     }
+    ;(globalThis as any).openRouterCredential = { getStatus: vi.fn(async () => ({ ok: true, status: { apiKeyConfigured: true, warnings: [] } })) }
   })
 
   afterEach(() => {
@@ -433,6 +435,7 @@ describe('ui-app AppChatApp stream session terminal idempotency', () => {
     hoisted.scenario = 'done_then_throw'
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronStore = originalElectronStore
+    ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
     globalThis.setTimeout = originalSetTimeout
     globalThis.localStorage?.removeItem('starverse.openRouterTextChat.enabled')
     vi.useRealTimers()

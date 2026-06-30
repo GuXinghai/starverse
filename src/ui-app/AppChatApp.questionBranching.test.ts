@@ -16,6 +16,7 @@ vi.mock('@/next/live/openRouterLiveStream', () => {
 describe('ui-app AppChatApp (question branching: pager + edit)', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronStore = (globalThis as any).electronStore
+  const originalOpenRouterCredential = (globalThis as any).openRouterCredential
   let forceCloneFromMessageFailure = false
   let replayStatusByMessageId: Record<string, 'sendable' | 'blocked' | 'needs_confirmation'> = {}
   let replayBlockingReasonByMessageId: Record<string, string> = {}
@@ -26,6 +27,7 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
     replayStatusByMessageId = {}
     replayBlockingReasonByMessageId = {}
     ;(globalThis as any).electronStore = { get: vi.fn(async () => 'sk-test') }
+    ;(globalThis as any).openRouterCredential = { getStatus: vi.fn(async () => ({ ok: true, status: { apiKeyConfigured: true, warnings: [] } })) }
 
     const convoId = 'c1'
     const branchId = 'b1'
@@ -450,6 +452,7 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronStore = originalElectronStore
+    ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
   })
 
   it('renders question pager and calls branch.switchQuestionCandidate', async () => {

@@ -5,6 +5,7 @@ import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestM
 import AppChatApp from './AppChatApp.vue'
 
 const streamOpenRouterChatCallArgs: any[] = []
+const openAIResponsesTextChatCallArgs: any[] = []
 
 vi.mock('@/next/modelCatalog/modelDetailService', () => ({
   getModelCatalogModelDetail: vi.fn(async () => ({
@@ -83,6 +84,18 @@ vi.mock('@/next/live/openRouterLiveStream', () => {
     yield { type: 'StreamDone' }
   }
   return { streamOpenRouterChatAsEvents }
+})
+
+vi.mock('@/next/live/openAIResponsesTextChat', () => {
+  async function* streamOpenAIResponsesTextChatAsDomainEvents(options: any) {
+    openAIResponsesTextChatCallArgs.push(options)
+    const assistantMessageId = String(options?.assistantMessageId ?? '')
+    yield { type: 'MetaDelta', meta: { id: 'openai_responses_gen_1', model: String(options?.model ?? 'gpt-4.1-mini'), provider: 'openai_responses' } }
+    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'openai ' }
+    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'ok' }
+    yield { type: 'StreamDone' }
+  }
+  return { streamOpenAIResponsesTextChatAsDomainEvents }
 })
 
 type PersistedMessage = {
@@ -371,10 +384,14 @@ function mockStableAppBootstrapCalls(method: string, params?: any) {
 describe('ui-app AppChatApp (regenerate + retry replace)', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronStore = (globalThis as any).electronStore
+  const originalOpenRouterCredential = (globalThis as any).openRouterCredential
+  const originalOpenAIResponsesCredential = (globalThis as any).openAIResponsesCredential
+  const originalOpenAIResponsesModels = (globalThis as any).openAIResponsesModels
   const originalSetTimeout = globalThis.setTimeout
   beforeEach(() => {
     vi.useFakeTimers()
     streamOpenRouterChatCallArgs.length = 0
+    openAIResponsesTextChatCallArgs.length = 0
     historyAttachmentRowsByMessageId = {}
     fileAssetsById = {}
     replayPrepareStatusByMessageId = {}
@@ -388,11 +405,28 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
         return undefined
       }),
     }
+    ;(globalThis as any).openRouterCredential = { getStatus: vi.fn(async () => ({ ok: true, status: { apiKeyConfigured: true, warnings: [] } })) }
+    ;(globalThis as any).openAIResponsesCredential = { getStatus: vi.fn(async () => ({ ok: true, status: { apiKeyConfigured: true, warnings: [] } })) }
+    ;(globalThis as any).openAIResponsesModels = {
+      listAvailability: vi.fn(async () => ({
+        ok: true,
+        providerKey: 'openai_responses',
+        endpointId: 'openai-responses-official',
+        profileId: 'openai_responses_v1',
+        observedAtMs: 123,
+        models: [{ nativeModelId: 'gpt-4.1-mini', displayName: 'gpt-4.1-mini', warnings: [], capabilitySeed: { textChat: true } }],
+        warnings: [],
+        sourceDocuments: [],
+      })),
+    }
   })
 
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronStore = originalElectronStore
+    ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
+    ;(globalThis as any).openAIResponsesCredential = originalOpenAIResponsesCredential
+    ;(globalThis as any).openAIResponsesModels = originalOpenAIResponsesModels
     globalThis.setTimeout = originalSetTimeout
     vi.useRealTimers()
   })
@@ -624,7 +658,171 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
         modelKey: 'openrouter::' + DEFAULT_OPENROUTER_TEST_MODEL,
       }),
     )
+    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
     expect(invoke.mock.calls.filter((c) => c[0] === 'branch.getCandidates').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('regenerate uses stored non-OpenRouter provider metadata and never falls back to OpenRouter', async () => {
+    const user = userEvent.setup()
+
+    const convoId = 'c1'
+    const branchId = 'b1'
+    const now = Date.now()
+
+    const store: {
+      headMessageId: string | null
+      chosenAnswerRootId: string
+      candidatesNewToOld: Array<{ answerRootId: string; createdAt: number; status: string }>
+      messagesById: Record<string, PersistedMessage>
+    } = {
+      headMessageId: 'a1',
+      chosenAnswerRootId: 'a1',
+      candidatesNewToOld: [{ answerRootId: 'a1', createdAt: now + 2, status: 'final' }],
+      messagesById: {
+        u1: {
+          id: 'u1',
+          convoId,
+          role: 'user',
+          seq: 1,
+          createdAt: now,
+          parentId: null,
+          status: 'final',
+          answerRootId: null,
+          questionId: null,
+          body: 'Q1',
+          meta: null,
+        },
+        a1: {
+          id: 'a1',
+          convoId,
+          role: 'assistant',
+          seq: 2,
+          createdAt: now + 1,
+          parentId: 'u1',
+          status: 'final',
+          answerRootId: 'a1',
+          questionId: 'u1',
+          body: 'A1',
+          meta: { providerId: 'openai_responses', modelId: 'gpt-4.1-mini' },
+        },
+      },
+    }
+
+    const invoke = vi.fn(async (method: string, params?: any) => {
+      const projectBootstrap = mockStableAppBootstrapCalls(method, params)
+      if (projectBootstrap !== undefined) return projectBootstrap
+      if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
+      if (method === 'branch.ensureDefault') {
+        return { id: branchId, convoId, headMessageId: store.headMessageId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
+      }
+      if (method === 'branch.list') {
+        return [{ id: branchId, convoId, headMessageId: store.headMessageId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }]
+      }
+      if (method === 'context.getRenderableTurns') {
+        const q = store.messagesById.u1
+        const chosen = store.messagesById[store.chosenAnswerRootId]
+        return {
+          messages: [q, chosen],
+          turns: [{ questionId: 'u1', chosenAnswerRootId: store.chosenAnswerRootId, questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
+        }
+      }
+      if (method === 'context.buildForBranch') return { messages: [] }
+      if (method === 'branch.getCandidates') return store.candidatesNewToOld
+      if (method === 'messageAttachment.listByMessageId') return []
+      if (method === 'branch.regenerateFromQuestion') {
+        const createdAt = Date.now()
+        store.messagesById.a2 = {
+          id: 'a2',
+          convoId,
+          role: 'assistant',
+          seq: 3,
+          createdAt,
+          parentId: 'u1',
+          status: 'streaming',
+          answerRootId: 'a2',
+          questionId: 'u1',
+          body: '',
+          meta: null,
+        }
+        store.headMessageId = 'a2'
+        store.chosenAnswerRootId = 'a2'
+        store.candidatesNewToOld = [
+          { answerRootId: 'a2', createdAt: createdAt + 1, status: 'streaming' },
+          ...store.candidatesNewToOld,
+        ]
+        return { ok: true, newAnswerRootId: 'a2', newAssistantSeq: 3 }
+      }
+      if (method === 'message.appendDelta') {
+        const seq = Number(params?.seq ?? NaN)
+        const appendBody = String(params?.appendBody ?? '')
+        const msg = Object.values(store.messagesById).find((m) => m.seq === seq)
+        if (msg) msg.body = String(msg.body ?? '') + appendBody
+        return { ok: true }
+      }
+      if (method === 'message.setStatus') {
+        const messageId = String(params?.messageId ?? '')
+        const status = String(params?.status ?? '')
+        const msg = store.messagesById[messageId]
+        if (msg) {
+          msg.status = status as any
+          msg.meta = { ...(msg.meta ?? {}), ...(params?.metaPatch ?? {}) }
+        }
+        return { ok: true }
+      }
+      if (method === 'modelPrefs.recordRecent') {
+        const nowTs = Date.now()
+        return {
+          scopeType: 'global',
+          scopeId: '',
+          providerKey: String(params?.providerKey ?? ''),
+          modelId: String(params?.modelId ?? ''),
+          modelKey: String(params?.modelKey ?? ''),
+          lastUsedAtMs: nowTs,
+          useCount: 1,
+          createdAtMs: nowTs,
+          updatedAtMs: nowTs,
+        }
+      }
+      return { ok: true }
+    })
+
+    ;(globalThis as any).dbBridge = { invoke }
+
+    render(AppChatApp)
+
+    await screen.findByText('Q1')
+    await screen.findByText('A1')
+    await user.click(await screen.findByTestId('regen-q-u1'))
+
+    await screen.findByText('openai ok')
+    await vi.runAllTimersAsync()
+
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs[0]).toEqual(expect.objectContaining({
+      model: 'gpt-4.1-mini',
+      userText: 'Q1',
+    }))
+    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
+    expect(invoke).toHaveBeenCalledWith(
+      'modelPrefs.recordRecent',
+      expect.objectContaining({
+        providerKey: 'openai_responses',
+        modelId: 'gpt-4.1-mini',
+        modelKey: 'openai_responses::gpt-4.1-mini',
+      }),
+    )
+    expect(invoke).toHaveBeenCalledWith(
+      'message.setStatus',
+      expect.objectContaining({
+        messageId: 'a2',
+        status: 'final',
+        metaPatch: expect.objectContaining({
+          providerId: 'openai_responses',
+          modelId: 'gpt-4.1-mini',
+        }),
+      }),
+    )
   })
 
   it('regenerate replays historical attachments into the OpenRouter request', async () => {
