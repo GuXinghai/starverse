@@ -104,6 +104,67 @@ describe('providerFileUploadService', () => {
     expect(JSON.stringify(db.call.mock.calls)).not.toContain('sk-CaseSensitive')
   })
 
+  it('uses derived upload block identity and content hash as the provider file cache key', async () => {
+    const derivedBytes = Buffer.from('%PDF-1.4\nderived\n')
+    const derivedBlock = {
+      ...uploadBlock,
+      assetId: 'derivative-pdf-send',
+      revisionId: 'derived:asset-source:derivative-pdf-send:2000',
+      blobSha256: createHash('sha256').update(derivedBytes).digest('hex'),
+      sizeBytes: derivedBytes.byteLength,
+      filename: 'derivative-pdf-send.pdf',
+      dataBase64: derivedBytes.toString('base64'),
+    } as const
+    const db = {
+      call: vi.fn(async (method: string, params: any) => {
+        if (method === 'providerFileCache.findReusable') return null
+        if (method === 'providerFileCache.reserve') {
+          return {
+            status: 'reserved',
+            record: readyRecord({
+              id: 'cache-derived',
+              status: 'uploading',
+              providerFileId: null,
+              assetId: params.assetId,
+              revisionId: params.revisionId,
+              blobSha256: params.blobSha256,
+              sizeBytes: params.sizeBytes,
+            }),
+          }
+        }
+        if (method === 'providerFileCache.markReady') return readyRecord({ id: params.id, providerFileId: params.providerFileId })
+        return null
+      }),
+    }
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ id: 'file-derived-uploaded', object: 'file' }), { status: 200 }))
+    const service = createProviderFileUploadService({ db })
+
+    const result = await service.resolveContentBlocks({
+      provider: 'openai_responses',
+      endpointFamily: 'openai_responses',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-openai-secret',
+      blocks: [derivedBlock],
+      fetchImpl: fetchImpl as any,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      blocks: [{ type: 'input_file', file_id: 'file-derived-uploaded' }],
+    })
+    const reserveCall = db.call.mock.calls.find(([method]) => method === 'providerFileCache.reserve')
+    expect(reserveCall?.[1]).toMatchObject({
+      assetId: 'derivative-pdf-send',
+      revisionId: 'derived:asset-source:derivative-pdf-send:2000',
+      blobSha256: derivedBlock.blobSha256,
+      mimeType: 'application/pdf',
+      sizeBytes: derivedBytes.byteLength,
+      assetKind: 'pdf',
+    })
+    expect(JSON.stringify(reserveCall?.[1])).not.toContain('asset-upload')
+    expect(JSON.stringify(reserveCall?.[1])).not.toContain('rev-upload')
+  })
+
   it('marks upload failures failed without creating a reusable ready cache', async () => {
     const db = {
       call: vi.fn(async (method: string) => {

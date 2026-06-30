@@ -73,6 +73,7 @@ function makeHarness(storageRootDir: string) {
   registerProviderFileInputHandlers((method, handler) => handlers.set(method, handler), {
     fileAssetRepo,
     fileAssetStoreRepo,
+    fileDerivativeRepo,
     sendPlanService,
     fileStorageRootDir: storageRootDir,
   } as any)
@@ -82,6 +83,7 @@ function makeHarness(storageRootDir: string) {
     handlers,
     fileAssetRepo,
     fileAssetStoreRepo,
+    fileDerivativeRepo,
     fileTypeVerdictRepo,
     conversationAttachmentService,
   }
@@ -180,6 +182,116 @@ async function createDraftPdfAsset(input: Readonly<{
   })
   createVerdict(input.h.fileTypeVerdictRepo, input.assetId, 'pdf', 'document')
   input.h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: input.assetId })
+}
+
+async function createDraftDocumentAsset(input: Readonly<{
+  h: ReturnType<typeof makeHarness>
+  storageRootDir: string
+  assetId: string
+  filename: string
+  extension: string
+  mime: string
+  formatId: FileFormatId
+  bytes: Uint8Array
+}>) {
+  const storageUri = `assets/blobs/${input.assetId}/${input.filename}`
+  const filePath = path.join(input.storageRootDir, ...storageUri.split('/'))
+  await mkdir(path.dirname(filePath), { recursive: true })
+  await writeFile(filePath, input.bytes)
+
+  input.h.fileAssetRepo.create({
+    id: input.assetId,
+    sha256: hash(input.bytes),
+    filename: input.filename,
+    extension: input.extension,
+    mime: input.mime,
+    sizeBytes: input.bytes.byteLength,
+    assetKind: 'document',
+    sourceKind: 'local_upload',
+    storageBackend: 'local_fs',
+    storageUri: `assets/original/${input.assetId}/${input.filename}`,
+    ingestStatus: 'stored',
+    previewStatus: 'not_requested',
+  })
+  const blob = input.h.fileAssetStoreRepo.createBlob({
+    id: `blob-${input.assetId}`,
+    sha256: hash(input.bytes),
+    sizeBytes: input.bytes.byteLength,
+    mime: input.mime,
+    storageBackend: 'local_fs',
+    storageUri,
+    createdAt: 1000,
+  })
+  input.h.fileAssetStoreRepo.createRevision({
+    id: `rev-${input.assetId}`,
+    assetId: input.assetId,
+    blobId: blob.id,
+    cause: 'imported',
+    createdAt: 1000,
+  })
+  createVerdict(input.h.fileTypeVerdictRepo, input.assetId, input.formatId, 'document')
+  input.h.conversationAttachmentService.addDraftAttachment({ conversationId: 'c1', assetId: input.assetId })
+}
+
+async function createDfcDerivedPdf(input: Readonly<{
+  h: ReturnType<typeof makeHarness>
+  storageRootDir: string
+  sourceAssetId: string
+  derivativeId: string
+  bytes: Uint8Array
+  status?: 'pending' | 'ready' | 'failed' | 'deleted'
+}>) {
+  const storageUri = `assets/derived/${input.sourceAssetId}/${input.derivativeId}.pdf`
+  const filePath = path.join(input.storageRootDir, ...storageUri.split('/'))
+  await mkdir(path.dirname(filePath), { recursive: true })
+  await writeFile(filePath, input.bytes)
+  const source = input.h.fileAssetRepo.getById(input.sourceAssetId)
+  input.h.fileDerivativeRepo.create({
+    id: input.derivativeId,
+    parentAssetId: input.sourceAssetId,
+    derivedKind: 'converted_pdf',
+    mime: 'application/pdf',
+    storageUri,
+    generator: 'provider-input-test-converter',
+    status: input.status ?? 'ready',
+    metaJson: {
+      targetKind: 'pdf_attachment',
+      usage: 'preview_and_send',
+      storageClass: 'draft_bound',
+      sourceHash: source?.sha256 ?? hash(new Uint8Array()),
+      contentHash: hash(input.bytes),
+      conversionSettingsHash: 'provider-input-test-settings',
+      converterName: 'provider-input-test-converter',
+      converterVersion: '1',
+    },
+    createdAt: 2000,
+    updatedAt: 2000,
+  })
+  return { storageUri, sha256: hash(input.bytes), sizeBytes: input.bytes.byteLength }
+}
+
+function selectDfcPdfOption(input: Readonly<{
+  h: ReturnType<typeof makeHarness>
+  assetId: string
+  derivativeId: string
+}>) {
+  const options = input.h.conversationAttachmentService.getDfcDraftAttachmentOptions({
+    conversationId: 'c1',
+    assetId: input.assetId,
+  })
+  const pdfOption = options.options.find((option) =>
+    option.targetKind === 'pdf_attachment' &&
+    option.sendAssetRefs.some((ref) => ref.kind === 'derived_asset' && ref.assetId === input.derivativeId)
+  )
+  expect(pdfOption).toBeTruthy()
+  input.h.conversationAttachmentService.updateDraftAttachmentSettings({
+    conversationId: 'c1',
+    assetId: input.assetId,
+    dfcManaged: true,
+    selectedOptionId: pdfOption?.optionId ?? '',
+    selectedAssetRefs: pdfOption?.sendAssetRefs ?? [],
+  })
+  return pdfOption
 }
 
 function createVerdict(
@@ -436,6 +548,209 @@ describeIfBetterSqlite('provider file input worker handlers', () => {
     }
   })
 
+  it('prepares the selected DFC derived PDF bytes instead of the original source asset', async () => {
+    const storageRootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-provider-file-input-'))
+    const h = makeHarness(storageRootDir)
+    try {
+      const sourceBytes = new TextEncoder().encode('original docx bytes must not be sent')
+      const derivedBytes = new TextEncoder().encode('%PDF-1.4\nderived provider bytes\n%%EOF\n')
+      await createDraftDocumentAsset({
+        h,
+        storageRootDir,
+        assetId: 'asset-docx-derived',
+        filename: 'source.docx',
+        extension: 'docx',
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        formatId: 'docx',
+        bytes: sourceBytes,
+      })
+      const derived = await createDfcDerivedPdf({
+        h,
+        storageRootDir,
+        sourceAssetId: 'asset-docx-derived',
+        derivativeId: 'derivative-pdf-send',
+        bytes: derivedBytes,
+      })
+      const pdfOption = selectDfcPdfOption({
+        h,
+        assetId: 'asset-docx-derived',
+        derivativeId: 'derivative-pdf-send',
+      })
+
+      const prepared = await dispatchWorkerMessage(h.handlers, {
+        id: 'req-provider-file-input-dfc-derived-pdf',
+        method: 'providerFileInput.prepareDraftFiles',
+        params: prepareFileParams(),
+      })
+
+      const derivedBase64 = Buffer.from(derivedBytes).toString('base64')
+      const sourceBase64 = Buffer.from(sourceBytes).toString('base64')
+      expect(prepared).toMatchObject({
+        ok: true,
+        result: {
+          ok: true,
+          sendPlan: expect.objectContaining({
+            attachmentPlans: [
+              expect.objectContaining({
+                assetId: 'asset-docx-derived',
+                sendAssetRefs: pdfOption?.sendAssetRefs,
+              }),
+            ],
+          }),
+          contentParts: [
+            {
+              type: 'starverse_provider_file_upload',
+              provider: 'openai_responses',
+              assetId: 'derivative-pdf-send',
+              revisionId: expect.stringContaining('asset-docx-derived'),
+              blobSha256: derived.sha256,
+              mimeType: 'application/pdf',
+              sizeBytes: derived.sizeBytes,
+              kind: 'pdf',
+              filename: 'derivative-pdf-send.pdf',
+              dataBase64: derivedBase64,
+            },
+          ],
+          diagnostics: expect.objectContaining({
+            includedPdfCount: 1,
+            includedFileCount: 1,
+            included: [
+              expect.objectContaining({
+                assetId: 'derivative-pdf-send',
+                mimeType: 'application/pdf',
+                sizeBytes: derived.sizeBytes,
+                kind: 'pdf',
+              }),
+            ],
+          }),
+        },
+      })
+      const serialized = JSON.stringify(prepared)
+      expect(serialized).not.toContain(sourceBase64)
+      expect(serialized).not.toContain(storageRootDir)
+      expect(serialized).not.toContain(derived.storageUri)
+      expect(serialized).not.toContain('storageUri')
+      expect(serialized).not.toContain('storagePath')
+      expect(serialized).not.toContain('blob-asset-docx-derived')
+      expect(serialized).not.toContain('originalUrl')
+    } finally {
+      h.db.close()
+      await rm(storageRootDir, { recursive: true, force: true })
+    }
+  })
+
+  it('blocks a selected DFC derived PDF that goes missing before send without falling back to the original asset', async () => {
+    const storageRootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-provider-file-input-'))
+    const h = makeHarness(storageRootDir)
+    try {
+      const sourceBytes = new TextEncoder().encode('original source fallback forbidden')
+      const derivedBytes = new TextEncoder().encode('%PDF-1.4\nderived missing\n%%EOF\n')
+      await createDraftDocumentAsset({
+        h,
+        storageRootDir,
+        assetId: 'asset-docx-missing-derived',
+        filename: 'missing-source.docx',
+        extension: 'docx',
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        formatId: 'docx',
+        bytes: sourceBytes,
+      })
+      await createDfcDerivedPdf({
+        h,
+        storageRootDir,
+        sourceAssetId: 'asset-docx-missing-derived',
+        derivativeId: 'derivative-missing-send',
+        bytes: derivedBytes,
+      })
+      selectDfcPdfOption({
+        h,
+        assetId: 'asset-docx-missing-derived',
+        derivativeId: 'derivative-missing-send',
+      })
+      h.db.prepare(`DELETE FROM file_derivatives WHERE id = @id`).run({ id: 'derivative-missing-send' })
+
+      const prepared = await dispatchWorkerMessage(h.handlers, {
+        id: 'req-provider-file-input-dfc-derived-missing',
+        method: 'providerFileInput.prepareDraftFiles',
+        params: prepareFileParams(),
+      })
+
+      expect(prepared).toMatchObject({
+        ok: true,
+        result: {
+          ok: false,
+          code: 'asset_not_ready',
+          contentParts: [],
+        },
+      })
+      const serialized = JSON.stringify(prepared)
+      expect(serialized).not.toContain(Buffer.from(sourceBytes).toString('base64'))
+      expect(serialized).not.toContain(Buffer.from(derivedBytes).toString('base64'))
+      expect(serialized).not.toContain(storageRootDir)
+    } finally {
+      h.db.close()
+      await rm(storageRootDir, { recursive: true, force: true })
+    }
+  })
+
+  it('blocks a selected DFC derived PDF that fails before send without falling back to the original asset', async () => {
+    const storageRootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-provider-file-input-'))
+    const h = makeHarness(storageRootDir)
+    try {
+      const sourceBytes = new TextEncoder().encode('original source fallback forbidden')
+      const derivedBytes = new TextEncoder().encode('%PDF-1.4\nderived failed\n%%EOF\n')
+      await createDraftDocumentAsset({
+        h,
+        storageRootDir,
+        assetId: 'asset-docx-failed-derived',
+        filename: 'failed-source.docx',
+        extension: 'docx',
+        mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        formatId: 'docx',
+        bytes: sourceBytes,
+      })
+      await createDfcDerivedPdf({
+        h,
+        storageRootDir,
+        sourceAssetId: 'asset-docx-failed-derived',
+        derivativeId: 'derivative-failed-send',
+        bytes: derivedBytes,
+      })
+      selectDfcPdfOption({
+        h,
+        assetId: 'asset-docx-failed-derived',
+        derivativeId: 'derivative-failed-send',
+      })
+      h.fileDerivativeRepo.update({
+        id: 'derivative-failed-send',
+        status: 'failed',
+        updatedAt: 3000,
+      })
+
+      const prepared = await dispatchWorkerMessage(h.handlers, {
+        id: 'req-provider-file-input-dfc-derived-failed',
+        method: 'providerFileInput.prepareDraftFiles',
+        params: prepareFileParams(),
+      })
+
+      expect(prepared).toMatchObject({
+        ok: true,
+        result: {
+          ok: false,
+          code: 'asset_not_ready',
+          contentParts: [],
+        },
+      })
+      const serialized = JSON.stringify(prepared)
+      expect(serialized).not.toContain(Buffer.from(sourceBytes).toString('base64'))
+      expect(serialized).not.toContain(Buffer.from(derivedBytes).toString('base64'))
+      expect(serialized).not.toContain(storageRootDir)
+    } finally {
+      h.db.close()
+      await rm(storageRootDir, { recursive: true, force: true })
+    }
+  })
+
   it('keeps the M1c 1 MB inline hard limit for the OpenRouter inline path', async () => {
     const storageRootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-provider-file-input-'))
     const h = makeHarness(storageRootDir)
@@ -467,6 +782,36 @@ describeIfBetterSqlite('provider file input worker handlers', () => {
           contentParts: [],
         },
       })
+      expect(JSON.stringify(prepared)).not.toContain(storageRootDir)
+    } finally {
+      h.db.close()
+      await rm(storageRootDir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects DeepSeek at the provider file input worker boundary', async () => {
+    const storageRootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-provider-file-input-'))
+    const h = makeHarness(storageRootDir)
+    try {
+      await createDraftPdfAsset({
+        h,
+        storageRootDir,
+        assetId: 'asset-deepseek-pdf',
+        filename: 'manual.pdf',
+        bytes: new TextEncoder().encode('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n'),
+      })
+
+      const prepared = await dispatchWorkerMessage(h.handlers, {
+        id: 'req-provider-file-input-deepseek-pdf',
+        method: 'providerFileInput.prepareDraftFiles',
+        params: prepareFileParams({
+          provider: 'deepseek',
+          providerKey: 'deepseek',
+          modelKey: 'deepseek::chat',
+        }),
+      })
+
+      expect(prepared).toMatchObject({ ok: false })
       expect(JSON.stringify(prepared)).not.toContain(storageRootDir)
     } finally {
       h.db.close()
