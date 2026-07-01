@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { resetI18nForTests, t } from '@/shared/i18n'
 import ChatSessionConsole from './ChatSessionConsole.vue'
 
 function defaultSessionConfig() {
@@ -57,6 +58,10 @@ function ollamaChat(overrides: Partial<{
 
 describe('ChatSessionConsole Ollama controls', () => {
   const originalOllamaProvider = (globalThis as any).ollamaProvider
+
+  beforeEach(() => {
+    resetI18nForTests()
+  })
 
   afterEach(() => {
     ;(globalThis as any).ollamaProvider = originalOllamaProvider
@@ -220,6 +225,40 @@ describe('ChatSessionConsole Ollama controls', () => {
     expect(probeButton).toBeDisabled()
     await user.click(probeButton)
     expect(probe).not.toHaveBeenCalled()
+  })
+
+  it('shows a specific embedded credential rejection for Ollama probe failures', async () => {
+    const user = userEvent.setup()
+    ;(globalThis as any).ollamaProvider = {
+      probe: vi.fn(async () => ({
+        ok: false,
+        code: 'embedded_credentials_rejected',
+        message: 'Ollama probe failed safely.',
+      })),
+      loadModel: vi.fn(),
+      unloadModel: vi.fn(),
+    }
+
+    render(ChatSessionConsole, {
+      props: {
+        disabled: false,
+        isRunning: false,
+        sessionConfig: defaultSessionConfig(),
+        ollamaChat: ollamaChat(),
+        reasoningDisplayMode: 'inline',
+        modelCatalog: [],
+        webSearchResolved: null,
+        samplingParamsResolved: null,
+      },
+    })
+
+    await user.click(screen.getByTestId('ollama-probe'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ollama-probe-error').textContent)
+        .toContain(t('errors.network.reason.localEndpointEmbeddedCredentialsRejected'))
+    })
+    expect(screen.getByTestId('ollama-probe-error').textContent).not.toContain('failed safely')
   })
 
   it('emits the deferred auto-unload-after-idle toggle separately from implemented after-send unload', async () => {

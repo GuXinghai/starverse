@@ -30,6 +30,7 @@ import SamplingParamsSettingsEditor from './SamplingParamsSettingsEditor.vue'
 import ImageGenerationSettingsEditor from './ImageGenerationSettingsEditor.vue'
 import { t, tf } from '@/shared/i18n'
 import { DEFAULT_OPENROUTER_MODEL_ID } from '@/next/provider/modelSelection'
+import { resolveNetworkFailureDisplayMessage } from '../app/networkErrorDisplay'
 
 const props = defineProps<{
   disabled: boolean
@@ -378,7 +379,7 @@ const openAIResponsesAvailabilitySummary = computed(() => {
   if (openAIResponsesModelAvailability.value.loading) return 'Refreshing OpenAI official models...'
   const result = openAIResponsesModelAvailability.value.result
   if (!result) return 'OpenAI official models have not been refreshed in this session.'
-  if (!result.ok) return `${result.message} (${result.code})`
+  if (!result.ok) return `${networkFailureMessage(result)} (${result.code})`
   return `${result.models.length} OpenAI model availability records. Observed ${formatObservedAt(result.observedAtMs)}.`
 })
 const googleAIStudioChat = computed(() => props.googleAIStudioChat ?? {
@@ -411,7 +412,7 @@ const googleAIStudioAvailabilitySummary = computed(() => {
   if (googleAIStudioModelAvailability.value.loading) return 'Refreshing Gemini official models...'
   const result = googleAIStudioModelAvailability.value.result
   if (!result) return 'Gemini official models have not been refreshed in this session.'
-  if (!result.ok) return `${result.message} (${result.code})`
+  if (!result.ok) return `${networkFailureMessage(result)} (${result.code})`
   return `${result.models.length} Gemini model availability records. Observed ${formatObservedAt(result.observedAtMs)}.`
 })
 const anthropicChat = computed(() => props.anthropicChat ?? {
@@ -444,7 +445,7 @@ const anthropicAvailabilitySummary = computed(() => {
   if (anthropicModelAvailability.value.loading) return 'Refreshing Anthropic official models...'
   const result = anthropicModelAvailability.value.result
   if (!result) return 'Anthropic official models have not been refreshed in this session.'
-  if (!result.ok) return `${result.message} (${result.code})`
+  if (!result.ok) return `${networkFailureMessage(result)} (${result.code})`
   return `${result.models.length} Anthropic model availability records. Observed ${formatObservedAt(result.observedAtMs)}.`
 })
 const deepSeekChat = computed(() => props.deepSeekChat ?? {
@@ -477,7 +478,7 @@ const deepSeekAvailabilitySummary = computed(() => {
   if (deepSeekModelAvailability.value.loading) return 'Refreshing DeepSeek official models...'
   const result = deepSeekModelAvailability.value.result
   if (!result) return 'DeepSeek official models have not been refreshed in this session.'
-  if (!result.ok) return `${result.message} (${result.code})`
+  if (!result.ok) return `${networkFailureMessage(result)} (${result.code})`
   return `${result.models.length} DeepSeek model availability records. Observed ${formatObservedAt(result.observedAtMs)}.`
 })
 const imageValue = computed<ImageGenerationUserConfig>(() => ({
@@ -495,6 +496,16 @@ function formatObservedAt(observedAtMs: number): string {
   } catch {
     return 'unknown'
   }
+}
+
+function networkFailureMessage(result: unknown): string {
+  if (!result || typeof result !== 'object') return t('errors.network.reason.networkUnknown')
+  const record = result as Record<string, unknown>
+  return resolveNetworkFailureDisplayMessage({
+    networkError: record.networkError,
+    code: record.code,
+    message: record.message,
+  }) ?? t('errors.network.reason.networkUnknown')
 }
 
 function formatLMStudioModels(models: any[]): string {
@@ -533,7 +544,7 @@ async function probeLMStudio(options: Readonly<{ clearAction?: boolean }> = {}) 
     lmStudioProbeResult.value = result
   } catch {
     lmStudioProbeResult.value = null
-    lmStudioActionResult.value = t('settings.lmStudio.probeFailedSafely')
+    lmStudioActionResult.value = networkFailureMessage({ code: 'network_error', message: t('errors.network.reason.networkUnknown') })
   } finally {
     lmStudioProbeLoading.value = false
   }
@@ -554,10 +565,10 @@ async function loadLMStudioSelectedModel() {
     })
     lmStudioActionResult.value = result?.ok
       ? tf('settings.lmStudio.loadRequested', { instanceId: result.instanceId })
-      : tf('settings.lmStudio.loadFailed', { message: result?.message ?? t('settings.lmStudio.safeFailure') })
+      : tf('settings.lmStudio.loadFailed', { message: networkFailureMessage(result) })
     await probeLMStudio({ clearAction: false })
   } catch {
-    lmStudioActionResult.value = t('settings.lmStudio.loadFailedSafely')
+    lmStudioActionResult.value = tf('settings.lmStudio.loadFailed', { message: t('errors.network.reason.networkUnknown') })
   } finally {
     lmStudioActionLoading.value = false
   }
@@ -578,10 +589,10 @@ async function unloadLMStudioSelectedModel() {
     })
     lmStudioActionResult.value = result?.ok
       ? tf('settings.lmStudio.unloadRequested', { instanceId: result.instanceId })
-      : tf('settings.lmStudio.unloadFailed', { message: result?.message ?? t('settings.lmStudio.safeFailure') })
+      : tf('settings.lmStudio.unloadFailed', { message: networkFailureMessage(result) })
     await probeLMStudio({ clearAction: false })
   } catch {
-    lmStudioActionResult.value = t('settings.lmStudio.unloadFailedSafely')
+    lmStudioActionResult.value = tf('settings.lmStudio.unloadFailed', { message: t('errors.network.reason.networkUnknown') })
   } finally {
     lmStudioActionLoading.value = false
   }
@@ -621,7 +632,7 @@ async function probeOllama(options: Readonly<{ clearAction?: boolean }> = {}) {
     ollamaProbeResult.value = result
   } catch {
     ollamaProbeResult.value = null
-    ollamaActionResult.value = t('settings.ollama.probeFailedSafely')
+    ollamaActionResult.value = networkFailureMessage({ code: 'network_error', message: t('errors.network.reason.networkUnknown') })
   } finally {
     ollamaProbeLoading.value = false
   }
@@ -642,10 +653,10 @@ async function loadOllamaSelectedModel() {
     })
     ollamaActionResult.value = result?.ok
       ? tf('settings.ollama.loadRequested', { model: result.model })
-      : tf('settings.ollama.loadFailed', { message: result?.message ?? t('settings.ollama.safeFailure') })
+      : tf('settings.ollama.loadFailed', { message: networkFailureMessage(result) })
     await probeOllama({ clearAction: false })
   } catch {
-    ollamaActionResult.value = t('settings.ollama.loadFailedSafely')
+    ollamaActionResult.value = tf('settings.ollama.loadFailed', { message: t('errors.network.reason.networkUnknown') })
   } finally {
     ollamaActionLoading.value = false
   }
@@ -666,10 +677,10 @@ async function unloadOllamaSelectedModel() {
     })
     ollamaActionResult.value = result?.ok
       ? tf('settings.ollama.unloadRequested', { model: result.model })
-      : tf('settings.ollama.unloadFailed', { message: result?.message ?? t('settings.ollama.safeFailure') })
+      : tf('settings.ollama.unloadFailed', { message: networkFailureMessage(result) })
     await probeOllama({ clearAction: false })
   } catch {
-    ollamaActionResult.value = t('settings.ollama.unloadFailedSafely')
+    ollamaActionResult.value = tf('settings.ollama.unloadFailed', { message: t('errors.network.reason.networkUnknown') })
   } finally {
     ollamaActionLoading.value = false
   }
@@ -901,7 +912,7 @@ function chipClass(active: boolean): string {
             </button>
           </div>
           <div v-if="openAIResponsesAvailabilityFailure" class="text-red-700" data-testid="openai-responses-models-error">
-            {{ openAIResponsesAvailabilityFailure.message }}
+            {{ networkFailureMessage(openAIResponsesAvailabilityFailure) }}
           </div>
           <div v-if="openAIResponsesAvailabilitySourceDocuments.length > 0" class="text-blue-700" data-testid="openai-responses-models-source">
             Source docs:
@@ -1023,7 +1034,7 @@ function chipClass(active: boolean): string {
             </button>
           </div>
           <div v-if="anthropicAvailabilityFailure" class="text-red-700" data-testid="anthropic-models-error">
-            {{ anthropicAvailabilityFailure.message }}
+            {{ networkFailureMessage(anthropicAvailabilityFailure) }}
           </div>
           <div v-if="anthropicAvailabilitySourceDocuments.length > 0" class="text-rose-700" data-testid="anthropic-models-source">
             Source docs:
@@ -1146,7 +1157,7 @@ function chipClass(active: boolean): string {
             </button>
           </div>
           <div v-if="deepSeekAvailabilityFailure" class="text-red-700" data-testid="deepseek-models-error">
-            {{ deepSeekAvailabilityFailure.message }}
+            {{ networkFailureMessage(deepSeekAvailabilityFailure) }}
           </div>
           <div v-if="deepSeekAvailabilitySourceDocuments.length > 0" class="text-cyan-700" data-testid="deepseek-models-source">
             Source docs:
@@ -1267,7 +1278,7 @@ function chipClass(active: boolean): string {
             </button>
           </div>
           <div v-if="googleAIStudioAvailabilityFailure" class="text-red-700" data-testid="google-ai-studio-models-error">
-            {{ googleAIStudioAvailabilityFailure.message }}
+            {{ networkFailureMessage(googleAIStudioAvailabilityFailure) }}
           </div>
           <div v-if="googleAIStudioAvailabilitySourceDocuments.length > 0" class="text-emerald-700" data-testid="google-ai-studio-models-source">
             Source docs:
@@ -1528,7 +1539,7 @@ function chipClass(active: boolean): string {
             <div data-testid="lm-studio-models">{{ t('settings.lmStudio.models') }}: {{ formatLMStudioModels(lmStudioNativeModels) }}</div>
           </div>
           <div v-else-if="lmStudioProbeResult && !lmStudioProbeResult.ok" class="text-red-700" data-testid="lm-studio-probe-error">
-            {{ lmStudioProbeResult.message }}
+            {{ networkFailureMessage(lmStudioProbeResult) }}
           </div>
           <div v-if="lmStudioActionResult" data-testid="lm-studio-action-result">{{ lmStudioActionResult }}</div>
         </div>
@@ -1771,7 +1782,7 @@ function chipClass(active: boolean): string {
             <div data-testid="ollama-running-models">{{ t('settings.ollama.runningModels') }}: {{ formatOllamaModels(ollamaRunningModels) }}</div>
           </div>
           <div v-else-if="ollamaProbeResult && !ollamaProbeResult.ok" class="text-red-700" data-testid="ollama-probe-error">
-            {{ ollamaProbeResult.message }}
+            {{ networkFailureMessage(ollamaProbeResult) }}
           </div>
           <div v-if="ollamaActionResult" data-testid="ollama-action-result">{{ ollamaActionResult }}</div>
         </div>

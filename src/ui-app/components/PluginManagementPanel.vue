@@ -56,6 +56,10 @@ import type {
   PluginPackageCapability,
   PluginVerificationStatus,
 } from '@/next/plugin-distribution/browser'
+import {
+  replaceNetworkCodeInMessage,
+  resolveNetworkCodeDisplayMessage,
+} from '../app/networkErrorDisplay'
 
 type PluginPanelRow = Readonly<{
   plugin: PdpManagementPluginViewModel
@@ -256,7 +260,7 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
       })
       if (result.ok) {
         upsertInstallOperation(result.value)
-        statusMessage.value = `${actionLabel}: ${installOperationSummary(result.value)}`
+        statusMessage.value = `${actionLabel}: ${installOperationDisplaySummary(result.value)}`
         if (buildPluginManagementStateFromSources({
           plugin: row.plugin,
           registryRecord: row.registryRecord,
@@ -267,7 +271,7 @@ async function runAction(row: PluginPanelRow, action: UiAction): Promise<void> {
         }
       } else {
         removeInstallOperation(localInstallKey)
-        error.value = pluginPrimaryErrorDisplay(result.errorChain, result.reason)
+        error.value = resolveNetworkCodeDisplayMessage(result.reason) ?? pluginPrimaryErrorDisplay(result.errorChain, result.reason)
       }
       return
     }
@@ -794,6 +798,20 @@ function installOperationSummary(operation: DecodedOfficialInstallOperation): st
   return installOperationLabel(operation.state)
 }
 
+function installOperationDisplaySummary(operation: DecodedOfficialInstallOperation): string {
+  return replaceNetworkCodeInMessage(
+    installOperationSummary(operation),
+    operation.diagnosticCode ?? operation.failureReason
+  ) ?? installOperationSummary(operation)
+}
+
+function installOperationDisplayErrorMessage(projection: PdpPluginManagementStateFromSources['installOperation']): string | null {
+  return replaceNetworkCodeInMessage(
+    projection.errorMessage,
+    projection.failureDisplay
+  ) ?? projection.errorMessage
+}
+
 function applyInstallOperationMessage(): void {
   const projections = rows.value
     .map((row) => row.managementState.installOperation)
@@ -807,8 +825,9 @@ function applyInstallOperationMessage(): void {
   }
 
   const failed = projections.find((projection) => projection.errorMessage)
-  if (failed?.errorMessage) {
-    error.value = failed.errorMessage
+  const failedMessage = failed ? installOperationDisplayErrorMessage(failed) : null
+  if (failedMessage) {
+    error.value = failedMessage
     if (statusMessage.value?.startsWith('Install official plugin:')) {
       statusMessage.value = null
     }
@@ -842,6 +861,8 @@ function pruneSupersededInstallOperations(nextRows: readonly PluginPanelRow[]): 
 }
 
 function installOperationFailureReason(operation: DecodedOfficialInstallOperation): string {
+  const display = resolveNetworkCodeDisplayMessage(operation.diagnosticCode ?? operation.failureReason)
+  if (display) return display
   return sanitizePdpManagementText(
     operation.diagnosticCode ?? operation.failureReason ?? '',
     ''
@@ -995,9 +1016,9 @@ function formatLifecycleError(err: any, fallback: string, actionLabel?: string):
             </div>
           </template>
           <div v-if="row.installOperation">
-            Install: {{ installOperationSummary(row.installOperation) }}
+            Install: {{ installOperationDisplaySummary(row.installOperation) }}
           </div>
-          <div v-if="row.installOperation?.failureReason">
+          <div v-if="row.installOperation?.failureReason" data-testid="plugin-install-failure">
             Failure: {{ installOperationFailureReason(row.installOperation) }}
           </div>
           <template v-if="row.plugin.productGate">
