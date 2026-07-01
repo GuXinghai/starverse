@@ -3,6 +3,7 @@ import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { describe, expect, it } from 'vitest'
 import {
+  createElectronBridgeHttpFetch,
   createElectronBridgeProviderFetch,
   createWorkerThreadElectronConversionBridge,
   createUnavailableElectronConversionBridge,
@@ -136,6 +137,29 @@ describe('electron conversion bridge boundary', () => {
 
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toEqual({ ok: true })
+  })
+
+  it('preserves binary response bodies for bridge-backed fetch callers', async () => {
+    const bytes = new Uint8Array([0, 255, 1, 2])
+    const fetchImpl = createElectronBridgeHttpFetch({
+      async convert() {
+        throw new Error('not used')
+      },
+      async fetchProvider() {
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: { 'content-type': 'application/octet-stream' },
+          bodyText: Buffer.from(bytes).toString('utf8'),
+          bodyBase64: Buffer.from(bytes).toString('base64'),
+        }
+      },
+    })
+
+    const response = await fetchImpl('https://example.test/file.bin')
+
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes)
   })
 
   it('fails closed when the worker/main conversion bridge is unavailable', async () => {

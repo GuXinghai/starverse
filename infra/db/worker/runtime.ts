@@ -43,6 +43,7 @@ import { FileTypeDetectionCoordinator } from '../../files/fileTypeDetectionCoord
 import { EnginePluginLifecycleService } from '../../files/enginePluginLifecycleService'
 import { createDfcLibreOfficeOfficialAssetBodyInterceptFromEnv } from '../../files/dfcLibreOfficeOfficialAssetBodyIntercept'
 import { fetchPackageToFileWithFetch, type PackageDownloadTransport } from '../../../src/next/plugin-distribution/packageDownloader'
+import { createElectronBridgeHttpFetch } from '../../files/electronConversionBridge'
 import {
   getDfcLibreOfficeManagedRuntimeRoot,
   type DfcOfficePdfRuntimeAvailabilitySummary,
@@ -92,31 +93,68 @@ export function collectActiveMagikaRuntimePluginDirs(input: {
   return [resolveEnginePluginDir(input.storageRootDir, activeMagika.installRootKind, activeMagika.installRef)]
 }
 
-function createElectronSystemAwareOfficialPackageTransport(
+export function createElectronSystemAwareOfficialPackageTransport(
   bridge: WorkerInitConfig['electronConversionBridge']
 ): PackageDownloadTransport {
   return {
-    async fetchPackage() {
+    async fetchPackage(request) {
+      if (bridge?.fetchProvider) {
+        const fetchImpl = createElectronBridgeHttpFetch(bridge)
+        let response: Response
+        try {
+          response = await fetchImpl(request.transportRef, { signal: request.signal })
+        } catch (error) {
+          return {
+            ok: false,
+            code: request.signal?.aborted ? 'cancelled' : 'download_failed',
+            detail: request.signal?.aborted ? 'download cancelled' : sanitizeElectronBridgeDownloadError(error),
+          }
+        }
+        if (!response.ok) return { ok: false, code: 'download_failed', detail: `http_${response.status}`, finalRef: response.url }
+        const contentLength = Number(response.headers.get('content-length') ?? NaN)
+        if (Number.isFinite(contentLength) && contentLength > request.maxBytes) {
+          return { ok: false, code: 'too_large', finalRef: response.url }
+        }
+        const bytes = new Uint8Array(await response.arrayBuffer())
+        if (bytes.byteLength > request.maxBytes) return { ok: false, code: 'too_large', finalRef: response.url }
+        return { ok: true, bytes, finalRef: response.url }
+      }
       return {
         ok: false,
         code: 'download_failed',
-        detail: 'memory_fetch_unavailable_for_large_official_package',
+        detail: 'electron_package_download_service_unavailable',
       }
     },
     async fetchPackageToFile(request) {
-      if (request.proxy?.proxyMode === 'system') {
-        if (!bridge?.fetchPackageToFile) {
-          return {
-            ok: false,
-            code: 'download_failed',
-            detail: 'electron_package_download_service_unavailable',
-          }
-        }
+      if (bridge?.fetchPackageToFile) {
         return bridge.fetchPackageToFile(request)
+      }
+      if (request.proxy?.proxyMode === 'system') {
+        return {
+          ok: false,
+          code: 'download_failed',
+          detail: 'electron_package_download_service_unavailable',
+        }
       }
       return fetchPackageToFileWithFetch(request)
     },
   }
+}
+
+function sanitizeElectronBridgeDownloadError(error: unknown): string {
+  const code = String((error as any)?.code ?? (error as any)?.message ?? '').trim()
+  if (/timeout|timedout|etimedout|abort/iu.test(code)) return 'download_body_timeout'
+  if (/econnreset|socket|network|closed|interrupted/iu.test(code)) return 'network_transport_failed'
+  return 'download_failed'
+}
+
+function createElectronBridgeFetchIfAvailable(
+  bridge: WorkerInitConfig['electronConversionBridge'],
+  timeoutMs?: number
+): typeof fetch | undefined {
+  return bridge?.fetchProvider
+    ? createElectronBridgeHttpFetch(bridge, { timeoutMs })
+    : undefined
 }
 
 export function createRegistryGatedMagikaRuntimeLoader(input: Readonly<{
@@ -330,6 +368,7 @@ export class DbWorkerRuntime {
       fileAssetRepo: this.fileAssetRepo,
       fileAssetStoreRepo: this.fileAssetStoreRepo,
       storageRootDir: this.fileStorageRootDir,
+      fetch: createElectronBridgeFetchIfAvailable(config.electronConversionBridge),
     })
     const magikaRuntimeLoader = this.buildMagikaRuntimeLoader()
     this.fileTypeDetectionService = new FileTypeDetectionService({
@@ -363,6 +402,7 @@ export class DbWorkerRuntime {
       dfcLibreOfficeManagedRuntimeRootDir: getDfcLibreOfficeManagedRuntimeRoot(this.fileStorageRootDir),
       officialPackageTransport,
       networkProxySettingsProvider: () => this.settingsRepo.getNetworkProxySettings(),
+      officialDownloadProbeFetch: createElectronBridgeFetchIfAvailable(config.electronConversionBridge, 15_000),
     })
     this.contextRepo = new ContextRepo(this.db, this.branchRepo)
     this.searchRepo = new SearchRepo(this.db)
