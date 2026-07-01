@@ -130,7 +130,7 @@ describe('ModelPickerDialog', () => {
             ],
           },
           {
-            providerId: 'anthropic',
+            providerId: 'anthropic_messages',
             providerName: 'Anthropic Messages',
             statusKind: 'credential_missing',
             statusLabel: 'credential missing',
@@ -142,10 +142,10 @@ describe('ModelPickerDialog', () => {
     })
 
     expect(await screen.findByTestId('model-picker-provider-status-openai_responses')).toHaveTextContent('1 model')
-    expect(screen.getByTestId('model-picker-provider-status-anthropic')).toHaveTextContent('credential missing')
+    expect(screen.getByTestId('model-picker-provider-status-anthropic_messages')).toHaveTextContent('credential missing')
     expect(await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1-mini')).toHaveTextContent('OpenAI Responses')
 
-    await fireEvent.update(screen.getByTestId('model-picker-provider-filter'), 'anthropic')
+    await fireEvent.update(screen.getByTestId('model-picker-provider-filter'), 'anthropic_messages')
     await waitFor(() => {
       expect(screen.queryByTestId('model-picker-item-openai_responses-gpt-4.1-mini')).toBeNull()
       expect(screen.getByText('No models found for current search/filter.')).toBeTruthy()
