@@ -43,6 +43,7 @@ export async function fetchPackageToFileWithElectronNet(
   request: PackageDownloadFileTransportRequest,
   options: Readonly<{ request?: ElectronNetRequest }> = {}
 ): Promise<PackageDownloadFileTransportResult> {
+  if (request.signal?.aborted) return { ok: false, code: 'cancelled', detail: 'download cancelled' }
   if (request.resume?.enabled) {
     return fetchPackageToFileWithElectronNetResume(request, options)
   }
@@ -76,6 +77,11 @@ async function fetchPackageToFileWithElectronNetResume(
 
   let retries = metadata.retryCount
   while (true) {
+    if (request.signal?.aborted) {
+      await Promise.all([removeQuietly(partialPath), removeQuietly(metadataPath)])
+      return { ok: false, code: 'cancelled', detail: 'download cancelled' }
+    }
+
     const currentBytes = await verifiedPartialSize(partialPath, metadata.currentBytesWritten)
     if (currentBytes === null) {
       await Promise.all([removeQuietly(partialPath), removeQuietly(metadataPath)])
@@ -142,7 +148,12 @@ async function fetchPackageToFileWithElectronNetResume(
       })
       return { ok: false, code: 'resume_retries_exhausted', detail: 'resume retries exhausted' }
     }
-    await delay(resume.retryDelayMs)
+    try {
+      await delay(resume.retryDelayMs, request.signal)
+    } catch {
+      await Promise.all([removeQuietly(partialPath), removeQuietly(metadataPath)])
+      return { ok: false, code: 'cancelled', detail: 'download cancelled' }
+    }
   }
 }
 
@@ -164,9 +175,14 @@ async function fetchElectronNetResumeAttempt(input: Readonly<{
       url: input.request.transportRef,
       method: 'GET',
       headers,
+      signal: input.request.signal,
     })
   } catch (error) {
-    return { ok: false, code: 'download_failed', detail: sanitizeElectronNetDownloadError(error) }
+    return {
+      ok: false,
+      code: input.request.signal?.aborted ? 'cancelled' : 'download_failed',
+      detail: input.request.signal?.aborted ? 'download cancelled' : sanitizeElectronNetDownloadError(error),
+    }
   }
 
   const finalRef = response.finalUrl
@@ -217,6 +233,7 @@ async function fetchElectronNetResumeAttempt(input: Readonly<{
     initialBytes: input.currentBytes,
     finalRef,
     retryCount: input.retryCount,
+    signal: input.request.signal,
     onProgress: input.request.onProgress,
   })
 }
@@ -237,9 +254,14 @@ async function fetchElectronNetAttemptToFile(input: Readonly<{
       request: input.netRequest,
       url: input.request.transportRef,
       method: 'GET',
+      signal: input.request.signal,
     })
   } catch (error) {
-    return { ok: false, code: 'download_failed', detail: sanitizeElectronNetDownloadError(error) }
+    return {
+      ok: false,
+      code: input.request.signal?.aborted ? 'cancelled' : 'download_failed',
+      detail: input.request.signal?.aborted ? 'download cancelled' : sanitizeElectronNetDownloadError(error),
+    }
   }
   if (response.statusCode < 200 || response.statusCode >= 300) {
     destroyReadable(response.response)
@@ -257,6 +279,7 @@ async function fetchElectronNetAttemptToFile(input: Readonly<{
     maxBytes: input.request.maxBytes,
     totalBytes,
     finalRef: response.finalUrl,
+    signal: input.request.signal,
     onProgress: input.request.onProgress,
   })
   return result
@@ -267,16 +290,23 @@ async function openElectronNetResponse(input: Readonly<{
   url: string
   method: 'GET' | 'HEAD'
   headers?: Record<string, string>
+  signal?: AbortSignal
 }>): Promise<ElectronDownloadResponse> {
   return await new Promise((resolve, reject) => {
     let settled = false
     let idleTimer: NodeJS.Timeout | null = null
     let requestRef: ReturnType<ElectronNetRequest> | null = null
+    let removeAbortListener: (() => void) | null = null
     const finish = (fn: () => void) => {
       if (settled) return
       settled = true
       if (idleTimer) clearTimeout(idleTimer)
+      removeAbortListener?.()
       fn()
+    }
+    if (input.signal?.aborted) {
+      finish(() => reject(new Error('download_cancelled')))
+      return
     }
     const resetIdleTimer = () => {
       if (idleTimer) clearTimeout(idleTimer)
@@ -294,6 +324,18 @@ async function openElectronNetResponse(input: Readonly<{
       method: input.method,
       redirect: 'follow',
     } as any)
+    if (input.signal) {
+      const onAbort = () => {
+        try {
+          requestRef?.abort()
+        } catch {
+          // ignore abort errors
+        }
+        finish(() => reject(new Error('download_cancelled')))
+      }
+      input.signal.addEventListener('abort', onAbort, { once: true })
+      removeAbortListener = () => input.signal?.removeEventListener('abort', onAbort)
+    }
     for (const [name, value] of Object.entries(input.headers ?? {})) {
       requestRef.setHeader(name, value)
     }
@@ -321,13 +363,16 @@ async function streamNodeReadableToFile(input: Readonly<{
   maxBytes: number
   totalBytes: number | null
   finalRef?: string | null
+  signal?: AbortSignal
   onProgress?: (progress: PackageDownloadProgress) => void
 }>): Promise<PackageDownloadFileTransportResult> {
   const hash = createHash('sha256')
   let sizeBytes = 0
   const writer = createWriteStream(input.partialPath, { flags: 'wx' })
+  const removeAbortListener = destroyResponseOnAbort(input.response, input.signal)
   try {
     for await (const rawChunk of input.response as AsyncIterable<Buffer | Uint8Array | string>) {
+      if (input.signal?.aborted) throw new DownloadCancelledError()
       const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk)
       sizeBytes += chunk.byteLength
       if (sizeBytes > input.maxBytes) {
@@ -352,12 +397,15 @@ async function streamNodeReadableToFile(input: Readonly<{
       finalRef: input.finalRef,
     }
   } catch (error) {
+    const cancelled = input.signal?.aborted || error instanceof DownloadCancelledError
     return cleanupWriterAndFail(writer, input.partialPath, input.outputPath, {
       ok: false,
-      code: 'download_failed',
-      detail: sanitizeElectronNetDownloadError(error),
+      code: cancelled ? 'cancelled' : 'download_failed',
+      detail: cancelled ? 'download cancelled' : sanitizeElectronNetDownloadError(error),
       finalRef: input.finalRef,
     })
+  } finally {
+    removeAbortListener()
   }
 }
 
@@ -371,16 +419,19 @@ async function appendNodeReadableToPartialFile(input: Readonly<{
   initialBytes: number
   finalRef?: string | null
   retryCount: number
+  signal?: AbortSignal
   onProgress?: (progress: PackageDownloadProgress) => void
 }>): Promise<PackageDownloadFileTransportResult> {
   let sizeBytes = input.initialBytes
   const writer = createWriteStream(input.partialPath, { flags: input.initialBytes > 0 ? 'a' : 'w' })
   const existingMetadata = await readResumeMetadata(input.metadataPath)
+  const removeAbortListener = destroyResponseOnAbort(input.response, input.signal)
   const baseMetadata = metadataMatchesDescriptor(existingMetadata, input.descriptor)
     ? existingMetadata
     : createResumeMetadata(input.descriptor)
   try {
     for await (const rawChunk of input.response as AsyncIterable<Buffer | Uint8Array | string>) {
+      if (input.signal?.aborted) throw new DownloadCancelledError()
       const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk)
       sizeBytes += chunk.byteLength
       if (sizeBytes > input.maxBytes) {
@@ -408,12 +459,15 @@ async function appendNodeReadableToPartialFile(input: Readonly<{
     await waitForWriter(writer)
     return completeExistingPartial(input.partialPath, input.finalRef)
   } catch (error) {
+    const cancelled = input.signal?.aborted || error instanceof DownloadCancelledError
     return cleanupWriterAndFail(writer, input.partialPath, '', {
       ok: false,
-      code: 'download_failed',
-      detail: sanitizeElectronNetDownloadError(error),
+      code: cancelled ? 'cancelled' : 'download_failed',
+      detail: cancelled ? 'download cancelled' : sanitizeElectronNetDownloadError(error),
       finalRef: input.finalRef,
     }, { keepOutput: true })
+  } finally {
+    removeAbortListener()
   }
 }
 
@@ -615,6 +669,38 @@ function sanitizeElectronNetDownloadError(error: unknown): string {
   return 'download_failed'
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function destroyResponseOnAbort(stream: NodeJS.ReadableStream, signal?: AbortSignal): () => void {
+  if (!signal) return () => undefined
+  const onAbort = () => destroyReadable(stream)
+  if (signal.aborted) onAbort()
+  signal.addEventListener('abort', onAbort, { once: true })
+  return () => signal.removeEventListener('abort', onAbort)
 }
+
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DownloadCancelledError())
+      return
+    }
+    let settled = false
+    const cleanup = () => signal?.removeEventListener('abort', onAbort)
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      cleanup()
+      reject(new DownloadCancelledError())
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+class DownloadCancelledError extends Error {}

@@ -90,12 +90,15 @@ export class MainProcessElectronConversionService implements ElectronConversionB
       response.headers.forEach((value, key) => {
         headers[key] = value
       })
+      const body = Buffer.from(await response.arrayBuffer())
       return {
         ok: true,
         status: response.status,
         statusText: response.statusText,
         headers,
-        bodyText: await response.text(),
+        bodyText: body.toString('utf8'),
+        bodyBase64: body.toString('base64'),
+        finalUrl: response.url || parsedUrl.toString(),
       }
     } catch (error) {
       const isTimeout = isAbortError(error)

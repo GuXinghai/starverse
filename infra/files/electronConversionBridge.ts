@@ -25,6 +25,8 @@ export type ElectronProviderFetchResult =
       statusText: string
       headers: Record<string, string>
       bodyText: string
+      bodyBase64?: string | null
+      finalUrl?: string | null
     }>
   | Readonly<{
       ok: false
@@ -208,14 +210,24 @@ export function createElectronBridgeProviderFetch(
     const request = await toElectronProviderFetchRequest(input, init, options.timeoutMs)
     const result = await waitForProviderFetchResult(bridge.fetchProvider(request), init?.signal)
     if (!result.ok) throw new Error(result.detail || result.code)
-    const responseBody = canResponseStatusHaveBody(result.status) ? result.bodyText : null
-    return new Response(responseBody, {
+    const responseBody = canResponseStatusHaveBody(result.status)
+      ? result.bodyBase64
+        ? Buffer.from(result.bodyBase64, 'base64')
+        : result.bodyText
+      : null
+    const response = new Response(responseBody, {
       status: result.status,
       statusText: result.statusText,
       headers: result.headers,
     })
+    Object.defineProperty(response, 'url', {
+      value: result.finalUrl || request.url,
+    })
+    return response
   }
 }
+
+export const createElectronBridgeHttpFetch = createElectronBridgeProviderFetch
 
 function canResponseStatusHaveBody(status: number): boolean {
   return status !== 101 && status !== 204 && status !== 205 && status !== 304
