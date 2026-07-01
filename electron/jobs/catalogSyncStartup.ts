@@ -1,5 +1,6 @@
 import type Store from 'electron-store'
 import type { OpenRouterCatalogCredentialStoreReader } from './openRouterCatalogCredential'
+import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
 import { syncOpenRouterModelCatalog } from '../modelCatalog/catalogSyncJob'
 import { CatalogSyncRunner, type CatalogSyncRunnerMeta, type CatalogSyncRunnerResult } from '../modelCatalog/catalogSyncRunner'
 import type { DbWorkerManager } from '../db/workerManager'
@@ -115,6 +116,7 @@ export async function runCatalogSyncAtStartup(input: Readonly<{
   store: Store
   credentialStore?: OpenRouterCatalogCredentialStoreReader
   dbWorkerManager: DbWorkerManager
+  fetchImpl?: ProviderFetch
   force?: boolean
   freshnessMs?: number
 }>): Promise<CatalogSyncRunnerResult> {
@@ -151,6 +153,7 @@ export async function runCatalogSyncAtStartup(input: Readonly<{
       syncOpenRouterModelCatalog({
         apiKey: credential.apiKey,
         baseUrl: scope.normalizedBaseUrl,
+        fetchImpl: input.fetchImpl ?? createElectronSessionProviderFetch(),
         writer: {
           writeScopedSnapshot: (params) => input.dbWorkerManager.call('modelCatalog.writeScopedSnapshot', {
             ...params,
