@@ -139,7 +139,10 @@ describe('downloadOfficialPackageToMemory', () => {
       transport,
     })
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.failureReasons).toContain('hash_mismatch')
+    if (!result.ok) {
+      expect(result.failureReasons).toContain('hash_mismatch')
+      expect(result.networkError?.safeDetailCode).toBe('download_hash_mismatch')
+    }
   })
 
   it('rejects size mismatch', async () => {
@@ -150,7 +153,10 @@ describe('downloadOfficialPackageToMemory', () => {
       transport,
     })
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.failureReasons).toContain('size_mismatch')
+    if (!result.ok) {
+      expect(result.failureReasons).toContain('size_mismatch')
+      expect(result.networkError?.safeDetailCode).toBe('download_size_mismatch')
+    }
   })
 
   it('returns structured cancellation', async () => {
@@ -177,7 +183,10 @@ describe('downloadOfficialPackageToMemory', () => {
       transport,
     })
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.failureReasons).toContain('redirect_rejected')
+    if (!result.ok) {
+      expect(result.failureReasons).toContain('redirect_rejected')
+      expect(result.networkError?.safeDetailCode).toBe('download_redirect_rejected')
+    }
   })
 
   it('fails closed when transport omits finalRef', async () => {
@@ -551,7 +560,10 @@ describe('fetchPackageToFileWithFetch', () => {
         resume: resumeOptions(),
       })
       expect(result.ok).toBe(false)
-      if (!result.ok) expect(result.code).toBe('resume_content_range_invalid')
+      if (!result.ok) {
+        expect(result.code).toBe('resume_content_range_invalid')
+        expect(result.networkError?.safeDetailCode).toBe('download_resume_range_rejected')
+      }
       expect(existsSync(`${outputPath}.partial`)).toBe(false)
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -575,7 +587,10 @@ describe('fetchPackageToFileWithFetch', () => {
         resume: resumeOptions(),
       })
       expect(result.ok).toBe(false)
-      if (!result.ok) expect(result.code).toBe('resume_range_rejected')
+      if (!result.ok) {
+        expect(result.code).toBe('resume_range_rejected')
+        expect(result.networkError?.safeDetailCode).toBe('download_resume_range_rejected')
+      }
       expect(existsSync(`${outputPath}.partial`)).toBe(false)
     } finally {
       await rm(root, { recursive: true, force: true })

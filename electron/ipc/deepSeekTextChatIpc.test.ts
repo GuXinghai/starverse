@@ -233,12 +233,18 @@ describe('deepSeekTextChatIpc', () => {
     })
 
     await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('deepseek-chat:end:deepseek_req_error'))
-    const serialized = JSON.stringify(sentEvents(sender, 'deepseek_req_error'))
+    const events = sentEvents(sender, 'deepseek_req_error')
+    const serialized = JSON.stringify(events)
     expect(serialized).not.toContain('sk-deepseek-secret')
     expect(serialized).not.toContain('Authorization')
     expect(serialized).not.toContain('Bearer')
     expect(serialized).not.toContain('public.example.test')
-    expect(serialized).toContain('DeepSeek official text chat failed safely.')
+    expect(events.some((event) =>
+      event.type === 'event' &&
+      event.event.type === 'stream.error' &&
+      event.event.error.networkError?.safeDetailCode === 'network_unknown' &&
+      event.event.error.message === 'DeepSeek: Network request failed.',
+    )).toBe(true)
   })
 
   it('normalizes DeepSeek HTTP errors before sending them to the renderer', async () => {
@@ -271,7 +277,8 @@ describe('deepSeekTextChatIpc', () => {
       event.event.type === 'stream.error' &&
       event.event.error.httpStatus === 429 &&
       event.event.error.code === 'rate_limit_exceeded' &&
-      event.event.error.message === 'DeepSeek rate limit was reached.',
+      event.event.error.message === 'DeepSeek rate limit was reached.' &&
+      event.event.error.networkError?.safeDetailCode === 'http_429_rate_limited'
     )).toBe(true)
     const serialized = JSON.stringify(events)
     expect(serialized).not.toContain('sk-deepseek-secret')

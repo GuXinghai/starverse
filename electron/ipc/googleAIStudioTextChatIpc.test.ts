@@ -235,12 +235,18 @@ describe('googleAIStudioTextChatIpc', () => {
     })
 
     await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('google-ai-studio-chat:end:google_ai_studio_req_error'))
-    const serialized = JSON.stringify(sentEvents(sender, 'google_ai_studio_req_error'))
+    const events = sentEvents(sender, 'google_ai_studio_req_error')
+    const serialized = JSON.stringify(events)
     expect(serialized).not.toContain('fake-google-secret')
     expect(serialized).not.toContain('Authorization')
     expect(serialized).not.toContain('Bearer')
     expect(serialized).not.toContain('public.example.test')
-    expect(serialized).toContain('Google AI Studio text chat failed safely.')
+    expect(events.some((event) =>
+      event.type === 'event' &&
+      event.event.type === 'stream.error' &&
+      event.event.error.networkError?.safeDetailCode === 'network_unknown' &&
+      event.event.error.message === 'Google AI Studio: Network request failed.',
+    )).toBe(true)
   })
 
   it('maps provider 404 to a clearer sanitized model/version/streaming cause', async () => {
@@ -274,7 +280,8 @@ describe('googleAIStudioTextChatIpc', () => {
       event.event.type === 'stream.error' &&
       event.event.error.httpStatus === 404 &&
       event.event.error.code === '404' &&
-      event.event.error.message === 'Google AI Studio model was not found for the selected API version or does not support streaming text chat.',
+      event.event.error.message === 'Google AI Studio: Endpoint or model was not found.' &&
+      event.event.error.networkError?.safeDetailCode === 'http_404_not_found_or_model_missing'
     )).toBe(true)
     const serialized = JSON.stringify(events)
     expect(serialized).not.toContain('streamGenerateContent. Authorization')

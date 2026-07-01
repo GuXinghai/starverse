@@ -16,6 +16,7 @@ import type {
   RequestedReasoningMode,
   ToolCallDelta,
 } from '@/next/state/types'
+import type { NetworkErrorEnvelope } from '@/shared/network/networkErrorEnvelope'
 
 // ---------------------------------------------------------------------------
 // StarverseProviderError — provider-neutral error shape
@@ -43,6 +44,7 @@ export type StarverseProviderError = Readonly<{
   httpStatus?: number
   code?: string
   requestId?: string
+  networkError?: NetworkErrorEnvelope
   raw?: unknown
 }>
 

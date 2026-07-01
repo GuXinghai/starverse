@@ -191,7 +191,56 @@ describe('providerFileUploadService', () => {
       ok: false,
       code: 'openai_upload_failed',
       retryable: true,
+      networkError: {
+        requestPurpose: 'provider_upload',
+        providerId: 'openai_responses',
+        httpStatus: 500,
+        safeDetailCode: 'network_unknown',
+      },
     })
+    expect(db.call.mock.calls.some(([method]) => method === 'providerFileCache.markFailed')).toBe(true)
+    expect(db.call.mock.calls.some(([method]) => method === 'providerFileCache.markReady')).toBe(false)
+  })
+
+  it('surfaces provider upload transport failures without leaking credentials', async () => {
+    const db = {
+      call: vi.fn(async (method: string) => {
+        if (method === 'providerFileCache.findReusable') return null
+        if (method === 'providerFileCache.reserve') return { status: 'reserved', record: readyRecord({ id: 'cache-network-failed', status: 'uploading', providerFileId: null }) }
+        if (method === 'providerFileCache.markFailed') return readyRecord({ id: 'cache-network-failed', status: 'failed', providerFileId: null })
+        if (method === 'providerFileCache.markReady') throw new Error('markReady must not run after upload failure')
+        return null
+      }),
+    }
+    const fetchImpl = vi.fn(async () => {
+      throw new Error('ECONNREFUSED Authorization: Bearer sk-openai-secret')
+    })
+    const service = createProviderFileUploadService({ db })
+
+    const result = await service.resolveContentBlocks({
+      provider: 'openai_responses',
+      endpointFamily: 'openai_responses',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-openai-secret',
+      blocks: [uploadBlock],
+      fetchImpl: fetchImpl as any,
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'connection_refused',
+      message: 'Provider file upload: Connection was refused.',
+      retryable: true,
+      networkError: {
+        requestPurpose: 'provider_upload',
+        providerId: 'openai_responses',
+        safeDetailCode: 'connection_refused',
+      },
+    })
+    const serialized = JSON.stringify(result)
+    expect(serialized).not.toContain('sk-openai-secret')
+    expect(serialized).not.toContain('Authorization')
+    expect(serialized).not.toContain('Bearer')
     expect(db.call.mock.calls.some(([method]) => method === 'providerFileCache.markFailed')).toBe(true)
     expect(db.call.mock.calls.some(([method]) => method === 'providerFileCache.markReady')).toBe(false)
   })

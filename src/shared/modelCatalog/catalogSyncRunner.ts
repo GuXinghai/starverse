@@ -1,3 +1,5 @@
+import type { NetworkErrorEnvelope } from '../network/networkErrorEnvelope'
+
 export type CatalogSyncRunnerMeta = Readonly<{
   providerKey: string
   schemaVersion: number
@@ -55,6 +57,7 @@ export type CatalogSyncRunnerResult = Readonly<{
   lastSyncAtMs: number
   syncSnapshotId?: string
   failureMessage?: string
+  networkError?: NetworkErrorEnvelope
 }>
 
 function toErrorMessage(error: unknown): string {
@@ -64,6 +67,18 @@ function toErrorMessage(error: unknown): string {
   } catch {
     return String(error)
   }
+}
+
+function toNetworkError(error: unknown): NetworkErrorEnvelope | undefined {
+  if (!error || typeof error !== 'object') return undefined
+  const value = (error as Record<string, unknown>).networkError
+  if (!value || typeof value !== 'object') return undefined
+  const record = value as Partial<NetworkErrorEnvelope>
+  return typeof record.safeDetailCode === 'string' &&
+    typeof record.safeMessage === 'string' &&
+    typeof record.safeMessageKey === 'string'
+    ? value as NetworkErrorEnvelope
+    : undefined
 }
 
 function isSyncSkipped(
@@ -215,6 +230,7 @@ export class CatalogSyncRunner {
     } catch (error) {
       const finishedAtMs = this.now()
       const failureMessage = toErrorMessage(error)
+      const networkError = toNetworkError(error)
       const reason = hadCache ? 'sync_failed_with_cache' : 'sync_failed_no_cache'
       this.logger.warn('[CatalogSyncRunner] sync failed', {
         providerKey: this.providerKey,
@@ -222,6 +238,7 @@ export class CatalogSyncRunner {
         staleCache,
         modelCountBefore,
         error: failureMessage,
+        ...(networkError ? { networkError: networkError.safeDetailCode } : {}),
       })
       return {
         providerKey: this.providerKey,
@@ -240,6 +257,7 @@ export class CatalogSyncRunner {
         modelCountAfter: modelCountBefore,
         lastSyncAtMs: Number(meta?.lastSyncAtMs ?? 0),
         failureMessage,
+        ...(networkError ? { networkError } : {}),
       }
     }
   }
