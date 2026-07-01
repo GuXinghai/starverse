@@ -42,6 +42,7 @@ import { createInAppBrowserManager } from './services/inappBrowser'
 import { createMainProcessElectronConversionService } from './services/electronConversionService'
 import { createProviderFileUploadService } from './services/providerFileUploadService'
 import { createElectronSessionProxyController } from './net/electronSessionProxyController'
+import { createElectronSessionProviderFetch } from './net/providerHttpTransport'
 import { createMainWindowLifecycle } from './windows/mainWindowLifecycle'
 import {
   CURRENT_CONFIG_VERSION,
@@ -601,7 +602,9 @@ const dbWorkerManager = new DbWorkerManager({
   restartBackoffMs: 500,
   maxRestartAttempts: 5,
   maxPending: 400,
-  electronConversionBridge: createMainProcessElectronConversionService(),
+  electronConversionBridge: createMainProcessElectronConversionService({
+    providerFetch: createElectronSessionProviderFetch(),
+  }),
 })
 
 const fileSelectionGrants = createFileSelectionGrantStore()

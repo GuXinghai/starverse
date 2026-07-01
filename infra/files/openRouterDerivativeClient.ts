@@ -4,6 +4,7 @@ export type OpenRouterDerivativeTransport = Readonly<{
   apiKey: string
   baseUrl?: string | null
   timeoutMs?: number | null
+  fetchImpl: typeof fetch
 }>
 
 export type OpenRouterTranscriptRequest = Readonly<{
@@ -114,7 +115,7 @@ async function postJson(
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
-    const response = await fetch(`${baseUrl}${pathname}`, {
+    const response = await transport.fetchImpl(`${baseUrl}${pathname}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,

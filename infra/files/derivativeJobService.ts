@@ -34,7 +34,11 @@ import {
   completeDfcSandboxRun,
   createDfcConversionSandboxPlan,
 } from './dfcConversionSandbox'
-import { requestElectronConversion, type ElectronConversionBridge } from './electronConversionBridge'
+import {
+  createElectronBridgeProviderFetch,
+  requestElectronConversion,
+  type ElectronConversionBridge,
+} from './electronConversionBridge'
 import {
   DFC_LIBREOFFICE_PDF_CONVERTER_NAME,
   DFC_LIBREOFFICE_PDF_CONVERTER_VERSION,
@@ -101,6 +105,7 @@ export class DerivativeJobService {
       modelCatalogRepo: ModelCatalogRepo
       storageRootDir: string
       electronConversionBridge?: ElectronConversionBridge
+      openRouterDerivativeFetch?: typeof fetch
       officePdfProcessRunner?: DfcLibreOfficePdfProcessRunner
       officePdfRuntimeSummary?: () => DfcOfficePdfRuntimeAvailabilitySummary | null
       now?: () => number
@@ -878,9 +883,12 @@ export class DerivativeJobService {
     }
 
     const source = await this.readLocalBytes(asset, job, 'audio_url_not_supported_for_transcript')
-    const transport = normalizeTransport(input)
     const modelId = requireStringFromConfig(job.configJson, 'modelId', 'transcript_model_missing', job)
     this.assertAudioModelCapability(modelId, job)
+    const transport = normalizeTransport(
+      input,
+      this.resolveOpenRouterDerivativeFetch(input, job, 'transcript_request_failed')
+    )
     const audioFormat = audioFormatFromAsset(asset)
     const transcript = await requestTranscriptFromOpenRouter(transport, {
       modelId,
@@ -923,7 +931,6 @@ export class DerivativeJobService {
   private async runEmbeddingJob(job: DerivativeJobRecord, input: RunDerivativeJobInput): Promise<DerivativeRunResult> {
     const asset = this.requireAsset(job.assetId)
     const modelId = requireStringFromConfig(job.configJson, 'modelId', 'embedding_model_missing', job)
-    const transport = normalizeTransport(input)
     const sourceText = await this.loadEmbeddingSourceText(asset, job)
     if (!sourceText.trim()) {
       throw derivativeError('embedding_input_empty', job.id, asset.id, job.derivativeKind, 'Embedding input text is empty.')
@@ -936,6 +943,10 @@ export class DerivativeJobService {
       throw derivativeError('embedding_input_empty', job.id, asset.id, job.derivativeKind, 'Embedding input text produced no chunks.')
     }
 
+    const transport = normalizeTransport(
+      input,
+      this.resolveOpenRouterDerivativeFetch(input, job, 'embedding_request_failed')
+    )
     const payload = chunks.length === 1 ? chunks[0].text : chunks.map((chunk) => chunk.text)
     const response = await requestEmbeddingsFromOpenRouter(transport, {
       modelId,
@@ -1287,6 +1298,27 @@ export class DerivativeJobService {
 
   private now(): number {
     return this.deps.now ? this.deps.now() : Date.now()
+  }
+
+  private resolveOpenRouterDerivativeFetch(
+    input: RunDerivativeJobInput,
+    job: DerivativeJobRecord,
+    errorCode: DerivativeErrorCode
+  ): typeof fetch {
+    const fetchImpl = this.deps.openRouterDerivativeFetch
+    if (typeof fetchImpl === 'function') return fetchImpl
+    if (this.deps.electronConversionBridge?.fetchProvider) {
+      return createElectronBridgeProviderFetch(this.deps.electronConversionBridge, {
+        timeoutMs: typeof input.timeoutMs === 'number' && Number.isFinite(input.timeoutMs) ? input.timeoutMs : null,
+      })
+    }
+    throw derivativeError(
+      errorCode,
+      job.id,
+      job.assetId,
+      job.derivativeKind,
+      'OpenRouter derivative fetch transport is unavailable.'
+    )
   }
 
   private buildDiagnosticSummary(
@@ -1889,13 +1921,14 @@ function selectPdfAnnotationAsset(candidate: Pick<PdfAnnotationCandidate, 'fileH
   return null
 }
 
-function normalizeTransport(input: RunDerivativeJobInput): OpenRouterDerivativeTransport {
+function normalizeTransport(input: RunDerivativeJobInput, fetchImpl: typeof fetch): OpenRouterDerivativeTransport {
   const apiKey = String(input.apiKey ?? '').trim()
   if (!apiKey) throw new Error('OpenRouter API key is required to run provider-backed derivative jobs.')
   return {
     apiKey,
     baseUrl: normalizeNullable(input.baseUrl),
     timeoutMs: typeof input.timeoutMs === 'number' && Number.isFinite(input.timeoutMs) ? input.timeoutMs : null,
+    fetchImpl,
   }
 }
 

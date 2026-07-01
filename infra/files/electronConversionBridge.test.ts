@@ -3,6 +3,7 @@ import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { describe, expect, it } from 'vitest'
 import {
+  createElectronBridgeProviderFetch,
   createWorkerThreadElectronConversionBridge,
   createUnavailableElectronConversionBridge,
   requestElectronConversion,
@@ -89,6 +90,52 @@ describe('electron conversion bridge boundary', () => {
 
     expect(result).toMatchObject({ ok: true, sizeBytes: 20 })
     expect(progress).toEqual([expect.objectContaining({ phase: 'downloading', bytesReceived: 10 })])
+  })
+
+  it('forwards provider fetch requests over the worker/main bridge as fetch-compatible responses', async () => {
+    const workerSide = new EventEmitter() as EventEmitter & {
+      postMessage: (message: unknown) => void
+    }
+    const mainSide = new EventEmitter() as EventEmitter & {
+      postMessage: (message: unknown) => void
+    }
+    workerSide.postMessage = (message: unknown) => {
+      setImmediate(() => mainSide.emit('message', message))
+    }
+    mainSide.postMessage = (message: unknown) => {
+      setImmediate(() => workerSide.emit('message', message))
+    }
+    mainSide.on('message', (message: any) => {
+      if (message?.type !== 'electron-provider-fetch-request') return
+      expect(message.request).toMatchObject({
+        url: 'https://openrouter.ai/api/v1/embeddings',
+        method: 'POST',
+        body: '{"input":"hello"}',
+      })
+      expect(message.request.headers.authorization).toBe('Bearer test')
+      mainSide.postMessage({
+        type: 'electron-provider-fetch-response',
+        id: message.id,
+        response: {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: { 'content-type': 'application/json' },
+          bodyText: '{"ok":true}',
+        },
+      })
+    })
+
+    const bridge = createWorkerThreadElectronConversionBridge(workerSide)
+    const fetchImpl = createElectronBridgeProviderFetch(bridge)
+    const response = await fetchImpl('https://openrouter.ai/api/v1/embeddings', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: 'hello' }),
+    })
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({ ok: true })
   })
 
   it('fails closed when the worker/main conversion bridge is unavailable', async () => {
