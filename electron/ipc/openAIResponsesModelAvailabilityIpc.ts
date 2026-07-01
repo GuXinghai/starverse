@@ -1,5 +1,6 @@
 import type { RegisterInvoke } from './types'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
+import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
 import {
   OPENAI_RESPONSES_ENDPOINT_ID,
   OPENAI_RESPONSES_PROFILE_ID,
@@ -16,7 +17,7 @@ export const OPENAI_RESPONSES_MODEL_AVAILABILITY_IPC_CHANNELS = [
 type RegisterOpenAIResponsesModelAvailabilityIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   credentialService: ProviderCredentialService
-  fetchImpl?: typeof fetch
+  fetchImpl?: ProviderFetch
 }>
 
 type OpenAIResponsesModelAvailabilityPayload = Readonly<{
@@ -101,7 +102,7 @@ export function registerOpenAIResponsesModelAvailabilityIpc(
     const apiKey = readOpenAIResponsesApiKey(input.credentialService)
     if (typeof apiKey !== 'string') return apiKey
 
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = input.fetchImpl ?? createElectronSessionProviderFetch()
     if (typeof fetchImpl !== 'function') {
       return safeFailure('invalid_payload', 'OpenAI Responses model availability bridge is unavailable.')
     }
