@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { resetI18nForTests, t } from '@/shared/i18n'
 import ChatSessionConsole from './ChatSessionConsole.vue'
 
 function defaultSessionConfig() {
@@ -56,6 +57,10 @@ function lmStudioChat(overrides: Partial<{
 
 describe('ChatSessionConsole LM Studio controls', () => {
   const originalLMStudioProvider = (globalThis as any).lmStudioProvider
+
+  beforeEach(() => {
+    resetI18nForTests()
+  })
 
   afterEach(() => {
     ;(globalThis as any).lmStudioProvider = originalLMStudioProvider
@@ -186,6 +191,40 @@ describe('ChatSessionConsole LM Studio controls', () => {
     expect(probeButton).toBeDisabled()
     await user.click(probeButton)
     expect(probe).not.toHaveBeenCalled()
+  })
+
+  it('shows a specific local policy rejection for LM Studio probe failures', async () => {
+    const user = userEvent.setup()
+    ;(globalThis as any).lmStudioProvider = {
+      probe: vi.fn(async () => ({
+        ok: false,
+        code: 'remote_host_rejected',
+        message: 'LM Studio probe failed safely.',
+      })),
+      loadModel: vi.fn(),
+      unloadModel: vi.fn(),
+    }
+
+    render(ChatSessionConsole, {
+      props: {
+        disabled: false,
+        isRunning: false,
+        sessionConfig: defaultSessionConfig(),
+        lmStudioChat: lmStudioChat(),
+        reasoningDisplayMode: 'inline',
+        modelCatalog: [],
+        webSearchResolved: null,
+        samplingParamsResolved: null,
+      },
+    })
+
+    await user.click(screen.getByTestId('lm-studio-probe'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('lm-studio-probe-error').textContent)
+        .toContain(t('errors.network.reason.localEndpointRejectedRemoteHost'))
+    })
+    expect(screen.getByTestId('lm-studio-probe-error').textContent).not.toContain('failed safely')
   })
 
   it('emits the auto-unload-after-idle toggle separately from implemented after-send unload', async () => {

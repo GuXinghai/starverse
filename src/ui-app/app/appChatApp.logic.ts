@@ -264,6 +264,10 @@ import {
   type ProviderModelPickerSource,
 } from './providerModelPickerViewModel'
 import { deriveSendButtonMode, type SendButtonMode } from './sendButtonMode'
+import {
+  resolveNetworkErrorDisplayMessage,
+  resolveNetworkFailureDisplayMessage,
+} from './networkErrorDisplay'
 
 /**
  * Architecture boundary (phase: containment):
@@ -1809,11 +1813,12 @@ export function useAppChatAppLogic() {
     code?: string
     message?: string
     provider?: string
+    networkError?: unknown
   }>
 
   function toErrorPanelView(message: MessageVM): ErrorPanelViewModel | null {
     const envelope = message.errorEnvelope ?? null
-    const summary = message.errorSummary ?? null
+    const summary = (message.errorSummary ?? null) as ErrorSummary | null
     if (!envelope && !summary) return null
 
     const completionClass = envelope?.completionClass ?? summary?.completionClass ?? 'error'
@@ -1826,7 +1831,8 @@ export function useAppChatAppLogic() {
         : undefined
     const provider = envelope?.openrouter?.provider ?? metadataProvider ?? summary?.provider ?? 'unknown'
     const code = envelope?.openrouter?.code ?? summary?.code ?? 'error'
-    const text = envelope?.openrouter?.message ?? summary?.message ?? 'Unknown error'
+    const networkErrorMessage = resolveNetworkErrorDisplayMessage(metadata?.networkError ?? summary?.networkError)
+    const text = networkErrorMessage ?? envelope?.openrouter?.message ?? summary?.message ?? 'Unknown error'
 
     return {
       completionClass,
@@ -1849,8 +1855,9 @@ export function useAppChatAppLogic() {
     const code = typeof record.code === 'string' ? record.code : undefined
     const message = typeof record.message === 'string' ? record.message : undefined
     const provider = typeof record.provider === 'string' ? record.provider : undefined
-    if (!completionClass && !phase && !code && !message && !provider) return null
-    return { completionClass, phase, code, message, provider }
+    const networkError = record.networkError
+    if (!completionClass && !phase && !code && !message && !provider && networkError === undefined) return null
+    return { completionClass, phase, code, message, provider, networkError }
   }
 
   async function persistMessageErrorEnvelope(messageId: string, envelope: ErrorEnvelope) {
@@ -3935,7 +3942,7 @@ export function useAppChatAppLogic() {
     } catch {
       openAIResponsesModelAvailabilityResult.value = buildOpenAIResponsesModelAvailabilityFailure(
         'network_error',
-        'OpenAI Responses model availability request failed safely.',
+        t('errors.network.reason.networkUnknown'),
       )
     } finally {
       openAIResponsesModelAvailabilityLoading.value = false
@@ -3979,7 +3986,7 @@ export function useAppChatAppLogic() {
     } catch {
       googleAIStudioModelAvailabilityResult.value = buildGoogleAIStudioModelAvailabilityFailure(
         'network_error',
-        'Google AI Studio model availability request failed safely.',
+        t('errors.network.reason.networkUnknown'),
       )
     } finally {
       googleAIStudioModelAvailabilityLoading.value = false
@@ -4023,7 +4030,7 @@ export function useAppChatAppLogic() {
     } catch {
       anthropicModelAvailabilityResult.value = buildAnthropicModelAvailabilityFailure(
         'network_error',
-        'Anthropic model availability request failed safely.',
+        t('errors.network.reason.networkUnknown'),
       )
     } finally {
       anthropicModelAvailabilityLoading.value = false
@@ -4067,7 +4074,7 @@ export function useAppChatAppLogic() {
     } catch {
       deepSeekModelAvailabilityResult.value = buildDeepSeekModelAvailabilityFailure(
         'network_error',
-        'DeepSeek model availability request failed safely.',
+        t('errors.network.reason.networkUnknown'),
       )
     } finally {
       deepSeekModelAvailabilityLoading.value = false
@@ -4187,7 +4194,14 @@ export function useAppChatAppLogic() {
     try {
       const result = await bridge.probe({ url: endpointUrl, timeoutMs: 5000 })
       if (!result || typeof result !== 'object' || (result as any).ok !== true) {
-        return { ok: false, reason: String((result as any)?.message ?? '').trim() || 'Local/OpenAI-compatible endpoint is unavailable.' }
+        return {
+          ok: false,
+          reason: resolveNetworkFailureDisplayMessage({
+            networkError: (result as any)?.networkError,
+            code: (result as any)?.code,
+            message: (result as any)?.message,
+          }) ?? 'Local/OpenAI-compatible endpoint is unavailable.',
+        }
       }
       const diagnostics = (result as any).diagnostics
       if (diagnostics?.status !== 'reachable') return { ok: false, reason: diagnostics?.message || 'Local/OpenAI-compatible endpoint is unavailable.' }
@@ -4195,7 +4209,7 @@ export function useAppChatAppLogic() {
       if (known === false) return { ok: false, reason: `Local/OpenAI-compatible model "${modelId}" is not available at the configured endpoint.` }
       return { ok: true }
     } catch {
-      return { ok: false, reason: 'Local/OpenAI-compatible endpoint probe failed safely.' }
+      return { ok: false, reason: t('errors.network.reason.networkUnknown') }
     }
   }
 
@@ -4209,7 +4223,14 @@ export function useAppChatAppLogic() {
     try {
       const result = await bridge.probe({ endpointUrl, selectedModel: modelId, timeoutMs: 5000 })
       if (!result || typeof result !== 'object' || (result as any).ok !== true) {
-        return { ok: false, reason: String((result as any)?.message ?? '').trim() || 'LM Studio endpoint is unavailable.' }
+        return {
+          ok: false,
+          reason: resolveNetworkFailureDisplayMessage({
+            networkError: (result as any)?.networkError,
+            code: (result as any)?.code,
+            message: (result as any)?.message,
+          }) ?? 'LM Studio endpoint is unavailable.',
+        }
       }
       const diagnostics = (result as any).diagnostics
       const mode = lmStudioChatConfig.value.chatMode
@@ -4221,7 +4242,7 @@ export function useAppChatAppLogic() {
       if (known === false) return { ok: false, reason: `LM Studio model "${modelId}" is not available at the configured endpoint.` }
       return { ok: true }
     } catch {
-      return { ok: false, reason: 'LM Studio endpoint probe failed safely.' }
+      return { ok: false, reason: t('errors.network.reason.networkUnknown') }
     }
   }
 
@@ -4235,7 +4256,14 @@ export function useAppChatAppLogic() {
     try {
       const result = await bridge.probe({ endpointUrl, selectedModel: modelId, timeoutMs: 5000 })
       if (!result || typeof result !== 'object' || (result as any).ok !== true) {
-        return { ok: false, reason: String((result as any)?.message ?? '').trim() || 'Ollama endpoint is unavailable.' }
+        return {
+          ok: false,
+          reason: resolveNetworkFailureDisplayMessage({
+            networkError: (result as any)?.networkError,
+            code: (result as any)?.code,
+            message: (result as any)?.message,
+          }) ?? 'Ollama endpoint is unavailable.',
+        }
       }
       const diagnostics = (result as any).diagnostics
       const mode = ollamaChatConfig.value.chatMode
@@ -4247,7 +4275,7 @@ export function useAppChatAppLogic() {
       if (known === false) return { ok: false, reason: `Ollama model "${modelId}" is not available at the configured endpoint.` }
       return { ok: true }
     } catch {
-      return { ok: false, reason: 'Ollama endpoint probe failed safely.' }
+      return { ok: false, reason: t('errors.network.reason.networkUnknown') }
     }
   }
 

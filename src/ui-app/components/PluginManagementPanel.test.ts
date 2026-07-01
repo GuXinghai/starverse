@@ -1,7 +1,8 @@
 /* eslint-disable max-lines-per-function */
 import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { resetI18nForTests, t } from '@/shared/i18n'
 import PluginManagementPanel from './PluginManagementPanel.vue'
 
 function createDbBridgeMock(outputs?: {
@@ -221,6 +222,10 @@ describe('PluginManagementPanel', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronApi = (globalThis as any).electronAPI
   const originalConfirm = globalThis.confirm
+
+  beforeEach(() => {
+    resetI18nForTests()
+  })
 
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
@@ -815,7 +820,7 @@ describe('PluginManagementPanel', () => {
 
     installDeferred.resolve({ ok: false, reason: 'download_failed', message: 'download_failed' })
 
-    await waitFor(() => expect(container.textContent).toContain('download_failed'))
+    await waitFor(() => expect(container.textContent).toContain(t('errors.network.reason.downloadFailed')))
     expect(container.textContent).not.toContain('Install: Preparing install')
     expect(container.textContent).not.toMatch(/https?:|contentToken|fullHash/iu)
   })
@@ -1114,7 +1119,9 @@ describe('PluginManagementPanel', () => {
     await user.click(await screen.findByRole('button', { name: 'Install official plugin' }))
 
     await waitFor(() => expect(container.textContent).toContain('Install failed'))
-    expect(container.textContent).toContain('download_failed')
+    expect(screen.getByTestId('plugin-install-failure').textContent)
+      .toContain(t('errors.network.reason.downloadFailed'))
+    expect(screen.getByTestId('plugin-install-failure').textContent).not.toContain('download_failed')
     expect(container.textContent).not.toContain('DB worker call timed out')
   })
 
