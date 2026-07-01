@@ -1,4 +1,17 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const electronMock = vi.hoisted(() => ({
+  sessionFetch: vi.fn(),
+}))
+
+vi.mock('electron', () => ({
+  session: {
+    defaultSession: {
+      fetch: electronMock.sessionFetch,
+    },
+  },
+}))
+
 import {
   ANTHROPIC_MODEL_AVAILABILITY_IPC_CHANNELS,
   registerAnthropicModelAvailabilityIpc,
@@ -20,12 +33,12 @@ function createCredentialService(apiKey?: string): ProviderCredentialService {
   } as unknown as ProviderCredentialService
 }
 
-function registerHandler(input: Readonly<{ apiKey?: string; fetchImpl?: typeof fetch }>) {
+function registerHandler(input: Readonly<{ apiKey?: string; fetchImpl?: typeof fetch; useDefaultFetch?: boolean }>) {
   const registerInvoke = vi.fn()
   registerAnthropicModelAvailabilityIpc({
     registerInvoke,
     credentialService: createCredentialService(input.apiKey),
-    fetchImpl: input.fetchImpl ?? vi.fn() as unknown as typeof fetch,
+    ...(input.useDefaultFetch ? {} : { fetchImpl: input.fetchImpl ?? vi.fn() as unknown as typeof fetch }),
   })
   const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'anthropic-models:list-availability')?.[1]
   expect(handler).toBeTypeOf('function')
@@ -33,6 +46,15 @@ function registerHandler(input: Readonly<{ apiKey?: string; fetchImpl?: typeof f
 }
 
 describe('anthropicModelAvailabilityIpc', () => {
+  beforeEach(() => {
+    electronMock.sessionFetch.mockReset()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
   it('registers only the Anthropic model availability channel', () => {
     const { registerInvoke } = registerHandler({})
 
@@ -78,6 +100,31 @@ describe('anthropicModelAvailabilityIpc', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
+  it('uses Electron session fetch by default instead of global fetch', async () => {
+    const globalFetch = vi.fn(async () => {
+      throw new Error('global fetch should not be used')
+    }) as unknown as typeof fetch
+    vi.stubGlobal('fetch', globalFetch)
+    electronMock.sessionFetch.mockResolvedValueOnce(jsonResponse({
+      data: [
+        { id: 'claude-sonnet-4-5', type: 'model', display_name: 'Claude Sonnet 4.5' },
+      ],
+      has_more: false,
+    }))
+    const { handler } = registerHandler({ apiKey: 'sk-ant-secret', useDefaultFetch: true })
+
+    const result = await handler({}, { timeoutMs: 1000 })
+
+    expect(result).toMatchObject({ ok: true, providerKey: 'anthropic_messages' })
+    expect(electronMock.sessionFetch).toHaveBeenCalledTimes(1)
+    expect(electronMock.sessionFetch.mock.calls[0]?.[0]).toBe('https://api.anthropic.com/v1/models?limit=100')
+    expect(electronMock.sessionFetch.mock.calls[0]?.[1]).toMatchObject({
+      method: 'GET',
+      redirect: 'error',
+    })
+    expect(globalFetch).not.toHaveBeenCalled()
+  })
+
   it('redacts provider HTTP errors before returning them to renderer', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({
       error: {
@@ -99,6 +146,46 @@ describe('anthropicModelAvailabilityIpc', () => {
     expect(serialized).not.toContain('sk-ant-secret')
     expect(serialized).not.toContain('x-api-key')
     expect(serialized).not.toContain('Bearer')
+  })
+
+  it('returns a safe network error when the model source request rejects', async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error('ECONNRESET x-api-key sk-ant-secret')
+    }) as unknown as typeof fetch
+    const { handler } = registerHandler({ apiKey: 'sk-ant-secret', fetchImpl })
+
+    const result = await handler({}, { timeoutMs: 1000 })
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'network_error',
+      message: 'Anthropic model source request failed safely.',
+    })
+    const serialized = JSON.stringify(result)
+    expect(serialized).not.toContain('sk-ant-secret')
+    expect(serialized).not.toContain('x-api-key')
+    expect(serialized).not.toContain('Bearer')
+  })
+
+  it('returns a safe network error when the model source request times out', async () => {
+    vi.useFakeTimers()
+    const fetchImpl = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(new DOMException('The operation was aborted.', 'AbortError'))
+      }, { once: true })
+    })) as unknown as typeof fetch
+    const { handler } = registerHandler({ apiKey: 'sk-ant-secret', fetchImpl })
+
+    const resultPromise = handler({}, { timeoutMs: 1000 })
+    await vi.advanceTimersByTimeAsync(1000)
+    const result = await resultPromise
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'network_error',
+      message: 'Anthropic model source request failed safely.',
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 
   it('fetches /models with a main-process Anthropic credential and returns safe availability records', async () => {
