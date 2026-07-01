@@ -55,6 +55,13 @@ contextBridge.exposeInMainWorld('googleAIStudioModels', {
   listAvailability: (payload?: unknown) => ipcRenderer.invoke('google-ai-studio-models:list-availability', payload),
 })
 
+contextBridge.exposeInMainWorld('networkProxy', {
+  getPolicy: () => ipcRenderer.invoke('network-proxy:get-policy'),
+  updatePolicy: (policy: unknown) => ipcRenderer.invoke('network-proxy:update-policy', policy),
+  resetPolicy: () => ipcRenderer.invoke('network-proxy:reset-policy'),
+  resolveProxy: (payload: unknown) => ipcRenderer.invoke('network-proxy:resolve-proxy', payload),
+})
+
 contextBridge.exposeInMainWorld('localEndpointDiagnostics', {
   probe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:probe', payload),
   streamProbe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:stream-probe', payload),

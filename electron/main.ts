@@ -27,6 +27,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { readFileSync, existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import Store from 'electron-store'
+import { DEFAULT_NETWORK_PROXY_POLICY } from '../src/shared/network/proxyPolicy'
 import { DbWorkerManager } from './db/workerManager'
 import { registerDbBridge } from './ipc/dbBridge'
 import { registerOpenRouterStreamBridge, cleanupOpenRouterStreams } from './ipc/openRouterStreamBridge'
@@ -40,6 +41,7 @@ import { startStartupBackgroundJobs, wireDbEventsToRenderer } from './jobs/start
 import { createInAppBrowserManager } from './services/inappBrowser'
 import { createMainProcessElectronConversionService } from './services/electronConversionService'
 import { createProviderFileUploadService } from './services/providerFileUploadService'
+import { createElectronSessionProxyController } from './net/electronSessionProxyController'
 import { createMainWindowLifecycle } from './windows/mainWindowLifecycle'
 import {
   CURRENT_CONFIG_VERSION,
@@ -88,6 +90,7 @@ const DEFAULT_CONFIG = {
     forceRebuildOnNextLaunch: false,
     rebuildOnSchemaMismatch: true,
   },
+  networkProxyPolicy: DEFAULT_NETWORK_PROXY_POLICY,
 } as const
 
 /**
@@ -616,6 +619,15 @@ const providerFileUploadService = createProviderFileUploadService({
   db: dbWorkerManager,
 })
 
+let networkProxyController: ReturnType<typeof createElectronSessionProxyController> | null = null
+
+function requireNetworkProxyController(): ReturnType<typeof createElectronSessionProxyController> {
+  if (!networkProxyController) {
+    throw new Error('Network proxy controller is not initialized')
+  }
+  return networkProxyController
+}
+
 function normalizeDbWorkerCallTimeoutMs(value: string | undefined): number {
   const parsed = Number.parseInt(String(value ?? '').trim(), 10)
   if (!Number.isFinite(parsed) || parsed <= 0) return 20000
@@ -797,6 +809,7 @@ function registerCoreIpcHandlers(): string[] {
     credentialService: providerCredentialService,
     isDev,
     netExpRuntimeInfo,
+    networkProxyController: requireNetworkProxyController(),
     migrateAndCleanupConfig: () => migrateAndCleanupConfig(store),
     performConfigSizeCheck: (context) => performConfigSizeCheck(store, context),
     refreshMainLocale: () => initMainI18n(store, app.getPreferredSystemLanguages()),
@@ -909,6 +922,17 @@ app.whenReady()
   .then(async () => {
     await ensureDbReady()
     await registerAssetProtocol()
+    networkProxyController = createElectronSessionProxyController({
+      store,
+      session: session.defaultSession,
+    })
+    const proxyApplyResult = await networkProxyController.applyCurrentPolicy({ reason: 'startup' })
+    if (!proxyApplyResult.ok) {
+      console.warn('[network-proxy] startup policy apply failed:', {
+        code: proxyApplyResult.code,
+        issueCodes: proxyApplyResult.issues?.map((issue) => issue.code) ?? [],
+      })
+    }
     registerAllIpcHandlers()
 
     // 注册事件转发：Worker 事件 → Renderer

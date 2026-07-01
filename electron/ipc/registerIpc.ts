@@ -3,6 +3,7 @@ import type { ProviderCredentialService } from '../credentials/providerCredentia
 import { registerDialogIpc, DIALOG_IPC_CHANNELS } from './dialogIpc'
 import { registerImageIpc, IMAGE_IPC_CHANNELS, type ResolvedAssetFile } from './imageIpc'
 import { registerNetExpIpc, NETEXP_IPC_CHANNELS } from './netExpIpc'
+import { registerNetworkProxyIpc, NETWORK_PROXY_IPC_CHANNELS } from './networkProxyIpc'
 import { registerShellIpc, SHELL_IPC_CHANNELS } from './shellIpc'
 import { registerStoreIpc, STORE_IPC_CHANNELS } from './storeIpc'
 import {
@@ -79,6 +80,7 @@ import {
   DEEPSEEK_TEXT_CHAT_IPC_CHANNELS,
 } from './deepSeekTextChatIpc'
 import type { ProviderFileUploadService } from '../services/providerFileUploadService'
+import type { ElectronSessionProxyController } from '../net/electronSessionProxyController'
 import type { RegisterInvoke } from './types'
 
 export const CORE_IPC_CHANNELS = [
@@ -102,6 +104,7 @@ export const CORE_IPC_CHANNELS = [
   ...ANTHROPIC_TEXT_CHAT_IPC_CHANNELS,
   ...DEEPSEEK_TEXT_CHAT_IPC_CHANNELS,
   ...NETEXP_IPC_CHANNELS,
+  ...NETWORK_PROXY_IPC_CHANNELS,
   ...DIALOG_IPC_CHANNELS,
   ...SHELL_IPC_CHANNELS,
   ...IMAGE_IPC_CHANNELS,
@@ -121,6 +124,7 @@ type RegisterIpcInput = Readonly<{
   credentialService: ProviderCredentialService
   isDev: boolean
   netExpRuntimeInfo: unknown
+  networkProxyController: ElectronSessionProxyController
   migrateAndCleanupConfig: () => void
   performConfigSizeCheck: (context: 'startup' | 'write') => void
   refreshMainLocale?: () => void
@@ -230,6 +234,10 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
     ...registerNetExpIpc({
       registerInvoke: input.registerInvoke,
       runtimeInfo: input.netExpRuntimeInfo,
+    }),
+    ...registerNetworkProxyIpc({
+      registerInvoke: input.registerInvoke,
+      controller: input.networkProxyController,
     }),
     ...registerDialogIpc({
       registerInvoke: input.registerInvoke,

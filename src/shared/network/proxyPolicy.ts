@@ -65,6 +65,8 @@ export const NETWORK_PROXY_POLICY_TARGETS = [
   'localEndpoint',
 ] as const satisfies readonly NetworkProxyPolicyTarget[]
 
+export const NETWORK_PROXY_POLICY_STORE_KEY = 'networkProxyPolicy'
+
 export const DEFAULT_NETWORK_PROXY_POLICY: NetworkProxyPolicy = {
   mode: 'system',
   proxyRules: '',

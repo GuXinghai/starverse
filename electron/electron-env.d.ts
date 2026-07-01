@@ -432,6 +432,72 @@ type GeminiModelAvailabilityResult =
     httpStatus?: number
   }
 
+type NetworkProxyPolicyMode = 'system' | 'direct' | 'fixed_servers' | 'pac_script' | 'auto_detect'
+
+interface NetworkProxyPolicy {
+  mode: NetworkProxyPolicyMode
+  proxyRules: string
+  proxyBypassRules: string
+  pacScript: string
+  credentialRef: string | null
+}
+
+interface NetworkProxyPolicyValidationIssue {
+  code:
+    | 'proxy_policy_fixed_servers_requires_proxy_rules'
+    | 'proxy_policy_pac_script_requires_pac_script'
+    | 'proxy_policy_proxy_rules_contains_credentials'
+    | 'proxy_policy_pac_script_contains_credentials'
+  field: keyof NetworkProxyPolicy
+  message: string
+}
+
+type NetworkProxyPolicyResult =
+  | { ok: true; policy: NetworkProxyPolicy }
+  | {
+    ok: false
+    code: 'invalid_policy' | 'store_unavailable'
+    message: string
+    issues?: readonly NetworkProxyPolicyValidationIssue[]
+  }
+
+type NetworkProxyApplyResult =
+  | {
+    ok: true
+    policy: NetworkProxyPolicy
+    config: {
+      mode?: NetworkProxyPolicyMode
+      pacScript?: string
+      proxyBypassRules?: string
+      proxyRules?: string
+    }
+    reason: 'startup' | 'manual'
+    closedConnections: boolean
+    appliedAtMs: number
+  }
+  | {
+    ok: false
+    code: 'invalid_policy' | 'session_proxy_failed' | 'store_unavailable'
+    message: string
+    policy: NetworkProxyPolicy
+    issues?: readonly NetworkProxyPolicyValidationIssue[]
+  }
+
+type NetworkProxyResolveResult =
+  | {
+    ok: true
+    url: string
+    resolvedProxy: string
+    proxyKind: 'DIRECT' | 'PROXY configured' | 'unknown/error'
+    observedAtMs: number
+  }
+  | {
+    ok: false
+    code: 'invalid_url' | 'session_proxy_failed'
+    message: string
+    safeUrl?: string
+  }
+
 type LocalEndpointProbeModelList =
   | {
     ok: true
@@ -848,6 +914,12 @@ interface Window {
   }
   googleAIStudioModels?: {
     listAvailability?: (payload?: { timeoutMs?: number }) => Promise<GeminiModelAvailabilityResult>
+  }
+  networkProxy?: {
+    getPolicy?: () => Promise<NetworkProxyPolicyResult>
+    updatePolicy?: (policy: Partial<NetworkProxyPolicy>) => Promise<NetworkProxyApplyResult>
+    resetPolicy?: () => Promise<NetworkProxyApplyResult>
+    resolveProxy?: (payload: string | { url?: string }) => Promise<NetworkProxyResolveResult>
   }
   localEndpointDiagnostics?: {
     probe?: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointProbeResult>
