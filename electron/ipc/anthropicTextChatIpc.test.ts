@@ -1,4 +1,17 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const electronMock = vi.hoisted(() => ({
+  sessionFetch: vi.fn(),
+}))
+
+vi.mock('electron', () => ({
+  session: {
+    defaultSession: {
+      fetch: electronMock.sessionFetch,
+    },
+  },
+}))
+
 import {
   abortAnthropicTextChat,
   registerAnthropicTextChatIpc,
@@ -39,6 +52,14 @@ function createCredentialService(apiKey?: string): ProviderCredentialService {
 }
 
 describe('anthropicTextChatIpc', () => {
+  beforeEach(() => {
+    electronMock.sessionFetch.mockReset()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   const uploadBlock = {
     type: 'starverse_provider_file_upload',
     provider: 'anthropic_messages',
@@ -114,6 +135,40 @@ describe('anthropicTextChatIpc', () => {
     expect(serializedEvents).not.toContain('x-api-key')
     expect(serializedEvents).not.toContain('Bearer')
     expect(serializedEvents).not.toContain('Authorization')
+  })
+
+  it('uses Electron session fetch by default instead of global fetch', async () => {
+    const globalFetch = vi.fn(async () => {
+      throw new Error('global fetch should not be used')
+    }) as unknown as typeof fetch
+    vi.stubGlobal('fetch', globalFetch)
+    electronMock.sessionFetch.mockResolvedValueOnce(makeSseResponse(textDeltaSse('session hello'), messageStopSse()))
+
+    const registerInvoke = vi.fn()
+    registerAnthropicTextChatIpc({
+      registerInvoke,
+      credentialService: createCredentialService('sk-ant-secret'),
+    })
+    const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'anthropic-chat:stream-text')?.[1]
+    const sender = createSender()
+
+    const start = await handler({ sender }, {
+      requestId: 'anthropic_req_session_fetch',
+      assistantMessageId: 'assistant_1',
+      model: 'claude-sonnet-4-5',
+      messages: [{ role: 'user', content: 'hello' }],
+      timeoutMs: 1000,
+    })
+
+    expect(start).toEqual({ ok: true })
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('anthropic-chat:end:anthropic_req_session_fetch'))
+    expect(electronMock.sessionFetch).toHaveBeenCalledTimes(1)
+    expect(electronMock.sessionFetch.mock.calls[0]?.[0]).toBe('https://api.anthropic.com/v1/messages')
+    expect(electronMock.sessionFetch.mock.calls[0]?.[1]).toMatchObject({
+      method: 'POST',
+      redirect: 'error',
+    })
+    expect(globalFetch).not.toHaveBeenCalled()
   })
 
   it('fails before fetch when the Anthropic API key is missing', async () => {
@@ -216,6 +271,45 @@ describe('anthropicTextChatIpc', () => {
     expect(serialized).not.toContain('Bearer')
     expect(serialized).not.toContain('public.example.test')
     expect(serialized).toContain('Anthropic Messages text chat failed safely.')
+  })
+
+  it('normalizes Anthropic HTTP errors before sending them to the renderer', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      error: {
+        type: 'rate_limit_error',
+        message: 'Authorization: Bearer sk-ant-secret at https://public.example.test',
+      },
+    }), {
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: { 'content-type': 'application/json' },
+    })) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerAnthropicTextChatIpc({ registerInvoke, credentialService: createCredentialService('sk-ant-secret'), fetchImpl })
+    const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'anthropic-chat:stream-text')?.[1]
+    const sender = createSender()
+
+    await handler({ sender }, {
+      requestId: 'anthropic_req_http_error',
+      assistantMessageId: 'assistant_1',
+      model: 'claude-sonnet-4-5',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('anthropic-chat:end:anthropic_req_http_error'))
+    const events = sentEvents(sender, 'anthropic_req_http_error')
+    expect(events.some((event) =>
+      event.type === 'event' &&
+      event.event.type === 'stream.error' &&
+      event.event.error.httpStatus === 429 &&
+      event.event.error.code === 'rate_limit_error' &&
+      event.event.error.message === 'Anthropic rate limit was reached.',
+    )).toBe(true)
+    const serialized = JSON.stringify(events)
+    expect(serialized).not.toContain('sk-ant-secret')
+    expect(serialized).not.toContain('Authorization')
+    expect(serialized).not.toContain('Bearer')
+    expect(serialized).not.toContain('public.example.test')
   })
 
   it('supports abort through the explicit Anthropic chat abort channel', async () => {

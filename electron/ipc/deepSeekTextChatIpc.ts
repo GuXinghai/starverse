@@ -3,6 +3,7 @@ import type { RegisterInvoke } from './types'
 import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
 import { streamViaDeepSeek, type DeepSeekFetchFn } from '../../src/next/provider/deepseek/deepSeekAdapter'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
+import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
 import {
   sanitizeProviderRuntimeFileContentBlocks,
   type ProviderRuntimeContentBlock,
@@ -44,7 +45,7 @@ export type DeepSeekTextChatWireEvent =
 type RegisterDeepSeekTextChatIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   credentialService: ProviderCredentialService
-  fetchImpl?: typeof fetch
+  fetchImpl?: ProviderFetch
 }>
 
 type ValidatedTextChatSuccess = Readonly<{
@@ -231,7 +232,7 @@ async function forwardDeepSeekStream(input: Readonly<{
   request: ValidatedTextChatSuccess
   sender: WebContents
   credentialService: ProviderCredentialService
-  fetchImpl: typeof fetch
+  fetchImpl: ProviderFetch
 }>): Promise<void> {
   const apiKey = readDeepSeekApiKey(input.credentialService)
   if (typeof apiKey !== 'string') {
@@ -315,7 +316,7 @@ export function registerDeepSeekTextChatIpc(
     if (!validated.ok) return validated
 
     const sender = (event as { sender?: WebContents } | null)?.sender
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = input.fetchImpl ?? createElectronSessionProviderFetch()
     if (!sender || typeof sender.send !== 'function' || typeof fetchImpl !== 'function') {
       return staticFailure('invalid_payload', 'DeepSeek official text chat bridge is unavailable.')
     }

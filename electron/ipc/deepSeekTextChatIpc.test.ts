@@ -1,4 +1,17 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const electronMock = vi.hoisted(() => ({
+  sessionFetch: vi.fn(),
+}))
+
+vi.mock('electron', () => ({
+  session: {
+    defaultSession: {
+      fetch: electronMock.sessionFetch,
+    },
+  },
+}))
+
 import {
   abortDeepSeekTextChat,
   registerDeepSeekTextChatIpc,
@@ -47,6 +60,14 @@ function createCredentialService(apiKey?: string): ProviderCredentialService {
 }
 
 describe('deepSeekTextChatIpc', () => {
+  beforeEach(() => {
+    electronMock.sessionFetch.mockReset()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('validates text-only payloads before fetch', () => {
     expect(validateDeepSeekTextChatPayload({
       requestId: 'deepseek_req_1',
@@ -106,6 +127,40 @@ describe('deepSeekTextChatIpc', () => {
     expect(serializedEvents).not.toContain('sk-deepseek-secret')
     expect(serializedEvents).not.toContain('Bearer')
     expect(serializedEvents).not.toContain('Authorization')
+  })
+
+  it('uses Electron session fetch by default instead of global fetch', async () => {
+    const globalFetch = vi.fn(async () => {
+      throw new Error('global fetch should not be used')
+    }) as unknown as typeof fetch
+    vi.stubGlobal('fetch', globalFetch)
+    electronMock.sessionFetch.mockResolvedValueOnce(makeSseResponse(textDeltaSse('session hello'), finishSse(), doneSse()))
+
+    const registerInvoke = vi.fn()
+    registerDeepSeekTextChatIpc({
+      registerInvoke,
+      credentialService: createCredentialService('sk-deepseek-secret'),
+    })
+    const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'deepseek-chat:stream-text')?.[1]
+    const sender = createSender()
+
+    const start = await handler({ sender }, {
+      requestId: 'deepseek_req_session_fetch',
+      assistantMessageId: 'assistant_1',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'hello' }],
+      timeoutMs: 1000,
+    })
+
+    expect(start).toEqual({ ok: true })
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('deepseek-chat:end:deepseek_req_session_fetch'))
+    expect(electronMock.sessionFetch).toHaveBeenCalledTimes(1)
+    expect(electronMock.sessionFetch.mock.calls[0]?.[0]).toBe('https://api.deepseek.com/v1/chat/completions')
+    expect(electronMock.sessionFetch.mock.calls[0]?.[1]).toMatchObject({
+      method: 'POST',
+      redirect: 'error',
+    })
+    expect(globalFetch).not.toHaveBeenCalled()
   })
 
   it('filters reasoning_content from renderer wire events in the text-only live slice', async () => {
@@ -184,6 +239,45 @@ describe('deepSeekTextChatIpc', () => {
     expect(serialized).not.toContain('Bearer')
     expect(serialized).not.toContain('public.example.test')
     expect(serialized).toContain('DeepSeek official text chat failed safely.')
+  })
+
+  it('normalizes DeepSeek HTTP errors before sending them to the renderer', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      error: {
+        code: 'rate_limit_exceeded',
+        message: 'Authorization: Bearer sk-deepseek-secret at https://public.example.test',
+      },
+    }), {
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: { 'content-type': 'application/json' },
+    })) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerDeepSeekTextChatIpc({ registerInvoke, credentialService: createCredentialService('sk-deepseek-secret'), fetchImpl })
+    const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'deepseek-chat:stream-text')?.[1]
+    const sender = createSender()
+
+    await handler({ sender }, {
+      requestId: 'deepseek_req_http_error',
+      assistantMessageId: 'assistant_1',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('deepseek-chat:end:deepseek_req_http_error'))
+    const events = sentEvents(sender, 'deepseek_req_http_error')
+    expect(events.some((event) =>
+      event.type === 'event' &&
+      event.event.type === 'stream.error' &&
+      event.event.error.httpStatus === 429 &&
+      event.event.error.code === 'rate_limit_exceeded' &&
+      event.event.error.message === 'DeepSeek rate limit was reached.',
+    )).toBe(true)
+    const serialized = JSON.stringify(events)
+    expect(serialized).not.toContain('sk-deepseek-secret')
+    expect(serialized).not.toContain('Authorization')
+    expect(serialized).not.toContain('Bearer')
+    expect(serialized).not.toContain('public.example.test')
   })
 
   it('supports abort through the explicit DeepSeek chat abort channel', async () => {

@@ -3,6 +3,7 @@ import type { RegisterInvoke } from './types'
 import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
 import { streamViaOpenAIResponses, type ResponsesFetchFn } from '../../src/next/provider/openai-responses/openaiResponsesAdapter'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
+import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
 import {
   isProviderRuntimeUploadRequestBlock,
   sanitizeProviderRuntimeFileContentBlocks,
@@ -48,7 +49,7 @@ type RegisterOpenAIResponsesTextChatIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   credentialService: ProviderCredentialService
   providerFileUploadService?: ProviderFileUploadService
-  fetchImpl?: typeof fetch
+  fetchImpl?: ProviderFetch
 }>
 
 type ValidatedTextChatSuccess = Readonly<{
@@ -231,7 +232,7 @@ async function forwardOpenAIResponsesStream(input: Readonly<{
   sender: WebContents
   credentialService: ProviderCredentialService
   providerFileUploadService?: ProviderFileUploadService
-  fetchImpl: typeof fetch
+  fetchImpl: ProviderFetch
 }>): Promise<void> {
   const apiKey = readOpenAIResponsesApiKey(input.credentialService)
   if (typeof apiKey !== 'string') {
@@ -344,7 +345,7 @@ export function registerOpenAIResponsesTextChatIpc(
     if (!validated.ok) return validated
 
     const sender = (event as { sender?: WebContents } | null)?.sender
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = input.fetchImpl ?? createElectronSessionProviderFetch()
     if (!sender || typeof sender.send !== 'function' || typeof fetchImpl !== 'function') {
       return staticFailure('invalid_payload', 'OpenAI Responses text chat bridge is unavailable.')
     }
