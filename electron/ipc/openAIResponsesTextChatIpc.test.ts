@@ -1,4 +1,17 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const electronMock = vi.hoisted(() => ({
+  sessionFetch: vi.fn(),
+}))
+
+vi.mock('electron', () => ({
+  session: {
+    defaultSession: {
+      fetch: electronMock.sessionFetch,
+    },
+  },
+}))
+
 import {
   abortOpenAIResponsesTextChat,
   registerOpenAIResponsesTextChatIpc,
@@ -39,6 +52,14 @@ function createCredentialService(apiKey?: string): ProviderCredentialService {
 }
 
 describe('openAIResponsesTextChatIpc', () => {
+  beforeEach(() => {
+    electronMock.sessionFetch.mockReset()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   const uploadBlock = {
     type: 'starverse_provider_file_upload',
     provider: 'openai_responses',
@@ -108,6 +129,40 @@ describe('openAIResponsesTextChatIpc', () => {
     const serializedEvents = JSON.stringify(events)
     expect(serializedEvents).not.toContain('sk-openai-secret')
     expect(serializedEvents).not.toContain('Bearer sk-openai-secret')
+  })
+
+  it('uses Electron session fetch by default instead of global fetch', async () => {
+    const globalFetch = vi.fn(async () => {
+      throw new Error('global fetch should not be used')
+    }) as unknown as typeof fetch
+    vi.stubGlobal('fetch', globalFetch)
+    electronMock.sessionFetch.mockResolvedValueOnce(makeSseResponse(textDeltaSse('session hello'), completedSse()))
+
+    const registerInvoke = vi.fn()
+    registerOpenAIResponsesTextChatIpc({
+      registerInvoke,
+      credentialService: createCredentialService('sk-openai-secret'),
+    })
+    const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'openai-responses-chat:stream-text')?.[1]
+    const sender = createSender()
+
+    const start = await handler({ sender }, {
+      requestId: 'openai_responses_req_session_fetch',
+      assistantMessageId: 'assistant_1',
+      model: 'gpt-4.1-mini',
+      messages: [{ role: 'user', content: 'hello' }],
+      timeoutMs: 1000,
+    })
+
+    expect(start).toEqual({ ok: true })
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('openai-responses-chat:end:openai_responses_req_session_fetch'))
+    expect(electronMock.sessionFetch).toHaveBeenCalledTimes(1)
+    expect(electronMock.sessionFetch.mock.calls[0]?.[0]).toBe('https://api.openai.com/v1/responses')
+    expect(electronMock.sessionFetch.mock.calls[0]?.[1]).toMatchObject({
+      method: 'POST',
+      redirect: 'error',
+    })
+    expect(globalFetch).not.toHaveBeenCalled()
   })
 
   it('fails before fetch when the OpenAI Responses API key is missing', async () => {
@@ -210,6 +265,45 @@ describe('openAIResponsesTextChatIpc', () => {
     expect(serialized).not.toContain('Bearer')
     expect(serialized).not.toContain('public.example.test')
     expect(serialized).toContain('OpenAI Responses text chat failed safely.')
+  })
+
+  it('normalizes OpenAI Responses HTTP errors before sending them to the renderer', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      error: {
+        code: 'rate_limit_exceeded',
+        message: 'Authorization: Bearer sk-openai-secret at https://public.example.test',
+      },
+    }), {
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: { 'content-type': 'application/json' },
+    })) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerOpenAIResponsesTextChatIpc({ registerInvoke, credentialService: createCredentialService('sk-openai-secret'), fetchImpl })
+    const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'openai-responses-chat:stream-text')?.[1]
+    const sender = createSender()
+
+    await handler({ sender }, {
+      requestId: 'openai_responses_req_http_error',
+      assistantMessageId: 'assistant_1',
+      model: 'gpt-4.1-mini',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('openai-responses-chat:end:openai_responses_req_http_error'))
+    const events = sentEvents(sender, 'openai_responses_req_http_error')
+    expect(events.some((event) =>
+      event.type === 'event' &&
+      event.event.type === 'stream.error' &&
+      event.event.error.httpStatus === 429 &&
+      event.event.error.code === 'rate_limit_exceeded' &&
+      event.event.error.message === 'OpenAI Responses rate limit was reached.',
+    )).toBe(true)
+    const serialized = JSON.stringify(events)
+    expect(serialized).not.toContain('sk-openai-secret')
+    expect(serialized).not.toContain('Authorization')
+    expect(serialized).not.toContain('Bearer')
+    expect(serialized).not.toContain('public.example.test')
   })
 
   it('supports abort through the explicit OpenAI Responses chat abort channel', async () => {
