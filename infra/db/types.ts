@@ -2418,6 +2418,18 @@ export type ElectronPackageDownloadWorkerProgressMessage = {
   progress: import('../../src/next/plugin-distribution/packageDownloader').PackageDownloadProgress
 }
 
+export type ElectronProviderFetchWorkerRequestMessage = {
+  type: 'electron-provider-fetch-request'
+  id: string
+  request: import('../files/electronConversionBridge').ElectronProviderFetchRequest
+}
+
+export type ElectronProviderFetchWorkerResponseMessage = {
+  type: 'electron-provider-fetch-response'
+  id: string
+  response: import('../files/electronConversionBridge').ElectronProviderFetchResult
+}
+
 // ========== Model Data Types ==========
 // 参考规范：/docs/openrouter-model-sync-spec.md
 
