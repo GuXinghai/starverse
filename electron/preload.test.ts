@@ -38,6 +38,7 @@ describe('preload scoped API exposure', () => {
       'deepSeekCredential',
       'deepSeekModels',
       'googleAIStudioModels',
+      'networkProxy',
       'localEndpointDiagnostics',
       'localEndpointChat',
       'lmStudioProvider',
@@ -93,6 +94,7 @@ describe('preload scoped API exposure', () => {
     const deepSeekCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'deepSeekCredential')?.[1]
     const deepSeekModels = exposeInMainWorld.mock.calls.find(([name]) => name === 'deepSeekModels')?.[1]
     const googleAIStudioModels = exposeInMainWorld.mock.calls.find(([name]) => name === 'googleAIStudioModels')?.[1]
+    const networkProxy = exposeInMainWorld.mock.calls.find(([name]) => name === 'networkProxy')?.[1]
     const localEndpointDiagnostics = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointDiagnostics')?.[1]
     const localEndpointChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointChat')?.[1]
     const lmStudioProvider = exposeInMainWorld.mock.calls.find(([name]) => name === 'lmStudioProvider')?.[1]
@@ -147,6 +149,12 @@ describe('preload scoped API exposure', () => {
     })
     expect(googleAIStudioModels).toEqual({
       listAvailability: expect.any(Function),
+    })
+    expect(networkProxy).toEqual({
+      getPolicy: expect.any(Function),
+      updatePolicy: expect.any(Function),
+      resetPolicy: expect.any(Function),
+      resolveProxy: expect.any(Function),
     })
     expect(localEndpointDiagnostics).toEqual({
       probe: expect.any(Function),
@@ -246,6 +254,9 @@ describe('preload scoped API exposure', () => {
     expect(googleAIStudioModels.apiKey).toBeUndefined()
     expect(googleAIStudioModels.update).toBeUndefined()
     expect(googleAIStudioModels.endpointRegistry).toBeUndefined()
+    expect(networkProxy.credentialResolver).toBeUndefined()
+    expect(networkProxy.secretStore).toBeUndefined()
+    expect(networkProxy.session).toBeUndefined()
     expect(openAIResponsesChat.getStatus).toBeUndefined()
     expect(openAIResponsesChat.update).toBeUndefined()
     expect(openAIResponsesChat.endpointRegistry).toBeUndefined()
@@ -285,6 +296,10 @@ describe('preload scoped API exposure', () => {
     await deepSeekCredential.clear()
     await deepSeekModels.listAvailability({ timeoutMs: 5000 })
     await googleAIStudioModels.listAvailability({ timeoutMs: 5000 })
+    await networkProxy.getPolicy()
+    await networkProxy.updatePolicy({ mode: 'direct' })
+    await networkProxy.resetPolicy()
+    await networkProxy.resolveProxy({ url: 'https://example.test' })
     await localEndpointDiagnostics.probe({ url: 'http://localhost:1234', timeoutMs: 5000 })
     await localEndpointDiagnostics.streamProbe({ url: 'http://localhost:1234', timeoutMs: 5000 })
     await localEndpointChat.startTextChat({
@@ -402,6 +417,10 @@ describe('preload scoped API exposure', () => {
     expect(invoke).toHaveBeenCalledWith('google-ai-studio-models:list-availability', {
       timeoutMs: 5000,
     })
+    expect(invoke).toHaveBeenCalledWith('network-proxy:get-policy')
+    expect(invoke).toHaveBeenCalledWith('network-proxy:update-policy', { mode: 'direct' })
+    expect(invoke).toHaveBeenCalledWith('network-proxy:reset-policy')
+    expect(invoke).toHaveBeenCalledWith('network-proxy:resolve-proxy', { url: 'https://example.test' })
     expect(invoke).toHaveBeenCalledWith('local-endpoint-diagnostics:probe', {
       url: 'http://localhost:1234',
       timeoutMs: 5000,
@@ -499,6 +518,7 @@ describe('preload scoped API exposure', () => {
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('deepSeekCredential'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('deepSeekModels'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('googleAIStudioModels'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('networkProxy'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointDiagnostics'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointChat'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('lmStudioProvider'")

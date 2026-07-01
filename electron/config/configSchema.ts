@@ -114,6 +114,7 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   'netExp.forceHttp1',
   'netExp.tcpKeepAliveEnable',
   'netExp.tcpKeepAliveIdleMs',
+  'networkProxyPolicy',   // Electron session proxy policy（system/direct/fixed_servers/pac_script/auto_detect）
 
   // ========== Database Dev Rebuild (dev-only) ==========
   'dbExp',                           // DB 开发态实验开关（破坏性重建）

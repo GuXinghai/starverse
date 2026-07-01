@@ -3,6 +3,25 @@ import { describe, expect, it } from 'vitest'
 import { checkConfigIntegrity, validateAndCleanConfig } from './configSchema'
 
 describe('configSchema provider credential secure-store keys', () => {
+  it('keeps network proxy policy during config cleanup', () => {
+    const policy = {
+      mode: 'fixed_servers',
+      proxyRules: 'https=proxy.internal:8443',
+      proxyBypassRules: '<local>',
+      pacScript: '',
+      credentialRef: null,
+    }
+
+    const result = validateAndCleanConfig({
+      configVersion: 2,
+      networkProxyPolicy: policy,
+      unknownLargeField: { removed: true },
+    })
+
+    expect(result.cleaned.networkProxyPolicy).toEqual(policy)
+    expect(result.removed.map((item) => item.key)).toEqual(['unknownLargeField'])
+  })
+
   it('keeps provider credential secure-store records during config cleanup', () => {
     const secureRecord = {
       version: 1,
