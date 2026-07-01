@@ -1,4 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
+
+const electronMock = vi.hoisted(() => ({
+  sessionFetch: vi.fn(),
+}))
+
+vi.mock('electron', () => ({
+  session: {
+    defaultSession: {
+      fetch: electronMock.sessionFetch,
+    },
+  },
+}))
+
 import {
   DEFAULT_CATALOG_FRESHNESS_MS,
   OPENROUTER_DEPRECATED_CATALOG_CACHE_CLEARED_AT_MS_KEY,

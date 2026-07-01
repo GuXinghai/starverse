@@ -1,4 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const electronMock = vi.hoisted(() => ({
+  sessionFetch: vi.fn(),
+}))
+
+vi.mock('electron', () => ({
+  session: {
+    defaultSession: {
+      fetch: electronMock.sessionFetch,
+    },
+  },
+}))
+
 import { runCatalogSyncAtStartup } from '../jobs/catalogSyncStartup'
 import { deriveCatalogScopeFromStore } from '../modelCatalog/catalogScope'
 import { registerModelCatalogSyncIpc } from './modelCatalogSyncIpc'
@@ -527,8 +540,9 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
     expect(resultA.items.map((item: any) => item.modelId)).toEqual(['scope-a/model'])
     expect(resultB.items.map((item: any) => item.modelId)).toEqual(['scope-b/model'])
     expect(resultAltBaseUrl).toMatchObject({
-      status: 'not_synced',
-      syncState: 'idle',
+      status: 'failed',
+      syncState: 'error',
+      failureReasonCode: 'missing_api_key',
       items: [],
     })
   })
