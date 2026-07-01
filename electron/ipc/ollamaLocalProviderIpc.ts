@@ -1,5 +1,6 @@
 import type { WebContents } from 'electron'
 import type { RegisterInvoke } from './types'
+import { createLocalEndpointDirectFetch } from '../net/localEndpointTransport'
 import {
   sanitizeProviderRuntimeImageContentBlocks,
   type OpenAICompatibleChatContentPart,
@@ -679,7 +680,7 @@ export async function probeOllamaLocalProvider(
   const endpoint = validateOllamaEndpointUrl(payload.endpointUrl)
   if (!endpoint.ok) return endpoint
 
-  const fetchImpl = options?.fetchImpl ?? globalThis.fetch
+  const fetchImpl = options?.fetchImpl ?? createLocalEndpointDirectFetch()
   if (typeof fetchImpl !== 'function') {
     return {
       ok: true,
@@ -826,7 +827,7 @@ export async function loadOllamaModel(
   if (!endpoint.ok) return safeControlFailure(endpoint.code, endpoint.safeUrl)
   const model = String(payload.model ?? '').trim()
   if (!model) return safeControlFailure('invalid_payload', endpoint.safeBaseUrl)
-  const fetchImpl = options?.fetchImpl ?? globalThis.fetch
+  const fetchImpl = options?.fetchImpl ?? createLocalEndpointDirectFetch()
   if (typeof fetchImpl !== 'function') return safeControlFailure('network_error', endpoint.safeBaseUrl)
   return chatControlInternal({
     fetchImpl,
@@ -846,7 +847,7 @@ export async function unloadOllamaModel(
   if (!endpoint.ok) return safeControlFailure(endpoint.code, endpoint.safeUrl)
   const model = String(payload.model ?? '').trim()
   if (!model) return safeControlFailure('invalid_payload', endpoint.safeBaseUrl)
-  const fetchImpl = options?.fetchImpl ?? globalThis.fetch
+  const fetchImpl = options?.fetchImpl ?? createLocalEndpointDirectFetch()
   if (typeof fetchImpl !== 'function') return safeControlFailure('network_error', endpoint.safeBaseUrl)
   return chatControlInternal({
     fetchImpl,
@@ -1426,7 +1427,7 @@ export function registerOllamaLocalProviderIpc(
     if (!validated.ok) return validated
 
     const sender = (event as { sender?: WebContents } | null)?.sender
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = input.fetchImpl ?? createLocalEndpointDirectFetch()
     if (!sender || typeof sender.send !== 'function' || typeof fetchImpl !== 'function') {
       return staticStartFailure('invalid_payload', 'Ollama text chat bridge is unavailable.')
     }

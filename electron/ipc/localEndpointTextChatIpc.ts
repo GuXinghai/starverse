@@ -1,5 +1,6 @@
 import type { WebContents } from 'electron'
 import type { RegisterInvoke } from './types'
+import { createLocalEndpointDirectFetch } from '../net/localEndpointTransport'
 import { openAiChatCompletionsUrl, validateLocalEndpointProbeUrl } from './localEndpointDiagnosticsIpc'
 import {
   sanitizeProviderRuntimeImageContentBlocks,
@@ -309,7 +310,7 @@ export function registerLocalEndpointTextChatIpc(
     if (!validated.ok) return validated
 
     const sender = (event as { sender?: WebContents } | null)?.sender
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = input.fetchImpl ?? createLocalEndpointDirectFetch()
     if (!sender || typeof sender.send !== 'function' || typeof fetchImpl !== 'function') {
       return staticFailure('invalid_payload', 'Local endpoint text chat bridge is unavailable.')
     }
