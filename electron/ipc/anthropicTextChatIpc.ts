@@ -4,6 +4,7 @@ import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEven
 import { streamViaAnthropic, type AnthropicFetchFn } from '../../src/next/provider/anthropic/anthropicAdapter'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
+import { sanitizeProviderNetworkError } from './providerNetworkError'
 import {
   isProviderRuntimeUploadRequestBlock,
   sanitizeProviderRuntimeFileContentBlocks,
@@ -151,34 +152,12 @@ function readAnthropicApiKey(credentialService: ProviderCredentialService): Anth
 }
 
 function safeProviderError(error: StarverseProviderError): StarverseProviderError {
-  const category = error.category === 'auth'
-    ? 'auth'
-    : error.category === 'rate_limit'
-      ? 'rate_limit'
-      : error.category === 'aborted'
-        ? 'aborted'
-        : error.category === 'bad_request'
-          ? 'bad_request'
-          : error.category === 'network'
-            ? 'network'
-            : 'provider_error'
-
-  return {
-    phase: error.phase,
-    provider: 'anthropic',
-    category,
-    message: category === 'auth'
-      ? 'Anthropic credential was rejected.'
-      : category === 'rate_limit'
-        ? 'Anthropic rate limit was reached.'
-        : category === 'aborted'
-          ? 'Anthropic Messages text chat was aborted.'
-          : 'Anthropic Messages text chat failed safely.',
-    ...(error.code ? { code: String(error.code) } : {}),
-    ...(error.httpStatus ? { httpStatus: error.httpStatus } : {}),
-    ...(error.retryable ? { retryable: true } : {}),
-    ...(error.requestId ? { requestId: error.requestId } : {}),
-  }
+  return sanitizeProviderNetworkError({
+    providerId: 'anthropic',
+    providerWireName: 'anthropic',
+    providerLabel: 'Anthropic',
+    error,
+  })
 }
 
 function safeStreamEvent(event: StarverseStreamEvent): StarverseStreamEvent {
@@ -306,20 +285,19 @@ async function forwardAnthropicStream(input: Readonly<{
         event: safeEvent,
       })
     }
-  } catch {
+  } catch (error) {
     sendWireEvent(input.sender, input.request.requestId, {
       type: 'event',
       event: {
         type: 'stream.error',
-        error: {
-          phase: 'transport',
-          provider: 'anthropic',
-          category: controller.signal.aborted ? 'aborted' : 'network',
-          code: controller.signal.aborted ? 'aborted' : 'network_error',
-          message: controller.signal.aborted
-            ? 'Anthropic Messages text chat was aborted.'
-            : 'Anthropic Messages text chat failed safely.',
-        },
+        error: sanitizeProviderNetworkError({
+          providerId: 'anthropic',
+          providerWireName: 'anthropic',
+          providerLabel: 'Anthropic',
+          thrown: error,
+          abortReason: controller.signal.reason,
+          fallbackPhase: 'transport',
+        }),
         terminal: true,
       },
     })

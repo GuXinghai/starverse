@@ -140,6 +140,9 @@ describe('openAIResponsesModelAvailabilityIpc', () => {
       code: 'http_error',
       httpStatus: 401,
       message: 'OpenAI Responses model source credential was rejected.',
+      networkError: {
+        safeDetailCode: 'http_401_auth',
+      },
     })
     const serialized = JSON.stringify(result)
     expect(serialized).not.toContain('sk-openai-secret')
@@ -158,7 +161,10 @@ describe('openAIResponsesModelAvailabilityIpc', () => {
     expect(result).toMatchObject({
       ok: false,
       code: 'network_error',
-      message: 'OpenAI Responses model source request failed safely.',
+      message: 'OpenAI Responses model source: Network request failed.',
+      networkError: {
+        safeDetailCode: 'network_unknown',
+      },
     })
     const serialized = JSON.stringify(result)
     expect(serialized).not.toContain('sk-openai-secret')
@@ -182,7 +188,10 @@ describe('openAIResponsesModelAvailabilityIpc', () => {
     expect(result).toMatchObject({
       ok: false,
       code: 'network_error',
-      message: 'OpenAI Responses model source request failed safely.',
+      message: 'OpenAI Responses model source: Connection timed out.',
+      networkError: {
+        safeDetailCode: 'connection_timeout',
+      },
     })
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })

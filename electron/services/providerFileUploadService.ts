@@ -5,6 +5,11 @@ import {
   type ProviderRuntimeContentBlock,
   type ProviderRuntimeUploadRequestBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
+import {
+  buildNetworkErrorEnvelope,
+  providerNetworkFailureMessage,
+  type NetworkErrorEnvelope,
+} from '../../src/shared/network/networkErrorEnvelope'
 
 export type ProviderFileUploadProvider =
   | 'openai_responses'
@@ -33,7 +38,7 @@ export type ResolveProviderFileUploadBlocksInput = Readonly<{
 
 export type ResolveProviderFileUploadBlocksResult =
   | Readonly<{ ok: true; blocks: ProviderRuntimeContentBlock[]; cacheEvents: ProviderFileUploadCacheEvent[] }>
-  | Readonly<{ ok: false; code: string; message: string; retryable?: boolean }>
+  | Readonly<{ ok: false; code: string; message: string; retryable?: boolean; networkError?: NetworkErrorEnvelope }>
 
 export type ProviderFileUploadCacheEvent = Readonly<{
   cacheId: string
@@ -76,13 +81,13 @@ type ProviderUploadResult =
       expiresAtMs?: number | null
       metadataJson?: Record<string, unknown> | null
     }>
-  | Readonly<{ ok: false; code: string; message: string; retryable?: boolean }>
+  | Readonly<{ ok: false; code: string; message: string; retryable?: boolean; networkError?: NetworkErrorEnvelope }>
 
 const inFlightUploads = new Map<string, Promise<ResolveOneUploadResult>>()
 
 type ResolveOneUploadResult =
   | Readonly<{ ok: true; block: ProviderRuntimeContentBlock; event: ProviderFileUploadCacheEvent }>
-  | Readonly<{ ok: false; code: string; message: string; retryable?: boolean }>
+  | Readonly<{ ok: false; code: string; message: string; retryable?: boolean; networkError?: NetworkErrorEnvelope }>
 
 type VerifiedUploadBytes = Readonly<{
   ok: true
@@ -195,7 +200,12 @@ export function createProviderFileUploadService(input: Readonly<{
       return { ok: false, code: 'cache_reservation_failed', message: 'Provider file upload cache reservation failed safely.' }
     }
 
-    const upload = await uploadToProvider(inputForUpload)
+    let upload: ProviderUploadResult
+    try {
+      upload = await uploadToProvider(inputForUpload)
+    } catch (error) {
+      upload = safeUploadTransportFailure(inputForUpload.provider, error, inputForUpload.signal?.reason)
+    }
     if (!upload.ok) {
       await input.db.call('providerFileCache.markFailed', {
         id: record.id,
@@ -333,7 +343,7 @@ async function uploadOpenAI(input: ResolveProviderFileUploadBlocksInput & {
     signal: input.signal,
     redirect: 'error',
   })
-  if (!response.ok) return safeUploadHttpFailure('openai_upload_failed', response)
+  if (!response.ok) return safeUploadHttpFailure(input.provider, 'openai_upload_failed', response)
   const json = await safeJson(response)
   const id = typeof json?.id === 'string' ? json.id.trim() : ''
   if (!id) return { ok: false, code: 'openai_upload_response_invalid', message: 'OpenAI Files upload returned no file id.' }
@@ -366,7 +376,7 @@ async function uploadAnthropic(input: ResolveProviderFileUploadBlocksInput & {
     signal: input.signal,
     redirect: 'error',
   })
-  if (!response.ok) return safeUploadHttpFailure('anthropic_upload_failed', response)
+  if (!response.ok) return safeUploadHttpFailure(input.provider, 'anthropic_upload_failed', response)
   const json = await safeJson(response)
   const id = typeof json?.id === 'string' ? json.id.trim() : ''
   if (!id) return { ok: false, code: 'anthropic_upload_response_invalid', message: 'Anthropic Files upload returned no file id.' }
@@ -393,7 +403,7 @@ async function uploadGemini(input: ResolveProviderFileUploadBlocksInput & {
     signal: input.signal,
     redirect: 'error',
   })
-  if (!start.ok) return safeUploadHttpFailure('gemini_upload_start_failed', start)
+  if (!start.ok) return safeUploadHttpFailure(input.provider, 'gemini_upload_start_failed', start)
   const uploadUrl = start.headers.get('x-goog-upload-url')
   if (!uploadUrl) return { ok: false, code: 'gemini_upload_url_missing', message: 'Gemini Files upload did not return an upload URL.' }
   const finalize = await input.fetchImpl(uploadUrl, {
@@ -406,7 +416,7 @@ async function uploadGemini(input: ResolveProviderFileUploadBlocksInput & {
     signal: input.signal,
     redirect: 'error',
   })
-  if (!finalize.ok) return safeUploadHttpFailure('gemini_upload_finalize_failed', finalize)
+  if (!finalize.ok) return safeUploadHttpFailure(input.provider, 'gemini_upload_finalize_failed', finalize)
   const json = await safeJson(finalize)
   return finalizeGeminiFile(input, json?.file ?? json)
 }
@@ -426,7 +436,7 @@ async function finalizeGeminiFile(input: ResolveProviderFileUploadBlocksInput & 
       signal: input.signal,
       redirect: 'error',
     })
-    if (!response.ok) return safeUploadHttpFailure('gemini_file_poll_failed', response)
+    if (!response.ok) return safeUploadHttpFailure(input.provider, 'gemini_file_poll_failed', response)
     const json = await safeJson(response)
     file = json?.file ?? json ?? {}
   }
@@ -445,13 +455,48 @@ async function finalizeGeminiFile(input: ResolveProviderFileUploadBlocksInput & 
   }
 }
 
-async function safeUploadHttpFailure(code: string, response: Response): Promise<ProviderUploadResult> {
+async function safeUploadHttpFailure(
+  provider: ProviderFileUploadProvider,
+  code: string,
+  response: Response,
+): Promise<ProviderUploadResult> {
+  const networkError = buildProviderUploadNetworkError(provider, { httpStatus: response.status })
   return {
     ok: false,
     code,
-    message: `Provider file upload failed safely with HTTP ${response.status}.`,
+    message: providerNetworkFailureMessage('Provider file upload', networkError),
     retryable: response.status >= 500,
+    networkError,
   }
+}
+
+function safeUploadTransportFailure(
+  provider: ProviderFileUploadProvider,
+  error: unknown,
+  abortReason?: unknown,
+): ProviderUploadResult {
+  const networkError = buildProviderUploadNetworkError(provider, { error, abortReason })
+  return {
+    ok: false,
+    code: networkError.safeDetailCode,
+    message: providerNetworkFailureMessage('Provider file upload', networkError),
+    retryable: networkError.retryable,
+    networkError,
+  }
+}
+
+function buildProviderUploadNetworkError(
+  provider: ProviderFileUploadProvider,
+  input: Readonly<{ httpStatus?: number; error?: unknown; abortReason?: unknown }>,
+): NetworkErrorEnvelope {
+  return buildNetworkErrorEnvelope({
+    requestPurpose: 'provider_upload',
+    providerId: provider,
+    transportKind: 'electron_session_fetch',
+    httpStatus: input.httpStatus,
+    error: input.error,
+    abortReason: input.abortReason,
+  })
 }
 
 function asCacheRecord(value: unknown): CacheRecord | null {

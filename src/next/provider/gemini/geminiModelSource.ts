@@ -4,6 +4,11 @@ import {
   type ProviderModelCapabilitySeed,
   type ProviderModelSourceKind as CommonProviderModelSourceKind,
 } from '../modelAvailabilityEnvelope'
+import {
+  buildNetworkErrorEnvelope,
+  providerNetworkFailureMessage,
+  type NetworkErrorEnvelope,
+} from '../../../shared/network/networkErrorEnvelope'
 
 export const GOOGLE_AI_STUDIO_PROVIDER_KEY = 'google_ai_studio' as const
 export const GOOGLE_AI_STUDIO_ENDPOINT_ID = 'google-ai-studio-official' as const
@@ -83,6 +88,7 @@ export type GeminiModelAvailabilityFailure = Readonly<{
     | 'network_error'
   message: string
   httpStatus?: number
+  networkError?: NetworkErrorEnvelope
   transportCause?: Readonly<{
     name?: string
     code?: string
@@ -211,9 +217,11 @@ function normalizeBaseUrl(raw: string | null | undefined): string {
 }
 
 function safeHttpErrorMessage(status: number): string {
-  if (status === 401 || status === 403) return 'Google AI Studio model source credential was rejected.'
+  if (status === 401) return 'Google AI Studio model source credential was rejected.'
+  if (status === 403) return 'Google AI Studio model source access was forbidden.'
+  if (status === 404) return 'Google AI Studio model source endpoint or model list was not found.'
   if (status === 429) return 'Google AI Studio model source rate limit was reached.'
-  return 'Google AI Studio model source request failed safely.'
+  return `Google AI Studio model source returned HTTP ${status}.`
 }
 
 function safeToken(value: unknown): string | undefined {
@@ -483,6 +491,13 @@ export async function listGeminiProviderModelAvailability(
       })
     } catch (error) {
       const transportCause = safeTransportCause(error)
+      const networkError = buildNetworkErrorEnvelope({
+        requestPurpose: 'provider_availability',
+        providerId: GOOGLE_AI_STUDIO_PROVIDER_KEY,
+        transportKind: 'electron_session_fetch',
+        error,
+        abortReason: input.signal?.aborted ? input.signal.reason ?? 'aborted' : undefined,
+      })
       return {
         ok: false,
         providerKey: GOOGLE_AI_STUDIO_PROVIDER_KEY,
@@ -490,13 +505,20 @@ export async function listGeminiProviderModelAvailability(
         profileId: GOOGLE_AI_STUDIO_PROFILE_ID,
         observedAtMs,
         code: 'network_error',
-        message: 'Google AI Studio model source request failed safely.',
+        message: providerNetworkFailureMessage('Google AI Studio model source', networkError),
+        networkError,
         ...(transportCause ? { transportCause } : {}),
       }
     }
 
     const payload = await readJsonSafely(response)
     if (!response.ok) {
+      const networkError = buildNetworkErrorEnvelope({
+        requestPurpose: 'provider_availability',
+        providerId: GOOGLE_AI_STUDIO_PROVIDER_KEY,
+        transportKind: 'electron_session_fetch',
+        httpStatus: response.status,
+      })
       return {
         ok: false,
         providerKey: GOOGLE_AI_STUDIO_PROVIDER_KEY,
@@ -506,6 +528,7 @@ export async function listGeminiProviderModelAvailability(
         code: 'http_error',
         message: safeHttpErrorMessage(response.status),
         httpStatus: response.status,
+        networkError,
       }
     }
 

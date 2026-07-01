@@ -72,6 +72,7 @@ function providerErrorToErrorEnvelope(err: StarverseProviderError): ErrorEnvelop
     openrouter: {
       code: err.code ?? 'error',
       message: err.message,
+      ...(err.networkError ? { metadata: { networkError: err.networkError } } : {}),
     },
     truncated: false,
   } as ErrorEnvelope

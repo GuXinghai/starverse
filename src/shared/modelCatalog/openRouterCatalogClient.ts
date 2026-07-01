@@ -18,6 +18,11 @@ import {
   type ProviderAdapter,
 } from './internalSchema'
 import { deriveModelTags } from './modelTagger'
+import {
+  buildNetworkErrorEnvelope,
+  providerNetworkFailureMessage,
+  type NetworkErrorEnvelope,
+} from '../network/networkErrorEnvelope'
 
 const OPENROUTER_DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
 const OPENROUTER_ATTRIBUTION_REFERER = 'https://github.com/GuXinghai/starverse'
@@ -53,6 +58,7 @@ type OpenRouterHttpError = Readonly<{
   message: string
   code?: number | null
   retryAfter?: string | null
+  networkError?: NetworkErrorEnvelope
 }>
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -253,14 +259,46 @@ function parseHttpError(response: Response, bodyText: string): OpenRouterHttpErr
   }
 
   const retryAfter = response.headers?.get('retry-after') ?? null
+  const networkError = buildOpenRouterCatalogNetworkError({
+    httpStatus: response.status,
+    providerCode: code,
+    providerMessage: message,
+  })
 
   return {
     status: response.status,
     statusText: response.statusText,
     code,
-    message: message ?? `OpenRouter request failed: HTTP ${response.status} ${response.statusText}`.trim(),
+    message: providerNetworkFailureMessage('OpenRouter catalog', networkError),
     retryAfter,
+    networkError,
   }
+}
+
+function buildOpenRouterCatalogNetworkError(input: Readonly<{
+  httpStatus?: number
+  providerCode?: unknown
+  providerMessage?: unknown
+  error?: unknown
+  abortReason?: unknown
+}>): NetworkErrorEnvelope {
+  return buildNetworkErrorEnvelope({
+    requestPurpose: 'provider_catalog',
+    providerId: PROVIDERS.OPENROUTER,
+    transportKind: 'electron_session_fetch',
+    httpStatus: input.httpStatus,
+    providerCode: input.providerCode,
+    providerMessage: input.providerMessage,
+    error: input.error,
+    abortReason: input.abortReason,
+  })
+}
+
+function buildOpenRouterCatalogTransportError(error: unknown, abortReason?: unknown): Error & { networkError: NetworkErrorEnvelope } {
+  const networkError = buildOpenRouterCatalogNetworkError({ error, abortReason })
+  return Object.assign(new Error(providerNetworkFailureMessage('OpenRouter catalog', networkError)), {
+    networkError,
+  })
 }
 
 async function readJsonResponse(response: Response): Promise<unknown> {
@@ -460,11 +498,16 @@ export class OpenRouterCatalogClient implements ProviderAdapter {
   }
 
   private async getJson(pathname: string, ctx: OpenRouterFetchContext): Promise<unknown> {
-    const response = await this.fetchImpl(`${ctx.baseUrl}${pathname}`, {
-      method: 'GET',
-      headers: this.buildHeaders(ctx.apiKey),
-      signal: ctx.signal ?? undefined,
-    })
+    let response: Response
+    try {
+      response = await this.fetchImpl(`${ctx.baseUrl}${pathname}`, {
+        method: 'GET',
+        headers: this.buildHeaders(ctx.apiKey),
+        signal: ctx.signal ?? undefined,
+      })
+    } catch (error) {
+      throw buildOpenRouterCatalogTransportError(error, ctx.signal?.aborted ? ctx.signal.reason ?? 'aborted' : undefined)
+    }
     return readJsonResponse(response)
   }
 

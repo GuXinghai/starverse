@@ -393,4 +393,60 @@ describe('OpenRouterCatalogClient', () => {
     })
     expect(endpoints?.raw?.buckets?.[0]?.source).toBe('endpoints')
   })
+
+  it('throws structured network errors for HTTP failures', async () => {
+    const client = new OpenRouterCatalogClient({
+      fetchImpl: async () => jsonResponse({ error: { code: 429, message: 'rate limit sk-test' } }, 429) as any,
+    })
+
+    let thrown: unknown = null
+    try {
+      await client.listProviders({
+        apiKey: 'sk-test',
+        baseUrl: 'https://openrouter.ai/api/v1',
+      })
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toMatchObject({
+      status: 429,
+      message: 'OpenRouter catalog: Rate limit was reached.',
+      networkError: {
+        requestPurpose: 'provider_catalog',
+        providerId: 'openrouter',
+        httpStatus: 429,
+        safeDetailCode: 'http_429_rate_limited',
+      },
+    })
+    expect(JSON.stringify(thrown)).not.toContain('sk-test')
+  })
+
+  it('throws structured network errors for transport failures', async () => {
+    const client = new OpenRouterCatalogClient({
+      fetchImpl: async () => {
+        throw Object.assign(new Error('connect timeout sk-test'), { code: 'UND_ERR_CONNECT_TIMEOUT' })
+      },
+    })
+
+    let thrown: unknown = null
+    try {
+      await client.listModelsCount({
+        apiKey: 'sk-test',
+        baseUrl: 'https://openrouter.ai/api/v1',
+      })
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toMatchObject({
+      message: 'OpenRouter catalog: Connection timed out.',
+      networkError: {
+        requestPurpose: 'provider_catalog',
+        providerId: 'openrouter',
+        safeDetailCode: 'connection_timeout',
+      },
+    })
+    expect(JSON.stringify(thrown)).not.toContain('sk-test')
+  })
 })

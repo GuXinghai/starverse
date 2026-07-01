@@ -4,6 +4,11 @@ import {
   type ProviderModelCapabilitySeed,
   type ProviderModelSourceKind as CommonProviderModelSourceKind,
 } from '../modelAvailabilityEnvelope'
+import {
+  buildNetworkErrorEnvelope,
+  providerNetworkFailureMessage,
+  type NetworkErrorEnvelope,
+} from '../../../shared/network/networkErrorEnvelope'
 
 export const OPENAI_RESPONSES_PROVIDER_KEY = 'openai_responses' as const
 export const OPENAI_RESPONSES_ENDPOINT_ID = 'openai-responses-official' as const
@@ -81,6 +86,7 @@ export type OpenAIModelAvailabilityFailure = Readonly<{
     | 'network_error'
   message: string
   httpStatus?: number
+  networkError?: NetworkErrorEnvelope
 }>
 
 export type OpenAIModelAvailabilityResult =
@@ -175,9 +181,11 @@ function normalizeBaseUrl(raw: string | null | undefined): string {
 }
 
 function safeHttpErrorMessage(status: number): string {
-  if (status === 401 || status === 403) return 'OpenAI Responses model source credential was rejected.'
+  if (status === 401) return 'OpenAI Responses model source credential was rejected.'
+  if (status === 403) return 'OpenAI Responses model source access was forbidden.'
+  if (status === 404) return 'OpenAI Responses model source endpoint or model list was not found.'
   if (status === 429) return 'OpenAI Responses model source rate limit was reached.'
-  return 'OpenAI Responses model source request failed safely.'
+  return `OpenAI Responses model source returned HTTP ${status}.`
 }
 
 async function readJsonSafely(response: Response): Promise<unknown> {
@@ -382,7 +390,14 @@ export async function listOpenAIProviderModelAvailability(
       signal: input.signal ?? undefined,
       redirect: 'error',
     })
-  } catch {
+  } catch (error) {
+    const networkError = buildNetworkErrorEnvelope({
+      requestPurpose: 'provider_availability',
+      providerId: OPENAI_RESPONSES_PROVIDER_KEY,
+      transportKind: 'electron_session_fetch',
+      error,
+      abortReason: input.signal?.aborted ? input.signal.reason ?? 'aborted' : undefined,
+    })
     return {
       ok: false,
       providerKey: OPENAI_RESPONSES_PROVIDER_KEY,
@@ -390,12 +405,19 @@ export async function listOpenAIProviderModelAvailability(
       profileId: OPENAI_RESPONSES_PROFILE_ID,
       observedAtMs,
       code: 'network_error',
-      message: 'OpenAI Responses model source request failed safely.',
+      message: providerNetworkFailureMessage('OpenAI Responses model source', networkError),
+      networkError,
     }
   }
 
   const payload = await readJsonSafely(response)
   if (!response.ok) {
+    const networkError = buildNetworkErrorEnvelope({
+      requestPurpose: 'provider_availability',
+      providerId: OPENAI_RESPONSES_PROVIDER_KEY,
+      transportKind: 'electron_session_fetch',
+      httpStatus: response.status,
+    })
     return {
       ok: false,
       providerKey: OPENAI_RESPONSES_PROVIDER_KEY,
@@ -405,6 +427,7 @@ export async function listOpenAIProviderModelAvailability(
       code: 'http_error',
       message: safeHttpErrorMessage(response.status),
       httpStatus: response.status,
+      networkError,
     }
   }
 

@@ -265,12 +265,18 @@ describe('anthropicTextChatIpc', () => {
     })
 
     await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('anthropic-chat:end:anthropic_req_error'))
-    const serialized = JSON.stringify(sentEvents(sender, 'anthropic_req_error'))
+    const events = sentEvents(sender, 'anthropic_req_error')
+    const serialized = JSON.stringify(events)
     expect(serialized).not.toContain('sk-ant-secret')
     expect(serialized).not.toContain('Authorization')
     expect(serialized).not.toContain('Bearer')
     expect(serialized).not.toContain('public.example.test')
-    expect(serialized).toContain('Anthropic Messages text chat failed safely.')
+    expect(events.some((event) =>
+      event.type === 'event' &&
+      event.event.type === 'stream.error' &&
+      event.event.error.networkError?.safeDetailCode === 'network_unknown' &&
+      event.event.error.message === 'Anthropic: Network request failed.',
+    )).toBe(true)
   })
 
   it('normalizes Anthropic HTTP errors before sending them to the renderer', async () => {
@@ -303,7 +309,8 @@ describe('anthropicTextChatIpc', () => {
       event.event.type === 'stream.error' &&
       event.event.error.httpStatus === 429 &&
       event.event.error.code === 'rate_limit_error' &&
-      event.event.error.message === 'Anthropic rate limit was reached.',
+      event.event.error.message === 'Anthropic rate limit was reached.' &&
+      event.event.error.networkError?.safeDetailCode === 'http_429_rate_limited'
     )).toBe(true)
     const serialized = JSON.stringify(events)
     expect(serialized).not.toContain('sk-ant-secret')

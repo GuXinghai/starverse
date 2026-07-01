@@ -11,6 +11,32 @@
       "userAborted": "Request was cancelled.",
       "unknown": "An unknown error occurred."
     },
+    "network": {
+      "reason": {
+        "proxyResolutionFailed": "Proxy resolution failed.",
+        "proxyAuthRequired": "Proxy authentication is required.",
+        "proxyConnectFailed": "Could not connect to the configured proxy.",
+        "dnsError": "DNS lookup failed.",
+        "connectionRefused": "Connection was refused.",
+        "connectionTimeout": "Connection timed out.",
+        "tlsOrCertificateError": "TLS or certificate validation failed.",
+        "requestAborted": "Request was cancelled.",
+        "http401Auth": "Authentication failed.",
+        "http403Forbidden": "Access was forbidden.",
+        "http404NotFoundOrModelMissing": "Endpoint or model was not found.",
+        "http429RateLimited": "Rate limit was reached.",
+        "providerBadRequest": "Provider rejected the request.",
+        "providerModelUnavailable": "Provider reported that the model is unavailable.",
+        "localEndpointRejectedRemoteHost": "Local endpoint host was rejected.",
+        "localEndpointEmbeddedCredentialsRejected": "Local endpoint URL contains embedded credentials.",
+        "downloadRedirectRejected": "Download redirect was rejected.",
+        "downloadHashMismatch": "Downloaded file hash did not match.",
+        "downloadSizeMismatch": "Downloaded file size did not match.",
+        "downloadResumeRangeRejected": "Download resume range was rejected.",
+        "downloadFailed": "Download failed.",
+        "networkUnknown": "Network request failed."
+      }
+    },
     "action": {
       "checkApiKey": "Please check your API key and retry.",
       "topUp": "Please top up credits or switch models.",

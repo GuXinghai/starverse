@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   getOpenAICuratedModelAvailabilitySeeds,
+  listOpenAIProviderModelAvailability,
   parseOpenAIModelsResponse,
   resolveOpenAIModelAvailabilityFromModelsPayload,
 } from './openAIResponsesModelSource'
@@ -165,5 +166,36 @@ describe('OpenAI curated metadata seed', () => {
     })
     expect(unknown?.capabilitySeed).toBeUndefined()
     expect(result.ok && result.models.some((model) => model.nativeModelId === 'gpt-4.1-mini')).toBe(false)
+  })
+})
+
+describe('OpenAI model availability network errors', () => {
+  it.each([
+    [401, 'OpenAI Responses model source credential was rejected.', 'http_401_auth'],
+    [403, 'OpenAI Responses model source access was forbidden.', 'http_403_forbidden'],
+    [404, 'OpenAI Responses model source endpoint or model list was not found.', 'http_404_not_found_or_model_missing'],
+    [429, 'OpenAI Responses model source rate limit was reached.', 'http_429_rate_limited'],
+  ] as const)('surfaces HTTP %s without generic fallback', async (status, message, safeDetailCode) => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: { message: 'redacted' } }), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    })) as unknown as typeof fetch
+
+    const result = await listOpenAIProviderModelAvailability({
+      apiKey: 'sk-provider-should-not-leak',
+      fetchImpl,
+      observedAtMs: OBSERVED_AT_MS,
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'http_error',
+      httpStatus: status,
+      message,
+      networkError: {
+        safeDetailCode,
+      },
+    })
+    expect(JSON.stringify(result)).not.toContain('sk-provider-should-not-leak')
   })
 })

@@ -11,6 +11,32 @@
       "userAborted": "请求已取消。",
       "unknown": "发生未知错误。"
     },
+    "network": {
+      "reason": {
+        "proxyResolutionFailed": "代理解析失败。",
+        "proxyAuthRequired": "代理需要认证。",
+        "proxyConnectFailed": "无法连接到配置的代理。",
+        "dnsError": "DNS 解析失败。",
+        "connectionRefused": "连接被拒绝。",
+        "connectionTimeout": "连接超时。",
+        "tlsOrCertificateError": "TLS 或证书校验失败。",
+        "requestAborted": "请求已取消。",
+        "http401Auth": "认证失败。",
+        "http403Forbidden": "访问被拒绝。",
+        "http404NotFoundOrModelMissing": "端点或模型不存在。",
+        "http429RateLimited": "请求过于频繁。",
+        "providerBadRequest": "提供方拒绝了请求。",
+        "providerModelUnavailable": "提供方报告模型不可用。",
+        "localEndpointRejectedRemoteHost": "本地端点主机被拒绝。",
+        "localEndpointEmbeddedCredentialsRejected": "本地端点 URL 包含内嵌凭据。",
+        "downloadRedirectRejected": "下载重定向被拒绝。",
+        "downloadHashMismatch": "下载文件哈希不匹配。",
+        "downloadSizeMismatch": "下载文件大小不匹配。",
+        "downloadResumeRangeRejected": "下载续传范围被拒绝。",
+        "downloadFailed": "下载失败。",
+        "networkUnknown": "网络请求失败。"
+      }
+    },
     "action": {
       "checkApiKey": "请检查 API Key 并重试。",
       "topUp": "请充值或更换模型。",

@@ -259,12 +259,18 @@ describe('openAIResponsesTextChatIpc', () => {
     })
 
     await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('openai-responses-chat:end:openai_responses_req_error'))
-    const serialized = JSON.stringify(sentEvents(sender, 'openai_responses_req_error'))
+    const events = sentEvents(sender, 'openai_responses_req_error')
+    const serialized = JSON.stringify(events)
     expect(serialized).not.toContain('sk-openai-secret')
     expect(serialized).not.toContain('Authorization')
     expect(serialized).not.toContain('Bearer')
     expect(serialized).not.toContain('public.example.test')
-    expect(serialized).toContain('OpenAI Responses text chat failed safely.')
+    expect(events.some((event) =>
+      event.type === 'event' &&
+      event.event.type === 'stream.error' &&
+      event.event.error.networkError?.safeDetailCode === 'network_unknown' &&
+      event.event.error.message === 'OpenAI Responses: Network request failed.',
+    )).toBe(true)
   })
 
   it('normalizes OpenAI Responses HTTP errors before sending them to the renderer', async () => {
@@ -297,7 +303,8 @@ describe('openAIResponsesTextChatIpc', () => {
       event.event.type === 'stream.error' &&
       event.event.error.httpStatus === 429 &&
       event.event.error.code === 'rate_limit_exceeded' &&
-      event.event.error.message === 'OpenAI Responses rate limit was reached.',
+      event.event.error.message === 'OpenAI Responses rate limit was reached.' &&
+      event.event.error.networkError?.safeDetailCode === 'http_429_rate_limited'
     )).toBe(true)
     const serialized = JSON.stringify(events)
     expect(serialized).not.toContain('sk-openai-secret')

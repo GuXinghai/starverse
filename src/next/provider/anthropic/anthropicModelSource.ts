@@ -4,6 +4,11 @@ import {
   type ProviderModelCapabilitySeed,
   type ProviderModelSourceKind as CommonProviderModelSourceKind,
 } from '../modelAvailabilityEnvelope'
+import {
+  buildNetworkErrorEnvelope,
+  providerNetworkFailureMessage,
+  type NetworkErrorEnvelope,
+} from '../../../shared/network/networkErrorEnvelope'
 
 export const ANTHROPIC_MESSAGES_PROVIDER_KEY = 'anthropic_messages' as const
 export const ANTHROPIC_MESSAGES_ENDPOINT_ID = 'anthropic-official' as const
@@ -89,6 +94,7 @@ export type AnthropicModelAvailabilityFailure = Readonly<{
     | 'network_error'
   message: string
   httpStatus?: number
+  networkError?: NetworkErrorEnvelope
 }>
 
 export type AnthropicModelAvailabilityResult =
@@ -199,9 +205,11 @@ function normalizeBaseUrl(raw: string | null | undefined): string {
 }
 
 function safeHttpErrorMessage(status: number): string {
-  if (status === 401 || status === 403) return 'Anthropic model source credential was rejected.'
+  if (status === 401) return 'Anthropic model source credential was rejected.'
+  if (status === 403) return 'Anthropic model source access was forbidden.'
+  if (status === 404) return 'Anthropic model source endpoint or model list was not found.'
   if (status === 429) return 'Anthropic model source rate limit was reached.'
-  return 'Anthropic model source request failed safely.'
+  return `Anthropic model source returned HTTP ${status}.`
 }
 
 async function readJsonSafely(response: Response): Promise<unknown> {
@@ -518,7 +526,14 @@ export async function listAnthropicProviderModelAvailability(
         signal: input.signal ?? undefined,
         redirect: 'error',
       })
-    } catch {
+    } catch (error) {
+      const networkError = buildNetworkErrorEnvelope({
+        requestPurpose: 'provider_availability',
+        providerId: ANTHROPIC_MESSAGES_PROVIDER_KEY,
+        transportKind: 'electron_session_fetch',
+        error,
+        abortReason: input.signal?.aborted ? input.signal.reason ?? 'aborted' : undefined,
+      })
       return {
         ok: false,
         providerKey: ANTHROPIC_MESSAGES_PROVIDER_KEY,
@@ -526,12 +541,19 @@ export async function listAnthropicProviderModelAvailability(
         profileId: ANTHROPIC_MESSAGES_PROFILE_ID,
         observedAtMs,
         code: 'network_error',
-        message: 'Anthropic model source request failed safely.',
+        message: providerNetworkFailureMessage('Anthropic model source', networkError),
+        networkError,
       }
     }
 
     const payload = await readJsonSafely(response)
     if (!response.ok) {
+      const networkError = buildNetworkErrorEnvelope({
+        requestPurpose: 'provider_availability',
+        providerId: ANTHROPIC_MESSAGES_PROVIDER_KEY,
+        transportKind: 'electron_session_fetch',
+        httpStatus: response.status,
+      })
       return {
         ok: false,
         providerKey: ANTHROPIC_MESSAGES_PROVIDER_KEY,
@@ -541,6 +563,7 @@ export async function listAnthropicProviderModelAvailability(
         code: 'http_error',
         message: safeHttpErrorMessage(response.status),
         httpStatus: response.status,
+        networkError,
       }
     }
 

@@ -4,6 +4,7 @@ import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEven
 import { streamViaOpenAIResponses, type ResponsesFetchFn } from '../../src/next/provider/openai-responses/openaiResponsesAdapter'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
+import { sanitizeProviderNetworkError } from './providerNetworkError'
 import {
   isProviderRuntimeUploadRequestBlock,
   sanitizeProviderRuntimeFileContentBlocks,
@@ -151,34 +152,12 @@ function readOpenAIResponsesApiKey(credentialService: ProviderCredentialService)
 }
 
 function safeProviderError(error: StarverseProviderError): StarverseProviderError {
-  const category = error.category === 'auth'
-    ? 'auth'
-    : error.category === 'rate_limit'
-      ? 'rate_limit'
-      : error.category === 'aborted'
-        ? 'aborted'
-        : error.category === 'bad_request'
-          ? 'bad_request'
-          : error.category === 'network'
-            ? 'network'
-            : 'provider_error'
-
-  return {
-    phase: error.phase,
-    provider: 'openai-responses',
-    category,
-    message: category === 'auth'
-      ? 'OpenAI Responses credential was rejected.'
-      : category === 'rate_limit'
-        ? 'OpenAI Responses rate limit was reached.'
-        : category === 'aborted'
-          ? 'OpenAI Responses text chat was aborted.'
-          : 'OpenAI Responses text chat failed safely.',
-    ...(error.code ? { code: String(error.code) } : {}),
-    ...(error.httpStatus ? { httpStatus: error.httpStatus } : {}),
-    ...(error.retryable ? { retryable: true } : {}),
-    ...(error.requestId ? { requestId: error.requestId } : {}),
-  }
+  return sanitizeProviderNetworkError({
+    providerId: 'openai_responses',
+    providerWireName: 'openai-responses',
+    providerLabel: 'OpenAI Responses',
+    error,
+  })
 }
 
 function safeStreamEvent(event: StarverseStreamEvent): StarverseStreamEvent {
@@ -306,20 +285,19 @@ async function forwardOpenAIResponsesStream(input: Readonly<{
         event: safeEvent,
       })
     }
-  } catch {
+  } catch (error) {
     sendWireEvent(input.sender, input.request.requestId, {
       type: 'event',
       event: {
         type: 'stream.error',
-        error: {
-          phase: 'transport',
-          provider: 'openai-responses',
-          category: controller.signal.aborted ? 'aborted' : 'network',
-          code: controller.signal.aborted ? 'aborted' : 'network_error',
-          message: controller.signal.aborted
-            ? 'OpenAI Responses text chat was aborted.'
-            : 'OpenAI Responses text chat failed safely.',
-        },
+        error: sanitizeProviderNetworkError({
+          providerId: 'openai_responses',
+          providerWireName: 'openai-responses',
+          providerLabel: 'OpenAI Responses',
+          thrown: error,
+          abortReason: controller.signal.reason,
+          fallbackPhase: 'transport',
+        }),
         terminal: true,
       },
     })

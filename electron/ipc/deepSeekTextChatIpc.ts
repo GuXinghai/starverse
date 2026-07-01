@@ -4,6 +4,7 @@ import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEven
 import { streamViaDeepSeek, type DeepSeekFetchFn } from '../../src/next/provider/deepseek/deepSeekAdapter'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
+import { sanitizeProviderNetworkError } from './providerNetworkError'
 import {
   sanitizeProviderRuntimeFileContentBlocks,
   type ProviderRuntimeContentBlock,
@@ -147,36 +148,22 @@ function readDeepSeekApiKey(credentialService: ProviderCredentialService): DeepS
 }
 
 function safeProviderError(error: StarverseProviderError): StarverseProviderError {
-  const category = error.category === 'auth'
-    ? 'auth'
-    : error.category === 'rate_limit'
-      ? 'rate_limit'
-      : error.category === 'aborted'
-        ? 'aborted'
-        : error.category === 'bad_request'
-          ? 'bad_request'
-          : error.category === 'network'
-            ? 'network'
-            : 'provider_error'
-
-  return {
-    phase: error.phase,
-    provider: 'deepseek',
-    category,
-    message: category === 'auth'
-      ? 'DeepSeek credential was rejected.'
-      : category === 'rate_limit'
-        ? 'DeepSeek rate limit was reached.'
-        : category === 'aborted'
-          ? 'DeepSeek official text chat was aborted.'
-          : category === 'bad_request' && error.code === 'unsupported_provider'
-            ? 'DeepSeek official runtime does not support image or file attachments in Starverse.'
-          : 'DeepSeek official text chat failed safely.',
-    ...(error.code ? { code: String(error.code) } : {}),
-    ...(error.httpStatus ? { httpStatus: error.httpStatus } : {}),
-    ...(error.retryable ? { retryable: true } : {}),
-    ...(error.requestId ? { requestId: error.requestId } : {}),
+  if (error.category === 'bad_request' && error.code === 'unsupported_provider') {
+    return {
+      phase: error.phase,
+      provider: 'deepseek',
+      category: 'bad_request',
+      code: 'unsupported_provider',
+      message: 'DeepSeek official runtime does not support image or file attachments in Starverse.',
+      ...(error.requestId ? { requestId: error.requestId } : {}),
+    }
   }
+  return sanitizeProviderNetworkError({
+    providerId: 'deepseek',
+    providerWireName: 'deepseek',
+    providerLabel: 'DeepSeek',
+    error,
+  })
 }
 
 function safeStreamEvent(event: StarverseStreamEvent): StarverseStreamEvent | null {
@@ -277,20 +264,19 @@ async function forwardDeepSeekStream(input: Readonly<{
         event: safeEvent,
       })
     }
-  } catch {
+  } catch (error) {
     sendWireEvent(input.sender, input.request.requestId, {
       type: 'event',
       event: {
         type: 'stream.error',
-        error: {
-          phase: 'transport',
-          provider: 'deepseek',
-          category: controller.signal.aborted ? 'aborted' : 'network',
-          code: controller.signal.aborted ? 'aborted' : 'network_error',
-          message: controller.signal.aborted
-            ? 'DeepSeek official text chat was aborted.'
-            : 'DeepSeek official text chat failed safely.',
-        },
+        error: sanitizeProviderNetworkError({
+          providerId: 'deepseek',
+          providerWireName: 'deepseek',
+          providerLabel: 'DeepSeek',
+          thrown: error,
+          abortReason: controller.signal.reason,
+          fallbackPhase: 'transport',
+        }),
         terminal: true,
       },
     })

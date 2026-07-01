@@ -141,6 +141,9 @@ describe('anthropicModelAvailabilityIpc', () => {
       code: 'http_error',
       httpStatus: 401,
       message: 'Anthropic model source credential was rejected.',
+      networkError: {
+        safeDetailCode: 'http_401_auth',
+      },
     })
     const serialized = JSON.stringify(result)
     expect(serialized).not.toContain('sk-ant-secret')
@@ -159,7 +162,10 @@ describe('anthropicModelAvailabilityIpc', () => {
     expect(result).toMatchObject({
       ok: false,
       code: 'network_error',
-      message: 'Anthropic model source request failed safely.',
+      message: 'Anthropic model source: Network request failed.',
+      networkError: {
+        safeDetailCode: 'network_unknown',
+      },
     })
     const serialized = JSON.stringify(result)
     expect(serialized).not.toContain('sk-ant-secret')
@@ -183,7 +189,10 @@ describe('anthropicModelAvailabilityIpc', () => {
     expect(result).toMatchObject({
       ok: false,
       code: 'network_error',
-      message: 'Anthropic model source request failed safely.',
+      message: 'Anthropic model source: Connection timed out.',
+      networkError: {
+        safeDetailCode: 'connection_timeout',
+      },
     })
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })

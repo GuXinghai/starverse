@@ -5,6 +5,7 @@ import { streamViaGemini, type GeminiFetchFn } from '../../src/next/provider/gem
 import type { GeminiContent } from '../../src/next/provider/gemini/geminiRequestBuilder'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
+import { sanitizeProviderNetworkError } from './providerNetworkError'
 import {
   isProviderRuntimeUploadRequestBlock,
   sanitizeProviderRuntimeFileContentBlocks,
@@ -159,36 +160,12 @@ function readGoogleAIStudioApiKey(credentialService: ProviderCredentialService):
 }
 
 function safeProviderError(error: StarverseProviderError): StarverseProviderError {
-  const category = error.category === 'auth'
-    ? 'auth'
-    : error.category === 'rate_limit'
-      ? 'rate_limit'
-      : error.category === 'aborted'
-        ? 'aborted'
-        : error.category === 'bad_request'
-          ? 'bad_request'
-          : error.category === 'network'
-            ? 'network'
-            : 'provider_error'
-
-  return {
-    phase: error.phase,
-    provider: 'google-ai-studio',
-    category,
-    message: category === 'auth'
-      ? 'Google AI Studio credential was rejected.'
-      : category === 'rate_limit'
-        ? 'Google AI Studio rate limit was reached.'
-        : category === 'aborted'
-          ? 'Google AI Studio text chat was aborted.'
-          : error.httpStatus === 404
-            ? 'Google AI Studio model was not found for the selected API version or does not support streaming text chat.'
-          : 'Google AI Studio text chat failed safely.',
-    ...(error.code ? { code: String(error.code) } : {}),
-    ...(error.httpStatus ? { httpStatus: error.httpStatus } : {}),
-    ...(error.retryable ? { retryable: true } : {}),
-    ...(error.requestId ? { requestId: error.requestId } : {}),
-  }
+  return sanitizeProviderNetworkError({
+    providerId: 'google_ai_studio',
+    providerWireName: 'google-ai-studio',
+    providerLabel: 'Google AI Studio',
+    error,
+  })
 }
 
 function safeStreamEvent(event: StarverseStreamEvent): StarverseStreamEvent {
@@ -323,20 +300,19 @@ async function forwardGoogleAIStudioStream(input: Readonly<{
         event: safeEvent,
       })
     }
-  } catch {
+  } catch (error) {
     sendWireEvent(input.sender, input.request.requestId, {
       type: 'event',
       event: {
         type: 'stream.error',
-        error: {
-          phase: 'transport',
-          provider: 'google-ai-studio',
-          category: controller.signal.aborted ? 'aborted' : 'network',
-          code: controller.signal.aborted ? 'aborted' : 'network_error',
-          message: controller.signal.aborted
-            ? 'Google AI Studio text chat was aborted.'
-            : 'Google AI Studio text chat failed safely.',
-        },
+        error: sanitizeProviderNetworkError({
+          providerId: 'google_ai_studio',
+          providerWireName: 'google-ai-studio',
+          providerLabel: 'Google AI Studio',
+          thrown: error,
+          abortReason: controller.signal.reason,
+          fallbackPhase: 'transport',
+        }),
         terminal: true,
       },
     })
