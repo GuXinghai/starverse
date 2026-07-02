@@ -19,6 +19,13 @@ function defaultSessionConfig() {
   }
 }
 
+function googleAIStudioSessionConfig() {
+  return {
+    ...defaultSessionConfig(),
+    model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-2.5-flash' },
+  }
+}
+
 describe('ChatSessionConsole Google AI Studio chat controls', () => {
   it('exposes explicit experimental Google AI Studio text chat without endpoint or profile picker UI', async () => {
     const user = userEvent.setup()
@@ -26,7 +33,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: googleAIStudioSessionConfig(),
         googleAIStudioChat: {
           enabled: true,
           model: 'gemini-2.5-flash',
@@ -48,15 +55,15 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
     expect(screen.getByTestId('google-ai-studio-chat-selected-status').textContent).toContain('does not expose API keys')
     expect(screen.queryByText(/endpoint picker/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/profile picker/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('google-ai-studio-chat-model')).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('google-ai-studio-chat-enabled'))
-    await user.type(screen.getByTestId('google-ai-studio-chat-model'), 'gemini-2.5-pro')
     await user.click(screen.getByTestId('google-ai-studio-chat-disable'))
     await user.click(screen.getByTestId('google-ai-studio-chat-clear'))
 
     expect(view.emitted('updateGoogleAIStudioChatEnabled')?.[0]).toEqual([false])
     expect(view.emitted('updateGoogleAIStudioChatEnabled')?.[1]).toEqual([false])
-    expect(view.emitted('updateGoogleAIStudioChatModel')?.length).toBeGreaterThan(0)
+    expect(view.emitted('updateGoogleAIStudioChatModel')).toBeUndefined()
     expect(view.emitted('clearGoogleAIStudioChat')).toHaveLength(1)
   })
 
@@ -137,7 +144,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
     await user.click(screen.getByTestId('google-ai-studio-model-use'))
 
     expect(view.emitted('refreshGoogleAIStudioModels')).toHaveLength(1)
-    expect(view.emitted('updateGoogleAIStudioChatModel')?.[0]).toEqual(['gemini-2.5-flash'])
+    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'google_ai_studio', modelId: 'gemini-2.5-flash' }])
 
     const mainModelSelect = screen.getAllByRole('combobox')[0]
     expect(within(mainModelSelect).getByText('OpenRouter Claude 3')).toBeInTheDocument()

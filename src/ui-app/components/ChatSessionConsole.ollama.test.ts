@@ -20,6 +20,13 @@ function defaultSessionConfig() {
   }
 }
 
+function ollamaSessionConfig() {
+  return {
+    ...defaultSessionConfig(),
+    model: { selectedProviderId: 'ollama_local' as const, selectedModelKey: 'llama3.2:latest' },
+  }
+}
+
 function ollamaChat(overrides: Partial<{
   diagnosticsEnabled: boolean
   manualLoadUnloadEnabled: boolean
@@ -115,7 +122,7 @@ describe('ChatSessionConsole Ollama controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: ollamaSessionConfig(),
         ollamaChat: ollamaChat(),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
@@ -131,6 +138,7 @@ describe('ChatSessionConsole Ollama controls', () => {
     expect(screen.queryByText(/OpenRouter catalog/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/ModelPicker/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /pull|download/i })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('ollama-model')).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('ollama-native-endpoint-generate'))
     await user.click(screen.getByTestId('ollama-chat-mode-openai'))
@@ -147,7 +155,7 @@ describe('ChatSessionConsole Ollama controls', () => {
     await view.rerender({
       disabled: false,
       isRunning: false,
-      sessionConfig: defaultSessionConfig(),
+      sessionConfig: ollamaSessionConfig(),
       ollamaChat: openAIChat,
       reasoningDisplayMode: 'inline',
       modelCatalog: [],
@@ -159,10 +167,10 @@ describe('ChatSessionConsole Ollama controls', () => {
     await user.click(screen.getByTestId('ollama-auto-unload-after-send-enabled'))
     await user.click(screen.getByTestId('ollama-auto-unload-after-idle-enabled'))
     await user.type(screen.getByTestId('ollama-endpoint-url'), '1')
-    await user.type(screen.getByTestId('ollama-model'), '-alt')
 
     await user.click(screen.getByTestId('ollama-probe'))
     await waitFor(() => expect(screen.getByTestId('ollama-local-models').textContent).toContain('llama3.2:latest'))
+    await user.click(screen.getByTestId('ollama-model-use'))
     await user.click(screen.getByTestId('ollama-load-model'))
     await waitFor(() => expect(screen.getByTestId('ollama-action-result').textContent).toContain('llama3.2:latest'))
     await user.click(screen.getByTestId('ollama-unload-model'))
@@ -179,7 +187,8 @@ describe('ChatSessionConsole Ollama controls', () => {
       ['autoUnloadAfterIdleEnabled', true],
     ])
     expect(view.emitted('updateOllamaEndpointUrl')?.length).toBeGreaterThan(0)
-    expect(view.emitted('updateOllamaModel')?.length).toBeGreaterThan(0)
+    expect(view.emitted('updateOllamaModel')).toBeUndefined()
+    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'ollama_local', modelId: 'llama3.2:latest' }])
     const chatEnabledEvents = view.emitted('updateOllamaChatEnabled') ?? []
     expect(chatEnabledEvents[chatEnabledEvents.length - 1]).toEqual([false])
     expect(view.emitted('clearOllamaChat')).toHaveLength(1)
@@ -212,7 +221,7 @@ describe('ChatSessionConsole Ollama controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: ollamaSessionConfig(),
         ollamaChat: ollamaChat({ diagnosticsEnabled: false }),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
@@ -243,7 +252,7 @@ describe('ChatSessionConsole Ollama controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: ollamaSessionConfig(),
         ollamaChat: ollamaChat(),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
@@ -273,7 +282,7 @@ describe('ChatSessionConsole Ollama controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: ollamaSessionConfig(),
         ollamaChat: ollamaChat({ autoUnloadAfterIdleEnabled: false }),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],

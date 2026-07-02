@@ -67,6 +67,14 @@ describe('openAIResponsesCredentialSettingsIpc', () => {
     expect(JSON.stringify(result)).not.toContain('Authorization')
   })
 
+  it('reveals the API key only through the explicit reveal channel', async () => {
+    const { handlers } = registerHandlers({ [OPENAI_RESPONSES_API_KEY_STORE_KEY]: 'sk-openai-secret' })
+
+    const result = await handlers.get('openai-responses-credential:reveal')?.({})
+
+    expect(result).toEqual({ ok: true, apiKey: 'sk-openai-secret' })
+  })
+
   it('updates and clears the service-backed API key without returning it', async () => {
     const { handlers, store } = registerHandlers()
 

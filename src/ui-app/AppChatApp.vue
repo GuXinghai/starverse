@@ -19,7 +19,6 @@ import SettingsModal from './components/SettingsModal.vue'
 import WebSearchSettingsEditor from './components/WebSearchSettingsEditor.vue'
 import SamplingParamsSettingsEditor from './components/SamplingParamsSettingsEditor.vue'
 import SearchModal from './components/SearchModal.vue'
-import { t, tf } from '@/shared/i18n'
 import { useAppChatAppLogic } from './app/appChatApp.logic'
 import { formatModelIndicatorName } from './components/modelIndicatorName'
 import { DEFAULT_CHAT_PROVIDER_ID, DEFAULT_OPENROUTER_MODEL_ID } from '@/next/provider/modelSelection'
@@ -173,14 +172,12 @@ const {
   onUpdateOpenRouterChatEnabled,
   onUpdateLMStudioChatEnabled,
   onUpdateLMStudioEndpointUrl,
-  onUpdateLMStudioModel,
   onUpdateLMStudioChatMode,
   onUpdateLMStudioOpenAICompatiblePreferredEndpoint,
   onUpdateLMStudioNativeRestControl,
   onClearLMStudioChat,
   onUpdateOllamaChatEnabled,
   onUpdateOllamaEndpointUrl,
-  onUpdateOllamaModel,
   onUpdateOllamaChatMode,
   onUpdateOllamaNativeRestPreferredEndpoint,
   onUpdateOllamaOpenAICompatiblePreferredEndpoint,
@@ -188,23 +185,18 @@ const {
   onClearOllamaChat,
   onUpdateLocalEndpointChatEnabled,
   onUpdateLocalEndpointChatUrl,
-  onUpdateLocalEndpointChatModel,
   onClearLocalEndpointChat,
   onUpdateOpenAIResponsesChatEnabled,
-  onUpdateOpenAIResponsesChatModel,
   onClearOpenAIResponsesChat,
   onRefreshOpenAIResponsesModels,
   onRefreshProviderModelPickerSources,
   onUpdateGoogleAIStudioChatEnabled,
-  onUpdateGoogleAIStudioChatModel,
   onClearGoogleAIStudioChat,
   onRefreshGoogleAIStudioModels,
   onUpdateAnthropicChatEnabled,
-  onUpdateAnthropicChatModel,
   onClearAnthropicChat,
   onRefreshAnthropicModels,
   onUpdateDeepSeekChatEnabled,
-  onUpdateDeepSeekChatModel,
   onClearDeepSeekChat,
   onRefreshDeepSeekModels,
   onAttachFilesRequested,
@@ -272,34 +264,6 @@ const runSummary = computed(() => {
 })
 
 const modelSummary = computed(() => {
-  if (lmStudioChatConfig.value.enabled) {
-    const model = lmStudioChatConfig.value.model.trim() || t('settings.lmStudio.manualModelRequired')
-    return tf('settings.lmStudio.modelSummary', { model })
-  }
-  if (ollamaChatConfig.value.enabled) {
-    const model = ollamaChatConfig.value.model.trim() || t('settings.ollama.manualModelRequired')
-    return tf('settings.ollama.modelSummary', { model })
-  }
-  if (deepSeekChatConfig.value.enabled) {
-    const model = deepSeekChatConfig.value.model.trim() || 'manual model required'
-    return `DeepSeek official · ${model}`
-  }
-  if (anthropicChatConfig.value.enabled) {
-    const model = anthropicChatConfig.value.model.trim() || 'manual model required'
-    return `Anthropic Messages · ${model}`
-  }
-  if (googleAIStudioChatConfig.value.enabled) {
-    const model = googleAIStudioChatConfig.value.model.trim() || 'manual model required'
-    return `Google AI Studio · ${model}`
-  }
-  if (openAIResponsesChatConfig.value.enabled) {
-    const model = openAIResponsesChatConfig.value.model.trim() || 'manual model required'
-    return `OpenAI Responses · ${model}`
-  }
-  if (localEndpointChatConfig.value.enabled) {
-    const model = localEndpointChatConfig.value.model.trim() || 'manual model required'
-    return `LocalEndpoint · ${model}`
-  }
   const selectedProvider = activeSessionConfig.value.model.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID
   const selected = activeSessionConfig.value.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID
   const match = modelCatalogForPicker.value.find((item) => item.modelId === selected)
@@ -888,14 +852,12 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateOpenRouterChatEnabled="onUpdateOpenRouterChatEnabled"
             @updateLMStudioChatEnabled="onUpdateLMStudioChatEnabled"
             @updateLMStudioEndpointUrl="onUpdateLMStudioEndpointUrl"
-            @updateLMStudioModel="onUpdateLMStudioModel"
             @updateLMStudioChatMode="onUpdateLMStudioChatMode"
             @updateLMStudioOpenAICompatiblePreferredEndpoint="onUpdateLMStudioOpenAICompatiblePreferredEndpoint"
             @updateLMStudioNativeRestControl="onUpdateLMStudioNativeRestControl"
             @clearLMStudioChat="onClearLMStudioChat"
             @updateOllamaChatEnabled="onUpdateOllamaChatEnabled"
             @updateOllamaEndpointUrl="onUpdateOllamaEndpointUrl"
-            @updateOllamaModel="onUpdateOllamaModel"
             @updateOllamaChatMode="onUpdateOllamaChatMode"
             @updateOllamaNativeRestPreferredEndpoint="onUpdateOllamaNativeRestPreferredEndpoint"
             @updateOllamaOpenAICompatiblePreferredEndpoint="onUpdateOllamaOpenAICompatiblePreferredEndpoint"
@@ -903,22 +865,17 @@ function shouldShowInlineReasoning(message: any): boolean {
             @clearOllamaChat="onClearOllamaChat"
             @updateLocalEndpointChatEnabled="onUpdateLocalEndpointChatEnabled"
             @updateLocalEndpointChatUrl="onUpdateLocalEndpointChatUrl"
-            @updateLocalEndpointChatModel="onUpdateLocalEndpointChatModel"
             @clearLocalEndpointChat="onClearLocalEndpointChat"
             @updateOpenAIResponsesChatEnabled="onUpdateOpenAIResponsesChatEnabled"
-            @updateOpenAIResponsesChatModel="onUpdateOpenAIResponsesChatModel"
             @clearOpenAIResponsesChat="onClearOpenAIResponsesChat"
             @refreshOpenAIResponsesModels="onRefreshOpenAIResponsesModels"
             @updateGoogleAIStudioChatEnabled="onUpdateGoogleAIStudioChatEnabled"
-            @updateGoogleAIStudioChatModel="onUpdateGoogleAIStudioChatModel"
             @clearGoogleAIStudioChat="onClearGoogleAIStudioChat"
             @refreshGoogleAIStudioModels="onRefreshGoogleAIStudioModels"
             @updateAnthropicChatEnabled="onUpdateAnthropicChatEnabled"
-            @updateAnthropicChatModel="onUpdateAnthropicChatModel"
             @clearAnthropicChat="onClearAnthropicChat"
             @refreshAnthropicModels="onRefreshAnthropicModels"
             @updateDeepSeekChatEnabled="onUpdateDeepSeekChatEnabled"
-            @updateDeepSeekChatModel="onUpdateDeepSeekChatModel"
             @clearDeepSeekChat="onClearDeepSeekChat"
             @refreshDeepSeekModels="onRefreshDeepSeekModels"
             @updateReasoningDisplayMode="onUpdateReasoningDisplayMode"

@@ -259,7 +259,6 @@ import {
   type ChatSessionConfigPatch,
 } from './chatSessionConfig'
 import {
-  buildLocalProviderModelSource,
   buildProviderAvailabilityModelSource,
   type ProviderModelPickerSource,
 } from './providerModelPickerViewModel'
@@ -1198,21 +1197,18 @@ export function useAppChatAppLogic() {
     currentRuntimeCapability,
     currentRuntimeStatus,
     localEndpointChatUrl,
-    localEndpointChatModel,
     readExperimentalProviderChatStorage,
     addExperimentalProviderChatEventListeners,
     removeExperimentalProviderChatEventListeners,
     onUpdateOpenRouterChatEnabled,
     onUpdateLMStudioChatEnabled,
     onUpdateLMStudioEndpointUrl,
-    onUpdateLMStudioModel,
     onUpdateLMStudioChatMode,
     onUpdateLMStudioOpenAICompatiblePreferredEndpoint,
     onUpdateLMStudioNativeRestControl,
     onClearLMStudioChat,
     onUpdateOllamaChatEnabled,
     onUpdateOllamaEndpointUrl,
-    onUpdateOllamaModel,
     onUpdateOllamaChatMode,
     onUpdateOllamaNativeRestPreferredEndpoint,
     onUpdateOllamaOpenAICompatiblePreferredEndpoint,
@@ -1220,19 +1216,14 @@ export function useAppChatAppLogic() {
     onClearOllamaChat,
     onUpdateLocalEndpointChatEnabled,
     onUpdateLocalEndpointChatUrl,
-    onUpdateLocalEndpointChatModel,
     onClearLocalEndpointChat,
     onUpdateOpenAIResponsesChatEnabled,
-    onUpdateOpenAIResponsesChatModel,
     onClearOpenAIResponsesChat,
     onUpdateGoogleAIStudioChatEnabled,
-    onUpdateGoogleAIStudioChatModel,
     onClearGoogleAIStudioChat,
     onUpdateAnthropicChatEnabled,
-    onUpdateAnthropicChatModel,
     onClearAnthropicChat,
     onUpdateDeepSeekChatEnabled,
-    onUpdateDeepSeekChatModel,
     onClearDeepSeekChat,
   } = useExperimentalProviderChatSettings({
     model,
@@ -3870,30 +3861,6 @@ export function useAppChatAppLogic() {
       providerName: 'DeepSeek',
       status: deepSeekModelAvailabilityStatus.value,
     }),
-    buildLocalProviderModelSource({
-      providerId: 'lm_studio',
-      providerName: 'LM Studio',
-      modelId: lmStudioChatConfig.value.model,
-      enabled: lmStudioChatConfig.value.enabled,
-      modeLabel: lmStudioChatConfig.value.chatMode,
-      endpointLabel: lmStudioChatConfig.value.endpointUrl,
-    }),
-    buildLocalProviderModelSource({
-      providerId: 'ollama_local',
-      providerName: 'Ollama',
-      modelId: ollamaChatConfig.value.model,
-      enabled: ollamaChatConfig.value.enabled,
-      modeLabel: ollamaChatConfig.value.chatMode,
-      endpointLabel: ollamaChatConfig.value.endpointUrl,
-    }),
-    buildLocalProviderModelSource({
-      providerId: 'local_endpoint',
-      providerName: 'Local/OpenAI-compatible',
-      modelId: localEndpointChatConfig.value.model,
-      enabled: localEndpointChatConfig.value.enabled,
-      modeLabel: 'openai_compatible',
-      endpointLabel: localEndpointChatConfig.value.endpointUrl,
-    }),
   ])
 
   async function onRefreshProviderModelPickerSources() {
@@ -4184,7 +4151,7 @@ export function useAppChatAppLogic() {
 
   async function preflightLocalEndpointAvailability(modelIdOverride?: string): Promise<ProviderRuntimeAvailabilityPreflightResult> {
     const endpointUrl = localEndpointChatUrl.value.trim()
-    const modelId = normalizeRuntimeModelId(modelIdOverride ?? localEndpointChatModel.value)
+    const modelId = normalizeRuntimeModelId(modelIdOverride)
     if (!endpointUrl) return { ok: false, reason: 'Local/OpenAI-compatible endpoint URL is not configured.' }
     if (!modelId) return { ok: false, reason: 'Local/OpenAI-compatible model is not configured.' }
     const bridge = (globalThis as any)?.localEndpointDiagnostics as LocalEndpointDiagnosticsBridge | undefined
@@ -4215,7 +4182,7 @@ export function useAppChatAppLogic() {
 
   async function preflightLMStudioAvailability(modelIdOverride?: string): Promise<ProviderRuntimeAvailabilityPreflightResult> {
     const endpointUrl = lmStudioChatConfig.value.endpointUrl.trim()
-    const modelId = normalizeRuntimeModelId(modelIdOverride ?? lmStudioChatConfig.value.model)
+    const modelId = normalizeRuntimeModelId(modelIdOverride)
     if (!endpointUrl) return { ok: false, reason: 'LM Studio endpoint URL is not configured.' }
     if (!modelId) return { ok: false, reason: 'LM Studio model is not configured.' }
     const bridge = (globalThis as any)?.lmStudioProvider as LMStudioProviderBridge | undefined
@@ -4248,7 +4215,7 @@ export function useAppChatAppLogic() {
 
   async function preflightOllamaAvailability(modelIdOverride?: string): Promise<ProviderRuntimeAvailabilityPreflightResult> {
     const endpointUrl = ollamaChatConfig.value.endpointUrl.trim()
-    const modelId = normalizeRuntimeModelId(modelIdOverride ?? ollamaChatConfig.value.model)
+    const modelId = normalizeRuntimeModelId(modelIdOverride)
     if (!endpointUrl) return { ok: false, reason: 'Ollama endpoint URL is not configured.' }
     if (!modelId) return { ok: false, reason: 'Ollama model is not configured.' }
     const bridge = (globalThis as any)?.ollamaProvider as OllamaProviderBridge | undefined
@@ -7316,12 +7283,13 @@ export function useAppChatAppLogic() {
 
   function resolveCurrentRuntimeSelectionForSend(): CurrentRuntimeSelection {
     const sessionSelection = activeSessionConfig.value.model
-    const selectedModel = normalizeRuntimeModelId(sessionSelection.selectedModelKey)
-    if (selectedModel.length > 0 && selectedModel !== DEFAULT_OPENROUTER_MODEL_ID) {
-      const providerId = sessionSelection.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID
-      return buildCurrentRuntimeSelectionForChatModel({ providerId, modelId: selectedModel })
-    }
-    return currentRuntimeSelection.value
+    const providerId = sessionSelection.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID
+    const selectedModel = normalizeRuntimeModelId(
+      providerId === DEFAULT_CHAT_PROVIDER_ID
+        ? sessionSelection.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID
+        : sessionSelection.selectedModelKey,
+    )
+    return buildCurrentRuntimeSelectionForChatModel({ providerId, modelId: selectedModel })
   }
 
   function buildCurrentRuntimeSelectionForAssistantTurn(
@@ -10955,14 +10923,12 @@ export function useAppChatAppLogic() {
     onUpdateOpenRouterChatEnabled,
     onUpdateLMStudioChatEnabled,
     onUpdateLMStudioEndpointUrl,
-    onUpdateLMStudioModel,
     onUpdateLMStudioChatMode,
     onUpdateLMStudioOpenAICompatiblePreferredEndpoint,
     onUpdateLMStudioNativeRestControl,
     onClearLMStudioChat,
     onUpdateOllamaChatEnabled,
     onUpdateOllamaEndpointUrl,
-    onUpdateOllamaModel,
     onUpdateOllamaChatMode,
     onUpdateOllamaNativeRestPreferredEndpoint,
     onUpdateOllamaOpenAICompatiblePreferredEndpoint,
@@ -10970,23 +10936,18 @@ export function useAppChatAppLogic() {
     onClearOllamaChat,
     onUpdateLocalEndpointChatEnabled,
     onUpdateLocalEndpointChatUrl,
-    onUpdateLocalEndpointChatModel,
     onClearLocalEndpointChat,
     onUpdateOpenAIResponsesChatEnabled,
-    onUpdateOpenAIResponsesChatModel,
     onClearOpenAIResponsesChat,
     onRefreshOpenAIResponsesModels,
     onRefreshProviderModelPickerSources,
     onUpdateGoogleAIStudioChatEnabled,
-    onUpdateGoogleAIStudioChatModel,
     onClearGoogleAIStudioChat,
     onRefreshGoogleAIStudioModels,
     onUpdateAnthropicChatEnabled,
-    onUpdateAnthropicChatModel,
     onClearAnthropicChat,
     onRefreshAnthropicModels,
     onUpdateDeepSeekChatEnabled,
-    onUpdateDeepSeekChatModel,
     onClearDeepSeekChat,
     onRefreshDeepSeekModels,
     onComposerOpenWebSearchSettings,

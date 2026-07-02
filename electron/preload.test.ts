@@ -115,11 +115,13 @@ describe('preload scoped API exposure', () => {
     }))
     expect(openRouterCredential).toEqual({
       getStatus: expect.any(Function),
+      reveal: expect.any(Function),
       update: expect.any(Function),
       clear: expect.any(Function),
     })
     expect(openAIResponsesCredential).toEqual({
       getStatus: expect.any(Function),
+      reveal: expect.any(Function),
       update: expect.any(Function),
       clear: expect.any(Function),
     })
@@ -128,11 +130,13 @@ describe('preload scoped API exposure', () => {
     })
     expect(googleAIStudioCredential).toEqual({
       getStatus: expect.any(Function),
+      reveal: expect.any(Function),
       update: expect.any(Function),
       clear: expect.any(Function),
     })
     expect(anthropicCredential).toEqual({
       getStatus: expect.any(Function),
+      reveal: expect.any(Function),
       update: expect.any(Function),
       clear: expect.any(Function),
     })
@@ -141,6 +145,7 @@ describe('preload scoped API exposure', () => {
     })
     expect(deepSeekCredential).toEqual({
       getStatus: expect.any(Function),
+      reveal: expect.any(Function),
       update: expect.any(Function),
       clear: expect.any(Function),
     })
@@ -278,20 +283,25 @@ describe('preload scoped API exposure', () => {
     await electronStore.clearSafe(['language'])
     await electronStore.checkIntegrity()
     await openRouterCredential.getStatus()
+    await openRouterCredential.reveal()
     await openRouterCredential.update({ apiKey: 'raw-openrouter-key', baseUrl: 'https://openrouter.ai/api/v1' })
     await openRouterCredential.clear()
     await openAIResponsesCredential.getStatus()
+    await openAIResponsesCredential.reveal()
     await openAIResponsesCredential.update({ apiKey: 'raw-openai-key' })
     await openAIResponsesCredential.clear()
     await openAIResponsesModels.listAvailability({ timeoutMs: 5000 })
     await googleAIStudioCredential.getStatus()
+    await googleAIStudioCredential.reveal()
     await googleAIStudioCredential.update({ apiKey: 'raw-google-key' })
     await googleAIStudioCredential.clear()
     await anthropicCredential.getStatus()
+    await anthropicCredential.reveal()
     await anthropicCredential.update({ apiKey: 'raw-anthropic-key' })
     await anthropicCredential.clear()
     await anthropicModels.listAvailability({ timeoutMs: 5000 })
     await deepSeekCredential.getStatus()
+    await deepSeekCredential.reveal()
     await deepSeekCredential.update({ apiKey: 'raw-deepseek-key' })
     await deepSeekCredential.clear()
     await deepSeekModels.listAvailability({ timeoutMs: 5000 })
@@ -380,12 +390,14 @@ describe('preload scoped API exposure', () => {
     expect(invoke).toHaveBeenCalledWith('store-clear-safe', ['language'])
     expect(invoke).toHaveBeenCalledWith('store-check-integrity')
     expect(invoke).toHaveBeenCalledWith('openrouter-credential:get-status')
+    expect(invoke).toHaveBeenCalledWith('openrouter-credential:reveal')
     expect(invoke).toHaveBeenCalledWith('openrouter-credential:update', {
       apiKey: 'raw-openrouter-key',
       baseUrl: 'https://openrouter.ai/api/v1',
     })
     expect(invoke).toHaveBeenCalledWith('openrouter-credential:clear')
     expect(invoke).toHaveBeenCalledWith('openai-responses-credential:get-status')
+    expect(invoke).toHaveBeenCalledWith('openai-responses-credential:reveal')
     expect(invoke).toHaveBeenCalledWith('openai-responses-credential:update', {
       apiKey: 'raw-openai-key',
     })
@@ -394,11 +406,13 @@ describe('preload scoped API exposure', () => {
       timeoutMs: 5000,
     })
     expect(invoke).toHaveBeenCalledWith('google-ai-studio-credential:get-status')
+    expect(invoke).toHaveBeenCalledWith('google-ai-studio-credential:reveal')
     expect(invoke).toHaveBeenCalledWith('google-ai-studio-credential:update', {
       apiKey: 'raw-google-key',
     })
     expect(invoke).toHaveBeenCalledWith('google-ai-studio-credential:clear')
     expect(invoke).toHaveBeenCalledWith('anthropic-credential:get-status')
+    expect(invoke).toHaveBeenCalledWith('anthropic-credential:reveal')
     expect(invoke).toHaveBeenCalledWith('anthropic-credential:update', {
       apiKey: 'raw-anthropic-key',
     })
@@ -407,6 +421,7 @@ describe('preload scoped API exposure', () => {
       timeoutMs: 5000,
     })
     expect(invoke).toHaveBeenCalledWith('deepseek-credential:get-status')
+    expect(invoke).toHaveBeenCalledWith('deepseek-credential:reveal')
     expect(invoke).toHaveBeenCalledWith('deepseek-credential:update', {
       apiKey: 'raw-deepseek-key',
     })

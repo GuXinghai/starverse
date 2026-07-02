@@ -19,6 +19,13 @@ function defaultSessionConfig() {
   }
 }
 
+function openAIResponsesSessionConfig() {
+  return {
+    ...defaultSessionConfig(),
+    model: { selectedProviderId: 'openai_responses' as const, selectedModelKey: 'gpt-4.1-mini' },
+  }
+}
+
 describe('ChatSessionConsole OpenAI Responses chat controls', () => {
   it('exposes explicit experimental OpenAI Responses text chat without endpoint or profile picker UI', async () => {
     const user = userEvent.setup()
@@ -26,7 +33,7 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: openAIResponsesSessionConfig(),
         openAIResponsesChat: {
           enabled: true,
           model: 'gpt-4.1-mini',
@@ -47,15 +54,15 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
     expect(screen.getByTestId('openai-responses-chat-selected-status').textContent).toContain('does not expose API keys')
     expect(screen.queryByText(/endpoint picker/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/profile picker/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('openai-responses-chat-model')).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('openai-responses-chat-enabled'))
-    await user.type(screen.getByTestId('openai-responses-chat-model'), 'gpt-4.1')
     await user.click(screen.getByTestId('openai-responses-chat-disable'))
     await user.click(screen.getByTestId('openai-responses-chat-clear'))
 
     expect(view.emitted('updateOpenAIResponsesChatEnabled')?.[0]).toEqual([false])
     expect(view.emitted('updateOpenAIResponsesChatEnabled')?.[1]).toEqual([false])
-    expect(view.emitted('updateOpenAIResponsesChatModel')?.length).toBeGreaterThan(0)
+    expect(view.emitted('updateOpenAIResponsesChatModel')).toBeUndefined()
     expect(view.emitted('clearOpenAIResponsesChat')).toHaveLength(1)
   })
 
@@ -139,7 +146,7 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
     await user.click(screen.getByTestId('openai-responses-model-use'))
 
     expect(view.emitted('refreshOpenAIResponsesModels')).toHaveLength(1)
-    expect(view.emitted('updateOpenAIResponsesChatModel')?.[0]).toEqual(['gpt-4.1-mini'])
+    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'openai_responses', modelId: 'gpt-4.1-mini' }])
 
     const mainModelSelect = screen.getAllByRole('combobox')[0]
     expect(within(mainModelSelect).getByText('OpenRouter Claude 3')).toBeInTheDocument()

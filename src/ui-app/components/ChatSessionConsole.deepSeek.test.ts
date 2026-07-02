@@ -19,6 +19,13 @@ function defaultSessionConfig() {
   }
 }
 
+function deepSeekSessionConfig() {
+  return {
+    ...defaultSessionConfig(),
+    model: { selectedProviderId: 'deepseek' as const, selectedModelKey: 'deepseek-chat' },
+  }
+}
+
 describe('ChatSessionConsole DeepSeek official chat controls', () => {
   it('exposes explicit experimental DeepSeek official text chat without endpoint or profile picker UI', async () => {
     const user = userEvent.setup()
@@ -26,7 +33,7 @@ describe('ChatSessionConsole DeepSeek official chat controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: deepSeekSessionConfig(),
         deepSeekChat: {
           enabled: true,
           model: 'deepseek-chat',
@@ -49,15 +56,15 @@ describe('ChatSessionConsole DeepSeek official chat controls', () => {
     expect(screen.getByTestId('deepseek-chat-selected-status').textContent).toContain('does not expose API keys')
     expect(screen.queryByText(/endpoint picker/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/profile picker/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('deepseek-chat-model')).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('deepseek-chat-enabled'))
-    await user.type(screen.getByTestId('deepseek-chat-model'), 'deepseek')
     await user.click(screen.getByTestId('deepseek-chat-disable'))
     await user.click(screen.getByTestId('deepseek-chat-clear'))
 
     expect(view.emitted('updateDeepSeekChatEnabled')?.[0]).toEqual([false])
     expect(view.emitted('updateDeepSeekChatEnabled')?.[1]).toEqual([false])
-    expect(view.emitted('updateDeepSeekChatModel')?.length).toBeGreaterThan(0)
+    expect(view.emitted('updateDeepSeekChatModel')).toBeUndefined()
     expect(view.emitted('clearDeepSeekChat')).toHaveLength(1)
   })
 
@@ -155,7 +162,7 @@ describe('ChatSessionConsole DeepSeek official chat controls', () => {
     await user.click(screen.getAllByTestId('deepseek-model-use')[0])
 
     expect(view.emitted('refreshDeepSeekModels')).toHaveLength(1)
-    expect(view.emitted('updateDeepSeekChatModel')?.[0]).toEqual(['deepseek-v4-flash'])
+    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'deepseek', modelId: 'deepseek-v4-flash' }])
 
     const mainModelSelect = screen.getAllByRole('combobox')[0]
     expect(within(mainModelSelect).getByText('OpenRouter Claude 3')).toBeInTheDocument()

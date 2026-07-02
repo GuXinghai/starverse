@@ -113,7 +113,7 @@ describe('useExperimentalProviderChatSettings', () => {
     expect(settings.currentRuntimeStatus.value.selectionLabel).toBeTruthy()
   })
 
-  it('reads, persists, and clears LM Studio storage values', () => {
+  it('reads, persists, and clears LM Studio storage values without legacy model state', () => {
     localStorage.setItem(keys.lmStudioEnabled, '1')
     localStorage.setItem(keys.lmStudioEndpointUrl, 'http://localhost:4321')
     localStorage.setItem(keys.lmStudioModel, 'openai/gpt-oss-20b')
@@ -131,7 +131,7 @@ describe('useExperimentalProviderChatSettings', () => {
     expect(settings.lmStudioChatConfig.value).toMatchObject({
       enabled: true,
       endpointUrl: 'http://localhost:4321',
-      model: 'openai/gpt-oss-20b',
+      model: '',
       chatMode: 'native_rest',
       openAICompatiblePreferredEndpoint: 'responses',
       config: {
@@ -144,9 +144,7 @@ describe('useExperimentalProviderChatSettings', () => {
         },
       },
     })
-
-    settings.onUpdateLMStudioModel('local-model')
-    expect(localStorage.getItem(keys.lmStudioModel)).toBe('local-model')
+    expect(localStorage.getItem(keys.lmStudioModel)).toBeNull()
 
     settings.onClearLMStudioChat()
     expect(settings.lmStudioChatConfig.value).toMatchObject({
@@ -159,7 +157,7 @@ describe('useExperimentalProviderChatSettings', () => {
     expect(localStorage.getItem(keys.lmStudioEndpointUrl)).toBeNull()
   })
 
-  it('reads, persists, and clears Ollama storage values', () => {
+  it('reads, persists, and clears Ollama storage values without legacy model state', () => {
     localStorage.setItem(keys.ollamaEnabled, '1')
     localStorage.setItem(keys.ollamaEndpointUrl, 'http://localhost:11434')
     localStorage.setItem(keys.ollamaModel, 'llama3.2:latest')
@@ -178,7 +176,7 @@ describe('useExperimentalProviderChatSettings', () => {
     expect(settings.ollamaChatConfig.value).toMatchObject({
       enabled: true,
       endpointUrl: 'http://localhost:11434',
-      model: 'llama3.2:latest',
+      model: '',
       chatMode: 'openai_compatible',
       nativeRestPreferredEndpoint: 'generate',
       openAICompatiblePreferredEndpoint: 'responses',
@@ -194,10 +192,10 @@ describe('useExperimentalProviderChatSettings', () => {
         nativeRest: { preferredEndpoint: 'generate' },
       },
     })
+    expect(localStorage.getItem(keys.ollamaModel)).toBeNull()
 
-    settings.onUpdateOllamaModel('mistral:latest')
     settings.onUpdateOllamaNativeControl('autoLoadBeforeSendEnabled', false)
-    expect(localStorage.getItem(keys.ollamaModel)).toBe('mistral:latest')
+    expect(localStorage.getItem(keys.ollamaModel)).toBeNull()
     expect(localStorage.getItem(keys.ollamaAutoLoadBeforeSendEnabled)).toBe('0')
 
     settings.onClearOllamaChat()
@@ -221,28 +219,26 @@ describe('useExperimentalProviderChatSettings', () => {
     expect(settings.lmStudioChatConfig.value.enabled).toBe(true)
     expect(localStorage.getItem(keys.lmStudioEnabled)).toBe('1')
 
-    settings.onUpdateOllamaModel('llama3.2:latest')
     settings.onUpdateOllamaChatEnabled(true)
     expect(settings.lmStudioChatConfig.value.enabled).toBe(false)
     expect(settings.ollamaChatConfig.value).toMatchObject({
       enabled: true,
-      model: 'llama3.2:latest',
+      model: '',
     })
     expect(localStorage.getItem(keys.lmStudioEnabled)).toBe('0')
     expect(localStorage.getItem(keys.ollamaEnabled)).toBe('1')
 
-    settings.onUpdateOpenAIResponsesChatModel('gpt-4.1-mini')
     settings.onUpdateOpenAIResponsesChatEnabled(true)
     expect(settings.lmStudioChatConfig.value.enabled).toBe(false)
     expect(settings.ollamaChatConfig.value.enabled).toBe(false)
     expect(settings.openAIResponsesChatConfig.value).toMatchObject({
       enabled: true,
-      model: 'gpt-4.1-mini',
+      model: '',
     })
     expect(localStorage.getItem(keys.lmStudioEnabled)).toBe('0')
     expect(localStorage.getItem(keys.ollamaEnabled)).toBe('0')
     expect(localStorage.getItem(keys.openAIResponsesEnabled)).toBe('1')
-    expect(localStorage.getItem(keys.openAIResponsesModel)).toBe('gpt-4.1-mini')
+    expect(localStorage.getItem(keys.openAIResponsesModel)).toBeNull()
   })
 
   it('does not update or clear provider selection while running or locked', () => {
@@ -285,7 +281,7 @@ describe('useExperimentalProviderChatSettings', () => {
       }))
       expect(settings.lmStudioChatConfig.value).toMatchObject({
         endpointUrl: 'http://localhost:5678',
-        model: 'event-model',
+        model: '',
         chatMode: 'native_rest',
         config: {
           nativeRestControls: {
@@ -306,7 +302,7 @@ describe('useExperimentalProviderChatSettings', () => {
       }))
       expect(settings.ollamaChatConfig.value).toMatchObject({
         endpointUrl: 'http://localhost:11434',
-        model: 'llama3.2:latest',
+        model: '',
         chatMode: 'openai_compatible',
         nativeRestPreferredEndpoint: 'generate',
         openAICompatiblePreferredEndpoint: 'responses',
