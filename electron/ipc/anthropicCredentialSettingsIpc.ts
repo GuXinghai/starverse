@@ -9,6 +9,7 @@ export const ANTHROPIC_API_KEY_STORE_KEY = PROVIDER_CREDENTIAL_LEGACY_STORE_KEYS
 
 export const ANTHROPIC_CREDENTIAL_SETTINGS_IPC_CHANNELS = [
   'anthropic-credential:get-status',
+  'anthropic-credential:reveal',
   'anthropic-credential:update',
   'anthropic-credential:clear',
 ] as const
@@ -33,6 +34,10 @@ export type AnthropicCredentialSettingsUpdatePayload = Readonly<{
 export type AnthropicCredentialSettingsResult =
   | Readonly<{ ok: true; status: AnthropicCredentialSettingsStatus }>
   | Readonly<{ ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }>
+
+export type AnthropicCredentialRevealResult =
+  | Readonly<{ ok: true; apiKey: string }>
+  | Readonly<{ ok: false; code: 'credential_missing' | 'store_unavailable'; message: string }>
 
 type RegisterAnthropicCredentialSettingsIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
@@ -71,6 +76,16 @@ function safeFailure(code: 'invalid_payload' | 'store_unavailable'): AnthropicCr
   }
 }
 
+function safeRevealFailure(code: 'credential_missing' | 'store_unavailable'): AnthropicCredentialRevealResult {
+  return {
+    ok: false,
+    code,
+    message: code === 'credential_missing'
+      ? 'Anthropic API key is not configured.'
+      : 'Anthropic credential settings store is unavailable.',
+  }
+}
+
 export function registerAnthropicCredentialSettingsIpc(
   input: RegisterAnthropicCredentialSettingsIpcInput,
 ): string[] {
@@ -81,6 +96,16 @@ export function registerAnthropicCredentialSettingsIpc(
       return { ok: true, status: readStatus(credentialService) } satisfies AnthropicCredentialSettingsResult
     } catch {
       return safeFailure('store_unavailable')
+    }
+  })
+
+  registerInvoke('anthropic-credential:reveal', () => {
+    try {
+      const result = credentialService.readApiKey('anthropic')
+      if (!result.ok) return safeRevealFailure(result.code === 'credential_missing' ? 'credential_missing' : 'store_unavailable')
+      return { ok: true, apiKey: result.apiKey } satisfies AnthropicCredentialRevealResult
+    } catch {
+      return safeRevealFailure('store_unavailable')
     }
   })
 

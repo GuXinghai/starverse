@@ -20,6 +20,13 @@ function defaultSessionConfig() {
   }
 }
 
+function lmStudioSessionConfig() {
+  return {
+    ...defaultSessionConfig(),
+    model: { selectedProviderId: 'lm_studio' as const, selectedModelKey: 'openai/gpt-oss-20b' },
+  }
+}
+
 function lmStudioChat(overrides: Partial<{
   diagnosticsEnabled: boolean
   manualLoadUnloadEnabled: boolean
@@ -103,7 +110,7 @@ describe('ChatSessionConsole LM Studio controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: lmStudioSessionConfig(),
         lmStudioChat: lmStudioChat(),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
@@ -119,6 +126,7 @@ describe('ChatSessionConsole LM Studio controls', () => {
     expect(screen.queryByText(/download/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/OpenRouter catalog/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/ModelPicker/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('lm-studio-model')).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('lm-studio-chat-mode-native'))
     await user.click(screen.getByTestId('lm-studio-openai-endpoint-responses'))
@@ -126,10 +134,10 @@ describe('ChatSessionConsole LM Studio controls', () => {
     await user.click(screen.getByTestId('lm-studio-auto-unload-after-send-enabled'))
     await user.click(screen.getByTestId('lm-studio-auto-unload-after-idle-enabled'))
     await user.type(screen.getByTestId('lm-studio-endpoint-url'), '1')
-    await user.type(screen.getByTestId('lm-studio-model'), '-alt')
 
     await user.click(screen.getByTestId('lm-studio-probe'))
     await waitFor(() => expect(screen.getByTestId('lm-studio-models').textContent).toContain('GPT OSS 20B'))
+    await user.click(screen.getByTestId('lm-studio-model-use'))
     await user.click(screen.getByTestId('lm-studio-load-model'))
     await waitFor(() => expect(screen.getByTestId('lm-studio-action-result').textContent).toContain('inst-loaded'))
     await user.click(screen.getByTestId('lm-studio-unload-model'))
@@ -145,7 +153,8 @@ describe('ChatSessionConsole LM Studio controls', () => {
       ['autoUnloadAfterIdleEnabled', true],
     ])
     expect(view.emitted('updateLMStudioEndpointUrl')?.length).toBeGreaterThan(0)
-    expect(view.emitted('updateLMStudioModel')?.length).toBeGreaterThan(0)
+    expect(view.emitted('updateLMStudioModel')).toBeUndefined()
+    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'lm_studio', modelId: 'openai/gpt-oss-20b' }])
     const chatEnabledEvents = view.emitted('updateLMStudioChatEnabled') ?? []
     expect(chatEnabledEvents[chatEnabledEvents.length - 1]).toEqual([false])
     expect(view.emitted('clearLMStudioChat')).toHaveLength(1)
@@ -178,7 +187,7 @@ describe('ChatSessionConsole LM Studio controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: lmStudioSessionConfig(),
         lmStudioChat: lmStudioChat({ diagnosticsEnabled: false }),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
@@ -209,7 +218,7 @@ describe('ChatSessionConsole LM Studio controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: lmStudioSessionConfig(),
         lmStudioChat: lmStudioChat(),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
@@ -239,7 +248,7 @@ describe('ChatSessionConsole LM Studio controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: lmStudioSessionConfig(),
         lmStudioChat: lmStudioChat({ autoUnloadAfterIdleEnabled: false }),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],

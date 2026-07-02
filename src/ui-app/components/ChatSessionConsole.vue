@@ -29,7 +29,11 @@ import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import SamplingParamsSettingsEditor from './SamplingParamsSettingsEditor.vue'
 import ImageGenerationSettingsEditor from './ImageGenerationSettingsEditor.vue'
 import { t, tf } from '@/shared/i18n'
-import { DEFAULT_OPENROUTER_MODEL_ID } from '@/next/provider/modelSelection'
+import {
+  DEFAULT_CHAT_PROVIDER_ID,
+  DEFAULT_OPENROUTER_MODEL_ID,
+  type ChatModelSelection,
+} from '@/next/provider/modelSelection'
 import { resolveNetworkFailureDisplayMessage } from '../app/networkErrorDisplay'
 
 const props = defineProps<{
@@ -165,7 +169,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'updateModel', modelKey: string): void
+  (e: 'updateModel', modelKey: ChatModelSelection | string): void
   (e: 'updateReasoningEnabled', enabled: boolean): void
   (e: 'updateReasoningEffort', effort: 'low' | 'medium' | 'high'): void
   (e: 'updateWebSearchEnabled', enabled: boolean): void
@@ -179,7 +183,6 @@ const emit = defineEmits<{
   (e: 'updateOpenRouterChatEnabled', enabled: boolean): void
   (e: 'updateLMStudioChatEnabled', enabled: boolean): void
   (e: 'updateLMStudioEndpointUrl', value: string): void
-  (e: 'updateLMStudioModel', value: string): void
   (e: 'updateLMStudioChatMode', mode: 'openai_compatible' | 'native_rest'): void
   (e: 'updateLMStudioOpenAICompatiblePreferredEndpoint', endpoint: 'chat_completions' | 'responses'): void
   (
@@ -190,7 +193,6 @@ const emit = defineEmits<{
   (e: 'clearLMStudioChat'): void
   (e: 'updateOllamaChatEnabled', enabled: boolean): void
   (e: 'updateOllamaEndpointUrl', value: string): void
-  (e: 'updateOllamaModel', value: string): void
   (e: 'updateOllamaChatMode', mode: 'native_rest' | 'openai_compatible'): void
   (e: 'updateOllamaNativeRestPreferredEndpoint', endpoint: 'chat' | 'generate'): void
   (e: 'updateOllamaOpenAICompatiblePreferredEndpoint', endpoint: 'chat_completions' | 'responses'): void
@@ -202,22 +204,17 @@ const emit = defineEmits<{
   (e: 'clearOllamaChat'): void
   (e: 'updateLocalEndpointChatEnabled', enabled: boolean): void
   (e: 'updateLocalEndpointChatUrl', value: string): void
-  (e: 'updateLocalEndpointChatModel', value: string): void
   (e: 'clearLocalEndpointChat'): void
   (e: 'updateOpenAIResponsesChatEnabled', enabled: boolean): void
-  (e: 'updateOpenAIResponsesChatModel', value: string): void
   (e: 'clearOpenAIResponsesChat'): void
   (e: 'refreshOpenAIResponsesModels'): void
   (e: 'updateGoogleAIStudioChatEnabled', enabled: boolean): void
-  (e: 'updateGoogleAIStudioChatModel', value: string): void
   (e: 'clearGoogleAIStudioChat'): void
   (e: 'refreshGoogleAIStudioModels'): void
   (e: 'updateAnthropicChatEnabled', enabled: boolean): void
-  (e: 'updateAnthropicChatModel', value: string): void
   (e: 'clearAnthropicChat'): void
   (e: 'refreshAnthropicModels'): void
   (e: 'updateDeepSeekChatEnabled', enabled: boolean): void
-  (e: 'updateDeepSeekChatModel', value: string): void
   (e: 'clearDeepSeekChat'): void
   (e: 'refreshDeepSeekModels'): void
   (e: 'updateReasoningDisplayMode', mode: 'inline' | 'rail'): void
@@ -225,10 +222,22 @@ const emit = defineEmits<{
 }>()
 
 const disabled = computed(() => props.disabled || props.isRunning)
-const modelValue = computed(() => props.sessionConfig.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID)
+const selectedProviderId = computed<ChatModelSelection['providerId']>(() => props.sessionConfig.model.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID)
+const selectedModelId = computed(() => props.sessionConfig.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID)
+const openRouterModelValue = computed(() => (
+  selectedProviderId.value === DEFAULT_CHAT_PROVIDER_ID ? selectedModelId.value : DEFAULT_OPENROUTER_MODEL_ID
+))
+function selectedModelFor(providerId: ChatModelSelection['providerId']): string {
+  return selectedProviderId.value === providerId ? selectedModelId.value : ''
+}
+function selectProviderModel(providerId: ChatModelSelection['providerId'], modelId: unknown) {
+  const normalized = String(modelId ?? '').trim()
+  if (!normalized) return
+  emit('updateModel', { providerId, modelId: normalized })
+}
 const openRouterChat = computed(() => props.openRouterChat ?? {
   enabled: false,
-  model: modelValue.value,
+  model: openRouterModelValue.value,
   providerLabel: 'OpenRouter · first-class provider',
 })
 const openRouterChatStatusLabel = computed(() => openRouterChat.value.enabled ? 'active' : 'inactive')
@@ -538,7 +547,7 @@ async function probeLMStudio(options: Readonly<{ clearAction?: boolean }> = {}) 
   try {
     const result = await bridge.probe({
       endpointUrl: lmStudioChat.value.endpointUrl,
-      selectedModel: lmStudioChat.value.model,
+      selectedModel: selectedModelFor('lm_studio'),
       timeoutMs: 5000,
     })
     lmStudioProbeResult.value = result
@@ -552,7 +561,7 @@ async function probeLMStudio(options: Readonly<{ clearAction?: boolean }> = {}) 
 
 async function loadLMStudioSelectedModel() {
   const bridge = (globalThis as any).lmStudioProvider
-  const model = lmStudioChat.value.model.trim()
+  const model = selectedModelFor('lm_studio').trim()
   if (!lmStudioBridgeAvailable.value || !model) return
   lmStudioActionLoading.value = true
   lmStudioActionResult.value = ''
@@ -626,7 +635,7 @@ async function probeOllama(options: Readonly<{ clearAction?: boolean }> = {}) {
   try {
     const result = await bridge.probe({
       endpointUrl: ollamaChat.value.endpointUrl,
-      selectedModel: ollamaChat.value.model,
+      selectedModel: selectedModelFor('ollama_local'),
       timeoutMs: 5000,
     })
     ollamaProbeResult.value = result
@@ -640,7 +649,7 @@ async function probeOllama(options: Readonly<{ clearAction?: boolean }> = {}) {
 
 async function loadOllamaSelectedModel() {
   const bridge = (globalThis as any).ollamaProvider
-  const model = ollamaChat.value.model.trim()
+  const model = selectedModelFor('ollama_local').trim()
   if (!ollamaBridgeAvailable.value || !model) return
   ollamaActionLoading.value = true
   ollamaActionResult.value = ''
@@ -664,7 +673,7 @@ async function loadOllamaSelectedModel() {
 
 async function unloadOllamaSelectedModel() {
   const bridge = (globalThis as any).ollamaProvider
-  const model = ollamaChat.value.model.trim()
+  const model = selectedModelFor('ollama_local').trim()
   if (!ollamaBridgeAvailable.value || !model) return
   ollamaActionLoading.value = true
   ollamaActionResult.value = ''
@@ -822,7 +831,7 @@ function chipClass(active: boolean): string {
         <select
           class="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
           :disabled="disabled"
-          :value="modelValue"
+          :value="openRouterModelValue"
           @change="emit('updateModel', ($event.target as HTMLSelectElement).value)"
         >
           <option value="openrouter/auto">openrouter/auto</option>
@@ -876,23 +885,12 @@ function chipClass(active: boolean): string {
             enabled
           </label>
         </div>
-        <div class="space-y-2">
-          <label class="block text-[11px] font-semibold text-blue-900">Manual Responses model id</label>
-          <input
-            class="w-full rounded border border-blue-200 bg-white px-2 py-1.5 text-sm disabled:bg-blue-50"
-            :value="openAIResponsesChat.model"
-            :disabled="disabled || !openAIResponsesChat.enabled"
-            placeholder="gpt-4.1-mini"
-            data-testid="openai-responses-chat-model"
-            @input="emit('updateOpenAIResponsesChatModel', ($event.target as HTMLInputElement).value)"
-          />
-        </div>
         <div class="text-[11px] text-blue-800" data-testid="openai-responses-chat-warning">
           Native OpenAI Responses API text-only streaming. Attachments, web, tools, image generation, reasoning, and Generic compatibility routing are disabled.
         </div>
         <div class="rounded border border-blue-100 bg-white px-2 py-1.5 text-[11px] text-blue-900" data-testid="openai-responses-chat-selected-status">
           <div>Experimental OpenAI Responses chat is {{ openAIResponsesChatStatusLabel }}.</div>
-          <div>Selected Responses model: {{ openAIResponsesChat.model || 'none' }}</div>
+          <div>Selected Responses model: {{ selectedModelFor('openai_responses') || 'none' }}</div>
           <div>OpenAI Responses chat uses a main-process credential bridge and does not expose API keys to this console.</div>
         </div>
         <div class="space-y-2 rounded border border-blue-100 bg-white px-2 py-2 text-[11px] text-blue-900" data-testid="openai-responses-models-diagnostics">
@@ -943,7 +941,7 @@ function chipClass(active: boolean): string {
                   class="rounded-md border border-blue-200 bg-white px-2 py-1 text-[11px] font-medium text-blue-800 hover:bg-blue-100 disabled:opacity-50"
                   :disabled="disabled"
                   data-testid="openai-responses-model-use"
-                  @click="emit('updateOpenAIResponsesChatModel', modelAvailability.nativeModelId)"
+                  @click="selectProviderModel('openai_responses', modelAvailability.nativeModelId)"
                 >
                   Use model id
                 </button>
@@ -998,23 +996,12 @@ function chipClass(active: boolean): string {
             enabled
           </label>
         </div>
-        <div class="space-y-2">
-          <label class="block text-[11px] font-semibold text-rose-900">Manual Claude model id</label>
-          <input
-            class="w-full rounded border border-rose-200 bg-white px-2 py-1.5 text-sm disabled:bg-rose-50"
-            :value="anthropicChat.model"
-            :disabled="disabled || !anthropicChat.enabled"
-            placeholder="claude-sonnet-4-5"
-            data-testid="anthropic-chat-model"
-            @input="emit('updateAnthropicChatModel', ($event.target as HTMLInputElement).value)"
-          />
-        </div>
         <div class="text-[11px] text-rose-800" data-testid="anthropic-chat-warning">
           Native Anthropic Messages API text-only streaming. Attachments, web, tools, image generation, reasoning/thinking, signatures, and Generic compatibility routing are disabled.
         </div>
         <div class="rounded border border-rose-100 bg-white px-2 py-1.5 text-[11px] text-rose-900" data-testid="anthropic-chat-selected-status">
           <div>Experimental Anthropic Messages chat is {{ anthropicChatStatusLabel }}.</div>
-          <div>Selected Claude model: {{ anthropicChat.model || 'none' }}</div>
+          <div>Selected Claude model: {{ selectedModelFor('anthropic_messages') || 'none' }}</div>
           <div>Anthropic chat uses a main-process credential bridge and does not expose API keys to this console.</div>
         </div>
         <div class="space-y-2 rounded border border-rose-100 bg-white px-2 py-2 text-[11px] text-rose-900" data-testid="anthropic-models-diagnostics">
@@ -1065,7 +1052,7 @@ function chipClass(active: boolean): string {
                   class="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-medium text-rose-800 hover:bg-rose-100 disabled:opacity-50"
                   :disabled="disabled"
                   data-testid="anthropic-model-use"
-                  @click="emit('updateAnthropicChatModel', modelAvailability.nativeModelId)"
+                  @click="selectProviderModel('anthropic_messages', modelAvailability.nativeModelId)"
                 >
                   Use model id
                 </button>
@@ -1121,23 +1108,12 @@ function chipClass(active: boolean): string {
             Use
           </label>
         </div>
-        <div>
-          <label class="block text-[11px] font-semibold text-cyan-900">Manual DeepSeek model id</label>
-          <input
-            type="text"
-            :value="deepSeekChat.model"
-            :disabled="disabled || !deepSeekChat.enabled"
-            class="mt-1 w-full rounded-md border border-cyan-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-300 disabled:bg-white/60"
-            data-testid="deepseek-chat-model"
-            @input="emit('updateDeepSeekChatModel', ($event.target as HTMLInputElement).value)"
-          />
-        </div>
         <div class="text-[11px] text-cyan-800" data-testid="deepseek-chat-warning">
           DeepSeek official API text-only streaming. Attachments, web, tools, image generation, reasoning/thinking, reasoning_content display, and Generic compatibility routing are disabled.
         </div>
         <div class="rounded border border-cyan-100 bg-white px-2 py-1.5 text-[11px] text-cyan-900" data-testid="deepseek-chat-selected-status">
           <div>Experimental DeepSeek official chat is {{ deepSeekChatStatusLabel }}.</div>
-          <div>Selected DeepSeek model: {{ deepSeekChat.model || 'none' }}</div>
+          <div>Selected DeepSeek model: {{ selectedModelFor('deepseek') || 'none' }}</div>
           <div>DeepSeek chat uses a main-process credential bridge and does not expose API keys to this console.</div>
         </div>
         <div class="space-y-2 rounded border border-cyan-100 bg-white px-2 py-2 text-[11px] text-cyan-900" data-testid="deepseek-models-diagnostics">
@@ -1187,7 +1163,7 @@ function chipClass(active: boolean): string {
                   class="rounded-md border border-cyan-200 bg-white px-2 py-1 text-[11px] font-medium text-cyan-800 hover:bg-cyan-100 disabled:opacity-50"
                   :disabled="disabled"
                   data-testid="deepseek-model-use"
-                  @click="emit('updateDeepSeekChatModel', modelAvailability.nativeModelId)"
+                  @click="selectProviderModel('deepseek', modelAvailability.nativeModelId)"
                 >
                   Use model id
                 </button>
@@ -1242,23 +1218,12 @@ function chipClass(active: boolean): string {
             enabled
           </label>
         </div>
-        <div class="space-y-2">
-          <label class="block text-[11px] font-semibold text-emerald-900">Manual Gemini model id</label>
-          <input
-            class="w-full rounded border border-emerald-200 bg-white px-2 py-1.5 text-sm disabled:bg-emerald-50"
-            :value="googleAIStudioChat.model"
-            :disabled="disabled || !googleAIStudioChat.enabled"
-            placeholder="gemini-2.5-flash"
-            data-testid="google-ai-studio-chat-model"
-            @input="emit('updateGoogleAIStudioChatModel', ($event.target as HTMLInputElement).value)"
-          />
-        </div>
         <div class="text-[11px] text-emerald-800" data-testid="google-ai-studio-chat-warning">
           Native Google AI Studio Gemini text-only streaming. Attachments, web, tools, image generation, reasoning, legacy Gemini runtime, and Generic compatibility routing are disabled.
         </div>
         <div class="rounded border border-emerald-100 bg-white px-2 py-1.5 text-[11px] text-emerald-900" data-testid="google-ai-studio-chat-selected-status">
           <div>Experimental Google AI Studio chat is {{ googleAIStudioChatStatusLabel }}.</div>
-          <div>Selected Gemini model: {{ googleAIStudioChat.model || 'none' }}</div>
+          <div>Selected Gemini model: {{ selectedModelFor('google_ai_studio') || 'none' }}</div>
           <div>Google AI Studio chat uses a main-process credential bridge and does not expose API keys to this console.</div>
         </div>
         <div class="space-y-2 rounded border border-emerald-100 bg-white px-2 py-2 text-[11px] text-emerald-900" data-testid="google-ai-studio-models-diagnostics">
@@ -1308,7 +1273,7 @@ function chipClass(active: boolean): string {
                   class="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
                   :disabled="disabled"
                   data-testid="google-ai-studio-model-use"
-                  @click="emit('updateGoogleAIStudioChatModel', modelAvailability.nativeModelId)"
+                  @click="selectProviderModel('google_ai_studio', modelAvailability.nativeModelId)"
                 >
                   Use model id
                 </button>
@@ -1363,7 +1328,7 @@ function chipClass(active: boolean): string {
             {{ t('settings.lmStudio.enabled') }}
           </label>
         </div>
-        <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+        <div class="grid grid-cols-1 gap-2">
           <label class="space-y-1">
             <span class="block text-[11px] font-semibold text-indigo-900">{{ t('settings.lmStudio.endpointUrl') }}</span>
             <input
@@ -1373,17 +1338,6 @@ function chipClass(active: boolean): string {
               placeholder="http://127.0.0.1:1234"
               data-testid="lm-studio-endpoint-url"
               @input="emit('updateLMStudioEndpointUrl', ($event.target as HTMLInputElement).value)"
-            />
-          </label>
-          <label class="space-y-1">
-            <span class="block text-[11px] font-semibold text-indigo-900">{{ t('settings.lmStudio.selectedModel') }}</span>
-            <input
-              class="w-full rounded border border-indigo-200 bg-white px-2 py-1.5 text-sm disabled:bg-indigo-50"
-              :value="lmStudioChat.model"
-              :disabled="disabled || !lmStudioChat.enabled"
-              placeholder="openai/gpt-oss-20b"
-              data-testid="lm-studio-model"
-              @input="emit('updateLMStudioModel', ($event.target as HTMLInputElement).value)"
             />
           </label>
         </div>
@@ -1489,7 +1443,7 @@ function chipClass(active: boolean): string {
         <div class="rounded border border-indigo-100 bg-white px-2 py-1.5 text-[11px] text-indigo-900" data-testid="lm-studio-selected-status">
           <div>{{ tf('settings.lmStudio.chatStatus', { status: lmStudioChatStatusLabel }) }}</div>
           <div>{{ t('settings.lmStudio.endpoint') }}: {{ lmStudioChat.endpointUrl || t('settings.lmStudio.none') }}</div>
-          <div>{{ t('settings.lmStudio.selectedModel') }}: {{ lmStudioChat.model || t('settings.lmStudio.none') }}</div>
+          <div>{{ t('settings.lmStudio.selectedModel') }}: {{ selectedModelFor('lm_studio') || t('settings.lmStudio.none') }}</div>
           <div>{{ t('settings.lmStudio.mode') }}: {{ lmStudioChat.chatMode }} · {{ t('settings.lmStudio.openAIEndpoint') }}: {{ lmStudioChat.openAICompatiblePreferredEndpoint }}</div>
           <div>{{ t('settings.lmStudio.boundarySummary') }}</div>
         </div>
@@ -1516,7 +1470,7 @@ function chipClass(active: boolean): string {
               <button
                 type="button"
                 class="rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-900 hover:bg-indigo-50 disabled:opacity-50"
-                :disabled="disabled || !lmStudioChat.enabled || !lmStudioChat.nativeRestControls.manualLoadUnloadEnabled || lmStudioActionLoading || !lmStudioChat.model"
+                :disabled="disabled || !lmStudioChat.enabled || !lmStudioChat.nativeRestControls.manualLoadUnloadEnabled || lmStudioActionLoading || !selectedModelFor('lm_studio')"
                 data-testid="lm-studio-load-model"
                 @click="loadLMStudioSelectedModel"
               >
@@ -1537,6 +1491,19 @@ function chipClass(active: boolean): string {
             <div data-testid="lm-studio-native-status">{{ t('settings.lmStudio.nativeRest') }}: {{ lmStudioProbeResult.diagnostics.nativeRestAvailable ? t('settings.lmStudio.available') : lmStudioProbeResult.diagnostics.nativeRest.message }}</div>
             <div data-testid="lm-studio-openai-status">{{ t('settings.lmStudio.openAICompatible') }}: {{ lmStudioProbeResult.diagnostics.openAICompatibleAvailable ? t('settings.lmStudio.available') : lmStudioProbeResult.diagnostics.openAICompatible.message }}</div>
             <div data-testid="lm-studio-models">{{ t('settings.lmStudio.models') }}: {{ formatLMStudioModels(lmStudioNativeModels) }}</div>
+            <div v-if="lmStudioNativeModels.length > 0" class="flex flex-wrap gap-1" data-testid="lm-studio-model-use-list">
+              <button
+                v-for="modelInfo in lmStudioNativeModels"
+                :key="modelInfo.key"
+                type="button"
+                class="rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-medium text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+                :disabled="disabled"
+                data-testid="lm-studio-model-use"
+                @click="selectProviderModel('lm_studio', modelInfo.key)"
+              >
+                {{ modelInfo.displayName || modelInfo.key }}
+              </button>
+            </div>
           </div>
           <div v-else-if="lmStudioProbeResult && !lmStudioProbeResult.ok" class="text-red-700" data-testid="lm-studio-probe-error">
             {{ networkFailureMessage(lmStudioProbeResult) }}
@@ -1582,7 +1549,7 @@ function chipClass(active: boolean): string {
             {{ t('settings.ollama.enabled') }}
           </label>
         </div>
-        <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+        <div class="grid grid-cols-1 gap-2">
           <label class="space-y-1">
             <span class="block text-[11px] font-semibold text-green-900">{{ t('settings.ollama.endpointUrl') }}</span>
             <input
@@ -1592,17 +1559,6 @@ function chipClass(active: boolean): string {
               placeholder="http://127.0.0.1:11434"
               data-testid="ollama-endpoint-url"
               @input="emit('updateOllamaEndpointUrl', ($event.target as HTMLInputElement).value)"
-            />
-          </label>
-          <label class="space-y-1">
-            <span class="block text-[11px] font-semibold text-green-900">{{ t('settings.ollama.selectedModel') }}</span>
-            <input
-              class="w-full rounded border border-green-200 bg-white px-2 py-1.5 text-sm disabled:bg-green-50"
-              :value="ollamaChat.model"
-              :disabled="disabled || !ollamaChat.enabled"
-              placeholder="llama3.2:latest"
-              data-testid="ollama-model"
-              @input="emit('updateOllamaModel', ($event.target as HTMLInputElement).value)"
             />
           </label>
         </div>
@@ -1730,7 +1686,7 @@ function chipClass(active: boolean): string {
         <div class="rounded border border-green-100 bg-white px-2 py-1.5 text-[11px] text-green-900" data-testid="ollama-selected-status">
           <div>{{ tf('settings.ollama.chatStatus', { status: ollamaChatStatusLabel }) }}</div>
           <div>{{ t('settings.ollama.endpoint') }}: {{ ollamaChat.endpointUrl || t('settings.ollama.none') }}</div>
-          <div>{{ t('settings.ollama.selectedModel') }}: {{ ollamaChat.model || t('settings.ollama.none') }}</div>
+          <div>{{ t('settings.ollama.selectedModel') }}: {{ selectedModelFor('ollama_local') || t('settings.ollama.none') }}</div>
           <div>{{ t('settings.ollama.mode') }}: {{ ollamaChat.chatMode }} · {{ t('settings.ollama.nativeEndpoint') }}: {{ ollamaChat.nativeRestPreferredEndpoint }} · {{ t('settings.ollama.openAIEndpoint') }}: {{ ollamaChat.openAICompatiblePreferredEndpoint }}</div>
           <div>{{ t('settings.ollama.boundarySummary') }}</div>
         </div>
@@ -1757,7 +1713,7 @@ function chipClass(active: boolean): string {
               <button
                 type="button"
                 class="rounded-md border border-green-300 bg-white px-2 py-1 text-[11px] font-semibold text-green-900 hover:bg-green-50 disabled:opacity-50"
-                :disabled="disabled || !ollamaChat.enabled || !ollamaChat.nativeControls.manualLoadUnloadEnabled || ollamaActionLoading || !ollamaChat.model"
+                :disabled="disabled || !ollamaChat.enabled || !ollamaChat.nativeControls.manualLoadUnloadEnabled || ollamaActionLoading || !selectedModelFor('ollama_local')"
                 data-testid="ollama-load-model"
                 @click="loadOllamaSelectedModel"
               >
@@ -1766,7 +1722,7 @@ function chipClass(active: boolean): string {
               <button
                 type="button"
                 class="rounded-md border border-green-300 bg-white px-2 py-1 text-[11px] font-semibold text-green-900 hover:bg-green-50 disabled:opacity-50"
-                :disabled="disabled || !ollamaChat.enabled || !ollamaChat.nativeControls.manualLoadUnloadEnabled || ollamaActionLoading || !ollamaChat.model"
+                :disabled="disabled || !ollamaChat.enabled || !ollamaChat.nativeControls.manualLoadUnloadEnabled || ollamaActionLoading || !selectedModelFor('ollama_local')"
                 data-testid="ollama-unload-model"
                 @click="unloadOllamaSelectedModel"
               >
@@ -1780,6 +1736,19 @@ function chipClass(active: boolean): string {
             <div data-testid="ollama-version">{{ t('settings.ollama.version') }}: {{ ollamaProbeResult.diagnostics.version.ok ? ollamaProbeResult.diagnostics.version.version : ollamaProbeResult.diagnostics.version.message }}</div>
             <div data-testid="ollama-local-models">{{ t('settings.ollama.localModels') }}: {{ formatOllamaModels(ollamaLocalModels) }}</div>
             <div data-testid="ollama-running-models">{{ t('settings.ollama.runningModels') }}: {{ formatOllamaModels(ollamaRunningModels) }}</div>
+            <div v-if="ollamaLocalModels.length > 0" class="flex flex-wrap gap-1" data-testid="ollama-model-use-list">
+              <button
+                v-for="modelInfo in ollamaLocalModels"
+                :key="modelInfo.key"
+                type="button"
+                class="rounded-md border border-green-200 bg-white px-2 py-1 text-[11px] font-medium text-green-800 hover:bg-green-100 disabled:opacity-50"
+                :disabled="disabled"
+                data-testid="ollama-model-use"
+                @click="selectProviderModel('ollama_local', modelInfo.key)"
+              >
+                {{ modelInfo.displayName || modelInfo.key }}
+              </button>
+            </div>
           </div>
           <div v-else-if="ollamaProbeResult && !ollamaProbeResult.ok" class="text-red-700" data-testid="ollama-probe-error">
             {{ networkFailureMessage(ollamaProbeResult) }}
@@ -1836,24 +1805,13 @@ function chipClass(active: boolean): string {
             @input="emit('updateLocalEndpointChatUrl', ($event.target as HTMLInputElement).value)"
           />
         </div>
-        <div class="space-y-2">
-          <label class="block text-[11px] font-semibold text-amber-900">Manual model id</label>
-          <input
-            class="w-full rounded border border-amber-200 bg-white px-2 py-1.5 text-sm disabled:bg-amber-50"
-            :value="localEndpointChat.model"
-            :disabled="disabled || !localEndpointChat.enabled"
-            placeholder="local-model"
-            data-testid="local-endpoint-chat-model"
-            @input="emit('updateLocalEndpointChatModel', ($event.target as HTMLInputElement).value)"
-          />
-        </div>
         <div class="text-[11px] text-amber-800" data-testid="local-endpoint-chat-warning">
           Text-only loopback OpenAI-compatible streaming. Attachments, web, tools, image generation, reasoning, secrets, and model-picker publication are disabled.
         </div>
         <div class="rounded border border-amber-100 bg-white px-2 py-1.5 text-[11px] text-amber-900" data-testid="local-endpoint-chat-selected-status">
           <div>Experimental LocalEndpoint chat is {{ localEndpointChatStatusLabel }}.</div>
           <div>Selected endpoint: {{ localEndpointChat.endpointUrl || 'none' }}</div>
-          <div>Selected local model: {{ localEndpointChat.model || 'none' }}</div>
+          <div>Selected local model: {{ selectedModelFor('local_endpoint') || 'none' }}</div>
           <div>Experimental local chat is separate from OpenRouter and does not use API keys or custom headers.</div>
         </div>
         <div class="flex flex-wrap gap-2">

@@ -11,24 +11,28 @@ contextBridge.exposeInMainWorld('electronStore', {
 
 contextBridge.exposeInMainWorld('openRouterCredential', {
   getStatus: () => ipcRenderer.invoke('openrouter-credential:get-status'),
+  reveal: () => ipcRenderer.invoke('openrouter-credential:reveal'),
   update: (payload: unknown) => ipcRenderer.invoke('openrouter-credential:update', payload),
   clear: () => ipcRenderer.invoke('openrouter-credential:clear'),
 })
 
 contextBridge.exposeInMainWorld('openAIResponsesCredential', {
   getStatus: () => ipcRenderer.invoke('openai-responses-credential:get-status'),
+  reveal: () => ipcRenderer.invoke('openai-responses-credential:reveal'),
   update: (payload: unknown) => ipcRenderer.invoke('openai-responses-credential:update', payload),
   clear: () => ipcRenderer.invoke('openai-responses-credential:clear'),
 })
 
 contextBridge.exposeInMainWorld('googleAIStudioCredential', {
   getStatus: () => ipcRenderer.invoke('google-ai-studio-credential:get-status'),
+  reveal: () => ipcRenderer.invoke('google-ai-studio-credential:reveal'),
   update: (payload: unknown) => ipcRenderer.invoke('google-ai-studio-credential:update', payload),
   clear: () => ipcRenderer.invoke('google-ai-studio-credential:clear'),
 })
 
 contextBridge.exposeInMainWorld('anthropicCredential', {
   getStatus: () => ipcRenderer.invoke('anthropic-credential:get-status'),
+  reveal: () => ipcRenderer.invoke('anthropic-credential:reveal'),
   update: (payload: unknown) => ipcRenderer.invoke('anthropic-credential:update', payload),
   clear: () => ipcRenderer.invoke('anthropic-credential:clear'),
 })
@@ -39,6 +43,7 @@ contextBridge.exposeInMainWorld('anthropicModels', {
 
 contextBridge.exposeInMainWorld('deepSeekCredential', {
   getStatus: () => ipcRenderer.invoke('deepseek-credential:get-status'),
+  reveal: () => ipcRenderer.invoke('deepseek-credential:reveal'),
   update: (payload: unknown) => ipcRenderer.invoke('deepseek-credential:update', payload),
   clear: () => ipcRenderer.invoke('deepseek-credential:clear'),
 })

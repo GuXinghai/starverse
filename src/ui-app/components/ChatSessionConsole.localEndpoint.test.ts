@@ -19,6 +19,13 @@ function defaultSessionConfig() {
   }
 }
 
+function localEndpointSessionConfig() {
+  return {
+    ...defaultSessionConfig(),
+    model: { selectedProviderId: 'local_endpoint' as const, selectedModelKey: 'local-model-a' },
+  }
+}
+
 describe('ChatSessionConsole LocalEndpoint chat controls', () => {
   it('exposes an explicit experimental text-only LocalEndpoint chat entry without endpoint picker UI', async () => {
     const user = userEvent.setup()
@@ -26,7 +33,7 @@ describe('ChatSessionConsole LocalEndpoint chat controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: localEndpointSessionConfig(),
         localEndpointChat: {
           enabled: true,
           endpointUrl: 'http://localhost:1234/v1',
@@ -49,17 +56,17 @@ describe('ChatSessionConsole LocalEndpoint chat controls', () => {
     expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('does not use API keys or custom headers')
     expect(screen.queryByText(/endpoint picker/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/profile picker/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('local-endpoint-chat-model')).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('local-endpoint-chat-enabled'))
     await user.type(screen.getByTestId('local-endpoint-chat-url'), 'http://localhost:4321/v1')
-    await user.type(screen.getByTestId('local-endpoint-chat-model'), 'local-model')
     await user.click(screen.getByTestId('local-endpoint-chat-disable'))
     await user.click(screen.getByTestId('local-endpoint-chat-clear'))
 
     expect(view.emitted('updateLocalEndpointChatEnabled')?.[0]).toEqual([false])
     expect(view.emitted('updateLocalEndpointChatEnabled')?.[1]).toEqual([false])
     expect(view.emitted('updateLocalEndpointChatUrl')?.length).toBeGreaterThan(0)
-    expect(view.emitted('updateLocalEndpointChatModel')?.length).toBeGreaterThan(0)
+    expect(view.emitted('updateLocalEndpointChatModel')).toBeUndefined()
     expect(view.emitted('clearLocalEndpointChat')).toHaveLength(1)
   })
 })

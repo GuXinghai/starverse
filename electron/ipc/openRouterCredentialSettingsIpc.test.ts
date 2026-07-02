@@ -202,6 +202,14 @@ describe('registerOpenRouterCredentialSettingsIpc', () => {
     }))
   })
 
+  it('reveals the API key only through the explicit reveal channel', async () => {
+    const { handlers } = registerHandlers({ openRouterApiKey: 'sk-openrouter-settings-secret' })
+
+    const result = await handlers.get('openrouter-credential:reveal')?.({})
+
+    expect(result).toEqual({ ok: true, apiKey: 'sk-openrouter-settings-secret' })
+  })
+
   it('updates API key and official base URL one-way through legacy store backing', async () => {
     const { handlers, store } = registerHandlers({
       openRouterApiKey: 'sk-old',

@@ -9,6 +9,7 @@ export const DEEPSEEK_API_KEY_STORE_KEY = PROVIDER_CREDENTIAL_LEGACY_STORE_KEYS.
 
 export const DEEPSEEK_CREDENTIAL_SETTINGS_IPC_CHANNELS = [
   'deepseek-credential:get-status',
+  'deepseek-credential:reveal',
   'deepseek-credential:update',
   'deepseek-credential:clear',
 ] as const
@@ -33,6 +34,10 @@ export type DeepSeekCredentialSettingsUpdatePayload = Readonly<{
 export type DeepSeekCredentialSettingsResult =
   | Readonly<{ ok: true; status: DeepSeekCredentialSettingsStatus }>
   | Readonly<{ ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }>
+
+export type DeepSeekCredentialRevealResult =
+  | Readonly<{ ok: true; apiKey: string }>
+  | Readonly<{ ok: false; code: 'credential_missing' | 'store_unavailable'; message: string }>
 
 type RegisterDeepSeekCredentialSettingsIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
@@ -71,6 +76,16 @@ function safeFailure(code: 'invalid_payload' | 'store_unavailable'): DeepSeekCre
   }
 }
 
+function safeRevealFailure(code: 'credential_missing' | 'store_unavailable'): DeepSeekCredentialRevealResult {
+  return {
+    ok: false,
+    code,
+    message: code === 'credential_missing'
+      ? 'DeepSeek API key is not configured.'
+      : 'DeepSeek credential settings store is unavailable.',
+  }
+}
+
 export function registerDeepSeekCredentialSettingsIpc(
   input: RegisterDeepSeekCredentialSettingsIpcInput,
 ): string[] {
@@ -81,6 +96,16 @@ export function registerDeepSeekCredentialSettingsIpc(
       return { ok: true, status: readStatus(credentialService) } satisfies DeepSeekCredentialSettingsResult
     } catch {
       return safeFailure('store_unavailable')
+    }
+  })
+
+  registerInvoke('deepseek-credential:reveal', () => {
+    try {
+      const result = credentialService.readApiKey('deepseek')
+      if (!result.ok) return safeRevealFailure(result.code === 'credential_missing' ? 'credential_missing' : 'store_unavailable')
+      return { ok: true, apiKey: result.apiKey } satisfies DeepSeekCredentialRevealResult
+    } catch {
+      return safeRevealFailure('store_unavailable')
     }
   })
 

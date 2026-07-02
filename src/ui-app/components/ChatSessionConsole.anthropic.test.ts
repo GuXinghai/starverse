@@ -19,6 +19,13 @@ function defaultSessionConfig() {
   }
 }
 
+function anthropicSessionConfig() {
+  return {
+    ...defaultSessionConfig(),
+    model: { selectedProviderId: 'anthropic_messages' as const, selectedModelKey: 'claude-sonnet-4-5' },
+  }
+}
+
 describe('ChatSessionConsole Anthropic Messages chat controls', () => {
   it('exposes explicit experimental Anthropic Messages text chat without endpoint or profile picker UI', async () => {
     const user = userEvent.setup()
@@ -26,7 +33,7 @@ describe('ChatSessionConsole Anthropic Messages chat controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: anthropicSessionConfig(),
         anthropicChat: {
           enabled: true,
           model: 'claude-sonnet-4-5',
@@ -48,15 +55,15 @@ describe('ChatSessionConsole Anthropic Messages chat controls', () => {
     expect(screen.getByTestId('anthropic-chat-selected-status').textContent).toContain('does not expose API keys')
     expect(screen.queryByText(/endpoint picker/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/profile picker/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('anthropic-chat-model')).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('anthropic-chat-enabled'))
-    await user.type(screen.getByTestId('anthropic-chat-model'), 'claude')
     await user.click(screen.getByTestId('anthropic-chat-disable'))
     await user.click(screen.getByTestId('anthropic-chat-clear'))
 
     expect(view.emitted('updateAnthropicChatEnabled')?.[0]).toEqual([false])
     expect(view.emitted('updateAnthropicChatEnabled')?.[1]).toEqual([false])
-    expect(view.emitted('updateAnthropicChatModel')?.length).toBeGreaterThan(0)
+    expect(view.emitted('updateAnthropicChatModel')).toBeUndefined()
     expect(view.emitted('clearAnthropicChat')).toHaveLength(1)
   })
 
@@ -149,7 +156,7 @@ describe('ChatSessionConsole Anthropic Messages chat controls', () => {
     await user.click(screen.getByTestId('anthropic-model-use'))
 
     expect(view.emitted('refreshAnthropicModels')).toHaveLength(1)
-    expect(view.emitted('updateAnthropicChatModel')?.[0]).toEqual(['claude-sonnet-4-5'])
+    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'anthropic_messages', modelId: 'claude-sonnet-4-5' }])
 
     const mainModelSelect = screen.getAllByRole('combobox')[0]
     expect(within(mainModelSelect).getByText('OpenRouter Claude 3')).toBeInTheDocument()

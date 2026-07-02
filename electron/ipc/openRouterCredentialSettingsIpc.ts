@@ -14,6 +14,7 @@ import {
 
 export const OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS = [
   'openrouter-credential:get-status',
+  'openrouter-credential:reveal',
   'openrouter-credential:update',
   'openrouter-credential:clear',
 ] as const
@@ -40,6 +41,10 @@ export type OpenRouterCredentialSettingsUpdatePayload = Readonly<{
 export type OpenRouterCredentialSettingsResult =
   | Readonly<{ ok: true; status: OpenRouterCredentialSettingsStatus }>
   | Readonly<{ ok: false; code: 'invalid_payload' | 'store_unavailable' | 'untrusted_base_url'; message: string }>
+
+export type OpenRouterCredentialRevealResult =
+  | Readonly<{ ok: true; apiKey: string }>
+  | Readonly<{ ok: false; code: 'credential_missing' | 'store_unavailable'; message: string }>
 
 type RegisterOpenRouterCredentialSettingsIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
@@ -210,6 +215,16 @@ function safeFailure(code: 'invalid_payload' | 'store_unavailable' | 'untrusted_
   }
 }
 
+function safeRevealFailure(code: 'credential_missing' | 'store_unavailable'): OpenRouterCredentialRevealResult {
+  return {
+    ok: false,
+    code,
+    message: code === 'credential_missing'
+      ? 'OpenRouter API key is not configured.'
+      : 'OpenRouter credential settings store is unavailable.',
+  }
+}
+
 export function registerOpenRouterCredentialSettingsIpc(
   input: RegisterOpenRouterCredentialSettingsIpcInput,
 ): string[] {
@@ -220,6 +235,16 @@ export function registerOpenRouterCredentialSettingsIpc(
       return { ok: true, status: readStatus(store, credentialService) } satisfies OpenRouterCredentialSettingsResult
     } catch {
       return safeFailure('store_unavailable')
+    }
+  })
+
+  registerInvoke('openrouter-credential:reveal', () => {
+    try {
+      const result = credentialService.readApiKey('openrouter')
+      if (!result.ok) return safeRevealFailure(result.code === 'credential_missing' ? 'credential_missing' : 'store_unavailable')
+      return { ok: true, apiKey: result.apiKey } satisfies OpenRouterCredentialRevealResult
+    } catch {
+      return safeRevealFailure('store_unavailable')
     }
   })
 

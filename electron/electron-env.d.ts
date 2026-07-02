@@ -91,6 +91,10 @@ type OpenRouterCredentialResult =
   | { ok: true; status: OpenRouterCredentialStatus }
   | { ok: false; code: 'invalid_payload' | 'store_unavailable' | 'untrusted_base_url'; message: string }
 
+type ProviderCredentialRevealResult =
+  | { ok: true; apiKey: string }
+  | { ok: false; code: 'credential_missing' | 'store_unavailable'; message: string }
+
 interface OpenAIResponsesCredentialStatus {
   source: ProviderCredentialStatusSource
   backend: ProviderCredentialBackendKind
@@ -880,11 +884,13 @@ type DeepSeekTextChatStartResult =
 interface Window {
   openRouterCredential?: {
     getStatus?: () => Promise<OpenRouterCredentialResult>
+    reveal?: () => Promise<ProviderCredentialRevealResult>
     update?: (payload: OpenRouterCredentialUpdatePayload) => Promise<OpenRouterCredentialResult>
     clear?: () => Promise<OpenRouterCredentialResult>
   }
   openAIResponsesCredential?: {
     getStatus?: () => Promise<OpenAIResponsesCredentialResult>
+    reveal?: () => Promise<ProviderCredentialRevealResult>
     update?: (payload: OpenAIResponsesCredentialUpdatePayload) => Promise<OpenAIResponsesCredentialResult>
     clear?: () => Promise<OpenAIResponsesCredentialResult>
   }
@@ -893,11 +899,13 @@ interface Window {
   }
   googleAIStudioCredential?: {
     getStatus?: () => Promise<GoogleAIStudioCredentialResult>
+    reveal?: () => Promise<ProviderCredentialRevealResult>
     update?: (payload: GoogleAIStudioCredentialUpdatePayload) => Promise<GoogleAIStudioCredentialResult>
     clear?: () => Promise<GoogleAIStudioCredentialResult>
   }
   anthropicCredential?: {
     getStatus?: () => Promise<AnthropicCredentialResult>
+    reveal?: () => Promise<ProviderCredentialRevealResult>
     update?: (payload: AnthropicCredentialUpdatePayload) => Promise<AnthropicCredentialResult>
     clear?: () => Promise<AnthropicCredentialResult>
   }
@@ -906,6 +914,7 @@ interface Window {
   }
   deepSeekCredential?: {
     getStatus?: () => Promise<DeepSeekCredentialResult>
+    reveal?: () => Promise<ProviderCredentialRevealResult>
     update?: (payload: DeepSeekCredentialUpdatePayload) => Promise<DeepSeekCredentialResult>
     clear?: () => Promise<DeepSeekCredentialResult>
   }
