@@ -381,6 +381,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                     :reasoningPieces="message.messageId === lastAssistantMessageId ? lastAssistantReasoningPieces : null"
                     :collapsed="reasoningRailMode ? !(rightRailOpen && effectiveRightRailView === 'reasoning') : message.reasoningView.panelState === 'collapsed'"
                     :display-mode="reasoningRailMode ? 'rail' : 'inline'"
+                    :isStreaming="message.streaming?.isTarget === true && message.streaming?.isComplete !== true"
                     @toggle="onOpenReasoningDisplayForMessage(message.messageId)"
                   />
                 </template>

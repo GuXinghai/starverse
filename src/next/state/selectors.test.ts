@@ -112,6 +112,34 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     expect(vm?.reasoningView.visibility).toBe('shown')
   })
 
+  it('derives display text from Gemini thought details when only raw details are hydrated', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'gemini-2.5-flash',
+    })
+
+    const messagesWithThought = {
+      ...s1.messages,
+      [assistantMessageId]: {
+        ...s1.messages[assistantMessageId],
+        reasoningDetailsRaw: [{ type: 'thought', text: 'Gemini thought text' }],
+        reasoningPieces: [],
+      },
+    }
+    const stateWithThought = {
+      ...s1,
+      messages: messagesWithThought,
+      entities: { ...s1.entities, messagesById: messagesWithThought },
+    }
+
+    const vm = selectMessage(stateWithThought, assistantMessageId)
+
+    expect(vm?.reasoningView.visibility).toBe('shown')
+    expect(vm?.reasoningView.reasoningText).toBe('Gemini thought text')
+  })
+
   it('returns "shown" when hasEncryptedReasoning is true', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {

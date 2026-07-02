@@ -27,6 +27,7 @@ const memoKey = computed(() => {
     :reasoningView="reasoningView"
     :reasoningPieces="props.reasoningPieces"
     :reasoningVersion="props.reasoningVersion"
+    :isStreaming="props.isStreaming"
     :localProcessingDurationMs="props.localProcessingDurationMs"
     emptyText="No assistant message yet."
   >
