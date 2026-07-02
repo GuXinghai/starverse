@@ -611,7 +611,7 @@ describe('ui-app SettingsPanel', () => {
 
     const cases = [
       {
-        input: screen.getByPlaceholderText('sk-…') as HTMLInputElement,
+        input: screen.getByTestId('settings-openrouter-api-key') as HTMLInputElement,
         toggle: screen.getByTestId('settings-openrouter-toggle-key-visibility'),
         bridge: (globalThis as any).openRouterCredential,
         value: 'sk-openrouter-saved',
@@ -657,7 +657,8 @@ describe('ui-app SettingsPanel', () => {
       await user.click(item.toggle)
 
       expect(item.input.type).toBe('password')
-      expect(item.input).toHaveValue(item.value)
+      expect(item.input).toHaveValue('')
+      expect(item.input.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
       expect(item.toggle.textContent).toContain(t('common.show'))
     }
 
