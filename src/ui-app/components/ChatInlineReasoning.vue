@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { ReasoningView, ReasoningPiece } from '@/next/state/types'
+import ReasoningRichText from '@/ui-kit/chat/ReasoningRichText.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -8,9 +9,11 @@ const props = withDefaults(
     reasoningPieces?: ReasoningPiece[] | null
     collapsed: boolean
     displayMode?: 'inline' | 'rail'
+    isStreaming?: boolean
   }>(),
   {
     displayMode: 'inline',
+    isStreaming: false,
   },
 )
 
@@ -41,6 +44,32 @@ const indicator = computed(() => {
   if (props.displayMode === 'rail') return props.collapsed ? '<' : '>'
   return props.collapsed ? 'v' : '^'
 })
+
+const reasoningPieces = computed(() => {
+  const pieces = props.reasoningPieces ?? props.reasoningView?.reasoningPieces
+  if (!Array.isArray(pieces)) return []
+  return pieces.filter((piece) => typeof piece?.text === 'string' && piece.text.trim().length > 0)
+})
+
+const hasReasoningPayload = computed(() => {
+  return Boolean(
+    props.reasoningView?.summaryText ||
+    props.reasoningView?.reasoningText ||
+    reasoningPieces.value.length > 0
+  )
+})
+
+const reasoningBodyText = computed(() => {
+  const parts: string[] = []
+  const reasoningText = props.reasoningView?.reasoningText
+  if (typeof reasoningText === 'string' && reasoningText.trim().length > 0) {
+    parts.push(reasoningText)
+  }
+  if (reasoningPieces.value.length > 0) {
+    parts.push(reasoningPieces.value.map((piece) => piece.text).join(''))
+  }
+  return parts.join('\n\n')
+})
 </script>
 
 <template>
@@ -60,10 +89,17 @@ const indicator = computed(() => {
     </button>
 
     <div v-if="props.displayMode === 'inline' && !props.collapsed" class="mt-2 space-y-2 text-xs text-gray-600">
-      <div v-if="props.reasoningView?.summaryText">{{ props.reasoningView.summaryText }}</div>
-      <div v-if="props.reasoningView?.reasoningText" class="whitespace-pre-wrap">{{ props.reasoningView.reasoningText }}</div>
-      <div v-for="piece in props.reasoningPieces ?? []" :key="piece.id" class="whitespace-pre-wrap">{{ piece.text }}</div>
-      <div v-if="!props.reasoningView?.summaryText && !props.reasoningView?.reasoningText && !(props.reasoningPieces?.length)">
+      <ReasoningRichText
+        v-if="props.reasoningView?.summaryText"
+        :text="props.reasoningView.summaryText"
+        :streaming="props.isStreaming"
+      />
+      <ReasoningRichText
+        v-if="reasoningBodyText"
+        :text="reasoningBodyText"
+        :streaming="props.isStreaming"
+      />
+      <div v-if="!hasReasoningPayload">
         No reasoning payload.
       </div>
     </div>

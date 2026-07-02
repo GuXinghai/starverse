@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ReasoningPiece, ReasoningView } from './types'
+import ReasoningRichText from './ReasoningRichText.vue'
 import { t } from '@/shared/i18n'
 
 const props = withDefaults(
   defineProps<{
     reasoningView: ReasoningView | null
     reasoningPieces?: ReasoningPiece[] | null
+    isStreaming?: boolean
     title?: string
     emptyText?: string
     localProcessingDurationMs?: number
@@ -30,6 +32,18 @@ const hasAnyReasoningText = computed(() => {
   if (!props.reasoningView) return false
   const hasText = Boolean(props.reasoningView.summaryText || props.reasoningView.reasoningText)
   return hasText || hasPieces.value
+})
+
+const reasoningBodyText = computed(() => {
+  const parts: string[] = []
+  const reasoningText = props.reasoningView?.reasoningText
+  if (typeof reasoningText === 'string' && reasoningText.trim().length > 0) {
+    parts.push(reasoningText)
+  }
+  if (reasoningPieces.value && reasoningPieces.value.length > 0) {
+    parts.push(reasoningPieces.value.map((piece) => piece.text).join(''))
+  }
+  return parts.join('\n\n')
 })
 
 const showEncryptedBadge = computed(() => props.reasoningView?.hasEncrypted === true)
@@ -81,18 +95,17 @@ const formattedDuration = computed(() => {
 
           <div v-if="props.reasoningView.summaryText" class="rounded border border-gray-200 bg-white p-2">
             <div class="mb-1 text-xs font-semibold text-gray-700">{{ t('common.summary') }}</div>
-            <div>{{ props.reasoningView.summaryText }}</div>
-          </div>
-          <div v-if="props.reasoningView.reasoningText" class="rounded border border-gray-200 bg-white p-2">
-            <div class="whitespace-pre-wrap">{{ props.reasoningView.reasoningText }}</div>
+            <ReasoningRichText
+              :text="props.reasoningView.summaryText"
+              :streaming="props.isStreaming === true"
+            />
           </div>
 
-          <div v-if="hasPieces" class="rounded border border-gray-200 bg-white p-2">
-            <div class="space-y-2">
-              <div v-for="piece in reasoningPieces" :key="piece.id" class="whitespace-pre-wrap">
-                {{ piece.text }}
-              </div>
-            </div>
+          <div v-if="reasoningBodyText" class="rounded border border-gray-200 bg-white p-2">
+            <ReasoningRichText
+              :text="reasoningBodyText"
+              :streaming="props.isStreaming === true"
+            />
           </div>
 
           <div v-if="!hasAnyReasoningText" class="text-sm text-gray-500">(no reasoning payload)</div>

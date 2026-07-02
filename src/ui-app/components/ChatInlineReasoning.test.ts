@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/vue'
+import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import { describe, expect, it } from 'vitest'
 import ChatInlineReasoning from './ChatInlineReasoning.vue'
 import type { ReasoningView } from '@/next/state/types'
@@ -66,6 +66,43 @@ describe('ChatInlineReasoning', () => {
     })
 
     expect(screen.queryByText('Reasoning body')).not.toBeInTheDocument()
+  })
+
+  it('renders reasoning pieces from the reasoning view when no explicit pieces prop is provided', async () => {
+    render(ChatInlineReasoning, {
+      props: {
+        reasoningView: {
+          visibility: 'shown',
+          panelState: 'expanded',
+          reasoningPieces: [{ id: 1, text: 'Gemini thought text' }],
+        },
+        collapsed: false,
+        displayMode: 'inline',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Gemini thought text')).toBeInTheDocument()
+      expect(screen.queryByText('No reasoning payload.')).toBeNull()
+    })
+  })
+
+  it('renders inline reasoning math through the rich text pipeline', async () => {
+    const { container } = render(ChatInlineReasoning, {
+      props: {
+        reasoningView: {
+          visibility: 'shown',
+          panelState: 'expanded',
+          reasoningPieces: [{ id: 1, text: '公式：$E=mc^2$' }],
+        },
+        collapsed: false,
+        displayMode: 'inline',
+      },
+    })
+
+    await waitFor(() => {
+      expect(container.querySelector('.katex')).not.toBeNull()
+    })
   })
 
   it('emits toggle when the Reasoning strip is clicked', async () => {

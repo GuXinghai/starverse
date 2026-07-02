@@ -159,6 +159,12 @@ function deriveReasoningDisplayFromDetails(reasoningDetailsRaw: unknown[]): {
       continue
     }
 
+    if (type === 'thought') {
+      const text = (detail as any).text
+      if (typeof text === 'string' && text.length > 0) reasoningTextParts.push(text)
+      continue
+    }
+
     if (type === 'reasoning.summary') {
       const summary = (detail as any).summary ?? (detail as any).text
       if (typeof summary === 'string' && summary.length > 0) summaryText = summary
