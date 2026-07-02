@@ -1,13 +1,21 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const electronMock = vi.hoisted(() => ({
   sessionFetch: vi.fn(),
+  defaultSessionAccessCount: { value: 0 },
+  failOnDefaultSessionAccess: { value: false },
 }))
 
 vi.mock('electron', () => ({
   session: {
-    defaultSession: {
-      fetch: electronMock.sessionFetch,
+    get defaultSession() {
+      electronMock.defaultSessionAccessCount.value += 1
+      if (electronMock.failOnDefaultSessionAccess.value) {
+        throw new Error('defaultSession accessed before app ready')
+      }
+      return {
+        fetch: electronMock.sessionFetch,
+      }
     },
   },
 }))
@@ -19,6 +27,27 @@ import {
 } from './providerHttpTransport'
 
 describe('providerHttpTransport', () => {
+  beforeEach(() => {
+    electronMock.sessionFetch.mockReset()
+    electronMock.defaultSessionAccessCount.value = 0
+    electronMock.failOnDefaultSessionAccess.value = false
+  })
+
+  it('does not resolve Electron defaultSession while creating the fetch wrapper', async () => {
+    electronMock.failOnDefaultSessionAccess.value = true
+
+    const fetchImpl = createElectronSessionProviderFetch()
+
+    expect(electronMock.defaultSessionAccessCount.value).toBe(0)
+
+    const response = new Response(JSON.stringify({ ok: true }))
+    electronMock.failOnDefaultSessionAccess.value = false
+    electronMock.sessionFetch.mockResolvedValueOnce(response)
+
+    await expect(fetchImpl('https://api.openai.com/v1/models')).resolves.toBe(response)
+    expect(electronMock.defaultSessionAccessCount.value).toBe(1)
+  })
+
   it('creates a fetch-like transport backed by Electron session.fetch', async () => {
     const response = new Response(JSON.stringify({ ok: true }))
     electronMock.sessionFetch.mockResolvedValueOnce(response)
