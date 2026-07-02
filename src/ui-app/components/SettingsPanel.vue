@@ -642,6 +642,9 @@ async function toggleApiKeyVisibility(input: ApiKeyVisibilityInput) {
 
   if (input.visible.value) {
     input.visible.value = false
+    if (input.configured.value) {
+      input.value.value = ''
+    }
     return
   }
 
