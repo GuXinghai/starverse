@@ -9,7 +9,6 @@ import AppChatApp from './AppChatApp.vue'
 describe('ui-app AppChatApp model selection regression', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronAPI = (globalThis as any).electronAPI
-  const originalOpenAIResponsesModels = (globalThis as any).openAIResponsesModels
   let invoke: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
@@ -98,43 +97,87 @@ describe('ui-app AppChatApp model selection regression', () => {
 
     ;(globalThis as any).dbBridge = { invoke }
     ;(globalThis as any).electronAPI = {
-      modelCatalogQueryScopedCurrent: vi.fn(async () => ({
-        status: 'synced',
-        catalogRevision: 'checksum-a',
-        modelCount: 1,
-        lastSyncAtMs: 123,
-        items: [
-          {
-            providerKey: 'openrouter',
-            modelId: 'anthropic/claude-3',
-            modelKey: 'openrouter::anthropic/claude-3',
-            canonicalSlug: 'anthropic/claude-3',
-            displayName: 'Claude 3',
-            description: 'scoped',
-            vendor: 'anthropic',
-            contextLength: 200000,
-            maxOutputTokens: 8192,
-            pricing: {
-              prompt: '0.01',
-              completion: '0.02',
-              request: '0',
-              image: '0',
+      modelCatalogQueryScopedCurrent: vi.fn(async (options?: any) => {
+        if (options?.providerKey === 'openai_responses') {
+          return {
+            status: 'synced',
+            catalogRevision: 'openai-checksum-a',
+            modelCount: 1,
+            visibleModelCount: 1,
+            hiddenModelCount: 0,
+            lastSyncAtMs: 123,
+            items: [
+              {
+                providerKey: 'openai_responses',
+                modelId: 'gpt-4.1-mini',
+                modelKey: 'openai_responses::gpt-4.1-mini',
+                canonicalSlug: 'gpt-4.1-mini',
+                displayName: 'GPT-4.1 mini',
+                description: 'scoped OpenAI catalog model',
+                vendor: 'openai',
+                contextLength: 1000000,
+                maxOutputTokens: 32768,
+                pricing: {
+                  prompt: null,
+                  completion: null,
+                  request: null,
+                  image: null,
+                },
+                capabilities: {
+                  reasoning: false,
+                  tools: true,
+                  structuredOutputs: true,
+                  vision: true,
+                  longContext: true,
+                },
+                visibility: 'visible',
+                status: 'active',
+                supportedParameters: ['temperature'],
+                inputModalities: ['text', 'image'],
+                outputModalities: ['text'],
+              },
+            ],
+            nextCursor: null,
+          }
+        }
+        return {
+          status: 'synced',
+          catalogRevision: 'checksum-a',
+          modelCount: 1,
+          lastSyncAtMs: 123,
+          items: [
+            {
+              providerKey: 'openrouter',
+              modelId: 'anthropic/claude-3',
+              modelKey: 'openrouter::anthropic/claude-3',
+              canonicalSlug: 'anthropic/claude-3',
+              displayName: 'Claude 3',
+              description: 'scoped',
+              vendor: 'anthropic',
+              contextLength: 200000,
+              maxOutputTokens: 8192,
+              pricing: {
+                prompt: '0.01',
+                completion: '0.02',
+                request: '0',
+                image: '0',
+              },
+              capabilities: {
+                reasoning: true,
+                tools: false,
+                structuredOutputs: false,
+                vision: false,
+                longContext: true,
+              },
+              visibility: 'visible',
+              supportedParameters: ['reasoning'],
+              inputModalities: ['text'],
+              outputModalities: ['text'],
             },
-            capabilities: {
-              reasoning: true,
-              tools: false,
-              structuredOutputs: false,
-              vision: false,
-              longContext: true,
-            },
-            visibility: 'visible',
-            supportedParameters: ['reasoning'],
-            inputModalities: ['text'],
-            outputModalities: ['text'],
-          },
-        ],
-        nextCursor: null,
-      })),
+          ],
+          nextCursor: null,
+        }
+      }),
       modelCatalogGetSyncStatus: vi.fn(async () => ({
         ok: true,
         providerKey: 'openrouter',
@@ -159,7 +202,6 @@ describe('ui-app AppChatApp model selection regression', () => {
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronAPI = originalElectronAPI
-    ;(globalThis as any).openAIResponsesModels = originalOpenAIResponsesModels
   })
 
   it('keeps a manual model selection after async flush', async () => {
@@ -189,39 +231,11 @@ describe('ui-app AppChatApp model selection regression', () => {
 
   it('persists a non-OpenRouter picker selection with provider id', async () => {
     const user = userEvent.setup()
-    ;(globalThis as any).openAIResponsesModels = {
-      listAvailability: vi.fn(async () => ({
-        ok: true,
-        providerKey: 'openai_responses',
-        endpointId: 'default',
-        profileId: 'secure-store',
-        observedAtMs: 123,
-        models: [
-          {
-            providerKey: 'openai_responses',
-            endpointId: 'default',
-            profileId: 'secure-store',
-            nativeModelId: 'gpt-4.1-mini',
-            displayName: 'GPT-4.1 mini',
-            description: 'curated OpenAI model',
-            source: 'starverse_curated_metadata',
-            confidence: 'curated',
-            observedAtMs: 123,
-            warnings: [],
-            capabilitySeed: {
-              textChat: true,
-              imageInput: true,
-            },
-          },
-        ],
-        warnings: [],
-        sourceDocuments: [],
-      })),
-    }
 
     render(AppChatApp)
 
     await user.click(await screen.findByTestId('current-model-pill'))
+    await user.selectOptions(await screen.findByTestId('model-picker-provider-filter'), 'openai_responses')
     const selectedItem = await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1-mini')
     await user.click(selectedItem)
 
@@ -237,6 +251,10 @@ describe('ui-app AppChatApp model selection regression', () => {
     expect(screen.getByTestId('current-model-pill').textContent).toContain('OpenAI Responses')
     expect(screen.getByTestId('current-model-pill').textContent).toContain('GPT-4.1 mini')
     expect(screen.getByTestId('current-model-pill').textContent).not.toContain('openrouter/auto')
+    expect((globalThis as any).electronAPI.modelCatalogQueryScopedCurrent).toHaveBeenCalledWith(expect.objectContaining({
+      providerKey: 'openai_responses',
+    }))
+    expect((globalThis as any).openAIResponsesModels?.listAvailability).toBeUndefined()
   })
 
   it('does not rehydrate the selection path with stale session state', () => {

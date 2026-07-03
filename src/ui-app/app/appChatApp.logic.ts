@@ -270,10 +270,7 @@ import {
   type ChatSessionConfig,
   type ChatSessionConfigPatch,
 } from './chatSessionConfig'
-import {
-  buildProviderAvailabilityModelSource,
-  type ProviderModelPickerSource,
-} from './providerModelPickerViewModel'
+import type { ProviderModelPickerSource } from './providerModelPickerViewModel'
 import { deriveSendButtonMode, type SendButtonMode } from './sendButtonMode'
 import {
   resolveNetworkErrorDisplayMessage,
@@ -3887,26 +3884,38 @@ export function useAppChatAppLogic() {
   }))
 
   const providerModelPickerSources = computed<readonly ProviderModelPickerSource[]>(() => [
-    buildProviderAvailabilityModelSource({
+    {
       providerId: OPENAI_RESPONSES_PROVIDER_KEY,
       providerName: 'OpenAI Responses',
-      status: openAIResponsesModelAvailabilityStatus.value,
-    }),
-    buildProviderAvailabilityModelSource({
+      statusKind: 'not_loaded',
+      statusLabel: 'catalog',
+      loading: false,
+      items: [],
+    },
+    {
       providerId: GOOGLE_AI_STUDIO_PROVIDER_KEY,
       providerName: 'Google AI Studio',
-      status: googleAIStudioModelAvailabilityStatus.value,
-    }),
-    buildProviderAvailabilityModelSource({
+      statusKind: 'not_loaded',
+      statusLabel: 'catalog',
+      loading: false,
+      items: [],
+    },
+    {
       providerId: ANTHROPIC_MESSAGES_PROVIDER_KEY,
       providerName: 'Anthropic Messages',
-      status: anthropicModelAvailabilityStatus.value,
-    }),
-    buildProviderAvailabilityModelSource({
+      statusKind: 'not_loaded',
+      statusLabel: 'catalog',
+      loading: false,
+      items: [],
+    },
+    {
       providerId: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
       providerName: 'DeepSeek',
-      status: deepSeekModelAvailabilityStatus.value,
-    }),
+      statusKind: 'not_loaded',
+      statusLabel: 'catalog',
+      loading: false,
+      items: [],
+    },
   ])
 
   async function onRefreshProviderModelPickerSources() {
