@@ -125,6 +125,8 @@
         "ownedBy": "归属 {owner}",
         "created": "创建于 {createdAt}",
         "type": "类型 {type}",
+        "modelCount": "{count} 个模型",
+        "modelListToggle": "模型列表（{count}）",
         "openGlobalSettings": "打开全局设置"
       },
       "capability": {

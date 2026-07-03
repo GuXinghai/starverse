@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { resetI18nForTests, t } from '@/shared/i18n'
+import { resetI18nForTests, t, tf } from '@/shared/i18n'
 import ChatSessionConsole from './ChatSessionConsole.vue'
 
 function defaultSessionConfig() {
@@ -136,7 +136,10 @@ describe('ChatSessionConsole LM Studio controls', () => {
     await user.type(screen.getByTestId('lm-studio-endpoint-url'), '1')
 
     await user.click(screen.getByTestId('lm-studio-probe'))
-    await waitFor(() => expect(screen.getByTestId('lm-studio-models').textContent).toContain('GPT OSS 20B'))
+    await waitFor(() => expect(screen.getByTestId('lm-studio-models').textContent).toContain(tf('chat.console.common.modelCount', { count: 1 })))
+    expect(screen.getByTestId('lm-studio-models').textContent).not.toContain('GPT OSS 20B')
+    expect((screen.getByTestId('lm-studio-model-use-list') as HTMLDetailsElement).open).toBe(false)
+    await user.click(screen.getByTestId('lm-studio-model-use-toggle'))
     await user.click(screen.getByTestId('lm-studio-model-use'))
     await user.click(screen.getByTestId('lm-studio-load-model'))
     await waitFor(() => expect(screen.getByTestId('lm-studio-action-result').textContent).toContain('inst-loaded'))
