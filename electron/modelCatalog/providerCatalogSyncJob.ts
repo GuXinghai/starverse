@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type Store from 'electron-store'
 import type { DbWorkerManager } from '../db/workerManager'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
@@ -8,8 +9,9 @@ import {
   DEFAULT_CATALOG_FRESHNESS_MS,
   normalizeCatalogFreshnessMs,
 } from '../../src/shared/modelCatalog/catalogSyncSettings'
+import { openRouterCatalogSource } from '../../src/shared/modelCatalog/providers/openrouter/openRouterCatalogSource'
+import { mapProviderCatalogSnapshotToScopedWriterInput } from '../../src/shared/modelCatalog/providerCatalogSnapshotMapper'
 import { resolveCurrentOpenRouterCatalogScope } from './providerCatalogScopeResolver'
-import { syncOpenRouterModelCatalog } from './catalogSyncJob'
 import { CatalogSyncRunner, type CatalogSyncRunnerMeta, type CatalogSyncRunnerResult } from './catalogSyncRunner'
 
 const CATALOG_META_SCHEMA_VERSION = 1
@@ -58,6 +60,10 @@ function normalizeScopedMeta(raw: unknown, freshnessMs: number): CatalogSyncRunn
     ttlSeconds,
     syncState,
   }
+}
+
+function generateProviderCatalogSnapshotId(): string {
+  return `catalog-${Date.now()}-${randomUUID()}`
 }
 
 function buildMissingApiKeyResult(providerKey: 'openrouter'): CatalogSyncRunnerResult {
@@ -117,21 +123,35 @@ export async function runProviderCatalogSyncJob(
       }
       return meta
     },
-    runSync: async () =>
-      syncOpenRouterModelCatalog({
+    runSync: async () => {
+      const snapshot = await openRouterCatalogSource.fetchSnapshot({
+        providerKey,
         apiKey: credential.apiKey,
         baseUrl: scope.normalizedBaseUrl,
         fetchImpl: input.fetchImpl ?? createElectronSessionProviderFetch(),
-        writer: {
-          writeScopedSnapshot: (params) => input.dbWorkerManager.call('modelCatalog.writeScopedSnapshot', {
-            ...params,
-            providerKey,
-            catalogScopeKey: scope.catalogScopeKey,
-            baseUrl: scope.normalizedBaseUrl,
-            schemaVersion: CATALOG_META_SCHEMA_VERSION,
-          }).then(() => { }),
-        },
-      }),
+        preferUserScopedModels: true,
+      })
+      const snapshotId = generateProviderCatalogSnapshotId()
+      const scopedInput = mapProviderCatalogSnapshotToScopedWriterInput({
+        snapshot,
+        snapshotId,
+        snapshotChecksum: snapshotId,
+        syncedAtMs: Date.now(),
+        schemaVersion: CATALOG_META_SCHEMA_VERSION,
+      })
+      await input.dbWorkerManager.call('modelCatalog.writeScopedSnapshot', {
+        ...scopedInput,
+        providerKey,
+        catalogScopeKey: scope.catalogScopeKey,
+        baseUrl: scope.normalizedBaseUrl,
+        schemaVersion: CATALOG_META_SCHEMA_VERSION,
+      })
+      return {
+        ok: true,
+        snapshotId,
+        modelCount: snapshot.models.length,
+      }
+    },
     logger: console,
     force: input.force === true,
     proceedOnMetaReadFailure: false,
