@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { PROVIDERS } from '../../constants/providers'
 import type { CatalogModel, CatalogModelTag, CatalogProvider } from './internalSchema'
-import { mapOpenRouterModelToCatalogModel } from './openRouterCatalogClient'
+import { mapOpenRouterModelToCatalogModel } from './providers/openrouter/openRouterCatalogClient'
 import { mapProviderCatalogSnapshotToScopedWriterInput } from './providerCatalogSnapshotMapper'
 import { createOpenRouterCatalogSource } from './providers/openrouter/openRouterCatalogSource'
 
