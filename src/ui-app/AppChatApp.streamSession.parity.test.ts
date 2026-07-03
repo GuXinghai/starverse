@@ -650,7 +650,7 @@ describe('ui-app AppChatApp stream session parity', () => {
     await waitFor(() => {
       expect(copyButton).not.toBeDisabled()
     })
-    expect(copyButton.textContent).toContain('Copy text')
+    expect(copyButton.textContent).toContain(t('chat.message.actions.copyText'))
     expect(diagnostics.textContent?.toLowerCase()).not.toContain('copy')
     expect(clipboardWriteText).not.toHaveBeenCalledWith(expect.stringContaining('reasoning-fixture'))
 

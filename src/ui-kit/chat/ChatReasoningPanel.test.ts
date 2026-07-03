@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/vue'
 import ChatReasoningPanel from './ChatReasoningPanel.vue'
 import type { ReasoningView } from './types'
+import { t } from '@/shared/i18n'
 
 function view(partial: Partial<ReasoningView> & Pick<ReasoningView, 'visibility'>): ReasoningView {
   return {
@@ -92,7 +93,7 @@ describe('ChatReasoningPanel', () => {
       },
     })
 
-    expect(screen.getByText('本次请求已要求不返回推理内容（excluded）')).toBeInTheDocument()
+    expect(screen.getByText(t('chat.reasoning.excluded'))).toBeInTheDocument()
   })
 
   it('renders not_returned copy', () => {
@@ -102,7 +103,7 @@ describe('ChatReasoningPanel', () => {
       },
     })
 
-    expect(screen.getByText('模型未返回推理内容 / 或该模型不支持')).toBeInTheDocument()
+    expect(screen.getByText(t('chat.reasoning.notReturned'))).toBeInTheDocument()
   })
 
   it('shows encrypted badge only when hasEncrypted is true', () => {
@@ -112,7 +113,7 @@ describe('ChatReasoningPanel', () => {
       },
     })
 
-    expect(screen.queryByText('encrypted')).not.toBeInTheDocument()
+    expect(screen.queryByText(t('chat.reasoning.encryptedTitle'))).not.toBeInTheDocument()
     r1.unmount()
 
     render(ChatReasoningPanel, {
@@ -122,6 +123,6 @@ describe('ChatReasoningPanel', () => {
     })
 
     expect(screen.getByText('已加密')).toBeInTheDocument()
-    expect(screen.getByText(/encrypted/)).toBeInTheDocument()
+    expect(screen.getByText(t('chat.reasoning.encryptedTitle'))).toBeInTheDocument()
   })
 })

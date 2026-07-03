@@ -1,0 +1,149 @@
+{
+  "chat": {
+    "topBar": {
+      "untitledConversation": "未命名对话",
+      "console": "控制台",
+      "hideConsole": "隐藏控制台",
+      "modelSummary": "模型 · {model}",
+      "modelSummaryWithProvider": "模型 · {provider} · {model}"
+    },
+    "rightRail": {
+      "closePanel": "关闭面板"
+    },
+    "message": {
+      "role": {
+        "user": "你",
+        "assistant": "助手",
+        "tool": "工具"
+      },
+      "avatar": {
+        "assistant": "助",
+        "tool": "工"
+      },
+      "actions": {
+        "copyRaw": "复制原文",
+        "restoreQuestion": "恢复问题",
+        "excludeQuestion": "排除问题",
+        "regenerate": "重新生成",
+        "edit": "编辑",
+        "confirmDelete": "确认删除",
+        "copyText": "复制文本",
+        "copyWithReferences": "复制 + 引用",
+        "regenerateImage": "重新生成图片",
+        "restoreAnswer": "恢复回答",
+        "excludeAnswer": "排除回答",
+        "retryReplace": "重试替换",
+        "newQuestion": "作为新问题发送",
+        "replaceQuestion": "替换问题"
+      },
+      "editingQuestion": "正在编辑问题",
+      "answerNotSelected": "该回答未选入上下文",
+      "linkOnly": "仅链接",
+      "linkWithLocalCopy": "链接 + 本地副本",
+      "imageAlt": "图片-{index}",
+      "imagePreviewAlt": "预览",
+      "copyImage": "复制图片",
+      "copyPath": "复制路径",
+      "exportImage": "导出",
+      "persisting": "正在持久化...",
+      "imageGenerating": "图片正在生成...",
+      "untitledSource": "未命名来源",
+      "unknownTool": "未知",
+      "type": "类型",
+      "arguments": "参数"
+    },
+    "attachmentConfirm": {
+      "openPanel": "打开面板",
+      "closeLocator": "关闭定位条",
+      "previous": "上一个",
+      "next": "下一个",
+      "pendingLocked": "附件确认待处理，草稿已锁定。",
+      "cancelSend": "取消发送",
+      "collapsePanel": "收起面板",
+      "historyUnsupportedTitle": "不受支持的历史消息附件",
+      "historyUnsupportedDesc": "这些附件仍会显示在历史消息中，但无法纳入本次发送给模型的上下文。继续发送前，你必须确认将该类目下全部附件从本次模型上下文中排除。",
+      "allAttachments": "所有附件",
+      "excludeCheckbox": "exclude 勾选项",
+      "locate": "定位",
+      "currentUnsupportedTitle": "当前不受支持的用户消息附件",
+      "currentUnsupportedDesc": "这些附件属于当前将要发送的用户消息，但当前模型或发送规则无法纳入它们。你必须选择排除它们，或从当前草稿中移除它们。",
+      "excludeAll": "exclude 全选",
+      "excludeNone": "exclude 全不选",
+      "removeAll": "delete/remove 全选",
+      "removeNone": "delete/remove 全不选",
+      "exclude": "排除",
+      "remove": "移除",
+      "confirmAndContinue": "确认并继续"
+    },
+    "attachmentUrl": {
+      "addTitle": "添加 URL 附件",
+      "followDefault": "跟随默认设置",
+      "addUrl": "添加 URL"
+    },
+    "projectWebSearch": {
+      "title": "项目联网搜索",
+      "titleWithTarget": "项目联网搜索：{name}"
+    },
+    "reasoning": {
+      "title": "推理",
+      "emptyPayload": "没有推理内容。",
+      "emptyAssistant": "还没有助手消息。",
+      "encryptedTitle": "推理已加密",
+      "encryptedDescription": "本次推理内容被提供方加密，无法显示。",
+      "noPayloadShort": "（没有推理内容）",
+      "excluded": "本次请求已要求不返回推理内容（excluded）。",
+      "notReturned": "模型未返回推理内容，或该模型不支持推理内容。"
+    },
+    "errorPanel": {
+      "unknownError": "未知错误",
+      "summary": "阶段：{phase} · 代码：{code} · {message} · 提供方：{provider}",
+      "truncated": "已截断",
+      "trimmed": "已裁剪",
+      "expand": "展开",
+      "collapse": "收起",
+      "details": "详情",
+      "bytes": "字节：{count}",
+      "detailsLoading": "详情加载中...",
+      "detailsUnavailable": "详情不可用。",
+      "detailsPending": "详情待加载。"
+    },
+    "status": {
+      "title": "聊天",
+      "model": "模型",
+      "provider": "提供方",
+      "generation": "生成",
+      "finish": "结束",
+      "truncated": "已截断",
+      "thisTurn": "本轮",
+      "sessionTotalDerived": "会话总计（派生）",
+      "promptShort": "输入",
+      "completionShort": "输出",
+      "totalShort": "总计",
+      "cost": "费用",
+      "abort": "中止",
+      "reset": "重置",
+      "error": "错误"
+    },
+    "transcript": {
+      "error": "错误",
+      "runTerminated": "运行已终止"
+    },
+    "attachment": {
+      "link": "链接",
+      "history": "历史",
+      "type": "类型",
+      "route": "路由",
+      "notAvailable": "不可用",
+      "needsJob": "需要任务",
+      "engineUnavailable": "引擎不可用",
+      "typeConflictDetected": "检测到类型冲突",
+      "compatibility": {
+        "blocked": "已阻止",
+        "warning": "警告",
+        "compatible": "兼容",
+        "unknown": "未知"
+      },
+      "excluded": "已排除"
+    }
+  }
+}

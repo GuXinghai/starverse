@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { ErrorPanelViewModel } from './types'
+import { t, tf } from '@/shared/i18n'
 
 const props = defineProps<{
   messageId: string
@@ -19,10 +20,15 @@ const isTruncatedClass = computed(() => completionClass.value === 'truncated')
 
 const provider = computed(() => props.errorView?.provider ?? 'unknown')
 const code = computed(() => props.errorView?.code ?? 'error')
-const message = computed(() => props.errorView?.message ?? 'Unknown error')
+const message = computed(() => props.errorView?.message ?? t('chat.errorPanel.unknownError'))
 
 const summaryText = computed(() => {
-  return `phase:${phase.value} · code:${code.value} · ${message.value} · provider:${provider.value}`
+  return tf('chat.errorPanel.summary', {
+    phase: phase.value,
+    code: code.value,
+    message: message.value,
+    provider: provider.value,
+  })
 })
 
 const panelTone = computed(() => {
@@ -86,7 +92,7 @@ async function copyJson() {
             v-if="isTruncatedClass"
             class="rounded-full border border-amber-300/80 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-800"
           >
-            Truncated<span v-if="props.errorView?.truncated" class="ml-1 opacity-70">trimmed</span>
+            {{ t('chat.errorPanel.truncated') }}<span v-if="props.errorView?.truncated" class="ml-1 opacity-70">{{ t('chat.errorPanel.trimmed') }}</span>
           </span>
         </div>
         <div class="mt-1 break-words">{{ summaryText }}</div>
@@ -97,30 +103,30 @@ async function copyJson() {
           class="rounded border border-black/10 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-100"
           @click="toggleExpanded"
         >
-          {{ expanded ? 'Collapse' : 'Expand' }}
+          {{ expanded ? t('chat.errorPanel.collapse') : t('chat.errorPanel.expand') }}
         </button>
       </div>
     </div>
 
     <div v-if="expanded" class="mt-2 space-y-2">
       <div class="flex items-center justify-between">
-        <div class="text-[11px] font-semibold uppercase tracking-wide opacity-70">Details</div>
+        <div class="text-[11px] font-semibold uppercase tracking-wide opacity-70">{{ t('chat.errorPanel.details') }}</div>
         <div class="flex items-center gap-2">
-          <div v-if="jsonBytes != null" class="text-[10px] uppercase tracking-wide opacity-60">bytes: {{ jsonBytes }}</div>
+          <div v-if="jsonBytes != null" class="text-[10px] uppercase tracking-wide opacity-60">{{ tf('chat.errorPanel.bytes', { count: jsonBytes }) }}</div>
           <button
             v-if="props.errorView?.details"
             type="button"
             class="rounded border border-black/10 bg-white px-2 py-1 text-[11px] font-medium text-gray-700 hover:bg-gray-100"
             @click="copyJson"
           >
-            Copy
+            {{ t('common.copy') }}
           </button>
         </div>
       </div>
       <div v-if="!props.errorView?.details" class="rounded border border-black/10 bg-black/5 p-2 text-[11px] text-gray-600">
-        <div v-if="props.loading">Details loading…</div>
-        <div v-else-if="props.detailsUnavailable">Details unavailable.</div>
-        <div v-else>Details pending.</div>
+        <div v-if="props.loading">{{ t('chat.errorPanel.detailsLoading') }}</div>
+        <div v-else-if="props.detailsUnavailable">{{ t('chat.errorPanel.detailsUnavailable') }}</div>
+        <div v-else>{{ t('chat.errorPanel.detailsPending') }}</div>
       </div>
       <pre
         v-else-if="props.errorView?.details"

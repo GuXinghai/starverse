@@ -89,8 +89,8 @@ const formattedDuration = computed(() => {
       <div class="space-y-2 text-sm">
         <template v-if="props.reasoningView.visibility === 'shown'">
           <div v-if="props.reasoningView.hasEncrypted === true" class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
-            <div class="text-xs font-semibold uppercase tracking-wide">Encrypted reasoning</div>
-            <div class="mt-1 text-sm">本次推理内容被提供方加密/不可见（encrypted）。</div>
+            <div class="text-xs font-semibold uppercase tracking-wide">{{ t('chat.reasoning.encryptedTitle') }}</div>
+            <div class="mt-1 text-sm">{{ t('chat.reasoning.encryptedDescription') }}</div>
           </div>
 
           <div v-if="props.reasoningView.summaryText" class="rounded border border-gray-200 bg-white p-2">
@@ -108,18 +108,18 @@ const formattedDuration = computed(() => {
             />
           </div>
 
-          <div v-if="!hasAnyReasoningText" class="text-sm text-gray-500">(no reasoning payload)</div>
+          <div v-if="!hasAnyReasoningText" class="text-sm text-gray-500">{{ t('chat.reasoning.noPayloadShort') }}</div>
         </template>
 
         <template v-else-if="props.reasoningView.visibility === 'excluded'">
           <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            本次请求已要求不返回推理内容（excluded）
+            {{ t('chat.reasoning.excluded') }}
           </div>
         </template>
 
         <template v-else-if="props.reasoningView.visibility === 'not_returned'">
           <div class="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-            模型未返回推理内容 / 或该模型不支持
+            {{ t('chat.reasoning.notReturned') }}
           </div>
         </template>
 

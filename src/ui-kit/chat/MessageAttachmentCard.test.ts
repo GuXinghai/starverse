@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/vue'
 import { describe, expect, it } from 'vitest'
 import MessageAttachmentCard from './MessageAttachmentCard.vue'
+import { t } from '@/shared/i18n'
 
 describe('MessageAttachmentCard file type hints', () => {
   it('renders compatibility and route hints from send-plan mapped file type info', () => {
@@ -44,7 +45,7 @@ describe('MessageAttachmentCard file type hints', () => {
       },
     })
 
-    expect(screen.getByText(/type: zip · high/i)).toBeTruthy()
-    expect(screen.getByText(/route: ask_user · compatible/i)).toBeTruthy()
+    expect(screen.getByText(`${t('chat.attachment.type')}: zip · high`)).toBeTruthy()
+    expect(screen.getByText(`${t('chat.attachment.route')}: ask_user · ${t('chat.attachment.compatibility.compatible')}`)).toBeTruthy()
   })
 })

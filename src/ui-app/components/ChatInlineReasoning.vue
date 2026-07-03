@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { ReasoningView, ReasoningPiece } from '@/next/state/types'
 import ReasoningRichText from '@/ui-kit/chat/ReasoningRichText.vue'
+import { t } from '@/shared/i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -84,7 +85,7 @@ const reasoningBodyText = computed(() => {
       @touchend="onPressEnd"
       @touchcancel="onPressCancel"
     >
-      <span>Reasoning</span>
+      <span>{{ t('chat.reasoning.title') }}</span>
       <span aria-hidden="true">{{ indicator }}</span>
     </button>
 
@@ -100,7 +101,7 @@ const reasoningBodyText = computed(() => {
         :streaming="props.isStreaming"
       />
       <div v-if="!hasReasoningPayload">
-        No reasoning payload.
+        {{ t('chat.reasoning.emptyPayload') }}
       </div>
     </div>
   </div>
