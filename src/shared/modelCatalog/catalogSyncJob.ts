@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { PROVIDERS } from '../../constants/providers'
 import type { CatalogModel, CatalogModelTag, CatalogProvider } from './internalSchema'
-import { OpenRouterCatalogClient, mapOpenRouterModelToCatalogModel } from './openRouterCatalogClient'
+import { mapOpenRouterModelToCatalogModel } from './openRouterCatalogClient'
+import { mapProviderCatalogSnapshotToScopedWriterInput } from './providerCatalogSnapshotMapper'
+import { createOpenRouterCatalogSource } from './providers/openrouter/openRouterCatalogSource'
 
 export type OpenRouterModelObject = Record<string, unknown>
 
@@ -360,33 +362,6 @@ function toCoreModelRow(model: CatalogModel): CatalogCoreModelUpsertInput {
   }
 }
 
-function toScopedModelRow(model: CatalogModel): CatalogScopedModelUpsertInput {
-  const core = toCoreModelRow(model)
-  return {
-    modelId: core.modelId,
-    modelKey: core.modelKey,
-    canonicalSlug: core.canonicalSlug,
-    displayName: core.displayName,
-    description: core.description,
-    vendor: core.vendor,
-    family: core.family,
-    status: core.status,
-    visibility: core.visibility,
-    contextLength: core.contextLength,
-    maxOutputTokens: core.maxOutputTokens,
-    inputModalitiesJson: core.inputModalitiesJson,
-    outputModalitiesJson: core.outputModalitiesJson,
-    supportedParametersJson: core.supportedParametersJson,
-    capabilitiesJson: core.capabilitiesJson,
-    pricingJson: core.pricingJson,
-    rawJson: core.rawJson,
-    createdAtSec: core.createdAtSec,
-    firstSeenAtMs: core.firstSeenAtMs,
-    lastSeenAtMs: core.lastSeenAtMs,
-    syncedAtMs: core.syncedAtMs,
-  }
-}
-
 function toCoreTagRows(providerKey: string, modelId: string, tags: ReadonlyArray<CatalogModelTag>): CatalogCoreTagUpsertInput[] {
   return tags.map((tag) => ({
     providerKey,
@@ -398,17 +373,6 @@ function toCoreTagRows(providerKey: string, modelId: string, tags: ReadonlyArray
     source: tag.source,
     updatedAtMs: tag.updatedAtMs,
   }))
-}
-
-function resolveDataSource(
-  meta: Readonly<{
-    primarySource: 'models_user' | 'models'
-    usedFallback: boolean
-  }>
-): CatalogCoreMetaUpsertInput['dataSource'] {
-  if (meta.usedFallback) return 'mixed'
-  if (meta.primarySource === 'models_user') return 'models_user_primary'
-  return 'models_fallback'
 }
 
 function normalizeOpenRouterModelToInternal(raw: OpenRouterModelObject): CatalogModel | null {
@@ -451,7 +415,7 @@ function mergeProviderRows(
 
 /**
  * CatalogSyncJob (phase 6):
- * - Uses OpenRouterCatalogClient to fetch /models/user (fallback /models) and /providers.
+ * - Uses the OpenRouter provider source to fetch /models/user (fallback /models) and /providers.
  * - Writes backward-compatible rows into model_catalog (legacy).
  * - Optionally writes internal catalog-core tables (providers/models/model_tags/catalog_meta).
  */
@@ -486,88 +450,78 @@ export async function syncOpenRouterModelCatalog(options: Readonly<{
     enableCountProbe: options.enableCountProbe === true,
   })
 
-  const client = new OpenRouterCatalogClient({ fetchImpl: options.fetchImpl })
   try {
     const modelsStageStart = Date.now()
-    const modelResult = await client.listModels({
+    const source = createOpenRouterCatalogSource({
+      fetchImpl: options.fetchImpl,
+      enableCountProbe: options.enableCountProbe === true,
+    })
+    const snapshot = await source.fetchSnapshot({
+      providerKey: PROVIDERS.OPENROUTER,
       apiKey,
       baseUrl,
+      fetchImpl: options.fetchImpl,
       preferUserScopedModels: options.preferUserScopedModels !== false,
     })
     logger.info('[CatalogSyncJob] stage end', {
       stage: CATALOG_SYNC_STAGE.FETCH_MODELS,
       durationMs: Date.now() - modelsStageStart,
-      modelCount: modelResult.models.length,
-      primarySource: modelResult.meta.primarySource,
-      usedFallback: modelResult.meta.usedFallback,
+      modelCount: snapshot.models.length,
+      primarySource: snapshot.dataSource === 'models_fallback' ? 'models' : 'models_user',
+      usedFallback: snapshot.dataSource === 'mixed',
     })
 
-    let providers: ReadonlyArray<CatalogProvider> = []
-    let providerFetchOk = false
-    const providerStageStart = Date.now()
-    try {
-      providers = await client.listProviders({
-        apiKey,
-        baseUrl,
-      })
-      providerFetchOk = true
+    const providers: ReadonlyArray<CatalogProvider> = snapshot.providers ?? []
+    const providerFetchError = snapshot.degradedStages?.find((stage) => stage.stage === CATALOG_SYNC_STAGE.FETCH_PROVIDERS)?.error
+    const providerFetchOk = providerFetchError == null
+    if (providerFetchOk) {
       logger.info('[CatalogSyncJob] stage end', {
         stage: CATALOG_SYNC_STAGE.FETCH_PROVIDERS,
-        durationMs: Date.now() - providerStageStart,
+        durationMs: 0,
         providerCount: providers.length,
       })
-    } catch (error) {
-      providers = []
-      providerFetchOk = false
+    } else {
       logger.warn('[CatalogSyncJob] stage degraded', {
         stage: CATALOG_SYNC_STAGE.FETCH_PROVIDERS,
-        durationMs: Date.now() - providerStageStart,
-        reason: toErrorMessage(error),
+        durationMs: 0,
+        reason: toErrorMessage(providerFetchError),
       })
     }
 
-    let countProbe: { count: number; fetchedAtMs: number } | null = null
-    try {
-      if (options.enableCountProbe === true) {
-        const countStageStart = Date.now()
-        countProbe = await client.listModelsCount({
-          apiKey,
-          baseUrl,
-        })
+    const countProbe = snapshot.countProbe ?? null
+    if (options.enableCountProbe === true) {
+      const countProbeError = snapshot.degradedStages?.find((stage) => stage.stage === CATALOG_SYNC_STAGE.PROBE_COUNT)?.error
+      if (countProbe) {
         logger.info('[CatalogSyncJob] stage end', {
           stage: CATALOG_SYNC_STAGE.PROBE_COUNT,
-          durationMs: Date.now() - countStageStart,
+          durationMs: 0,
           count: countProbe.count,
         })
+      } else if (countProbeError != null) {
+        logger.warn('[CatalogSyncJob] stage degraded', {
+          stage: CATALOG_SYNC_STAGE.PROBE_COUNT,
+          reason: toErrorMessage(countProbeError),
+        })
       }
-    } catch (error) {
-      countProbe = null
-      logger.warn('[CatalogSyncJob] stage degraded', {
-        stage: CATALOG_SYNC_STAGE.PROBE_COUNT,
-        reason: toErrorMessage(error),
-      })
     }
 
     const nowMs = Date.now()
-    const dataSource = resolveDataSource(modelResult.meta)
+    const dataSource = snapshot.dataSource
     if (options.writer.writeScopedSnapshot) {
       const scopedStageStart = Date.now()
-      const scopedRows = modelResult.models.map(toScopedModelRow)
+      const scopedInput = mapProviderCatalogSnapshotToScopedWriterInput({
+        snapshot,
+        snapshotId,
+        snapshotChecksum: snapshotId,
+        syncedAtMs: nowMs,
+        schemaVersion: CATALOG_META_SCHEMA_VERSION,
+      })
       try {
-        await options.writer.writeScopedSnapshot({
-          providerKey: PROVIDERS.OPENROUTER,
-          baseUrl,
-          dataSource,
-          snapshotId,
-          snapshotChecksum: snapshotId,
-          models: scopedRows,
-          syncedAtMs: nowMs,
-          schemaVersion: CATALOG_META_SCHEMA_VERSION,
-        })
+        await options.writer.writeScopedSnapshot(scopedInput)
         logger.info('[CatalogSyncJob] stage end', {
           stage: CATALOG_SYNC_STAGE.WRITE_SCOPED,
           durationMs: Date.now() - scopedStageStart,
-          scopedModelRows: scopedRows.length,
+          scopedModelRows: scopedInput.models.length,
           dataSource,
         })
       } catch (error) {
@@ -577,7 +531,7 @@ export async function syncOpenRouterModelCatalog(options: Readonly<{
 
     let legacyModelRows = 0
     if (options.writer.syncSnapshot) {
-      const legacyRows = modelResult.models.map(toLegacyCatalogRow)
+      const legacyRows = snapshot.models.map(toLegacyCatalogRow)
       legacyModelRows = legacyRows.length
       const legacyStageStart = Date.now()
       try {
@@ -606,8 +560,8 @@ export async function syncOpenRouterModelCatalog(options: Readonly<{
 
     if (options.writer.syncCoreSnapshot) {
       const providerKey = PROVIDERS.OPENROUTER
-      const coreModels = modelResult.models.map(toCoreModelRow)
-      const tags = modelResult.models.flatMap((model) =>
+      const coreModels = snapshot.models.map(toCoreModelRow)
+      const tags = snapshot.models.flatMap((model) =>
         toCoreTagRows(providerKey, model.modelId, model.tags)
       )
       // If /providers fails, skip provider dictionary refresh to avoid
@@ -672,7 +626,7 @@ export async function syncOpenRouterModelCatalog(options: Readonly<{
       snapshotId,
       providerKey: PROVIDERS.OPENROUTER,
       dataSource,
-      modelCount: modelResult.models.length,
+      modelCount: snapshot.models.length,
       legacyModelRows,
       coreProviderRows: coreStats?.coreProviderRows ?? 0,
       coreModelRows: coreStats?.coreModelRows ?? 0,
@@ -681,7 +635,7 @@ export async function syncOpenRouterModelCatalog(options: Readonly<{
       ftsBuildStatus: coreStats?.ftsBuildStatus ?? CATALOG_FTS_NOT_APPLICABLE,
     })
 
-    return { ok: true, snapshotId, modelCount: modelResult.models.length, dataSource, baseUrl }
+    return { ok: true, snapshotId, modelCount: snapshot.models.length, dataSource, baseUrl }
   } catch (error) {
     const stage = error instanceof CatalogSyncStageError ? error.stage : CATALOG_SYNC_STAGE.UNKNOWN
     logger.error('[CatalogSyncJob] sync end', {
