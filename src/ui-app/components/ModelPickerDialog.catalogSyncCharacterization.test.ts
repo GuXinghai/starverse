@@ -259,4 +259,129 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
       }))
     })
   })
+
+  it('provider filter routes catalog query and picker-open sync through that provider scope', async () => {
+    const now = mockNow()
+    setCatalogSettings({
+      openRouterCatalogPickerOpenSyncPolicy: 'never',
+      openRouterCatalogFreshnessMs: 15 * 60 * 1000,
+      'providerCatalog.google_ai_studio.pickerOpenSyncPolicy': 'stale_only',
+      'providerCatalog.google_ai_studio.freshnessMs': 15 * 60 * 1000,
+    })
+    const syncNow = vi.fn(async (options: any) => ({
+      ok: true,
+      syncAttempted: true,
+      syncSucceeded: true,
+      providerKey: options?.providerKey ?? 'unknown',
+      modelCount: 1,
+      visibleModelCount: 1,
+      hiddenModelCount: 0,
+      lastSyncAtMs: now,
+      errorCode: null,
+      errorMessage: null,
+      catalogRevision: `${options?.providerKey ?? 'unknown'}-rev`,
+    }))
+    ;(globalThis as any).electronAPI = {
+      modelCatalogSyncNow: syncNow,
+      modelCatalogGetSyncStatus: vi.fn(async (options: any) => options?.providerKey === 'google_ai_studio'
+        ? {
+            providerKey: 'google_ai_studio',
+            syncState: 'idle',
+            status: 'not_synced',
+            lastSyncAtMs: 0,
+            modelCount: 0,
+            visibleModelCount: 0,
+            hiddenModelCount: 0,
+            lastErrorCode: null,
+            lastErrorMessage: null,
+            isStale: true,
+            catalogRevision: null,
+          }
+        : {
+            providerKey: 'openrouter',
+            syncState: 'ok',
+            status: 'synced',
+            lastSyncAtMs: now,
+            modelCount: 100,
+            lastErrorCode: null,
+            lastErrorMessage: null,
+            isStale: false,
+            catalogRevision: 'openrouter-rev',
+          }),
+    }
+    const queryFn = vi.fn(async (input: any) => input.sourceProviderKey === 'google_ai_studio'
+      ? createResult([
+          {
+            providerKey: 'google_ai_studio',
+            modelId: 'gemini-2.5-flash',
+            modelKey: 'google_ai_studio::gemini-2.5-flash',
+            canonicalSlug: 'gemini-2.5-flash',
+            displayName: 'Gemini 2.5 Flash',
+            description: null,
+            vendor: 'Google',
+            contextLength: 1048576,
+            maxOutputTokens: 65536,
+            createdAtSec: null,
+            pricing: { prompt: null, completion: null, request: null, image: null },
+            capabilities: {
+              reasoning: true,
+              tools: true,
+              structuredOutputs: true,
+              vision: true,
+              longContext: true,
+            },
+            inputModalities: ['text', 'image'],
+            outputModalities: ['text'],
+            supportedParameters: ['temperature'],
+            status: 'active',
+            visibility: 'visible',
+          },
+        ], null, {
+          catalogRevision: 'google-rev',
+          modelCount: 1,
+          visibleModelCount: 1,
+          hiddenModelCount: 0,
+          lastSyncAtMs: now,
+        })
+      : createResult([], null, {
+          catalogRevision: 'openrouter-rev',
+          modelCount: 100,
+          lastSyncAtMs: now,
+        }))
+    const user = userEvent.setup()
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+        providerSources: [
+          {
+            providerId: 'google_ai_studio',
+            providerName: 'Google AI Studio',
+            statusKind: 'not_loaded',
+            statusLabel: 'not loaded',
+            loading: false,
+            items: [],
+          },
+        ],
+      },
+    })
+
+    await screen.findByTestId('model-picker-provider-filter')
+    await user.selectOptions(screen.getByTestId('model-picker-provider-filter'), 'google_ai_studio')
+
+    await screen.findByTestId('model-picker-item-google_ai_studio-gemini-2.5-flash')
+    await waitFor(() => {
+      expect(queryFn).toHaveBeenCalledWith(expect.objectContaining({
+        sourceProviderKey: 'google_ai_studio',
+      }))
+      expect(syncNow).toHaveBeenCalledWith(expect.objectContaining({
+        providerKey: 'google_ai_studio',
+        force: false,
+        reason: 'model_picker_opened',
+      }))
+    })
+  })
 })

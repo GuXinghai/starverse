@@ -41,6 +41,11 @@ import {
   type CatalogListUpdateMode,
 } from '@/shared/modelCatalog/catalogSyncSettings'
 import {
+  isProviderCatalogSourceKey,
+} from '@/shared/modelCatalog/providerCatalogRegistry'
+import type { ProviderCatalogKnownProviderKey } from '@/shared/modelCatalog/providerCatalogContracts'
+import { providerCatalogSettingKey } from '@/shared/modelCatalog/providerCatalogSettings'
+import {
   DEFAULT_CHAT_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
   buildProviderModelKey,
@@ -60,7 +65,7 @@ type PickerModelItem = CatalogQueryItem & Readonly<{
   statusLabel?: string
   sourceLabel?: string
   selectable: boolean
-  detailSource: 'openrouter_catalog' | 'provider_source'
+  detailSource: 'openrouter_catalog' | 'provider_catalog' | 'provider_source'
 }>
 type ShortcutItem = Readonly<{ modelKey: string; providerId: RuntimeProviderKey; modelId: string; name: string; available: boolean }>
 
@@ -210,6 +215,13 @@ const sortOrderOptions: ReadonlyArray<Readonly<{ key: CatalogQuerySortOrder; lab
   { key: 'desc', label: 'Desc' },
 ]
 const categoryOptions = OPENROUTER_MODEL_CATEGORIES
+const catalogProviderNames: Readonly<Record<ProviderCatalogKnownProviderKey, string>> = {
+  openrouter: 'OpenRouter',
+  google_ai_studio: 'Google AI Studio',
+  anthropic_messages: 'Anthropic',
+  openai_responses: 'OpenAI Responses',
+  deepseek: 'DeepSeek',
+}
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 let querySeq = 0
@@ -218,15 +230,25 @@ let endpointSeq = 0
 let skipAutoQuery = false
 let lastFocusBeforeOpen: HTMLElement | null = null
 
-const openRouterPickerItems = computed(() => items.value.map((item) => toOpenRouterPickerItem(item)))
+const activeCatalogProviderKey = computed<ProviderCatalogKnownProviderKey>(() => {
+  const providerFilter = selectedProviderFilter.value
+  return providerFilter !== 'all' && isProviderCatalogSourceKey(providerFilter)
+    ? providerFilter as ProviderCatalogKnownProviderKey
+    : DEFAULT_CHAT_PROVIDER_ID as ProviderCatalogKnownProviderKey
+})
+const catalogPickerItems = computed(() => items.value.map((item) => toCatalogPickerItem(item)))
 const providerPickerItems = computed(() => props.providerSources.flatMap((source) => source.items.map((item) => toProviderPickerItem(item))))
 const pickerItems = computed(() => {
-  const sourceItems = [...openRouterPickerItems.value, ...providerPickerItems.value]
+  const catalogProviderWithItems = items.value.length > 0 ? activeCatalogProviderKey.value : null
+  const sourceItems = [
+    ...catalogPickerItems.value,
+    ...providerPickerItems.value.filter((item) => item.providerId !== catalogProviderWithItems),
+  ]
   const providerFilter = selectedProviderFilter.value
   const text = searchText.value.trim().toLowerCase()
   return sourceItems.filter((item) => {
     if (providerFilter !== 'all' && item.providerId !== providerFilter) return false
-    if (item.detailSource === 'openrouter_catalog') return true
+    if (item.detailSource === 'openrouter_catalog' || item.detailSource === 'provider_catalog') return true
     if (!text) return true
     const haystack = [
       item.displayName,
@@ -290,7 +312,7 @@ const effectiveNotice = computed(() => {
   return noticeParts.length > 0 ? noticeParts.join(' ') : null
 })
 
-const canLoadMore = computed(() => selectedProviderFilter.value !== 'all' && selectedProviderFilter.value !== DEFAULT_CHAT_PROVIDER_ID
+const canLoadMore = computed(() => selectedProviderFilter.value !== 'all' && !isProviderCatalogSourceKey(selectedProviderFilter.value)
   ? false
   : !!nextCursor.value && !loading.value && !props.disabled)
 const endpointItems = computed(() => endpointDetails.value?.items ?? [])
@@ -424,6 +446,7 @@ const providerOptions = computed(() => {
 })
 
 function providerNameForId(providerId: RuntimeProviderKey): string {
+  if (isProviderCatalogSourceKey(providerId)) return catalogProviderNames[providerId]
   return providerOptions.value.find((option) => option.providerId === providerId)?.providerName ?? providerId
 }
 
@@ -431,17 +454,25 @@ function pickerItemKey(providerId: RuntimeProviderKey, modelId: string): string 
   return buildProviderModelKey({ providerId, modelId })
 }
 
-function toOpenRouterPickerItem(item: CatalogQueryItem): PickerModelItem {
+function catalogProviderIdFromItem(item: CatalogQueryItem): RuntimeProviderKey {
+  const providerKey = String(item.providerKey ?? '').trim()
+  return isProviderCatalogSourceKey(providerKey)
+    ? providerKey
+    : DEFAULT_CHAT_PROVIDER_ID
+}
+
+function toCatalogPickerItem(item: CatalogQueryItem): PickerModelItem {
+  const providerId = catalogProviderIdFromItem(item)
   return {
     ...item,
-    providerId: DEFAULT_CHAT_PROVIDER_ID,
-    providerName: 'OpenRouter',
-    itemKey: pickerItemKey(DEFAULT_CHAT_PROVIDER_ID, item.modelId),
+    providerId,
+    providerName: providerNameForId(providerId),
+    itemKey: pickerItemKey(providerId, item.modelId),
     capabilitySummary: openRouterCapabilitySummary(item),
     statusLabel: item.status ?? item.visibility ?? 'catalog',
-    sourceLabel: 'OpenRouter catalog',
+    sourceLabel: providerId === DEFAULT_CHAT_PROVIDER_ID ? 'OpenRouter catalog' : 'Provider catalog',
     selectable: true,
-    detailSource: 'openrouter_catalog',
+    detailSource: providerId === DEFAULT_CHAT_PROVIDER_ID ? 'openrouter_catalog' : 'provider_catalog',
   }
 }
 
@@ -519,10 +550,21 @@ async function loadCatalogSyncSettings() {
     catalogFreshnessMs.value = DEFAULT_CATALOG_FRESHNESS_MS
     return
   }
+  const providerKey = activeCatalogProviderKey.value
+  const settingKey = (settingName: 'pickerOpenSyncPolicy' | 'listUpdateMode' | 'freshnessMs') =>
+    providerKey === DEFAULT_CHAT_PROVIDER_ID
+      ? (
+          settingName === 'pickerOpenSyncPolicy'
+            ? OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY
+            : settingName === 'listUpdateMode'
+              ? OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY
+              : OPENROUTER_CATALOG_FRESHNESS_MS_KEY
+        )
+      : providerCatalogSettingKey(providerKey, settingName)
   const [pickerPolicy, updateMode, freshness] = await Promise.all([
-    store.get(OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY),
-    store.get(OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY),
-    store.get(OPENROUTER_CATALOG_FRESHNESS_MS_KEY),
+    store.get(settingKey('pickerOpenSyncPolicy')),
+    store.get(settingKey('listUpdateMode')),
+    store.get(settingKey('freshnessMs')),
   ])
   pickerOpenSyncPolicy.value = normalizeCatalogAutoSyncPolicy(pickerPolicy)
   catalogListUpdateMode.value = normalizeCatalogListUpdateMode(updateMode)
@@ -807,7 +849,10 @@ function buildQueryInput(append: boolean): CatalogQueryInput {
   const expiringWindowDays = expiringWithinEnabled.value ? parseNumberInput(expiringWithinDays.value) : undefined
   const tokenizers = parseCsvFilters(tokenizerFiltersText.value)
   const instructTypes = parseCsvFilters(instructTypeFiltersText.value)
-  const category = selectedCategory.value !== 'all' ? selectedCategory.value : undefined
+  const catalogProviderKey = activeCatalogProviderKey.value
+  const category = catalogProviderKey === DEFAULT_CHAT_PROVIDER_ID && selectedCategory.value !== 'all'
+    ? selectedCategory.value
+    : undefined
 
   const filter = {
     ...(vendors ? { vendors } : {}),
@@ -826,7 +871,7 @@ function buildQueryInput(append: boolean): CatalogQueryInput {
     ...(expiringWindowDays !== undefined ? { expiringWithinDays: Math.max(0, Math.floor(expiringWindowDays)) } : {}),
   }
   return {
-    sourceProviderKey: DEFAULT_CHAT_PROVIDER_ID,
+    sourceProviderKey: catalogProviderKey,
     searchText: searchText.value.trim() || undefined,
     includeDescriptionInSearch: includeDescriptionInSearch.value,
     ...(Object.keys(filter).length > 0 ? { filter } : {}),
@@ -1128,7 +1173,7 @@ async function runSync(force: boolean, reason: 'model_picker_opened' | 'manual_r
 
   try {
     const result = await electronAPI.modelCatalogSyncNow({
-      providerKey: DEFAULT_CHAT_PROVIDER_ID,
+      providerKey: activeCatalogProviderKey.value,
       force,
       reason,
     })
@@ -1181,7 +1226,7 @@ async function fetchSyncStatus() {
   if (!electronAPI?.modelCatalogGetSyncStatus) return
 
   try {
-    const status = await electronAPI.modelCatalogGetSyncStatus({ providerKey: DEFAULT_CHAT_PROVIDER_ID })
+    const status = await electronAPI.modelCatalogGetSyncStatus({ providerKey: activeCatalogProviderKey.value })
     if (!status) return
 
     const state = String(status.syncState ?? 'idle')
@@ -1370,6 +1415,28 @@ watch(
   () => {
     if (!props.open || skipAutoQuery) return
     scheduleRefresh(props.debounceMs)
+  },
+  { flush: 'post' },
+)
+
+watch(
+  () => selectedProviderFilter.value,
+  () => {
+    if (!props.open || skipAutoQuery) return
+    lastAutoSyncAtMs = 0
+    syncStatus.value = 'not_synced'
+    syncTotalModelCount.value = 0
+    syncVisibleModelCount.value = null
+    syncHiddenModelCount.value = null
+    syncLastSyncedAtMs.value = null
+    syncErrorCode.value = null
+    syncErrorMessage.value = null
+    syncIsStale.value = true
+    latestCatalogRevision.value = null
+    appliedCatalogRevision.value = null
+    pendingCatalogUpdateAvailable.value = false
+    pendingCatalogRevision.value = null
+    void triggerPickerOpenSync()
   },
   { flush: 'post' },
 )
