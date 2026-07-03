@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import ChatSessionConsole from './ChatSessionConsole.vue'
+import { t, tf } from '@/shared/i18n'
 
 function defaultSessionConfig() {
   return {
@@ -48,11 +49,11 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
 
     expect(screen.getByTestId('google-ai-studio-chat-controls').textContent).toContain('Experimental')
     expect(screen.getByTestId('google-ai-studio-chat-controls').textContent).toContain('not OpenRouter')
-    expect(screen.getByTestId('google-ai-studio-chat-warning').textContent).toContain('Native Google AI Studio Gemini text-only')
-    expect(screen.getByTestId('google-ai-studio-chat-warning').textContent).toContain('legacy Gemini runtime')
-    expect(screen.getByTestId('google-ai-studio-chat-selected-status').textContent).toContain('Google AI Studio chat is active')
-    expect(screen.getByTestId('google-ai-studio-chat-selected-status').textContent).toContain('Selected Gemini model: gemini-2.5-flash')
-    expect(screen.getByTestId('google-ai-studio-chat-selected-status').textContent).toContain('does not expose API keys')
+    expect(screen.getByTestId('google-ai-studio-chat-warning').textContent).toContain(t('chat.console.provider.googleAIStudio.warning'))
+
+    expect(screen.getByTestId('google-ai-studio-chat-selected-status').textContent).toContain(tf('chat.console.provider.googleAIStudio.status', { status: t('chat.console.status.active') }))
+    expect(screen.getByTestId('google-ai-studio-chat-selected-status').textContent).toContain(tf('chat.console.provider.googleAIStudio.selectedModel', { model: 'gemini-2.5-flash' }))
+    expect(screen.getByTestId('google-ai-studio-chat-selected-status').textContent).toContain(t('chat.console.provider.googleAIStudio.credentialBridge'))
     expect(screen.queryByText(/endpoint picker/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/profile picker/i)).not.toBeInTheDocument()
     expect(screen.queryByTestId('google-ai-studio-chat-model')).not.toBeInTheDocument()
@@ -131,12 +132,16 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
     })
 
     const diagnostics = screen.getByTestId('google-ai-studio-models-diagnostics')
-    expect(diagnostics.textContent).toContain('1 Gemini model availability records')
+    expect(diagnostics.textContent).toContain(tf('chat.console.availability.records', {
+      count: 1,
+      source: t('chat.console.provider.googleAIStudio.sourceName'),
+      observedAt: '2026-06-25T00:00:00.000Z',
+    }))
     expect(diagnostics.textContent).toContain('gemini-2.5-flash')
     expect(diagnostics.textContent).toContain('gemini_models_api')
     expect(diagnostics.textContent).toContain('provider_reported')
-    expect(diagnostics.textContent).toContain('methods generateContent, countTokens')
-    expect(diagnostics.textContent).toContain('thinking supported')
+    expect(diagnostics.textContent).toContain(tf('chat.console.capability.methods', { value: 'generateContent, countTokens' }))
+    expect(diagnostics.textContent).toContain(tf('chat.console.capability.thinking', { value: 'supported' }))
     expect(diagnostics.textContent).toContain('gemini_models_api_docs')
     expect(diagnostics.textContent).toContain('supplemental metadata')
 

@@ -84,6 +84,174 @@
       "title": "项目联网搜索",
       "titleWithTarget": "项目联网搜索：{name}"
     },
+    "console": {
+      "section": {
+        "display": "显示",
+        "runtime": "运行时",
+        "model": "模型",
+        "reasoning": "推理",
+        "webSearch": "联网搜索",
+        "sampling": "采样",
+        "imageGeneration": "图像生成"
+      },
+      "display": {
+        "inlineReasoning": "消息内推理",
+        "rightRailReasoning": "右侧推理面板",
+        "expandReasoningWhileThinking": "生成推理时自动展开",
+        "collapseReasoningWhenAnswerStarts": "正文开始后自动收起推理"
+      },
+      "status": {
+        "enabled": "已启用",
+        "use": "使用",
+        "active": "启用",
+        "inactive": "停用",
+        "selected": "已选择",
+        "unset": "未设置",
+        "none": "无",
+        "unknown": "未知",
+        "source": "来源 {source}"
+      },
+      "runtime": {
+        "noProviderSelected": "尚未选择运行时提供方",
+        "textChatBlocked": "文本聊天不可用",
+        "selectProviderAndModel": "发送前请选择运行时提供方和模型。"
+      },
+      "common": {
+        "refreshing": "正在刷新...",
+        "refreshModels": "刷新模型",
+        "useModelId": "使用模型 ID",
+        "sourceDocs": "来源文档：",
+        "sourceObserved": "{source} 观测于 {observedAt}",
+        "ownedBy": "归属 {owner}",
+        "created": "创建于 {createdAt}",
+        "type": "类型 {type}",
+        "openGlobalSettings": "打开全局设置"
+      },
+      "capability": {
+        "unknown": "能力种子未知",
+        "pricingUnknown": "价格种子未知",
+        "textChat": "文本聊天",
+        "textChatBlocked": "文本聊天不可用",
+        "responsesApi": "Responses API",
+        "responsesApiBlocked": "Responses API 不可用",
+        "thinking": "推理 {value}",
+        "reasoning": "推理 {value}",
+        "effort": "档位 {value}",
+        "context": "上下文 {value}",
+        "maxOutput": "最大输出 {value}",
+        "maxInput": "最大输入 {value}",
+        "input": "输入 {value}",
+        "output": "输出 {value}",
+        "methods": "方法 {value}",
+        "functionCalling": "函数调用 {value}",
+        "hostedTools": "托管工具 {value}",
+        "structuredOutput": "结构化输出 {value}",
+        "imageInput": "图像输入 {value}",
+        "fileInput": "文件输入 {value}",
+        "audioInput": "音频输入 {value}",
+        "adaptiveThinking": "自适应推理 {value}",
+        "toolUse": "工具使用 {value}",
+        "files": "文件 {value}",
+        "citations": "引用 {value}",
+        "vision": "视觉 {value}",
+        "rawCapabilityKeys": "原始能力键 {value}",
+        "pricing": "{currency}/百万 token 输入命中 {hit} · 未命中 {miss} · 输出 {output}"
+      },
+      "availability": {
+        "refreshing": "正在刷新 {source} 模型...",
+        "notRefreshed": "本会话尚未刷新 {source} 模型。",
+        "records": "{count} 条 {source} 模型可用性记录。观测于 {observedAt}。"
+      },
+      "provider": {
+        "openRouter": {
+          "title": "OpenRouter 聊天",
+          "providerLabelDefault": "OpenRouter · 一级提供方",
+          "warning": "显式一级提供方选择。现有 OpenRouter 发送计划、附件、联网搜索、推理、图像生成和 legacy-store 凭据来源仍走 OpenRouter 路径。",
+          "status": "OpenRouter 聊天当前为{status}。",
+          "selectedModel": "已选 OpenRouter 模型：{model}",
+          "notFallback": "OpenRouter 不是隐式 fallback；使用 OpenRouter 发送前请在这里选择它。",
+          "disable": "停用 OpenRouter 聊天",
+          "clear": "清除 OpenRouter 聊天设置"
+        },
+        "openAIResponses": {
+          "title": "OpenAI Responses 聊天",
+          "experimentalLabel": "实验性 · OpenAI Responses 纯文本 · 非 OpenRouter",
+          "warning": "原生 OpenAI Responses API 纯文本流式输出。附件、联网、工具、图像生成、推理和 Generic 兼容路由均已禁用。",
+          "status": "实验性 OpenAI Responses 聊天当前为{status}。",
+          "selectedModel": "已选 Responses 模型：{model}",
+          "credentialBridge": "OpenAI Responses 聊天使用主进程凭据桥，不会在此控制台暴露 API Key。",
+          "sourceTitle": "OpenAI 官方模型来源",
+          "sourceName": "OpenAI 官方",
+          "disable": "停用 OpenAI Responses 聊天",
+          "clear": "清除 OpenAI Responses 聊天设置"
+        },
+        "anthropic": {
+          "title": "Anthropic Messages 聊天",
+          "experimentalLabel": "实验性 · Anthropic Messages 纯文本 · 非 OpenRouter",
+          "warning": "原生 Anthropic Messages API 纯文本流式输出。附件、联网、工具、图像生成、reasoning/thinking、签名和 Generic 兼容路由均已禁用。",
+          "status": "实验性 Anthropic Messages 聊天当前为{status}。",
+          "selectedModel": "已选 Claude 模型：{model}",
+          "credentialBridge": "Anthropic 聊天使用主进程凭据桥，不会在此控制台暴露 API Key。",
+          "sourceTitle": "Anthropic 官方模型来源",
+          "sourceName": "Anthropic",
+          "disable": "停用 Anthropic Messages 聊天",
+          "clear": "清除 Anthropic Messages 聊天设置"
+        },
+        "deepSeek": {
+          "title": "DeepSeek 官方聊天",
+          "experimentalLabel": "实验性 · DeepSeek 官方纯文本 · 非 OpenRouter",
+          "warning": "DeepSeek 官方 API 纯文本流式输出。附件、联网、工具、图像生成、reasoning/thinking、reasoning_content 展示和 Generic 兼容路由均已禁用。",
+          "status": "实验性 DeepSeek 官方聊天当前为{status}。",
+          "selectedModel": "已选 DeepSeek 模型：{model}",
+          "credentialBridge": "DeepSeek 聊天使用主进程凭据桥，不会在此控制台暴露 API Key。",
+          "sourceTitle": "DeepSeek 官方模型来源",
+          "sourceName": "DeepSeek 官方",
+          "disable": "停用 DeepSeek 官方聊天",
+          "clear": "清除 DeepSeek 聊天设置"
+        },
+        "googleAIStudio": {
+          "title": "Google AI Studio 聊天",
+          "experimentalLabel": "实验性 · Google AI Studio Gemini 纯文本 · 非 OpenRouter",
+          "warning": "原生 Google AI Studio Gemini 纯文本流式输出。附件、联网、工具、图像生成、推理、旧 Gemini runtime 和 Generic 兼容路由均已禁用。",
+          "status": "实验性 Google AI Studio 聊天当前为{status}。",
+          "selectedModel": "已选 Gemini 模型：{model}",
+          "credentialBridge": "Google AI Studio 聊天使用主进程凭据桥，不会在此控制台暴露 API Key。",
+          "sourceTitle": "Gemini 官方模型来源",
+          "sourceName": "Gemini",
+          "disable": "停用 Google AI Studio 聊天",
+          "clear": "清除 Google AI Studio 聊天设置"
+        },
+        "localEndpoint": {
+          "title": "LocalEndpoint 聊天",
+          "experimentalLabel": "实验性 · LocalEndpoint 纯文本 · 非 OpenRouter",
+          "endpointUrl": "Loopback endpoint URL",
+          "warning": "仅限 loopback OpenAI-compatible 纯文本流式输出。附件、联网、工具、图像生成、推理、密钥和模型选择器发布均已禁用。",
+          "status": "实验性 LocalEndpoint 聊天当前为{status}。",
+          "selectedEndpoint": "已选 endpoint：{endpoint}",
+          "selectedModel": "已选本地模型：{model}",
+          "boundary": "实验性本地聊天独立于 OpenRouter，且不使用 API Key 或自定义 header。",
+          "disable": "停用 LocalEndpoint 聊天",
+          "clear": "清除 LocalEndpoint 聊天设置"
+        }
+      },
+      "reasoning": {
+        "thinkingBudget": "thinkingBudget",
+        "thinkingLevel": "thinkingLevel",
+        "includeThoughts": "返回推理摘要",
+        "geminiUnsupported": "该模型不可使用 Gemini 推理控制。",
+        "effort": {
+          "low": "低",
+          "medium": "中",
+          "high": "高"
+        }
+      },
+      "webSearch": {
+        "level": {
+          "low": "低",
+          "high": "高"
+        }
+      }
+    },
     "reasoning": {
       "title": "推理",
       "emptyPayload": "没有推理内容。",
